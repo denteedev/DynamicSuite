@@ -94,7 +94,7 @@ $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite")
 if (Test-Path -LiteralPath (Join-Path $RepoRoot "Packaging")) {
     $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "Packaging") -Filter "*.toc" -Recurse -File
 }
-foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "README.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md", "Packaging\StandaloneTOCs\.pkgmeta-dynamicmarker", "AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", ".pkgmeta", ".pkgmeta-dynamicmarker", ".github\workflows\release.yml")) {
+foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md", "README.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md", "Packaging\StandaloneTOCs\.pkgmeta-dynamicmarker", "AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", ".pkgmeta", ".pkgmeta-dynamicmarker", ".github\workflows\release.yml")) {
     $docPath = Join-Path $RepoRoot $docName
     if (Test-Path -LiteralPath $docPath) {
         $asciiTargets += Get-Item -LiteralPath $docPath
@@ -175,6 +175,25 @@ foreach ($toc in $standaloneTocs) {
 $changelogHead = (Get-Content -LiteralPath $changelogPath -TotalCount 5) -join "`n"
 if ($changelogHead -notmatch [regex]::Escape("Release: v$suiteVer")) {
     throw "CHANGELOG.md header does not match lockstep version v$suiteVer"
+}
+$markerChangelogPath = Join-Path $RepoRoot "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md"
+if (-not (Test-Path -LiteralPath $markerChangelogPath)) {
+    throw "Missing standalone DynamicMarker changelog at $markerChangelogPath"
+}
+$markerChangelogHead = (Get-Content -LiteralPath $markerChangelogPath -TotalCount 5) -join "`n"
+if ($markerChangelogHead -notmatch [regex]::Escape("Release: v$suiteVer")) {
+    throw "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md header does not match lockstep version v$suiteVer"
+}
+$markerChangelogRaw = [System.IO.File]::ReadAllText($markerChangelogPath)
+$forbiddenMarkerChangelogTerms = @("DynamicGroup", "DynamicPrep", "DynamicBags", "DynamicLoad", "DynamicChat", "DynamicFPS", "DynamicZoom", "All 8 Modules")
+$foundBleed = @()
+foreach ($term in $forbiddenMarkerChangelogTerms) {
+    if ($markerChangelogRaw -match [regex]::Escape($term)) {
+        $foundBleed += $term
+    }
+}
+if ($foundBleed.Count -gt 0) {
+    throw ("Standalone DynamicMarker changelog bleed detected in Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md (forbidden terms: " + ($foundBleed -join ", ") + ")")
 }
 $readmeText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"))
 if ($readmeText -notmatch [regex]::Escape("v$suiteVer")) {
@@ -578,7 +597,7 @@ $requiredStandaloneAssets = @(
     "DynamicSuite\icon.tga",
     "DynamicSuite\Media\Icons\icon_white.tga",
     "DynamicSuite\Media\Icons\icon_accent.tga",
-    "DynamicSuite\CHANGELOG.md"
+    "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md"
 )
 foreach ($assetRel in ($requiredSuiteAssets + $requiredStandaloneAssets | Sort-Object -Unique)) {
     $assetAbs = Join-Path $RepoRoot $assetRel
@@ -632,6 +651,9 @@ if ($workflowText -notmatch '120000') {
 }
 if ($workflowText -match 'cp\s+Packaging/StandaloneTOCs/DynamicMarker\.toc\s+DynamicMarker\.toc') {
     throw "release.yml must not copy DynamicMarker.toc to the repository root."
+}
+if ($workflowText -notmatch [regex]::Escape("Packaging/StandaloneTOCs/CHANGELOG_DYNAMICMARKER.md")) {
+    throw "release.yml must use Packaging/StandaloneTOCs/CHANGELOG_DYNAMICMARKER.md for standalone DynamicMarker (1331651) packaging."
 }
 foreach ($chanToken in @("CF_RELEASE_TYPE", '"-alpha"', '"-beta"', '"-rc"', "GITHUB_RELEASE_PRERELEASE")) {
     if ($workflowText.IndexOf($chanToken, [System.StringComparison]::Ordinal) -lt 0) {
@@ -857,6 +879,7 @@ if ($BuildReleaseZip) {
             param($stageAddonDir)
             $markerTocSrc = Join-Path $RepoRoot "Packaging\StandaloneTOCs\DynamicMarker.toc"
             $markerLuaSrc = Join-Path $suiteSrcDir "Modules\DynamicMarker.lua"
+            $markerChangelogSrc = Join-Path $RepoRoot "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md"
             $markerIconSrc = Join-Path $suiteSrcDir "icon.tga"
             $mediaIconsSrc = Join-Path $suiteSrcDir "Media\Icons"
             $mediaFontsSrc = Join-Path $suiteSrcDir "Media\Fonts"
@@ -864,7 +887,7 @@ if ($BuildReleaseZip) {
 
             Copy-Item -LiteralPath $markerTocSrc -Destination (Join-Path $stageAddonDir "DynamicMarker.toc") -Force
             Copy-Item -LiteralPath $markerLuaSrc -Destination (Join-Path $stageAddonDir "DynamicMarker.lua") -Force
-            Copy-Item -LiteralPath $suiteChangelogSrc -Destination (Join-Path $stageAddonDir "CHANGELOG.md") -Force
+            Copy-Item -LiteralPath $markerChangelogSrc -Destination (Join-Path $stageAddonDir "CHANGELOG.md") -Force
             if (Test-Path -LiteralPath $markerIconSrc) {
                 Copy-Item -LiteralPath $markerIconSrc -Destination (Join-Path $stageAddonDir "icon.tga") -Force
             }
@@ -932,7 +955,7 @@ try {
         if (Test-Path -LiteralPath $wowStandaloneMarkerDir) {
             Copy-Item -LiteralPath (Join-Path $RepoRoot "Packaging\StandaloneTOCs\DynamicMarker.toc") -Destination (Join-Path $wowStandaloneMarkerDir "DynamicMarker.toc") -Force
             Copy-Item -LiteralPath (Join-Path $RepoRoot "DynamicSuite\Modules\DynamicMarker.lua") -Destination (Join-Path $wowStandaloneMarkerDir "DynamicMarker.lua") -Force
-            Copy-Item -LiteralPath (Join-Path $RepoRoot "DynamicSuite\CHANGELOG.md") -Destination (Join-Path $wowStandaloneMarkerDir "CHANGELOG.md") -Force
+            Copy-Item -LiteralPath (Join-Path $RepoRoot "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md") -Destination (Join-Path $wowStandaloneMarkerDir "CHANGELOG.md") -Force
             Write-Host "[STANDALONE SYNCED] DynamicMarker.toc, DynamicMarker.lua, & CHANGELOG.md -> $wowStandaloneMarkerDir" -ForegroundColor DarkCyan
         }
         $driveSyncRoot = "G:\My Drive\DynamicSuite_Sync"

@@ -208,6 +208,8 @@ jobs:
 
       - name: Stage standalone DynamicMarker addon
         shell: bash
+        env:
+          RESOLVED_TAG: ${{ env.RESOLVED_TAG }}
         run: |
           set -euo pipefail
           STAGE_DIR=".release/DynamicMarker"
@@ -218,7 +220,65 @@ jobs:
           cp DynamicSuite/Modules/DynamicMarker.lua "$STAGE_DIR/DynamicMarker.lua"
           cp DynamicSuite/icon.tga "$STAGE_DIR/icon.tga"
           cp DynamicSuite/Media/Icons/*.tga "$STAGE_DIR/Media/Icons/"
-          cp DynamicSuite/CHANGELOG.md "$STAGE_DIR/CHANGELOG.md"
+          cp Packaging/StandaloneTOCs/CHANGELOG_DYNAMICMARKER.md "$STAGE_DIR/CHANGELOG.md"
+
+          # Extract only the active/latest standalone DynamicMarker release section
+          # into .release-changelog.md so CurseForge Project 1331651 never receives
+          # DynamicSuite or other module notes.
+          TAG_VER="${RESOLVED_TAG#v}"
+          python3 - "$TAG_VER" <<'PYEOF'
+          import re
+          import sys
+
+          tag_ver = sys.argv[1].strip()
+          base_ver = re.sub(r"-.*$", "", tag_ver)
+          with open("Packaging/StandaloneTOCs/CHANGELOG_DYNAMICMARKER.md", "rb") as f:
+              raw = f.read()
+          if raw.startswith(b"\xef\xbb\xbf"):
+              raw = raw[3:]
+          text = raw.decode("utf-8", errors="ignore").replace("\r\n", "\n").replace("\r", "\n")
+
+          sections = re.split(r"(?m)(?=^## )", text)
+          picked = ""
+          for candidate_ver in [v for v in (tag_ver, base_ver) if v]:
+              pat = re.compile(r"^## .*?\bv?" + re.escape(candidate_ver) + r"\b")
+              for sec in sections:
+                  if pat.search(sec):
+                      picked = sec
+                      break
+              if picked:
+                  break
+          if not picked:
+              for sec in sections:
+                  if sec.startswith("## "):
+                      picked = sec
+                      break
+
+          picked = re.sub(r"\n---\s*$", "", picked.strip())
+          picked_ascii = picked.encode("ascii", "ignore").decode("ascii").strip()
+
+          max_chars = 60000
+          if len(picked_ascii) > max_chars:
+              cut = picked_ascii[:59000].rsplit("\n", 1)[0].rstrip()
+              picked_ascii = cut + "\n\n... (truncated; see full CHANGELOG.md inside package)"
+
+          if picked_ascii:
+              picked_ascii += "\n"
+
+          with open(".release-changelog.md", "wb") as f:
+              f.write(picked_ascii.encode("ascii"))
+          PYEOF
+
+          if [ ! -s ".release-changelog.md" ]; then
+            echo "Extracted standalone .release-changelog.md is empty." >&2
+            exit 1
+          fi
+          CHAR_COUNT="$(wc -c < .release-changelog.md)"
+          if [ "$CHAR_COUNT" -gt 120000 ]; then
+            echo "Extracted standalone .release-changelog.md exceeds 120,000 characters ($CHAR_COUNT)." >&2
+            exit 1
+          fi
+          echo "Prepared standalone .release-changelog.md ($CHAR_COUNT bytes)"
 
           # Copy any bundled fonts explicitly referenced by DynamicMarker.lua
           { grep -oE 'Fonts\\+[^"\\|]+\.(ttf|otf|TTF|OTF)' DynamicSuite/Modules/DynamicMarker.lua || true; } \
