@@ -7549,17 +7549,34 @@ Suite.Changelogs["DynamicMarker"] = DynamicMarker.CHANGELOG
 Suite.Changelogs["marker"] = DynamicMarker.CHANGELOG
 
 -- ============================================================================
--- 19. SLASH COMMANDS (/dm, /dynamicmarker) & EVENT DISPATCHER
+-- 19. SLASH COMMANDS (/dm, /dynamicmarker, /fm, /focusmarker) & EVENT DISPATCHER
 -- ============================================================================
 
+local function PrintSlashUsage()
+    print("|cFF38BDF8DynamicMarker|r: Commands (/dm, /dynamicmarker, /fm, /focusmarker):")
+    print("  |cFFF5B82E/dm|r - Open DynamicMarker settings")
+    print("  |cFFF5B82E/dm lock|r | |cFFF5B82E/dm hud|r - Toggle icon & flare bar lock (HUD Edit Mode)")
+    print("  |cFFF5B82E/dm unlock|r - Unlock icon & flare bars")
+    print("  |cFFF5B82E/dm show|r | |cFFF5B82E/dm hide|r - Show or hide the on-screen icon bar")
+    print("  |cFFF5B82E/dm mute|r | |cFFF5B82E/dm silent|r - Toggle silent announcement mode")
+    print("  |cFFF5B82E/dm flare|r | |cFFF5B82E/dm macro|r - Open Flares or Macro Setup tab")
+    print("  |cFFF5B82E/dm import [status]|r - Import legacy FocusMarker settings")
+    print("  |cFFF5B82E/dm reset|r - Reset defaults, positions, size, and mute state")
+end
+
 local function HandleSlashCommand(msg)
-    local cmd = (msg or ""):match("^%s*(%S*)"):lower()
-    if cmd == "edit" or cmd == "hud" or cmd == "move" or cmd == "movers" then
+    local trimmed = (msg or ""):match("^%s*(.-)%s*$") or ""
+    local cmd = (trimmed:match("^(%S*)") or ""):lower()
+    if cmd == "" or cmd == "config" or cmd == "ui" or cmd == "options" then
+        if type(Suite.OpenModule) == "function" and Suite.mainFrame and Suite.mainFrame ~= DM.shellFrame then
+            local ok = pcall(Suite.OpenModule, Suite, "DynamicMarker")
+            if ok then return end
+        end
+        DM:OpenWindow()
+    elseif cmd == "edit" or cmd == "hud" or cmd == "move" or cmd == "movers" or cmd == "lock" then
         DM:ToggleHudEditMode()
     elseif cmd == "unlock" then
         DM:SetEditMode(true)
-    elseif cmd == "lock" then
-        DM:SetEditMode(false)
     elseif cmd == "reset" then
         DM:ResetDefaults()
     elseif cmd == "mute" or cmd == "silent" then
@@ -7581,7 +7598,7 @@ local function HandleSlashCommand(msg)
     elseif cmd == "flare" or cmd == "flares" then
         DM:OpenWindow(2)
     elseif cmd == "import" or cmd == "migrate" then
-        local sub = ((msg or ""):match("^%s*%S+%s+(%S+)") or ""):lower()
+        local sub = (trimmed:match("^%S+%s+(%S+)") or ""):lower()
         if sub == "status" then
             DM:PrintFocusMarkerImportStatus()
         elseif InCombatLockdown and InCombatLockdown() then
@@ -7601,17 +7618,18 @@ local function HandleSlashCommand(msg)
                 print("|cFF38BDF8DynamicMarker|r: " .. tostring(res or "FocusMarker import failed."))
             end
         end
+    elseif cmd == "help" or cmd == "?" then
+        PrintSlashUsage()
     else
-        if type(Suite.OpenModule) == "function" and Suite.mainFrame and Suite.mainFrame ~= DM.shellFrame then
-            local ok = pcall(Suite.OpenModule, Suite, "DynamicMarker")
-            if ok then return end
-        end
-        DM:OpenWindow()
+        print("|cFF38BDF8DynamicMarker|r: Unknown subcommand '" .. cmd .. "'.")
+        PrintSlashUsage()
     end
 end
 
 SLASH_DYNAMICMARKER1 = "/dm"
 SLASH_DYNAMICMARKER2 = "/dynamicmarker"
+SLASH_DYNAMICMARKER3 = "/fm"
+SLASH_DYNAMICMARKER4 = "/focusmarker"
 SlashCmdList["DYNAMICMARKER"] = HandleSlashCommand
 
 if not SlashCmdList["DYNAMICSUITE"] then

@@ -193,6 +193,7 @@ foreach ($lf in $versionLuaTargets) {
 }
 
 $suiteUiText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "DynamicSuite\DynamicSuite_UI.lua"))
+$suiteCoreText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "DynamicSuite\DynamicSuite_Core.lua"))
 $markerLuaText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "DynamicSuite\Modules\DynamicMarker.lua"))
 $parityTokens = @(
     "UI-ChatIM-SizeGrabber-Up",
@@ -211,6 +212,14 @@ foreach ($tok in $parityTokens) {
     if ($markerLuaText.IndexOf($tok, [System.StringComparison]::Ordinal) -lt 0) {
         throw "DynamicMarker.lua missing Suite/Standalone parity token: $tok"
     }
+}
+foreach ($slashTok in @('SLASH_DYNAMICMARKER1 = "/dm"', 'SLASH_DYNAMICMARKER3 = "/fm"', 'SlashCmdList["DYNAMICMARKER"]')) {
+    if ($markerLuaText.IndexOf($slashTok, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicMarker.lua missing required slash command token: $slashTok"
+    }
+}
+if ($suiteCoreText.IndexOf('["DYNAMICMARKER"] = "DynamicMarker"', [System.StringComparison]::Ordinal) -lt 0) {
+    throw "DynamicSuite_Core.lua missing DYNAMICMARKER suite slash routing entry."
 }
 Write-Host "[PARITY OK] Lockstep v$suiteVer ($suiteIface), public docs clean, Suite <-> DynamicMarker UI parity verified" -ForegroundColor Green
 

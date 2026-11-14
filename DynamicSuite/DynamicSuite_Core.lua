@@ -3522,7 +3522,7 @@ function addonTable.ReassertSuiteSlashRouting()
         if type(origHandler) == "function" and not addonTable["_wrappedSlash_" .. slashKey] then
             addonTable["_wrappedSlash_" .. slashKey] = true
             SlashCmdList[slashKey] = function(msg)
-                local cmd = (msg or ""):match("^(%S*)")
+                local cmd = (msg or ""):match("^%s*(%S*)")
                 cmd = (cmd or ""):lower()
                 if cmd == "" or cmd == "config" or cmd == "ui" or cmd == "options" then
                     if modName == "DynamicLoad" then
