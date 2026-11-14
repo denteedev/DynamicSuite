@@ -318,6 +318,34 @@ foreach ($bcLine in $loadBytecode) {
 if ($badLoadGlobals.Count -gt 0) {
     throw ("DynamicLoad.lua contains forward-referenced or out-of-scope local function calls resolved as GETGLOBAL:`n - " + ($badLoadGlobals -join "`n - "))
 }
+$loadLines = Get-Content -LiteralPath $loadLuaPath
+$loadDeclLines = @{}
+for ($li = 0; $li -lt $loadLines.Count; $li++) {
+    $ln = $loadLines[$li]
+    if ($ln -match '^\s*local\s+function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(') {
+        $fn = $Matches[1]
+        if (-not $loadDeclLines.ContainsKey($fn)) { $loadDeclLines[$fn] = $li + 1 }
+    } elseif ($ln -match '^\s*local\s+([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*$') {
+        foreach ($part in ($Matches[1] -split ',')) {
+            $fn = $part.Trim()
+            if ($fn -and -not $loadDeclLines.ContainsKey($fn)) { $loadDeclLines[$fn] = $li + 1 }
+        }
+    }
+}
+$earlyLoadCalls = @()
+for ($li = 0; $li -lt $loadLines.Count; $li++) {
+    $codeLine = ($loadLines[$li] -replace '"(?:\\.|[^"\\])*"', '""' -replace "'(?:\\.|[^'\\])*'", "''" -replace '--.*$', '')
+    if ($codeLine -match '^\s*local\s+function\s+') { continue }
+    foreach ($cm in [regex]::Matches($codeLine, '(?<![\.\:\w])([A-Za-z_][A-Za-z0-9_]*)\s*\(')) {
+        $fn = $cm.Groups[1].Value
+        if ($loadDeclLines.ContainsKey($fn) -and ($li + 1) -lt $loadDeclLines[$fn]) {
+            $earlyLoadCalls += "$fn called at line $($li + 1) before declaration at line $($loadDeclLines[$fn])"
+        }
+    }
+}
+if ($earlyLoadCalls.Count -gt 0) {
+    throw ("DynamicLoad.lua contains local function call(s) on a line earlier than their local declaration:`n - " + ($earlyLoadCalls -join "`n - "))
+}
 $allLuaCheckFiles = Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite") -Filter "*.lua" -Recurse -File
 foreach ($luaCheck in $allLuaCheckFiles) {
     $luaCheckText = [System.IO.File]::ReadAllText($luaCheck.FullName)

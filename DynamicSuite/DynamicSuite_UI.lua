@@ -4421,7 +4421,7 @@ function addonTable.CreateMainConfigUI()
                         addonTable.OpenWorkspaceView("PEER_MODULE")
                     end
                 else
-                    if hasAddon and addonKey ~= "DynamicSuite" then
+                    if hasAddon and addonKey ~= "DynamicSuite" and addonKey ~= "DynamicMarker" then
                         C_AddOns.EnableAddOn(addonKey, pName)
                         C_AddOns.EnableAddOn(addonKey)
                     end
@@ -4525,7 +4525,7 @@ function addonTable.CreateMainConfigUI()
                 local isExplicitDis = (addonTable.IsSuiteModuleExplicitlyDisabled and addonTable.IsSuiteModuleExplicitlyDisabled(addonKey))
                     or (gTbl.disabledModules and (gTbl.disabledModules[addonKey] or gTbl.disabledModules[shortKey]))
                     or (_G.DynamicSuiteDB and _G.DynamicSuiteDB.disabledModules and (_G.DynamicSuiteDB.disabledModules[addonKey] or _G.DynamicSuiteDB.disabledModules[shortKey]))
-                if not isExplicitDis and addonKey ~= "DynamicSuite" and C_AddOns.GetAddOnInfo(addonKey) then
+                if not isExplicitDis and addonKey ~= "DynamicSuite" and addonKey ~= "DynamicMarker" and C_AddOns.GetAddOnInfo(addonKey) then
                     C_AddOns.EnableAddOn(addonKey, pName)
                     C_AddOns.EnableAddOn(addonKey)
                     if gTbl.disabledModules then
@@ -4566,7 +4566,7 @@ function addonTable.CreateMainConfigUI()
                         host.moduleContainers = host.moduleContainers or {}
                         local modHost = host.moduleContainers[addonKey]
                         if not modHost then
-                            if addonKey ~= "DynamicSuite" and C_AddOns.GetAddOnInfo(addonKey) then
+                            if addonKey ~= "DynamicSuite" and addonKey ~= "DynamicMarker" and C_AddOns.GetAddOnInfo(addonKey) then
                                 C_AddOns.EnableAddOn(addonKey, pName)
                                 C_AddOns.EnableAddOn(addonKey)
                             end
@@ -5326,7 +5326,7 @@ function addonTable.CreateMainConfigUI()
         local regMod = (DynamicSuite and DynamicSuite.modules and (DynamicSuite.modules[addonKey] or DynamicSuite.modules[shortKey] or DynamicSuite.modules[mInfo.key])) or _G[addonKey]
         local idx = hasStandalone or (regMod ~= nil)
         if (not isExplicitDis) and regMod and (not regMod._disabledAtStartup) and type(regMod.RenderEmbedded or regMod.Render or regMod.BuildUI or regMod.BuildConfigUI) == "function" then
-            if hasStandalone and addonKey ~= "DynamicSuite" then
+            if hasStandalone and addonKey ~= "DynamicSuite" and addonKey ~= "DynamicMarker" then
                 C_AddOns.EnableAddOn(addonKey, pName)
                 C_AddOns.EnableAddOn(addonKey)
             end
@@ -5365,7 +5365,7 @@ function addonTable.CreateMainConfigUI()
             peerToggleBtn:Enable()
             peerToggleBtn:SetAlpha(1.0)
             peerToggleBtn:SetScript("OnClick", function()
-                if hasStandalone and addonKey ~= "DynamicSuite" then
+                if hasStandalone and addonKey ~= "DynamicSuite" and addonKey ~= "DynamicMarker" then
                     C_AddOns.EnableAddOn(addonKey, pName)
                     C_AddOns.EnableAddOn(addonKey)
                 end
@@ -5377,7 +5377,7 @@ function addonTable.CreateMainConfigUI()
                     _G.DynamicSuiteDB.disabledModules[addonKey] = nil
                     _G.DynamicSuiteDB.disabledModules[shortKey] = nil
                 end
-                if hasStandalone and C_AddOns.LoadAddOn then
+                if hasStandalone and addonKey ~= "DynamicMarker" and C_AddOns.LoadAddOn then
                     pcall(C_AddOns.LoadAddOn, addonKey)
                 end
                 local liveMod = (DynamicSuite and DynamicSuite.modules and (DynamicSuite.modules[addonKey] or DynamicSuite.modules[shortKey] or DynamicSuite.modules[mInfo.key])) or _G[addonKey]
@@ -12284,7 +12284,7 @@ function addonTable.CreateMainConfigUI()
                 _G.DynamicSuiteDB.disabledModules[mKey] = nil
                 _G.DynamicSuiteDB.disabledModules[shortId] = nil
             end
-            if addonName ~= "DynamicSuite" and C_AddOns and C_AddOns.GetAddOnInfo(addonName) then
+            if addonName ~= "DynamicSuite" and addonName ~= "DynamicMarker" and C_AddOns and C_AddOns.GetAddOnInfo(addonName) then
                 if C_AddOns.EnableAddOn then
                     pcall(C_AddOns.EnableAddOn, addonName, pName)
                 end
