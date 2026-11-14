@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512" fill="none">
+  <!-- Dark Obsidian Rounded-Square Badge -->
+  <rect x="0.75" y="0.75" width="22.5" height="22.5" rx="5.2" fill="#090A0D" stroke="#CBD5E1" stroke-width="0.9" stroke-opacity="0.45"/>
+  <!-- L9: Velocity Double-D Fusion (Speed-Slash Ambigram) -->
+  <!-- Outer Upper Wing (White) -->
+  <path d="M3.6 13.4V3.6H13.6L20.4 9.8L16.2 11.2L12.4 7.2H7.4V12.2L3.6 13.4Z" fill="#FFFFFF"/>
+  <!-- Outer Lower Thrust Wing (Steel) -->
+  <path d="M3.6 15.0L7.4 13.8V16.8H12.4L16.2 12.8L20.4 11.4V13.6L13.6 20.4H3.6V15.0Z" fill="#CBD5E1"/>
+  <!-- Inner Dentee D Monogram Speed-Core (Steel, sliced by 18° Velocity Slash) -->
+  <path d="M9.0 8.6H12.0L14.4 9.9L12.8 10.4L11.5 9.8H10.4V11.2L9.0 11.6V8.6Z" fill="#CBD5E1"/>
+  <path d="M9.0 13.2L10.4 12.8V14.2H11.5L12.8 13.6L14.4 11.5L12.0 15.4H9.0V13.2Z" fill="#CBD5E1"/>
+</svg>

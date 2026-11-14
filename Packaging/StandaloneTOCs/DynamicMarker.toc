@@ -1,0 +1,15 @@
+## Interface: 120105
+## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFMarker|r
+## Notes: Raid Target Icons, World Flare Keybinds & Smart Focus/Interrupt Macro Engine.
+## Author: Dentee-Frostmourne
+## Version: 1.9.2
+## Category: DynamicSuite
+## Category-enUS: DynamicSuite
+## SavedVariables: DynamicMarkerDB, FocusMarkerDB
+## OptionalDeps: DynamicSuite
+## IconTexture: Interface\AddOns\DynamicMarker\icon.tga
+## AddonCompartmentFunc: DynamicMarker_OnAddonCompartmentClick
+## X-Email: denteedev@gmail.com
+## X-Donate: https://ko-fi.com/dentee
+
+DynamicMarker.lua

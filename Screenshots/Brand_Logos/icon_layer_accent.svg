@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512" fill="none">
+  <!-- DynamicSuite L10-B In-Game Layer: Accent / Bottom Half Vertex-Tint Mask -->
+  <!-- Lower Accent Outer D (White mask for WoW SetVertexColor) -->
+  <path d="M3.6 15.00L7.2 13.99V17.2H12.6L16.6 13.6V11.36L20.4 10.30V14.5L13.8 20.5H3.6V15.00Z" fill="#FFFFFF"/>
+  <!-- Lower Accent Inner D (White mask for WoW SetVertexColor) -->
+  <path d="M9.2 12.78L14.6 11.27V13.2L12.2 15.4H9.2V12.78Z" fill="#FFFFFF"/>
+</svg>

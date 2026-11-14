@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512">
+  <!-- L6: Cascade-Step D (Modular Suite Bars) -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#090A0D" stroke="#CBD5E1" stroke-width="2" stroke-opacity="0.45"/>
+  <!-- 3 Modular Vertical Step Bars on Left -->
+  <rect x="12" y="18" width="4.5" height="28" rx="2" fill="#CBD5E1" opacity="0.65"/>
+  <rect x="19" y="14" width="5" height="36" rx="2" fill="#FFFFFF" opacity="0.85"/>
+  <!-- Main Right 'D' Curve -->
+  <path fill="#FFFFFF" d="M 26 11 H 36 C 46 11 52 19 52 32 C 52 45 46 53 36 53 H 26 V 44 H 35 C 40 44 43 39 43 32 C 43 25 40 20 35 20 H 26 Z"/>
+  <!-- Inner Accent Core Pill -->
+  <rect x="29" y="25" width="8" height="14" rx="4" fill="#CBD5E1"/>
+</svg>

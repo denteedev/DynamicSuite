@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512">
+  <!-- L3: Reticle Crest D (Tactical Raid Shield) -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#090A0D" stroke="#CBD5E1" stroke-width="2" stroke-opacity="0.45"/>
+  <!-- Octagonal Tactical 'D' Frame with Reticle Cuts -->
+  <path fill="#FFFFFF" fill-rule="evenodd" d="M 14 11 H 36 L 50 23 V 30 H 43 V 26 L 33 19 H 23 V 45 H 33 L 43 38 V 34 H 50 V 41 L 36 53 H 14 V 35 H 19 V 29 H 14 Z"/>
+  <!-- Inner Accent Target Ring + Core Dot -->
+  <circle cx="31" cy="32" r="8" fill="none" stroke="#CBD5E1" stroke-width="3.5"/>
+  <circle cx="31" cy="32" r="3" fill="#CBD5E1"/>
+</svg>

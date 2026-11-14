@@ -1,0 +1,1586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DynamicSuite — Unified Left Suite Rail + Concept A Segmented Workspace</title>
+<style>
+  :root {
+    --bg-void: #090a0d;
+    --bg-canvas: #111318;
+    --bg-surface: #171a21;
+    --bg-elevated: #1f242d;
+    --bg-hover: #252b36;
+    --border-hairline: rgba(255, 255, 255, 0.07);
+    --border-strong: rgba(255, 255, 255, 0.14);
+    --text-primary: #f3f5f8;
+    --text-secondary: #949ba6;
+    --text-muted: #5e6572;
+    --accent: #cbd5e1;
+    --accent-rgb: 203, 213, 225;
+    --gold: #f5b82e;
+    --cyan: #38bdf8;
+  }
+  * { box-sizing: border-box; user-select: none; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  body {
+    margin: 0; height: 100vh; overflow: hidden;
+    background: radial-gradient(circle at 50% 30%, #1c2029 0%, #0b0d12 70%);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: var(--text-primary);
+  }
+
+  /* Top Logo & Mode Switcher Bar */
+  .concept-switcher {
+    position: fixed; top: 10px; z-index: 1000;
+    background: rgba(13, 15, 20, 0.96);
+    border: 1px solid rgba(255,255,255,0.14);
+    border-radius: 8px; padding: 7px 14px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.65);
+  }
+  .sw-group { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-secondary); }
+  .sw-pill {
+    padding: 4px 10px; border-radius: 5px; cursor: pointer;
+    background: #171a21; border: 1px solid rgba(255,255,255,0.08);
+    color: #ccc; font-size: 11px; font-weight: 500; transition: all 0.15s;
+  }
+  .sw-pill:hover { background: #222731; color: #fff; }
+  .sw-pill.active {
+    background: rgba(var(--accent-rgb), 0.18);
+    border-color: var(--accent); color: #fff; font-weight: 600;
+  }
+  .class-dot {
+    width: 17px; height: 17px; border-radius: 4px; cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.25); transition: transform 0.12s;
+  }
+  .class-dot:hover { transform: scale(1.15); }
+  .class-dot.active { border: 2px solid #fff; box-shadow: 0 0 8px var(--accent); }
+
+  /* Dynamic "D" Monogram Emblem */
+  .d-logo-box {
+    width: 26px; height: 26px; border-radius: 5px;
+    background: linear-gradient(145deg, #1a1e26, #0b0d12);
+    border: 1px solid rgba(var(--accent-rgb), 0.55);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), 0 0 12px rgba(var(--accent-rgb), 0.18);
+    flex-shrink: 0;
+  }
+  .d-logo-box svg { width: 17px; height: 17px; }
+
+  /* Live Draggable Toast / Pinned Dynamic Info Bar */
+  #toastFrame {
+    position: fixed; top: 52px; left: calc(50% - 255px);
+    min-width: 510px; height: 68px;
+    background: rgba(17, 19, 24, 0.96);
+    border: 1px solid var(--accent);
+    border-left: 3px solid var(--accent);
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px; gap: 14px;
+    cursor: move; z-index: 800;
+    box-shadow: 0 14px 34px rgba(0,0,0,0.75);
+    transform-origin: center center;
+  }
+  #toastIconBox {
+    width: 38px; height: 38px; background: linear-gradient(145deg, #171a22, #090a0d);
+    border: 1px solid rgba(var(--accent-rgb), 0.55); border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  #toastIconBox svg { width: 22px; height: 22px; }
+  .toast-lines { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  #toastTitle { font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  #toastBadge { font-size: 10.5px; color: var(--accent); }
+  #toastSub   { font-size: 9.5px; color: var(--text-secondary); }
+  .toast-qol-box {
+    display: flex; flex-direction: column; gap: 4px; align-items: flex-end;
+    border-left: 1px solid var(--border-hairline); padding-left: 12px;
+  }
+  .qol-pill-row { display: flex; gap: 5px; }
+  .qol-pill {
+    padding: 3px 8px; border-radius: 4px; font-size: 10.5px; font-weight: 600;
+    background: #171a21; border: 1px solid rgba(255,255,255,0.14); color: #fff;
+    cursor: pointer; transition: all 0.12s; white-space: nowrap;
+  }
+  .qol-pill:hover { border-color: var(--accent); background: #1f242d; }
+  .qol-pill.mismatch {
+    border-color: #f5b82e; background: rgba(245, 184, 46, 0.15); color: #fbbf24;
+  }
+  .toast-stats-row {
+    font-size: 9.5px; color: #9ca3b5; letter-spacing: 0.2px; white-space: nowrap;
+  }
+  .toast-stats-row b { color: #fff; }
+
+  /* Main Window Container (820 x 560 with Suite Sidebar, or 720 x 560 Standalone) */
+  #mainWindow {
+    width: 840px; height: 560px;
+    background: var(--bg-canvas);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    display: flex; flex-direction: column;
+    overflow: hidden; position: relative;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.8);
+    transform-origin: center center;
+    margin-top: 38px;
+    transition: width 0.2s ease;
+  }
+  #mainWindow.standalone { width: 720px; }
+  #mainWindow.gliding {
+    transition: transform 0.24s cubic-bezier(0.34, 1.52, 0.64, 1);
+  }
+
+  /* Top Window Bar */
+  .win-header {
+    height: 46px; background: var(--bg-void);
+    border-bottom: 1px solid var(--border-hairline);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px; flex-shrink: 0;
+  }
+  .win-brand { display: flex; align-items: center; gap: 10px; }
+  .win-title { font-size: 14.5px; font-weight: 700; letter-spacing: 0.3px; color: #fff; }
+  .win-title span { color: var(--accent); }
+  .win-ver {
+    font-size: 10px; padding: 2px 6px; border-radius: 3px;
+    background: var(--bg-surface); color: var(--text-secondary);
+    border: 1px solid var(--border-hairline);
+  }
+  .status-capsule {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg-surface); border: 1px solid var(--border-hairline);
+    padding: 4px 12px; border-radius: 99px; font-size: 11px; color: var(--text-secondary);
+  }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; box-shadow: 0 0 6px #10b981; }
+
+  .win-right { display: flex; align-items: center; gap: 8px; }
+  .obsidian-btn {
+    height: 24px; padding: 0 10px; border-radius: 4px;
+    background: var(--bg-surface); border: 1px solid var(--border-hairline);
+    color: var(--text-primary); font-size: 11px;
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+    transition: all 0.12s;
+  }
+  .obsidian-btn:hover {
+    background: var(--bg-hover); border-color: rgba(var(--accent-rgb), 0.6);
+  }
+  .chevron-v {
+    width: 6px; height: 6px;
+    border-right: 1.5px solid var(--text-secondary);
+    border-bottom: 1.5px solid var(--text-secondary);
+    transform: rotate(45deg) translateY(-1px);
+  }
+  .close-x {
+    width: 24px; height: 24px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary); cursor: pointer; font-size: 12px;
+  }
+  .close-x:hover { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+  /* Workspace: Left Suite Sidebar + Right Concept A Module View */
+  .workspace { flex: 1; display: flex; flex-direction: row; overflow: hidden; }
+
+  /* Left Suite Rail (Toggles between DynamicLoad, DynamicMarker, DynamicZoom) */
+  .suite-rail {
+    width: 168px; background: var(--bg-void);
+    border-right: 1px solid var(--border-hairline);
+    padding: 12px 10px; display: flex; flex-direction: column; justify-content: space-between; flex-shrink: 0;
+  }
+  #mainWindow.standalone .suite-rail { display: none; }
+
+  .rail-section-lbl { font-size: 9.5px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.6px; margin: 2px 0 8px 6px; }
+  .suite-item {
+    padding: 8px 10px; border-radius: 5px;
+    display: flex; flex-direction: column; gap: 2px;
+    cursor: pointer; margin-bottom: 4px;
+    border: 1px solid transparent;
+    border-left: 2.5px solid transparent;
+    transition: all 0.12s;
+  }
+  .suite-item:hover { background: var(--bg-surface); }
+  .suite-item.active {
+    background: var(--bg-surface);
+    border-color: var(--border-hairline);
+    border-left-color: var(--accent);
+  }
+  .suite-item.off { opacity: 0.55; }
+  .suite-item-top { display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 600; color: #fff; }
+  .suite-item-top span.dyn { color: var(--accent); }
+  .suite-item-sub { font-size: 10px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; }
+  .mod-toggle {
+    width: 24px; height: 13px; border-radius: 99px;
+    background: #272b35; border: 1px solid rgba(255,255,255,0.16);
+    position: relative; cursor: pointer; transition: all 0.15s; flex-shrink: 0;
+  }
+  .mod-toggle::after {
+    content: ""; position: absolute; top: 1.5px; left: 2px;
+    width: 8px; height: 8px; border-radius: 50%; background: #8b93a6; transition: all 0.15s;
+  }
+  .mod-toggle.on {
+    background: rgba(var(--accent-rgb), 0.28); border-color: var(--accent);
+  }
+  .mod-toggle.on::after {
+    left: 12px; background: #fff; box-shadow: 0 0 4px var(--accent);
+  }
+
+  /* Right Main Column (Uses Concept A Segmented Deck!) */
+  .main-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .zone-nav-a {
+    padding: 10px 14px 4px 14px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .segmented-track {
+    display: flex; background: var(--bg-void); padding: 3px;
+    border-radius: 6px; border: 1px solid var(--border-hairline); gap: 2px;
+  }
+  .seg-tab {
+    padding: 5px 15px; border-radius: 4px; font-size: 11.5px;
+    color: var(--text-secondary); cursor: pointer; transition: all 0.14s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .seg-tab:hover { color: #fff; }
+  .seg-tab.active {
+    background: var(--bg-elevated); color: #fff; font-weight: 600;
+    border: 1px solid rgba(var(--accent-rgb), 0.45);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+  }
+
+  .toolbar {
+    padding: 8px 14px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border-hairline);
+  }
+  .tb-left { display: flex; align-items: center; gap: 6px; }
+  .tb-sep { width: 1px; height: 16px; background: var(--border-hairline); margin: 0 4px; }
+  .filter-chip {
+    height: 22px; padding: 0 10px; border-radius: 99px;
+    background: var(--bg-surface); border: 1px solid var(--border-hairline);
+    font-size: 11px; color: var(--text-secondary); display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  }
+  .filter-chip.active-all { background: rgba(var(--accent-rgb), 0.16); border-color: var(--accent); color: #fff; }
+  .filter-chip.core { color: var(--gold); border-color: rgba(245, 184, 46, 0.3); }
+  .filter-chip.core.active { background: rgba(245, 184, 46, 0.2); border-color: var(--gold); }
+  .filter-chip.frozen { color: var(--cyan); border-color: rgba(56, 189, 248, 0.3); }
+  .filter-chip.frozen.active { background: rgba(56, 189, 248, 0.2); border-color: var(--cyan); }
+
+  .search-input {
+    width: 145px; height: 24px; border-radius: 4px;
+    background: var(--bg-void); border: 1px solid var(--border-hairline);
+    color: #fff; font-size: 11px; padding: 0 10px; outline: none;
+  }
+  .search-input:focus { border-color: var(--accent); }
+
+  .list-container { flex: 1; display: flex; overflow: hidden; padding: 4px 10px 4px 14px; }
+  .addon-feed { flex: 1; overflow-y: scroll; scrollbar-width: none; padding-right: 6px; }
+  .addon-feed::-webkit-scrollbar { display: none; }
+  .thin-scroll-track { width: 4px; background: rgba(255,255,255,0.04); border-radius: 2px; position: relative; }
+  .thin-scroll-thumb { width: 4px; height: 90px; background: rgba(var(--accent-rgb), 0.45); border-radius: 2px; position: absolute; top: 0; }
+
+  .addon-row {
+    height: 25px; display: flex; align-items: center; padding: 0 10px 0 8px;
+    border-radius: 3px; margin-bottom: 1px; font-size: 11.5px; position: relative; cursor: pointer;
+  }
+  .addon-row:nth-child(odd) { background: rgba(255,255,255,0.018); }
+  .addon-row:hover { background: var(--bg-hover); }
+  .addon-row.frozen { opacity: 0.45; }
+  .row-bar { position: absolute; left: 0; top: 3px; bottom: 3px; width: 2.5px; border-radius: 2px; display: none; }
+  .addon-row.locked .row-bar { display: block; background: var(--gold); }
+  .addon-row.frozen .row-bar { display: block; background: var(--cyan); }
+
+  .exp-btn { width: 18px; font-size: 10px; color: var(--accent); font-weight: 700; }
+  .indent-pad { width: 20px; }
+  .check-sq {
+    width: 14px; height: 14px; border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.28); background: var(--bg-void);
+    margin-right: 8px; display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: var(--accent);
+  }
+  .check-sq.on {
+    background: rgba(var(--accent-rgb), 0.22); border-color: var(--accent);
+  }
+  .lock-ico { width: 18px; font-size: 11px; margin-right: 4px; }
+  .a-title { flex: 1; }
+  .a-cpu { font-size: 10.5px; color: var(--text-muted); font-family: monospace; }
+
+  /* Toast Studio View */
+  #toastInspector { flex: 1; padding: 16px; display: none; gap: 16px; }
+  .inspector-col {
+    flex: 1; background: var(--bg-surface); border: 1px solid var(--border-hairline);
+    border-radius: 6px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .insp-hdr {
+    font-size: 11px; font-weight: 700; color: var(--accent);
+    letter-spacing: 0.5px; border-bottom: 1px solid var(--border-hairline); padding-bottom: 8px;
+  }
+  .insp-row { display: flex; align-items: center; justify-content: space-between; height: 28px; }
+  .insp-lbl { font-size: 11.5px; color: var(--text-primary); }
+  .swatch-group { display: flex; align-items: center; gap: 6px; }
+  .sw-box {
+    width: 24px; height: 20px; border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.45); cursor: pointer;
+  }
+  .sw-box.reset-sw { border-color: rgba(255,255,255,0.18); opacity: 0.75; }
+
+  /* DynamicMarker Preview View (When clicking DynamicMarker in Left Suite Sidebar) */
+  #markerModuleView { flex: 1; display: none; flex-direction: column; padding: 10px 14px; gap: 12px; }
+
+  /* Unified Bottom Control Dock */
+  .bottom-dock {
+    height: 32px; background: var(--bg-void);
+    border-top: 1px solid var(--border-hairline);
+    padding: 0 14px; display: flex; align-items: center; justify-content: space-between;
+    font-size: 10.5px; color: var(--text-secondary); flex-shrink: 0;
+  }
+  .dock-left { display: flex; align-items: center; gap: 12px; }
+  .dock-right { display: flex; align-items: center; gap: 14px; }
+  .micro-control { display: flex; align-items: center; gap: 7px; }
+  .micro-track {
+    width: 64px; height: 3px; background: rgba(255,255,255,0.14);
+    border-radius: 2px; position: relative; cursor: pointer;
+  }
+  .micro-fill { height: 100%; background: var(--accent); border-radius: 2px; width: 50%; }
+  .micro-thumb {
+    width: 10px; height: 10px; border-radius: 50%; background: #fff;
+    border: 2px solid var(--accent);
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  }
+
+  /* Custom Color Picker Popup */
+  #cpModal {
+    position: fixed; width: 256px; background: #12141a;
+    border: 1px solid var(--border-strong); border-top: 2px solid var(--accent);
+    border-radius: 6px; padding: 12px; z-index: 950; display: none;
+    box-shadow: 0 18px 44px rgba(0,0,0,0.85);
+  }
+  .cp-grid { display: grid; grid-template-columns: repeat(8, 23px); gap: 5px; margin: 5px 0 10px 0; }
+  .cp-cell { width: 23px; height: 19px; border-radius: 3px; border: 1px solid rgba(255,255,255,0.22); cursor: pointer; }
+  .cp-cell:hover { transform: scale(1.1); border-color: #fff; }
+</style>
+</head>
+<body>
+
+<!-- Interactive Switcher Bar -->
+<div class="concept-switcher">
+  <div class="sw-group">
+    <div class="sw-pill active" id="btnToggleGallery" style="background:rgba(var(--accent-rgb),0.22);border-color:var(--accent);color:#fff" onclick="toggleLogoGallery()">🔍 Large Logo Showcase (140px)</div>
+    <div class="sw-pill" id="btnL2" onclick="setLogo(2)">★ L2: Velocity Wing</div>
+    <div class="sw-pill" id="btnL7" onclick="setLogo(7)">★ L2-B: Twin-Slipstream</div>
+    <div class="sw-pill" id="btnL8" onclick="setLogo(8)">★ L2-C: Sonic-Apex Flow</div>
+    <div class="sw-pill" id="btnL1" onclick="setLogo(1)">L1: Double-D</div>
+    <div class="sw-pill" id="btnL3" onclick="setLogo(3)">L3: Reticle</div>
+    <div class="sw-pill" id="btnL4" onclick="setLogo(4)">L4: 3D Prism</div>
+    <div class="sw-pill" id="btnL5" onclick="setLogo(5)">L5: Chamfer</div>
+    <div class="sw-pill" id="btnL6" onclick="setLogo(6)">L6: Cascade</div>
+  </div>
+  <div class="sw-group">
+    <b>SLASH CMD:</b>
+    <div class="sw-pill active" id="cmdDS" onclick="simSlash('/ds')">/ds</div>
+    <div class="sw-pill" id="cmdDL" onclick="simSlash('/dl')">/dl</div>
+    <div class="sw-pill" id="cmdDM" onclick="simSlash('/dm')">/dm</div>
+    <div class="sw-pill" id="cmdDZ" onclick="simSlash('/dz')">/dz</div>
+    <div class="sw-pill" id="btnOnlyMarker" onclick="setInstallMode(installMode==='all'?'markerOnly':'all')">Solo Test</div>
+  </div>
+  <div class="sw-group">
+    <b>ACCENT:</b>
+    <div class="sw-pill active" id="accObsidian" onclick="setAccent('#cbd5e1', '203, 213, 225', this)">Obsidian</div>
+    <div class="class-dot" style="background:#3fc7eb" title="Mage" onclick="setAccent('#3fc7eb', '63, 199, 235', this)"></div>
+    <div class="class-dot" style="background:#f48cba" title="Paladin" onclick="setAccent('#f48cba', '244, 140, 186', this)"></div>
+    <div class="class-dot" style="background:#ff7c0a" title="Druid" onclick="setAccent('#ff7c0a', '255, 124, 10', this)"></div>
+    <div class="class-dot" style="background:#c41e3a" title="Death Knight" onclick="setAccent('#c41e3a', '196, 30, 58', this)"></div>
+    <div class="class-dot" style="background:#a330c9" title="Demon Hunter" onclick="setAccent('#a330c9', '163, 48, 201', this)"></div>
+    <div class="class-dot" style="background:#33937f" title="Evoker" onclick="setAccent('#33937f', '51, 147, 127', this)"></div>
+  </div>
+</div>
+
+<!-- LARGE-SCALE BRAND LOGO & VELOCITY FLOW SHOWCASE OVERLAY (140px Storefront + 48px + 26px + 16px) -->
+<div id="logoGalleryModal" style="position:fixed;inset:52px 24px 20px 24px;background:rgba(9,10,13,0.97);border:1.5px solid rgba(var(--accent-rgb),0.45);border-radius:10px;z-index:1200;display:flex;flex-direction:column;box-shadow:0 32px 90px rgba(0,0,0,0.92);backdrop-filter:blur(12px);overflow:hidden">
+  <div style="padding:14px 20px;background:#111318;border-bottom:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:12px">
+      <span style="font-size:15px;font-weight:700;color:#fff;letter-spacing:0.3px">🎨 DynamicSuite Brand Logo Studio — Large-Scale Inspection (<span style="color:var(--accent)">140px Storefront · 48px · 26px · 16px In-Game</span>)</span>
+      <span style="font-size:11.5px;color:#9ca3b5">Click any card to equip it across the UI · Click Class Color dots above to test dynamic recoloring!</span>
+    </div>
+    <div class="obsidian-btn" style="height:28px;padding:0 14px;border-color:var(--accent);color:#fff;font-weight:600" onclick="toggleLogoGallery()">✕ Close Showcase (View In-Game UI)</div>
+  </div>
+
+  <div style="flex:1;overflow-y:auto;padding:18px 22px;display:flex;flex-direction:column;gap:18px">
+    <!-- ROW 1: 3 VELOCITY WING / DYNAMIC FLOW VARIATIONS (140x140px Hero Cards!) -->
+    <div>
+      <div style="font-size:11px;font-weight:700;color:var(--accent);letter-spacing:0.8px;margin-bottom:10px;text-transform:uppercase">
+        ★ Featured Direction: "Velocity Wing & Dynamic Flow" Series (3 Aero-Flow Variations at 140×140px Storefront Scale)
+      </div>
+      <div id="velocityHeroGrid" style="display:grid;grid-template-columns:repeat(3, 1fr);gap:16px"></div>
+    </div>
+
+    <!-- ROW 2: OTHER 5 STUDIO CANDIDATES (110x110px Comparison Cards) -->
+    <div>
+      <div style="font-size:11px;font-weight:700;color:#9ca3b5;letter-spacing:0.8px;margin-bottom:10px;text-transform:uppercase">
+        Other 5 Studio Monogram Candidates (110×110px Storefront + Multi-Scale Comparison)
+      </div>
+      <div id="otherLogosGrid" style="display:grid;grid-template-columns:repeat(5, 1fr);gap:12px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Live 16px Alignment Grid & Center Crosshair Overlay (Shown while dragging with Snap to Grid ON!) -->
+<div id="snapGridOverlay" style="position:fixed;inset:0;pointer-events:none;z-index:750;display:none;background-image:linear-gradient(to right, rgba(203,213,225,0.06) 1px, transparent 1px), linear-gradient(to bottom, rgba(203,213,225,0.06) 1px, transparent 1px);background-size:16px 16px">
+  <div style="position:absolute;top:0;bottom:0;left:50%;width:1px;background:rgba(var(--accent-rgb),0.45)"></div>
+  <div style="position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(var(--accent-rgb),0.45)"></div>
+</div>
+
+<!-- Live Draggable Toast / Pinned Top Dynamic Info Bar (With 1-Click Spec, Loot Spec & Live Stats!) -->
+<div id="toastFrame">
+  <div id="toastIconBox"></div>
+  <div class="toast-lines">
+    <div id="toastTitle"><span id="toastBrand" style="color:var(--accent)">Dynamic</span><span style="color:#fff">Suite</span> · <span style="color:#fff" id="toastCtxName">Outdoor</span></div>
+    <div id="toastBadge">[ 4 addons staged · 144 FPS · 22ms ]</div>
+    <div id="toastSub">Drag to Move (16px Grid Snap · Ctrl+Drag Free)</div>
+  </div>
+  <div class="toast-qol-box">
+    <div class="qol-pill-row">
+      <div class="qol-pill" id="pillActiveSpec" title="1-Click to Cycle Class Specialization" onclick="event.stopPropagation();cycleActiveSpec()">⚔️ Spec: Frost</div>
+      <div class="qol-pill mismatch" id="pillLootSpec" title="1-Click to Cycle Loot Specialization (Highlighted when different from Active Spec!)" onclick="event.stopPropagation();cycleLootSpec()">🎲 Loot: Fire ⚠</div>
+    </div>
+    <div class="toast-stats-row" id="toastStatsRow">
+      Crit <b>31%</b> · Haste <b>28%</b> · Mast <b>42%</b> · Vers <b>14%</b>
+    </div>
+  </div>
+</div>
+
+<!-- Live Floating 8-Icon Raid Marker Bar (Unlocked in DynamicMarker Bar Studio!) -->
+<div id="markerBarFrame" style="position:fixed;top:68px;left:calc(50% - 148px);background:rgba(13,15,20,0.96);border:1.5px solid var(--accent);border-radius:6px;padding:6px 8px;display:none;gap:6px;align-items:center;z-index:800;box-shadow:0 16px 38px rgba(0,0,0,0.78);cursor:move">
+  <span style="font-size:9px;color:var(--accent);font-weight:700;letter-spacing:0.5px;margin-right:2px">DM</span>
+  <div class="dm-bar-ic" style="width:28px;height:28px;background:#171a21;border:1px solid rgba(255,255,255,0.14);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:15px">⭐</div>
+  <div class="dm-bar-ic" style="width:28px;height:28px;background:#171a21;border:1px solid rgba(255,255,255,0.14);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:15px">🟠</div>
+  <div class="dm-bar-ic" style="width:28px;height:28px;background:#171a21;border:1px solid rgba(255,255,255,0.14);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:15px">🟣</div>
+  <div class="dm-bar-ic" style="width:28px;height:28px;background:#171a21;border:1px solid rgba(255,255,255,0.14);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:15px">🟢</div>
+  <div class="dm-bar-ic" style="width:28px;height:28px;background:#171a21;border:1px solid rgba(255,255,255,0.14);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:15px">🌙</div>
+  <div class="dm-bar-ic" style="width:28px;height:28px;background:#171a21;border:1px solid rgba(255,255,255,0.14);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:15px">🔵</div>
+  <div class="dm-bar-ic" style="width:28px;height:28px;background:#171a21;border:1px solid rgba(255,255,255,0.14);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:15px">❌</div>
+  <div class="dm-bar-ic" style="width:28px;height:28px;background:rgba(var(--accent-rgb),0.22);border:1.5px solid var(--accent);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:15px">💀</div>
+</div>
+
+<!-- Live Floating Camera Telemetry Micro-HUD (Unlocked in DynamicZoom HUD Studio!) -->
+<div id="zoomHudFrame" style="position:fixed;top:72px;left:calc(50% - 140px);background:rgba(13,15,20,0.96);border:1.5px solid var(--accent);border-radius:99px;padding:6px 16px;display:none;gap:10px;align-items:center;z-index:800;box-shadow:0 16px 38px rgba(0,0,0,0.78);font-size:11.5px">
+  <span style="color:var(--accent);font-weight:700">🎥 39.0 yds</span>
+  <span style="opacity:0.3">|</span>
+  <span style="color:#fff">Pitch: <b>+12° Boss Tilt</b></span>
+  <span style="opacity:0.3">|</span>
+  <span style="color:#9ca3b5">Offset: <b>+0.5 Right</b></span>
+</div>
+
+<!-- Main DynamicSuite / DynamicLoad Window -->
+<div id="mainWindow">
+  <!-- Clean Obsidian Header with Signature "D" Monogram -->
+  <div class="win-header">
+    <div class="win-brand">
+      <div class="d-logo-box" id="headerLogoBox"></div>
+      <span class="win-title" id="winTitleText"><span>Dynamic</span>Load</span>
+      <span class="win-ver" id="winVerText">v1.0.0</span>
+    </div>
+
+    <div class="status-capsule" id="statusCapsule">
+      <span class="status-dot"></span>
+      <span>Active: <b style="color:#fff" id="statusProf">Outdoor</b></span>
+      <span style="opacity:0.3">|</span>
+      <span>Zone: <span style="color:var(--accent)">Outdoor (City Hub)</span></span>
+      <span style="opacity:0.3">|</span>
+      <span style="color:#10b981">In Sync</span>
+    </div>
+
+    <div class="win-right">
+      <div class="obsidian-btn" style="color:var(--gold)" onclick="alert('Ko-fi Support Modal')">🍺 Support</div>
+      <div class="obsidian-btn">
+        <span>All Characters</span>
+        <div class="chevron-v"></div>
+      </div>
+      <div class="close-x">✕</div>
+    </div>
+  </div>
+
+  <!-- Workspace: Left Suite Rail + Right Concept A Module View -->
+  <div class="workspace">
+    <!-- Left Suite Rail: Switches between DynamicLoad, DynamicMarker, DynamicZoom, DynamicGFX + inline ON/OFF toggles -->
+    <div class="suite-rail">
+      <div>
+        <div class="rail-section-lbl">DYNAMIC SUITE (/ds)</div>
+        <div class="suite-item active" id="modLoad" onclick="switchSuiteModule('load')">
+          <div class="suite-item-top">
+            <span><span class="dyn">Dynamic</span>Load</span>
+            <div class="mod-toggle on" id="togLoad" title="Enable / Disable DynamicLoad" onclick="event.stopPropagation();toggleSuiteAddon('load')"></div>
+          </div>
+          <div class="suite-item-sub"><span id="subLoad">Addon Manager</span><span style="opacity:0.6">/dl</span></div>
+        </div>
+        <div class="suite-item" id="modMarker" onclick="switchSuiteModule('marker')">
+          <div class="suite-item-top">
+            <span><span class="dyn">Dynamic</span>Marker</span>
+            <div class="mod-toggle on" id="togMarker" title="Enable / Disable DynamicMarker" onclick="event.stopPropagation();toggleSuiteAddon('marker')"></div>
+          </div>
+          <div class="suite-item-sub"><span id="subMarker">Focus & Raid Mark</span><span style="opacity:0.6">/dm · /fm</span></div>
+        </div>
+        <div class="suite-item" id="modZoom" onclick="switchSuiteModule('zoom')">
+          <div class="suite-item-top">
+            <span><span class="dyn">Dynamic</span>Zoom</span>
+            <div class="mod-toggle on" id="togZoom" title="Enable / Disable DynamicZoom" onclick="event.stopPropagation();toggleSuiteAddon('zoom')"></div>
+          </div>
+          <div class="suite-item-sub"><span id="subZoom">Smooth Camera</span><span style="opacity:0.6">/dz</span></div>
+        </div>
+        <div class="suite-item" id="modGfx" onclick="switchSuiteModule('gfx')">
+          <div class="suite-item-top">
+            <span><span class="dyn">Dynamic</span>Frame</span>
+            <div class="mod-toggle on" id="togGfx" title="Enable / Disable DynamicFrame" onclick="event.stopPropagation();toggleSuiteAddon('gfx')"></div>
+          </div>
+          <div class="suite-item-sub"><span id="subGfx">UI, FPS & Queue</span><span style="opacity:0.6">/df</span></div>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid var(--border-hairline);padding-top:10px;display:flex;flex-direction:column;gap:8px">
+        <div class="rail-section-lbl" style="margin:0">ACCENT THEME</div>
+        <div style="display:flex;gap:4px">
+          <div class="obsidian-btn" style="flex:1;justify-content:center;font-size:10px" onclick="setAccent('#cbd5e1', '203, 213, 225', document.getElementById('accObsidian'))">Obsidian</div>
+          <div class="obsidian-btn" style="flex:1;justify-content:center;font-size:10px;color:#3fc7eb" onclick="setAccent('#3fc7eb', '63, 199, 235', null)">Class</div>
+        </div>
+        <div style="font-size:10px;color:var(--text-muted);text-align:center;padding-top:4px;border-top:1px solid rgba(255,255,255,0.04)">
+          Crafted by <span style="color:var(--accent);font-weight:600">Dentee</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Main Column: Concept A Segmented Deck inside active module -->
+    <div class="main-col" id="loadModuleView">
+      <div class="zone-nav-a">
+        <div class="segmented-track">
+          <div class="seg-tab active" onclick="switchZone('Outdoor', false, this)">Outdoor <span class="status-dot"></span></div>
+          <div class="seg-tab" onclick="switchZone('Delves', false, this)">Delves</div>
+          <div class="seg-tab" onclick="switchZone('Dungeons', false, this)">Dungeons</div>
+          <div class="seg-tab" onclick="switchZone('Raid', false, this)">Raid</div>
+          <div class="seg-tab" onclick="switchZone('PvP', false, this)">PvP</div>
+        </div>
+        <div class="segmented-track">
+          <div class="seg-tab" onclick="switchZone('Toast Studio', true, this)">🎨 Toast Studio</div>
+        </div>
+      </div>
+
+      <!-- Action Toolbar -->
+      <div class="toolbar" id="mainToolbar">
+        <div class="tb-left">
+          <div class="obsidian-btn">Copy Current</div>
+          <div class="obsidian-btn">Backup State</div>
+          <div class="obsidian-btn">Sort: A-Z</div>
+          <div class="tb-sep"></div>
+          <div class="filter-chip active-all" id="fAll" onclick="setFilter('ALL')">All</div>
+          <div class="filter-chip core" id="fCore" onclick="setFilter('CORE')">🔒 Core (<span id="cCount">5</span>)</div>
+          <div class="filter-chip frozen" id="fFrozen" onclick="setFilter('FROZEN')">🚫 Frozen (<span id="fCount">2</span>)</div>
+        </div>
+        <div class="search-wrap">
+          <input type="text" class="search-input" id="qInput" placeholder="Filter addons..." oninput="renderList()">
+        </div>
+      </div>
+
+      <!-- Addon Feed -->
+      <div class="list-container" id="listContainer">
+        <div class="addon-feed" id="addonFeed"></div>
+        <div class="thin-scroll-track"><div class="thin-scroll-thumb"></div></div>
+      </div>
+
+      <!-- Toast Studio (Standardized 2-Pane Suite Studio!) -->
+      <div id="toastInspector">
+        <div class="inspector-col">
+          <div class="insp-hdr">TOAST APPEARANCE, COLORS & OPACITY</div>
+          <div class="insp-row">
+            <span class="insp-lbl">Border & Accent Color</span>
+            <div class="swatch-group">
+              <div class="sw-box" id="swBdr" style="background:#cbd5e1" onclick="openCP(this, 'Border Color', 'bdr')"></div>
+              <div class="sw-box reset-sw" style="background:#cbd5e1" title="Reset Default" onclick="setToastCol('bdr', '#cbd5e1')"></div>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Background Surface</span>
+            <div class="swatch-group">
+              <div class="sw-box" id="swBg" style="background:#111318" onclick="openCP(this, 'Background Surface', 'bg')"></div>
+              <div class="sw-box reset-sw" style="background:#111318" title="Reset Default" onclick="setToastCol('bg', '#111318')"></div>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Staged Status Text Color</span>
+            <div class="swatch-group">
+              <div class="sw-box" id="swBdg" style="background:#cbd5e1" onclick="openCP(this, 'Status Text Color', 'bdg')"></div>
+              <div class="sw-box reset-sw" style="background:#cbd5e1" title="Reset Default" onclick="setToastCol('bdg', '#cbd5e1')"></div>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Toast Opacity</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" min="25" max="100" step="5" value="96" oninput="document.getElementById('toastFrame').style.opacity=this.value/100;document.getElementById('tOpaVal').textContent=this.value+'%'">
+              <span id="tOpaVal" style="font-size:11px;width:36px;text-align:right">96%</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="inspector-col">
+          <div class="insp-hdr">GEOMETRY, GRID SNAP & POSITION</div>
+          <div class="insp-row">
+            <span class="insp-lbl">Toast Scale</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" min="75" max="135" step="5" value="100" oninput="document.getElementById('toastFrame').style.transform='scale('+(this.value/100)+')';document.getElementById('tsVal').textContent=this.value+'%'">
+              <span id="tsVal" style="font-size:11px;width:34px;text-align:right">100%</span>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Auto-Hide Duration</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" min="3" max="20" step="1" value="8" oninput="document.getElementById('tdVal').textContent=this.value+'s'">
+              <span id="tdVal" style="font-size:11px;width:34px;text-align:right">8s</span>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Grid Alignment (Ctrl+Drag Free-Move)</span>
+            <div class="obsidian-btn snap-toggle-btn" style="border-color:#10b981;color:#10b981;font-weight:600" onclick="toggleGridSnap()">✓ Snap to Grid (16px)</div>
+          </div>
+          <div class="insp-row" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hairline);gap:6px">
+            <div class="obsidian-btn" style="border-color:var(--accent)" onclick="this.textContent=this.textContent.includes('Lock')?'🔓 Unlock Toast':'🔒 Lock Toast'">🔒 Lock Toast</div>
+            <div class="obsidian-btn" onclick="document.getElementById('toastFrame').style.left='calc(50% - 185px)';document.getElementById('toastFrame').style.top='64px'">↺ Reset Toast</div>
+            <div class="obsidian-btn">Reset Defaults</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DynamicMarker (formerly FocusMarker) Module View with matching Right-Hand "🎯 Bar Studio" Pill! -->
+    <div id="markerModuleView">
+      <div class="zone-nav-a" style="padding:0">
+        <div class="segmented-track">
+          <div class="seg-tab active" onclick="switchMarkerTab(false, this)">Focus & Target Markers</div>
+          <div class="seg-tab" onclick="switchMarkerTab(false, this)">Macro & Audio</div>
+        </div>
+        <div class="segmented-track">
+          <div class="seg-tab" id="btnMarkerStudio" onclick="switchMarkerTab(true, this)">🎯 Bar Studio</div>
+        </div>
+      </div>
+
+      <!-- Marker Normal Settings Pane -->
+      <div id="markerNormalPane" style="display:flex;gap:14px;flex:1;margin-top:4px">
+        <div class="inspector-col">
+          <div class="insp-hdr">DYNAMICMARKER · ONE-KEY FOCUS & RAID MARKING</div>
+          <div class="insp-row">
+            <span class="insp-lbl">Preferred Raid Target Icon</span>
+            <div style="display:flex;gap:4px">
+              <div class="obsidian-btn" onclick="setMarkerIcon('⭐ Star')">⭐</div>
+              <div class="obsidian-btn" onclick="setMarkerIcon('🟠 Circle')">🟠</div>
+              <div class="obsidian-btn" onclick="setMarkerIcon('🟣 Diamond')">🟣</div>
+              <div class="obsidian-btn" onclick="setMarkerIcon('🟢 Triangle')">🟢</div>
+              <div class="obsidian-btn" onclick="setMarkerIcon('🌙 Moon')">🌙</div>
+              <div class="obsidian-btn" onclick="setMarkerIcon('🔵 Square')">🔵</div>
+              <div class="obsidian-btn" onclick="setMarkerIcon('❌ Cross')">❌</div>
+              <div class="obsidian-btn" style="border-color:var(--accent)" onclick="setMarkerIcon('💀 Skull')">💀</div>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Group Marking Scope</span>
+            <div class="obsidian-btn" id="btnMarkerScope" onclick="cycleMarkerScope()">Party & Raid</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Chat Interrupt Announce</span>
+            <div class="obsidian-btn" id="btnMarkerChat" style="border-color:var(--accent)" onclick="toggleMarkerChat()">Active</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Customize Floating Marker Bar</span>
+            <div class="obsidian-btn" style="border-color:var(--accent)" onclick="document.getElementById('btnMarkerStudio').click()">Open 🎯 Bar Studio →</div>
+          </div>
+        </div>
+        <div class="inspector-col">
+          <div class="insp-hdr">⚡ 1-CLICK MACRO & NAOWH AUTO-KICK GENERATOR</div>
+          <div class="insp-row">
+            <span class="insp-lbl">1-Click Action Bar Setup</span>
+            <div class="obsidian-btn" style="border-color:var(--accent);color:#fff;font-weight:600" id="btnGenMacro" onclick="oneClickMacroGen()">⚡ Create & Pickup Macro</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Naowh Auto-Kick (Include Interrupt)</span>
+            <div class="obsidian-btn" style="border-color:#10b981;color:#10b981;font-weight:600" id="btnNaowhKick" onclick="toggleNaowhKick()">✓ Included (Auto-Kick @focus)</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Auto-Detected Class Kick</span>
+            <div class="obsidian-btn" id="btnKickSpell" onclick="cycleKickSpell()">Counterspell (Mage)</div>
+          </div>
+          <div style="background:#090a0d;border:1px solid var(--border-hairline);border-radius:4px;padding:8px 10px;font-family:Consolas,monospace;font-size:10.5px;color:#cbd5e1;line-height:1.45;margin-top:2px" id="liveMacroPreview">
+            #showtooltip Counterspell<br>
+            /focus [@mouseover,exists,harm,nodead][@focus,noexists]<br>
+            /tm [@focus,exists] ~8<br>
+            /stopcasting<br>
+            /cast [@focus,exists,harm,nodead][@mouseover,exists,harm,nodead][] Counterspell
+          </div>
+        </div>
+      </div>
+
+      <!-- Marker "🎯 Bar Studio" 2-Pane Inspector (Standardized Suite Studio!) -->
+      <div id="markerStudioPane" style="display:none;gap:14px;flex:1;margin-top:4px">
+        <div class="inspector-col">
+          <div class="insp-hdr">BAR APPEARANCE, COLORS & OPACITY</div>
+          <div class="insp-row">
+            <span class="insp-lbl">Bar Layout Orientation</span>
+            <div style="display:flex;gap:4px">
+              <div class="obsidian-btn" onclick="setMarkerLayout('row')">Horizontal (8×1)</div>
+              <div class="obsidian-btn" onclick="setMarkerLayout('grid')">Grid (4×2)</div>
+              <div class="obsidian-btn" onclick="setMarkerLayout('col')">Vertical (1×8)</div>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Bar Border & Highlight Color</span>
+            <div class="swatch-group">
+              <div class="sw-box" style="background:var(--accent)" onclick="openCP(this, 'Bar Border Color', 'bdr')"></div>
+              <div class="sw-box reset-sw" style="background:#cbd5e1" title="Reset Default"></div>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Bar Opacity</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" min="25" max="100" step="5" value="96" oninput="document.getElementById('markerBarFrame').style.opacity=this.value/100;document.getElementById('mbOpaVal').textContent=this.value+'%'">
+              <span id="mbOpaVal" style="font-size:11px;width:36px;text-align:right">96%</span>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Out-of-Combat Mouseover Fade</span>
+            <div class="obsidian-btn" onclick="this.textContent=this.textContent==='Off'?'Fade to 25%':'Off'">Off</div>
+          </div>
+        </div>
+        <div class="inspector-col">
+          <div class="insp-hdr">GEOMETRY, GRID SNAP & POSITION</div>
+          <div class="insp-row">
+            <span class="insp-lbl">Marker Icon Size (px)</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" min="22" max="42" step="2" value="28" oninput="setMarkerIconSize(this.value)">
+              <span id="mbSzVal" style="font-size:11px;width:36px;text-align:right">28px</span>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Icon Gap Spacing</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" min="2" max="12" step="1" value="6" oninput="document.getElementById('markerBarFrame').style.gap=this.value+'px';document.getElementById('mbGapVal').textContent=this.value+'px'">
+              <span id="mbGapVal" style="font-size:11px;width:36px;text-align:right">6px</span>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Grid Alignment (Ctrl+Drag Free-Move)</span>
+            <div class="obsidian-btn snap-toggle-btn" style="border-color:#10b981;color:#10b981;font-weight:600" onclick="toggleGridSnap()">✓ Snap to Grid (16px)</div>
+          </div>
+          <div class="insp-row" style="margin-top:auto;padding-top:10px;border-top:1px solid var(--border-hairline);gap:6px">
+            <div class="obsidian-btn" style="border-color:var(--accent)" onclick="this.textContent=this.textContent.includes('Lock')?'🔓 Unlock Bar':'🔒 Lock Bar'">🔒 Lock Bar</div>
+            <div class="obsidian-btn" onclick="document.getElementById('markerBarFrame').style.left='calc(50% - 148px)';document.getElementById('markerBarFrame').style.top='68px'">↺ Reset Bar</div>
+            <div class="obsidian-btn">Reset Defaults</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DynamicZoom Module View with matching Right-Hand "🎥 HUD Studio" Pill! -->
+    <div id="zoomModuleView" style="display:none;flex:1;flex-direction:column;padding:12px 14px;gap:12px">
+      <div class="zone-nav-a" style="padding:0">
+        <div class="segmented-track">
+          <div class="seg-tab active" onclick="switchZoomTab(false, this)">Zone Distances</div>
+          <div class="seg-tab" onclick="switchZoomTab(false, this)">Motion & Smoothing</div>
+          <div class="seg-tab" onclick="switchZoomTab(false, this)">ActionCam & Pitch</div>
+        </div>
+        <div class="segmented-track">
+          <div class="seg-tab" id="btnZoomStudio" onclick="switchZoomTab(true, this)">🎥 HUD Studio</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;flex:1;margin-top:4px">
+        <div class="inspector-col">
+          <div class="insp-hdr">DYNAMICZOOM · ZONE CAMERA & ACTIONCAM RIG</div>
+          <div class="insp-row">
+            <span class="insp-lbl">Max Raid / M+ Distance</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="range" min="15" max="39" step="1" value="39" oninput="setZoomDist(this.value)">
+              <span id="zoomDistVal" style="font-size:11px;width:42px;text-align:right">39 yds</span>
+            </div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Indoor / Delve Auto-Zoom</span>
+            <div class="obsidian-btn" style="border-color:var(--accent)">Auto-Step (22 yds)</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Dynamic Boss Pitch (Tilt Up on Giant Bosses)</span>
+            <div class="obsidian-btn" style="border-color:var(--accent)">+12° Raid Tilt</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Over-the-Shoulder Offset</span>
+            <div class="obsidian-btn">+0.5 Right (ARPG Style)</div>
+          </div>
+        </div>
+        <div class="inspector-col">
+          <div class="insp-hdr">ACTIONCAM SAFE-MODE & ANTI-MOTION-SICKNESS</div>
+          <div class="insp-row">
+            <span class="insp-lbl">Disable Head-Bob (`ActionCam noHeadMove`)</span>
+            <div class="obsidian-btn" style="border-color:#10b981;color:#10b981;font-weight:600">✓ Protected (No Nausea)</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Prevent Target Camera Whip (`focusOff`)</span>
+            <div class="obsidian-btn" style="border-color:#10b981;color:#10b981;font-weight:600">✓ Locked Horizon</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Skyriding / Mount Auto-Zoom-Out</span>
+            <div class="obsidian-btn" style="border-color:var(--accent)">39 yds on Mount → 26 yds Dismount</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Water Surface Camera Collision</span>
+            <div class="obsidian-btn">Ignore Water Pop-In</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DynamicFrame & DynamicFPS Module View (Zone Frame Fader + Zero-Reload Graphics + SpellQueueWindow!) -->
+    <div id="gfxModuleView" style="display:none;flex:1;flex-direction:column;padding:12px 14px;gap:12px">
+      <div class="zone-nav-a" style="padding:0">
+        <div class="segmented-track">
+          <div class="seg-tab active">Outdoor</div>
+          <div class="seg-tab">Delves</div>
+          <div class="seg-tab">Dungeons (M+)</div>
+          <div class="seg-tab">Raid (20M)</div>
+          <div class="seg-tab">PvP</div>
+          <div class="seg-tab" style="color:var(--accent)">⚡ SpellQueue & FPS</div>
+        </div>
+        <div class="segmented-track">
+          <div class="seg-tab" onclick="document.getElementById('toastFrame').style.display='flex'">🎨 Shared Toast</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;flex:1;margin-top:4px">
+        <div class="inspector-col">
+          <div class="insp-hdr">DYNAMICFRAME · ZONE UI AUTO-HIDER & DECLUTTER</div>
+          <div class="insp-row">
+            <span class="insp-lbl">Quest / Objective Tracker in M+ & Raid</span>
+            <div class="obsidian-btn" style="border-color:var(--accent)">Auto-Collapse on Key/Boss Pull</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Talking Head Popup (NPC Voice Box)</span>
+            <div class="obsidian-btn" style="border-color:#10b981;color:#10b981;font-weight:600">✓ Suppress in Dungeons & Raids</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Bags Bar, Micro Menu & Stance Bar</span>
+            <div class="obsidian-btn">Mouseover Fade (0% → 100% Hover)</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Red Error Spam ("Not enough energy")</span>
+            <div class="obsidian-btn" style="border-color:var(--accent)">Hide Red Text & Mute Error Speech</div>
+          </div>
+        </div>
+        <div class="inspector-col">
+          <div class="insp-hdr">⚡ DYNAMICFPS & SPELLQUEUEWINDOW AUTO-TUNER</div>
+          <div class="insp-row">
+            <span class="insp-lbl">Spell Density (`graphicsSpellDensity`)</span>
+            <div class="obsidian-btn" style="border-color:var(--accent)">Raid/M+: Essential · Outdoor: Ultra</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">View Distance & Ground Clutter</span>
+            <div class="obsidian-btn">Raid: Level 4 · Outdoor: Level 10</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Auto-Tune `SpellQueueWindow` (Ping + 110ms)</span>
+            <div class="obsidian-btn" style="color:#10b981;font-weight:700">132 ms Applied (22ms Ping)</div>
+          </div>
+          <div class="insp-row">
+            <span class="insp-lbl">Speedy Auto-Loot & Auto-Repair/Junk</span>
+            <div class="obsidian-btn" style="border-color:#10b981;color:#10b981">✓ Instant Loot + Guild/Self Repair</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unified Bottom Control Dock -->
+  <div class="bottom-dock">
+    <div class="dock-left">
+      <span id="dockHintText">Right-Click any Zone to Activate & Reload  ·  Slash: /dl</span>
+    </div>
+    <div class="dock-right">
+      <div class="micro-control" title="Drag to adjust Window Opacity">
+        <span>Opacity</span>
+        <div class="micro-track" id="opaTrack">
+          <div class="micro-fill" id="opaFill" style="width:95%"></div>
+          <div class="micro-thumb" id="opaThumb" style="left:95%"></div>
+        </div>
+      </div>
+      <div class="micro-control" title="Drag & release Left-Click for smooth scale glide + bounce!">
+        <span>Scale</span>
+        <div class="micro-track" id="scaleTrack">
+          <div class="micro-fill" id="scaleFill" style="width:50%"></div>
+          <div class="micro-thumb" id="scaleThumb" style="left:50%"></div>
+        </div>
+        <span id="scalePct" style="width:32px;text-align:right;color:#fff">100%</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Color Picker with Presets + Recent Colors -->
+<div id="cpModal">
+  <div style="display:flex;justify-content:space-between;font-size:11.5px;font-weight:600;margin-bottom:8px">
+    <span id="cpHdr">Select Color</span>
+    <span style="cursor:pointer;color:#888" onclick="document.getElementById('cpModal').style.display='none'">✕</span>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+    <input type="color" id="cpNative" value="#cbd5e1" style="width:44px;height:28px;background:none;border:1px solid #444;cursor:pointer" oninput="previewCP(this.value)">
+    <input type="text" id="cpHex" value="#CBD5E1" class="search-input" style="flex:1" oninput="previewCP(this.value)">
+  </div>
+  <div style="font-size:9px;color:var(--text-muted)">PRESETS (OBSIDIAN + CLASS + ALERT)</div>
+  <div class="cp-grid" id="cpPresets"></div>
+  <div style="font-size:9px;color:var(--text-muted)">RECENTLY PICKED</div>
+  <div class="cp-grid" id="cpRecent"></div>
+  <div style="display:flex;gap:6px;margin-top:8px">
+    <div class="obsidian-btn" style="flex:1;justify-content:center;border-color:var(--accent)" onclick="applyCP()">Apply</div>
+    <div class="obsidian-btn" style="flex:1;justify-content:center" onclick="document.getElementById('cpModal').style.display='none'">Close</div>
+  </div>
+</div>
+
+<script>
+  let activeLogoIdx = 2;
+  const LOGOS = {
+    // L1: Double-D Monogram (Dynamic x Dentee Ambigram — Outer Chamfered White D + Inner Offset Accent D)
+    1: `<svg viewBox="0 0 24 24" fill="none">
+          <path d="M4 3H13.5L20.5 10V14L13.5 21H4V3ZM7.5 6.5V17.5H12.2L17 12.7V11.3L12.2 6.5H7.5Z" fill="#ffffff"/>
+          <path d="M9.5 8.5H12L15.5 12L12 15.5H9.5V8.5Z" fill="var(--accent)"/>
+        </svg>`,
+    // L2: Velocity Wing D (Original Aerodynamic Forward-Slashed D with Diagonal Speed Cut)
+    2: `<svg viewBox="0 0 24 24" fill="none">
+          <path d="M4.5 3.5H13.8C17.8 3.5 20.5 6.4 20.5 10.2C20.5 11.1 20.3 11.9 19.9 12.7L14.8 9.8C15 9.2 14.5 7.2 12.6 7.2H8.2V14.2L4.5 16.5V3.5Z" fill="#ffffff"/>
+          <path d="M4.5 18.5L19.4 9.8C20.1 10.9 20.5 12.2 20.5 13.5C20.5 17.5 17.3 20.5 13 20.5H4.5V18.5Z" fill="var(--accent)"/>
+          <path d="M8.2 15.8L15.8 11.3L17.8 14.2L12.8 17.2H8.2V15.8Z" fill="var(--accent)"/>
+        </svg>`,
+    // L3: Reticle Crest D (Octagonal Tactical Raid/M+ Shield D + Crosshair Target Core)
+    3: `<svg viewBox="0 0 24 24" fill="none">
+          <path d="M4 3.5H11V5.5H7.5V18.5H11V20.5H4V3.5ZM13 3.5L20.5 10V14L13 20.5V17.2L17.2 13.2V10.8L13 6.8V3.5Z" fill="#ffffff"/>
+          <circle cx="12" cy="12" r="3.2" stroke="var(--accent)" stroke-width="2"/>
+          <circle cx="12" cy="12" r="1.3" fill="#ffffff"/>
+        </svg>`,
+    // L4: 3D Isometric Prism D (3 Interlocking Faceted Obsidian Ribbons)
+    4: `<svg viewBox="0 0 24 24" fill="none">
+          <path d="M4.5 3.5L8.5 6V18L4.5 20.5V3.5Z" fill="#ffffff"/>
+          <path d="M4.5 3.5H13.5L19.5 9.5L15.8 11.8L11.8 7.5H8.5L4.5 3.5Z" fill="#e2e8f0"/>
+          <path d="M19.5 9.5V14.5L13.5 20.5H4.5L8.5 18H12L16 14V11.5L19.5 9.5Z" fill="var(--accent)"/>
+          <rect x="10.2" y="10.2" width="3.6" height="3.6" transform="rotate(45 12 12)" fill="#ffffff"/>
+        </svg>`,
+    // L5: Chamfer-Core D (Custom-Cut Tech Monogram D2 Evolution + Dual-Ring Core)
+    5: `<svg viewBox="0 0 24 24" fill="none">
+          <path d="M4.5 3.5H13.2L20.2 9.8V14.2L13.2 20.5H4.5V14.5L7.8 12.5V17H12.2L16.5 13V11L12.2 7H7.8V10.5L4.5 12.5V3.5Z" fill="#ffffff"/>
+          <circle cx="12" cy="12" r="2.8" fill="var(--accent)"/>
+        </svg>`,
+    // L6: Cascade-Step D (3 Ascending Dynamic Bars + Bold Accent D Loop)
+    6: `<svg viewBox="0 0 24 24" fill="none">
+          <rect x="4" y="13" width="2.6" height="7" rx="0.8" fill="#ffffff"/>
+          <rect x="7.8" y="8.5" width="2.6" height="11.5" rx="0.8" fill="#ffffff"/>
+          <path d="M11.6 4H14C18.1 4 21 7.2 21 12C21 16.8 18.1 20 14 20H11.6V4ZM14.6 7.6V16.4C16.4 16.2 17.6 14.5 17.6 12C17.6 9.5 16.4 7.8 14.6 7.6Z" fill="var(--accent)"/>
+        </svg>`,
+    // L7 (L2-B): Twin-Slipstream Flow D (Dual Swept Aerodynamic Wings + Forward Flow Chevron Core)
+    7: `<svg viewBox="0 0 24 24" fill="none">
+          <path d="M3.5 4H13.2C17.4 4 20.4 6.6 20.8 10.4L15.4 12.2C15.1 9.4 13.6 7.6 11.2 7.6H7.6V11.8L3.5 13.3V4Z" fill="#ffffff"/>
+          <path d="M3.5 15.6L14.2 11.8L12.2 9.3L16.2 10.8L13.5 14.4L13.9 12.9L7.6 15.2V16.6H12.2C14.7 16.6 16.5 15.2 17.1 13L20.8 11.7C20.5 16.5 17.2 20 12.5 20H3.5V15.6Z" fill="var(--accent)"/>
+          <polygon points="8.5,10.2 14.5,8.2 13.2,11.6 7.5,13.6" fill="var(--accent)"/>
+        </svg>`,
+    // L8 (L2-C): Sonic-Apex Flow D (Supersonic Swept-Wing D + Integrated Forward Sonic Arrow)
+    8: `<svg viewBox="0 0 24 24" fill="none">
+          <path d="M3.5 3.5H13.2L20.8 9.8L17.2 11.8L12.4 7.4H7.8V12.8L3.5 15.2V3.5Z" fill="#ffffff"/>
+          <path d="M3.5 17.6L12.8 12.3L10.2 9.8H14.5L17.8 13L14.5 16.2H10.2L12.8 13.7L7.5 16.7H12.6L17.2 13.4L20.8 14.8L13.2 20.5H3.5V17.6Z" fill="var(--accent)"/>
+        </svg>`
+  };
+
+  const LOGO_META = {
+    2: { code: "L2 (V1)", title: "Velocity Wing D (Original Speed-Slash)", desc: "Diagonal 18° slipstream cut separating crisp white upper wing from glowing Accent thrust blade." },
+    7: { code: "L2-B (V2)", title: "Twin-Slipstream Flow D (Aero-Stream)", desc: "Smooth curved outer aero-shell with dual swept slipstream wings and a velocity core." },
+    8: { code: "L2-C (V3)", title: "Sonic-Apex Flow D (Swept Wing + Arrow)", desc: "Angular supersonic wing D with a forward-pointing sonic chevron arrow cut through the center." },
+    1: { code: "L1", title: "Double-D (Dynamic × Dentee)", desc: "Outer bold white D framing an inner offset Accent D." },
+    3: { code: "L3", title: "Reticle Crest D", desc: "Octagonal Raid/M+ shield D with crosshair target core." },
+    4: { code: "L4", title: "3D Isometric Prism D", desc: "Three interlocking faceted ribbons + rotated diamond." },
+    5: { code: "L5", title: "Chamfer-Core D", desc: "Bevelled D2 evolution with glowing core dot." },
+    6: { code: "L6", title: "Cascade-Step D", desc: "Ascending suite bars locked into a bold Accent D loop." }
+  };
+
+  function toggleLogoGallery() {
+    const m = document.getElementById("logoGalleryModal");
+    const isVis = m.style.display !== "none";
+    m.style.display = isVis ? "none" : "flex";
+    document.getElementById("btnToggleGallery").classList.toggle("active", !isVis);
+  }
+
+  function renderLogoGallery() {
+    const heroIds = [2, 7, 8];
+    const otherIds = [1, 3, 4, 5, 6];
+    const heroEl = document.getElementById("velocityHeroGrid");
+    const otherEl = document.getElementById("otherLogosGrid");
+    if (!heroEl || !otherEl) return;
+
+    heroEl.innerHTML = heroIds.map(id => {
+      const m = LOGO_META[id];
+      const act = activeLogoIdx === id;
+      return `
+        <div onclick="setLogo(${id})" style="background:${act ? 'rgba(var(--accent-rgb),0.10)' : '#14171f'};border:${act ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,0.10)'};border-radius:10px;padding:16px;cursor:pointer;display:flex;flex-direction:column;gap:12px;transition:all 0.15s;box-shadow:${act ? '0 10px 30px rgba(0,0,0,0.6)' : 'none'}">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:12.5px;font-weight:700;color:#fff">${m.code}: <span style="color:var(--accent)">${m.title}</span></span>
+            <span style="font-size:10px;padding:2px 8px;border-radius:99px;background:${act ? 'var(--accent)' : '#1f242d'};color:${act ? '#090a0d' : '#9ca3b5'};font-weight:700">${act ? '✓ EQUIPPED' : 'Click to Equip'}</span>
+          </div>
+          <!-- Multi-Scale Stage: 140px Storefront + 48px + 26px + 16px AddOn List -->
+          <div style="display:flex;align-items:center;justify-content:space-around;background:#090a0d;border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:16px 12px">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+              <div style="width:140px;height:140px;border-radius:24px;background:linear-gradient(145deg,#181c24,#0b0d12);border:2px solid rgba(var(--accent-rgb),0.55);display:flex;align-items:center;justify-content:center;box-shadow:0 14px 34px rgba(0,0,0,0.75), inset 0 1px 0 rgba(255,255,255,0.12);padding:16px">
+                <div style="width:100%;height:100%">${LOGOS[id]}</div>
+              </div>
+              <span style="font-size:10px;color:#9ca3b5;font-weight:600">140×140px Storefront</span>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:12px">
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                <div style="width:44px;height:44px;border-radius:9px;background:#141820;border:1.5px solid rgba(var(--accent-rgb),0.5);display:flex;align-items:center;justify-content:center;padding:5px">${LOGOS[id]}</div>
+                <span style="font-size:9px;color:#6e7681">44px Toast</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                <div style="width:26px;height:26px;border-radius:6px;background:#141820;border:1px solid rgba(var(--accent-rgb),0.5);display:flex;align-items:center;justify-content:center;padding:3px">${LOGOS[id]}</div>
+                <span style="font-size:9px;color:#6e7681">26px Header</span>
+              </div>
+              <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                <div style="display:flex;align-items:center;gap:5px;background:#14171e;padding:3px 7px;border-radius:4px;border:1px solid rgba(255,255,255,0.08)">
+                  <div style="width:16px;height:16px;border-radius:3px;background:#0d0f14;border:1px solid rgba(var(--accent-rgb),0.45);display:flex;align-items:center;justify-content:center;padding:1px">${LOGOS[id]}</div>
+                  <span style="font-size:10.5px;color:#fff;font-weight:600"><span style="color:var(--accent)">Dynamic</span>Suite</span>
+                </div>
+                <span style="font-size:9px;color:#10b981;font-weight:600">16×16px AddOn List</span>
+              </div>
+            </div>
+          </div>
+          <div style="font-size:11px;color:#9ca3b5;line-height:1.35">${m.desc}</div>
+        </div>
+      `;
+    }).join("");
+
+    otherEl.innerHTML = otherIds.map(id => {
+      const m = LOGO_META[id];
+      const act = activeLogoIdx === id;
+      return `
+        <div onclick="setLogo(${id})" style="background:${act ? 'rgba(var(--accent-rgb),0.10)' : '#14171f'};border:${act ? '2px solid var(--accent)' : '1px solid rgba(255,255,255,0.08)'};border-radius:8px;padding:12px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;transition:all 0.15s">
+          <div style="font-size:11px;font-weight:700;color:#fff;text-align:center">${m.code}: <span style="color:var(--accent)">${m.title.split(' (')[0]}</span></div>
+          <div style="display:flex;align-items:center;gap:12px;background:#090a0d;padding:10px 14px;border-radius:7px;border:1px solid rgba(255,255,255,0.06)">
+            <div style="width:88px;height:88px;border-radius:16px;background:linear-gradient(145deg,#181c24,#0b0d12);border:1.5px solid rgba(var(--accent-rgb),0.5);display:flex;align-items:center;justify-content:center;padding:10px">
+              <div style="width:100%;height:100%">${LOGOS[id]}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:8px">
+              <div style="width:32px;height:32px;border-radius:6px;background:#141820;border:1px solid rgba(var(--accent-rgb),0.45);padding:3px">${LOGOS[id]}</div>
+              <div style="width:16px;height:16px;border-radius:3px;background:#0d0f14;border:1px solid rgba(var(--accent-rgb),0.45);padding:1px" title="16x16px AddOn List">${LOGOS[id]}</div>
+            </div>
+          </div>
+          <div style="font-size:10px;color:#8b93a6;text-align:center;line-height:1.25">${m.desc}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  function setLogo(num) {
+    activeLogoIdx = num;
+    document.getElementById("headerLogoBox").innerHTML = LOGOS[num];
+    document.getElementById("toastIconBox").innerHTML = LOGOS[num];
+    for (let i = 1; i <= 8; i++) {
+      const b = document.getElementById("btnL" + i);
+      if (b) b.classList.toggle("active", i === num);
+    }
+    renderLogoGallery();
+    renderList();
+  }
+
+  let installMode = "all"; // 'all' or 'markerOnly'
+  let suiteEnabled = { load: true, marker: true, zoom: true };
+
+  function simSlash(cmd) {
+    ["cmdDS", "cmdDL", "cmdDM", "cmdDZ"].forEach(id => document.getElementById(id).classList.remove("active"));
+    if (cmd === "/ds") {
+      document.getElementById("cmdDS").classList.add("active");
+      switchSuiteModule(installMode === "markerOnly" ? "marker" : "load");
+    } else if (cmd === "/dl") {
+      document.getElementById("cmdDL").classList.add("active");
+      switchSuiteModule("load");
+    } else if (cmd === "/dm") {
+      document.getElementById("cmdDM").classList.add("active");
+      switchSuiteModule("marker");
+    } else if (cmd === "/dz") {
+      document.getElementById("cmdDZ").classList.add("active");
+      switchSuiteModule("zoom");
+    }
+  }
+
+  function setInstallMode(mode) {
+    installMode = mode;
+    document.getElementById("btnAllInst").classList.toggle("active", mode === "all");
+    document.getElementById("btnOnlyMarker").classList.toggle("active", mode === "markerOnly");
+    if (mode === "markerOnly") {
+      document.getElementById("modLoad").classList.add("off");
+      document.getElementById("subLoad").textContent = "Not Installed";
+      document.getElementById("togLoad").classList.remove("on");
+      document.getElementById("modZoom").classList.add("off");
+      document.getElementById("subZoom").textContent = "Not Installed";
+      document.getElementById("togZoom").classList.remove("on");
+      switchSuiteModule("marker");
+    } else {
+      document.getElementById("modLoad").classList.remove("off");
+      document.getElementById("subLoad").textContent = suiteEnabled.load ? "Addon Manager" : "Disabled";
+      document.getElementById("togLoad").classList.toggle("on", suiteEnabled.load);
+      document.getElementById("modZoom").classList.remove("off");
+      document.getElementById("subZoom").textContent = suiteEnabled.zoom ? "Smooth Camera" : "Disabled";
+      document.getElementById("togZoom").classList.toggle("on", suiteEnabled.zoom);
+      switchSuiteModule("load");
+    }
+  }
+
+  function toggleSuiteAddon(mod) {
+    suiteEnabled[mod] = !suiteEnabled[mod];
+    const isOn = suiteEnabled[mod];
+    const cap = mod.charAt(0).toUpperCase() + mod.slice(1);
+    document.getElementById("tog" + cap).classList.toggle("on", isOn);
+    document.getElementById("mod" + cap).classList.toggle("off", !isOn);
+    const defaultSubs = { load: "Addon Manager", marker: "Focus & Raid Mark", zoom: "Smooth Camera" };
+    document.getElementById("sub" + cap).textContent = isOn ? defaultSubs[mod] : "Disabled (Reload)";
+  }
+
+  let currentLoadZone = "Outdoor";
+  let markerState = { icon: "💀 Skull", scope: "Party & Raid", chat: "Active" };
+  let zoomState = { dist: 39, speed: "Smooth (18)", auto: "Active" };
+
+  function renderLoadStatus() {
+    document.getElementById("statusCapsule").innerHTML = `
+      <span class="status-dot"></span>
+      <span>Active: <b style="color:#fff" id="statusProf">${currentLoadZone}</b></span>
+      <span style="opacity:0.3">|</span>
+      <span>Zone: <span style="color:var(--accent)">Outdoor (City Hub)</span></span>
+      <span style="opacity:0.3">|</span>
+      <span style="color:#10b981">In Sync</span>
+    `;
+    document.getElementById("dockHintText").textContent = "Right-Click any Zone to Activate & Reload  ·  Slash: /dl";
+  }
+
+  function renderMarkerStatus() {
+    const chatCol = markerState.chat === "Active" ? "#10b981" : "#f59e0b";
+    document.getElementById("statusCapsule").innerHTML = `
+      <span class="status-dot"></span>
+      <span>Active Icon: <b style="color:#fff">${markerState.icon}</b></span>
+      <span style="opacity:0.3">|</span>
+      <span>Scope: <span style="color:var(--accent)">${markerState.scope}</span></span>
+      <span style="opacity:0.3">|</span>
+      <span>Chat: <span style="color:${chatCol}">${markerState.chat}</span></span>
+    `;
+    document.getElementById("dockHintText").textContent = "Macro: /click FocusMarkerMacroButton  ·  Slash: /dm or /fm";
+  }
+
+  function renderZoomStatus() {
+    document.getElementById("statusCapsule").innerHTML = `
+      <span class="status-dot"></span>
+      <span>Max Distance: <b style="color:#fff">${zoomState.dist}.0 yds</b></span>
+      <span style="opacity:0.3">|</span>
+      <span>Speed: <span style="color:var(--accent)">${zoomState.speed}</span></span>
+      <span style="opacity:0.3">|</span>
+      <span>Auto-Zoom: <span style="color:#10b981">${zoomState.auto}</span></span>
+    `;
+    document.getElementById("dockHintText").textContent = "Native CVar Camera Engine  ·  Slash: /dz";
+  }
+
+  function renderGfxStatus() {
+    document.getElementById("statusCapsule").innerHTML = `
+      <span class="status-dot"></span>
+      <span>GFX Profile: <b style="color:#fff">Outdoor (Ultra)</b></span>
+      <span style="opacity:0.3">|</span>
+      <span>SpellQueue: <span style="color:var(--accent)">132ms (22ms Ping + 110ms)</span></span>
+      <span style="opacity:0.3">|</span>
+      <span style="color:#10b981">Zero-Reload</span>
+    `;
+    document.getElementById("dockHintText").textContent = "Instant Graphics CVar & SpellQueueWindow Auto-Tuner  ·  Slash: /dg";
+  }
+
+  function switchMarkerTab(isStudio, btn) {
+    document.querySelectorAll("#markerModuleView .seg-tab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("markerNormalPane").style.display = isStudio ? "none" : "flex";
+    document.getElementById("markerStudioPane").style.display = isStudio ? "flex" : "none";
+    document.getElementById("markerBarFrame").style.display = isStudio ? "flex" : "none";
+  }
+
+  function setMarkerIconSize(sz) {
+    document.getElementById("mbSzVal").textContent = sz + "px";
+    document.querySelectorAll("#markerBarFrame .dm-bar-ic").forEach(el => {
+      el.style.width = sz + "px";
+      el.style.height = sz + "px";
+      el.style.fontSize = Math.round(sz * 0.54) + "px";
+    });
+  }
+
+  function setMarkerLayout(mode) {
+    const bar = document.getElementById("markerBarFrame");
+    if (mode === "row") { bar.style.flexDirection = "row"; bar.style.flexWrap = "nowrap"; bar.style.maxWidth = "none"; }
+    if (mode === "col") { bar.style.flexDirection = "column"; bar.style.flexWrap = "nowrap"; bar.style.maxWidth = "none"; }
+    if (mode === "grid") { bar.style.flexDirection = "row"; bar.style.flexWrap = "wrap"; bar.style.maxWidth = "175px"; }
+  }
+
+  function switchZoomTab(isStudio, btn) {
+    document.querySelectorAll("#zoomModuleView .seg-tab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("zoomHudFrame").style.display = isStudio ? "flex" : "none";
+  }
+
+  let includeNaowhKick = true;
+  const KICK_SPELLS = [
+    { label: "Counterspell (Mage)", spell: "Counterspell" },
+    { label: "Kick (Rogue)", spell: "Kick" },
+    { label: "Mind Freeze (DK)", spell: "Mind Freeze" },
+    { label: "Wind Shear (Shaman)", spell: "Wind Shear" },
+    { label: "Rebuke (Paladin)", spell: "Rebuke" },
+    { label: "Pummel (Warrior)", spell: "Pummel" },
+    { label: "Spear Hand Strike (Monk)", spell: "Spear Hand Strike" },
+    { label: "Quell (Evoker)", spell: "Quell" },
+    { label: "Disrupt (DH)", spell: "Disrupt" }
+  ];
+  let kickIdx = 0;
+  const ICON_NUMS = { "⭐ Star": 1, "🟠 Circle": 2, "🟣 Diamond": 3, "🟢 Triangle": 4, "🌙 Moon": 5, "🔵 Square": 6, "❌ Cross": 7, "💀 Skull": 8 };
+
+  function updateMacroPreview() {
+    const icNum = ICON_NUMS[markerState.icon] || 8;
+    let cond = "[@focus,exists]";
+    if (markerState.scope === "Party Only") cond = "[nogroup,@focus][group:party,@focus]";
+    if (markerState.scope === "Raid Only") cond = "[group:raid,@focus]";
+    const sp = KICK_SPELLS[kickIdx].spell;
+    const box = document.getElementById("liveMacroPreview");
+    if (includeNaowhKick) {
+      box.innerHTML = `#showtooltip ${sp}<br>/focus [@mouseover,exists,harm,nodead][@focus,noexists]<br>/tm ${cond} ~${icNum}<br>/stopcasting<br>/cast [@focus,exists,harm,nodead][@mouseover,exists,harm,nodead][] ${sp}`;
+    } else {
+      box.innerHTML = `#showtooltip<br>/focus [@mouseover,exists,nodead][]<br>/stopmacro [@focus,noexists]<br>/tm ${cond} ~${icNum}`;
+    }
+  }
+
+  function toggleNaowhKick() {
+    includeNaowhKick = !includeNaowhKick;
+    const btn = document.getElementById("btnNaowhKick");
+    btn.textContent = includeNaowhKick ? "✓ Included (Auto-Kick @focus)" : "Focus + Mark Only (No Kick)";
+    btn.style.color = includeNaowhKick ? "#10b981" : "var(--text-secondary)";
+    btn.style.borderColor = includeNaowhKick ? "#10b981" : "var(--border-hairline)";
+    updateMacroPreview();
+  }
+
+  function cycleKickSpell() {
+    kickIdx = (kickIdx + 1) % KICK_SPELLS.length;
+    document.getElementById("btnKickSpell").textContent = KICK_SPELLS[kickIdx].label;
+    updateMacroPreview();
+  }
+
+  function oneClickMacroGen() {
+    const btn = document.getElementById("btnGenMacro");
+    btn.textContent = "✓ Macro Created & On Cursor! (Drop on Bar)";
+    btn.style.borderColor = "#10b981";
+    btn.style.color = "#10b981";
+    setTimeout(() => {
+      btn.textContent = "⚡ Update & Pickup Macro";
+      btn.style.borderColor = "var(--accent)";
+      btn.style.color = "#fff";
+    }, 2600);
+  }
+
+  function setMarkerIcon(ic) {
+    markerState.icon = ic;
+    renderMarkerStatus();
+    updateMacroPreview();
+  }
+  function cycleMarkerScope() {
+    const scopes = ["Party & Raid", "Party Only", "Raid Only"];
+    markerState.scope = scopes[(scopes.indexOf(markerState.scope) + 1) % scopes.length];
+    document.getElementById("btnMarkerScope").textContent = markerState.scope;
+    renderMarkerStatus();
+    updateMacroPreview();
+  }
+  function toggleMarkerChat() {
+    markerState.chat = markerState.chat === "Active" ? "Muted" : "Active";
+    document.getElementById("btnMarkerChat").textContent = markerState.chat;
+    renderMarkerStatus();
+  }
+  function setZoomDist(val) {
+    zoomState.dist = val;
+    document.getElementById("zoomDistVal").textContent = val + " yds";
+    renderZoomStatus();
+  }
+
+  function switchSuiteModule(mod) {
+    document.getElementById("modLoad").classList.toggle("active", mod === "load");
+    document.getElementById("modMarker").classList.toggle("active", mod === "marker");
+    document.getElementById("modZoom").classList.toggle("active", mod === "zoom");
+    document.getElementById("modGfx").classList.toggle("active", mod === "gfx");
+
+    const loadView = document.getElementById("loadModuleView");
+    const markerView = document.getElementById("markerModuleView");
+    const zoomView = document.getElementById("zoomModuleView");
+    const gfxView = document.getElementById("gfxModuleView");
+    const titleEl = document.getElementById("winTitleText");
+    const verEl = document.getElementById("winVerText");
+
+    document.getElementById("toastFrame").style.display = "none";
+    document.getElementById("markerBarFrame").style.display = "none";
+    document.getElementById("zoomHudFrame").style.display = "none";
+
+    if (mod === "load") {
+      loadView.style.display = "flex";
+      markerView.style.display = "none";
+      zoomView.style.display = "none";
+      gfxView.style.display = "none";
+      titleEl.innerHTML = "<span>Dynamic</span>Load";
+      verEl.textContent = "v1.0.0";
+      renderLoadStatus();
+    } else if (mod === "marker") {
+      loadView.style.display = "none";
+      markerView.style.display = "flex";
+      zoomView.style.display = "none";
+      gfxView.style.display = "none";
+      titleEl.innerHTML = "<span>Dynamic</span>Marker <span style='font-size:11px;color:#6e7681;font-weight:400'>(formerly FocusMarker)</span>";
+      verEl.textContent = "v2.0.24";
+      renderMarkerStatus();
+    } else if (mod === "zoom") {
+      loadView.style.display = "none";
+      markerView.style.display = "none";
+      zoomView.style.display = "flex";
+      gfxView.style.display = "none";
+      titleEl.innerHTML = "<span>Dynamic</span>Zoom";
+      verEl.textContent = "v1.0.0";
+      renderZoomStatus();
+    } else if (mod === "gfx") {
+      loadView.style.display = "none";
+      markerView.style.display = "none";
+      zoomView.style.display = "none";
+      gfxView.style.display = "flex";
+      titleEl.innerHTML = "<span>Dynamic</span>Frame <span style='font-size:11px;color:#6e7681;font-weight:400'>UI, FPS & SpellQueue</span>";
+      verEl.textContent = "v1.0.0";
+      renderGfxStatus();
+    }
+  }
+
+  const items = [
+    { name: "DynamicSuite", isDyn: true, title: "<span style='color:var(--accent);font-weight:700'>Dynamic</span><span style='color:#fff;font-weight:700'>Suite</span> <span style='color:#6e7681;font-size:10px'>(4/4 active)</span>", state: "LOCKED", checked: true, cpu: "0.02%", isParent: true, collapsed: false, children: [
+      { name: "DynamicLoad", isDyn: true, title: "<span style='color:var(--accent);font-weight:600'>Dynamic</span>Load <span style='color:#6e7681;font-size:10px'>Context Addon Manager</span>", state: "LOCKED", checked: true, cpu: "0.01%" },
+      { name: "DynamicMarker", isDyn: true, title: "<span style='color:var(--accent);font-weight:600'>Dynamic</span>Marker <span style='color:#6e7681;font-size:10px'>(formerly FocusMarker)</span>", state: "LOCKED", checked: true, cpu: "<0.01%" },
+      { name: "DynamicZoom", isDyn: true, title: "<span style='color:var(--accent);font-weight:600'>Dynamic</span>Zoom <span style='color:#6e7681;font-size:10px'>Camera & ActionCam</span>", state: "LOCKED", checked: true, cpu: "<0.01%" },
+      { name: "DynamicFrame", isDyn: true, title: "<span style='color:var(--accent);font-weight:600'>Dynamic</span>Frame <span style='color:#6e7681;font-size:10px'>UI Fader, FPS & SpellQueue</span>", state: "LOCKED", checked: true, cpu: "<0.01%" },
+    ]},
+    { name: "BugSack", title: "BugSack", state: "LOCKED", checked: true, cpu: "<0.01%", isParent: false },
+    { name: "DBM-Core", title: "<span style='color:#f59e0b'>&lt;DBM Core&gt;</span> <span style='color:#60a5fa'>Main Core</span>", state: "NORMAL", checked: true, cpu: "0.04%", isParent: true, collapsed: false, children: [
+      { name: "DBM-GUI", title: "<span style='color:#f59e0b'>&lt;DBM Core&gt;</span> <span style='color:#60a5fa'>Options GUI</span>", state: "NORMAL", checked: true, cpu: "<0.01%" },
+      { name: "DBM-Timers", title: "<span style='color:#f59e0b'>&lt;DBM Core&gt;</span> <span style='color:#60a5fa'>Status Bar Timers</span>", state: "LOCKED", checked: true, cpu: "0.01%" },
+      { name: "DBM-Delves", title: "<span style='color:#f59e0b'>&lt;DBM Mod&gt;</span> <span style='color:#818cf8'>Delves (Midnight)</span>", state: "FROZEN", checked: false, cpu: "<0.01%" },
+      { name: "DBM-Dungeons", title: "<span style='color:#f59e0b'>&lt;DBM Mod&gt;</span> <span style='color:#c084fc'>Dungeons (Midnight)</span>", state: "NORMAL", checked: true, cpu: "0.02%" },
+    ]},
+    { name: "EnhanceQoL", title: "<span style='color:#fbbf24'>Enhance QoL Core</span>", state: "LOCKED", checked: true, cpu: "0.02%", isParent: true, collapsed: false, children: [
+      { name: "EnhanceQoL_Bags", title: "Enhance QoL Bags", state: "FROZEN", checked: false, cpu: "<0.01%" },
+      { name: "EnhanceQoL_Buffs", title: "Enhance QoL Class Buff Reminder", state: "LOCKED", checked: true, cpu: "<0.01%" },
+      { name: "EnhanceQoL_Frames", title: "Enhance QoL Unit Frames", state: "LOCKED", checked: true, cpu: "0.01%" },
+    ]},
+    { name: "KeystoneLoot", title: "<span style='color:#c084fc'>KeystoneLoot</span>", state: "NORMAL", checked: true, cpu: "0.09%", isParent: false },
+    { name: "Plater", title: "Plater Nameplates", state: "LOCKED", checked: true, cpu: "0.31%", isParent: false },
+  ];
+
+  let curFilter = "ALL";
+
+  function renderList() {
+    const feed = document.getElementById("addonFeed");
+    const q = (document.getElementById("qInput").value || "").toLowerCase();
+    feed.innerHTML = "";
+    items.forEach(it => {
+      if (q && !it.name.toLowerCase().includes(q)) return;
+      if (curFilter === "CORE" && it.state !== "LOCKED" && !(it.children && it.children.some(c => c.state === "LOCKED"))) return;
+      if (curFilter === "FROZEN" && it.state !== "FROZEN" && !(it.children && it.children.some(c => c.state === "FROZEN"))) return;
+      feed.appendChild(makeRow(it, false));
+      if (it.isParent && !it.collapsed && it.children) {
+        it.children.forEach(c => {
+          if (curFilter === "CORE" && c.state !== "LOCKED") return;
+          if (curFilter === "FROZEN" && c.state !== "FROZEN") return;
+          feed.appendChild(makeRow(c, true));
+        });
+      }
+    });
+  }
+
+  function makeRow(it, isChild) {
+    const r = document.createElement("div");
+    let effLock = it.state === "LOCKED";
+    let effFreeze = it.state === "FROZEN";
+    if (it.isParent && it.children) {
+      if (it.children.some(c => c.state === "LOCKED")) { effLock = true; effFreeze = false; }
+    }
+    r.className = "addon-row" + (effLock ? " locked" : "") + (effFreeze ? " frozen" : "");
+    let tag = effFreeze ? " <span style='color:var(--cyan);font-weight:600'>[FROZEN]</span>" : (effLock ? " <span style='color:var(--gold);font-weight:600'>[CORE]</span>" : "");
+    let dynIco = it.isDyn ? `<span style="display:inline-flex;width:16px;height:16px;background:#0b0d12;border:1px solid rgba(var(--accent-rgb),0.5);border-radius:3px;align-items:center;justify-content:center;margin-right:5px;vertical-align:middle">${LOGOS[activeLogoIdx]}</span>` : "";
+    r.innerHTML = `
+      <div class="row-bar"></div>
+      ${isChild ? '<div class="indent-pad"></div>' : ''}
+      <div class="exp-btn">${it.isParent ? (it.collapsed ? '+' : '−') : ''}</div>
+      <div class="check-sq ${(effLock || (!effFreeze && it.checked)) ? 'on' : ''}">${(effLock || (!effFreeze && it.checked)) ? '✓' : ''}</div>
+      <div class="lock-ico">${effFreeze ? '🚫' : (effLock ? '🔒' : '🔓')}</div>
+      <div class="a-title" style="display:flex;align-items:center">${dynIco}<span>${it.title}${tag}</span></div>
+      <div class="a-cpu">${it.cpu}</div>
+    `;
+    r.onclick = () => {
+      it.state = (it.state === "LOCKED") ? "NORMAL" : "LOCKED";
+      if (it.isParent && it.children) it.children.forEach(c => { if (c.state !== "FROZEN") c.state = it.state; });
+      renderList();
+    };
+    r.oncontextmenu = (e) => {
+      e.preventDefault();
+      it.state = (it.state === "FROZEN") ? "NORMAL" : "FROZEN";
+      if (it.isParent && it.children) it.children.forEach(c => { if (c.state !== "LOCKED") c.state = it.state; });
+      renderList();
+    };
+    return r;
+  }
+
+  function setAccent(hex, rgbStr, el) {
+    document.documentElement.style.setProperty("--accent", hex);
+    document.documentElement.style.setProperty("--accent-rgb", rgbStr);
+    document.querySelectorAll(".class-dot, #accObsidian").forEach(d => d.classList.remove("active"));
+    if (el) el.classList.add("active");
+  }
+
+  function switchZone(name, isToast, btn) {
+    document.querySelectorAll("#loadModuleView .seg-tab").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("mainToolbar").style.display = isToast ? "none" : "flex";
+    document.getElementById("listContainer").style.display = isToast ? "none" : "flex";
+    document.getElementById("toastInspector").style.display = isToast ? "flex" : "none";
+    document.getElementById("toastFrame").style.display = isToast ? "flex" : "none";
+    if (!isToast) {
+      currentLoadZone = name;
+      renderLoadStatus();
+    }
+  }
+
+  function setFilter(f) {
+    curFilter = f;
+    document.getElementById("fAll").classList.toggle("active-all", f === "ALL");
+    document.getElementById("fCore").classList.toggle("active", f === "CORE");
+    document.getElementById("fFrozen").classList.toggle("active", f === "FROZEN");
+    renderList();
+  }
+
+  // Deferred Window Scale in Bottom Control Dock
+  const sTrack = document.getElementById("scaleTrack");
+  const sFill = document.getElementById("scaleFill");
+  const sThumb = document.getElementById("scaleThumb");
+  const sPct = document.getElementById("scalePct");
+  const win = document.getElementById("mainWindow");
+  let dragS = false, pendS = 1.0;
+
+  sTrack.addEventListener("mousedown", e => {
+    dragS = true; win.classList.remove("gliding");
+    updScale(e.clientX);
+  });
+  function updScale(cx) {
+    const r = sTrack.getBoundingClientRect();
+    let p = Math.max(0, Math.min(1, (cx - r.left) / r.width));
+    pendS = Math.round((0.70 + p * 0.60) / 0.05) * 0.05;
+    let n = (pendS - 0.70) / 0.60;
+    sFill.style.width = (n * 100) + "%";
+    sThumb.style.left = (n * 100) + "%";
+    sPct.textContent = Math.round(pendS * 100) + "%";
+  }
+  window.addEventListener("mousemove", e => { if (dragS) updScale(e.clientX); });
+  window.addEventListener("mouseup", () => {
+    if (dragS) {
+      dragS = false;
+      win.classList.add("gliding");
+      win.style.transform = `scale(${pendS})`;
+    }
+  });
+
+  // Color Picker with Presets + Recent
+  const PRESETS = ["#CBD5E1", "#3FC7EB", "#F48CBA", "#FF7C0A", "#C41E3A", "#A330C9", "#F5B82E", "#111318"];
+  let recent = ["#CBD5E1", "#3FC7EB", "#F5B82E"];
+  let cpTarget = null;
+
+  function openCP(el, title, target) {
+    cpTarget = target;
+    document.getElementById("cpHdr").textContent = title;
+    const pBox = document.getElementById("cpPresets"); pBox.innerHTML = "";
+    PRESETS.forEach(h => {
+      const d = document.createElement("div"); d.className = "cp-cell"; d.style.background = h;
+      d.onclick = () => previewCP(h); pBox.appendChild(d);
+    });
+    const rBox = document.getElementById("cpRecent"); rBox.innerHTML = "";
+    recent.forEach(h => {
+      const d = document.createElement("div"); d.className = "cp-cell"; d.style.background = h;
+      d.onclick = () => previewCP(h); rBox.appendChild(d);
+    });
+    const m = document.getElementById("cpModal");
+    const rect = el.getBoundingClientRect();
+    m.style.left = (rect.left - 180) + "px";
+    m.style.top = (rect.bottom + 6) + "px";
+    m.style.display = "block";
+  }
+  function previewCP(hex) {
+    document.getElementById("cpHex").value = hex.toUpperCase();
+    setToastCol(cpTarget, hex);
+  }
+  function applyCP() {
+    const h = document.getElementById("cpHex").value.toUpperCase();
+    recent = [h, ...recent.filter(x => x !== h)].slice(0, 8);
+    document.getElementById("cpModal").style.display = "none";
+  }
+  function setToastCol(t, h) {
+    const tf = document.getElementById("toastFrame");
+    if (t === "bdr") { tf.style.borderColor = h; document.getElementById("swBdr").style.background = h; }
+    if (t === "bg")  { tf.style.background = h; document.getElementById("swBg").style.background = h; }
+    if (t === "ttl") { document.getElementById("toastBrand").style.color = h; document.getElementById("swTtl").style.background = h; }
+    if (t === "bdg") { document.getElementById("toastBadge").style.color = h; document.getElementById("swBdg").style.background = h; }
+  }
+
+  let snapToGrid = true;
+  function toggleGridSnap() {
+    snapToGrid = !snapToGrid;
+    document.querySelectorAll(".snap-toggle-btn").forEach(btn => {
+      btn.textContent = snapToGrid ? "✓ Snap to Grid (16px)" : "Off (Free-Move)";
+      btn.style.color = snapToGrid ? "#10b981" : "var(--text-secondary)";
+      btn.style.borderColor = snapToGrid ? "#10b981" : "var(--border-hairline)";
+    });
+  }
+
+  const SPECS = ["Frost", "Fire", "Arcane"];
+  const LOOT_SPECS = ["Fire", "Frost", "Arcane", "Current Spec"];
+  let specIdx = 0, lootIdx = 0;
+
+  function updateSpecPills() {
+    const curSpec = SPECS[specIdx];
+    const curLoot = LOOT_SPECS[lootIdx];
+    const pSpec = document.getElementById("pillActiveSpec");
+    const pLoot = document.getElementById("pillLootSpec");
+    pSpec.textContent = "⚔️ Spec: " + curSpec;
+    const isDiff = (curLoot !== "Current Spec" && curLoot !== curSpec);
+    pLoot.textContent = "🎲 Loot: " + curLoot + (isDiff ? " ⚠" : " ✓");
+    pLoot.classList.toggle("mismatch", isDiff);
+  }
+
+  function cycleActiveSpec() {
+    specIdx = (specIdx + 1) % SPECS.length;
+    updateSpecPills();
+  }
+
+  function cycleLootSpec() {
+    lootIdx = (lootIdx + 1) % LOOT_SPECS.length;
+    updateSpecPills();
+  }
+
+  ["toastFrame", "markerBarFrame", "zoomHudFrame"].forEach(id => {
+    const el = document.getElementById(id);
+    let d = false, ox = 0, oy = 0;
+    el.addEventListener("mousedown", e => {
+      if (e.target.classList.contains("qol-pill")) return;
+      d = true; ox = e.clientX - el.offsetLeft; oy = e.clientY - el.offsetTop;
+      if (snapToGrid && !e.ctrlKey) document.getElementById("snapGridOverlay").style.display = "block";
+    });
+    window.addEventListener("mousemove", e => {
+      if (!d) return;
+      let nx = e.clientX - ox, ny = e.clientY - oy;
+      if (snapToGrid && !e.ctrlKey) {
+        nx = Math.round(nx / 16) * 16;
+        ny = Math.round(ny / 16) * 16;
+        document.getElementById("snapGridOverlay").style.display = "block";
+      } else {
+        document.getElementById("snapGridOverlay").style.display = "none";
+      }
+      el.style.left = nx + "px"; el.style.top = ny + "px";
+    });
+    window.addEventListener("mouseup", () => {
+      if (d) { d = false; document.getElementById("snapGridOverlay").style.display = "none"; }
+    });
+  });
+
+  setLogo(2);
+  renderList();
+</script>
+</body>
+</html>

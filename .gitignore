@@ -1,0 +1,48 @@
+# Windows OS metadata
+Thumbs.db
+ehthumbs.db
+ehthumbs_vista.db
+desktop.ini
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# macOS OS metadata
+.DS_Store
+._*
+
+# Editors, IDEs & agent caches
+.vscode/
+.idea/
+.vs/
+.antigravity/
+.gemini/
+*.suo
+*.user
+*.sln.docstates
+
+# Temporary logs, backups & scratch artifacts
+*.log
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+*.swp
+*.swo
+*~
+
+# Local packaging, staging & distribution outputs
+_stage/
+Releases/
+.release/
+.stage-dm/
+*.zip
+SHA256SUMS.txt
+RELEASE_NOTES_*.md
+ModulesTxt/
+
+AGENTS.md
+DESIGN_SYSTEM.md
+TASKS.md
+Design/

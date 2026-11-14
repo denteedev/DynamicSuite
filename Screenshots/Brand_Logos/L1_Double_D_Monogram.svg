@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512">
+  <!-- L1: Double-D Monogram (Dynamic x Dentee Ambigram) -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#090A0D" stroke="#CBD5E1" stroke-width="2" stroke-opacity="0.45"/>
+  <!-- Outer Bold Chamfered White 'D' (Dynamic) -->
+  <path fill="#FFFFFF" fill-rule="evenodd" d="M 13 11 H 35 L 51 23 V 41 L 35 53 H 13 Z M 22 19 V 45 H 32 L 42 37 V 27 L 32 19 Z"/>
+  <!-- Inner Offset Accent 'D' (Dentee) -->
+  <path fill="#CBD5E1" fill-rule="evenodd" d="M 25 23 H 33 L 39 28 V 36 L 33 41 H 25 Z M 30 27 V 37 H 32 L 35 34.5 V 29.5 L 32 27 Z"/>
+</svg>

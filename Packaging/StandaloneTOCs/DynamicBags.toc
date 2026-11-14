@@ -1,0 +1,13 @@
+## Interface: 120105
+## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFBags|r
+## Notes: Zero-Lag Virtual Category Bags, Remote Bank & Alt Inventory Vault for DynamicSuite (/dbag)
+## Author: Dentee-Frostmourne
+## Version: 1.9.2
+## SavedVariables: DynamicBagsDB
+## OptionalDeps: DynamicSuite
+## IconTexture: Interface\AddOns\DynamicBags\icon.tga
+## AddonCompartmentFunc: DynamicBags_OnAddonCompartmentClick
+## Category: DynamicSuite
+## Category-enUS: DynamicSuite
+
+DynamicBags.lua

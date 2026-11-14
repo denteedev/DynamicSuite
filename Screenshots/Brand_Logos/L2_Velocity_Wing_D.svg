@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512">
+  <!-- L2: Velocity Wing D (Speed-Slash Crest) -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#090A0D" stroke="#CBD5E1" stroke-width="2" stroke-opacity="0.45"/>
+  <!-- Upper Crisp White Wing of 'D' -->
+  <path fill="#FFFFFF" d="M 14 11 H 36 L 51 24 V 29 L 23 39 V 45 H 14 Z M 23 19 V 30 L 40 24 L 34 19 Z"/>
+  <!-- Lower Glowing Accent Thrust Wing of 'D' -->
+  <path fill="#CBD5E1" d="M 26 42 L 51 33 V 40 L 36 53 H 14 V 48 H 33 L 41 41 L 26 46 Z"/>
+  <!-- Center Velocity Core Diamond -->
+  <polygon fill="#CBD5E1" points="26,27 36,24 33,31 23,34"/>
+</svg>

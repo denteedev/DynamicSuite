@@ -1,0 +1,21 @@
+## Interface: 120105
+## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFSuite|r
+## Notes: Master Hub, Theme & Font Studio, 7-Step Guided Setup & HUD Edit Mode (/ds)
+## Author: Dentee-Frostmourne
+## Version: 1.9.2
+## Category: DynamicSuite
+## Category-enUS: DynamicSuite
+## SavedVariables: DynamicSuiteDB, DynamicLoadDB, DynamicPrepDB, DynamicMarkerDB, DynamicZoomDB, DynamicFPSDB, DynamicGroupDB, DynamicBagsDB, DynamicChatDB, FocusMarkerDB
+## IconTexture: Interface\AddOns\DynamicSuite\icon.tga
+## AddonCompartmentFunc: DynamicSuite_OnAddonCompartmentClick
+
+DynamicSuite_Core.lua
+DynamicSuite_UI.lua
+Modules\DynamicLoad.lua
+Modules\DynamicPrep.lua
+Modules\DynamicMarker.lua
+Modules\DynamicZoom.lua
+Modules\DynamicFPS.lua
+Modules\DynamicGroup.lua
+Modules\DynamicBags.lua
+Modules\DynamicChat.lua

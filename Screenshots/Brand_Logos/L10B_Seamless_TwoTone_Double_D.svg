@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512" fill="none">
+  <!-- Dark Obsidian Rounded-Square Badge -->
+  <rect x="0.75" y="0.75" width="22.5" height="22.5" rx="5.2" fill="#090A0D" stroke="#CBD5E1" stroke-width="0.9" stroke-opacity="0.45"/>
+  <!-- L10B: Seamless Two-Tone Double-D (Colinear Wing Cut + Flush Two-Tone Inner D Along y_mid = 15.36 - 0.28*x) -->
+  <!-- Upper White Outer D -->
+  <path d="M3.6 3.5H13.8L20.4 9.00L16.6 10.06L12.6 6.8H7.2V12.69L3.6 13.70V3.5Z" fill="#FFFFFF"/>
+  <!-- Lower Accent Outer D -->
+  <path d="M3.6 15.00L7.2 13.99V17.2H12.6L16.6 13.6V11.36L20.4 10.30V14.5L13.8 20.5H3.6V15.00Z" fill="#CBD5E1"/>
+  <!-- Upper White Inner D (Flush to Centerline) -->
+  <path d="M9.2 8.6H12.2L14.6 10.8V11.27L9.2 12.78V8.6Z" fill="#FFFFFF"/>
+  <!-- Lower Accent Inner D (Flush to Centerline) -->
+  <path d="M9.2 12.78L14.6 11.27V13.2L12.2 15.4H9.2V12.78Z" fill="#CBD5E1"/>
+</svg>

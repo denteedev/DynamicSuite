@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="512" height="512" fill="none">
+  <!-- Dark Obsidian Rounded-Square Badge -->
+  <rect x="0.75" y="0.75" width="22.5" height="22.5" rx="5.2" fill="#090A0D" stroke="#CBD5E1" stroke-width="0.9" stroke-opacity="0.45"/>
+  <!-- L10: Aero-Wing Double-D (Swept Outer Wing + Inner Dentee D Monogram) -->
+  <!-- Outer Swept Upper Wing (White) -->
+  <path d="M3.6 3.6H13.6L20.4 10.2L16.5 11.5L12.4 7.2H7.4V12.4L3.6 14.4V3.6Z" fill="#FFFFFF"/>
+  <!-- Outer Lower Thrust Blade (Steel) -->
+  <path d="M3.6 15.8L7.4 14.2V17.0H12.4L16.5 13.0L20.4 11.6V13.8L13.6 20.4H3.6V15.8Z" fill="#CBD5E1"/>
+  <!-- Inner Geometric Monogram D: Upper White Chamfer Facet -->
+  <path d="M9.2 8.4H12.2L14.6 10.8V12.0L13.0 10.4H10.8V13.4L9.2 15.0V8.4Z" fill="#FFFFFF"/>
+  <!-- Inner Geometric Monogram D: Lower Steel Chamfer Facet -->
+  <path d="M9.2 15.0L10.8 13.4H13.0L14.6 12.0V13.2L12.2 15.6H9.2Z" fill="#CBD5E1"/>
+</svg>

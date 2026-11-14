@@ -1,0 +1,81 @@
+name: Package & Release Addons
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Stage standalone DynamicMarker addon
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGE_DIR=".release/DynamicMarker"
+          rm -rf ".release"
+          mkdir -p "$STAGE_DIR/Media/Icons" "$STAGE_DIR/Fonts"
+
+          cp Packaging/StandaloneTOCs/DynamicMarker.toc "$STAGE_DIR/DynamicMarker.toc"
+          cp DynamicSuite/Modules/DynamicMarker.lua "$STAGE_DIR/DynamicMarker.lua"
+          cp DynamicSuite/icon.tga "$STAGE_DIR/icon.tga"
+          cp DynamicSuite/Media/Icons/*.tga "$STAGE_DIR/Media/Icons/"
+          cp DynamicSuite/CHANGELOG.md "$STAGE_DIR/CHANGELOG.md"
+
+          # Copy any bundled fonts explicitly referenced by DynamicMarker.lua
+          { grep -oE 'Fonts\\+[^"\\|]+\.(ttf|otf|TTF|OTF)' DynamicSuite/Modules/DynamicMarker.lua || true; } \
+            | sed 's/.*\\//' | sort -u | while IFS= read -r font; do
+              [ -n "$font" ] || continue
+              match="$(find DynamicSuite/Fonts -maxdepth 1 -iname "$font" -print -quit || true)"
+              if [ -n "$match" ]; then
+                cp "$match" "$STAGE_DIR/Fonts/"
+              fi
+            done
+          rmdir "$STAGE_DIR/Fonts" 2>/dev/null || true
+
+          # Verify every file referenced by DynamicMarker.toc exists in the staged folder
+          while IFS= read -r entry || [ -n "$entry" ]; do
+            entry="$(echo "$entry" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+            [ -z "$entry" ] && continue
+            case "$entry" in
+              \#*) continue ;;
+            esac
+            entry_unix="${entry//\\//}"
+            if [ ! -f "$STAGE_DIR/$entry_unix" ]; then
+              echo "Missing file listed in DynamicMarker.toc: $entry_unix" >&2
+              exit 1
+            fi
+          done < "$STAGE_DIR/DynamicMarker.toc"
+
+      - name: Package & Release Standalone DynamicMarker (CurseForge 1331651)
+        uses: BigWigsMods/packager@v2
+        with:
+          args: -c -o -p 1331651 -m .pkgmeta-dynamicmarker
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_API_KEY: ${{ secrets.CF_API_TOKEN }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+
+      # Ready for full DynamicSuite bundle once a separate CurseForge Project ID is created.
+      # NEVER point Project ID 1331651 (FocusMarker) at the full 8-module bundle!
+      # Clean the standalone .release directory first if running in the same job, then uncomment:
+      # - name: Clean packager staging before bundle build
+      #   run: rm -rf .release
+      #
+      # - name: Package & Release Full DynamicSuite Bundle
+      #   uses: BigWigsMods/packager@v2
+      #   with:
+      #     args: -p <DYNAMICSUITE_CURSEFORGE_PROJECT_ID> -m .pkgmeta
+      #   env:
+      #     CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      #     CF_API_KEY: ${{ secrets.CF_API_TOKEN }}
+      #     GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}

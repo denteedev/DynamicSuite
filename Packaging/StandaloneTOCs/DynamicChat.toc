@@ -1,0 +1,13 @@
+## Interface: 120105
+## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFChat|r
+## Notes: Zero-Taint Target Whisper (/ww & /qq), Combat Whisper Protection, Compact Channel Tags & GPU Buffer Optimiser for DynamicSuite.
+## Author: Dentee-Frostmourne
+## Version: 1.9.2
+## SavedVariables: DynamicChatDB
+## OptionalDeps: DynamicSuite
+## IconTexture: Interface\AddOns\DynamicChat\icon.tga
+## AddonCompartmentFunc: DynamicChat_OnAddonCompartmentClick
+## Category: DynamicSuite
+## Category-enUS: DynamicSuite
+
+DynamicChat.lua

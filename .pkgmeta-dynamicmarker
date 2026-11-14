@@ -1,0 +1,32 @@
+# BigWigsMods/packager configuration strictly for standalone DynamicMarker
+# Target CurseForge Project ID: 1331651 (FocusMarker legacy bridge -> DynamicMarker standalone)
+# IMPORTANT: Keep Project ID 1331651 strictly scoped to standalone DynamicMarker.
+# Never package or upload the full 8-module DynamicSuite bundle under Project ID 1331651.
+package-as: DynamicMarker
+enable-nolib-creation: no
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+ignore:
+  - "*.ps1"
+  - "*.cmd"
+  - "*.zip"
+  - "*.log"
+  - "*.tmp"
+  - "*.bak"
+  - .gitignore
+  - .github
+  - .pkgmeta
+  - .pkgmeta-dynamicmarker
+  - AGENTS.md
+  - DESIGN_SYSTEM.md
+  - README.md
+  - TASKS.md
+  - Design
+  - docs
+  - DynamicSuite
+  - Marketing
+  - Packaging
+  - Screenshots
