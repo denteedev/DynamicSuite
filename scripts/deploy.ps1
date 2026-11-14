@@ -74,16 +74,24 @@ foreach ($f in $luaFiles) {
 }
 Write-Host "[LUAC OK] Validated $($luaFiles.Count) Lua file(s)" -ForegroundColor Green
 
-# 3. Pure ASCII & No-BOM verification
+# 3. Mirror CHANGELOG.md and verify Pure ASCII & No-BOM
+$changelogPath = Join-Path $RepoRoot "CHANGELOG.md"
+$suiteChangelogPath = Join-Path $RepoRoot "DynamicSuite\CHANGELOG.md"
+if (Test-Path -LiteralPath $changelogPath) {
+    Copy-Item -LiteralPath $changelogPath -Destination $suiteChangelogPath -Force
+}
+
 $asciiTargets = @()
 $asciiTargets += $luaFiles
 $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite") -Filter "*.toc" -Recurse -File
 if (Test-Path -LiteralPath (Join-Path $RepoRoot "Packaging")) {
     $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "Packaging") -Filter "*.toc" -Recurse -File
 }
-$changelogPath = Join-Path $RepoRoot "CHANGELOG.md"
-if (Test-Path -LiteralPath $changelogPath) {
-    $asciiTargets += Get-Item -LiteralPath $changelogPath
+foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "README.md", "AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md")) {
+    $docPath = Join-Path $RepoRoot $docName
+    if (Test-Path -LiteralPath $docPath) {
+        $asciiTargets += Get-Item -LiteralPath $docPath
+    }
 }
 $asciiTargets += Get-Item -LiteralPath $PSCommandPath
 
@@ -103,6 +111,81 @@ if ($asciiFailures.Count -gt 0) {
     throw ("ASCII/BOM verification failed:`n - " + ($asciiFailures -join "`n - "))
 }
 Write-Host "[ASCII OK] Verified $($asciiTargets.Count) file(s) (NonASCII=0, HasBOM=False)" -ForegroundColor Green
+
+# 3b. Public doc leak guard & Lockstep Suite <-> Standalone parity checks
+$leakPattern = 'AGENTS\.md|DESIGN_SYSTEM\.md|TASKS\.md|Design/|scripts/'
+foreach ($pubDoc in @("README.md", "CHANGELOG.md", "DynamicSuite\CHANGELOG.md")) {
+    $pubPath = Join-Path $RepoRoot $pubDoc
+    if (-not (Test-Path -LiteralPath $pubPath)) {
+        throw "Required public document missing: $pubPath"
+    }
+    $leakMatches = Select-String -Path $pubPath -Pattern $leakPattern
+    if ($leakMatches) {
+        throw "Internal file reference leaked in public doc $pubDoc (line $($leakMatches[0].LineNumber))"
+    }
+}
+
+$suiteTocPath = Join-Path $RepoRoot "DynamicSuite\DynamicSuite.toc"
+$suiteTocLines = Get-Content -LiteralPath $suiteTocPath
+$suiteVerLine = ($suiteTocLines | Where-Object { $_ -match '^##\s*Version:\s*(.+?)\s*$' } | Select-Object -First 1)
+$suiteIfaceLine = ($suiteTocLines | Where-Object { $_ -match '^##\s*Interface:\s*(.+?)\s*$' } | Select-Object -First 1)
+if (-not ($suiteVerLine -match '^##\s*Version:\s*(.+?)\s*$')) { throw "Missing ## Version in DynamicSuite.toc" }
+$suiteVer = $Matches[1].Trim()
+if (-not ($suiteIfaceLine -match '^##\s*Interface:\s*(.+?)\s*$')) { throw "Missing ## Interface in DynamicSuite.toc" }
+$suiteIface = $Matches[1].Trim()
+
+$standaloneTocs = Get-ChildItem -LiteralPath (Join-Path $RepoRoot "Packaging\StandaloneTOCs") -Filter "*.toc" -File
+foreach ($toc in $standaloneTocs) {
+    $lines = Get-Content -LiteralPath $toc.FullName
+    $vLine = ($lines | Where-Object { $_ -match '^##\s*Version:\s*(.+?)\s*$' } | Select-Object -First 1)
+    $iLine = ($lines | Where-Object { $_ -match '^##\s*Interface:\s*(.+?)\s*$' } | Select-Object -First 1)
+    if (-not ($vLine -match '^##\s*Version:\s*(.+?)\s*$') -or $Matches[1].Trim() -ne $suiteVer) {
+        throw "Version mismatch in $($toc.Name): expected '$suiteVer'"
+    }
+    if (-not ($iLine -match '^##\s*Interface:\s*(.+?)\s*$') -or $Matches[1].Trim() -ne $suiteIface) {
+        throw "Interface mismatch in $($toc.Name): expected '$suiteIface'"
+    }
+}
+
+$changelogHead = (Get-Content -LiteralPath $changelogPath -TotalCount 5) -join "`n"
+if ($changelogHead -notmatch [regex]::Escape("Release: v$suiteVer")) {
+    throw "CHANGELOG.md header does not match lockstep version v$suiteVer"
+}
+$readmeText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"))
+if ($readmeText -notmatch [regex]::Escape("v$suiteVer")) {
+    throw "README.md does not match lockstep version v$suiteVer"
+}
+
+$versionLuaTargets = @()
+$versionLuaTargets += Get-Item -LiteralPath (Join-Path $RepoRoot "DynamicSuite\DynamicSuite_Core.lua")
+$versionLuaTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite\Modules") -Filter "Dynamic*.lua" -File
+$expectedVerCall = "ResolveAddonVersion(ADDON_FOLDER, `"$suiteVer`")"
+foreach ($lf in $versionLuaTargets) {
+    $raw = [System.IO.File]::ReadAllText($lf.FullName)
+    if ($raw.IndexOf($expectedVerCall, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "$($lf.Name) is missing lockstep fallback '$expectedVerCall'"
+    }
+}
+
+$suiteUiText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "DynamicSuite\DynamicSuite_UI.lua"))
+$markerLuaText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "DynamicSuite\Modules\DynamicMarker.lua"))
+$parityTokens = @(
+    "UI-ChatIM-SizeGrabber-Up",
+    "UI-ChatIM-SizeGrabber-Highlight",
+    '"RIGHT", footer, "RIGHT", -32, 0',
+    "https://ko-fi.com/dentee",
+    "https://www.curseforge.com/wow/addons/dynamicsuite (Coming Soon)",
+    "denteedev@gmail.com"
+)
+foreach ($tok in $parityTokens) {
+    if ($suiteUiText.IndexOf($tok, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicSuite_UI.lua missing Suite/Standalone parity token: $tok"
+    }
+    if ($markerLuaText.IndexOf($tok, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicMarker.lua missing Suite/Standalone parity token: $tok"
+    }
+}
+Write-Host "[PARITY OK] Lockstep v$suiteVer ($suiteIface), public docs clean, Suite <-> DynamicMarker UI parity verified" -ForegroundColor Green
 
 # 4. Internal files & .gitignore guard
 $internalPatterns = @("AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", "Design/")
