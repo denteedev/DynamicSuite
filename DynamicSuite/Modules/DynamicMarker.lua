@@ -2,7 +2,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.2"
+    local fb = fallback or "1.9.3"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -36,7 +36,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.2"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.3"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -61,7 +61,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.2")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.3")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -260,6 +260,46 @@ local THEME_PRESETS = {
     CRIMSON  = { name = "Crimson Core",    r = 0.97, g = 0.44, b = 0.44, hex = "F87171" },
     GOLD     = { name = "Royal Amber",     r = 0.96, g = 0.72, b = 0.18, hex = "F5B82E" },
 }
+
+local SURFACE_THEMES = {
+    MIDNIGHT_BLACK = {
+        name   = "Midnight Pitch Black",
+        header = { r = 0.015, g = 0.018, b = 0.024, a = 1.00 },
+        rail   = { r = 0.024, g = 0.027, b = 0.035, a = 1.00 },
+        panel  = { r = 0.035, g = 0.039, b = 0.051, a = 0.99 },
+        card   = { r = 0.055, g = 0.063, b = 0.082, a = 0.96 },
+    },
+    OBSIDIAN_DARK = {
+        name   = "Obsidian Dark (Default)",
+        header = { r = 0.035, g = 0.039, b = 0.051, a = 1.00 },
+        rail   = { r = 0.047, g = 0.055, b = 0.071, a = 0.99 },
+        panel  = { r = 0.067, g = 0.075, b = 0.094, a = 0.98 },
+        card   = { r = 0.090, g = 0.102, b = 0.129, a = 0.96 },
+    },
+    SLATE_STEEL = {
+        name   = "Slate Steel",
+        header = { r = 0.055, g = 0.067, b = 0.090, a = 1.00 },
+        rail   = { r = 0.071, g = 0.086, b = 0.114, a = 0.99 },
+        panel  = { r = 0.090, g = 0.106, b = 0.141, a = 0.98 },
+        card   = { r = 0.118, g = 0.137, b = 0.180, a = 0.96 },
+    },
+    SMOKED_GLASS = {
+        name   = "Smoked Glass",
+        header = { r = 0.045, g = 0.055, b = 0.075, a = 0.92 },
+        rail   = { r = 0.055, g = 0.067, b = 0.090, a = 0.88 },
+        panel  = { r = 0.075, g = 0.090, b = 0.118, a = 0.86 },
+        card   = { r = 0.102, g = 0.122, b = 0.157, a = 0.84 },
+    },
+}
+
+local function GetStandaloneSurfaceColors(dm)
+    local gTbl = (dm and dm.suiteGlobal) or (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global)
+    local key = gTbl and gTbl.surfaceTheme
+    if key and SURFACE_THEMES[key] then
+        return SURFACE_THEMES[key], key
+    end
+    return SURFACE_THEMES.OBSIDIAN_DARK, "OBSIDIAN_DARK"
+end
 
 -- ============================================================================
 -- 3. SAVEDVARIABLES DEFAULTS, FOCUSMARKER BRIDGE & INITIALIZATION
@@ -5934,15 +5974,18 @@ function DM:CloseStudioModal()
 end
 
 function DM:ShowStudioModal(mode)
-    local parent = (self.shellFrame and self.shellFrame:IsShown() and self.shellFrame) or UIParent
+    local anchorTarget = (self.shellFrame and self.shellFrame:IsShown() and self.shellFrame) or UIParent
+    local surf, surfKey = GetStandaloneSurfaceColors(self)
+    local solidPanel = { r = surf.panel.r, g = surf.panel.g, b = surf.panel.b, a = 1.00 }
+
     if not self.modalBackdrop then
-        local bd = CreateFrame("Button", "DynamicMarkerStudioBackdrop", parent)
-        bd:SetFrameStrata("DIALOG")
-        bd:SetFrameLevel(170)
+        local bd = CreateFrame("Button", "DynamicMarkerStudioBackdrop", UIParent)
+        bd:SetFrameStrata("FULLSCREEN_DIALOG")
+        bd:SetFrameLevel(290)
         bd:EnableMouse(true)
         local bdTex = bd:CreateTexture(nil, "BACKGROUND")
         bdTex:SetAllPoints()
-        bdTex:SetColorTexture(0.01, 0.015, 0.025, 0.72)
+        bdTex:SetColorTexture(0.01, 0.015, 0.025, 0.82)
         bd.Bg = bdTex
         bd:SetScript("OnClick", function()
             self:CloseStudioModal()
@@ -5951,27 +5994,35 @@ function DM:ShowStudioModal(mode)
         self.modalBackdrop = bd
     end
     local bd = self.modalBackdrop
-    bd:SetParent(parent)
+    bd:SetParent(UIParent)
     bd:ClearAllPoints()
-    if parent == self.shellFrame and self.shellFrame.Content then
+    if anchorTarget == self.shellFrame then
         bd:SetPoint("TOPLEFT", self.shellFrame, "TOPLEFT", 1, -1)
         bd:SetPoint("BOTTOMRIGHT", self.shellFrame, "BOTTOMRIGHT", -1, 1)
     else
-        bd:SetAllPoints(parent)
+        bd:SetAllPoints(UIParent)
     end
-    bd:SetFrameStrata("DIALOG")
-    bd:SetFrameLevel(170)
+    bd:SetFrameStrata("FULLSCREEN_DIALOG")
+    bd:SetFrameLevel(290)
     bd:Show()
 
     if not self.modalFrame then
-        local m = CreateFrame("Frame", "DynamicMarkerStudioModal", parent, "BackdropTemplate")
+        local m = CreateFrame("Frame", "DynamicMarkerStudioModal", UIParent, "BackdropTemplate")
         m:SetSize(560, 368)
-        m:SetPoint("CENTER", parent, "CENTER", 0, 0)
-        m:SetFrameStrata("DIALOG")
-        m:SetFrameLevel(180)
+        m:SetPoint("CENTER", anchorTarget, "CENTER", 0, 0)
+        m:SetFrameStrata("FULLSCREEN_DIALOG")
+        m:SetFrameLevel(300)
+        m:SetToplevel(true)
+        m:SetClampedToScreen(true)
         m:EnableMouse(true)
         if m.SetClipsChildren then m:SetClipsChildren(true) end
-        self:ApplyBackdrop(m, COLORS.BgVoid, self:GetAccentColorTable(0.95), 1)
+
+        local solidBg = m:CreateTexture(nil, "BACKGROUND", nil, -8)
+        solidBg:SetAllPoints()
+        solidBg:SetColorTexture(solidPanel.r, solidPanel.g, solidPanel.b, 1.00)
+        m.SolidBg = solidBg
+
+        self:ApplyBackdrop(m, solidPanel, self:GetAccentColorTable(0.95), 1)
 
         m.Title = m:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         m.Title:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -14)
@@ -5979,10 +6030,13 @@ function DM:ShowStudioModal(mode)
 
         m.CloseBtn = self:CreateButton(m, "X", 26, 24, function() self:CloseStudioModal() end)
         m.CloseBtn:SetPoint("TOPRIGHT", m, "TOPRIGHT", -12, -10)
+        m.CloseBtn:SetFrameLevel(305)
 
         m.Body = CreateFrame("Frame", nil, m)
         m.Body:SetPoint("TOPLEFT", m, "TOPLEFT", 16, -46)
         m.Body:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", -16, 16)
+        m.Body:SetFrameLevel(302)
+        m.Body._modeWidgets = {}
         if m.Body.SetClipsChildren then m.Body:SetClipsChildren(true) end
 
         m:SetScript("OnKeyDown", function(s, key)
@@ -6008,12 +6062,26 @@ function DM:ShowStudioModal(mode)
     end
 
     local m = self.modalFrame
-    m:SetParent(parent)
+    m:SetParent(UIParent)
     m:ClearAllPoints()
-    m:SetPoint("CENTER", parent, "CENTER", 0, 0)
-    m:SetFrameStrata("DIALOG")
-    m:SetFrameLevel(180)
-    self:ApplyBackdrop(m, COLORS.BgVoid, self:GetAccentColorTable(0.95), 1)
+    m:SetPoint("CENTER", anchorTarget, "CENTER", 0, 0)
+    m:SetFrameStrata("FULLSCREEN_DIALOG")
+    m:SetFrameLevel(300)
+    m.CloseBtn:SetFrameLevel(305)
+    m.Body:SetFrameLevel(302)
+    if m.SolidBg then
+        m.SolidBg:SetColorTexture(solidPanel.r, solidPanel.g, solidPanel.b, 1.00)
+    end
+    self:ApplyBackdrop(m, solidPanel, self:GetAccentColorTable(0.95), 1)
+    if type(m.Body._modeWidgets) == "table" then
+        for _, w in ipairs(m.Body._modeWidgets) do
+            if w and w.Hide then w:Hide() end
+            if w and w.ClearAllPoints then w:ClearAllPoints() end
+        end
+        wipe(m.Body._modeWidgets)
+    else
+        m.Body._modeWidgets = {}
+    end
     for _, child in ipairs({ m.Body:GetChildren() }) do child:Hide() end
     if m.Body.textBlock then m.Body.textBlock:Hide() end
 
@@ -6022,17 +6090,27 @@ function DM:ShowStudioModal(mode)
         local orderedKeys = { "GOLD", "CLASS", "CYAN", "CRIMSON", "OBSIDIAN" }
         local y = -6
         local themeBtns = {}
+        local surfBtns = {}
         local function RefreshThemeModalButtons()
+            local curSurf, curSurfKey = GetStandaloneSurfaceColors(self)
+            local curPanel = { r = curSurf.panel.r, g = curSurf.panel.g, b = curSurf.panel.b, a = 1.00 }
             for _, tb in ipairs(themeBtns) do
                 tb.btn.isAccent = (self.suiteGlobal.theme == tb.key)
                 if tb.btn.RefreshStyle then tb.btn.RefreshStyle(false) end
             end
-            self:ApplyBackdrop(m, COLORS.BgVoid, self:GetAccentColorTable(0.95), 1)
+            for _, sb in ipairs(surfBtns) do
+                sb.btn.isAccent = (curSurfKey == sb.key)
+                if sb.btn.RefreshStyle then sb.btn.RefreshStyle(false) end
+            end
+            if m.SolidBg then
+                m.SolidBg:SetColorTexture(curPanel.r, curPanel.g, curPanel.b, 1.00)
+            end
+            self:ApplyBackdrop(m, curPanel, self:GetAccentColorTable(0.95), 1)
         end
         for _, key in ipairs(orderedKeys) do
             local preset = THEME_PRESETS[key]
             if preset then
-                local b = self:CreateButton(m.Body, "Theme: " .. preset.name, 220, 28, function()
+                local b = self:CreateButton(m.Body, "Accent: " .. preset.name, 220, 28, function()
                     self.suiteGlobal.theme = key
                     self.suiteGlobal.accentKey = nil
                     RefreshThemeModalButtons()
@@ -6041,8 +6119,28 @@ function DM:ShowStudioModal(mode)
                     self:RefreshFlareBar()
                 end, self.suiteGlobal.theme == key)
                 b:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, y)
+                b:SetFrameLevel(303)
                 table.insert(themeBtns, { key = key, btn = b })
+                table.insert(m.Body._modeWidgets, b)
                 y = y - 34
+            end
+        end
+
+        local surfOrder = { "OBSIDIAN_DARK", "SLATE_STEEL", "MIDNIGHT_BLACK", "SMOKED_GLASS" }
+        local sy = -6
+        for _, sKey in ipairs(surfOrder) do
+            local sPreset = SURFACE_THEMES[sKey]
+            if sPreset then
+                local sb = self:CreateButton(m.Body, "Surface: " .. sPreset.name, 250, 28, function()
+                    self.suiteGlobal.surfaceTheme = sKey
+                    RefreshThemeModalButtons()
+                    self:RefreshAll()
+                end, surfKey == sKey)
+                sb:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, sy)
+                sb:SetFrameLevel(303)
+                table.insert(surfBtns, { key = sKey, btn = sb })
+                table.insert(m.Body._modeWidgets, sb)
+                sy = sy - 34
             end
         end
 
@@ -6050,19 +6148,25 @@ function DM:ShowStudioModal(mode)
             self.suiteGlobal.fontScale = 0.95
             self:RefreshAll()
         end)
-        fSmall:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -6)
+        fSmall:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -154)
+        fSmall:SetFrameLevel(303)
+        table.insert(m.Body._modeWidgets, fSmall)
 
         local fNorm = self:CreateButton(m.Body, "Font Scale: 100%", 140, 28, function()
             self.suiteGlobal.fontScale = 1.00
             self:RefreshAll()
         end)
-        fNorm:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -40)
+        fNorm:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -188)
+        fNorm:SetFrameLevel(303)
+        table.insert(m.Body._modeWidgets, fNorm)
 
         local fLarge = self:CreateButton(m.Body, "Font Scale: 110%", 140, 28, function()
             self.suiteGlobal.fontScale = 1.10
             self:RefreshAll()
         end)
-        fLarge:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -74)
+        fLarge:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -222)
+        fLarge:SetFrameLevel(303)
+        table.insert(m.Body._modeWidgets, fLarge)
 
     elseif mode == "SETUP" then
         m.Title:SetText("DynamicMarker Guided Setup")
@@ -6093,6 +6197,8 @@ function DM:ShowStudioModal(mode)
                 self:ShowStudioModal("SETUP")
             end, true)
             cBtn:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, -124)
+            cBtn:SetFrameLevel(303)
+            table.insert(m.Body._modeWidgets, cBtn)
         end
 
         local mBtn1 = self:CreateButton(m.Body, RAID_ICONS[8].emoji .. " Create [DynamicMark]", 252, 28, function()
@@ -6100,18 +6206,24 @@ function DM:ShowStudioModal(mode)
             self:RefreshAll()
         end, true)
         mBtn1:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, -168)
+        mBtn1:SetFrameLevel(303)
+        table.insert(m.Body._modeWidgets, mBtn1)
 
         local mBtn2 = self:CreateButton(m.Body, "Create [DynamicKick] (Character)", 252, 28, function()
             self:CreateOrUpdateDynamicKickMacro(true)
             self:RefreshAll()
         end, true)
         mBtn2:SetPoint("LEFT", mBtn1, "RIGHT", 10, 0)
+        mBtn2:SetFrameLevel(303)
+        table.insert(m.Body._modeWidgets, mBtn2)
 
         local doneBtn = self:CreateButton(m.Body, READY_CHECK_TEX .. " Complete Guided Setup", 210, 28, function()
             self.suiteGlobal.guidedSetupDone = true
             self:CloseStudioModal()
         end)
         doneBtn:SetPoint("BOTTOMRIGHT", m.Body, "BOTTOMRIGHT", 0, 0)
+        doneBtn:SetFrameLevel(303)
+        table.insert(m.Body._modeWidgets, doneBtn)
 
     elseif mode == "CHANGELOG" then
         m.Title:SetText("DynamicMarker v" .. (self.version or VERSION) .. " Changelog")
@@ -6200,6 +6312,15 @@ function DM:EnsureStandaloneShell()
     if self.shellFrame then return self.shellFrame end
 
     local winCfg = self.suiteGlobal.window
+    local surf = GetStandaloneSurfaceColors(self)
+    local RAIL_W = 204
+    local HDR_H  = 46
+    local DOCK_H = 38
+    local cardBg = { r = surf.card.r, g = surf.card.g, b = surf.card.b, a = 0.96 }
+    local cardBd = { r = 0.175, g = 0.200, b = 0.258, a = 0.95 }
+    local cardHoverBg = { r = 0.145, g = 0.168, b = 0.215, a = 1.00 }
+    local dividerCol = { r = 1.00, g = 1.00, b = 1.00, a = 0.08 }
+
     local f = CreateFrame("Frame", "DynamicMarkerSuiteWindow", UIParent, "BackdropTemplate")
     f:SetSize(winCfg.width or 980, winCfg.height or 680)
     if type(UISpecialFrames) == "table" then
@@ -6216,6 +6337,7 @@ function DM:EnsureStandaloneShell()
     end
     f:SetPoint(winCfg.point or "CENTER", UIParent, winCfg.relPoint or "CENTER", winCfg.x or 0, winCfg.y or 0)
     f:SetFrameStrata("HIGH")
+    f:SetToplevel(true)
     f:SetClampedToScreen(true)
     f:SetMovable(true)
     f:SetResizable(true)
@@ -6232,20 +6354,39 @@ function DM:EnsureStandaloneShell()
             winCfg.point, winCfg.relPoint, winCfg.x, winCfg.y = pt, rpt, math.floor(x + 0.5), math.floor(y + 0.5)
         end
     end)
-    self:ApplyBackdrop(f, COLORS.BgCanvas, COLORS.BorderStrong, 1)
+    f:HookScript("OnHide", function()
+        self:CloseStudioModal()
+    end)
+    self:ApplyBackdrop(f, surf.panel, COLORS.BorderStrong, 1)
 
     -- ------------------------------------------------------------------------
-    -- Clean 3-Zone Top Header (48px height)
+    -- Clean 3-Zone Top Header (46px height + 2px top accent bar)
     -- Zone 1: [Logo + Module Name + Clickable Version]
     -- Zone 2: [Spacious 1-Line Status Bar]
     -- Zone 3: [All Characters + X]
     -- ------------------------------------------------------------------------
     local header = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    header:SetHeight(48)
+    header:SetHeight(HDR_H)
     header:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
     header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -1, -1)
-    self:ApplyBackdrop(header, COLORS.BgVoid, COLORS.BorderDim, 1)
+    self:ApplyBackdrop(header, { r = surf.header.r, g = surf.header.g, b = surf.header.b, a = 1.0 }, { r = 0, g = 0, b = 0, a = 0 }, 0)
     f.Header = header
+
+    local initR, initG, initB, initHex = self:GetAccentColor()
+
+    local headerAccentTop = header:CreateTexture(nil, "OVERLAY")
+    headerAccentTop:SetHeight(2)
+    headerAccentTop:SetPoint("TOPLEFT", header, "TOPLEFT", 0, 0)
+    headerAccentTop:SetPoint("TOPRIGHT", header, "TOPRIGHT", 0, 0)
+    headerAccentTop:SetColorTexture(initR, initG, initB, 1.0)
+    header.AccentTop = headerAccentTop
+
+    local headerDivider = header:CreateTexture(nil, "OVERLAY")
+    headerDivider:SetHeight(1)
+    headerDivider:SetPoint("BOTTOMLEFT", header, "BOTTOMLEFT", 0, 0)
+    headerDivider:SetPoint("BOTTOMRIGHT", header, "BOTTOMRIGHT", 0, 0)
+    headerDivider:SetColorTexture(dividerCol.r, dividerCol.g, dividerCol.b, dividerCol.a)
+    header.Divider = headerDivider
 
     local logo = header:CreateTexture(nil, "ARTWORK", nil, 0)
     logo:SetSize(24, 24)
@@ -6256,7 +6397,6 @@ function DM:EnsureStandaloneShell()
     local logoAccent = header:CreateTexture(nil, "ARTWORK", nil, 1)
     logoAccent:SetAllPoints(logo)
     logoAccent:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_accent.tga")
-    local initR, initG, initB, initHex = self:GetAccentColor()
     logoAccent:SetVertexColor(initR, initG, initB, 1.0)
     header.LogoAccent = logoAccent
 
@@ -6284,7 +6424,7 @@ function DM:EnsureStandaloneShell()
     statusBox:SetHeight(26)
     statusBox:SetPoint("LEFT", header.VerBtn, "RIGHT", 14, 0)
     statusBox:SetPoint("RIGHT", scopePill, "LEFT", -14, 0)
-    self:ApplyBackdrop(statusBox, COLORS.BgSurface, COLORS.BorderDim)
+    self:ApplyBackdrop(statusBox, cardBg, cardBd)
 
     statusBox.Text = statusBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     statusBox.Text:SetPoint("LEFT", statusBox, "LEFT", 10, 0)
@@ -6295,14 +6435,38 @@ function DM:EnsureStandaloneShell()
     f.StatusText = statusBox.Text
 
     -- ------------------------------------------------------------------------
-    -- Left Suite Rail (210px width): DYNAMIC MODULES + SUITE STUDIO & TOOLS
+    -- Bottom Bar & Standardized Bottom-Left Reset Dock + Bottom-Right Grip (38px)
+    -- ------------------------------------------------------------------------
+    local footer = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    footer:SetHeight(DOCK_H)
+    footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 1)
+    footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
+    self:ApplyBackdrop(footer, { r = surf.header.r, g = surf.header.g, b = surf.header.b, a = 1.0 }, { r = 0, g = 0, b = 0, a = 0 }, 0)
+    f.Footer = footer
+
+    local footerDivider = footer:CreateTexture(nil, "OVERLAY")
+    footerDivider:SetHeight(1)
+    footerDivider:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, 0)
+    footerDivider:SetPoint("TOPRIGHT", footer, "TOPRIGHT", 0, 0)
+    footerDivider:SetColorTexture(dividerCol.r, dividerCol.g, dividerCol.b, dividerCol.a)
+    footer.Divider = footerDivider
+
+    -- ------------------------------------------------------------------------
+    -- Left Suite Rail (204px width): DYNAMIC MODULES + SUITE STUDIO & TOOLS
     -- ------------------------------------------------------------------------
     local rail = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    rail:SetWidth(210)
+    rail:SetWidth(RAIL_W)
     rail:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
-    rail:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 44)
-    self:ApplyBackdrop(rail, COLORS.BgVoid, COLORS.BorderDim)
+    rail:SetPoint("BOTTOMLEFT", footer, "TOPLEFT", 0, 0)
+    self:ApplyBackdrop(rail, surf.rail, { r = 0, g = 0, b = 0, a = 0 }, 0)
     f.Rail = rail
+
+    local railDivider = rail:CreateTexture(nil, "OVERLAY")
+    railDivider:SetWidth(1)
+    railDivider:SetPoint("TOPRIGHT", rail, "TOPRIGHT", 0, 0)
+    railDivider:SetPoint("BOTTOMRIGHT", rail, "BOTTOMRIGHT", 0, 0)
+    railDivider:SetColorTexture(dividerCol.r, dividerCol.g, dividerCol.b, dividerCol.a)
+    rail.Divider = railDivider
 
     local modHeader = rail:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     modHeader:SetPoint("TOPLEFT", rail, "TOPLEFT", 14, -12)
@@ -6404,12 +6568,13 @@ function DM:EnsureStandaloneShell()
         rail.modBtns[i] = mBtn
     end
 
-    -- Subtle standalone status pill above SUITE STUDIO & TOOLS (never clips inside 210px rail)
+    -- Subtle standalone status pill above SUITE STUDIO & TOOLS (never clips inside 204px rail)
     local standaloneBadge = CreateFrame("Frame", nil, rail, "BackdropTemplate")
     standaloneBadge:SetHeight(20)
-    standaloneBadge:SetPoint("BOTTOMLEFT", rail, "BOTTOMLEFT", 10, 156)
-    standaloneBadge:SetPoint("BOTTOMRIGHT", rail, "BOTTOMRIGHT", -10, 156)
-    self:ApplyBackdrop(standaloneBadge, { r = 0.063, g = 0.075, b = 0.102, a = 0.94 }, { r = 0.141, g = 0.161, b = 0.212, a = 0.85 }, 1)
+    standaloneBadge:SetPoint("BOTTOMLEFT", rail, "BOTTOMLEFT", 10, 158)
+    standaloneBadge:SetPoint("BOTTOMRIGHT", rail, "BOTTOMRIGHT", -10, 158)
+    self:ApplyBackdrop(standaloneBadge, cardBg, cardBd, 1)
+    rail.StandaloneBadge = standaloneBadge
 
     local sbDot = standaloneBadge:CreateTexture(nil, "OVERLAY")
     sbDot:SetSize(6, 6)
@@ -6430,10 +6595,10 @@ function DM:EnsureStandaloneShell()
     self:StyleFont(sbRight, 9, "", COLORS.Green)
     sbRight:SetText("Ready")
 
-    -- Bottom Section of Left Suite Rail: SUITE STUDIO & TOOLS (1:1 DynamicSuite_UI Compact Obsidian Cards)
+    -- Bottom Section of Left Suite Rail: SUITE STUDIO & TOOLS (1:1 DynamicSuite_UI Compact Cards)
     local toolsHeader = rail:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     toolsHeader:SetPoint("BOTTOMLEFT", rail, "BOTTOMLEFT", 14, 138)
-    self:StyleFont(toolsHeader, 10, "", COLORS.TextMuted)
+    self:StyleFont(toolsHeader, 10, "", { r = 0.62, g = 0.68, b = 0.76, a = 0.92 })
     toolsHeader:SetText("SUITE STUDIO & TOOLS")
 
     local studioCardItems = {
@@ -6480,13 +6645,13 @@ function DM:EnsureStandaloneShell()
         sBtn:SetPoint("BOTTOMLEFT", rail, "BOTTOMLEFT", 10, sItem.yBottom)
         sBtn:SetPoint("BOTTOMRIGHT", rail, "BOTTOMRIGHT", -10, sItem.yBottom)
         sBtn.studioKey = sItem.key
-        self:ApplyBackdrop(sBtn, { r = 0.078, g = 0.090, b = 0.122, a = 0.94 }, { r = 0.141, g = 0.161, b = 0.212, a = 0.95 }, 1)
+        self:ApplyBackdrop(sBtn, cardBg, cardBd, 1)
 
         local iconTex = sBtn:CreateTexture(nil, "ARTWORK")
         iconTex:SetSize(14, 14)
         iconTex:SetPoint("LEFT", sBtn, "LEFT", 8, 0)
         iconTex:SetTexture(sItem.icon)
-        iconTex:SetVertexColor(0.72, 0.76, 0.84, 0.95)
+        iconTex:SetVertexColor(0.76, 0.80, 0.88, 0.98)
         sBtn.iconTex = iconTex
 
         local sTitle = sBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -6494,23 +6659,27 @@ function DM:EnsureStandaloneShell()
         sTitle:SetPoint("RIGHT", sBtn, "RIGHT", sItem.hasConflictBadge and -48 or -8, 0)
         sTitle:SetJustifyH("LEFT")
         sTitle:SetWordWrap(false)
-        self:StyleFont(sTitle, 11, "", { r = 0.95, g = 0.97, b = 1.0, a = 1 })
+        self:StyleFont(sTitle, 11, "", { r = 0.94, g = 0.96, b = 0.99, a = 1 })
         sTitle:SetText(sItem.label)
         sBtn.Title = sTitle
 
+        local subRightOffset = -8
+        if sItem.slash then
+            subRightOffset = (#sItem.slash > 4) and -54 or -36
+        end
         local sSub = sBtn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         sSub:SetPoint("BOTTOMLEFT", sBtn, "BOTTOMLEFT", 26, 3)
-        sSub:SetPoint("RIGHT", sBtn, "RIGHT", sItem.slash and -44 or -8, 0)
+        sSub:SetPoint("RIGHT", sBtn, "RIGHT", subRightOffset, 0)
         sSub:SetJustifyH("LEFT")
         sSub:SetWordWrap(false)
-        self:StyleFont(sSub, 9, "", COLORS.TextMuted)
+        self:StyleFont(sSub, 9, "", { r = 0.62, g = 0.68, b = 0.76, a = 0.90 })
         sSub:SetText(sItem.sub)
         sBtn.Sub = sSub
 
         if sItem.slash then
             local sSlash = sBtn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
             sSlash:SetPoint("BOTTOMRIGHT", sBtn, "BOTTOMRIGHT", -8, 3)
-            self:StyleFont(sSlash, 9, "", { r = 0.48, g = 0.53, b = 0.60, a = 0.90 })
+            self:StyleFont(sSlash, 9, "", { r = 0.52, g = 0.58, b = 0.66, a = 0.92 })
             sSlash:SetText(sItem.slash)
         end
 
@@ -6519,6 +6688,7 @@ function DM:EnsureStandaloneShell()
             okPip:SetSize(6, 6)
             okPip:SetPoint("TOPRIGHT", sBtn, "TOPRIGHT", -10, -7)
             okPip:SetColorTexture(0.133, 0.773, 0.369, 1.0)
+            okPip:Hide()
             sBtn.okPip = okPip
 
             local badgePill = CreateFrame("Frame", nil, sBtn, "BackdropTemplate")
@@ -6537,36 +6707,38 @@ function DM:EnsureStandaloneShell()
 
         sBtn:SetScript("OnEnter", function(s)
             local ar, ag, ab = self:GetAccentColor()
-            self:ApplyBackdrop(s, { r = 0.118, g = 0.137, b = 0.184, a = 0.98 }, { r = ar, g = ag, b = ab, a = 0.75 }, 1)
+            self:ApplyBackdrop(s, cardHoverBg, { r = ar, g = ag, b = ab, a = 0.80 }, 1)
             if s.iconTex then s.iconTex:SetVertexColor(ar, ag, ab, 1.0) end
         end)
         sBtn:SetScript("OnLeave", function(s)
+            local curSurf = GetStandaloneSurfaceColors(self)
+            local curCardBg = { r = curSurf.card.r, g = curSurf.card.g, b = curSurf.card.b, a = 0.96 }
             local isActiveEdit = (s.studioKey == "EDIT_MODE" and self.isEditMode)
             if isActiveEdit then
                 local ar, ag, ab = self:GetAccentColor()
                 self:ApplyBackdrop(s, { r = ar * 0.18, g = ag * 0.18, b = ab * 0.18, a = 0.96 }, { r = ar, g = ag, b = ab, a = 0.90 }, 1)
                 if s.iconTex then s.iconTex:SetVertexColor(ar, ag, ab, 1.0) end
             else
-                self:ApplyBackdrop(s, { r = 0.078, g = 0.090, b = 0.122, a = 0.94 }, { r = 0.141, g = 0.161, b = 0.212, a = 0.95 }, 1)
-                if s.iconTex then s.iconTex:SetVertexColor(0.72, 0.76, 0.84, 0.95) end
+                self:ApplyBackdrop(s, curCardBg, cardBd, 1)
+                if s.iconTex then s.iconTex:SetVertexColor(0.76, 0.80, 0.88, 0.98) end
             end
         end)
         sBtn:SetScript("OnClick", sItem.fn)
         table.insert(rail.studioBtns, sBtn)
     end
 
-    -- Bottom Utility Row in Left Rail: [Changelog] + [Support]
-    local function CreateRailUtilBtn(labelText, iconFile, anchorPt, xOff, onClick)
+    -- Bottom Utility Row in Left Rail: [Changelog] (90px) + [Support] (88px)
+    local function CreateRailUtilBtn(labelText, btnWidth, iconFile, iconPadLeft, anchorPt, xOff, onClick)
         local uBtn = CreateFrame("Button", nil, rail, "BackdropTemplate")
-        uBtn:SetSize(92, 22)
+        uBtn:SetSize(btnWidth, 22)
         uBtn:SetPoint(anchorPt, rail, anchorPt, xOff, 7)
-        self:ApplyBackdrop(uBtn, { r = 0.078, g = 0.090, b = 0.122, a = 0.96 }, { r = 0.145, g = 0.165, b = 0.212, a = 0.95 }, 1)
+        self:ApplyBackdrop(uBtn, cardBg, cardBd, 1)
 
         local uIcon = uBtn:CreateTexture(nil, "OVERLAY")
         uIcon:SetSize(12, 12)
-        uIcon:SetPoint("LEFT", uBtn, "LEFT", 7, 0)
+        uIcon:SetPoint("LEFT", uBtn, "LEFT", iconPadLeft, 0)
         uIcon:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\" .. iconFile)
-        uIcon:SetVertexColor(0.72, 0.76, 0.84, 0.95)
+        uIcon:SetVertexColor(0.76, 0.80, 0.88, 0.98)
         uBtn.iconTex = uIcon
 
         local uLbl = uBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -6574,56 +6746,52 @@ function DM:EnsureStandaloneShell()
         uLbl:SetPoint("RIGHT", uBtn, "RIGHT", -4, 0)
         uLbl:SetJustifyH("CENTER")
         uLbl:SetWordWrap(false)
-        self:StyleFont(uLbl, 10, "", COLORS.TextSilver)
+        self:StyleFont(uLbl, 10, "", { r = 0.88, g = 0.91, b = 0.96, a = 1 })
         uLbl:SetText(labelText)
         uBtn.Text = uLbl
 
         uBtn:SetScript("OnEnter", function(s)
             local ar, ag, ab = self:GetAccentColor()
-            self:ApplyBackdrop(s, { r = 0.135, g = 0.153, b = 0.192, a = 1.0 }, { r = ar, g = ag, b = ab, a = 0.70 }, 1)
+            self:ApplyBackdrop(s, cardHoverBg, { r = ar, g = ag, b = ab, a = 0.75 }, 1)
             if s.iconTex then s.iconTex:SetVertexColor(ar, ag, ab, 1.0) end
             if s.Text then s.Text:SetTextColor(1, 1, 1, 1) end
         end)
         uBtn:SetScript("OnLeave", function(s)
-            self:ApplyBackdrop(s, { r = 0.078, g = 0.090, b = 0.122, a = 0.96 }, { r = 0.145, g = 0.165, b = 0.212, a = 0.95 }, 1)
-            if s.iconTex then s.iconTex:SetVertexColor(0.72, 0.76, 0.84, 0.95) end
-            if s.Text then s.Text:SetTextColor(COLORS.TextSilver.r, COLORS.TextSilver.g, COLORS.TextSilver.b, 1) end
+            local curSurf = GetStandaloneSurfaceColors(self)
+            local curCardBg = { r = curSurf.card.r, g = curSurf.card.g, b = curSurf.card.b, a = 0.96 }
+            self:ApplyBackdrop(s, curCardBg, cardBd, 1)
+            if s.iconTex then s.iconTex:SetVertexColor(0.76, 0.80, 0.88, 0.98) end
+            if s.Text then s.Text:SetTextColor(0.88, 0.91, 0.96, 1) end
         end)
         uBtn:SetScript("OnClick", onClick)
         return uBtn
     end
 
-    CreateRailUtilBtn("Changelog", "icon_changelog.tga", "BOTTOMLEFT", 10, function() self:ShowStudioModal("CHANGELOG") end)
-    CreateRailUtilBtn("Support",   "icon_support.tga",   "BOTTOMRIGHT", -10, function() self:ShowStudioModal("SUPPORT") end)
-
-    -- ------------------------------------------------------------------------
-    -- Bottom Bar & Standardized Bottom-Left Reset Dock + Bottom-Right Grip
-    -- (No resolution pixel text in footer!)
-    -- ------------------------------------------------------------------------
-    local footer = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    footer:SetHeight(44)
-    footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 1)
-    footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
-    self:ApplyBackdrop(footer, COLORS.BgVoid, COLORS.BorderDim)
+    rail.utilBtns = {
+        CreateRailUtilBtn("Changelog", 90, "icon_changelog.tga", 6,  "BOTTOMLEFT",  10,  function() self:ShowStudioModal("CHANGELOG") end),
+        CreateRailUtilBtn("Support",   88, "icon_support.tga",   10, "BOTTOMRIGHT", -10, function() self:ShowStudioModal("SUPPORT") end),
+    }
 
     local resetBtn = CreateFrame("Button", nil, footer, "BackdropTemplate")
     resetBtn:SetSize(182, 24)
     resetBtn:SetPoint("LEFT", footer, "LEFT", 14, 0)
-    self:ApplyBackdrop(resetBtn, { r = 0.078, g = 0.090, b = 0.122, a = 0.96 }, { r = 0.145, g = 0.165, b = 0.212, a = 0.95 }, 1)
+    self:ApplyBackdrop(resetBtn, cardBg, cardBd, 1)
     resetBtn.Text = resetBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     resetBtn.Text:SetPoint("CENTER")
     resetBtn.Text:SetWordWrap(false)
-    self:StyleFont(resetBtn.Text, 11, "", COLORS.TextSilver)
+    self:StyleFont(resetBtn.Text, 11, "", { r = 0.88, g = 0.91, b = 0.96, a = 1 })
     resetBtn.Text:SetText("Reset DynamicMarker")
     function resetBtn:SetLabel(txt) self.Text:SetText(txt) end
     resetBtn:SetScript("OnEnter", function(s)
         local ar, ag, ab = self:GetAccentColor()
-        self:ApplyBackdrop(s, { r = 0.135, g = 0.153, b = 0.192, a = 1.0 }, { r = ar, g = ag, b = ab, a = 0.65 }, 1)
+        self:ApplyBackdrop(s, cardHoverBg, { r = ar, g = ag, b = ab, a = 0.70 }, 1)
         s.Text:SetTextColor(1, 1, 1, 1)
     end)
     resetBtn:SetScript("OnLeave", function(s)
-        self:ApplyBackdrop(s, { r = 0.078, g = 0.090, b = 0.122, a = 0.96 }, { r = 0.145, g = 0.165, b = 0.212, a = 0.95 }, 1)
-        s.Text:SetTextColor(COLORS.TextSilver.r, COLORS.TextSilver.g, COLORS.TextSilver.b, 1)
+        local curSurf = GetStandaloneSurfaceColors(self)
+        local curCardBg = { r = curSurf.card.r, g = curSurf.card.g, b = curSurf.card.b, a = 0.96 }
+        self:ApplyBackdrop(s, curCardBg, cardBd, 1)
+        s.Text:SetTextColor(0.88, 0.91, 0.96, 1)
     end)
     resetBtn:SetScript("OnClick", function(s)
         if IsAltKeyDown() then
@@ -6819,13 +6987,38 @@ function DM:RefreshAll()
     if self.shellFrame and self.shellFrame:IsShown() then
         self.shellFrame.StatusText:SetText(statusStr)
         local ar, ag, ab, accentHex = self:GetAccentColor()
+        local surf = GetStandaloneSurfaceColors(self)
+        local cardBg = { r = surf.card.r, g = surf.card.g, b = surf.card.b, a = 0.96 }
+        local cardBd = { r = 0.175, g = 0.200, b = 0.258, a = 0.95 }
+        self:ApplyBackdrop(self.shellFrame, surf.panel, COLORS.BorderStrong, 1)
         if self.shellFrame.Header then
+            self:ApplyBackdrop(self.shellFrame.Header, { r = surf.header.r, g = surf.header.g, b = surf.header.b, a = 1.0 }, { r = 0, g = 0, b = 0, a = 0 }, 0)
+            if self.shellFrame.Header.AccentTop then
+                self.shellFrame.Header.AccentTop:SetColorTexture(ar, ag, ab, 1.0)
+            end
             if self.shellFrame.Header.LogoAccent then
                 self.shellFrame.Header.LogoAccent:SetVertexColor(ar, ag, ab, 1.0)
             end
             if self.shellFrame.Header.ModTitle then
                 self.shellFrame.Header.ModTitle:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFMarker|r", accentHex))
             end
+        end
+        if self.shellFrame.Footer then
+            self:ApplyBackdrop(self.shellFrame.Footer, { r = surf.header.r, g = surf.header.g, b = surf.header.b, a = 1.0 }, { r = 0, g = 0, b = 0, a = 0 }, 0)
+        end
+        if self.shellFrame.Rail then
+            self:ApplyBackdrop(self.shellFrame.Rail, surf.rail, { r = 0, g = 0, b = 0, a = 0 }, 0)
+            if self.shellFrame.Rail.StandaloneBadge then
+                self:ApplyBackdrop(self.shellFrame.Rail.StandaloneBadge, cardBg, cardBd, 1)
+            end
+            if self.shellFrame.Rail.utilBtns then
+                for _, uBtn in ipairs(self.shellFrame.Rail.utilBtns) do
+                    self:ApplyBackdrop(uBtn, cardBg, cardBd, 1)
+                end
+            end
+        end
+        if self.shellFrame.ResetBtn then
+            self:ApplyBackdrop(self.shellFrame.ResetBtn, cardBg, cardBd, 1)
         end
         for _, mBtn in ipairs(self.shellFrame.Rail.modBtns) do
             local isMarker = (mBtn.modKey == "marker" or mBtn.Title:GetText() == "DynamicMarker")
@@ -6848,22 +7041,25 @@ function DM:RefreshAll()
             local conflicts = self:ScanConflicts()
             for _, sBtn in ipairs(self.shellFrame.Rail.studioBtns) do
                 if sBtn.studioKey == "GUIDED_SETUP" and sBtn.okPip and sBtn.conflictPill then
+                    self:ApplyBackdrop(sBtn, cardBg, cardBd, 1)
                     if #conflicts > 0 then
                         sBtn.okPip:Hide()
                         sBtn.conflictBadge:SetText("! " .. tostring(#conflicts))
                         sBtn.conflictPill:Show()
                     else
                         sBtn.conflictPill:Hide()
-                        sBtn.okPip:Show()
+                        sBtn.okPip:Hide()
                     end
                 elseif sBtn.studioKey == "EDIT_MODE" then
                     if self.isEditMode then
                         self:ApplyBackdrop(sBtn, { r = ar * 0.18, g = ag * 0.18, b = ab * 0.18, a = 0.96 }, { r = ar, g = ag, b = ab, a = 0.90 }, 1)
                         if sBtn.iconTex then sBtn.iconTex:SetVertexColor(ar, ag, ab, 1.0) end
                     else
-                        self:ApplyBackdrop(sBtn, { r = 0.078, g = 0.090, b = 0.122, a = 0.94 }, { r = 0.141, g = 0.161, b = 0.212, a = 0.95 }, 1)
-                        if sBtn.iconTex then sBtn.iconTex:SetVertexColor(0.72, 0.76, 0.84, 0.95) end
+                        self:ApplyBackdrop(sBtn, cardBg, cardBd, 1)
+                        if sBtn.iconTex then sBtn.iconTex:SetVertexColor(0.76, 0.80, 0.88, 0.98) end
                     end
+                else
+                    self:ApplyBackdrop(sBtn, cardBg, cardBd, 1)
                 end
             end
         end
@@ -7025,6 +7221,8 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "14/11/2026",
     entries = {
+        { type = "FIX",     text = "Standalone Guided Setup Modal Layering (14/11/2026): Promoted DynamicMarkerStudioBackdrop and DynamicMarkerStudioModal to FULLSCREEN_DIALOG strata (levels 290/300) parented to UIParent with SetToplevel(true), 100% opaque solid panel backing, and clean mode-widget recycling so underlying window controls, borders, and text never bleed through or overlap." },
+        { type = "UI",      text = "Standalone Bottom-Left Sidebar & Brighter Theme Parity (14/11/2026): Aligned standalone shell dimensions (204px rail, 46px header with 2px top accent bar, 38px footer), SUITE STUDIO & TOOLS card spacing, 90px/88px [Changelog] & [Support] buttons, and brighter OBSIDIAN_DARK / SLATE_STEEL surface palette with full DynamicSuite." },
         { type = "FEATURE", text = "Encapsulated HUD Edit Mode & Standalone Mover Parity (14/11/2026): Moved HUD Edit Mode state, crisp pixel-bordered movers ('DynamicMarker: Icon Bar' and 'DynamicMarker: Flare Bar'), drag-and-snap persistence directly into DynamicMarkerDB, mousewheel scaling, ESC-key closing, and combat-lockdown failsafe cleanly inside DynamicMarker. Registers with DynamicSuite's [+ HUD] toolbar toggle when bundled and provides standalone controls in Focus/Flare Settings headers, left rail, and /dm hud." },
         { type = "FEATURE", text = "One-Time FocusMarkerDB -> DynamicMarkerDB Migration Bridge (14/11/2026): Checks _G.FocusMarkerDB on ADDON_LOADED before applying fresh defaults, safely maps bar positions, scales, visibility rules (Solo/Group/Always), orientation, and custom icon/flare sequences while guarding against nil or malformed SavedVariables, and sets migratedFromFocusMarker = true so legacy settings are preserved untouched without overwriting later edits." },
         { type = "FEATURE", text = "FocusMarker Settings Bridge (13/11/2026): DynamicMarker now saves a permanent copy of your FocusMarker settings whenever FocusMarker is enabled, so they can still be imported after FocusMarker is disabled or removed. Supports both old (v1.4) and new (v2.0) FocusMarker layouts. Type /dm import to re-import, or /dm import status to see what was copied." },

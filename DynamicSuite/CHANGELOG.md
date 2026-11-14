@@ -1,5 +1,17 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v1.9.2 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v1.9.3 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v1.9.3 (`/ds`, `/dm`)
+* **[FIXED] Standalone `DynamicMarker` Guided Setup Modal Backdrop & Strata Layering (`DynamicMarker.lua`):**
+  * **Zero Bleed-Through & Overlap (`FULLSCREEN_DIALOG`):** Promoted `DynamicMarkerStudioBackdrop` and `DynamicMarkerStudioModal` from `DIALOG` to `FULLSCREEN_DIALOG` strata (levels `290` / `300`) parented directly to `UIParent` with `SetToplevel(true)`, `SetClampedToScreen(true)`, an `OnHide` shell cleanup hook, and a 100% opaque solid panel background (`m.SolidBg`) beneath `ApplyBackdrop` so underlying controls, borders, and text never bleed through or overlap the modal on `/reload` or initial Guided Setup trigger.
+  * **Clean Mode-Widget Lifecycle:** Tracked and recycled modal body widgets in `m.Body._modeWidgets` with explicit child frame levels (`CloseBtn` at `305`, `Body` at `302`, buttons at `303`) so reopening Guided Setup or Theme & Font Studio never leaves orphaned controls behind.
+* **[IMPROVED] Standalone `DynamicMarker` Bottom-Left Sidebar Layout & Brighter Theme Parity (`DynamicMarker.lua`):**
+  * **Shell & Sidebar Structure Parity:** Aligned standalone `DynamicMarkerSuiteWindow` dimensions (`204px` left rail, `46px` header with `2px` top accent bar, `38px` bottom dock), `1px` clean dividers, `SUITE STUDIO & TOOLS` card spacing (`Theme & Font`, `Guided Setup`, `Edit Mode (HUDs)` with non-overlapping `/dm hud` sub-label anchor), `90px` `[Changelog]` + `88px` `[Support]` bottom utility buttons, and `Reset DynamicMarker` dock with `DynamicSuite_UI.lua`.
+  * **Brighter Surface Palette & Live Surface Switching:** Added `SURFACE_THEMES` (`OBSIDIAN_DARK` default, `SLATE_STEEL`, `MIDNIGHT_BLACK`, `SMOKED_GLASS`) to standalone `DynamicMarker`, wired live surface refreshes into `RefreshAll()` and the standalone `Theme & Font` studio modal, and hid the redundant green dot on `Guided Setup` when zero conflicts exist to match the full `DynamicSuite` window.
+* **[IMPROVED] Local Standalone Test Deployment (`Push-DynamicSuiteSync.ps1`):**
+  * **Standalone Staging Flag (`-StageStandalone`):** Added `-StageStandalone <Module[]>` to `Push-DynamicSuiteSync.ps1` (forwarded via `Push-DynamicSuiteSync.cmd -StageStandalone DynamicMarker`) to stage standalone `DynamicMarker` with `Packaging\StandaloneTOCs\DynamicMarker.toc`, `DynamicMarker.lua`, and shared `Media`/`Fonts` assets directly into `Interface\AddOns\DynamicMarker` for one-click in-game standalone testing alongside `DynamicSuite`.
 
 ---
 
