@@ -680,6 +680,24 @@ local function EnforceProtectedSuiteModules()
     end
     local pName = GetPlayer()
     if IsStandaloneMarkerExcludedBySuite("DynamicMarker") then
+        local wasMarkerEnabled = false
+        if C_AddOns and C_AddOns.GetAddOnEnableState then
+            local okSt, st = pcall(C_AddOns.GetAddOnEnableState, "DynamicMarker", pName)
+            if okSt and type(st) == "number" and st > 0 then
+                wasMarkerEnabled = true
+            else
+                local okSt2, st2 = pcall(C_AddOns.GetAddOnEnableState, "DynamicMarker")
+                if okSt2 and type(st2) == "number" and st2 > 0 then
+                    wasMarkerEnabled = true
+                end
+            end
+        end
+        if wasMarkerEnabled then
+            _G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot = true
+            if _G.DynamicSuite and type(_G.DynamicSuite.EnforceStandaloneDynamicMarkerExclusion) == "function" then
+                pcall(_G.DynamicSuite.EnforceStandaloneDynamicMarkerExclusion, false)
+            end
+        end
         if DynamicLoadDB then
             PurgeCoreSuiteStateFromTableSet(DynamicLoadDB)
             PurgeCoreSuiteStateFromTableSet(DynamicLoadDB.globalData)
@@ -2109,7 +2127,7 @@ local function ScanNewAddons()
 
     for i = 1, num do
         local name = C_AddOns.GetAddOnInfo(i)
-        if name and not RETIRED_IGNORED_ADDONS[name] and not IsAddonProtected(name) then
+        if name and not RETIRED_IGNORED_ADDONS[name] and not IsAddonProtected(name) and not IsStandaloneMarkerExcludedBySuite(name) then
             if not DynamicLoadDB.knownAddons[name] then
                 DynamicLoadDB.knownAddons[name] = true
                 table.insert(newAddons, name)
@@ -7407,7 +7425,14 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
                     if srcProf and dstProf then
                         dstProf.addons = {}
                         for k, v in pairs(srcProf.addons or {}) do
-                            dstProf.addons[k] = v
+                            if IsStandaloneMarkerExcludedBySuite(k) then
+                                dstProf.addons[k] = false
+                            else
+                                dstProf.addons[k] = v
+                            end
+                        end
+                        if IsStandaloneMarkerExcludedBySuite("DynamicMarker") then
+                            dstProf.addons["DynamicMarker"] = false
                         end
                         if selectedTabKey == targetKey then
                             addonTable.StageAddonProfile(targetKey)

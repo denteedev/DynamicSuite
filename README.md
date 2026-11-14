@@ -37,7 +37,7 @@
 | **DynamicFPS** | `/dfps` | Switches graphics settings automatically per zone, protects combat FPS, and tunes SpellQueueWindow from live ping + haste |
 | **DynamicGroup** | `/dgroup`, `/dg` | Adds region tags, M+ scores, and Lust/B-Res icons to Premade Groups, 1-click sign-up, party audit, and auto-keystone |
 | **DynamicBags** | `/dbag` | Fast category-sorted bags, unified Personal/Warband/Guild Bank viewer, Alt Inventory Vault, auto-repair, and auto-sell junk |
-| **DynamicChat** | `/dchat`, `/dc` | Smoked-glass chat frame, `/ww` target whispers, `/qq` quick group leave, sound alerts, clickable URLs, and reload history |
+| **DynamicChat** | `/dchat`, `/dc`, `/dynamicchat` | Smoked-glass chat frame, `/ww` target whispers, `/rl` reload, `/lg` group leave, sound alerts, clickable URLs, and reload history |
 
 ---
 
@@ -62,7 +62,7 @@
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
 | `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, reset) |
 | `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
-| `/dchat` or `/dc` | Open DynamicChat (supports history, copy, reset; plus `/ww`, `/qq`, `/rl`, `/lg`) |
+| `/dchat`, `/dc`, or `/dynamicchat` | Open DynamicChat (supports history, copy, reset; plus `/ww` target whisper, `/rl` reload UI, and `/lg` leave group) |
 
 ---
 

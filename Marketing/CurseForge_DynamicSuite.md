@@ -52,8 +52,8 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 * **Fast Category Bags:** Sorts your items into clean categories (Keystones, Consumables, Gear Sets, BoE/WuE, Reagents, Junk) with A-Z sorting, live search, and upgrade/binding badges without server-sort lag.
 * **Unified Bank & Alt Vault:** View your Personal, Reagent, Warband, and Guild Bank in one window, track items across all your alts, split/merge stacks (`/dbag merge`), and automate repairs, grey junk selling, and fast looting.
 
-### 5. DynamicChat (`/dchat`, `/dc`) -- Whispers, Chat Skin & History
-* **Quick Chat Shortcuts:** Type `/ww` to whisper your friendly target (even in combat), `/qq` to leave group fast, `/rl` to reload, and `/lg` to leave group.
+### 5. DynamicChat (`/dchat`, `/dc`, `/dynamicchat`) -- Whispers, Chat Skin & History
+* **Quick Chat Shortcuts:** Type `/ww` to whisper your friendly target (even in combat), `/rl` to reload your UI, and `/lg` to leave your party or raid quickly.
 * **Clean Smoked-Glass Chat:** Borderless chat frame with compact channel tags, clickable URLs (`/dc copy`), per-channel sound alerts, and chat history saved across UI reloads.
 
 ### 6. DynamicFPS (`/dfps`) -- Zone Graphics & Responsiveness
@@ -88,7 +88,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 | `/dprep` or `/dp` | Open DynamicPrep (supports edit, buffs, qol, reset) |
 | `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, import, reset) |
 | `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
-| `/dchat` or `/dc` | Open DynamicChat (supports history, copy, reset; plus `/ww`, `/qq`, `/rl`, `/lg`) |
+| `/dchat`, `/dc`, or `/dynamicchat` | Open DynamicChat (supports history, copy, reset; plus `/ww` target whisper, `/rl` reload UI, and `/lg` leave group) |
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
 | `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, reset) |
 | `/dz` or `/dynamiczoom` | Open DynamicZoom (supports max, 39, reset) |
@@ -118,5 +118,5 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ### Improved
 * **Reliable Dark-Obsidian Coexistence Reload Prompt:** Replaced Blizzard's default popup with a matching dark-obsidian reload modal that reliably appears on login whenever both DynamicSuite and standalone DynamicMarker were enabled at launch.
-* **Storefront & Readme Clarity:** Updated descriptions, slash command tables, and support links across both DynamicSuite and standalone DynamicMarker.
+* **Storefront, Slash Command & Documentation Audit:** Verified all 24 slash commands across modules, removed retired aliases from docs and in-game changelogs, and aligned README, CurseForge descriptions, and release notes with live behaviour.
 ```

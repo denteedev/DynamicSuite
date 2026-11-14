@@ -107,6 +107,11 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
             or (type(globalTbl) == "table" and globalTbl._loadedBySuite == true)
             or (_G.DynamicSuite and _G.DynamicSuite._isHubLoaded == true)
         then
+            _G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot = true
+            if _G.DynamicSuite then
+                _G.DynamicSuite.standaloneMarkerWasEnabledAtBoot = true
+                _G.DynamicSuite._standaloneMarkerConflictDetected = true
+            end
             if C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
                 local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
                 if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
@@ -8610,13 +8615,32 @@ if not SlashCmdList["DYNAMICSUITE"] then
     end
 end
 
+local standaloneMarkerWasEnabledAtBoot = (_G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot == true)
+local shownMarkerConflictModalThisSession = false
+local hasEnteredWorld = false
+
 function DM:ShowMarkerConflictReloadModal()
+    if shownMarkerConflictModalThisSession or DM._shownMarkerConflictModalThisSession
+        or (_G.DynamicSuite and _G.DynamicSuite._shownMarkerConflictModalThisSession) then
+        return
+    end
     local existingModal = _G.DynamicSuiteMarkerConflictModal
     if existingModal and existingModal._dismissedByUser then
         return
     end
     if InCombatLockdown and InCombatLockdown() then
         self._pendingMarkerConflictModal = true
+        local deferFrame = _G.DynamicMarkerConflictDeferFrame
+        if not deferFrame then
+            deferFrame = CreateFrame("Frame", "DynamicMarkerConflictDeferFrame", UIParent)
+            deferFrame:SetScript("OnEvent", function(frame)
+                frame:UnregisterEvent("PLAYER_REGEN_ENABLED")
+                if DM._pendingMarkerConflictModal then
+                    DM:ShowMarkerConflictReloadModal()
+                end
+            end)
+        end
+        deferFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
         return
     end
     self._pendingMarkerConflictModal = false
@@ -8640,6 +8664,9 @@ function DM:ShowMarkerConflictReloadModal()
         modal:RegisterForDrag("LeftButton")
         modal:SetScript("OnDragStart", modal.StartMoving)
         modal:SetScript("OnDragStop", modal.StopMovingOrSizing)
+        modal:HookScript("OnHide", function(self)
+            self._dismissedByUser = true
+        end)
         if modal.SetBackdrop then
             modal:SetBackdrop({
                 bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -8723,6 +8750,12 @@ function DM:ShowMarkerConflictReloadModal()
         end
 
         modal.ReloadBtn = CreateModalButton(modal, "Reload UI", 138, 28, true, function()
+            modal._dismissedByUser = true
+            shownMarkerConflictModalThisSession = true
+            DM._shownMarkerConflictModalThisSession = true
+            if _G.DynamicSuite then
+                _G.DynamicSuite._shownMarkerConflictModalThisSession = true
+            end
             modal:Hide()
             if type(_G.ReloadUI) == "function" then
                 _G.ReloadUI()
@@ -8730,8 +8763,13 @@ function DM:ShowMarkerConflictReloadModal()
         end)
         modal.ReloadBtn:SetPoint("BOTTOMRIGHT", modal, "BOTTOM", -6, 16)
 
-        modal.LaterBtn = CreateModalButton(modal, "Later", 138, 28, false, function()
+        modal.LaterBtn = CreateModalButton(modal, "Reload Later", 138, 28, false, function()
             modal._dismissedByUser = true
+            shownMarkerConflictModalThisSession = true
+            DM._shownMarkerConflictModalThisSession = true
+            if _G.DynamicSuite then
+                _G.DynamicSuite._shownMarkerConflictModalThisSession = true
+            end
             modal:Hide()
         end)
         modal.LaterBtn:SetPoint("BOTTOMLEFT", modal, "BOTTOM", 6, 16)
@@ -8750,8 +8788,44 @@ function DM:ShowMarkerConflictReloadModal()
         end
     end
 
+    shownMarkerConflictModalThisSession = true
+    DM._shownMarkerConflictModalThisSession = true
+    if _G.DynamicSuite then
+        _G.DynamicSuite._shownMarkerConflictModalThisSession = true
+    end
     modal:Show()
     modal:Raise()
+end
+
+local function EnforceSuiteDuplicateExclusion(showPopupIfLoaded)
+    if ADDON_FOLDER == "DynamicSuite" then return false end
+    local isSuiteActive = (C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DynamicSuite"))
+        or (type(_G.IsAddOnLoaded) == "function" and _G.IsAddOnLoaded("DynamicSuite"))
+        or (_G.DynamicSuite and _G.DynamicSuite._isHubLoaded == true)
+    if not isSuiteActive then return false end
+    standaloneMarkerWasEnabledAtBoot = true
+    _G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot = true
+    if _G.DynamicSuite then
+        _G.DynamicSuite.standaloneMarkerWasEnabledAtBoot = true
+        _G.DynamicSuite._standaloneMarkerConflictDetected = true
+    end
+    if C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
+        local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
+        if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
+            pcall(C_AddOns.DisableAddOn, ADDON_FOLDER, pName)
+        end
+        pcall(C_AddOns.DisableAddOn, ADDON_FOLDER)
+    end
+    if not (InCombatLockdown and InCombatLockdown()) then
+        if DM.targetBar and DM.targetBar.Hide then DM.targetBar:Hide() end
+        if DM.flareBar and DM.flareBar.Hide then DM.flareBar:Hide() end
+        if DM.editInspector and DM.editInspector.Hide then DM.editInspector:Hide() end
+        if DM.gridOverlay and DM.gridOverlay.Hide then DM.gridOverlay:Hide() end
+    end
+    if showPopupIfLoaded and (isInitialized or standaloneMarkerWasEnabledAtBoot) then
+        DM:ShowMarkerConflictReloadModal()
+    end
+    return true
 end
 
 local evtFrame = CreateFrame("Frame")
@@ -8777,18 +8851,12 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1)
             or (type(_G.IsAddOnLoaded) == "function" and _G.IsAddOnLoaded("DynamicSuite"))
             or (_G.DynamicSuite and _G.DynamicSuite._isHubLoaded == true)
         if isSuiteActive then
-            if C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
-                pcall(C_AddOns.DisableAddOn, ADDON_FOLDER)
+            if event == "PLAYER_ENTERING_WORLD" then
+                hasEnteredWorld = true
             end
-            evtFrame:UnregisterAllEvents()
-            if not (InCombatLockdown and InCombatLockdown()) then
-                if DM.targetBar and DM.targetBar.Hide then DM.targetBar:Hide() end
-                if DM.flareBar and DM.flareBar.Hide then DM.flareBar:Hide() end
-                if DM.editInspector and DM.editInspector.Hide then DM.editInspector:Hide() end
-                if DM.gridOverlay and DM.gridOverlay.Hide then DM.gridOverlay:Hide() end
-            end
-            if isInitialized then
-                DM:ShowMarkerConflictReloadModal()
+            EnforceSuiteDuplicateExclusion(hasEnteredWorld or event == "PLAYER_ENTERING_WORLD")
+            if hasEnteredWorld or event == "PLAYER_ENTERING_WORLD" then
+                evtFrame:UnregisterAllEvents()
             end
             return
         end
@@ -8903,6 +8971,9 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1)
         end
 
     elseif event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_SPECIALIZATION_CHANGED" or event == "TRAIT_CONFIG_UPDATED" then
+        if event == "PLAYER_ENTERING_WORLD" then
+            hasEnteredWorld = true
+        end
         if not DM.db then return end
         if DM.db.kickSpecMode == "SMART_SWAP" then
             DM:CreateOrUpdateDynamicKickMacro(false)

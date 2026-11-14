@@ -94,6 +94,7 @@ Want 7 more lightweight QoL and performance modules in one unified window? Check
 | `/dm import status` | Print FocusMarker import status in chat |
 | `/dm reset` | Reset DynamicMarker settings to defaults |
 | `/dm resethud` | Reset Icon Bar and Flare Bar positions to safe screen defaults |
+| `/dm help` | Print slash command help in chat |
 
 ---
 
@@ -119,5 +120,5 @@ Want 7 more lightweight QoL and performance modules in one unified window? Check
 
 ### Improved
 * **Custom Coexistence Reload Prompt:** Replaced Blizzard's default popup with a matching dark-obsidian reload modal whenever DynamicSuite and standalone DynamicMarker are loaded together.
-* **Storefront & Readme Clarity:** Updated descriptions, slash command tables, and support links across both standalone DynamicMarker and DynamicSuite.
+* **Storefront, Slash Command & Documentation Audit:** Verified all DynamicMarker slash commands (including `/dm help`), alignment notes, and support links across README and CurseForge docs.
 ```

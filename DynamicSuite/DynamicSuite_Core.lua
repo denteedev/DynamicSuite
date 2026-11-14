@@ -746,15 +746,30 @@ end
 addonTable.RecoverEllesmereUIState = RecoverEllesmereUIState
 DynamicSuite.RecoverEllesmereUIState = RecoverEllesmereUIState
 
-local standaloneMarkerWasEnabledAtBoot = false
+local standaloneMarkerWasEnabledAtBoot = (_G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot == true)
+local shownMarkerConflictModalThisSession = false
 local _notifiedStandaloneMarkerReload = false
 local function ShowMarkerConflictReloadModal()
+    if shownMarkerConflictModalThisSession or DynamicSuite._shownMarkerConflictModalThisSession then
+        return
+    end
     local existingModal = _G.DynamicSuiteMarkerConflictModal
     if existingModal and existingModal._dismissedByUser then
         return
     end
     if InCombatLockdown and InCombatLockdown() then
         addonTable._pendingMarkerConflictModal = true
+        local deferFrame = _G.DynamicSuiteMarkerConflictDeferFrame
+        if not deferFrame then
+            deferFrame = CreateFrame("Frame", "DynamicSuiteMarkerConflictDeferFrame", UIParent)
+            deferFrame:SetScript("OnEvent", function(self)
+                self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+                if addonTable._pendingMarkerConflictModal then
+                    ShowMarkerConflictReloadModal()
+                end
+            end)
+        end
+        deferFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
         return
     end
     addonTable._pendingMarkerConflictModal = false
@@ -773,6 +788,9 @@ local function ShowMarkerConflictReloadModal()
         modal:RegisterForDrag("LeftButton")
         modal:SetScript("OnDragStart", modal.StartMoving)
         modal:SetScript("OnDragStop", modal.StopMovingOrSizing)
+        modal:HookScript("OnHide", function(self)
+            self._dismissedByUser = true
+        end)
         if modal.SetBackdrop then
             modal:SetBackdrop({
                 bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -856,6 +874,9 @@ local function ShowMarkerConflictReloadModal()
         end
 
         modal.ReloadBtn = CreateModalButton(modal, "Reload UI", 138, 28, true, function()
+            modal._dismissedByUser = true
+            shownMarkerConflictModalThisSession = true
+            DynamicSuite._shownMarkerConflictModalThisSession = true
             modal:Hide()
             if type(_G.ReloadUI) == "function" then
                 _G.ReloadUI()
@@ -863,8 +884,10 @@ local function ShowMarkerConflictReloadModal()
         end)
         modal.ReloadBtn:SetPoint("BOTTOMRIGHT", modal, "BOTTOM", -6, 16)
 
-        modal.LaterBtn = CreateModalButton(modal, "Later", 138, 28, false, function()
+        modal.LaterBtn = CreateModalButton(modal, "Reload Later", 138, 28, false, function()
             modal._dismissedByUser = true
+            shownMarkerConflictModalThisSession = true
+            DynamicSuite._shownMarkerConflictModalThisSession = true
             modal:Hide()
         end)
         modal.LaterBtn:SetPoint("BOTTOMLEFT", modal, "BOTTOM", 6, 16)
@@ -883,6 +906,8 @@ local function ShowMarkerConflictReloadModal()
         end
     end
 
+    shownMarkerConflictModalThisSession = true
+    DynamicSuite._shownMarkerConflictModalThisSession = true
     modal:Show()
     modal:Raise()
 end
@@ -895,6 +920,8 @@ local function ScrubStandaloneDynamicMarkerFromLoadDB(tbl)
     if type(tbl.addonStates) == "table" and tbl.addonStates["DynamicMarker"] == "LOCKED" then
         tbl.addonStates["DynamicMarker"] = nil
     end
+    if type(tbl.sessionBaseline) == "table" then tbl.sessionBaseline["DynamicMarker"] = false end
+    if type(tbl.lastAddonSnapshot) == "table" then tbl.lastAddonSnapshot["DynamicMarker"] = false end
     if type(tbl.profiles) == "table" then
         for _, prof in pairs(tbl.profiles) do
             if type(prof) == "table" and type(prof.addons) == "table" then
@@ -936,12 +963,15 @@ local function EnforceStandaloneDynamicMarkerExclusion(showPopupIfLoaded)
     local isLoaded = ((C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DynamicMarker"))
         or (type(_G.IsAddOnLoaded) == "function" and _G.IsAddOnLoaded("DynamicMarker"))) and true or false
     local hasStandaloneRuntime = ((_G.DynamicMarker and _G.DynamicMarker._loadedBySuite == false)
-        or (_G.DynamicSuite and _G.DynamicSuite.standaloneMarkerWasEnabledAtBoot == true)) and true or false
+        or (_G.DynamicSuite and _G.DynamicSuite.standaloneMarkerWasEnabledAtBoot == true)
+        or (_G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot == true)) and true or false
 
     if isEnabled or isLoaded or hasStandaloneRuntime then
         standaloneMarkerWasEnabledAtBoot = true
+        _G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot = true
         addonTable.standaloneMarkerWasEnabledAtBoot = true
         DynamicSuite.standaloneMarkerWasEnabledAtBoot = true
+        DynamicSuite._standaloneMarkerConflictDetected = true
         addonTable._pendingSuiteModuleReload = true
     end
 
@@ -949,7 +979,7 @@ local function EnforceStandaloneDynamicMarkerExclusion(showPopupIfLoaded)
         return false
     end
 
-    if C_AddOns.DisableAddOn then
+    if isEnabled and C_AddOns.DisableAddOn then
         if type(uName) == "string" and uName ~= "" and uName ~= "Unknown" and uName ~= _G.UNKNOWNOBJECT then
             pcall(C_AddOns.DisableAddOn, "DynamicMarker", uName)
         end
@@ -965,8 +995,11 @@ local function EnforceStandaloneDynamicMarkerExclusion(showPopupIfLoaded)
             end
         end
     end
+    if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" and type(_G.DynamicSuiteDB.global.dynamicLoad) == "table" then
+        ScrubStandaloneDynamicMarkerFromLoadDB(_G.DynamicSuiteDB.global.dynamicLoad)
+    end
 
-    if standaloneMarkerWasEnabledAtBoot or isLoaded or hasStandaloneRuntime then
+    if standaloneMarkerWasEnabledAtBoot or isLoaded or hasStandaloneRuntime or isEnabled or DynamicSuite._standaloneMarkerConflictDetected then
         addonTable._pendingSuiteModuleReload = true
         if showPopupIfLoaded then
             if not _notifiedStandaloneMarkerReload then
@@ -3846,6 +3879,7 @@ local function SafeRegisterSuiteEvent(frame, eventName)
 end
 
 local isSuiteCoreInitialized = false
+local hasEnteredWorld = false
 local suiteEventFrame = CreateFrame("Frame", "DynamicSuiteEventFrame", UIParent)
 SafeRegisterSuiteEvent(suiteEventFrame, "ADDON_LOADED")
 SafeRegisterSuiteEvent(suiteEventFrame, "PLAYER_LOGIN")
@@ -3898,9 +3932,11 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
         InvalidateConflictCache()
         if arg1 == "DynamicMarker" then
             standaloneMarkerWasEnabledAtBoot = true
+            _G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot = true
             addonTable.standaloneMarkerWasEnabledAtBoot = true
             DynamicSuite.standaloneMarkerWasEnabledAtBoot = true
-            EnforceStandaloneDynamicMarkerExclusion(true)
+            DynamicSuite._standaloneMarkerConflictDetected = true
+            EnforceStandaloneDynamicMarkerExclusion(hasEnteredWorld)
         end
         if (arg1 == ADDON_FOLDER or arg1 == "DynamicSuite") and not isSuiteCoreInitialized then
             isSuiteCoreInitialized = true
@@ -3924,10 +3960,11 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
             end
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
+        hasEnteredWorld = true
         InvalidateConflictCache()
         EnsureConflictCache()
         EnforceStandaloneDynamicMarkerExclusion(true)
-        if standaloneMarkerWasEnabledAtBoot or addonTable.standaloneMarkerWasEnabledAtBoot or (DynamicSuite and DynamicSuite.standaloneMarkerWasEnabledAtBoot) then
+        if standaloneMarkerWasEnabledAtBoot or addonTable.standaloneMarkerWasEnabledAtBoot or (DynamicSuite and DynamicSuite.standaloneMarkerWasEnabledAtBoot) or (_G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot == true) then
             ShowMarkerConflictReloadModal()
         end
     elseif event == "PLAYER_LOGIN" then
@@ -3935,7 +3972,7 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
         EnsureSuiteGlobal()
         SnapshotAllSuiteCVars()
         EnforceProtectedSuiteModules()
-        EnforceStandaloneDynamicMarkerExclusion(true)
+        EnforceStandaloneDynamicMarkerExclusion(false)
         if addonTable.EnforceFrozenAddonsDisabled then
             addonTable.EnforceFrozenAddonsDisabled()
         end

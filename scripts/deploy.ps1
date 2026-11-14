@@ -346,6 +346,9 @@ for ($li = 0; $li -lt $loadLines.Count; $li++) {
 if ($earlyLoadCalls.Count -gt 0) {
     throw ("DynamicLoad.lua contains local function call(s) on a line earlier than their local declaration:`n - " + ($earlyLoadCalls -join "`n - "))
 }
+if (-not $loadDeclLines.ContainsKey("IsStandaloneMarkerExcludedBySuite")) {
+    throw "DynamicLoad.lua missing local function IsStandaloneMarkerExcludedBySuite declaration."
+}
 $allLuaCheckFiles = Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite") -Filter "*.lua" -Recurse -File
 foreach ($luaCheck in $allLuaCheckFiles) {
     $luaCheckText = [System.IO.File]::ReadAllText($luaCheck.FullName)
@@ -454,6 +457,63 @@ if ($suiteCoreText.IndexOf('["DYNAMICMARKER"] = "DynamicMarker"', [System.String
 if ($suiteCoreText.IndexOf('cmd == "resethud"', [System.StringComparison]::Ordinal) -lt 0) {
     throw "DynamicSuite_Core.lua missing /ds resethud slash command handler."
 }
+$qqAuditFiles = @(
+    "README.md",
+    "CHANGELOG.md",
+    "DynamicSuite\CHANGELOG.md",
+    "Marketing\CurseForge_DynamicSuite.md",
+    "Marketing\CurseForge_DynamicMarker.md",
+    "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md",
+    "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md"
+)
+foreach ($docRel in $qqAuditFiles) {
+    $docText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot $docRel))
+    if ($docText -match '(?i)(?<![a-z0-9_])/qq(?![a-z0-9_])') {
+        throw "$docRel still contains removed slash command '/qq'."
+    }
+}
+foreach ($luaCheck in $allLuaCheckFiles) {
+    $luaRel = $luaCheck.FullName.Substring($RepoRoot.Length).TrimStart('\')
+    $luaText = [System.IO.File]::ReadAllText($luaCheck.FullName)
+    if ($luaText -match '(?i)(?<![a-z0-9_])/qq(?![a-z0-9_])') {
+        throw "$luaRel still contains removed slash command '/qq'."
+    }
+}
+$registeredSlashCmds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+$markerSlashCmds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+foreach ($luaCheck in $allLuaCheckFiles) {
+    $luaText = [System.IO.File]::ReadAllText($luaCheck.FullName)
+    foreach ($sm in [regex]::Matches($luaText, '(?m)^\s*SLASH_([A-Za-z0-9_]+)\d+\s*=\s*["''](/[a-zA-Z0-9]+)["'']')) {
+        $slashKey = $sm.Groups[1].Value
+        $slashCmd = $sm.Groups[2].Value
+        $null = $registeredSlashCmds.Add($slashCmd)
+        if ($slashKey -eq "DYNAMICMARKER") {
+            $null = $markerSlashCmds.Add($slashCmd)
+        }
+    }
+}
+if ($registeredSlashCmds.Count -eq 0 -or $markerSlashCmds.Count -eq 0) {
+    throw "Dynamic SLASH_* extraction found 0 commands; audit regex failed."
+}
+foreach ($docRel in @("README.md", "Marketing\CurseForge_DynamicSuite.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md")) {
+    $docText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot $docRel))
+    foreach ($cmd in $registeredSlashCmds) {
+        $cmdPat = '(?i)(?<![a-z0-9_])' + [regex]::Escape($cmd) + '(?![a-z0-9_])'
+        if ($docText -notmatch $cmdPat) {
+            throw "$docRel is missing active registered slash command: $cmd"
+        }
+    }
+}
+foreach ($docRel in @("Marketing\CurseForge_DynamicMarker.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md")) {
+    $docText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot $docRel))
+    foreach ($cmd in $markerSlashCmds) {
+        $cmdPat = '(?i)(?<![a-z0-9_])' + [regex]::Escape($cmd) + '(?![a-z0-9_])'
+        if ($docText -notmatch $cmdPat) {
+            throw "$docRel is missing active DynamicMarker slash command: $cmd"
+        }
+    }
+}
+Write-Host "[AUDIT OK] Verified $($registeredSlashCmds.Count) active SLASH_* commands ($($markerSlashCmds.Count) DynamicMarker), 0 '/qq' refs" -ForegroundColor Green
 Write-Host "[PARITY OK] Lockstep v$suiteVer ($suiteIface), public docs clean, Suite <-> DynamicMarker UI parity verified" -ForegroundColor Green
 
 $pkgMetaSuitePath = Join-Path $RepoRoot ".pkgmeta"
