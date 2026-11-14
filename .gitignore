@@ -41,6 +41,7 @@ Releases/
 !Marketing/*.zip
 SHA256SUMS.txt
 RELEASE_NOTES_*.md
+.release-changelog.md
 ModulesTxt/
 
 AGENTS.md

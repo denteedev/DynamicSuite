@@ -6,7 +6,7 @@ package-as: DynamicMarker
 enable-nolib-creation: no
 
 manual-changelog:
-  filename: CHANGELOG.md
+  filename: .release-changelog.md
   markup-type: markdown
 
 move-folders:
@@ -23,6 +23,7 @@ ignore:
   - .github
   - .pkgmeta
   - .pkgmeta-dynamicmarker
+  - .release-changelog.md
   - AGENTS.md
   - DESIGN_SYSTEM.md
   - README.md

@@ -232,8 +232,11 @@ if (-not [string]::IsNullOrWhiteSpace($ReleaseTag)) {
     if ($pkgMetaMarkerText -notmatch '(?m)^\s*DynamicMarker/Packaging/StandaloneTOCs:\s*DynamicMarker\s*$') {
         throw ".pkgmeta-dynamicmarker must map 'DynamicMarker/Packaging/StandaloneTOCs: DynamicMarker' under move-folders:."
     }
-    if ($pkgMetaMarkerText -notmatch '(?m)^\s*filename:\s*CHANGELOG\.md\s*$') {
-        throw ".pkgmeta-dynamicmarker manual-changelog must target 'CHANGELOG.md'."
+    if ($pkgMetaMarkerText -notmatch '(?m)^\s*filename:\s*\.release-changelog\.md\s*$') {
+        throw ".pkgmeta-dynamicmarker manual-changelog must target '.release-changelog.md'."
+    }
+    if ($pkgMetaMarkerText -notmatch '(?m)^\s*-\s*\.release-changelog\.md\s*$') {
+        throw ".pkgmeta-dynamicmarker must exclude '.release-changelog.md' under ignore:."
     }
     if ($pkgMetaMarkerText -notmatch '(?m)^\s*-\s*DynamicSuite\s*$') {
         throw ".pkgmeta-dynamicmarker must exclude 'DynamicSuite' under ignore:."
@@ -290,6 +293,12 @@ if (-not [string]::IsNullOrWhiteSpace($ReleaseTag)) {
     }
     if ($workflowText -notmatch [regex]::Escape("-p 1331651 -m .pkgmeta-dynamicmarker")) {
         throw "release.yml must package Project ID 1331651 with .pkgmeta-dynamicmarker."
+    }
+    if ($workflowText -notmatch '\.release-changelog\.md') {
+        throw "release.yml must slice CHANGELOG.md into .release-changelog.md to prevent GitHub Release HTTP 422 body-limit failures."
+    }
+    if ($workflowText -notmatch '120000') {
+        throw "release.yml must enforce the 120,000-character fail-fast guard on .release-changelog.md."
     }
     if ($workflowText -match 'cp\s+Packaging/StandaloneTOCs/DynamicMarker\.toc\s+DynamicMarker\.toc') {
         throw "release.yml must not copy DynamicMarker.toc to the repository root."

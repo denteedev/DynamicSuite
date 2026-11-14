@@ -22,6 +22,7 @@ ignore:
   - .github
   - .pkgmeta
   - .pkgmeta-dynamicmarker
+  - .release-changelog.md
   - AGENTS.md
   - DESIGN_SYSTEM.md
   - README.md
