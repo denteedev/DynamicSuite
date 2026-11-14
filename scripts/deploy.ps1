@@ -13,11 +13,16 @@
 [CmdletBinding()]
 param(
     [string] $CommitMessage = "",
+    [string] $ReleaseTag = "",
     [switch] $SkipSync,
     [switch] $SkipGit
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not [string]::IsNullOrWhiteSpace($ReleaseTag) -and $SkipGit) {
+    throw "Cannot use -ReleaseTag together with -SkipGit."
+}
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $PushCmd  = "D:\DriveSync\Push-DynamicSuiteSync.cmd"
@@ -197,6 +202,39 @@ foreach ($tok in $parityTokens) {
 }
 Write-Host "[PARITY OK] Lockstep v$suiteVer ($suiteIface), public docs clean, Suite <-> DynamicMarker UI parity verified" -ForegroundColor Green
 
+if (-not [string]::IsNullOrWhiteSpace($ReleaseTag)) {
+    if ($ReleaseTag -notmatch '^v\d+\.\d+\.\d+$') {
+        throw "ReleaseTag '$ReleaseTag' must match semantic tag format 'vX.Y.Z'."
+    }
+    if ($ReleaseTag -ne "v$suiteVer") {
+        throw "ReleaseTag '$ReleaseTag' does not match lockstep .toc version 'v$suiteVer'."
+    }
+    $pkgMetaMarkerPath = Join-Path $RepoRoot ".pkgmeta-dynamicmarker"
+    if (-not (Test-Path -LiteralPath $pkgMetaMarkerPath)) {
+        throw "Missing .pkgmeta-dynamicmarker at $pkgMetaMarkerPath"
+    }
+    $pkgMetaMarkerText = [System.IO.File]::ReadAllText($pkgMetaMarkerPath)
+    if ($pkgMetaMarkerText -notmatch '(?m)^package-as:\s*DynamicMarker\s*$') {
+        throw ".pkgmeta-dynamicmarker must specify 'package-as: DynamicMarker'."
+    }
+    if ($pkgMetaMarkerText -notmatch '(?m)^\s*-\s*DynamicSuite\s*$') {
+        throw ".pkgmeta-dynamicmarker must exclude 'DynamicSuite' under ignore:."
+    }
+    $markerTocPath = Join-Path $RepoRoot "Packaging\StandaloneTOCs\DynamicMarker.toc"
+    if (-not (Test-Path -LiteralPath $markerTocPath)) {
+        throw "Missing StandaloneTOCs/DynamicMarker.toc at $markerTocPath"
+    }
+    $workflowPath = Join-Path $RepoRoot ".github\workflows\release.yml"
+    if (-not (Test-Path -LiteralPath $workflowPath)) {
+        throw "Missing release workflow at $workflowPath"
+    }
+    $workflowText = [System.IO.File]::ReadAllText($workflowPath)
+    if ($workflowText -notmatch [regex]::Escape("-p 1331651 -m .pkgmeta-dynamicmarker")) {
+        throw "release.yml must package Project ID 1331651 with .pkgmeta-dynamicmarker."
+    }
+    Write-Host "[RELEASE GUARD OK] Verified .pkgmeta-dynamicmarker (DynamicMarker), release.yml (1331651), and StandaloneTOCs/DynamicMarker.toc for $ReleaseTag" -ForegroundColor Green
+}
+
 # 4. Internal files & .gitignore guard
 $internalPatterns = @("AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", "Design/")
 $gitignorePath = Join-Path $RepoRoot ".gitignore"
@@ -261,6 +299,24 @@ try {
         & $gitExe push origin main
         if ($LASTEXITCODE -ne 0) { throw "git push origin main failed." }
         Write-Host "[GIT PUSHED] origin/main is up to date" -ForegroundColor Green
+
+        if (-not [string]::IsNullOrWhiteSpace($ReleaseTag)) {
+            $localTag = & $gitExe tag -l $ReleaseTag
+            if ($LASTEXITCODE -ne 0) { throw "git tag -l failed." }
+            if ($localTag) {
+                throw "Release tag '$ReleaseTag' already exists locally."
+            }
+            $remoteTag = & $gitExe ls-remote --tags origin "refs/tags/$ReleaseTag"
+            if ($LASTEXITCODE -ne 0) { throw "git ls-remote failed." }
+            if ($remoteTag) {
+                throw "Release tag '$ReleaseTag' already exists on origin."
+            }
+            & $gitExe tag -a $ReleaseTag -m "Release $ReleaseTag (Standalone DynamicMarker)"
+            if ($LASTEXITCODE -ne 0) { throw "git tag -a $ReleaseTag failed." }
+            & $gitExe push origin $ReleaseTag
+            if ($LASTEXITCODE -ne 0) { throw "git push origin $ReleaseTag failed." }
+            Write-Host "[TAG PUSHED] Annotated tag $ReleaseTag pushed to origin" -ForegroundColor Green
+        }
     } else {
         Write-Host "[GIT SKIPPED] -SkipGit specified" -ForegroundColor Yellow
     }
