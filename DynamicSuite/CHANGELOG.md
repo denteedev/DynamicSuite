@@ -15,6 +15,7 @@
 ### Improved
 * **Reliable Dark-Obsidian Coexistence Reload Prompt:** Replaced Blizzard's default popup with a matching dark-obsidian reload modal that reliably appears on entering the world (or right after combat ends) whenever both DynamicSuite and standalone DynamicMarker were enabled at launch.
 * **Storefront, Slash Command & Documentation Audit:** Verified all 24 slash commands across modules, removed retired aliases from public documentation and in-game changelogs, and aligned the README, CurseForge pages, and release notes with live behaviour.
+* **Plain-English UI & Reset Prompt Polish:** Rewrote the Restore Blizzard Defaults card, reset confirmation dialogs, and module tooltips across DynamicSuite and standalone DynamicMarker in clear, jargon-free Australian English that fits cleanly without truncation.
 
 ---
 

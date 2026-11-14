@@ -242,7 +242,7 @@ local ACCENT_PALETTES = {
 local CONFLICT_REGISTRY = {
     { addon = "DynamicCam",    label = "DynamicCam",    mode = "EXCLUSIVE", desc = "Overlaps situational camera zoom & pitch state machine." },
     { addon = "MaxCam",        label = "MaxCam",        mode = "EXCLUSIVE", desc = "Overlaps maximum camera distance factor & scroll speed." },
-    { addon = "ActionCamPlus", label = "ActionCamPlus", mode = "EXCLUSIVE", desc = "Overlaps ActionCam pitch, shoulder offset, and camera zoom CVars." },
+    { addon = "ActionCamPlus", label = "ActionCamPlus", mode = "EXCLUSIVE", desc = "Overlaps ActionCam pitch, shoulder offset, and camera zoom settings." },
     { addon = "FasterCamera",  label = "FasterCamera",  mode = "EXCLUSIVE", desc = "Overlaps mousewheel zoom speed & distance stepping." },
 }
 
@@ -2879,10 +2879,10 @@ function DynamicZoom:RestoreBlizzardDefaults()
             SafeSetCVar(cvarName, targetVal, isExp)
         end
     end
-    DEFAULT_CHAT_FRAME:AddMessage("|cFF06B6D4[DynamicZoom]|r Restored Blizzard default camera CVars. Reload UI to complete cleanup.")
+    DEFAULT_CHAT_FRAME:AddMessage("|cFF06B6D4[DynamicZoom]|r Restored Blizzard default camera settings. Reload UI to complete cleanup.")
     if type(_G.StaticPopupDialogs) == "table" and type(_G.StaticPopup_Show) == "function" then
         _G.StaticPopupDialogs["DYNAMICZOOM_RELOAD_PROMPT"] = _G.StaticPopupDialogs["DYNAMICZOOM_RELOAD_PROMPT"] or {
-            text = "DynamicZoom has restored Blizzard default camera CVars. Reload UI now?",
+            text = "DynamicZoom has restored Blizzard default camera settings. Reload UI now?",
             button1 = "Reload UI",
             button2 = "Later",
             OnAccept = function()

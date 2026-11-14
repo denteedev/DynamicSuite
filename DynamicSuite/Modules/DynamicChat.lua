@@ -250,21 +250,21 @@ DynamicChat.CONFLICT_REGISTRY = {
     -- Direct Replacement Addons (kind = "DIRECT" / mode = "REPLACE")
     { addon = "Chattynator",          label = "Chattynator",                 kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps chat frame handling, target whisper shortcuts, channel shorteners, and URL copying." },
     { addon = "Prat-3.0",             label = "Prat 3.0",                    kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps target whisper shortcuts, short channel tags, arrow history, and URL copy." },
-    { addon = "BasicChatMods",        label = "BasicChatMods",               kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps CHAT_*_GET channel shorteners, sticky channels, and URL copy." },
-    { addon = "Chatter",              label = "Chatter",                     kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps target whisper shortcuts, channel formatting, and EditBox history." },
-    { addon = "ls_Glass",             label = "LS: Glass",                   kind = "DIRECT",  mode = "REPLACE", desc = "Replaces chat scrolling, EditBox handling, and clickable URL links." },
-    { addon = "LS_Glass",             label = "LS: Glass",                   kind = "DIRECT",  mode = "REPLACE", desc = "Replaces chat scrolling, EditBox handling, and clickable URL links." },
-    { addon = "Glass",                label = "Glass",                       kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps chat scrolling, fading, and EditBox hooks." },
+    { addon = "BasicChatMods",        label = "BasicChatMods",               kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps short channel tags, sticky channels, and URL copy." },
+    { addon = "Chatter",              label = "Chatter",                     kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps target whisper shortcuts, channel formatting, and chat input history." },
+    { addon = "ls_Glass",             label = "LS: Glass",                   kind = "DIRECT",  mode = "REPLACE", desc = "Replaces chat scrolling, chat input handling, and clickable URL links." },
+    { addon = "LS_Glass",             label = "LS: Glass",                   kind = "DIRECT",  mode = "REPLACE", desc = "Replaces chat scrolling, chat input handling, and clickable URL links." },
+    { addon = "Glass",                label = "Glass",                       kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps chat scrolling, fading, and chat input handling." },
     { addon = "PhanxChat",            label = "PhanxChat",                   kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps short channel names, URL copying, and sticky channels." },
-    { addon = "DejaChat",             label = "DejaChat",                    kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps chat frame hooks, scrolling, and channel formatting." },
+    { addon = "DejaChat",             label = "DejaChat",                    kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps chat frame styling, scrolling, and channel formatting." },
     -- Overlapping / Mutually Exclusive Chat Addons (all kind = "DIRECT", mode = "REPLACE")
-    { addon = "EllesmereUI",          label = "EllesmereUI",                 kind = "DIRECT",  mode = "REPLACE", desc = "Conflicts with DynamicChat frame skinning, EditBox anchoring, and chat layout." },
-    { addon = "EllesmereUIChat",      label = "EllesmereUI Chat",            kind = "DIRECT",  mode = "REPLACE", desc = "Conflicts with DynamicChat frame skinning, EditBox anchoring, and chat layout." },
-    { addon = "EllesmereUI_Chat",     label = "EllesmereUI Chat",            kind = "DIRECT",  mode = "REPLACE", desc = "Conflicts with DynamicChat frame skinning, EditBox anchoring, and chat layout." },
-    { addon = "EnhanceQoLChatSocial", label = "EnhanceQoL (Chat & Social)",  kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps channel formatting and chat social hooks." },
-    { addon = "WIM",                  label = "WIM (WoW Instant Messenger)", kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps whisper window and whisper routing hooks." },
-    { addon = "Leatrix_Plus",         label = "Leatrix Plus",                kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps class-colour, short-channel, and chat scroll hooks." },
-    { addon = "ElvUI",                label = "ElvUI (Chat)",                kind = "DIRECT",  mode = "REPLACE", desc = "Conflicts with DynamicChat frame skinning, short-channel, URL link, and chat scroll hooks." },
+    { addon = "EllesmereUI",          label = "EllesmereUI",                 kind = "DIRECT",  mode = "REPLACE", desc = "Conflicts with DynamicChat frame skinning, chat input anchoring, and chat layout." },
+    { addon = "EllesmereUIChat",      label = "EllesmereUI Chat",            kind = "DIRECT",  mode = "REPLACE", desc = "Conflicts with DynamicChat frame skinning, chat input anchoring, and chat layout." },
+    { addon = "EllesmereUI_Chat",     label = "EllesmereUI Chat",            kind = "DIRECT",  mode = "REPLACE", desc = "Conflicts with DynamicChat frame skinning, chat input anchoring, and chat layout." },
+    { addon = "EnhanceQoLChatSocial", label = "EnhanceQoL (Chat & Social)",  kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps channel formatting and chat social features." },
+    { addon = "WIM",                  label = "WIM (WoW Instant Messenger)", kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps whisper window and whisper routing." },
+    { addon = "Leatrix_Plus",         label = "Leatrix Plus",                kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps class-colour, short-channel, and chat scrolling." },
+    { addon = "ElvUI",                label = "ElvUI (Chat)",                kind = "DIRECT",  mode = "REPLACE", desc = "Conflicts with DynamicChat frame skinning, short-channel, URL link, and chat scrolling." },
     { addon = "WindTools",            label = "ElvUI WindTools",             kind = "DIRECT",  mode = "REPLACE", desc = "Overlaps chat link and channel bar enhancements." },
 }
 
@@ -9249,10 +9249,10 @@ function DynamicChat:RestoreBlizzardDefaults()
     if type(_G.DynamicChatDB) == "table" then
         _G.DynamicChatDB.chatFramePos = nil
     end
-    print("|cFF38BDF8DynamicChat:|r Restored Blizzard default chat CVars & windows (FCF_ResetChatWindows). Reload UI to complete cleanup.")
+    print("|cFF38BDF8DynamicChat:|r Restored Blizzard default chat settings and windows. Reload UI to complete cleanup.")
     if type(_G.StaticPopupDialogs) == "table" and type(_G.StaticPopup_Show) == "function" then
         _G.StaticPopupDialogs["DYNAMICCHAT_RELOAD_PROMPT"] = _G.StaticPopupDialogs["DYNAMICCHAT_RELOAD_PROMPT"] or {
-            text = "DynamicChat has restored Blizzard default chat CVars and windows. Reload UI now?",
+            text = "DynamicChat has restored Blizzard default chat settings and windows. Reload UI now?",
             button1 = "Reload UI",
             button2 = "Later",
             OnAccept = function()

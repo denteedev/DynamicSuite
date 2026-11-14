@@ -3197,10 +3197,10 @@ function addonTable.CreateMainConfigUI()
             mDesc:SetWordWrap(true)
             UI.SetFont(mDesc, 10.5, "", 0.86, 0.90, 0.95, 0.95)
             mDesc:SetText(
-                "Prepares DynamicSuite for clean uninstall by:\n" ..
-                "  - Reverting suite-modified WoW CVars (graphics, camera zoom, spell queue, chat, bag CVars) to pre-install snapshots or Blizzard defaults\n" ..
-                "  - Running FCF_ResetChatWindows() to restore default Blizzard chat frames\n" ..
-                "  - Resetting DynamicMarker, DynamicPrep, DynamicChat & suite HUD bar positions"
+                "Prepares DynamicSuite for clean removal by:\n" ..
+                "  - Restoring graphics, camera, spell queue, chat, and bag settings to Blizzard defaults\n" ..
+                "  - Resetting Blizzard's chat window layout and tabs back to default\n" ..
+                "  - Resetting DynamicMarker, DynamicPrep, DynamicChat, and suite bar positions"
             )
 
             local cbDisable = CreateFrame("CheckButton", nil, m)
@@ -3270,7 +3270,7 @@ function addonTable.CreateMainConfigUI()
             mSub:SetPoint("TOPRIGHT", m, "TOPRIGHT", -18, -38)
             mSub:SetJustifyH("LEFT")
             UI.SetFont(mSub, 10.5, "", 0.72, 0.78, 0.86, 0.95)
-            mSub:SetText("Choose whether to reset DynamicSuite SavedVariables only, or restore Blizzard defaults for uninstall:")
+            mSub:SetText("Choose whether to reset DynamicSuite settings only, or restore Blizzard defaults before uninstalling:")
 
             -- Option 1: Reset DynamicSuite Settings
             local opt1 = CreateFrame("Button", nil, m)
@@ -3293,7 +3293,7 @@ function addonTable.CreateMainConfigUI()
             o1Desc:SetJustifyV("TOP")
             o1Desc:SetWordWrap(true)
             UI.SetFont(o1Desc, 10, "", 0.82, 0.86, 0.92, 0.95)
-            o1Desc:SetText("Resets all DynamicSuite SavedVariables to default values without touching WoW CVars or Blizzard chat layout.")
+            o1Desc:SetText("Resets your DynamicSuite profile settings to defaults without touching game settings or chat layout.")
 
             opt1:SetScript("OnEnter", function()
                 opt1.bg:SetColorTexture(0.10, 0.12, 0.17, 0.98)
@@ -3331,7 +3331,7 @@ function addonTable.CreateMainConfigUI()
             o2Desc:SetJustifyV("TOP")
             o2Desc:SetWordWrap(true)
             UI.SetFont(o2Desc, 10, "", 0.84, 0.88, 0.93, 0.95)
-            o2Desc:SetText("Reverts all suite-modified WoW CVars (graphics, camera zoom, spell queue, chat, bag CVars) to pre-install snapshots or Blizzard defaults, runs FCF_ResetChatWindows(), resets HUD bar positions, and prompts to Reload UI.")
+            o2Desc:SetText("Restores graphics, camera, spell queue, chat, and bag settings to Blizzard defaults, resets chat windows and HUD positions, then reloads your UI.")
 
             opt2:SetScript("OnEnter", function()
                 opt2.bg:SetColorTexture(0.13, 0.08, 0.09, 0.98)
@@ -4439,7 +4439,7 @@ function addonTable.CreateMainConfigUI()
                     addonTable._pendingSuiteModuleReload = true
                     if regMod and regMod._disabledAtStartup then
                         if DynamicSuite and DynamicSuite.Print then
-                            DynamicSuite.Print(string.format("%s enabled. Type /reload to initialize all background hooks.", modInfo.title or addonKey))
+                            DynamicSuite.Print(string.format("%s enabled. Type /reload to finish activating it.", modInfo.title or addonKey))
                         end
                     end
                     if selectedPeerModuleKey == addonKey and activeWorkspaceView == "PEER_MODULE" then
@@ -5353,7 +5353,7 @@ function addonTable.CreateMainConfigUI()
                 peerStatus:SetText("|cFFF5B82EStatus: Bundled in DynamicSuite (Currently Disabled via Left Suite Rail)|r")
                 peerToggleBtn.label:SetText("Enable " .. (mInfo.title or addonKey))
             elseif regMod and regMod._disabledAtStartup then
-                peerStatus:SetText("|cFF22C55EStatus: Enabled in DynamicSuite (Click 'Reload UI & Load' to Initialize Runtime Hooks)|r")
+                peerStatus:SetText("|cFF22C55EStatus: Enabled in DynamicSuite (Click 'Reload UI & Load' to Finish Loading)|r")
                 peerToggleBtn.label:SetText("Reload UI & Load")
             elseif state > 0 then
                 peerStatus:SetText("|cFF22C55EStatus: Installed & Enabled in AddOn List (Click 'Reload UI & Load' to Activate)|r")
@@ -6901,7 +6901,7 @@ function addonTable.CreateMainConfigUI()
             ver = DS_LIVE_VER_TAG,
             date = "14/11/2026 (Retail 12.1.5)",
             title = "DynamicChat " .. DS_LIVE_VER_TAG,
-            subtitle = "Zero-Taint Target Whisper (/ww), Sound Alert Engine, Smoked-Glass Chat Skin & History Retention (/dchat)",
+            subtitle = "Target Whisper (/ww), Sound Alerts, Smoked-Glass Chat Skin & History Retention (/dchat)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
             openModule = "DynamicChat",
             items = {
@@ -7506,7 +7506,7 @@ function addonTable.CreateMainConfigUI()
     upDesc:SetJustifyH("LEFT")
     upDesc:SetWordWrap(false)
     UI.SetFont(upDesc, 10, "", 0.78, 0.83, 0.90, 0.92)
-    upDesc:SetText("Reverts suite-modified CVars, resets Blizzard chat windows (FCF_ResetChatWindows), and resets HUD positions.")
+    upDesc:SetText("Resets game settings, chat windows, and graphics back to Blizzard defaults before uninstalling.")
 
     local upBtn = CreateFlatButton(uninstallPrepCard, 194, 26, "Restore Blizzard Defaults...", false)
     upBtn:SetPoint("RIGHT", uninstallPrepCard, "RIGHT", -12, 0)
@@ -8362,7 +8362,7 @@ function addonTable.CreateMainConfigUI()
                         isSelected = function()
                             return not _G.DynamicChatDB or _G.DynamicChatDB.stickyWhisper == false
                         end,
-                        desc = "Returns your EditBox to Party/Raid/Guild after sending a Whisper so you never accidentally whisper callouts.",
+                        desc = "Returns your typing box to Party, Raid, or Guild after sending a whisper so you never accidentally whisper callouts.",
                         onClick = function(card)
                             if _G.DynamicChatDB then _G.DynamicChatDB.stickyWhisper = false end
                             if _G.DynamicChat and _G.DynamicChat.ApplyStickyChannels then
@@ -10375,7 +10375,7 @@ function addonTable.CreateMainConfigUI()
                     lineV:SetColorTexture(1, 1, 1, 1.0)
                     GameTooltip:SetOwner(selfGrip, "ANCHOR_TOP")
                     GameTooltip:SetText("Resize Chat Frame", 1, 1, 1)
-                    GameTooltip:AddLine("Drag to resize ChatFrame1 width (240..1200) and height (100..900).", 0.82, 0.86, 0.92, true)
+                    GameTooltip:AddLine("Drag to resize your chat window (width 240-1200, height 100-900).", 0.82, 0.86, 0.92, true)
                     GameTooltip:Show()
                 end)
                 grip:SetScript("OnLeave", function(selfGrip)

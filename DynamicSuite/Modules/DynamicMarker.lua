@@ -8702,7 +8702,7 @@ function DM:ShowMarkerConflictReloadModal()
         modal.Body:SetJustifyV("TOP")
         modal.Body:SetSpacing(3)
         modal.Body:SetTextColor(0.886, 0.910, 0.941, 1.0)
-        modal.Body:SetText("DynamicSuite already includes DynamicMarker.\n\nStandalone DynamicMarker has been automatically disabled to prevent duplicate UI and HUD movers. Reload UI now?")
+        modal.Body:SetText("DynamicSuite already includes DynamicMarker.\n\nStandalone DynamicMarker has been automatically disabled to prevent duplicate bars and settings. Reload UI now?")
 
         local function CreateModalButton(parent, label, width, height, isPrimary, onClick)
             local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")

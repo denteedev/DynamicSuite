@@ -4214,10 +4214,10 @@ local function RestoreFPSBlizzardDefaults()
             SafeSetCVar(cvarName, targetVal)
         end
     end
-    print(ADDON_TITLE_COLORED .. ": Restored Blizzard default graphics & SpellQueue CVars. Reload UI to complete cleanup.")
+    print(ADDON_TITLE_COLORED .. ": Restored Blizzard default graphics and spell queue settings. Reload UI to complete cleanup.")
     if type(_G.StaticPopupDialogs) == "table" and type(_G.StaticPopup_Show) == "function" then
         _G.StaticPopupDialogs["DYNAMICFPS_RELOAD_PROMPT"] = _G.StaticPopupDialogs["DYNAMICFPS_RELOAD_PROMPT"] or {
-            text = "DynamicFPS has restored Blizzard default CVars. Reload UI now?",
+            text = "DynamicFPS has restored Blizzard default graphics settings. Reload UI now?",
             button1 = "Reload UI",
             button2 = "Later",
             OnAccept = function()

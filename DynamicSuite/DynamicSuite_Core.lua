@@ -255,7 +255,7 @@ local SUITE_MODULE_LIST = addonTable.SUITE_MODULE_LIST or {
         slash = "/dchat",
         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
         subtitle = "Target /ww & Chat QoL",
-        category = "Zero-Taint Target Whisper (/ww), Channel Tags & GPU Buffer",
+        category = "Target Whisper (/ww), Channel Tags & Performance",
         desc = "Instant /ww target whispers, smoked-glass chat skin with left shortcut bar, clickable links, and saved chat history across reloads.",
     },
 }
@@ -290,7 +290,7 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
         hardConflicts = { "DynamicCam", "MaxCam", "ActionCamPlus", "FasterCamera", "AdvancedInterfaceOptions" },
         partialConflicts = { "EnhanceQoL", "Leatrix_Plus" },
         softConflicts = { "EnhanceQoL", "Leatrix_Plus" },
-        category = "Camera CVars & Optics",
+        category = "Camera Zoom & Optics",
     },
     DynamicFPS = {
         "Hyperframe", "AutoCombatLogger", "LoggerHead", "RaiderIO_AutoCombatLog", "!ArchonLogger", "ArchonLogger",
@@ -449,7 +449,7 @@ local CONFLICT_YIELD_FEATURES = {
     ["BeQuiet"]              = "Talking Head control",
     ["TalkLess"]             = "Talking Head control",
     ["WIM"]                  = "whisper window control",
-    ["EnhanceQoLChatSocial"] = "shared chat hooks",
+    ["EnhanceQoLChatSocial"] = "shared chat features",
     ["!ArchonLogger"]        = "combat log control",
     ["ArchonLogger"]         = "combat log control",
     ["Scrap"]                = "vendor junk selling",
@@ -458,13 +458,13 @@ local CONFLICT_YIELD_FEATURES = {
     ["AutoSeller"]           = "vendor junk selling",
     ["SpeedyAutoLoot"]       = "auto-loot control",
     ["AutoLootPlus"]         = "auto-loot control",
-    ["Leatrix_Plus"]             = "overlapping QoL hooks",
-    ["ElvUI"]                    = "overlapping UI sub-hooks",
-    ["WindTools"]                = "overlapping UI sub-hooks",
+    ["Leatrix_Plus"]             = "overlapping QoL features",
+    ["ElvUI"]                    = "overlapping UI features",
+    ["WindTools"]                = "overlapping UI features",
     ["EllesmereUI"]              = "chat/editbox skinning",
     ["EllesmereUIChat"]          = "chat/editbox skinning",
     ["EllesmereUI_Chat"]         = "chat/editbox skinning",
-    ["EllesmereUIGroupFinder"]   = "shared LFG hooks",
+    ["EllesmereUIGroupFinder"]   = "shared Group Finder features",
 }
 addonTable.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
 DynamicSuite.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
@@ -826,7 +826,7 @@ local function ShowMarkerConflictReloadModal()
         modal.Body:SetJustifyV("TOP")
         modal.Body:SetSpacing(3)
         modal.Body:SetTextColor(0.886, 0.910, 0.941, 1.0)
-        modal.Body:SetText("DynamicSuite already includes DynamicMarker.\n\nStandalone DynamicMarker has been automatically disabled to prevent duplicate UI and HUD movers. Reload UI now?")
+        modal.Body:SetText("DynamicSuite already includes DynamicMarker.\n\nStandalone DynamicMarker has been automatically disabled to prevent duplicate bars and settings. Reload UI now?")
 
         local function CreateModalButton(parent, label, width, height, isPrimary, onClick)
             local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
@@ -1195,7 +1195,7 @@ local function RestoreBlizzardDefaults(disableSuiteAddons)
         end
     end
 
-    print(string.format("%s: Restored Blizzard defaults (CVars, chat windows, and frame positions). Reloading UI...", ADDON_TITLE))
+    print(string.format("%s: Restored Blizzard defaults (game settings, chat windows, and bar positions). Reloading UI...", ADDON_TITLE))
     if type(_G.ReloadUI) == "function" then
         _G.ReloadUI()
     end
@@ -1320,7 +1320,7 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
                     if (E.db.general.autoRepair and E.db.general.autoRepair ~= "NONE")
                         or E.db.general.vendorGrays == true
                         or E.db.general.autoAcceptInvite == true then
-                        return true, "SOFT", "shared automation hooks"
+                        return true, "SOFT", "shared automation features"
                     end
                 end
                 return false
@@ -1346,7 +1346,7 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
                 return false
             elseif shortKey == "chat" or dynamicModule == "DynamicChat" then
                 if ldb["HideChatButtons"] == "On" or ldb["RecentChatWindow"] == "On" or ldb["ClassColPlayer"] == "On" or ldb["NoChatFade"] == "On" then
-                    return true, "SOFT", "shared chat hooks"
+                    return true, "SOFT", "shared chat features"
                 end
                 return false
             elseif shortKey == "prep" or dynamicModule == "DynamicPrep" then
@@ -2880,7 +2880,7 @@ local BUILTIN_SEARCH_SEED = {
       keywords = "skyriding dragonriding aerial dive pitch padding mount camera" },
     { moduleKey = "zoom", category = "FPS_CAM", tabIndex = 3, tabLabel = "Speed, Pitch & Framing",
       title = "Anti-Motion-Sickness Guard & Factory Camera Recovery",
-      desc = "Lock out head-bobbing CVar effects and restore factory Blizzard camera settings at any time.",
+      desc = "Lock out head-bobbing camera effects and restore factory Blizzard camera settings at any time.",
       keywords = "anti-motion-sickness guard factory camera recovery head bob dizzy reset" },
 
     -- ========================================================================
@@ -3328,11 +3328,11 @@ local BUILTIN_SEARCH_SEED = {
       keywords = "chat window background opacity alpha transparency dark" },
     { moduleKey = "chat", category = "HUD_LOOK", tabIndex = 2, tabLabel = "Chat Look & Sidebar",
       title = "Chat Typing Box Position",
-      desc = "Anchor the chat typing EditBox cleanly below the chat window or above the top tab bar.",
+      desc = "Anchor the chat typing box cleanly below the chat window or above the top tab bar.",
       keywords = "chat typing box position editbox bottom top above" },
     { moduleKey = "chat", category = "HUD_LOOK", tabIndex = 2, tabLabel = "Chat Look & Sidebar",
       title = "Chat Typing Box Shading",
-      desc = "Tint the chat typing EditBox border and glow with the active channel colour (Pink for Whisper, Blue for Party, Orange for Raid).",
+      desc = "Tint the chat typing box border and glow with the active channel colour (Pink for Whisper, Blue for Party, Orange for Raid).",
       keywords = "chat typing box shading editbox channel colour border" },
     { moduleKey = "chat", category = "HUD_LOOK", tabIndex = 2, tabLabel = "Chat Look & Sidebar",
       title = "Hide Default Blizzard Side Buttons",

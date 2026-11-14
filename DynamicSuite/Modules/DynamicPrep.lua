@@ -4847,7 +4847,7 @@ end
 function DynamicPrep:EnableAutoYieldHooks()
     if not self.db then return end
     self.db.yieldHooks = true
-    print(string.format("|cFF%sDynamicPrep:|r Enabled |cFF34D399Auto-Yield Shared Hooks|r - merchant and delete hooks yielded while keeping the Top Info Bar & Omni Folio active.", GetAccentHex()))
+    print(string.format("|cFF%sDynamicPrep:|r Enabled |cFF34D399Auto-Yield Compatibility|r - overlapping automation yielded while keeping the Top Info Bar & Omni Folio active.", GetAccentHex()))
     self:RefreshWorkspaceView()
 end
 
