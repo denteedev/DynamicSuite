@@ -2508,12 +2508,20 @@ local function OnLFGListSearchEntryUpdate(entry)
                 enumFrame:ClearAllPoints()
                 enumFrame:SetPoint(orig[1], orig[2], orig[3], orig[4], orig[5] - 2)
             end
-            for i = 2, #slotAnchors do
-                local prevA = slotAnchors[i - 1]
-                local curA = slotAnchors[i]
-                if prevA and curA and curA.ClearAllPoints and curA.SetPoint then
-                    curA:ClearAllPoints()
-                    curA:SetPoint("LEFT", prevA, "RIGHT", 3, 0)
+            for i = 1, #slotAnchors do
+                if slotAnchors[i] and slotAnchors[i].ClearAllPoints then
+                    slotAnchors[i]:ClearAllPoints()
+                end
+            end
+            local nSlots = #slotAnchors
+            if nSlots >= 1 and slotAnchors[nSlots] and slotAnchors[nSlots].SetPoint then
+                slotAnchors[nSlots]:SetPoint("RIGHT", enumFrame, "RIGHT", 0, 0)
+                for i = nSlots - 1, 1, -1 do
+                    local curA = slotAnchors[i]
+                    local nextA = slotAnchors[i + 1]
+                    if curA and nextA and curA.SetPoint then
+                        curA:SetPoint("RIGHT", nextA, "LEFT", -3, 0)
+                    end
                 end
             end
 
