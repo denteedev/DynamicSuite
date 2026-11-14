@@ -1086,7 +1086,7 @@ function DM:InitDB()
     local _, scopeCanon = NormalizeGroupScopeValue(self.db.groupScope)
     self.db.groupScope = scopeCanon
 
-    -- Normalize flat + nested position mirrors inside DynamicMarkerDB
+    -- Normalize flat + nested position mirrors inside DynamicMarkerDB (canonical UIParent-local CENTER offsets)
     local tx = IsFiniteNum(self.db.targetBarX) and math.floor(self.db.targetBarX + 0.5)
         or (type(self.db.targetBarPos) == "table" and IsFiniteNum(self.db.targetBarPos.x) and math.floor(self.db.targetBarPos.x + 0.5))
         or 0
@@ -1095,11 +1095,6 @@ function DM:InitDB()
         or -140
     local tPt = SanitizeAnchorPoint(self.db.targetBarPoint or (type(self.db.targetBarPos) == "table" and self.db.targetBarPos.point), "CENTER")
     local tRp = SanitizeAnchorPoint(self.db.targetBarRelPoint or (type(self.db.targetBarPos) == "table" and self.db.targetBarPos.relPoint), tPt)
-    self.db.targetBarPoint    = tPt
-    self.db.targetBarRelPoint = tRp
-    self.db.targetBarX        = tx
-    self.db.targetBarY        = ty
-    self.db.targetBarPos      = { point = tPt, relPoint = tRp, x = tx, y = ty }
 
     local fx = IsFiniteNum(self.db.flareBarX) and math.floor(self.db.flareBarX + 0.5)
         or (type(self.db.flareBarPos) == "table" and IsFiniteNum(self.db.flareBarPos.x) and math.floor(self.db.flareBarPos.x + 0.5))
@@ -1109,6 +1104,31 @@ function DM:InitDB()
         or -182
     local fPt = SanitizeAnchorPoint(self.db.flareBarPoint or (type(self.db.flareBarPos) == "table" and self.db.flareBarPos.point), "CENTER")
     local fRp = SanitizeAnchorPoint(self.db.flareBarRelPoint or (type(self.db.flareBarPos) == "table" and self.db.flareBarPos.relPoint), fPt)
+
+    if not self.db.canonicalUIParentCoordsV199 then
+        self.db.canonicalUIParentCoordsV199 = true
+        if hadSavedTargetPos and tPt == "CENTER" and tRp == "CENTER" then
+            local tScale = tonumber(self.db.targetBarScale) or tonumber(self.db.barScale) or 1.0
+            if IsFiniteNum(tScale) and tScale > 0 and math.abs(tScale - 1.0) > 0.001 then
+                tx = math.floor(tx * tScale + 0.5)
+                ty = math.floor(ty * tScale + 0.5)
+            end
+        end
+        if hadSavedFlarePos and fPt == "CENTER" and fRp == "CENTER" then
+            local fScale = tonumber(self.db.flareBarScale) or 1.0
+            if IsFiniteNum(fScale) and fScale > 0 and math.abs(fScale - 1.0) > 0.001 then
+                fx = math.floor(fx * fScale + 0.5)
+                fy = math.floor(fy * fScale + 0.5)
+            end
+        end
+    end
+
+    self.db.targetBarPoint    = tPt
+    self.db.targetBarRelPoint = tRp
+    self.db.targetBarX        = tx
+    self.db.targetBarY        = ty
+    self.db.targetBarPos      = { point = tPt, relPoint = tRp, x = tx, y = ty }
+
     self.db.flareBarPoint    = fPt
     self.db.flareBarRelPoint = fRp
     self.db.flareBarX        = fx
@@ -3391,15 +3411,37 @@ function DM:SyncBarScaleAndSizeToDB(frame, hudKey)
                     frame:SetSize(wantW, wantH)
                 end
             end
-            if frame.SetClampedToScreen then
-                frame:SetClampedToScreen(false)
-            end
             if frame.SetClampRectInsets then
                 frame:SetClampRectInsets(0, 0, 0, 0)
             end
         end
     end
     return scaleVal
+end
+
+-- Canonical SetPoint wrapper: stored uiX/uiY are strictly in UIParent-local offsets
+-- relative to screen CENTER (unscaled by barScale). Divide by barScale strictly at SetPoint
+-- after SetScale and SetSize have been applied, then enable SetClampedToScreen(true).
+function DM:SetBarCenterPoint(frame, uiX, uiY, hudKey)
+    if not frame then return end
+    local primaryKey = ResolveHUDKeyAliases(hudKey or ((frame == self.flareBar) and "FlareBar" or "TargetBar"))
+    local scaleVal = self:SyncBarScaleAndSizeToDB(frame, primaryKey)
+    local barScale = (frame.GetScale and frame:GetScale()) or scaleVal or 1.0
+    if not IsFiniteNum(barScale) or barScale <= 0 then barScale = 1.0 end
+    local nx = tonumber(uiX) or 0
+    local ny = tonumber(uiY) or 0
+    if not IsFiniteNum(nx) then nx = 0 end
+    if not IsFiniteNum(ny) then ny = 0 end
+    if not (InCombatLockdown and InCombatLockdown()) then
+        if frame.SetClampRectInsets then
+            frame:SetClampRectInsets(0, 0, 0, 0)
+        end
+        frame:ClearAllPoints()
+        frame:SetPoint("CENTER", UIParent, "CENTER", nx / barScale, ny / barScale)
+        if frame.SetClampedToScreen then
+            frame:SetClampedToScreen(true)
+        end
+    end
 end
 
 function DM:ConvertAnchorToCenterLocal(frame, point, relPoint, rawX, rawY, hudKey)
@@ -3429,12 +3471,12 @@ function DM:ConvertAnchorToCenterLocal(frame, point, relPoint, rawX, rawY, hudKe
     local visH = frameH * relScale
     local pfx, pfy = GetAnchorFraction(pt)
     local rfx, rfy = GetAnchorFraction(rp)
-    local anchorVisX = (rfx * screenW) + (inX * relScale)
-    local anchorVisY = (rfy * screenH) + (inY * relScale)
+    local anchorVisX = (rfx * screenW) + inX
+    local anchorVisY = (rfy * screenH) + inY
     local cx = anchorVisX + (0.5 - pfx) * visW
     local cy = anchorVisY + (0.5 - pfy) * visH
-    return RoundHUDCoord((cx - (screenW * 0.5)) / relScale),
-           RoundHUDCoord((cy - (screenH * 0.5)) / relScale),
+    return RoundHUDCoord(cx - (screenW * 0.5)),
+           RoundHUDCoord(cy - (screenH * 0.5)),
            "CENTER",
            "CENTER"
 end
@@ -3600,25 +3642,15 @@ function DM:ApplyHUDPosition(frame, hudKey, defaultY)
         return
     end
     local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(hudKey)
-    -- Apply configured scale & orientation size BEFORE clamping so relScale and visual bounds are exact
+    -- Apply configured scale & orientation size BEFORE clamping and SetPoint
     self:SyncBarScaleAndSizeToDB(frame, primaryKey)
 
     local pos = self:GetStoredHUDPosition(hudKey, defaultY)
     local px = (tonumber(pos.x) ~= nil and IsFiniteNum(tonumber(pos.x))) and tonumber(pos.x) or 0
     local py = (tonumber(pos.y) ~= nil and IsFiniteNum(tonumber(pos.y))) and tonumber(pos.y) or ((tonumber(defaultY) ~= nil) and tonumber(defaultY) or defY)
-    local cx, cy, didClamp = self:ClampHUDPositionToScreen(frame, primaryKey, "CENTER", "CENTER", px, py, { enableSnap = false })
-    if didClamp then
-        self:WriteHUDCoordsToDB(primaryKey, "CENTER", "CENTER", cx, cy)
-    end
+    local cx, cy = self:ClampHUDPositionToScreen(frame, primaryKey, "CENTER", "CENTER", px, py, { enableSnap = false })
     self.isApplyingHUDPos = true
-    if frame.SetClampedToScreen then
-        frame:SetClampedToScreen(false)
-    end
-    if frame.SetClampRectInsets then
-        frame:SetClampRectInsets(0, 0, 0, 0)
-    end
-    frame:ClearAllPoints()
-    frame:SetPoint("CENTER", UIParent, "CENTER", cx, cy)
+    self:SetBarCenterPoint(frame, cx, cy, primaryKey)
     self.isApplyingHUDPos = false
     if frame.editMover and frame.editMover.UpdateCoordLabel then
         frame.editMover:UpdateCoordLabel()
@@ -3653,12 +3685,12 @@ function DM:SaveHUDPosition(frame, hudKey, noSnap, explicitPoint, explicitRelPoi
         local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
         local fCx, fCy = frame:GetCenter()
         if fCx and fCy and IsFiniteNum(fCx) and IsFiniteNum(fCy) then
-            cx = RoundHUDCoord(fCx - ((screenW / relScale) * 0.5))
-            cy = RoundHUDCoord(fCy - ((screenH / relScale) * 0.5))
+            cx = RoundHUDCoord((fCx * relScale) - (screenW * 0.5))
+            cy = RoundHUDCoord((fCy * relScale) - (screenH * 0.5))
         else
             local p, _, rp, fx, fy = frame:GetPoint(1)
             if not p then return end
-            cx, cy = self:ConvertAnchorToCenterLocal(frame, p, rp, fx, fy, primaryKey)
+            cx, cy = self:ConvertAnchorToCenterLocal(frame, p, rp, (tonumber(fx) or 0) * relScale, (tonumber(fy) or 0) * relScale, primaryKey)
         end
     else
         return
@@ -3671,14 +3703,7 @@ function DM:SaveHUDPosition(frame, hudKey, noSnap, explicitPoint, explicitRelPoi
     local rx, ry = self:ClampHUDPositionToScreen(frame, primaryKey, "CENTER", "CENTER", cx, cy, { enableSnap = not skipSnap })
     if frame and not InCombatLockdown() then
         self.isApplyingHUDPos = true
-        if frame.SetClampedToScreen then
-            frame:SetClampedToScreen(false)
-        end
-        if frame.SetClampRectInsets then
-            frame:SetClampRectInsets(0, 0, 0, 0)
-        end
-        frame:ClearAllPoints()
-        frame:SetPoint("CENTER", UIParent, "CENTER", rx, ry)
+        self:SetBarCenterPoint(frame, rx, ry, primaryKey)
         self.isApplyingHUDPos = false
     end
 
@@ -4394,17 +4419,33 @@ end
 local function GetLiveFrameCenterOffset(frame, hudKey, defaultY)
     local primaryKey = ResolveHUDKeyAliases(hudKey or ((frame and frame == DM.flareBar) and "FlareBar" or "TargetBar"))
     if frame and frame.GetCenter then
-        local uiW_local, uiH_local = GetLocalFrameScreenExtents(frame, primaryKey)
+        local _, _, _, _, relScale = GetLocalFrameScreenExtents(frame, primaryKey)
+        local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+        local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
         local fCx, fCy = frame:GetCenter()
         if fCx and fCy and IsFiniteNum(fCx) and IsFiniteNum(fCy) then
-            local curX = fCx - (uiW_local / 2)
-            local curY = fCy - (uiH_local / 2)
+            local curX = (fCx * relScale) - (screenW * 0.5)
+            local curY = (fCy * relScale) - (screenH * 0.5)
             return math.floor(curX + 0.5), math.floor(curY + 0.5)
         end
     end
     local pos = DM:GetStoredHUDPosition(primaryKey, defaultY)
     return math.floor((tonumber(pos and pos.x) or 0) + 0.5),
            math.floor((tonumber(pos and pos.y) or defaultY or 0) + 0.5)
+end
+DM.GetLiveFrameCenterOffset = function(self, frame, hudKey, defaultY)
+    return GetLiveFrameCenterOffset(frame, hudKey, defaultY)
+end
+
+function DM:GetCanonicalHUDPosition(hudKey, defaultY)
+    local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(hudKey)
+    local frame = (primaryKey == "FlareBar") and self.flareBar or self.targetBar
+    if frame and (frame._dmDragging or frame._dsDragging or self.isDraggingHUD) then
+        local lx, ly = GetLiveFrameCenterOffset(frame, primaryKey, defaultY or defY)
+        return "CENTER", "CENTER", lx, ly
+    end
+    local pos = self:GetStoredHUDPosition(primaryKey, defaultY or defY)
+    return "CENTER", "CENTER", RoundHUDCoord(pos and pos.x or 0), RoundHUDCoord(pos and pos.y or defaultY or defY)
 end
 
 local function ResolveActiveHudSnapMode()
@@ -4451,8 +4492,9 @@ function DM:ClampHUDPositionToScreen(frame, hudKey, point, relPoint, rawX, rawY,
     if not IsFiniteNum(inX) then inX = 0 end
     if not IsFiniteNum(inY) then inY = 0 end
 
-    local anchorVisX = refX + (inX * relScale)
-    local anchorVisY = refY + (inY * relScale)
+    -- Canonical UIParent-local coordinates: inX/inY are already in UIParent-local space
+    local anchorVisX = refX + inX
+    local anchorVisY = refY + inY
     local candCx = anchorVisX + (0.5 - pfx) * visW
     local candCy = anchorVisY + (0.5 - pfy) * visH
 
@@ -4566,15 +4608,15 @@ function DM:ClampHUDPositionToScreen(frame, hudKey, point, relPoint, rawX, rawY,
         end
     end
 
-    local rawOutX = ((candCx - (0.5 - pfx) * visW) - refX) / relScale
-    local rawOutY = ((candCy - (0.5 - pfy) * visH) - refY) / relScale
+    local rawOutX = (candCx - (0.5 - pfx) * visW) - refX
+    local rawOutY = (candCy - (0.5 - pfy) * visH) - refY
     local outX = math.floor(rawOutX + 0.5)
     local outY = math.floor(rawOutY + 0.5)
 
-    local minLocalX = ((minCx - (0.5 - pfx) * visW) - refX) / relScale
-    local maxLocalX = ((maxCx - (0.5 - pfx) * visW) - refX) / relScale
-    local minLocalY = ((minCy - (0.5 - pfy) * visH) - refY) / relScale
-    local maxLocalY = ((maxCy - (0.5 - pfy) * visH) - refY) / relScale
+    local minLocalX = (minCx - (0.5 - pfx) * visW) - refX
+    local maxLocalX = (maxCx - (0.5 - pfx) * visW) - refX
+    local minLocalY = (minCy - (0.5 - pfy) * visH) - refY
+    local maxLocalY = (maxCy - (0.5 - pfy) * visH) - refY
 
     if minLocalX <= maxLocalX then
         local loX = math.ceil(minLocalX - 1e-6)
@@ -4583,7 +4625,7 @@ function DM:ClampHUDPositionToScreen(frame, hudKey, point, relPoint, rawX, rawY,
             outX = math.max(loX, math.min(hiX, outX))
         end
     else
-        outX = math.floor((((screenCx - (0.5 - pfx) * visW) - refX) / relScale) + 0.5)
+        outX = math.floor(((screenCx - (0.5 - pfx) * visW) - refX) + 0.5)
     end
 
     if minLocalY <= maxLocalY then
@@ -4593,7 +4635,7 @@ function DM:ClampHUDPositionToScreen(frame, hudKey, point, relPoint, rawX, rawY,
             outY = math.max(loY, math.min(hiY, outY))
         end
     else
-        outY = math.floor((((screenCy - (0.5 - pfy) * visH) - refY) / relScale) + 0.5)
+        outY = math.floor(((screenCy - (0.5 - pfy) * visH) - refY) + 0.5)
     end
 
     local didAdjust = (outX ~= math.floor(inX + 0.5)) or (outY ~= math.floor(inY + 0.5))
@@ -4785,8 +4827,8 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
             startVisOffX = (fCx * relScale) - (screenW / 2)
             startVisOffY = (fCy * relScale) - (screenH / 2)
         else
-            startVisOffX = startX * relScale
-            startVisOffY = startY * relScale
+            startVisOffX = startX
+            startVisOffY = startY
         end
         local rawCurX, rawCurY = GetCursorPosition()
         local startCurX = (rawCurX or 0) / uScale
@@ -4803,12 +4845,10 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
                 HideSnapGuides()
                 return
             end
-            local _, _, _, curUScale, curRelScale = GetLocalFrameScreenExtents(targetFrame, primaryKey)
+            local _, _, _, curUScale = GetLocalFrameScreenExtents(targetFrame, primaryKey)
             local cxRaw, cyRaw = GetCursorPosition()
-            local curVisOffX = ((cxRaw or 0) / curUScale) + (m._dragGrabVisX or 0)
-            local curVisOffY = ((cyRaw or 0) / curUScale) + (m._dragGrabVisY or 0)
-            local rawX = curVisOffX / curRelScale
-            local rawY = curVisOffY / curRelScale
+            local rawX = ((cxRaw or 0) / curUScale) + (m._dragGrabVisX or 0)
+            local rawY = ((cyRaw or 0) / curUScale) + (m._dragGrabVisY or 0)
             local lx, ly, gx, gy = ComputeSnappedAndClampedOffset(targetFrame, rawX, rawY, primaryKey, true)
             UpdateSnapGuides(gx, gy)
             if lx == m._lastDragX and ly == m._lastDragY then
@@ -4817,8 +4857,7 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
             m._lastDragX = lx
             m._lastDragY = ly
             if not InCombatLockdown() then
-                targetFrame:ClearAllPoints()
-                targetFrame:SetPoint("CENTER", UIParent, "CENTER", lx, ly)
+                DM:SetBarCenterPoint(targetFrame, lx, ly, primaryKey)
             end
             m:UpdateCoordLabel(lx, ly)
             if DM.editInspector and DM.editInspector:IsShown() then
@@ -4843,11 +4882,11 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
         HideSnapGuides()
         local lx, ly
         if s._dragGrabVisX ~= nil and s._dragGrabVisY ~= nil then
-            local _, _, _, curUScale, curRelScale = GetLocalFrameScreenExtents(targetFrame, primaryKey)
+            local _, _, _, curUScale = GetLocalFrameScreenExtents(targetFrame, primaryKey)
             local cxRaw, cyRaw = GetCursorPosition()
             local curVisOffX = ((cxRaw or 0) / curUScale) + s._dragGrabVisX
             local curVisOffY = ((cyRaw or 0) / curUScale) + s._dragGrabVisY
-            lx, ly = ComputeSnappedAndClampedOffset(targetFrame, curVisOffX / curRelScale, curVisOffY / curRelScale, primaryKey, true)
+            lx, ly = ComputeSnappedAndClampedOffset(targetFrame, curVisOffX, curVisOffY, primaryKey, true)
         elseif s._lastDragX ~= nil and s._lastDragY ~= nil then
             lx, ly = ComputeSnappedAndClampedOffset(targetFrame, s._lastDragX, s._lastDragY, primaryKey, false)
         else
@@ -4860,11 +4899,7 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
         s._lastDragX = nil
         s._lastDragY = nil
         if not InCombatLockdown() then
-            if targetFrame.SetClampedToScreen then
-                targetFrame:SetClampedToScreen(false)
-            end
-            targetFrame:ClearAllPoints()
-            targetFrame:SetPoint("CENTER", UIParent, "CENTER", lx, ly)
+            DM:SetBarCenterPoint(targetFrame, lx, ly, primaryKey)
         end
         DM:SaveHUDPosition(targetFrame, primaryKey, true, "CENTER", "CENTER", lx, ly)
         s:RefreshMoverVisual()
@@ -4887,6 +4922,9 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
     mover:SetScript("OnMouseWheel", function(s, delta)
         if InCombatLockdown() or not DM.isEditMode then return end
         DM.selectedHUDKey = primaryKey
+        local posBefore = DM:GetStoredHUDPosition(primaryKey, defaultY or defY)
+        local curX = posBefore and posBefore.x or 0
+        local curY = posBefore and posBefore.y or (defaultY or defY)
         local curScale = tonumber(DM:GetSetting(scaleKey)) or 1.0
         local nextScale = math.floor(math.max(0.60, math.min(1.50, curScale + (delta > 0 and 0.05 or -0.05))) * 100 + 0.5) / 100
         DM:SetSetting(scaleKey, nextScale)
@@ -4898,10 +4936,8 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
         else
             DM:RefreshTargetBar()
         end
-        local curX, curY = GetLiveFrameCenterOffset(targetFrame, primaryKey, defaultY or defY)
         local cx, cy = ComputeSnappedAndClampedOffset(targetFrame, curX, curY, primaryKey, false)
-        targetFrame:ClearAllPoints()
-        targetFrame:SetPoint("CENTER", UIParent, "CENTER", cx, cy)
+        DM:SetBarCenterPoint(targetFrame, cx, cy, primaryKey)
         DM:SaveHUDPosition(targetFrame, primaryKey, true, "CENTER", "CENTER", cx, cy)
         if DM.targetBar and DM.targetBar.editMover and DM.targetBar.editMover.RefreshMoverVisual then
             DM.targetBar.editMover:RefreshMoverVisual()
@@ -5294,8 +5330,14 @@ function DM:SetEditMode(enabled, opts)
     end
 
     if wasEdit and not self.isEditMode and not inCombat and not opts.skipSave then
-        if self.targetBar then self:SaveHUDPosition(self.targetBar, "TargetBar", true) end
-        if self.flareBar then self:SaveHUDPosition(self.flareBar, "FlareBar", true) end
+        if self.targetBar then
+            local tPos = self:GetStoredHUDPosition("TargetBar", -140)
+            self:SaveHUDPosition(self.targetBar, "TargetBar", true, "CENTER", "CENTER", tPos and tPos.x or 0, tPos and tPos.y or -140)
+        end
+        if self.flareBar then
+            local fPos = self:GetStoredHUDPosition("FlareBar", -182)
+            self:SaveHUDPosition(self.flareBar, "FlareBar", true, "CENTER", "CENTER", fPos and fPos.x or 0, fPos and fPos.y or -182)
+        end
     end
 
     local suiteInspectorActive = self:IsRunningInSuite() or self:IsSuiteHudInspectorActive()
@@ -8435,7 +8477,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "14/11/2026",
     entries = {
-        { type = "FIX",     text = "Release v1.9.9 - Strict Suite Mutual Exclusion, Single Unified HUD Edit Mode & Dynamic Edge-Reset Bounds (14/11/2026): Enforced strict mutual exclusion so standalone DynamicMarker immediately aborts and disables itself whenever DynamicSuite is enabled or loaded (while bundled DynamicMarker inside DynamicSuite never yields); suppressed DynamicMarkerEditModeInspector and standalone grid overlay in Suite mode so only DynamicSuite's bottom HUD Edit dock displays; renamed standalone grid overlay to DynamicMarkerGridOverlay with standalone DynamicMarker HUD Edit branding; fixed ConvertAnchorToCenterLocal 4-value return signature, local relScale computation in GetLocalFrameScreenExtents, InitDB/GetStoredHUDPosition default-position reset persistence, cross-scope WriteHUDCoordsToDB syncing, and ResetSingleHUDPosition scale (100%) + HORIZONTAL reset parity across /dm resethud, /ds resethud, Shift+Right-Click, and ESC -> Options -> AddOns." },
+        { type = "FIX",     text = "Release v1.9.9 - Canonical UIParent-Local HUD Coordinates Across /reload, Dark-Obsidian Coexistence Modal & Unified HUD Edit Mode (14/11/2026): Enforced one canonical UIParent-local coordinate contract for TargetBar and FlareBar (storing unscaled UIParent CENTER offsets and dividing by barScale strictly inside DM:SetBarCenterPoint after applying SetScale/SetSize and before SetClampedToScreen(true), removing destructive early-load DB writes in ApplyHUDPosition, and guaranteeing 100% round-trip symmetry across HUD Edit drag, Quick Align, Reset HUD, and /reload at scales 0.70, 1.00, and 1.30); replaced Blizzard's StaticPopup with a custom dark-obsidian coexistence reload modal (ShowMarkerConflictReloadModal / DynamicSuiteMarkerConflictModal with #0B0D12 0.96 alpha backdrop, 1px dark slate border, Blaze Orange #F97316 accent bar, flat Reload UI / Later buttons, ESC dismissal, and combat deferral); and suppressed DynamicMarkerEditModeInspector inside DynamicSuite so only the unified HUD Edit dock displays." },
         { type = "FIX",     text = "HUD Edit Bar Edge-Drag & Reload Persistence Fix (14/11/2026): Fixed Target Icon Bar and World Flare Bar jumping inward on /reload or mouse release when scaled below 100% by syncing bar scale and orientation size via SyncBarScaleAndSizeToDB before clamping, removing premature scale=1.0 ApplyHUDPosition calls at initialisation/login/UI_SCALE_CHANGED, canonicalising TargetBar/FlareBar coordinates to CENTER with full mirror key writes, guarding against re-entrant selection callbacks mid-drag, and disabling native C++ SetClampedToScreen interference so edge-snapped bars stay flush after mouse release and /reload." },
         { type = "FEATURE", text = "Release v1.9.7 - Live CurseForge DynamicSuite Link & Hardened Coexistence (14/11/2026): Updated Support modal and CurseForge storefront links cleanly to https://www.curseforge.com/wow/addons/dynamicsuite (replacing legacy URL placeholder labels), connected full DynamicSuite (Project 1804382) alongside standalone DynamicMarker (Project 1331651) in our dual-artifact release pipeline, and hardened ShouldYieldToOtherInstall semantic version yielding regardless of addon load order." },
         { type = "FIX",     text = "HUD Edit Scale-Aware Clamping, Magnetic Edge/Bar Snapping & Reset HUD Positions Failsafe (14/11/2026): Fixed 1:1 uScale drag math at non-100% scales, added magnetic screen-edge/centre (11px) and bar-to-bar (9px) snapping with live DynamicSuiteSnapGuideOverlay guide lines, Shift-to-bypass snapping, and Shift+Click 10px nudges, enforced strict screen-boundary clamping across drags/nudges/coordinates/orientation/scale/login/UI_SCALE_CHANGED, and added Reset HUD Positions in ESC -> Options -> AddOns plus /dm resethud (/fm resethud) and /ds resethud with combat-lockdown deferral." },
@@ -8563,6 +8605,145 @@ if not SlashCmdList["DYNAMICSUITE"] then
     end
 end
 
+function DM:ShowMarkerConflictReloadModal()
+    if InCombatLockdown and InCombatLockdown() then
+        self._pendingMarkerConflictModal = true
+        return
+    end
+    self._pendingMarkerConflictModal = false
+
+    if _G.DynamicSuite and type(_G.DynamicSuite.ShowMarkerConflictReloadModal) == "function" then
+        pcall(_G.DynamicSuite.ShowMarkerConflictReloadModal)
+        return
+    end
+
+    local modal = _G.DynamicSuiteMarkerConflictModal
+    if not modal then
+        modal = CreateFrame("Frame", "DynamicSuiteMarkerConflictModal", UIParent, "BackdropTemplate")
+        modal:SetSize(432, 184)
+        modal:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
+        modal:SetFrameStrata("DIALOG")
+        modal:SetFrameLevel(260)
+        modal:SetToplevel(true)
+        modal:SetClampedToScreen(true)
+        modal:SetMovable(true)
+        modal:EnableMouse(true)
+        modal:RegisterForDrag("LeftButton")
+        modal:SetScript("OnDragStart", modal.StartMoving)
+        modal:SetScript("OnDragStop", modal.StopMovingOrSizing)
+        if modal.SetBackdrop then
+            modal:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 1,
+            })
+            -- Dark Obsidian (#0B0D12 / alpha 0.96) + 1px dark slate border (#333D4F)
+            modal:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+            modal:SetBackdropBorderColor(0.200, 0.240, 0.310, 0.95)
+        end
+
+        modal.TopAccent = modal:CreateTexture(nil, "OVERLAY")
+        modal.TopAccent:SetHeight(2)
+        modal.TopAccent:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
+        modal.TopAccent:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
+        -- Blaze Orange (#F97316)
+        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+
+        modal.Title = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        modal.Title:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -16)
+        modal.Title:SetText("|cFFF97316DynamicSuite|r  |cFF94A3B8-- Coexistence Guard|r")
+
+        modal.HeaderSep = modal:CreateTexture(nil, "ARTWORK")
+        modal.HeaderSep:SetHeight(1)
+        modal.HeaderSep:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -40)
+        modal.HeaderSep:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -18, -40)
+        modal.HeaderSep:SetColorTexture(0.200, 0.240, 0.310, 0.65)
+
+        modal.Body = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        modal.Body:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -52)
+        modal.Body:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -18, -52)
+        modal.Body:SetJustifyH("LEFT")
+        modal.Body:SetJustifyV("TOP")
+        modal.Body:SetSpacing(3)
+        modal.Body:SetTextColor(0.886, 0.910, 0.941, 1.0)
+        modal.Body:SetText("DynamicSuite already includes DynamicMarker.\n\nStandalone DynamicMarker has been automatically disabled to prevent duplicate UI and HUD movers. Reload UI now?")
+
+        local function CreateModalButton(parent, label, width, height, isPrimary, onClick)
+            local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+            btn:SetSize(width, height)
+            if btn.SetBackdrop then
+                btn:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeSize = 1,
+                })
+            end
+            btn.Text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            btn.Text:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            btn.Text:SetText(label)
+
+            local function ApplyState(hover)
+                if not btn.SetBackdropColor then return end
+                if isPrimary then
+                    if hover then
+                        btn:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
+                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+                        btn.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        btn:SetBackdropColor(0.220, 0.100, 0.022, 0.96)
+                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
+                        btn.Text:SetTextColor(0.976, 0.451, 0.086, 1.0)
+                    end
+                else
+                    if hover then
+                        btn:SetBackdropColor(0.150, 0.180, 0.240, 1.0)
+                        btn:SetBackdropBorderColor(0.320, 0.380, 0.480, 1.0)
+                        btn.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        btn:SetBackdropColor(0.090, 0.110, 0.150, 0.96)
+                        btn:SetBackdropBorderColor(0.200, 0.240, 0.310, 0.95)
+                        btn.Text:SetTextColor(0.796, 0.835, 0.882, 1.0)
+                    end
+                end
+            end
+            ApplyState(false)
+            btn:SetScript("OnEnter", function() ApplyState(true) end)
+            btn:SetScript("OnLeave", function() ApplyState(false) end)
+            btn:SetScript("OnClick", onClick)
+            return btn
+        end
+
+        modal.ReloadBtn = CreateModalButton(modal, "Reload UI", 138, 28, true, function()
+            modal:Hide()
+            if type(_G.ReloadUI) == "function" then
+                _G.ReloadUI()
+            end
+        end)
+        modal.ReloadBtn:SetPoint("BOTTOMRIGHT", modal, "BOTTOM", -6, 16)
+
+        modal.LaterBtn = CreateModalButton(modal, "Later", 138, 28, false, function()
+            modal:Hide()
+        end)
+        modal.LaterBtn:SetPoint("BOTTOMLEFT", modal, "BOTTOM", 6, 16)
+
+        if type(_G.UISpecialFrames) == "table" then
+            local found = false
+            for i = 1, #_G.UISpecialFrames do
+                if _G.UISpecialFrames[i] == "DynamicSuiteMarkerConflictModal" then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                table.insert(_G.UISpecialFrames, "DynamicSuiteMarkerConflictModal")
+            end
+        end
+    end
+
+    modal:Show()
+    modal:Raise()
+end
+
 local evtFrame = CreateFrame("Frame")
 evtFrame:RegisterEvent("ADDON_LOADED")
 evtFrame:RegisterEvent("PLAYER_LOGIN")
@@ -8595,6 +8776,9 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1)
                 if DM.flareBar and DM.flareBar.Hide then DM.flareBar:Hide() end
                 if DM.editInspector and DM.editInspector.Hide then DM.editInspector:Hide() end
                 if DM.gridOverlay and DM.gridOverlay.Hide then DM.gridOverlay:Hide() end
+            end
+            if isInitialized then
+                DM:ShowMarkerConflictReloadModal()
             end
             return
         end
@@ -8718,6 +8902,17 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1)
         DM:RefreshTargetBar()
         DM:RefreshFlareBar()
         DM:RefreshAll()
+        if event == "PLAYER_ENTERING_WORLD" and C_Timer and type(C_Timer.After) == "function" then
+            C_Timer.After(0, function()
+                if not DM.db then return end
+                if InCombatLockdown and InCombatLockdown() then
+                    DM.pendingHUDPositionSync = true
+                else
+                    DM:RefreshTargetBar()
+                    DM:RefreshFlareBar()
+                end
+            end)
+        end
 
     elseif event == "GROUP_ROSTER_UPDATE" then
         DM:UpdateTargetBarVisibility()
@@ -8754,6 +8949,9 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1)
         end
 
     elseif event == "PLAYER_REGEN_ENABLED" then
+        if DM._pendingMarkerConflictModal then
+            DM:ShowMarkerConflictReloadModal()
+        end
         if DM.pendingSecureClickSync then
             DM:RefreshAllSecureButtonClicks()
         end

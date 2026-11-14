@@ -278,9 +278,24 @@ foreach ($tok in $parityTokens) {
         throw "DynamicMarker.lua missing Suite/Standalone parity token: $tok"
     }
 }
-foreach ($suiteCoexistReq in @("EnforceStandaloneDynamicMarkerExclusion", 'C_AddOns.DisableAddOn, "DynamicMarker"')) {
+foreach ($suiteCoexistReq in @("EnforceStandaloneDynamicMarkerExclusion", 'C_AddOns.DisableAddOn, "DynamicMarker"', "ShowMarkerConflictReloadModal", "DynamicSuiteMarkerConflictModal")) {
     if ($suiteCoreText.IndexOf($suiteCoexistReq, [System.StringComparison]::Ordinal) -lt 0) {
         throw "DynamicSuite_Core.lua missing standalone DynamicMarker mutual-exclusion token: $suiteCoexistReq"
+    }
+}
+$allLuaCheckFiles = Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite") -Filter "*.lua" -Recurse -File
+foreach ($luaCheck in $allLuaCheckFiles) {
+    $luaCheckText = [System.IO.File]::ReadAllText($luaCheck.FullName)
+    if ($luaCheckText.IndexOf("DYNAMICSUITE_MARKER_CONFLICT_RELOAD", [System.StringComparison]::Ordinal) -ge 0) {
+        throw "$($luaCheck.Name) still contains forbidden legacy StaticPopup token DYNAMICSUITE_MARKER_CONFLICT_RELOAD"
+    }
+}
+foreach ($modalTok in @("ShowMarkerConflictReloadModal", "DynamicSuiteMarkerConflictModal", "0.043, 0.051, 0.071, 0.96", "0.976, 0.451, 0.086")) {
+    if ($suiteCoreText.IndexOf($modalTok, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicSuite_Core.lua missing custom dark-obsidian coexistence modal token: $modalTok"
+    }
+    if ($markerLuaText.IndexOf($modalTok, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicMarker.lua missing custom dark-obsidian coexistence modal token: $modalTok"
     }
 }
 if ($suiteCoreText -notmatch '(?s)(local function EnforceStandaloneDynamicMarkerExclusion\(.*?\r?\nend(?=\r?\n))') {
@@ -307,9 +322,14 @@ if ($markerLuaText -notmatch '(?s)(local function ShouldYieldToOtherInstall\(.*?
 if ($Matches[1] -match 'IsAutoYielding|autoYield') {
     throw "DynamicMarker.lua ShouldYieldToOtherInstall must not depend on third-party auto-yield settings."
 }
-foreach ($markerCoexistReq in @('C_AddOns.IsAddOnLoaded("DynamicSuite")', "IsRunningInSuite", "ResetSingleHUDPosition", "DynamicMarkerGridOverlay")) {
+foreach ($markerCoexistReq in @('C_AddOns.IsAddOnLoaded("DynamicSuite")', "IsRunningInSuite", "ResetSingleHUDPosition", "DynamicMarkerGridOverlay", "SetBarCenterPoint", "GetCanonicalHUDPosition")) {
     if ($markerLuaText.IndexOf($markerCoexistReq, [System.StringComparison]::Ordinal) -lt 0) {
         throw "DynamicMarker.lua missing coexistence / standalone HUD Edit token: $markerCoexistReq"
+    }
+}
+foreach ($suiteCanonReq in @("SetBarCenterPoint", "GetCanonicalHUDPosition")) {
+    if ($suiteUiText.IndexOf($suiteCanonReq, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicSuite_UI.lua missing canonical UIParent-local HUD coordinate token: $suiteCanonReq"
     }
 }
 foreach ($markerForbiddenHudTok in @("DynamicSuiteGridOverlay", "DynamicSuite HUD Edit Mode", 'CreateFrame("Frame", "DynamicSuiteEditModeModal"', 'CreateFrame("Frame", "DynamicSuiteSnapGridOverlay"')) {

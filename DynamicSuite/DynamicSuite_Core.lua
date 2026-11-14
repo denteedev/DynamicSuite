@@ -59,7 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "14/11/2026",
     entries = {
-        { type = "FIX",     text = "Release v1.9.9 - Suite <-> Standalone DynamicMarker Exclusion, Unified HUD Edit Mode & Dynamic Edge-Reset Bounds (14/11/2026): Enforced strict mutual exclusion between DynamicSuite and standalone DynamicMarker (disabling standalone DynamicMarker via C_AddOns.DisableAddOn inside DynamicSuite core/DynamicLoad, triggering a reload prompt if already loaded in session, and adding immediate top-of-file + ADDON_LOADED early-exit guards in standalone DynamicMarker); suppressed DynamicMarker's standalone HUD Edit Mode window and grid overlay whenever running inside DynamicSuite so only the unified DynamicSuite HUD Edit dock renders; renamed standalone DynamicMarker's grid overlay to DynamicMarkerGridOverlay with standalone branding; fixed ConvertAnchorToCenterLocal 4-return unpacking in DynamicSuite_UI; fixed local scale conversion, InitDB/GetStoredHUDPosition reset persistence, and Reset HUD Positions scale/orientation defaults across Suite and standalone modes; and added automated coexistence and HUD frame collision checks to scripts/deploy.ps1." },
+        { type = "FIX",     text = "Release v1.9.9 - Canonical UIParent-Local HUD Coordinate Contract, Custom Dark-Obsidian Coexistence Modal & Unified HUD Edit Mode (14/11/2026): Enforced a single canonical UIParent-local coordinate contract for TargetBar and FlareBar (storing unscaled UIParent CENTER offsets and dividing by barScale strictly inside DM:SetBarCenterPoint after applying SetScale/SetSize and before SetClampedToScreen(true), removing destructive early-load DB writes in ApplyHUDPosition, and preserving 100% top/bottom/corner edge parity across /reload at 0.70, 1.00, and 1.30 scales); replaced Blizzard's StaticPopup with a custom dark-obsidian coexistence reload modal (DynamicSuiteMarkerConflictModal / ShowMarkerConflictReloadModal with #0B0D12 0.96 alpha backdrop, 1px dark slate border, Blaze Orange #F97316 accent bar, flat Reload UI / Later buttons, ESC dismissal, and combat deferral) across DynamicSuite and standalone DynamicMarker; suppressed DynamicMarker's standalone HUD Edit Mode window inside DynamicSuite; and fixed Reset HUD Positions bounds across Suite and standalone modes." },
         { type = "FIX",     text = "Release v1.9.8 - HUD Edit Edge-Drag Persistence & Flush (0, 0) DynamicChat Clamping (14/11/2026): Fixed Target Icon Bar and World Flare Bar snapping back after dragging to any screen edge (including 70%/75% scaled bars) by syncing bar scale and vertical/horizontal dimensions prior to clamping, canonicalising anchors to CENTER, clearing drag flags before final Edit Mode saves, and enforcing SetClampedToScreen(false) across Suite and standalone DynamicMarker; and fixed DynamicChat's ~30px bottom gap by setting ChatFrame1:SetClampedToScreen(false) whenever managed, measuring only the visible chat container via GetVisibleContainerExtents(), and canonicalising CHAT to BOTTOMLEFT outer-container coordinates so X = 0, Y = 0 sits flush bottom-left across Edit Mode toggles, UI scale events, and /reload." },
         { type = "FEATURE", text = "Release v1.9.7 - Official CurseForge Dual-Release Pipeline (DynamicSuite Project 1804382 + DynamicMarker 1331651) & Hardened Coexistence (14/11/2026): Connected full DynamicSuite (CurseForge Project ID 1804382) alongside standalone DynamicMarker (Project ID 1331651) in our automated release workflow, replaced legacy URL placeholder labels on Support panels and public docs with the live CurseForge links, authored code-accurate CurseForge storefront docs, and hardened ShouldYieldToOtherInstall dual-mode version yielding across all 8 modules regardless of load order." },
         { type = "FIX",     text = "HUD Edit Scale-Aware Clamping, Magnetic Edge/Bar Snapping & Reset HUD Positions Failsafe (14/11/2026): Unified uScale/UIParent drag math for 1:1 cursor tracking at all scales (60%-150%), added magnetic screen-edge/centre (11px) and cross-HUD bar-to-bar (9px) snapping with live visual alignment guide lines and Shift-to-bypass micro-adjustments, enforced screen-boundary clamping across all saves/scales/orientations/login/UI_SCALE_CHANGED, and added Reset HUD Positions in ESC -> Options -> AddOns plus /ds resethud and /dm resethud (/fm resethud) with combat-lockdown deferral." },
@@ -747,6 +747,142 @@ addonTable.RecoverEllesmereUIState = RecoverEllesmereUIState
 DynamicSuite.RecoverEllesmereUIState = RecoverEllesmereUIState
 
 local _notifiedStandaloneMarkerReload = false
+local function ShowMarkerConflictReloadModal()
+    if InCombatLockdown and InCombatLockdown() then
+        addonTable._pendingMarkerConflictModal = true
+        return
+    end
+    addonTable._pendingMarkerConflictModal = false
+
+    local modal = _G.DynamicSuiteMarkerConflictModal
+    if not modal then
+        modal = CreateFrame("Frame", "DynamicSuiteMarkerConflictModal", UIParent, "BackdropTemplate")
+        modal:SetSize(432, 184)
+        modal:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
+        modal:SetFrameStrata("DIALOG")
+        modal:SetFrameLevel(260)
+        modal:SetToplevel(true)
+        modal:SetClampedToScreen(true)
+        modal:SetMovable(true)
+        modal:EnableMouse(true)
+        modal:RegisterForDrag("LeftButton")
+        modal:SetScript("OnDragStart", modal.StartMoving)
+        modal:SetScript("OnDragStop", modal.StopMovingOrSizing)
+        if modal.SetBackdrop then
+            modal:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 1,
+            })
+            -- Dark Obsidian (#0B0D12 / alpha 0.96) + 1px dark slate border (#333D4F)
+            modal:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+            modal:SetBackdropBorderColor(0.200, 0.240, 0.310, 0.95)
+        end
+
+        modal.TopAccent = modal:CreateTexture(nil, "OVERLAY")
+        modal.TopAccent:SetHeight(2)
+        modal.TopAccent:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
+        modal.TopAccent:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
+        -- Blaze Orange (#F97316)
+        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+
+        modal.Title = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        modal.Title:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -16)
+        modal.Title:SetText("|cFFF97316DynamicSuite|r  |cFF94A3B8-- Coexistence Guard|r")
+
+        modal.HeaderSep = modal:CreateTexture(nil, "ARTWORK")
+        modal.HeaderSep:SetHeight(1)
+        modal.HeaderSep:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -40)
+        modal.HeaderSep:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -18, -40)
+        modal.HeaderSep:SetColorTexture(0.200, 0.240, 0.310, 0.65)
+
+        modal.Body = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        modal.Body:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -52)
+        modal.Body:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -18, -52)
+        modal.Body:SetJustifyH("LEFT")
+        modal.Body:SetJustifyV("TOP")
+        modal.Body:SetSpacing(3)
+        modal.Body:SetTextColor(0.886, 0.910, 0.941, 1.0)
+        modal.Body:SetText("DynamicSuite already includes DynamicMarker.\n\nStandalone DynamicMarker has been automatically disabled to prevent duplicate UI and HUD movers. Reload UI now?")
+
+        local function CreateModalButton(parent, label, width, height, isPrimary, onClick)
+            local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+            btn:SetSize(width, height)
+            if btn.SetBackdrop then
+                btn:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeSize = 1,
+                })
+            end
+            btn.Text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            btn.Text:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            btn.Text:SetText(label)
+
+            local function ApplyState(hover)
+                if not btn.SetBackdropColor then return end
+                if isPrimary then
+                    if hover then
+                        btn:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
+                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+                        btn.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        btn:SetBackdropColor(0.220, 0.100, 0.022, 0.96)
+                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
+                        btn.Text:SetTextColor(0.976, 0.451, 0.086, 1.0)
+                    end
+                else
+                    if hover then
+                        btn:SetBackdropColor(0.150, 0.180, 0.240, 1.0)
+                        btn:SetBackdropBorderColor(0.320, 0.380, 0.480, 1.0)
+                        btn.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        btn:SetBackdropColor(0.090, 0.110, 0.150, 0.96)
+                        btn:SetBackdropBorderColor(0.200, 0.240, 0.310, 0.95)
+                        btn.Text:SetTextColor(0.796, 0.835, 0.882, 1.0)
+                    end
+                end
+            end
+            ApplyState(false)
+            btn:SetScript("OnEnter", function() ApplyState(true) end)
+            btn:SetScript("OnLeave", function() ApplyState(false) end)
+            btn:SetScript("OnClick", onClick)
+            return btn
+        end
+
+        modal.ReloadBtn = CreateModalButton(modal, "Reload UI", 138, 28, true, function()
+            modal:Hide()
+            if type(_G.ReloadUI) == "function" then
+                _G.ReloadUI()
+            end
+        end)
+        modal.ReloadBtn:SetPoint("BOTTOMRIGHT", modal, "BOTTOM", -6, 16)
+
+        modal.LaterBtn = CreateModalButton(modal, "Later", 138, 28, false, function()
+            modal:Hide()
+        end)
+        modal.LaterBtn:SetPoint("BOTTOMLEFT", modal, "BOTTOM", 6, 16)
+
+        if type(_G.UISpecialFrames) == "table" then
+            local found = false
+            for i = 1, #_G.UISpecialFrames do
+                if _G.UISpecialFrames[i] == "DynamicSuiteMarkerConflictModal" then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                table.insert(_G.UISpecialFrames, "DynamicSuiteMarkerConflictModal")
+            end
+        end
+    end
+
+    modal:Show()
+    modal:Raise()
+end
+addonTable.ShowMarkerConflictReloadModal = ShowMarkerConflictReloadModal
+DynamicSuite.ShowMarkerConflictReloadModal = ShowMarkerConflictReloadModal
+
 local function EnforceStandaloneDynamicMarkerExclusion(showPopupIfLoaded)
     if not (C_AddOns and C_AddOns.GetAddOnInfo) then return false end
     local okInfo, infoName = pcall(C_AddOns.GetAddOnInfo, "DynamicMarker")
@@ -788,22 +924,7 @@ local function EnforceStandaloneDynamicMarkerExclusion(showPopupIfLoaded)
         if showPopupIfLoaded and not _notifiedStandaloneMarkerReload then
             _notifiedStandaloneMarkerReload = true
             print(string.format("%s: Standalone DynamicMarker was active alongside DynamicSuite and has been disabled. Please /reload to complete cleanup.", ADDON_TITLE))
-            if type(_G.StaticPopupDialogs) == "table" and type(_G.StaticPopup_Show) == "function" then
-                _G.StaticPopupDialogs["DYNAMICSUITE_MARKER_CONFLICT_RELOAD"] = _G.StaticPopupDialogs["DYNAMICSUITE_MARKER_CONFLICT_RELOAD"] or {
-                    text = "DynamicSuite already includes DynamicMarker.\n\nStandalone DynamicMarker has been automatically disabled to prevent duplicate UI and HUD movers. Reload UI now?",
-                    button1 = "Reload UI",
-                    button2 = "Later",
-                    OnAccept = function()
-                        if type(_G.ReloadUI) == "function" then _G.ReloadUI() end
-                    end,
-                    timeout = 0,
-                    whileDead = true,
-                    hideOnEscape = true,
-                }
-                if not (InCombatLockdown and InCombatLockdown()) then
-                    pcall(_G.StaticPopup_Show, "DYNAMICSUITE_MARKER_CONFLICT_RELOAD")
-                end
-            end
+            ShowMarkerConflictReloadModal()
         end
     end
     return true
@@ -3699,6 +3820,9 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
             addonTable.OnSuiteLeaveCombat()
         end
         addonTable.RestoreHubAfterCombat()
+        if addonTable._pendingMarkerConflictModal then
+            ShowMarkerConflictReloadModal()
+        end
         if addonTable._pendingHudPositionReset and addonTable.ResetAllHudPositions then
             addonTable._pendingHudPositionReset = false
             addonTable._pendingHudClamp = false
