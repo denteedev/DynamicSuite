@@ -1,5 +1,12 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.0.3 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.0.4 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.0.4 (15/11/2026)
+
+### Added
+* **Portal Deck Owned Keystone Teleport & Season Best Tooltip (DynamicGroup):** Upgraded the Portal Deck's Owned Keystone pill (`pbar.keyBtn`) with secure Right-Click Dungeon Teleport casting out of combat, a synced cooldown swipe overlay, and Season Best (`+Level (Timed/Over Time) Score`) plus Dungeon Teleport readiness/cooldown telemetry in its tooltip while preserving Left-Click exclusive dungeon filtering.
 
 ---
 

@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFZoom|r
 ## Notes: Max 39-Yard Camera Unlock, Collision Occlusion Shield & Situational Auto-Zoom Engine.
 ## Author: Dentee-Frostmourne
-## Version: 2.0.3
+## Version: 2.0.4
 ## SavedVariables: DynamicZoomDB
 ## OptionalDeps: DynamicSuite
 ## IconTexture: Interface\AddOns\DynamicZoom\icon.tga

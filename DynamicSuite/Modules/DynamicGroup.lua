@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.3"
+    local fb = fallback or "2.0.4"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.3"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.4"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.3")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.4")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicGroup", VERSION, _G.DynamicGroup) then
     return
 end
@@ -3893,9 +3893,21 @@ function DynamicGroup:EnsurePortalBar()
     pbar:SetBackdropBorderColor(ar, ag, ab, 0.45)
 
     -- Left Pill: Owned Keystone
-    local keyBtn = CreateFrame("Button", nil, pbar, "BackdropTemplate")
+    local function ResolveOwnedKeystoneTeleport(kMapID, kCode, kName)
+        if not kMapID and not kCode then return nil, false end
+        local slots = GetSeasonDungeonSlots(false)
+        for _, slot in ipairs(slots or {}) do
+            if (kMapID and slot.mapID == kMapID) or (kCode and slot.code == kCode) then
+                return slot.spellID, slot.spellKnown and true or false
+            end
+        end
+        return ResolveTeleportSpellForDungeon(kMapID, kCode, kName, nil)
+    end
+
+    local keyBtn = CreateFrame("Button", "DynamicGroupPortalKeyBtn", pbar, "SecureActionButtonTemplate,BackdropTemplate")
     keyBtn:SetSize(82, 24)
     keyBtn:SetPoint("LEFT", pbar, "LEFT", 4, 0)
+    keyBtn:RegisterForClicks("AnyUp", "AnyDown")
     keyBtn:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -3903,6 +3915,10 @@ function DynamicGroup:EnsurePortalBar()
     })
     keyBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
     keyBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+    keyBtn.cooldown = CreateFrame("Cooldown", "DynamicGroupPortalKeyBtnCD", keyBtn, "CooldownFrameTemplate")
+    keyBtn.cooldown:SetPoint("TOPLEFT", keyBtn, "TOPLEFT", 1, -1)
+    keyBtn.cooldown:SetPoint("BOTTOMRIGHT", keyBtn, "BOTTOMRIGHT", -1, 1)
+    if keyBtn.cooldown.SetDrawEdge then keyBtn.cooldown:SetDrawEdge(false) end
     keyBtn.label = keyBtn:CreateFontString(nil, "OVERLAY")
     SetSafeFont(keyBtn.label, 9, "")
     keyBtn.label:SetPoint("LEFT", keyBtn, "LEFT", 4, 0)
@@ -3919,8 +3935,37 @@ function DynamicGroup:EnsurePortalBar()
             _G.GameTooltip:AddLine("Your Mythic+ Keystone", 1, 1, 1)
             if kMapID and kLvl > 0 and kName then
                 _G.GameTooltip:AddLine(string.format("+%d %s [%s]", kLvl, kName, kCode or "M+"), r, g, b)
+                local bestLevel, bestScore, isTimed = GetPlayerBestForDungeon(kMapID)
+                if bestLevel > 0 then
+                    local timedSuffix = isTimed and " |cFF22C55E(Timed)|r" or " |cFFFACC15(Over Time)|r"
+                    local scorePart = (bestScore > 0) and ("  |cFF94A3B8Score: " .. tostring(bestScore) .. "|r") or ""
+                    _G.GameTooltip:AddLine("Season Best: |cFF34D399+" .. tostring(bestLevel) .. "|r" .. timedSuffix .. scorePart, 0.886, 0.910, 0.941)
+                else
+                    _G.GameTooltip:AddLine("Season Best: |cFF94A3B8No timed key recorded yet|r", 0.886, 0.910, 0.941)
+                end
+
+                local kSpellID, kSpellKnown = ResolveOwnedKeystoneTeleport(kMapID, kCode, kName)
+                if kSpellKnown and kSpellID then
+                    local st, dur, enabled = SafeGetSpellCooldown(kSpellID)
+                    if enabled and st > 0 and dur > 1.5 and _G.GetTime then
+                        local rem = math.max(0, (st + dur) - _G.GetTime())
+                        local mins = math.floor(rem / 60)
+                        local secs = math.floor(rem % 60)
+                        _G.GameTooltip:AddLine(string.format("Dungeon Teleport: |cFFFACC15Cooldown (%dm %02ds)|r", mins, secs), 0.886, 0.910, 0.941)
+                    else
+                        _G.GameTooltip:AddLine("Dungeon Teleport: |cFF22C55EReady|r", 0.886, 0.910, 0.941)
+                    end
+                else
+                    _G.GameTooltip:AddLine("Dungeon Teleport: |cFF94A3B8Not learned yet (complete +10 in time)|r", 0.886, 0.910, 0.941)
+                end
+
                 _G.GameTooltip:AddLine(" ")
                 _G.GameTooltip:AddLine("|cFF22C55ELeft-Click:|r |cFFE2E8F0Filter Premade Groups to your keystone dungeon.|r", 0.886, 0.910, 0.941, true)
+                if kSpellKnown and kSpellID then
+                    _G.GameTooltip:AddLine("|cFFF97316Right-Click:|r |cFFE2E8F0Cast Dungeon Teleport.|r", 0.886, 0.910, 0.941, true)
+                else
+                    _G.GameTooltip:AddLine("|cFF64748BRight-Click:|r |cFF94A3B8Cast Dungeon Teleport (not learned yet).|r", 0.886, 0.910, 0.941, true)
+                end
             else
                 _G.GameTooltip:AddLine("No Mythic+ keystone found in your bags.", 0.58, 0.64, 0.72)
             end
@@ -3931,7 +3976,10 @@ function DynamicGroup:EnsurePortalBar()
         if _G.GameTooltip then _G.GameTooltip:Hide() end
         if DynamicGroup.UpdatePortalBarVisuals then DynamicGroup:UpdatePortalBarVisuals() end
     end)
-    keyBtn:SetScript("OnClick", function()
+    keyBtn:SetScript("PostClick", function(_, button, down)
+        local useKeyDown = (type(_G.GetCVarBool) == "function" and _G.GetCVarBool("ActionButtonUseKeyDown")) and true or false
+        if (down == true) ~= useKeyDown then return end
+        if button ~= "LeftButton" then return end
         local kMapID, kLvl, kCode = GetOwnedKeystoneInfo()
         if not kCode then
             PrintMsg("No Mythic+ keystone found in your bags.")
@@ -3954,6 +4002,7 @@ function DynamicGroup:EnsurePortalBar()
         PushFiltersToBlizzardAdvancedFilter(true)
         DynamicGroup:RefreshLFGResults()
     end)
+    pbar.ResolveOwnedKeystoneTeleport = ResolveOwnedKeystoneTeleport
     pbar.keyBtn = keyBtn
 
     -- Right Quick "All" Clear Button
@@ -4139,7 +4188,7 @@ function DynamicGroup:UpdatePortalBarVisuals()
     local hasAnyFilter = HasActiveDungeonFilters(db)
 
     if pbar.keyBtn and pbar.keyBtn.label then
-        local kMapID, kLvl, kCode = GetOwnedKeystoneInfo()
+        local kMapID, kLvl, kCode, kName = GetOwnedKeystoneInfo()
         if kMapID and kLvl > 0 and kCode then
             pbar.keyBtn.label:SetText("|c" .. accHex .. "Key:|r |cFFFFFFFF+" .. tostring(kLvl) .. " " .. tostring(kCode) .. "|r")
             local isKeyFiltered = (db.filteredDungeons[kCode] == true)
@@ -4148,9 +4197,36 @@ function DynamicGroup:UpdatePortalBarVisuals()
             else
                 pbar.keyBtn:SetBackdropBorderColor(ar, ag, ab, 0.65)
             end
+            local kSpellID, kSpellKnown = nil, false
+            if pbar.ResolveOwnedKeystoneTeleport then
+                kSpellID, kSpellKnown = pbar.ResolveOwnedKeystoneTeleport(kMapID, kCode, kName)
+            end
+            if pbar.keyBtn.cooldown and pbar.keyBtn.cooldown.SetCooldown then
+                if kSpellKnown and kSpellID then
+                    local st, dur, enabled = SafeGetSpellCooldown(kSpellID)
+                    if enabled and st > 0 and dur > 1.5 then
+                        pcall(pbar.keyBtn.cooldown.SetCooldown, pbar.keyBtn.cooldown, st, dur)
+                    elseif pbar.keyBtn.cooldown.Clear then
+                        pcall(pbar.keyBtn.cooldown.Clear, pbar.keyBtn.cooldown)
+                    else
+                        pcall(pbar.keyBtn.cooldown.SetCooldown, pbar.keyBtn.cooldown, 0, 0)
+                    end
+                elseif pbar.keyBtn.cooldown.Clear then
+                    pcall(pbar.keyBtn.cooldown.Clear, pbar.keyBtn.cooldown)
+                else
+                    pcall(pbar.keyBtn.cooldown.SetCooldown, pbar.keyBtn.cooldown, 0, 0)
+                end
+            end
         else
             pbar.keyBtn.label:SetText("|cFF64748BKey: None|r")
             pbar.keyBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+            if pbar.keyBtn.cooldown then
+                if pbar.keyBtn.cooldown.Clear then
+                    pcall(pbar.keyBtn.cooldown.Clear, pbar.keyBtn.cooldown)
+                elseif pbar.keyBtn.cooldown.SetCooldown then
+                    pcall(pbar.keyBtn.cooldown.SetCooldown, pbar.keyBtn.cooldown, 0, 0)
+                end
+            end
         end
     end
 
@@ -4248,6 +4324,25 @@ function DynamicGroup:UpdatePortalBar(forceSeasonRefresh)
 
     if shouldShow then
         if not pbar:IsShown() then pbar:Show() end
+        if pbar.keyBtn and pbar.keyBtn.GetAttribute then
+            local kMapID, kLvl, kCode, kName = GetOwnedKeystoneInfo()
+            local kSpellTarget = nil
+            if kMapID and kLvl > 0 and pbar.ResolveOwnedKeystoneTeleport then
+                local kSpellID, kSpellKnown = pbar.ResolveOwnedKeystoneTeleport(kMapID, kCode, kName)
+                if kSpellKnown and kSpellID then
+                    kSpellTarget = SafeGetSpellName(kSpellID) or kSpellID
+                end
+            end
+            if pbar.keyBtn:GetAttribute("type1") ~= nil or pbar.keyBtn:GetAttribute("spell1") ~= nil then
+                pbar.keyBtn:SetAttribute("type1", nil)
+                pbar.keyBtn:SetAttribute("spell1", nil)
+            end
+            local desiredKeyType2 = kSpellTarget and "spell" or nil
+            if pbar.keyBtn:GetAttribute("type2") ~= desiredKeyType2 or pbar.keyBtn:GetAttribute("spell2") ~= kSpellTarget then
+                pbar.keyBtn:SetAttribute("type2", desiredKeyType2)
+                pbar.keyBtn:SetAttribute("spell2", kSpellTarget)
+            end
+        end
         local slots = GetSeasonDungeonSlots(false)
         for idx = 1, 8 do
             local tile = pbar.tiles[idx]
@@ -7259,6 +7354,7 @@ local function RegisterWithDynamicSuite()
         version = DynamicGroup.version or VERSION,
         date = "15/11/2026",
         entries = {
+            { type = "FEATURE", text = "Portal Deck Owned Keystone Telemetry & Right-Click Teleport (15/11/2026): Upgraded the Portal Deck's Owned Keystone pill (pbar.keyBtn) to support secure Right-Click Dungeon Teleport casting out of combat with a synced cooldown swipe overlay, plus Season Best (timed/over-time level and score) and Dungeon Teleport readiness/cooldown lines in the tooltip while preserving Left-Click exclusive dungeon filtering." },
             { type = "FEATURE", text = "Dungeon Joined & Group Full Teleport Toast (15/11/2026): Displays a 410x74 Alert Toast-matched banner with a one-click Dungeon Teleport button and Right-Click dismissal when your Premade Group application is accepted, chimes as players join, and highlights when the group reaches 5/5. Shares DynamicSuite's Alert Toast HUD Edit slot with automatic mutual stacking, plus Test Join (3/5), Test Full (5/5), Edit HUD buttons, and /dg testtoast." },
             { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Dynamically discovers all learned Midnight Season 2 teleport spells from the Mythic+ tab and spellbook so Left-click toggles the dungeon filter (Shift+Left-click solo filters) and Right-click casts learned dungeon teleports out of combat." },
             { type = "FEATURE", text = "Integrated Multi-Toggle Premade Group Filters (15/11/2026): Upgraded the Group Finder filter menu with Tank, Healer, and DPS role availability toggles (with role icons), No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez, kept in two-way sync with Blizzard's native Filter menu without altering difficulty checkboxes." },

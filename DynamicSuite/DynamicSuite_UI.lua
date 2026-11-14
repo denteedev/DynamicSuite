@@ -4591,7 +4591,7 @@ function addonTable.CreateMainConfigUI()
                         host._activeModHost = modHost
 
                         if f.verPill and f.verPill.label then
-                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "2.0.3"
+                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "2.0.4"
                             f.verPill.label:SetText("v" .. tostring(mVer))
                         end
                         UpdateStatusBar(true)
@@ -4995,7 +4995,7 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        local curVer = addonTable.ADDON_VERSION or "2.0.3"
+        local curVer = addonTable.ADDON_VERSION or "2.0.4"
         local curSig = f.GetSuiteChangelogSignature and f.GetSuiteChangelogSignature() or curVer
         local seenVer = gTbl.lastSeenChangelogVer or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogVer)
         local seenSig = gTbl.lastSeenChangelogSig or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogSig)
@@ -6687,7 +6687,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.3"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.4"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -12755,7 +12755,7 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.0.3"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.0.4"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -13487,7 +13487,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.0.3") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.0.4") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -13548,7 +13548,7 @@ function addonTable.HookGameMenu()
             cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
             if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
-            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.0.3") .. "|r")
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.0.4") .. "|r")
             openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
             if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
@@ -13654,7 +13654,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "2.0.3",
+        version = addonTable.ADDON_VERSION or "2.0.4",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,
