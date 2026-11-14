@@ -1,7 +1,7 @@
-# DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v1.9.6)
+# DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v1.9.7)
 
 > **Target Game Version:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`)  
-> **Version:** `v1.9.6` (`14/11/2026`)  
+> **Version:** `v1.9.7` (`14/11/2026`)  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicmarker
 
@@ -63,10 +63,10 @@ Open **`/dm`** and switch to the **Macro Setup** tab (or click **Guided Setup** 
 
 Type **`/dm hud`** (or click **Edit Mode (HUDs)** in the left rail / **Unlock HUD Movers** inside the HUD settings) to position your floating bars with pixel precision:
 
-* **Pixel-Bordered Movers & Alignment Grid:** Highlights `DynamicMarker: Icon Bar` and `DynamicMarker: Flare Bar` with live coordinate badges (`X` / `Y` / `Scale%`).
-* **Smooth Drag & Magnetic Centre Snap:** Left-drag any mover smoothly (`Hold Ctrl` while dragging to bypass magnetic centre snapping).
+* **Pixel-Bordered Movers & Scale-Aware `1:1` Dragging:** Highlights `DynamicMarker: Icon Bar` and `DynamicMarker: Flare Bar` with live coordinate badges (`X` / `Y` / `Scale%`) that track your cursor `1:1` across all UI and bar scales (`60%`-`150%`, including `70%`).
+* **Magnetic Edge, Centre & Bar-to-Bar Snapping:** Magnetically snaps within `11px` of screen borders/centre lines and `9px` of neighbouring visible HUD bars with live alignment guide lines, while holding **`Shift`** bypasses snapping for fine micro-adjustments and hard screen-boundary clamping prevents off-screen drift.
 * **Mousewheel Scaling:** Scroll up or down directly over a mover to scale the bar from **`60%` to `150%`** in `5%` increments.
-* **Precision Inspector:** Use `1px` directional nudge buttons, type exact `X` / `Y` coordinates, snap with **Center Horizontal**, **Center Vertical**, **Top Stack**, or **Bottom Dock**, or `Shift + Right-Click` any mover to reset its position and scale.
+* **Precision Inspector & Failsafe Recovery:** Use `1px` (`Shift + Click` for `10px`) directional nudge buttons, type exact `X` / `Y` coordinates, snap with **Center Horizontal**, **Center Vertical**, **Top Stack**, or **Bottom Dock**, `Shift + Right-Click` any mover, or use **`Reset HUD Positions`** (`ESC -> Options -> AddOns` or `/dm resethud`).
 * **Zero-Taint Failsafe:** Pressing **`ESC`** or entering combat immediately locks movers cleanly with zero taint.
 
 ---
@@ -115,6 +115,7 @@ DynamicMarker uses a **Dual-Mode Architecture** with a semantic version guard (`
 | `/dm import` | Re-import settings from `FocusMarkerDB` (out of combat) |
 | `/dm import status` | Print current `FocusMarkerDB` migration/snapshot status in chat |
 | `/dm reset` | Reset DynamicMarker settings to defaults (preserves migration snapshot) |
+| `/dm resethud` | Reset Icon Bar & Flare Bar positions to safe screen-clamped defaults |
 
 ---
 
@@ -129,21 +130,14 @@ DynamicMarker uses a **Dual-Mode Architecture** with a semantic version guard (`
 
 ---
 
-## Section 2: CurseForge File Changelog Block (`v1.9.6` -- `14/11/2026`)
+## Section 2: CurseForge File Changelog Block (`v1.9.7` -- `14/11/2026`)
 
 ```markdown
-## DynamicMarker v1.9.6 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
+## DynamicMarker v1.9.7 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
 
-### Highlights & New Features
-* **Standalone Scrollable Changelog Modal Parity:** Replaced the legacy static standalone Changelog summary with a scrollable `ScrollFrame` modal reading live release notes directly from `DynamicMarker.CHANGELOG.entries` with colour-coded `[FEATURE]`, `[FIX]`, and `[UI]` badges matching the full DynamicSuite Changelog Hub.
-* **Lockstep `v1.9.6` Sync with DynamicSuite:** Synchronised version metadata, fallback checks, and `/dm` + `/fm` alias parity cleanly across standalone and bundled builds.
-* **Official FocusMarker -> DynamicMarker Migration (`FocusMarkerDB`):** Automatically detects legacy `FocusMarkerDB` SavedVariables on load, preserves a non-destructive read-only snapshot, imports bar positions, scales, opacity, visibility rules (`Always` / `Group` / `Off`), orientation, and custom icon/flare cycle sequences into `DynamicMarkerDB`, and migrates `[FocusMarker]` general macros in-place to `[DynamicMark]` (`/dm import` and `/dm import status` supported).
-* **Encapsulated HUD Edit Mode (`/dm hud`):** Crisp pixel-bordered movers (`DynamicMarker: Icon Bar` and `DynamicMarker: Flare Bar`) with alignment grid, magnetic centre snap (`Ctrl` bypass), `60%`-`150%` mousewheel scaling, `Shift+Right-Click` bar reset, `1px` nudge & `X`/`Y` coordinate inspector, and zero-taint `ESC` / combat-lockdown failsafe.
-* **Multi-Spec `[DynamicKick]` & Modifier-Free `[DynamicMark]` Macros:** One-click creation and drag-to-bar setup across all 13 classes with automatic specialisation/talent swapping out of combat.
-* **Standalone Shell & Theme Parity with DynamicSuite:**
-  * **Bottom-Right Footer Dock:** Added persisted **Opacity** (`50%`-`100%`) and **Scale** (`80%`-`120%`) sliders, **Reload UI** button, and Blizzard's native `14x14` corner resize grabber (`UI-ChatIM-SizeGrabber-Up` / `Highlight`).
-  * **Theme & Font Studio (`FULLSCREEN_DIALOG`):** Live surface switching (`Obsidian Dark`, `Slate Steel`, `Midnight Pitch Black`, `Smoked Glass`), 5 accent themes, font scaling, and solid opaque modal backing with zero bleed-through.
-  * **First-Open `ESC > Options > AddOns` Fix:** Hardened `SettingsPanel` dismissal and deferred post-layout refresh so opening DynamicMarker from Blizzard's AddOns menu renders cleanly on the first click.
-  * **Copyable Support Modal Links:** Click-to-highlight `Ctrl+C` EditBoxes for Ko-fi (`https://ko-fi.com/dentee`), standalone CurseForge (`dynamicmarker`), full `DynamicSuite` (`dynamicsuite`), and `denteedev@gmail.com`.
-  * **Dual-Mode Brand & Asset Parity:** Two-layer `icon_white.tga` + `icon_accent.tga` branding and `CompareSemVer` duplicate-install guard for seamless standalone or bundled `DynamicSuite` operation.
+### Highlights & Release Changes
+* **Live `DynamicSuite` CurseForge Cross-Links & Support Modal Parity:** Updated standalone DynamicMarker's Support modal (`https://www.curseforge.com/wow/addons/dynamicsuite`) and storefront docs to replace legacy placeholder URL labels now that the full `DynamicSuite` project (`1804382`) is live on CurseForge alongside standalone `DynamicMarker` (`1331651`).
+* **Hardened `ShouldYieldToOtherInstall` Dual-Mode Coexistence:** Improved semantic version coexistence across both `DynamicSuite` and standalone `DynamicMarker` so whichever install is newer cleanly takes priority regardless of load order.
+* **HUD Edit Mode Scale-Aware `1:1` Dragging, Magnetic Snapping & `/dm resethud` Failsafe:** Full `1:1` effective-scale cursor tracking across `60%`-`150%` (including `70%`), magnetic screen-edge/centre (`11px`) and cross-bar (`9px`) alignment guides, `Shift`-to-bypass micro-adjustment, automatic screen-boundary clamping across all events and `/reload`, and combat-safe `Reset HUD Positions` in `ESC -> Options -> AddOns` plus `/dm resethud` (`/fm resethud`).
+* **Standalone Scrollable Changelog Modal & Footer Dock Parity:** Scrollable `ScrollFrame` changelog viewer reading live `DynamicMarker.CHANGELOG.entries` alongside bottom-right **Opacity** (`50%`-`100%`), **Scale** (`80%`-`120%`), **Reload UI**, and native `14x14` corner resize grabber controls.
 ```

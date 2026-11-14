@@ -2,9 +2,10 @@
 
 [![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 
-**Version:** `v1.9.6` (`14/11/2026`)  
+**Version:** `v1.9.7` (`14/11/2026`)  
 **Target Client:** World of Warcraft Retail Midnight (`12.1.5`, Interface `120105`)  
 **Author:** Dentee-Frostmourne
+**CurseForge (`DynamicSuite`):** `https://www.curseforge.com/wow/addons/dynamicsuite` | **Standalone `DynamicMarker`:** `https://www.curseforge.com/wow/addons/dynamicmarker`
 
 DynamicSuite is an 8-module World of Warcraft Retail Quality-of-Life and performance suite built around a **Dual-Mode Consolidated Architecture**: every module runs inside the unified `DynamicSuite` hub or as a standalone addon from the exact same source file, with a version-aware duplicate-install guard (`CompareSemVer`) so the newer release automatically takes priority with zero duplicate frames or double-loading.
 
@@ -16,7 +17,7 @@ DynamicSuite is an 8-module World of Warcraft Retail Quality-of-Life and perform
 
 | Module | Slash | Key Features |
 | :--- | :--- | :--- |
-| **DynamicLoad** | `/dl` | Context-aware 5-zone addon profile manager (`Outdoor`, `Delves`, `Dungeons`, `Raid`, `PvP`), 6-target `[+ HUD]` Edit Mode, 7-Step Guided Setup & Conflict Scanner, Theme & Font Studio |
+| **DynamicLoad** | `/dl` | Context-aware 5-zone addon profile manager (`Outdoor`, `Delves`, `Dungeons`, `Raid`, `PvP`), 6-target `[+ HUD]` Edit Mode, 9-Step Guided Setup & Conflict Scanner, Theme & Font Studio |
 | **DynamicPrep** | `/dprep` | Top telemetry info bar, clickable Raid Buffs & Consumable HUD (including single-target partner buffs), Midnight Omni Folio, `[DynamicHeal]` survival macro, smart gossip/quest QoL |
 | **DynamicMarker** | `/dm`, `/fm` | Raid target icons, `F4`/`F5` `@cursor` world flare cycle, floating Focus & Flare HUD bars, automated `[DynamicMark]` & multi-spec `[DynamicKick]` macros, HUD Edit Mode, `FocusMarkerDB` migration |
 | **DynamicZoom** | `/dz` | Max camera distance unlock (`2.6x` / `39 yds`), reactive scroll-wheel acceleration, foliage/pillar occlusion fade, zone zoom profiles, ActionCam pitch & shoulder offset |
@@ -30,8 +31,9 @@ DynamicSuite is an 8-module World of Warcraft Retail Quality-of-Life and perform
 ## Core Suite Features
 
 * **Obsidian Theme & Font Studio:** Switch account-wide Accent Colours (**Royal Amber** `#F5B82E`, **Midnight Cyan** `#38BDF8`, **Crimson Core** `#F87171`, **Obsidian Silver** `#CBD5E1`, or **Player Class Colour**), 4 Surface Palettes (**Obsidian Dark**, **Slate Steel**, **Midnight Pitch Black**, **Smoked Glass**), and **Font Scale** (`95%` / `100%` / `110%`), plus bottom-right footer **Opacity** (`50%`-`100%`), **Scale** (`80%`-`120%`), and **Reload UI** controls.
-* **Unified `[+ HUD]` Edit Mode:** Position and scale suite HUDs together with pixel-bordered movers, magnetic centre snapping, alignment grid, mousewheel scaling (`60%`-`150%`), `1px` directional nudges, and combat-lockdown / `ESC` zero-taint failsafes.
-* **7-Step Guided Setup & Conflict Scanner:** Detects overlapping external addons (such as legacy `FocusMarker`, `TargetCharms`, or conflicting chat/bag/camera addons) and resolves conflicts cleanly in one click.
+* **Global Smart Search (`/ds search <query>`):** Instant fuzzy search across 202 indexed settings with 6 live-counted category pills and 1-click Jump-and-Highlight navigation.
+* **Unified `[+ HUD]` Edit Mode (`/ds hud`, `/ds resethud`):** Scale-aware `1:1` dragging across all scales (`60%`-`150%`), magnetic screen-edge/centre (`11px`) and bar-to-bar (`9px`) snapping with live visual guide lines, `Shift`-to-bypass micro-adjustments, strict screen-boundary clamping with automatic `/reload` recovery, `1px` / `Shift+10px` nudges, and `Reset HUD Positions` in `ESC -> Options -> AddOns` (`/ds resethud`).
+* **9-Step Guided Setup & Conflict Scanner (`/ds setup`, `/ds conflicts`):** Detects overlapping external addons (including sub-module checks for `ElvUI`, `Leatrix_Plus`, and `EllesmereUI`) and resolves conflicts cleanly with 2-tier Auto-Yield or 1-click switching.
 * **Zero-Taint Midnight `12.1.5` Architecture:** Guards secret values (`issecretvalue()` / `canaccessvalue()`), avoids tainted chat hooks on secret channels, and respects combat lockdown across all secure frames and macros.
 
 ---
@@ -52,13 +54,14 @@ DynamicSuite is an 8-module World of Warcraft Retail Quality-of-Life and perform
 | `/dm import` / `/dm migrate` | Re-import settings from `FocusMarkerDB` (out of combat) |
 | `/dm import status` | Print current `FocusMarkerDB` migration/snapshot status in chat |
 | `/dm reset` | Reset DynamicMarker defaults, HUD positions, icon size, marking mode, and mute state |
+| `/dm resethud` | Reset DynamicMarker Icon & Flare bar positions to safe screen-clamped defaults |
 | `/dm help` / `/dm ?` | Print all available DynamicMarker commands in chat |
 
 ---
 
 ## Official Links & Support
 
-* **Full Addon Suite (DynamicSuite - Coming Soon):** `https://www.curseforge.com/wow/addons/dynamicsuite`
+* **Full Addon Suite (DynamicSuite):** `https://www.curseforge.com/wow/addons/dynamicsuite`
 * **Standalone DynamicMarker (CurseForge):** `https://www.curseforge.com/wow/addons/dynamicmarker`
 * **Buy the Developer a Coffee (Ko-fi):** `https://ko-fi.com/dentee`
 * **Direct Contact & Feedback (Email):** `denteedev@gmail.com`

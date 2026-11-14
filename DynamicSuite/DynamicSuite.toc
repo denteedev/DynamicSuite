@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFSuite|r
 ## Notes: Master Hub, Theme & Font Studio, 7-Step Guided Setup & HUD Edit Mode (/ds)
 ## Author: Dentee-Frostmourne
-## Version: 1.9.6
+## Version: 1.9.7
 ## Category: DynamicSuite
 ## Category-enUS: DynamicSuite
 ## SavedVariables: DynamicSuiteDB, DynamicLoadDB, DynamicPrepDB, DynamicMarkerDB, DynamicZoomDB, DynamicFPSDB, DynamicGroupDB, DynamicBagsDB, DynamicChatDB, FocusMarkerDB

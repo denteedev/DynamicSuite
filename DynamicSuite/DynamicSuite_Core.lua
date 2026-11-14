@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.6"
+    local fb = fallback or "1.9.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.6")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.7")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "14/11/2026",
     entries = {
+        { type = "FEATURE", text = "Release v1.9.7 - Official CurseForge Dual-Release Pipeline (DynamicSuite Project 1804382 + DynamicMarker 1331651) & Hardened Coexistence (14/11/2026): Connected full DynamicSuite (CurseForge Project ID 1804382) alongside standalone DynamicMarker (Project ID 1331651) in our automated release workflow, replaced legacy URL placeholder labels on Support panels and public docs with the live CurseForge links, authored code-accurate CurseForge storefront docs, and hardened ShouldYieldToOtherInstall dual-mode version yielding across all 8 modules regardless of load order." },
         { type = "FIX",     text = "HUD Edit Scale-Aware Clamping, Magnetic Edge/Bar Snapping & Reset HUD Positions Failsafe (14/11/2026): Unified uScale/UIParent drag math for 1:1 cursor tracking at all scales (60%-150%), added magnetic screen-edge/centre (11px) and cross-HUD bar-to-bar (9px) snapping with live visual alignment guide lines and Shift-to-bypass micro-adjustments, enforced screen-boundary clamping across all saves/scales/orientations/login/UI_SCALE_CHANGED, and added Reset HUD Positions in ESC -> Options -> AddOns plus /ds resethud and /dm resethud (/fm resethud) with combat-lockdown deferral." },
         { type = "FIX",     text = "Release v1.9.6 - DynamicBags Bank/Guild Bank & Merge Hardening + Suite/Standalone Changelog Parity (14/11/2026): Eliminated post-/reload Bank/Guild Bank panel flashes with SetScale suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, fixed strict weak ordering in Sort: A-Z when uncached items appear, verified compatible bag/bank slot placement across Reagent bags and Guild Bank tab permissions, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, updated DynamicBags Smart Search entries, and upgraded standalone DynamicMarker's Changelog modal to stream live entries dynamically." },
         { type = "UI",      text = "Standalone DynamicMarker Dock Parity, Copyable Support Links & DynamicSuite CurseForge URL (14/11/2026): Added the [Reload UI] button and persisted Opacity (50%-100%) and Scale (80%-120%) sliders to standalone DynamicMarker's bottom-right dock (left of the // resize grip, stored in DynamicMarkerDB without touching DynamicSuiteDB), upgraded standalone DynamicMarker's Support modal to read-only click-to-highlight Ctrl+C EditBoxes (Ko-fi, CurseForge /addons/dynamicmarker, and Email) with Escape-to-close, and updated DynamicSuite's Support view CurseForge link to https://www.curseforge.com/wow/addons/dynamicsuite." },

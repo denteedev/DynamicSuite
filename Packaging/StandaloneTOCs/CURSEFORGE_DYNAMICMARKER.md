@@ -2,7 +2,7 @@
 
 [![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 
-**Version:** `v1.9.6` (`14/11/2026`) | **Target Client:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`) | **Author:** Dentee-Frostmourne
+**Version:** `v1.9.7` (`14/11/2026`) | **Target Client:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`) | **Author:** Dentee-Frostmourne
 
 **DynamicMarker** (`/dm`, `/fm`) is a fast, zero-taint Mythic+ and Raid utility addon for raid target marking, `@cursor` world flares, floating HUD icon/flare bars, and automated focus/interrupt macros across all 13 classes. Built for Midnight `12.1.5`, it runs cleanly as a standalone addon and integrates seamlessly with the 8-module **[DynamicSuite](https://www.curseforge.com/wow/addons/dynamicsuite)** ecosystem.
 
@@ -52,10 +52,10 @@ No manual macro editing required. Open **`/dm`** and switch to the **Macro Setup
 
 Type **`/dm hud`** or **`/dm lock`** (or click **Edit Mode (HUDs)** in the left rail / **Unlock HUD Movers** inside the HUD settings) to position your floating bars with pixel precision:
 
-* **Pixel-Bordered Movers & Alignment Grid:** Highlights `DynamicMarker: Icon Bar` and `DynamicMarker: Flare Bar` with live coordinate badges (`X` / `Y` / `Scale%`).
-* **Smooth Drag & Magnetic Centre Snap:** Left-drag any mover smoothly (`Hold Ctrl` while dragging to bypass magnetic centre snapping).
+* **Pixel-Bordered Movers & Scale-Aware `1:1` Dragging:** Highlights `DynamicMarker: Icon Bar` and `DynamicMarker: Flare Bar` with live coordinate badges (`X` / `Y` / `Scale%`) tracking your cursor `1:1` at every scale (`60%`-`150%`, including `70%`).
+* **Magnetic Edge, Centre & Bar-to-Bar Snapping:** Magnetically snaps within `11px` of screen borders/centre lines and `9px` of neighbouring visible HUD bars with live alignment guide lines (`Hold Shift` while dragging to bypass snapping while keeping hard screen-boundary clamping).
 * **Mousewheel Scaling:** Scroll up or down directly over a mover to scale the bar from **`60%` to `150%`** in `5%` increments.
-* **Precision Inspector:** Use `1px` directional nudge buttons, type exact `X` / `Y` coordinates, snap with **Center Horizontal**, **Center Vertical**, **Top Stack**, or **Bottom Dock**, or `Shift + Right-Click` any mover to reset its position and scale.
+* **Precision Inspector & Failsafe Recovery:** Use `1px` (`Shift + Click` for `10px`) directional nudge buttons, type exact `X` / `Y` coordinates, snap with **Center Horizontal**, **Center Vertical**, **Top Stack**, or **Bottom Dock**, `Shift + Right-Click` any mover, or use **`Reset HUD Positions`** (`ESC -> Options -> AddOns` or `/dm resethud`).
 * **Zero-Taint Failsafe:** Pressing **`ESC`** or entering combat immediately locks movers cleanly with zero taint.
 
 ---
@@ -104,6 +104,7 @@ DynamicMarker uses a **Dual-Mode Consolidated Architecture** with a semantic ver
 | `/dm import` / `/dm migrate` | Re-import settings from `FocusMarkerDB` (out of combat) |
 | `/dm import status` | Print current `FocusMarkerDB` migration/snapshot status in chat |
 | `/dm reset` | Reset DynamicMarker defaults, HUD positions, icon size, marking mode, and mute state |
+| `/dm resethud` | Reset Icon Bar & Flare Bar positions to safe screen-clamped defaults |
 | `/dm help` / `/dm ?` | Print all available commands in chat |
 
 ---

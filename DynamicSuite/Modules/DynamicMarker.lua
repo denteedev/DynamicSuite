@@ -2,7 +2,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.6"
+    local fb = fallback or "1.9.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -34,22 +34,44 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
     local getAddOnEnableState = (C_AddOns and C_AddOns.GetAddOnEnableState) or _G.GetAddOnEnableState
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
+    local function isOtherEnabled(name)
+        if type(isAddOnLoaded) == "function" and isAddOnLoaded(name) then
+            return true
+        end
+        if type(getAddOnEnableState) == "function" then
+            local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
+            if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
+                local ok, st = pcall(getAddOnEnableState, name, pName)
+                if ok and type(st) == "number" and st > 0 then return true end
+            end
+            local ok2, st2 = pcall(getAddOnEnableState, name)
+            if ok2 and type(st2) == "number" and st2 > 0 then return true end
+        end
+        return false
+    end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.6"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.7"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
         end
-    else
-        local stEnabled = false
-        if type(isAddOnLoaded) == "function" and isAddOnLoaded(standaloneName) then
-            stEnabled = true
-        elseif type(getAddOnEnableState) == "function" then
-            local ok, st = pcall(getAddOnEnableState, standaloneName)
-            if ok and type(st) == "number" and st > 0 then stEnabled = true end
+        if isOtherEnabled("DynamicSuite") and type(getMeta) == "function" then
+            local okS, sVer = pcall(getMeta, "DynamicSuite", "Version")
+            if okS and type(sVer) == "string" and sVer ~= "" and not sVer:find("@") then
+                if CompareSemVer(thisVersion, sVer) <= 0 then
+                    return true
+                end
+            end
         end
-        if stEnabled and type(getMeta) == "function" then
+    else
+        if type(globalTbl) == "table" and globalTbl._loadedBySuite == false then
+            local stLoadedVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or "0.0.0"
+            if CompareSemVer(stLoadedVer, thisVersion) >= 0 then
+                return true
+            end
+        end
+        if isOtherEnabled(standaloneName) and type(getMeta) == "function" then
             local okV, stVer = pcall(getMeta, standaloneName, "Version")
             if okV and type(stVer) == "string" and stVer ~= "" and not stVer:find("@") then
                 if CompareSemVer(stVer, thisVersion) > 0 then
@@ -61,7 +83,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.6")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.7")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -6755,7 +6777,7 @@ function DM:ShowStudioModal(mode)
 
         CreateSupportCopyRow(-74,  "Buy the Developer a Coffee (Ko-fi):", "https://ko-fi.com/dentee")
         CreateSupportCopyRow(-126, "CurseForge Project Page & Feedback:", "https://www.curseforge.com/wow/addons/dynamicmarker")
-        CreateSupportCopyRow(-178, "Full Addon Suite (DynamicSuite - Coming Soon):", "https://www.curseforge.com/wow/addons/dynamicsuite (Coming Soon)")
+        CreateSupportCopyRow(-178, "Full Addon Suite (DynamicSuite):", "https://www.curseforge.com/wow/addons/dynamicsuite")
         CreateSupportCopyRow(-230, "Direct Contact & Feedback (Email):", "denteedev@gmail.com")
     end
 
@@ -8012,6 +8034,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "14/11/2026",
     entries = {
+        { type = "FEATURE", text = "Release v1.9.7 - Live CurseForge DynamicSuite Link & Hardened Coexistence (14/11/2026): Updated Support modal and CurseForge storefront links cleanly to https://www.curseforge.com/wow/addons/dynamicsuite (replacing legacy URL placeholder labels), connected full DynamicSuite (Project 1804382) alongside standalone DynamicMarker (Project 1331651) in our dual-artifact release pipeline, and hardened ShouldYieldToOtherInstall semantic version yielding regardless of addon load order." },
         { type = "FIX",     text = "HUD Edit Scale-Aware Clamping, Magnetic Edge/Bar Snapping & Reset HUD Positions Failsafe (14/11/2026): Fixed 1:1 uScale drag math at non-100% scales, added magnetic screen-edge/centre (11px) and bar-to-bar (9px) snapping with live DynamicSuiteSnapGuideOverlay guide lines, Shift-to-bypass snapping, and Shift+Click 10px nudges, enforced strict screen-boundary clamping across drags/nudges/coordinates/orientation/scale/login/UI_SCALE_CHANGED, and added Reset HUD Positions in ESC -> Options -> AddOns plus /dm resethud (/fm resethud) and /ds resethud with combat-lockdown deferral." },
         { type = "UI",      text = "Standalone Scrollable Changelog Modal Parity & v1.9.6 Sync (14/11/2026): Replaced the legacy static 5-bullet standalone Changelog text with a live scrollable viewer reading directly from DynamicMarker.CHANGELOG.entries so standalone and full-suite users always see full release notes with colour-coded [FEATURE], [FIX], and [UI] badges." },
         { type = "UI",      text = "Standalone Bottom-Right Dock Parity & Copyable Support Modal Links (14/11/2026): Added the [Reload UI] button and persisted Opacity (50%-100%) and Scale (80%-120%) sliders to the standalone footer dock (positioned left of the // resize grip and stored in DynamicMarkerDB), and replaced static Support modal text with read-only click-to-highlight Ctrl+C EditBoxes for Ko-fi, CurseForge (/addons/dynamicmarker), and Email with Escape-to-close." },

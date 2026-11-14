@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.6"
+    local fb = fallback or "1.9.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -40,22 +40,44 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
     local getAddOnEnableState = (C_AddOns and C_AddOns.GetAddOnEnableState) or _G.GetAddOnEnableState
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
+    local function isOtherEnabled(name)
+        if type(isAddOnLoaded) == "function" and isAddOnLoaded(name) then
+            return true
+        end
+        if type(getAddOnEnableState) == "function" then
+            local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
+            if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
+                local ok, st = pcall(getAddOnEnableState, name, pName)
+                if ok and type(st) == "number" and st > 0 then return true end
+            end
+            local ok2, st2 = pcall(getAddOnEnableState, name)
+            if ok2 and type(st2) == "number" and st2 > 0 then return true end
+        end
+        return false
+    end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.6"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.7"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
         end
-    else
-        local stEnabled = false
-        if type(isAddOnLoaded) == "function" and isAddOnLoaded(standaloneName) then
-            stEnabled = true
-        elseif type(getAddOnEnableState) == "function" then
-            local ok, st = pcall(getAddOnEnableState, standaloneName)
-            if ok and type(st) == "number" and st > 0 then stEnabled = true end
+        if isOtherEnabled("DynamicSuite") and type(getMeta) == "function" then
+            local okS, sVer = pcall(getMeta, "DynamicSuite", "Version")
+            if okS and type(sVer) == "string" and sVer ~= "" and not sVer:find("@") then
+                if CompareSemVer(thisVersion, sVer) <= 0 then
+                    return true
+                end
+            end
         end
-        if stEnabled and type(getMeta) == "function" then
+    else
+        if type(globalTbl) == "table" and globalTbl._loadedBySuite == false then
+            local stLoadedVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or "0.0.0"
+            if CompareSemVer(stLoadedVer, thisVersion) >= 0 then
+                return true
+            end
+        end
+        if isOtherEnabled(standaloneName) and type(getMeta) == "function" then
             local okV, stVer = pcall(getMeta, standaloneName, "Version")
             if okV and type(stVer) == "string" and stVer ~= "" and not stVer:find("@") then
                 if CompareSemVer(stVer, thisVersion) > 0 then
@@ -67,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.6")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.7")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicChat", VERSION, _G.DynamicChat) then
     return
 end

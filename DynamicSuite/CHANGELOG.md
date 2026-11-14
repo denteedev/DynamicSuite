@@ -1,5 +1,16 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v1.9.6 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v1.9.7 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v1.9.7 (`/ds`, `/dm`, `/dbag`)
+* **[FEATURE] Official Full-Suite CurseForge Release Pipeline (`DynamicSuite` Project ID `1804382` + Standalone `DynamicMarker` Project ID `1331651`):**
+  * **Dual-Artifact GitHub Actions & `.pkgmeta` Packaging (`release.yml`, `.pkgmeta`, `deploy.ps1`):** Connected full `DynamicSuite` (`Project ID 1804382`) alongside standalone `DynamicMarker` (`Project ID 1331651`) in our automated `BigWigsMods/packager@v2` release pipeline so every `v*` tag stages, verifies, and publishes both clean runtime addons (`DynamicSuite-<tag>.zip` and `DynamicMarker-<tag>.zip`) with zero development or internal clutter, while local release-zip validation builds and extraction-verifies both ZIP packages end-to-end.
+  * **Code-Accurate Storefront Description (`Marketing/CurseForge_DynamicSuite.md`):** Authored full CurseForge storefront documentation covering all 8 integrated modules (`DynamicLoad`, `DynamicPrep`, `DynamicMarker`, `DynamicZoom`, `DynamicFPS`, `DynamicGroup`, `DynamicBags`, `DynamicChat`), Global Smart Search (`202` indexed settings), `6`-target scale-aware `[+ HUD]` Edit Mode with magnetic snapping & `/ds resethud`, `9`-Step Guided Setup & `2`-Tier Conflict Scanner, Theme & Font Studio, Smart Coexistence, and complete slash command reference.
+* **[UI] Live CurseForge URLs & Support Modal Cleanup (`DynamicSuite_UI.lua`, `DynamicMarker.lua`, `README.md`):**
+  * Removed all remaining placeholder status labels next to `https://www.curseforge.com/wow/addons/dynamicsuite` across in-game Support panels/modals and public Markdown docs so both `DynamicSuite` and standalone `DynamicMarker` show the live CurseForge URLs, enforced automatically by `deploy.ps1`.
+* **[FIX] Hardened `ShouldYieldToOtherInstall` Dual-Mode Coexistence (All 8 `Modules/Dynamic*.lua` Files):**
+  * Updated semantic-version coexistence across all 8 bundled/standalone modules (`DynamicBags`, `DynamicChat`, `DynamicFPS`, `DynamicGroup`, `DynamicLoad`, `DynamicMarker`, `DynamicPrep`, `DynamicZoom`) to check both `C_AddOns.IsAddOnLoaded` and character/global `C_AddOns.GetAddOnEnableState` cleanly before `PLAYER_LOGIN` so standalone installs and `DynamicSuite` always defer cleanly to the newer version regardless of load order.
 
 ---
 

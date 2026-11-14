@@ -4591,7 +4591,7 @@ function addonTable.CreateMainConfigUI()
                         host._activeModHost = modHost
 
                         if f.verPill and f.verPill.label then
-                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "1.9.6"
+                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "1.9.7"
                             f.verPill.label:SetText("v" .. tostring(mVer))
                         end
                         UpdateStatusBar(true)
@@ -4995,7 +4995,7 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        local curVer = addonTable.ADDON_VERSION or "1.9.6"
+        local curVer = addonTable.ADDON_VERSION or "1.9.7"
         local curSig = f.GetSuiteChangelogSignature and f.GetSuiteChangelogSignature() or curVer
         local seenVer = gTbl.lastSeenChangelogVer or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogVer)
         local seenSig = gTbl.lastSeenChangelogSig or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogSig)
@@ -6687,7 +6687,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.6"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.7"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -6700,6 +6700,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "NEW",      title = "v1.9.7 Release: CurseForge Dual-Release Pipeline (DynamicSuite 1804382) & Hardened Coexistence", desc = "Wired full DynamicSuite (Project ID 1804382) alongside standalone DynamicMarker (Project ID 1331651) in the automated release workflow, updated all Support panels and public docs to the live CurseForge links, added code-accurate storefront documentation, and hardened ShouldYieldToOtherInstall dual-mode version coexistence across all 8 modules." },
                 { badge = "FIXED",    title = "v1.9.6 Release: DynamicBags Bank/Guild Bank & Merge Hardening + Suite/Standalone Parity", desc = "Eliminated post-/reload Bank & Guild Bank flashes with SetScale suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, enforced strict weak ordering in Sort: A-Z, hardened Drop-Anywhere slot placement, synced DynamicBags Smart Search entries, and upgraded standalone DynamicMarker's Changelog modal to stream live entries dynamically." },
                 { badge = "UI",       title = "Standalone DynamicMarker Dock Parity & DynamicSuite CurseForge URL", desc = "Added the bottom-right [Reload UI] button, Opacity slider, and Scale slider to standalone DynamicMarker's footer dock, upgraded its Support modal to read-only Ctrl+C EditBoxes, and updated DynamicSuite's Support view CurseForge link to https://www.curseforge.com/wow/addons/dynamicsuite." },
                 { badge = "FIXED",    title = "First-Open ESC > Options > AddOns Blank Shell & Left-Rail Rendering", desc = "Initialised RefreshLeftRailLayout() during CreateMainConfigUI(), routed ApplySuiteThemeAndGeometry() through RefreshLeftRailLayout() and all workspace view refreshes, added a guarded C_Timer.After(0, ...) post-layout refresh and Raise() on DynamicSuiteMainFrame:OnShow, and hardened HideSettingsPanelSafe() + Settings canvas OnShow theme sync so opening via ESC > Options > AddOns > DynamicSuite renders all 8 left-rail modules, active workspace, and surface theme on the very first open." },
@@ -6752,6 +6753,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
             openModule = "DynamicMarker",
             items = {
+                { badge = "NEW",      title = "v1.9.7 Live Suite Cross-Links & Hardened Coexistence", desc = "Replaced legacy URL placeholder labels across DynamicSuite & standalone DynamicMarker Support panels and docs now that DynamicSuite (Project ID 1804382) is live on CurseForge, and hardened ShouldYieldToOtherInstall semantic version yielding regardless of addon load order." },
                 { badge = "UI",       title = "Standalone Scrollable Changelog Modal Parity", desc = "Upgraded standalone DynamicMarker's Changelog modal to stream live formatted entries directly from DynamicMarker.CHANGELOG.entries inside a scrollable frame matching the full suite Changelog hub." },
                 { badge = "NEW",      title = "Encapsulated HUD Edit Mode, Movers & Standalone Parity", desc = "Moved HUD Edit Mode toggle state, crisp pixel-bordered movers ('DynamicMarker: Icon Bar' and 'DynamicMarker: Flare Bar'), drag-and-snap persistence directly into DynamicMarkerDB, mousewheel scaling (60%-150%), ESC-key closing, and combat-lockdown failsafe cleanly inside DynamicMarker. Registers with DynamicSuite's [+ HUD] toolbar button via RegisterHudEditCallback so no duplicate drag shields are created, and adds direct toggles in Focus/Flare Settings headers, the standalone rail, and /dm hud." },
                 { badge = "NEW",      title = "One-Time FocusMarkerDB -> DynamicMarkerDB Migration Bridge", desc = "On ADDON_LOADED before defaults initialise, safely maps legacy FocusMarker bar positions, scales, visibility rules (Solo/Group/Always), orientation, and custom icon/flare ordering into DynamicMarkerDB with corrupted-table guards, setting migratedFromFocusMarker = true so legacy settings remain untouched without overwriting subsequent edits." },
@@ -7434,7 +7436,7 @@ function addonTable.CreateMainConfigUI()
     end
 
     CreateCopyLinkRow(-96,  "Buy the Developer a Coffee (Ko-fi):", "https://ko-fi.com/dentee")
-    CreateCopyLinkRow(-156, "CurseForge Project Page (Coming Soon):", "https://www.curseforge.com/wow/addons/dynamicsuite (Coming Soon)")
+    CreateCopyLinkRow(-156, "CurseForge Project Page & Feedback:", "https://www.curseforge.com/wow/addons/dynamicsuite")
     CreateCopyLinkRow(-216, "Direct Contact & Feedback (Email):", "denteedev@gmail.com")
 
     supportView.Refresh = function()
@@ -12541,7 +12543,7 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "1.9.6"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "1.9.7"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -13273,7 +13275,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.6") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.7") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -13334,7 +13336,7 @@ function addonTable.HookGameMenu()
             cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
             if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
-            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.6") .. "|r")
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.7") .. "|r")
             openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
             if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
@@ -13440,7 +13442,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "1.9.6",
+        version = addonTable.ADDON_VERSION or "1.9.7",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,
