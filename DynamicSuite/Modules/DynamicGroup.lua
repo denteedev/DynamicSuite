@@ -195,6 +195,7 @@ local DEFAULTS = {
     protectActiveQueues = true,
     announceInvites = true,
     autoInsertKeystone = true,
+    showGroupTeleportToast = true,
     oneClickSignUp = true,
     autoSelectRole = true,
     autoFillNote = true,
@@ -1812,6 +1813,8 @@ local function CountActiveUtilityFilters(db)
     return count
 end
 
+local recentSearchResultCache = {}
+
 local function InspectSearchResult(resultID)
     if not IsValidSearchResultID(resultID) then
         return nil
@@ -1891,6 +1894,13 @@ local function InspectSearchResult(resultID)
         end
     end
     local actMeta = activityID and GetCachedActivityInfo(activityID) or nil
+    local rawListingName = (type(searchInfo.name) == "string" and not IsSecretValue(searchInfo.name)) and searchInfo.name or nil
+    if resultID and activityID then
+        recentSearchResultCache[resultID] = {
+            activityID = activityID,
+            name = rawListingName,
+        }
+    end
 
     local regionKey, realmName = "PENDING", ""
     if hasLeader then
@@ -2531,18 +2541,16 @@ local function OnLFGListSearchEntryUpdate(entry)
                                 slotOv:SetFrameLevel(enumLevel + 2)
                             end
                             if slotOv.tex.SetDesaturated then
-                                slotOv.tex:SetDesaturated(false)
+                                slotOv.tex:SetDesaturated(true)
                             end
                             if roleKey == "TANK" then
                                 slotOv.tex:SetTexCoord(0 / 64, 19 / 64, 22 / 64, 41 / 64)
-                                slotOv.tex:SetVertexColor(0.45, 0.72, 0.98, 0.88)
                             elseif roleKey == "HEALER" then
                                 slotOv.tex:SetTexCoord(20 / 64, 39 / 64, 1 / 64, 20 / 64)
-                                slotOv.tex:SetVertexColor(0.35, 0.85, 0.65, 0.88)
                             else
                                 slotOv.tex:SetTexCoord(20 / 64, 39 / 64, 22 / 64, 41 / 64)
-                                slotOv.tex:SetVertexColor(0.78, 0.82, 0.88, 0.88)
                             end
+                            slotOv.tex:SetVertexColor(0.56, 0.60, 0.66, 0.72)
                             slotOv:Show()
                         else
                             SetAnchorGreyDotVisible(anchor, true)
@@ -3802,13 +3810,13 @@ local function PopulateDungeonTileTooltip(tile)
     )
 
     _G.GameTooltip:AddLine(" ")
+    _G.GameTooltip:AddLine("|cFF22C55ELeft-Click:|r |cFFE2E8F0Toggle LFG filter for this dungeon.|r", 0.886, 0.910, 0.941)
+    _G.GameTooltip:AddLine("|c" .. accHex .. "Shift + Left-Click:|r |cFFE2E8F0Filter exclusively to this dungeon.|r", 0.886, 0.910, 0.941)
     if slot.spellKnown then
-        _G.GameTooltip:AddLine("|cFF22C55ELeft-Click:|r |cFFE2E8F0Cast Dungeon Teleport.|r", 0.886, 0.910, 0.941)
-        _G.GameTooltip:AddLine("|cFFF97316Right-Click:|r |cFFE2E8F0Toggle LFG filter for this dungeon.|r", 0.886, 0.910, 0.941)
+        _G.GameTooltip:AddLine("|cFFF97316Right-Click:|r |cFFE2E8F0Cast Dungeon Teleport.|r", 0.886, 0.910, 0.941)
     else
-        _G.GameTooltip:AddLine("|cFF22C55ELeft-Click / Right-Click:|r |cFFE2E8F0Toggle LFG filter for this dungeon.|r", 0.886, 0.910, 0.941)
+        _G.GameTooltip:AddLine("|cFF64748BRight-Click:|r |cFF94A3B8Not learned yet (complete +10 in time).|r", 0.886, 0.910, 0.941)
     end
-    _G.GameTooltip:AddLine("|c" .. accHex .. "Shift + Right-Click:|r |cFFE2E8F0Filter exclusively to this dungeon.|r", 0.886, 0.910, 0.941)
     _G.GameTooltip:Show()
 end
 
@@ -4004,12 +4012,10 @@ function DynamicGroup:EnsurePortalBar()
             local isDown = (down == true)
             if isDown ~= useKeyDown then return end
 
-            local isRight = (button == "RightButton")
-            local isFilterClick = isRight or (button == "LeftButton" and not selfTile.spellKnown)
-            if not isFilterClick or not selfTile.dungeonCode then return end
+            if button ~= "LeftButton" or not selfTile.dungeonCode then return end
 
             local db = EnsureDB()
-            if isRight and IsShiftKeyDown and IsShiftKeyDown() then
+            if IsShiftKeyDown and IsShiftKeyDown() then
                 local alreadySolo = (db.filteredDungeons[selfTile.dungeonCode] == true)
                 if alreadySolo then
                     for k, v in pairs(db.filteredDungeons) do
@@ -4204,14 +4210,17 @@ function DynamicGroup:UpdatePortalBar(forceSeasonRefresh)
                 if slot.spellKnown then
                     spellTarget = SafeGetSpellName(slot.spellID) or slot.spellID
                 end
-                if tile.GetAttribute and tile:GetAttribute("spell1") ~= spellTarget then
-                    tile:SetAttribute("type1", spellTarget and "spell" or nil)
-                    tile:SetAttribute("spell1", spellTarget)
-                elseif spellTarget and tile.GetAttribute and tile:GetAttribute("type1") ~= "spell" then
-                    tile:SetAttribute("type1", "spell")
-                    tile:SetAttribute("spell1", spellTarget)
+                if tile.GetAttribute then
+                    if tile:GetAttribute("type1") ~= nil or tile:GetAttribute("spell1") ~= nil then
+                        tile:SetAttribute("type1", nil)
+                        tile:SetAttribute("spell1", nil)
+                    end
+                    local desiredType2 = spellTarget and "spell" or nil
+                    if tile:GetAttribute("type2") ~= desiredType2 or tile:GetAttribute("spell2") ~= spellTarget then
+                        tile:SetAttribute("type2", desiredType2)
+                        tile:SetAttribute("spell2", spellTarget)
+                    end
                 end
-                tile:SetAttribute("type2", nil)
                 if not tile:IsShown() then tile:Show() end
             elseif tile and tile:IsShown() then
                 tile:Hide()
@@ -4222,6 +4231,393 @@ function DynamicGroup:UpdatePortalBar(forceSeasonRefresh)
         if pbar:IsShown() then pbar:Hide() end
     end
     self.pendingPortalBarUpdate = false
+end
+
+function DynamicGroup:HideTeleportToast()
+    self.activeTeleportToastData = nil
+    if self.teleportToast then
+        if InCombatLockdown and InCombatLockdown() then
+            self.pendingTeleportToastHide = true
+        else
+            self.teleportToast:Hide()
+            self.pendingTeleportToastHide = false
+        end
+    else
+        self.pendingTeleportToastHide = false
+    end
+    self.pendingTeleportToastUpdate = false
+end
+
+function DynamicGroup:EnsureTeleportToast()
+    if self.teleportToast then return self.teleportToast end
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingTeleportToastUpdate = true
+        return nil
+    end
+
+    local toast = CreateFrame("Frame", "DynamicGroupTeleportToast", UIParent, "BackdropTemplate")
+    toast:SetSize(300, 68)
+    toast:SetFrameStrata("DIALOG")
+    toast:SetClampedToScreen(true)
+    toast:SetMovable(true)
+    toast:EnableMouse(true)
+    toast:RegisterForDrag("LeftButton")
+    toast:SetPoint("TOP", UIParent, "TOP", 0, -140)
+    toast:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    toast:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- #0B0D12
+    local ar, ag, ab = GetSuiteAccent()
+    toast:SetBackdropBorderColor(ar, ag, ab, 0.75)
+
+    toast:SetScript("OnDragStart", function(selfToast)
+        if InCombatLockdown and InCombatLockdown() then return end
+        if selfToast.IsMovable and selfToast:IsMovable() then
+            selfToast:StartMoving()
+        end
+    end)
+    toast:SetScript("OnDragStop", function(selfToast)
+        if selfToast.StopMovingOrSizing then
+            selfToast:StopMovingOrSizing()
+        end
+    end)
+
+    -- Left Dungeon Icon (38x38)
+    local iconBorder = CreateFrame("Frame", nil, toast, "BackdropTemplate")
+    iconBorder:SetSize(40, 40)
+    iconBorder:SetPoint("LEFT", toast, "LEFT", 10, 0)
+    iconBorder:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    iconBorder:SetBackdropColor(0.02, 0.03, 0.05, 1)
+    iconBorder:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+    toast.iconBorder = iconBorder
+
+    toast.icon = iconBorder:CreateTexture(nil, "ARTWORK")
+    toast.icon:SetSize(38, 38)
+    toast.icon:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+    toast.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    DisableTexPixelSnap(toast.icon)
+
+    -- Top Title Line
+    toast.titleText = toast:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(toast.titleText, 11, "OUTLINE")
+    toast.titleText:SetPoint("TOPLEFT", toast, "TOPLEFT", 56, -10)
+    toast.titleText:SetPoint("RIGHT", toast, "RIGHT", -104, 0)
+    toast.titleText:SetJustifyH("LEFT")
+    toast.titleText:SetWordWrap(false)
+    toast.titleText:SetTextColor(0.96, 0.98, 1.00, 1)
+
+    -- Middle Roster Line
+    toast.rosterText = toast:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(toast.rosterText, 10, "")
+    toast.rosterText:SetPoint("TOPLEFT", toast, "TOPLEFT", 56, -27)
+    toast.rosterText:SetPoint("RIGHT", toast, "RIGHT", -104, 0)
+    toast.rosterText:SetJustifyH("LEFT")
+    toast.rosterText:SetWordWrap(false)
+    toast.rosterText:SetTextColor(0.886, 0.910, 0.941, 1)
+
+    -- Bottom Status Line
+    toast.statusText = toast:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(toast.statusText, 9, "")
+    toast.statusText:SetPoint("TOPLEFT", toast, "TOPLEFT", 56, -43)
+    toast.statusText:SetPoint("RIGHT", toast, "RIGHT", -104, 0)
+    toast.statusText:SetJustifyH("LEFT")
+    toast.statusText:SetWordWrap(false)
+
+    -- Secure Teleport Action Button
+    local tpBtn = CreateFrame("Button", "DynamicGroupTeleportToastBtn", toast, "SecureActionButtonTemplate,BackdropTemplate")
+    tpBtn:SetSize(76, 26)
+    tpBtn:SetPoint("RIGHT", toast, "RIGHT", -22, 0)
+    tpBtn:RegisterForClicks("AnyUp", "AnyDown")
+    tpBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    tpBtn:SetBackdropColor(0.08, 0.10, 0.14, 0.96)
+    tpBtn:SetBackdropBorderColor(0.24, 0.28, 0.36, 0.95)
+    tpBtn.label = tpBtn:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(tpBtn.label, 10, "OUTLINE")
+    tpBtn.label:SetPoint("CENTER", 0, 0)
+    tpBtn.label:SetText("Teleport")
+    tpBtn:SetScript("OnEnter", function(s)
+        if _G.GameTooltip then
+            _G.GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            _G.GameTooltip:ClearLines()
+            local data = DynamicGroup.activeTeleportToastData
+            _G.GameTooltip:AddLine((data and data.dungeonName) or "Dungeon Teleport", 1, 1, 1)
+            if data and data.spellKnown then
+                _G.GameTooltip:AddLine("|cFF22C55ELeft-Click:|r |cFFE2E8F0Cast dungeon teleport.|r", 0.886, 0.910, 0.941)
+            else
+                _G.GameTooltip:AddLine("Dungeon teleport not learned yet (complete +10 in time).", 0.62, 0.68, 0.76, true)
+            end
+            _G.GameTooltip:Show()
+        end
+    end)
+    tpBtn:SetScript("OnLeave", function()
+        if _G.GameTooltip then _G.GameTooltip:Hide() end
+    end)
+    tpBtn:SetScript("PostClick", function(selfBtn, button, down)
+        local useKeyDown = (type(_G.GetCVarBool) == "function" and _G.GetCVarBool("ActionButtonUseKeyDown")) and true or false
+        if (down == true) ~= useKeyDown then return end
+        if button ~= "LeftButton" then return end
+        local data = DynamicGroup.activeTeleportToastData
+        if data and data.spellKnown then
+            DynamicGroup:HideTeleportToast()
+        end
+    end)
+    toast.teleportBtn = tpBtn
+
+    -- Compact Close ("X") Button
+    local closeBtn = CreateFrame("Button", nil, toast, "BackdropTemplate")
+    closeBtn:SetSize(16, 16)
+    closeBtn:SetPoint("TOPRIGHT", toast, "TOPRIGHT", -4, -4)
+    closeBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    closeBtn:SetBackdropColor(0.08, 0.10, 0.14, 0.90)
+    closeBtn:SetBackdropBorderColor(0.18, 0.22, 0.28, 0.90)
+    closeBtn.label = closeBtn:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(closeBtn.label, 9, "OUTLINE")
+    closeBtn.label:SetPoint("CENTER", 0, 0)
+    closeBtn.label:SetText("X")
+    closeBtn.label:SetTextColor(0.68, 0.74, 0.82, 1)
+    closeBtn:SetScript("OnEnter", function(s)
+        s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
+        s.label:SetTextColor(1, 1, 1, 1)
+    end)
+    closeBtn:SetScript("OnLeave", function(s)
+        s:SetBackdropBorderColor(0.18, 0.22, 0.28, 0.90)
+        s.label:SetTextColor(0.68, 0.74, 0.82, 1)
+    end)
+    closeBtn:SetScript("OnClick", function()
+        DynamicGroup:HideTeleportToast()
+    end)
+    toast.closeBtn = closeBtn
+
+    toast:Hide()
+    self.teleportToast = toast
+    return toast
+end
+
+function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
+    local db = EnsureDB()
+    local data = self.activeTeleportToastData
+    if db.showGroupTeleportToast == false or not data or IsYieldingSharedHooks() then
+        self:HideTeleportToast()
+        return
+    end
+
+    local inGroup = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
+    local numMembers = inGroup and ((type(_G.GetNumGroupMembers) == "function" and _G.GetNumGroupMembers()) or 1) or 1
+    numMembers = math.max(1, math.min(5, tonumber(numMembers) or 1))
+
+    if playAudioOnRosterIncrease then
+        local prevCount = data.lastMemberCount or 0
+        if numMembers > prevCount then
+            if type(_G.PlaySound) == "function" then
+                if numMembers >= 5 and prevCount < 5 then
+                    pcall(_G.PlaySound, (_G.SOUNDKIT and _G.SOUNDKIT.READY_CHECK) or 8960, "Master")
+                else
+                    pcall(_G.PlaySound, (_G.SOUNDKIT and _G.SOUNDKIT.IG_PLAYER_INVITE) or 880, "Master")
+                end
+            end
+        end
+    end
+    data.lastMemberCount = numMembers
+
+    local resolvedSpellID, spellKnown = ResolveTeleportSpellForDungeon(data.mapID, data.code, data.dungeonName, data.spellID)
+    if resolvedSpellID and resolvedSpellID > 0 then
+        data.spellID = resolvedSpellID
+    end
+    data.spellKnown = spellKnown and true or false
+
+    local toast = self:EnsureTeleportToast()
+    if not toast then
+        self.pendingTeleportToastUpdate = true
+        return
+    end
+
+    local ar, ag, ab = GetSuiteAccent()
+    local isFull = (numMembers >= 5)
+    if isFull then
+        toast:SetBackdropBorderColor(0.133, 0.773, 0.369, 0.95) -- Emerald #22C55E
+    else
+        toast:SetBackdropBorderColor(ar, ag, ab, 0.80)
+    end
+
+    if toast.icon then
+        toast.icon:SetTexture(data.icon or 136095)
+    end
+
+    local titleDisplay = data.listingName
+    if type(titleDisplay) ~= "string" or titleDisplay == "" then
+        titleDisplay = data.dungeonName or "Mythic+ Dungeon"
+    elseif data.code and data.dungeonName and not titleDisplay:lower():find(data.dungeonName:lower():sub(1, 5), 1, true) then
+        titleDisplay = tostring(data.code) .. ": " .. titleDisplay
+    end
+    SetSafeFont(toast.titleText, 11, "OUTLINE")
+    toast.titleText:SetText(titleDisplay)
+
+    SetSafeFont(toast.rosterText, 10, "")
+    toast.rosterText:SetText(string.format("Members: %d/5", numMembers))
+
+    SetSafeFont(toast.statusText, 9, "")
+    if isFull then
+        toast.statusText:SetText("|cFF22C55EGroup Full (5/5) - Ready to Teleport!|r")
+    else
+        toast.statusText:SetText("|cFF94A3B8Waiting for group to fill...|r")
+    end
+
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingTeleportToastUpdate = true
+        return
+    end
+
+    local tpBtn = toast.teleportBtn
+    if tpBtn then
+        local spellTarget = nil
+        if data.spellKnown and data.spellID and data.spellID > 0 then
+            spellTarget = SafeGetSpellName(data.spellID) or data.spellID
+        end
+        if tpBtn.SetAttribute then
+            tpBtn:SetAttribute("type1", spellTarget and "spell" or nil)
+            tpBtn:SetAttribute("spell1", spellTarget)
+        end
+        SetSafeFont(tpBtn.label, 10, "OUTLINE")
+        if spellTarget then
+            tpBtn.label:SetText("Teleport")
+            if isFull then
+                tpBtn:SetBackdropColor(0.08, 0.24, 0.14, 0.96)
+                tpBtn:SetBackdropBorderColor(0.133, 0.773, 0.369, 0.95)
+                tpBtn.label:SetTextColor(0.204, 0.827, 0.600, 1)
+            else
+                tpBtn:SetBackdropColor(0.20, 0.10, 0.03, 0.96)
+                tpBtn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
+                tpBtn.label:SetTextColor(1.0, 0.72, 0.36, 1)
+            end
+        else
+            tpBtn.label:SetText("No Portal")
+            tpBtn:SetBackdropColor(0.06, 0.07, 0.10, 0.92)
+            tpBtn:SetBackdropBorderColor(0.16, 0.19, 0.25, 0.90)
+            tpBtn.label:SetTextColor(0.50, 0.56, 0.64, 1)
+        end
+    end
+
+    if self.pendingTeleportToastHide then
+        toast:Hide()
+        self.pendingTeleportToastHide = false
+    elseif not toast:IsShown() then
+        toast:Show()
+    end
+    self.pendingTeleportToastUpdate = false
+end
+
+function DynamicGroup:HandleApplicationStatusUpdated(searchResultID, newStatus, oldStatus, groupName)
+    if IsSecretValue(searchResultID) or IsSecretValue(newStatus) then return end
+    if type(searchResultID) ~= "number" or searchResultID <= 0 then return end
+
+    if newStatus == "applied" or newStatus == "invited" then
+        pcall(InspectSearchResult, searchResultID)
+        return
+    end
+    if newStatus ~= "inviteaccepted" then return end
+
+    local db = EnsureDB()
+    if db.showGroupTeleportToast == false or IsYieldingSharedHooks() then return end
+
+    local activityID = nil
+    local listingName = (type(groupName) == "string" and not IsSecretValue(groupName) and groupName ~= "") and groupName or nil
+    if C_LFGList and type(C_LFGList.GetSearchResultInfo) == "function" then
+        local okR, rInfo = pcall(C_LFGList.GetSearchResultInfo, searchResultID)
+        if okR and type(rInfo) == "table" then
+            if not IsSecretValue(rInfo.activityID) and tonumber(rInfo.activityID) then
+                activityID = tonumber(rInfo.activityID)
+            elseif type(rInfo.activityIDs) == "table" and not IsSecretValue(rInfo.activityIDs) then
+                local firstAct = rInfo.activityIDs[1]
+                if not IsSecretValue(firstAct) and tonumber(firstAct) then
+                    activityID = tonumber(firstAct)
+                end
+            end
+            if type(rInfo.name) == "string" and not IsSecretValue(rInfo.name) and rInfo.name ~= "" then
+                listingName = rInfo.name
+            end
+        end
+    end
+
+    local cached = recentSearchResultCache[searchResultID]
+    if cached then
+        if not activityID and cached.activityID then
+            activityID = cached.activityID
+        end
+        if (not listingName or listingName == "") and cached.name then
+            listingName = cached.name
+        end
+    end
+
+    local actMeta = activityID and GetCachedActivityInfo(activityID) or nil
+    local slots = GetSeasonDungeonSlots(false)
+    local matchedSlot = nil
+    if actMeta and actMeta.mapID then
+        for _, slot in ipairs(slots) do
+            if slot.mapID == actMeta.mapID then matchedSlot = slot; break end
+        end
+    end
+    if not matchedSlot and actMeta and actMeta.code then
+        for _, slot in ipairs(slots) do
+            if slot.code == actMeta.code then matchedSlot = slot; break end
+        end
+    end
+    if not matchedSlot and actMeta and actMeta.fullName and actMeta.fullName ~= "" then
+        matchedSlot = MatchTextToDungeonSlot(actMeta.fullName, slots)
+    end
+    if not matchedSlot and listingName and listingName ~= "" then
+        matchedSlot = MatchTextToDungeonSlot(listingName, slots)
+    end
+
+    if not matchedSlot and not (actMeta and actMeta.isDungeonActivity) then
+        return
+    end
+
+    local dMapID = (matchedSlot and matchedSlot.mapID) or (actMeta and actMeta.mapID) or nil
+    local dCode = (matchedSlot and matchedSlot.code) or (actMeta and actMeta.code) or "M+"
+    local dName = (matchedSlot and matchedSlot.name) or (actMeta and actMeta.fullName ~= "" and actMeta.fullName) or listingName or "Season Dungeon"
+    local dIcon = (matchedSlot and matchedSlot.icon) or 136095
+    local dSpellID, dSpellKnown = ResolveTeleportSpellForDungeon(dMapID, dCode, dName, matchedSlot and matchedSlot.spellID)
+
+    local inGroup = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
+    local curMembers = inGroup and ((type(_G.GetNumGroupMembers) == "function" and _G.GetNumGroupMembers()) or 1) or 1
+    curMembers = math.max(1, math.min(5, tonumber(curMembers) or 1))
+
+    self.activeTeleportToastData = {
+        resultID = searchResultID,
+        activityID = activityID,
+        mapID = dMapID,
+        code = dCode,
+        dungeonName = dName,
+        listingName = listingName or dName,
+        icon = dIcon,
+        spellID = dSpellID,
+        spellKnown = dSpellKnown and true or false,
+        lastMemberCount = curMembers,
+    }
+
+    if type(_G.PlaySound) == "function" then
+        if curMembers >= 5 then
+            pcall(_G.PlaySound, (_G.SOUNDKIT and _G.SOUNDKIT.READY_CHECK) or 8960, "Master")
+        else
+            pcall(_G.PlaySound, (_G.SOUNDKIT and _G.SOUNDKIT.IG_PLAYER_INVITE) or 880, "Master")
+        end
+    end
+
+    self:UpdateTeleportToast(false)
 end
 
 function DynamicGroup:UpdateLFGMiniBar()
@@ -6105,6 +6501,24 @@ local function RenderGroupEmbedded(arg1, arg2)
     page3.orderedCards[#page3.orderedCards + 1] = c3_keystone
     root.allControls[#root.allControls + 1] = c3_keystone
 
+    -- Card 3.3c: Dungeon Joined & Group Full Teleport Toast
+    local c3_tpToast = CreateCardRow(sec3a, 62,
+        "Dungeon Joined & Group Full Teleport Toast",
+        "Shows a quick-teleport toast when your Premade Group application is accepted, plays a chime as members join, and alerts you once the group reaches 5/5."
+    )
+    AttachSegmentedSwitchToCard(c3_tpToast,
+        function() return EnsureDB().showGroupTeleportToast ~= false end,
+        function(val)
+            EnsureDB().showGroupTeleportToast = val and true or false
+            if not val then
+                DynamicGroup:HideTeleportToast()
+            end
+        end
+    )
+    sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_tpToast
+    page3.orderedCards[#page3.orderedCards + 1] = c3_tpToast
+    root.allControls[#root.allControls + 1] = c3_tpToast
+
     -- Card 3.3b: Instant One-Click Sign-Up
     local c3_oneClick = CreateCardRow(sec3b, 62,
         "Instant One-Click Sign-Up",
@@ -6620,6 +7034,7 @@ local function RegisterWithDynamicSuite()
             if DynamicGroup.portalBar and not (InCombatLockdown and InCombatLockdown()) then
                 DynamicGroup.portalBar:Hide()
             end
+            DynamicGroup:HideTeleportToast()
             DynamicGroup:UnregisterAllEvents()
         end,
         SelectSubTab = function(a1, a2, a3)
@@ -6647,10 +7062,11 @@ local function RegisterWithDynamicSuite()
         version = DynamicGroup.version or VERSION,
         date = "15/11/2026",
         entries = {
-            { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Dynamically discovers all learned Midnight Season 1 teleport spells from the Mythic+ tab and spellbook so Left-click casts learned dungeon teleports out of combat and Right-click filters the group finder to that dungeon." },
+            { type = "FEATURE", text = "Dungeon Joined & Group Full Teleport Toast (15/11/2026): Displays a sleek movable dark-obsidian toast with a one-click Dungeon Teleport button when your Premade Group application is accepted, chimes as players join, and highlights when the group reaches 5/5." },
+            { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Dynamically discovers all learned Midnight Season 1 teleport spells from the Mythic+ tab and spellbook so Left-click toggles the dungeon filter (Shift+Left-click solo filters) and Right-click casts learned dungeon teleports out of combat." },
             { type = "FEATURE", text = "Integrated Multi-Toggle Premade Group Filters (15/11/2026): Upgraded the Group Finder filter menu with Tank, Healer, and DPS role availability toggles (with role icons), No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez, kept in two-way sync with Blizzard's native Filter menu without altering difficulty checkboxes." },
-            { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill (OCE, USE, USW, USC, LA, BR), colour-tinted Tank/Healer/DPS icons matched to Blizzard's slot size over empty group slots, a simplified Show Region & Leader IO Badge switch, and personal best key levels plus same-class warnings in group tooltips." },
-            { type = "FIX",     text = "Fixed the dungeon tile tooltip Shift + Right-Click colour code and updated the Portal Bar All button to stay unhighlighted while a dungeon filter is active." },
+            { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill (OCE, USE, USW, USC, LA, BR), desaturated greyscale Tank/Healer/DPS icons matched to Blizzard's slot size over empty group slots, a simplified Show Region & Leader IO Badge switch, and personal best key levels plus same-class warnings in group tooltips." },
+            { type = "FIX",     text = "Fixed the dungeon tile tooltip colour code and updated the Portal Bar All button to stay unhighlighted while a dungeon filter is active." },
             { type = "FEATURE", text = "External Addon Conflict Detector & Yield Engine (12/11/2026): Added PremadeGroupsFilter and PremadeRegionFilter to the curated HARD conflict registry with unified DynamicSuite top-of-module warning banner and 1-click resolution." },
             { type = "FIX",     text = "Eliminated direct property write onto LFGListApplicationDialog.resultID before LFGListApplicationDialog_Show, added pcall and IsSecretValue guards across C_LFGList.GetApplicationInfo, HasSearchResultInfo, GetSearchResultInfo, and sp.SearchBox:GetText(), and pre-guarded LFGListSearchEntry OnEnter against expired resultIDs." },
             { type = "FIX",     text = "Added PLAYER_REGEN_DISABLED cleanup to close DynamicGroupDropdownCatcher and active dropdown popovers on combat entry, added OnMouseUp and OnHide OnUpdate cleanup on the workspace scrollbar thumb, and wired DynamicGroupDB.yieldHooks (AUTO_YIELD) across all LFG filter and sign-up hooks." },
@@ -6724,6 +7140,8 @@ SafeRegisterEvent(DynamicGroup, "LFG_ROLE_CHECK_SHOW")
 SafeRegisterEvent(DynamicGroup, "GROUP_ROSTER_UPDATE")
 SafeRegisterEvent(DynamicGroup, "CHALLENGE_MODE_KEYSTONE_RECEPTABLE_OPEN")
 SafeRegisterEvent(DynamicGroup, "LFG_LIST_SEARCH_RESULT_UPDATED")
+SafeRegisterEvent(DynamicGroup, "LFG_LIST_APPLICATION_STATUS_UPDATED")
+SafeRegisterEvent(DynamicGroup, "PLAYER_ENTERING_WORLD")
 
 DynamicGroup:SetScript("OnEvent", function(self, event, ...)
     if event == "ADDON_LOADED" then
@@ -6800,6 +7218,11 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         if self.pendingPortalBarUpdate then
             self:UpdatePortalBar(false)
         end
+        if self.pendingTeleportToastHide then
+            self:HideTeleportToast()
+        elseif self.pendingTeleportToastUpdate then
+            self:UpdateTeleportToast(false)
+        end
     elseif event == "BAG_UPDATE_DELAYED" or event == "CHALLENGE_MODE_MEMBER_INFO_UPDATED" or event == "MYTHIC_PLUS_CURRENT_AFFIX_UPDATE" then
         if self.portalBar and self.UpdatePortalBarVisuals then
             self:UpdatePortalBarVisuals()
@@ -6845,8 +7268,24 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
                 pcall(CompleteLFGRoleCheck, true)
             end
         end
+    elseif event == "LFG_LIST_APPLICATION_STATUS_UPDATED" then
+        self:HandleApplicationStatusUpdated(...)
     elseif event == "GROUP_ROSTER_UPDATE" then
         HandleAutoPromoteRoster()
+        if self.activeTeleportToastData then
+            if type(_G.IsInGroup) == "function" and not _G.IsInGroup() then
+                self:HideTeleportToast()
+            else
+                self:UpdateTeleportToast(true)
+            end
+        end
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        if self.activeTeleportToastData and type(_G.IsInInstance) == "function" then
+            local okI, inInst, instType = pcall(_G.IsInInstance)
+            if okI and inInst and (instType == "party" or instType == "raid" or instType == "scenario") then
+                self:HideTeleportToast()
+            end
+        end
     elseif event == "CHALLENGE_MODE_KEYSTONE_RECEPTABLE_OPEN" then
         if not self.keystoneHooked then
             C_Timer.After(0.05, TryAutoInsertKeystone)
