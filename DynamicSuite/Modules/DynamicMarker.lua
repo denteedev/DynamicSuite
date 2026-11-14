@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.6"
+    local fb = fallback or "2.0.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -99,7 +99,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.0.6"
+            or "2.0.7"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.6")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.7")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -3111,7 +3111,15 @@ function DM:PatchFocusMarkerMacroBody(existingBody)
     return patched, false
 end
 
-function DM:CreateOrUpdateFocusMarkerMacro(modeOrInitiated)
+local function ResolveFocusMacroEditIcon(idx)
+    local _, iconTex = GetMacroInfo(idx)
+    if iconTex == nil or iconTex == "" or iconTex == 134400 or iconTex == "INV_MISC_QUESTIONMARK" then
+        return "INV_MISC_QUESTIONMARK"
+    end
+    return nil
+end
+
+function DM:CreateOrUpdateFocusMarkerMacro(modeOrInitiated, customBody)
     local isExplicitUser = (modeOrInitiated == true or modeOrInitiated == "USER" or modeOrInitiated == "USER_FORCE")
     local isSettingChange = (modeOrInitiated == "SETTING")
 
@@ -3139,16 +3147,27 @@ function DM:CreateOrUpdateFocusMarkerMacro(modeOrInitiated)
                 print("|cFFF59E0BDynamicMarker|r: Custom [DynamicMark] macro exceeds 255 characters after patching; kept your existing macro untouched.")
                 return false
             end
-            EditMacro(idx, FOCUS_MACRO_NAME, "INV_MISC_QUESTIONMARK", patchedBody)
+            EditMacro(idx, FOCUS_MACRO_NAME, ResolveFocusMacroEditIcon(idx), patchedBody)
             return true
         end
     end
 
     local body = self:BuildFocusMarkerMacroBody()
+    local isCustomSave = false
+    if isExplicitUser and targetMode == "MANUAL" and type(customBody) == "string" then
+        local trimmed = customBody:sub(1, 255)
+        if trimmed:match("%S") then
+            body = trimmed
+            isCustomSave = true
+        end
+    end
+
     if idx and idx > 0 then
-        EditMacro(idx, FOCUS_MACRO_NAME, "INV_MISC_QUESTIONMARK", body)
+        EditMacro(idx, FOCUS_MACRO_NAME, ResolveFocusMacroEditIcon(idx), body)
         if isExplicitUser then
-            if foundName and foundName ~= FOCUS_MACRO_NAME then
+            if isCustomSave then
+                print(string.format("|cFF38BDF8DynamicMarker|r: Saved custom General Macro |cFFFFFFFF[%s]|r.", FOCUS_MACRO_NAME))
+            elseif foundName and foundName ~= FOCUS_MACRO_NAME then
                 print(string.format("|cFF22C55EDynamicMarker|r: Migrated [%s] in-place to General Macro |cFFFFFFFF[%s]|r (Icon: %s).", foundName, FOCUS_MACRO_NAME, RAID_ICONS[self.db.focusIcon].label))
             else
                 print(string.format("|cFF38BDF8DynamicMarker|r: Updated General Macro |cFFFFFFFF[%s]|r (Icon: %s).", FOCUS_MACRO_NAME, RAID_ICONS[self.db.focusIcon].label))
@@ -3163,7 +3182,11 @@ function DM:CreateOrUpdateFocusMarkerMacro(modeOrInitiated)
         end
         local newIdx = CreateMacro(FOCUS_MACRO_NAME, "INV_MISC_QUESTIONMARK", body, false)
         if newIdx and newIdx > 0 then
-            print(string.format("|cFF22C55EDynamicMarker|r: Created General Macro |cFFFFFFFF[%s]|r! Click Step 2 to place it on your action bar.", FOCUS_MACRO_NAME))
+            if isCustomSave then
+                print(string.format("|cFF22C55EDynamicMarker|r: Created custom General Macro |cFFFFFFFF[%s]|r! Click Step 2 to place it on your action bar.", FOCUS_MACRO_NAME))
+            else
+                print(string.format("|cFF22C55EDynamicMarker|r: Created General Macro |cFFFFFFFF[%s]|r! Click Step 2 to place it on your action bar.", FOCUS_MACRO_NAME))
+            end
             return true
         end
     end
@@ -6692,6 +6715,42 @@ function DM:BuildWorkspace(parentContainer)
     mPreview1.Code:SetSpacing(2)
     self:StyleFont(mPreview1.Code, 11, "", COLORS.TextSilver)
 
+    local editBox = CreateFrame("EditBox", nil, mPreview1)
+    editBox:SetPoint("TOPLEFT", mPreview1, "TOPLEFT", 12, -8)
+    editBox:SetPoint("BOTTOMRIGHT", mPreview1, "BOTTOMRIGHT", -12, 18)
+    editBox:SetMultiLine(true)
+    editBox:SetAutoFocus(false)
+    editBox:SetMaxLetters(255)
+    editBox:SetJustifyH("LEFT")
+    if editBox.SetJustifyV then editBox:SetJustifyV("TOP") end
+    self:StyleFont(editBox, 11, "", COLORS.TextSilver)
+    editBox:SetScript("OnEscapePressed", function(eb) eb:ClearFocus() end)
+    editBox:SetScript("OnTextChanged", function(eb, userInput)
+        local txt = eb:GetText() or ""
+        if mPreview1.CharCount then
+            mPreview1.CharCount:SetText(string.format("%d / 255", #txt))
+        end
+        if userInput then
+            mPreview1._dirtyManualEdit = true
+        end
+    end)
+    editBox:Hide()
+    mPreview1.EditBox = editBox
+
+    local charCount = mPreview1:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    charCount:SetPoint("BOTTOMRIGHT", mPreview1, "BOTTOMRIGHT", -10, 4)
+    self:StyleFont(charCount, 10, "", COLORS.TextMuted)
+    charCount:SetText("0 / 255")
+    charCount:Hide()
+    mPreview1.CharCount = charCount
+
+    mPreview1:EnableMouse(true)
+    mPreview1:SetScript("OnMouseDown", function()
+        if mPreview1.EditBox and mPreview1.EditBox:IsShown() then
+            mPreview1.EditBox:SetFocus()
+        end
+    end)
+
     local btnStep2Focus = self:CreateButton(mPreviewCard1, "Step 2: Drag to Action Bar", 176, 26, function()
         if InCombatLockdown() then return end
         local idx = self:FindFocusMacroIndex()
@@ -6713,40 +6772,17 @@ function DM:BuildWorkspace(parentContainer)
     end)
     btnStep2Focus:SetPoint("BOTTOMRIGHT", mPreviewCard1, "BOTTOMRIGHT", -12, 10)
 
-    local btnStep1Focus = self:CreateButton(mPreviewCard1, "Step 1: Create / Update [DynamicMark]", 236, 26, nil, true)
-    btnStep1Focus:SetScript("OnClick", function()
+    local btnStep1Focus = self:CreateButton(mPreviewCard1, "Step 1: Create / Update [DynamicMark]", 236, 26, function()
         local mode = (self.db and self.db.focusTargetMode) or "MOUSEOVER_TARGET"
-        local idx = self:FindFocusMacroIndex()
-        if mode == "MANUAL" and idx and idx > 0 then
-            local now = GetTime and GetTime() or 0
-            if not btnStep1Focus._confirmResetUntil or now > btnStep1Focus._confirmResetUntil then
-                btnStep1Focus._confirmResetUntil = now + 5.0
-                if btnStep1Focus.Text then
-                    btnStep1Focus.Text:SetText("Click again to reset custom macro")
-                end
-                if C_Timer and C_Timer.After then
-                    C_Timer.After(5.1, function()
-                        if btnStep1Focus and btnStep1Focus._confirmResetUntil and (GetTime and GetTime() or 0) >= btnStep1Focus._confirmResetUntil then
-                            btnStep1Focus._confirmResetUntil = nil
-                            if btnStep1Focus.Text then
-                                btnStep1Focus.Text:SetText("Step 1: Create / Update [DynamicMark]")
-                            end
-                        end
-                    end)
-                end
-                return
-            end
-            btnStep1Focus._confirmResetUntil = nil
-            if btnStep1Focus.Text then
-                btnStep1Focus.Text:SetText("Step 1: Create / Update [DynamicMark]")
-            end
-            self:CreateOrUpdateFocusMarkerMacro("USER_FORCE")
-            self:RefreshAll()
-            return
+        if mode == "MANUAL" and mPreview1.EditBox then
+            mPreview1._dirtyManualEdit = false
+            mPreview1.EditBox:ClearFocus()
+            self:CreateOrUpdateFocusMarkerMacro("USER", mPreview1.EditBox:GetText() or "")
+        else
+            self:CreateOrUpdateFocusMarkerMacro(true)
         end
-        self:CreateOrUpdateFocusMarkerMacro(true)
         self:RefreshAll()
-    end)
+    end, true)
     btnStep1Focus:SetPoint("RIGHT", btnStep2Focus, "LEFT", -8, 0)
 
     -- Section 2: [DynamicKick] (Character Macro - Per-Character)
@@ -6869,8 +6905,9 @@ function DM:BuildWorkspace(parentContainer)
         ddKickPrio:RefreshValue()
         pillsKickSpec:RefreshValue()
 
+        local isManual = ((self.db and self.db.focusTargetMode) == "MANUAL")
         local previewText = self:BuildFocusMarkerMacroBody()
-        if (self.db and self.db.focusTargetMode) == "MANUAL" then
+        if isManual then
             local idx = self:FindFocusMacroIndex()
             if idx and idx > 0 then
                 local _, _, liveBody = GetMacroInfo(idx)
@@ -6878,16 +6915,29 @@ function DM:BuildWorkspace(parentContainer)
                     previewText = liveBody
                 end
             end
-        end
-        mPreview1.Code:SetText(previewText)
-
-        if btnStep1Focus and btnStep1Focus._confirmResetUntil then
-            if (self.db and self.db.focusTargetMode) ~= "MANUAL" or (GetTime and GetTime() or 0) > btnStep1Focus._confirmResetUntil then
-                btnStep1Focus._confirmResetUntil = nil
-                if btnStep1Focus.Text then
-                    btnStep1Focus.Text:SetText("Step 1: Create / Update [DynamicMark]")
+            mPreview1.Code:Hide()
+            if mPreview1.EditBox then
+                mPreview1.EditBox:Show()
+                if not (mPreview1.EditBox:HasFocus() and mPreview1._dirtyManualEdit) then
+                    mPreview1.EditBox:SetText(previewText)
+                    mPreview1._dirtyManualEdit = false
+                end
+                if mPreview1.CharCount then
+                    mPreview1.CharCount:Show()
+                    mPreview1.CharCount:SetText(string.format("%d / 255", #(mPreview1.EditBox:GetText() or "")))
                 end
             end
+        else
+            mPreview1._dirtyManualEdit = false
+            if mPreview1.EditBox then
+                mPreview1.EditBox:ClearFocus()
+                mPreview1.EditBox:Hide()
+            end
+            if mPreview1.CharCount then
+                mPreview1.CharCount:Hide()
+            end
+            mPreview1.Code:Show()
+            mPreview1.Code:SetText(previewText)
         end
 
         local sp, _, hasActiveKick, specName, offSpecDisplay = self:ResolveActiveInterruptSpell()
@@ -8662,6 +8712,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "15/11/2026",
     entries = {
+        { type = "FEATURE", text = "Inline Manual Macro Editor & Custom Icon Preservation (15/11/2026): In Manual (Custom) mode, Sub-Tab 3's [DynamicMark] preview becomes an editable dark-obsidian multi-line EditBox (255-char limit with live character counter and Escape to unfocus) so you can write or paste custom macro lines directly inside DynamicMarker and save immediately with Step 1. Updating an existing [DynamicMark] macro now preserves any custom in-game macro icon you assigned." },
         { type = "FEATURE", text = "Focus Target Mode & Surgical Manual Macro Patching (15/11/2026): Added a 'Focus Target Mode' 3-pill selector in Sub-Tab 3 (Mouseover + Target, Target Only, Manual (Custom)). In Manual (Custom) mode, logins/reloads keep your custom [DynamicMark] macro untouched, changing Focus Icon, Group Scope, or Clear Focus Modifier surgically updates only the /tm and /clearfocus lines (within 255 characters), the preview box displays your live custom macro, and Step 1 uses a 2-click confirmation before resetting custom lines." },
         { type = "FIX",     text = "Release v1.9.9 - Canonical UIParent-Local HUD Coordinates Across /reload, Dark-Obsidian Coexistence Modal & Unified HUD Edit Mode (14/11/2026): Enforced one canonical UIParent-local coordinate contract for TargetBar and FlareBar (storing unscaled UIParent CENTER offsets and dividing by barScale strictly inside DM:SetBarCenterPoint after applying SetScale/SetSize and before SetClampedToScreen(true), removing destructive early-load DB writes in ApplyHUDPosition, and guaranteeing 100% round-trip symmetry across HUD Edit drag, Quick Align, Reset HUD, and /reload at scales 0.70, 1.00, and 1.30); replaced Blizzard's StaticPopup with a custom dark-obsidian coexistence reload modal (ShowMarkerConflictReloadModal / DynamicSuiteMarkerConflictModal with #0B0D12 0.96 alpha backdrop, 1px dark slate border, Blaze Orange #F97316 accent bar, flat Reload UI / Later buttons, ESC dismissal, and combat deferral); and suppressed DynamicMarkerEditModeInspector inside DynamicSuite so only the unified HUD Edit dock displays." },
         { type = "FIX",     text = "HUD Edit Bar Edge-Drag & Reload Persistence Fix (14/11/2026): Fixed Target Icon Bar and World Flare Bar jumping inward on /reload or mouse release when scaled below 100% by syncing bar scale and orientation size via SyncBarScaleAndSizeToDB before clamping, removing premature scale=1.0 ApplyHUDPosition calls at initialisation/login/UI_SCALE_CHANGED, canonicalising TargetBar/FlareBar coordinates to CENTER with full mirror key writes, guarding against re-entrant selection callbacks mid-drag, and disabling native C++ SetClampedToScreen interference so edge-snapped bars stay flush after mouse release and /reload." },

@@ -1,5 +1,12 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.0.6 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.0.7 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.0.7 (15/11/2026)
+
+### Added
+* **Inline Manual Macro Editor & Custom Icon Preservation (DynamicMarker):** In `Manual (Custom)` mode, Sub-Tab 3's `[DynamicMark]` preview becomes a dark-obsidian multi-line EditBox (255-character limit, live character counter, Escape to unfocus) so players can edit `[DynamicMark]` directly inside DynamicMarker and save immediately with `Step 1: Create / Update [DynamicMark]`. Updating an existing `[DynamicMark]` macro now preserves any custom in-game macro icon assigned by the player.
 
 ---
 
