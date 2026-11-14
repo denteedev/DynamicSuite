@@ -24,7 +24,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.0"
+    local fb = fallback or "2.0.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -73,7 +73,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.0"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.1"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -105,7 +105,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicBags", VERSION, _G.DynamicBags) then
     return
 end
@@ -173,6 +173,9 @@ local S = {
     autoOpened = {},
     skippedOpenables = {},
     autoOpenAttempted = {},
+    autoOpenRetryAfter = {},
+    autoOpenFailCount = {},
+    autoOpenBlacklist = {},
     quickOpenQueue = {},
     quickOpenCurrent = nil,
     quickOpenBtn = nil,
@@ -184,6 +187,7 @@ DynamicBags.U = U
 
 local IC = {
     Consumable = (Enum and Enum.ItemClass and Enum.ItemClass.Consumable) or 0,
+    Container = (Enum and Enum.ItemClass and Enum.ItemClass.Container) or 1,
     Weapon = (Enum and Enum.ItemClass and Enum.ItemClass.Weapon) or 2,
     Gem = (Enum and Enum.ItemClass and Enum.ItemClass.Gem) or 3,
     Armor = (Enum and Enum.ItemClass and Enum.ItemClass.Armor) or 4,
@@ -303,6 +307,7 @@ local DEFAULTS = {
     fastAutoLoot = true,
     autoFillDelete = true,
     autoOpenContainers = true,
+    autoOpenHousingDecor = true,
     quickOpenEnabled = true,
     queueHousingDecor = true,
     queueKnowledgeItems = true,
@@ -6735,14 +6740,26 @@ function U.BuildPage3(page)
         set = function(v) db.autoFillDelete = v and true or false end,
     })
 
-    U.AddSection(page, "AUTO-OPEN & QUICK-OPEN QUEUE", "Automatically open Soulbound loot pouches and queue Housing Decor, Profession Knowledge, and Use: caches into a 1-spot Open (N) header button.")
+    U.AddSection(page, "AUTO-OPEN & QUICK-OPEN QUEUE", "Automatically open Soulbound or Warband-bound gold pouches and Housing Decor, or queue protected items into the 1-click Open (N) header button.")
     U.AddCard(page, {
-        title = "Auto-Open Soulbound Loot & Gold Pouches (<Right Click to Open>)", kind = "toggle",
-        desc = "Automatically opens Soulbound loot pouches and gold bags when out of combat with all bank, vendor, mail, trade, and auction windows closed.",
+        title = "Auto-Open Soulbound Loot & Gold Pouches", kind = "toggle",
+        desc = "Automatically opens Soulbound and Warband-bound gold pouches, coin satchels, and loot containers out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed.",
         get = function() return db.autoOpenContainers ~= false end,
         set = function(v)
             db.autoOpenContainers = v and true or false
             if db.autoOpenContainers and U.ScheduleAutoOpenContainers then
+                U.ScheduleAutoOpenContainers()
+            end
+            if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
+        end,
+    })
+    U.AddCard(page, {
+        title = "Auto-Open Soulbound Housing Decor", kind = "toggle",
+        desc = "Automatically opens or learns Soulbound and Warband-bound Housing Decor items out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Items that trigger a protected spell cast stay queued in the Open (N) button.",
+        get = function() return db.autoOpenHousingDecor ~= false end,
+        set = function(v)
+            db.autoOpenHousingDecor = v and true or false
+            if db.autoOpenHousingDecor and U.ScheduleAutoOpenContainers then
                 U.ScheduleAutoOpenContainers()
             end
             if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
@@ -7817,6 +7834,25 @@ function U.IsSlotOnCooldown(bagID, slotID)
     return false
 end
 
+local function HasProtectedItemSpell(link, itemID)
+    if C_Item and type(C_Item.GetItemSpell) == "function" then
+        local ok, spellName, spellID = pcall(C_Item.GetItemSpell, link or itemID)
+        if ok and not IsSecret(spellName) and not IsSecret(spellID) then
+            if (type(spellID) == "number" and spellID > 0) or (type(spellName) == "string" and spellName ~= "") then
+                return true
+            end
+        end
+    elseif type(GetItemSpell) == "function" then
+        local ok, spellName, spellID = pcall(GetItemSpell, link or itemID)
+        if ok and not IsSecret(spellName) and not IsSecret(spellID) then
+            if (type(spellID) == "number" and spellID > 0) or (type(spellName) == "string" and spellName ~= "") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
     local info = U.GetSlotInfo(bagID, slotID)
     if not info or not info.itemID or info.itemID <= 0 then return nil end
@@ -7826,15 +7862,29 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
 
     local link = info.hyperlink
     local classID = 15
+    local subClassID = nil
     local itemType, itemSubType = "", ""
     if C_Item and C_Item.GetItemInfoInstant then
-        local _, t, st, _, _, cID = C_Item.GetItemInfoInstant(link or info.itemID)
+        local _, t, st, _, _, cID, subCID = C_Item.GetItemInfoInstant(link or info.itemID)
         itemType = type(t) == "string" and t or ""
         itemSubType = type(st) == "string" and st or ""
         classID = cID or 15
+        subClassID = subCID
     end
-    if classID == IC.Weapon or classID == IC.Armor or classID == IC.Gem or classID == IC.Enhancement then
+    if classID == IC.Weapon or classID == IC.Armor or classID == IC.Gem or classID == IC.Enhancement or classID == IC.Recipe or classID == IC.Container then
         return nil
+    end
+    -- Strictly exclude standard consumables (potions, elixirs, flasks/phials, scrolls, food/drink, bandages, vantus runes).
+    if classID == IC.Consumable and subClassID ~= nil and subClassID ~= 8 then
+        return nil
+    end
+    if C_ToyBox and type(C_ToyBox.GetToyInfo) == "function" then
+        local okToy, toyID = pcall(C_ToyBox.GetToyInfo, info.itemID)
+        if okToy and toyID and not IsSecret(toyID) then return nil end
+    end
+    if C_MountJournal and type(C_MountJournal.GetMountFromItem) == "function" then
+        local okMount, mountID = pcall(C_MountJournal.GetMountFromItem, info.itemID)
+        if okMount and mountID and not IsSecret(mountID) then return nil end
     end
     if U.HasActivePurchaseRefund(bagID, slotID) then return nil end
     if U.IsSlotOnCooldown(bagID, slotID) then return nil end
@@ -7918,6 +7968,10 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
                         or tl:find("turn %d+ ")
                         or tl:find("consume %d+ ")
                         or tl:find("requires %d+ ")
+                        or tl:find("teaches you how to summon this mount", 1, true)
+                        or tl:find("adds this toy to your toy box", 1, true)
+                        or tl:find("use: restores ", 1, true)
+                        or tl:find("well fed", 1, true)
                         or tl:find("splintered spark", 1, true) then
                         hasDisqualifyingLine = true
                     end
@@ -7954,7 +8008,10 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
                         if tl:find("^use: open") or tl:find("^use: unpack")
                             or tl:find("^use: rummage") or tl:find("^use: crack open")
                             or tl:find("^use: break open") or tl:find("^use: claim")
-                            or tl:find("^use: collect the contents")
+                            or tl:find("^use: empty") or tl:find("^use: loot")
+                            or tl:find("^use: shake") or tl:find("^use: pry open")
+                            or tl:find("^use: smash open") or tl:find("^use: tear open")
+                            or tl:find("^use: unseal") or tl:find("^use: collect the contents")
                             or tl:find("open the ", 1, true) or tl:find("open this ", 1, true) then
                             sawUseCacheLine = true
                         end
@@ -7991,6 +8048,28 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
     local isStrictlyBound = (isBound == true) or (sawSoulbound and not sawBoE)
     local isSafeAccountBound = (sawAccountBound and not sawWUE and not sawBoE)
 
+    local name = (type(link) == "string" and link:match("%[(.-)%]")) or info.itemName or ("Item #" .. tostring(info.itemID))
+    local nameLower = type(name) == "string" and name:lower() or ""
+    local isGoldOrLootSatchel = false
+    if nameLower ~= "" and (sawRightClickOpen or sawUseLine or info.hasLoot == true) then
+        if nameLower:find("gold pouch", 1, true)
+            or nameLower:find("coin pouch", 1, true)
+            or nameLower:find("coin purse", 1, true)
+            or nameLower:find("coinpurse", 1, true)
+            or nameLower:find("pouch of gold", 1, true)
+            or nameLower:find("pouch of coins", 1, true)
+            or nameLower:find("bag of gold", 1, true)
+            or nameLower:find("sack of gold", 1, true)
+            or nameLower:find("loot satchel", 1, true)
+            or nameLower:find("gold satchel", 1, true)
+            or nameLower:find("treasure satchel", 1, true)
+            or nameLower:find("treasure pouch", 1, true)
+            or (nameLower:find("satchel", 1, true) and (nameLower:find("gold", 1, true) or nameLower:find("coin", 1, true) or nameLower:find("loot", 1, true) or nameLower:find("bountiful", 1, true)))
+            or (nameLower:find("pouch", 1, true) and (nameLower:find("gold", 1, true) or nameLower:find("coin", 1, true) or nameLower:find("overflowing", 1, true) or nameLower:find("bulging", 1, true) or nameLower:find("gilded", 1, true))) then
+            isGoldOrLootSatchel = true
+        end
+    end
+
     local kind = nil
     local categoryLabel = nil
 
@@ -8018,9 +8097,9 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
         end
         kind = "KNOWLEDGE"
         categoryLabel = "Profession Knowledge"
-    elseif info.hasLoot == true or sawRightClickOpen then
+    elseif info.hasLoot == true or sawRightClickOpen or isGoldOrLootSatchel then
         kind = "CONTAINER"
-        categoryLabel = "Loot Container"
+        categoryLabel = isGoldOrLootSatchel and "Gold / Loot Pouch" or "Loot Container"
     elseif sawUseCacheLine then
         kind = "CACHE"
         categoryLabel = "Usable Cache"
@@ -8034,7 +8113,7 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
         return nil
     end
 
-    local name = (type(link) == "string" and link:match("%[(.-)%]")) or info.itemName or ("Item #" .. tostring(info.itemID))
+    local hasProtectedSpell = HasProtectedItemSpell(link, info.itemID)
     return {
         bag = bagID,
         slot = slotID,
@@ -8046,6 +8125,8 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
         quality = info.quality or 1,
         hasLoot = (info.hasLoot == true),
         sawUseLine = sawUseLine,
+        isGoldOrLootSatchel = isGoldOrLootSatchel,
+        hasProtectedSpell = hasProtectedSpell,
         isBound = isStrictlyBound,
         isAccountBound = isSafeAccountBound,
         isUnboundBoE = not (isStrictlyBound or isSafeAccountBound),
@@ -8061,6 +8142,7 @@ function U.ScanOpenables()
     local instantQueue = {}
     local lootWindowQueue = {}
     local knownProfs = U.GetKnownProfessionNames()
+    local now = GetTime and GetTime() or 0
 
     for _, bagID in ipairs(U.GetPlayerStandardBagIDs()) do
         local okN, numSlots = pcall(C_Container.GetContainerNumSlots, bagID)
@@ -8068,15 +8150,18 @@ function U.ScanOpenables()
             for slot = 1, numSlots do
                 local cand = U.EvaluateBagSlotOpenable(bagID, slot, knownProfs)
                 if cand then
+                    local isBoundSafe = (cand.isBound or cand.isAccountBound) and not cand.isUnboundBoE
+                    local isBlacklisted = (S.autoOpenBlacklist and S.autoOpenBlacklist[cand.itemID]) and true or false
+                    local onRetryCooldown = (S.autoOpenRetryAfter and (S.autoOpenRetryAfter[cand.itemID] or 0) > now) and true or false
+                    local canAutoByCategory = (cand.kind == "CONTAINER" and db.autoOpenContainers ~= false)
+                        or (cand.kind == "DECOR" and db.autoOpenHousingDecor ~= false)
+
+                    if isBoundSafe and canAutoByCategory and not cand.hasProtectedSpell and not isBlacklisted and not onRetryCooldown then
+                        autoList[#autoList + 1] = cand
+                    end
+
                     local includeInQueue = false
-                    if cand.kind == "CONTAINER" and cand.hasLoot and not cand.sawUseLine and cand.isBound then
-                        if db.autoOpenContainers ~= false then
-                            autoList[#autoList + 1] = cand
-                            includeInQueue = (db.quickOpenEnabled ~= false)
-                        elseif db.quickOpenEnabled ~= false then
-                            includeInQueue = true
-                        end
-                    elseif db.quickOpenEnabled ~= false then
+                    if db.quickOpenEnabled ~= false then
                         if cand.kind == "DECOR" and db.queueHousingDecor ~= false then
                             includeInQueue = true
                         elseif cand.kind == "KNOWLEDGE" and db.queueKnowledgeItems ~= false then
@@ -8106,7 +8191,107 @@ end
 U.ScanOpenableItems = U.ScanOpenables
 
 function U.CanRunAutoOpenContainers()
-    return false
+    if IsModuleDisabledInSuite("DynamicBags") then return false end
+    local db = DB()
+    if db.autoOpenContainers == false and db.autoOpenHousingDecor == false then
+        return false
+    end
+    if InCombatLockdown() or (UnitAffectingCombat and UnitAffectingCombat("player")) then
+        return false
+    end
+    if UnitIsDeadOrGhost and UnitIsDeadOrGhost("player") then
+        return false
+    end
+    if (UnitCastingInfo and UnitCastingInfo("player")) or (UnitChannelInfo and UnitChannelInfo("player")) then
+        return false
+    end
+    if LootFrame and LootFrame:IsShown() then
+        return false
+    end
+    if S.atBank or S.atGuildBank then
+        return false
+    end
+    if S.bankWindow and S.bankWindow:IsShown() then
+        return false
+    end
+    for _, frameName in ipairs({
+        "BankFrame",
+        "AccountBankPanel",
+        "GuildBankFrame",
+        "MerchantFrame",
+        "MailFrame",
+        "SendMailFrame",
+        "TradeFrame",
+        "AuctionHouseFrame",
+    }) do
+        local f = _G[frameName]
+        if f and f.IsShown and f:IsShown() then
+            return false
+        end
+    end
+    return true
+end
+
+function U.RunNextAutoOpenContainer()
+    S.autoOpenTimer = nil
+    if not U.CanRunAutoOpenContainers() then return end
+    if not (C_Container and C_Container.UseContainerItem) then return end
+
+    local autoList = U.ScanOpenables()
+    local cand = autoList and autoList[1]
+    if not cand then return end
+
+    if HasProtectedItemSpell(cand.link, cand.itemID) then
+        S.autoOpenBlacklist[cand.itemID] = true
+        if not InCombatLockdown() and U.UpdateQuickOpenButton and S.window and S.window:IsShown() then
+            U.UpdateQuickOpenButton()
+        end
+        U.ScheduleAutoOpenContainers()
+        return
+    end
+
+    local prevInfo = U.GetSlotInfo(cand.bag, cand.slot)
+    if not prevInfo or prevInfo.itemID ~= cand.itemID or prevInfo.isLocked then
+        return
+    end
+    local prevCount = prevInfo.stackCount or cand.count or 1
+    local now = GetTime and GetTime() or 0
+    S.autoOpenRetryAfter[cand.itemID] = now + 1.0
+
+    local ok = pcall(C_Container.UseContainerItem, cand.bag, cand.slot)
+    if not ok then
+        S.autoOpenFailCount[cand.itemID] = (S.autoOpenFailCount[cand.itemID] or 0) + 1
+        S.autoOpenRetryAfter[cand.itemID] = now + 30.0
+        if S.autoOpenFailCount[cand.itemID] >= 2 then
+            S.autoOpenBlacklist[cand.itemID] = true
+        end
+        if not InCombatLockdown() and U.UpdateQuickOpenButton and S.window and S.window:IsShown() then
+            U.UpdateQuickOpenButton()
+        end
+        return
+    end
+
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0.45, function()
+            local afterInfo = U.GetSlotInfo(cand.bag, cand.slot)
+            if afterInfo and afterInfo.itemID == cand.itemID and (afterInfo.stackCount or 1) >= prevCount then
+                S.autoOpenFailCount[cand.itemID] = (S.autoOpenFailCount[cand.itemID] or 0) + 1
+                S.autoOpenRetryAfter[cand.itemID] = (GetTime and GetTime() or 0) + 30.0
+                if S.autoOpenFailCount[cand.itemID] >= 2 then
+                    S.autoOpenBlacklist[cand.itemID] = true
+                end
+            else
+                S.autoOpenFailCount[cand.itemID] = 0
+                S.autoOpenRetryAfter[cand.itemID] = nil
+            end
+            if not InCombatLockdown() and U.UpdateQuickOpenButton and S.window and S.window:IsShown() then
+                U.UpdateQuickOpenButton()
+            end
+            if U.CanRunAutoOpenContainers() then
+                U.ScheduleAutoOpenContainers()
+            end
+        end)
+    end
 end
 
 function U.ScheduleAutoOpenContainers()
@@ -8116,6 +8301,14 @@ function U.ScheduleAutoOpenContainers()
     end
     if not InCombatLockdown() and U.UpdateQuickOpenButton and S.window and S.window:IsShown() then
         U.UpdateQuickOpenButton()
+    end
+    if not U.CanRunAutoOpenContainers() then return end
+    local autoList = U.ScanOpenables()
+    if not autoList or #autoList == 0 then return end
+    if C_Timer and C_Timer.NewTimer then
+        S.autoOpenTimer = C_Timer.NewTimer(0.35, U.RunNextAutoOpenContainer)
+    elseif C_Timer and C_Timer.After then
+        C_Timer.After(0.35, U.RunNextAutoOpenContainer)
     end
 end
 
@@ -8724,6 +8917,10 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
     elseif event == "PLAYER_MONEY" or event == "CURRENCY_DISPLAY_UPDATE" then
         if S.window and S.window:IsShown() then U.UpdateFooter() end
     elseif event == "PLAYER_REGEN_DISABLED" then
+        if S.autoOpenTimer then
+            if S.autoOpenTimer.Cancel then pcall(S.autoOpenTimer.Cancel, S.autoOpenTimer) end
+            S.autoOpenTimer = nil
+        end
         if U.CancelAllPendingMerges then U.CancelAllPendingMerges() end
         if U.ClearQuickOpenBindings then U.ClearQuickOpenBindings(S.quickOpenBtn) end
         U.CloseMenu()
@@ -8839,6 +9036,7 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
             pcall(U.SnapshotGuildBank)
             U.ResetGuildBankSessionState()
         end
+        U.ScheduleAutoOpenContainers()
     elseif event == "GUILDBANKBAGSLOTS_CHANGED" or event == "GUILDBANK_UPDATE_TABS" or event == "GUILDBANK_UPDATE_WITHDRAWMONEY" then
         if event == "GUILDBANKBAGSLOTS_CHANGED" and S.pendingGuildMergeTab and U.ContinuePendingGuildMerge then
             pcall(U.ContinuePendingGuildMerge)
@@ -8910,8 +9108,9 @@ end
 
 DynamicBags.CHANGELOG = {
     version = VERSION,
-    date = "14/11/2026",
+    date = "15/11/2026",
     entries = {
+        { type = "FEATURE", text = "Auto-Open Soulbound Gold Pouches & Housing Decor (15/11/2026): expanded the automatic container matcher to open all Soulbound and Warband-bound gold pouches and coin/loot satchels regardless of tooltip phrasing (excluding consumables, potions, flasks, toys, mounts, recipes, and tradeable BoE items), added an 'Auto-Open Soulbound Housing Decor' toggle in Tab 3 (enabled by default), respected Retail 12.1.5 hardware-event protection via C_Item.GetItemSpell so protected-spell decor stays queued in the 1-click Open (N) button without ADDON_ACTION_BLOCKED warnings, and added a per-item retry cooldown and session blacklist guard." },
         { type = "FIX",     text = "Hardened zero-flash Bank/Guild Bank opening after /reload (14/11/2026): added Scale+Alpha suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, enforced strict weak ordering in Sort: A-Z when uncached items appear, verified compatible slot placement in Drop-Anywhere Split-Stack Placement, fixed Guild Bank T1-Tn badge overlap and view-only slot dimming, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, and expanded /dbag slash subcommands." },
         { type = "FEATURE", text = "Guild Bank Daily Withdrawal Counter (13/11/2026): each Guild Bank tab button (T1, T2...) now shows a small counter of how many item withdrawals you have left today - white when plenty remain, amber at 1-2, red at 0, and a red x for tabs you cannot view. Unlimited tabs show no counter. Counters only appear while you are at the Guild Bank." },
         { type = "FIX",     text = "Guild Bank footer and tooltip separators now use plain characters so they display correctly with every DynamicSuite font (13/11/2026)." },

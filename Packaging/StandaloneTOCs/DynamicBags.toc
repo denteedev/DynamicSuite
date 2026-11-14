@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFBags|r
 ## Notes: Zero-Lag Virtual Category Bags, Remote Bank & Alt Inventory Vault for DynamicSuite (/dbag)
 ## Author: Dentee-Frostmourne
-## Version: 2.0.0
+## Version: 2.0.1
 ## SavedVariables: DynamicBagsDB
 ## OptionalDeps: DynamicSuite
 ## IconTexture: Interface\AddOns\DynamicBags\icon.tga
