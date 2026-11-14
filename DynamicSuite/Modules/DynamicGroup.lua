@@ -2508,11 +2508,11 @@ local function OnLFGListSearchEntryUpdate(entry)
             end
             if enumFrame._dgOrigPoints and enumFrame.SetPoint then
                 for _, p in ipairs(enumFrame._dgOrigPoints) do
-                    enumFrame:SetPoint(p[1], p[2], p[3], p[4], p[5] - 2)
+                    enumFrame:SetPoint(p[1], p[2], p[3], p[4], p[5] - 4)
                 end
             end
 
-            -- Idempotent 3px horizontal gap between sibling Enumerate icons in Blizzard's native chain
+            -- Idempotent 4px horizontal gap between sibling Enumerate icons in Blizzard's native chain
             for _, ic in ipairs(slotAnchors) do
                 if ic and not ic._dgOrigPoint and ic.GetPoint then
                     local pt, relTo, relPt, x, y = ic:GetPoint(1)
@@ -2523,7 +2523,7 @@ local function OnLFGListSearchEntryUpdate(entry)
                 if ic and ic._dgOrigPoint and ic.SetPoint then
                     local op = ic._dgOrigPoint
                     if op[2] and op[2] ~= enumFrame then
-                        local nx = (op[4] < 0) and (op[4] - 3) or (op[4] + 3)
+                        local nx = (op[1]:find("LEFT") and (op[4] + 4) or (op[4] - 4))
                         ic:SetPoint(op[1], op[2], op[3], nx, op[5])
                     end
                 end
