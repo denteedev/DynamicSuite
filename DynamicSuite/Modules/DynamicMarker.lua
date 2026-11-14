@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.5"
+    local fb = fallback or "2.0.6"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -99,7 +99,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.0.5"
+            or "2.0.6"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.5")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.6")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -3041,10 +3041,83 @@ function DM:BuildDynamicKickMacroBody(overrideSpell)
     end
 end
 
-function DM:CreateOrUpdateFocusMarkerMacro(userInitiated)
+function DM:PatchFocusMarkerMacroBody(existingBody)
+    if type(existingBody) ~= "string" or existingBody == "" then
+        return self:BuildFocusMarkerMacroBody(), false
+    end
+
+    local iconIndex = (self.db and self.db.focusIcon) or 8
+    local mod = (self.db and self.db.focusClearModifier) or "NONE"
+    local scope = (self.db and self.db.groupScope) or "BOTH"
+
+    local tmCond = "[@focus,exists]"
+    if scope == "PARTY" then
+        tmCond = "[nogroup,@focus,exists][group:party,@focus,exists]"
+    elseif scope == "RAID" then
+        tmCond = "[group:raid,@focus,exists]"
+    end
+    local desiredTmLine = string.format("/tm %s ~%d", tmCond, iconIndex)
+    local desiredClearLine = (mod ~= "NONE") and string.format("/clearfocus [mod:%s]", mod) or nil
+
+    local normalized = existingBody:gsub("\r\n", "\n"):gsub("\r", "\n")
+    local rawLines = {}
+    for line in (normalized .. "\n"):gmatch("(.-)\n") do
+        table.insert(rawLines, line)
+    end
+    if #rawLines > 0 and rawLines[#rawLines] == "" then
+        table.remove(rawLines, #rawLines)
+    end
+
+    local outLines = {}
+    local replacedTm = false
+    local replacedClear = false
+    local showTooltipIdx = nil
+
+    for _, line in ipairs(rawLines) do
+        local trimmed = line:match("^%s*(.-)%s*$") or ""
+        local lower = trimmed:lower()
+        if lower:match("^/tm%s") or lower == "/tm" then
+            if not replacedTm then
+                table.insert(outLines, desiredTmLine)
+                replacedTm = true
+            end
+        elseif lower:match("^/clearfocus%s") or lower == "/clearfocus" then
+            if desiredClearLine and not replacedClear then
+                table.insert(outLines, desiredClearLine)
+                replacedClear = true
+            elseif not desiredClearLine then
+                replacedClear = true
+            end
+        else
+            table.insert(outLines, line)
+            if not showTooltipIdx and lower:match("^#showtooltip") then
+                showTooltipIdx = #outLines
+            end
+        end
+    end
+
+    if desiredClearLine and not replacedClear then
+        local insertPos = showTooltipIdx and (showTooltipIdx + 1) or 1
+        table.insert(outLines, insertPos, desiredClearLine)
+    end
+    if not replacedTm then
+        table.insert(outLines, desiredTmLine)
+    end
+
+    local patched = table.concat(outLines, "\n")
+    if #patched > 255 then
+        return existingBody, true
+    end
+    return patched, false
+end
+
+function DM:CreateOrUpdateFocusMarkerMacro(modeOrInitiated)
+    local isExplicitUser = (modeOrInitiated == true or modeOrInitiated == "USER" or modeOrInitiated == "USER_FORCE")
+    local isSettingChange = (modeOrInitiated == "SETTING")
+
     if InCombatLockdown() then
         self.pendingFocusMacroSync = true
-        if userInitiated then
+        if isExplicitUser then
             print("|cFF38BDF8DynamicMarker|r: Cannot modify macros in combat. Queued for combat exit.")
         end
         return false
@@ -3053,14 +3126,28 @@ function DM:CreateOrUpdateFocusMarkerMacro(userInitiated)
 
     local targetMode = (self.db and self.db.focusTargetMode) or "MOUSEOVER_TARGET"
     local idx, foundName = self:FindFocusMacroIndex()
-    if targetMode == "MANUAL" and not userInitiated then
-        return (idx and idx > 0) and true or false
+
+    if targetMode == "MANUAL" and idx and idx > 0 then
+        if not isExplicitUser and not isSettingChange then
+            -- Passive login / reload / auto-sync: keep custom macro untouched.
+            return true
+        end
+        if isSettingChange then
+            local _, _, existingBody = GetMacroInfo(idx)
+            local patchedBody, overLimit = self:PatchFocusMarkerMacroBody(existingBody)
+            if overLimit then
+                print("|cFFF59E0BDynamicMarker|r: Custom [DynamicMark] macro exceeds 255 characters after patching; kept your existing macro untouched.")
+                return false
+            end
+            EditMacro(idx, FOCUS_MACRO_NAME, "INV_MISC_QUESTIONMARK", patchedBody)
+            return true
+        end
     end
 
     local body = self:BuildFocusMarkerMacroBody()
     if idx and idx > 0 then
         EditMacro(idx, FOCUS_MACRO_NAME, "INV_MISC_QUESTIONMARK", body)
-        if userInitiated then
+        if isExplicitUser then
             if foundName and foundName ~= FOCUS_MACRO_NAME then
                 print(string.format("|cFF22C55EDynamicMarker|r: Migrated [%s] in-place to General Macro |cFFFFFFFF[%s]|r (Icon: %s).", foundName, FOCUS_MACRO_NAME, RAID_ICONS[self.db.focusIcon].label))
             else
@@ -3068,7 +3155,7 @@ function DM:CreateOrUpdateFocusMarkerMacro(userInitiated)
             end
         end
         return true
-    elseif userInitiated then
+    elseif isExplicitUser then
         local numGlobal = GetNumMacros()
         if numGlobal >= (MAX_ACCOUNT_MACROS or 120) then
             print("|cFFF87171DynamicMarker|r: General Macros are full! Please free 1 General Macro slot and try again.")
@@ -3207,7 +3294,7 @@ function DM:SetFocusIcon(iconIndex, announce)
     if iconIndex < 1 or iconIndex > 8 then iconIndex = 8 end
     self.db.focusIcon = iconIndex
 
-    self:CreateOrUpdateFocusMarkerMacro(false)
+    self:CreateOrUpdateFocusMarkerMacro("SETTING")
     self:RefreshTargetBar()
     self:RefreshAll()
 
@@ -5904,7 +5991,7 @@ function DM:BuildWorkspace(parentContainer)
         function(v)
             local _, canon = self:NormalizeGroupScope(v)
             self.db.groupScope = canon
-            self:CreateOrUpdateFocusMarkerMacro(false)
+            self:CreateOrUpdateFocusMarkerMacro("SETTING")
             self:UpdateTargetBarVisibility()
             self:UpdateFlareBarVisibility()
             self:RefreshTargetBar()
@@ -6562,7 +6649,7 @@ function DM:BuildWorkspace(parentContainer)
         function() return self.db.focusClearModifier end,
         function(v)
             self.db.focusClearModifier = v
-            self:CreateOrUpdateFocusMarkerMacro(false)
+            self:CreateOrUpdateFocusMarkerMacro("SETTING")
             self:RefreshAll()
         end, 250)
     pillsClearMod:SetPoint("RIGHT", mRowMod, "RIGHT", -14, 0)
@@ -6570,13 +6657,13 @@ function DM:BuildWorkspace(parentContainer)
 
     local mRowTargetMode = self:CreateSpaciousRow(p3Sec1, -118, 58,
         "Focus Target Mode",
-        "Choose whether [DynamicMark] checks mouseover first, uses your current target only, or keeps manual edits.")
+        "Choose whether [DynamicMark] checks mouseover first, uses your current target only, or keeps custom macro lines.")
 
     local pillsTargetMode = self:CreateSegmentedPills(mRowTargetMode, FOCUS_TARGET_MODE_OPTIONS,
         function() return self.db.focusTargetMode or "MOUSEOVER_TARGET" end,
         function(v)
             self.db.focusTargetMode = v
-            self:CreateOrUpdateFocusMarkerMacro(false)
+            self:CreateOrUpdateFocusMarkerMacro("SETTING")
             self:RefreshAll()
         end, 340)
     pillsTargetMode:SetPoint("RIGHT", mRowTargetMode, "RIGHT", -14, 0)
@@ -6607,23 +6694,59 @@ function DM:BuildWorkspace(parentContainer)
 
     local btnStep2Focus = self:CreateButton(mPreviewCard1, "Step 2: Drag to Action Bar", 176, 26, function()
         if InCombatLockdown() then return end
-        self:CreateOrUpdateFocusMarkerMacro(true)
         local idx = self:FindFocusMacroIndex()
+        if not idx then
+            self:CreateOrUpdateFocusMarkerMacro(true)
+            idx = self:FindFocusMacroIndex()
+        end
         if idx and idx > 0 then PickupMacro(idx) end
     end)
     btnStep2Focus:RegisterForDrag("LeftButton")
     btnStep2Focus:SetScript("OnDragStart", function()
         if InCombatLockdown() then return end
-        self:CreateOrUpdateFocusMarkerMacro(true)
         local idx = self:FindFocusMacroIndex()
+        if not idx then
+            self:CreateOrUpdateFocusMarkerMacro(true)
+            idx = self:FindFocusMacroIndex()
+        end
         if idx and idx > 0 then PickupMacro(idx) end
     end)
     btnStep2Focus:SetPoint("BOTTOMRIGHT", mPreviewCard1, "BOTTOMRIGHT", -12, 10)
 
-    local btnStep1Focus = self:CreateButton(mPreviewCard1, "Step 1: Create / Update [DynamicMark]", 236, 26, function()
+    local btnStep1Focus = self:CreateButton(mPreviewCard1, "Step 1: Create / Update [DynamicMark]", 236, 26, nil, true)
+    btnStep1Focus:SetScript("OnClick", function()
+        local mode = (self.db and self.db.focusTargetMode) or "MOUSEOVER_TARGET"
+        local idx = self:FindFocusMacroIndex()
+        if mode == "MANUAL" and idx and idx > 0 then
+            local now = GetTime and GetTime() or 0
+            if not btnStep1Focus._confirmResetUntil or now > btnStep1Focus._confirmResetUntil then
+                btnStep1Focus._confirmResetUntil = now + 5.0
+                if btnStep1Focus.Text then
+                    btnStep1Focus.Text:SetText("Click again to reset custom macro")
+                end
+                if C_Timer and C_Timer.After then
+                    C_Timer.After(5.1, function()
+                        if btnStep1Focus and btnStep1Focus._confirmResetUntil and (GetTime and GetTime() or 0) >= btnStep1Focus._confirmResetUntil then
+                            btnStep1Focus._confirmResetUntil = nil
+                            if btnStep1Focus.Text then
+                                btnStep1Focus.Text:SetText("Step 1: Create / Update [DynamicMark]")
+                            end
+                        end
+                    end)
+                end
+                return
+            end
+            btnStep1Focus._confirmResetUntil = nil
+            if btnStep1Focus.Text then
+                btnStep1Focus.Text:SetText("Step 1: Create / Update [DynamicMark]")
+            end
+            self:CreateOrUpdateFocusMarkerMacro("USER_FORCE")
+            self:RefreshAll()
+            return
+        end
         self:CreateOrUpdateFocusMarkerMacro(true)
         self:RefreshAll()
-    end, true)
+    end)
     btnStep1Focus:SetPoint("RIGHT", btnStep2Focus, "LEFT", -8, 0)
 
     -- Section 2: [DynamicKick] (Character Macro - Per-Character)
@@ -6742,9 +6865,30 @@ function DM:BuildWorkspace(parentContainer)
 
     table.insert(self.refreshables, function()
         pillsClearMod:RefreshValue()
+        pillsTargetMode:RefreshValue()
         ddKickPrio:RefreshValue()
         pillsKickSpec:RefreshValue()
-        mPreview1.Code:SetText(self:BuildFocusMarkerMacroBody())
+
+        local previewText = self:BuildFocusMarkerMacroBody()
+        if (self.db and self.db.focusTargetMode) == "MANUAL" then
+            local idx = self:FindFocusMacroIndex()
+            if idx and idx > 0 then
+                local _, _, liveBody = GetMacroInfo(idx)
+                if type(liveBody) == "string" and liveBody ~= "" then
+                    previewText = liveBody
+                end
+            end
+        end
+        mPreview1.Code:SetText(previewText)
+
+        if btnStep1Focus and btnStep1Focus._confirmResetUntil then
+            if (self.db and self.db.focusTargetMode) ~= "MANUAL" or (GetTime and GetTime() or 0) > btnStep1Focus._confirmResetUntil then
+                btnStep1Focus._confirmResetUntil = nil
+                if btnStep1Focus.Text then
+                    btnStep1Focus.Text:SetText("Step 1: Create / Update [DynamicMark]")
+                end
+            end
+        end
 
         local sp, _, hasActiveKick, specName, offSpecDisplay = self:ResolveActiveInterruptSpell()
         local ar, ag, ab, accHex = self:GetAccentColor()
@@ -8518,7 +8662,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "15/11/2026",
     entries = {
-        { type = "FEATURE", text = "Focus Target Mode for [DynamicMark] (15/11/2026): Added a 'Focus Target Mode' 3-option segmented pill control in Sub-Tab 3 (Mouseover + Target, Target Only, Manual (Custom)) so players can restrict [DynamicMark] to /focus [@target,exists,nodead] or lock custom manual macro edits across logins and reloads." },
+        { type = "FEATURE", text = "Focus Target Mode & Surgical Manual Macro Patching (15/11/2026): Added a 'Focus Target Mode' 3-pill selector in Sub-Tab 3 (Mouseover + Target, Target Only, Manual (Custom)). In Manual (Custom) mode, logins/reloads keep your custom [DynamicMark] macro untouched, changing Focus Icon, Group Scope, or Clear Focus Modifier surgically updates only the /tm and /clearfocus lines (within 255 characters), the preview box displays your live custom macro, and Step 1 uses a 2-click confirmation before resetting custom lines." },
         { type = "FIX",     text = "Release v1.9.9 - Canonical UIParent-Local HUD Coordinates Across /reload, Dark-Obsidian Coexistence Modal & Unified HUD Edit Mode (14/11/2026): Enforced one canonical UIParent-local coordinate contract for TargetBar and FlareBar (storing unscaled UIParent CENTER offsets and dividing by barScale strictly inside DM:SetBarCenterPoint after applying SetScale/SetSize and before SetClampedToScreen(true), removing destructive early-load DB writes in ApplyHUDPosition, and guaranteeing 100% round-trip symmetry across HUD Edit drag, Quick Align, Reset HUD, and /reload at scales 0.70, 1.00, and 1.30); replaced Blizzard's StaticPopup with a custom dark-obsidian coexistence reload modal (ShowMarkerConflictReloadModal / DynamicSuiteMarkerConflictModal with #0B0D12 0.96 alpha backdrop, 1px dark slate border, Blaze Orange #F97316 accent bar, flat Reload UI / Later buttons, ESC dismissal, and combat deferral); and suppressed DynamicMarkerEditModeInspector inside DynamicSuite so only the unified HUD Edit dock displays." },
         { type = "FIX",     text = "HUD Edit Bar Edge-Drag & Reload Persistence Fix (14/11/2026): Fixed Target Icon Bar and World Flare Bar jumping inward on /reload or mouse release when scaled below 100% by syncing bar scale and orientation size via SyncBarScaleAndSizeToDB before clamping, removing premature scale=1.0 ApplyHUDPosition calls at initialisation/login/UI_SCALE_CHANGED, canonicalising TargetBar/FlareBar coordinates to CENTER with full mirror key writes, guarding against re-entrant selection callbacks mid-drag, and disabling native C++ SetClampedToScreen interference so edge-snapped bars stay flush after mouse release and /reload." },
         { type = "FEATURE", text = "Release v1.9.7 - Live CurseForge DynamicSuite Link & Hardened Coexistence (14/11/2026): Updated Support modal and CurseForge storefront links cleanly to https://www.curseforge.com/wow/addons/dynamicsuite (replacing legacy URL placeholder labels), connected full DynamicSuite (Project 1804382) alongside standalone DynamicMarker (Project 1331651) in our dual-artifact release pipeline, and hardened ShouldYieldToOtherInstall semantic version yielding regardless of addon load order." },

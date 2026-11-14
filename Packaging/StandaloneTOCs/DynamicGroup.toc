@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFGroup|r
 ## Notes: Premade LFG Region & Composition Filter, 1-Click Sign-Up & Guild/Friend Auto-Invite Engine.
 ## Author: Dentee-Frostmourne
-## Version: 2.0.5
+## Version: 2.0.6
 ## SavedVariables: DynamicGroupDB
 ## OptionalDeps: DynamicSuite
 ## IconTexture: Interface\AddOns\DynamicGroup\icon.tga

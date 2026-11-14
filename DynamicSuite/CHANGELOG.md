@@ -1,5 +1,12 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.0.5 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.0.6 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.0.6 (15/11/2026)
+
+### Improved
+* **Smart Sync & Surgical `/tm` Patching for `[DynamicMark]` (DynamicMarker):** Added 3-way sync handling in `DM:CreateOrUpdateFocusMarkerMacro` for `Manual (Custom)` mode -- passive logins/reloads keep custom macros untouched, changing Focus Icon, Group Scope, or Clear Focus Modifier surgically patches only the `/tm` and `/clearfocus` lines (respecting WoW's 255-character macro limit), the Sub-Tab 3 preview displays your live `[DynamicMark]` body, and `Step 1: Create / Update [DynamicMark]` requires a 2-click confirmation before resetting custom lines.
 
 ---
 
