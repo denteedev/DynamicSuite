@@ -2194,48 +2194,26 @@ local function OnLFGListSearchEntryUpdate(entry)
         ov.topPill = topPill
         ov.topTag = topPill.text
 
-        -- Optional FULL-mode Lust/CR tag tucked cleanly left of topPill
-        ov.compTag = ov:CreateFontString(nil, "OVERLAY")
-        SetSafeFont(ov.compTag, 9, "OUTLINE")
-        ov.compTag:SetPoint("RIGHT", topPill, "LEFT", -5, 0)
-        ov.compTag:SetJustifyH("RIGHT")
-
-        -- 5-Player Role-Slot Availability Strip (1 Tank, 1 Healer, 3 DPS)
-        local roleStrip = CreateFrame("Frame", nil, ov)
-        roleStrip:SetSize(63, 12)
-        roleStrip:EnableMouse(false)
-        roleStrip.slots = {}
-
-        local slotCoords = {
-            { 0 / 64,  19 / 64, 22 / 64, 41 / 64 }, -- Tank
-            { 20 / 64, 39 / 64, 1 / 64,  20 / 64 }, -- Healer
-            { 20 / 64, 39 / 64, 22 / 64, 41 / 64 }, -- DPS 1
-            { 20 / 64, 39 / 64, 22 / 64, 41 / 64 }, -- DPS 2
-            { 20 / 64, 39 / 64, 22 / 64, 41 / 64 }, -- DPS 3
-        }
+        -- 5-Player Open Role-Slot Overlays (centered over Blizzard's empty Enumerate grey dots)
+        ov.enumRoleSlots = {}
         for idx = 1, 5 do
-            local slotF = CreateFrame("Frame", nil, roleStrip)
-            slotF:SetSize(11, 11)
-            slotF:SetPoint("LEFT", roleStrip, "LEFT", (idx - 1) * 13, 0)
-            slotF:EnableMouse(false)
+            local slotOv = CreateFrame("Frame", nil, ov)
+            slotOv:SetSize(15, 15)
+            slotOv:EnableMouse(false)
 
-            slotF.tex = slotF:CreateTexture(nil, "ARTWORK")
-            slotF.tex:SetAllPoints(slotF)
-            slotF.tex:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES")
-            local c = slotCoords[idx]
-            slotF.tex:SetTexCoord(c[1], c[2], c[3], c[4])
-            DisableTexPixelSnap(slotF.tex)
+            slotOv.bg = slotOv:CreateTexture(nil, "BACKGROUND")
+            slotOv.bg:SetSize(13, 13)
+            slotOv.bg:SetPoint("CENTER", slotOv, "CENTER", 0, 0)
+            slotOv.bg:SetColorTexture(0.043, 0.051, 0.071, 0.92) -- #0B0D12 backing to mask grey dot
 
-            slotF.pip = slotF:CreateTexture(nil, "OVERLAY")
-            slotF.pip:SetSize(4, 4)
-            slotF.pip:SetPoint("BOTTOMRIGHT", slotF, "BOTTOMRIGHT", 1, -1)
-            slotF.pip:SetTexture("Interface\\Buttons\\WHITE8x8")
-            DisableTexPixelSnap(slotF.pip)
-            slotF.pip:Hide()
+            slotOv.tex = slotOv:CreateTexture(nil, "ARTWORK")
+            slotOv.tex:SetAllPoints(slotOv)
+            slotOv.tex:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES")
+            DisableTexPixelSnap(slotOv.tex)
+            slotOv:Hide()
 
-            roleStrip.slots[idx] = slotF
+            ov.enumRoleSlots[idx] = slotOv
         end
-        ov.roleStrip = roleStrip
 
         eState.overlay = ov
     end
@@ -2310,77 +2288,85 @@ local function OnLFGListSearchEntryUpdate(entry)
         topPill:Hide()
     end
 
-    if db.overlayMode == "FULL" then
-        local parts = {}
-        if meta.hasLust then
-            parts[#parts + 1] = "|cFF38BDF8Lust|r"
-        end
-        if meta.hasCR then
-            parts[#parts + 1] = "|cFF34D399CR|r"
-        end
-        if #parts > 0 then
-            SetSafeFont(ov.compTag, 9, "OUTLINE")
-            ov.compTag:SetText(table.concat(parts, " "))
-            ov.compTag:ClearAllPoints()
-            if topPill:IsShown() then
-                ov.compTag:SetPoint("RIGHT", topPill, "LEFT", -5, 0)
-            else
-                ov.compTag:SetPoint("TOPRIGHT", entry, "TOPRIGHT", -6, -3)
-            end
-            ov.compTag:Show()
-        else
-            ov.compTag:SetText("")
-            ov.compTag:Hide()
-        end
-    else
-        ov.compTag:SetText("")
-        ov.compTag:Hide()
-    end
-
-    -- 5-Player Tank / Healer / DPS Role-Slot Availability Strip
-    local roleStrip = ov.roleStrip
-    if roleStrip then
-        if meta.maxMembers == 5 then
-            roleStrip:ClearAllPoints()
-            local enumFrame = entry.DataDisplay and entry.DataDisplay.Enumerate
-            if enumFrame and enumFrame.IsShown and enumFrame:IsShown() then
-                roleStrip:SetPoint("RIGHT", enumFrame, "LEFT", -6, 0)
-            else
-                roleStrip:SetPoint("BOTTOMRIGHT", entry, "BOTTOMRIGHT", -10, 4)
-            end
-
-            local function SetRoleSlotState(slotFrame, isFilled, classFile)
-                if isFilled then
-                    slotFrame.tex:SetDesaturated(false)
-                    slotFrame.tex:SetVertexColor(1.0, 1.0, 1.0, 1.0)
-                    local cHex = classFile and CLASS_COLORS_HEX[classFile]
-                    if cHex then
-                        local r = tonumber(cHex:sub(3, 4), 16) / 255
-                        local g = tonumber(cHex:sub(5, 6), 16) / 255
-                        local b = tonumber(cHex:sub(7, 8), 16) / 255
-                        slotFrame.pip:SetVertexColor(r, g, b, 1.0)
-                    else
-                        slotFrame.pip:SetVertexColor(0.204, 0.827, 0.600, 1.0)
-                    end
-                    slotFrame.pip:Show()
-                else
-                    slotFrame.tex:SetDesaturated(true)
-                    slotFrame.tex:SetVertexColor(0.62, 0.68, 0.76, 0.42)
-                    slotFrame.pip:Hide()
+    -- Overlay Desaturated Tank / Healer / DPS Icons Directly on Empty Grey Dots in Enumerate
+    local enumSlots = ov.enumRoleSlots
+    if enumSlots then
+        local enumFrame = entry.DataDisplay and entry.DataDisplay.Enumerate
+        if meta.maxMembers == 5 and enumFrame and enumFrame.IsShown and enumFrame:IsShown() then
+            local slotAnchors = {}
+            for i = 1, 5 do
+                local ic = enumFrame["Icon" .. i]
+                if ic then
+                    slotAnchors[#slotAnchors + 1] = ic
                 end
             end
-
-            SetRoleSlotState(roleStrip.slots[1], (meta.tanks or 0) >= 1, meta.tankClass)
-            SetRoleSlotState(roleStrip.slots[2], (meta.healers or 0) >= 1, meta.healerClass)
-            local dpsCount = meta.dps or 0
-            local dpsClasses = meta.dpsClasses or {}
-            for dIdx = 1, 3 do
-                local cf = dpsClasses[dIdx]
-                SetRoleSlotState(roleStrip.slots[2 + dIdx], dpsCount >= dIdx, (type(cf) == "string") and cf or nil)
+            if #slotAnchors < 5 and type(enumFrame.Icons) == "table" then
+                slotAnchors = {}
+                for _, ic in ipairs(enumFrame.Icons) do
+                    slotAnchors[#slotAnchors + 1] = ic
+                end
             end
-            roleStrip:Show()
+            if #slotAnchors < 5 and enumFrame.GetChildren then
+                local children = { enumFrame:GetChildren() }
+                if #children > 0 then
+                    slotAnchors = children
+                end
+            end
+            table.sort(slotAnchors, function(a, b)
+                local la = (a and a.GetLeft and a:GetLeft()) or 0
+                local lb = (b and b.GetLeft and b:GetLeft()) or 0
+                return la < lb
+            end)
+
+            local openRoles = {}
+            local openTanks = math.max(0, 1 - (meta.tanks or 0))
+            local openHealers = math.max(0, 1 - (meta.healers or 0))
+            local openDPS = math.max(0, 3 - (meta.dps or 0))
+            for _ = 1, openTanks do openRoles[#openRoles + 1] = "TANK" end
+            for _ = 1, openHealers do openRoles[#openRoles + 1] = "HEALER" end
+            for _ = 1, openDPS do openRoles[#openRoles + 1] = "DAMAGER" end
+
+            local filledCount = math.max(0, math.min(5, meta.numMembers or ((meta.tanks or 0) + (meta.healers or 0) + (meta.dps or 0))))
+            local enumLevel = (enumFrame.GetFrameLevel and enumFrame:GetFrameLevel()) or (ov.GetFrameLevel and ov:GetFrameLevel()) or 1
+
+            for idx = 1, 5 do
+                local slotOv = enumSlots[idx]
+                local anchor = slotAnchors[idx]
+                if slotOv then
+                    if idx > filledCount and anchor and (not anchor.IsShown or anchor:IsShown()) then
+                        local roleKey = openRoles[idx - filledCount]
+                        if roleKey then
+                            slotOv:ClearAllPoints()
+                            slotOv:SetPoint("CENTER", anchor, "CENTER", 0, 0)
+                            if slotOv.SetFrameLevel then
+                                slotOv:SetFrameLevel(enumLevel + 2)
+                            end
+                            if roleKey == "TANK" then
+                                slotOv.tex:SetTexCoord(0 / 64, 19 / 64, 22 / 64, 41 / 64)
+                            elseif roleKey == "HEALER" then
+                                slotOv.tex:SetTexCoord(20 / 64, 39 / 64, 1 / 64, 20 / 64)
+                            else
+                                slotOv.tex:SetTexCoord(20 / 64, 39 / 64, 22 / 64, 41 / 64)
+                            end
+                            if slotOv.tex.SetDesaturated then
+                                slotOv.tex:SetDesaturated(true)
+                            end
+                            slotOv.tex:SetVertexColor(0.55, 0.60, 0.68, 0.85)
+                            slotOv:Show()
+                        else
+                            slotOv:Hide()
+                        end
+                    else
+                        slotOv:Hide()
+                    end
+                end
+            end
         else
-            roleStrip:Hide()
+            for idx = 1, 5 do
+                if enumSlots[idx] then
+                    enumSlots[idx]:Hide()
+                end
+            end
         end
     end
 
@@ -3567,6 +3553,11 @@ local function PopulateDungeonTileTooltip(tile)
     local isFiltered = (db.filteredDungeons[slot.code] == true) or (slot.mapID and db.filteredDungeons[slot.mapID] == true)
     local bestLevel, bestScore, isTimed = GetPlayerBestForDungeon(slot.mapID)
     local _, _, _, accHex = GetSuiteAccent()
+    if type(accHex) ~= "string" or accHex == "" then
+        accHex = "FF38BDF8"
+    elseif #accHex == 6 then
+        accHex = "FF" .. accHex
+    end
 
     _G.GameTooltip:SetOwner(tile, "ANCHOR_TOP")
     _G.GameTooltip:ClearLines()
@@ -3608,7 +3599,7 @@ local function PopulateDungeonTileTooltip(tile)
     else
         _G.GameTooltip:AddLine("|cFF22C55ELeft-Click / Right-Click:|r |cFFE2E8F0Toggle LFG filter for this dungeon.|r", 0.886, 0.910, 0.941)
     end
-    _G.GameTooltip:AddLine("|cFF" .. accHex .. "Shift + Right-Click:|r |cFFE2E8F0Filter exclusively to this dungeon.|r", 0.886, 0.910, 0.941)
+    _G.GameTooltip:AddLine("|c" .. accHex .. "Shift + Right-Click:|r |cFFE2E8F0Filter exclusively to this dungeon.|r", 0.886, 0.910, 0.941)
     _G.GameTooltip:Show()
 end
 
@@ -3903,9 +3894,9 @@ function DynamicGroup:UpdatePortalBarVisuals()
 
     if pbar.allBtn and pbar.allBtn.label then
         if hasAnyFilter then
-            pbar.allBtn:SetBackdropColor(0.16, 0.09, 0.04, 0.96)
-            pbar.allBtn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.90)
-            pbar.allBtn.label:SetTextColor(1.0, 0.62, 0.28, 1)
+            pbar.allBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+            pbar.allBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+            pbar.allBtn.label:SetTextColor(0.68, 0.74, 0.82, 1)
         else
             pbar.allBtn:SetBackdropColor(ar * 0.18, ag * 0.18, ab * 0.18, 0.96)
             pbar.allBtn:SetBackdropBorderColor(ar, ag, ab, 0.85)
@@ -6445,7 +6436,8 @@ local function RegisterWithDynamicSuite()
         entries = {
             { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Left-click casts learned dungeon teleports out of combat; Right-click filters the group finder to that dungeon." },
             { type = "FEATURE", text = "Integrated Multi-Toggle Premade Group Filters (15/11/2026): Upgraded the Group Finder filter menu with Tank, Healer, and DPS role availability toggles (with role icons), No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez, kept in two-way sync with Blizzard's native Filter menu without altering difficulty checkboxes." },
-            { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill, a 5-slot Tank/Healer/DPS role availability strip, and personal best key levels plus same-class warnings in group tooltips." },
+            { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill, desaturated Tank/Healer/DPS icons directly over empty group slots, and personal best key levels plus same-class warnings in group tooltips." },
+            { type = "FIX",     text = "Fixed the dungeon tile tooltip Shift + Right-Click colour code and updated the Portal Bar All button to stay unhighlighted while a dungeon filter is active." },
             { type = "FEATURE", text = "External Addon Conflict Detector & Yield Engine (12/11/2026): Added PremadeGroupsFilter and PremadeRegionFilter to the curated HARD conflict registry with unified DynamicSuite top-of-module warning banner and 1-click resolution." },
             { type = "FIX",     text = "Eliminated direct property write onto LFGListApplicationDialog.resultID before LFGListApplicationDialog_Show, added pcall and IsSecretValue guards across C_LFGList.GetApplicationInfo, HasSearchResultInfo, GetSearchResultInfo, and sp.SearchBox:GetText(), and pre-guarded LFGListSearchEntry OnEnter against expired resultIDs." },
             { type = "FIX",     text = "Added PLAYER_REGEN_DISABLED cleanup to close DynamicGroupDropdownCatcher and active dropdown popovers on combat entry, added OnMouseUp and OnHide OnUpdate cleanup on the workspace scrollbar thumb, and wired DynamicGroupDB.yieldHooks (AUTO_YIELD) across all LFG filter and sign-up hooks." },
