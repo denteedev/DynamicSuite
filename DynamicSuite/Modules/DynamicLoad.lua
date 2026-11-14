@@ -1510,6 +1510,15 @@ local function ApplyToastPosition(f)
         f:SetPoint("TOP", UIParent, "TOP", cx, cy)
     end
 
+    local dgToast = _G.DynamicGroupTeleportToast
+    if dgToast and dgToast:IsShown() and not dgToast._dsStackedUnderLoad and not f.isEditingMode and not f.isDraggingMode and not (mf and mf:IsShown()) then
+        f._dsStackedUnderGroup = true
+        f:ClearAllPoints()
+        f:SetPoint("TOP", dgToast, "BOTTOM", 0, -8)
+    else
+        f._dsStackedUnderGroup = false
+    end
+
     if f.toastType ~= "CONFLICT_ALERT" and f.toastType ~= "NEW_ADDON" then
         RefreshToastContent(f)
     end
@@ -1519,7 +1528,12 @@ addonTable.ApplyToastVisuals = function()
     if toastFrame then
         ApplyToastPosition(toastFrame)
     end
+    if _G.DynamicGroup and type(_G.DynamicGroup.ApplyTeleportToastPosition) == "function" then
+        pcall(_G.DynamicGroup.ApplyTeleportToastPosition, _G.DynamicGroup)
+    end
 end
+_G.DynamicSuite = _G.DynamicSuite or {}
+_G.DynamicSuite.ApplyToastVisuals = addonTable.ApplyToastVisuals
 
 addonTable.ClampToastPosition = function()
     if toastFrame then
@@ -1867,6 +1881,12 @@ local function CreateToastFrame()
 
     ApplyToastPosition(f)
     toastFrame = f
+    f:HookScript("OnHide", function(selfToast)
+        selfToast._dsStackedUnderGroup = false
+        if _G.DynamicGroup and type(_G.DynamicGroup.OnAlertToastHidden) == "function" then
+            pcall(_G.DynamicGroup.OnAlertToastHidden, _G.DynamicGroup)
+        end
+    end)
     return toastFrame
 end
 addonTable.CreateToastFrame = CreateToastFrame
