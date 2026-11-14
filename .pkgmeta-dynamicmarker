@@ -9,6 +9,9 @@ manual-changelog:
   filename: CHANGELOG.md
   markup-type: markdown
 
+move-folders:
+  DynamicMarker/Packaging/StandaloneTOCs: DynamicMarker
+
 ignore:
   - "*.ps1"
   - "*.cmd"

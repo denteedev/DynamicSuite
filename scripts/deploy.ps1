@@ -94,7 +94,7 @@ $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite")
 if (Test-Path -LiteralPath (Join-Path $RepoRoot "Packaging")) {
     $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "Packaging") -Filter "*.toc" -Recurse -File
 }
-foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "README.md", "AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md")) {
+foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "README.md", "AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", ".pkgmeta", ".pkgmeta-dynamicmarker", ".github\workflows\release.yml")) {
     $docPath = Join-Path $RepoRoot $docName
     if (Test-Path -LiteralPath $docPath) {
         $asciiTargets += Get-Item -LiteralPath $docPath
@@ -229,22 +229,72 @@ if (-not [string]::IsNullOrWhiteSpace($ReleaseTag)) {
     if ($pkgMetaMarkerText -notmatch '(?m)^package-as:\s*DynamicMarker\s*$') {
         throw ".pkgmeta-dynamicmarker must specify 'package-as: DynamicMarker'."
     }
+    if ($pkgMetaMarkerText -notmatch '(?m)^\s*DynamicMarker/Packaging/StandaloneTOCs:\s*DynamicMarker\s*$') {
+        throw ".pkgmeta-dynamicmarker must map 'DynamicMarker/Packaging/StandaloneTOCs: DynamicMarker' under move-folders:."
+    }
+    if ($pkgMetaMarkerText -notmatch '(?m)^\s*filename:\s*CHANGELOG\.md\s*$') {
+        throw ".pkgmeta-dynamicmarker manual-changelog must target 'CHANGELOG.md'."
+    }
     if ($pkgMetaMarkerText -notmatch '(?m)^\s*-\s*DynamicSuite\s*$') {
         throw ".pkgmeta-dynamicmarker must exclude 'DynamicSuite' under ignore:."
     }
+
     $markerTocPath = Join-Path $RepoRoot "Packaging\StandaloneTOCs\DynamicMarker.toc"
-    if (-not (Test-Path -LiteralPath $markerTocPath)) {
-        throw "Missing StandaloneTOCs/DynamicMarker.toc at $markerTocPath"
+    $requiredStandaloneAssets = @(
+        "Packaging\StandaloneTOCs\DynamicMarker.toc",
+        "DynamicSuite\Modules\DynamicMarker.lua",
+        "DynamicSuite\icon.tga",
+        "DynamicSuite\Media\Icons\icon_white.tga",
+        "DynamicSuite\Media\Icons\icon_accent.tga",
+        "DynamicSuite\CHANGELOG.md"
+    )
+    foreach ($assetRel in $requiredStandaloneAssets) {
+        $assetAbs = Join-Path $RepoRoot $assetRel
+        if (-not (Test-Path -LiteralPath $assetAbs)) {
+            throw "Missing required standalone DynamicMarker asset: $assetRel"
+        }
     }
+
     $workflowPath = Join-Path $RepoRoot ".github\workflows\release.yml"
     if (-not (Test-Path -LiteralPath $workflowPath)) {
         throw "Missing release workflow at $workflowPath"
     }
     $workflowText = [System.IO.File]::ReadAllText($workflowPath)
+    foreach ($yamlFile in @($workflowPath, $pkgMetaMarkerPath, (Join-Path $RepoRoot ".pkgmeta"))) {
+        if (Test-Path -LiteralPath $yamlFile) {
+            $yamlLines = Get-Content -LiteralPath $yamlFile
+            for ($li = 0; $li -lt $yamlLines.Count; $li++) {
+                if ($yamlLines[$li] -match '^[ ]*\t') {
+                    throw "YAML indentation error (tab character) in $yamlFile at line $($li + 1)."
+                }
+            }
+        }
+    }
+    foreach ($yamlKey in @('(?m)^name:\s*\S+', '(?m)^on:\s*$', '(?m)^jobs:\s*$', '(?m)^\s+steps:\s*$')) {
+        if ($workflowText -notmatch $yamlKey) {
+            throw "release.yml missing required YAML section matching '$yamlKey'."
+        }
+    }
+    $pyCmd = Get-Command python -ErrorAction SilentlyContinue
+    if ($pyCmd -and $pyCmd.Source -notmatch 'WindowsApps') {
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        $yamlCheck = & $pyCmd.Source -c "import sys; import yaml; [yaml.safe_load(open(p, encoding='utf-8')) for p in sys.argv[1:]]" $workflowPath $pkgMetaMarkerPath (Join-Path $RepoRoot ".pkgmeta") 2>&1
+        $pyExit = $LASTEXITCODE
+        $ErrorActionPreference = $prevEap
+        if ($pyExit -eq 0) {
+            Write-Host "[YAML OK] PyYAML parsed release.yml, .pkgmeta, and .pkgmeta-dynamicmarker cleanly" -ForegroundColor DarkCyan
+        } elseif ($yamlCheck -notmatch "No module named 'yaml'") {
+            throw "PyYAML validation failed: $yamlCheck"
+        }
+    }
     if ($workflowText -notmatch [regex]::Escape("-p 1331651 -m .pkgmeta-dynamicmarker")) {
         throw "release.yml must package Project ID 1331651 with .pkgmeta-dynamicmarker."
     }
-    Write-Host "[RELEASE GUARD OK] Verified .pkgmeta-dynamicmarker (DynamicMarker), release.yml (1331651), and StandaloneTOCs/DynamicMarker.toc for $ReleaseTag" -ForegroundColor Green
+    if ($workflowText -match 'cp\s+Packaging/StandaloneTOCs/DynamicMarker\.toc\s+DynamicMarker\.toc') {
+        throw "release.yml must not copy DynamicMarker.toc to the repository root."
+    }
+    Write-Host "[RELEASE GUARD OK] Verified YAML syntax, .pkgmeta-dynamicmarker (DynamicMarker), release.yml (1331651), and standalone assets for $ReleaseTag" -ForegroundColor Green
 }
 
 if ($BuildReleaseZip) {

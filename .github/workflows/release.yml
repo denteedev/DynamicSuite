@@ -26,7 +26,6 @@ jobs:
           mkdir -p "$STAGE_DIR/Media/Icons" "$STAGE_DIR/Fonts"
 
           cp Packaging/StandaloneTOCs/DynamicMarker.toc "$STAGE_DIR/DynamicMarker.toc"
-          cp Packaging/StandaloneTOCs/DynamicMarker.toc DynamicMarker.toc
           cp DynamicSuite/Modules/DynamicMarker.lua "$STAGE_DIR/DynamicMarker.lua"
           cp DynamicSuite/icon.tga "$STAGE_DIR/icon.tga"
           cp DynamicSuite/Media/Icons/*.tga "$STAGE_DIR/Media/Icons/"
@@ -56,6 +55,13 @@ jobs:
               exit 1
             fi
           done < "$STAGE_DIR/DynamicMarker.toc"
+
+          for req_asset in "icon.tga" "Media/Icons/icon_white.tga" "Media/Icons/icon_accent.tga" "CHANGELOG.md"; do
+            if [ ! -f "$STAGE_DIR/$req_asset" ]; then
+              echo "Missing required standalone asset: $req_asset" >&2
+              exit 1
+            fi
+          done
 
       - name: Package & Release Standalone DynamicMarker (CurseForge 1331651)
         uses: BigWigsMods/packager@v2
