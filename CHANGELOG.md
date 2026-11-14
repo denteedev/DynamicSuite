@@ -1,5 +1,12 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.0.4 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.0.5 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.0.5 (15/11/2026)
+
+### Added
+* **Focus Target Mode for `[DynamicMark]` (DynamicMarker):** Added a **Focus Target Mode** segmented pill control (`Mouseover + Target`, `Target Only`, `Manual (Custom)`) in Sub-Tab 3 so players can restrict `[DynamicMark]` to `/focus [@target,exists,nodead]` or preserve custom manual macro edits across logins and reloads.
 
 ---
 

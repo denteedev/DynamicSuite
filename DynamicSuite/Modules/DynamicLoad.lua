@@ -8,7 +8,7 @@ local addonName, rawAddonTable = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.4"
+    local fb = fallback or "2.0.5"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.ADDON_VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.4"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.ADDON_VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.5"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.4")
+local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.5")
 
 -- Guard E: Version-aware duplicate-install guard if standalone DynamicLoad is installed alongside bundled DynamicSuite
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicLoad", RESOLVED_ADDON_VERSION, _G.DynamicLoad) then
@@ -8719,7 +8719,7 @@ do
         slash = "/dl",
         order = 10,
         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
-        version = addonTable.ADDON_VERSION or "2.0.4",
+        version = addonTable.ADDON_VERSION or "2.0.5",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         CHANGELOG = DynamicSuite.Changelogs and DynamicSuite.Changelogs["DynamicLoad"] and DynamicSuite.Changelogs["DynamicLoad"].entries or addonTable.CHANGELOG,
         Open = function(...) if addonTable.ShowConfigUI then return addonTable.ShowConfigUI(...) end end,

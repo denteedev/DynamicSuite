@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.4"
+    local fb = fallback or "2.0.5"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -99,7 +99,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.0.4"
+            or "2.0.5"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.4")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.5")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -254,6 +254,12 @@ local CLEAR_MODIFIER_OPTIONS = {
     { value = "shift", label = "Shift" },
     { value = "alt",   label = "Alt" },
     { value = "ctrl",  label = "Ctrl" },
+}
+
+local FOCUS_TARGET_MODE_OPTIONS = {
+    { value = "MOUSEOVER_TARGET", label = "Mouseover + Target" },
+    { value = "TARGET_ONLY",      label = "Target Only" },
+    { value = "MANUAL",           label = "Manual (Custom)" },
 }
 
 local KICK_PRIORITY_OPTIONS = {
@@ -415,6 +421,7 @@ local DB_DEFAULTS = {
     tuneFlareBarExpanded = true,
     hudBorderStyle       = "ACCENT",
     focusClearModifier   = "NONE",
+    focusTargetMode      = "MOUSEOVER_TARGET",
     kickPriority         = "SMART_AUTOTARGET",
     kickPriorityMigratedV2 = false,
     kickSpecMode         = "SMART_SWAP",
@@ -2918,12 +2925,17 @@ function DM:BuildFocusMarkerMacroBody()
     local iconIndex = (self.db and self.db.focusIcon) or 8
     local mod = (self.db and self.db.focusClearModifier) or "NONE"
     local scope = (self.db and self.db.groupScope) or "BOTH"
+    local targetMode = (self.db and self.db.focusTargetMode) or "MOUSEOVER_TARGET"
 
     local lines = { "#showtooltip" }
     if mod ~= "NONE" then
         table.insert(lines, string.format("/clearfocus [mod:%s]", mod))
     end
-    table.insert(lines, "/focus [@mouseover,exists,nodead][]")
+    if targetMode == "TARGET_ONLY" then
+        table.insert(lines, "/focus [@target,exists,nodead]")
+    else
+        table.insert(lines, "/focus [@mouseover,exists,nodead][]")
+    end
     table.insert(lines, "/stopmacro [@focus,noexists]")
 
     local tmCond = "[@focus,exists]"
@@ -3039,8 +3051,13 @@ function DM:CreateOrUpdateFocusMarkerMacro(userInitiated)
     end
     self.pendingFocusMacroSync = false
 
-    local body = self:BuildFocusMarkerMacroBody()
+    local targetMode = (self.db and self.db.focusTargetMode) or "MOUSEOVER_TARGET"
     local idx, foundName = self:FindFocusMacroIndex()
+    if targetMode == "MANUAL" and not userInitiated then
+        return (idx and idx > 0) and true or false
+    end
+
+    local body = self:BuildFocusMarkerMacroBody()
     if idx and idx > 0 then
         EditMacro(idx, FOCUS_MACRO_NAME, "INV_MISC_QUESTIONMARK", body)
         if userInitiated then
@@ -6519,11 +6536,11 @@ function DM:BuildWorkspace(parentContainer)
     -- ========================================================================
     local p3 = ws.subTabPages[3].content
     if ws.subTabPages[3].SetContentHeight then
-        ws.subTabPages[3]:SetContentHeight(678)
+        ws.subTabPages[3]:SetContentHeight(742)
     end
 
     -- Section 1: [DynamicMark] (General Macro - All Characters)
-    local p3Sec1 = self:CreateSectionBox(p3, 0, 264)
+    local p3Sec1 = self:CreateSectionBox(p3, 0, 328)
     if p3Sec1.SetClipsChildren then p3Sec1:SetClipsChildren(true) end
     local p3Hdr1 = self:CreateSectionHeader(p3Sec1, -10, "[DYNAMICMARK] - FOCUS & RAID TARGET MARKER (GENERAL MACRO)", "One-button modifier-free macro that sets focus and applies your preferred raid target icon.")
 
@@ -6551,10 +6568,24 @@ function DM:BuildWorkspace(parentContainer)
     pillsClearMod:SetPoint("RIGHT", mRowMod, "RIGHT", -14, 0)
     mRowMod:BindControl(pillsClearMod)
 
+    local mRowTargetMode = self:CreateSpaciousRow(p3Sec1, -118, 58,
+        "Focus Target Mode",
+        "Choose whether [DynamicMark] checks mouseover first, uses your current target only, or keeps manual edits.")
+
+    local pillsTargetMode = self:CreateSegmentedPills(mRowTargetMode, FOCUS_TARGET_MODE_OPTIONS,
+        function() return self.db.focusTargetMode or "MOUSEOVER_TARGET" end,
+        function(v)
+            self.db.focusTargetMode = v
+            self:CreateOrUpdateFocusMarkerMacro(false)
+            self:RefreshAll()
+        end, 340)
+    pillsTargetMode:SetPoint("RIGHT", mRowTargetMode, "RIGHT", -14, 0)
+    mRowTargetMode:BindControl(pillsTargetMode)
+
     local mPreviewCard1 = CreateFrame("Frame", nil, p3Sec1, "BackdropTemplate")
     mPreviewCard1:SetHeight(134)
-    mPreviewCard1:SetPoint("TOPLEFT", p3Sec1, "TOPLEFT", 14, -118)
-    mPreviewCard1:SetPoint("TOPRIGHT", p3Sec1, "TOPRIGHT", -14, -118)
+    mPreviewCard1:SetPoint("TOPLEFT", p3Sec1, "TOPLEFT", 14, -182)
+    mPreviewCard1:SetPoint("TOPRIGHT", p3Sec1, "TOPRIGHT", -14, -182)
     if mPreviewCard1.SetClipsChildren then mPreviewCard1:SetClipsChildren(true) end
     self:ApplyBackdrop(mPreviewCard1, COLORS.BgSurface, COLORS.BorderDim)
 
@@ -8485,8 +8516,9 @@ end
 
 DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
-    date    = "14/11/2026",
+    date    = "15/11/2026",
     entries = {
+        { type = "FEATURE", text = "Focus Target Mode for [DynamicMark] (15/11/2026): Added a 'Focus Target Mode' 3-option segmented pill control in Sub-Tab 3 (Mouseover + Target, Target Only, Manual (Custom)) so players can restrict [DynamicMark] to /focus [@target,exists,nodead] or lock custom manual macro edits across logins and reloads." },
         { type = "FIX",     text = "Release v1.9.9 - Canonical UIParent-Local HUD Coordinates Across /reload, Dark-Obsidian Coexistence Modal & Unified HUD Edit Mode (14/11/2026): Enforced one canonical UIParent-local coordinate contract for TargetBar and FlareBar (storing unscaled UIParent CENTER offsets and dividing by barScale strictly inside DM:SetBarCenterPoint after applying SetScale/SetSize and before SetClampedToScreen(true), removing destructive early-load DB writes in ApplyHUDPosition, and guaranteeing 100% round-trip symmetry across HUD Edit drag, Quick Align, Reset HUD, and /reload at scales 0.70, 1.00, and 1.30); replaced Blizzard's StaticPopup with a custom dark-obsidian coexistence reload modal (ShowMarkerConflictReloadModal / DynamicSuiteMarkerConflictModal with #0B0D12 0.96 alpha backdrop, 1px dark slate border, Blaze Orange #F97316 accent bar, flat Reload UI / Later buttons, ESC dismissal, and combat deferral); and suppressed DynamicMarkerEditModeInspector inside DynamicSuite so only the unified HUD Edit dock displays." },
         { type = "FIX",     text = "HUD Edit Bar Edge-Drag & Reload Persistence Fix (14/11/2026): Fixed Target Icon Bar and World Flare Bar jumping inward on /reload or mouse release when scaled below 100% by syncing bar scale and orientation size via SyncBarScaleAndSizeToDB before clamping, removing premature scale=1.0 ApplyHUDPosition calls at initialisation/login/UI_SCALE_CHANGED, canonicalising TargetBar/FlareBar coordinates to CENTER with full mirror key writes, guarding against re-entrant selection callbacks mid-drag, and disabling native C++ SetClampedToScreen interference so edge-snapped bars stay flush after mouse release and /reload." },
         { type = "FEATURE", text = "Release v1.9.7 - Live CurseForge DynamicSuite Link & Hardened Coexistence (14/11/2026): Updated Support modal and CurseForge storefront links cleanly to https://www.curseforge.com/wow/addons/dynamicsuite (replacing legacy URL placeholder labels), connected full DynamicSuite (Project 1804382) alongside standalone DynamicMarker (Project 1331651) in our dual-artifact release pipeline, and hardened ShouldYieldToOtherInstall semantic version yielding regardless of addon load order." },
