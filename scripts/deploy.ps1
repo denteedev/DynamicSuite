@@ -93,7 +93,15 @@ foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "README.md",
         $asciiTargets += Get-Item -LiteralPath $docPath
     }
 }
-$asciiTargets += Get-Item -LiteralPath $PSCommandPath
+$asciiTargets += Get-ChildItem -LiteralPath $PSScriptRoot -Filter "*.ps1" -File
+$designHtml = Join-Path $RepoRoot "Design\DynamicSuite_Full_Brand_Showcase.html"
+if (Test-Path -LiteralPath $designHtml) {
+    $asciiTargets += Get-Item -LiteralPath $designHtml
+}
+$designLogosDir = Join-Path $RepoRoot "Design\Logos"
+if (Test-Path -LiteralPath $designLogosDir) {
+    $asciiTargets += Get-ChildItem -LiteralPath $designLogosDir -Filter "*.svg" -File
+}
 
 $asciiFailures = @()
 foreach ($f in $asciiTargets) {
