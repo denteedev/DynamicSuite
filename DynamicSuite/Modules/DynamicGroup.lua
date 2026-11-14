@@ -4410,14 +4410,19 @@ end
 function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
     local db = EnsureDB()
     local data = self.activeTeleportToastData
-    if db.showGroupTeleportToast == false or not data or IsYieldingSharedHooks() then
+    if not data or IsYieldingSharedHooks() or (not data.isPreview and db.showGroupTeleportToast == false) then
         self:HideTeleportToast()
         return
     end
 
     local inGroup = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
-    local numMembers = inGroup and ((type(_G.GetNumGroupMembers) == "function" and _G.GetNumGroupMembers()) or 1) or 1
-    numMembers = math.max(1, math.min(5, tonumber(numMembers) or 1))
+    local numMembers
+    if data.isPreview then
+        numMembers = math.max(1, math.min(5, tonumber(data.previewCount) or 3))
+    else
+        numMembers = inGroup and ((type(_G.GetNumGroupMembers) == "function" and _G.GetNumGroupMembers()) or 1) or 1
+        numMembers = math.max(1, math.min(5, tonumber(numMembers) or 1))
+    end
 
     if playAudioOnRosterIncrease then
         local prevCount = data.lastMemberCount or 0
@@ -4618,6 +4623,64 @@ function DynamicGroup:HandleApplicationStatusUpdated(searchResultID, newStatus, 
     end
 
     self:UpdateTeleportToast(false)
+end
+
+function DynamicGroup:TriggerTeleportToastPreview(mode)
+    if IsYieldingSharedHooks() then
+        PrintMsg("DynamicGroup is currently yielding to another LFG addon.")
+        return
+    end
+    local slots = GetSeasonDungeonSlots(false)
+    local chosenSlot = nil
+    for _, slot in ipairs(slots) do
+        if slot.spellKnown then
+            chosenSlot = slot
+            break
+        end
+    end
+    if not chosenSlot then
+        chosenSlot = slots[1]
+    end
+
+    local isFull = (mode == "FULL")
+    local count = isFull and 5 or 3
+    self.activeTeleportToastData = {
+        isPreview = true,
+        previewCount = count,
+        mapID = chosenSlot and chosenSlot.mapID or nil,
+        code = chosenSlot and chosenSlot.code or "M+",
+        dungeonName = chosenSlot and chosenSlot.name or "Midnight Season 2 Dungeon",
+        listingName = "+12 Midnight Season 2 Dungeon",
+        icon = chosenSlot and chosenSlot.icon or 136095,
+        spellID = chosenSlot and chosenSlot.spellID or 0,
+        spellKnown = (chosenSlot and chosenSlot.spellKnown) and true or false,
+        lastMemberCount = count,
+    }
+
+    if type(_G.PlaySound) == "function" then
+        if isFull then
+            pcall(_G.PlaySound, (_G.SOUNDKIT and _G.SOUNDKIT.READY_CHECK) or 8960, "Master")
+        else
+            pcall(_G.PlaySound, (_G.SOUNDKIT and _G.SOUNDKIT.IG_PLAYER_INVITE) or 880, "Master")
+        end
+    end
+
+    self:UpdateTeleportToast(false)
+end
+
+function DynamicGroup:CycleTeleportToastPreview()
+    local cur = self.activeTeleportToastData
+    local isShowingPreview = cur and cur.isPreview and self.teleportToast and self.teleportToast:IsShown()
+    if not isShowingPreview then
+        self:TriggerTeleportToastPreview("JOIN")
+        PrintMsg("Showing teleport toast preview (3/5 joined).")
+    elseif (cur.previewCount or 3) < 5 then
+        self:TriggerTeleportToastPreview("FULL")
+        PrintMsg("Advancing teleport toast preview to Group Full (5/5).")
+    else
+        self:HideTeleportToast()
+        PrintMsg("Teleport toast preview dismissed.")
+    end
 end
 
 function DynamicGroup:UpdateLFGMiniBar()
@@ -6502,11 +6565,11 @@ local function RenderGroupEmbedded(arg1, arg2)
     root.allControls[#root.allControls + 1] = c3_keystone
 
     -- Card 3.3c: Dungeon Joined & Group Full Teleport Toast
-    local c3_tpToast = CreateCardRow(sec3a, 62,
+    local c3_tpToast = CreateCardRow(sec3a, 94,
         "Dungeon Joined & Group Full Teleport Toast",
         "Shows a quick-teleport toast when your Premade Group application is accepted, plays a chime as members join, and alerts you once the group reaches 5/5."
     )
-    AttachSegmentedSwitchToCard(c3_tpToast,
+    local tpToastSwitch = AttachSegmentedSwitchToCard(c3_tpToast,
         function() return EnsureDB().showGroupTeleportToast ~= false end,
         function(val)
             EnsureDB().showGroupTeleportToast = val and true or false
@@ -6515,6 +6578,45 @@ local function RenderGroupEmbedded(arg1, arg2)
             end
         end
     )
+    AnchorCardTextToRightWidget(c3_tpToast, tpToastSwitch)
+
+    local function CreateToastPreviewBtn(btnLabel, anchorRel, offsetX, mode)
+        local btn = CreateFrame("Button", nil, c3_tpToast, "BackdropTemplate")
+        btn:SetSize(108, 22)
+        if anchorRel then
+            btn:SetPoint("LEFT", anchorRel, "RIGHT", offsetX or 8, 0)
+        else
+            btn:SetPoint("BOTTOMLEFT", c3_tpToast, "BOTTOMLEFT", 14, 10)
+        end
+        btn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        btn:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- #0B0D12
+        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.72) -- #F97316
+        btn.label = btn:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(btn.label, 10, "")
+        btn.label:SetPoint("CENTER", 0, 0)
+        btn.label:SetText(btnLabel)
+        btn.label:SetTextColor(0.96, 0.98, 1.00, 1)
+        btn:SetScript("OnEnter", function(s)
+            s:SetBackdropColor(0.16, 0.09, 0.04, 0.96)
+            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+        end)
+        btn:SetScript("OnLeave", function(s)
+            s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.72)
+        end)
+        btn:SetScript("OnClick", function()
+            DynamicGroup:TriggerTeleportToastPreview(mode)
+        end)
+        return btn
+    end
+
+    local testJoinBtn = CreateToastPreviewBtn("Test Join (3/5)", nil, 0, "JOIN")
+    CreateToastPreviewBtn("Test Full (5/5)", testJoinBtn, 8, "FULL")
+
     sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_tpToast
     page3.orderedCards[#page3.orderedCards + 1] = c3_tpToast
     root.allControls[#root.allControls + 1] = c3_tpToast
@@ -7062,8 +7164,8 @@ local function RegisterWithDynamicSuite()
         version = DynamicGroup.version or VERSION,
         date = "15/11/2026",
         entries = {
-            { type = "FEATURE", text = "Dungeon Joined & Group Full Teleport Toast (15/11/2026): Displays a sleek movable dark-obsidian toast with a one-click Dungeon Teleport button when your Premade Group application is accepted, chimes as players join, and highlights when the group reaches 5/5." },
-            { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Dynamically discovers all learned Midnight Season 1 teleport spells from the Mythic+ tab and spellbook so Left-click toggles the dungeon filter (Shift+Left-click solo filters) and Right-click casts learned dungeon teleports out of combat." },
+            { type = "FEATURE", text = "Dungeon Joined & Group Full Teleport Toast (15/11/2026): Displays a sleek movable dark-obsidian toast with a one-click Dungeon Teleport button when your Premade Group application is accepted, chimes as players join, and highlights when the group reaches 5/5. Includes Test Join (3/5) and Test Full (5/5) preview buttons in Tab 3 plus /dg testtoast." },
+            { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Dynamically discovers all learned Midnight Season 2 teleport spells from the Mythic+ tab and spellbook so Left-click toggles the dungeon filter (Shift+Left-click solo filters) and Right-click casts learned dungeon teleports out of combat." },
             { type = "FEATURE", text = "Integrated Multi-Toggle Premade Group Filters (15/11/2026): Upgraded the Group Finder filter menu with Tank, Healer, and DPS role availability toggles (with role icons), No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez, kept in two-way sync with Blizzard's native Filter menu without altering difficulty checkboxes." },
             { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill (OCE, USE, USW, USC, LA, BR), desaturated greyscale Tank/Healer/DPS icons matched to Blizzard's slot size over empty group slots, a simplified Show Region & Leader IO Badge switch, and personal best key levels plus same-class warnings in group tooltips." },
             { type = "FIX",     text = "Fixed the dungeon tile tooltip colour code and updated the Portal Bar All button to stay unhighlighted while a dungeon filter is active." },
@@ -7105,6 +7207,8 @@ SlashCmdList["DYNAMICGROUP"] = function(msg)
         if type(DoReadyCheck) == "function" then DoReadyCheck() end
     elseif cmd == "pull" then
         if C_PartyInfo and type(C_PartyInfo.DoCountdown) == "function" then C_PartyInfo.DoCountdown(10) end
+    elseif cmd == "testtoast" then
+        DynamicGroup:CycleTeleportToastPreview()
     else
         OpenGroupWorkspace()
     end
@@ -7273,7 +7377,12 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
     elseif event == "GROUP_ROSTER_UPDATE" then
         HandleAutoPromoteRoster()
         if self.activeTeleportToastData then
-            if type(_G.IsInGroup) == "function" and not _G.IsInGroup() then
+            local inGroupNow = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
+            if self.activeTeleportToastData.isPreview then
+                if inGroupNow then
+                    self:HideTeleportToast()
+                end
+            elseif not inGroupNow then
                 self:HideTeleportToast()
             else
                 self:UpdateTeleportToast(true)
