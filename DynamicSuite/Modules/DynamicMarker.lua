@@ -2,7 +2,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.3"
+    local fb = fallback or "1.9.4"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -36,7 +36,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.3"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.4"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -61,7 +61,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.3")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.4")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -6357,6 +6357,20 @@ function DM:EnsureStandaloneShell()
     f:HookScript("OnHide", function()
         self:CloseStudioModal()
     end)
+    f:HookScript("OnShow", function(s)
+        if s.Raise then s:Raise() end
+        if not s._postLayoutPending and C_Timer and C_Timer.After then
+            s._postLayoutPending = true
+            C_Timer.After(0, function()
+                s._postLayoutPending = nil
+                if not s:IsShown() then return end
+                if self.ApplyThemeToUI then self:ApplyThemeToUI() end
+                if self.RefreshAll then self:RefreshAll() end
+                if s.Raise then s:Raise() end
+            end)
+        end
+    end)
+    f:Hide()
     self:ApplyBackdrop(f, surf.panel, COLORS.BorderStrong, 1)
 
     -- ------------------------------------------------------------------------
@@ -7111,6 +7125,7 @@ function DM:OpenWindow(subTabIndex)
         self:SelectSubTab(subTabIndex)
     end
     f:Show()
+    if f.Raise then f:Raise() end
     self:RefreshAll()
 end
 
@@ -7221,6 +7236,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "14/11/2026",
     entries = {
+        { type = "FIX",     text = "First-Open ESC > Options > AddOns Standalone Shell & Settings Yield (14/11/2026): Added initial f:Hide(), OnShow post-layout C_Timer.After(0, ...) theme/workspace refresh + Raise() on DynamicMarkerSuiteWindow, Settings canvas OnShow accent/surface sync, and hardened HideSettingsPanelSafe() so opening standalone DynamicMarker via ESC > Options > AddOns > DynamicMarker renders cleanly on the very first open without SettingsPanel obscuring it." },
         { type = "FIX",     text = "Standalone Guided Setup Modal Layering (14/11/2026): Promoted DynamicMarkerStudioBackdrop and DynamicMarkerStudioModal to FULLSCREEN_DIALOG strata (levels 290/300) parented to UIParent with SetToplevel(true), 100% opaque solid panel backing, and clean mode-widget recycling so underlying window controls, borders, and text never bleed through or overlap." },
         { type = "UI",      text = "Standalone Bottom-Left Sidebar & Brighter Theme Parity (14/11/2026): Aligned standalone shell dimensions (204px rail, 46px header with 2px top accent bar, 38px footer), SUITE STUDIO & TOOLS card spacing, 90px/88px [Changelog] & [Support] buttons, and brighter OBSIDIAN_DARK / SLATE_STEEL surface palette with full DynamicSuite." },
         { type = "FEATURE", text = "Encapsulated HUD Edit Mode & Standalone Mover Parity (14/11/2026): Moved HUD Edit Mode state, crisp pixel-bordered movers ('DynamicMarker: Icon Bar' and 'DynamicMarker: Flare Bar'), drag-and-snap persistence directly into DynamicMarkerDB, mousewheel scaling, ESC-key closing, and combat-lockdown failsafe cleanly inside DynamicMarker. Registers with DynamicSuite's [+ HUD] toolbar toggle when bundled and provides standalone controls in Focus/Flare Settings headers, left rail, and /dm hud." },
@@ -7566,18 +7582,26 @@ function DM:RegisterSettingsCategory()
     slashSummary:SetText("Slash Commands:  /dm (Open Config)   |   /dm hud (HUD Edit Mode)   |   /dm reset")
 
     local function HideSettingsPanelSafe()
-        if not (InCombatLockdown and InCombatLockdown()) and SettingsPanel and SettingsPanel:IsShown() then
+        if InCombatLockdown and InCombatLockdown() then return end
+        if SettingsPanel and SettingsPanel:IsShown() then
             if type(_G.HideUIPanel) == "function" then
                 pcall(_G.HideUIPanel, SettingsPanel)
-            elseif SettingsPanel.Hide then
-                SettingsPanel:Hide()
             end
+            if SettingsPanel:IsShown() and SettingsPanel.Hide then
+                pcall(SettingsPanel.Hide, SettingsPanel)
+            end
+        end
+        if GameMenuFrame and GameMenuFrame:IsShown() and GameMenuFrame.Hide then
+            pcall(GameMenuFrame.Hide, GameMenuFrame)
         end
     end
 
     local openBtn = self:CreateButton(card, "Open DynamicMarker", 196, 32, function()
         HideSettingsPanelSafe()
         self:OpenWindow()
+        if self.shellFrame and self.shellFrame.Raise then
+            self.shellFrame:Raise()
+        end
     end, true)
     openBtn:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 18, 18)
 
@@ -7586,6 +7610,14 @@ function DM:RegisterSettingsCategory()
         self:ToggleHudEditMode()
     end, false)
     hudBtn:SetPoint("LEFT", openBtn, "RIGHT", 12, 0)
+
+    panel:SetScript("OnShow", function()
+        local cr, cg, cb, cHex = self:GetAccentColor()
+        local surf = GetStandaloneSurfaceColors(self)
+        self:ApplyBackdrop(card, surf.panel, { r = cr, g = cg, b = cb, a = 0.75 }, 1)
+        logoAccent:SetVertexColor(cr, cg, cb, 1.0)
+        title:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFMarker|r  |cff94a3b8v%s|r", cHex, self.version or VERSION))
+    end)
 
     local ok, category = pcall(Settings.RegisterCanvasLayoutCategory, panel, "DynamicMarker")
     if ok and category then

@@ -1,5 +1,13 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v1.9.3 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v1.9.4 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v1.9.4 (`/ds`, `/dm`)
+* **[FIXED] First-Open `ESC > Options > AddOns` Blank Shell & Left-Rail Rendering (`DynamicSuite_UI.lua`, `DynamicMarker.lua`):**
+  * **Immediate Left-Rail Layout & Post-Layout Refresh:** Called `RefreshLeftRailLayout()` during `CreateMainConfigUI()`, routed `ApplySuiteThemeAndGeometry()` through `RefreshLeftRailLayout()` and all workspace view refreshes (`DYNAMICLOAD`, `PEER_MODULE`, `THEME_STUDIO`, `GUIDED_SETUP`, `CHANGELOG_VIEW`, `SUPPORT_VIEW`, `EDIT_MODE`, `SEARCH_VIEW`), and added a guarded `C_Timer.After(0, ...)` post-layout refresh + `Raise()` on `DynamicSuiteMainFrame:OnShow` so all 8 left-rail modules, active workspace, and surface theme render on the very first open after `/reload`.
+  * **Standalone `DynamicMarker` First-Open Parity:** Added initial `f:Hide()`, `OnShow` `C_Timer.After(0, ...)` post-layout `ApplyThemeToUI()` / `RefreshAll()` / `Raise()` in `EnsureStandaloneShell()`, and `OnShow` theme/accent refresh on `DynamicMarkerSettingsCanvas` and `DynamicSuiteSettingsCanvas`.
+  * **Clean Settings Overlay Yield:** Hardened `HideSettingsPanelSafe()` in both `DynamicSuite_UI.lua` and `DynamicMarker.lua` (plus `ShowConfigUI()`) to call `HideUIPanel(SettingsPanel)`, fall back to `SettingsPanel:Hide()` if still shown, and hide `GameMenuFrame` so Blizzard's Settings overlay never obscures or blanks out the addon window.
 
 ---
 

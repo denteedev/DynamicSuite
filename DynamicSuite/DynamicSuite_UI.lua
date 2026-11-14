@@ -4594,7 +4594,7 @@ function addonTable.CreateMainConfigUI()
                         host._activeModHost = modHost
 
                         if f.verPill and f.verPill.label then
-                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "1.9.3"
+                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "1.9.4"
                             f.verPill.label:SetText("v" .. tostring(mVer))
                         end
                         UpdateStatusBar(true)
@@ -4673,6 +4673,7 @@ function addonTable.CreateMainConfigUI()
     end
     f.RefreshLeftRailLayout = RefreshLeftRailLayout
     mainFrame.RefreshLeftRailLayout = RefreshLeftRailLayout
+    RefreshLeftRailLayout()
 
     -- Bottom Section of Left Suite Rail: SUITE STUDIO & TOOLS (Compact 31px Neutral Obsidian Cards)
     local studioSectionHdr = leftRail:CreateFontString(nil, "OVERLAY")
@@ -4997,7 +4998,7 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        local curVer = addonTable.ADDON_VERSION or "1.9.3"
+        local curVer = addonTable.ADDON_VERSION or "1.9.4"
         local curSig = f.GetSuiteChangelogSignature and f.GetSuiteChangelogSignature() or curVer
         local seenVer = gTbl.lastSeenChangelogVer or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogVer)
         local seenSig = gTbl.lastSeenChangelogSig or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogSig)
@@ -6689,19 +6690,20 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.3"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.4"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
             key = "suite",
             tabLabel = "DynamicLoad",
             ver = DS_LIVE_VER_TAG,
-            date = "12/11/2026 (Retail 12.1.5)",
+            date = "14/11/2026 (Retail 12.1.5)",
             title = "DynamicSuite Hub & DynamicLoad " .. DS_LIVE_VER_TAG,
             subtitle = "Context-Aware Addon Manager, External Conflict Detector & Auto-Yield Engine (/dl, /ds)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "FIXED",    title = "First-Open ESC > Options > AddOns Blank Shell & Left-Rail Rendering", desc = "Initialised RefreshLeftRailLayout() during CreateMainConfigUI(), routed ApplySuiteThemeAndGeometry() through RefreshLeftRailLayout() and all workspace view refreshes, added a guarded C_Timer.After(0, ...) post-layout refresh and Raise() on DynamicSuiteMainFrame:OnShow, and hardened HideSettingsPanelSafe() + Settings canvas OnShow theme sync so opening via ESC > Options > AddOns > DynamicSuite renders all 8 left-rail modules, active workspace, and surface theme on the very first open." },
                 { badge = "FIXED",    title = "Universal 'Never' ('FROZEN') Persistence Across All Addons & Registry-Driven Conflict Resolution", desc = "Normalised all security and zone assignment operations to canonical folder names (ResolveCanonicalAddonName); made SetAddonFrozen(name, true) atomically persist 'FROZEN' across DynamicLoadDB/globalData/charData, wipe all 5 zone tables, and call C_AddOns.DisableAddOn; merged DynamicLoadDB root and globalData security tables in SyncScopeBindings() and used in-place wipe() in RestoreStash() so SavedVariables deserialization never reverts 'FROZEN' states on /reload; retired RecoverEllesmereUIState(); protected individual child 'FROZEN' / 'LOCKED' states from parent cascades; added EnforceFrozenAddonsDisabled() + a C_AddOns.EnableAddOn runtime guard; made Auto-Yield 100% read-only; treated unloaded or 'FROZEN' external addons as inactive; and added a 1-click [Use Dynamic] -> [Reload UI Now] button on soft Auto-Yield banners." },
                 { badge = "FIXED",    title = "DynamicChat HUD Mover Literal '|r' Fix, EllesmereUIChat Soft-Yield & 1:1 Geometry Sync", desc = "Fixed literal '|r' escape sequences in HUD Edit Mode mover readouts by correcting escaped separator pipes ('|cFF64748B|||r' and '|cFF475569|||r'); suppressed the DynamicChat HUD mover and ChatFrame1 position overrides whenever DynamicChat is disabled or soft-yielding layout to an external chat addon (EllesmereUIChat, ElvUI Chat, Prat-3.0, Chattynator, LS: Glass); locked the HUD mover and DynamicChat backdrop container 1:1 to ChatFrame1's scale, anchor, and bounds; and lowered the Chat HUD mover backdrop alpha (0.52 selected / 0.40 unselected) so chat text remains clearly visible while positioning." },
                 { badge = "FIXED",    title = "In-Combat /ww & /qq Shortcuts, Greyed-Out Ctrl-to-Release Death Button & Modifier-Free [DynamicHeal] Macro", desc = "Enabled /ww (Target Whisper) and /qq (Quick Leave Group via C_PartyInfo.LeaveParty()) both as instant editbox space-triggers and Enter slash commands in combat with pcall + issecretvalue guards; hooked StaticPopup_OnUpdate and StaticPopup1..4 OnUpdate/OnShow/OnHide so the DEATH StaticPopup 'Release Spirit' button stays greyed out ('Hold CTRL to Release') until Ctrl is held and restores cleanly on hide/revive; and stripped all [mod]/[nomod] conditionals from [DynamicHeal] in favour of a modifier-free sequential fallback (#showtooltip + /castsequence reset=combat item:<HealthstoneID>, item:<HealPotID>) with out-of-combat cooldown reordering." },
@@ -12084,6 +12086,9 @@ function addonTable.CreateMainConfigUI()
             addonTable.combatRestorePill:Hide()
         end
         mainFrame:Show()
+        if mainFrame.Raise then
+            mainFrame:Raise()
+        end
         if addonTable.UpdateCombatLockState then
             addonTable.UpdateCombatLockState()
         end
@@ -12095,7 +12100,7 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "1.9.3"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "1.9.4"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -12167,6 +12172,9 @@ function addonTable.CreateMainConfigUI()
             addonTable.combatRestorePill:Hide()
         end
         mainFrame:Show()
+        if mainFrame.Raise then
+            mainFrame:Raise()
+        end
         if addonTable.UpdateCombatLockState then
             addonTable.UpdateCombatLockState()
         end
@@ -12305,7 +12313,11 @@ function addonTable.CreateMainConfigUI()
 
         if f.UpdateAllTabVisuals then f.UpdateAllTabVisuals() end
         if f.UpdateAutoToggleVisual then f.UpdateAutoToggleVisual() end
-        RefreshLeftRailVisuals()
+        if f.RefreshLeftRailLayout then
+            f.RefreshLeftRailLayout()
+        else
+            RefreshLeftRailVisuals()
+        end
         if f.UpdateFilterChips then f.UpdateFilterChips() end
         if f.RefreshTelemetryStrip then f.RefreshTelemetryStrip() end
         if f.UpdateResetButtonLabel then f.UpdateResetButtonLabel() end
@@ -12313,8 +12325,18 @@ function addonTable.CreateMainConfigUI()
             f.searchView.Refresh()
         elseif activeWorkspaceView == "DYNAMICLOAD" and f.scrollChild then
             RefreshAddonTree(f.scrollChild)
+        elseif activeWorkspaceView == "PEER_MODULE" and f.peerView and f.peerView.Refresh then
+            f.peerView.Refresh()
         elseif activeWorkspaceView == "THEME_STUDIO" and f.themeView and f.themeView.Refresh then
             f.themeView.Refresh()
+        elseif activeWorkspaceView == "GUIDED_SETUP" and f.setupView and f.setupView.Refresh then
+            f.setupView.Refresh()
+        elseif activeWorkspaceView == "CHANGELOG_VIEW" and f.changelogView and f.changelogView.Refresh then
+            f.changelogView.Refresh()
+        elseif activeWorkspaceView == "SUPPORT_VIEW" and f.supportView and f.supportView.Refresh then
+            f.supportView.Refresh()
+        elseif activeWorkspaceView == "EDIT_MODE" and f.editView and f.editView.Refresh then
+            f.editView.Refresh()
         end
         if addonTable.ApplyToastVisuals then addonTable.ApplyToastVisuals() end
         if addonTable.RefreshDisableCoreModalTheme then addonTable.RefreshDisableCoreModalTheme() end
@@ -12394,11 +12416,28 @@ function addonTable.CreateMainConfigUI()
         if f.UpdateFilterChips then f.UpdateFilterChips() end
         if f.RefreshTelemetryStrip then f.RefreshTelemetryStrip() end
         if f.UpdateResetButtonLabel then f.UpdateResetButtonLabel() end
+        if self.Raise then self:Raise() end
 
         if activeWorkspaceView == "EDIT_MODE" then
             addonTable.SetToastEditMode(true, selectedTabKey)
         else
             addonTable.SetToastEditMode(false)
+        end
+
+        if not self._postLayoutPending and C_Timer and C_Timer.After then
+            self._postLayoutPending = true
+            C_Timer.After(0, function()
+                self._postLayoutPending = nil
+                if not self:IsShown() then return end
+                addonTable.ApplySuiteThemeAndGeometry()
+                if self.UpdateTabActiveIndicators then self.UpdateTabActiveIndicators() end
+                if self.UpdateStatusBar then self.UpdateStatusBar() end
+                if self.UpdateStashButton then self.UpdateStashButton() end
+                if self.UpdateFilterChips then self.UpdateFilterChips() end
+                if self.RefreshTelemetryStrip then self.RefreshTelemetryStrip() end
+                if self.UpdateResetButtonLabel then self.UpdateResetButtonLabel() end
+                if self.Raise then self:Raise() end
+            end)
         end
     end)
 
@@ -12551,6 +12590,19 @@ function addonTable.OnSuiteLeaveCombat()
 end
 
 function addonTable.ShowConfigUI(forceDynamicLoad)
+    if not InCombatLockdown() then
+        if SettingsPanel and SettingsPanel:IsShown() then
+            if type(_G.HideUIPanel) == "function" then
+                pcall(_G.HideUIPanel, SettingsPanel)
+            end
+            if SettingsPanel:IsShown() and SettingsPanel.Hide then
+                pcall(SettingsPanel.Hide, SettingsPanel)
+            end
+        end
+        if GameMenuFrame and GameMenuFrame:IsShown() and GameMenuFrame.Hide then
+            pcall(GameMenuFrame.Hide, GameMenuFrame)
+        end
+    end
     if DynamicLoadDB and (DynamicLoadDB.stagedProfile or DynamicLoadDB.loadedProfile or DynamicLoadDB.activeProfile) then
         selectedTabKey = DynamicLoadDB.stagedProfile or DynamicLoadDB.loadedProfile or DynamicLoadDB.activeProfile
         if addonTable.SetSelectedTabKey then addonTable.SetSelectedTabKey(selectedTabKey) end
@@ -12738,7 +12790,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.3") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.4") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -12753,12 +12805,17 @@ function addonTable.HookGameMenu()
         slashSummary:SetText("Slash Commands:  /ds (Main Window)   |   /ds hud (HUD Edit Mode)   |   /ds reload")
 
         local function HideSettingsPanelSafe()
-            if not InCombatLockdown() and SettingsPanel and SettingsPanel:IsShown() then
+            if InCombatLockdown and InCombatLockdown() then return end
+            if SettingsPanel and SettingsPanel:IsShown() then
                 if type(_G.HideUIPanel) == "function" then
                     pcall(_G.HideUIPanel, SettingsPanel)
-                else
-                    SettingsPanel:Hide()
                 end
+                if SettingsPanel:IsShown() and SettingsPanel.Hide then
+                    pcall(SettingsPanel.Hide, SettingsPanel)
+                end
+            end
+            if GameMenuFrame and GameMenuFrame:IsShown() and GameMenuFrame.Hide then
+                pcall(GameMenuFrame.Hide, GameMenuFrame)
             end
         end
 
@@ -12771,11 +12828,32 @@ function addonTable.HookGameMenu()
         local openLbl = openBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         openLbl:SetPoint("CENTER")
         openLbl:SetText("Open DynamicSuite")
-        openBtn:SetScript("OnEnter", function() openBg:SetColorTexture(ar * 0.42, ag * 0.42, ab * 0.42, 1.0) end)
-        openBtn:SetScript("OnLeave", function() openBg:SetColorTexture(ar * 0.28, ag * 0.28, ab * 0.28, 0.98) end)
+        openBtn:SetScript("OnEnter", function()
+            local cr, cg, cb = UI.GetActiveAccentColor()
+            openBg:SetColorTexture(cr * 0.42, cg * 0.42, cb * 0.42, 1.0)
+        end)
+        openBtn:SetScript("OnLeave", function()
+            local cr, cg, cb = UI.GetActiveAccentColor()
+            openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
+        end)
         openBtn:SetScript("OnClick", function()
             HideSettingsPanelSafe()
-            addonTable.ShowConfigUI()
+            local opened = addonTable.ShowConfigUI()
+            if opened and opened.Raise then
+                opened:Raise()
+            end
+        end)
+
+        panel:SetScript("OnShow", function()
+            UI.RefreshPaletteCache()
+            local cr, cg, cb = UI.GetActiveAccentColor()
+            local surf = UI.GetActiveSurfaceColors()
+            cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
+            if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
+            if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.4") .. "|r")
+            openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
+            if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
 
         local openHudBtn = CreateFrame("Button", nil, card, "BackdropTemplate")
@@ -12862,7 +12940,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "1.9.3",
+        version = addonTable.ADDON_VERSION or "1.9.4",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,

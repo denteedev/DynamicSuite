@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.3"
+    local fb = fallback or "1.9.4"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.3")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.4")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "14/11/2026",
     entries = {
+        { type = "FIX",     text = "First-Open ESC > Options > AddOns Blank Shell & Left-Rail Fix (14/11/2026): Called RefreshLeftRailLayout() on initial CreateMainConfigUI() construction, routed ApplySuiteThemeAndGeometry() through RefreshLeftRailLayout() and all active workspace view refreshes, added a guarded C_Timer.After(0, ...) post-layout refresh + Raise() in DynamicSuiteMainFrame:OnShow and standalone DynamicMarkerSuiteWindow:OnShow (with initial f:Hide() so the first Show() always fires OnShow), and hardened HideSettingsPanelSafe() in both DynamicSuite_UI.lua and DynamicMarker.lua (alongside ShowConfigUI() and Settings canvas OnShow theme sync) so Blizzard's SettingsPanel and GameMenuFrame cleanly close and yield behind the addon window on the very first open." },
         { type = "FEATURE", text = "Encapsulated DynamicMarker HUD Edit Mode, FocusMarkerDB Migration Bridge & Automated CurseForge Packaging (14/11/2026): Moved DynamicMarker's Icon Bar and Flare Bar movers strictly inside DynamicMarker (with Suite '+ HUD' callback registration and clean removal of legacy FocusMarker/DynamicMarker mover lookups in DynamicSuite_UI), added the idempotent one-time FocusMarkerDB -> DynamicMarkerDB migration bridge, upgraded standalone DynamicMarker with Signature Amber/Gold (#F5B82E) theming, unloaded-module left-rail cleanup, 1:1 bottom-left SUITE STUDIO & TOOLS sidebar parity, DIALOG-dimmed Guided Setup modal with ESC isolation, [Off] dimmed rail rows in full DynamicSuite mode, and combat-safe ESC > Options > AddOns launcher cards, added -StageStandalone / -KeepStandalone QA deployment flags, and initialised Git source control plus BigWigsMods/packager GitHub Actions automation (.pkgmeta for DynamicSuite and .pkgmeta-dynamicmarker scoped strictly to standalone CurseForge Project ID 1331651)." },
         { type = "FIX",     text = "Removed Auto-Yield ('Keep Both') & Enforced Mutual-Exclusion Conflict Scanner (13/11/2026): Permanently removed all Auto-Yield / Keep Both logic, saved flags, and UI buttons across the suite. Every conflict card now presents strictly two mutually exclusive buttons ('Use Dynamic[Module] Only' and 'Use [Addon] Only') and shows [! Conflict Active] until resolved and reloaded. Added EllesmereUIBags / EllesmereUI_Bags detection for DynamicBags, prevented stale DynamicSuiteDB flags from hiding active conflicts, disabled ElvUI Bags/Chat sub-modules via E.private when choosing DynamicSuite, and prevented DynamicChat from ever yielding to EllesmereUI Chat or ElvUI Chat." },
         { type = "FIX",     text = "Universal 'Never' ('FROZEN') Persistence Across All Addons & Registry-Driven Conflict Resolution (12/11/2026): Normalised all security and zone assignment operations to canonical folder names (C_AddOns.GetAddOnInfo); made SetAddonFrozen(name, true) atomically persist 'FROZEN' across DynamicLoadDB/globalData/charData, wipe all 5 zone tables, and call C_AddOns.DisableAddOn; merged DynamicLoadDB root and globalData security tables in SyncScopeBindings() and replaced table re-allocation in RestoreStash() with in-place wipe(); retired RecoverEllesmereUIState(); protected individual child 'FROZEN' / 'LOCKED' states from parent cascades; added EnforceFrozenAddonsDisabled() + a C_AddOns.EnableAddOn runtime guard; made Auto-Yield 100% read-only; treated unloaded or 'FROZEN' external addons as inactive so DynamicChat and peer modules run their full feature set once a conflicting addon is set to Never; and added a 1-click [Use Dynamic] -> [Reload UI Now] button on soft Auto-Yield banners." },
