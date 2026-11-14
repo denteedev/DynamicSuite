@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.1"
+    local fb = fallback or "2.0.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -208,7 +208,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.1"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.2"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.2")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -644,8 +644,9 @@ Suite.CONFLICT_REGISTRY.DynamicPrep = {
 -- ============================================================================
 DynamicPrep.CHANGELOG = {
     version = VERSION,
-    date = "13/11/2026",
+    date = "15/11/2026",
     entries = {
+        { type = "FEATURE", text = "Great Vault Mythic+ Telemetry, Group Finder Shortcut & Midnight Season 2 Consumables (15/11/2026): added weekly Mythic+ Great Vault run counts, 1/4/8 run threshold levels, and 'Reward Ready to Claim!' status to the Keystone capsule tooltip (guarded with pcall and _IsSecret), added Right-Click Group Finder toggling out of combat on the Keystone capsule, aligned DUNGEON_ABBREVIATIONS with DynamicGroup's Midnight Season 1/2 codes (DON, AOF, MR, VSA, FG, AK, PSF), and updated Midnight Season 2 consumable item IDs and Rank 2 Gold / Rank 1 Silver mappings." },
         { type = "FIX",     text = "Single-Option Auto-Gossip for Interactive World Objects (13/11/2026): Fixed world objects (GameObject-* GUIDs such as 'Unfinished Mixture') failing to auto-select when gossipOptionID is nil or when option text uses <...> / [Requires ...] brackets. Added C_GossipInfo.SelectOptionByIndex fallback, explicit Locked/Unavailable status checks, and a 0.05s secondary GOSSIP_SHOW check for skinned/delayed gossip frames (hold Shift to bypass)." },
         { type = "FIX",     text = "Single-Option Auto-Gossip now actually fires (13/11/2026): a hidden Blizzard flag that is switched off for almost every normal dialogue option was wrongly treated as 'do not auto-select', which stopped Auto-Gossip on most NPCs and objects. Multi-step conversations now also advance page by page instead of stopping after the first choice, with a safety limit of 8 automatic picks per conversation." },
         { type = "FEATURE", text = "One-Click Catalyst & Raid Combat UNIT_AURA Throttling (12/11/2026): Added a 'One-Click Catalyst' QoL toggle (enabled by default in Tab 3) that hooks ItemInteractionFrame.ButtonFrame.ActionButton and CONFIRM_ITEM_INTERACTION when C_ItemInteraction.GetItemInteractionInfo() is in Catalyst mode (Enum.UIItemInteractionType.ItemConversion) to complete tier conversions in a single click without a second confirmation popup or 5s timer (hold Shift to bypass). Overhauled raid combat event handling with an O(1) VALID_GROUP_UNITS lookup table ('player', 'party1'..'party4', 'raid1'..'raid40' - ignoring target, focus, mouseover, pets, nameplates, and bosses), coalesced all in-combat raid buff (16/17 MotW) and Symbiotic bond checks via a 0.30s (3.3 Hz max) C_Timer.NewTimer throttle, eliminated per-scan table allocations, and completely skipped Food, Flask, Weapon Oil, Augment Rune, and Bag Item Location scans during InCombatLockdown()." },
@@ -1547,17 +1548,17 @@ local DUNGEON_ABBREVIATIONS = {
     ["Siege of Boralus"]                 = "SOB",
     ["The Stonevault"]                   = "SV",
     ["The Dawnbreaker"]                  = "DB",
-    ["Ara-Kara, City of Echoes"]         = "ARAK",
+    ["Ara-Kara, City of Echoes"]         = "AK",
     ["City of Threads"]                  = "COT",
     ["Grim Batol"]                       = "GB",
     ["Mists of Tirna Scithe"]            = "MISTS",
     ["The Necrotic Wake"]                = "NW",
     ["Cinderbrew Meadery"]               = "BREW",
     ["Darkflame Cleft"]                  = "DFC",
-    ["The Priory of the Sacred Flame"]   = "PRIORY",
-    ["Priory of the Sacred Flame"]       = "PRIORY",
+    ["The Priory of the Sacred Flame"]   = "PSF",
+    ["Priory of the Sacred Flame"]       = "PSF",
     ["The Rookery"]                      = "ROOK",
-    ["Operation: Floodgate"]             = "FLOOD",
+    ["Operation: Floodgate"]             = "FG",
     ["Theater of Pain"]                  = "TOP",
     ["The Motherlode!!"]                 = "ML",
     ["The MOTHERLODE!!"]                 = "ML",
@@ -1568,14 +1569,28 @@ local DUNGEON_ABBREVIATIONS = {
     ["Brackenhide Hollow"]               = "BH",
     ["Halls of Infusion"]                = "HOI",
     ["Neltharus"]                        = "NELT",
-    ["The Azure Vault"]                  = "AV",
+    ["The Azure Vault"]                  = "BV",
     ["Black Rook Hold"]                  = "BRH",
-    ["Waycrest Manor"]                   = "WM",
+    ["Waycrest Manor"]                   = "WCM",
     ["Freehold"]                         = "FH",
     ["Atal'Dazar"]                       = "AD",
-    ["Throne of the Tides"]              = "TOTT",
+    ["Throne of the Tides"]              = "TOS",
     ["Everbloom"]                        = "EB",
     ["The Everbloom"]                    = "EB",
+    ["Halls of Atonement"]               = "HOA",
+    ["Uldaman: Legacy of Tyr"]           = "ULD",
+    ["The Vortex Pinnacle"]              = "VP",
+    ["Tazavesh: Streets of Wonder"]      = "STRT",
+    ["Tazavesh: Streets"]                = "STRT",
+    ["Tazavesh: So'leah's Gambit"]       = "GMBT",
+    ["Tazavesh: Gambit"]                 = "GMBT",
+    ["Dawn of the Infinite: Galakrond's Fall"] = "FALL",
+    ["Dawn of the Infinite: Murozond's Rise"]  = "RISE",
+    ["Den of Nalorakk"]                  = "DON",
+    ["Altar of Fangs"]                   = "AOF",
+    ["Murder Row"]                       = "MR",
+    ["Magisters' / Murder Row"]          = "MR",
+    ["Venomous Abyss"]                   = "VSA",
     ["Magisters' Terrace"]               = "MT",
     ["Maisara Caverns"]                  = "MC",
     ["Nexus-Point Xenas"]                = "NPX",
@@ -2638,7 +2653,18 @@ function DynamicPrep:CreatePrepBar()
                     DynamicPrep:ApplySuggestedFolioBuff()
                 end
             elseif segKey == "key" then
-                DynamicPrep:LinkKeystoneToPartyChat()
+                DynamicPrep:HideBarPopovers()
+                if button == "RightButton" then
+                    if InCombatLockdown and InCombatLockdown() then
+                        print("|cFFF97316DynamicPrep:|r Cannot toggle Group Finder while in combat.")
+                    elseif type(PVEFrame_ToggleFrame) == "function" then
+                        pcall(PVEFrame_ToggleFrame, "GroupFinderFrame", LFDParentFrame)
+                    elseif type(ToggleLFDParentFrame) == "function" then
+                        pcall(ToggleLFDParentFrame)
+                    end
+                else
+                    DynamicPrep:LinkKeystoneToPartyChat()
+                end
             elseif segKey == "rc" then
                 DynamicPrep:HideBarPopovers()
                 if DoReadyCheck then DoReadyCheck() end
@@ -3195,10 +3221,59 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
         tooltip:AddLine("Mythic+ Keystone", ar, ag, ab)
         if level and level > 0 then
             tooltip:AddDoubleLine("Owned Keystone:", string.format("+%d %s (%s)", level, name or "", abbrev or ""), 0.8, 0.84, 0.88, ar, ag, ab)
-            tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Link Keystone to Party / Raid Chat|r", 1, 1, 1)
         else
             tooltip:AddLine("No Mythic+ Keystone found in bags.", 0.580, 0.639, 0.722)
         end
+
+        if C_WeeklyRewards and type(C_WeeklyRewards.GetActivities) == "function" and Enum and Enum.WeeklyRewardChestThresholdType then
+            local actType = Enum.WeeklyRewardChestThresholdType.Activities
+            local okAct, activities = pcall(C_WeeklyRewards.GetActivities, actType)
+            if okAct and type(activities) == "table" and not _IsSecret(activities) and #activities > 0 then
+                table.sort(activities, function(a, b)
+                    return (tonumber(a.threshold) or 0) < (tonumber(b.threshold) or 0)
+                end)
+                local maxProgress = 0
+                local maxThreshold = 8
+                for _, act in ipairs(activities) do
+                    if type(act) == "table" then
+                        local p = (not _IsSecret(act.progress)) and (tonumber(act.progress) or 0) or 0
+                        local th = (not _IsSecret(act.threshold)) and (tonumber(act.threshold) or 0) or 0
+                        if p > maxProgress then maxProgress = p end
+                        if th > maxThreshold then maxThreshold = th end
+                    end
+                end
+                tooltip:AddLine(" ")
+                tooltip:AddDoubleLine("Great Vault (Mythic+):", string.format("%d / %d Runs", math.min(maxProgress, maxThreshold), maxThreshold), 0.8, 0.84, 0.88, 1, 1, 1)
+                for idx, act in ipairs(activities) do
+                    if type(act) == "table" then
+                        local th = (not _IsSecret(act.threshold)) and (tonumber(act.threshold) or 0) or 0
+                        local p = (not _IsSecret(act.progress)) and (tonumber(act.progress) or 0) or 0
+                        local lvl = (not _IsSecret(act.level)) and (tonumber(act.level) or 0) or 0
+                        local slotLabel = string.format("Slot %d (%d %s):", idx, th, th == 1 and "Run" or "Runs")
+                        if p >= th then
+                            local valText = (lvl > 0) and string.format("+%d", lvl) or "Unlocked"
+                            tooltip:AddDoubleLine(slotLabel, valText, 0.75, 0.80, 0.86, 0.204, 0.827, 0.600)
+                        else
+                            local needed = math.max(1, th - p)
+                            tooltip:AddDoubleLine(slotLabel, string.format("%d %s needed", needed, needed == 1 and "run" or "runs"), 0.580, 0.639, 0.722, 0.580, 0.639, 0.722)
+                        end
+                    end
+                end
+            end
+        end
+
+        if C_WeeklyRewards and type(C_WeeklyRewards.HasAvailableRewards) == "function" then
+            local okHas, hasRewards = pcall(C_WeeklyRewards.HasAvailableRewards)
+            if okHas and not _IsSecret(hasRewards) and hasRewards == true then
+                tooltip:AddLine("Reward Ready to Claim!", 0.204, 0.827, 0.600)
+            end
+        end
+
+        tooltip:AddLine(" ")
+        if level and level > 0 then
+            tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Link Keystone to Party / Raid / Instance Chat|r", 1, 1, 1)
+        end
+        tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Toggle Group Finder|r", 1, 1, 1)
     elseif segKey == "rc" then
         tooltip:AddLine("Ready Check (RC)", ar, ag, ab)
         tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Initiate party or raid ready check.|r", 1, 1, 1)
@@ -8715,6 +8790,9 @@ local CONSUMABLE_WEAPON_OILS = {
 }
 
 local CONSUMABLE_RUNES = {
+    259085, -- Void-Touched Augment Rune (Midnight)
+    246492, -- Void-Touched / Midnight Augment Rune variant
+    243191, -- Ethereal Augment Rune (Reusable)
     224572, -- Crystallized Augment Rune (TWW)
     211495, -- Dreambound Augment Rune (DF)
     201325, -- Draconic Augment Rune (DF)
@@ -8744,11 +8822,14 @@ local CONSUMABLE_FOODS = {
     210652, 210653, 210654, 210655, 210656, 210657,
 }
 
--- Known Midnight consumable quality overrides (e.g. Midnight Potions / Flasks)
+-- Known Midnight consumable quality overrides (Rank 2 Gold / Rank 1 Silver)
 local KNOWN_MIDNIGHT_ITEMS = {
     [241288] = { tier = 2, maxTiers = 2 }, -- Gold quality (Tier 2)
     [241289] = { tier = 1, maxTiers = 2 }, -- Silver quality (Tier 1)
-    [271883] = { tier = 2, maxTiers = 2 }, -- Concentrated Silvermoon Health Potion
+    [271883] = { tier = 2, maxTiers = 2 }, -- Concentrated Silvermoon Health Potion (Rank 2 Gold)
+    [271882] = { tier = 1, maxTiers = 2 }, -- Concentrated Silvermoon Health Potion (Rank 1 Silver)
+    [241305] = { tier = 2, maxTiers = 2 }, -- Silvermoon Health Potion (Rank 2 Gold)
+    [241304] = { tier = 1, maxTiers = 2 }, -- Silvermoon Health Potion (Rank 1 Silver)
 }
 
 local function DetectConsumableQuality(link, itemID, bagID, slotID, classID)

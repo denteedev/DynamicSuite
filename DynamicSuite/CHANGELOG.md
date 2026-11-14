@@ -1,5 +1,15 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.0.1 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.0.2 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.0.2 (15/11/2026)
+
+### Added
+* **Great Vault Mythic+ Telemetry & Group Finder Shortcut (DynamicPrep):** Added weekly Mythic+ Great Vault run counts, 1/4/8 run threshold levels, and a green `Reward Ready to Claim!` line to the Top Info Bar Keystone capsule tooltip (guarded with `pcall` and `_IsSecret`), plus Right-Click Group Finder toggling out of combat.
+
+### Improved
+* **Aligned Dungeon Abbreviations & Midnight Season 2 Consumables (DynamicPrep):** Aligned `DUNGEON_ABBREVIATIONS` with DynamicGroup's Midnight Season 1/2 dungeon codes (`DON`, `AOF`, `MR`, `VSA`, `FG`, `AK`, `PSF`) and updated Midnight Season 2 consumable item IDs and Rank 2 Gold / Rank 1 Silver mappings while preserving tooltip-scan fallbacks.
 
 ---
 
