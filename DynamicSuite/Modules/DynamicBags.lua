@@ -308,6 +308,7 @@ local DEFAULTS = {
     autoFillDelete = true,
     autoOpenContainers = true,
     autoOpenHousingDecor = true,
+    autoOpenKnowledgeItems = true,
     quickOpenEnabled = true,
     queueHousingDecor = true,
     queueKnowledgeItems = true,
@@ -6740,7 +6741,7 @@ function U.BuildPage3(page)
         set = function(v) db.autoFillDelete = v and true or false end,
     })
 
-    U.AddSection(page, "AUTO-OPEN & QUICK-OPEN QUEUE", "Automatically open Soulbound or Warband-bound gold pouches and Housing Decor, or queue protected items into the 1-click Open (N) header button.")
+    U.AddSection(page, "AUTO-OPEN & QUICK-OPEN QUEUE", "Automatically open Soulbound or Warband-bound gold pouches, Housing Decor, and Profession Knowledge, or queue protected items into the 1-click Open (N) header button.")
     U.AddCard(page, {
         title = "Auto-Open Soulbound Loot & Gold Pouches", kind = "toggle",
         desc = "Automatically opens Soulbound and Warband-bound gold pouches, coin satchels, and loot containers out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed.",
@@ -6760,6 +6761,18 @@ function U.BuildPage3(page)
         set = function(v)
             db.autoOpenHousingDecor = v and true or false
             if db.autoOpenHousingDecor and U.ScheduleAutoOpenContainers then
+                U.ScheduleAutoOpenContainers()
+            end
+            if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
+        end,
+    })
+    U.AddCard(page, {
+        title = "Auto-Open Soulbound Profession Knowledge", kind = "toggle",
+        desc = "Automatically uses or learns Soulbound and Warband-bound Profession Knowledge items (Treatises, Shards, Notes, Curios) when your character knows that profession and bank, vendor, mail, trade, guild bank, and auction house windows are closed. Protected spell casts stay queued in the Open (N) button.",
+        get = function() return db.autoOpenKnowledgeItems ~= false end,
+        set = function(v)
+            db.autoOpenKnowledgeItems = v and true or false
+            if db.autoOpenKnowledgeItems and U.ScheduleAutoOpenContainers then
                 U.ScheduleAutoOpenContainers()
             end
             if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
@@ -8031,8 +8044,9 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
                         or tl:find("profession knowledge", 1, true)
                         or tl:find("specialization knowledge", 1, true)
                         or tl:find("specialisation knowledge", 1, true)
-                        or tl:find("increase your .* knowledge")
-                        or tl:find("grants %d+ .* knowledge")
+                        or tl:find("increase .* knowledge")
+                        or tl:find("grants %+?%d+ .* knowledge")
+                        or tl:find("gain %+?%d+ .* knowledge")
                     ) then
                         sawKnowledgeLine = true
                     end
@@ -8155,6 +8169,7 @@ function U.ScanOpenables()
                     local onRetryCooldown = (S.autoOpenRetryAfter and (S.autoOpenRetryAfter[cand.itemID] or 0) > now) and true or false
                     local canAutoByCategory = (cand.kind == "CONTAINER" and db.autoOpenContainers ~= false)
                         or (cand.kind == "DECOR" and db.autoOpenHousingDecor ~= false)
+                        or (cand.kind == "KNOWLEDGE" and db.autoOpenKnowledgeItems ~= false)
 
                     if isBoundSafe and canAutoByCategory and not cand.hasProtectedSpell and not isBlacklisted and not onRetryCooldown then
                         autoList[#autoList + 1] = cand
@@ -8193,7 +8208,7 @@ U.ScanOpenableItems = U.ScanOpenables
 function U.CanRunAutoOpenContainers()
     if IsModuleDisabledInSuite("DynamicBags") then return false end
     local db = DB()
-    if db.autoOpenContainers == false and db.autoOpenHousingDecor == false then
+    if db.autoOpenContainers == false and db.autoOpenHousingDecor == false and db.autoOpenKnowledgeItems == false then
         return false
     end
     if InCombatLockdown() or (UnitAffectingCombat and UnitAffectingCombat("player")) then
@@ -8258,7 +8273,9 @@ function U.RunNextAutoOpenContainer()
     local now = GetTime and GetTime() or 0
     S.autoOpenRetryAfter[cand.itemID] = now + 1.0
 
+    S.autoOpenActiveItemID = cand.itemID
     local ok = pcall(C_Container.UseContainerItem, cand.bag, cand.slot)
+    S.autoOpenActiveItemID = nil
     if not ok then
         S.autoOpenFailCount[cand.itemID] = (S.autoOpenFailCount[cand.itemID] or 0) + 1
         S.autoOpenRetryAfter[cand.itemID] = now + 30.0
@@ -9087,6 +9104,11 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
             U.UpdateQuickOpenButton()
         end
         U.ScheduleAutoOpenContainers()
+    elseif event == "ADDON_ACTION_BLOCKED" then
+        if S.autoOpenActiveItemID then
+            S.autoOpenBlacklist[S.autoOpenActiveItemID] = true
+            S.autoOpenActiveItemID = nil
+        end
     end
 end)
 
@@ -9100,7 +9122,7 @@ for _, ev in ipairs({
     "GOSSIP_SHOW", "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYER_BANKSLOTS_CHANGED", "BANK_TAB_SETTINGS_UPDATED",
     "ITEM_DATA_LOAD_RESULT", "GUILDBANKBAGSLOTS_CHANGED", "GUILDBANK_UPDATE_TABS", "GUILDBANK_UPDATE_WITHDRAWMONEY", "GUILDBANKFRAME_OPENED", "GUILDBANKFRAME_CLOSED", "MERCHANT_SHOW",
     "MERCHANT_CLOSED", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "MAIL_SHOW", "MAIL_CLOSED",
-    "TRADE_SHOW", "TRADE_CLOSED", "LOOT_READY", "LOOT_OPENED", "LOOT_CLOSED",
+    "TRADE_SHOW", "TRADE_CLOSED", "LOOT_READY", "LOOT_OPENED", "LOOT_CLOSED", "ADDON_ACTION_BLOCKED",
 }) do
     SafeRegister(DynamicBags, ev)
 end
@@ -9110,7 +9132,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "15/11/2026",
     entries = {
-        { type = "FEATURE", text = "Auto-Open Soulbound Gold Pouches & Housing Decor (15/11/2026): expanded the automatic container matcher to open all Soulbound and Warband-bound gold pouches and coin/loot satchels regardless of tooltip phrasing (excluding consumables, potions, flasks, toys, mounts, recipes, and tradeable BoE items), added an 'Auto-Open Soulbound Housing Decor' toggle in Tab 3 (enabled by default), respected Retail 12.1.5 hardware-event protection via C_Item.GetItemSpell so protected-spell decor stays queued in the 1-click Open (N) button without ADDON_ACTION_BLOCKED warnings, and added a per-item retry cooldown and session blacklist guard." },
+        { type = "FEATURE", text = "Unified Auto-Open for Gold Pouches, Housing Decor & Profession Knowledge (15/11/2026): expanded the automatic container opener to use/open Soulbound and Warband-bound gold pouches, coin/loot satchels, Housing Decor, and Profession Knowledge items (Treatises, Shards, Notes, Curios matching your character's known professions) out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Added default-enabled 'Auto-Open Soulbound Housing Decor' and 'Auto-Open Soulbound Profession Knowledge' toggles in Tab 3, while keeping protected-spell items (via C_Item.GetItemSpell or ADDON_ACTION_BLOCKED) safely queued in the 1-click Open (N) header button with a per-item retry cooldown and session blacklist." },
         { type = "FIX",     text = "Hardened zero-flash Bank/Guild Bank opening after /reload (14/11/2026): added Scale+Alpha suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, enforced strict weak ordering in Sort: A-Z when uncached items appear, verified compatible slot placement in Drop-Anywhere Split-Stack Placement, fixed Guild Bank T1-Tn badge overlap and view-only slot dimming, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, and expanded /dbag slash subcommands." },
         { type = "FEATURE", text = "Guild Bank Daily Withdrawal Counter (13/11/2026): each Guild Bank tab button (T1, T2...) now shows a small counter of how many item withdrawals you have left today - white when plenty remain, amber at 1-2, red at 0, and a red x for tabs you cannot view. Unlimited tabs show no counter. Counters only appear while you are at the Guild Bank." },
         { type = "FIX",     text = "Guild Bank footer and tooltip separators now use plain characters so they display correctly with every DynamicSuite font (13/11/2026)." },

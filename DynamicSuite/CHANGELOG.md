@@ -6,8 +6,8 @@
 ## DynamicSuite & All 8 Modules v2.0.1 (15/11/2026)
 
 ### Improved
-* **Auto-Open Soulbound Gold Pouches & Housing Decor (DynamicBags):** Expanded the automatic container matcher to open Soulbound and Warband-bound gold pouches and coin/loot satchels out of combat regardless of `<Right Click to Open>` or `Use:` wording (strictly excluding consumables, potions, flasks, toys, mounts, recipes, and tradeable BoE items).
-* **Hardware-Safe Housing Decor Auto-Open (DynamicBags):** Added an **Auto-Open Soulbound Housing Decor** toggle under Tab 3 (`AUTO-OPEN & QUICK-OPEN QUEUE`, enabled by default) to automatically learn Soulbound and Warband-bound Housing Decor when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Items requiring a protected spell cast (`C_Item.GetItemSpell`) stay safely queued in the 1-click `Open (N)` header button without `ADDON_ACTION_BLOCKED` warnings, backed by a per-item retry cooldown and session blacklist guard.
+* **Unified Auto-Open for Gold Pouches, Housing Decor & Profession Knowledge (DynamicBags):** Expanded the automatic container opener to use/open Soulbound and Warband-bound gold pouches and coin/loot satchels out of combat regardless of `<Right Click to Open>` or `Use:` wording (strictly excluding consumables, potions, flasks, toys, mounts, recipes, and tradeable BoE items).
+* **Hardware-Safe Housing Decor & Profession Knowledge Auto-Open (DynamicBags):** Added default-enabled **Auto-Open Soulbound Housing Decor** and **Auto-Open Soulbound Profession Knowledge** toggles under Tab 3 (`AUTO-OPEN & QUICK-OPEN QUEUE`) to automatically learn Soulbound and Warband-bound Housing Decor and Profession Knowledge items (Treatises, Shards, Notes, Curios matching your character's known professions) when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Items requiring a protected spell cast (`C_Item.GetItemSpell` or `ADDON_ACTION_BLOCKED`) stay safely queued in the 1-click `Open (N)` header button, backed by a per-item retry cooldown and session blacklist guard.
 
 ---
 
