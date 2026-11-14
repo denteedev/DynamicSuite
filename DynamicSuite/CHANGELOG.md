@@ -5,8 +5,18 @@
 
 ## DynamicSuite & All 8 Modules v2.0.8 (15/11/2026)
 
+### DynamicGroup
+- **Portal Deck Owned Keystone Telemetry & Right-Click Teleport:** Upgraded the Portal Deck's Owned Keystone pill with out-of-combat Right-Click Dungeon Teleport casting, a synced cooldown swipe overlay, and Season Best timed/over-time level and score plus teleport cooldown status in its tooltip while keeping Left-Click exclusive dungeon filtering.
+- **Dungeon Joined & Group Full Teleport Toast:** Added an Alert Toast-matched banner with a one-click Dungeon Teleport button, Right-Click dismissal, join chimes, 5/5 group highlight, shared HUD Edit slot with automatic vertical stacking, preview buttons, and `/dg testtoast`.
+- **Season Dungeon Portals & 1-Click Dungeon Filter Deck:** Docked portal bar above Premade Groups with your keystone pill and all 8 Midnight Season 2 dungeon tiles, supporting Left-Click / Shift+Left-Click filtering and Right-Click teleport casting.
+- **Integrated Multi-Toggle Premade Group Filters:** Added Tank/Healer/DPS role toggles with icons, No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez in two-way sync with Blizzard's native filter.
+
 ### DynamicMarker
-- **Target Only Focus Macro Clear:** Updated the Target Only `[DynamicMark]` macro template to `/focus [@target,exists,nodead][]` so pressing it with a target sets focus and marks it, while pressing it with no target clears your existing focus target.
+- **Target Only Focus Macro Clear:** Updated the Target Only `[DynamicMark]` macro template to `/focus [@target,exists,nodead][]` so pressing it with a target sets focus and marks it, while pressing it with no target clears your existing focus target (alongside `Mouseover + Target` and the inline `Manual (Custom)` editor with custom icon preservation).
+
+### DynamicBags & DynamicPrep
+- **DynamicBags Auto-Open Expansion:** Automatically opens/learns Soulbound or Warband-bound Gold Pouches, Housing Decor, and Profession Knowledge items out of combat with a clean hardware-click fallback into `Open (N)`.
+- **DynamicPrep Midnight Season 2 Updates:** Added Great Vault Mythic+ tooltip telemetry, Right-Click Group Finder access on the Keystone capsule, and out-of-combat equipped gear missing-enchant and empty-gem-socket detection on the Durability capsule.
 
 ---
 

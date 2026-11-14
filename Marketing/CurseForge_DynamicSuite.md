@@ -1,7 +1,7 @@
 # DynamicSuite -- CurseForge Storefront Copy & Release Changelog (v2.0.8)
 
 > **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105)  
-> **Version:** v2.0.8 (14/11/2026)  
+> **Version:** v2.0.8 (15/11/2026)  
 > **CurseForge Project ID:** 1804382  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicsuite
@@ -15,7 +15,7 @@
 
 [![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 
-**Version:** v2.0.8 (14/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Version:** v2.0.8 (15/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5**. It brings **8 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, plain-English Smart Search, a unified HUD Edit Mode, and a 9-step Guided Setup.
 
@@ -90,7 +90,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 | `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
 | `/dchat`, `/dc`, or `/dynamicchat` | Open DynamicChat (supports history, copy, reset; plus `/ww` target whisper, `/rl` reload UI, and `/lg` leave group) |
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
-| `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, reset) |
+| `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, testtoast, reset) |
 | `/dz` or `/dynamiczoom` | Open DynamicZoom (supports max, 39, reset) |
 
 ---
@@ -105,18 +105,21 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ---
 
-## Section 2: CurseForge File Changelog Block (v2.0.8 -- 14/11/2026)
+## Section 2: CurseForge File Changelog Block (v2.0.8 -- 15/11/2026)
 
 ```markdown
-## DynamicSuite & Standalone DynamicMarker v2.0.8 (14/11/2026)
+## DynamicSuite & Standalone DynamicMarker v2.0.8 (15/11/2026)
 
-### Fixed
-* **Top & Bottom Screen-Edge Bar Drift:** Focus Icons and World Flare bars parked flush against the top edge, bottom edge, or corners now stay in their exact saved positions after reloading the UI at every bar scale (70%, 100%, and 130%).
-* **DynamicLoad Profile Switching & Standalone Scrubbing:** Fixed a Lua error when staging zone profiles (such as Outdoor) in DynamicLoad and ensured saved zone profiles never re-enable standalone DynamicMarker while DynamicSuite is active.
-* **Duplicate HUD Edit Windows:** Standalone DynamicMarker's extra HUD Edit popup no longer appears inside DynamicSuite, leaving only the unified bottom HUD Edit dock.
-* **DynamicMarker Reset Bounds:** Resetting HUD positions (`/ds resethud`, `/dm resethud`, or from Options) now resets scale to 100%, restores horizontal layout, and keeps bars cleanly inside your screen bounds.
+### DynamicGroup
+* **Portal Deck Owned Keystone Telemetry & Right-Click Teleport:** Out-of-combat Right-Click dungeon teleport casting with a cooldown swipe overlay, Season Best timed/over-time level and score, and teleport cooldown status in the tooltip while keeping Left-Click exclusive dungeon filtering.
+* **Dungeon Joined & Group Full Teleport Toast:** Alert Toast-matched banner with a one-click Dungeon Teleport button, Right-Click dismissal, join chimes, 5/5 group highlight, shared HUD Edit slot with automatic vertical stacking, preview buttons, and `/dg testtoast`.
+* **Season Dungeon Portals & 1-Click Dungeon Filter Deck:** Docked portal bar above Premade Groups with your keystone pill and all 8 Midnight Season 2 dungeon tiles, supporting Left-Click / Shift+Left-Click filtering and Right-Click teleport casting.
+* **Integrated Multi-Toggle Premade Group Filters:** Tank/Healer/DPS role toggles with icons, No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez in two-way sync with Blizzard's native filter.
 
-### Improved
-* **Reliable Dark-Obsidian Coexistence Reload Prompt:** Replaced Blizzard's default popup with a matching dark-obsidian reload modal that reliably appears on login whenever both DynamicSuite and standalone DynamicMarker were enabled at launch.
-* **Storefront, Slash Command & Documentation Audit:** Verified all 24 slash commands across modules, removed retired aliases from docs and in-game changelogs, and aligned README, CurseForge descriptions, and release notes with live behaviour.
+### DynamicMarker
+* **Focus Target Mode & Target Only Clear:** Added `Mouseover + Target`, `Target Only` (`/focus [@target,exists,nodead][]` so pressing with no target clears focus), and an inline `Manual (Custom)` macro editor with custom in-game icon preservation.
+
+### DynamicBags & DynamicPrep
+* **DynamicBags Auto-Open Expansion:** Automatically opens/learns Soulbound or Warband-bound Gold Pouches, Housing Decor, and Profession Knowledge items out of combat.
+* **DynamicPrep Midnight Season 2 Updates:** Added Great Vault Mythic+ tooltip telemetry, Right-Click Group Finder access on the Keystone capsule, and equipped gear missing-enchant and empty-socket detection on the Durability capsule.
 ```
