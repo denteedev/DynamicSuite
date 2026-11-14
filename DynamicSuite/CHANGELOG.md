@@ -1,5 +1,13 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v1.9.4 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v1.9.5 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v1.9.5 (`/ds`, `/dm`)
+* **[UI] Standalone `DynamicMarker` Bottom-Right Dock Parity, Copyable Support Links & `DynamicSuite` CurseForge URL (`DynamicMarker.lua`, `DynamicSuite_UI.lua`):**
+  * **Standalone Bottom-Right Dock (`DynamicMarker.lua`):** Added the `Reload UI` button (`ReloadUI()`), `Scale` slider (`80%`-`120%` in `5%` steps, right-click reset), and `Opacity` slider (`50%`-`100%`, right-click reset) to `DM:EnsureStandaloneShell()`'s footer dock cleanly to the left of the `//` resize grip, persisting `standaloneWindowScale` and `standaloneWindowAlpha` in `DynamicMarkerDB` without interfering with `DynamicSuiteDB`.
+  * **Copyable Support Modal URLs (`DynamicMarker.lua`):** Replaced the static Support modal text with read-only, click-to-highlight `Ctrl+C` `EditBox` fields for Ko-fi (`https://ko-fi.com/dentee`), CurseForge (`https://www.curseforge.com/wow/addons/dynamicmarker`), and Contact (`denteedev@gmail.com`) with `Escape`-to-close and input-overwrite protection.
+  * **`DynamicSuite` CurseForge URL (`DynamicSuite_UI.lua`):** Updated `DynamicSuite`'s Support view CurseForge link from `dynamicload` to `https://www.curseforge.com/wow/addons/dynamicsuite`.
 
 ---
 

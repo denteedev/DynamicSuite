@@ -2,7 +2,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.4"
+    local fb = fallback or "1.9.5"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -36,7 +36,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.4"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.5"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -61,7 +61,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.4")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.5")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -6244,7 +6244,7 @@ function DM:ShowStudioModal(mode)
         txt:Show()
 
     elseif mode == "SUPPORT" then
-        m.Title:SetText("Support DynamicSuite & Dentee")
+        m.Title:SetText("Support DynamicMarker & Dentee")
         local txt = m.Body.textBlock or m.Body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         m.Body.textBlock = txt
         txt:ClearAllPoints()
@@ -6252,8 +6252,49 @@ function DM:ShowStudioModal(mode)
         txt:SetPoint("RIGHT", m.Body, "RIGHT", 0, 0)
         txt:SetJustifyH("LEFT")
         self:StyleFont(txt, 12, "", COLORS.TextSilver)
-        txt:SetText("Thank you for using DynamicMarker v" .. (self.version or VERSION) .. "!\n\nIf you enjoy the suite, you can support ongoing development or share feedback:\n\n* Ko-fi: https://ko-fi.com/dentee\n* Contact: denteedev@gmail.com")
+        txt:SetText("Thank you for using DynamicMarker v" .. (self.version or VERSION) .. "!\n\nIf you enjoy the module, you can support ongoing development or share feedback via the links below (click any box and press Ctrl+C):")
         txt:Show()
+
+        local function CreateSupportCopyRow(yOff, labelTxt, urlTxt)
+            local lbl = m.Body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            lbl:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, yOff)
+            lbl:SetJustifyH("LEFT")
+            self:StyleFont(lbl, 11, "", { r = 0.72, g = 0.76, b = 0.84, a = 1.0 })
+            lbl:SetText(labelTxt)
+            table.insert(m.Body._modeWidgets, lbl)
+
+            local ebWrap = CreateFrame("Frame", nil, m.Body, "BackdropTemplate")
+            ebWrap:SetPoint("TOPLEFT", lbl, "BOTTOMLEFT", 0, -4)
+            ebWrap:SetPoint("RIGHT", m.Body, "RIGHT", 0, 0)
+            ebWrap:SetHeight(26)
+            ebWrap:SetFrameLevel(303)
+            self:ApplyBackdrop(ebWrap, { r = 0.035, g = 0.042, b = 0.058, a = 0.98 }, { r = 1, g = 1, b = 1, a = 0.14 }, 1)
+            table.insert(m.Body._modeWidgets, ebWrap)
+
+            local eb = CreateFrame("EditBox", nil, ebWrap)
+            eb:SetPoint("LEFT", ebWrap, "LEFT", 10, 0)
+            eb:SetPoint("RIGHT", ebWrap, "RIGHT", -10, 0)
+            eb:SetHeight(22)
+            eb:SetFrameLevel(304)
+            eb:SetAutoFocus(false)
+            self:StyleFont(eb, 11, "", { r = 1, g = 1, b = 1, a = 0.96 })
+            eb:SetText(urlTxt)
+            eb:SetScript("OnEditFocusGained", function(s) s:HighlightText() end)
+            eb:SetScript("OnMouseUp", function(s) s:SetFocus(); s:HighlightText() end)
+            eb:SetScript("OnEscapePressed", function(s) s:ClearFocus(); self:CloseStudioModal() end)
+            eb:SetScript("OnChar", function(s) s:SetText(urlTxt); s:HighlightText() end)
+            eb:SetScript("OnTextChanged", function(s, userInput)
+                if userInput then
+                    s:SetText(urlTxt)
+                    s:HighlightText()
+                end
+            end)
+            table.insert(m.Body._modeWidgets, eb)
+        end
+
+        CreateSupportCopyRow(-74,  "Buy the Developer a Coffee (Ko-fi):", "https://ko-fi.com/dentee")
+        CreateSupportCopyRow(-126, "CurseForge Project Page & Feedback:", "https://www.curseforge.com/wow/addons/dynamicmarker")
+        CreateSupportCopyRow(-178, "Direct Contact (Email):", "denteedev@gmail.com")
     end
 
     m:Show()
@@ -6829,6 +6870,222 @@ function DM:EnsureStandaloneShell()
     end)
     f.ResetBtn = resetBtn
 
+    -- Bottom-Right Dock Controls: [Opacity Slider] + [Scale Slider 100%] + [Reload UI] (left of // resize grip)
+    local savedScale = tonumber(self.db and self.db.standaloneWindowScale) or 1.0
+    savedScale = math.max(0.80, math.min(1.20, math.floor((savedScale * 20) + 0.5) / 20))
+    f:SetScale(savedScale)
+
+    local savedAlpha = tonumber(self.db and self.db.standaloneWindowAlpha) or 0.98
+    savedAlpha = math.max(0.50, math.min(1.00, savedAlpha))
+    f:SetAlpha(savedAlpha)
+
+    local reloadUIBtn = CreateFrame("Button", nil, footer, "BackdropTemplate")
+    reloadUIBtn:SetSize(78, 24)
+    reloadUIBtn:SetPoint("RIGHT", footer, "RIGHT", -22, 0)
+    self:ApplyBackdrop(reloadUIBtn, cardBg, cardBd, 1)
+    reloadUIBtn.Text = reloadUIBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    reloadUIBtn.Text:SetPoint("CENTER")
+    reloadUIBtn.Text:SetWordWrap(false)
+    self:StyleFont(reloadUIBtn.Text, 11, "", { r = 0.88, g = 0.91, b = 0.96, a = 1 })
+    reloadUIBtn.Text:SetText("Reload UI")
+    reloadUIBtn:SetScript("OnEnter", function(s)
+        local ar, ag, ab = self:GetAccentColor()
+        self:ApplyBackdrop(s, cardHoverBg, { r = ar, g = ag, b = ab, a = 0.70 }, 1)
+        s.Text:SetTextColor(1, 1, 1, 1)
+    end)
+    reloadUIBtn:SetScript("OnLeave", function(s)
+        local curSurf = GetStandaloneSurfaceColors(self)
+        local curCardBg = { r = curSurf.card.r, g = curSurf.card.g, b = curSurf.card.b, a = 0.96 }
+        self:ApplyBackdrop(s, curCardBg, cardBd, 1)
+        s.Text:SetTextColor(0.88, 0.91, 0.96, 1)
+    end)
+    reloadUIBtn:SetScript("OnClick", function()
+        PlaySound(SOUNDKIT.IG_MAINMENU_OPTION or 856)
+        ReloadUI()
+    end)
+    f.ReloadUIBtn = reloadUIBtn
+
+    local SCALE_MIN, SCALE_MAX, SCALE_STEP, SCALE_W = 0.80, 1.20, 0.05, 64
+    local scaleValText = footer:CreateFontString(nil, "OVERLAY")
+    scaleValText:SetPoint("RIGHT", reloadUIBtn, "LEFT", -12, 0)
+    scaleValText:SetWidth(34)
+    scaleValText:SetJustifyH("RIGHT")
+    self:StyleFont(scaleValText, 10, "", { r = 1, g = 1, b = 1, a = 0.85 })
+
+    local scaleHit = CreateFrame("Frame", nil, footer)
+    scaleHit:SetSize(SCALE_W + 8, 20)
+    scaleHit:SetPoint("RIGHT", scaleValText, "LEFT", -2, 0)
+    scaleHit:EnableMouse(true)
+    scaleHit:EnableMouseWheel(true)
+
+    local scaleTrack = scaleHit:CreateTexture(nil, "ARTWORK", nil, 1)
+    scaleTrack:SetSize(SCALE_W, 4)
+    scaleTrack:SetPoint("CENTER", scaleHit, "CENTER", 0, 0)
+    scaleTrack:SetColorTexture(0.035, 0.039, 0.051, 0.98)
+
+    local scaleFill = scaleHit:CreateTexture(nil, "ARTWORK", nil, 2)
+    scaleFill:SetPoint("TOPLEFT", scaleTrack, "TOPLEFT", 0, 0)
+    scaleFill:SetPoint("BOTTOMLEFT", scaleTrack, "BOTTOMLEFT", 0, 0)
+    scaleFill:SetWidth(1)
+    scaleFill:SetColorTexture(initR, initG, initB, 0.85)
+    f.ScaleFill = scaleFill
+
+    local scaleThumb = scaleHit:CreateTexture(nil, "OVERLAY", nil, 4)
+    scaleThumb:SetSize(6, 14)
+    scaleThumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+    if scaleThumb.SetSnapToPixelGrid then
+        scaleThumb:SetSnapToPixelGrid(false)
+        scaleThumb:SetTexelSnappingBias(0)
+    end
+
+    local scaleLbl = footer:CreateFontString(nil, "OVERLAY")
+    scaleLbl:SetPoint("RIGHT", scaleHit, "LEFT", -4, 0)
+    self:StyleFont(scaleLbl, 10, "", { r = 0.58, g = 0.64, b = 0.72, a = 0.85 })
+    scaleLbl:SetText("Scale")
+
+    local pendingScale = savedScale
+
+    local function UpdateScaleVisual(val)
+        val = math.max(SCALE_MIN, math.min(SCALE_MAX, val or 1.0))
+        local pct = (val - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)
+        local xOff = pct * SCALE_W
+        scaleFill:SetWidth(math.max(1, xOff))
+        scaleThumb:ClearAllPoints()
+        scaleThumb:SetPoint("CENTER", scaleTrack, "LEFT", xOff, 0)
+        scaleValText:SetText(string.format("%d%%", math.floor(val * 100 + 0.5)))
+    end
+    UpdateScaleVisual(savedScale)
+
+    local function CommitWindowScale(val)
+        val = math.floor((val or 1.0) * 20 + 0.5) / 20
+        val = math.max(SCALE_MIN, math.min(SCALE_MAX, val))
+        pendingScale = val
+        UpdateScaleVisual(val)
+        if self.db then self.db.standaloneWindowScale = val end
+        local oldScale = f:GetScale() or 1.0
+        if math.abs(val - oldScale) >= 0.0005 then
+            local cx, cy = f:GetCenter()
+            f:SetScale(val)
+            if cx and cy then
+                local ratio = oldScale / val
+                f:ClearAllPoints()
+                f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx * ratio, cy * ratio)
+            end
+        end
+    end
+
+    scaleHit:SetScript("OnMouseDown", function(s, button)
+        if button == "LeftButton" then
+            s:SetScript("OnUpdate", function(up)
+                if not IsMouseButtonDown("LeftButton") then
+                    up:SetScript("OnUpdate", nil)
+                    CommitWindowScale(pendingScale)
+                    return
+                end
+                local eff = scaleTrack:GetEffectiveScale()
+                local cx = GetCursorPosition() / eff
+                local left = scaleTrack:GetLeft()
+                if left then
+                    local pct = math.max(0, math.min(1, (cx - left) / SCALE_W))
+                    local raw = SCALE_MIN + pct * (SCALE_MAX - SCALE_MIN)
+                    local snapped = math.floor(raw * 20 + 0.5) / 20
+                    snapped = math.max(SCALE_MIN, math.min(SCALE_MAX, snapped))
+                    if math.abs(snapped - pendingScale) >= 0.001 then
+                        pendingScale = snapped
+                        UpdateScaleVisual(pendingScale)
+                    end
+                end
+            end)
+        elseif button == "RightButton" then
+            CommitWindowScale(1.0)
+        end
+    end)
+    scaleHit:SetScript("OnMouseUp", function(s, button)
+        if button == "LeftButton" then
+            s:SetScript("OnUpdate", nil)
+            CommitWindowScale(pendingScale)
+        end
+    end)
+    scaleHit:SetScript("OnHide", function(s) s:SetScript("OnUpdate", nil) end)
+    scaleHit:SetScript("OnMouseWheel", function(_, delta)
+        CommitWindowScale(pendingScale + (delta > 0 and SCALE_STEP or -SCALE_STEP))
+    end)
+
+    local OPA_MIN, OPA_MAX, OPA_W = 0.50, 1.00, 64
+    local opaHit = CreateFrame("Frame", nil, footer)
+    opaHit:SetSize(OPA_W + 8, 20)
+    opaHit:SetPoint("RIGHT", scaleLbl, "LEFT", -12, 0)
+    opaHit:EnableMouse(true)
+    opaHit:EnableMouseWheel(true)
+
+    local opaTrack = opaHit:CreateTexture(nil, "ARTWORK", nil, 1)
+    opaTrack:SetSize(OPA_W, 4)
+    opaTrack:SetPoint("CENTER", opaHit, "CENTER", 0, 0)
+    opaTrack:SetColorTexture(0.035, 0.039, 0.051, 0.98)
+
+    local opaFill = opaHit:CreateTexture(nil, "ARTWORK", nil, 2)
+    opaFill:SetPoint("TOPLEFT", opaTrack, "TOPLEFT", 0, 0)
+    opaFill:SetPoint("BOTTOMLEFT", opaTrack, "BOTTOMLEFT", 0, 0)
+    opaFill:SetWidth(1)
+    opaFill:SetColorTexture(initR, initG, initB, 0.85)
+    f.OpaFill = opaFill
+
+    local opaThumb = opaHit:CreateTexture(nil, "OVERLAY", nil, 4)
+    opaThumb:SetSize(6, 14)
+    opaThumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+    if opaThumb.SetSnapToPixelGrid then
+        opaThumb:SetSnapToPixelGrid(false)
+        opaThumb:SetTexelSnappingBias(0)
+    end
+
+    local opaLabel = footer:CreateFontString(nil, "OVERLAY")
+    opaLabel:SetPoint("RIGHT", opaHit, "LEFT", -4, 0)
+    self:StyleFont(opaLabel, 10, "", { r = 0.58, g = 0.64, b = 0.72, a = 0.85 })
+    opaLabel:SetText("Opacity")
+
+    local function ApplyWindowOpacity(val)
+        val = math.max(OPA_MIN, math.min(OPA_MAX, val or 0.98))
+        f:SetAlpha(val)
+        if self.db then self.db.standaloneWindowAlpha = val end
+        local pct = (val - OPA_MIN) / (OPA_MAX - OPA_MIN)
+        local xOff = pct * OPA_W
+        opaFill:SetWidth(math.max(1, xOff))
+        opaThumb:ClearAllPoints()
+        opaThumb:SetPoint("CENTER", opaTrack, "LEFT", xOff, 0)
+    end
+    ApplyWindowOpacity(savedAlpha)
+
+    opaHit:SetScript("OnMouseDown", function(s, button)
+        if button == "LeftButton" then
+            s:SetScript("OnUpdate", function(up)
+                if not IsMouseButtonDown("LeftButton") then
+                    up:SetScript("OnUpdate", nil)
+                    return
+                end
+                local eff = opaTrack:GetEffectiveScale()
+                local cx = GetCursorPosition() / eff
+                local left = opaTrack:GetLeft()
+                if left then
+                    local pct = math.max(0, math.min(1, (cx - left) / OPA_W))
+                    local raw = OPA_MIN + pct * (OPA_MAX - OPA_MIN)
+                    local snapped = math.floor(raw * 50 + 0.5) / 50
+                    if math.abs(snapped - (up._lastOpa or -1)) >= 0.001 then
+                        up._lastOpa = snapped
+                        ApplyWindowOpacity(snapped)
+                    end
+                end
+            end)
+        elseif button == "RightButton" then
+            ApplyWindowOpacity(0.98)
+        end
+    end)
+    opaHit:SetScript("OnMouseUp", function(s) s:SetScript("OnUpdate", nil) end)
+    opaHit:SetScript("OnHide", function(s) s:SetScript("OnUpdate", nil) end)
+    opaHit:SetScript("OnMouseWheel", function(_, delta)
+        local cur = (self.db and self.db.standaloneWindowAlpha) or 0.98
+        ApplyWindowOpacity(cur + (delta > 0 and 0.05 or -0.05))
+    end)
+
     -- Zero-FPS-Drop Bottom-Right Resize Grip
     local grip = CreateFrame("Button", nil, f)
     grip:SetSize(20, 20)
@@ -7034,6 +7291,15 @@ function DM:RefreshAll()
         if self.shellFrame.ResetBtn then
             self:ApplyBackdrop(self.shellFrame.ResetBtn, cardBg, cardBd, 1)
         end
+        if self.shellFrame.ReloadUIBtn then
+            self:ApplyBackdrop(self.shellFrame.ReloadUIBtn, cardBg, cardBd, 1)
+        end
+        if self.shellFrame.ScaleFill then
+            self.shellFrame.ScaleFill:SetColorTexture(ar, ag, ab, 0.85)
+        end
+        if self.shellFrame.OpaFill then
+            self.shellFrame.OpaFill:SetColorTexture(ar, ag, ab, 0.85)
+        end
         for _, mBtn in ipairs(self.shellFrame.Rail.modBtns) do
             local isMarker = (mBtn.modKey == "marker" or mBtn.Title:GetText() == "DynamicMarker")
             if isMarker then
@@ -7236,6 +7502,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "14/11/2026",
     entries = {
+        { type = "UI",      text = "Standalone Bottom-Right Dock Parity & Copyable Support Modal Links (14/11/2026): Added the [Reload UI] button and persisted Opacity (50%-100%) and Scale (80%-120%) sliders to the standalone footer dock (positioned left of the // resize grip and stored in DynamicMarkerDB), and replaced static Support modal text with read-only click-to-highlight Ctrl+C EditBoxes for Ko-fi, CurseForge (/addons/dynamicmarker), and Email with Escape-to-close." },
         { type = "FIX",     text = "First-Open ESC > Options > AddOns Standalone Shell & Settings Yield (14/11/2026): Added initial f:Hide(), OnShow post-layout C_Timer.After(0, ...) theme/workspace refresh + Raise() on DynamicMarkerSuiteWindow, Settings canvas OnShow accent/surface sync, and hardened HideSettingsPanelSafe() so opening standalone DynamicMarker via ESC > Options > AddOns > DynamicMarker renders cleanly on the very first open without SettingsPanel obscuring it." },
         { type = "FIX",     text = "Standalone Guided Setup Modal Layering (14/11/2026): Promoted DynamicMarkerStudioBackdrop and DynamicMarkerStudioModal to FULLSCREEN_DIALOG strata (levels 290/300) parented to UIParent with SetToplevel(true), 100% opaque solid panel backing, and clean mode-widget recycling so underlying window controls, borders, and text never bleed through or overlap." },
         { type = "UI",      text = "Standalone Bottom-Left Sidebar & Brighter Theme Parity (14/11/2026): Aligned standalone shell dimensions (204px rail, 46px header with 2px top accent bar, 38px footer), SUITE STUDIO & TOOLS card spacing, 90px/88px [Changelog] & [Support] buttons, and brighter OBSIDIAN_DARK / SLATE_STEEL surface palette with full DynamicSuite." },
