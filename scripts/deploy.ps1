@@ -94,7 +94,7 @@ $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite")
 if (Test-Path -LiteralPath (Join-Path $RepoRoot "Packaging")) {
     $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "Packaging") -Filter "*.toc" -Recurse -File
 }
-foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "README.md", "AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", ".pkgmeta", ".pkgmeta-dynamicmarker", ".github\workflows\release.yml")) {
+foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "README.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md", "AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", ".pkgmeta", ".pkgmeta-dynamicmarker", ".github\workflows\release.yml")) {
     $docPath = Join-Path $RepoRoot $docName
     if (Test-Path -LiteralPath $docPath) {
         $asciiTargets += Get-Item -LiteralPath $docPath
@@ -133,7 +133,7 @@ Write-Host "[ASCII OK] Verified $($asciiTargets.Count) file(s) (NonASCII=0, HasB
 
 # 3b. Public doc leak guard & Lockstep Suite <-> Standalone parity checks
 $leakPattern = 'AGENTS\.md|DESIGN_SYSTEM\.md|TASKS\.md|Design/|scripts/'
-$pubDocs = @("README.md", "CHANGELOG.md", "DynamicSuite\CHANGELOG.md")
+$pubDocs = @("README.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md", "CHANGELOG.md", "DynamicSuite\CHANGELOG.md")
 if (Test-Path -LiteralPath $marketingDir) {
     foreach ($mf in (Get-ChildItem -LiteralPath $marketingDir -Filter "*.md" -File)) {
         $pubDocs += "Marketing\$($mf.Name)"
@@ -508,6 +508,12 @@ try {
         & cmd.exe /c "`"$PushCmd`""
         if ($LASTEXITCODE -ne 0) {
             throw "Push-DynamicSuiteSync.cmd exited with code $LASTEXITCODE"
+        }
+        $driveSyncRoot = "G:\My Drive\DynamicSuite_Sync"
+        if (Test-Path -LiteralPath $driveSyncRoot) {
+            Copy-Item -LiteralPath (Join-Path $RepoRoot "README.md") -Destination (Join-Path $driveSyncRoot "README.md") -Force
+            Copy-Item -LiteralPath (Join-Path $RepoRoot "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md") -Destination (Join-Path $driveSyncRoot "CURSEFORGE_DYNAMICMARKER.md") -Force
+            Write-Host "[CURSEFORGE DOCS SYNCED] README.md & CURSEFORGE_DYNAMICMARKER.md -> $driveSyncRoot" -ForegroundColor DarkCyan
         }
     } else {
         Write-Host "[SYNC SKIPPED] -SkipSync specified" -ForegroundColor Yellow
