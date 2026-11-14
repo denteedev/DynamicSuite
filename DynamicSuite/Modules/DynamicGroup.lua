@@ -161,7 +161,8 @@ local DEFAULTS = {
         LATAM = true,
         BR = true,
     },
-    overlayMode = "COMPACT",         -- "FULL" | "COMPACT" | "OFF"
+    overlayMode = "COMPACT",         -- Legacy synced key: "COMPACT" | "OFF"
+    showEntryOverlay = true,
     minLeaderScore = 0,              -- 0 | 1500 | 2000 | 2500 | 2800 | 3000
     partyFitFilter = "ALL",          -- Legacy summary: "ALL" | "NEEDS_LUST" | "NEEDS_CR" | "NEEDS_BOTH"
     needsTank = false,
@@ -219,6 +220,7 @@ local REGION_COLORS = {
     ["US-E"]= { r = 0.957, g = 0.447, b = 0.714, hex = "FFF472B6" },
     BR      = { r = 0.204, g = 0.827, b = 0.600, hex = "FF34D399" }, -- Emerald #34D399
     LATAM   = { r = 0.753, g = 0.518, b = 0.988, hex = "FFC084FC" }, -- Violet #C084FC
+    LA      = { r = 0.753, g = 0.518, b = 0.988, hex = "FFC084FC" }, -- Violet #C084FC
     EU      = { r = 0.376, g = 0.647, b = 0.980, hex = "FF60A5FA" }, -- Blue #60A5FA
     KR      = { r = 0.176, g = 0.831, b = 0.749, hex = "FF2DD4BF" }, -- Teal #2DD4BF
     TW      = { r = 0.176, g = 0.831, b = 0.749, hex = "FF2DD4BF" },
@@ -249,18 +251,18 @@ local function FormatRegionTag(regionKey, customText)
 end
 
 REGION_META = {
-    OCE     = { code = "OCE",   badge = "[OCE]",   pillLabel = "OCE",           title = "OCE - Oceanic (Sydney)" },
-    USW     = { code = "USW",   badge = "[US-W]",  pillLabel = "US-West",       title = "US-W - West (Phoenix/Vegas)" },
-    USC     = { code = "USC",   badge = "[US-C]",  pillLabel = "US-Central",    title = "US-C - Central (Chicago)" },
-    USE     = { code = "USE",   badge = "[US-E]",  pillLabel = "US-East",       title = "US-E - East (Virginia/NY)" },
-    LATAM   = { code = "LATAM", badge = "[LATAM]", pillLabel = "Latin America", title = "LATAM - Latin America" },
-    BR      = { code = "BR",    badge = "[BR]",    pillLabel = "Brazil",        title = "BR - Brazil" },
-    EU      = { code = "EU",    badge = "[EU]",    pillLabel = "Europe",        title = "EU - Europe" },
-    KR      = { code = "KR",    badge = "[KR]",    pillLabel = "Korea",         title = "KR - Korea" },
-    TW      = { code = "TW",    badge = "[TW]",    pillLabel = "Taiwan",        title = "TW - Taiwan" },
-    CN      = { code = "CN",    badge = "[CN]",    pillLabel = "China",         title = "CN - China" },
-    OTHER   = { code = "OTHER", badge = "[OTHER]", pillLabel = "Other",         title = "Other Region" },
-    UNKNOWN = { code = "UNK",   badge = "[UNK]",   pillLabel = "Unknown",       title = "Unknown Region" },
+    OCE     = { code = "OCE",   badge = "OCE",   pillLabel = "OCE",           title = "OCE - Oceanic (Sydney)" },
+    USW     = { code = "USW",   badge = "USW",   pillLabel = "US-West",       title = "USW - West (Phoenix/Vegas)" },
+    USC     = { code = "USC",   badge = "USC",   pillLabel = "US-Central",    title = "USC - Central (Chicago)" },
+    USE     = { code = "USE",   badge = "USE",   pillLabel = "US-East",       title = "USE - East (Virginia/NY)" },
+    LATAM   = { code = "LA",    badge = "LA",    pillLabel = "Latin America", title = "LA - Latin America" },
+    BR      = { code = "BR",    badge = "BR",    pillLabel = "Brazil",        title = "BR - Brazil" },
+    EU      = { code = "EU",    badge = "EU",    pillLabel = "Europe",        title = "EU - Europe" },
+    KR      = { code = "KR",    badge = "KR",    pillLabel = "Korea",         title = "KR - Korea" },
+    TW      = { code = "TW",    badge = "TW",    pillLabel = "Taiwan",        title = "TW - Taiwan" },
+    CN      = { code = "CN",    badge = "CN",    pillLabel = "China",         title = "CN - China" },
+    OTHER   = { code = "OTHER", badge = "OTHER", pillLabel = "Other",         title = "Other Region" },
+    UNKNOWN = { code = "UNK",   badge = "UNK",   pillLabel = "Unknown",       title = "Unknown Region" },
 }
 
 local RAW_REALMS_BY_REGION = {
@@ -526,6 +528,14 @@ local function EnsureDB()
         if _G.DynamicGroupDB.overlayMode == "FULL" then
             _G.DynamicGroupDB.overlayMode = "COMPACT"
         end
+    end
+    if _G.DynamicGroupDB.showEntryOverlay == nil then
+        _G.DynamicGroupDB.showEntryOverlay = (_G.DynamicGroupDB.overlayMode ~= "OFF")
+    end
+    if _G.DynamicGroupDB.showEntryOverlay then
+        _G.DynamicGroupDB.overlayMode = "COMPACT"
+    else
+        _G.DynamicGroupDB.overlayMode = "OFF"
     end
     _G.DynamicGroupDB.mythicPlusOnly = nil
     _G.DynamicGroupDB.fitMyRole = nil
@@ -2198,13 +2208,8 @@ local function OnLFGListSearchEntryUpdate(entry)
         ov.enumRoleSlots = {}
         for idx = 1, 5 do
             local slotOv = CreateFrame("Frame", nil, ov)
-            slotOv:SetSize(15, 15)
+            slotOv:SetSize(18, 18)
             slotOv:EnableMouse(false)
-
-            slotOv.bg = slotOv:CreateTexture(nil, "BACKGROUND")
-            slotOv.bg:SetSize(13, 13)
-            slotOv.bg:SetPoint("CENTER", slotOv, "CENTER", 0, 0)
-            slotOv.bg:SetColorTexture(0.043, 0.051, 0.071, 0.92) -- #0B0D12 backing to mask grey dot
 
             slotOv.tex = slotOv:CreateTexture(nil, "ARTWORK")
             slotOv.tex:SetAllPoints(slotOv)
@@ -2252,7 +2257,7 @@ local function OnLFGListSearchEntryUpdate(entry)
         return
     end
 
-    if not db.lfgFilterEnabled or db.overlayMode == "OFF" or sbAlpha <= 0.01 or pAlpha <= 0.01 then
+    if not db.lfgFilterEnabled or db.showEntryOverlay == false or db.overlayMode == "OFF" or sbAlpha <= 0.01 or pAlpha <= 0.01 then
         ov:Hide()
         return
     end
@@ -2336,6 +2341,9 @@ local function OnLFGListSearchEntryUpdate(entry)
                     if idx > filledCount and anchor and (not anchor.IsShown or anchor:IsShown()) then
                         local roleKey = openRoles[idx - filledCount]
                         if roleKey then
+                            local aw = math.floor((anchor.GetWidth and anchor:GetWidth()) or 18)
+                            local ah = math.floor((anchor.GetHeight and anchor:GetHeight()) or 18)
+                            slotOv:SetSize(aw > 0 and aw or 18, ah > 0 and ah or 18)
                             slotOv:ClearAllPoints()
                             slotOv:SetPoint("CENTER", anchor, "CENTER", 0, 0)
                             if slotOv.SetFrameLevel then
@@ -2351,7 +2359,7 @@ local function OnLFGListSearchEntryUpdate(entry)
                             if slotOv.tex.SetDesaturated then
                                 slotOv.tex:SetDesaturated(true)
                             end
-                            slotOv.tex:SetVertexColor(0.55, 0.60, 0.68, 0.85)
+                            slotOv.tex:SetVertexColor(0.62, 0.68, 0.76, 0.78)
                             slotOv:Show()
                         else
                             slotOv:Hide()
@@ -5426,19 +5434,23 @@ local function RenderGroupEmbedded(arg1, arg2)
     page1.orderedCards[#page1.orderedCards + 1] = c1_sort
     root.allControls[#root.allControls + 1] = c1_sort
 
-    -- Card 1.7: Premade Entry Overlay Badges (EUI-Style Dropdown)
+    -- Card 1.7: Show Region & Leader IO Badge (2-Pill Segmented Switch)
     local c1_badges = CreateCardRow(sec1b, 62,
-        "Premade Entry Overlay Badges",
-        "Cleanly displays Datacentre Region, Leader IO, and optional Lust/CR tags in the top-right row of each Premade Group listing."
+        "Show Region & Leader IO Badge",
+        "Displays the leader's datacentre region (OCE, USE, USW, USC, LA, BR) and Mythic+ rating in the top-right corner of each Premade Group listing."
     )
-    AttachDropdownToCard(c1_badges, 300, {
-        { value = "FULL",    label = "Full: Region, Leader IO & Lust/CR Tags" },
-        { value = "COMPACT", label = "Compact: Region & Leader IO Only (Recommended)" },
-        { value = "OFF",     label = "Disabled (Hide Entry Overlays)" },
-    }, function() return EnsureDB().overlayMode or "COMPACT" end, function(val)
-        EnsureDB().overlayMode = val
-        DynamicGroup:RefreshLFGResults()
-    end)
+    AttachSegmentedSwitchToCard(c1_badges,
+        function()
+            local d = EnsureDB()
+            return (d.showEntryOverlay ~= false) and (d.overlayMode ~= "OFF")
+        end,
+        function(val)
+            local d = EnsureDB()
+            d.showEntryOverlay = val and true or false
+            d.overlayMode = val and "COMPACT" or "OFF"
+            DynamicGroup:RefreshLFGResults()
+        end
+    )
     sec1b.orderedCards[#sec1b.orderedCards + 1] = c1_badges
     page1.orderedCards[#page1.orderedCards + 1] = c1_badges
     root.allControls[#root.allControls + 1] = c1_badges
@@ -6436,7 +6448,7 @@ local function RegisterWithDynamicSuite()
         entries = {
             { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Left-click casts learned dungeon teleports out of combat; Right-click filters the group finder to that dungeon." },
             { type = "FEATURE", text = "Integrated Multi-Toggle Premade Group Filters (15/11/2026): Upgraded the Group Finder filter menu with Tank, Healer, and DPS role availability toggles (with role icons), No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez, kept in two-way sync with Blizzard's native Filter menu without altering difficulty checkboxes." },
-            { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill, desaturated Tank/Healer/DPS icons directly over empty group slots, and personal best key levels plus same-class warnings in group tooltips." },
+            { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill (OCE, USE, USW, USC, LA, BR), desaturated Tank/Healer/DPS icons matched to Blizzard's slot size over empty group slots, a simplified Show Region & Leader IO Badge switch, and personal best key levels plus same-class warnings in group tooltips." },
             { type = "FIX",     text = "Fixed the dungeon tile tooltip Shift + Right-Click colour code and updated the Portal Bar All button to stay unhighlighted while a dungeon filter is active." },
             { type = "FEATURE", text = "External Addon Conflict Detector & Yield Engine (12/11/2026): Added PremadeGroupsFilter and PremadeRegionFilter to the curated HARD conflict registry with unified DynamicSuite top-of-module warning banner and 1-click resolution." },
             { type = "FIX",     text = "Eliminated direct property write onto LFGListApplicationDialog.resultID before LFGListApplicationDialog_Show, added pcall and IsSecretValue guards across C_LFGList.GetApplicationInfo, HasSearchResultInfo, GetSearchResultInfo, and sp.SearchBox:GetText(), and pre-guarded LFGListSearchEntry OnEnter against expired resultIDs." },
