@@ -323,6 +323,10 @@ foreach ($mod in $targets) {
         $bFull = Render-SvgToBitmap -SvgXml $xml -OutSize $TgaSize
         try { Write-UncompressedTga32 -Bitmap $bFull -OutPath $tgaFull } finally { $bFull.Dispose() }
 
+        $tgaC = Join-Path $TgaOutDir "${mod}_chassis_${TgaSize}.tga"
+        $bC = Render-SvgToBitmap -SvgXml $xml -OutSize $TgaSize -AllowedLayers @("chassis")
+        try { Write-UncompressedTga32 -Bitmap $bC -OutPath $tgaC } finally { $bC.Dispose() }
+
         $tgaW = Join-Path $TgaOutDir "${mod}_white_${TgaSize}.tga"
         $bW = Render-SvgToBitmap -SvgXml $xml -OutSize $TgaSize -AllowedLayers @("white")
         try { Write-UncompressedTga32 -Bitmap $bW -OutPath $tgaW } finally { $bW.Dispose() }
@@ -331,6 +335,6 @@ foreach ($mod in $targets) {
         $bA = Render-SvgToBitmap -SvgXml $xml -OutSize $TgaSize -AllowedLayers @("accent") -ForceWhiteFill
         try { Write-UncompressedTga32 -Bitmap $bA -OutPath $tgaA } finally { $bA.Dispose() }
 
-        Write-Host "[EXPORT TGA] $tgaFull, $tgaW, $tgaA (${TgaSize}x${TgaSize} 32-bit RGBA)" -ForegroundColor Cyan
+        Write-Host "[EXPORT TGA] $tgaFull, $tgaC, $tgaW, $tgaA (${TgaSize}x${TgaSize} 32-bit RGBA)" -ForegroundColor Cyan
     }
 }
