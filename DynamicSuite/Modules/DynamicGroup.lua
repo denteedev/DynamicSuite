@@ -1283,15 +1283,136 @@ local function SafeGetSpellCooldown(spellID)
     return 0, 0, false
 end
 
+local function SafeGetSpellDescription(spellID)
+    if type(spellID) ~= "number" or spellID <= 0 then return "" end
+    if C_Spell and type(C_Spell.GetSpellDescription) == "function" then
+        local ok, desc = pcall(C_Spell.GetSpellDescription, spellID)
+        if ok and type(desc) == "string" and not IsSecretValue(desc) then
+            return desc
+        end
+    end
+    if type(_G.GetSpellDescription) == "function" then
+        local ok, desc = pcall(_G.GetSpellDescription, spellID)
+        if ok and type(desc) == "string" and not IsSecretValue(desc) then
+            return desc
+        end
+    end
+    return ""
+end
+
+local challengesMapToSpellCache = {}
+local spellbookTeleportCache = nil
+
+local function RefreshChallengesFrameTeleportCache()
+    local cf = _G.ChallengesFrame
+    if not cf or type(cf.DungeonIcons) ~= "table" then return end
+    for _, icon in ipairs(cf.DungeonIcons) do
+        local mID = icon and icon.mapID
+        local sID = icon and icon.spellID
+        if type(mID) == "number" and mID > 0 and type(sID) == "number" and sID > 0 and IsTeleportSpellKnown(sID) then
+            challengesMapToSpellCache[mID] = sID
+        end
+    end
+end
+
+local function GetSpellbookTeleportEntries()
+    if spellbookTeleportCache then
+        return spellbookTeleportCache
+    end
+    local entries = {}
+    local seenSpells = {}
+
+    local function RecordTeleportSpell(spellID, fallbackName)
+        if type(spellID) ~= "number" or spellID <= 0 or seenSpells[spellID] then return end
+        if not IsTeleportSpellKnown(spellID) then return end
+        local sName = SafeGetSpellName(spellID) or fallbackName
+        if type(sName) ~= "string" or sName == "" or IsSecretValue(sName) then return end
+        local lowerName = sName:lower()
+        local isTeleportName = (lowerName:find("^path of") ~= nil) or (lowerName:find("teleport", 1, true) ~= nil)
+        if not isTeleportName then return end
+        seenSpells[spellID] = true
+        local desc = SafeGetSpellDescription(spellID)
+        entries[#entries + 1] = {
+            spellID = spellID,
+            name = sName,
+            normName = NormalizeDungeonMatchName(sName),
+            haystack = NormalizeDungeonMatchName(sName .. " " .. desc),
+        }
+    end
+
+    local playerBank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player
+    if C_SpellBook and type(C_SpellBook.GetNumSpellBookSkillLines) == "function"
+        and type(C_SpellBook.GetSpellBookItemInfo) == "function"
+        and type(C_SpellBook.GetSpellBookSkillLineInfo) == "function"
+        and playerBank
+    then
+        local okLines, numLines = pcall(C_SpellBook.GetNumSpellBookSkillLines)
+        if okLines and type(numLines) == "number" then
+            for line = 1, numLines do
+                local okL, lineInfo = pcall(C_SpellBook.GetSpellBookSkillLineInfo, line)
+                if okL and type(lineInfo) == "table" and not lineInfo.offSpecID then
+                    local offset = tonumber(lineInfo.itemIndexOffset) or 0
+                    local count = tonumber(lineInfo.numSpellBookItems) or 0
+                    for slotIdx = offset + 1, offset + count do
+                        local okI, itemInfo = pcall(C_SpellBook.GetSpellBookItemInfo, slotIdx, playerBank)
+                        if okI and type(itemInfo) == "table" and not itemInfo.isOffSpec then
+                            if Enum.SpellBookItemType and itemInfo.itemType == Enum.SpellBookItemType.Flyout and itemInfo.actionID then
+                                if type(_G.GetFlyoutInfo) == "function" and type(_G.GetFlyoutSlotInfo) == "function" then
+                                    local okF, _, _, numSlots = pcall(_G.GetFlyoutInfo, itemInfo.actionID)
+                                    if okF and type(numSlots) == "number" then
+                                        for fSlot = 1, numSlots do
+                                            local okFS, fSpellID, _, fKnown = pcall(_G.GetFlyoutSlotInfo, itemInfo.actionID, fSlot)
+                                            if okFS and fKnown and type(fSpellID) == "number" then
+                                                RecordTeleportSpell(fSpellID)
+                                            end
+                                        end
+                                    end
+                                end
+                            elseif itemInfo.spellID then
+                                RecordTeleportSpell(itemInfo.spellID, itemInfo.name)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    spellbookTeleportCache = entries
+    return entries
+end
+
+local STOP_WORDS_DUNGEON = {
+    the = true, of = true, ["and"] = true, ["for"] = true, ["in"] = true, at = true, to = true,
+    path = true, teleport = true, dungeon = true,
+}
+
 local function ResolveTeleportSpellForDungeon(mapID, code, dungeonName, fallbackSpellID)
+    RefreshChallengesFrameTeleportCache()
+    if mapID and challengesMapToSpellCache[mapID] and IsTeleportSpellKnown(challengesMapToSpellCache[mapID]) then
+        return challengesMapToSpellCache[mapID], true
+    end
+
     local candidates = {}
     local seen = {}
+    local matchKeywords = {}
+    local seenKw = {}
     local function AddCand(id)
         if type(id) == "number" and id > 0 and not seen[id] then
             seen[id] = true
             candidates[#candidates + 1] = id
         end
     end
+    local function AddKeyword(kw)
+        if type(kw) == "string" then
+            local nkw = NormalizeDungeonMatchName(kw)
+            if #nkw >= 3 and not STOP_WORDS_DUNGEON[nkw] and not seenKw[nkw] then
+                seenKw[nkw] = true
+                matchKeywords[#matchKeywords + 1] = nkw
+            end
+        end
+    end
+
     AddCand(fallbackSpellID)
     local known = mapID and KNOWN_DUNGEON_BY_MAP_ID[mapID] or nil
     if known then
@@ -1299,8 +1420,16 @@ local function ResolveTeleportSpellForDungeon(mapID, code, dungeonName, fallback
         if known.spellCandidates then
             for _, cid in ipairs(known.spellCandidates) do AddCand(cid) end
         end
+        if known.patterns then
+            for _, pat in ipairs(known.patterns) do AddKeyword(pat) end
+        end
     end
     local norm = NormalizeDungeonMatchName(dungeonName)
+    if norm ~= "" then
+        for word in norm:gmatch("%S+") do
+            AddKeyword(word)
+        end
+    end
     for _, fb in ipairs(MIDNIGHT_S1_FALLBACK_SLOTS) do
         local matchFB = (code and fb.code == code)
         if not matchFB and norm ~= "" and fb.patterns then
@@ -1313,6 +1442,9 @@ local function ResolveTeleportSpellForDungeon(mapID, code, dungeonName, fallback
             if fb.spellCandidates then
                 for _, cid in ipairs(fb.spellCandidates) do AddCand(cid) end
             end
+            if fb.patterns then
+                for _, pat in ipairs(fb.patterns) do AddKeyword(pat) end
+            end
         end
     end
     for _, cid in ipairs(candidates) do
@@ -1320,6 +1452,37 @@ local function ResolveTeleportSpellForDungeon(mapID, code, dungeonName, fallback
             return cid, true
         end
     end
+
+    -- Source B: Live Spellbook scan for learned "Path of ..." / dungeon teleports
+    if #matchKeywords > 0 then
+        local sbEntries = GetSpellbookTeleportEntries()
+        local bestSpellID = nil
+        local bestScore = 0
+        for _, sb in ipairs(sbEntries) do
+            local score = 0
+            for _, kw in ipairs(matchKeywords) do
+                if sb.haystack:find(kw, 1, true) then
+                    score = score + ((#kw >= 5) and 2 or 1)
+                end
+            end
+            if score > bestScore then
+                bestScore = score
+                bestSpellID = sb.spellID
+            end
+        end
+        if bestSpellID and bestScore >= 2 then
+            if mapID then
+                challengesMapToSpellCache[mapID] = bestSpellID
+            end
+            return bestSpellID, true
+        elseif bestSpellID and bestScore == 1 then
+            if mapID then
+                challengesMapToSpellCache[mapID] = bestSpellID
+            end
+            return bestSpellID, true
+        end
+    end
+
     local primary = candidates[1] or 0
     return primary, IsTeleportSpellKnown(primary)
 end
@@ -2334,6 +2497,23 @@ local function OnLFGListSearchEntryUpdate(entry)
             local filledCount = math.max(0, math.min(5, meta.numMembers or ((meta.tanks or 0) + (meta.healers or 0) + (meta.dps or 0))))
             local enumLevel = (enumFrame.GetFrameLevel and enumFrame:GetFrameLevel()) or (ov.GetFrameLevel and ov:GetFrameLevel()) or 1
 
+            local function SetAnchorGreyDotVisible(anchorObj, showDot)
+                if not anchorObj then return end
+                local alphaVal = showDot and 1 or 0
+                if anchorObj.IsObjectType and anchorObj:IsObjectType("Texture") then
+                    if anchorObj.SetAlpha then
+                        anchorObj:SetAlpha(alphaVal)
+                    end
+                elseif anchorObj.GetRegions then
+                    local regions = { anchorObj:GetRegions() }
+                    for _, reg in ipairs(regions) do
+                        if reg and reg.IsObjectType and reg:IsObjectType("Texture") and reg.SetAlpha then
+                            reg:SetAlpha(alphaVal)
+                        end
+                    end
+                end
+            end
+
             for idx = 1, 5 do
                 local slotOv = enumSlots[idx]
                 local anchor = slotAnchors[idx]
@@ -2341,6 +2521,7 @@ local function OnLFGListSearchEntryUpdate(entry)
                     if idx > filledCount and anchor and (not anchor.IsShown or anchor:IsShown()) then
                         local roleKey = openRoles[idx - filledCount]
                         if roleKey then
+                            SetAnchorGreyDotVisible(anchor, false)
                             local aw = math.floor((anchor.GetWidth and anchor:GetWidth()) or 18)
                             local ah = math.floor((anchor.GetHeight and anchor:GetHeight()) or 18)
                             slotOv:SetSize(aw > 0 and aw or 18, ah > 0 and ah or 18)
@@ -2349,27 +2530,47 @@ local function OnLFGListSearchEntryUpdate(entry)
                             if slotOv.SetFrameLevel then
                                 slotOv:SetFrameLevel(enumLevel + 2)
                             end
+                            if slotOv.tex.SetDesaturated then
+                                slotOv.tex:SetDesaturated(false)
+                            end
                             if roleKey == "TANK" then
                                 slotOv.tex:SetTexCoord(0 / 64, 19 / 64, 22 / 64, 41 / 64)
+                                slotOv.tex:SetVertexColor(0.45, 0.72, 0.98, 0.88)
                             elseif roleKey == "HEALER" then
                                 slotOv.tex:SetTexCoord(20 / 64, 39 / 64, 1 / 64, 20 / 64)
+                                slotOv.tex:SetVertexColor(0.35, 0.85, 0.65, 0.88)
                             else
                                 slotOv.tex:SetTexCoord(20 / 64, 39 / 64, 22 / 64, 41 / 64)
+                                slotOv.tex:SetVertexColor(0.78, 0.82, 0.88, 0.88)
                             end
-                            if slotOv.tex.SetDesaturated then
-                                slotOv.tex:SetDesaturated(true)
-                            end
-                            slotOv.tex:SetVertexColor(0.62, 0.68, 0.76, 0.78)
                             slotOv:Show()
                         else
+                            SetAnchorGreyDotVisible(anchor, true)
                             slotOv:Hide()
                         end
                     else
+                        SetAnchorGreyDotVisible(anchor, true)
                         slotOv:Hide()
                     end
                 end
             end
         else
+            if enumFrame then
+                for i = 1, 5 do
+                    local ic = enumFrame["Icon" .. i]
+                    if ic then
+                        if ic.IsObjectType and ic:IsObjectType("Texture") and ic.SetAlpha then
+                            ic:SetAlpha(1)
+                        elseif ic.GetRegions then
+                            for _, reg in ipairs({ ic:GetRegions() }) do
+                                if reg and reg.IsObjectType and reg:IsObjectType("Texture") and reg.SetAlpha then
+                                    reg:SetAlpha(1)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
             for idx = 1, 5 do
                 if enumSlots[idx] then
                     enumSlots[idx]:Hide()
@@ -6446,9 +6647,9 @@ local function RegisterWithDynamicSuite()
         version = DynamicGroup.version or VERSION,
         date = "15/11/2026",
         entries = {
-            { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Left-click casts learned dungeon teleports out of combat; Right-click filters the group finder to that dungeon." },
+            { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Dynamically discovers all learned Midnight Season 1 teleport spells from the Mythic+ tab and spellbook so Left-click casts learned dungeon teleports out of combat and Right-click filters the group finder to that dungeon." },
             { type = "FEATURE", text = "Integrated Multi-Toggle Premade Group Filters (15/11/2026): Upgraded the Group Finder filter menu with Tank, Healer, and DPS role availability toggles (with role icons), No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez, kept in two-way sync with Blizzard's native Filter menu without altering difficulty checkboxes." },
-            { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill (OCE, USE, USW, USC, LA, BR), desaturated Tank/Healer/DPS icons matched to Blizzard's slot size over empty group slots, a simplified Show Region & Leader IO Badge switch, and personal best key levels plus same-class warnings in group tooltips." },
+            { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill (OCE, USE, USW, USC, LA, BR), colour-tinted Tank/Healer/DPS icons matched to Blizzard's slot size over empty group slots, a simplified Show Region & Leader IO Badge switch, and personal best key levels plus same-class warnings in group tooltips." },
             { type = "FIX",     text = "Fixed the dungeon tile tooltip Shift + Right-Click colour code and updated the Portal Bar All button to stay unhighlighted while a dungeon filter is active." },
             { type = "FEATURE", text = "External Addon Conflict Detector & Yield Engine (12/11/2026): Added PremadeGroupsFilter and PremadeRegionFilter to the curated HARD conflict registry with unified DynamicSuite top-of-module warning banner and 1-click resolution." },
             { type = "FIX",     text = "Eliminated direct property write onto LFGListApplicationDialog.resultID before LFGListApplicationDialog_Show, added pcall and IsSecretValue guards across C_LFGList.GetApplicationInfo, HasSearchResultInfo, GetSearchResultInfo, and sp.SearchBox:GetText(), and pre-guarded LFGListSearchEntry OnEnter against expired resultIDs." },
@@ -6545,13 +6746,32 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
                 self:InstallLFGHooks()
             end
         elseif loadedName == "Blizzard_ChallengesUI" then
-            if not IsModuleDisabledInSuite("DynamicGroup") and _G.ChallengesKeystoneFrame and _G.ChallengesKeystoneFrame.HookScript and not self.keystoneHooked then
-                self.keystoneHooked = true
-                _G.ChallengesKeystoneFrame:HookScript("OnShow", function()
-                    if not IsModuleDisabledInSuite("DynamicGroup") then
-                        C_Timer.After(0.05, TryAutoInsertKeystone)
-                    end
-                end)
+            if not IsModuleDisabledInSuite("DynamicGroup") then
+                if _G.ChallengesKeystoneFrame and _G.ChallengesKeystoneFrame.HookScript and not self.keystoneHooked then
+                    self.keystoneHooked = true
+                    _G.ChallengesKeystoneFrame:HookScript("OnShow", function()
+                        if not IsModuleDisabledInSuite("DynamicGroup") then
+                            C_Timer.After(0.05, TryAutoInsertKeystone)
+                        end
+                    end)
+                end
+                if _G.ChallengesFrame and _G.ChallengesFrame.HookScript and not self.challengesFrameHooked then
+                    self.challengesFrameHooked = true
+                    _G.ChallengesFrame:HookScript("OnShow", function()
+                        if not IsModuleDisabledInSuite("DynamicGroup") then
+                            seasonSlotsCache = nil
+                            spellbookTeleportCache = nil
+                            if self.portalBar or (self.lfgMiniBar and self.lfgMiniBar:IsShown()) then
+                                self:UpdatePortalBar(true)
+                            end
+                        end
+                    end)
+                end
+                seasonSlotsCache = nil
+                spellbookTeleportCache = nil
+                if self.portalBar or (self.lfgMiniBar and self.lfgMiniBar:IsShown()) then
+                    self:UpdatePortalBar(true)
+                end
             end
         end
     elseif event == "PLAYER_LOGIN" then
@@ -6586,6 +6806,7 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         end
     elseif event == "CHALLENGE_MODE_MAPS_UPDATE" or event == "SPELLS_CHANGED" then
         seasonSlotsCache = nil
+        spellbookTeleportCache = nil
         if self.portalBar or (self.lfgMiniBar and self.lfgMiniBar:IsShown()) then
             self:UpdatePortalBar(true)
         end
