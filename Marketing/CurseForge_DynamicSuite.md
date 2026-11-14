@@ -1,8 +1,8 @@
 # DynamicSuite -- CurseForge Storefront Copy & Release Changelog (v1.9.9)
 
-> **Target Game Version:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`)  
-> **Version:** `v1.9.9` (`14/11/2026`)  
-> **CurseForge Project ID:** `1804382`  
+> **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105)  
+> **Version:** v1.9.9 (14/11/2026)  
+> **CurseForge Project ID:** 1804382  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicsuite
 
@@ -11,120 +11,111 @@
 ## Section 1: CurseForge Project Description (Copy & Paste Markdown)
 
 ```markdown
-# DynamicSuite -- 8-Module Retail Midnight QoL, Utility & Performance Hub
+# DynamicSuite -- 8-Module QoL, Utility & Performance Hub
 
 [![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 
-**Version:** `v1.9.9` (`14/11/2026`) | **Target Client:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`) | **Author:** Dentee-Frostmourne
+**Version:** v1.9.9 (14/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
-**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight, zero-taint all-in-one Quality-of-Life, Mythic+/Raid utility, inventory, chat, and performance hub for **World of Warcraft Retail Midnight `12.1.5`**. Built on a **Single-Entry Consolidated Dual-Mode Architecture**, it bundles **8 tightly integrated modules** under one cohesive Obsidian Studio control panel (`/ds`) with shared theming, **202 indexed Smart Search settings**, a **6-target HUD Edit Mode**, and a **9-step Guided Setup & Conflict Scanner**.
+**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5**. It brings **8 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, plain-English Smart Search, a unified HUD Edit Mode, and a 9-step Guided Setup.
 
-Looking for just the target marking & interrupt macro module? Check out standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
+Only want target marking, world flares, and smart interrupt macros? Check out standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
 ---
 
-## Key Suite Architecture & Core Tools
+## Core Suite Features
 
-* **Unified Studio Hub (`/ds`):** Clean resizable Obsidian window with a persistent 3-zone header, 8-module Left Suite Rail (with live `[On]`/`[Off]` toggles and reorderable cards), plus Blizzard **Game Menu** (`DynamicSuite` / `DynamicSuite HUD`) and `ESC -> Options -> AddOns` launcher buttons.
-* **Global Smart Search (`/ds search <query>`):** Instant fuzzy search across **202 indexed settings** powered by plain-English intent synonyms, **6 live-counted category filter pills** (`All`, `Combat & Raid`, `FPS & Camera`, `HUD & Look`, `Bags & QoL`, `Group & Chat`), and 1-click **Jump-and-Highlight** routing straight to the right module, sub-tab, or sub-drawer.
-* **Unified `[+ HUD]` Edit Mode (`/ds hud`, `/ds edit`, `/ds resethud`):**
-  * **6 Movable HUD Targets:** `Alert Toast` (`DynamicLoad`), `Prep Bar` (`DynamicPrep`), `Raid Buffs` (`DynamicPrep`), `Focus Icons` (`DynamicMarker`), `World Flares` (`DynamicMarker`), and `Chat Frame` (`DynamicChat`).
-  * **1:1 Scale-Aware Dragging:** Accurately translates cursor movement, frame scale (`60%`-`150%`), and `UIParent` scale so bars track your cursor `1:1` at every UI scale (including `70%`).
-  * **Magnetic Screen-Edge & Bar-to-Bar Snapping:** Magnetically snaps within `11px` of screen borders/centre axes and within `9px` of neighbouring visible HUD bars (flush stacking & alignment across mixed scales) with clean **visual alignment guide lines**. Hold **`Shift`** while dragging to bypass magnetic snapping for pixel micro-adjustments.
-  * **Hard Screen-Boundary Clamping & Recovery Failsafe:** Every visual edge stays strictly inside visible screen bounds across drags, mousewheel scaling, `1px` / `Shift+10px` nudges, orientation switches, resolution changes, and `/reload`. Includes **`Reset HUD Positions`** in `ESC -> Options -> AddOns` and **`/ds resethud`** with combat-lockdown deferral protection.
-* **9-Step Guided Setup & 2-Tier Conflict Scanner (`/ds setup`, `/ds conflicts`):**
-  * **Steps:** `1. Conflicts`, `2. Load`, `3. Prep`, `4. Marker`, `5. Zoom`, `6. FPS`, `7. Group`, `8. Bags`, `9. Chat` plus **Restore Blizzard Defaults** uninstall prep.
-  * **Smart Conflict Detection & Auto-Yield:** Detects overlapping addons (including sub-module inspection for `ElvUI`, `Leatrix_Plus`, and `EllesmereUI`, plus `BetterBags`, `Baganator`, `Prat-3.0`, `Chattynator`, `DialogueUI`, `ACP`, `FocusMarker`, `PremadeGroupsFilter`, and more). Automatically yields conflicting hooks softly where appropriate or offers 1-click **Use Dynamic Only** / **Use External Only** actions.
-* **Obsidian Theme & Font Studio (`/ds theme`):** 17 customisable accent swatches (`Alert Gold`, `Astral Cobalt`, `Emerald Mint`, `Obsidian Slate`, and all 13 WoW Class Colours) plus custom colour picker, 4 surface palettes (`Midnight Pitch Black`, `Obsidian Dark`, `Slate Steel`, `Smoked Glass`), 21+ curated fonts, **Font Scale** (`95%` / `100%` / `110%`), and persisted bottom-right **Opacity** (`50%`-`100%`), **Scale** (`80%`-`120%`), and **Reload UI** footer dock.
-* **Zero-Taint Smart Coexistence (Unconditional Exclusion + `CompareSemVer`):** Internal Suite <-> standalone coexistence runs **unconditionally** at load and login regardless of third-party conflict resolution settings. Whenever `DynamicSuite` is active, it disables standalone `DynamicMarker` via `C_AddOns.DisableAddOn("DynamicMarker")` (with an instant reload prompt if already loaded), while standalone `DynamicMarker` exits immediately at top-of-file and `ADDON_LOADED` when `C_AddOns.IsAddOnLoaded("DynamicSuite")` is true, and all 8 modules run `ShouldYieldToOtherInstall` (`CompareSemVer`) so duplicate frames or HUD Edit windows never open together.
-* **Retail `12.1.5` Zero-Taint Standard:** Guards secret values via `issecretvalue()` / `canaccessvalue()`, uses native Midnight event APIs cleanly, and respects `InCombatLockdown()` across all secure buttons and frames.
+* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with an 8-module sidebar, individual On/Off switches, reorderable module cards, Game Menu shortcuts, and bottom-right Window Opacity (50%-100%), Scale (80%-120%), and Reload UI controls.
+* **Global Smart Search (`/ds search <query>`):** Search any setting in plain English (like "auto repair", "flare", or "whisper") and jump straight to the exact option with a visual highlight.
+* **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, scale (60%-150%), and align all 6 movable suite bars (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
+* **9-Step Guided Setup & Conflict Scanner (`/ds setup`, `/ds conflicts`):** Detects overlapping addons (such as ElvUI, Leatrix Plus, BetterBags, Baganator, Prat-3.0, DialogueUI, and FocusMarker) and lets you pick which addon handles each feature in one click.
+* **Theme & Font Studio (`/ds theme`):** Customise your UI with 17 accent colours (including all 13 WoW Class Colours and a custom picker), 4 dark surface themes, 21+ fonts, and adjustable text scaling.
+* **Automatic Standalone Coexistence:** If standalone DynamicMarker is also installed, DynamicSuite disables the standalone copy automatically and prompts a clean UI reload so you never get duplicate bars or conflicting HUD Edit windows.
 
 ---
 
 ## All 8 Integrated Modules
 
-### 1. DynamicLoad (`/dl`) -- Context-Aware Addon Profile Manager
-* **5 Zone Profiles (`Outdoor`, `Delves`, `Dungeons`, `Raid`, `PvP`):** Automatically stages zone-tailored addon sets and pops a smart post-loading-screen **Alert Toast** (`RELOAD TO APPLY`, never mid-fight or across seamless Delve chambers).
-* **Universal Load Security Rules:** Configure any addon as **`By Zone`**, **`Always`** (`LOCKED`), or persistent **`Never`** (`FROZEN` -- never re-enabled during zone switches).
-* **Parent-Child Addon Tree & Telemetry:** Displays grouped sub-addons, `[Suite Core]` protection tags, CPU/Memory telemetry, and account/character profile switching.
+### 1. DynamicLoad (`/dl`) -- Zone Addon Profile Manager
+* **5 Zone Profiles:** Automatically prepares tailored addon sets for Outdoor, Delves, Dungeons, Raid, and PvP, with a clean reload prompt after loading screens (never mid-fight).
+* **Load Lock Rules:** Pin any addon to By Zone, Always, or Never so zone switches never turn off essentials or re-enable addons you froze.
 
-### 2. DynamicPrep (`/dprep`, `/dp`) -- Telemetry Top Bar, Raid Buffs & Everyday QoL
-* **Zero-`OnUpdate` Telemetry Omni-Bar:** Displays customisable capsules for Primary Stat, ranked Secondary Stats, Spec & Loot Spec, M+ Keystone, Durability, and FPS/Ping, plus Lead/Assist smart visibility for Ready Check (`+ RC`) and Pull Countdown (`> Pull`).
-* **Clickable Raid Buffs & Consumables Strip (`X/Y + MISSING`):** Combat-safe clickable reminder icons with Midnight `12.x` in-combat missing class raid buff override (Mark of the Wild, Fortitude, Arcane Intellect, Skyfury, Battle Shout, Blessing of the Bronze) and single-target partner buffs.
-* **Midnight Omni Folio & Survival Macros:** 39-spec Wowhead stat priority presets, seasonal Great Vault tracker, modifier-free **`[DynamicHeal]`** sequential macro (`Healthstone -> Healing Potion`), Smart Quest & Gossip automation, cinematic auto-skip, Talking Head suppression, and **Hold `CTRL` to Release Spirit** death protection.
+### 2. DynamicPrep (`/dprep`, `/dp`) -- Telemetry Bar, Raid Buffs & QoL
+* **Top Info Bar:** Customisable bar showing Primary Stat, Secondary Stats, Spec & Loot Spec, M+ Keystone, Durability, FPS/Ping, plus Ready Check and Pull Countdown buttons for leaders.
+* **Clickable Raid Buffs & Survival Macro:** One-click reminders for missing class raid buffs and consumables, plus a smart `[DynamicHeal]` macro (Healthstone into Healing Potion), quest/gossip automation, cinematic auto-skip, and Hold CTRL to Release Spirit protection.
 
-### 3. DynamicMarker (`/dm`, `/fm`) -- Target Marking, World Flares & Smart Macros
-* **`[DynamicMark]` (General Macro) & `[DynamicKick]` (Multi-Spec Character Macro):** One-click macro creation and action-bar drag cards. `[DynamicMark]` marks your mouseover or current target with native `~icon` overwrite protection; `[DynamicKick]` automatically swaps interrupt spells across all 13 classes and specialisations out of combat (supporting `Smart Auto-Target`, `Mouseover > Focus > Target`, `Focus > Mouseover > Target`, or `@focus` only).
-* **`F4` / `F5` World Flare Cycle:** Press `F4` (customisable) to drop enabled `@cursor` world markers in your preferred sequence, and `F5` to clear all flares (`/cwm all`).
-* **On-Screen Icon Bar & World Flare Bar HUDs:** Independent **Always / Group / Off** visibility drivers, **Horizontal / Vertical** layout toggle, scaling (`60%`-`150%`), and ready-check / healer mana drink reminders.
-* **Official `FocusMarkerDB` Migration (`/dm import`):** Automatically imports legacy FocusMarker settings and upgrades `[FocusMarker]` / `[FocusMark]` macros to `[DynamicMark]` cleanly.
+### 3. DynamicMarker (`/dm`, `/fm`) -- Target Marking, World Flares & Macros
+* **Smart Macros:** One-click `[DynamicMark]` focus/raid marker macro and `[DynamicKick]` interrupt macro that automatically updates your interrupt spell when you swap specs across all 13 classes.
+* **World Flares & Floating HUD Bars:** Press F4 to cycle ground flares at your cursor and F5 to clear all flares, with customisable horizontal or vertical Focus Icon and World Flare bars and automatic FocusMarker settings import (`/dm import`).
 
-### 4. DynamicBags (`/dbag`, `/dbags`) -- Zero-Lag Virtual Category Bags & Bank Companion
-* **Virtual Category Engine & Presets:** Pre-computes slots in memory (Keystones, Consumables, Gear Sets, BoE/WuE, Reagents, Junk) with `Sort: A-Z`, live search highlight, and item upgrade/tier/binding badges without server-sort lag.
-* **Unified `DynamicBank` (Personal, Reagent, Warband & Guild Bank):** Suppresses Blizzard bank frame flashes, preserves unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to `0` items, and displays permission/quota badges with view-only dimming.
-* **Drop-Anywhere Stack Splitting, `/dbag merge` & Alt Vault:** 1-click multi-pass stack merger (`/dbag merge`), Quick-Open Pouches queue, cross-character Alt & Warband Inventory Vault with aggregated tooltip counts, plus Auto-Repair, Auto-Sell Grey Junk, Fast Auto-Loot, and auto-fill `DELETE` confirmation.
+### 4. DynamicBags (`/dbag`, `/dbags`) -- Category Bags & Bank Viewer
+* **Fast Category Bags:** Sorts your items into clean categories (Keystones, Consumables, Gear Sets, BoE/WuE, Reagents, Junk) with A-Z sorting, live search, and upgrade/binding badges without server-sort lag.
+* **Unified Bank & Alt Vault:** View your Personal, Reagent, Warband, and Guild Bank in one window, track items across all your alts, split/merge stacks (`/dbag merge`), and automate repairs, grey junk selling, and fast looting.
 
-### 5. DynamicChat (`/dchat`, `/dc`) -- Target Whisper `/ww`, Smoked-Glass Skin & History
-* **In-Combat `/ww` & `/qq` Shortcuts:** Type **`/ww `** (instant space-trigger or `/ww <msg>`) to whisper your friendly player target, **`/qq`** to leave party immediately, plus `/rl` (reload) and `/lg` (leave group) fallbacks.
-* **Zero-Taint Chat Skin & Left Utility Rail:** Borderless Smoked-Glass styling matching chat text contrast, scrollable tab bar, compact `[P]`/`[R]`/`[G]`/`[I]` channel tags, combat whisper protection, non-sticky whispers, clickable URLs (`/dc copy`), per-channel sound alerts, **GPU Buffer Optimiser** (`250`-line cap), and chat history restore across `/reload`.
+### 5. DynamicChat (`/dchat`, `/dc`) -- Whispers, Chat Skin & History
+* **Quick Chat Shortcuts:** Type `/ww` to whisper your friendly target (even in combat), `/qq` to leave group fast, `/rl` to reload, and `/lg` to leave group.
+* **Clean Smoked-Glass Chat:** Borderless chat frame with compact channel tags, clickable URLs (`/dc copy`), per-channel sound alerts, and chat history saved across UI reloads.
 
-### 6. DynamicFPS (`/dfps`) -- Zone Graphics Guard & `SpellQueueWindow` Tuner
-* **6 Zero-Reload Zone Graphics Profiles (`Outdoor`, `Cities`, `Delves`, `Dungeons`, `Raid`, `PvP`):** Automatically switches view distance, shadows, ground clutter, and particle/spell density with zero loading screen while keeping boss ground telegraphs (`projectedTextures`) hard-locked ON.
-* **Hardware Starter Presets (`Competitive`, `Balanced`, `Low`, `Ultra`) & Minimum Combat FPS Guard:** Maintains crisp combat frame rates automatically and tunes `SpellQueueWindow` adaptively from live World Ping + Haste.
+### 6. DynamicFPS (`/dfps`) -- Zone Graphics & Responsiveness
+* **Zero-Reload Zone Graphics:** Automatically adjusts view distance, shadows, clutter, and spell density between Cities, Outdoor, Delves, Dungeons, Raid, and PvP while keeping boss floor mechanics clearly visible.
+* **Combat FPS Guard & Spell Queue:** Protects your frame rate during heavy combat and tunes SpellQueueWindow automatically from your live ping and haste.
 
-### 7. DynamicGroup (`/dgroup`, `/dg`) -- Premade LFG Filters, Roster Ledger & Auto-Invite
-* **In-Place Premade Groups Upgrade & LFG Mini-Bar:** Adds Datacentre Region tags (`OCE`, `US-W`, `US-C`, `US-E`, `LATAM`, `BR`), Leader M+ Score, Bloodlust/Combat-Res utility badges, and 5-slot class/role dots directly inside Blizzard's LFG list.
-* **1-Click Sign-Up, Roster Ledger & Automation:** Instant role sign-up (hold Shift/Alt to edit note), live party gear/enchant/consumable audit, Guild/Friend/Whisper keyword Auto-Invite with Queue Protection Shield, and Mythic+ Keystone auto-insert.
+### 7. DynamicGroup (`/dgroup`, `/dg`) -- Premade Groups & Roster Audit
+* **Upgraded Premade Group Finder:** Shows Datacentre Region tags (OCE, US-W, US-C, US-E, LATAM, BR), Leader M+ Score, Bloodlust/Combat-Res badges, and 5-slot class/role dots directly in Blizzard's group list.
+* **1-Click Sign-Up & Party Tools:** Sign up in one click, inspect party gear/enchants/consumables at a glance, auto-invite friends/guildies by whisper keyword, and auto-insert Mythic+ keystones.
 
-### 8. DynamicZoom (`/dz`) -- 39-Yard Camera Unlock & Situational Auto-Zoom
-* **Max 39-Yard Camera Distance (`2.6x` factor):** Unlocks the maximum camera overview with reactive scroll-wheel acceleration and smooth ease transitions (`/dz max`).
-* **Collision Occlusion Shield & Situational Modes:** Fades intersecting tree canopies and dungeon pillars cleanly instead of snapping the camera forward, plus optional per-zone zoom distances (Combat, Mount/Skyriding, Indoors/Delves) and ActionCam pitch/shoulder framing.
+### 8. DynamicZoom (`/dz`) -- 39-Yard Camera & Smooth Zoom
+* **Max Camera Distance:** Unlocks full 39-yard camera zoom (`/dz max`) with smooth scroll-wheel acceleration.
+* **Smart Occlusion & Auto-Zoom:** Fades blocking trees and dungeon pillars instead of snapping your camera forward, with optional zoom presets for combat, mounting, and indoors.
 
 ---
 
-## Slash Commands Reference
+## Slash Commands
 
 | Command | Action |
 | :--- | :--- |
-| `/ds` or `/dynamicsuite` | Open or toggle the unified **DynamicSuite Studio** window |
-| `/ds hud` / `/ds edit` / `/ds move` | Toggle unified **HUD Edit Mode** across all movable suite frames |
-| `/ds resethud` | Reset all suite HUDs (and DynamicMarker bars) to safe screen-clamped defaults |
-| `/ds search <query>` | Jump directly to **Global Smart Search** with `<query>` pre-filled |
-| `/ds setup` / `/ds guided` | Open the **9-Step Guided Setup Wizard** |
-| `/ds conflicts` | Run the **External Addon Conflict Diagnostic** and print chat summary |
-| `/ds theme` / `/ds studio` | Open the **Obsidian Theme & Font Studio** |
-| `/ds changelog` | Toggle the full **DynamicSuite Release Notes** viewer |
-| `/ds reset` | Reset the DynamicSuite hub window size and position |
-| `/ds reload` | Reload the user interface (`ReloadUI()`) |
-| `/dl` or `/dynamicload` | Jump to **DynamicLoad** (also supports `auto`, `status`, `lock`, `unlock`, `freeze`, `profile`, `toast`) |
-| `/dprep` or `/dp` | Jump to **DynamicPrep** (also `/dp edit`, `/dp buffs`, `/dp qol`, `/dp reset`) |
-| `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Jump to **DynamicMarker** (supports `hud`, `resethud`, `lock`, `unlock`, `flares`, `macros`, `mute`, `show`, `hide`, `import`, `reset`) |
-| `/dbag` or `/dbags` | Jump to **DynamicBags** (also `bag`, `bank`, `warband`, `guild`, `merge`, `clear`, `vault clear`, `reset`) |
-| `/dchat` or `/dc` | Jump to **DynamicChat** (also `history`, `copy`, `reset`; plus chat shortcuts `/ww`, `/qq`, `/rl`, `/lg`) |
-| `/dfps` or `/dynamicfps` | Jump to **DynamicFPS** (also `status`, `apply`, `restore`, `reset`) |
-| `/dgroup` or `/dg` | Jump to **DynamicGroup** (also `rc`, `pull`, `reset`) |
-| `/dz` or `/dynamiczoom` | Jump to **DynamicZoom** (also `max` / `39`, `reset`) |
+| `/ds` or `/dynamicsuite` | Open or close the DynamicSuite window |
+| `/ds hud`, `/ds edit`, `/ds move` | Toggle HUD Edit Mode across all movable suite bars |
+| `/ds resethud` | Reset all suite HUD bars to safe screen-clamped default positions |
+| `/ds search <query>` | Open Global Smart Search with your query pre-filled |
+| `/ds setup` or `/ds guided` | Open the 9-Step Guided Setup Wizard |
+| `/ds conflicts` | Check for conflicting addons and print a summary in chat |
+| `/ds theme` or `/ds studio` | Open the Theme & Font Studio |
+| `/ds changelog` | View the DynamicSuite release notes |
+| `/ds reset` | Reset the DynamicSuite window size and position |
+| `/ds reload` | Reload your user interface |
+| `/dl` or `/dynamicload` | Open DynamicLoad (supports auto, status, lock, unlock, freeze, profile, toast) |
+| `/dprep` or `/dp` | Open DynamicPrep (supports edit, buffs, qol, reset) |
+| `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, import, reset) |
+| `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
+| `/dchat` or `/dc` | Open DynamicChat (supports history, copy, reset; plus `/ww`, `/qq`, `/rl`, `/lg`) |
+| `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
+| `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, reset) |
+| `/dz` or `/dynamiczoom` | Open DynamicZoom (supports max, 39, reset) |
 
 ---
 
 ## Support & Contact
 
-* **Buy the Developer a Coffee (Ko-fi):** `https://ko-fi.com/dentee`
-* **Full Suite CurseForge (`DynamicSuite`):** `https://www.curseforge.com/wow/addons/dynamicsuite`
-* **Standalone CurseForge (`DynamicMarker`):** `https://www.curseforge.com/wow/addons/dynamicmarker`
-* **Direct Contact & Feedback (Email):** `denteedev@gmail.com`
+* **Buy the Developer a Coffee (Ko-fi):** https://ko-fi.com/dentee
+* **Full Suite CurseForge (DynamicSuite):** https://www.curseforge.com/wow/addons/dynamicsuite
+* **Standalone CurseForge (DynamicMarker):** https://www.curseforge.com/wow/addons/dynamicmarker
+* **Direct Contact & Feedback (Email):** denteedev@gmail.com
 ```
 
 ---
 
-## Section 2: CurseForge File Changelog Block (`v1.9.9` -- `14/11/2026`)
+## Section 2: CurseForge File Changelog Block (v1.9.9 -- 14/11/2026)
 
 ```markdown
-## DynamicSuite & Standalone DynamicMarker v1.9.9 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
+## DynamicSuite & Standalone DynamicMarker v1.9.9 (14/11/2026)
 
-### Highlights & Release Changes
-* **Canonical `UIParent`-Local HUD Coordinate Contract Across `/reload` (`DynamicMarker.lua`, `DynamicSuite_UI.lua`):** Enforced one canonical coordinate contract for `TargetBar` and `FlareBar` -- storing saved `X` and `Y` strictly in unscaled `UIParent`-local offsets relative to screen `CENTER`, applying `SetScale` and `SetSize` via `DM:SyncBarScaleAndSizeToDB` before `SetPoint` and `SetClampedToScreen(true)`, dividing by `barScale` strictly inside `DM:SetBarCenterPoint`, and removing destructive early-load DB writes in `DM:ApplyHUDPosition` so bars parked flush against the top edge, bottom edge, or corners at scales `0.70`, `1.00`, and `1.30` stay at the exact same pixel coordinates across `/reload`.
-* **Custom Dark-Obsidian Coexistence Reload Modal & Unconditional Mutual Exclusion (`DynamicSuite_Core.lua`, `DynamicLoad.lua`, `DynamicMarker.lua`):** Replaced Blizzard's `StaticPopup` with a bespoke dark-obsidian modal frame (`DynamicSuiteMarkerConflictModal` / `ShowMarkerConflictReloadModal` with `#0B0D12` `0.96` alpha background, `1px` dark slate border, Blaze Orange `#F97316` title/accent bar, flat `"Reload UI"` and `"Later"` buttons, `DIALOG` strata, `ESC` dismissal, and combat deferral) whenever `EnforceStandaloneDynamicMarkerExclusion` disables an already-loaded standalone `DynamicMarker`.
-* **Single Unified HUD Edit Mode:** Suppressed the legacy standalone `DynamicMarker` HUD Edit popup and overlay inside `DynamicSuite` (`DM:IsRunningInSuite()`) so only the unified bottom `DynamicSuite` HUD Edit dock displays, while keeping standalone `DynamicMarker` HUD Edit Mode (`DynamicMarkerGridOverlay`) intact when run solo.
-* **Documentation & Support Parity (`README.md`, `.toc`, Storefront Docs):** Aligned `DynamicSuite`'s `README.md`, `DynamicSuite.toc` (`X-Email` / `X-Donate`), and CurseForge storefront copy with `DynamicMarker`'s Ko-fi badge, metadata header, Smart Coexistence explanation, full Slash Commands table, and `Support & Contact` section.
+### Fixed
+* **Top & Bottom Screen-Edge Bar Drift:** Focus Icons and World Flare bars parked flush against the top edge, bottom edge, or corners now stay in their exact saved positions after reloading the UI at every bar scale (70%, 100%, and 130%).
+* **Duplicate HUD Edit Windows:** Standalone DynamicMarker's extra HUD Edit popup no longer appears inside DynamicSuite, leaving only the unified bottom HUD Edit dock.
+* **DynamicMarker Reset Bounds:** Resetting HUD positions (`/ds resethud`, `/dm resethud`, or from Options) now resets scale to 100%, restores horizontal layout, and keeps bars cleanly inside your screen bounds.
+
+### Improved
+* **Custom Coexistence Reload Prompt:** Replaced Blizzard's default popup with a matching dark-obsidian reload modal whenever DynamicSuite disables a conflicting standalone DynamicMarker install.
+* **Storefront & Readme Clarity:** Updated descriptions, slash command tables, and support links across both DynamicSuite and standalone DynamicMarker.
 ```

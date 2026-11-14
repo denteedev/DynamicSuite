@@ -3,99 +3,83 @@
 
 ---
 
-## DynamicSuite & All 8 Modules v1.9.9 (`/ds`, `/dm`, `/dbag`)
-* **[FIX] Canonical `UIParent`-Local HUD Coordinate Contract & Zero `/reload` Edge Drift (`DynamicMarker.lua`, `DynamicSuite_UI.lua`):**
-  * **Canonical `UIParent`-Local Offsets (`DM:SetBarCenterPoint` & `DM:GetCanonicalHUDPosition`):** Stored saved `X` and `Y` coordinates strictly in unscaled `UIParent`-local offsets relative to screen `CENTER`, and divided `X` and `Y` by `barScale` strictly at `SetPoint("CENTER", UIParent, "CENTER", x / barScale, y / barScale)` inside `DM:SetBarCenterPoint`, eliminating scale-multiplication drift across `0.70`, `1.00`, and `1.30` scales.
-  * **Strict `SetScale` / `SetSize` Ordering & Non-Destructive Layout Restore:** Applied `SetScale` and `SetSize` (including button count, button size, spacing, and `HORIZONTAL`/`VERTICAL` orientation) via `DM:SyncBarScaleAndSizeToDB` before `SetPoint` and `SetClampedToScreen(true)` across initialization, `PLAYER_ENTERING_WORLD`, `RefreshTargetBar`/`RefreshFlareBar`, and profile switches, and removed early-load `WriteHUDCoordsToDB` mutations from `DM:ApplyHUDPosition` so pre-`PLAYER_LOGIN` default `UIParent` dimensions never overwrite edge-pinned coordinates across `/reload`.
-  * **100% Round-Trip Symmetry & `Reset HUD Positions` Bounds:** Unified coordinate reads/writes across `DynamicSuite_UI.lua` HUD Edit drag-stop, `DynamicMarker.lua` standalone HUD Edit drag-stop, Quick Align (`TOP`/`BOTTOM`/`LEFT`/`RIGHT`/`CENTER_H`/`CENTER_V`), directional nudges, exact X/Y inputs, `DM:ResetSingleHUDPosition` (`scale = 1.00`, `HORIZONTAL`, screen-clamped defaults), and `/reload` restore, plus a one-time `canonicalUIParentCoordsV199` migration in `DM:InitDB()`.
-* **[UI & FIX] Custom Dark-Obsidian Coexistence Reload Modal & Unconditional Mutual Exclusion (`DynamicSuite_Core.lua`, `DynamicLoad.lua`, `DynamicMarker.lua`):**
-  * **Bespoke Dark-Obsidian Reload Modal (`DynamicSuiteMarkerConflictModal` / `ShowMarkerConflictReloadModal`):** Replaced Blizzard's `StaticPopup` completely with a custom dark-obsidian modal frame (`#0B0D12` at `0.96` alpha, `1px` dark slate border `#333D4F`, Blaze Orange `#F97316` title/accent bar, flat `"Reload UI"` primary button and `"Later"` secondary button, `DIALOG` strata, `UISpecialFrames` `ESC`-key dismissal, and combat-lockdown deferral to `PLAYER_REGEN_ENABLED`) mirrored across both `DynamicSuite` and standalone `DynamicMarker`.
-  * **Unconditional Suite <-> Standalone Mutual Exclusion:** Confirmed internal Suite <-> standalone coexistence (`EnforceStandaloneDynamicMarkerExclusion`, top-of-file/event early exit, and `ShouldYieldToOtherInstall`) runs unconditionally regardless of third-party addon conflict settings, actively disabling standalone `DynamicMarker` via `C_AddOns.DisableAddOn("DynamicMarker")` when `DynamicSuite` is enabled and triggering `ShowMarkerConflictReloadModal()` when standalone `DynamicMarker` was already loaded in the current session.
-* **[FIX] Single Unified HUD Edit Mode & Non-Colliding Standalone Inspector (`DynamicMarker.lua`, `DynamicSuite_UI.lua`):**
-  * Suppressed `DynamicMarkerEditModeInspector` and standalone grid overlay creation whenever `DynamicMarker` runs inside `DynamicSuite` (`DM:IsRunningInSuite()`), ensuring ONLY the unified bottom `DynamicSuiteEditModeModal` dock and `DynamicSuiteSnapGridOverlay` render when toggling HUD Edit Mode, while retaining standalone `DynamicMarker`'s HUD Edit UI (`DynamicMarkerGridOverlay`) when running solo.
-* **[DOCS & LOCKSTEP] `README.md` / CurseForge Parity & Automated Pre-Flight Guards (`README.md`, `DynamicSuite.toc`, `deploy.ps1`):**
-  * Upgraded `README.md` and CurseForge `DynamicSuite` / `DynamicMarker` storefront templates to share the Ko-fi badge, `v1.9.9` (`14/11/2026`) metadata header, accurate Smart Coexistence runtime explanation, complete Slash Commands table across `/ds` and all 8 modules, and unified `Support & Contact` section (plus `X-Email` / `X-Donate` headers in `DynamicSuite.toc`).
-  * Added automated `deploy.ps1` pre-flight assertions verifying canonical `SetBarCenterPoint`/`GetCanonicalHUDPosition` helpers, absence of legacy `StaticPopup` coexistence dialogs, dark-obsidian `ShowMarkerConflictReloadModal` parity, HUD Edit frame-name non-collision, and `README.md` / CurseForge Ko-fi badge + `Support & Contact` parity across both addons.
+## DynamicSuite & All 8 Modules v1.9.9 (14/11/2026)
+
+### Fixed
+* **Top & Bottom Screen-Edge Bar Drift:** Focus Icons and World Flare bars parked flush against the top edge, bottom edge, or corners now stay in their exact saved positions after reloading the UI at every bar scale (70%, 100%, and 130%).
+* **Duplicate HUD Edit Windows:** Standalone DynamicMarker's extra HUD Edit popup no longer appears when running DynamicSuite, leaving only the unified bottom HUD Edit dock while keeping standalone HUD Edit Mode intact when run solo.
+* **DynamicMarker Reset Bounds:** Resetting HUD positions (`/ds resethud`, `/dm resethud`, or from Options) now resets scale to 100%, restores horizontal layout, and keeps bars cleanly inside your screen bounds.
+* **Automatic Standalone Handoff:** Running both DynamicSuite and standalone DynamicMarker together now cleanly disables the standalone copy and prevents duplicate bars or settings conflicts.
+
+### Improved
+* **Custom Coexistence Reload Prompt:** Replaced Blizzard's default popup with a matching dark-obsidian reload modal whenever DynamicSuite disables a conflicting standalone DynamicMarker install.
+* **Storefront & Readme Clarity:** Updated descriptions, slash command tables, and support links across both DynamicSuite and standalone DynamicMarker.
 
 ---
 
-## DynamicSuite & All 8 Modules v1.9.8 (`/ds`, `/dm`, `/dbag`)
-* **[FIX] HUD Edit Target & World Marker Bar Scaled Edge-Drag & `/reload` Persistence (`DynamicMarker.lua`, `DynamicSuite_UI.lua`):**
-  * Fixed Target Marker and World Marker (Flare) bars jumping back to the middle-right of the screen after dragging to any screen edge (especially at non-100% scales such as `70%` or `75%`): added `DM:SyncBarScaleAndSizeToDB()` prior to every clamping pass so bar scale and vertical/horizontal bounds (`292x40` / `40x292`) are applied before computing screen limits, canonicalised anchors to `CENTER`/`CENTER` via `DM:ConvertAnchorToCenterLocal()`, synced all flat/nested/profile `DynamicMarkerDB` mirrors atomically via `DM:WriteHUDCoordsToDB()`, cleared drag state before final `SaveHUDPosition()` on Edit Mode exit, tracked final cursor-delta bounds in `OnDragStop`, and kept `SetClampedToScreen(false)` + `SetClampRectInsets(0, 0, 0, 0)` across init, refresh, Edit Mode exit, and `UI_SCALE_CHANGED`/`PLAYER_ENTERING_WORLD` across both full `DynamicSuite` and standalone `DynamicMarker`.
-* **[FIX] `DynamicChat` Flush Bottom-Left `(0, 0)` Clamping & Persistence (`DynamicChat.lua`, `DynamicSuite_UI.lua`):**
-  * Enforced `ChatFrame1:SetClampedToScreen(false)` and `SetClampRectInsets(0, 0, 0, 0)` (alongside `ChatFrame1Background` and `ChatFrame1EditBox`) whenever `DynamicChat` manages chat layout so Blizzard's default clamp insets never push `ChatFrame1` upward by ~30px.
-  * Added `DynamicChat:GetVisibleContainerExtents()` and `DynamicChat:GetLiveOuterBottomLeft()` so `ClampHudCoordsToScreen`, `ReadPeerOrLiveHudPos("CHAT")`, and `DynamicChat`'s layout restore measure only the visible chat container frame without external Blizzard side-button overhangs, and canonicalised `CHAT` (`hudTargetMeta`, drag shield, resize grip, quick align, `SaveChatFramePosition`, and `ApplySavedChatFramePosition`) to `BOTTOMLEFT` outer-container coordinates so dragging, nudging, or resetting to `X = 0, Y = 0` sits flush against the bottom-left screen corner with zero gap across Edit Mode toggles, UI scale/display events, and `/reload`.
-* **[LOCKSTEP] `v1.9.8` Suite <-> Standalone Parity & Automation (`deploy.ps1`, `release.yml`, `.toc`, Docs):**
-  * Added HUD Edit coordinate/anchor parity assertions (`SyncBarScaleAndSizeToDB`, `ConvertAnchorToCenterLocal`, `WriteHUDCoordsToDB`, `GetVisibleContainerExtents`, `GetLiveOuterBottomLeft`, and zero `cf:SetClampedToScreen(true)` in `DynamicChat.lua`) alongside WoW AddOns `DynamicMarker` standalone sync checks, and bumped lockstep `v1.9.8` versions across all `.toc`, Lua fallbacks, and public docs.
-  * Configured automatic CurseForge release-channel routing (`alpha` for `-alpha` tags, `beta` for `-beta` / `-rc` tags, `release` for clean `vX.Y.Z` tags) and GitHub pre-release tagging across `release.yml` (both `DynamicSuite` `1804382` and standalone `DynamicMarker` `1331651`) and `deploy.ps1` `-ReleaseTag` validation/channel summaries.
+## DynamicSuite & All 8 Modules v1.9.8 (14/11/2026)
+
+### Fixed
+* **Edge-Dragged Marker & Flare Bars:** Target Icon and World Flare bars dragged to screen edges at smaller scales (such as 70% or 75%) no longer jump inward on mouse release or after reloading the UI.
+* **Flush Bottom-Left Chat Positioning:** DynamicChat now sits completely flush against the bottom-left corner at X = 0, Y = 0 with no ~30px gap across Edit Mode toggles, scale changes, and reloads.
+
+### Improved
+* **Release Channel Packaging:** Streamlined automated CurseForge release packaging across both DynamicSuite and standalone DynamicMarker.
 
 ---
 
-## DynamicSuite & All 8 Modules v1.9.7 (`/ds`, `/dm`, `/dbag`)
-* **[FEATURE] Official Full-Suite CurseForge Release Pipeline (`DynamicSuite` Project ID `1804382` + Standalone `DynamicMarker` Project ID `1331651`):**
-  * **Dual-Artifact GitHub Actions & `.pkgmeta` Packaging (`release.yml`, `.pkgmeta`, `deploy.ps1`):** Connected full `DynamicSuite` (`Project ID 1804382`) alongside standalone `DynamicMarker` (`Project ID 1331651`) in our automated `BigWigsMods/packager@v2` release pipeline so every `v*` tag stages, verifies, and publishes both clean runtime addons (`DynamicSuite-<tag>.zip` and `DynamicMarker-<tag>.zip`) with zero development or internal clutter, while local release-zip validation builds and extraction-verifies both ZIP packages end-to-end.
-  * **Code-Accurate Storefront Description (`Marketing/CurseForge_DynamicSuite.md`):** Authored full CurseForge storefront documentation covering all 8 integrated modules (`DynamicLoad`, `DynamicPrep`, `DynamicMarker`, `DynamicZoom`, `DynamicFPS`, `DynamicGroup`, `DynamicBags`, `DynamicChat`), Global Smart Search (`202` indexed settings), `6`-target scale-aware `[+ HUD]` Edit Mode with magnetic snapping & `/ds resethud`, `9`-Step Guided Setup & `2`-Tier Conflict Scanner, Theme & Font Studio, Smart Coexistence, and complete slash command reference.
-* **[UI] Live CurseForge URLs & Support Modal Cleanup (`DynamicSuite_UI.lua`, `DynamicMarker.lua`, `README.md`):**
-  * Removed all remaining placeholder status labels next to `https://www.curseforge.com/wow/addons/dynamicsuite` across in-game Support panels/modals and public Markdown docs so both `DynamicSuite` and standalone `DynamicMarker` show the live CurseForge URLs, enforced automatically by `deploy.ps1`.
-* **[FIX] Hardened `ShouldYieldToOtherInstall` Dual-Mode Coexistence (All 8 `Modules/Dynamic*.lua` Files):**
-  * Updated semantic-version coexistence across all 8 bundled/standalone modules (`DynamicBags`, `DynamicChat`, `DynamicFPS`, `DynamicGroup`, `DynamicLoad`, `DynamicMarker`, `DynamicPrep`, `DynamicZoom`) to check both `C_AddOns.IsAddOnLoaded` and character/global `C_AddOns.GetAddOnEnableState` cleanly before `PLAYER_LOGIN` so standalone installs and `DynamicSuite` always defer cleanly to the newer version regardless of load order.
+## DynamicSuite & All 8 Modules v1.9.7 (14/11/2026)
+
+### Added
+* **Official Dual CurseForge Support:** Full DynamicSuite is now live on CurseForge alongside standalone DynamicMarker, with direct cross-links in both Support panels.
+
+### Fixed
+* **Load-Order Coexistence:** All 8 modules cleanly defer to the newer version if standalone and suite installs are present at the same time, regardless of load order.
 
 ---
 
-## DynamicSuite & All 8 Modules v1.9.6 (`/ds`, `/dm`, `/dbag`)
-* **[FIXED] HUD Edit Scale-Aware Clamping, Magnetic Edge/Bar Snapping & `Reset HUD Positions` Failsafe (`DynamicSuite_UI.lua`, `DynamicSuite_Core.lua`, `DynamicMarker.lua`, `DynamicPrep.lua`, `DynamicLoad.lua`):**
-  * **1:1 Scale-Aware Dragging (`uScale` Conversion):** Fixed HUD Edit drag tracking across `DynamicSuite_UI.lua`, `DynamicMarker.lua`, `DynamicPrep.lua`, and `DynamicLoad.lua` to convert cursor movement, frame effective scale, and `UIParent` effective scale into unified `UIParent` coordinates so cursor tracking stays 1:1 at every scale (including `60%`-`150%` and `70%`), alongside fixing live Chat and Clickable Raid Buffs offset calculations.
-  * **Magnetic Screen-Edge & Bar-to-Bar Snapping + Visual Guides:** Added magnetic screen-edge/centre snapping (`11px` threshold) and cross-HUD bar-to-bar flush stacking/alignment snapping (`9px` threshold across all visible scaled frames) with live `DynamicSuiteSnapGuideOverlay` alignment lines, `Shift`-to-bypass micro-adjustment support (while always enforcing final screen-boundary clamping), and `Shift + Click` `10px` inspector nudges in `DynamicMarker.lua`.
-  * **Unified Screen-Boundary Clamping & Auto-Recovery:** Added `ClampHudCoordsToScreen`, `DM:ClampHUDPositionToScreen`, `ClampPrepFrameToScreen`, and `ClampToastCoordsToScreen` across drag updates/stops, directional nudges, X/Y EditBoxes, alignment buttons, bar orientation/width changes, `SetHudScale`, login (`PLAYER_LOGIN` / `PLAYER_ENTERING_WORLD`), `UI_SCALE_CHANGED`, and `DISPLAY_SIZE_CHANGED`.
-  * **`Reset HUD Positions` Failsafe & Slash Parity:** Added a `Reset HUD Positions` button inside `ESC -> Options -> AddOns` (`DynamicSuite` and standalone `DynamicMarker`), wired `/ds resethud` alongside `/dm resethud` (`/fm resethud`), and guarded all HUD resets against `InCombatLockdown()` with safe post-combat deferral and clear chat warnings.
-* **[FIXED] `DynamicBags` Zero-Flash Guild Bank / Bank Open, Unqueried Tab Snapshot Preservation, A-Z Sort & Automation Hardening (`DynamicBags.lua`, `DynamicSuite_Core.lua`):**
-  * **Zero-Flash Guild Bank & Bank Suppression After `/reload` (`DynamicBags.lua`):** Added `SetScale(0.0001)` suppression inside `SuppressBankPanel` and `UIParentManageFramePositions` / `UpdateUIPanelPositions` hooks (restoring `SetScale(1)` when disabled), registered `GUILDBANKFRAME_OPENED` alongside `GUILDBANKFRAME_CLOSED` to dismiss `DUIQuestFrame`/`GossipFrame` cleanly and open `DynamicBank` without flashing Blizzard frames on LoadOnDemand opening.
-  * **Unqueried Guild Bank Tab Snapshots & Live 0-Item Tabs (`DynamicBags.lua`):** Added `S.queriedGuildTabs` session tracking (`U.SelectGuildBankTab`, `U.SnapshotGuildBank`, `U.ResetGuildBankSessionState`) so unqueried Guild Bank tabs preserve their cached items across `/reload` in the `All` view while queried tabs accurately reflect live additions and withdrawals down to `0` remaining items; also updated `U.SnapshotBank()` so live Personal and Warband Bank tabs reflect `0` remaining items when emptied, and expanded `U.GetVaultStateSignature()` with tab permission/quota metadata and `uncached` flags so post-open `0.05s` renders trigger reliably when quota data streams in.
-  * **Visual `Sort: A-Z` Weak Ordering & Split-Stack Drop Placement (`DynamicBags.lua`):** Fixed `SortObj` strict weak ordering when uncached items have empty names (`aHas ~= bHas`) with numeric `bag`/`gTab` + `slot`/`gSlot` tie-breakers, passed `"craft"` header context to `U.PlaceCursorItemInFreeSlot`, verified `GetCursorInfo() ~= "item"` after `PickupContainerItem` so specialized bags or rejected slots fall through cleanly, skipped `Reagentbank` (`-3`) for non-reagents in `All` view, and enforced Guild Bank deposit quota checks in `U.PlaceCursorItemInFreeBankSlot`.
-  * **Guild Bank `T1..Tn` Badge Spacing, View-Only Dimming & Search Filter (`DynamicBags.lua`):** Widened badged Guild Bank sub-tab buttons (`46px`) with left-shifted labels so `"T1"` and 2-digit quota badges never overlap, preserved `0.55` view-only alpha for unwithdrawable Guild Bank items in `U.RenderCompanionBank()`, and extended `U.ApplySearch()` to filter/dim `DynamicBank` buttons while preserving base live/view-only/snapshot alpha.
-  * **Tab 3 Automation Sync, Fast Loot Guard & Expanded `/dbag` Commands (`DynamicBags.lua`, `DynamicSuite_Core.lua`):** Synchronised `autoRepair` <-> `autoRepairEnabled` and `autoSellJunk` <-> `autoSellGrey` across `EnsureDB()`, Tab 3 toggles, `U.AutoSellJunk()`, and `DynamicSuite:ResolveConflict`; added a `0.15s` burst guard and `LootSlotHasItem` check to `HandleFastAutoLoot()`; supported Retail 12.x `EditBox`/`Button1` casing in `SetupDeleteConfirmationHook()`; clamped and added a `Reload UI` button to standalone settings; and added `/dbag merge`, `clear`, `bank`, `warband`, `guild`, and `help` subcommands.
-* **[UI] Suite <-> Standalone `DynamicMarker` Scrollable Changelog Modal, Smart Search Sync & Automated Release Guards (`DynamicMarker.lua`, `DynamicSuite_Core.lua`, `DynamicSuite_UI.lua`, `deploy.ps1`):**
-  * **Live Scrollable Standalone Changelog Modal (`DynamicMarker.lua`):** Replaced the legacy static 5-bullet modal text in `ShowStudioModal("CHANGELOG")` with a scrollable `ScrollFrame` that dynamically formats all entries from `DynamicMarker.CHANGELOG.entries` with colour-coded `[FEATURE]`, `[FIX]`, and `[UI]` badges matching full `DynamicSuite`.
-  * **Smart Search Index Sync & Lockstep Checks (`DynamicSuite_Core.lua`, `deploy.ps1`):** Updated `DynamicBags` Tab 2/3 Smart Search labels, indexed `Remember Last Opened Bank & Sub-Tab` and `Quick-Open Pouches & Quick-Open Queue`, removed the retired `Compatibility Mode` search entry, and automated lockstep version verification across standalone/storefront markdown docs and `ShouldYieldToOtherInstall` fallbacks inside `deploy.ps1`.
+## DynamicSuite & All 8 Modules v1.9.6 (14/11/2026)
+
+### Added
+* **Magnetic HUD Snapping & Alignment Guides:** Bars now snap cleanly to screen edges, screen centres, and neighbouring HUD bars with live alignment lines (hold Shift to fine-tune freely).
+* **HUD Reset Failsafe:** Added Reset HUD Positions in Blizzard Options alongside `/ds resethud` and `/dm resethud` (safely deferred if used in combat).
+* **More Bag Commands:** Added `/dbag` shortcuts for merge, clear, bank, warband, guild, and help.
+
+### Fixed
+* **Zero-Flash Bank & Guild Bank:** Blizzard's default Bank and Guild Bank frames no longer flash briefly when opening DynamicBank after a reload.
+* **Guild Bank Tab Snapshots & Sorting:** Unqueried Guild Bank tabs keep their saved item snapshots across reloads while queried tabs update live down to 0 items, A-Z sorting handles uncached items cleanly, and stack splitting works smoothly across specialised bags.
+* **Auto-Repair, Auto-Sell & Fast Loot:** Synchronised Tab 3 merchant automation toggles, guarded fast auto-loot bursts, and updated delete-confirmation auto-fill for Retail 12.1.5.
+
+### Improved
+* **Standalone Changelog Viewer:** Standalone DynamicMarker's Changelog modal now scrolls through full release notes with colour-coded badges matching DynamicSuite.
 
 ---
 
-## DynamicSuite & All 8 Modules v1.9.5 (`/ds`, `/dm`)
-* **[UI] Standalone `DynamicMarker` Bottom-Right Dock Parity, Copyable Support Links & `DynamicSuite` CurseForge URL (`DynamicMarker.lua`, `DynamicSuite_UI.lua`):**
-  * **Standalone Bottom-Right Dock (`DynamicMarker.lua`):** Added the `Reload UI` button (`ReloadUI()`), `Scale` slider (`80%`-`120%` in `5%` steps, right-click reset), and `Opacity` slider (`50%`-`100%`, right-click reset) to `DM:EnsureStandaloneShell()`'s footer dock cleanly to the left of the `//` resize grip, persisting `standaloneWindowScale` and `standaloneWindowAlpha` in `DynamicMarkerDB` without interfering with `DynamicSuiteDB`.
-  * **Copyable Support Modal URLs (`DynamicMarker.lua`):** Replaced the static Support modal text with read-only, click-to-highlight `Ctrl+C` `EditBox` fields for Ko-fi (`https://ko-fi.com/dentee`), CurseForge (`https://www.curseforge.com/wow/addons/dynamicmarker`), and Contact (`denteedev@gmail.com`) with `Escape`-to-close and input-overwrite protection.
-  * **`DynamicSuite` CurseForge URL (`DynamicSuite_UI.lua`):** Updated `DynamicSuite`'s Support view CurseForge link from `dynamicload` to `https://www.curseforge.com/wow/addons/dynamicsuite`.
-  * **Footer Dock Clearance & Support View Suite Link (`DynamicSuite_UI.lua`, `DynamicMarker.lua`):** Replaced the `//` resize grip with Blizzard's native `UI-ChatIM-SizeGrabber-Up` / `UI-ChatIM-SizeGrabber-Highlight` `14x14` corner resize icon (`-4, 4`, muted slate at rest, warm gold on hover), increased `Reload UI` right-edge inset to `32px`, anchored the `Scale` percentage readout (`38px`, left-justified, `+8px` from slider, `16px` gap before `Reload UI`), cleaned up `DynamicSuite`'s Support view (`spvCard`, `284px`) to 3 distinct copyable rows (Ko-fi, `DynamicSuite` CurseForge `(Coming Soon)`, and `denteedev@gmail.com`), and updated `DynamicMarker`'s Support popup modal (`428px` height) with all 4 distinct copyable rows.
-  * **End-to-End Packaging Exclusions & Suite/Standalone Parity (`README.md`, `.pkgmeta`, `.pkgmeta-dynamicmarker`):** Added public `README.md` documentation covering all 8 modules and official support links, excluded tooling paths from CurseForge packager configs, and verified lockstep `v1.9.5` Suite/Standalone `DynamicMarker` parity across `.toc` metadata, Lua version constants, and shared UI controls.
-  * **3-Layer 9-Identity Brand System, Two-Layer In-Game Parity & CurseForge Avatars (`Marketing/`):** Standardised the 3-layer brand architecture (Obsidian badge, Slate-Steel background "D" chassis, and bold two-tone foreground emblems) across `DynamicSuite` and all 8 modules, upgraded `DynamicSuite`'s storefront accent to Blaze Orange (`#F97316`), kept two-layer in-game `icon_white.tga` + `icon_accent.tga` parity intact across bundled `DynamicSuite` and standalone `DynamicMarker`, and exported `400x400` CurseForge-ready PNG avatars (`Marketing/DynamicSuite_CurseForge_Logo_400x400.png` and `Marketing/DynamicMarker_CurseForge_Logo_400x400.png`).
-  * **Standalone `DynamicMarker` Release Pipeline (CurseForge `1331651`):** Verified `.github/workflows/release.yml`, `.pkgmeta-dynamicmarker`, and `Packaging/StandaloneTOCs/DynamicMarker.toc` (`v1.9.5`, Interface `120105`) package strictly standalone `DynamicMarker` with automated release-tag validation and push support.
-  * **CurseForge Storefront Copy, Standalone Release ZIP & `-BuildReleaseZip` Automation (`Marketing/`, `deploy.ps1`):** Created `Marketing/CurseForge_DynamicMarker.md` (CurseForge Markdown description and `v1.9.5` `14/11/2026` file changelog block), added the `-BuildReleaseZip` switch to `deploy.ps1` to automatically build and extraction-verify `Marketing/DynamicMarker-1.9.5.zip` strictly matching `.pkgmeta-dynamicmarker`, and preserved clean `DynamicMarker/` top-level archive structure with zero non-module files.
-  * **GitHub Actions Standalone `DynamicMarker` Packager Fix (`.github/workflows/release.yml`, `.pkgmeta-dynamicmarker`, `deploy.ps1`):** Removed the root `DynamicMarker.toc` copy in `.github/workflows/release.yml` in favour of mapping `DynamicMarker/Packaging/StandaloneTOCs: DynamicMarker` inside `.pkgmeta-dynamicmarker` with explicit standalone asset verification (`icon.tga`, `Media/Icons/icon_white.tga`, `Media/Icons/icon_accent.tga`, `CHANGELOG.md`) and pre-release YAML/target-path validation in `deploy.ps1` (`-ReleaseTag`).
-  * **GitHub Release Body Size Guard (`.github/workflows/release.yml`, `.pkgmeta-dynamicmarker`, `.gitignore`, `deploy.ps1`):** Sliced only the active release section from `CHANGELOG.md` into an ignored `.release-changelog.md` (pure ASCII, no BOM, capped at `60,000` characters with empty/`>120,000`-character fail-fast checks) for `manual-changelog` so GitHub Releases never hit the `125,000`-character HTTP 422 limit while keeping the full `CHANGELOG.md` inside the addon zip, and enforced this guard in `deploy.ps1` (`-ReleaseTag`).
-  * **Slash Command Parity & `/fm` / `/focusmarker` Aliases (`DynamicMarker.lua`, `DynamicSuite_Core.lua`, `deploy.ps1`):** Registered `/fm` and `/focusmarker` alongside `/dm` and `/dynamicmarker`, aligned `/dm lock` to toggle icon/flare bar lock state, added `/dm help` and unknown-subcommand usage feedback with whitespace trimming, aligned `DynamicSuite_Core.lua`'s slash wrapper whitespace trimming, and added slash-registration parity checks in `deploy.ps1`.
-  * **Code-Accurate CurseForge Storefront Copy (`README.md`, `Packaging/StandaloneTOCs/CURSEFORGE_DYNAMICMARKER.md`, `deploy.ps1`):** Updated `README.md` with accurate `v1.9.5` (`120105`) 8-module descriptions and `/dm` + `/fm` command tables, created `Packaging/StandaloneTOCs/CURSEFORGE_DYNAMICMARKER.md` documenting the automated `[DynamicMark]` & `[DynamicKick]` macro workflow, `F4`/`F5` world flares, HUD Edit Mode, and `FocusMarkerDB` migration, and wired ASCII/hygiene checks plus `G:\My Drive\DynamicSuite_Sync\` copying into `deploy.ps1`.
+## DynamicSuite & All 8 Modules v1.9.5 (14/11/2026)
+
+### Added
+* **Standalone Window Controls & Copyable Support Links:** Added Window Opacity (50%-100%), Scale (80%-120%), a Reload UI button, and click-to-copy support links to standalone DynamicMarker.
+* **Marker Slash Aliases:** Added `/fm` and `/focusmarker` aliases alongside `/dm`, plus `/dm help` and bar lock toggling via `/dm lock`.
+
+### Improved
+* **Cleaner Footer Resize Grip:** Replaced the text resize grip with Blizzard's native corner resize icon and added clean spacing next to the Reload UI button.
 
 ---
 
-## DynamicSuite & All 8 Modules v1.9.4 (`/ds`, `/dm`)
-* **[IMPROVED] Default Standalone `DynamicMarker` Staging in `Push-DynamicSuiteSync.cmd`:**
-  * **Dual-Target Local Deployment:** Updated `D:\DriveSync\Push-DynamicSuiteSync.cmd` to pass `-StageStandalone DynamicMarker` by default whenever `-StageStandalone` is not explicitly specified, deploying both `DynamicSuite` and standalone `DynamicMarker` (with `Packaging\StandaloneTOCs\DynamicMarker.toc`) into `C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\` on every sync while keeping `D:\DriveSync\DynamicSuite` clean.
-* **[FIXED] First-Open `ESC > Options > AddOns` Blank Shell & Left-Rail Rendering (`DynamicSuite_UI.lua`, `DynamicMarker.lua`):**
-  * **Immediate Left-Rail Layout & Post-Layout Refresh:** Called `RefreshLeftRailLayout()` during `CreateMainConfigUI()`, routed `ApplySuiteThemeAndGeometry()` through `RefreshLeftRailLayout()` and all workspace view refreshes (`DYNAMICLOAD`, `PEER_MODULE`, `THEME_STUDIO`, `GUIDED_SETUP`, `CHANGELOG_VIEW`, `SUPPORT_VIEW`, `EDIT_MODE`, `SEARCH_VIEW`), and added a guarded `C_Timer.After(0, ...)` post-layout refresh + `Raise()` on `DynamicSuiteMainFrame:OnShow` so all 8 left-rail modules, active workspace, and surface theme render on the very first open after `/reload`.
-  * **Standalone `DynamicMarker` First-Open Parity:** Added initial `f:Hide()`, `OnShow` `C_Timer.After(0, ...)` post-layout `ApplyThemeToUI()` / `RefreshAll()` / `Raise()` in `EnsureStandaloneShell()`, and `OnShow` theme/accent refresh on `DynamicMarkerSettingsCanvas` and `DynamicSuiteSettingsCanvas`.
-  * **Clean Settings Overlay Yield:** Hardened `HideSettingsPanelSafe()` in both `DynamicSuite_UI.lua` and `DynamicMarker.lua` (plus `ShowConfigUI()`) to call `HideUIPanel(SettingsPanel)`, fall back to `SettingsPanel:Hide()` if still shown, and hide `GameMenuFrame` so Blizzard's Settings overlay never obscures or blanks out the addon window.
+## DynamicSuite & All 8 Modules v1.9.4 (14/11/2026)
+
+### Fixed
+* **First-Open Options Launcher:** Opening DynamicSuite or standalone DynamicMarker from ESC > Options > AddOns now renders the full sidebar, workspace, and theme cleanly on the very first open.
 
 ---
 
-## DynamicSuite & All 8 Modules v1.9.3 (`/ds`, `/dm`)
-* **[FIXED] Standalone `DynamicMarker` Guided Setup Modal Backdrop & Strata Layering (`DynamicMarker.lua`):**
-  * **Zero Bleed-Through & Overlap (`FULLSCREEN_DIALOG`):** Promoted `DynamicMarkerStudioBackdrop` and `DynamicMarkerStudioModal` from `DIALOG` to `FULLSCREEN_DIALOG` strata (levels `290` / `300`) parented directly to `UIParent` with `SetToplevel(true)`, `SetClampedToScreen(true)`, an `OnHide` shell cleanup hook, and a 100% opaque solid panel background (`m.SolidBg`) beneath `ApplyBackdrop` so underlying controls, borders, and text never bleed through or overlap the modal on `/reload` or initial Guided Setup trigger.
-  * **Clean Mode-Widget Lifecycle:** Tracked and recycled modal body widgets in `m.Body._modeWidgets` with explicit child frame levels (`CloseBtn` at `305`, `Body` at `302`, buttons at `303`) so reopening Guided Setup or Theme & Font Studio never leaves orphaned controls behind.
-* **[IMPROVED] Standalone `DynamicMarker` Bottom-Left Sidebar Layout & Brighter Theme Parity (`DynamicMarker.lua`):**
-  * **Shell & Sidebar Structure Parity:** Aligned standalone `DynamicMarkerSuiteWindow` dimensions (`204px` left rail, `46px` header with `2px` top accent bar, `38px` bottom dock), `1px` clean dividers, `SUITE STUDIO & TOOLS` card spacing (`Theme & Font`, `Guided Setup`, `Edit Mode (HUDs)` with non-overlapping `/dm hud` sub-label anchor), `90px` `[Changelog]` + `88px` `[Support]` bottom utility buttons, and `Reset DynamicMarker` dock with `DynamicSuite_UI.lua`.
-  * **Brighter Surface Palette & Live Surface Switching:** Added `SURFACE_THEMES` (`OBSIDIAN_DARK` default, `SLATE_STEEL`, `MIDNIGHT_BLACK`, `SMOKED_GLASS`) to standalone `DynamicMarker`, wired live surface refreshes into `RefreshAll()` and the standalone `Theme & Font` studio modal, and hid the redundant green dot on `Guided Setup` when zero conflicts exist to match the full `DynamicSuite` window.
-* **[IMPROVED] Local Standalone Test Deployment (`Push-DynamicSuiteSync.ps1`):**
-  * **Standalone Staging Flag (`-StageStandalone`):** Added `-StageStandalone <Module[]>` to `Push-DynamicSuiteSync.ps1` (forwarded via `Push-DynamicSuiteSync.cmd -StageStandalone DynamicMarker`) to stage standalone `DynamicMarker` with `Packaging\StandaloneTOCs\DynamicMarker.toc`, `DynamicMarker.lua`, and shared `Media`/`Fonts` assets directly into `Interface\AddOns\DynamicMarker` for one-click in-game standalone testing alongside `DynamicSuite`.
+## DynamicSuite & All 8 Modules v1.9.3 (14/11/2026)
+
+### Fixed
+* **Guided Setup Modal Layering:** Fixed underlying window controls bleeding through the Guided Setup modal in standalone DynamicMarker.
+
+### Improved
+* **Standalone Theme & Sidebar Parity:** Added all 4 dark surface themes and matching sidebar card spacing to standalone DynamicMarker.
 
 ---
 

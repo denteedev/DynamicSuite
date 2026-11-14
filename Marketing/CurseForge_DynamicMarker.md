@@ -1,7 +1,7 @@
 # DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v1.9.9)
 
-> **Target Game Version:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`)  
-> **Version:** `v1.9.9` (`14/11/2026`)  
+> **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105)  
+> **Version:** v1.9.9 (14/11/2026)  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicmarker
 
@@ -14,88 +14,66 @@
 
 [![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 
-**World of Warcraft Retail Midnight `12.1.5` (Interface `120105`) | Author: Dentee-Frostmourne**
+**Version:** v1.9.9 (14/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
-**DynamicMarker** (`/dm`) is a fast, zero-taint Mythic+ and Raid utility suite for target marking, `@cursor` world flares, floating HUD icon/flare bars, and automated focus/interrupt macros across all 13 classes. Built for Midnight `12.1.5`, it preserves full standalone functionality while seamlessly integrating with the 8-module **[DynamicSuite](https://www.curseforge.com/wow/addons/dynamicsuite)** ecosystem.
-
----
-
-## Upgrading from FocusMarker? (Automatic `FocusMarkerDB` Migration)
-
-**DynamicMarker is the official continuation and full Midnight `12.1.5` rebuild of FocusMarker.**
-
-* **Automatic One-Time Migration:** On `ADDON_LOADED` / `PLAYER_LOGIN`, DynamicMarker detects any existing `FocusMarkerDB` SavedVariables, archives a read-only snapshot (`legacyFocusMarker`), and automatically migrates your bar positions, scales, opacity, visibility rules (`Always` / `Group` / `Off`), orientation (`Horizontal` / `Vertical`), and custom icon/flare cycle orders into `DynamicMarkerDB` (`migratedFromFocusMarker = true`) without overwriting future edits.
-* **In-Place Macro Upgrade:** Any existing `[FocusMarker]` or `[FocusMark]` general macro on your action bars is seamlessly upgraded in-place to `[DynamicMark]`.
-* **Conflict Resolution & Re-Import:** If `FocusMarker` is still enabled, DynamicMarker's inline conflict banner and **Guided Setup** modal let you import your settings and disable `FocusMarker` in one click. You can also run `/dm import` (or `/dm import status`) at any time out of combat.
+**DynamicMarker** (`/dm`, `/fm`) is a fast Mythic+ and Raid utility addon for instant target marking, cursor-placed world flares, floating icon and flare bars, and smart focus/interrupt macros across all 13 classes. Use it standalone or as part of the full 8-module **[DynamicSuite](https://www.curseforge.com/wow/addons/dynamicsuite)** bundle.
 
 ---
 
-## 30-Second Quick Start (`[DynamicMark]` & `[DynamicKick]`)
+## Upgrading from FocusMarker?
 
-Open **`/dm`** and switch to the **Macro Setup** tab (or click **Guided Setup** in the left rail):
+**DynamicMarker is the official Midnight 12.1.5 successor to FocusMarker.**
 
-1. **`[DynamicMark]` (General Macro -- Account-Wide):**
-   * Click **Step 1: Create / Update `[DynamicMark]`**, then drag **Step 2: Drag to Action Bar** onto any action bar slot.
-   * **Modifier-Free Design:** Sets `@focus` on your mouseover or current target and applies your chosen Raid Target Icon (Skull by default) with zero modifier collisions (`Shift`/`Alt`/`Ctrl` clear-focus modifier is optional and defaults to `None`).
-   * **Optional Chat & Ready Check Alerts:** Announce your focus mark to Party/Raid or Say (`/dm mute` toggles Silent Mode instantly) and trigger automatic Ready Check mark reminders.
-2. **`[DynamicKick]` (Character Macro -- Multi-Spec Auto-Swap):**
-   * Click **Step 1: Create / Update `[DynamicKick]`**, then drag **Step 2: Drag to Action Bar**.
-   * **Automatic Class & Specialisation Swapping:** Dynamically updates out of combat whenever you change specialisations or talents (`PLAYER_SPECIALIZATION_CHANGED` / `TRAIT_CONFIG_UPDATED`) across all 13 classes (including Druid `Skull Bash` <-> `Solar Beam`, Hunter `Counter Shot` <-> `Muzzle`, and Warlock `Command Demon`).
-   * **Configurable Interrupt Priority:**
-     * `Smart Auto-Target (Mouseover > Focus > Nearest)` *(Default)*
-     * `Standard: Mouseover > Focus > Target`
-     * `Standard: Focus > Mouseover > Target`
-     * `Strict Focus Only (@focus)`
+* **Automatic Settings Import:** On first login, DynamicMarker safely imports your saved FocusMarker bar positions, scale, opacity, visibility rules (Always, Group, or Off), orientation, and custom icon/flare orders without touching your original backup.
+* **Automatic Macro Upgrade:** Any existing [FocusMarker] or [FocusMark] macro on your action bars is upgraded in-place to [DynamicMark].
+* **One-Click Cleanup & Re-Import:** If FocusMarker is still enabled, Guided Setup lets you import and disable it in one click. You can also run `/dm import` or `/dm import status` out of combat anytime.
 
 ---
 
-## `F4` / `F5` World Flares & On-Screen HUD Bars
+## 30-Second Quick Start ([DynamicMark] & [DynamicKick])
 
-* **One-Key Ground Flares (`F4` / `F5`):** Press **`F4`** (customisable) to place `@cursor` World Markers in sequence through your enabled flares (`1`-`8`), and press **`F5`** (customisable) to clear all active flares (`/cwm all`).
-* **Customisable Flare Cycle:** Drag and reorder any of the 8 world markers in the **World Flare Keys (F4 / F5)** tab and toggle individual flares on or off.
-* **On-Screen Focus Bar & World Flare Bar HUDs:**
-  * Toggle each floating bar independently between **Always**, **Group**, or **Off** (combat-safe visibility drivers update automatically when joining or leaving parties and raids).
-  * Choose **Horizontal** or **Vertical** layout, adjust HUD border style (**Suite Accent**, **Subtle Dark**, or **Borderless**), and tune bar **Scale** and **Opacity**.
+Open `/dm` and go to the **Macro Setup** tab (or click **Guided Setup** in the sidebar):
+
+1. **[DynamicMark] (Account-Wide Target & Focus Macro):**
+   * **One-Key Focus & Mark:** Click **Create / Update** and drag the macro onto any action bar slot.
+   * **Modifier-Free Marking:** Sets your focus on mouseover or current target and applies your chosen Raid Target Icon (Skull by default) with no modifier keys required.
+   * **Chat & Ready Check Alerts:** Optionally announce marks to Party, Raid, or Say (`/dm mute` toggles Silent Mode instantly) and get Ready Check mark reminders.
+2. **[DynamicKick] (Per-Character Auto-Swapping Interrupt Macro):**
+   * **Auto-Swaps Across All 13 Classes:** Automatically updates your interrupt spell whenever you switch specialisations or talents out of combat.
+   * **4 Interrupt Priority Modes:** Choose between Smart Auto-Target (Mouseover > Focus > Nearest), Mouseover > Focus > Target, Focus > Mouseover > Target, or Strict Focus Only.
 
 ---
 
-## Encapsulated HUD Edit Mode (`/dm hud`)
+## World Flares & On-Screen HUD Bars
 
-Type **`/dm hud`** (or click **Edit Mode (HUDs)** in the left rail / **Unlock HUD Movers** inside the HUD settings) to position your floating bars with pixel precision:
+* **One-Key Ground Flares (F4 / F5):** Press F4 (customisable) to place world markers at your cursor in your chosen order, and press F5 (customisable) to clear all active flares.
+* **Customisable Flare Cycle:** Drag and reorder any of the 8 world markers in the **World Flare Keys** tab and toggle individual markers on or off.
+* **Floating Focus & Flare Bars:** Show each bar Always, in Group only, or Off; switch between Horizontal and Vertical layouts; and customise border styles, Scale, and Opacity.
 
-* **Pixel-Bordered Movers & Scale-Aware `1:1` Dragging:** Highlights `DynamicMarker: Icon Bar` and `DynamicMarker: Flare Bar` with live coordinate badges (`X` / `Y` / `Scale%`) that track your cursor `1:1` across all UI and bar scales (`60%`-`150%`, including `70%`).
-* **Magnetic Edge, Centre & Bar-to-Bar Snapping:** Magnetically snaps within `11px` of screen borders/centre lines and `9px` of neighbouring visible HUD bars with live alignment guide lines, while holding **`Shift`** bypasses snapping for fine micro-adjustments and hard screen-boundary clamping prevents off-screen drift.
-* **Mousewheel Scaling:** Scroll up or down directly over a mover to scale the bar from **`60%` to `150%`** in `5%` increments.
-* **Precision Inspector & Failsafe Recovery:** Use `1px` (`Shift + Click` for `10px`) directional nudge buttons, type exact `X` / `Y` coordinates, snap with **Center Horizontal**, **Center Vertical**, **Top Stack**, or **Bottom Dock**, `Shift + Right-Click` any mover, or use **`Reset HUD Positions`** (`ESC -> Options -> AddOns` or `/dm resethud`).
-* **Zero-Taint Failsafe:** Pressing **`ESC`** or entering combat immediately locks movers cleanly with zero taint.
+---
+
+## HUD Edit Mode (`/dm hud`)
+
+Type `/dm hud` (or click **Edit Mode (HUDs)** in the sidebar) to position your floating bars anywhere on screen:
+
+* **Smooth Scale-Aware Dragging:** Drag the Icon Bar and Flare Bar cleanly at any bar scale (60%-150%) with live X, Y, and Scale readouts.
+* **Magnetic Edge & Bar Snapping:** Bars snap cleanly to screen edges, screen centres, and neighbouring bars with alignment guides (hold Shift to fine-tune freely), and stay clamped inside your screen bounds.
+* **Mousewheel Scaling & Precision Controls:** Scroll over a bar in Edit Mode to scale it (60%-150% in 5% steps), nudge by 1px or 10px, type exact X/Y coordinates, or reset anytime with `/dm resethud`.
 
 ---
 
 ## Obsidian Theme & Font Studio
 
-DynamicMarker features a full dark-obsidian control shell matching the DynamicSuite design language:
-
-* **Theme & Font Studio Modal:** Switch account-wide Accent Colours (**Royal Amber** `#F5B82E`, **Midnight Cyan** `#38BDF8`, **Crimson Core** `#F87171`, **Obsidian Silver** `#CBD5E1`, or **Player Class Colour**), 4 Surface Palettes (**Obsidian Dark**, **Slate Steel**, **Midnight Pitch Black**, **Smoked Glass**), and **Font Scale** (`95%` / `100%` / `110%`).
-* **Bottom-Right Footer Dock:** Adjust standalone window **Opacity** (`50%`-`100%`), **Scale** (`80%`-`120%`), trigger **Reload UI**, or resize cleanly via Blizzard's native bottom-right corner grabber.
+* **Custom Colours & Surfaces:** Pick from 5 built-in accent themes (including Player Class Colour), 4 dark surface palettes, and adjustable font scaling.
+* **Quick Window Controls:** Adjust standalone window Opacity (50%-100%) and Scale (80%-120%) or trigger Reload UI from the bottom-right dock.
 
 ---
 
-## Part of DynamicSuite (Dual-Mode Architecture)
+## Part of DynamicSuite
 
-**Want 7 more lightweight Retail Midnight modules in one unified hub?**
+Want 7 more lightweight QoL and performance modules in one unified window? Check out **[DynamicSuite on CurseForge](https://www.curseforge.com/wow/addons/dynamicsuite)** (https://www.curseforge.com/wow/addons/dynamicsuite), which includes DynamicLoad, DynamicPrep, DynamicMarker, DynamicZoom, DynamicFPS, DynamicGroup, DynamicBags, and DynamicChat.
 
-Check out the full **[DynamicSuite on CurseForge](https://www.curseforge.com/wow/addons/dynamicsuite)** (`https://www.curseforge.com/wow/addons/dynamicsuite`), which bundles:
-
-* **DynamicLoad** (`/dl`) -- Context-aware 5-zone addon profile manager (`Outdoor`, `Delves`, `Dungeons`, `Raid`, `PvP`)
-* **DynamicPrep** (`/dprep`) -- Telemetry top bar, clickable raid buffs & consumables HUD, Omni Folio, and smart quest/gossip QoL
-* **DynamicMarker** (`/dm`) -- Targets, world flares, and smart interrupt macros (this addon!)
-* **DynamicZoom** (`/dz`) -- Max camera zoom unlock (`39 yds`), reactive scroll boost, and occlusion fade
-* **DynamicFPS** (`/dfps`) -- Zone-based graphics presets, combat FPS guard, and adaptive `SpellQueueWindow`
-* **DynamicGroup** (`/dgroup`) -- Datacentre region & utility LFG filters, 1-click sign-up, and keystone slotting
-* **DynamicBags** (`/dbag`) -- Zero-lag virtual category bags, Warband/Guild Bank companion, and Alt Vault
-* **DynamicChat** (`/dchat`) -- Instant `/ww` & `/qq` target whispers, smoked-glass chat skin, and reload history restore
-
-DynamicMarker uses an unconditional **Dual-Mode Consolidated Architecture**: when `DynamicSuite` is enabled, standalone `DynamicMarker` yields and is automatically disabled via `C_AddOns.DisableAddOn("DynamicMarker")` (with an immediate `C_AddOns.IsAddOnLoaded("DynamicSuite")` early-exit guard so both never double-load or open duplicate HUD Edit windows), while all 8 modules also include `ShouldYieldToOtherInstall` (`CompareSemVer`) semantic version guards regardless of third-party conflict settings.
+* **Automatic Coexistence:** If you install DynamicSuite later, DynamicSuite automatically disables standalone DynamicMarker and prompts a clean UI reload so you never lose settings or see duplicate bars.
 
 ---
 
@@ -103,39 +81,43 @@ DynamicMarker uses an unconditional **Dual-Mode Consolidated Architecture**: whe
 
 | Command | Action |
 | :--- | :--- |
-| `/dm` or `/dynamicmarker` | Open or toggle the DynamicMarker configuration window |
-| `/dm hud` / `/dm edit` / `/dm move` | Toggle HUD Edit Mode (movers, alignment grid & precision inspector) |
+| `/dm` or `/dynamicmarker` | Open or close the DynamicMarker window (also `/fm` or `/focusmarker`) |
+| `/dm hud`, `/dm edit`, `/dm move` | Toggle HUD Edit Mode |
 | `/dm unlock` | Unlock HUD Edit Mode movers |
 | `/dm lock` | Lock HUD Edit Mode movers and save positions |
-| `/dm flares` | Open directly to the **World Flare Keys (F4 / F5)** tab |
-| `/dm macros` | Open directly to the **Macro Setup** (`[DynamicMark]` & `[DynamicKick]`) tab |
-| `/dm mute` / `/dm silent` | Toggle Focus Mark chat announcements On / Muted |
-| `/dm show` | Set the On-Screen Focus Bar HUD to **Always Shown** |
-| `/dm hide` | Hide the On-Screen Focus Bar HUD (**Off**) |
-| `/dm import` | Re-import settings from `FocusMarkerDB` (out of combat) |
-| `/dm import status` | Print current `FocusMarkerDB` migration/snapshot status in chat |
-| `/dm reset` | Reset DynamicMarker settings to defaults (preserves migration snapshot) |
-| `/dm resethud` | Reset Icon Bar & Flare Bar positions to safe screen-clamped defaults |
+| `/dm flares` | Open directly to the World Flare Keys (F4 / F5) tab |
+| `/dm macros` | Open directly to the Macro Setup tab |
+| `/dm mute` or `/dm silent` | Toggle Focus Mark chat announcements On or Muted |
+| `/dm show` | Set the On-Screen Focus Bar HUD to Always Shown |
+| `/dm hide` | Hide the On-Screen Focus Bar HUD |
+| `/dm import` | Re-import settings from FocusMarker out of combat |
+| `/dm import status` | Print FocusMarker import status in chat |
+| `/dm reset` | Reset DynamicMarker settings to defaults |
+| `/dm resethud` | Reset Icon Bar and Flare Bar positions to safe screen defaults |
 
 ---
 
 ## Support & Contact
 
-* **Buy the Developer a Coffee (Ko-fi):** `https://ko-fi.com/dentee`
-* **Standalone CurseForge:** `https://www.curseforge.com/wow/addons/dynamicmarker`
-* **Full Suite CurseForge:** `https://www.curseforge.com/wow/addons/dynamicsuite`
-* **Direct Contact & Feedback:** `denteedev@gmail.com`
+* **Buy the Developer a Coffee (Ko-fi):** https://ko-fi.com/dentee
+* **Standalone CurseForge:** https://www.curseforge.com/wow/addons/dynamicmarker
+* **Full Suite CurseForge:** https://www.curseforge.com/wow/addons/dynamicsuite
+* **Direct Contact & Feedback:** denteedev@gmail.com
 ```
 
 ---
 
-## Section 2: CurseForge File Changelog Block (`v1.9.9` -- `14/11/2026`)
+## Section 2: CurseForge File Changelog Block (v1.9.9 -- 14/11/2026)
 
 ```markdown
-## DynamicMarker v1.9.9 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
+## DynamicMarker v1.9.9 (14/11/2026)
 
-### Highlights & Release Changes
-* **Canonical `UIParent`-Local HUD Coordinates & Zero `/reload` Edge Drift:** Stored saved `TargetBar` and `FlareBar` `X`/`Y` coordinates strictly in unscaled `UIParent`-local offsets relative to screen `CENTER`, applied `SetScale` and `SetSize` before `SetPoint` and `SetClampedToScreen(true)`, divided by `barScale` strictly inside `DM:SetBarCenterPoint`, and removed early-load DB writes in `DM:ApplyHUDPosition` so bars parked flush against the top edge, bottom edge, or corners at scales `0.70`, `1.00`, and `1.30` remain at identical pixel coordinates across `/reload`.
-* **Automatic `DynamicSuite` Mutual Exclusion & Dark-Obsidian Coexistence Modal:** Standalone `DynamicMarker` exits cleanly at top-of-file and `ADDON_LOADED` whenever `DynamicSuite` is loaded or enabled, and replaces Blizzard's `StaticPopup` with a bespoke dark-obsidian reload modal (`ShowMarkerConflictReloadModal` / `DynamicSuiteMarkerConflictModal` with `#0B0D12` backdrop, Blaze Orange `#F97316` accent bar, flat `"Reload UI"` and `"Later"` buttons, `ESC` dismissal, and combat deferral) when both were loaded in the same session.
-* **Unified HUD Edit Mode & `Reset HUD Positions` Bounds:** Suppressed the standalone HUD Edit inspector when running inside `DynamicSuite` while preserving standalone `DynamicMarker`'s HUD Edit UI (`DynamicMarkerGridOverlay`), and hardened `DM:ResetSingleHUDPosition` (`scale = 1.00`, `HORIZONTAL`, screen-clamped defaults) across Suite and standalone modes.
+### Fixed
+* **Top & Bottom Screen-Edge Bar Drift:** Focus Icons and World Flare bars parked flush against the top edge, bottom edge, or corners now stay in their exact saved positions after reloading the UI at every bar scale (70%, 100%, and 130%).
+* **Duplicate HUD Edit Windows:** Standalone DynamicMarker's extra HUD Edit popup no longer appears when running DynamicSuite, while remaining fully intact when running standalone.
+* **Reset Bounds:** Resetting HUD positions (`/dm resethud` or from Options) now resets scale to 100%, restores horizontal layout, and keeps bars cleanly inside your screen bounds.
+
+### Improved
+* **Custom Coexistence Reload Prompt:** Replaced Blizzard's default popup with a matching dark-obsidian reload modal whenever DynamicSuite and standalone DynamicMarker are loaded together.
+* **Storefront & Readme Clarity:** Updated descriptions, slash command tables, and support links across both standalone DynamicMarker and DynamicSuite.
 ```

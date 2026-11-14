@@ -188,6 +188,11 @@ $cfMarketingDoc = Join-Path $RepoRoot "Marketing\CurseForge_DynamicMarker.md"
 if (-not (Test-Path -LiteralPath $cfMarketingDoc) -or ([System.IO.File]::ReadAllText($cfMarketingDoc) -notmatch [regex]::Escape("v$suiteVer"))) {
     throw "Marketing\CurseForge_DynamicMarker.md does not match lockstep version v$suiteVer"
 }
+$normMarkerStandalone = ([System.IO.File]::ReadAllText($cfStandaloneDoc)).Replace("`r`n", "`n").TrimEnd()
+$normMarkerMarketing = ([System.IO.File]::ReadAllText($cfMarketingDoc)).Replace("`r`n", "`n").TrimEnd()
+if ($normMarkerStandalone -ne $normMarkerMarketing) {
+    throw "Marketing\CurseForge_DynamicMarker.md and Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md have diverged."
+}
 $cfSuiteStandaloneDoc = Join-Path $RepoRoot "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md"
 $cfSuiteMarketingDoc = Join-Path $RepoRoot "Marketing\CurseForge_DynamicSuite.md"
 foreach ($suiteDoc in @($cfSuiteStandaloneDoc, $cfSuiteMarketingDoc)) {
@@ -349,6 +354,7 @@ $requiredDocTokens = @(
     "https://www.curseforge.com/wow/addons/dynamicsuite",
     "https://www.curseforge.com/wow/addons/dynamicmarker",
     "denteedev@gmail.com",
+    "## Slash Commands",
     "## Support & Contact"
 )
 foreach ($docRel in $readmeSupportDocs) {
