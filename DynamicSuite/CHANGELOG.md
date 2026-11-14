@@ -4,6 +4,8 @@
 ---
 
 ## DynamicSuite & All 8 Modules v1.9.4 (`/ds`, `/dm`)
+* **[IMPROVED] Default Standalone `DynamicMarker` Staging in `Push-DynamicSuiteSync.cmd`:**
+  * **Dual-Target Local Deployment:** Updated `D:\DriveSync\Push-DynamicSuiteSync.cmd` to pass `-StageStandalone DynamicMarker` by default whenever `-StageStandalone` is not explicitly specified, deploying both `DynamicSuite` and standalone `DynamicMarker` (with `Packaging\StandaloneTOCs\DynamicMarker.toc`) into `C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\` on every sync while keeping `D:\DriveSync\DynamicSuite` clean.
 * **[FIXED] First-Open `ESC > Options > AddOns` Blank Shell & Left-Rail Rendering (`DynamicSuite_UI.lua`, `DynamicMarker.lua`):**
   * **Immediate Left-Rail Layout & Post-Layout Refresh:** Called `RefreshLeftRailLayout()` during `CreateMainConfigUI()`, routed `ApplySuiteThemeAndGeometry()` through `RefreshLeftRailLayout()` and all workspace view refreshes (`DYNAMICLOAD`, `PEER_MODULE`, `THEME_STUDIO`, `GUIDED_SETUP`, `CHANGELOG_VIEW`, `SUPPORT_VIEW`, `EDIT_MODE`, `SEARCH_VIEW`), and added a guarded `C_Timer.After(0, ...)` post-layout refresh + `Raise()` on `DynamicSuiteMainFrame:OnShow` so all 8 left-rail modules, active workspace, and surface theme render on the very first open after `/reload`.
   * **Standalone `DynamicMarker` First-Open Parity:** Added initial `f:Hide()`, `OnShow` `C_Timer.After(0, ...)` post-layout `ApplyThemeToUI()` / `RefreshAll()` / `Raise()` in `EnsureStandaloneShell()`, and `OnShow` theme/accent refresh on `DynamicMarkerSettingsCanvas` and `DynamicSuiteSettingsCanvas`.
