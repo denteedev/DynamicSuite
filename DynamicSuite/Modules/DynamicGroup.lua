@@ -2496,6 +2496,27 @@ local function OnLFGListSearchEntryUpdate(entry)
                 return la < lb
             end)
 
+            -- Idempotent -2px vertical baseline nudge on Enumerate & 3px horizontal gap between slots
+            if not enumFrame._dgOrigPoint and enumFrame.GetPoint then
+                local pt, relTo, relPt, x, y = enumFrame:GetPoint(1)
+                if pt then
+                    enumFrame._dgOrigPoint = { pt, relTo, relPt, x or 0, y or 0 }
+                end
+            end
+            if enumFrame._dgOrigPoint and enumFrame.ClearAllPoints and enumFrame.SetPoint then
+                local orig = enumFrame._dgOrigPoint
+                enumFrame:ClearAllPoints()
+                enumFrame:SetPoint(orig[1], orig[2], orig[3], orig[4], orig[5] - 2)
+            end
+            for i = 2, #slotAnchors do
+                local prevA = slotAnchors[i - 1]
+                local curA = slotAnchors[i]
+                if prevA and curA and curA.ClearAllPoints and curA.SetPoint then
+                    curA:ClearAllPoints()
+                    curA:SetPoint("LEFT", prevA, "RIGHT", 3, 0)
+                end
+            end
+
             local openRoles = {}
             local openTanks = math.max(0, 1 - (meta.tanks or 0))
             local openHealers = math.max(0, 1 - (meta.healers or 0))
