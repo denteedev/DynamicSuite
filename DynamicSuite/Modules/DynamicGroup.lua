@@ -164,13 +164,14 @@ local DEFAULTS = {
     overlayMode = "COMPACT",         -- "FULL" | "COMPACT" | "OFF"
     minLeaderScore = 0,              -- 0 | 1500 | 2000 | 2500 | 2800 | 3000
     partyFitFilter = "ALL",          -- Legacy summary: "ALL" | "NEEDS_LUST" | "NEEDS_CR" | "NEEDS_BOTH"
-    fitMyRole = false,
+    needsTank = false,
+    needsHealer = false,
+    needsDamage = false,
     noDuplicateClass = false,
     hasTank = false,
     hasHealer = false,
     hasLust = false,
     hasCR = false,
-    mythicPlusOnly = false,
     filteredDungeons = {},           -- [dungeonCode] = true
     sortMode = "SMART_HIDE_FULL",    -- "SMART_HIDE_FULL" | "SCORE_DESC" | "OPEN_SLOTS" | "BLIZZARD"
     hideFullGroups = true,
@@ -520,6 +521,14 @@ local function EnsureDB()
             _G.DynamicGroupDB.overlayMode = "COMPACT"
         end
     end
+    if not _G.DynamicGroupDB.v200_sleekOverlay then
+        _G.DynamicGroupDB.v200_sleekOverlay = true
+        if _G.DynamicGroupDB.overlayMode == "FULL" then
+            _G.DynamicGroupDB.overlayMode = "COMPACT"
+        end
+    end
+    _G.DynamicGroupDB.mythicPlusOnly = nil
+    _G.DynamicGroupDB.fitMyRole = nil
 
     -- Migrate legacy whisperInviteMode if needed
     if _G.DynamicGroupDB.whisperInviteMode == "OFF" and _G.DynamicGroupDB.enableWhisperInvite == nil then
@@ -1095,14 +1104,14 @@ local function IsValidSearchResultID(resultID)
 end
 
 local MIDNIGHT_S1_FALLBACK_SLOTS = {
-    { code = "DON", name = "Den of Nalorakk",              mapID = 540, spellID = 1216786, icon = 136095,  patterns = { "nalorakk" },                      spellCandidates = { 1216786 } },
-    { code = "AOF", name = "Algeth'ar / Forge",            mapID = 402, spellID = 393273,  icon = 4511692, patterns = { "algeth", "arena of", "forge" },   spellCandidates = { 393273 } },
-    { code = "BV",  name = "The Azure Vault",              mapID = 401, spellID = 393279,  icon = 4511694, patterns = { "azure vault", "bracken", "vault" }, spellCandidates = { 393279, 393267 } },
-    { code = "MR",  name = "Magisters' / Murder Row",      mapID = 541, spellID = 1216788, icon = 135764,  patterns = { "murder", "magister", "row" },     spellCandidates = { 1216788 } },
-    { code = "RLP", name = "Ruby Life Pools",              mapID = 399, spellID = 393256,  icon = 4511698, patterns = { "ruby life" },                     spellCandidates = { 393256 } },
-    { code = "VSA", name = "Vault of the Sacred / Ancients", mapID = 542, spellID = 1216790, icon = 136051, patterns = { "sacred", "ancient", "seat" },     spellCandidates = { 1216790, 1237215 } },
+    { code = "DON", name = "Den of Nalorakk",              mapID = 540, spellID = 1216786, icon = 136095,  patterns = { "nalorakk" },                             spellCandidates = { 1216786 } },
+    { code = "AOF", name = "Altar of Fangs",               mapID = 402, spellID = 393273,  icon = 4511692, patterns = { "altar", "fangs", "algeth", "arena of", "forge" }, spellCandidates = { 393273 } },
+    { code = "BV",  name = "The Azure Vault",              mapID = 401, spellID = 393279,  icon = 4511694, patterns = { "azure vault", "bracken", "vault" },        spellCandidates = { 393279, 393267 } },
+    { code = "MR",  name = "Magisters' / Murder Row",      mapID = 541, spellID = 1216788, icon = 135764,  patterns = { "murder", "magister", "row" },            spellCandidates = { 1216788 } },
+    { code = "RLP", name = "Ruby Life Pools",              mapID = 399, spellID = 393256,  icon = 4511698, patterns = { "ruby life" },                            spellCandidates = { 393256 } },
+    { code = "VSA", name = "Venomous Abyss",               mapID = 542, spellID = 1216790, icon = 136051,  patterns = { "venomous", "abyss", "sacred", "ancient", "seat" }, spellCandidates = { 1216790, 1237215 } },
     { code = "TOS", name = "Temple of Sethraliss",         mapID = 250, spellID = 424167,  icon = 2065604, patterns = { "sethraliss", "jade", "temple", "tides" }, spellCandidates = { 424167, 131204, 424142 } },
-    { code = "KR",  name = "Kings' Rest",                  mapID = 249, spellID = 467553,  icon = 2065599, patterns = { "kings", "karazhan" },             spellCandidates = { 467553, 445269, 373262 } },
+    { code = "KR",  name = "Kings' Rest",                  mapID = 249, spellID = 467553,  icon = 2065599, patterns = { "kings", "karazhan" },                    spellCandidates = { 467553, 445269, 373262 } },
 }
 
 local KNOWN_DUNGEON_BY_MAP_ID = {
@@ -1138,7 +1147,7 @@ local KNOWN_DUNGEON_BY_MAP_ID = {
     [399] = { code = "RLP", name = "Ruby Life Pools",            spellID = 393256,  spellCandidates = { 393256 } },
     [400] = { code = "NO",  name = "The Nokhud Offensive",       spellID = 393262,  spellCandidates = { 393262 } },
     [401] = { code = "BV",  name = "The Azure Vault",            spellID = 393279,  spellCandidates = { 393279 } },
-    [402] = { code = "AOF", name = "Algeth'ar Academy",          spellID = 393273,  spellCandidates = { 393273 } },
+    [402] = { code = "AOF", name = "Altar of Fangs",             spellID = 393273,  spellCandidates = { 393273 } },
     [403] = { code = "ULD", name = "Uldaman: Legacy of Tyr",     spellID = 393222,  spellCandidates = { 393222 } },
     [404] = { code = "NELT",name = "Neltharus",                  spellID = 393276,  spellCandidates = { 393276 } },
     [405] = { code = "BH",  name = "Brackenhide Hollow",         spellID = 393267,  spellCandidates = { 393267 } },
@@ -1159,7 +1168,7 @@ local KNOWN_DUNGEON_BY_MAP_ID = {
     [525] = { code = "FG",  name = "Operation: Floodgate",       spellID = 1216786, spellCandidates = { 1216786 } },
     [540] = { code = "DON", name = "Den of Nalorakk",            spellID = 1216786, spellCandidates = { 1216786 } },
     [541] = { code = "MR",  name = "Magisters' / Murder Row",    spellID = 1216788, spellCandidates = { 1216788 } },
-    [542] = { code = "VSA", name = "Vault of the Sacred / Ancients", spellID = 1216790, spellCandidates = { 1216790, 1237215 } },
+    [542] = { code = "VSA", name = "Venomous Abyss",             spellID = 1216790, spellCandidates = { 1216790, 1237215 } },
 }
 
 local activityInfoCache = {}
@@ -1619,13 +1628,14 @@ end
 local function CountActiveUtilityFilters(db)
     if type(db) ~= "table" then return 0 end
     local count = 0
-    if db.fitMyRole then count = count + 1 end
+    if db.needsTank then count = count + 1 end
+    if db.needsHealer then count = count + 1 end
+    if db.needsDamage then count = count + 1 end
     if db.noDuplicateClass then count = count + 1 end
     if db.hasTank then count = count + 1 end
     if db.hasHealer then count = count + 1 end
     if db.hasLust or db.partyFitFilter == "NEEDS_LUST" or db.partyFitFilter == "NEEDS_BOTH" then count = count + 1 end
     if db.hasCR or db.partyFitFilter == "NEEDS_CR" or db.partyFitFilter == "NEEDS_BOTH" then count = count + 1 end
-    if db.mythicPlusOnly then count = count + 1 end
     return count
 end
 
@@ -1647,6 +1657,8 @@ local function InspectSearchResult(resultID)
 
     local _, playerClassFile = UnitClass("player")
     local tanks, healers, dps = 0, 0, 0
+    local tankClass, healerClass = nil, nil
+    local dpsClasses = {}
     local hasLust, hasCR, hasPlayerClass = false, false, false
     local memberDots = {}
 
@@ -1674,9 +1686,16 @@ local function InspectSearchResult(resultID)
             end
 
             if role then
-                if role == "TANK" then tanks = tanks + 1
-                elseif role == "HEALER" then healers = healers + 1
-                else dps = dps + 1 end
+                if role == "TANK" then
+                    tanks = tanks + 1
+                    if not tankClass and classFile then tankClass = classFile end
+                elseif role == "HEALER" then
+                    healers = healers + 1
+                    if not healerClass and classFile then healerClass = classFile end
+                else
+                    dps = dps + 1
+                    dpsClasses[#dpsClasses + 1] = classFile or false
+                end
 
                 if classFile then
                     if LUST_CLASSES[classFile] then hasLust = true end
@@ -1722,6 +1741,9 @@ local function InspectSearchResult(resultID)
         tanks = tanks,
         healers = healers,
         dps = dps,
+        tankClass = tankClass,
+        healerClass = healerClass,
+        dpsClasses = dpsClasses,
         hasLust = hasLust,
         hasCR = hasCR,
         hasPlayerClass = hasPlayerClass,
@@ -1785,6 +1807,20 @@ end
 
 local isSyncingAdvancedFilter = false
 
+local function HealBlizzardMythicPlusDifficultyFlag(adv, db)
+    if type(adv) ~= "table" or type(db) ~= "table" then return false end
+    local allDiffFalse = (adv.difficultyNormal == false and adv.difficultyHeroic == false and adv.difficultyMythic == false and adv.difficultyMythicPlus == false)
+    if allDiffFalse or (db._fixedMPlusDifficultyReset ~= true and adv.difficultyMythicPlus == false) then
+        adv.difficultyMythicPlus = true
+        db._fixedMPlusDifficultyReset = true
+        return true
+    end
+    if db._fixedMPlusDifficultyReset ~= true then
+        db._fixedMPlusDifficultyReset = true
+    end
+    return false
+end
+
 local function PushFiltersToBlizzardAdvancedFilter(syncDungeons)
     if isSyncingAdvancedFilter then return end
     if not C_LFGList or type(C_LFGList.GetAdvancedFilter) ~= "function" or type(C_LFGList.SaveAdvancedFilter) ~= "function" then
@@ -1795,21 +1831,14 @@ local function PushFiltersToBlizzardAdvancedFilter(syncDungeons)
         local okG, adv = pcall(C_LFGList.GetAdvancedFilter)
         if not okG or type(adv) ~= "table" then return end
         local db = EnsureDB()
-        local myRole = GetPlayerActiveRoleAndLust()
 
-        if db.fitMyRole then
-            adv.needsTank = (myRole == "TANK")
-            adv.needsHealer = (myRole == "HEALER")
-            adv.needsDamage = (myRole == "DAMAGER")
-        else
-            adv.needsTank = false
-            adv.needsHealer = false
-            adv.needsDamage = false
-        end
+        adv.needsTank = (db.needsTank == true)
+        adv.needsHealer = (db.needsHealer == true)
+        adv.needsDamage = (db.needsDamage == true)
         adv.needsMyClass = (db.noDuplicateClass == true)
         adv.hasTank = (db.hasTank == true)
         adv.hasHealer = (db.hasHealer == true)
-        adv.difficultyMythicPlus = (db.mythicPlusOnly == true)
+        HealBlizzardMythicPlusDifficultyFlag(adv, db)
 
         if syncDungeons then
             local slots = GetSeasonDungeonSlots(false)
@@ -1857,16 +1886,19 @@ local function PullFiltersFromBlizzardAdvancedFilter()
         local okG, adv = pcall(C_LFGList.GetAdvancedFilter)
         if not okG or type(adv) ~= "table" then return end
         local db = EnsureDB()
-        local myRole = GetPlayerActiveRoleAndLust()
 
-        if adv.needsTank ~= nil or adv.needsHealer ~= nil or adv.needsDamage ~= nil then
-            if myRole == "TANK" then
-                db.fitMyRole = (adv.needsTank == true)
-            elseif myRole == "HEALER" then
-                db.fitMyRole = (adv.needsHealer == true)
-            else
-                db.fitMyRole = (adv.needsDamage == true)
-            end
+        if HealBlizzardMythicPlusDifficultyFlag(adv, db) and type(C_LFGList.SaveAdvancedFilter) == "function" then
+            pcall(C_LFGList.SaveAdvancedFilter, adv)
+        end
+
+        if adv.needsTank ~= nil then
+            db.needsTank = (adv.needsTank == true)
+        end
+        if adv.needsHealer ~= nil then
+            db.needsHealer = (adv.needsHealer == true)
+        end
+        if adv.needsDamage ~= nil then
+            db.needsDamage = (adv.needsDamage == true)
         end
         if adv.needsMyClass ~= nil then
             db.noDuplicateClass = (adv.needsMyClass == true)
@@ -1876,9 +1908,6 @@ local function PullFiltersFromBlizzardAdvancedFilter()
         end
         if adv.hasHealer ~= nil then
             db.hasHealer = (adv.hasHealer == true)
-        end
-        if adv.difficultyMythicPlus ~= nil then
-            db.mythicPlusOnly = (adv.difficultyMythicPlus == true)
         end
         SyncLegacyPartyFitFromFlags(db)
     end)
@@ -1910,8 +1939,26 @@ local function DoesMetaPassAllFilters(meta, db, myRole)
         end
     end
 
-    if db.fitMyRole and not GroupNeedsRole(meta, myRole) then
-        return false
+    if db.needsTank then
+        if meta.maxMembers <= 5 then
+            if (tonumber(meta.tanks) or 0) >= 1 then return false end
+        elseif meta.isFull then
+            return false
+        end
+    end
+    if db.needsHealer then
+        if meta.maxMembers <= 5 then
+            if (tonumber(meta.healers) or 0) >= 1 then return false end
+        elseif meta.isFull then
+            return false
+        end
+    end
+    if db.needsDamage then
+        if meta.maxMembers <= 5 then
+            if (tonumber(meta.dps) or 0) >= 3 then return false end
+        elseif meta.isFull then
+            return false
+        end
     end
 
     if db.noDuplicateClass and meta.hasPlayerClass then
@@ -1931,10 +1978,6 @@ local function DoesMetaPassAllFilters(meta, db, myRole)
         return false
     end
     if (db.hasCR or fitFilter == "NEEDS_CR" or fitFilter == "NEEDS_BOTH") and not meta.hasCR then
-        return false
-    end
-
-    if db.mythicPlusOnly and inDungeonContext and not meta.isMythicPlusActivity then
         return false
     end
 
@@ -2133,37 +2176,66 @@ local function OnLFGListSearchEntryUpdate(entry)
             ov:SetIgnoreParentAlpha(true)
         end
 
-        ov.scoreTag = ov:CreateFontString(nil, "OVERLAY")
-        SetSafeFont(ov.scoreTag, 10, "OUTLINE")
-        ov.scoreTag:SetPoint("TOPRIGHT", entry, "TOPRIGHT", -6, -4)
-        ov.scoreTag:SetJustifyH("RIGHT")
+        -- Single sleek borderless micro-pill at TOPRIGHT (e.g. "OCE / 3458")
+        local topPill = CreateFrame("Frame", nil, ov)
+        topPill:SetHeight(14)
+        topPill:SetPoint("TOPRIGHT", entry, "TOPRIGHT", -6, -3)
+        topPill:EnableMouse(false)
 
-        local rPill = CreateFrame("Frame", nil, ov)
-        rPill:SetHeight(14)
-        rPill:EnableMouse(false)
+        topPill.bg = topPill:CreateTexture(nil, "BACKGROUND")
+        topPill.bg:SetAllPoints(topPill)
+        topPill.bg:SetColorTexture(0.043, 0.051, 0.071, 0.65) -- #0B0D12 at 65% alpha
 
-        rPill.bg = rPill:CreateTexture(nil, "BACKGROUND")
-        rPill.bg:SetAllPoints(rPill)
-        rPill.bg:SetTexture("Interface\\Buttons\\WHITE8x8")
+        topPill.text = topPill:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(topPill.text, 10, "OUTLINE")
+        topPill.text:SetPoint("CENTER", topPill, "CENTER", 0, 0)
+        topPill.text:SetJustifyH("CENTER")
 
-        rPill.leftBar = rPill:CreateTexture(nil, "ARTWORK")
-        rPill.leftBar:SetWidth(2)
-        rPill.leftBar:SetPoint("TOPLEFT", rPill, "TOPLEFT", 0, 0)
-        rPill.leftBar:SetPoint("BOTTOMLEFT", rPill, "BOTTOMLEFT", 0, 0)
-        rPill.leftBar:SetTexture("Interface\\Buttons\\WHITE8x8")
+        ov.topPill = topPill
+        ov.topTag = topPill.text
 
-        rPill.text = rPill:CreateFontString(nil, "OVERLAY")
-        SetSafeFont(rPill.text, 10, "OUTLINE")
-        rPill.text:SetPoint("LEFT", rPill.leftBar, "RIGHT", 3, 0)
-        rPill.text:SetJustifyH("LEFT")
-
-        ov.regionPill = rPill
-        ov.topTag = rPill.text
-
+        -- Optional FULL-mode Lust/CR tag tucked cleanly left of topPill
         ov.compTag = ov:CreateFontString(nil, "OVERLAY")
         SetSafeFont(ov.compTag, 9, "OUTLINE")
-        ov.compTag:SetPoint("BOTTOMRIGHT", entry, "BOTTOMRIGHT", -8, 2)
+        ov.compTag:SetPoint("RIGHT", topPill, "LEFT", -5, 0)
         ov.compTag:SetJustifyH("RIGHT")
+
+        -- 5-Player Role-Slot Availability Strip (1 Tank, 1 Healer, 3 DPS)
+        local roleStrip = CreateFrame("Frame", nil, ov)
+        roleStrip:SetSize(63, 12)
+        roleStrip:EnableMouse(false)
+        roleStrip.slots = {}
+
+        local slotCoords = {
+            { 0 / 64,  19 / 64, 22 / 64, 41 / 64 }, -- Tank
+            { 20 / 64, 39 / 64, 1 / 64,  20 / 64 }, -- Healer
+            { 20 / 64, 39 / 64, 22 / 64, 41 / 64 }, -- DPS 1
+            { 20 / 64, 39 / 64, 22 / 64, 41 / 64 }, -- DPS 2
+            { 20 / 64, 39 / 64, 22 / 64, 41 / 64 }, -- DPS 3
+        }
+        for idx = 1, 5 do
+            local slotF = CreateFrame("Frame", nil, roleStrip)
+            slotF:SetSize(11, 11)
+            slotF:SetPoint("LEFT", roleStrip, "LEFT", (idx - 1) * 13, 0)
+            slotF:EnableMouse(false)
+
+            slotF.tex = slotF:CreateTexture(nil, "ARTWORK")
+            slotF.tex:SetAllPoints(slotF)
+            slotF.tex:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES")
+            local c = slotCoords[idx]
+            slotF.tex:SetTexCoord(c[1], c[2], c[3], c[4])
+            DisableTexPixelSnap(slotF.tex)
+
+            slotF.pip = slotF:CreateTexture(nil, "OVERLAY")
+            slotF.pip:SetSize(4, 4)
+            slotF.pip:SetPoint("BOTTOMRIGHT", slotF, "BOTTOMRIGHT", 1, -1)
+            slotF.pip:SetTexture("Interface\\Buttons\\WHITE8x8")
+            DisableTexPixelSnap(slotF.pip)
+            slotF.pip:Hide()
+
+            roleStrip.slots[idx] = slotF
+        end
+        ov.roleStrip = roleStrip
 
         eState.overlay = ov
     end
@@ -2211,41 +2283,31 @@ local function OnLFGListSearchEntryUpdate(entry)
     local parentAlpha = (entry.GetAlpha and entry:GetAlpha()) or 1.0
     ov:SetAlpha((meta.isDelisted or parentAlpha < 0.75) and 0.78 or 0.96)
 
-    if meta.leaderScore and meta.leaderScore > 0 then
-        local sHex = GetScoreColorHex(meta.leaderScore)
-        SetSafeFont(ov.scoreTag, 10, "OUTLINE")
-        ov.scoreTag:SetText("|c" .. sHex .. "[" .. tostring(meta.leaderScore) .. "]|r")
-        ov.scoreTag:Show()
-    else
-        ov.scoreTag:SetText("")
-        ov.scoreTag:Hide()
-    end
-
-    local rPill = ov.regionPill
-    local showRegionPill = (meta.regionKey and meta.regionKey ~= "PENDING")
-    if showRegionPill then
-        local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
-        local rc = GetRegionColor(meta.regionKey)
-        local regBadge = FormatRegionTag(meta.regionKey, regMeta.badge)
-
-        SetSafeFont(rPill.text, 10, "OUTLINE")
-        rPill.text:SetText(regBadge)
-        rPill.text:SetTextColor(rc.r, rc.g, rc.b, 1.0)
-        rPill.bg:SetVertexColor(rc.r, rc.g, rc.b, 0.14)
-        rPill.leftBar:SetVertexColor(rc.r, rc.g, rc.b, 0.92)
-
-        local textW = math.ceil((rPill.text:GetStringWidth() or 32) + 8)
-        rPill:SetSize(math.max(28, textW), 14)
-        rPill:ClearAllPoints()
-        if ov.scoreTag:IsShown() then
-            rPill:SetPoint("RIGHT", ov.scoreTag, "LEFT", -4, 0)
-        else
-            rPill:SetPoint("TOPRIGHT", entry, "TOPRIGHT", -6, -3)
+    local showRegion = (meta.regionKey and meta.regionKey ~= "PENDING")
+    local hasScore = (meta.leaderScore and meta.leaderScore > 0)
+    local topPill = ov.topPill
+    if showRegion or hasScore then
+        local parts = {}
+        if showRegion then
+            local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
+            local rc = GetRegionColor(meta.regionKey)
+            local cleanReg = (regMeta.badge or "UNK"):gsub("%[", ""):gsub("%]", "")
+            parts[#parts + 1] = "|c" .. rc.hex .. cleanReg .. "|r"
         end
-        rPill:Show()
+        if hasScore then
+            local sHex = GetScoreColorHex(meta.leaderScore)
+            parts[#parts + 1] = "|c" .. sHex .. tostring(meta.leaderScore) .. "|r"
+        end
+        SetSafeFont(topPill.text, 10, "OUTLINE")
+        topPill.text:SetText(table.concat(parts, " |cFF64748B/|r "))
+        local pillW = math.ceil((topPill.text:GetStringWidth() or 24) + 10)
+        topPill:SetSize(math.max(26, pillW), 14)
+        topPill:ClearAllPoints()
+        topPill:SetPoint("TOPRIGHT", entry, "TOPRIGHT", -6, -3)
+        topPill:Show()
     else
-        rPill.text:SetText("")
-        rPill:Hide()
+        topPill.text:SetText("")
+        topPill:Hide()
     end
 
     if db.overlayMode == "FULL" then
@@ -2260,7 +2322,11 @@ local function OnLFGListSearchEntryUpdate(entry)
             SetSafeFont(ov.compTag, 9, "OUTLINE")
             ov.compTag:SetText(table.concat(parts, " "))
             ov.compTag:ClearAllPoints()
-            ov.compTag:SetPoint("BOTTOMRIGHT", entry, "BOTTOMRIGHT", -8, 2)
+            if topPill:IsShown() then
+                ov.compTag:SetPoint("RIGHT", topPill, "LEFT", -5, 0)
+            else
+                ov.compTag:SetPoint("TOPRIGHT", entry, "TOPRIGHT", -6, -3)
+            end
             ov.compTag:Show()
         else
             ov.compTag:SetText("")
@@ -2269,6 +2335,53 @@ local function OnLFGListSearchEntryUpdate(entry)
     else
         ov.compTag:SetText("")
         ov.compTag:Hide()
+    end
+
+    -- 5-Player Tank / Healer / DPS Role-Slot Availability Strip
+    local roleStrip = ov.roleStrip
+    if roleStrip then
+        if meta.maxMembers == 5 then
+            roleStrip:ClearAllPoints()
+            local enumFrame = entry.DataDisplay and entry.DataDisplay.Enumerate
+            if enumFrame and enumFrame.IsShown and enumFrame:IsShown() then
+                roleStrip:SetPoint("RIGHT", enumFrame, "LEFT", -6, 0)
+            else
+                roleStrip:SetPoint("BOTTOMRIGHT", entry, "BOTTOMRIGHT", -10, 4)
+            end
+
+            local function SetRoleSlotState(slotFrame, isFilled, classFile)
+                if isFilled then
+                    slotFrame.tex:SetDesaturated(false)
+                    slotFrame.tex:SetVertexColor(1.0, 1.0, 1.0, 1.0)
+                    local cHex = classFile and CLASS_COLORS_HEX[classFile]
+                    if cHex then
+                        local r = tonumber(cHex:sub(3, 4), 16) / 255
+                        local g = tonumber(cHex:sub(5, 6), 16) / 255
+                        local b = tonumber(cHex:sub(7, 8), 16) / 255
+                        slotFrame.pip:SetVertexColor(r, g, b, 1.0)
+                    else
+                        slotFrame.pip:SetVertexColor(0.204, 0.827, 0.600, 1.0)
+                    end
+                    slotFrame.pip:Show()
+                else
+                    slotFrame.tex:SetDesaturated(true)
+                    slotFrame.tex:SetVertexColor(0.62, 0.68, 0.76, 0.42)
+                    slotFrame.pip:Hide()
+                end
+            end
+
+            SetRoleSlotState(roleStrip.slots[1], (meta.tanks or 0) >= 1, meta.tankClass)
+            SetRoleSlotState(roleStrip.slots[2], (meta.healers or 0) >= 1, meta.healerClass)
+            local dpsCount = meta.dps or 0
+            local dpsClasses = meta.dpsClasses or {}
+            for dIdx = 1, 3 do
+                local cf = dpsClasses[dIdx]
+                SetRoleSlotState(roleStrip.slots[2 + dIdx], dpsCount >= dIdx, (type(cf) == "string") and cf or nil)
+            end
+            roleStrip:Show()
+        else
+            roleStrip:Hide()
+        end
     end
 
     ov:Show()
@@ -2932,14 +3045,19 @@ local function ShowRegionPopover(anchorBtn)
     activeRegionPopover:Show()
 end
 
+local ROLE_ICON_TANK   = "|TInterface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES:12:12:0:0:64:64:0:19:22:41|t"
+local ROLE_ICON_HEALER = "|TInterface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES:12:12:0:0:64:64:20:39:1:20|t"
+local ROLE_ICON_DPS    = "|TInterface\\LFGFrame\\UI-LFG-ICON-PORTRAITROLES:12:12:0:0:64:64:20:39:22:41|t"
+
 local FILTER_POPOVER_OPTIONS = {
-    { key = "fitMyRole",        badge = "[Role]",  color = { r = 0.204, g = 0.827, b = 0.600, hex = "FF34D399" }, label = "Fits My Role (Open Slot)" },
+    { key = "needsTank",        badge = "[Open]",  color = { r = 0.204, g = 0.827, b = 0.600, hex = "FF34D399" }, label = ROLE_ICON_TANK .. " Tank Role Available" },
+    { key = "needsHealer",      badge = "[Open]",  color = { r = 0.204, g = 0.827, b = 0.600, hex = "FF34D399" }, label = ROLE_ICON_HEALER .. " Healer Role Available" },
+    { key = "needsDamage",      badge = "[Open]",  color = { r = 0.204, g = 0.827, b = 0.600, hex = "FF34D399" }, label = ROLE_ICON_DPS .. " DPS Role Available" },
     { key = "noDuplicateClass", badge = "[Class]", color = { r = 0.220, g = 0.741, b = 0.973, hex = "FF38BDF8" }, labelFn = function() local cName = UnitClass("player") or "Class"; return "No Duplicate " .. cName end },
-    { key = "hasTank",          badge = "[Tank]",  color = { r = 0.376, g = 0.647, b = 0.980, hex = "FF60A5FA" }, label = "Has Tank" },
-    { key = "hasHealer",        badge = "[Heal]",  color = { r = 0.176, g = 0.831, b = 0.749, hex = "FF2DD4BF" }, label = "Has Healer" },
+    { key = "hasTank",          badge = "[Has]",   color = { r = 0.376, g = 0.647, b = 0.980, hex = "FF60A5FA" }, label = ROLE_ICON_TANK .. " Has Tank in Group" },
+    { key = "hasHealer",        badge = "[Has]",   color = { r = 0.176, g = 0.831, b = 0.749, hex = "FF2DD4BF" }, label = ROLE_ICON_HEALER .. " Has Healer in Group" },
     { key = "hasLust",          badge = "[Lust]",  color = { r = 0.984, g = 0.573, b = 0.235, hex = "FFFB923C" }, label = "Has Bloodlust / Heroism" },
     { key = "hasCR",            badge = "[CR]",    color = { r = 0.753, g = 0.518, b = 0.988, hex = "FFC084FC" }, label = "Has Battle Rez (CR)" },
-    { key = "mythicPlusOnly",   badge = "[M+]",    color = { r = 0.980, g = 0.800, b = 0.082, hex = "FFFACC15" }, label = "Mythic+ Difficulty Only" },
 }
 
 local function GetUtilityFilterSummary(db, compact)
@@ -2948,13 +3066,14 @@ local function GetUtilityFilterSummary(db, compact)
         return compact and "Filter: All" or "All Groups (No Filter Active)", 0
     end
     if count == 1 then
-        if db.fitMyRole then return compact and "Filter: Role" or "Fits My Role (Open Slot)", 1 end
+        if db.needsTank then return compact and "Filter: Tank" or "Tank Role Available", 1 end
+        if db.needsHealer then return compact and "Filter: Heal" or "Healer Role Available", 1 end
+        if db.needsDamage then return compact and "Filter: DPS" or "DPS Role Available", 1 end
         if db.noDuplicateClass then return compact and "Filter: NoDup" or ("No Duplicate " .. (UnitClass("player") or "Class")), 1 end
-        if db.hasTank then return compact and "Filter: Tank" or "Has Tank", 1 end
-        if db.hasHealer then return compact and "Filter: Heal" or "Has Healer", 1 end
+        if db.hasTank then return compact and "Filter: +Tank" or "Has Tank in Group", 1 end
+        if db.hasHealer then return compact and "Filter: +Heal" or "Has Healer in Group", 1 end
         if db.hasLust or db.partyFitFilter == "NEEDS_LUST" then return compact and "Filter: Lust" or "Has Bloodlust / Heroism", 1 end
         if db.hasCR or db.partyFitFilter == "NEEDS_CR" then return compact and "Filter: CR" or "Has Battle Rez (CR)", 1 end
-        if db.mythicPlusOnly then return compact and "Filter: M+" or "Mythic+ Difficulty Only", 1 end
     end
     if compact then
         return string.format("Filter: %d", count), count
@@ -2969,7 +3088,7 @@ local function ShowFilterPopover(anchorBtn)
         local pop = CreateFrame("Frame", "DynamicGroupFilterPopover", UIParent, "BackdropTemplate")
         pop:SetFrameStrata("FULLSCREEN_DIALOG")
         pop:SetFrameLevel(100)
-        pop:SetWidth(256)
+        pop:SetWidth(268)
         pop:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
             edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -5226,7 +5345,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 1.6: Premade Group Filters (Role, Class & Utility) (Multi-Toggle Popover Button)
     local c1_roleFit = CreateCardRow(sec1a, 62,
         "Premade Group Filters (Role, Class & Utility)",
-        "Choose role openings, duplicate-class checks, Tank/Healer presence, Lust/CR utility, and Mythic+ difficulty."
+        "Choose Tank/Healer/DPS role openings, duplicate-class checks, Tank/Healer presence, and Lust/CR utility."
     )
     local roleFilterBtn = CreateFrame("Button", nil, c1_roleFit, "BackdropTemplate")
     roleFilterBtn:SetSize(270, 26)
@@ -6325,8 +6444,8 @@ local function RegisterWithDynamicSuite()
         date = "15/11/2026",
         entries = {
             { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Left-click casts learned dungeon teleports out of combat; Right-click filters the group finder to that dungeon." },
-            { type = "FEATURE", text = "Integrated Multi-Toggle Premade Group Filters (15/11/2026): Upgraded the Group Finder filter menu with multi-select toggles for Fits My Role, No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, Battle Rez, and Mythic+ Only, kept in two-way sync with Blizzard's native Filter menu." },
-            { type = "UI",      text = "Added your personal best timed key level, Mythic+ score, and same-class group warning directly to Premade Group tooltips." },
+            { type = "FEATURE", text = "Integrated Multi-Toggle Premade Group Filters (15/11/2026): Upgraded the Group Finder filter menu with Tank, Healer, and DPS role availability toggles (with role icons), No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez, kept in two-way sync with Blizzard's native Filter menu without altering difficulty checkboxes." },
+            { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill, a 5-slot Tank/Healer/DPS role availability strip, and personal best key levels plus same-class warnings in group tooltips." },
             { type = "FEATURE", text = "External Addon Conflict Detector & Yield Engine (12/11/2026): Added PremadeGroupsFilter and PremadeRegionFilter to the curated HARD conflict registry with unified DynamicSuite top-of-module warning banner and 1-click resolution." },
             { type = "FIX",     text = "Eliminated direct property write onto LFGListApplicationDialog.resultID before LFGListApplicationDialog_Show, added pcall and IsSecretValue guards across C_LFGList.GetApplicationInfo, HasSearchResultInfo, GetSearchResultInfo, and sp.SearchBox:GetText(), and pre-guarded LFGListSearchEntry OnEnter against expired resultIDs." },
             { type = "FIX",     text = "Added PLAYER_REGEN_DISABLED cleanup to close DynamicGroupDropdownCatcher and active dropdown popovers on combat entry, added OnMouseUp and OnHide OnUpdate cleanup on the workspace scrollbar thumb, and wired DynamicGroupDB.yieldHooks (AUTO_YIELD) across all LFG filter and sign-up hooks." },
