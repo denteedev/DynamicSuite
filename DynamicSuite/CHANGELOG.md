@@ -9,8 +9,9 @@
 * **[FIX] `DynamicChat` Flush Bottom-Left `(0, 0)` Clamping & Persistence (`DynamicChat.lua`, `DynamicSuite_UI.lua`):**
   * Enforced `ChatFrame1:SetClampedToScreen(false)` and `SetClampRectInsets(0, 0, 0, 0)` (alongside `ChatFrame1Background` and `ChatFrame1EditBox`) whenever `DynamicChat` manages chat layout so Blizzard's default clamp insets never push `ChatFrame1` upward by ~30px.
   * Added `DynamicChat:GetVisibleContainerExtents()` and `DynamicChat:GetLiveOuterBottomLeft()` so `ClampHudCoordsToScreen`, `ReadPeerOrLiveHudPos("CHAT")`, and `DynamicChat`'s layout restore measure only the visible chat container frame without external Blizzard side-button overhangs, and canonicalised `CHAT` (`hudTargetMeta`, drag shield, resize grip, quick align, `SaveChatFramePosition`, and `ApplySavedChatFramePosition`) to `BOTTOMLEFT` outer-container coordinates so dragging, nudging, or resetting to `X = 0, Y = 0` sits flush against the bottom-left screen corner with zero gap across Edit Mode toggles, UI scale/display events, and `/reload`.
-* **[LOCKSTEP] `v1.9.8` Suite <-> Standalone Parity & Automation (`deploy.ps1`, `.toc`, Docs):**
+* **[LOCKSTEP] `v1.9.8` Suite <-> Standalone Parity & Automation (`deploy.ps1`, `release.yml`, `.toc`, Docs):**
   * Added HUD Edit coordinate/anchor parity assertions (`SyncBarScaleAndSizeToDB`, `ConvertAnchorToCenterLocal`, `WriteHUDCoordsToDB`, `GetVisibleContainerExtents`, `GetLiveOuterBottomLeft`, and zero `cf:SetClampedToScreen(true)` in `DynamicChat.lua`) alongside WoW AddOns `DynamicMarker` standalone sync checks, and bumped lockstep `v1.9.8` versions across all `.toc`, Lua fallbacks, and public docs.
+  * Configured automatic CurseForge release-channel routing (`alpha` for `-alpha` tags, `beta` for `-beta` / `-rc` tags, `release` for clean `vX.Y.Z` tags) and GitHub pre-release tagging across `release.yml` (both `DynamicSuite` `1804382` and standalone `DynamicMarker` `1331651`) and `deploy.ps1` `-ReleaseTag` validation/channel summaries.
 
 ---
 

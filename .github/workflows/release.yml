@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Optional release version override for manual runs (e.g. v1.9.7)'
+        description: 'Optional release version override for manual runs (e.g. v1.9.8 or v1.9.8-beta.1)'
         required: false
 
 jobs:
@@ -22,26 +22,89 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Prepare changelog & stage full DynamicSuite addon
+      - name: Detect CurseForge channel, prepare changelog & stage full DynamicSuite addon
         shell: bash
         env:
           INPUT_TAG_NAME: ${{ inputs.tag_name }}
         run: |
           set -euo pipefail
 
+          # Determine target tag and route CurseForge release channel + GitHub pre-release status:
+          #   - Tag containing "-alpha" -> CurseForge "alpha", GitHub prerelease=true
+          #   - Tag containing "-beta" or "-rc" -> CurseForge "beta", GitHub prerelease=true
+          #   - Clean semantic tag (vX.Y.Z) -> CurseForge "release", GitHub prerelease=false
+          RESOLVED_TAG="${GITHUB_REF_NAME:-}"
+          if [[ "$RESOLVED_TAG" != v* && -n "${INPUT_TAG_NAME:-}" ]]; then
+            RESOLVED_TAG="$INPUT_TAG_NAME"
+          fi
+          if [[ "$RESOLVED_TAG" != v* ]]; then
+            RESOLVED_TAG=""
+            CF_RELEASE_TYPE="alpha"
+            GITHUB_RELEASE_PRERELEASE="true"
+          else
+            RESOLVED_TAG_LOWER="${RESOLVED_TAG,,}"
+            if [[ "$RESOLVED_TAG_LOWER" == *"-alpha"* ]]; then
+              CF_RELEASE_TYPE="alpha"
+              GITHUB_RELEASE_PRERELEASE="true"
+            elif [[ "$RESOLVED_TAG_LOWER" == *"-beta"* || "$RESOLVED_TAG_LOWER" == *"-rc"* ]]; then
+              CF_RELEASE_TYPE="beta"
+              GITHUB_RELEASE_PRERELEASE="true"
+            else
+              CF_RELEASE_TYPE="release"
+              GITHUB_RELEASE_PRERELEASE="false"
+            fi
+          fi
+          {
+            echo "RESOLVED_TAG=$RESOLVED_TAG"
+            echo "CF_RELEASE_TYPE=$CF_RELEASE_TYPE"
+            echo "GITHUB_RELEASE_PRERELEASE=$GITHUB_RELEASE_PRERELEASE"
+          } >> "$GITHUB_ENV"
+          echo "Detected release channel for tag '${RESOLVED_TAG:-<untagged>}': CurseForge='${CF_RELEASE_TYPE}', GitHub prerelease=${GITHUB_RELEASE_PRERELEASE}"
+
+          # Ensure BigWigsMods/packager honors our channel routing (including -rc -> beta
+          # and manual overrides) for both CurseForge uploads and GitHub Releases.
+          python3 - <<'PYEOF'
+          import glob
+          import os
+
+          candidates = []
+          for base in ["/home/runner/work/_actions", os.path.normpath(os.path.join(os.environ.get("RUNNER_TEMP", "/tmp"), "..", "_actions")), os.path.normpath(os.path.join(os.environ.get("RUNNER_WORKSPACE", "/home/runner/work"), "..", "_actions"))]:
+              candidates.extend(glob.glob(os.path.join(base, "BigWigsMods", "packager", "*", "release.sh")))
+
+          seen = set()
+          for path in candidates:
+              real = os.path.realpath(path)
+              if real in seen or not os.path.isfile(real):
+                  continue
+              seen.add(real)
+              with open(real, "r", encoding="utf-8") as f:
+                  src = f.read()
+              updated = src.replace(
+                  'elif [[ "${tag,,}" == *"beta"* ]]; then',
+                  'elif [[ "${tag,,}" == *"-beta"* || "${tag,,}" == *"beta"* || "${tag,,}" == *"-rc"* ]]; then'
+              )
+              anchor = "# Add some GitHub Actions outputs"
+              inject = 'if [ -n "${CF_RELEASE_TYPE:-}" ]; then\n\tfile_type="$CF_RELEASE_TYPE"\nfi\n\n' + anchor
+              if 'file_type="$CF_RELEASE_TYPE"' not in updated and anchor in updated:
+                  updated = updated.replace(anchor, inject, 1)
+              if updated != src:
+                  with open(real, "w", encoding="utf-8", newline="\n") as f:
+                      f.write(updated)
+                  print(f"Patched release-channel routing in {real}")
+              else:
+                  print(f"No release.sh channel patch needed in {real}")
+          PYEOF
+
           # Extract only the active/latest release section into .release-changelog.md
           # so GitHub Releases never exceed the 125,000-character body limit (HTTP 422),
           # while full CHANGELOG.md remains inside the packaged addon zips.
-          TAG_VER="${GITHUB_REF_NAME:-}"
-          if [[ "$TAG_VER" != v* && -n "${INPUT_TAG_NAME:-}" ]]; then
-            TAG_VER="$INPUT_TAG_NAME"
-          fi
-          TAG_VER="${TAG_VER#v}"
+          TAG_VER="${RESOLVED_TAG#v}"
           python3 - "$TAG_VER" <<'PYEOF'
           import re
           import sys
 
           tag_ver = sys.argv[1].strip()
+          base_ver = re.sub(r"-.*$", "", tag_ver)
           with open("CHANGELOG.md", "rb") as f:
               raw = f.read()
           if raw.startswith(b"\xef\xbb\xbf"):
@@ -50,12 +113,14 @@ jobs:
 
           sections = re.split(r"(?m)(?=^## )", text)
           picked = ""
-          if tag_ver:
-              pat = re.compile(r"^## .*?\bv?" + re.escape(tag_ver) + r"\b")
+          for candidate_ver in [v for v in (tag_ver, base_ver) if v]:
+              pat = re.compile(r"^## .*?\bv?" + re.escape(candidate_ver) + r"\b")
               for sec in sections:
                   if pat.search(sec):
                       picked = sec
                       break
+              if picked:
+                  break
           if not picked:
               for sec in sections:
                   if sec.startswith("## "):
@@ -138,6 +203,8 @@ jobs:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_API_KEY: ${{ secrets.CF_API_TOKEN }}
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+          CF_RELEASE_TYPE: ${{ env.CF_RELEASE_TYPE }}
+          GITHUB_RELEASE_PRERELEASE: ${{ env.GITHUB_RELEASE_PRERELEASE }}
 
       - name: Stage standalone DynamicMarker addon
         shell: bash
@@ -193,3 +260,21 @@ jobs:
           CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
           CF_API_KEY: ${{ secrets.CF_API_TOKEN }}
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+          CF_RELEASE_TYPE: ${{ env.CF_RELEASE_TYPE }}
+          GITHUB_RELEASE_PRERELEASE: ${{ env.GITHUB_RELEASE_PRERELEASE }}
+
+      - name: Verify & enforce GitHub Release pre-release state
+        if: env.RESOLVED_TAG != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RESOLVED_TAG: ${{ env.RESOLVED_TAG }}
+          CF_RELEASE_TYPE: ${{ env.CF_RELEASE_TYPE }}
+          GITHUB_RELEASE_PRERELEASE: ${{ env.GITHUB_RELEASE_PRERELEASE }}
+        run: |
+          set -euo pipefail
+          echo "Verifying GitHub Release '$RESOLVED_TAG' (CurseForge channel: $CF_RELEASE_TYPE, prerelease: $GITHUB_RELEASE_PRERELEASE)..."
+          if gh release view "$RESOLVED_TAG" >/dev/null 2>&1; then
+            gh release edit "$RESOLVED_TAG" --prerelease="$GITHUB_RELEASE_PRERELEASE"
+            echo "GitHub Release '$RESOLVED_TAG' prerelease state confirmed as $GITHUB_RELEASE_PRERELEASE."
+          fi

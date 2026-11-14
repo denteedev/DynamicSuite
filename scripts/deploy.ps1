@@ -427,16 +427,36 @@ if ($workflowText -notmatch '120000') {
 if ($workflowText -match 'cp\s+Packaging/StandaloneTOCs/DynamicMarker\.toc\s+DynamicMarker\.toc') {
     throw "release.yml must not copy DynamicMarker.toc to the repository root."
 }
-Write-Host "[PACKAGING GUARD OK] Verified YAML, .pkgmeta (1804382), .pkgmeta-dynamicmarker (1331651), and release.yml" -ForegroundColor Green
+foreach ($chanToken in @("CF_RELEASE_TYPE", '"-alpha"', '"-beta"', '"-rc"', "GITHUB_RELEASE_PRERELEASE")) {
+    if ($workflowText.IndexOf($chanToken, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "release.yml is missing required automatic CurseForge release-channel token: $chanToken"
+    }
+}
+Write-Host "[PACKAGING GUARD OK] Verified YAML, .pkgmeta (1804382), .pkgmeta-dynamicmarker (1331651), and release.yml channel routing" -ForegroundColor Green
 
+$resolvedCfChannel = $null
+$resolvedGhReleaseKind = $null
 if (-not [string]::IsNullOrWhiteSpace($ReleaseTag)) {
-    if ($ReleaseTag -notmatch '^v\d+\.\d+\.\d+$') {
-        throw "ReleaseTag '$ReleaseTag' must match semantic tag format 'vX.Y.Z'."
+    if ($ReleaseTag -match '^v(\d+\.\d+\.\d+)(?:-(alpha|beta|rc)(?:\.[0-9A-Za-z.-]+|[0-9A-Za-z.-]*)?)?$') {
+        $tagBaseVer = $Matches[1]
+    } else {
+        throw "ReleaseTag '$ReleaseTag' must match clean semantic format 'vX.Y.Z' or pre-release format 'vX.Y.Z-alpha.N', 'vX.Y.Z-beta.N', or 'vX.Y.Z-rc.N'."
     }
-    if ($ReleaseTag -ne "v$suiteVer") {
-        throw "ReleaseTag '$ReleaseTag' does not match lockstep .toc version 'v$suiteVer'."
+    if ($tagBaseVer -ne $suiteVer) {
+        throw "ReleaseTag '$ReleaseTag' base version 'v$tagBaseVer' does not match lockstep .toc version 'v$suiteVer'."
     }
-    Write-Host "[RELEASE TAG OK] Validated semantic tag $ReleaseTag matches lockstep v$suiteVer" -ForegroundColor Green
+    if ($ReleaseTag -match '(?i)-alpha') {
+        $resolvedCfChannel = "alpha"
+        $resolvedGhReleaseKind = "Pre-release"
+    } elseif ($ReleaseTag -match '(?i)-(beta|rc)') {
+        $resolvedCfChannel = "beta"
+        $resolvedGhReleaseKind = "Pre-release"
+    } else {
+        $resolvedCfChannel = "release"
+        $resolvedGhReleaseKind = "Full Release"
+    }
+    Write-Host "[RELEASE TAG OK] Validated tag $ReleaseTag (base v$tagBaseVer matches lockstep .toc v$suiteVer)" -ForegroundColor Green
+    Write-Host "[RELEASE CHANNEL] Tag '$ReleaseTag' -> CurseForge channel: '$resolvedCfChannel' | GitHub Release: '$resolvedGhReleaseKind' (1804382 DynamicSuite + 1331651 DynamicMarker)" -ForegroundColor Cyan
 }
 
 function New-VerifiedAddonReleaseZip {
@@ -756,6 +776,7 @@ try {
         Write-Host "[GIT PUSHED] origin/main is up to date" -ForegroundColor Green
 
         if (-not [string]::IsNullOrWhiteSpace($ReleaseTag)) {
+            Write-Host "[RELEASE SUMMARY] Pushing tag '$ReleaseTag' -> CurseForge '$resolvedCfChannel' channel ($resolvedGhReleaseKind) for DynamicSuite (1804382) & DynamicMarker (1331651)..." -ForegroundColor Cyan
             $localTag = & $gitExe tag -l $ReleaseTag
             if ($LASTEXITCODE -ne 0) { throw "git tag -l failed." }
             if ($localTag) {
@@ -770,11 +791,11 @@ try {
                 if ($LASTEXITCODE -ne 0) { throw "Failed to delete stale remote tag '$ReleaseTag'." }
                 Write-Host "[TAG CLEANUP] Deleted stale remote tag $ReleaseTag" -ForegroundColor Yellow
             }
-            & $gitExe tag -a $ReleaseTag -m "Release $ReleaseTag (DynamicSuite + Standalone DynamicMarker)"
+            & $gitExe tag -a $ReleaseTag -m "Release $ReleaseTag [$resolvedCfChannel] (DynamicSuite + Standalone DynamicMarker)"
             if ($LASTEXITCODE -ne 0) { throw "git tag -a $ReleaseTag failed." }
             & $gitExe push origin $ReleaseTag
             if ($LASTEXITCODE -ne 0) { throw "git push origin $ReleaseTag failed." }
-            Write-Host "[TAG PUSHED] Annotated tag $ReleaseTag pushed to origin" -ForegroundColor Green
+            Write-Host "[TAG PUSHED] Annotated tag $ReleaseTag pushed to origin (CurseForge target channel: $resolvedCfChannel)" -ForegroundColor Green
         }
     } else {
         Write-Host "[GIT SKIPPED] -SkipGit specified" -ForegroundColor Yellow
