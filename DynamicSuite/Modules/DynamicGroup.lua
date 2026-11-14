@@ -2490,40 +2490,50 @@ local function OnLFGListSearchEntryUpdate(entry)
                     slotAnchors = children
                 end
             end
+            -- Idempotent -2px vertical baseline nudge on Enumerate (preserving all original points)
+            if not enumFrame._dgOrigPoints and enumFrame.GetNumPoints and enumFrame.GetPoint then
+                local numPts = enumFrame:GetNumPoints()
+                if numPts and numPts > 0 then
+                    local pts = {}
+                    for p = 1, numPts do
+                        local pt, relTo, relPt, x, y = enumFrame:GetPoint(p)
+                        if pt then
+                            pts[#pts + 1] = { pt, relTo, relPt, x or 0, y or 0 }
+                        end
+                    end
+                    if #pts > 0 then
+                        enumFrame._dgOrigPoints = pts
+                    end
+                end
+            end
+            if enumFrame._dgOrigPoints and enumFrame.SetPoint then
+                for _, p in ipairs(enumFrame._dgOrigPoints) do
+                    enumFrame:SetPoint(p[1], p[2], p[3], p[4], p[5] - 2)
+                end
+            end
+
+            -- Idempotent 3px horizontal gap between sibling Enumerate icons in Blizzard's native chain
+            for _, ic in ipairs(slotAnchors) do
+                if ic and not ic._dgOrigPoint and ic.GetPoint then
+                    local pt, relTo, relPt, x, y = ic:GetPoint(1)
+                    if pt then
+                        ic._dgOrigPoint = { pt, relTo, relPt, x or 0, y or 0 }
+                    end
+                end
+                if ic and ic._dgOrigPoint and ic.SetPoint then
+                    local op = ic._dgOrigPoint
+                    if op[2] and op[2] ~= enumFrame then
+                        local nx = (op[4] < 0) and (op[4] - 3) or (op[4] + 3)
+                        ic:SetPoint(op[1], op[2], op[3], nx, op[5])
+                    end
+                end
+            end
+
             table.sort(slotAnchors, function(a, b)
                 local la = (a and a.GetLeft and a:GetLeft()) or 0
                 local lb = (b and b.GetLeft and b:GetLeft()) or 0
                 return la < lb
             end)
-
-            -- Idempotent -2px vertical baseline nudge on Enumerate & 3px horizontal gap between slots
-            if not enumFrame._dgOrigPoint and enumFrame.GetPoint then
-                local pt, relTo, relPt, x, y = enumFrame:GetPoint(1)
-                if pt then
-                    enumFrame._dgOrigPoint = { pt, relTo, relPt, x or 0, y or 0 }
-                end
-            end
-            if enumFrame._dgOrigPoint and enumFrame.ClearAllPoints and enumFrame.SetPoint then
-                local orig = enumFrame._dgOrigPoint
-                enumFrame:ClearAllPoints()
-                enumFrame:SetPoint(orig[1], orig[2], orig[3], orig[4], orig[5] - 2)
-            end
-            for i = 1, #slotAnchors do
-                if slotAnchors[i] and slotAnchors[i].ClearAllPoints then
-                    slotAnchors[i]:ClearAllPoints()
-                end
-            end
-            local nSlots = #slotAnchors
-            if nSlots >= 1 and slotAnchors[nSlots] and slotAnchors[nSlots].SetPoint then
-                slotAnchors[nSlots]:SetPoint("RIGHT", enumFrame, "RIGHT", 0, 0)
-                for i = nSlots - 1, 1, -1 do
-                    local curA = slotAnchors[i]
-                    local nextA = slotAnchors[i + 1]
-                    if curA and nextA and curA.SetPoint then
-                        curA:SetPoint("RIGHT", nextA, "LEFT", -3, 0)
-                    end
-                end
-            end
 
             local openRoles = {}
             local openTanks = math.max(0, 1 - (meta.tanks or 0))
