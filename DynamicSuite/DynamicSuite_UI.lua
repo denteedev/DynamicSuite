@@ -9038,8 +9038,10 @@ function addonTable.CreateMainConfigUI()
                 local cx, cy = cf:GetCenter()
                 local uCx, uCy = UIParent:GetCenter()
                 if cx and cy and uCx and uCy then
-                    local lx = math.floor(((cx - uCx) / relScale) + 0.5)
-                    local ly = math.floor(((cy - uCy) / relScale) + 0.5)
+                    local visCx = cx * relScale
+                    local visCy = cy * relScale
+                    local lx = math.floor(((visCx - uCx) / relScale) + 0.5)
+                    local ly = math.floor(((visCy - uCy) / relScale) + 0.5)
                     return "CENTER", "CENTER", lx, ly
                 end
             end
@@ -9257,12 +9259,421 @@ function addonTable.CreateMainConfigUI()
         end
     end
 
+    local EDGE_SNAP_THRESHOLD = 11
+    local BAR_SNAP_THRESHOLD  = 9
+
+    local function GetAnchorFraction(pointStr)
+        local pt = type(pointStr) == "string" and pointStr:upper() or "CENTER"
+        local fx = 0.5
+        local fy = 0.5
+        if pt:find("LEFT", 1, true) then
+            fx = 0.0
+        elseif pt:find("RIGHT", 1, true) then
+            fx = 1.0
+        end
+        if pt:find("BOTTOM", 1, true) then
+            fy = 0.0
+        elseif pt:find("TOP", 1, true) then
+            fy = 1.0
+        end
+        return fx, fy
+    end
+
+    local function GetChatExtraInsetsLocal(targetKey)
+        if targetKey ~= "CHAT" then
+            return 0, 0, 0, 0
+        end
+        if _G.DynamicChat and _G.DynamicChat.GetCompositeChatInsets then
+            local ok, lIn, rIn, tIn, bIn = pcall(_G.DynamicChat.GetCompositeChatInsets, _G.DynamicChat)
+            if ok and lIn then
+                return math.max(0, -(tonumber(lIn) or -36)),
+                       math.max(0, tonumber(rIn) or 8),
+                       math.max(0, tonumber(tIn) or 29),
+                       math.max(0, -(tonumber(bIn) or -32))
+            end
+        end
+        return 36, 8, 29, 32
+    end
+
+    local function EnsureSnapGuideOverlay()
+        local ov = _G.DynamicSuiteSnapGuideOverlay
+        if not ov then
+            ov = CreateFrame("Frame", "DynamicSuiteSnapGuideOverlay", UIParent)
+            ov:SetAllPoints(UIParent)
+            ov:SetFrameStrata("FULLSCREEN_DIALOG")
+            ov:SetFrameLevel(200)
+            ov:EnableMouse(false)
+
+            local vLine = ov:CreateTexture(nil, "OVERLAY")
+            if vLine.SetSnapToPixelGrid then vLine:SetSnapToPixelGrid(false) end
+            if vLine.SetTexelSnappingBias then vLine:SetTexelSnappingBias(0) end
+            vLine:Hide()
+            ov.vLine = vLine
+
+            local hLine = ov:CreateTexture(nil, "OVERLAY")
+            if hLine.SetSnapToPixelGrid then hLine:SetSnapToPixelGrid(false) end
+            if hLine.SetTexelSnappingBias then hLine:SetTexelSnappingBias(0) end
+            hLine:Hide()
+            ov.hLine = hLine
+
+            ov.HideGuides = function()
+                if ov.vLine then ov.vLine:Hide() end
+                if ov.hLine then ov.hLine:Hide() end
+            end
+
+            ov.ShowGuides = function(gx, gy, r, g, b)
+                local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+                local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+                local cr, cg, cb = r or 0.22, g or 0.74, b or 0.97
+                if gx ~= nil then
+                    ov.vLine:ClearAllPoints()
+                    ov.vLine:SetColorTexture(cr, cg, cb, 0.85)
+                    if gx <= 1 then
+                        ov.vLine:SetWidth(2)
+                        ov.vLine:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+                        ov.vLine:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
+                    elseif gx >= screenW - 1 then
+                        ov.vLine:SetWidth(2)
+                        ov.vLine:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", 0, 0)
+                        ov.vLine:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", 0, 0)
+                    else
+                        ov.vLine:SetWidth(1.5)
+                        ov.vLine:SetPoint("TOP", UIParent, "BOTTOMLEFT", gx, screenH)
+                        ov.vLine:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", gx, 0)
+                    end
+                    ov.vLine:Show()
+                else
+                    ov.vLine:Hide()
+                end
+
+                if gy ~= nil then
+                    ov.hLine:ClearAllPoints()
+                    ov.hLine:SetColorTexture(cr, cg, cb, 0.85)
+                    if gy <= 1 then
+                        ov.hLine:SetHeight(2)
+                        ov.hLine:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
+                        ov.hLine:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", 0, 0)
+                    elseif gy >= screenH - 1 then
+                        ov.hLine:SetHeight(2)
+                        ov.hLine:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 0, 0)
+                        ov.hLine:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", 0, 0)
+                    else
+                        ov.hLine:SetHeight(1.5)
+                        ov.hLine:SetPoint("LEFT", UIParent, "BOTTOMLEFT", 0, gy)
+                        ov.hLine:SetPoint("RIGHT", UIParent, "BOTTOMLEFT", screenW, gy)
+                    end
+                    ov.hLine:Show()
+                else
+                    ov.hLine:Hide()
+                end
+            end
+        end
+        return ov
+    end
+
+    local function HideSnapGuides()
+        local ov = _G.DynamicSuiteSnapGuideOverlay
+        if ov and ov.HideGuides then
+            ov.HideGuides()
+        end
+    end
+
+    local function UpdateSnapGuides(gx, gy)
+        if gx == nil and gy == nil then
+            HideSnapGuides()
+            return
+        end
+        local ov = EnsureSnapGuideOverlay()
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        ov.ShowGuides(gx, gy, ar, ag, ab)
+    end
+
+    local function ResolveExistingHudFrame(targetKey)
+        if targetKey == "TOAST" then
+            return _G.DynamicLoadToastFrame
+        elseif targetKey == "PREP" then
+            return _G.DynamicPrepBarFrame
+        elseif targetKey == "TARGET" then
+            return _G.DynamicMarkerTargetBar
+        elseif targetKey == "FLARE" then
+            return _G.DynamicMarkerFlareBar
+        elseif targetKey == "prepBuffs" then
+            return (_G.DynamicSuite and _G.DynamicSuite.hudFrames and _G.DynamicSuite.hudFrames["prepBuffs"]) or _G.DynamicPrepClickableBuffBar
+        elseif targetKey == "CHAT" then
+            if not IsChatHudTargetOwned() then return nil end
+            return _G.ChatFrame1
+        end
+        return nil
+    end
+
+    local function CollectAllActiveHudFrames()
+        local out = {}
+        local seen = {}
+        for _, hDef in ipairs(hudTargetDefs) do
+            if hDef.key ~= "ALL" then
+                local f = ResolveExistingHudFrame(hDef.key)
+                if f and not seen[f] and f.IsShown and f:IsShown() then
+                    seen[f] = true
+                    table.insert(out, f)
+                end
+            end
+        end
+        if _G.DynamicSuite and type(_G.DynamicSuite.hudElements) == "table" then
+            for _, entry in pairs(_G.DynamicSuite.hudElements) do
+                if type(entry) == "table" and entry.frame and not seen[entry.frame] and entry.frame.IsShown and entry.frame:IsShown() then
+                    seen[entry.frame] = true
+                    table.insert(out, entry.frame)
+                end
+            end
+        end
+        return out
+    end
+
+    local function CollectPeerHudBoundsUIParent(excludeFrame, uScale)
+        local bounds = {}
+        local seen = {}
+        if excludeFrame then seen[excludeFrame] = true end
+        local function AddFrame(f, keyHint)
+            if not f or seen[f] then return end
+            seen[f] = true
+            if not (f.IsShown and f:IsShown()) then return end
+            if not (f.GetCenter and f.GetWidth and f.GetHeight) then return end
+            local oFScale = (f.GetEffectiveScale and f:GetEffectiveScale()) or uScale
+            if oFScale <= 0 then oFScale = uScale end
+            local oRelScale = oFScale / uScale
+            local oW = (f:GetWidth() or 0) * oRelScale
+            local oH = (f:GetHeight() or 0) * oRelScale
+            if oW <= 1 or oH <= 1 then return end
+            local oCxLocal, oCyLocal = f:GetCenter()
+            if not oCxLocal or not oCyLocal then return end
+            local oCx = oCxLocal * oRelScale
+            local oCy = oCyLocal * oRelScale
+            local lEx, rEx, tEx, bEx = GetChatExtraInsetsLocal(keyHint)
+            table.insert(bounds, {
+                left   = oCx - (oW / 2) - (lEx * oRelScale),
+                right  = oCx + (oW / 2) + (rEx * oRelScale),
+                bottom = oCy - (oH / 2) - (bEx * oRelScale),
+                top    = oCy + (oH / 2) + (tEx * oRelScale),
+                cx     = oCx,
+                cy     = oCy,
+            })
+        end
+        for _, hDef in ipairs(hudTargetDefs) do
+            if hDef.key ~= "ALL" then
+                AddFrame(ResolveExistingHudFrame(hDef.key), hDef.key)
+            end
+        end
+        if _G.DynamicSuite and type(_G.DynamicSuite.hudElements) == "table" then
+            for _, entry in pairs(_G.DynamicSuite.hudElements) do
+                if type(entry) == "table" and entry.frame then
+                    AddFrame(entry.frame, nil)
+                end
+            end
+        end
+        return bounds
+    end
+
+    -- Helper: returns UIParent dimensions and frame size in hudFrame's own local coordinate space.
+    -- In WoW's C++ layout engine, frame:SetPoint(pt, UIParent, relPt, xOfs, yOfs) interprets (xOfs, yOfs)
+    -- in frame's own scaled local coordinate space (UIParent offset = xOfs * (frameScale / uiParentScale)).
+    local function GetHudLocalScreenExtents(hudFrame, targetKey)
+        local fScale = (hudFrame and hudFrame.GetEffectiveScale and hudFrame:GetEffectiveScale()) or 1
+        local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        if fScale <= 0 then fScale = 1 end
+        if uScale <= 0 then uScale = 1 end
+        local relScale = fScale / uScale
+        if relScale <= 0 then relScale = 1 end
+        local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+        local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+        local uiW_local = screenW / relScale
+        local uiH_local = screenH / relScale
+        local frameW = (hudFrame and hudFrame.GetWidth and hudFrame:GetWidth()) or 160
+        local frameH = (hudFrame and hudFrame.GetHeight and hudFrame:GetHeight()) or 40
+        return uiW_local, uiH_local, fScale, uScale, relScale, frameW, frameH
+    end
+
+    -- Unified Screen-Edge/Center & Bar-to-Bar Magnetic Snapping + Hard Screen-Boundary Clamping
+    local function ClampHudCoordsToScreen(hudFrame, targetKey, usePt, useRelPt, rawX, rawY, enableSnap)
+        local cleanPt = usePt or ((targetKey == "TARGET" or targetKey == "FLARE" or targetKey == "prepBuffs" or targetKey == "CHAT") and "CENTER" or "TOP")
+        local cleanRelPt = useRelPt or cleanPt
+        local _, _, _, uScale, relScale, frameW, frameH = GetHudLocalScreenExtents(hudFrame, targetKey)
+        local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+        local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+        local screenCx = screenW / 2
+        local screenCy = screenH / 2
+
+        local visW = (frameW or 0) * relScale
+        local visH = (frameH or 0) * relScale
+        local halfW = math.max(0, visW / 2)
+        local halfH = math.max(0, visH / 2)
+        local lEx, rEx, tEx, bEx = GetChatExtraInsetsLocal(targetKey)
+        local leftExtraVis   = lEx * relScale
+        local rightExtraVis  = rEx * relScale
+        local topExtraVis    = tEx * relScale
+        local bottomExtraVis = bEx * relScale
+
+        local pfx, pfy = GetAnchorFraction(cleanPt)
+        local rfx, rfy = GetAnchorFraction(cleanRelPt)
+        local refX = rfx * screenW
+        local refY = rfy * screenH
+
+        local inX = tonumber(rawX) or 0
+        local inY = tonumber(rawY) or 0
+        local anchorVisX = refX + (inX * relScale)
+        local anchorVisY = refY + (inY * relScale)
+        local candCx = anchorVisX + (0.5 - pfx) * visW
+        local candCy = anchorVisY + (0.5 - pfy) * visH
+
+        local guideX, guideY = nil, nil
+        local snapMode = GetActiveSnapMode()
+        local bypassSnap = (IsShiftKeyDown and IsShiftKeyDown()) or (IsControlKeyDown and IsControlKeyDown())
+        if enableSnap and not bypassSnap then
+            if snapMode == "MAGNET" or snapMode == nil then
+                local candL = candCx - halfW - leftExtraVis
+                local candR = candCx + halfW + rightExtraVis
+                local candB = candCy - halfH - bottomExtraVis
+                local candT = candCy + halfH + topExtraVis
+
+                local bestDeltaX, bestGX = nil, nil
+                local bestDeltaY, bestGY = nil, nil
+
+                local function ConsiderX(delta, gLine, limit)
+                    if math.abs(delta) <= limit then
+                        if bestDeltaX == nil or math.abs(delta) < math.abs(bestDeltaX) then
+                            bestDeltaX = delta
+                            bestGX = gLine
+                        end
+                    end
+                end
+                local function ConsiderY(delta, gLine, limit)
+                    if math.abs(delta) <= limit then
+                        if bestDeltaY == nil or math.abs(delta) < math.abs(bestDeltaY) then
+                            bestDeltaY = delta
+                            bestGY = gLine
+                        end
+                    end
+                end
+
+                -- Screen-edge & center magnetic snapping (~11px in UIParent coordinates)
+                ConsiderX(0 - candL, 0, EDGE_SNAP_THRESHOLD)
+                ConsiderX(screenW - candR, screenW, EDGE_SNAP_THRESHOLD)
+                ConsiderX(screenCx - candCx, screenCx, EDGE_SNAP_THRESHOLD)
+
+                ConsiderY(0 - candB, 0, EDGE_SNAP_THRESHOLD)
+                ConsiderY(screenH - candT, screenH, EDGE_SNAP_THRESHOLD)
+                ConsiderY(screenCy - candCy, screenCy, EDGE_SNAP_THRESHOLD)
+
+                -- Bar-to-bar flush stacking & flush alignment across all visible HUDs (~9px)
+                local peers = CollectPeerHudBoundsUIParent(hudFrame, uScale)
+                for _, peer in ipairs(peers) do
+                    ConsiderX(peer.right - candL, peer.right, BAR_SNAP_THRESHOLD)
+                    ConsiderX(peer.left - candR, peer.left, BAR_SNAP_THRESHOLD)
+                    ConsiderX(peer.left - candL, peer.left, BAR_SNAP_THRESHOLD)
+                    ConsiderX(peer.right - candR, peer.right, BAR_SNAP_THRESHOLD)
+                    ConsiderX(peer.cx - candCx, peer.cx, BAR_SNAP_THRESHOLD)
+
+                    ConsiderY(peer.bottom - candT, peer.bottom, BAR_SNAP_THRESHOLD)
+                    ConsiderY(peer.top - candB, peer.top, BAR_SNAP_THRESHOLD)
+                    ConsiderY(peer.top - candT, peer.top, BAR_SNAP_THRESHOLD)
+                    ConsiderY(peer.bottom - candB, peer.bottom, BAR_SNAP_THRESHOLD)
+                    ConsiderY(peer.cy - candCy, peer.cy, BAR_SNAP_THRESHOLD)
+                end
+
+                if bestDeltaX ~= nil then
+                    candCx = candCx + bestDeltaX
+                    guideX = bestGX
+                end
+                if bestDeltaY ~= nil then
+                    candCy = candCy + bestDeltaY
+                    guideY = bestGY
+                end
+            elseif snapMode == 16 or snapMode == 32 then
+                local step = snapMode * relScale
+                if math.abs(candCx - screenCx) <= EDGE_SNAP_THRESHOLD then
+                    candCx = screenCx
+                    guideX = screenCx
+                elseif step > 0 then
+                    candCx = screenCx + math.floor(((candCx - screenCx) / step) + 0.5) * step
+                end
+                if math.abs(candCy - screenCy) <= EDGE_SNAP_THRESHOLD then
+                    candCy = screenCy
+                    guideY = screenCy
+                elseif step > 0 then
+                    candCy = screenCy + math.floor(((candCy - screenCy) / step) + 0.5) * step
+                end
+            end
+        end
+
+        -- Hard screen-boundary clamping ALWAYS takes final precedence
+        local minCx = halfW + leftExtraVis
+        local maxCx = screenW - halfW - rightExtraVis
+        local minCy = halfH + bottomExtraVis
+        local maxCy = screenH - halfH - topExtraVis
+
+        if minCx > maxCx then
+            candCx = screenCx
+        else
+            if candCx < minCx then
+                candCx = minCx
+                if guideX ~= nil and guideX ~= 0 then guideX = nil end
+            elseif candCx > maxCx then
+                candCx = maxCx
+                if guideX ~= nil and guideX ~= screenW then guideX = nil end
+            end
+        end
+
+        if minCy > maxCy then
+            candCy = screenCy
+        else
+            if candCy < minCy then
+                candCy = minCy
+                if guideY ~= nil and guideY ~= 0 then guideY = nil end
+            elseif candCy > maxCy then
+                candCy = maxCy
+                if guideY ~= nil and guideY ~= screenH then guideY = nil end
+            end
+        end
+
+        local rawOutX = ((candCx - (0.5 - pfx) * visW) - refX) / relScale
+        local rawOutY = ((candCy - (0.5 - pfy) * visH) - refY) / relScale
+        local outX = math.floor(rawOutX + 0.5)
+        local outY = math.floor(rawOutY + 0.5)
+
+        local minLocalX = ((minCx - (0.5 - pfx) * visW) - refX) / relScale
+        local maxLocalX = ((maxCx - (0.5 - pfx) * visW) - refX) / relScale
+        local minLocalY = ((minCy - (0.5 - pfy) * visH) - refY) / relScale
+        local maxLocalY = ((maxCy - (0.5 - pfy) * visH) - refY) / relScale
+
+        if minLocalX <= maxLocalX then
+            local loX = math.ceil(minLocalX - 1e-6)
+            local hiX = math.floor(maxLocalX + 1e-6)
+            if loX <= hiX then
+                outX = math.max(loX, math.min(hiX, outX))
+            end
+        else
+            outX = math.floor((((screenCx - (0.5 - pfx) * visW) - refX) / relScale) + 0.5)
+        end
+
+        if minLocalY <= maxLocalY then
+            local loY = math.ceil(minLocalY - 1e-6)
+            local hiY = math.floor(maxLocalY + 1e-6)
+            if loY <= hiY then
+                outY = math.max(loY, math.min(hiY, outY))
+            end
+        else
+            outY = math.floor((((screenCy - (0.5 - pfy) * visH) - refY) / relScale) + 0.5)
+        end
+
+        return cleanPt, cleanRelPt, outX, outY, guideX, guideY
+    end
+
     local function SetStoredHudPos(targetKey, pt, relPt, x, y)
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
-        local rx = math.floor((x or 0) + 0.5)
-        local ry = math.floor((y or 0) + 0.5)
         local cleanPt = pt or "TOP"
         local cleanRelPt = relPt or cleanPt
+        local liveFrame = GetLiveHudFrame(targetKey)
+        local rx, ry
+        cleanPt, cleanRelPt, rx, ry = ClampHudCoordsToScreen(liveFrame, targetKey, cleanPt, cleanRelPt, x or 0, y or 0, false)
         if targetKey == "TOAST" then
             if addonTable.SetToastPresetPosition then
                 addonTable.SetToastPresetPosition(cleanPt, cleanRelPt, rx, ry)
@@ -9291,7 +9702,6 @@ function addonTable.CreateMainConfigUI()
         end
         PersistPeerHudPosition(targetKey, cleanPt, cleanRelPt, rx, ry)
 
-        local liveFrame = GetLiveHudFrame(targetKey)
         if liveFrame and targetKey ~= "CHAT" and not InCombatLockdown() then
             if liveFrame.ClearAllPoints and liveFrame.SetPoint then
                 liveFrame:ClearAllPoints()
@@ -9311,25 +9721,6 @@ function addonTable.CreateMainConfigUI()
             local _, _, liveX, liveY = ReadPeerOrLiveHudPos("CHAT")
             _G.DynamicChat._dsDragShield:UpdateOverlay(liveX or rx, liveY or ry, selectedHudTarget == "CHAT" or selectedHudTarget == "ALL")
         end
-    end
-
-    -- Helper: returns UIParent dimensions and frame size in hudFrame's own local coordinate space.
-    -- In WoW's C++ layout engine, frame:SetPoint(pt, UIParent, relPt, xOfs, yOfs) interprets (xOfs, yOfs)
-    -- in frame's own scaled local coordinate space (UIParent offset = xOfs * (frameScale / uiParentScale)).
-    local function GetHudLocalScreenExtents(hudFrame, targetKey)
-        local fScale = (hudFrame and hudFrame.GetEffectiveScale and hudFrame:GetEffectiveScale()) or 1
-        local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-        if fScale <= 0 then fScale = 1 end
-        if uScale <= 0 then uScale = 1 end
-        local relScale = fScale / uScale
-        if relScale <= 0 then relScale = 1 end
-        local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
-        local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
-        local uiW_local = screenW / relScale
-        local uiH_local = screenH / relScale
-        local frameW = (hudFrame and hudFrame.GetWidth and hudFrame:GetWidth()) or 160
-        local frameH = (hudFrame and hudFrame.GetHeight and hudFrame:GetHeight()) or 40
-        return uiW_local, uiH_local, fScale, uScale, relScale, frameW, frameH
     end
 
     -- Read the frame's current live anchor & offset in hudFrame local coordinate space
@@ -9356,79 +9747,14 @@ function addonTable.CreateMainConfigUI()
         return usePt, useRelPt, math.floor(curX + 0.5), math.floor(curY + 0.5)
     end
 
-    -- Apply Center Magnet / Grid snapping and full-screen manual bounds clamping in hudFrame local space
-    local function ComputeSnappedAndClampedHudCoords(hudFrame, targetKey, rawX, rawY, usePt, useRelPt)
-        local uiW_local, uiH_local, _, _, _, frameW, frameH = GetHudLocalScreenExtents(hudFrame, targetKey)
-        local rx = math.floor((rawX or 0) + 0.5)
-        local ry = math.floor((rawY or 0) + 0.5)
-        local dyCenter = (usePt == "CENTER") and ry or math.floor((ry + (uiH_local / 2) - (frameH / 2)) + 0.5)
-
-        local snapMode = GetActiveSnapMode()
-        if not IsControlKeyDown() then
-            if snapMode == "MAGNET" then
-                if math.abs(rx) <= 6 then rx = 0 end
-                if usePt == "CENTER" and math.abs(ry) <= 6 then
-                    ry = 0
-                elseif usePt == "TOP" and math.abs(dyCenter) <= 6 then
-                    ry = math.floor(-(uiH_local / 2) + (frameH / 2) + 0.5)
-                end
-            elseif snapMode == 16 or snapMode == 32 then
-                local step = snapMode
-                if math.abs(rx) <= 6 then
-                    rx = 0
-                else
-                    rx = math.floor((rx / step) + 0.5) * step
-                end
-                if usePt == "CENTER" and math.abs(ry) <= 6 then
-                    ry = 0
-                else
-                    ry = math.floor((ry / step) + 0.5) * step
-                end
-            end
-        end
-
-        -- Manual full-screen clamp in hudFrame local coordinate space so scaled HUDs (60%-150%) can reach all 4 edges
-        local halfW = math.max(0, (frameW or 0) / 2)
-        local halfH = math.max(0, (frameH or 0) / 2)
-        local leftExtra, rightExtra, topExtra, bottomExtra = 0, 0, 0, 0
-        if targetKey == "CHAT" then
-            if _G.DynamicChat and _G.DynamicChat.GetCompositeChatInsets then
-                local ok, lIn, rIn, tIn, bIn = pcall(_G.DynamicChat.GetCompositeChatInsets, _G.DynamicChat)
-                if ok and lIn then
-                    leftExtra   = math.max(0, -(tonumber(lIn) or -36))
-                    rightExtra  = math.max(0, tonumber(rIn) or 8)
-                    topExtra    = math.max(0, tonumber(tIn) or 29)
-                    bottomExtra = math.max(0, -(tonumber(bIn) or -32))
-                else
-                    leftExtra, rightExtra, topExtra, bottomExtra = 36, 8, 29, 32
-                end
-            else
-                leftExtra, rightExtra, topExtra, bottomExtra = 36, 8, 29, 32
-            end
-        end
-        local minX = math.floor(-(uiW_local / 2) + halfW + leftExtra + 0.5)
-        local maxX = math.floor((uiW_local / 2) - halfW - rightExtra + 0.5)
-        if minX > maxX then minX, maxX = -(uiW_local / 2), (uiW_local / 2) end
-        rx = math.max(minX, math.min(maxX, rx))
-
-        if usePt == "CENTER" then
-            local minY = math.floor(-(uiH_local / 2) + halfH + bottomExtra + 0.5)
-            local maxY = math.floor((uiH_local / 2) - halfH - topExtra + 0.5)
-            if minY > maxY then minY, maxY = -(uiH_local / 2), (uiH_local / 2) end
-            ry = math.max(minY, math.min(maxY, ry))
-        else
-            local minY = math.floor(-uiH_local + (frameH or 40) + bottomExtra + 0.5)
-            local maxY = -topExtra
-            if minY > maxY then minY = -uiH_local end
-            ry = math.max(minY, math.min(maxY, ry))
-        end
-
-        return usePt, useRelPt, rx, ry
+    -- Apply Screen-Edge/Center & Bar-to-Bar Magnetic Snapping + Hard Screen-Boundary Clamping
+    local function ComputeSnappedAndClampedHudCoords(hudFrame, targetKey, rawX, rawY, usePt, useRelPt, enableSnap)
+        return ClampHudCoordsToScreen(hudFrame, targetKey, usePt, useRelPt, rawX, rawY, enableSnap ~= false)
     end
 
     local function ComputeDraggedHudCoords(hudFrame, targetKey)
         local usePt, useRelPt, curX, curY = GetLiveHudLocalOffset(hudFrame, targetKey)
-        return ComputeSnappedAndClampedHudCoords(hudFrame, targetKey, curX, curY, usePt, useRelPt)
+        return ClampHudCoordsToScreen(hudFrame, targetKey, usePt, useRelPt, curX, curY, true)
     end
 
     local HUD_SCALE_MIN, HUD_SCALE_MAX, HUD_SCALE_STEP = 0.60, 1.50, 0.05
@@ -9478,7 +9804,7 @@ function addonTable.CreateMainConfigUI()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         gTbl.hudScales = gTbl.hudScales or {}
 
-        local targets = (targetKey == "ALL") and { "TOAST", "PREP", "TARGET", "FLARE" } or { targetKey or "TOAST" }
+        local targets = (targetKey == "ALL") and { "TOAST", "PREP", "TARGET", "FLARE", "prepBuffs" } or { targetKey or "TOAST" }
         for _, k in ipairs(targets) do
             gTbl.hudScales[k] = snapped
             if k == "TOAST" then
@@ -9553,6 +9879,11 @@ function addonTable.CreateMainConfigUI()
                 end
             end
 
+            if not InCombatLockdown() then
+                local sPt, sRelPt, sX, sY = GetStoredHudPos(k)
+                SetStoredHudPos(k, sPt, sRelPt, sX, sY)
+            end
+
             local liveHud = GetLiveHudFrame(k)
             if liveHud and liveHud._dsDragShield and liveHud._dsDragShield.UpdateOverlay then
                 local _, _, cx, cy = GetStoredHudPos(k)
@@ -9608,7 +9939,7 @@ function addonTable.CreateMainConfigUI()
     local function SetHudVisibility(targetKey, isShown)
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         gTbl.hudVisibility = gTbl.hudVisibility or {}
-        local targets = (targetKey == "ALL") and { "TOAST", "PREP", "TARGET", "FLARE" } or { targetKey or "TOAST" }
+        local targets = (targetKey == "ALL") and { "TOAST", "PREP", "TARGET", "FLARE", "prepBuffs" } or { targetKey or "TOAST" }
         for _, k in ipairs(targets) do
             gTbl.hudVisibility[k] = isShown and "ALWAYS" or "HIDDEN"
             if k == "TOAST" then
@@ -9923,10 +10254,11 @@ function addonTable.CreateMainConfigUI()
                         addonTable.OnHudTargetSelected("CHAT")
                     end
                     stateCarrier._dsDragging = true
-                    local _, _, fScale = GetHudLocalScreenExtents(hudFrame, "CHAT")
+                    local _, _, _, uScale, relScale = GetHudLocalScreenExtents(hudFrame, "CHAT")
                     local cxRaw, cyRaw = GetCursorPosition()
-                    selfGrip._startCurX = (cxRaw or 0) / fScale
-                    selfGrip._startCurY = (cyRaw or 0) / fScale
+                    selfGrip._startCurUIParentX = (cxRaw or 0) / uScale
+                    selfGrip._startCurUIParentY = (cyRaw or 0) / uScale
+                    selfGrip._startRelScale = relScale
                     selfGrip._startW = (hudFrame.GetWidth and hudFrame:GetWidth()) or 430
                     selfGrip._startH = (hudFrame.GetHeight and hudFrame:GetHeight()) or 200
                     local _, _, startOffX, startOffY = GetLiveHudLocalOffset(hudFrame, "CHAT")
@@ -9937,12 +10269,12 @@ function addonTable.CreateMainConfigUI()
                             selfGrip:SetScript("OnUpdate", nil)
                             return
                         end
-                        local uiW_local, uiH_local, curFScale = GetHudLocalScreenExtents(hudFrame, "CHAT")
+                        local uiW_local, uiH_local, _, curUScale, curRelScale = GetHudLocalScreenExtents(hudFrame, "CHAT")
                         local rxRaw, ryRaw = GetCursorPosition()
-                        local curX = (rxRaw or 0) / curFScale
-                        local curY = (ryRaw or 0) / curFScale
-                        local dW = curX - (selfGrip._startCurX or curX)
-                        local dH = (selfGrip._startCurY or curY) - curY
+                        local curUIParentX = (rxRaw or 0) / curUScale
+                        local curUIParentY = (ryRaw or 0) / curUScale
+                        local dW = (curUIParentX - (selfGrip._startCurUIParentX or curUIParentX)) / curRelScale
+                        local dH = ((selfGrip._startCurUIParentY or curUIParentY) - curUIParentY) / curRelScale
                         local maxAllowedW = math.min(1200, math.max(240, math.floor(uiW_local - 56)))
                         local maxAllowedH = math.min(900, math.max(100, math.floor(uiH_local - 84)))
                         local newW = math.floor(math.max(240, math.min(maxAllowedW, (selfGrip._startW or 430) + dW)) + 0.5)
@@ -10040,29 +10372,50 @@ function addonTable.CreateMainConfigUI()
                 if self.SetClampRectInsets then self:SetClampRectInsets(0, 0, 0, 0) end
 
                 local usePt, useRelPt, startX, startY = GetLiveHudLocalOffset(hudFrame, targetKey)
-                local _, _, fScale = GetHudLocalScreenExtents(hudFrame, targetKey)
+                local _, _, _, uScale, relScale, frameW, frameH = GetHudLocalScreenExtents(hudFrame, targetKey)
+                local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+                local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+                local fCx, fCy = hudFrame.GetCenter and hudFrame:GetCenter()
+                local startVisCx, startVisCy
+                if fCx and fCy then
+                    startVisCx = fCx * relScale
+                    startVisCy = fCy * relScale
+                else
+                    local pfx, pfy = GetAnchorFraction(usePt)
+                    local rfx, rfy = GetAnchorFraction(useRelPt)
+                    startVisCx = (rfx * screenW) + (startX * relScale) + (0.5 - pfx) * ((frameW or 0) * relScale)
+                    startVisCy = (rfy * screenH) + (startY * relScale) + (0.5 - pfy) * ((frameH or 0) * relScale)
+                end
                 local rawCurX, rawCurY = GetCursorPosition()
-                local startCurX = (rawCurX or 0) / fScale
-                local startCurY = (rawCurY or 0) / fScale
+                local startCurX = (rawCurX or 0) / uScale
+                local startCurY = (rawCurY or 0) / uScale
                 self._dragUsePt = usePt
                 self._dragUseRelPt = useRelPt
-                self._dragGrabX = startX - startCurX
-                self._dragGrabY = startY - startCurY
+                self._dragGrabVisX = startVisCx - startCurX
+                self._dragGrabVisY = startVisCy - startCurY
                 self._lastDragX = startX
                 self._lastDragY = startY
 
                 self:SetScript("OnUpdate", function()
                     if not IsMouseButtonDown("LeftButton") or InCombatLockdown() then
                         self:SetScript("OnUpdate", nil)
+                        HideSnapGuides()
                         return
                     end
-                    local _, _, curFScale = GetHudLocalScreenExtents(hudFrame, targetKey)
+                    local _, _, _, curUScale, curRelScale, curFrameW, curFrameH = GetHudLocalScreenExtents(hudFrame, targetKey)
+                    local curScreenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+                    local curScreenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
                     local cxRaw, cyRaw = GetCursorPosition()
-                    local curX = (cxRaw or 0) / curFScale
-                    local curY = (cyRaw or 0) / curFScale
-                    local rawX = curX + (self._dragGrabX or 0)
-                    local rawY = curY + (self._dragGrabY or 0)
-                    local ptNow, relPtNow, lx, ly = ComputeSnappedAndClampedHudCoords(hudFrame, targetKey, rawX, rawY, self._dragUsePt, self._dragUseRelPt)
+                    local rawVisCx = ((cxRaw or 0) / curUScale) + (self._dragGrabVisX or 0)
+                    local rawVisCy = ((cyRaw or 0) / curUScale) + (self._dragGrabVisY or 0)
+                    local pNow = self._dragUsePt or usePt
+                    local rNow = self._dragUseRelPt or useRelPt
+                    local pfx, pfy = GetAnchorFraction(pNow)
+                    local rfx, rfy = GetAnchorFraction(rNow)
+                    local rawX = ((rawVisCx - (0.5 - pfx) * ((curFrameW or 0) * curRelScale)) - (rfx * curScreenW)) / curRelScale
+                    local rawY = ((rawVisCy - (0.5 - pfy) * ((curFrameH or 0) * curRelScale)) - (rfy * curScreenH)) / curRelScale
+                    local ptNow, relPtNow, lx, ly, gx, gy = ComputeSnappedAndClampedHudCoords(hudFrame, targetKey, rawX, rawY, pNow, rNow, true)
+                    UpdateSnapGuides(gx, gy)
                     if lx == self._lastDragX and ly == self._lastDragY then
                         return
                     end
@@ -10085,16 +10438,18 @@ function addonTable.CreateMainConfigUI()
             end)
             shield:SetScript("OnHide", function(self)
                 self:SetScript("OnUpdate", nil)
+                HideSnapGuides()
                 stateCarrier._dsDragging = false
             end)
             shield:SetScript("OnDragStop", function(self)
                 self:SetScript("OnUpdate", nil)
+                HideSnapGuides()
                 if hudFrame.StopMovingOrSizing then pcall(hudFrame.StopMovingOrSizing, hudFrame) end
                 local usePt = self._dragUsePt or ((targetKey == "TARGET" or targetKey == "FLARE" or targetKey == "prepBuffs" or targetKey == "CHAT") and "CENTER" or "TOP")
                 local useRelPt = self._dragUseRelPt or usePt
                 local rx, ry
                 if self._lastDragX ~= nil and self._lastDragY ~= nil then
-                    usePt, useRelPt, rx, ry = ComputeSnappedAndClampedHudCoords(hudFrame, targetKey, self._lastDragX, self._lastDragY, usePt, useRelPt)
+                    usePt, useRelPt, rx, ry = ClampHudCoordsToScreen(hudFrame, targetKey, usePt, useRelPt, self._lastDragX, self._lastDragY, false)
                 else
                     usePt, useRelPt, rx, ry = ComputeDraggedHudCoords(hudFrame, targetKey)
                 end
@@ -10445,6 +10800,68 @@ function addonTable.CreateMainConfigUI()
     local isExitingHudEditMode = false
     addonTable.IsHudEditModeActive = function()
         return isHudEditModeActive
+    end
+
+    function addonTable.ClampAllSuiteHudsToScreen()
+        if InCombatLockdown and InCombatLockdown() then return end
+        for _, hDef in ipairs(hudTargetDefs) do
+            if hDef.key ~= "ALL" then
+                if hDef.key ~= "CHAT" or IsChatHudTargetOwned() then
+                    if hDef.key == "TOAST" then
+                        if addonTable.ClampToastPosition then
+                            pcall(addonTable.ClampToastPosition)
+                        end
+                    else
+                        local pt, relPt, x, y = GetStoredHudPos(hDef.key)
+                        SetStoredHudPos(hDef.key, pt, relPt, x, y)
+                    end
+                end
+            end
+        end
+    end
+
+    function addonTable.ResetAllHudPositions(silent)
+        if InCombatLockdown and InCombatLockdown() then
+            addonTable._pendingHudPositionReset = true
+            if not silent then
+                print("|cFF38BDF8DynamicSuite|r: |cFFF87171Cannot reset HUD positions during combat lockdown.|r Positions will reset safely after combat ends.")
+            end
+            return false
+        end
+        addonTable._pendingHudPositionReset = false
+        for _, hDef in ipairs(hudTargetDefs) do
+            local k = hDef.key
+            if k ~= "ALL" and (k ~= "CHAT" or IsChatHudTargetOwned()) then
+                local meta = hudTargetMeta[k] or hudTargetMeta["TOAST"]
+                local pt = meta.defPoint or "TOP"
+                local relPt = meta.defRelPoint or pt
+                if k == "TOAST" then
+                    if addonTable.SetToastPresetPosition then
+                        addonTable.SetToastPresetPosition(pt, relPt, meta.defX, meta.defY)
+                    end
+                elseif k == "CHAT" then
+                    if _G.DynamicChat and _G.DynamicChat.ResetChatFramePosition then
+                        pcall(_G.DynamicChat.ResetChatFramePosition, _G.DynamicChat)
+                    end
+                    SetStoredHudPos("CHAT", pt, relPt, meta.defX, meta.defY)
+                elseif k == "prepBuffs" and _G.DynamicPrep and _G.DynamicPrep.ResetBuffBarHUDPosition then
+                    pcall(_G.DynamicPrep.ResetBuffBarHUDPosition, _G.DynamicPrep, true)
+                    SetStoredHudPos("prepBuffs", pt, relPt, meta.defX, meta.defY)
+                else
+                    SetStoredHudPos(k, pt, relPt, meta.defX, meta.defY)
+                end
+            end
+        end
+        if isHudEditModeActive then
+            SyncAllEditModeHuds(true)
+        end
+        if editModeInspectorModal and editModeInspectorModal.RefreshState then
+            editModeInspectorModal.RefreshState()
+        end
+        if not silent then
+            print("|cFF38BDF8DynamicSuite|r: All HUD positions reset to safe screen-clamped defaults.")
+        end
+        return true
     end
 
     local function EnsureEditModeInspectorModal()
@@ -10895,23 +11312,32 @@ function addonTable.CreateMainConfigUI()
         -- 5. Right-Aligned [Grid] and [Reset] Buttons
         local rowResetConfirmPending = false
         local function ResetSelectedHudLocations()
-            local targets = (selectedHudTarget == "ALL") and { "TOAST", "PREP", "TARGET", "FLARE", "prepBuffs", "CHAT" } or { selectedHudTarget }
-            for _, k in ipairs(targets) do
-                local meta = hudTargetMeta[k] or hudTargetMeta["TOAST"]
-                local pt = meta.defPoint or "TOP"
-                local relPt = meta.defRelPoint or pt
-                if k == "TOAST" then
-                    if addonTable.SetToastPresetPosition then
-                        addonTable.SetToastPresetPosition(pt, relPt, meta.defX, meta.defY)
-                    end
-                elseif k == "CHAT" then
-                    if _G.DynamicChat and _G.DynamicChat.ResetChatFramePosition then
-                        pcall(_G.DynamicChat.ResetChatFramePosition, _G.DynamicChat)
-                    end
-                    SetStoredHudPos("CHAT", pt, relPt, meta.defX, meta.defY)
-                else
-                    SetStoredHudPos(k, pt, relPt, meta.defX, meta.defY)
+            if InCombatLockdown and InCombatLockdown() then
+                print("|cFF38BDF8DynamicSuite|r: |cFFF87171Cannot reset HUD positions during combat lockdown.|r Please wait until combat ends.")
+                return
+            end
+            if selectedHudTarget == "ALL" then
+                addonTable.ResetAllHudPositions(false)
+                return
+            end
+            local k = selectedHudTarget
+            local meta = hudTargetMeta[k] or hudTargetMeta["TOAST"]
+            local pt = meta.defPoint or "TOP"
+            local relPt = meta.defRelPoint or pt
+            if k == "TOAST" then
+                if addonTable.SetToastPresetPosition then
+                    addonTable.SetToastPresetPosition(pt, relPt, meta.defX, meta.defY)
                 end
+            elseif k == "CHAT" then
+                if _G.DynamicChat and _G.DynamicChat.ResetChatFramePosition then
+                    pcall(_G.DynamicChat.ResetChatFramePosition, _G.DynamicChat)
+                end
+                SetStoredHudPos("CHAT", pt, relPt, meta.defX, meta.defY)
+            elseif k == "prepBuffs" and _G.DynamicPrep and _G.DynamicPrep.ResetBuffBarHUDPosition then
+                pcall(_G.DynamicPrep.ResetBuffBarHUDPosition, _G.DynamicPrep, true)
+                SetStoredHudPos("prepBuffs", pt, relPt, meta.defX, meta.defY)
+            else
+                SetStoredHudPos(k, pt, relPt, meta.defX, meta.defY)
             end
             SyncAllEditModeHuds(true)
             m.RefreshState()
@@ -10941,7 +11367,7 @@ function addonTable.CreateMainConfigUI()
         rowResetBtn.OnCustomEnter = function(self)
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
             GameTooltip:SetText("Reset Location", 1, 1, 1)
-            GameTooltip:AddLine("Snap selected HUD back to default position.", 0.78, 0.82, 0.88)
+            GameTooltip:AddLine("Reset selected HUD (or all HUDs when All HUDs is selected) back to default screen-safe coordinates.", 0.78, 0.82, 0.88, true)
             GameTooltip:Show()
         end
         rowResetBtn.OnCustomLeave = function() GameTooltip:Hide() end
@@ -11141,6 +11567,7 @@ function addonTable.CreateMainConfigUI()
         isExitingHudEditMode = true
         isHudEditModeActive = false
         addonTable._isHudEditModeActive = false
+        HideSnapGuides()
         f._minimizedForHudDrag = false
         if editModeInspectorModal and editModeInspectorModal:IsShown() then
             editModeInspectorModal:Hide()
@@ -11192,6 +11619,18 @@ function addonTable.CreateMainConfigUI()
     _G.DynamicSuite.EnterEditMode             = addonTable.EnterHudEditMode
     _G.DynamicSuite.ExitHudEditMode           = addonTable.ExitHudEditMode
     _G.DynamicSuite.GetHudSnapMode            = GetActiveSnapMode
+    _G.DynamicSuite.GetActiveHudFrames        = CollectAllActiveHudFrames
+    _G.DynamicSuite.ResetAllHudPositions      = function(silent)
+        if addonTable.ResetAllHudPositions then
+            return addonTable.ResetAllHudPositions(silent)
+        end
+        return false
+    end
+    _G.DynamicSuite.ClampAllHudPositions      = function()
+        if addonTable.ClampAllSuiteHudsToScreen then
+            return addonTable.ClampAllSuiteHudsToScreen()
+        end
+    end
     _G.DynamicSuite.NotifyExternalHudSelected = addonTable.OnHudTargetSelected
     _G.DynamicSuite.NotifyExternalHudCoords   = function(targetKey, _, lx, ly)
         if (targetKey == selectedHudTarget or selectedHudTarget == "ALL") and editModeInspectorModal and editModeInspectorModal.UpdateLiveCoordReadout then
@@ -12635,6 +13074,48 @@ function addonTable.HideConfigUI()
     end
 end
 
+function addonTable.ClampAllSuiteHudsToScreen()
+    if InCombatLockdown and InCombatLockdown() then
+        addonTable._pendingHudClamp = true
+        return false
+    end
+    local selfFn = addonTable.ClampAllSuiteHudsToScreen
+    addonTable.CreateMainConfigUI()
+    if addonTable.ClampAllSuiteHudsToScreen and addonTable.ClampAllSuiteHudsToScreen ~= selfFn then
+        return addonTable.ClampAllSuiteHudsToScreen()
+    end
+    return false
+end
+
+function addonTable.ResetAllHudPositions(silent)
+    if InCombatLockdown and InCombatLockdown() then
+        addonTable._pendingHudPositionReset = true
+        if not silent then
+            print("|cFF38BDF8DynamicSuite|r: |cFFF87171Cannot reset HUD positions during combat lockdown.|r Positions will reset safely after combat ends.")
+        end
+        return false
+    end
+    local selfFn = addonTable.ResetAllHudPositions
+    addonTable.CreateMainConfigUI()
+    if addonTable.ResetAllHudPositions and addonTable.ResetAllHudPositions ~= selfFn then
+        return addonTable.ResetAllHudPositions(silent)
+    end
+    return false
+end
+
+function addonTable.EnterHudEditMode(targetKey)
+    if InCombatLockdown and InCombatLockdown() then
+        print("|cFF38BDF8DynamicSuite|r: |cFFF87171Cannot enter HUD Edit Mode during combat lockdown.|r")
+        return false
+    end
+    local selfFn = addonTable.EnterHudEditMode
+    addonTable.CreateMainConfigUI()
+    if addonTable.EnterHudEditMode and addonTable.EnterHudEditMode ~= selfFn then
+        return addonTable.EnterHudEditMode(targetKey)
+    end
+    return false
+end
+
 function addonTable.ToggleConfigUI(forceShow)
     if DynamicLoadDB and (DynamicLoadDB.stagedProfile or DynamicLoadDB.loadedProfile or DynamicLoadDB.activeProfile) and (not mainFrame or not mainFrame:IsShown()) then
         selectedTabKey = DynamicLoadDB.stagedProfile or DynamicLoadDB.loadedProfile or DynamicLoadDB.activeProfile
@@ -12804,7 +13285,7 @@ function addonTable.HookGameMenu()
         slashSummary:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -12)
         slashSummary:SetWidth(520)
         slashSummary:SetJustifyH("LEFT")
-        slashSummary:SetText("Slash Commands:  /ds (Main Window)   |   /ds hud (HUD Edit Mode)   |   /ds reload")
+        slashSummary:SetText("Slash Commands:  /ds (Main Window)   |   /ds hud (HUD Edit)   |   /ds resethud (Reset HUDs)")
 
         local function HideSettingsPanelSafe()
             if InCombatLockdown and InCombatLockdown() then return end
@@ -12822,7 +13303,7 @@ function addonTable.HookGameMenu()
         end
 
         local openBtn = CreateFrame("Button", nil, card, "BackdropTemplate")
-        openBtn:SetSize(196, 32)
+        openBtn:SetSize(162, 32)
         openBtn:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 18, 18)
         local openBg = UI.SolidTex(openBtn, "BACKGROUND", 0, ar * 0.28, ag * 0.28, ab * 0.28, 0.98)
         openBg:SetAllPoints()
@@ -12859,20 +13340,37 @@ function addonTable.HookGameMenu()
         end)
 
         local openHudBtn = CreateFrame("Button", nil, card, "BackdropTemplate")
-        openHudBtn:SetSize(210, 32)
-        openHudBtn:SetPoint("LEFT", openBtn, "RIGHT", 12, 0)
+        openHudBtn:SetSize(174, 32)
+        openHudBtn:SetPoint("LEFT", openBtn, "RIGHT", 10, 0)
         local hudBg = UI.SolidTex(openHudBtn, "BACKGROUND", 0, 0.08, 0.10, 0.14, 0.96)
         hudBg:SetAllPoints()
         UI.CreatePixelBorder(openHudBtn, 1, 1, 1, 0.18, 2)
         local hudLbl = openHudBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         hudLbl:SetPoint("CENTER")
-        hudLbl:SetText("Open DynamicSuite HUD (/ds hud)")
+        hudLbl:SetText("HUD Edit Mode (/ds hud)")
         openHudBtn:SetScript("OnEnter", function() hudBg:SetColorTexture(0.14, 0.17, 0.22, 1.0) end)
         openHudBtn:SetScript("OnLeave", function() hudBg:SetColorTexture(0.08, 0.10, 0.14, 0.96) end)
         openHudBtn:SetScript("OnClick", function()
             HideSettingsPanelSafe()
             if addonTable.EnterHudEditMode then
                 addonTable.EnterHudEditMode("ALL")
+            end
+        end)
+
+        local resetHudBtn = CreateFrame("Button", nil, card, "BackdropTemplate")
+        resetHudBtn:SetSize(168, 32)
+        resetHudBtn:SetPoint("LEFT", openHudBtn, "RIGHT", 10, 0)
+        local resetHudBg = UI.SolidTex(resetHudBtn, "BACKGROUND", 0, 0.12, 0.08, 0.09, 0.96)
+        resetHudBg:SetAllPoints()
+        UI.CreatePixelBorder(resetHudBtn, 0.96, 0.62, 0.04, 0.55, 2)
+        local resetHudLbl = resetHudBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        resetHudLbl:SetPoint("CENTER")
+        resetHudLbl:SetText("Reset HUD Positions")
+        resetHudBtn:SetScript("OnEnter", function() resetHudBg:SetColorTexture(0.20, 0.12, 0.13, 1.0) end)
+        resetHudBtn:SetScript("OnLeave", function() resetHudBg:SetColorTexture(0.12, 0.08, 0.09, 0.96) end)
+        resetHudBtn:SetScript("OnClick", function()
+            if addonTable.ResetAllHudPositions then
+                addonTable.ResetAllHudPositions(false)
             end
         end)
 

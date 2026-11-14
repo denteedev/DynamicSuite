@@ -877,6 +877,99 @@ function DynamicPrep:InitDB()
     end
 end
 
+local function GetPrepAnchorFraction(pointStr)
+    local pt = type(pointStr) == "string" and pointStr:upper() or "CENTER"
+    local fx = 0.5
+    local fy = 0.5
+    if pt:find("LEFT", 1, true) then
+        fx = 0.0
+    elseif pt:find("RIGHT", 1, true) then
+        fx = 1.0
+    end
+    if pt:find("BOTTOM", 1, true) then
+        fy = 0.0
+    elseif pt:find("TOP", 1, true) then
+        fy = 1.0
+    end
+    return fx, fy
+end
+
+local function ClampPrepFrameToScreen(frame, point, relPoint, rawX, rawY, fallbackW, fallbackH)
+    local pt = point or "TOP"
+    local rp = relPoint or pt
+    local fScale = (frame and frame.GetEffectiveScale and frame:GetEffectiveScale()) or 1
+    local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+    if fScale <= 0 then fScale = 1 end
+    if uScale <= 0 then uScale = 1 end
+    local relScale = fScale / uScale
+    if relScale <= 0 then relScale = 1 end
+
+    local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+    local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+    local screenCx = screenW / 2
+    local screenCy = screenH / 2
+
+    local frameW = (frame and frame.GetWidth and frame:GetWidth()) or fallbackW or 200
+    local frameH = (frame and frame.GetHeight and frame:GetHeight()) or fallbackH or 36
+    local visW = math.max(1, frameW * relScale)
+    local visH = math.max(1, frameH * relScale)
+    local halfW = visW / 2
+    local halfH = visH / 2
+
+    local pfx, pfy = GetPrepAnchorFraction(pt)
+    local rfx, rfy = GetPrepAnchorFraction(rp)
+    local refX = rfx * screenW
+    local refY = rfy * screenH
+
+    local inX = tonumber(rawX) or 0
+    local inY = tonumber(rawY) or 0
+    local anchorVisX = refX + (inX * relScale)
+    local anchorVisY = refY + (inY * relScale)
+    local candCx = anchorVisX + (0.5 - pfx) * visW
+    local candCy = anchorVisY + (0.5 - pfy) * visH
+
+    local minCx = halfW
+    local maxCx = screenW - halfW
+    local minCy = halfH
+    local maxCy = screenH - halfH
+    if minCx > maxCx then
+        candCx = screenCx
+    else
+        candCx = math.max(minCx, math.min(maxCx, candCx))
+    end
+    if minCy > maxCy then
+        candCy = screenCy
+    else
+        candCy = math.max(minCy, math.min(maxCy, candCy))
+    end
+
+    local outX = math.floor((((candCx - (0.5 - pfx) * visW) - refX) / relScale) + 0.5)
+    local outY = math.floor((((candCy - (0.5 - pfy) * visH) - refY) / relScale) + 0.5)
+
+    local minLocalX = ((minCx - (0.5 - pfx) * visW) - refX) / relScale
+    local maxLocalX = ((maxCx - (0.5 - pfx) * visW) - refX) / relScale
+    local minLocalY = ((minCy - (0.5 - pfy) * visH) - refY) / relScale
+    local maxLocalY = ((maxCy - (0.5 - pfy) * visH) - refY) / relScale
+
+    if minLocalX <= maxLocalX then
+        local loX = math.ceil(minLocalX - 1e-6)
+        local hiX = math.floor(maxLocalX + 1e-6)
+        if loX <= hiX then outX = math.max(loX, math.min(hiX, outX)) end
+    else
+        outX = math.floor((((screenCx - (0.5 - pfx) * visW) - refX) / relScale) + 0.5)
+    end
+    if minLocalY <= maxLocalY then
+        local loY = math.ceil(minLocalY - 1e-6)
+        local hiY = math.floor(maxLocalY + 1e-6)
+        if loY <= hiY then outY = math.max(loY, math.min(hiY, outY)) end
+    else
+        outY = math.floor((((screenCy - (0.5 - pfy) * visH) - refY) / relScale) + 0.5)
+    end
+
+    local didClamp = (outX ~= math.floor(inX + 0.5)) or (outY ~= math.floor(inY + 0.5))
+    return outX, outY, didClamp
+end
+
 function DynamicPrep:GetSavedBarPosition()
     local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
     local pos = g and g.hudPositions and (g.hudPositions["prep"] or g.hudPositions.prepBar)
@@ -890,8 +983,9 @@ end
 function DynamicPrep:SaveBarEditPosition(point, relPoint, x, y)
     local pt = point or "TOP"
     local rp = relPoint or pt
-    local px = tonumber(x) or 0
-    local py = tonumber(y) or -8
+    local rawX = tonumber(x) or 0
+    local rawY = tonumber(y) or -8
+    local px, py = ClampPrepFrameToScreen(self.prepBarFrame, pt, rp, rawX, rawY, 320, 32)
     if self.db then
         self.db.barPoint = pt
         self.db.barRelativePoint = rp
@@ -2660,15 +2754,20 @@ function DynamicPrep:CreatePrepBar()
         end
         bar:StopMovingOrSizing()
         local point, _, relativePoint, x, y = bar:GetPoint(1)
-        if not IsControlKeyDown() then
-            x = math.floor((x / 8) + 0.5) * 8
-            y = math.floor((y / 8) + 0.5) * 8
-            bar:ClearAllPoints()
-            bar:SetPoint(point or "TOP", UIParent, relativePoint or "TOP", x, y)
+        local usePt = point or "TOP"
+        local useRp = relativePoint or usePt
+        local px = x or 0
+        local py = y or -8
+        if not IsShiftKeyDown() and not IsControlKeyDown() then
+            px = math.floor((px / 8) + 0.5) * 8
+            py = math.floor((py / 8) + 0.5) * 8
         end
-        bar:SaveEditPosition(point or "TOP", relativePoint or "TOP", x or 0, y or -8)
+        px, py = ClampPrepFrameToScreen(bar, usePt, useRp, px, py, 320, 32)
+        bar:ClearAllPoints()
+        bar:SetPoint(usePt, UIParent, useRp, px, py)
+        bar:SaveEditPosition(usePt, useRp, px, py)
         local _, _, _, hex = GetActiveAccentRGB()
-        selfMover.label:SetText(string.format("|cFF%sDynamicPrep Bar|r  |cFFFFFFFF(X: %d, Y: %d)|r", hex, math.floor((x or 0) + 0.5), math.floor((y or -8) + 0.5)))
+        selfMover.label:SetText(string.format("|cFF%sDynamicPrep Bar|r  |cFFFFFFFF(X: %d, Y: %d)|r", hex, math.floor((px or 0) + 0.5), math.floor((py or -8) + 0.5)))
     end)
     mover:Hide()
     bar.mover = mover
@@ -3116,16 +3215,20 @@ function DynamicPrep:ApplyBarGeometry()
         self.pendingBarRefreshAfterCombat = true
         return
     end
-    local pt, rp, x, y = self:GetSavedBarPosition()
-    self.prepBarFrame:ClearAllPoints()
-    self.prepBarFrame:SetPoint(pt or "TOP", UIParent, rp or "TOP", x or 0, y or -8)
     local scale = math.max(0.60, math.min(1.50, tonumber(self.db.barScale) or 1.0))
     local alpha = math.max(0.20, math.min(1.00, tonumber(self.db.barOpacity) or 0.95))
     self.prepBarFrame:SetScale(scale)
     self.prepBarFrame:SetAlpha(alpha)
+    local pt, rp, x, y = self:GetSavedBarPosition()
+    local cx, cy, didClamp = ClampPrepFrameToScreen(self.prepBarFrame, pt or "TOP", rp or "TOP", x or 0, y or -8, 320, 32)
+    if didClamp then
+        self:SaveBarEditPosition(pt or "TOP", rp or "TOP", cx, cy)
+    end
+    self.prepBarFrame:ClearAllPoints()
+    self.prepBarFrame:SetPoint(pt or "TOP", UIParent, rp or "TOP", cx, cy)
     if self.prepBarFrame.mover and self.prepBarFrame.mover.label then
         local _, _, _, accentHex = GetActiveAccentRGB()
-        self.prepBarFrame.mover.label:SetText(string.format("|cFF%sDynamicPrep Bar|r  |cFFFFFFFF(X: %d, Y: %d)|r", accentHex, math.floor((x or 0) + 0.5), math.floor((y or -8) + 0.5)))
+        self.prepBarFrame.mover.label:SetText(string.format("|cFF%sDynamicPrep Bar|r  |cFFFFFFFF(X: %d, Y: %d)|r", accentHex, math.floor((cx or 0) + 0.5), math.floor((cy or -8) + 0.5)))
     end
 end
 
@@ -3299,6 +3402,17 @@ function DynamicPrep:RefreshBar()
     end
 
     bar:SetWidth(math.max(160, xCursor + 2))
+    if not (InCombatLockdown and InCombatLockdown()) and not self._prepRefreshingGeom and not bar._dsDragging then
+        local pt, rp, curX, curY = self:GetSavedBarPosition()
+        local cx, cy, didClamp = ClampPrepFrameToScreen(bar, pt or "TOP", rp or "TOP", curX or 0, curY or -8, 320, 32)
+        if didClamp then
+            self._prepRefreshingGeom = true
+            self:SaveBarEditPosition(pt or "TOP", rp or "TOP", cx, cy)
+            bar:ClearAllPoints()
+            bar:SetPoint(pt or "TOP", UIParent, rp or "TOP", cx, cy)
+            self._prepRefreshingGeom = false
+        end
+    end
     self:UpdateFolioSecureButton()
     self:SyncToastFallbackState()
     self:UpdateSuiteHeaderStatus()
@@ -7733,14 +7847,18 @@ local function NudgePrepHUD(arg1, arg2, arg3)
     DynamicPrep:ApplyBarGeometry()
 end
 
-local function ResetPrepHUDPosition()
-    DynamicPrep:InitDB()
-    DynamicPrep:SaveBarEditPosition("TOP", "TOP", 0, -8)
+local function ResetPrepHUDPosition(silent)
     if InCombatLockdown and InCombatLockdown() then
         DynamicPrep.pendingBarRefreshAfterCombat = true
-        return
+        if not silent then
+            print("|cFF38BDF8DynamicPrep|r: |cFFF87171Cannot reset protected HUD position during combat lockdown.|r Please wait until combat ends.")
+        end
+        return false
     end
+    DynamicPrep:InitDB()
+    DynamicPrep:SaveBarEditPosition("TOP", "TOP", 0, -8)
     DynamicPrep:ApplyBarGeometry()
+    return true
 end
 
 DynamicPrep.NudgeHUD = NudgePrepHUD
@@ -10683,8 +10801,9 @@ end
 function DynamicPrep:SaveBuffBarEditPosition(point, relPoint, x, y)
     local pt = point or "CENTER"
     local rp = relPoint or pt
-    local px = tonumber(x) or 0
-    local py = tonumber(y) or 140
+    local rawX = tonumber(x) or 0
+    local rawY = tonumber(y) or 140
+    local px, py = ClampPrepFrameToScreen(self.clickableBuffBar, pt, rp, rawX, rawY, 200, 56)
     if self.db and self.db.raidBuffs then
         self.db.raidBuffs.point = pt
         self.db.raidBuffs.relPoint = rp
@@ -10703,10 +10822,16 @@ function DynamicPrep:SaveBuffBarEditPosition(point, relPoint, x, y)
     }
 end
 
-function DynamicPrep:ResetBuffBarHUDPosition()
-    if InCombatLockdown and InCombatLockdown() then return end
+function DynamicPrep:ResetBuffBarHUDPosition(silent)
+    if InCombatLockdown and InCombatLockdown() then
+        if not silent then
+            print("|cFF38BDF8DynamicPrep|r: |cFFF87171Cannot reset protected Raid Buffs HUD during combat lockdown.|r Please wait until combat ends.")
+        end
+        return false
+    end
     self:SaveBuffBarEditPosition("CENTER", "CENTER", 0, 140)
     self:RefreshClickableBuffs(true)
+    return true
 end
 
 function DynamicPrep:NudgeBuffBarHUD(dx, dy)
@@ -10862,10 +10987,13 @@ function DynamicPrep:CreateClickableBuffBar()
         GameTooltip:Hide()
         bar:StartMoving()
         selfMover:SetScript("OnUpdate", function()
+            local fScale = (bar.GetEffectiveScale and bar:GetEffectiveScale()) or 1
+            local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+            local relScale = (fScale > 0 and uScale > 0) and (fScale / uScale) or 1
             local cx, cy = bar:GetCenter()
             local ux, uy = UIParent:GetCenter()
-            local relX = (cx and ux) and (cx - ux) or 0
-            local relY = (cy and uy) and (cy - uy) or 140
+            local relX = (cx and ux) and (((cx * relScale) - ux) / relScale) or 0
+            local relY = (cy and uy) and (((cy * relScale) - uy) / relScale) or 140
             local _, _, _, h = GetActiveAccentRGB()
             selfMover.label:SetText(string.format("|cFF%sClickable Raid Buffs HUD|r\n|cFFFFFFFF(X: %d, Y: %d)  [Right-Click: Center X=0]|r", h, math.floor(relX + 0.5), math.floor(relY + 0.5)))
         end)
@@ -10873,18 +11001,22 @@ function DynamicPrep:CreateClickableBuffBar()
     mover:SetScript("OnDragStop", function(selfMover)
         selfMover:SetScript("OnUpdate", nil)
         bar:StopMovingOrSizing()
-        -- Always compute true CENTER-relative coordinates so icons expand symmetrically around the chosen center point!
+        -- Always compute true CENTER-relative coordinates in frame local scale so icons expand symmetrically around the chosen center point!
+        local fScale = (bar.GetEffectiveScale and bar:GetEffectiveScale()) or 1
+        local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        local relScale = (fScale > 0 and uScale > 0) and (fScale / uScale) or 1
         local cx, cy = bar:GetCenter()
         local ux, uy = UIParent:GetCenter()
-        local x = (cx and ux) and (cx - ux) or 0
-        local y = (cy and uy) and (cy - uy) or 140
-        if not IsControlKeyDown() then
+        local x = (cx and ux) and (((cx * relScale) - ux) / relScale) or 0
+        local y = (cy and uy) and (((cy * relScale) - uy) / relScale) or 140
+        if not IsShiftKeyDown() and not IsControlKeyDown() then
             x = math.floor((x / 8) + 0.5) * 8
             y = math.floor((y / 8) + 0.5) * 8
         else
             x = math.floor(x + 0.5)
             y = math.floor(y + 0.5)
         end
+        x, y = ClampPrepFrameToScreen(bar, "CENTER", "CENTER", x, y, 200, 56)
         if not InCombatLockdown() then
             bar:ClearAllPoints()
             bar:SetPoint("CENTER", UIParent, "CENTER", x, y)
@@ -11693,12 +11825,17 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
         end
     end
 
-    local pt, rp, curX, curY = self:GetSavedBuffBarPosition()
     bar:SetSize(barW, barH)
     local hudScale = tonumber(rb.hudScale)
     if hudScale and hudScale > 0 then
         bar:SetScale(math.max(0.60, math.min(1.50, hudScale)))
     end
+    local pt, rp, curX, curY = self:GetSavedBuffBarPosition()
+    local cx, cy, didClamp = ClampPrepFrameToScreen(bar, pt or "CENTER", rp or "CENTER", curX or 0, curY or 140, barW, barH)
+    if didClamp then
+        self:SaveBuffBarEditPosition(pt or "CENTER", rp or "CENTER", cx, cy)
+    end
+    curX, curY = cx, cy
     bar:ClearAllPoints()
     bar:SetPoint(pt or "CENTER", UIParent, rp or "CENTER", curX or 0, curY or 140)
 

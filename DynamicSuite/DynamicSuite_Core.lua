@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "14/11/2026",
     entries = {
+        { type = "FIX",     text = "HUD Edit Scale-Aware Clamping, Magnetic Edge/Bar Snapping & Reset HUD Positions Failsafe (14/11/2026): Unified uScale/UIParent drag math for 1:1 cursor tracking at all scales (60%-150%), added magnetic screen-edge/centre (11px) and cross-HUD bar-to-bar (9px) snapping with live visual alignment guide lines and Shift-to-bypass micro-adjustments, enforced screen-boundary clamping across all saves/scales/orientations/login/UI_SCALE_CHANGED, and added Reset HUD Positions in ESC -> Options -> AddOns plus /ds resethud and /dm resethud (/fm resethud) with combat-lockdown deferral." },
         { type = "FIX",     text = "Release v1.9.6 - DynamicBags Bank/Guild Bank & Merge Hardening + Suite/Standalone Changelog Parity (14/11/2026): Eliminated post-/reload Bank/Guild Bank panel flashes with SetScale suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, fixed strict weak ordering in Sort: A-Z when uncached items appear, verified compatible bag/bank slot placement across Reagent bags and Guild Bank tab permissions, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, updated DynamicBags Smart Search entries, and upgraded standalone DynamicMarker's Changelog modal to stream live entries dynamically." },
         { type = "UI",      text = "Standalone DynamicMarker Dock Parity, Copyable Support Links & DynamicSuite CurseForge URL (14/11/2026): Added the [Reload UI] button and persisted Opacity (50%-100%) and Scale (80%-120%) sliders to standalone DynamicMarker's bottom-right dock (left of the // resize grip, stored in DynamicMarkerDB without touching DynamicSuiteDB), upgraded standalone DynamicMarker's Support modal to read-only click-to-highlight Ctrl+C EditBoxes (Ko-fi, CurseForge /addons/dynamicmarker, and Email) with Escape-to-close, and updated DynamicSuite's Support view CurseForge link to https://www.curseforge.com/wow/addons/dynamicsuite." },
         { type = "FIX",     text = "First-Open ESC > Options > AddOns Blank Shell & Left-Rail Fix (14/11/2026): Called RefreshLeftRailLayout() on initial CreateMainConfigUI() construction, routed ApplySuiteThemeAndGeometry() through RefreshLeftRailLayout() and all active workspace view refreshes, added a guarded C_Timer.After(0, ...) post-layout refresh + Raise() in DynamicSuiteMainFrame:OnShow and standalone DynamicMarkerSuiteWindow:OnShow (with initial f:Hide() so the first Show() always fires OnShow), and hardened HideSettingsPanelSafe() in both DynamicSuite_UI.lua and DynamicMarker.lua (alongside ShowConfigUI() and Settings canvas OnShow theme sync) so Blizzard's SettingsPanel and GameMenuFrame cleanly close and yield behind the addon window on the very first open." },
@@ -3407,9 +3408,10 @@ function addonTable.RestoreHubAfterCombat()
     EnsureHubWindowHooks()
 end
 
--- Commands that only print / reload and are safe in combat; everything else opens the config window.
+-- Commands that only print / reload / defer in combat; everything else opens the config window.
 local COMBAT_SAFE_SUITE_COMMANDS = {
     reload = true, auto = true, status = true, lock = true, unlock = true, freeze = true, profile = true,
+    resethud = true, resethuds = true, hudreset = true,
 }
 
 local function HandleSuiteSlashCommandInner(msg)
@@ -3467,6 +3469,13 @@ local function HandleSuiteSlashCommandInner(msg)
     elseif cmd == "reset" then
         addonTable.ResetHubWindowPosition()
 
+    elseif cmd == "resethud" or cmd == "resethuds" or cmd == "hudreset" then
+        if addonTable.ResetAllHudPositions then
+            addonTable.ResetAllHudPositions(false)
+        elseif _G.DynamicSuite and type(_G.DynamicSuite.ResetAllHudPositions) == "function" then
+            pcall(_G.DynamicSuite.ResetAllHudPositions, false)
+        end
+
     elseif addonTable.HandleDynamicLoadSlashCommand and (cmd == "auto" or cmd == "status" or cmd == "lock" or cmd == "unlock" or cmd == "freeze" or cmd == "profile") then
         addonTable.HandleDynamicLoadSlashCommand(msg)
 
@@ -3492,8 +3501,10 @@ SlashCmdList["DYNAMICSUITE"] = HandleSuiteSlashCommand
 
 function addonTable.ReassertSuiteSlashRouting()
     _G.DynamicSuite = _G.DynamicSuite or {}
-    _G.DynamicSuite.EnterHudEditMode = addonTable.EnterHudEditMode
-    _G.DynamicSuite.EnterEditMode    = addonTable.EnterHudEditMode
+    _G.DynamicSuite.EnterHudEditMode     = addonTable.EnterHudEditMode
+    _G.DynamicSuite.EnterEditMode        = addonTable.EnterHudEditMode
+    _G.DynamicSuite.ResetAllHudPositions = addonTable.ResetAllHudPositions
+    _G.DynamicSuite.ClampAllHudPositions = addonTable.ClampAllSuiteHudsToScreen
     if _G.DynamicLoad or addonTable.IsDynamicLoadModuleLoaded then
         _G.DynamicLoad = _G.DynamicLoad or {}
         _G.DynamicLoad.EnterHudEditMode  = addonTable.EnterHudEditMode
@@ -3611,12 +3622,27 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
             addonTable.OnSuiteLeaveCombat()
         end
         addonTable.RestoreHubAfterCombat()
+        if addonTable._pendingHudPositionReset and addonTable.ResetAllHudPositions then
+            addonTable._pendingHudPositionReset = false
+            addonTable._pendingHudClamp = false
+            addonTable.ResetAllHudPositions(false)
+        elseif addonTable._pendingHudClamp and addonTable.ClampAllSuiteHudsToScreen then
+            addonTable._pendingHudClamp = false
+            addonTable.ClampAllSuiteHudsToScreen()
+        end
         return
     elseif event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
         if addonTable.ReclampMainWindowToScreen then
             addonTable.ReclampMainWindowToScreen()
         end
         ApplyHubClampInsets()
+        if addonTable.ClampAllSuiteHudsToScreen then
+            if InCombatLockdown() then
+                addonTable._pendingHudClamp = true
+            else
+                addonTable.ClampAllSuiteHudsToScreen()
+            end
+        end
         return
     elseif event == "ADDON_LOADED" then
         InvalidateConflictCache()
@@ -3660,6 +3686,15 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
         C_Timer.After(0.15, function()
             if addonTable.ReassertSuiteSlashRouting then
                 addonTable.ReassertSuiteSlashRouting()
+            end
+        end)
+        C_Timer.After(0.25, function()
+            if addonTable.ClampAllSuiteHudsToScreen then
+                if InCombatLockdown() then
+                    addonTable._pendingHudClamp = true
+                else
+                    addonTable.ClampAllSuiteHudsToScreen()
+                end
             end
         end)
         C_Timer.After(1.0, EnsureHubWindowHooks)

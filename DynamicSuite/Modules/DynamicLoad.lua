@@ -1220,6 +1220,99 @@ if not (DynamicSuite and DynamicSuite._isHubLoaded) or not addonTable.PopulateBr
     addonTable.PopulateBrandLogo = PopulateDynamicLoadBrandLogo
 end
 
+local function GetToastAnchorFraction(pointStr)
+    local pt = type(pointStr) == "string" and pointStr:upper() or "CENTER"
+    local fx = 0.5
+    local fy = 0.5
+    if pt:find("LEFT", 1, true) then
+        fx = 0.0
+    elseif pt:find("RIGHT", 1, true) then
+        fx = 1.0
+    end
+    if pt:find("BOTTOM", 1, true) then
+        fy = 0.0
+    elseif pt:find("TOP", 1, true) then
+        fy = 1.0
+    end
+    return fx, fy
+end
+
+local function ClampToastCoordsToScreen(f, point, relPoint, rawX, rawY)
+    local pt = point or "TOP"
+    local rp = relPoint or pt
+    local fScale = (f and f.GetEffectiveScale and f:GetEffectiveScale()) or 1
+    local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+    if fScale <= 0 then fScale = 1 end
+    if uScale <= 0 then uScale = 1 end
+    local relScale = fScale / uScale
+    if relScale <= 0 then relScale = 1 end
+
+    local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+    local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+    local screenCx = screenW / 2
+    local screenCy = screenH / 2
+
+    local frameW = (f and f.GetWidth and f:GetWidth()) or 410
+    local frameH = (f and f.GetHeight and f:GetHeight()) or 74
+    local visW = math.max(1, frameW * relScale)
+    local visH = math.max(1, frameH * relScale)
+    local halfW = visW / 2
+    local halfH = visH / 2
+
+    local pfx, pfy = GetToastAnchorFraction(pt)
+    local rfx, rfy = GetToastAnchorFraction(rp)
+    local refX = rfx * screenW
+    local refY = rfy * screenH
+
+    local inX = tonumber(rawX) or 0
+    local inY = tonumber(rawY) or -50
+    local anchorVisX = refX + (inX * relScale)
+    local anchorVisY = refY + (inY * relScale)
+    local candCx = anchorVisX + (0.5 - pfx) * visW
+    local candCy = anchorVisY + (0.5 - pfy) * visH
+
+    local minCx = halfW
+    local maxCx = screenW - halfW
+    local minCy = halfH
+    local maxCy = screenH - halfH
+    if minCx > maxCx then
+        candCx = screenCx
+    else
+        candCx = math.max(minCx, math.min(maxCx, candCx))
+    end
+    if minCy > maxCy then
+        candCy = screenCy
+    else
+        candCy = math.max(minCy, math.min(maxCy, candCy))
+    end
+
+    local outX = math.floor((((candCx - (0.5 - pfx) * visW) - refX) / relScale) + 0.5)
+    local outY = math.floor((((candCy - (0.5 - pfy) * visH) - refY) / relScale) + 0.5)
+
+    local minLocalX = ((minCx - (0.5 - pfx) * visW) - refX) / relScale
+    local maxLocalX = ((maxCx - (0.5 - pfx) * visW) - refX) / relScale
+    local minLocalY = ((minCy - (0.5 - pfy) * visH) - refY) / relScale
+    local maxLocalY = ((maxCy - (0.5 - pfy) * visH) - refY) / relScale
+
+    if minLocalX <= maxLocalX then
+        local loX = math.ceil(minLocalX - 1e-6)
+        local hiX = math.floor(maxLocalX + 1e-6)
+        if loX <= hiX then outX = math.max(loX, math.min(hiX, outX)) end
+    else
+        outX = math.floor((((screenCx - (0.5 - pfx) * visW) - refX) / relScale) + 0.5)
+    end
+    if minLocalY <= maxLocalY then
+        local loY = math.ceil(minLocalY - 1e-6)
+        local hiY = math.floor(maxLocalY + 1e-6)
+        if loY <= hiY then outY = math.max(loY, math.min(hiY, outY)) end
+    else
+        outY = math.floor((((screenCy - (0.5 - pfy) * visH) - refY) / relScale) + 0.5)
+    end
+
+    local didClamp = (outX ~= math.floor(inX + 0.5)) or (outY ~= math.floor(inY + 0.5))
+    return outX, outY, didClamp
+end
+
 local function ApplyToastPosition(f)
     if not f then return end
     f:ClearAllPoints()
@@ -1265,9 +1358,24 @@ local function ApplyToastPosition(f)
         f:SetClampedToScreen(true)
         f:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", mfCenterXPhys / fEff, (mfTopPhys + gapPhys) / fEff)
     elseif pos and pos.point and pos.x and pos.y then
-        f:SetPoint(pos.point, UIParent, pos.relPoint or pos.point, pos.x, pos.y)
+        local rp = pos.relPoint or pos.point
+        local cx, cy, didClamp = ClampToastCoordsToScreen(f, pos.point, rp, pos.x, pos.y)
+        if didClamp then
+            pos.x = cx
+            pos.y = cy
+            if type(g.toastPos) == "table" then
+                g.toastPos.x = cx
+                g.toastPos.y = cy
+            end
+            if DynamicLoadDB and type(DynamicLoadDB.toastPos) == "table" then
+                DynamicLoadDB.toastPos.x = cx
+                DynamicLoadDB.toastPos.y = cy
+            end
+        end
+        f:SetPoint(pos.point, UIParent, rp, cx, cy)
     else
-        f:SetPoint("TOP", UIParent, "TOP", 0, -50)
+        local cx, cy = ClampToastCoordsToScreen(f, "TOP", "TOP", 0, -50)
+        f:SetPoint("TOP", UIParent, "TOP", cx, cy)
     end
 
     if f.toastType ~= "CONFLICT_ALERT" and f.toastType ~= "NEW_ADDON" then
@@ -1276,6 +1384,12 @@ local function ApplyToastPosition(f)
 end
 
 addonTable.ApplyToastVisuals = function()
+    if toastFrame then
+        ApplyToastPosition(toastFrame)
+    end
+end
+
+addonTable.ClampToastPosition = function()
     if toastFrame then
         ApplyToastPosition(toastFrame)
     end
@@ -1510,13 +1624,15 @@ local function CreateToastFrame()
             local usePt = (prevPos.point == "CENTER") and "CENTER" or "TOP"
             local rx, ry = 0, -50
             if fCx and uCx then
-                rx = math.floor(((fCx * ratio) - uCx) + 0.5)
-                local dyCenter = math.floor(((fCy * ratio) - uCy) + 0.5)
-                local dyTop = math.floor((((fTop or fCy) * ratio) - (uTop or (uCy * 2))) + 0.5)
+                if ratio <= 0 then ratio = 1 end
+                rx = math.floor((((fCx * ratio) - uCx) / ratio) + 0.5)
+                local dyCenter = math.floor((((fCy * ratio) - uCy) / ratio) + 0.5)
+                local dyTop = math.floor(((((fTop or fCy) * ratio) - (uTop or (uCy * 2))) / ratio) + 0.5)
                 ry = (usePt == "CENTER") and dyCenter or dyTop
 
                 local snapMode = g.hudSnapMode or "MAGNET"
-                if not IsControlKeyDown() then
+                local bypassSnap = (IsShiftKeyDown and IsShiftKeyDown()) or (IsControlKeyDown and IsControlKeyDown())
+                if not bypassSnap then
                     if snapMode == "MAGNET" then
                         if math.abs(rx) <= 6 then rx = 0 end
                         if math.abs(dyCenter) <= 6 then
@@ -1547,6 +1663,7 @@ local function CreateToastFrame()
                 ry = math.floor((y or 0) + 0.5)
             end
 
+            rx, ry = ClampToastCoordsToScreen(self, usePt, usePt, rx, ry)
             self:ClearAllPoints()
             self:SetPoint(usePt, UIParent, usePt, rx, ry)
             local newPos = { point = usePt, relPoint = usePt, x = rx, y = ry }
@@ -1624,14 +1741,18 @@ addonTable.CreateToastFrame = CreateToastFrame
 
 function addonTable.NudgeToastPosition(dx, dy)
     local g = EnsureSuiteGlobal()
-    local pos = g.toastPos or (DynamicLoadDB and DynamicLoadDB.toastPos) or { point = "TOP", relPoint = "TOP", x = 0, y = -50 }
-    pos.x = math.floor((pos.x or 0) + (dx or 0))
-    pos.y = math.floor((pos.y or -50) + (dy or 0))
+    local prev = g.toastPos or (DynamicLoadDB and DynamicLoadDB.toastPos) or { point = "TOP", relPoint = "TOP", x = 0, y = -50 }
+    local pt = prev.point or "TOP"
+    local rp = prev.relPoint or pt
+    local f = CreateToastFrame()
+    local rawX = math.floor((prev.x or 0) + (dx or 0) + 0.5)
+    local rawY = math.floor((prev.y or -50) + (dy or 0) + 0.5)
+    local cx, cy = ClampToastCoordsToScreen(f, pt, rp, rawX, rawY)
+    local pos = { point = pt, relPoint = rp, x = cx, y = cy }
     g.toastPos = CopyTable(pos)
     if DynamicLoadDB then
         DynamicLoadDB.toastPos = CopyTable(pos)
     end
-    local f = CreateToastFrame()
     ApplyToastPosition(f)
     if addonTable.OnToastPositionChanged then
         addonTable.OnToastPositionChanged(pos)
@@ -1639,13 +1760,16 @@ function addonTable.NudgeToastPosition(dx, dy)
 end
 
 function addonTable.SetToastPresetPosition(point, relPoint, x, y)
-    local newPos = { point = point or "TOP", relPoint = relPoint or "TOP", x = x or 0, y = y or -50 }
+    local pt = point or "TOP"
+    local rp = relPoint or pt
+    local f = CreateToastFrame()
+    local cx, cy = ClampToastCoordsToScreen(f, pt, rp, x or 0, y or -50)
+    local newPos = { point = pt, relPoint = rp, x = cx, y = cy }
     local g = EnsureSuiteGlobal()
     g.toastPos = CopyTable(newPos)
     if DynamicLoadDB then
         DynamicLoadDB.toastPos = CopyTable(newPos)
     end
-    local f = CreateToastFrame()
     ApplyToastPosition(f)
     if addonTable.OnToastPositionChanged then
         addonTable.OnToastPositionChanged(newPos)

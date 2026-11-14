@@ -222,7 +222,11 @@ $parityTokens = @(
     "https://www.curseforge.com/wow/addons/dynamicsuite (Coming Soon)",
     "denteedev@gmail.com",
     "\\Media\\Icons\\icon_white.tga",
-    "\\Media\\Icons\\icon_accent.tga"
+    "\\Media\\Icons\\icon_accent.tga",
+    "Reset HUD Positions",
+    "DynamicSuiteSnapGuideOverlay",
+    "EDGE_SNAP_THRESHOLD",
+    "BAR_SNAP_THRESHOLD"
 )
 foreach ($tok in $parityTokens) {
     if ($suiteUiText.IndexOf($tok, [System.StringComparison]::Ordinal) -lt 0) {
@@ -232,6 +236,16 @@ foreach ($tok in $parityTokens) {
         throw "DynamicMarker.lua missing Suite/Standalone parity token: $tok"
     }
 }
+foreach ($suiteUiReq in @("ClampHudCoordsToScreen", "ResetAllHudPositions")) {
+    if ($suiteUiText.IndexOf($suiteUiReq, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicSuite_UI.lua missing required HUD safety helper: $suiteUiReq"
+    }
+}
+foreach ($markerReq in @("ClampHUDPositionToScreen", "ResetHUDPositions", 'cmd == "resethud"')) {
+    if ($markerLuaText.IndexOf($markerReq, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicMarker.lua missing required HUD safety helper/command: $markerReq"
+    }
+}
 foreach ($slashTok in @('SLASH_DYNAMICMARKER1 = "/dm"', 'SLASH_DYNAMICMARKER3 = "/fm"', 'SlashCmdList["DYNAMICMARKER"]')) {
     if ($markerLuaText.IndexOf($slashTok, [System.StringComparison]::Ordinal) -lt 0) {
         throw "DynamicMarker.lua missing required slash command token: $slashTok"
@@ -239,6 +253,9 @@ foreach ($slashTok in @('SLASH_DYNAMICMARKER1 = "/dm"', 'SLASH_DYNAMICMARKER3 = 
 }
 if ($suiteCoreText.IndexOf('["DYNAMICMARKER"] = "DynamicMarker"', [System.StringComparison]::Ordinal) -lt 0) {
     throw "DynamicSuite_Core.lua missing DYNAMICMARKER suite slash routing entry."
+}
+if ($suiteCoreText.IndexOf('cmd == "resethud"', [System.StringComparison]::Ordinal) -lt 0) {
+    throw "DynamicSuite_Core.lua missing /ds resethud slash command handler."
 }
 Write-Host "[PARITY OK] Lockstep v$suiteVer ($suiteIface), public docs clean, Suite <-> DynamicMarker UI parity verified" -ForegroundColor Green
 
