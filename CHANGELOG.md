@@ -1,5 +1,13 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.0.2 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.0.3 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.0.3 (15/11/2026)
+
+### Added
+* **Equipped Gear Missing-Enchant & Empty-Socket Detection (DynamicPrep):** Added an out-of-combat gear audit scanner (`ScanEquippedGearEnchantsAndGems`, cached on `PLAYER_ENTERING_WORLD`, `PLAYER_EQUIPMENT_CHANGED`, `SOCKET_INFO_UPDATE`, and `PLAYER_REGEN_ENABLED`) that checks Midnight Season 2 enchantable slots (Chest, Legs, Feet, Wrist, Rings, Cloak, Main Hand, and Off-Hand weapons excluding shields/holdables, skipping levelling and grey/white/heirloom gear) and empty gem sockets across equipped slots 1..18.
+* **Durability Capsule Warning Badge & Character Frame Shortcut (DynamicPrep):** Appends a compact amber `!` badge to the `Dur` capsule when missing enchants or empty gem sockets are detected, shows `Enchants:` and `Gems:` status lines in the Durability tooltip, and opens the Character Frame on Left-Click out of combat.
 
 ---
 

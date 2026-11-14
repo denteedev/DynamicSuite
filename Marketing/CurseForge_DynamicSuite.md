@@ -1,7 +1,7 @@
-# DynamicSuite -- CurseForge Storefront Copy & Release Changelog (v2.0.2)
+# DynamicSuite -- CurseForge Storefront Copy & Release Changelog (v2.0.3)
 
 > **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105)  
-> **Version:** v2.0.2 (14/11/2026)  
+> **Version:** v2.0.3 (14/11/2026)  
 > **CurseForge Project ID:** 1804382  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicsuite
@@ -15,7 +15,7 @@
 
 [![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 
-**Version:** v2.0.2 (14/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Version:** v2.0.3 (14/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5**. It brings **8 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, plain-English Smart Search, a unified HUD Edit Mode, and a 9-step Guided Setup.
 
@@ -105,10 +105,10 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ---
 
-## Section 2: CurseForge File Changelog Block (v2.0.2 -- 14/11/2026)
+## Section 2: CurseForge File Changelog Block (v2.0.3 -- 14/11/2026)
 
 ```markdown
-## DynamicSuite & Standalone DynamicMarker v2.0.2 (14/11/2026)
+## DynamicSuite & Standalone DynamicMarker v2.0.3 (14/11/2026)
 
 ### Fixed
 * **Top & Bottom Screen-Edge Bar Drift:** Focus Icons and World Flare bars parked flush against the top edge, bottom edge, or corners now stay in their exact saved positions after reloading the UI at every bar scale (70%, 100%, and 130%).

@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.2"
+    local fb = fallback or "2.0.3"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -208,7 +208,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.2"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.3"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.2")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.3")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -646,6 +646,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "15/11/2026",
     entries = {
+        { type = "FEATURE", text = "Equipped Gear Missing-Enchant & Empty-Socket Detection (15/11/2026): added out-of-combat equipped gear auditing (ScanEquippedGearEnchantsAndGems) cached on PLAYER_ENTERING_WORLD, PLAYER_EQUIPMENT_CHANGED, SOCKET_INFO_UPDATE, and PLAYER_REGEN_ENABLED. Flags missing Midnight Season 2 enchants on max-level Chest, Legs, Feet, Wrist, Rings, Cloak, Main Hand, and Off-Hand weapons (excluding shields/holdables and grey/white/heirloom items) and empty gem sockets across slots 1..18, surfacing a compact amber '!' badge in the Durability capsule, 'Enchants:' and 'Gems:' status lines in the Durability tooltip, and Left-Click Character Frame opening." },
         { type = "FEATURE", text = "Great Vault Mythic+ Telemetry, Group Finder Shortcut & Midnight Season 2 Consumables (15/11/2026): added weekly Mythic+ Great Vault run counts, 1/4/8 run threshold levels, and 'Reward Ready to Claim!' status to the Keystone capsule tooltip (guarded with pcall and _IsSecret), added Right-Click Group Finder toggling out of combat on the Keystone capsule, aligned DUNGEON_ABBREVIATIONS with DynamicGroup's Midnight Season 1/2 codes (DON, AOF, MR, VSA, FG, AK, PSF), and updated Midnight Season 2 consumable item IDs and Rank 2 Gold / Rank 1 Silver mappings." },
         { type = "FIX",     text = "Single-Option Auto-Gossip for Interactive World Objects (13/11/2026): Fixed world objects (GameObject-* GUIDs such as 'Unfinished Mixture') failing to auto-select when gossipOptionID is nil or when option text uses <...> / [Requires ...] brackets. Added C_GossipInfo.SelectOptionByIndex fallback, explicit Locked/Unavailable status checks, and a 0.05s secondary GOSSIP_SHOW check for skinned/delayed gossip frames (hold Shift to bypass)." },
         { type = "FIX",     text = "Single-Option Auto-Gossip now actually fires (13/11/2026): a hidden Blizzard flag that is switched off for almost every normal dialogue option was wrongly treated as 'do not auto-select', which stopped Auto-Gossip on most NPCs and objects. Multi-step conversations now also advance page by page instead of stopping after the first choice, with a safety limit of 8 automatic picks per conversation." },
@@ -1497,6 +1498,166 @@ function DynamicPrep:GetSpecAndLootData()
     return text, activeSpecName, lootSpecName, isOffSpecLoot, activeSpecID, lootSpecID
 end
 
+do
+local ENCHANT_CHECK_SLOTS = {
+    { slot = 5,  label = "Chest" },
+    { slot = 7,  label = "Legs" },
+    { slot = 8,  label = "Feet" },
+    { slot = 9,  label = "Wrist" },
+    { slot = 11, label = "Ring 1" },
+    { slot = 12, label = "Ring 2" },
+    { slot = 15, label = "Cloak" },
+    { slot = 16, label = "Main Hand" },
+    { slot = 17, label = "Off-Hand", weaponOnly = true },
+}
+
+local GEAR_SLOT_LABELS = {
+    [1]  = "Head",
+    [2]  = "Neck",
+    [3]  = "Shoulder",
+    [5]  = "Chest",
+    [6]  = "Waist",
+    [7]  = "Legs",
+    [8]  = "Feet",
+    [9]  = "Wrist",
+    [10] = "Hands",
+    [11] = "Ring 1",
+    [12] = "Ring 2",
+    [13] = "Trinket 1",
+    [14] = "Trinket 2",
+    [15] = "Cloak",
+    [16] = "Main Hand",
+    [17] = "Off-Hand",
+}
+
+local EMPTY_SOCKET_STRINGS = {}
+for _, gName in ipairs({
+    "EMPTY_SOCKET_PRISMATIC", "EMPTY_SOCKET_RED", "EMPTY_SOCKET_BLUE",
+    "EMPTY_SOCKET_YELLOW", "EMPTY_SOCKET_META", "EMPTY_SOCKET_COGWHEEL",
+    "EMPTY_SOCKET_HYDRAULIC", "EMPTY_SOCKET_DOMINATION", "EMPTY_SOCKET_CYPHER",
+    "EMPTY_SOCKET_TINKER", "EMPTY_SOCKET_PRIMORDIAL", "EMPTY_SOCKET_SINGINGTHUNDER",
+    "EMPTY_SOCKET_SINGINGSEA", "EMPTY_SOCKET_SINGINGWIND",
+}) do
+    local val = _G[gName]
+    if type(val) == "string" and val ~= "" then
+        EMPTY_SOCKET_STRINGS[val:lower()] = true
+    end
+end
+
+function DynamicPrep:ScanEquippedGearEnchantsAndGems()
+    if (InCombatLockdown and InCombatLockdown()) or _IsInActiveKeyOrCombat() then
+        return self._gearAuditCache
+    end
+
+    local result = {
+        missingEnchants = {},
+        emptyGemCount = 0,
+        totalGemCount = 0,
+        emptyGemSlots = {},
+    }
+
+    local playerLevel = (UnitLevel and UnitLevel("player")) or 0
+    local maxLevel = (GetMaxLevelForPlayerExpansion and GetMaxLevelForPlayerExpansion()) or 90
+    local checkEnchants = (playerLevel > 0 and maxLevel > 0 and playerLevel >= maxLevel)
+
+    local enchantSlotMap = {}
+    for _, entry in ipairs(ENCHANT_CHECK_SLOTS) do
+        enchantSlotMap[entry.slot] = entry
+    end
+
+    local emptySlotSeen = {}
+    local gemLineType = Enum and Enum.TooltipDataLineType and Enum.TooltipDataLineType.GemSocket
+
+    for slot = 1, 18 do
+        local okLink, link = pcall(GetInventoryItemLink, "player", slot)
+        if okLink and type(link) == "string" and not _IsSecret(link) and link ~= "" then
+            local okQual, quality = pcall(GetInventoryItemQuality, "player", slot)
+            if not okQual or _IsSecret(quality) or type(quality) ~= "number" then
+                quality = 4
+            end
+
+            local classID, invType = nil, nil
+            if C_Item and C_Item.GetItemInfoInstant then
+                local okInst, _, _, _, iType, _, cID = pcall(C_Item.GetItemInfoInstant, link)
+                if okInst then
+                    classID = (not _IsSecret(cID)) and cID or nil
+                    invType = (not _IsSecret(iType)) and iType or nil
+                end
+            end
+
+            local tipLines = nil
+            if C_TooltipInfo and type(C_TooltipInfo.GetInventoryItem) == "function" then
+                local okTip, tipData = pcall(C_TooltipInfo.GetInventoryItem, "player", slot)
+                if okTip and type(tipData) == "table" and not _IsSecret(tipData) and type(tipData.lines) == "table" then
+                    tipLines = tipData.lines
+                end
+            end
+
+            local enchEntry = enchantSlotMap[slot]
+            if checkEnchants and enchEntry and quality > 1 and quality ~= 7 then
+                local shouldCheckSlot = true
+                if enchEntry.weaponOnly then
+                    local weaponClass = (Enum and Enum.ItemClass and Enum.ItemClass.Weapon) or 2
+                    if classID ~= weaponClass or invType == "INVTYPE_HOLDABLE" or invType == "INVTYPE_SHIELD" then
+                        shouldCheckSlot = false
+                    end
+                end
+                if shouldCheckSlot then
+                    local enchantID = tonumber(link:match("item:%d+:(%d*):")) or 0
+                    local hasEnchant = (enchantID > 0)
+                    if not hasEnchant and tipLines then
+                        for _, line in ipairs(tipLines) do
+                            local lt = line.leftText
+                            if type(lt) == "string" and not _IsSecret(lt) then
+                                local ltl = lt:lower()
+                                if ltl:find("^enchanted:") then
+                                    hasEnchant = true
+                                    break
+                                end
+                            end
+                        end
+                    end
+                    if not hasEnchant then
+                        table.insert(result.missingEnchants, enchEntry.label)
+                    end
+                end
+            end
+
+            if tipLines then
+                for _, line in ipairs(tipLines) do
+                    local isSocketLine = false
+                    if gemLineType ~= nil and not _IsSecret(line.type) and line.type == gemLineType then
+                        isSocketLine = true
+                    elseif line.socketType ~= nil and not _IsSecret(line.socketType) then
+                        isSocketLine = true
+                    end
+
+                    local lt = line.leftText
+                    local ltl = (type(lt) == "string" and not _IsSecret(lt)) and lt:lower() or ""
+                    local isEmptyText = (ltl ~= "" and (EMPTY_SOCKET_STRINGS[ltl] or ltl:find("empty .* socket") ~= nil or ltl == "prismatic socket"))
+
+                    if isSocketLine or isEmptyText then
+                        result.totalGemCount = result.totalGemCount + 1
+                        local hasGemIcon = (line.gemIcon ~= nil and not _IsSecret(line.gemIcon) and tonumber(line.gemIcon) ~= 0)
+                        if isEmptyText or (isSocketLine and not hasGemIcon) then
+                            result.emptyGemCount = result.emptyGemCount + 1
+                            local sLabel = GEAR_SLOT_LABELS[slot] or ("Slot " .. slot)
+                            if not emptySlotSeen[slot] then
+                                emptySlotSeen[slot] = true
+                                table.insert(result.emptyGemSlots, sLabel)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    self._gearAuditCache = result
+    return result
+end
+end
+
 function DynamicPrep:GetDurabilityData()
     local lowest = 100
     local totalCur, totalMax = 0, 0
@@ -1512,13 +1673,19 @@ function DynamicPrep:GetDurabilityData()
         end
     end
     local avg = (totalMax > 0) and math.floor((totalCur / totalMax) * 100 + 0.5) or 100
+    if not self._gearAuditCache and not (InCombatLockdown and InCombatLockdown()) and not _IsInActiveKeyOrCombat() then
+        self:ScanEquippedGearEnchantsAndGems()
+    end
+    local audit = self._gearAuditCache
+    local hasGearIssue = audit and ((#(audit.missingEnchants or {}) > 0) or ((audit.emptyGemCount or 0) > 0))
+    local issueBadge = hasGearIssue and " |cFFFBBF24!|r" or ""
     local text
     if lowest < 30 then
-        text = string.format("|cFF94A3B8Dur|r |cFFF87171%d%% Repair!|r", lowest)
+        text = string.format("|cFF94A3B8Dur|r |cFFF87171%d%% Repair!|r%s", lowest, issueBadge)
     elseif lowest < 50 then
-        text = string.format("|cFF94A3B8Dur|r |cFFFBBF24%d%%|r", lowest)
+        text = string.format("|cFF94A3B8Dur|r |cFFFBBF24%d%%|r%s", lowest, issueBadge)
     else
-        text = string.format("|cFF94A3B8Dur|r |cFFFFFFFF%d%%|r", lowest)
+        text = string.format("|cFF94A3B8Dur|r |cFFFFFFFF%d%%|r%s", lowest, issueBadge)
     end
     return text, lowest, avg
 end
@@ -2705,7 +2872,14 @@ function DynamicPrep:CreatePrepBar()
                 end
             elseif segKey == "primary" or segKey == "stats" or segKey == "weights" then
                 DynamicPrep:OpenWorkspace(1)
-            elseif segKey == "dur" or segKey == "bags" then
+            elseif segKey == "dur" then
+                DynamicPrep:HideBarPopovers()
+                if InCombatLockdown and InCombatLockdown() then
+                    print("|cFFF97316DynamicPrep:|r Cannot open Character Frame while in combat.")
+                elseif type(ToggleCharacter) == "function" then
+                    pcall(ToggleCharacter, "PaperDollFrame")
+                end
+            elseif segKey == "bags" then
                 DynamicPrep:OpenWorkspace(2)
             end
         end)
@@ -3212,6 +3386,25 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
         tooltip:AddLine("Equipment Durability", ar, ag, ab)
         tooltip:AddDoubleLine("Lowest Slot:", lowest .. "%", 0.8, 0.84, 0.88, lowest < 30 and 0.97 or 1, lowest < 30 and 0.44 or 1, lowest < 30 and 0.44 or 1)
         tooltip:AddDoubleLine("Average Gear:", avg .. "%", 0.8, 0.84, 0.88, 1, 1, 1)
+        local audit = self._gearAuditCache
+        if audit then
+            local missing = audit.missingEnchants or {}
+            if #missing == 0 then
+                tooltip:AddDoubleLine("Enchants:", "All Enchanted", 0.8, 0.84, 0.88, 0.204, 0.827, 0.600)
+            else
+                tooltip:AddDoubleLine("Enchants:", "Missing: " .. table.concat(missing, ", "), 0.8, 0.84, 0.88, 0.984, 0.749, 0.141)
+            end
+            local emptyGems = audit.emptyGemCount or 0
+            if emptyGems == 0 then
+                tooltip:AddDoubleLine("Gems:", "All Socketed", 0.8, 0.84, 0.88, 0.204, 0.827, 0.600)
+            else
+                local slots = audit.emptyGemSlots or {}
+                local slotSuffix = (#slots > 0) and (" (" .. table.concat(slots, ", ") .. ")") or ""
+                tooltip:AddDoubleLine("Gems:", string.format("%d Empty %s%s", emptyGems, emptyGems == 1 and "Socket" or "Sockets", slotSuffix), 0.8, 0.84, 0.88, 0.984, 0.749, 0.141)
+            end
+        end
+        tooltip:AddLine(" ")
+        tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open Character Frame|r", 1, 1, 1)
     elseif segKey == "bags" then
         local _, free, total = self:GetBagSlotsData()
         tooltip:AddLine("Free Bag Space", ar, ag, ab)
@@ -8537,6 +8730,8 @@ SafeRegisterEvent(eventFrame, "MASTERY_UPDATE")
 SafeRegisterEvent(eventFrame, "PLAYER_SPECIALIZATION_CHANGED")
 SafeRegisterEvent(eventFrame, "PLAYER_LOOT_SPEC_UPDATED")
 SafeRegisterEvent(eventFrame, "UPDATE_INVENTORY_DURABILITY")
+SafeRegisterEvent(eventFrame, "PLAYER_EQUIPMENT_CHANGED")
+SafeRegisterEvent(eventFrame, "SOCKET_INFO_UPDATE")
 SafeRegisterEvent(eventFrame, "BAG_UPDATE_DELAYED")
 SafeRegisterEvent(eventFrame, "CHALLENGE_MODE_MAPS_UPDATE")
 SafeRegisterEvent(eventFrame, "GROUP_ROSTER_UPDATE")
@@ -8618,8 +8813,14 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:UpdateTalkingHeadSuppression()
         if event == "PLAYER_ENTERING_WORLD" then
             DynamicPrep:UpdateHealMacro(false, true)
+            DynamicPrep:ScanEquippedGearEnchantsAndGems()
         end
         DynamicPrep:RefreshBar()
+    elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "SOCKET_INFO_UPDATE" then
+        DynamicPrep:ScanEquippedGearEnchantsAndGems()
+        if not (InCombatLockdown and InCombatLockdown()) then
+            DynamicPrep:RefreshBar()
+        end
     elseif event == "PLAYER_REGEN_DISABLED" then
         if DynamicPrep.inEditMode then
             ApplyPrepEditMode(false)
@@ -8634,6 +8835,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             DynamicPrep.pendingBarRefreshAfterCombat = nil
             DynamicPrep:ApplyBarGeometry()
         end
+        DynamicPrep:ScanEquippedGearEnchantsAndGems()
         DynamicPrep:RefreshBar()
         DynamicPrep.pendingHealMacroUpdate = nil
         DynamicPrep:UpdateHealMacro(false, true)
