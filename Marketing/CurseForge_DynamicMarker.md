@@ -1,7 +1,7 @@
-# DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v1.9.9)
+# DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v2.0.0)
 
 > **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105)  
-> **Version:** v1.9.9 (14/11/2026)  
+> **Version:** v2.0.0 (14/11/2026)  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicmarker
 
@@ -14,7 +14,7 @@
 
 [![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 
-**Version:** v1.9.9 (14/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Version:** v2.0.0 (14/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
 **DynamicMarker** (`/dm`, `/fm`) is a fast Mythic+ and Raid utility addon for instant target marking, cursor-placed world flares, floating icon and flare bars, and smart focus/interrupt macros across all 13 classes. Use it standalone or as part of the full 8-module **[DynamicSuite](https://www.curseforge.com/wow/addons/dynamicsuite)** bundle.
 
@@ -108,10 +108,10 @@ Want 7 more lightweight QoL and performance modules in one unified window? Check
 
 ---
 
-## Section 2: CurseForge File Changelog Block (v1.9.9 -- 14/11/2026)
+## Section 2: CurseForge File Changelog Block (v2.0.0 -- 14/11/2026)
 
 ```markdown
-## DynamicMarker v1.9.9 (14/11/2026)
+## DynamicMarker v2.0.0 (14/11/2026)
 
 ### Fixed
 * **Top & Bottom Screen-Edge Bar Drift:** Focus Icons and World Flare bars parked flush against the top edge, bottom edge, or corners now stay in their exact saved positions after reloading the UI at every bar scale (70%, 100%, and 130%).

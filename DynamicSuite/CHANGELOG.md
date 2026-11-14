@@ -1,14 +1,21 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v1.9.9 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.0.0 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.0.0 (15/11/2026)
+
+### Added
+* **Midnight Season 2 Portal & Keystone Deck (DynamicGroup):** Added a top-docked portal bar above Premade Groups showing your current Mythic+ keystone pill and all 8 active season dungeons with your best timed key levels, dynamically resolving learned Midnight Season 2 teleports from the Mythic+ tab and spellbook. Left-Click toggles the dungeon filter (Shift + Left-Click to solo filter), and Right-Click casts the dungeon teleport out of combat.
+* **Integrated Multi-Toggle Premade Group Filters (DynamicGroup):** Upgraded the Group Finder filter menu with Tank, Healer, and DPS role availability toggles (with role icons), No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez, kept in two-way sync with Blizzard's native Filter menu without altering difficulty checkboxes.
+* **Dungeon Joined & Group Full Teleport Toast (DynamicGroup):** Integrated a 410x74 dark-obsidian quick-teleport banner into DynamicSuite's shared Alert Toast HUD Edit slot with mutual toast stacking, join chimes as members enter, an emerald 5/5 ready alert, Right-Click dismissal, **Test Join (3/5)** / **Test Full (5/5)** / **Edit HUD** buttons, and `/dg testtoast`.
+
+### Improved
+* **Sleek Premade Group Rows & Tooltips (DynamicGroup):** Replaced separate row badges with a borderless `Region / Leader IO` pill (`OCE`, `USE`, `USW`, `USC`, `LA`, `BR`), added a simplified **Show Region & Leader IO Badge** toggle, aligned uniform desaturated greyscale Tank/Healer/DPS icons with 4px slot spacing over empty group slots, and added personal best key levels plus same-class warnings to group tooltips.
 
 ---
 
 ## DynamicSuite & All 8 Modules v1.9.9 (14/11/2026)
-
-### Added
-* **Season Dungeon Portals & 1-Click Dungeon Filter Deck (DynamicGroup):** Added a compact portal bar above Premade Groups displaying your current Mythic+ keystone pill and the 8 active season dungeons with your best timed key levels, dynamically resolving learned Midnight Season 2 teleports from the Mythic+ tab and spellbook. Left-click a dungeon tile to toggle the LFG filter (Shift + Left-Click to solo filter), or Right-Click out of combat to cast its dungeon teleport once learned.
-* **Dungeon Joined & Group Full Teleport Toast (DynamicGroup):** Added a 410x74 dark-obsidian quick-teleport banner matching DynamicSuite's Alert Toast style with a one-click Dungeon Teleport button and Right-Click dismissal when your Premade Group application is accepted, playing a join chime as members enter and alerting you when the group hits 5/5. Shares DynamicSuite's Alert Toast HUD Edit slot with smart mutual stacking, **Test Join (3/5)** / **Test Full (5/5)** / **Edit HUD** buttons, and `/dg testtoast`.
-* **Integrated Multi-Toggle Group Filters & Open-Slot Role Icons (DynamicGroup):** Upgraded the Group Finder filter menu with Tank, Healer, and DPS role availability toggles (with role icons), No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez (kept in two-way sync with Blizzard's native Filter button without altering difficulty checkboxes), alongside a cleaner borderless Region / Leader IO pill (`OCE`, `USE`, `USW`, `USC`, `LA`, `BR`), a simplified Show Region & Leader IO Badge toggle, desaturated greyscale Tank/Healer/DPS icons matched to Blizzard's slot size with 4px slot spacing over empty group slots, and personal best key levels on tooltips.
 
 ### Fixed
 * **Top & Bottom Screen-Edge Bar Drift:** Focus Icons and World Flare bars parked flush against the top edge, bottom edge, or corners now stay in their exact saved positions after reloading the UI at every bar scale (70%, 100%, and 130%).
