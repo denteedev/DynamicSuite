@@ -278,6 +278,21 @@ foreach ($tok in $parityTokens) {
         throw "DynamicMarker.lua missing Suite/Standalone parity token: $tok"
     }
 }
+foreach ($suiteCoexistReq in @("EnforceStandaloneDynamicMarkerExclusion", 'C_AddOns.DisableAddOn, "DynamicMarker"')) {
+    if ($suiteCoreText.IndexOf($suiteCoexistReq, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicSuite_Core.lua missing standalone DynamicMarker mutual-exclusion token: $suiteCoexistReq"
+    }
+}
+foreach ($markerCoexistReq in @('C_AddOns.IsAddOnLoaded("DynamicSuite")', "IsRunningInSuite", "ResetSingleHUDPosition", "DynamicMarkerGridOverlay")) {
+    if ($markerLuaText.IndexOf($markerCoexistReq, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicMarker.lua missing coexistence / standalone HUD Edit token: $markerCoexistReq"
+    }
+}
+foreach ($markerForbiddenHudTok in @("DynamicSuiteGridOverlay", "DynamicSuite HUD Edit Mode", 'CreateFrame("Frame", "DynamicSuiteEditModeModal"', 'CreateFrame("Frame", "DynamicSuiteSnapGridOverlay"')) {
+    if ($markerLuaText.IndexOf($markerForbiddenHudTok, [System.StringComparison]::Ordinal) -ge 0) {
+        throw "DynamicMarker.lua contains forbidden duplicate Suite HUD frame/title token: $markerForbiddenHudTok"
+    }
+}
 foreach ($suiteUiReq in @("ClampHudCoordsToScreen", "ResetAllHudPositions", "SyncBarScaleAndSizeToDB", "GetVisibleContainerExtents")) {
     if ($suiteUiText.IndexOf($suiteUiReq, [System.StringComparison]::Ordinal) -lt 0) {
         throw "DynamicSuite_UI.lua missing required HUD safety helper: $suiteUiReq"

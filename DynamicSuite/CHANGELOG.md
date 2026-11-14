@@ -1,5 +1,20 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v1.9.8 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v1.9.9 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v1.9.9 (`/ds`, `/dm`, `/dbag`)
+* **[FIX] Mutual Exclusion Guard (`DynamicSuite` vs. Standalone `DynamicMarker`) (`DynamicSuite_Core.lua`, `DynamicLoad.lua`, `DynamicMarker.lua`):**
+  * **Active Standalone Disabling:** `DynamicSuite` (`EnforceStandaloneDynamicMarkerExclusion` during core init, `ADDON_LOADED`, and `PLAYER_LOGIN`) and `DynamicLoad` now detect if standalone `DynamicMarker` is enabled or loaded, actively disable it via `C_AddOns.DisableAddOn("DynamicMarker")`, wipe conflicting profile enablement flags, and trigger an immediate reload prompt (`DYNAMICSUITE_MARKER_CONFLICT_RELOAD`) when standalone `DynamicMarker` was already loaded in the current session.
+  * **Top-of-File & `ADDON_LOADED` Early Exit:** Added an immediate top-of-file guard and `ADDON_LOADED` / `ShouldYieldToOtherInstall()` hard exclusion in standalone `DynamicMarker` when `C_AddOns.IsAddOnLoaded("DynamicSuite")` or `DynamicSuite` is enabled, preventing duplicate frames, slash command overrides, or SavedVariables writes while ensuring bundled `DynamicMarker` inside `DynamicSuite` never yields to standalone `DynamicMarker`.
+* **[FIX] Single Unified HUD Edit Mode & Non-Colliding Standalone Inspector (`DynamicMarker.lua`, `DynamicSuite_UI.lua`):**
+  * Suppressed `DynamicMarkerEditModeInspector` and standalone grid overlay creation whenever `DynamicMarker` runs inside `DynamicSuite` (`DM:IsRunningInSuite()`), ensuring ONLY the unified bottom `DynamicSuiteEditModeModal` dock and `DynamicSuiteSnapGridOverlay` render when toggling HUD Edit Mode.
+  * Retained the full standalone `DynamicMarker` HUD Edit Mode UI cleanly when running without `DynamicSuite`, renamed its grid overlay to `DynamicMarkerGridOverlay` and header to `DynamicMarker HUD Edit Mode`, and added automated frame-name collision checks in `deploy.ps1`.
+* **[FIX] `DynamicMarker` Scale Clamping, Dynamic Screen-Edge Snapping & `Reset HUD Positions` Bounds (`DynamicMarker.lua`, `DynamicSuite_UI.lua`):**
+  * **Coordinate Unpacking & `relScale` Parity:** Fixed `ReadPeerOrLiveHudPos` `ConvertAnchorToCenterLocal` 4-value return unpacking across all 5 read paths and fixed `GetLocalFrameScreenExtents` / `GetHudLocalScreenExtents` (`relScale = frame:GetScale()` instead of stale `1 / UIParent:GetEffectiveScale()`, plus `292x40` / `40x292` bar fallbacks) so Focus Icons and World Flare bars compute true dynamic screen-edge bounds across UI scales and resolutions without snapping to stale `(653, -619)` offsets.
+  * **Atomic Reset & Dual-Scope Persistence:** Implemented `DM:ResetSingleHUDPosition` (`scale = 1.00`, `HORIZONTAL` orientation, screen-clamped `(0, -140)` / `(0, -182)` defaults), wired `ResetAllHudPositions`, `ResetSelectedHudLocations`, and `/dm resethud` through it, removed stale default-position resurrection in `InitDB` / `GetStoredHUDPosition`, and mirrored `WriteHUDCoordsToDB` writes across both `DynamicSuiteDB` and `DynamicMarkerDB` profiles/scopes identically across `/reload`.
+* **[LOCKSTEP] `v1.9.9` Parity & Automated Guards (`deploy.ps1`, `.toc`, Docs):**
+  * Added automated `DynamicSuite` <-> standalone `DynamicMarker` coexistence guard assertions and HUD Edit frame-name non-collision checks inside `deploy.ps1`, and synchronised lockstep `v1.9.9` version metadata across all `.toc`, Lua fallbacks, and public docs.
 
 ---
 

@@ -1,7 +1,7 @@
-# DynamicSuite -- CurseForge Storefront Copy & Release Changelog (v1.9.8)
+# DynamicSuite -- CurseForge Storefront Copy & Release Changelog (v1.9.9)
 
 > **Target Game Version:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`)  
-> **Version:** `v1.9.8` (`14/11/2026`)  
+> **Version:** `v1.9.9` (`14/11/2026`)  
 > **CurseForge Project ID:** `1804382`  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicsuite
@@ -117,13 +117,13 @@ Looking for just the target marking & interrupt macro module? Check out standalo
 
 ---
 
-## Section 2: CurseForge File Changelog Block (`v1.9.8` -- `14/11/2026`)
+## Section 2: CurseForge File Changelog Block (`v1.9.9` -- `14/11/2026`)
 
 ```markdown
-## DynamicSuite & Standalone DynamicMarker v1.9.8 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
+## DynamicSuite & Standalone DynamicMarker v1.9.9 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
 
 ### Highlights & Release Changes
-* **Target & World Marker Bar Scaled Edge-Drag & `/reload` Persistence (`DynamicMarker.lua`, `DynamicSuite_UI.lua`):** Fixed Target and World Flare bars snapping back after edge-drags at non-100% scales (e.g. `70%`/`75%`) by syncing bar scale and orientation size before clamping, canonicalising `CENTER`/`CENTER` anchors across all DB mirrors, and enforcing `SetClampedToScreen(false)` across both `DynamicSuite` and standalone `DynamicMarker`.
-* **`DynamicChat` Flush `(0, 0)` Bottom-Left Clamping & Persistence (`DynamicChat.lua`, `DynamicSuite_UI.lua`):** Enforced `ChatFrame1:SetClampedToScreen(false)` whenever `DynamicChat` manages layout, measured strictly the visible chat container frame via `GetVisibleContainerExtents()` (no negative bottom EditBox or side-button overhangs), and canonicalised `CHAT` to `BOTTOMLEFT` outer-container coordinates so dragging or nudging to `X = 0, Y = 0` sits flush against the bottom-left screen corner across HUD Edit toggles, UI scale events, and `/reload`.
-* **Lockstep `v1.9.8` Parity & Release Hygiene:** Added automated HUD Edit coordinate parity checks across `DynamicSuite` and standalone `DynamicMarker` and synchronised all `.toc`, Lua, and public changelog/storefront metadata.
+* **Mutual Exclusion (`DynamicSuite` vs. Standalone `DynamicMarker`):** `DynamicSuite` and `DynamicLoad` now actively disable standalone `DynamicMarker` via `C_AddOns.DisableAddOn("DynamicMarker")` (with an instant reload prompt if already loaded), while standalone `DynamicMarker` exits immediately at top-of-file and `ADDON_LOADED` when `DynamicSuite` is loaded so both never run simultaneously.
+* **Single Unified HUD Edit Mode:** Suppressed the legacy standalone `DynamicMarker` HUD Edit popup and overlay inside `DynamicSuite` (`DM:IsRunningInSuite()`) so only the unified bottom `DynamicSuite` HUD Edit dock displays, while keeping standalone `DynamicMarker` HUD Edit Mode (`DynamicMarkerGridOverlay`) intact when run solo.
+* **`DynamicMarker` Dynamic Screen-Edge & Reset Bounds (`Target` & `Flare` Bars):** Fixed `ConvertAnchorToCenterLocal` unpacking, `relScale` / `292x40` screen-extent bounds, `ResetSingleHUDPosition` (`scale = 1.00`, `HORIZONTAL`, dynamic edge-clamped defaults), and atomic Suite/standalone DB persistence across UI scales and `/reload`.
 ```

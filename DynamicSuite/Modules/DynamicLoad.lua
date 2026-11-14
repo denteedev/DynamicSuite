@@ -8,7 +8,7 @@ local addonName, rawAddonTable = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.8"
+    local fb = fallback or "1.9.9"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.ADDON_VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.8"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.ADDON_VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.9"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.8")
+local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.9")
 
 -- Guard E: Version-aware duplicate-install guard if standalone DynamicLoad is installed alongside bundled DynamicSuite
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicLoad", RESOLVED_ADDON_VERSION, _G.DynamicLoad) then
@@ -827,11 +827,25 @@ local function SetAddonLocked(name, locked)
         ApplySecurityStateToTableSet(DynamicLoadDB.globalData, canon, name, targetMode)
     end
 
+local function IsStandaloneMarkerExcludedBySuite(addonKey)
+    if addonKey ~= "DynamicMarker" then return false end
+    if DynamicSuite and DynamicSuite._isHubLoaded then return true end
+    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DynamicSuite") then return true end
+    return false
+end
+
     if locked and C_AddOns and C_AddOns.EnableAddOn then
         local pName = GetPlayer()
-        pcall(C_AddOns.EnableAddOn, canon, pName)
-        if (C_AddOns.GetAddOnEnableState(canon, pName) or 0) == 0 then
-            pcall(C_AddOns.EnableAddOn, canon)
+        if IsStandaloneMarkerExcludedBySuite(canon) then
+            if C_AddOns.DisableAddOn then
+                pcall(C_AddOns.DisableAddOn, canon, pName)
+                pcall(C_AddOns.DisableAddOn, canon)
+            end
+        else
+            pcall(C_AddOns.EnableAddOn, canon, pName)
+            if (C_AddOns.GetAddOnEnableState(canon, pName) or 0) == 0 then
+                pcall(C_AddOns.EnableAddOn, canon)
+            end
         end
     end
 end
@@ -922,7 +936,20 @@ DynamicSuite.EnforceFrozenAddonsDisabled = EnforceFrozenAddonsDisabled
 local function OnExternalEnableAddOnHook(addonKey)
     if isEnforcingFrozenGuard or not DynamicLoadDB then return end
     local canon = ResolveCanonicalAddonName(addonKey)
-    if not canon or IsAddonProtected(canon) then return end
+    if not canon then return end
+    if IsStandaloneMarkerExcludedBySuite(canon) then
+        isEnforcingFrozenGuard = true
+        local pName = GetPlayer()
+        if C_AddOns and C_AddOns.DisableAddOn then
+            pcall(C_AddOns.DisableAddOn, canon, pName)
+            if (C_AddOns.GetAddOnEnableState(canon, pName) or 0) > 0 then
+                pcall(C_AddOns.DisableAddOn, canon)
+            end
+        end
+        isEnforcingFrozenGuard = false
+        return
+    end
+    if IsAddonProtected(canon) then return end
     if IsAddonFrozen(canon) then
         isEnforcingFrozenGuard = true
         local pName = GetPlayer()
@@ -1012,7 +1039,16 @@ function addonTable.ApplySmartAddonScan()
         local name = C_AddOns.GetAddOnInfo(i)
         if name and not IsAddonProtected(name) and not IsAddonFrozen(name) then
             local isEnabledNow = (C_AddOns.GetAddOnEnableState(name, pName) or 0) > 0
-            if MatchesAnyPattern(name, SMART_CORE_PATTERNS) and isEnabledNow then
+            if IsStandaloneMarkerExcludedBySuite(name) then
+                SetAddonLocked(name, false)
+                for _, k in ipairs({ CONTEXT_OUTDOOR, CONTEXT_DELVE, CONTEXT_DUNGEON, CONTEXT_RAID, CONTEXT_PVP }) do
+                    DynamicLoadDB.profiles[k].addons[name] = false
+                end
+                if C_AddOns and C_AddOns.DisableAddOn then
+                    pcall(C_AddOns.DisableAddOn, name, pName)
+                    pcall(C_AddOns.DisableAddOn, name)
+                end
+            elseif MatchesAnyPattern(name, SMART_CORE_PATTERNS) and isEnabledNow then
                 SetAddonLocked(name, true)
                 lockedCount = lockedCount + 1
                 for _, k in ipairs({ CONTEXT_OUTDOOR, CONTEXT_DELVE, CONTEXT_DUNGEON, CONTEXT_RAID, CONTEXT_PVP }) do
@@ -2423,7 +2459,7 @@ local function StageAddonProfile(targetProfileKey, setAsActive)
     for i = 1, num do
         local name = C_AddOns.GetAddOnInfo(i)
         if name and name ~= "DynamicFrame" and not IsAddonProtected(name) then
-            local shouldEnable = (desiredMap[name] == true) and not IsAddonFrozen(name)
+            local shouldEnable = (desiredMap[name] == true) and not IsAddonFrozen(name) and not IsStandaloneMarkerExcludedBySuite(name)
             if shouldEnable then
                 C_AddOns.EnableAddOn(name, pName)
                 if (C_AddOns.GetAddOnEnableState(name, pName) or 0) == 0 then
@@ -8552,7 +8588,7 @@ do
         slash = "/dl",
         order = 10,
         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
-        version = addonTable.ADDON_VERSION or "1.9.8",
+        version = addonTable.ADDON_VERSION or "1.9.9",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         CHANGELOG = DynamicSuite.Changelogs and DynamicSuite.Changelogs["DynamicLoad"] and DynamicSuite.Changelogs["DynamicLoad"].entries or addonTable.CHANGELOG,
         Open = function(...) if addonTable.ShowConfigUI then return addonTable.ShowConfigUI(...) end end,

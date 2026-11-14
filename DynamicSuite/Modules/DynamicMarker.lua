@@ -1,8 +1,39 @@
 local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
+-- Hard mutual exclusion: when running as the standalone DynamicMarker addon while DynamicSuite
+-- is loaded or enabled, immediately disable standalone DynamicMarker and abort execution before
+-- any frames, SavedVariables mutations, or slash commands are registered.
+if ADDON_FOLDER ~= "DynamicSuite" then
+    local isSuiteLoaded = (C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DynamicSuite"))
+        or (type(_G.IsAddOnLoaded) == "function" and _G.IsAddOnLoaded("DynamicSuite"))
+        or (_G.DynamicSuite and _G.DynamicSuite._isHubLoaded == true)
+    local isSuiteEnabled = false
+    if C_AddOns and type(C_AddOns.GetAddOnEnableState) == "function" then
+        local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
+        if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
+            local ok, st = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", pName)
+            if ok and type(st) == "number" and st > 0 then isSuiteEnabled = true end
+        end
+        if not isSuiteEnabled then
+            local ok2, st2 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite")
+            if ok2 and type(st2) == "number" and st2 > 0 then isSuiteEnabled = true end
+        end
+    end
+    if isSuiteLoaded or isSuiteEnabled then
+        if C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
+            local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
+            if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
+                pcall(C_AddOns.DisableAddOn, "DynamicMarker", pName)
+            end
+            pcall(C_AddOns.DisableAddOn, "DynamicMarker")
+        end
+        return
+    end
+end
+
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.8"
+    local fb = fallback or "1.9.9"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -33,7 +64,6 @@ end
 local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersion, globalTbl)
     local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
     local getAddOnEnableState = (C_AddOns and C_AddOns.GetAddOnEnableState) or _G.GetAddOnEnableState
-    local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     local function isOtherEnabled(name)
         if type(isAddOnLoaded) == "function" and isAddOnLoaded(name) then
             return true
@@ -50,40 +80,31 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
         return false
     end
     if addonFolder ~= "DynamicSuite" then
-        if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.8"
-            if CompareSemVer(thisVersion, suiteVer) <= 0 then
-                return true
-            end
+        local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
+            or (_G.DynamicSuite and _G.DynamicSuite.version)
+            or "1.9.9"
+        if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
+            -- Never run standalone DynamicMarker alongside DynamicSuite
         end
-        if isOtherEnabled("DynamicSuite") and type(getMeta) == "function" then
-            local okS, sVer = pcall(getMeta, "DynamicSuite", "Version")
-            if okS and type(sVer) == "string" and sVer ~= "" and not sVer:find("@") then
-                if CompareSemVer(thisVersion, sVer) <= 0 then
-                    return true
+        if isOtherEnabled("DynamicSuite")
+            or (type(globalTbl) == "table" and globalTbl._loadedBySuite == true)
+            or (_G.DynamicSuite and _G.DynamicSuite._isHubLoaded == true)
+        then
+            if C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
+                local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
+                if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
+                    pcall(C_AddOns.DisableAddOn, standaloneName or addonFolder, pName)
                 end
+                pcall(C_AddOns.DisableAddOn, standaloneName or addonFolder)
             end
+            return true
         end
-    else
-        if type(globalTbl) == "table" and globalTbl._loadedBySuite == false then
-            local stLoadedVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or "0.0.0"
-            if CompareSemVer(stLoadedVer, thisVersion) >= 0 then
-                return true
-            end
-        end
-        if isOtherEnabled(standaloneName) and type(getMeta) == "function" then
-            local okV, stVer = pcall(getMeta, standaloneName, "Version")
-            if okV and type(stVer) == "string" and stVer ~= "" and not stVer:find("@") then
-                if CompareSemVer(stVer, thisVersion) > 0 then
-                    return true
-                end
-            end
-        end
+        return false
     end
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.8")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.9")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -115,9 +136,20 @@ Suite.modules = Suite.modules or {}
 Suite.hudElements = Suite.hudElements or {}
 Suite.Changelogs = Suite.Changelogs or {}
 
-local DM = _G.DynamicMarker or DM_NS
-_G.DynamicMarker = DM
-DM._loadedBySuite = (ADDON_FOLDER == "DynamicSuite")
+local DM
+if ADDON_FOLDER == "DynamicSuite" then
+    if type(_G.DynamicMarker) == "table" and _G.DynamicMarker._loadedBySuite == true then
+        DM = _G.DynamicMarker
+    else
+        DM = DM_NS
+        _G.DynamicMarker = DM
+    end
+    DM._loadedBySuite = true
+else
+    DM = _G.DynamicMarker or DM_NS
+    _G.DynamicMarker = DM
+    DM._loadedBySuite = false
+end
 DM._loadedVersion = VERSION
 
 DM.name = "DynamicMarker"
@@ -983,6 +1015,9 @@ function DM:InitDB()
         existingDB = {}
     end
 
+    local hadSavedTargetPos = (existingDB.targetBarX ~= nil or existingDB.targetBarY ~= nil or type(existingDB.targetBarPos) == "table" or type(existingDB.targetPos) == "table")
+    local hadSavedFlarePos  = (existingDB.flareBarX ~= nil or existingDB.flareBarY ~= nil or type(existingDB.flareBarPos) == "table" or type(existingDB.flarePos) == "table")
+
     -- One-Time FocusMarkerDB -> DynamicMarkerDB Migration Bridge (runs BEFORE fresh defaults)
     local didMigrateNow = false
     local migratedFlags = nil
@@ -1080,10 +1115,15 @@ function DM:InitDB()
     end
 
     -- Sync HUD coordinates between DynamicMarkerDB (authoritative) and DynamicSuiteDB.global.hudPositions
+    local suiteGlobalScope = (_G.DynamicSuite and type(_G.DynamicSuite.GetSuiteGlobal) == "function") and _G.DynamicSuite.GetSuiteGlobal() or nil
+    if type(suiteGlobalScope) == "table" then
+        suiteGlobalScope.hudPositions = type(suiteGlobalScope.hudPositions) == "table" and suiteGlobalScope.hudPositions or {}
+    end
     local hp = self.suiteGlobal.hudPositions
-    local existingTarget = hp["TARGET"] or hp["TargetBar"] or hp["target"] or hp["DynamicMarkerTargetBar"]
-    local targetIsDefault = (tPt == "CENTER" and tx == 0 and ty == -140)
-    if targetIsDefault and (not (didMigrateNow and migratedFlags and migratedFlags.targetPos))
+    local hpScope = (type(suiteGlobalScope) == "table") and suiteGlobalScope.hudPositions or nil
+    local existingTarget = (hpScope and (hpScope["TARGET"] or hpScope["TargetBar"] or hpScope["target"] or hpScope["DynamicMarkerTargetBar"]))
+        or hp["TARGET"] or hp["TargetBar"] or hp["target"] or hp["DynamicMarkerTargetBar"]
+    if (not hadSavedTargetPos) and (not (didMigrateNow and migratedFlags and migratedFlags.targetPos))
         and type(existingTarget) == "table" and (tonumber(existingTarget.x) ~= nil or tonumber(existingTarget.y) ~= nil)
     then
         local mTx = (tonumber(existingTarget.x) ~= nil) and tonumber(existingTarget.x) or 0
@@ -1095,6 +1135,12 @@ function DM:InitDB()
         hp["target"]                 = tEntry
         hp["TargetBar"]              = tEntry
         hp["DynamicMarkerTargetBar"] = tEntry
+        if hpScope then
+            hpScope["TARGET"]                 = tEntry
+            hpScope["target"]                 = tEntry
+            hpScope["TargetBar"]              = tEntry
+            hpScope["DynamicMarkerTargetBar"] = tEntry
+        end
         self.db.targetBarPoint    = mPt
         self.db.targetBarRelPoint = mRp
         self.db.targetBarX        = mTx
@@ -1106,11 +1152,17 @@ function DM:InitDB()
         hp["target"]                 = tEntry
         hp["TargetBar"]              = tEntry
         hp["DynamicMarkerTargetBar"] = tEntry
+        if hpScope then
+            hpScope["TARGET"]                 = tEntry
+            hpScope["target"]                 = tEntry
+            hpScope["TargetBar"]              = tEntry
+            hpScope["DynamicMarkerTargetBar"] = tEntry
+        end
     end
 
-    local existingFlare = hp["FLARE"] or hp["FlareBar"] or hp["flare"] or hp["DynamicMarkerFlareBar"]
-    local flareIsDefault = (fPt == "CENTER" and fx == 0 and fy == -182)
-    if flareIsDefault and (not (didMigrateNow and migratedFlags and migratedFlags.flarePos))
+    local existingFlare = (hpScope and (hpScope["FLARE"] or hpScope["FlareBar"] or hpScope["flare"] or hpScope["DynamicMarkerFlareBar"]))
+        or hp["FLARE"] or hp["FlareBar"] or hp["flare"] or hp["DynamicMarkerFlareBar"]
+    if (not hadSavedFlarePos) and (not (didMigrateNow and migratedFlags and migratedFlags.flarePos))
         and type(existingFlare) == "table" and (tonumber(existingFlare.x) ~= nil or tonumber(existingFlare.y) ~= nil)
     then
         local mFx = (tonumber(existingFlare.x) ~= nil) and tonumber(existingFlare.x) or 0
@@ -1122,6 +1174,12 @@ function DM:InitDB()
         hp["flare"]                 = fEntry
         hp["FlareBar"]              = fEntry
         hp["DynamicMarkerFlareBar"] = fEntry
+        if hpScope then
+            hpScope["FLARE"]                 = fEntry
+            hpScope["flare"]                 = fEntry
+            hpScope["FlareBar"]              = fEntry
+            hpScope["DynamicMarkerFlareBar"] = fEntry
+        end
         self.db.flareBarPoint    = mPt
         self.db.flareBarRelPoint = mRp
         self.db.flareBarX        = mFx
@@ -1133,6 +1191,12 @@ function DM:InitDB()
         hp["flare"]                 = fEntry
         hp["FlareBar"]              = fEntry
         hp["DynamicMarkerFlareBar"] = fEntry
+        if hpScope then
+            hpScope["FLARE"]                 = fEntry
+            hpScope["flare"]                 = fEntry
+            hpScope["FlareBar"]              = fEntry
+            hpScope["DynamicMarkerFlareBar"] = fEntry
+        end
     end
 end
 
@@ -3327,22 +3391,21 @@ function DM:ConvertAnchorToCenterLocal(frame, point, relPoint, rawX, rawY, hudKe
     local inX = (nx ~= nil and IsFiniteNum(nx)) and nx or 0
     local inY = (ny ~= nil and IsFiniteNum(ny)) and ny or 0
     if pt == "CENTER" and rp == "CENTER" then
-        return RoundHUDCoord(inX), RoundHUDCoord(inY)
+        return RoundHUDCoord(inX), RoundHUDCoord(inY), "CENTER", "CENTER"
     end
-    local primaryKey, _, _, _, _, _ = ResolveHUDKeyAliases(hudKey)
+    local primaryKey, _, _, _, _, _ = ResolveHUDKeyAliases(hudKey or (frame and frame == self.flareBar and "FlareBar" or "TargetBar"))
     local scaleVal = self:SyncBarScaleAndSizeToDB(frame, primaryKey)
-    local fScale = (frame and frame.GetEffectiveScale and frame:GetEffectiveScale())
-    local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-    if uScale <= 0 then uScale = 1 end
-    local relScale = (fScale and fScale > 0) and (fScale / uScale) or scaleVal
-    if relScale <= 0 then relScale = 1 end
+    local relScale = (frame and frame.GetScale and frame:GetScale()) or scaleVal
+    if not IsFiniteNum(relScale) or relScale <= 0 then relScale = scaleVal end
     local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
     local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
     local isFlare = (primaryKey == "FlareBar") or (frame and frame == self.flareBar)
     local orientKey = isFlare and "flareBarOrientation" or "targetBarOrientation"
     local isVert = (self.db and self.db[orientKey] == "VERTICAL")
-    local frameW = (frame and frame.GetWidth and frame:GetWidth()) or (isVert and 40 or 292)
-    local frameH = (frame and frame.GetHeight and frame:GetHeight()) or (isVert and 292 or 40)
+    local frameW = (frame and frame.GetWidth and frame:GetWidth()) or 0
+    local frameH = (frame and frame.GetHeight and frame:GetHeight()) or 0
+    if frameW <= 1 then frameW = isVert and 40 or 292 end
+    if frameH <= 1 then frameH = isVert and 292 or 40 end
     local visW = frameW * relScale
     local visH = frameH * relScale
     local pfx, pfy = GetAnchorFraction(pt)
@@ -3352,7 +3415,9 @@ function DM:ConvertAnchorToCenterLocal(frame, point, relPoint, rawX, rawY, hudKe
     local cx = anchorVisX + (0.5 - pfx) * visW
     local cy = anchorVisY + (0.5 - pfy) * visH
     return RoundHUDCoord((cx - (screenW * 0.5)) / relScale),
-           RoundHUDCoord((cy - (screenH * 0.5)) / relScale)
+           RoundHUDCoord((cy - (screenH * 0.5)) / relScale),
+           "CENTER",
+           "CENTER"
 end
 
 function DM:WriteHUDCoordsToDB(hudKey, pt, rp, x, y)
@@ -3411,6 +3476,24 @@ function DM:WriteHUDCoordsToDB(hudKey, pt, rp, x, y)
         self.suiteGlobal.hudPositions[shortKey]   = entry
         self.suiteGlobal.hudPositions[frameKey]   = entry
     end
+    local activeScope = (_G.DynamicSuite and type(_G.DynamicSuite.GetSuiteGlobal) == "function") and _G.DynamicSuite.GetSuiteGlobal() or nil
+    if type(activeScope) == "table" and activeScope ~= self.suiteGlobal then
+        activeScope.hudPositions = type(activeScope.hudPositions) == "table" and activeScope.hudPositions or {}
+        activeScope.hudPositions[upperKey]   = entry
+        activeScope.hudPositions[primaryKey] = entry
+        activeScope.hudPositions[shortKey]   = entry
+        activeScope.hudPositions[frameKey]   = entry
+    end
+    if type(_G.DynamicLoadDB) == "table" and type(_G.DynamicLoadDB.charData) == "table" then
+        for _, cd in pairs(_G.DynamicLoadDB.charData) do
+            if type(cd) == "table" and type(cd.theme) == "table" and type(cd.theme.hudPositions) == "table" then
+                cd.theme.hudPositions[upperKey]   = entry
+                cd.theme.hudPositions[primaryKey] = entry
+                cd.theme.hudPositions[shortKey]   = entry
+                cd.theme.hudPositions[frameKey]   = entry
+            end
+        end
+    end
 end
 
 function DM:GetStoredHUDPosition(hudKey, fallbackY)
@@ -3445,18 +3528,24 @@ function DM:GetStoredHUDPosition(hudKey, fallbackY)
         dmEntry = { point = "CENTER", relPoint = "CENTER", x = cx, y = cy }
     end
 
-    local dmIsDefault = dmEntry and (dmEntry.point == "CENTER" and dmEntry.x == 0 and dmEntry.y == defY)
-    if dmEntry and not dmIsDefault then
+    if dmEntry then
         if type(hp) == "table" then
             hp[upperKey]   = dmEntry
             hp[primaryKey] = dmEntry
             hp[shortKey]   = dmEntry
             hp[frameKey]   = dmEntry
         end
+        local activeScope = (_G.DynamicSuite and type(_G.DynamicSuite.GetSuiteGlobal) == "function") and _G.DynamicSuite.GetSuiteGlobal() or nil
+        if type(activeScope) == "table" and type(activeScope.hudPositions) == "table" then
+            activeScope.hudPositions[upperKey]   = dmEntry
+            activeScope.hudPositions[primaryKey] = dmEntry
+            activeScope.hudPositions[shortKey]   = dmEntry
+            activeScope.hudPositions[frameKey]   = dmEntry
+        end
         return dmEntry
     end
 
-    -- 2. Fallback to DynamicSuiteDB.global.hudPositions if DynamicMarkerDB is unset or still at factory default
+    -- 2. Fallback to DynamicSuiteDB.global.hudPositions only when DynamicMarkerDB is unset
     if type(hp) == "table" then
         local c = hp[upperKey] or hp[primaryKey] or hp[shortKey] or hp[frameKey]
         if type(c) == "table" then
@@ -3538,12 +3627,9 @@ function DM:SaveHUDPosition(frame, hudKey, noSnap, explicitPoint, explicitRelPoi
         local rawY = (ny ~= nil and IsFiniteNum(ny)) and ny or defY
         cx, cy = self:ConvertAnchorToCenterLocal(frame, pt, rp, rawX, rawY, primaryKey)
     elseif frame and frame.GetCenter then
-        local fScale = (frame.GetEffectiveScale and frame:GetEffectiveScale()) or 1
-        local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-        if fScale <= 0 then fScale = 1 end
-        if uScale <= 0 then uScale = 1 end
-        local relScale = fScale / uScale
-        if relScale <= 0 then relScale = 1 end
+        local scaleVal = self:SyncBarScaleAndSizeToDB(frame, primaryKey)
+        local relScale = (frame.GetScale and frame:GetScale()) or scaleVal
+        if not IsFiniteNum(relScale) or relScale <= 0 then relScale = scaleVal end
         local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
         local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
         local fCx, fCy = frame:GetCenter()
@@ -3622,7 +3708,7 @@ function DM:InitTargetBar()
         else
             self.pendingTargetBarSync = true
         end
-        self:SetEditMode(enabled)
+        self:SetEditMode(enabled, { fromSuite = self:IsRunningInSuite() })
         self._inExternalSetEditMode = nil
     end
     bar.SaveEditPosition = function(a1, a2, a3, a4, a5)
@@ -3836,7 +3922,7 @@ function DM:InitFlareBar()
         else
             self.pendingFlareBarSync = true
         end
-        self:SetEditMode(enabled)
+        self:SetEditMode(enabled, { fromSuite = self:IsRunningInSuite() })
         self._inExternalSetEditMode = nil
     end
     bar.SaveEditPosition = function(a1, a2, a3, a4, a5)
@@ -3994,9 +4080,30 @@ end
 -- 12. EDIT MODE (HUDS) - GRID, SUITE ACCENT MOVERS & DOCKED HEADER PILLS
 -- ============================================================================
 
+function DM:IsRunningInSuite()
+    if ADDON_FOLDER == "DynamicSuite" or self._loadedBySuite == true then
+        return true
+    end
+    if _G.DynamicSuite and _G.DynamicSuite._isHubLoaded == true then
+        return true
+    end
+    if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DynamicSuite") then
+        return true
+    end
+    if type(_G.IsAddOnLoaded) == "function" and _G.IsAddOnLoaded("DynamicSuite") then
+        return true
+    end
+    return false
+end
+
 function DM:EnsureGridOverlay()
+    if self:IsRunningInSuite() then
+        if self.gridOverlay and self.gridOverlay.Hide then self.gridOverlay:Hide() end
+        if _G.DynamicMarkerGridOverlay and _G.DynamicMarkerGridOverlay.Hide then _G.DynamicMarkerGridOverlay:Hide() end
+        return nil
+    end
     if self.gridOverlay then return self.gridOverlay end
-    local grid = _G.DynamicSuiteGridOverlay or CreateFrame("Frame", "DynamicSuiteGridOverlay", UIParent)
+    local grid = _G.DynamicMarkerGridOverlay or CreateFrame("Frame", "DynamicMarkerGridOverlay", UIParent)
     grid:SetAllPoints(UIParent)
     grid:SetFrameStrata("BACKGROUND")
     grid:Hide()
@@ -4243,25 +4350,32 @@ local function CollectPeerHudBoundsUIParent(excludeFrame, uScale)
     return bounds
 end
 
-local function GetLocalFrameScreenExtents(frame)
-    local fScale = (frame and frame.GetEffectiveScale and frame:GetEffectiveScale()) or 1
+local function GetLocalFrameScreenExtents(frame, hudKey)
+    local primaryKey = ResolveHUDKeyAliases(hudKey or ((frame and frame == DM.flareBar) and "FlareBar" or "TargetBar"))
+    local scaleVal = DM:SyncBarScaleAndSizeToDB(frame, primaryKey)
     local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-    if fScale <= 0 then fScale = 1 end
-    if uScale <= 0 then uScale = 1 end
-    local relScale = fScale / uScale
-    if relScale <= 0 then relScale = 1 end
+    if not IsFiniteNum(uScale) or uScale <= 0 then uScale = 1 end
+    local relScale = (frame and frame.GetScale and frame:GetScale()) or scaleVal
+    if not IsFiniteNum(relScale) or relScale <= 0 then relScale = scaleVal end
+    local fScale = uScale * relScale
     local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
     local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
     local uiW_local = screenW / relScale
     local uiH_local = screenH / relScale
-    local frameW = (frame and frame.GetWidth and frame:GetWidth()) or 292
-    local frameH = (frame and frame.GetHeight and frame:GetHeight()) or 40
+    local isFlare = (primaryKey == "FlareBar") or (frame and frame == DM.flareBar)
+    local orientKey = isFlare and "flareBarOrientation" or "targetBarOrientation"
+    local isVert = (DM.db and DM.db[orientKey] == "VERTICAL")
+    local frameW = (frame and frame.GetWidth and frame:GetWidth()) or 0
+    local frameH = (frame and frame.GetHeight and frame:GetHeight()) or 0
+    if frameW <= 1 then frameW = isVert and 40 or 292 end
+    if frameH <= 1 then frameH = isVert and 292 or 40 end
     return uiW_local, uiH_local, fScale, uScale, relScale, frameW, frameH
 end
 
 local function GetLiveFrameCenterOffset(frame, hudKey, defaultY)
+    local primaryKey = ResolveHUDKeyAliases(hudKey or ((frame and frame == DM.flareBar) and "FlareBar" or "TargetBar"))
     if frame and frame.GetCenter then
-        local uiW_local, uiH_local = GetLocalFrameScreenExtents(frame)
+        local uiW_local, uiH_local = GetLocalFrameScreenExtents(frame, primaryKey)
         local fCx, fCy = frame:GetCenter()
         if fCx and fCy and IsFiniteNum(fCx) and IsFiniteNum(fCy) then
             local curX = fCx - (uiW_local / 2)
@@ -4269,7 +4383,7 @@ local function GetLiveFrameCenterOffset(frame, hudKey, defaultY)
             return math.floor(curX + 0.5), math.floor(curY + 0.5)
         end
     end
-    local pos = DM:GetStoredHUDPosition(hudKey, defaultY)
+    local pos = DM:GetStoredHUDPosition(primaryKey, defaultY)
     return math.floor((tonumber(pos and pos.x) or 0) + 0.5),
            math.floor((tonumber(pos and pos.y) or defaultY or 0) + 0.5)
 end
@@ -4294,9 +4408,10 @@ function DM:ClampHUDPositionToScreen(frame, hudKey, point, relPoint, rawX, rawY,
     if frame and self.SyncBarScaleAndSizeToDB then
         self:SyncBarScaleAndSizeToDB(frame, hudKey)
     end
+    local primaryKey = ResolveHUDKeyAliases(hudKey)
     local pt = SanitizeAnchorPoint(point, "CENTER")
     local rp = SanitizeAnchorPoint(relPoint or pt, pt)
-    local _, _, _, uScale, relScale, frameW, frameH = GetLocalFrameScreenExtents(frame)
+    local _, _, _, uScale, relScale, frameW, frameH = GetLocalFrameScreenExtents(frame, primaryKey)
     local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
     local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
     local screenCx = screenW / 2
@@ -4642,7 +4757,7 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
         if targetFrame.SetClampRectInsets then targetFrame:SetClampRectInsets(0, 0, 0, 0) end
 
         local startX, startY = GetLiveFrameCenterOffset(targetFrame, primaryKey, defaultY or defY)
-        local _, _, _, uScale, relScale = GetLocalFrameScreenExtents(targetFrame)
+        local _, _, _, uScale, relScale = GetLocalFrameScreenExtents(targetFrame, primaryKey)
         local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
         local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
         local fCx, fCy = targetFrame.GetCenter and targetFrame:GetCenter()
@@ -4669,7 +4784,7 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
                 HideSnapGuides()
                 return
             end
-            local _, _, _, curUScale, curRelScale = GetLocalFrameScreenExtents(targetFrame)
+            local _, _, _, curUScale, curRelScale = GetLocalFrameScreenExtents(targetFrame, primaryKey)
             local cxRaw, cyRaw = GetCursorPosition()
             local curVisOffX = ((cxRaw or 0) / curUScale) + (m._dragGrabVisX or 0)
             local curVisOffY = ((cyRaw or 0) / curUScale) + (m._dragGrabVisY or 0)
@@ -4709,7 +4824,7 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
         HideSnapGuides()
         local lx, ly
         if s._dragGrabVisX ~= nil and s._dragGrabVisY ~= nil then
-            local _, _, _, curUScale, curRelScale = GetLocalFrameScreenExtents(targetFrame)
+            local _, _, _, curUScale, curRelScale = GetLocalFrameScreenExtents(targetFrame, primaryKey)
             local cxRaw, cyRaw = GetCursorPosition()
             local curVisOffX = ((cxRaw or 0) / curUScale) + s._dragGrabVisX
             local curVisOffY = ((cyRaw or 0) / curUScale) + s._dragGrabVisY
@@ -4783,17 +4898,7 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
         if InCombatLockdown() or not DM.isEditMode then return end
         if buttonName == "RightButton" and IsShiftKeyDown() then
             DM.selectedHUDKey = primaryKey
-            DM:SetSetting(scaleKey, 1.0)
-            if primaryKey == "FlareBar" then
-                DM:RefreshFlareBar()
-            else
-                DM:RefreshTargetBar()
-            end
-            DM:SaveHUDPosition(targetFrame, primaryKey, true, "CENTER", "CENTER", 0, defaultY or defY)
-            DM:ApplyHUDPosition(targetFrame, primaryKey, defaultY or defY)
-            s:RefreshMoverVisual()
-            DM:RefreshEditModeInspector()
-            DM:RefreshAll()
+            DM:ResetSingleHUDPosition(primaryKey, true)
             return
         end
         DM.selectedHUDKey = primaryKey
@@ -4815,6 +4920,15 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
 end
 
 function DM:EnsureEditModeInspector()
+    if self:IsRunningInSuite() then
+        if self.editInspector and self.editInspector.Hide then
+            self.editInspector:Hide()
+        end
+        if _G.DynamicMarkerEditModeInspector and _G.DynamicMarkerEditModeInspector.Hide then
+            _G.DynamicMarkerEditModeInspector:Hide()
+        end
+        return nil
+    end
     if self.editInspector then return self.editInspector end
 
     local insp = CreateFrame("Frame", "DynamicMarkerEditModeInspector", UIParent, "BackdropTemplate")
@@ -4832,7 +4946,9 @@ function DM:EnsureEditModeInspector()
     insp.Title = insp:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     insp.Title:SetPoint("TOPLEFT", insp, "TOPLEFT", 14, -12)
     self:StyleFont(insp.Title, 13, "", COLORS.TextPrimary)
-    insp.Title:SetText("DynamicSuite HUD Edit Mode")
+    local ar, ag, ab = self:GetAccentColor()
+    local aHex = string.format("%02X%02X%02X", math.floor(ar * 255 + 0.5), math.floor(ag * 255 + 0.5), math.floor(ab * 255 + 0.5))
+    insp.Title:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFMarker|r |cFF94A3B8HUD Edit Mode|r", aHex))
 
     insp.SelectedText = insp:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     insp.SelectedText:SetPoint("TOPLEFT", insp.Title, "BOTTOMLEFT", 0, -6)
@@ -4998,11 +5114,20 @@ function DM:EnsureEditModeInspector()
 end
 
 function DM:RefreshEditModeInspector()
+    if self:IsRunningInSuite() then
+        if self.editInspector and self.editInspector.Hide then self.editInspector:Hide() end
+        return
+    end
     if not self.editInspector or not self.editInspector:IsShown() then return end
     local key = self.selectedHUDKey or "TargetBar"
     local entry = Suite.hudElements[key] or Suite.hudElements["TargetBar"]
     local pos = self:GetStoredHUDPosition(key, entry and entry.defaultY or -140)
     self:ApplyBackdrop(self.editInspector, COLORS.BgVoid, self:GetAccentColorTable(0.95), 1)
+    if self.editInspector.Title then
+        local ar, ag, ab = self:GetAccentColor()
+        local aHex = string.format("%02X%02X%02X", math.floor(ar * 255 + 0.5), math.floor(ag * 255 + 0.5), math.floor(ab * 255 + 0.5))
+        self.editInspector.Title:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFMarker|r |cFF94A3B8HUD Edit Mode|r", aHex))
+    end
     self.editInspector.SelectedText:SetText("Selected HUD: " .. (entry and entry.label or key))
     self.editInspector.CoordText:SetText(string.format("Anchor: %s  |  X: %d  |  Y: %d  (1px drag + Magnetic Snap, Shift bypass)", pos.point or "CENTER", pos.x or 0, pos.y or 0))
     if self.editInspector.EditX and not self.editInspector.EditX:HasFocus() then
@@ -5014,6 +5139,9 @@ function DM:RefreshEditModeInspector()
 end
 
 function DM:IsSuiteHudInspectorActive()
+    if self:IsRunningInSuite() then
+        return true
+    end
     local ds = _G.DynamicSuite
     if type(ds) == "table" and type(ds.IsHudEditModeActive) == "function" then
         local ok, active = pcall(ds.IsHudEditModeActive)
@@ -5151,29 +5279,39 @@ function DM:SetEditMode(enabled, opts)
         if self.flareBar then self:SaveHUDPosition(self.flareBar, "FlareBar", true) end
     end
 
-    local suiteInspectorActive = self:IsSuiteHudInspectorActive()
-    local grid = self:EnsureGridOverlay()
+    local suiteInspectorActive = self:IsRunningInSuite() or self:IsSuiteHudInspectorActive()
+    local grid = (not suiteInspectorActive) and self:EnsureGridOverlay() or nil
     local escCatcher = self:EnsureHudEscCatcher()
 
     self._isExitingEditMode = true
     if self.isEditMode then
         escCatcher:Show()
         if not suiteInspectorActive then
-            grid:Show()
+            if grid and grid.Show then grid:Show() end
             local insp = self:EnsureEditModeInspector()
-            insp:Show()
+            if insp and insp.Show then insp:Show() end
             self:RefreshEditModeInspector()
         else
-            grid:Hide()
+            if grid and grid.Hide then grid:Hide() end
+            if self.gridOverlay and self.gridOverlay.Hide then self.gridOverlay:Hide() end
+            if _G.DynamicMarkerGridOverlay and _G.DynamicMarkerGridOverlay.Hide then _G.DynamicMarkerGridOverlay:Hide() end
             if self.editInspector and self.editInspector:IsShown() then
                 self.editInspector:Hide()
+            end
+            if _G.DynamicMarkerEditModeInspector and _G.DynamicMarkerEditModeInspector:IsShown() then
+                _G.DynamicMarkerEditModeInspector:Hide()
             end
         end
     else
         escCatcher:Hide()
-        grid:Hide()
+        if grid and grid.Hide then grid:Hide() end
+        if self.gridOverlay and self.gridOverlay.Hide then self.gridOverlay:Hide() end
+        if _G.DynamicMarkerGridOverlay and _G.DynamicMarkerGridOverlay.Hide then _G.DynamicMarkerGridOverlay:Hide() end
         if self.editInspector and self.editInspector:IsShown() then
             self.editInspector:Hide()
+        end
+        if _G.DynamicMarkerEditModeInspector and _G.DynamicMarkerEditModeInspector:IsShown() then
+            _G.DynamicMarkerEditModeInspector:Hide()
         end
     end
     self._isExitingEditMode = false
@@ -5243,6 +5381,18 @@ function DM:ToggleHudEditMode(preferredHudKey)
     if preferredHudKey then
         local primaryKey = ResolveHUDKeyAliases(preferredHudKey)
         self.selectedHUDKey = primaryKey
+    end
+    if self:IsRunningInSuite() and _G.DynamicSuite then
+        local ds = _G.DynamicSuite
+        local targetKey = (self.selectedHUDKey == "FlareBar") and "FLARE" or "TARGET"
+        local isDsActive = (type(ds.IsHudEditModeActive) == "function" and ds.IsHudEditModeActive()) or false
+        if isDsActive and type(ds.ExitHudEditMode) == "function" then
+            pcall(ds.ExitHudEditMode, false)
+            return
+        elseif not isDsActive and type(ds.EnterHudEditMode) == "function" then
+            pcall(ds.EnterHudEditMode, targetKey)
+            return
+        end
     end
     if self.isEditMode then
         self:SetEditMode(false)
@@ -6984,6 +7134,59 @@ end
 -- 16. RESIZABLE 980x680 _G.DYNAMICSUITE SHELL & DOCKING ROUTER
 -- ============================================================================
 
+function DM:ResetSingleHUDPosition(hudKey, silent)
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingHUDPositionReset = true
+        if not silent then
+            print("|cFF22C55EDynamicMarker|r: |cFFF87171Cannot reset HUD position during combat lockdown.|r Position will reset safely after combat ends.")
+        end
+        return false
+    end
+    if not self.db then self:InitDB() end
+    local primaryKey, _, _, dbPrefix, defY, upperKey = ResolveHUDKeyAliases(hudKey)
+    local targetFrame = (primaryKey == "FlareBar") and self.flareBar or self.targetBar
+    local isFlare = (primaryKey == "FlareBar")
+
+    self:SetSetting(dbPrefix .. "Scale", 1.00)
+    self:SetSetting(dbPrefix .. "Orientation", "HORIZONTAL")
+    if not isFlare then
+        self:SetSetting("barScale", 1.00)
+    end
+    if type(_G.DynamicSuiteDB) == "table" and type(_G.DynamicSuiteDB.global) == "table" then
+        _G.DynamicSuiteDB.global.hudScales = _G.DynamicSuiteDB.global.hudScales or {}
+        _G.DynamicSuiteDB.global.hudScales[upperKey] = 1.00
+    end
+    local activeScope = (_G.DynamicSuite and type(_G.DynamicSuite.GetSuiteGlobal) == "function") and _G.DynamicSuite.GetSuiteGlobal() or nil
+    if type(activeScope) == "table" then
+        activeScope.hudScales = activeScope.hudScales or {}
+        activeScope.hudScales[upperKey] = 1.00
+    end
+
+    if targetFrame then
+        if isFlare then self:RefreshFlareBar() else self:RefreshTargetBar() end
+        self:SyncBarScaleAndSizeToDB(targetFrame, primaryKey)
+    end
+
+    local rx, ry = self:ClampHUDPositionToScreen(targetFrame, primaryKey, "CENTER", "CENTER", 0, defY, { enableSnap = false })
+    self:WriteHUDCoordsToDB(primaryKey, "CENTER", "CENTER", rx, ry)
+    if targetFrame then
+        self:ApplyHUDPosition(targetFrame, primaryKey, defY)
+        if isFlare then self:RefreshFlareBar() else self:RefreshTargetBar() end
+        if targetFrame.editMover and targetFrame.editMover.RefreshMoverVisual then
+            targetFrame.editMover:RefreshMoverVisual()
+        end
+    end
+    self:RefreshEditModeInspector()
+    self:RefreshAll()
+    if not self._suppressSuiteNotify and _G.DynamicSuite and type(_G.DynamicSuite.NotifyExternalHudChanged) == "function" then
+        pcall(_G.DynamicSuite.NotifyExternalHudChanged, upperKey)
+    end
+    if not silent then
+        print(string.format("|cFF22C55EDynamicMarker|r: %s position, orientation, and scale reset to default (%d, %d).", primaryKey, rx, ry))
+    end
+    return true
+end
+
 function DM:ResetHUDPositions(silent)
     if InCombatLockdown and InCombatLockdown() then
         self.pendingHUDPositionReset = true
@@ -6993,23 +7196,10 @@ function DM:ResetHUDPositions(silent)
         return false
     end
     self.pendingHUDPositionReset = false
-    if not self.db then self:InitDB() end
-    local defT = { point = "CENTER", relPoint = "CENTER", x = 0, y = -140 }
-    local defF = { point = "CENTER", relPoint = "CENTER", x = 0, y = -182 }
-    if self.db then
-        self.db.targetBarPos = { point = defT.point, relPoint = defT.relPoint, x = defT.x, y = defT.y }
-        self.db.flareBarPos  = { point = defF.point, relPoint = defF.relPoint, x = defF.x, y = defF.y }
-    end
-    self:SaveHUDPosition(self.targetBar, "TargetBar", true, "CENTER", "CENTER", 0, -140)
-    self:SaveHUDPosition(self.flareBar,  "FlareBar",  true, "CENTER", "CENTER", 0, -182)
-    self:ApplyHUDPosition(self.targetBar, "TargetBar", -140)
-    self:ApplyHUDPosition(self.flareBar,  "FlareBar",  -182)
-    self:RefreshTargetBar()
-    self:RefreshFlareBar()
-    self:RefreshEditModeInspector()
-    self:RefreshAll()
+    self:ResetSingleHUDPosition("TargetBar", true)
+    self:ResetSingleHUDPosition("FlareBar", true)
     if not silent then
-        print("|cFF22C55EDynamicMarker|r: HUD positions reset to safe screen-clamped defaults.")
+        print("|cFF22C55EDynamicMarker|r: HUD positions, orientation, and scales reset to safe defaults.")
     end
     return true
 end
@@ -8178,7 +8368,7 @@ local MarkerModuleDescriptor = {
     SetEditMode   = function(firstArg, secondArg)
         local state = (firstArg == MarkerModuleDescriptor or firstArg == DM) and secondArg or firstArg
         DM._inExternalSetEditMode = true
-        DM:SetEditMode(state)
+        DM:SetEditMode(state, { fromSuite = DM:IsRunningInSuite() })
         DM._inExternalSetEditMode = nil
     end,
     Open          = function(_, tabIdx) DM:OpenWindow(tabIdx) end,
@@ -8226,6 +8416,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "14/11/2026",
     entries = {
+        { type = "FIX",     text = "Release v1.9.9 - Strict Suite Mutual Exclusion, Single Unified HUD Edit Mode & Dynamic Edge-Reset Bounds (14/11/2026): Enforced strict mutual exclusion so standalone DynamicMarker immediately aborts and disables itself whenever DynamicSuite is enabled or loaded (while bundled DynamicMarker inside DynamicSuite never yields); suppressed DynamicMarkerEditModeInspector and standalone grid overlay in Suite mode so only DynamicSuite's bottom HUD Edit dock displays; renamed standalone grid overlay to DynamicMarkerGridOverlay with standalone DynamicMarker HUD Edit branding; fixed ConvertAnchorToCenterLocal 4-value return signature, local relScale computation in GetLocalFrameScreenExtents, InitDB/GetStoredHUDPosition default-position reset persistence, cross-scope WriteHUDCoordsToDB syncing, and ResetSingleHUDPosition scale (100%) + HORIZONTAL reset parity across /dm resethud, /ds resethud, Shift+Right-Click, and ESC -> Options -> AddOns." },
         { type = "FIX",     text = "HUD Edit Bar Edge-Drag & Reload Persistence Fix (14/11/2026): Fixed Target Icon Bar and World Flare Bar jumping inward on /reload or mouse release when scaled below 100% by syncing bar scale and orientation size via SyncBarScaleAndSizeToDB before clamping, removing premature scale=1.0 ApplyHUDPosition calls at initialisation/login/UI_SCALE_CHANGED, canonicalising TargetBar/FlareBar coordinates to CENTER with full mirror key writes, guarding against re-entrant selection callbacks mid-drag, and disabling native C++ SetClampedToScreen interference so edge-snapped bars stay flush after mouse release and /reload." },
         { type = "FEATURE", text = "Release v1.9.7 - Live CurseForge DynamicSuite Link & Hardened Coexistence (14/11/2026): Updated Support modal and CurseForge storefront links cleanly to https://www.curseforge.com/wow/addons/dynamicsuite (replacing legacy URL placeholder labels), connected full DynamicSuite (Project 1804382) alongside standalone DynamicMarker (Project 1331651) in our dual-artifact release pipeline, and hardened ShouldYieldToOtherInstall semantic version yielding regardless of addon load order." },
         { type = "FIX",     text = "HUD Edit Scale-Aware Clamping, Magnetic Edge/Bar Snapping & Reset HUD Positions Failsafe (14/11/2026): Fixed 1:1 uScale drag math at non-100% scales, added magnetic screen-edge/centre (11px) and bar-to-bar (9px) snapping with live DynamicSuiteSnapGuideOverlay guide lines, Shift-to-bypass snapping, and Shift+Click 10px nudges, enforced strict screen-boundary clamping across drags/nudges/coordinates/orientation/scale/login/UI_SCALE_CHANGED, and added Reset HUD Positions in ESC -> Options -> AddOns plus /dm resethud (/fm resethud) and /ds resethud with combat-lockdown deferral." },
@@ -8241,7 +8432,7 @@ DynamicMarker.CHANGELOG = {
         { type = "FIX",     text = "On-Screen Target Icon Bar & World Flare Bar Solo Visibility Fix (12/11/2026): Centralised visibility evaluation in DM:UpdateTargetBarVisibility() and DM:UpdateFlareBarVisibility() with case-insensitive DB mode normalisation, state-driver registration ('[group] show; hide' / scope-aware variants), and immediate SetShown() evaluation; removed the workspace-open force-show override so selecting 'Group' while solo immediately hides the floating 8-icon bar even when the DynamicSuite settings panel is open." },
         { type = "FEATURE", text = "External Addon Conflict Detector & Yield Engine (12/11/2026): Added TargetCharms and legacy FocusMarker to the curated HARD conflict registry with unified DynamicSuite top-of-module warning banner and 1-click resolution." },
         { type = "FIX",     text = "Hardened DM:SetEditMode(false), bar.SetEditMode, and PLAYER_REGEN_DISABLED against combat-lockdown calls on protected TargetBar and FlareBar frames (deferring SetMovable, SetClampedToScreen, and Show/Hide syncs to PLAYER_REGEN_ENABLED while immediately aborting active HUD drags and closing dropdown popovers on combat entry)." },
-        { type = "FIX",     text = "Fixed pressing Esc in HUD Edit Mode leaving the alignment grid and HUD movers stuck on screen: registered DynamicMarkerEditModeInspector in UISpecialFrames with an OnHide cleanup hook, suppressed duplicate DynamicSuiteGridOverlay display when DynamicLoad's external HUD controller is active, and wired DM:SetEditMode(false) to exit external HUD Edit Mode cleanly." },
+        { type = "FIX",     text = "Fixed pressing Esc in HUD Edit Mode leaving the alignment grid and HUD movers stuck on screen: registered DynamicMarkerEditModeInspector in UISpecialFrames with an OnHide cleanup hook, suppressed duplicate grid overlay display when DynamicLoad's external HUD controller is active, and wired DM:SetEditMode(false) to exit external HUD Edit Mode cleanly." },
         { type = "UI",      text = "Expanded [DynamicMark] macro preview container height (80px code box / 134px preview card / 264px section) to prevent 4-line macro code clipping, and added reactive Step 1 / Step 2 active button highlights." },
         { type = "UI",      text = "Standardized all sliders to the Sleek Precision Track (4px track, Suite Accent fill bar, 6x14px blade thumb) and applied Option 3 semantic styling for negative/disabled pill states." },
         { type = "UI",      text = "Standardized all mouseover command tooltips (Target Bar, World Flare Bar, Keybind Capture, and World Flare Sequence cards) to highlight only the input command prefix while keeping action descriptions Silver-White (#E2E8F0)." },
@@ -8370,6 +8561,25 @@ evtFrame:RegisterEvent("UI_SCALE_CHANGED")
 evtFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
 
 evtFrame:SetScript("OnEvent", function(_, event, arg1)
+    if ADDON_FOLDER ~= "DynamicSuite" then
+        local isSuiteActive = (event == "ADDON_LOADED" and arg1 == "DynamicSuite")
+            or (C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DynamicSuite"))
+            or (type(_G.IsAddOnLoaded) == "function" and _G.IsAddOnLoaded("DynamicSuite"))
+            or (_G.DynamicSuite and _G.DynamicSuite._isHubLoaded == true)
+        if isSuiteActive then
+            if C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
+                pcall(C_AddOns.DisableAddOn, ADDON_FOLDER)
+            end
+            evtFrame:UnregisterAllEvents()
+            if not (InCombatLockdown and InCombatLockdown()) then
+                if DM.targetBar and DM.targetBar.Hide then DM.targetBar:Hide() end
+                if DM.flareBar and DM.flareBar.Hide then DM.flareBar:Hide() end
+                if DM.editInspector and DM.editInspector.Hide then DM.editInspector:Hide() end
+                if DM.gridOverlay and DM.gridOverlay.Hide then DM.gridOverlay:Hide() end
+            end
+            return
+        end
+    end
     if event == "ADDON_LOADED" then
         if (arg1 == ADDON_FOLDER or arg1 == "DynamicMarker") and not isInitialized then
             isInitialized = true

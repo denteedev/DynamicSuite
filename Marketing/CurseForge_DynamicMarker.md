@@ -1,7 +1,7 @@
-# DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v1.9.8)
+# DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v1.9.9)
 
 > **Target Game Version:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`)  
-> **Version:** `v1.9.8` (`14/11/2026`)  
+> **Version:** `v1.9.9` (`14/11/2026`)  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicmarker
 
@@ -130,12 +130,12 @@ DynamicMarker uses a **Dual-Mode Architecture** with a semantic version guard (`
 
 ---
 
-## Section 2: CurseForge File Changelog Block (`v1.9.8` -- `14/11/2026`)
+## Section 2: CurseForge File Changelog Block (`v1.9.9` -- `14/11/2026`)
 
 ```markdown
-## DynamicMarker v1.9.8 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
+## DynamicMarker v1.9.9 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
 
 ### Highlights & Release Changes
-* **Scaled Edge-Drag & `/reload` Position Persistence (Target Icon & World Flare Bars):** Fixed an issue where Target Marker and World Flare bars dragged to a screen edge (including at `70%`/`75%` scales or in vertical layout) could snap back toward the centre-right after release, exiting Edit Mode, or `/reload`. Bar scale and orientation dimensions now sync prior to every clamping pass, anchors canonicalise strictly to `CENTER`/`CENTER`, all `DynamicMarkerDB` position mirrors write atomically, and `SetClampedToScreen(false)` stays enforced across Suite and standalone builds.
-* **HUD Edit Mode & Lockstep `DynamicSuite` (`v1.9.8`) Parity:** Synchronised `ClampHUDPositionToScreen`, `ClampHudCoordsToScreen`, `SyncBarScaleAndSizeToDB`, and `ReadPeerOrLiveHudPos` behavior 1:1 across standalone `DynamicMarker` and full `DynamicSuite`.
+* **Automatic `DynamicSuite` Mutual Exclusion Guard:** Standalone `DynamicMarker` now exits cleanly at top-of-file and `ADDON_LOADED` whenever `DynamicSuite` is loaded or enabled (and `DynamicSuite` actively disables standalone `DynamicMarker` with a reload prompt), preventing duplicate frames, slash overrides, or SavedVariables conflicts.
+* **Unified HUD Edit Mode & Dynamic Screen-Edge / Reset Bounds:** Fixed Focus Icons and World Flare bar `ConvertAnchorToCenterLocal` unpacking, `relScale` screen-edge extents across UI scales and resolutions, and `ResetSingleHUDPosition` (`scale = 1.00`, `HORIZONTAL`, screen-clamped defaults) with identical `/reload` persistence in both `DynamicSuite` and standalone modes.
 ```

@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.8"
+    local fb = fallback or "1.9.9"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.8")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.9")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "14/11/2026",
     entries = {
+        { type = "FIX",     text = "Release v1.9.9 - Suite <-> Standalone DynamicMarker Exclusion, Unified HUD Edit Mode & Dynamic Edge-Reset Bounds (14/11/2026): Enforced strict mutual exclusion between DynamicSuite and standalone DynamicMarker (disabling standalone DynamicMarker via C_AddOns.DisableAddOn inside DynamicSuite core/DynamicLoad, triggering a reload prompt if already loaded in session, and adding immediate top-of-file + ADDON_LOADED early-exit guards in standalone DynamicMarker); suppressed DynamicMarker's standalone HUD Edit Mode window and grid overlay whenever running inside DynamicSuite so only the unified DynamicSuite HUD Edit dock renders; renamed standalone DynamicMarker's grid overlay to DynamicMarkerGridOverlay with standalone branding; fixed ConvertAnchorToCenterLocal 4-return unpacking in DynamicSuite_UI; fixed local scale conversion, InitDB/GetStoredHUDPosition reset persistence, and Reset HUD Positions scale/orientation defaults across Suite and standalone modes; and added automated coexistence and HUD frame collision checks to scripts/deploy.ps1." },
         { type = "FIX",     text = "Release v1.9.8 - HUD Edit Edge-Drag Persistence & Flush (0, 0) DynamicChat Clamping (14/11/2026): Fixed Target Icon Bar and World Flare Bar snapping back after dragging to any screen edge (including 70%/75% scaled bars) by syncing bar scale and vertical/horizontal dimensions prior to clamping, canonicalising anchors to CENTER, clearing drag flags before final Edit Mode saves, and enforcing SetClampedToScreen(false) across Suite and standalone DynamicMarker; and fixed DynamicChat's ~30px bottom gap by setting ChatFrame1:SetClampedToScreen(false) whenever managed, measuring only the visible chat container via GetVisibleContainerExtents(), and canonicalising CHAT to BOTTOMLEFT outer-container coordinates so X = 0, Y = 0 sits flush bottom-left across Edit Mode toggles, UI scale events, and /reload." },
         { type = "FEATURE", text = "Release v1.9.7 - Official CurseForge Dual-Release Pipeline (DynamicSuite Project 1804382 + DynamicMarker 1331651) & Hardened Coexistence (14/11/2026): Connected full DynamicSuite (CurseForge Project ID 1804382) alongside standalone DynamicMarker (Project ID 1331651) in our automated release workflow, replaced legacy URL placeholder labels on Support panels and public docs with the live CurseForge links, authored code-accurate CurseForge storefront docs, and hardened ShouldYieldToOtherInstall dual-mode version yielding across all 8 modules regardless of load order." },
         { type = "FIX",     text = "HUD Edit Scale-Aware Clamping, Magnetic Edge/Bar Snapping & Reset HUD Positions Failsafe (14/11/2026): Unified uScale/UIParent drag math for 1:1 cursor tracking at all scales (60%-150%), added magnetic screen-edge/centre (11px) and cross-HUD bar-to-bar (9px) snapping with live visual alignment guide lines and Shift-to-bypass micro-adjustments, enforced screen-boundary clamping across all saves/scales/orientations/login/UI_SCALE_CHANGED, and added Reset HUD Positions in ESC -> Options -> AddOns plus /ds resethud and /dm resethud (/fm resethud) with combat-lockdown deferral." },
@@ -674,9 +675,16 @@ local function SetSuiteModuleEnabled(modName, isEnabled, skipUIRefresh)
                 _G.DynamicSuiteDB.disabledModules[shortKey] = nil
             end
         end
-        if hasAddon and C_AddOns.EnableAddOn then
-            pcall(C_AddOns.EnableAddOn, canonMod, pName)
-            pcall(C_AddOns.EnableAddOn, canonMod)
+        if hasAddon then
+            if canonMod == "DynamicMarker" then
+                if C_AddOns.DisableAddOn then
+                    pcall(C_AddOns.DisableAddOn, canonMod, pName)
+                    pcall(C_AddOns.DisableAddOn, canonMod)
+                end
+            elseif C_AddOns.EnableAddOn then
+                pcall(C_AddOns.EnableAddOn, canonMod, pName)
+                pcall(C_AddOns.EnableAddOn, canonMod)
+            end
         end
         if regMod and type(regMod.OnEnableInSuite) == "function" then
             pcall(regMod.OnEnableInSuite, regMod)
@@ -738,13 +746,79 @@ end
 addonTable.RecoverEllesmereUIState = RecoverEllesmereUIState
 DynamicSuite.RecoverEllesmereUIState = RecoverEllesmereUIState
 
+local _notifiedStandaloneMarkerReload = false
+local function EnforceStandaloneDynamicMarkerExclusion(showPopupIfLoaded)
+    if not (C_AddOns and C_AddOns.GetAddOnInfo) then return false end
+    local okInfo, infoName = pcall(C_AddOns.GetAddOnInfo, "DynamicMarker")
+    if not okInfo or not infoName then return false end
+
+    local pName = GetPlayer()
+    local isEnabled = false
+    if C_AddOns.GetAddOnEnableState then
+        local okSt, st = pcall(C_AddOns.GetAddOnEnableState, "DynamicMarker", pName)
+        if okSt and type(st) == "number" and st > 0 then
+            isEnabled = true
+        else
+            local okSt2, st2 = pcall(C_AddOns.GetAddOnEnableState, "DynamicMarker")
+            if okSt2 and type(st2) == "number" and st2 > 0 then
+                isEnabled = true
+            end
+        end
+    end
+    local isLoaded = (C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DynamicMarker")) and true or false
+    local hasStandaloneRuntime = (_G.DynamicMarker and _G.DynamicMarker._loadedBySuite == false) and true or false
+    if not isEnabled and not isLoaded and not hasStandaloneRuntime then
+        return false
+    end
+
+    if C_AddOns.DisableAddOn then
+        pcall(C_AddOns.DisableAddOn, "DynamicMarker", pName)
+        pcall(C_AddOns.DisableAddOn, "DynamicMarker")
+    end
+    if _G.DynamicLoadDB and _G.DynamicLoadDB.profiles then
+        for _, prof in pairs(_G.DynamicLoadDB.profiles) do
+            if type(prof) == "table" and type(prof.addons) == "table" then
+                prof.addons["DynamicMarker"] = false
+            end
+        end
+    end
+
+    if isLoaded or hasStandaloneRuntime then
+        addonTable._pendingSuiteModuleReload = true
+        if showPopupIfLoaded and not _notifiedStandaloneMarkerReload then
+            _notifiedStandaloneMarkerReload = true
+            print(string.format("%s: Standalone DynamicMarker was active alongside DynamicSuite and has been disabled. Please /reload to complete cleanup.", ADDON_TITLE))
+            if type(_G.StaticPopupDialogs) == "table" and type(_G.StaticPopup_Show) == "function" then
+                _G.StaticPopupDialogs["DYNAMICSUITE_MARKER_CONFLICT_RELOAD"] = _G.StaticPopupDialogs["DYNAMICSUITE_MARKER_CONFLICT_RELOAD"] or {
+                    text = "DynamicSuite already includes DynamicMarker.\n\nStandalone DynamicMarker has been automatically disabled to prevent duplicate UI and HUD movers. Reload UI now?",
+                    button1 = "Reload UI",
+                    button2 = "Later",
+                    OnAccept = function()
+                        if type(_G.ReloadUI) == "function" then _G.ReloadUI() end
+                    end,
+                    timeout = 0,
+                    whileDead = true,
+                    hideOnEscape = true,
+                }
+                if not (InCombatLockdown and InCombatLockdown()) then
+                    pcall(_G.StaticPopup_Show, "DYNAMICSUITE_MARKER_CONFLICT_RELOAD")
+                end
+            end
+        end
+    end
+    return true
+end
+addonTable.EnforceStandaloneDynamicMarkerExclusion = EnforceStandaloneDynamicMarkerExclusion
+DynamicSuite.EnforceStandaloneDynamicMarkerExclusion = EnforceStandaloneDynamicMarkerExclusion
+
 local function EnforceProtectedSuiteModules()
+    EnforceStandaloneDynamicMarkerExclusion(false)
     if _G.DynamicLoadDB and _G.DynamicLoadDB.allowCoreOverride == true then
         return
     end
     local pName = GetPlayer()
     for modName, isCore in pairs(PROTECTED_ADDONS) do
-        if isCore and not RETIRED_IGNORED_ADDONS[modName] then
+        if isCore and not RETIRED_IGNORED_ADDONS[modName] and modName ~= "DynamicMarker" then
             if _G.DynamicLoadDB then
                 if _G.DynamicLoadDB.frozenAddons then _G.DynamicLoadDB.frozenAddons[modName] = nil end
                 if _G.DynamicLoadDB.lockedAddons then _G.DynamicLoadDB.lockedAddons[modName] = true end
@@ -770,6 +844,7 @@ local function EnforceProtectedSuiteModules()
     end
 end
 addonTable.EnforceProtectedSuiteModules = EnforceProtectedSuiteModules
+EnforceStandaloneDynamicMarkerExclusion(false)
 
 local SUITE_MODIFIED_CVARS = {
     -- DynamicFPS
@@ -3648,8 +3723,12 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
         return
     elseif event == "ADDON_LOADED" then
         InvalidateConflictCache()
+        if arg1 == "DynamicMarker" then
+            EnforceStandaloneDynamicMarkerExclusion(true)
+        end
         if (arg1 == ADDON_FOLDER or arg1 == "DynamicSuite") and not isSuiteCoreInitialized then
             isSuiteCoreInitialized = true
+            EnforceStandaloneDynamicMarkerExclusion(false)
             local g = EnsureSuiteGlobal()
             if not g.v120_windowWidth1040 then
                 g.v120_windowWidth1040 = true
@@ -3676,6 +3755,7 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
         EnsureSuiteGlobal()
         SnapshotAllSuiteCVars()
         EnforceProtectedSuiteModules()
+        EnforceStandaloneDynamicMarkerExclusion(true)
         if addonTable.EnforceFrozenAddonsDisabled then
             addonTable.EnforceFrozenAddonsDisabled()
         end
