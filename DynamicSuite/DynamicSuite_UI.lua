@@ -4591,7 +4591,7 @@ function addonTable.CreateMainConfigUI()
                         host._activeModHost = modHost
 
                         if f.verPill and f.verPill.label then
-                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "1.9.5"
+                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "1.9.6"
                             f.verPill.label:SetText("v" .. tostring(mVer))
                         end
                         UpdateStatusBar(true)
@@ -4995,7 +4995,7 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        local curVer = addonTable.ADDON_VERSION or "1.9.5"
+        local curVer = addonTable.ADDON_VERSION or "1.9.6"
         local curSig = f.GetSuiteChangelogSignature and f.GetSuiteChangelogSignature() or curVer
         local seenVer = gTbl.lastSeenChangelogVer or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogVer)
         local seenSig = gTbl.lastSeenChangelogSig or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogSig)
@@ -6687,7 +6687,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.5"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.6"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -6700,6 +6700,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "FIXED",    title = "v1.9.6 Release: DynamicBags Bank/Guild Bank & Merge Hardening + Suite/Standalone Parity", desc = "Eliminated post-/reload Bank & Guild Bank flashes with SetScale suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, enforced strict weak ordering in Sort: A-Z, hardened Drop-Anywhere slot placement, synced DynamicBags Smart Search entries, and upgraded standalone DynamicMarker's Changelog modal to stream live entries dynamically." },
                 { badge = "UI",       title = "Standalone DynamicMarker Dock Parity & DynamicSuite CurseForge URL", desc = "Added the bottom-right [Reload UI] button, Opacity slider, and Scale slider to standalone DynamicMarker's footer dock, upgraded its Support modal to read-only Ctrl+C EditBoxes, and updated DynamicSuite's Support view CurseForge link to https://www.curseforge.com/wow/addons/dynamicsuite." },
                 { badge = "FIXED",    title = "First-Open ESC > Options > AddOns Blank Shell & Left-Rail Rendering", desc = "Initialised RefreshLeftRailLayout() during CreateMainConfigUI(), routed ApplySuiteThemeAndGeometry() through RefreshLeftRailLayout() and all workspace view refreshes, added a guarded C_Timer.After(0, ...) post-layout refresh and Raise() on DynamicSuiteMainFrame:OnShow, and hardened HideSettingsPanelSafe() + Settings canvas OnShow theme sync so opening via ESC > Options > AddOns > DynamicSuite renders all 8 left-rail modules, active workspace, and surface theme on the very first open." },
                 { badge = "FIXED",    title = "Universal 'Never' ('FROZEN') Persistence Across All Addons & Registry-Driven Conflict Resolution", desc = "Normalised all security and zone assignment operations to canonical folder names (ResolveCanonicalAddonName); made SetAddonFrozen(name, true) atomically persist 'FROZEN' across DynamicLoadDB/globalData/charData, wipe all 5 zone tables, and call C_AddOns.DisableAddOn; merged DynamicLoadDB root and globalData security tables in SyncScopeBindings() and used in-place wipe() in RestoreStash() so SavedVariables deserialization never reverts 'FROZEN' states on /reload; retired RecoverEllesmereUIState(); protected individual child 'FROZEN' / 'LOCKED' states from parent cascades; added EnforceFrozenAddonsDisabled() + a C_AddOns.EnableAddOn runtime guard; made Auto-Yield 100% read-only; treated unloaded or 'FROZEN' external addons as inactive; and added a 1-click [Use Dynamic] -> [Reload UI Now] button on soft Auto-Yield banners." },
@@ -6751,6 +6752,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
             openModule = "DynamicMarker",
             items = {
+                { badge = "UI",       title = "Standalone Scrollable Changelog Modal Parity", desc = "Upgraded standalone DynamicMarker's Changelog modal to stream live formatted entries directly from DynamicMarker.CHANGELOG.entries inside a scrollable frame matching the full suite Changelog hub." },
                 { badge = "NEW",      title = "Encapsulated HUD Edit Mode, Movers & Standalone Parity", desc = "Moved HUD Edit Mode toggle state, crisp pixel-bordered movers ('DynamicMarker: Icon Bar' and 'DynamicMarker: Flare Bar'), drag-and-snap persistence directly into DynamicMarkerDB, mousewheel scaling (60%-150%), ESC-key closing, and combat-lockdown failsafe cleanly inside DynamicMarker. Registers with DynamicSuite's [+ HUD] toolbar button via RegisterHudEditCallback so no duplicate drag shields are created, and adds direct toggles in Focus/Flare Settings headers, the standalone rail, and /dm hud." },
                 { badge = "NEW",      title = "One-Time FocusMarkerDB -> DynamicMarkerDB Migration Bridge", desc = "On ADDON_LOADED before defaults initialise, safely maps legacy FocusMarker bar positions, scales, visibility rules (Solo/Group/Always), orientation, and custom icon/flare ordering into DynamicMarkerDB with corrupted-table guards, setting migratedFromFocusMarker = true so legacy settings remain untouched without overwriting subsequent edits." },
                 { badge = "FIXED",    title = "On-Screen Target Icon Bar & World Flare Bar Solo Visibility Fix", desc = "Centralised visibility evaluation in DM:UpdateTargetBarVisibility() and DM:UpdateFlareBarVisibility() with case-insensitive DB mode normalisation, state-driver registration ('[group] show; hide' / scope-aware variants), and immediate SetShown() evaluation; removed the workspace-open force-show override so selecting 'Group' while solo immediately hides the floating 8-icon bar even when the DynamicSuite settings panel is open." },
@@ -6866,12 +6868,13 @@ function addonTable.CreateMainConfigUI()
             key = "bags",
             tabLabel = "DynamicBags",
             ver = DS_LIVE_VER_TAG,
-            date = "11/11/2026 (Retail 12.1.5)",
+            date = "14/11/2026 (Retail 12.1.5)",
             title = "DynamicBags " .. DS_LIVE_VER_TAG,
             subtitle = "Zero-Lag Virtual Category Bags, Remote Bank & Alt Inventory Vault (/dbag)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga",
             openModule = "DynamicBags",
             items = {
+                { badge = "FIXED",    title = "Zero-Flash Bank/Guild Bank After /reload, Merge & Automation Hardening", desc = "Added Scale+Alpha suppression and GUILDBANKFRAME_OPENED handling so Guild Bank and Bank never flash Blizzard frames after /reload, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live tab withdrawals down to 0 items, fixed strict weak ordering in Sort: A-Z for uncached items, verified compatible slot placement across Reagent bags and Guild Bank tab permissions, prevented Guild Bank T1-Tn badge collisions and view-only item alpha overwrites, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, and expanded /dbag slash commands (/dbag merge, clear, bank, warband, guild, help)." },
                 { badge = "FIXED",    title = "Header Button Overlap Fix, 0.00s Bank Pre-Warm & Deferred Tooltip Snapshots", desc = "Eliminated Row 1 header button overlap ('View: Bags' vs 'Clear') across all column and icon-size slider settings by trimming redundant 'Char: ' and 'View: ' prefixes, auto-fitting dropdown widths with mouseover tooltips ('Character & Alt Vault' and 'Active Inventory View'), enforcing dynamic minimum header width floors on DynamicBagsFrame and DynamicBagsBankFrame (640px), centring narrow item grids inside the scroll area, pre-warming DynamicBank at 0.00s on Banker gossip selection, and deferring full bank tooltip snapshots off the open frame for zero-stutter bank opening." },
                 { badge = "FIXED",    title = "Normalised Stack-Key & Event-Driven Multi-Pass Stack Merger (DynamicBags & DynamicBank)", desc = "Fixed 'Merge' failing to combine split consumable/reagent stacks with differing hyperlink linkLevel, specID, or modifier suffixes by normalising stack keys via U.GetMergeStackKey (itemID + craft/reagent quality tier + bound state), removed C_Container.SortBags / SortBankBags / SortAccountBankBags slot-lock collisions from U.Restack and U.RestackBank, and upgraded U.MergePartialStacksAcrossBags and U.MergeGuildBankTabStacks to an event-driven multi-pass state machine (BAG_UPDATE_DELAYED / GUILDBANKBAGSLOTS_CHANGED) that pairs disjoint slots per pass and merges overflow remainders automatically." },
                 { badge = "UI",       title = "Sleek Precision Track Sliders & Option 3 'Off' / 'None' Pills", desc = "Upgraded all numeric geometry controls (Bag Columns, Bank Columns, Slot Icon Size, Category Spacing, and Icon Font Size) in U.AddCard to 256x26px Sleek Precision Track sliders (4px #090A0D track, live Suite Accent FillBar, 6x14px blade thumb, smooth drag, click-to-seek, and mousewheel fine-tuning) and applied Option 3 negative pill styling to all 'Off' / 'None' pills across Tabs 1-3." },
@@ -12099,7 +12102,7 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "1.9.5"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "1.9.6"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -12789,7 +12792,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.5") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.6") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -12850,7 +12853,7 @@ function addonTable.HookGameMenu()
             cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
             if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
-            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.5") .. "|r")
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.6") .. "|r")
             openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
             if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
@@ -12939,7 +12942,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "1.9.5",
+        version = addonTable.ADDON_VERSION or "1.9.6",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,

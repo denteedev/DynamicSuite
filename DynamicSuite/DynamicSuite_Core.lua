@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.5"
+    local fb = fallback or "1.9.6"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.5")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.6")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "14/11/2026",
     entries = {
+        { type = "FIX",     text = "Release v1.9.6 - DynamicBags Bank/Guild Bank & Merge Hardening + Suite/Standalone Changelog Parity (14/11/2026): Eliminated post-/reload Bank/Guild Bank panel flashes with SetScale suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, fixed strict weak ordering in Sort: A-Z when uncached items appear, verified compatible bag/bank slot placement across Reagent bags and Guild Bank tab permissions, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, updated DynamicBags Smart Search entries, and upgraded standalone DynamicMarker's Changelog modal to stream live entries dynamically." },
         { type = "UI",      text = "Standalone DynamicMarker Dock Parity, Copyable Support Links & DynamicSuite CurseForge URL (14/11/2026): Added the [Reload UI] button and persisted Opacity (50%-100%) and Scale (80%-120%) sliders to standalone DynamicMarker's bottom-right dock (left of the // resize grip, stored in DynamicMarkerDB without touching DynamicSuiteDB), upgraded standalone DynamicMarker's Support modal to read-only click-to-highlight Ctrl+C EditBoxes (Ko-fi, CurseForge /addons/dynamicmarker, and Email) with Escape-to-close, and updated DynamicSuite's Support view CurseForge link to https://www.curseforge.com/wow/addons/dynamicsuite." },
         { type = "FIX",     text = "First-Open ESC > Options > AddOns Blank Shell & Left-Rail Fix (14/11/2026): Called RefreshLeftRailLayout() on initial CreateMainConfigUI() construction, routed ApplySuiteThemeAndGeometry() through RefreshLeftRailLayout() and all active workspace view refreshes, added a guarded C_Timer.After(0, ...) post-layout refresh + Raise() in DynamicSuiteMainFrame:OnShow and standalone DynamicMarkerSuiteWindow:OnShow (with initial f:Hide() so the first Show() always fires OnShow), and hardened HideSettingsPanelSafe() in both DynamicSuite_UI.lua and DynamicMarker.lua (alongside ShowConfigUI() and Settings canvas OnShow theme sync) so Blizzard's SettingsPanel and GameMenuFrame cleanly close and yield behind the addon window on the very first open." },
         { type = "FEATURE", text = "Encapsulated DynamicMarker HUD Edit Mode, FocusMarkerDB Migration Bridge & Automated CurseForge Packaging (14/11/2026): Moved DynamicMarker's Icon Bar and Flare Bar movers strictly inside DynamicMarker (with Suite '+ HUD' callback registration and clean removal of legacy FocusMarker/DynamicMarker mover lookups in DynamicSuite_UI), added the idempotent one-time FocusMarkerDB -> DynamicMarkerDB migration bridge, upgraded standalone DynamicMarker with Signature Amber/Gold (#F5B82E) theming, unloaded-module left-rail cleanup, 1:1 bottom-left SUITE STUDIO & TOOLS sidebar parity, DIALOG-dimmed Guided Setup modal with ESC isolation, [Off] dimmed rail rows in full DynamicSuite mode, and combat-safe ESC > Options > AddOns launcher cards, added -StageStandalone / -KeepStandalone QA deployment flags, and initialised Git source control plus BigWigsMods/packager GitHub Actions automation (.pkgmeta for DynamicSuite and .pkgmeta-dynamicmarker scoped strictly to standalone CurseForge Project ID 1331651)." },
@@ -1802,6 +1803,11 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
             pcall(_G.DynamicZoom.ApplyAllSettings, _G.DynamicZoom)
         elseif shortKey == "fps" and _G.DynamicFPS and _G.DynamicFPS.ApplyGraphicsPipeline then
             pcall(_G.DynamicFPS.ApplyGraphicsPipeline, true)
+        elseif shortKey == "bags" and type(_G.DynamicBagsDB) == "table" then
+            _G.DynamicBagsDB.autoRepair = true
+            _G.DynamicBagsDB.autoRepairEnabled = true
+            _G.DynamicBagsDB.autoSellJunk = true
+            _G.DynamicBagsDB.autoSellGrey = true
         end
         print(string.format("%s: Prioritising %s features while keeping %s enabled.", ADDON_TITLE, canonMod, conflictAddon))
 
@@ -1828,7 +1834,9 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
                 end
             elseif shortKey == "bags" and type(_G.DynamicBagsDB) == "table" then
                 _G.DynamicBagsDB.autoRepair = false
+                _G.DynamicBagsDB.autoRepairEnabled = false
                 _G.DynamicBagsDB.autoSellJunk = false
+                _G.DynamicBagsDB.autoSellGrey = false
             elseif shortKey == "zoom" and type(_G.DynamicZoomDB) == "table" then
                 _G.DynamicZoomDB.yieldCameraMaxZoom = true
             elseif shortKey == "fps" and type(_G.DynamicFPSDB) == "table" then
@@ -2953,46 +2961,54 @@ local BUILTIN_SEARCH_SEED = {
       title = "Category Spacing",
       desc = "Adjust the vertical padding between category groups inside DynamicBags.",
       keywords = "category spacing gap padding bags" },
-    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Badges, Glows & Text",
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 1, tabLabel = "Layout & Categories",
+      title = "Remember Last Opened Bank & Sub-Tab",
+      desc = "Reopen DynamicBank on whichever Personal or Warband tab you used most recently.",
+      keywords = "remember last opened bank sub-tab personal warband guild persistence" },
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Item Badges & Glow",
       title = "Item Slot Badges",
       desc = "Toggle Item Level numbers, BoE/WUE bind tags, Equipment Set icons, Upgrade arrows, and Consumable Tier badges.",
       keywords = "item slot badges ilvl item level boe wue warband equipment set upgrade arrow quality tier" },
-    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Badges, Glows & Text",
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Item Badges & Glow",
       title = "Item Slot Highlights",
       desc = "Toggle Rarity Border Glows, New Item pulse highlights, and Unusable Red tinting on bag slots.",
       keywords = "item slot highlights rarity border glow new item unusable red tint" },
-    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Badges, Glows & Text",
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Item Badges & Glow",
       title = "Icon Font Size",
       desc = "Adjust the font size of Item Level and corner badge text on bag slots (9pt to 15pt).",
       keywords = "icon font size ilvl text badge bags" },
-    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Auto-Open, Alts & Vendors",
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
       title = "Auto-Open Triggers",
       desc = "Automatically open DynamicBags when visiting Bankers, Merchants, Mailboxes, Auction House, Scrappers, or Item Upgrade NPCs.",
       keywords = "auto-open triggers bank merchant vendor mailbox auction house catalyst upgrade" },
-    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Auto-Open, Alts & Vendors",
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
       title = "Alt & Warband Counts in Item Tooltips",
       desc = "Display how many of an item your alts and Warband Bank own directly inside item mouseover tooltips.",
       keywords = "alt warband counts in item tooltips inventory vault syndicator" },
-    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Auto-Open, Alts & Vendors",
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
       title = "Cached Characters",
       desc = "View and manage cached alt inventories and gold snapshots in the Alt Vault.",
       keywords = "cached characters alt vault delete character gold inventory" },
-    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Auto-Open, Alts & Vendors",
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
       title = "Auto-Repair Equipment",
       desc = "Automatically repair all damaged gear when opening a repair merchant (with Guild Bank First or Personal Gold funding).",
       keywords = "auto-repair equipment gear durability merchant vendor guild bank gold" },
-    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Auto-Open, Alts & Vendors",
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
       title = "Auto-Sell Grey Junk",
       desc = "Automatically sell all poor-quality (grey) junk items when opening any merchant window.",
       keywords = "auto-sell grey junk vendor merchant poor items gold scrap" },
-    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Auto-Open, Alts & Vendors",
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
       title = "Faster Auto-Loot",
       desc = "Instantly collect all loot items on corpse open without waiting for the default loot window animation.",
       keywords = "faster auto-loot speedy loot corpse instant pickup" },
-    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Auto-Open, Alts & Vendors",
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
       title = 'Auto-Fill "DELETE" Item Confirmation',
       desc = 'Automatically type "DELETE" into the confirmation box when destroying a good-quality item.',
       keywords = "auto-fill delete item confirmation destroy type delete" },
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
+      title = "Auto-Open Pouches & Quick-Open Queue",
+      desc = "Automatically open Soulbound loot pouches and queue Housing Decor, Profession Knowledge, and Use: caches in the 1-spot Open (N) header button.",
+      keywords = "auto-open containers pouches quick-open queue housing decor knowledge gold bags" },
 
     -- ========================================================================
     -- 8. DYNAMICCHAT ("chat") - Target Whisper (/ww), Look, Sounds & History
@@ -3149,10 +3165,6 @@ local BUILTIN_SEARCH_SEED = {
       title = "Enable '/rl' (Reload UI) & '/lg' (Leave Group)",
       desc = "Register quick '/rl' (ReloadUI) and '/lg' (C_PartyInfo.LeaveParty) slash commands.",
       keywords = "enable /rl reload ui /lg leave group party slash command shortcut" },
-    { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 4, tabLabel = "Links, Scroll & History",
-      title = "Compatibility Mode (Auto-Yield)",
-      desc = "Automatically let WIM, Leatrix Plus, or ElvUI handle overlapping chat features while keeping /ww active.",
-      keywords = "shared-hook compatibility auto-yield wim leatrix plus elvui conflict" },
 }
 DynamicSuite:RegisterSearchEntries(nil, BUILTIN_SEARCH_SEED)
 

@@ -24,7 +24,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.5"
+    local fb = fallback or "1.9.6"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -58,7 +58,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.5"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.6"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -83,7 +83,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.5")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.6")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicBags", VERSION, _G.DynamicBags) then
     return
 end
@@ -147,6 +147,7 @@ local S = {
     search = "",
     sessionStartMoney = nil,
     atBank = false,
+    queriedGuildTabs = {},
     autoOpened = {},
     skippedOpenables = {},
     autoOpenAttempted = {},
@@ -272,6 +273,7 @@ local DEFAULTS = {
     rememberLastBankTab = true,
     lastBankMode = "BANK",
     lastSubTabs = { BANK = 0, WARBAND = 0, GUILD = 0 },
+    autoRepair = true,
     autoRepairEnabled = true,
     repairFunding = "GUILD_FIRST",
     autoSellGrey = true,
@@ -309,6 +311,7 @@ local function EnsureDB()
         local p = _G.DynamicPrepDB
         if p.autoRepairEnabled ~= nil then
             _G.DynamicBagsDB.autoRepairEnabled = (p.autoRepairEnabled and true or false)
+            _G.DynamicBagsDB.autoRepair = _G.DynamicBagsDB.autoRepairEnabled
         end
         if p.repairFunding == "GUILD_FIRST" or p.repairFunding == "OWN_ONLY" then
             _G.DynamicBagsDB.repairFunding = p.repairFunding
@@ -326,6 +329,14 @@ local function EnsureDB()
         _G.DynamicBagsDB._migratedFromPrep = true
     end
     CopyDefaults(DEFAULTS, _G.DynamicBagsDB)
+    if _G.DynamicBagsDB.autoRepair == nil and _G.DynamicBagsDB.autoRepairEnabled ~= nil then
+        _G.DynamicBagsDB.autoRepair = (_G.DynamicBagsDB.autoRepairEnabled and true or false)
+    elseif _G.DynamicBagsDB.autoRepairEnabled == nil and _G.DynamicBagsDB.autoRepair ~= nil then
+        _G.DynamicBagsDB.autoRepairEnabled = (_G.DynamicBagsDB.autoRepair and true or false)
+    end
+    if _G.DynamicBagsDB.autoSellGrey == nil and _G.DynamicBagsDB.autoSellJunk ~= nil then
+        _G.DynamicBagsDB.autoSellGrey = (_G.DynamicBagsDB.autoSellJunk and true or false)
+    end
     if _G.DynamicBagsDB.autoSellGrey ~= nil then
         _G.DynamicBagsDB.autoSellJunk = (_G.DynamicBagsDB.autoSellGrey and true or false)
     end
@@ -970,14 +981,18 @@ end
 
 local function SortObj(a, b)
     local db = DB()
+    local anm, bnm = (a.name or ""):lower(), (b.name or ""):lower()
+    local aHas, bHas = (anm ~= ""), (bnm ~= "")
     if db and db.sortBy == "NAME" then
-        local anm, bnm = (a.name or ""):lower(), (b.name or ""):lower()
-        if anm ~= bnm and anm ~= "" and bnm ~= "" then return anm < bnm end
+        if aHas ~= bHas then return aHas end
+        if anm ~= bnm then return anm < bnm end
     end
     local aq, bq = a.quality or 0, b.quality or 0
     if aq ~= bq then return aq > bq end
     local ai, bi = a.ilvl or 0, b.ilvl or 0
     if ai ~= bi then return ai > bi end
+    if aHas ~= bHas then return aHas end
+    if anm ~= bnm then return anm < bnm end
     local ac, bc = a.classID or 0, b.classID or 0
     if ac ~= bc then return ac < bc end
     local asc, bsc = a.subClassID or 0, b.subClassID or 0
@@ -986,6 +1001,10 @@ local function SortObj(a, b)
     if aid ~= bid then return aid < bid end
     local an, bn = a.count or 0, b.count or 0
     if an ~= bn then return an > bn end
+    local abag, bbag = a.bag or a.gTab or 0, b.bag or b.gTab or 0
+    if abag ~= bbag then return abag < bbag end
+    local aslot, bslot = a.slot or a.gSlot or 0, b.slot or b.gSlot or 0
+    if aslot ~= bslot then return aslot < bslot end
     return tostring(a.key or a.rkey or "") < tostring(b.key or b.rkey or "")
 end
 
@@ -1406,9 +1425,9 @@ function U.SnapshotBank(skipTooltipScan)
     local ids = CollectBagIDs({ "CharacterBankTab", "Bank", "Reagentbank" })
     if #ids > 0 then
         local snap = U.SnapshotBagIDs(ids, skipTooltipScan)
-        if #snap > 0 or not rec.bank then rec.bank = snap end
+        local bTabs = nil
         if S.atBank then
-            local bTabs = {}
+            bTabs = {}
             for _, bagID in ipairs(ids) do
                 local okN, slots = pcall(C_Container.GetContainerNumSlots, bagID)
                 if okN and type(slots) == "number" and slots > 0 then
@@ -1420,6 +1439,9 @@ function U.SnapshotBank(skipTooltipScan)
             if #bTabs > 0 then
                 rec.bankTabs = bTabs
             end
+        end
+        if #snap > 0 or not rec.bank or (S.atBank and bTabs and #bTabs > 0) then
+            rec.bank = snap
         end
     end
     local wids = CollectBagIDs({ "AccountBankTab" })
@@ -1438,8 +1460,14 @@ function U.SnapshotBank(skipTooltipScan)
         end
         if #wsnap > 0 or (wTabs and #wTabs > 0) then
             local prevWb = DB().vault.warbandBank
+            local nextItems
+            if #wsnap > 0 or (S.atBank and wTabs and #wTabs > 0) then
+                nextItems = wsnap
+            else
+                nextItems = (prevWb and prevWb.items) or {}
+            end
             DB().vault.warbandBank = {
-                items = (#wsnap > 0 and wsnap) or (prevWb and prevWb.items) or {},
+                items = nextItems,
                 tabs = (wTabs and #wTabs > 0 and wTabs) or (prevWb and prevWb.tabs) or nil,
                 updated = time and time() or 0,
             }
@@ -1467,14 +1495,35 @@ function U.GetVaultStateSignature(mode)
         tabs = (rec and rec.bankTabs) or {}
     end
     local parts = { tostring(mode), tostring(#tabs), tostring(#tuples) }
+    for i = 1, #tabs do
+        local tm = tabs[i]
+        if type(tm) == "table" then
+            parts[#parts + 1] = table.concat({
+                tostring(tm.id or tm.bagID or i),
+                tostring(tm.name or ""),
+                tostring(tm.icon or ""),
+                tostring(tm.isViewable ~= false),
+                tostring(tm.canDeposit ~= false),
+                tostring(tm.numWithdrawals or ""),
+                tostring(tm.remainingWithdrawals or ""),
+                tostring(tm.canWithdraw ~= false),
+            }, "/")
+        end
+    end
+    parts[#parts + 1] = "||"
     for i = 1, #tuples do
         local t = tuples[i]
-        parts[#parts + 1] = sformat("%s:%s:%s:%s:%s",
-            tostring(t.bag or t.tab or 0),
-            tostring(t.slot or 0),
-            tostring(t[1] or 0),
-            tostring(t[3] or 1),
-            tostring(t.binding or ""))
+        if type(t) == "table" then
+            parts[#parts + 1] = sformat("%s:%s:%s:%s:%s:%s:%s:%s",
+                tostring(t.bag or t.tab or 0),
+                tostring(t.slot or 0),
+                tostring(t[1] or 0),
+                tostring(t[3] or 1),
+                tostring(t[4] or 0),
+                tostring(t[5] or 0),
+                tostring(t.binding or ""),
+                tostring(t.uncached and 1 or 0))
+        end
     end
     return table.concat(parts, "|")
 end
@@ -2350,6 +2399,23 @@ function U.ApplySearch()
             btn:SetAlpha((q == "" or not o or U.ObjMatches(o, q)) and 1 or 0.28)
         end
     end
+    if S.bankWindow and S.bankWindow:IsShown() and S.bankWindow.buttons then
+        local liveWin = S.bankWindow.isLive and true or false
+        for _, btn in ipairs(S.bankWindow.buttons) do
+            if btn:IsShown() then
+                local o = btn.dbObj
+                local baseAlpha = liveWin and 1.0 or 0.82
+                if liveWin and o and o.gTab and o.canWithdraw == false then
+                    baseAlpha = 0.55
+                end
+                if q ~= "" and o and not U.ObjMatches(o, q) then
+                    btn:SetAlpha(0.28)
+                else
+                    btn:SetAlpha(baseAlpha)
+                end
+            end
+        end
+    end
 end
 
 -- ---- Item button creation (combat-safe: never created or moved in combat) ---
@@ -2720,11 +2786,11 @@ function U.ApplyHeaders(content, pool, sections)
                 self.text:SetTextColor(0.78, 0.82, 0.88, 1)
                 GameTooltip:Hide()
             end)
-            h:SetScript("OnReceiveDrag", function()
+            h:SetScript("OnReceiveDrag", function(self)
                 if fromBank then
                     U.PlaceCursorItemInFreeBankSlot()
                 else
-                    U.PlaceCursorItemInFreeSlot()
+                    U.PlaceCursorItemInFreeSlot(self.catKey == "craft")
                 end
             end)
             h:SetScript("OnClick", function(self, button)
@@ -2732,7 +2798,7 @@ function U.ApplyHeaders(content, pool, sections)
                     if fromBank then
                         U.PlaceCursorItemInFreeBankSlot()
                     else
-                        U.PlaceCursorItemInFreeSlot()
+                        U.PlaceCursorItemInFreeSlot(self.catKey == "craft")
                     end
                     return
                 end
@@ -2994,7 +3060,11 @@ function U.PlaceCursorItemInFreeSlot(preferReagentBag)
     if InCombatLockdown() or S.view.char ~= nil or S.view.mode ~= "BAGS" then return false end
 
     local _, itemID, itemLink = GetCursorInfo()
-    local isReagent = (preferReagentBag == true)
+    local isReagent = false
+    if C_Item and C_Item.IsCraftingReagentItem and (itemLink or itemID) then
+        local okR, r = pcall(C_Item.IsCraftingReagentItem, itemLink or itemID)
+        if okR and r then isReagent = true end
+    end
     if not isReagent and C_Item and C_Item.GetItemInfoInstant and (itemLink or itemID) then
         local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemLink or itemID)
         if classID == IC.Tradegoods or classID == IC.Reagent then
@@ -3005,9 +3075,13 @@ function U.PlaceCursorItemInFreeSlot(preferReagentBag)
     local reagentID = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or 5
     local maxRegular = NUM_BAG_SLOTS or 4
     local searchBags = {}
-    if isReagent then
-        searchBags[#searchBags + 1] = reagentID
-        for bagID = 0, maxRegular do searchBags[#searchBags + 1] = bagID end
+    if isReagent or preferReagentBag == true then
+        if isReagent then
+            searchBags[#searchBags + 1] = reagentID
+            for bagID = 0, maxRegular do searchBags[#searchBags + 1] = bagID end
+        else
+            for bagID = 0, maxRegular do searchBags[#searchBags + 1] = bagID end
+        end
     else
         for bagID = 0, maxRegular do searchBags[#searchBags + 1] = bagID end
     end
@@ -3023,13 +3097,15 @@ function U.PlaceCursorItemInFreeSlot(preferReagentBag)
             if U.GetSlotInfo(bagID, slot) == nil then
                 if C_Container and C_Container.PickupContainerItem then
                     pcall(C_Container.PickupContainerItem, bagID, slot)
-                    return true
+                    if GetCursorInfo() ~= "item" then
+                        return true
+                    end
                 end
             end
         end
     end
 
-    Print("|cFFEF4444No free bag slots available.|r")
+    Print("|cFFEF4444No free compatible bag slots available.|r")
     return false
 end
 
@@ -3041,24 +3117,54 @@ function U.PlaceCursorItemInFreeBankSlot()
 
     if mode == "GUILD" then
         if not (GetGuildBankItemLink and PickupGuildBankItem) then return false end
-        local tab = (S.companionSubTab and S.companionSubTab > 0 and S.companionSubTab) or (GetCurrentGuildBankTab and GetCurrentGuildBankTab()) or 1
-        for slot = 1, 98 do
-            if GetGuildBankItemLink(tab, slot) == nil then
-                pcall(PickupGuildBankItem, tab, slot)
-                C_Timer.After(0.20, function()
-                    if S.atGuildBank then pcall(U.SnapshotGuildBank) end
-                    if S.bankWindow and S.bankWindow:IsShown() then U.RenderCompanionBank() end
-                end)
-                return true
+        local subTab = S.companionSubTab or 0
+        local candidateTabs = {}
+        if subTab > 0 then
+            candidateTabs[1] = subTab
+        else
+            local cur = (GetCurrentGuildBankTab and GetCurrentGuildBankTab()) or 1
+            candidateTabs[#candidateTabs + 1] = cur
+            local nTabs = (GetNumGuildBankTabs and GetNumGuildBankTabs()) or 0
+            for t = 1, nTabs do
+                if t ~= cur then candidateTabs[#candidateTabs + 1] = t end
             end
         end
-        Print("|cFFEF4444No free slots available in Guild Bank Tab " .. tostring(tab) .. ".|r")
+        local sawPermissionBlock = false
+        for _, tab in ipairs(candidateTabs) do
+            local q = U.GetGuildTabQuota(tab)
+            if q and (q.isViewable == false or q.canDeposit == false) then
+                sawPermissionBlock = true
+            else
+                for slot = 1, 98 do
+                    local tex = GetGuildBankItemInfo and GetGuildBankItemInfo(tab, slot)
+                    if tex == nil and GetGuildBankItemLink(tab, slot) == nil then
+                        pcall(PickupGuildBankItem, tab, slot)
+                        if GetCursorInfo() ~= "item" then
+                            C_Timer.After(0.20, function()
+                                if S.atGuildBank then pcall(U.SnapshotGuildBank) end
+                                if S.bankWindow and S.bankWindow:IsShown() then U.RenderCompanionBank() end
+                            end)
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+        if sawPermissionBlock then
+            Print("|cFFEF4444You do not have deposit permissions for this Guild Bank tab.|r")
+        else
+            Print("|cFFEF4444No free slots available in this Guild Bank tab.|r")
+        end
         return false
     end
 
     local _, itemID, itemLink = GetCursorInfo()
     local isReagent = false
-    if C_Item and C_Item.GetItemInfoInstant and (itemLink or itemID) then
+    if C_Item and C_Item.IsCraftingReagentItem and (itemLink or itemID) then
+        local okR, r = pcall(C_Item.IsCraftingReagentItem, itemLink or itemID)
+        if okR and r then isReagent = true end
+    end
+    if not isReagent and C_Item and C_Item.GetItemInfoInstant and (itemLink or itemID) then
         local _, _, _, _, _, classID = C_Item.GetItemInfoInstant(itemLink or itemID)
         if classID == IC.Tradegoods or classID == IC.Reagent then
             isReagent = true
@@ -3093,9 +3199,12 @@ function U.PlaceCursorItemInFreeBankSlot()
             end
         end
         for _, bid in ipairs(bids) do
-            local already = false
-            for _, c in ipairs(candidateBags) do if c == bid then already = true; break end end
-            if not already then candidateBags[#candidateBags + 1] = bid end
+            local isReagTab = (bid == -3 or tostring(bid):find("Reagent"))
+            if isReagent or subTab > 0 or not isReagTab then
+                local already = false
+                for _, c in ipairs(candidateBags) do if c == bid then already = true; break end end
+                if not already then candidateBags[#candidateBags + 1] = bid end
+            end
         end
     end
 
@@ -3106,18 +3215,20 @@ function U.PlaceCursorItemInFreeBankSlot()
                 if U.GetSlotInfo(bagID, slot) == nil then
                     if C_Container and C_Container.PickupContainerItem then
                         pcall(C_Container.PickupContainerItem, bagID, slot)
-                        C_Timer.After(0.20, function()
-                            if S.atBank then pcall(U.SnapshotBank) end
-                            if S.bankWindow and S.bankWindow:IsShown() then U.RenderCompanionBank() end
-                        end)
-                        return true
+                        if GetCursorInfo() ~= "item" then
+                            C_Timer.After(0.20, function()
+                                if S.atBank then pcall(U.SnapshotBank) end
+                                if S.bankWindow and S.bankWindow:IsShown() then U.RenderCompanionBank() end
+                            end)
+                            return true
+                        end
                     end
                 end
             end
         end
     end
 
-    Print("|cFFEF4444No free " .. (mode == "WARBAND" and "Warband Bank" or "Bank") .. " slots available.|r")
+    Print("|cFFEF4444No free compatible " .. (mode == "WARBAND" and "Warband Bank" or "Bank") .. " slots available.|r")
     return false
 end
 
@@ -3396,6 +3507,8 @@ end
 -- Select/query a Guild Bank tab only when the player can view it (prevents "You don't have permission to do that").
 function U.SelectGuildBankTab(tab, queryOnly)
     if not S.atGuildBank or not U.IsGuildBankTabViewable(tab) then return false end
+    S.queriedGuildTabs = S.queriedGuildTabs or {}
+    S.queriedGuildTabs[tab] = true
     if not queryOnly and SetCurrentGuildBankTab then pcall(SetCurrentGuildBankTab, tab) end
     if QueryGuildBankTab then pcall(QueryGuildBankTab, tab) end
     return true
@@ -4505,29 +4618,54 @@ function U.SnapshotGuildBank()
     local tabNames = {}
     if not GetCurrentGuildBankTab or not GetGuildBankItemInfo or not GetGuildBankItemLink then return out end
     local numTabs = (GetNumGuildBankTabs and GetNumGuildBankTabs()) or 0
+    local activeTab = GetCurrentGuildBankTab()
+    if S.atGuildBank and type(activeTab) == "number" and activeTab >= 1 then
+        S.queriedGuildTabs = S.queriedGuildTabs or {}
+        S.queriedGuildTabs[activeTab] = true
+    end
+    local queriedThisPass = {}
     for tab = 1, numTabs do
         local name, icon, isViewable, canDeposit, numWithdrawals, remainingWithdrawals = GetGuildBankTabInfo(tab)
         local q = U.ComputeGuildTabQuota(name, icon, isViewable, canDeposit, numWithdrawals, remainingWithdrawals, tab)
         local canWithdraw = q.canWithdraw
         tabNames[tab] = q
+        local tabEntries = {}
+        local sawLiveSlotData = false
         if isViewable ~= false then
             for slot = 1, 98 do
                 local tex, count, locked = GetGuildBankItemInfo(tab, slot)
                 local link = GetGuildBankItemLink(tab, slot)
                 if type(link) == "string" and link ~= "" and not IsSecret(link) then
+                    sawLiveSlotData = true
                     local itemID = tonumber(link:match("item:(%d+)")) or 0
-                    local q = (C_Item and C_Item.GetItemInfo and select(3, C_Item.GetItemInfo(link))) or 1
-                    out[#out + 1] = { itemID, link, count or 1, U.ItemLevelOf(link, itemID), q or 1, tab = tab, slot = slot, icon = tex, locked = locked, canWithdraw = canWithdraw }
+                    local qlt = (C_Item and C_Item.GetItemInfo and select(3, C_Item.GetItemInfo(link))) or 1
+                    tabEntries[#tabEntries + 1] = { itemID, link, count or 1, U.ItemLevelOf(link, itemID), qlt or 1, tab = tab, slot = slot, icon = tex, locked = locked, canWithdraw = canWithdraw }
                 elseif tex and not IsSecret(tex) then
+                    sawLiveSlotData = true
                     -- Placeholder for uncached Guild Bank slot while server item link streams in
-                    out[#out + 1] = { 0, nil, count or 1, 0, 1, tab = tab, slot = slot, icon = tex, locked = locked, uncached = true, canWithdraw = canWithdraw }
+                    tabEntries[#tabEntries + 1] = { 0, nil, count or 1, 0, 1, tab = tab, slot = slot, icon = tex, locked = locked, uncached = true, canWithdraw = canWithdraw }
                 end
             end
         end
+        if sawLiveSlotData or (S.queriedGuildTabs and S.queriedGuildTabs[tab]) or isViewable == false then
+            queriedThisPass[tab] = true
+            for _, entry in ipairs(tabEntries) do
+                out[#out + 1] = entry
+            end
+        end
     end
-    if #out > 0 or #tabNames > 0 then
+    if numTabs > 0 or #out > 0 or #tabNames > 0 then
         local prev = (DB().vault.guildBank and DB().vault.guildBank.items) or {}
-        DB().vault.guildBank = { items = (#out > 0 and out) or prev, tabNames = tabNames, updated = time and time() or 0 }
+        for _, entry in ipairs(prev) do
+            if type(entry) == "table" and entry.tab and not queriedThisPass[entry.tab] then
+                local tMeta = tabNames[entry.tab]
+                if not tMeta or tMeta.isViewable ~= false then
+                    if tMeta then entry.canWithdraw = tMeta.canWithdraw end
+                    out[#out + 1] = entry
+                end
+            end
+        end
+        DB().vault.guildBank = { items = out, tabNames = tabNames, updated = time and time() or 0 }
     end
     return out
 end
@@ -4539,6 +4677,7 @@ function U.RenderCompanionBank(forceRender)
     local mode = S.companionMode or "BANK"
     local subTab = S.companionSubTab or 0
     local isLive = U.IsVaultModeLive(mode)
+    bw.isLive = isLive
 
     -- 1. Style Top Mode Tabs & Sync Sort/Merge Header Controls
     bw.tabBank:SetSelected(mode == "BANK")
@@ -4647,12 +4786,23 @@ function U.RenderCompanionBank(forceRender)
         local shortLbl = (tm.name == "Reagents" and "Reag") or ("T" .. i)
         tb._tooltipName = tm.name or ("Tab " .. i)
         tb._guildQuota = (mode == "GUILD") and tm or nil
-        tb:SetSize(42, 22)
+        local badge = (mode == "GUILD" and isLive) and U.GuildQuotaBadgeText(tm) or nil
+        local btnW = badge and 46 or 42
+        tb:SetSize(btnW, 22)
         tb:ClearAllPoints()
         tb:SetPoint("LEFT", bw.subBar, "LEFT", xOff, 0)
+        if tb.label then
+            tb.label:ClearAllPoints()
+            if badge then
+                tb.label:SetPoint("LEFT", tb, "LEFT", 3, 0)
+                tb.label:SetPoint("RIGHT", tb, "RIGHT", -16, 0)
+            else
+                tb.label:SetPoint("LEFT", tb, "LEFT", 6, 0)
+                tb.label:SetPoint("RIGHT", tb, "RIGHT", -6, 0)
+            end
+        end
         tb:SetLabel(shortLbl)
         if tb.quotaBadge then
-            local badge = (mode == "GUILD" and U.IsVaultModeLive(S.companionMode)) and U.GuildQuotaBadgeText(tm) or nil
             if badge then
                 tb.quotaBadge:SetText(badge)
                 tb.quotaBadge:Show()
@@ -4672,7 +4822,7 @@ function U.RenderCompanionBank(forceRender)
             U.RenderCompanionBank()
         end)
         tb:Show()
-        xOff = xOff + 46
+        xOff = xOff + btnW + 4
     end
 
     -- 5. Collect and Filter Items by Selected Sub-Tab
@@ -4857,15 +5007,15 @@ function U.RenderCompanionBank(forceRender)
         btn:SetSize(size, size)
         btn.dbObj = p.obj
         U.StyleButton(btn, p.obj)
-        if p.obj and p.obj.gTab and p.obj.canWithdraw == false and U.IsVaultModeLive(S.companionMode) then
-            btn:SetAlpha(0.55)
-        else
-            btn:SetAlpha(1.0)
+        local baseAlpha = isLive and 1.0 or 0.82
+        if isLive and p.obj and p.obj.gTab and p.obj.canWithdraw == false then
+            baseAlpha = 0.55
         end
-        btn:SetAlpha(isLive and 1.0 or 0.82)
+        btn:SetAlpha(baseAlpha)
         btn:Show()
     end
     U.ApplyHeaders(bw.content, bw.headers, layout.sections)
+    if (S.search or "") ~= "" then U.ApplySearch() end
     local step = size + SLOT_GAP
     local gridW = max(200, cols * step - SLOT_GAP)
     local width = max(640, gridW + 28)
@@ -6521,6 +6671,7 @@ function U.BuildPage3(page)
         set = function(v)
             local wasOff = (db.autoRepairEnabled == false)
             db.autoRepairEnabled = v and true or false
+            db.autoRepair = db.autoRepairEnabled
             if wasOff and db.autoRepairEnabled then
                 db.repairDrawerOpen = true
             end
@@ -6954,6 +7105,7 @@ local function EnsureStandalone()
     f:SetSize(900, 600)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
+    f:SetClampedToScreen(true)
     f:SetMovable(true)
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
@@ -6979,13 +7131,20 @@ local function EnsureStandalone()
         DynamicBags:RestoreBlizzardDefaults()
     end)
 
+    local reloadBtn = U.NewButton(footer, 86, 24, "Reload UI")
+    reloadBtn:SetPoint("RIGHT", footer, "RIGHT", -12, 0)
+    reloadBtn:SetScript("OnClick", function()
+        if ReloadUI then ReloadUI() end
+    end)
+
     f.body = CreateFrame("Frame", nil, f)
     f.body:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -30)
     f.body:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", -1, 2)
     local t = f:CreateFontString(nil, "OVERLAY")
     SetFont(t, 13, "")
     t:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -9)
-    t:SetText("|cFFF3F5F8Dynamic|r|cFFFF7C0ABags|r  settings")
+    local hex = sformat("|cFF%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
+    t:SetText("|cFFF3F5F8Dynamic|r" .. hex .. "Bags|r  settings")
     local x = U.NewButton(f, 24, 22, "x")
     x:SetPoint("TOPRIGHT", f, "TOPRIGHT", -6, -4)
     x:SetScript("OnClick", function() f:Hide() end)
@@ -7215,6 +7374,7 @@ end
 
 function U.ResetGuildBankSessionState()
     S.atGuildBank = false
+    S.queriedGuildTabs = {}
     S._justClosedGuildBank = GetTime and GetTime() or 0
     S._guildBankRefreshPending = nil
     if U.CancelAllPendingMerges then pcall(U.CancelAllPendingMerges) end
@@ -7291,11 +7451,13 @@ function U.HideBlizzardBags()
             if not panel then return end
             if replace then
                 panel:SetAlpha(0)
+                if panel.SetScale then pcall(panel.SetScale, panel, 0.0001) end
                 panel:EnableMouse(false)
                 panel:ClearAllPoints()
                 panel:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
             else
                 panel:SetAlpha(1)
+                if panel.SetScale then pcall(panel.SetScale, panel, 1) end
                 panel:EnableMouse(true)
             end
             if not panel.dbShowHooked and panel.HookScript then
@@ -7303,6 +7465,7 @@ function U.HideBlizzardBags()
                 panel:HookScript("OnShow", function(self)
                     if DB().replaceBlizzardBags then
                         self:SetAlpha(0)
+                        if self.SetScale then pcall(self.SetScale, self, 0.0001) end
                         self:EnableMouse(false)
                         self:ClearAllPoints()
                         self:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
@@ -7319,11 +7482,13 @@ function U.HideBlizzardBags()
                     if DB().replaceBlizzardBags then
                         if BankFrame then
                             BankFrame:SetAlpha(0)
+                            if BankFrame.SetScale then pcall(BankFrame.SetScale, BankFrame, 0.0001) end
                             BankFrame:ClearAllPoints()
                             BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
                         end
                         if GuildBankFrame then
                             GuildBankFrame:SetAlpha(0)
+                            if GuildBankFrame.SetScale then pcall(GuildBankFrame.SetScale, GuildBankFrame, 0.0001) end
                             GuildBankFrame:ClearAllPoints()
                             GuildBankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
                         end
@@ -7335,11 +7500,13 @@ function U.HideBlizzardBags()
                     if DB().replaceBlizzardBags then
                         if BankFrame then
                             BankFrame:SetAlpha(0)
+                            if BankFrame.SetScale then pcall(BankFrame.SetScale, BankFrame, 0.0001) end
                             BankFrame:ClearAllPoints()
                             BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
                         end
                         if GuildBankFrame then
                             GuildBankFrame:SetAlpha(0)
+                            if GuildBankFrame.SetScale then pcall(GuildBankFrame.SetScale, GuildBankFrame, 0.0001) end
                             GuildBankFrame:ClearAllPoints()
                             GuildBankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
                         end
@@ -7470,13 +7637,16 @@ end
 function DynamicBags:HandleFastAutoLoot()
     local db = DB()
     if db.fastAutoLoot == false or IsShiftKeyDown() or self:IsYieldingSharedHooks() then return end
+    local now = (type(GetTime) == "function" and GetTime()) or 0
+    if self._lastFastLootAt and (now - self._lastFastLootAt) < 0.15 then return end
+    self._lastFastLootAt = now
     local autoLootCVar = C_CVar and C_CVar.GetCVarBool and C_CVar.GetCVarBool("autoLootDefault")
     local isModClick = IsModifiedClick and IsModifiedClick("AUTOLOOTTOGGLE")
     if (autoLootCVar and not isModClick) or (not autoLootCVar and isModClick) then
         local numItems = GetNumLootItems and GetNumLootItems() or 0
         for i = numItems, 1, -1 do
-            if LootSlot then
-                LootSlot(i)
+            if LootSlot and (not LootSlotHasItem or LootSlotHasItem(i)) then
+                pcall(LootSlot, i)
             end
         end
     end
@@ -7492,12 +7662,13 @@ function DynamicBags:SetupDeleteConfirmationHook()
             if dlg then
                 hooksecurefunc(dlg, "OnShow", function(s)
                     if not (DB().autoFillDelete ~= false) or IsShiftKeyDown() or DynamicBags:IsYieldingSharedHooks() then return end
-                    local eb = s.editBox or (s.GetEditBox and s:GetEditBox()) or _G[s:GetName() .. "EditBox"]
+                    local name = (s.GetName and s:GetName()) or ""
+                    local eb = s.editBox or s.EditBox or (s.GetEditBox and s:GetEditBox()) or (name ~= "" and _G[name .. "EditBox"])
                     if eb and DELETE_ITEM_CONFIRM_STRING then
                         eb:SetText(DELETE_ITEM_CONFIRM_STRING)
                         eb:ClearFocus()
                     end
-                    local b1 = s.button1 or (s.GetButton1 and s:GetButton1()) or _G[s:GetName() .. "Button1"]
+                    local b1 = s.button1 or s.Button1 or (s.GetButton1 and s:GetButton1()) or (name ~= "" and _G[name .. "Button1"])
                     if b1 and b1.Enable then
                         b1:Enable()
                     end
@@ -7508,7 +7679,8 @@ function DynamicBags:SetupDeleteConfirmationHook()
 end
 
 function U.AutoSellJunk()
-    if DB().autoSellGrey == false then return end
+    local db = DB()
+    if db.autoSellGrey == false or db.autoSellJunk == false then return end
     if not (C_Container and C_Container.UseContainerItem) then return end
     local queue = {}
     for _, bagID in ipairs(U.GetLiveBagIDs()) do
@@ -8273,15 +8445,23 @@ SlashCmdList["DYNAMICBAGS"] = function(msg)
     local cmd = (msg or ""):lower():match("^%s*(.-)%s*$")
     if cmd == "bag" or cmd == "bags" or cmd == "inv" or cmd == "open" then
         U.ToggleWindow()
+    elseif cmd == "bank" then
+        U.OpenCompanionBank("BANK", nil, true)
+    elseif cmd == "warband" or cmd == "wb" then
+        U.OpenCompanionBank("WARBAND", nil, true)
+    elseif cmd == "guild" or cmd == "gb" then
+        U.OpenCompanionBank("GUILD", nil, true)
     elseif cmd == "reset" then
         DynamicBags:ResetModuleDefaults()
-    elseif cmd == "restack" then
+    elseif cmd == "restack" or cmd == "merge" then
         U.Restack()
-    elseif cmd == "clearnew" then
+    elseif cmd == "clearnew" or cmd == "clear" then
         U.ClearNew()
     elseif cmd == "vault clear" then
         U.ClearAltCache()
         Print("Alt & Warband cache cleared.")
+    elseif cmd == "help" or cmd == "?" then
+        Print("Commands: /dbag (settings), /dbag bag, /dbag bank, /dbag warband, /dbag guild, /dbag merge, /dbag clear, /dbag vault clear, /dbag reset")
     else
         DynamicBags:OpenWorkspace()
     end
@@ -8606,6 +8786,32 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         pcall(U.SnapshotBank)
         S.atBank = false
         U.ScheduleAutoOpenContainers()
+    elseif event == "GUILDBANKFRAME_OPENED" then
+        S.atGuildBank = true
+        S.preWarmingBank = false
+        if not DB().replaceBlizzardBags then return end
+        if _G.DUIQuestFrame and _G.DUIQuestFrame.IsShown and _G.DUIQuestFrame:IsShown() then
+            pcall(_G.DUIQuestFrame.Hide, _G.DUIQuestFrame)
+        end
+        if _G.GossipFrame and _G.GossipFrame.IsShown and _G.GossipFrame:IsShown() then
+            pcall(_G.GossipFrame.Hide, _G.GossipFrame)
+        end
+        U.HideBlizzardBags()
+        U.SelectGuildBankTab((GetCurrentGuildBankTab and GetCurrentGuildBankTab()) or 1, true)
+        if DB().autoOpen and DB().autoOpen.guildbank ~= false and not (S.bankWindow and S.bankWindow:IsShown() and S.bankWindow.mode == "GUILD") then
+            U.OpenCompanionBank("GUILD", nil, true)
+        end
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                U.HideBlizzardBags()
+                if S.atGuildBank then
+                    pcall(U.SnapshotGuildBank)
+                    if S.bankWindow and S.bankWindow:IsShown() then
+                        U.RenderCompanionBank()
+                    end
+                end
+            end)
+        end
     elseif event == "GUILDBANKFRAME_CLOSED" then
         if S.atGuildBank then
             pcall(U.SnapshotGuildBank)
@@ -8656,6 +8862,7 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
     elseif event == "LOOT_READY" or event == "LOOT_OPENED" then
         DynamicBags:HandleFastAutoLoot()
     elseif event == "LOOT_CLOSED" then
+        DynamicBags._lastFastLootAt = 0
         if not InCombatLockdown() and S.window and S.window:IsShown() then
             U.UpdateQuickOpenButton()
         end
@@ -8671,7 +8878,7 @@ for _, ev in ipairs({
     "CURRENCY_DISPLAY_UPDATE", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
     "PLAYER_INTERACTION_MANAGER_FRAME_SHOW", "PLAYER_INTERACTION_MANAGER_FRAME_HIDE",
     "GOSSIP_SHOW", "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYER_BANKSLOTS_CHANGED", "BANK_TAB_SETTINGS_UPDATED",
-    "ITEM_DATA_LOAD_RESULT", "GUILDBANKBAGSLOTS_CHANGED", "GUILDBANK_UPDATE_TABS", "GUILDBANK_UPDATE_WITHDRAWMONEY", "GUILDBANKFRAME_CLOSED", "MERCHANT_SHOW",
+    "ITEM_DATA_LOAD_RESULT", "GUILDBANKBAGSLOTS_CHANGED", "GUILDBANK_UPDATE_TABS", "GUILDBANK_UPDATE_WITHDRAWMONEY", "GUILDBANKFRAME_OPENED", "GUILDBANKFRAME_CLOSED", "MERCHANT_SHOW",
     "MERCHANT_CLOSED", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "MAIL_SHOW", "MAIL_CLOSED",
     "TRADE_SHOW", "TRADE_CLOSED", "LOOT_READY", "LOOT_OPENED", "LOOT_CLOSED",
 }) do
@@ -8681,8 +8888,9 @@ end
 
 DynamicBags.CHANGELOG = {
     version = VERSION,
-    date = "13/11/2026",
+    date = "14/11/2026",
     entries = {
+        { type = "FIX",     text = "Hardened zero-flash Bank/Guild Bank opening after /reload (14/11/2026): added Scale+Alpha suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, enforced strict weak ordering in Sort: A-Z when uncached items appear, verified compatible slot placement in Drop-Anywhere Split-Stack Placement, fixed Guild Bank T1-Tn badge overlap and view-only slot dimming, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, and expanded /dbag slash subcommands." },
         { type = "FEATURE", text = "Guild Bank Daily Withdrawal Counter (13/11/2026): each Guild Bank tab button (T1, T2...) now shows a small counter of how many item withdrawals you have left today - white when plenty remain, amber at 1-2, red at 0, and a red x for tabs you cannot view. Unlimited tabs show no counter. Counters only appear while you are at the Guild Bank." },
         { type = "FIX",     text = "Guild Bank footer and tooltip separators now use plain characters so they display correctly with every DynamicSuite font (13/11/2026)." },
         { type = "FEATURE", text = "External Addon Conflict Detector & Smart Sub-Module Inspection (12/11/2026): Curated HARD conflict detection for Baganator, BetterBags, AdiBags, ArkInventory, Bagnon, Sorted, and LiteBag, plus pcall-guarded ElvUI[1].private.bags.enable and Leatrix_Plus sub-module checks." },

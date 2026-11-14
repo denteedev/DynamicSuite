@@ -2,7 +2,7 @@
 
 [![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 
-**Version:** `v1.9.5` (`14/11/2026`)  
+**Version:** `v1.9.6` (`14/11/2026`)  
 **Target Client:** World of Warcraft Retail Midnight (`12.1.5`, Interface `120105`)  
 **Author:** Dentee-Frostmourne
 

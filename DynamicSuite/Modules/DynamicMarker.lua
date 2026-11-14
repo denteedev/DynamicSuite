@@ -2,7 +2,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.5"
+    local fb = fallback or "1.9.6"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -36,7 +36,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.5"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.6"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -61,7 +61,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.5")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.6")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -6227,21 +6227,133 @@ function DM:ShowStudioModal(mode)
 
     elseif mode == "CHANGELOG" then
         m.Title:SetText("DynamicMarker v" .. (self.version or VERSION) .. " Changelog")
-        local txt = m.Body.textBlock or m.Body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        m.Body.textBlock = txt
-        txt:ClearAllPoints()
-        txt:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, -4)
-        txt:SetPoint("RIGHT", m.Body, "RIGHT", 0, 0)
-        txt:SetJustifyH("LEFT")
-        self:StyleFont(txt, 12, "", COLORS.TextSilver)
-        txt:SetText(
-            "|cFFEAB308[FIX]|r Replaced legacy small square chevron buttons on Announce Marks in Chat, Show On-Screen Focus Bar, and Show On-Screen World Flare Bar with full-width 24px horizontal chevron toggle bars (Sub-Settings (N)) and unified outer group borders per DESIGN_SYSTEM.md Section 2.6.\n\n" ..
-            "|cFFEAB308[FIX]|r Nested sub-setting cards now parent inside their outer group card (10px inset, 2px vertical accent bar, 5x5px square pip) with automatic expand-on-enable and persistent state.\n\n" ..
-            "|cFF38BDF8[UI]|r Standardised setting row cards with bold uppercase Suite Accent L-bracket headers and removed redundant preview/position bars.\n\n" ..
-            "|cFFEAB308[FIX]|r Resolved Lua syntax error near line 3302 in DynamicMarker.lua.\n\n" ..
-            "|cFF22C55E[FEATURE]|r 30x30 square target icon and world flare pickers & Modifier-Free [DynamicMark] / Multi-Spec [DynamicKick] macros."
-        )
-        txt:Show()
+        local clBox = m.Body._changelogBox
+        if not clBox then
+            clBox = CreateFrame("Frame", nil, m.Body)
+            clBox:SetAllPoints(m.Body)
+            clBox:SetFrameLevel(303)
+
+            local sf = CreateFrame("ScrollFrame", nil, clBox)
+            sf:SetPoint("TOPLEFT", clBox, "TOPLEFT", 0, -2)
+            sf:SetPoint("BOTTOMRIGHT", clBox, "BOTTOMRIGHT", -10, 2)
+            sf:EnableMouseWheel(true)
+
+            local child = CreateFrame("Frame", nil, sf)
+            child:SetSize(512, 300)
+            sf:SetScrollChild(child)
+
+            local txt = child:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            txt:SetPoint("TOPLEFT", child, "TOPLEFT", 2, -2)
+            txt:SetWidth(504)
+            txt:SetJustifyH("LEFT")
+            txt:SetWordWrap(true)
+            self:StyleFont(txt, 12, "", COLORS.TextSilver)
+            txt:SetSpacing(2)
+
+            local track = CreateFrame("Frame", nil, clBox)
+            track:SetWidth(4)
+            track:SetPoint("TOPRIGHT", clBox, "TOPRIGHT", 0, -2)
+            track:SetPoint("BOTTOMRIGHT", clBox, "BOTTOMRIGHT", 0, 2)
+            track.bg = track:CreateTexture(nil, "BACKGROUND")
+            track.bg:SetAllPoints(track)
+            track.bg:SetColorTexture(1, 1, 1, 0.06)
+            track:Hide()
+
+            local thumb = CreateFrame("Button", nil, track)
+            thumb:SetWidth(4)
+            thumb:SetHeight(48)
+            thumb:SetPoint("TOP", track, "TOP", 0, 0)
+            thumb.bg = thumb:CreateTexture(nil, "ARTWORK")
+            thumb.bg:SetAllPoints(thumb)
+            thumb.bg:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+
+            local function UpdateClScroll()
+                local viewH = math.max(100, sf:GetHeight() or 300)
+                local viewW = math.max(200, sf:GetWidth() or 512)
+                child:SetWidth(viewW)
+                txt:SetWidth(math.max(180, viewW - 8))
+                local contentH = math.max(viewH, (txt:GetStringHeight() or 260) + 14)
+                child:SetHeight(contentH)
+                local maxScroll = math.max(0, contentH - viewH)
+                if maxScroll > 2 then
+                    track:Show()
+                    local cur = math.min(maxScroll, math.max(0, sf:GetVerticalScroll() or 0))
+                    sf:SetVerticalScroll(cur)
+                    local trackH = track:GetHeight() or viewH
+                    local thumbH = math.max(26, math.floor(trackH * (viewH / contentH)))
+                    thumb:SetHeight(thumbH)
+                    local travel = math.max(1, trackH - thumbH)
+                    thumb:ClearAllPoints()
+                    thumb:SetPoint("TOP", track, "TOP", 0, -(cur / maxScroll) * travel)
+                else
+                    track:Hide()
+                    sf:SetVerticalScroll(0)
+                end
+            end
+
+            sf:SetScript("OnMouseWheel", function(_, delta)
+                local viewH = sf:GetHeight() or 300
+                local maxScroll = math.max(0, (child:GetHeight() or 300) - viewH)
+                if maxScroll <= 0 then return end
+                local nextScroll = math.min(maxScroll, math.max(0, (sf:GetVerticalScroll() or 0) - delta * 36))
+                sf:SetVerticalScroll(nextScroll)
+                UpdateClScroll()
+            end)
+
+            thumb:SetScript("OnMouseDown", function(s, btn)
+                if btn ~= "LeftButton" then return end
+                local _, startCursorY = GetCursorPosition()
+                startCursorY = startCursorY / (s:GetEffectiveScale() or 1)
+                local startScroll = sf:GetVerticalScroll() or 0
+                s:SetScript("OnUpdate", function()
+                    if not IsMouseButtonDown("LeftButton") then
+                        s:SetScript("OnUpdate", nil)
+                        return
+                    end
+                    local viewH = sf:GetHeight() or 300
+                    local maxScroll = math.max(0, (child:GetHeight() or 300) - viewH)
+                    if maxScroll <= 0 then return end
+                    local trackH = track:GetHeight() or viewH
+                    local thumbH = thumb:GetHeight() or 26
+                    local travel = math.max(1, trackH - thumbH)
+                    local _, curY = GetCursorPosition()
+                    curY = curY / (s:GetEffectiveScale() or 1)
+                    local dy = startCursorY - curY
+                    sf:SetVerticalScroll(math.min(maxScroll, math.max(0, startScroll + (dy / travel) * maxScroll)))
+                    UpdateClScroll()
+                end)
+            end)
+            thumb:SetScript("OnMouseUp", function(s) s:SetScript("OnUpdate", nil) end)
+            thumb:SetScript("OnHide", function(s) s:SetScript("OnUpdate", nil) end)
+
+            clBox.sf = sf
+            clBox.txt = txt
+            clBox.UpdateScroll = UpdateClScroll
+            m.Body._changelogBox = clBox
+        end
+
+        local badgeColors = {
+            FEATURE = "|cFF22C55E[FEATURE]|r",
+            FIX     = "|cFFEAB308[FIX]|r",
+            UI      = "|cFF38BDF8[UI]|r",
+        }
+        local lines = {}
+        local clData = DynamicMarker.CHANGELOG and DynamicMarker.CHANGELOG.entries or {}
+        for _, entry in ipairs(clData) do
+            if type(entry) == "table" and type(entry.text) == "string" and entry.text ~= "" then
+                local badge = badgeColors[entry.type] or "|cFF94A3B8[INFO]|r"
+                lines[#lines + 1] = badge .. " " .. entry.text
+            end
+        end
+        self:StyleFont(clBox.txt, 12, "", COLORS.TextSilver)
+        clBox.txt:SetText(#lines > 0 and table.concat(lines, "\n\n") or "No changelog entries recorded.")
+        clBox:Show()
+        clBox.sf:SetVerticalScroll(0)
+        clBox.UpdateScroll()
+        C_Timer.After(0, function()
+            if clBox:IsShown() then clBox.UpdateScroll() end
+        end)
+        table.insert(m.Body._modeWidgets, clBox)
 
     elseif mode == "SUPPORT" then
         m.Title:SetText("Support DynamicMarker & Dentee")
@@ -7519,6 +7631,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "14/11/2026",
     entries = {
+        { type = "UI",      text = "Standalone Scrollable Changelog Modal Parity & v1.9.6 Sync (14/11/2026): Replaced the legacy static 5-bullet standalone Changelog text with a live scrollable viewer reading directly from DynamicMarker.CHANGELOG.entries so standalone and full-suite users always see full release notes with colour-coded [FEATURE], [FIX], and [UI] badges." },
         { type = "UI",      text = "Standalone Bottom-Right Dock Parity & Copyable Support Modal Links (14/11/2026): Added the [Reload UI] button and persisted Opacity (50%-100%) and Scale (80%-120%) sliders to the standalone footer dock (positioned left of the // resize grip and stored in DynamicMarkerDB), and replaced static Support modal text with read-only click-to-highlight Ctrl+C EditBoxes for Ko-fi, CurseForge (/addons/dynamicmarker), and Email with Escape-to-close." },
         { type = "FIX",     text = "First-Open ESC > Options > AddOns Standalone Shell & Settings Yield (14/11/2026): Added initial f:Hide(), OnShow post-layout C_Timer.After(0, ...) theme/workspace refresh + Raise() on DynamicMarkerSuiteWindow, Settings canvas OnShow accent/surface sync, and hardened HideSettingsPanelSafe() so opening standalone DynamicMarker via ESC > Options > AddOns > DynamicMarker renders cleanly on the very first open without SettingsPanel obscuring it." },
         { type = "FIX",     text = "Standalone Guided Setup Modal Layering (14/11/2026): Promoted DynamicMarkerStudioBackdrop and DynamicMarkerStudioModal to FULLSCREEN_DIALOG strata (levels 290/300) parented to UIParent with SetToplevel(true), 100% opaque solid panel backing, and clean mode-widget recycling so underlying window controls, borders, and text never bleed through or overlap." },

@@ -180,15 +180,34 @@ $readmeText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"))
 if ($readmeText -notmatch [regex]::Escape("v$suiteVer")) {
     throw "README.md does not match lockstep version v$suiteVer"
 }
+$cfStandaloneDoc = Join-Path $RepoRoot "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md"
+if (-not (Test-Path -LiteralPath $cfStandaloneDoc) -or ([System.IO.File]::ReadAllText($cfStandaloneDoc) -notmatch [regex]::Escape("v$suiteVer"))) {
+    throw "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md does not match lockstep version v$suiteVer"
+}
+$cfMarketingDoc = Join-Path $RepoRoot "Marketing\CurseForge_DynamicMarker.md"
+if (-not (Test-Path -LiteralPath $cfMarketingDoc) -or ([System.IO.File]::ReadAllText($cfMarketingDoc) -notmatch [regex]::Escape("v$suiteVer"))) {
+    throw "Marketing\CurseForge_DynamicMarker.md does not match lockstep version v$suiteVer"
+}
 
 $versionLuaTargets = @()
 $versionLuaTargets += Get-Item -LiteralPath (Join-Path $RepoRoot "DynamicSuite\DynamicSuite_Core.lua")
 $versionLuaTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite\Modules") -Filter "Dynamic*.lua" -File
 $expectedVerCall = "ResolveAddonVersion(ADDON_FOLDER, `"$suiteVer`")"
+$expectedFbLine  = "local fb = fallback or `"$suiteVer`""
+$expectedYieldFb = "or `"$suiteVer`""
 foreach ($lf in $versionLuaTargets) {
     $raw = [System.IO.File]::ReadAllText($lf.FullName)
     if ($raw.IndexOf($expectedVerCall, [System.StringComparison]::Ordinal) -lt 0) {
         throw "$($lf.Name) is missing lockstep fallback '$expectedVerCall'"
+    }
+    if ($raw.IndexOf($expectedFbLine, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "$($lf.Name) is missing lockstep helper fallback '$expectedFbLine'"
+    }
+    if ($lf.Name -ne "DynamicSuite_Core.lua" -and $raw.IndexOf($expectedYieldFb, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "$($lf.Name) is missing lockstep ShouldYieldToOtherInstall fallback '$expectedYieldFb'"
+    }
+    if ($raw -match 'ResolveAddonVersion\(ADDON_FOLDER,\s*"(\d+\.\d+\.\d+)"\)' -and $Matches[1] -ne $suiteVer) {
+        throw "$($lf.Name) has stale ResolveAddonVersion fallback '$($Matches[1])' (expected '$suiteVer')"
     }
 }
 

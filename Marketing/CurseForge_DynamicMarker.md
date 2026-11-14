@@ -1,7 +1,7 @@
-# DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v1.9.5)
+# DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v1.9.6)
 
 > **Target Game Version:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`)  
-> **Version:** `v1.9.5` (`14/11/2026`)  
+> **Version:** `v1.9.6` (`14/11/2026`)  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicmarker
 
@@ -129,12 +129,14 @@ DynamicMarker uses a **Dual-Mode Architecture** with a semantic version guard (`
 
 ---
 
-## Section 2: CurseForge File Changelog Block (`v1.9.5` -- `14/11/2026`)
+## Section 2: CurseForge File Changelog Block (`v1.9.6` -- `14/11/2026`)
 
 ```markdown
-## DynamicMarker v1.9.5 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
+## DynamicMarker v1.9.6 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
 
 ### Highlights & New Features
+* **Standalone Scrollable Changelog Modal Parity:** Replaced the legacy static standalone Changelog summary with a scrollable `ScrollFrame` modal reading live release notes directly from `DynamicMarker.CHANGELOG.entries` with colour-coded `[FEATURE]`, `[FIX]`, and `[UI]` badges matching the full DynamicSuite Changelog Hub.
+* **Lockstep `v1.9.6` Sync with DynamicSuite:** Synchronised version metadata, fallback checks, and `/dm` + `/fm` alias parity cleanly across standalone and bundled builds.
 * **Official FocusMarker -> DynamicMarker Migration (`FocusMarkerDB`):** Automatically detects legacy `FocusMarkerDB` SavedVariables on load, preserves a non-destructive read-only snapshot, imports bar positions, scales, opacity, visibility rules (`Always` / `Group` / `Off`), orientation, and custom icon/flare cycle sequences into `DynamicMarkerDB`, and migrates `[FocusMarker]` general macros in-place to `[DynamicMark]` (`/dm import` and `/dm import status` supported).
 * **Encapsulated HUD Edit Mode (`/dm hud`):** Crisp pixel-bordered movers (`DynamicMarker: Icon Bar` and `DynamicMarker: Flare Bar`) with alignment grid, magnetic centre snap (`Ctrl` bypass), `60%`-`150%` mousewheel scaling, `Shift+Right-Click` bar reset, `1px` nudge & `X`/`Y` coordinate inspector, and zero-taint `ESC` / combat-lockdown failsafe.
 * **Multi-Spec `[DynamicKick]` & Modifier-Free `[DynamicMark]` Macros:** One-click creation and drag-to-bar setup across all 13 classes with automatic specialisation/talent swapping out of combat.
