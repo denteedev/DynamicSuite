@@ -11060,6 +11060,9 @@ function addonTable.CreateMainConfigUI()
                 end
             end
         end
+        if _G.DynamicGroup and type(_G.DynamicGroup.ResetTeleportToastPosition) == "function" then
+            pcall(_G.DynamicGroup.ResetTeleportToastPosition, _G.DynamicGroup, true)
+        end
         if isHudEditModeActive then
             SyncAllEditModeHuds(true)
         end

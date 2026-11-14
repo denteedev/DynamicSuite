@@ -196,6 +196,7 @@ local DEFAULTS = {
     announceInvites = true,
     autoInsertKeystone = true,
     showGroupTeleportToast = true,
+    teleportToastPos = { point = "TOP", relPoint = "TOP", x = 0, y = -140 },
     oneClickSignUp = true,
     autoSelectRole = true,
     autoFillNote = true,
@@ -2532,9 +2533,9 @@ local function OnLFGListSearchEntryUpdate(entry)
                         local roleKey = openRoles[idx - filledCount]
                         if roleKey then
                             SetAnchorGreyDotVisible(anchor, false)
-                            local aw = math.floor((anchor.GetWidth and anchor:GetWidth()) or 18)
-                            local ah = math.floor((anchor.GetHeight and anchor:GetHeight()) or 18)
-                            slotOv:SetSize(aw > 0 and aw or 18, ah > 0 and ah or 18)
+                            local aw = math.max(19, math.floor((anchor.GetWidth and anchor:GetWidth()) or 19))
+                            local ah = math.max(19, math.floor((anchor.GetHeight and anchor:GetHeight()) or 19))
+                            slotOv:SetSize(aw, ah)
                             slotOv:ClearAllPoints()
                             slotOv:SetPoint("CENTER", anchor, "CENTER", 0, 0)
                             if slotOv.SetFrameLevel then
@@ -2543,13 +2544,16 @@ local function OnLFGListSearchEntryUpdate(entry)
                             if slotOv.tex.SetDesaturated then
                                 slotOv.tex:SetDesaturated(true)
                             end
+                            local u0, u1, v0, v1
                             if roleKey == "TANK" then
-                                slotOv.tex:SetTexCoord(0 / 64, 19 / 64, 22 / 64, 41 / 64)
+                                u0, u1, v0, v1 = 0 / 64, 19 / 64, 22 / 64, 41 / 64
                             elseif roleKey == "HEALER" then
-                                slotOv.tex:SetTexCoord(20 / 64, 39 / 64, 1 / 64, 20 / 64)
+                                u0, u1, v0, v1 = 20 / 64, 39 / 64, 1 / 64, 20 / 64
                             else
-                                slotOv.tex:SetTexCoord(20 / 64, 39 / 64, 22 / 64, 41 / 64)
+                                u0, u1, v0, v1 = 20 / 64, 39 / 64, 22 / 64, 41 / 64
                             end
+                            local du, dv = (u1 - u0) * 0.08, (v1 - v0) * 0.08
+                            slotOv.tex:SetTexCoord(u0 + du, u1 - du, v0 + dv, v1 - dv)
                             slotOv.tex:SetVertexColor(0.56, 0.60, 0.66, 0.72)
                             slotOv:Show()
                         else
@@ -4233,8 +4237,33 @@ function DynamicGroup:UpdatePortalBar(forceSeasonRefresh)
     self.pendingPortalBarUpdate = false
 end
 
+function DynamicGroup:ApplyTeleportToastPosition()
+    local toast = self.teleportToast
+    if not toast then return end
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingTeleportToastUpdate = true
+        return
+    end
+    local db = EnsureDB()
+    local pos = type(db.teleportToastPos) == "table" and db.teleportToastPos or DEFAULTS.teleportToastPos
+    toast:ClearAllPoints()
+    toast:SetPoint(pos.point or "TOP", UIParent, pos.relPoint or "TOP", tonumber(pos.x) or 0, tonumber(pos.y) or -140)
+end
+
+function DynamicGroup:ResetTeleportToastPosition(silent)
+    local db = EnsureDB()
+    db.teleportToastPos = { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
+    if self.teleportToast then
+        self:ApplyTeleportToastPosition()
+    end
+    if not silent then
+        PrintMsg("Reset Dungeon Teleport Toast position to default.")
+    end
+end
+
 function DynamicGroup:HideTeleportToast()
     self.activeTeleportToastData = nil
+    self.editModePreviewToast = false
     if self.teleportToast then
         if InCombatLockdown and InCombatLockdown() then
             self.pendingTeleportToastHide = true
@@ -4256,13 +4285,12 @@ function DynamicGroup:EnsureTeleportToast()
     end
 
     local toast = CreateFrame("Frame", "DynamicGroupTeleportToast", UIParent, "BackdropTemplate")
-    toast:SetSize(300, 68)
+    toast:SetSize(340, 68)
     toast:SetFrameStrata("DIALOG")
     toast:SetClampedToScreen(true)
     toast:SetMovable(true)
     toast:EnableMouse(true)
     toast:RegisterForDrag("LeftButton")
-    toast:SetPoint("TOP", UIParent, "TOP", 0, -140)
     toast:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -4272,7 +4300,29 @@ function DynamicGroup:EnsureTeleportToast()
     local ar, ag, ab = GetSuiteAccent()
     toast:SetBackdropBorderColor(ar, ag, ab, 0.75)
 
+    -- HUD Edit Mode Mover Outline (#F97316) & Label
+    local editOutline = CreateFrame("Frame", nil, toast, "BackdropTemplate")
+    editOutline:SetPoint("TOPLEFT", toast, "TOPLEFT", -2, 2)
+    editOutline:SetPoint("BOTTOMRIGHT", toast, "BOTTOMRIGHT", 2, -2)
+    editOutline:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 2,
+    })
+    editOutline:SetBackdropColor(0.976, 0.451, 0.086, 0.06)
+    editOutline:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.98)
+    editOutline:EnableMouse(false)
+    editOutline:Hide()
+    toast.editOutline = editOutline
+
+    local editTag = editOutline:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(editTag, 9, "OUTLINE")
+    editTag:SetPoint("BOTTOMLEFT", editOutline, "TOPLEFT", 2, 3)
+    editTag:SetText("|cFFF97316DynamicGroup: Teleport Toast (Drag to Move)|r")
+    toast.editTag = editTag
+
     toast:SetScript("OnDragStart", function(selfToast)
+        if not DynamicGroup.inHudEditMode then return end
         if InCombatLockdown and InCombatLockdown() then return end
         if selfToast.IsMovable and selfToast:IsMovable() then
             selfToast:StartMoving()
@@ -4281,6 +4331,18 @@ function DynamicGroup:EnsureTeleportToast()
     toast:SetScript("OnDragStop", function(selfToast)
         if selfToast.StopMovingOrSizing then
             selfToast:StopMovingOrSizing()
+        end
+        if selfToast.GetPoint then
+            local pt, _, relPt, x, y = selfToast:GetPoint(1)
+            if pt then
+                local db = EnsureDB()
+                db.teleportToastPos = {
+                    point = pt,
+                    relPoint = relPt or pt,
+                    x = math.floor((tonumber(x) or 0) + 0.5),
+                    y = math.floor((tonumber(y) or 0) + 0.5),
+                }
+            end
         end
     end)
 
@@ -4404,6 +4466,7 @@ function DynamicGroup:EnsureTeleportToast()
 
     toast:Hide()
     self.teleportToast = toast
+    self:ApplyTeleportToastPosition()
     return toast
 end
 
@@ -4644,6 +4707,7 @@ function DynamicGroup:TriggerTeleportToastPreview(mode)
 
     local isFull = (mode == "FULL")
     local count = isFull and 5 or 3
+    self.editModePreviewToast = false
     self.activeTeleportToastData = {
         isPreview = true,
         previewCount = count,
@@ -4680,6 +4744,63 @@ function DynamicGroup:CycleTeleportToastPreview()
     else
         self:HideTeleportToast()
         PrintMsg("Teleport toast preview dismissed.")
+    end
+end
+
+function DynamicGroup:SetTeleportToastEditMode(isEditMode)
+    local active = isEditMode and true or false
+    self.inHudEditMode = active
+    if active then
+        if not self.activeTeleportToastData then
+            local slots = GetSeasonDungeonSlots(false)
+            local chosenSlot = nil
+            for _, slot in ipairs(slots) do
+                if slot.spellKnown then
+                    chosenSlot = slot
+                    break
+                end
+            end
+            if not chosenSlot then chosenSlot = slots[1] end
+            self.editModePreviewToast = true
+            self.activeTeleportToastData = {
+                isPreview = true,
+                previewCount = 3,
+                mapID = chosenSlot and chosenSlot.mapID or nil,
+                code = chosenSlot and chosenSlot.code or "M+",
+                dungeonName = chosenSlot and chosenSlot.name or "Midnight Season 2 Dungeon",
+                listingName = "+12 Midnight Season 2 Dungeon",
+                icon = chosenSlot and chosenSlot.icon or 136095,
+                spellID = chosenSlot and chosenSlot.spellID or 0,
+                spellKnown = (chosenSlot and chosenSlot.spellKnown) and true or false,
+                lastMemberCount = 3,
+            }
+        end
+        self:UpdateTeleportToast(false)
+        if self.teleportToast and self.teleportToast.editOutline then
+            self.teleportToast.editOutline:Show()
+        end
+    else
+        if self.teleportToast then
+            if self.teleportToast.editOutline then
+                self.teleportToast.editOutline:Hide()
+            end
+            if self.teleportToast.GetPoint then
+                local pt, _, relPt, x, y = self.teleportToast:GetPoint(1)
+                if pt then
+                    local db = EnsureDB()
+                    db.teleportToastPos = {
+                        point = pt,
+                        relPoint = relPt or pt,
+                        x = math.floor((tonumber(x) or 0) + 0.5),
+                        y = math.floor((tonumber(y) or 0) + 0.5),
+                    }
+                end
+            end
+        end
+        if self.editModePreviewToast then
+            self.editModePreviewToast = false
+            self:HideTeleportToast()
+        end
     end
 end
 
@@ -6580,9 +6701,9 @@ local function RenderGroupEmbedded(arg1, arg2)
     )
     AnchorCardTextToRightWidget(c3_tpToast, tpToastSwitch)
 
-    local function CreateToastPreviewBtn(btnLabel, anchorRel, offsetX, mode)
+    local function CreateToastPreviewBtn(btnLabel, anchorRel, offsetX, onClickFn)
         local btn = CreateFrame("Button", nil, c3_tpToast, "BackdropTemplate")
-        btn:SetSize(108, 22)
+        btn:SetSize(96, 22)
         if anchorRel then
             btn:SetPoint("LEFT", anchorRel, "RIGHT", offsetX or 8, 0)
         else
@@ -6608,14 +6729,27 @@ local function RenderGroupEmbedded(arg1, arg2)
             s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
             s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.72)
         end)
-        btn:SetScript("OnClick", function()
-            DynamicGroup:TriggerTeleportToastPreview(mode)
-        end)
+        btn:SetScript("OnClick", onClickFn)
         return btn
     end
 
-    local testJoinBtn = CreateToastPreviewBtn("Test Join (3/5)", nil, 0, "JOIN")
-    CreateToastPreviewBtn("Test Full (5/5)", testJoinBtn, 8, "FULL")
+    local testJoinBtn = CreateToastPreviewBtn("Test Join (3/5)", nil, 0, function()
+        DynamicGroup:TriggerTeleportToastPreview("JOIN")
+    end)
+    local testFullBtn = CreateToastPreviewBtn("Test Full (5/5)", testJoinBtn, 8, function()
+        DynamicGroup:TriggerTeleportToastPreview("FULL")
+    end)
+    CreateToastPreviewBtn("Edit HUD", testFullBtn, 8, function()
+        if _G.DynamicSuite and type(_G.DynamicSuite.IsHudEditModeActive) == "function" and _G.DynamicSuite.IsHudEditModeActive() then
+            if type(_G.DynamicSuite.ExitHudEditMode) == "function" then
+                _G.DynamicSuite.ExitHudEditMode(false)
+            end
+        elseif _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
+            _G.DynamicSuite.EnterHudEditMode("ALL")
+        else
+            DynamicGroup:SetTeleportToastEditMode(not DynamicGroup.inHudEditMode)
+        end
+    end)
 
     sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_tpToast
     page3.orderedCards[#page3.orderedCards + 1] = c3_tpToast
@@ -6965,6 +7099,7 @@ local function ResetGroupModuleDefaults()
         db.yieldHooks = savedYield
     end
     db.incomingInviteMode = "FRIENDS_AND_GUILD"
+    DynamicGroup:ResetTeleportToastPosition(true)
     DynamicGroup:UpdateAutoRefreshTicker()
     DynamicGroup:RefreshLFGResults()
     DynamicGroup:RefreshConfigUI()
@@ -7164,7 +7299,7 @@ local function RegisterWithDynamicSuite()
         version = DynamicGroup.version or VERSION,
         date = "15/11/2026",
         entries = {
-            { type = "FEATURE", text = "Dungeon Joined & Group Full Teleport Toast (15/11/2026): Displays a sleek movable dark-obsidian toast with a one-click Dungeon Teleport button when your Premade Group application is accepted, chimes as players join, and highlights when the group reaches 5/5. Includes Test Join (3/5) and Test Full (5/5) preview buttons in Tab 3 plus /dg testtoast." },
+            { type = "FEATURE", text = "Dungeon Joined & Group Full Teleport Toast (15/11/2026): Displays a sleek 340x68 movable dark-obsidian toast with a one-click Dungeon Teleport button when your Premade Group application is accepted, chimes as players join, and highlights when the group reaches 5/5. Integrated with DynamicSuite HUD Edit Mode (with saved screen position and /dg resethud), plus Test Join (3/5), Test Full (5/5), Edit HUD buttons, and /dg testtoast." },
             { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Dynamically discovers all learned Midnight Season 2 teleport spells from the Mythic+ tab and spellbook so Left-click toggles the dungeon filter (Shift+Left-click solo filters) and Right-click casts learned dungeon teleports out of combat." },
             { type = "FEATURE", text = "Integrated Multi-Toggle Premade Group Filters (15/11/2026): Upgraded the Group Finder filter menu with Tank, Healer, and DPS role availability toggles (with role icons), No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez, kept in two-way sync with Blizzard's native Filter menu without altering difficulty checkboxes." },
             { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill (OCE, USE, USW, USC, LA, BR), desaturated greyscale Tank/Healer/DPS icons matched to Blizzard's slot size over empty group slots, a simplified Show Region & Leader IO Badge switch, and personal best key levels plus same-class warnings in group tooltips." },
@@ -7190,6 +7325,13 @@ local function RegisterWithDynamicSuite()
     _G.DynamicSuite.Changelogs["DynamicGroup"] = DynamicGroup.CHANGELOG
     _G.DynamicSuite.Changelogs["group"] = DynamicGroup.CHANGELOG
 
+    if type(_G.DynamicSuite.RegisterHudEditCallback) == "function" and not DynamicGroup._hudEditCallbackRegistered then
+        DynamicGroup._hudEditCallbackRegistered = true
+        pcall(_G.DynamicSuite.RegisterHudEditCallback, "DynamicGroupTeleportToast", function(isEditMode)
+            DynamicGroup:SetTeleportToastEditMode(isEditMode)
+        end)
+    end
+
     if type(_G.DynamicSuite.RegisterModule) == "function" then
         pcall(_G.DynamicSuite.RegisterModule, _G.DynamicSuite, "group", descriptor)
     end
@@ -7209,6 +7351,8 @@ SlashCmdList["DYNAMICGROUP"] = function(msg)
         if C_PartyInfo and type(C_PartyInfo.DoCountdown) == "function" then C_PartyInfo.DoCountdown(10) end
     elseif cmd == "testtoast" then
         DynamicGroup:CycleTeleportToastPreview()
+    elseif cmd == "resethud" or cmd == "resethuds" or cmd == "hudreset" then
+        DynamicGroup:ResetTeleportToastPosition(false)
     else
         OpenGroupWorkspace()
     end
