@@ -6449,6 +6449,7 @@ function DM:EnsureStandaloneShell()
     logo:SetSize(24, 24)
     logo:SetPoint("LEFT", header, "LEFT", 14, 0)
     logo:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_white.tga")
+    logo:SetVertexColor(0.96, 0.97, 0.99, 1.0)
     header.LogoWhite = logo
 
     local logoAccent = header:CreateTexture(nil, "ARTWORK", nil, 1)
@@ -7839,6 +7840,7 @@ function DM:RegisterSettingsCategory()
     logoWhite:SetSize(28, 28)
     logoWhite:SetPoint("TOPLEFT", card, "TOPLEFT", 18, -18)
     logoWhite:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_white.tga")
+    logoWhite:SetVertexColor(0.96, 0.97, 0.99, 1.0)
 
     local logoAccent = card:CreateTexture(nil, "ARTWORK", nil, 1)
     logoAccent:SetAllPoints(logoWhite)

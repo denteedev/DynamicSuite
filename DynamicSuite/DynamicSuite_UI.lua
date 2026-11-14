@@ -859,17 +859,17 @@ function UI.DrawBrandEmblem(parentFrame, size)
         local tgaW = parentFrame:CreateTexture(nil, "ARTWORK", nil, 4)
         tgaW:SetPoint("TOPLEFT", parentFrame, "TOPLEFT", 1, -1)
         tgaW:SetPoint("BOTTOMRIGHT", parentFrame, "BOTTOMRIGHT", -1, 1)
-        tgaW:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\logo_stem_white.tga")
+        tgaW:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_white.tga")
         if not tgaW:GetTexture() then
-            tgaW:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_white.tga")
+            tgaW:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\logo_stem_white.tga")
         end
         tgaW:SetVertexColor(0.96, 0.97, 0.99, 1)
         local tgaA = parentFrame:CreateTexture(nil, "ARTWORK", nil, 5)
         tgaA:SetPoint("TOPLEFT", parentFrame, "TOPLEFT", 1, -1)
         tgaA:SetPoint("BOTTOMRIGHT", parentFrame, "BOTTOMRIGHT", -1, 1)
-        tgaA:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\logo_loop_mask.tga")
+        tgaA:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_accent.tga")
         if not tgaA:GetTexture() then
-            tgaA:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_accent.tga")
+            tgaA:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\logo_loop_mask.tga")
         end
         local ar, ag, ab = UI.GetActiveAccentColor()
         tgaA:SetVertexColor(ar, ag, ab, 1)

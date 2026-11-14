@@ -183,7 +183,9 @@ $parityTokens = @(
     '"RIGHT", footer, "RIGHT", -32, 0',
     "https://ko-fi.com/dentee",
     "https://www.curseforge.com/wow/addons/dynamicsuite (Coming Soon)",
-    "denteedev@gmail.com"
+    "denteedev@gmail.com",
+    "\\Media\\Icons\\icon_white.tga",
+    "\\Media\\Icons\\icon_accent.tga"
 )
 foreach ($tok in $parityTokens) {
     if ($suiteUiText.IndexOf($tok, [System.StringComparison]::Ordinal) -lt 0) {

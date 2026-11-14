@@ -1868,9 +1868,9 @@ function addonTable.PopulateBrandLogo(badge, size)
     tgaWhite:ClearAllPoints()
     tgaWhite:SetPoint("TOPLEFT", badge, "TOPLEFT", pad, -pad)
     tgaWhite:SetPoint("BOTTOMRIGHT", badge, "BOTTOMRIGHT", -pad, pad)
-    tgaWhite:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\logo_stem_white.tga")
+    tgaWhite:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_white.tga")
     if not tgaWhite:GetTexture() then
-        tgaWhite:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_white.tga")
+        tgaWhite:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\logo_stem_white.tga")
     end
     tgaWhite:SetVertexColor(0.96, 0.97, 0.99, 1)
     badge.tgaWhite = tgaWhite
@@ -1879,9 +1879,9 @@ function addonTable.PopulateBrandLogo(badge, size)
     tgaAccent:ClearAllPoints()
     tgaAccent:SetPoint("TOPLEFT", badge, "TOPLEFT", pad, -pad)
     tgaAccent:SetPoint("BOTTOMRIGHT", badge, "BOTTOMRIGHT", -pad, pad)
-    tgaAccent:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\logo_loop_mask.tga")
+    tgaAccent:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_accent.tga")
     if not tgaAccent:GetTexture() then
-        tgaAccent:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_accent.tga")
+        tgaAccent:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\logo_loop_mask.tga")
     end
     badge.tgaAccent = tgaAccent
 
