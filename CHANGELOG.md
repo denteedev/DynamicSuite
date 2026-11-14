@@ -8,6 +8,7 @@
   * **Standalone Bottom-Right Dock (`DynamicMarker.lua`):** Added the `Reload UI` button (`ReloadUI()`), `Scale` slider (`80%`-`120%` in `5%` steps, right-click reset), and `Opacity` slider (`50%`-`100%`, right-click reset) to `DM:EnsureStandaloneShell()`'s footer dock cleanly to the left of the `//` resize grip, persisting `standaloneWindowScale` and `standaloneWindowAlpha` in `DynamicMarkerDB` without interfering with `DynamicSuiteDB`.
   * **Copyable Support Modal URLs (`DynamicMarker.lua`):** Replaced the static Support modal text with read-only, click-to-highlight `Ctrl+C` `EditBox` fields for Ko-fi (`https://ko-fi.com/dentee`), CurseForge (`https://www.curseforge.com/wow/addons/dynamicmarker`), and Contact (`denteedev@gmail.com`) with `Escape`-to-close and input-overwrite protection.
   * **`DynamicSuite` CurseForge URL (`DynamicSuite_UI.lua`):** Updated `DynamicSuite`'s Support view CurseForge link from `dynamicload` to `https://www.curseforge.com/wow/addons/dynamicsuite`.
+  * **Footer Dock Clearance & Support View Suite Link (`DynamicSuite_UI.lua`):** Increased `Reload UI` right-edge inset to `30px` for clean `//` resize grip clearance, left-aligned the `Scale` percentage readout next to the slider, and added the copyable `Full Addon Suite (DynamicSuite - Coming Soon)` link row to the Support view.
 
 ---
 

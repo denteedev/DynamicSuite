@@ -3477,7 +3477,7 @@ function addonTable.CreateMainConfigUI()
 
     -- Bottom-Right Controls: [Opacity Slider] + [Scale Slider 100%] + Compact [Reload UI]
     local reloadUIBtn = CreateFlatButton(footer, 78, 24, "Reload UI", false)
-    reloadUIBtn:SetPoint("RIGHT", footer, "RIGHT", -22, 0)
+    reloadUIBtn:SetPoint("RIGHT", footer, "RIGHT", -30, 0)
     reloadUIBtn.OnCustomEnter = function(self)
         PopulatePendingReloadTooltip(self, "ANCHOR_TOP")
     end
@@ -3499,9 +3499,9 @@ function addonTable.CreateMainConfigUI()
     -- Scale Slider in Bottom Dock (80% - 120%) with Discrete 5% Instant Steps (Zero Font Rasterizer Jitter)
     local SCALE_MIN, SCALE_MAX, SCALE_STEP, SCALE_W = 0.80, 1.20, 0.05, 64
     local scaleValText = footer:CreateFontString(nil, "OVERLAY")
-    scaleValText:SetPoint("RIGHT", reloadUIBtn, "LEFT", -12, 0)
+    scaleValText:SetPoint("RIGHT", reloadUIBtn, "LEFT", -14, 0)
     scaleValText:SetWidth(34)
-    scaleValText:SetJustifyH("RIGHT")
+    scaleValText:SetJustifyH("LEFT")
     UI.SetFont(scaleValText, 10, "", 1, 1, 1, 0.85)
 
     local scaleHit = CreateFrame("Frame", nil, footer)
@@ -7384,7 +7384,7 @@ function addonTable.CreateMainConfigUI()
     table.insert(f.themeCards, spvCard)
     spvCard:SetPoint("TOPLEFT", supportView, "TOPLEFT", 14, -44)
     spvCard:SetPoint("TOPRIGHT", supportView, "TOPRIGHT", -16, -44)
-    spvCard:SetHeight(230)
+    spvCard:SetHeight(290)
     spvCard.bg = UI.SolidTex(spvCard, "BACKGROUND", 0, UI.COLORS.CARD_BG.r, UI.COLORS.CARD_BG.g, UI.COLORS.CARD_BG.b, 0.95)
     spvCard.bg:SetAllPoints()
     UI.CreatePixelBorder(spvCard, 1, 1, 1, 0.08, 2)
@@ -7435,6 +7435,7 @@ function addonTable.CreateMainConfigUI()
 
     CreateCopyLinkRow(-96,  "Buy the Developer a Coffee (Ko-fi):", "https://ko-fi.com/dentee")
     CreateCopyLinkRow(-156, "CurseForge Project Page & Feedback:", "https://www.curseforge.com/wow/addons/dynamicsuite")
+    CreateCopyLinkRow(-216, "Full Addon Suite (DynamicSuite - Coming Soon):", "https://www.curseforge.com/wow/addons/dynamicsuite (Coming Soon)")
 
     supportView.Refresh = function()
         SyncBackBtnLabel(spvBackBtn)
