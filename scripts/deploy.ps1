@@ -483,7 +483,7 @@ $registeredSlashCmds = [System.Collections.Generic.HashSet[string]]::new([System
 $markerSlashCmds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 foreach ($luaCheck in $allLuaCheckFiles) {
     $luaText = [System.IO.File]::ReadAllText($luaCheck.FullName)
-    foreach ($sm in [regex]::Matches($luaText, '(?m)^\s*SLASH_([A-Za-z0-9_]+)\d+\s*=\s*["''](/[a-zA-Z0-9]+)["'']')) {
+    foreach ($sm in [regex]::Matches($luaText, '(?m)^\s*(?:_G\.)?SLASH_([A-Za-z0-9_]+)\d+\s*=\s*["''](/[a-zA-Z0-9]+)["'']')) {
         $slashKey = $sm.Groups[1].Value
         $slashCmd = $sm.Groups[2].Value
         $null = $registeredSlashCmds.Add($slashCmd)
