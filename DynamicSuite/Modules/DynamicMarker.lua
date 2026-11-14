@@ -6295,7 +6295,7 @@ function DM:ShowStudioModal(mode)
         CreateSupportCopyRow(-74,  "Buy the Developer a Coffee (Ko-fi):", "https://ko-fi.com/dentee")
         CreateSupportCopyRow(-126, "CurseForge Project Page & Feedback:", "https://www.curseforge.com/wow/addons/dynamicmarker")
         CreateSupportCopyRow(-178, "Full Addon Suite (DynamicSuite - Coming Soon):", "https://www.curseforge.com/wow/addons/dynamicsuite (Coming Soon)")
-        CreateSupportCopyRow(-230, "Direct Contact (Email):", "denteedev@gmail.com")
+        CreateSupportCopyRow(-230, "Direct Contact & Feedback (Email):", "denteedev@gmail.com")
     end
 
     m:SetHeight(mode == "SUPPORT" and 428 or 368)
