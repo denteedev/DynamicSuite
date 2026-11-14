@@ -5,6 +5,10 @@
 
 ## DynamicSuite & All 8 Modules v1.9.9 (14/11/2026)
 
+### Added
+* **Season Dungeon Portals & 1-Click Dungeon Filter Deck (DynamicGroup):** Added a compact portal bar above Premade Groups displaying your current Mythic+ keystone pill and the 8 active season dungeons with your best timed key levels. Left-click a dungeon tile out of combat to cast its teleport (once learned), or right-click to filter Premade Groups to that dungeon.
+* **Integrated Multi-Toggle Group Filters & Tooltip Bests (DynamicGroup):** Upgraded the Group Finder filter menu with multi-select toggles for Fits My Role, No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, Battle Rez, and Mythic+ Difficulty Only (kept in sync with Blizzard's native Filter button), plus personal best key levels and same-class warnings on group tooltips.
+
 ### Fixed
 * **Top & Bottom Screen-Edge Bar Drift:** Focus Icons and World Flare bars parked flush against the top edge, bottom edge, or corners now stay in their exact saved positions after reloading the UI at every bar scale (70%, 100%, and 130%).
 * **DynamicLoad Profile Switching & Standalone Scrubbing:** Fixed a Lua error when staging zone profiles (such as Outdoor) in DynamicLoad and ensured saved zone profiles never re-enable standalone DynamicMarker while DynamicSuite is active.

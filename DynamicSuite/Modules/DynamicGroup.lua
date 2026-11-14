@@ -152,6 +152,7 @@ DynamicGroup.SUITE_CONFLICT_REGISTRY = {
 local DEFAULTS = {
     -- Tab 1: LFG Premade Filter & Regions
     lfgFilterEnabled = true,
+    showPortalBar = true,
     enabledRegions = {
         OCE = true,
         USW = true,
@@ -162,7 +163,15 @@ local DEFAULTS = {
     },
     overlayMode = "COMPACT",         -- "FULL" | "COMPACT" | "OFF"
     minLeaderScore = 0,              -- 0 | 1500 | 2000 | 2500 | 2800 | 3000
-    partyFitFilter = "ALL",          -- "ALL" | "NEEDS_MY_ROLE" | "HAS_TANK_OR_HEAL" | "NEEDS_LUST"
+    partyFitFilter = "ALL",          -- Legacy summary: "ALL" | "NEEDS_LUST" | "NEEDS_CR" | "NEEDS_BOTH"
+    fitMyRole = false,
+    noDuplicateClass = false,
+    hasTank = false,
+    hasHealer = false,
+    hasLust = false,
+    hasCR = false,
+    mythicPlusOnly = false,
+    filteredDungeons = {},           -- [dungeonCode] = true
     sortMode = "SMART_HIDE_FULL",    -- "SMART_HIDE_FULL" | "SCORE_DESC" | "OPEN_SLOTS" | "BLIZZARD"
     hideFullGroups = true,
     smartSort = true,
@@ -424,6 +433,19 @@ local function CopyDefaults(src, dst)
     return dst
 end
 
+local function SyncLegacyPartyFitFromFlags(db)
+    if type(db) ~= "table" then return end
+    if db.hasLust and db.hasCR then
+        db.partyFitFilter = "NEEDS_BOTH"
+    elseif db.hasLust then
+        db.partyFitFilter = "NEEDS_LUST"
+    elseif db.hasCR then
+        db.partyFitFilter = "NEEDS_CR"
+    else
+        db.partyFitFilter = "ALL"
+    end
+end
+
 local function SyncWhisperInviteSettings(db)
     if not db.enableWhisperInvite then
         db.whisperInviteMode = "OFF"
@@ -464,6 +486,14 @@ local function EnsureDB()
         _G.DynamicGroupDB._migratedKeystoneFromPrep = true
     end
 
+    -- Migrate legacy partyFitFilter lust/CR selections into multi-toggle flags before CopyDefaults
+    if _G.DynamicGroupDB.hasLust == nil and (_G.DynamicGroupDB.partyFitFilter == "NEEDS_LUST" or _G.DynamicGroupDB.partyFitFilter == "NEEDS_BOTH") then
+        _G.DynamicGroupDB.hasLust = true
+    end
+    if _G.DynamicGroupDB.hasCR == nil and (_G.DynamicGroupDB.partyFitFilter == "NEEDS_CR" or _G.DynamicGroupDB.partyFitFilter == "NEEDS_BOTH") then
+        _G.DynamicGroupDB.hasCR = true
+    end
+
     CopyDefaults(DEFAULTS, _G.DynamicGroupDB)
     if _G.DynamicGroupDB._migratedKeystoneFromPrep ~= true and type(_G.DynamicPrepDB) == "table" and _G.DynamicPrepDB.autoSlotKeystone ~= nil then
         if _G.DynamicPrepDB.autoSlotKeystone == false then
@@ -474,11 +504,15 @@ local function EnsureDB()
     if type(_G.DynamicGroupDB.enabledRegions) ~= "table" then
         _G.DynamicGroupDB.enabledRegions = CopyDefaults(DEFAULTS.enabledRegions, {})
     end
+    if type(_G.DynamicGroupDB.filteredDungeons) ~= "table" then
+        _G.DynamicGroupDB.filteredDungeons = {}
+    end
 
     -- Migrate legacy partyFitFilter values to Party Utility Filter
     if _G.DynamicGroupDB.partyFitFilter == "NEEDS_MY_ROLE" or _G.DynamicGroupDB.partyFitFilter == "HAS_TANK_OR_HEAL" then
         _G.DynamicGroupDB.partyFitFilter = "ALL"
     end
+    SyncLegacyPartyFitFromFlags(_G.DynamicGroupDB)
 
     if not _G.DynamicGroupDB.v121_cleanOverlay then
         _G.DynamicGroupDB.v121_cleanOverlay = true
@@ -1060,6 +1094,541 @@ local function IsValidSearchResultID(resultID)
     return true
 end
 
+local MIDNIGHT_S1_FALLBACK_SLOTS = {
+    { code = "DON", name = "Den of Nalorakk",              mapID = 540, spellID = 1216786, icon = 136095,  patterns = { "nalorakk" },                      spellCandidates = { 1216786 } },
+    { code = "AOF", name = "Algeth'ar / Forge",            mapID = 402, spellID = 393273,  icon = 4511692, patterns = { "algeth", "arena of", "forge" },   spellCandidates = { 393273 } },
+    { code = "BV",  name = "The Azure Vault",              mapID = 401, spellID = 393279,  icon = 4511694, patterns = { "azure vault", "bracken", "vault" }, spellCandidates = { 393279, 393267 } },
+    { code = "MR",  name = "Magisters' / Murder Row",      mapID = 541, spellID = 1216788, icon = 135764,  patterns = { "murder", "magister", "row" },     spellCandidates = { 1216788 } },
+    { code = "RLP", name = "Ruby Life Pools",              mapID = 399, spellID = 393256,  icon = 4511698, patterns = { "ruby life" },                     spellCandidates = { 393256 } },
+    { code = "VSA", name = "Vault of the Sacred / Ancients", mapID = 542, spellID = 1216790, icon = 136051, patterns = { "sacred", "ancient", "seat" },     spellCandidates = { 1216790, 1237215 } },
+    { code = "TOS", name = "Temple of Sethraliss",         mapID = 250, spellID = 424167,  icon = 2065604, patterns = { "sethraliss", "jade", "temple", "tides" }, spellCandidates = { 424167, 131204, 424142 } },
+    { code = "KR",  name = "Kings' Rest",                  mapID = 249, spellID = 467553,  icon = 2065599, patterns = { "kings", "karazhan" },             spellCandidates = { 467553, 445269, 373262 } },
+}
+
+local KNOWN_DUNGEON_BY_MAP_ID = {
+    [2]   = { code = "TOS", name = "Temple of the Jade Serpent", spellID = 131204,  spellCandidates = { 131204 } },
+    [165] = { code = "SBG", name = "Shadowmoon Burial Grounds",  spellID = 159899,  spellCandidates = { 159899 } },
+    [166] = { code = "GD",  name = "Grimrail Depot",             spellID = 159900,  spellCandidates = { 159900 } },
+    [168] = { code = "EB",  name = "The Everbloom",              spellID = 159901,  spellCandidates = { 159901 } },
+    [169] = { code = "ID",  name = "Iron Docks",                 spellID = 159896,  spellCandidates = { 159896 } },
+    [198] = { code = "DHT", name = "Darkheart Thicket",          spellID = 424163,  spellCandidates = { 424163 } },
+    [199] = { code = "BRH", name = "Black Rook Hold",            spellID = 424153,  spellCandidates = { 424153 } },
+    [200] = { code = "HOV", name = "Halls of Valor",             spellID = 393764,  spellCandidates = { 393764 } },
+    [206] = { code = "NL",  name = "Neltharion's Lair",          spellID = 410078,  spellCandidates = { 410078 } },
+    [210] = { code = "COS", name = "Court of Stars",             spellID = 393766,  spellCandidates = { 393766 } },
+    [227] = { code = "LOWR",name = "Return to Karazhan: Lower",  spellID = 373262,  spellCandidates = { 373262 } },
+    [234] = { code = "UPPR",name = "Return to Karazhan: Upper",  spellID = 373262,  spellCandidates = { 373262 } },
+    [244] = { code = "AD",  name = "Atal'Dazar",                 spellID = 424187,  spellCandidates = { 424187 } },
+    [245] = { code = "FH",  name = "Freehold",                   spellID = 410071,  spellCandidates = { 410071 } },
+    [247] = { code = "ML",  name = "The MOTHERLODE!!",           spellID = 467553,  spellCandidates = { 467553, 467555 } },
+    [248] = { code = "WCM", name = "Waycrest Manor",             spellID = 424167,  spellCandidates = { 424167 } },
+    [249] = { code = "KR",  name = "Kings' Rest",                spellID = 467553,  spellCandidates = { 467553, 445269 } },
+    [250] = { code = "TOS", name = "Temple of Sethraliss",       spellID = 424167,  spellCandidates = { 424167 } },
+    [251] = { code = "UNDR",name = "The Underrot",               spellID = 410074,  spellCandidates = { 410074 } },
+    [253] = { code = "SOB", name = "Siege of Boralus",           spellID = 445418,  spellCandidates = { 445418, 464256 } },
+    [353] = { code = "SOB", name = "Siege of Boralus",           spellID = 445418,  spellCandidates = { 445418, 464256 } },
+    [369] = { code = "YARD",name = "Mechagon: Junkyard",         spellID = 373274,  spellCandidates = { 373274 } },
+    [370] = { code = "WORK",name = "Mechagon: Workshop",         spellID = 373274,  spellCandidates = { 373274 } },
+    [375] = { code = "MISTS",name = "Mists of Tirna Scithe",     spellID = 354464,  spellCandidates = { 354464 } },
+    [376] = { code = "NW",  name = "The Necrotic Wake",          spellID = 354462,  spellCandidates = { 354462 } },
+    [378] = { code = "HOA", name = "Halls of Atonement",         spellID = 354465,  spellCandidates = { 354465 } },
+    [382] = { code = "TOP", name = "Theater of Pain",            spellID = 354467,  spellCandidates = { 354467 } },
+    [391] = { code = "STRT",name = "Tazavesh: Streets",          spellID = 367416,  spellCandidates = { 367416 } },
+    [392] = { code = "GMBT",name = "Tazavesh: Gambit",           spellID = 367416,  spellCandidates = { 367416 } },
+    [399] = { code = "RLP", name = "Ruby Life Pools",            spellID = 393256,  spellCandidates = { 393256 } },
+    [400] = { code = "NO",  name = "The Nokhud Offensive",       spellID = 393262,  spellCandidates = { 393262 } },
+    [401] = { code = "BV",  name = "The Azure Vault",            spellID = 393279,  spellCandidates = { 393279 } },
+    [402] = { code = "AOF", name = "Algeth'ar Academy",          spellID = 393273,  spellCandidates = { 393273 } },
+    [403] = { code = "ULD", name = "Uldaman: Legacy of Tyr",     spellID = 393222,  spellCandidates = { 393222 } },
+    [404] = { code = "NELT",name = "Neltharus",                  spellID = 393276,  spellCandidates = { 393276 } },
+    [405] = { code = "BH",  name = "Brackenhide Hollow",         spellID = 393267,  spellCandidates = { 393267 } },
+    [406] = { code = "HOI", name = "Halls of Infusion",          spellID = 393283,  spellCandidates = { 393283 } },
+    [438] = { code = "VP",  name = "The Vortex Pinnacle",        spellID = 410080,  spellCandidates = { 410080 } },
+    [456] = { code = "TOS", name = "Throne of the Tides",        spellID = 424142,  spellCandidates = { 424142 } },
+    [463] = { code = "FALL",name = "Dawn of the Infinite: Fall", spellID = 424197,  spellCandidates = { 424197 } },
+    [464] = { code = "RISE",name = "Dawn of the Infinite: Rise", spellID = 424197,  spellCandidates = { 424197 } },
+    [499] = { code = "PSF", name = "Priory of the Sacred Flame", spellID = 445444,  spellCandidates = { 445444 } },
+    [500] = { code = "ROOK",name = "The Rookery",                spellID = 445443,  spellCandidates = { 445443 } },
+    [501] = { code = "SV",  name = "The Stonevault",             spellID = 445416,  spellCandidates = { 445416 } },
+    [502] = { code = "COT", name = "City of Threads",            spellID = 445417,  spellCandidates = { 445417 } },
+    [503] = { code = "AK",  name = "Ara-Kara, City of Echoes",   spellID = 445417,  spellCandidates = { 445417 } },
+    [504] = { code = "DFC", name = "Darkflame Cleft",            spellID = 445441,  spellCandidates = { 445441 } },
+    [505] = { code = "DB",  name = "The Dawnbreaker",            spellID = 445414,  spellCandidates = { 445414 } },
+    [506] = { code = "BREW",name = "Cinderbrew Meadery",         spellID = 445440,  spellCandidates = { 445440 } },
+    [507] = { code = "GB",  name = "Grim Batol",                 spellID = 445424,  spellCandidates = { 445424 } },
+    [525] = { code = "FG",  name = "Operation: Floodgate",       spellID = 1216786, spellCandidates = { 1216786 } },
+    [540] = { code = "DON", name = "Den of Nalorakk",            spellID = 1216786, spellCandidates = { 1216786 } },
+    [541] = { code = "MR",  name = "Magisters' / Murder Row",    spellID = 1216788, spellCandidates = { 1216788 } },
+    [542] = { code = "VSA", name = "Vault of the Sacred / Ancients", spellID = 1216790, spellCandidates = { 1216790, 1237215 } },
+}
+
+local activityInfoCache = {}
+local seasonGroupToSlot = {}
+local seasonSlotsCache = nil
+local requestedMythicMapInfo = false
+
+local function NormalizeDungeonMatchName(raw)
+    if type(raw) ~= "string" then return "" end
+    local clean = raw:gsub("%b()", " "):lower()
+    clean = clean:gsub("[:,'\"%-]", " ")
+    clean = clean:gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
+    return clean
+end
+
+local function BuildDungeonShortCode(dungeonName, mapID)
+    local known = mapID and KNOWN_DUNGEON_BY_MAP_ID[mapID] or nil
+    if known and known.code then
+        return known.code
+    end
+    local norm = NormalizeDungeonMatchName(dungeonName)
+    if norm ~= "" then
+        for _, fb in ipairs(MIDNIGHT_S1_FALLBACK_SLOTS) do
+            if fb.patterns then
+                for _, pat in ipairs(fb.patterns) do
+                    if norm:find(pat, 1, true) then
+                        return fb.code
+                    end
+                end
+            end
+        end
+        local stopWords = { the = true, of = true, ["and"] = true, ["in"] = true, at = true, to = true, a = true }
+        local letters = {}
+        for word in norm:gmatch("%a+") do
+            if not stopWords[word] then
+                letters[#letters + 1] = word:sub(1, 1):upper()
+            end
+        end
+        if #letters >= 2 and #letters <= 4 then
+            return table.concat(letters)
+        elseif #letters > 4 then
+            return table.concat(letters, "", 1, 4)
+        elseif #norm >= 2 then
+            return norm:gsub("%s+", ""):sub(1, 3):upper()
+        end
+    end
+    return mapID and ("M" .. tostring(mapID)) or "M+"
+end
+
+local function IsTeleportSpellKnown(spellID)
+    if type(spellID) ~= "number" or spellID <= 0 then return false end
+    if C_SpellBook and type(C_SpellBook.IsSpellInSpellBook) == "function" then
+        local ok, known = pcall(C_SpellBook.IsSpellInSpellBook, spellID)
+        if ok and known then return true end
+    end
+    if C_SpellBook and type(C_SpellBook.IsSpellKnown) == "function" then
+        local ok, known = pcall(C_SpellBook.IsSpellKnown, spellID)
+        if ok and known then return true end
+    end
+    if type(_G.IsSpellKnown) == "function" then
+        local ok, known = pcall(_G.IsSpellKnown, spellID)
+        if ok and known then return true end
+    end
+    if type(_G.IsPlayerSpell) == "function" then
+        local ok, known = pcall(_G.IsPlayerSpell, spellID)
+        if ok and known then return true end
+    end
+    return false
+end
+
+local function SafeGetSpellName(spellID)
+    if type(spellID) ~= "number" or spellID <= 0 then return nil end
+    if C_Spell and type(C_Spell.GetSpellName) == "function" then
+        local ok, name = pcall(C_Spell.GetSpellName, spellID)
+        if ok and type(name) == "string" and name ~= "" and not IsSecretValue(name) then
+            return name
+        end
+    end
+    if type(_G.GetSpellInfo) == "function" then
+        local ok, name = pcall(_G.GetSpellInfo, spellID)
+        if ok and type(name) == "string" and name ~= "" and not IsSecretValue(name) then
+            return name
+        end
+    end
+    return nil
+end
+
+local function SafeGetSpellCooldown(spellID)
+    if type(spellID) ~= "number" or spellID <= 0 then return 0, 0, false end
+    if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
+        local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
+        if ok and type(info) == "table" and not IsSecretValue(info.startTime) and not IsSecretValue(info.duration) then
+            return tonumber(info.startTime) or 0, tonumber(info.duration) or 0, (info.isEnabled ~= false)
+        end
+    end
+    if type(_G.GetSpellCooldown) == "function" then
+        local ok, st, dur, enabled = pcall(_G.GetSpellCooldown, spellID)
+        if ok and not IsSecretValue(st) and not IsSecretValue(dur) then
+            return tonumber(st) or 0, tonumber(dur) or 0, (enabled ~= 0 and enabled ~= false)
+        end
+    end
+    return 0, 0, false
+end
+
+local function ResolveTeleportSpellForDungeon(mapID, code, dungeonName, fallbackSpellID)
+    local candidates = {}
+    local seen = {}
+    local function AddCand(id)
+        if type(id) == "number" and id > 0 and not seen[id] then
+            seen[id] = true
+            candidates[#candidates + 1] = id
+        end
+    end
+    AddCand(fallbackSpellID)
+    local known = mapID and KNOWN_DUNGEON_BY_MAP_ID[mapID] or nil
+    if known then
+        AddCand(known.spellID)
+        if known.spellCandidates then
+            for _, cid in ipairs(known.spellCandidates) do AddCand(cid) end
+        end
+    end
+    local norm = NormalizeDungeonMatchName(dungeonName)
+    for _, fb in ipairs(MIDNIGHT_S1_FALLBACK_SLOTS) do
+        local matchFB = (code and fb.code == code)
+        if not matchFB and norm ~= "" and fb.patterns then
+            for _, pat in ipairs(fb.patterns) do
+                if norm:find(pat, 1, true) then matchFB = true; break end
+            end
+        end
+        if matchFB then
+            AddCand(fb.spellID)
+            if fb.spellCandidates then
+                for _, cid in ipairs(fb.spellCandidates) do AddCand(cid) end
+            end
+        end
+    end
+    for _, cid in ipairs(candidates) do
+        if IsTeleportSpellKnown(cid) then
+            return cid, true
+        end
+    end
+    local primary = candidates[1] or 0
+    return primary, IsTeleportSpellKnown(primary)
+end
+
+local function PopulateSeasonActivityGroups(slots)
+    if not C_LFGList or type(C_LFGList.GetAvailableActivityGroups) ~= "function" or type(C_LFGList.GetActivityGroupInfo) ~= "function" then
+        return
+    end
+    local okG, groupIDs = pcall(C_LFGList.GetAvailableActivityGroups, 2)
+    if not okG or type(groupIDs) ~= "table" then return end
+
+    for _, gid in ipairs(groupIDs) do
+        local okN, gName = pcall(C_LFGList.GetActivityGroupInfo, gid)
+        if okN and type(gName) == "string" and gName ~= "" and not IsSecretValue(gName) then
+            local normG = NormalizeDungeonMatchName(gName)
+            for _, slot in ipairs(slots) do
+                local normS = NormalizeDungeonMatchName(slot.name)
+                if normS ~= "" and (normG == normS or normG:find(normS, 1, true) or normS:find(normG, 1, true)) then
+                    slot.activityGroupID = gid
+                    seasonGroupToSlot[gid] = slot
+                    break
+                elseif slot.patterns then
+                    local hit = false
+                    for _, pat in ipairs(slot.patterns) do
+                        if normG:find(pat, 1, true) then hit = true; break end
+                    end
+                    if hit then
+                        slot.activityGroupID = gid
+                        seasonGroupToSlot[gid] = slot
+                        break
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function GetSeasonDungeonSlots(forceRefresh)
+    if seasonSlotsCache and not forceRefresh then
+        return seasonSlotsCache
+    end
+    if not requestedMythicMapInfo and C_MythicPlus and type(C_MythicPlus.RequestMapInfo) == "function" then
+        requestedMythicMapInfo = true
+        pcall(C_MythicPlus.RequestMapInfo)
+    end
+
+    local mapTable = nil
+    if C_MythicPlus and type(C_MythicPlus.GetMapTable) == "function" then
+        local okM, tbl = pcall(C_MythicPlus.GetMapTable)
+        if okM and type(tbl) == "table" and #tbl > 0 then
+            mapTable = tbl
+        end
+    end
+    if (not mapTable or #mapTable == 0) and C_ChallengeMode and type(C_ChallengeMode.GetMapTable) == "function" then
+        local okC, tbl = pcall(C_ChallengeMode.GetMapTable)
+        if okC and type(tbl) == "table" and #tbl > 0 then
+            mapTable = tbl
+        end
+    end
+
+    local slots = {}
+    if mapTable and #mapTable > 0 then
+        for i = 1, math.min(8, #mapTable) do
+            local mapID = tonumber(mapTable[i])
+            if mapID then
+                local fallbackMeta = KNOWN_DUNGEON_BY_MAP_ID[mapID]
+                local dName = fallbackMeta and fallbackMeta.name or ("Dungeon #" .. tostring(mapID))
+                local texture = nil
+                if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
+                    local okU, uiName, _, _, uiTex = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
+                    if okU and type(uiName) == "string" and uiName ~= "" and not IsSecretValue(uiName) then
+                        dName = uiName
+                    end
+                    if okU and uiTex and not IsSecretValue(uiTex) then
+                        texture = uiTex
+                    end
+                end
+                local code = BuildDungeonShortCode(dName, mapID)
+                local patterns = fallbackMeta and fallbackMeta.patterns or nil
+                if not patterns then
+                    for _, fb in ipairs(MIDNIGHT_S1_FALLBACK_SLOTS) do
+                        if fb.code == code then
+                            patterns = fb.patterns
+                            if not texture then texture = fb.icon end
+                            break
+                        end
+                    end
+                end
+                local spellID, spellKnown = ResolveTeleportSpellForDungeon(mapID, code, dName, fallbackMeta and fallbackMeta.spellID)
+                slots[#slots + 1] = {
+                    mapID = mapID,
+                    code = code,
+                    name = dName,
+                    icon = texture or 136095,
+                    spellID = spellID,
+                    spellKnown = spellKnown,
+                    patterns = patterns,
+                }
+            end
+        end
+    end
+
+    if #slots == 0 then
+        for _, fb in ipairs(MIDNIGHT_S1_FALLBACK_SLOTS) do
+            local spellID, spellKnown = ResolveTeleportSpellForDungeon(fb.mapID, fb.code, fb.name, fb.spellID)
+            local tex = fb.icon
+            if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
+                local okU, uiName, _, _, uiTex = pcall(C_ChallengeMode.GetMapUIInfo, fb.mapID)
+                if okU and type(uiName) == "string" and uiName ~= "" and not IsSecretValue(uiName) then
+                    fb.name = uiName
+                end
+                if okU and uiTex and not IsSecretValue(uiTex) then
+                    tex = uiTex
+                end
+            end
+            slots[#slots + 1] = {
+                mapID = fb.mapID,
+                code = fb.code,
+                name = fb.name,
+                icon = tex,
+                spellID = spellID,
+                spellKnown = spellKnown,
+                patterns = fb.patterns,
+            }
+        end
+    end
+
+    PopulateSeasonActivityGroups(slots)
+    seasonSlotsCache = slots
+    return slots
+end
+
+local function MatchTextToDungeonSlot(text, slots)
+    local norm = NormalizeDungeonMatchName(text)
+    if norm == "" then return nil end
+    for _, slot in ipairs(slots) do
+        local normS = NormalizeDungeonMatchName(slot.name)
+        if normS ~= "" and (norm == normS or norm:find(normS, 1, true) or normS:find(norm, 1, true)) then
+            return slot
+        end
+        if slot.patterns then
+            for _, pat in ipairs(slot.patterns) do
+                if norm:find(pat, 1, true) then
+                    return slot
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function GetCachedActivityInfo(activityID)
+    if type(activityID) ~= "number" or activityID <= 0 or IsSecretValue(activityID) then
+        return nil
+    end
+    if activityInfoCache[activityID] then
+        return activityInfoCache[activityID]
+    end
+    if not C_LFGList or type(C_LFGList.GetActivityInfoTable) ~= "function" then
+        return nil
+    end
+    local ok, info = pcall(C_LFGList.GetActivityInfoTable, activityID)
+    if not ok or type(info) ~= "table" then
+        return nil
+    end
+
+    local categoryID = (not IsSecretValue(info.categoryID) and tonumber(info.categoryID)) or 0
+    local groupID = (not IsSecretValue(info.groupFinderActivityGroupID) and tonumber(info.groupFinderActivityGroupID)) or nil
+    local rawMapID = (not IsSecretValue(info.mapChallengeModeID) and tonumber(info.mapChallengeModeID)) or nil
+    local fullName = (type(info.fullName) == "string" and not IsSecretValue(info.fullName)) and info.fullName or ""
+    local shortName = (type(info.shortName) == "string" and not IsSecretValue(info.shortName)) and info.shortName or ""
+    local isMPlus = (not IsSecretValue(info.isMythicPlusActivity) and info.isMythicPlusActivity == true) or false
+    local isDungeon = (categoryID == 2) or isMPlus or (not IsSecretValue(info.isMythicActivity) and info.isMythicActivity == true and categoryID == 2)
+
+    local slots = GetSeasonDungeonSlots(false)
+    local matchedSlot = nil
+    if groupID and seasonGroupToSlot[groupID] then
+        matchedSlot = seasonGroupToSlot[groupID]
+    end
+    if not matchedSlot and rawMapID then
+        for _, slot in ipairs(slots) do
+            if slot.mapID == rawMapID then matchedSlot = slot; break end
+        end
+    end
+    if not matchedSlot and fullName ~= "" then
+        matchedSlot = MatchTextToDungeonSlot(fullName, slots)
+    end
+    if not matchedSlot and groupID and C_LFGList and type(C_LFGList.GetActivityGroupInfo) == "function" then
+        local okG, gName = pcall(C_LFGList.GetActivityGroupInfo, groupID)
+        if okG and type(gName) == "string" and not IsSecretValue(gName) then
+            matchedSlot = MatchTextToDungeonSlot(gName, slots)
+            if matchedSlot then
+                seasonGroupToSlot[groupID] = matchedSlot
+            end
+        end
+    end
+
+    local resolvedMapID = (matchedSlot and matchedSlot.mapID) or rawMapID
+    local resolvedCode = (matchedSlot and matchedSlot.code) or BuildDungeonShortCode(fullName ~= "" and fullName or shortName, resolvedMapID)
+
+    local entry = {
+        activityID = activityID,
+        categoryID = categoryID,
+        groupID = groupID,
+        mapID = resolvedMapID,
+        code = resolvedCode,
+        fullName = fullName,
+        shortName = shortName,
+        isMythicPlusActivity = isMPlus,
+        isDungeonActivity = isDungeon,
+    }
+    activityInfoCache[activityID] = entry
+    return entry
+end
+
+local function GetPlayerBestForDungeon(mapID)
+    if type(mapID) ~= "number" or mapID <= 0 then
+        return 0, 0, false
+    end
+    local bestLevel = 0
+    local bestScore = 0
+    local isTimed = false
+
+    if C_MythicPlus and type(C_MythicPlus.GetSeasonBestAffixScoreInfoForMap) == "function" then
+        local okA, affixScores, overallScore = pcall(C_MythicPlus.GetSeasonBestAffixScoreInfoForMap, mapID)
+        if okA then
+            if type(overallScore) == "number" and not IsSecretValue(overallScore) then
+                bestScore = math.floor(overallScore + 0.5)
+            end
+            if type(affixScores) == "table" then
+                for _, entry in ipairs(affixScores) do
+                    if type(entry) == "table" then
+                        local lvl = (not IsSecretValue(entry.level) and tonumber(entry.level)) or 0
+                        if lvl > bestLevel then
+                            bestLevel = lvl
+                            if not IsSecretValue(entry.overTime) then
+                                isTimed = (entry.overTime == false)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if C_MythicPlus and type(C_MythicPlus.GetSeasonBestForMap) == "function" then
+        local okS, intimeInfo, overtimeInfo = pcall(C_MythicPlus.GetSeasonBestForMap, mapID)
+        if okS then
+            if type(intimeInfo) == "table" then
+                local lvl = (not IsSecretValue(intimeInfo.level) and tonumber(intimeInfo.level)) or 0
+                if lvl >= bestLevel and lvl > 0 then
+                    bestLevel = lvl
+                    isTimed = true
+                end
+                local sc = (not IsSecretValue(intimeInfo.dungeonScore) and tonumber(intimeInfo.dungeonScore)) or 0
+                if sc > bestScore then bestScore = math.floor(sc + 0.5) end
+            end
+            if bestLevel == 0 and type(overtimeInfo) == "table" then
+                local lvl = (not IsSecretValue(overtimeInfo.level) and tonumber(overtimeInfo.level)) or 0
+                if lvl > 0 then
+                    bestLevel = lvl
+                    isTimed = false
+                end
+                local sc = (not IsSecretValue(overtimeInfo.dungeonScore) and tonumber(overtimeInfo.dungeonScore)) or 0
+                if sc > bestScore then bestScore = math.floor(sc + 0.5) end
+            end
+        end
+    end
+
+    return bestLevel, bestScore, isTimed
+end
+
+local function GetOwnedKeystoneInfo()
+    local mapID, level = nil, 0
+    if C_MythicPlus then
+        if type(C_MythicPlus.GetOwnedKeystoneChallengeMapID) == "function" then
+            local okM, id = pcall(C_MythicPlus.GetOwnedKeystoneChallengeMapID)
+            if okM and not IsSecretValue(id) and tonumber(id) then
+                mapID = tonumber(id)
+            end
+        end
+        if type(C_MythicPlus.GetOwnedKeystoneLevel) == "function" then
+            local okL, lvl = pcall(C_MythicPlus.GetOwnedKeystoneLevel)
+            if okL and not IsSecretValue(lvl) and tonumber(lvl) then
+                level = tonumber(lvl)
+            end
+        end
+    end
+    if not mapID or level <= 0 then
+        return nil, 0, nil, nil
+    end
+    local slots = GetSeasonDungeonSlots(false)
+    for _, slot in ipairs(slots) do
+        if slot.mapID == mapID then
+            return mapID, level, slot.code, slot.name
+        end
+    end
+    local dName = "Keystone Dungeon"
+    if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
+        local okU, uiName = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
+        if okU and type(uiName) == "string" and uiName ~= "" and not IsSecretValue(uiName) then
+            dName = uiName
+        end
+    end
+    return mapID, level, BuildDungeonShortCode(dName, mapID), dName
+end
+
+local function HasActiveDungeonFilters(db)
+    if type(db) ~= "table" or type(db.filteredDungeons) ~= "table" then return false end
+    for _, v in pairs(db.filteredDungeons) do
+        if v then return true end
+    end
+    return false
+end
+
+local function CountActiveUtilityFilters(db)
+    if type(db) ~= "table" then return 0 end
+    local count = 0
+    if db.fitMyRole then count = count + 1 end
+    if db.noDuplicateClass then count = count + 1 end
+    if db.hasTank then count = count + 1 end
+    if db.hasHealer then count = count + 1 end
+    if db.hasLust or db.partyFitFilter == "NEEDS_LUST" or db.partyFitFilter == "NEEDS_BOTH" then count = count + 1 end
+    if db.hasCR or db.partyFitFilter == "NEEDS_CR" or db.partyFitFilter == "NEEDS_BOTH" then count = count + 1 end
+    if db.mythicPlusOnly then count = count + 1 end
+    return count
+end
+
 local function InspectSearchResult(resultID)
     if not IsValidSearchResultID(resultID) then
         return nil
@@ -1076,8 +1645,9 @@ local function InspectSearchResult(resultID)
     local maxMembers = (not IsSecretValue(searchInfo.maxMembers) and tonumber(searchInfo.maxMembers)) or 5
     if maxMembers <= 0 then maxMembers = 5 end
 
+    local _, playerClassFile = UnitClass("player")
     local tanks, healers, dps = 0, 0, 0
-    local hasLust, hasCR = false, false
+    local hasLust, hasCR, hasPlayerClass = false, false, false
     local memberDots = {}
 
     if numMembers > 0 then
@@ -1111,6 +1681,7 @@ local function InspectSearchResult(resultID)
                 if classFile then
                     if LUST_CLASSES[classFile] then hasLust = true end
                     if CR_CLASSES[classFile] then hasCR = true end
+                    if playerClassFile and classFile == playerClassFile then hasPlayerClass = true end
                 end
 
                 local hex = (classFile and CLASS_COLORS_HEX[classFile]) or "FF94A3B8"
@@ -1119,6 +1690,15 @@ local function InspectSearchResult(resultID)
             end
         end
     end
+
+    local activityID = (not IsSecretValue(searchInfo.activityID) and tonumber(searchInfo.activityID)) or nil
+    if not activityID and type(searchInfo.activityIDs) == "table" and not IsSecretValue(searchInfo.activityIDs) then
+        local firstAct = searchInfo.activityIDs[1]
+        if not IsSecretValue(firstAct) and tonumber(firstAct) then
+            activityID = tonumber(firstAct)
+        end
+    end
+    local actMeta = activityID and GetCachedActivityInfo(activityID) or nil
 
     local regionKey, realmName = "PENDING", ""
     if hasLeader then
@@ -1144,6 +1724,12 @@ local function InspectSearchResult(resultID)
         dps = dps,
         hasLust = hasLust,
         hasCR = hasCR,
+        hasPlayerClass = hasPlayerClass,
+        activityID = activityID,
+        challengeMapID = actMeta and actMeta.mapID or nil,
+        dungeonCode = actMeta and actMeta.code or nil,
+        isMythicPlusActivity = actMeta and actMeta.isMythicPlusActivity or false,
+        isDungeonActivity = actMeta and actMeta.isDungeonActivity or false,
         memberDots = memberDots,
     }
 end
@@ -1195,6 +1781,164 @@ local function GroupNeedsRole(meta, role)
     if role == "TANK" then return meta.tanks < 1
     elseif role == "HEALER" then return meta.healers < 1
     else return meta.dps < 3 end
+end
+
+local isSyncingAdvancedFilter = false
+
+local function PushFiltersToBlizzardAdvancedFilter(syncDungeons)
+    if isSyncingAdvancedFilter then return end
+    if not C_LFGList or type(C_LFGList.GetAdvancedFilter) ~= "function" or type(C_LFGList.SaveAdvancedFilter) ~= "function" then
+        return
+    end
+    isSyncingAdvancedFilter = true
+    pcall(function()
+        local okG, adv = pcall(C_LFGList.GetAdvancedFilter)
+        if not okG or type(adv) ~= "table" then return end
+        local db = EnsureDB()
+        local myRole = GetPlayerActiveRoleAndLust()
+
+        if db.fitMyRole then
+            adv.needsTank = (myRole == "TANK")
+            adv.needsHealer = (myRole == "HEALER")
+            adv.needsDamage = (myRole == "DAMAGER")
+        else
+            adv.needsTank = false
+            adv.needsHealer = false
+            adv.needsDamage = false
+        end
+        adv.needsMyClass = (db.noDuplicateClass == true)
+        adv.hasTank = (db.hasTank == true)
+        adv.hasHealer = (db.hasHealer == true)
+        adv.difficultyMythicPlus = (db.mythicPlusOnly == true)
+
+        if syncDungeons then
+            local slots = GetSeasonDungeonSlots(false)
+            local seasonGroupLookup = {}
+            local allSeasonGroupIDs = {}
+            local selectedGroupIDs = {}
+            for _, slot in ipairs(slots) do
+                if slot.activityGroupID then
+                    seasonGroupLookup[slot.activityGroupID] = true
+                    allSeasonGroupIDs[#allSeasonGroupIDs + 1] = slot.activityGroupID
+                    if db.filteredDungeons[slot.code] or db.filteredDungeons[slot.mapID] then
+                        selectedGroupIDs[#selectedGroupIDs + 1] = slot.activityGroupID
+                    end
+                end
+            end
+            if #allSeasonGroupIDs > 0 then
+                local nextActs = {}
+                if type(adv.activities) == "table" then
+                    for _, gid in ipairs(adv.activities) do
+                        if not seasonGroupLookup[gid] then
+                            nextActs[#nextActs + 1] = gid
+                        end
+                    end
+                end
+                local toAdd = HasActiveDungeonFilters(db) and selectedGroupIDs or allSeasonGroupIDs
+                for _, gid in ipairs(toAdd) do
+                    nextActs[#nextActs + 1] = gid
+                end
+                adv.activities = nextActs
+            end
+        end
+
+        pcall(C_LFGList.SaveAdvancedFilter, adv)
+    end)
+    isSyncingAdvancedFilter = false
+end
+
+local function PullFiltersFromBlizzardAdvancedFilter()
+    if isSyncingAdvancedFilter then return end
+    if not C_LFGList or type(C_LFGList.GetAdvancedFilter) ~= "function" then
+        return
+    end
+    isSyncingAdvancedFilter = true
+    pcall(function()
+        local okG, adv = pcall(C_LFGList.GetAdvancedFilter)
+        if not okG or type(adv) ~= "table" then return end
+        local db = EnsureDB()
+        local myRole = GetPlayerActiveRoleAndLust()
+
+        if adv.needsTank ~= nil or adv.needsHealer ~= nil or adv.needsDamage ~= nil then
+            if myRole == "TANK" then
+                db.fitMyRole = (adv.needsTank == true)
+            elseif myRole == "HEALER" then
+                db.fitMyRole = (adv.needsHealer == true)
+            else
+                db.fitMyRole = (adv.needsDamage == true)
+            end
+        end
+        if adv.needsMyClass ~= nil then
+            db.noDuplicateClass = (adv.needsMyClass == true)
+        end
+        if adv.hasTank ~= nil then
+            db.hasTank = (adv.hasTank == true)
+        end
+        if adv.hasHealer ~= nil then
+            db.hasHealer = (adv.hasHealer == true)
+        end
+        if adv.difficultyMythicPlus ~= nil then
+            db.mythicPlusOnly = (adv.difficultyMythicPlus == true)
+        end
+        SyncLegacyPartyFitFromFlags(db)
+    end)
+    isSyncingAdvancedFilter = false
+end
+
+local function DoesMetaPassAllFilters(meta, db, myRole)
+    if not meta then return false end
+    if meta.regionKey ~= "PENDING" and db.enabledRegions[meta.regionKey] == false then
+        return false
+    end
+
+    local minScore = tonumber(db.minLeaderScore) or 0
+    if minScore > 0 and meta.leaderScore < minScore then
+        return false
+    end
+
+    if db.hideFullGroups and (meta.isFull or meta.isDelisted) then
+        return false
+    end
+
+    local spCat = _G.LFGListFrame and _G.LFGListFrame.SearchPanel and _G.LFGListFrame.SearchPanel.categoryID
+    local inDungeonContext = meta.isDungeonActivity or (spCat == 2)
+    if inDungeonContext and HasActiveDungeonFilters(db) then
+        local matched = (meta.dungeonCode and db.filteredDungeons[meta.dungeonCode])
+            or (meta.challengeMapID and db.filteredDungeons[meta.challengeMapID])
+        if not matched and (meta.activityID or meta.dungeonCode or meta.challengeMapID) then
+            return false
+        end
+    end
+
+    if db.fitMyRole and not GroupNeedsRole(meta, myRole) then
+        return false
+    end
+
+    if db.noDuplicateClass and meta.hasPlayerClass then
+        return false
+    end
+
+    if db.hasTank and (tonumber(meta.tanks) or 0) < 1 then
+        return false
+    end
+
+    if db.hasHealer and (tonumber(meta.healers) or 0) < 1 then
+        return false
+    end
+
+    local fitFilter = db.partyFitFilter or "ALL"
+    if (db.hasLust or fitFilter == "NEEDS_LUST" or fitFilter == "NEEDS_BOTH") and not meta.hasLust then
+        return false
+    end
+    if (db.hasCR or fitFilter == "NEEDS_CR" or fitFilter == "NEEDS_BOTH") and not meta.hasCR then
+        return false
+    end
+
+    if db.mythicPlusOnly and inDungeonContext and not meta.isMythicPlusActivity then
+        return false
+    end
+
+    return true
 end
 
 local function ResolveLiveResultID(entry)
@@ -1541,32 +2285,8 @@ function DynamicGroup:DoesResultPassFilters(resultID)
     if not db.lfgFilterEnabled then return true end
     local meta = InspectSearchResult(resultID)
     if not meta then return false end
-
-    if meta.regionKey ~= "PENDING" and db.enabledRegions[meta.regionKey] == false then
-        return false
-    end
-
-    local minScore = tonumber(db.minLeaderScore) or 0
-    if minScore > 0 and meta.leaderScore < minScore then
-        return false
-    end
-
-    if db.hideFullGroups and (meta.isFull or meta.isDelisted) then
-        return false
-    end
-
-    local fitFilter = db.partyFitFilter or "ALL"
-    if fitFilter ~= "ALL" then
-        if fitFilter == "NEEDS_LUST" then
-            if not meta.hasLust then return false end
-        elseif fitFilter == "NEEDS_CR" then
-            if not meta.hasCR then return false end
-        elseif fitFilter == "NEEDS_BOTH" then
-            if not (meta.hasLust and meta.hasCR) then return false end
-        end
-    end
-
-    return true
+    local myRole = GetPlayerActiveRoleAndLust()
+    return DoesMetaPassAllFilters(meta, db, myRole)
 end
 
 local function SuppressEUIGroupFinderIfNeeded()
@@ -1703,9 +2423,6 @@ local function FilterAndSortSearchPanelResults(panel, allowSort)
     end
 
     local myRole, playerHasLust = GetPlayerActiveRoleAndLust()
-    local minScore = tonumber(db.minLeaderScore) or 0
-    local fitFilter = db.partyFitFilter or "ALL"
-    local hideFull = db.hideFullGroups
     local sortMode = db.sortMode or "SMART_HIDE_FULL"
 
     local passesMap = {}
@@ -1715,32 +2432,7 @@ local function FilterAndSortSearchPanelResults(panel, allowSort)
         local meta = InspectSearchResult(resultID)
         if meta then
             metaCache[resultID] = meta
-            local keep = true
-
-            -- CRITICAL: Never drop groups whose leaderName/regionKey is still PENDING or secret
-            if meta.regionKey ~= "PENDING" and db.enabledRegions[meta.regionKey] == false then
-                keep = false
-            end
-
-            if keep and minScore > 0 and meta.leaderScore < minScore then
-                keep = false
-            end
-
-            if keep and hideFull and (meta.isFull or meta.isDelisted) then
-                keep = false
-            end
-
-            if keep then
-                if fitFilter == "NEEDS_LUST" then
-                    if not meta.hasLust then keep = false end
-                elseif fitFilter == "NEEDS_CR" then
-                    if not meta.hasCR then keep = false end
-                elseif fitFilter == "NEEDS_BOTH" then
-                    if not (meta.hasLust and meta.hasCR) then keep = false end
-                end
-            end
-
-            if keep then
+            if DoesMetaPassAllFilters(meta, db, myRole) then
                 passesMap[resultID] = true
             end
         end
@@ -1871,6 +2563,7 @@ end
 
 local activeDropdownMenu = nil
 local activeRegionPopover = nil
+local activeFilterPopover = nil
 local dropdownClickCatcher = nil
 
 local function EnsureDropdownClickCatcher()
@@ -1899,6 +2592,13 @@ local function CloseActiveDropdown()
         end
         activeRegionPopover.anchorBtn = nil
         activeRegionPopover:Hide()
+    end
+    if activeFilterPopover then
+        if activeFilterPopover.anchorBtn and activeFilterPopover.anchorBtn.SetChevronOpen then
+            activeFilterPopover.anchorBtn:SetChevronOpen(false)
+        end
+        activeFilterPopover.anchorBtn = nil
+        activeFilterPopover:Hide()
     end
     if dropdownClickCatcher then
         dropdownClickCatcher:Hide()
@@ -2232,6 +2932,232 @@ local function ShowRegionPopover(anchorBtn)
     activeRegionPopover:Show()
 end
 
+local FILTER_POPOVER_OPTIONS = {
+    { key = "fitMyRole",        badge = "[Role]",  color = { r = 0.204, g = 0.827, b = 0.600, hex = "FF34D399" }, label = "Fits My Role (Open Slot)" },
+    { key = "noDuplicateClass", badge = "[Class]", color = { r = 0.220, g = 0.741, b = 0.973, hex = "FF38BDF8" }, labelFn = function() local cName = UnitClass("player") or "Class"; return "No Duplicate " .. cName end },
+    { key = "hasTank",          badge = "[Tank]",  color = { r = 0.376, g = 0.647, b = 0.980, hex = "FF60A5FA" }, label = "Has Tank" },
+    { key = "hasHealer",        badge = "[Heal]",  color = { r = 0.176, g = 0.831, b = 0.749, hex = "FF2DD4BF" }, label = "Has Healer" },
+    { key = "hasLust",          badge = "[Lust]",  color = { r = 0.984, g = 0.573, b = 0.235, hex = "FFFB923C" }, label = "Has Bloodlust / Heroism" },
+    { key = "hasCR",            badge = "[CR]",    color = { r = 0.753, g = 0.518, b = 0.988, hex = "FFC084FC" }, label = "Has Battle Rez (CR)" },
+    { key = "mythicPlusOnly",   badge = "[M+]",    color = { r = 0.980, g = 0.800, b = 0.082, hex = "FFFACC15" }, label = "Mythic+ Difficulty Only" },
+}
+
+local function GetUtilityFilterSummary(db, compact)
+    local count = CountActiveUtilityFilters(db)
+    if count == 0 then
+        return compact and "Filter: All" or "All Groups (No Filter Active)", 0
+    end
+    if count == 1 then
+        if db.fitMyRole then return compact and "Filter: Role" or "Fits My Role (Open Slot)", 1 end
+        if db.noDuplicateClass then return compact and "Filter: NoDup" or ("No Duplicate " .. (UnitClass("player") or "Class")), 1 end
+        if db.hasTank then return compact and "Filter: Tank" or "Has Tank", 1 end
+        if db.hasHealer then return compact and "Filter: Heal" or "Has Healer", 1 end
+        if db.hasLust or db.partyFitFilter == "NEEDS_LUST" then return compact and "Filter: Lust" or "Has Bloodlust / Heroism", 1 end
+        if db.hasCR or db.partyFitFilter == "NEEDS_CR" then return compact and "Filter: CR" or "Has Battle Rez (CR)", 1 end
+        if db.mythicPlusOnly then return compact and "Filter: M+" or "Mythic+ Difficulty Only", 1 end
+    end
+    if compact then
+        return string.format("Filter: %d", count), count
+    end
+    return string.format("%d Composition Filters Active", count), count
+end
+
+local function ShowFilterPopover(anchorBtn)
+    EnsureDropdownClickCatcher()
+
+    if not activeFilterPopover then
+        local pop = CreateFrame("Frame", "DynamicGroupFilterPopover", UIParent, "BackdropTemplate")
+        pop:SetFrameStrata("FULLSCREEN_DIALOG")
+        pop:SetFrameLevel(100)
+        pop:SetWidth(256)
+        pop:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+
+        pop.headerLabel = pop:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(pop.headerLabel, 11, "")
+        pop.headerLabel:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, -9)
+        pop.headerLabel:SetText("Premade Group Filters")
+        pop.headerLabel:SetTextColor(0.96, 0.98, 1.00, 1)
+
+        local resetBtn = CreateFrame("Button", nil, pop, "BackdropTemplate")
+        resetBtn:SetSize(48, 18)
+        resetBtn:SetPoint("TOPRIGHT", pop, "TOPRIGHT", -8, -6)
+        resetBtn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        resetBtn:SetBackdropColor(0.10, 0.12, 0.16, 0.95)
+        resetBtn:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+        resetBtn.txt = resetBtn:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(resetBtn.txt, 10, "")
+        resetBtn.txt:SetPoint("CENTER", 0, 0)
+        resetBtn.txt:SetText("Reset")
+        resetBtn.txt:SetTextColor(0.84, 0.89, 0.95, 1)
+        resetBtn:SetScript("OnEnter", function(s)
+            local r, g, b = GetSuiteAccent()
+            s:SetBackdropBorderColor(r, g, b, 1)
+            s.txt:SetTextColor(1, 1, 1, 1)
+        end)
+        resetBtn:SetScript("OnLeave", function(s)
+            s:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+            s.txt:SetTextColor(0.84, 0.89, 0.95, 1)
+        end)
+        resetBtn:SetScript("OnClick", function()
+            local db = EnsureDB()
+            for _, opt in ipairs(FILTER_POPOVER_OPTIONS) do
+                db[opt.key] = false
+            end
+            SyncLegacyPartyFitFromFlags(db)
+            PushFiltersToBlizzardAdvancedFilter(false)
+            pop:RefreshRows()
+            DynamicGroup:RefreshLFGResults()
+            DynamicGroup:RefreshConfigUI()
+            if _G.DynamicSuite and type(_G.DynamicSuite.RefreshHeaderStatus) == "function" then
+                pcall(_G.DynamicSuite.RefreshHeaderStatus)
+            end
+        end)
+        pop.resetBtn = resetBtn
+
+        pop.divider = pop:CreateTexture(nil, "ARTWORK")
+        pop.divider:SetHeight(1)
+        pop.divider:SetPoint("TOPLEFT", pop, "TOPLEFT", 6, -28)
+        pop.divider:SetPoint("TOPRIGHT", pop, "TOPRIGHT", -6, -28)
+        pop.divider:SetColorTexture(0.16, 0.19, 0.25, 0.90)
+
+        pop.rows = {}
+        local rowH = 26
+        for i, opt in ipairs(FILTER_POPOVER_OPTIONS) do
+            local row = CreateFrame("Button", nil, pop)
+            row:SetHeight(rowH)
+            row:SetPoint("TOPLEFT", pop, "TOPLEFT", 5, -32 - ((i - 1) * rowH))
+            row:SetPoint("TOPRIGHT", pop, "TOPRIGHT", -5, -32 - ((i - 1) * rowH))
+
+            row.bg = row:CreateTexture(nil, "BACKGROUND")
+            row.bg:SetAllPoints()
+            row.bg:SetColorTexture(1, 1, 1, 0)
+
+            row.check = row:CreateTexture(nil, "ARTWORK")
+            row.check:SetSize(11, 11)
+            row.check:SetPoint("LEFT", row, "LEFT", 8, 0)
+            row.check:SetTexture(ICON_CHECK)
+            DisableTexPixelSnap(row.check)
+
+            row.dot = row:CreateTexture(nil, "ARTWORK")
+            row.dot:SetSize(6, 6)
+            row.dot:SetPoint("LEFT", row, "LEFT", 10, 0)
+            row.dot:SetTexture("Interface\\Buttons\\WHITE8x8")
+            DisableTexPixelSnap(row.dot)
+
+            row.badgeText = row:CreateFontString(nil, "OVERLAY")
+            SetSafeFont(row.badgeText, 10, "OUTLINE")
+            row.badgeText:SetPoint("LEFT", row, "LEFT", 26, 0)
+            row.badgeText:SetWidth(48)
+            row.badgeText:SetJustifyH("LEFT")
+
+            row.titleText = row:CreateFontString(nil, "OVERLAY")
+            SetSafeFont(row.titleText, 11, "")
+            row.titleText:SetPoint("LEFT", row.badgeText, "RIGHT", 6, 0)
+            row.titleText:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+            row.titleText:SetJustifyH("LEFT")
+            row.titleText:SetWordWrap(false)
+
+            row:SetScript("OnEnter", function(s)
+                local col = opt.color
+                s.bg:SetColorTexture(col.r, col.g, col.b, 0.16)
+            end)
+            row:SetScript("OnLeave", function(s)
+                local isOn = (EnsureDB()[opt.key] == true)
+                local col = opt.color
+                if isOn then
+                    s.bg:SetColorTexture(col.r, col.g, col.b, 0.07)
+                else
+                    s.bg:SetColorTexture(1, 1, 1, 0)
+                end
+            end)
+            row:SetScript("OnClick", function()
+                local db = EnsureDB()
+                db[opt.key] = not (db[opt.key] == true)
+                SyncLegacyPartyFitFromFlags(db)
+                PushFiltersToBlizzardAdvancedFilter(false)
+                pop:RefreshRows()
+                DynamicGroup:RefreshLFGResults()
+                DynamicGroup:RefreshConfigUI()
+                if _G.DynamicSuite and type(_G.DynamicSuite.RefreshHeaderStatus) == "function" then
+                    pcall(_G.DynamicSuite.RefreshHeaderStatus)
+                end
+            end)
+
+            pop.rows[i] = { frame = row, opt = opt }
+        end
+
+        pop:SetHeight(32 + (#FILTER_POPOVER_OPTIONS * rowH) + 6)
+
+        function pop:RefreshRows()
+            local db = EnsureDB()
+            local ar, ag, ab = GetSuiteAccent()
+            self:SetBackdropColor(0.07, 0.08, 0.11, 0.98)
+            self:SetBackdropBorderColor(ar, ag, ab, 0.92)
+            SetSafeFont(self.headerLabel, 11, "")
+            SetSafeFont(self.resetBtn.txt, 10, "")
+
+            for _, item in ipairs(self.rows) do
+                local r = item.frame
+                local opt = item.opt
+                local col = opt.color
+                local isOn = (db[opt.key] == true)
+                local lbl = opt.labelFn and opt.labelFn() or opt.label
+
+                SetSafeFont(r.badgeText, 10, "OUTLINE")
+                SetSafeFont(r.titleText, 11, "")
+                r.badgeText:SetText("|c" .. col.hex .. opt.badge .. "|r")
+                r.titleText:SetText(lbl or "")
+
+                if isOn then
+                    r.check:SetVertexColor(col.r, col.g, col.b, 1)
+                    r.check:Show()
+                    r.dot:Hide()
+                    r.titleText:SetTextColor(0.96, 0.98, 1.00, 1)
+                    r.bg:SetColorTexture(col.r, col.g, col.b, 0.07)
+                else
+                    r.check:Hide()
+                    r.dot:SetVertexColor(col.r, col.g, col.b, 0.85)
+                    r.dot:Show()
+                    r.titleText:SetTextColor(0.62, 0.68, 0.76, 1)
+                    r.bg:SetColorTexture(1, 1, 1, 0)
+                end
+            end
+        end
+
+        activeFilterPopover = pop
+    end
+
+    if activeFilterPopover:IsShown() and activeFilterPopover.anchorBtn == anchorBtn then
+        CloseActiveDropdown()
+        return
+    end
+
+    CloseActiveDropdown()
+
+    activeFilterPopover.anchorBtn = anchorBtn
+    if anchorBtn.SetChevronOpen then
+        anchorBtn:SetChevronOpen(true)
+    end
+    activeFilterPopover:RefreshRows()
+    activeFilterPopover:ClearAllPoints()
+    local anchorBottom = anchorBtn.GetBottom and anchorBtn:GetBottom() or 400
+    if anchorBottom < 245 then
+        activeFilterPopover:SetPoint("BOTTOMLEFT", anchorBtn, "TOPLEFT", 0, 2)
+    else
+        activeFilterPopover:SetPoint("TOPLEFT", anchorBtn, "BOTTOMLEFT", 0, -2)
+    end
+    dropdownClickCatcher:Show()
+    activeFilterPopover:Show()
+end
+
 function DynamicGroup:EnsureLFGMiniBar()
     if self.lfgMiniBar then return self.lfgMiniBar end
     if not _G.LFGListFrame or not _G.LFGListFrame.SearchPanel then return nil end
@@ -2283,6 +3209,8 @@ function DynamicGroup:EnsureLFGMiniBar()
                 if isOpen then
                     self:SetBackdropBorderColor(r, g, b, 1)
                     self.chevron:SetVertexColor(r, g, b, 1)
+                elseif self.RefreshFilterBtnStyle then
+                    self:RefreshFilterBtnStyle()
                 else
                     self:SetBackdropBorderColor(0.15, 0.17, 0.21, 0.95)
                     self.chevron:SetVertexColor(0.68, 0.74, 0.82, 1)
@@ -2304,6 +3232,8 @@ function DynamicGroup:EnsureLFGMiniBar()
                 if s.chevron then s.chevron:SetVertexColor(r, g, b, 1) end
             elseif s.RefreshOneClickStyle then
                 s:RefreshOneClickStyle()
+            elseif s.RefreshFilterBtnStyle then
+                s:RefreshFilterBtnStyle()
             else
                 s:SetBackdropBorderColor(0.15, 0.17, 0.21, 0.95)
                 if s.chevron then s.chevron:SetVertexColor(0.68, 0.74, 0.82, 1) end
@@ -2371,31 +3301,46 @@ function DynamicGroup:EnsureLFGMiniBar()
         end, "TOPLEFT")
     end)
 
-    -- 3. Party Utility (Bloodlust & Battle Rez) On-the-Fly Dropdown Button
+    -- 3. Multi-Toggle Composition & Blizzard Filter Popover Button
     bar.roleBtn = CreateMiniPill(bar, 74, "LEFT", bar.scoreBtn, "RIGHT", 3, true)
-    local roleMenuOptions = {
-        { value = "ALL",        label = "All Groups (No Utility Filter)" },
-        { value = "NEEDS_LUST", label = "Has Bloodlust / Heroism" },
-        { value = "NEEDS_CR",   label = "Has Battle Rez (CR)" },
-        { value = "NEEDS_BOTH", label = "Has Both Lust & Battle Rez" },
-    }
+    function bar.roleBtn:RefreshFilterBtnStyle()
+        local db = EnsureDB()
+        local labelTxt, activeFilters = GetUtilityFilterSummary(db, true)
+        if self.label then self.label:SetText(labelTxt) end
+        local r, g, b = GetSuiteAccent()
+        if activeFilters > 0 then
+            self:SetBackdropBorderColor(r, g, b, 0.80)
+            if self.chevron then self.chevron:SetVertexColor(r, g, b, 1) end
+        else
+            self:SetBackdropBorderColor(0.15, 0.17, 0.21, 0.95)
+            if self.chevron then self.chevron:SetVertexColor(0.68, 0.74, 0.82, 1) end
+        end
+    end
     bar.roleBtn:HookScript("OnEnter", function(s)
         if _G.GameTooltip then
+            local db = EnsureDB()
             _G.GameTooltip:SetOwner(s, "ANCHOR_TOP")
             _G.GameTooltip:ClearLines()
-            _G.GameTooltip:AddLine("Party Utility Filter (Lust & CR)", 1, 1, 1)
-            _G.GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Filter groups by Bloodlust/Heroism or Battle Resurrection (CR).|r", 0.886, 0.910, 0.941, true)
+            _G.GameTooltip:AddLine("Premade Group Filters", 1, 1, 1)
+            local anyShown = false
+            for _, opt in ipairs(FILTER_POPOVER_OPTIONS) do
+                if db[opt.key] == true then
+                    anyShown = true
+                    local lbl = opt.labelFn and opt.labelFn() or opt.label
+                    _G.GameTooltip:AddDoubleLine(lbl, "|cFF34D399Active|r", 0.886, 0.910, 0.941, 0.204, 0.827, 0.600)
+                end
+            end
+            if not anyShown then
+                _G.GameTooltip:AddLine("Showing all group compositions and difficulties.", 0.58, 0.64, 0.72)
+            end
+            _G.GameTooltip:AddLine(" ")
+            _G.GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open multi-toggle group filter menu.|r", 0.886, 0.910, 0.941, true)
             _G.GameTooltip:Show()
         end
     end)
     bar.roleBtn:SetScript("OnClick", function(s)
         if _G.GameTooltip then _G.GameTooltip:Hide() end
-        local db = EnsureDB()
-        ShowObsidianDropdown(s, roleMenuOptions, db.partyFitFilter or "ALL", function(val)
-            db.partyFitFilter = val
-            DynamicGroup:RefreshLFGResults()
-            DynamicGroup:RefreshConfigUI()
-        end, "TOPLEFT")
+        ShowFilterPopover(s)
     end)
 
     -- 4. Dedicated 1-Click Sign-Up Toggle Pill ([ 1-Click: ON ] / [ 1-Click: OFF ])
@@ -2478,8 +3423,486 @@ function DynamicGroup:EnsureLFGMiniBar()
     bar.openBtn = cogBtn
 
     self.lfgMiniBar = bar
+    self:EnsurePortalBar()
     self:UpdateLFGMiniBar()
     return bar
+end
+
+local function SetPortalTileActiveBorder(tile, isActive, ar, ag, ab)
+    if not tile or not tile.activeEdges then return end
+    for _, edge in ipairs(tile.activeEdges) do
+        if isActive then
+            -- Blaze Orange #F97316 highlight for active filtered dungeons
+            edge:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+            edge:Show()
+        else
+            edge:Hide()
+        end
+    end
+end
+
+local function PopulateDungeonTileTooltip(tile)
+    if not _G.GameTooltip or not tile or not tile.slotData then return end
+    local slot = tile.slotData
+    local db = EnsureDB()
+    local isFiltered = (db.filteredDungeons[slot.code] == true) or (slot.mapID and db.filteredDungeons[slot.mapID] == true)
+    local bestLevel, bestScore, isTimed = GetPlayerBestForDungeon(slot.mapID)
+    local _, _, _, accHex = GetSuiteAccent()
+
+    _G.GameTooltip:SetOwner(tile, "ANCHOR_TOP")
+    _G.GameTooltip:ClearLines()
+    _G.GameTooltip:AddDoubleLine(slot.name or "Season Dungeon", "[" .. tostring(slot.code or "M+") .. "]", 1, 1, 1, 0.58, 0.66, 0.78)
+
+    if bestLevel > 0 then
+        local timedSuffix = isTimed and " |cFF22C55E(Timed)|r" or " |cFFFACC15(Over Time)|r"
+        local scorePart = (bestScore > 0) and ("  |cFF94A3B8Score: " .. tostring(bestScore) .. "|r") or ""
+        _G.GameTooltip:AddLine("Season Best: |cFF34D399+" .. tostring(bestLevel) .. "|r" .. timedSuffix .. scorePart, 0.886, 0.910, 0.941)
+    else
+        _G.GameTooltip:AddLine("Season Best: |cFF94A3B8No timed key recorded yet|r", 0.886, 0.910, 0.941)
+    end
+
+    if slot.spellKnown then
+        local st, dur, enabled = SafeGetSpellCooldown(slot.spellID)
+        if enabled and st > 0 and dur > 1.5 and _G.GetTime then
+            local rem = math.max(0, (st + dur) - _G.GetTime())
+            local mins = math.floor(rem / 60)
+            local secs = math.floor(rem % 60)
+            _G.GameTooltip:AddLine(string.format("Dungeon Teleport: |cFFFACC15Cooldown (%dm %02ds)|r", mins, secs), 0.886, 0.910, 0.941)
+        else
+            _G.GameTooltip:AddLine("Dungeon Teleport: |cFF22C55EReady|r", 0.886, 0.910, 0.941)
+        end
+    else
+        _G.GameTooltip:AddLine("Dungeon Teleport: |cFF94A3B8Not learned yet (complete +10 in time)|r", 0.886, 0.910, 0.941)
+    end
+
+    _G.GameTooltip:AddDoubleLine(
+        "LFG Dungeon Filter:",
+        isFiltered and "|cFFF97316Filtered (Shown)|r" or "|cFF94A3B8Unfiltered|r",
+        0.64, 0.70, 0.78,
+        1, 1, 1
+    )
+
+    _G.GameTooltip:AddLine(" ")
+    if slot.spellKnown then
+        _G.GameTooltip:AddLine("|cFF22C55ELeft-Click:|r |cFFE2E8F0Cast Dungeon Teleport.|r", 0.886, 0.910, 0.941)
+        _G.GameTooltip:AddLine("|cFFF97316Right-Click:|r |cFFE2E8F0Toggle LFG filter for this dungeon.|r", 0.886, 0.910, 0.941)
+    else
+        _G.GameTooltip:AddLine("|cFF22C55ELeft-Click / Right-Click:|r |cFFE2E8F0Toggle LFG filter for this dungeon.|r", 0.886, 0.910, 0.941)
+    end
+    _G.GameTooltip:AddLine("|cFF" .. accHex .. "Shift + Right-Click:|r |cFFE2E8F0Filter exclusively to this dungeon.|r", 0.886, 0.910, 0.941)
+    _G.GameTooltip:Show()
+end
+
+function DynamicGroup:EnsurePortalBar()
+    if self.portalBar then return self.portalBar end
+    local bar = self.lfgMiniBar
+    if not bar or not _G.LFGListFrame or not _G.LFGListFrame.SearchPanel then return nil end
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingPortalBarUpdate = true
+        return nil
+    end
+
+    local searchPanel = _G.LFGListFrame.SearchPanel
+    local pbar = CreateFrame("Frame", "DynamicGroupPortalBar", searchPanel, "BackdropTemplate")
+    pbar:SetFrameStrata("HIGH")
+    pbar:SetFrameLevel((bar:GetFrameLevel() or 20) + 2)
+    pbar:SetHeight(32)
+    pbar:SetPoint("BOTTOMLEFT", bar, "TOPLEFT", 0, 2)
+    pbar:SetPoint("BOTTOMRIGHT", bar, "TOPRIGHT", 0, 2)
+    pbar:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    pbar:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- Dark Obsidian #0B0D12
+    local ar, ag, ab = GetSuiteAccent()
+    pbar:SetBackdropBorderColor(ar, ag, ab, 0.45)
+
+    -- Left Pill: Owned Keystone
+    local keyBtn = CreateFrame("Button", nil, pbar, "BackdropTemplate")
+    keyBtn:SetSize(82, 24)
+    keyBtn:SetPoint("LEFT", pbar, "LEFT", 4, 0)
+    keyBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    keyBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+    keyBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+    keyBtn.label = keyBtn:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(keyBtn.label, 9, "")
+    keyBtn.label:SetPoint("LEFT", keyBtn, "LEFT", 4, 0)
+    keyBtn.label:SetPoint("RIGHT", keyBtn, "RIGHT", -4, 0)
+    keyBtn.label:SetJustifyH("CENTER")
+    keyBtn.label:SetWordWrap(false)
+    keyBtn:SetScript("OnEnter", function(s)
+        local r, g, b = GetSuiteAccent()
+        s:SetBackdropBorderColor(r, g, b, 1)
+        if _G.GameTooltip then
+            local kMapID, kLvl, kCode, kName = GetOwnedKeystoneInfo()
+            _G.GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            _G.GameTooltip:ClearLines()
+            _G.GameTooltip:AddLine("Your Mythic+ Keystone", 1, 1, 1)
+            if kMapID and kLvl > 0 and kName then
+                _G.GameTooltip:AddLine(string.format("+%d %s [%s]", kLvl, kName, kCode or "M+"), r, g, b)
+                _G.GameTooltip:AddLine(" ")
+                _G.GameTooltip:AddLine("|cFF22C55ELeft-Click:|r |cFFE2E8F0Filter Premade Groups to your keystone dungeon.|r", 0.886, 0.910, 0.941, true)
+            else
+                _G.GameTooltip:AddLine("No Mythic+ keystone found in your bags.", 0.58, 0.64, 0.72)
+            end
+            _G.GameTooltip:Show()
+        end
+    end)
+    keyBtn:SetScript("OnLeave", function(s)
+        if _G.GameTooltip then _G.GameTooltip:Hide() end
+        if DynamicGroup.UpdatePortalBarVisuals then DynamicGroup:UpdatePortalBarVisuals() end
+    end)
+    keyBtn:SetScript("OnClick", function()
+        local kMapID, kLvl, kCode = GetOwnedKeystoneInfo()
+        if not kCode then
+            PrintMsg("No Mythic+ keystone found in your bags.")
+            return
+        end
+        local db = EnsureDB()
+        local onlyThis = (db.filteredDungeons[kCode] == true)
+        if onlyThis then
+            for k, v in pairs(db.filteredDungeons) do
+                if v and k ~= kCode then
+                    onlyThis = false
+                    break
+                end
+            end
+        end
+        wipe(db.filteredDungeons)
+        if not onlyThis then
+            db.filteredDungeons[kCode] = true
+        end
+        PushFiltersToBlizzardAdvancedFilter(true)
+        DynamicGroup:RefreshLFGResults()
+    end)
+    pbar.keyBtn = keyBtn
+
+    -- Right Quick "All" Clear Button
+    local allBtn = CreateFrame("Button", nil, pbar, "BackdropTemplate")
+    allBtn:SetSize(26, 24)
+    allBtn:SetPoint("RIGHT", pbar, "RIGHT", -4, 0)
+    allBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    allBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+    allBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+    allBtn.label = allBtn:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(allBtn.label, 9, "")
+    allBtn.label:SetPoint("CENTER", 0, 0)
+    allBtn.label:SetText("All")
+    allBtn:SetScript("OnEnter", function(s)
+        local r, g, b = GetSuiteAccent()
+        s:SetBackdropBorderColor(r, g, b, 1)
+        if _G.GameTooltip then
+            _G.GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            _G.GameTooltip:ClearLines()
+            _G.GameTooltip:AddLine("All Season Dungeons", 1, 1, 1)
+            _G.GameTooltip:AddLine("|cFF22C55ELeft-Click:|r |cFFE2E8F0Clear active dungeon filters and show all dungeons.|r", 0.886, 0.910, 0.941, true)
+            _G.GameTooltip:Show()
+        end
+    end)
+    allBtn:SetScript("OnLeave", function()
+        if _G.GameTooltip then _G.GameTooltip:Hide() end
+        if DynamicGroup.UpdatePortalBarVisuals then DynamicGroup:UpdatePortalBarVisuals() end
+    end)
+    allBtn:SetScript("OnClick", function()
+        local db = EnsureDB()
+        wipe(db.filteredDungeons)
+        PushFiltersToBlizzardAdvancedFilter(true)
+        DynamicGroup:RefreshLFGResults()
+    end)
+    pbar.allBtn = allBtn
+
+    -- 8 SecureActionButtonTemplate Season Dungeon Tiles
+    pbar.tiles = {}
+    for i = 1, 8 do
+        local tile = CreateFrame("Button", "DynamicGroupPortalTile" .. i, pbar, "SecureActionButtonTemplate,BackdropTemplate")
+        tile:SetSize(23, 26)
+        tile:RegisterForClicks("AnyUp", "AnyDown")
+        tile:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        tile:SetBackdropColor(0.06, 0.07, 0.10, 0.96)
+        tile:SetBackdropBorderColor(0.15, 0.18, 0.24, 0.95)
+
+        tile.icon = tile:CreateTexture(nil, "ARTWORK")
+        tile.icon:SetPoint("TOPLEFT", tile, "TOPLEFT", 2, -2)
+        tile.icon:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", -2, 2)
+        tile.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        DisableTexPixelSnap(tile.icon)
+
+        tile.shade = tile:CreateTexture(nil, "ARTWORK", nil, 1)
+        tile.shade:SetAllPoints(tile.icon)
+        tile.shade:SetColorTexture(0, 0, 0, 0.34)
+
+        tile.cooldown = CreateFrame("Cooldown", "DynamicGroupPortalTileCD" .. i, tile, "CooldownFrameTemplate")
+        tile.cooldown:SetAllPoints(tile.icon)
+        if tile.cooldown.SetDrawEdge then tile.cooldown:SetDrawEdge(false) end
+
+        tile.codeText = tile:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(tile.codeText, 8, "OUTLINE")
+        tile.codeText:SetPoint("TOP", tile, "TOP", 0, -2)
+        tile.codeText:SetTextColor(0.96, 0.98, 1.00, 1)
+
+        tile.bestText = tile:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(tile.bestText, 8, "OUTLINE")
+        tile.bestText:SetPoint("BOTTOM", tile, "BOTTOM", 0, 2)
+
+        -- 2px Blaze Orange Active Filter Border Edges
+        local edges = {}
+        local topE = tile:CreateTexture(nil, "OVERLAY")
+        topE:SetHeight(2); topE:SetPoint("TOPLEFT", tile, "TOPLEFT", 0, 0); topE:SetPoint("TOPRIGHT", tile, "TOPRIGHT", 0, 0); topE:Hide()
+        local botE = tile:CreateTexture(nil, "OVERLAY")
+        botE:SetHeight(2); botE:SetPoint("BOTTOMLEFT", tile, "BOTTOMLEFT", 0, 0); botE:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", 0, 0); botE:Hide()
+        local leftE = tile:CreateTexture(nil, "OVERLAY")
+        leftE:SetWidth(2); leftE:SetPoint("TOPLEFT", tile, "TOPLEFT", 0, -2); leftE:SetPoint("BOTTOMLEFT", tile, "BOTTOMLEFT", 0, 2); leftE:Hide()
+        local rightE = tile:CreateTexture(nil, "OVERLAY")
+        rightE:SetWidth(2); rightE:SetPoint("TOPRIGHT", tile, "TOPRIGHT", 0, -2); rightE:SetPoint("BOTTOMRIGHT", tile, "BOTTOMRIGHT", 0, 2); rightE:Hide()
+        edges[1], edges[2], edges[3], edges[4] = topE, botE, leftE, rightE
+        tile.activeEdges = edges
+
+        tile:SetScript("OnEnter", function(s)
+            local r, g, b = GetSuiteAccent()
+            s:SetBackdropBorderColor(r, g, b, 1)
+            PopulateDungeonTileTooltip(s)
+        end)
+        tile:SetScript("OnLeave", function(s)
+            if _G.GameTooltip then _G.GameTooltip:Hide() end
+            s:SetBackdropBorderColor(0.15, 0.18, 0.24, 0.95)
+        end)
+
+        tile:SetScript("PostClick", function(selfTile, button, down)
+            local useKeyDown = (type(_G.GetCVarBool) == "function" and _G.GetCVarBool("ActionButtonUseKeyDown")) and true or false
+            local isDown = (down == true)
+            if isDown ~= useKeyDown then return end
+
+            local isRight = (button == "RightButton")
+            local isFilterClick = isRight or (button == "LeftButton" and not selfTile.spellKnown)
+            if not isFilterClick or not selfTile.dungeonCode then return end
+
+            local db = EnsureDB()
+            if isRight and IsShiftKeyDown and IsShiftKeyDown() then
+                local alreadySolo = (db.filteredDungeons[selfTile.dungeonCode] == true)
+                if alreadySolo then
+                    for k, v in pairs(db.filteredDungeons) do
+                        if v and k ~= selfTile.dungeonCode then alreadySolo = false; break end
+                    end
+                end
+                wipe(db.filteredDungeons)
+                if not alreadySolo then
+                    db.filteredDungeons[selfTile.dungeonCode] = true
+                end
+            else
+                if db.filteredDungeons[selfTile.dungeonCode] then
+                    db.filteredDungeons[selfTile.dungeonCode] = nil
+                else
+                    db.filteredDungeons[selfTile.dungeonCode] = true
+                end
+            end
+
+            PushFiltersToBlizzardAdvancedFilter(true)
+            DynamicGroup:RefreshLFGResults()
+            if _G.GameTooltip and _G.GameTooltip:IsOwned(selfTile) then
+                PopulateDungeonTileTooltip(selfTile)
+            end
+        end)
+
+        pbar.tiles[i] = tile
+    end
+
+    local function LayoutPortalTiles()
+        if InCombatLockdown and InCombatLockdown() then
+            DynamicGroup.pendingPortalBarUpdate = true
+            return
+        end
+        local totalW = pbar:GetWidth() or 0
+        if totalW < 150 then
+            totalW = (bar:GetWidth() and bar:GetWidth() > 150) and bar:GetWidth() or 326
+        end
+        local keyW = keyBtn:GetWidth() or 82
+        local allW = allBtn:GetWidth() or 26
+        local availW = totalW - 4 - keyW - 4 - 4 - allW - 4
+        local gap = 2
+        local tileW = math.max(18, math.floor((availW - (gap * 7)) / 8))
+        local rowW = (tileW * 8) + (gap * 7)
+        local startOffset = math.max(4, math.floor((availW - rowW) * 0.5) + 4)
+
+        for idx = 1, 8 do
+            local tile = pbar.tiles[idx]
+            tile:ClearAllPoints()
+            tile:SetSize(tileW, 26)
+            if idx == 1 then
+                tile:SetPoint("LEFT", keyBtn, "RIGHT", startOffset, 0)
+            else
+                tile:SetPoint("LEFT", pbar.tiles[idx - 1], "RIGHT", gap, 0)
+            end
+        end
+    end
+    pbar.LayoutPortalTiles = LayoutPortalTiles
+    pbar:SetScript("OnSizeChanged", LayoutPortalTiles)
+    LayoutPortalTiles()
+
+    self.portalBar = pbar
+    self:UpdatePortalBar()
+    return pbar
+end
+
+function DynamicGroup:UpdatePortalBarVisuals()
+    local pbar = self.portalBar
+    if not pbar then return end
+    local db = EnsureDB()
+    local ar, ag, ab, accHex = GetSuiteAccent()
+    pbar:SetBackdropBorderColor(ar, ag, ab, 0.45)
+
+    local slots = GetSeasonDungeonSlots(false)
+    local hasAnyFilter = HasActiveDungeonFilters(db)
+
+    if pbar.keyBtn and pbar.keyBtn.label then
+        local kMapID, kLvl, kCode = GetOwnedKeystoneInfo()
+        if kMapID and kLvl > 0 and kCode then
+            pbar.keyBtn.label:SetText("|c" .. accHex .. "Key:|r |cFFFFFFFF+" .. tostring(kLvl) .. " " .. tostring(kCode) .. "|r")
+            local isKeyFiltered = (db.filteredDungeons[kCode] == true)
+            if isKeyFiltered then
+                pbar.keyBtn:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+            else
+                pbar.keyBtn:SetBackdropBorderColor(ar, ag, ab, 0.65)
+            end
+        else
+            pbar.keyBtn.label:SetText("|cFF64748BKey: None|r")
+            pbar.keyBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+        end
+    end
+
+    if pbar.allBtn and pbar.allBtn.label then
+        if hasAnyFilter then
+            pbar.allBtn:SetBackdropColor(0.16, 0.09, 0.04, 0.96)
+            pbar.allBtn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.90)
+            pbar.allBtn.label:SetTextColor(1.0, 0.62, 0.28, 1)
+        else
+            pbar.allBtn:SetBackdropColor(ar * 0.18, ag * 0.18, ab * 0.18, 0.96)
+            pbar.allBtn:SetBackdropBorderColor(ar, ag, ab, 0.85)
+            pbar.allBtn.label:SetTextColor(1, 1, 1, 1)
+        end
+    end
+
+    for idx = 1, 8 do
+        local tile = pbar.tiles[idx]
+        local slot = slots[idx]
+        if tile and slot then
+            tile.slotData = slot
+            tile.dungeonCode = slot.code
+            tile.spellKnown = slot.spellKnown and true or false
+
+            if tile.icon then
+                tile.icon:SetTexture(slot.icon or 136095)
+                if tile.icon.SetDesaturated then
+                    tile.icon:SetDesaturated(not slot.spellKnown)
+                end
+                tile.icon:SetVertexColor(slot.spellKnown and 1 or 0.72, slot.spellKnown and 1 or 0.72, slot.spellKnown and 1 or 0.72, 1)
+            end
+
+            if tile.codeText then
+                SetSafeFont(tile.codeText, 8, "OUTLINE")
+                tile.codeText:SetText(slot.code or "M+")
+            end
+
+            local bestLevel, _, isTimed = GetPlayerBestForDungeon(slot.mapID)
+            if tile.bestText then
+                SetSafeFont(tile.bestText, 8, "OUTLINE")
+                if bestLevel > 0 then
+                    tile.bestText:SetText("+" .. tostring(bestLevel))
+                    if isTimed then
+                        tile.bestText:SetTextColor(0.204, 0.827, 0.600, 1)
+                    else
+                        tile.bestText:SetTextColor(0.980, 0.800, 0.082, 1)
+                    end
+                else
+                    tile.bestText:SetText("--")
+                    tile.bestText:SetTextColor(0.62, 0.68, 0.76, 1)
+                end
+            end
+
+            local st, dur, enabled = SafeGetSpellCooldown(slot.spellID)
+            if tile.cooldown and tile.cooldown.SetCooldown then
+                if slot.spellKnown and enabled and st > 0 and dur > 1.5 then
+                    pcall(tile.cooldown.SetCooldown, tile.cooldown, st, dur)
+                elseif tile.cooldown.Clear then
+                    pcall(tile.cooldown.Clear, tile.cooldown)
+                else
+                    pcall(tile.cooldown.SetCooldown, tile.cooldown, 0, 0)
+                end
+            end
+
+            local isFiltered = (db.filteredDungeons[slot.code] == true) or (slot.mapID and db.filteredDungeons[slot.mapID] == true)
+            SetPortalTileActiveBorder(tile, isFiltered, ar, ag, ab)
+        end
+    end
+end
+
+function DynamicGroup:UpdatePortalBar(forceSeasonRefresh)
+    if forceSeasonRefresh then
+        seasonSlotsCache = GetSeasonDungeonSlots(true)
+    end
+    local db = EnsureDB()
+    local shouldShow = (db.showPortalBar ~= false) and not IsYieldingSharedHooks() and (self.lfgMiniBar and self.lfgMiniBar:IsShown())
+
+    if not self.portalBar then
+        if shouldShow then
+            if InCombatLockdown and InCombatLockdown() then
+                self.pendingPortalBarUpdate = true
+                return
+            end
+            self:EnsurePortalBar()
+        end
+        if not self.portalBar then return end
+    end
+
+    local pbar = self.portalBar
+    self:UpdatePortalBarVisuals()
+
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingPortalBarUpdate = true
+        return
+    end
+
+    if shouldShow then
+        if not pbar:IsShown() then pbar:Show() end
+        local slots = GetSeasonDungeonSlots(false)
+        for idx = 1, 8 do
+            local tile = pbar.tiles[idx]
+            local slot = slots[idx]
+            if tile and slot then
+                local spellTarget = nil
+                if slot.spellKnown then
+                    spellTarget = SafeGetSpellName(slot.spellID) or slot.spellID
+                end
+                if tile.GetAttribute and tile:GetAttribute("spell1") ~= spellTarget then
+                    tile:SetAttribute("type1", spellTarget and "spell" or nil)
+                    tile:SetAttribute("spell1", spellTarget)
+                elseif spellTarget and tile.GetAttribute and tile:GetAttribute("type1") ~= "spell" then
+                    tile:SetAttribute("type1", "spell")
+                    tile:SetAttribute("spell1", spellTarget)
+                end
+                tile:SetAttribute("type2", nil)
+                if not tile:IsShown() then tile:Show() end
+            elseif tile and tile:IsShown() then
+                tile:Hide()
+            end
+        end
+        if pbar.LayoutPortalTiles then pbar.LayoutPortalTiles() end
+    else
+        if pbar:IsShown() then pbar:Hide() end
+    end
+    self.pendingPortalBarUpdate = false
 end
 
 function DynamicGroup:UpdateLFGMiniBar()
@@ -2488,6 +3911,7 @@ function DynamicGroup:UpdateLFGMiniBar()
     if IsYieldingSharedHooks() then
         CloseActiveDropdown()
         bar:Hide()
+        self:UpdatePortalBar()
         return
     elseif not bar:IsShown() then
         bar:Show()
@@ -2504,14 +3928,8 @@ function DynamicGroup:UpdateLFGMiniBar()
         bar.scoreBtn.label:SetText(string.format("IO: %d+", tonumber(db.minLeaderScore) or 0))
     end
 
-    local roleLabels = {
-        ALL = "Util: All",
-        NEEDS_LUST = "Util: Lust",
-        NEEDS_CR = "Util: CR",
-        NEEDS_BOTH = "Util: Both",
-    }
-    if bar.roleBtn and bar.roleBtn.label then
-        bar.roleBtn.label:SetText(roleLabels[db.partyFitFilter or "ALL"] or "Util: All")
+    if bar.roleBtn and bar.roleBtn.RefreshFilterBtnStyle then
+        bar.roleBtn:RefreshFilterBtnStyle()
     end
     if bar.oneClickBtn and bar.oneClickBtn.RefreshOneClickStyle then
         bar.oneClickBtn:RefreshOneClickStyle()
@@ -2522,6 +3940,10 @@ function DynamicGroup:UpdateLFGMiniBar()
     if activeRegionPopover and activeRegionPopover:IsShown() and activeRegionPopover.RefreshRows then
         activeRegionPopover:RefreshRows()
     end
+    if activeFilterPopover and activeFilterPopover:IsShown() and activeFilterPopover.RefreshRows then
+        activeFilterPopover:RefreshRows()
+    end
+    self:UpdatePortalBar()
 end
 
 function DynamicGroup:RefreshLFGResults()
@@ -2743,16 +4165,20 @@ function DynamicGroup:InstallLFGHooks()
                 local db = EnsureDB()
                 if not db.lfgFilterEnabled then return end
                 local meta = InspectSearchResult(resultID)
-                if not meta or meta.regionKey == "PENDING" then return end
-                local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
-                local rc = GetRegionColor(meta.regionKey)
-                local realmSuffix = (meta.realmName and meta.realmName ~= "") and (" (" .. tostring(meta.realmName) .. ")") or ""
-                tooltip:AddDoubleLine(
-                    "Datacentre Region:",
-                    FormatRegionTag(meta.regionKey, regMeta.badge) .. " |c" .. rc.hex .. regMeta.pillLabel .. "|r" .. realmSuffix,
-                    0.64, 0.70, 0.78,
-                    rc.r, rc.g, rc.b
-                )
+                if not meta then return end
+
+                if meta.regionKey ~= "PENDING" then
+                    local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
+                    local rc = GetRegionColor(meta.regionKey)
+                    local realmSuffix = (meta.realmName and meta.realmName ~= "") and (" (" .. tostring(meta.realmName) .. ")") or ""
+                    tooltip:AddDoubleLine(
+                        "Datacentre Region:",
+                        FormatRegionTag(meta.regionKey, regMeta.badge) .. " |c" .. rc.hex .. regMeta.pillLabel .. "|r" .. realmSuffix,
+                        0.64, 0.70, 0.78,
+                        rc.r, rc.g, rc.b
+                    )
+                end
+
                 local utilParts = {}
                 if meta.hasLust then
                     utilParts[#utilParts + 1] = "|cFF38BDF8Bloodlust / Heroism|r"
@@ -2767,7 +4193,50 @@ function DynamicGroup:InstallLFGHooks()
                     0.64, 0.70, 0.78,
                     1, 1, 1
                 )
+
+                if meta.challengeMapID then
+                    local bestLevel, bestScore, isTimed = GetPlayerBestForDungeon(meta.challengeMapID)
+                    local bestText
+                    if bestLevel > 0 then
+                        local timedLabel = isTimed and "Timed" or "Over Time"
+                        local scoreSuffix = (bestScore > 0) and (" (Score: " .. tostring(bestScore) .. ")") or ""
+                        bestText = string.format("|cFF22C55E+%d (%s)|r%s", bestLevel, timedLabel, scoreSuffix)
+                    else
+                        bestText = "|cFF94A3B8No timed key recorded|r"
+                    end
+                    tooltip:AddDoubleLine(
+                        "Your Dungeon Best:",
+                        bestText,
+                        0.64, 0.70, 0.78,
+                        1, 1, 1
+                    )
+                end
+
+                if meta.numMembers and meta.numMembers > 0 then
+                    tooltip:AddDoubleLine(
+                        "Your Class in Group:",
+                        meta.hasPlayerClass and "|cFFF97316Yes|r" or "|cFF34D399No|r",
+                        0.64, 0.70, 0.78,
+                        1, 1, 1
+                    )
+                end
+
                 tooltip:Show()
+            end)
+        end
+        if C_LFGList and type(C_LFGList.SaveAdvancedFilter) == "function" then
+            pcall(hooksecurefunc, C_LFGList, "SaveAdvancedFilter", function()
+                if isSyncingAdvancedFilter or IsYieldingSharedHooks() then return end
+                PullFiltersFromBlizzardAdvancedFilter()
+                if DynamicGroup.UpdateLFGMiniBar then
+                    DynamicGroup:UpdateLFGMiniBar()
+                end
+                if DynamicGroup.RefreshLFGResults then
+                    DynamicGroup:RefreshLFGResults()
+                end
+                if DynamicGroup.RefreshConfigUI then
+                    DynamicGroup:RefreshConfigUI()
+                end
             end)
         end
         if type(_G.LFGListApplicationDialog_UpdateRoles) == "function" then
@@ -2779,12 +4248,20 @@ function DynamicGroup:InstallLFGHooks()
         if _G.LFGListFrame and _G.LFGListFrame.SearchPanel and _G.LFGListFrame.SearchPanel.HookScript then
             _G.LFGListFrame.SearchPanel:HookScript("OnShow", function()
                 SuppressEUIGroupFinderIfNeeded()
+                PullFiltersFromBlizzardAdvancedFilter()
+                if DynamicGroup.EnsureLFGMiniBar then
+                    DynamicGroup:EnsureLFGMiniBar()
+                end
+                if DynamicGroup.EnsurePortalBar then
+                    DynamicGroup:EnsurePortalBar()
+                end
                 if DynamicGroup.UpdateLFGMiniBar then
                     DynamicGroup:UpdateLFGMiniBar()
                 end
             end)
         end
         self:EnsureLFGMiniBar()
+        self:EnsurePortalBar()
         self.lfgHooksInstalled = true
     end
 end
@@ -3575,6 +5052,22 @@ local function RenderGroupEmbedded(arg1, arg2)
     page1.orderedCards[#page1.orderedCards + 1] = c1_enable
     root.allControls[#root.allControls + 1] = c1_enable
 
+    -- Card 1.1b: Show Season Dungeon Portals & Quick-Filter Bar
+    local c1_portalBar = CreateCardRow(sec1a, 62,
+        "Show Season Dungeon Portals & Quick-Filter Bar",
+        "Displays the 8 season Mythic+ dungeon teleports, your current keystone, and one-click dungeon filters above Group Finder."
+    )
+    AttachSegmentedSwitchToCard(c1_portalBar,
+        function() return EnsureDB().showPortalBar ~= false end,
+        function(val)
+            EnsureDB().showPortalBar = val
+            DynamicGroup:UpdatePortalBar()
+        end
+    )
+    sec1a.orderedCards[#sec1a.orderedCards + 1] = c1_portalBar
+    page1.orderedCards[#page1.orderedCards + 1] = c1_portalBar
+    root.allControls[#root.allControls + 1] = c1_portalBar
+
     -- Card 1.2: Multi-Select Region Filter Pills ([check OCE] [check US-West] ...)
     local c1_regions = CreateCardRow(sec1a, 102,
         "Datacentre Region Filter Pills",
@@ -3730,20 +5223,75 @@ local function RenderGroupEmbedded(arg1, arg2)
     page1.orderedCards[#page1.orderedCards + 1] = c1_score
     root.allControls[#root.allControls + 1] = c1_score
 
-    -- Card 1.6: Party Utility Filter (Lust & Battle Rez) (EUI-Style Dropdown)
+    -- Card 1.6: Premade Group Filters (Role, Class & Utility) (Multi-Toggle Popover Button)
     local c1_roleFit = CreateCardRow(sec1a, 62,
-        "Party Utility Filter (Lust & Battle Rez)",
-        "Filters Premade LFG search results by Bloodlust/Heroism and Battle Resurrection (CR) availability."
+        "Premade Group Filters (Role, Class & Utility)",
+        "Choose role openings, duplicate-class checks, Tank/Healer presence, Lust/CR utility, and Mythic+ difficulty."
     )
-    AttachDropdownToCard(c1_roleFit, 270, {
-        { value = "ALL",        label = "All Groups (No Utility Filter)" },
-        { value = "NEEDS_LUST", label = "Has Bloodlust / Heroism" },
-        { value = "NEEDS_CR",   label = "Has Battle Rez (CR)" },
-        { value = "NEEDS_BOTH", label = "Has Both Lust & Battle Rez" },
-    }, function() return EnsureDB().partyFitFilter or "ALL" end, function(val)
-        EnsureDB().partyFitFilter = val
-        DynamicGroup:RefreshLFGResults()
+    local roleFilterBtn = CreateFrame("Button", nil, c1_roleFit, "BackdropTemplate")
+    roleFilterBtn:SetSize(270, 26)
+    roleFilterBtn:SetPoint("TOPRIGHT", c1_roleFit, "TOPRIGHT", -14, -17)
+    roleFilterBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    roleFilterBtn:SetBackdropColor(0.059, 0.071, 0.094, 0.98)
+    roleFilterBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 1.00)
+    AnchorCardTextToRightWidget(c1_roleFit, roleFilterBtn)
+
+    roleFilterBtn.label = roleFilterBtn:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(roleFilterBtn.label, 11, "")
+    roleFilterBtn.label:SetPoint("LEFT", 10, 0)
+    roleFilterBtn.label:SetPoint("RIGHT", -24, 0)
+    roleFilterBtn.label:SetJustifyH("LEFT")
+    roleFilterBtn.label:SetWordWrap(false)
+    roleFilterBtn.label:SetTextColor(0.92, 0.95, 0.99)
+
+    roleFilterBtn.chevron = roleFilterBtn:CreateTexture(nil, "ARTWORK")
+    roleFilterBtn.chevron:SetSize(12, 12)
+    roleFilterBtn.chevron:SetPoint("RIGHT", roleFilterBtn, "RIGHT", -8, 0)
+    roleFilterBtn.chevron:SetTexture(ICON_CHEVRON_DOWN)
+
+    function roleFilterBtn:SetChevronOpen(isOpen)
+        self.isOpen = isOpen and true or false
+        local ar, ag, ab = GetSuiteAccent()
+        self.chevron:SetTexture(isOpen and ICON_CHEVRON_UP or ICON_CHEVRON_DOWN)
+        self.chevron:SetVertexColor(ar, ag, ab, 1)
+        if isOpen then
+            self:SetBackdropBorderColor(ar, ag, ab, 0.95)
+        else
+            self:SetBackdropBorderColor(0.145, 0.165, 0.212, 1.00)
+        end
+    end
+
+    function roleFilterBtn:RefreshValue()
+        SetSafeFont(self.label, 11, "")
+        local summary = GetUtilityFilterSummary(EnsureDB(), false)
+        self.label:SetText(summary)
+        self:SetChevronOpen(activeFilterPopover and activeFilterPopover:IsShown() and activeFilterPopover.anchorBtn == self)
+    end
+
+    roleFilterBtn:SetScript("OnEnter", function(self)
+        local ar, ag, ab = GetSuiteAccent()
+        self:SetBackdropBorderColor(ar, ag, ab, 0.85)
     end)
+    roleFilterBtn:SetScript("OnLeave", function(self)
+        if not (activeFilterPopover and activeFilterPopover:IsShown() and activeFilterPopover.anchorBtn == self) then
+            self:SetBackdropBorderColor(0.145, 0.165, 0.212, 1.00)
+        end
+    end)
+    roleFilterBtn:SetScript("OnClick", function(self)
+        ShowFilterPopover(self)
+    end)
+    roleFilterBtn:SetScript("OnHide", function(self)
+        if activeFilterPopover and activeFilterPopover.anchorBtn == self then
+            CloseActiveDropdown()
+        end
+    end)
+    roleFilterBtn:RefreshValue()
+    c1_roleFit.dropdown = roleFilterBtn
+
     sec1a.orderedCards[#sec1a.orderedCards + 1] = c1_roleFit
     page1.orderedCards[#page1.orderedCards + 1] = c1_roleFit
     root.allControls[#root.allControls + 1] = c1_roleFit
@@ -4745,7 +6293,10 @@ local function RegisterWithDynamicSuite()
         OpenWorkspace = function() return OpenGroupWorkspace() end,
         GetStatusText = function() return GetGroupStatusText() end,
         OnDisableInSuite = function()
-            if DynamicGroup.miniBar then DynamicGroup.miniBar:Hide() end
+            if DynamicGroup.lfgMiniBar then DynamicGroup.lfgMiniBar:Hide() end
+            if DynamicGroup.portalBar and not (InCombatLockdown and InCombatLockdown()) then
+                DynamicGroup.portalBar:Hide()
+            end
             DynamicGroup:UnregisterAllEvents()
         end,
         SelectSubTab = function(a1, a2, a3)
@@ -4771,8 +6322,11 @@ local function RegisterWithDynamicSuite()
 
     DynamicGroup.CHANGELOG = {
         version = DynamicGroup.version or VERSION,
-        date = "12/11/2026",
+        date = "15/11/2026",
         entries = {
+            { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Left-click casts learned dungeon teleports out of combat; Right-click filters the group finder to that dungeon." },
+            { type = "FEATURE", text = "Integrated Multi-Toggle Premade Group Filters (15/11/2026): Upgraded the Group Finder filter menu with multi-select toggles for Fits My Role, No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, Battle Rez, and Mythic+ Only, kept in two-way sync with Blizzard's native Filter menu." },
+            { type = "UI",      text = "Added your personal best timed key level, Mythic+ score, and same-class group warning directly to Premade Group tooltips." },
             { type = "FEATURE", text = "External Addon Conflict Detector & Yield Engine (12/11/2026): Added PremadeGroupsFilter and PremadeRegionFilter to the curated HARD conflict registry with unified DynamicSuite top-of-module warning banner and 1-click resolution." },
             { type = "FIX",     text = "Eliminated direct property write onto LFGListApplicationDialog.resultID before LFGListApplicationDialog_Show, added pcall and IsSecretValue guards across C_LFGList.GetApplicationInfo, HasSearchResultInfo, GetSearchResultInfo, and sp.SearchBox:GetText(), and pre-guarded LFGListSearchEntry OnEnter against expired resultIDs." },
             { type = "FIX",     text = "Added PLAYER_REGEN_DISABLED cleanup to close DynamicGroupDropdownCatcher and active dropdown popovers on combat entry, added OnMouseUp and OnHide OnUpdate cleanup on the workspace scrollbar thumb, and wired DynamicGroupDB.yieldHooks (AUTO_YIELD) across all LFG filter and sign-up hooks." },
@@ -4833,6 +6387,12 @@ end
 SafeRegisterEvent(DynamicGroup, "ADDON_LOADED")
 SafeRegisterEvent(DynamicGroup, "PLAYER_LOGIN")
 SafeRegisterEvent(DynamicGroup, "PLAYER_REGEN_DISABLED")
+SafeRegisterEvent(DynamicGroup, "PLAYER_REGEN_ENABLED")
+SafeRegisterEvent(DynamicGroup, "BAG_UPDATE_DELAYED")
+SafeRegisterEvent(DynamicGroup, "CHALLENGE_MODE_MAPS_UPDATE")
+SafeRegisterEvent(DynamicGroup, "CHALLENGE_MODE_MEMBER_INFO_UPDATED")
+SafeRegisterEvent(DynamicGroup, "MYTHIC_PLUS_CURRENT_AFFIX_UPDATE")
+SafeRegisterEvent(DynamicGroup, "SPELLS_CHANGED")
 SafeRegisterEvent(DynamicGroup, "PARTY_INVITE_REQUEST")
 SafeRegisterEvent(DynamicGroup, "CHAT_MSG_WHISPER")
 SafeRegisterEvent(DynamicGroup, "CHAT_MSG_BN_WHISPER")
@@ -4893,6 +6453,19 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
         CloseActiveDropdown()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if self.pendingPortalBarUpdate then
+            self:UpdatePortalBar(false)
+        end
+    elseif event == "BAG_UPDATE_DELAYED" or event == "CHALLENGE_MODE_MEMBER_INFO_UPDATED" or event == "MYTHIC_PLUS_CURRENT_AFFIX_UPDATE" then
+        if self.portalBar and self.UpdatePortalBarVisuals then
+            self:UpdatePortalBarVisuals()
+        end
+    elseif event == "CHALLENGE_MODE_MAPS_UPDATE" or event == "SPELLS_CHANGED" then
+        seasonSlotsCache = nil
+        if self.portalBar or (self.lfgMiniBar and self.lfgMiniBar:IsShown()) then
+            self:UpdatePortalBar(true)
+        end
     elseif event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
         local resultID = ...
         local sp = _G.LFGListFrame and _G.LFGListFrame.SearchPanel
