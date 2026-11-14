@@ -7,12 +7,13 @@
 
 ### Fixed
 * **Top & Bottom Screen-Edge Bar Drift:** Focus Icons and World Flare bars parked flush against the top edge, bottom edge, or corners now stay in their exact saved positions after reloading the UI at every bar scale (70%, 100%, and 130%).
+* **DynamicLoad Profile Switching & Standalone Scrubbing:** Fixed a Lua error when staging zone profiles (such as Outdoor) in DynamicLoad and ensured saved zone profiles never re-enable standalone DynamicMarker while DynamicSuite is active.
 * **Duplicate HUD Edit Windows:** Standalone DynamicMarker's extra HUD Edit popup no longer appears when running DynamicSuite, leaving only the unified bottom HUD Edit dock while keeping standalone HUD Edit Mode intact when run solo.
 * **DynamicMarker Reset Bounds:** Resetting HUD positions (`/ds resethud`, `/dm resethud`, or from Options) now resets scale to 100%, restores horizontal layout, and keeps bars cleanly inside your screen bounds.
 * **Automatic Standalone Handoff:** Running both DynamicSuite and standalone DynamicMarker together now cleanly disables the standalone copy and prevents duplicate bars or settings conflicts.
 
 ### Improved
-* **Custom Coexistence Reload Prompt:** Replaced Blizzard's default popup with a matching dark-obsidian reload modal whenever DynamicSuite disables a conflicting standalone DynamicMarker install.
+* **Reliable Dark-Obsidian Coexistence Reload Prompt:** Replaced Blizzard's default popup with a matching dark-obsidian reload modal that reliably appears on login whenever both DynamicSuite and standalone DynamicMarker were enabled at launch.
 * **Storefront & Readme Clarity:** Updated descriptions, slash command tables, and support links across both DynamicSuite and standalone DynamicMarker.
 
 ---

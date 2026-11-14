@@ -283,10 +283,40 @@ foreach ($tok in $parityTokens) {
         throw "DynamicMarker.lua missing Suite/Standalone parity token: $tok"
     }
 }
-foreach ($suiteCoexistReq in @("EnforceStandaloneDynamicMarkerExclusion", 'C_AddOns.DisableAddOn, "DynamicMarker"', "ShowMarkerConflictReloadModal", "DynamicSuiteMarkerConflictModal")) {
+foreach ($suiteCoexistReq in @("EnforceStandaloneDynamicMarkerExclusion", 'C_AddOns.DisableAddOn, "DynamicMarker"', "ShowMarkerConflictReloadModal", "DynamicSuiteMarkerConflictModal", "standaloneMarkerWasEnabledAtBoot", "ScrubStandaloneDynamicMarkerFromLoadDB")) {
     if ($suiteCoreText.IndexOf($suiteCoexistReq, [System.StringComparison]::Ordinal) -lt 0) {
         throw "DynamicSuite_Core.lua missing standalone DynamicMarker mutual-exclusion token: $suiteCoexistReq"
     }
+}
+if ($suiteCoreText -notmatch '(?s)elseif\s+event\s*==\s*"PLAYER_ENTERING_WORLD"\s+then.*?EnforceStandaloneDynamicMarkerExclusion\(true\).*?ShowMarkerConflictReloadModal\(\)') {
+    throw "DynamicSuite_Core.lua PLAYER_ENTERING_WORLD handler must trigger EnforceStandaloneDynamicMarkerExclusion(true) and ShowMarkerConflictReloadModal()."
+}
+$loadLuaPath = Join-Path $RepoRoot "DynamicSuite\Modules\DynamicLoad.lua"
+$loadLuaText = [System.IO.File]::ReadAllText($loadLuaPath)
+foreach ($loadCoexistReq in @("local function IsStandaloneMarkerExcludedBySuite", "DL_NS.IsStandaloneMarkerExcludedBySuite = IsStandaloneMarkerExcludedBySuite")) {
+    if ($loadLuaText.IndexOf($loadCoexistReq, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicLoad.lua missing top-level IsStandaloneMarkerExcludedBySuite declaration: $loadCoexistReq"
+    }
+}
+$loadLocalFuncs = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
+foreach ($m in [regex]::Matches($loadLuaText, '(?m)^\s*local\s+function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(')) {
+    [void]$loadLocalFuncs.Add($m.Groups[1].Value)
+}
+$loadBytecode = & $luacExe -p -l $loadLuaPath 2>&1
+if ($LASTEXITCODE -ne 0) {
+    throw "luac5.1 -p -l failed on DynamicLoad.lua: $loadBytecode"
+}
+$badLoadGlobals = @()
+foreach ($bcLine in $loadBytecode) {
+    if ($bcLine -match 'GETGLOBAL\s+\d+\s+-?\d+\s+;\s+([A-Za-z_][A-Za-z0-9_]*)$') {
+        $gName = $Matches[1]
+        if ($loadLocalFuncs.Contains($gName)) {
+            $badLoadGlobals += "$gName ($($bcLine.Trim()))"
+        }
+    }
+}
+if ($badLoadGlobals.Count -gt 0) {
+    throw ("DynamicLoad.lua contains forward-referenced or out-of-scope local function calls resolved as GETGLOBAL:`n - " + ($badLoadGlobals -join "`n - "))
 }
 $allLuaCheckFiles = Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite") -Filter "*.lua" -Recurse -File
 foreach ($luaCheck in $allLuaCheckFiles) {

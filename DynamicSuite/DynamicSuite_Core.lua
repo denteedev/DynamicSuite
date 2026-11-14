@@ -746,8 +746,13 @@ end
 addonTable.RecoverEllesmereUIState = RecoverEllesmereUIState
 DynamicSuite.RecoverEllesmereUIState = RecoverEllesmereUIState
 
+local standaloneMarkerWasEnabledAtBoot = false
 local _notifiedStandaloneMarkerReload = false
 local function ShowMarkerConflictReloadModal()
+    local existingModal = _G.DynamicSuiteMarkerConflictModal
+    if existingModal and existingModal._dismissedByUser then
+        return
+    end
     if InCombatLockdown and InCombatLockdown() then
         addonTable._pendingMarkerConflictModal = true
         return
@@ -859,6 +864,7 @@ local function ShowMarkerConflictReloadModal()
         modal.ReloadBtn:SetPoint("BOTTOMRIGHT", modal, "BOTTOM", -6, 16)
 
         modal.LaterBtn = CreateModalButton(modal, "Later", 138, 28, false, function()
+            modal._dismissedByUser = true
             modal:Hide()
         end)
         modal.LaterBtn:SetPoint("BOTTOMLEFT", modal, "BOTTOM", 6, 16)
@@ -883,47 +889,90 @@ end
 addonTable.ShowMarkerConflictReloadModal = ShowMarkerConflictReloadModal
 DynamicSuite.ShowMarkerConflictReloadModal = ShowMarkerConflictReloadModal
 
+local function ScrubStandaloneDynamicMarkerFromLoadDB(tbl)
+    if type(tbl) ~= "table" then return end
+    if type(tbl.lockedAddons) == "table" then tbl.lockedAddons["DynamicMarker"] = nil end
+    if type(tbl.addonStates) == "table" and tbl.addonStates["DynamicMarker"] == "LOCKED" then
+        tbl.addonStates["DynamicMarker"] = nil
+    end
+    if type(tbl.profiles) == "table" then
+        for _, prof in pairs(tbl.profiles) do
+            if type(prof) == "table" and type(prof.addons) == "table" then
+                prof.addons["DynamicMarker"] = false
+            end
+        end
+    end
+end
+
 local function EnforceStandaloneDynamicMarkerExclusion(showPopupIfLoaded)
     if not (C_AddOns and C_AddOns.GetAddOnInfo) then return false end
     local okInfo, infoName = pcall(C_AddOns.GetAddOnInfo, "DynamicMarker")
     if not okInfo or not infoName then return false end
 
     local pName = GetPlayer()
+    local uName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
+    local uGuid = type(_G.UnitGUID) == "function" and _G.UnitGUID("player") or nil
     local isEnabled = false
     if C_AddOns.GetAddOnEnableState then
-        local okSt, st = pcall(C_AddOns.GetAddOnEnableState, "DynamicMarker", pName)
-        if okSt and type(st) == "number" and st > 0 then
-            isEnabled = true
-        else
+        if type(uName) == "string" and uName ~= "" and uName ~= "Unknown" and uName ~= _G.UNKNOWNOBJECT then
+            local okSt, st = pcall(C_AddOns.GetAddOnEnableState, "DynamicMarker", uName)
+            if okSt and type(st) == "number" and st > 0 then
+                isEnabled = true
+            end
+        end
+        if not isEnabled then
             local okSt2, st2 = pcall(C_AddOns.GetAddOnEnableState, "DynamicMarker")
             if okSt2 and type(st2) == "number" and st2 > 0 then
                 isEnabled = true
             end
         end
+        if not isEnabled and type(uGuid) == "string" and uGuid ~= "" then
+            local okSt3, st3 = pcall(C_AddOns.GetAddOnEnableState, "DynamicMarker", uGuid)
+            if okSt3 and type(st3) == "number" and st3 > 0 then
+                isEnabled = true
+            end
+        end
     end
-    local isLoaded = (C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DynamicMarker")) and true or false
-    local hasStandaloneRuntime = (_G.DynamicMarker and _G.DynamicMarker._loadedBySuite == false) and true or false
-    if not isEnabled and not isLoaded and not hasStandaloneRuntime then
+    local isLoaded = ((C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DynamicMarker"))
+        or (type(_G.IsAddOnLoaded) == "function" and _G.IsAddOnLoaded("DynamicMarker"))) and true or false
+    local hasStandaloneRuntime = ((_G.DynamicMarker and _G.DynamicMarker._loadedBySuite == false)
+        or (_G.DynamicSuite and _G.DynamicSuite.standaloneMarkerWasEnabledAtBoot == true)) and true or false
+
+    if isEnabled or isLoaded or hasStandaloneRuntime then
+        standaloneMarkerWasEnabledAtBoot = true
+        addonTable.standaloneMarkerWasEnabledAtBoot = true
+        DynamicSuite.standaloneMarkerWasEnabledAtBoot = true
+        addonTable._pendingSuiteModuleReload = true
+    end
+
+    if not isEnabled and not isLoaded and not hasStandaloneRuntime and not standaloneMarkerWasEnabledAtBoot then
         return false
     end
 
     if C_AddOns.DisableAddOn then
+        if type(uName) == "string" and uName ~= "" and uName ~= "Unknown" and uName ~= _G.UNKNOWNOBJECT then
+            pcall(C_AddOns.DisableAddOn, "DynamicMarker", uName)
+        end
         pcall(C_AddOns.DisableAddOn, "DynamicMarker", pName)
         pcall(C_AddOns.DisableAddOn, "DynamicMarker")
     end
-    if _G.DynamicLoadDB and _G.DynamicLoadDB.profiles then
-        for _, prof in pairs(_G.DynamicLoadDB.profiles) do
-            if type(prof) == "table" and type(prof.addons) == "table" then
-                prof.addons["DynamicMarker"] = false
+    if _G.DynamicLoadDB then
+        ScrubStandaloneDynamicMarkerFromLoadDB(_G.DynamicLoadDB)
+        ScrubStandaloneDynamicMarkerFromLoadDB(_G.DynamicLoadDB.globalData)
+        if type(_G.DynamicLoadDB.charData) == "table" then
+            for _, cd in pairs(_G.DynamicLoadDB.charData) do
+                ScrubStandaloneDynamicMarkerFromLoadDB(cd)
             end
         end
     end
 
-    if isLoaded or hasStandaloneRuntime then
+    if standaloneMarkerWasEnabledAtBoot or isLoaded or hasStandaloneRuntime then
         addonTable._pendingSuiteModuleReload = true
-        if showPopupIfLoaded and not _notifiedStandaloneMarkerReload then
-            _notifiedStandaloneMarkerReload = true
-            print(string.format("%s: Standalone DynamicMarker was active alongside DynamicSuite and has been disabled. Please /reload to complete cleanup.", ADDON_TITLE))
+        if showPopupIfLoaded then
+            if not _notifiedStandaloneMarkerReload then
+                _notifiedStandaloneMarkerReload = true
+                print(string.format("%s: Standalone DynamicMarker was active alongside DynamicSuite and has been disabled. Please /reload to complete cleanup.", ADDON_TITLE))
+            end
             ShowMarkerConflictReloadModal()
         end
     end
@@ -3848,6 +3897,9 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "ADDON_LOADED" then
         InvalidateConflictCache()
         if arg1 == "DynamicMarker" then
+            standaloneMarkerWasEnabledAtBoot = true
+            addonTable.standaloneMarkerWasEnabledAtBoot = true
+            DynamicSuite.standaloneMarkerWasEnabledAtBoot = true
             EnforceStandaloneDynamicMarkerExclusion(true)
         end
         if (arg1 == ADDON_FOLDER or arg1 == "DynamicSuite") and not isSuiteCoreInitialized then
@@ -3874,6 +3926,10 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "PLAYER_ENTERING_WORLD" then
         InvalidateConflictCache()
         EnsureConflictCache()
+        EnforceStandaloneDynamicMarkerExclusion(true)
+        if standaloneMarkerWasEnabledAtBoot or addonTable.standaloneMarkerWasEnabledAtBoot or (DynamicSuite and DynamicSuite.standaloneMarkerWasEnabledAtBoot) then
+            ShowMarkerConflictReloadModal()
+        end
     elseif event == "PLAYER_LOGIN" then
         InvalidateConflictCache()
         EnsureSuiteGlobal()

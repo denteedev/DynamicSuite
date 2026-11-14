@@ -28,12 +28,17 @@ if ADDON_FOLDER ~= "DynamicSuite" then
         end
     end
     if isSuiteLoaded or isSuiteEnabled then
+        _G.DynamicSuite = _G.DynamicSuite or {}
+        _G.DynamicSuite.standaloneMarkerWasEnabledAtBoot = true
         if C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
             local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
             if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
                 pcall(C_AddOns.DisableAddOn, "DynamicMarker", pName)
             end
             pcall(C_AddOns.DisableAddOn, "DynamicMarker")
+        end
+        if type(_G.DynamicSuite.EnforceStandaloneDynamicMarkerExclusion) == "function" then
+            pcall(_G.DynamicSuite.EnforceStandaloneDynamicMarkerExclusion, true)
         end
         return
     end
@@ -8606,6 +8611,10 @@ if not SlashCmdList["DYNAMICSUITE"] then
 end
 
 function DM:ShowMarkerConflictReloadModal()
+    local existingModal = _G.DynamicSuiteMarkerConflictModal
+    if existingModal and existingModal._dismissedByUser then
+        return
+    end
     if InCombatLockdown and InCombatLockdown() then
         self._pendingMarkerConflictModal = true
         return
@@ -8722,6 +8731,7 @@ function DM:ShowMarkerConflictReloadModal()
         modal.ReloadBtn:SetPoint("BOTTOMRIGHT", modal, "BOTTOM", -6, 16)
 
         modal.LaterBtn = CreateModalButton(modal, "Later", 138, 28, false, function()
+            modal._dismissedByUser = true
             modal:Hide()
         end)
         modal.LaterBtn:SetPoint("BOTTOMLEFT", modal, "BOTTOM", 6, 16)

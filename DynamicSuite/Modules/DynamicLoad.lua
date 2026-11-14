@@ -130,6 +130,32 @@ _G.DynamicLoad._loadedVersion = RESOLVED_ADDON_VERSION
 
 local isInitialized = false
 
+local function IsStandaloneMarkerExcludedBySuite(addonKey)
+    if type(addonKey) ~= "string" then return false end
+    if addonKey ~= "DynamicMarker" and addonKey:lower() ~= "dynamicmarker" then return false end
+    if ADDON_FOLDER == "DynamicSuite" then return true end
+    if DynamicSuite and DynamicSuite._isHubLoaded then return true end
+    if _G.DynamicSuite and _G.DynamicSuite._isHubLoaded then return true end
+    if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DynamicSuite") then return true end
+    if C_AddOns and type(C_AddOns.GetAddOnEnableState) == "function" then
+        local uName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
+        if type(uName) == "string" and uName ~= "" and uName ~= "Unknown" and uName ~= _G.UNKNOWNOBJECT then
+            local okSt, st = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", uName)
+            if okSt and type(st) == "number" and st > 0 then return true end
+        end
+        local okSt2, st2 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite")
+        if okSt2 and type(st2) == "number" and st2 > 0 then return true end
+        local uGuid = type(_G.UnitGUID) == "function" and _G.UnitGUID("player") or nil
+        if type(uGuid) == "string" and uGuid ~= "" then
+            local okSt3, st3 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", uGuid)
+            if okSt3 and type(st3) == "number" and st3 > 0 then return true end
+        end
+    end
+    return false
+end
+DL_NS.IsStandaloneMarkerExcludedBySuite = IsStandaloneMarkerExcludedBySuite
+DynamicSuite.IsStandaloneMarkerExcludedBySuite = IsStandaloneMarkerExcludedBySuite
+
 --------------------------------------------------------------------------------
 -- SECTION 1: CORE ENGINE (DynamicLoad Core)
 --------------------------------------------------------------------------------
@@ -491,6 +517,25 @@ local function PurgeCoreSuiteStateFromTableSet(tbl)
             end
         end
     end
+    if IsStandaloneMarkerExcludedBySuite("DynamicMarker") then
+        if type(tbl.lockedAddons) == "table" then tbl.lockedAddons["DynamicMarker"] = nil end
+        if type(tbl.addonStates) == "table" and tbl.addonStates["DynamicMarker"] == "LOCKED" then
+            tbl.addonStates["DynamicMarker"] = nil
+        end
+        if type(tbl.profiles) == "table" then
+            for _, ctx in ipairs(ALL_ZONE_CONTEXTS) do
+                local prof = tbl.profiles[ctx]
+                if type(prof) == "table" and type(prof.addons) == "table" then
+                    prof.addons["DynamicMarker"] = false
+                end
+            end
+            for _, prof in pairs(tbl.profiles) do
+                if type(prof) == "table" and type(prof.addons) == "table" then
+                    prof.addons["DynamicMarker"] = false
+                end
+            end
+        end
+    end
 end
 
 local function SyncScopeBindings()
@@ -634,6 +679,21 @@ local function EnforceProtectedSuiteModules()
         end
     end
     local pName = GetPlayer()
+    if IsStandaloneMarkerExcludedBySuite("DynamicMarker") then
+        if DynamicLoadDB then
+            PurgeCoreSuiteStateFromTableSet(DynamicLoadDB)
+            PurgeCoreSuiteStateFromTableSet(DynamicLoadDB.globalData)
+            if type(DynamicLoadDB.charData) == "table" then
+                for _, cd in pairs(DynamicLoadDB.charData) do
+                    PurgeCoreSuiteStateFromTableSet(cd)
+                end
+            end
+        end
+        if C_AddOns and C_AddOns.DisableAddOn then
+            pcall(C_AddOns.DisableAddOn, "DynamicMarker", pName)
+            pcall(C_AddOns.DisableAddOn, "DynamicMarker")
+        end
+    end
     for modName, isCore in pairs(PROTECTED_ADDONS) do
         if isCore and not RETIRED_IGNORED_ADDONS[modName] and addonTable._pendingDisableCoreAddon ~= modName then
             if DynamicLoadDB then
@@ -718,6 +778,9 @@ addonTable.SyncAddonStatesTable = SyncAddonStatesTable
 local function IsAddonLocked(name)
     local canon = ResolveCanonicalAddonName(name) or name
     if not canon then return false end
+    if IsStandaloneMarkerExcludedBySuite(canon) then
+        return false
+    end
     if addonTable._pendingDisableCoreAddon == canon then
         return false
     end
@@ -826,13 +889,6 @@ local function SetAddonLocked(name, locked)
     elseif DynamicLoadDB.globalData then
         ApplySecurityStateToTableSet(DynamicLoadDB.globalData, canon, name, targetMode)
     end
-
-local function IsStandaloneMarkerExcludedBySuite(addonKey)
-    if addonKey ~= "DynamicMarker" then return false end
-    if DynamicSuite and DynamicSuite._isHubLoaded then return true end
-    if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DynamicSuite") then return true end
-    return false
-end
 
     if locked and C_AddOns and C_AddOns.EnableAddOn then
         local pName = GetPlayer()
@@ -2146,8 +2202,12 @@ local function SnapshotActiveAddons(targetProfileKey)
     for i = 1, num do
         local name = C_AddOns.GetAddOnInfo(i)
         if name and not IsAddonProtected(name) and not IsAddonFrozen(name) then
-            local state = C_AddOns.GetAddOnEnableState(name, pName)
-            profile.addons[name] = (state and state > 0) or false
+            if IsStandaloneMarkerExcludedBySuite(name) then
+                profile.addons[name] = false
+            else
+                local state = C_AddOns.GetAddOnEnableState(name, pName)
+                profile.addons[name] = (state and state > 0) or false
+            end
         end
     end
 end
@@ -2170,7 +2230,7 @@ local function RecordCurrentCharacter()
     local num = C_AddOns.GetNumAddOns()
     for i = 1, num do
         local name = C_AddOns.GetAddOnInfo(i)
-        if name and not IsAddonProtected(name) then
+        if name and not IsAddonProtected(name) and not IsStandaloneMarkerExcludedBySuite(name) then
             local state = C_AddOns.GetAddOnEnableState(name, pName)
             if state and state > 0 then
                 addons[name] = true
@@ -2204,7 +2264,7 @@ function addonTable.CloneCharacterAddons(charKey, targetProfileKey)
     profile.addons = {}
     local count = 0
     for name, enabled in pairs(charData.addons or {}) do
-        if enabled and not IsAddonFrozen(name) then
+        if enabled and not IsAddonFrozen(name) and not IsStandaloneMarkerExcludedBySuite(name) then
             profile.addons[name] = true
             count = count + 1
         end
@@ -2304,7 +2364,9 @@ function addonTable.RestoreStash()
     wipe(DynamicLoadDB.profiles[targetKey].addons)
     for k, v in pairs(stash.addons or {}) do
         local canon = ResolveCanonicalAddonName(k) or k
-        if not IsAddonFrozen(canon) then
+        if IsStandaloneMarkerExcludedBySuite(canon) then
+            DynamicLoadDB.profiles[targetKey].addons[canon] = false
+        elseif not IsAddonFrozen(canon) then
             DynamicLoadDB.profiles[targetKey].addons[canon] = v
         end
     end
@@ -2331,8 +2393,12 @@ local function CaptureLiveSessionBaseline()
     for i = 1, num do
         local name = C_AddOns.GetAddOnInfo(i)
         if name and name ~= "DynamicFrame" and not IsAddonProtected(name) then
-            local isEnabled = ((C_AddOns.GetAddOnEnableState(name, pName) or 0) > 0) or C_AddOns.IsAddOnLoaded(name)
-            liveSessionEnabled[name] = (isEnabled == true)
+            if IsStandaloneMarkerExcludedBySuite(name) then
+                liveSessionEnabled[name] = false
+            else
+                local isEnabled = ((C_AddOns.GetAddOnEnableState(name, pName) or 0) > 0) or C_AddOns.IsAddOnLoaded(name)
+                liveSessionEnabled[name] = (isEnabled == true)
+            end
         end
     end
 end
@@ -2353,7 +2419,10 @@ local function CalculateAddonDelta(targetProfileKey)
         local name = C_AddOns.GetAddOnInfo(i)
         if name and name ~= "DynamicFrame" and not IsAddonProtected(name) then
             local desiredState = profile.addons[name]
-            if IsAddonFrozen(name) then
+            if IsStandaloneMarkerExcludedBySuite(name) then
+                desiredState = false
+                profile.addons[name] = false
+            elseif IsAddonFrozen(name) then
                 desiredState = false
                 profile.addons[name] = nil
             elseif IsAddonLocked(name) then
@@ -2371,14 +2440,14 @@ local function CalculateAddonDelta(targetProfileKey)
         for name, isDesired in pairs(desiredMap) do
             if isDesired then
                 local parent = addonTable.GetAddonParent and addonTable.GetAddonParent(name)
-                if parent and desiredMap[parent] == false and not IsAddonFrozen(parent) then
+                if parent and desiredMap[parent] == false and not IsAddonFrozen(parent) and not IsStandaloneMarkerExcludedBySuite(parent) then
                     desiredMap[parent] = true
                     changed = true
                 end
                 if C_AddOns.GetAddOnDependencies then
                     for dIdx = 1, select("#", C_AddOns.GetAddOnDependencies(name)) do
                         local depName = select(dIdx, C_AddOns.GetAddOnDependencies(name))
-                        if depName and desiredMap[depName] == false and not IsAddonFrozen(depName) then
+                        if depName and desiredMap[depName] == false and not IsAddonFrozen(depName) and not IsStandaloneMarkerExcludedBySuite(depName) then
                             desiredMap[depName] = true
                             changed = true
                         end
@@ -2387,6 +2456,11 @@ local function CalculateAddonDelta(targetProfileKey)
             end
         end
         if not changed then break end
+    end
+
+    if IsStandaloneMarkerExcludedBySuite("DynamicMarker") then
+        desiredMap["DynamicMarker"] = false
+        profile.addons["DynamicMarker"] = false
     end
 
     -- Pass 3: Compute delta against current live UI session baseline
@@ -2423,7 +2497,10 @@ local function ReconcileStartupProfileBaseline(profileKey)
     for i = 1, num do
         local name = C_AddOns.GetAddOnInfo(i)
         if name and name ~= "DynamicFrame" and not IsAddonProtected(name) then
-            if IsAddonFrozen(name) then
+            if IsStandaloneMarkerExcludedBySuite(name) then
+                profile.addons[name] = false
+                liveSessionEnabled[name] = false
+            elseif IsAddonFrozen(name) then
                 profile.addons[name] = nil
                 liveSessionEnabled[name] = false
             elseif not IsAddonLocked(name) then
@@ -2452,6 +2529,12 @@ local function StageAddonProfile(targetProfileKey, setAsActive)
     EnforceFrozenAddonsDisabled()
     local deltaCount, _, desiredMap = CalculateAddonDelta(targetProfileKey)
     if not desiredMap then return 0 end
+    if IsStandaloneMarkerExcludedBySuite("DynamicMarker") then
+        desiredMap["DynamicMarker"] = false
+        if DynamicLoadDB and DynamicLoadDB.profiles and DynamicLoadDB.profiles[targetProfileKey] and DynamicLoadDB.profiles[targetProfileKey].addons then
+            DynamicLoadDB.profiles[targetProfileKey].addons["DynamicMarker"] = false
+        end
+    end
 
     local pName = GetPlayer()
     local num = C_AddOns.GetNumAddOns()
@@ -2466,6 +2549,9 @@ local function StageAddonProfile(targetProfileKey, setAsActive)
                     C_AddOns.EnableAddOn(name)
                 end
             else
+                if IsStandaloneMarkerExcludedBySuite(name) and DynamicLoadDB and DynamicLoadDB.profiles and DynamicLoadDB.profiles[targetProfileKey] and DynamicLoadDB.profiles[targetProfileKey].addons then
+                    DynamicLoadDB.profiles[targetProfileKey].addons[name] = false
+                end
                 C_AddOns.DisableAddOn(name, pName)
                 if (C_AddOns.GetAddOnEnableState(name, pName) or 0) > 0 then
                     C_AddOns.DisableAddOn(name)
