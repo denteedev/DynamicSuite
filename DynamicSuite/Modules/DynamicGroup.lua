@@ -2590,16 +2590,13 @@ local function OnLFGListSearchEntryUpdate(entry)
                             if slotOv.tex.SetDesaturated then
                                 slotOv.tex:SetDesaturated(true)
                             end
-                            local u0, u1, v0, v1
                             if roleKey == "TANK" then
-                                u0, u1, v0, v1 = 0 / 64, 19 / 64, 22 / 64, 41 / 64
+                                slotOv.tex:SetTexCoord(0 / 64, 19 / 64, 22 / 64, 41 / 64)
                             elseif roleKey == "HEALER" then
-                                u0, u1, v0, v1 = 20 / 64, 39 / 64, 1 / 64, 20 / 64
+                                slotOv.tex:SetTexCoord(20 / 64, 39 / 64, 1 / 64, 20 / 64)
                             else
-                                u0, u1, v0, v1 = 20 / 64, 39 / 64, 22 / 64, 41 / 64
+                                slotOv.tex:SetTexCoord(20 / 64, 39 / 64, 22 / 64, 41 / 64)
                             end
-                            local du, dv = (u1 - u0) * 0.08, (v1 - v0) * 0.08
-                            slotOv.tex:SetTexCoord(u0 + du, u1 - du, v0 + dv, v1 - dv)
                             slotOv.tex:SetVertexColor(0.56, 0.60, 0.66, 0.72)
                             slotOv:Show()
                         else
