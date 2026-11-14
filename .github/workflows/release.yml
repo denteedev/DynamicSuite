@@ -26,6 +26,7 @@ jobs:
           mkdir -p "$STAGE_DIR/Media/Icons" "$STAGE_DIR/Fonts"
 
           cp Packaging/StandaloneTOCs/DynamicMarker.toc "$STAGE_DIR/DynamicMarker.toc"
+          cp Packaging/StandaloneTOCs/DynamicMarker.toc DynamicMarker.toc
           cp DynamicSuite/Modules/DynamicMarker.lua "$STAGE_DIR/DynamicMarker.lua"
           cp DynamicSuite/icon.tga "$STAGE_DIR/icon.tga"
           cp DynamicSuite/Media/Icons/*.tga "$STAGE_DIR/Media/Icons/"

@@ -479,12 +479,16 @@ try {
             $localTag = & $gitExe tag -l $ReleaseTag
             if ($LASTEXITCODE -ne 0) { throw "git tag -l failed." }
             if ($localTag) {
-                throw "Release tag '$ReleaseTag' already exists locally."
+                & $gitExe tag -d $ReleaseTag | Out-Null
+                if ($LASTEXITCODE -ne 0) { throw "Failed to delete stale local tag '$ReleaseTag'." }
+                Write-Host "[TAG CLEANUP] Deleted stale local tag $ReleaseTag" -ForegroundColor Yellow
             }
             $remoteTag = & $gitExe ls-remote --tags origin "refs/tags/$ReleaseTag"
             if ($LASTEXITCODE -ne 0) { throw "git ls-remote failed." }
             if ($remoteTag) {
-                throw "Release tag '$ReleaseTag' already exists on origin."
+                & $gitExe push origin ":refs/tags/$ReleaseTag"
+                if ($LASTEXITCODE -ne 0) { throw "Failed to delete stale remote tag '$ReleaseTag'." }
+                Write-Host "[TAG CLEANUP] Deleted stale remote tag $ReleaseTag" -ForegroundColor Yellow
             }
             & $gitExe tag -a $ReleaseTag -m "Release $ReleaseTag (Standalone DynamicMarker)"
             if ($LASTEXITCODE -ne 0) { throw "git tag -a $ReleaseTag failed." }
