@@ -31,3 +31,4 @@ ignore:
   - Marketing
   - Packaging
   - Screenshots
+  - scripts
