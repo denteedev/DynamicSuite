@@ -15,7 +15,7 @@
 
 [![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 
-**World of Warcraft Retail Midnight `12.1.5` (Interface `120105`) | Author: Dentee-Frostmourne**
+**Version:** `v1.9.9` (`14/11/2026`) | **Target Client:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight, zero-taint all-in-one Quality-of-Life, Mythic+/Raid utility, inventory, chat, and performance hub for **World of Warcraft Retail Midnight `12.1.5`**. Built on a **Single-Entry Consolidated Dual-Mode Architecture**, it bundles **8 tightly integrated modules** under one cohesive Obsidian Studio control panel (`/ds`) with shared theming, **202 indexed Smart Search settings**, a **6-target HUD Edit Mode**, and a **9-step Guided Setup & Conflict Scanner**.
 
@@ -36,7 +36,7 @@ Looking for just the target marking & interrupt macro module? Check out standalo
   * **Steps:** `1. Conflicts`, `2. Load`, `3. Prep`, `4. Marker`, `5. Zoom`, `6. FPS`, `7. Group`, `8. Bags`, `9. Chat` plus **Restore Blizzard Defaults** uninstall prep.
   * **Smart Conflict Detection & Auto-Yield:** Detects overlapping addons (including sub-module inspection for `ElvUI`, `Leatrix_Plus`, and `EllesmereUI`, plus `BetterBags`, `Baganator`, `Prat-3.0`, `Chattynator`, `DialogueUI`, `ACP`, `FocusMarker`, `PremadeGroupsFilter`, and more). Automatically yields conflicting hooks softly where appropriate or offers 1-click **Use Dynamic Only** / **Use External Only** actions.
 * **Obsidian Theme & Font Studio (`/ds theme`):** 17 customisable accent swatches (`Alert Gold`, `Astral Cobalt`, `Emerald Mint`, `Obsidian Slate`, and all 13 WoW Class Colours) plus custom colour picker, 4 surface palettes (`Midnight Pitch Black`, `Obsidian Dark`, `Slate Steel`, `Smoked Glass`), 21+ curated fonts, **Font Scale** (`95%` / `100%` / `110%`), and persisted bottom-right **Opacity** (`50%`-`100%`), **Scale** (`80%`-`120%`), and **Reload UI** footer dock.
-* **Zero-Taint Smart Coexistence (`CompareSemVer`):** Every bundled module uses a semantic version guard (`ShouldYieldToOtherInstall`) so if any standalone `Dynamic*` addon is installed alongside `DynamicSuite`, the newer copy cleanly takes priority with zero duplicate frames or double-loaded events.
+* **Zero-Taint Smart Coexistence (Unconditional Exclusion + `CompareSemVer`):** Internal Suite <-> standalone coexistence runs **unconditionally** at load and login regardless of third-party conflict resolution settings. Whenever `DynamicSuite` is active, it disables standalone `DynamicMarker` via `C_AddOns.DisableAddOn("DynamicMarker")` (with an instant reload prompt if already loaded), while standalone `DynamicMarker` exits immediately at top-of-file and `ADDON_LOADED` when `C_AddOns.IsAddOnLoaded("DynamicSuite")` is true, and all 8 modules run `ShouldYieldToOtherInstall` (`CompareSemVer`) so duplicate frames or HUD Edit windows never open together.
 * **Retail `12.1.5` Zero-Taint Standard:** Guards secret values via `issecretvalue()` / `canaccessvalue()`, uses native Midnight event APIs cleanly, and respects `InCombatLockdown()` across all secure buttons and frames.
 
 ---
@@ -107,12 +107,12 @@ Looking for just the target marking & interrupt macro module? Check out standalo
 
 ---
 
-## Official Links & Support
+## Support & Contact
 
-* **Full Suite CurseForge (`DynamicSuite`):** `https://www.curseforge.com/wow/addons/dynamicsuite`
-* **Standalone Module (`DynamicMarker`):** `https://www.curseforge.com/wow/addons/dynamicmarker`
 * **Buy the Developer a Coffee (Ko-fi):** `https://ko-fi.com/dentee`
-* **Direct Contact & Feedback:** `denteedev@gmail.com`
+* **Full Suite CurseForge (`DynamicSuite`):** `https://www.curseforge.com/wow/addons/dynamicsuite`
+* **Standalone CurseForge (`DynamicMarker`):** `https://www.curseforge.com/wow/addons/dynamicmarker`
+* **Direct Contact & Feedback (Email):** `denteedev@gmail.com`
 ```
 
 ---
@@ -123,7 +123,8 @@ Looking for just the target marking & interrupt macro module? Check out standalo
 ## DynamicSuite & Standalone DynamicMarker v1.9.9 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
 
 ### Highlights & Release Changes
-* **Mutual Exclusion (`DynamicSuite` vs. Standalone `DynamicMarker`):** `DynamicSuite` and `DynamicLoad` now actively disable standalone `DynamicMarker` via `C_AddOns.DisableAddOn("DynamicMarker")` (with an instant reload prompt if already loaded), while standalone `DynamicMarker` exits immediately at top-of-file and `ADDON_LOADED` when `DynamicSuite` is loaded so both never run simultaneously.
+* **Unconditional Suite <-> Standalone Mutual Exclusion (`DynamicSuite_Core.lua`, `DynamicLoad.lua`, `DynamicMarker.lua`):** Confirmed and hardened that internal Suite <-> standalone coexistence runs unconditionally regardless of third-party addon conflict settings. `DynamicSuite` and `DynamicLoad` actively disable standalone `DynamicMarker` via `C_AddOns.DisableAddOn("DynamicMarker")` (with a reload prompt if already loaded), while standalone `DynamicMarker` (`## OptionalDeps: DynamicSuite`) exits immediately at top-of-file and `ADDON_LOADED` when `DynamicSuite` is loaded or enabled (`UnitName` and `UnitGUID` checks).
 * **Single Unified HUD Edit Mode:** Suppressed the legacy standalone `DynamicMarker` HUD Edit popup and overlay inside `DynamicSuite` (`DM:IsRunningInSuite()`) so only the unified bottom `DynamicSuite` HUD Edit dock displays, while keeping standalone `DynamicMarker` HUD Edit Mode (`DynamicMarkerGridOverlay`) intact when run solo.
-* **`DynamicMarker` Dynamic Screen-Edge & Reset Bounds (`Target` & `Flare` Bars):** Fixed `ConvertAnchorToCenterLocal` unpacking, `relScale` / `292x40` screen-extent bounds, `ResetSingleHUDPosition` (`scale = 1.00`, `HORIZONTAL`, dynamic edge-clamped defaults), and atomic Suite/standalone DB persistence across UI scales and `/reload`.
+* **`DynamicMarker` Dynamic Screen-Edge & Reset Bounds (`Target` & `Flare` Bars):** Fixed `ConvertAnchorToCenterLocal` unpacking, `relScale` / `292x40` screen-extent bounds, `SyncBarScaleAndSizeToDB(frame, hudKey)` argument and orientation/scale fallback handling, `ResetSingleHUDPosition` (`scale = 1.00`, `HORIZONTAL`, dynamic screen-clamped defaults), and atomic Suite/standalone DB persistence across UI scales and `/reload`.
+* **Documentation & Support Parity (`README.md`, `.toc`, Storefront Docs):** Aligned `DynamicSuite`'s `README.md`, `DynamicSuite.toc` (`X-Email` / `X-Donate`), and CurseForge storefront copy with `DynamicMarker`'s Ko-fi badge, metadata header, Smart Coexistence explanation, full Slash Commands table, and `Support & Contact` section.
 ```

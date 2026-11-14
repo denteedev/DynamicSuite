@@ -283,6 +283,30 @@ foreach ($suiteCoexistReq in @("EnforceStandaloneDynamicMarkerExclusion", 'C_Add
         throw "DynamicSuite_Core.lua missing standalone DynamicMarker mutual-exclusion token: $suiteCoexistReq"
     }
 }
+if ($suiteCoreText -notmatch '(?s)(local function EnforceStandaloneDynamicMarkerExclusion\(.*?\r?\nend(?=\r?\n))') {
+    throw "DynamicSuite_Core.lua missing complete EnforceStandaloneDynamicMarkerExclusion block."
+}
+$suiteExclusionBody = $Matches[1]
+if ($suiteExclusionBody -match 'IsAutoYielding|autoYield|acknowledgedConflicts') {
+    throw "EnforceStandaloneDynamicMarkerExclusion in DynamicSuite_Core.lua must not be gated by third-party auto-yield settings."
+}
+if ($markerLuaText -notmatch '(?s)\A(.*?)local function ResolveAddonVersion') {
+    throw "DynamicMarker.lua missing top-of-file pre-ResolveAddonVersion section."
+}
+$markerTopGuardBody = $Matches[1]
+if ($markerTopGuardBody.IndexOf('C_AddOns.IsAddOnLoaded("DynamicSuite")', [System.StringComparison]::Ordinal) -lt 0 -or
+    $markerTopGuardBody.IndexOf('C_AddOns.DisableAddOn', [System.StringComparison]::Ordinal) -lt 0) {
+    throw "DynamicMarker.lua top-of-file guard missing unconditional DynamicSuite IsAddOnLoaded / DisableAddOn exclusion."
+}
+if ($markerTopGuardBody -match 'IsAutoYielding|autoYield') {
+    throw "DynamicMarker.lua top-of-file guard must not depend on third-party auto-yield settings."
+}
+if ($markerLuaText -notmatch '(?s)(local function ShouldYieldToOtherInstall\(.*?\r?\nend(?=\r?\n))') {
+    throw "DynamicMarker.lua missing ShouldYieldToOtherInstall block."
+}
+if ($Matches[1] -match 'IsAutoYielding|autoYield') {
+    throw "DynamicMarker.lua ShouldYieldToOtherInstall must not depend on third-party auto-yield settings."
+}
 foreach ($markerCoexistReq in @('C_AddOns.IsAddOnLoaded("DynamicSuite")', "IsRunningInSuite", "ResetSingleHUDPosition", "DynamicMarkerGridOverlay")) {
     if ($markerLuaText.IndexOf($markerCoexistReq, [System.StringComparison]::Ordinal) -lt 0) {
         throw "DynamicMarker.lua missing coexistence / standalone HUD Edit token: $markerCoexistReq"
@@ -291,6 +315,29 @@ foreach ($markerCoexistReq in @('C_AddOns.IsAddOnLoaded("DynamicSuite")', "IsRun
 foreach ($markerForbiddenHudTok in @("DynamicSuiteGridOverlay", "DynamicSuite HUD Edit Mode", 'CreateFrame("Frame", "DynamicSuiteEditModeModal"', 'CreateFrame("Frame", "DynamicSuiteSnapGridOverlay"')) {
     if ($markerLuaText.IndexOf($markerForbiddenHudTok, [System.StringComparison]::Ordinal) -ge 0) {
         throw "DynamicMarker.lua contains forbidden duplicate Suite HUD frame/title token: $markerForbiddenHudTok"
+    }
+}
+$readmeSupportDocs = @(
+    "README.md",
+    "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md",
+    "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md",
+    "Marketing\CurseForge_DynamicMarker.md",
+    "Marketing\CurseForge_DynamicSuite.md"
+)
+$requiredDocTokens = @(
+    "[![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)",
+    "https://www.curseforge.com/wow/addons/dynamicsuite",
+    "https://www.curseforge.com/wow/addons/dynamicmarker",
+    "denteedev@gmail.com",
+    "## Support & Contact"
+)
+foreach ($docRel in $readmeSupportDocs) {
+    $docAbs = Join-Path $RepoRoot $docRel
+    $docContent = [System.IO.File]::ReadAllText($docAbs)
+    foreach ($reqTok in $requiredDocTokens) {
+        if ($docContent.IndexOf($reqTok, [System.StringComparison]::Ordinal) -lt 0) {
+            throw "$docRel missing required Ko-fi / CurseForge / Support & Contact parity token: $reqTok"
+        }
     }
 }
 foreach ($suiteUiReq in @("ClampHudCoordsToScreen", "ResetAllHudPositions", "SyncBarScaleAndSizeToDB", "GetVisibleContainerExtents")) {

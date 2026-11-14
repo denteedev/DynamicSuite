@@ -19,6 +19,13 @@ if ADDON_FOLDER ~= "DynamicSuite" then
             local ok2, st2 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite")
             if ok2 and type(st2) == "number" and st2 > 0 then isSuiteEnabled = true end
         end
+        if not isSuiteEnabled then
+            local pGuid = type(_G.UnitGUID) == "function" and _G.UnitGUID("player") or nil
+            if type(pGuid) == "string" and pGuid ~= "" then
+                local ok3, st3 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", pGuid)
+                if ok3 and type(st3) == "number" and st3 > 0 then isSuiteEnabled = true end
+            end
+        end
     end
     if isSuiteLoaded or isSuiteEnabled then
         if C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
@@ -76,6 +83,11 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
             end
             local ok2, st2 = pcall(getAddOnEnableState, name)
             if ok2 and type(st2) == "number" and st2 > 0 then return true end
+            local pGuid = type(_G.UnitGUID) == "function" and _G.UnitGUID("player") or nil
+            if type(pGuid) == "string" and pGuid ~= "" then
+                local ok3, st3 = pcall(getAddOnEnableState, name, pGuid)
+                if ok3 and type(st3) == "number" and st3 > 0 then return true end
+            end
         end
         return false
     end
@@ -3327,8 +3339,15 @@ local function ResolveHUDKeyAliases(hudKey)
 end
 
 function DM:SyncBarScaleAndSizeToDB(frame, hudKey)
-    local primaryKey, _, _, dbPrefix, _, upperKey = ResolveHUDKeyAliases(hudKey)
+    if type(frame) == "string" and hudKey == nil then
+        hudKey = frame
+        frame = nil
+    end
+    local primaryKey, _, _, dbPrefix, _, upperKey = ResolveHUDKeyAliases(hudKey or ((frame and frame == self.flareBar) and "FlareBar" or "TargetBar"))
     local isFlare = (primaryKey == "FlareBar") or (frame and frame == self.flareBar)
+    if type(frame) ~= "table" then
+        frame = isFlare and self.flareBar or self.targetBar
+    end
     local scaleKey = isFlare and "flareBarScale" or "targetBarScale"
     local orientKey = isFlare and "flareBarOrientation" or "targetBarOrientation"
 

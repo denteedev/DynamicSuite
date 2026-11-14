@@ -8,6 +8,8 @@
 ## SavedVariables: DynamicSuiteDB, DynamicLoadDB, DynamicPrepDB, DynamicMarkerDB, DynamicZoomDB, DynamicFPSDB, DynamicGroupDB, DynamicBagsDB, DynamicChatDB, FocusMarkerDB
 ## IconTexture: Interface\AddOns\DynamicSuite\icon.tga
 ## AddonCompartmentFunc: DynamicSuite_OnAddonCompartmentClick
+## X-Email: denteedev@gmail.com
+## X-Donate: https://ko-fi.com/dentee
 
 DynamicSuite_Core.lua
 DynamicSuite_UI.lua

@@ -95,7 +95,7 @@ Check out the full **[DynamicSuite on CurseForge](https://www.curseforge.com/wow
 * **DynamicBags** (`/dbag`) -- Zero-lag virtual category bags, Warband/Guild Bank companion, and Alt Vault
 * **DynamicChat** (`/dchat`) -- Instant `/ww` & `/qq` target whispers, smoked-glass chat skin, and reload history restore
 
-DynamicMarker uses a **Dual-Mode Architecture** with a semantic version guard (`CompareSemVer`): you can run it completely standalone, or install it alongside `DynamicSuite` and the newer version automatically takes priority with zero duplicate frames or double-loading.
+DynamicMarker uses an unconditional **Dual-Mode Consolidated Architecture**: when `DynamicSuite` is enabled, standalone `DynamicMarker` yields and is automatically disabled via `C_AddOns.DisableAddOn("DynamicMarker")` (with an immediate `C_AddOns.IsAddOnLoaded("DynamicSuite")` early-exit guard so both never double-load or open duplicate HUD Edit windows), while all 8 modules also include `ShouldYieldToOtherInstall` (`CompareSemVer`) semantic version guards regardless of third-party conflict settings.
 
 ---
 
@@ -121,10 +121,9 @@ DynamicMarker uses a **Dual-Mode Architecture** with a semantic version guard (`
 
 ## Support & Contact
 
-* **Author:** Dentee-Frostmourne
-* **Standalone CurseForge:** https://www.curseforge.com/wow/addons/dynamicmarker
-* **Full Suite (DynamicSuite):** https://www.curseforge.com/wow/addons/dynamicsuite
-* **Support Development on Ko-fi:** https://ko-fi.com/dentee
+* **Buy the Developer a Coffee (Ko-fi):** `https://ko-fi.com/dentee`
+* **Standalone CurseForge:** `https://www.curseforge.com/wow/addons/dynamicmarker`
+* **Full Suite CurseForge:** `https://www.curseforge.com/wow/addons/dynamicsuite`
 * **Direct Contact & Feedback:** `denteedev@gmail.com`
 ```
 

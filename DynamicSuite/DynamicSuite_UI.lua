@@ -9522,7 +9522,7 @@ function addonTable.CreateMainConfigUI()
     local function GetHudLocalScreenExtents(hudFrame, targetKey)
         local isMarkerHud = (targetKey == "TARGET" or targetKey == "FLARE")
         if isMarkerHud and _G.DynamicMarker and _G.DynamicMarker.SyncBarScaleAndSizeToDB then
-            pcall(_G.DynamicMarker.SyncBarScaleAndSizeToDB, _G.DynamicMarker, targetKey)
+            pcall(_G.DynamicMarker.SyncBarScaleAndSizeToDB, _G.DynamicMarker, hudFrame, targetKey)
         end
         local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
         if uScale <= 0 then uScale = 1 end
@@ -9536,9 +9536,9 @@ function addonTable.CreateMainConfigUI()
                     relScale = tonumber(g.hudScales[targetKey])
                 elseif _G.DynamicMarker and _G.DynamicMarker.db and type(_G.DynamicMarker.db) == "table" then
                     local dmDb = _G.DynamicMarker.db
-                    relScale = tonumber((targetKey == "TARGET") and dmDb.barScale or dmDb.flareBarScale)
+                    relScale = tonumber((targetKey == "TARGET") and (dmDb.targetBarScale or dmDb.barScale) or dmDb.flareBarScale)
                 elseif type(_G.DynamicMarkerDB) == "table" then
-                    relScale = tonumber((targetKey == "TARGET") and _G.DynamicMarkerDB.barScale or _G.DynamicMarkerDB.flareBarScale)
+                    relScale = tonumber((targetKey == "TARGET") and (_G.DynamicMarkerDB.targetBarScale or _G.DynamicMarkerDB.barScale) or _G.DynamicMarkerDB.flareBarScale)
                 end
             end
             if not relScale or relScale <= 0 then relScale = 1 end
@@ -9559,8 +9559,8 @@ function addonTable.CreateMainConfigUI()
         if isMarkerHud then
             if frameW <= 1 or frameH <= 1 then
                 local dmDb = (_G.DynamicMarker and _G.DynamicMarker.db) or _G.DynamicMarkerDB
-                local oriKey = (targetKey == "FLARE") and "flareOrientation" or "orientation"
-                local isVert = (type(dmDb) == "table" and dmDb[oriKey] == "VERTICAL")
+                local oriVal = (type(dmDb) == "table") and ((targetKey == "FLARE") and (dmDb.flareBarOrientation or dmDb.flareOrientation) or (dmDb.targetBarOrientation or dmDb.orientation)) or nil
+                local isVert = (oriVal == "VERTICAL")
                 frameW = isVert and 40 or 292
                 frameH = isVert and 292 or 40
             end
@@ -10875,10 +10875,10 @@ function addonTable.CreateMainConfigUI()
         local targets = (selectedHudTarget == "ALL") and { "TOAST", "PREP", "TARGET", "FLARE" } or { selectedHudTarget }
         for _, k in ipairs(targets) do
             local pt, _, cx, cy = GetStoredHudPos(k)
-            if (k == "TARGET" or k == "FLARE") and _G.DynamicMarker and _G.DynamicMarker.SyncBarScaleAndSizeToDB then
-                pcall(_G.DynamicMarker.SyncBarScaleAndSizeToDB, _G.DynamicMarker, k)
-            end
             local liveFrame = GetLiveHudFrame(k)
+            if (k == "TARGET" or k == "FLARE") and _G.DynamicMarker and _G.DynamicMarker.SyncBarScaleAndSizeToDB then
+                pcall(_G.DynamicMarker.SyncBarScaleAndSizeToDB, _G.DynamicMarker, liveFrame, k)
+            end
             local uiW_local, uiH_local, _, _, _, frameW, frameH = GetHudLocalScreenExtents(liveFrame, k)
             local w = frameW or 160
             local h = frameH or 40
