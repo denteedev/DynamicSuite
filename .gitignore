@@ -38,6 +38,7 @@ Releases/
 .release/
 .stage-dm/
 *.zip
+!Marketing/*.zip
 SHA256SUMS.txt
 RELEASE_NOTES_*.md
 ModulesTxt/

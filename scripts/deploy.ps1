@@ -7,13 +7,15 @@
     2. Validates all .lua files under DynamicSuite\ with luac5.1 -p.
     3. Verifies strict pure ASCII (no bytes > 127) and no UTF-8 BOM across .lua, .toc, .ps1, and CHANGELOG.md.
     4. Verifies internal planning files (AGENTS.md, DESIGN_SYSTEM.md, TASKS.md, Design/) are ignored and untracked.
-    5. Runs D:\DriveSync\Push-DynamicSuiteSync.cmd (WoW AddOns + Google Drive sync; never touches SavedVariables).
-    6. Stages public changes, commits (when dirty), and pushes to origin/main.
+    5. Optionally builds and verifies Marketing\DynamicMarker-<Version>.zip (-BuildReleaseZip).
+    6. Runs D:\DriveSync\Push-DynamicSuiteSync.cmd (WoW AddOns + Google Drive sync; never touches SavedVariables).
+    7. Stages public changes, commits (when dirty), and pushes to origin/main.
 #>
 [CmdletBinding()]
 param(
     [string] $CommitMessage = "",
     [string] $ReleaseTag = "",
+    [switch] $BuildReleaseZip,
     [switch] $SkipSync,
     [switch] $SkipGit
 )
@@ -99,6 +101,10 @@ foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "README.md",
     }
 }
 $asciiTargets += Get-ChildItem -LiteralPath $PSScriptRoot -Filter "*.ps1" -File
+$marketingDir = Join-Path $RepoRoot "Marketing"
+if (Test-Path -LiteralPath $marketingDir) {
+    $asciiTargets += Get-ChildItem -LiteralPath $marketingDir -Filter "*.md" -File
+}
 $designHtml = Join-Path $RepoRoot "Design\DynamicSuite_Full_Brand_Showcase.html"
 if (Test-Path -LiteralPath $designHtml) {
     $asciiTargets += Get-Item -LiteralPath $designHtml
@@ -127,7 +133,13 @@ Write-Host "[ASCII OK] Verified $($asciiTargets.Count) file(s) (NonASCII=0, HasB
 
 # 3b. Public doc leak guard & Lockstep Suite <-> Standalone parity checks
 $leakPattern = 'AGENTS\.md|DESIGN_SYSTEM\.md|TASKS\.md|Design/|scripts/'
-foreach ($pubDoc in @("README.md", "CHANGELOG.md", "DynamicSuite\CHANGELOG.md")) {
+$pubDocs = @("README.md", "CHANGELOG.md", "DynamicSuite\CHANGELOG.md")
+if (Test-Path -LiteralPath $marketingDir) {
+    foreach ($mf in (Get-ChildItem -LiteralPath $marketingDir -Filter "*.md" -File)) {
+        $pubDocs += "Marketing\$($mf.Name)"
+    }
+}
+foreach ($pubDoc in $pubDocs) {
     $pubPath = Join-Path $RepoRoot $pubDoc
     if (-not (Test-Path -LiteralPath $pubPath)) {
         throw "Required public document missing: $pubPath"
@@ -233,6 +245,169 @@ if (-not [string]::IsNullOrWhiteSpace($ReleaseTag)) {
         throw "release.yml must package Project ID 1331651 with .pkgmeta-dynamicmarker."
     }
     Write-Host "[RELEASE GUARD OK] Verified .pkgmeta-dynamicmarker (DynamicMarker), release.yml (1331651), and StandaloneTOCs/DynamicMarker.toc for $ReleaseTag" -ForegroundColor Green
+}
+
+if ($BuildReleaseZip) {
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    if (-not (Test-Path -LiteralPath $marketingDir)) {
+        New-Item -ItemType Directory -Force -Path $marketingDir | Out-Null
+    }
+
+    $markerTocSrc = Join-Path $RepoRoot "Packaging\StandaloneTOCs\DynamicMarker.toc"
+    $markerLuaSrc = Join-Path $RepoRoot "DynamicSuite\Modules\DynamicMarker.lua"
+    $markerIconSrc = Join-Path $RepoRoot "DynamicSuite\icon.tga"
+    $mediaIconsSrc = Join-Path $RepoRoot "DynamicSuite\Media\Icons"
+    $mediaFontsSrc = Join-Path $RepoRoot "DynamicSuite\Media\Fonts"
+    $rootFontsSrc = Join-Path $RepoRoot "DynamicSuite\Fonts"
+    $suiteChangelogSrc = Join-Path $RepoRoot "DynamicSuite\CHANGELOG.md"
+
+    foreach ($reqFile in @($markerTocSrc, $markerLuaSrc, $suiteChangelogSrc)) {
+        if (-not (Test-Path -LiteralPath $reqFile)) {
+            throw "Missing required standalone release file: $reqFile"
+        }
+    }
+
+    $releaseZipPath = Join-Path $marketingDir ("DynamicMarker-{0}.zip" -f $suiteVer)
+    $stageTmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("DynamicMarker_Stage_" + [guid]::NewGuid().ToString("N"))
+    $verifyTmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("DynamicMarker_Verify_" + [guid]::NewGuid().ToString("N"))
+
+    try {
+        $stageAddonDir = Join-Path $stageTmpRoot "DynamicMarker"
+        New-Item -ItemType Directory -Force -Path $stageAddonDir | Out-Null
+
+        Copy-Item -LiteralPath $markerTocSrc -Destination (Join-Path $stageAddonDir "DynamicMarker.toc") -Force
+        Copy-Item -LiteralPath $markerLuaSrc -Destination (Join-Path $stageAddonDir "DynamicMarker.lua") -Force
+        Copy-Item -LiteralPath $suiteChangelogSrc -Destination (Join-Path $stageAddonDir "CHANGELOG.md") -Force
+        if (Test-Path -LiteralPath $markerIconSrc) {
+            Copy-Item -LiteralPath $markerIconSrc -Destination (Join-Path $stageAddonDir "icon.tga") -Force
+        }
+
+        $skipAssetRx = '(\.bak|\.tmp|\.orig|\.rej|Thumbs\.db|\.DS_Store|desktop\.ini)$'
+        if (Test-Path -LiteralPath $mediaIconsSrc) {
+            $dstIcons = Join-Path $stageAddonDir "Media\Icons"
+            New-Item -ItemType Directory -Force -Path $dstIcons | Out-Null
+            Get-ChildItem -LiteralPath $mediaIconsSrc -File | Where-Object { $_.Name -notmatch $skipAssetRx } | ForEach-Object {
+                Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $dstIcons $_.Name) -Force
+            }
+        }
+        if (Test-Path -LiteralPath $mediaFontsSrc) {
+            $dstMediaFonts = Join-Path $stageAddonDir "Media\Fonts"
+            New-Item -ItemType Directory -Force -Path $dstMediaFonts | Out-Null
+            Get-ChildItem -LiteralPath $mediaFontsSrc -File | Where-Object { $_.Name -notmatch $skipAssetRx } | ForEach-Object {
+                Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $dstMediaFonts $_.Name) -Force
+            }
+        }
+        if (Test-Path -LiteralPath $rootFontsSrc) {
+            $markerRaw = [System.IO.File]::ReadAllText($markerLuaSrc)
+            $fontRefs = [regex]::Matches($markerRaw, '\\\\Fonts\\\\([^"\\|]+?\.(?:ttf|otf))', 'IgnoreCase') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+            foreach ($fn in $fontRefs) {
+                $fp = Get-ChildItem -LiteralPath $rootFontsSrc -File | Where-Object { $_.Name -ieq $fn } | Select-Object -First 1
+                if ($fp) {
+                    $dstRootFonts = Join-Path $stageAddonDir "Fonts"
+                    New-Item -ItemType Directory -Force -Path $dstRootFonts | Out-Null
+                    Copy-Item -LiteralPath $fp.FullName -Destination (Join-Path $dstRootFonts $fp.Name) -Force
+                }
+            }
+        }
+
+        if (Test-Path -LiteralPath $releaseZipPath) {
+            Remove-Item -LiteralPath $releaseZipPath -Force
+        }
+
+        $stagedFiles = Get-ChildItem -LiteralPath $stageAddonDir -Recurse -File | Sort-Object FullName
+        $zipFs = [System.IO.File]::Open($releaseZipPath, [System.IO.FileMode]::CreateNew)
+        try {
+            $zipArc = New-Object System.IO.Compression.ZipArchive($zipFs, [System.IO.Compression.ZipArchiveMode]::Create)
+            try {
+                foreach ($sf in $stagedFiles) {
+                    $relEntry = $sf.FullName.Substring($stageTmpRoot.TrimEnd('\').Length + 1).Replace('\', '/')
+                    $entry = $zipArc.CreateEntry($relEntry, [System.IO.Compression.CompressionLevel]::Optimal)
+                    $entry.LastWriteTime = [DateTimeOffset]$sf.LastWriteTime
+                    $es = $entry.Open()
+                    try {
+                        $inFs = [System.IO.File]::OpenRead($sf.FullName)
+                        try { $inFs.CopyTo($es) } finally { $inFs.Dispose() }
+                    } finally {
+                        $es.Dispose()
+                    }
+                }
+            } finally {
+                $zipArc.Dispose()
+            }
+        } finally {
+            $zipFs.Dispose()
+        }
+
+        # Verify archive entry format and clean extraction
+        $checkArc = [System.IO.Compression.ZipFile]::OpenRead($releaseZipPath)
+        try {
+            foreach ($e in $checkArc.Entries) {
+                if ($e.FullName -match '\\' -or $e.FullName -notmatch '^DynamicMarker/') {
+                    throw "Invalid release ZIP entry path in $($releaseZipPath): $($e.FullName)"
+                }
+            }
+        } finally {
+            $checkArc.Dispose()
+        }
+
+        [System.IO.Compression.ZipFile]::ExtractToDirectory($releaseZipPath, $verifyTmpRoot)
+        $topEntries = @(Get-ChildItem -LiteralPath $verifyTmpRoot)
+        if ($topEntries.Count -ne 1 -or -not $topEntries[0].PSIsContainer -or $topEntries[0].Name -ne "DynamicMarker") {
+            throw "Release ZIP must extract strictly to top-level DynamicMarker/ folder."
+        }
+
+        $extractedAddonDir = $topEntries[0].FullName
+        $extractedTocPath = Join-Path $extractedAddonDir "DynamicMarker.toc"
+        if (-not (Test-Path -LiteralPath $extractedTocPath)) {
+            throw "Extracted release ZIP is missing DynamicMarker/DynamicMarker.toc."
+        }
+
+        $extTocLines = Get-Content -LiteralPath $extractedTocPath
+        $extVer = ($extTocLines | Where-Object { $_ -match '^##\s*Version:\s*(.+?)\s*$' } | Select-Object -First 1)
+        $extIface = ($extTocLines | Where-Object { $_ -match '^##\s*Interface:\s*(.+?)\s*$' } | Select-Object -First 1)
+        if (-not ($extVer -match '^##\s*Version:\s*(.+?)\s*$') -or $Matches[1].Trim() -ne $suiteVer) {
+            throw "Extracted DynamicMarker.toc version mismatch (expected $suiteVer)."
+        }
+        if (-not ($extIface -match '^##\s*Interface:\s*(.+?)\s*$') -or $Matches[1].Trim() -ne $suiteIface) {
+            throw "Extracted DynamicMarker.toc interface mismatch (expected $suiteIface)."
+        }
+        $extIconLine = ($extTocLines | Where-Object { $_ -match '^##\s*IconTexture:\s*(.+?)\s*$' } | Select-Object -First 1)
+        if ($extIconLine -match '^##\s*IconTexture:\s*Interface\\AddOns\\DynamicMarker\\(.+?)\s*$') {
+            $iconRel = $Matches[1].Trim()
+            if (-not (Test-Path -LiteralPath (Join-Path $extractedAddonDir $iconRel))) {
+                throw "Extracted DynamicMarker.toc IconTexture missing: $iconRel"
+            }
+        }
+        foreach ($tocEntry in ($extTocLines | Where-Object { $_ -notmatch '^\s*#' -and $_.Trim() -ne '' })) {
+            $relPath = $tocEntry.Trim()
+            if (-not (Test-Path -LiteralPath (Join-Path $extractedAddonDir $relPath))) {
+                throw "Extracted DynamicMarker.toc references missing file: $relPath"
+            }
+        }
+
+        $extractedAll = Get-ChildItem -LiteralPath $verifyTmpRoot -Recurse -File
+        foreach ($ef in $extractedAll) {
+            $relNorm = $ef.FullName.Substring($verifyTmpRoot.Length + 1).Replace('\', '/')
+            if ($ef.Extension -ieq ".lua" -and $ef.Name -cne "DynamicMarker.lua") {
+                throw "Forbidden Lua file found in standalone DynamicMarker ZIP: $relNorm"
+            }
+            if ($ef.Extension -match '^\.(ps1|cmd)$') {
+                throw "Forbidden script file found in standalone DynamicMarker ZIP: $relNorm"
+            }
+            if ($ef.Name -match '^(AGENTS|DESIGN_SYSTEM|TASKS|README)\.md$' -or $relNorm -match '/Design/') {
+                throw "Forbidden internal/non-package doc found in standalone DynamicMarker ZIP: $relNorm"
+            }
+        }
+
+        $zipKb = [math]::Round(((Get-Item -LiteralPath $releaseZipPath).Length / 1KB), 1)
+        Write-Host "[ZIP OK] Built and verified Marketing\DynamicMarker-$suiteVer.zip ($zipKb KB, $($extractedAll.Count) file(s))" -ForegroundColor Green
+    }
+    finally {
+        if (Test-Path -LiteralPath $stageTmpRoot) { Remove-Item -LiteralPath $stageTmpRoot -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path -LiteralPath $verifyTmpRoot) { Remove-Item -LiteralPath $verifyTmpRoot -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 }
 
 # 4. Internal files & .gitignore guard
