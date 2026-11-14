@@ -4591,7 +4591,7 @@ function addonTable.CreateMainConfigUI()
                         host._activeModHost = modHost
 
                         if f.verPill and f.verPill.label then
-                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "1.9.7"
+                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "1.9.8"
                             f.verPill.label:SetText("v" .. tostring(mVer))
                         end
                         UpdateStatusBar(true)
@@ -4995,7 +4995,7 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        local curVer = addonTable.ADDON_VERSION or "1.9.7"
+        local curVer = addonTable.ADDON_VERSION or "1.9.8"
         local curSig = f.GetSuiteChangelogSignature and f.GetSuiteChangelogSignature() or curVer
         local seenVer = gTbl.lastSeenChangelogVer or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogVer)
         local seenSig = gTbl.lastSeenChangelogSig or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogSig)
@@ -6687,7 +6687,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.7"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.8"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -6700,6 +6700,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "FIXED",    title = "v1.9.8 Release: HUD Edit Edge-Drag Persistence & Flush (0, 0) Chat Clamping", desc = "Fixed Target Icon Bar and World Flare Bar coordinate round-trips across drag, Exit Edit Mode, UI_SCALE_CHANGED, and /reload by syncing bar scale and orientation before clamping and canonicalising CENTER anchors across Suite & standalone DynamicMarker; and fixed DynamicChat flush bottom-left (0, 0) positioning by disabling ChatFrame1 C++ SetClampedToScreen, measuring only the visible chat container via GetVisibleContainerExtents(), and canonicalising CHAT to BOTTOMLEFT outer-container coordinates." },
                 { badge = "NEW",      title = "v1.9.7 Release: CurseForge Dual-Release Pipeline (DynamicSuite 1804382) & Hardened Coexistence", desc = "Wired full DynamicSuite (Project ID 1804382) alongside standalone DynamicMarker (Project ID 1331651) in the automated release workflow, updated all Support panels and public docs to the live CurseForge links, added code-accurate storefront documentation, and hardened ShouldYieldToOtherInstall dual-mode version coexistence across all 8 modules." },
                 { badge = "FIXED",    title = "v1.9.6 Release: DynamicBags Bank/Guild Bank & Merge Hardening + Suite/Standalone Parity", desc = "Eliminated post-/reload Bank & Guild Bank flashes with SetScale suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, enforced strict weak ordering in Sort: A-Z, hardened Drop-Anywhere slot placement, synced DynamicBags Smart Search entries, and upgraded standalone DynamicMarker's Changelog modal to stream live entries dynamically." },
                 { badge = "UI",       title = "Standalone DynamicMarker Dock Parity & DynamicSuite CurseForge URL", desc = "Added the bottom-right [Reload UI] button, Opacity slider, and Scale slider to standalone DynamicMarker's footer dock, upgraded its Support modal to read-only Ctrl+C EditBoxes, and updated DynamicSuite's Support view CurseForge link to https://www.curseforge.com/wow/addons/dynamicsuite." },
@@ -6753,6 +6754,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
             openModule = "DynamicMarker",
             items = {
+                { badge = "FIXED",    title = "v1.9.8 Scaled Edge-Drag & Reload Persistence", desc = "Synced bar scale and vertical/horizontal bar size prior to boundary clamping, canonicalised Target & Flare bar anchors to CENTER, cleared drag flags prior to final Edit Mode save, and kept SetClampedToScreen(false) so edge-pinned bars stay flush across release, /reload, and UI scale changes." },
                 { badge = "NEW",      title = "v1.9.7 Live Suite Cross-Links & Hardened Coexistence", desc = "Replaced legacy URL placeholder labels across DynamicSuite & standalone DynamicMarker Support panels and docs now that DynamicSuite (Project ID 1804382) is live on CurseForge, and hardened ShouldYieldToOtherInstall semantic version yielding regardless of addon load order." },
                 { badge = "UI",       title = "Standalone Scrollable Changelog Modal Parity", desc = "Upgraded standalone DynamicMarker's Changelog modal to stream live formatted entries directly from DynamicMarker.CHANGELOG.entries inside a scrollable frame matching the full suite Changelog hub." },
                 { badge = "NEW",      title = "Encapsulated HUD Edit Mode, Movers & Standalone Parity", desc = "Moved HUD Edit Mode toggle state, crisp pixel-bordered movers ('DynamicMarker: Icon Bar' and 'DynamicMarker: Flare Bar'), drag-and-snap persistence directly into DynamicMarkerDB, mousewheel scaling (60%-150%), ESC-key closing, and combat-lockdown failsafe cleanly inside DynamicMarker. Registers with DynamicSuite's [+ HUD] toolbar button via RegisterHudEditCallback so no duplicate drag shields are created, and adds direct toggles in Focus/Flare Settings headers, the standalone rail, and /dm hud." },
@@ -6895,12 +6897,13 @@ function addonTable.CreateMainConfigUI()
             key = "chat",
             tabLabel = "DynamicChat",
             ver = DS_LIVE_VER_TAG,
-            date = "12/11/2026 (Retail 12.1.5)",
+            date = "14/11/2026 (Retail 12.1.5)",
             title = "DynamicChat " .. DS_LIVE_VER_TAG,
             subtitle = "Zero-Taint Target Whisper (/ww), Sound Alert Engine, Smoked-Glass Chat Skin & History Retention (/dchat)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
             openModule = "DynamicChat",
             items = {
+                { badge = "FIXED",    title = "v1.9.8 Flush (0, 0) Bottom-Left Clamping & Persistence", desc = "Disabled C++ SetClampedToScreen(true) on ChatFrame1 whenever DynamicChat manages layout, restricted composite clamping solely to visible container extents (GetVisibleContainerExtents), and canonicalised CHAT to BOTTOMLEFT outer-container coordinates so (0, 0) sits flush at the bottom-left screen corner." },
                 { badge = "FIXED",    title = "Accurate Frozen/Unloaded Conflict Detection & Universal 'Use DynamicChat' Takeover", desc = "Updated IsAddonLoadedNow, IsAddonActiveInSession, and IsEllesmereUIChatSubModuleEnabled so any external chat addon set to 'FROZEN' (Never) in DynamicLoad or overridden via 'USE_DYNAMIC' / 'RUN_BOTH' is treated as inactive (false), and prevented IsEllesmereUIChatSubModuleEnabled from falling back to parent EllesmereUI when EllesmereUIChat is installed as a separate sub-addon on disk and unloaded." },
                 { badge = "PERF",     title = "Zero-Allocation Raid Combat Path & Fast Tab Alert Flash", desc = "Fast-pathed FCF_StartAlertFlash and FCF_StopAlertFlash during InCombatLockdown() to style only the single flashing tab instead of running full LayoutDockedChatTabs table allocations on every combat tab flash; added an O(1) '/' prefix check in TryConvertTargetWhisperEditBox; reused pre-allocated URL capture tables; and skipped RefreshLeftRailTelemetry() on UPDATE_INVENTORY_DURABILITY during combat." },
                 { badge = "FIXED",    title = "HUD Mover Literal '|r' Text Fix, EllesmereUIChat Soft-Yield & 1:1 ChatFrame1 Geometry Sync", desc = "Fixed literal '|r' characters in HUD Edit Mode mover readouts ('|cFF64748B|||r' / '|cFF475569|||r'); hid the DynamicChat HUD mover and skipped ChatFrame1 position overrides whenever DynamicChat is disabled or soft-yielding to an external chat addon (EllesmereUIChat, ElvUI Chat, Prat-3.0, Chattynator, LS: Glass); synced SetScale(ChatFrame1:GetScale()) and 1:1 backdrop bounds across ChatFrame1, the DynamicChat container panel, and the HUD mover during and after HUD Edit Mode; and lowered the Chat HUD mover backdrop alpha (0.52 / 0.40) so underlying chat lines remain legible." },
@@ -8883,7 +8886,7 @@ function addonTable.CreateMainConfigUI()
         ["TARGET"]    = { label = "Focus Icons",     header = "POSITIONING: FOCUS ICONS",     owner = "DynamicMarker", defPoint = "CENTER", defRelPoint = "CENTER", defX = 0,    defY = -140, topY = -112, botY = -568 },
         ["FLARE"]     = { label = "World Flare Bar", header = "POSITIONING: WORLD FLARE BAR", owner = "DynamicMarker", defPoint = "CENTER", defRelPoint = "CENTER", defX = 0,    defY = -182, topY = -160, botY = -616 },
         ["prepBuffs"] = { label = "Prep Raid Buffs", header = "POSITIONING: PREP RAID BUFFS", owner = "DynamicPrep",   defPoint = "CENTER", defRelPoint = "CENTER", defX = 0,    defY = 140,  topY = 140,  botY = -400 },
-        ["CHAT"]      = { label = "Chat Frame",      header = "POSITIONING: CHAT FRAME",      owner = "DynamicChat",   defPoint = "CENTER", defRelPoint = "CENTER", defX = -620, defY = -310, topY = 200,  botY = -310 },
+        ["CHAT"]      = { label = "Chat Frame",      header = "POSITIONING: CHAT FRAME",      owner = "DynamicChat",   defPoint = "BOTTOMLEFT", defRelPoint = "BOTTOMLEFT", defX = 0,    defY = 0,    topY = 200,  botY = 0 },
     }
     -- 6 tabs sized to fit 880px modal width cleanly (690px track width)
     local hudTargetDefs = {
@@ -9032,33 +9035,39 @@ function addonTable.CreateMainConfigUI()
             if not IsChatHudTargetOwned() then
                 return nil
             end
-            local cf = _G.ChatFrame1
-            if cf and cf.GetCenter and UIParent and UIParent.GetCenter then
-                local fScale = (cf.GetEffectiveScale and cf:GetEffectiveScale()) or 1
-                local uScale = (UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-                local relScale = (fScale > 0 and uScale > 0) and (fScale / uScale) or 1
-                local cx, cy = cf:GetCenter()
-                local uCx, uCy = UIParent:GetCenter()
-                if cx and cy and uCx and uCy then
-                    local visCx = cx * relScale
-                    local visCy = cy * relScale
-                    local lx = math.floor(((visCx - uCx) / relScale) + 0.5)
-                    local ly = math.floor(((visCy - uCy) / relScale) + 0.5)
-                    return "CENTER", "CENTER", lx, ly
+            if _G.DynamicChat and _G.DynamicChat.GetLiveOuterBottomLeft then
+                local ok, pt, relPt, lx, ly = pcall(_G.DynamicChat.GetLiveOuterBottomLeft, _G.DynamicChat)
+                if ok and lx ~= nil and ly ~= nil then
+                    return pt or "BOTTOMLEFT", relPt or "BOTTOMLEFT", math.floor(lx + 0.5), math.floor(ly + 0.5)
                 end
             end
             if type(_G.DynamicChatDB) == "table" and type(_G.DynamicChatDB.chatFramePos) == "table" then
                 local pos = _G.DynamicChatDB.chatFramePos
                 if pos.x ~= nil and pos.y ~= nil then
-                    return pos.point or "CENTER", pos.relativePoint or pos.relPoint or "CENTER", math.floor(pos.x + 0.5), math.floor(pos.y + 0.5)
+                    if _G.DynamicChat and _G.DynamicChat.ClampChatFrameCoords then
+                        local okC, cx, cy = pcall(_G.DynamicChat.ClampChatFrameCoords, _G.DynamicChat, pos.x, pos.y, pos.width, pos.height, pos.point or pos.relativePoint or pos.relPoint)
+                        if okC and cx ~= nil and cy ~= nil then
+                            return "BOTTOMLEFT", "BOTTOMLEFT", cx, cy
+                        end
+                    end
+                    return "BOTTOMLEFT", "BOTTOMLEFT", math.max(0, math.floor(pos.x + 0.5)), math.max(0, math.floor(pos.y + 0.5))
                 end
             end
-            return "CENTER", "CENTER", -620, -310
+            return "BOTTOMLEFT", "BOTTOMLEFT", 0, 0
         end
         local liveFrame = GetLiveHudFrame(targetKey)
+        if (targetKey == "TARGET" or targetKey == "FLARE") and _G.DynamicMarker and _G.DynamicMarker.SyncBarScaleAndSizeToDB then
+            pcall(_G.DynamicMarker.SyncBarScaleAndSizeToDB, _G.DynamicMarker, liveFrame, targetKey)
+        end
         if liveFrame and liveFrame.GetPoint then
             local pt, _, relPt, lx, ly = liveFrame:GetPoint(1)
             if pt and lx ~= nil and ly ~= nil then
+                if (targetKey == "TARGET" or targetKey == "FLARE") and _G.DynamicMarker and _G.DynamicMarker.ConvertAnchorToCenterLocal then
+                    local okC, cPt, cRel, cx, cy = pcall(_G.DynamicMarker.ConvertAnchorToCenterLocal, _G.DynamicMarker, liveFrame, pt, relPt or pt, lx, ly)
+                    if okC and cx ~= nil and cy ~= nil then
+                        return cPt or "CENTER", cRel or "CENTER", cx, cy
+                    end
+                end
                 return pt, relPt or pt, math.floor(lx + 0.5), math.floor(ly + 0.5)
             end
         end
@@ -9067,25 +9076,43 @@ function addonTable.CreateMainConfigUI()
             if targetKey == "TARGET" then
                 local pos = db.targetBarPos or _G.DynamicMarkerDB.targetBarPos or db.targetPos or _G.DynamicMarkerDB.targetPos
                 if type(pos) == "table" and pos.x ~= nil and pos.y ~= nil then
-                    return pos.point or "CENTER", pos.relPoint or pos.point or "CENTER", math.floor(pos.x + 0.5), math.floor(pos.y + 0.5)
+                    local tpt, trp, tx, ty = pos.point or "CENTER", pos.relPoint or pos.point or "CENTER", math.floor(pos.x + 0.5), math.floor(pos.y + 0.5)
+                    if _G.DynamicMarker and _G.DynamicMarker.ConvertAnchorToCenterLocal and (tpt ~= "CENTER" or trp ~= "CENTER") then
+                        local okC, cPt, cRel, cx, cy = pcall(_G.DynamicMarker.ConvertAnchorToCenterLocal, _G.DynamicMarker, liveFrame, tpt, trp, tx, ty)
+                        if okC and cx ~= nil and cy ~= nil then return cPt or "CENTER", cRel or "CENTER", cx, cy end
+                    end
+                    return tpt, trp, tx, ty
                 end
                 local tx = db.targetBarX or _G.DynamicMarkerDB.targetBarX or db.barX or _G.DynamicMarkerDB.barX
                 local ty = db.targetBarY or _G.DynamicMarkerDB.targetBarY or db.barY or _G.DynamicMarkerDB.barY
                 local tpt = db.targetBarPoint or _G.DynamicMarkerDB.targetBarPoint or db.barPoint or _G.DynamicMarkerDB.barPoint or "CENTER"
                 local trp = db.targetBarRelPoint or _G.DynamicMarkerDB.targetBarRelPoint or tpt
                 if tx ~= nil and ty ~= nil then
+                    if _G.DynamicMarker and _G.DynamicMarker.ConvertAnchorToCenterLocal and (tpt ~= "CENTER" or trp ~= "CENTER") then
+                        local okC, cPt, cRel, cx, cy = pcall(_G.DynamicMarker.ConvertAnchorToCenterLocal, _G.DynamicMarker, liveFrame, tpt, trp, tx, ty)
+                        if okC and cx ~= nil and cy ~= nil then return cPt or "CENTER", cRel or "CENTER", cx, cy end
+                    end
                     return tpt, trp, math.floor(tx + 0.5), math.floor(ty + 0.5)
                 end
             else
                 local pos = db.flareBarPos or _G.DynamicMarkerDB.flareBarPos or db.flarePos or _G.DynamicMarkerDB.flarePos
                 if type(pos) == "table" and pos.x ~= nil and pos.y ~= nil then
-                    return pos.point or "CENTER", pos.relPoint or pos.point or "CENTER", math.floor(pos.x + 0.5), math.floor(pos.y + 0.5)
+                    local fpt, frp, fx, fy = pos.point or "CENTER", pos.relPoint or pos.point or "CENTER", math.floor(pos.x + 0.5), math.floor(pos.y + 0.5)
+                    if _G.DynamicMarker and _G.DynamicMarker.ConvertAnchorToCenterLocal and (fpt ~= "CENTER" or frp ~= "CENTER") then
+                        local okC, cPt, cRel, cx, cy = pcall(_G.DynamicMarker.ConvertAnchorToCenterLocal, _G.DynamicMarker, liveFrame, fpt, frp, fx, fy)
+                        if okC and cx ~= nil and cy ~= nil then return cPt or "CENTER", cRel or "CENTER", cx, cy end
+                    end
+                    return fpt, frp, fx, fy
                 end
                 local fx = db.flareBarX or _G.DynamicMarkerDB.flareBarX
                 local fy = db.flareBarY or _G.DynamicMarkerDB.flareBarY
                 local fpt = db.flareBarPoint or _G.DynamicMarkerDB.flareBarPoint or "CENTER"
                 local frp = db.flareBarRelPoint or _G.DynamicMarkerDB.flareBarRelPoint or fpt
                 if fx ~= nil and fy ~= nil then
+                    if _G.DynamicMarker and _G.DynamicMarker.ConvertAnchorToCenterLocal and (fpt ~= "CENTER" or frp ~= "CENTER") then
+                        local okC, cPt, cRel, cx, cy = pcall(_G.DynamicMarker.ConvertAnchorToCenterLocal, _G.DynamicMarker, liveFrame, fpt, frp, fx, fy)
+                        if okC and cx ~= nil and cy ~= nil then return cPt or "CENTER", cRel or "CENTER", cx, cy end
+                    end
                     return fpt, frp, math.floor(fx + 0.5), math.floor(fy + 0.5)
                 end
             end
@@ -9202,6 +9229,9 @@ function addonTable.CreateMainConfigUI()
                     end
                 end
             end
+            if _G.DynamicMarker and _G.DynamicMarker.WriteHUDCoordsToDB then
+                pcall(_G.DynamicMarker.WriteHUDCoordsToDB, _G.DynamicMarker, targetKey, pt or "CENTER", relPt or pt or "CENTER", rx, ry)
+            end
         elseif targetKey == "PREP" then
             local function WritePrepTbl(tbl)
                 if type(tbl) ~= "table" then return end
@@ -9245,15 +9275,15 @@ function addonTable.CreateMainConfigUI()
                 local cf = _G.ChatFrame1
                 local w = (cf and cf.GetWidth and cf:GetWidth()) or 430
                 local h = (cf and cf.GetHeight and cf:GetHeight()) or 200
-                pcall(_G.DynamicChat.SaveChatFramePosition, _G.DynamicChat, pt, relPt, rx, ry, w, h)
+                pcall(_G.DynamicChat.SaveChatFramePosition, _G.DynamicChat, "BOTTOMLEFT", "BOTTOMLEFT", rx, ry, w, h)
             elseif type(_G.DynamicChatDB) == "table" then
                 local cf = _G.ChatFrame1
                 _G.DynamicChatDB.chatFramePos = {
-                    point         = pt or "CENTER",
-                    relativePoint = relPt or "CENTER",
-                    relPoint      = relPt or "CENTER",
-                    x             = rx,
-                    y             = ry,
+                    point         = "BOTTOMLEFT",
+                    relativePoint = "BOTTOMLEFT",
+                    relPoint      = "BOTTOMLEFT",
+                    x             = math.max(0, math.floor((rx or 0) + 0.5)),
+                    y             = math.max(0, math.floor((ry or 0) + 0.5)),
                     width         = (cf and cf.GetWidth and math.floor(cf:GetWidth() + 0.5)) or 430,
                     height        = (cf and cf.GetHeight and math.floor(cf:GetHeight() + 0.5)) or 200,
                 }
@@ -9285,16 +9315,25 @@ function addonTable.CreateMainConfigUI()
         if targetKey ~= "CHAT" then
             return 0, 0, 0, 0
         end
+        if _G.DynamicChat and _G.DynamicChat.GetVisibleContainerExtents then
+            local ok, lEx, rEx, tEx, bEx = pcall(_G.DynamicChat.GetVisibleContainerExtents, _G.DynamicChat)
+            if ok and lEx ~= nil then
+                return math.max(0, tonumber(lEx) or 0),
+                       math.max(0, tonumber(rEx) or 0),
+                       math.max(0, tonumber(tEx) or 0),
+                       math.max(0, tonumber(bEx) or 0)
+            end
+        end
         if _G.DynamicChat and _G.DynamicChat.GetCompositeChatInsets then
             local ok, lIn, rIn, tIn, bIn = pcall(_G.DynamicChat.GetCompositeChatInsets, _G.DynamicChat)
             if ok and lIn then
                 return math.max(0, -(tonumber(lIn) or -36)),
                        math.max(0, tonumber(rIn) or 8),
-                       math.max(0, tonumber(tIn) or 29),
-                       math.max(0, -(tonumber(bIn) or -32))
+                       math.max(0, tonumber(tIn) or 28),
+                       math.max(0, -(tonumber(bIn) or -6))
             end
         end
-        return 36, 8, 29, 32
+        return 36, 8, 28, 6
     end
 
     local function EnsureSnapGuideOverlay()
@@ -9496,8 +9535,11 @@ function addonTable.CreateMainConfigUI()
 
     -- Unified Screen-Edge/Center & Bar-to-Bar Magnetic Snapping + Hard Screen-Boundary Clamping
     local function ClampHudCoordsToScreen(hudFrame, targetKey, usePt, useRelPt, rawX, rawY, enableSnap)
-        local cleanPt = usePt or ((targetKey == "TARGET" or targetKey == "FLARE" or targetKey == "prepBuffs" or targetKey == "CHAT") and "CENTER" or "TOP")
-        local cleanRelPt = useRelPt or cleanPt
+        if (targetKey == "TARGET" or targetKey == "FLARE") and _G.DynamicMarker and _G.DynamicMarker.SyncBarScaleAndSizeToDB then
+            pcall(_G.DynamicMarker.SyncBarScaleAndSizeToDB, _G.DynamicMarker, hudFrame, targetKey)
+        end
+        local inPt = usePt or ((targetKey == "TARGET" or targetKey == "FLARE" or targetKey == "prepBuffs") and "CENTER" or ((targetKey == "CHAT") and "BOTTOMLEFT" or "TOP"))
+        local inRelPt = useRelPt or inPt
         local _, _, _, uScale, relScale, frameW, frameH = GetHudLocalScreenExtents(hudFrame, targetKey)
         local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
         local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
@@ -9514,17 +9556,31 @@ function addonTable.CreateMainConfigUI()
         local topExtraVis    = tEx * relScale
         local bottomExtraVis = bEx * relScale
 
-        local pfx, pfy = GetAnchorFraction(cleanPt)
-        local rfx, rfy = GetAnchorFraction(cleanRelPt)
-        local refX = rfx * screenW
-        local refY = rfy * screenH
-
         local inX = tonumber(rawX) or 0
         local inY = tonumber(rawY) or 0
-        local anchorVisX = refX + (inX * relScale)
-        local anchorVisY = refY + (inY * relScale)
-        local candCx = anchorVisX + (0.5 - pfx) * visW
-        local candCy = anchorVisY + (0.5 - pfy) * visH
+        local candCx, candCy
+        if targetKey == "CHAT" and (inPt == "BOTTOMLEFT" or inRelPt == "BOTTOMLEFT") then
+            candCx = (inX * relScale) + leftExtraVis + halfW
+            candCy = (inY * relScale) + bottomExtraVis + halfH
+        else
+            local inPfx, inPfy = GetAnchorFraction(inPt)
+            local inRfx, inRfy = GetAnchorFraction(inRelPt)
+            local refX = inRfx * screenW
+            local refY = inRfy * screenH
+            local anchorVisX = refX + (inX * relScale)
+            local anchorVisY = refY + (inY * relScale)
+            candCx = anchorVisX + (0.5 - inPfx) * visW
+            candCy = anchorVisY + (0.5 - inPfy) * visH
+        end
+
+        local cleanPt, cleanRelPt
+        if targetKey == "TARGET" or targetKey == "FLARE" then
+            cleanPt, cleanRelPt = "CENTER", "CENTER"
+        elseif targetKey == "CHAT" then
+            cleanPt, cleanRelPt = "BOTTOMLEFT", "BOTTOMLEFT"
+        else
+            cleanPt, cleanRelPt = inPt, inRelPt
+        end
 
         local guideX, guideY = nil, nil
         local snapMode = GetActiveSnapMode()
@@ -9636,34 +9692,50 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        local rawOutX = ((candCx - (0.5 - pfx) * visW) - refX) / relScale
-        local rawOutY = ((candCy - (0.5 - pfy) * visH) - refY) / relScale
-        local outX = math.floor(rawOutX + 0.5)
-        local outY = math.floor(rawOutY + 0.5)
-
-        local minLocalX = ((minCx - (0.5 - pfx) * visW) - refX) / relScale
-        local maxLocalX = ((maxCx - (0.5 - pfx) * visW) - refX) / relScale
-        local minLocalY = ((minCy - (0.5 - pfy) * visH) - refY) / relScale
-        local maxLocalY = ((maxCy - (0.5 - pfy) * visH) - refY) / relScale
-
-        if minLocalX <= maxLocalX then
-            local loX = math.ceil(minLocalX - 1e-6)
-            local hiX = math.floor(maxLocalX + 1e-6)
-            if loX <= hiX then
-                outX = math.max(loX, math.min(hiX, outX))
-            end
+        local outX, outY
+        if targetKey == "CHAT" then
+            local rawOutX = (candCx - halfW - leftExtraVis) / relScale
+            local rawOutY = (candCy - halfH - bottomExtraVis) / relScale
+            outX = math.floor(rawOutX + 0.5)
+            outY = math.floor(rawOutY + 0.5)
+            local maxLocalX = math.max(0, (maxCx - minCx) / relScale)
+            local maxLocalY = math.max(0, (maxCy - minCy) / relScale)
+            outX = math.max(0, math.min(math.floor(maxLocalX + 1e-6), outX))
+            outY = math.max(0, math.min(math.floor(maxLocalY + 1e-6), outY))
         else
-            outX = math.floor((((screenCx - (0.5 - pfx) * visW) - refX) / relScale) + 0.5)
-        end
+            local pfx, pfy = GetAnchorFraction(cleanPt)
+            local rfx, rfy = GetAnchorFraction(cleanRelPt)
+            local outRefX = rfx * screenW
+            local outRefY = rfy * screenH
+            local rawOutX = ((candCx - (0.5 - pfx) * visW) - outRefX) / relScale
+            local rawOutY = ((candCy - (0.5 - pfy) * visH) - outRefY) / relScale
+            outX = math.floor(rawOutX + 0.5)
+            outY = math.floor(rawOutY + 0.5)
 
-        if minLocalY <= maxLocalY then
-            local loY = math.ceil(minLocalY - 1e-6)
-            local hiY = math.floor(maxLocalY + 1e-6)
-            if loY <= hiY then
-                outY = math.max(loY, math.min(hiY, outY))
+            local minLocalX = ((minCx - (0.5 - pfx) * visW) - outRefX) / relScale
+            local maxLocalX = ((maxCx - (0.5 - pfx) * visW) - outRefX) / relScale
+            local minLocalY = ((minCy - (0.5 - pfy) * visH) - outRefY) / relScale
+            local maxLocalY = ((maxCy - (0.5 - pfy) * visH) - outRefY) / relScale
+
+            if minLocalX <= maxLocalX then
+                local loX = math.ceil(minLocalX - 1e-6)
+                local hiX = math.floor(maxLocalX + 1e-6)
+                if loX <= hiX then
+                    outX = math.max(loX, math.min(hiX, outX))
+                end
+            else
+                outX = math.floor((((screenCx - (0.5 - pfx) * visW) - outRefX) / relScale) + 0.5)
             end
-        else
-            outY = math.floor((((screenCy - (0.5 - pfy) * visH) - refY) / relScale) + 0.5)
+
+            if minLocalY <= maxLocalY then
+                local loY = math.ceil(minLocalY - 1e-6)
+                local hiY = math.floor(maxLocalY + 1e-6)
+                if loY <= hiY then
+                    outY = math.max(loY, math.min(hiY, outY))
+                end
+            else
+                outY = math.floor((((screenCy - (0.5 - pfy) * visH) - outRefY) / relScale) + 0.5)
+            end
         end
 
         return cleanPt, cleanRelPt, outX, outY, guideX, guideY
@@ -9705,6 +9777,10 @@ function addonTable.CreateMainConfigUI()
         PersistPeerHudPosition(targetKey, cleanPt, cleanRelPt, rx, ry)
 
         if liveFrame and targetKey ~= "CHAT" and not InCombatLockdown() then
+            if targetKey == "TARGET" or targetKey == "FLARE" then
+                if liveFrame.SetClampedToScreen then liveFrame:SetClampedToScreen(false) end
+                if liveFrame.SetClampRectInsets then liveFrame:SetClampRectInsets(0, 0, 0, 0) end
+            end
             if liveFrame.ClearAllPoints and liveFrame.SetPoint then
                 liveFrame:ClearAllPoints()
                 liveFrame:SetPoint(cleanPt, UIParent, cleanRelPt, rx, ry)
@@ -9727,8 +9803,15 @@ function addonTable.CreateMainConfigUI()
 
     -- Read the frame's current live anchor & offset in hudFrame local coordinate space
     local function GetLiveHudLocalOffset(hudFrame, targetKey)
+        if targetKey == "CHAT" then
+            local pt, relPt, lx, ly = ReadPeerOrLiveHudPos("CHAT")
+            if pt and lx ~= nil and ly ~= nil then
+                return pt, relPt or "BOTTOMLEFT", lx, ly
+            end
+            return "BOTTOMLEFT", "BOTTOMLEFT", 0, 0
+        end
         local prevPt, prevRelPt, storedX, storedY = GetStoredHudPos(targetKey)
-        local usePt = (prevPt == "CENTER" or targetKey == "TARGET" or targetKey == "FLARE" or targetKey == "prepBuffs" or targetKey == "CHAT") and "CENTER" or "TOP"
+        local usePt = (prevPt == "CENTER" or targetKey == "TARGET" or targetKey == "FLARE" or targetKey == "prepBuffs") and "CENTER" or "TOP"
         local useRelPt = (usePt == "CENTER") and "CENTER" or "TOP"
         if not hudFrame then
             return usePt, useRelPt, math.floor((storedX or 0) + 0.5), math.floor((storedY or 0) + 0.5)
@@ -10063,19 +10146,14 @@ function addonTable.CreateMainConfigUI()
             stateCarrier._dsEditModeActive = false
             stateCarrier._dsDragging = false
             if targetKey == "CHAT" then
-                if _G.DynamicChatDB and type(_G.DynamicChatDB.chatFramePos) == "table" then
+                if IsChatHudTargetOwned() then
                     if hudFrame.SetClampRectInsets then hudFrame:SetClampRectInsets(0, 0, 0, 0) end
                     if hudFrame.SetClampedToScreen then hudFrame:SetClampedToScreen(false) end
                     if hudFrame.SetUserPlaced then hudFrame:SetUserPlaced(true) end
-                else
-                    if hudFrame.SetClampRectInsets and _G.DynamicChat and _G.DynamicChat.GetCompositeChatInsets then
-                        local ok, lIn, rIn, tIn, bIn = pcall(_G.DynamicChat.GetCompositeChatInsets, _G.DynamicChat)
-                        if ok and lIn then
-                            hudFrame:SetClampRectInsets(lIn, rIn, tIn, bIn)
-                        end
-                    end
-                    if hudFrame.SetClampedToScreen then hudFrame:SetClampedToScreen(true) end
                 end
+            elseif targetKey == "TARGET" or targetKey == "FLARE" then
+                if hudFrame.SetClampRectInsets then hudFrame:SetClampRectInsets(0, 0, 0, 0) end
+                if hudFrame.SetClampedToScreen then hudFrame:SetClampedToScreen(false) end
             else
                 if hudFrame.SetClampedToScreen then hudFrame:SetClampedToScreen(true) end
             end
@@ -10272,26 +10350,26 @@ function addonTable.CreateMainConfigUI()
                             return
                         end
                         local uiW_local, uiH_local, _, curUScale, curRelScale = GetHudLocalScreenExtents(hudFrame, "CHAT")
+                        local lEx, rEx, tEx, bEx = GetChatExtraInsetsLocal("CHAT")
                         local rxRaw, ryRaw = GetCursorPosition()
                         local curUIParentX = (rxRaw or 0) / curUScale
                         local curUIParentY = (ryRaw or 0) / curUScale
                         local dW = (curUIParentX - (selfGrip._startCurUIParentX or curUIParentX)) / curRelScale
                         local dH = ((selfGrip._startCurUIParentY or curUIParentY) - curUIParentY) / curRelScale
-                        local maxAllowedW = math.min(1200, math.max(240, math.floor(uiW_local - 56)))
-                        local maxAllowedH = math.min(900, math.max(100, math.floor(uiH_local - 84)))
+                        local maxAllowedW = math.min(1200, math.max(240, math.floor(uiW_local - lEx - rEx)))
+                        local maxAllowedH = math.min(900, math.max(100, math.floor(uiH_local - tEx - bEx)))
                         local newW = math.floor(math.max(240, math.min(maxAllowedW, (selfGrip._startW or 430) + dW)) + 0.5)
                         local newH = math.floor(math.max(100, math.min(maxAllowedH, (selfGrip._startH or 200) + dH)) + 0.5)
-                        local actualDW = newW - (selfGrip._startW or 430)
                         local actualDH = newH - (selfGrip._startH or 200)
-                        local rawOffX = math.floor((selfGrip._startOffX or -620) + (actualDW / 2) + 0.5)
-                        local rawOffY = math.floor((selfGrip._startOffY or -310) - (actualDH / 2) + 0.5)
+                        local rawOffX = math.max(0, selfGrip._startOffX or 0)
+                        local rawOffY = math.max(0, (selfGrip._startOffY or 0) - actualDH)
                         hudFrame:SetSize(newW, newH)
-                        local _, _, newOffX, newOffY = ComputeSnappedAndClampedHudCoords(hudFrame, "CHAT", rawOffX, rawOffY, "CENTER", "CENTER")
+                        local _, _, newOffX, newOffY = ComputeSnappedAndClampedHudCoords(hudFrame, "CHAT", rawOffX, rawOffY, "BOTTOMLEFT", "BOTTOMLEFT", false)
                         if newW == selfGrip._lastW and newH == selfGrip._lastH and newOffX == selfGrip._lastX and newOffY == selfGrip._lastY then
                             return
                         end
                         hudFrame:ClearAllPoints()
-                        hudFrame:SetPoint("CENTER", UIParent, "CENTER", newOffX, newOffY)
+                        hudFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", lEx + newOffX, bEx + newOffY)
                         selfGrip._lastW = newW
                         selfGrip._lastH = newH
                         selfGrip._lastX = newOffX
@@ -10320,14 +10398,9 @@ function addonTable.CreateMainConfigUI()
                     finalX = selfGrip._lastX or finalX
                     finalY = selfGrip._lastY or finalY
                     if _G.DynamicChat and _G.DynamicChat.SaveChatFramePosition then
-                        if type(_G.DynamicChatDB) == "table" and type(_G.DynamicChatDB.chatFramePos) == "table" and _G.DynamicChatDB.chatFramePos.point == "BOTTOMLEFT" then
-                            local curPos = _G.DynamicChatDB.chatFramePos
-                            pcall(_G.DynamicChat.SaveChatFramePosition, _G.DynamicChat, "BOTTOMLEFT", "BOTTOMLEFT", curPos.x or 0, curPos.y or 0, finalW, finalH)
-                        else
-                            pcall(_G.DynamicChat.SaveChatFramePosition, _G.DynamicChat, "CENTER", "CENTER", finalX, finalY, finalW, finalH)
-                        end
+                        pcall(_G.DynamicChat.SaveChatFramePosition, _G.DynamicChat, "BOTTOMLEFT", "BOTTOMLEFT", finalX, finalY, finalW, finalH)
                     end
-                    SetStoredHudPos("CHAT", "CENTER", "CENTER", finalX, finalY)
+                    SetStoredHudPos("CHAT", "BOTTOMLEFT", "BOTTOMLEFT", finalX, finalY)
                     if shield.UpdateOverlay then
                         shield:UpdateOverlay(finalX, finalY, true)
                     end
@@ -10377,24 +10450,31 @@ function addonTable.CreateMainConfigUI()
                 local _, _, _, uScale, relScale, frameW, frameH = GetHudLocalScreenExtents(hudFrame, targetKey)
                 local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
                 local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
-                local fCx, fCy = hudFrame.GetCenter and hudFrame:GetCenter()
-                local startVisCx, startVisCy
-                if fCx and fCy then
-                    startVisCx = fCx * relScale
-                    startVisCy = fCy * relScale
-                else
-                    local pfx, pfy = GetAnchorFraction(usePt)
-                    local rfx, rfy = GetAnchorFraction(useRelPt)
-                    startVisCx = (rfx * screenW) + (startX * relScale) + (0.5 - pfx) * ((frameW or 0) * relScale)
-                    startVisCy = (rfy * screenH) + (startY * relScale) + (0.5 - pfy) * ((frameH or 0) * relScale)
-                end
                 local rawCurX, rawCurY = GetCursorPosition()
                 local startCurX = (rawCurX or 0) / uScale
                 local startCurY = (rawCurY or 0) / uScale
                 self._dragUsePt = usePt
                 self._dragUseRelPt = useRelPt
-                self._dragGrabVisX = startVisCx - startCurX
-                self._dragGrabVisY = startVisCy - startCurY
+                if targetKey == "CHAT" then
+                    local startVisBLX = startX * relScale
+                    local startVisBLY = startY * relScale
+                    self._dragGrabVisX = startVisBLX - startCurX
+                    self._dragGrabVisY = startVisBLY - startCurY
+                else
+                    local fCx, fCy = hudFrame.GetCenter and hudFrame:GetCenter()
+                    local startVisCx, startVisCy
+                    if fCx and fCy then
+                        startVisCx = fCx * relScale
+                        startVisCy = fCy * relScale
+                    else
+                        local pfx, pfy = GetAnchorFraction(usePt)
+                        local rfx, rfy = GetAnchorFraction(useRelPt)
+                        startVisCx = (rfx * screenW) + (startX * relScale) + (0.5 - pfx) * ((frameW or 0) * relScale)
+                        startVisCy = (rfy * screenH) + (startY * relScale) + (0.5 - pfy) * ((frameH or 0) * relScale)
+                    end
+                    self._dragGrabVisX = startVisCx - startCurX
+                    self._dragGrabVisY = startVisCy - startCurY
+                end
                 self._lastDragX = startX
                 self._lastDragY = startY
 
@@ -10408,14 +10488,23 @@ function addonTable.CreateMainConfigUI()
                     local curScreenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
                     local curScreenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
                     local cxRaw, cyRaw = GetCursorPosition()
-                    local rawVisCx = ((cxRaw or 0) / curUScale) + (self._dragGrabVisX or 0)
-                    local rawVisCy = ((cyRaw or 0) / curUScale) + (self._dragGrabVisY or 0)
                     local pNow = self._dragUsePt or usePt
                     local rNow = self._dragUseRelPt or useRelPt
-                    local pfx, pfy = GetAnchorFraction(pNow)
-                    local rfx, rfy = GetAnchorFraction(rNow)
-                    local rawX = ((rawVisCx - (0.5 - pfx) * ((curFrameW or 0) * curRelScale)) - (rfx * curScreenW)) / curRelScale
-                    local rawY = ((rawVisCy - (0.5 - pfy) * ((curFrameH or 0) * curRelScale)) - (rfy * curScreenH)) / curRelScale
+                    local rawX, rawY
+                    if targetKey == "CHAT" then
+                        local rawVisBLX = ((cxRaw or 0) / curUScale) + (self._dragGrabVisX or 0)
+                        local rawVisBLY = ((cyRaw or 0) / curUScale) + (self._dragGrabVisY or 0)
+                        rawX = rawVisBLX / curRelScale
+                        rawY = rawVisBLY / curRelScale
+                        pNow, rNow = "BOTTOMLEFT", "BOTTOMLEFT"
+                    else
+                        local rawVisCx = ((cxRaw or 0) / curUScale) + (self._dragGrabVisX or 0)
+                        local rawVisCy = ((cyRaw or 0) / curUScale) + (self._dragGrabVisY or 0)
+                        local pfx, pfy = GetAnchorFraction(pNow)
+                        local rfx, rfy = GetAnchorFraction(rNow)
+                        rawX = ((rawVisCx - (0.5 - pfx) * ((curFrameW or 0) * curRelScale)) - (rfx * curScreenW)) / curRelScale
+                        rawY = ((rawVisCy - (0.5 - pfy) * ((curFrameH or 0) * curRelScale)) - (rfy * curScreenH)) / curRelScale
+                    end
                     local ptNow, relPtNow, lx, ly, gx, gy = ComputeSnappedAndClampedHudCoords(hudFrame, targetKey, rawX, rawY, pNow, rNow, true)
                     UpdateSnapGuides(gx, gy)
                     if lx == self._lastDragX and ly == self._lastDragY then
@@ -10424,8 +10513,14 @@ function addonTable.CreateMainConfigUI()
                     self._lastDragX = lx
                     self._lastDragY = ly
                     if not InCombatLockdown() then
-                        hudFrame:ClearAllPoints()
-                        hudFrame:SetPoint(ptNow, UIParent, relPtNow, lx, ly)
+                        if targetKey == "CHAT" then
+                            local lEx, _, _, bEx = GetChatExtraInsetsLocal("CHAT")
+                            hudFrame:ClearAllPoints()
+                            hudFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", lEx + lx, bEx + ly)
+                        else
+                            hudFrame:ClearAllPoints()
+                            hudFrame:SetPoint(ptNow, UIParent, relPtNow, lx, ly)
+                        end
                     end
                     if targetKey == "CHAT" and _G.DynamicChat and _G.DynamicChat.ApplySleekChatSkin then
                         pcall(_G.DynamicChat.ApplySleekChatSkin, _G.DynamicChat)
@@ -10447,7 +10542,7 @@ function addonTable.CreateMainConfigUI()
                 self:SetScript("OnUpdate", nil)
                 HideSnapGuides()
                 if hudFrame.StopMovingOrSizing then pcall(hudFrame.StopMovingOrSizing, hudFrame) end
-                local usePt = self._dragUsePt or ((targetKey == "TARGET" or targetKey == "FLARE" or targetKey == "prepBuffs" or targetKey == "CHAT") and "CENTER" or "TOP")
+                local usePt = self._dragUsePt or ((targetKey == "TARGET" or targetKey == "FLARE" or targetKey == "prepBuffs") and "CENTER" or ((targetKey == "CHAT") and "BOTTOMLEFT" or "TOP"))
                 local useRelPt = self._dragUseRelPt or usePt
                 local rx, ry
                 if self._lastDragX ~= nil and self._lastDragY ~= nil then
@@ -10743,21 +10838,35 @@ function addonTable.CreateMainConfigUI()
         for _, k in ipairs(targets) do
             local pt, _, cx, cy = GetStoredHudPos(k)
             local liveFrame = GetLiveHudFrame(k)
-            local _, uiH_local, _, _, _, _, frameH = GetHudLocalScreenExtents(liveFrame, k)
+            local uiW_local, uiH_local, _, _, _, frameW, frameH = GetHudLocalScreenExtents(liveFrame, k)
+            local w = frameW or 160
             local h = frameH or 40
-            local usePt = (pt == "CENTER" or k == "TARGET" or k == "FLARE" or k == "prepBuffs" or k == "CHAT") and "CENTER" or "TOP"
-            local useRelPt = (usePt == "CENTER") and "CENTER" or "TOP"
-            if alignType == "CENTER_H" then
-                SetStoredHudPos(k, usePt, useRelPt, 0, cy)
-            elseif alignType == "CENTER_V" then
-                local useY = (usePt == "CENTER") and 0 or math.floor(-(uiH_local / 2) + (h / 2) + 0.5)
-                SetStoredHudPos(k, usePt, useRelPt, cx, useY)
-            elseif alignType == "TOP" then
-                local useY = (usePt == "CENTER") and math.floor((uiH_local / 2) - (h / 2) + 0.5) or 0
-                SetStoredHudPos(k, usePt, useRelPt, cx, useY)
-            elseif alignType == "BOTTOM" then
-                local useY = (usePt == "CENTER") and math.floor(-(uiH_local / 2) + (h / 2) + 0.5) or math.floor(-(uiH_local - h) + 0.5)
-                SetStoredHudPos(k, usePt, useRelPt, cx, useY)
+            if k == "CHAT" then
+                local lEx, rEx, tEx, bEx = GetChatExtraInsetsLocal("CHAT")
+                if alignType == "CENTER_H" then
+                    SetStoredHudPos("CHAT", "BOTTOMLEFT", "BOTTOMLEFT", math.floor(((uiW_local - w - lEx - rEx) / 2) + 0.5), cy)
+                elseif alignType == "CENTER_V" then
+                    SetStoredHudPos("CHAT", "BOTTOMLEFT", "BOTTOMLEFT", cx, math.floor(((uiH_local - h - tEx - bEx) / 2) + 0.5))
+                elseif alignType == "TOP" then
+                    SetStoredHudPos("CHAT", "BOTTOMLEFT", "BOTTOMLEFT", cx, math.floor((uiH_local - h - tEx - bEx) + 0.5))
+                elseif alignType == "BOTTOM" then
+                    SetStoredHudPos("CHAT", "BOTTOMLEFT", "BOTTOMLEFT", cx, 0)
+                end
+            else
+                local usePt = (pt == "CENTER" or k == "TARGET" or k == "FLARE" or k == "prepBuffs") and "CENTER" or "TOP"
+                local useRelPt = (usePt == "CENTER") and "CENTER" or "TOP"
+                if alignType == "CENTER_H" then
+                    SetStoredHudPos(k, usePt, useRelPt, 0, cy)
+                elseif alignType == "CENTER_V" then
+                    local useY = (usePt == "CENTER") and 0 or math.floor(-(uiH_local / 2) + (h / 2) + 0.5)
+                    SetStoredHudPos(k, usePt, useRelPt, cx, useY)
+                elseif alignType == "TOP" then
+                    local useY = (usePt == "CENTER") and math.floor((uiH_local / 2) - (h / 2) + 0.5) or 0
+                    SetStoredHudPos(k, usePt, useRelPt, cx, useY)
+                elseif alignType == "BOTTOM" then
+                    local useY = (usePt == "CENTER") and math.floor(-(uiH_local / 2) + (h / 2) + 0.5) or math.floor(-(uiH_local - h) + 0.5)
+                    SetStoredHudPos(k, usePt, useRelPt, cx, useY)
+                end
             end
         end
         SyncAllEditModeHuds(true)
@@ -12543,7 +12652,7 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "1.9.7"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "1.9.8"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -13275,7 +13384,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.7") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.8") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -13336,7 +13445,7 @@ function addonTable.HookGameMenu()
             cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
             if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
-            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.7") .. "|r")
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "1.9.8") .. "|r")
             openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
             if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
@@ -13442,7 +13551,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "1.9.7",
+        version = addonTable.ADDON_VERSION or "1.9.8",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,

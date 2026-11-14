@@ -278,15 +278,24 @@ foreach ($tok in $parityTokens) {
         throw "DynamicMarker.lua missing Suite/Standalone parity token: $tok"
     }
 }
-foreach ($suiteUiReq in @("ClampHudCoordsToScreen", "ResetAllHudPositions")) {
+foreach ($suiteUiReq in @("ClampHudCoordsToScreen", "ResetAllHudPositions", "SyncBarScaleAndSizeToDB", "GetVisibleContainerExtents")) {
     if ($suiteUiText.IndexOf($suiteUiReq, [System.StringComparison]::Ordinal) -lt 0) {
         throw "DynamicSuite_UI.lua missing required HUD safety helper: $suiteUiReq"
     }
 }
-foreach ($markerReq in @("ClampHUDPositionToScreen", "ResetHUDPositions", 'cmd == "resethud"')) {
+foreach ($markerReq in @("ClampHUDPositionToScreen", "ResetHUDPositions", 'cmd == "resethud"', "SyncBarScaleAndSizeToDB", "ConvertAnchorToCenterLocal", "WriteHUDCoordsToDB")) {
     if ($markerLuaText.IndexOf($markerReq, [System.StringComparison]::Ordinal) -lt 0) {
         throw "DynamicMarker.lua missing required HUD safety helper/command: $markerReq"
     }
+}
+$chatLuaText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "DynamicSuite\Modules\DynamicChat.lua"))
+foreach ($chatReq in @("GetVisibleContainerExtents", "GetLiveOuterBottomLeft")) {
+    if ($chatLuaText.IndexOf($chatReq, [System.StringComparison]::Ordinal) -lt 0) {
+        throw "DynamicChat.lua missing required HUD safety helper: $chatReq"
+    }
+}
+if ($chatLuaText.IndexOf("cf:SetClampedToScreen(true)", [System.StringComparison]::Ordinal) -ge 0) {
+    throw "DynamicChat.lua must not call cf:SetClampedToScreen(true)"
 }
 foreach ($slashTok in @('SLASH_DYNAMICMARKER1 = "/dm"', 'SLASH_DYNAMICMARKER3 = "/fm"', 'SlashCmdList["DYNAMICMARKER"]')) {
     if ($markerLuaText.IndexOf($slashTok, [System.StringComparison]::Ordinal) -lt 0) {
@@ -692,6 +701,13 @@ try {
         & cmd.exe /c "`"$PushCmd`""
         if ($LASTEXITCODE -ne 0) {
             throw "Push-DynamicSuiteSync.cmd exited with code $LASTEXITCODE"
+        }
+        $wowStandaloneMarkerDir = "C:\Program Files (x86)\World of Warcraft\_retail_\Interface\AddOns\DynamicMarker"
+        if (Test-Path -LiteralPath $wowStandaloneMarkerDir) {
+            Copy-Item -LiteralPath (Join-Path $RepoRoot "Packaging\StandaloneTOCs\DynamicMarker.toc") -Destination (Join-Path $wowStandaloneMarkerDir "DynamicMarker.toc") -Force
+            Copy-Item -LiteralPath (Join-Path $RepoRoot "DynamicSuite\Modules\DynamicMarker.lua") -Destination (Join-Path $wowStandaloneMarkerDir "DynamicMarker.lua") -Force
+            Copy-Item -LiteralPath (Join-Path $RepoRoot "DynamicSuite\CHANGELOG.md") -Destination (Join-Path $wowStandaloneMarkerDir "CHANGELOG.md") -Force
+            Write-Host "[STANDALONE SYNCED] DynamicMarker.toc, DynamicMarker.lua, & CHANGELOG.md -> $wowStandaloneMarkerDir" -ForegroundColor DarkCyan
         }
         $driveSyncRoot = "G:\My Drive\DynamicSuite_Sync"
         if (Test-Path -LiteralPath $driveSyncRoot) {

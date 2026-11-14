@@ -1,5 +1,16 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v1.9.7 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v1.9.8 (14/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v1.9.8 (`/ds`, `/dm`, `/dbag`)
+* **[FIX] HUD Edit Target & World Marker Bar Scaled Edge-Drag & `/reload` Persistence (`DynamicMarker.lua`, `DynamicSuite_UI.lua`):**
+  * Fixed Target Marker and World Marker (Flare) bars jumping back to the middle-right of the screen after dragging to any screen edge (especially at non-100% scales such as `70%` or `75%`): added `DM:SyncBarScaleAndSizeToDB()` prior to every clamping pass so bar scale and vertical/horizontal bounds (`292x40` / `40x292`) are applied before computing screen limits, canonicalised anchors to `CENTER`/`CENTER` via `DM:ConvertAnchorToCenterLocal()`, synced all flat/nested/profile `DynamicMarkerDB` mirrors atomically via `DM:WriteHUDCoordsToDB()`, cleared drag state before final `SaveHUDPosition()` on Edit Mode exit, tracked final cursor-delta bounds in `OnDragStop`, and kept `SetClampedToScreen(false)` + `SetClampRectInsets(0, 0, 0, 0)` across init, refresh, Edit Mode exit, and `UI_SCALE_CHANGED`/`PLAYER_ENTERING_WORLD` across both full `DynamicSuite` and standalone `DynamicMarker`.
+* **[FIX] `DynamicChat` Flush Bottom-Left `(0, 0)` Clamping & Persistence (`DynamicChat.lua`, `DynamicSuite_UI.lua`):**
+  * Enforced `ChatFrame1:SetClampedToScreen(false)` and `SetClampRectInsets(0, 0, 0, 0)` (alongside `ChatFrame1Background` and `ChatFrame1EditBox`) whenever `DynamicChat` manages chat layout so Blizzard's default clamp insets never push `ChatFrame1` upward by ~30px.
+  * Added `DynamicChat:GetVisibleContainerExtents()` and `DynamicChat:GetLiveOuterBottomLeft()` so `ClampHudCoordsToScreen`, `ReadPeerOrLiveHudPos("CHAT")`, and `DynamicChat`'s layout restore measure only the visible chat container frame without external Blizzard side-button overhangs, and canonicalised `CHAT` (`hudTargetMeta`, drag shield, resize grip, quick align, `SaveChatFramePosition`, and `ApplySavedChatFramePosition`) to `BOTTOMLEFT` outer-container coordinates so dragging, nudging, or resetting to `X = 0, Y = 0` sits flush against the bottom-left screen corner with zero gap across Edit Mode toggles, UI scale/display events, and `/reload`.
+* **[LOCKSTEP] `v1.9.8` Suite <-> Standalone Parity & Automation (`deploy.ps1`, `.toc`, Docs):**
+  * Added HUD Edit coordinate/anchor parity assertions (`SyncBarScaleAndSizeToDB`, `ConvertAnchorToCenterLocal`, `WriteHUDCoordsToDB`, `GetVisibleContainerExtents`, `GetLiveOuterBottomLeft`, and zero `cf:SetClampedToScreen(true)` in `DynamicChat.lua`) alongside WoW AddOns `DynamicMarker` standalone sync checks, and bumped lockstep `v1.9.8` versions across all `.toc`, Lua fallbacks, and public docs.
 
 ---
 

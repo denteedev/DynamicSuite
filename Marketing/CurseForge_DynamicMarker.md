@@ -1,7 +1,7 @@
-# DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v1.9.7)
+# DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v1.9.8)
 
 > **Target Game Version:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`)  
-> **Version:** `v1.9.7` (`14/11/2026`)  
+> **Version:** `v1.9.8` (`14/11/2026`)  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicmarker
 
@@ -130,14 +130,12 @@ DynamicMarker uses a **Dual-Mode Architecture** with a semantic version guard (`
 
 ---
 
-## Section 2: CurseForge File Changelog Block (`v1.9.7` -- `14/11/2026`)
+## Section 2: CurseForge File Changelog Block (`v1.9.8` -- `14/11/2026`)
 
 ```markdown
-## DynamicMarker v1.9.7 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
+## DynamicMarker v1.9.8 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
 
 ### Highlights & Release Changes
-* **Live `DynamicSuite` CurseForge Cross-Links & Support Modal Parity:** Updated standalone DynamicMarker's Support modal (`https://www.curseforge.com/wow/addons/dynamicsuite`) and storefront docs to replace legacy placeholder URL labels now that the full `DynamicSuite` project (`1804382`) is live on CurseForge alongside standalone `DynamicMarker` (`1331651`).
-* **Hardened `ShouldYieldToOtherInstall` Dual-Mode Coexistence:** Improved semantic version coexistence across both `DynamicSuite` and standalone `DynamicMarker` so whichever install is newer cleanly takes priority regardless of load order.
-* **HUD Edit Mode Scale-Aware `1:1` Dragging, Magnetic Snapping & `/dm resethud` Failsafe:** Full `1:1` effective-scale cursor tracking across `60%`-`150%` (including `70%`), magnetic screen-edge/centre (`11px`) and cross-bar (`9px`) alignment guides, `Shift`-to-bypass micro-adjustment, automatic screen-boundary clamping across all events and `/reload`, and combat-safe `Reset HUD Positions` in `ESC -> Options -> AddOns` plus `/dm resethud` (`/fm resethud`).
-* **Standalone Scrollable Changelog Modal & Footer Dock Parity:** Scrollable `ScrollFrame` changelog viewer reading live `DynamicMarker.CHANGELOG.entries` alongside bottom-right **Opacity** (`50%`-`100%`), **Scale** (`80%`-`120%`), **Reload UI**, and native `14x14` corner resize grabber controls.
+* **Scaled Edge-Drag & `/reload` Position Persistence (Target Icon & World Flare Bars):** Fixed an issue where Target Marker and World Flare bars dragged to a screen edge (including at `70%`/`75%` scales or in vertical layout) could snap back toward the centre-right after release, exiting Edit Mode, or `/reload`. Bar scale and orientation dimensions now sync prior to every clamping pass, anchors canonicalise strictly to `CENTER`/`CENTER`, all `DynamicMarkerDB` position mirrors write atomically, and `SetClampedToScreen(false)` stays enforced across Suite and standalone builds.
+* **HUD Edit Mode & Lockstep `DynamicSuite` (`v1.9.8`) Parity:** Synchronised `ClampHUDPositionToScreen`, `ClampHudCoordsToScreen`, `SyncBarScaleAndSizeToDB`, and `ReadPeerOrLiveHudPos` behavior 1:1 across standalone `DynamicMarker` and full `DynamicSuite`.
 ```

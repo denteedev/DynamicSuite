@@ -1,7 +1,7 @@
-# DynamicSuite -- CurseForge Storefront Copy & Release Changelog (v1.9.7)
+# DynamicSuite -- CurseForge Storefront Copy & Release Changelog (v1.9.8)
 
 > **Target Game Version:** World of Warcraft Retail Midnight `12.1.5` (Interface `120105`)  
-> **Version:** `v1.9.7` (`14/11/2026`)  
+> **Version:** `v1.9.8` (`14/11/2026`)  
 > **CurseForge Project ID:** `1804382`  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicsuite
@@ -117,14 +117,13 @@ Looking for just the target marking & interrupt macro module? Check out standalo
 
 ---
 
-## Section 2: CurseForge File Changelog Block (`v1.9.7` -- `14/11/2026`)
+## Section 2: CurseForge File Changelog Block (`v1.9.8` -- `14/11/2026`)
 
 ```markdown
-## DynamicSuite & Standalone DynamicMarker v1.9.7 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
+## DynamicSuite & Standalone DynamicMarker v1.9.8 (14/11/2026 -- Retail 12.1.5 / Interface 120105)
 
 ### Highlights & Release Changes
-* **Official CurseForge Release Pipeline for Full `DynamicSuite` (Project ID `1804382`):** Connected full `DynamicSuite` alongside standalone `DynamicMarker` (Project ID `1331651`) in our automated dual-artifact release workflow, producing clean runtime packages with full `CHANGELOG.md` and `README.md` documentation and zero development or internal clutter.
-* **Live CurseForge URLs & Support Modal Parity (`DynamicSuite_UI.lua`, `DynamicMarker.lua`, Docs):** Updated all in-game Support panels (`ESC -> Options -> AddOns` & Support modals) and storefront documentation with the live `https://www.curseforge.com/wow/addons/dynamicsuite` link (replacing all legacy placeholder status labels across both full `DynamicSuite` and standalone `DynamicMarker`).
-* **Hardened `ShouldYieldToOtherInstall` Dual-Mode Coexistence (All 8 Modules):** Improved semantic version coexistence across `DynamicBags`, `DynamicChat`, `DynamicFPS`, `DynamicGroup`, `DynamicLoad`, `DynamicMarker`, `DynamicPrep`, and `DynamicZoom` so standalone addons and bundled `DynamicSuite` modules cleanly defer to the newer installed copy regardless of load order.
-* **Lockstep `v1.9.7` Version & Storefront Docs Sync:** Synchronised all `.toc` headers (`120105` / `1.9.7`), Lua fallback constants, in-game changelog views, and `CurseForge_DynamicSuite.md` + `CurseForge_DynamicMarker.md` documentation.
+* **Target & World Marker Bar Scaled Edge-Drag & `/reload` Persistence (`DynamicMarker.lua`, `DynamicSuite_UI.lua`):** Fixed Target and World Flare bars snapping back after edge-drags at non-100% scales (e.g. `70%`/`75%`) by syncing bar scale and orientation size before clamping, canonicalising `CENTER`/`CENTER` anchors across all DB mirrors, and enforcing `SetClampedToScreen(false)` across both `DynamicSuite` and standalone `DynamicMarker`.
+* **`DynamicChat` Flush `(0, 0)` Bottom-Left Clamping & Persistence (`DynamicChat.lua`, `DynamicSuite_UI.lua`):** Enforced `ChatFrame1:SetClampedToScreen(false)` whenever `DynamicChat` manages layout, measured strictly the visible chat container frame via `GetVisibleContainerExtents()` (no negative bottom EditBox or side-button overhangs), and canonicalised `CHAT` to `BOTTOMLEFT` outer-container coordinates so dragging or nudging to `X = 0, Y = 0` sits flush against the bottom-left screen corner across HUD Edit toggles, UI scale events, and `/reload`.
+* **Lockstep `v1.9.8` Parity & Release Hygiene:** Added automated HUD Edit coordinate parity checks across `DynamicSuite` and standalone `DynamicMarker` and synchronised all `.toc`, Lua, and public changelog/storefront metadata.
 ```

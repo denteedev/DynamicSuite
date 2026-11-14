@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "1.9.7"
+    local fb = fallback or "1.9.8"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.7"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "1.9.8"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.7")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "1.9.8")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicChat", VERSION, _G.DynamicChat) then
     return
 end
@@ -4575,7 +4575,7 @@ function DynamicChat:GetPrimaryBackdropPanel()
     return nil
 end
 
-function DynamicChat:GetChatMoverBoxInsets()
+function DynamicChat:GetVisibleContainerExtents()
     if not self:IsChatFrameLayoutOwned() then
         return 0, 0, 0, 0
     end
@@ -4586,46 +4586,74 @@ function DynamicChat:GetChatMoverBoxInsets()
     local isTopEB = (db.editBoxPosition == "TOP")
     local alwaysShadedEB = (db.editBoxBackgroundMode ~= "FOCUS_ONLY")
     local hasLeftRail = (db.leftRailMode ~= "OFF")
-    local leftPad = hasLeftRail and -36 or -8
-    local rightPad = 8
-    local topPad = (isTopEB and alwaysShadedEB) and 54 or 28
-    local botPad = ((not isTopEB) and alwaysShadedEB) and -32 or -6
-    return leftPad, rightPad, topPad, botPad
+    local leftExt = hasLeftRail and 36 or 8
+    local rightExt = 8
+    local topExt = (isTopEB and alwaysShadedEB) and 54 or 28
+    local bottomExt = ((not isTopEB) and alwaysShadedEB) and 32 or 6
+    return leftExt, rightExt, topExt, bottomExt
+end
+
+function DynamicChat:GetChatMoverBoxInsets()
+    local leftExt, rightExt, topExt, bottomExt = self:GetVisibleContainerExtents()
+    return -leftExt, rightExt, topExt, -bottomExt
 end
 
 function DynamicChat:GetOuterFrameBottomLeftOffsets()
-    local db = EnsureDB()
-    if self:IsExternalChatEngineLoaded() or db.enableSleekChatSkin == false then
-        return 0, 0
-    end
-    local hasLeftRail = (db.leftRailMode ~= "OFF")
-    local isTopEB = (db.editBoxPosition == "TOP")
-    local alwaysShadedEB = (db.editBoxBackgroundMode ~= "FOCUS_ONLY")
-    local leftOffset = hasLeftRail and 36 or 8
-    local bottomOffset = ((not isTopEB) and alwaysShadedEB) and 32 or 6
-    return leftOffset, bottomOffset
+    local leftExt, _, _, bottomExt = self:GetVisibleContainerExtents()
+    return leftExt, bottomExt
 end
 
 function DynamicChat:GetCompositeChatInsets()
-    local db = EnsureDB()
-    if self:IsExternalChatEngineLoaded() then
-        return -4, 4, 24, -32
-    end
-    if db.enableSleekChatSkin == false then
-        return 0, 0, 0, 0
-    end
-    local isTopEB = (db.editBoxPosition == "TOP")
-    local alwaysShadedEB = (db.editBoxBackgroundMode ~= "FOCUS_ONLY")
-    local hasLeftRail = (db.leftRailMode ~= "OFF")
-    local showBlizzBtns = (db.hideChatButtons == false)
-    local leftInset = (hasLeftRail and -36 or -8) + (showBlizzBtns and -32 or 0)
-    local rightInset = 8
-    local topInset = ((isTopEB and alwaysShadedEB) and 54 or 28) + (showBlizzBtns and 30 or 0)
-    local bottomInset = ((not isTopEB) and alwaysShadedEB) and -32 or -6
-    return leftInset, rightInset, topInset, bottomInset
+    local leftExt, rightExt, topExt, bottomExt = self:GetVisibleContainerExtents()
+    return -leftExt, rightExt, topExt, -bottomExt
 end
 
-function DynamicChat:ClampChatFrameCoords(x, y, w, h)
+function DynamicChat:GetLiveOuterBottomLeft()
+    local cf = _G.ChatFrame1
+    local db = EnsureDB()
+    local curW = math.floor(math.max(240, math.min(1200, (cf and cf.GetWidth and cf:GetWidth()) or 430)) + 0.5)
+    local curH = math.floor(math.max(100, math.min(900, (cf and cf.GetHeight and cf:GetHeight()) or 200)) + 0.5)
+    if not cf then
+        return "BOTTOMLEFT", "BOTTOMLEFT", 0, 0, curW, curH
+    end
+    local fScale = (cf.GetEffectiveScale and cf:GetEffectiveScale()) or 1
+    local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+    if fScale <= 0 then fScale = 1 end
+    if uScale <= 0 then uScale = 1 end
+    local relScale = fScale / uScale
+    if relScale <= 0 then relScale = 1 end
+
+    local leftExt, _, _, bottomExt = self:GetVisibleContainerExtents()
+    local outerPanel = (db.enableSleekChatSkin ~= false) and self.GetPrimaryBackdropPanel and self:GetPrimaryBackdropPanel() or nil
+    if outerPanel and outerPanel.IsShown and outerPanel:IsShown() and outerPanel.GetLeft and outerPanel.GetBottom then
+        local oL = outerPanel:GetLeft()
+        local oB = outerPanel:GetBottom()
+        if oL and oB then
+            local pScale = (outerPanel.GetEffectiveScale and outerPanel:GetEffectiveScale()) or fScale
+            if pScale <= 0 then pScale = fScale end
+            local pRelScale = pScale / uScale
+            local outerX = math.floor(((oL * pRelScale) / relScale) + 0.5)
+            local outerY = math.floor(((oB * pRelScale) / relScale) + 0.5)
+            return "BOTTOMLEFT", "BOTTOMLEFT", outerX, outerY, curW, curH
+        end
+    end
+    if cf.GetLeft and cf.GetBottom then
+        local cL = cf:GetLeft()
+        local cB = cf:GetBottom()
+        if cL and cB then
+            local outerX = math.floor((cL - leftExt) + 0.5)
+            local outerY = math.floor((cB - bottomExt) + 0.5)
+            return "BOTTOMLEFT", "BOTTOMLEFT", outerX, outerY, curW, curH
+        end
+    end
+    if type(db.chatFramePos) == "table" and db.chatFramePos.x ~= nil and db.chatFramePos.y ~= nil then
+        local cx, cy, cw, ch = self:ClampChatFrameCoords(db.chatFramePos.x, db.chatFramePos.y, db.chatFramePos.width or curW, db.chatFramePos.height or curH, db.chatFramePos.point)
+        return "BOTTOMLEFT", "BOTTOMLEFT", cx, cy, cw, ch
+    end
+    return "BOTTOMLEFT", "BOTTOMLEFT", 0, 0, curW, curH
+end
+
+function DynamicChat:ClampChatFrameCoords(x, y, w, h, anchorPt)
     local cf = _G.ChatFrame1
     local fScale = (cf and cf.GetEffectiveScale and cf:GetEffectiveScale()) or 1
     local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
@@ -4637,36 +4665,25 @@ function DynamicChat:ClampChatFrameCoords(x, y, w, h)
     local screenW = ((UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920) / relScale
     local screenH = ((UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080) / relScale
 
-    local curW = math.max(240, math.min(1200, tonumber(w) or (cf and cf.GetWidth and cf:GetWidth()) or 430))
-    local curH = math.max(100, math.min(900, tonumber(h) or (cf and cf.GetHeight and cf:GetHeight()) or 200))
+    local leftExt, rightExt, topExt, bottomExt = self:GetVisibleContainerExtents()
+    local maxAllowedW = math.max(240, math.min(1200, math.floor(screenW - leftExt - rightExt)))
+    local maxAllowedH = math.max(100, math.min(900, math.floor(screenH - topExt - bottomExt)))
+    local curW = math.max(240, math.min(maxAllowedW, tonumber(w) or (cf and cf.GetWidth and cf:GetWidth()) or 430))
+    local curH = math.max(100, math.min(maxAllowedH, tonumber(h) or (cf and cf.GetHeight and cf:GetHeight()) or 200))
 
-    local leftInset, rightInset, topInset, bottomInset = self:GetCompositeChatInsets()
-    local leftExtra = math.max(0, -leftInset)
-    local rightExtra = math.max(0, rightInset)
-    local topExtra = math.max(0, topInset)
-    local bottomExtra = math.max(0, -bottomInset)
+    local outerX = tonumber(x) or 0
+    local outerY = tonumber(y) or 0
+    if anchorPt == "CENTER" then
+        outerX = (screenW / 2) + outerX - (curW / 2) - leftExt
+        outerY = (screenH / 2) + outerY - (curH / 2) - bottomExt
+    end
 
-    local maxAllowedW = math.max(240, math.floor(screenW - leftExtra - rightExtra))
-    local maxAllowedH = math.max(100, math.floor(screenH - topExtra - bottomExtra))
-    curW = math.min(curW, maxAllowedW)
-    curH = math.min(curH, maxAllowedH)
+    local maxOuterX = math.max(0, math.floor(screenW - curW - leftExt - rightExt))
+    local maxOuterY = math.max(0, math.floor(screenH - curH - topExt - bottomExt))
+    outerX = math.max(0, math.min(maxOuterX, outerX))
+    outerY = math.max(0, math.min(maxOuterY, outerY))
 
-    local halfW = curW / 2
-    local halfH = curH / 2
-    local minX = -(screenW / 2) + halfW + leftExtra
-    local maxX = (screenW / 2) - halfW - rightExtra
-    local minY = -(screenH / 2) + halfH + bottomExtra
-    local maxY = (screenH / 2) - halfH - topExtra
-
-    if minX > maxX then minX, maxX = 0, 0 end
-    if minY > maxY then minY, maxY = 0, 0 end
-
-    local cx = tonumber(x) or -620
-    local cy = tonumber(y) or -310
-    cx = math.max(minX, math.min(maxX, cx))
-    cy = math.max(minY, math.min(maxY, cy))
-
-    return math.floor(cx + 0.5), math.floor(cy + 0.5), math.floor(curW + 0.5), math.floor(curH + 0.5)
+    return math.floor(outerX + 0.5), math.floor(outerY + 0.5), math.floor(curW + 0.5), math.floor(curH + 0.5)
 end
 
 local origBlizzBtnAnchors = {}
@@ -4934,14 +4951,17 @@ function DynamicChat:ApplySleekChatSkin()
 
                 p:Show()
 
-                if i == 1 and not DynamicChat._dsEditModeActive and not DynamicChat._dsDragging and not (InCombatLockdown and InCombatLockdown()) then
+                if i == 1 and self:IsChatFrameLayoutOwned() and not DynamicChat._dsEditModeActive and not DynamicChat._dsDragging and not (InCombatLockdown and InCombatLockdown()) then
                     pcall(function()
-                        if type(db.chatFramePos) == "table" then
-                            if cf.SetClampRectInsets then cf:SetClampRectInsets(0, 0, 0, 0) end
-                            if cf.SetClampedToScreen then cf:SetClampedToScreen(false) end
-                        else
-                            if cf.SetClampRectInsets then cf:SetClampRectInsets(self:GetCompositeChatInsets()) end
-                            if cf.SetClampedToScreen then cf:SetClampedToScreen(true) end
+                        if cf.SetClampRectInsets then cf:SetClampRectInsets(0, 0, 0, 0) end
+                        if cf.SetClampedToScreen then cf:SetClampedToScreen(false) end
+                        if _G.ChatFrame1Background then
+                            if _G.ChatFrame1Background.SetClampRectInsets then _G.ChatFrame1Background:SetClampRectInsets(0, 0, 0, 0) end
+                            if _G.ChatFrame1Background.SetClampedToScreen then _G.ChatFrame1Background:SetClampedToScreen(false) end
+                        end
+                        if _G.ChatFrame1EditBox then
+                            if _G.ChatFrame1EditBox.SetClampRectInsets then _G.ChatFrame1EditBox:SetClampRectInsets(0, 0, 0, 0) end
+                            if _G.ChatFrame1EditBox.SetClampedToScreen then _G.ChatFrame1EditBox:SetClampedToScreen(false) end
                         end
                     end)
                 end
@@ -5558,42 +5578,6 @@ function DynamicChat:ApplySavedChatFramePosition()
 
     local db = EnsureDB()
     local pos = db.chatFramePos
-    if type(pos) ~= "table" then
-        -- Without a custom saved position, only clamp ChatFrame1 if its composite bounds actually extend outside the screen
-        self._applyingChatPos = true
-        pcall(function()
-            cf:SetMovable(true)
-            cf:SetResizable(true)
-            if not DynamicChat._dsEditModeActive and not DynamicChat._dsDragging then
-                cf:SetClampRectInsets(self:GetCompositeChatInsets())
-                cf:SetClampedToScreen(true)
-            end
-            local fScale = (cf.GetEffectiveScale and cf:GetEffectiveScale()) or 1
-            local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-            local relScale = (fScale > 0 and uScale > 0) and (fScale / uScale) or 1
-            local screenW = ((UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920) / relScale
-            local screenH = ((UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080) / relScale
-            local fCx, fCy = cf:GetCenter()
-            if fCx and fCy then
-                local curX = fCx - (screenW / 2)
-                local curY = fCy - (screenH / 2)
-                local curW = cf:GetWidth() or 430
-                local curH = cf:GetHeight() or 200
-                local clampedX, clampedY, clampedW, clampedH = self:ClampChatFrameCoords(curX, curY, curW, curH)
-                if math.abs(clampedX - curX) > 2 or math.abs(clampedY - curY) > 2 then
-                    cf:SetUserPlaced(true)
-                    cf:ClearAllPoints()
-                    cf:SetPoint("CENTER", UIParent, "CENTER", clampedX, clampedY)
-                    cf:SetSize(clampedW, clampedH)
-                    RefreshChatFrameTextLayout(cf)
-                end
-            end
-        end)
-        self._applyingChatPos = false
-        self:ApplySleekChatSkin()
-        return
-    end
-
     self._applyingChatPos = true
     pcall(function()
         cf:SetMovable(true)
@@ -5603,9 +5587,9 @@ function DynamicChat:ApplySavedChatFramePosition()
         if sc and sc >= 0.50 and sc <= 2.00 then
             cf:SetScale(sc)
         end
-        -- Disable C++ SetClampedToScreen when DynamicChatDB.chatFramePos is active because ClampChatFrameCoords
-        -- performs exact Lua composite clamping and Blizzard's FloatingChatFrame_UpdateBackgroundAnchors resets
-        -- C++ ClampRectInsets to (-35, 35, 26, -50), which would push ChatFrame1 ~18px off the screen edge!
+        -- Disable C++ SetClampedToScreen whenever DynamicChat manages ChatFrame1 because ClampChatFrameCoords
+        -- performs exact visible-container clamping and Blizzard's FloatingChatFrame_UpdateBackgroundAnchors
+        -- resets C++ ClampRectInsets to (-35, 35, 26, -50), which would push ChatFrame1 ~30px above bottom!
         if cf.SetClampRectInsets then cf:SetClampRectInsets(0, 0, 0, 0) end
         if cf.SetClampedToScreen then cf:SetClampedToScreen(false) end
         if _G.ChatFrame1Background then
@@ -5616,88 +5600,55 @@ function DynamicChat:ApplySavedChatFramePosition()
             if _G.ChatFrame1EditBox.SetClampRectInsets then _G.ChatFrame1EditBox:SetClampRectInsets(0, 0, 0, 0) end
             if _G.ChatFrame1EditBox.SetClampedToScreen then _G.ChatFrame1EditBox:SetClampedToScreen(false) end
         end
-        local anchorPt = pos.point or "CENTER"
-        local relPt = pos.relativePoint or pos.relPoint or anchorPt
-        if anchorPt == "BOTTOMLEFT" or relPt == "BOTTOMLEFT" then
-            local fScale = (cf.GetEffectiveScale and cf:GetEffectiveScale()) or 1
-            local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-            if fScale <= 0 then fScale = 1 end
-            if uScale <= 0 then uScale = 1 end
-            local relScale = fScale / uScale
-            if relScale <= 0 then relScale = 1 end
-            local screenW = ((UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920) / relScale
-            local screenH = ((UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080) / relScale
-            local leftOffset, bottomOffset = self:GetOuterFrameBottomLeftOffsets()
-            local leftInset, rightInset, topInset, bottomInset = self:GetCompositeChatInsets()
-            local leftExtra = math.max(0, -leftInset)
-            local rightExtra = math.max(0, rightInset)
-            local topExtra = math.max(0, topInset)
-            local bottomExtra = math.max(0, -bottomInset)
-            local maxAllowedW = math.max(240, math.floor(screenW - leftExtra - rightExtra))
-            local maxAllowedH = math.max(100, math.floor(screenH - topExtra - bottomExtra))
-            local clampedW = math.floor(math.max(240, math.min(maxAllowedW, tonumber(pos.width) or (cf:GetWidth() or 430))) + 0.5)
-            local clampedH = math.floor(math.max(100, math.min(maxAllowedH, tonumber(pos.height) or (cf:GetHeight() or 200))) + 0.5)
-            local maxOuterX = math.max(0, math.floor(screenW - clampedW - leftExtra - rightExtra))
-            local maxOuterY = math.max(0, math.floor(screenH - clampedH - topExtra - bottomExtra))
-            local clampedX = math.max(0, math.min(maxOuterX, tonumber(pos.x) or 0))
-            local clampedY = math.max(0, math.min(maxOuterY, tonumber(pos.y) or 0))
-            pos.point         = "BOTTOMLEFT"
-            pos.relativePoint = "BOTTOMLEFT"
-            pos.relPoint      = "BOTTOMLEFT"
-            pos.x             = clampedX
-            pos.y             = clampedY
-            pos.width         = clampedW
-            pos.height        = clampedH
-            local prevW = cf:GetWidth() or 0
-            local prevH = cf:GetHeight() or 0
-            local skinEntry = chatSkinStore and chatSkinStore[cf]
-            local outerPanel = skinEntry and skinEntry.panel
-            if outerPanel and db.enableSleekChatSkin ~= false then
-                local isTopEB = (db.editBoxPosition == "TOP")
-                local alwaysShadedEB = (db.editBoxBackgroundMode ~= "FOCUS_ONLY")
-                local topPad = (isTopEB and alwaysShadedEB) and 54 or 28
-                if outerPanel.SetScale then pcall(outerPanel.SetScale, outerPanel, (cf.GetScale and cf:GetScale()) or 1.0) end
-                if outerPanel.SetClampRectInsets then outerPanel:SetClampRectInsets(0, 0, 0, 0) end
-                if outerPanel.SetClampedToScreen then outerPanel:SetClampedToScreen(false) end
-                cf:SetSize(clampedW, clampedH)
-                cf:ClearAllPoints()
-                cf:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", leftOffset + clampedX, bottomOffset + clampedY)
-                outerPanel:ClearAllPoints()
-                outerPanel:SetPoint("TOPLEFT", cf, "TOPLEFT", -leftOffset, topPad)
-                outerPanel:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 8, -bottomOffset)
-            else
-                cf:SetSize(clampedW, clampedH)
-                cf:ClearAllPoints()
-                cf:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", leftOffset + clampedX, bottomOffset + clampedY)
-            end
-            if math.abs(prevW - clampedW) > 0.5 or math.abs(prevH - clampedH) > 0.5 then
-                RefreshChatFrameTextLayout(cf)
-            end
-        else
-            local clampedX, clampedY, clampedW, clampedH = self:ClampChatFrameCoords(
-                tonumber(pos.x) or -620,
-                tonumber(pos.y) or -310,
-                tonumber(pos.width) or (cf:GetWidth() or 430),
-                tonumber(pos.height) or (cf:GetHeight() or 200)
-            )
-            pos.x      = clampedX
-            pos.y      = clampedY
-            pos.width  = clampedW
-            pos.height = clampedH
-            local prevW = cf:GetWidth() or 0
-            local prevH = cf:GetHeight() or 0
-            cf:SetSize(clampedW, clampedH)
-            cf:ClearAllPoints()
-            cf:SetPoint(
-                anchorPt,
-                UIParent,
-                relPt,
-                clampedX,
-                clampedY
-            )
-            if math.abs(prevW - clampedW) > 0.5 or math.abs(prevH - clampedH) > 0.5 then
-                RefreshChatFrameTextLayout(cf)
-            end
+
+        if type(pos) ~= "table" then
+            local _, _, initX, initY, initW, initH = self:GetLiveOuterBottomLeft()
+            pos = {
+                point         = "BOTTOMLEFT",
+                relativePoint = "BOTTOMLEFT",
+                relPoint      = "BOTTOMLEFT",
+                x             = initX,
+                y             = initY,
+                width         = initW,
+                height        = initH,
+            }
+            db.chatFramePos = pos
+        end
+
+        local anchorPt = pos.point or pos.relativePoint or pos.relPoint or "BOTTOMLEFT"
+        local clampedX, clampedY, clampedW, clampedH = self:ClampChatFrameCoords(
+            tonumber(pos.x) or 0,
+            tonumber(pos.y) or 0,
+            tonumber(pos.width) or (cf:GetWidth() or 430),
+            tonumber(pos.height) or (cf:GetHeight() or 200),
+            anchorPt
+        )
+        pos.point         = "BOTTOMLEFT"
+        pos.relativePoint = "BOTTOMLEFT"
+        pos.relPoint      = "BOTTOMLEFT"
+        pos.x             = clampedX
+        pos.y             = clampedY
+        pos.width         = clampedW
+        pos.height        = clampedH
+
+        local leftExt, rightExt, topExt, bottomExt = self:GetVisibleContainerExtents()
+        local prevW = cf:GetWidth() or 0
+        local prevH = cf:GetHeight() or 0
+        local skinEntry = chatSkinStore and chatSkinStore[cf]
+        local outerPanel = skinEntry and skinEntry.panel
+        cf:SetSize(clampedW, clampedH)
+        cf:ClearAllPoints()
+        cf:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", leftExt + clampedX, bottomExt + clampedY)
+        if outerPanel and db.enableSleekChatSkin ~= false then
+            if outerPanel.SetScale then pcall(outerPanel.SetScale, outerPanel, (cf.GetScale and cf:GetScale()) or 1.0) end
+            if outerPanel.SetClampRectInsets then outerPanel:SetClampRectInsets(0, 0, 0, 0) end
+            if outerPanel.SetClampedToScreen then outerPanel:SetClampedToScreen(false) end
+            outerPanel:ClearAllPoints()
+            outerPanel:SetPoint("TOPLEFT", cf, "TOPLEFT", -leftExt, topExt)
+            outerPanel:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", rightExt, -bottomExt)
+        end
+        if math.abs(prevW - clampedW) > 0.5 or math.abs(prevH - clampedH) > 0.5 then
+            RefreshChatFrameTextLayout(cf)
         end
     end)
     self._applyingChatPos = false
@@ -5708,44 +5659,26 @@ function DynamicChat:SaveChatFramePosition(pt, relPt, x, y, w, h)
     if not self:IsChatFrameLayoutOwned() then return end
     local cf = _G.ChatFrame1
     local db = EnsureDB()
-    db.chatAnchorVersion = 4
+    db.chatAnchorVersion = 5
     local curW = tonumber(w) or (cf and cf:GetWidth()) or 430
     local curH = tonumber(h) or (cf and cf:GetHeight()) or 200
-    if pt == "BOTTOMLEFT" or relPt == "BOTTOMLEFT" then
-        -- Always store OUTER panel coordinates. If raw ChatFrame1 coordinates (36/8, 32/6) were passed in,
-        -- strip the sidebar / edit box offsets so the saved corner is (0, 0) instead of drifting inward.
-        local nx, ny = tonumber(x) or 0, tonumber(y) or 0
-        local leftOffset, bottomOffset = self:GetOuterFrameBottomLeftOffsets()
-        if (nx == 36 or nx == 8 or nx == leftOffset) and (ny == 32 or ny == 6 or ny == bottomOffset) then
-            nx = nx - leftOffset
-            ny = ny - bottomOffset
-        end
-        db.chatFramePos = {
-            point         = "BOTTOMLEFT",
-            relativePoint = "BOTTOMLEFT",
-            relPoint      = "BOTTOMLEFT",
-            x             = math.max(0, nx),
-            y             = math.max(0, ny),
-            width         = math.floor(math.max(240, math.min(1200, curW)) + 0.5),
-            height        = math.floor(math.max(100, math.min(900, curH)) + 0.5),
-        }
-    else
-        local clampedX, clampedY, clampedW, clampedH = self:ClampChatFrameCoords(
-            tonumber(x) or -620,
-            tonumber(y) or -310,
-            curW,
-            curH
-        )
-        db.chatFramePos = {
-            point         = pt or "CENTER",
-            relativePoint = relPt or "CENTER",
-            relPoint      = relPt or "CENTER",
-            x             = clampedX,
-            y             = clampedY,
-            width         = clampedW,
-            height        = clampedH,
-        }
-    end
+    local anchorHint = (pt == "BOTTOMLEFT" or relPt == "BOTTOMLEFT") and "BOTTOMLEFT" or (pt or "BOTTOMLEFT")
+    local clampedX, clampedY, clampedW, clampedH = self:ClampChatFrameCoords(
+        tonumber(x) or 0,
+        tonumber(y) or 0,
+        curW,
+        curH,
+        anchorHint
+    )
+    db.chatFramePos = {
+        point         = "BOTTOMLEFT",
+        relativePoint = "BOTTOMLEFT",
+        relPoint      = "BOTTOMLEFT",
+        x             = clampedX,
+        y             = clampedY,
+        width         = clampedW,
+        height        = clampedH,
+    }
     self:ApplySavedChatFramePosition()
 end
 
@@ -9420,8 +9353,9 @@ local function RegisterWithDynamicSuite()
 
     DynamicChat.CHANGELOG = {
         version = DynamicChat.version or VERSION,
-        date = "13/11/2026",
+        date = "14/11/2026",
         entries = {
+            { type = "FIX",      text = "Flush Bottom-Left (0, 0) Chat Clamping & Persistence (14/11/2026): Enforced ChatFrame1:SetClampedToScreen(false) whenever DynamicChat manages layout, added GetVisibleContainerExtents() and GetLiveOuterBottomLeft() so clamping measures only the visible chat container frame without external button or negative bottom EditBox overhangs, and canonicalised chatFramePos to BOTTOMLEFT outer-container coordinates so dragging or nudging to X = 0, Y = 0 sits flush against the bottom-left screen corner across HUD Edit toggles, UI scale events, and /reload." },
             { type = "FIX",      text = "Unified /ww & /qq Instant Target Whisper Across All Chat/Whisper EditBoxes (13/11/2026): Unified /ww and /qq into a single handler respecting whisperTriggerMode ('BOTH', 'WW', 'QQ'), removed the /qq -> LeaveParty hijack, enabled self-targeting (UnitIsUnit('target', 'player')) for both shortcuts using GetUnitName('target', true), called ChatEdit_UpdateHeader before SetText + SetCursorPosition so 'Tell <TargetName>:' updates immediately on spacebar even inside existing whisper tabs, and hooked all 1..NUM_CHAT_WINDOWS editboxes plus FCF_OpenTemporaryWindow and ChatEdit_ActivateChat regardless of external chat addons." },
             { type = "FIX",      text = "Removed Auto-Yield & Asserted Full DynamicChat Priority Over EllesmereUI Chat / ElvUI Chat (13/11/2026): DynamicChat no longer yields chat frame skinning, tab styling, EditBox anchoring, or bottom-left 0px positioning to EllesmereUI Chat or ElvUI Chat. Cleared legacy yieldSharedHooks and yieldHooks flags on load, removed the Tab 3 Compatibility Mode (Auto-Yield) card, and enforced strict 2-button mutual exclusion ('Use DynamicChat Only' vs 'Use [Addon] Only') in the Conflict Scanner." },
             { type = "FIX",      text = "Accurate Frozen/Unloaded Conflict Detection & Universal 'Use DynamicChat' Takeover (12/11/2026): Updated IsAddonLoadedNow, IsAddonActiveInSession, and IsEllesmereUIChatSubModuleEnabled so any external chat addon set to 'FROZEN' (Never) in DynamicLoad or overridden via 'USE_DYNAMIC' / 'RUN_BOTH' is treated as inactive (false), and prevented IsEllesmereUIChatSubModuleEnabled from falling back to parent EllesmereUI when EllesmereUIChat is installed as a separate sub-addon on disk and unloaded." },
