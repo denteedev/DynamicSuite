@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFLoad|r
 ## Notes: Context-Aware Addon Profile Automation & Zone Load Manager (/dl)
 ## Author: Dentee-Frostmourne
-## Version: 2.0.7
+## Version: 2.0.8
 ## Category: DynamicSuite
 ## Category-enUS: DynamicSuite
 ## OptionalDeps: DynamicSuite

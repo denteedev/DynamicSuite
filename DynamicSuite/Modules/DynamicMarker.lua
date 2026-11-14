@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.7"
+    local fb = fallback or "2.0.8"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -99,7 +99,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.0.7"
+            or "2.0.8"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.7")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.8")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -2932,7 +2932,7 @@ function DM:BuildFocusMarkerMacroBody()
         table.insert(lines, string.format("/clearfocus [mod:%s]", mod))
     end
     if targetMode == "TARGET_ONLY" then
-        table.insert(lines, "/focus [@target,exists,nodead]")
+        table.insert(lines, "/focus [@target,exists,nodead][]")
     else
         table.insert(lines, "/focus [@mouseover,exists,nodead][]")
     end
@@ -8712,6 +8712,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "15/11/2026",
     entries = {
+        { type = "FIX", text = "Target Only Focus Macro Clear (15/11/2026): Updated the Target Only [DynamicMark] macro template to /focus [@target,exists,nodead][] so pressing it with a target sets focus and marks it, while pressing it with no target clears your existing focus target." },
         { type = "FEATURE", text = "Inline Manual Macro Editor & Custom Icon Preservation (15/11/2026): In Manual (Custom) mode, Sub-Tab 3's [DynamicMark] preview becomes an editable dark-obsidian multi-line EditBox (255-char limit with live character counter and Escape to unfocus) so you can write or paste custom macro lines directly inside DynamicMarker and save immediately with Step 1. Updating an existing [DynamicMark] macro now preserves any custom in-game macro icon you assigned." },
         { type = "FEATURE", text = "Focus Target Mode & Surgical Manual Macro Patching (15/11/2026): Added a 'Focus Target Mode' 3-pill selector in Sub-Tab 3 (Mouseover + Target, Target Only, Manual (Custom)). In Manual (Custom) mode, logins/reloads keep your custom [DynamicMark] macro untouched, changing Focus Icon, Group Scope, or Clear Focus Modifier surgically updates only the /tm and /clearfocus lines (within 255 characters), the preview box displays your live custom macro, and Step 1 uses a 2-click confirmation before resetting custom lines." },
         { type = "FIX",     text = "Release v1.9.9 - Canonical UIParent-Local HUD Coordinates Across /reload, Dark-Obsidian Coexistence Modal & Unified HUD Edit Mode (14/11/2026): Enforced one canonical UIParent-local coordinate contract for TargetBar and FlareBar (storing unscaled UIParent CENTER offsets and dividing by barScale strictly inside DM:SetBarCenterPoint after applying SetScale/SetSize and before SetClampedToScreen(true), removing destructive early-load DB writes in ApplyHUDPosition, and guaranteeing 100% round-trip symmetry across HUD Edit drag, Quick Align, Reset HUD, and /reload at scales 0.70, 1.00, and 1.30); replaced Blizzard's StaticPopup with a custom dark-obsidian coexistence reload modal (ShowMarkerConflictReloadModal / DynamicSuiteMarkerConflictModal with #0B0D12 0.96 alpha backdrop, 1px dark slate border, Blaze Orange #F97316 accent bar, flat Reload UI / Later buttons, ESC dismissal, and combat deferral); and suppressed DynamicMarkerEditModeInspector inside DynamicSuite so only the unified HUD Edit dock displays." },
