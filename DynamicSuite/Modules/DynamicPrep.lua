@@ -648,7 +648,7 @@ DynamicPrep.CHANGELOG = {
     entries = {
         { type = "FEATURE", text = "Colour-Coded Food Stat Benefits on Clickable Raid Buffs HUD & Readiness Strip (15/11/2026): added FormatColoredFoodBenefit to colour-code parsed food stats (Mint Teal Primary/Int/Agi/Str, Sky Cyan Haste, Royal Amethyst Mastery, Warm Amber-Gold Crit, Emerald Green Versatility, Blaze Orange Highest Secondary Stat, and Slate-Silver Stamina) across Clickable Raid Buffs food tooltip titles, 'Food Benefit:' summary lines, expiring 'Current Buff:' lines, Readiness Strip Slot 3, and capsule tooltips." },
         { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
-        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House open side-by-side without trapping Escape (with header Pin buttons and click-to-raise layering), drag headers or hold Alt + Left-Drag anywhere on a window out of combat to save positions across reloads, Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows], strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding with dynamic banner detection for BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
+        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House open side-by-side via ShowUIPanel multi-panel restoration and per-window UISpecialFrames Escape handling (with header Pin buttons and click-to-raise layering), smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag window moving out of combat with scale-aware UIParent CENTER persistence and SetPoint tab-switch snap-back protection, (-58, -2) header inset to leave Maximize/Minimize buttons clear, Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows], strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding for NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
         { type = "FIX",     text = "Midnight Season 2 Enchantable Slot List Fix (15/11/2026): updated equipped gear enchant scanning to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
         { type = "FEATURE", text = "Equipped Gear Missing-Enchant & Empty-Socket Detection (15/11/2026): added out-of-combat equipped gear auditing (ScanEquippedGearEnchantsAndGems) cached on PLAYER_ENTERING_WORLD, PLAYER_EQUIPMENT_CHANGED, SOCKET_INFO_UPDATE, and PLAYER_REGEN_ENABLED. Flags missing Midnight Season 2 enchants on max-level Head, Shoulder, Chest, Legs, Feet, Rings, Main Hand, and Off-Hand weapons (excluding shields/holdables and grey/white/heirloom items) and empty gem sockets across slots 1..18, surfacing a compact amber '!' badge in the Durability capsule, 'Enchants:' and 'Gems:' status lines in the Durability tooltip, and Left-Click Character Frame opening." },
         { type = "FEATURE", text = "Great Vault Mythic+ Telemetry, Group Finder Shortcut & Midnight Season 2 Consumables (15/11/2026): added weekly Mythic+ Great Vault run counts, 1/4/8 run threshold levels, and 'Reward Ready to Claim!' status to the Keystone capsule tooltip (guarded with pcall and _IsSecret), added Right-Click Group Finder toggling out of combat on the Keystone capsule, aligned DUNGEON_ABBREVIATIONS with DynamicGroup's Midnight Season 1/2 codes (DON, AOF, MR, VSA, FG, AK, PSF), and updated Midnight Season 2 consumable item IDs and Rank 2 Gold / Rank 1 Silver mappings." },
@@ -4792,10 +4792,16 @@ do
     local hookedFrameNames = {}
     local origUIPanelInfo = {}
     local sessionScales = {}
-    local escProxyFrame = nil
-    local escProxyRegistered = false
-    local suppressEscProxyHide = false
-    local globalHooksInstalled = false
+    local openPanelsSnapshot = {}
+    local escapeProtectedReShow = {}
+    local escapeClosedCount = 0
+    local inShowUIPanelPostHook = false
+    local inCloseSpecialWindowsPostHook = false
+    local showUIPanelHooked = false
+    local hideUIPanelHooked = false
+    local updateUIPanelHooked = false
+    local closeSpecialHooked = false
+    local closeAllHooked = false
     local ellesmereHooksInstalled = false
     local secureHandler = nil
     local secureHandlerWorks = nil
@@ -4803,6 +4809,16 @@ do
 
     local function InCombat()
         return (type(_G.InCombatLockdown) == "function") and (_G.InCombatLockdown() == true)
+    end
+
+    local function GetFrameState(frame)
+        if not frame then return nil end
+        local st = blizzWinState[frame]
+        if not st then
+            st = {}
+            blizzWinState[frame] = st
+        end
+        return st
     end
 
     local function ClampNumber(v, minV, maxV)
@@ -4814,6 +4830,40 @@ do
     local function RoundScale(s)
         local rounded = math.floor((tonumber(s) or 1.0) * 100 + 0.5) / 100
         return ClampNumber(rounded, SCALE_MIN, SCALE_MAX)
+    end
+
+    local function IsFunctionOnStack(fnRef, fnName, altName)
+        if type(_G.debug) == "table" and type(_G.debug.getinfo) == "function" then
+            for level = 2, 18 do
+                local ok, info = pcall(_G.debug.getinfo, level, "nf")
+                if not ok or not info then break end
+                if (fnRef and info.func == fnRef)
+                    or (fnName and info.name == fnName)
+                    or (altName and info.name == altName) then
+                    return true
+                end
+            end
+        end
+        if type(_G.debugstack) == "function" then
+            local ok, stack = pcall(_G.debugstack, 2, 14, 0)
+            if ok and type(stack) == "string" then
+                if (fnName and stack:find(fnName, 1, true))
+                    or (altName and stack:find(altName, 1, true)) then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
+    local function IsShowUIPanelOnStack()
+        if inShowUIPanelPostHook then return false end
+        return IsFunctionOnStack(_G.ShowUIPanel, "ShowUIPanel", "SetUIPanel")
+    end
+
+    local function IsCloseSpecialWindowsOnStack()
+        if inCloseSpecialWindowsPostHook then return false end
+        return IsFunctionOnStack(_G.CloseSpecialWindows, "CloseSpecialWindows", "CloseWindows")
     end
 
     local function EnsureScaleToast()
@@ -4912,12 +4962,16 @@ do
 
     local function SecureApplyPoint(frame, ux, uy, scale)
         if InCombat() or not frame then return false end
+        local st = GetFrameState(frame)
+        if st.applyingPoint then return false end
+        st.applyingPoint = true
         local s = (type(scale) == "number" and scale > 0) and scale or 1.0
         local argX = ux / s
         local argY = uy / s
+        local applied = false
         local sec, works = EnsureSecureHandler()
         if works and sec then
-            local ok = pcall(function()
+            applied = pcall(function()
                 sec:SetFrameRef("f", frame)
                 sec:SetAttribute("ds_x", argX)
                 sec:SetAttribute("ds_y", argY)
@@ -4932,16 +4986,19 @@ do
                     end
                 ]])
             end)
-            if ok then return true end
         end
-        local spec = frame.GetName and SUPPORTED_BY_NAME[frame:GetName() or ""]
-        if spec and spec.protected and frame.IsProtected and frame:IsProtected() then
-            return false
+        if not applied then
+            applied = pcall(function()
+                if type(frame.ClearAllPoints) == "function" then
+                    frame:ClearAllPoints()
+                end
+                if type(frame.SetPoint) == "function" then
+                    frame:SetPoint("CENTER", _G.UIParent, "CENTER", argX, argY)
+                end
+            end)
         end
-        return pcall(function()
-            frame:ClearAllPoints()
-            frame:SetPoint("CENTER", _G.UIParent, "CENTER", argX, argY)
-        end)
+        st.applyingPoint = false
+        return applied
     end
 
     local function SecureApplyScale(frame, scale)
@@ -4962,11 +5019,10 @@ do
             end)
             if ok then return true end
         end
-        local spec = frame.GetName and SUPPORTED_BY_NAME[frame:GetName() or ""]
-        if spec and spec.protected and frame.IsProtected and frame:IsProtected() then
-            return false
+        if type(frame.SetScale) == "function" then
+            return pcall(frame.SetScale, frame, s)
         end
-        return pcall(frame.SetScale, frame, s)
+        return false
     end
 
     local function ClampUIParentCenterOffset(frame, ux, uy, scale)
@@ -5010,132 +5066,51 @@ do
         return origUIPanelInfo[frameName]
     end
 
-    local function SetUIPanelLayoutEnabled(frame, frameName, enabledFlag)
-        if InCombat() or not frame then return end
-        local st = blizzWinState[frame]
-        if not st then
-            st = {}
-            blizzWinState[frame] = st
+    local function IsInUISpecialFrames(frameName)
+        if type(_G.UISpecialFrames) ~= "table" or not frameName then return false, nil end
+        for i = 1, #_G.UISpecialFrames do
+            if _G.UISpecialFrames[i] == frameName then
+                return true, i
+            end
         end
-        local orig = SnapshotOrigUIPanelInfo(frame, frameName)
-        local targetEnabled = enabledFlag and true or false
-        if st.appliedLayoutEnabled == targetEnabled then return end
-        local sec, works = EnsureSecureHandler()
-        if targetEnabled then
-            if st.modifiedLayout then
-                local applied = false
-                if works and sec then
-                    applied = pcall(function()
-                        sec:SetFrameRef("f", frame)
-                        sec:SetAttribute("ds_orig_enabled", orig.enabled ~= nil and orig.enabled or true)
-                        sec:SetAttribute("ds_orig_defined", orig.defined)
-                        sec:Execute([[
-                            local f = self:GetFrameRef("f")
-                            if f then
-                                f:SetAttribute("UIPanelLayout-enabled", self:GetAttribute("ds_orig_enabled"))
-                                f:SetAttribute("UIPanelLayout-defined", self:GetAttribute("ds_orig_defined"))
-                            end
-                        ]])
-                    end)
-                end
-                if not applied and type(frame.SetAttribute) == "function" then
-                    pcall(frame.SetAttribute, frame, "UIPanelLayout-enabled", orig.enabled ~= nil and orig.enabled or true)
-                    pcall(frame.SetAttribute, frame, "UIPanelLayout-defined", orig.defined)
-                end
-                st.modifiedLayout = false
-            end
-        else
-            local applied = false
-            if works and sec then
-                applied = pcall(function()
-                    sec:SetFrameRef("f", frame)
-                    sec:Execute([[
-                        local f = self:GetFrameRef("f")
-                        if f then
-                            f:SetAttribute("UIPanelLayout-defined", true)
-                            f:SetAttribute("UIPanelLayout-enabled", false)
-                        end
-                    ]])
-                end)
-            end
-            if not applied and type(frame.SetAttribute) == "function" then
-                pcall(frame.SetAttribute, frame, "UIPanelLayout-defined", true)
-                pcall(frame.SetAttribute, frame, "UIPanelLayout-enabled", false)
-            end
-            st.modifiedLayout = true
-        end
-        st.appliedLayoutEnabled = targetEnabled
+        return false, nil
     end
 
-    local function EnsureEscProxy()
-        if escProxyFrame then return escProxyFrame end
-        local parent = _G.UIParent
-        if not parent or type(_G.CreateFrame) ~= "function" then return nil end
-        local f = CreateFrame("Frame", "DynamicPrepUIPanelEscProxy", parent)
-        f:SetSize(1, 1)
-        f:SetPoint("TOPLEFT", parent, "TOPLEFT", -10, 10)
-        f:EnableMouse(false)
-        f:SetAlpha(0)
-        f:Hide()
-        f:SetScript("OnHide", function()
-            if suppressEscProxyHide or InCombat() then return end
-            if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
-            local pinnedMap = (DynamicPrep.db and DynamicPrep.db.windowPinned) or {}
-            suppressEscProxyHide = true
-            for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
-                local bf = _G[spec.name]
-                if bf and bf.IsShown and bf:IsShown() and not pinnedMap[spec.name] then
-                    pcall(bf.Hide, bf)
-                end
-            end
-            suppressEscProxyHide = false
-        end)
-        escProxyFrame = f
-        if not escProxyRegistered and type(_G.UISpecialFrames) == "table" then
-            local found = false
-            for _, existing in ipairs(_G.UISpecialFrames) do
-                if existing == "DynamicPrepUIPanelEscProxy" then
-                    found = true
-                    break
-                end
-            end
-            if not found then
-                table.insert(_G.UISpecialFrames, "DynamicPrepUIPanelEscProxy")
-            end
-            escProxyRegistered = true
+    local function AddToUISpecialFrames(frameName)
+        if type(_G.UISpecialFrames) ~= "table" or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] then return end
+        if not IsInUISpecialFrames(frameName) then
+            table.insert(_G.UISpecialFrames, frameName)
         end
-        return f
     end
 
-    local function SyncEscProxyVisibility()
-        local proxy = EnsureEscProxy()
-        if not proxy or InCombat() then return end
+    local function RemoveFromUISpecialFrames(frameName)
+        if type(_G.UISpecialFrames) ~= "table" or not frameName then return end
+        for i = #_G.UISpecialFrames, 1, -1 do
+            if _G.UISpecialFrames[i] == frameName then
+                table.remove(_G.UISpecialFrames, i)
+            end
+        end
+    end
+
+    local function SyncAllUISpecialFrames()
+        if type(_G.UISpecialFrames) ~= "table" or InCombat() then return end
         if IsModuleDisabledInSuite("DynamicPrep") or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
-            suppressEscProxyHide = true
-            proxy:Hide()
-            suppressEscProxyHide = false
+            for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                RemoveFromUISpecialFrames(spec.name)
+            end
             return
         end
-        local noAutoClose = (DynamicPrep.db and DynamicPrep.db.blizzWinNoAutoClose ~= false)
         local pinnedMap = (DynamicPrep.db and DynamicPrep.db.windowPinned) or {}
-        local needEscProxy = false
-        if noAutoClose then
-            for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
-                local bf = _G[spec.name]
-                local st = bf and blizzWinState[bf]
-                if bf and bf.IsShown and bf:IsShown() and not pinnedMap[spec.name] and st and st.modifiedLayout then
-                    needEscProxy = true
-                    break
-                end
+        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+            local bf = _G[spec.name]
+            local isShown = (bf and bf.IsShown and bf:IsShown()) and true or false
+            local isPinned = pinnedMap[spec.name] and true or false
+            if isShown and not isPinned then
+                AddToUISpecialFrames(spec.name)
+            else
+                RemoveFromUISpecialFrames(spec.name)
             end
         end
-        suppressEscProxyHide = true
-        if needEscProxy then
-            proxy:Show()
-        else
-            proxy:Hide()
-        end
-        suppressEscProxyHide = false
     end
 
     local function GetActiveFrameScale(frameName)
@@ -5152,8 +5127,8 @@ do
 
     local function ComputeSideBySideFallbackOffset(frame, frameName)
         local uip = _G.UIParent
-        if not uip or not frame then return nil, nil end
-        local ucX, ucY = (uip.GetCenter and uip:GetCenter())
+        if not uip or not frame or type(uip.GetCenter) ~= "function" then return nil, nil end
+        local ucX, ucY = uip:GetCenter()
         if type(ucX) ~= "number" or type(ucY) ~= "number" then return nil, nil end
         local scale = GetActiveFrameScale(frameName)
         local fw = ((frame.GetWidth and frame:GetWidth()) or 350) * scale
@@ -5162,7 +5137,7 @@ do
             if spec.name ~= frameName then
                 local other = _G[spec.name]
                 if other and other.IsShown and other:IsShown() then
-                    local ox = other.GetCenter and select(1, other:GetCenter())
+                    local ox = (type(other.GetCenter) == "function") and select(1, other:GetCenter()) or nil
                     local os = (other.GetScale and other:GetScale()) or 1.0
                     local ow = ((other.GetWidth and other:GetWidth()) or 350) * os
                     if type(ox) == "number" then
@@ -5202,16 +5177,12 @@ do
     end
 
     local function EnsureHeaderOverlay(frame, frameName)
-        local st = blizzWinState[frame]
-        if not st then
-            st = {}
-            blizzWinState[frame] = st
-        end
+        local st = GetFrameState(frame)
         if st.overlay then return st end
 
         local ov = CreateFrame("Frame", nil, frame)
         ov:SetPoint("TOPLEFT", frame, "TOPLEFT", 24, -2)
-        ov:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -30, -2)
+        ov:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -58, -2)
         ov:SetHeight(26)
         ov:SetFrameLevel((frame.GetFrameLevel and frame:GetFrameLevel() or 1) + 25)
 
@@ -5229,9 +5200,8 @@ do
             local nextState = not (DynamicPrep.db.windowPinned[frameName] == true)
             DynamicPrep.db.windowPinned[frameName] = nextState or nil
             UpdatePinButtonVisual(st, frameName)
-            SetUIPanelLayoutEnabled(frame, frameName, not (DynamicPrep.db.blizzWinNoAutoClose ~= false or nextState))
-            SyncEscProxyVisibility()
-            if _G.GameTooltip and _G.GameTooltip:IsOwned(pinBtn) then
+            SyncAllUISpecialFrames()
+            if _G.GameTooltip and _G.GameTooltip.IsOwned and _G.GameTooltip:IsOwned(pinBtn) then
                 pinBtn:GetScript("OnEnter")(pinBtn)
             end
         end)
@@ -5253,19 +5223,28 @@ do
         end)
 
         local function BeginBlizzFrameDrag(frameObj, fName, state)
-            if InCombat() or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
+            if InCombat() or IsModuleDisabledInSuite("DynamicPrep") or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
             if not (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false) then return end
             local uip = _G.UIParent
-            if not uip or type(_G.GetCursorPosition) ~= "function" then return end
+            if not uip or not frameObj then return end
             if type(frameObj.Raise) == "function" then
                 pcall(frameObj.Raise, frameObj)
             end
-            local curX, curY = _G.GetCursorPosition()
-            local uipEff = (uip.GetEffectiveScale and uip:GetEffectiveScale()) or 1
-            if uipEff <= 0 then uipEff = 1 end
+            if type(frameObj.SetMovable) == "function" then
+                pcall(frameObj.SetMovable, frameObj, true)
+            end
+            if type(frameObj.SetClampedToScreen) == "function" then
+                pcall(frameObj.SetClampedToScreen, frameObj, true)
+            end
             local s = GetActiveFrameScale(fName)
-            local fcX, fcY = frameObj:GetCenter()
-            local ucX, ucY = uip:GetCenter()
+            local fcX, fcY
+            if type(frameObj.GetCenter) == "function" then
+                fcX, fcY = frameObj:GetCenter()
+            end
+            local ucX, ucY
+            if type(uip.GetCenter) == "function" then
+                ucX, ucY = uip:GetCenter()
+            end
             local startUX, startUY
             if type(fcX) == "number" and type(fcY) == "number" and type(ucX) == "number" and type(ucY) == "number" then
                 startUX = (fcX * s) - ucX
@@ -5275,39 +5254,72 @@ do
                 startUX = (saved and saved.x) or 0
                 startUY = (saved and saved.y) or 0
             end
+            local curX, curY = 0, 0
+            if type(_G.GetCursorPosition) == "function" then
+                local cx, cy = _G.GetCursorPosition()
+                curX, curY = tonumber(cx) or 0, tonumber(cy) or 0
+            end
             state.isDragging = true
+            state.dragScale = s
+            state.startFCX = fcX
+            state.startFCY = fcY
             state.dragStartCurX = curX
             state.dragStartCurY = curY
             state.dragStartUX = startUX
             state.dragStartUY = startUY
-            state.dragScale = s
-            state.lastUX = startUX
-            state.lastUY = startUY
 
-            local tickerHost = state.overlay or ov
-            tickerHost:SetScript("OnUpdate", function()
-                if not state.isDragging or InCombat() then
-                    state.isDragging = false
-                    tickerHost:SetScript("OnUpdate", nil)
-                    return
+            local startedNative = false
+            if type(frameObj.StartMoving) == "function" then
+                local ok = pcall(frameObj.StartMoving, frameObj)
+                if ok then
+                    startedNative = true
                 end
-                local nx, ny = _G.GetCursorPosition()
-                local dUX = (nx - state.dragStartCurX) / uipEff
-                local dUY = (ny - state.dragStartCurY) / uipEff
-                local cUX, cUY = ClampUIParentCenterOffset(frameObj, state.dragStartUX + dUX, state.dragStartUY + dUY, state.dragScale)
-                state.lastUX = cUX
-                state.lastUY = cUY
-                SecureApplyPoint(frameObj, cUX, cUY, state.dragScale)
-            end)
+            end
+            state.usingNativeMove = startedNative
+            if not startedNative then
+                SecureApplyPoint(frameObj, startUX, startUY, s)
+            end
         end
 
         local function FinishBlizzFrameDrag(frameObj, fName, state)
-            if not state.isDragging then return end
+            if not InCombat() and frameObj and type(frameObj.StopMovingOrSizing) == "function" then
+                pcall(frameObj.StopMovingOrSizing, frameObj)
+            end
+            if not state or not state.isDragging then return end
             state.isDragging = false
-            local tickerHost = state.overlay or ov
-            tickerHost:SetScript("OnUpdate", nil)
+            state.usingNativeMove = nil
             if InCombat() or not DynamicPrep.db then return end
-            local cUX, cUY = ClampUIParentCenterOffset(frameObj, state.lastUX or 0, state.lastUY or 0, state.dragScale or GetActiveFrameScale(fName))
+            local uip = _G.UIParent
+            if not uip or not frameObj then return end
+            local scale = GetActiveFrameScale(fName)
+            local fcX, fcY
+            if type(frameObj.GetCenter) == "function" then
+                fcX, fcY = frameObj:GetCenter()
+            end
+            local ucX, ucY
+            if type(uip.GetCenter) == "function" then
+                ucX, ucY = uip:GetCenter()
+            end
+            local ux, uy
+            if type(fcX) == "number" and type(fcY) == "number" and type(ucX) == "number" and type(ucY) == "number" then
+                ux = (fcX * scale) - ucX
+                uy = (fcY * scale) - ucY
+                if fcX == state.startFCX and fcY == state.startFCY and type(_G.GetCursorPosition) == "function" then
+                    local nx, ny = _G.GetCursorPosition()
+                    if type(nx) == "number" and type(ny) == "number" and (nx ~= state.dragStartCurX or ny ~= state.dragStartCurY) then
+                        local uipEff = (uip.GetEffectiveScale and uip:GetEffectiveScale()) or 1
+                        if uipEff <= 0 then uipEff = 1 end
+                        ux = (state.dragStartUX or ux) + ((nx - state.dragStartCurX) / uipEff)
+                        uy = (state.dragStartUY or uy) + ((ny - state.dragStartCurY) / uipEff)
+                    end
+                end
+            else
+                ux = state.dragStartUX or 0
+                uy = state.dragStartUY or 0
+            end
+            local cUX, cUY = ClampUIParentCenterOffset(frameObj, ux, uy, scale)
+            state.sideBySideUX = nil
+            state.sideBySideUY = nil
             DynamicPrep.db.windowPositions = DynamicPrep.db.windowPositions or {}
             DynamicPrep.db.windowPositions[fName] = {
                 point = "CENTER",
@@ -5315,7 +5327,7 @@ do
                 x = math.floor(cUX * 100 + 0.5) / 100,
                 y = math.floor(cUY * 100 + 0.5) / 100,
             }
-            SecureApplyPoint(frameObj, cUX, cUY, state.dragScale or GetActiveFrameScale(fName))
+            SecureApplyPoint(frameObj, cUX, cUY, scale)
         end
 
         st.beginDrag = function() BeginBlizzFrameDrag(frame, frameName, st) end
@@ -5329,11 +5341,15 @@ do
             end
         end)
         ov:SetScript("OnDragStart", function(_, button)
-            if button ~= "LeftButton" then return end
+            if button and button ~= "LeftButton" then return end
             BeginBlizzFrameDrag(frame, frameName, st)
         end)
 
         ov:SetScript("OnDragStop", function()
+            FinishBlizzFrameDrag(frame, frameName, st)
+        end)
+
+        ov:SetScript("OnHide", function()
             FinishBlizzFrameDrag(frame, frameName, st)
         end)
 
@@ -5365,8 +5381,11 @@ do
 
             SecureApplyScale(frame, newScale)
             local savedPos = DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[frameName]
-            if savedPos then
-                local cUX, cUY = ClampUIParentCenterOffset(frame, savedPos.x or 0, savedPos.y or 0, newScale)
+            if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
+                local cUX, cUY = ClampUIParentCenterOffset(frame, savedPos.x, savedPos.y, newScale)
+                SecureApplyPoint(frame, cUX, cUY, newScale)
+            elseif st.sideBySideUX and st.sideBySideUY then
+                local cUX, cUY = ClampUIParentCenterOffset(frame, st.sideBySideUX, st.sideBySideUY, newScale)
                 SecureApplyPoint(frame, cUX, cUY, newScale)
             end
             ShowWindowToast(frame, string.format("Scale: %d%%", math.floor(newScale * 100 + 0.5)), savePermanent)
@@ -5406,7 +5425,7 @@ do
         local ov = st.overlay
         if InCombat() or IsModuleDisabledInSuite("DynamicPrep") or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
             st.isDragging = false
-            ov:SetScript("OnUpdate", nil)
+            st.usingNativeMove = nil
             ov:EnableMouse(false)
             ov:EnableMouseWheel(false)
             ov:Hide()
@@ -5426,33 +5445,48 @@ do
         UpdatePinButtonVisual(st, frameName)
     end
 
-    local function ApplyBlizzardFrameTransform(frame, frameName)
+    local function ApplyBlizzardFrameTransform(frame, frameName, preserveExistingSlot)
         if not frame or InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
         if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
-        EnsureHeaderOverlay(frame, frameName)
+        local st = EnsureHeaderOverlay(frame, frameName)
         SyncOverlayMode(frame, frameName)
 
-        local noAutoClose = (DynamicPrep.db and DynamicPrep.db.blizzWinNoAutoClose ~= false)
-        local isPinned = (DynamicPrep.db and DynamicPrep.db.windowPinned and DynamicPrep.db.windowPinned[frameName]) and true or false
-        SetUIPanelLayoutEnabled(frame, frameName, not (noAutoClose or isPinned))
+        if type(frame.SetMovable) == "function" then
+            pcall(frame.SetMovable, frame, true)
+        end
+        if type(frame.SetClampedToScreen) == "function" then
+            pcall(frame.SetClampedToScreen, frame, true)
+        end
 
         local targetScale = GetActiveFrameScale(frameName)
         if targetScale ~= 1.0 or (DynamicPrep.db and DynamicPrep.db.windowScales and DynamicPrep.db.windowScales[frameName]) or sessionScales[frameName] then
             SecureApplyScale(frame, targetScale)
         end
 
+        local noAutoClose = (DynamicPrep.db and DynamicPrep.db.blizzWinNoAutoClose ~= false)
         local canDrag = (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false)
         local savedPos = canDrag and DynamicPrep.db and DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[frameName]
         if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
+            st.sideBySideUX = nil
+            st.sideBySideUY = nil
             local cUX, cUY = ClampUIParentCenterOffset(frame, savedPos.x, savedPos.y, targetScale)
             SecureApplyPoint(frame, cUX, cUY, targetScale)
         elseif noAutoClose and frame.IsShown and frame:IsShown() then
-            local sbsX, sbsY = ComputeSideBySideFallbackOffset(frame, frameName)
-            if sbsX and sbsY then
-                SecureApplyPoint(frame, sbsX, sbsY, targetScale)
+            if st.sideBySideUX and st.sideBySideUY then
+                local cUX, cUY = ClampUIParentCenterOffset(frame, st.sideBySideUX, st.sideBySideUY, targetScale)
+                SecureApplyPoint(frame, cUX, cUY, targetScale)
+            elseif not preserveExistingSlot then
+                local sbsX, sbsY = ComputeSideBySideFallbackOffset(frame, frameName)
+                if sbsX and sbsY then
+                    st.sideBySideUX = sbsX
+                    st.sideBySideUY = sbsY
+                    SecureApplyPoint(frame, sbsX, sbsY, targetScale)
+                end
             end
         end
     end
+
+    local EnsureGlobalPanelHooks
 
     local function AttachFrameHooks(frameName)
         if hookedFrameNames[frameName] or EXCLUDED_BLIZZ_FRAMES[frameName] then return false end
@@ -5460,10 +5494,44 @@ do
         if not frame then return false end
         hookedFrameNames[frameName] = true
         SnapshotOrigUIPanelInfo(frame, frameName)
-        EnsureHeaderOverlay(frame, frameName)
+        local st = EnsureHeaderOverlay(frame, frameName)
+        if EnsureGlobalPanelHooks then
+            EnsureGlobalPanelHooks()
+        end
+
+        if not InCombat() then
+            if type(frame.SetMovable) == "function" then
+                pcall(frame.SetMovable, frame, true)
+            end
+            if type(frame.SetClampedToScreen) == "function" then
+                pcall(frame.SetClampedToScreen, frame, true)
+            end
+        end
 
         if type(frame.RegisterForDrag) == "function" then
             pcall(frame.RegisterForDrag, frame, "LeftButton")
+        end
+
+        if type(_G.hooksecurefunc) == "function" and not st.setPointHooked then
+            st.setPointHooked = true
+            _G.hooksecurefunc(frame, "SetPoint", function(selfFrame)
+                local fState = blizzWinState[selfFrame]
+                if not fState or fState.applyingPoint or fState.isDragging then return end
+                if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
+                if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
+                local db = DynamicPrep.db
+                if not db then return end
+                local scale = GetActiveFrameScale(frameName)
+                local canDrag = (db.blizzWinDraggable ~= false)
+                local savedPos = canDrag and db.windowPositions and db.windowPositions[frameName]
+                if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
+                    local cUX, cUY = ClampUIParentCenterOffset(selfFrame, savedPos.x, savedPos.y, scale)
+                    SecureApplyPoint(selfFrame, cUX, cUY, scale)
+                elseif (db.blizzWinNoAutoClose ~= false) and fState.sideBySideUX and fState.sideBySideUY then
+                    local cUX, cUY = ClampUIParentCenterOffset(selfFrame, fState.sideBySideUX, fState.sideBySideUY, scale)
+                    SecureApplyPoint(selfFrame, cUX, cUY, scale)
+                end
+            end)
         end
 
         if type(frame.HookScript) == "function" then
@@ -5475,46 +5543,86 @@ do
                 end
             end)
             frame:HookScript("OnDragStart", function(dragFrame, button)
-                if button ~= "LeftButton" then return end
-                if not (_G.IsAltKeyDown and _G.IsAltKeyDown()) then return end
+                if button and button ~= "LeftButton" then return end
+                local fState = GetFrameState(dragFrame)
+                if not (_G.IsAltKeyDown and _G.IsAltKeyDown()) then
+                    if not InCombat() and type(dragFrame.StopMovingOrSizing) == "function" then
+                        pcall(dragFrame.StopMovingOrSizing, dragFrame)
+                    end
+                    return
+                end
                 if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
                 if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
                 if not (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false) then return end
-                local st = blizzWinState[dragFrame]
-                if st and st.beginDrag then
-                    st.beginDrag()
+                if fState and fState.beginDrag then
+                    fState.beginDrag()
                 end
             end)
             frame:HookScript("OnDragStop", function(dragFrame)
-                local st = blizzWinState[dragFrame]
-                if st and st.finishDrag then
-                    st.finishDrag()
+                if not InCombat() and type(dragFrame.StopMovingOrSizing) == "function" then
+                    pcall(dragFrame.StopMovingOrSizing, dragFrame)
+                end
+                local fState = blizzWinState[dragFrame]
+                if fState and fState.finishDrag then
+                    fState.finishDrag()
                 end
             end)
             frame:HookScript("OnShow", function(shownFrame)
+                if EnsureGlobalPanelHooks then
+                    EnsureGlobalPanelHooks()
+                end
+                local fState = GetFrameState(shownFrame)
                 if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
                 if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
                     SyncOverlayMode(shownFrame, frameName)
                     return
                 end
-                ApplyBlizzardFrameTransform(shownFrame, frameName)
-                SyncEscProxyVisibility()
+                openPanelsSnapshot[frameName] = true
+                ApplyBlizzardFrameTransform(shownFrame, frameName, fState and (fState.restoringFromAutoClose or fState.wasOpenConfirmed))
+                SyncAllUISpecialFrames()
             end)
             frame:HookScript("OnHide", function(hiddenFrame)
+                if not InCombat() and type(hiddenFrame.StopMovingOrSizing) == "function" then
+                    pcall(hiddenFrame.StopMovingOrSizing, hiddenFrame)
+                end
+                local fState = blizzWinState[hiddenFrame]
+                if fState and fState.isDragging and fState.finishDrag then
+                    fState.finishDrag()
+                end
+                if IsShowUIPanelOnStack() then
+                    return
+                end
+                if IsCloseSpecialWindowsOnStack() and not InCombat() and not IsModuleDisabledInSuite("DynamicPrep") and not DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
+                    local isPinned = (DynamicPrep.db and DynamicPrep.db.windowPinned and DynamicPrep.db.windowPinned[frameName]) and true or false
+                    if isPinned then
+                        escapeProtectedReShow[frameName] = hiddenFrame
+                        return
+                    end
+                    if escapeClosedCount == 0 then
+                        escapeClosedCount = 1
+                        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                            RemoveFromUISpecialFrames(spec.name)
+                        end
+                    else
+                        escapeProtectedReShow[frameName] = hiddenFrame
+                        return
+                    end
+                end
+                openPanelsSnapshot[frameName] = nil
+                if fState then
+                    fState.wasOpenConfirmed = false
+                    fState.sideBySideUX = nil
+                    fState.sideBySideUY = nil
+                end
                 local hadSession = (sessionScales[frameName] ~= nil)
                 sessionScales[frameName] = nil
-                local st = blizzWinState[hiddenFrame]
-                if st and st.isDragging then
-                    st.isDragging = false
-                    if st.overlay then st.overlay:SetScript("OnUpdate", nil) end
-                end
                 if InCombat() then return end
                 if hadSession and not DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
                     local savedOrOrig = (DynamicPrep.db and DynamicPrep.db.windowScales and DynamicPrep.db.windowScales[frameName])
                         or (origUIPanelInfo[frameName] and origUIPanelInfo[frameName].defaultScale) or 1.0
                     SecureApplyScale(hiddenFrame, savedOrOrig)
                 end
-                SyncEscProxyVisibility()
+                RemoveFromUISpecialFrames(frameName)
             end)
         end
 
@@ -5522,74 +5630,207 @@ do
         if closeBtn and type(closeBtn.HookScript) == "function" then
             closeBtn:HookScript("OnClick", function()
                 if InCombat() or not frame or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
+                openPanelsSnapshot[frameName] = nil
+                if st then
+                    st.wasOpenConfirmed = false
+                    st.sideBySideUX = nil
+                    st.sideBySideUY = nil
+                end
                 if frame.IsShown and frame:IsShown() then
                     pcall(frame.Hide, frame)
                 end
             end)
         end
+
+        if frame.IsShown and frame:IsShown() then
+            openPanelsSnapshot[frameName] = true
+            st.wasOpenConfirmed = true
+        end
         return true
     end
 
-    local function EnsureGlobalPanelHooks()
-        if globalHooksInstalled or type(_G.hooksecurefunc) ~= "function" then return end
-        globalHooksInstalled = true
+    EnsureGlobalPanelHooks = function()
+        if type(_G.hooksecurefunc) ~= "function" then return end
 
-        if type(_G.ShowUIPanel) == "function" then
+        if not showUIPanelHooked and type(_G.ShowUIPanel) == "function" then
+            showUIPanelHooked = true
             _G.hooksecurefunc("ShowUIPanel", function(frame)
                 if not frame or InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
                 if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
                 local fName = frame.GetName and frame:GetName()
-                if not fName or EXCLUDED_BLIZZ_FRAMES[fName] or not SUPPORTED_BY_NAME[fName] then return end
-                AttachFrameHooks(fName)
-                local st = blizzWinState[frame]
-                if (DynamicPrep.db and DynamicPrep.db.blizzWinNoAutoClose ~= false) or (DynamicPrep.db and DynamicPrep.db.windowPinned and DynamicPrep.db.windowPinned[fName]) then
-                    SetUIPanelLayoutEnabled(frame, fName, false)
-                    if not (frame.IsShown and frame:IsShown()) then
-                        local info = origUIPanelInfo[fName]
-                        local dead = (_G.UnitIsDeadOrGhost and _G.UnitIsDeadOrGhost("player"))
-                        if not dead or (info and info.whileDead) then
-                            pcall(frame.Show, frame)
+                if not fName then return end
+                if EXCLUDED_BLIZZ_FRAMES[fName] then
+                    for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                        local bf = _G[spec.name]
+                        if not (bf and bf.IsShown and bf:IsShown()) then
+                            openPanelsSnapshot[spec.name] = nil
+                            local bst = bf and blizzWinState[bf]
+                            if bst then
+                                bst.wasOpenConfirmed = false
+                                bst.sideBySideUX = nil
+                                bst.sideBySideUY = nil
+                            end
+                            RemoveFromUISpecialFrames(spec.name)
                         end
                     end
-                    if frame.IsShown and frame:IsShown() then
-                        if frame.Raise then pcall(frame.Raise, frame) end
-                        ApplyBlizzardFrameTransform(frame, fName)
-                    end
-                elseif st and (DynamicPrep.db and (DynamicPrep.db.blizzWinDraggable ~= false or DynamicPrep.db.blizzWinScrollScale ~= false)) then
-                    if frame.IsShown and frame:IsShown() then
-                        ApplyBlizzardFrameTransform(frame, fName)
+                    return
+                end
+                if not SUPPORTED_BY_NAME[fName] then return end
+
+                inShowUIPanelPostHook = true
+                AttachFrameHooks(fName)
+                local st = GetFrameState(frame)
+                local wasAlreadyOpen = (st and st.wasOpenConfirmed) == true
+                local noAutoClose = (DynamicPrep.db and DynamicPrep.db.blizzWinNoAutoClose ~= false)
+                local pinnedMap = (DynamicPrep.db and DynamicPrep.db.windowPinned) or {}
+
+                if not (frame.IsShown and frame:IsShown()) then
+                    local info = origUIPanelInfo[fName]
+                    local dead = (_G.UnitIsDeadOrGhost and _G.UnitIsDeadOrGhost("player"))
+                    if not dead or (info and info.whileDead) then
+                        pcall(frame.Show, frame)
                     end
                 end
-                SyncEscProxyVisibility()
+
+                for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                    local otherName = spec.name
+                    if otherName ~= fName and openPanelsSnapshot[otherName] then
+                        local otherFrame = _G[otherName]
+                        local otherSt = otherFrame and GetFrameState(otherFrame)
+                        local otherPinned = pinnedMap[otherName] and true or false
+                        if otherFrame and (noAutoClose or otherPinned) then
+                            if not (otherFrame.IsShown and otherFrame:IsShown()) then
+                                if otherSt then otherSt.restoringFromAutoClose = true end
+                                pcall(otherFrame.Show, otherFrame)
+                                if otherSt then otherSt.restoringFromAutoClose = false end
+                            end
+                            if otherFrame.IsShown and otherFrame:IsShown() then
+                                ApplyBlizzardFrameTransform(otherFrame, otherName, true)
+                                if otherSt then otherSt.wasOpenConfirmed = true end
+                            end
+                        else
+                            openPanelsSnapshot[otherName] = nil
+                            if otherSt then
+                                otherSt.wasOpenConfirmed = false
+                                otherSt.sideBySideUX = nil
+                                otherSt.sideBySideUY = nil
+                            end
+                            if sessionScales[otherName] ~= nil and otherFrame then
+                                sessionScales[otherName] = nil
+                                local savedOrOrig = (DynamicPrep.db and DynamicPrep.db.windowScales and DynamicPrep.db.windowScales[otherName])
+                                    or (origUIPanelInfo[otherName] and origUIPanelInfo[otherName].defaultScale) or 1.0
+                                SecureApplyScale(otherFrame, savedOrOrig)
+                            end
+                            RemoveFromUISpecialFrames(otherName)
+                        end
+                    end
+                end
+
+                if frame.IsShown and frame:IsShown() then
+                    openPanelsSnapshot[fName] = true
+                    if type(frame.Raise) == "function" then
+                        pcall(frame.Raise, frame)
+                    end
+                    ApplyBlizzardFrameTransform(frame, fName, wasAlreadyOpen)
+                    if st then st.wasOpenConfirmed = true end
+                end
+
+                SyncAllUISpecialFrames()
+                inShowUIPanelPostHook = false
             end)
         end
 
-        if type(_G.HideUIPanel) == "function" then
+        if not hideUIPanelHooked and type(_G.HideUIPanel) == "function" then
+            hideUIPanelHooked = true
             _G.hooksecurefunc("HideUIPanel", function(frame)
                 if not frame or InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
                 if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
+                if IsShowUIPanelOnStack() then return end
                 local fName = frame.GetName and frame:GetName()
                 if not fName or EXCLUDED_BLIZZ_FRAMES[fName] or not SUPPORTED_BY_NAME[fName] then return end
+                openPanelsSnapshot[fName] = nil
                 local st = blizzWinState[frame]
-                if st and st.modifiedLayout and frame.IsShown and frame:IsShown() then
+                if st then
+                    st.wasOpenConfirmed = false
+                    st.sideBySideUX = nil
+                    st.sideBySideUY = nil
+                end
+                if frame.IsShown and frame:IsShown() then
                     pcall(frame.Hide, frame)
                 end
-                SyncEscProxyVisibility()
+                SyncAllUISpecialFrames()
             end)
         end
 
-        if type(_G.UpdateUIPanelPositions) == "function" then
+        if not closeSpecialHooked and type(_G.CloseSpecialWindows) == "function" then
+            closeSpecialHooked = true
+            _G.hooksecurefunc("CloseSpecialWindows", function()
+                if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then
+                    escapeClosedCount = 0
+                    for k in pairs(escapeProtectedReShow) do escapeProtectedReShow[k] = nil end
+                    return
+                end
+                if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
+                    escapeClosedCount = 0
+                    for k in pairs(escapeProtectedReShow) do escapeProtectedReShow[k] = nil end
+                    return
+                end
+                inCloseSpecialWindowsPostHook = true
+                escapeClosedCount = 0
+                for fName, fObj in pairs(escapeProtectedReShow) do
+                    escapeProtectedReShow[fName] = nil
+                    if fObj and not (fObj.IsShown and fObj:IsShown()) then
+                        local st = GetFrameState(fObj)
+                        if st then st.restoringFromAutoClose = true end
+                        pcall(fObj.Show, fObj)
+                        if st then st.restoringFromAutoClose = false end
+                        ApplyBlizzardFrameTransform(fObj, fName, true)
+                    end
+                end
+                SyncAllUISpecialFrames()
+                inCloseSpecialWindowsPostHook = false
+            end)
+        end
+
+        if not closeAllHooked and type(_G.CloseAllWindows) == "function" then
+            closeAllHooked = true
+            _G.hooksecurefunc("CloseAllWindows", function()
+                if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
+                if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
+                local pinnedMap = (DynamicPrep.db and DynamicPrep.db.windowPinned) or {}
+                for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                    local fName = spec.name
+                    local fObj = _G[fName]
+                    if fObj and pinnedMap[fName] and openPanelsSnapshot[fName] and not (fObj.IsShown and fObj:IsShown()) then
+                        local st = GetFrameState(fObj)
+                        if st then st.restoringFromAutoClose = true end
+                        pcall(fObj.Show, fObj)
+                        if st then st.restoringFromAutoClose = false end
+                        ApplyBlizzardFrameTransform(fObj, fName, true)
+                    end
+                end
+                SyncAllUISpecialFrames()
+            end)
+        end
+
+        if not updateUIPanelHooked and type(_G.UpdateUIPanelPositions) == "function" then
+            updateUIPanelHooked = true
             _G.hooksecurefunc("UpdateUIPanelPositions", function()
                 if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
                 if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
-                if not (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false) then return end
+                local canDrag = (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false)
+                local noAutoClose = (DynamicPrep.db and DynamicPrep.db.blizzWinNoAutoClose ~= false)
                 for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
                     local f = _G[spec.name]
                     if f and f.IsShown and f:IsShown() then
-                        local savedPos = DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[spec.name]
+                        local st = blizzWinState[f]
+                        local s = GetActiveFrameScale(spec.name)
+                        local savedPos = canDrag and DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[spec.name]
                         if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
-                            local s = GetActiveFrameScale(spec.name)
                             local cUX, cUY = ClampUIParentCenterOffset(f, savedPos.x, savedPos.y, s)
+                            SecureApplyPoint(f, cUX, cUY, s)
+                        elseif noAutoClose and st and st.sideBySideUX and st.sideBySideUY then
+                            local cUX, cUY = ClampUIParentCenterOffset(f, st.sideBySideUX, st.sideBySideUY, s)
                             SecureApplyPoint(f, cUX, cUY, s)
                         end
                     end
@@ -5734,29 +5975,27 @@ do
     function DynamicPrep:ApplyAllBlizzardWindowStates()
         if InCombat() then return end
         HookEllesmereUICoexistence()
+        EnsureGlobalPanelHooks()
         local yielding = self:IsYieldingBlizzardWindowsToEllesmereUI()
         local disabled = IsModuleDisabledInSuite("DynamicPrep")
-        local noAutoClose = (self.db and self.db.blizzWinNoAutoClose ~= false)
         for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
             local frame = _G[spec.name]
             if frame then
                 AttachFrameHooks(spec.name)
                 if yielding or disabled then
                     SyncOverlayMode(frame, spec.name)
-                    if yielding then
-                        SetUIPanelLayoutEnabled(frame, spec.name, true)
-                    end
                 else
                     SyncOverlayMode(frame, spec.name)
-                    local isPinned = (self.db and self.db.windowPinned and self.db.windowPinned[spec.name]) and true or false
-                    SetUIPanelLayoutEnabled(frame, spec.name, not (noAutoClose or isPinned))
                     if frame.IsShown and frame:IsShown() then
-                        ApplyBlizzardFrameTransform(frame, spec.name)
+                        openPanelsSnapshot[spec.name] = true
+                        local st = GetFrameState(frame)
+                        ApplyBlizzardFrameTransform(frame, spec.name, st and st.wasOpenConfirmed)
+                        if st then st.wasOpenConfirmed = true end
                     end
                 end
             end
         end
-        SyncEscProxyVisibility()
+        SyncAllUISpecialFrames()
     end
 
     function DynamicPrep:ResetSingleBlizzardWindow(frameName, showToast)
@@ -5767,11 +6006,17 @@ do
         self.db.windowScales[frameName] = nil
         sessionScales[frameName] = nil
         local frame = _G[frameName]
+        local st = frame and GetFrameState(frame)
+        if st then
+            st.sideBySideUX = nil
+            st.sideBySideUY = nil
+        end
         if frame and not self:IsYieldingBlizzardWindowsToEllesmereUI() then
             local orig = origUIPanelInfo[frameName]
             local defScale = (orig and orig.defaultScale) or 1.0
             SecureApplyScale(frame, defScale)
             if orig and orig.point and _G.UIParent then
+                if st then st.applyingPoint = true end
                 local sec, works = EnsureSecureHandler()
                 local restored = false
                 if works and sec and (orig.relTo == nil or orig.relTo == _G.UIParent) then
@@ -5796,22 +6041,22 @@ do
                     end)
                 end
                 if not restored then
-                    local spec = SUPPORTED_BY_NAME[frameName]
-                    if not (spec and spec.protected and frame.IsProtected and frame:IsProtected()) then
-                        pcall(function()
+                    pcall(function()
+                        if type(frame.ClearAllPoints) == "function" then
                             frame:ClearAllPoints()
+                        end
+                        if type(frame.SetPoint) == "function" then
                             frame:SetPoint(orig.point, orig.relTo or _G.UIParent, orig.relPoint or orig.point, orig.x or 0, orig.y or 0)
-                        end)
-                    end
+                        end
+                    end)
                 end
+                if st then st.applyingPoint = false end
             elseif type(_G.UpdateUIPanelPositions) == "function" then
                 pcall(_G.UpdateUIPanelPositions, frame)
             else
                 SecureApplyPoint(frame, 0, 0, defScale)
             end
-            local noAutoClose = (self.db.blizzWinNoAutoClose ~= false)
-            local isPinned = (self.db.windowPinned and self.db.windowPinned[frameName]) and true or false
-            SetUIPanelLayoutEnabled(frame, frameName, not (noAutoClose or isPinned))
+            SyncAllUISpecialFrames()
             if showToast and frame.IsShown and frame:IsShown() then
                 ShowWindowToast(frame, "Reset to Default (100%)", false)
             end
@@ -5835,7 +6080,7 @@ do
                 UpdatePinButtonVisual(blizzWinState[f], spec.name)
             end
         end
-        SyncEscProxyVisibility()
+        SyncAllUISpecialFrames()
         if not silent then
             print(string.format("|cFF%sDynamicPrep:|r Reset all Blizzard window positions, scales, and pins to defaults.", GetAccentHex()))
         end
@@ -5843,7 +6088,6 @@ do
 
     function DynamicPrep:InitBlizzardWindowQoL(loadedAddonName)
         if IsModuleDisabledInSuite("DynamicPrep") then return end
-        EnsureEscProxy()
         HookEllesmereUICoexistence()
         EnsureGlobalPanelHooks()
         if InCombat() then return end
