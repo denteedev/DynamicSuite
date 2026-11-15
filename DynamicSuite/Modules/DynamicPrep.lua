@@ -648,7 +648,7 @@ DynamicPrep.CHANGELOG = {
     entries = {
         { type = "FEATURE", text = "Colour-Coded Food Stat Benefits on Clickable Raid Buffs HUD & Readiness Strip (15/11/2026): added FormatColoredFoodBenefit to colour-code parsed food stats (Mint Teal Primary/Int/Agi/Str, Sky Cyan Haste, Royal Amethyst Mastery, Warm Amber-Gold Crit, Emerald Green Versatility, Blaze Orange Highest Secondary Stat, and Slate-Silver Stamina) across Clickable Raid Buffs food tooltip titles, 'Food Benefit:' summary lines, expiring 'Current Buff:' lines, Readiness Strip Slot 3, and capsule tooltips." },
         { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
-        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House open together via ShowUIPanel multi-panel restoration and per-window UISpecialFrames Escape handling (with header Pin buttons and click-to-raise layering) while freezing already-open windows in place so opening another panel never shifts them, smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag window moving out of combat with unclamped SetClampedToScreen(false) free movement, scale-aware UIParent CENTER persistence, and SetPoint tab-switch snap-back protection, (-58, -2) header inset to leave Maximize/Minimize buttons clear, Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows] (restoring default position, 100% scale, and screen clamping), strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding for NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
+        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Professions Book (Blizzard_ProfessionsBook), Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House open together via ShowUIPanel multi-panel restoration and Escape-protected UISpecialFrames / HideUIPanel / CloseWindows / ToggleGameMenu handling (leaving Pinned windows open past Escape while [X] and keybind toggles still close them, and dismissing strictly one unpinned window per Escape) while freezing already-open windows in place so opening another panel never shifts them, smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag window moving out of combat with unclamped SetClampedToScreen(false) free movement, scale-aware UIParent CENTER persistence, SetPoint tab-switch snap-back protection, TitleContainer-cleared header overlay layering (+30 frame levels, (-58, -2) Maximize/Minimize clearance), Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows] (restoring default position, 100% scale, and screen clamping), strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding for NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
         { type = "FIX",     text = "Midnight Season 2 Enchantable Slot List Fix (15/11/2026): updated equipped gear enchant scanning to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
         { type = "FEATURE", text = "Equipped Gear Missing-Enchant & Empty-Socket Detection (15/11/2026): added out-of-combat equipped gear auditing (ScanEquippedGearEnchantsAndGems) cached on PLAYER_ENTERING_WORLD, PLAYER_EQUIPMENT_CHANGED, SOCKET_INFO_UPDATE, and PLAYER_REGEN_ENABLED. Flags missing Midnight Season 2 enchants on max-level Head, Shoulder, Chest, Legs, Feet, Rings, Main Hand, and Off-Hand weapons (excluding shields/holdables and grey/white/heirloom items) and empty gem sockets across slots 1..18, surfacing a compact amber '!' badge in the Durability capsule, 'Enchants:' and 'Gems:' status lines in the Durability tooltip, and Left-Click Character Frame opening." },
         { type = "FEATURE", text = "Great Vault Mythic+ Telemetry, Group Finder Shortcut & Midnight Season 2 Consumables (15/11/2026): added weekly Mythic+ Great Vault run counts, 1/4/8 run threshold levels, and 'Reward Ready to Claim!' status to the Keystone capsule tooltip (guarded with pcall and _IsSecret), added Right-Click Group Finder toggling out of combat on the Keystone capsule, aligned DUNGEON_ABBREVIATIONS with DynamicGroup's Midnight Season 1/2 codes (DON, AOF, MR, VSA, FG, AK, PSF), and updated Midnight Season 2 consumable item IDs and Rank 2 Gold / Rank 1 Silver mappings." },
@@ -4764,6 +4764,7 @@ do
         { name = "CollectionsJournal", label = "Collections",        addon = "Blizzard_Collections" },
         { name = "EncounterJournal",   label = "Adventure Guide",    addon = "Blizzard_EncounterJournal" },
         { name = "ProfessionsFrame",   label = "Professions",        addon = "Blizzard_Professions",     protected = true },
+        { name = "ProfessionsBookFrame", label = "Professions Book", addon = "Blizzard_ProfessionsBook", protected = true },
         { name = "AchievementFrame",   label = "Achievements",       addon = "Blizzard_AchievementUI" },
         { name = "ItemUpgradeFrame",   label = "Item Upgrade",       addon = "Blizzard_ItemUpgradeUI" },
         { name = "CalendarFrame",      label = "Calendar",           addon = "Blizzard_Calendar" },
@@ -4797,11 +4798,17 @@ do
     local escapeClosedCount = 0
     local inShowUIPanelPostHook = false
     local inCloseSpecialWindowsPostHook = false
+    local inEscapeRestorePostHook = false
+    local explicitCloseFrame = nil
     local showUIPanelHooked = false
     local hideUIPanelHooked = false
     local updateUIPanelHooked = false
     local closeSpecialHooked = false
+    local closeWindowsHooked = false
     local closeAllHooked = false
+    local toggleGameMenuHooked = false
+    local toggleProfBookHooked = false
+    local profBookContinueRegistered = false
     local ellesmereHooksInstalled = false
     local secureHandler = nil
     local secureHandlerWorks = nil
@@ -4861,9 +4868,13 @@ do
         return IsFunctionOnStack(_G.ShowUIPanel, "ShowUIPanel", "SetUIPanel")
     end
 
-    local function IsCloseSpecialWindowsOnStack()
-        if inCloseSpecialWindowsPostHook then return false end
-        return IsFunctionOnStack(_G.CloseSpecialWindows, "CloseSpecialWindows", "CloseWindows")
+    local function IsEscapeCloseOnStack()
+        if inEscapeRestorePostHook or inCloseSpecialWindowsPostHook then return false end
+        if IsFunctionOnStack(_G.ToggleGameMenu, "ToggleGameMenu", "CloseWindows") then return true end
+        if IsFunctionOnStack(_G.CloseWindows, "CloseWindows", "CloseAllWindows") then return true end
+        if IsFunctionOnStack(_G.CloseAllWindows, "CloseAllWindows", "CloseSpecialWindows") then return true end
+        if IsFunctionOnStack(_G.CloseSpecialWindows, "CloseSpecialWindows", "CloseWindows") then return true end
+        return false
     end
 
     local function EnsureScaleToast()
@@ -5174,7 +5185,9 @@ do
         ov:SetPoint("TOPLEFT", frame, "TOPLEFT", 24, -2)
         ov:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -58, -2)
         ov:SetHeight(26)
-        ov:SetFrameLevel((frame.GetFrameLevel and frame:GetFrameLevel() or 1) + 25)
+        local titleLvl = (frame.TitleContainer and frame.TitleContainer.GetFrameLevel and frame.TitleContainer:GetFrameLevel()) or 0
+        local baseLvl = math.max((frame.GetFrameLevel and frame:GetFrameLevel()) or 1, titleLvl)
+        ov:SetFrameLevel(baseLvl + 30)
 
         local pinBtn = CreateFrame("Button", nil, ov, "BackdropTemplate")
         pinBtn:SetSize(44, 16)
@@ -5425,6 +5438,12 @@ do
         ov:EnableMouse(canDrag or canScale or canPin)
         ov:EnableMouseWheel(canScale)
         if canDrag or canScale or canPin then
+            local titleLvl = (frame.TitleContainer and frame.TitleContainer.GetFrameLevel and frame.TitleContainer:GetFrameLevel()) or 0
+            local baseLvl = math.max((frame.GetFrameLevel and frame:GetFrameLevel()) or 1, titleLvl)
+            ov:SetFrameLevel(baseLvl + 30)
+            if st.pinBtn then
+                st.pinBtn:SetFrameLevel((ov.GetFrameLevel and ov:GetFrameLevel() or 10) + 5)
+            end
             ov:Show()
         else
             ov:Hide()
@@ -5568,20 +5587,25 @@ do
                 if IsShowUIPanelOnStack() then
                     return
                 end
-                if IsCloseSpecialWindowsOnStack() and not InCombat() and not IsModuleDisabledInSuite("DynamicPrep") and not DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
-                    local isPinned = (DynamicPrep.db and DynamicPrep.db.windowPinned and DynamicPrep.db.windowPinned[frameName]) and true or false
+                if explicitCloseFrame ~= frameName and IsEscapeCloseOnStack() and not InCombat() and not IsModuleDisabledInSuite("DynamicPrep") and not DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
+                    local noAutoClose = (DynamicPrep.db and DynamicPrep.db.blizzWinNoAutoClose ~= false)
+                    local isPinned = noAutoClose and (DynamicPrep.db and DynamicPrep.db.windowPinned and DynamicPrep.db.windowPinned[frameName]) and true or false
                     if isPinned then
                         escapeProtectedReShow[frameName] = hiddenFrame
+                        openPanelsSnapshot[frameName] = true
                         return
                     end
-                    if escapeClosedCount == 0 then
-                        escapeClosedCount = 1
-                        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
-                            RemoveFromUISpecialFrames(spec.name)
+                    if noAutoClose then
+                        if escapeClosedCount == 0 then
+                            escapeClosedCount = 1
+                            for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                                RemoveFromUISpecialFrames(spec.name)
+                            end
+                        else
+                            escapeProtectedReShow[frameName] = hiddenFrame
+                            openPanelsSnapshot[frameName] = true
+                            return
                         end
-                    else
-                        escapeProtectedReShow[frameName] = hiddenFrame
-                        return
                     end
                 end
                 openPanelsSnapshot[frameName] = nil
@@ -5613,7 +5637,10 @@ do
                     st.frozenUY = nil
                 end
                 if frame.IsShown and frame:IsShown() then
+                    local prevExplicit = explicitCloseFrame
+                    explicitCloseFrame = frameName
                     pcall(frame.Hide, frame)
+                    explicitCloseFrame = prevExplicit
                 end
             end)
         end
@@ -5722,6 +5749,49 @@ do
             end)
         end
 
+        local function FlushEscapeProtectedWindows()
+            if InCombat() or IsModuleDisabledInSuite("DynamicPrep") or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
+                escapeClosedCount = 0
+                for k in pairs(escapeProtectedReShow) do escapeProtectedReShow[k] = nil end
+                return
+            end
+            inEscapeRestorePostHook = true
+            inCloseSpecialWindowsPostHook = true
+            escapeClosedCount = 0
+            for fName, fObj in pairs(escapeProtectedReShow) do
+                escapeProtectedReShow[fName] = nil
+                if fObj then
+                    openPanelsSnapshot[fName] = true
+                    local st = GetFrameState(fObj)
+                    if not (fObj.IsShown and fObj:IsShown()) then
+                        if st then st.restoringFromAutoClose = true end
+                        pcall(fObj.Show, fObj)
+                        if st then st.restoringFromAutoClose = false end
+                    end
+                    ApplyBlizzardFrameTransform(fObj, fName)
+                    if st then st.wasOpenConfirmed = true end
+                end
+            end
+            local pinnedMap = (DynamicPrep.db and DynamicPrep.db.windowPinned) or {}
+            if DynamicPrep.db and DynamicPrep.db.blizzWinNoAutoClose ~= false then
+                for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                    local fName = spec.name
+                    local fObj = _G[fName]
+                    if fObj and pinnedMap[fName] and openPanelsSnapshot[fName] and not (fObj.IsShown and fObj:IsShown()) then
+                        local st = GetFrameState(fObj)
+                        if st then st.restoringFromAutoClose = true end
+                        pcall(fObj.Show, fObj)
+                        if st then st.restoringFromAutoClose = false end
+                        ApplyBlizzardFrameTransform(fObj, fName)
+                        if st then st.wasOpenConfirmed = true end
+                    end
+                end
+            end
+            SyncAllUISpecialFrames()
+            inCloseSpecialWindowsPostHook = false
+            inEscapeRestorePostHook = false
+        end
+
         if not hideUIPanelHooked and type(_G.HideUIPanel) == "function" then
             hideUIPanelHooked = true
             _G.hooksecurefunc("HideUIPanel", function(frame)
@@ -5730,8 +5800,35 @@ do
                 if IsShowUIPanelOnStack() then return end
                 local fName = frame.GetName and frame:GetName()
                 if not fName or EXCLUDED_BLIZZ_FRAMES[fName] or not SUPPORTED_BY_NAME[fName] then return end
-                openPanelsSnapshot[fName] = nil
                 local st = blizzWinState[frame]
+                local noAutoClose = (DynamicPrep.db and DynamicPrep.db.blizzWinNoAutoClose ~= false)
+                if explicitCloseFrame ~= fName and IsEscapeCloseOnStack() then
+                    local isPinned = noAutoClose and (DynamicPrep.db and DynamicPrep.db.windowPinned and DynamicPrep.db.windowPinned[fName] == true)
+                    if isPinned or (noAutoClose and (escapeProtectedReShow[fName] ~= nil or escapeClosedCount >= 1)) then
+                        openPanelsSnapshot[fName] = true
+                        escapeProtectedReShow[fName] = nil
+                        RemoveFromUISpecialFrames(fName)
+                        inEscapeRestorePostHook = true
+                        if not (frame.IsShown and frame:IsShown()) then
+                            if st then st.restoringFromAutoClose = true end
+                            pcall(frame.Show, frame)
+                            if st then st.restoringFromAutoClose = false end
+                        end
+                        ApplyBlizzardFrameTransform(frame, fName)
+                        if st then st.wasOpenConfirmed = true end
+                        SyncAllUISpecialFrames()
+                        inEscapeRestorePostHook = false
+                        return
+                    end
+                    if noAutoClose then
+                        escapeClosedCount = 1
+                        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                            RemoveFromUISpecialFrames(spec.name)
+                        end
+                    end
+                end
+                openPanelsSnapshot[fName] = nil
+                escapeProtectedReShow[fName] = nil
                 if st then
                     st.wasOpenConfirmed = false
                     st.frozenUX = nil
@@ -5746,52 +5843,40 @@ do
 
         if not closeSpecialHooked and type(_G.CloseSpecialWindows) == "function" then
             closeSpecialHooked = true
-            _G.hooksecurefunc("CloseSpecialWindows", function()
-                if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then
-                    escapeClosedCount = 0
-                    for k in pairs(escapeProtectedReShow) do escapeProtectedReShow[k] = nil end
-                    return
-                end
-                if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
-                    escapeClosedCount = 0
-                    for k in pairs(escapeProtectedReShow) do escapeProtectedReShow[k] = nil end
-                    return
-                end
-                inCloseSpecialWindowsPostHook = true
-                escapeClosedCount = 0
-                for fName, fObj in pairs(escapeProtectedReShow) do
-                    escapeProtectedReShow[fName] = nil
-                    if fObj and not (fObj.IsShown and fObj:IsShown()) then
-                        local st = GetFrameState(fObj)
-                        if st then st.restoringFromAutoClose = true end
-                        pcall(fObj.Show, fObj)
-                        if st then st.restoringFromAutoClose = false end
-                        ApplyBlizzardFrameTransform(fObj, fName)
-                    end
-                end
-                SyncAllUISpecialFrames()
-                inCloseSpecialWindowsPostHook = false
-            end)
+            _G.hooksecurefunc("CloseSpecialWindows", FlushEscapeProtectedWindows)
+        end
+
+        if not closeWindowsHooked and type(_G.CloseWindows) == "function" then
+            closeWindowsHooked = true
+            _G.hooksecurefunc("CloseWindows", FlushEscapeProtectedWindows)
         end
 
         if not closeAllHooked and type(_G.CloseAllWindows) == "function" then
             closeAllHooked = true
-            _G.hooksecurefunc("CloseAllWindows", function()
+            _G.hooksecurefunc("CloseAllWindows", FlushEscapeProtectedWindows)
+        end
+
+        if not toggleGameMenuHooked and type(_G.ToggleGameMenu) == "function" then
+            toggleGameMenuHooked = true
+            _G.hooksecurefunc("ToggleGameMenu", FlushEscapeProtectedWindows)
+        end
+
+        if not toggleProfBookHooked and type(_G.ToggleProfessionsBook) == "function" then
+            toggleProfBookHooked = true
+            _G.hooksecurefunc("ToggleProfessionsBook", function()
                 if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
                 if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
-                local pinnedMap = (DynamicPrep.db and DynamicPrep.db.windowPinned) or {}
-                for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
-                    local fName = spec.name
-                    local fObj = _G[fName]
-                    if fObj and pinnedMap[fName] and openPanelsSnapshot[fName] and not (fObj.IsShown and fObj:IsShown()) then
-                        local st = GetFrameState(fObj)
-                        if st then st.restoringFromAutoClose = true end
-                        pcall(fObj.Show, fObj)
-                        if st then st.restoringFromAutoClose = false end
-                        ApplyBlizzardFrameTransform(fObj, fName)
+                local pbf = _G.ProfessionsBookFrame
+                if pbf then
+                    AttachFrameHooks("ProfessionsBookFrame")
+                    if pbf.IsShown and pbf:IsShown() then
+                        openPanelsSnapshot["ProfessionsBookFrame"] = true
+                        local st = GetFrameState(pbf)
+                        ApplyBlizzardFrameTransform(pbf, "ProfessionsBookFrame")
+                        if st then st.wasOpenConfirmed = true end
+                        SyncAllUISpecialFrames()
                     end
                 end
-                SyncAllUISpecialFrames()
             end)
         end
 
@@ -6082,6 +6167,14 @@ do
         if IsModuleDisabledInSuite("DynamicPrep") then return end
         HookEllesmereUICoexistence()
         EnsureGlobalPanelHooks()
+        if not profBookContinueRegistered and _G.EventUtil and type(_G.EventUtil.ContinueOnAddOnLoaded) == "function" then
+            profBookContinueRegistered = true
+            _G.EventUtil.ContinueOnAddOnLoaded("Blizzard_ProfessionsBook", function()
+                if not IsModuleDisabledInSuite("DynamicPrep") then
+                    DynamicPrep:InitBlizzardWindowQoL("Blizzard_ProfessionsBook")
+                end
+            end)
+        end
         if InCombat() then return end
         if loadedAddonName then
             for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
@@ -6245,7 +6338,10 @@ function DynamicPrep:ScanHealingConsumables()
             for slot = 1, slots do
                 local info = C_Container.GetContainerItemInfo(bag, slot)
                 if info and info.itemID and info.hyperlink and not IsSecretValue(info.hyperlink) then
-                    local _, _, _, _, _, classID, subClassID = C_Item.GetItemInfoInstant(info.itemID)
+                    local _, _, _, _, _, classID, subClassID
+                    if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+                        _, _, _, _, _, classID, subClassID = C_Item.GetItemInfoInstant(info.itemID)
+                    end
                     -- Consumable (0): Potion (1)
                     if classID == 0 and subClassID == 1 then
                         local name = info.hyperlink:match("%[(.-)%]") or (C_Item.GetItemNameByID and C_Item.GetItemNameByID(info.itemID)) or ""
@@ -8900,7 +8996,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             local rNoAutoClose = CreateSpaciousRow(
                 cWin, -54,
                 "Keep Blizzard Windows Open Side-by-Side",
-                "Keep Character, Inspect, Dressing Room, Talents, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Achievements, Upgrades, Calendar, Macros, Merchant, Mail & Auction House open side-by-side without trapping Escape.",
+                "Keep Character, Inspect, Dressing Room, Talents, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Professions Book, Achievements, Upgrades, Calendar, Macros, Merchant, Mail & Auction House open side-by-side without trapping Escape.",
                 200
             )
             local pillsNoAutoClose = CreateSegmentedPills(
@@ -10420,6 +10516,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             or arg1 == "Blizzard_Collections"
             or arg1 == "Blizzard_EncounterJournal"
             or arg1 == "Blizzard_Professions"
+            or arg1 == "Blizzard_ProfessionsBook"
             or arg1 == "Blizzard_AchievementUI"
             or arg1 == "Blizzard_ItemUpgradeUI"
             or arg1 == "Blizzard_Calendar"
@@ -10978,7 +11075,10 @@ local function ScanOwnedFoods()
             for slot = 1, slots do
                 local info = C_Container.GetContainerItemInfo(bag, slot)
                 if info and info.itemID and info.hyperlink and not _IsSecret(info.hyperlink) then
-                    local _, _, _, invType, icon, classID, subClassID = C_Item.GetItemInfoInstant(info.hyperlink or info.itemID)
+                    local _, _, _, invType, icon, classID, subClassID
+                    if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+                        _, _, _, invType, icon, classID, subClassID = C_Item.GetItemInfoInstant(info.hyperlink or info.itemID)
+                    end
                     local rawName = (C_Item.GetItemNameByID and C_Item.GetItemNameByID(info.itemID)) or info.hyperlink:match("%[(.-)%]") or ("item:" .. info.itemID)
                     local cleanName = rawName:gsub("|A:.-|a", ""):gsub("|T.-|t", ""):match("^%s*(.-)%s*$") or rawName
                     local itemRarity = info.quality or (C_Item.GetItemQualityByID and C_Item.GetItemQualityByID(info.itemID)) or 1
@@ -11096,7 +11196,10 @@ local function ScanOwnedFlasks()
             for slot = 1, slots do
                 local info = C_Container.GetContainerItemInfo(bag, slot)
                 if info and info.itemID and info.hyperlink and not _IsSecret(info.hyperlink) then
-                    local _, itemType, itemSubType, invType, icon, classID, subClassID = C_Item.GetItemInfoInstant(info.hyperlink or info.itemID)
+                    local _, itemType, itemSubType, invType, icon, classID, subClassID
+                    if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+                        _, itemType, itemSubType, invType, icon, classID, subClassID = C_Item.GetItemInfoInstant(info.hyperlink or info.itemID)
+                    end
                     local rawName = (C_Item.GetItemNameByID and C_Item.GetItemNameByID(info.itemID)) or info.hyperlink:match("%[(.-)%]") or ("item:" .. info.itemID)
                     local cleanName = rawName:gsub("|A:.-|a", ""):gsub("|T.-|t", ""):match("^%s*(.-)%s*$") or rawName
 
@@ -11193,7 +11296,10 @@ local function ScanOwnedWeaponOil()
             for slot = 1, slots do
                 local info = C_Container.GetContainerItemInfo(bag, slot)
                 if info and info.itemID and info.hyperlink and not _IsSecret(info.hyperlink) then
-                    local _, _, _, invType, icon, classID, subClassID = C_Item.GetItemInfoInstant(info.hyperlink or info.itemID)
+                    local _, _, _, invType, icon, classID, subClassID
+                    if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+                        _, _, _, invType, icon, classID, subClassID = C_Item.GetItemInfoInstant(info.hyperlink or info.itemID)
+                    end
                     local name = info.hyperlink:match("%[(.-)%]") or (C_Item.GetItemNameByID and C_Item.GetItemNameByID(info.itemID)) or ""
                     if IsWeaponOilItem(info.itemID, info.hyperlink, classID, subClassID, invType, name, bag, slot) then
                         local cnt = (C_Item and C_Item.GetItemCount and C_Item.GetItemCount(info.itemID, false, false, false)) or info.stackCount or 1
@@ -11282,7 +11388,10 @@ local function ScanOwnedAugmentRune()
             for slot = 1, slots do
                 local info = C_Container.GetContainerItemInfo(bag, slot)
                 if info and info.itemID and info.hyperlink and not _IsSecret(info.hyperlink) then
-                    local _, _, _, invType, icon, classID, subClassID = C_Item.GetItemInfoInstant(info.hyperlink or info.itemID)
+                    local _, _, _, invType, icon, classID, subClassID
+                    if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+                        _, _, _, invType, icon, classID, subClassID = C_Item.GetItemInfoInstant(info.hyperlink or info.itemID)
+                    end
                     local name = info.hyperlink:match("%[(.-)%]") or (C_Item.GetItemNameByID and C_Item.GetItemNameByID(info.itemID)) or ""
                     if IsAugmentRuneItem(info.itemID, info.hyperlink, classID, subClassID, invType, name, bag, slot) then
                         local cnt = (C_Item and C_Item.GetItemCount and C_Item.GetItemCount(info.itemID, false, false, false)) or info.stackCount or 1

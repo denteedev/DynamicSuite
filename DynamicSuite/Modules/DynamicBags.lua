@@ -1398,7 +1398,11 @@ function U.SnapshotBagIDs(bagIDs, skipTooltipScan)
                     if cachedSlot and cachedSlot.link == info.hyperlink and cachedSlot.binding ~= nil then
                         bindingVal = cachedSlot.binding
                     elseif not skipTooltipScan then
-                        local _, _, _, _, _, cID = C_Item.GetItemInfoInstant(info.hyperlink or info.itemID)
+                        local cID
+                        if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+                            local _, _, _, _, _, cid = C_Item.GetItemInfoInstant(info.hyperlink or info.itemID)
+                            cID = cid
+                        end
                         local probe = {
                             key = bagID .. ":" .. slot, bag = bagID, slot = slot,
                             itemID = info.itemID, link = info.hyperlink,
@@ -1674,15 +1678,16 @@ function U.InstallTooltipHook()
         if type(id) == "number" and not IsSecret(id) and DB().tooltipCounts then
             pcall(U.AppendCountsToTooltip, tooltip, id)
         end
-        local owner = tooltip:GetOwner()
-        if owner and owner.dbBag and owner.dbSlot and owner.dbObj and not owner.dbObj.empty then
+        local okOwn, owner = pcall(tooltip.GetOwner, tooltip)
+        if okOwn and owner and not IsSecret(owner) and owner.dbBag and owner.dbSlot and owner.dbObj and not owner.dbObj.empty then
             local ar, ag, ab = GetAccent()
             local accHex = sformat("%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
-            local pinned = DB().pinnedCategories[owner.dbObj.itemID]
+            local pinnedCats = DB().pinnedCategories
+            local pinned = pinnedCats and pinnedCats[owner.dbObj.itemID]
             local pinTxt = pinned
                 and ("|cFF" .. accHex .. "Pinned:|r |cFFE2E8F0" .. (CAT_LABEL[pinned] or pinned) .. "|r  (|cFF" .. accHex .. "Alt + Right-Click:|r |cFFE2E8F0Change Category|r)")
                 or ("|cFF" .. accHex .. "Alt + Right-Click:|r |cFFE2E8F0Pin to Category|r")
-            tooltip:AddLine(pinTxt, 0.886, 0.910, 0.941)
+            pcall(tooltip.AddLine, tooltip, pinTxt, 0.886, 0.910, 0.941)
         end
     end)
 end
