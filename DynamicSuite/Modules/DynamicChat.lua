@@ -3418,20 +3418,30 @@ local function GetChatScrollMetrics(cf)
     local curScroll = SafeChatNum(cf.GetScrollOffset) or SafeChatNum(cf.GetCurrentScroll) or 0
     if curScroll < 0 then curScroll = 0 end
 
-    local cfHeight = SafeChatNum(cf.GetHeight) or 200
-    if cfHeight < 14 then cfHeight = 200 end
-    local fontSize = SafeChatNum(cf.GetFont, 2) or 14
-    if fontSize < 6 then fontSize = 14 end
-    local spacing = SafeChatNum(cf.GetSpacing) or 2
-    if spacing < 0 then spacing = 2 end
-    local lineH = math.max(8, fontSize + spacing)
-    local visibleLines = math.max(1, math.floor(cfHeight / lineH))
+    local visibleLines = SafeChatNum(cf.GetNumVisibleLines) or SafeChatNum(cf.GetNumLinesDisplayed)
+    if not visibleLines or visibleLines < 1 then
+        local cfHeight = SafeChatNum(cf.GetHeight) or 200
+        if cfHeight < 14 then cfHeight = 200 end
+        local fontSize = SafeChatNum(cf.GetFont, 2) or 14
+        if fontSize < 6 then fontSize = 14 end
+        local spacing = SafeChatNum(cf.GetSpacing) or 2
+        if spacing < 0 then spacing = 2 end
+        local lineH = math.max(8, fontSize + spacing)
+        visibleLines = math.max(1, math.floor(cfHeight / lineH))
+    end
 
-    local maxScroll = math.max(0, numMsgs - visibleLines)
+    local maxScroll = SafeChatNum(cf.GetMaxScrollRange)
+    if maxScroll == nil then
+        maxScroll = math.max(0, numMsgs - visibleLines)
+    elseif maxScroll < 0 then
+        maxScroll = 0
+    end
     if curScroll > maxScroll then
         maxScroll = curScroll
     end
-    local visRatio = (numMsgs > 0) and math.min(1, visibleLines / numMsgs) or 1
+
+    local totalLines = visibleLines + maxScroll
+    local visRatio = (maxScroll > 0 and totalLines > 0) and math.min(1, visibleLines / totalLines) or 1
     return numMsgs, curScroll, maxScroll, visRatio, visibleLines
 end
 
@@ -3547,13 +3557,19 @@ local function ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
                 return IsChatAreaHovered(cf, entry)
             end,
             onValueChanged = function(newVal)
-                if type(cf.SetScrollOffset) ~= "function" then return end
+                if type(cf.SetScrollOffset) ~= "function" or entry._syncingScrollBar then return end
+                entry._syncingScrollBar = true
                 local _, _, maxScroll = GetChatScrollMetrics(cf)
                 if maxScroll <= 0 and entry.customScrollBar and (entry.customScrollBar._maxValue or 0) > 0 then
                     maxScroll = entry.customScrollBar._maxValue
                 end
                 local targetOffset = math.max(0, math.min(maxScroll, math.floor(maxScroll - newVal + 0.5)))
                 pcall(cf.SetScrollOffset, cf, targetOffset)
+                if cf.ScrollBar and type(cf.ScrollBar.SetScrollPercentage) == "function" and maxScroll > 0 then
+                    local pct = math.max(0, math.min(1, newVal / maxScroll))
+                    pcall(cf.ScrollBar.SetScrollPercentage, cf.ScrollBar, pct)
+                end
+                entry._syncingScrollBar = false
                 RefreshChatScrollBarVisibility(cf, true)
             end,
             onMouseWheel = function(delta)
@@ -3582,7 +3598,7 @@ local function ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
     end
     csb:ClearAllPoints()
     csb:SetPoint("TOPRIGHT", cf, "TOPRIGHT", 6, -2)
-    csb:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 6, 14)
+    csb:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 6, 2)
 
     if not hookedScrollBars[cf] then
         hookedScrollBars[cf] = true
