@@ -4712,7 +4712,7 @@ function addonTable.CreateMainConfigUI()
                         host._activeModHost = modHost
 
                         if f.verPill and f.verPill.label then
-                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "2.1.1"
+                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "2.1.2"
                             f.verPill.label:SetText("v" .. tostring(mVer))
                         end
                         UpdateStatusBar(true)
@@ -5144,7 +5144,7 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        local curVer = addonTable.ADDON_VERSION or "2.1.1"
+        local curVer = addonTable.ADDON_VERSION or "2.1.2"
         local curSig = f.GetSuiteChangelogSignature and f.GetSuiteChangelogSignature() or curVer
         local seenVer = gTbl.lastSeenChangelogVer or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogVer)
         local seenSig = gTbl.lastSeenChangelogSig or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogSig)
@@ -7097,7 +7097,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.1"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.2"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -7110,6 +7110,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "FIXED",    title = "v2.1.2 Release: DynamicPrep Midnight Season 2 Enchantable Slot List Fix", desc = "Updated DynamicPrep's equipped gear enchant scanner to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
                 { badge = "NEW",      title = "v2.1.1 Release: 3-Row 560x110 HUD Edit Inspector (Row 3 Live Appearance Bar), First-Open Left Rail & Right Workspace Anchor Fix", desc = "Upgraded DynamicSuiteEditModeModal and standalone DynamicMarkerEditModeInspector into a unified 560x110 3-row draggable inspector dock with live Row 3 controls across all 6 HUDs (Opacity 20%-100%, Border Style Accent/Dark/None, and Orientation Horiz/Vert with instant screen-bounds re-clamping); fixed first-open /ds Left Rail & first-click [+ HUD] mover initialisation; and anchored leftRail and workspace directly to DynamicSuiteMainFrame with explicit SetSize fallbacks, SetClipsChildren(false) on outer containers, and elevated FrameLevels so the right-hand DynamicLoad and peer module workspaces always render cleanly." },
                 { badge = "NEW",      title = "v2.1.0 Release: Compact Draggable 560x74 HUD Edit Inspector, Hidden-By-Default Movers & Unified [Edit HUD] Cards", desc = "Redesigned the HUD Edit Mode dock into a compact 560x74 2-row draggable toolbar with a HUD Selector Dropdown (green/red status dots), non-truncated Hidden/Shown pills, Grid/Reset/Back to Suite, X/Y coordinates & nudges, Center X/Y, Scale slider (60%-150%), and 60px off-screen fail-safe edge clamping; hid disabled/Off HUD movers by default on entering HUD Edit Mode with temporary 'HIDDEN (Click Shown to Enable)' previewing when explicitly selected; and standardised Obsidian/Blaze-Orange [Edit HUD] buttons + shared ON-SCREEN ALERT & TELEPORT TOAST HUD controls across DynamicLoad, Theme & Font Studio, DynamicGroup, DynamicPrep, DynamicMarker, and DynamicChat." },
                 { badge = "FIXED",    title = "v2.1.0 Release: World Flare Hardware Keybinds & Immediate Telemetry / Tab-Label Sync", desc = "Anchored DynamicMarker's secure World Flare cycle/clear buttons on-screen, removed the button-name override in SecureHandlerWrapScript so LeftButton dispatches /wm [@cursor] and /cwm all reliably in and out of combat, added Right-Click keybind clearing, and wired instant top-bar telemetry and dynamic 'World Flare Keys (...)' sub-tab updates on rebind, clear, or reset." },
@@ -7237,12 +7238,13 @@ function addonTable.CreateMainConfigUI()
             key = "prep",
             tabLabel = "DynamicPrep",
             ver = DS_LIVE_VER_TAG,
-            date = "12/11/2026 (Retail 12.1.5)",
+            date = "15/11/2026 (Retail 12.1.5)",
             title = "DynamicPrep " .. DS_LIVE_VER_TAG,
             subtitle = "Readiness Omni-Bar, Clickable Raid Buffs & World/Survival QoL (/dprep)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
             openModule = "DynamicPrep",
             items = {
+                { badge = "FIXED",    title = "v2.1.2 Release: Midnight Season 2 Enchantable Slot List Fix", desc = "Updated equipped gear enchant scanning in the Durability capsule to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
                 { badge = "NEW",      title = "One-Click Catalyst & Raid Combat UNIT_AURA Throttling (3.3 Hz Coalesced)", desc = "Added a 'One-Click Catalyst' QoL toggle in Tab 3 (enabled by default) that hooks ItemInteractionFrame.ButtonFrame.ActionButton and CONFIRM_ITEM_INTERACTION in Revival Catalyst mode (Enum.UIItemInteractionType.ItemConversion) to complete tier conversions in a single click without a confirmation popup or 5-second wait (hold Shift to bypass). Added an O(1) VALID_GROUP_UNITS filter ('player', 'party1'..'party4', 'raid1'..'raid40' - ignoring target, focus, mouseover, pets, nameplates, and bosses), coalesced all in-combat raid buff (16/17 MotW) and Symbiotic bond checks via a 0.30s (3.3 Hz max) C_Timer.NewTimer throttle, eliminated per-scan table allocations, and skipped Food, Flask, Weapon Oil, Augment Rune, and Bag Item Location scans during combat." },
                 { badge = "FIXED",    title = "Greyed-Out Ctrl-to-Release Death Button & Modifier-Free Sequential [DynamicHeal] Macro", desc = "Hooked StaticPopup_OnUpdate and StaticPopup1..4 OnUpdate/OnShow/OnHide alongside MODIFIER_STATE_CHANGED, PLAYER_ALIVE, and PLAYER_UNGHOST so the DEATH StaticPopup 'Release Spirit' button stays natively disabled (greyed out with 'Hold CTRL to Release') every frame until Ctrl is held and restores cleanly when hidden; and stripped all [mod]/[nomod] conditionals from [DynamicHeal] in favour of a modifier-free sequential priority fallback (#showtooltip + /castsequence reset=combat item:<HealthstoneID>, item:<HealPotID> or /use item:<SingleID>) with out-of-combat cooldown reordering and post-combat sequence reset." },
                 { badge = "NEW",      title = "Unified In-Combat Raid Buff (X/Y + MISSING) Readiness Tracker Strip Override", desc = "Removed the standalone combat banner (DynamicPrepCombatBuffAlertFrame) and unified in-combat missing class raid buffs (Mark of the Wild, Fortitude, Intellect, Skyfury, Battle Shout, Blessing of the Bronze) directly into the Readiness Tracker Strip icon format (icon + border + top-right X/Y count like 16/17 + bottom MISSING label) during combat, while suppressing personal consumables mid-fight, guarding all 12.x Midnight unit/aura checks against secret values, excluding unaccepted Battle Res targets until alive, and auto-hiding immediately on rebuff." },
@@ -14137,7 +14139,7 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.1.1"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.1.2"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -14965,7 +14967,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.1") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.2") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -15026,7 +15028,7 @@ function addonTable.HookGameMenu()
             cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
             if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
-            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.1") .. "|r")
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.2") .. "|r")
             openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
             if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
@@ -15132,7 +15134,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "2.1.1",
+        version = addonTable.ADDON_VERSION or "2.1.2",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,

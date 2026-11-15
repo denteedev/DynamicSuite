@@ -1,5 +1,12 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.1.1 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.1.2 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.1.2 (15/11/2026)
+
+### DynamicPrep
+- **Midnight Season 2 Enchantable Slot List Fix:** Updated the Durability capsule's equipped gear enchant scanner to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (`Head`, `Shoulder`, `Chest`, `Legs`, `Feet`, `Ring 1`, `Ring 2`, `Main Hand`, and `Off-Hand` weapons excluding shields and held-in-off-hand items), while keeping all `1..18` empty gem socket checks, combat/secret-value guards, and Durability tooltip formatting intact.
 
 ---
 

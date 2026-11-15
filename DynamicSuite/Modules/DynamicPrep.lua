@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.1.1"
+    local fb = fallback or "2.1.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -208,7 +208,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.1"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.2"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.2")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -646,7 +646,8 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "15/11/2026",
     entries = {
-        { type = "FEATURE", text = "Equipped Gear Missing-Enchant & Empty-Socket Detection (15/11/2026): added out-of-combat equipped gear auditing (ScanEquippedGearEnchantsAndGems) cached on PLAYER_ENTERING_WORLD, PLAYER_EQUIPMENT_CHANGED, SOCKET_INFO_UPDATE, and PLAYER_REGEN_ENABLED. Flags missing Midnight Season 2 enchants on max-level Chest, Legs, Feet, Wrist, Rings, Cloak, Main Hand, and Off-Hand weapons (excluding shields/holdables and grey/white/heirloom items) and empty gem sockets across slots 1..18, surfacing a compact amber '!' badge in the Durability capsule, 'Enchants:' and 'Gems:' status lines in the Durability tooltip, and Left-Click Character Frame opening." },
+        { type = "FIX",     text = "Midnight Season 2 Enchantable Slot List Fix (15/11/2026): updated equipped gear enchant scanning to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
+        { type = "FEATURE", text = "Equipped Gear Missing-Enchant & Empty-Socket Detection (15/11/2026): added out-of-combat equipped gear auditing (ScanEquippedGearEnchantsAndGems) cached on PLAYER_ENTERING_WORLD, PLAYER_EQUIPMENT_CHANGED, SOCKET_INFO_UPDATE, and PLAYER_REGEN_ENABLED. Flags missing Midnight Season 2 enchants on max-level Head, Shoulder, Chest, Legs, Feet, Rings, Main Hand, and Off-Hand weapons (excluding shields/holdables and grey/white/heirloom items) and empty gem sockets across slots 1..18, surfacing a compact amber '!' badge in the Durability capsule, 'Enchants:' and 'Gems:' status lines in the Durability tooltip, and Left-Click Character Frame opening." },
         { type = "FEATURE", text = "Great Vault Mythic+ Telemetry, Group Finder Shortcut & Midnight Season 2 Consumables (15/11/2026): added weekly Mythic+ Great Vault run counts, 1/4/8 run threshold levels, and 'Reward Ready to Claim!' status to the Keystone capsule tooltip (guarded with pcall and _IsSecret), added Right-Click Group Finder toggling out of combat on the Keystone capsule, aligned DUNGEON_ABBREVIATIONS with DynamicGroup's Midnight Season 1/2 codes (DON, AOF, MR, VSA, FG, AK, PSF), and updated Midnight Season 2 consumable item IDs and Rank 2 Gold / Rank 1 Silver mappings." },
         { type = "FIX",     text = "Single-Option Auto-Gossip for Interactive World Objects (13/11/2026): Fixed world objects (GameObject-* GUIDs such as 'Unfinished Mixture') failing to auto-select when gossipOptionID is nil or when option text uses <...> / [Requires ...] brackets. Added C_GossipInfo.SelectOptionByIndex fallback, explicit Locked/Unavailable status checks, and a 0.05s secondary GOSSIP_SHOW check for skinned/delayed gossip frames (hold Shift to bypass)." },
         { type = "FIX",     text = "Single-Option Auto-Gossip now actually fires (13/11/2026): a hidden Blizzard flag that is switched off for almost every normal dialogue option was wrongly treated as 'do not auto-select', which stopped Auto-Gossip on most NPCs and objects. Multi-step conversations now also advance page by page instead of stopping after the first choice, with a safety limit of 8 automatic picks per conversation." },
@@ -1504,13 +1505,13 @@ end
 
 do
 local ENCHANT_CHECK_SLOTS = {
+    { slot = 1,  label = "Head" },
+    { slot = 3,  label = "Shoulder" },
     { slot = 5,  label = "Chest" },
     { slot = 7,  label = "Legs" },
     { slot = 8,  label = "Feet" },
-    { slot = 9,  label = "Wrist" },
     { slot = 11, label = "Ring 1" },
     { slot = 12, label = "Ring 2" },
-    { slot = 15, label = "Cloak" },
     { slot = 16, label = "Main Hand" },
     { slot = 17, label = "Off-Hand", weaponOnly = true },
 }

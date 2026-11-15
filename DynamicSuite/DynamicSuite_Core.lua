@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.1.1"
+    local fb = fallback or "2.1.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.1")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.2")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "15/11/2026",
     entries = {
+        { type = "FIX",     text = "Release v2.1.2 - DynamicPrep Midnight Season 2 Enchantable Slot List Fix (15/11/2026): Updated DynamicPrep's equipped gear enchant scanner to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
         { type = "FEATURE", text = "Release v2.1.1 - Live 3-Row HUD Appearance Bar (560x110) & First-Open /ds + First-Click [+ HUD] Fixes (15/11/2026): Expanded DynamicSuiteEditModeModal into a unified 560x110 3-row draggable dock by adding Row 3 (Live Appearance Bar) with a 20%-100% Opacity slider (step 5%, keeping mover borders/labels readable via SetIgnoreParentAlpha), Accent | Dark | None Border Style segmented pills synced 1:1 with module sub-settings, Horiz | Vert Orientation toggle for Target Icon Bar, World Flare Bar, and Raid Buffs (with automatic screen-bounds re-clamping and dimmed fixed-layout state for Alert Toast, Prep Bar, and Chat Frame), and full Position/Scale/Opacity/Border/Orientation [Reset]. Fixed first-open /ds empty Left Suite Rail (unconditional explicit Left Rail dimensions, child population, and OnShow visibility plus guarded lazy wrappers), eliminated first-click [+ HUD] missing movers via EnsureAllEditModeHudFramesInitialized() and callback-first SyncAllEditModeHuds ordering, guarded modal construction against premature OnHide cancellation, and kept the HUD Selector popup closed on entry." },
         { type = "FIX",     text = "HUD Edit Mode Mover Visibility & Prep Bar Drag Shield Layering (15/11/2026): Fixed isHudEditModeActive lexical scoping in DynamicSuite_UI.lua so Shown HUDs render live previews and mover overlays immediately when entering HUD Edit Mode, split DynamicPrep's SetBarEditMode and SetBuffsEditMode states, and disabled child mouse capture during HUD Edit Mode so bars drag smoothly across their full width." },
         { type = "FIX",     text = "Release v2.1.0 - World Flare Hardware Keybinds & Unified Compact HUD Edit Mode (15/11/2026): Fixed World Flare cycle/clear hardware keybinds (F4/F5) in and out of combat, wired instant header telemetry and sub-tab title updates on keybind changes, redesigned the HUD Edit Mode dock into a compact 560x74 draggable inspector with 60px off-screen fail-safe clamping, hid disabled HUD movers by default, and standardised dark-obsidian [Edit HUD] buttons across all modules." },
