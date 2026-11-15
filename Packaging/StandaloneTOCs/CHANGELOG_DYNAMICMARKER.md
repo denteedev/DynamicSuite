@@ -10,6 +10,7 @@
 
 ### Fixed
 * **First-Click HUD Edit Dropdown & Mover Initialisation:** Closed the HUD selector dropdown cleanly when entering HUD Edit Mode so Row 2 and Row 3 controls are never covered on entry, promoted Target Icon Bar and World Flare Bar mover overlays (`editMover`) to `HIGH` frame strata (`FrameLevel + 50`) with `SetIgnoreParentAlpha(true)`, and ordered `SyncEditBarStates()` after bar refreshes in `SetEditMode` so shown movers appear reliably on the very first open.
+* **Unified `14x14` Blaze Orange Resize Grip:** Updated the standalone window bottom-right corner resize handle (`BOTTOMRIGHT -4, 4`) to use the unified `#F97316` Blaze Orange hover highlight.
 
 ---
 
