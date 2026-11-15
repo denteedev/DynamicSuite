@@ -1,7 +1,7 @@
 # DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v2.0.8)
 
 > **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105)  
-> **Version:** v2.0.8 (14/11/2026)  
+> **Version:** v2.0.8 (15/11/2026)  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicmarker
 
@@ -12,9 +12,7 @@
 ```markdown
 # DynamicMarker -- Raid Target Icons, World Flares & Smart Interrupt Macros
 
-[![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
-
-**Version:** v2.0.8 (14/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Version:** v2.0.8 (15/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
 **DynamicMarker** (`/dm`, `/fm`) is a fast Mythic+ and Raid utility addon for instant target marking, cursor-placed world flares, floating icon and flare bars, and smart focus/interrupt macros across all 13 classes. Use it standalone or as part of the full 8-module **[DynamicSuite](https://www.curseforge.com/wow/addons/dynamicsuite)** bundle.
 
@@ -100,25 +98,24 @@ Want 7 more lightweight QoL and performance modules in one unified window? Check
 
 ## Support & Contact
 
-* **Buy the Developer a Coffee (Ko-fi):** https://ko-fi.com/dentee
 * **Standalone CurseForge:** https://www.curseforge.com/wow/addons/dynamicmarker
 * **Full Suite CurseForge:** https://www.curseforge.com/wow/addons/dynamicsuite
 * **Direct Contact & Feedback:** denteedev@gmail.com
+* **Optional Tip Jar (Ko-fi -- all features are 100% free):** https://ko-fi.com/dentee
+
+[![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 ```
 
 ---
 
-## Section 2: CurseForge File Changelog Block (v2.0.8 -- 14/11/2026)
+## Section 2: CurseForge File Changelog Block (v2.0.8 -- 15/11/2026)
 
 ```markdown
-## DynamicMarker v2.0.8 (14/11/2026)
+## DynamicMarker v2.0.8 (15/11/2026)
 
 ### Fixed
-* **Top & Bottom Screen-Edge Bar Drift:** Focus Icons and World Flare bars parked flush against the top edge, bottom edge, or corners now stay in their exact saved positions after reloading the UI at every bar scale (70%, 100%, and 130%).
-* **Duplicate HUD Edit Windows:** Standalone DynamicMarker's extra HUD Edit popup no longer appears when running DynamicSuite, while remaining fully intact when running standalone.
-* **Reset Bounds:** Resetting HUD positions (`/dm resethud` or from Options) now resets scale to 100%, restores horizontal layout, and keeps bars cleanly inside your screen bounds.
+* **Target Only Focus Macro Clear:** Updated the Target Only `[DynamicMark]` macro template to `/focus [@target,exists,nodead][]` so pressing it with a target sets focus and marks it, while pressing it with no target clears your existing focus target.
 
-### Improved
-* **Custom Coexistence Reload Prompt:** Replaced Blizzard's default popup with a matching dark-obsidian reload modal whenever DynamicSuite and standalone DynamicMarker are loaded together.
-* **Storefront, Slash Command & Documentation Audit:** Verified all DynamicMarker slash commands (including `/dm help`), alignment notes, and support links across README and CurseForge docs.
+### Added
+* **Focus Target Mode & Inline Manual Macro Editor:** Added a **Focus Target Mode** selector (`Mouseover + Target`, `Target Only`, `Manual (Custom)`) in Macro Setup, plus a dark-obsidian multi-line editor (255-character limit with live counter) and custom in-game macro icon preservation.
 ```

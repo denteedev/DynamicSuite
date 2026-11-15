@@ -1,8 +1,6 @@
 # DynamicSuite -- 8-Module QoL, Utility & Performance Hub
 
-[![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
-
-**Version:** v2.0.8 (14/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Version:** v2.0.8 (15/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, chat, and performance hub for World of Warcraft Retail. All 8 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
@@ -60,7 +58,7 @@
 | `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, import, reset) |
 | `/dz` or `/dynamiczoom` | Open DynamicZoom (supports max, 39, reset) |
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
-| `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, reset) |
+| `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, testtoast, reset) |
 | `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
 | `/dchat`, `/dc`, or `/dynamicchat` | Open DynamicChat (supports history, copy, reset; plus `/ww` target whisper, `/rl` reload UI, and `/lg` leave group) |
 
@@ -68,10 +66,12 @@
 
 ## Support & Contact
 
-* **Buy the Developer a Coffee (Ko-fi):** https://ko-fi.com/dentee
 * **Full Suite CurseForge (DynamicSuite):** https://www.curseforge.com/wow/addons/dynamicsuite
 * **Standalone CurseForge (DynamicMarker):** https://www.curseforge.com/wow/addons/dynamicmarker
 * **Direct Contact & Feedback (Email):** denteedev@gmail.com
+* **Optional Tip Jar (Ko-fi -- all features are 100% free):** https://ko-fi.com/dentee
+
+[![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 
 ---
 

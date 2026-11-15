@@ -13,8 +13,6 @@
 ```markdown
 # DynamicSuite -- 8-Module QoL, Utility & Performance Hub
 
-[![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
-
 **Version:** v2.0.8 (15/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5**. It brings **8 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, plain-English Smart Search, a unified HUD Edit Mode, and a 9-step Guided Setup.
@@ -97,10 +95,12 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ## Support & Contact
 
-* **Buy the Developer a Coffee (Ko-fi):** https://ko-fi.com/dentee
 * **Full Suite CurseForge (DynamicSuite):** https://www.curseforge.com/wow/addons/dynamicsuite
 * **Standalone CurseForge (DynamicMarker):** https://www.curseforge.com/wow/addons/dynamicmarker
 * **Direct Contact & Feedback (Email):** denteedev@gmail.com
+* **Optional Tip Jar (Ko-fi -- all features are 100% free):** https://ko-fi.com/dentee
+
+[![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
 ```
 
 ---
