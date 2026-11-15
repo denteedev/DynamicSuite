@@ -647,7 +647,7 @@ DynamicPrep.CHANGELOG = {
     date = "15/11/2026",
     entries = {
         { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
-        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent EllesmereUI Coexistence (15/11/2026): added Tab 3 controls to keep Character, Talents & Spells, Group Finder, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Merchant, Mail, and Auction House open side-by-side without trapping Escape (with header Pin buttons), drag headers out of combat to save positions across reloads, Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows], strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding when EllesmereUI Shifter is enabled." },
+        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Talents & Spells, Group Finder, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Merchant, Mail, and Auction House open side-by-side without trapping Escape (with header Pin buttons), drag headers out of combat to save positions across reloads, Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows], strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding with dynamic banner detection for BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
         { type = "FIX",     text = "Midnight Season 2 Enchantable Slot List Fix (15/11/2026): updated equipped gear enchant scanning to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
         { type = "FEATURE", text = "Equipped Gear Missing-Enchant & Empty-Socket Detection (15/11/2026): added out-of-combat equipped gear auditing (ScanEquippedGearEnchantsAndGems) cached on PLAYER_ENTERING_WORLD, PLAYER_EQUIPMENT_CHANGED, SOCKET_INFO_UPDATE, and PLAYER_REGEN_ENABLED. Flags missing Midnight Season 2 enchants on max-level Head, Shoulder, Chest, Legs, Feet, Rings, Main Hand, and Off-Hand weapons (excluding shields/holdables and grey/white/heirloom items) and empty gem sockets across slots 1..18, surfacing a compact amber '!' badge in the Durability capsule, 'Enchants:' and 'Gems:' status lines in the Durability tooltip, and Left-Click Character Frame opening." },
         { type = "FEATURE", text = "Great Vault Mythic+ Telemetry, Group Finder Shortcut & Midnight Season 2 Consumables (15/11/2026): added weekly Mythic+ Great Vault run counts, 1/4/8 run threshold levels, and 'Reward Ready to Claim!' status to the Keystone capsule tooltip (guarded with pcall and _IsSecret), added Right-Click Group Finder toggling out of combat on the Keystone capsule, aligned DUNGEON_ABBREVIATIONS with DynamicGroup's Midnight Season 1/2 codes (DON, AOF, MR, VSA, FG, AK, PSF), and updated Midnight Season 2 consumable item IDs and Rank 2 Gold / Rank 1 Silver mappings." },
@@ -5540,36 +5540,96 @@ do
         end
     end
 
-    function DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI()
-        local isLoaded = (_G.C_AddOns and _G.C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
-        local euiLoaded = (_G.EllesmereUI ~= nil)
-        if not euiLoaded and type(isLoaded) == "function" then
-            euiLoaded = (isLoaded("EllesmereUI") == true)
-                or (isLoaded("EllesmereUIQoL") == true)
-                or (isLoaded("EllesmereUI_QoL") == true)
+    function DynamicPrep:GetBlizzardWindowYieldAddon()
+        local isLoadedFn = (_G.C_AddOns and _G.C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+        local function isAddonLoaded(name)
+            return type(isLoadedFn) == "function" and (isLoadedFn(name) == true)
         end
-        if not euiLoaded then
-            return false
+
+        -- 1. BlizzMove (standalone Blizzard frame mover/scaler)
+        if _G.BlizzMoveAPI ~= nil or isAddonLoaded("BlizzMove") then
+            return true, "BlizzMove"
         end
-        local edb = _G.EllesmereUIDB
-        if type(edb) == "table" then
-            if edb.shifterEnabled == true
-               or edb.moveBlizzardFrames == true
-               or edb.blizzFrameMover == true
-               or edb.noAutoClose == true then
-                return true
+
+        -- 2. DeModal (standalone Blizzard multi-panel no-auto-close)
+        if _G.DeModal ~= nil or isAddonLoaded("DeModal") then
+            return true, "DeModal"
+        end
+
+        -- 3. MoveAny (when frame moving/scaling is enabled)
+        if isAddonLoaded("MoveAny") or type(_G.MoveAny) == "table" then
+            local maDisabled = false
+            local maTab = _G.MATAB
+            if type(maTab) == "table" and maTab["ENABLED"] == false then
+                maDisabled = true
             end
-            if type(edb.profile) == "table" then
-                local p = edb.profile
-                if p.shifterEnabled == true
-                   or p.moveBlizzardFrames == true
-                   or p.blizzFrameMover == true
-                   or p.noAutoClose == true then
-                    return true
+            local maDB = _G.MoveAnyDB
+            if type(maDB) == "table" and maDB.disabled == true then
+                maDisabled = true
+            end
+            if not maDisabled then
+                return true, "MoveAny"
+            end
+        end
+
+        -- 4. EllesmereUI / EllesmereUIQoL / EllesmereUI_QoL
+        local euiLoaded = (_G.EllesmereUI ~= nil)
+            or isAddonLoaded("EllesmereUI")
+            or isAddonLoaded("EllesmereUIQoL")
+            or isAddonLoaded("EllesmereUI_QoL")
+        if euiLoaded then
+            local edb = _G.EllesmereUIDB
+            if type(edb) == "table" then
+                if edb.shifterEnabled == true
+                   or edb.moveBlizzardFrames == true
+                   or edb.blizzFrameMover == true
+                   or edb.noAutoClose == true then
+                    return true, "EllesmereUI"
+                end
+                if type(edb.profile) == "table" then
+                    local p = edb.profile
+                    if p.shifterEnabled == true
+                       or p.moveBlizzardFrames == true
+                       or p.blizzFrameMover == true
+                       or p.noAutoClose == true then
+                        return true, "EllesmereUI"
+                    end
                 end
             end
         end
-        return false
+
+        -- 5. Leatrix Plus (when frame moving/resizing or no-auto-close is enabled)
+        if isAddonLoaded("Leatrix_Plus") or type(_G.LeaPlusDB) == "table" then
+            local ldb = _G.LeaPlusDB
+            if type(ldb) == "table" and (
+                ldb["UseEasyFrameResizing"] == "On"
+                or ldb["MoveBlizzFrames"] == "On"
+                or ldb["NoAutoClose"] == "On"
+                or ldb["ManageFrames"] == "On"
+            ) then
+                return true, "Leatrix Plus"
+            end
+        end
+
+        -- 6. ElvUI (when Blizzard skinning/frame management is active)
+        if isAddonLoaded("ElvUI") or type(_G.ElvUI) == "table" then
+            local e = _G.ElvUI
+            local e1 = type(e) == "table" and e[1] or nil
+            if type(e1) == "table"
+               and type(e1.private) == "table"
+               and type(e1.private.skins) == "table"
+               and type(e1.private.skins.blizzard) == "table"
+               and e1.private.skins.blizzard.enable == true then
+                return true, "ElvUI"
+            end
+        end
+
+        return false, nil
+    end
+
+    function DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI()
+        local yielding = self:GetBlizzardWindowYieldAddon()
+        return yielding == true
     end
 
     local function HookEllesmereUICoexistence()
@@ -8530,7 +8590,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             ybTxt:SetPoint("RIGHT", yieldBanner, "RIGHT", -12, 0)
             ybTxt:SetJustifyH("LEFT")
             ybTxt:SetWordWrap(true)
-            ybTxt:SetText("|cFF38BDF8Coexisting automatically with EllesmereUI frame management|r  |cFF94A3B8(frame mover, scaler & No Auto-Close yielded)|r")
+            ybTxt:SetText("")
             yieldBanner:Hide()
             ws.blizzWinYieldBanner = yieldBanner
 
@@ -8623,9 +8683,10 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             rResetWin:BindRightControl(btnResetAllWin)
 
             local rows = { rNoAutoClose, rDraggable, rScrollScale, rResetWin }
-            function cWin:RefreshLayout(isYielding)
+            function cWin:RefreshLayout(isYielding, yieldAddonName)
                 local y = -54
                 if isYielding then
+                    ybTxt:SetText(string.format("|cFF38BDF8Coexisting automatically with %s frame management|r  |cFF94A3B8(frame mover, scaler & No Auto-Close yielded)|r", tostring(yieldAddonName or "External")))
                     yieldBanner:Show()
                     yieldBanner:ClearAllPoints()
                     yieldBanner:SetPoint("TOPLEFT", cWin, "TOPLEFT", 14, y)
@@ -9223,7 +9284,8 @@ function DynamicPrep:RefreshWorkspaceView()
             ws.blizzWinCard:ClearAllPoints()
             ws.blizzWinCard:SetPoint("TOPLEFT", cQoL, "BOTTOMLEFT", 0, -14)
             ws.blizzWinCard:SetPoint("TOPRIGHT", cQoL, "BOTTOMRIGHT", 0, -14)
-            local winH = ws.blizzWinCard:RefreshLayout(self:IsYieldingBlizzardWindowsToEllesmereUI())
+            local isYielding, yieldAddonName = self:GetBlizzardWindowYieldAddon()
+            local winH = ws.blizzWinCard:RefreshLayout(isYielding, yieldAddonName)
             tab3TotalH = tab3TotalH + 14 + winH
         end
         ws.tab3:SetHeight(tab3TotalH)
@@ -10066,9 +10128,14 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             or arg1 == "Blizzard_AchievementUI"
             or arg1 == "Blizzard_ItemUpgradeUI"
             or arg1 == "Blizzard_AuctionHouseUI"
+            or arg1 == "BlizzMove"
+            or arg1 == "DeModal"
+            or arg1 == "MoveAny"
             or arg1 == "EllesmereUI"
             or arg1 == "EllesmereUIQoL"
-            or arg1 == "EllesmereUI_QoL" then
+            or arg1 == "EllesmereUI_QoL"
+            or arg1 == "Leatrix_Plus"
+            or arg1 == "ElvUI" then
             if isInitialized and not IsModuleDisabledInSuite("DynamicPrep") then
                 DynamicPrep:InitBlizzardWindowQoL(arg1)
                 if DynamicPrep.workspaceFrame and DynamicPrep.workspaceFrame.IsShown and DynamicPrep.workspaceFrame:IsShown() then
