@@ -648,7 +648,7 @@ DynamicPrep.CHANGELOG = {
     entries = {
         { type = "FEATURE", text = "Colour-Coded Food Stat Benefits on Clickable Raid Buffs HUD & Readiness Strip (15/11/2026): added FormatColoredFoodBenefit to colour-code parsed food stats (Mint Teal Primary/Int/Agi/Str, Sky Cyan Haste, Royal Amethyst Mastery, Warm Amber-Gold Crit, Emerald Green Versatility, Blaze Orange Highest Secondary Stat, and Slate-Silver Stamina) across Clickable Raid Buffs food tooltip titles, 'Food Benefit:' summary lines, expiring 'Current Buff:' lines, Readiness Strip Slot 3, and capsule tooltips." },
         { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
-        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Social & Friends (FriendsFrame), Collections, Adventure Guide, Professions, Professions Book (Blizzard_ProfessionsBook), Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House open together via ShowUIPanel multi-panel restoration and Escape-protected UISpecialFrames / HideUIPanel / CloseWindows / ToggleGameMenu handling (leaving Pinned windows open past Escape while [X] and keybind toggles still close them, and dismissing strictly one unpinned window per Escape) while freezing already-open windows in place so opening another panel never shifts them, smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag window moving out of combat with unclamped SetClampedToScreen(false) free movement, scale-aware UIParent CENTER persistence, SetPoint tab-switch snap-back protection, TitleContainer-cleared header overlay layering (+50 frame levels, (-58, -2) Maximize/Minimize clearance), Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel anywhere on a window to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows] (restoring default position, 100% scale, and screen clamping), strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding for NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
+        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep 31 standard Blizzard panels (Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Social & Friends, Collections, Transmogrify, Adventure Guide, Professions, Professions Book, Crafting Orders, Achievements, Item Upgrade, Item Socketing, Revival Catalyst, Renown, Delves, Trainer, Calendar, Macros, NPC Gossip, Quest, Trade, Merchant, Mail, Bank, Auction House, and AddOn List) open together via ShowUIPanel multi-panel restoration and Escape-protected UISpecialFrames / HideUIPanel / CloseWindows / ToggleGameMenu handling (leaving Pinned windows open past Escape while [X] and keybind toggles still close them, and dismissing strictly one unpinned window per Escape) while freezing already-open windows in place so opening another panel never shifts them, smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag window moving out of combat with unclamped SetClampedToScreen(false) free movement, scale-aware UIParent CENTER persistence, SetPoint tab-switch snap-back protection, TitleContainer-cleared header overlay layering (+50 frame levels, (-58, -2) Maximize/Minimize clearance), Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel anywhere on a window to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows] (restoring default position, 100% scale, and screen clamping), strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding for NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
         { type = "FIX",     text = "Midnight Season 2 Enchantable Slot List Fix (15/11/2026): updated equipped gear enchant scanning to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
         { type = "FEATURE", text = "Equipped Gear Missing-Enchant & Empty-Socket Detection (15/11/2026): added out-of-combat equipped gear auditing (ScanEquippedGearEnchantsAndGems) cached on PLAYER_ENTERING_WORLD, PLAYER_EQUIPMENT_CHANGED, SOCKET_INFO_UPDATE, and PLAYER_REGEN_ENABLED. Flags missing Midnight Season 2 enchants on max-level Head, Shoulder, Chest, Legs, Feet, Rings, Main Hand, and Off-Hand weapons (excluding shields/holdables and grey/white/heirloom items) and empty gem sockets across slots 1..18, surfacing a compact amber '!' badge in the Durability capsule, 'Enchants:' and 'Gems:' status lines in the Durability tooltip, and Left-Click Character Frame opening." },
         { type = "FEATURE", text = "Great Vault Mythic+ Telemetry, Group Finder Shortcut & Midnight Season 2 Consumables (15/11/2026): added weekly Mythic+ Great Vault run counts, 1/4/8 run threshold levels, and 'Reward Ready to Claim!' status to the Keystone capsule tooltip (guarded with pcall and _IsSecret), added Right-Click Group Finder toggling out of combat on the Keystone capsule, aligned DUNGEON_ABBREVIATIONS with DynamicGroup's Midnight Season 1/2 codes (DON, AOF, MR, VSA, FG, AK, PSF), and updated Midnight Season 2 consumable item IDs and Rank 2 Gold / Rank 1 Silver mappings." },
@@ -4770,9 +4770,21 @@ do
         { name = "ItemUpgradeFrame",   label = "Item Upgrade",       addon = "Blizzard_ItemUpgradeUI" },
         { name = "CalendarFrame",      label = "Calendar",           addon = "Blizzard_Calendar" },
         { name = "MacroFrame",         label = "Macros",             addon = "Blizzard_MacroUI" },
-        { name = "MerchantFrame",      label = "Merchant" },
-        { name = "MailFrame",          label = "Mail" },
-        { name = "AuctionHouseFrame",  label = "Auction House",      addon = "Blizzard_AuctionHouseUI" },
+        { name = "MerchantFrame",                  label = "Merchant" },
+        { name = "MailFrame",                      label = "Mail" },
+        { name = "AuctionHouseFrame",              label = "Auction House",    addon = "Blizzard_AuctionHouseUI" },
+        { name = "TradeFrame",                     label = "Trade" },
+        { name = "ItemSocketingFrame",             label = "Item Socketing",   addon = "Blizzard_ItemSocketingUI" },
+        { name = "ItemInteractionFrame",           label = "Revival Catalyst", addon = "Blizzard_ItemInteractionUI" },
+        { name = "WardrobeFrame",                  label = "Transmogrify",     addon = "Blizzard_Collections" },
+        { name = "ProfessionsCustomerOrdersFrame", label = "Crafting Orders",  addon = "Blizzard_ProfessionsCustomerOrders", protected = true },
+        { name = "MajorFactionRenownFrame",        label = "Renown",           addon = "Blizzard_MajorFactions" },
+        { name = "DelvesDifficultyPickerFrame",    label = "Delves",           addon = "Blizzard_DelvesDifficultyPicker" },
+        { name = "ClassTrainerFrame",              label = "Trainer",          addon = "Blizzard_TrainerUI" },
+        { name = "GossipFrame",                    label = "NPC Gossip" },
+        { name = "QuestFrame",                     label = "Quest" },
+        { name = "BankFrame",                      label = "Bank" },
+        { name = "AddonList",                      label = "AddOn List" },
     }
 
     local SUPPORTED_BY_NAME = {}
@@ -4810,7 +4822,7 @@ do
     local toggleGameMenuHooked = false
     local toggleProfBookHooked = false
     local toggleFriendsHooked = false
-    local profBookContinueRegistered = false
+    local addonContinueRegistered = {}
     local ellesmereHooksInstalled = false
     local secureHandler = nil
     local secureHandlerWorks = nil
@@ -6209,13 +6221,18 @@ do
         if IsModuleDisabledInSuite("DynamicPrep") then return end
         HookEllesmereUICoexistence()
         EnsureGlobalPanelHooks()
-        if not profBookContinueRegistered and _G.EventUtil and type(_G.EventUtil.ContinueOnAddOnLoaded) == "function" then
-            profBookContinueRegistered = true
-            _G.EventUtil.ContinueOnAddOnLoaded("Blizzard_ProfessionsBook", function()
-                if not IsModuleDisabledInSuite("DynamicPrep") then
-                    DynamicPrep:InitBlizzardWindowQoL("Blizzard_ProfessionsBook")
+        if _G.EventUtil and type(_G.EventUtil.ContinueOnAddOnLoaded) == "function" then
+            for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                local addonName = spec.addon
+                if addonName and not addonContinueRegistered[addonName] then
+                    addonContinueRegistered[addonName] = true
+                    _G.EventUtil.ContinueOnAddOnLoaded(addonName, function()
+                        if not IsModuleDisabledInSuite("DynamicPrep") then
+                            DynamicPrep:InitBlizzardWindowQoL(addonName)
+                        end
+                    end)
                 end
-            end)
+            end
         end
         if InCombat() then return end
         if loadedAddonName then
@@ -9038,7 +9055,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             local rNoAutoClose = CreateSpaciousRow(
                 cWin, -54,
                 "Keep Blizzard Windows Open Side-by-Side",
-                "Keep Character, Inspect, Dressing Room, Talents, Group Finder, Great Vault, Guild & Communities, Social & Friends, Collections, Adventure Guide, Professions, Professions Book, Achievements, Upgrades, Calendar, Macros, Merchant, Mail & Auction House open side-by-side without trapping Escape.",
+                "Keep 31 standard Blizzard panels (Character, Talents, Group Finder, Collections, Professions, Crafting Orders, Catalyst, Trade, Merchant, Mail & Auction House) open side-by-side cleanly.",
                 200
             )
             local pillsNoAutoClose = CreateSegmentedPills(
@@ -10561,6 +10578,11 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             or arg1 == "Blizzard_ProfessionsBook"
             or arg1 == "Blizzard_AchievementUI"
             or arg1 == "Blizzard_ItemUpgradeUI"
+            or arg1 == "Blizzard_ItemSocketingUI"
+            or arg1 == "Blizzard_ProfessionsCustomerOrders"
+            or arg1 == "Blizzard_MajorFactions"
+            or arg1 == "Blizzard_DelvesDifficultyPicker"
+            or arg1 == "Blizzard_TrainerUI"
             or arg1 == "Blizzard_Calendar"
             or arg1 == "Blizzard_MacroUI"
             or arg1 == "Blizzard_AuctionHouseUI"
