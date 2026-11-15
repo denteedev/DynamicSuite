@@ -646,6 +646,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "15/11/2026",
     entries = {
+        { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
         { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent EllesmereUI Coexistence (15/11/2026): added Tab 3 controls to keep Character, Talents & Spells, Group Finder, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Merchant, Mail, and Auction House open side-by-side without trapping Escape (with header Pin buttons), drag headers out of combat to save positions across reloads, Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows], strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding when EllesmereUI Shifter is enabled." },
         { type = "FIX",     text = "Midnight Season 2 Enchantable Slot List Fix (15/11/2026): updated equipped gear enchant scanning to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
         { type = "FEATURE", text = "Equipped Gear Missing-Enchant & Empty-Socket Detection (15/11/2026): added out-of-combat equipped gear auditing (ScanEquippedGearEnchantsAndGems) cached on PLAYER_ENTERING_WORLD, PLAYER_EQUIPMENT_CHANGED, SOCKET_INFO_UPDATE, and PLAYER_REGEN_ENABLED. Flags missing Midnight Season 2 enchants on max-level Head, Shoulder, Chest, Legs, Feet, Rings, Main Hand, and Off-Hand weapons (excluding shields/holdables and grey/white/heirloom items) and empty gem sockets across slots 1..18, surfacing a compact amber '!' badge in the Durability capsule, 'Enchants:' and 'Gems:' status lines in the Durability tooltip, and Left-Click Character Frame opening." },
@@ -10491,6 +10492,9 @@ local function InspectFoodTooltip(bag, slot, itemID, cleanName, itemRarity)
         isWellFedStatFood = true
     end
 
+    local bagTipData = nil
+    local spellTipData = nil
+
     -- Check Item Spell for Well Fed / Hearty / Food buff
     if C_Item and C_Item.GetItemSpell then
         local spellName, spellID = C_Item.GetItemSpell(itemID)
@@ -10500,9 +10504,10 @@ local function InspectFoodTooltip(bag, slot, itemID, cleanName, itemRarity)
                 isWellFedStatFood = true
             end
         end
-        if not isWellFedStatFood and spellID and C_TooltipInfo and C_TooltipInfo.GetSpellByID then
+        if spellID and C_TooltipInfo and C_TooltipInfo.GetSpellByID then
             local okS, sData = pcall(C_TooltipInfo.GetSpellByID, spellID)
             if okS and sData then
+                spellTipData = sData
                 local sText = ExtractAllTooltipText(sData)
                 if sText:find("well fed") or sText:find("primary stat") or sText:find("secondary stat")
                    or sText:find("haste") or sText:find("mastery") or sText:find("critical strike")
@@ -10518,13 +10523,15 @@ local function InspectFoodTooltip(bag, slot, itemID, cleanName, itemRarity)
     end
 
     -- Deep scan Bag Item Tooltip (captures embedded Midnight [Well Fed] sub-blocks!)
-    if C_TooltipInfo and bag and slot then
+    if C_TooltipInfo and bag and slot and C_TooltipInfo.GetBagItem then
         local ok, d = pcall(C_TooltipInfo.GetBagItem, bag, slot)
         if ok and d then
+            bagTipData = d
             local fullText = ExtractAllTooltipText(d)
             if fullText:find("well fed")
                or fullText:find("spend at least")
                or (fullText:find("gaining") and (fullText:find("stat") or fullText:find("haste") or fullText:find("mastery") or fullText:find("critical") or fullText:find("versatility") or fullText:find("stamina")))
+               or (fullText:find("gain") and (fullText:find("stat") or fullText:find("haste") or fullText:find("mastery") or fullText:find("critical") or fullText:find("versatility") or fullText:find("stamina")))
                or (fullText:find("increases") and (fullText:find("stat") or fullText:find("haste") or fullText:find("mastery") or fullText:find("critical") or fullText:find("versatility") or fullText:find("stamina")) and fullText:find("1 hour")) then
                 isWellFedStatFood = true
             end
@@ -10540,7 +10547,35 @@ local function InspectFoodTooltip(bag, slot, itemID, cleanName, itemRarity)
         isWellFedStatFood = false
     end
 
-    return isWellFedStatFood, isHearty
+    local statShort, statFullLine = nil, nil
+    if isWellFedStatFood and DynamicPrep and type(DynamicPrep.ParseFoodBenefitFromTooltipText) == "function" then
+        if bagTipData then
+            statShort, statFullLine = DynamicPrep:ParseFoodBenefitFromTooltipText(bagTipData)
+        end
+        if (not statShort or statShort == "") and C_TooltipInfo and C_TooltipInfo.GetItemByID then
+            local okI, iData = pcall(C_TooltipInfo.GetItemByID, itemID)
+            if okI and iData then
+                local iShort, iFull = DynamicPrep:ParseFoodBenefitFromTooltipText(iData)
+                if iShort and iShort ~= "" then
+                    statShort = iShort
+                    statFullLine = iFull
+                elseif not statFullLine then
+                    statFullLine = iFull
+                end
+            end
+        end
+        if (not statShort or statShort == "") and spellTipData then
+            local sShort, sFull = DynamicPrep:ParseFoodBenefitFromTooltipText(spellTipData)
+            if sShort and sShort ~= "" then
+                statShort = sShort
+                statFullLine = sFull
+            elseif not statFullLine then
+                statFullLine = sFull
+            end
+        end
+    end
+
+    return isWellFedStatFood, isHearty, statShort, statFullLine
 end
 
 local function IsStatFoodItem(itemID, link, classID, subClassID, invType, cleanName, itemRarity, bag, slot)
@@ -10583,7 +10618,7 @@ local function ScanOwnedFoods()
                     local cleanName = rawName:gsub("|A:.-|a", ""):gsub("|T.-|t", ""):match("^%s*(.-)%s*$") or rawName
                     local itemRarity = info.quality or (C_Item.GetItemQualityByID and C_Item.GetItemQualityByID(info.itemID)) or 1
 
-                    local isStatFood, isHearty = IsStatFoodItem(info.itemID, info.hyperlink, classID, subClassID, invType, cleanName, itemRarity, bag, slot)
+                    local isStatFood, isHearty, statShort, statFullLine = IsStatFoodItem(info.itemID, info.hyperlink, classID, subClassID, invType, cleanName, itemRarity, bag, slot)
                     if isStatFood then
                         local q, maxT, atlas = DetectConsumableQuality(info.hyperlink, info.itemID, bag, slot, classID)
                         local slotStack = info.stackCount or 1
@@ -10593,6 +10628,10 @@ local function ScanOwnedFoods()
                         local existing = groupMap[groupKey]
                         if existing then
                             existing.cnt = existing.cnt + slotStack
+                            if (not existing.statShort or existing.statShort == "") and statShort then
+                                existing.statShort = statShort
+                                existing.statFullLine = statFullLine
+                            end
                         else
                             local entry = {
                                 itemID = info.itemID,
@@ -10605,6 +10644,8 @@ local function ScanOwnedFoods()
                                 quality = q,
                                 maxTiers = maxT or (q and 2 or nil),
                                 atlas = atlas,
+                                statShort = statShort,
+                                statFullLine = statFullLine,
                             }
                             groupMap[groupKey] = entry
                             if isHearty then
@@ -11624,6 +11665,15 @@ local FOOD_STAT_PATTERNS = {
     { pattern = "speed",           short = "Speed",     full = "Speed" },
 }
 
+local function FormatFoodStatNumber(val)
+    local n = tonumber(val)
+    if not n then return tostring(val or "") end
+    local s = tostring(math.floor(n + 0.5))
+    local left, num, right = s:match("^([^%d]*%d)(%d*)(.-)$")
+    if not left then return s end
+    return left .. (num:reverse():gsub("(%d%d%d)", "%1,"):reverse()) .. right
+end
+
 function DynamicPrep:ParseFoodBenefitFromTooltipText(tooltipData, auraPoints)
     local rawLines = {}
     local function collectLines(t, depth)
@@ -11649,7 +11699,9 @@ function DynamicPrep:ParseFoodBenefitFromTooltipText(tooltipData, auraPoints)
     for _, line in ipairs(rawLines) do
         local clean = line:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|A:.-|a", ""):gsub("|T.-|t", ""):gsub("%s+", " "):match("^%s*(.-)%s*$") or ""
         local lower = clean:lower()
-        if (lower:find("increases") or lower:find("increased by") or lower:find("grants") or lower:find("well fed:"))
+        if (lower:find("increases") or lower:find("increased by") or lower:find("grants")
+            or lower:find("gain") or lower:find("gaining")
+            or lower:find("well fed") or lower:find("become well fed"))
            and (lower:find("intellect") or lower:find("agility") or lower:find("strength") or lower:find("haste")
                 or lower:find("mastery") or lower:find("critical") or lower:find("versatility")
                 or lower:find("primary stat") or lower:find("secondary stat") or lower:find("stamina")) then
@@ -11673,17 +11725,19 @@ function DynamicPrep:ParseFoodBenefitFromTooltipText(tooltipData, auraPoints)
     if benefitLine then
         local norm = benefitLine:gsub(",", "")
         local lowerNorm = norm:lower()
+        local strippedNorm = lowerNorm
+            :gsub("spend at least%s+%d+%s+seconds?", "spend at least seconds")
+            :gsub("for%s+%d+%s+hours?", "for hours")
+            :gsub("for%s+%d+%s+min[utes]*", "for minutes")
 
-        -- Pattern A: "Increases [Stat] by [Num]" or "[Stat] increased by [Num]"
+        -- Pattern A: "Increases [Stat] by [Num]", "[Stat] increased by [Num]", or "gain [Num] [Stat]"
         for _, sp in ipairs(FOOD_STAT_PATTERNS) do
-            local pos = lowerNorm:find(sp.pattern, 1, true)
+            local pos = strippedNorm:find(sp.pattern, 1, true)
             if pos then
-                -- Look for number near this stat mention
-                local afterSub = lowerNorm:sub(pos, math.min(#lowerNorm, pos + 48))
-                local beforeSub = lowerNorm:sub(math.max(1, pos - 24), pos + #sp.pattern)
+                local afterSub = strippedNorm:sub(pos, math.min(#strippedNorm, pos + 48))
+                local beforeSub = strippedNorm:sub(math.max(1, pos - 24), pos + #sp.pattern)
                 local numStr = afterSub:match("by%s+(%d+)") or beforeSub:match("(%d+)%s+" .. sp.pattern) or afterSub:match("(%d+)")
                 local val = numStr and tonumber(numStr) or nil
-                -- Avoid matching "1 hour" or "10 seconds"
                 if val and val == 1 and lowerNorm:find("1 hour", 1, true) then
                     val = nil
                 end
@@ -11719,18 +11773,18 @@ function DynamicPrep:ParseFoodBenefitFromTooltipText(tooltipData, auraPoints)
             local v1 = p1.val or firstPoint
             local v2 = p2.val
             if v1 and v2 and v1 ~= v2 then
-                return string.format("+%d %s / +%d %s", v1, p1.short, v2, p2.short), benefitLine
+                return string.format("+%s %s / +%s %s", FormatFoodStatNumber(v1), p1.short, FormatFoodStatNumber(v2), p2.short), benefitLine
             elseif v1 then
-                return string.format("+%d %s / %s", v1, p1.short, p2.short), benefitLine
+                return string.format("+%s %s / %s", FormatFoodStatNumber(v1), p1.short, p2.short), benefitLine
             else
                 return string.format("%s / %s", p1.short, p2.short), benefitLine
             end
         else
             local p1 = activeList[1]
-            local label = (#activeList == 1 and (p1.short == "Crit" and "Crit" or p1.full)) or p1.short
+            local label = (p1.short == "Highest Sec" or p1.short == "Crit" or p1.short == "Vers") and p1.short or p1.full
             local v1 = p1.val or firstPoint
             if v1 and v1 > 0 then
-                return string.format("+%d %s", v1, label), benefitLine
+                return string.format("+%s %s", FormatFoodStatNumber(v1), label), benefitLine
             else
                 return label, benefitLine
             end
@@ -11738,7 +11792,7 @@ function DynamicPrep:ParseFoodBenefitFromTooltipText(tooltipData, auraPoints)
     elseif firstPoint and firstPoint > 0 then
         local _, primaryLabel = self:GetPrimaryStatData()
         local statName = primaryLabel or "Stat"
-        return string.format("+%d %s", firstPoint, statName), benefitLine or string.format("Increases %s by %d.", statName, firstPoint)
+        return string.format("+%s %s", FormatFoodStatNumber(firstPoint), statName), benefitLine or string.format("Increases %s by %s.", statName, FormatFoodStatNumber(firstPoint))
     end
 
     return nil, benefitLine
@@ -13226,8 +13280,12 @@ function DynamicPrep:ScanAndPopulateRaidBuffQueue()
                     rankLabel = (fd.quality and fd.quality >= 3) and " [Rank 3 Gold]" or ((fd.quality == 2) and " [Rank 2 Silver]" or ((fd.quality == 1) and " [Rank 1 Bronze]" or ""))
                 end
                 local heartyLabel = fd.isHearty and " [Hearty - Persists Through Death]" or ""
-                local title = (fd.name or "Food") .. heartyLabel .. rankLabel
+                local statBadge = (fd.statShort and fd.statShort ~= "") and (" (" .. fd.statShort .. ")") or ""
+                local title = (fd.name or "Food") .. statBadge .. heartyLabel .. rankLabel
                 local sub = fd.isHearty and "Hearty Well Fed persists through death in M+ and raids. Click to eat." or "Click to eat and gain Well Fed."
+                if fd.statFullLine and fd.statFullLine ~= "" then
+                    sub = fd.statFullLine .. "\n" .. sub
+                end
                 if isExp and foodFullLine and foodFullLine ~= "" then
                     sub = string.format("Current Buff: %s (%s)\n%s", foodShortStat or "Well Fed", foodFullLine, sub)
                 end
