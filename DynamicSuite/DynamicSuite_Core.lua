@@ -309,18 +309,18 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
     DynamicPrep = {
         "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs",
         "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
-        "BlizzMove", "DeModal", "MoveAny",
+        "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
         "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
         addons = {
             "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs",
             "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
-            "BlizzMove", "DeModal", "MoveAny",
+            "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
             "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
         },
         conflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
         hardConflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
-        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
-        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
+        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
+        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
         category = "Readiness & Automation",
     },
     DynamicGroup = {
@@ -444,6 +444,10 @@ local FRIENDLY_CONFLICT_NAMES = addonTable.FRIENDLY_CONFLICT_NAMES or {
     ["PhanxChat"]                = "PhanxChat",
     ["DejaChat"]                 = "DejaChat",
     ["WIM"]                      = "WIM",
+    ["NoAutoClose"]              = "NoAutoClose",
+    ["BlizzMove"]                = "BlizzMove",
+    ["DeModal"]                  = "DeModal",
+    ["MoveAny"]                  = "MoveAny",
 }
 addonTable.FRIENDLY_CONFLICT_NAMES = FRIENDLY_CONFLICT_NAMES
 DynamicSuite.FRIENDLY_CONFLICT_NAMES = FRIENDLY_CONFLICT_NAMES
@@ -472,6 +476,10 @@ local CONFLICT_YIELD_FEATURES = {
     ["EllesmereUIChat"]          = "chat/editbox skinning",
     ["EllesmereUI_Chat"]         = "chat/editbox skinning",
     ["EllesmereUIGroupFinder"]   = "shared Group Finder features",
+    ["NoAutoClose"]              = "Blizzard Window QoL: Side-by-Side Panels, Drag & Scroll Scale",
+    ["BlizzMove"]                = "Blizzard Window QoL: Side-by-Side Panels, Drag & Scroll Scale",
+    ["DeModal"]                  = "Blizzard Window QoL: Side-by-Side Panels, Drag & Scroll Scale",
+    ["MoveAny"]                  = "Blizzard Window QoL: Side-by-Side Panels, Drag & Scroll Scale",
 }
 addonTable.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
 DynamicSuite.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
@@ -1577,7 +1585,7 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
     end
 
     local isBlizzWinAutoYield = false
-    if tier == 2 and addonNameKey == "DynamicPrep" and (otherAddon == "BlizzMove" or otherAddon == "DeModal" or otherAddon == "MoveAny" or otherAddon == "EllesmereUI" or otherAddon == "EllesmereUIQoL" or otherAddon == "EllesmereUI_QoL" or otherAddon == "Leatrix_Plus" or otherAddon == "ElvUI") then
+    if tier == 2 and addonNameKey == "DynamicPrep" and (otherAddon == "NoAutoClose" or otherAddon == "BlizzMove" or otherAddon == "DeModal" or otherAddon == "MoveAny" or otherAddon == "EllesmereUI" or otherAddon == "EllesmereUIQoL" or otherAddon == "EllesmereUI_QoL" or otherAddon == "Leatrix_Plus" or otherAddon == "ElvUI") then
         if ackAction == nil then
             ackAction = "YIELD_TO_EXTERNAL"
             isBlizzWinAutoYield = true

@@ -5603,25 +5603,40 @@ do
         local function isAddonLoaded(name)
             return type(isLoadedFn) == "function" and (isLoadedFn(name) == true)
         end
-        local function isOverriddenToDynamic(addonKey)
+        local function isOverriddenToDynamic(...)
+            local getMode = _G.DynamicSuite and _G.DynamicSuite.GetGranularConflictMode
             local gm = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.granularModes
-            if type(gm) == "table" and gm["DynamicPrep:" .. tostring(addonKey)] == "PRIORITISE_DYNAMIC" then
-                return true
+            for i = 1, select("#", ...) do
+                local addonKey = select(i, ...)
+                if addonKey then
+                    if type(getMode) == "function" then
+                        local ok, mode = pcall(getMode, "DynamicPrep", addonKey)
+                        if ok and mode == "PRIORITISE_DYNAMIC" then return true end
+                    end
+                    if type(gm) == "table" and gm[tostring(addonKey) .. "_DynamicPrep"] == "PRIORITISE_DYNAMIC" then
+                        return true
+                    end
+                end
             end
             return false
         end
 
-        -- 1. BlizzMove (standalone Blizzard frame mover/scaler)
+        -- 1. NoAutoClose (standalone Blizzard multi-panel no-auto-close)
+        if (_G.NoAutoClose ~= nil or isAddonLoaded("NoAutoClose")) and not isOverriddenToDynamic("NoAutoClose") then
+            return true, "NoAutoClose"
+        end
+
+        -- 2. BlizzMove (standalone Blizzard frame mover/scaler)
         if (_G.BlizzMoveAPI ~= nil or isAddonLoaded("BlizzMove")) and not isOverriddenToDynamic("BlizzMove") then
             return true, "BlizzMove"
         end
 
-        -- 2. DeModal (standalone Blizzard multi-panel no-auto-close)
+        -- 3. DeModal (standalone Blizzard multi-panel no-auto-close)
         if (_G.DeModal ~= nil or isAddonLoaded("DeModal")) and not isOverriddenToDynamic("DeModal") then
             return true, "DeModal"
         end
 
-        -- 3. MoveAny (when frame moving/scaling is enabled)
+        -- 4. MoveAny (when frame moving/scaling is enabled)
         if (isAddonLoaded("MoveAny") or type(_G.MoveAny) == "table") and not isOverriddenToDynamic("MoveAny") then
             local maDisabled = false
             local maTab = _G.MATAB
@@ -5637,12 +5652,12 @@ do
             end
         end
 
-        -- 4. EllesmereUI / EllesmereUIQoL / EllesmereUI_QoL
+        -- 5. EllesmereUI / EllesmereUIQoL / EllesmereUI_QoL
         local euiLoaded = (_G.EllesmereUI ~= nil)
             or isAddonLoaded("EllesmereUI")
             or isAddonLoaded("EllesmereUIQoL")
             or isAddonLoaded("EllesmereUI_QoL")
-        if euiLoaded then
+        if euiLoaded and not isOverriddenToDynamic("EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL") then
             local edb = _G.EllesmereUIDB
             if type(edb) == "table" then
                 if edb.shifterEnabled == true
@@ -5663,8 +5678,8 @@ do
             end
         end
 
-        -- 5. Leatrix Plus (when frame moving/resizing or no-auto-close is enabled)
-        if isAddonLoaded("Leatrix_Plus") or type(_G.LeaPlusDB) == "table" then
+        -- 6. Leatrix Plus (when frame moving/resizing or no-auto-close is enabled)
+        if (isAddonLoaded("Leatrix_Plus") or type(_G.LeaPlusDB) == "table") and not isOverriddenToDynamic("Leatrix_Plus") then
             local ldb = _G.LeaPlusDB
             if type(ldb) == "table" and (
                 ldb["UseEasyFrameResizing"] == "On"
@@ -5676,8 +5691,8 @@ do
             end
         end
 
-        -- 6. ElvUI (when Blizzard skinning/frame management is active)
-        if isAddonLoaded("ElvUI") or type(_G.ElvUI) == "table" then
+        -- 7. ElvUI (when Blizzard skinning/frame management is active)
+        if (isAddonLoaded("ElvUI") or type(_G.ElvUI) == "table") and not isOverriddenToDynamic("ElvUI") then
             local e = _G.ElvUI
             local e1 = type(e) == "table" and e[1] or nil
             if type(e1) == "table"
@@ -10174,6 +10189,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             or arg1 == "Blizzard_Calendar"
             or arg1 == "Blizzard_MacroUI"
             or arg1 == "Blizzard_AuctionHouseUI"
+            or arg1 == "NoAutoClose"
             or arg1 == "BlizzMove"
             or arg1 == "DeModal"
             or arg1 == "MoveAny"
