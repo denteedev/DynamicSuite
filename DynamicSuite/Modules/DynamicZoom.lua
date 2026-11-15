@@ -2828,14 +2828,34 @@ local function EnsureStandaloneWindow()
     body:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", -6, 4)
     win.body = body
 
+    -- Unified Bottom-Right Corner Resize Grip (14x14, -4/4, Slate at rest -> #F97316 Blaze Orange hover)
     local grip = CreateFrame("Button", nil, win)
-    grip:SetSize(16, 16)
-    grip:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -2, 2)
+    grip:SetSize(14, 14)
+    grip:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -4, 4)
     grip:SetFrameLevel(footer:GetFrameLevel() + 2)
-    local gripTex = grip:CreateTexture(nil, "OVERLAY")
+    grip:EnableMouse(true)
+
+    local gripTex = grip:CreateTexture(nil, "OVERLAY", nil, 5)
     gripTex:SetAllPoints()
     gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-    grip:SetScript("OnMouseDown", function() win:StartSizing("BOTTOMRIGHT") end)
+    gripTex:SetDesaturated(true)
+    gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+
+    grip:SetScript("OnEnter", function()
+        gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+        gripTex:SetDesaturated(false)
+        gripTex:SetVertexColor(0.976, 0.451, 0.086, 0.95)
+    end)
+    grip:SetScript("OnLeave", function()
+        gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        gripTex:SetDesaturated(true)
+        gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+    end)
+    grip:SetScript("OnMouseDown", function(_, mBtn)
+        if mBtn == "LeftButton" then
+            win:StartSizing("BOTTOMRIGHT")
+        end
+    end)
     grip:SetScript("OnMouseUp", function() win:StopMovingOrSizing() end)
 
     standaloneWindow = win

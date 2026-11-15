@@ -1268,8 +1268,19 @@ local function CreateDynamicChatScrollbar(parent, opts)
     local barWidth = opts.width or 6
     local bar = CreateFrame("Frame", nil, parent)
     bar:SetWidth(barWidth)
-    bar:SetFrameLevel((parent:GetFrameLevel() or 2) + 6)
+    if opts.strata then
+        bar:SetFrameStrata(opts.strata)
+    elseif parent and type(parent.GetFrameStrata) == "function" then
+        bar:SetFrameStrata(parent:GetFrameStrata() or "LOW")
+    end
+    bar:SetFrameLevel(opts.frameLevel or ((parent:GetFrameLevel() or 2) + 12))
     bar:EnableMouse(true)
+    if bar.SetHitRectInsets then
+        bar:SetHitRectInsets(-4, -3, 0, 0)
+    end
+    if bar.EnableMouseWheel then
+        bar:EnableMouseWheel(true)
+    end
 
     local trackBg = bar:CreateTexture(nil, "BACKGROUND")
     trackBg:SetAllPoints()
@@ -1288,7 +1299,12 @@ local function CreateDynamicChatScrollbar(parent, opts)
     local thumb = CreateFrame("Button", nil, bar)
     thumb:SetPoint("TOP", bar, "TOP", 0, 0)
     thumb:SetSize(barWidth, 28)
+    thumb:SetFrameStrata(bar:GetFrameStrata())
+    thumb:SetFrameLevel(bar:GetFrameLevel() + 2)
     thumb:EnableMouse(true)
+    if thumb.SetHitRectInsets then
+        thumb:SetHitRectInsets(-4, -3, -2, -2)
+    end
     thumb:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
 
     local thumbTex = thumb:CreateTexture(nil, "OVERLAY")
@@ -1309,7 +1325,16 @@ local function CreateDynamicChatScrollbar(parent, opts)
     bar._currentAlpha = bar._autoHide and 0 or 1
     bar._pollElapsed = 0
     bar._onValueChanged = opts.onValueChanged
+    bar._onMouseWheel = opts.onMouseWheel
     bar:SetAlpha(bar._currentAlpha)
+
+    if bar.SetScript then
+        bar:SetScript("OnMouseWheel", function(self, delta)
+            if type(self._onMouseWheel) == "function" then
+                self._onMouseWheel(delta)
+            end
+        end)
+    end
 
     function bar:NotifyScrollActivity()
         if not self._autoHide then return end
@@ -3402,7 +3427,7 @@ local function RefreshChatScrollBarVisibility(cf, isScrollActivity)
     local csb = entry.customScrollBar
     if not csb then return end
 
-    if not cf:IsShown() then
+    if not cf:IsShown() or (cf.isDocked and _G.SELECTED_DOCK_FRAME and _G.SELECTED_DOCK_FRAME ~= cf) then
         csb:Hide()
         return
     end
@@ -3411,14 +3436,21 @@ local function RefreshChatScrollBarVisibility(cf, isScrollActivity)
         csb:NotifyScrollActivity()
     end
 
-    local numMsgs = (type(cf.GetNumMessages) == "function" and cf:GetNumMessages()) or 0
-    local maxScroll = (type(cf.GetMaxScrollRange) == "function" and cf:GetMaxScrollRange()) or math.max(0, numMsgs - 1)
-    local curScroll = (type(cf.GetCurrentScroll) == "function" and cf:GetCurrentScroll()) or 0
+    local function SafeChatNum(fn)
+        if type(fn) ~= "function" then return nil end
+        local ok, val = pcall(fn, cf)
+        if not ok or val == nil or IsSecretValue(val) then return nil end
+        return tonumber(val)
+    end
+
+    local numMsgs = SafeChatNum(cf.GetNumMessages) or 0
+    local maxScroll = SafeChatNum(cf.GetMaxScrollRange) or math.max(0, numMsgs - 1)
+    local curScroll = SafeChatNum(cf.GetCurrentScroll) or 0
     if maxScroll < 0 then maxScroll = 0 end
     if curScroll < 0 then curScroll = 0 end
     if curScroll > maxScroll then curScroll = maxScroll end
 
-    local numVisible = (type(cf.GetNumLinesDisplayed) == "function" and cf:GetNumLinesDisplayed()) or math.max(1, numMsgs - maxScroll)
+    local numVisible = SafeChatNum(cf.GetNumLinesDisplayed) or math.max(1, numMsgs - maxScroll)
     local visRatio = (numMsgs > 0) and (numVisible / numMsgs) or 1
     -- ScrollingMessageFrame GetCurrentScroll() is 0 at bottom and maxScroll at top; invert for top-down scrollbar
     csb:UpdateState(maxScroll - curScroll, maxScroll, visRatio)
@@ -3484,20 +3516,35 @@ local function ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
     end
 
     local hostPanel = entry.panel or (cf.isDocked and _G.ChatFrame1 and chatSkinStore[_G.ChatFrame1] and chatSkinStore[_G.ChatFrame1].panel) or cf
+    local targetStrata = (type(cf.GetFrameStrata) == "function" and cf:GetFrameStrata()) or "LOW"
+    local targetLevel = ((type(cf.GetFrameLevel) == "function" and cf:GetFrameLevel()) or 2) + 12
     if not entry.customScrollBar then
         entry.customScrollBar = CreateDynamicChatScrollbar(hostPanel, {
             width = 5,
+            strata = targetStrata,
+            frameLevel = targetLevel,
             autoHide = true,
             isHoveredFn = function()
                 return IsChatAreaHovered(cf, entry)
             end,
             onValueChanged = function(newVal)
                 if type(cf.GetMaxScrollRange) == "function" and type(cf.SetScrollOffset) == "function" then
-                    local maxScroll = cf:GetMaxScrollRange() or 0
+                    local okMax, maxScroll = pcall(cf.GetMaxScrollRange, cf)
+                    if not okMax or maxScroll == nil or IsSecretValue(maxScroll) then return end
+                    maxScroll = tonumber(maxScroll) or 0
                     local targetOffset = math.max(0, math.min(maxScroll, math.floor(maxScroll - newVal + 0.5)))
                     pcall(cf.SetScrollOffset, cf, targetOffset)
                     RefreshChatScrollBarVisibility(cf, true)
                 end
+            end,
+            onMouseWheel = function(delta)
+                if not delta or IsSecretValue(delta) then return end
+                if delta > 0 and type(cf.ScrollUp) == "function" then
+                    pcall(cf.ScrollUp, cf)
+                elseif delta < 0 and type(cf.ScrollDown) == "function" then
+                    pcall(cf.ScrollDown, cf)
+                end
+                RefreshChatScrollBarVisibility(cf, true)
             end,
         })
     elseif entry.customScrollBar:GetParent() ~= hostPanel then
@@ -3508,6 +3555,12 @@ local function ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
     end
 
     local csb = entry.customScrollBar
+    csb:SetFrameStrata(targetStrata)
+    csb:SetFrameLevel(targetLevel)
+    if csb.thumb then
+        csb.thumb:SetFrameStrata(targetStrata)
+        csb.thumb:SetFrameLevel(targetLevel + 2)
+    end
     csb:ClearAllPoints()
     csb:SetPoint("TOPRIGHT", cf, "TOPRIGHT", 6, -2)
     csb:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 6, 14)
@@ -5324,8 +5377,13 @@ function DynamicChat:ApplySleekChatSkin()
                             if entry then
                                 if cf == selectedFrame or cf:IsShown() then
                                     ReskinChatScrollBarAndBottomButton(cf, entry, true)
-                                elseif entry.scrollThumbFrame then
-                                    entry.scrollThumbFrame:Hide()
+                                else
+                                    if entry.customScrollBar then
+                                        entry.customScrollBar:Hide()
+                                    end
+                                    if entry.scrollThumbFrame then
+                                        entry.scrollThumbFrame:Hide()
+                                    end
                                 end
                             end
                         end
@@ -9184,7 +9242,7 @@ local function EnsureStandaloneWindow()
 
     local blizzResetBtn = CreateFrame("Button", nil, footer, "BackdropTemplate")
     blizzResetBtn:SetSize(166, 24)
-    blizzResetBtn:SetPoint("RIGHT", footer, "RIGHT", -12, 0)
+    blizzResetBtn:SetPoint("RIGHT", footer, "RIGHT", -24, 0)
     blizzResetBtn:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -9224,6 +9282,38 @@ local function EnsureStandaloneWindow()
     body:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 6, -4)
     body:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", -6, 4)
     f.body = body
+
+    -- Unified Bottom-Right Corner Resize Grip (14x14, -4/4, Slate at rest -> #F97316 Blaze Orange hover)
+    local resizeGrip = CreateFrame("Button", nil, footer)
+    resizeGrip:SetSize(14, 14)
+    resizeGrip:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", -4, 4)
+    resizeGrip:SetFrameLevel(footer:GetFrameLevel() + 4)
+    resizeGrip:EnableMouse(true)
+
+    local gripTex = resizeGrip:CreateTexture(nil, "OVERLAY", nil, 5)
+    gripTex:SetAllPoints()
+    gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    gripTex:SetDesaturated(true)
+    gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+
+    resizeGrip:SetScript("OnEnter", function()
+        gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+        gripTex:SetDesaturated(false)
+        gripTex:SetVertexColor(0.976, 0.451, 0.086, 0.95)
+    end)
+    resizeGrip:SetScript("OnLeave", function()
+        gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        gripTex:SetDesaturated(true)
+        gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+    end)
+    resizeGrip:SetScript("OnMouseDown", function(_, mBtn)
+        if mBtn == "LeftButton" then
+            f:StartSizing("BOTTOMRIGHT")
+        end
+    end)
+    resizeGrip:SetScript("OnMouseUp", function()
+        f:StopMovingOrSizing()
+    end)
 
     RenderChatEmbedded(body)
     f:Hide()
