@@ -59,8 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "15/11/2026",
     entries = {
-        { type = "FEATURE", text = "Shared Media Discovery (LibSharedMedia-3.0, DBM, BigWigs, WeakAuras, ElvUI), Blizzard Raid Warning & 48 kHz EXBOSS Chat Alerts (15/11/2026): Added runtime SharedMedia-3.0, DBM, BigWigs, WeakAuras, and ElvUI discovery for both Sounds and Fonts across Theme & Font Studio (and standalone DynamicMarker) plus DynamicChat Tab 3 with PLAYER_LOGIN delayed scanning and live searchable grouped dropdowns (Built-in, Blizzard, SharedMedia / AddOns); upgraded all 10 built-in DynamicChat notification sounds to 48 kHz peak-normalised (-1.5 dBFS) EXBOSS-style clarity (EX Alert Ping, EX Double Stinger, EX Sonar Lock, EX Crystal Bell, EX Phase Chime, EX Sharp Triad, EX Pulse Pop, EX Clean Horn, EX High Glass, EX Target Lock); kept Blizzard's standard Raid Warning and UI alerts accessible with dual PlaySound / PlaySoundFile playback; and added automatic runtime fallback (to Blizzard Raid Warning for sounds or Expressway for fonts) when an external media pack is disabled." },
-        { type = "FEATURE", text = "Custom Chat Notification Sounds & 10 Bespoke Sound Effects (DynamicChat - 15/11/2026): Generated 10 crisp, normalised 44.1kHz mono .wav sound effects (Soft Chime, Crystal Ping, Whisper Bell, Marimba Note, Sonar Pulse, Double Tap, Water Drop, Warm Chord, Wood Tick, Subtle Alert) played via PlaySoundFile, grouped DynamicChat Tab 3 into a dedicated 'CHAT NOTIFICATION SOUNDS' section card with 'Chat Notification Sounds' (Enabled), 'Mute Sounds in Combat' (Off), and 5 grouped channel rows (Whisper & Battle.net Whisper, Guild & Officer Chat, Party & Instance Chat, Raid & Raid Warning, and Say & Yell off by default), dropdown auto-preview plus dedicated [Play] preview buttons beside every dropdown, 1.5s anti-spam per-channel cooldown, and secret-value-guarded sender GUID / UnitName('player') self-message suppression." },
+        { type = "FEATURE", text = "Shared Media Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Chat Sounds & Self-Whisper Alerts (15/11/2026): Added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI discovery for both Sounds and Fonts across Theme & Font Studio (and standalone DynamicMarker) plus DynamicChat Tab 3 with PLAYER_LOGIN delayed scanning and searchable grouped dropdowns; removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; restored self-whisper notification alerts on incoming WHISPER / BN_WHISPER events; and added automatic runtime fallback (to Blizzard Raid Warning for sounds or Expressway for fonts) when an external media pack is disabled." },
         { type = "FEATURE", text = "Release v2.2.0 - DynamicPrep Blizzard Window QoL & Silent External Coexistence (15/11/2026): Added Tab 3 'Blizzard Window Quality of Life' controls in DynamicPrep: 'Keep Blizzard Windows Open Side-by-Side' (all 31 standard Blizzard panels -- Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Social & Friends, Collections, Transmogrify, Adventure Guide, Professions, Professions Book, Crafting Orders, Achievements, Item Upgrade, Item Socketing, Revival Catalyst, Renown, Delves, Trainer, Calendar, Macros, NPC Gossip, Quest, Trade, Merchant, Mail, Bank, Auction House, and AddOn List -- stay open together via ShowUIPanel multi-panel restoration and Escape-protected UISpecialFrames / HideUIPanel / CloseWindows / ToggleGameMenu handling while freezing already-open windows in place so opening another panel never shifts them, plus a compact header Pin button so Escape keeps Pinned windows open and closes unpinned windows one at a time while [X] and keybind toggles still close cleanly; excludes World Map and Game Menu with 0% combat taint), 'Draggable Blizzard Windows (Save Position)' (smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag moving out of combat with unclamped SetClampedToScreen(false) free movement, scale-aware UIParent CENTER persistence, SetPoint tab-switch snap-back protection, TitleContainer-cleared overlay layering, (-58, -2) Maximize/Minimize button clearance, and Right-Click header reset), 'Window Ctrl+Scroll Scaling' (Ctrl + Scroll on a header for temporary session scaling 70%-140% in 5% steps that resets on close, Ctrl + Shift + Scroll anywhere on a window to save permanently with a Dark-Obsidian/Blaze-Orange readout toast), [Reset All Windows] (restores default positions, 100% scale, and screen clamping), defensive C_Item.GetItemInfoInstant and TooltipDataProcessor hardening, and zero-config automatic silent coexistence when NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, or ElvUI frame management is active." },
         { type = "IMPROVED", text = "DynamicMarker Unbound-by-Default World Flare Hotkeys & Guided Setup Assignment (15/11/2026): Removed the hardcoded F4 and F5 World Flare defaults so fresh installs and Resets start with both keys 'Unbound' (leaving your own Blizzard and action bar bindings untouched while preserving any existing saved DynamicMarkerDB hotkeys), added optional single-button Cycle World Flare and Clear All Flares keybind capture rows to both Suite/Standalone Guided Setup and the World Flare Keys (/dm flares) tab ('Click to bind, Right-click to unbind'), and refined capture behaviour so Escape cancels without losing the current key while Backspace/Delete or Right-Click clears to Unbound." },
         { type = "FIX",     text = "Release v2.1.2 - DynamicPrep Midnight Season 2 Enchantable Slot List Fix (15/11/2026): Updated DynamicPrep's equipped gear enchant scanner to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
@@ -2267,27 +2266,16 @@ local function LooksLikeMediaPath(val)
     return false
 end
 
-local BUILTIN_EXBOSS_SOUNDS = {
-    { value = "ds_ping_crystal", alias = "ex_alert_ping",     label = "EX Alert Ping",     file = "ds_ping_crystal.wav", group = "BUILTIN", source = "DynamicSuite" },
-    { value = "ds_tap_double",   alias = "ex_double_stinger", label = "EX Double Stinger", file = "ds_tap_double.wav",   group = "BUILTIN", source = "DynamicSuite" },
-    { value = "ds_pulse_sonar",  alias = "ex_sonar_lock",     label = "EX Sonar Lock",     file = "ds_pulse_sonar.wav",  group = "BUILTIN", source = "DynamicSuite" },
-    { value = "ds_bell_whisper", alias = "ex_crystal_bell",   label = "EX Crystal Bell",   file = "ds_bell_whisper.wav", group = "BUILTIN", source = "DynamicSuite" },
-    { value = "ds_chime_soft",   alias = "ex_phase_chime",    label = "EX Phase Chime",    file = "ds_chime_soft.wav",   group = "BUILTIN", source = "DynamicSuite" },
-    { value = "ds_chord_warm",   alias = "ex_sharp_triad",    label = "EX Sharp Triad",    file = "ds_chord_warm.wav",   group = "BUILTIN", source = "DynamicSuite" },
-    { value = "ds_drop_water",   alias = "ex_pulse_pop",      label = "EX Pulse Pop",      file = "ds_drop_water.wav",   group = "BUILTIN", source = "DynamicSuite" },
-    { value = "ds_alert_subtle", alias = "ex_clean_horn",     label = "EX Clean Horn",     file = "ds_alert_subtle.wav", group = "BUILTIN", source = "DynamicSuite" },
-    { value = "ds_note_marimba", alias = "ex_high_glass",     label = "EX High Glass",     file = "ds_note_marimba.wav", group = "BUILTIN", source = "DynamicSuite" },
-    { value = "ds_tick_wood",    alias = "ex_target_lock",    label = "EX Target Lock",    file = "ds_tick_wood.wav",    group = "BUILTIN", source = "DynamicSuite" },
-}
-
 local function BuildBlizzardSoundsTable()
     local sk = _G.SOUNDKIT
     return {
-        { value = "BLIZZ_RAID_WARNING", label = "Blizzard Raid Warning", soundKit = (sk and sk.RAID_WARNING) or 8959,     fileDataID = 567397, group = "BLIZZARD", source = "Blizzard" },
-        { value = "BLIZZ_WHISPER",      label = "Blizzard Whisper",      soundKit = (sk and sk.TELL_MESSAGE) or 3081,     fileDataID = 567482, group = "BLIZZARD", source = "Blizzard" },
-        { value = "BLIZZ_BNET_TOAST",   label = "Blizzard Battle.net",   soundKit = (sk and sk.UI_BNET_TOAST) or 18019,   fileDataID = 567421, group = "BLIZZARD", source = "Blizzard" },
-        { value = "BLIZZ_READY_CHECK",  label = "Blizzard Ready Check",  soundKit = (sk and sk.READY_CHECK) or 8960,      fileDataID = 567478, group = "BLIZZARD", source = "Blizzard" },
-        { value = "BLIZZ_MAP_PING",     label = "Blizzard Map Ping",     soundKit = (sk and sk.MAP_PING) or 3175,         fileDataID = 567416, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_RAID_WARNING",   label = "Blizzard Raid Warning",   soundKit = (sk and sk.RAID_WARNING) or 8959,          fileDataID = 567397, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_WHISPER",        label = "Blizzard Whisper",        soundKit = (sk and sk.TELL_MESSAGE) or 3081,          fileDataID = 567482, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_BNET_TOAST",     label = "Blizzard Battle.net",     soundKit = (sk and sk.UI_BNET_TOAST) or 18019,        fileDataID = 567421, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_READY_CHECK",    label = "Blizzard Ready Check",    soundKit = (sk and sk.READY_CHECK) or 8960,           fileDataID = 567478, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_MAP_PING",       label = "Blizzard Map Ping",       soundKit = (sk and sk.MAP_PING) or 3175,              fileDataID = 567416, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_AUCTION_BELL",   label = "Blizzard Auction Bell",   soundKit = (sk and sk.AUCTION_WINDOW_OPEN) or 5274,   fileDataID = 567499, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_QUEST_COMPLETE", label = "Blizzard Quest Complete", soundKit = (sk and sk.IG_QUEST_LIST_COMPLETE) or 878, fileDataID = 567439, group = "BLIZZARD", source = "Blizzard" },
     }
 end
 
@@ -2504,54 +2492,40 @@ local function ScanMediaKind(kind, skipNames, skipPaths)
         end
     end
 
+    -- 6. EXBOSS / EX_Boss standalone tables (in addition to LibSharedMedia-3.0)
+    for _, globalKey in ipairs({ "EXBOSS", "EX_Boss", "ExBoss" }) do
+        local ex = _G[globalKey]
+        if type(ex) == "table" then
+            local sub = (kind == "sound" and (ex.Sounds or ex.sounds or ex.Sound)) or (kind == "font" and (ex.Fonts or ex.fonts or ex.Font)) or nil
+            if type(sub) == "table" then
+                for k, v in pairs(sub) do
+                    if IsSafeMediaVal(k) and IsSafeMediaVal(v) then
+                        if type(k) == "string" and LooksLikeMediaPath(v) then
+                            AddCandidate("EXBOSS", k, v, "EXBOSS")
+                        elseif type(v) == "string" and LooksLikeMediaPath(k) then
+                            AddCandidate("EXBOSS", v, k, "EXBOSS")
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     table.sort(outList, function(a, b)
         return tostring(a.label):lower() < tostring(b.label):lower()
     end)
     return outList
 end
 
-local registeredBuiltinSoundWithLSM = false
-local function EnsureBuiltinSoundsRegisteredInLSM()
-    if registeredBuiltinSoundWithLSM then return end
-    local lsm = GetLSMInstance()
-    if not (lsm and type(lsm.Register) == "function") then return end
-    registeredBuiltinSoundWithLSM = true
-    for _, sDef in ipairs(BUILTIN_EXBOSS_SOUNDS) do
-        local soundPath = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\" .. sDef.file
-        pcall(lsm.Register, lsm, "sound", "DynamicSuite: " .. sDef.label, soundPath)
-    end
-end
-
 function DynamicSuite:ScanExternalMedia(force)
     if mediaRegistry.scannedOnce and not force then
         return mediaRegistry
     end
-    EnsureBuiltinSoundsRegisteredInLSM()
 
-    -- Sounds
+    -- Sounds (never register .wav files with LibSharedMedia-3.0; Blizzard built-ins + external LSM/DBM/EXBOSS/BigWigs/WeakAuras/ElvUI)
     local sReg = { builtin = {}, blizzard = {}, external = {}, byKey = {} }
     local skipSoundNames = {}
     local skipSoundPaths = {}
-
-    for _, def in ipairs(BUILTIN_EXBOSS_SOUNDS) do
-        local soundPath = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\" .. def.file
-        local item = {
-            value  = def.value,
-            alias  = def.alias,
-            label  = def.label,
-            file   = def.file,
-            path   = soundPath,
-            group  = "BUILTIN",
-            source = "DynamicSuite",
-        }
-        table.insert(sReg.builtin, item)
-        sReg.byKey[def.value] = item
-        if def.alias then sReg.byKey[def.alias] = item end
-        sReg.byKey[def.file] = item
-        skipSoundNames[def.label:lower()] = true
-        skipSoundNames[("DynamicSuite: " .. def.label):lower()] = true
-        skipSoundPaths[soundPath:lower()] = true
-    end
 
     for _, bDef in ipairs(BuildBlizzardSoundsTable()) do
         table.insert(sReg.blizzard, bDef)
@@ -2615,7 +2589,7 @@ function DynamicSuite:ResolveSoundChoice(soundKey, fallbackKey)
         hit = sReg.byKey[soundKey]
     end
     if not hit and type(soundKey) == "string" then
-        local stripped = soundKey:gsub("^LSM:", ""):gsub("^DBM:", ""):gsub("^BW:", ""):gsub("^WA:", ""):gsub("^ELV:", "")
+        local stripped = soundKey:gsub("^LSM:", ""):gsub("^DBM:", ""):gsub("^BW:", ""):gsub("^WA:", ""):gsub("^ELV:", ""):gsub("^EXBOSS:", "")
         hit = sReg.byKey[stripped]
     end
     if not hit and LooksLikeMediaPath(soundKey) then
@@ -3833,28 +3807,28 @@ local BUILTIN_SEARCH_SEED = {
       keywords = "chat message timestamps clock time hour minute" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Chat Notification Sounds",
-      desc = "Master switch for per-channel custom chat sound effects across Whispers, Guild, Party, Raid, and Say/Yell (10 built-in EXBOSS chimes, Blizzard Raid Warning, and SharedMedia/DBM/BigWigs/WeakAuras).",
-      keywords = "chat notification sounds sound alerts audio cue ping chime bell whisper guild party raid say mute blizzard raid warning sharedmedia dbm bigwigs weakauras elvui exboss" },
+      desc = "Master switch for per-channel chat sound alerts across Whispers (including self-whispers), Guild, Party, Raid, and Say/Yell using Blizzard built-in sounds and SharedMedia/DBM/EXBOSS/BigWigs/WeakAuras/ElvUI.",
+      keywords = "chat notification sounds sound alerts audio cue ping chime bell whisper self whisper guild party raid say mute blizzard raid warning ready check map ping auction bell quest complete sharedmedia dbm bigwigs weakauras elvui exboss" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Mute Sounds in Combat",
       desc = "Silence incoming chat notification sounds during boss encounters and combat lockdown.",
       keywords = "mute sounds in combat boss encounter lockdown silence chat notification" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Whisper & Battle.net Whisper",
-      desc = "Select and preview the notification sound for incoming character and Battle.net whispers (EX Crystal Bell by default).",
-      keywords = "whisper battle.net bnet realid tell chat notification sound bell crystal chime blizzard raid warning play" },
+      desc = "Select and preview the notification sound for incoming character and Battle.net whispers including self-whispers (Blizzard Whisper by default).",
+      keywords = "whisper battle.net bnet realid tell self whisper chat notification sound blizzard whisper raid warning play" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Guild & Officer Chat",
-      desc = "Select and preview the notification sound for incoming Guild and Officer chat messages (EX Phase Chime by default).",
-      keywords = "guild officer chat notification sound chime phase play" },
+      desc = "Select and preview the notification sound for incoming Guild and Officer chat messages (Blizzard Battle.net by default).",
+      keywords = "guild officer chat notification sound blizzard battle.net toast play" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Party & Instance Chat",
-      desc = "Select and preview the notification sound for Party, Party Leader, and LFD/LFR/Battleground Instance chat (EX Alert Ping by default).",
-      keywords = "party leader instance dungeon battleground chat notification sound alert ping play" },
+      desc = "Select and preview the notification sound for Party, Party Leader, and LFD/LFR/Battleground Instance chat (Blizzard Map Ping by default).",
+      keywords = "party leader instance dungeon battleground chat notification sound map ping play" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Raid & Raid Warning",
-      desc = "Select and preview the notification sound for Raid, Raid Leader, and Raid Warning alerts (EX Sonar Lock by default).",
-      keywords = "raid leader warning chat notification sound sonar lock blizzard raid warning play" },
+      desc = "Select and preview the notification sound for Raid, Raid Leader, and Raid Warning alerts (Blizzard Raid Warning by default).",
+      keywords = "raid leader warning chat notification sound blizzard raid warning play" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Say & Yell",
       desc = "Select and preview an optional notification sound for nearby Say and Yell chat (None by default to prevent city spam).",

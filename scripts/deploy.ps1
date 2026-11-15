@@ -591,16 +591,6 @@ $requiredSuiteAssets = @(
     "DynamicSuite\icon.tga",
     "DynamicSuite\Media\Icons\icon_white.tga",
     "DynamicSuite\Media\Icons\icon_accent.tga",
-    "DynamicSuite\Media\Sounds\ds_chime_soft.wav",
-    "DynamicSuite\Media\Sounds\ds_ping_crystal.wav",
-    "DynamicSuite\Media\Sounds\ds_bell_whisper.wav",
-    "DynamicSuite\Media\Sounds\ds_note_marimba.wav",
-    "DynamicSuite\Media\Sounds\ds_pulse_sonar.wav",
-    "DynamicSuite\Media\Sounds\ds_tap_double.wav",
-    "DynamicSuite\Media\Sounds\ds_drop_water.wav",
-    "DynamicSuite\Media\Sounds\ds_chord_warm.wav",
-    "DynamicSuite\Media\Sounds\ds_tick_wood.wav",
-    "DynamicSuite\Media\Sounds\ds_alert_subtle.wav",
     "DynamicSuite\CHANGELOG.md",
     "README.md"
 )
@@ -843,7 +833,7 @@ if ($BuildReleaseZip) {
     $suiteChangelogSrc = Join-Path $RepoRoot "DynamicSuite\CHANGELOG.md"
 
     New-VerifiedAddonReleaseZip -AddonName "DynamicSuite" -Version $suiteVer -Interface $suiteIface -MarketingDir $marketingDir `
-        -RequiredFiles @("DynamicSuite.toc", "DynamicSuite_Core.lua", "DynamicSuite_UI.lua", "icon.tga", "Media\Icons\icon_white.tga", "Media\Icons\icon_accent.tga", "Media\Sounds\ds_chime_soft.wav", "Media\Sounds\ds_bell_whisper.wav", "CHANGELOG.md", "README.md") `
+        -RequiredFiles @("DynamicSuite.toc", "DynamicSuite_Core.lua", "DynamicSuite_UI.lua", "icon.tga", "Media\Icons\icon_white.tga", "Media\Icons\icon_accent.tga", "CHANGELOG.md", "README.md") `
         -StageAction {
             param($stageAddonDir)
             Copy-Item -LiteralPath (Join-Path $suiteSrcDir "DynamicSuite.toc") -Destination (Join-Path $stageAddonDir "DynamicSuite.toc") -Force

@@ -280,40 +280,26 @@ _G.DynamicSuite.CONFLICT_REGISTRY["DynamicChat"] = {
 }
 _G.DynamicSuite.CONFLICT_REGISTRY["chat"] = _G.DynamicSuite.CONFLICT_REGISTRY["DynamicChat"]
 
-local CUSTOM_SOUND_EFFECTS = {
-    { value = "ds_ping_crystal", alias = "ex_alert_ping",     label = "EX Alert Ping",     file = "ds_ping_crystal.wav" },
-    { value = "ds_tap_double",   alias = "ex_double_stinger", label = "EX Double Stinger", file = "ds_tap_double.wav" },
-    { value = "ds_pulse_sonar",  alias = "ex_sonar_lock",     label = "EX Sonar Lock",     file = "ds_pulse_sonar.wav" },
-    { value = "ds_bell_whisper", alias = "ex_crystal_bell",   label = "EX Crystal Bell",   file = "ds_bell_whisper.wav" },
-    { value = "ds_chime_soft",   alias = "ex_phase_chime",    label = "EX Phase Chime",    file = "ds_chime_soft.wav" },
-    { value = "ds_chord_warm",   alias = "ex_sharp_triad",    label = "EX Sharp Triad",    file = "ds_chord_warm.wav" },
-    { value = "ds_drop_water",   alias = "ex_pulse_pop",      label = "EX Pulse Pop",      file = "ds_drop_water.wav" },
-    { value = "ds_alert_subtle", alias = "ex_clean_horn",     label = "EX Clean Horn",     file = "ds_alert_subtle.wav" },
-    { value = "ds_note_marimba", alias = "ex_high_glass",     label = "EX High Glass",     file = "ds_note_marimba.wav" },
-    { value = "ds_tick_wood",    alias = "ex_target_lock",    label = "EX Target Lock",    file = "ds_tick_wood.wav" },
-}
-
 local function BuildBlizzardChatSoundList()
     local sk = _G.SOUNDKIT
     return {
-        { value = "BLIZZ_RAID_WARNING", label = "Blizzard Raid Warning", soundKit = (sk and sk.RAID_WARNING) or 8959,   fileDataID = 567397, group = "BLIZZARD", source = "Blizzard" },
-        { value = "BLIZZ_WHISPER",      label = "Blizzard Whisper",      soundKit = (sk and sk.TELL_MESSAGE) or 3081,   fileDataID = 567482, group = "BLIZZARD", source = "Blizzard" },
-        { value = "BLIZZ_BNET_TOAST",   label = "Blizzard Battle.net",   soundKit = (sk and sk.UI_BNET_TOAST) or 18019, fileDataID = 567421, group = "BLIZZARD", source = "Blizzard" },
-        { value = "BLIZZ_READY_CHECK",  label = "Blizzard Ready Check",  soundKit = (sk and sk.READY_CHECK) or 8960,    fileDataID = 567478, group = "BLIZZARD", source = "Blizzard" },
-        { value = "BLIZZ_MAP_PING",     label = "Blizzard Map Ping",     soundKit = (sk and sk.MAP_PING) or 3175,       fileDataID = 567416, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_RAID_WARNING",   label = "Blizzard Raid Warning",   soundKit = (sk and sk.RAID_WARNING) or 8959,          fileDataID = 567397, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_WHISPER",        label = "Blizzard Whisper",        soundKit = (sk and sk.TELL_MESSAGE) or 3081,          fileDataID = 567482, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_BNET_TOAST",     label = "Blizzard Battle.net",     soundKit = (sk and sk.UI_BNET_TOAST) or 18019,        fileDataID = 567421, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_READY_CHECK",    label = "Blizzard Ready Check",    soundKit = (sk and sk.READY_CHECK) or 8960,           fileDataID = 567478, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_MAP_PING",       label = "Blizzard Map Ping",       soundKit = (sk and sk.MAP_PING) or 3175,              fileDataID = 567416, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_AUCTION_BELL",   label = "Blizzard Auction Bell",   soundKit = (sk and sk.AUCTION_WINDOW_OPEN) or 5274,   fileDataID = 567499, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_QUEST_COMPLETE", label = "Blizzard Quest Complete", soundKit = (sk and sk.IG_QUEST_LIST_COMPLETE) or 878, fileDataID = 567439, group = "BLIZZARD", source = "Blizzard" },
     }
 end
 
-local CUSTOM_SOUND_BY_KEY = {}
-local CUSTOM_SOUND_BY_FILE = {}
-for _, sDef in ipairs(CUSTOM_SOUND_EFFECTS) do
-    sDef.group = "BUILTIN"
-    sDef.source = "DynamicSuite"
-    CUSTOM_SOUND_BY_KEY[sDef.value] = sDef
-    if sDef.alias then
-        CUSTOM_SOUND_BY_KEY[sDef.alias] = sDef
-    end
-    CUSTOM_SOUND_BY_FILE[sDef.file] = sDef
+local BLIZZARD_SOUND_BY_KEY = {}
+for _, bDef in ipairs(BuildBlizzardChatSoundList()) do
+    BLIZZARD_SOUND_BY_KEY[bDef.value] = bDef
+end
+
+local function IsBuiltInBlizzardSoundKey(key)
+    return type(key) == "string" and BLIZZARD_SOUND_BY_KEY[key] ~= nil
 end
 
 local DEFAULTS = {
@@ -360,11 +346,11 @@ local DEFAULTS = {
     soundOutputChannel          = "Master", -- "Master" | "SFX" | "Dialog"
     soundThrottleSec            = 1.5, -- 0 | 1.5 | 3 | 5
     channelSounds               = {
-        WHISPER = "ds_bell_whisper",   -- Covers CHAT_MSG_WHISPER & CHAT_MSG_BN_WHISPER
-        GUILD   = "ds_chime_soft",     -- Covers CHAT_MSG_GUILD & CHAT_MSG_OFFICER
-        PARTY   = "ds_ping_crystal",   -- Covers CHAT_MSG_PARTY, CHAT_MSG_PARTY_LEADER, CHAT_MSG_INSTANCE_CHAT, CHAT_MSG_INSTANCE_CHAT_LEADER
-        RAID    = "ds_pulse_sonar",    -- Covers CHAT_MSG_RAID, CHAT_MSG_RAID_LEADER, CHAT_MSG_RAID_WARNING
-        SAY     = "NONE",              -- Covers CHAT_MSG_SAY & CHAT_MSG_YELL (Off by default so city crowd /say doesn't spam)
+        WHISPER = "BLIZZ_WHISPER",      -- Covers CHAT_MSG_WHISPER & CHAT_MSG_BN_WHISPER
+        GUILD   = "BLIZZ_BNET_TOAST",   -- Covers CHAT_MSG_GUILD & CHAT_MSG_OFFICER
+        PARTY   = "BLIZZ_MAP_PING",     -- Covers CHAT_MSG_PARTY, CHAT_MSG_PARTY_LEADER, CHAT_MSG_INSTANCE_CHAT, CHAT_MSG_INSTANCE_CHAT_LEADER
+        RAID    = "BLIZZ_RAID_WARNING", -- Covers CHAT_MSG_RAID, CHAT_MSG_RAID_LEADER, CHAT_MSG_RAID_WARNING
+        SAY     = "NONE",               -- Covers CHAT_MSG_SAY & CHAT_MSG_YELL (Off by default so city crowd /say doesn't spam)
     },
 
     -- Tab 4: Links, Scrolling, Chat History & Performance
@@ -550,27 +536,17 @@ local function EnsureDB()
         for _, legacyKey in ipairs({ "BN_WHISPER", "PARTY_LEADER", "RAID_LEADER", "INSTANCE", "OFFICER", "SAY_YELL", "CHANNEL" }) do
             _G.DynamicChatDB.channelSounds[legacyKey] = nil
         end
-        for chKey, defVal in pairs(DEFAULTS.channelSounds) do
-            local cur = _G.DynamicChatDB.channelSounds[chKey]
-            local isExternalOrBlizz = (type(cur) == "string" and (cur:find("^LSM:") or cur:find("^DBM:") or cur:find("^BW:") or cur:find("^WA:") or cur:find("^ELV:") or cur:find("^BLIZZ_") or cur:find("^ex_") or cur:find("[\\/]")))
-            if not (cur == "NONE" or CUSTOM_SOUND_BY_KEY[cur] or CUSTOM_SOUND_BY_FILE[cur] or isExternalOrBlizz) then
-                _G.DynamicChatDB.channelSounds[chKey] = defVal
-            end
-        end
     end
     for chKey, defVal in pairs(DEFAULTS.channelSounds) do
         local cur = _G.DynamicChatDB.channelSounds[chKey]
-        if type(cur) == "string" and CUSTOM_SOUND_BY_FILE[cur] then
-            cur = CUSTOM_SOUND_BY_FILE[cur].value
-            _G.DynamicChatDB.channelSounds[chKey] = cur
-        end
         if type(cur) ~= "string" and type(cur) ~= "number" then
             _G.DynamicChatDB.channelSounds[chKey] = defVal
         elseif cur == "" then
             _G.DynamicChatDB.channelSounds[chKey] = defVal
-        elseif cur ~= "NONE" and not CUSTOM_SOUND_BY_KEY[cur] then
+        elseif cur ~= "NONE" and not IsBuiltInBlizzardSoundKey(cur) then
             local s = tostring(cur)
-            local validExternal = s:find("^LSM:") or s:find("^DBM:") or s:find("^BW:") or s:find("^WA:") or s:find("^ELV:") or s:find("^BLIZZ_") or s:find("^ex_") or s:find("[\\/]") or (type(cur) == "number")
+            local isLegacyWavKey = (type(cur) == "string") and (s:match("^ds_") ~= nil or s:match("^ex_") ~= nil or s:lower():match("%.wav$") ~= nil)
+            local validExternal = (not isLegacyWavKey) and (s:find("^LSM:") or s:find("^DBM:") or s:find("^BW:") or s:find("^WA:") or s:find("^ELV:") or s:find("^EXBOSS:") or s:find("[\\/]") or (type(cur) == "number"))
             if not validExternal then
                 _G.DynamicChatDB.channelSounds[chKey] = defVal
             end
@@ -6485,26 +6461,26 @@ local SOUND_CHANNEL_DEFS = {
     {
         key        = "WHISPER",
         title      = "Whisper & Battle.net Whisper",
-        desc       = "Plays when you receive an incoming character whisper or Battle.net whisper (your own outgoing whispers are ignored).",
-        defaultVal = "ds_bell_whisper",
+        desc       = "Plays when you receive an incoming character whisper or Battle.net whisper (including self-whispers).",
+        defaultVal = "BLIZZ_WHISPER",
     },
     {
         key        = "GUILD",
         title      = "Guild & Officer Chat",
         desc       = "Plays when a guildmate posts in Guild or Officer chat (ignores messages you send).",
-        defaultVal = "ds_chime_soft",
+        defaultVal = "BLIZZ_BNET_TOAST",
     },
     {
         key        = "PARTY",
         title      = "Party & Instance Chat",
         desc       = "Plays when a group member posts in Party, Party Leader, or LFD/LFR/Battleground Instance chat.",
-        defaultVal = "ds_ping_crystal",
+        defaultVal = "BLIZZ_MAP_PING",
     },
     {
         key        = "RAID",
         title      = "Raid & Raid Warning",
         desc       = "Plays when someone posts in Raid, Raid Leader, or Raid Warning chat.",
-        defaultVal = "ds_pulse_sonar",
+        defaultVal = "BLIZZ_RAID_WARNING",
     },
     {
         key        = "SAY",
@@ -6593,15 +6569,6 @@ function DynamicChat:ScanExternalSounds(force)
     local skipPaths = {}
     local skipNames = {}
 
-    for _, def in ipairs(CUSTOM_SOUND_EFFECTS) do
-        local p = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\" .. def.file
-        byKey[def.value] = def
-        if def.alias then byKey[def.alias] = def end
-        byKey[def.file] = def
-        skipPaths[p:lower()] = true
-        skipNames[def.label:lower()] = true
-        skipNames[("DynamicSuite: " .. def.label):lower()] = true
-    end
     for _, bDef in ipairs(blizz) do
         byKey[bDef.value] = bDef
     end
@@ -6713,6 +6680,24 @@ function DynamicChat:ScanExternalSounds(force)
         end
     end
 
+    for _, globalKey in ipairs({ "EXBOSS", "EX_Boss", "ExBoss" }) do
+        local ex = _G[globalKey]
+        if type(ex) == "table" then
+            local sub = ex.Sounds or ex.sounds or ex.Sound
+            if type(sub) == "table" then
+                for k, v in pairs(sub) do
+                    if IsSafeAccessibleValue(k) and IsSafeAccessibleValue(v) then
+                        if type(k) == "string" and LooksLikeSoundAsset(v) then
+                            AddExternalCandidate("EXBOSS", k, v, "EXBOSS")
+                        elseif type(v) == "string" and LooksLikeSoundAsset(k) then
+                            AddExternalCandidate("EXBOSS", v, k, "EXBOSS")
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     table.sort(ext, function(a, b)
         return (a.name or a.label):lower() < (b.name or b.label):lower()
     end)
@@ -6728,14 +6713,17 @@ local function ResolveChannelSound(soundKey)
     if not soundKey or soundKey == "" or soundKey == "NONE" then
         return nil, false
     end
+    if type(soundKey) == "string" and (soundKey:match("^ds_") or soundKey:match("^ex_") or soundKey:lower():match("%.wav$")) then
+        local fb = BLIZZARD_SOUND_BY_KEY["BLIZZ_RAID_WARNING"] or BuildBlizzardChatSoundList()[1]
+        return fb, true
+    end
+    if IsBuiltInBlizzardSoundKey(soundKey) then
+        return BLIZZARD_SOUND_BY_KEY[soundKey], false
+    end
     local suite = _G.DynamicSuite
     if suite and type(suite.ResolveSoundChoice) == "function" then
         local hit, isFb = suite:ResolveSoundChoice(soundKey, "BLIZZ_RAID_WARNING")
         if hit then return hit, isFb end
-    end
-    local localBuiltin = CUSTOM_SOUND_BY_KEY[soundKey] or CUSTOM_SOUND_BY_FILE[soundKey]
-    if localBuiltin then
-        return localBuiltin, false
     end
     local reg = DynamicChat:ScanExternalSounds(false)
     local hit = reg.byKey and reg.byKey[soundKey]
@@ -6744,7 +6732,7 @@ local function ResolveChannelSound(soundKey)
         hit = reg.byKey and reg.byKey[soundKey]
     end
     if not hit and type(soundKey) == "string" then
-        local stripped = soundKey:gsub("^LSM:", ""):gsub("^DBM:", ""):gsub("^BW:", ""):gsub("^WA:", ""):gsub("^ELV:", "")
+        local stripped = soundKey:gsub("^LSM:", ""):gsub("^DBM:", ""):gsub("^BW:", ""):gsub("^WA:", ""):gsub("^ELV:", ""):gsub("^EXBOSS:", "")
         hit = reg.byKey and reg.byKey[stripped]
     end
     if hit then
@@ -6758,14 +6746,6 @@ local function GetSoundOptionsForChannel(_)
     local opts = {
         { value = "NONE", label = "None (Muted)" },
     }
-    table.insert(opts, { isHeader = true, label = "BUILT-IN (EXBOSS CLARITY)" })
-    for _, item in ipairs(CUSTOM_SOUND_EFFECTS) do
-        opts[#opts + 1] = {
-            value = item.value,
-            label = item.label,
-            file  = item.file,
-        }
-    end
 
     local reg = DynamicChat:ScanExternalSounds(true)
     local blizzList = (reg and type(reg.blizzard) == "table" and #reg.blizzard > 0 and reg.blizzard) or BuildBlizzardChatSoundList()
@@ -6862,13 +6842,7 @@ function DynamicChat:PlaySoundOptionKey(soundKey, channelKey, isPreview)
     end
 
     local played = false
-    if soundDef.file then
-        local soundPath = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\" .. soundDef.file
-        if type(_G.PlaySoundFile) == "function" then
-            local okP, willPlay = pcall(_G.PlaySoundFile, soundPath, outChan)
-            played = (okP and willPlay ~= false)
-        end
-    elseif type(soundDef.soundKit) == "number" then
+    if type(soundDef.soundKit) == "number" then
         if type(_G.PlaySound) == "function" then
             local okK, willPlay = pcall(_G.PlaySound, soundDef.soundKit, outChan)
             played = (okK and willPlay ~= false)
@@ -6925,45 +6899,49 @@ function DynamicChat:HandleIncomingChatSoundEvent(event, arg2, arg12)
     end
 
     -- 2. Self-Message Suppression (Secret-Value Guarded via sender GUID & UnitName)
-    local guidChecked = false
-    if IsSafeAccessibleValue(arg12) and type(arg12) == "string" and arg12 ~= "" and type(_G.UnitGUID) == "function" then
-        local okG, pGuid = pcall(_G.UnitGUID, "player")
-        if okG and IsSafeAccessibleValue(pGuid) and type(pGuid) == "string" and pGuid ~= "" then
-            guidChecked = true
-            if arg12 == pGuid then
-                return
-            end
-        end
-    end
-    local nameChecked = false
-    if IsSafeAccessibleValue(arg2) and type(arg2) == "string" and arg2 ~= "" and type(_G.UnitName) == "function" then
-        local okN, pName = pcall(_G.UnitName, "player")
-        local okFN, fullPlayer = false, nil
-        if type(_G.GetUnitName) == "function" then
-            okFN, fullPlayer = pcall(_G.GetUnitName, "player", true)
-        end
-        if okN and IsSafeAccessibleValue(pName) and type(pName) == "string" and pName ~= "" then
-            nameChecked = true
-            if arg2 == pName then
-                return
-            end
-            if okFN and IsSafeAccessibleValue(fullPlayer) and type(fullPlayer) == "string" and fullPlayer ~= "" and arg2 == fullPlayer then
-                return
-            end
-            if not guidChecked then
-                local shortSender = arg2:match("^([^%-]+)") or arg2
-                if shortSender == pName then
+    -- Bypass suppression on incoming whisper events (CHAT_MSG_WHISPER / CHAT_MSG_BN_WHISPER) so self-whispers play normally.
+    local isIncomingWhisper = (event == "CHAT_MSG_WHISPER" or event == "CHAT_MSG_BN_WHISPER")
+    if not isIncomingWhisper then
+        local guidChecked = false
+        if IsSafeAccessibleValue(arg12) and type(arg12) == "string" and arg12 ~= "" and type(_G.UnitGUID) == "function" then
+            local okG, pGuid = pcall(_G.UnitGUID, "player")
+            if okG and IsSafeAccessibleValue(pGuid) and type(pGuid) == "string" and pGuid ~= "" then
+                guidChecked = true
+                if arg12 == pGuid then
                     return
                 end
             end
         end
-    end
-    if (not guidChecked and IsSecretValue(arg12)) or (not nameChecked and IsSecretValue(arg2)) then
-        local nowSent = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
-        local sentType = mapEntry.sentType
-        local lastSent = (self._lastSentByType and sentType and self._lastSentByType[sentType]) or 0
-        if nowSent > 0 and (nowSent - lastSent) <= 0.45 then
-            return
+        local nameChecked = false
+        if IsSafeAccessibleValue(arg2) and type(arg2) == "string" and arg2 ~= "" and type(_G.UnitName) == "function" then
+            local okN, pName = pcall(_G.UnitName, "player")
+            local okFN, fullPlayer = false, nil
+            if type(_G.GetUnitName) == "function" then
+                okFN, fullPlayer = pcall(_G.GetUnitName, "player", true)
+            end
+            if okN and IsSafeAccessibleValue(pName) and type(pName) == "string" and pName ~= "" then
+                nameChecked = true
+                if arg2 == pName then
+                    return
+                end
+                if okFN and IsSafeAccessibleValue(fullPlayer) and type(fullPlayer) == "string" and fullPlayer ~= "" and arg2 == fullPlayer then
+                    return
+                end
+                if not guidChecked then
+                    local shortSender = arg2:match("^([^%-]+)") or arg2
+                    if shortSender == pName then
+                        return
+                    end
+                end
+            end
+        end
+        if (not guidChecked and IsSecretValue(arg12)) or (not nameChecked and IsSecretValue(arg2)) then
+            local nowSent = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
+            local sentType = mapEntry.sentType
+            local lastSent = (self._lastSentByType and sentType and self._lastSentByType[sentType]) or 0
+            if nowSent > 0 and (nowSent - lastSent) <= 0.45 then
+                return
+            end
         end
     end
 
@@ -9253,7 +9231,7 @@ local function RenderChatEmbedded(arg1, arg2)
     local sec3_sounds = CreateSectionBox(
         page3,
         "CHAT NOTIFICATION SOUNDS",
-        "Play crisp 48 kHz EXBOSS-style chimes, Blizzard Raid Warning, or SharedMedia/DBM/BigWigs/WeakAuras/ElvUI alerts when messages arrive. Selecting a sound previews it automatically, or click [Play].",
+        "Per-channel chat notification alerts with Blizzard built-in sounds, SharedMedia/DBM/EXBOSS/BigWigs/WeakAuras support, and anti-spam cooldowns. Selecting a sound previews it automatically, or click [Play].",
         root
     )
     local sec3_rules = CreateSectionBox(
@@ -10031,8 +10009,7 @@ local function RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "15/11/2026",
         entries = {
-            { type = "FEATURE",  text = "External Sound Discovery (LibSharedMedia-3.0, DBM, BigWigs, WeakAuras, ElvUI), Blizzard Raid Warning & 48 kHz EXBOSS Sound Library (15/11/2026): Upgraded DynamicChat's 10 built-in sound effects to crisp 48 kHz peak-normalised (-1.5 dBFS) EXBOSS-style clarity (EX Alert Ping, EX Double Stinger, EX Sonar Lock, EX Crystal Bell, EX Phase Chime, EX Sharp Triad, EX Pulse Pop, EX Clean Horn, EX High Glass, EX Target Lock), preserved Blizzard's standard Raid Warning (and Blizzard Whisper / Battle.net / Ready Check / Map Ping) under the Blizzard section with dual PlaySound/PlaySoundFile routing, added live LibSharedMedia-3.0, DBM, BigWigs, WeakAuras, and ElvUI runtime sound scanning with late-load refresh and safe fallback to Blizzard Raid Warning if a sound addon is disabled, and upgraded the channel sound menu with grouped headers, inline [>] previews, scrolling, and a live search filter." },
-            { type = "NEW",      text = "Custom Chat Notification Sounds & 10 Bespoke Sound Effects (15/11/2026): Added 10 lightweight synthesised 44.1kHz mono .wav sound effects (Soft Chime, Crystal Ping, Whisper Bell, Marimba Note, Sonar Pulse, Double Tap, Water Drop, Warm Chord, Wood Tick, Subtle Alert) played cleanly via PlaySoundFile, grouped Tab 3 into a dedicated 'CHAT NOTIFICATION SOUNDS' card featuring the 'Chat Notification Sounds' master toggle, 'Mute Sounds in Combat' toggle, 5 channel rows (Whisper & Battle.net Whisper, Guild & Officer Chat, Party & Instance Chat, Raid & Raid Warning, and Say & Yell with Say & Yell None by default), dropdown auto-preview plus a compact [Play] preview button beside each dropdown, 1.5s anti-spam per-channel cooldown, and secret-value-guarded self-message suppression (checking sender GUID and UnitName('player')) so your own outgoing messages never trigger alerts." },
+            { type = "FEATURE",  text = "External Sound Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Default Sounds & Self-Whisper Alerts (15/11/2026): Removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; set clean channel defaults (Blizzard Whisper, Blizzard Battle.net, Blizzard Map Ping, Blizzard Raid Warning, and Say & Yell muted by default) with automatic migration from legacy ds_*/ex_* keys; added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI sound scanning with late-load refresh and safe fallback to Blizzard Raid Warning; restored self-whisper alert playback on incoming CHAT_MSG_WHISPER / CHAT_MSG_BN_WHISPER events while keeping self-message suppression active for group and public channels; and upgraded channel sound dropdowns with Blizzard / SharedMedia headers, inline [>] previews, scrolling, a live search filter, and dedicated [Play] buttons." },
             { type = "FIX",      text = "Flush Bottom-Left (0, 0) Chat Clamping & Persistence (14/11/2026): Enforced ChatFrame1:SetClampedToScreen(false) whenever DynamicChat manages layout, added GetVisibleContainerExtents() and GetLiveOuterBottomLeft() so clamping measures only the visible chat container frame without external button or negative bottom EditBox overhangs, and canonicalised chatFramePos to BOTTOMLEFT outer-container coordinates so dragging or nudging to X = 0, Y = 0 sits flush against the bottom-left screen corner across HUD Edit toggles, UI scale events, and /reload." },
             { type = "FIX",      text = "Unified /ww Instant Target Whisper Across All Chat/Whisper EditBoxes (13/11/2026): Kept /ww as the instant target whisper trigger with self-targeting (UnitIsUnit('target', 'player')) using GetUnitName('target', true), separated group leave cleanly into /lg, called ChatEdit_UpdateHeader before SetText + SetCursorPosition so 'Tell <TargetName>:' updates immediately on spacebar even inside existing whisper tabs, and hooked all 1..NUM_CHAT_WINDOWS editboxes plus FCF_OpenTemporaryWindow and ChatEdit_ActivateChat regardless of external chat addons." },
             { type = "FIX",      text = "Removed Auto-Yield & Asserted Full DynamicChat Priority Over EllesmereUI Chat / ElvUI Chat (13/11/2026): DynamicChat no longer yields chat frame skinning, tab styling, EditBox anchoring, or bottom-left 0px positioning to EllesmereUI Chat or ElvUI Chat. Cleared legacy yieldSharedHooks and yieldHooks flags on load, removed the Tab 3 Compatibility Mode (Auto-Yield) card, and enforced strict 2-button mutual exclusion ('Use DynamicChat Only' vs 'Use [Addon] Only') in the Conflict Scanner." },
