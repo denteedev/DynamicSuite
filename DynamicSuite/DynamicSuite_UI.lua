@@ -4712,7 +4712,7 @@ function addonTable.CreateMainConfigUI()
                         host._activeModHost = modHost
 
                         if f.verPill and f.verPill.label then
-                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "2.1.2"
+                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "2.2.0"
                             f.verPill.label:SetText("v" .. tostring(mVer))
                         end
                         UpdateStatusBar(true)
@@ -5144,7 +5144,7 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        local curVer = addonTable.ADDON_VERSION or "2.1.2"
+        local curVer = addonTable.ADDON_VERSION or "2.2.0"
         local curSig = f.GetSuiteChangelogSignature and f.GetSuiteChangelogSignature() or curVer
         local seenVer = gTbl.lastSeenChangelogVer or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogVer)
         local seenSig = gTbl.lastSeenChangelogSig or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogSig)
@@ -7097,7 +7097,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.2"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.2.0"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -7110,6 +7110,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "NEW",      title = "v2.2.0 Release: DynamicPrep Blizzard Window QoL (Side-by-Side, Drag & Save, Ctrl+Scroll Scale & EllesmereUI Coexistence)", desc = "Added Tab 3 Blizzard Window Quality of Life controls in DynamicPrep so Character, Talents & Spells, Group Finder, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Merchant, Mail, and Auction House stay open side-by-side without trapping Escape (with header Pin buttons), remember dragged header positions across reloads, scale via Ctrl+Scroll (temporary session) or Ctrl+Shift+Scroll (permanent 70%-140% with Obsidian/Blaze-Orange toast), reset on header Right-Click or [Reset All Windows], exclude World Map and Game Menu cleanly out of combat, and yield silently when EllesmereUI Shifter is active." },
                 { badge = "FIXED",    title = "v2.1.2 Release: DynamicPrep Midnight Season 2 Enchantable Slot List Fix", desc = "Updated DynamicPrep's equipped gear enchant scanner to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
                 { badge = "NEW",      title = "v2.1.1 Release: 3-Row 560x110 HUD Edit Inspector (Row 3 Live Appearance Bar), First-Open Left Rail & Right Workspace Anchor Fix", desc = "Upgraded DynamicSuiteEditModeModal and standalone DynamicMarkerEditModeInspector into a unified 560x110 3-row draggable inspector dock with live Row 3 controls across all 6 HUDs (Opacity 20%-100%, Border Style Accent/Dark/None, and Orientation Horiz/Vert with instant screen-bounds re-clamping); fixed first-open /ds Left Rail & first-click [+ HUD] mover initialisation; and anchored leftRail and workspace directly to DynamicSuiteMainFrame with explicit SetSize fallbacks, SetClipsChildren(false) on outer containers, and elevated FrameLevels so the right-hand DynamicLoad and peer module workspaces always render cleanly." },
                 { badge = "NEW",      title = "v2.1.0 Release: Compact Draggable 560x74 HUD Edit Inspector, Hidden-By-Default Movers & Unified [Edit HUD] Cards", desc = "Redesigned the HUD Edit Mode dock into a compact 560x74 2-row draggable toolbar with a HUD Selector Dropdown (green/red status dots), non-truncated Hidden/Shown pills, Grid/Reset/Back to Suite, X/Y coordinates & nudges, Center X/Y, Scale slider (60%-150%), and 60px off-screen fail-safe edge clamping; hid disabled/Off HUD movers by default on entering HUD Edit Mode with temporary 'HIDDEN (Click Shown to Enable)' previewing when explicitly selected; and standardised Obsidian/Blaze-Orange [Edit HUD] buttons + shared ON-SCREEN ALERT & TELEPORT TOAST HUD controls across DynamicLoad, Theme & Font Studio, DynamicGroup, DynamicPrep, DynamicMarker, and DynamicChat." },
@@ -7170,6 +7171,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
             openModule = "DynamicMarker",
             items = {
+                { badge = "IMPROVED", title = "v2.2.0 Release: Version & Storefront Lockstep Parity", desc = "Synchronised version metadata and duplicate-install coexistence checks cleanly to v2.2.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
                 { badge = "NEW",      title = "v2.1.1 Release: 3-Row 560x110 HUD Edit Inspector (Row 3 Live Appearance Bar) & Mover Visibility Fix", desc = "Upgraded DynamicMarkerEditModeInspector into a 560x110 3-row draggable inspector dock with live Row 3 appearance controls for Focus Icons and World Flares: Opacity slider (20%-100%, step 5%), Border Style segmented pills (Accent | Dark | None), Orientation toggle (Horiz | Vert) with automatic screen-bounds re-clamping, and full [Reset] recovery." },
                 { badge = "FIXED",    title = "v2.1.0 World Flare Hardware Keybinds & Instant Telemetry / Sub-Tab Label Refresh", desc = "Anchored the secure flare cycle/clear buttons on-screen (1x1, alpha 0, non-mouse-blocking), removed the SecureHandlerWrapScript button override return so LeftButton reliably runs /wm [@cursor] and /cwm all cleanly in and out of combat, added Right-Click unbind, updated top Suite telemetry and 'World Flare Keys (...)' labels live on every bind/clear/reset, standardised [Edit HUD] buttons, and brought the compact 560x74 draggable HUD Edit dock with 60px fail-safe clamping and Hidden-by-default movers to both Suite and standalone DynamicMarker." },
                 { badge = "FIXED",    title = "v1.9.9 Canonical UIParent-Local HUD Coordinates, Dark-Obsidian Coexistence Modal & Unified HUD Dock", desc = "Stored saved TargetBar and FlareBar X/Y coordinates strictly in unscaled UIParent-local offsets relative to screen CENTER and divided by barScale strictly inside DM:SetBarCenterPoint after SetScale/SetSize and before SetClampedToScreen(true) so top/bottom/corner edge bars stay at identical pixel coordinates across /reload at 0.70, 1.00, and 1.30 scales; added the custom dark-obsidian coexistence reload modal (ShowMarkerConflictReloadModal); and unified HUD Edit Mode across Suite & standalone modes." },
@@ -7244,6 +7246,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
             openModule = "DynamicPrep",
             items = {
+                { badge = "NEW",      title = "v2.2.0 Release: Blizzard Window QoL (Side-by-Side Panels, Drag & Save, Ctrl+Scroll Header Scaling & Silent EllesmereUI Coexistence)", desc = "Added Tab 3 controls for 'Keep Blizzard Windows Open Side-by-Side' (with compact header Pin buttons and clean Escape closing), 'Draggable Blizzard Windows (Save Position)' (with Right-Click header reset and [Reset All Windows]), and 'Header Ctrl+Scroll Window Scaling' (Ctrl+Scroll for temporary session scale vs Ctrl+Shift+Scroll to save permanently between 70%-140% with an auto-fading Dark-Obsidian/Blaze-Orange toast); strictly excludes World Map and Game Menu, guards all hooks out of combat, and automatically yields to EllesmereUI frame management." },
                 { badge = "FIXED",    title = "v2.1.2 Release: Midnight Season 2 Enchantable Slot List Fix", desc = "Updated equipped gear enchant scanning in the Durability capsule to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
                 { badge = "NEW",      title = "One-Click Catalyst & Raid Combat UNIT_AURA Throttling (3.3 Hz Coalesced)", desc = "Added a 'One-Click Catalyst' QoL toggle in Tab 3 (enabled by default) that hooks ItemInteractionFrame.ButtonFrame.ActionButton and CONFIRM_ITEM_INTERACTION in Revival Catalyst mode (Enum.UIItemInteractionType.ItemConversion) to complete tier conversions in a single click without a confirmation popup or 5-second wait (hold Shift to bypass). Added an O(1) VALID_GROUP_UNITS filter ('player', 'party1'..'party4', 'raid1'..'raid40' - ignoring target, focus, mouseover, pets, nameplates, and bosses), coalesced all in-combat raid buff (16/17 MotW) and Symbiotic bond checks via a 0.30s (3.3 Hz max) C_Timer.NewTimer throttle, eliminated per-scan table allocations, and skipped Food, Flask, Weapon Oil, Augment Rune, and Bag Item Location scans during combat." },
                 { badge = "FIXED",    title = "Greyed-Out Ctrl-to-Release Death Button & Modifier-Free Sequential [DynamicHeal] Macro", desc = "Hooked StaticPopup_OnUpdate and StaticPopup1..4 OnUpdate/OnShow/OnHide alongside MODIFIER_STATE_CHANGED, PLAYER_ALIVE, and PLAYER_UNGHOST so the DEATH StaticPopup 'Release Spirit' button stays natively disabled (greyed out with 'Hold CTRL to Release') every frame until Ctrl is held and restores cleanly when hidden; and stripped all [mod]/[nomod] conditionals from [DynamicHeal] in favour of a modifier-free sequential priority fallback (#showtooltip + /castsequence reset=combat item:<HealthstoneID>, item:<HealPotID> or /use item:<SingleID>) with out-of-combat cooldown reordering and post-combat sequence reset." },
@@ -14139,7 +14142,7 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.1.2"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.2.0"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -14967,7 +14970,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.2") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.2.0") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -15028,7 +15031,7 @@ function addonTable.HookGameMenu()
             cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
             if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
-            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.2") .. "|r")
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.2.0") .. "|r")
             openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
             if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
@@ -15134,7 +15137,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "2.1.2",
+        version = addonTable.ADDON_VERSION or "2.2.0",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,

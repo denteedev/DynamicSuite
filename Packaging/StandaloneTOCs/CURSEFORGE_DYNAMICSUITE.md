@@ -39,7 +39,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ### 2. DynamicPrep (`/dprep`, `/dp`) -- Telemetry Bar, Raid Buffs & QoL
 * **Top Info Bar:** Customisable bar showing Primary Stat, Secondary Stats, Spec & Loot Spec, M+ Keystone, Durability, FPS/Ping, plus Ready Check and Pull Countdown buttons for leaders.
-* **Clickable Raid Buffs & Survival Macro:** One-click reminders for missing class raid buffs and consumables, plus a smart `[DynamicHeal]` macro (Healthstone into Healing Potion), quest/gossip automation, cinematic auto-skip, and Hold CTRL to Release Spirit protection.
+* **Clickable Raid Buffs, Survival Macro & Blizzard Window QoL:** One-click reminders for missing class raid buffs and consumables, a smart `[DynamicHeal]` macro (Healthstone into Healing Potion), quest/gossip & One-Click Catalyst automation, Hold CTRL to Release Spirit protection, and side-by-side Blizzard windows with saved drag positions, header Ctrl+Scroll / Ctrl+Shift+Scroll scaling, and automatic EllesmereUI coexistence.
 
 ### 3. DynamicMarker (`/dm`, `/fm`) -- Target Marking, World Flares & Macros
 * **Smart Macros:** One-click `[DynamicMark]` focus/raid marker macro and `[DynamicKick]` interrupt macro that automatically updates your interrupt spell when you swap specs across all 13 classes.

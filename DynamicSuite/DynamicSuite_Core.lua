@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.1.2"
+    local fb = fallback or "2.2.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.2")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.2.0")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "15/11/2026",
     entries = {
+        { type = "FEATURE", text = "Release v2.2.0 - DynamicPrep Blizzard Window QoL & Silent EllesmereUI Coexistence (15/11/2026): Added Tab 3 'Blizzard Window Quality of Life' controls in DynamicPrep: 'Keep Blizzard Windows Open Side-by-Side' (Character, Talents & Spells, Group Finder, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Merchant, Mail, and Auction House stay open together without trapping Escape, plus a compact header Pin button to keep specific panels open past Escape; excludes World Map and Game Menu with 0% combat taint), 'Draggable Blizzard Windows (Save Position)' (drag headers out of combat with clamped screen bounds and saved positions across reloads, Right-Click header to reset), 'Header Ctrl+Scroll Window Scaling' (Ctrl + Scroll for temporary session scaling 70%-140% in 5% steps that resets on close, Ctrl + Shift + Scroll to save permanently with a Dark-Obsidian/Blaze-Orange readout toast), [Reset All Windows], and zero-config automatic silent coexistence when EllesmereUI frame management is active." },
         { type = "FIX",     text = "Release v2.1.2 - DynamicPrep Midnight Season 2 Enchantable Slot List Fix (15/11/2026): Updated DynamicPrep's equipped gear enchant scanner to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
         { type = "FEATURE", text = "Release v2.1.1 - Live 3-Row HUD Appearance Bar (560x110) & First-Open /ds + First-Click [+ HUD] Fixes (15/11/2026): Expanded DynamicSuiteEditModeModal into a unified 560x110 3-row draggable dock by adding Row 3 (Live Appearance Bar) with a 20%-100% Opacity slider (step 5%, keeping mover borders/labels readable via SetIgnoreParentAlpha), Accent | Dark | None Border Style segmented pills synced 1:1 with module sub-settings, Horiz | Vert Orientation toggle for Target Icon Bar, World Flare Bar, and Raid Buffs (with automatic screen-bounds re-clamping and dimmed fixed-layout state for Alert Toast, Prep Bar, and Chat Frame), and full Position/Scale/Opacity/Border/Orientation [Reset]. Fixed first-open /ds empty Left Suite Rail (unconditional explicit Left Rail dimensions, child population, and OnShow visibility plus guarded lazy wrappers), eliminated first-click [+ HUD] missing movers via EnsureAllEditModeHudFramesInitialized() and callback-first SyncAllEditModeHuds ordering, guarded modal construction against premature OnHide cancellation, and kept the HUD Selector popup closed on entry." },
         { type = "FIX",     text = "HUD Edit Mode Mover Visibility & Prep Bar Drag Shield Layering (15/11/2026): Fixed isHudEditModeActive lexical scoping in DynamicSuite_UI.lua so Shown HUDs render live previews and mover overlays immediately when entering HUD Edit Mode, split DynamicPrep's SetBarEditMode and SetBuffsEditMode states, and disabled child mouse capture during HUD Edit Mode so bars drag smoothly across their full width." },
@@ -3110,6 +3111,18 @@ local BUILTIN_SEARCH_SEED = {
       title = "Automated Healing Macro ([DynamicHeal])",
       desc = "Maintain a 1-button [DynamicHeal] macro that prioritises Recuperate out of combat and Warlock Healthstones > Healing Potions in combat.",
       keywords = "automated healing macro dynamicheal healthstone potion silvermoon recuperate survival" },
+    { moduleKey = "prep", category = "GENERAL", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Keep Blizzard Windows Open Side-by-Side",
+      desc = "Prevent opening standard Blizzard panels (Character, Talents, Dungeon Finder, Collections, Professions, Merchant, Mail, Auction House) from auto-closing other windows, with header Pin toggles and clean Escape dismissal.",
+      keywords = "blizzard window multi panel no auto close side by side pin escape character pve merchant mail auction" },
+    { moduleKey = "prep", category = "GENERAL", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Draggable Blizzard Windows & Ctrl+Scroll Header Scaling",
+      desc = "Drag supported Blizzard window headers out of combat to save positions, Ctrl+Wheel to scale temporarily for the session or Ctrl+Shift+Wheel to save scale (70%-140%), and Right-Click header to reset.",
+      keywords = "draggable blizzard windows move save position ctrl scroll scale resize header right click reset" },
+    { moduleKey = "prep", category = "GENERAL", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Reset All Windows & Silent EllesmereUI Coexistence",
+      desc = "Restore all supported Blizzard panel positions, scales, and pins to defaults, or coexist silently when EllesmereUI Shifter frame management is enabled.",
+      keywords = "reset blizzard windows layout ellesmereui shifter coexistence" },
 
     -- ========================================================================
     -- 6. DYNAMICGROUP ("group") - LFG Region Filter, Auto-Invite & Keystones

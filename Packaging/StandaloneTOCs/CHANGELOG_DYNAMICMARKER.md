@@ -1,5 +1,12 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.1.2 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.2.0 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicMarker v2.2.0 (15/11/2026)
+
+### Improved
+* **Version & Coexistence Lockstep Parity:** Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to `v2.2.0` for Retail 12.1.5 (Interface 120105, Midnight Season 2).
 
 ---
 

@@ -1,6 +1,6 @@
 # DynamicSuite -- 8-Module QoL, Utility & Performance Hub
 
-**Version:** v2.1.2 (15/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Version:** v2.2.0 (15/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, chat, and performance hub for World of Warcraft Retail. All 8 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
@@ -29,7 +29,7 @@
 | Module | Slash | What It Does |
 | :--- | :--- | :--- |
 | **DynamicLoad** | `/dl` | Automatically switches addon profiles for Outdoor, Delves, Dungeons, Raid, and PvP with Always and Never load locks |
-| **DynamicPrep** | `/dprep`, `/dp` | Top stat/durability/FPS bar, clickable Raid Buff & Consumable reminders, survival healing macro, and quest/gossip QoL |
+| **DynamicPrep** | `/dprep`, `/dp` | Top stat/durability/FPS bar, clickable Raid Buff & Consumable reminders, survival healing macro, quest/gossip QoL, and side-by-side draggable/scalable Blizzard windows |
 | **DynamicMarker** | `/dm`, `/fm` | Instant focus & raid target marking, F4/F5 world flare cycling, floating Focus & Flare bars, and smart interrupt macro |
 | **DynamicZoom** | `/dz` | Unlocks 39-yard max camera zoom, speeds up scroll zooming, and fades trees/pillars instead of snapping your camera |
 | **DynamicFPS** | `/dfps` | Switches graphics settings automatically per zone, protects combat FPS, and tunes SpellQueueWindow from live ping + haste |
