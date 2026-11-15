@@ -646,6 +646,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "15/11/2026",
     entries = {
+        { type = "FEATURE", text = "Colour-Coded Food Stat Benefits on Clickable Raid Buffs HUD & Readiness Strip (15/11/2026): added FormatColoredFoodBenefit to colour-code parsed food stats (Mint Teal Primary/Int/Agi/Str, Sky Cyan Haste, Royal Amethyst Mastery, Warm Amber-Gold Crit, Emerald Green Versatility, Blaze Orange Highest Secondary Stat, and Slate-Silver Stamina) across Clickable Raid Buffs food tooltip titles, 'Food Benefit:' summary lines, expiring 'Current Buff:' lines, Readiness Strip Slot 3, and capsule tooltips." },
         { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
         { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House open side-by-side without trapping Escape (with header Pin buttons and click-to-raise layering), drag headers or hold Alt + Left-Drag anywhere on a window out of combat to save positions across reloads, Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows], strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding with dynamic banner detection for BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
         { type = "FIX",     text = "Midnight Season 2 Enchantable Slot List Fix (15/11/2026): updated equipped gear enchant scanning to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
@@ -3346,7 +3347,7 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
             local hasFood, foodShort, foodFullLine = self:GetActiveFoodBuffBenefit()
             tooltip:AddLine(" ")
             if hasFood and foodShort then
-                tooltip:AddDoubleLine("Food Buff:", foodShort, 0.8, 0.84, 0.88, 0.204, 0.827, 0.600)
+                tooltip:AddDoubleLine("Food Buff:", DynamicPrep:FormatColoredFoodBenefit(foodShort), 0.8, 0.84, 0.88, 0.204, 0.827, 0.600)
                 if foodFullLine and foodFullLine ~= "" then
                     tooltip:AddLine(foodFullLine, 0.68, 0.74, 0.82, true)
                 end
@@ -3372,7 +3373,7 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
         if self.GetActiveFoodBuffBenefit then
             local hasFood, foodShort, foodFullLine = self:GetActiveFoodBuffBenefit()
             if hasFood and foodShort then
-                tooltip:AddDoubleLine("Active Food Buff:", foodShort, 0.8, 0.84, 0.88, 0.204, 0.827, 0.600)
+                tooltip:AddDoubleLine("Active Food Buff:", DynamicPrep:FormatColoredFoodBenefit(foodShort), 0.8, 0.84, 0.88, 0.204, 0.827, 0.600)
                 if foodFullLine and foodFullLine ~= "" then
                     tooltip:AddLine(foodFullLine, 0.68, 0.74, 0.82, true)
                 end
@@ -3396,7 +3397,7 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
         tooltip:AddDoubleLine("Active Folio Buff:", activeStat and (STAT_LABELS[activeStat] or activeStat) or "None Detected", 0.8, 0.84, 0.88, isMismatch and 0.984 or 0.204, isMismatch and 0.749 or 0.827, isMismatch and 0.141 or 0.600)
         if self.GetActiveFoodBuffBenefit then
             local hasFood, foodShort, foodFullLine = self:GetActiveFoodBuffBenefit()
-            tooltip:AddDoubleLine("Active Food Buff:", (hasFood and foodShort) or "Missing", 0.8, 0.84, 0.88, hasFood and 0.204 or 0.973, hasFood and 0.827 or 0.443, hasFood and 0.600 or 0.443)
+            tooltip:AddDoubleLine("Active Food Buff:", (hasFood and DynamicPrep:FormatColoredFoodBenefit(foodShort)) or "Missing", 0.8, 0.84, 0.88, hasFood and 0.204 or 0.973, hasFood and 0.827 or 0.443, hasFood and 0.600 or 0.443)
             if hasFood and foodFullLine and foodFullLine ~= "" then
                 tooltip:AddLine(foodFullLine, 0.68, 0.74, 0.82, true)
             end
@@ -7353,20 +7354,21 @@ function DynamicPrep:RefreshReadinessTrackerStrip()
     if sFood and sFood.icon and sFood.title and sFood.sub and self.GetActiveFoodBuffBenefit then
         local hasFood, shortStat, fullLine, rem, isHearty, cachedEntry = self:GetActiveFoodBuffBenefit()
         if hasFood and shortStat then
+            local coloredShortStat = DynamicPrep:FormatColoredFoodBenefit(shortStat)
             sFood.icon:SetTexture((cachedEntry and cachedEntry.icon) or 136000)
             sFood.title:SetText(isHearty and "Hearty Well Fed" or "Well Fed")
             local isExp = (rem and rem > 0 and rem <= expThresholdSec) and true or false
             if isExp then
                 local mins = math.max(1, math.ceil(rem / 60))
-                sFood.sub:SetText(string.format("|cFFFBBF24%s (%dm)|r", shortStat, mins))
+                sFood.sub:SetText(string.format("%s |cFFFBBF24(%dm)|r", coloredShortStat, mins))
                 SetPixelBackdrop(sFood, bgSurf, brdGold, 1)
             else
-                sFood.sub:SetText("|cFF34D399" .. shortStat .. "|r")
+                sFood.sub:SetText((coloredShortStat ~= shortStat) and coloredShortStat or ("|cFF34D399" .. shortStat .. "|r"))
                 SetPixelBackdrop(sFood, { 0.040, 0.080, 0.068, 0.96 }, { 0.204, 0.827, 0.600, 0.90 }, 1)
             end
-            sFood._ttTitle = (isHearty and "Hearty Well Fed" or "Well Fed") .. " (" .. shortStat .. ")"
+            sFood._ttTitle = (isHearty and "Hearty Well Fed" or "Well Fed") .. " (" .. coloredShortStat .. ")"
             local remStr = (rem and rem > 0 and rem < 90000) and string.format("\nRemaining: %d min", math.max(1, math.ceil(rem / 60))) or ""
-            sFood._ttBody = tostring(fullLine or ("Active Food Benefit: " .. shortStat)) .. remStr
+            sFood._ttBody = tostring(fullLine or ("Active Food Benefit: " .. coloredShortStat)) .. remStr
         else
             sFood.icon:SetTexture(134019)
             sFood.title:SetText("Food Buff (Well Fed)")
@@ -11927,6 +11929,48 @@ function DynamicPrep:ParseFoodBenefitFromTooltipText(tooltipData, auraPoints)
     return nil, benefitLine
 end
 
+function DynamicPrep:FormatColoredFoodBenefit(statText)
+    if type(statText) ~= "string" or statText == "" then return statText end
+    if statText:find("|cFF", 1, true) then return statText end
+    local function GetFoodStatHexColor(statSegment)
+        if type(statSegment) ~= "string" then return nil end
+        local lower = statSegment:lower()
+        if lower:find("primary stat", 1, true)
+            or lower:find("intellect", 1, true)
+            or lower:find("agility", 1, true)
+            or lower:find("strength", 1, true) then
+            return "2DD4BF" -- Mint Teal
+        elseif lower:find("highest secondary", 1, true)
+            or lower:find("highest sec", 1, true) then
+            return "F97316" -- Blaze Orange
+        elseif lower:find("haste", 1, true) then
+            return "38BDF8" -- Sky Cyan
+        elseif lower:find("mastery", 1, true) then
+            return "C084FC" -- Royal Amethyst
+        elseif lower:find("critical strike", 1, true)
+            or lower:find("crit", 1, true) then
+            return "FACC15" -- Warm Amber-Gold
+        elseif lower:find("versatility", 1, true)
+            or lower:find("vers", 1, true) then
+            return "34D399" -- Emerald Green
+        elseif lower:find("stamina", 1, true) then
+            return "94A3B8" -- Slate-Silver
+        end
+        return nil
+    end
+    local parts = {}
+    local startIdx = 1
+    while true do
+        local sepStart, sepEnd = statText:find(" / ", startIdx, true)
+        local seg = sepStart and statText:sub(startIdx, sepStart - 1) or statText:sub(startIdx)
+        local hex = GetFoodStatHexColor(seg)
+        parts[#parts + 1] = hex and ("|cFF" .. hex .. seg .. "|r") or seg
+        if not sepStart then break end
+        startIdx = sepEnd + 1
+    end
+    return table.concat(parts, " / ")
+end
+
 function DynamicPrep:GetActiveFoodBuffBenefit()
     local now = GetTime and GetTime() or 0
     -- Completely skip scanning Food buffs during combat (food cannot be eaten in combat)
@@ -13409,14 +13453,18 @@ function DynamicPrep:ScanAndPopulateRaidBuffQueue()
                     rankLabel = (fd.quality and fd.quality >= 3) and " [Rank 3 Gold]" or ((fd.quality == 2) and " [Rank 2 Silver]" or ((fd.quality == 1) and " [Rank 1 Bronze]" or ""))
                 end
                 local heartyLabel = fd.isHearty and " [Hearty - Persists Through Death]" or ""
-                local statBadge = (fd.statShort and fd.statShort ~= "") and (" (" .. fd.statShort .. ")") or ""
+                local coloredStatShort = (fd.statShort and fd.statShort ~= "") and DynamicPrep:FormatColoredFoodBenefit(fd.statShort) or nil
+                local statBadge = coloredStatShort and (" (" .. coloredStatShort .. ")") or ""
                 local title = (fd.name or "Food") .. statBadge .. heartyLabel .. rankLabel
                 local sub = fd.isHearty and "Hearty Well Fed persists through death in M+ and raids. Click to eat." or "Click to eat and gain Well Fed."
                 if fd.statFullLine and fd.statFullLine ~= "" then
                     sub = fd.statFullLine .. "\n" .. sub
                 end
+                if coloredStatShort then
+                    sub = "Food Benefit: " .. coloredStatShort .. "\n" .. sub
+                end
                 if isExp and foodFullLine and foodFullLine ~= "" then
-                    sub = string.format("Current Buff: %s (%s)\n%s", foodShortStat or "Well Fed", foodFullLine, sub)
+                    sub = string.format("Current Buff: %s (%s)\n%s", DynamicPrep:FormatColoredFoodBenefit(foodShortStat or "Well Fed"), foodFullLine, sub)
                 end
                 PushEntry("item", "item:" .. fd.itemID, nil, fd.icon, topTxt, botTxt, tostring(fd.cnt), isExp, title, sub, nil, fd.isHearty, fd.quality, fd.maxTiers, fd.atlas)
             end
