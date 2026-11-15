@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.9"
+    local fb = fallback or "2.1.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -208,7 +208,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.9"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.0"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -6250,6 +6250,38 @@ function DynamicPrep:RefreshReadinessTrackerStrip()
     end
 end
 
+function DynamicPrep:CreateEditHudButton(parent, targetKey, fallbackFn)
+    if _G.DynamicSuite and type(_G.DynamicSuite.CreateEditHudButton) == "function" then
+        return _G.DynamicSuite.CreateEditHudButton(parent, targetKey, function()
+            if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
+                _G.DynamicSuite.EnterHudEditMode(targetKey)
+            elseif fallbackFn then
+                fallbackFn()
+            end
+        end)
+    end
+    local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    btn:SetSize(86, 22)
+    SetPixelBackdrop(btn, { 0.043, 0.051, 0.071, 0.96 }, { 0.976, 0.451, 0.086, 0.85 }, 1)
+    btn.txt = CreateText(btn, "OVERLAY", "GameFontHighlightSmall", 11, "Edit HUD")
+    btn.txt:SetPoint("CENTER")
+    btn.txt:SetTextColor(0.976, 0.984, 1.0, 1.0)
+    btn:SetScript("OnEnter", function(s)
+        SetPixelBackdrop(s, { 0.16, 0.08, 0.02, 0.98 }, { 0.976, 0.451, 0.086, 1.0 }, 1)
+    end)
+    btn:SetScript("OnLeave", function(s)
+        SetPixelBackdrop(s, { 0.043, 0.051, 0.071, 0.96 }, { 0.976, 0.451, 0.086, 0.85 }, 1)
+    end)
+    btn:SetScript("OnClick", function()
+        if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
+            _G.DynamicSuite.EnterHudEditMode(targetKey)
+        elseif fallbackFn then
+            fallbackFn()
+        end
+    end)
+    return btn
+end
+
 local function BuildRaidBuffsTab(self, ws)
     if ws.tab2 then return ws.tab2 end
 
@@ -6274,6 +6306,15 @@ local function BuildRaidBuffsTab(self, ws)
         "1-click reminders, Symbiotic tank-link detection, exact Food Buff stat parser, and In-Combat Brez / MotW tracker.",
         14
     )
+    cbHdr.title:SetPoint("RIGHT", cBuffs, "RIGHT", -108, 0)
+    if cbHdr.subtitle then
+        cbHdr.subtitle:SetPoint("RIGHT", cBuffs, "RIGHT", -108, 0)
+    end
+    local cbEditHudBtn = self:CreateEditHudButton(cBuffs, "prepBuffs", function()
+        self:SetEditMode(true)
+    end)
+    cbEditHudBtn:SetPoint("TOPRIGHT", cBuffs, "TOPRIGHT", -14, -7)
+    ws.raidBuffsEditHudBtn = cbEditHudBtn
 
     -- Live 3-Slot Readiness Status Strip (Raid Buff / Brez | Symbiotic Partner Link | Exact Food Buff Stat)
     local readinessStrip = CreateFrame("Frame", nil, cBuffs)
@@ -6706,11 +6747,20 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             "Click any capsule to toggle it on/off, drag to reorder, and customise your Top Info Bar appearance.",
             14
         )
-        c1Hdr.title:SetPoint("RIGHT", card1, "RIGHT", -120, 0)
+        c1Hdr.title:SetPoint("RIGHT", card1, "RIGHT", -214, 0)
+        if c1Hdr.subtitle then
+            c1Hdr.subtitle:SetPoint("RIGHT", card1, "RIGHT", -214, 0)
+        end
+
+        local c1EditHudBtn = self:CreateEditHudButton(card1, "PREP", function()
+            self:SetEditMode(true)
+        end)
+        c1EditHudBtn:SetPoint("TOPRIGHT", card1, "TOPRIGHT", -14, -7)
+        ws.topBarEditHudBtn = c1EditHudBtn
 
         local resetSegOrderBtn = CreateFrame("Button", nil, card1, "BackdropTemplate")
-        resetSegOrderBtn:SetSize(96, 20)
-        resetSegOrderBtn:SetPoint("TOPRIGHT", card1, "TOPRIGHT", -14, -7)
+        resetSegOrderBtn:SetSize(96, 22)
+        resetSegOrderBtn:SetPoint("RIGHT", c1EditHudBtn, "LEFT", -6, 0)
         SetPixelBackdrop(resetSegOrderBtn, COLORS.BgElevated, COLORS.BorderStrong, 1)
         resetSegOrderBtn.txt = CreateText(resetSegOrderBtn, "OVERLAY", "GameFontHighlightSmall")
         resetSegOrderBtn.txt:SetPoint("CENTER")

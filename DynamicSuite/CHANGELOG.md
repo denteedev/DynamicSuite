@@ -1,5 +1,18 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.0.9 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.1.0 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.1.0 (15/11/2026)
+
+### DynamicMarker
+- **World Flare Hardware Keybinds Fix:** Anchored the secure World Flare cycle and clear click buttons (`DynamicMarkerFlareCycleBtn` / `DynamicMarkerFlareClearBtn`) on-screen at `CENTER` (`1x1`, alpha `0`, `EnableMouse(false)`), removed the `"flare" .. m` button override return inside `SecureHandlerWrapScript` so `"LeftButton"` passes cleanly to `SecureActionButton_OnClick` for `/wm [@cursor] <m>` and `/cwm all`, and ensured key-down / key-up CVar parity in and out of combat.
+- **Live Keybind Telemetry & Dynamic Sub-Tab Label:** Rebinding, unbinding (Escape or Right-Click), or resetting `Cycle Ground Flare Key` or `Clear All Flares Key` now immediately refreshes the `[Key]` button text, `World Flare Keys (...)` tab label with proportional width reflow, standalone status bar, and DynamicSuite's top telemetry bar (`UpdateHeaderTelemetry()`).
+
+### DynamicSuite Hub & All HUD Modules
+- **Compact Draggable `560x74` HUD Edit Inspector & `60px` Off-Screen Fail-Safe:** Redesigned both `DynamicSuiteEditModeModal` and standalone `DynamicMarkerEditModeInspector` into a compact `560x74px` 2-row draggable dock with a HUD Selector Dropdown (green/red status dots), full-padding `Hidden` / `Shown` toggles (fixing `"Hidd..."` clipping), `Grid`, `Reset`, `Back to Suite`, `X`, X/Y coordinates & nudges, `Center X` / `Center Y`, and Scale slider (`60%-150%`). Both Edit docks allow dragging near screen edges while keeping a minimum `60px` grab margin visible, while HUD bars remain strictly clamped inside screen bounds (`0px`).
+- **Hidden-By-Default HUD Mover Lifecycle:** Opening HUD Edit Mode (`/ds hud`, `/dm hud`, or top-bar `HUD`) no longer clutters the screen with `Off` / `Hidden` movers or disabled modules; selecting a hidden HUD from the dropdown or clicking a card's `Edit HUD` button temporarily previews only that mover with a clear `HIDDEN (Click Shown to Enable)` badge.
+- **Unified HUD Configuration Cards & Standardised `[Edit HUD]` Buttons:** Added consistent Dark-Obsidian (`#0B0D12`) + Blaze Orange (`#F97316`) `Edit HUD` header buttons and aligned shared `ON-SCREEN ALERT & TELEPORT TOAST HUD` controls (Visibility, Border Style, Scale `60%-150%`, Opacity `20%-100%`, `[Test Toast]`, and `[Edit HUD]`) across `DynamicLoad`, Theme & Font Studio, `DynamicGroup`, `DynamicPrep` (`Top Info Bar` & `Raid Buffs`), `DynamicMarker`, and `DynamicChat`.
 
 ---
 

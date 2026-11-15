@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.9"
+    local fb = fallback or "2.1.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.9"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.0"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicChat", VERSION, _G.DynamicChat) then
     return
 end
@@ -8268,6 +8268,47 @@ local function RenderChatEmbedded(arg1, arg2)
         "Customise the smoked-glass chat frame, top tab bar, font, and left-hand shortcut buttons.",
         root
     )
+    if sec2_skin.hdr then
+        if sec2_skin.hdr.title then
+            sec2_skin.hdr.title:SetPoint("RIGHT", sec2_skin, "RIGHT", -108, 0)
+        end
+        if sec2_skin.hdr.subtitle then
+            sec2_skin.hdr.subtitle:SetPoint("RIGHT", sec2_skin, "RIGHT", -108, 0)
+        end
+    end
+    local chatEditHudBtn
+    if _G.DynamicSuite and type(_G.DynamicSuite.CreateEditHudButton) == "function" then
+        chatEditHudBtn = _G.DynamicSuite.CreateEditHudButton(sec2_skin, "CHAT")
+    else
+        chatEditHudBtn = CreateFrame("Button", nil, sec2_skin, "BackdropTemplate")
+        chatEditHudBtn:SetSize(86, 22)
+        chatEditHudBtn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        chatEditHudBtn:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+        chatEditHudBtn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85)
+        chatEditHudBtn.label = chatEditHudBtn:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(chatEditHudBtn.label, 11, "")
+        chatEditHudBtn.label:SetPoint("CENTER", 0, 0)
+        chatEditHudBtn.label:SetText("Edit HUD")
+        chatEditHudBtn.label:SetTextColor(0.976, 0.984, 1.00, 1)
+        chatEditHudBtn:SetScript("OnEnter", function(s)
+            s:SetBackdropColor(0.16, 0.08, 0.02, 0.98)
+            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+        end)
+        chatEditHudBtn:SetScript("OnLeave", function(s)
+            s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85)
+        end)
+        chatEditHudBtn:SetScript("OnClick", function()
+            if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
+                _G.DynamicSuite.EnterHudEditMode("CHAT")
+            end
+        end)
+    end
+    chatEditHudBtn:SetPoint("TOPRIGHT", sec2_skin, "TOPRIGHT", -14, -7)
     local sec2a = CreateSectionBox(
         page2,
         "COMPACT CHANNEL TAGS",

@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.9"
+    local fb = fallback or "2.1.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.9")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.0")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -500,9 +500,13 @@ local DEFAULT_SUITE_GLOBAL = {
     syncThemeToToast = true,
     recentColors     = {},
     toastPos         = { point = "TOP", relPoint = "TOP", x = 0, y = -50 },
+    toastEnabled     = true,
+    toastMode        = "ON",
+    toastBorderStyle = "ACCENT",
     toastDisplayMode = "DETAILED", -- "DETAILED", "COMPACT", "EXCEPTIONS_ONLY"
     toastScale       = 1.0,
     toastAlpha       = 0.96,
+    toastOpacity     = 0.96,
     toastDuration    = 8,
     hudSnapMode      = "MAGNET",
     minimizedBarPos  = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0 },

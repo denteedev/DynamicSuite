@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.9"
+    local fb = fallback or "2.1.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.9"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.0"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicGroup", VERSION, _G.DynamicGroup) then
     return
 end
@@ -4397,6 +4397,15 @@ function DynamicGroup:ApplyTeleportToastPosition()
     if toast.SetScale then
         toast:SetScale(scale)
     end
+    local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
+    local alpha = (g and (g.toastOpacity or g.toastAlpha)) or (_G.DynamicLoadDB and (_G.DynamicLoadDB.toastOpacity or _G.DynamicLoadDB.toastAlpha)) or 0.96
+    local bStyle = (g and g.toastBorderStyle) or (_G.DynamicLoadDB and _G.DynamicLoadDB.toastBorderStyle) or "ACCENT"
+    toast:SetBackdropColor(0.043, 0.051, 0.071, alpha)
+    if bStyle == "NONE" then
+        toast:SetBackdropBorderColor(0, 0, 0, 0)
+    elseif bStyle == "SUBTLE" then
+        toast:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+    end
     toast:ClearAllPoints()
     local dlToast = _G.DynamicLoadToastFrame
     if dlToast and dlToast:IsShown() and not dlToast._dsStackedUnderGroup then
@@ -4618,7 +4627,13 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
 
     local ar, ag, ab = GetSuiteAccent()
     local isFull = (numMembers >= 5)
-    if isFull then
+    local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
+    local bStyle = (g and g.toastBorderStyle) or (_G.DynamicLoadDB and _G.DynamicLoadDB.toastBorderStyle) or "ACCENT"
+    if bStyle == "NONE" then
+        toast:SetBackdropBorderColor(0, 0, 0, 0)
+    elseif bStyle == "SUBTLE" and not isFull then
+        toast:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+    elseif isFull then
         toast:SetBackdropBorderColor(0.133, 0.773, 0.369, 0.95) -- Emerald #22C55E
     else
         toast:SetBackdropBorderColor(ar, ag, ab, 0.80)
@@ -6759,9 +6774,9 @@ local function RenderGroupEmbedded(arg1, arg2)
     )
     AnchorCardTextToRightWidget(c3_tpToast, tpToastSwitch)
 
-    local function CreateToastPreviewBtn(btnLabel, anchorRel, offsetX, onClickFn)
+    local function CreateToastPreviewBtn(btnLabel, anchorRel, offsetX, onClickFn, btnW)
         local btn = CreateFrame("Button", nil, c3_tpToast, "BackdropTemplate")
-        btn:SetSize(96, 22)
+        btn:SetSize(btnW or 98, 22)
         if anchorRel then
             btn:SetPoint("LEFT", anchorRel, "RIGHT", offsetX or 8, 0)
         else
@@ -6773,19 +6788,19 @@ local function RenderGroupEmbedded(arg1, arg2)
             edgeSize = 1,
         })
         btn:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- #0B0D12
-        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.72) -- #F97316
+        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85) -- #F97316
         btn.label = btn:CreateFontString(nil, "OVERLAY")
-        SetSafeFont(btn.label, 10, "")
+        SetSafeFont(btn.label, 11, "")
         btn.label:SetPoint("CENTER", 0, 0)
         btn.label:SetText(btnLabel)
-        btn.label:SetTextColor(0.96, 0.98, 1.00, 1)
+        btn.label:SetTextColor(0.976, 0.984, 1.00, 1)
         btn:SetScript("OnEnter", function(s)
-            s:SetBackdropColor(0.16, 0.09, 0.04, 0.96)
+            s:SetBackdropColor(0.16, 0.08, 0.02, 0.98)
             s:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
         end)
         btn:SetScript("OnLeave", function(s)
             s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
-            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.72)
+            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85)
         end)
         btn:SetScript("OnClick", onClickFn)
         return btn
@@ -6793,19 +6808,25 @@ local function RenderGroupEmbedded(arg1, arg2)
 
     local testJoinBtn = CreateToastPreviewBtn("Test Join (3/5)", nil, 0, function()
         DynamicGroup:TriggerTeleportToastPreview("JOIN")
-    end)
+    end, 104)
     local testFullBtn = CreateToastPreviewBtn("Test Full (5/5)", testJoinBtn, 8, function()
         DynamicGroup:TriggerTeleportToastPreview("FULL")
-    end)
-    CreateToastPreviewBtn("Edit HUD", testFullBtn, 8, function()
-        if _G.DynamicSuite and type(_G.DynamicSuite.IsHudEditModeActive) == "function" and _G.DynamicSuite.IsHudEditModeActive() then
-            if type(_G.DynamicSuite.ExitHudEditMode) == "function" then
-                _G.DynamicSuite.ExitHudEditMode(false)
+    end, 104)
+    local tpEditHudBtn
+    if _G.DynamicSuite and type(_G.DynamicSuite.CreateEditHudButton) == "function" then
+        tpEditHudBtn = _G.DynamicSuite.CreateEditHudButton(c3_tpToast, "TOAST")
+        tpEditHudBtn:SetPoint("LEFT", testFullBtn, "RIGHT", 8, 0)
+    else
+        CreateToastPreviewBtn("Edit HUD", testFullBtn, 8, function()
+            if _G.DynamicSuite and type(_G.DynamicSuite.IsHudEditModeActive) == "function" and _G.DynamicSuite.IsHudEditModeActive() then
+                if type(_G.DynamicSuite.ExitHudEditMode) == "function" then
+                    _G.DynamicSuite.ExitHudEditMode(false)
+                end
+            elseif _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
+                _G.DynamicSuite.EnterHudEditMode("TOAST")
             end
-        elseif _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
-            _G.DynamicSuite.EnterHudEditMode("TOAST")
-        end
-    end)
+        end, 86)
+    end
 
     sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_tpToast
     page3.orderedCards[#page3.orderedCards + 1] = c3_tpToast

@@ -8,7 +8,7 @@ local addonName, rawAddonTable = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.9"
+    local fb = fallback or "2.1.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.ADDON_VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.9"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.ADDON_VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.0"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.9")
+local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.0")
 
 -- Guard E: Version-aware duplicate-install guard if standalone DynamicLoad is installed alongside bundled DynamicSuite
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicLoad", RESOLVED_ADDON_VERSION, _G.DynamicLoad) then
@@ -1194,7 +1194,7 @@ end
 
 local function GetToastColors()
     local g = EnsureSuiteGlobal()
-    local alpha = g.toastAlpha or (DynamicLoadDB and DynamicLoadDB.toastAlpha) or 0.96
+    local alpha = g.toastOpacity or g.toastAlpha or (DynamicLoadDB and (DynamicLoadDB.toastOpacity or DynamicLoadDB.toastAlpha)) or 0.96
 
     if g.syncThemeToToast and addonTable.UI and addonTable.UI.GetActiveAccentColor then
         local ar, ag, ab = addonTable.UI.GetActiveAccentColor()
@@ -1453,9 +1453,18 @@ local function ApplyToastPosition(f)
     f:SetScale(scale)
 
     local bdr, bg = GetToastColors()
+    local bStyle = g.toastBorderStyle or (DynamicLoadDB and DynamicLoadDB.toastBorderStyle) or "ACCENT"
     if f.SetBackdropColor then
         f:SetBackdropColor(bg.r, bg.g, bg.b, bg.a or 0.96)
-        f:SetBackdropBorderColor(bdr.r, bdr.g, bdr.b, (f.isEditingMode or f.isDraggingMode) and 1.0 or (bdr.a or 0.95))
+        if f.isEditingMode or f.isDraggingMode then
+            f:SetBackdropBorderColor(bdr.r, bdr.g, bdr.b, 1.0)
+        elseif bStyle == "NONE" then
+            f:SetBackdropBorderColor(0, 0, 0, 0)
+        elseif bStyle == "SUBTLE" then
+            f:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+        else
+            f:SetBackdropBorderColor(bdr.r, bdr.g, bdr.b, bdr.a or 0.95)
+        end
     end
     if f.iconBorder then
         f.iconBorder:SetBackdropBorderColor(bdr.r, bdr.g, bdr.b, 0.7)
@@ -1959,7 +1968,13 @@ end
 
 local function ShowToast(profileKey, deltaCount, isTestPreview)
     local g = EnsureSuiteGlobal()
+    local toastOn = g.toastEnabled
+    if toastOn == nil and DynamicLoadDB then toastOn = DynamicLoadDB.toastEnabled end
+    local tMode = g.toastMode or (DynamicLoadDB and DynamicLoadDB.toastMode)
     local mode = g.toastDisplayMode or (DynamicLoadDB and DynamicLoadDB.toastDisplayMode) or "DETAILED"
+    if not isTestPreview and (toastOn == false or tMode == "OFF" or mode == "OFF") then
+        return
+    end
     if mode == "EXCEPTIONS_ONLY" and (deltaCount or 0) <= 0 and not isTestPreview then
         return
     end
@@ -8381,34 +8396,31 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         end
     end
 
-    -- Standardize stageBox (38px height) with right-aligned [Preview Toast] + [Position on Screen] buttons (matching DynamicMarker & DynamicPrep)
+    -- Standardize stageBox (38px height) with right-aligned [Test Toast] + [Edit HUD] buttons
     stageBox:SetHeight(38)
-    stageBadge:SetText("ON-SCREEN ALERT TOAST  (LIVE PREVIEW SHOWN ABOVE WINDOW)")
+    stageBadge:SetText("ON-SCREEN ALERT & TELEPORT TOAST HUD")
 
-    local openHudEditBtn = CreateFlatButton(stageBox, 154, 24, "Position on Screen", false)
+    local openHudEditBtn
+    if UI and type(UI.CreateEditHudButton) == "function" then
+        openHudEditBtn = UI.CreateEditHudButton(stageBox, "TOAST")
+    elseif _G.DynamicSuite and type(_G.DynamicSuite.CreateEditHudButton) == "function" then
+        openHudEditBtn = _G.DynamicSuite.CreateEditHudButton(stageBox, "TOAST")
+    else
+        openHudEditBtn = CreateFlatButton(stageBox, 86, 22, "Edit HUD", false)
+        openHudEditBtn:SetScript("OnClick", function()
+            if addonTable.EnterHudEditMode then
+                addonTable.EnterHudEditMode("TOAST")
+            elseif addonTable.OpenWorkspaceView then
+                addonTable.OpenWorkspaceView("EDIT_MODE")
+            elseif addonTable.StartToastMove then
+                addonTable.StartToastMove()
+            end
+        end)
+    end
     openHudEditBtn:SetPoint("RIGHT", stageBox, "RIGHT", -14, 0)
-    local posGridIcon = openHudEditBtn:CreateTexture(nil, "OVERLAY", nil, 3)
-    posGridIcon:SetSize(13, 13)
-    posGridIcon:SetPoint("LEFT", openHudEditBtn, "LEFT", 9, 0)
-    posGridIcon:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_grid.tga")
-    posGridIcon:SetVertexColor(UI.COLORS.ACCENT.r, UI.COLORS.ACCENT.g, UI.COLORS.ACCENT.b, 1.0)
-    openHudEditBtn.iconTex = posGridIcon
-    openHudEditBtn.label:ClearAllPoints()
-    openHudEditBtn.label:SetPoint("LEFT", posGridIcon, "RIGHT", 5, 0)
-    openHudEditBtn.label:SetPoint("RIGHT", openHudEditBtn, "RIGHT", -6, 0)
-    openHudEditBtn.label:SetJustifyH("CENTER")
-    openHudEditBtn:SetScript("OnClick", function()
-        if addonTable.EnterHudEditMode then
-            addonTable.EnterHudEditMode("TOAST")
-        elseif addonTable.OpenWorkspaceView then
-            addonTable.OpenWorkspaceView("EDIT_MODE")
-        elseif addonTable.StartToastMove then
-            addonTable.StartToastMove()
-        end
-    end)
 
-    local testToastBtn = CreateFlatButton(stageBox, 128, 24, "Preview Toast", true)
-    testToastBtn:SetPoint("RIGHT", openHudEditBtn, "LEFT", -8, 0)
+    local testToastBtn = CreateFlatButton(stageBox, 110, 22, "Test Toast", true)
+    testToastBtn:SetPoint("RIGHT", openHudEditBtn, "LEFT", -6, 0)
     local testEyeIcon = testToastBtn:CreateTexture(nil, "OVERLAY", nil, 3)
     testEyeIcon:SetSize(13, 13)
     testEyeIcon:SetPoint("LEFT", testToastBtn, "LEFT", 9, 0)
@@ -8439,7 +8451,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
                 fadeIn:SetToAlpha(1.0)
                 pg:SetScript("OnFinished", function()
                     local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
-                    local curAlpha = gTbl.toastAlpha or (DynamicLoadDB and DynamicLoadDB.toastAlpha) or 0.96
+                    local curAlpha = gTbl.toastOpacity or gTbl.toastAlpha or (DynamicLoadDB and (DynamicLoadDB.toastOpacity or DynamicLoadDB.toastAlpha)) or 0.96
                     realToast:SetAlpha(curAlpha)
                 end)
                 realToast.previewPulseGroup = pg
@@ -8449,8 +8461,65 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         end
     end)
 
-    -- Row 1: Toast Display Mode (Using Suite-Standard Segmented Pills with Checkmark Icons!)
-    local rowToastMode = CreateSpaciousOptionRow(toastPanel, 1, "Toast Display Mode", "Select 3-line detailed cards, 1-line compact pills, or exception-only alerts.")
+    -- Row 1: Shared Alert & Teleport Toast Visibility (Hidden / Shown)
+    local rowToastVis = CreateSpaciousOptionRow(toastPanel, 1, "Alert & Teleport Toast Visibility", "Choose whether the floating Alert Toast and Dungeon Teleport banner are shown or hidden.")
+    local visSegPills = UI.CreateSegmentedPills(rowToastVis, {
+        { value = false, label = "Hidden", width = 104 },
+        { value = true,  label = "Shown",  width = 104 },
+    }, function()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        if gTbl.toastEnabled ~= nil then return gTbl.toastEnabled == true end
+        if DynamicLoadDB and DynamicLoadDB.toastEnabled ~= nil then return DynamicLoadDB.toastEnabled == true end
+        local tMode = gTbl.toastMode or (DynamicLoadDB and DynamicLoadDB.toastMode)
+        if tMode ~= nil then return tMode ~= "OFF" end
+        return (gTbl.toastDisplayMode or (DynamicLoadDB and DynamicLoadDB.toastDisplayMode)) ~= "OFF"
+    end, function(val)
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        local modeVal = val and "ALWAYS" or "OFF"
+        local dispVal = val and "DETAILED" or "OFF"
+        if gTbl then
+            gTbl.toastEnabled = val and true or false
+            gTbl.toastMode = modeVal
+            if not val or gTbl.toastDisplayMode == "OFF" then gTbl.toastDisplayMode = dispVal end
+            gTbl.hudVisibility = gTbl.hudVisibility or {}
+            gTbl.hudVisibility["TOAST"] = val and "ALWAYS" or "HIDDEN"
+        end
+        if DynamicLoadDB then
+            DynamicLoadDB.toastEnabled = val and true or false
+            DynamicLoadDB.toastMode = modeVal
+            if not val or DynamicLoadDB.toastDisplayMode == "OFF" then DynamicLoadDB.toastDisplayMode = dispVal end
+        end
+        if addonTable.ApplyToastVisuals then addonTable.ApplyToastVisuals() end
+        if f.themeView and f.themeView.Refresh and f.themeView:IsShown() then f.themeView.Refresh() end
+        if toastPanel.RefreshControls then toastPanel.RefreshControls() end
+    end)
+    visSegPills:SetPoint("RIGHT", rowToastVis, "RIGHT", -14, 0)
+    rowToastVis:BindRightControl(visSegPills)
+
+    -- Row 2: Shared Border Style
+    local rowToastBorder = CreateSpaciousOptionRow(toastPanel, 2, "Toast Border Style", "Choose the outer border treatment shared by Alert and Teleport Toasts.")
+    local borderSegPills = UI.CreateSegmentedPills(rowToastBorder, {
+        { value = "ACCENT", label = "Suite Accent", width = 114 },
+        { value = "SUBTLE", label = "Subtle Dark",  width = 114 },
+        { value = "NONE",   label = "Borderless",   width = 114 },
+    }, function()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        return gTbl.toastBorderStyle or (DynamicLoadDB and DynamicLoadDB.toastBorderStyle) or "ACCENT"
+    end, function(val)
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        if gTbl then gTbl.toastBorderStyle = val end
+        if DynamicLoadDB then DynamicLoadDB.toastBorderStyle = val end
+        if addonTable.ApplyToastVisuals then addonTable.ApplyToastVisuals() end
+        if _G.DynamicGroup and _G.DynamicGroup.UpdateTeleportToast then
+            pcall(_G.DynamicGroup.UpdateTeleportToast, _G.DynamicGroup, false)
+        end
+        if toastPanel.RefreshControls then toastPanel.RefreshControls() end
+    end)
+    borderSegPills:SetPoint("RIGHT", rowToastBorder, "RIGHT", -14, 0)
+    rowToastBorder:BindRightControl(borderSegPills)
+
+    -- Row 3: Toast Display Mode (Using Suite-Standard Segmented Pills with Checkmark Icons!)
+    local rowToastMode = CreateSpaciousOptionRow(toastPanel, 3, "Toast Display Mode", "Select 3-line detailed cards, 1-line compact pills, or exception-only alerts.")
     local modeSegPills
     modeSegPills = UI.CreateSegmentedPills(rowToastMode, {
         { value = "DETAILED",        label = "Detailed (3-Line)", width = 126 },
@@ -8469,9 +8538,9 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     modeSegPills:SetPoint("RIGHT", rowToastMode, "RIGHT", -14, 0)
     rowToastMode:BindRightControl(modeSegPills)
 
-    -- Row 2: Toast Scale Slider (70% - 140%)
-    local rowToastScale = CreateSpaciousOptionRow(toastPanel, 2, "Toast Scale", "Adjust the visual size of the Alert Toast banner across all zones (70% to 140%).")
-    local toastScaleSlider = CreateDSOptionSlider(rowToastScale, 256, 0.70, 1.40, 0.05,
+    -- Row 4: Toast Scale Slider (60% - 150%)
+    local rowToastScale = CreateSpaciousOptionRow(toastPanel, 4, "Toast Scale", "Adjust the visual size of Alert and Teleport Toast banners (60% to 150%).")
+    local toastScaleSlider = CreateDSOptionSlider(rowToastScale, 256, 0.60, 1.50, 0.05,
         function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
         function()
             local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
@@ -8488,18 +8557,24 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     toastScaleSlider:SetPoint("RIGHT", rowToastScale, "RIGHT", -14, 0)
     rowToastScale:BindRightControl(toastScaleSlider)
 
-    -- Row 3: Toast Opacity Slider (50% - 100%)
-    local rowToastAlpha = CreateSpaciousOptionRow(toastPanel, 3, "Toast Background Opacity", "Control the backdrop transparency of the Alert Toast banner (50% to 100%).")
-    local toastAlphaSlider = CreateDSOptionSlider(rowToastAlpha, 256, 0.50, 1.00, 0.05,
+    -- Row 5: Toast Opacity Slider (20% - 100%)
+    local rowToastAlpha = CreateSpaciousOptionRow(toastPanel, 5, "Toast Background Opacity", "Control the backdrop transparency of Alert and Teleport Toast banners (20% to 100%).")
+    local toastAlphaSlider = CreateDSOptionSlider(rowToastAlpha, 256, 0.20, 1.00, 0.05,
         function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
         function()
             local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
-            return (gTbl and gTbl.toastAlpha) or (DynamicLoadDB and DynamicLoadDB.toastAlpha) or 0.96
+            return (gTbl and (gTbl.toastOpacity or gTbl.toastAlpha)) or (DynamicLoadDB and (DynamicLoadDB.toastOpacity or DynamicLoadDB.toastAlpha)) or 0.96
         end,
         function(v)
             local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
-            if gTbl then gTbl.toastAlpha = v end
-            if DynamicLoadDB then DynamicLoadDB.toastAlpha = v end
+            if gTbl then
+                gTbl.toastOpacity = v
+                gTbl.toastAlpha = v
+            end
+            if DynamicLoadDB then
+                DynamicLoadDB.toastOpacity = v
+                DynamicLoadDB.toastAlpha = v
+            end
             if addonTable.ApplyToastVisuals then addonTable.ApplyToastVisuals() end
             UpdateEmbeddedStageToast()
         end
@@ -8507,8 +8582,8 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     toastAlphaSlider:SetPoint("RIGHT", rowToastAlpha, "RIGHT", -14, 0)
     rowToastAlpha:BindRightControl(toastAlphaSlider)
 
-    -- Row 4: Auto-Fade Duration (Using Suite-Standard Segmented Pills with Checkmark Icons!)
-    local rowToastDur = CreateSpaciousOptionRow(toastPanel, 4, "Auto-Fade Duration", "How long the Alert Toast remains on screen before smoothly fading out.")
+    -- Row 6: Auto-Fade Duration (Using Suite-Standard Segmented Pills with Checkmark Icons!)
+    local rowToastDur = CreateSpaciousOptionRow(toastPanel, 6, "Auto-Fade Duration", "How long the Alert Toast remains on screen before smoothly fading out.")
     local durSegPills
     durSegPills = UI.CreateSegmentedPills(rowToastDur, {
         { value = 5,  label = "5s",                 width = 62 },
@@ -8529,8 +8604,8 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     durSegPills:SetPoint("RIGHT", rowToastDur, "RIGHT", -14, 0)
     rowToastDur:BindRightControl(durSegPills)
 
-    -- Row 5: Factory Toast Recovery (Clean 1-Button Row matching DynamicZoom & DynamicFPS)
-    local rowToastActions = CreateSpaciousOptionRow(toastPanel, 5, "Factory Toast Recovery", "Restore Alert Toast display mode, scale, opacity, and screen coordinates to factory defaults.")
+    -- Row 7: Factory Toast Recovery (Clean 1-Button Row matching DynamicZoom & DynamicFPS)
+    local rowToastActions = CreateSpaciousOptionRow(toastPanel, 7, "Factory Toast Recovery", "Restore Alert Toast visibility, border style, scale, opacity, and coordinates to defaults.")
     local resetToastAllBtn = CreateFlatButton(rowToastActions, 168, 26, "Reset Toast Defaults", false)
     resetToastAllBtn:SetPoint("RIGHT", rowToastActions, "RIGHT", -14, 0)
     resetToastAllBtn:SetScript("OnClick", function()
@@ -8543,6 +8618,8 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         local ar, ag, ab = UI.GetActiveAccentColor()
         local accentCol = { r = ar, g = ag, b = ab }
 
+        if visSegPills and visSegPills.RefreshValue then visSegPills:RefreshValue() end
+        if borderSegPills and borderSegPills.RefreshValue then borderSegPills:RefreshValue() end
         if modeSegPills and modeSegPills.RefreshValue then modeSegPills:RefreshValue() end
         if durSegPills and durSegPills.RefreshValue then durSegPills:RefreshValue() end
 
@@ -8562,7 +8639,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
             addonTable.ShowToast(selectedTabKey, 4, true)
         end
     end
-    for _, tc in ipairs({ rowToastMode, rowToastScale, rowToastAlpha, rowToastDur, rowToastActions }) do
+    for _, tc in ipairs({ rowToastVis, rowToastBorder, rowToastMode, rowToastScale, rowToastAlpha, rowToastDur, rowToastActions }) do
         table.insert(f.themeCards, tc)
     end
     end
@@ -8719,7 +8796,7 @@ do
         slash = "/dl",
         order = 10,
         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
-        version = addonTable.ADDON_VERSION or "2.0.9",
+        version = addonTable.ADDON_VERSION or "2.1.0",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         CHANGELOG = DynamicSuite.Changelogs and DynamicSuite.Changelogs["DynamicLoad"] and DynamicSuite.Changelogs["DynamicLoad"].entries or addonTable.CHANGELOG,
         Open = function(...) if addonTable.ShowConfigUI then return addonTable.ShowConfigUI(...) end end,

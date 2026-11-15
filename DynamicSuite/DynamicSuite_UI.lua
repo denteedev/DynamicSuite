@@ -1122,6 +1122,19 @@ local function ApplyFlatButtonVisual(btn, isHovered)
 
     if btn.OffBar then btn.OffBar:Hide() end
 
+    if btn.isEditHudButton then
+        if isActive or isHovered then
+            btn.bg:SetColorTexture(0.18, 0.09, 0.03, 0.98)
+            btn.dsBorder:SetColor(0.976, 0.451, 0.086, 1.0)
+            if btn.label then btn.label:SetTextColor(1, 1, 1, 1) end
+        else
+            btn.bg:SetColorTexture(0.043, 0.051, 0.071, 0.96)
+            btn.dsBorder:SetColor(0.976, 0.451, 0.086, 0.85)
+            if btn.label then btn.label:SetTextColor(0.976, 0.984, 1.0, 1.0) end
+        end
+        return
+    end
+
     if isActive then
         local g = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         local fillAlpha = (g and g.pillFillAlpha) or 0.42
@@ -1249,6 +1262,58 @@ end
 
 UI.CreateFlatButton = CreateFlatButton
 UI.ApplyFlatButtonVisual = ApplyFlatButtonVisual
+
+local function CreateEditHudButton(parent, labelOrTargetKey, onClickOrWidth, heightOpt)
+    local hudKey = nil
+    local labelText = "Edit HUD"
+    local onClickFn = nil
+    local btnW = 86
+    local btnH = (type(heightOpt) == "number" and heightOpt) or 22
+
+    if type(labelOrTargetKey) == "string" then
+        if labelOrTargetKey == "TOAST" or labelOrTargetKey == "PREP" or labelOrTargetKey == "TARGET"
+            or labelOrTargetKey == "FLARE" or labelOrTargetKey == "prepBuffs" or labelOrTargetKey == "CHAT" then
+            hudKey = labelOrTargetKey
+        elseif labelOrTargetKey ~= "" then
+            labelText = labelOrTargetKey
+        end
+    end
+    if type(onClickOrWidth) == "function" then
+        onClickFn = onClickOrWidth
+    elseif type(onClickOrWidth) == "number" then
+        btnW = onClickOrWidth
+    end
+    if type(heightOpt) == "function" then
+        onClickFn = heightOpt
+    end
+
+    local btn = CreateFlatButton(parent, btnW, btnH, labelText, false)
+    btn.isEditHudButton = true
+    ApplyFlatButtonVisual(btn, false)
+    btn:SetScript("OnClick", function(selfBtn, mouseBtn)
+        if onClickFn then
+            onClickFn(selfBtn, mouseBtn)
+        elseif hudKey and addonTable.EnterHudEditMode then
+            addonTable.EnterHudEditMode(hudKey, true)
+        elseif hudKey and _G.DynamicSuite and _G.DynamicSuite.EnterHudEditMode then
+            _G.DynamicSuite.EnterHudEditMode(hudKey, true)
+        end
+    end)
+    btn.OnCustomEnter = function(selfBtn)
+        GameTooltip:SetOwner(selfBtn, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Edit HUD", 1, 1, 1)
+        GameTooltip:AddLine("Opens HUD Edit Mode with this HUD element selected so you can move, align, or scale it.", 0.82, 0.86, 0.92, true)
+        GameTooltip:Show()
+    end
+    btn.OnCustomLeave = function()
+        if GameTooltip then GameTooltip:Hide() end
+    end
+    return btn
+end
+UI.CreateEditHudButton = CreateEditHudButton
+addonTable.CreateEditHudButton = CreateEditHudButton
+_G.DynamicSuite = _G.DynamicSuite or {}
+_G.DynamicSuite.CreateEditHudButton = CreateEditHudButton
 
 local function CloseAltDropdown()
     if altDropdownFrame then altDropdownFrame:Hide() end
@@ -3131,6 +3196,18 @@ function addonTable.CreateMainConfigUI()
         end
     end
     f.UpdateStatusBar = UpdateStatusBar
+    local function DispatchHeaderTelemetryRefresh()
+        if f and f.UpdateStatusBar then
+            f.UpdateStatusBar(true)
+        end
+    end
+    addonTable.UpdateHeaderTelemetry = DispatchHeaderTelemetryRefresh
+    addonTable.UpdateHeaderStatus = DispatchHeaderTelemetryRefresh
+    addonTable.RefreshHeaderStatus = DispatchHeaderTelemetryRefresh
+    _G.DynamicSuite = _G.DynamicSuite or {}
+    _G.DynamicSuite.UpdateHeaderTelemetry = DispatchHeaderTelemetryRefresh
+    _G.DynamicSuite.UpdateHeaderStatus = DispatchHeaderTelemetryRefresh
+    _G.DynamicSuite.RefreshHeaderStatus = DispatchHeaderTelemetryRefresh
     addonTable.GetSelectedTabForReload = function()
         if mainFrame and mainFrame:IsShown() and activeWorkspaceView == "DYNAMICLOAD" and not isToastSubTabActive then
             return selectedTabKey
@@ -4591,7 +4668,7 @@ function addonTable.CreateMainConfigUI()
                         host._activeModHost = modHost
 
                         if f.verPill and f.verPill.label then
-                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "2.0.9"
+                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "2.1.0"
                             f.verPill.label:SetText("v" .. tostring(mVer))
                         end
                         UpdateStatusBar(true)
@@ -4995,7 +5072,7 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        local curVer = addonTable.ADDON_VERSION or "2.0.9"
+        local curVer = addonTable.ADDON_VERSION or "2.1.0"
         local curSig = f.GetSuiteChangelogSignature and f.GetSuiteChangelogSignature() or curVer
         local seenVer = gTbl.lastSeenChangelogVer or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogVer)
         local seenSig = gTbl.lastSeenChangelogSig or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogSig)
@@ -5434,7 +5511,7 @@ function addonTable.CreateMainConfigUI()
     tvScroll:EnableMouseWheel(true)
 
     local tvChild = CreateFrame("Frame", nil, tvScroll)
-    tvChild:SetSize(780, 789)
+    tvChild:SetSize(780, 1073)
     tvScroll:SetScrollChild(tvChild)
 
     local tvTrack = CreateFrame("Frame", nil, themeView)
@@ -5454,7 +5531,7 @@ function addonTable.CreateMainConfigUI()
     local function UpdateThemeScrollbar()
         local trackH = tvTrack:GetHeight() or 400
         local viewH = tvScroll:GetHeight() or 400
-        local contentH = tvChild:GetHeight() or 789
+        local contentH = tvChild:GetHeight() or 1073
         local maxScroll = math.max(0, contentH - viewH)
         if maxScroll <= 1 then
             tvTrack:Hide()
@@ -5477,7 +5554,7 @@ function addonTable.CreateMainConfigUI()
         if UI.IsDropdownPopupShown and UI.IsDropdownPopupShown() and UI.CloseAllPopups then
             UI.CloseAllPopups()
         end
-        local maxScroll = math.max(0, (tvChild:GetHeight() or 789) - (self:GetHeight() or 400))
+        local maxScroll = math.max(0, (tvChild:GetHeight() or 1073) - (self:GetHeight() or 400))
         local nextScroll = math.max(0, math.min(maxScroll, (self:GetVerticalScroll() or 0) - (delta * 44)))
         self:SetVerticalScroll(nextScroll)
         UpdateThemeScrollbar()
@@ -6519,6 +6596,201 @@ function addonTable.CreateMainConfigUI()
     replaceAddonListPills:SetPoint("RIGHT", replaceAddonListRow, "RIGHT", -14, 0)
     replaceAddonListRow:BindRightControl(replaceAddonListPills)
 
+    -- Card 4: Shared Alert & Teleport Toast HUD Configuration Card (Visibility, Border Style, Scale, Opacity, Test Toast, Edit HUD)
+    local toastSectionCard = CreateFrame("Frame", nil, tvChild)
+    toastSectionCard:SetPoint("TOPLEFT", shortcutSectionCard, "BOTTOMLEFT", 0, -10)
+    toastSectionCard:SetPoint("TOPRIGHT", shortcutSectionCard, "BOTTOMRIGHT", 0, -10)
+    toastSectionCard:SetHeight(274)
+    toastSectionCard.bg = UI.SolidTex(toastSectionCard, "BACKGROUND", 0, 0.031, 0.039, 0.055, 0.72)
+    toastSectionCard.bg:SetAllPoints()
+    UI.CreatePixelBorder(toastSectionCard, 1, 1, 1, 0.08, 2)
+
+    local toastSecHdr = UI.CreateSectionHeader(
+        toastSectionCard,
+        -10,
+        "ON-SCREEN ALERT & TELEPORT TOAST HUD",
+        "Customise visibility, border style, scale, and opacity for the shared Alert & Teleport Toast popup.",
+        14
+    )
+    local toastEditHudBtn = UI.CreateEditHudButton(toastSecHdr, "TOAST")
+    toastEditHudBtn:SetPoint("RIGHT", toastSecHdr, "RIGHT", 0, 2)
+
+    local toastTestBtn = CreateFlatButton(toastSecHdr, 92, 22, "Test Toast", false)
+    toastTestBtn:SetPoint("RIGHT", toastEditHudBtn, "LEFT", -6, 0)
+    toastTestBtn:SetScript("OnClick", function()
+        if addonTable.ShowToast then
+            addonTable.ShowToast(selectedTabKey or "outdoor", 4, true)
+        elseif _G.DynamicGroup and _G.DynamicGroup.ShowTeleportToast then
+            pcall(_G.DynamicGroup.ShowTeleportToast, _G.DynamicGroup, "Preview Destination", "Preview Party Lead", true)
+        end
+    end)
+    if toastSecHdr.subtitle then
+        toastSecHdr.subtitle:ClearAllPoints()
+        toastSecHdr.subtitle:SetPoint("TOPLEFT", toastSecHdr.title, "BOTTOMLEFT", 0, -2)
+        toastSecHdr.subtitle:SetPoint("RIGHT", toastTestBtn, "LEFT", -10, 0)
+    end
+
+    local function SyncSharedToastHudVisuals()
+        if addonTable.ApplyToastVisuals then pcall(addonTable.ApplyToastVisuals) end
+        if _G.DynamicGroup and _G.DynamicGroup.UpdateTeleportToast then
+            pcall(_G.DynamicGroup.UpdateTeleportToast, _G.DynamicGroup)
+        end
+        if f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
+            pcall(f.toastConfigPanel.RefreshControls)
+        end
+        if themeView.Refresh then themeView.Refresh() end
+    end
+
+    local toastVisRow = CreateThemeStudioRow(
+        toastSectionCard,
+        "Toast Banner Visibility",
+        "Show or hide the shared Alert & Teleport Toast HUD banner across your screen.",
+        toastSecHdr, -8
+    )
+    local toastVisPills = UI.CreateSegmentedPills(toastVisRow, {
+        { value = false, label = "Hidden", width = 68 },
+        { value = true,  label = "Shown",  width = 68 },
+    }, function()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        if gTbl.toastEnabled ~= nil then return gTbl.toastEnabled == true end
+        local tMode = (DynamicLoadDB and DynamicLoadDB.toastMode) or gTbl.toastMode
+        if tMode ~= nil then return tMode ~= "OFF" end
+        local dMode = (DynamicLoadDB and DynamicLoadDB.toastDisplayMode) or gTbl.toastDisplayMode
+        return dMode ~= "OFF"
+    end, function(val)
+        local isShown = (val == true)
+        local modeVal = isShown and "ALWAYS" or "OFF"
+        local dispVal = isShown and "DETAILED" or "OFF"
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        if gTbl then
+            gTbl.toastEnabled = isShown
+            gTbl.toastMode = modeVal
+            if not isShown or gTbl.toastDisplayMode == "OFF" then
+                gTbl.toastDisplayMode = dispVal
+            end
+            gTbl.hudVisibility = gTbl.hudVisibility or {}
+            gTbl.hudVisibility["TOAST"] = isShown and "ALWAYS" or "HIDDEN"
+        end
+        if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+            _G.DynamicSuiteDB.global.toastEnabled = isShown
+            _G.DynamicSuiteDB.global.toastMode = modeVal
+            if not isShown or _G.DynamicSuiteDB.global.toastDisplayMode == "OFF" then
+                _G.DynamicSuiteDB.global.toastDisplayMode = dispVal
+            end
+        end
+        if DynamicLoadDB then
+            DynamicLoadDB.toastEnabled = isShown
+            DynamicLoadDB.toastMode = modeVal
+            if not isShown or DynamicLoadDB.toastDisplayMode == "OFF" then
+                DynamicLoadDB.toastDisplayMode = dispVal
+            end
+        end
+        if _G.DynamicLoadToastFrame and not isShown and not _G.DynamicLoadToastFrame.isEditingMode and not InCombatLockdown() then
+            _G.DynamicLoadToastFrame:Hide()
+        end
+        SyncSharedToastHudVisuals()
+    end)
+    toastVisPills:SetPoint("RIGHT", toastVisRow, "RIGHT", -14, 0)
+    toastVisRow:BindRightControl(toastVisPills)
+
+    local toastBorderRow = CreateThemeStudioRow(
+        toastSectionCard,
+        "Toast Border Style",
+        "Choose the 1px outer frame border accent for the floating Alert & Teleport Toast.",
+        toastVisRow, -5
+    )
+    local toastBorderPills = UI.CreateSegmentedPills(toastBorderRow, {
+        { value = "ACCENT", label = "Suite Accent", width = 98 },
+        { value = "SUBTLE", label = "Subtle Dark",  width = 92 },
+        { value = "NONE",   label = "Borderless",   width = 84 },
+    }, function()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        return gTbl.toastBorderStyle or (DynamicLoadDB and DynamicLoadDB.toastBorderStyle) or "ACCENT"
+    end, function(val)
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        if gTbl then gTbl.toastBorderStyle = val end
+        if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+            _G.DynamicSuiteDB.global.toastBorderStyle = val
+        end
+        if DynamicLoadDB then DynamicLoadDB.toastBorderStyle = val end
+        SyncSharedToastHudVisuals()
+    end)
+    toastBorderPills:SetPoint("RIGHT", toastBorderRow, "RIGHT", -14, 0)
+    toastBorderRow:BindRightControl(toastBorderPills)
+
+    local toastScaleRow = CreateThemeStudioRow(
+        toastSectionCard,
+        "Toast HUD Scale",
+        "Adjust the size of the Alert & Teleport Toast popup (60% to 150%).",
+        toastBorderRow, -5
+    )
+    local toastScaleSlider = CreateDSOptionSlider(
+        toastScaleRow, 240, 0.60, 1.50, 0.05,
+        function(v) return string.format("%d%%", math.floor((v or 1.0) * 100 + 0.5)) end,
+        function()
+            local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+            return gTbl.toastScale or (DynamicLoadDB and DynamicLoadDB.toastScale) or 1.0
+        end,
+        function(val)
+            local clamped = math.max(0.60, math.min(1.50, math.floor(val * 20 + 0.5) / 20))
+            local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+            if gTbl then gTbl.toastScale = clamped end
+            if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+                _G.DynamicSuiteDB.global.toastScale = clamped
+            end
+            if DynamicLoadDB then DynamicLoadDB.toastScale = clamped end
+            if addonTable.ApplyToastVisuals then pcall(addonTable.ApplyToastVisuals) end
+            if _G.DynamicGroup and _G.DynamicGroup.UpdateTeleportToast then
+                pcall(_G.DynamicGroup.UpdateTeleportToast, _G.DynamicGroup)
+            end
+            if f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
+                pcall(f.toastConfigPanel.RefreshControls)
+            end
+        end
+    )
+    toastScaleSlider:SetPoint("RIGHT", toastScaleRow, "RIGHT", -14, 0)
+    toastScaleRow:BindRightControl(toastScaleSlider)
+
+    local toastOpacityRow = CreateThemeStudioRow(
+        toastSectionCard,
+        "Toast Background Opacity",
+        "Adjust the dark-obsidian backdrop transparency of the Alert & Teleport Toast (20% to 100%).",
+        toastScaleRow, -5
+    )
+    local toastOpacitySlider = CreateDSOptionSlider(
+        toastOpacityRow, 240, 0.20, 1.00, 0.05,
+        function(v) return string.format("%d%%", math.floor((v or 0.96) * 100 + 0.5)) end,
+        function()
+            local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+            return gTbl.toastOpacity or gTbl.toastAlpha or (DynamicLoadDB and (DynamicLoadDB.toastOpacity or DynamicLoadDB.toastAlpha)) or 0.96
+        end,
+        function(val)
+            local clamped = math.max(0.20, math.min(1.00, math.floor(val * 20 + 0.5) / 20))
+            local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+            if gTbl then
+                gTbl.toastOpacity = clamped
+                gTbl.toastAlpha = clamped
+            end
+            if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+                _G.DynamicSuiteDB.global.toastOpacity = clamped
+                _G.DynamicSuiteDB.global.toastAlpha = clamped
+            end
+            if DynamicLoadDB then
+                DynamicLoadDB.toastOpacity = clamped
+                DynamicLoadDB.toastAlpha = clamped
+            end
+            if addonTable.ApplyToastVisuals then pcall(addonTable.ApplyToastVisuals) end
+            if _G.DynamicGroup and _G.DynamicGroup.UpdateTeleportToast then
+                pcall(_G.DynamicGroup.UpdateTeleportToast, _G.DynamicGroup)
+            end
+            if f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
+                pcall(f.toastConfigPanel.RefreshControls)
+            end
+        end
+    )
+    toastOpacitySlider:SetPoint("RIGHT", toastOpacityRow, "RIGHT", -14, 0)
+    toastOpacityRow:BindRightControl(toastOpacitySlider)
+
     local resetThemeConfirmTimer = nil
     local function CancelThemeResetConfirmation(showCancelledFeedback)
         if resetThemeConfirmTimer then
@@ -6611,6 +6883,9 @@ function addonTable.CreateMainConfigUI()
         if scHdr and scHdr.RefreshAccent then scHdr:RefreshAccent() end
         if surfSecHdr and surfSecHdr.RefreshAccent then surfSecHdr:RefreshAccent() end
         if shortSecHdr and shortSecHdr.RefreshAccent then shortSecHdr:RefreshAccent() end
+        if toastSecHdr and toastSecHdr.RefreshAccent then toastSecHdr:RefreshAccent() end
+        if toastEditHudBtn and toastEditHudBtn.RefreshVisual then toastEditHudBtn:RefreshVisual() end
+        if toastTestBtn and toastTestBtn.RefreshVisual then toastTestBtn:RefreshVisual() end
 
         for _, sBtn in ipairs(presetSwatchBtns) do
             local isSel = (curAccentKey == sBtn.pDef.key)
@@ -6657,6 +6932,10 @@ function addonTable.CreateMainConfigUI()
         if gmSuitePills and gmSuitePills.RefreshValue then gmSuitePills:RefreshValue() end
         if gmHudPills and gmHudPills.RefreshValue then gmHudPills:RefreshValue() end
         if replaceAddonListPills and replaceAddonListPills.RefreshValue then replaceAddonListPills:RefreshValue() end
+        if toastVisPills and toastVisPills.RefreshValue then toastVisPills:RefreshValue() end
+        if toastBorderPills and toastBorderPills.RefreshValue then toastBorderPills:RefreshValue() end
+        if toastScaleSlider and toastScaleSlider.RefreshValue then toastScaleSlider:RefreshValue() end
+        if toastOpacitySlider and toastOpacitySlider.RefreshValue then toastOpacitySlider:RefreshValue() end
 
         local scrollW = tvScroll:GetWidth()
         if scrollW and scrollW > 40 then
@@ -6668,7 +6947,7 @@ function addonTable.CreateMainConfigUI()
     themeView:SetScript("OnShow", function()
         if themeView.Refresh then themeView.Refresh() end
     end)
-    for _, tc in ipairs({ swatchCard, surfRow, fontRow, extSyncRow, syncRow, altSyncRow, fillRow, gmSuiteRow, gmHudRow, replaceAddonListRow }) do
+    for _, tc in ipairs({ swatchCard, surfRow, fontRow, extSyncRow, syncRow, altSyncRow, fillRow, gmSuiteRow, gmHudRow, replaceAddonListRow, toastSectionCard, toastVisRow, toastBorderRow, toastScaleRow, toastOpacityRow }) do
         table.insert(f.themeCards, tc)
     end
     end
@@ -6687,19 +6966,22 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.0.9"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.0"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
             key = "suite",
             tabLabel = "DynamicLoad",
             ver = DS_LIVE_VER_TAG,
-            date = "14/11/2026 (Retail 12.1.5)",
+            date = "15/11/2026 (Retail 12.1.5)",
             title = "DynamicSuite Hub & DynamicLoad " .. DS_LIVE_VER_TAG,
             subtitle = "Context-Aware Addon Manager, External Conflict Detector & Auto-Yield Engine (/dl, /ds)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "NEW",      title = "v2.1.0 Release: Compact Draggable 560x74 HUD Edit Inspector, Hidden-By-Default Movers & Unified [Edit HUD] Cards", desc = "Redesigned the HUD Edit Mode dock into a compact 560x74 2-row draggable toolbar with a HUD Selector Dropdown (green/red status dots), non-truncated Hidden/Shown pills, Grid/Reset/Back to Suite, X/Y coordinates & nudges, Center X/Y, Scale slider (60%-150%), and 60px off-screen fail-safe edge clamping; hid disabled/Off HUD movers by default on entering HUD Edit Mode with temporary 'HIDDEN (Click Shown to Enable)' previewing when explicitly selected; and standardised Obsidian/Blaze-Orange [Edit HUD] buttons + shared ON-SCREEN ALERT & TELEPORT TOAST HUD controls across DynamicLoad, Theme & Font Studio, DynamicGroup, DynamicPrep, DynamicMarker, and DynamicChat." },
+                { badge = "FIXED",    title = "v2.1.0 Release: World Flare Hardware Keybinds & Immediate Telemetry / Tab-Label Sync", desc = "Anchored DynamicMarker's secure World Flare cycle/clear buttons on-screen, removed the button-name override in SecureHandlerWrapScript so LeftButton dispatches /wm [@cursor] and /cwm all reliably in and out of combat, added Right-Click keybind clearing, and wired instant top-bar telemetry and dynamic 'World Flare Keys (...)' sub-tab updates on rebind, clear, or reset." },
+                { badge = "FIXED",    title = "v2.0.9 Release: World Flare Hardware Keybinds & Custom Sequence Order", desc = "Added SecureHandlerWrapScript custom World Flare Cycle Sequence support and floating World Flare Bar icon reordering." },
                 { badge = "FIXED",    title = "v1.9.9 Release: Canonical UIParent-Local HUD Coordinates, Custom Dark-Obsidian Coexistence Modal & Unified HUD Edit", desc = "Enforced a canonical UIParent-local coordinate contract for TargetBar and FlareBar (dividing by barScale strictly inside DM:SetBarCenterPoint after applying SetScale/SetSize and before SetClampedToScreen(true) so top/bottom/corner edge positions never drift across /reload at 0.70, 1.00, or 1.30 scales), replaced Blizzard's StaticPopup with a custom dark-obsidian coexistence reload modal (DynamicSuiteMarkerConflictModal with #0B0D12 backdrop, Blaze Orange #F97316 accent bar, flat Reload UI / Later buttons, ESC dismissal, and combat deferral), and suppressed the duplicate legacy HUD Edit popup inside DynamicSuite." },
                 { badge = "FIXED",    title = "v1.9.8 Release: HUD Edit Edge-Drag Persistence & Flush (0, 0) Chat Clamping", desc = "Fixed Target Icon Bar and World Flare Bar coordinate round-trips across drag, Exit Edit Mode, UI_SCALE_CHANGED, and /reload by syncing bar scale and orientation before clamping and canonicalising CENTER anchors across Suite & standalone DynamicMarker; and fixed DynamicChat flush bottom-left (0, 0) positioning by disabling ChatFrame1 C++ SetClampedToScreen, measuring only the visible chat container via GetVisibleContainerExtents(), and canonicalising CHAT to BOTTOMLEFT outer-container coordinates." },
                 { badge = "NEW",      title = "v1.9.7 Release: CurseForge Dual-Release Pipeline (DynamicSuite 1804382) & Hardened Coexistence", desc = "Wired full DynamicSuite (Project ID 1804382) alongside standalone DynamicMarker (Project ID 1331651) in the automated release workflow, updated all Support panels and public docs to the live CurseForge links, added code-accurate storefront documentation, and hardened ShouldYieldToOtherInstall dual-mode version coexistence across all 8 modules." },
@@ -6749,12 +7031,13 @@ function addonTable.CreateMainConfigUI()
             key = "marker",
             tabLabel = "DynamicMarker",
             ver = DS_LIVE_VER_TAG,
-            date = "14/11/2026 (Retail 12.1.5)",
+            date = "15/11/2026 (Retail 12.1.5)",
             title = "DynamicMarker " .. DS_LIVE_VER_TAG,
             subtitle = "Modifier-Free Target Marking, World Flares & Multi-Spec Interrupt Macro (/dm)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
             openModule = "DynamicMarker",
             items = {
+                { badge = "FIXED",    title = "v2.1.0 World Flare Hardware Keybinds & Instant Telemetry / Sub-Tab Label Refresh", desc = "Anchored the secure flare cycle/clear buttons on-screen (1x1, alpha 0, non-mouse-blocking), removed the SecureHandlerWrapScript button override return so LeftButton reliably runs /wm [@cursor] and /cwm all cleanly in and out of combat, added Right-Click unbind, updated top Suite telemetry and 'World Flare Keys (...)' labels live on every bind/clear/reset, standardised [Edit HUD] buttons, and brought the compact 560x74 draggable HUD Edit dock with 60px fail-safe clamping and Hidden-by-default movers to both Suite and standalone DynamicMarker." },
                 { badge = "FIXED",    title = "v1.9.9 Canonical UIParent-Local HUD Coordinates, Dark-Obsidian Coexistence Modal & Unified HUD Dock", desc = "Stored saved TargetBar and FlareBar X/Y coordinates strictly in unscaled UIParent-local offsets relative to screen CENTER and divided by barScale strictly inside DM:SetBarCenterPoint after SetScale/SetSize and before SetClampedToScreen(true) so top/bottom/corner edge bars stay at identical pixel coordinates across /reload at 0.70, 1.00, and 1.30 scales; added the custom dark-obsidian coexistence reload modal (ShowMarkerConflictReloadModal); and unified HUD Edit Mode across Suite & standalone modes." },
                 { badge = "FIXED",    title = "v1.9.8 Scaled Edge-Drag & Reload Persistence", desc = "Synced bar scale and vertical/horizontal bar size prior to boundary clamping, canonicalised Target & Flare bar anchors to CENTER, cleared drag flags prior to final Edit Mode save, and kept SetClampedToScreen(false) so edge-pinned bars stay flush across release, /reload, and UI scale changes." },
                 { badge = "NEW",      title = "v1.9.7 Live Suite Cross-Links & Hardened Coexistence", desc = "Replaced legacy URL placeholder labels across DynamicSuite & standalone DynamicMarker Support panels and docs now that DynamicSuite (Project ID 1804382) is live on CurseForge, and hardened ShouldYieldToOtherInstall semantic version yielding regardless of addon load order." },
@@ -10038,12 +10321,40 @@ function addonTable.CreateMainConfigUI()
 
     local SyncAllEditModeHuds
 
+    local explicitlyPreviewedHiddenHud = nil
+
+    local function IsHudParentModuleActive(targetKey)
+        if targetKey == "CHAT" then
+            return IsChatHudTargetOwned()
+        end
+        local meta = hudTargetMeta[targetKey]
+        local owner = meta and meta.owner
+        if targetKey == "TOAST" then
+            local loadDisabled = addonTable.IsSuiteModuleExplicitlyDisabled and addonTable.IsSuiteModuleExplicitlyDisabled("DynamicLoad")
+            local grpDisabled = addonTable.IsSuiteModuleExplicitlyDisabled and addonTable.IsSuiteModuleExplicitlyDisabled("DynamicGroup")
+            return not (loadDisabled and grpDisabled)
+        end
+        if owner and addonTable.IsSuiteModuleExplicitlyDisabled and addonTable.IsSuiteModuleExplicitlyDisabled(owner) then
+            return false
+        end
+        if owner and not _G[owner] then
+            return false
+        end
+        return true
+    end
+
     local function GetHudVisibility(targetKey)
         if targetKey == "ALL" or not targetKey then
             return GetHudVisibility("TOAST") or GetHudVisibility("PREP") or GetHudVisibility("TARGET") or GetHudVisibility("FLARE")
         end
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         if targetKey == "TOAST" then
+            if gTbl.toastEnabled ~= nil then
+                return gTbl.toastEnabled == true
+            end
+            if DynamicLoadDB and DynamicLoadDB.toastEnabled ~= nil then
+                return DynamicLoadDB.toastEnabled == true
+            end
             local tMode = (DynamicLoadDB and DynamicLoadDB.toastMode) or gTbl.toastMode
             if tMode ~= nil then
                 return tMode ~= "OFF"
@@ -10077,27 +10388,85 @@ function addonTable.CreateMainConfigUI()
         return true
     end
 
+    local function IsHudNormallyShown(targetKey)
+        if not IsHudParentModuleActive(targetKey) then
+            return false
+        end
+        return GetHudVisibility(targetKey) == true
+    end
+
+    local function ShouldShowHudMoverInEditMode(targetKey)
+        if not isHudEditModeActive then
+            return false
+        end
+        if IsHudNormallyShown(targetKey) then
+            return true
+        end
+        return (explicitlyPreviewedHiddenHud == targetKey) and (selectedHudTarget == targetKey)
+    end
+
+    local function SelectDefaultVisibleHudTarget()
+        for _, hDef in ipairs(hudTargetDefs) do
+            if IsHudNormallyShown(hDef.key) then
+                return hDef.key
+            end
+        end
+        for _, hDef in ipairs(hudTargetDefs) do
+            if IsHudParentModuleActive(hDef.key) then
+                return hDef.key
+            end
+        end
+        return "TOAST"
+    end
+
     local function SetHudVisibility(targetKey, isShown)
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         gTbl.hudVisibility = gTbl.hudVisibility or {}
         local targets = (targetKey == "ALL") and { "TOAST", "PREP", "TARGET", "FLARE", "prepBuffs" } or { targetKey or "TOAST" }
         for _, k in ipairs(targets) do
             gTbl.hudVisibility[k] = isShown and "ALWAYS" or "HIDDEN"
+            if isHudEditModeActive and k == selectedHudTarget then
+                if isShown then
+                    if explicitlyPreviewedHiddenHud == k then
+                        explicitlyPreviewedHiddenHud = nil
+                    end
+                else
+                    explicitlyPreviewedHiddenHud = k
+                end
+            end
             if k == "TOAST" then
                 local modeVal = isShown and "ALWAYS" or "OFF"
                 local dispVal = isShown and "DETAILED" or "OFF"
                 if DynamicLoadDB then
+                    DynamicLoadDB.toastEnabled = (isShown == true)
                     DynamicLoadDB.toastMode = modeVal
                     if not isShown or DynamicLoadDB.toastDisplayMode == "OFF" then
                         DynamicLoadDB.toastDisplayMode = dispVal
                     end
                 end
+                if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+                    _G.DynamicSuiteDB.global.toastEnabled = (isShown == true)
+                    _G.DynamicSuiteDB.global.toastMode = modeVal
+                    if not isShown or _G.DynamicSuiteDB.global.toastDisplayMode == "OFF" then
+                        _G.DynamicSuiteDB.global.toastDisplayMode = dispVal
+                    end
+                end
+                gTbl.toastEnabled = (isShown == true)
                 gTbl.toastMode = modeVal
                 if not isShown or gTbl.toastDisplayMode == "OFF" then
                     gTbl.toastDisplayMode = dispVal
                 end
                 if _G.DynamicLoadToastFrame and not InCombatLockdown() then
                     if isShown then _G.DynamicLoadToastFrame:Show() else _G.DynamicLoadToastFrame:Hide() end
+                end
+                if f.themeView and f.themeView.Refresh and f.themeView:IsShown() then
+                    f.themeView.Refresh()
+                end
+                if f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
+                    pcall(f.toastConfigPanel.RefreshControls)
+                end
+                if _G.DynamicGroup and _G.DynamicGroup.UpdateTeleportToast then
+                    pcall(_G.DynamicGroup.UpdateTeleportToast, _G.DynamicGroup)
                 end
             elseif k == "PREP" then
                 local modeVal = isShown and "ALWAYS" or "HIDDEN"
@@ -10307,6 +10676,7 @@ function addonTable.CreateMainConfigUI()
                 local meta = hudTargetMeta[targetKey] or hudTargetMeta["TOAST"]
                 local curPct = math.floor(GetHudScale(targetKey) * 100 + 0.5)
                 local isVis = GetHudVisibility(targetKey)
+                local isModActive = IsHudParentModuleActive(targetKey)
                 if self.bg then
                     if targetKey == "CHAT" then
                         self.bg:SetColorTexture(0.02, 0.025, 0.035, isSelected and 0.52 or 0.40)
@@ -10329,9 +10699,12 @@ function addonTable.CreateMainConfigUI()
                     if targetKey == "CHAT" and hudFrame and hudFrame.GetWidth and hudFrame.GetHeight then
                         sizeInfo = string.format("  |cFF64748B|||r  |cFF94A3B8%dx%d|r", math.floor((hudFrame:GetWidth() or 430) + 0.5), math.floor((hudFrame:GetHeight() or 200) + 0.5))
                     end
-                    if not isVis then
+                    if not isModActive then
                         self.overlayText:SetAlpha(isSelected and 1.0 or 0.85)
-                        self.overlayText:SetText(string.format("|cFF94A3B8%s|r  |cFF64748B|||r  |cFFEF4444(HIDDEN)|r  |cFF64748B|||r  |cFF94A3B8X: %d, Y: %d|r%s", meta.label, lx or 0, ly or 0, sizeInfo))
+                        self.overlayText:SetText(string.format("|cFF94A3B8%s|r  |cFF64748B|||r  |cFFEF4444DISABLED (Module Off)|r  |cFF64748B|||r  |cFF94A3B8X: %d, Y: %d|r%s", meta.label, lx or 0, ly or 0, sizeInfo))
+                    elseif not isVis then
+                        self.overlayText:SetAlpha(isSelected and 1.0 or 0.85)
+                        self.overlayText:SetText(string.format("|cFF94A3B8%s|r  |cFF64748B|||r  |cFFEF4444HIDDEN (Click Shown to Enable)|r  |cFF64748B|||r  |cFF94A3B8X: %d, Y: %d|r%s", meta.label, lx or 0, ly or 0, sizeInfo))
                     elseif isSelected then
                         self.overlayText:SetAlpha(1.0)
                         self.overlayText:SetText(string.format("|cFF%s%s|r  |cFF64748B|||r  |cFFF3F5F8Scale: %d%%|r  |cFF64748B|||r  |cFFF3F5F8X: %d, Y: %d|r%s", aHex, meta.label, curPct, lx or 0, ly or 0, sizeInfo))
@@ -10694,6 +11067,7 @@ function addonTable.CreateMainConfigUI()
         if not activeMode then
             if _G.DynamicMarker then
                 _G.DynamicMarker.isDraggingHUD = false
+                _G.DynamicMarker._previewHiddenMoverKey = nil
             end
             for _, cb in pairs(addonTable.hudEditCallbacks or {}) do
                 if type(cb) == "function" then
@@ -10757,67 +11131,113 @@ function addonTable.CreateMainConfigUI()
 
         if not IsChatHudTargetOwned() then
             if selectedHudTarget == "CHAT" then
-                selectedHudTarget = "TOAST"
+                selectedHudTarget = SelectDefaultVisibleHudTarget()
             end
             if _G.DynamicChat and _G.DynamicChat.HideHudEditMover then
                 pcall(_G.DynamicChat.HideHudEditMover, _G.DynamicChat)
             end
         end
 
-        -- Show Alert Toast when Edit Mode is active
-        addonTable.SetToastEditMode(true, selectedTabKey)
-        if _G.DynamicLoadToastFrame then
-            _G.DynamicLoadToastFrame._dsEditModeActive = true
-            local isToastFocused = (selectedHudTarget == "TOAST" or selectedHudTarget == "ALL")
-            local isToastVis = GetHudVisibility("TOAST")
-            _G.DynamicLoadToastFrame:SetAlpha((not isToastVis) and 0.15 or (isToastFocused and 1.0 or 0.30))
-            if _G.DynamicLoadToastFrame.SetBackdropBorderColor then
-                if isToastFocused then
-                    _G.DynamicLoadToastFrame:SetBackdropBorderColor(ar, ag, ab, 1.0)
-                else
-                    _G.DynamicLoadToastFrame:SetBackdropBorderColor(0.18, 0.20, 0.25, 0.30)
-                end
+        if _G.DynamicMarker then
+            if explicitlyPreviewedHiddenHud == "TARGET" and selectedHudTarget == "TARGET" then
+                _G.DynamicMarker._previewHiddenMoverKey = "TargetBar"
+            elseif explicitlyPreviewedHiddenHud == "FLARE" and selectedHudTarget == "FLARE" then
+                _G.DynamicMarker._previewHiddenMoverKey = "FlareBar"
+            else
+                _G.DynamicMarker._previewHiddenMoverKey = nil
             end
-            AttachOrUpdateDragShield(_G.DynamicLoadToastFrame, "TOAST", true)
         end
 
-        -- Unlock and show the actual live HUD frames in-place WITHOUT calling ClearAllPoints/SetPoint!
+        -- Show Alert Toast ONLY when normally active/shown OR explicitly previewed
+        if ShouldShowHudMoverInEditMode("TOAST") then
+            addonTable.SetToastEditMode(true, selectedTabKey)
+            if _G.DynamicLoadToastFrame then
+                _G.DynamicLoadToastFrame._dsEditModeActive = true
+                local isToastFocused = (selectedHudTarget == "TOAST" or selectedHudTarget == "ALL")
+                local isToastVis = IsHudNormallyShown("TOAST")
+                _G.DynamicLoadToastFrame:SetAlpha((not isToastVis) and 0.45 or (isToastFocused and 1.0 or 0.30))
+                if _G.DynamicLoadToastFrame.SetBackdropBorderColor then
+                    if isToastFocused then
+                        _G.DynamicLoadToastFrame:SetBackdropBorderColor(ar, ag, ab, 1.0)
+                    else
+                        _G.DynamicLoadToastFrame:SetBackdropBorderColor(0.18, 0.20, 0.25, 0.30)
+                    end
+                end
+                AttachOrUpdateDragShield(_G.DynamicLoadToastFrame, "TOAST", true)
+            end
+        else
+            addonTable.SetToastEditMode(false)
+            if _G.DynamicLoadToastFrame then
+                _G.DynamicLoadToastFrame._dsEditModeActive = false
+                _G.DynamicLoadToastFrame._dsDragging = false
+                AttachOrUpdateDragShield(_G.DynamicLoadToastFrame, "TOAST", false)
+                _G.DynamicLoadToastFrame:SetAlpha(1.0)
+                if not _G.DynamicLoadToastFrame.isRealAlert and not InCombatLockdown() then
+                    _G.DynamicLoadToastFrame:Hide()
+                end
+            end
+        end
+
+        -- Unlock and show active/shown (or explicitly previewed hidden) HUD frames in-place WITHOUT moving coordinates
         local dmOwnsMovers = (_G.DynamicMarker and _G.DynamicMarker.HasEncapsulatedHudMovers)
         for _, k in ipairs({ "PREP", "TARGET", "FLARE", "prepBuffs", "CHAT" }) do
+            local showMover = ShouldShowHudMoverInEditMode(k)
             if (k == "TARGET" or k == "FLARE") and dmOwnsMovers then
                 local liveFrame = GetLiveHudFrame(k)
                 if liveFrame then
-                    AttachOrUpdateDragShield(liveFrame, k, true)
+                    AttachOrUpdateDragShield(liveFrame, k, showMover)
                 end
             else
                 local liveFrame = GetLiveHudFrame(k)
                 local isFocused = (selectedHudTarget == k or selectedHudTarget == "ALL")
-                local isVis = GetHudVisibility(k)
+                local isVis = IsHudNormallyShown(k)
                 if liveFrame then
                     pcall(function()
                         local carrier = GetHudStateCarrier(liveFrame, k)
-                        carrier._dsEditModeActive = true
-                        if carrier._wasShownBeforeEdit == nil then
-                            carrier._wasShownBeforeEdit = liveFrame:IsShown()
+                        if showMover then
+                            carrier._dsEditModeActive = true
+                            if carrier._wasShownBeforeEdit == nil then
+                                carrier._wasShownBeforeEdit = liveFrame:IsShown()
+                            end
+                            if k ~= "CHAT" and not carrier._dsDragging and liveFrame.SetEditMode then
+                                liveFrame._inExternalSetEditMode = true
+                                pcall(liveFrame.SetEditMode, liveFrame, true)
+                                liveFrame._inExternalSetEditMode = nil
+                            end
+                            if k ~= "CHAT" then
+                                liveFrame:Show()
+                            end
+                            liveFrame:SetAlpha((not isVis) and 0.45 or (isFocused and 1.0 or 0.30))
+                            AttachOrUpdateDragShield(liveFrame, k, true)
+                        else
+                            carrier._dsEditModeActive = false
+                            carrier._dsDragging = false
+                            AttachOrUpdateDragShield(liveFrame, k, false)
+                            if k == "CHAT" and _G.DynamicChat and _G.DynamicChat.HideHudEditMover then
+                                pcall(_G.DynamicChat.HideHudEditMover, _G.DynamicChat)
+                            elseif k ~= "CHAT" then
+                                if liveFrame.SetEditMode then
+                                    liveFrame._inExternalSetEditMode = true
+                                    pcall(liveFrame.SetEditMode, liveFrame, false)
+                                    liveFrame._inExternalSetEditMode = nil
+                                end
+                                liveFrame:SetAlpha(1.0)
+                                liveFrame:Hide()
+                            end
                         end
-                        if k ~= "CHAT" and not carrier._dsDragging and liveFrame.SetEditMode then
-                            liveFrame._inExternalSetEditMode = true
-                            pcall(liveFrame.SetEditMode, liveFrame, true)
-                            liveFrame._inExternalSetEditMode = nil
-                        end
-                        if k ~= "CHAT" then
-                            liveFrame:Show()
-                        end
-                        liveFrame:SetAlpha((not isVis) and 0.15 or (isFocused and 1.0 or 0.30))
-                        AttachOrUpdateDragShield(liveFrame, k, true)
                     end)
                 end
             end
         end
 
+        local suitePreviewOpts = {
+            showTarget = ShouldShowHudMoverInEditMode("TARGET"),
+            showFlare = ShouldShowHudMoverInEditMode("FLARE"),
+            explicitlyPreviewed = explicitlyPreviewedHiddenHud,
+        }
         for _, cb in pairs(addonTable.hudEditCallbacks or {}) do
             if type(cb) == "function" then
-                pcall(cb, true, selectedHudTarget, snapMode)
+                pcall(cb, true, selectedHudTarget, snapMode, suitePreviewOpts)
             end
         end
 
@@ -11077,15 +11497,43 @@ function addonTable.CreateMainConfigUI()
 
         local ar, ag, ab = UI.GetActiveAccentColor()
         local m = CreateFrame("Frame", "DynamicSuiteEditModeModal", UIParent)
-        m:SetSize(880, 88)
+        m:SetSize(560, 74)
+
+        local function ApplyEditModalClampInsets(modal)
+            local target = modal or m
+            if not target then return end
+            local w = (target.GetWidth and target:GetWidth()) or 560
+            local h = (target.GetHeight and target:GetHeight()) or 74
+            local keepVisible = 60
+            local allowOffX = math.max(0, w - keepVisible)
+            local allowOffY = math.max(0, h - keepVisible)
+            if target.SetClampedToScreen then target:SetClampedToScreen(true) end
+            if target.SetClampRectInsets then
+                target:SetClampRectInsets(allowOffX, -allowOffX, -allowOffY, allowOffY)
+            end
+        end
+
         function m:RestoreSavedPosition()
+            ApplyEditModalClampInsets(self)
             local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
             local pos = gTbl.editModeModalPos
             self:ClearAllPoints()
             if type(pos) == "table" and pos.x ~= nil and pos.y ~= nil then
-                self:SetPoint(pos.point or "CENTER", UIParent, pos.relPoint or pos.point or "CENTER", pos.x, pos.y)
+                local w = (self.GetWidth and self:GetWidth()) or 560
+                local h = (self.GetHeight and self:GetHeight()) or 74
+                local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+                local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+                local allowOffX = math.max(0, w - 60)
+                local allowOffY = math.max(0, h - 60)
+                local minX = -(screenW / 2) + (w / 2) - allowOffX
+                local maxX = (screenW / 2) - (w / 2) + allowOffX
+                local minY = -(screenH / 2) + (h / 2) - allowOffY
+                local maxY = (screenH / 2) - (h / 2) + allowOffY
+                local cx = math.max(minX, math.min(maxX, tonumber(pos.x) or 0))
+                local cy = math.max(minY, math.min(maxY, tonumber(pos.y) or 0))
+                self:SetPoint("CENTER", UIParent, "CENTER", cx, cy)
             else
-                self:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+                self:SetPoint("CENTER", UIParent, "CENTER", 0, 180)
             end
         end
         m:RestoreSavedPosition()
@@ -11107,13 +11555,19 @@ function addonTable.CreateMainConfigUI()
         m:SetFrameStrata("DIALOG")
         m:SetFrameLevel(200)
         m:SetToplevel(true)
-        m:SetClampedToScreen(true)
+        ApplyEditModalClampInsets(m)
         m:EnableMouse(true)
         m:SetMovable(true)
         m:RegisterForDrag("LeftButton")
-        m:SetScript("OnDragStart", m.StartMoving)
+        m:SetScript("OnDragStart", function()
+            if m.hudSelectorPopup and m.hudSelectorPopup:IsShown() then m.hudSelectorPopup:Hide() end
+            m:StartMoving()
+        end)
         m:SetScript("OnDragStop", SaveEditModalPosition)
         m:SetScript("OnHide", function()
+            if m.hudSelectorPopup and m.hudSelectorPopup:IsShown() then
+                m.hudSelectorPopup:Hide()
+            end
             if isHudEditModeActive and not isExitingHudEditMode then
                 addonTable.ExitHudEditMode(false)
             end
@@ -11125,18 +11579,33 @@ function addonTable.CreateMainConfigUI()
         m.bg:SetAllPoints()
         UI.CreatePixelBorder(m, ar, ag, ab, 0.95, 3)
 
+        local function TightenCompactButtonLabel(b, padX)
+            if b and b.label then
+                local px = padX or 3
+                b.label:ClearAllPoints()
+                b.label:SetPoint("LEFT", b, "LEFT", px, 0)
+                b.label:SetPoint("RIGHT", b, "RIGHT", -px, 0)
+                b.label:SetJustifyH("CENTER")
+                b.label:SetWordWrap(false)
+                if b.label.SetMaxLines then b.label:SetMaxLines(1) end
+            end
+        end
+
         ------------------------------------------------------------------------
-        -- Row 1: Command Header Bar (38px tall)
+        -- Row 1: Compact Command & Selector Bar (34px tall)
         ------------------------------------------------------------------------
         local mHdr = CreateFrame("Frame", nil, m)
         mHdr:SetPoint("TOPLEFT", m, "TOPLEFT", 1, -1)
         mHdr:SetPoint("TOPRIGHT", m, "TOPRIGHT", -1, -1)
-        mHdr:SetHeight(38)
+        mHdr:SetHeight(34)
         mHdr.bg = UI.SolidTex(mHdr, "BACKGROUND", 1, 0.03, 0.035, 0.048, 1.0)
         mHdr.bg:SetAllPoints()
         mHdr:EnableMouse(true)
         mHdr:RegisterForDrag("LeftButton")
-        mHdr:SetScript("OnDragStart", function() m:StartMoving() end)
+        mHdr:SetScript("OnDragStart", function()
+            if m.hudSelectorPopup and m.hudSelectorPopup:IsShown() then m.hudSelectorPopup:Hide() end
+            m:StartMoving()
+        end)
         mHdr:SetScript("OnDragStop", SaveEditModalPosition)
 
         local mHdrDiv = UI.SolidTex(mHdr, "OVERLAY", 2, ar, ag, ab, 0.35)
@@ -11144,21 +11613,155 @@ function addonTable.CreateMainConfigUI()
         mHdrDiv:SetPoint("BOTTOMRIGHT", mHdr, "BOTTOMRIGHT", 0, 0)
         mHdrDiv:SetHeight(1)
 
-        -- Close Button (26x26 with Geometric X)
+        -- Monogram Logo (18x18)
+        local mLogo = CreateFrame("Frame", nil, mHdr)
+        mLogo:SetSize(18, 18)
+        mLogo:SetPoint("LEFT", mHdr, "LEFT", 8, 0)
+        UI.CreatePixelBorder(mLogo, ar, ag, ab, 0.85, 3)
+        UI.DrawBrandEmblem(mLogo, 18)
+        mHdr.logo = mLogo
+
+        -- Compact HUD Selector Dropdown (162x22)
+        local hudSelectorBtn = CreateFlatButton(mHdr, 162, 22, "Alert Toast", false)
+        hudSelectorBtn:SetPoint("LEFT", mLogo, "RIGHT", 6, 0)
+        hudSelectorBtn.idleBgColor = { r = 0.055, g = 0.064, b = 0.088, a = 0.98 }
+        hudSelectorBtn.idleBorderColor = { r = 0.165, g = 0.192, b = 0.259, a = 0.95 }
+        ApplyFlatButtonVisual(hudSelectorBtn, false)
+
+        hudSelectorBtn.visDot = UI.SolidTex(hudSelectorBtn, "OVERLAY", 3, 0.133, 0.773, 0.369, 1.0)
+        hudSelectorBtn.visDot:SetSize(6, 6)
+        hudSelectorBtn.visDot:SetPoint("LEFT", hudSelectorBtn, "LEFT", 7, 0)
+        hudSelectorBtn.chevron = UI.CreateChevronDown(hudSelectorBtn, "RIGHT", hudSelectorBtn, "RIGHT", -6, 0, 1, 1, 1, 0.78)
+        if hudSelectorBtn.label then
+            hudSelectorBtn.label:ClearAllPoints()
+            hudSelectorBtn.label:SetPoint("LEFT", hudSelectorBtn.visDot, "RIGHT", 5, 0)
+            hudSelectorBtn.label:SetPoint("RIGHT", hudSelectorBtn, "RIGHT", -18, 0)
+            hudSelectorBtn.label:SetJustifyH("LEFT")
+            hudSelectorBtn.label:SetWordWrap(false)
+        end
+
+        local hudSelectorPopup = nil
+        local function EnsureHudSelectorPopup()
+            if hudSelectorPopup then return hudSelectorPopup end
+            local pop = CreateFrame("Frame", "DynamicSuiteHudSelectorPopup", UIParent)
+            pop:SetFrameStrata("TOOLTIP")
+            pop:SetFrameLevel(250)
+            pop:SetToplevel(true)
+            pop:SetClampedToScreen(true)
+            pop:EnableMouse(true)
+            pop.bg = UI.SolidTex(pop, "BACKGROUND", 0, 0.043, 0.051, 0.071, 0.99)
+            pop.bg:SetAllPoints()
+            UI.CreatePixelBorder(pop, ar, ag, ab, 0.85, 3)
+
+            local catcher = CreateFrame("Button", nil, pop)
+            catcher:SetAllPoints(UIParent)
+            catcher:SetFrameStrata("TOOLTIP")
+            catcher:SetFrameLevel(245)
+            catcher:RegisterForClicks("AnyDown", "AnyUp")
+            catcher:SetScript("OnClick", function() pop:Hide() end)
+            pop.catcher = catcher
+            pop:Hide()
+
+            pop.rows = {}
+            local rowH = 22
+            local gapY = 2
+            local pad = 4
+            for i, hDef in ipairs(hudTargetDefs) do
+                local rb = CreateFlatButton(pop, 184, rowH, hDef.label, false)
+                rb:SetPoint("TOPLEFT", pop, "TOPLEFT", pad, -(pad + (i - 1) * (rowH + gapY)))
+                rb.hudKey = hDef.key
+                rb.baseLabel = hDef.label
+                rb.visDot = UI.SolidTex(rb, "OVERLAY", 3, 0.133, 0.773, 0.369, 1.0)
+                rb.visDot:SetSize(6, 6)
+                rb.visDot:SetPoint("LEFT", rb, "LEFT", 7, 0)
+                if rb.label then
+                    rb.label:ClearAllPoints()
+                    rb.label:SetPoint("LEFT", rb.visDot, "RIGHT", 6, 0)
+                    rb.label:SetPoint("RIGHT", rb, "RIGHT", -6, 0)
+                    rb.label:SetJustifyH("LEFT")
+                    rb.label:SetWordWrap(false)
+                end
+                rb:SetScript("OnClick", function()
+                    pop:Hide()
+                    if hDef.key == "CHAT" and not IsChatHudTargetOwned() then
+                        return
+                    end
+                    addonTable.OnHudTargetSelected(hDef.key)
+                end)
+                pop.rows[i] = rb
+            end
+            pop:SetSize(192, (pad * 2) + (#hudTargetDefs * rowH) + ((#hudTargetDefs - 1) * gapY))
+            hudSelectorPopup = pop
+            m.hudSelectorPopup = pop
+            return pop
+        end
+
+        hudSelectorBtn:SetScript("OnClick", function(selfBtn)
+            local pop = EnsureHudSelectorPopup()
+            if pop:IsShown() then
+                pop:Hide()
+                return
+            end
+            local cr, cg, cb = UI.GetActiveAccentColor()
+            local accentCol = { r = cr, g = cg, b = cb }
+            if pop.dsBorder then pop.dsBorder:SetColor(cr, cg, cb, 0.85) end
+            for _, rb in ipairs(pop.rows) do
+                local modActive = IsHudParentModuleActive(rb.hudKey)
+                local isVis = modActive and GetHudVisibility(rb.hudKey)
+                rb:SetSelected(rb.hudKey == selectedHudTarget, accentCol)
+                if rb.visDot then
+                    rb.visDot:SetColorTexture(isVis and 0.133 or 0.937, isVis and 0.773 or 0.267, isVis and 0.369 or 0.267, 1.0)
+                end
+                if rb.label then
+                    rb.label:SetText(modActive and rb.baseLabel or (rb.baseLabel .. " (Off)"))
+                end
+                rb:SetAlpha(modActive and 1.0 or 0.55)
+            end
+            pop:ClearAllPoints()
+            pop:SetPoint("TOPLEFT", selfBtn, "BOTTOMLEFT", 0, -2)
+            pop:Show()
+        end)
+
+        -- 1. Visibility 2-Pill Switch ([ Hidden | Shown ]) with explicit full-word 60x22 sizing
+        local visHiddenBtn = CreateFlatButton(mHdr, 60, 22, "Hidden", false)
+        visHiddenBtn.isNegativeOpt = true
+        TightenCompactButtonLabel(visHiddenBtn, 3)
+        visHiddenBtn:SetPoint("LEFT", hudSelectorBtn, "RIGHT", 6, 0)
+        visHiddenBtn:SetScript("OnClick", function()
+            SetHudVisibility(selectedHudTarget, false)
+            m.RefreshState()
+        end)
+
+        local visShownBtn = CreateFlatButton(mHdr, 60, 22, "Shown", false)
+        TightenCompactButtonLabel(visShownBtn, 3)
+        visShownBtn:SetPoint("LEFT", visHiddenBtn, "RIGHT", 3, 0)
+        visShownBtn:SetScript("OnClick", function()
+            SetHudVisibility(selectedHudTarget, true)
+            m.RefreshState()
+        end)
+
+        local function UpdateHudVisSwitch()
+            local isVis = GetHudVisibility(selectedHudTarget)
+            local r, g, b = UI.GetActiveAccentColor()
+            visShownBtn:SetSelected(isVis == true, { r = r, g = g, b = b })
+            visHiddenBtn:SetSelected(isVis == false, { r = r, g = g, b = b })
+        end
+
+        -- Right-Aligned Action Cluster: [Grid] [Reset] [Back to Suite] [X]
         local closeBtn = CreateFrame("Button", nil, mHdr)
-        closeBtn:SetSize(26, 26)
-        closeBtn:SetPoint("RIGHT", mHdr, "RIGHT", -8, 0)
+        closeBtn:SetSize(22, 22)
+        closeBtn:SetPoint("RIGHT", mHdr, "RIGHT", -6, 0)
         closeBtn.bg = UI.SolidTex(closeBtn, "BACKGROUND", 2, 1, 1, 1, 0.03)
         closeBtn.bg:SetAllPoints()
         UI.CreatePixelBorder(closeBtn, 1, 1, 1, 0.12, 3)
 
         local closeLine1 = UI.SolidTex(closeBtn, "OVERLAY", 3, 1, 1, 1, 0.70)
-        closeLine1:SetSize(12, 1.5)
+        closeLine1:SetSize(10, 1.5)
         closeLine1:SetPoint("CENTER", closeBtn, "CENTER", 0, 0)
         if closeLine1.SetRotation then closeLine1:SetRotation(math.rad(45)) end
 
         local closeLine2 = UI.SolidTex(closeBtn, "OVERLAY", 3, 1, 1, 1, 0.70)
-        closeLine2:SetSize(12, 1.5)
+        closeLine2:SetSize(10, 1.5)
         closeLine2:SetPoint("CENTER", closeBtn, "CENTER", 0, 0)
         if closeLine2.SetRotation then closeLine2:SetRotation(math.rad(-45)) end
 
@@ -11178,44 +11781,9 @@ function addonTable.CreateMainConfigUI()
             addonTable.ExitHudEditMode(false)
         end)
 
-        -- Minimize Button (26x26)
-        local minBtn = CreateFrame("Button", nil, mHdr)
-        minBtn:SetSize(1, 1); minBtn:Hide()
-        minBtn:SetPoint("RIGHT", closeBtn, "LEFT", 0, 0)
-        minBtn.bg = UI.SolidTex(minBtn, "BACKGROUND", 2, 1, 1, 1, 0.03)
-        minBtn.bg:SetAllPoints()
-        UI.CreatePixelBorder(minBtn, 1, 1, 1, 0.12, 3)
-
-        local minBarLine = UI.SolidTex(minBtn, "OVERLAY", 3, 1, 1, 1, 0.75)
-        minBarLine:SetSize(10, 2)
-        minBarLine:SetPoint("CENTER", minBtn, "CENTER", 0, 0)
-
-        local minVertLine = UI.SolidTex(minBtn, "OVERLAY", 3, 1, 1, 1, 0.75)
-        minVertLine:SetSize(2, 10)
-        minVertLine:SetPoint("CENTER", minBtn, "CENTER", 0, 0)
-        minVertLine:Hide()
-
-        minBtn:SetScript("OnEnter", function(self)
-            local cr, cg, cb = UI.GetActiveAccentColor()
-            self.bg:SetColorTexture(cr, cg, cb, 0.18)
-            self.dsBorder:SetColor(cr, cg, cb, 0.85)
-            minBarLine:SetColorTexture(1, 1, 1, 1)
-            minVertLine:SetColorTexture(1, 1, 1, 1)
-        end)
-        minBtn:SetScript("OnLeave", function(self)
-            self.bg:SetColorTexture(1, 1, 1, 0.03)
-            self.dsBorder:SetColor(1, 1, 1, 0.12)
-            minBarLine:SetColorTexture(1, 1, 1, 0.75)
-            minVertLine:SetColorTexture(1, 1, 1, 0.75)
-        end)
-        minBtn:SetScript("OnClick", function()
-            m._isCollapsed = not m._isCollapsed
-            m.RefreshState()
-        end)
-
-        -- Back to Suite Button (92x26)
-        mHdr.backBtn = CreateFlatButton(mHdr, 92, 26, "Back to Suite", true)
-        mHdr.backBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
+        mHdr.backBtn = CreateFlatButton(mHdr, 84, 22, "Back to Suite", true)
+        TightenCompactButtonLabel(mHdr.backBtn, 3)
+        mHdr.backBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
         mHdr.backBtn:SetScript("OnClick", function()
             addonTable.ExitHudEditMode(true)
         end)
@@ -11229,112 +11797,123 @@ function addonTable.CreateMainConfigUI()
             GameTooltip:Hide()
         end
 
-        -- Monogram Logo (22x22)
-        local mLogo = CreateFrame("Frame", nil, mHdr)
-        mLogo:SetSize(22, 22)
-        mLogo:SetPoint("LEFT", mHdr, "LEFT", 10, 0)
-        UI.CreatePixelBorder(mLogo, ar, ag, ab, 0.85, 3)
-        UI.DrawBrandEmblem(mLogo, 22)
-        mHdr.logo = mLogo
-
-        -- Row 1: 690x28px Recessed Track holding the 6 HUD Target Tabs
-        local hudTabTrack = CreateFrame("Frame", nil, mHdr)
-        hudTabTrack:SetPoint("LEFT", mLogo, "RIGHT", 10, 0)
-        hudTabTrack:SetSize(690, 28)
-        hudTabTrack.bg = UI.SolidTex(hudTabTrack, "BACKGROUND", 1, 0.043, 0.051, 0.071, 0.98)
-        hudTabTrack.bg:SetAllPoints()
-        UI.CreatePixelBorder(hudTabTrack, 1, 1, 1, 0.08, 2)
-        m.hudTabTrack = hudTabTrack
-
-        local pillBtns = {}
-        local tabGap = 4
-        local hudTabWidths = { 110, 98, 110, 120, 108, 116 }
-        for idx, hDef in ipairs(hudTargetDefs) do
-            local w = hudTabWidths[idx] or hDef.w
-            local pb = CreateFlatButton(hudTabTrack, w, 22, hDef.label, false)
-            pb:SetHeight(22)
-            if idx == 1 then
-                pb:SetPoint("LEFT", hudTabTrack, "LEFT", 4, 0)
-                pb:SetWidth(w)
-            elseif idx == #hudTargetDefs then
-                pb:SetPoint("LEFT", pillBtns[idx - 1], "RIGHT", tabGap, 0)
-                pb:SetPoint("RIGHT", hudTabTrack, "RIGHT", -4, 0)
-            else
-                pb:SetPoint("LEFT", pillBtns[idx - 1], "RIGHT", tabGap, 0)
-                pb:SetWidth(w)
+        local rowResetConfirmPending = false
+        local function ResetSelectedHudLocations()
+            if InCombatLockdown and InCombatLockdown() then
+                print("|cFF38BDF8DynamicSuite|r: |cFFF87171Cannot reset HUD positions during combat lockdown.|r Please wait until combat ends.")
+                return
             end
-            pb.hudKey = hDef.key
-            pb.baseLabel = hDef.label
-
-            local visDot = UI.SolidTex(pb, "OVERLAY", 3, 0.133, 0.773, 0.369, 1.0)
-            visDot:SetSize(6, 6)
-            visDot:SetPoint("LEFT", pb, "LEFT", 7, 0)
-            pb.visDot = visDot
-
-            if pb.label then
-                pb.label:ClearAllPoints()
-                pb.label:SetPoint("LEFT", visDot, "RIGHT", 4, 0)
-                pb.label:SetPoint("RIGHT", pb, "RIGHT", -4, 0)
-                pb.label:SetJustifyH("CENTER")
+            if selectedHudTarget == "ALL" then
+                addonTable.ResetAllHudPositions(false)
+                return
             end
-
-            pb:SetScript("OnClick", function()
-                if hDef.key == "CHAT" and not IsChatHudTargetOwned() then
-                    return
+            local k = selectedHudTarget
+            local meta = hudTargetMeta[k] or hudTargetMeta["TOAST"]
+            local pt = meta.defPoint or "TOP"
+            local relPt = meta.defRelPoint or pt
+            if k == "TOAST" then
+                if addonTable.SetToastPresetPosition then
+                    addonTable.SetToastPresetPosition(pt, relPt, meta.defX, meta.defY)
                 end
-                selectedHudTarget = hDef.key
-                SyncAllEditModeHuds(true)
-                m.RefreshState()
-            end)
-            table.insert(pillBtns, pb)
+            elseif k == "CHAT" then
+                if _G.DynamicChat and _G.DynamicChat.ResetChatFramePosition then
+                    pcall(_G.DynamicChat.ResetChatFramePosition, _G.DynamicChat)
+                end
+                SetStoredHudPos("CHAT", pt, relPt, meta.defX, meta.defY)
+            elseif k == "prepBuffs" and _G.DynamicPrep and _G.DynamicPrep.ResetBuffBarHUDPosition then
+                pcall(_G.DynamicPrep.ResetBuffBarHUDPosition, _G.DynamicPrep, true)
+                SetStoredHudPos("prepBuffs", pt, relPt, meta.defX, meta.defY)
+            elseif k == "TARGET" or k == "FLARE" then
+                SetHudScale(k, 1.0)
+                if _G.DynamicMarker and _G.DynamicMarker.ResetSingleHUDPosition then
+                    pcall(_G.DynamicMarker.ResetSingleHUDPosition, _G.DynamicMarker, k, true)
+                end
+                SetStoredHudPos(k, pt, relPt, meta.defX, meta.defY)
+            else
+                SetStoredHudPos(k, pt, relPt, meta.defX, meta.defY)
+            end
+            SyncAllEditModeHuds(true)
+            m.RefreshState()
         end
 
+        local rowResetBtn = CreateFlatButton(mHdr, 46, 22, "Reset", false)
+        TightenCompactButtonLabel(rowResetBtn, 3)
+        rowResetBtn:SetPoint("RIGHT", mHdr.backBtn, "LEFT", -4, 0)
+        rowResetBtn:SetScript("OnClick", function()
+            if not rowResetConfirmPending then
+                rowResetConfirmPending = true
+                rowResetBtn.label:SetText("Sure?")
+                rowResetBtn:SetSelected(true, UI.COLORS.GOLD)
+                C_Timer.After(3.5, function()
+                    if rowResetConfirmPending then
+                        rowResetConfirmPending = false
+                        rowResetBtn.label:SetText("Reset")
+                        rowResetBtn:SetSelected(false)
+                    end
+                end)
+                return
+            end
+            rowResetConfirmPending = false
+            ResetSelectedHudLocations()
+            rowResetBtn.label:SetText("Reset")
+            rowResetBtn:SetSelected(false)
+        end)
+        rowResetBtn.OnCustomEnter = function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText("Reset Location", 1, 1, 1)
+            GameTooltip:AddLine("Reset selected HUD back to default screen-safe coordinates.", 0.78, 0.82, 0.88, true)
+            GameTooltip:Show()
+        end
+        rowResetBtn.OnCustomLeave = function() GameTooltip:Hide() end
+
+        local showGridBtn = CreateFlatButton(mHdr, 42, 22, "Grid", false)
+        TightenCompactButtonLabel(showGridBtn, 3)
+        showGridBtn:SetPoint("RIGHT", rowResetBtn, "LEFT", -4, 0)
+        showGridBtn:SetScript("OnClick", function()
+            local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+            if gTbl.hudShowGrid == nil then gTbl.hudShowGrid = true end
+            gTbl.hudShowGrid = not gTbl.hudShowGrid
+            SyncAllEditModeHuds(true)
+            m.RefreshState()
+        end)
+        showGridBtn.OnCustomEnter = function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText("Toggle Alignment Grid", 1, 1, 1)
+            GameTooltip:AddLine("Show or hide the screen alignment grid overlay.", 0.78, 0.82, 0.88)
+            GameTooltip:Show()
+        end
+        showGridBtn.OnCustomLeave = function() GameTooltip:Hide() end
+
         ------------------------------------------------------------------------
-        -- Row 2: Inspector Card (42px tall compact horizontal control strip)
+        -- Row 2: Compact Inspector Controls (36px tall, draggable dock body)
         ------------------------------------------------------------------------
         local inspCard = CreateFrame("Frame", nil, m)
-        inspCard:SetPoint("TOPLEFT", mHdr, "BOTTOMLEFT", 8, -4)
-        inspCard:SetPoint("TOPRIGHT", mHdr, "BOTTOMRIGHT", -8, -4)
-        inspCard:SetHeight(42)
+        inspCard:SetPoint("TOPLEFT", mHdr, "BOTTOMLEFT", 4, -2)
+        inspCard:SetPoint("TOPRIGHT", mHdr, "BOTTOMRIGHT", -4, -2)
+        inspCard:SetHeight(36)
         inspCard.bg = UI.SolidTex(inspCard, "BACKGROUND", 1, 0.075, 0.086, 0.110, 0.96)
         inspCard.bg:SetAllPoints()
         UI.CreatePixelBorder(inspCard, 1, 1, 1, 0.10, 2)
+        inspCard:EnableMouse(true)
+        inspCard:RegisterForDrag("LeftButton")
+        inspCard:SetScript("OnDragStart", function()
+            if m.hudSelectorPopup and m.hudSelectorPopup:IsShown() then m.hudSelectorPopup:Hide() end
+            m:StartMoving()
+        end)
+        inspCard:SetScript("OnDragStop", SaveEditModalPosition)
         m.inspCard = inspCard
-
-        -- 1. Visibility 2-Pill Switch ([ Hidden | Shown ])
-        local visHiddenBtn = CreateFlatButton(inspCard, 52, 22, "Hidden", false)
-        visHiddenBtn.isNegativeOpt = true
-        visHiddenBtn:SetPoint("LEFT", inspCard, "LEFT", 8, 0)
-        visHiddenBtn:SetScript("OnClick", function()
-            SetHudVisibility(selectedHudTarget, false)
-            m.RefreshState()
-        end)
-
-        local visShownBtn = CreateFlatButton(inspCard, 52, 22, "Shown", false)
-        visShownBtn:SetPoint("LEFT", visHiddenBtn, "RIGHT", 3, 0)
-        visShownBtn:SetScript("OnClick", function()
-            SetHudVisibility(selectedHudTarget, true)
-            m.RefreshState()
-        end)
-
-        local function UpdateHudVisSwitch()
-            local isVis = GetHudVisibility(selectedHudTarget)
-            local r, g, b = UI.GetActiveAccentColor()
-            visShownBtn:SetSelected(isVis == true, { r = r, g = g, b = b })
-            visHiddenBtn:SetSelected(isVis == false, { r = r, g = g, b = b })
-        end
 
         -- 2. Exact X: and Y: Coordinate EditBoxes + Directional Nudge Buttons
         local function CreateCoordBox(axisKey)
             local wrap = CreateFrame("Frame", nil, inspCard)
-            wrap:SetSize(46, 22)
+            wrap:SetSize(44, 22)
             wrap.bg = UI.SolidTex(wrap, "BACKGROUND", 2, 0.043, 0.051, 0.071, 0.98)
             wrap.bg:SetAllPoints()
             UI.CreatePixelBorder(wrap, 0.165, 0.192, 0.259, 0.95, 3)
 
             local eb = CreateFrame("EditBox", nil, wrap)
-            eb:SetPoint("LEFT", wrap, "LEFT", 4, 0)
-            eb:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
+            eb:SetPoint("LEFT", wrap, "LEFT", 3, 0)
+            eb:SetPoint("RIGHT", wrap, "RIGHT", -3, 0)
             eb:SetHeight(18)
             eb:SetAutoFocus(false)
             eb:SetJustifyH("CENTER")
@@ -11376,42 +11955,44 @@ function addonTable.CreateMainConfigUI()
         end
 
         local xCoordBox, xCoordLbl, xCoordWrap = CreateCoordBox("X")
-        xCoordLbl:SetPoint("LEFT", visShownBtn, "RIGHT", 8, 0)
+        xCoordLbl:SetPoint("LEFT", inspCard, "LEFT", 8, 0)
         xCoordWrap:SetPoint("LEFT", xCoordLbl, "RIGHT", 3, 0)
 
         local yCoordBox, yCoordLbl, yCoordWrap = CreateCoordBox("Y")
         yCoordLbl:SetPoint("LEFT", xCoordWrap, "RIGHT", 6, 0)
         yCoordWrap:SetPoint("LEFT", yCoordLbl, "RIGHT", 3, 0)
 
-        local btnLeft = CreateCompactArrowBtn(inspCard, 22, 22, "LEFT", "Nudge Left (-X)")
+        local btnLeft = CreateCompactArrowBtn(inspCard, 20, 22, "LEFT", "Nudge Left (-X)")
         btnLeft:SetPoint("LEFT", yCoordWrap, "RIGHT", 6, 0)
         btnLeft:SetScript("OnClick", function() NudgeSelectedHud(IsShiftKeyDown() and -10 or -1, 0) end)
 
-        local btnUp = CreateCompactArrowBtn(inspCard, 22, 22, "UP", "Nudge Up (+Y)")
+        local btnUp = CreateCompactArrowBtn(inspCard, 20, 22, "UP", "Nudge Up (+Y)")
         btnUp:SetPoint("LEFT", btnLeft, "RIGHT", 2, 0)
         btnUp:SetScript("OnClick", function() NudgeSelectedHud(0, IsShiftKeyDown() and 10 or 1) end)
 
-        local btnDown = CreateCompactArrowBtn(inspCard, 22, 22, "DOWN", "Nudge Down (-Y)")
+        local btnDown = CreateCompactArrowBtn(inspCard, 20, 22, "DOWN", "Nudge Down (-Y)")
         btnDown:SetPoint("LEFT", btnUp, "RIGHT", 2, 0)
         btnDown:SetScript("OnClick", function() NudgeSelectedHud(0, IsShiftKeyDown() and -10 or -1) end)
 
-        local btnRight = CreateCompactArrowBtn(inspCard, 22, 22, "RIGHT", "Nudge Right (+X)")
+        local btnRight = CreateCompactArrowBtn(inspCard, 20, 22, "RIGHT", "Nudge Right (+X)")
         btnRight:SetPoint("LEFT", btnDown, "RIGHT", 2, 0)
         btnRight:SetScript("OnClick", function() NudgeSelectedHud(IsShiftKeyDown() and 10 or 1, 0) end)
 
         local arrowBtns = { btnLeft, btnUp, btnDown, btnRight }
 
         -- 3. Quick Center Buttons ([Center X] [Center Y])
-        local centerHorizBtn = CreateFlatButton(inspCard, 66, 22, "Center X", false)
-        centerHorizBtn:SetPoint("LEFT", btnRight, "RIGHT", 8, 0)
+        local centerHorizBtn = CreateFlatButton(inspCard, 58, 22, "Center X", false)
+        TightenCompactButtonLabel(centerHorizBtn, 3)
+        centerHorizBtn:SetPoint("LEFT", btnRight, "RIGHT", 6, 0)
         centerHorizBtn:SetScript("OnClick", function() ApplyQuickAlignment("CENTER_H") end)
 
-        local centerVertBtn = CreateFlatButton(inspCard, 66, 22, "Center Y", false)
+        local centerVertBtn = CreateFlatButton(inspCard, 58, 22, "Center Y", false)
+        TightenCompactButtonLabel(centerVertBtn, 3)
         centerVertBtn:SetPoint("LEFT", centerHorizBtn, "RIGHT", 3, 0)
         centerVertBtn:SetScript("OnClick", function() ApplyQuickAlignment("CENTER_V") end)
 
         -- 4. Scale Slider ([- / Slider / + / %d%%])
-        local HUD_SLIDER_W = 88
+        local HUD_SLIDER_W = 76
         local hudScaleMinusBtn = CreateFlatButton(inspCard, 20, 22, "-", false)
         hudScaleMinusBtn:SetPoint("LEFT", centerVertBtn, "RIGHT", 8, 0)
         hudScaleMinusBtn:SetScript("OnClick", function()
@@ -11517,92 +12098,6 @@ function addonTable.CreateMainConfigUI()
             m.RefreshState()
         end)
 
-        -- 5. Right-Aligned [Grid] and [Reset] Buttons
-        local rowResetConfirmPending = false
-        local function ResetSelectedHudLocations()
-            if InCombatLockdown and InCombatLockdown() then
-                print("|cFF38BDF8DynamicSuite|r: |cFFF87171Cannot reset HUD positions during combat lockdown.|r Please wait until combat ends.")
-                return
-            end
-            if selectedHudTarget == "ALL" then
-                addonTable.ResetAllHudPositions(false)
-                return
-            end
-            local k = selectedHudTarget
-            local meta = hudTargetMeta[k] or hudTargetMeta["TOAST"]
-            local pt = meta.defPoint or "TOP"
-            local relPt = meta.defRelPoint or pt
-            if k == "TOAST" then
-                if addonTable.SetToastPresetPosition then
-                    addonTable.SetToastPresetPosition(pt, relPt, meta.defX, meta.defY)
-                end
-            elseif k == "CHAT" then
-                if _G.DynamicChat and _G.DynamicChat.ResetChatFramePosition then
-                    pcall(_G.DynamicChat.ResetChatFramePosition, _G.DynamicChat)
-                end
-                SetStoredHudPos("CHAT", pt, relPt, meta.defX, meta.defY)
-            elseif k == "prepBuffs" and _G.DynamicPrep and _G.DynamicPrep.ResetBuffBarHUDPosition then
-                pcall(_G.DynamicPrep.ResetBuffBarHUDPosition, _G.DynamicPrep, true)
-                SetStoredHudPos("prepBuffs", pt, relPt, meta.defX, meta.defY)
-            elseif k == "TARGET" or k == "FLARE" then
-                SetHudScale(k, 1.0)
-                if _G.DynamicMarker and _G.DynamicMarker.ResetSingleHUDPosition then
-                    pcall(_G.DynamicMarker.ResetSingleHUDPosition, _G.DynamicMarker, k, true)
-                end
-                SetStoredHudPos(k, pt, relPt, meta.defX, meta.defY)
-            else
-                SetStoredHudPos(k, pt, relPt, meta.defX, meta.defY)
-            end
-            SyncAllEditModeHuds(true)
-            m.RefreshState()
-        end
-
-        local rowResetBtn = CreateFlatButton(inspCard, 58, 22, "Reset", false)
-        rowResetBtn:SetPoint("RIGHT", inspCard, "RIGHT", -8, 0)
-        rowResetBtn:SetScript("OnClick", function()
-            if not rowResetConfirmPending then
-                rowResetConfirmPending = true
-                rowResetBtn.label:SetText("Sure?")
-                rowResetBtn:SetSelected(true, UI.COLORS.GOLD)
-                C_Timer.After(3.5, function()
-                    if rowResetConfirmPending then
-                        rowResetConfirmPending = false
-                        rowResetBtn.label:SetText("Reset")
-                        rowResetBtn:SetSelected(false)
-                    end
-                end)
-                return
-            end
-            rowResetConfirmPending = false
-            ResetSelectedHudLocations()
-            rowResetBtn.label:SetText("Reset")
-            rowResetBtn:SetSelected(false)
-        end)
-        rowResetBtn.OnCustomEnter = function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            GameTooltip:SetText("Reset Location", 1, 1, 1)
-            GameTooltip:AddLine("Reset selected HUD (or all HUDs when All HUDs is selected) back to default screen-safe coordinates.", 0.78, 0.82, 0.88, true)
-            GameTooltip:Show()
-        end
-        rowResetBtn.OnCustomLeave = function() GameTooltip:Hide() end
-
-        local showGridBtn = CreateFlatButton(inspCard, 56, 22, "Grid", false)
-        showGridBtn:SetPoint("RIGHT", rowResetBtn, "LEFT", -6, 0)
-        showGridBtn:SetScript("OnClick", function()
-            local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
-            if gTbl.hudShowGrid == nil then gTbl.hudShowGrid = true end
-            gTbl.hudShowGrid = not gTbl.hudShowGrid
-            SyncAllEditModeHuds(true)
-            m.RefreshState()
-        end)
-        showGridBtn.OnCustomEnter = function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            GameTooltip:SetText("Toggle Alignment Grid", 1, 1, 1)
-            GameTooltip:AddLine("Show or hide the screen alignment grid overlay.", 0.78, 0.82, 0.88)
-            GameTooltip:Show()
-        end
-        showGridBtn.OnCustomLeave = function() GameTooltip:Hide() end
-
         ------------------------------------------------------------------------
         -- Modal State Refresh & External Coordination
         ------------------------------------------------------------------------
@@ -11620,7 +12115,7 @@ function addonTable.CreateMainConfigUI()
             local accentCol = { r = r, g = g, b = b }
             local surf = UI.GetActiveSurfaceColors()
 
-            -- m uses m.bg:SetColorTexture
+            ApplyEditModalClampInsets(m)
             m.bg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             m.dsBorder:SetColor(r, g, b, 0.95)
             mHdr.bg:SetColorTexture(surf.header.r, surf.header.g, surf.header.b, 1.0)
@@ -11634,20 +12129,18 @@ function addonTable.CreateMainConfigUI()
             inspCard.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, 0.96)
 
             if selectedHudTarget == "CHAT" and not IsChatHudTargetOwned() then
-                selectedHudTarget = "TOAST"
+                selectedHudTarget = SelectDefaultVisibleHudTarget()
             end
 
-            for _, pb in ipairs(pillBtns) do
-                local isChatDisabled = (pb.hudKey == "CHAT" and not IsChatHudTargetOwned())
-                pb:SetSelected((not isChatDisabled) and pb.hudKey == selectedHudTarget, accentCol)
-                local isVis = (not isChatDisabled) and GetHudVisibility(pb.hudKey)
-                if pb.visDot then
-                    pb.visDot:SetColorTexture(isVis and 0.133 or 0.937, isVis and 0.773 or 0.267, isVis and 0.369 or 0.267, 1.0)
+            if hudSelectorBtn and hudSelectorBtn.label then
+                local meta = hudTargetMeta[selectedHudTarget] or hudTargetMeta["TOAST"]
+                local modActive = IsHudParentModuleActive(selectedHudTarget)
+                local isVis = modActive and GetHudVisibility(selectedHudTarget)
+                hudSelectorBtn.label:SetText(meta.label or tostring(selectedHudTarget))
+                if hudSelectorBtn.visDot then
+                    hudSelectorBtn.visDot:SetColorTexture(isVis and 0.133 or 0.937, isVis and 0.773 or 0.267, isVis and 0.369 or 0.267, 1.0)
                 end
-                if pb.label then
-                    pb.label:SetText(pb.baseLabel or "")
-                end
-                pb:SetAlpha(isChatDisabled and 0.40 or 1.0)
+                ApplyFlatButtonVisual(hudSelectorBtn, hudSelectorBtn:IsMouseOver())
             end
 
             for _, abtn in ipairs(arrowBtns) do
@@ -11670,34 +12163,15 @@ function addonTable.CreateMainConfigUI()
                 rowResetBtn.label:SetText("Reset")
                 rowResetBtn:SetSelected(false)
             end
-
-            if m._isCollapsed then
-                m:SetHeight(38)
-                inspCard:Hide()
-                minVertLine:Show()
-                if mHdrDiv then mHdrDiv:Hide() end
-            else
-                m:SetHeight(88)
-                inspCard:Show()
-                minVertLine:Hide()
-                if mHdrDiv then mHdrDiv:Show() end
-            end
         end
 
-        m.pillBtns = pillBtns
         m.targetDropdown = {
             RefreshValue = function()
-                local r, g, b = UI.GetActiveAccentColor()
-                local accentCol = { r = r, g = g, b = b }
-                for _, pb in ipairs(pillBtns) do
-                    pb:SetSelected(pb.hudKey == selectedHudTarget, accentCol)
-                end
+                if m.RefreshState then m.RefreshState() end
             end,
             SetValue = function(_, val)
-                if val and hudTargetMeta[val] then
-                    selectedHudTarget = val
-                    SyncAllEditModeHuds(true)
-                    if m.RefreshState then m.RefreshState() end
+                if val and hudTargetMeta[val] and addonTable.OnHudTargetSelected then
+                    addonTable.OnHudTargetSelected(val)
                 end
             end,
         }
@@ -11708,18 +12182,19 @@ function addonTable.CreateMainConfigUI()
 
     addonTable.OnHudTargetSelected = function(targetKey)
         if targetKey == "CHAT" and not IsChatHudTargetOwned() then
-            targetKey = "TOAST"
+            targetKey = SelectDefaultVisibleHudTarget()
         end
         if targetKey and hudTargetMeta[targetKey] then
             selectedHudTarget = targetKey
+            addonTable.selectedHudTarget = selectedHudTarget
+            if not IsHudNormallyShown(targetKey) then
+                explicitlyPreviewedHiddenHud = targetKey
+            else
+                explicitlyPreviewedHiddenHud = nil
+            end
             SyncAllEditModeHuds(true)
-            if editModeInspectorModal then
-                if editModeInspectorModal.targetDropdown and editModeInspectorModal.targetDropdown.RefreshValue then
-                    editModeInspectorModal.targetDropdown:RefreshValue()
-                end
-                if editModeInspectorModal.RefreshState then
-                    editModeInspectorModal.RefreshState()
-                end
+            if editModeInspectorModal and editModeInspectorModal.RefreshState then
+                editModeInspectorModal.RefreshState()
             end
         end
     end
@@ -11738,6 +12213,7 @@ function addonTable.CreateMainConfigUI()
         end
         local rawKey = (type(selfOrKey) == "table") and maybeKey or selfOrKey
         local normKey = type(rawKey) == "string" and rawKey:upper() or nil
+        local explicitFromCard = (rawKey ~= nil and rawKey ~= "" and normKey ~= "ALL")
         if type(rawKey) == "string" and hudTargetMeta[rawKey] then
             selectedHudTarget = rawKey
         elseif normKey == "PREPBUFFS" then
@@ -11745,10 +12221,15 @@ function addonTable.CreateMainConfigUI()
         elseif normKey and hudTargetMeta[normKey] then
             selectedHudTarget = normKey
         else
-            selectedHudTarget = "TOAST"
+            selectedHudTarget = SelectDefaultVisibleHudTarget()
         end
         if selectedHudTarget == "CHAT" and not IsChatHudTargetOwned() then
-            selectedHudTarget = "TOAST"
+            selectedHudTarget = SelectDefaultVisibleHudTarget()
+        end
+        if explicitFromCard and not IsHudNormallyShown(selectedHudTarget) then
+            explicitlyPreviewedHiddenHud = selectedHudTarget
+        else
+            explicitlyPreviewedHiddenHud = nil
         end
         if IsChatHudTargetOwned() and _G.DynamicChat and _G.DynamicChat.ApplySavedChatFramePosition then
             pcall(_G.DynamicChat.ApplySavedChatFramePosition, _G.DynamicChat)
@@ -11768,7 +12249,7 @@ function addonTable.CreateMainConfigUI()
         modal:SetFrameStrata("DIALOG")
         modal:SetFrameLevel(200)
         modal._isCollapsed = false
-        modal:SetHeight(88)
+        modal:SetSize(560, 74)
         if modal.RestoreSavedPosition then modal:RestoreSavedPosition() end
         IngestLiveHudPositions()
         SyncAllEditModeHuds(true)
@@ -11780,11 +12261,20 @@ function addonTable.CreateMainConfigUI()
         if isExitingHudEditMode then return end
         isExitingHudEditMode = true
         isHudEditModeActive = false
+        explicitlyPreviewedHiddenHud = nil
         addonTable._isHudEditModeActive = false
         HideSnapGuides()
         f._minimizedForHudDrag = false
-        if editModeInspectorModal and editModeInspectorModal:IsShown() then
-            editModeInspectorModal:Hide()
+        if _G.DynamicMarker then
+            _G.DynamicMarker._previewHiddenMoverKey = nil
+        end
+        if editModeInspectorModal then
+            if editModeInspectorModal.hudSelectorPopup and editModeInspectorModal.hudSelectorPopup:IsShown() then
+                editModeInspectorModal.hudSelectorPopup:Hide()
+            end
+            if editModeInspectorModal:IsShown() then
+                editModeInspectorModal:Hide()
+            end
         end
         SyncAllEditModeHuds(false)
         if snapGridOverlay and snapGridOverlay:IsShown() then
@@ -12755,7 +13245,7 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.0.9"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.1.0"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -13487,7 +13977,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.0.9") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.0") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -13548,7 +14038,7 @@ function addonTable.HookGameMenu()
             cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
             if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
-            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.0.9") .. "|r")
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.0") .. "|r")
             openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
             if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
@@ -13654,7 +14144,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "2.0.9",
+        version = addonTable.ADDON_VERSION or "2.1.0",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,

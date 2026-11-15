@@ -1,5 +1,17 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.0.9 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.1.0 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicMarker v2.1.0 (15/11/2026)
+
+### Fixed
+* **World Flare Hardware Keybinds:** Anchored the secure World Flare cycle and clear action buttons on-screen (`1x1`, zero alpha, non-mouse-blocking), removed the `"flare"` button-name override in `SecureHandlerWrapScript` so `"LeftButton"` dispatches `/wm [@cursor]` cleanly across key-down and key-up CVars, and ensured `/cwm all` clears all ground flares reliably in and out of combat.
+* **Live Keybind Status Bar & Sub-Tab Label:** Rebinding, Escape/Right-Click clearing, or resetting Cycle/Clear flare keys now immediately updates the button labels, the `World Flare Keys (...)` tab label, and the top telemetry status readout without needing to switch tabs.
+
+### Improved
+* **Compact Draggable HUD Edit Dock & Off-Screen Fail-Safe:** Redesigned standalone HUD Edit Mode into a compact `560x74` 2-row draggable inspector with a HUD Selector Dropdown, non-truncated `Hidden` / `Shown` toggles, `Grid`, `Reset`, `Back to Suite`, X/Y steppers, `Center X` / `Center Y`, and a Scale slider (`60%-150%`), preserving at least `60px` on-screen when tucked near screen edges while keeping Target Icon and World Flare bars strictly inside screen edges.
+* **Hidden-By-Default HUD Movers & Standardised `[Edit HUD]` Buttons:** Entering HUD Edit Mode (`/dm hud` or standalone sidebar) now hides `Off`/`Hidden` bars by default; selecting a hidden bar in the HUD dropdown or clicking a section's Obsidian/Blaze-Orange `Edit HUD` button temporarily previews that bar with a clear `HIDDEN (Click Shown to Enable)` badge.
 
 ---
 

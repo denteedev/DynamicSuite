@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.9"
+    local fb = fallback or "2.1.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -99,7 +99,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.0.9"
+            or "2.1.0"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -426,6 +426,7 @@ local DB_DEFAULTS = {
     kickPriorityMigratedV2 = false,
     kickSpecMode         = "SMART_SWAP",
     activeSubTab         = 1,
+    hudShowGrid          = true,
     migratedFromFocusMarker = false,
     focusMarkerBridgeVersion = 0,
     focusMarkerHintShown = false,
@@ -1470,6 +1471,50 @@ function DM:CreateButton(parent, text, width, height, onClick, isAccent)
         end
     end
 
+    return btn
+end
+
+function DM:CreateEditHudButton(parent, onClick, isActiveFn)
+    local btn = self:CreateButton(parent, "Edit HUD", 86, 22, onClick, false)
+    btn.minWidth = 82
+    btn:SetWidth(86)
+    btn.isEditHudButton = true
+
+    local function RefreshEditHudStyle(hovered)
+        local active = (isActiveFn and isActiveFn()) or (DM.isEditMode == true)
+        if active then
+            DM:ApplyBackdrop(btn, { r = 0.22, g = 0.10, b = 0.025, a = 0.98 }, { r = 0.976, g = 0.451, b = 0.086, a = 1.0 }, 1)
+        elseif hovered then
+            DM:ApplyBackdrop(btn, { r = 0.16, g = 0.08, b = 0.02, a = 0.98 }, { r = 0.976, g = 0.451, b = 0.086, a = 1.0 }, 1)
+        else
+            DM:ApplyBackdrop(btn, { r = 0.043, g = 0.051, b = 0.071, a = 0.96 }, { r = 0.976, g = 0.451, b = 0.086, a = 0.85 }, 1)
+        end
+        if btn.Text then
+            DM:StyleFont(btn.Text, 11, "", { r = 0.976, g = 0.984, b = 1.0, a = 1.0 })
+        end
+    end
+
+    btn.RefreshStyle = RefreshEditHudStyle
+    btn:SetScript("OnEnter", function(s)
+        RefreshEditHudStyle(true)
+        if s.tooltipText then
+            GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            GameTooltip:SetText(s.tooltipTitle or "Edit HUD", 1, 1, 1)
+            GameTooltip:AddLine(s.tooltipText, 0.8, 0.85, 0.92, true)
+            GameTooltip:Show()
+        end
+    end)
+    btn:SetScript("OnLeave", function(s)
+        RefreshEditHudStyle(false)
+        if GameTooltip:IsOwned(s) then GameTooltip:Hide() end
+    end)
+    function btn:SetLabel(newText)
+        self.Text:SetText(newText or "")
+        local strW = (self.Text.GetUnboundedStringWidth and self.Text:GetUnboundedStringWidth()) or self.Text:GetStringWidth() or 0
+        self:SetWidth(math.max(82, math.ceil((strW > 0 and strW or 48) + 22)))
+        RefreshEditHudStyle(false)
+    end
+    RefreshEditHudStyle(false)
     return btn
 end
 
@@ -2772,12 +2817,13 @@ function DM:InitSecureFlareButtons()
     local header = self.flareSecureHeader or _G.DynamicMarkerFlareHeader or CreateFrame("Frame", "DynamicMarkerFlareHeader", UIParent, "SecureHandlerBaseTemplate")
     self.flareSecureHeader = header
 
-    -- 1. Cycle Ground Flare Secure Button (kept shown offscreen at 0 alpha so SetOverrideBindingClick dispatches reliably)
+    -- 1. Cycle Ground Flare Secure Button (anchored on-screen at 0 alpha / mouse-disabled so Retail 12.1.5 SetOverrideBindingClick never culls it)
     local cycleBtn = _G.DynamicMarkerFlareCycleBtn or CreateFrame("Button", "DynamicMarkerFlareCycleBtn", UIParent, "SecureActionButtonTemplate")
     cycleBtn:SetSize(1, 1)
     cycleBtn:ClearAllPoints()
-    cycleBtn:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -200, 200)
+    cycleBtn:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     cycleBtn:SetAlpha(0)
+    cycleBtn:EnableMouse(false)
     cycleBtn:Show()
     self:ConfigureSecureButtonClicks(cycleBtn)
     cycleBtn:SetAttribute("type", "macro")
@@ -2788,19 +2834,14 @@ function DM:InitSecureFlareButtons()
     cycleBtn:SetAttribute("action1", "set")
     cycleBtn:SetAttribute("marker", 1)
     cycleBtn:SetAttribute("marker1", 1)
-    for wmID = 1, 8 do
-        local cmd = "/wm [@cursor] " .. wmID
-        cycleBtn:SetAttribute("type-flare" .. wmID, "macro")
-        cycleBtn:SetAttribute("macrotext-flare" .. wmID, cmd)
-    end
 
     if not cycleBtn._dmWrapped and SecureHandlerWrapScript and header then
         cycleBtn._dmWrapped = true
         SecureHandlerWrapScript(cycleBtn, "OnClick", header, [=[
-            local useDown = self:GetAttribute("useOnKeyDown")
+            local useDown = self:GetAttribute("useOnKeyDown") and true or false
             if down ~= nil then
-                if useDown and not down then return false end
-                if not useDown and down then return false end
+                local isDown = down and true or false
+                if isDown ~= useDown then return false end
             end
             local count = self:GetAttribute("flareSeqCount") or 0
             local m = 1
@@ -2819,19 +2860,19 @@ function DM:InitSecureFlareButtons()
             self:SetAttribute("marker1", m)
             self:SetAttribute("macrotext", cmd)
             self:SetAttribute("macrotext1", cmd)
-            return "flare" .. m
         ]=])
     end
 
-    -- 2. Clear All Flares Secure Button (kept shown offscreen at 0 alpha so SetOverrideBindingClick dispatches reliably)
+    -- 2. Clear All Flares Secure Button (anchored on-screen at 0 alpha / mouse-disabled so Retail 12.1.5 SetOverrideBindingClick never culls it)
     local clearBtn = _G.DynamicMarkerFlareClearBtn or CreateFrame("Button", "DynamicMarkerFlareClearBtn", UIParent, "SecureActionButtonTemplate")
     clearBtn:SetSize(1, 1)
     clearBtn:ClearAllPoints()
-    clearBtn:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -202, 200)
+    clearBtn:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     clearBtn:SetAlpha(0)
+    clearBtn:EnableMouse(false)
     clearBtn:Show()
     self:ConfigureSecureButtonClicks(clearBtn)
-    local clearCmd = "/cwm 0\n/cwm all"
+    local clearCmd = "/cwm all"
     clearBtn:SetAttribute("type", "macro")
     clearBtn:SetAttribute("type1", "macro")
     clearBtn:SetAttribute("macrotext", clearCmd)
@@ -2840,6 +2881,17 @@ function DM:InitSecureFlareButtons()
     clearBtn:SetAttribute("action1", "clear")
     clearBtn:SetAttribute("marker", 0)
     clearBtn:SetAttribute("marker1", 0)
+
+    if not clearBtn._dmWrapped and SecureHandlerWrapScript and header then
+        clearBtn._dmWrapped = true
+        SecureHandlerWrapScript(clearBtn, "OnClick", header, [=[
+            local useDown = self:GetAttribute("useOnKeyDown") and true or false
+            if down ~= nil then
+                local isDown = down and true or false
+                if isDown ~= useDown then return false end
+            end
+        ]=])
+    end
 
     self.flareCycleBtn = cycleBtn
     self.flareClearBtn = clearBtn
@@ -2867,11 +2919,6 @@ function DM:SyncSecureFlareEngine()
     for idx = 1, 8 do
         cycleBtn:SetAttribute("flareSlot" .. idx, seq[idx] or seq[1] or 1)
     end
-    for wmID = 1, 8 do
-        local cmd = "/wm [@cursor] " .. wmID
-        cycleBtn:SetAttribute("type-flare" .. wmID, "macro")
-        cycleBtn:SetAttribute("macrotext-flare" .. wmID, cmd)
-    end
 
     if self.flareSecureHeader and self.flareSecureHeader.Execute then
         self.flareSecureHeader:Execute(string.format([=[
@@ -2891,7 +2938,7 @@ function DM:SyncSecureFlareEngine()
     cycleBtn:SetAttribute("marker", firstWM)
     cycleBtn:SetAttribute("marker1", firstWM)
 
-    local clearCmd = "/cwm 0\n/cwm all"
+    local clearCmd = "/cwm all"
     local clearBtn = self.flareClearBtn
     clearBtn:SetAttribute("type", "macro")
     clearBtn:SetAttribute("type1", "macro")
@@ -3431,11 +3478,54 @@ end
 function DM:GetStatusText()
     if not self.db then return "|cFF22C55E*|r DynamicMarker Ready" end
     local iconInfo = RAID_ICONS[self.db.focusIcon or 8] or RAID_ICONS[8]
-    local cyc = self:FormatKeyShort(self.db.flareCycleKey or "F4")
-    local clr = self:FormatKeyShort(self.db.flareClearKey or "F5")
+    local cyc = self:FormatKeyShort((self.db.flareCycleKey ~= nil) and self.db.flareCycleKey or "F4")
+    local clr = self:FormatKeyShort((self.db.flareClearKey ~= nil) and self.db.flareClearKey or "F5")
     local chatState = (self.db.chatAnnounce == "MUTED") and "Off" or "Enabled"
     return string.format("|cFF22C55E*|r Focus Icon: %s %s | World Flares: %s Cycle - %s Clear | Chat: %s",
         iconInfo.emoji, iconInfo.name, cyc, clr, chatState)
+end
+
+function DM:GetSubTab2Title()
+    local cyc = self:FormatKeyShort((self.db and self.db.flareCycleKey ~= nil) and self.db.flareCycleKey or "F4")
+    local clr = self:FormatKeyShort((self.db and self.db.flareClearKey ~= nil) and self.db.flareClearKey or "F5")
+    if cyc == "Unbound" and clr == "Unbound" then
+        return "World Flare Keys"
+    end
+    return string.format("World Flare Keys (%s / %s)", cyc, clr)
+end
+
+function DM:RefreshKeybindTelemetryAndTabTitle()
+    if not self.db then return end
+    local statusStr = self:GetStatusText()
+    if self.moduleEntry then
+        self.moduleEntry.statusText = statusStr
+        self.moduleEntry.status = statusStr
+    end
+    if self.workspaceFrame then
+        local ws = self.workspaceFrame
+        if ws.subTabBtns and ws.subTabBtns[2] and ws.subTabBtns[2].Text then
+            ws.subTabBtns[2].Text:SetText(self:GetSubTab2Title())
+        end
+        if ws.ReflowSubTabBar then
+            ws.ReflowSubTabBar()
+        end
+    end
+    if self.shellFrame and self.shellFrame.StatusText then
+        self.shellFrame.StatusText:SetText(statusStr)
+    end
+    local ds = _G.DynamicSuite
+    if type(ds) == "table" then
+        if type(ds.UpdateHeaderTelemetry) == "function" then
+            pcall(ds.UpdateHeaderTelemetry, ds, "marker", statusStr)
+        elseif type(ds.UpdateHeaderStatus) == "function" then
+            pcall(ds.UpdateHeaderStatus, ds, "marker", statusStr)
+        elseif type(ds.RefreshHeaderStatus) == "function" then
+            pcall(ds.RefreshHeaderStatus, ds, "marker", statusStr)
+        end
+        if ds.statusTextWidget and ds.activeModule == "marker" and ds.statusTextWidget.SetText then
+            pcall(ds.statusTextWidget.SetText, ds.statusTextWidget, statusStr)
+        end
+    end
 end
 
 -- ============================================================================
@@ -3492,6 +3582,29 @@ function DM:ShouldShowBar(visibilitySetting, barFrame)
     return self:IsGroupScopeSatisfied(true)
 end
 
+function DM:IsBarNormallyShown(hudKey)
+    local primaryKey = (hudKey == "FlareBar" or hudKey == "FLARE" or hudKey == "flareBar") and "FlareBar" or "TargetBar"
+    if not self.db then return true end
+    local visVal = (primaryKey == "FlareBar") and self.db.flareBarVisibility or self.db.targetBarVisibility
+    local mode = self:NormalizeBarVisibility(visVal)
+    return mode ~= "off"
+end
+
+function DM:IsEditMoverVisible(hudKey)
+    if not self.isEditMode then return false end
+    local primaryKey = (hudKey == "FlareBar" or hudKey == "FLARE" or hudKey == "flareBar") and "FlareBar" or "TargetBar"
+    if self._suitePreviewState and (self:IsRunningInSuite() or self:IsSuiteHudInspectorActive()) then
+        if primaryKey == "FlareBar" then
+            return self._suitePreviewState.showFlare == true
+        end
+        return self._suitePreviewState.showTarget == true
+    end
+    if self:IsBarNormallyShown(primaryKey) then
+        return true
+    end
+    return (self._previewHiddenMoverKey == primaryKey) and ((self.selectedHUDKey or "TargetBar") == primaryKey)
+end
+
 function DM:UpdateTargetBarVisibility()
     if not self.targetBar or not self.db then return end
     local bar = self.targetBar
@@ -3508,7 +3621,14 @@ function DM:UpdateTargetBarVisibility()
         if UnregisterStateDriver then
             pcall(UnregisterStateDriver, bar, "visibility")
         end
-        bar:Show()
+        local shouldPreview = self:IsEditMoverVisible("TargetBar")
+        if shouldPreview then
+            bar:Show()
+        else
+            bar:Hide()
+            if bar.editMover then bar.editMover:Hide() end
+            if bar._dsDragShield then bar._dsDragShield:Hide() end
+        end
         return
     end
 
@@ -3547,7 +3667,14 @@ function DM:UpdateFlareBarVisibility()
         if UnregisterStateDriver then
             pcall(UnregisterStateDriver, bar, "visibility")
         end
-        bar:Show()
+        local shouldPreview = self:IsEditMoverVisible("FlareBar")
+        if shouldPreview then
+            bar:Show()
+        else
+            bar:Hide()
+            if bar.editMover then bar.editMover:Hide() end
+            if bar._dsDragShield then bar._dsDragShield:Hide() end
+        end
         return
     end
 
@@ -4420,6 +4547,11 @@ function DM:EnsureGridOverlay()
     return grid
 end
 
+function DM:IsHudGridEnabled()
+    if not self.db then return true end
+    return self.db.hudShowGrid ~= false
+end
+
 function DM:NudgeSpecificHUD(hudKey, dx, dy, defaultY)
     if InCombatLockdown() then return end
     local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(hudKey)
@@ -4958,13 +5090,13 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
         end
         local scaleVal = tonumber(DM:GetSetting(scaleKey)) or 1.0
         local scalePct = math.floor(scaleVal * 100 + 0.5)
-        local visMode = DM:NormalizeBarVisibility(DM:GetSetting(visKey))
-        local isHidden = (visMode == "off")
+        local isShownNormally = DM:IsBarNormallyShown(primaryKey)
+        local isHidden = not isShownNormally
         local isSelected = ((DM.selectedHUDKey or "TargetBar") == primaryKey)
         local ar, ag, ab = DM:GetAccentColor()
         local aHex = string.format("%02X%02X%02X", math.floor(ar * 255 + 0.5), math.floor(ag * 255 + 0.5), math.floor(ab * 255 + 0.5))
         local titleColor = isSelected and ("|cFF" .. aHex) or "|cFFCBD5E1"
-        local hiddenTag = isHidden and " |cFFEF4444(HIDDEN)|r" or ""
+        local hiddenTag = isHidden and "  |cFFEF4444[HIDDEN (Click Shown to Enable)]|r" or ""
 
         local fW = (targetFrame.GetWidth and targetFrame:GetWidth()) or 292
         if fW < 160 then
@@ -4975,9 +5107,18 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
             self.Label:SetWordWrap(true)
             self.Label:SetText(string.format("%s%d%%|r\nX:%d\nY:%d", titleColor, scalePct, xVal, yVal))
         else
-            self.Badge:Hide()
-            self.Label:SetWordWrap(false)
-            self.Label:SetText(string.format("%s%s|r  |cFF64748B|||r  |cFFF3F5F8%d%%|r  |cFF64748B|||r  |cFFF8FAFCX: %d, Y: %d|r%s", titleColor, displayTitle, scalePct, xVal, yVal, hiddenTag))
+            if isHidden then
+                self.Badge:Show()
+                self.Badge.Text:SetText("|cFFEF4444HIDDEN (Click Shown to Enable)|r")
+                local textW = self.Badge.Text:GetStringWidth() or 190
+                self.Badge:SetWidth(math.max(200, textW + 18))
+                self.Label:SetWordWrap(false)
+                self.Label:SetText(string.format("%s%s|r  |cFF64748B|||r  |cFFF3F5F8%d%%|r  |cFF64748B|||r  |cFFF8FAFCX: %d, Y: %d|r", titleColor, displayTitle, scalePct, xVal, yVal))
+            else
+                self.Badge:Hide()
+                self.Label:SetWordWrap(false)
+                self.Label:SetText(string.format("%s%s|r  |cFF64748B|||r  |cFFF3F5F8%d%%|r  |cFF64748B|||r  |cFFF8FAFCX: %d, Y: %d|r", titleColor, displayTitle, scalePct, xVal, yVal))
+            end
         end
     end
 
@@ -5236,164 +5377,700 @@ function DM:EnsureEditModeInspector()
     if self.editInspector then return self.editInspector end
 
     local insp = CreateFrame("Frame", "DynamicMarkerEditModeInspector", UIParent, "BackdropTemplate")
-    insp:SetSize(412, 206)
-    insp:SetPoint("TOP", UIParent, "TOP", 0, -90)
+    insp:SetSize(560, 74)
     insp:SetFrameStrata("DIALOG")
-    insp:SetClampedToScreen(true)
+    insp:SetFrameLevel(200)
+    insp:SetToplevel(true)
+
+    local function ApplyInspectorClampInsets(modal)
+        local target = modal or insp
+        if not target then return end
+        local w = (target.GetWidth and target:GetWidth()) or 560
+        local h = (target.GetHeight and target:GetHeight()) or 74
+        local keepVisible = 60
+        local allowOffX = math.max(0, w - keepVisible)
+        local allowOffY = math.max(0, h - keepVisible)
+        if target.SetClampedToScreen then target:SetClampedToScreen(true) end
+        if target.SetClampRectInsets then
+            target:SetClampRectInsets(allowOffX, -allowOffX, -allowOffY, allowOffY)
+        end
+    end
+
+    function insp:RestoreSavedPosition()
+        ApplyInspectorClampInsets(self)
+        local pos = DM.db and DM.db.editModeModalPos
+        self:ClearAllPoints()
+        if type(pos) == "table" and pos.x ~= nil and pos.y ~= nil then
+            local w = (self.GetWidth and self:GetWidth()) or 560
+            local h = (self.GetHeight and self:GetHeight()) or 74
+            local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+            local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+            local allowOffX = math.max(0, w - 60)
+            local allowOffY = math.max(0, h - 60)
+            local minX = -(screenW / 2) + (w / 2) - allowOffX
+            local maxX = (screenW / 2) - (w / 2) + allowOffX
+            local minY = -(screenH / 2) + (h / 2) - allowOffY
+            local maxY = (screenH / 2) - (h / 2) + allowOffY
+            local cx = math.max(minX, math.min(maxX, tonumber(pos.x) or 0))
+            local cy = math.max(minY, math.min(maxY, tonumber(pos.y) or 0))
+            self:SetPoint("CENTER", UIParent, "CENTER", cx, cy)
+        else
+            self:SetPoint("CENTER", UIParent, "CENTER", 0, 180)
+        end
+    end
+
+    local function SaveInspectorPosition()
+        insp:StopMovingOrSizing()
+        local cx, cy = insp:GetCenter()
+        local ux, uy = UIParent:GetCenter()
+        if cx and cy and ux and uy then
+            local dx = math.floor((cx - ux) + 0.5)
+            local dy = math.floor((cy - uy) + 0.5)
+            insp:ClearAllPoints()
+            insp:SetPoint("CENTER", UIParent, "CENTER", dx, dy)
+            if DM.db then
+                DM.db.editModeModalPos = { point = "CENTER", relPoint = "CENTER", x = dx, y = dy }
+            end
+        end
+    end
+
+    insp:RestoreSavedPosition()
     insp:SetMovable(true)
     insp:EnableMouse(true)
     insp:RegisterForDrag("LeftButton")
-    insp:SetScript("OnDragStart", insp.StartMoving)
-    insp:SetScript("OnDragStop", insp.StopMovingOrSizing)
+    insp:SetScript("OnDragStart", function()
+        if insp.selectorPopup and insp.selectorPopup:IsShown() then insp.selectorPopup:Hide() end
+        insp:StartMoving()
+    end)
+    insp:SetScript("OnDragStop", SaveInspectorPosition)
     self:ApplyBackdrop(insp, COLORS.BgVoid, self:GetAccentColorTable(0.95), 1)
 
-    insp.Title = insp:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    insp.Title:SetPoint("TOPLEFT", insp, "TOPLEFT", 14, -12)
-    self:StyleFont(insp.Title, 13, "", COLORS.TextPrimary)
-    local ar, ag, ab = self:GetAccentColor()
-    local aHex = string.format("%02X%02X%02X", math.floor(ar * 255 + 0.5), math.floor(ag * 255 + 0.5), math.floor(ab * 255 + 0.5))
-    insp.Title:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFMarker|r |cFF94A3B8HUD Edit Mode|r", aHex))
-
-    insp.SelectedText = insp:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    insp.SelectedText:SetPoint("TOPLEFT", insp.Title, "BOTTOMLEFT", 0, -6)
-    self:StyleFont(insp.SelectedText, 12, "", COLORS.TextPrimary)
-
-    insp.CoordText = insp:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    insp.CoordText:SetPoint("TOPLEFT", insp.SelectedText, "BOTTOMLEFT", 0, -4)
-    self:StyleFont(insp.CoordText, 11, "", COLORS.TextMuted)
-
-    local function NudgeSelected(dx, dy)
-        local key = self.selectedHUDKey or "TargetBar"
-        self:NudgeSpecificHUD(key, dx, dy)
-    end
-
-    local function CommitTypedCoord(axis, rawText)
-        if InCombatLockdown() then return end
-        local val = tonumber(rawText)
-        if not val then
-            self:RefreshEditModeInspector()
-            return
+    local function TightenLabel(btn, padX, fixedW)
+        if fixedW then btn:SetWidth(fixedW) end
+        if btn and btn.Text then
+            local px = padX or 3
+            btn.Text:ClearAllPoints()
+            btn.Text:SetPoint("LEFT", btn, "LEFT", px, 0)
+            btn.Text:SetPoint("RIGHT", btn, "RIGHT", -px, 0)
+            btn.Text:SetJustifyH("CENTER")
+            btn.Text:SetWordWrap(false)
+            if btn.Text.SetMaxLines then btn.Text:SetMaxLines(1) end
         end
-        local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(self.selectedHUDKey or "TargetBar")
-        local entry = Suite.hudElements[primaryKey]
-        if not entry or not entry.frame then return end
-        local pos = self:GetStoredHUDPosition(primaryKey, entry.defaultY or defY)
-        local nx = (axis == "X") and math.floor(val + 0.5) or (pos.x or 0)
-        local ny = (axis == "Y") and math.floor(val + 0.5) or (pos.y or 0)
-        self:SaveHUDPosition(entry.frame, primaryKey, true, pos.point or "CENTER", pos.relPoint or pos.point or "CENTER", nx, ny)
-        self:ApplyHUDPosition(entry.frame, primaryKey, entry.defaultY or defY)
-        self:RefreshEditModeInspector()
     end
 
-    local function CreateCoordEditBox(labelText, axis)
-        local lbl = insp:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        self:StyleFont(lbl, 11, "", COLORS.TextMuted)
-        lbl:SetText(labelText)
-
-        local box = CreateFrame("EditBox", nil, insp, "BackdropTemplate")
-        box:SetSize(46, 24)
-        box:SetAutoFocus(false)
-        box:SetMaxLetters(6)
-        box:SetJustifyH("CENTER")
-        box:SetFontObject("GameFontHighlightSmall")
-        self:ApplyBackdrop(box, COLORS.BgElevated, COLORS.BorderStrong, 1)
-
-        box:SetScript("OnEnterPressed", function(eb)
-            eb:ClearFocus()
-            CommitTypedCoord(axis, eb:GetText())
+    local function AttachToggleStyle(btn, isNegative)
+        btn._isToggleSelected = false
+        btn._isNegative = not not isNegative
+        if isNegative then
+            local bar = btn:CreateTexture(nil, "OVERLAY", nil, 3)
+            bar:SetHeight(1.5)
+            bar:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 1, 1)
+            bar:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+            bar:SetColorTexture(0.973, 0.443, 0.443, 0.92)
+            bar:Hide()
+            btn.offBar = bar
+        end
+        local function Paint(hovered)
+            local ar, ag, ab = DM:GetAccentColor()
+            if btn._isToggleSelected then
+                if btn._isNegative then
+                    DM:ApplyBackdrop(btn, { r = 0.118, g = 0.141, b = 0.188, a = 0.98 }, { r = 0.392, g = 0.455, b = 0.545, a = 0.90 }, 1)
+                    if btn.Text then btn.Text:SetTextColor(0.886, 0.910, 0.941, 1.0) end
+                    if btn.offBar then btn.offBar:Show() end
+                else
+                    DM:ApplyBackdrop(btn, { r = ar * 0.40, g = ag * 0.40, b = ab * 0.40, a = 0.95 }, { r = ar, g = ag, b = ab, a = 0.95 }, 1)
+                    if btn.Text then btn.Text:SetTextColor(1, 1, 1, 1) end
+                    if btn.offBar then btn.offBar:Hide() end
+                end
+            else
+                if btn.offBar then btn.offBar:Hide() end
+                if hovered then
+                    DM:ApplyBackdrop(btn, COLORS.BgHover, { r = ar, g = ag, b = ab, a = 0.65 }, 1)
+                    if btn.Text then btn.Text:SetTextColor(0.97, 0.98, 1.0, 1.0) end
+                else
+                    DM:ApplyBackdrop(btn, COLORS.BgElevated, COLORS.BorderStrong, 1)
+                    if btn.Text then btn.Text:SetTextColor(0.78, 0.83, 0.90, 1.0) end
+                end
+            end
+        end
+        btn.RefreshStyle = Paint
+        btn:SetScript("OnEnter", function(s)
+            Paint(true)
+            if s.tooltipText then
+                GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
+                GameTooltip:SetText(s.tooltipTitle or s.Text:GetText() or "DynamicMarker", 1, 1, 1)
+                GameTooltip:AddLine(s.tooltipText, 0.80, 0.85, 0.92, true)
+                GameTooltip:Show()
+            end
         end)
-        box:SetScript("OnEscapePressed", function(eb)
-            eb:ClearFocus()
-            self:RefreshEditModeInspector()
+        btn:SetScript("OnLeave", function()
+            Paint(false)
+            if GameTooltip:IsOwned(btn) then GameTooltip:Hide() end
         end)
-        box:SetScript("OnEditFocusLost", function(eb)
-            CommitTypedCoord(axis, eb:GetText())
-        end)
-        return lbl, box
+        function btn:SetSelected(sel)
+            self._isToggleSelected = not not sel
+            Paint(false)
+        end
+        Paint(false)
     end
 
-    -- Row 1: 4 Vector Nudge Buttons (1px, Shift=10px) + Editable X: / Y: Coordinate Inputs
-    local btnLeft  = self:CreateButton(insp, "-1px", 56, 24, function() local s = IsShiftKeyDown() and 10 or 1; NudgeSelected(-s, 0) end)
-    local btnUp    = self:CreateButton(insp, "+1px", 56, 24, function() local s = IsShiftKeyDown() and 10 or 1; NudgeSelected(0, s) end)
-    local btnDown  = self:CreateButton(insp, "-1px", 56, 24, function() local s = IsShiftKeyDown() and 10 or 1; NudgeSelected(0, -s) end)
-    local btnRight = self:CreateButton(insp, "+1px", 56, 24, function() local s = IsShiftKeyDown() and 10 or 1; NudgeSelected(s, 0) end)
+    local function SelectStandaloneHudKey(nextKey)
+        local primaryKey = ResolveHUDKeyAliases(nextKey or "TargetBar")
+        DM.selectedHUDKey = primaryKey
+        if not DM:IsBarNormallyShown(primaryKey) then
+            DM._previewHiddenMoverKey = primaryKey
+        else
+            DM._previewHiddenMoverKey = nil
+        end
+        DM:UpdateTargetBarVisibility()
+        DM:UpdateFlareBarVisibility()
+        if DM.SyncEditBarStates then DM:SyncEditBarStates() end
+        DM:RefreshEditModeInspector()
+    end
 
-    self:AttachButtonIcon(btnLeft,  ICON_CHEVRON_UP,   math.rad(90),  "-1px")
-    self:AttachButtonIcon(btnUp,    ICON_CHEVRON_UP,   0,             "+1px")
-    self:AttachButtonIcon(btnDown,  ICON_CHEVRON_DOWN, 0,             "-1px")
-    self:AttachButtonIcon(btnRight, ICON_CHEVRON_UP,   math.rad(-90), "+1px")
+    local function SetSelectedHudVisibility(isShown)
+        local primaryKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+        local visKey = (primaryKey == "FlareBar") and "flareBarVisibility" or "targetBarVisibility"
+        local modeVal = isShown and "ALWAYS" or "HIDDEN"
+        if DM.db then
+            DM.db[visKey] = modeVal
+        end
+        if isShown then
+            if DM._previewHiddenMoverKey == primaryKey then
+                DM._previewHiddenMoverKey = nil
+            end
+        else
+            DM._previewHiddenMoverKey = primaryKey
+        end
+        DM:UpdateTargetBarVisibility()
+        DM:UpdateFlareBarVisibility()
+        if primaryKey == "FlareBar" then
+            DM:RefreshFlareBar()
+        else
+            DM:RefreshTargetBar()
+        end
+        if DM.SyncEditBarStates then DM:SyncEditBarStates() end
+        DM:RefreshEditModeInspector()
+        DM:RefreshAll()
+    end
 
-    btnLeft:SetPoint("TOPLEFT", insp, "TOPLEFT", 14, -74)
-    btnUp:SetPoint("LEFT", btnLeft, "RIGHT", 4, 0)
-    btnDown:SetPoint("LEFT", btnUp, "RIGHT", 4, 0)
-    btnRight:SetPoint("LEFT", btnDown, "RIGHT", 4, 0)
+    -- Row 1: Compact Command & Selector Bar (34px tall)
+    do
+        local mHdr = CreateFrame("Frame", nil, insp)
+        mHdr:SetPoint("TOPLEFT", insp, "TOPLEFT", 1, -1)
+        mHdr:SetPoint("TOPRIGHT", insp, "TOPRIGHT", -1, -1)
+        mHdr:SetHeight(34)
+        mHdr.bg = mHdr:CreateTexture(nil, "BACKGROUND", nil, 1)
+        mHdr.bg:SetAllPoints()
+        mHdr.bg:SetColorTexture(0.030, 0.035, 0.048, 1.0)
+        mHdr:EnableMouse(true)
+        mHdr:RegisterForDrag("LeftButton")
+        mHdr:SetScript("OnDragStart", function()
+            if insp.selectorPopup and insp.selectorPopup:IsShown() then insp.selectorPopup:Hide() end
+            insp:StartMoving()
+        end)
+        mHdr:SetScript("OnDragStop", SaveInspectorPosition)
+        insp.mHdr = mHdr
 
-    local lblX, boxX = CreateCoordEditBox("X:", "X")
-    lblX:SetPoint("LEFT", btnRight, "RIGHT", 10, 0)
-    boxX:SetPoint("LEFT", lblX, "RIGHT", 4, 0)
-    insp.EditX = boxX
+        local mHdrDiv = mHdr:CreateTexture(nil, "OVERLAY", nil, 2)
+        mHdrDiv:SetPoint("BOTTOMLEFT", mHdr, "BOTTOMLEFT", 0, 0)
+        mHdrDiv:SetPoint("BOTTOMRIGHT", mHdr, "BOTTOMRIGHT", 0, 0)
+        mHdrDiv:SetHeight(1)
+        mHdr.hdrDiv = mHdrDiv
 
-    local lblY, boxY = CreateCoordEditBox("Y:", "Y")
-    lblY:SetPoint("LEFT", boxX, "RIGHT", 8, 0)
-    boxY:SetPoint("LEFT", lblY, "RIGHT", 4, 0)
-    insp.EditY = boxY
+        local mLogo = CreateFrame("Frame", nil, mHdr, "BackdropTemplate")
+        mLogo:SetSize(18, 18)
+        mLogo:SetPoint("LEFT", mHdr, "LEFT", 8, 0)
+        DM:ApplyBackdrop(mLogo, COLORS.BgVoid, DM:GetAccentColorTable(0.85), 1)
+        mLogo.txt = mLogo:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        mLogo.txt:SetPoint("CENTER", mLogo, "CENTER", 0, 0)
+        DM:StyleFont(mLogo.txt, 9, "OUTLINE", COLORS.TextPrimary)
+        mLogo.txt:SetText("DM")
+        insp.mLogo = mLogo
 
-    -- Row 2: [ Center Horizontal ] + [ Center Vertical ]
-    local btnCenterH = self:CreateButton(insp, "Center Horizontal", 188, 24, function()
-        if InCombatLockdown() then return end
-        local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(self.selectedHUDKey or "TargetBar")
-        local entry = Suite.hudElements[primaryKey]
-        if not entry or not entry.frame then return end
-        local pos = self:GetStoredHUDPosition(primaryKey, entry.defaultY or defY)
-        self:SaveHUDPosition(entry.frame, primaryKey, true, pos.point or "CENTER", pos.relPoint or pos.point or "CENTER", 0, pos.y or 0)
-        self:ApplyHUDPosition(entry.frame, primaryKey, entry.defaultY or defY)
-        self:RefreshEditModeInspector()
-    end)
-    btnCenterH:SetPoint("TOPLEFT", btnLeft, "BOTTOMLEFT", 0, -8)
+        local selectorBtn = DM:CreateButton(mHdr, "Focus Icons", 162, 22, nil, false)
+        selectorBtn:SetWidth(162)
+        selectorBtn:SetPoint("LEFT", mLogo, "RIGHT", 6, 0)
+        selectorBtn.visDot = selectorBtn:CreateTexture(nil, "OVERLAY", nil, 3)
+        selectorBtn.visDot:SetSize(6, 6)
+        selectorBtn.visDot:SetPoint("LEFT", selectorBtn, "LEFT", 7, 0)
+        selectorBtn.visDot:SetColorTexture(0.133, 0.773, 0.369, 1.0)
+        selectorBtn.chevron = selectorBtn:CreateTexture(nil, "OVERLAY", nil, 3)
+        selectorBtn.chevron:SetSize(10, 10)
+        selectorBtn.chevron:SetPoint("RIGHT", selectorBtn, "RIGHT", -6, 0)
+        selectorBtn.chevron:SetTexture(ICON_CHEVRON_DOWN)
+        if selectorBtn.chevron.SetSnapToPixelGrid then
+            selectorBtn.chevron:SetSnapToPixelGrid(false)
+            selectorBtn.chevron:SetTexelSnappingBias(0)
+        end
+        if selectorBtn.Text then
+            selectorBtn.Text:ClearAllPoints()
+            selectorBtn.Text:SetPoint("LEFT", selectorBtn.visDot, "RIGHT", 5, 0)
+            selectorBtn.Text:SetPoint("RIGHT", selectorBtn, "RIGHT", -18, 0)
+            selectorBtn.Text:SetJustifyH("LEFT")
+            selectorBtn.Text:SetWordWrap(false)
+        end
+        insp.selectorBtn = selectorBtn
 
-    local btnCenterV = self:CreateButton(insp, "Center Vertical", 188, 24, function()
-        if InCombatLockdown() then return end
-        local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(self.selectedHUDKey or "TargetBar")
-        local entry = Suite.hudElements[primaryKey]
-        if not entry or not entry.frame then return end
-        local pos = self:GetStoredHUDPosition(primaryKey, entry.defaultY or defY)
-        self:SaveHUDPosition(entry.frame, primaryKey, true, pos.point or "CENTER", pos.relPoint or pos.point or "CENTER", pos.x or 0, 0)
-        self:ApplyHUDPosition(entry.frame, primaryKey, entry.defaultY or defY)
-        self:RefreshEditModeInspector()
-    end)
-    btnCenterV:SetPoint("LEFT", btnCenterH, "RIGHT", 8, 0)
+        local hudDefs = {
+            { key = "TargetBar", label = "Focus Icons" },
+            { key = "FlareBar",  label = "World Flare Bar" },
+        }
 
-    -- Row 3: [ Top Stack ] + [ Bottom Dock ] + [ Reset ] + [ Lock & Exit ]
-    local btnTopStack = self:CreateButton(insp, "Top Stack", 88, 24, function()
-        if InCombatLockdown() then return end
-        self:SaveHUDPosition(self.targetBar, "TargetBar", true, "TOP", "TOP", 0, -80)
-        self:SaveHUDPosition(self.flareBar,  "FlareBar",  true, "TOP", "TOP", 0, -124)
-        self:ApplyHUDPosition(self.targetBar, "TargetBar", -80)
-        self:ApplyHUDPosition(self.flareBar, "FlareBar", -124)
-        self:RefreshEditModeInspector()
-    end)
-    btnTopStack:SetPoint("TOPLEFT", btnCenterH, "BOTTOMLEFT", 0, -8)
+        local function EnsureSelectorPopup()
+            if insp.selectorPopup then return insp.selectorPopup end
+            local pop = CreateFrame("Frame", "DynamicMarkerHudSelectorPopup", UIParent, "BackdropTemplate")
+            pop:SetFrameStrata("TOOLTIP")
+            pop:SetFrameLevel(250)
+            pop:SetToplevel(true)
+            pop:SetClampedToScreen(true)
+            pop:EnableMouse(true)
+            DM:ApplyBackdrop(pop, { r = 0.043, g = 0.051, b = 0.071, a = 0.99 }, DM:GetAccentColorTable(0.85), 1)
 
-    local btnBotDock = self:CreateButton(insp, "Bottom Dock", 92, 24, function()
-        if InCombatLockdown() then return end
-        self:SaveHUDPosition(self.targetBar, "TargetBar", true, "CENTER", "CENTER", 0, -140)
-        self:SaveHUDPosition(self.flareBar,  "FlareBar",  true, "CENTER", "CENTER", 0, -182)
-        self:ApplyHUDPosition(self.targetBar, "TargetBar", -140)
-        self:ApplyHUDPosition(self.flareBar, "FlareBar", -182)
-        self:RefreshEditModeInspector()
-    end)
-    btnBotDock:SetPoint("LEFT", btnTopStack, "RIGHT", 6, 0)
+            local catcher = CreateFrame("Button", nil, pop)
+            catcher:SetAllPoints(UIParent)
+            catcher:SetFrameStrata("TOOLTIP")
+            catcher:SetFrameLevel(245)
+            catcher:RegisterForClicks("AnyDown", "AnyUp")
+            catcher:SetScript("OnClick", function() pop:Hide() end)
+            pop.catcher = catcher
+            pop:Hide()
 
-    local btnReset = self:CreateButton(insp, "Reset", 74, 24, function()
-        self:ResetHUDPositions(false)
-    end)
-    btnReset:SetPoint("LEFT", btnBotDock, "RIGHT", 6, 0)
+            pop.rows = {}
+            local rowH, gapY, pad = 22, 2, 4
+            for i, hDef in ipairs(hudDefs) do
+                local rb = DM:CreateButton(pop, hDef.label, 178, rowH, nil, false)
+                rb:SetWidth(178)
+                rb:SetPoint("TOPLEFT", pop, "TOPLEFT", pad, -(pad + (i - 1) * (rowH + gapY)))
+                rb.hudKey = hDef.key
+                rb.baseLabel = hDef.label
+                rb.visDot = rb:CreateTexture(nil, "OVERLAY", nil, 3)
+                rb.visDot:SetSize(6, 6)
+                rb.visDot:SetPoint("LEFT", rb, "LEFT", 7, 0)
+                rb.visDot:SetColorTexture(0.133, 0.773, 0.369, 1.0)
+                if rb.Text then
+                    rb.Text:ClearAllPoints()
+                    rb.Text:SetPoint("LEFT", rb.visDot, "RIGHT", 6, 0)
+                    rb.Text:SetPoint("RIGHT", rb, "RIGHT", -6, 0)
+                    rb.Text:SetJustifyH("LEFT")
+                    rb.Text:SetWordWrap(false)
+                end
+                AttachToggleStyle(rb, false)
+                rb:SetScript("OnClick", function()
+                    pop:Hide()
+                    SelectStandaloneHudKey(hDef.key)
+                end)
+                pop.rows[i] = rb
+            end
+            pop:SetSize(186, (pad * 2) + (#hudDefs * rowH) + ((#hudDefs - 1) * gapY))
+            insp.selectorPopup = pop
+            return pop
+        end
 
-    local btnDone = self:CreateButton(insp, "Lock & Exit", 112, 24, function()
-        self:SetEditMode(false)
-    end, true)
-    self:AttachButtonIcon(btnDone, ICON_CHECK_PATH, 0, "Lock & Exit")
-    btnDone:SetPoint("LEFT", btnReset, "RIGHT", 6, 0)
+        selectorBtn:SetScript("OnClick", function(sBtn)
+            local pop = EnsureSelectorPopup()
+            if pop:IsShown() then
+                pop:Hide()
+                return
+            end
+            DM:ApplyBackdrop(pop, { r = 0.043, g = 0.051, b = 0.071, a = 0.99 }, DM:GetAccentColorTable(0.85), 1)
+            local selKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            for _, rb in ipairs(pop.rows) do
+                local isVis = DM:IsBarNormallyShown(rb.hudKey)
+                rb:SetSelected(rb.hudKey == selKey)
+                if rb.visDot then
+                    rb.visDot:SetColorTexture(isVis and 0.133 or 0.937, isVis and 0.773 or 0.267, isVis and 0.369 or 0.267, 1.0)
+                end
+            end
+            pop:ClearAllPoints()
+            pop:SetPoint("TOPLEFT", sBtn, "BOTTOMLEFT", 0, -2)
+            pop:Show()
+        end)
+
+        local visHiddenBtn = DM:CreateButton(mHdr, "Hidden", 60, 22, function()
+            SetSelectedHudVisibility(false)
+        end, false)
+        TightenLabel(visHiddenBtn, 3, 60)
+        AttachToggleStyle(visHiddenBtn, true)
+        visHiddenBtn:SetPoint("LEFT", selectorBtn, "RIGHT", 6, 0)
+        insp.visHiddenBtn = visHiddenBtn
+
+        local visShownBtn = DM:CreateButton(mHdr, "Shown", 60, 22, function()
+            SetSelectedHudVisibility(true)
+        end, false)
+        TightenLabel(visShownBtn, 3, 60)
+        AttachToggleStyle(visShownBtn, false)
+        visShownBtn:SetPoint("LEFT", visHiddenBtn, "RIGHT", 3, 0)
+        insp.visShownBtn = visShownBtn
+
+        -- Right cluster: [Grid] [Reset] [Back to Suite] [X]
+        local closeBtn = CreateFrame("Button", nil, mHdr, "BackdropTemplate")
+        closeBtn:SetSize(22, 22)
+        closeBtn:SetPoint("RIGHT", mHdr, "RIGHT", -6, 0)
+        DM:ApplyBackdrop(closeBtn, { r = 1, g = 1, b = 1, a = 0.03 }, { r = 1, g = 1, b = 1, a = 0.12 }, 1)
+        local line1 = closeBtn:CreateTexture(nil, "OVERLAY")
+        line1:SetSize(10, 1.5)
+        line1:SetPoint("CENTER", closeBtn, "CENTER", 0, 0)
+        line1:SetColorTexture(1, 1, 1, 0.70)
+        if line1.SetRotation then line1:SetRotation(math.rad(45)) end
+        local line2 = closeBtn:CreateTexture(nil, "OVERLAY")
+        line2:SetSize(10, 1.5)
+        line2:SetPoint("CENTER", closeBtn, "CENTER", 0, 0)
+        line2:SetColorTexture(1, 1, 1, 0.70)
+        if line2.SetRotation then line2:SetRotation(math.rad(-45)) end
+        closeBtn:SetScript("OnEnter", function(s)
+            DM:ApplyBackdrop(s, { r = 1, g = 0.25, b = 0.25, a = 0.18 }, { r = 1, g = 0.35, b = 0.35, a = 0.75 }, 1)
+            line1:SetColorTexture(1, 0.35, 0.35, 1)
+            line2:SetColorTexture(1, 0.35, 0.35, 1)
+        end)
+        closeBtn:SetScript("OnLeave", function(s)
+            DM:ApplyBackdrop(s, { r = 1, g = 1, b = 1, a = 0.03 }, { r = 1, g = 1, b = 1, a = 0.12 }, 1)
+            line1:SetColorTexture(1, 1, 1, 0.70)
+            line2:SetColorTexture(1, 1, 1, 0.70)
+        end)
+        closeBtn:SetScript("OnClick", function()
+            DM:SetEditMode(false)
+        end)
+
+        local backBtn = DM:CreateButton(mHdr, "Back to Suite", 84, 22, function()
+            DM:SetEditMode(false)
+            local sf = DM:EnsureStandaloneShell()
+            if sf and sf.Show then
+                sf:Show()
+                if sf.Raise then sf:Raise() end
+            end
+        end, true)
+        TightenLabel(backBtn, 3, 84)
+        backBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
+        backBtn.tooltipTitle = "Return to DynamicMarker"
+        backBtn.tooltipText = "Exits HUD Edit Mode and reopens the main DynamicMarker window."
+        insp.backBtn = backBtn
+
+        local resetConfirmPending = false
+        local btnReset = DM:CreateButton(mHdr, "Reset", 46, 22, nil, false)
+        TightenLabel(btnReset, 3, 46)
+        btnReset:SetPoint("RIGHT", backBtn, "LEFT", -4, 0)
+        btnReset:SetScript("OnClick", function()
+            if InCombatLockdown() then
+                print("|cFF38BDF8DynamicMarker|r: Cannot reset HUD positions during combat lockdown.")
+                return
+            end
+            if not resetConfirmPending then
+                resetConfirmPending = true
+                if btnReset.Text then btnReset.Text:SetText("Sure?") end
+                DM:ApplyBackdrop(btnReset, { r = 0.96, g = 0.72, b = 0.18, a = 0.32 }, { r = 0.96, g = 0.72, b = 0.18, a = 0.95 }, 1)
+                C_Timer.After(3.5, function()
+                    if resetConfirmPending then
+                        resetConfirmPending = false
+                        if btnReset.Text then btnReset.Text:SetText("Reset") end
+                        btnReset.RefreshStyle(false)
+                    end
+                end)
+                return
+            end
+            resetConfirmPending = false
+            if btnReset.Text then btnReset.Text:SetText("Reset") end
+            btnReset.RefreshStyle(false)
+            local primaryKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            if primaryKey == "FlareBar" then
+                DM:SetSetting("flareBarScale", 1.0)
+            else
+                DM:SetSetting("targetBarScale", 1.0)
+            end
+            DM:ResetSingleHUDPosition(primaryKey, true)
+            DM:RefreshEditModeInspector()
+        end)
+        btnReset.tooltipTitle = "Reset Location"
+        btnReset.tooltipText = "Reset the selected HUD bar back to default screen-safe coordinates."
+        insp.btnReset = btnReset
+
+        local btnGrid = DM:CreateButton(mHdr, "Grid", 42, 22, function()
+            if DM.db then
+                DM.db.hudShowGrid = not DM:IsHudGridEnabled()
+            end
+            if DM.gridOverlay and DM.gridOverlay.SetShown then
+                DM.gridOverlay:SetShown(DM:IsHudGridEnabled())
+            end
+            DM:RefreshEditModeInspector()
+        end, false)
+        TightenLabel(btnGrid, 3, 42)
+        AttachToggleStyle(btnGrid, false)
+        btnGrid:SetPoint("RIGHT", btnReset, "LEFT", -4, 0)
+        btnGrid.tooltipTitle = "Toggle Alignment Grid"
+        btnGrid.tooltipText = "Show or hide the screen alignment grid overlay."
+        insp.btnGrid = btnGrid
+    end
+
+    -- Row 2: Compact Inspector Controls (36px tall, draggable dock body)
+    do
+        local inspCard = CreateFrame("Frame", nil, insp, "BackdropTemplate")
+        inspCard:SetPoint("TOPLEFT", insp.mHdr, "BOTTOMLEFT", 4, -2)
+        inspCard:SetPoint("TOPRIGHT", insp.mHdr, "BOTTOMRIGHT", -4, -2)
+        inspCard:SetHeight(36)
+        DM:ApplyBackdrop(inspCard, { r = 0.075, g = 0.086, b = 0.110, a = 0.96 }, { r = 1, g = 1, b = 1, a = 0.10 }, 1)
+        inspCard:EnableMouse(true)
+        inspCard:RegisterForDrag("LeftButton")
+        inspCard:SetScript("OnDragStart", function()
+            if insp.selectorPopup and insp.selectorPopup:IsShown() then insp.selectorPopup:Hide() end
+            insp:StartMoving()
+        end)
+        inspCard:SetScript("OnDragStop", SaveInspectorPosition)
+        insp.inspCard = inspCard
+
+        local function CommitTypedCoord(axis, rawText)
+            if InCombatLockdown() then return end
+            local val = tonumber(rawText)
+            if not val then
+                DM:RefreshEditModeInspector()
+                return
+            end
+            local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            local entry = Suite.hudElements[primaryKey]
+            if not entry or not entry.frame then return end
+            local pos = DM:GetStoredHUDPosition(primaryKey, entry.defaultY or defY)
+            local nx = (axis == "X") and math.floor(val + 0.5) or (pos.x or 0)
+            local ny = (axis == "Y") and math.floor(val + 0.5) or (pos.y or 0)
+            DM:SaveHUDPosition(entry.frame, primaryKey, true, "CENTER", "CENTER", nx, ny)
+            DM:ApplyHUDPosition(entry.frame, primaryKey, entry.defaultY or defY)
+            DM:RefreshEditModeInspector()
+        end
+
+        local function CreateCoordEditBox(labelText, axis)
+            local lbl = inspCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            DM:StyleFont(lbl, 10, "", COLORS.TextMuted)
+            lbl:SetText(labelText)
+
+            local box = CreateFrame("EditBox", nil, inspCard, "BackdropTemplate")
+            box:SetSize(44, 22)
+            box:SetAutoFocus(false)
+            box:SetMaxLetters(6)
+            box:SetJustifyH("CENTER")
+            box:SetFontObject("GameFontHighlightSmall")
+            DM:ApplyBackdrop(box, { r = 0.043, g = 0.051, b = 0.071, a = 0.98 }, COLORS.BorderStrong, 1)
+
+            box:SetScript("OnEditFocusGained", function(eb)
+                DM:ApplyBackdrop(eb, { r = 0.043, g = 0.051, b = 0.071, a = 0.98 }, DM:GetAccentColorTable(1.0), 1)
+                eb:HighlightText()
+            end)
+            box:SetScript("OnEditFocusLost", function(eb)
+                DM:ApplyBackdrop(eb, { r = 0.043, g = 0.051, b = 0.071, a = 0.98 }, COLORS.BorderStrong, 1)
+                eb:HighlightText(0, 0)
+                CommitTypedCoord(axis, eb:GetText())
+            end)
+            box:SetScript("OnEnterPressed", function(eb)
+                local raw = eb:GetText()
+                eb:ClearFocus()
+                CommitTypedCoord(axis, raw)
+            end)
+            box:SetScript("OnEscapePressed", function(eb)
+                eb:ClearFocus()
+                DM:RefreshEditModeInspector()
+            end)
+            return lbl, box
+        end
+
+        local lblX, boxX = CreateCoordEditBox("X:", "X")
+        lblX:SetPoint("LEFT", inspCard, "LEFT", 8, 0)
+        boxX:SetPoint("LEFT", lblX, "RIGHT", 3, 0)
+        insp.EditX = boxX
+
+        local lblY, boxY = CreateCoordEditBox("Y:", "Y")
+        lblY:SetPoint("LEFT", boxX, "RIGHT", 6, 0)
+        boxY:SetPoint("LEFT", lblY, "RIGHT", 3, 0)
+        insp.EditY = boxY
+
+        local function MakeArrowBtn(texPath, rotRad, tt, fn)
+            local b = DM:CreateButton(inspCard, "", 20, 22, fn, false)
+            b:SetWidth(20)
+            local tex = b:CreateTexture(nil, "OVERLAY")
+            tex:SetSize(11, 11)
+            tex:SetPoint("CENTER", b, "CENTER", 0, 0)
+            tex:SetTexture(texPath)
+            tex:SetRotation(rotRad or 0)
+            if tex.SetSnapToPixelGrid then
+                tex:SetSnapToPixelGrid(false)
+                tex:SetTexelSnappingBias(0)
+            end
+            local ar, ag, ab = DM:GetAccentColor()
+            tex:SetVertexColor(ar, ag, ab, 1.0)
+            b.arrowTex = tex
+            b.tooltipTitle = tt
+            b.tooltipText = "Hold Shift to nudge by 10px instead of 1px."
+            return b
+        end
+
+        local btnLeft  = MakeArrowBtn(ICON_CHEVRON_UP, math.rad(90), "Nudge Left (-X)", function()
+            local s = IsShiftKeyDown() and 10 or 1
+            DM:NudgeSpecificHUD(DM.selectedHUDKey or "TargetBar", -s, 0)
+        end)
+        local btnUp    = MakeArrowBtn(ICON_CHEVRON_UP, 0, "Nudge Up (+Y)", function()
+            local s = IsShiftKeyDown() and 10 or 1
+            DM:NudgeSpecificHUD(DM.selectedHUDKey or "TargetBar", 0, s)
+        end)
+        local btnDown  = MakeArrowBtn(ICON_CHEVRON_DOWN, 0, "Nudge Down (-Y)", function()
+            local s = IsShiftKeyDown() and 10 or 1
+            DM:NudgeSpecificHUD(DM.selectedHUDKey or "TargetBar", 0, -s)
+        end)
+        local btnRight = MakeArrowBtn(ICON_CHEVRON_UP, math.rad(-90), "Nudge Right (+X)", function()
+            local s = IsShiftKeyDown() and 10 or 1
+            DM:NudgeSpecificHUD(DM.selectedHUDKey or "TargetBar", s, 0)
+        end)
+        btnLeft:SetPoint("LEFT", boxY, "RIGHT", 6, 0)
+        btnUp:SetPoint("LEFT", btnLeft, "RIGHT", 2, 0)
+        btnDown:SetPoint("LEFT", btnUp, "RIGHT", 2, 0)
+        btnRight:SetPoint("LEFT", btnDown, "RIGHT", 2, 0)
+        insp.arrowBtns = { btnLeft, btnUp, btnDown, btnRight }
+
+        local btnCenterH = DM:CreateButton(inspCard, "Center X", 58, 22, function()
+            if InCombatLockdown() then return end
+            local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            local entry = Suite.hudElements[primaryKey]
+            if not entry or not entry.frame then return end
+            local pos = DM:GetStoredHUDPosition(primaryKey, entry.defaultY or defY)
+            DM:SaveHUDPosition(entry.frame, primaryKey, true, "CENTER", "CENTER", 0, pos.y or 0)
+            DM:ApplyHUDPosition(entry.frame, primaryKey, entry.defaultY or defY)
+            DM:RefreshEditModeInspector()
+        end)
+        TightenLabel(btnCenterH, 3, 58)
+        btnCenterH:SetPoint("LEFT", btnRight, "RIGHT", 6, 0)
+
+        local btnCenterV = DM:CreateButton(inspCard, "Center Y", 58, 22, function()
+            if InCombatLockdown() then return end
+            local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            local entry = Suite.hudElements[primaryKey]
+            if not entry or not entry.frame then return end
+            local pos = DM:GetStoredHUDPosition(primaryKey, entry.defaultY or defY)
+            DM:SaveHUDPosition(entry.frame, primaryKey, true, "CENTER", "CENTER", pos.x or 0, 0)
+            DM:ApplyHUDPosition(entry.frame, primaryKey, entry.defaultY or defY)
+            DM:RefreshEditModeInspector()
+        end)
+        TightenLabel(btnCenterV, 3, 58)
+        btnCenterV:SetPoint("LEFT", btnCenterH, "RIGHT", 3, 0)
+
+        local HUD_MIN_SCALE, HUD_MAX_SCALE, HUD_SCALE_STEP, SLIDER_W = 0.60, 1.50, 0.05, 76
+        local function GetSelectedHudScale()
+            local primaryKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            local scaleKey = (primaryKey == "FlareBar") and "flareBarScale" or "targetBarScale"
+            return math.max(HUD_MIN_SCALE, math.min(HUD_MAX_SCALE, tonumber(DM:GetSetting(scaleKey)) or 1.0))
+        end
+        local function SetSelectedHudScale(val)
+            if InCombatLockdown() then return end
+            local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            local clamped = math.max(HUD_MIN_SCALE, math.min(HUD_MAX_SCALE, math.floor((val or 1.0) * 20 + 0.5) / 20))
+            if primaryKey == "FlareBar" then
+                DM:SetSetting("flareBarScale", clamped)
+                DM:RefreshFlareBar()
+                if DM.flareBar then DM:ApplyHUDPosition(DM.flareBar, "FlareBar", defY) end
+            else
+                DM:SetSetting("targetBarScale", clamped)
+                DM:RefreshTargetBar()
+                if DM.targetBar then DM:ApplyHUDPosition(DM.targetBar, "TargetBar", defY) end
+            end
+            DM:RefreshAll()
+        end
+
+        local scaleMinusBtn = DM:CreateButton(inspCard, "-", 20, 22, function()
+            SetSelectedHudScale(GetSelectedHudScale() - HUD_SCALE_STEP)
+            DM:RefreshEditModeInspector()
+        end)
+        TightenLabel(scaleMinusBtn, 2, 20)
+        scaleMinusBtn:SetPoint("LEFT", btnCenterV, "RIGHT", 8, 0)
+
+        local sliderHit = CreateFrame("Frame", nil, inspCard)
+        sliderHit:SetSize(SLIDER_W, 22)
+        sliderHit:SetPoint("LEFT", scaleMinusBtn, "RIGHT", 4, 0)
+        sliderHit:EnableMouse(true)
+        sliderHit:EnableMouseWheel(true)
+
+        local track = sliderHit:CreateTexture(nil, "ARTWORK", nil, 1)
+        track:SetSize(SLIDER_W, 4)
+        track:SetPoint("CENTER", sliderHit, "CENTER", 0, 0)
+        track:SetColorTexture(0.035, 0.039, 0.051, 0.98)
+
+        local fill = sliderHit:CreateTexture(nil, "ARTWORK", nil, 2)
+        fill:SetPoint("TOPLEFT", track, "TOPLEFT", 0, 0)
+        fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 0, 0)
+        fill:SetWidth(1)
+
+        local thumb = sliderHit:CreateTexture(nil, "OVERLAY", nil, 4)
+        thumb:SetSize(6, 14)
+        thumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+        if thumb.SetSnapToPixelGrid then
+            thumb:SetSnapToPixelGrid(false)
+            thumb:SetTexelSnappingBias(0)
+        end
+
+        local scalePlusBtn = DM:CreateButton(inspCard, "+", 20, 22, function()
+            SetSelectedHudScale(GetSelectedHudScale() + HUD_SCALE_STEP)
+            DM:RefreshEditModeInspector()
+        end)
+        TightenLabel(scalePlusBtn, 2, 20)
+        scalePlusBtn:SetPoint("LEFT", sliderHit, "RIGHT", 4, 0)
+
+        local scaleBadge = CreateFrame("Frame", nil, inspCard, "BackdropTemplate")
+        scaleBadge:SetSize(42, 22)
+        scaleBadge:SetPoint("LEFT", scalePlusBtn, "RIGHT", 4, 0)
+        DM:ApplyBackdrop(scaleBadge, { r = 0.043, g = 0.051, b = 0.071, a = 0.98 }, COLORS.BorderStrong, 1)
+        local scaleBadgeText = scaleBadge:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        scaleBadgeText:SetPoint("CENTER", scaleBadge, "CENTER", 0, 0)
+        DM:StyleFont(scaleBadgeText, 10, "", COLORS.TextPrimary)
+        scaleBadgeText:SetText("100%")
+
+        local function UpdateScaleVisual(val)
+            local v = math.max(HUD_MIN_SCALE, math.min(HUD_MAX_SCALE, val or 1.0))
+            local pct = (v - HUD_MIN_SCALE) / (HUD_MAX_SCALE - HUD_MIN_SCALE)
+            local xOff = pct * SLIDER_W
+            local r, g, b = DM:GetAccentColor()
+            fill:SetColorTexture(r, g, b, 0.95)
+            fill:SetWidth(math.max(1, xOff))
+            thumb:ClearAllPoints()
+            thumb:SetPoint("CENTER", track, "LEFT", xOff, 0)
+            scaleBadgeText:SetText(string.format("%d%%", math.floor(v * 100 + 0.5)))
+        end
+        insp.UpdateScaleVisual = UpdateScaleVisual
+        insp.GetSelectedHudScale = GetSelectedHudScale
+
+        sliderHit:SetScript("OnMouseDown", function(s, button)
+            if button == "LeftButton" then
+                s:SetScript("OnUpdate", function(selfHit)
+                    if not IsMouseButtonDown("LeftButton") or InCombatLockdown() then
+                        selfHit:SetScript("OnUpdate", nil)
+                        return
+                    end
+                    local eff = track:GetEffectiveScale()
+                    local cx = GetCursorPosition() / eff
+                    local left = track:GetLeft()
+                    if left then
+                        local pct = math.max(0, math.min(1, (cx - left) / SLIDER_W))
+                        local raw = HUD_MIN_SCALE + pct * (HUD_MAX_SCALE - HUD_MIN_SCALE)
+                        local snapped = math.floor(raw * 20 + 0.5) / 20
+                        snapped = math.max(HUD_MIN_SCALE, math.min(HUD_MAX_SCALE, snapped))
+                        if selfHit._lastSnapped ~= snapped then
+                            selfHit._lastSnapped = snapped
+                            if math.abs(snapped - GetSelectedHudScale()) >= 0.01 then
+                                SetSelectedHudScale(snapped)
+                            end
+                            UpdateScaleVisual(snapped)
+                        end
+                    end
+                end)
+            elseif button == "RightButton" then
+                SetSelectedHudScale(1.0)
+                DM:RefreshEditModeInspector()
+            end
+        end)
+        sliderHit:SetScript("OnMouseUp", function(s, button)
+            if button == "LeftButton" then
+                s:SetScript("OnUpdate", nil)
+                DM:RefreshEditModeInspector()
+            end
+        end)
+        sliderHit:SetScript("OnHide", function(s) s:SetScript("OnUpdate", nil) end)
+        sliderHit:SetScript("OnMouseWheel", function(_, delta)
+            SetSelectedHudScale(GetSelectedHudScale() + (delta > 0 and HUD_SCALE_STEP or -HUD_SCALE_STEP))
+            DM:RefreshEditModeInspector()
+        end)
+    end
 
     local foundSpecial = false
     for i = 1, #UISpecialFrames do
@@ -5407,6 +6084,9 @@ function DM:EnsureEditModeInspector()
     end
 
     insp:SetScript("OnHide", function()
+        if insp.selectorPopup and insp.selectorPopup:IsShown() then
+            insp.selectorPopup:Hide()
+        end
         if not self._isExitingEditMode and self.isEditMode then
             self:SetEditMode(false, { fromEsc = true })
         end
@@ -5422,23 +6102,54 @@ function DM:RefreshEditModeInspector()
         if self.editInspector and self.editInspector.Hide then self.editInspector:Hide() end
         return
     end
-    if not self.editInspector or not self.editInspector:IsShown() then return end
-    local key = self.selectedHUDKey or "TargetBar"
+    local insp = self.editInspector
+    if not insp or not insp:IsShown() then return end
+
+    local key = ResolveHUDKeyAliases(self.selectedHUDKey or "TargetBar")
     local entry = Suite.hudElements[key] or Suite.hudElements["TargetBar"]
     local pos = self:GetStoredHUDPosition(key, entry and entry.defaultY or -140)
-    self:ApplyBackdrop(self.editInspector, COLORS.BgVoid, self:GetAccentColorTable(0.95), 1)
-    if self.editInspector.Title then
-        local ar, ag, ab = self:GetAccentColor()
-        local aHex = string.format("%02X%02X%02X", math.floor(ar * 255 + 0.5), math.floor(ag * 255 + 0.5), math.floor(ab * 255 + 0.5))
-        self.editInspector.Title:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFMarker|r |cFF94A3B8HUD Edit Mode|r", aHex))
+    local ar, ag, ab = self:GetAccentColor()
+
+    self:ApplyBackdrop(insp, COLORS.BgVoid, self:GetAccentColorTable(0.95), 1)
+    if insp.mHdr and insp.mHdr.hdrDiv then
+        insp.mHdr.hdrDiv:SetColorTexture(ar, ag, ab, 0.35)
     end
-    self.editInspector.SelectedText:SetText("Selected HUD: " .. (entry and entry.label or key))
-    self.editInspector.CoordText:SetText(string.format("Anchor: %s  |  X: %d  |  Y: %d  (1px drag + Magnetic Snap, Shift bypass)", pos.point or "CENTER", pos.x or 0, pos.y or 0))
-    if self.editInspector.EditX and not self.editInspector.EditX:HasFocus() then
-        self.editInspector.EditX:SetText(tostring(pos.x or 0))
+    if insp.mLogo then
+        self:ApplyBackdrop(insp.mLogo, COLORS.BgVoid, { r = ar, g = ag, b = ab, a = 0.85 }, 1)
     end
-    if self.editInspector.EditY and not self.editInspector.EditY:HasFocus() then
-        self.editInspector.EditY:SetText(tostring(pos.y or 0))
+    if insp.backBtn and insp.backBtn.RefreshStyle then
+        insp.backBtn:RefreshStyle(false)
+    end
+
+    local isShown = self:IsBarNormallyShown(key)
+    if insp.selectorBtn then
+        if insp.selectorBtn.Text then
+            insp.selectorBtn.Text:SetText((key == "FlareBar") and "World Flare Bar" or "Focus Icons")
+        end
+        if insp.selectorBtn.visDot then
+            insp.selectorBtn.visDot:SetColorTexture(isShown and 0.133 or 0.937, isShown and 0.773 or 0.267, isShown and 0.369 or 0.267, 1.0)
+        end
+        if insp.selectorBtn.chevron then
+            insp.selectorBtn.chevron:SetVertexColor(1, 1, 1, 0.78)
+        end
+    end
+    if insp.visShownBtn then insp.visShownBtn:SetSelected(isShown) end
+    if insp.visHiddenBtn then insp.visHiddenBtn:SetSelected(not isShown) end
+    if insp.btnGrid then insp.btnGrid:SetSelected(self:IsHudGridEnabled()) end
+
+    if insp.arrowBtns then
+        for _, abtn in ipairs(insp.arrowBtns) do
+            if abtn.arrowTex then abtn.arrowTex:SetVertexColor(ar, ag, ab, 1.0) end
+        end
+    end
+    if insp.UpdateScaleVisual and insp.GetSelectedHudScale then
+        insp.UpdateScaleVisual(insp.GetSelectedHudScale())
+    end
+    if insp.EditX and not insp.EditX:HasFocus() then
+        insp.EditX:SetText(tostring(pos.x or 0))
+    end
+    if insp.EditY and not insp.EditY:HasFocus() then
+        insp.EditY:SetText(tostring(pos.y or 0))
     end
 end
 
@@ -5509,17 +6220,78 @@ function DM:RefreshHudEditToggleButtons()
     local active = (self.isEditMode == true)
     for _, btn in ipairs(self.hudEditToggleButtons) do
         if btn then
-            btn.isAccent = true
+            if not btn.isEditHudButton then
+                btn.isAccent = true
+            end
             if btn.SetLabel then
-                btn:SetLabel(active and "Lock HUD Movers" or "Unlock HUD Movers")
+                btn:SetLabel(active and "Lock HUD" or "Edit HUD")
             elseif btn.Text then
-                btn.Text:SetText(active and "Lock HUD Movers" or "Unlock HUD Movers")
+                btn.Text:SetText(active and "Lock HUD" or "Edit HUD")
             end
             if btn.RefreshStyle then
                 btn.RefreshStyle(false)
             end
         end
     end
+end
+
+function DM:SyncEditBarStates()
+    local inCombat = InCombatLockdown and InCombatLockdown()
+    local suiteInspectorActive = self:IsRunningInSuite() or self:IsSuiteHudInspectorActive()
+    local function SyncOne(bar, isTarget)
+        if not bar then return end
+        local hudKey = isTarget and "TargetBar" or "FlareBar"
+        local showMover = self.isEditMode and self:IsEditMoverVisible(hudKey)
+        if not self.isEditMode then
+            bar._dsEditModeActive = false
+            bar._dmDragging = false
+        else
+            bar._dsEditModeActive = showMover and suiteInspectorActive or false
+        end
+        if bar.headerPill then bar.headerPill:Hide() end
+        if bar.editMover then
+            bar.editMover:SetScript("OnUpdate", nil)
+            if bar.editMover.headerPill then bar.editMover.headerPill:Hide() end
+            bar.editMover:EnableMouse(showMover)
+            if showMover then
+                bar.editMover:SetFrameLevel((bar:GetFrameLevel() or 10) + 30)
+                bar.editMover:Show()
+                if bar.editMover.RefreshMoverVisual then
+                    bar.editMover:RefreshMoverVisual()
+                elseif bar.editMover.UpdateCoordLabel then
+                    bar.editMover:UpdateCoordLabel()
+                end
+            else
+                bar.editMover:Hide()
+            end
+        end
+        if not inCombat then
+            bar:SetMovable(true)
+            bar:SetClampedToScreen(false)
+            if bar.SetClampRectInsets then bar:SetClampRectInsets(0, 0, 0, 0) end
+            self:SetBarChildButtonsMouseEnabled(bar, not showMover)
+            if showMover then
+                local isNorm = self:IsBarNormallyShown(hudKey)
+                bar:SetAlpha(isNorm and 1.0 or 0.45)
+                bar:Show()
+            else
+                if isTarget then
+                    self:UpdateTargetBarVisibility()
+                else
+                    self:UpdateFlareBarVisibility()
+                end
+            end
+        else
+            if isTarget then
+                self.pendingTargetBarSync = true
+            else
+                self.pendingFlareBarSync = true
+            end
+            self.pendingBarVisibilityUpdate = true
+        end
+    end
+    SyncOne(self.targetBar, true)
+    SyncOne(self.flareBar, false)
 end
 
 function DM:SetEditMode(enabled, opts)
@@ -5537,6 +6309,28 @@ function DM:SetEditMode(enabled, opts)
     if opts.snapMode ~= nil then
         self.externalSnapMode = opts.snapMode
     end
+    if opts.suitePreviewState ~= nil then
+        self._suitePreviewState = opts.suitePreviewState
+    end
+    if enabled and not opts.fromSuite then
+        self._suitePreviewState = nil
+        if opts.explicitFromCard then
+            local primaryKey = ResolveHUDKeyAliases(self.selectedHUDKey)
+            self._previewHiddenMoverKey = (not self:IsBarNormallyShown(primaryKey)) and primaryKey or nil
+        else
+            self._previewHiddenMoverKey = nil
+            if not self:IsBarNormallyShown(self.selectedHUDKey) then
+                if self:IsBarNormallyShown("TargetBar") then
+                    self.selectedHUDKey = "TargetBar"
+                elseif self:IsBarNormallyShown("FlareBar") then
+                    self.selectedHUDKey = "FlareBar"
+                end
+            end
+        end
+    elseif not enabled then
+        self._previewHiddenMoverKey = nil
+        self._suitePreviewState = nil
+    end
 
     if enabled then
         if not self.targetBar then self:InitTargetBar() end
@@ -5549,7 +6343,8 @@ function DM:SetEditMode(enabled, opts)
             if self.targetBar and not inCombat then self:SetBarChildButtonsMouseEnabled(self.targetBar, false) end
             if self.flareBar and not inCombat then self:SetBarChildButtonsMouseEnabled(self.flareBar, false) end
             self._dispatchingExternalEdit = true
-            pcall(enterFn, self.selectedHUDKey == "FlareBar" and "FLARE" or "TARGET")
+            local suiteArg = opts.explicitFromCard and ((self.selectedHUDKey == "FlareBar") and "FLARE" or "TARGET") or "ALL"
+            pcall(enterFn, suiteArg)
             self._dispatchingExternalEdit = false
         end
     elseif not enabled and not opts.fromSuite and not self._dispatchingExternalEdit and not self._inExternalSetEditMode then
@@ -5597,9 +6392,12 @@ function DM:SetEditMode(enabled, opts)
     if self.isEditMode then
         escCatcher:Show()
         if not suiteInspectorActive then
-            if grid and grid.Show then grid:Show() end
+            if grid and grid.SetShown then grid:SetShown(self:IsHudGridEnabled()) end
             local insp = self:EnsureEditModeInspector()
-            if insp and insp.Show then insp:Show() end
+            if insp then
+                if insp.RestoreSavedPosition then insp:RestoreSavedPosition() end
+                if insp.Show then insp:Show() end
+            end
             self:RefreshEditModeInspector()
         else
             if grid and grid.Hide then grid:Hide() end
@@ -5626,60 +6424,17 @@ function DM:SetEditMode(enabled, opts)
     end
     self._isExitingEditMode = false
 
-    local function SyncBarAndMover(bar, isTarget)
-        if not bar then return end
-        if not self.isEditMode then
-            bar._dsEditModeActive = false
-            bar._dmDragging = false
-        else
-            bar._dsEditModeActive = suiteInspectorActive
-        end
-        if bar.headerPill then bar.headerPill:Hide() end
-        if bar.editMover then
-            bar.editMover:SetScript("OnUpdate", nil)
-            if bar.editMover.headerPill then bar.editMover.headerPill:Hide() end
-            bar.editMover:EnableMouse(self.isEditMode)
-            if self.isEditMode then
-                bar.editMover:SetFrameLevel((bar:GetFrameLevel() or 10) + 30)
-                bar.editMover:Show()
-                if bar.editMover.RefreshMoverVisual then
-                    bar.editMover:RefreshMoverVisual()
-                elseif bar.editMover.UpdateCoordLabel then
-                    bar.editMover:UpdateCoordLabel()
-                end
-            else
-                bar.editMover:Hide()
-            end
-        end
-        if not inCombat then
-            bar:SetMovable(true)
-            bar:SetClampedToScreen(false)
-            if bar.SetClampRectInsets then bar:SetClampRectInsets(0, 0, 0, 0) end
-            self:SetBarChildButtonsMouseEnabled(bar, not self.isEditMode)
-            if self.isEditMode then
-                bar:SetAlpha(1.0)
-                bar:Show()
-            end
-        else
-            if isTarget then
-                self.pendingTargetBarSync = true
-            else
-                self.pendingFlareBarSync = true
-            end
-            self.pendingBarVisibilityUpdate = true
-        end
-    end
-
     if not self.isEditMode then
         self.isDraggingHUD = false
         HideSnapGuides()
     end
-    SyncBarAndMover(self.targetBar, true)
-    SyncBarAndMover(self.flareBar, false)
+    self:SyncEditBarStates()
 
     if not inCombat then
         self:RefreshTargetBar()
         self:RefreshFlareBar()
+        self:UpdateTargetBarVisibility()
+        self:UpdateFlareBarVisibility()
     end
 
     self:RefreshHudEditToggleButtons()
@@ -5688,13 +6443,17 @@ function DM:SetEditMode(enabled, opts)
 end
 
 function DM:ToggleHudEditMode(preferredHudKey)
-    if preferredHudKey then
+    local explicitFromCard = (preferredHudKey ~= nil and preferredHudKey ~= "")
+    if explicitFromCard then
         local primaryKey = ResolveHUDKeyAliases(preferredHudKey)
         self.selectedHUDKey = primaryKey
+        self._previewHiddenMoverKey = (not self:IsBarNormallyShown(primaryKey)) and primaryKey or nil
+    else
+        self._previewHiddenMoverKey = nil
     end
     if self:IsRunningInSuite() and _G.DynamicSuite then
         local ds = _G.DynamicSuite
-        local targetKey = (self.selectedHUDKey == "FlareBar") and "FLARE" or "TARGET"
+        local targetKey = explicitFromCard and ((self.selectedHUDKey == "FlareBar") and "FLARE" or "TARGET") or "ALL"
         local isDsActive = (type(ds.IsHudEditModeActive) == "function" and ds.IsHudEditModeActive()) or false
         if isDsActive and type(ds.ExitHudEditMode) == "function" then
             pcall(ds.ExitHudEditMode, false)
@@ -5707,7 +6466,10 @@ function DM:ToggleHudEditMode(preferredHudKey)
     if self.isEditMode then
         self:SetEditMode(false)
     else
-        self:SetEditMode(true, { selectedHUDKey = self.selectedHUDKey })
+        self:SetEditMode(true, {
+            selectedHUDKey = self.selectedHUDKey,
+            explicitFromCard = explicitFromCard,
+        })
     end
 end
 
@@ -5715,13 +6477,17 @@ function DM:RegisterWithSuiteHudEditMode()
     if self._registeredSuiteHudCallback then return true end
     local ds = _G.DynamicSuite
     if type(ds) == "table" and type(ds.RegisterHudEditCallback) == "function" then
-        local ok = pcall(ds.RegisterHudEditCallback, ds, "DynamicMarker", function(active, selectedSuiteTarget, snapMode)
+        local ok = pcall(ds.RegisterHudEditCallback, ds, "DynamicMarker", function(active, selectedSuiteTarget, snapMode, suitePreviewOpts)
             if self._dispatchingExternalEdit then
                 self.externalSnapMode = snapMode
+                self._suitePreviewState = suitePreviewOpts
                 if selectedSuiteTarget == "FLARE" then
                     self.selectedHUDKey = "FlareBar"
                 elseif selectedSuiteTarget == "TARGET" then
                     self.selectedHUDKey = "TargetBar"
+                end
+                if self.SyncEditBarStates then
+                    self:SyncEditBarStates()
                 end
                 if self.targetBar and self.targetBar.editMover and self.targetBar.editMover.RefreshMoverVisual then
                     self.targetBar.editMover:RefreshMoverVisual()
@@ -5741,6 +6507,7 @@ function DM:RegisterWithSuiteHudEditMode()
                 fromSuite = true,
                 selectedHUDKey = nextHudKey,
                 snapMode = snapMode,
+                suitePreviewState = suitePreviewOpts,
                 fromCombat = InCombatLockdown and InCombatLockdown(),
             })
         end)
@@ -5776,6 +6543,7 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
             self.Text:SetText("|cFF" .. (hex or "CBD5E1") .. "[" .. k .. "]|r  |cFF94A3B8(Click to Rebind)|r")
         end
     end
+    btn.RefreshKey = btn.RefreshValue
 
     function btn:StopCapture(commitKey)
         self.isCapturing = false
@@ -5787,11 +6555,12 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
             setter(commitKey)
         end
         self:RefreshValue()
+        DM:RefreshKeybindTelemetryAndTabTitle()
     end
 
     btn:SetScript("OnClick", function(s, mouseBtn)
         if mouseBtn == "RightButton" then
-            s:StopCapture(defaultKey)
+            s:StopCapture("")
             return
         end
         if s.isCapturing then
@@ -5800,7 +6569,7 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
         end
 
         s.isCapturing = true
-        s.Text:SetText("|cFFF59E0BPress any key or Esc to unbind|r")
+        s.Text:SetText("|cFFF59E0BPress any key or Esc to clear|r")
         DM:ApplyBackdrop(s, COLORS.BgHover, COLORS.Amber)
         s:EnableKeyboard(true)
         if s.SetPropagateKeyboardInput then
@@ -5809,7 +6578,7 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
 
         s:SetScript("OnKeyDown", function(capBtn, key)
             if key == "ESCAPE" then
-                capBtn:StopCapture("NONE")
+                capBtn:StopCapture("")
                 return
             end
             if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL" or key == "LALT" or key == "RALT" then
@@ -5846,8 +6615,8 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
         end
         GameTooltip:SetOwner(s, "ANCHOR_TOP")
         GameTooltip:SetText("Interactive Keybind Capture", 1, 1, 1)
-        GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Press any key, modifier combo, or mouse button (MB3/MB4/MB5). Press Esc to unbind.|r", 1, 1, 1, true)
-        GameTooltip:AddLine("|cFFF87171Right-Click:|r |cFFE2E8F0Restore Default (" .. tostring(defaultKey) .. ")|r", 1, 1, 1, true)
+        GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Press any key, modifier combo, or mouse button (MB3/MB4/MB5). Press Esc to clear.|r", 1, 1, 1, true)
+        GameTooltip:AddLine("|cFFF87171Right-Click:|r |cFFE2E8F0Clear Keybind (Unbind)|r", 1, 1, 1, true)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function(s)
@@ -5983,7 +6752,7 @@ function DM:BuildWorkspace(parentContainer)
 
     local tabDefs = {
         [1] = "Focus Icons",
-        [2] = "World Flare Keys (F4 / F5)",
+        [2] = self:GetSubTab2Title(),
         [3] = "Macro Setup",
     }
 
@@ -6004,7 +6773,9 @@ function DM:BuildWorkspace(parentContainer)
         btn:SetWidth(182)
 
         btn.Text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        btn.Text:SetPoint("CENTER")
+        btn.Text:SetPoint("LEFT", btn, "LEFT", 8, 0)
+        btn.Text:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+        btn.Text:SetJustifyH("CENTER")
         btn.Text:SetWordWrap(false)
         btn.Text:SetText(tabDefs[i])
 
@@ -6023,21 +6794,32 @@ function DM:BuildWorkspace(parentContainer)
     local function ReflowSubTabBar()
         local w = tabBar:GetWidth()
         if not w or w <= 60 then return end
-        local btnW = math.max(150, math.floor((w - 20) / 3))
+        local usable = w - 20
+        local defaultW = math.floor(usable / 3)
+        local b2 = ws.subTabBtns[2]
+        local tab2TextW = 0
+        if b2 and b2.Text then
+            tab2TextW = (b2.Text.GetUnboundedStringWidth and b2.Text:GetUnboundedStringWidth()) or b2.Text:GetStringWidth() or 0
+        end
+        local w2 = math.min(math.floor(usable * 0.50), math.max(defaultW, math.ceil(tab2TextW + 24)))
+        local rem = usable - w2
+        local w1 = math.max(120, math.floor(rem * 0.5))
+        local widths = { w1, w2 }
         for i, b in ipairs(ws.subTabBtns) do
             b:ClearAllPoints()
             if i == 1 then
                 b:SetPoint("LEFT", tabBar, "LEFT", 4, 0)
-                b:SetWidth(btnW)
+                b:SetWidth(widths[1])
             elseif i == 2 then
                 b:SetPoint("LEFT", ws.subTabBtns[1], "RIGHT", 6, 0)
-                b:SetWidth(btnW)
+                b:SetWidth(widths[2])
             else
                 b:SetPoint("LEFT", ws.subTabBtns[2], "RIGHT", 6, 0)
                 b:SetPoint("RIGHT", tabBar, "RIGHT", -4, 0)
             end
         end
     end
+    ws.ReflowSubTabBar = ReflowSubTabBar
     tabBar:SetScript("OnSizeChanged", ReflowSubTabBar)
     tabBar:HookScript("OnShow", function() C_Timer.After(0, ReflowSubTabBar) end)
     C_Timer.After(0, ReflowSubTabBar)
@@ -6053,9 +6835,10 @@ function DM:BuildWorkspace(parentContainer)
     p1Sec2:SetPoint("TOPLEFT", p1Sec1, "BOTTOMLEFT", 0, -14)
     p1Sec2:SetPoint("TOPRIGHT", p1Sec1, "BOTTOMRIGHT", 0, -14)
     local p1Hdr2 = self:CreateSectionHeader(p1Sec2, -10, "ON-SCREEN FOCUS BAR HUD", "Configure visibility, orientation, border style, scale, and opacity for the floating 8-icon Focus Bar.")
-    local p1HudBtn = self:CreateButton(p1Hdr2, self.isEditMode and "Lock HUD Movers" or "Unlock HUD Movers", 136, 22, function()
+    local p1HudBtn = self:CreateEditHudButton(p1Hdr2, function()
         self:ToggleHudEditMode("TargetBar")
-    end, true)
+    end)
+    if self.isEditMode and p1HudBtn.SetLabel then p1HudBtn:SetLabel("Lock HUD") end
     p1HudBtn:SetPoint("RIGHT", p1Hdr2, "RIGHT", 0, 2)
     if p1Hdr2.subtitle then
         p1Hdr2.subtitle:SetPoint("RIGHT", p1HudBtn, "LEFT", -10, 0)
@@ -6383,9 +7166,10 @@ function DM:BuildWorkspace(parentContainer)
     p2Sec2:SetPoint("TOPLEFT", p2Sec1, "BOTTOMLEFT", 0, -14)
     p2Sec2:SetPoint("TOPRIGHT", p2Sec1, "BOTTOMRIGHT", 0, -14)
     local p2Hdr2 = self:CreateSectionHeader(p2Sec2, -10, "ON-SCREEN WORLD FLARE BAR HUD", "Configure visibility, orientation, border style, scale, and opacity for the floating World Flare Bar.")
-    local p2HudBtn = self:CreateButton(p2Hdr2, self.isEditMode and "Lock HUD Movers" or "Unlock HUD Movers", 136, 22, function()
+    local p2HudBtn = self:CreateEditHudButton(p2Hdr2, function()
         self:ToggleHudEditMode("FlareBar")
-    end, true)
+    end)
+    if self.isEditMode and p2HudBtn.SetLabel then p2HudBtn:SetLabel("Lock HUD") end
     p2HudBtn:SetPoint("RIGHT", p2Hdr2, "RIGHT", 0, 2)
     if p2Hdr2.subtitle then
         p2Hdr2.subtitle:SetPoint("RIGHT", p2HudBtn, "LEFT", -10, 0)
@@ -6401,6 +7185,7 @@ function DM:BuildWorkspace(parentContainer)
         function(newKey)
             self.db.flareCycleKey = newKey
             self:ApplyFlareKeybinds()
+            self:RefreshKeybindTelemetryAndTabTitle()
             self:RefreshAll()
         end, "F4")
     kbCycle:SetPoint("RIGHT", fRow1, "RIGHT", -14, 0)
@@ -6416,6 +7201,7 @@ function DM:BuildWorkspace(parentContainer)
         function(newKey)
             self.db.flareClearKey = newKey
             self:ApplyFlareKeybinds()
+            self:RefreshKeybindTelemetryAndTabTitle()
             self:RefreshAll()
         end, "F5")
     kbClear:SetPoint("RIGHT", fRow2, "RIGHT", -14, 0)
@@ -8514,10 +9300,9 @@ function DM:RefreshAll()
         local activeTab = self.db.activeSubTab or 1
 
         -- Update Sub-Tab 2 Dynamic Keybind Label (Clean Typography without icons)
-        if ws.subTabBtns and ws.subTabBtns[2] then
-            local cyc = self:FormatKeyShort(self.db.flareCycleKey or "F4")
-            local clr = self:FormatKeyShort(self.db.flareClearKey or "F5")
-            ws.subTabBtns[2].Text:SetText(string.format("World Flare Keys (%s / %s)", cyc, clr))
+        if ws.subTabBtns and ws.subTabBtns[2] and ws.subTabBtns[2].Text then
+            ws.subTabBtns[2].Text:SetText(self:GetSubTab2Title())
+            if ws.ReflowSubTabBar then ws.ReflowSubTabBar() end
         end
         if ws.subTabBtns then
             for i, tBtn in ipairs(ws.subTabBtns) do
@@ -8675,13 +9460,8 @@ function DM:RefreshAll()
         end
     end
 
-    -- If hosted inside an external _G.DynamicSuite shell (e.g. DynamicLoad), push header status updates
-    if Suite.UpdateHeaderStatus then
-        pcall(Suite.UpdateHeaderStatus, Suite, "marker", statusStr)
-    end
-    if Suite.statusTextWidget and Suite.activeModule == "marker" and Suite.statusTextWidget.SetText then
-        pcall(Suite.statusTextWidget.SetText, Suite.statusTextWidget, statusStr)
-    end
+    -- Synchronise standalone status pill, Sub-Tab 2 label, and _G.DynamicSuite top header telemetry bar
+    self:RefreshKeybindTelemetryAndTabTitle()
 end
 
 function DM:OpenWindow(subTabIndex)
@@ -8843,6 +9623,8 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "15/11/2026",
     entries = {
+        { type = "FIX",     text = "Release v2.1.0 - World Flare Keybind Dispatch & Instant Telemetry Refresh (15/11/2026): Anchored secure World Flare cycle/clear buttons on-screen (1x1, alpha 0, non-mouse-blocking), removed the SecureHandlerWrapScript button-name override so LeftButton dispatches /wm [@cursor] and /cwm all reliably in and out of combat across key-down and key-up CVars, added Right-Click unbind, and wired instant status telemetry bar and proportional 'World Flare Keys (...)' sub-tab updates whenever bindings are captured, cleared, or reset." },
+        { type = "UI",      text = "Compact Draggable HUD Edit Dock & Hidden-By-Default Movers (15/11/2026): Redesigned standalone HUD Edit Mode into a compact 560x74 2-row draggable inspector with a HUD Selector Dropdown, non-truncated Hidden/Shown toggles, Grid, Reset, Back to Suite, X/Y steppers, Center X/Y, and Scale slider (60%-150%), keeping at least 60px on-screen near screen edges while clamping bars inside screen bounds, hiding disabled movers by default, temporarily previewing explicitly selected hidden bars with 'HIDDEN (Click Shown to Enable)', and standardising Obsidian/Blaze-Orange [Edit HUD] buttons." },
         { type = "FIX", text = "World Flare Hardware Keybinds & Custom Sequence Order (15/11/2026): Fixed Cycle Ground Flare (F4) and Clear All Flares (F5) hardware keybinds so they fire reliably in and out of combat, walk your saved and enabled World Flare Cycle Sequence in exact custom order via SecureHandlerWrapScript, and update the floating World Flare Bar to match your custom sequence order and enabled flares." },
         { type = "FIX", text = "Target Only Focus Macro Clear (15/11/2026): Updated the Target Only [DynamicMark] macro template to /focus [@target,exists,nodead][] so pressing it with a target sets focus and marks it, while pressing it with no target clears your existing focus target." },
         { type = "FEATURE", text = "Inline Manual Macro Editor & Custom Icon Preservation (15/11/2026): In Manual (Custom) mode, Sub-Tab 3's [DynamicMark] preview becomes an editable dark-obsidian multi-line EditBox (255-char limit with live character counter and Escape to unfocus) so you can write or paste custom macro lines directly inside DynamicMarker and save immediately with Step 1. Updating an existing [DynamicMark] macro now preserves any custom in-game macro icon you assigned." },
