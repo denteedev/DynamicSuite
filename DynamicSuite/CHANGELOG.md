@@ -1,5 +1,12 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.0.8 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.0.9 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.0.9 (15/11/2026)
+
+### DynamicMarker
+- **World Flare Hardware Keybinds & Custom Sequence Order:** Fixed Cycle Ground Flare (`F4`) and Clear All Flares (`F5`) hardware keybinds so they fire reliably in and out of combat, walk your saved and enabled World Flare Cycle Sequence in exact custom order via `SecureHandlerWrapScript`, and update the floating World Flare Bar to match your custom sequence order and enabled flares.
 
 ---
 

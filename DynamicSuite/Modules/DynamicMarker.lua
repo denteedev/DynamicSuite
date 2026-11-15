@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.0.8"
+    local fb = fallback or "2.0.9"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -99,7 +99,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.0.8"
+            or "2.0.9"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.8")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.0.9")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -2698,13 +2698,22 @@ end
 
 function DM:GetActiveFlareSequence()
     local seq = {}
-    for _, flareID in ipairs(self.db.flareOrder) do
-        if self.db.flareEnabled[flareID] then
-            table.insert(seq, flareID)
+    if not self.db then return { 1, 2, 3, 4, 5, 6, 7, 8 } end
+    local order = SanitizePermutation1To8(self.db.flareOrder)
+    self.db.flareOrder = order
+    local enabled = type(self.db.flareEnabled) == "table" and self.db.flareEnabled or {}
+    for _, rawID in ipairs(order) do
+        local flareID = tonumber(rawID)
+        if flareID and WORLD_FLARES[flareID] then
+            local isOn = enabled[flareID]
+            if isOn == nil then isOn = enabled[tostring(flareID)] end
+            if isOn ~= false then
+                table.insert(seq, flareID)
+            end
         end
     end
     if #seq == 0 then
-        table.insert(seq, 1)
+        table.insert(seq, order[1] or 1)
     end
     return seq
 end
@@ -2729,9 +2738,11 @@ function DM:ConfigureSecureButtonClicks(btn)
         self.pendingSecureClickSync = true
         return
     end
-    local useKeyDown = (C_CVar and C_CVar.GetCVarBool) and C_CVar.GetCVarBool("ActionButtonUseKeyDown") or false
+    local useKeyDown = (C_CVar and C_CVar.GetCVarBool and C_CVar.GetCVarBool("ActionButtonUseKeyDown"))
+        or (type(GetCVarBool) == "function" and GetCVarBool("ActionButtonUseKeyDown"))
+        or false
     btn:SetAttribute("useOnKeyDown", useKeyDown)
-    btn:RegisterForClicks(useKeyDown and "AnyDown" or "AnyUp")
+    btn:RegisterForClicks("AnyDown", "AnyUp")
 end
 
 function DM:RefreshAllSecureButtonClicks()
@@ -2741,52 +2752,94 @@ function DM:RefreshAllSecureButtonClicks()
     end
     self.pendingSecureClickSync = false
     if not self.secureButtons then return end
-    local useKeyDown = (C_CVar and C_CVar.GetCVarBool) and C_CVar.GetCVarBool("ActionButtonUseKeyDown") or false
+    local useKeyDown = (C_CVar and C_CVar.GetCVarBool and C_CVar.GetCVarBool("ActionButtonUseKeyDown"))
+        or (type(GetCVarBool) == "function" and GetCVarBool("ActionButtonUseKeyDown"))
+        or false
     for btn in pairs(self.secureButtons) do
         btn:SetAttribute("useOnKeyDown", useKeyDown)
-        btn:RegisterForClicks(useKeyDown and "AnyDown" or "AnyUp")
+        btn:RegisterForClicks("AnyDown", "AnyUp")
     end
 end
 
 function DM:InitSecureFlareButtons()
     if self.flareCycleBtn and self.flareClearBtn then return end
+    if InCombatLockdown() then
+        self.pendingFlareEngineSync = true
+        self.pendingKeybindSync = true
+        return
+    end
 
-    -- 1. Cycle Ground Flare Secure Button
-    local cycleBtn = CreateFrame("Button", "DynamicMarkerFlareCycleBtn", UIParent, "SecureActionButtonTemplate, SecureHandlerClickTemplate")
+    local header = self.flareSecureHeader or _G.DynamicMarkerFlareHeader or CreateFrame("Frame", "DynamicMarkerFlareHeader", UIParent, "SecureHandlerBaseTemplate")
+    self.flareSecureHeader = header
+
+    -- 1. Cycle Ground Flare Secure Button (kept shown offscreen at 0 alpha so SetOverrideBindingClick dispatches reliably)
+    local cycleBtn = _G.DynamicMarkerFlareCycleBtn or CreateFrame("Button", "DynamicMarkerFlareCycleBtn", UIParent, "SecureActionButtonTemplate")
+    cycleBtn:SetSize(1, 1)
+    cycleBtn:ClearAllPoints()
+    cycleBtn:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -200, 200)
+    cycleBtn:SetAlpha(0)
+    cycleBtn:Show()
     self:ConfigureSecureButtonClicks(cycleBtn)
-    cycleBtn:SetAttribute("type", "worldmarker")
-    cycleBtn:SetAttribute("type1", "worldmarker")
+    cycleBtn:SetAttribute("type", "macro")
+    cycleBtn:SetAttribute("type1", "macro")
+    cycleBtn:SetAttribute("macrotext", "/wm [@cursor] 1")
+    cycleBtn:SetAttribute("macrotext1", "/wm [@cursor] 1")
     cycleBtn:SetAttribute("action", "set")
     cycleBtn:SetAttribute("action1", "set")
     cycleBtn:SetAttribute("marker", 1)
     cycleBtn:SetAttribute("marker1", 1)
-    cycleBtn:Hide()
+    for wmID = 1, 8 do
+        local cmd = "/wm [@cursor] " .. wmID
+        cycleBtn:SetAttribute("type-flare" .. wmID, "macro")
+        cycleBtn:SetAttribute("macrotext-flare" .. wmID, cmd)
+    end
 
-    if cycleBtn.WrapScript then
-        cycleBtn:WrapScript(cycleBtn, "OnClick", [=[
-            if _order and #_order > 0 then
-                local m = _order[_idx] or 1
-                self:SetAttribute("type", "worldmarker")
-                self:SetAttribute("type1", "worldmarker")
-                self:SetAttribute("action", "set")
-                self:SetAttribute("action1", "set")
-                self:SetAttribute("marker", m)
-                self:SetAttribute("marker1", m)
+    if not cycleBtn._dmWrapped and SecureHandlerWrapScript and header then
+        cycleBtn._dmWrapped = true
+        SecureHandlerWrapScript(cycleBtn, "OnClick", header, [=[
+            local useDown = self:GetAttribute("useOnKeyDown")
+            if down ~= nil then
+                if useDown and not down then return false end
+                if not useDown and down then return false end
+            end
+            local count = self:GetAttribute("flareSeqCount") or 0
+            local m = 1
+            if count > 0 then
+                local idx = self:GetAttribute("flareSeqIdx") or 1
+                if idx < 1 or idx > count then idx = 1 end
+                m = self:GetAttribute("flareSlot" .. idx) or 1
+                self:SetAttribute("flareSeqIdx", (idx % count) + 1)
+            elseif _order and #_order > 0 then
+                if not _idx or _idx < 1 or _idx > #_order then _idx = 1 end
+                m = _order[_idx] or 1
                 _idx = (_idx % #_order) + 1
             end
+            local cmd = "/wm [@cursor] " .. m
+            self:SetAttribute("marker", m)
+            self:SetAttribute("marker1", m)
+            self:SetAttribute("macrotext", cmd)
+            self:SetAttribute("macrotext1", cmd)
+            return "flare" .. m
         ]=])
     end
 
-    -- 2. Clear All Flares Secure Button
-    local clearBtn = CreateFrame("Button", "DynamicMarkerFlareClearBtn", UIParent, "SecureActionButtonTemplate")
+    -- 2. Clear All Flares Secure Button (kept shown offscreen at 0 alpha so SetOverrideBindingClick dispatches reliably)
+    local clearBtn = _G.DynamicMarkerFlareClearBtn or CreateFrame("Button", "DynamicMarkerFlareClearBtn", UIParent, "SecureActionButtonTemplate")
+    clearBtn:SetSize(1, 1)
+    clearBtn:ClearAllPoints()
+    clearBtn:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -202, 200)
+    clearBtn:SetAlpha(0)
+    clearBtn:Show()
     self:ConfigureSecureButtonClicks(clearBtn)
-    clearBtn:SetAttribute("type", "worldmarker")
-    clearBtn:SetAttribute("type1", "worldmarker")
+    local clearCmd = "/cwm 0\n/cwm all"
+    clearBtn:SetAttribute("type", "macro")
+    clearBtn:SetAttribute("type1", "macro")
+    clearBtn:SetAttribute("macrotext", clearCmd)
+    clearBtn:SetAttribute("macrotext1", clearCmd)
     clearBtn:SetAttribute("action", "clear")
     clearBtn:SetAttribute("action1", "clear")
     clearBtn:SetAttribute("marker", 0)
     clearBtn:SetAttribute("marker1", 0)
-    clearBtn:Hide()
 
     self.flareCycleBtn = cycleBtn
     self.flareClearBtn = clearBtn
@@ -2796,7 +2849,7 @@ function DM:InitSecureFlareButtons()
 end
 
 function DM:SyncSecureFlareEngine()
-    if not self.flareCycleBtn then return end
+    if not self.flareCycleBtn or not self.flareClearBtn then return end
     if InCombatLockdown() then
         self.pendingFlareEngineSync = true
         return
@@ -2804,40 +2857,82 @@ function DM:SyncSecureFlareEngine()
     self.pendingFlareEngineSync = false
 
     local seq = self:GetActiveFlareSequence()
+    local count = #seq
     local listStr = table.concat(seq, ", ")
 
-    if self.flareCycleBtn.Execute then
-        self.flareCycleBtn:Execute(string.format([=[
+    local cycleBtn = self.flareCycleBtn
+    cycleBtn:SetAttribute("flareSeq", table.concat(seq, ","))
+    cycleBtn:SetAttribute("flareSeqCount", count)
+    cycleBtn:SetAttribute("flareSeqIdx", 1)
+    for idx = 1, 8 do
+        cycleBtn:SetAttribute("flareSlot" .. idx, seq[idx] or seq[1] or 1)
+    end
+    for wmID = 1, 8 do
+        local cmd = "/wm [@cursor] " .. wmID
+        cycleBtn:SetAttribute("type-flare" .. wmID, "macro")
+        cycleBtn:SetAttribute("macrotext-flare" .. wmID, cmd)
+    end
+
+    if self.flareSecureHeader and self.flareSecureHeader.Execute then
+        self.flareSecureHeader:Execute(string.format([=[
             _order = newtable(%s)
             _idx = 1
         ]=], listStr))
     end
-    self.flareCycleBtn:SetAttribute("type", "worldmarker")
-    self.flareCycleBtn:SetAttribute("action", "set")
-    self.flareCycleBtn:SetAttribute("marker", seq[1] or 1)
 
-    self.flareClearBtn:SetAttribute("type", "worldmarker")
-    self.flareClearBtn:SetAttribute("action", "clear")
-    self.flareClearBtn:SetAttribute("marker", 0)
+    local firstWM = seq[1] or 1
+    local firstCmd = "/wm [@cursor] " .. firstWM
+    cycleBtn:SetAttribute("type", "macro")
+    cycleBtn:SetAttribute("type1", "macro")
+    cycleBtn:SetAttribute("macrotext", firstCmd)
+    cycleBtn:SetAttribute("macrotext1", firstCmd)
+    cycleBtn:SetAttribute("action", "set")
+    cycleBtn:SetAttribute("action1", "set")
+    cycleBtn:SetAttribute("marker", firstWM)
+    cycleBtn:SetAttribute("marker1", firstWM)
+
+    local clearCmd = "/cwm 0\n/cwm all"
+    local clearBtn = self.flareClearBtn
+    clearBtn:SetAttribute("type", "macro")
+    clearBtn:SetAttribute("type1", "macro")
+    clearBtn:SetAttribute("macrotext", clearCmd)
+    clearBtn:SetAttribute("macrotext1", clearCmd)
+    clearBtn:SetAttribute("action", "clear")
+    clearBtn:SetAttribute("action1", "clear")
+    clearBtn:SetAttribute("marker", 0)
+    clearBtn:SetAttribute("marker1", 0)
 end
 
 function DM:ApplyFlareKeybinds()
-    if not self.flareCycleBtn or not self.flareClearBtn then return end
+    if not self.flareCycleBtn or not self.flareClearBtn then
+        if not InCombatLockdown() then
+            self:InitSecureFlareButtons()
+        else
+            self.pendingKeybindSync = true
+        end
+        if not self.flareCycleBtn or not self.flareClearBtn then return end
+    end
     if InCombatLockdown() then
         self.pendingKeybindSync = true
         return
     end
     self.pendingKeybindSync = false
 
+    self.flareCycleBtn:Show()
+    self.flareClearBtn:Show()
     ClearOverrideBindings(self.flareCycleBtn)
     ClearOverrideBindings(self.flareClearBtn)
 
-    local cycleKey = self.db.flareCycleKey
+    if IsModuleDisabledInSuite("DynamicMarker") then
+        return
+    end
+
+    local cycleKey = self.db and self.db.flareCycleKey
     if cycleKey and cycleKey ~= "" and cycleKey ~= "NONE" then
         SetOverrideBindingClick(self.flareCycleBtn, true, cycleKey, "DynamicMarkerFlareCycleBtn", "LeftButton")
     end
 
-    local clearKey = self.db.flareClearKey
+    local clearKey = self.db and self.db.flareClearKey
     if clearKey and clearKey ~= "" and clearKey ~= "NONE" then
         SetOverrideBindingClick(self.flareClearBtn, true, clearKey, "DynamicMarkerFlareClearBtn", "LeftButton")
     end
@@ -4224,23 +4319,40 @@ function DM:RefreshFlareBar()
     self.pendingFlareBarSync = false
     self:SetBarChildButtonsMouseEnabled(bar, not self.isEditMode)
 
+    local activeSeq = self:GetActiveFlareSequence()
+    local count = math.max(1, #activeSeq)
+    for i = 1, 8 do
+        if bar.cells and bar.cells[i] then bar.cells[i]:Hide() end
+        if bar.buttons and bar.buttons[i] then bar.buttons[i]:Hide() end
+    end
+
     local isVert = (self.db.flareBarOrientation == "VERTICAL")
     if isVert then
-        bar:SetSize(40, 8 * 32 + 9 * 4)
-        for i = 1, 8 do
-            local cell = bar.cells[i]
+        bar:SetSize(40, count * 32 + (count + 1) * 4)
+        for posIdx, flareID in ipairs(activeSeq) do
+            local cell = bar.cells and bar.cells[flareID]
+            local btn = bar.buttons and bar.buttons[flareID]
             if cell then
                 cell:ClearAllPoints()
-                cell:SetPoint("TOP", bar, "TOP", 0, -4 - (i - 1) * 36)
+                cell:SetPoint("TOP", bar, "TOP", 0, -4 - (posIdx - 1) * 36)
+                cell:Show()
+            end
+            if btn then
+                btn:Show()
             end
         end
     else
-        bar:SetSize(8 * 32 + 9 * 4, 40)
-        for i = 1, 8 do
-            local cell = bar.cells[i]
+        bar:SetSize(count * 32 + (count + 1) * 4, 40)
+        for posIdx, flareID in ipairs(activeSeq) do
+            local cell = bar.cells and bar.cells[flareID]
+            local btn = bar.buttons and bar.buttons[flareID]
             if cell then
                 cell:ClearAllPoints()
-                cell:SetPoint("LEFT", bar, "LEFT", 4 + (i - 1) * 36, 0)
+                cell:SetPoint("LEFT", bar, "LEFT", 4 + (posIdx - 1) * 36, 0)
+                cell:Show()
+            end
+            if btn then
+                btn:Show()
             end
         end
     end
@@ -5711,12 +5823,18 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
         end)
 
         s:SetScript("OnMouseDown", function(capBtn, mBtn)
-            if mBtn == "LeftButton" or mBtn == "RightButton" then return end
+            local hasMod = IsAltKeyDown() or IsControlKeyDown() or IsShiftKeyDown()
+            if (mBtn == "LeftButton" or mBtn == "RightButton") and not hasMod then return end
             local prefix = ""
             if IsAltKeyDown() then prefix = prefix .. "ALT-" end
             if IsControlKeyDown() then prefix = prefix .. "CTRL-" end
             if IsShiftKeyDown() then prefix = prefix .. "SHIFT-" end
-            local mapped = (mBtn == "MiddleButton") and "BUTTON3" or mBtn
+            local mapped = mBtn
+            if mBtn == "LeftButton" then mapped = "BUTTON1"
+            elseif mBtn == "RightButton" then mapped = "BUTTON2"
+            elseif mBtn == "MiddleButton" then mapped = "BUTTON3"
+            elseif type(mBtn) == "string" then mapped = string.upper(mBtn)
+            end
             capBtn:StopCapture(prefix .. mapped)
         end)
     end)
@@ -6352,6 +6470,7 @@ function DM:BuildWorkspace(parentContainer)
         local ord = self.db.flareOrder
         ord[posA], ord[posB] = ord[posB], ord[posA]
         self:SyncSecureFlareEngine()
+        self:RefreshFlareBar()
         self:RefreshAll()
     end
 
@@ -6362,6 +6481,7 @@ function DM:BuildWorkspace(parentContainer)
         if item then
             table.insert(ord, toIdx, item)
             self:SyncSecureFlareEngine()
+            self:RefreshFlareBar()
             self:RefreshAll()
         end
     end
@@ -6478,6 +6598,7 @@ function DM:BuildWorkspace(parentContainer)
                 local flareID = self.db.flareOrder[slotIdx]
                 self.db.flareEnabled[flareID] = not self.db.flareEnabled[flareID]
                 self:SyncSecureFlareEngine()
+                self:RefreshFlareBar()
             end
             self:RefreshAll()
         end)
@@ -8689,6 +8810,16 @@ local MarkerModuleDescriptor = {
     OnDisableInSuite = function()
         if DM.targetBar and not (InCombatLockdown and InCombatLockdown()) then DM.targetBar:Hide() end
         if DM.flareBar and not (InCombatLockdown and InCombatLockdown()) then DM.flareBar:Hide() end
+        DM:ApplyFlareKeybinds()
+    end,
+    OnEnableInSuite = function()
+        DM:InitSecureFlareButtons()
+        DM:SyncSecureFlareEngine()
+        DM:ApplyFlareKeybinds()
+        DM:UpdateTargetBarVisibility()
+        DM:UpdateFlareBarVisibility()
+        DM:RefreshTargetBar()
+        DM:RefreshFlareBar()
     end,
 }
 
@@ -8712,6 +8843,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "15/11/2026",
     entries = {
+        { type = "FIX", text = "World Flare Hardware Keybinds & Custom Sequence Order (15/11/2026): Fixed Cycle Ground Flare (F4) and Clear All Flares (F5) hardware keybinds so they fire reliably in and out of combat, walk your saved and enabled World Flare Cycle Sequence in exact custom order via SecureHandlerWrapScript, and update the floating World Flare Bar to match your custom sequence order and enabled flares." },
         { type = "FIX", text = "Target Only Focus Macro Clear (15/11/2026): Updated the Target Only [DynamicMark] macro template to /focus [@target,exists,nodead][] so pressing it with a target sets focus and marks it, while pressing it with no target clears your existing focus target." },
         { type = "FEATURE", text = "Inline Manual Macro Editor & Custom Icon Preservation (15/11/2026): In Manual (Custom) mode, Sub-Tab 3's [DynamicMark] preview becomes an editable dark-obsidian multi-line EditBox (255-char limit with live character counter and Escape to unfocus) so you can write or paste custom macro lines directly inside DynamicMarker and save immediately with Step 1. Updating an existing [DynamicMark] macro now preserves any custom in-game macro icon you assigned." },
         { type = "FEATURE", text = "Focus Target Mode & Surgical Manual Macro Patching (15/11/2026): Added a 'Focus Target Mode' 3-pill selector in Sub-Tab 3 (Mouseover + Target, Target Only, Manual (Custom)). In Manual (Custom) mode, logins/reloads keep your custom [DynamicMark] macro untouched, changing Focus Icon, Group Scope, or Clear Focus Modifier surgically updates only the /tm and /clearfocus lines (within 255 characters), the preview box displays your live custom macro, and Step 1 uses a 2-click confirmation before resetting custom lines." },
@@ -9068,6 +9200,7 @@ evtFrame:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
 evtFrame:RegisterEvent("TRAIT_CONFIG_UPDATED")
 evtFrame:RegisterEvent("ACTIONBAR_SLOT_CHANGED")
 evtFrame:RegisterEvent("UPDATE_MACROS")
+evtFrame:RegisterEvent("UPDATE_BINDINGS")
 evtFrame:RegisterEvent("CVAR_UPDATE")
 evtFrame:RegisterEvent("UI_SCALE_CHANGED")
 evtFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
@@ -9183,6 +9316,10 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1)
             DM:RefreshAllSecureButtonClicks()
         end
 
+    elseif event == "UPDATE_BINDINGS" then
+        if not DM.db then return end
+        DM:ApplyFlareKeybinds()
+
     elseif event == "ACTIONBAR_SLOT_CHANGED" or event == "UPDATE_MACROS" then
         if DM.workspaceFrame and DM.workspaceFrame:IsShown() then
             DM:RefreshAll()
@@ -9203,6 +9340,12 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1)
             hasEnteredWorld = true
         end
         if not DM.db then return end
+        if event == "PLAYER_ENTERING_WORLD" then
+            DM:InitSecureFlareButtons()
+            DM:RefreshAllSecureButtonClicks()
+            DM:SyncSecureFlareEngine()
+            DM:ApplyFlareKeybinds()
+        end
         if DM.db.kickSpecMode == "SMART_SWAP" then
             DM:CreateOrUpdateDynamicKickMacro(false)
         end
