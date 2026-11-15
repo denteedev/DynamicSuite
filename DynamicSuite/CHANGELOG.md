@@ -5,6 +5,9 @@
 
 ## DynamicSuite & All 8 Modules v2.2.0 (15/11/2026)
 
+### DynamicBags
+- **Dual-Mode Ctrl+Scroll Window Scaling & Scale-Aware Docked Bank Alignment:** Added matching Blizzard-window scroll scaling (`70%` to `140%` in `5%` steps, guarded out of combat) across both `DynamicBagsFrame` and the companion `DynamicBank` (`DynamicBagsBankFrame`) window. `Ctrl + Mouse Wheel` over either window header scales temporarily for the current open session (resetting back to saved scale on close), `Ctrl + Shift + Mouse Wheel` anywhere over the window (header, footer, or item grid `ScrollFrame`) saves the scale permanently (`bagScale` / `bankScale` in `DynamicBagsDB`) across reloads without interrupting normal grid scrolling or `Ctrl + Click` item previews, and `Right-Click` on a header (or `Reset DynamicBags`) resets scale to `100%`. Displays an auto-fading Dark-Obsidian (`#0B0D12`) / Blaze-Orange (`#F97316`) readout pill (`"Session Scale: N%"` / `"Saved Scale: N%"`), and makes `SaveTopAlignedPos`, `MakeFrameDraggable`, and `ApplyCompanionAnchor` scale-aware so a docked `DynamicBank` stays flush alongside `DynamicBags` at any scale combination.
+
 ### DynamicMarker
 - **Unbound-by-Default World Flare Keybinds & Guided Setup Assignment:** Removed hardcoded `F4` and `F5` defaults from `DB_DEFAULTS`, `GetStatusText()`, `GetSubTab2Title()`, and `ResetDefaults()` so fresh installs and Resets start with both Cycle World Flare and Clear All Flares keys `"Unbound"` (`""`) -- never overriding a player's own Blizzard or action bar bindings -- while preserving any custom hotkeys already saved in an existing `DynamicMarkerDB` (or imported from FocusMarker). Added clean single-button `Cycle World Flare Keybind` and `Clear All Flares Keybind` capture controls (`"Unbound (Click to Bind)"` / `"[KEY] (Click Rebind)"`) across both Guided Setup flows (DynamicSuite Step 3 & standalone Guided Setup modal) and the World Flare Keys tab (`/dm flares`), where Left-Click captures, `Escape` cancels without losing the current binding, and `Right-Click` (or `Backspace`/`Delete` while capturing) clears to `"Unbound"`.
 
@@ -37,6 +40,9 @@
 
 ## DynamicSuite & All 8 Modules v2.1.0 (15/11/2026)
 
+### DynamicBags
+- **Dual-Mode Ctrl+Scroll Window Scaling & Scale-Aware Docked Bank Alignment:** Added matching Blizzard-window scroll scaling (`70%` to `140%` in `5%` steps, guarded out of combat) across both `DynamicBagsFrame` and the companion `DynamicBank` (`DynamicBagsBankFrame`) window. `Ctrl + Mouse Wheel` over either window header scales temporarily for the current open session (resetting back to saved scale on close), `Ctrl + Shift + Mouse Wheel` anywhere over the window (header, footer, or item grid `ScrollFrame`) saves the scale permanently (`bagScale` / `bankScale` in `DynamicBagsDB`) across reloads without interrupting normal grid scrolling or `Ctrl + Click` item previews, and `Right-Click` on a header (or `Reset DynamicBags`) resets scale to `100%`. Displays an auto-fading Dark-Obsidian (`#0B0D12`) / Blaze-Orange (`#F97316`) readout pill (`"Session Scale: N%"` / `"Saved Scale: N%"`), and makes `SaveTopAlignedPos`, `MakeFrameDraggable`, and `ApplyCompanionAnchor` scale-aware so a docked `DynamicBank` stays flush alongside `DynamicBags` at any scale combination.
+
 ### DynamicMarker
 - **World Flare Hardware Keybinds Fix:** Anchored the secure World Flare cycle and clear click buttons (`DynamicMarkerFlareCycleBtn` / `DynamicMarkerFlareClearBtn`) on-screen at `CENTER` (`1x1`, alpha `0`, `EnableMouse(false)`), removed the `"flare" .. m` button override return inside `SecureHandlerWrapScript` so `"LeftButton"` passes cleanly to `SecureActionButton_OnClick` for `/wm [@cursor] <m>` and `/cwm all`, and ensured key-down / key-up CVar parity in and out of combat.
 - **Live Keybind Telemetry & Dynamic Sub-Tab Label:** Rebinding, unbinding (Escape or Right-Click), or resetting `Cycle Ground Flare Key` or `Clear All Flares Key` now immediately refreshes the `[Key]` button text, `World Flare Keys (...)` tab label with proportional width reflow, standalone status bar, and DynamicSuite's top telemetry bar (`UpdateHeaderTelemetry()`).
@@ -50,6 +56,9 @@
 
 ## DynamicSuite & All 8 Modules v2.0.9 (15/11/2026)
 
+### DynamicBags
+- **Dual-Mode Ctrl+Scroll Window Scaling & Scale-Aware Docked Bank Alignment:** Added matching Blizzard-window scroll scaling (`70%` to `140%` in `5%` steps, guarded out of combat) across both `DynamicBagsFrame` and the companion `DynamicBank` (`DynamicBagsBankFrame`) window. `Ctrl + Mouse Wheel` over either window header scales temporarily for the current open session (resetting back to saved scale on close), `Ctrl + Shift + Mouse Wheel` anywhere over the window (header, footer, or item grid `ScrollFrame`) saves the scale permanently (`bagScale` / `bankScale` in `DynamicBagsDB`) across reloads without interrupting normal grid scrolling or `Ctrl + Click` item previews, and `Right-Click` on a header (or `Reset DynamicBags`) resets scale to `100%`. Displays an auto-fading Dark-Obsidian (`#0B0D12`) / Blaze-Orange (`#F97316`) readout pill (`"Session Scale: N%"` / `"Saved Scale: N%"`), and makes `SaveTopAlignedPos`, `MakeFrameDraggable`, and `ApplyCompanionAnchor` scale-aware so a docked `DynamicBank` stays flush alongside `DynamicBags` at any scale combination.
+
 ### DynamicMarker
 - **World Flare Hardware Keybinds & Custom Sequence Order:** Fixed Cycle Ground Flare (`F4`) and Clear All Flares (`F5`) hardware keybinds so they fire reliably in and out of combat, walk your saved and enabled World Flare Cycle Sequence in exact custom order via `SecureHandlerWrapScript`, and update the floating World Flare Bar to match your custom sequence order and enabled flares.
 
@@ -62,6 +71,9 @@
 - **Dungeon Joined & Group Full Teleport Toast:** Added an Alert Toast-matched banner with a one-click Dungeon Teleport button, Right-Click dismissal, join chimes, 5/5 group highlight, shared HUD Edit slot with automatic vertical stacking, preview buttons, and `/dg testtoast`.
 - **Season Dungeon Portals & 1-Click Dungeon Filter Deck:** Docked portal bar above Premade Groups with your keystone pill and all 8 Midnight Season 2 dungeon tiles, supporting Left-Click / Shift+Left-Click filtering and Right-Click teleport casting.
 - **Integrated Multi-Toggle Premade Group Filters:** Added Tank/Healer/DPS role toggles with icons, No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez in two-way sync with Blizzard's native filter.
+
+### DynamicBags
+- **Dual-Mode Ctrl+Scroll Window Scaling & Scale-Aware Docked Bank Alignment:** Added matching Blizzard-window scroll scaling (`70%` to `140%` in `5%` steps, guarded out of combat) across both `DynamicBagsFrame` and the companion `DynamicBank` (`DynamicBagsBankFrame`) window. `Ctrl + Mouse Wheel` over either window header scales temporarily for the current open session (resetting back to saved scale on close), `Ctrl + Shift + Mouse Wheel` anywhere over the window (header, footer, or item grid `ScrollFrame`) saves the scale permanently (`bagScale` / `bankScale` in `DynamicBagsDB`) across reloads without interrupting normal grid scrolling or `Ctrl + Click` item previews, and `Right-Click` on a header (or `Reset DynamicBags`) resets scale to `100%`. Displays an auto-fading Dark-Obsidian (`#0B0D12`) / Blaze-Orange (`#F97316`) readout pill (`"Session Scale: N%"` / `"Saved Scale: N%"`), and makes `SaveTopAlignedPos`, `MakeFrameDraggable`, and `ApplyCompanionAnchor` scale-aware so a docked `DynamicBank` stays flush alongside `DynamicBags` at any scale combination.
 
 ### DynamicMarker
 - **Target Only Focus Macro Clear:** Updated the Target Only `[DynamicMark]` macro template to `/focus [@target,exists,nodead][]` so pressing it with a target sets focus and marks it, while pressing it with no target clears your existing focus target (alongside `Mouseover + Target` and the inline `Manual (Custom)` editor with custom icon preservation).

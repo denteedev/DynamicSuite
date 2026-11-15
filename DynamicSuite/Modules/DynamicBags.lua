@@ -287,6 +287,8 @@ local DEFAULTS = {
     },
     bagColumns = 14,
     bankColumns = 14,
+    bagScale = 1.0,
+    bankScale = 1.0,
     iconSize = 36,
     categorySpacing = 12,
     badges = { ilvl = true, upgrade = true, keystone = true, eqset = true, binding = true, junk = true, quality = true },
@@ -3925,34 +3927,234 @@ function U.SizeWindow()
     end
 end
 
+local BAG_SCALE_MIN = 0.70
+local BAG_SCALE_MAX = 1.40
+local BAG_SCALE_STEP = 0.05
+
+local function ClampWindowScale(val)
+    local n = tonumber(val) or 1.0
+    n = floor(n * 20 + 0.5) / 20
+    if n < BAG_SCALE_MIN then n = BAG_SCALE_MIN end
+    if n > BAG_SCALE_MAX then n = BAG_SCALE_MAX end
+    return n
+end
+
+function U.GetActiveWindowScale(targetKind)
+    local db = DB()
+    if targetKind == "bank" then
+        return ClampWindowScale(S.sessionBankScale or db.bankScale or 1.0)
+    end
+    return ClampWindowScale(S.sessionBagScale or db.bagScale or 1.0)
+end
+
+local function ApplySavedTopAlignedPos(frame, dbKey)
+    if not frame or (InCombatLockdown and InCombatLockdown()) then return end
+    local pos = DB()[dbKey]
+    if type(pos) ~= "table" or not pos[1] then return end
+    local s = (frame.GetScale and frame:GetScale()) or 1
+    if s <= 0 then s = 1 end
+    frame:ClearAllPoints()
+    frame:SetPoint(pos[1], UIParent, pos[2] or pos[1], (pos[3] or 0) / s, (pos[4] or 0) / s)
+end
+
+function U.ApplyWindowScale(targetKind)
+    if InCombatLockdown and InCombatLockdown() then return end
+    if targetKind == "bank" then
+        local bw = S.bankWindow
+        if not bw then return end
+        local sc = U.GetActiveWindowScale("bank")
+        if math.abs((bw.GetScale and bw:GetScale() or 1) - sc) > 0.001 then
+            bw:SetScale(sc)
+        end
+        if U.ApplyCompanionAnchor then U.ApplyCompanionAnchor() end
+        return
+    end
+    local win = S.window
+    if not win then return end
+    local sc = U.GetActiveWindowScale("bag")
+    if math.abs((win.GetScale and win:GetScale() or 1) - sc) > 0.001 then
+        win:SetScale(sc)
+    end
+    ApplySavedTopAlignedPos(win, "windowPos")
+    if S.bankWindow and S.bankWindow:IsShown() and DB().vaultDocked ~= false and U.ApplyCompanionAnchor then
+        U.ApplyCompanionAnchor()
+    end
+end
+
+local scaleToastFrame = nil
+local function ShowBagScaleToast(anchorFrame, msg)
+    if not CreateFrame then return end
+    if not scaleToastFrame then
+        local tf = CreateFrame("Frame", "DynamicBagsWindowScaleToast", UIParent, "BackdropTemplate")
+        tf:SetSize(196, 28)
+        tf:SetFrameStrata("DIALOG")
+        tf:SetClampedToScreen(true)
+        Backdrop(tf, 0.043, 0.051, 0.071, 0.96, 0.976, 0.451, 0.086, 0.90)
+        local txt = tf:CreateFontString(nil, "OVERLAY")
+        SetFont(txt, 11, "")
+        txt:SetPoint("CENTER", tf, "CENTER", 0, 0)
+        txt:SetTextColor(0.976, 0.451, 0.086, 1)
+        tf.text = txt
+        tf:SetScript("OnUpdate", function(self, elapsed)
+            self._t = (self._t or 0) + elapsed
+            if self._t >= 1.40 then
+                local fade = (self._t - 1.40) / 0.35
+                if fade >= 1 then
+                    self:Hide()
+                    self:SetAlpha(1)
+                    self._t = 0
+                else
+                    self:SetAlpha(1 - fade)
+                end
+            end
+        end)
+        scaleToastFrame = tf
+    end
+    scaleToastFrame.text:SetText(msg or "")
+    scaleToastFrame:ClearAllPoints()
+    if anchorFrame then
+        scaleToastFrame:SetPoint("BOTTOM", anchorFrame, "TOP", 0, 8)
+    else
+        scaleToastFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
+    end
+    scaleToastFrame:SetAlpha(1)
+    scaleToastFrame._t = 0
+    scaleToastFrame:Show()
+end
+
+function U.StepBagOrBankScale(targetKind, delta, savePermanent)
+    if InCombatLockdown and InCombatLockdown() then return end
+    local isBank = (targetKind == "bank")
+    local frame = isBank and S.bankWindow or S.window
+    if not frame then return end
+    local cur = U.GetActiveWindowScale(targetKind)
+    local nextScale = ClampWindowScale(cur + ((delta or 0) > 0 and BAG_SCALE_STEP or -BAG_SCALE_STEP))
+    if savePermanent then
+        if isBank then
+            DB().bankScale = nextScale
+            S.sessionBankScale = nil
+        else
+            DB().bagScale = nextScale
+            S.sessionBagScale = nil
+        end
+    else
+        if isBank then
+            S.sessionBankScale = nextScale
+        else
+            S.sessionBagScale = nextScale
+        end
+    end
+    if isBank then
+        if DB().vaultDocked == false then
+            U.SaveTopAlignedPos(frame, "vaultPos")
+        end
+        frame:SetScale(nextScale)
+        if U.ApplyCompanionAnchor then U.ApplyCompanionAnchor() end
+    else
+        U.SaveTopAlignedPos(frame, "windowPos")
+        frame:SetScale(nextScale)
+        ApplySavedTopAlignedPos(frame, "windowPos")
+        if S.bankWindow and S.bankWindow:IsShown() and DB().vaultDocked ~= false and U.ApplyCompanionAnchor then
+            U.ApplyCompanionAnchor()
+        end
+    end
+    local pct = floor(nextScale * 100 + 0.5)
+    ShowBagScaleToast(frame, (savePermanent and "Saved Scale: " or "Session Scale: ") .. tostring(pct) .. "%")
+end
+
+function U.ResetBagOrBankScale(targetKind)
+    if InCombatLockdown and InCombatLockdown() then return end
+    local isBank = (targetKind == "bank")
+    local frame = isBank and S.bankWindow or S.window
+    if not frame then return end
+    if isBank then
+        DB().bankScale = 1.0
+        S.sessionBankScale = nil
+        if DB().vaultDocked == false then
+            U.SaveTopAlignedPos(frame, "vaultPos")
+        end
+        frame:SetScale(1.0)
+        if U.ApplyCompanionAnchor then U.ApplyCompanionAnchor() end
+    else
+        DB().bagScale = 1.0
+        S.sessionBagScale = nil
+        U.SaveTopAlignedPos(frame, "windowPos")
+        frame:SetScale(1.0)
+        ApplySavedTopAlignedPos(frame, "windowPos")
+        if S.bankWindow and S.bankWindow:IsShown() and DB().vaultDocked ~= false and U.ApplyCompanionAnchor then
+            U.ApplyCompanionAnchor()
+        end
+    end
+    ShowBagScaleToast(frame, "Scale Reset: 100%")
+end
+
+function U.AttachWindowScaleHandlers(targetKind, headFrame, fullFrames)
+    if headFrame and headFrame.EnableMouseWheel and headFrame.HookScript then
+        headFrame:EnableMouseWheel(true)
+        headFrame:HookScript("OnMouseWheel", function(_, delta)
+            local ctrl = IsControlKeyDown and IsControlKeyDown()
+            if not ctrl then return end
+            local shift = IsShiftKeyDown and IsShiftKeyDown()
+            U.StepBagOrBankScale(targetKind, delta, shift and true or false)
+        end)
+        headFrame:HookScript("OnMouseUp", function(_, button)
+            if button == "RightButton" and not (GetCursorInfo and GetCursorInfo() == "item") then
+                U.ResetBagOrBankScale(targetKind)
+            end
+        end)
+    end
+    if type(fullFrames) == "table" then
+        for _, f in ipairs(fullFrames) do
+            if f and f.EnableMouseWheel and f.HookScript then
+                f:EnableMouseWheel(true)
+                f:HookScript("OnMouseWheel", function(_, delta)
+                    local ctrl = IsControlKeyDown and IsControlKeyDown()
+                    local shift = IsShiftKeyDown and IsShiftKeyDown()
+                    if ctrl and shift then
+                        U.StepBagOrBankScale(targetKind, delta, true)
+                    end
+                end)
+            end
+        end
+    end
+end
+
 function U.SaveTopAlignedPos(frame, dbKey)
     local top = frame:GetTop()
     local right = frame:GetRight()
     local left = frame:GetLeft()
+    local s = (frame.GetScale and frame:GetScale()) or 1
+    if s <= 0 then s = 1 end
     local uiW = UIParent:GetWidth() or 1920
     local uiH = UIParent:GetHeight() or 1080
-    local bagW = frame:GetWidth() or 700
+    local bagWUI = (frame:GetWidth() or 700) * s
 
     if top and right and dbKey == "windowPos" then
+        local topUI = top * s
+        local rightUI = right * s
         -- Prevent DynamicBags from being pushed so far left that a docked DynamicBank overlaps it!
         local minLeft = 8
         if S.bankWindow and S.bankWindow:IsShown() and DB().vaultDocked ~= false then
-            minLeft = (S.bankWindow:GetWidth() or 620) + 18
+            local bs = (S.bankWindow.GetScale and S.bankWindow:GetScale()) or 1
+            if bs <= 0 then bs = 1 end
+            minLeft = ((S.bankWindow:GetWidth() or 620) * bs) + 18
         end
-        if (right - bagW) < minLeft then
-            right = minLeft + bagW
+        if (rightUI - bagWUI) < minLeft then
+            rightUI = minLeft + bagWUI
         end
-        if right > uiW - 4 then right = uiW - 4 end
-        local xOfs = right - uiW
-        local yOfs = min(-4, top - uiH)
+        if rightUI > uiW - 4 then rightUI = uiW - 4 end
+        local xOfs = rightUI - uiW
+        local yOfs = min(-4, topUI - uiH)
         frame:ClearAllPoints()
-        frame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", xOfs, yOfs)
+        frame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", xOfs / s, yOfs / s)
         DB()[dbKey] = { "TOPRIGHT", "TOPRIGHT", xOfs, yOfs }
     elseif top and left then
-        local xOfs = max(4, min(uiW - (frame:GetWidth() or 600) - 4, left))
-        local yOfs = min(-4, top - uiH)
+        local topUI = top * s
+        local leftUI = left * s
+        local xOfs = max(4, min(uiW - ((frame:GetWidth() or 600) * s) - 4, leftUI))
+        local yOfs = min(-4, topUI - uiH)
         frame:ClearAllPoints()
-        frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", xOfs, yOfs)
+        frame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", xOfs / s, yOfs / s)
         DB()[dbKey] = { "TOPLEFT", "TOPLEFT", xOfs, yOfs }
     end
 end
@@ -3974,9 +4176,13 @@ function U.MakeFrameDraggable(targetFrame, moveFrame, onStopFn)
         if master == S.window and S.bankWindow and S.bankWindow:IsShown() and DB().vaultDocked ~= false then
             S.bankWindow:SetClampedToScreen(false)
             targetFrame:SetScript("OnUpdate", function()
-                local minLeft = (S.bankWindow:GetWidth() or 620) + 14
+                local ms = (master.GetScale and master:GetScale()) or 1
+                local bs = (S.bankWindow.GetScale and S.bankWindow:GetScale()) or 1
+                if ms <= 0 then ms = 1 end
+                if bs <= 0 then bs = 1 end
+                local minLeft = ((S.bankWindow:GetWidth() or 620) * bs) + 14
                 local curLeft = master:GetLeft()
-                if curLeft and curLeft < minLeft then
+                if curLeft and (curLeft * ms) < minLeft then
                     master:StopMovingOrSizing()
                     U.SaveTopAlignedPos(master, "windowPos")
                     U.ApplyCompanionAnchor()
@@ -4296,6 +4502,9 @@ function U.EnsureCompanionBankWindow()
     bw:SetMovable(true)
     bw:EnableMouse(true)
     bw:SetSize(620, 540)
+    if not InCombatLockdown() then
+        bw:SetScale(U.GetActiveWindowScale("bank"))
+    end
     Backdrop(bw, COL.panel[1], COL.panel[2], COL.panel[3], COL.panel[4], ar, ag, ab, 0.90)
     if S.window then
         bw:SetPoint("TOPRIGHT", S.window, "TOPLEFT", -10, 0)
@@ -4535,6 +4744,7 @@ function U.EnsureCompanionBankWindow()
     AttachBankCanvasDropHandler(bw)
     AttachBankCanvasDropHandler(head)
     AttachBankCanvasDropHandler(foot)
+    U.AttachWindowScaleHandlers("bank", head, { bw, area.scroll, bw.content })
 
     local function SelectCompanionTab(mode)
         local db = DB()
@@ -4553,6 +4763,9 @@ function U.EnsureCompanionBankWindow()
     bw.tabGuild:SetScript("OnClick", function() SelectCompanionTab("GUILD") end)
 
     bw:SetScript("OnShow", function()
+        if not InCombatLockdown() then
+            U.ApplyWindowScale("bank")
+        end
         if not S.companionMode then S.companionMode = "BANK" end
         if S.companionSubTab == nil then
             S.companionSubTab = U.GetRememberedSubTab and U.GetRememberedSubTab(S.companionMode) or 0
@@ -4562,6 +4775,13 @@ function U.EnsureCompanionBankWindow()
     end)
     bw:SetScript("OnHide", function()
         U.CloseMenu()
+        S.sessionBankScale = nil
+        if not InCombatLockdown() then
+            local savedScale = ClampWindowScale(DB().bankScale or 1.0)
+            if math.abs((bw.GetScale and bw:GetScale() or 1) - savedScale) > 0.001 then
+                bw:SetScale(savedScale)
+            end
+        end
         if S._closingGuildBank or S.atGuildBank then return end
         if S._justClosedGuildBank and GetTime and (GetTime() - S._justClosedGuildBank) < 1.0 then return end
         if DB().autoMergeOnClose == true and not InCombatLockdown() and S.companionMode ~= "GUILD" and U.IsVaultModeLive(S.companionMode) then
@@ -5132,19 +5352,37 @@ function U.ApplyCompanionAnchor()
     local bw = S.bankWindow
     if not bw or InCombatLockdown() then return end
     local db = DB()
+    local bs = (bw.GetScale and bw:GetScale()) or 1
+    if bs <= 0 then bs = 1 end
+    local function AnchorFlushLeftOfBags()
+        local ms = (S.window.GetScale and S.window:GetScale()) or 1
+        if ms <= 0 then ms = 1 end
+        local uiW = UIParent:GetWidth() or 1920
+        local uiH = UIParent:GetHeight() or 1080
+        local winLeft = S.window:GetLeft()
+        local winTop = S.window:GetTop()
+        if winLeft and winTop then
+            local winLeftUI = winLeft * ms
+            local winTopUI = winTop * ms
+            bw:ClearAllPoints()
+            bw:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", (winLeftUI - 10 - uiW) / bs, (winTopUI - uiH) / bs)
+        else
+            bw:ClearAllPoints()
+            bw:SetPoint("TOPRIGHT", S.window, "TOPLEFT", -10 / bs, 0)
+        end
+    end
     if db.vaultDocked ~= false and S.window then
         U.SaveTopAlignedPos(S.window, "windowPos")
-        bw:ClearAllPoints()
-        bw:SetPoint("TOPRIGHT", S.window, "TOPLEFT", -10, 0)
+        AnchorFlushLeftOfBags()
     else
         local vp = db.vaultPos
         bw:ClearAllPoints()
         if type(vp) == "table" and vp[1] then
-            bw:SetPoint(vp[1], UIParent, vp[2] or vp[1], vp[3] or 0, vp[4] or 0)
+            bw:SetPoint(vp[1], UIParent, vp[2] or vp[1], (vp[3] or 0) / bs, (vp[4] or 0) / bs)
         elseif S.window then
-            bw:SetPoint("TOPRIGHT", S.window, "TOPLEFT", -10, 0)
+            AnchorFlushLeftOfBags()
         else
-            bw:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 120, -100)
+            bw:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 120 / bs, -100 / bs)
         end
     end
     if bw.dockBtn then
@@ -5215,12 +5453,18 @@ function U.EnsureWindow()
     win:SetMovable(true)
     win:EnableMouse(true)
     win:SetSize(700, 520)
+    local initScale = U.GetActiveWindowScale("bag")
+    if not InCombatLockdown() then
+        win:SetScale(initScale)
+    end
     Backdrop(win, COL.panel[1], COL.panel[2], COL.panel[3], COL.panel[4], ar, ag, ab, 0.90)
     local pos = db.windowPos
     if type(pos) == "table" and pos[1] then
-        win:SetPoint(pos[1], UIParent, pos[2] or pos[1], pos[3] or 0, pos[4] or 0)
+        local activeS = (win.GetScale and win:GetScale()) or 1
+        if activeS <= 0 then activeS = 1 end
+        win:SetPoint(pos[1], UIParent, pos[2] or pos[1], (pos[3] or 0) / activeS, (pos[4] or 0) / activeS)
     else
-        win:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -80, 100)
+        win:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -80 / initScale, 100 / initScale)
     end
     if GameMenuFrame and GameMenuFrame.HookScript and not S.escMenuHooked then
         S.escMenuHooked = true
@@ -5499,6 +5743,7 @@ function U.EnsureWindow()
     AttachCanvasDropHandler(win)
     AttachCanvasDropHandler(head)
     AttachCanvasDropHandler(foot)
+    U.AttachWindowScaleHandlers("bag", head, { win, area.scroll, S.liveContent, S.remoteContent })
 
     local goldBtn = CreateFrame("Button", nil, foot)
     goldBtn:SetPoint("RIGHT", foot, "RIGHT", -12, 0)
@@ -5563,11 +5808,22 @@ function U.EnsureWindow()
     S.footer = foot
 
     win:SetScript("OnShow", function()
+        if not InCombatLockdown() then
+            U.ApplyWindowScale("bag")
+        end
         U.RenderCurrentView()
         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
     end)
     win:SetScript("OnHide", function()
         U.CloseMenu()
+        S.sessionBagScale = nil
+        if not InCombatLockdown() then
+            local savedScale = ClampWindowScale(DB().bagScale or 1.0)
+            if math.abs((win.GetScale and win:GetScale() or 1) - savedScale) > 0.001 then
+                win:SetScale(savedScale)
+            end
+            ApplySavedTopAlignedPos(win, "windowPos")
+        end
         S.autoOpened = {}
         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
         if DB().autoMergeOnClose == true and not InCombatLockdown() then
@@ -7141,6 +7397,12 @@ function DynamicBags:ResetModuleDefaults()
         if k ~= "vault" then db[k] = nil end
     end
     CopyDefaults(DEFAULTS, db)
+    S.sessionBagScale = nil
+    S.sessionBankScale = nil
+    if not InCombatLockdown() then
+        U.ApplyWindowScale("bag")
+        U.ApplyWindowScale("bank")
+    end
     wipe(S.bindCache)
     U.OnSettingChanged("reclass")
     Print("Settings restored to defaults (Alt Vault cache kept).")
@@ -9137,6 +9399,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "15/11/2026",
     entries = {
+        { type = "FEATURE", text = "Dual-Mode Ctrl+Scroll Window Scaling & Scale-Aware Docked Bank Alignment (15/11/2026): added 70%-140% (5% steps, out of combat) scaling across DynamicBagsFrame and DynamicBagsBankFrame. Ctrl + Scroll on a header scales temporarily for the open session (resetting on hide); Ctrl + Shift + Scroll anywhere on the window (including item grid ScrollFrames) saves bagScale / bankScale permanently without affecting normal wheel scrolling or Ctrl+Click item previews; Right-Click on a header (or Reset DynamicBags) resets scale to 100%; shows an auto-fading Dark-Obsidian (#0B0D12) / Blaze-Orange (#F97316) readout toast; and keeps docked DynamicBank flush beside DynamicBags at any scale." },
         { type = "FEATURE", text = "Unified Auto-Open for Gold Pouches, Housing Decor & Profession Knowledge (15/11/2026): expanded the automatic container opener to use/open Soulbound and Warband-bound gold pouches, coin/loot satchels, Housing Decor, and Profession Knowledge items (Treatises, Shards, Notes, Curios matching your character's known professions) out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Added default-enabled 'Auto-Open Soulbound Housing Decor' and 'Auto-Open Soulbound Profession Knowledge' toggles in Tab 3, while keeping protected-spell items (via C_Item.GetItemSpell or ADDON_ACTION_BLOCKED) safely queued in the 1-click Open (N) header button with a per-item retry cooldown and session blacklist." },
         { type = "FIX",     text = "Hardened zero-flash Bank/Guild Bank opening after /reload (14/11/2026): added Scale+Alpha suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, enforced strict weak ordering in Sort: A-Z when uncached items appear, verified compatible slot placement in Drop-Anywhere Split-Stack Placement, fixed Guild Bank T1-Tn badge overlap and view-only slot dimming, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, and expanded /dbag slash subcommands." },
         { type = "FEATURE", text = "Guild Bank Daily Withdrawal Counter (13/11/2026): each Guild Bank tab button (T1, T2...) now shows a small counter of how many item withdrawals you have left today - white when plenty remain, amber at 1-2, red at 0, and a red x for tabs you cannot view. Unlimited tabs show no counter. Counters only appear while you are at the Guild Bank." },
