@@ -6815,7 +6815,7 @@ end
 
 function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
     local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
-    btn:SetSize(width or 176, 26)
+    btn:SetSize(width or 204, 26)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     self:ApplyBackdrop(btn, COLORS.BgElevated, COLORS.BorderStrong)
 
@@ -6826,35 +6826,14 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
     btn.Text:SetWordWrap(false)
     self:StyleFont(btn.Text, 11.5, "", COLORS.TextPrimary)
 
-    btn.unbindBtn = self:CreateButton(parent, "Unbind", 62, 26, function()
-        btn:StopCapture("")
-    end)
-    btn.unbindBtn.tooltipTitle = "Unbind World Flare Hotkey"
-    btn.unbindBtn.tooltipText = "One-click unbind: clears this hotkey to Unbound so the key passes straight through to your Blizzard and action bar bindings."
-
     function btn:RefreshValue()
         local k = getter()
         local _, _, _, hex = DM:GetAccentColor()
         local isBound = (type(k) == "string" and k ~= "" and k ~= "NONE")
         if not isBound then
-            self.Text:SetText("|cFF94A3B8Unbound|r  |cFF64748B(Click Bind)|r")
+            self.Text:SetText("|cFF94A3B8Unbound (Click to Bind)|r")
         else
             self.Text:SetText("|cFF" .. (hex or "CBD5E1") .. "[" .. k .. "]|r  |cFF94A3B8(Click Rebind)|r")
-        end
-        if self.unbindBtn then
-            if isBound then
-                if self.unbindBtn.Enable then self.unbindBtn:Enable() end
-                if self.unbindBtn.SetAlpha then self.unbindBtn:SetAlpha(1.0) end
-                if self.unbindBtn.Text and self.unbindBtn.Text.SetTextColor then
-                    self.unbindBtn.Text:SetTextColor(0.98, 0.45, 0.45, 1.0)
-                end
-            else
-                if self.unbindBtn.Disable then self.unbindBtn:Disable() end
-                if self.unbindBtn.SetAlpha then self.unbindBtn:SetAlpha(0.40) end
-                if self.unbindBtn.Text and self.unbindBtn.Text.SetTextColor then
-                    self.unbindBtn.Text:SetTextColor(0.55, 0.60, 0.68, 1.0)
-                end
-            end
         end
     end
     btn.RefreshKey = btn.RefreshValue
@@ -6934,7 +6913,7 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
         GameTooltip:SetOwner(s, "ANCHOR_TOP")
         GameTooltip:SetText("Interactive Keybind Capture", 1, 1, 1)
         GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Press any key, modifier combo, or mouse button (MB3/MB4/MB5). Press Esc to cancel, or Backspace/Delete to unbind.|r", 1, 1, 1, true)
-        GameTooltip:AddLine("|cFFF87171Right-Click / Unbind:|r |cFFE2E8F0Set keybind to Unbound.|r", 1, 1, 1, true)
+        GameTooltip:AddLine("|cFFF87171Right-Click:|r |cFFE2E8F0Clear Keybind (Unbind)|r", 1, 1, 1, true)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function(s)
@@ -7501,9 +7480,9 @@ function DM:BuildWorkspace(parentContainer)
 
     -- Row 1: Cycle World Flare Keybind (Optional, Unbound by Default)
     local fRow1 = self:CreateSpaciousRow(p2Sec1, -118, 58,
-        "Cycle World Flare Keybind (Optional)",
-        "Press repeatedly to place active ground flares at your cursor in sequence. Starts Unbound by default.")
-    local kbCycle = self:CreateKeybindButton(fRow1, 174,
+        "Cycle World Flare Keybind",
+        "Press repeatedly to place active ground flares at your cursor in sequence. Click to bind, Right-click to unbind.")
+    local kbCycle = self:CreateKeybindButton(fRow1, 204,
         function() return self.db.flareCycleKey end,
         function(newKey)
             self.db.flareCycleKey = newKey
@@ -7511,16 +7490,15 @@ function DM:BuildWorkspace(parentContainer)
             self:RefreshKeybindTelemetryAndTabTitle()
             self:RefreshAll()
         end, "")
-    kbCycle.unbindBtn:SetPoint("RIGHT", fRow1, "RIGHT", -14, 0)
-    kbCycle:SetPoint("RIGHT", kbCycle.unbindBtn, "LEFT", -6, 0)
-    fRow1:BindControl(kbCycle.unbindBtn, kbCycle)
+    kbCycle:SetPoint("RIGHT", fRow1, "RIGHT", -14, 0)
+    fRow1:BindControl(kbCycle)
     table.insert(self.refreshables, function() kbCycle:RefreshValue() end)
 
     -- Row 2: Clear All Flares Keybind (Optional, Unbound by Default)
     local fRow2 = self:CreateSpaciousRow(p2Sec1, -182, 58,
-        "Clear All Flares Keybind (Optional)",
-        "Clear all active ground flares from the battlefield in one press. Starts Unbound by default.")
-    local kbClear = self:CreateKeybindButton(fRow2, 174,
+        "Clear All Flares Keybind",
+        "Clear all active ground flares from the battlefield in one press. Click to bind, Right-click to unbind.")
+    local kbClear = self:CreateKeybindButton(fRow2, 204,
         function() return self.db.flareClearKey end,
         function(newKey)
             self.db.flareClearKey = newKey
@@ -7528,9 +7506,8 @@ function DM:BuildWorkspace(parentContainer)
             self:RefreshKeybindTelemetryAndTabTitle()
             self:RefreshAll()
         end, "")
-    kbClear.unbindBtn:SetPoint("RIGHT", fRow2, "RIGHT", -14, 0)
-    kbClear:SetPoint("RIGHT", kbClear.unbindBtn, "LEFT", -6, 0)
-    fRow2:BindControl(kbClear.unbindBtn, kbClear)
+    kbClear:SetPoint("RIGHT", fRow2, "RIGHT", -14, 0)
+    fRow2:BindControl(kbClear)
     table.insert(self.refreshables, function() kbClear:RefreshValue() end)
 
     -- Row 3: World Flare Cycle Sequence (Right-Aligned 30x30 Square Icon Strip on a 58px Row)
@@ -8452,25 +8429,22 @@ function DM:ShowStudioModal(mode)
         local function AddSetupKeyRow(yOff, labelStr, getterFn, setterFn)
             local rowLbl = m.Body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             rowLbl:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, yOff - 6)
-            rowLbl:SetWidth(272)
+            rowLbl:SetWidth(310)
             rowLbl:SetJustifyH("LEFT")
             rowLbl:SetWordWrap(false)
             self:StyleFont(rowLbl, 11.5, "", COLORS.TextPrimary)
             rowLbl:SetText(labelStr)
             table.insert(m.Body._modeWidgets, rowLbl)
 
-            local kb = self:CreateKeybindButton(m.Body, 174, getterFn, function(newKey)
+            local kb = self:CreateKeybindButton(m.Body, 204, getterFn, function(newKey)
                 setterFn(newKey)
                 self:ApplyFlareKeybinds()
                 self:RefreshKeybindTelemetryAndTabTitle()
                 self:RefreshAll()
             end, "")
             kb:SetFrameLevel(303)
-            kb.unbindBtn:SetFrameLevel(303)
-            kb.unbindBtn:SetPoint("TOPRIGHT", m.Body, "TOPRIGHT", 0, yOff)
-            kb:SetPoint("RIGHT", kb.unbindBtn, "LEFT", -6, 0)
+            kb:SetPoint("TOPRIGHT", m.Body, "TOPRIGHT", 0, yOff)
             table.insert(m.Body._modeWidgets, kb)
-            table.insert(m.Body._modeWidgets, kb.unbindBtn)
         end
 
         AddSetupKeyRow(yCursor, "Cycle World Flare Keybind (Optional)",
@@ -8487,7 +8461,7 @@ function DM:ShowStudioModal(mode)
         kbNote:SetJustifyH("LEFT")
         kbNote:SetWordWrap(true)
         self:StyleFont(kbNote, 10.5, "", COLORS.TextMuted)
-        kbNote:SetText("Left-Click a key slot to assign, Esc to cancel, Backspace/Delete or Right-Click / Unbind to leave Unbound.")
+        kbNote:SetText("Click to bind, Right-click to unbind. (Esc cancels capture; Backspace or Delete also unbinds.)")
         table.insert(m.Body._modeWidgets, kbNote)
 
         local macroY = yCursor - 102
@@ -10001,7 +9975,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "15/11/2026",
     entries = {
-        { type = "IMPROVED", text = "Unbound-by-Default World Flare Keybinds, Guided Setup Assignment & 1-Click Unbind Controls (15/11/2026): Removed the hardcoded F4 and F5 World Flare default keybinds so fresh installs and Resets start with both keys 'Unbound' (leaving your own Blizzard and action bar bindings untouched while preserving any existing saved DynamicMarkerDB hotkeys), added optional Cycle World Flare and Clear All Flares keybind capture rows with dedicated 1-click [Unbind] buttons to both Guided Setup and the World Flare Keys (/dm flares) tab, and refined capture behaviour so Escape cancels without losing the current key while Backspace/Delete or Right-Click clears to Unbound." },
+        { type = "IMPROVED", text = "Unbound-by-Default World Flare Keybinds & Guided Setup Assignment (15/11/2026): Removed the hardcoded F4 and F5 World Flare default keybinds so fresh installs and Resets start with both keys 'Unbound' (leaving your own Blizzard and action bar bindings untouched while preserving any existing saved DynamicMarkerDB hotkeys), added optional single-button Cycle World Flare and Clear All Flares keybind capture rows to both Guided Setup and the World Flare Keys (/dm flares) tab ('Click to bind, Right-click to unbind'), and refined capture behaviour so Escape cancels without losing the current key while Backspace/Delete or Right-Click clears to Unbound." },
         { type = "IMPROVED", text = "Release v2.2.0 - Version & Storefront Lockstep Parity (15/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.2.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "FEATURE", text = "Release v2.1.1 - 3-Row HUD Edit Appearance Dock (560x110) & First-Click Mover Parity (15/11/2026): Upgraded standalone DynamicMarkerEditModeInspector into a unified 560x110 3-row draggable inspector dock adding Row 3 live Appearance controls: Opacity slider (20%-100%, step 5%, with SetIgnoreParentAlpha mover legibility), Accent | Dark | None Border Style pills synced 1:1 with Target Icon Bar and World Flare Bar sub-settings, Horiz | Vert Orientation toggle with instant screen-bounds re-clamping, and full Position/Scale/Opacity/Border/Orientation [Reset]. Ensured the HUD selector dropdown defaults to closed on entry and Target Icon / World Flare movers appear reliably on first HUD Edit activation." },
         { type = "FIX",     text = "HUD Edit Mode Mover Visibility & Drag Shield Layering (15/11/2026): Promoted the Target Icon Bar and World Flare Bar mover overlays (editMover) to HIGH frame strata (FrameLevel + 50) with SetIgnoreParentAlpha(true) and ordered SyncEditBarStates() after bar refreshes in SetEditMode, ensuring any bar set to Shown (Group or Always) immediately displays its live preview and interactive drag shield in HUD Edit Mode (even while solo), while explicitly selecting a Hidden (Off) bar from the HUD dropdown or clicking [Edit HUD] previews it with the 'HIDDEN (Click Shown to Enable)' badge." },

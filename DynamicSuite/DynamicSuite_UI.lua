@@ -8349,7 +8349,7 @@ function addonTable.CreateMainConfigUI()
     mfNote:SetJustifyH("LEFT")
     mfNote:SetWordWrap(true)
     UI.SetFont(mfNote, 10.5, "", 0.80, 0.85, 0.93, 0.96)
-    mfNote:SetText("|cFFF5B82EWorld Flare Hotkeys (Optional):|r Start Unbound so they never overwrite your existing F4/F5 bindings unless you assign them here or in /dm flares.")
+    mfNote:SetText("|cFFF5B82EWorld Flare Hotkeys (Optional):|r Start Unbound so they never overwrite F4/F5. Click to bind, Right-click to unbind.")
 
     local markerKeybindRefreshers = {}
     local function CreateSetupFlareKeyRow(yOff, rowTitle, rowSub, dbKey)
@@ -8361,20 +8361,8 @@ function addonTable.CreateMainConfigUI()
         row.bg:SetAllPoints()
         UI.CreatePixelBorder(row, 1, 1, 1, 0.08, 2)
 
-        local unbindBtn = CreateFlatButton(row, 64, 24, "Unbind", false)
-        unbindBtn:SetPoint("RIGHT", row, "RIGHT", -10, 0)
-        unbindBtn.OnCustomEnter = function(s)
-            GameTooltip:SetOwner(s, "ANCHOR_TOP")
-            GameTooltip:SetText("Unbind World Flare Hotkey", 1, 1, 1)
-            GameTooltip:AddLine("One-click unbind: clears this hotkey to Unbound so your normal action bar / Blizzard keybind passes through.", 0.85, 0.88, 0.94, true)
-            GameTooltip:Show()
-        end
-        unbindBtn.OnCustomLeave = function(s)
-            if GameTooltip:IsOwned(s) then GameTooltip:Hide() end
-        end
-
-        local capBtn = CreateFlatButton(row, 210, 24, "Unbound", false)
-        capBtn:SetPoint("RIGHT", unbindBtn, "LEFT", -6, 0)
+        local capBtn = CreateFlatButton(row, 204, 24, "Unbound (Click to Bind)", false)
+        capBtn:SetPoint("RIGHT", row, "RIGHT", -10, 0)
         capBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
         local titleFs = row:CreateFontString(nil, "OVERLAY")
@@ -8420,15 +8408,9 @@ function addonTable.CreateMainConfigUI()
             local isBound = (k ~= "" and k ~= "NONE")
             local _, _, _, hex = UI.GetActiveAccentColor()
             if not isBound then
-                self.label:SetText("|cFF94A3B8Unbound|r  |cFF64748B(Click to Bind)|r")
-                unbindBtn:Disable()
-                unbindBtn:SetAlpha(0.40)
-                unbindBtn.label:SetTextColor(0.55, 0.60, 0.68, 1)
+                self.label:SetText("|cFF94A3B8Unbound (Click to Bind)|r")
             else
                 self.label:SetText(string.format("|cFF%s[%s]|r  |cFF94A3B8(Click Rebind)|r", hex or "F5B82E", k))
-                unbindBtn:Enable()
-                unbindBtn:SetAlpha(1.0)
-                unbindBtn.label:SetTextColor(0.98, 0.45, 0.45, 1)
             end
         end
 
@@ -8497,26 +8479,22 @@ function addonTable.CreateMainConfigUI()
 
         capBtn.OnCustomEnter = function(s)
             GameTooltip:SetOwner(s, "ANCHOR_TOP")
-            GameTooltip:SetText("World Flare Keybind", 1, 1, 1)
-            GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Press any key or mouse button. Esc cancels, Backspace/Delete unbinds.|r", 1, 1, 1, true)
-            GameTooltip:AddLine("|cFFF87171Right-Click / Unbind:|r |cFFE2E8F0Clears to Unbound.|r", 1, 1, 1, true)
+            GameTooltip:SetText("Interactive Keybind Capture", 1, 1, 1)
+            GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Press any key, modifier combo, or mouse button (MB3/MB4/MB5). Press Esc to cancel, or Backspace/Delete to unbind.|r", 1, 1, 1, true)
+            GameTooltip:AddLine("|cFFF87171Right-Click:|r |cFFE2E8F0Clear Keybind (Unbind)|r", 1, 1, 1, true)
             GameTooltip:Show()
         end
         capBtn.OnCustomLeave = function(s)
             if GameTooltip:IsOwned(s) then GameTooltip:Hide() end
         end
 
-        unbindBtn:SetScript("OnClick", function()
-            capBtn:StopCapture("")
-        end)
-
         table.insert(markerKeybindRefreshers, function()
             capBtn:RefreshKey()
         end)
     end
 
-    CreateSetupFlareKeyRow(-38, "Cycle World Flare Keybind (Optional)", "Places enabled ground markers at [@cursor] in sequence.", "flareCycleKey")
-    CreateSetupFlareKeyRow(-78, "Clear All Flares Keybind (Optional)", "Clears all active ground flares (/cwm all).", "flareClearKey")
+    CreateSetupFlareKeyRow(-38, "Cycle World Flare Keybind (Optional)", "Places enabled ground markers at [@cursor] in sequence. Click to bind, Right-click to unbind.", "flareCycleKey")
+    CreateSetupFlareKeyRow(-78, "Clear All Flares Keybind (Optional)", "Clears all active ground flares (/cwm all). Click to bind, Right-click to unbind.", "flareClearKey")
 
     local function RefreshMarkerFlareKeybinds()
         for _, fn in ipairs(markerKeybindRefreshers) do

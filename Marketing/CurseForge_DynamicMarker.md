@@ -43,7 +43,7 @@ Open `/dm` and go to the **Macro Setup** tab (or click **Guided Setup** in the s
 
 ## World Flares & On-Screen HUD Bars
 
-* **Optional One-Key Ground Flares:** Bind custom hotkeys (Unbound by default so your existing action bar bindings stay untouched) to cycle world markers at your cursor or clear all active flares in Guided Setup or **World Flare Keys** (`/dm flares`), with 1-click **Unbind**.
+* **Optional One-Key Ground Flares:** Bind custom hotkeys (Unbound by default so your existing action bar bindings stay untouched) to cycle world markers at your cursor or clear all active flares in Guided Setup or **World Flare Keys** (`/dm flares`), with Right-click to unbind.
 * **Customisable Flare Cycle:** Drag and reorder any of the 8 world markers in the **World Flare Keys** tab and toggle individual markers on or off.
 * **Floating Focus & Flare Bars:** Show each bar Always, in Group only, or Off; switch between Horizontal and Vertical layouts; and customise border styles, Scale, and Opacity.
 

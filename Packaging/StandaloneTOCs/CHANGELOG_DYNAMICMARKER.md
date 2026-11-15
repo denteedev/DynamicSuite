@@ -6,7 +6,7 @@
 ## DynamicMarker v2.2.0 (15/11/2026)
 
 ### Improved
-* **Unbound-by-Default World Flare Keybinds, Guided Setup Assignment & 1-Click `[Unbind]` Controls:** Removed hardcoded `F4` and `F5` default World Flare bindings so fresh installs and Resets leave both keys `"Unbound"` (`""`) without overriding existing Blizzard or action bar keybinds (while preserving any already-saved `DynamicMarkerDB` bindings). Added optional `Cycle World Flare Keybind (Optional)` and `Clear All Flares Keybind (Optional)` capture controls paired with dedicated 1-click `Unbind` buttons in both Guided Setup and the World Flare Keys (`/dm flares`) tab, and updated key capture so `Escape` cancels without losing your existing binding while `Backspace`/`Delete` or `Right-Click` clears to `"Unbound"`.
+* **Unbound-by-Default World Flare Keybinds & Guided Setup Assignment:** Removed hardcoded `F4` and `F5` default World Flare bindings so fresh installs and Resets leave both keys `"Unbound"` (`""`) without overriding existing Blizzard or action bar keybinds (while preserving any already-saved `DynamicMarkerDB` bindings). Added clean single-button `Cycle World Flare Keybind` and `Clear All Flares Keybind` capture controls (`"Unbound (Click to Bind)"` / `"[KEY] (Click Rebind)"`) in both Guided Setup and the World Flare Keys (`/dm flares`) tab, where Left-Click captures, `Escape` cancels without losing your existing binding, and `Right-Click` (or `Backspace`/`Delete` while capturing) clears to `"Unbound"`.
 * **Version & Coexistence Lockstep Parity:** Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to `v2.2.0` for Retail 12.1.5 (Interface 120105, Midnight Season 2).
 
 ---
