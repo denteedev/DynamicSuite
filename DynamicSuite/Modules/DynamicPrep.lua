@@ -648,7 +648,7 @@ DynamicPrep.CHANGELOG = {
     entries = {
         { type = "FEATURE", text = "Colour-Coded Food Stat Benefits on Clickable Raid Buffs HUD & Readiness Strip (15/11/2026): added FormatColoredFoodBenefit to colour-code parsed food stats (Mint Teal Primary/Int/Agi/Str, Sky Cyan Haste, Royal Amethyst Mastery, Warm Amber-Gold Crit, Emerald Green Versatility, Blaze Orange Highest Secondary Stat, and Slate-Silver Stamina) across Clickable Raid Buffs food tooltip titles, 'Food Benefit:' summary lines, expiring 'Current Buff:' lines, Readiness Strip Slot 3, and capsule tooltips." },
         { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
-        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Professions Book (Blizzard_ProfessionsBook), Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House open together via ShowUIPanel multi-panel restoration and Escape-protected UISpecialFrames / HideUIPanel / CloseWindows / ToggleGameMenu handling (leaving Pinned windows open past Escape while [X] and keybind toggles still close them, and dismissing strictly one unpinned window per Escape) while freezing already-open windows in place so opening another panel never shifts them, smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag window moving out of combat with unclamped SetClampedToScreen(false) free movement, scale-aware UIParent CENTER persistence, SetPoint tab-switch snap-back protection, TitleContainer-cleared header overlay layering (+30 frame levels, (-58, -2) Maximize/Minimize clearance), Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows] (restoring default position, 100% scale, and screen clamping), strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding for NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
+        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Professions Book (Blizzard_ProfessionsBook), Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House open together via ShowUIPanel multi-panel restoration and Escape-protected UISpecialFrames / HideUIPanel / CloseWindows / ToggleGameMenu handling (leaving Pinned windows open past Escape while [X] and keybind toggles still close them, and dismissing strictly one unpinned window per Escape) while freezing already-open windows in place so opening another panel never shifts them, smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag window moving out of combat with unclamped SetClampedToScreen(false) free movement, scale-aware UIParent CENTER persistence, SetPoint tab-switch snap-back protection, TitleContainer-cleared header overlay layering (+30 frame levels, (-58, -2) Maximize/Minimize clearance), Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel anywhere on a window to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows] (restoring default position, 100% scale, and screen clamping), strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding for NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
         { type = "FIX",     text = "Midnight Season 2 Enchantable Slot List Fix (15/11/2026): updated equipped gear enchant scanning to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
         { type = "FEATURE", text = "Equipped Gear Missing-Enchant & Empty-Socket Detection (15/11/2026): added out-of-combat equipped gear auditing (ScanEquippedGearEnchantsAndGems) cached on PLAYER_ENTERING_WORLD, PLAYER_EQUIPMENT_CHANGED, SOCKET_INFO_UPDATE, and PLAYER_REGEN_ENABLED. Flags missing Midnight Season 2 enchants on max-level Head, Shoulder, Chest, Legs, Feet, Rings, Main Hand, and Off-Hand weapons (excluding shields/holdables and grey/white/heirloom items) and empty gem sockets across slots 1..18, surfacing a compact amber '!' badge in the Durability capsule, 'Enchants:' and 'Gems:' status lines in the Durability tooltip, and Left-Click Character Frame opening." },
         { type = "FEATURE", text = "Great Vault Mythic+ Telemetry, Group Finder Shortcut & Midnight Season 2 Consumables (15/11/2026): added weekly Mythic+ Great Vault run counts, 1/4/8 run threshold levels, and 'Reward Ready to Claim!' status to the Keystone capsule tooltip (guarded with pcall and _IsSecret), added Right-Click Group Finder toggling out of combat on the Keystone capsule, aligned DUNGEON_ABBREVIATIONS with DynamicGroup's Midnight Season 1/2 codes (DON, AOF, MR, VSA, FG, AK, PSF), and updated Midnight Season 2 consumable item IDs and Rank 2 Gold / Rank 1 Silver mappings." },
@@ -5158,6 +5158,37 @@ do
         end
     end
 
+    local function StepBlizzardFrameScale(frame, frameName, delta, savePermanent)
+        if not frame or not frameName or InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return false end
+        if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return false end
+        if not (DynamicPrep.db and DynamicPrep.db.blizzWinScrollScale ~= false) then return false end
+        if type(delta) ~= "number" or delta == 0 then return false end
+
+        local st = GetFrameState(frame)
+        local step = (delta > 0) and SCALE_STEP or -SCALE_STEP
+        local curScale = GetActiveFrameScale(frameName)
+        local newScale = RoundScale(curScale + step)
+        local persist = (savePermanent == true)
+
+        if persist then
+            DynamicPrep.db.windowScales = DynamicPrep.db.windowScales or {}
+            DynamicPrep.db.windowScales[frameName] = newScale
+            sessionScales[frameName] = nil
+        else
+            sessionScales[frameName] = newScale
+        end
+
+        SecureApplyScale(frame, newScale)
+        local savedPos = DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[frameName]
+        if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
+            SecureApplyPoint(frame, savedPos.x, savedPos.y, newScale)
+        elseif st and st.frozenUX and st.frozenUY then
+            SecureApplyPoint(frame, st.frozenUX, st.frozenUY, newScale)
+        end
+        ShowWindowToast(frame, string.format("Scale: %d%%", math.floor(newScale * 100 + 0.5)), persist)
+        return true
+    end
+
     local function UpdatePinButtonVisual(st, frameName)
         local btn = st and st.pinBtn
         if not btn then return end
@@ -5366,29 +5397,8 @@ do
             if InCombat() or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
             if not (DynamicPrep.db and DynamicPrep.db.blizzWinScrollScale ~= false) then return end
             if not (_G.IsControlKeyDown and _G.IsControlKeyDown()) then return end
-            if type(delta) ~= "number" or delta == 0 then return end
-
-            local step = (delta > 0) and SCALE_STEP or -SCALE_STEP
-            local curScale = GetActiveFrameScale(frameName)
-            local newScale = RoundScale(curScale + step)
             local savePermanent = (_G.IsShiftKeyDown and _G.IsShiftKeyDown()) and true or false
-
-            if savePermanent then
-                DynamicPrep.db.windowScales = DynamicPrep.db.windowScales or {}
-                DynamicPrep.db.windowScales[frameName] = newScale
-                sessionScales[frameName] = nil
-            else
-                sessionScales[frameName] = newScale
-            end
-
-            SecureApplyScale(frame, newScale)
-            local savedPos = DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[frameName]
-            if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
-                SecureApplyPoint(frame, savedPos.x, savedPos.y, newScale)
-            elseif st.frozenUX and st.frozenUY then
-                SecureApplyPoint(frame, st.frozenUX, st.frozenUY, newScale)
-            end
-            ShowWindowToast(frame, string.format("Scale: %d%%", math.floor(newScale * 100 + 0.5)), savePermanent)
+            StepBlizzardFrameScale(frame, frameName, delta, savePermanent)
         end)
 
         ov:SetScript("OnEnter", function(selfOv)
@@ -5404,8 +5414,8 @@ do
                 _G.GameTooltip:AddLine("Alt + Left-Drag Anywhere: Move window from any spot", 0.90, 0.93, 0.96)
             end
             if canScale then
-                _G.GameTooltip:AddLine("Ctrl + Scroll: Scale this session (70%-140%)", 0.90, 0.93, 0.96)
-                _G.GameTooltip:AddLine("Ctrl + Shift + Scroll: Save permanent scale", 0.90, 0.93, 0.96)
+                _G.GameTooltip:AddLine("Ctrl + Scroll Header: Scale this session (70%-140%)", 0.90, 0.93, 0.96)
+                _G.GameTooltip:AddLine("Ctrl + Shift + Scroll Anywhere: Save permanent scale", 0.90, 0.93, 0.96)
             end
             _G.GameTooltip:AddLine("Right-Click: Reset position & scale", 0.65, 0.72, 0.80)
             _G.GameTooltip:Show()
@@ -5503,6 +5513,9 @@ do
                 pcall(frame.SetMovable, frame, true)
             end
             SyncFrameClamping(frame, frameName)
+            if type(frame.EnableMouseWheel) == "function" then
+                pcall(frame.EnableMouseWheel, frame, true)
+            end
         end
 
         if type(frame.RegisterForDrag) == "function" then
@@ -5536,6 +5549,14 @@ do
                 if type(clickedFrame.Raise) == "function" then
                     pcall(clickedFrame.Raise, clickedFrame)
                 end
+            end)
+            frame:HookScript("OnMouseWheel", function(wheelFrame, delta)
+                if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
+                if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
+                if not (DynamicPrep.db and DynamicPrep.db.blizzWinScrollScale ~= false) then return end
+                if not (_G.IsControlKeyDown and _G.IsControlKeyDown()) then return end
+                if not (_G.IsShiftKeyDown and _G.IsShiftKeyDown()) then return end
+                StepBlizzardFrameScale(wheelFrame, frameName, delta, true)
             end)
             frame:HookScript("OnDragStart", function(dragFrame, button)
                 if button and button ~= "LeftButton" then return end
@@ -9037,8 +9058,8 @@ function DynamicPrep:RenderWorkspace(parentFrame)
 
             local rScrollScale = CreateSpaciousRow(
                 cWin, -174,
-                "Header Ctrl+Scroll Window Scaling",
-                "Ctrl + Mouse Wheel on a header temporarily scales (70%-140%) until closed; Ctrl + Shift + Wheel saves permanently across reloads.",
+                "Window Ctrl+Scroll Scaling",
+                "Ctrl + Mouse Wheel on a header temporarily scales (70%-140%) until closed; Ctrl + Shift + Wheel anywhere on a window saves permanently across reloads.",
                 200
             )
             local pillsScrollScale = CreateSegmentedPills(
