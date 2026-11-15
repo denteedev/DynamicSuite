@@ -4089,8 +4089,9 @@ function U.ResetBagOrBankScale(targetKind)
 end
 
 function U.AttachWindowScaleHandlers(targetKind, headFrame, fullFrames)
-    if headFrame and headFrame.EnableMouseWheel and headFrame.HookScript then
-        headFrame:EnableMouseWheel(true)
+    if headFrame and headFrame.HookScript then
+        if headFrame.EnableMouse then headFrame:EnableMouse(true) end
+        if headFrame.EnableMouseWheel then headFrame:EnableMouseWheel(true) end
         headFrame:HookScript("OnMouseWheel", function(_, delta)
             local ctrl = IsControlKeyDown and IsControlKeyDown()
             if not ctrl then return end
@@ -4101,6 +4102,20 @@ function U.AttachWindowScaleHandlers(targetKind, headFrame, fullFrames)
             if button == "RightButton" and not (GetCursorInfo and GetCursorInfo() == "item") then
                 U.ResetBagOrBankScale(targetKind)
             end
+        end)
+        headFrame:HookScript("OnEnter", function(selfHead)
+            if not _G.GameTooltip then return end
+            local title = (targetKind == "bank") and "DynamicBank Window Controls" or "DynamicBags Window Controls"
+            _G.GameTooltip:SetOwner(selfHead, "ANCHOR_TOP")
+            _G.GameTooltip:AddLine(title, 0.976, 0.451, 0.086)
+            _G.GameTooltip:AddLine("Left-Drag Header: Move window position", 0.90, 0.93, 0.96)
+            _G.GameTooltip:AddLine("Ctrl + Scroll Header: Scale this session (70%-140%)", 0.90, 0.93, 0.96)
+            _G.GameTooltip:AddLine("Ctrl + Shift + Scroll Anywhere: Save permanent scale", 0.90, 0.93, 0.96)
+            _G.GameTooltip:AddLine("Right-Click Header: Reset scale to 100%", 0.65, 0.72, 0.80)
+            _G.GameTooltip:Show()
+        end)
+        headFrame:HookScript("OnLeave", function()
+            if _G.GameTooltip then _G.GameTooltip:Hide() end
         end)
     end
     if type(fullFrames) == "table" then
@@ -4164,6 +4179,7 @@ function U.MakeFrameDraggable(targetFrame, moveFrame, onStopFn)
     targetFrame:EnableMouse(true)
     targetFrame:RegisterForDrag("LeftButton")
     targetFrame:SetScript("OnDragStart", function()
+        if _G.GameTooltip and _G.GameTooltip.Hide then _G.GameTooltip:Hide() end
         if InCombatLockdown() then return end
         if GetCursorInfo and GetCursorInfo() == "item" then return end
         local master = moveFrame
@@ -4537,6 +4553,7 @@ function U.EnsureCompanionBankWindow()
     end
     U.MakeFrameDraggable(bw, bw, OnVaultDragStop)
     U.MakeFrameDraggable(head, bw, OnVaultDragStop)
+    bw.head = head
     head.bg = head:CreateTexture(nil, "BACKGROUND")
     head.bg:SetAllPoints()
     head.bg:SetColorTexture(0.03, 0.035, 0.048, 1)
@@ -4744,7 +4761,7 @@ function U.EnsureCompanionBankWindow()
     AttachBankCanvasDropHandler(bw)
     AttachBankCanvasDropHandler(head)
     AttachBankCanvasDropHandler(foot)
-    U.AttachWindowScaleHandlers("bank", head, { bw, area.scroll, bw.content })
+    U.AttachWindowScaleHandlers("bank", head, { bw, area, area.scroll, area.content, bw.content, foot })
 
     local function SelectCompanionTab(mode)
         local db = DB()
@@ -5743,7 +5760,7 @@ function U.EnsureWindow()
     AttachCanvasDropHandler(win)
     AttachCanvasDropHandler(head)
     AttachCanvasDropHandler(foot)
-    U.AttachWindowScaleHandlers("bag", head, { win, area.scroll, S.liveContent, S.remoteContent })
+    U.AttachWindowScaleHandlers("bag", head, { win, area, area.scroll, area.content, S.liveContent, S.remoteContent, foot })
 
     local goldBtn = CreateFrame("Button", nil, foot)
     goldBtn:SetPoint("RIGHT", foot, "RIGHT", -12, 0)
@@ -9399,7 +9416,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "15/11/2026",
     entries = {
-        { type = "FEATURE", text = "Dual-Mode Ctrl+Scroll Window Scaling & Scale-Aware Docked Bank Alignment (15/11/2026): added 70%-140% (5% steps, out of combat) scaling across DynamicBagsFrame and DynamicBagsBankFrame. Ctrl + Scroll on a header scales temporarily for the open session (resetting on hide); Ctrl + Shift + Scroll anywhere on the window (including item grid ScrollFrames) saves bagScale / bankScale permanently without affecting normal wheel scrolling or Ctrl+Click item previews; Right-Click on a header (or Reset DynamicBags) resets scale to 100%; shows an auto-fading Dark-Obsidian (#0B0D12) / Blaze-Orange (#F97316) readout toast; and keeps docked DynamicBank flush beside DynamicBags at any scale." },
+        { type = "FEATURE", text = "Dual-Mode Ctrl+Scroll Window Scaling, Header Controls Tooltip & Scale-Aware Docked Bank Alignment (15/11/2026): added 70%-140% (5% steps, out of combat) scaling across DynamicBagsFrame and DynamicBagsBankFrame (Personal Bank, Warband Bank, and Guild Bank). Ctrl + Scroll across the full header scales temporarily for the open session (resetting on hide); Ctrl + Shift + Scroll anywhere on the window (header, item grid ScrollFrame, or footer) saves bagScale / bankScale permanently without affecting normal wheel scrolling or Ctrl+Click item previews; Right-Click anywhere on the empty header (or Reset DynamicBags) resets scale to 100%; added DynamicBags / DynamicBank Window Controls header tooltips (auto-hiding on OnLeave/OnDragStart) and an auto-fading Dark-Obsidian (#0B0D12) / Blaze-Orange (#F97316) readout toast; and keeps docked DynamicBank flush beside DynamicBags at any scale." },
         { type = "FEATURE", text = "Unified Auto-Open for Gold Pouches, Housing Decor & Profession Knowledge (15/11/2026): expanded the automatic container opener to use/open Soulbound and Warband-bound gold pouches, coin/loot satchels, Housing Decor, and Profession Knowledge items (Treatises, Shards, Notes, Curios matching your character's known professions) out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Added default-enabled 'Auto-Open Soulbound Housing Decor' and 'Auto-Open Soulbound Profession Knowledge' toggles in Tab 3, while keeping protected-spell items (via C_Item.GetItemSpell or ADDON_ACTION_BLOCKED) safely queued in the 1-click Open (N) header button with a per-item retry cooldown and session blacklist." },
         { type = "FIX",     text = "Hardened zero-flash Bank/Guild Bank opening after /reload (14/11/2026): added Scale+Alpha suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, enforced strict weak ordering in Sort: A-Z when uncached items appear, verified compatible slot placement in Drop-Anywhere Split-Stack Placement, fixed Guild Bank T1-Tn badge overlap and view-only slot dimming, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, and expanded /dbag slash subcommands." },
         { type = "FEATURE", text = "Guild Bank Daily Withdrawal Counter (13/11/2026): each Guild Bank tab button (T1, T2...) now shows a small counter of how many item withdrawals you have left today - white when plenty remain, amber at 1-2, red at 0, and a red x for tabs you cannot view. Unlimited tabs show no counter. Counters only appear while you are at the Guild Bank." },
