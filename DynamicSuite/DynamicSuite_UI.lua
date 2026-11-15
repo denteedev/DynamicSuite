@@ -2045,7 +2045,7 @@ local function CreateDSOptionSlider(parent, width, minVal, maxVal, stepVal, form
         else
             thumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
         end
-        local cur = SnapValue(v or getValFunc() or minVal)
+        local cur = SnapValue((type(v) == "number" and v) or getValFunc() or minVal)
         local pct = rawPct
         if pct == nil then
             pct = (maxVal > minVal) and ((cur - minVal) / (maxVal - minVal)) or 0
@@ -3772,7 +3772,7 @@ function addonTable.CreateMainConfigUI()
     local leftRail = CreateFrame("Frame", nil, f)
     leftRail:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
     leftRail:SetPoint("BOTTOMLEFT", footer, "TOPLEFT", 0, 0)
-    leftRail:SetSize(RAIL_W, PANEL_H - HDR_H - DOCK_H)
+    leftRail:SetWidth(RAIL_W)
     f.leftRail = leftRail
 
     leftRail.bg = UI.SolidTex(leftRail, "BACKGROUND", 1, UI.COLORS.RAIL_BG.r, UI.COLORS.RAIL_BG.g, UI.COLORS.RAIL_BG.b, UI.COLORS.RAIL_BG.a)
@@ -4132,8 +4132,8 @@ function addonTable.CreateMainConfigUI()
 
     local railModuleScroll = CreateFrame("Frame", nil, leftRail)
     railModuleScroll:SetPoint("TOPLEFT", leftRail, "TOPLEFT", 0, -54)
-    railModuleScroll:SetPoint("BOTTOMRIGHT", leftRail, "BOTTOMRIGHT", 0, 118)
-    railModuleScroll:SetSize(RAIL_W, math.max(304, PANEL_H - HDR_H - DOCK_H - 172))
+    railModuleScroll:SetPoint("BOTTOMRIGHT", leftRail, "BOTTOMRIGHT", 0, 152)
+    railModuleScroll:SetWidth(RAIL_W)
     railModuleScroll:EnableMouseWheel(true)
     railModuleScroll.GetVerticalScroll = function() return 0 end
     railModuleScroll.SetVerticalScroll = function() end
@@ -4758,11 +4758,19 @@ function addonTable.CreateMainConfigUI()
 
     -- Bottom Section of Left Suite Rail: SUITE STUDIO & TOOLS (Compact 31px Neutral Obsidian Cards)
     local studioSectionHdr = leftRail:CreateFontString(nil, "OVERLAY")
-    studioSectionHdr:SetPoint("BOTTOMLEFT", leftRail, "BOTTOMLEFT", 14, 104)
+    studioSectionHdr:SetPoint("BOTTOMLEFT", leftRail, "BOTTOMLEFT", 14, 138)
     UI.SetFont(studioSectionHdr, 10, "", UI.COLORS.TEXT_DIM.r, UI.COLORS.TEXT_DIM.g, UI.COLORS.TEXT_DIM.b, 0.90)
     studioSectionHdr:SetText("SUITE STUDIO & TOOLS")
 
     local studioItems = {
+        {
+            key = "EDIT_MODE",
+            label = "Edit Mode (HUDs)",
+            sub = "Move & Scale Suite Bars",
+            slash = "/ds hud",
+            icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_grid.tga",
+            yBottom = 102,
+        },
         {
             key = "THEME_STUDIO",
             label = "Theme & Font",
@@ -13290,6 +13298,7 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
+        if f.workspace then f.workspace:Show() end
         if f.EnsureDynamicLoadWorkspaceMounted then f.EnsureDynamicLoadWorkspaceMounted() end; if activeWorkspaceView == "DYNAMICLOAD" and not f.dlView then selectedPeerModuleKey = "DynamicLoad"; activeWorkspaceView = "PEER_MODULE" end; if f.dlView then f.dlView:SetShown(activeWorkspaceView == "DYNAMICLOAD") end
         if f.peerView then f.peerView:SetShown(activeWorkspaceView == "PEER_MODULE") end
         if f.themeView then f.themeView:SetShown(activeWorkspaceView == "THEME_STUDIO") end
@@ -13466,6 +13475,7 @@ function addonTable.CreateMainConfigUI()
             f.ApplyWindowOpacity(gTbl.windowAlpha)
         end
 
+        if f.workspace then f.workspace:Show() end
         if f.EnsureDynamicLoadWorkspaceMounted then f.EnsureDynamicLoadWorkspaceMounted() end; if activeWorkspaceView == "DYNAMICLOAD" and not f.dlView then selectedPeerModuleKey = "DynamicLoad"; activeWorkspaceView = "PEER_MODULE" end; if f.dlView then f.dlView:SetShown(activeWorkspaceView == "DYNAMICLOAD") end
         if f.peerView then f.peerView:SetShown(activeWorkspaceView == "PEER_MODULE") end
         if f.peerModuleHostFrame then f.peerModuleHostFrame:SetShown(activeWorkspaceView == "PEER_HOST") end
@@ -13575,6 +13585,7 @@ function addonTable.CreateMainConfigUI()
             _G.DynamicSuite.mainFrame = f
         end
 
+        if f.workspace then f.workspace:Show() end
         addonTable.ApplySuiteThemeAndGeometry()
         if f.RefreshLeftRailLayout then f.RefreshLeftRailLayout() end
         if f.UpdateTabActiveIndicators then f.UpdateTabActiveIndicators() end
@@ -13583,6 +13594,10 @@ function addonTable.CreateMainConfigUI()
         if f.UpdateFilterChips then f.UpdateFilterChips() end
         if f.RefreshTelemetryStrip then f.RefreshTelemetryStrip() end
         if f.UpdateResetButtonLabel then f.UpdateResetButtonLabel() end
+        if activeWorkspaceView == "DYNAMICLOAD" then
+            if f.scrollFrame and f.scrollFrame.UpdateScrollChildRect then f.scrollFrame:UpdateScrollChildRect() end
+            if f.scrollChild and f.scrollChild.Refresh then f.scrollChild.Refresh() end
+        end
         if self.Raise then self:Raise() end
 
         if activeWorkspaceView == "EDIT_MODE" then
@@ -13596,6 +13611,7 @@ function addonTable.CreateMainConfigUI()
             C_Timer.After(0, function()
                 self._postLayoutPending = nil
                 if not self:IsShown() then return end
+                if self.workspace then self.workspace:Show() end
                 addonTable.ApplySuiteThemeAndGeometry()
                 if self.RefreshLeftRailLayout then self.RefreshLeftRailLayout() end
                 if self.UpdateTabActiveIndicators then self.UpdateTabActiveIndicators() end
@@ -13604,6 +13620,10 @@ function addonTable.CreateMainConfigUI()
                 if self.UpdateFilterChips then self.UpdateFilterChips() end
                 if self.RefreshTelemetryStrip then self.RefreshTelemetryStrip() end
                 if self.UpdateResetButtonLabel then self.UpdateResetButtonLabel() end
+                if activeWorkspaceView == "DYNAMICLOAD" then
+                    if self.scrollFrame and self.scrollFrame.UpdateScrollChildRect then self.scrollFrame:UpdateScrollChildRect() end
+                    if self.scrollChild and self.scrollChild.Refresh then self.scrollChild.Refresh() end
+                end
                 if self.Raise then self:Raise() end
             end)
         end
