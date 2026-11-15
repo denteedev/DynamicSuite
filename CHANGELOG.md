@@ -5,6 +5,9 @@
 
 ## DynamicSuite & All 8 Modules v2.2.0 (15/11/2026)
 
+### DynamicMarker
+- **Unbound-by-Default World Flare Keybinds, Guided Setup Assignment & 1-Click `[Unbind]` Controls:** Removed hardcoded `F4` and `F5` defaults from `DB_DEFAULTS`, `GetStatusText()`, `GetSubTab2Title()`, and `ResetDefaults()` so fresh installs and Resets start with both Cycle World Flare and Clear All Flares keys `"Unbound"` (`""`) -- never overriding a player's own Blizzard or action bar bindings -- while preserving any custom hotkeys already saved in an existing `DynamicMarkerDB` (or imported from FocusMarker). Added interactive `Cycle World Flare Keybind (Optional)` and `Clear All Flares Keybind (Optional)` capture rows paired with dedicated 1-click `Unbind` buttons (enabled when bound, dimmed when `"Unbound"`) across both Guided Setup flows (DynamicSuite Step 3 & standalone Guided Setup modal) and the World Flare Keys tab (`/dm flares`), and updated keybind capture so `Escape` cancels without losing the current binding while `Backspace`/`Delete` or `Right-Click` clears to `"Unbound"`.
+
 ### DynamicPrep
 - **Colour-Coded Food Stat Benefits on Clickable Raid Buffs HUD & Readiness Strip:** Added `FormatColoredFoodBenefit` to colour-code parsed food stats (Mint Teal Primary/Intellect/Agility/Strength, Sky Cyan Haste, Royal Amethyst Mastery, Warm Amber-Gold Critical Strike, Emerald Green Versatility, Blaze Orange Highest Secondary Stat, and Slate-Silver Stamina) across Clickable Raid Buffs food tooltip titles, dedicated `Food Benefit:` summary lines, expiring `Current Buff:` lines, Readiness Strip Slot 3, and capsule tooltips.
 - **Secure Blizzard Window Probe Attribute Fix:** Renamed the Blizzard window secure handler probe attribute from `_ds_probe` to `ds_probe` inside `EnsureSecureHandler()` so Blizzard's `RestrictedFrames.lua` attribute name validation passes cleanly on login and `/reload` with zero `Invalid attribute name` Lua errors.

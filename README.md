@@ -30,7 +30,7 @@
 | :--- | :--- | :--- |
 | **DynamicLoad** | `/dl` | Automatically switches addon profiles for Outdoor, Delves, Dungeons, Raid, and PvP with Always and Never load locks |
 | **DynamicPrep** | `/dprep`, `/dp` | Top stat/durability/FPS bar, clickable Raid Buff & Consumable reminders, survival healing macro, quest/gossip QoL, and side-by-side draggable/scalable Blizzard windows |
-| **DynamicMarker** | `/dm`, `/fm` | Instant focus & raid target marking, F4/F5 world flare cycling, floating Focus & Flare bars, and smart interrupt macro |
+| **DynamicMarker** | `/dm`, `/fm` | Instant focus & raid target marking, optional world flare cycling & clear hotkeys (unbound by default), floating Focus & Flare bars, and smart interrupt macro |
 | **DynamicZoom** | `/dz` | Unlocks 39-yard max camera zoom, speeds up scroll zooming, and fades trees/pillars instead of snapping your camera |
 | **DynamicFPS** | `/dfps` | Switches graphics settings automatically per zone, protects combat FPS, and tunes SpellQueueWindow from live ping + haste |
 | **DynamicGroup** | `/dgroup`, `/dg` | Adds region tags, M+ scores, and Lust/B-Res icons to Premade Groups, 1-click sign-up, party audit, and auto-keystone |

@@ -43,7 +43,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ### 3. DynamicMarker (`/dm`, `/fm`) -- Target Marking, World Flares & Macros
 * **Smart Macros:** One-click `[DynamicMark]` focus/raid marker macro and `[DynamicKick]` interrupt macro that automatically updates your interrupt spell when you swap specs across all 13 classes.
-* **World Flares & Floating HUD Bars:** Press F4 to cycle ground flares at your cursor and F5 to clear all flares, with customisable horizontal or vertical Focus Icon and World Flare bars and automatic FocusMarker settings import (`/dm import`).
+* **World Flares & Floating HUD Bars:** Optionally bind keys (Unbound by default with 1-click Unbind in Guided Setup and `/dm flares`) to cycle ground flares at your cursor and clear all flares, with customisable horizontal or vertical Focus Icon and World Flare bars and automatic FocusMarker settings import (`/dm import`).
 
 ### 4. DynamicBags (`/dbag`, `/dbags`) -- Category Bags & Bank Viewer
 * **Fast Category Bags:** Sorts your items into clean categories (Keystones, Consumables, Gear Sets, BoE/WuE, Reagents, Junk) with A-Z sorting, live search, and upgrade/binding badges without server-sort lag.

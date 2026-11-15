@@ -8334,18 +8334,214 @@ function addonTable.CreateMainConfigUI()
         modChoiceCards[i] = mc
     end
 
-    local function LayoutModChoiceGrid(numCards)
+    local markerFlareKeybindBox = CreateFrame("Frame", nil, stepModPane)
+    markerFlareKeybindBox:SetPoint("TOPLEFT", modChoiceCards[1], "BOTTOMLEFT", 0, -10)
+    markerFlareKeybindBox:SetPoint("TOPRIGHT", modChoiceCards[2], "BOTTOMRIGHT", 0, -10)
+    markerFlareKeybindBox:SetPoint("BOTTOM", stepModPane, "BOTTOM", 0, 0)
+    markerFlareKeybindBox.bg = UI.SolidTex(markerFlareKeybindBox, "BACKGROUND", 1, 0.045, 0.052, 0.072, 0.98)
+    markerFlareKeybindBox.bg:SetAllPoints()
+    UI.CreatePixelBorder(markerFlareKeybindBox, 0.145, 0.165, 0.212, 0.95, 2)
+    markerFlareKeybindBox:Hide()
+
+    local mfNote = markerFlareKeybindBox:CreateFontString(nil, "OVERLAY")
+    mfNote:SetPoint("TOPLEFT", markerFlareKeybindBox, "TOPLEFT", 14, -10)
+    mfNote:SetPoint("TOPRIGHT", markerFlareKeybindBox, "TOPRIGHT", -14, -10)
+    mfNote:SetJustifyH("LEFT")
+    mfNote:SetWordWrap(true)
+    UI.SetFont(mfNote, 10.5, "", 0.80, 0.85, 0.93, 0.96)
+    mfNote:SetText("|cFFF5B82EWorld Flare Hotkeys (Optional):|r Start Unbound so they never overwrite your existing F4/F5 bindings unless you assign them here or in /dm flares.")
+
+    local markerKeybindRefreshers = {}
+    local function CreateSetupFlareKeyRow(yOff, rowTitle, rowSub, dbKey)
+        local row = CreateFrame("Frame", nil, markerFlareKeybindBox)
+        row:SetPoint("TOPLEFT", markerFlareKeybindBox, "TOPLEFT", 12, yOff)
+        row:SetPoint("TOPRIGHT", markerFlareKeybindBox, "TOPRIGHT", -12, yOff)
+        row:SetHeight(34)
+        row.bg = UI.SolidTex(row, "BACKGROUND", 1, 0.072, 0.084, 0.114, 0.96)
+        row.bg:SetAllPoints()
+        UI.CreatePixelBorder(row, 1, 1, 1, 0.08, 2)
+
+        local unbindBtn = CreateFlatButton(row, 64, 24, "Unbind", false)
+        unbindBtn:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+        unbindBtn.OnCustomEnter = function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            GameTooltip:SetText("Unbind World Flare Hotkey", 1, 1, 1)
+            GameTooltip:AddLine("One-click unbind: clears this hotkey to Unbound so your normal action bar / Blizzard keybind passes through.", 0.85, 0.88, 0.94, true)
+            GameTooltip:Show()
+        end
+        unbindBtn.OnCustomLeave = function(s)
+            if GameTooltip:IsOwned(s) then GameTooltip:Hide() end
+        end
+
+        local capBtn = CreateFlatButton(row, 210, 24, "Unbound", false)
+        capBtn:SetPoint("RIGHT", unbindBtn, "LEFT", -6, 0)
+        capBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+        local titleFs = row:CreateFontString(nil, "OVERLAY")
+        titleFs:SetPoint("TOPLEFT", row, "TOPLEFT", 12, -5)
+        titleFs:SetPoint("RIGHT", capBtn, "LEFT", -10, 0)
+        titleFs:SetJustifyH("LEFT")
+        titleFs:SetWordWrap(false)
+        UI.SetFont(titleFs, 11, "", 1, 1, 1, 0.96)
+        titleFs:SetText(rowTitle)
+
+        local subFs = row:CreateFontString(nil, "OVERLAY")
+        subFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -2)
+        subFs:SetPoint("RIGHT", capBtn, "LEFT", -10, 0)
+        subFs:SetJustifyH("LEFT")
+        subFs:SetWordWrap(false)
+        UI.SetFont(subFs, 9.5, "", 0.62, 0.68, 0.78, 0.92)
+        subFs:SetText(rowSub)
+
+        local function ReadBoundKey()
+            local db = _G.DynamicMarkerDB or (_G.DynamicMarker and _G.DynamicMarker.db)
+            local k = db and db[dbKey]
+            return (type(k) == "string") and k or ""
+        end
+
+        local function CommitBoundKey(newKey)
+            if type(_G.DynamicMarkerDB) ~= "table" then
+                _G.DynamicMarkerDB = {}
+            end
+            _G.DynamicMarkerDB[dbKey] = newKey
+            local dm = _G.DynamicMarker
+            if type(dm) == "table" then
+                if type(dm.db) == "table" then
+                    dm.db[dbKey] = newKey
+                end
+                if type(dm.ApplyFlareKeybinds) == "function" then pcall(dm.ApplyFlareKeybinds, dm) end
+                if type(dm.RefreshKeybindTelemetryAndTabTitle) == "function" then pcall(dm.RefreshKeybindTelemetryAndTabTitle, dm) end
+                if type(dm.RefreshAll) == "function" then pcall(dm.RefreshAll, dm) end
+            end
+        end
+
+        function capBtn:RefreshKey()
+            local k = ReadBoundKey()
+            local isBound = (k ~= "" and k ~= "NONE")
+            local _, _, _, hex = UI.GetActiveAccentColor()
+            if not isBound then
+                self.label:SetText("|cFF94A3B8Unbound|r  |cFF64748B(Click to Bind)|r")
+                unbindBtn:Disable()
+                unbindBtn:SetAlpha(0.40)
+                unbindBtn.label:SetTextColor(0.55, 0.60, 0.68, 1)
+            else
+                self.label:SetText(string.format("|cFF%s[%s]|r  |cFF94A3B8(Click Rebind)|r", hex or "F5B82E", k))
+                unbindBtn:Enable()
+                unbindBtn:SetAlpha(1.0)
+                unbindBtn.label:SetTextColor(0.98, 0.45, 0.45, 1)
+            end
+        end
+
+        function capBtn:StopCapture(commitKey)
+            self.isCapturing = false
+            self:EnableKeyboard(false)
+            self:SetScript("OnKeyDown", nil)
+            self:SetScript("OnMouseDown", nil)
+            self.dsBorder:SetColor(UI.COLORS.BTN_BORDER.r, UI.COLORS.BTN_BORDER.g, UI.COLORS.BTN_BORDER.b, UI.COLORS.BTN_BORDER.a)
+            if commitKey ~= nil then
+                CommitBoundKey(commitKey)
+            end
+            self:RefreshKey()
+        end
+
+        capBtn:SetScript("OnClick", function(s, mouseBtn)
+            if mouseBtn == "RightButton" then
+                s:StopCapture("")
+                return
+            end
+            if s.isCapturing then
+                s:StopCapture(nil)
+                return
+            end
+            s.isCapturing = true
+            s.label:SetText("|cFFF59E0BPress key (Esc cancel, Del unbind)|r")
+            s.dsBorder:SetColor(0.96, 0.62, 0.04, 0.95)
+            s:EnableKeyboard(true)
+            if s.SetPropagateKeyboardInput then
+                s:SetPropagateKeyboardInput(false)
+            end
+            s:SetScript("OnKeyDown", function(btnSelf, key)
+                if key == "ESCAPE" then
+                    btnSelf:StopCapture(nil)
+                    return
+                end
+                if key == "BACKSPACE" or key == "DELETE" then
+                    btnSelf:StopCapture("")
+                    return
+                end
+                if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL" or key == "LALT" or key == "RALT" then
+                    return
+                end
+                local prefix = ""
+                if IsAltKeyDown() then prefix = prefix .. "ALT-" end
+                if IsControlKeyDown() then prefix = prefix .. "CTRL-" end
+                if IsShiftKeyDown() then prefix = prefix .. "SHIFT-" end
+                btnSelf:StopCapture(prefix .. key)
+            end)
+            s:SetScript("OnMouseDown", function(btnSelf, mBtn)
+                local hasMod = IsAltKeyDown() or IsControlKeyDown() or IsShiftKeyDown()
+                if (mBtn == "LeftButton" or mBtn == "RightButton") and not hasMod then return end
+                local prefix = ""
+                if IsAltKeyDown() then prefix = prefix .. "ALT-" end
+                if IsControlKeyDown() then prefix = prefix .. "CTRL-" end
+                if IsShiftKeyDown() then prefix = prefix .. "SHIFT-" end
+                local mapped = mBtn
+                if mBtn == "LeftButton" then mapped = "BUTTON1"
+                elseif mBtn == "RightButton" then mapped = "BUTTON2"
+                elseif mBtn == "MiddleButton" then mapped = "BUTTON3"
+                elseif type(mBtn) == "string" then mapped = string.upper(mBtn)
+                end
+                btnSelf:StopCapture(prefix .. mapped)
+            end)
+        end)
+
+        capBtn.OnCustomEnter = function(s)
+            GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            GameTooltip:SetText("World Flare Keybind", 1, 1, 1)
+            GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Press any key or mouse button. Esc cancels, Backspace/Delete unbinds.|r", 1, 1, 1, true)
+            GameTooltip:AddLine("|cFFF87171Right-Click / Unbind:|r |cFFE2E8F0Clears to Unbound.|r", 1, 1, 1, true)
+            GameTooltip:Show()
+        end
+        capBtn.OnCustomLeave = function(s)
+            if GameTooltip:IsOwned(s) then GameTooltip:Hide() end
+        end
+
+        unbindBtn:SetScript("OnClick", function()
+            capBtn:StopCapture("")
+        end)
+
+        table.insert(markerKeybindRefreshers, function()
+            capBtn:RefreshKey()
+        end)
+    end
+
+    CreateSetupFlareKeyRow(-38, "Cycle World Flare Keybind (Optional)", "Places enabled ground markers at [@cursor] in sequence.", "flareCycleKey")
+    CreateSetupFlareKeyRow(-78, "Clear All Flares Keybind (Optional)", "Clears all active ground flares (/cwm all).", "flareClearKey")
+
+    local function RefreshMarkerFlareKeybinds()
+        for _, fn in ipairs(markerKeybindRefreshers) do
+            fn()
+        end
+    end
+    if type(_G.DynamicMarker) == "table" then
+        _G.DynamicMarker._refreshSuiteSetupKeys = function()
+            RefreshMarkerFlareKeybinds()
+        end
+    end
+
+    local function LayoutModChoiceGrid(numCards, stepKey)
         local w = modChoiceGrid:GetWidth() or 760
         if w < 100 then w = 760 end
         local gap = 10
         local halfW = math.floor((w - gap) / 2)
+        local cardH = (stepKey == "marker" and 90) or (numCards > 2 and 96 or 116)
         for i = 1, 4 do
             local mc = modChoiceCards[i]
             if i <= numCards then
                 local row = math.floor((i - 1) / 2)
                 local col = (i - 1) % 2
                 mc:ClearAllPoints()
-                mc:SetHeight(numCards > 2 and 96 or 116)
+                mc:SetHeight(cardH)
                 if col == 0 then
                     mc:SetPoint("TOPLEFT", modChoiceGrid, "TOPLEFT", 0, -(row * 106))
                     mc:SetWidth(halfW)
@@ -8361,7 +8557,7 @@ function addonTable.CreateMainConfigUI()
     end
     modChoiceGrid:SetScript("OnSizeChanged", function()
         if stepModPane:IsShown() and stepModPane.activeNumCards then
-            LayoutModChoiceGrid(stepModPane.activeNumCards)
+            LayoutModChoiceGrid(stepModPane.activeNumCards, stepModPane.activeStepKey)
         end
     end)
 
@@ -8517,8 +8713,8 @@ function addonTable.CreateMainConfigUI()
                 actionLabel = "Open DynamicMarker (/dm)",
                 onAction = function() addonTable.OpenPeerModule("DynamicMarker") end,
                 summaryText = "|cFF38BDF8DynamicMarker Automation:|r\n" ..
-                    "- |cFF22C55E[DynamicMark] General Macro:|r Focuses and marks your target with native Patch 12.0.9+ (~icon) overwrite protection.\n" ..
-                    "- |cFFF5B82E[DynamicKick] Character Macro:|r Automatically swaps your interrupt spell when changing specialisations out of combat.",
+                    "- |cFF22C55E[DynamicMark] & [DynamicKick] Macros:|r Focuses and marks your target cleanly, plus auto-swaps class interrupts on spec change.\n" ..
+                    "- |cFFF5B82EWorld Flare Hotkeys (Unbound by Default):|r Start Unbound so your F4/F5 bindings stay untouched unless assigned below or in /dm flares.",
                 choices = {
                     {
                         title = "1-Click Create Both Macros + Alt Auto-Sync",
@@ -8537,10 +8733,16 @@ function addonTable.CreateMainConfigUI()
                         end,
                     },
                     {
-                        title = "Configure F4 / F5 Ground Flare Keybinds",
-                        badge = "Active in Group",
-                        isSelected = function() return true end,
-                        desc = "Binds F4 to cycle World Flares at your cursor and F5 to clear all flares (customise flare order inside DynamicMarker).",
+                        title = "Open World Flare Keys Tab (/dm flares)",
+                        badge = "Optional Hotkeys",
+                        isSelected = function()
+                            local db = _G.DynamicMarkerDB or (_G.DynamicMarker and _G.DynamicMarker.db)
+                            local c1 = db and db.flareCycleKey
+                            local c2 = db and db.flareClearKey
+                            return (type(c1) == "string" and c1 ~= "" and c1 ~= "NONE")
+                                or (type(c2) == "string" and c2 ~= "" and c2 ~= "NONE")
+                        end,
+                        desc = "World Flare hotkeys start Unbound by default. Assign or unbind them right below, or open /dm flares to reorder the 8 markers.",
                         onClick = function()
                             addonTable.OpenPeerModule("DynamicMarker")
                         end,
@@ -9227,7 +9429,8 @@ function addonTable.CreateMainConfigUI()
 
             local choices = step.choices or {}
             stepModPane.activeNumCards = #choices
-            LayoutModChoiceGrid(#choices)
+            stepModPane.activeStepKey = step.key
+            LayoutModChoiceGrid(#choices, step.key)
             for i, cDef in ipairs(choices) do
                 local mc = modChoiceCards[i]
                 if mc then
@@ -9240,6 +9443,22 @@ function addonTable.CreateMainConfigUI()
                         if cDef.onClick then cDef.onClick(self) end
                     end)
                 end
+            end
+            if step.key == "marker" then
+                if type(_G.DynamicMarker) == "table" then
+                    _G.DynamicMarker._refreshSuiteSetupKeys = function()
+                        RefreshMarkerFlareKeybinds()
+                        local c2 = modChoiceCards[2]
+                        local d2 = choices[2]
+                        if c2 and d2 and d2.isSelected then
+                            StyleChoiceCard(c2, d2.isSelected())
+                        end
+                    end
+                end
+                RefreshMarkerFlareKeybinds()
+                markerFlareKeybindBox:Show()
+            else
+                markerFlareKeybindBox:Hide()
             end
         end
     end

@@ -43,7 +43,7 @@ Open `/dm` and go to the **Macro Setup** tab (or click **Guided Setup** in the s
 
 ## World Flares & On-Screen HUD Bars
 
-* **One-Key Ground Flares (F4 / F5):** Press F4 (customisable) to place world markers at your cursor in your chosen order, and press F5 (customisable) to clear all active flares.
+* **Optional One-Key Ground Flares:** Bind custom hotkeys (Unbound by default so your existing action bar bindings stay untouched) to cycle world markers at your cursor or clear all active flares in Guided Setup or **World Flare Keys** (`/dm flares`), with 1-click **Unbind**.
 * **Customisable Flare Cycle:** Drag and reorder any of the 8 world markers in the **World Flare Keys** tab and toggle individual markers on or off.
 * **Floating Focus & Flare Bars:** Show each bar Always, in Group only, or Off; switch between Horizontal and Vertical layouts; and customise border styles, Scale, and Opacity.
 
@@ -82,7 +82,7 @@ Want 7 more lightweight QoL and performance modules in one unified window? Check
 | `/dm hud`, `/dm edit`, `/dm move` | Toggle HUD Edit Mode |
 | `/dm unlock` | Unlock HUD Edit Mode movers |
 | `/dm lock` | Lock HUD Edit Mode movers and save positions |
-| `/dm flares` | Open directly to the World Flare Keys (F4 / F5) tab |
+| `/dm flares` | Open directly to the World Flare Keys tab |
 | `/dm macros` | Open directly to the Macro Setup tab |
 | `/dm mute` or `/dm silent` | Toggle Focus Mark chat announcements On or Muted |
 | `/dm show` | Set the On-Screen Focus Bar HUD to Always Shown |
