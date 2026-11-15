@@ -1,19 +1,18 @@
-# DynamicSuite -- CurseForge Storefront Copy & Release Changelog (v2.0.8)
+# DynamicSuite -- CurseForge Storefront Copy
 
 > **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105)  
-> **Version:** v2.0.8 (15/11/2026)  
 > **CurseForge Project ID:** 1804382  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicsuite
 
 ---
 
-## Section 1: CurseForge Project Description (Copy & Paste Markdown)
+## CurseForge Project Description (Copy & Paste Markdown)
 
 ```markdown
 # DynamicSuite -- 8-Module QoL, Utility & Performance Hub
 
-**Version:** v2.0.8 (15/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5**. It brings **8 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, plain-English Smart Search, a unified HUD Edit Mode, and a 9-step Guided Setup.
 
@@ -58,8 +57,9 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 * **Zero-Reload Zone Graphics:** Automatically adjusts view distance, shadows, clutter, and spell density between Cities, Outdoor, Delves, Dungeons, Raid, and PvP while keeping boss floor mechanics clearly visible.
 * **Combat FPS Guard & Spell Queue:** Protects your frame rate during heavy combat and tunes SpellQueueWindow automatically from your live ping and haste.
 
-### 7. DynamicGroup (`/dgroup`, `/dg`) -- Premade Groups & Roster Audit
-* **Upgraded Premade Group Finder:** Shows Datacentre Region tags (OCE, US-W, US-C, US-E, LATAM, BR), Leader M+ Score, Bloodlust/Combat-Res badges, and 5-slot class/role dots directly in Blizzard's group list.
+### 7. DynamicGroup (`/dgroup`, `/dg`) -- Premade Groups, Portal Deck & Roster Audit
+* **Upgraded Premade Group Finder & Multi-Toggle Filters:** Shows Datacentre Region tags (OCE, US-W, US-C, US-E, LATAM, BR), Leader M+ Score, Bloodlust/Combat-Res badges, and 5-slot class/role dots, plus Tank/Healer/DPS, No Duplicate Class, Has Tank, Has Healer, Bloodlust, and Battle Rez filter toggles synced with Blizzard's native filter.
+* **Midnight Season 2 Portal Deck & Teleport Toasts:** Docked portal bar above Premade Groups with your Owned Keystone pill (Season Best telemetry + out-of-combat Right-Click teleport) and all 8 Midnight Season 2 dungeon tiles for 1-click filtering and Right-Click teleporting, plus a Dungeon Joined & Group Full Teleport Toast (`/dg testtoast`).
 * **1-Click Sign-Up & Party Tools:** Sign up in one click, inspect party gear/enchants/consumables at a glance, auto-invite friends/guildies by whisper keyword, and auto-insert Mythic+ keystones.
 
 ### 8. DynamicZoom (`/dz`) -- 39-Yard Camera & Smooth Zoom
@@ -101,25 +101,4 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 * **Optional Tip Jar (Ko-fi -- all features are 100% free):** https://ko-fi.com/dentee
 
 [![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
-```
-
----
-
-## Section 2: CurseForge File Changelog Block (v2.0.8 -- 15/11/2026)
-
-```markdown
-## DynamicSuite & Standalone DynamicMarker v2.0.8 (15/11/2026)
-
-### DynamicGroup
-* **Portal Deck Owned Keystone Telemetry & Right-Click Teleport:** Out-of-combat Right-Click dungeon teleport casting with a cooldown swipe overlay, Season Best timed/over-time level and score, and teleport cooldown status in the tooltip while keeping Left-Click exclusive dungeon filtering.
-* **Dungeon Joined & Group Full Teleport Toast:** Alert Toast-matched banner with a one-click Dungeon Teleport button, Right-Click dismissal, join chimes, 5/5 group highlight, shared HUD Edit slot with automatic vertical stacking, preview buttons, and `/dg testtoast`.
-* **Season Dungeon Portals & 1-Click Dungeon Filter Deck:** Docked portal bar above Premade Groups with your keystone pill and all 8 Midnight Season 2 dungeon tiles, supporting Left-Click / Shift+Left-Click filtering and Right-Click teleport casting.
-* **Integrated Multi-Toggle Premade Group Filters:** Tank/Healer/DPS role toggles with icons, No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez in two-way sync with Blizzard's native filter.
-
-### DynamicMarker
-* **Focus Target Mode & Target Only Clear:** Added `Mouseover + Target`, `Target Only` (`/focus [@target,exists,nodead][]` so pressing with no target clears focus), and an inline `Manual (Custom)` macro editor with custom in-game icon preservation.
-
-### DynamicBags & DynamicPrep
-* **DynamicBags Auto-Open Expansion:** Automatically opens/learns Soulbound or Warband-bound Gold Pouches, Housing Decor, and Profession Knowledge items out of combat.
-* **DynamicPrep Midnight Season 2 Updates:** Added Great Vault Mythic+ tooltip telemetry, Right-Click Group Finder access on the Keystone capsule, and equipped gear missing-enchant and empty-socket detection on the Durability capsule.
 ```

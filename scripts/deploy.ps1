@@ -200,12 +200,15 @@ if ($readmeText -notmatch [regex]::Escape("v$suiteVer")) {
     throw "README.md does not match lockstep version v$suiteVer"
 }
 $cfStandaloneDoc = Join-Path $RepoRoot "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md"
-if (-not (Test-Path -LiteralPath $cfStandaloneDoc) -or ([System.IO.File]::ReadAllText($cfStandaloneDoc) -notmatch [regex]::Escape("v$suiteVer"))) {
-    throw "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md does not match lockstep version v$suiteVer"
-}
 $cfMarketingDoc = Join-Path $RepoRoot "Marketing\CurseForge_DynamicMarker.md"
-if (-not (Test-Path -LiteralPath $cfMarketingDoc) -or ([System.IO.File]::ReadAllText($cfMarketingDoc) -notmatch [regex]::Escape("v$suiteVer"))) {
-    throw "Marketing\CurseForge_DynamicMarker.md does not match lockstep version v$suiteVer"
+foreach ($markerDoc in @($cfStandaloneDoc, $cfMarketingDoc)) {
+    if (-not (Test-Path -LiteralPath $markerDoc)) {
+        throw "Missing required DynamicMarker storefront document: $markerDoc"
+    }
+    $markerDocText = [System.IO.File]::ReadAllText($markerDoc)
+    if ($markerDocText -match '(?m)^(?:\*\*Version:\*\*|> \*\*Version:\*\*|## Section 2: CurseForge File Changelog Block)') {
+        throw "Storefront document must remain evergreen (no version/date/changelog block): $markerDoc"
+    }
 }
 $normMarkerStandalone = ([System.IO.File]::ReadAllText($cfStandaloneDoc)).Replace("`r`n", "`n").TrimEnd()
 $normMarkerMarketing = ([System.IO.File]::ReadAllText($cfMarketingDoc)).Replace("`r`n", "`n").TrimEnd()
@@ -219,8 +222,8 @@ foreach ($suiteDoc in @($cfSuiteStandaloneDoc, $cfSuiteMarketingDoc)) {
         throw "Missing required DynamicSuite storefront document: $suiteDoc"
     }
     $suiteDocText = [System.IO.File]::ReadAllText($suiteDoc)
-    if ($suiteDocText -notmatch [regex]::Escape("v$suiteVer")) {
-        throw "$suiteDoc does not match lockstep version v$suiteVer"
+    if ($suiteDocText -match '(?m)^(?:\*\*Version:\*\*|> \*\*Version:\*\*|## Section 2: CurseForge File Changelog Block)') {
+        throw "Storefront document must remain evergreen (no version/date/changelog block): $suiteDoc"
     }
     if ($suiteDocText -notmatch '1804382' -or $suiteDocText -notmatch [regex]::Escape("https://www.curseforge.com/wow/addons/dynamicsuite")) {
         throw "$suiteDoc is missing verified CurseForge project ID 1804382 or live URL."
@@ -1025,6 +1028,25 @@ try {
             & $gitExe push origin $ReleaseTag
             if ($LASTEXITCODE -ne 0) { throw "git push origin $ReleaseTag failed." }
             Write-Host "[TAG PUSHED] Annotated tag $ReleaseTag pushed to origin (CurseForge target channel: $resolvedCfChannel)" -ForegroundColor Green
+
+            $prevTag = (& $gitExe describe --tags --abbrev=0 "$ReleaseTag^" 2>$null)
+            if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($prevTag)) {
+                $storefrontPaths = @(
+                    "Marketing/CurseForge_DynamicSuite.md",
+                    "Marketing/CurseForge_DynamicMarker.md",
+                    "Packaging/StandaloneTOCs/CURSEFORGE_DYNAMICSUITE.md",
+                    "Packaging/StandaloneTOCs/CURSEFORGE_DYNAMICMARKER.md"
+                )
+                $changedStorefront = & $gitExe diff --name-only "$prevTag" "$ReleaseTag" -- @storefrontPaths
+                if ($changedStorefront) {
+                    $firstChanged = ($changedStorefront | Select-Object -First 1)
+                    $firstAbs = Join-Path $RepoRoot ($firstChanged -replace '/', '\')
+                    if (Test-Path -LiteralPath $firstAbs) {
+                        Get-Content -LiteralPath $firstAbs -Raw | Set-Clipboard
+                        Write-Host "[STOREFRONT REMINDER] Storefront Markdown changed since $prevTag ($($changedStorefront -join ', ')). Copied $firstChanged to clipboard for CurseForge Overview update." -ForegroundColor Yellow
+                    }
+                }
+            }
         }
     } else {
         Write-Host "[GIT SKIPPED] -SkipGit specified" -ForegroundColor Yellow

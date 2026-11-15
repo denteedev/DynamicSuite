@@ -1,18 +1,17 @@
-# DynamicMarker -- CurseForge Storefront Copy & Release Changelog (v2.0.8)
+# DynamicMarker -- CurseForge Storefront Copy
 
 > **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105)  
-> **Version:** v2.0.8 (15/11/2026)  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicmarker
 
 ---
 
-## Section 1: CurseForge Project Description (Copy & Paste Markdown)
+## CurseForge Project Description (Copy & Paste Markdown)
 
 ```markdown
 # DynamicMarker -- Raid Target Icons, World Flares & Smart Interrupt Macros
 
-**Version:** v2.0.8 (15/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
 **DynamicMarker** (`/dm`, `/fm`) is a fast Mythic+ and Raid utility addon for instant target marking, cursor-placed world flares, floating icon and flare bars, and smart focus/interrupt macros across all 13 classes. Use it standalone or as part of the full 8-module **[DynamicSuite](https://www.curseforge.com/wow/addons/dynamicsuite)** bundle.
 
@@ -104,18 +103,4 @@ Want 7 more lightweight QoL and performance modules in one unified window? Check
 * **Optional Tip Jar (Ko-fi -- all features are 100% free):** https://ko-fi.com/dentee
 
 [![Support Me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/dentee)
-```
-
----
-
-## Section 2: CurseForge File Changelog Block (v2.0.8 -- 15/11/2026)
-
-```markdown
-## DynamicMarker v2.0.8 (15/11/2026)
-
-### Fixed
-* **Target Only Focus Macro Clear:** Updated the Target Only `[DynamicMark]` macro template to `/focus [@target,exists,nodead][]` so pressing it with a target sets focus and marks it, while pressing it with no target clears your existing focus target.
-
-### Added
-* **Focus Target Mode & Inline Manual Macro Editor:** Added a **Focus Target Mode** selector (`Mouseover + Target`, `Target Only`, `Manual (Custom)`) in Macro Setup, plus a dark-obsidian multi-line editor (255-character limit with live counter) and custom in-game macro icon preservation.
 ```
