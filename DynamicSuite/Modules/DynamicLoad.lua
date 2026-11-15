@@ -7131,19 +7131,30 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     -- VIEW A: DYNAMICLOAD WORKSPACE (6 Segmented Sub-Tabs + Toolbar + Addon Tree)
     ----------------------------------------------------------------------------
     local dlView = CreateFrame("Frame", nil, workspace)
-    dlView:SetAllPoints()
+    dlView:SetPoint("TOPLEFT", workspace, "TOPLEFT", 0, 0)
+    dlView:SetPoint("BOTTOMRIGHT", workspace, "BOTTOMRIGHT", 0, 0)
+    dlView:SetFrameLevel((workspace:GetFrameLevel() or 6) + 2)
+    if dlView.SetClipsChildren then dlView:SetClipsChildren(false) end
+    if (dlView:GetWidth() or 0) <= 0 or (dlView:GetHeight() or 0) <= 0 then
+        local ww = (workspace:GetWidth() or 0) > 0 and workspace:GetWidth() or (((f:GetWidth() or 1040) - 204) - 2)
+        local wh = (workspace:GetHeight() or 0) > 0 and workspace:GetHeight() or ((f:GetHeight() or 680) - 82)
+        dlView:SetSize(math.max(500, ww), math.max(300, wh))
+    end
+    dlView:Show()
     f.dlView = dlView
 
     local navBar = CreateFrame("Frame", nil, dlView)
     navBar:SetPoint("TOPLEFT", dlView, "TOPLEFT", 0, 0)
     navBar:SetPoint("TOPRIGHT", dlView, "TOPRIGHT", 0, 0)
     navBar:SetHeight(42)
+    navBar:SetFrameLevel((dlView:GetFrameLevel() or 8) + 2)
     navBar.bg = UI.SolidTex(navBar, "BACKGROUND", 0, 0, 0, 0, 0); navBar.bg:Hide()
     navBar.bg:SetAllPoints()
     navBar.divider = UI.SolidTex(navBar, "OVERLAY", 2, 0, 0, 0, 0); navBar.divider:Hide()
     navBar.divider:SetPoint("BOTTOMLEFT", navBar, "BOTTOMLEFT", 0, 0)
     navBar.divider:SetPoint("BOTTOMRIGHT", navBar, "BOTTOMRIGHT", 0, 0)
     navBar.divider:SetHeight(1)
+    navBar:Show()
     f.navBar = navBar
 
     do
@@ -7152,9 +7163,12 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     segTrack:SetPoint("TOPLEFT", dlView, "TOPLEFT", 14, -10)
     segTrack:SetPoint("TOPRIGHT", dlView, "TOPRIGHT", -16, -10)
     segTrack:SetHeight(34)
+    segTrack:SetFrameLevel((navBar:GetFrameLevel() or 10) + 1)
     segTrack.bg = UI.SolidTex(segTrack, "BACKGROUND", 1, 0.043, 0.051, 0.071, 0.98)
     segTrack.bg:SetAllPoints()
     UI.CreatePixelBorder(segTrack, 1, 1, 1, 0.08, 2)
+    segTrack:Show()
+    f.segTrack = segTrack
 
     local tabButtons = {}
     local xOffset = 4
@@ -7315,14 +7329,25 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     toastTabBtn:SetHeight(26)
     toastTabBtn:SetPoint("RIGHT", segTrack, "RIGHT", -4, 0)
     toastTabBtn:Hide()
+    f.tabButtons = tabButtons
     local function ReflowDlTopTrack()
         local w = segTrack:GetWidth()
-        if not w or w < 200 then return end
+        if not w or w < 200 then
+            local dw = (dlView and dlView.GetWidth and dlView:GetWidth()) or 0
+            if dw < 200 then
+                dw = (workspace and workspace.GetWidth and workspace:GetWidth()) or 0
+            end
+            if dw < 200 then
+                dw = ((f and f.GetWidth and f:GetWidth()) or 1040) - 206
+            end
+            w = math.max(500, dw - 30)
+        end
         local gap = 4
         local avail = w - 8
         local eachW = math.floor((avail - (gap * 4)) / 5)
+        local btns = f.tabButtons or tabButtons
         for i = 1, 5 do
-            local zb = f.tabButtons[i]
+            local zb = btns[i]
             if zb then
                 zb:ClearAllPoints()
                 zb:SetHeight(26)
@@ -7330,15 +7355,21 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
                     zb:SetPoint("LEFT", segTrack, "LEFT", 4, 0)
                     zb:SetWidth(eachW)
                 elseif i == 5 then
-                    zb:SetPoint("LEFT", f.tabButtons[4], "RIGHT", gap, 0)
+                    zb:SetPoint("LEFT", btns[4], "RIGHT", gap, 0)
                     zb:SetPoint("RIGHT", segTrack, "RIGHT", -4, 0)
+                    if (zb:GetWidth() or 0) <= 0 then
+                        zb:SetWidth(eachW)
+                    end
                 else
-                    zb:SetPoint("LEFT", f.tabButtons[i - 1], "RIGHT", gap, 0)
+                    zb:SetPoint("LEFT", btns[i - 1], "RIGHT", gap, 0)
                     zb:SetWidth(eachW)
                 end
+                zb:Show()
             end
         end
     end
+    f.ReflowDlTopTrack = ReflowDlTopTrack
+    ReflowDlTopTrack()
     segTrack:SetScript("OnSizeChanged", ReflowDlTopTrack)
     segTrack:HookScript("OnShow", function() C_Timer.After(0, ReflowDlTopTrack) end)
     C_Timer.After(0, ReflowDlTopTrack)
@@ -7553,6 +7584,8 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     toolbar:SetPoint("TOPLEFT", dlView, "TOPLEFT", 14, -50)
     toolbar:SetPoint("TOPRIGHT", dlView, "TOPRIGHT", -16, -50)
     toolbar:SetHeight(24)
+    toolbar:SetFrameLevel((dlView:GetFrameLevel() or 8) + 2)
+    toolbar:Show()
     f.toolbar = toolbar
 
     local stashBtn = CreateFlatButton(toolbar, 96, 22, "Backup State", false)
@@ -7978,9 +8011,11 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     telemetryStrip:SetPoint("TOPLEFT", toolbar, "BOTTOMLEFT", 0, -5)
     telemetryStrip:SetPoint("TOPRIGHT", toolbar, "BOTTOMRIGHT", 0, -5)
     telemetryStrip:SetHeight(22)
+    telemetryStrip:SetFrameLevel((dlView:GetFrameLevel() or 8) + 2)
     telemetryStrip.bg = UI.SolidTex(telemetryStrip, "BACKGROUND", 0, 0.043, 0.051, 0.071, 0.92)
     telemetryStrip.bg:SetAllPoints()
     UI.CreatePixelBorder(telemetryStrip, 1, 1, 1, 0.07, 2)
+    telemetryStrip:Show()
     f.telemetryStrip = telemetryStrip
 
     local telemetryText = telemetryStrip:CreateFontString(nil, "OVERLAY")
@@ -8043,9 +8078,11 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     legendStrip:SetPoint("TOPLEFT", telemetryStrip, "BOTTOMLEFT", 0, -4)
     legendStrip:SetPoint("TOPRIGHT", telemetryStrip, "BOTTOMRIGHT", 0, -4)
     legendStrip:SetHeight(22)
+    legendStrip:SetFrameLevel((dlView:GetFrameLevel() or 8) + 2)
     legendStrip.bg = UI.SolidTex(legendStrip, "BACKGROUND", 0, 0.024, 0.031, 0.047, 0.96)
     legendStrip.bg:SetAllPoints()
     UI.CreatePixelBorder(legendStrip, 1, 1, 1, 0.07, 2)
+    legendStrip:Show()
     f.legendStrip = legendStrip
 
     do
@@ -8098,7 +8135,14 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     legLbl3:SetText("|cFFFFFFFFNever (R-Click Row):|r Ignores Parent")
 
     local function LayoutLegendCols()
-        local w = legendStrip:GetWidth() or 800
+        local w = legendStrip:GetWidth()
+        if not w or w < 200 then
+            local dw = (dlView and dlView.GetWidth and dlView:GetWidth()) or 0
+            if dw < 200 then
+                dw = ((f and f.GetWidth and f:GetWidth()) or 1040) - 206
+            end
+            w = math.max(500, dw - 30)
+        end
         local colW = math.floor(w / 3)
         legCol1:SetPoint("TOPLEFT", legendStrip, "TOPLEFT", 0, 0)
         legCol1:SetSize(colW, 22)
@@ -8140,12 +8184,21 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     local scrollFrame = CreateFrame("ScrollFrame", "DynamicLoadScrollFrame", dlView)
     scrollFrame:SetPoint("TOPLEFT", legendStrip, "BOTTOMLEFT", 0, -4)
     scrollFrame:SetPoint("BOTTOMRIGHT", dlView, "BOTTOMRIGHT", -16, 8)
+    scrollFrame:SetFrameLevel((dlView:GetFrameLevel() or 8) + 2)
     scrollFrame:SetClipsChildren(true)
     scrollFrame:EnableMouseWheel(true)
+    if (scrollFrame:GetWidth() or 0) <= 0 or (scrollFrame:GetHeight() or 0) <= 0 then
+        local dw = (dlView:GetWidth() or 0) > 200 and dlView:GetWidth() or (((f:GetWidth() or 1040) - 206))
+        local dh = (dlView:GetHeight() or 0) > 200 and dlView:GetHeight() or (((f:GetHeight() or 680) - 82))
+        scrollFrame:SetSize(math.max(500, dw - 30), math.max(300, dh - 140))
+    end
+    scrollFrame:Show()
     f.scrollFrame = scrollFrame
 
     local scrollChild = CreateFrame("Frame", "DynamicLoadScrollChild", scrollFrame)
-    scrollChild:SetSize(math.max(400, (f:GetWidth() or 1040) - 234), 400)
+    scrollChild:SetSize(math.max(500, (f:GetWidth() or 1040) - 234), 400)
+    scrollChild:SetFrameLevel((scrollFrame:GetFrameLevel() or 10) + 1)
+    scrollChild:Show()
     scrollFrame:SetScrollChild(scrollChild)
     f.scrollChild = scrollChild
     scrollChild.Refresh = function() RefreshAddonTree(scrollChild) end
@@ -8665,6 +8718,12 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         table.insert(f.themeCards, tc)
     end
     end
+    if UpdateAllTabVisuals then UpdateAllTabVisuals() end
+    if f.UpdateStashButton then f.UpdateStashButton() end
+    if f.UpdateFilterChips then f.UpdateFilterChips() end
+    if f.RefreshTelemetryStrip then f.RefreshTelemetryStrip() end
+    if f.ReflowDlTopTrack then f.ReflowDlTopTrack() end
+    if f.scrollChild and RefreshAddonTree then RefreshAddonTree(f.scrollChild) end
 end
 
 if addonTable.mainFrame and addonTable.mainFrame.EnsureDynamicLoadWorkspaceMounted then

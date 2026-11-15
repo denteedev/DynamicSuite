@@ -2415,6 +2415,9 @@ function addonTable.CreateMainConfigUI()
     -- Zero-FPS-Drop C++ Anchor Stretching: OnSizeChanged only updates scrollChild width & thin scrollbar
     f:SetScript("OnSizeChanged", function(_, newW, newH)
         addonTable.UpdateMainWindowClampInsets(f)
+        if f.SyncWorkspaceGeometry then
+            f.SyncWorkspaceGeometry()
+        end
         if f.scrollChild and f.scrollFrame then
             local sw = f.scrollFrame:GetWidth()
             if sw and sw > 50 then
@@ -2422,6 +2425,9 @@ function addonTable.CreateMainConfigUI()
             else
                 f.scrollChild:SetWidth(math.max(400, (newW or 980) - RAIL_W - 30))
             end
+        end
+        if f.ReflowDlTopTrack then
+            f.ReflowDlTopTrack()
         end
         if f.UpdateThinScrollBar then
             f.UpdateThinScrollBar()
@@ -3770,9 +3776,11 @@ function addonTable.CreateMainConfigUI()
     -- 3. LEFT SUITE RAIL (204px Wide) - DYNAMIC MODULES + SUITE STUDIO & TOOLS
     ----------------------------------------------------------------------------
     local leftRail = CreateFrame("Frame", nil, f)
-    leftRail:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
-    leftRail:SetPoint("BOTTOMLEFT", footer, "TOPLEFT", 0, 0)
-    leftRail:SetSize(RAIL_W, math.max(200, PANEL_H - HDR_H - DOCK_H))
+    leftRail:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -HDR_H)
+    leftRail:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, DOCK_H)
+    leftRail:SetWidth(RAIL_W)
+    leftRail:SetFrameLevel((f:GetFrameLevel() or 1) + 5)
+    if leftRail.SetClipsChildren then leftRail:SetClipsChildren(false) end
     leftRail:Show()
     f.leftRail = leftRail
 
@@ -4138,7 +4146,9 @@ function addonTable.CreateMainConfigUI()
     local railModuleScroll = CreateFrame("Frame", nil, leftRail)
     railModuleScroll:SetPoint("TOPLEFT", leftRail, "TOPLEFT", 0, -54)
     railModuleScroll:SetPoint("BOTTOMRIGHT", leftRail, "BOTTOMRIGHT", 0, 152)
-    railModuleScroll:SetSize(RAIL_W, math.max(100, PANEL_H - HDR_H - DOCK_H - 206))
+    railModuleScroll:SetWidth(RAIL_W)
+    railModuleScroll:SetFrameLevel((leftRail:GetFrameLevel() or 6) + 2)
+    if railModuleScroll.SetClipsChildren then railModuleScroll:SetClipsChildren(false) end
     railModuleScroll:Show()
     railModuleScroll:EnableMouseWheel(true)
     railModuleScroll.GetVerticalScroll = function() return 0 end
@@ -4149,6 +4159,8 @@ function addonTable.CreateMainConfigUI()
     local railModuleChild = CreateFrame("Frame", nil, railModuleScroll)
     railModuleChild:SetPoint("TOPLEFT", railModuleScroll, "TOPLEFT", 0, 0)
     railModuleChild:SetSize(RAIL_W, 304)
+    railModuleChild:SetFrameLevel((railModuleScroll:GetFrameLevel() or 8) + 1)
+    if railModuleChild.SetClipsChildren then railModuleChild:SetClipsChildren(false) end
     railModuleChild:Show()
     f.railModuleChild = railModuleChild
     f.railCards = railModuleCards
@@ -4643,14 +4655,26 @@ function addonTable.CreateMainConfigUI()
                         if f.railSearchBox and f.railSearchBox:HasFocus() then f.railSearchBox:ClearFocus() end
                         if addonTable.SetToastEditMode then addonTable.SetToastEditMode(false) end
 
+                        if f.SyncWorkspaceGeometry then f.SyncWorkspaceGeometry() end
                         local hostParent = f.workspace or f
+                        if hostParent and hostParent.Show then hostParent:Show() end
                         if not f.peerModuleHostFrame then
                             local host = CreateFrame("Frame", "DynamicSuitePeerHostFrame", hostParent)
                             host:SetPoint("TOPLEFT", hostParent, "TOPLEFT", 0, 0)
                             host:SetPoint("BOTTOMRIGHT", hostParent, "BOTTOMRIGHT", 0, 0)
+                            host:SetFrameLevel((hostParent:GetFrameLevel() or 6) + 2)
+                            if host.SetClipsChildren then host:SetClipsChildren(false) end
                             f.peerModuleHostFrame = host
+                            f.peerContainer = host
                         end
                         local host = f.peerModuleHostFrame
+                        host:SetFrameLevel((hostParent:GetFrameLevel() or 6) + 2)
+                        if host.SetClipsChildren then host:SetClipsChildren(false) end
+                        if (host:GetWidth() or 0) <= 0 or (host:GetHeight() or 0) <= 0 then
+                            local hw = (hostParent:GetWidth() or 0) > 0 and hostParent:GetWidth() or ((f:GetWidth() or PANEL_W) - RAIL_W - 2)
+                            local hh = (hostParent:GetHeight() or 0) > 0 and hostParent:GetHeight() or ((f:GetHeight() or PANEL_H) - HDR_H - DOCK_H)
+                            host:SetSize(math.max(500, hw), math.max(300, hh))
+                        end
                         host.moduleContainers = host.moduleContainers or {}
                         local modHost = host.moduleContainers[addonKey]
                         if not modHost then
@@ -4669,7 +4693,16 @@ function addonTable.CreateMainConfigUI()
                             modHost = CreateFrame("Frame", nil, host)
                             modHost:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
                             modHost:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 0)
+                            modHost:SetFrameLevel((host:GetFrameLevel() or 8) + 1)
+                            if modHost.SetClipsChildren then modHost:SetClipsChildren(false) end
                             host.moduleContainers[addonKey] = modHost
+                        end
+                        modHost:SetFrameLevel((host:GetFrameLevel() or 8) + 1)
+                        if modHost.SetClipsChildren then modHost:SetClipsChildren(false) end
+                        if (modHost:GetWidth() or 0) <= 0 or (modHost:GetHeight() or 0) <= 0 then
+                            local hw = (host:GetWidth() or 0) > 0 and host:GetWidth() or ((f:GetWidth() or PANEL_W) - RAIL_W - 2)
+                            local hh = (host:GetHeight() or 0) > 0 and host:GetHeight() or ((f:GetHeight() or PANEL_H) - HDR_H - DOCK_H)
+                            modHost:SetSize(math.max(500, hw), math.max(300, hh))
                         end
                         if host._activeModHost and host._activeModHost ~= modHost then
                             host._activeModHost:Hide()
@@ -5173,9 +5206,33 @@ function addonTable.CreateMainConfigUI()
     -- 4. MAIN RIGHT-HAND WORKSPACE CONTAINER (Two-Point C++ Anchored)
     ----------------------------------------------------------------------------
     local workspace = CreateFrame("Frame", nil, f)
-    workspace:SetPoint("TOPLEFT", leftRail, "TOPRIGHT", 0, 0)
-    workspace:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", 0, 0)
+    workspace:SetPoint("TOPLEFT", f, "TOPLEFT", RAIL_W + 1, -HDR_H)
+    workspace:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, DOCK_H)
+    workspace:SetFrameLevel((f:GetFrameLevel() or 1) + 5)
+    if workspace.SetClipsChildren then workspace:SetClipsChildren(false) end
+    if (workspace:GetWidth() or 0) <= 0 or (workspace:GetHeight() or 0) <= 0 then
+        workspace:SetSize(math.max(500, (f:GetWidth() or PANEL_W) - RAIL_W - 2), math.max(300, (f:GetHeight() or PANEL_H) - HDR_H - DOCK_H))
+    end
+    workspace:Show()
     f.workspace = workspace
+
+    local function SyncWorkspaceGeometry()
+        if not workspace then return end
+        local fw = (f:GetWidth() or 0)
+        local fh = (f:GetHeight() or 0)
+        if fw < 980 then fw = PANEL_W end
+        if fh < 640 then fh = PANEL_H end
+        workspace:ClearAllPoints()
+        workspace:SetPoint("TOPLEFT", f, "TOPLEFT", RAIL_W + 1, -HDR_H)
+        workspace:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, DOCK_H)
+        workspace:SetFrameLevel((f:GetFrameLevel() or 1) + 5)
+        if workspace.SetClipsChildren then workspace:SetClipsChildren(false) end
+        if (workspace:GetWidth() or 0) <= 0 or (workspace:GetHeight() or 0) <= 0 then
+            workspace:SetSize(math.max(500, fw - RAIL_W - 2), math.max(300, fh - HDR_H - DOCK_H))
+        end
+        workspace:Show()
+    end
+    f.SyncWorkspaceGeometry = SyncWorkspaceGeometry
 
     ----------------------------------------------------------------------------
     -- 4A. UNIFIED TOP-OF-MODULE CONFLICT & AUTO-YIELD BANNER (HARD / SOFT TIERS)
@@ -5227,15 +5284,30 @@ function addonTable.CreateMainConfigUI()
 
         local function ApplyWorkspaceHostTopOffset(topOffsetPx)
             local yOff = -(tonumber(topOffsetPx) or 0)
+            local wsLevel = (workspace:GetFrameLevel() or 6)
             if f.dlView then
                 f.dlView:ClearAllPoints()
                 f.dlView:SetPoint("TOPLEFT", workspace, "TOPLEFT", 0, yOff)
                 f.dlView:SetPoint("BOTTOMRIGHT", workspace, "BOTTOMRIGHT", 0, 0)
+                f.dlView:SetFrameLevel(wsLevel + 2)
+                if f.dlView.SetClipsChildren then f.dlView:SetClipsChildren(false) end
+                if (f.dlView:GetWidth() or 0) <= 0 or (f.dlView:GetHeight() or 0) <= 0 then
+                    local ww = (workspace:GetWidth() or 0) > 0 and workspace:GetWidth() or ((f:GetWidth() or PANEL_W) - RAIL_W - 2)
+                    local wh = (workspace:GetHeight() or 0) > 0 and workspace:GetHeight() or ((f:GetHeight() or PANEL_H) - HDR_H - DOCK_H)
+                    f.dlView:SetSize(math.max(500, ww), math.max(300, wh + yOff))
+                end
             end
             if f.peerModuleHostFrame then
                 f.peerModuleHostFrame:ClearAllPoints()
                 f.peerModuleHostFrame:SetPoint("TOPLEFT", workspace, "TOPLEFT", 0, yOff)
                 f.peerModuleHostFrame:SetPoint("BOTTOMRIGHT", workspace, "BOTTOMRIGHT", 0, 0)
+                f.peerModuleHostFrame:SetFrameLevel(wsLevel + 2)
+                if f.peerModuleHostFrame.SetClipsChildren then f.peerModuleHostFrame:SetClipsChildren(false) end
+                if (f.peerModuleHostFrame:GetWidth() or 0) <= 0 or (f.peerModuleHostFrame:GetHeight() or 0) <= 0 then
+                    local ww = (workspace:GetWidth() or 0) > 0 and workspace:GetWidth() or ((f:GetWidth() or PANEL_W) - RAIL_W - 2)
+                    local wh = (workspace:GetHeight() or 0) > 0 and workspace:GetHeight() or ((f:GetHeight() or PANEL_H) - HDR_H - DOCK_H)
+                    f.peerModuleHostFrame:SetSize(math.max(500, ww), math.max(300, wh + yOff))
+                end
             end
         end
         f.ApplyWorkspaceHostTopOffset = ApplyWorkspaceHostTopOffset
@@ -5363,9 +5435,13 @@ function addonTable.CreateMainConfigUI()
     -- VIEW A: DYNAMICLOAD WORKSPACE (Mounted by DynamicLoad_UI.lua when present)
     ----------------------------------------------------------------------------
     f.EnsureDynamicLoadWorkspaceMounted = function()
-        if not f._dlWorkspaceMounted and addonTable.MountDynamicLoadWorkspace then
+        if (not f._dlWorkspaceMounted or not f.dlView) and addonTable.MountDynamicLoadWorkspace then
             f._dlWorkspaceMounted = true
             addonTable.MountDynamicLoadWorkspace(f, workspace)
+        end
+        if f.dlView then
+            f.dlView:SetFrameLevel((workspace:GetFrameLevel() or 6) + 2)
+            if f.dlView.SetClipsChildren then f.dlView:SetClipsChildren(false) end
         end
     end
     f.EnsureDynamicLoadWorkspaceMounted()
@@ -5375,8 +5451,11 @@ function addonTable.CreateMainConfigUI()
     ----------------------------------------------------------------------------
     local peerView = CreateFrame("Frame", nil, workspace)
     peerView:SetAllPoints()
+    peerView:SetFrameLevel((workspace:GetFrameLevel() or 6) + 2)
+    if peerView.SetClipsChildren then peerView:SetClipsChildren(false) end
     peerView:Hide()
     f.peerView = peerView
+    f.peerContainer = f.peerModuleHostFrame or peerView
 
     do
     local peerCard = CreateFrame("Frame", nil, peerView)
@@ -5531,8 +5610,11 @@ function addonTable.CreateMainConfigUI()
     ----------------------------------------------------------------------------
     local themeView = CreateFrame("Frame", nil, workspace)
     themeView:SetAllPoints()
+    themeView:SetFrameLevel((workspace:GetFrameLevel() or 6) + 2)
+    if themeView.SetClipsChildren then themeView:SetClipsChildren(false) end
     themeView:Hide()
     f.themeView = themeView
+    f.themeStudioView = themeView
 
     do
     local tvTitle = themeView:CreateFontString(nil, "OVERLAY")
@@ -7002,11 +7084,15 @@ function addonTable.CreateMainConfigUI()
     ----------------------------------------------------------------------------
     local changelogView = CreateFrame("Frame", nil, workspace)
     changelogView:SetAllPoints()
+    changelogView:SetFrameLevel((workspace:GetFrameLevel() or 6) + 2)
+    if changelogView.SetClipsChildren then changelogView:SetClipsChildren(false) end
     changelogView:Hide()
     f.changelogView = changelogView
 
     local supportView = CreateFrame("Frame", nil, workspace)
     supportView:SetAllPoints()
+    supportView:SetFrameLevel((workspace:GetFrameLevel() or 6) + 2)
+    if supportView.SetClipsChildren then supportView:SetClipsChildren(false) end
     supportView:Hide()
     f.supportView = supportView
 
@@ -7024,6 +7110,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "NEW",      title = "v2.1.1 Release: 3-Row 560x110 HUD Edit Inspector (Row 3 Live Appearance Bar), First-Open Left Rail & Right Workspace Anchor Fix", desc = "Upgraded DynamicSuiteEditModeModal and standalone DynamicMarkerEditModeInspector into a unified 560x110 3-row draggable inspector dock with live Row 3 controls across all 6 HUDs (Opacity 20%-100%, Border Style Accent/Dark/None, and Orientation Horiz/Vert with instant screen-bounds re-clamping); fixed first-open /ds Left Rail & first-click [+ HUD] mover initialisation; and anchored leftRail and workspace directly to DynamicSuiteMainFrame with explicit SetSize fallbacks, SetClipsChildren(false) on outer containers, and elevated FrameLevels so the right-hand DynamicLoad and peer module workspaces always render cleanly." },
                 { badge = "NEW",      title = "v2.1.0 Release: Compact Draggable 560x74 HUD Edit Inspector, Hidden-By-Default Movers & Unified [Edit HUD] Cards", desc = "Redesigned the HUD Edit Mode dock into a compact 560x74 2-row draggable toolbar with a HUD Selector Dropdown (green/red status dots), non-truncated Hidden/Shown pills, Grid/Reset/Back to Suite, X/Y coordinates & nudges, Center X/Y, Scale slider (60%-150%), and 60px off-screen fail-safe edge clamping; hid disabled/Off HUD movers by default on entering HUD Edit Mode with temporary 'HIDDEN (Click Shown to Enable)' previewing when explicitly selected; and standardised Obsidian/Blaze-Orange [Edit HUD] buttons + shared ON-SCREEN ALERT & TELEPORT TOAST HUD controls across DynamicLoad, Theme & Font Studio, DynamicGroup, DynamicPrep, DynamicMarker, and DynamicChat." },
                 { badge = "FIXED",    title = "v2.1.0 Release: World Flare Hardware Keybinds & Immediate Telemetry / Tab-Label Sync", desc = "Anchored DynamicMarker's secure World Flare cycle/clear buttons on-screen, removed the button-name override in SecureHandlerWrapScript so LeftButton dispatches /wm [@cursor] and /cwm all reliably in and out of combat, added Right-Click keybind clearing, and wired instant top-bar telemetry and dynamic 'World Flare Keys (...)' sub-tab updates on rebind, clear, or reset." },
                 { badge = "FIXED",    title = "v2.0.9 Release: World Flare Hardware Keybinds & Custom Sequence Order", desc = "Added SecureHandlerWrapScript custom World Flare Cycle Sequence support and floating World Flare Bar icon reordering." },
@@ -7082,6 +7169,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
             openModule = "DynamicMarker",
             items = {
+                { badge = "NEW",      title = "v2.1.1 Release: 3-Row 560x110 HUD Edit Inspector (Row 3 Live Appearance Bar) & Mover Visibility Fix", desc = "Upgraded DynamicMarkerEditModeInspector into a 560x110 3-row draggable inspector dock with live Row 3 appearance controls for Focus Icons and World Flares: Opacity slider (20%-100%, step 5%), Border Style segmented pills (Accent | Dark | None), Orientation toggle (Horiz | Vert) with automatic screen-bounds re-clamping, and full [Reset] recovery." },
                 { badge = "FIXED",    title = "v2.1.0 World Flare Hardware Keybinds & Instant Telemetry / Sub-Tab Label Refresh", desc = "Anchored the secure flare cycle/clear buttons on-screen (1x1, alpha 0, non-mouse-blocking), removed the SecureHandlerWrapScript button override return so LeftButton reliably runs /wm [@cursor] and /cwm all cleanly in and out of combat, added Right-Click unbind, updated top Suite telemetry and 'World Flare Keys (...)' labels live on every bind/clear/reset, standardised [Edit HUD] buttons, and brought the compact 560x74 draggable HUD Edit dock with 60px fail-safe clamping and Hidden-by-default movers to both Suite and standalone DynamicMarker." },
                 { badge = "FIXED",    title = "v1.9.9 Canonical UIParent-Local HUD Coordinates, Dark-Obsidian Coexistence Modal & Unified HUD Dock", desc = "Stored saved TargetBar and FlareBar X/Y coordinates strictly in unscaled UIParent-local offsets relative to screen CENTER and divided by barScale strictly inside DM:SetBarCenterPoint after SetScale/SetSize and before SetClampedToScreen(true) so top/bottom/corner edge bars stay at identical pixel coordinates across /reload at 0.70, 1.00, and 1.30 scales; added the custom dark-obsidian coexistence reload modal (ShowMarkerConflictReloadModal); and unified HUD Edit Mode across Suite & standalone modes." },
                 { badge = "FIXED",    title = "v1.9.8 Scaled Edge-Drag & Reload Persistence", desc = "Synced bar scale and vertical/horizontal bar size prior to boundary clamping, canonicalised Target & Flare bar anchors to CENTER, cleared drag flags prior to final Edit Mode save, and kept SetClampedToScreen(false) so edge-pinned bars stay flush across release, /reload, and UI scale changes." },
@@ -7787,8 +7875,11 @@ function addonTable.CreateMainConfigUI()
     ----------------------------------------------------------------------------
     local setupView = CreateFrame("Frame", nil, workspace)
     setupView:SetAllPoints()
+    setupView:SetFrameLevel((workspace:GetFrameLevel() or 6) + 2)
+    if setupView.SetClipsChildren then setupView:SetClipsChildren(false) end
     setupView:Hide()
     f.setupView = setupView
+    f.guidedSetupView = setupView
 
     do
     local currentGuidedIdx = 1
@@ -9175,6 +9266,8 @@ function addonTable.CreateMainConfigUI()
     ----------------------------------------------------------------------------
     local editView = CreateFrame("Frame", nil, workspace)
     editView:SetAllPoints()
+    editView:SetFrameLevel((workspace:GetFrameLevel() or 6) + 2)
+    if editView.SetClipsChildren then editView:SetClipsChildren(false) end
     editView:Hide()
     f.editView = editView
 
@@ -13170,6 +13263,8 @@ function addonTable.CreateMainConfigUI()
     do
     local searchView = CreateFrame("Frame", nil, workspace)
     searchView:SetAllPoints()
+    searchView:SetFrameLevel((workspace:GetFrameLevel() or 6) + 2)
+    if searchView.SetClipsChildren then searchView:SetClipsChildren(false) end
     searchView:Hide()
     f.searchView = searchView
 
@@ -14075,8 +14170,27 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
+        if f.SyncWorkspaceGeometry then f.SyncWorkspaceGeometry() end
         if f.workspace then f.workspace:Show() end
-        if f.EnsureDynamicLoadWorkspaceMounted then f.EnsureDynamicLoadWorkspaceMounted() end; if activeWorkspaceView == "DYNAMICLOAD" and not f.dlView then selectedPeerModuleKey = "DynamicLoad"; activeWorkspaceView = "PEER_MODULE" end; if f.dlView then f.dlView:SetShown(activeWorkspaceView == "DYNAMICLOAD") end
+        if f.EnsureDynamicLoadWorkspaceMounted then f.EnsureDynamicLoadWorkspaceMounted() end
+        if activeWorkspaceView == "DYNAMICLOAD" and not f.dlView then
+            selectedPeerModuleKey = "DynamicLoad"
+            activeWorkspaceView = "PEER_MODULE"
+        end
+        if f.dlView then f.dlView:SetShown(activeWorkspaceView == "DYNAMICLOAD") end
+        if activeWorkspaceView == "DYNAMICLOAD" and f.dlView then
+            if f.navBar then f.navBar:Show() end
+            if f.ReflowDlTopTrack then f.ReflowDlTopTrack() end
+            if not isToastSubTabActive then
+                if f.toastConfigPanel then f.toastConfigPanel:Hide() end
+                if f.toolbar then f.toolbar:Show() end
+                if f.telemetryStrip then f.telemetryStrip:Show() end
+                if f.legendStrip then f.legendStrip:Show() end
+                if f.scrollFrame then f.scrollFrame:Show() end
+                if f.scrollChild then f.scrollChild:Show() end
+                if f.scrollTrack then f.scrollTrack:Show() end
+            end
+        end
         if f.peerView then f.peerView:SetShown(activeWorkspaceView == "PEER_MODULE") end
         if f.themeView then f.themeView:SetShown(activeWorkspaceView == "THEME_STUDIO") end
         if f.setupView then f.setupView:SetShown(activeWorkspaceView == "GUIDED_SETUP") end
@@ -14105,6 +14219,9 @@ function addonTable.CreateMainConfigUI()
         elseif activeWorkspaceView == "SUPPORT_VIEW" and supportView.Refresh then
             supportView.Refresh()
         elseif activeWorkspaceView == "DYNAMICLOAD" then
+            if f.UpdateAllTabVisuals then f.UpdateAllTabVisuals() end
+            if f.UpdateFilterChips then f.UpdateFilterChips() end
+            if f.RefreshTelemetryStrip then f.RefreshTelemetryStrip() end
             if f.scrollChild then RefreshAddonTree(f.scrollChild) end
         end
 
@@ -14256,8 +14373,27 @@ function addonTable.CreateMainConfigUI()
             f.ApplyWindowOpacity(gTbl.windowAlpha)
         end
 
+        if f.SyncWorkspaceGeometry then f.SyncWorkspaceGeometry() end
         if f.workspace then f.workspace:Show() end
-        if f.EnsureDynamicLoadWorkspaceMounted then f.EnsureDynamicLoadWorkspaceMounted() end; if activeWorkspaceView == "DYNAMICLOAD" and not f.dlView then selectedPeerModuleKey = "DynamicLoad"; activeWorkspaceView = "PEER_MODULE" end; if f.dlView then f.dlView:SetShown(activeWorkspaceView == "DYNAMICLOAD") end
+        if f.EnsureDynamicLoadWorkspaceMounted then f.EnsureDynamicLoadWorkspaceMounted() end
+        if activeWorkspaceView == "DYNAMICLOAD" and not f.dlView then
+            selectedPeerModuleKey = "DynamicLoad"
+            activeWorkspaceView = "PEER_MODULE"
+        end
+        if f.dlView then f.dlView:SetShown(activeWorkspaceView == "DYNAMICLOAD") end
+        if activeWorkspaceView == "DYNAMICLOAD" and f.dlView then
+            if f.navBar then f.navBar:Show() end
+            if f.ReflowDlTopTrack then f.ReflowDlTopTrack() end
+            if not isToastSubTabActive then
+                if f.toastConfigPanel then f.toastConfigPanel:Hide() end
+                if f.toolbar then f.toolbar:Show() end
+                if f.telemetryStrip then f.telemetryStrip:Show() end
+                if f.legendStrip then f.legendStrip:Show() end
+                if f.scrollFrame then f.scrollFrame:Show() end
+                if f.scrollChild then f.scrollChild:Show() end
+                if f.scrollTrack then f.scrollTrack:Show() end
+            end
+        end
         if f.peerView then f.peerView:SetShown(activeWorkspaceView == "PEER_MODULE") end
         if f.peerModuleHostFrame then f.peerModuleHostFrame:SetShown(activeWorkspaceView == "PEER_HOST") end
         if f.themeView then f.themeView:SetShown(activeWorkspaceView == "THEME_STUDIO") end
@@ -14378,9 +14514,11 @@ function addonTable.CreateMainConfigUI()
                 if sBtn and sBtn.Show then sBtn:Show() end
             end
         end
+        if f.SyncWorkspaceGeometry then f.SyncWorkspaceGeometry() end
         if f.workspace then f.workspace:Show() end
         addonTable.ApplySuiteThemeAndGeometry()
         if f.RefreshLeftRailLayout then f.RefreshLeftRailLayout() end
+        if f.ReflowDlTopTrack then f.ReflowDlTopTrack() end
         if f.UpdateTabActiveIndicators then f.UpdateTabActiveIndicators() end
         if f.UpdateStatusBar then f.UpdateStatusBar() end
         if f.UpdateStashButton then f.UpdateStashButton() end
@@ -14416,9 +14554,11 @@ function addonTable.CreateMainConfigUI()
                         if sBtn and sBtn.Show then sBtn:Show() end
                     end
                 end
+                if self.SyncWorkspaceGeometry then self.SyncWorkspaceGeometry() end
                 if self.workspace then self.workspace:Show() end
                 addonTable.ApplySuiteThemeAndGeometry()
                 if self.RefreshLeftRailLayout then self.RefreshLeftRailLayout() end
+                if self.ReflowDlTopTrack then self.ReflowDlTopTrack() end
                 if self.UpdateTabActiveIndicators then self.UpdateTabActiveIndicators() end
                 if self.UpdateStatusBar then self.UpdateStatusBar() end
                 if self.UpdateStashButton then self.UpdateStashButton() end
