@@ -648,7 +648,7 @@ DynamicPrep.CHANGELOG = {
     entries = {
         { type = "FEATURE", text = "Colour-Coded Food Stat Benefits on Clickable Raid Buffs HUD & Readiness Strip (15/11/2026): added FormatColoredFoodBenefit to colour-code parsed food stats (Mint Teal Primary/Int/Agi/Str, Sky Cyan Haste, Royal Amethyst Mastery, Warm Amber-Gold Crit, Emerald Green Versatility, Blaze Orange Highest Secondary Stat, and Slate-Silver Stamina) across Clickable Raid Buffs food tooltip titles, 'Food Benefit:' summary lines, expiring 'Current Buff:' lines, Readiness Strip Slot 3, and capsule tooltips." },
         { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
-        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House open side-by-side via ShowUIPanel multi-panel restoration and per-window UISpecialFrames Escape handling (with header Pin buttons and click-to-raise layering), smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag window moving out of combat with scale-aware UIParent CENTER persistence and SetPoint tab-switch snap-back protection, (-58, -2) header inset to leave Maximize/Minimize buttons clear, Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows], strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding for NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
+        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House open together via ShowUIPanel multi-panel restoration and per-window UISpecialFrames Escape handling (with header Pin buttons and click-to-raise layering) while freezing already-open windows in place so opening another panel never shifts them, smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag window moving out of combat with unclamped SetClampedToScreen(false) free movement, scale-aware UIParent CENTER persistence, and SetPoint tab-switch snap-back protection, (-58, -2) header inset to leave Maximize/Minimize buttons clear, Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows] (restoring default position, 100% scale, and screen clamping), strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding for NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
         { type = "FIX",     text = "Midnight Season 2 Enchantable Slot List Fix (15/11/2026): updated equipped gear enchant scanning to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
         { type = "FEATURE", text = "Equipped Gear Missing-Enchant & Empty-Socket Detection (15/11/2026): added out-of-combat equipped gear auditing (ScanEquippedGearEnchantsAndGems) cached on PLAYER_ENTERING_WORLD, PLAYER_EQUIPMENT_CHANGED, SOCKET_INFO_UPDATE, and PLAYER_REGEN_ENABLED. Flags missing Midnight Season 2 enchants on max-level Head, Shoulder, Chest, Legs, Feet, Rings, Main Hand, and Off-Hand weapons (excluding shields/holdables and grey/white/heirloom items) and empty gem sockets across slots 1..18, surfacing a compact amber '!' badge in the Durability capsule, 'Enchants:' and 'Gems:' status lines in the Durability tooltip, and Left-Click Character Frame opening." },
         { type = "FEATURE", text = "Great Vault Mythic+ Telemetry, Group Finder Shortcut & Midnight Season 2 Consumables (15/11/2026): added weekly Mythic+ Great Vault run counts, 1/4/8 run threshold levels, and 'Reward Ready to Claim!' status to the Keystone capsule tooltip (guarded with pcall and _IsSecret), added Right-Click Group Finder toggling out of combat on the Keystone capsule, aligned DUNGEON_ABBREVIATIONS with DynamicGroup's Midnight Season 1/2 codes (DON, AOF, MR, VSA, FG, AK, PSF), and updated Midnight Season 2 consumable item IDs and Rank 2 Gold / Rank 1 Silver mappings." },
@@ -5025,18 +5025,6 @@ do
         return false
     end
 
-    local function ClampUIParentCenterOffset(frame, ux, uy, scale)
-        local uip = _G.UIParent
-        if not uip or not frame then return ux, uy end
-        local uipW = (uip.GetWidth and uip:GetWidth()) or 1920
-        local uipH = (uip.GetHeight and uip:GetHeight()) or 1080
-        local fw = ((frame.GetWidth and frame:GetWidth()) or 400) * scale
-        local fh = ((frame.GetHeight and frame:GetHeight()) or 450) * scale
-        local maxX = math.max(40, (uipW - fw) * 0.5)
-        local maxY = math.max(40, (uipH - fh) * 0.5)
-        return ClampNumber(ux, -maxX, maxX), ClampNumber(uy, -maxY, maxY)
-    end
-
     local function SnapshotOrigUIPanelInfo(frame, frameName)
         if origUIPanelInfo[frameName] then return origUIPanelInfo[frameName] end
         local uipInfo = (_G.UIPanelWindows and _G.UIPanelWindows[frameName]) or nil
@@ -5044,6 +5032,13 @@ do
         local attrEnabled = frame.GetAttribute and frame:GetAttribute("UIPanelLayout-enabled")
         local attrArea = frame.GetAttribute and frame:GetAttribute("UIPanelLayout-area")
         local whileDead = (uipInfo and uipInfo.whileDead) or (frame.GetAttribute and frame:GetAttribute("UIPanelLayout-whileDead"))
+        local clamped = true
+        if type(frame.IsClampedToScreen) == "function" then
+            local okC, valC = pcall(frame.IsClampedToScreen, frame)
+            if okC and type(valC) == "boolean" then
+                clamped = valC
+            end
+        end
         local pt, relTo, relPt, px, py
         if type(frame.GetPoint) == "function" then
             local okP, a, b, c, d, e = pcall(frame.GetPoint, frame, 1)
@@ -5056,6 +5051,7 @@ do
             enabled = attrEnabled,
             area = attrArea or (uipInfo and uipInfo.area) or "left",
             whileDead = whileDead and true or false,
+            clampedToScreen = clamped,
             defaultScale = (frame.GetScale and frame:GetScale()) or 1.0,
             point = pt,
             relTo = relTo,
@@ -5125,36 +5121,30 @@ do
         return (orig and orig.defaultScale) or 1.0
     end
 
-    local function ComputeSideBySideFallbackOffset(frame, frameName)
+    local function CaptureFrameCenterOffset(frame, frameName)
         local uip = _G.UIParent
-        if not uip or not frame or type(uip.GetCenter) ~= "function" then return nil, nil end
-        local ucX, ucY = uip:GetCenter()
-        if type(ucX) ~= "number" or type(ucY) ~= "number" then return nil, nil end
-        local scale = GetActiveFrameScale(frameName)
-        local fw = ((frame.GetWidth and frame:GetWidth()) or 350) * scale
-        local rightmostOccupied = nil
-        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
-            if spec.name ~= frameName then
-                local other = _G[spec.name]
-                if other and other.IsShown and other:IsShown() then
-                    local ox = (type(other.GetCenter) == "function") and select(1, other:GetCenter()) or nil
-                    local os = (other.GetScale and other:GetScale()) or 1.0
-                    local ow = ((other.GetWidth and other:GetWidth()) or 350) * os
-                    if type(ox) == "number" then
-                        local otherRightUIP = (ox * os) + (ow * 0.5)
-                        if not rightmostOccupied or otherRightUIP > rightmostOccupied then
-                            rightmostOccupied = otherRightUIP
-                        end
-                    end
-                end
-            end
+        if not uip or not frame or type(frame.GetCenter) ~= "function" or type(uip.GetCenter) ~= "function" then
+            return nil, nil
         end
-        if not rightmostOccupied then return nil, nil end
-        local desiredLeftUIP = rightmostOccupied + 16
-        local desiredCenterUIP = desiredLeftUIP + (fw * 0.5)
-        local ux = desiredCenterUIP - ucX
-        local uy = 20
-        return ClampUIParentCenterOffset(frame, ux, uy, scale)
+        local fcX, fcY = frame:GetCenter()
+        local ucX, ucY = uip:GetCenter()
+        if type(fcX) ~= "number" or type(fcY) ~= "number" or type(ucX) ~= "number" or type(ucY) ~= "number" then
+            return nil, nil
+        end
+        local scale = GetActiveFrameScale(frameName)
+        return (fcX * scale) - ucX, (fcY * scale) - ucY
+    end
+
+    local function SyncFrameClamping(frame, frameName)
+        if InCombat() or not frame or type(frame.SetClampedToScreen) ~= "function" then return end
+        local canDrag = (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false)
+        if canDrag then
+            pcall(frame.SetClampedToScreen, frame, false)
+        else
+            local orig = origUIPanelInfo[frameName]
+            local defClamp = (orig and orig.clampedToScreen ~= nil) and orig.clampedToScreen or true
+            pcall(frame.SetClampedToScreen, frame, defClamp)
+        end
     end
 
     local function UpdatePinButtonVisual(st, frameName)
@@ -5233,9 +5223,7 @@ do
             if type(frameObj.SetMovable) == "function" then
                 pcall(frameObj.SetMovable, frameObj, true)
             end
-            if type(frameObj.SetClampedToScreen) == "function" then
-                pcall(frameObj.SetClampedToScreen, frameObj, true)
-            end
+            SyncFrameClamping(frameObj, fName)
             local s = GetActiveFrameScale(fName)
             local fcX, fcY
             if type(frameObj.GetCenter) == "function" then
@@ -5317,17 +5305,18 @@ do
                 ux = state.dragStartUX or 0
                 uy = state.dragStartUY or 0
             end
-            local cUX, cUY = ClampUIParentCenterOffset(frameObj, ux, uy, scale)
-            state.sideBySideUX = nil
-            state.sideBySideUY = nil
+            local finalUX = math.floor(ux * 100 + 0.5) / 100
+            local finalUY = math.floor(uy * 100 + 0.5) / 100
+            state.frozenUX = nil
+            state.frozenUY = nil
             DynamicPrep.db.windowPositions = DynamicPrep.db.windowPositions or {}
             DynamicPrep.db.windowPositions[fName] = {
                 point = "CENTER",
                 relPoint = "CENTER",
-                x = math.floor(cUX * 100 + 0.5) / 100,
-                y = math.floor(cUY * 100 + 0.5) / 100,
+                x = finalUX,
+                y = finalUY,
             }
-            SecureApplyPoint(frameObj, cUX, cUY, scale)
+            SecureApplyPoint(frameObj, finalUX, finalUY, scale)
         end
 
         st.beginDrag = function() BeginBlizzFrameDrag(frame, frameName, st) end
@@ -5382,11 +5371,9 @@ do
             SecureApplyScale(frame, newScale)
             local savedPos = DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[frameName]
             if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
-                local cUX, cUY = ClampUIParentCenterOffset(frame, savedPos.x, savedPos.y, newScale)
-                SecureApplyPoint(frame, cUX, cUY, newScale)
-            elseif st.sideBySideUX and st.sideBySideUY then
-                local cUX, cUY = ClampUIParentCenterOffset(frame, st.sideBySideUX, st.sideBySideUY, newScale)
-                SecureApplyPoint(frame, cUX, cUY, newScale)
+                SecureApplyPoint(frame, savedPos.x, savedPos.y, newScale)
+            elseif st.frozenUX and st.frozenUY then
+                SecureApplyPoint(frame, st.frozenUX, st.frozenUY, newScale)
             end
             ShowWindowToast(frame, string.format("Scale: %d%%", math.floor(newScale * 100 + 0.5)), savePermanent)
         end)
@@ -5445,7 +5432,7 @@ do
         UpdatePinButtonVisual(st, frameName)
     end
 
-    local function ApplyBlizzardFrameTransform(frame, frameName, preserveExistingSlot)
+    local function ApplyBlizzardFrameTransform(frame, frameName)
         if not frame or InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
         if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
         local st = EnsureHeaderOverlay(frame, frameName)
@@ -5454,9 +5441,7 @@ do
         if type(frame.SetMovable) == "function" then
             pcall(frame.SetMovable, frame, true)
         end
-        if type(frame.SetClampedToScreen) == "function" then
-            pcall(frame.SetClampedToScreen, frame, true)
-        end
+        SyncFrameClamping(frame, frameName)
 
         local targetScale = GetActiveFrameScale(frameName)
         if targetScale ~= 1.0 or (DynamicPrep.db and DynamicPrep.db.windowScales and DynamicPrep.db.windowScales[frameName]) or sessionScales[frameName] then
@@ -5467,21 +5452,16 @@ do
         local canDrag = (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false)
         local savedPos = canDrag and DynamicPrep.db and DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[frameName]
         if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
-            st.sideBySideUX = nil
-            st.sideBySideUY = nil
-            local cUX, cUY = ClampUIParentCenterOffset(frame, savedPos.x, savedPos.y, targetScale)
-            SecureApplyPoint(frame, cUX, cUY, targetScale)
+            st.frozenUX = nil
+            st.frozenUY = nil
+            SecureApplyPoint(frame, savedPos.x, savedPos.y, targetScale)
+        elseif noAutoClose and st.frozenUX and st.frozenUY then
+            SecureApplyPoint(frame, st.frozenUX, st.frozenUY, targetScale)
         elseif noAutoClose and frame.IsShown and frame:IsShown() then
-            if st.sideBySideUX and st.sideBySideUY then
-                local cUX, cUY = ClampUIParentCenterOffset(frame, st.sideBySideUX, st.sideBySideUY, targetScale)
-                SecureApplyPoint(frame, cUX, cUY, targetScale)
-            elseif not preserveExistingSlot then
-                local sbsX, sbsY = ComputeSideBySideFallbackOffset(frame, frameName)
-                if sbsX and sbsY then
-                    st.sideBySideUX = sbsX
-                    st.sideBySideUY = sbsY
-                    SecureApplyPoint(frame, sbsX, sbsY, targetScale)
-                end
+            local fx, fy = CaptureFrameCenterOffset(frame, frameName)
+            if fx and fy then
+                st.frozenUX = fx
+                st.frozenUY = fy
             end
         end
     end
@@ -5503,9 +5483,7 @@ do
             if type(frame.SetMovable) == "function" then
                 pcall(frame.SetMovable, frame, true)
             end
-            if type(frame.SetClampedToScreen) == "function" then
-                pcall(frame.SetClampedToScreen, frame, true)
-            end
+            SyncFrameClamping(frame, frameName)
         end
 
         if type(frame.RegisterForDrag) == "function" then
@@ -5525,11 +5503,9 @@ do
                 local canDrag = (db.blizzWinDraggable ~= false)
                 local savedPos = canDrag and db.windowPositions and db.windowPositions[frameName]
                 if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
-                    local cUX, cUY = ClampUIParentCenterOffset(selfFrame, savedPos.x, savedPos.y, scale)
-                    SecureApplyPoint(selfFrame, cUX, cUY, scale)
-                elseif (db.blizzWinNoAutoClose ~= false) and fState.sideBySideUX and fState.sideBySideUY then
-                    local cUX, cUY = ClampUIParentCenterOffset(selfFrame, fState.sideBySideUX, fState.sideBySideUY, scale)
-                    SecureApplyPoint(selfFrame, cUX, cUY, scale)
+                    SecureApplyPoint(selfFrame, savedPos.x, savedPos.y, scale)
+                elseif (db.blizzWinNoAutoClose ~= false) and fState.frozenUX and fState.frozenUY then
+                    SecureApplyPoint(selfFrame, fState.frozenUX, fState.frozenUY, scale)
                 end
             end)
         end
@@ -5578,7 +5554,7 @@ do
                     return
                 end
                 openPanelsSnapshot[frameName] = true
-                ApplyBlizzardFrameTransform(shownFrame, frameName, fState and (fState.restoringFromAutoClose or fState.wasOpenConfirmed))
+                ApplyBlizzardFrameTransform(shownFrame, frameName)
                 SyncAllUISpecialFrames()
             end)
             frame:HookScript("OnHide", function(hiddenFrame)
@@ -5611,8 +5587,8 @@ do
                 openPanelsSnapshot[frameName] = nil
                 if fState then
                     fState.wasOpenConfirmed = false
-                    fState.sideBySideUX = nil
-                    fState.sideBySideUY = nil
+                    fState.frozenUX = nil
+                    fState.frozenUY = nil
                 end
                 local hadSession = (sessionScales[frameName] ~= nil)
                 sessionScales[frameName] = nil
@@ -5633,8 +5609,8 @@ do
                 openPanelsSnapshot[frameName] = nil
                 if st then
                     st.wasOpenConfirmed = false
-                    st.sideBySideUX = nil
-                    st.sideBySideUY = nil
+                    st.frozenUX = nil
+                    st.frozenUY = nil
                 end
                 if frame.IsShown and frame:IsShown() then
                     pcall(frame.Hide, frame)
@@ -5645,6 +5621,13 @@ do
         if frame.IsShown and frame:IsShown() then
             openPanelsSnapshot[frameName] = true
             st.wasOpenConfirmed = true
+            if not (DynamicPrep.db and DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[frameName]) then
+                local fx, fy = CaptureFrameCenterOffset(frame, frameName)
+                if fx and fy then
+                    st.frozenUX = fx
+                    st.frozenUY = fy
+                end
+            end
         end
         return true
     end
@@ -5667,8 +5650,8 @@ do
                             local bst = bf and blizzWinState[bf]
                             if bst then
                                 bst.wasOpenConfirmed = false
-                                bst.sideBySideUX = nil
-                                bst.sideBySideUY = nil
+                                bst.frozenUX = nil
+                                bst.frozenUY = nil
                             end
                             RemoveFromUISpecialFrames(spec.name)
                         end
@@ -5680,7 +5663,6 @@ do
                 inShowUIPanelPostHook = true
                 AttachFrameHooks(fName)
                 local st = GetFrameState(frame)
-                local wasAlreadyOpen = (st and st.wasOpenConfirmed) == true
                 local noAutoClose = (DynamicPrep.db and DynamicPrep.db.blizzWinNoAutoClose ~= false)
                 local pinnedMap = (DynamicPrep.db and DynamicPrep.db.windowPinned) or {}
 
@@ -5705,15 +5687,15 @@ do
                                 if otherSt then otherSt.restoringFromAutoClose = false end
                             end
                             if otherFrame.IsShown and otherFrame:IsShown() then
-                                ApplyBlizzardFrameTransform(otherFrame, otherName, true)
+                                ApplyBlizzardFrameTransform(otherFrame, otherName)
                                 if otherSt then otherSt.wasOpenConfirmed = true end
                             end
                         else
                             openPanelsSnapshot[otherName] = nil
                             if otherSt then
                                 otherSt.wasOpenConfirmed = false
-                                otherSt.sideBySideUX = nil
-                                otherSt.sideBySideUY = nil
+                                otherSt.frozenUX = nil
+                                otherSt.frozenUY = nil
                             end
                             if sessionScales[otherName] ~= nil and otherFrame then
                                 sessionScales[otherName] = nil
@@ -5731,7 +5713,7 @@ do
                     if type(frame.Raise) == "function" then
                         pcall(frame.Raise, frame)
                     end
-                    ApplyBlizzardFrameTransform(frame, fName, wasAlreadyOpen)
+                    ApplyBlizzardFrameTransform(frame, fName)
                     if st then st.wasOpenConfirmed = true end
                 end
 
@@ -5752,8 +5734,8 @@ do
                 local st = blizzWinState[frame]
                 if st then
                     st.wasOpenConfirmed = false
-                    st.sideBySideUX = nil
-                    st.sideBySideUY = nil
+                    st.frozenUX = nil
+                    st.frozenUY = nil
                 end
                 if frame.IsShown and frame:IsShown() then
                     pcall(frame.Hide, frame)
@@ -5784,7 +5766,7 @@ do
                         if st then st.restoringFromAutoClose = true end
                         pcall(fObj.Show, fObj)
                         if st then st.restoringFromAutoClose = false end
-                        ApplyBlizzardFrameTransform(fObj, fName, true)
+                        ApplyBlizzardFrameTransform(fObj, fName)
                     end
                 end
                 SyncAllUISpecialFrames()
@@ -5806,7 +5788,7 @@ do
                         if st then st.restoringFromAutoClose = true end
                         pcall(fObj.Show, fObj)
                         if st then st.restoringFromAutoClose = false end
-                        ApplyBlizzardFrameTransform(fObj, fName, true)
+                        ApplyBlizzardFrameTransform(fObj, fName)
                     end
                 end
                 SyncAllUISpecialFrames()
@@ -5827,11 +5809,9 @@ do
                         local s = GetActiveFrameScale(spec.name)
                         local savedPos = canDrag and DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[spec.name]
                         if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
-                            local cUX, cUY = ClampUIParentCenterOffset(f, savedPos.x, savedPos.y, s)
-                            SecureApplyPoint(f, cUX, cUY, s)
-                        elseif noAutoClose and st and st.sideBySideUX and st.sideBySideUY then
-                            local cUX, cUY = ClampUIParentCenterOffset(f, st.sideBySideUX, st.sideBySideUY, s)
-                            SecureApplyPoint(f, cUX, cUY, s)
+                            SecureApplyPoint(f, savedPos.x, savedPos.y, s)
+                        elseif noAutoClose and st and st.frozenUX and st.frozenUY then
+                            SecureApplyPoint(f, st.frozenUX, st.frozenUY, s)
                         end
                     end
                 end
@@ -5985,11 +5965,12 @@ do
                 if yielding or disabled then
                     SyncOverlayMode(frame, spec.name)
                 else
+                    SyncFrameClamping(frame, spec.name)
                     SyncOverlayMode(frame, spec.name)
                     if frame.IsShown and frame:IsShown() then
                         openPanelsSnapshot[spec.name] = true
                         local st = GetFrameState(frame)
-                        ApplyBlizzardFrameTransform(frame, spec.name, st and st.wasOpenConfirmed)
+                        ApplyBlizzardFrameTransform(frame, spec.name)
                         if st then st.wasOpenConfirmed = true end
                     end
                 end
@@ -6008,12 +5989,16 @@ do
         local frame = _G[frameName]
         local st = frame and GetFrameState(frame)
         if st then
-            st.sideBySideUX = nil
-            st.sideBySideUY = nil
+            st.frozenUX = nil
+            st.frozenUY = nil
         end
         if frame and not self:IsYieldingBlizzardWindowsToEllesmereUI() then
             local orig = origUIPanelInfo[frameName]
             local defScale = (orig and orig.defaultScale) or 1.0
+            if type(frame.SetClampedToScreen) == "function" then
+                local defClamp = (orig and orig.clampedToScreen ~= nil) and orig.clampedToScreen or true
+                pcall(frame.SetClampedToScreen, frame, defClamp)
+            end
             SecureApplyScale(frame, defScale)
             if orig and orig.point and _G.UIParent then
                 if st then st.applyingPoint = true end
@@ -6055,6 +6040,13 @@ do
                 pcall(_G.UpdateUIPanelPositions, frame)
             else
                 SecureApplyPoint(frame, 0, 0, defScale)
+            end
+            if frame.IsShown and frame:IsShown() and (self.db.blizzWinNoAutoClose ~= false) and st then
+                local fx, fy = CaptureFrameCenterOffset(frame, frameName)
+                if fx and fy then
+                    st.frozenUX = fx
+                    st.frozenUY = fy
+                end
             end
             SyncAllUISpecialFrames()
             if showToast and frame.IsShown and frame:IsShown() then
