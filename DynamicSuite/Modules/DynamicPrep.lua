@@ -5603,19 +5603,26 @@ do
         local function isAddonLoaded(name)
             return type(isLoadedFn) == "function" and (isLoadedFn(name) == true)
         end
+        local function isOverriddenToDynamic(addonKey)
+            local gm = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.granularModes
+            if type(gm) == "table" and gm["DynamicPrep:" .. tostring(addonKey)] == "PRIORITISE_DYNAMIC" then
+                return true
+            end
+            return false
+        end
 
         -- 1. BlizzMove (standalone Blizzard frame mover/scaler)
-        if _G.BlizzMoveAPI ~= nil or isAddonLoaded("BlizzMove") then
+        if (_G.BlizzMoveAPI ~= nil or isAddonLoaded("BlizzMove")) and not isOverriddenToDynamic("BlizzMove") then
             return true, "BlizzMove"
         end
 
         -- 2. DeModal (standalone Blizzard multi-panel no-auto-close)
-        if _G.DeModal ~= nil or isAddonLoaded("DeModal") then
+        if (_G.DeModal ~= nil or isAddonLoaded("DeModal")) and not isOverriddenToDynamic("DeModal") then
             return true, "DeModal"
         end
 
         -- 3. MoveAny (when frame moving/scaling is enabled)
-        if isAddonLoaded("MoveAny") or type(_G.MoveAny) == "table" then
+        if (isAddonLoaded("MoveAny") or type(_G.MoveAny) == "table") and not isOverriddenToDynamic("MoveAny") then
             local maDisabled = false
             local maTab = _G.MATAB
             if type(maTab) == "table" and maTab["ENABLED"] == false then
@@ -8639,20 +8646,6 @@ function DynamicPrep:RenderWorkspace(parentFrame)
                 14
             )
 
-            local yieldBanner = CreateFrame("Frame", nil, cWin, "BackdropTemplate")
-            yieldBanner:SetHeight(32)
-            yieldBanner:SetPoint("TOPLEFT", cWin, "TOPLEFT", 14, -54)
-            yieldBanner:SetPoint("TOPRIGHT", cWin, "TOPRIGHT", -14, -54)
-            SetPixelBackdrop(yieldBanner, COLORS.BgSurface, { 0.220, 0.741, 0.973, 0.55 }, 1)
-            local ybTxt = CreateText(yieldBanner, "OVERLAY", "GameFontHighlightSmall")
-            ybTxt:SetPoint("LEFT", yieldBanner, "LEFT", 12, 0)
-            ybTxt:SetPoint("RIGHT", yieldBanner, "RIGHT", -12, 0)
-            ybTxt:SetJustifyH("LEFT")
-            ybTxt:SetWordWrap(true)
-            ybTxt:SetText("")
-            yieldBanner:Hide()
-            ws.blizzWinYieldBanner = yieldBanner
-
             local rNoAutoClose = CreateSpaciousRow(
                 cWin, -54,
                 "Keep Blizzard Windows Open Side-by-Side",
@@ -8742,18 +8735,8 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             rResetWin:BindRightControl(btnResetAllWin)
 
             local rows = { rNoAutoClose, rDraggable, rScrollScale, rResetWin }
-            function cWin:RefreshLayout(isYielding, yieldAddonName)
+            function cWin:RefreshLayout()
                 local y = -54
-                if isYielding then
-                    ybTxt:SetText(string.format("|cFF38BDF8Coexisting automatically with %s frame management|r  |cFF94A3B8(frame mover, scaler & No Auto-Close yielded)|r", tostring(yieldAddonName or "External")))
-                    yieldBanner:Show()
-                    yieldBanner:ClearAllPoints()
-                    yieldBanner:SetPoint("TOPLEFT", cWin, "TOPLEFT", 14, y)
-                    yieldBanner:SetPoint("TOPRIGHT", cWin, "TOPRIGHT", -14, y)
-                    y = y - 40
-                else
-                    yieldBanner:Hide()
-                end
                 for _, row in ipairs(rows) do
                     row:ClearAllPoints()
                     row:SetPoint("TOPLEFT", cWin, "TOPLEFT", 14, y)
@@ -9343,8 +9326,7 @@ function DynamicPrep:RefreshWorkspaceView()
             ws.blizzWinCard:ClearAllPoints()
             ws.blizzWinCard:SetPoint("TOPLEFT", cQoL, "BOTTOMLEFT", 0, -14)
             ws.blizzWinCard:SetPoint("TOPRIGHT", cQoL, "BOTTOMRIGHT", 0, -14)
-            local isYielding, yieldAddonName = self:GetBlizzardWindowYieldAddon()
-            local winH = ws.blizzWinCard:RefreshLayout(isYielding, yieldAddonName)
+            local winH = ws.blizzWinCard:RefreshLayout()
             tab3TotalH = tab3TotalH + 14 + winH
         end
         ws.tab3:SetHeight(tab3TotalH)

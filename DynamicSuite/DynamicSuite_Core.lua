@@ -308,17 +308,19 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
     },
     DynamicPrep = {
         "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs",
-        "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
+        "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
+        "BlizzMove", "DeModal", "MoveAny",
         "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
         addons = {
             "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs",
-            "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
+            "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
+            "BlizzMove", "DeModal", "MoveAny",
             "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
         },
         conflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
         hardConflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
-        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
-        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
+        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
+        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
         category = "Readiness & Automation",
     },
     DynamicGroup = {
@@ -1574,6 +1576,17 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
         end
     end
 
+    local isBlizzWinAutoYield = false
+    if tier == 2 and addonNameKey == "DynamicPrep" and (otherAddon == "BlizzMove" or otherAddon == "DeModal" or otherAddon == "MoveAny" or otherAddon == "EllesmereUI" or otherAddon == "EllesmereUIQoL" or otherAddon == "EllesmereUI_QoL" or otherAddon == "Leatrix_Plus" or otherAddon == "ElvUI") then
+        if ackAction == nil then
+            ackAction = "YIELD_TO_EXTERNAL"
+            isBlizzWinAutoYield = true
+        elseif ackAction == "YIELD_TO_EXTERNAL" then
+            isBlizzWinAutoYield = true
+        end
+        smartFeature = smartFeature or "Blizzard Window QoL: Side-by-Side Panels, Drag & Scroll Scale"
+    end
+
     local friendly = FRIENDLY_CONFLICT_NAMES[otherAddon] or otherAddon
     local displayTarget = (otherAddon == "DialogueUI" or otherAddon == "DialogUI" or otherAddon == "Plumber" or otherAddon == "Baganator" or otherAddon == "Immersion" or otherAddon == "Storyline" or otherAddon == "AutoTurnIn" or otherAddon == "WIM" or otherAddon == "EllesmereUI")
         and otherAddon or friendly
@@ -1591,7 +1604,7 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
         severity       = (tier == 2) and "GRANULAR" or "HARD",
         isPartial      = (tier == 2),
         isGranular     = (tier == 2),
-        isAutoYielded  = false,
+        isAutoYielded  = isBlizzWinAutoYield,
         isAcknowledged = (ackAction ~= nil),
         resolvedAction = ackAction,
         yieldFeature   = smartFeature or CONFLICT_YIELD_FEATURES[otherAddon],
