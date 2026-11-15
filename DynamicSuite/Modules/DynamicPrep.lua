@@ -647,7 +647,7 @@ DynamicPrep.CHANGELOG = {
     date = "15/11/2026",
     entries = {
         { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
-        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Talents & Spells, Group Finder, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Merchant, Mail, and Auction House open side-by-side without trapping Escape (with header Pin buttons), drag headers out of combat to save positions across reloads, Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows], strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding with dynamic banner detection for BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
+        { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House open side-by-side without trapping Escape (with header Pin buttons and click-to-raise layering), drag headers or hold Alt + Left-Drag anywhere on a window out of combat to save positions across reloads, Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows], strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding with dynamic banner detection for BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
         { type = "FIX",     text = "Midnight Season 2 Enchantable Slot List Fix (15/11/2026): updated equipped gear enchant scanning to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
         { type = "FEATURE", text = "Equipped Gear Missing-Enchant & Empty-Socket Detection (15/11/2026): added out-of-combat equipped gear auditing (ScanEquippedGearEnchantsAndGems) cached on PLAYER_ENTERING_WORLD, PLAYER_EQUIPMENT_CHANGED, SOCKET_INFO_UPDATE, and PLAYER_REGEN_ENABLED. Flags missing Midnight Season 2 enchants on max-level Head, Shoulder, Chest, Legs, Feet, Rings, Main Hand, and Off-Hand weapons (excluding shields/holdables and grey/white/heirloom items) and empty gem sockets across slots 1..18, surfacing a compact amber '!' badge in the Durability capsule, 'Enchants:' and 'Gems:' status lines in the Durability tooltip, and Left-Click Character Frame opening." },
         { type = "FEATURE", text = "Great Vault Mythic+ Telemetry, Group Finder Shortcut & Midnight Season 2 Consumables (15/11/2026): added weekly Mythic+ Great Vault run counts, 1/4/8 run threshold levels, and 'Reward Ready to Claim!' status to the Keystone capsule tooltip (guarded with pcall and _IsSecret), added Right-Click Group Finder toggling out of combat on the Keystone capsule, aligned DUNGEON_ABBREVIATIONS with DynamicGroup's Midnight Season 1/2 codes (DON, AOF, MR, VSA, FG, AK, PSF), and updated Midnight Season 2 consumable item IDs and Rank 2 Gold / Rank 1 Silver mappings." },
@@ -4754,16 +4754,22 @@ end
 do
     local SUPPORTED_BLIZZ_FRAMES = {
         { name = "CharacterFrame",     label = "Character" },
-        { name = "PlayerSpellsFrame",  label = "Talents & Spells", addon = "Blizzard_PlayerSpells",    protected = true },
-        { name = "PVEFrame",           label = "Group Finder",     addon = "Blizzard_GroupFinder",     protected = true },
-        { name = "CollectionsJournal", label = "Collections",      addon = "Blizzard_Collections" },
-        { name = "EncounterJournal",   label = "Adventure Guide",  addon = "Blizzard_EncounterJournal" },
-        { name = "ProfessionsFrame",   label = "Professions",      addon = "Blizzard_Professions",     protected = true },
-        { name = "AchievementFrame",   label = "Achievements",     addon = "Blizzard_AchievementUI" },
-        { name = "ItemUpgradeFrame",   label = "Item Upgrade",     addon = "Blizzard_ItemUpgradeUI" },
+        { name = "InspectFrame",       label = "Inspect",            addon = "Blizzard_InspectUI" },
+        { name = "DressUpFrame",       label = "Dressing Room" },
+        { name = "PlayerSpellsFrame",  label = "Talents & Spells",   addon = "Blizzard_PlayerSpells",    protected = true },
+        { name = "PVEFrame",           label = "Group Finder",       addon = "Blizzard_GroupFinder",     protected = true },
+        { name = "WeeklyRewardsFrame", label = "Great Vault",        addon = "Blizzard_WeeklyRewards" },
+        { name = "CommunitiesFrame",   label = "Guild & Communities", addon = "Blizzard_Communities" },
+        { name = "CollectionsJournal", label = "Collections",        addon = "Blizzard_Collections" },
+        { name = "EncounterJournal",   label = "Adventure Guide",    addon = "Blizzard_EncounterJournal" },
+        { name = "ProfessionsFrame",   label = "Professions",        addon = "Blizzard_Professions",     protected = true },
+        { name = "AchievementFrame",   label = "Achievements",       addon = "Blizzard_AchievementUI" },
+        { name = "ItemUpgradeFrame",   label = "Item Upgrade",       addon = "Blizzard_ItemUpgradeUI" },
+        { name = "CalendarFrame",      label = "Calendar",           addon = "Blizzard_Calendar" },
+        { name = "MacroFrame",         label = "Macros",             addon = "Blizzard_MacroUI" },
         { name = "MerchantFrame",      label = "Merchant" },
         { name = "MailFrame",          label = "Mail" },
-        { name = "AuctionHouseFrame",  label = "Auction House",    addon = "Blizzard_AuctionHouseUI" },
+        { name = "AuctionHouseFrame",  label = "Auction House",      addon = "Blizzard_AuctionHouseUI" },
     }
 
     local SUPPORTED_BY_NAME = {}
@@ -4888,10 +4894,10 @@ do
         if ok and sec and type(sec.Execute) == "function" and type(sec.SetFrameRef) == "function" then
             sec:Hide()
             local okProbe = pcall(function()
-                sec:SetAttribute("_ds_probe", 0)
-                sec:Execute([[ self:SetAttribute("_ds_probe", 1) ]])
+                sec:SetAttribute("ds_probe", 0)
+                sec:Execute([[ self:SetAttribute("ds_probe", 1) ]])
             end)
-            if okProbe and type(sec.GetAttribute) == "function" and sec:GetAttribute("_ds_probe") == 1 then
+            if okProbe and type(sec.GetAttribute) == "function" and sec:GetAttribute("ds_probe") == 1 then
                 pcall(sec.SetFrameRef, sec, "uip", parent)
                 secureHandler = sec
                 secureHandlerWorks = true
@@ -5245,67 +5251,89 @@ do
             if _G.GameTooltip then _G.GameTooltip:Hide() end
         end)
 
-        ov:RegisterForDrag("LeftButton")
-        ov:SetScript("OnDragStart", function(selfOv, button)
-            if button ~= "LeftButton" then return end
+        local function BeginBlizzFrameDrag(frameObj, fName, state)
             if InCombat() or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
             if not (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false) then return end
             local uip = _G.UIParent
             if not uip or type(_G.GetCursorPosition) ~= "function" then return end
+            if type(frameObj.Raise) == "function" then
+                pcall(frameObj.Raise, frameObj)
+            end
             local curX, curY = _G.GetCursorPosition()
             local uipEff = (uip.GetEffectiveScale and uip:GetEffectiveScale()) or 1
             if uipEff <= 0 then uipEff = 1 end
-            local s = GetActiveFrameScale(frameName)
-            local fcX, fcY = frame:GetCenter()
+            local s = GetActiveFrameScale(fName)
+            local fcX, fcY = frameObj:GetCenter()
             local ucX, ucY = uip:GetCenter()
             local startUX, startUY
             if type(fcX) == "number" and type(fcY) == "number" and type(ucX) == "number" and type(ucY) == "number" then
                 startUX = (fcX * s) - ucX
                 startUY = (fcY * s) - ucY
             else
-                local saved = DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[frameName]
+                local saved = DynamicPrep.db.windowPositions and DynamicPrep.db.windowPositions[fName]
                 startUX = (saved and saved.x) or 0
                 startUY = (saved and saved.y) or 0
             end
-            st.isDragging = true
-            st.dragStartCurX = curX
-            st.dragStartCurY = curY
-            st.dragStartUX = startUX
-            st.dragStartUY = startUY
-            st.dragScale = s
-            st.lastUX = startUX
-            st.lastUY = startUY
+            state.isDragging = true
+            state.dragStartCurX = curX
+            state.dragStartCurY = curY
+            state.dragStartUX = startUX
+            state.dragStartUY = startUY
+            state.dragScale = s
+            state.lastUX = startUX
+            state.lastUY = startUY
 
-            selfOv:SetScript("OnUpdate", function()
-                if not st.isDragging or InCombat() then
-                    st.isDragging = false
-                    selfOv:SetScript("OnUpdate", nil)
+            local tickerHost = state.overlay or ov
+            tickerHost:SetScript("OnUpdate", function()
+                if not state.isDragging or InCombat() then
+                    state.isDragging = false
+                    tickerHost:SetScript("OnUpdate", nil)
                     return
                 end
                 local nx, ny = _G.GetCursorPosition()
-                local dUX = (nx - st.dragStartCurX) / uipEff
-                local dUY = (ny - st.dragStartCurY) / uipEff
-                local cUX, cUY = ClampUIParentCenterOffset(frame, st.dragStartUX + dUX, st.dragStartUY + dUY, st.dragScale)
-                st.lastUX = cUX
-                st.lastUY = cUY
-                SecureApplyPoint(frame, cUX, cUY, st.dragScale)
+                local dUX = (nx - state.dragStartCurX) / uipEff
+                local dUY = (ny - state.dragStartCurY) / uipEff
+                local cUX, cUY = ClampUIParentCenterOffset(frameObj, state.dragStartUX + dUX, state.dragStartUY + dUY, state.dragScale)
+                state.lastUX = cUX
+                state.lastUY = cUY
+                SecureApplyPoint(frameObj, cUX, cUY, state.dragScale)
             end)
-        end)
+        end
 
-        ov:SetScript("OnDragStop", function(selfOv)
-            if not st.isDragging then return end
-            st.isDragging = false
-            selfOv:SetScript("OnUpdate", nil)
+        local function FinishBlizzFrameDrag(frameObj, fName, state)
+            if not state.isDragging then return end
+            state.isDragging = false
+            local tickerHost = state.overlay or ov
+            tickerHost:SetScript("OnUpdate", nil)
             if InCombat() or not DynamicPrep.db then return end
-            local cUX, cUY = ClampUIParentCenterOffset(frame, st.lastUX or 0, st.lastUY or 0, st.dragScale or GetActiveFrameScale(frameName))
+            local cUX, cUY = ClampUIParentCenterOffset(frameObj, state.lastUX or 0, state.lastUY or 0, state.dragScale or GetActiveFrameScale(fName))
             DynamicPrep.db.windowPositions = DynamicPrep.db.windowPositions or {}
-            DynamicPrep.db.windowPositions[frameName] = {
+            DynamicPrep.db.windowPositions[fName] = {
                 point = "CENTER",
                 relPoint = "CENTER",
                 x = math.floor(cUX * 100 + 0.5) / 100,
                 y = math.floor(cUY * 100 + 0.5) / 100,
             }
-            SecureApplyPoint(frame, cUX, cUY, st.dragScale or GetActiveFrameScale(frameName))
+            SecureApplyPoint(frameObj, cUX, cUY, state.dragScale or GetActiveFrameScale(fName))
+        end
+
+        st.beginDrag = function() BeginBlizzFrameDrag(frame, frameName, st) end
+        st.finishDrag = function() FinishBlizzFrameDrag(frame, frameName, st) end
+
+        ov:RegisterForDrag("LeftButton")
+        ov:SetScript("OnMouseDown", function()
+            if InCombat() or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
+            if type(frame.Raise) == "function" then
+                pcall(frame.Raise, frame)
+            end
+        end)
+        ov:SetScript("OnDragStart", function(_, button)
+            if button ~= "LeftButton" then return end
+            BeginBlizzFrameDrag(frame, frameName, st)
+        end)
+
+        ov:SetScript("OnDragStop", function()
+            FinishBlizzFrameDrag(frame, frameName, st)
         end)
 
         ov:SetScript("OnMouseUp", function(selfOv, button)
@@ -5352,7 +5380,8 @@ do
             _G.GameTooltip:SetOwner(selfOv, "ANCHOR_TOP")
             _G.GameTooltip:AddLine("DynamicPrep Window Controls", 0.976, 0.451, 0.086)
             if canDrag then
-                _G.GameTooltip:AddLine("Left-Drag: Move and save position", 0.90, 0.93, 0.96)
+                _G.GameTooltip:AddLine("Left-Drag Header: Move and save position", 0.90, 0.93, 0.96)
+                _G.GameTooltip:AddLine("Alt + Left-Drag Anywhere: Move window from any spot", 0.90, 0.93, 0.96)
             end
             if canScale then
                 _G.GameTooltip:AddLine("Ctrl + Scroll: Scale this session (70%-140%)", 0.90, 0.93, 0.96)
@@ -5432,7 +5461,35 @@ do
         SnapshotOrigUIPanelInfo(frame, frameName)
         EnsureHeaderOverlay(frame, frameName)
 
+        if type(frame.RegisterForDrag) == "function" then
+            pcall(frame.RegisterForDrag, frame, "LeftButton")
+        end
+
         if type(frame.HookScript) == "function" then
+            frame:HookScript("OnMouseDown", function(clickedFrame)
+                if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
+                if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
+                if type(clickedFrame.Raise) == "function" then
+                    pcall(clickedFrame.Raise, clickedFrame)
+                end
+            end)
+            frame:HookScript("OnDragStart", function(dragFrame, button)
+                if button ~= "LeftButton" then return end
+                if not (_G.IsAltKeyDown and _G.IsAltKeyDown()) then return end
+                if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
+                if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
+                if not (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false) then return end
+                local st = blizzWinState[dragFrame]
+                if st and st.beginDrag then
+                    st.beginDrag()
+                end
+            end)
+            frame:HookScript("OnDragStop", function(dragFrame)
+                local st = blizzWinState[dragFrame]
+                if st and st.finishDrag then
+                    st.finishDrag()
+                end
+            end)
             frame:HookScript("OnShow", function(shownFrame)
                 if InCombat() or IsModuleDisabledInSuite("DynamicPrep") then return end
                 if DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
@@ -8597,7 +8654,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             local rNoAutoClose = CreateSpaciousRow(
                 cWin, -54,
                 "Keep Blizzard Windows Open Side-by-Side",
-                "Keep Character, Talents, Dungeon Finder, Collections, Adventure Guide, Professions, Achievements, Upgrades, Merchant, Mail & Auction House open side-by-side without trapping Escape.",
+                "Keep Character, Inspect, Dressing Room, Talents, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Achievements, Upgrades, Calendar, Macros, Merchant, Mail & Auction House open side-by-side without trapping Escape.",
                 200
             )
             local pillsNoAutoClose = CreateSegmentedPills(
@@ -8618,7 +8675,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             local rDraggable = CreateSpaciousRow(
                 cWin, -114,
                 "Draggable Blizzard Windows (Save Position)",
-                "Drag supported window headers out of combat to reposition and save across reloads. Right-Click a header to reset its position & scale.",
+                "Drag supported window headers (or hold Alt + Left-Drag anywhere on a window) out of combat to move and save positions across reloads. Click any open window to bring it to the front; Right-Click a header to reset.",
                 200
             )
             local pillsDraggable = CreateSegmentedPills(
@@ -10120,13 +10177,18 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
                 DynamicPrep:EnsureCatalystHooks()
                 DynamicPrep:InitBlizzardWindowQoL(arg1)
             end
-        elseif arg1 == "Blizzard_PlayerSpells"
+        elseif arg1 == "Blizzard_InspectUI"
+            or arg1 == "Blizzard_PlayerSpells"
             or arg1 == "Blizzard_GroupFinder"
+            or arg1 == "Blizzard_WeeklyRewards"
+            or arg1 == "Blizzard_Communities"
             or arg1 == "Blizzard_Collections"
             or arg1 == "Blizzard_EncounterJournal"
             or arg1 == "Blizzard_Professions"
             or arg1 == "Blizzard_AchievementUI"
             or arg1 == "Blizzard_ItemUpgradeUI"
+            or arg1 == "Blizzard_Calendar"
+            or arg1 == "Blizzard_MacroUI"
             or arg1 == "Blizzard_AuctionHouseUI"
             or arg1 == "BlizzMove"
             or arg1 == "DeModal"
