@@ -1,5 +1,14 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.1.0 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.1.1 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.1.1 (15/11/2026)
+
+### DynamicSuite Hub & All HUD Modules
+- **HUD Edit Mode Mover Visibility & Live Preview Fix:** Fixed `isHudEditModeActive` lexical scoping in `DynamicSuite_UI.lua` so `ShouldShowHudMoverInEditMode` and `SetHudVisibility` accurately detect active HUD Edit Mode. All HUDs configured as `Shown` (`ALWAYS`, `GROUP`, `OOC`, or `INSTANCE`) now immediately display both their live preview frame and high-contrast mover overlay when `/ds hud` opens -- even while solo or waiting for an event -- while explicitly selecting a `Hidden` (`OFF`) HUD from the dropdown or clicking a card's `[Edit HUD]` button previews that HUD with its `HIDDEN (Click Shown to Enable)` badge.
+- **Prep Bar & Clickable Raid Buffs Independent Drag Shields:** Split `DynamicPrep`'s Edit Mode handlers into independent `SetBarEditMode` and `SetBuffsEditMode` states so toggling one never resets or hides the other, elevated HUD drag shields to `HIGH` strata (`FrameLevel + 50`) with `SetIgnoreParentAlpha(true)`, and disabled child segment/button mouse capture during HUD Edit Mode so `Prep Bar`, `Raid Buffs`, `Alert Toast`, `Focus Icons`, `World Flares`, and `Chat Frame` drag smoothly across their entire surface.
+- **First-Open Left Suite Rail Initialization Fix:** Replaced the C++ `ScrollFrame` scissor container on the Left Suite Rail with a direct-sized frame container and invoked `RefreshLeftRailLayout()` after `RefreshLeftRailVisuals` registration and on `DynamicSuiteMainFrame:OnShow`, ensuring all 8 module cards and studio tools render on the very first `/ds` open after login or `/reload`.
 
 ---
 

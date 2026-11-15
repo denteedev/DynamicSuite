@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.1.0"
+    local fb = fallback or "2.1.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -99,7 +99,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.1.0"
+            or "2.1.1"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -5046,7 +5046,8 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
     local mover = CreateFrame("Button", nil, targetFrame, "BackdropTemplate")
     mover:SetAllPoints(targetFrame)
     mover:SetIgnoreParentAlpha(true)
-    mover:SetFrameLevel((targetFrame:GetFrameLevel() or 10) + 30)
+    mover:SetFrameStrata("HIGH")
+    mover:SetFrameLevel(math.max((targetFrame:GetFrameLevel() or 10) + 50, 80))
     mover:EnableMouse(false)
     mover:EnableMouseWheel(true)
     mover:RegisterForDrag("LeftButton")
@@ -6254,7 +6255,8 @@ function DM:SyncEditBarStates()
             if bar.editMover.headerPill then bar.editMover.headerPill:Hide() end
             bar.editMover:EnableMouse(showMover)
             if showMover then
-                bar.editMover:SetFrameLevel((bar:GetFrameLevel() or 10) + 30)
+                bar.editMover:SetFrameStrata("HIGH")
+                bar.editMover:SetFrameLevel(math.max((bar:GetFrameLevel() or 10) + 50, 80))
                 bar.editMover:Show()
                 if bar.editMover.RefreshMoverVisual then
                     bar.editMover:RefreshMoverVisual()
@@ -6272,7 +6274,7 @@ function DM:SyncEditBarStates()
             self:SetBarChildButtonsMouseEnabled(bar, not showMover)
             if showMover then
                 local isNorm = self:IsBarNormallyShown(hudKey)
-                bar:SetAlpha(isNorm and 1.0 or 0.45)
+                bar:SetAlpha(isNorm and 1.0 or 0.65)
                 bar:Show()
             else
                 if isTarget then
@@ -6428,7 +6430,6 @@ function DM:SetEditMode(enabled, opts)
         self.isDraggingHUD = false
         HideSnapGuides()
     end
-    self:SyncEditBarStates()
 
     if not inCombat then
         self:RefreshTargetBar()
@@ -6436,6 +6437,7 @@ function DM:SetEditMode(enabled, opts)
         self:UpdateTargetBarVisibility()
         self:UpdateFlareBarVisibility()
     end
+    self:SyncEditBarStates()
 
     self:RefreshHudEditToggleButtons()
     self:RefreshAll()
@@ -9623,6 +9625,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "15/11/2026",
     entries = {
+        { type = "FIX",     text = "Release v2.1.1 - HUD Edit Mode Mover Visibility & Drag Shield Layering (15/11/2026): Promoted the Target Icon Bar and World Flare Bar mover overlays (editMover) to HIGH frame strata (FrameLevel + 50) with SetIgnoreParentAlpha(true) and ordered SyncEditBarStates() after bar refreshes in SetEditMode, ensuring any bar set to Shown (Group or Always) immediately displays its live preview and interactive drag shield in HUD Edit Mode (even while solo), while explicitly selecting a Hidden (Off) bar from the HUD dropdown or clicking [Edit HUD] previews it with the 'HIDDEN (Click Shown to Enable)' badge." },
         { type = "FIX",     text = "Release v2.1.0 - World Flare Keybind Dispatch & Instant Telemetry Refresh (15/11/2026): Anchored secure World Flare cycle/clear buttons on-screen (1x1, alpha 0, non-mouse-blocking), removed the SecureHandlerWrapScript button-name override so LeftButton dispatches /wm [@cursor] and /cwm all reliably in and out of combat across key-down and key-up CVars, added Right-Click unbind, and wired instant status telemetry bar and proportional 'World Flare Keys (...)' sub-tab updates whenever bindings are captured, cleared, or reset." },
         { type = "UI",      text = "Compact Draggable HUD Edit Dock & Hidden-By-Default Movers (15/11/2026): Redesigned standalone HUD Edit Mode into a compact 560x74 2-row draggable inspector with a HUD Selector Dropdown, non-truncated Hidden/Shown toggles, Grid, Reset, Back to Suite, X/Y steppers, Center X/Y, and Scale slider (60%-150%), keeping at least 60px on-screen near screen edges while clamping bars inside screen bounds, hiding disabled movers by default, temporarily previewing explicitly selected hidden bars with 'HIDDEN (Click Shown to Enable)', and standardising Obsidian/Blaze-Orange [Edit HUD] buttons." },
         { type = "FIX", text = "World Flare Hardware Keybinds & Custom Sequence Order (15/11/2026): Fixed Cycle Ground Flare (F4) and Clear All Flares (F5) hardware keybinds so they fire reliably in and out of combat, walk your saved and enabled World Flare Cycle Sequence in exact custom order via SecureHandlerWrapScript, and update the floating World Flare Bar to match your custom sequence order and enabled flares." },

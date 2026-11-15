@@ -3772,7 +3772,7 @@ function addonTable.CreateMainConfigUI()
     local leftRail = CreateFrame("Frame", nil, f)
     leftRail:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
     leftRail:SetPoint("BOTTOMLEFT", footer, "TOPLEFT", 0, 0)
-    leftRail:SetWidth(RAIL_W)
+    leftRail:SetSize(RAIL_W, PANEL_H - HDR_H - DOCK_H)
     f.leftRail = leftRail
 
     leftRail.bg = UI.SolidTex(leftRail, "BACKGROUND", 1, UI.COLORS.RAIL_BG.r, UI.COLORS.RAIL_BG.g, UI.COLORS.RAIL_BG.b, UI.COLORS.RAIL_BG.a)
@@ -4130,16 +4130,19 @@ function addonTable.CreateMainConfigUI()
         return g
     end
 
-    local railModuleScroll = CreateFrame("ScrollFrame", nil, leftRail)
+    local railModuleScroll = CreateFrame("Frame", nil, leftRail)
     railModuleScroll:SetPoint("TOPLEFT", leftRail, "TOPLEFT", 0, -54)
     railModuleScroll:SetPoint("BOTTOMRIGHT", leftRail, "BOTTOMRIGHT", 0, 118)
-    railModuleScroll:SetClipsChildren(true)
+    railModuleScroll:SetSize(RAIL_W, math.max(304, PANEL_H - HDR_H - DOCK_H - 172))
     railModuleScroll:EnableMouseWheel(true)
+    railModuleScroll.GetVerticalScroll = function() return 0 end
+    railModuleScroll.SetVerticalScroll = function() end
+    railModuleScroll.UpdateScrollChildRect = function() end
     f.railModuleScroll = railModuleScroll
 
     local railModuleChild = CreateFrame("Frame", nil, railModuleScroll)
+    railModuleChild:SetPoint("TOPLEFT", railModuleScroll, "TOPLEFT", 0, 0)
     railModuleChild:SetSize(RAIL_W, 304)
-    railModuleScroll:SetScrollChild(railModuleChild)
     f.railModuleChild = railModuleChild
 
     railModuleScroll:SetScript("OnMouseWheel", function(self, delta)
@@ -4668,7 +4671,7 @@ function addonTable.CreateMainConfigUI()
                         host._activeModHost = modHost
 
                         if f.verPill and f.verPill.label then
-                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "2.1.0"
+                            local mVer = (regMod and regMod.version) or addonTable.ADDON_VERSION or "2.1.1"
                             f.verPill.label:SetText("v" .. tostring(mVer))
                         end
                         UpdateStatusBar(true)
@@ -4711,6 +4714,9 @@ function addonTable.CreateMainConfigUI()
     end
 
     local function RefreshLeftRailLayout()
+        if leftRail then leftRail:Show() end
+        if railModuleScroll then railModuleScroll:Show() end
+        if railModuleChild then railModuleChild:Show() end
         local ordered = UI.GetOrderedModuleList()
         wipe(railModuleCards)
         for idx, modInfo in ipairs(ordered) do
@@ -4728,6 +4734,7 @@ function addonTable.CreateMainConfigUI()
                 card:ClearAllPoints()
                 card:SetPoint("TOPLEFT", railModuleChild, "TOPLEFT", 10, -((idx - 1) * 38))
                 card.railIndex = idx
+                card:Show()
                 if card.UpdateNudgeVisibility then
                     card.UpdateNudgeVisibility()
                 end
@@ -5072,7 +5079,7 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        local curVer = addonTable.ADDON_VERSION or "2.1.0"
+        local curVer = addonTable.ADDON_VERSION or "2.1.1"
         local curSig = f.GetSuiteChangelogSignature and f.GetSuiteChangelogSignature() or curVer
         local seenVer = gTbl.lastSeenChangelogVer or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogVer)
         local seenSig = gTbl.lastSeenChangelogSig or (DynamicLoadDB and DynamicLoadDB.lastSeenChangelogSig)
@@ -5127,6 +5134,7 @@ function addonTable.CreateMainConfigUI()
         end
     end
     f.RefreshLeftRailVisuals = RefreshLeftRailVisuals
+    RefreshLeftRailLayout()
     end
 
     ----------------------------------------------------------------------------
@@ -6966,7 +6974,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.0"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.1"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -9165,6 +9173,8 @@ function addonTable.CreateMainConfigUI()
     end)
 
     local selectedHudTarget = "TOAST" -- "TOAST", "PREP", "TARGET", "FLARE", "prepBuffs", "CHAT"
+    local isHudEditModeActive = false
+    local isExitingHudEditMode = false
     local hudTargetMeta = {
         ["TOAST"]     = { label = "Alert Toast",     header = "POSITIONING: ALERT TOAST",     owner = "DynamicLoad",   defPoint = "TOP",        defRelPoint = "TOP",        defX = 0, defY = -140 },
         ["PREP"]      = { label = "Prep Bar",        header = "POSITIONING: PREP BAR",        owner = "DynamicPrep",   defPoint = "TOP",        defRelPoint = "TOP",        defX = 0, defY = -16  },
@@ -10593,10 +10603,13 @@ function addonTable.CreateMainConfigUI()
         end
         stateCarrier._dsEditModeActive = true
         if hudFrame.SetClampedToScreen then hudFrame:SetClampedToScreen(false) end
+        if hudFrame.mover and hudFrame.mover.Hide then hudFrame.mover:Hide() end
+        if hudFrame.editDragShield and hudFrame.editDragShield.Hide then hudFrame.editDragShield:Hide() end
         if not stateCarrier._dsDragShield then
             local ar, ag, ab = UI.GetActiveAccentColor()
             local shieldParent = (targetKey == "CHAT") and UIParent or hudFrame
             local shield = CreateFrame("Button", nil, shieldParent)
+            if shield.SetIgnoreParentAlpha then shield:SetIgnoreParentAlpha(true) end
             if targetKey == "CHAT" then
                 shield:SetFrameStrata("DIALOG")
                 local cfScale = (hudFrame.GetScale and hudFrame:GetScale()) or 1.0
@@ -10615,9 +10628,10 @@ function addonTable.CreateMainConfigUI()
                     shield:SetPoint("BOTTOMRIGHT", hudFrame, "BOTTOMRIGHT", rIn, bIn)
                 end
             else
+                shield:SetFrameStrata("HIGH")
                 shield:SetAllPoints(hudFrame)
             end
-            shield:SetFrameLevel((hudFrame:GetFrameLevel() or 10) + 50)
+            shield:SetFrameLevel(math.max((hudFrame:GetFrameLevel() or 10) + 50, 80))
             shield:EnableMouse(true)
             shield:EnableMouseWheel(true)
             shield:RegisterForClicks("AnyUp", "AnyDown")
@@ -10631,6 +10645,7 @@ function addonTable.CreateMainConfigUI()
             shield.bg:SetAllPoints()
 
             local badgeFrame = CreateFrame("Frame", nil, shield)
+            if badgeFrame.SetIgnoreParentAlpha then badgeFrame:SetIgnoreParentAlpha(true) end
             badgeFrame:SetAllPoints(shield)
             badgeFrame:SetFrameLevel(shield:GetFrameLevel() + 5)
             UI.CreatePixelBorder(badgeFrame, ar, ag, ab, 1.0, 3)
@@ -10999,12 +11014,15 @@ function addonTable.CreateMainConfigUI()
         local isSelected = (selectedHudTarget == targetKey or selectedHudTarget == "ALL")
         local isVis = GetHudVisibility(targetKey)
         if not isVis then
-            hudFrame:SetAlpha(0.15)
+            hudFrame:SetAlpha(0.60)
         else
-            hudFrame:SetAlpha(isSelected and 1.0 or 0.30)
+            hudFrame:SetAlpha(isSelected and 1.0 or 0.85)
         end
         local _, _, curX, curY = GetStoredHudPos(targetKey)
-        local shieldLvl = (hudFrame:GetFrameLevel() or 10) + 50
+        local shieldLvl = math.max((hudFrame:GetFrameLevel() or 10) + 50, 80)
+        if targetKey ~= "CHAT" then
+            activeShield:SetFrameStrata("HIGH")
+        end
         activeShield:SetFrameLevel(shieldLvl)
         if activeShield.badgeFrame then
             activeShield.badgeFrame:SetFrameLevel(shieldLvl + 5)
@@ -11139,6 +11157,9 @@ function addonTable.CreateMainConfigUI()
         end
 
         if _G.DynamicMarker then
+            if _G.DynamicMarker.RegisterWithSuiteHudEditMode and not _G.DynamicMarker._registeredSuiteHudCallback then
+                pcall(_G.DynamicMarker.RegisterWithSuiteHudEditMode, _G.DynamicMarker)
+            end
             if explicitlyPreviewedHiddenHud == "TARGET" and selectedHudTarget == "TARGET" then
                 _G.DynamicMarker._previewHiddenMoverKey = "TargetBar"
             elseif explicitlyPreviewedHiddenHud == "FLARE" and selectedHudTarget == "FLARE" then
@@ -11155,7 +11176,7 @@ function addonTable.CreateMainConfigUI()
                 _G.DynamicLoadToastFrame._dsEditModeActive = true
                 local isToastFocused = (selectedHudTarget == "TOAST" or selectedHudTarget == "ALL")
                 local isToastVis = IsHudNormallyShown("TOAST")
-                _G.DynamicLoadToastFrame:SetAlpha((not isToastVis) and 0.45 or (isToastFocused and 1.0 or 0.30))
+                _G.DynamicLoadToastFrame:SetAlpha((not isToastVis) and 0.60 or (isToastFocused and 1.0 or 0.85))
                 if _G.DynamicLoadToastFrame.SetBackdropBorderColor then
                     if isToastFocused then
                         _G.DynamicLoadToastFrame:SetBackdropBorderColor(ar, ag, ab, 1.0)
@@ -11207,7 +11228,7 @@ function addonTable.CreateMainConfigUI()
                             if k ~= "CHAT" then
                                 liveFrame:Show()
                             end
-                            liveFrame:SetAlpha((not isVis) and 0.45 or (isFocused and 1.0 or 0.30))
+                            liveFrame:SetAlpha((not isVis) and 0.60 or (isFocused and 1.0 or 0.85))
                             AttachOrUpdateDragShield(liveFrame, k, true)
                         else
                             carrier._dsEditModeActive = false
@@ -11414,8 +11435,8 @@ function addonTable.CreateMainConfigUI()
         end
     end
 
-    local isHudEditModeActive = false
-    local isExitingHudEditMode = false
+    isHudEditModeActive = false
+    isExitingHudEditMode = false
     addonTable.IsHudEditModeActive = function()
         return isHudEditModeActive
     end
@@ -13245,7 +13266,7 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.1.0"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.1.1"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -13555,6 +13576,7 @@ function addonTable.CreateMainConfigUI()
         end
 
         addonTable.ApplySuiteThemeAndGeometry()
+        if f.RefreshLeftRailLayout then f.RefreshLeftRailLayout() end
         if f.UpdateTabActiveIndicators then f.UpdateTabActiveIndicators() end
         if f.UpdateStatusBar then f.UpdateStatusBar() end
         if f.UpdateStashButton then f.UpdateStashButton() end
@@ -13575,6 +13597,7 @@ function addonTable.CreateMainConfigUI()
                 self._postLayoutPending = nil
                 if not self:IsShown() then return end
                 addonTable.ApplySuiteThemeAndGeometry()
+                if self.RefreshLeftRailLayout then self.RefreshLeftRailLayout() end
                 if self.UpdateTabActiveIndicators then self.UpdateTabActiveIndicators() end
                 if self.UpdateStatusBar then self.UpdateStatusBar() end
                 if self.UpdateStashButton then self.UpdateStashButton() end
@@ -13977,7 +14000,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.0") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.1") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -14038,7 +14061,7 @@ function addonTable.HookGameMenu()
             cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
             if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
-            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.0") .. "|r")
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.1.1") .. "|r")
             openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
             if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
@@ -14144,7 +14167,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "2.1.0",
+        version = addonTable.ADDON_VERSION or "2.1.1",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,

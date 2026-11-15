@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.1.0"
+    local fb = fallback or "2.1.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -208,7 +208,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.0"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.1.1"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -3000,7 +3000,7 @@ function DynamicPrep:CreatePrepBar()
     end
 
     function bar:SetEditMode(state)
-        DynamicPrep:SetEditMode(state)
+        DynamicPrep:SetBarEditMode(state)
     end
 
     self.prepBarFrame = bar
@@ -3524,7 +3524,7 @@ end
 
 function DynamicPrep:ShouldShowPrepBar()
     if not self.db then return true end
-    if self.inEditMode then return true end
+    if self.inBarEditMode or (self.inEditMode and self.inBarEditMode ~= false) or (self.prepBarFrame and self.prepBarFrame._dsEditModeActive) then return true end
     local mode = self.db.displayMode or "ALWAYS"
     if mode == "HIDDEN" then
         return false
@@ -3687,11 +3687,16 @@ function DynamicPrep:RefreshBar()
         seg:SetPoint("LEFT", bar, "LEFT", xCursor, 0)
         seg:SetWidth(segWidth)
         seg.divider:Hide()
+        local inBarEdit = (self.inBarEditMode or (self.inEditMode and self.inBarEditMode ~= false) or bar._dsEditModeActive) and true or false
+        seg:EnableMouse(not inBarEdit)
         seg:Show()
         xCursor = xCursor + segWidth + 4
     end
 
-    bar:SetWidth(math.max(160, xCursor + 2))
+    bar:SetWidth(math.max(220, xCursor + 2))
+    if bar.mover and bar._dsEditModeActive then
+        bar.mover:Hide()
+    end
     if not (InCombatLockdown and InCombatLockdown()) and not self._prepRefreshingGeom and not bar._dsDragging then
         local pt, rp, curX, curY = self:GetSavedBarPosition()
         local cx, cy, didClamp = ClampPrepFrameToScreen(bar, pt or "TOP", rp or "TOP", curX or 0, curY or -8, 320, 32)
@@ -8111,12 +8116,13 @@ DynamicPrep.ResetModuleDefaults = ResetPrepModuleDefaults
 -- ============================================================================
 -- Edit Mode Toggle & HUD Positioning (Non-Recursive Safe Wrappers)
 -- ============================================================================
-local function ApplyPrepEditMode(state)
+function DynamicPrep:SetBarEditMode(state)
     local enabled = state and true or false
     if enabled and InCombatLockdown and InCombatLockdown() then
         return
     end
-    DynamicPrep.inEditMode = enabled
+    DynamicPrep.inBarEditMode = enabled
+    DynamicPrep.inEditMode = (DynamicPrep.inBarEditMode or DynamicPrep.inBuffsEditMode) and true or false
     if enabled then
         GameTooltip:Hide()
         DynamicPrep:HideBarPopovers()
@@ -8126,24 +8132,21 @@ local function ApplyPrepEditMode(state)
         if not enabled and bar.mover then
             bar.mover:SetScript("OnUpdate", nil)
         end
+        local useInternalMover = enabled and not bar._dsEditModeActive
         if bar.editDragShield then
-            bar.editDragShield:SetShown(enabled)
+            bar.editDragShield:SetShown(useInternalMover)
         elseif bar.mover then
-            bar.mover:SetShown(enabled)
+            bar.mover:SetShown(useInternalMover)
         end
         if not enabled and bar._dsDragShield then
             bar._dsDragShield:Hide()
         end
-    end
-    if DynamicPrep.clickableBuffBar then
-        if not enabled and DynamicPrep.clickableBuffBar.mover then
-            DynamicPrep.clickableBuffBar.mover:SetScript("OnUpdate", nil)
-        end
-        if DynamicPrep.clickableBuffBar.mover then
-            DynamicPrep.clickableBuffBar.mover:SetShown(enabled)
-        end
-        if not enabled and DynamicPrep.clickableBuffBar._dsDragShield then
-            DynamicPrep.clickableBuffBar._dsDragShield:Hide()
+        if bar.segmentFrames then
+            for _, seg in pairs(bar.segmentFrames) do
+                if seg and seg.EnableMouse then
+                    seg:EnableMouse(not enabled)
+                end
+            end
         end
     end
     DynamicPrep:UpdateFolioSecureButton()
@@ -8151,9 +8154,37 @@ local function ApplyPrepEditMode(state)
         DynamicPrep.pendingBarRefreshAfterCombat = true
     else
         DynamicPrep:RefreshBar()
-        if DynamicPrep.RefreshClickableBuffs then
-            DynamicPrep:RefreshClickableBuffs(true)
+    end
+end
+
+function DynamicPrep:SetBuffsEditMode(state)
+    local enabled = state and true or false
+    if enabled and InCombatLockdown and InCombatLockdown() then
+        return
+    end
+    DynamicPrep.inBuffsEditMode = enabled
+    DynamicPrep.inEditMode = (DynamicPrep.inBarEditMode or DynamicPrep.inBuffsEditMode) and true or false
+    if enabled then
+        GameTooltip:Hide()
+        DynamicPrep:HideBarPopovers()
+    end
+    local bar = DynamicPrep.clickableBuffBar or (not (InCombatLockdown and InCombatLockdown()) and DynamicPrep:CreateClickableBuffBar())
+    if bar then
+        if not enabled and bar.mover then
+            bar.mover:SetScript("OnUpdate", nil)
         end
+        local useInternalMover = enabled and not bar._dsEditModeActive
+        if bar.mover then
+            bar.mover:SetShown(useInternalMover)
+        end
+        if not enabled and bar._dsDragShield then
+            bar._dsDragShield:Hide()
+        end
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        DynamicPrep._pendingCrbAfterCombat = true
+    elseif DynamicPrep.RefreshClickableBuffs then
+        DynamicPrep:RefreshClickableBuffs(true)
     end
 end
 
@@ -8167,7 +8198,8 @@ function DynamicPrep:SetEditMode(arg1, arg2)
     if enabled and InCombatLockdown and InCombatLockdown() then
         return
     end
-    ApplyPrepEditMode(enabled)
+    DynamicPrep:SetBarEditMode(enabled)
+    DynamicPrep:SetBuffsEditMode(enabled)
 end
 
 local function NudgePrepHUD(arg1, arg2, arg3)
@@ -11123,7 +11155,7 @@ function DynamicPrep:RefreshCombatBuffAlert()
 end
 
 function DynamicPrep:ShouldShowRaidBuffsForZone()
-    if self.inEditMode or self.previewRaidBuffs then
+    if self.inBuffsEditMode or (self.inEditMode and self.inBuffsEditMode ~= false) or (self.clickableBuffBar and self.clickableBuffBar._dsEditModeActive) or self.previewRaidBuffs then
         return true
     end
     if not self.db or not self.db.raidBuffs or not self.db.raidBuffs.enabled then
@@ -11390,7 +11422,7 @@ function DynamicPrep:CreateClickableBuffBar()
     end
 
     function bar:SetEditMode(state)
-        DynamicPrep:SetEditMode(state)
+        DynamicPrep:SetBuffsEditMode(state)
     end
 
     bar.NudgeHUD = function(_, dx, dy) DynamicPrep:NudgeBuffBarHUD(dx, dy) end
@@ -12013,7 +12045,8 @@ function DynamicPrep:ScanAndPopulateRaidBuffQueue()
     end
 
     -- If in HUD Edit Mode and all buffs are currently satisfied, show 5 centered sample icons so you can see exact alignment!
-    if qCount == 0 and self.inEditMode then
+    local inBuffEdit = (self.inBuffsEditMode or (self.inEditMode and self.inBuffsEditMode ~= false) or (self.clickableBuffBar and self.clickableBuffBar._dsEditModeActive)) and true or false
+    if qCount == 0 and inBuffEdit then
         local _, classFile = UnitClass("player")
         local cDef = (classFile and CLASS_RAID_BUFFS[classFile]) or CLASS_RAID_BUFFS.DRUID
         PushEntry("spell", cDef.name, "player", cDef.icon, "|cFFF871714/5|r", "|cFFF87171MISSING|r", "", false, cDef.name, "")
@@ -12055,6 +12088,18 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
     local bar = self:CreateClickableBuffBar()
     if not bar or InCombatLockdown() then return end
 
+    local inBuffEdit = (self.inBuffsEditMode or (self.inEditMode and self.inBuffsEditMode ~= false) or bar._dsEditModeActive) and true or false
+    if inBuffEdit then
+        if UnregisterStateDriver then
+            pcall(UnregisterStateDriver, bar, "visibility")
+        end
+        bar:Show()
+    else
+        if RegisterStateDriver then
+            pcall(RegisterStateDriver, bar, "visibility", "[petbattle][vehicleui][combat] hide; show")
+        end
+    end
+
     local rb = (self.db and self.db.raidBuffs) or DEFAULTS.raidBuffs
     local iconSize = math.max(32, math.min(64, tonumber(rb.iconSize) or 44))
     local gap = 10
@@ -12065,9 +12110,10 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
     if self.RefreshReadinessTrackerStrip then pcall(self.RefreshReadinessTrackerStrip, self) end
     self:UpdateSuiteHeaderStatus()
 
-    if count <= 0 and not self.inEditMode then
+    if count <= 0 and not inBuffEdit then
         for i = 1, MAX_CRB_SLOTS do
             bar.buttons[i]:SetAlpha(1.0)
+            bar.buttons[i]:EnableMouse(true)
             bar.buttons[i]:Hide()
         end
         if bar.hudBg then bar.hudBg:Hide() end
@@ -12083,7 +12129,7 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
     local barH = iconSize + 22
 
     if bar.hudBg then
-        local showHudCapsule = (rb.showHudCapsule == true) or self.inEditMode
+        local showHudCapsule = (rb.showHudCapsule == true) or inBuffEdit
         if showHudCapsule then
             SetPixelBackdrop(bar.hudBg, { 0.035, 0.043, 0.059, 0.78 }, { ar, ag, ab, 0.45 }, 1)
             bar.hudBg:Show()
@@ -12094,6 +12140,7 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
 
     for i = 1, MAX_CRB_SLOTS do
         local btn = bar.buttons[i]
+        btn:EnableMouse(not inBuffEdit)
         local entry = _crbQueue[i]
         if i <= count and entry and entry.active then
             btn:SetAlpha(1.0)
@@ -12198,7 +12245,7 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
         SetPixelBackdrop(bar.mover, { 0.05, 0.06, 0.09, 0.86 }, { ar, ag, ab, 1.0 }, 1)
         if bar.mover.dimBg then bar.mover.dimBg:SetColorTexture(0.05, 0.06, 0.09, 0.86) end
         bar.mover.label:SetText(string.format("|cFF%sClickable Raid Buffs HUD|r\n|cFFFFFFFF(X: %d, Y: %d)  [Right-Click: Center X=0]|r", hex, math.floor((curX or 0) + 0.5), math.floor((curY or 140) + 0.5)))
-        bar.mover:SetShown(self.inEditMode and true or false)
+        bar.mover:SetShown(inBuffEdit and not bar._dsEditModeActive and true or false)
     end
 end
 

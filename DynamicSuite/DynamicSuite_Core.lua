@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.1.0"
+    local fb = fallback or "2.1.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.0")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.1.1")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -57,8 +57,10 @@ DynamicSuite.Changelogs = DynamicSuite.Changelogs or {}
 
 DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
-    date = "14/11/2026",
+    date = "15/11/2026",
     entries = {
+        { type = "FIX",     text = "Release v2.1.1 - HUD Edit Mode Mover Visibility, Prep Bar Drag Shield & First-Open Left Rail Fix (15/11/2026): Fixed isHudEditModeActive lexical scoping in DynamicSuite_UI.lua so all Shown HUDs (Alert Toast, Prep Bar, Focus Icons, World Flares, Raid Buffs, and Chat Frame) immediately render their live preview and interactive mover overlay upon entering HUD Edit Mode (ignoring solo/event conditions while keeping Off/Hidden HUDs hidden until selected or opened via [Edit HUD]); split DynamicPrep's SetBarEditMode and SetBuffsEditMode states and disabled child segment/button mouse capture during HUD Edit Mode so Prep Bar and Raid Buffs drag smoothly across their entire width; and replaced the Left Suite Rail's 0x0 hidden ScrollFrame clip rect with a direct-sized frame container so the Left Suite Rail renders immediately on the very first /ds open." },
+        { type = "FIX",     text = "Release v2.1.0 - World Flare Hardware Keybinds & Unified Compact HUD Edit Mode (15/11/2026): Fixed World Flare cycle/clear hardware keybinds (F4/F5) in and out of combat, wired instant header telemetry and sub-tab title updates on keybind changes, redesigned the HUD Edit Mode dock into a compact 560x74 draggable inspector with 60px off-screen fail-safe clamping, hid disabled HUD movers by default, and standardised dark-obsidian [Edit HUD] buttons across all modules." },
         { type = "FIX",     text = "Release v1.9.9 - Canonical UIParent-Local HUD Coordinate Contract, Custom Dark-Obsidian Coexistence Modal & Unified HUD Edit Mode (14/11/2026): Enforced a single canonical UIParent-local coordinate contract for TargetBar and FlareBar (storing unscaled UIParent CENTER offsets and dividing by barScale strictly inside DM:SetBarCenterPoint after applying SetScale/SetSize and before SetClampedToScreen(true), removing destructive early-load DB writes in ApplyHUDPosition, and preserving 100% top/bottom/corner edge parity across /reload at 0.70, 1.00, and 1.30 scales); replaced Blizzard's StaticPopup with a custom dark-obsidian coexistence reload modal (DynamicSuiteMarkerConflictModal / ShowMarkerConflictReloadModal with #0B0D12 0.96 alpha backdrop, 1px dark slate border, Blaze Orange #F97316 accent bar, flat Reload UI / Later buttons, ESC dismissal, and combat deferral) across DynamicSuite and standalone DynamicMarker; suppressed DynamicMarker's standalone HUD Edit Mode window inside DynamicSuite; and fixed Reset HUD Positions bounds across Suite and standalone modes." },
         { type = "FIX",     text = "Release v1.9.8 - HUD Edit Edge-Drag Persistence & Flush (0, 0) DynamicChat Clamping (14/11/2026): Fixed Target Icon Bar and World Flare Bar snapping back after dragging to any screen edge (including 70%/75% scaled bars) by syncing bar scale and vertical/horizontal dimensions prior to clamping, canonicalising anchors to CENTER, clearing drag flags before final Edit Mode saves, and enforcing SetClampedToScreen(false) across Suite and standalone DynamicMarker; and fixed DynamicChat's ~30px bottom gap by setting ChatFrame1:SetClampedToScreen(false) whenever managed, measuring only the visible chat container via GetVisibleContainerExtents(), and canonicalising CHAT to BOTTOMLEFT outer-container coordinates so X = 0, Y = 0 sits flush bottom-left across Edit Mode toggles, UI scale events, and /reload." },
         { type = "FEATURE", text = "Release v1.9.7 - Official CurseForge Dual-Release Pipeline (DynamicSuite Project 1804382 + DynamicMarker 1331651) & Hardened Coexistence (14/11/2026): Connected full DynamicSuite (CurseForge Project ID 1804382) alongside standalone DynamicMarker (Project ID 1331651) in our automated release workflow, replaced legacy URL placeholder labels on Support panels and public docs with the live CurseForge links, authored code-accurate CurseForge storefront docs, and hardened ShouldYieldToOtherInstall dual-mode version yielding across all 8 modules regardless of load order." },

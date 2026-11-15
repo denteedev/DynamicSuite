@@ -971,6 +971,14 @@ try {
                 Copy-Item -LiteralPath (Join-Path $RepoRoot "Marketing\CurseForge_DynamicMarker.md") -Destination (Join-Path $driveMarketingDir "CurseForge_DynamicMarker.md") -Force
                 Copy-Item -LiteralPath (Join-Path $RepoRoot "Marketing\CurseForge_DynamicSuite.md") -Destination (Join-Path $driveMarketingDir "CurseForge_DynamicSuite.md") -Force
             }
+            $driveModulesTxtDir = Join-Path $driveSyncRoot "ModulesTxt"
+            New-Item -ItemType Directory -Force -Path $driveModulesTxtDir | Out-Null
+            Copy-Item -LiteralPath (Join-Path $RepoRoot "DynamicSuite\DynamicSuite_Core.lua") -Destination (Join-Path $driveModulesTxtDir "DynamicSuite_Core.lua.txt") -Force
+            Copy-Item -LiteralPath (Join-Path $RepoRoot "DynamicSuite\DynamicSuite_UI.lua") -Destination (Join-Path $driveModulesTxtDir "DynamicSuite_UI.lua.txt") -Force
+            Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite\Modules") -Filter "*.lua" -File | ForEach-Object {
+                Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $driveModulesTxtDir ($_.Name + ".txt")) -Force
+            }
+            Write-Host "[TXT MIRRORED] DynamicSuite_Core.lua.txt, DynamicSuite_UI.lua.txt, & 8 Module .lua.txt files -> $driveModulesTxtDir" -ForegroundColor DarkCyan
             Write-Host "[CURSEFORGE DOCS SYNCED] README.md, CURSEFORGE_DYNAMICMARKER.md, & CURSEFORGE_DYNAMICSUITE.md -> $driveSyncRoot" -ForegroundColor DarkCyan
         }
     } else {

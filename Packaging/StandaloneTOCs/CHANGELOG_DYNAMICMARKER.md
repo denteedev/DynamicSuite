@@ -1,5 +1,12 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.1.0 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.1.1 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicMarker v2.1.1 (15/11/2026)
+
+### Fixed
+* **HUD Edit Mode Mover Visibility & Drag Shield Layering:** Promoted the Target Icon Bar and World Flare Bar mover overlays (`editMover`) to `HIGH` frame strata (`FrameLevel + 50`) with `SetIgnoreParentAlpha(true)` and ordered `SyncEditBarStates()` after bar refreshes in `SetEditMode`, ensuring any bar set to `Shown` (`Group` or `Always`) immediately displays its live preview and interactive drag shield in HUD Edit Mode (even while solo), while explicitly selecting a `Hidden` (`Off`) bar from the HUD dropdown or clicking `[Edit HUD]` previews it with the `HIDDEN (Click Shown to Enable)` badge.
 
 ---
 
