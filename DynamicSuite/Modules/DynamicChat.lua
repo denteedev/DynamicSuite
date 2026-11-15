@@ -280,6 +280,26 @@ _G.DynamicSuite.CONFLICT_REGISTRY["DynamicChat"] = {
 }
 _G.DynamicSuite.CONFLICT_REGISTRY["chat"] = _G.DynamicSuite.CONFLICT_REGISTRY["DynamicChat"]
 
+local CUSTOM_SOUND_EFFECTS = {
+    { value = "ds_chime_soft",   label = "Soft Chime",   file = "ds_chime_soft.wav" },
+    { value = "ds_ping_crystal", label = "Crystal Ping", file = "ds_ping_crystal.wav" },
+    { value = "ds_bell_whisper", label = "Whisper Bell", file = "ds_bell_whisper.wav" },
+    { value = "ds_note_marimba", label = "Marimba Note", file = "ds_note_marimba.wav" },
+    { value = "ds_pulse_sonar",  label = "Sonar Pulse",  file = "ds_pulse_sonar.wav" },
+    { value = "ds_tap_double",   label = "Double Tap",   file = "ds_tap_double.wav" },
+    { value = "ds_drop_water",   label = "Water Drop",   file = "ds_drop_water.wav" },
+    { value = "ds_chord_warm",   label = "Warm Chord",   file = "ds_chord_warm.wav" },
+    { value = "ds_tick_wood",    label = "Wood Tick",    file = "ds_tick_wood.wav" },
+    { value = "ds_alert_subtle", label = "Subtle Alert", file = "ds_alert_subtle.wav" },
+}
+
+local CUSTOM_SOUND_BY_KEY = {}
+local CUSTOM_SOUND_BY_FILE = {}
+for _, sDef in ipairs(CUSTOM_SOUND_EFFECTS) do
+    CUSTOM_SOUND_BY_KEY[sDef.value] = sDef
+    CUSTOM_SOUND_BY_FILE[sDef.file] = sDef
+end
+
 local DEFAULTS = {
     -- Tab 1: Target Whisper (/ww), Combat Whisper Protection & Input
     enableTargetWhisper         = true,
@@ -317,23 +337,18 @@ local DEFAULTS = {
     showTimestamps              = true,
     timestampFormat             = "%H:%M ",
 
-    -- Tab 3: Per-Channel Sound Alerts
-    enableSoundAlerts           = true,
+    -- Tab 3: Chat Notification Sounds (Per-Channel Engine)
+    enableChatSounds            = true,
+    enableSoundAlerts           = true, -- Synced compatibility alias for enableChatSounds
+    soundMuteInCombat           = false,
     soundOutputChannel          = "Master", -- "Master" | "SFX" | "Dialog"
-    soundCombatMode             = "GROUP_WHISPER", -- "MUTE_COMBAT" | "GROUP_WHISPER" | "ALL"
     soundThrottleSec            = 1.5, -- 0 | 1.5 | 3 | 5
     channelSounds               = {
-        WHISPER      = "DEFAULT",
-        BN_WHISPER   = "DEFAULT",
-        PARTY        = "NONE",
-        PARTY_LEADER = "NONE",
-        RAID         = "NONE",
-        RAID_LEADER  = "NONE",
-        INSTANCE     = "NONE",
-        GUILD        = "NONE",
-        OFFICER      = "NONE",
-        SAY_YELL     = "NONE",
-        CHANNEL      = "NONE",
+        WHISPER = "ds_bell_whisper",   -- Covers CHAT_MSG_WHISPER & CHAT_MSG_BN_WHISPER
+        GUILD   = "ds_chime_soft",     -- Covers CHAT_MSG_GUILD & CHAT_MSG_OFFICER
+        PARTY   = "ds_ping_crystal",   -- Covers CHAT_MSG_PARTY, CHAT_MSG_PARTY_LEADER, CHAT_MSG_INSTANCE_CHAT, CHAT_MSG_INSTANCE_CHAT_LEADER
+        RAID    = "ds_pulse_sonar",    -- Covers CHAT_MSG_RAID, CHAT_MSG_RAID_LEADER, CHAT_MSG_RAID_WARNING
+        SAY     = "NONE",              -- Covers CHAT_MSG_SAY & CHAT_MSG_YELL (Off by default so city crowd /say doesn't spam)
     },
 
     -- Tab 4: Links, Scrolling, Chat History & Performance
@@ -504,6 +519,37 @@ local function EnsureDB()
     end
     if type(_G.DynamicSuiteDB) == "table" then
         _G.DynamicSuiteDB.chatEditBoxPosition = _G.DynamicChatDB.editBoxPosition
+    end
+    if _G.DynamicChatDB.enableChatSounds == nil then
+        _G.DynamicChatDB.enableChatSounds = (_G.DynamicChatDB.enableSoundAlerts ~= false)
+    end
+    _G.DynamicChatDB.enableChatSounds = (_G.DynamicChatDB.enableChatSounds ~= false)
+    _G.DynamicChatDB.enableSoundAlerts = _G.DynamicChatDB.enableChatSounds
+    _G.DynamicChatDB.soundMuteInCombat = (_G.DynamicChatDB.soundMuteInCombat == true)
+    if type(_G.DynamicChatDB.channelSounds) ~= "table" then
+        _G.DynamicChatDB.channelSounds = {}
+    end
+    if not _G.DynamicChatDB._v220_customChatSounds then
+        _G.DynamicChatDB._v220_customChatSounds = true
+        for _, legacyKey in ipairs({ "BN_WHISPER", "PARTY_LEADER", "RAID_LEADER", "INSTANCE", "OFFICER", "SAY_YELL", "CHANNEL" }) do
+            _G.DynamicChatDB.channelSounds[legacyKey] = nil
+        end
+        for chKey, defVal in pairs(DEFAULTS.channelSounds) do
+            local cur = _G.DynamicChatDB.channelSounds[chKey]
+            if not (cur == "NONE" or CUSTOM_SOUND_BY_KEY[cur] or CUSTOM_SOUND_BY_FILE[cur]) then
+                _G.DynamicChatDB.channelSounds[chKey] = defVal
+            end
+        end
+    end
+    for chKey, defVal in pairs(DEFAULTS.channelSounds) do
+        local cur = _G.DynamicChatDB.channelSounds[chKey]
+        if type(cur) == "string" and CUSTOM_SOUND_BY_FILE[cur] then
+            cur = CUSTOM_SOUND_BY_FILE[cur].value
+            _G.DynamicChatDB.channelSounds[chKey] = cur
+        end
+        if cur ~= "NONE" and not CUSTOM_SOUND_BY_KEY[cur] then
+            _G.DynamicChatDB.channelSounds[chKey] = defVal
+        end
     end
     return _G.DynamicChatDB
 end
@@ -6405,43 +6451,42 @@ function DynamicChat:InstallChatHooks()
 end
 
 -- ============================================================================
--- 6B. ENGINE 4: PER-CHANNEL SOUND ALERT ENGINE (BUILTIN + LIBSHAREDMEDIA-3.0)
+-- 6B. ENGINE 4: PER-CHANNEL CHAT NOTIFICATION SOUND ENGINE
 -- ============================================================================
 
 local BLIZZARD_WHISPER_SOUND_FIDS = { 567482, 567421 }
 
-local BUILTIN_SOUND_LIBRARY = {
-    { value = "SK_3081",  label = "Classic Whisper",  soundKit = 3081,  fileDataID = 567482 },
-    { value = "SK_18019", label = "Battle.net Toast", soundKit = 18019, fileDataID = 567421 },
-    { value = "SK_3175",  label = "Crisp Map Ping",   soundKit = 3175,  fileDataID = 567416 },
-    { value = "SK_8960",  label = "Ready Check",      soundKit = 8960,  fileDataID = 567478 },
-    { value = "SK_8959",  label = "Raid Warning",     soundKit = 8959,  fileDataID = 567397 },
-    { value = "SK_856",   label = "Soft UI Chime",    soundKit = 856,   fileDataID = 567490 },
-    { value = "SK_10590", label = "Jewelcraft Ding",  soundKit = 10590, fileDataID = 567521 },
-    { value = "SK_5274",  label = "Auction Bell",     soundKit = 5274,  fileDataID = 567481 },
-    { value = "SK_12867", label = "Lightwell Chime",  soundKit = 12867, fileDataID = 567458 },
-    { value = "SK_6197",  label = "Harp Arpeggio",    soundKit = 6197,  fileDataID = 567439 },
-    { value = "SK_850",   label = "Subtle UI Click",  soundKit = 850,   fileDataID = 567489 },
-    { value = "SK_8174",  label = "PvP Flag Alert",   soundKit = 8174,  fileDataID = 567420 },
-}
-
-local BUILTIN_SOUND_MAP = {}
-for _, item in ipairs(BUILTIN_SOUND_LIBRARY) do
-    BUILTIN_SOUND_MAP[item.value] = item
-end
-
 local SOUND_CHANNEL_DEFS = {
-    { key = "WHISPER",      title = "Whisper (Character)",          desc = "Incoming whispers from characters on your realm or connected realms.",                 hasDefault = true,  isGroupOrWhisper = true },
-    { key = "BN_WHISPER",   title = "Battle.net Whisper",           desc = "Incoming Real ID and BattleTag whispers from Battle.net friends.",                     hasDefault = true,  isGroupOrWhisper = true },
-    { key = "PARTY",        title = "Party Chat",                   desc = "Messages sent by party members in 5-player dungeons and outdoor groups.",              hasDefault = false, isGroupOrWhisper = true },
-    { key = "PARTY_LEADER", title = "Party Leader & Guide",         desc = "Messages from your Party Leader or Dungeon Guide.",                                    hasDefault = false, isGroupOrWhisper = true },
-    { key = "RAID",         title = "Raid Chat",                    desc = "Standard raid chat messages from raid group members.",                                 hasDefault = false, isGroupOrWhisper = true },
-    { key = "RAID_LEADER",  title = "Raid Leader & Raid Warning",   desc = "High-priority calls from your Raid Leader or Raid Warning channel.",                   hasDefault = false, isGroupOrWhisper = true },
-    { key = "INSTANCE",     title = "Instance Chat (LFD / LFR / BG)", desc = "Messages in queued Dungeon Finder, Raid Finder, and Battleground instance channels.", hasDefault = false, isGroupOrWhisper = true },
-    { key = "GUILD",        title = "Guild Chat",                   desc = "Messages posted by guildmates in your main Guild channel.",                            hasDefault = false, isGroupOrWhisper = false },
-    { key = "OFFICER",      title = "Officer Chat",                 desc = "Messages posted in your Guild Officer channel.",                                       hasDefault = false, isGroupOrWhisper = false },
-    { key = "SAY_YELL",     title = "Say & Yell",                   desc = "Nearby player Say and Yell messages in the world or instances.",                       hasDefault = false, isGroupOrWhisper = false },
-    { key = "CHANNEL",      title = "Custom & Numbered Channels",   desc = "Messages in General, Trade, Services, or custom numbered chat channels.",              hasDefault = false, isGroupOrWhisper = false },
+    {
+        key        = "WHISPER",
+        title      = "Whisper & Battle.net Whisper",
+        desc       = "Plays when you receive an incoming character whisper or Battle.net whisper (your own outgoing whispers are ignored).",
+        defaultVal = "ds_bell_whisper",
+    },
+    {
+        key        = "GUILD",
+        title      = "Guild & Officer Chat",
+        desc       = "Plays when a guildmate posts in Guild or Officer chat (ignores messages you send).",
+        defaultVal = "ds_chime_soft",
+    },
+    {
+        key        = "PARTY",
+        title      = "Party & Instance Chat",
+        desc       = "Plays when a group member posts in Party, Party Leader, or LFD/LFR/Battleground Instance chat.",
+        defaultVal = "ds_ping_crystal",
+    },
+    {
+        key        = "RAID",
+        title      = "Raid & Raid Warning",
+        desc       = "Plays when someone posts in Raid, Raid Leader, or Raid Warning chat.",
+        defaultVal = "ds_pulse_sonar",
+    },
+    {
+        key        = "SAY",
+        title      = "Say & Yell",
+        desc       = "Plays when nearby players use Say or Yell (None by default so busy city hubs stay quiet).",
+        defaultVal = "NONE",
+    },
 }
 
 local SOUND_CHANNEL_DEF_BY_KEY = {}
@@ -6450,68 +6495,45 @@ for _, def in ipairs(SOUND_CHANNEL_DEFS) do
 end
 
 local CHAT_EVENT_TO_SOUND_CHANNEL = {
-    CHAT_MSG_WHISPER              = { key = "WHISPER",      sentType = "WHISPER" },
-    CHAT_MSG_BN_WHISPER           = { key = "BN_WHISPER",   sentType = "BN_WHISPER" },
-    CHAT_MSG_PARTY                = { key = "PARTY",        sentType = "PARTY" },
-    CHAT_MSG_PARTY_LEADER         = { key = "PARTY_LEADER", sentType = "PARTY" },
-    CHAT_MSG_RAID                 = { key = "RAID",         sentType = "RAID" },
-    CHAT_MSG_RAID_LEADER          = { key = "RAID_LEADER",  sentType = "RAID" },
-    CHAT_MSG_RAID_WARNING         = { key = "RAID_LEADER",  sentType = "RAID_WARNING" },
-    CHAT_MSG_INSTANCE_CHAT        = { key = "INSTANCE",     sentType = "INSTANCE_CHAT" },
-    CHAT_MSG_INSTANCE_CHAT_LEADER = { key = "INSTANCE",     sentType = "INSTANCE_CHAT" },
-    CHAT_MSG_GUILD                = { key = "GUILD",        sentType = "GUILD" },
-    CHAT_MSG_OFFICER              = { key = "OFFICER",      sentType = "OFFICER" },
-    CHAT_MSG_SAY                  = { key = "SAY_YELL",     sentType = "SAY" },
-    CHAT_MSG_YELL                 = { key = "SAY_YELL",     sentType = "YELL" },
-    CHAT_MSG_CHANNEL              = { key = "CHANNEL",      sentType = "CHANNEL" },
+    CHAT_MSG_WHISPER              = { key = "WHISPER", sentType = "WHISPER" },
+    CHAT_MSG_BN_WHISPER           = { key = "WHISPER", sentType = "BN_WHISPER" },
+    CHAT_MSG_GUILD                = { key = "GUILD",   sentType = "GUILD" },
+    CHAT_MSG_OFFICER              = { key = "GUILD",   sentType = "OFFICER" },
+    CHAT_MSG_PARTY                = { key = "PARTY",   sentType = "PARTY" },
+    CHAT_MSG_PARTY_LEADER         = { key = "PARTY",   sentType = "PARTY" },
+    CHAT_MSG_INSTANCE_CHAT        = { key = "PARTY",   sentType = "INSTANCE_CHAT" },
+    CHAT_MSG_INSTANCE_CHAT_LEADER = { key = "PARTY",   sentType = "INSTANCE_CHAT" },
+    CHAT_MSG_RAID                 = { key = "RAID",    sentType = "RAID" },
+    CHAT_MSG_RAID_LEADER          = { key = "RAID",    sentType = "RAID" },
+    CHAT_MSG_RAID_WARNING         = { key = "RAID",    sentType = "RAID_WARNING" },
+    CHAT_MSG_SAY                  = { key = "SAY",     sentType = "SAY" },
+    CHAT_MSG_YELL                 = { key = "SAY",     sentType = "YELL" },
 }
 
 local lastChannelSoundTime = {}
 
-local function GetLSM()
-    if type(_G.LibStub) == "function" then
-        local ok, lsm = pcall(_G.LibStub, "LibSharedMedia-3.0", true)
-        if ok and lsm then return lsm end
-    elseif type(_G.LibStub) == "table" and type(_G.LibStub.GetLibrary) == "function" then
-        local ok, lsm = pcall(_G.LibStub.GetLibrary, _G.LibStub, "LibSharedMedia-3.0", true)
-        if ok and lsm then return lsm end
+local function IsSafeAccessibleValue(val)
+    if val == nil then return false end
+    if IsSecretValue(val) then return false end
+    if type(_G.canaccessvalue) == "function" then
+        local okCan, canAccess = pcall(_G.canaccessvalue, val)
+        if okCan and not canAccess then
+            return false
+        end
     end
-    return nil
+    return true
 end
 
-local function GetSoundOptionsForChannel(channelKey)
-    local def = SOUND_CHANNEL_DEF_BY_KEY[channelKey]
-    local opts = {}
-    if def and def.hasDefault then
-        opts[#opts + 1] = { value = "DEFAULT", label = "Blizzard Default" }
-    end
-    opts[#opts + 1] = { value = "NONE", label = "None (Muted)" }
-    for _, item in ipairs(BUILTIN_SOUND_LIBRARY) do
+local function GetSoundOptionsForChannel(_)
+    local opts = {
+        { value = "NONE", label = "None (Muted)" },
+    }
+    for _, item in ipairs(CUSTOM_SOUND_EFFECTS) do
         opts[#opts + 1] = {
-            value      = item.value,
-            label      = item.label,
-            soundKit   = item.soundKit,
-            fileDataID = item.fileDataID,
+            value = item.value,
+            label = item.label,
+            file  = item.file,
         }
-    end
-    local lsm = GetLSM()
-    if lsm and type(lsm.List) == "function" and type(lsm.Fetch) == "function" then
-        local okL, list = pcall(lsm.List, lsm, "sound")
-        if okL and type(list) == "table" then
-            for _, name in ipairs(list) do
-                if type(name) == "string" and name ~= "" and name ~= "None" then
-                    local okF, path = pcall(lsm.Fetch, lsm, "sound", name, true)
-                    if okF and ((type(path) == "string" and path ~= "") or (type(path) == "number" and path > 0)) then
-                        local soundRef = tonumber(path) or path
-                        opts[#opts + 1] = {
-                            value   = "LSM:" .. name,
-                            label   = "LSM: " .. name,
-                            lsmPath = soundRef,
-                        }
-                    end
-                end
-            end
-        end
     end
     return opts
 end
@@ -6519,61 +6541,31 @@ end
 local function GetSoundOptionLabel(channelKey, val)
     local def = SOUND_CHANNEL_DEF_BY_KEY[channelKey]
     if not val or val == "" then
-        val = (def and def.hasDefault) and "DEFAULT" or "NONE"
+        val = (def and def.defaultVal) or "NONE"
     end
-    if val == "DEFAULT" then
-        return (def and def.hasDefault) and "Blizzard Default" or "None (Muted)"
-    elseif val == "NONE" then
+    if val == "NONE" then
         return "None (Muted)"
     end
-    local builtin = BUILTIN_SOUND_MAP[val]
-    if builtin then
-        return builtin.label
+    local soundDef = CUSTOM_SOUND_BY_KEY[val] or CUSTOM_SOUND_BY_FILE[val]
+    if soundDef then
+        return soundDef.label
     end
-    local lsmName = type(val) == "string" and val:match("^LSM:(.+)$")
-    if lsmName and lsmName ~= "" then
-        return "LSM: " .. lsmName
-    end
-    return tostring(val)
-end
-
-local function CancelWhisperRemuteTimer()
-    if DynamicChat._whisperRemuteTimer and type(DynamicChat._whisperRemuteTimer.Cancel) == "function" then
-        pcall(DynamicChat._whisperRemuteTimer.Cancel, DynamicChat._whisperRemuteTimer)
-    end
-    DynamicChat._whisperRemuteTimer = nil
-end
-
-local function ScheduleWhisperRemuteTimer(delaySec)
-    CancelWhisperRemuteTimer()
-    local waitSec = tonumber(delaySec) or 2.0
-    if _G.C_Timer and type(_G.C_Timer.NewTimer) == "function" then
-        DynamicChat._whisperRemuteTimer = _G.C_Timer.NewTimer(waitSec, function()
-            DynamicChat._whisperRemuteTimer = nil
-            DynamicChat:ApplyWhisperDefaultSoundMuteState()
-        end)
-    elseif _G.C_Timer and type(_G.C_Timer.After) == "function" then
-        _G.C_Timer.After(waitSec, function()
-            DynamicChat:ApplyWhisperDefaultSoundMuteState()
-        end)
-    end
+    return "None (Muted)"
 end
 
 function DynamicChat:ApplyWhisperDefaultSoundMuteState()
     local db = EnsureDB()
-    local alertsActive = (not IsModuleDisabledInSuite("DynamicChat")) and (db.enableSoundAlerts ~= false) and (not self:IsDirectChatReplacementLoaded())
+    local alertsActive = (not IsModuleDisabledInSuite("DynamicChat")) and (db.enableChatSounds ~= false) and (not self:IsDirectChatReplacementLoaded())
 
     if alertsActive then
-        -- Keep Blizzard's native 567482/567421 files muted at rest while DynamicChat Sound Alerts are enabled
-        -- so ChatFrame_MessageEventHandler never double-chimes on incoming whispers and DynamicChat controls
-        -- "DEFAULT" playback reliably on outChan without Blizzard's 300-second CHAT_TELL_ALERT_TIME lockout.
+        -- Mute Blizzard's native 567482/567421 whisper chimes while DynamicChat custom sounds are active
+        -- so incoming whispers play only your selected DynamicChat chime (or stay silent when Muted).
         if type(_G.MuteSoundFile) == "function" then
             for _, fid in ipairs(BLIZZARD_WHISPER_SOUND_FIDS) do
                 pcall(_G.MuteSoundFile, fid)
             end
         end
     else
-        CancelWhisperRemuteTimer()
         if type(_G.UnmuteSoundFile) == "function" then
             for _, fid in ipairs(BLIZZARD_WHISPER_SOUND_FIDS) do
                 pcall(_G.UnmuteSoundFile, fid)
@@ -6589,78 +6581,25 @@ function DynamicChat:PlaySoundOptionKey(soundKey, channelKey, isPreview)
         outChan = "Master"
     end
 
-    if not soundKey or soundKey == "NONE" then
-        return
+    if not soundKey or soundKey == "" or soundKey == "NONE" then
+        return false
     end
 
-    if soundKey == "DEFAULT" or soundKey == "SK_3081" or soundKey == "SK_18019" then
-        local isBNet = (soundKey == "SK_18019") or (soundKey == "DEFAULT" and channelKey == "BN_WHISPER")
-        local targetFID = isBNet and 567421 or 567482
-        local fallbackKit = isBNet and 18019 or 3081
-
-        local function PlayWhisperFIDNow()
-            if type(_G.UnmuteSoundFile) == "function" then
-                pcall(_G.UnmuteSoundFile, 567482)
-                pcall(_G.UnmuteSoundFile, 567421)
-            end
-            local played = false
-            if type(_G.PlaySoundFile) == "function" then
-                local okP, willPlay = pcall(_G.PlaySoundFile, targetFID, outChan)
-                played = (okP and willPlay ~= false)
-            end
-            if not played and type(_G.PlaySound) == "function" then
-                pcall(_G.PlaySound, fallbackKit, outChan)
-            end
-            ScheduleWhisperRemuteTimer(2.0)
-        end
-
-        if isPreview then
-            PlayWhisperFIDNow()
-        else
-            -- Ensure 567482/567421 remain muted during the synchronous CHAT_MSG_*WHISPER frame so
-            -- Blizzard's ChatFrame1:OnEvent is silenced, then unmute + PlaySoundFile on the next tick.
-            if type(_G.MuteSoundFile) == "function" then
-                pcall(_G.MuteSoundFile, 567482)
-                pcall(_G.MuteSoundFile, 567421)
-            end
-            if _G.C_Timer and type(_G.C_Timer.After) == "function" then
-                _G.C_Timer.After(0, PlayWhisperFIDNow)
-            else
-                PlayWhisperFIDNow()
-            end
-        end
-        return
+    local soundDef = CUSTOM_SOUND_BY_KEY[soundKey] or CUSTOM_SOUND_BY_FILE[soundKey]
+    if not soundDef or not soundDef.file then
+        return false
     end
 
     if not isPreview then
-        CancelWhisperRemuteTimer()
         self:ApplyWhisperDefaultSoundMuteState()
     end
 
-    local builtin = BUILTIN_SOUND_MAP[soundKey]
-    if builtin then
-        local played = false
-        if builtin.fileDataID and type(_G.PlaySoundFile) == "function" then
-            local okP, willPlay = pcall(_G.PlaySoundFile, builtin.fileDataID, outChan)
-            played = (okP and willPlay ~= false)
-        end
-        if not played and builtin.soundKit and type(_G.PlaySound) == "function" then
-            pcall(_G.PlaySound, builtin.soundKit, outChan)
-        end
-        return
+    local soundPath = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\" .. soundDef.file
+    if type(_G.PlaySoundFile) == "function" then
+        local okP, willPlay = pcall(_G.PlaySoundFile, soundPath, outChan)
+        return (okP and willPlay ~= false)
     end
-
-    local lsmName = type(soundKey) == "string" and soundKey:match("^LSM:(.+)$")
-    if lsmName and lsmName ~= "" then
-        local lsm = GetLSM()
-        if lsm and type(lsm.Fetch) == "function" and type(_G.PlaySoundFile) == "function" then
-            local okF, path = pcall(lsm.Fetch, lsm, "sound", lsmName, true)
-            if okF and ((type(path) == "string" and path ~= "") or (type(path) == "number" and path > 0)) then
-                local soundRef = tonumber(path) or path
-                pcall(_G.PlaySoundFile, soundRef, outChan)
-            end
-        end
-    end
+    return false
 end
 
 function DynamicChat:HandleIncomingChatSoundEvent(event, arg2, arg12)
@@ -6670,66 +6609,71 @@ function DynamicChat:HandleIncomingChatSoundEvent(event, arg2, arg12)
     if self:IsDirectChatReplacementLoaded() then return end
 
     local db = EnsureDB()
-    if db.enableSoundAlerts == false then return end
+    if db.enableChatSounds == false then return end
+
+    -- 1. Optional Mute in Combat / Boss Encounters
+    if db.soundMuteInCombat then
+        local inCombatOrBoss = (InCombatLockdown and InCombatLockdown()) or (IsEncounterInProgress and IsEncounterInProgress())
+        if inCombatOrBoss then
+            return
+        end
+    end
 
     local channelKey = mapEntry.key
     local def = SOUND_CHANNEL_DEF_BY_KEY[channelKey]
     local chSounds = db.channelSounds or DEFAULTS.channelSounds
-    local soundKey = chSounds[channelKey] or ((def and def.hasDefault) and "DEFAULT" or "NONE")
-    if not soundKey or soundKey == "NONE" then
-        return
-    end
-    if soundKey == "DEFAULT" and not (def and def.hasDefault) then
+    local soundKey = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
+    if not soundKey or soundKey == "" or soundKey == "NONE" then
         return
     end
 
-    -- 1. Combat & Encounter Filter
-    local inCombatOrBoss = (InCombatLockdown and InCombatLockdown()) or (IsEncounterInProgress and IsEncounterInProgress())
-    if inCombatOrBoss then
-        local cMode = db.soundCombatMode or "GROUP_WHISPER"
-        if cMode == "MUTE_COMBAT" then
-            return
-        elseif cMode == "GROUP_WHISPER" then
-            if not (def and def.isGroupOrWhisper) then
+    -- 2. Self-Message Suppression (Secret-Value Guarded via sender GUID & UnitName)
+    local guidChecked = false
+    if IsSafeAccessibleValue(arg12) and type(arg12) == "string" and arg12 ~= "" and type(_G.UnitGUID) == "function" then
+        local okG, pGuid = pcall(_G.UnitGUID, "player")
+        if okG and IsSafeAccessibleValue(pGuid) and type(pGuid) == "string" and pGuid ~= "" then
+            guidChecked = true
+            if arg12 == pGuid then
                 return
             end
         end
     end
-
-    -- 2. Self-Message Suppression (100% Secret-Value Safe)
-    -- Skip self-sender suppression on CHAT_MSG_WHISPER and CHAT_MSG_BN_WHISPER so players can whisper
-    -- themselves in-game to test alert sounds (outgoing whispers fire CHAT_MSG_WHISPER_INFORM, not CHAT_MSG_WHISPER).
-    if event ~= "CHAT_MSG_WHISPER" and event ~= "CHAT_MSG_BN_WHISPER" then
-        local hasSecretSender = IsSecretValue(arg2) or IsSecretValue(arg12)
-        if not hasSecretSender then
-            if arg12 and type(arg12) == "string" and UnitGUID then
-                local okG, pGuid = pcall(UnitGUID, "player")
-                if okG and pGuid and not IsSecretValue(pGuid) and arg12 == pGuid then
+    local nameChecked = false
+    if IsSafeAccessibleValue(arg2) and type(arg2) == "string" and arg2 ~= "" and type(_G.UnitName) == "function" then
+        local okN, pName = pcall(_G.UnitName, "player")
+        local okFN, fullPlayer = false, nil
+        if type(_G.GetUnitName) == "function" then
+            okFN, fullPlayer = pcall(_G.GetUnitName, "player", true)
+        end
+        if okN and IsSafeAccessibleValue(pName) and type(pName) == "string" and pName ~= "" then
+            nameChecked = true
+            if arg2 == pName then
+                return
+            end
+            if okFN and IsSafeAccessibleValue(fullPlayer) and type(fullPlayer) == "string" and fullPlayer ~= "" and arg2 == fullPlayer then
+                return
+            end
+            if not guidChecked then
+                local shortSender = arg2:match("^([^%-]+)") or arg2
+                if shortSender == pName then
                     return
                 end
             end
-            if arg2 and type(arg2) == "string" and UnitName then
-                local okN, pName = pcall(UnitName, "player")
-                if okN and pName and not IsSecretValue(pName) then
-                    local shortSender = arg2:match("^([^%-]+)") or arg2
-                    if shortSender == pName then
-                        return
-                    end
-                end
-            end
-        else
-            local now = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
-            local sentType = mapEntry.sentType
-            local lastSent = (self._lastSentByType and sentType and self._lastSentByType[sentType]) or 0
-            if now > 0 and (now - lastSent) <= 0.35 then
-                return
-            end
+        end
+    end
+    if (not guidChecked and IsSecretValue(arg12)) or (not nameChecked and IsSecretValue(arg2)) then
+        local nowSent = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
+        local sentType = mapEntry.sentType
+        local lastSent = (self._lastSentByType and sentType and self._lastSentByType[sentType]) or 0
+        if nowSent > 0 and (nowSent - lastSent) <= 0.45 then
+            return
         end
     end
 
     -- 3. Per-Channel Anti-Spam Cooldown
     local now = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
-    local throttle = tonumber(db.soundThrottleSec) or 1.5
+    local throttle = tonumber(db.soundThrottleSec)
+    if throttle == nil then throttle = 1.5 end
     if throttle > 0 and now > 0 then
         local prev = lastChannelSoundTime[channelKey] or 0
         if (now - prev) < throttle then
@@ -7493,9 +7437,9 @@ local function OpenSoundDropdownMenu(ownerBtn, channelKey)
     local options = GetSoundOptionsForChannel(channelKey)
     local numOpts = #options
     local rowH = 26
-    local maxVisRows = math.min(10, math.max(1, numOpts))
+    local maxVisRows = math.min(11, math.max(1, numOpts))
     local menuH = (maxVisRows * rowH) + 8
-    local hasScrollbar = (numOpts > 10)
+    local hasScrollbar = (numOpts > 11)
     local rowWidth = hasScrollbar and 228 or 236
 
     menu:SetSize(246, menuH)
@@ -7507,7 +7451,7 @@ local function OpenSoundDropdownMenu(ownerBtn, channelKey)
     local db = EnsureDB()
     db.channelSounds = db.channelSounds or {}
     local def = SOUND_CHANNEL_DEF_BY_KEY[channelKey]
-    local curVal = db.channelSounds[channelKey] or ((def and def.hasDefault) and "DEFAULT" or "NONE")
+    local curVal = db.channelSounds[channelKey] or (def and def.defaultVal) or "NONE"
 
     for i = 1, math.max(numOpts, #menu.rows) do
         local row = menu.rows[i]
@@ -7628,10 +7572,12 @@ local function OpenSoundDropdownMenu(ownerBtn, channelKey)
                 local curDB = EnsureDB()
                 curDB.channelSounds = curDB.channelSounds or {}
                 curDB.channelSounds[channelKey] = opt.value
-                if channelKey == "WHISPER" or channelKey == "BN_WHISPER" then
+                if channelKey == "WHISPER" then
                     DynamicChat:ApplyWhisperDefaultSoundMuteState()
                 end
-                DynamicChat:PlaySoundOptionKey(opt.value, channelKey, true)
+                if opt.value ~= "NONE" then
+                    DynamicChat:PlaySoundOptionKey(opt.value, channelKey, true)
+                end
                 if ownerBtn and ownerBtn.RefreshValue then
                     ownerBtn:RefreshValue()
                 end
@@ -7684,9 +7630,26 @@ end
 
 local function AttachSoundDropdownToCard(card, channelKey)
     local def = SOUND_CHANNEL_DEF_BY_KEY[channelKey]
+
+    local playBtn = CreateFrame("Button", nil, card, "BackdropTemplate")
+    playBtn:SetSize(48, 26)
+    playBtn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -17)
+    playBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    playBtn:RegisterForClicks("LeftButtonUp")
+
+    local playTxt = playBtn:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(playTxt, 10.5, "")
+    playTxt:SetPoint("CENTER", playBtn, "CENTER", 0, 0)
+    playTxt:SetText("Play")
+    playBtn.label = playTxt
+
     local btn = CreateFrame("Button", nil, card, "BackdropTemplate")
-    btn:SetSize(216, 26)
-    btn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -17)
+    btn:SetSize(176, 26)
+    btn:SetPoint("RIGHT", playBtn, "LEFT", -6, 0)
     btn:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -7718,14 +7681,37 @@ local function AttachSoundDropdownToCard(card, channelKey)
     DisableTexPixelSnap(bar)
     btn.tierBar = bar
 
+    local function RefreshPlayButtonVisual(isHovered)
+        local db = EnsureDB()
+        local chSounds = db.channelSounds or DEFAULTS.channelSounds
+        local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
+        local ar, ag, ab = GetSuiteAccent()
+        local isMuted = (curVal == "NONE" or curVal == "")
+        SetSafeFont(playBtn.label, 10.5, "")
+        if isMuted then
+            playBtn:SetBackdropColor(0.043, 0.051, 0.071, 0.72)
+            playBtn:SetBackdropBorderColor(0.16, 0.19, 0.24, 0.70)
+            playBtn.label:SetTextColor(0.42, 0.48, 0.56, 0.70)
+        elseif isHovered then
+            playBtn:SetBackdropColor(ar * 0.24, ag * 0.24, ab * 0.24, 0.98)
+            playBtn:SetBackdropBorderColor(ar, ag, ab, 1.0)
+            playBtn.label:SetTextColor(1, 1, 1, 1)
+        else
+            playBtn:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+            playBtn:SetBackdropBorderColor(ar, ag, ab, 0.72)
+            playBtn.label:SetTextColor(ar, ag, ab, 1.0)
+        end
+    end
+
     function btn:RefreshValue()
         local db = EnsureDB()
         local chSounds = db.channelSounds or DEFAULTS.channelSounds
-        local curVal = chSounds[channelKey] or ((def and def.hasDefault) and "DEFAULT" or "NONE")
+        local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
         local textLabel = GetSoundOptionLabel(channelKey, curVal)
         local ar, ag, ab = GetSuiteAccent()
         local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
         local isOpen = (activeDropdownMenu and activeDropdownMenu:IsShown() and activeDropdownMenu.ownerBtn == self)
+        local masterOn = (db.enableChatSounds ~= false)
 
         SetSafeFont(self.label, 10.5, "")
         self.label:SetText(textLabel)
@@ -7738,13 +7724,6 @@ local function AttachSoundDropdownToCard(card, channelKey)
             self.chevron:SetVertexColor(0.68, 0.74, 0.82, 0.90)
             self.tierBar:SetColorTexture(0.973, 0.443, 0.443, 0.85)
             self.tierBar:Show()
-        elseif curVal == "DEFAULT" then
-            self:SetBackdropColor(0.090, 0.110, 0.149, 0.96)
-            self:SetBackdropBorderColor(isOpen and ar or 0.220, isOpen and ag or 0.741, isOpen and ab or 0.973, 0.88)
-            self.label:SetTextColor(0.94, 0.97, 1.00, 1.0)
-            self.chevron:SetVertexColor(0.220, 0.741, 0.973, 0.95)
-            self.tierBar:SetColorTexture(0.220, 0.741, 0.973, 0.90)
-            self.tierBar:Show()
         else
             self:SetBackdropColor(ar * (fillAlpha * 0.65), ag * (fillAlpha * 0.65), ab * (fillAlpha * 0.65), 0.96)
             self:SetBackdropBorderColor(ar, ag, ab, 0.95)
@@ -7753,20 +7732,55 @@ local function AttachSoundDropdownToCard(card, channelKey)
             self.tierBar:SetColorTexture(ar, ag, ab, 0.95)
             self.tierBar:Show()
         end
+
+        self:SetAlpha(masterOn and 1.0 or 0.58)
+        playBtn:SetAlpha(masterOn and 1.0 or 0.58)
+        RefreshPlayButtonVisual(false)
     end
+
+    playBtn:SetScript("OnEnter", function(selfBtn)
+        RefreshPlayButtonVisual(true)
+        if not _G.GameTooltip then return end
+        local db = EnsureDB()
+        local chSounds = db.channelSounds or DEFAULTS.channelSounds
+        local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
+        local curLabel = GetSoundOptionLabel(channelKey, curVal)
+        _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
+        _G.GameTooltip:ClearLines()
+        _G.GameTooltip:AddLine("Preview: " .. ((def and def.title) or "Channel Sound"), 1, 1, 1)
+        if curVal == "NONE" then
+            _G.GameTooltip:AddLine("Currently set to None (Muted). Choose a sound effect in the dropdown to preview.", 0.82, 0.86, 0.92, true)
+        else
+            _G.GameTooltip:AddLine("Selected Sound: " .. ColorWithAccent(curLabel), 0.82, 0.86, 0.92)
+            _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Play '" .. curLabel .. "' preview now.", "38BDF8"), 0.886, 0.910, 0.941)
+        end
+        _G.GameTooltip:Show()
+    end)
+    playBtn:SetScript("OnLeave", function()
+        RefreshPlayButtonVisual(false)
+        if _G.GameTooltip then _G.GameTooltip:Hide() end
+    end)
+    playBtn:SetScript("OnClick", function()
+        local db = EnsureDB()
+        local chSounds = db.channelSounds or DEFAULTS.channelSounds
+        local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
+        if curVal and curVal ~= "NONE" then
+            DynamicChat:PlaySoundOptionKey(curVal, channelKey, true)
+        end
+    end)
 
     btn:SetScript("OnEnter", function(selfBtn)
         if not _G.GameTooltip then return end
         local db = EnsureDB()
         local chSounds = db.channelSounds or DEFAULTS.channelSounds
-        local curVal = chSounds[channelKey] or ((def and def.hasDefault) and "DEFAULT" or "NONE")
+        local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
         local curLabel = GetSoundOptionLabel(channelKey, curVal)
         _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
         _G.GameTooltip:ClearLines()
-        _G.GameTooltip:AddLine((def and def.title) or (card.title and card.title:GetText()) or "Channel Sound Alert", 1, 1, 1)
+        _G.GameTooltip:AddLine((def and def.title) or (card.title and card.title:GetText()) or "Chat Notification Sound", 1, 1, 1)
         _G.GameTooltip:AddLine("Current Sound: " .. ColorWithAccent(curLabel), 0.82, 0.86, 0.92)
-        _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Select Sound (includes [>] preview buttons inside menu)", "34D399"), 0.886, 0.910, 0.941)
-        _G.GameTooltip:AddLine(FormatTooltipCmd("Right-Click:", "Preview Current Sound", "38BDF8"), 0.886, 0.910, 0.941)
+        _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Choose a sound effect (selecting automatically previews).", "34D399"), 0.886, 0.910, 0.941)
+        _G.GameTooltip:AddLine(FormatTooltipCmd("Right-Click:", "Replay current sound effect.", "38BDF8"), 0.886, 0.910, 0.941)
         _G.GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function()
@@ -7777,7 +7791,7 @@ local function AttachSoundDropdownToCard(card, channelKey)
         if mouseBtn == "RightButton" then
             local db = EnsureDB()
             local chSounds = db.channelSounds or DEFAULTS.channelSounds
-            local curVal = chSounds[channelKey] or ((def and def.hasDefault) and "DEFAULT" or "NONE")
+            local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
             DynamicChat:PlaySoundOptionKey(curVal, channelKey, true)
             return
         end
@@ -7785,6 +7799,7 @@ local function AttachSoundDropdownToCard(card, channelKey)
     end)
 
     btn:RefreshValue()
+    card.playBtn = playBtn
     card.toggleBtn = btn
     return btn
 end
@@ -8742,45 +8757,77 @@ local function RenderChatEmbedded(arg1, arg2)
     root.allControls[#root.allControls + 1] = c2_ts
 
     -- ========================================================================
-    -- TAB 3: Sound Alerts (Per-Channel Sound Alert Engine + LSM-3.0 Support)
+    -- TAB 3: Sound Alerts (Chat Notification Sounds + Per-Channel Config)
     -- ========================================================================
     local page3 = root.tabPages[3]
-    local sec3_rules = CreateSectionBox(
+    local sec3_sounds = CreateSectionBox(
         page3,
-        "SOUND ALERT RULES & AUDIO CHANNEL",
-        "Configure master chat sound alerts, audio output channel, combat behaviour, and anti-spam cooldown.",
+        "CHAT NOTIFICATION SOUNDS",
+        "Play gentle custom chimes when messages arrive in your chosen chat channels. Selecting a sound previews it automatically, or click [Play].",
         root
     )
-    local sec3_chans = CreateSectionBox(
+    local sec3_rules = CreateSectionBox(
         page3,
-        "CHANNEL & WHISPER SOUND ASSIGNMENTS",
-        "Assign custom alert sounds per chat channel. Click [>] inside any menu to preview sounds, or Right-Click a dropdown to replay.",
+        "AUDIO OUTPUT & ANTI-SPAM",
+        "Choose which World of Warcraft audio volume slider controls chat chimes and set the per-channel anti-spam cooldown.",
         root
     )
 
-    local c3_sndMaster = CreateCardRow(sec3_rules, 60,
-        "Enable Chat Sound Alerts",
-        "Plays custom alert sounds when messages arrive in your chosen chat channels (automatically suppresses your own sent messages).",
-        "Enable Chat Sound Alerts",
-        "Turn custom per-channel chat sound alerts On or Off."
+    local c3_sndMaster = CreateCardRow(sec3_sounds, 60,
+        "Chat Notification Sounds",
+        "Master switch for per-channel incoming chat sound effects (automatically ignores outgoing messages sent by you).",
+        "Chat Notification Sounds",
+        "Turn custom per-channel chat notification sounds On or Off."
     )
     AttachSegmentedSwitchToCard(c3_sndMaster,
-        function() return EnsureDB().enableSoundAlerts ~= false end,
+        function() return EnsureDB().enableChatSounds ~= false end,
         function(val)
-            EnsureDB().enableSoundAlerts = val
+            local db = EnsureDB()
+            db.enableChatSounds = val
+            db.enableSoundAlerts = val
             DynamicChat:ApplyWhisperDefaultSoundMuteState()
+            DynamicChat:RefreshConfigUI()
         end,
         "Off", "Enabled",
-        "Toggle Per-Channel Chat Sound Alerts."
+        "Toggle Custom Chat Notification Sounds."
     )
-    sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_sndMaster
+    sec3_sounds.orderedCards[#sec3_sounds.orderedCards + 1] = c3_sndMaster
     root.allControls[#root.allControls + 1] = c3_sndMaster
+
+    local c3_sndCombatMute = CreateCardRow(sec3_sounds, 60,
+        "Mute Sounds in Combat",
+        "Silence incoming chat notification sounds during combat lockdown and active raid or dungeon boss encounters.",
+        "Mute Sounds in Combat",
+        "Silence incoming chat notification chimes while in combat or a boss encounter."
+    )
+    AttachSegmentedSwitchToCard(c3_sndCombatMute,
+        function() return EnsureDB().soundMuteInCombat == true end,
+        function(val)
+            EnsureDB().soundMuteInCombat = (val == true)
+        end,
+        "Off", "Enabled",
+        "Toggle muting chat notification sounds during combat."
+    )
+    sec3_sounds.orderedCards[#sec3_sounds.orderedCards + 1] = c3_sndCombatMute
+    root.allControls[#root.allControls + 1] = c3_sndCombatMute
+
+    for _, chDef in ipairs(SOUND_CHANNEL_DEFS) do
+        local cRow = CreateCardRow(sec3_sounds, 60,
+            chDef.title,
+            chDef.desc,
+            chDef.title,
+            "Select a sound effect for " .. chDef.title .. " (auto-previews on selection, or click [Play] beside the dropdown)."
+        )
+        AttachSoundDropdownToCard(cRow, chDef.key)
+        sec3_sounds.orderedCards[#sec3_sounds.orderedCards + 1] = cRow
+        root.allControls[#root.allControls + 1] = cRow
+    end
 
     local c3_sndOut = CreateCardRow(sec3_rules, 62,
         "Audio Output Channel",
-        "Choose which World of Warcraft audio volume slider controls your chat alert chimes (Master plays even if sound effects are lowered).",
+        "Choose which World of Warcraft volume slider controls your chat notification chimes (Master plays even if sound effects are lowered).",
         "Audio Output Channel",
-        "Select the audio output channel for chat alert sounds."
+        "Select the audio output channel for chat notification sounds."
     )
     AttachMultiPillSelectorToCard(c3_sndOut,
         {
@@ -8801,36 +8848,11 @@ local function RenderChatEmbedded(arg1, arg2)
     sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_sndOut
     root.allControls[#root.allControls + 1] = c3_sndOut
 
-    local c3_sndCombat = CreateCardRow(sec3_rules, 62,
-        "Combat & Boss Fight Sounds",
-        "Choose whether general chat sounds are muted during combat so only Party, Raid, Instance, and Whisper alerts play.",
-        "Combat & Boss Fight Sounds",
-        "Select which channel sounds are allowed to play during combat and boss encounters."
-    )
-    AttachMultiPillSelectorToCard(c3_sndCombat,
-        {
-            { value = "MUTE_COMBAT",   label = "Mute in Combat" },
-            { value = "GROUP_WHISPER", label = "Group & Whispers" },
-            { value = "ALL",           label = "All Channels" },
-        },
-        function()
-            local m = EnsureDB().soundCombatMode or "GROUP_WHISPER"
-            if m ~= "MUTE_COMBAT" and m ~= "GROUP_WHISPER" and m ~= "ALL" then return "GROUP_WHISPER" end
-            return m
-        end,
-        function(val)
-            EnsureDB().soundCombatMode = val
-        end,
-        "Select combat sound alert behaviour."
-    )
-    sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_sndCombat
-    root.allControls[#root.allControls + 1] = c3_sndCombat
-
     local c3_sndCooldown = CreateCardRow(sec3_rules, 62,
         "Anti-Spam Cooldown",
-        "Prevents rapid-fire chat messages in the same channel from chiming repeatedly within a short window.",
+        "Prevents rapid-fire messages in the same chat channel from playing chimes repeatedly within a short window.",
         "Anti-Spam Cooldown",
-        "Select the minimum cooldown between alert chimes on the same chat channel."
+        "Select the minimum cooldown between notification chimes on the same chat channel."
     )
     AttachMultiPillSelectorToCard(c3_sndCooldown,
         {
@@ -8854,18 +8876,6 @@ local function RenderChatEmbedded(arg1, arg2)
     )
     sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_sndCooldown
     root.allControls[#root.allControls + 1] = c3_sndCooldown
-
-    for _, chDef in ipairs(SOUND_CHANNEL_DEFS) do
-        local cRow = CreateCardRow(sec3_chans, 60,
-            chDef.title,
-            chDef.desc,
-            chDef.title,
-            "Select an alert sound for " .. chDef.title .. " (or Right-Click the dropdown to preview)."
-        )
-        AttachSoundDropdownToCard(cRow, chDef.key)
-        sec3_chans.orderedCards[#sec3_chans.orderedCards + 1] = cRow
-        root.allControls[#root.allControls + 1] = cRow
-    end
 
     -- ========================================================================
     -- TAB 4: Links, Scroll & History
@@ -9529,8 +9539,9 @@ local function RegisterWithDynamicSuite()
 
     DynamicChat.CHANGELOG = {
         version = DynamicChat.version or VERSION,
-        date = "14/11/2026",
+        date = "15/11/2026",
         entries = {
+            { type = "NEW",      text = "Custom Chat Notification Sounds & 10 Bespoke Sound Effects (15/11/2026): Added 10 lightweight synthesised 44.1kHz mono .wav sound effects (Soft Chime, Crystal Ping, Whisper Bell, Marimba Note, Sonar Pulse, Double Tap, Water Drop, Warm Chord, Wood Tick, Subtle Alert) played cleanly via PlaySoundFile, grouped Tab 3 into a dedicated 'CHAT NOTIFICATION SOUNDS' card featuring the 'Chat Notification Sounds' master toggle, 'Mute Sounds in Combat' toggle, 5 channel rows (Whisper & Battle.net Whisper, Guild & Officer Chat, Party & Instance Chat, Raid & Raid Warning, and Say & Yell with Say & Yell None by default), dropdown auto-preview plus a compact [Play] preview button beside each dropdown, 1.5s anti-spam per-channel cooldown, and secret-value-guarded self-message suppression (checking sender GUID and UnitName('player')) so your own outgoing messages never trigger alerts." },
             { type = "FIX",      text = "Flush Bottom-Left (0, 0) Chat Clamping & Persistence (14/11/2026): Enforced ChatFrame1:SetClampedToScreen(false) whenever DynamicChat manages layout, added GetVisibleContainerExtents() and GetLiveOuterBottomLeft() so clamping measures only the visible chat container frame without external button or negative bottom EditBox overhangs, and canonicalised chatFramePos to BOTTOMLEFT outer-container coordinates so dragging or nudging to X = 0, Y = 0 sits flush against the bottom-left screen corner across HUD Edit toggles, UI scale events, and /reload." },
             { type = "FIX",      text = "Unified /ww Instant Target Whisper Across All Chat/Whisper EditBoxes (13/11/2026): Kept /ww as the instant target whisper trigger with self-targeting (UnitIsUnit('target', 'player')) using GetUnitName('target', true), separated group leave cleanly into /lg, called ChatEdit_UpdateHeader before SetText + SetCursorPosition so 'Tell <TargetName>:' updates immediately on spacebar even inside existing whisper tabs, and hooked all 1..NUM_CHAT_WINDOWS editboxes plus FCF_OpenTemporaryWindow and ChatEdit_ActivateChat regardless of external chat addons." },
             { type = "FIX",      text = "Removed Auto-Yield & Asserted Full DynamicChat Priority Over EllesmereUI Chat / ElvUI Chat (13/11/2026): DynamicChat no longer yields chat frame skinning, tab styling, EditBox anchoring, or bottom-left 0px positioning to EllesmereUI Chat or ElvUI Chat. Cleared legacy yieldSharedHooks and yieldHooks flags on load, removed the Tab 3 Compatibility Mode (Auto-Yield) card, and enforced strict 2-button mutual exclusion ('Use DynamicChat Only' vs 'Use [Addon] Only') in the Conflict Scanner." },
