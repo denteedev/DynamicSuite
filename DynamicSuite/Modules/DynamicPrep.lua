@@ -752,6 +752,10 @@ local DEFAULTS = {
         relPoint = "CENTER",
         x = 0,
         y = 140,
+        hudScale = 1.0,
+        hudOpacity = 0.95,
+        hudBorderStyle = "ACCENT",
+        orientation = "HORIZONTAL",
     },
 }
 
@@ -2936,6 +2940,7 @@ function DynamicPrep:CreatePrepBar()
     local mover = CreateFrame("Button", nil, bar, "BackdropTemplate")
     mover:SetAllPoints(bar)
     mover:SetFrameLevel(bar:GetFrameLevel() + 30)
+    if mover.SetIgnoreParentAlpha then mover:SetIgnoreParentAlpha(true) end
     local ar, ag, ab, accentHex = GetActiveAccentRGB()
     SetPixelBackdrop(mover, { 0.05, 0.06, 0.09, 0.84 }, { ar, ag, ab, 1.0 }, 1)
     mover.dimBg = mover:CreateTexture(nil, "BACKGROUND")
@@ -3011,6 +3016,7 @@ function DynamicPrep:CreatePrepBar()
 end
 
 DynamicPrep.InitOmniBar = DynamicPrep.CreatePrepBar
+DynamicPrep.InitBar = DynamicPrep.CreatePrepBar
 
 function DynamicPrep:EnsureMeasureFontString()
     if not self._fpsMeasureFS and self.prepBarFrame then
@@ -8229,6 +8235,10 @@ local function ResetPrepHUDPosition(silent)
     end
     DynamicPrep:InitDB()
     DynamicPrep:SaveBarEditPosition("TOP", "TOP", 0, -8)
+    DynamicPrep.db.barScale = 1.0
+    DynamicPrep.db.barOpacity = 0.95
+    DynamicPrep.db.hudBorderStyle = "ACCENT"
+    DynamicPrep:ApplyBarBorderStyle()
     DynamicPrep:ApplyBarGeometry()
     return true
 end
@@ -11217,6 +11227,12 @@ function DynamicPrep:ResetBuffBarHUDPosition(silent)
         return false
     end
     self:SaveBuffBarEditPosition("CENTER", "CENTER", 0, 140)
+    if self.db and self.db.raidBuffs then
+        self.db.raidBuffs.hudScale = 1.0
+        self.db.raidBuffs.hudOpacity = 0.95
+        self.db.raidBuffs.hudBorderStyle = "ACCENT"
+        self.db.raidBuffs.orientation = "HORIZONTAL"
+    end
     self:RefreshClickableBuffs(true)
     return true
 end
@@ -11333,10 +11349,20 @@ function DynamicPrep:CreateClickableBuffBar()
         btn:SetScript("OnLeave", function(selfBtn)
             if GameTooltip then GameTooltip:Hide() end
             local ar, ag, ab = GetActiveAccentRGB()
+            local rbCfg = DynamicPrep.db and DynamicPrep.db.raidBuffs
+            local bStyle = (rbCfg and rbCfg.hudBorderStyle) or (DynamicPrep.db and DynamicPrep.db.hudBorderStyle) or "ACCENT"
+            local bRGBA
+            if bStyle == "NONE" then
+                bRGBA = { 0, 0, 0, 0 }
+            elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+                bRGBA = COLORS.BorderStrong
+            else
+                bRGBA = { ar, ag, ab, 0.90 }
+            end
             if selfBtn._isExpiring then
                 SetPixelBackdrop(selfBtn.bgFrame or selfBtn, COLORS.BgVoid, COLORS.Gold, 1)
             else
-                SetPixelBackdrop(selfBtn.bgFrame or selfBtn, COLORS.BgVoid, { ar, ag, ab, 0.90 }, 1)
+                SetPixelBackdrop(selfBtn.bgFrame or selfBtn, COLORS.BgVoid, bRGBA, 1)
             end
         end)
 
@@ -11348,6 +11374,7 @@ function DynamicPrep:CreateClickableBuffBar()
     local mover = CreateFrame("Button", nil, bar, "BackdropTemplate")
     mover:SetAllPoints(bar)
     mover:SetFrameLevel(bar:GetFrameLevel() + 30)
+    if mover.SetIgnoreParentAlpha then mover:SetIgnoreParentAlpha(true) end
     local ar, ag, ab, hex = GetActiveAccentRGB()
     SetPixelBackdrop(mover, { 0.05, 0.06, 0.09, 0.86 }, { ar, ag, ab, 1.0 }, 1)
     mover.dimBg = mover:CreateTexture(nil, "BACKGROUND")
@@ -11403,7 +11430,7 @@ function DynamicPrep:CreateClickableBuffBar()
             x = math.floor(x + 0.5)
             y = math.floor(y + 0.5)
         end
-        x, y = ClampPrepFrameToScreen(bar, "CENTER", "CENTER", x, y, 200, 56)
+        x, y = ClampPrepFrameToScreen(bar, "CENTER", "CENTER", x, y, bar:GetWidth() or 200, bar:GetHeight() or 56)
         if not InCombatLockdown() then
             bar:ClearAllPoints()
             bar:SetPoint("CENTER", UIParent, "CENTER", x, y)
@@ -11438,6 +11465,7 @@ function DynamicPrep:CreateClickableBuffBar()
 
     return bar
 end
+DynamicPrep.InitClickableBuffBar = DynamicPrep.CreateClickableBuffBar
 
 local _staticRuneMatchNames = {
     ["Augmentation"] = true,
@@ -12124,14 +12152,46 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
     -- TRUE CENTER-ALIGNED SYMMETRIC LAYOUT:
     -- Whether 1, 2, 3, or 8 icons are active, they are always centered symmetrically around the middle of `bar`!
     local visibleCount = math.max(1, count)
-    local contentW = visibleCount * iconSize + (visibleCount - 1) * gap
-    local barW = math.max(iconSize + 16, contentW + 16)
-    local barH = iconSize + 22
+    local isVert = (rb.orientation == "VERTICAL")
+    local hudOpa = math.max(0.20, math.min(1.00, tonumber(rb.hudOpacity) or 0.95))
+    local borderStyle = rb.hudBorderStyle or (self.db and self.db.hudBorderStyle) or "ACCENT"
+    local isShownSetting = (rb.enabled ~= false)
+    if inBuffEdit then
+        bar:SetAlpha(isShownSetting and hudOpa or math.min(0.65, hudOpa))
+    else
+        bar:SetAlpha(hudOpa)
+    end
+
+    local btnBorderRGBA
+    if borderStyle == "NONE" then
+        btnBorderRGBA = { 0, 0, 0, 0 }
+    elseif borderStyle == "DARK" or borderStyle == "SUBTLE" then
+        btnBorderRGBA = COLORS.BorderStrong
+    else
+        btnBorderRGBA = { ar, ag, ab, 0.90 }
+    end
+
+    local contentW, contentH, barW, barH
+    local vGap = gap + 12
+    if isVert then
+        contentW = iconSize
+        contentH = visibleCount * iconSize + (visibleCount - 1) * vGap
+        barW = iconSize + 20
+        barH = math.max(iconSize + 22, contentH + 22)
+    else
+        contentW = visibleCount * iconSize + (visibleCount - 1) * gap
+        contentH = iconSize
+        barW = math.max(iconSize + 16, contentW + 16)
+        barH = iconSize + 22
+    end
 
     if bar.hudBg then
         local showHudCapsule = (rb.showHudCapsule == true) or inBuffEdit
         if showHudCapsule then
-            SetPixelBackdrop(bar.hudBg, { 0.035, 0.043, 0.059, 0.78 }, { ar, ag, ab, 0.45 }, 1)
+            local capsuleBorder = (borderStyle == "NONE") and { 0, 0, 0, 0 }
+                or ((borderStyle == "DARK" or borderStyle == "SUBTLE") and COLORS.BorderStrong)
+                or { ar, ag, ab, 0.45 }
+            SetPixelBackdrop(bar.hudBg, { 0.035, 0.043, 0.059, 0.78 }, capsuleBorder, 1)
             bar.hudBg:Show()
         else
             bar.hudBg:Hide()
@@ -12146,9 +12206,14 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
             btn:SetAlpha(1.0)
             btn:SetSize(iconSize, iconSize)
             btn:ClearAllPoints()
-            -- Exact horizontal center offset from the center of `bar` (shifted +4px Y to leave room for the bottom label)
-            local offsetX = (-contentW / 2) + ((i - 0.5) * iconSize) + ((i - 1) * gap)
-            btn:SetPoint("CENTER", bar, "CENTER", offsetX, 4)
+            if isVert then
+                local offsetY = (contentH / 2) - ((i - 0.5) * iconSize) - ((i - 1) * vGap) + 6
+                btn:SetPoint("CENTER", bar, "CENTER", 0, offsetY)
+            else
+                -- Exact horizontal center offset from the center of `bar` (shifted +4px Y to leave room for the bottom label)
+                local offsetX = (-contentW / 2) + ((i - 0.5) * iconSize) + ((i - 1) * gap)
+                btn:SetPoint("CENTER", bar, "CENTER", offsetX, 4)
+            end
 
             btn:SetAttribute("type", entry.actionType)
             if entry.actionType == "spell" then
@@ -12219,7 +12284,7 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
             if entry.isExpiring then
                 SetPixelBackdrop(btn.bgFrame or btn, COLORS.BgVoid, COLORS.Gold, 1)
             else
-                SetPixelBackdrop(btn.bgFrame or btn, COLORS.BgVoid, { ar, ag, ab, 0.90 }, 1)
+                SetPixelBackdrop(btn.bgFrame or btn, COLORS.BgVoid, btnBorderRGBA, 1)
             end
             btn:Show()
         else

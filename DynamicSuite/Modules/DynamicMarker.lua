@@ -3697,11 +3697,14 @@ function DM:UpdateFlareBarVisibility()
     end
 end
 
-function DM:GetHUDBorderColor()
-    local style = (self.db and self.db.hudBorderStyle) or "ACCENT"
+function DM:GetHUDBorderColor(barKey)
+    local style = (barKey == "FlareBar" and self.db and self.db.flareBarBorderStyle)
+        or (barKey == "TargetBar" and self.db and self.db.targetBarBorderStyle)
+        or (self.db and self.db.hudBorderStyle)
+        or "ACCENT"
     if style == "NONE" then
         return { r = 0, g = 0, b = 0, a = 0 }
-    elseif style == "DARK" then
+    elseif style == "DARK" or style == "SUBTLE" then
         return COLORS.BorderStrong
     else
         local ar, ag, ab = self:GetAccentColor()
@@ -4233,8 +4236,14 @@ function DM:RefreshTargetBar()
     local bar = self.targetBar
     local ar, ag, ab = self:GetAccentColor()
 
-    bar:SetAlpha(self.isEditMode and 1.0 or (self.db.targetBarOpacity or 0.95))
-    self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetHUDBorderColor())
+    local targetOpa = self.db.targetBarOpacity or 0.95
+    if self.isEditMode then
+        local isNorm = self:IsBarNormallyShown("TargetBar")
+        bar:SetAlpha(isNorm and targetOpa or math.min(0.65, targetOpa))
+    else
+        bar:SetAlpha(targetOpa)
+    end
+    self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetHUDBorderColor("TargetBar"))
 
     local selected = self.db.focusIcon or 8
     local isVertNow = (self.db.targetBarOrientation == "VERTICAL")
@@ -4436,8 +4445,14 @@ end
 function DM:RefreshFlareBar()
     if not self.flareBar or not self.db then return end
     local bar = self.flareBar
-    bar:SetAlpha(self.isEditMode and 1.0 or (self.db.flareBarOpacity or 0.95))
-    self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetHUDBorderColor())
+    local flareOpa = self.db.flareBarOpacity or 0.95
+    if self.isEditMode then
+        local isNorm = self:IsBarNormallyShown("FlareBar")
+        bar:SetAlpha(isNorm and flareOpa or math.min(0.65, flareOpa))
+    else
+        bar:SetAlpha(flareOpa)
+    end
+    self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetHUDBorderColor("FlareBar"))
 
     if InCombatLockdown() then
         self.pendingFlareBarSync = true
@@ -5378,7 +5393,7 @@ function DM:EnsureEditModeInspector()
     if self.editInspector then return self.editInspector end
 
     local insp = CreateFrame("Frame", "DynamicMarkerEditModeInspector", UIParent, "BackdropTemplate")
-    insp:SetSize(560, 74)
+    insp:SetSize(560, 110)
     insp:SetFrameStrata("DIALOG")
     insp:SetFrameLevel(200)
     insp:SetToplevel(true)
@@ -5387,7 +5402,7 @@ function DM:EnsureEditModeInspector()
         local target = modal or insp
         if not target then return end
         local w = (target.GetWidth and target:GetWidth()) or 560
-        local h = (target.GetHeight and target:GetHeight()) or 74
+        local h = (target.GetHeight and target:GetHeight()) or 110
         local keepVisible = 60
         local allowOffX = math.max(0, w - keepVisible)
         local allowOffY = math.max(0, h - keepVisible)
@@ -5403,7 +5418,7 @@ function DM:EnsureEditModeInspector()
         self:ClearAllPoints()
         if type(pos) == "table" and pos.x ~= nil and pos.y ~= nil then
             local w = (self.GetWidth and self:GetWidth()) or 560
-            local h = (self.GetHeight and self:GetHeight()) or 74
+            local h = (self.GetHeight and self:GetHeight()) or 110
             local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
             local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
             local allowOffX = math.max(0, w - 60)
@@ -5781,8 +5796,8 @@ function DM:EnsureEditModeInspector()
             DM:ResetSingleHUDPosition(primaryKey, true)
             DM:RefreshEditModeInspector()
         end)
-        btnReset.tooltipTitle = "Reset Location"
-        btnReset.tooltipText = "Reset the selected HUD bar back to default screen-safe coordinates."
+        btnReset.tooltipTitle = "Reset HUD"
+        btnReset.tooltipText = "Reset the selected HUD bar's position, scale, opacity, border style, and orientation to defaults."
         insp.btnReset = btnReset
 
         local btnGrid = DM:CreateButton(mHdr, "Grid", 42, 22, function()
@@ -5805,8 +5820,8 @@ function DM:EnsureEditModeInspector()
     -- Row 2: Compact Inspector Controls (36px tall, draggable dock body)
     do
         local inspCard = CreateFrame("Frame", nil, insp, "BackdropTemplate")
-        inspCard:SetPoint("TOPLEFT", insp.mHdr, "BOTTOMLEFT", 4, -2)
-        inspCard:SetPoint("TOPRIGHT", insp.mHdr, "BOTTOMRIGHT", -4, -2)
+        inspCard:SetPoint("TOPLEFT", insp.mHdr, "BOTTOMLEFT", 4, -1)
+        inspCard:SetPoint("TOPRIGHT", insp.mHdr, "BOTTOMRIGHT", -4, -1)
         inspCard:SetHeight(36)
         DM:ApplyBackdrop(inspCard, { r = 0.075, g = 0.086, b = 0.110, a = 0.96 }, { r = 1, g = 1, b = 1, a = 0.10 }, 1)
         inspCard:EnableMouse(true)
@@ -6073,6 +6088,259 @@ function DM:EnsureEditModeInspector()
         end)
     end
 
+    -- Row 3: Live Appearance Bar (36px tall, Opacity | Border Style | Orientation)
+    do
+        local inspRow3 = CreateFrame("Frame", nil, insp, "BackdropTemplate")
+        inspRow3:SetPoint("TOPLEFT", insp.inspCard, "BOTTOMLEFT", 0, -1)
+        inspRow3:SetPoint("TOPRIGHT", insp.inspCard, "BOTTOMRIGHT", 0, -1)
+        inspRow3:SetHeight(36)
+        DM:ApplyBackdrop(inspRow3, { r = 0.075, g = 0.086, b = 0.110, a = 0.96 }, { r = 1, g = 1, b = 1, a = 0.10 }, 1)
+        inspRow3:EnableMouse(true)
+        inspRow3:RegisterForDrag("LeftButton")
+        inspRow3:SetScript("OnDragStart", function()
+            if insp.selectorPopup and insp.selectorPopup:IsShown() then insp.selectorPopup:Hide() end
+            insp:StartMoving()
+        end)
+        inspRow3:SetScript("OnDragStop", SaveInspectorPosition)
+        insp.inspRow3 = inspRow3
+
+        -- Left cluster: Opacity Slider (20% - 100%, step 5%)
+        local HUD_MIN_OPA, HUD_MAX_OPA, HUD_OPA_STEP, OPA_SLIDER_W = 0.20, 1.00, 0.05, 64
+        local opaLbl = inspRow3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        opaLbl:SetPoint("LEFT", inspRow3, "LEFT", 8, 0)
+        DM:StyleFont(opaLbl, 10, "", COLORS.TextMuted)
+        opaLbl:SetText("Opacity")
+
+        local function GetSelectedHudOpacity()
+            local primaryKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            local opaKey = (primaryKey == "FlareBar") and "flareBarOpacity" or "targetBarOpacity"
+            return math.max(HUD_MIN_OPA, math.min(HUD_MAX_OPA, tonumber(DM:GetSetting(opaKey)) or 0.95))
+        end
+
+        local function SetSelectedHudOpacity(val)
+            if InCombatLockdown() then return end
+            local primaryKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            local clamped = math.max(HUD_MIN_OPA, math.min(HUD_MAX_OPA, math.floor((val or 0.95) * 20 + 0.5) / 20))
+            if primaryKey == "FlareBar" then
+                DM:SetSetting("flareBarOpacity", clamped)
+                DM:RefreshFlareBar()
+            else
+                DM:SetSetting("targetBarOpacity", clamped)
+                DM:RefreshTargetBar()
+            end
+            if DM.SyncEditBarStates then DM:SyncEditBarStates() end
+            DM:RefreshAll()
+        end
+
+        local opaMinusBtn = DM:CreateButton(inspRow3, "-", 20, 22, function()
+            SetSelectedHudOpacity(GetSelectedHudOpacity() - HUD_OPA_STEP)
+            DM:RefreshEditModeInspector()
+        end)
+        TightenLabel(opaMinusBtn, 2, 20)
+        opaMinusBtn:SetPoint("LEFT", opaLbl, "RIGHT", 4, 0)
+
+        local opaHit = CreateFrame("Frame", nil, inspRow3)
+        opaHit:SetSize(OPA_SLIDER_W, 22)
+        opaHit:SetPoint("LEFT", opaMinusBtn, "RIGHT", 4, 0)
+        opaHit:EnableMouse(true)
+        opaHit:EnableMouseWheel(true)
+
+        local opaTrack = opaHit:CreateTexture(nil, "ARTWORK", nil, 1)
+        opaTrack:SetSize(OPA_SLIDER_W, 4)
+        opaTrack:SetPoint("CENTER", opaHit, "CENTER", 0, 0)
+        opaTrack:SetColorTexture(0.035, 0.039, 0.051, 0.98)
+
+        local opaFill = opaHit:CreateTexture(nil, "ARTWORK", nil, 2)
+        opaFill:SetPoint("TOPLEFT", opaTrack, "TOPLEFT", 0, 0)
+        opaFill:SetPoint("BOTTOMLEFT", opaTrack, "BOTTOMLEFT", 0, 0)
+        opaFill:SetWidth(1)
+
+        local opaThumb = opaHit:CreateTexture(nil, "OVERLAY", nil, 4)
+        opaThumb:SetSize(6, 14)
+        opaThumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+        if opaThumb.SetSnapToPixelGrid then
+            opaThumb:SetSnapToPixelGrid(false)
+            opaThumb:SetTexelSnappingBias(0)
+        end
+
+        local opaPlusBtn = DM:CreateButton(inspRow3, "+", 20, 22, function()
+            SetSelectedHudOpacity(GetSelectedHudOpacity() + HUD_OPA_STEP)
+            DM:RefreshEditModeInspector()
+        end)
+        TightenLabel(opaPlusBtn, 2, 20)
+        opaPlusBtn:SetPoint("LEFT", opaHit, "RIGHT", 4, 0)
+
+        local opaBadge = CreateFrame("Frame", nil, inspRow3, "BackdropTemplate")
+        opaBadge:SetSize(38, 22)
+        opaBadge:SetPoint("LEFT", opaPlusBtn, "RIGHT", 4, 0)
+        DM:ApplyBackdrop(opaBadge, { r = 0.043, g = 0.051, b = 0.071, a = 0.98 }, COLORS.BorderStrong, 1)
+        local opaBadgeText = opaBadge:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        opaBadgeText:SetPoint("CENTER", opaBadge, "CENTER", 0, 0)
+        DM:StyleFont(opaBadgeText, 10, "", COLORS.TextPrimary)
+        opaBadgeText:SetText("95%")
+
+        local function UpdateOpacityVisual(val)
+            local v = math.max(HUD_MIN_OPA, math.min(HUD_MAX_OPA, val or 0.95))
+            local pct = (v - HUD_MIN_OPA) / (HUD_MAX_OPA - HUD_MIN_OPA)
+            local xOff = pct * OPA_SLIDER_W
+            local r, g, b = DM:GetAccentColor()
+            opaFill:SetColorTexture(r, g, b, 0.95)
+            opaFill:SetWidth(math.max(1, xOff))
+            opaThumb:ClearAllPoints()
+            opaThumb:SetPoint("CENTER", opaTrack, "LEFT", xOff, 0)
+            opaBadgeText:SetText(string.format("%d%%", math.floor(v * 100 + 0.5)))
+        end
+        insp.UpdateOpacityVisual = UpdateOpacityVisual
+        insp.GetSelectedHudOpacity = GetSelectedHudOpacity
+
+        opaHit:SetScript("OnMouseDown", function(s, button)
+            if button == "LeftButton" then
+                s:SetScript("OnUpdate", function(selfHit)
+                    if not IsMouseButtonDown("LeftButton") or InCombatLockdown() then
+                        selfHit:SetScript("OnUpdate", nil)
+                        return
+                    end
+                    local eff = opaTrack:GetEffectiveScale()
+                    local cx = GetCursorPosition() / eff
+                    local left = opaTrack:GetLeft()
+                    if left then
+                        local pct = math.max(0, math.min(1, (cx - left) / OPA_SLIDER_W))
+                        local raw = HUD_MIN_OPA + pct * (HUD_MAX_OPA - HUD_MIN_OPA)
+                        local snapped = math.floor(raw * 20 + 0.5) / 20
+                        snapped = math.max(HUD_MIN_OPA, math.min(HUD_MAX_OPA, snapped))
+                        if selfHit._lastSnapped ~= snapped then
+                            selfHit._lastSnapped = snapped
+                            if math.abs(snapped - GetSelectedHudOpacity()) >= 0.01 then
+                                SetSelectedHudOpacity(snapped)
+                            end
+                            UpdateOpacityVisual(snapped)
+                        end
+                    end
+                end)
+            elseif button == "RightButton" then
+                SetSelectedHudOpacity(0.95)
+                DM:RefreshEditModeInspector()
+            end
+        end)
+        opaHit:SetScript("OnMouseUp", function(s, button)
+            if button == "LeftButton" then
+                s:SetScript("OnUpdate", nil)
+                DM:RefreshEditModeInspector()
+            end
+        end)
+        opaHit:SetScript("OnHide", function(s) s:SetScript("OnUpdate", nil) end)
+        opaHit:SetScript("OnMouseWheel", function(_, delta)
+            SetSelectedHudOpacity(GetSelectedHudOpacity() + (delta > 0 and HUD_OPA_STEP or -HUD_OPA_STEP))
+            DM:RefreshEditModeInspector()
+        end)
+
+        -- Center cluster: Border Style Segmented Pills (Accent | Dark | None)
+        local bdrLbl = inspRow3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        bdrLbl:SetPoint("LEFT", opaBadge, "RIGHT", 10, 0)
+        DM:StyleFont(bdrLbl, 10, "", COLORS.TextMuted)
+        bdrLbl:SetText("Border")
+
+        local function GetSelectedHudBorderStyle()
+            local primaryKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            local style = (primaryKey == "FlareBar" and DM:GetSetting("flareBarBorderStyle"))
+                or (primaryKey == "TargetBar" and DM:GetSetting("targetBarBorderStyle"))
+                or DM:GetSetting("hudBorderStyle")
+                or "ACCENT"
+            if style == "SUBTLE" then style = "DARK" end
+            return style
+        end
+
+        local function SetSelectedHudBorderStyle(val)
+            if InCombatLockdown() then return end
+            local primaryKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            local perBarKey = (primaryKey == "FlareBar") and "flareBarBorderStyle" or "targetBarBorderStyle"
+            DM:SetSetting(perBarKey, val)
+            DM:SetSetting("hudBorderStyle", val)
+            if primaryKey == "FlareBar" then
+                DM:RefreshFlareBar()
+            else
+                DM:RefreshTargetBar()
+            end
+            DM:RefreshEditModeInspector()
+            DM:RefreshAll()
+        end
+
+        local bdrAccentBtn = DM:CreateButton(inspRow3, "Accent", 48, 22, function() SetSelectedHudBorderStyle("ACCENT") end, false)
+        TightenLabel(bdrAccentBtn, 3, 48)
+        AttachToggleStyle(bdrAccentBtn, false)
+        bdrAccentBtn:SetPoint("LEFT", bdrLbl, "RIGHT", 5, 0)
+
+        local bdrDarkBtn = DM:CreateButton(inspRow3, "Dark", 40, 22, function() SetSelectedHudBorderStyle("DARK") end, false)
+        TightenLabel(bdrDarkBtn, 3, 40)
+        AttachToggleStyle(bdrDarkBtn, false)
+        bdrDarkBtn:SetPoint("LEFT", bdrAccentBtn, "RIGHT", 2, 0)
+
+        local bdrNoneBtn = DM:CreateButton(inspRow3, "None", 40, 22, function() SetSelectedHudBorderStyle("NONE") end, false)
+        TightenLabel(bdrNoneBtn, 3, 40)
+        AttachToggleStyle(bdrNoneBtn, true)
+        bdrNoneBtn:SetPoint("LEFT", bdrDarkBtn, "RIGHT", 2, 0)
+
+        insp.borderBtns = {
+            ACCENT = bdrAccentBtn,
+            DARK   = bdrDarkBtn,
+            NONE   = bdrNoneBtn,
+        }
+        insp.GetSelectedHudBorderStyle = GetSelectedHudBorderStyle
+
+        -- Right cluster: Orientation Toggle (Horiz | Vert)
+        local function GetSelectedHudOrientation()
+            local primaryKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            local oKey = (primaryKey == "FlareBar") and "flareBarOrientation" or "targetBarOrientation"
+            return (DM:GetSetting(oKey) == "VERTICAL") and "VERTICAL" or "HORIZONTAL"
+        end
+
+        local function SetSelectedHudOrientation(val)
+            if InCombatLockdown() then return end
+            local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
+            local oKey = (primaryKey == "FlareBar") and "flareBarOrientation" or "targetBarOrientation"
+            local bar = (primaryKey == "FlareBar") and DM.flareBar or DM.targetBar
+            DM:SetSetting(oKey, (val == "VERTICAL") and "VERTICAL" or "HORIZONTAL")
+            if primaryKey == "FlareBar" then
+                DM:RefreshFlareBar()
+            else
+                DM:RefreshTargetBar()
+            end
+            if bar then
+                DM:SyncBarScaleAndSizeToDB(bar, primaryKey)
+                local pos = DM:GetStoredHUDPosition(primaryKey, defY)
+                local cx, cy = DM:ClampHUDPositionToScreen(bar, primaryKey, "CENTER", "CENTER", pos.x or 0, pos.y or defY, { enableSnap = false })
+                DM:WriteHUDCoordsToDB(primaryKey, "CENTER", "CENTER", cx, cy)
+                DM:ApplyHUDPosition(bar, primaryKey, defY)
+                if bar.editMover and bar.editMover.RefreshMoverVisual then
+                    bar.editMover:RefreshMoverVisual()
+                end
+            end
+            DM:RefreshEditModeInspector()
+            DM:RefreshAll()
+        end
+
+        local orientVertBtn = DM:CreateButton(inspRow3, "Vert", 40, 22, function() SetSelectedHudOrientation("VERTICAL") end, false)
+        TightenLabel(orientVertBtn, 3, 40)
+        AttachToggleStyle(orientVertBtn, false)
+        orientVertBtn:SetPoint("RIGHT", inspRow3, "RIGHT", -6, 0)
+
+        local orientHorizBtn = DM:CreateButton(inspRow3, "Horiz", 44, 22, function() SetSelectedHudOrientation("HORIZONTAL") end, false)
+        TightenLabel(orientHorizBtn, 3, 44)
+        AttachToggleStyle(orientHorizBtn, false)
+        orientHorizBtn:SetPoint("RIGHT", orientVertBtn, "LEFT", -2, 0)
+
+        local orientLbl = inspRow3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        orientLbl:SetPoint("RIGHT", orientHorizBtn, "LEFT", -5, 0)
+        DM:StyleFont(orientLbl, 10, "", COLORS.TextMuted)
+        orientLbl:SetText("Orient")
+
+        insp.orientBtns = {
+            HORIZONTAL = orientHorizBtn,
+            VERTICAL   = orientVertBtn,
+        }
+        insp.GetSelectedHudOrientation = GetSelectedHudOrientation
+    end
+
     local foundSpecial = false
     for i = 1, #UISpecialFrames do
         if UISpecialFrames[i] == "DynamicMarkerEditModeInspector" then
@@ -6145,6 +6413,21 @@ function DM:RefreshEditModeInspector()
     end
     if insp.UpdateScaleVisual and insp.GetSelectedHudScale then
         insp.UpdateScaleVisual(insp.GetSelectedHudScale())
+    end
+    if insp.UpdateOpacityVisual and insp.GetSelectedHudOpacity then
+        insp.UpdateOpacityVisual(insp.GetSelectedHudOpacity())
+    end
+    if insp.borderBtns and insp.GetSelectedHudBorderStyle then
+        local activeBorder = insp.GetSelectedHudBorderStyle()
+        for styleKey, bBtn in pairs(insp.borderBtns) do
+            bBtn:SetSelected(styleKey == activeBorder)
+        end
+    end
+    if insp.orientBtns and insp.GetSelectedHudOrientation then
+        local activeOrient = insp.GetSelectedHudOrientation()
+        for oKey, oBtn in pairs(insp.orientBtns) do
+            oBtn:SetSelected(oKey == activeOrient)
+        end
     end
     if insp.EditX and not insp.EditX:HasFocus() then
         insp.EditX:SetText(tostring(pos.x or 0))
@@ -6274,7 +6557,8 @@ function DM:SyncEditBarStates()
             self:SetBarChildButtonsMouseEnabled(bar, not showMover)
             if showMover then
                 local isNorm = self:IsBarNormallyShown(hudKey)
-                bar:SetAlpha(isNorm and 1.0 or 0.65)
+                local barOpa = isTarget and (self.db and self.db.targetBarOpacity or 0.95) or (self.db and self.db.flareBarOpacity or 0.95)
+                bar:SetAlpha(isNorm and barOpa or math.min(0.65, barOpa))
                 bar:Show()
             else
                 if isTarget then
@@ -6397,6 +6681,7 @@ function DM:SetEditMode(enabled, opts)
             if grid and grid.SetShown then grid:SetShown(self:IsHudGridEnabled()) end
             local insp = self:EnsureEditModeInspector()
             if insp then
+                if insp.selectorPopup and insp.selectorPopup.Hide then insp.selectorPopup:Hide() end
                 if insp.RestoreSavedPosition then insp:RestoreSavedPosition() end
                 if insp.Show then insp:Show() end
             end
@@ -7013,8 +7298,13 @@ function DM:BuildWorkspace(parentContainer)
         "HUD Border Style",
         "Sync floating HUD bar borders to your active Suite Accent colour, Subtle Dark, or Borderless.", true)
     local pillsTargetBorder = self:CreateSegmentedPills(r4SubBorder, HUD_BORDER_STYLE_OPTIONS,
-        function() return self.db.hudBorderStyle end,
+        function()
+            local raw = self.db.targetBarBorderStyle or self.db.hudBorderStyle or "ACCENT"
+            if raw == "SUBTLE" then raw = "DARK" end
+            return raw
+        end,
         function(v)
+            self.db.targetBarBorderStyle = v
             self.db.hudBorderStyle = v
             self:RefreshTargetBar()
             self:RefreshFlareBar()
@@ -7443,8 +7733,13 @@ function DM:BuildWorkspace(parentContainer)
         "HUD Border Style",
         "Sync floating HUD bar borders to your active Suite Accent colour, Subtle Dark, or Borderless.", true)
     local pillsFlareBorder = self:CreateSegmentedPills(fRow4SubBorder, HUD_BORDER_STYLE_OPTIONS,
-        function() return self.db.hudBorderStyle end,
+        function()
+            local raw = self.db.flareBarBorderStyle or self.db.hudBorderStyle or "ACCENT"
+            if raw == "SUBTLE" then raw = "DARK" end
+            return raw
+        end,
         function(v)
+            self.db.flareBarBorderStyle = v
             self.db.hudBorderStyle = v
             self:RefreshTargetBar()
             self:RefreshFlareBar()
@@ -8353,6 +8648,9 @@ function DM:ResetSingleHUDPosition(hudKey, silent)
     local isFlare = (primaryKey == "FlareBar")
 
     self:SetSetting(dbPrefix .. "Scale", 1.00)
+    self:SetSetting(dbPrefix .. "Opacity", 0.95)
+    self:SetSetting(dbPrefix .. "BorderStyle", "ACCENT")
+    self:SetSetting("hudBorderStyle", "ACCENT")
     self:SetSetting(dbPrefix .. "Orientation", "HORIZONTAL")
     if not isFlare then
         self:SetSetting("barScale", 1.00)
@@ -9625,7 +9923,8 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "15/11/2026",
     entries = {
-        { type = "FIX",     text = "Release v2.1.1 - HUD Edit Mode Mover Visibility & Drag Shield Layering (15/11/2026): Promoted the Target Icon Bar and World Flare Bar mover overlays (editMover) to HIGH frame strata (FrameLevel + 50) with SetIgnoreParentAlpha(true) and ordered SyncEditBarStates() after bar refreshes in SetEditMode, ensuring any bar set to Shown (Group or Always) immediately displays its live preview and interactive drag shield in HUD Edit Mode (even while solo), while explicitly selecting a Hidden (Off) bar from the HUD dropdown or clicking [Edit HUD] previews it with the 'HIDDEN (Click Shown to Enable)' badge." },
+        { type = "FEATURE", text = "Release v2.1.1 - 3-Row HUD Edit Appearance Dock (560x110) & First-Click Mover Parity (15/11/2026): Upgraded standalone DynamicMarkerEditModeInspector into a unified 560x110 3-row draggable inspector dock adding Row 3 live Appearance controls: Opacity slider (20%-100%, step 5%, with SetIgnoreParentAlpha mover legibility), Accent | Dark | None Border Style pills synced 1:1 with Target Icon Bar and World Flare Bar sub-settings, Horiz | Vert Orientation toggle with instant screen-bounds re-clamping, and full Position/Scale/Opacity/Border/Orientation [Reset]. Ensured the HUD selector dropdown defaults to closed on entry and Target Icon / World Flare movers appear reliably on first HUD Edit activation." },
+        { type = "FIX",     text = "HUD Edit Mode Mover Visibility & Drag Shield Layering (15/11/2026): Promoted the Target Icon Bar and World Flare Bar mover overlays (editMover) to HIGH frame strata (FrameLevel + 50) with SetIgnoreParentAlpha(true) and ordered SyncEditBarStates() after bar refreshes in SetEditMode, ensuring any bar set to Shown (Group or Always) immediately displays its live preview and interactive drag shield in HUD Edit Mode (even while solo), while explicitly selecting a Hidden (Off) bar from the HUD dropdown or clicking [Edit HUD] previews it with the 'HIDDEN (Click Shown to Enable)' badge." },
         { type = "FIX",     text = "Release v2.1.0 - World Flare Keybind Dispatch & Instant Telemetry Refresh (15/11/2026): Anchored secure World Flare cycle/clear buttons on-screen (1x1, alpha 0, non-mouse-blocking), removed the SecureHandlerWrapScript button-name override so LeftButton dispatches /wm [@cursor] and /cwm all reliably in and out of combat across key-down and key-up CVars, added Right-Click unbind, and wired instant status telemetry bar and proportional 'World Flare Keys (...)' sub-tab updates whenever bindings are captured, cleared, or reset." },
         { type = "UI",      text = "Compact Draggable HUD Edit Dock & Hidden-By-Default Movers (15/11/2026): Redesigned standalone HUD Edit Mode into a compact 560x74 2-row draggable inspector with a HUD Selector Dropdown, non-truncated Hidden/Shown toggles, Grid, Reset, Back to Suite, X/Y steppers, Center X/Y, and Scale slider (60%-150%), keeping at least 60px on-screen near screen edges while clamping bars inside screen bounds, hiding disabled movers by default, temporarily previewing explicitly selected hidden bars with 'HIDDEN (Click Shown to Enable)', and standardising Obsidian/Blaze-Orange [Edit HUD] buttons." },
         { type = "FIX", text = "World Flare Hardware Keybinds & Custom Sequence Order (15/11/2026): Fixed Cycle Ground Flare (F4) and Clear All Flares (F5) hardware keybinds so they fire reliably in and out of combat, walk your saved and enabled World Flare Cycle Sequence in exact custom order via SecureHandlerWrapScript, and update the floating World Flare Bar to match your custom sequence order and enabled flares." },

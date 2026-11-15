@@ -1453,14 +1453,27 @@ local function ApplyToastPosition(f)
     f:SetScale(scale)
 
     local bdr, bg = GetToastColors()
+    local alpha = bg.a or 0.96
     local bStyle = g.toastBorderStyle or (DynamicLoadDB and DynamicLoadDB.toastBorderStyle) or "ACCENT"
     if f.SetBackdropColor then
-        f:SetBackdropColor(bg.r, bg.g, bg.b, bg.a or 0.96)
-        if f.isEditingMode or f.isDraggingMode then
-            f:SetBackdropBorderColor(bdr.r, bdr.g, bdr.b, 1.0)
-        elseif bStyle == "NONE" then
+        if addonTable._isHudEditModeActive or f.isEditingMode or f.isDraggingMode then
+            f:SetBackdropColor(bg.r, bg.g, bg.b, 0.96)
+            if f._dsDragShield and f._dsDragShield.SetIgnoreParentAlpha then
+                f._dsDragShield:SetIgnoreParentAlpha(true)
+            end
+            local isNormalShown = true
+            if addonTable.IsHudTargetShown then
+                isNormalShown = addonTable.IsHudTargetShown("TOAST")
+            elseif g then
+                isNormalShown = (g.showToastWindow ~= false and g.enableAlertToast ~= false and (not DynamicLoadDB or DynamicLoadDB.enableAlertToast ~= false))
+            end
+            f:SetAlpha(isNormalShown and alpha or math.min(alpha, 0.65))
+        else
+            f:SetBackdropColor(bg.r, bg.g, bg.b, alpha)
+        end
+        if bStyle == "NONE" then
             f:SetBackdropBorderColor(0, 0, 0, 0)
-        elseif bStyle == "SUBTLE" then
+        elseif bStyle == "SUBTLE" or bStyle == "DARK" then
             f:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
         else
             f:SetBackdropBorderColor(bdr.r, bdr.g, bdr.b, bdr.a or 0.95)
@@ -1899,6 +1912,13 @@ local function CreateToastFrame()
     return toastFrame
 end
 addonTable.CreateToastFrame = CreateToastFrame
+addonTable.EnsureToastFrame = CreateToastFrame
+if _G.DynamicLoad then
+    _G.DynamicLoad.EnsureToastFrame = function()
+        return CreateToastFrame()
+    end
+    _G.DynamicLoad.CreateToastFrame = _G.DynamicLoad.EnsureToastFrame
+end
 
 function addonTable.NudgeToastPosition(dx, dy)
     local g = EnsureSuiteGlobal()
@@ -1940,7 +1960,6 @@ end
 function addonTable.SetToastEditMode(enabled, profileKey)
     local f = CreateToastFrame()
     f.animGroup:Stop()
-    f:SetAlpha(1)
     f.isEditingMode = (enabled == true)
     f.isDraggingMode = (enabled == true)
     f.previewProfileKey = profileKey or "outdoor"
@@ -1958,13 +1977,11 @@ function addonTable.SetToastEditMode(enabled, profileKey)
             ApplyToastPosition(f)
         end
         RefreshToastContent(f)
-        if f.SetBackdropColor then
-            f:SetBackdropColor(0.02, 0.025, 0.035, 0.96)
-        end
         f:Show()
     else
         f.isRealAlert = false
         ApplyToastPosition(f)
+        f:SetAlpha(1)
         f:Hide()
     end
 end
@@ -8507,7 +8524,9 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         { value = "NONE",   label = "Borderless",   width = 114 },
     }, function()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
-        return gTbl.toastBorderStyle or (DynamicLoadDB and DynamicLoadDB.toastBorderStyle) or "ACCENT"
+        local raw = gTbl.toastBorderStyle or (DynamicLoadDB and DynamicLoadDB.toastBorderStyle) or "ACCENT"
+        if raw == "DARK" then raw = "SUBTLE" end
+        return raw
     end, function(val)
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
         if gTbl then gTbl.toastBorderStyle = val end

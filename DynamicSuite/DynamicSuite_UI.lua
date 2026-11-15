@@ -3772,7 +3772,8 @@ function addonTable.CreateMainConfigUI()
     local leftRail = CreateFrame("Frame", nil, f)
     leftRail:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
     leftRail:SetPoint("BOTTOMLEFT", footer, "TOPLEFT", 0, 0)
-    leftRail:SetWidth(RAIL_W)
+    leftRail:SetSize(RAIL_W, math.max(200, PANEL_H - HDR_H - DOCK_H))
+    leftRail:Show()
     f.leftRail = leftRail
 
     leftRail.bg = UI.SolidTex(leftRail, "BACKGROUND", 1, UI.COLORS.RAIL_BG.r, UI.COLORS.RAIL_BG.g, UI.COLORS.RAIL_BG.b, UI.COLORS.RAIL_BG.a)
@@ -3912,6 +3913,7 @@ function addonTable.CreateMainConfigUI()
     local railSearchWrap = CreateFrame("Frame", nil, leftRail)
     railSearchWrap:SetSize(RAIL_W - 20, 24)
     railSearchWrap:SetPoint("TOPLEFT", leftRail, "TOPLEFT", 10, -8)
+    railSearchWrap:Show()
     railSearchWrap.bg = UI.SolidTex(railSearchWrap, "BACKGROUND", 2, 0.031, 0.039, 0.055, 0.98)
     railSearchWrap.bg:SetAllPoints()
     UI.CreatePixelBorder(railSearchWrap, 0.165, 0.192, 0.259, 0.95, 3)
@@ -4049,10 +4051,13 @@ function addonTable.CreateMainConfigUI()
     modSectionHdr:SetPoint("TOPLEFT", leftRail, "TOPLEFT", 14, -38)
     UI.SetFont(modSectionHdr, 10, "", UI.COLORS.TEXT_DIM.r, UI.COLORS.TEXT_DIM.g, UI.COLORS.TEXT_DIM.b, 0.90)
     modSectionHdr:SetText("DYNAMIC MODULES")
+    modSectionHdr:Show()
+    f.modSectionHdr = modSectionHdr
 
     local resetSortBtn = CreateFrame("Button", nil, leftRail)
     resetSortBtn:SetSize(68, 18)
     resetSortBtn:SetPoint("TOPRIGHT", leftRail, "TOPRIGHT", -10, -35)
+    f.resetSortBtn = resetSortBtn
     resetSortBtn.bg = UI.SolidTex(resetSortBtn, "BACKGROUND", 1, 0.08, 0.09, 0.12, 0.70)
     resetSortBtn.bg:SetAllPoints()
     UI.CreatePixelBorder(resetSortBtn, 1, 1, 1, 0.14, 2)
@@ -4133,7 +4138,8 @@ function addonTable.CreateMainConfigUI()
     local railModuleScroll = CreateFrame("Frame", nil, leftRail)
     railModuleScroll:SetPoint("TOPLEFT", leftRail, "TOPLEFT", 0, -54)
     railModuleScroll:SetPoint("BOTTOMRIGHT", leftRail, "BOTTOMRIGHT", 0, 152)
-    railModuleScroll:SetWidth(RAIL_W)
+    railModuleScroll:SetSize(RAIL_W, math.max(100, PANEL_H - HDR_H - DOCK_H - 206))
+    railModuleScroll:Show()
     railModuleScroll:EnableMouseWheel(true)
     railModuleScroll.GetVerticalScroll = function() return 0 end
     railModuleScroll.SetVerticalScroll = function() end
@@ -4143,7 +4149,9 @@ function addonTable.CreateMainConfigUI()
     local railModuleChild = CreateFrame("Frame", nil, railModuleScroll)
     railModuleChild:SetPoint("TOPLEFT", railModuleScroll, "TOPLEFT", 0, 0)
     railModuleChild:SetSize(RAIL_W, 304)
+    railModuleChild:Show()
     f.railModuleChild = railModuleChild
+    f.railCards = railModuleCards
 
     railModuleScroll:SetScript("OnMouseWheel", function(self, delta)
         local maxScroll = math.max(0, (railModuleChild:GetHeight() or 0) - (self:GetHeight() or 0))
@@ -4717,6 +4725,15 @@ function addonTable.CreateMainConfigUI()
         if leftRail then leftRail:Show() end
         if railModuleScroll then railModuleScroll:Show() end
         if railModuleChild then railModuleChild:Show() end
+        if f.railSearchWrap then f.railSearchWrap:Show() end
+        if f.modSectionHdr then f.modSectionHdr:Show() end
+        if f.resetSortBtn then f.resetSortBtn:Show() end
+        if f.studioSectionHdr then f.studioSectionHdr:Show() end
+        if f.railStudioBtns then
+            for _, sBtn in ipairs(f.railStudioBtns) do
+                if sBtn and sBtn.Show then sBtn:Show() end
+            end
+        end
         local ordered = UI.GetOrderedModuleList()
         wipe(railModuleCards)
         for idx, modInfo in ipairs(ordered) do
@@ -4761,6 +4778,8 @@ function addonTable.CreateMainConfigUI()
     studioSectionHdr:SetPoint("BOTTOMLEFT", leftRail, "BOTTOMLEFT", 14, 138)
     UI.SetFont(studioSectionHdr, 10, "", UI.COLORS.TEXT_DIM.r, UI.COLORS.TEXT_DIM.g, UI.COLORS.TEXT_DIM.b, 0.90)
     studioSectionHdr:SetText("SUITE STUDIO & TOOLS")
+    studioSectionHdr:Show()
+    f.studioSectionHdr = studioSectionHdr
 
     local studioItems = {
         {
@@ -4956,6 +4975,11 @@ function addonTable.CreateMainConfigUI()
         addonTable.OpenWorkspaceView("SUPPORT_VIEW")
     end)
     table.insert(railStudioBtns, railSupportBtn)
+    f.railStudioBtns = railStudioBtns
+    f.studioItems = railStudioBtns
+    for _, sBtn in ipairs(railStudioBtns) do
+        if sBtn and sBtn.Show then sBtn:Show() end
+    end
 
     RefreshLeftRailVisuals = function()
         UI.RefreshPaletteCache()
@@ -5713,6 +5737,9 @@ function addonTable.CreateMainConfigUI()
         if f.zoneTabMenu and f.zoneTabMenu:IsShown() then f.zoneTabMenu:Hide() end
         if dsColorPicker and dsColorPicker:IsShown() then dsColorPicker:Hide() end
         if clickCatcher and clickCatcher:IsShown() then clickCatcher:Hide() end
+        if _G.DynamicSuiteHudSelectorPopup and _G.DynamicSuiteHudSelectorPopup:IsShown() then
+            _G.DynamicSuiteHudSelectorPopup:Hide()
+        end
     end
 
     function UI.CreateDropdown(parent, width, optionsList, getValFn, setValFn)
@@ -6721,7 +6748,9 @@ function addonTable.CreateMainConfigUI()
         { value = "NONE",   label = "Borderless",   width = 84 },
     }, function()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
-        return gTbl.toastBorderStyle or (DynamicLoadDB and DynamicLoadDB.toastBorderStyle) or "ACCENT"
+        local raw = gTbl.toastBorderStyle or (DynamicLoadDB and DynamicLoadDB.toastBorderStyle) or "ACCENT"
+        if raw == "DARK" then raw = "SUBTLE" end
+        return raw
     end, function(val)
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
         if gTbl then gTbl.toastBorderStyle = val end
@@ -9299,28 +9328,60 @@ function addonTable.CreateMainConfigUI()
 
     local function GetLiveHudFrame(targetKey)
         if targetKey == "TOAST" then
-            return (addonTable.CreateToastFrame and addonTable.CreateToastFrame()) or _G.DynamicLoadToastFrame
+            if addonTable.EnsureToastFrame then
+                return addonTable.EnsureToastFrame()
+            elseif addonTable.CreateToastFrame then
+                return addonTable.CreateToastFrame()
+            end
+            return _G.DynamicLoadToastFrame
         elseif targetKey == "PREP" then
-            if not _G.DynamicPrepBarFrame and _G.DynamicPrep and _G.DynamicPrep.InitOmniBar then
-                pcall(_G.DynamicPrep.InitOmniBar, _G.DynamicPrep)
+            if _G.DynamicPrep then
+                if not _G.DynamicPrep.db and _G.DynamicPrep.InitDB then
+                    pcall(_G.DynamicPrep.InitDB, _G.DynamicPrep)
+                end
+                if not _G.DynamicPrepBarFrame then
+                    if _G.DynamicPrep.InitBar then
+                        pcall(_G.DynamicPrep.InitBar, _G.DynamicPrep)
+                    elseif _G.DynamicPrep.InitOmniBar then
+                        pcall(_G.DynamicPrep.InitOmniBar, _G.DynamicPrep)
+                    elseif _G.DynamicPrep.CreatePrepBar then
+                        pcall(_G.DynamicPrep.CreatePrepBar, _G.DynamicPrep)
+                    end
+                end
             end
             return _G.DynamicPrepBarFrame
         elseif targetKey == "TARGET" then
-            if not _G.DynamicMarkerTargetBar and _G.DynamicMarker and _G.DynamicMarker.InitTargetBar then
-                pcall(_G.DynamicMarker.InitTargetBar, _G.DynamicMarker)
+            if _G.DynamicMarker then
+                if not _G.DynamicMarker.db and _G.DynamicMarker.InitDB then
+                    pcall(_G.DynamicMarker.InitDB, _G.DynamicMarker)
+                end
+                if not _G.DynamicMarkerTargetBar and _G.DynamicMarker.InitTargetBar then
+                    pcall(_G.DynamicMarker.InitTargetBar, _G.DynamicMarker)
+                end
             end
             return _G.DynamicMarkerTargetBar
         elseif targetKey == "FLARE" then
-            if not _G.DynamicMarkerFlareBar and _G.DynamicMarker and _G.DynamicMarker.InitFlareBar then
-                pcall(_G.DynamicMarker.InitFlareBar, _G.DynamicMarker)
+            if _G.DynamicMarker then
+                if not _G.DynamicMarker.db and _G.DynamicMarker.InitDB then
+                    pcall(_G.DynamicMarker.InitDB, _G.DynamicMarker)
+                end
+                if not _G.DynamicMarkerFlareBar and _G.DynamicMarker.InitFlareBar then
+                    pcall(_G.DynamicMarker.InitFlareBar, _G.DynamicMarker)
+                end
             end
             return _G.DynamicMarkerFlareBar
         elseif targetKey == "prepBuffs" then
             -- Clickable Raid Buffs HUD, registered by DynamicPrep in _G.DynamicSuite.hudFrames["prepBuffs"]
+            if _G.DynamicPrep and not _G.DynamicPrep.db and _G.DynamicPrep.InitDB then
+                pcall(_G.DynamicPrep.InitDB, _G.DynamicPrep)
+            end
             local hf = _G.DynamicSuite and _G.DynamicSuite.hudFrames and _G.DynamicSuite.hudFrames["prepBuffs"]
-            if not hf and _G.DynamicPrep and _G.DynamicPrep.CreateClickableBuffBar and not InCombatLockdown() then
-                local ok, bar = pcall(_G.DynamicPrep.CreateClickableBuffBar, _G.DynamicPrep)
-                hf = (ok and bar) or (_G.DynamicSuite and _G.DynamicSuite.hudFrames and _G.DynamicSuite.hudFrames["prepBuffs"])
+            if not hf and _G.DynamicPrep and not InCombatLockdown() then
+                local initFn = _G.DynamicPrep.InitClickableBuffBar or _G.DynamicPrep.CreateClickableBuffBar
+                if type(initFn) == "function" then
+                    local ok, bar = pcall(initFn, _G.DynamicPrep)
+                    hf = (ok and bar) or (_G.DynamicSuite and _G.DynamicSuite.hudFrames and _G.DynamicSuite.hudFrames["prepBuffs"])
+                end
             end
             return hf or _G.DynamicPrepClickableBuffBar
         elseif targetKey == "CHAT" then
@@ -9330,6 +9391,18 @@ function addonTable.CreateMainConfigUI()
             return _G.ChatFrame1
         end
         return nil
+    end
+
+    local function EnsureAllEditModeHudFramesInitialized()
+        for _, k in ipairs({ "TOAST", "PREP", "TARGET", "FLARE", "prepBuffs" }) do
+            GetLiveHudFrame(k)
+        end
+        if IsChatHudTargetOwned() and _G.DynamicChat and _G.DynamicChat.ApplySavedChatFramePosition then
+            pcall(_G.DynamicChat.ApplySavedChatFramePosition, _G.DynamicChat)
+        end
+        if _G.DynamicMarker and _G.DynamicMarker.RegisterWithSuiteHudEditMode and not _G.DynamicMarker._registeredSuiteHudCallback then
+            pcall(_G.DynamicMarker.RegisterWithSuiteHudEditMode, _G.DynamicMarker)
+        end
     end
 
     -- Read current HUD coordinates from the live frame or peer SavedVariables without moving the frame
@@ -10337,6 +10410,416 @@ function addonTable.CreateMainConfigUI()
         end
     end
 
+    local HUD_OPACITY_MIN, HUD_OPACITY_MAX, HUD_OPACITY_STEP = 0.20, 1.00, 0.05
+
+    local function GetDefaultHudOpacity(targetKey)
+        return (targetKey == "CHAT") and 0.25 or 0.95
+    end
+
+    local function SnapHudOpacity(val, targetKey)
+        local num = tonumber(val)
+        if not num then num = GetDefaultHudOpacity(targetKey) end
+        local snapped = math.floor(num * 20 + 0.5) / 20
+        return math.max(HUD_OPACITY_MIN, math.min(HUD_OPACITY_MAX, snapped))
+    end
+
+    local function NormalizeHudBorderStyle(style, forToast)
+        local s = type(style) == "string" and style:upper() or "ACCENT"
+        if s == "SUBTLE" or s == "DARK" then
+            return forToast and "SUBTLE" or "DARK"
+        elseif s == "NONE" then
+            return "NONE"
+        end
+        return "ACCENT"
+    end
+
+    local function DoesHudSupportOrientation(targetKey)
+        return (targetKey == "TARGET" or targetKey == "FLARE" or targetKey == "prepBuffs")
+    end
+
+    local function GetHudOpacity(targetKey)
+        local key = (targetKey == "ALL" or not targetKey) and "TOAST" or targetKey
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        local raw = nil
+        if key == "TOAST" then
+            raw = gTbl.toastOpacity or gTbl.toastAlpha or (DynamicLoadDB and (DynamicLoadDB.toastOpacity or DynamicLoadDB.toastAlpha))
+        elseif key == "PREP" then
+            raw = (_G.DynamicPrep and _G.DynamicPrep.db and _G.DynamicPrep.db.barOpacity)
+                or (_G.DynamicPrepDB and ((_G.DynamicPrepDB.global and _G.DynamicPrepDB.global.barOpacity) or (_G.DynamicPrepDB.profile and _G.DynamicPrepDB.profile.barOpacity) or _G.DynamicPrepDB.barOpacity))
+                or (gTbl.hudOpacities and gTbl.hudOpacities["PREP"])
+        elseif key == "prepBuffs" then
+            raw = (_G.DynamicPrep and _G.DynamicPrep.db and _G.DynamicPrep.db.raidBuffs and _G.DynamicPrep.db.raidBuffs.hudOpacity)
+                or (gTbl.hudOpacities and gTbl.hudOpacities["prepBuffs"])
+        elseif key == "TARGET" then
+            raw = (_G.DynamicMarker and _G.DynamicMarker.db and _G.DynamicMarker.db.targetBarOpacity)
+                or (_G.DynamicMarkerDB and ((_G.DynamicMarkerDB.global and _G.DynamicMarkerDB.global.targetBarOpacity) or (_G.DynamicMarkerDB.profile and _G.DynamicMarkerDB.profile.targetBarOpacity) or _G.DynamicMarkerDB.targetBarOpacity))
+                or (gTbl.hudOpacities and gTbl.hudOpacities["TARGET"])
+        elseif key == "FLARE" then
+            raw = (_G.DynamicMarker and _G.DynamicMarker.db and _G.DynamicMarker.db.flareBarOpacity)
+                or (_G.DynamicMarkerDB and ((_G.DynamicMarkerDB.global and _G.DynamicMarkerDB.global.flareBarOpacity) or (_G.DynamicMarkerDB.profile and _G.DynamicMarkerDB.profile.flareBarOpacity) or _G.DynamicMarkerDB.flareBarOpacity))
+                or (gTbl.hudOpacities and gTbl.hudOpacities["FLARE"])
+        elseif key == "CHAT" then
+            raw = (_G.DynamicChat and _G.DynamicChat.db and _G.DynamicChat.db.chatBgAlpha)
+                or (_G.DynamicChatDB and _G.DynamicChatDB.chatBgAlpha)
+                or (gTbl.hudOpacities and gTbl.hudOpacities["CHAT"])
+        end
+        return SnapHudOpacity(raw, key)
+    end
+
+    local function SetHudOpacity(targetKey, val)
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        gTbl.hudOpacities = gTbl.hudOpacities or {}
+        local targets = (targetKey == "ALL") and { "TOAST", "PREP", "TARGET", "FLARE", "prepBuffs" } or { targetKey or "TOAST" }
+        for _, k in ipairs(targets) do
+            local snapped = SnapHudOpacity(val, k)
+            gTbl.hudOpacities[k] = snapped
+            if k == "TOAST" then
+                gTbl.toastOpacity = snapped
+                gTbl.toastAlpha = snapped
+                if DynamicLoadDB then
+                    DynamicLoadDB.toastOpacity = snapped
+                    DynamicLoadDB.toastAlpha = snapped
+                end
+                if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+                    _G.DynamicSuiteDB.global.toastOpacity = snapped
+                    _G.DynamicSuiteDB.global.toastAlpha = snapped
+                end
+                if addonTable.ApplyToastVisuals then
+                    pcall(addonTable.ApplyToastVisuals)
+                end
+                if _G.DynamicGroup and _G.DynamicGroup.UpdateTeleportToast then
+                    pcall(_G.DynamicGroup.UpdateTeleportToast, _G.DynamicGroup, false)
+                end
+                if f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
+                    pcall(f.toastConfigPanel.RefreshControls)
+                end
+                if isHudEditModeActive and _G.DynamicLoadToastFrame then
+                    local isVis = addonTable.IsHudTargetShown and addonTable.IsHudTargetShown("TOAST")
+                    local visAlpha = isVis and snapped or math.min(snapped, 0.65)
+                    _G.DynamicLoadToastFrame:SetAlpha(visAlpha)
+                    if _G.DynamicLoadToastFrame._dsDragShield and _G.DynamicLoadToastFrame._dsDragShield.SetIgnoreParentAlpha then
+                        _G.DynamicLoadToastFrame._dsDragShield:SetIgnoreParentAlpha(true)
+                    end
+                end
+            elseif k == "PREP" then
+                if type(_G.DynamicPrepDB) == "table" then
+                    _G.DynamicPrepDB.barOpacity = snapped
+                    if type(_G.DynamicPrepDB.global) == "table" then _G.DynamicPrepDB.global.barOpacity = snapped end
+                    if type(_G.DynamicPrepDB.profile) == "table" then _G.DynamicPrepDB.profile.barOpacity = snapped end
+                end
+                if _G.DynamicPrep and type(_G.DynamicPrep.db) == "table" then
+                    _G.DynamicPrep.db.barOpacity = snapped
+                end
+                if _G.DynamicPrep and _G.DynamicPrep.ApplyBarGeometry then
+                    pcall(_G.DynamicPrep.ApplyBarGeometry, _G.DynamicPrep)
+                end
+                local lf = GetLiveHudFrame("PREP")
+                if isHudEditModeActive and lf and lf.SetAlpha then
+                    local isVis = addonTable.IsHudTargetShown and addonTable.IsHudTargetShown("PREP")
+                    lf:SetAlpha(isVis and snapped or math.min(snapped, 0.60))
+                end
+            elseif k == "prepBuffs" then
+                if _G.DynamicPrep and type(_G.DynamicPrep.db) == "table" then
+                    _G.DynamicPrep.db.raidBuffs = _G.DynamicPrep.db.raidBuffs or {}
+                    _G.DynamicPrep.db.raidBuffs.hudOpacity = snapped
+                end
+                if _G.DynamicPrep and _G.DynamicPrep.RefreshClickableBuffs then
+                    pcall(_G.DynamicPrep.RefreshClickableBuffs, _G.DynamicPrep, true)
+                end
+                local lf = GetLiveHudFrame("prepBuffs")
+                if isHudEditModeActive and lf and lf.SetAlpha then
+                    local isVis = addonTable.IsHudTargetShown and addonTable.IsHudTargetShown("prepBuffs")
+                    lf:SetAlpha(isVis and snapped or math.min(snapped, 0.60))
+                end
+            elseif k == "TARGET" then
+                if type(_G.DynamicMarkerDB) == "table" then
+                    _G.DynamicMarkerDB.targetBarOpacity = snapped
+                    if type(_G.DynamicMarkerDB.global) == "table" then _G.DynamicMarkerDB.global.targetBarOpacity = snapped end
+                    if type(_G.DynamicMarkerDB.profile) == "table" then _G.DynamicMarkerDB.profile.targetBarOpacity = snapped end
+                end
+                if _G.DynamicMarker and type(_G.DynamicMarker.db) == "table" then
+                    _G.DynamicMarker.db.targetBarOpacity = snapped
+                end
+                if _G.DynamicMarker and _G.DynamicMarker.RefreshTargetBar then
+                    pcall(_G.DynamicMarker.RefreshTargetBar, _G.DynamicMarker)
+                end
+                if isHudEditModeActive and _G.DynamicMarker and _G.DynamicMarker.SyncEditBarStates then
+                    pcall(_G.DynamicMarker.SyncEditBarStates, _G.DynamicMarker)
+                end
+            elseif k == "FLARE" then
+                if type(_G.DynamicMarkerDB) == "table" then
+                    _G.DynamicMarkerDB.flareBarOpacity = snapped
+                    if type(_G.DynamicMarkerDB.global) == "table" then _G.DynamicMarkerDB.global.flareBarOpacity = snapped end
+                    if type(_G.DynamicMarkerDB.profile) == "table" then _G.DynamicMarkerDB.profile.flareBarOpacity = snapped end
+                end
+                if _G.DynamicMarker and type(_G.DynamicMarker.db) == "table" then
+                    _G.DynamicMarker.db.flareBarOpacity = snapped
+                end
+                if _G.DynamicMarker and _G.DynamicMarker.RefreshFlareBar then
+                    pcall(_G.DynamicMarker.RefreshFlareBar, _G.DynamicMarker)
+                end
+                if isHudEditModeActive and _G.DynamicMarker and _G.DynamicMarker.SyncEditBarStates then
+                    pcall(_G.DynamicMarker.SyncEditBarStates, _G.DynamicMarker)
+                end
+            elseif k == "CHAT" then
+                if type(_G.DynamicChatDB) == "table" then
+                    _G.DynamicChatDB.chatBgAlpha = snapped
+                end
+                if _G.DynamicChat and type(_G.DynamicChat.db) == "table" then
+                    _G.DynamicChat.db.chatBgAlpha = snapped
+                end
+                if _G.DynamicChat and _G.DynamicChat.ApplySleekChatSkin then
+                    pcall(_G.DynamicChat.ApplySleekChatSkin, _G.DynamicChat)
+                end
+                if _G.ChatFrame1 and _G.ChatFrame1.SetAlpha then
+                    _G.ChatFrame1:SetAlpha(1.0)
+                end
+            end
+
+            local liveHud = GetLiveHudFrame(k)
+            if liveHud and liveHud._dsDragShield then
+                if liveHud._dsDragShield.SetIgnoreParentAlpha then
+                    liveHud._dsDragShield:SetIgnoreParentAlpha(true)
+                end
+                if liveHud._dsDragShield.UpdateOverlay then
+                    local _, _, cx, cy = GetStoredHudPos(k)
+                    local isSel = (selectedHudTarget == k or selectedHudTarget == "ALL")
+                    liveHud._dsDragShield:UpdateOverlay(cx, cy, isSel)
+                end
+            elseif liveHud and liveHud.editMover and liveHud.editMover.RefreshMoverVisual then
+                pcall(liveHud.editMover.RefreshMoverVisual, liveHud.editMover)
+            end
+        end
+    end
+
+    local function GetHudBorderStyle(targetKey)
+        local key = (targetKey == "ALL" or not targetKey) and "TOAST" or targetKey
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        local raw = nil
+        if key == "TOAST" then
+            raw = gTbl.toastBorderStyle or (DynamicLoadDB and DynamicLoadDB.toastBorderStyle)
+        elseif key == "PREP" then
+            raw = (_G.DynamicPrep and _G.DynamicPrep.db and _G.DynamicPrep.db.hudBorderStyle)
+                or (_G.DynamicPrepDB and ((_G.DynamicPrepDB.global and _G.DynamicPrepDB.global.hudBorderStyle) or (_G.DynamicPrepDB.profile and _G.DynamicPrepDB.profile.hudBorderStyle) or _G.DynamicPrepDB.hudBorderStyle))
+                or (gTbl.hudBorderStyles and gTbl.hudBorderStyles["PREP"])
+        elseif key == "prepBuffs" then
+            raw = (_G.DynamicPrep and _G.DynamicPrep.db and _G.DynamicPrep.db.raidBuffs and _G.DynamicPrep.db.raidBuffs.hudBorderStyle)
+                or (gTbl.hudBorderStyles and gTbl.hudBorderStyles["prepBuffs"])
+        elseif key == "TARGET" then
+            raw = (_G.DynamicMarker and _G.DynamicMarker.db and (_G.DynamicMarker.db.targetBarBorderStyle or _G.DynamicMarker.db.hudBorderStyle))
+                or (_G.DynamicMarkerDB and ((_G.DynamicMarkerDB.global and (_G.DynamicMarkerDB.global.targetBarBorderStyle or _G.DynamicMarkerDB.global.hudBorderStyle)) or (_G.DynamicMarkerDB.profile and (_G.DynamicMarkerDB.profile.targetBarBorderStyle or _G.DynamicMarkerDB.profile.hudBorderStyle)) or _G.DynamicMarkerDB.targetBarBorderStyle or _G.DynamicMarkerDB.hudBorderStyle))
+                or (gTbl.hudBorderStyles and gTbl.hudBorderStyles["TARGET"])
+        elseif key == "FLARE" then
+            raw = (_G.DynamicMarker and _G.DynamicMarker.db and (_G.DynamicMarker.db.flareBarBorderStyle or _G.DynamicMarker.db.hudBorderStyle))
+                or (_G.DynamicMarkerDB and ((_G.DynamicMarkerDB.global and (_G.DynamicMarkerDB.global.flareBarBorderStyle or _G.DynamicMarkerDB.global.hudBorderStyle)) or (_G.DynamicMarkerDB.profile and (_G.DynamicMarkerDB.profile.flareBarBorderStyle or _G.DynamicMarkerDB.profile.hudBorderStyle)) or _G.DynamicMarkerDB.flareBarBorderStyle or _G.DynamicMarkerDB.hudBorderStyle))
+                or (gTbl.hudBorderStyles and gTbl.hudBorderStyles["FLARE"])
+        elseif key == "CHAT" then
+            raw = (_G.DynamicChat and _G.DynamicChat.db and _G.DynamicChat.db.chatBorderStyle)
+                or (_G.DynamicChatDB and _G.DynamicChatDB.chatBorderStyle)
+                or (gTbl.hudBorderStyles and gTbl.hudBorderStyles["CHAT"])
+        end
+        return NormalizeHudBorderStyle(raw, false)
+    end
+
+    local function SetHudBorderStyle(targetKey, style)
+        local norm = NormalizeHudBorderStyle(style, false)
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        gTbl.hudBorderStyles = gTbl.hudBorderStyles or {}
+        local targets = (targetKey == "ALL") and { "TOAST", "PREP", "TARGET", "FLARE", "prepBuffs" } or { targetKey or "TOAST" }
+        for _, k in ipairs(targets) do
+            gTbl.hudBorderStyles[k] = norm
+            if k == "TOAST" then
+                local toastVal = NormalizeHudBorderStyle(norm, true)
+                gTbl.toastBorderStyle = toastVal
+                if DynamicLoadDB then DynamicLoadDB.toastBorderStyle = toastVal end
+                if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+                    _G.DynamicSuiteDB.global.toastBorderStyle = toastVal
+                end
+                if addonTable.ApplyToastVisuals then
+                    pcall(addonTable.ApplyToastVisuals)
+                end
+                if _G.DynamicGroup and _G.DynamicGroup.UpdateTeleportToast then
+                    pcall(_G.DynamicGroup.UpdateTeleportToast, _G.DynamicGroup, false)
+                end
+                if f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
+                    pcall(f.toastConfigPanel.RefreshControls)
+                end
+            elseif k == "PREP" then
+                if type(_G.DynamicPrepDB) == "table" then
+                    _G.DynamicPrepDB.hudBorderStyle = norm
+                    if type(_G.DynamicPrepDB.global) == "table" then _G.DynamicPrepDB.global.hudBorderStyle = norm end
+                    if type(_G.DynamicPrepDB.profile) == "table" then _G.DynamicPrepDB.profile.hudBorderStyle = norm end
+                end
+                if _G.DynamicPrep and type(_G.DynamicPrep.db) == "table" then
+                    _G.DynamicPrep.db.hudBorderStyle = norm
+                end
+                if _G.DynamicPrep and _G.DynamicPrep.ApplyBarBorderStyle then
+                    pcall(_G.DynamicPrep.ApplyBarBorderStyle, _G.DynamicPrep)
+                elseif _G.DynamicPrep and _G.DynamicPrep.ApplyBarGeometry then
+                    pcall(_G.DynamicPrep.ApplyBarGeometry, _G.DynamicPrep)
+                end
+            elseif k == "prepBuffs" then
+                if _G.DynamicPrep and type(_G.DynamicPrep.db) == "table" then
+                    _G.DynamicPrep.db.raidBuffs = _G.DynamicPrep.db.raidBuffs or {}
+                    _G.DynamicPrep.db.raidBuffs.hudBorderStyle = norm
+                end
+                if _G.DynamicPrep and _G.DynamicPrep.RefreshClickableBuffs then
+                    pcall(_G.DynamicPrep.RefreshClickableBuffs, _G.DynamicPrep, true)
+                end
+            elseif k == "TARGET" then
+                if type(_G.DynamicMarkerDB) == "table" then
+                    _G.DynamicMarkerDB.targetBarBorderStyle = norm
+                    _G.DynamicMarkerDB.hudBorderStyle = norm
+                    if type(_G.DynamicMarkerDB.global) == "table" then
+                        _G.DynamicMarkerDB.global.targetBarBorderStyle = norm
+                        _G.DynamicMarkerDB.global.hudBorderStyle = norm
+                    end
+                    if type(_G.DynamicMarkerDB.profile) == "table" then
+                        _G.DynamicMarkerDB.profile.targetBarBorderStyle = norm
+                        _G.DynamicMarkerDB.profile.hudBorderStyle = norm
+                    end
+                end
+                if _G.DynamicMarker and type(_G.DynamicMarker.db) == "table" then
+                    _G.DynamicMarker.db.targetBarBorderStyle = norm
+                    _G.DynamicMarker.db.hudBorderStyle = norm
+                end
+                if _G.DynamicMarker and _G.DynamicMarker.RefreshTargetBar then
+                    pcall(_G.DynamicMarker.RefreshTargetBar, _G.DynamicMarker)
+                end
+            elseif k == "FLARE" then
+                if type(_G.DynamicMarkerDB) == "table" then
+                    _G.DynamicMarkerDB.flareBarBorderStyle = norm
+                    _G.DynamicMarkerDB.hudBorderStyle = norm
+                    if type(_G.DynamicMarkerDB.global) == "table" then
+                        _G.DynamicMarkerDB.global.flareBarBorderStyle = norm
+                        _G.DynamicMarkerDB.global.hudBorderStyle = norm
+                    end
+                    if type(_G.DynamicMarkerDB.profile) == "table" then
+                        _G.DynamicMarkerDB.profile.flareBarBorderStyle = norm
+                        _G.DynamicMarkerDB.profile.hudBorderStyle = norm
+                    end
+                end
+                if _G.DynamicMarker and type(_G.DynamicMarker.db) == "table" then
+                    _G.DynamicMarker.db.flareBarBorderStyle = norm
+                    _G.DynamicMarker.db.hudBorderStyle = norm
+                end
+                if _G.DynamicMarker and _G.DynamicMarker.RefreshFlareBar then
+                    pcall(_G.DynamicMarker.RefreshFlareBar, _G.DynamicMarker)
+                end
+            elseif k == "CHAT" then
+                if type(_G.DynamicChatDB) == "table" then
+                    _G.DynamicChatDB.chatBorderStyle = norm
+                end
+                if _G.DynamicChat and type(_G.DynamicChat.db) == "table" then
+                    _G.DynamicChat.db.chatBorderStyle = norm
+                end
+                if _G.DynamicChat and _G.DynamicChat.ApplySleekChatSkin then
+                    pcall(_G.DynamicChat.ApplySleekChatSkin, _G.DynamicChat)
+                end
+            end
+
+            local liveHud = GetLiveHudFrame(k)
+            if liveHud and liveHud._dsDragShield and liveHud._dsDragShield.UpdateOverlay then
+                local _, _, cx, cy = GetStoredHudPos(k)
+                local isSel = (selectedHudTarget == k or selectedHudTarget == "ALL")
+                liveHud._dsDragShield:UpdateOverlay(cx, cy, isSel)
+            elseif liveHud and liveHud.editMover and liveHud.editMover.RefreshMoverVisual then
+                pcall(liveHud.editMover.RefreshMoverVisual, liveHud.editMover)
+            end
+        end
+    end
+
+    local function GetHudOrientation(targetKey)
+        local key = (targetKey == "ALL" or not targetKey) and "TOAST" or targetKey
+        if not DoesHudSupportOrientation(key) then
+            return "HORIZONTAL"
+        end
+        local raw = nil
+        if key == "TARGET" then
+            raw = (_G.DynamicMarker and _G.DynamicMarker.db and (_G.DynamicMarker.db.targetBarOrientation or _G.DynamicMarker.db.orientation))
+                or (_G.DynamicMarkerDB and ((_G.DynamicMarkerDB.global and (_G.DynamicMarkerDB.global.targetBarOrientation or _G.DynamicMarkerDB.global.orientation)) or (_G.DynamicMarkerDB.profile and (_G.DynamicMarkerDB.profile.targetBarOrientation or _G.DynamicMarkerDB.profile.orientation)) or _G.DynamicMarkerDB.targetBarOrientation or _G.DynamicMarkerDB.orientation))
+        elseif key == "FLARE" then
+            raw = (_G.DynamicMarker and _G.DynamicMarker.db and (_G.DynamicMarker.db.flareBarOrientation or _G.DynamicMarker.db.flareOrientation))
+                or (_G.DynamicMarkerDB and ((_G.DynamicMarkerDB.global and (_G.DynamicMarkerDB.global.flareBarOrientation or _G.DynamicMarkerDB.global.flareOrientation)) or (_G.DynamicMarkerDB.profile and (_G.DynamicMarkerDB.profile.flareBarOrientation or _G.DynamicMarkerDB.profile.flareOrientation)) or _G.DynamicMarkerDB.flareBarOrientation or _G.DynamicMarkerDB.flareOrientation))
+        elseif key == "prepBuffs" then
+            raw = _G.DynamicPrep and _G.DynamicPrep.db and _G.DynamicPrep.db.raidBuffs and _G.DynamicPrep.db.raidBuffs.orientation
+        end
+        return (type(raw) == "string" and raw:upper() == "VERTICAL") and "VERTICAL" or "HORIZONTAL"
+    end
+
+    local function SetHudOrientation(targetKey, orient)
+        local val = (type(orient) == "string" and orient:upper() == "VERTICAL") and "VERTICAL" or "HORIZONTAL"
+        if not DoesHudSupportOrientation(targetKey) then
+            return
+        end
+        if targetKey == "TARGET" then
+            if type(_G.DynamicMarkerDB) == "table" then
+                _G.DynamicMarkerDB.targetBarOrientation = val
+                _G.DynamicMarkerDB.orientation = val
+                if type(_G.DynamicMarkerDB.global) == "table" then
+                    _G.DynamicMarkerDB.global.targetBarOrientation = val
+                    _G.DynamicMarkerDB.global.orientation = val
+                end
+                if type(_G.DynamicMarkerDB.profile) == "table" then
+                    _G.DynamicMarkerDB.profile.targetBarOrientation = val
+                    _G.DynamicMarkerDB.profile.orientation = val
+                end
+            end
+            if _G.DynamicMarker and type(_G.DynamicMarker.db) == "table" then
+                _G.DynamicMarker.db.targetBarOrientation = val
+                _G.DynamicMarker.db.orientation = val
+            end
+            if _G.DynamicMarker and _G.DynamicMarker.RefreshTargetBar then
+                pcall(_G.DynamicMarker.RefreshTargetBar, _G.DynamicMarker)
+            end
+        elseif targetKey == "FLARE" then
+            if type(_G.DynamicMarkerDB) == "table" then
+                _G.DynamicMarkerDB.flareBarOrientation = val
+                _G.DynamicMarkerDB.flareOrientation = val
+                if type(_G.DynamicMarkerDB.global) == "table" then
+                    _G.DynamicMarkerDB.global.flareBarOrientation = val
+                    _G.DynamicMarkerDB.global.flareOrientation = val
+                end
+                if type(_G.DynamicMarkerDB.profile) == "table" then
+                    _G.DynamicMarkerDB.profile.flareBarOrientation = val
+                    _G.DynamicMarkerDB.profile.flareOrientation = val
+                end
+            end
+            if _G.DynamicMarker and type(_G.DynamicMarker.db) == "table" then
+                _G.DynamicMarker.db.flareBarOrientation = val
+                _G.DynamicMarker.db.flareOrientation = val
+            end
+            if _G.DynamicMarker and _G.DynamicMarker.RefreshFlareBar then
+                pcall(_G.DynamicMarker.RefreshFlareBar, _G.DynamicMarker)
+            end
+        elseif targetKey == "prepBuffs" then
+            if _G.DynamicPrep and type(_G.DynamicPrep.db) == "table" then
+                _G.DynamicPrep.db.raidBuffs = _G.DynamicPrep.db.raidBuffs or {}
+                _G.DynamicPrep.db.raidBuffs.orientation = val
+            end
+            if _G.DynamicPrep and _G.DynamicPrep.RefreshClickableBuffs then
+                pcall(_G.DynamicPrep.RefreshClickableBuffs, _G.DynamicPrep, true)
+            end
+        end
+
+        if not InCombatLockdown() then
+            local sPt, sRelPt, sX, sY = GetStoredHudPos(targetKey)
+            SetStoredHudPos(targetKey, sPt, sRelPt, sX, sY)
+        end
+
+        local liveHud = GetLiveHudFrame(targetKey)
+        if liveHud and liveHud._dsDragShield and liveHud._dsDragShield.UpdateOverlay then
+            local _, _, cx, cy = GetStoredHudPos(targetKey)
+            local isSel = (selectedHudTarget == targetKey or selectedHudTarget == "ALL")
+            liveHud._dsDragShield:UpdateOverlay(cx, cy, isSel)
+        elseif liveHud and liveHud.editMover and liveHud.editMover.RefreshMoverVisual then
+            pcall(liveHud.editMover.RefreshMoverVisual, liveHud.editMover)
+        end
+        if isHudEditModeActive and (targetKey == "TARGET" or targetKey == "FLARE") and _G.DynamicMarker and _G.DynamicMarker.SyncEditBarStates then
+            pcall(_G.DynamicMarker.SyncEditBarStates, _G.DynamicMarker)
+        end
+    end
+
     local SyncAllEditModeHuds
 
     local explicitlyPreviewedHiddenHud = nil
@@ -10412,6 +10895,7 @@ function addonTable.CreateMainConfigUI()
         end
         return GetHudVisibility(targetKey) == true
     end
+    addonTable.IsHudTargetShown = IsHudNormallyShown
 
     local function ShouldShowHudMoverInEditMode(targetKey)
         if not isHudEditModeActive then
@@ -11019,12 +11503,16 @@ function addonTable.CreateMainConfigUI()
             stateCarrier._dsDragShield = shield
         end
         local activeShield = stateCarrier._dsDragShield
+        if activeShield and activeShield.SetIgnoreParentAlpha then
+            activeShield:SetIgnoreParentAlpha(true)
+        end
         local isSelected = (selectedHudTarget == targetKey or selectedHudTarget == "ALL")
         local isVis = GetHudVisibility(targetKey)
-        if not isVis then
-            hudFrame:SetAlpha(0.60)
+        if targetKey == "CHAT" then
+            hudFrame:SetAlpha(1.0)
         else
-            hudFrame:SetAlpha(isSelected and 1.0 or 0.85)
+            local liveAlpha = GetHudOpacity(targetKey)
+            hudFrame:SetAlpha((not isVis) and math.min(liveAlpha, 0.60) or liveAlpha)
         end
         local _, _, curX, curY = GetStoredHudPos(targetKey)
         local shieldLvl = math.max((hudFrame:GetFrameLevel() or 10) + 50, 80)
@@ -11177,20 +11665,27 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
+        local suitePreviewOpts = {
+            showTarget = ShouldShowHudMoverInEditMode("TARGET"),
+            showFlare = ShouldShowHudMoverInEditMode("FLARE"),
+            explicitlyPreviewed = explicitlyPreviewedHiddenHud,
+        }
+        for _, cb in pairs(addonTable.hudEditCallbacks or {}) do
+            if type(cb) == "function" then
+                pcall(cb, true, selectedHudTarget, snapMode, suitePreviewOpts)
+            end
+        end
+
         -- Show Alert Toast ONLY when normally active/shown OR explicitly previewed
         if ShouldShowHudMoverInEditMode("TOAST") then
             addonTable.SetToastEditMode(true, selectedTabKey)
             if _G.DynamicLoadToastFrame then
                 _G.DynamicLoadToastFrame._dsEditModeActive = true
-                local isToastFocused = (selectedHudTarget == "TOAST" or selectedHudTarget == "ALL")
                 local isToastVis = IsHudNormallyShown("TOAST")
-                _G.DynamicLoadToastFrame:SetAlpha((not isToastVis) and 0.60 or (isToastFocused and 1.0 or 0.85))
-                if _G.DynamicLoadToastFrame.SetBackdropBorderColor then
-                    if isToastFocused then
-                        _G.DynamicLoadToastFrame:SetBackdropBorderColor(ar, ag, ab, 1.0)
-                    else
-                        _G.DynamicLoadToastFrame:SetBackdropBorderColor(0.18, 0.20, 0.25, 0.30)
-                    end
+                local toastAlpha = GetHudOpacity("TOAST")
+                _G.DynamicLoadToastFrame:SetAlpha((not isToastVis) and math.min(toastAlpha, 0.65) or toastAlpha)
+                if addonTable.ApplyToastVisuals then
+                    pcall(addonTable.ApplyToastVisuals)
                 end
                 AttachOrUpdateDragShield(_G.DynamicLoadToastFrame, "TOAST", true)
             end
@@ -11218,7 +11713,6 @@ function addonTable.CreateMainConfigUI()
                 end
             else
                 local liveFrame = GetLiveHudFrame(k)
-                local isFocused = (selectedHudTarget == k or selectedHudTarget == "ALL")
                 local isVis = IsHudNormallyShown(k)
                 if liveFrame then
                     pcall(function()
@@ -11236,7 +11730,12 @@ function addonTable.CreateMainConfigUI()
                             if k ~= "CHAT" then
                                 liveFrame:Show()
                             end
-                            liveFrame:SetAlpha((not isVis) and 0.60 or (isFocused and 1.0 or 0.85))
+                            if k == "CHAT" then
+                                liveFrame:SetAlpha(1.0)
+                            else
+                                local liveAlpha = GetHudOpacity(k)
+                                liveFrame:SetAlpha((not isVis) and math.min(liveAlpha, 0.60) or liveAlpha)
+                            end
                             AttachOrUpdateDragShield(liveFrame, k, true)
                         else
                             carrier._dsEditModeActive = false
@@ -11256,17 +11755,6 @@ function addonTable.CreateMainConfigUI()
                         end
                     end)
                 end
-            end
-        end
-
-        local suitePreviewOpts = {
-            showTarget = ShouldShowHudMoverInEditMode("TARGET"),
-            showFlare = ShouldShowHudMoverInEditMode("FLARE"),
-            explicitlyPreviewed = explicitlyPreviewedHiddenHud,
-        }
-        for _, cb in pairs(addonTable.hudEditCallbacks or {}) do
-            if type(cb) == "function" then
-                pcall(cb, true, selectedHudTarget, snapMode, suitePreviewOpts)
             end
         end
 
@@ -11487,24 +11975,50 @@ function addonTable.CreateMainConfigUI()
                 local pt = meta.defPoint or "TOP"
                 local relPt = meta.defRelPoint or pt
                 if k == "TOAST" then
+                    SetHudScale("TOAST", 1.0)
+                    SetHudOpacity("TOAST", GetDefaultHudOpacity("TOAST"))
+                    SetHudBorderStyle("TOAST", "ACCENT")
                     if addonTable.SetToastPresetPosition then
                         addonTable.SetToastPresetPosition(pt, relPt, meta.defX, meta.defY)
                     end
                 elseif k == "CHAT" then
+                    SetHudScale("CHAT", 1.0)
                     if _G.DynamicChat and _G.DynamicChat.ResetChatFramePosition then
                         pcall(_G.DynamicChat.ResetChatFramePosition, _G.DynamicChat)
                     end
+                    SetHudOpacity("CHAT", GetDefaultHudOpacity("CHAT"))
+                    SetHudBorderStyle("CHAT", "ACCENT")
                     SetStoredHudPos("CHAT", pt, relPt, meta.defX, meta.defY)
-                elseif k == "prepBuffs" and _G.DynamicPrep and _G.DynamicPrep.ResetBuffBarHUDPosition then
-                    pcall(_G.DynamicPrep.ResetBuffBarHUDPosition, _G.DynamicPrep, true)
+                elseif k == "prepBuffs" then
+                    SetHudScale("prepBuffs", 1.0)
+                    SetHudOpacity("prepBuffs", GetDefaultHudOpacity("prepBuffs"))
+                    SetHudBorderStyle("prepBuffs", "ACCENT")
+                    SetHudOrientation("prepBuffs", "HORIZONTAL")
+                    if _G.DynamicPrep and _G.DynamicPrep.ResetBuffBarHUDPosition then
+                        pcall(_G.DynamicPrep.ResetBuffBarHUDPosition, _G.DynamicPrep, true)
+                    end
                     SetStoredHudPos("prepBuffs", pt, relPt, meta.defX, meta.defY)
                 elseif k == "TARGET" or k == "FLARE" then
                     SetHudScale(k, 1.0)
+                    SetHudOpacity(k, GetDefaultHudOpacity(k))
+                    SetHudBorderStyle(k, "ACCENT")
+                    SetHudOrientation(k, "HORIZONTAL")
                     if _G.DynamicMarker and _G.DynamicMarker.ResetSingleHUDPosition then
                         pcall(_G.DynamicMarker.ResetSingleHUDPosition, _G.DynamicMarker, k, true)
                     end
                     SetStoredHudPos(k, pt, relPt, meta.defX, meta.defY)
+                elseif k == "PREP" then
+                    SetHudScale("PREP", 1.0)
+                    SetHudOpacity("PREP", GetDefaultHudOpacity("PREP"))
+                    SetHudBorderStyle("PREP", "ACCENT")
+                    if _G.DynamicPrep and _G.DynamicPrep.ResetHUDPosition then
+                        pcall(_G.DynamicPrep.ResetHUDPosition, _G.DynamicPrep, true)
+                    end
+                    SetStoredHudPos("PREP", pt, relPt, meta.defX, meta.defY)
                 else
+                    SetHudScale(k, 1.0)
+                    SetHudOpacity(k, GetDefaultHudOpacity(k))
+                    SetHudBorderStyle(k, "ACCENT")
                     SetStoredHudPos(k, pt, relPt, meta.defX, meta.defY)
                 end
             end
@@ -11526,13 +12040,13 @@ function addonTable.CreateMainConfigUI()
 
         local ar, ag, ab = UI.GetActiveAccentColor()
         local m = CreateFrame("Frame", "DynamicSuiteEditModeModal", UIParent)
-        m:SetSize(560, 74)
+        m:SetSize(560, 110)
 
         local function ApplyEditModalClampInsets(modal)
             local target = modal or m
             if not target then return end
             local w = (target.GetWidth and target:GetWidth()) or 560
-            local h = (target.GetHeight and target:GetHeight()) or 74
+            local h = (target.GetHeight and target:GetHeight()) or 110
             local keepVisible = 60
             local allowOffX = math.max(0, w - keepVisible)
             local allowOffY = math.max(0, h - keepVisible)
@@ -11549,7 +12063,7 @@ function addonTable.CreateMainConfigUI()
             self:ClearAllPoints()
             if type(pos) == "table" and pos.x ~= nil and pos.y ~= nil then
                 local w = (self.GetWidth and self:GetWidth()) or 560
-                local h = (self.GetHeight and self:GetHeight()) or 74
+                local h = (self.GetHeight and self:GetHeight()) or 110
                 local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
                 local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
                 local allowOffX = math.max(0, w - 60)
@@ -11593,16 +12107,18 @@ function addonTable.CreateMainConfigUI()
             m:StartMoving()
         end)
         m:SetScript("OnDragStop", SaveEditModalPosition)
-        m:SetScript("OnHide", function()
-            if m.hudSelectorPopup and m.hudSelectorPopup:IsShown() then
-                m.hudSelectorPopup:Hide()
+        m:SetScript("OnHide", function(self)
+            if self.hudSelectorPopup and self.hudSelectorPopup:IsShown() then
+                self.hudSelectorPopup:Hide()
             end
-            if isHudEditModeActive and not isExitingHudEditMode then
+            if not self._suppressInitialOnHide and isHudEditModeActive and not isExitingHudEditMode then
                 addonTable.ExitHudEditMode(false)
             end
         end)
         table.insert(UISpecialFrames, "DynamicSuiteEditModeModal")
+        m._suppressInitialOnHide = true
         m:Hide()
+        m._suppressInitialOnHide = false
 
         m.bg = UI.SolidTex(m, "BACKGROUND", 0, 0.045, 0.052, 0.068, 0.98)
         m.bg:SetAllPoints()
@@ -11841,24 +12357,50 @@ function addonTable.CreateMainConfigUI()
             local pt = meta.defPoint or "TOP"
             local relPt = meta.defRelPoint or pt
             if k == "TOAST" then
+                SetHudScale("TOAST", 1.0)
+                SetHudOpacity("TOAST", GetDefaultHudOpacity("TOAST"))
+                SetHudBorderStyle("TOAST", "ACCENT")
                 if addonTable.SetToastPresetPosition then
                     addonTable.SetToastPresetPosition(pt, relPt, meta.defX, meta.defY)
                 end
             elseif k == "CHAT" then
+                SetHudScale("CHAT", 1.0)
                 if _G.DynamicChat and _G.DynamicChat.ResetChatFramePosition then
                     pcall(_G.DynamicChat.ResetChatFramePosition, _G.DynamicChat)
                 end
+                SetHudOpacity("CHAT", GetDefaultHudOpacity("CHAT"))
+                SetHudBorderStyle("CHAT", "ACCENT")
                 SetStoredHudPos("CHAT", pt, relPt, meta.defX, meta.defY)
-            elseif k == "prepBuffs" and _G.DynamicPrep and _G.DynamicPrep.ResetBuffBarHUDPosition then
-                pcall(_G.DynamicPrep.ResetBuffBarHUDPosition, _G.DynamicPrep, true)
+            elseif k == "prepBuffs" then
+                SetHudScale("prepBuffs", 1.0)
+                SetHudOpacity("prepBuffs", GetDefaultHudOpacity("prepBuffs"))
+                SetHudBorderStyle("prepBuffs", "ACCENT")
+                SetHudOrientation("prepBuffs", "HORIZONTAL")
+                if _G.DynamicPrep and _G.DynamicPrep.ResetBuffBarHUDPosition then
+                    pcall(_G.DynamicPrep.ResetBuffBarHUDPosition, _G.DynamicPrep, true)
+                end
                 SetStoredHudPos("prepBuffs", pt, relPt, meta.defX, meta.defY)
             elseif k == "TARGET" or k == "FLARE" then
                 SetHudScale(k, 1.0)
+                SetHudOpacity(k, GetDefaultHudOpacity(k))
+                SetHudBorderStyle(k, "ACCENT")
+                SetHudOrientation(k, "HORIZONTAL")
                 if _G.DynamicMarker and _G.DynamicMarker.ResetSingleHUDPosition then
                     pcall(_G.DynamicMarker.ResetSingleHUDPosition, _G.DynamicMarker, k, true)
                 end
                 SetStoredHudPos(k, pt, relPt, meta.defX, meta.defY)
+            elseif k == "PREP" then
+                SetHudScale("PREP", 1.0)
+                SetHudOpacity("PREP", GetDefaultHudOpacity("PREP"))
+                SetHudBorderStyle("PREP", "ACCENT")
+                if _G.DynamicPrep and _G.DynamicPrep.ResetHUDPosition then
+                    pcall(_G.DynamicPrep.ResetHUDPosition, _G.DynamicPrep, true)
+                end
+                SetStoredHudPos("PREP", pt, relPt, meta.defX, meta.defY)
             else
+                SetHudScale(k, 1.0)
+                SetHudOpacity(k, GetDefaultHudOpacity(k))
+                SetHudBorderStyle(k, "ACCENT")
                 SetStoredHudPos(k, pt, relPt, meta.defX, meta.defY)
             end
             SyncAllEditModeHuds(true)
@@ -11889,8 +12431,8 @@ function addonTable.CreateMainConfigUI()
         end)
         rowResetBtn.OnCustomEnter = function(self)
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            GameTooltip:SetText("Reset Location", 1, 1, 1)
-            GameTooltip:AddLine("Reset selected HUD back to default screen-safe coordinates.", 0.78, 0.82, 0.88, true)
+            GameTooltip:SetText("Reset Location & Style", 1, 1, 1)
+            GameTooltip:AddLine("Reset selected HUD position, scale, opacity, border style, and orientation back to factory defaults.", 0.78, 0.82, 0.88, true)
             GameTooltip:Show()
         end
         rowResetBtn.OnCustomLeave = function() GameTooltip:Hide() end
@@ -11917,8 +12459,8 @@ function addonTable.CreateMainConfigUI()
         -- Row 2: Compact Inspector Controls (36px tall, draggable dock body)
         ------------------------------------------------------------------------
         local inspCard = CreateFrame("Frame", nil, m)
-        inspCard:SetPoint("TOPLEFT", mHdr, "BOTTOMLEFT", 4, -2)
-        inspCard:SetPoint("TOPRIGHT", mHdr, "BOTTOMRIGHT", -4, -2)
+        inspCard:SetPoint("TOPLEFT", mHdr, "BOTTOMLEFT", 4, -1)
+        inspCard:SetPoint("TOPRIGHT", mHdr, "BOTTOMRIGHT", -4, -1)
         inspCard:SetHeight(36)
         inspCard.bg = UI.SolidTex(inspCard, "BACKGROUND", 1, 0.075, 0.086, 0.110, 0.96)
         inspCard.bg:SetAllPoints()
@@ -12128,6 +12670,215 @@ function addonTable.CreateMainConfigUI()
         end)
 
         ------------------------------------------------------------------------
+        -- Row 3: Live Appearance Bar (36px tall: Opacity, Border Style, Orientation)
+        ------------------------------------------------------------------------
+        local inspRow3 = CreateFrame("Frame", nil, m)
+        inspRow3:SetPoint("TOPLEFT", inspCard, "BOTTOMLEFT", 0, -1)
+        inspRow3:SetPoint("TOPRIGHT", inspCard, "BOTTOMRIGHT", 0, -1)
+        inspRow3:SetHeight(36)
+        inspRow3.bg = UI.SolidTex(inspRow3, "BACKGROUND", 1, 0.075, 0.086, 0.110, 0.96)
+        inspRow3.bg:SetAllPoints()
+        UI.CreatePixelBorder(inspRow3, 1, 1, 1, 0.10, 2)
+        inspRow3:EnableMouse(true)
+        inspRow3:RegisterForDrag("LeftButton")
+        inspRow3:SetScript("OnDragStart", function()
+            if m.hudSelectorPopup and m.hudSelectorPopup:IsShown() then m.hudSelectorPopup:Hide() end
+            m:StartMoving()
+        end)
+        inspRow3:SetScript("OnDragStop", SaveEditModalPosition)
+        m.inspRow3 = inspRow3
+
+        -- 1. Opacity Slider (20% - 100%, step 5%)
+        local opaLbl = inspRow3:CreateFontString(nil, "OVERLAY")
+        opaLbl:SetPoint("LEFT", inspRow3, "LEFT", 8, 0)
+        UI.SetFont(opaLbl, 10, "", 0.78, 0.82, 0.90, 1)
+        opaLbl:SetText("Opacity:")
+
+        local OPA_SLIDER_W = 58
+        local opaMinusBtn = CreateFlatButton(inspRow3, 20, 22, "-", false)
+        opaMinusBtn:SetPoint("LEFT", opaLbl, "RIGHT", 4, 0)
+        opaMinusBtn:SetScript("OnClick", function()
+            local cur = GetHudOpacity(selectedHudTarget)
+            SetHudOpacity(selectedHudTarget, cur - HUD_OPACITY_STEP)
+            m.RefreshState()
+        end)
+
+        local opaSliderHit = CreateFrame("Frame", nil, inspRow3)
+        opaSliderHit:SetSize(OPA_SLIDER_W, 22)
+        opaSliderHit:SetPoint("LEFT", opaMinusBtn, "RIGHT", 4, 0)
+        opaSliderHit:EnableMouse(true)
+        opaSliderHit:EnableMouseWheel(true)
+
+        local opaTrack = UI.SolidTex(opaSliderHit, "ARTWORK", 1, 0.035, 0.039, 0.051, 0.98)
+        opaTrack:SetSize(OPA_SLIDER_W, 4)
+        opaTrack:SetPoint("CENTER", opaSliderHit, "CENTER", 0, 0)
+        UI.CreatePixelBorder(opaSliderHit, 1, 1, 1, 0.0)
+
+        local opaFill = UI.SolidTex(opaSliderHit, "ARTWORK", 2, ar, ag, ab, 0.85)
+        opaFill:SetPoint("TOPLEFT", opaTrack, "TOPLEFT", 0, 0)
+        opaFill:SetPoint("BOTTOMLEFT", opaTrack, "BOTTOMLEFT", 0, 0)
+        opaFill:SetWidth(1)
+
+        local opaThumb = UI.SolidTex(opaSliderHit, "OVERLAY", 4, 0.97, 0.98, 1.00, 1.0)
+        opaThumb:SetSize(6, 14)
+        if opaThumb.SetSnapToPixelGrid then
+            opaThumb:SetSnapToPixelGrid(false)
+            opaThumb:SetTexelSnappingBias(0)
+        end
+
+        local opaPlusBtn = CreateFlatButton(inspRow3, 20, 22, "+", false)
+        opaPlusBtn:SetPoint("LEFT", opaSliderHit, "RIGHT", 4, 0)
+        opaPlusBtn:SetScript("OnClick", function()
+            local cur = GetHudOpacity(selectedHudTarget)
+            SetHudOpacity(selectedHudTarget, cur + HUD_OPACITY_STEP)
+            m.RefreshState()
+        end)
+
+        local opaBadge = CreateFrame("Frame", nil, inspRow3)
+        opaBadge:SetSize(38, 22)
+        opaBadge:SetPoint("LEFT", opaPlusBtn, "RIGHT", 4, 0)
+        opaBadge.bg = UI.SolidTex(opaBadge, "BACKGROUND", 2, 0.043, 0.051, 0.071, 0.98)
+        opaBadge.bg:SetAllPoints()
+        UI.CreatePixelBorder(opaBadge, 0.165, 0.192, 0.259, 0.95, 3)
+
+        local opaBadgeText = opaBadge:CreateFontString(nil, "OVERLAY")
+        opaBadgeText:SetPoint("CENTER", opaBadge, "CENTER", 0, 0)
+        UI.SetFont(opaBadgeText, 10, "", 1, 1, 1, 0.98)
+        opaBadgeText:SetText("95%")
+
+        local function UpdateHudOpacityVisual(val)
+            local v = SnapHudOpacity(val, selectedHudTarget)
+            local pct = (v - HUD_OPACITY_MIN) / (HUD_OPACITY_MAX - HUD_OPACITY_MIN)
+            local xOff = pct * OPA_SLIDER_W
+            local r, g, b = UI.GetActiveAccentColor()
+            opaFill:SetColorTexture(r, g, b, 0.95)
+            opaFill:SetWidth(math.max(1, xOff))
+            opaThumb:ClearAllPoints()
+            opaThumb:SetPoint("CENTER", opaTrack, "LEFT", xOff, 0)
+            opaBadgeText:SetText(string.format("%d%%", math.floor(v * 100 + 0.5)))
+        end
+
+        opaSliderHit:SetScript("OnMouseDown", function(self, button)
+            if button == "LeftButton" then
+                self:SetScript("OnUpdate", function(s)
+                    if not IsMouseButtonDown("LeftButton") or InCombatLockdown() then
+                        s:SetScript("OnUpdate", nil)
+                        return
+                    end
+                    local eff = opaTrack:GetEffectiveScale()
+                    local cx = GetCursorPosition() / eff
+                    local left = opaTrack:GetLeft()
+                    if left then
+                        local pct = math.max(0, math.min(1, (cx - left) / OPA_SLIDER_W))
+                        local raw = HUD_OPACITY_MIN + pct * (HUD_OPACITY_MAX - HUD_OPACITY_MIN)
+                        local snapped = SnapHudOpacity(raw, selectedHudTarget)
+                        if s._lastSnapped ~= snapped then
+                            s._lastSnapped = snapped
+                            if math.abs(snapped - GetHudOpacity(selectedHudTarget)) >= 0.01 then
+                                SetHudOpacity(selectedHudTarget, snapped)
+                            end
+                            UpdateHudOpacityVisual(snapped)
+                        end
+                    end
+                end)
+            elseif button == "RightButton" then
+                SetHudOpacity(selectedHudTarget, GetDefaultHudOpacity(selectedHudTarget))
+                m.RefreshState()
+            end
+        end)
+        opaSliderHit:SetScript("OnMouseUp", function(self, button)
+            if button == "LeftButton" then
+                self:SetScript("OnUpdate", nil)
+                m.RefreshState()
+            end
+        end)
+        opaSliderHit:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
+        opaSliderHit:SetScript("OnMouseWheel", function(_, delta)
+            local cur = GetHudOpacity(selectedHudTarget)
+            SetHudOpacity(selectedHudTarget, cur + (delta > 0 and HUD_OPACITY_STEP or -HUD_OPACITY_STEP))
+            m.RefreshState()
+        end)
+
+        -- 2. Border Style Segmented Pills ([Accent] [Dark] [None])
+        local bdrLbl = inspRow3:CreateFontString(nil, "OVERLAY")
+        bdrLbl:SetPoint("LEFT", opaBadge, "RIGHT", 10, 0)
+        UI.SetFont(bdrLbl, 10, "", 0.78, 0.82, 0.90, 1)
+        bdrLbl:SetText("Border:")
+
+        local bdrAccentBtn = CreateFlatButton(inspRow3, 48, 22, "Accent", false)
+        TightenCompactButtonLabel(bdrAccentBtn, 3)
+        bdrAccentBtn:SetPoint("LEFT", bdrLbl, "RIGHT", 4, 0)
+        bdrAccentBtn:SetScript("OnClick", function()
+            SetHudBorderStyle(selectedHudTarget, "ACCENT")
+            m.RefreshState()
+        end)
+
+        local bdrDarkBtn = CreateFlatButton(inspRow3, 40, 22, "Dark", false)
+        TightenCompactButtonLabel(bdrDarkBtn, 3)
+        bdrDarkBtn:SetPoint("LEFT", bdrAccentBtn, "RIGHT", 2, 0)
+        bdrDarkBtn:SetScript("OnClick", function()
+            SetHudBorderStyle(selectedHudTarget, "DARK")
+            m.RefreshState()
+        end)
+
+        local bdrNoneBtn = CreateFlatButton(inspRow3, 40, 22, "None", false)
+        TightenCompactButtonLabel(bdrNoneBtn, 3)
+        bdrNoneBtn:SetPoint("LEFT", bdrDarkBtn, "RIGHT", 2, 0)
+        bdrNoneBtn:SetScript("OnClick", function()
+            SetHudBorderStyle(selectedHudTarget, "NONE")
+            m.RefreshState()
+        end)
+
+        -- 3. Orientation Segmented Pills ([Horiz] [Vert]) anchored cleanly at right
+        local orientVertBtn = CreateFlatButton(inspRow3, 40, 22, "Vert", false)
+        TightenCompactButtonLabel(orientVertBtn, 3)
+        orientVertBtn:SetPoint("RIGHT", inspRow3, "RIGHT", -6, 0)
+        orientVertBtn:SetScript("OnClick", function()
+            if not DoesHudSupportOrientation(selectedHudTarget) then return end
+            SetHudOrientation(selectedHudTarget, "VERTICAL")
+            m.RefreshState()
+        end)
+
+        local orientHorizBtn = CreateFlatButton(inspRow3, 44, 22, "Horiz", false)
+        TightenCompactButtonLabel(orientHorizBtn, 3)
+        orientHorizBtn:SetPoint("RIGHT", orientVertBtn, "LEFT", -2, 0)
+        orientHorizBtn:SetScript("OnClick", function()
+            if not DoesHudSupportOrientation(selectedHudTarget) then return end
+            SetHudOrientation(selectedHudTarget, "HORIZONTAL")
+            m.RefreshState()
+        end)
+
+        local orientLbl = inspRow3:CreateFontString(nil, "OVERLAY")
+        orientLbl:SetPoint("RIGHT", orientHorizBtn, "LEFT", -4, 0)
+        UI.SetFont(orientLbl, 10, "", 0.78, 0.82, 0.90, 1)
+        orientLbl:SetText("Orient:")
+
+        local function OnOrientButtonEnter(selfBtn)
+            if not DoesHudSupportOrientation(selectedHudTarget) and GameTooltip then
+                GameTooltip:SetOwner(selfBtn, "ANCHOR_BOTTOM")
+                GameTooltip:SetText("Fixed Horizontal Layout", 1, 1, 1)
+                GameTooltip:AddLine("This HUD uses a fixed horizontal layout and cannot be rotated vertically.", 0.78, 0.82, 0.88, true)
+                GameTooltip:Show()
+            end
+        end
+        local function OnOrientButtonLeave()
+            if GameTooltip then GameTooltip:Hide() end
+        end
+        orientHorizBtn.OnCustomEnter = OnOrientButtonEnter
+        orientHorizBtn.OnCustomLeave = OnOrientButtonLeave
+        orientVertBtn.OnCustomEnter = OnOrientButtonEnter
+        orientVertBtn.OnCustomLeave = OnOrientButtonLeave
+
+        m.inspRow3 = inspRow3
+        m.opaSliderHit = opaSliderHit
+        m.opaBadgeText = opaBadgeText
+        m.bdrAccentBtn = bdrAccentBtn
+        m.bdrDarkBtn = bdrDarkBtn
+        m.bdrNoneBtn = bdrNoneBtn
+        m.orientHorizBtn = orientHorizBtn
+        m.orientVertBtn = orientVertBtn
+
+        ------------------------------------------------------------------------
         -- Modal State Refresh & External Coordination
         ------------------------------------------------------------------------
         m.UpdateLiveCoordReadout = function(lx, ly)
@@ -12156,6 +12907,9 @@ function addonTable.CreateMainConfigUI()
                 mHdr.backBtn:SetSelected(true, accentCol)
             end
             inspCard.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, 0.96)
+            if inspRow3 and inspRow3.bg then
+                inspRow3.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, 0.96)
+            end
 
             if selectedHudTarget == "CHAT" and not IsChatHudTargetOwned() then
                 selectedHudTarget = SelectDefaultVisibleHudTarget()
@@ -12187,6 +12941,28 @@ function addonTable.CreateMainConfigUI()
             end
 
             UpdateHudScaleVisual(GetHudScale(selectedHudTarget))
+            UpdateHudOpacityVisual(GetHudOpacity(selectedHudTarget))
+
+            local curBdr = GetHudBorderStyle(selectedHudTarget)
+            bdrAccentBtn:SetSelected(curBdr == "ACCENT", accentCol)
+            bdrDarkBtn:SetSelected(curBdr == "DARK", accentCol)
+            bdrNoneBtn:SetSelected(curBdr == "NONE", accentCol)
+
+            local orientSupported = DoesHudSupportOrientation(selectedHudTarget)
+            local curOrient = GetHudOrientation(selectedHudTarget)
+            if orientSupported then
+                orientLbl:SetAlpha(1.0)
+                orientHorizBtn:SetAlpha(1.0)
+                orientVertBtn:SetAlpha(1.0)
+                orientHorizBtn:SetSelected(curOrient == "HORIZONTAL", accentCol)
+                orientVertBtn:SetSelected(curOrient == "VERTICAL", accentCol)
+            else
+                orientLbl:SetAlpha(0.38)
+                orientHorizBtn:SetSelected(true, accentCol)
+                orientVertBtn:SetSelected(false, accentCol)
+                orientHorizBtn:SetAlpha(0.38)
+                orientVertBtn:SetAlpha(0.38)
+            end
 
             if not rowResetConfirmPending then
                 rowResetBtn.label:SetText("Reset")
@@ -12240,6 +13016,13 @@ function addonTable.CreateMainConfigUI()
             print("|cFFCBD5E1DynamicSuite:|r HUD Edit Mode cannot be opened during combat.")
             return
         end
+        if not mainFrame or not mainFrame._initComplete then
+            addonTable.CreateMainConfigUI()
+        end
+        isHudEditModeActive = true
+        addonTable._isHudEditModeActive = true
+        addonTable.GetHudSnapMode = GetActiveSnapMode
+        EnsureAllEditModeHudFramesInitialized()
         local rawKey = (type(selfOrKey) == "table") and maybeKey or selfOrKey
         local normKey = type(rawKey) == "string" and rawKey:upper() or nil
         local explicitFromCard = (rawKey ~= nil and rawKey ~= "" and normKey ~= "ALL")
@@ -12260,25 +13043,19 @@ function addonTable.CreateMainConfigUI()
         else
             explicitlyPreviewedHiddenHud = nil
         end
-        if IsChatHudTargetOwned() and _G.DynamicChat and _G.DynamicChat.ApplySavedChatFramePosition then
-            pcall(_G.DynamicChat.ApplySavedChatFramePosition, _G.DynamicChat)
-        end
-        if not mainFrame then
-            addonTable.CreateMainConfigUI()
-        end
         UI.CloseAllPopups()
         if f.minimizedBar then f.minimizedBar:Hide() end
-        isHudEditModeActive = true
-        addonTable._isHudEditModeActive = true
         addonTable.selectedHudTarget = selectedHudTarget
-        addonTable.GetHudSnapMode = GetActiveSnapMode
         f._minimizedForHudDrag = true
         f:Hide()
         local modal = EnsureEditModeInspectorModal()
         modal:SetFrameStrata("DIALOG")
         modal:SetFrameLevel(200)
         modal._isCollapsed = false
-        modal:SetSize(560, 74)
+        modal:SetSize(560, 110)
+        if modal.hudSelectorPopup then modal.hudSelectorPopup:Hide() end
+        if modal.inspCard then modal.inspCard:Show() end
+        if modal.inspRow3 then modal.inspRow3:Show() end
         if modal.RestoreSavedPosition then modal:RestoreSavedPosition() end
         IngestLiveHudPositions()
         SyncAllEditModeHuds(true)
@@ -13332,7 +14109,11 @@ function addonTable.CreateMainConfigUI()
         end
 
         if f.UpdateResetButtonLabel then f.UpdateResetButtonLabel() end
-        RefreshLeftRailVisuals()
+        if f.RefreshLeftRailLayout then
+            f.RefreshLeftRailLayout()
+        elseif RefreshLeftRailVisuals then
+            RefreshLeftRailVisuals()
+        end
         UpdateStatusBar()
     end
 
@@ -13585,6 +14366,18 @@ function addonTable.CreateMainConfigUI()
             _G.DynamicSuite.mainFrame = f
         end
 
+        if f.leftRail then f.leftRail:Show() end
+        if f.railModuleScroll then f.railModuleScroll:Show() end
+        if f.railModuleChild then f.railModuleChild:Show() end
+        if f.railSearchWrap then f.railSearchWrap:Show() end
+        if f.modSectionHdr then f.modSectionHdr:Show() end
+        if f.resetSortBtn then f.resetSortBtn:Show() end
+        if f.studioSectionHdr then f.studioSectionHdr:Show() end
+        if f.railStudioBtns then
+            for _, sBtn in ipairs(f.railStudioBtns) do
+                if sBtn and sBtn.Show then sBtn:Show() end
+            end
+        end
         if f.workspace then f.workspace:Show() end
         addonTable.ApplySuiteThemeAndGeometry()
         if f.RefreshLeftRailLayout then f.RefreshLeftRailLayout() end
@@ -13611,6 +14404,18 @@ function addonTable.CreateMainConfigUI()
             C_Timer.After(0, function()
                 self._postLayoutPending = nil
                 if not self:IsShown() then return end
+                if self.leftRail then self.leftRail:Show() end
+                if self.railModuleScroll then self.railModuleScroll:Show() end
+                if self.railModuleChild then self.railModuleChild:Show() end
+                if self.railSearchWrap then self.railSearchWrap:Show() end
+                if self.modSectionHdr then self.modSectionHdr:Show() end
+                if self.resetSortBtn then self.resetSortBtn:Show() end
+                if self.studioSectionHdr then self.studioSectionHdr:Show() end
+                if self.railStudioBtns then
+                    for _, sBtn in ipairs(self.railStudioBtns) do
+                        if sBtn and sBtn.Show then sBtn:Show() end
+                    end
+                end
                 if self.workspace then self.workspace:Show() end
                 addonTable.ApplySuiteThemeAndGeometry()
                 if self.RefreshLeftRailLayout then self.RefreshLeftRailLayout() end
@@ -13796,6 +14601,9 @@ function addonTable.ShowConfigUI(forceDynamicLoad)
         if addonTable.SetSelectedTabKey then addonTable.SetSelectedTabKey(selectedTabKey) end
     end
     local f = addonTable.CreateMainConfigUI()
+    if f and f.RefreshLeftRailLayout then
+        f.RefreshLeftRailLayout()
+    end
     local dlLoaded = (addonTable.IsDynamicLoadModuleLoaded == true) or C_AddOns.IsAddOnLoaded("DynamicLoad")
     if forceDynamicLoad == true or dlLoaded then
         selectedPeerModuleKey = nil
@@ -13821,46 +14629,52 @@ function addonTable.HideConfigUI()
     end
 end
 
-function addonTable.ClampAllSuiteHudsToScreen()
-    if InCombatLockdown and InCombatLockdown() then
-        addonTable._pendingHudClamp = true
-        return false
-    end
-    local selfFn = addonTable.ClampAllSuiteHudsToScreen
-    addonTable.CreateMainConfigUI()
-    if addonTable.ClampAllSuiteHudsToScreen and addonTable.ClampAllSuiteHudsToScreen ~= selfFn then
-        return addonTable.ClampAllSuiteHudsToScreen()
-    end
-    return false
-end
-
-function addonTable.ResetAllHudPositions(silent)
-    if InCombatLockdown and InCombatLockdown() then
-        addonTable._pendingHudPositionReset = true
-        if not silent then
-            print("|cFF38BDF8DynamicSuite|r: |cFFF87171Cannot reset HUD positions during combat lockdown.|r Positions will reset safely after combat ends.")
+if not addonTable.ClampAllSuiteHudsToScreen then
+    function addonTable.ClampAllSuiteHudsToScreen()
+        if InCombatLockdown and InCombatLockdown() then
+            addonTable._pendingHudClamp = true
+            return false
+        end
+        local selfFn = addonTable.ClampAllSuiteHudsToScreen
+        addonTable.CreateMainConfigUI()
+        if addonTable.ClampAllSuiteHudsToScreen and addonTable.ClampAllSuiteHudsToScreen ~= selfFn then
+            return addonTable.ClampAllSuiteHudsToScreen()
         end
         return false
     end
-    local selfFn = addonTable.ResetAllHudPositions
-    addonTable.CreateMainConfigUI()
-    if addonTable.ResetAllHudPositions and addonTable.ResetAllHudPositions ~= selfFn then
-        return addonTable.ResetAllHudPositions(silent)
-    end
-    return false
 end
 
-function addonTable.EnterHudEditMode(targetKey)
-    if InCombatLockdown and InCombatLockdown() then
-        print("|cFF38BDF8DynamicSuite|r: |cFFF87171Cannot enter HUD Edit Mode during combat lockdown.|r")
+if not addonTable.ResetAllHudPositions then
+    function addonTable.ResetAllHudPositions(silent)
+        if InCombatLockdown and InCombatLockdown() then
+            addonTable._pendingHudPositionReset = true
+            if not silent then
+                print("|cFF38BDF8DynamicSuite|r: |cFFF87171Cannot reset HUD positions during combat lockdown.|r Positions will reset safely after combat ends.")
+            end
+            return false
+        end
+        local selfFn = addonTable.ResetAllHudPositions
+        addonTable.CreateMainConfigUI()
+        if addonTable.ResetAllHudPositions and addonTable.ResetAllHudPositions ~= selfFn then
+            return addonTable.ResetAllHudPositions(silent)
+        end
         return false
     end
-    local selfFn = addonTable.EnterHudEditMode
-    addonTable.CreateMainConfigUI()
-    if addonTable.EnterHudEditMode and addonTable.EnterHudEditMode ~= selfFn then
-        return addonTable.EnterHudEditMode(targetKey)
+end
+
+if not addonTable.EnterHudEditMode then
+    function addonTable.EnterHudEditMode(targetKey)
+        if InCombatLockdown and InCombatLockdown() then
+            print("|cFF38BDF8DynamicSuite|r: |cFFF87171Cannot enter HUD Edit Mode during combat lockdown.|r")
+            return false
+        end
+        local selfFn = addonTable.EnterHudEditMode
+        addonTable.CreateMainConfigUI()
+        if addonTable.EnterHudEditMode and addonTable.EnterHudEditMode ~= selfFn then
+            return addonTable.EnterHudEditMode(targetKey)
+        end
+        return false
     end
-    return false
 end
 
 function addonTable.ToggleConfigUI(forceShow)

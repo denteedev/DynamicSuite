@@ -5,8 +5,11 @@
 
 ## DynamicMarker v2.1.1 (15/11/2026)
 
+### Added
+* **3-Row `560x110` HUD Edit Appearance Bar (Row 3):** Upgraded standalone `DynamicMarkerEditModeInspector` into a compact `560x110` 3-row draggable inspector dock with live Row 3 controls: an `Opacity` slider (`20%-100%`, step `5%`) that previews opacity cleanly while keeping mover overlays sharp via `SetIgnoreParentAlpha(true)`, `Accent` | `Dark` | `None` Border Style pills synchronised 1:1 with Target Icon Bar and World Flare Bar sub-settings, and a `Horiz` | `Vert` Orientation toggle that flips layout direction and re-clamps to screen bounds immediately. Clicking `[Reset]` restores Position, Scale (`100%`), Opacity (`95%`), Border Style (`Accent`), and Orientation (`Horizontal`).
+
 ### Fixed
-* **HUD Edit Mode Mover Visibility & Drag Shield Layering:** Promoted the Target Icon Bar and World Flare Bar mover overlays (`editMover`) to `HIGH` frame strata (`FrameLevel + 50`) with `SetIgnoreParentAlpha(true)` and ordered `SyncEditBarStates()` after bar refreshes in `SetEditMode`, ensuring any bar set to `Shown` (`Group` or `Always`) immediately displays its live preview and interactive drag shield in HUD Edit Mode (even while solo), while explicitly selecting a `Hidden` (`Off`) bar from the HUD dropdown or clicking `[Edit HUD]` previews it with the `HIDDEN (Click Shown to Enable)` badge.
+* **First-Click HUD Edit Dropdown & Mover Initialisation:** Closed the HUD selector dropdown cleanly when entering HUD Edit Mode so Row 2 and Row 3 controls are never covered on entry, promoted Target Icon Bar and World Flare Bar mover overlays (`editMover`) to `HIGH` frame strata (`FrameLevel + 50`) with `SetIgnoreParentAlpha(true)`, and ordered `SyncEditBarStates()` after bar refreshes in `SetEditMode` so shown movers appear reliably on the very first open.
 
 ---
 

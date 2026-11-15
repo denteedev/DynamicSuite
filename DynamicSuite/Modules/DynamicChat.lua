@@ -293,6 +293,7 @@ local DEFAULTS = {
     -- Tab 2: Sleek Obsidian Chat Skin, Left Utility Rail, Channel Tags & Formatting
     enableSleekChatSkin         = true,
     chatBgAlpha                 = 0.25,
+    chatBorderStyle             = "ACCENT",
     editBoxPosition             = "BOTTOM", -- "BOTTOM" (Below Chat) | "TOP" (Above Chat Tabs)
     editBoxBackgroundMode       = "ALWAYS", -- "ALWAYS" (Seamless Smoked-Glass Dock) | "FOCUS_ONLY" (Show Only When Typing)
     hideChatButtons             = true,
@@ -4897,10 +4898,13 @@ function DynamicChat:ApplySleekChatSkin()
                     p:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 8, botPad)
                 end
                 p:SetBackdropColor(0.035, 0.039, 0.051, bgAlpha) -- #090A0D Unbroken Smoked-Glass Canvas
-                if bgAlpha <= 0.45 then
-                    p:SetBackdropBorderColor(0, 0, 0, 0) -- Borderless in Clear / Smoked modes
+                local bStyle = db.chatBorderStyle or "ACCENT"
+                if bStyle == "NONE" then
+                    p:SetBackdropBorderColor(0, 0, 0, 0)
+                elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+                    p:SetBackdropBorderColor(0.18, 0.22, 0.28, 0.85)
                 else
-                    p:SetBackdropBorderColor(1, 1, 1, 0.04) -- Ultra-subtle hairline in Obsidian / Solid modes
+                    p:SetBackdropBorderColor(ar, ag, ab, 0.85)
                 end
 
                 if p.headerDiv then
@@ -5694,7 +5698,12 @@ function DynamicChat:ResetChatFramePosition()
         height        = 200,
     }
     db.chatFrameScale = 1.0
-    if not self:IsChatFrameLayoutOwned() then return end
+    db.chatBgAlpha = 0.25
+    db.chatBorderStyle = "ACCENT"
+    if not self:IsChatFrameLayoutOwned() then
+        self:ApplySleekChatSkin()
+        return
+    end
     local cf = _G.ChatFrame1
     if cf and not (InCombatLockdown and InCombatLockdown()) then
         self._applyingChatPos = true
@@ -5705,6 +5714,7 @@ function DynamicChat:ResetChatFramePosition()
         self._applyingChatPos = false
     end
     self:ApplySavedChatFramePosition()
+    self:ApplySleekChatSkin()
 end
 
 function DynamicChat:ApplyShortChannelNames()
