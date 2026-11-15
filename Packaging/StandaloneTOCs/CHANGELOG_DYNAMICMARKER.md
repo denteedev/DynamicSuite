@@ -5,6 +5,9 @@
 
 ## DynamicMarker v2.2.0 (15/11/2026)
 
+### Added
+* **SharedMedia, AddOn & Blizzard Font Discovery in Theme Studio:** Added runtime scanning for `LibSharedMedia-3.0`, `DBM`, `WeakAuras`, and `ElvUI` fonts alongside Blizzard standard fonts and bundled Expressway fonts inside Theme & Font Studio. Grouped the `Font Family` selector under `Built-in Fonts`, `Blizzard`, and `SharedMedia / AddOns` section headers with scrolling, live search filtering, `pcall`-guarded per-font preview rendering, and safe automatic fallback if an external addon is disabled.
+
 ### Improved
 * **Unbound-by-Default World Flare Keybinds & Guided Setup Assignment:** Removed hardcoded `F4` and `F5` default World Flare bindings so fresh installs and Resets leave both keys `"Unbound"` (`""`) without overriding existing Blizzard or action bar keybinds (while preserving any already-saved `DynamicMarkerDB` bindings). Added clean single-button `Cycle World Flare Keybind` and `Clear All Flares Keybind` capture controls (`"Unbound (Click to Bind)"` / `"[KEY] (Click Rebind)"`) in both Guided Setup and the World Flare Keys (`/dm flares`) tab, where Left-Click captures, `Escape` cancels without losing your existing binding, and `Right-Click` (or `Backspace`/`Delete` while capturing) clears to `"Unbound"`.
 * **Version & Coexistence Lockstep Parity:** Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to `v2.2.0` for Retail 12.1.5 (Interface 120105, Midnight Season 2).

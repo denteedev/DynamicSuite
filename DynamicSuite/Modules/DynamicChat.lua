@@ -281,22 +281,38 @@ _G.DynamicSuite.CONFLICT_REGISTRY["DynamicChat"] = {
 _G.DynamicSuite.CONFLICT_REGISTRY["chat"] = _G.DynamicSuite.CONFLICT_REGISTRY["DynamicChat"]
 
 local CUSTOM_SOUND_EFFECTS = {
-    { value = "ds_chime_soft",   label = "Soft Chime",   file = "ds_chime_soft.wav" },
-    { value = "ds_ping_crystal", label = "Crystal Ping", file = "ds_ping_crystal.wav" },
-    { value = "ds_bell_whisper", label = "Whisper Bell", file = "ds_bell_whisper.wav" },
-    { value = "ds_note_marimba", label = "Marimba Note", file = "ds_note_marimba.wav" },
-    { value = "ds_pulse_sonar",  label = "Sonar Pulse",  file = "ds_pulse_sonar.wav" },
-    { value = "ds_tap_double",   label = "Double Tap",   file = "ds_tap_double.wav" },
-    { value = "ds_drop_water",   label = "Water Drop",   file = "ds_drop_water.wav" },
-    { value = "ds_chord_warm",   label = "Warm Chord",   file = "ds_chord_warm.wav" },
-    { value = "ds_tick_wood",    label = "Wood Tick",    file = "ds_tick_wood.wav" },
-    { value = "ds_alert_subtle", label = "Subtle Alert", file = "ds_alert_subtle.wav" },
+    { value = "ds_ping_crystal", alias = "ex_alert_ping",     label = "EX Alert Ping",     file = "ds_ping_crystal.wav" },
+    { value = "ds_tap_double",   alias = "ex_double_stinger", label = "EX Double Stinger", file = "ds_tap_double.wav" },
+    { value = "ds_pulse_sonar",  alias = "ex_sonar_lock",     label = "EX Sonar Lock",     file = "ds_pulse_sonar.wav" },
+    { value = "ds_bell_whisper", alias = "ex_crystal_bell",   label = "EX Crystal Bell",   file = "ds_bell_whisper.wav" },
+    { value = "ds_chime_soft",   alias = "ex_phase_chime",    label = "EX Phase Chime",    file = "ds_chime_soft.wav" },
+    { value = "ds_chord_warm",   alias = "ex_sharp_triad",    label = "EX Sharp Triad",    file = "ds_chord_warm.wav" },
+    { value = "ds_drop_water",   alias = "ex_pulse_pop",      label = "EX Pulse Pop",      file = "ds_drop_water.wav" },
+    { value = "ds_alert_subtle", alias = "ex_clean_horn",     label = "EX Clean Horn",     file = "ds_alert_subtle.wav" },
+    { value = "ds_note_marimba", alias = "ex_high_glass",     label = "EX High Glass",     file = "ds_note_marimba.wav" },
+    { value = "ds_tick_wood",    alias = "ex_target_lock",    label = "EX Target Lock",    file = "ds_tick_wood.wav" },
 }
+
+local function BuildBlizzardChatSoundList()
+    local sk = _G.SOUNDKIT
+    return {
+        { value = "BLIZZ_RAID_WARNING", label = "Blizzard Raid Warning", soundKit = (sk and sk.RAID_WARNING) or 8959,   fileDataID = 567397, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_WHISPER",      label = "Blizzard Whisper",      soundKit = (sk and sk.TELL_MESSAGE) or 3081,   fileDataID = 567482, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_BNET_TOAST",   label = "Blizzard Battle.net",   soundKit = (sk and sk.UI_BNET_TOAST) or 18019, fileDataID = 567421, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_READY_CHECK",  label = "Blizzard Ready Check",  soundKit = (sk and sk.READY_CHECK) or 8960,    fileDataID = 567478, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_MAP_PING",     label = "Blizzard Map Ping",     soundKit = (sk and sk.MAP_PING) or 3175,       fileDataID = 567416, group = "BLIZZARD", source = "Blizzard" },
+    }
+end
 
 local CUSTOM_SOUND_BY_KEY = {}
 local CUSTOM_SOUND_BY_FILE = {}
 for _, sDef in ipairs(CUSTOM_SOUND_EFFECTS) do
+    sDef.group = "BUILTIN"
+    sDef.source = "DynamicSuite"
     CUSTOM_SOUND_BY_KEY[sDef.value] = sDef
+    if sDef.alias then
+        CUSTOM_SOUND_BY_KEY[sDef.alias] = sDef
+    end
     CUSTOM_SOUND_BY_FILE[sDef.file] = sDef
 end
 
@@ -536,7 +552,8 @@ local function EnsureDB()
         end
         for chKey, defVal in pairs(DEFAULTS.channelSounds) do
             local cur = _G.DynamicChatDB.channelSounds[chKey]
-            if not (cur == "NONE" or CUSTOM_SOUND_BY_KEY[cur] or CUSTOM_SOUND_BY_FILE[cur]) then
+            local isExternalOrBlizz = (type(cur) == "string" and (cur:find("^LSM:") or cur:find("^DBM:") or cur:find("^BW:") or cur:find("^WA:") or cur:find("^ELV:") or cur:find("^BLIZZ_") or cur:find("^ex_") or cur:find("[\\/]")))
+            if not (cur == "NONE" or CUSTOM_SOUND_BY_KEY[cur] or CUSTOM_SOUND_BY_FILE[cur] or isExternalOrBlizz) then
                 _G.DynamicChatDB.channelSounds[chKey] = defVal
             end
         end
@@ -547,8 +564,16 @@ local function EnsureDB()
             cur = CUSTOM_SOUND_BY_FILE[cur].value
             _G.DynamicChatDB.channelSounds[chKey] = cur
         end
-        if cur ~= "NONE" and not CUSTOM_SOUND_BY_KEY[cur] then
+        if type(cur) ~= "string" and type(cur) ~= "number" then
             _G.DynamicChatDB.channelSounds[chKey] = defVal
+        elseif cur == "" then
+            _G.DynamicChatDB.channelSounds[chKey] = defVal
+        elseif cur ~= "NONE" and not CUSTOM_SOUND_BY_KEY[cur] then
+            local s = tostring(cur)
+            local validExternal = s:find("^LSM:") or s:find("^DBM:") or s:find("^BW:") or s:find("^WA:") or s:find("^ELV:") or s:find("^BLIZZ_") or s:find("^ex_") or s:find("[\\/]") or (type(cur) == "number")
+            if not validExternal then
+                _G.DynamicChatDB.channelSounds[chKey] = defVal
+            end
         end
     end
     return _G.DynamicChatDB
@@ -6524,16 +6549,248 @@ local function IsSafeAccessibleValue(val)
     return true
 end
 
+local dcStandaloneSoundCache = {
+    scanned = false,
+    blizzard = {},
+    external = {},
+    byKey = {},
+}
+
+local function CleanExternalSoundName(rawText)
+    if not IsSafeAccessibleValue(rawText) then return "" end
+    local s = tostring(rawText or "")
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+    return s:match("^%s*(.-)%s*$") or ""
+end
+
+local function LooksLikeSoundAsset(val)
+    if type(val) == "number" then
+        return IsSafeAccessibleValue(val) and val > 0
+    end
+    if type(val) ~= "string" or not IsSafeAccessibleValue(val) or val == "" then
+        return false
+    end
+    if val:find("[\\/]") then return true end
+    local low = val:lower()
+    return (low:match("%.wav$") ~= nil) or (low:match("%.ogg$") ~= nil) or (low:match("%.mp3$") ~= nil)
+end
+
+function DynamicChat:ScanExternalSounds(force)
+    local suite = _G.DynamicSuite
+    if suite and type(suite.GetSharedSounds) == "function" then
+        local sReg = suite:GetSharedSounds(force)
+        dcStandaloneSoundCache.scanned = true
+        return sReg
+    end
+    if dcStandaloneSoundCache.scanned and not force then
+        return dcStandaloneSoundCache
+    end
+
+    local blizz = BuildBlizzardChatSoundList()
+    local ext = {}
+    local byKey = {}
+    local seenKeys = {}
+    local skipPaths = {}
+    local skipNames = {}
+
+    for _, def in ipairs(CUSTOM_SOUND_EFFECTS) do
+        local p = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\" .. def.file
+        byKey[def.value] = def
+        if def.alias then byKey[def.alias] = def end
+        byKey[def.file] = def
+        skipPaths[p:lower()] = true
+        skipNames[def.label:lower()] = true
+        skipNames[("DynamicSuite: " .. def.label):lower()] = true
+    end
+    for _, bDef in ipairs(blizz) do
+        byKey[bDef.value] = bDef
+    end
+
+    local function AddExternalCandidate(prefix, rawName, rawPath, srcTag)
+        if not IsSafeAccessibleValue(rawName) or not LooksLikeSoundAsset(rawPath) then return end
+        local cleanName = CleanExternalSoundName(rawName)
+        if cleanName == "" then return end
+        if skipNames[cleanName:lower()] then return end
+        if type(rawPath) == "string" and skipPaths[rawPath:lower():gsub("/", "\\")] then return end
+        local key = prefix .. ":" .. cleanName
+        if seenKeys[key] then return end
+        seenKeys[key] = true
+        local entry = {
+            value  = key,
+            name   = cleanName,
+            label  = srcTag and (cleanName .. " (" .. srcTag .. ")") or cleanName,
+            path   = rawPath,
+            source = srcTag or "SharedMedia",
+            group  = "EXTERNAL",
+        }
+        if type(rawPath) == "number" then
+            entry.fileDataID = rawPath
+        end
+        byKey[key] = entry
+        if not byKey[cleanName] then byKey[cleanName] = entry end
+        table.insert(ext, entry)
+    end
+
+    local lsm = _G.LibStub and _G.LibStub("LibSharedMedia-3.0", true)
+    if not lsm and type(_G.ElvUI) == "table" and type(_G.ElvUI[1]) == "table" and type(_G.ElvUI[1].Libs) == "table" then
+        lsm = _G.ElvUI[1].Libs.LSM
+    end
+    if lsm then
+        if type(lsm.HashTable) == "function" then
+            local okH, hTbl = pcall(lsm.HashTable, lsm, "sound")
+            if okH and type(hTbl) == "table" then
+                for kName, kPath in pairs(hTbl) do
+                    if type(kName) == "string" then
+                        AddExternalCandidate("LSM", kName, kPath, "SharedMedia")
+                    end
+                end
+            end
+        end
+        if type(lsm.List) == "function" and type(lsm.Fetch) == "function" then
+            local okL, lList = pcall(lsm.List, lsm, "sound")
+            if okL and type(lList) == "table" then
+                for _, lName in ipairs(lList) do
+                    if type(lName) == "string" then
+                        local okF, fPath = pcall(lsm.Fetch, lsm, "sound", lName, true)
+                        if okF and fPath then
+                            AddExternalCandidate("LSM", lName, fPath, "SharedMedia")
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if type(_G.DBM) == "table" then
+        local dbmTables = {}
+        if type(_G.DBM.Sounds) == "table" then table.insert(dbmTables, _G.DBM.Sounds) end
+        if type(_G.DBM.Sound) == "table" then table.insert(dbmTables, _G.DBM.Sound) end
+        for _, tbl in ipairs(dbmTables) do
+            for k, v in pairs(tbl) do
+                if type(v) == "table" then
+                    local nm = v.text or v.name or v.label or (type(k) == "string" and k) or nil
+                    local p = v.value or v.path or v.sound
+                    if nm and p then AddExternalCandidate("DBM", tostring(nm), p, "DBM") end
+                elseif type(k) == "string" and LooksLikeSoundAsset(v) then
+                    AddExternalCandidate("DBM", k, v, "DBM")
+                elseif type(v) == "string" and LooksLikeSoundAsset(k) then
+                    AddExternalCandidate("DBM", v, k, "DBM")
+                end
+            end
+        end
+    end
+
+    local bwTbl = (type(_G.BigWigs) == "table" and _G.BigWigs.Sounds) or (type(_G.BigWigsLoader) == "table" and _G.BigWigsLoader.Sounds)
+    if type(bwTbl) == "table" then
+        for k, v in pairs(bwTbl) do
+            if type(k) == "string" and LooksLikeSoundAsset(v) then
+                AddExternalCandidate("BW", k, v, "BigWigs")
+            end
+        end
+    end
+
+    if type(_G.WeakAuras) == "table" then
+        local waTbl = _G.WeakAuras.sound_types or _G.WeakAuras.sounds
+        if type(waTbl) == "table" then
+            for k, v in pairs(waTbl) do
+                if type(v) == "string" and LooksLikeSoundAsset(k) then
+                    AddExternalCandidate("WA", v, k, "WeakAuras")
+                elseif type(k) == "string" and LooksLikeSoundAsset(v) then
+                    AddExternalCandidate("WA", k, v, "WeakAuras")
+                end
+            end
+        end
+    end
+
+    if type(_G.ElvUI) == "table" and type(_G.ElvUI[1]) == "table" and type(_G.ElvUI[1].Media) == "table" then
+        local eSounds = _G.ElvUI[1].Media.Sounds
+        if type(eSounds) == "table" then
+            for k, v in pairs(eSounds) do
+                if type(k) == "string" and LooksLikeSoundAsset(v) then
+                    AddExternalCandidate("ELV", k, v, "ElvUI")
+                end
+            end
+        end
+    end
+
+    table.sort(ext, function(a, b)
+        return (a.name or a.label):lower() < (b.name or b.label):lower()
+    end)
+
+    dcStandaloneSoundCache.blizzard = blizz
+    dcStandaloneSoundCache.external = ext
+    dcStandaloneSoundCache.byKey = byKey
+    dcStandaloneSoundCache.scanned = true
+    return dcStandaloneSoundCache
+end
+
+local function ResolveChannelSound(soundKey)
+    if not soundKey or soundKey == "" or soundKey == "NONE" then
+        return nil, false
+    end
+    local suite = _G.DynamicSuite
+    if suite and type(suite.ResolveSoundChoice) == "function" then
+        local hit, isFb = suite:ResolveSoundChoice(soundKey, "BLIZZ_RAID_WARNING")
+        if hit then return hit, isFb end
+    end
+    local localBuiltin = CUSTOM_SOUND_BY_KEY[soundKey] or CUSTOM_SOUND_BY_FILE[soundKey]
+    if localBuiltin then
+        return localBuiltin, false
+    end
+    local reg = DynamicChat:ScanExternalSounds(false)
+    local hit = reg.byKey and reg.byKey[soundKey]
+    if not hit then
+        reg = DynamicChat:ScanExternalSounds(true)
+        hit = reg.byKey and reg.byKey[soundKey]
+    end
+    if not hit and type(soundKey) == "string" then
+        local stripped = soundKey:gsub("^LSM:", ""):gsub("^DBM:", ""):gsub("^BW:", ""):gsub("^WA:", ""):gsub("^ELV:", "")
+        hit = reg.byKey and reg.byKey[stripped]
+    end
+    if hit then
+        return hit, false
+    end
+    local fb = (reg.byKey and reg.byKey["BLIZZ_RAID_WARNING"]) or BuildBlizzardChatSoundList()[1]
+    return fb, true
+end
+
 local function GetSoundOptionsForChannel(_)
     local opts = {
         { value = "NONE", label = "None (Muted)" },
     }
+    table.insert(opts, { isHeader = true, label = "BUILT-IN (EXBOSS CLARITY)" })
     for _, item in ipairs(CUSTOM_SOUND_EFFECTS) do
         opts[#opts + 1] = {
             value = item.value,
             label = item.label,
             file  = item.file,
         }
+    end
+
+    local reg = DynamicChat:ScanExternalSounds(true)
+    local blizzList = (reg and type(reg.blizzard) == "table" and #reg.blizzard > 0 and reg.blizzard) or BuildBlizzardChatSoundList()
+    table.insert(opts, { isHeader = true, label = "BLIZZARD" })
+    for _, bItem in ipairs(blizzList) do
+        opts[#opts + 1] = {
+            value      = bItem.value,
+            label      = bItem.label,
+            soundKit   = bItem.soundKit,
+            fileDataID = bItem.fileDataID,
+        }
+    end
+
+    local extList = (reg and type(reg.external) == "table") and reg.external or {}
+    if #extList > 0 then
+        table.insert(opts, { isHeader = true, label = "SHAREDMEDIA / ADDONS" })
+        for _, ext in ipairs(extList) do
+            opts[#opts + 1] = {
+                value      = ext.value,
+                label      = ext.label or ext.name or ext.value,
+                path       = ext.path,
+                fileDataID = ext.fileDataID,
+                source     = ext.source,
+            }
+        end
     end
     return opts
 end
@@ -6546,11 +6803,14 @@ local function GetSoundOptionLabel(channelKey, val)
     if val == "NONE" then
         return "None (Muted)"
     end
-    local soundDef = CUSTOM_SOUND_BY_KEY[val] or CUSTOM_SOUND_BY_FILE[val]
+    local soundDef, isFallback = ResolveChannelSound(val)
     if soundDef then
-        return soundDef.label
+        if isFallback then
+            return (soundDef.label or "Blizzard Raid Warning") .. " (Fallback)"
+        end
+        return soundDef.label or soundDef.name or tostring(val)
     end
-    return "None (Muted)"
+    return "Blizzard Raid Warning"
 end
 
 function DynamicChat:ApplyWhisperDefaultSoundMuteState()
@@ -6585,8 +6845,8 @@ function DynamicChat:PlaySoundOptionKey(soundKey, channelKey, isPreview)
         return false
     end
 
-    local soundDef = CUSTOM_SOUND_BY_KEY[soundKey] or CUSTOM_SOUND_BY_FILE[soundKey]
-    if not soundDef or not soundDef.file then
+    local soundDef = ResolveChannelSound(soundKey)
+    if not soundDef then
         return false
     end
 
@@ -6594,12 +6854,49 @@ function DynamicChat:PlaySoundOptionKey(soundKey, channelKey, isPreview)
         self:ApplyWhisperDefaultSoundMuteState()
     end
 
-    local soundPath = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\" .. soundDef.file
-    if type(_G.PlaySoundFile) == "function" then
-        local okP, willPlay = pcall(_G.PlaySoundFile, soundPath, outChan)
-        return (okP and willPlay ~= false)
+    -- Temporarily unmute native Blizzard whisper FID only when explicitly playing Blizzard Whisper / BNet Toast
+    local unmutedFid = nil
+    if soundDef.fileDataID and (soundDef.fileDataID == 567482 or soundDef.fileDataID == 567421) and type(_G.UnmuteSoundFile) == "function" then
+        unmutedFid = soundDef.fileDataID
+        pcall(_G.UnmuteSoundFile, unmutedFid)
     end
-    return false
+
+    local played = false
+    if soundDef.file then
+        local soundPath = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\" .. soundDef.file
+        if type(_G.PlaySoundFile) == "function" then
+            local okP, willPlay = pcall(_G.PlaySoundFile, soundPath, outChan)
+            played = (okP and willPlay ~= false)
+        end
+    elseif type(soundDef.soundKit) == "number" then
+        if type(_G.PlaySound) == "function" then
+            local okK, willPlay = pcall(_G.PlaySound, soundDef.soundKit, outChan)
+            played = (okK and willPlay ~= false)
+        end
+        if not played and type(soundDef.fileDataID) == "number" and type(_G.PlaySoundFile) == "function" then
+            local okF, willPlay = pcall(_G.PlaySoundFile, soundDef.fileDataID, outChan)
+            played = (okF and willPlay ~= false)
+        end
+    elseif type(soundDef.fileDataID) == "number" or type(soundDef.path) == "number" then
+        local fid = soundDef.fileDataID or soundDef.path
+        if type(_G.PlaySoundFile) == "function" then
+            local okF, willPlay = pcall(_G.PlaySoundFile, fid, outChan)
+            played = (okF and willPlay ~= false)
+        end
+    elseif type(soundDef.path) == "string" and soundDef.path ~= "" then
+        if type(_G.PlaySoundFile) == "function" then
+            local okF, willPlay = pcall(_G.PlaySoundFile, soundDef.path, outChan)
+            played = (okF and willPlay ~= false)
+        end
+    end
+
+    if unmutedFid and _G.C_Timer and type(_G.C_Timer.After) == "function" then
+        _G.C_Timer.After(0.25, function()
+            DynamicChat:ApplyWhisperDefaultSoundMuteState()
+        end)
+    end
+
+    return played
 end
 
 function DynamicChat:HandleIncomingChatSoundEvent(event, arg2, arg12)
@@ -7306,30 +7603,89 @@ local soundDropdownPopover = nil
 
 local function EnsureSoundDropdownPopover()
     if soundDropdownPopover then return soundDropdownPopover end
-    local menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    menu:SetFrameStrata("DIALOG")
-    menu:SetFrameLevel(20)
-    menu:SetWidth(246)
+    local menu = CreateFrame("Frame", "DynamicChatSoundDropdownPopover", UIParent, "BackdropTemplate")
+    menu:SetFrameStrata("TOOLTIP")
+    menu:SetFrameLevel(220)
+    menu:SetToplevel(true)
+    menu:SetClampedToScreen(true)
+    menu:SetWidth(316)
     menu:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
         edgeSize = 1,
     })
     menu:SetBackdropColor(0.043, 0.051, 0.071, 0.99)
-    menu:SetBackdropBorderColor(0.220, 0.741, 0.973, 0.92)
+    menu:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.92)
     menu:EnableMouse(true)
 
+    local searchWrap = CreateFrame("Frame", nil, menu, "BackdropTemplate")
+    searchWrap:SetHeight(24)
+    searchWrap:SetPoint("TOPLEFT", menu, "TOPLEFT", 6, -5)
+    searchWrap:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -6, -5)
+    searchWrap:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    searchWrap:SetBackdropColor(0.035, 0.042, 0.060, 0.98)
+    searchWrap:SetBackdropBorderColor(0.16, 0.19, 0.25, 0.90)
+    menu.searchWrap = searchWrap
+
+    local sb = CreateFrame("EditBox", nil, searchWrap)
+    sb:SetPoint("TOPLEFT", searchWrap, "TOPLEFT", 8, -2)
+    sb:SetPoint("BOTTOMRIGHT", searchWrap, "BOTTOMRIGHT", -24, 2)
+    sb:SetAutoFocus(false)
+    sb:SetMaxLetters(64)
+    SetSafeFont(sb, 10.5, "")
+    sb:SetTextColor(0.95, 0.97, 1.0, 1.0)
+    menu.searchBox = sb
+
+    local ph = searchWrap:CreateFontString(nil, "OVERLAY")
+    ph:SetPoint("LEFT", sb, "LEFT", 0, 0)
+    SetSafeFont(ph, 10.5, "")
+    ph:SetTextColor(0.48, 0.54, 0.64, 0.90)
+    ph:SetText("Search sounds...")
+    menu.searchPlaceholder = ph
+
+    local clrBtn = CreateFrame("Button", nil, searchWrap)
+    clrBtn:SetSize(18, 18)
+    clrBtn:SetPoint("RIGHT", searchWrap, "RIGHT", -3, 0)
+    local clrTxt = clrBtn:CreateFontString(nil, "OVERLAY")
+    clrTxt:SetPoint("CENTER", 0, 0)
+    SetSafeFont(clrTxt, 9.5, "")
+    clrTxt:SetTextColor(0.62, 0.68, 0.78, 0.95)
+    clrTxt:SetText("X")
+    clrBtn.txt = clrTxt
+    clrBtn:Hide()
+    clrBtn:SetScript("OnEnter", function(cb)
+        local ar, ag, ab = GetSuiteAccent()
+        cb.txt:SetTextColor(ar, ag, ab, 1.0)
+    end)
+    clrBtn:SetScript("OnLeave", function(cb)
+        cb.txt:SetTextColor(0.62, 0.68, 0.78, 0.95)
+    end)
+    clrBtn:SetScript("OnClick", function()
+        sb:SetText("")
+        sb:ClearFocus()
+    end)
+    menu.searchClear = clrBtn
+
+    sb:SetScript("OnEscapePressed", function()
+        CloseActiveDropdown()
+    end)
+
     local sf = CreateFrame("ScrollFrame", nil, menu)
-    sf:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4)
+    sf:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -33)
     sf:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -10, 4)
+    sf:SetClipsChildren(true)
 
     local content = CreateFrame("Frame", nil, sf)
-    content:SetSize(230, 100)
+    content:SetSize(300, 100)
     sf:SetScrollChild(content)
 
     local track = CreateFrame("Frame", nil, menu, "BackdropTemplate")
     track:SetWidth(4)
-    track:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -3, -5)
+    track:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -3, -34)
     track:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -3, 5)
     track:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
     track:SetBackdropColor(1, 1, 1, 0.06)
@@ -7411,6 +7767,7 @@ local function EnsureSoundDropdownPopover()
     menu:Hide()
 
     menu:SetScript("OnHide", function(self)
+        if self.searchBox then self.searchBox:ClearFocus() end
         if self.ownerBtn and self.ownerBtn.RefreshValue then
             self.ownerBtn:RefreshValue()
         end
@@ -7433,185 +7790,319 @@ local function OpenSoundDropdownMenu(ownerBtn, channelKey)
     local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
     menu:SetBackdropBorderColor(ar, ag, ab, 0.92)
     menu.ownerBtn = ownerBtn
+    if menu.searchWrap then
+        menu.searchWrap:SetBackdropBorderColor(ar, ag, ab, 0.40)
+    end
 
-    local options = GetSoundOptionsForChannel(channelKey)
-    local numOpts = #options
-    local rowH = 26
-    local maxVisRows = math.min(11, math.max(1, numOpts))
-    local menuH = (maxVisRows * rowH) + 8
-    local hasScrollbar = (numOpts > 11)
-    local rowWidth = hasScrollbar and 228 or 236
-
-    menu:SetSize(246, menuH)
-    menu.scrollFrame:ClearAllPoints()
-    menu.scrollFrame:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4)
-    menu.scrollFrame:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", hasScrollbar and -12 or -4, 4)
-    menu.content:SetSize(rowWidth, numOpts * rowH)
+    local rawOptions = GetSoundOptionsForChannel(channelKey)
+    local maxTextW = 240
+    for _, opt in ipairs(rawOptions) do
+        if not opt.isHeader and not opt.isEmptyNotice then
+            maxTextW = math.max(maxTextW, #(tostring(opt.label or "")) * 6.5)
+        end
+    end
+    local popW = math.max(316, math.min(440, math.ceil(maxTextW + 78)))
 
     local db = EnsureDB()
     db.channelSounds = db.channelSounds or {}
     local def = SOUND_CHANNEL_DEF_BY_KEY[channelKey]
     local curVal = db.channelSounds[channelKey] or (def and def.defaultVal) or "NONE"
 
-    for i = 1, math.max(numOpts, #menu.rows) do
-        local row = menu.rows[i]
-        local opt = options[i]
-        if opt then
-            if not row then
-                row = CreateFrame("Frame", nil, menu.content, "BackdropTemplate")
-                row:SetHeight(rowH - 2)
-                row:SetBackdrop({
-                    bgFile = "Interface\\Buttons\\WHITE8x8",
-                    edgeFile = "Interface\\Buttons\\WHITE8x8",
-                    edgeSize = 1,
-                })
+    local showSearch = (#rawOptions > 10)
+    local searchAreaH = showSearch and 29 or 0
+    menu.searchWrap:SetShown(showSearch)
+    local maxVisH = 286
 
-                local selBtn = CreateFrame("Button", nil, row)
-                selBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
-                selBtn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -26, 0)
-                selBtn:RegisterForClicks("LeftButtonUp")
-
-                local checkTex = selBtn:CreateTexture(nil, "ARTWORK")
-                checkTex:SetSize(10, 10)
-                checkTex:SetPoint("LEFT", selBtn, "LEFT", 7, 0)
-                checkTex:SetTexture(ICON_CHECK)
-                DisableTexPixelSnap(checkTex)
-                row.checkTex = checkTex
-
-                local lbl = selBtn:CreateFontString(nil, "OVERLAY")
-                SetSafeFont(lbl, 10.5, "")
-                lbl:SetPoint("LEFT", selBtn, "LEFT", 22, 0)
-                lbl:SetPoint("RIGHT", selBtn, "RIGHT", -4, 0)
-                lbl:SetJustifyH("LEFT")
-                lbl:SetWordWrap(false)
-                row.label = lbl
-                row.selBtn = selBtn
-
-                local prevBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
-                prevBtn:SetSize(20, 20)
-                prevBtn:SetPoint("RIGHT", row, "RIGHT", -3, 0)
-                prevBtn:SetBackdrop({
-                    bgFile = "Interface\\Buttons\\WHITE8x8",
-                    edgeFile = "Interface\\Buttons\\WHITE8x8",
-                    edgeSize = 1,
-                })
-                prevBtn:RegisterForClicks("LeftButtonUp")
-                local pTxt = prevBtn:CreateFontString(nil, "OVERLAY")
-                SetSafeFont(pTxt, 9.5, "")
-                pTxt:SetPoint("CENTER", prevBtn, "CENTER", 0, 0)
-                pTxt:SetText(">")
-                prevBtn.text = pTxt
-                row.prevBtn = prevBtn
-
-                menu.rows[i] = row
-            end
-
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", menu.content, "TOPLEFT", 0, -((i - 1) * rowH) - 1)
-            row:SetWidth(rowWidth)
-
-            local isSel = (opt.value == curVal)
-            local canPreview = (opt.value ~= "NONE")
-            SetSafeFont(row.label, 10.5, "")
-            row.label:SetText(opt.label)
-
-            local function RefreshRowStyle(hoverMain, hoverPrev)
-                local r1, g1, b1 = GetSuiteAccent()
-                if isSel then
-                    row:SetBackdropColor(r1 * fillAlpha, g1 * fillAlpha, b1 * fillAlpha, 0.96)
-                    row:SetBackdropBorderColor(r1, g1, b1, 0.90)
-                    row.label:SetTextColor(1, 1, 1, 1)
-                    row.checkTex:SetVertexColor(r1, g1, b1, 1)
-                    row.checkTex:Show()
-                elseif hoverMain then
-                    row:SetBackdropColor(0.118, 0.141, 0.188, 0.96)
-                    row:SetBackdropBorderColor(r1, g1, b1, 0.65)
-                    row.label:SetTextColor(0.98, 0.99, 1.00, 1)
-                    row.checkTex:Hide()
-                else
-                    row:SetBackdropColor(0.065, 0.075, 0.098, 0.90)
-                    row:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.65)
-                    row.label:SetTextColor(0.82, 0.86, 0.92, 1)
-                    row.checkTex:Hide()
-                end
-
-                if canPreview then
-                    row.prevBtn:Show()
-                    SetSafeFont(row.prevBtn.text, 9.5, "")
-                    if hoverPrev then
-                        row.prevBtn:SetBackdropColor(r1 * 0.45, g1 * 0.45, b1 * 0.45, 0.98)
-                        row.prevBtn:SetBackdropBorderColor(r1, g1, b1, 0.98)
-                        row.prevBtn.text:SetTextColor(1, 1, 1, 1)
-                    else
-                        row.prevBtn:SetBackdropColor(0.043, 0.051, 0.071, 0.95)
-                        row.prevBtn:SetBackdropBorderColor(0.24, 0.28, 0.36, 0.90)
-                        row.prevBtn.text:SetTextColor(r1, g1, b1, 0.95)
-                    end
-                else
-                    row.prevBtn:Hide()
-                end
-            end
-
-            RefreshRowStyle(false, false)
-
-            row.selBtn:SetScript("OnEnter", function(selfBtn)
-                RefreshRowStyle(true, false)
-                if _G.GameTooltip then
-                    _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_RIGHT")
-                    _G.GameTooltip:ClearLines()
-                    _G.GameTooltip:AddLine(opt.label, 1, 1, 1)
-                    _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Select this alert sound and play a confirmation chime.", "34D399"), 0.886, 0.910, 0.941)
-                    _G.GameTooltip:Show()
-                end
-            end)
-            row.selBtn:SetScript("OnLeave", function()
-                RefreshRowStyle(false, false)
-                if _G.GameTooltip then _G.GameTooltip:Hide() end
-            end)
-            row.selBtn:SetScript("OnClick", function()
-                local curDB = EnsureDB()
-                curDB.channelSounds = curDB.channelSounds or {}
-                curDB.channelSounds[channelKey] = opt.value
-                if channelKey == "WHISPER" then
-                    DynamicChat:ApplyWhisperDefaultSoundMuteState()
-                end
-                if opt.value ~= "NONE" then
-                    DynamicChat:PlaySoundOptionKey(opt.value, channelKey, true)
-                end
-                if ownerBtn and ownerBtn.RefreshValue then
-                    ownerBtn:RefreshValue()
-                end
-                CloseActiveDropdown()
-            end)
-
-            row.prevBtn:SetScript("OnEnter", function(selfBtn)
-                RefreshRowStyle(false, true)
-                if _G.GameTooltip then
-                    _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_RIGHT")
-                    _G.GameTooltip:ClearLines()
-                    _G.GameTooltip:AddLine("Preview: " .. opt.label, 1, 1, 1)
-                    _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Play sound preview without closing this menu.", "38BDF8"), 0.886, 0.910, 0.941)
-                    _G.GameTooltip:Show()
-                end
-            end)
-            row.prevBtn:SetScript("OnLeave", function()
-                RefreshRowStyle(false, false)
-                if _G.GameTooltip then _G.GameTooltip:Hide() end
-            end)
-            row.prevBtn:SetScript("OnClick", function()
-                DynamicChat:PlaySoundOptionKey(opt.value, channelKey, true)
-            end)
-
-            row:Show()
-        elseif row then
-            row:Hide()
+    local function RenderSoundRows(query)
+        local qLower = tostring(query or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+        if menu.searchPlaceholder then
+            menu.searchPlaceholder:SetShown(qLower == "" and not menu.searchBox:HasFocus())
         end
+        if menu.searchClear then
+            menu.searchClear:SetShown(qLower ~= "")
+        end
+
+        local options = {}
+        if qLower == "" then
+            options = rawOptions
+        else
+            local pendingHdr = nil
+            for _, opt in ipairs(rawOptions) do
+                if opt.isHeader then
+                    pendingHdr = opt
+                elseif not opt.isEmptyNotice then
+                    local lStr = tostring(opt.label or "")
+                    local vStr = tostring(opt.value or "")
+                    if lStr:lower():find(qLower, 1, true) or vStr:lower():find(qLower, 1, true) then
+                        if pendingHdr then
+                            table.insert(options, pendingHdr)
+                            pendingHdr = nil
+                        end
+                        table.insert(options, opt)
+                    end
+                end
+            end
+            if #options == 0 then
+                table.insert(options, { isEmptyNotice = true, label = "No matching sounds" })
+            end
+        end
+
+        local totalContentH = 0
+        for _, opt in ipairs(options) do
+            totalContentH = totalContentH + (opt.isHeader and 20 or 26)
+        end
+        local viewH = math.min(maxVisH, math.max(26, totalContentH))
+        local hasScrollbar = (totalContentH > viewH + 1)
+        local rowWidth = popW - (hasScrollbar and 16 or 8)
+        local menuH = searchAreaH + viewH + 8
+
+        menu:SetSize(popW, menuH)
+        local topOff = 4 + searchAreaH
+        menu.scrollFrame:ClearAllPoints()
+        menu.scrollFrame:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -topOff)
+        menu.scrollFrame:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", hasScrollbar and -12 or -4, 4)
+        menu.track:ClearAllPoints()
+        menu.track:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -3, -(topOff + 1))
+        menu.track:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -3, 5)
+        menu.content:SetSize(rowWidth, math.max(26, totalContentH))
+
+        local yOff = 0
+        for i = 1, math.max(#options, #menu.rows) do
+            local row = menu.rows[i]
+            local opt = options[i]
+            if opt then
+                if not row then
+                    row = CreateFrame("Frame", nil, menu.content, "BackdropTemplate")
+                    row:SetBackdrop({
+                        bgFile = "Interface\\Buttons\\WHITE8x8",
+                        edgeFile = "Interface\\Buttons\\WHITE8x8",
+                        edgeSize = 1,
+                    })
+
+                    local hdrLine = row:CreateTexture(nil, "ARTWORK")
+                    hdrLine:SetHeight(1)
+                    hdrLine:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 4, 1)
+                    hdrLine:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -4, 1)
+                    hdrLine:Hide()
+                    row.hdrLine = hdrLine
+
+                    local selBtn = CreateFrame("Button", nil, row)
+                    selBtn:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+                    selBtn:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -26, 0)
+                    selBtn:RegisterForClicks("LeftButtonUp")
+
+                    local checkTex = selBtn:CreateTexture(nil, "ARTWORK")
+                    checkTex:SetSize(10, 10)
+                    checkTex:SetPoint("LEFT", selBtn, "LEFT", 7, 0)
+                    checkTex:SetTexture(ICON_CHECK)
+                    DisableTexPixelSnap(checkTex)
+                    row.checkTex = checkTex
+
+                    local lbl = selBtn:CreateFontString(nil, "OVERLAY")
+                    SetSafeFont(lbl, 10.5, "")
+                    lbl:SetPoint("LEFT", selBtn, "LEFT", 22, 0)
+                    lbl:SetPoint("RIGHT", selBtn, "RIGHT", -4, 0)
+                    lbl:SetJustifyH("LEFT")
+                    lbl:SetWordWrap(false)
+                    row.label = lbl
+                    row.selBtn = selBtn
+
+                    local prevBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
+                    prevBtn:SetSize(20, 20)
+                    prevBtn:SetPoint("RIGHT", row, "RIGHT", -3, 0)
+                    prevBtn:SetBackdrop({
+                        bgFile = "Interface\\Buttons\\WHITE8x8",
+                        edgeFile = "Interface\\Buttons\\WHITE8x8",
+                        edgeSize = 1,
+                    })
+                    prevBtn:RegisterForClicks("LeftButtonUp")
+                    local pTxt = prevBtn:CreateFontString(nil, "OVERLAY")
+                    SetSafeFont(pTxt, 9.5, "")
+                    pTxt:SetPoint("CENTER", prevBtn, "CENTER", 0, 0)
+                    pTxt:SetText(">")
+                    prevBtn.text = pTxt
+                    row.prevBtn = prevBtn
+
+                    menu.rows[i] = row
+                end
+
+                local rH = opt.isHeader and 20 or 26
+                row:SetHeight(rH - 2)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", menu.content, "TOPLEFT", 0, -yOff - 1)
+                row:SetWidth(rowWidth)
+                yOff = yOff + rH
+
+                if opt.isHeader then
+                    row.selBtn:Hide()
+                    row.prevBtn:Hide()
+                    row.checkTex:Hide()
+                    row.hdrLine:Show()
+                    row.hdrLine:SetColorTexture(ar, ag, ab, 0.45)
+                    row:SetBackdropColor(0.082, 0.098, 0.137, 0.90)
+                    row:SetBackdropBorderColor(0, 0, 0, 0)
+                    if not row.hdrLbl then
+                        local hl = row:CreateFontString(nil, "OVERLAY")
+                        hl:SetPoint("LEFT", row, "LEFT", 8, 0)
+                        hl:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+                        hl:SetJustifyH("LEFT")
+                        hl:SetWordWrap(false)
+                        row.hdrLbl = hl
+                    end
+                    SetSafeFont(row.hdrLbl, 9.5, "")
+                    row.hdrLbl:SetTextColor(ar, ag, ab, 0.95)
+                    row.hdrLbl:SetText(tostring(opt.label or ""):upper())
+                    row.hdrLbl:Show()
+                elseif opt.isEmptyNotice then
+                    if row.hdrLbl then row.hdrLbl:Hide() end
+                    row.hdrLine:Hide()
+                    row.selBtn:Hide()
+                    row.prevBtn:Hide()
+                    row.checkTex:Hide()
+                    row:SetBackdropColor(0.055, 0.063, 0.082, 0.70)
+                    row:SetBackdropBorderColor(0, 0, 0, 0)
+                    if not row.hdrLbl then
+                        local hl = row:CreateFontString(nil, "OVERLAY")
+                        hl:SetPoint("LEFT", row, "LEFT", 10, 0)
+                        hl:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+                        hl:SetJustifyH("LEFT")
+                        row.hdrLbl = hl
+                    end
+                    SetSafeFont(row.hdrLbl, 10.5, "")
+                    row.hdrLbl:SetTextColor(0.55, 0.62, 0.72, 0.90)
+                    row.hdrLbl:SetText(tostring(opt.label or "No matching sounds"))
+                    row.hdrLbl:Show()
+                else
+                    if row.hdrLbl then row.hdrLbl:Hide() end
+                    row.hdrLine:Hide()
+                    row.selBtn:Show()
+
+                    local isSel = (opt.value == curVal)
+                    local canPreview = (opt.value ~= "NONE")
+                    SetSafeFont(row.label, 10.5, "")
+                    row.label:SetText(opt.label)
+
+                    local function RefreshRowStyle(hoverMain, hoverPrev)
+                        local r1, g1, b1 = GetSuiteAccent()
+                        if isSel then
+                            row:SetBackdropColor(r1 * fillAlpha, g1 * fillAlpha, b1 * fillAlpha, 0.96)
+                            row:SetBackdropBorderColor(r1, g1, b1, 0.90)
+                            row.label:SetTextColor(1, 1, 1, 1)
+                            row.checkTex:SetVertexColor(r1, g1, b1, 1)
+                            row.checkTex:Show()
+                        elseif hoverMain then
+                            row:SetBackdropColor(0.118, 0.141, 0.188, 0.96)
+                            row:SetBackdropBorderColor(r1, g1, b1, 0.65)
+                            row.label:SetTextColor(0.98, 0.99, 1.00, 1)
+                            row.checkTex:Hide()
+                        else
+                            row:SetBackdropColor(0.065, 0.075, 0.098, 0.90)
+                            row:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.65)
+                            row.label:SetTextColor(0.82, 0.86, 0.92, 1)
+                            row.checkTex:Hide()
+                        end
+
+                        if canPreview then
+                            row.prevBtn:Show()
+                            SetSafeFont(row.prevBtn.text, 9.5, "")
+                            if hoverPrev then
+                                row.prevBtn:SetBackdropColor(r1 * 0.45, g1 * 0.45, b1 * 0.45, 0.98)
+                                row.prevBtn:SetBackdropBorderColor(r1, g1, b1, 0.98)
+                                row.prevBtn.text:SetTextColor(1, 1, 1, 1)
+                            else
+                                row.prevBtn:SetBackdropColor(0.043, 0.051, 0.071, 0.95)
+                                row.prevBtn:SetBackdropBorderColor(0.24, 0.28, 0.36, 0.90)
+                                row.prevBtn.text:SetTextColor(r1, g1, b1, 0.95)
+                            end
+                        else
+                            row.prevBtn:Hide()
+                        end
+                    end
+
+                    RefreshRowStyle(false, false)
+
+                    row.selBtn:SetScript("OnEnter", function(selfBtn)
+                        RefreshRowStyle(true, false)
+                        if _G.GameTooltip then
+                            _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_RIGHT")
+                            _G.GameTooltip:ClearLines()
+                            _G.GameTooltip:AddLine(opt.label, 1, 1, 1)
+                            if opt.source then
+                                _G.GameTooltip:AddLine("Source: " .. tostring(opt.source), 0.68, 0.74, 0.82)
+                            end
+                            _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Select this alert sound and play a confirmation chime.", "34D399"), 0.886, 0.910, 0.941)
+                            _G.GameTooltip:Show()
+                        end
+                    end)
+                    row.selBtn:SetScript("OnLeave", function()
+                        RefreshRowStyle(false, false)
+                        if _G.GameTooltip then _G.GameTooltip:Hide() end
+                    end)
+                    row.selBtn:SetScript("OnClick", function()
+                        local curDB = EnsureDB()
+                        curDB.channelSounds = curDB.channelSounds or {}
+                        curDB.channelSounds[channelKey] = opt.value
+                        if channelKey == "WHISPER" then
+                            DynamicChat:ApplyWhisperDefaultSoundMuteState()
+                        end
+                        if opt.value ~= "NONE" then
+                            DynamicChat:PlaySoundOptionKey(opt.value, channelKey, true)
+                        end
+                        if ownerBtn and ownerBtn.RefreshValue then
+                            ownerBtn:RefreshValue()
+                        end
+                        CloseActiveDropdown()
+                    end)
+
+                    row.prevBtn:SetScript("OnEnter", function(selfBtn)
+                        RefreshRowStyle(false, true)
+                        if _G.GameTooltip then
+                            _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_RIGHT")
+                            _G.GameTooltip:ClearLines()
+                            _G.GameTooltip:AddLine("Preview: " .. opt.label, 1, 1, 1)
+                            _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Play sound preview without closing this menu.", "38BDF8"), 0.886, 0.910, 0.941)
+                            _G.GameTooltip:Show()
+                        end
+                    end)
+                    row.prevBtn:SetScript("OnLeave", function()
+                        RefreshRowStyle(false, false)
+                        if _G.GameTooltip then _G.GameTooltip:Hide() end
+                    end)
+                    row.prevBtn:SetScript("OnClick", function()
+                        DynamicChat:PlaySoundOptionKey(opt.value, channelKey, true)
+                    end)
+                end
+                row:Show()
+            elseif row then
+                row:Hide()
+            end
+        end
+
+        menu.scrollFrame:SetVerticalScroll(0)
+        menu.UpdateMenuThumb()
     end
+
+    menu.searchBox:SetScript("OnTextChanged", function(sbEdit)
+        if menu:IsShown() and menu.ownerBtn == ownerBtn then
+            RenderSoundRows(sbEdit:GetText())
+        end
+    end)
+    menu.searchBox:SetScript("OnEditFocusGained", function()
+        if menu.searchPlaceholder then menu.searchPlaceholder:Hide() end
+    end)
+    menu.searchBox:SetScript("OnEditFocusLost", function(sbEdit)
+        if menu.searchPlaceholder then menu.searchPlaceholder:SetShown((sbEdit:GetText() or "") == "") end
+    end)
+
+    menu.searchBox:SetText("")
+    menu.searchBox:ClearFocus()
+    RenderSoundRows("")
 
     local cc = EnsureDropdownClickCatcher()
     cc:Show()
 
     menu:ClearAllPoints()
+    local menuH = menu:GetHeight() or 280
     local btnBottom = ownerBtn.GetBottom and ownerBtn:GetBottom() or 300
     if btnBottom and btnBottom < (menuH + 24) then
         menu:SetPoint("BOTTOMRIGHT", ownerBtn, "TOPRIGHT", 0, 2)
@@ -7619,7 +8110,6 @@ local function OpenSoundDropdownMenu(ownerBtn, channelKey)
         menu:SetPoint("TOPRIGHT", ownerBtn, "BOTTOMRIGHT", 0, -2)
     end
 
-    menu.scrollFrame:SetVerticalScroll(0)
     menu:Show()
     menu.UpdateMenuThumb()
     activeDropdownMenu = menu
@@ -8763,7 +9253,7 @@ local function RenderChatEmbedded(arg1, arg2)
     local sec3_sounds = CreateSectionBox(
         page3,
         "CHAT NOTIFICATION SOUNDS",
-        "Play gentle custom chimes when messages arrive in your chosen chat channels. Selecting a sound previews it automatically, or click [Play].",
+        "Play crisp 48 kHz EXBOSS-style chimes, Blizzard Raid Warning, or SharedMedia/DBM/BigWigs/WeakAuras/ElvUI alerts when messages arrive. Selecting a sound previews it automatically, or click [Play].",
         root
     )
     local sec3_rules = CreateSectionBox(
@@ -9541,6 +10031,7 @@ local function RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "15/11/2026",
         entries = {
+            { type = "FEATURE",  text = "External Sound Discovery (LibSharedMedia-3.0, DBM, BigWigs, WeakAuras, ElvUI), Blizzard Raid Warning & 48 kHz EXBOSS Sound Library (15/11/2026): Upgraded DynamicChat's 10 built-in sound effects to crisp 48 kHz peak-normalised (-1.5 dBFS) EXBOSS-style clarity (EX Alert Ping, EX Double Stinger, EX Sonar Lock, EX Crystal Bell, EX Phase Chime, EX Sharp Triad, EX Pulse Pop, EX Clean Horn, EX High Glass, EX Target Lock), preserved Blizzard's standard Raid Warning (and Blizzard Whisper / Battle.net / Ready Check / Map Ping) under the Blizzard section with dual PlaySound/PlaySoundFile routing, added live LibSharedMedia-3.0, DBM, BigWigs, WeakAuras, and ElvUI runtime sound scanning with late-load refresh and safe fallback to Blizzard Raid Warning if a sound addon is disabled, and upgraded the channel sound menu with grouped headers, inline [>] previews, scrolling, and a live search filter." },
             { type = "NEW",      text = "Custom Chat Notification Sounds & 10 Bespoke Sound Effects (15/11/2026): Added 10 lightweight synthesised 44.1kHz mono .wav sound effects (Soft Chime, Crystal Ping, Whisper Bell, Marimba Note, Sonar Pulse, Double Tap, Water Drop, Warm Chord, Wood Tick, Subtle Alert) played cleanly via PlaySoundFile, grouped Tab 3 into a dedicated 'CHAT NOTIFICATION SOUNDS' card featuring the 'Chat Notification Sounds' master toggle, 'Mute Sounds in Combat' toggle, 5 channel rows (Whisper & Battle.net Whisper, Guild & Officer Chat, Party & Instance Chat, Raid & Raid Warning, and Say & Yell with Say & Yell None by default), dropdown auto-preview plus a compact [Play] preview button beside each dropdown, 1.5s anti-spam per-channel cooldown, and secret-value-guarded self-message suppression (checking sender GUID and UnitName('player')) so your own outgoing messages never trigger alerts." },
             { type = "FIX",      text = "Flush Bottom-Left (0, 0) Chat Clamping & Persistence (14/11/2026): Enforced ChatFrame1:SetClampedToScreen(false) whenever DynamicChat manages layout, added GetVisibleContainerExtents() and GetLiveOuterBottomLeft() so clamping measures only the visible chat container frame without external button or negative bottom EditBox overhangs, and canonicalised chatFramePos to BOTTOMLEFT outer-container coordinates so dragging or nudging to X = 0, Y = 0 sits flush against the bottom-left screen corner across HUD Edit toggles, UI scale events, and /reload." },
             { type = "FIX",      text = "Unified /ww Instant Target Whisper Across All Chat/Whisper EditBoxes (13/11/2026): Kept /ww as the instant target whisper trigger with self-targeting (UnitIsUnit('target', 'player')) using GetUnitName('target', true), separated group leave cleanly into /lg, called ChatEdit_UpdateHeader before SetText + SetCursorPosition so 'Tell <TargetName>:' updates immediately on spacebar even inside existing whisper tabs, and hooked all 1..NUM_CHAT_WINDOWS editboxes plus FCF_OpenTemporaryWindow and ChatEdit_ActivateChat regardless of external chat addons." },
@@ -9684,12 +10175,21 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
         end
         self:RegisterRuntimeEvents()
         PreRegisterDynamicChatSpecialFrames()
+        self:ScanExternalSounds(true)
         self:ApplyAllEngineSettings()
         if _G.C_Timer and type(_G.C_Timer.After) == "function" then
             _G.C_Timer.After(0.15, function()
                 if not IsModuleDisabledInSuite("DynamicChat") then
                     self:ReassertTargetWhisperSlashCommands()
                     self:ApplyWhisperDefaultSoundMuteState()
+                end
+            end)
+            _G.C_Timer.After(1.5, function()
+                if not IsModuleDisabledInSuite("DynamicChat") then
+                    self:ScanExternalSounds(true)
+                    if self.configPanel and self.configPanel:IsShown() then
+                        self:RefreshConfigUI()
+                    end
                 end
             end)
         end

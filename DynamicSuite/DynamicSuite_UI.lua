@@ -164,9 +164,12 @@ local EUI_COMPLETE_FONT_LIBRARY = {
     { key = "ARIAL_NARROW",        name = "Arial Narrow",        file = "Arial Narrow.ttf",        bundled = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Arial Narrow.ttf" },
     { key = "ARIAL_BOLD",          name = "Arial Bold",          file = "Arial Bold.ttf",          bundled = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Arial Bold.ttf" },
     { key = "HOMESPUN",            name = "Homespun",            file = "Homespun.ttf",            bundled = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Homespun.ttf", flags = "MONOCHROME,OUTLINE", scale = 0.92 },
-    { key = "FRIZ_QUADRATA",       name = "Friz Quadrata",       file = "FRIZQT__.TTF",            bundled = "Fonts\\FRIZQT__.TTF" },
-    { key = "MODERN_SANS",         name = "2002",                file = "2002.TTF",                bundled = "Fonts\\2002.TTF" },
-    { key = "RPG_SERIF",           name = "Morpheus",            file = "MORPHEUS.TTF",            bundled = "Fonts\\MORPHEUS.TTF", scale = 1.06 },
+    { key = "FRIZ_QUADRATA",       name = "Friz Quadrata",           file = "FRIZQT__.TTF",            bundled = "Fonts\\FRIZQT__.TTF",            section = "BLIZZARD" },
+    { key = "MODERN_SANS",         name = "2002",                    file = "2002.TTF",                bundled = "Fonts\\2002.TTF",                section = "BLIZZARD" },
+    { key = "BLIZZ_2002B",         name = "2002 Bold",               file = "2002B.TTF",               bundled = "Fonts\\2002B.TTF",               section = "BLIZZARD", scale = 0.98 },
+    { key = "BLIZZ_ARIALN",        name = "Arial Narrow (Blizzard)", file = "ARIALN.TTF",              bundled = "Fonts\\ARIALN.TTF",              section = "BLIZZARD", scale = 1.02 },
+    { key = "RPG_SERIF",           name = "Morpheus",                file = "MORPHEUS.TTF",            bundled = "Fonts\\MORPHEUS.TTF",            section = "BLIZZARD", scale = 1.06 },
+    { key = "BLIZZ_SKURRI",        name = "Skurri",                  file = "SKURRI.TTF",              bundled = "Fonts\\SKURRI.TTF",              section = "BLIZZARD", scale = 1.02 },
 }
 
 local FONT_FAMILIES = {
@@ -295,6 +298,24 @@ local FONT_FAMILIES = {
         path = "Fonts\\MORPHEUS.TTF",
         candidates = { "Fonts\\MORPHEUS.TTF", "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Cinzel Decorative.ttf", "Fonts\\FRIZQT__.TTF" },
         sizeScale = 1.06, defaultFlags = "", shadowOff = 1.4, shadowAlpha = 0.85,
+    },
+    ["BLIZZ_2002B"] = {
+        name = "2002 Bold",
+        path = "Fonts\\2002B.TTF",
+        candidates = { "Fonts\\2002B.TTF", "Fonts\\2002.TTF", "Fonts\\FRIZQT__.TTF" },
+        sizeScale = 0.98, defaultFlags = "", shadowOff = 1, shadowAlpha = 0.55,
+    },
+    ["BLIZZ_ARIALN"] = {
+        name = "Arial Narrow (Blizzard)",
+        path = "Fonts\\ARIALN.TTF",
+        candidates = { "Fonts\\ARIALN.TTF", "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Arial Narrow.ttf", "Fonts\\FRIZQT__.TTF" },
+        sizeScale = 1.02, defaultFlags = "", shadowOff = 0.9, shadowAlpha = 0.45,
+    },
+    ["BLIZZ_SKURRI"] = {
+        name = "Skurri",
+        path = "Fonts\\SKURRI.TTF",
+        candidates = { "Fonts\\SKURRI.TTF", "Fonts\\FRIZQT__.TTF" },
+        sizeScale = 1.02, defaultFlags = "", shadowOff = 1.2, shadowAlpha = 0.70,
     },
     ["COMPACT_NARROW"] = {
         name = "Arial Narrow",
@@ -435,7 +456,12 @@ local function NormalizeFontKey(rawName)
     return tostring(rawName or "EXPRESSWAY"):upper():gsub("[^A-Z0-9]+", "_"):gsub("^_+", ""):gsub("_+$", "")
 end
 
-function UI.SyncEllesmereUIFontLibrary()
+local FONT_SECTION_BUCKETS = { builtin = {}, blizzard = {}, external = {} }
+local function NormFontPath(p)
+    return tostring(p or ""):lower():gsub("/", "\\")
+end
+
+function UI.SyncEllesmereUIFontLibrary(forceExternalScan)
     local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
     local eui = _G.EllesmereUI
     local hasEUI = (type(eui) == "table") or (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("EllesmereUI"))
@@ -451,10 +477,15 @@ function UI.SyncEllesmereUIFontLibrary()
         euiKnownByName[def.name:lower()] = def
     end
 
+    local builtinItems = {}
+    local blizzardItems = {}
+    local externalItems = {}
     local activeOrder = {}
     local seenKeys = {}
+    local seenPaths = {}
+    local seenNames = {}
 
-    local function RegisterOrUpdateFontEntry(fKey, fName, fFile, bundledPath, scale, flags)
+    local function RegisterOrUpdateFontEntry(fKey, fName, fFile, bundledPath, scale, flags, sectionTag, sourceTag)
         local cands = {}
         if LSM and LSM.Fetch then
             local ok, lsmPath = pcall(LSM.Fetch, LSM, "font", fName, true)
@@ -504,19 +535,24 @@ function UI.SyncEllesmereUIFontLibrary()
             defaultFlags = flags or (existing and existing.defaultFlags) or "",
             shadowOff = (existing and existing.shadowOff) or 1,
             shadowAlpha = (existing and existing.shadowAlpha) or 0.55,
+            section = sectionTag,
+            source = sourceTag,
         }
 
         local chosen = nil
+        local validFound = false
         for _, cand in ipairs(cands) do
             if CanSetFontPath(cand) then
                 chosen = cand
+                validFound = true
                 break
             end
         end
         chosen = chosen or primaryPath
         resolvedFontPaths[fKey] = chosen
         FONT_FAMILIES[fKey].resolvedPath = chosen
-        return chosen
+        FONT_FAMILIES[fKey].validOnDisk = validFound
+        return chosen, validFound
     end
 
     if hasEUI and eui and type(eui.FONT_ORDER) == "table" and #eui.FONT_ORDER > 0 then
@@ -526,17 +562,27 @@ function UI.SyncEllesmereUIFontLibrary()
             if fName and fName ~= "" then
                 local known = euiKnownByName[fName:lower()]
                 local fKey = (known and known.key) or NormalizeFontKey(fName)
+                local sec = (known and known.section) or "BUILTIN"
                 if not seenKeys[fKey] then
                     seenKeys[fKey] = true
-                    RegisterOrUpdateFontEntry(
+                    local chosen = RegisterOrUpdateFontEntry(
                         fKey,
                         fName,
                         fFile or (known and known.file),
                         known and known.bundled,
                         known and known.scale,
-                        known and known.flags
+                        known and known.flags,
+                        sec,
+                        "Built-in"
                     )
-                    table.insert(activeOrder, { key = fKey, label = fName })
+                    local item = { key = fKey, label = fName, section = sec }
+                    if sec == "BLIZZARD" then
+                        table.insert(blizzardItems, item)
+                    else
+                        table.insert(builtinItems, item)
+                    end
+                    seenNames[fName:lower()] = true
+                    if chosen then seenPaths[NormFontPath(chosen)] = true end
                 end
             end
         end
@@ -545,7 +591,9 @@ function UI.SyncEllesmereUIFontLibrary()
     for _, def in ipairs(EUI_COMPLETE_FONT_LIBRARY) do
         if not seenKeys[def.key] then
             local canInclude = hasEUI or (def.bundled ~= nil)
-            if not canInclude and LSM and LSM.Fetch then
+            if def.section == "BLIZZARD" then
+                canInclude = CanSetFontPath(def.bundled or def.file)
+            elseif not canInclude and LSM and LSM.Fetch then
                 local ok, fetched = pcall(LSM.Fetch, LSM, "font", def.name, true)
                 if ok and type(fetched) == "string" and fetched ~= "" and CanSetFontPath(fetched) then
                     canInclude = true
@@ -553,11 +601,92 @@ function UI.SyncEllesmereUIFontLibrary()
             end
             if canInclude then
                 seenKeys[def.key] = true
-                RegisterOrUpdateFontEntry(def.key, def.name, def.file, def.bundled, def.scale, def.flags)
-                table.insert(activeOrder, { key = def.key, label = def.name })
+                local sec = def.section or "BUILTIN"
+                local chosen = RegisterOrUpdateFontEntry(def.key, def.name, def.file, def.bundled, def.scale, def.flags, sec, (sec == "BLIZZARD") and "Blizzard" or "Built-in")
+                local item = { key = def.key, label = def.name, section = sec }
+                if sec == "BLIZZARD" then
+                    table.insert(blizzardItems, item)
+                else
+                    table.insert(builtinItems, item)
+                end
+                seenNames[def.name:lower()] = true
+                if chosen then seenPaths[NormFontPath(chosen)] = true end
             end
         end
     end
+
+    -- External SharedMedia-3.0, DBM, BigWigs, WeakAuras, ElvUI Fonts
+    local extList = {}
+    local sharedCore = _G.DynamicSuite
+    if sharedCore and type(sharedCore.GetSharedFonts) == "function" then
+        local fReg = sharedCore:GetSharedFonts(forceExternalScan and true or false)
+        if fReg and type(fReg.external) == "table" then
+            extList = fReg.external
+        end
+    elseif LSM and type(LSM.HashTable) == "function" then
+        local okH, hTbl = pcall(LSM.HashTable, LSM, "font")
+        if okH and type(hTbl) == "table" then
+            for fName, fPath in pairs(hTbl) do
+                if type(fName) == "string" and type(fPath) == "string" and fPath ~= "" then
+                    table.insert(extList, {
+                        value = "LSM:" .. fName,
+                        name = fName,
+                        label = fName .. " (SharedMedia)",
+                        path = fPath,
+                        source = "SharedMedia",
+                    })
+                end
+            end
+            table.sort(extList, function(a, b) return a.name:lower() < b.name:lower() end)
+        end
+    end
+
+    for _, ext in ipairs(extList) do
+        local eKey = ext.value
+        local ePath = ext.path
+        local eName = ext.name or ext.label or eKey
+        if type(eKey) == "string" and type(ePath) == "string" and ePath ~= "" and CanSetFontPath(ePath) then
+            local normP = NormFontPath(ePath)
+            local normN = tostring(eName):lower()
+            if not seenKeys[eKey] and not seenPaths[normP] and not seenNames[normN] then
+                seenKeys[eKey] = true
+                seenPaths[normP] = true
+                seenNames[normN] = true
+                FONT_FAMILIES[eKey] = {
+                    name = eName,
+                    label = ext.label or eName,
+                    path = ePath,
+                    candidates = { ePath, "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Expressway.ttf", "Fonts\\FRIZQT__.TTF" },
+                    resolvedPath = ePath,
+                    validOnDisk = true,
+                    sizeScale = 1.00,
+                    defaultFlags = "",
+                    shadowOff = 1,
+                    shadowAlpha = 0.55,
+                    isExternal = true,
+                    section = "EXTERNAL",
+                    source = ext.source or "SharedMedia",
+                }
+                resolvedFontPaths[eKey] = ePath
+                table.insert(externalItems, {
+                    key = eKey,
+                    label = ext.label or eName,
+                    name = eName,
+                    section = "EXTERNAL",
+                    source = ext.source or "SharedMedia",
+                })
+            end
+        end
+    end
+
+    FONT_SECTION_BUCKETS = {
+        builtin = builtinItems,
+        blizzard = blizzardItems,
+        external = externalItems,
+    }
+    for _, item in ipairs(builtinItems) do table.insert(activeOrder, item) end
+    for _, item in ipairs(blizzardItems) do table.insert(activeOrder, item) end
+    for _, item in ipairs(externalItems) do table.insert(activeOrder, item) end
 
     if #activeOrder > 0 then
         FONT_FAMILY_ORDER = activeOrder
@@ -566,40 +695,67 @@ function UI.SyncEllesmereUIFontLibrary()
     return FONT_FAMILY_ORDER
 end
 
-function UI.BuildFontDropdownOptions()
-    local order = UI.SyncEllesmereUIFontLibrary()
+function UI.BuildFontDropdownOptions(forceScan)
+    UI.SyncEllesmereUIFontLibrary(forceScan)
     local opts = {}
-    for _, fItem in ipairs(order) do
-        table.insert(opts, { value = fItem.key, label = fItem.label, fontKey = fItem.key })
+    if #FONT_SECTION_BUCKETS.builtin > 0 then
+        table.insert(opts, { isHeader = true, label = "BUILT-IN SUITE FONTS" })
+        for _, fItem in ipairs(FONT_SECTION_BUCKETS.builtin) do
+            table.insert(opts, { value = fItem.key, label = fItem.label, fontKey = fItem.key, section = "BUILTIN" })
+        end
+    end
+    if #FONT_SECTION_BUCKETS.blizzard > 0 then
+        table.insert(opts, { isHeader = true, label = "BLIZZARD" })
+        for _, fItem in ipairs(FONT_SECTION_BUCKETS.blizzard) do
+            table.insert(opts, { value = fItem.key, label = fItem.label, fontKey = fItem.key, section = "BLIZZARD" })
+        end
+    end
+    if #FONT_SECTION_BUCKETS.external > 0 then
+        table.insert(opts, { isHeader = true, label = "SHAREDMEDIA / ADDONS" })
+        for _, fItem in ipairs(FONT_SECTION_BUCKETS.external) do
+            table.insert(opts, { value = fItem.key, label = fItem.label, fontKey = fItem.key, section = "EXTERNAL" })
+        end
     end
     return opts
+end
+
+local function IsFontKeyValidOnDisk(fKey)
+    local fDef = fKey and FONT_FAMILIES[fKey]
+    if not fDef then return false end
+    local rp = resolvedFontPaths[fKey] or fDef.resolvedPath or fDef.path
+    return CanSetFontPath(rp)
 end
 
 function UI.GetActiveFontKey()
     local g = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
     local key = g.fontKey or g.fontFamily
-    if key and not FONT_FAMILIES[key] then
-        UI.SyncEllesmereUIFontLibrary()
-        local lowerKey = tostring(key):lower()
-        for fKey, fDef in pairs(FONT_FAMILIES) do
-            if fDef.name == key or fKey == key or fDef.name:lower() == lowerKey then
-                key = fKey
-                break
+    if key and not IsFontKeyValidOnDisk(key) then
+        UI.SyncEllesmereUIFontLibrary(false)
+        if not IsFontKeyValidOnDisk(key) then
+            local lowerKey = tostring(key):lower():gsub("^lsm:", ""):gsub("^dbm:", ""):gsub("^bw:", ""):gsub("^wa:", ""):gsub("^elv:", "")
+            for fKey, fDef in pairs(FONT_FAMILIES) do
+                if (fDef.name == key or fKey == key or (fDef.name and fDef.name:lower() == lowerKey)) and IsFontKeyValidOnDisk(fKey) then
+                    key = fKey
+                    break
+                end
             end
         end
-        if not FONT_FAMILIES[key] then
+        if not IsFontKeyValidOnDisk(key) then
             for fKey, fDef in pairs(FONT_FAMILIES) do
-                if string.find(string.lower(fDef.name), lowerKey, 1, true) then
+                if fDef.name and string.find(string.lower(fDef.name), tostring(key):lower(), 1, true) and IsFontKeyValidOnDisk(fKey) then
                     key = fKey
                     break
                 end
             end
         end
     end
-    if not key or not FONT_FAMILIES[key] then
-        key = "EXPRESSWAY"
-        g.fontFamily = key
-        g.fontKey = key
+    if not key or not IsFontKeyValidOnDisk(key) then
+        -- Preserve external SavedVariables key if addons have not finished loading yet, while falling back cleanly at runtime
+        if not g.fontKey and not g.fontFamily then
+            g.fontFamily = "EXPRESSWAY"
+            g.fontKey = "EXPRESSWAY"
+        end
+        return "EXPRESSWAY"
     end
     return key
 end
@@ -609,7 +765,7 @@ local lastAppliedFontKey = nil
 
 local function ResolveAllFontFamilyPaths(forceSync)
     if fontLibraryResolved and not forceSync then return end
-    UI.SyncEllesmereUIFontLibrary()
+    UI.SyncEllesmereUIFontLibrary(forceSync)
     for key, entry in pairs(FONT_FAMILIES) do
         local chosen = nil
         if entry.candidates then
@@ -630,14 +786,23 @@ end
 function UI.GetFont(fontKeyOverride)
     local key = fontKeyOverride or UI.GetActiveFontKey()
     if not FONT_FAMILIES[key] then
-        UI.SyncEllesmereUIFontLibrary()
+        UI.SyncEllesmereUIFontLibrary(false)
     end
     if not FONT_FAMILIES[key] then key = "EXPRESSWAY" end
     if not resolvedFontPaths[key] then
-        ResolveAllFontFamilyPaths()
+        ResolveAllFontFamilyPaths(false)
     end
     local entry = FONT_FAMILIES[key] or FONT_FAMILIES["EXPRESSWAY"]
-    return resolvedFontPaths[key] or entry.path or STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", entry
+    local candidate = resolvedFontPaths[key] or (entry and entry.path)
+    if CanSetFontPath(candidate) then
+        return candidate, entry
+    end
+    local fallbackEntry = FONT_FAMILIES["EXPRESSWAY"]
+    local fbPath = resolvedFontPaths["EXPRESSWAY"] or ("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Expressway.ttf")
+    if not CanSetFontPath(fbPath) then
+        fbPath = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
+    end
+    return fbPath, fallbackEntry or entry
 end
 
 local registeredFontStrings = setmetatable({}, { __mode = "k" })
@@ -5800,6 +5965,9 @@ function addonTable.CreateMainConfigUI()
     end
     local function CloseDSDropdownPopup()
         if dsDropdownPopup then
+            if dsDropdownPopup.searchBox then
+                dsDropdownPopup.searchBox:ClearFocus()
+            end
             if dsDropdownPopup.ownerBtn then
                 UI.SetChevronState(dsDropdownPopup.ownerBtn, false)
                 dsDropdownPopup.ownerBtn = nil
@@ -5846,7 +6014,7 @@ function addonTable.CreateMainConfigUI()
             local displayTxt = tostring(curVal or "")
             local activeFontKey = nil
             for _, opt in ipairs(optionsList or {}) do
-                if opt.value == curVal then
+                if not opt.isHeader and not opt.isEmptyNotice and opt.value == curVal then
                     displayTxt = opt.label or tostring(opt.value)
                     activeFontKey = opt.fontKey
                     break
@@ -5857,7 +6025,7 @@ function addonTable.CreateMainConfigUI()
             btn.label:SetText(displayTxt)
             if activeFontKey then
                 btn.label._fixedFontKey = activeFontKey
-                ApplyFontToWidget(btn.label, true)
+                pcall(ApplyFontToWidget, btn.label, true)
             end
         end
 
@@ -5881,8 +6049,61 @@ function addonTable.CreateMainConfigUI()
                 dsDropdownPopup:SetToplevel(true)
                 dsDropdownPopup:SetClampedToScreen(true)
                 dsDropdownPopup:EnableMouse(true)
-                dsDropdownPopup.bg = UI.SolidTex(dsDropdownPopup, "BACKGROUND", 0, 0.045, 0.052, 0.068, 0.99)
+                dsDropdownPopup.bg = UI.SolidTex(dsDropdownPopup, "BACKGROUND", 0, 0.043, 0.051, 0.071, 0.99)
                 dsDropdownPopup.bg:SetAllPoints()
+
+                -- Live search bar shown when #optionsList > 12
+                local searchWrap = CreateFrame("Frame", nil, dsDropdownPopup)
+                searchWrap:SetFrameLevel(256)
+                searchWrap:SetHeight(24)
+                searchWrap:SetPoint("TOPLEFT", dsDropdownPopup, "TOPLEFT", 6, -5)
+                searchWrap:SetPoint("TOPRIGHT", dsDropdownPopup, "TOPRIGHT", -6, -5)
+                local swBg = UI.SolidTex(searchWrap, "BACKGROUND", 0, 0.035, 0.042, 0.060, 0.98)
+                swBg:SetAllPoints()
+                UI.CreatePixelBorder(searchWrap, 1, 1, 1, 0.14, 1)
+                dsDropdownPopup.searchWrap = searchWrap
+
+                local sb = CreateFrame("EditBox", nil, searchWrap)
+                sb:SetFrameLevel(257)
+                sb:SetPoint("TOPLEFT", searchWrap, "TOPLEFT", 8, -2)
+                sb:SetPoint("BOTTOMRIGHT", searchWrap, "BOTTOMRIGHT", -24, 2)
+                sb:SetAutoFocus(false)
+                sb:SetMaxLetters(64)
+                UI.SetFont(sb, 11, "", 0.95, 0.97, 1.0, 1.0)
+                dsDropdownPopup.searchBox = sb
+
+                local ph = searchWrap:CreateFontString(nil, "OVERLAY")
+                ph:SetPoint("LEFT", sb, "LEFT", 0, 0)
+                UI.SetFont(ph, 11, "", 0.48, 0.54, 0.64, 0.90)
+                ph:SetText("Search...")
+                dsDropdownPopup.searchPlaceholder = ph
+
+                local clrBtn = CreateFrame("Button", nil, searchWrap)
+                clrBtn:SetSize(18, 18)
+                clrBtn:SetPoint("RIGHT", searchWrap, "RIGHT", -3, 0)
+                clrBtn:SetFrameLevel(258)
+                local clrTxt = clrBtn:CreateFontString(nil, "OVERLAY")
+                clrTxt:SetPoint("CENTER", 0, 0)
+                UI.SetFont(clrTxt, 10, "", 0.62, 0.68, 0.78, 0.95)
+                clrTxt:SetText("X")
+                clrBtn.txt = clrTxt
+                clrBtn:Hide()
+                clrBtn:SetScript("OnEnter", function(cb)
+                    local ca, cg, cbl = UI.GetActiveAccentColor()
+                    cb.txt:SetTextColor(ca, cg, cbl, 1.0)
+                end)
+                clrBtn:SetScript("OnLeave", function(cb)
+                    cb.txt:SetTextColor(0.62, 0.68, 0.78, 0.95)
+                end)
+                clrBtn:SetScript("OnClick", function()
+                    sb:SetText("")
+                    sb:ClearFocus()
+                end)
+                dsDropdownPopup.searchClear = clrBtn
+
+                sb:SetScript("OnEscapePressed", function()
+                    CloseDSDropdownPopup()
+                end)
 
                 local sf = CreateFrame("ScrollFrame", nil, dsDropdownPopup)
                 sf:SetFrameLevel(252)
@@ -5922,7 +6143,8 @@ function addonTable.CreateMainConfigUI()
                     local nextVal = math.max(0, math.min(maxScroll, sFrame:GetVerticalScroll() - (delta * 26)))
                     sFrame:SetVerticalScroll(nextVal)
                     if maxScroll > 0 then
-                        local trackH = math.max(10, sFrame:GetHeight() - 32)
+                        local thumbH = sbThumb:GetHeight() or 32
+                        local trackH = math.max(10, sbTrack:GetHeight() - thumbH)
                         sbThumb:ClearAllPoints()
                         sbThumb:SetPoint("TOP", sbTrack, "TOP", 0, -(nextVal / maxScroll) * trackH)
                     end
@@ -5940,93 +6162,225 @@ function addonTable.CreateMainConfigUI()
             dsDropdownPopup.ownerBtn = self
             UI.SetChevronState(self, true)
 
-            local count = #(optionsList or {})
-            local rowH = 24
+            local rawOpts = optionsList or {}
+            local showSearch = (#rawOpts > 12)
+            local searchAreaH = showSearch and 28 or 0
             local pad = 4
-            local maxVisible = 10
-            local visibleRows = math.min(count, maxVisible)
+            local maxVisibleH = 264
+
+            dsDropdownPopup.searchWrap:SetShown(showSearch)
+            if dsDropdownPopup.searchWrap.dsBorder then
+                dsDropdownPopup.searchWrap.dsBorder:SetColor(ar, ag, ab, 0.35)
+            end
+
             local maxTextW = 0
-
-            local curVal = getValFn and getValFn()
-            for i = 1, math.max(count, #dsDropdownPopup.itemBtns) do
-                local itemBtn = dsDropdownPopup.itemBtns[i]
-                local opt = optionsList[i]
-                if opt then
-                    if not itemBtn then
-                        itemBtn = CreateFrame("Button", nil, dsDropdownPopup.scrollChild)
-                        itemBtn:SetFrameLevel(255)
-                        itemBtn:RegisterForClicks("LeftButtonUp")
-                        itemBtn:SetHeight(rowH)
-                        itemBtn.bg = UI.SolidTex(itemBtn, "BACKGROUND", 1, 1, 1, 1, 0)
-                        itemBtn.bg:SetAllPoints()
-
-                        itemBtn.checkIcon = itemBtn:CreateTexture(nil, "OVERLAY")
-                        itemBtn.checkIcon:SetSize(10, 10)
-                        itemBtn.checkIcon:SetPoint("LEFT", itemBtn, "LEFT", 8, 0)
-                        itemBtn.checkIcon:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_check.tga")
-
-                        itemBtn.lbl = itemBtn:CreateFontString(nil, "OVERLAY")
-                        itemBtn.lbl:SetPoint("LEFT", itemBtn, "LEFT", 24, 0)
-                        itemBtn.lbl:SetPoint("RIGHT", itemBtn, "RIGHT", -8, 0)
-                        itemBtn.lbl:SetJustifyH("LEFT")
-                        itemBtn.lbl:SetWordWrap(false)
-                        UI.SetFont(itemBtn.lbl, 11, "", 1, 1, 1, 0.95)
-                        dsDropdownPopup.itemBtns[i] = itemBtn
-                    end
-                    itemBtn:SetFrameLevel(255)
-                    itemBtn:ClearAllPoints()
-                    itemBtn:SetPoint("TOPLEFT", dsDropdownPopup.scrollChild, "TOPLEFT", 0, -((i - 1) * rowH))
-                    itemBtn:SetPoint("TOPRIGHT", dsDropdownPopup.scrollChild, "TOPRIGHT", 0, -((i - 1) * rowH))
-                    local isSel = (opt.value == curVal)
-                    itemBtn.lbl._fixedFontKey = opt.fontKey
-                    ApplyFontToWidget(itemBtn.lbl, false)
-                    local cleanOptLabel = tostring(opt.label or opt.value or ""):gsub("^%d+%.%s*", ""):gsub("^%*%s*", "")
-                    itemBtn.lbl:SetText(cleanOptLabel)
-                    local strW = (itemBtn.lbl.GetUnboundedStringWidth and itemBtn.lbl:GetUnboundedStringWidth()) or itemBtn.lbl:GetStringWidth() or (#cleanOptLabel * 7)
-                    if strW > maxTextW then maxTextW = strW end
-
-                    itemBtn.checkIcon:SetShown(isSel)
-                    itemBtn.checkIcon:SetVertexColor(ar, ag, ab, 1.0)
-                    if isSel then
-                        itemBtn.bg:SetColorTexture(ar, ag, ab, 0.22)
-                        itemBtn.lbl:SetTextColor(1, 1, 1, 1)
-                    else
-                        itemBtn.bg:SetColorTexture(1, 1, 1, 0)
-                        itemBtn.lbl:SetTextColor(0.88, 0.90, 0.95, 1)
-                    end
-                    itemBtn:SetScript("OnEnter", function(ib)
-                        ib.bg:SetColorTexture(ar, ag, ab, isSel and 0.30 or 0.16)
-                        ib.lbl:SetTextColor(1, 1, 1, 1)
-                    end)
-                    itemBtn:SetScript("OnLeave", function(ib)
-                        ib.bg:SetColorTexture(ar, ag, ab, isSel and 0.22 or 0)
-                        ib.lbl:SetTextColor(isSel and 1 or 0.88, isSel and 1 or 0.90, isSel and 1 or 0.95, 1)
-                    end)
-                    itemBtn:SetScript("OnClick", function()
-                        CloseDSDropdownPopup()
-                        if setValFn then setValFn(opt.value) end
-                        self:RefreshValue()
-                    end)
-                    itemBtn:Show()
-                elseif itemBtn then
-                    itemBtn:Hide()
+            for _, probeOpt in ipairs(rawOpts) do
+                if not probeOpt.isHeader and not probeOpt.isEmptyNotice then
+                    local cleanL = tostring(probeOpt.label or probeOpt.value or ""):gsub("^%d+%.%s*", ""):gsub("^%*%s*", "")
+                    maxTextW = math.max(maxTextW, #cleanL * 6.8)
                 end
             end
 
-            -- Auto-expand popup width to fit longest option text without truncation
-            local hasScroll = (count > maxVisible)
-            local popW = math.max(self:GetWidth(), math.ceil(maxTextW + 44), 240)
-            local popH = (visibleRows * rowH) + (2 * pad)
-            dsDropdownPopup:SetSize(popW, popH)
-            dsDropdownPopup.scrollFrame:ClearAllPoints()
-            dsDropdownPopup.scrollFrame:SetPoint("TOPLEFT", dsDropdownPopup, "TOPLEFT", 2, -pad)
-            dsDropdownPopup.scrollFrame:SetPoint("BOTTOMRIGHT", dsDropdownPopup, "BOTTOMRIGHT", hasScroll and -10 or -2, pad)
-            dsDropdownPopup.scrollChild:SetSize(popW - (hasScroll and 12 or 4), count * rowH)
-            dsDropdownPopup.scrollFrame:SetVerticalScroll(0)
-            dsDropdownPopup.sbTrack:SetShown(hasScroll)
-            dsDropdownPopup.sbThumb:SetShown(hasScroll)
-            dsDropdownPopup.sbThumb:ClearAllPoints()
-            dsDropdownPopup.sbThumb:SetPoint("TOP", dsDropdownPopup.sbTrack, "TOP", 0, 0)
+            local function RenderDropdownRows(query)
+                local qLower = tostring(query or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+                if dsDropdownPopup.searchPlaceholder then
+                    dsDropdownPopup.searchPlaceholder:SetShown(qLower == "" and not dsDropdownPopup.searchBox:HasFocus())
+                end
+                if dsDropdownPopup.searchClear then
+                    dsDropdownPopup.searchClear:SetShown(qLower ~= "")
+                end
+
+                local filtered = {}
+                if qLower == "" then
+                    filtered = rawOpts
+                else
+                    local pendingHeader = nil
+                    for _, opt in ipairs(rawOpts) do
+                        if opt.isHeader then
+                            pendingHeader = opt
+                        elseif not opt.isEmptyNotice then
+                            local cleanL = tostring(opt.label or opt.value or ""):gsub("^%d+%.%s*", ""):gsub("^%*%s*", "")
+                            local valStr = tostring(opt.value or "")
+                            if cleanL:lower():find(qLower, 1, true) or valStr:lower():find(qLower, 1, true) then
+                                if pendingHeader then
+                                    table.insert(filtered, pendingHeader)
+                                    pendingHeader = nil
+                                end
+                                table.insert(filtered, opt)
+                            end
+                        end
+                    end
+                    if #filtered == 0 then
+                        table.insert(filtered, { isEmptyNotice = true, label = "No matching options" })
+                    end
+                end
+
+                local curVal = getValFn and getValFn()
+                local yOff = 0
+                local count = #filtered
+                for i = 1, math.max(count, #dsDropdownPopup.itemBtns) do
+                    local itemBtn = dsDropdownPopup.itemBtns[i]
+                    local opt = filtered[i]
+                    if opt then
+                        if not itemBtn then
+                            itemBtn = CreateFrame("Button", nil, dsDropdownPopup.scrollChild)
+                            itemBtn:SetFrameLevel(255)
+                            itemBtn:RegisterForClicks("LeftButtonUp")
+                            itemBtn.bg = UI.SolidTex(itemBtn, "BACKGROUND", 1, 1, 1, 1, 0)
+                            itemBtn.bg:SetAllPoints()
+
+                            itemBtn.hdrLine = UI.SolidTex(itemBtn, "ARTWORK", 1, 1, 1, 1, 0.35)
+                            itemBtn.hdrLine:SetHeight(1)
+                            itemBtn.hdrLine:SetPoint("BOTTOMLEFT", itemBtn, "BOTTOMLEFT", 6, 1)
+                            itemBtn.hdrLine:SetPoint("BOTTOMRIGHT", itemBtn, "BOTTOMRIGHT", -6, 1)
+                            itemBtn.hdrLine:Hide()
+
+                            itemBtn.checkIcon = itemBtn:CreateTexture(nil, "OVERLAY")
+                            itemBtn.checkIcon:SetSize(10, 10)
+                            itemBtn.checkIcon:SetPoint("LEFT", itemBtn, "LEFT", 8, 0)
+                            itemBtn.checkIcon:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_check.tga")
+
+                            itemBtn.lbl = itemBtn:CreateFontString(nil, "OVERLAY")
+                            itemBtn.lbl:SetPoint("LEFT", itemBtn, "LEFT", 24, 0)
+                            itemBtn.lbl:SetPoint("RIGHT", itemBtn, "RIGHT", -8, 0)
+                            itemBtn.lbl:SetJustifyH("LEFT")
+                            itemBtn.lbl:SetWordWrap(false)
+                            UI.SetFont(itemBtn.lbl, 11, "", 1, 1, 1, 0.95)
+                            dsDropdownPopup.itemBtns[i] = itemBtn
+                        end
+
+                        local rowH = opt.isHeader and 20 or 24
+                        itemBtn:SetHeight(rowH)
+                        itemBtn:SetFrameLevel(255)
+                        itemBtn:ClearAllPoints()
+                        itemBtn:SetPoint("TOPLEFT", dsDropdownPopup.scrollChild, "TOPLEFT", 0, -yOff)
+                        itemBtn:SetPoint("TOPRIGHT", dsDropdownPopup.scrollChild, "TOPRIGHT", 0, -yOff)
+                        yOff = yOff + rowH
+
+                        if opt.isHeader then
+                            itemBtn:Disable()
+                            itemBtn.checkIcon:Hide()
+                            itemBtn.hdrLine:Show()
+                            itemBtn.hdrLine:SetColorTexture(ar, ag, ab, 0.42)
+                            itemBtn.bg:SetColorTexture(0.082, 0.098, 0.137, 0.85)
+                            itemBtn.lbl:ClearAllPoints()
+                            itemBtn.lbl:SetPoint("LEFT", itemBtn, "LEFT", 8, 0)
+                            itemBtn.lbl:SetPoint("RIGHT", itemBtn, "RIGHT", -8, 0)
+                            itemBtn.lbl._fixedFontKey = nil
+                            pcall(UI.SetFont, itemBtn.lbl, 10, "", ar, ag, ab, 0.95)
+                            itemBtn.lbl:SetText(tostring(opt.label or ""):upper())
+                            itemBtn:SetScript("OnEnter", nil)
+                            itemBtn:SetScript("OnLeave", nil)
+                            itemBtn:SetScript("OnClick", nil)
+                        elseif opt.isEmptyNotice then
+                            itemBtn:Disable()
+                            itemBtn.checkIcon:Hide()
+                            itemBtn.hdrLine:Hide()
+                            itemBtn.bg:SetColorTexture(1, 1, 1, 0)
+                            itemBtn.lbl:ClearAllPoints()
+                            itemBtn.lbl:SetPoint("LEFT", itemBtn, "LEFT", 12, 0)
+                            itemBtn.lbl:SetPoint("RIGHT", itemBtn, "RIGHT", -8, 0)
+                            itemBtn.lbl._fixedFontKey = nil
+                            pcall(UI.SetFont, itemBtn.lbl, 11, "", 0.55, 0.60, 0.70, 0.90)
+                            itemBtn.lbl:SetText(tostring(opt.label or "No matching options"))
+                            itemBtn:SetScript("OnEnter", nil)
+                            itemBtn:SetScript("OnLeave", nil)
+                            itemBtn:SetScript("OnClick", nil)
+                        else
+                            itemBtn:Enable()
+                            itemBtn.hdrLine:Hide()
+                            itemBtn.lbl:ClearAllPoints()
+                            itemBtn.lbl:SetPoint("LEFT", itemBtn, "LEFT", 24, 0)
+                            itemBtn.lbl:SetPoint("RIGHT", itemBtn, "RIGHT", -8, 0)
+
+                            local isSel = (opt.value == curVal)
+                            itemBtn.lbl._fixedFontKey = opt.fontKey
+                            itemBtn.lbl._dsFontSize = 11
+                            itemBtn.lbl._dsBaseFontSize = 11
+                            pcall(ApplyFontToWidget, itemBtn.lbl, true)
+                            if not itemBtn.lbl:GetFont() then
+                                pcall(itemBtn.lbl.SetFont, itemBtn.lbl, STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 11, "")
+                            end
+                            local cleanOptLabel = tostring(opt.label or opt.value or ""):gsub("^%d+%.%s*", ""):gsub("^%*%s*", "")
+                            itemBtn.lbl:SetText(cleanOptLabel)
+                            local strW = (itemBtn.lbl.GetUnboundedStringWidth and itemBtn.lbl:GetUnboundedStringWidth()) or itemBtn.lbl:GetStringWidth() or (#cleanOptLabel * 7)
+                            if strW > maxTextW then maxTextW = strW end
+
+                            itemBtn.checkIcon:SetShown(isSel)
+                            itemBtn.checkIcon:SetVertexColor(ar, ag, ab, 1.0)
+                            if isSel then
+                                itemBtn.bg:SetColorTexture(ar, ag, ab, 0.22)
+                                itemBtn.lbl:SetTextColor(1, 1, 1, 1)
+                            else
+                                itemBtn.bg:SetColorTexture(1, 1, 1, 0)
+                                itemBtn.lbl:SetTextColor(0.88, 0.90, 0.95, 1)
+                            end
+                            itemBtn:SetScript("OnEnter", function(ib)
+                                ib.bg:SetColorTexture(ar, ag, ab, isSel and 0.30 or 0.16)
+                                ib.lbl:SetTextColor(1, 1, 1, 1)
+                            end)
+                            itemBtn:SetScript("OnLeave", function(ib)
+                                ib.bg:SetColorTexture(ar, ag, ab, isSel and 0.22 or 0)
+                                ib.lbl:SetTextColor(isSel and 1 or 0.88, isSel and 1 or 0.90, isSel and 1 or 0.95, 1)
+                            end)
+                            itemBtn:SetScript("OnClick", function()
+                                CloseDSDropdownPopup()
+                                if setValFn then setValFn(opt.value) end
+                                self:RefreshValue()
+                            end)
+                        end
+                        itemBtn:Show()
+                    elseif itemBtn then
+                        itemBtn:Hide()
+                    end
+                end
+
+                local totalH = math.max(24, yOff)
+                local viewH = math.min(totalH, maxVisibleH)
+                local hasScroll = (totalH > viewH + 1)
+                local popW = math.max(self:GetWidth(), math.ceil(maxTextW + 52), 250)
+                local popH = searchAreaH + viewH + (2 * pad)
+                dsDropdownPopup:SetSize(popW, popH)
+
+                local topScrollOffset = pad + searchAreaH
+                dsDropdownPopup.scrollFrame:ClearAllPoints()
+                dsDropdownPopup.scrollFrame:SetPoint("TOPLEFT", dsDropdownPopup, "TOPLEFT", 2, -topScrollOffset)
+                dsDropdownPopup.scrollFrame:SetPoint("BOTTOMRIGHT", dsDropdownPopup, "BOTTOMRIGHT", hasScroll and -10 or -2, pad)
+                dsDropdownPopup.scrollChild:SetSize(popW - (hasScroll and 12 or 4), totalH)
+                dsDropdownPopup.scrollFrame:SetVerticalScroll(0)
+
+                dsDropdownPopup.sbTrack:ClearAllPoints()
+                dsDropdownPopup.sbTrack:SetPoint("TOPRIGHT", dsDropdownPopup, "TOPRIGHT", -3, -topScrollOffset)
+                dsDropdownPopup.sbTrack:SetPoint("BOTTOMRIGHT", dsDropdownPopup, "BOTTOMRIGHT", -3, pad)
+                dsDropdownPopup.sbTrack:SetShown(hasScroll)
+                dsDropdownPopup.sbThumb:SetShown(hasScroll)
+                if hasScroll then
+                    local thumbH = math.max(18, math.floor(viewH * (viewH / totalH)))
+                    dsDropdownPopup.sbThumb:SetSize(4, thumbH)
+                    dsDropdownPopup.sbThumb:ClearAllPoints()
+                    dsDropdownPopup.sbThumb:SetPoint("TOP", dsDropdownPopup.sbTrack, "TOP", 0, 0)
+                end
+            end
+
+            dsDropdownPopup.searchBox:SetScript("OnTextChanged", function(sbEdit)
+                if dsDropdownPopup:IsShown() and dsDropdownPopup.ownerBtn == self then
+                    RenderDropdownRows(sbEdit:GetText())
+                end
+            end)
+            dsDropdownPopup.searchBox:SetScript("OnEditFocusGained", function()
+                if dsDropdownPopup.searchPlaceholder then
+                    dsDropdownPopup.searchPlaceholder:Hide()
+                end
+            end)
+            dsDropdownPopup.searchBox:SetScript("OnEditFocusLost", function(sbEdit)
+                if dsDropdownPopup.searchPlaceholder then
+                    dsDropdownPopup.searchPlaceholder:SetShown((sbEdit:GetText() or "") == "")
+                end
+            end)
+
+            dsDropdownPopup.searchBox:SetText("")
+            dsDropdownPopup.searchBox:ClearFocus()
+            RenderDropdownRows("")
 
             local catcher = GetClickCatcher()
             catcher:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -6495,7 +6849,7 @@ function addonTable.CreateMainConfigUI()
             if themeView.Refresh then themeView.Refresh() end
         end
     )
-    fontDropdown._onBeforeOpen = function(self) ResolveAllFontFamilyPaths(); self:SetOptions(UI.BuildFontDropdownOptions()) end
+    fontDropdown._onBeforeOpen = function(self) ResolveAllFontFamilyPaths(true); self:SetOptions(UI.BuildFontDropdownOptions(true)) end
     fontDropdown:SetPoint("RIGHT", fontRow, "RIGHT", -14, 0)
     fontRow:BindRightControl(fontDropdown)
 
@@ -7050,7 +7404,7 @@ function addonTable.CreateMainConfigUI()
 
         if surfDropdown and surfDropdown.RefreshValue then surfDropdown:RefreshValue() end
         if fontDropdown then
-            if fontDropdown.SetOptions then fontDropdown:SetOptions(UI.BuildFontDropdownOptions()) elseif fontDropdown.RefreshValue then fontDropdown:RefreshValue() end
+            if fontDropdown.SetOptions then fontDropdown:SetOptions(UI.BuildFontDropdownOptions(true)) elseif fontDropdown.RefreshValue then fontDropdown:RefreshValue() end
         end
         if extSyncPills and extSyncPills.RefreshValue then extSyncPills:RefreshValue() end
         if syncPills and syncPills.RefreshValue then syncPills:RefreshValue() end
@@ -7110,6 +7464,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "NEW",      title = "Shared Media Discovery (LibSharedMedia-3.0, DBM, BigWigs, WeakAuras, ElvUI) & Searchable Grouped Pickers", desc = "Upgraded Theme & Font Studio (and standalone DynamicMarker) to scan LibSharedMedia-3.0, DBM, BigWigs, WeakAuras, and ElvUI for custom fonts alongside Built-in Suite Fonts and Blizzard system fonts, grouped dropdowns under section headers with live search filtering and pcall-guarded font previews, and added clean runtime fallback to Expressway if a saved external font addon is disabled." },
                 { badge = "NEW",      title = "Custom Chat Notification Sounds & 10 Bespoke Sound Effects (DynamicChat)", desc = "Generated 10 lightweight, normalised 44.1kHz mono .wav sound effects (Soft Chime, Crystal Ping, Whisper Bell, Marimba Note, Sonar Pulse, Double Tap, Water Drop, Warm Chord, Wood Tick, and Subtle Alert) played via PlaySoundFile, grouped DynamicChat Tab 3 into a dedicated 'CHAT NOTIFICATION SOUNDS' section card with 'Chat Notification Sounds' (Enabled), 'Mute Sounds in Combat' (Off), and 5 grouped channel rows (Whisper & Battle.net Whisper, Guild & Officer Chat, Party & Instance Chat, Raid & Raid Warning, and Say & Yell off by default), automatic sound preview on dropdown selection plus compact [Play] preview buttons beside every dropdown, 1.5s per-channel anti-spam cooldown, and secret-value-guarded sender GUID / UnitName('player') self-message suppression." },
                 { badge = "NEW",      title = "v2.2.0 Release: DynamicPrep Blizzard Window QoL (Side-by-Side, Header/Alt+Drag, Click-to-Raise, Ctrl+Scroll Scale & Multi-Addon Coexistence)", desc = "Added Tab 3 Blizzard Window Quality of Life controls in DynamicPrep so Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House stay open side-by-side without trapping Escape (with header Pin buttons and click-to-raise layering), remember dragged header or Alt + Left-Drag anywhere positions across reloads, scale via Ctrl+Scroll (temporary session) or Ctrl+Shift+Scroll (permanent 70%-140% with Obsidian/Blaze-Orange toast), reset on header Right-Click or [Reset All Windows], exclude World Map and Game Menu cleanly out of combat, and yield silently with dynamic banner detection when BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, or ElvUI frame management is active." },
                 { badge = "FIXED",    title = "v2.1.2 Release: DynamicPrep Midnight Season 2 Enchantable Slot List Fix", desc = "Updated DynamicPrep's equipped gear enchant scanner to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
@@ -7330,6 +7685,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
             openModule = "DynamicChat",
             items = {
+                { badge = "NEW",      title = "External Sound Discovery (LibSharedMedia-3.0, DBM, BigWigs, WeakAuras, ElvUI), Blizzard Raid Warning & 48 kHz EXBOSS Chimes", desc = "Upgraded all 10 built-in chat sound effects to 48 kHz (-1.5 dBFS) EXBOSS-style clarity (EX Alert Ping, EX Double Stinger, EX Sonar Lock, EX Crystal Bell, EX Phase Chime, EX Sharp Triad, EX Pulse Pop, EX Clean Horn, EX High Glass, EX Target Lock), preserved Blizzard's standard Raid Warning (and UI alerts) under the Blizzard section with dual PlaySound / PlaySoundFile playback, added runtime scanning for LibSharedMedia-3.0, DBM, BigWigs, WeakAuras, and ElvUI sounds with automatic fallback to Blizzard Raid Warning if disabled, and added section headers, inline [>] previews, scrolling, and a live search filter to every channel sound dropdown." },
                 { badge = "NEW",      title = "Custom Chat Notification Sounds & 10 Bespoke Sound Effects", desc = "Generated 10 lightweight, normalised 44.1kHz mono .wav sound effects (Soft Chime, Crystal Ping, Whisper Bell, Marimba Note, Sonar Pulse, Double Tap, Water Drop, Warm Chord, Wood Tick, and Subtle Alert) played via PlaySoundFile, grouped Tab 3 into a dedicated 'CHAT NOTIFICATION SOUNDS' section card with 'Chat Notification Sounds' (Enabled), 'Mute Sounds in Combat' (Off), and 5 grouped channel rows (Whisper & Battle.net Whisper, Guild & Officer Chat, Party & Instance Chat, Raid & Raid Warning, and Say & Yell off by default), automatic sound preview on dropdown selection plus compact [Play] preview buttons beside every dropdown, 1.5s per-channel anti-spam cooldown, and secret-value-guarded sender GUID / UnitName('player') self-message suppression." },
                 { badge = "FIXED",    title = "v1.9.8 Flush (0, 0) Bottom-Left Clamping & Persistence", desc = "Disabled C++ SetClampedToScreen(true) on ChatFrame1 whenever DynamicChat manages layout, restricted composite clamping solely to visible container extents (GetVisibleContainerExtents), and canonicalised CHAT to BOTTOMLEFT outer-container coordinates so (0, 0) sits flush at the bottom-left screen corner." },
                 { badge = "FIXED",    title = "Accurate Frozen/Unloaded Conflict Detection & Universal 'Use DynamicChat' Takeover", desc = "Updated IsAddonLoadedNow, IsAddonActiveInSession, and IsEllesmereUIChatSubModuleEnabled so any external chat addon set to 'FROZEN' (Never) in DynamicLoad or overridden via 'USE_DYNAMIC' / 'RUN_BOTH' is treated as inactive (false), and prevented IsEllesmereUIChatSubModuleEnabled from falling back to parent EllesmereUI when EllesmereUIChat is installed as a separate sub-addon on disk and unloaded." },

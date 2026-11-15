@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "15/11/2026",
     entries = {
+        { type = "FEATURE", text = "Shared Media Discovery (LibSharedMedia-3.0, DBM, BigWigs, WeakAuras, ElvUI), Blizzard Raid Warning & 48 kHz EXBOSS Chat Alerts (15/11/2026): Added runtime SharedMedia-3.0, DBM, BigWigs, WeakAuras, and ElvUI discovery for both Sounds and Fonts across Theme & Font Studio (and standalone DynamicMarker) plus DynamicChat Tab 3 with PLAYER_LOGIN delayed scanning and live searchable grouped dropdowns (Built-in, Blizzard, SharedMedia / AddOns); upgraded all 10 built-in DynamicChat notification sounds to 48 kHz peak-normalised (-1.5 dBFS) EXBOSS-style clarity (EX Alert Ping, EX Double Stinger, EX Sonar Lock, EX Crystal Bell, EX Phase Chime, EX Sharp Triad, EX Pulse Pop, EX Clean Horn, EX High Glass, EX Target Lock); kept Blizzard's standard Raid Warning and UI alerts accessible with dual PlaySound / PlaySoundFile playback; and added automatic runtime fallback (to Blizzard Raid Warning for sounds or Expressway for fonts) when an external media pack is disabled." },
         { type = "FEATURE", text = "Custom Chat Notification Sounds & 10 Bespoke Sound Effects (DynamicChat - 15/11/2026): Generated 10 crisp, normalised 44.1kHz mono .wav sound effects (Soft Chime, Crystal Ping, Whisper Bell, Marimba Note, Sonar Pulse, Double Tap, Water Drop, Warm Chord, Wood Tick, Subtle Alert) played via PlaySoundFile, grouped DynamicChat Tab 3 into a dedicated 'CHAT NOTIFICATION SOUNDS' section card with 'Chat Notification Sounds' (Enabled), 'Mute Sounds in Combat' (Off), and 5 grouped channel rows (Whisper & Battle.net Whisper, Guild & Officer Chat, Party & Instance Chat, Raid & Raid Warning, and Say & Yell off by default), dropdown auto-preview plus dedicated [Play] preview buttons beside every dropdown, 1.5s anti-spam per-channel cooldown, and secret-value-guarded sender GUID / UnitName('player') self-message suppression." },
         { type = "FEATURE", text = "Release v2.2.0 - DynamicPrep Blizzard Window QoL & Silent External Coexistence (15/11/2026): Added Tab 3 'Blizzard Window Quality of Life' controls in DynamicPrep: 'Keep Blizzard Windows Open Side-by-Side' (all 31 standard Blizzard panels -- Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Social & Friends, Collections, Transmogrify, Adventure Guide, Professions, Professions Book, Crafting Orders, Achievements, Item Upgrade, Item Socketing, Revival Catalyst, Renown, Delves, Trainer, Calendar, Macros, NPC Gossip, Quest, Trade, Merchant, Mail, Bank, Auction House, and AddOn List -- stay open together via ShowUIPanel multi-panel restoration and Escape-protected UISpecialFrames / HideUIPanel / CloseWindows / ToggleGameMenu handling while freezing already-open windows in place so opening another panel never shifts them, plus a compact header Pin button so Escape keeps Pinned windows open and closes unpinned windows one at a time while [X] and keybind toggles still close cleanly; excludes World Map and Game Menu with 0% combat taint), 'Draggable Blizzard Windows (Save Position)' (smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag moving out of combat with unclamped SetClampedToScreen(false) free movement, scale-aware UIParent CENTER persistence, SetPoint tab-switch snap-back protection, TitleContainer-cleared overlay layering, (-58, -2) Maximize/Minimize button clearance, and Right-Click header reset), 'Window Ctrl+Scroll Scaling' (Ctrl + Scroll on a header for temporary session scaling 70%-140% in 5% steps that resets on close, Ctrl + Shift + Scroll anywhere on a window to save permanently with a Dark-Obsidian/Blaze-Orange readout toast), [Reset All Windows] (restores default positions, 100% scale, and screen clamping), defensive C_Item.GetItemInfoInstant and TooltipDataProcessor hardening, and zero-config automatic silent coexistence when NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, or ElvUI frame management is active." },
         { type = "IMPROVED", text = "DynamicMarker Unbound-by-Default World Flare Hotkeys & Guided Setup Assignment (15/11/2026): Removed the hardcoded F4 and F5 World Flare defaults so fresh installs and Resets start with both keys 'Unbound' (leaving your own Blizzard and action bar bindings untouched while preserving any existing saved DynamicMarkerDB hotkeys), added optional single-button Cycle World Flare and Clear All Flares keybind capture rows to both Suite/Standalone Guided Setup and the World Flare Keys (/dm flares) tab ('Click to bind, Right-click to unbind'), and refined capture behaviour so Escape cancels without losing the current key while Backspace/Delete or Right-Click clears to Unbound." },
@@ -2231,6 +2232,430 @@ function addonTable.PopulateBrandLogo(badge, size)
 end
 
 --------------------------------------------------------------------------------
+-- Shared Media Discovery Hub (LibSharedMedia-3.0, DBM, BigWigs, WeakAuras, ElvUI)
+--------------------------------------------------------------------------------
+local function IsSafeMediaVal(v)
+    if v == nil then return false end
+    if issecretvalue and issecretvalue(v) then return false end
+    if type(canaccessvalue) == "function" then
+        local ok, canAcc = pcall(canaccessvalue, v)
+        if ok and not canAcc then return false end
+    end
+    return true
+end
+
+local function StripWowColorTags(text)
+    if not IsSafeMediaVal(text) then return "" end
+    local s = tostring(text or "")
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+    s = s:match("^%s*(.-)%s*$") or ""
+    return s
+end
+
+local function LooksLikeMediaPath(val)
+    if type(val) == "number" then
+        return IsSafeMediaVal(val) and val > 0
+    end
+    if type(val) ~= "string" or not IsSafeMediaVal(val) or val == "" then
+        return false
+    end
+    if val:find("[\\/]") then return true end
+    local low = val:lower()
+    if low:match("%.wav$") or low:match("%.ogg$") or low:match("%.mp3$") or low:match("%.ttf$") or low:match("%.otf$") then
+        return true
+    end
+    return false
+end
+
+local BUILTIN_EXBOSS_SOUNDS = {
+    { value = "ds_ping_crystal", alias = "ex_alert_ping",     label = "EX Alert Ping",     file = "ds_ping_crystal.wav", group = "BUILTIN", source = "DynamicSuite" },
+    { value = "ds_tap_double",   alias = "ex_double_stinger", label = "EX Double Stinger", file = "ds_tap_double.wav",   group = "BUILTIN", source = "DynamicSuite" },
+    { value = "ds_pulse_sonar",  alias = "ex_sonar_lock",     label = "EX Sonar Lock",     file = "ds_pulse_sonar.wav",  group = "BUILTIN", source = "DynamicSuite" },
+    { value = "ds_bell_whisper", alias = "ex_crystal_bell",   label = "EX Crystal Bell",   file = "ds_bell_whisper.wav", group = "BUILTIN", source = "DynamicSuite" },
+    { value = "ds_chime_soft",   alias = "ex_phase_chime",    label = "EX Phase Chime",    file = "ds_chime_soft.wav",   group = "BUILTIN", source = "DynamicSuite" },
+    { value = "ds_chord_warm",   alias = "ex_sharp_triad",    label = "EX Sharp Triad",    file = "ds_chord_warm.wav",   group = "BUILTIN", source = "DynamicSuite" },
+    { value = "ds_drop_water",   alias = "ex_pulse_pop",      label = "EX Pulse Pop",      file = "ds_drop_water.wav",   group = "BUILTIN", source = "DynamicSuite" },
+    { value = "ds_alert_subtle", alias = "ex_clean_horn",     label = "EX Clean Horn",     file = "ds_alert_subtle.wav", group = "BUILTIN", source = "DynamicSuite" },
+    { value = "ds_note_marimba", alias = "ex_high_glass",     label = "EX High Glass",     file = "ds_note_marimba.wav", group = "BUILTIN", source = "DynamicSuite" },
+    { value = "ds_tick_wood",    alias = "ex_target_lock",    label = "EX Target Lock",    file = "ds_tick_wood.wav",    group = "BUILTIN", source = "DynamicSuite" },
+}
+
+local function BuildBlizzardSoundsTable()
+    local sk = _G.SOUNDKIT
+    return {
+        { value = "BLIZZ_RAID_WARNING", label = "Blizzard Raid Warning", soundKit = (sk and sk.RAID_WARNING) or 8959,     fileDataID = 567397, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_WHISPER",      label = "Blizzard Whisper",      soundKit = (sk and sk.TELL_MESSAGE) or 3081,     fileDataID = 567482, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_BNET_TOAST",   label = "Blizzard Battle.net",   soundKit = (sk and sk.UI_BNET_TOAST) or 18019,   fileDataID = 567421, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_READY_CHECK",  label = "Blizzard Ready Check",  soundKit = (sk and sk.READY_CHECK) or 8960,      fileDataID = 567478, group = "BLIZZARD", source = "Blizzard" },
+        { value = "BLIZZ_MAP_PING",     label = "Blizzard Map Ping",     soundKit = (sk and sk.MAP_PING) or 3175,         fileDataID = 567416, group = "BLIZZARD", source = "Blizzard" },
+    }
+end
+
+local mediaRegistry = {
+    scannedOnce = false,
+    sounds = { builtin = {}, blizzard = {}, external = {}, byKey = {} },
+    fonts  = { external = {}, byKey = {} },
+}
+
+local function GetLSMInstance()
+    if type(_G.LibStub) == "function" or (type(_G.LibStub) == "table") then
+        local ok, lsm = pcall(_G.LibStub, "LibSharedMedia-3.0", true)
+        if ok and type(lsm) == "table" then
+            return lsm
+        end
+    end
+    if type(_G.ElvUI) == "table" and type(_G.ElvUI[1]) == "table" then
+        local E = _G.ElvUI[1]
+        if type(E.Libs) == "table" and type(E.Libs.LSM) == "table" then
+            return E.Libs.LSM
+        end
+    end
+    return nil
+end
+
+local function FormatExternalLabel(cleanName, sourceTag)
+    if sourceTag and sourceTag ~= "" and sourceTag ~= "SharedMedia" then
+        local lowName = cleanName:lower()
+        local lowTag = sourceTag:lower()
+        if not lowName:find(lowTag, 1, true) then
+            return sourceTag .. ": " .. cleanName
+        end
+    end
+    return cleanName
+end
+
+local function ScanMediaKind(kind, skipNames, skipPaths)
+    local outList = {}
+    local seenKeys = {}
+    local seenPaths = {}
+    local seenLabels = {}
+
+    if type(skipPaths) == "table" then
+        for p, v in pairs(skipPaths) do
+            seenPaths[p] = v
+        end
+    end
+
+    local function AddCandidate(prefix, rawName, rawPath, sourceTag)
+        local cleanName = StripWowColorTags(rawName)
+        if cleanName == "" or cleanName:lower() == "none" or cleanName:lower() == "custom" then
+            return
+        end
+        if type(skipNames) == "table" and skipNames[cleanName:lower()] then
+            return
+        end
+        if not IsSafeMediaVal(rawPath) or rawPath == "" then
+            return
+        end
+        local normPathKey = (type(rawPath) == "number") and ("fid:" .. tostring(rawPath)) or tostring(rawPath):lower():gsub("/", "\\")
+        if normPathKey == "interface\\quiet.ogg" then
+            return
+        end
+        if seenPaths[normPathKey] then
+            return
+        end
+        local key = prefix .. ":" .. cleanName
+        if seenKeys[key] then
+            return
+        end
+        local displayLabel = FormatExternalLabel(cleanName, sourceTag)
+        local lowLbl = displayLabel:lower()
+        if seenLabels[lowLbl] then
+            return
+        end
+
+        seenKeys[key] = true
+        seenPaths[normPathKey] = true
+        seenLabels[lowLbl] = true
+
+        local entry = {
+            value  = key,
+            name   = cleanName,
+            label  = displayLabel,
+            path   = rawPath,
+            source = sourceTag or "SharedMedia",
+            group  = "EXTERNAL",
+        }
+        if type(rawPath) == "number" then
+            entry.fileDataID = rawPath
+        end
+        table.insert(outList, entry)
+    end
+
+    -- 1. LibSharedMedia-3.0 (covers SharedMedia packs, BigWigs, DBM-LSM, WeakAuras-LSM, ElvUI-LSM)
+    local lsm = GetLSMInstance()
+    if lsm then
+        if type(lsm.HashTable) == "function" then
+            local okH, hTbl = pcall(lsm.HashTable, lsm, kind)
+            if okH and type(hTbl) == "table" then
+                for kName, kPath in pairs(hTbl) do
+                    if type(kName) == "string" then
+                        AddCandidate("LSM", kName, kPath, "SharedMedia")
+                    end
+                end
+            end
+        end
+        if type(lsm.List) == "function" and type(lsm.Fetch) == "function" then
+            local okL, lNames = pcall(lsm.List, lsm, kind)
+            if okL and type(lNames) == "table" then
+                for _, lName in ipairs(lNames) do
+                    if type(lName) == "string" then
+                        local okF, fPath = pcall(lsm.Fetch, lsm, kind, lName, true)
+                        if okF and fPath then
+                            AddCandidate("LSM", lName, fPath, "SharedMedia")
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2. Deadly Boss Mods (DBM)
+    local dbm = _G.DBM
+    if type(dbm) == "table" then
+        local dbmTables = {}
+        if kind == "sound" then
+            if type(dbm.Sounds) == "table" then table.insert(dbmTables, dbm.Sounds) end
+            if type(dbm.Sound) == "table" then table.insert(dbmTables, dbm.Sound) end
+            if type(dbm.GetSoundList) == "function" then
+                local okD, dList = pcall(dbm.GetSoundList, dbm)
+                if okD and type(dList) == "table" then table.insert(dbmTables, dList) end
+            end
+        elseif kind == "font" then
+            if type(dbm.Fonts) == "table" then table.insert(dbmTables, dbm.Fonts) end
+            if type(dbm.Font) == "table" then table.insert(dbmTables, dbm.Font) end
+        end
+        for _, tbl in ipairs(dbmTables) do
+            for k, v in pairs(tbl) do
+                if type(v) == "table" then
+                    local nm = v.text or v.name or v.label or (type(k) == "string" and k) or nil
+                    local p = v.value or v.path or v.sound or v.font
+                    if nm and p and LooksLikeMediaPath(p) then
+                        AddCandidate("DBM", tostring(nm), p, "DBM")
+                    end
+                elseif IsSafeMediaVal(k) and IsSafeMediaVal(v) then
+                    if type(k) == "string" and LooksLikeMediaPath(v) then
+                        AddCandidate("DBM", k, v, "DBM")
+                    elseif type(v) == "string" and LooksLikeMediaPath(k) then
+                        AddCandidate("DBM", v, k, "DBM")
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3. BigWigs
+    if kind == "sound" then
+        local bwTables = {}
+        if type(_G.BigWigs) == "table" and type(_G.BigWigs.Sounds) == "table" then table.insert(bwTables, _G.BigWigs.Sounds) end
+        if type(_G.BigWigsLoader) == "table" and type(_G.BigWigsLoader.Sounds) == "table" then table.insert(bwTables, _G.BigWigsLoader.Sounds) end
+        if type(_G.BigWigsAPI) == "table" then
+            if type(_G.BigWigsAPI.GetCountdownList) == "function" then
+                local okC, cTbl = pcall(_G.BigWigsAPI.GetCountdownList, _G.BigWigsAPI)
+                if okC and type(cTbl) == "table" then
+                    for k, v in pairs(cTbl) do
+                        if type(k) == "string" and LooksLikeMediaPath(v) then
+                            AddCandidate("BW", k, v, "BigWigs")
+                        end
+                    end
+                end
+            end
+        end
+        for _, tbl in ipairs(bwTables) do
+            for k, v in pairs(tbl) do
+                if type(k) == "string" and LooksLikeMediaPath(v) then
+                    AddCandidate("BW", k, v, "BigWigs")
+                elseif type(v) == "string" and LooksLikeMediaPath(k) then
+                    AddCandidate("BW", v, k, "BigWigs")
+                end
+            end
+        end
+    end
+
+    -- 4. WeakAuras
+    local wa = _G.WeakAuras
+    if type(wa) == "table" then
+        local waTbl = (kind == "sound" and wa.sound_types) or (kind == "font" and wa.font_types) or nil
+        if type(waTbl) == "table" then
+            for k, v in pairs(waTbl) do
+                if IsSafeMediaVal(k) and IsSafeMediaVal(v) then
+                    if LooksLikeMediaPath(k) and type(v) == "string" then
+                        AddCandidate("WA", v, k, "WeakAuras")
+                    elseif type(k) == "string" and LooksLikeMediaPath(v) then
+                        AddCandidate("WA", k, v, "WeakAuras")
+                    end
+                end
+            end
+        end
+    end
+
+    -- 5. ElvUI
+    if type(_G.ElvUI) == "table" and type(_G.ElvUI[1]) == "table" and type(_G.ElvUI[1].media) == "table" then
+        local mediaTbl = _G.ElvUI[1].media
+        for k, v in pairs(mediaTbl) do
+            if type(k) == "string" and LooksLikeMediaPath(v) and type(v) == "string" then
+                local vLow = v:lower()
+                if kind == "sound" and (k:lower():find("sound", 1, true) or vLow:match("%.ogg$") or vLow:match("%.mp3$") or vLow:match("%.wav$")) then
+                    AddCandidate("ELV", k, v, "ElvUI")
+                elseif kind == "font" and (k:lower():find("font", 1, true) or vLow:match("%.ttf$") or vLow:match("%.otf$")) and not k:lower():find("blank", 1, true) then
+                    AddCandidate("ELV", k, v, "ElvUI")
+                end
+            end
+        end
+    end
+
+    table.sort(outList, function(a, b)
+        return tostring(a.label):lower() < tostring(b.label):lower()
+    end)
+    return outList
+end
+
+local registeredBuiltinSoundWithLSM = false
+local function EnsureBuiltinSoundsRegisteredInLSM()
+    if registeredBuiltinSoundWithLSM then return end
+    local lsm = GetLSMInstance()
+    if not (lsm and type(lsm.Register) == "function") then return end
+    registeredBuiltinSoundWithLSM = true
+    for _, sDef in ipairs(BUILTIN_EXBOSS_SOUNDS) do
+        local soundPath = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\" .. sDef.file
+        pcall(lsm.Register, lsm, "sound", "DynamicSuite: " .. sDef.label, soundPath)
+    end
+end
+
+function DynamicSuite:ScanExternalMedia(force)
+    if mediaRegistry.scannedOnce and not force then
+        return mediaRegistry
+    end
+    EnsureBuiltinSoundsRegisteredInLSM()
+
+    -- Sounds
+    local sReg = { builtin = {}, blizzard = {}, external = {}, byKey = {} }
+    local skipSoundNames = {}
+    local skipSoundPaths = {}
+
+    for _, def in ipairs(BUILTIN_EXBOSS_SOUNDS) do
+        local soundPath = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\" .. def.file
+        local item = {
+            value  = def.value,
+            alias  = def.alias,
+            label  = def.label,
+            file   = def.file,
+            path   = soundPath,
+            group  = "BUILTIN",
+            source = "DynamicSuite",
+        }
+        table.insert(sReg.builtin, item)
+        sReg.byKey[def.value] = item
+        if def.alias then sReg.byKey[def.alias] = item end
+        sReg.byKey[def.file] = item
+        skipSoundNames[def.label:lower()] = true
+        skipSoundNames[("DynamicSuite: " .. def.label):lower()] = true
+        skipSoundPaths[soundPath:lower()] = true
+    end
+
+    for _, bDef in ipairs(BuildBlizzardSoundsTable()) do
+        table.insert(sReg.blizzard, bDef)
+        sReg.byKey[bDef.value] = bDef
+    end
+
+    sReg.external = ScanMediaKind("sound", skipSoundNames, skipSoundPaths)
+    for _, ext in ipairs(sReg.external) do
+        sReg.byKey[ext.value] = ext
+        if ext.name and not sReg.byKey[ext.name] then
+            sReg.byKey[ext.name] = ext
+        end
+    end
+    mediaRegistry.sounds = sReg
+
+    -- Fonts
+    local fReg = { external = {}, byKey = {} }
+    local skipFontPaths = {}
+    skipFontPaths["fonts\\frizqt__.ttf"] = true
+    skipFontPaths["fonts\\2002.ttf"] = true
+    skipFontPaths["fonts\\2002b.ttf"] = true
+    skipFontPaths["fonts\\morpheus.ttf"] = true
+    skipFontPaths["fonts\\skurri.ttf"] = true
+    skipFontPaths["fonts\\arialn.ttf"] = true
+
+    fReg.external = ScanMediaKind("font", nil, skipFontPaths)
+    for _, ext in ipairs(fReg.external) do
+        fReg.byKey[ext.value] = ext
+        if ext.name and not fReg.byKey[ext.name] then
+            fReg.byKey[ext.name] = ext
+        end
+    end
+    mediaRegistry.fonts = fReg
+    mediaRegistry.scannedOnce = true
+    return mediaRegistry
+end
+
+function DynamicSuite:GetSharedSounds(force)
+    if force or not mediaRegistry.scannedOnce then
+        self:ScanExternalMedia(force)
+    end
+    return mediaRegistry.sounds
+end
+
+function DynamicSuite:GetSharedFonts(force)
+    if force or not mediaRegistry.scannedOnce then
+        self:ScanExternalMedia(force)
+    end
+    return mediaRegistry.fonts
+end
+
+function DynamicSuite:ResolveSoundChoice(soundKey, fallbackKey)
+    if not soundKey or soundKey == "" or soundKey == "NONE" then
+        return nil, false
+    end
+    local sReg = self:GetSharedSounds(false)
+    local hit = sReg.byKey[soundKey]
+    if not hit then
+        -- Try one fresh scan in case an addon loaded on demand
+        sReg = self:GetSharedSounds(true)
+        hit = sReg.byKey[soundKey]
+    end
+    if not hit and type(soundKey) == "string" then
+        local stripped = soundKey:gsub("^LSM:", ""):gsub("^DBM:", ""):gsub("^BW:", ""):gsub("^WA:", ""):gsub("^ELV:", "")
+        hit = sReg.byKey[stripped]
+    end
+    if not hit and LooksLikeMediaPath(soundKey) then
+        -- Check whether the direct path is from a known loaded external source or still registered
+        for _, ext in ipairs(sReg.external) do
+            if ext.path == soundKey then
+                hit = ext
+                break
+            end
+        end
+    end
+    if hit then
+        return hit, false
+    end
+    -- Safe Fallback to Blizzard Raid Warning when a saved external sound is unavailable
+    local fb = sReg.byKey[fallbackKey or "BLIZZ_RAID_WARNING"] or sReg.blizzard[1]
+    return fb, true
+end
+
+function DynamicSuite:ResolveFontChoice(fontKey)
+    if type(self.UI) == "table" and type(self.UI.GetFont) == "function" then
+        local ok, p, entry = pcall(self.UI.GetFont, fontKey)
+        if ok and type(p) == "string" and p ~= "" then
+            return p, entry, false
+        end
+    end
+    local fReg = self:GetSharedFonts(false)
+    if fontKey and fReg.byKey[fontKey] then
+        return fReg.byKey[fontKey].path, fReg.byKey[fontKey], false
+    end
+    return "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Expressway.TTF", nil, true
+end
+
+addonTable.ScanExternalMedia = function(force) return DynamicSuite:ScanExternalMedia(force) end
+addonTable.GetSharedSounds   = function(force) return DynamicSuite:GetSharedSounds(force) end
+addonTable.GetSharedFonts    = function(force) return DynamicSuite:GetSharedFonts(force) end
+addonTable.ResolveSoundChoice = function(key, fb) return DynamicSuite:ResolveSoundChoice(key, fb) end
+addonTable.ResolveFontChoice  = function(key) return DynamicSuite:ResolveFontChoice(key) end
+
+--------------------------------------------------------------------------------
 -- Extensible Module Registration & Suite Reset Engine
 --------------------------------------------------------------------------------
 function addonTable.ResetDynamicSuite()
@@ -2655,8 +3080,8 @@ local BUILTIN_SEARCH_SEED = {
       keywords = "surface theme dark mode background midnight black obsidian slate steel smoked glass translucent backdrop" },
     { moduleKey = "STUDIO", category = "HUD_LOOK", tabIndex = "THEME_STUDIO", tabLabel = "Theme & Font Studio",
       title = "Suite Font Family",
-      desc = "Select the typography family applied across headers, lists, and HUD readouts (Expressway, Friz Quadrata, SharedMedia).",
-      keywords = "font family typeface text typography expressway friz quadrata arialn morpheus skurri sharedmedia" },
+      desc = "Select the typography family applied across headers, lists, and HUD readouts (Built-in, Blizzard, LibSharedMedia, DBM, ElvUI, WeakAuras).",
+      keywords = "font family typeface text typography expressway friz quadrata arialn morpheus skurri sharedmedia dbm elvui weakauras addons search" },
     { moduleKey = "STUDIO", category = "HUD_LOOK", tabIndex = "THEME_STUDIO", tabLabel = "Theme & Font Studio",
       title = "Sync Font & Palette with Installed UI",
       desc = "Automatically inherit typography and accent colours from EllesmereUI, ElvUI, or LibSharedMedia.",
@@ -3408,28 +3833,28 @@ local BUILTIN_SEARCH_SEED = {
       keywords = "chat message timestamps clock time hour minute" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Chat Notification Sounds",
-      desc = "Master switch for per-channel custom chat sound effects across Whispers, Guild, Party, Raid, and Say/Yell (10 built-in chimes).",
-      keywords = "chat notification sounds sound alerts audio cue ping chime bell whisper guild party raid say mute" },
+      desc = "Master switch for per-channel custom chat sound effects across Whispers, Guild, Party, Raid, and Say/Yell (10 built-in EXBOSS chimes, Blizzard Raid Warning, and SharedMedia/DBM/BigWigs/WeakAuras).",
+      keywords = "chat notification sounds sound alerts audio cue ping chime bell whisper guild party raid say mute blizzard raid warning sharedmedia dbm bigwigs weakauras elvui exboss" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Mute Sounds in Combat",
       desc = "Silence incoming chat notification sounds during boss encounters and combat lockdown.",
       keywords = "mute sounds in combat boss encounter lockdown silence chat notification" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Whisper & Battle.net Whisper",
-      desc = "Select and preview the notification sound for incoming character and Battle.net whispers (Whisper Bell by default).",
-      keywords = "whisper battle.net bnet realid tell chat notification sound bell chime play" },
+      desc = "Select and preview the notification sound for incoming character and Battle.net whispers (EX Crystal Bell by default).",
+      keywords = "whisper battle.net bnet realid tell chat notification sound bell crystal chime blizzard raid warning play" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Guild & Officer Chat",
-      desc = "Select and preview the notification sound for incoming Guild and Officer chat messages (Soft Chime by default).",
-      keywords = "guild officer chat notification sound chime play" },
+      desc = "Select and preview the notification sound for incoming Guild and Officer chat messages (EX Phase Chime by default).",
+      keywords = "guild officer chat notification sound chime phase play" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Party & Instance Chat",
-      desc = "Select and preview the notification sound for Party, Party Leader, and LFD/LFR/Battleground Instance chat (Crystal Ping by default).",
-      keywords = "party leader instance dungeon battleground chat notification sound crystal ping play" },
+      desc = "Select and preview the notification sound for Party, Party Leader, and LFD/LFR/Battleground Instance chat (EX Alert Ping by default).",
+      keywords = "party leader instance dungeon battleground chat notification sound alert ping play" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Raid & Raid Warning",
-      desc = "Select and preview the notification sound for Raid, Raid Leader, and Raid Warning alerts (Sonar Pulse by default).",
-      keywords = "raid leader warning chat notification sound sonar pulse play" },
+      desc = "Select and preview the notification sound for Raid, Raid Leader, and Raid Warning alerts (EX Sonar Lock by default).",
+      keywords = "raid leader warning chat notification sound sonar lock blizzard raid warning play" },
     { moduleKey = "chat", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Sound Alerts",
       title = "Say & Yell",
       desc = "Select and preview an optional notification sound for nearby Say and Yell chat (None by default to prevent city spam).",
@@ -3992,6 +4417,7 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "PLAYER_LOGIN" then
         InvalidateConflictCache()
         EnsureSuiteGlobal()
+        DynamicSuite:ScanExternalMedia(true)
         SnapshotAllSuiteCVars()
         EnforceProtectedSuiteModules()
         EnforceStandaloneDynamicMarkerExclusion(false)
@@ -4019,5 +4445,14 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
             end
         end)
         C_Timer.After(1.0, EnsureHubWindowHooks)
+        C_Timer.After(1.5, function()
+            DynamicSuite:ScanExternalMedia(true)
+            if addonTable.UI and type(addonTable.UI.RefreshAllFonts) == "function" then
+                pcall(addonTable.UI.RefreshAllFonts, true)
+            end
+            if _G.DynamicChat and type(_G.DynamicChat.ApplySleekChatSkin) == "function" then
+                pcall(_G.DynamicChat.ApplySleekChatSkin, _G.DynamicChat)
+            end
+        end)
     end
 end)

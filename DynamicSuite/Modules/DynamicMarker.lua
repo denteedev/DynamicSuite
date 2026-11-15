@@ -443,6 +443,8 @@ local SUITE_GLOBAL_DEFAULTS = {
         y        = 0,
     },
     theme           = "GOLD",
+    fontKey         = "EXPRESSWAY",
+    fontFamily      = "EXPRESSWAY",
     fontScale       = 1.0,
     fontOutline     = "",
     guidedSetupDone = false,
@@ -1382,19 +1384,282 @@ function DM:ApplyBackdrop(frame, bgColor, borderColor, edgePixels)
     frame:SetBackdropBorderColor(bd.r, bd.g, bd.b, bd.a or 1)
 end
 
+local dmFontProbeFS = nil
+local dmFontProbeCache = {}
+local dmStyledFontStrings = setmetatable({}, { __mode = "k" })
+local dmStandaloneFonts = { scanned = false, options = {}, byKey = {} }
+
+local function CanSetDMFontPath(path)
+    if type(path) ~= "string" or path == "" then return false end
+    if dmFontProbeCache[path] ~= nil then return dmFontProbeCache[path] end
+    if not dmFontProbeFS and UIParent and UIParent.CreateFontString then
+        dmFontProbeFS = UIParent:CreateFontString(nil, "BACKGROUND")
+        dmFontProbeFS:Hide()
+    end
+    if not dmFontProbeFS then return false end
+    local ok, applied = pcall(dmFontProbeFS.SetFont, dmFontProbeFS, path, 12, "")
+    local fetched = ok and dmFontProbeFS:GetFont() or nil
+    local valid = (ok and applied ~= false and fetched ~= nil)
+    dmFontProbeCache[path] = valid
+    return valid
+end
+
+function DM:ScanStandaloneFonts(force)
+    if dmStandaloneFonts.scanned and not force then
+        return dmStandaloneFonts
+    end
+
+    local builtinList = {
+        { value = "EXPRESSWAY",      label = "Expressway",          path = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Expressway.ttf" },
+        { value = "EXPRESSWAY_BOLD", label = "Expressway Bold",     path = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Expressway Bold.ttf" },
+        { value = "EXPRESSWAY_CAPS", label = "Expressway CAPS",     path = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Expressway CAPS.ttf" },
+        { value = "POPPINS",         label = "Poppins",             path = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Poppins.ttf" },
+        { value = "FIRA_SANS",       label = "Fira Sans",           path = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\FiraSans Medium.ttf" },
+        { value = "UBUNTU",          label = "Ubuntu",              path = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Ubuntu.ttf" },
+    }
+    local blizzardList = {
+        { value = "FRIZ_QUADRATA", label = "Friz Quadrata",           path = "Fonts\\FRIZQT__.TTF" },
+        { value = "MODERN_SANS",   label = "2002",                    path = "Fonts\\2002.TTF" },
+        { value = "BLIZZ_2002B",   label = "2002 Bold",               path = "Fonts\\2002B.TTF" },
+        { value = "BLIZZ_ARIALN",  label = "Arial Narrow (Blizzard)", path = "Fonts\\ARIALN.TTF" },
+        { value = "RPG_SERIF",     label = "Morpheus",                path = "Fonts\\MORPHEUS.TTF" },
+        { value = "BLIZZ_SKURRI",  label = "Skurri",                  path = "Fonts\\SKURRI.TTF" },
+    }
+
+    local byKey = {}
+    local seenPaths = {}
+    local seenNames = {}
+    local opts = {}
+
+    local validBuiltin = {}
+    for _, item in ipairs(builtinList) do
+        if CanSetDMFontPath(item.path) then
+            item.fontPath = item.path
+            byKey[item.value] = item
+            byKey[item.label] = item
+            seenPaths[item.path:lower():gsub("/", "\\")] = true
+            seenNames[item.label:lower()] = true
+            table.insert(validBuiltin, item)
+        end
+    end
+    if #validBuiltin > 0 then
+        table.insert(opts, { isHeader = true, label = "BUILT-IN FONTS" })
+        for _, item in ipairs(validBuiltin) do
+            table.insert(opts, item)
+        end
+    end
+
+    local validBlizz = {}
+    for _, item in ipairs(blizzardList) do
+        if CanSetDMFontPath(item.path) then
+            item.fontPath = item.path
+            byKey[item.value] = item
+            byKey[item.label] = item
+            seenPaths[item.path:lower():gsub("/", "\\")] = true
+            seenNames[item.label:lower()] = true
+            table.insert(validBlizz, item)
+        end
+    end
+    if #validBlizz > 0 then
+        table.insert(opts, { isHeader = true, label = "BLIZZARD" })
+        for _, item in ipairs(validBlizz) do
+            table.insert(opts, item)
+        end
+    end
+
+    local extItems = {}
+    local function TryAddExternalFont(prefix, rawName, rawPath, srcTag)
+        if type(rawName) ~= "string" or type(rawPath) ~= "string" or rawName == "" or rawPath == "" then return end
+        local cleanName = rawName:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if cleanName == "" or not CanSetDMFontPath(rawPath) then return end
+        local normP = rawPath:lower():gsub("/", "\\")
+        local normN = cleanName:lower()
+        if seenPaths[normP] or seenNames[normN] then return end
+        seenPaths[normP] = true
+        seenNames[normN] = true
+        local key = prefix .. ":" .. cleanName
+        local entry = {
+            value    = key,
+            label    = srcTag and (cleanName .. " (" .. srcTag .. ")") or cleanName,
+            name     = cleanName,
+            path     = rawPath,
+            fontPath = rawPath,
+            source   = srcTag or "SharedMedia",
+        }
+        byKey[key] = entry
+        byKey[cleanName] = entry
+        table.insert(extItems, entry)
+    end
+
+    local LSM = _G.LibStub and _G.LibStub("LibSharedMedia-3.0", true)
+    if LSM then
+        if type(LSM.HashTable) == "function" then
+            local okH, hTbl = pcall(LSM.HashTable, LSM, "font")
+            if okH and type(hTbl) == "table" then
+                for kName, kPath in pairs(hTbl) do
+                    TryAddExternalFont("LSM", kName, kPath, "SharedMedia")
+                end
+            end
+        end
+        if type(LSM.List) == "function" and type(LSM.Fetch) == "function" then
+            local okL, listTbl = pcall(LSM.List, LSM, "font")
+            if okL and type(listTbl) == "table" then
+                for _, lName in ipairs(listTbl) do
+                    local okF, fPath = pcall(LSM.Fetch, LSM, "font", lName, true)
+                    if okF and fPath then
+                        TryAddExternalFont("LSM", lName, fPath, "SharedMedia")
+                    end
+                end
+            end
+        end
+    end
+
+    local function ScanAddonFontTable(tbl, prefix, srcTag)
+        if type(tbl) ~= "table" then return end
+        for k, v in pairs(tbl) do
+            if type(v) == "table" then
+                local nm = v.text or v.name or v.label or (type(k) == "string" and k) or nil
+                local fp = v.path or v.font or v.value
+                TryAddExternalFont(prefix, nm and tostring(nm) or nil, fp, srcTag)
+            elseif type(k) == "string" and type(v) == "string" and v:find("[\\/]") then
+                TryAddExternalFont(prefix, k, v, srcTag)
+            elseif type(v) == "string" and type(k) == "string" and k:find("[\\/]") then
+                TryAddExternalFont(prefix, v, k, srcTag)
+            end
+        end
+    end
+
+    if type(_G.DBM) == "table" then
+        ScanAddonFontTable(_G.DBM.Fonts, "DBM", "DBM")
+        ScanAddonFontTable(_G.DBM.Font, "DBM", "DBM")
+    end
+    if type(_G.WeakAuras) == "table" then
+        ScanAddonFontTable(_G.WeakAuras.fonts or _G.WeakAuras.Fonts, "WA", "WeakAuras")
+    end
+    if type(_G.ElvUI) == "table" and _G.ElvUI[1] then
+        local E = _G.ElvUI[1]
+        if E.Media and type(E.Media.Fonts) == "table" then
+            ScanAddonFontTable(E.Media.Fonts, "ELV", "ElvUI")
+        end
+    end
+
+    if #extItems > 0 then
+        table.sort(extItems, function(a, b) return (a.name or a.label):lower() < (b.name or b.label):lower() end)
+        table.insert(opts, { isHeader = true, label = "SHAREDMEDIA / ADDONS" })
+        for _, item in ipairs(extItems) do
+            table.insert(opts, item)
+        end
+    end
+
+    dmStandaloneFonts.options = opts
+    dmStandaloneFonts.byKey = byKey
+    dmStandaloneFonts.scanned = true
+    return dmStandaloneFonts
+end
+
+function DM:GetAvailableFonts(force)
+    local sharedUI = _G.DynamicSuite and _G.DynamicSuite.UI
+    if sharedUI and type(sharedUI.BuildFontDropdownOptions) == "function" then
+        local rawOpts = sharedUI.BuildFontDropdownOptions(force)
+        local out = {}
+        for _, opt in ipairs(rawOpts or {}) do
+            if opt.isHeader then
+                table.insert(out, { isHeader = true, label = opt.label })
+            elseif opt.value then
+                local fPath = (type(sharedUI.GetFont) == "function" and sharedUI.GetFont(opt.fontKey or opt.value)) or nil
+                table.insert(out, {
+                    value    = opt.value,
+                    label    = opt.label,
+                    fontPath = fPath,
+                })
+            end
+        end
+        return out
+    end
+    local reg = self:ScanStandaloneFonts(force)
+    return reg.options
+end
+
+function DM:GetActiveFontKeySafe()
+    local sharedUI = _G.DynamicSuite and _G.DynamicSuite.UI
+    if sharedUI and type(sharedUI.GetActiveFontKey) == "function" then
+        return sharedUI.GetActiveFontKey()
+    end
+    local g = self.suiteGlobal or {}
+    local key = g.fontKey or g.fontFamily or "EXPRESSWAY"
+    local reg = self:ScanStandaloneFonts(false)
+    local hit = reg.byKey[key]
+    if not hit and type(key) == "string" then
+        local stripped = key:gsub("^LSM:", ""):gsub("^DBM:", ""):gsub("^BW:", ""):gsub("^WA:", ""):gsub("^ELV:", "")
+        hit = reg.byKey[stripped]
+    end
+    if hit and CanSetDMFontPath(hit.path) then
+        return hit.value
+    end
+    if reg.byKey["EXPRESSWAY"] and CanSetDMFontPath(reg.byKey["EXPRESSWAY"].path) then
+        return "EXPRESSWAY"
+    end
+    return "FRIZ_QUADRATA"
+end
+
+function DM:ResolveStandaloneFontPath(fontKeyOverride)
+    local sharedUI = _G.DynamicSuite and _G.DynamicSuite.UI
+    if sharedUI and type(sharedUI.GetFont) == "function" then
+        local p = sharedUI.GetFont(fontKeyOverride)
+        if p then return p end
+    end
+    local key = fontKeyOverride or (self.suiteGlobal and (self.suiteGlobal.fontKey or self.suiteGlobal.fontFamily)) or "EXPRESSWAY"
+    local reg = self:ScanStandaloneFonts(false)
+    local hit = reg.byKey[key]
+    if not hit and type(key) == "string" then
+        local stripped = key:gsub("^LSM:", ""):gsub("^DBM:", ""):gsub("^BW:", ""):gsub("^WA:", ""):gsub("^ELV:", "")
+        hit = reg.byKey[stripped]
+    end
+    if hit and CanSetDMFontPath(hit.path) then
+        return hit.path
+    end
+    local bundledExpressway = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Expressway.ttf"
+    if CanSetDMFontPath(bundledExpressway) then
+        return bundledExpressway
+    end
+    return STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
+end
+
+function DM:ApplyAllStandaloneFonts()
+    local fontPath = self:ResolveStandaloneFontPath()
+    local scale = (self.suiteGlobal and self.suiteGlobal.fontScale) or 1.0
+    local defaultOutline = (self.suiteGlobal and self.suiteGlobal.fontOutline) or ""
+    for fs in pairs(dmStyledFontStrings) do
+        if fs and fs.SetFont and not fs._dmIsDropdownPreview then
+            local baseSize = fs._dmFontBaseSize or 12
+            local outline = fs._dmFontFlags
+            if outline == nil then outline = defaultOutline end
+            local finalSize = math.max(9, math.floor(baseSize * scale + 0.5))
+            local ok, applied = pcall(fs.SetFont, fs, fontPath, finalSize, outline)
+            if not ok or applied == false or not fs:GetFont() then
+                pcall(fs.SetFont, fs, "Fonts\\FRIZQT__.TTF", finalSize, outline)
+            end
+        end
+    end
+end
+
 function DM:StyleFont(fs, size, flags, colorTable)
     if not fs then return end
-    local sharedUI = _G.DynamicSuite and _G.DynamicSuite.UI
-    local fontPath = (sharedUI and type(sharedUI.GetFont) == "function" and sharedUI.GetFont()) or STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
+    fs._dmFontBaseSize = size or fs._dmFontBaseSize or 12
+    fs._dmFontFlags = flags
+    if not fs._dmIsDropdownPreview then
+        dmStyledFontStrings[fs] = true
+    end
+    local fontPath = (fs._dmCustomFontPath and CanSetDMFontPath(fs._dmCustomFontPath) and fs._dmCustomFontPath) or self:ResolveStandaloneFontPath()
     local scale = (self.suiteGlobal and self.suiteGlobal.fontScale) or 1.0
     local outline = flags
     if outline == nil then
         outline = (self.suiteGlobal and self.suiteGlobal.fontOutline) or ""
     end
     local finalSize = math.max(9, math.floor((size or 12) * scale + 0.5))
-    local ok = fs:SetFont(fontPath, finalSize, outline)
-    if not ok then
-        fs:SetFont("Fonts\\FRIZQT__.TTF", finalSize, outline)
+    local ok, applied = pcall(fs.SetFont, fs, fontPath, finalSize, outline)
+    if not ok or applied == false or not fs:GetFont() then
+        pcall(fs.SetFont, fs, "Fonts\\FRIZQT__.TTF", finalSize, outline)
     end
     fs:SetShadowColor(0, 0, 0, 0.6)
     fs:SetShadowOffset(1, -1)
@@ -1535,7 +1800,7 @@ function DM:CloseDropdownMenu()
     end
 end
 
-function DM:CreateDropdown(parent, width, options, getter, setter)
+function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
     local dd = CreateFrame("Button", nil, parent, "BackdropTemplate")
     dd:SetSize(width or 240, 26)
     self:ApplyBackdrop(dd, COLORS.BgElevated, COLORS.BorderStrong)
@@ -1553,11 +1818,16 @@ function DM:CreateDropdown(parent, width, options, getter, setter)
     dd.Chevron:SetTexture(ICON_CHEVRON_DOWN)
     dd.Chevron:SetVertexColor(COLORS.TextSilver.r, COLORS.TextSilver.g, COLORS.TextSilver.b, 0.95)
 
+    function dd:SetOptions(newOpts)
+        options = newOpts or {}
+        self:RefreshValue()
+    end
+
     function dd:RefreshValue()
         local val = getter()
         local foundLabel = StripOptionPrefix(tostring(val))
-        for _, opt in ipairs(options) do
-            if opt.value == val then
+        for _, opt in ipairs(options or {}) do
+            if not opt.isHeader and not opt.isEmptyNotice and opt.value == val then
                 foundLabel = StripOptionPrefix(opt.label)
                 break
             end
@@ -1587,12 +1857,98 @@ function DM:CreateDropdown(parent, width, options, getter, setter)
     end)
 
     dd:SetScript("OnClick", function(s)
+        if onBeforeOpen then
+            local updated = onBeforeOpen(s)
+            if type(updated) == "table" then
+                options = updated
+            end
+        end
+
         if not activeDropdownMenu then
             activeDropdownMenu = CreateFrame("Frame", "DynamicMarkerDropdownPopover", UIParent, "BackdropTemplate")
             activeDropdownMenu:SetFrameStrata("TOOLTIP")
             activeDropdownMenu:SetFrameLevel(220)
+            activeDropdownMenu:SetToplevel(true)
+            activeDropdownMenu:SetClampedToScreen(true)
             activeDropdownMenu:EnableMouse(true)
             activeDropdownMenu.rows = {}
+
+            local searchWrap = CreateFrame("Frame", nil, activeDropdownMenu, "BackdropTemplate")
+            searchWrap:SetHeight(24)
+            searchWrap:SetPoint("TOPLEFT", activeDropdownMenu, "TOPLEFT", 6, -5)
+            searchWrap:SetPoint("TOPRIGHT", activeDropdownMenu, "TOPRIGHT", -6, -5)
+            searchWrap:SetFrameLevel(224)
+            DM:ApplyBackdrop(searchWrap, { r = 0.035, g = 0.042, b = 0.060, a = 0.98 }, COLORS.BorderStrong)
+            activeDropdownMenu.searchWrap = searchWrap
+
+            local sb = CreateFrame("EditBox", nil, searchWrap)
+            sb:SetFrameLevel(225)
+            sb:SetPoint("TOPLEFT", searchWrap, "TOPLEFT", 8, -2)
+            sb:SetPoint("BOTTOMRIGHT", searchWrap, "BOTTOMRIGHT", -24, 2)
+            sb:SetAutoFocus(false)
+            sb:SetMaxLetters(64)
+            DM:StyleFont(sb, 11, "", COLORS.TextPrimary)
+            activeDropdownMenu.searchBox = sb
+
+            local ph = searchWrap:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            ph:SetPoint("LEFT", sb, "LEFT", 0, 0)
+            DM:StyleFont(ph, 11, "", COLORS.TextMuted)
+            ph:SetText("Search...")
+            activeDropdownMenu.searchPlaceholder = ph
+
+            local clrBtn = CreateFrame("Button", nil, searchWrap)
+            clrBtn:SetSize(18, 18)
+            clrBtn:SetPoint("RIGHT", searchWrap, "RIGHT", -3, 0)
+            clrBtn:SetFrameLevel(226)
+            local clrTxt = clrBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            clrTxt:SetPoint("CENTER", 0, 0)
+            DM:StyleFont(clrTxt, 10, "", COLORS.TextSilver)
+            clrTxt:SetText("X")
+            clrBtn.txt = clrTxt
+            clrBtn:Hide()
+            clrBtn:SetScript("OnClick", function()
+                sb:SetText("")
+                sb:ClearFocus()
+            end)
+            activeDropdownMenu.searchClear = clrBtn
+
+            sb:SetScript("OnEscapePressed", function()
+                activeDropdownMenu:Hide()
+            end)
+
+            local sf = CreateFrame("ScrollFrame", nil, activeDropdownMenu)
+            sf:SetFrameLevel(222)
+            sf:SetClipsChildren(true)
+            sf:EnableMouseWheel(true)
+            activeDropdownMenu.scrollFrame = sf
+
+            local sc = CreateFrame("Frame", nil, sf)
+            sc:SetFrameLevel(223)
+            sc:SetSize(240, 100)
+            sf:SetScrollChild(sc)
+            activeDropdownMenu.scrollChild = sc
+
+            local sbTrack = activeDropdownMenu:CreateTexture(nil, "ARTWORK")
+            sbTrack:SetWidth(4)
+            sbTrack:SetColorTexture(1, 1, 1, 0.06)
+            activeDropdownMenu.sbTrack = sbTrack
+
+            local sbThumb = activeDropdownMenu:CreateTexture(nil, "OVERLAY")
+            sbThumb:SetSize(4, 32)
+            sbThumb:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+            activeDropdownMenu.sbThumb = sbThumb
+
+            sf:SetScript("OnMouseWheel", function(sFrame, delta)
+                local maxScroll = math.max(0, sc:GetHeight() - sFrame:GetHeight())
+                local nextVal = math.max(0, math.min(maxScroll, sFrame:GetVerticalScroll() - (delta * 26)))
+                sFrame:SetVerticalScroll(nextVal)
+                if maxScroll > 0 then
+                    local thumbH = sbThumb:GetHeight() or 32
+                    local trackH = math.max(10, sbTrack:GetHeight() - thumbH)
+                    sbThumb:ClearAllPoints()
+                    sbThumb:SetPoint("TOP", sbTrack, "TOP", 0, -(nextVal / maxScroll) * trackH)
+                end
+            end)
 
             local catcher = CreateFrame("Button", nil, activeDropdownMenu)
             catcher:SetAllPoints(UIParent)
@@ -1605,6 +1961,7 @@ function DM:CreateDropdown(parent, width, options, getter, setter)
             activeDropdownMenu.clickCatcher = catcher
 
             activeDropdownMenu:SetScript("OnHide", function(menu)
+                if menu.searchBox then menu.searchBox:ClearFocus() end
                 if menu.owner and menu.owner.Chevron then
                     menu.owner.Chevron:SetTexture(ICON_CHEVRON_DOWN)
                 end
@@ -1618,75 +1975,217 @@ function DM:CreateDropdown(parent, width, options, getter, setter)
 
         local ar, ag, ab = DM:GetAccentColor()
         DM:ApplyBackdrop(activeDropdownMenu, COLORS.BgVoid, { r = ar, g = ag, b = ab, a = 0.70 })
+        if activeDropdownMenu.searchWrap then
+            DM:ApplyBackdrop(activeDropdownMenu.searchWrap, { r = 0.035, g = 0.042, b = 0.060, a = 0.98 }, { r = ar, g = ag, b = ab, a = 0.35 })
+        end
         activeDropdownMenu.owner = s
         s.Chevron:SetTexture(ICON_CHEVRON_UP)
 
-        for _, r in ipairs(activeDropdownMenu.rows) do
-            r:Hide()
-        end
+        local rawOpts = options or {}
+        local showSearch = (#rawOpts > 12)
+        local searchAreaH = showSearch and 28 or 0
+        local maxVisibleH = 264
+        activeDropdownMenu.searchWrap:SetShown(showSearch)
 
-        local curVal = getter()
-        local rowHeight = 26
         local maxOptionWidth = 0
-
-        for i, opt in ipairs(options) do
-            local row = activeDropdownMenu.rows[i]
-            if not row then
-                row = CreateFrame("Button", nil, activeDropdownMenu, "BackdropTemplate")
-                row.Check = row:CreateTexture(nil, "OVERLAY")
-                row.Check:SetSize(12, 12)
-                row.Check:SetPoint("LEFT", row, "LEFT", 10, 0)
-                row.Check:SetTexture(ICON_CHECK_PATH)
-
-                row.Text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                row.Text:SetPoint("LEFT", row, "LEFT", 28, 0)
-                row.Text:SetPoint("RIGHT", row, "RIGHT", -10, 0)
-                row.Text:SetJustifyH("LEFT")
-                row.Text:SetWordWrap(false)
-                activeDropdownMenu.rows[i] = row
+        for _, opt in ipairs(rawOpts) do
+            if not opt.isHeader and not opt.isEmptyNotice then
+                local cleanL = StripOptionPrefix(opt.label or opt.value or "")
+                maxOptionWidth = math.max(maxOptionWidth, #cleanL * 6.8)
             end
-
-            local cleanLabel = StripOptionPrefix(opt.label)
-            local isSelected = (opt.value == curVal)
-            DM:StyleFont(row.Text, 12, "", isSelected and { r = ar, g = ag, b = ab, a = 1 } or COLORS.TextPrimary)
-            row.Text:SetText(cleanLabel)
-
-            local strW = (row.Text.GetUnboundedStringWidth and row.Text:GetUnboundedStringWidth()) or row.Text:GetStringWidth() or (#cleanLabel * 7)
-            if strW > maxOptionWidth then
-                maxOptionWidth = strW
-            end
-
-            if isSelected then
-                row.Check:SetVertexColor(ar, ag, ab, 1.0)
-                row.Check:Show()
-            else
-                row.Check:Hide()
-            end
-
-            row:SetHeight(rowHeight)
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", activeDropdownMenu, "TOPLEFT", 2, -2 - (i - 1) * rowHeight)
-            row:SetPoint("TOPRIGHT", activeDropdownMenu, "TOPRIGHT", -2, -2 - (i - 1) * rowHeight)
-            DM:ApplyBackdrop(row, isSelected and COLORS.BgElevated or COLORS.BgVoid, { r = 0, g = 0, b = 0, a = 0 })
-
-            row:SetScript("OnEnter", function(rBtn)
-                DM:ApplyBackdrop(rBtn, COLORS.BgHover, { r = 0, g = 0, b = 0, a = 0 })
-            end)
-            row:SetScript("OnLeave", function(rBtn)
-                DM:ApplyBackdrop(rBtn, isSelected and COLORS.BgElevated or COLORS.BgVoid, { r = 0, g = 0, b = 0, a = 0 })
-            end)
-            row:SetScript("OnClick", function()
-                activeDropdownMenu:Hide()
-                setter(opt.value)
-                s:RefreshValue()
-            end)
-            row:Show()
         end
 
-        local menuWidth = math.max(s:GetWidth(), math.ceil(maxOptionWidth + 44))
+        local function RenderDMOptions(query)
+            local qLower = tostring(query or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+            if activeDropdownMenu.searchPlaceholder then
+                activeDropdownMenu.searchPlaceholder:SetShown(qLower == "" and not activeDropdownMenu.searchBox:HasFocus())
+            end
+            if activeDropdownMenu.searchClear then
+                activeDropdownMenu.searchClear:SetShown(qLower ~= "")
+            end
+
+            local filtered = {}
+            if qLower == "" then
+                filtered = rawOpts
+            else
+                local pendingHdr = nil
+                for _, opt in ipairs(rawOpts) do
+                    if opt.isHeader then
+                        pendingHdr = opt
+                    elseif not opt.isEmptyNotice then
+                        local cleanL = StripOptionPrefix(opt.label or opt.value or "")
+                        local vStr = tostring(opt.value or "")
+                        if cleanL:lower():find(qLower, 1, true) or vStr:lower():find(qLower, 1, true) then
+                            if pendingHdr then
+                                table.insert(filtered, pendingHdr)
+                                pendingHdr = nil
+                            end
+                            table.insert(filtered, opt)
+                        end
+                    end
+                end
+                if #filtered == 0 then
+                    table.insert(filtered, { isEmptyNotice = true, label = "No matching options" })
+                end
+            end
+
+            for _, r in ipairs(activeDropdownMenu.rows) do
+                r:Hide()
+            end
+
+            local curVal = getter()
+            local yOff = 0
+            for i, opt in ipairs(filtered) do
+                local row = activeDropdownMenu.rows[i]
+                if not row then
+                    row = CreateFrame("Button", nil, activeDropdownMenu.scrollChild, "BackdropTemplate")
+                    row:SetFrameLevel(225)
+                    row.HdrLine = row:CreateTexture(nil, "ARTWORK")
+                    row.HdrLine:SetHeight(1)
+                    row.HdrLine:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 6, 1)
+                    row.HdrLine:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -6, 1)
+                    row.HdrLine:Hide()
+
+                    row.Check = row:CreateTexture(nil, "OVERLAY")
+                    row.Check:SetSize(12, 12)
+                    row.Check:SetPoint("LEFT", row, "LEFT", 10, 0)
+                    row.Check:SetTexture(ICON_CHECK_PATH)
+
+                    row.Text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    row.Text._dmIsDropdownPreview = true
+                    row.Text:SetPoint("LEFT", row, "LEFT", 28, 0)
+                    row.Text:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+                    row.Text:SetJustifyH("LEFT")
+                    row.Text:SetWordWrap(false)
+                    activeDropdownMenu.rows[i] = row
+                end
+
+                local rH = opt.isHeader and 20 or 26
+                row:SetHeight(rH)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", activeDropdownMenu.scrollChild, "TOPLEFT", 0, -yOff)
+                row:SetPoint("TOPRIGHT", activeDropdownMenu.scrollChild, "TOPRIGHT", 0, -yOff)
+                yOff = yOff + rH
+
+                if opt.isHeader then
+                    row:Disable()
+                    row.Check:Hide()
+                    row.HdrLine:Show()
+                    row.HdrLine:SetColorTexture(ar, ag, ab, 0.42)
+                    row.Text:ClearAllPoints()
+                    row.Text:SetPoint("LEFT", row, "LEFT", 10, 0)
+                    row.Text:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+                    row.Text._dmCustomFontPath = nil
+                    DM:StyleFont(row.Text, 10, "", { r = ar, g = ag, b = ab, a = 0.95 })
+                    row.Text:SetText(tostring(opt.label or ""):upper())
+                    DM:ApplyBackdrop(row, { r = 0.082, g = 0.098, b = 0.137, a = 0.85 }, { r = 0, g = 0, b = 0, a = 0 })
+                    row:SetScript("OnEnter", nil)
+                    row:SetScript("OnLeave", nil)
+                    row:SetScript("OnClick", nil)
+                elseif opt.isEmptyNotice then
+                    row:Disable()
+                    row.Check:Hide()
+                    row.HdrLine:Hide()
+                    row.Text:ClearAllPoints()
+                    row.Text:SetPoint("LEFT", row, "LEFT", 12, 0)
+                    row.Text:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+                    row.Text._dmCustomFontPath = nil
+                    DM:StyleFont(row.Text, 11, "", COLORS.TextMuted)
+                    row.Text:SetText(tostring(opt.label or "No matching options"))
+                    DM:ApplyBackdrop(row, COLORS.BgVoid, { r = 0, g = 0, b = 0, a = 0 })
+                    row:SetScript("OnEnter", nil)
+                    row:SetScript("OnLeave", nil)
+                    row:SetScript("OnClick", nil)
+                else
+                    row:Enable()
+                    row.HdrLine:Hide()
+                    row.Text:ClearAllPoints()
+                    row.Text:SetPoint("LEFT", row, "LEFT", 28, 0)
+                    row.Text:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+
+                    local cleanLabel = StripOptionPrefix(opt.label)
+                    local isSelected = (opt.value == curVal)
+                    row.Text._dmCustomFontPath = opt.fontPath or opt.path
+                    DM:StyleFont(row.Text, 12, "", isSelected and { r = ar, g = ag, b = ab, a = 1 } or COLORS.TextPrimary)
+                    row.Text:SetText(cleanLabel)
+
+                    local strW = (row.Text.GetUnboundedStringWidth and row.Text:GetUnboundedStringWidth()) or row.Text:GetStringWidth() or (#cleanLabel * 7)
+                    if strW > maxOptionWidth then
+                        maxOptionWidth = strW
+                    end
+
+                    if isSelected then
+                        row.Check:SetVertexColor(ar, ag, ab, 1.0)
+                        row.Check:Show()
+                    else
+                        row.Check:Hide()
+                    end
+
+                    DM:ApplyBackdrop(row, isSelected and COLORS.BgElevated or COLORS.BgVoid, { r = 0, g = 0, b = 0, a = 0 })
+                    row:SetScript("OnEnter", function(rBtn)
+                        DM:ApplyBackdrop(rBtn, COLORS.BgHover, { r = 0, g = 0, b = 0, a = 0 })
+                    end)
+                    row:SetScript("OnLeave", function(rBtn)
+                        DM:ApplyBackdrop(rBtn, isSelected and COLORS.BgElevated or COLORS.BgVoid, { r = 0, g = 0, b = 0, a = 0 })
+                    end)
+                    row:SetScript("OnClick", function()
+                        activeDropdownMenu:Hide()
+                        setter(opt.value)
+                        s:RefreshValue()
+                    end)
+                end
+                row:Show()
+            end
+
+            local totalH = math.max(26, yOff)
+            local viewH = math.min(totalH, maxVisibleH)
+            local hasScroll = (totalH > viewH + 1)
+            local menuWidth = math.max(s:GetWidth(), math.ceil(maxOptionWidth + 52), 250)
+            local menuHeight = searchAreaH + viewH + 6
+            activeDropdownMenu:SetSize(menuWidth, menuHeight)
+
+            local topScrollOffset = 3 + searchAreaH
+            activeDropdownMenu.scrollFrame:ClearAllPoints()
+            activeDropdownMenu.scrollFrame:SetPoint("TOPLEFT", activeDropdownMenu, "TOPLEFT", 2, -topScrollOffset)
+            activeDropdownMenu.scrollFrame:SetPoint("BOTTOMRIGHT", activeDropdownMenu, "BOTTOMRIGHT", hasScroll and -10 or -2, 3)
+            activeDropdownMenu.scrollChild:SetSize(menuWidth - (hasScroll and 12 or 4), totalH)
+            activeDropdownMenu.scrollFrame:SetVerticalScroll(0)
+
+            activeDropdownMenu.sbTrack:ClearAllPoints()
+            activeDropdownMenu.sbTrack:SetPoint("TOPRIGHT", activeDropdownMenu, "TOPRIGHT", -3, -topScrollOffset)
+            activeDropdownMenu.sbTrack:SetPoint("BOTTOMRIGHT", activeDropdownMenu, "BOTTOMRIGHT", -3, 3)
+            activeDropdownMenu.sbTrack:SetShown(hasScroll)
+            activeDropdownMenu.sbThumb:SetShown(hasScroll)
+            if hasScroll then
+                local thumbH = math.max(18, math.floor(viewH * (viewH / totalH)))
+                activeDropdownMenu.sbThumb:SetSize(4, thumbH)
+                activeDropdownMenu.sbThumb:ClearAllPoints()
+                activeDropdownMenu.sbThumb:SetPoint("TOP", activeDropdownMenu.sbTrack, "TOP", 0, 0)
+            end
+        end
+
+        activeDropdownMenu.searchBox:SetScript("OnTextChanged", function(sbEdit)
+            if activeDropdownMenu:IsShown() and activeDropdownMenu.owner == s then
+                RenderDMOptions(sbEdit:GetText())
+            end
+        end)
+        activeDropdownMenu.searchBox:SetScript("OnEditFocusGained", function()
+            if activeDropdownMenu.searchPlaceholder then
+                activeDropdownMenu.searchPlaceholder:Hide()
+            end
+        end)
+        activeDropdownMenu.searchBox:SetScript("OnEditFocusLost", function(sbEdit)
+            if activeDropdownMenu.searchPlaceholder then
+                activeDropdownMenu.searchPlaceholder:SetShown((sbEdit:GetText() or "") == "")
+            end
+        end)
+
+        activeDropdownMenu.searchBox:SetText("")
+        activeDropdownMenu.searchBox:ClearFocus()
+        RenderDMOptions("")
+
         activeDropdownMenu:ClearAllPoints()
         activeDropdownMenu:SetPoint("TOPRIGHT", s, "BOTTOMRIGHT", 0, -2)
-        activeDropdownMenu:SetSize(menuWidth, #options * rowHeight + 4)
         activeDropdownMenu:Show()
     end)
 
@@ -8308,12 +8807,17 @@ function DM:ShowStudioModal(mode)
     for _, child in ipairs({ m.Body:GetChildren() }) do child:Hide() end
     if m.Body.textBlock then m.Body.textBlock:Hide() end
 
+    m:SetSize(560, 368)
     if mode == "THEME" then
+        m:SetSize(560, 408)
         m.Title:SetText("Theme & Font Studio (Account-Wide)")
+        self:StyleFont(m.Title, 14, "", COLORS.TextPrimary)
         local orderedKeys = { "GOLD", "CLASS", "CYAN", "CRIMSON", "OBSIDIAN" }
         local y = -6
         local themeBtns = {}
         local surfBtns = {}
+        local fontDd
+        local fontLbl
         local function RefreshThemeModalButtons()
             local curSurf, curSurfKey = GetStandaloneSurfaceColors(self)
             local curPanel = { r = curSurf.panel.r, g = curSurf.panel.g, b = curSurf.panel.b, a = 1.00 }
@@ -8329,6 +8833,12 @@ function DM:ShowStudioModal(mode)
                 m.SolidBg:SetColorTexture(curPanel.r, curPanel.g, curPanel.b, 1.00)
             end
             self:ApplyBackdrop(m, curPanel, self:GetAccentColorTable(0.95), 1)
+            self:ApplyAllStandaloneFonts()
+            if m.Title then self:StyleFont(m.Title, 14, "", COLORS.TextPrimary) end
+            if fontLbl then self:StyleFont(fontLbl, 11, "", COLORS.TextSilver) end
+            if fontDd and fontDd.RefreshValue then
+                fontDd:RefreshValue()
+            end
         end
         for _, key in ipairs(orderedKeys) do
             local preset = THEME_PRESETS[key]
@@ -8369,6 +8879,7 @@ function DM:ShowStudioModal(mode)
 
         local fSmall = self:CreateButton(m.Body, "Font Scale: 95%", 140, 28, function()
             self.suiteGlobal.fontScale = 0.95
+            self:ApplyAllStandaloneFonts()
             self:RefreshAll()
         end)
         fSmall:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -154)
@@ -8377,6 +8888,7 @@ function DM:ShowStudioModal(mode)
 
         local fNorm = self:CreateButton(m.Body, "Font Scale: 100%", 140, 28, function()
             self.suiteGlobal.fontScale = 1.00
+            self:ApplyAllStandaloneFonts()
             self:RefreshAll()
         end)
         fNorm:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -188)
@@ -8385,13 +8897,39 @@ function DM:ShowStudioModal(mode)
 
         local fLarge = self:CreateButton(m.Body, "Font Scale: 110%", 140, 28, function()
             self.suiteGlobal.fontScale = 1.10
+            self:ApplyAllStandaloneFonts()
             self:RefreshAll()
         end)
         fLarge:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -222)
         fLarge:SetFrameLevel(303)
         table.insert(m.Body._modeWidgets, fLarge)
 
+        fontLbl = m.Body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        fontLbl:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -260)
+        self:StyleFont(fontLbl, 11, "", COLORS.TextSilver)
+        fontLbl:SetText("Font Family (Built-in, Blizzard & SharedMedia)")
+        table.insert(m.Body._modeWidgets, fontLbl)
+
+        fontDd = self:CreateDropdown(
+            m.Body,
+            250,
+            self:GetAvailableFonts(true),
+            function() return self:GetActiveFontKeySafe() end,
+            function(val)
+                self.suiteGlobal.fontKey = val
+                self.suiteGlobal.fontFamily = val
+                self:ApplyAllStandaloneFonts()
+                RefreshThemeModalButtons()
+                self:RefreshAll()
+            end,
+            function() return self:GetAvailableFonts(true) end
+        )
+        fontDd:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -278)
+        fontDd:SetFrameLevel(303)
+        table.insert(m.Body._modeWidgets, fontDd)
+
     elseif mode == "SETUP" then
+        m:SetSize(560, 368)
         m.Title:SetText("DynamicMarker Guided Setup")
         local txt = m.Body.textBlock or m.Body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         m.Body.textBlock = txt
@@ -9975,6 +10513,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "15/11/2026",
     entries = {
+        { type = "FEATURE", text = "SharedMedia, AddOn & Blizzard Font Discovery in Theme Studio (15/11/2026): Added runtime scanning for LibSharedMedia-3.0, DBM, WeakAuras, and ElvUI fonts alongside Blizzard standard fonts and bundled Expressway fonts inside Theme & Font Studio. Grouped dropdown options under Built-in Fonts, Blizzard, and SharedMedia / AddOns with live search, scroll support, per-font preview rendering, and safe fallback to the default font if an external addon is disabled." },
         { type = "IMPROVED", text = "Unbound-by-Default World Flare Keybinds & Guided Setup Assignment (15/11/2026): Removed the hardcoded F4 and F5 World Flare default keybinds so fresh installs and Resets start with both keys 'Unbound' (leaving your own Blizzard and action bar bindings untouched while preserving any existing saved DynamicMarkerDB hotkeys), added optional single-button Cycle World Flare and Clear All Flares keybind capture rows to both Guided Setup and the World Flare Keys (/dm flares) tab ('Click to bind, Right-click to unbind'), and refined capture behaviour so Escape cancels without losing the current key while Backspace/Delete or Right-Click clears to Unbound." },
         { type = "IMPROVED", text = "Release v2.2.0 - Version & Storefront Lockstep Parity (15/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.2.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "FEATURE", text = "Release v2.1.1 - 3-Row HUD Edit Appearance Dock (560x110) & First-Click Mover Parity (15/11/2026): Upgraded standalone DynamicMarkerEditModeInspector into a unified 560x110 3-row draggable inspector dock adding Row 3 live Appearance controls: Opacity slider (20%-100%, step 5%, with SetIgnoreParentAlpha mover legibility), Accent | Dark | None Border Style pills synced 1:1 with Target Icon Bar and World Flare Bar sub-settings, Horiz | Vert Orientation toggle with instant screen-bounds re-clamping, and full Position/Scale/Opacity/Border/Orientation [Reset]. Ensured the HUD selector dropdown defaults to closed on entry and Target Icon / World Flare movers appear reliably on first HUD Edit activation." },
@@ -10448,6 +10987,13 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1)
 
         DM:RefreshAll()
         DM:RegisterSettingsCategory()
+        if C_Timer and type(C_Timer.After) == "function" then
+            C_Timer.After(1.5, function()
+                if not DM.db then return end
+                DM:ScanStandaloneFonts(true)
+                DM:ApplyAllStandaloneFonts()
+            end)
+        end
 
     elseif event == "CVAR_UPDATE" then
         if arg1 == "ActionButtonUseKeyDown" then
