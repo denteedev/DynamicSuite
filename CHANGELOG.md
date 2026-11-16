@@ -21,6 +21,11 @@
 - **One-Click `Copy From...` Zone Profile Action:** Added a compact `Copy From...` button on the `DynamicLoad` toolbar (Dark-Obsidian `#0B0D12` / Blaze Orange `#F97316`) so you can copy another zone's `By Zone` addon selections into the active zone tab in one click while preserving universal `Always` / `Never` locks and protected Suite Core rules.
 - **Persistent Parent Addon Tree Collapse State:** Normalised canonical parent collapse keys and preserved collapsed parent addon groups (such as `DBM`, `WeakAuras`, and `Details`) across `/reload` and logins with clear expand/collapse tooltips.
 
+### DynamicChat
+- **10-Chime DynamicSuite Sound Pack & Shared Registry:** Added 10 original 44.1 kHz Stereo Vorbis `.ogg` crystalline bell-pluck chimes (`Spark`, `Pulse`, `Duo`, `Cascade`, `Echo`, `Chime`, `Bloom`, `Dewdrop`, `Ripple`, `Prism`) registered in both `DynamicSuite_Core.lua` and `DynamicChat` Tab 3 dropdowns, and fixed `EnsureDB()` dropdown label persistence across tab switches and `/reload`.
+- **Name & Keyword Mention Alerts:** Added Tab 3 controls for automatic character-name detection, comma-separated custom keywords, dedicated Name/Keyword sound pickers, zero-taint accent-highlighted chat callouts, and an optional floating Alert Toast banner (all guarded against Retail 12.1.5 secret strings).
+- **Custom Sound File Manager & `/dc mute`:** Added a Tab 3 Custom Sound Files manager for registering `.ogg` and `.mp3` files (blocking `.wav` for Retail 12.1.5 compatibility) under a `CUSTOM SOUNDS` dropdown header, plus `/dc mute` (`/dchat mute`) to toggle chat notification sounds without losing saved chime selections.
+
 ---
 
 ## DynamicSuite & All 8 Modules v2.2.1 (16/11/2026)

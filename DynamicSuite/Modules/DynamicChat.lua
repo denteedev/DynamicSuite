@@ -302,28 +302,85 @@ local function IsBuiltInBlizzardSoundKey(key)
     return type(key) == "string" and BLIZZARD_SOUND_BY_KEY[key] ~= nil
 end
 
-local SOUND_BASE = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\"
-local BUILTIN_SUITE_CHIMES_LIST = {
-    { key = "DC_CHIME_SPARK",   short = "Spark",   label = "DynamicSuite: Spark (High Pluck)",     file = "DynamicChat_ChimeSpark.ogg" },
-    { key = "DC_KEYWORD_PULSE", short = "Pulse",   label = "DynamicSuite: Pulse (Warm Bell)",      file = "DynamicChat_KeywordPulse.ogg" },
-    { key = "DC_CHIME_DUO",     short = "Duo",     label = "DynamicSuite: Duo (Rising Fifth)",     file = "DynamicChat_ChimeDuo.ogg" },
-    { key = "DC_CHIME_CASCADE", short = "Cascade", label = "DynamicSuite: Cascade (Crystal Harp)", file = "DynamicChat_MentionWarm.ogg" },
-    { key = "DC_CHIME_ECHO",    short = "Echo",    label = "DynamicSuite: Echo (Glass Ping)",      file = "DynamicChat_ChimeEcho.ogg" },
-    { key = "DC_CHIME_FOURTH",  short = "Chime",   label = "DynamicSuite: Chime (Rising Fourth)",  file = "DynamicChat_ChimeFourth.ogg" },
-    { key = "DC_CHIME_BLOOM",   short = "Bloom",   label = "DynamicSuite: Bloom (Major Ninth)",    file = "DynamicChat_ChimeBloom.ogg" },
-    { key = "DC_CHIME_DEWDROP", short = "Dewdrop", label = "DynamicSuite: Dewdrop (Low Bell)",     file = "DynamicChat_ChimeDewdrop.ogg" },
-    { key = "DC_CHIME_RIPPLE",  short = "Ripple",  label = "DynamicSuite: Ripple (Grace Flick)",   file = "DynamicChat_ChimeRipple.ogg" },
-    { key = "DC_CHIME_PRISM",   short = "Prism",   label = "DynamicSuite: Prism (Falling Triad)",  file = "DynamicChat_ChimePrism.ogg" },
-}
-local BUILTIN_SUITE_CHIMES = {}
-for _, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
-    entry.path = SOUND_BASE .. entry.file
-    entry.value = entry.key
-    BUILTIN_SUITE_CHIMES[entry.key] = entry
+local SoundMgr = {}
+do
+    local soundBase = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\"
+    local chimesList = {
+        { key = "DC_CHIME_SPARK",   short = "Spark",   label = "DynamicSuite: Spark (High Pluck)",     file = "DynamicChat_ChimeSpark.ogg" },
+        { key = "DC_KEYWORD_PULSE", short = "Pulse",   label = "DynamicSuite: Pulse (Warm Bell)",      file = "DynamicChat_KeywordPulse.ogg" },
+        { key = "DC_CHIME_DUO",     short = "Duo",     label = "DynamicSuite: Duo (Rising Fifth)",     file = "DynamicChat_ChimeDuo.ogg" },
+        { key = "DC_CHIME_CASCADE", short = "Cascade", label = "DynamicSuite: Cascade (Crystal Harp)", file = "DynamicChat_MentionWarm.ogg" },
+        { key = "DC_CHIME_ECHO",    short = "Echo",    label = "DynamicSuite: Echo (Glass Ping)",      file = "DynamicChat_ChimeEcho.ogg" },
+        { key = "DC_CHIME_FOURTH",  short = "Chime",   label = "DynamicSuite: Chime (Rising Fourth)",  file = "DynamicChat_ChimeFourth.ogg" },
+        { key = "DC_CHIME_BLOOM",   short = "Bloom",   label = "DynamicSuite: Bloom (Major Ninth)",    file = "DynamicChat_ChimeBloom.ogg" },
+        { key = "DC_CHIME_DEWDROP", short = "Dewdrop", label = "DynamicSuite: Dewdrop (Low Bell)",     file = "DynamicChat_ChimeDewdrop.ogg" },
+        { key = "DC_CHIME_RIPPLE",  short = "Ripple",  label = "DynamicSuite: Ripple (Grace Flick)",   file = "DynamicChat_ChimeRipple.ogg" },
+        { key = "DC_CHIME_PRISM",   short = "Prism",   label = "DynamicSuite: Prism (Falling Triad)",  file = "DynamicChat_ChimePrism.ogg" },
+    }
+    local chimesMap = {}
+    for _, entry in ipairs(chimesList) do
+        entry.path = soundBase .. entry.file
+        entry.value = entry.key
+        chimesMap[entry.key] = entry
+    end
+    SoundMgr.chimesList = chimesList
+    SoundMgr.chimesMap = chimesMap
 end
 
 local function IsBuiltInSuiteChimeKey(key)
-    return type(key) == "string" and BUILTIN_SUITE_CHIMES[key] ~= nil
+    return type(key) == "string" and SoundMgr.chimesMap[key] ~= nil
+end
+
+function SoundMgr.IsValidCustomAudioPath(path)
+    if type(path) ~= "string" then return false end
+    local trimmed = path:gsub("^%s+", ""):gsub("%s+$", "")
+    if trimmed == "" then return false end
+    local low = trimmed:lower()
+    if low:match("%.wav$") then return false end
+    return (low:match("%.ogg$") ~= nil) or (low:match("%.mp3$") ~= nil)
+end
+
+function SoundMgr.IsCustomSoundKey(key)
+    return type(key) == "string" and key:sub(1, 7) == "CUSTOM:"
+end
+
+function SoundMgr.ResolveCustomSound(key)
+    if not SoundMgr.IsCustomSoundKey(key) then return nil end
+    local db = _G.DynamicChatDB
+    if type(db) ~= "table" or type(db.customSounds) ~= "table" then return nil end
+    for _, entry in ipairs(db.customSounds) do
+        if type(entry) == "table" and entry.id == key and SoundMgr.IsValidCustomAudioPath(entry.path) then
+            return {
+                value  = entry.id,
+                name   = entry.label or entry.id,
+                label  = entry.label or entry.id,
+                path   = entry.path,
+                source = "Custom",
+                group  = "CUSTOM",
+            }
+        end
+    end
+    return nil
+end
+
+function SoundMgr.IsValidSavedSoundKey(val)
+    if val == "NONE" or IsBuiltInBlizzardSoundKey(val) or IsBuiltInSuiteChimeKey(val) then
+        return true
+    end
+    if SoundMgr.ResolveCustomSound(val) ~= nil then
+        return true
+    end
+    if type(val) == "number" then
+        return true
+    end
+    if type(val) ~= "string" or val == "" then
+        return false
+    end
+    local isLegacyWavKey = (val:match("^ds_") ~= nil or val:match("^ex_") ~= nil or val:lower():match("%.wav$") ~= nil)
+    if isLegacyWavKey then return false end
+    return (val:find("^LSM:") ~= nil) or (val:find("^DBM:") ~= nil) or (val:find("^BW:") ~= nil)
+        or (val:find("^WA:") ~= nil) or (val:find("^ELV:") ~= nil) or (val:find("^EXBOSS:") ~= nil)
+        or (val:find("[\\/]") ~= nil)
 end
 
 local DEFAULTS = {
@@ -376,6 +433,13 @@ local DEFAULTS = {
         RAID    = "BLIZZ_RAID_WARNING", -- Covers CHAT_MSG_RAID, CHAT_MSG_RAID_LEADER, CHAT_MSG_RAID_WARNING
         SAY     = "NONE",               -- Covers CHAT_MSG_SAY & CHAT_MSG_YELL (Off by default so city crowd /say doesn't spam)
     },
+    enableMentionAlerts         = true,
+    mentionKeywords             = "",
+    mentionNameSound            = "DC_CHIME_CASCADE",
+    mentionKeywordSound         = "DC_KEYWORD_PULSE",
+    mentionHighlightInChat      = true,
+    mentionAlertToast           = true,
+    customSounds                = {},
 
     -- Tab 4: Links, Scrolling, Chat History & Performance
     clickableURLs               = true,
@@ -561,25 +625,52 @@ local function EnsureDB()
             _G.DynamicChatDB.channelSounds[legacyKey] = nil
         end
     end
+    if type(_G.DynamicChatDB.customSounds) ~= "table" then
+        _G.DynamicChatDB.customSounds = {}
+    else
+        local cleanCustom = {}
+        local seenCustom = {}
+        for _, entry in ipairs(_G.DynamicChatDB.customSounds) do
+            if type(entry) == "table" and type(entry.id) == "string" and entry.id ~= "" and SoundMgr.IsValidCustomAudioPath(entry.path) then
+                if not seenCustom[entry.id] then
+                    seenCustom[entry.id] = true
+                    cleanCustom[#cleanCustom + 1] = {
+                        id    = entry.id,
+                        label = (type(entry.label) == "string" and entry.label ~= "") and entry.label or entry.id,
+                        path  = entry.path,
+                    }
+                end
+            end
+        end
+        _G.DynamicChatDB.customSounds = cleanCustom
+    end
     for chKey, defVal in pairs(DEFAULTS.channelSounds) do
         local cur = _G.DynamicChatDB.channelSounds[chKey]
         if cur == "DC_MENTION_WARM" then
             cur = "DC_CHIME_CASCADE"
             _G.DynamicChatDB.channelSounds[chKey] = cur
         end
-        if type(cur) ~= "string" and type(cur) ~= "number" then
+        if not SoundMgr.IsValidSavedSoundKey(cur) then
             _G.DynamicChatDB.channelSounds[chKey] = defVal
-        elseif cur == "" then
-            _G.DynamicChatDB.channelSounds[chKey] = defVal
-        elseif cur ~= "NONE" and not IsBuiltInBlizzardSoundKey(cur) and not IsBuiltInSuiteChimeKey(cur) then
-            local s = tostring(cur)
-            local isLegacyWavKey = (type(cur) == "string") and (s:match("^ds_") ~= nil or s:match("^ex_") ~= nil or s:lower():match("%.wav$") ~= nil)
-            local validExternal = (not isLegacyWavKey) and (s:find("^LSM:") or s:find("^DBM:") or s:find("^BW:") or s:find("^WA:") or s:find("^ELV:") or s:find("^EXBOSS:") or s:find("[\\/]") or (type(cur) == "number"))
-            if not validExternal then
-                _G.DynamicChatDB.channelSounds[chKey] = defVal
-            end
         end
     end
+    if _G.DynamicChatDB.enableMentionAlerts == nil then
+        _G.DynamicChatDB.enableMentionAlerts = true
+    end
+    if type(_G.DynamicChatDB.mentionKeywords) ~= "string" then
+        _G.DynamicChatDB.mentionKeywords = ""
+    end
+    if _G.DynamicChatDB.mentionNameSound == "DC_MENTION_WARM" then
+        _G.DynamicChatDB.mentionNameSound = "DC_CHIME_CASCADE"
+    end
+    if not SoundMgr.IsValidSavedSoundKey(_G.DynamicChatDB.mentionNameSound) then
+        _G.DynamicChatDB.mentionNameSound = DEFAULTS.mentionNameSound
+    end
+    if not SoundMgr.IsValidSavedSoundKey(_G.DynamicChatDB.mentionKeywordSound) then
+        _G.DynamicChatDB.mentionKeywordSound = DEFAULTS.mentionKeywordSound
+    end
+    _G.DynamicChatDB.mentionHighlightInChat = (_G.DynamicChatDB.mentionHighlightInChat ~= false)
+    _G.DynamicChatDB.mentionAlertToast = (_G.DynamicChatDB.mentionAlertToast ~= false)
     return _G.DynamicChatDB
 end
 
@@ -6745,8 +6836,12 @@ local function ResolveChannelSound(soundKey)
         local fb = BLIZZARD_SOUND_BY_KEY["BLIZZARD_RAID_WARNING"] or BLIZZARD_SOUND_BY_KEY["BLIZZ_RAID_WARNING"] or BuildBlizzardChatSoundList()[1]
         return fb, true
     end
-    if BUILTIN_SUITE_CHIMES[soundKey] then
-        return BUILTIN_SUITE_CHIMES[soundKey], false
+    if SoundMgr.chimesMap[soundKey] then
+        return SoundMgr.chimesMap[soundKey], false
+    end
+    local customHit = SoundMgr.ResolveCustomSound(soundKey)
+    if customHit then
+        return customHit, false
     end
     if IsBuiltInBlizzardSoundKey(soundKey) then
         return BLIZZARD_SOUND_BY_KEY[soundKey], false
@@ -6779,12 +6874,26 @@ local function GetSoundOptionsForChannel(_)
     }
 
     table.insert(opts, { isHeader = true, label = "DYNAMICSUITE CHIMES" })
-    for _, chime in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
+    for _, chime in ipairs(SoundMgr.chimesList) do
         opts[#opts + 1] = {
             value = chime.key,
             label = chime.label,
             path  = chime.path,
         }
+    end
+
+    local customList = EnsureDB().customSounds
+    if type(customList) == "table" and #customList > 0 then
+        table.insert(opts, { isHeader = true, label = "CUSTOM SOUNDS" })
+        for _, cs in ipairs(customList) do
+            if type(cs) == "table" and cs.id and cs.path then
+                opts[#opts + 1] = {
+                    value = cs.id,
+                    label = cs.label or cs.id,
+                    path  = cs.path,
+                }
+            end
+        end
     end
 
     local reg = DynamicChat:ScanExternalSounds(true)
@@ -6815,10 +6924,43 @@ local function GetSoundOptionsForChannel(_)
     return opts
 end
 
+local function GetSoundSlotValue(slotKey)
+    local db = EnsureDB()
+    if slotKey == "MENTION_NAME" then
+        return db.mentionNameSound or DEFAULTS.mentionNameSound
+    elseif slotKey == "MENTION_KEYWORD" then
+        return db.mentionKeywordSound or DEFAULTS.mentionKeywordSound
+    end
+    local def = SOUND_CHANNEL_DEF_BY_KEY[slotKey]
+    local chSounds = db.channelSounds or DEFAULTS.channelSounds
+    return chSounds[slotKey] or (def and def.defaultVal) or "NONE"
+end
+
+local function SetSoundSlotValue(slotKey, val)
+    local curDB = EnsureDB()
+    if slotKey == "MENTION_NAME" then
+        curDB.mentionNameSound = val
+    elseif slotKey == "MENTION_KEYWORD" then
+        curDB.mentionKeywordSound = val
+    else
+        curDB.channelSounds = curDB.channelSounds or {}
+        curDB.channelSounds[slotKey] = val
+        if slotKey == "WHISPER" then
+            DynamicChat:ApplyWhisperDefaultSoundMuteState()
+        end
+    end
+end
+
+local function GetSoundSlotTitle(slotKey)
+    if slotKey == "MENTION_NAME" then return "Name Mention Sound" end
+    if slotKey == "MENTION_KEYWORD" then return "Keyword Trigger Sound" end
+    local def = SOUND_CHANNEL_DEF_BY_KEY[slotKey]
+    return (def and def.title) or "Channel Sound"
+end
+
 local function GetSoundOptionLabel(channelKey, val)
-    local def = SOUND_CHANNEL_DEF_BY_KEY[channelKey]
     if not val or val == "" then
-        val = (def and def.defaultVal) or "NONE"
+        val = GetSoundSlotValue(channelKey)
     end
     if val == "NONE" then
         return "None (Muted)"
@@ -6914,7 +7056,7 @@ function DynamicChat:PlaySoundOptionKey(soundKey, channelKey, isPreview)
 end
 
 function DynamicChat:PlaySuiteChime(chimeKey)
-    local entry = BUILTIN_SUITE_CHIMES[chimeKey] or BUILTIN_SUITE_CHIMES_LIST[1]
+    local entry = SoundMgr.chimesMap[chimeKey] or SoundMgr.chimesList[1]
     local played = false
     if entry and type(_G.PlaySoundFile) == "function" then
         local okF, willPlay = pcall(_G.PlaySoundFile, entry.path, "SFX")
@@ -6930,7 +7072,7 @@ function DynamicChat:PreviewSuiteChimePack()
     if _G.DEFAULT_CHAT_FRAME and type(_G.DEFAULT_CHAT_FRAME.AddMessage) == "function" then
         _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Auditioning 10-chime DynamicSuite pack on SFX (Spark, Pulse, Duo, Cascade, Echo, Chime, Bloom, Dewdrop, Ripple, Prism)...")
     end
-    for idx, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
+    for idx, entry in ipairs(SoundMgr.chimesList) do
         local delay = (idx - 1) * 0.65
         if delay == 0 then
             self:PlaySuiteChime(entry.key)
@@ -6943,14 +7085,135 @@ function DynamicChat:PreviewSuiteChimePack()
     end
 end
 
-function DynamicChat:HandleIncomingChatSoundEvent(event, arg2, arg12)
+do
+    local mentionToastFrame = nil
+    local mentionToastTimerSeq = 0
+
+    function SoundMgr.ShowMentionAlertToast(kindLabel, senderName, snippet)
+        if not _G.UIParent then return end
+        if not mentionToastFrame then
+            local f = CreateFrame("Frame", "DynamicChatMentionToast", _G.UIParent, "BackdropTemplate")
+            f:SetSize(420, 56)
+            f:SetPoint("TOP", _G.UIParent, "TOP", 0, -110)
+            f:SetFrameStrata("DIALOG")
+            f:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 1,
+            })
+            f:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- #0B0D12
+            f.title = f:CreateFontString(nil, "OVERLAY")
+            SetSafeFont(f.title, 11, "")
+            f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -10)
+            f.title:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+            f.title:SetJustifyH("LEFT")
+            f.title:SetWordWrap(false)
+
+            f.body = f:CreateFontString(nil, "OVERLAY")
+            SetSafeFont(f.body, 10, "")
+            f.body:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -4)
+            f.body:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+            f.body:SetJustifyH("LEFT")
+            f.body:SetWordWrap(false)
+            f.body:SetTextColor(0.82, 0.86, 0.92, 1.0)
+            f:Hide()
+            mentionToastFrame = f
+        end
+
+        local ar, ag, ab = GetSuiteAccent()
+        mentionToastFrame:SetBackdropBorderColor(ar, ag, ab, 0.95)
+        local who = (type(senderName) == "string" and senderName ~= "") and senderName or "Player"
+        mentionToastFrame.title:SetText(ColorWithAccent(kindLabel) .. "  |cFFF8FAFCfrom " .. who .. "|r")
+        local cleanSnap = tostring(snippet or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        if #cleanSnap > 72 then
+            cleanSnap = cleanSnap:sub(1, 69) .. "..."
+        end
+        mentionToastFrame.body:SetText(cleanSnap)
+        mentionToastFrame:SetAlpha(1.0)
+        mentionToastFrame:Show()
+
+        mentionToastTimerSeq = mentionToastTimerSeq + 1
+        local mySeq = mentionToastTimerSeq
+        if _G.C_Timer and type(_G.C_Timer.After) == "function" then
+            _G.C_Timer.After(4.0, function()
+                if mentionToastTimerSeq == mySeq and mentionToastFrame then
+                    mentionToastFrame:Hide()
+                end
+            end)
+        end
+    end
+
+    local function EscapeLuaPattern(str)
+        return (str:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1"))
+    end
+
+    local function ContainsWholeWordCI(haystackLower, termLower)
+        if termLower == "" then return false end
+        local esc = EscapeLuaPattern(termLower)
+        local sIdx, eIdx = haystackLower:find(esc)
+        while sIdx do
+            local beforeOk = (sIdx == 1) or not haystackLower:sub(sIdx - 1, sIdx - 1):match("[%w_]")
+            local afterOk  = (eIdx == #haystackLower) or not haystackLower:sub(eIdx + 1, eIdx + 1):match("[%w_]")
+            if beforeOk and afterOk then
+                return true, sIdx, eIdx
+            end
+            sIdx, eIdx = haystackLower:find(esc, eIdx + 1)
+        end
+        return false
+    end
+
+    function SoundMgr.HighlightMatchedTerm(msgText, term)
+        local ok, result = pcall(function()
+            local lowerMsg = msgText:lower()
+            local lowerTerm = term:lower()
+            local matched, sIdx, eIdx = ContainsWholeWordCI(lowerMsg, lowerTerm)
+            if not matched or not sIdx then return msgText end
+            local orig = msgText:sub(sIdx, eIdx)
+            return msgText:sub(1, sIdx - 1) .. ColorWithAccent(orig) .. msgText:sub(eIdx + 1)
+        end)
+        return (ok and type(result) == "string") and result or msgText
+    end
+
+    function SoundMgr.CheckMentionOrKeywordMatch(arg1, db)
+        if db.enableMentionAlerts == false then return nil, nil end
+        if not IsSafeAccessibleValue(arg1) or type(arg1) ~= "string" or arg1 == "" then
+            return nil, nil
+        end
+        local ok, kind, term = pcall(function()
+            local low = arg1:lower()
+            if type(_G.UnitName) == "function" then
+                local okN, pName = pcall(_G.UnitName, "player")
+                if okN and IsSafeAccessibleValue(pName) and type(pName) == "string" and #pName >= 2 then
+                    if ContainsWholeWordCI(low, pName:lower()) then
+                        return "NAME", pName
+                    end
+                end
+            end
+            local rawKw = db.mentionKeywords
+            if type(rawKw) == "string" and rawKw ~= "" then
+                for piece in rawKw:gmatch("[^,]+") do
+                    local kw = piece:gsub("^%s+", ""):gsub("%s+$", "")
+                    if #kw >= 2 and ContainsWholeWordCI(low, kw:lower()) then
+                        return "KEYWORD", kw
+                    end
+                end
+            end
+            return nil, nil
+        end)
+        if ok then
+            return kind, term
+        end
+        return nil, nil
+    end
+end
+
+function DynamicChat:HandleIncomingChatSoundEvent(event, arg2, arg12, arg1)
     if IsModuleDisabledInSuite("DynamicChat") then return end
     local mapEntry = CHAT_EVENT_TO_SOUND_CHANNEL[event]
     if not mapEntry then return end
     if self:IsDirectChatReplacementLoaded() then return end
 
     local db = EnsureDB()
-    if db.enableChatSounds == false then return end
 
     -- 1. Optional Mute in Combat / Boss Encounters
     if db.soundMuteInCombat then
@@ -6958,14 +7221,6 @@ function DynamicChat:HandleIncomingChatSoundEvent(event, arg2, arg12)
         if inCombatOrBoss then
             return
         end
-    end
-
-    local channelKey = mapEntry.key
-    local def = SOUND_CHANNEL_DEF_BY_KEY[channelKey]
-    local chSounds = db.channelSounds or DEFAULTS.channelSounds
-    local soundKey = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
-    if not soundKey or soundKey == "" or soundKey == "NONE" then
-        return
     end
 
     -- 2. Self-Message Suppression (Secret-Value Guarded via sender GUID & UnitName)
@@ -7015,8 +7270,48 @@ function DynamicChat:HandleIncomingChatSoundEvent(event, arg2, arg12)
         end
     end
 
-    -- 3. Per-Channel Anti-Spam Cooldown
     local now = (type(_G.GetTime) == "function" and _G.GetTime()) or 0
+
+    -- 3. Name & Keyword Mention Alerts (Secret-Value Guarded)
+    local mentionKind, matchedTerm = SoundMgr.CheckMentionOrKeywordMatch(arg1, db)
+    if mentionKind then
+        local slotKey = (mentionKind == "NAME") and "MENTION_NAME" or "MENTION_KEYWORD"
+        local prevM = lastChannelSoundTime[slotKey] or 0
+        if now == 0 or (now - prevM) >= 1.0 then
+            lastChannelSoundTime[slotKey] = now
+            if db.enableChatSounds ~= false then
+                local mSoundKey = (mentionKind == "NAME")
+                    and (db.mentionNameSound or DEFAULTS.mentionNameSound)
+                    or  (db.mentionKeywordSound or DEFAULTS.mentionKeywordSound)
+                if mSoundKey and mSoundKey ~= "NONE" then
+                    self:PlaySoundOptionKey(mSoundKey, slotKey, false)
+                end
+            end
+            local senderSafe = (IsSafeAccessibleValue(arg2) and type(arg2) == "string") and (arg2:match("^([^%-]+)") or arg2) or "Player"
+            local kindLabel = (mentionKind == "NAME") and "Name Mention" or ("Keyword: " .. tostring(matchedTerm))
+            if db.mentionAlertToast ~= false then
+                SoundMgr.ShowMentionAlertToast(kindLabel, senderSafe, arg1)
+            end
+            if db.mentionHighlightInChat ~= false and _G.DEFAULT_CHAT_FRAME and type(_G.DEFAULT_CHAT_FRAME.AddMessage) == "function" then
+                local hiMsg = SoundMgr.HighlightMatchedTerm(arg1, matchedTerm)
+                _G.DEFAULT_CHAT_FRAME:AddMessage(ColorWithAccent("[" .. kindLabel .. "]") .. " |cFFF8FAFC" .. senderSafe .. ":|r " .. hiMsg)
+            end
+        end
+        return
+    end
+
+    -- 4. Standard Per-Channel Sound Alerts
+    if db.enableChatSounds == false then return end
+
+    local channelKey = mapEntry.key
+    local def = SOUND_CHANNEL_DEF_BY_KEY[channelKey]
+    local chSounds = db.channelSounds or DEFAULTS.channelSounds
+    local soundKey = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
+    if not soundKey or soundKey == "" or soundKey == "NONE" then
+        return
+    end
+
+    -- 5. Per-Channel Anti-Spam Cooldown
     local throttle = tonumber(db.soundThrottleSec)
     if throttle == nil then throttle = 1.5 end
     if throttle > 0 and now > 0 then
@@ -7851,10 +8146,7 @@ local function OpenSoundDropdownMenu(ownerBtn, channelKey)
     end
     local popW = math.max(316, math.min(440, math.ceil(maxTextW + 78)))
 
-    local db = EnsureDB()
-    db.channelSounds = db.channelSounds or {}
-    local def = SOUND_CHANNEL_DEF_BY_KEY[channelKey]
-    local curVal = db.channelSounds[channelKey] or (def and def.defaultVal) or "NONE"
+    local curVal = GetSoundSlotValue(channelKey)
 
     local showSearch = (#rawOptions > 10)
     local searchAreaH = showSearch and 29 or 0
@@ -8087,12 +8379,7 @@ local function OpenSoundDropdownMenu(ownerBtn, channelKey)
                         if _G.GameTooltip then _G.GameTooltip:Hide() end
                     end)
                     row.selBtn:SetScript("OnClick", function()
-                        local curDB = EnsureDB()
-                        curDB.channelSounds = curDB.channelSounds or {}
-                        curDB.channelSounds[channelKey] = opt.value
-                        if channelKey == "WHISPER" then
-                            DynamicChat:ApplyWhisperDefaultSoundMuteState()
-                        end
+                        SetSoundSlotValue(channelKey, opt.value)
                         if opt.value ~= "NONE" then
                             DynamicChat:PlaySoundOptionKey(opt.value, channelKey, true)
                         end
@@ -8220,9 +8507,7 @@ local function AttachSoundDropdownToCard(card, channelKey)
     btn.tierBar = bar
 
     local function RefreshPlayButtonVisual(isHovered)
-        local db = EnsureDB()
-        local chSounds = db.channelSounds or DEFAULTS.channelSounds
-        local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
+        local curVal = GetSoundSlotValue(channelKey)
         local ar, ag, ab = GetSuiteAccent()
         local isMuted = (curVal == "NONE" or curVal == "")
         SetSafeFont(playBtn.label, 10.5, "")
@@ -8243,8 +8528,7 @@ local function AttachSoundDropdownToCard(card, channelKey)
 
     function btn:RefreshValue()
         local db = EnsureDB()
-        local chSounds = db.channelSounds or DEFAULTS.channelSounds
-        local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
+        local curVal = GetSoundSlotValue(channelKey)
         local textLabel = GetSoundOptionLabel(channelKey, curVal)
         local ar, ag, ab = GetSuiteAccent()
         local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
@@ -8279,13 +8563,11 @@ local function AttachSoundDropdownToCard(card, channelKey)
     playBtn:SetScript("OnEnter", function(selfBtn)
         RefreshPlayButtonVisual(true)
         if not _G.GameTooltip then return end
-        local db = EnsureDB()
-        local chSounds = db.channelSounds or DEFAULTS.channelSounds
-        local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
+        local curVal = GetSoundSlotValue(channelKey)
         local curLabel = GetSoundOptionLabel(channelKey, curVal)
         _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
         _G.GameTooltip:ClearLines()
-        _G.GameTooltip:AddLine("Preview: " .. ((def and def.title) or "Channel Sound"), 1, 1, 1)
+        _G.GameTooltip:AddLine("Preview: " .. GetSoundSlotTitle(channelKey), 1, 1, 1)
         if curVal == "NONE" then
             _G.GameTooltip:AddLine("Currently set to None (Muted). Choose a sound effect in the dropdown to preview.", 0.82, 0.86, 0.92, true)
         else
@@ -8299,9 +8581,7 @@ local function AttachSoundDropdownToCard(card, channelKey)
         if _G.GameTooltip then _G.GameTooltip:Hide() end
     end)
     playBtn:SetScript("OnClick", function()
-        local db = EnsureDB()
-        local chSounds = db.channelSounds or DEFAULTS.channelSounds
-        local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
+        local curVal = GetSoundSlotValue(channelKey)
         if curVal and curVal ~= "NONE" then
             DynamicChat:PlaySoundOptionKey(curVal, channelKey, true)
         end
@@ -8309,13 +8589,11 @@ local function AttachSoundDropdownToCard(card, channelKey)
 
     btn:SetScript("OnEnter", function(selfBtn)
         if not _G.GameTooltip then return end
-        local db = EnsureDB()
-        local chSounds = db.channelSounds or DEFAULTS.channelSounds
-        local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
+        local curVal = GetSoundSlotValue(channelKey)
         local curLabel = GetSoundOptionLabel(channelKey, curVal)
         _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
         _G.GameTooltip:ClearLines()
-        _G.GameTooltip:AddLine((def and def.title) or (card.title and card.title:GetText()) or "Chat Notification Sound", 1, 1, 1)
+        _G.GameTooltip:AddLine(GetSoundSlotTitle(channelKey), 1, 1, 1)
         _G.GameTooltip:AddLine("Current Sound: " .. ColorWithAccent(curLabel), 0.82, 0.86, 0.92)
         _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Choose a sound effect (selecting automatically previews).", "34D399"), 0.886, 0.910, 0.941)
         _G.GameTooltip:AddLine(FormatTooltipCmd("Right-Click:", "Replay current sound effect.", "38BDF8"), 0.886, 0.910, 0.941)
@@ -8327,9 +8605,7 @@ local function AttachSoundDropdownToCard(card, channelKey)
 
     btn:SetScript("OnClick", function(selfBtn, mouseBtn)
         if mouseBtn == "RightButton" then
-            local db = EnsureDB()
-            local chSounds = db.channelSounds or DEFAULTS.channelSounds
-            local curVal = chSounds[channelKey] or (def and def.defaultVal) or "NONE"
+            local curVal = GetSoundSlotValue(channelKey)
             DynamicChat:PlaySoundOptionKey(curVal, channelKey, true)
             return
         end
@@ -9415,15 +9691,56 @@ local function RenderChatEmbedded(arg1, arg2)
     sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_sndCooldown
     root.allControls[#root.allControls + 1] = c3_sndCooldown
 
-    local c3_chimePack = CreateCardRow(sec3_rules, 74,
-        "DynamicSuite Chime Pack Preview",
-        "Audition all 10 built-in crystalline bell-pluck chimes on the SFX channel (or type /dc testaudio).",
-        "DynamicSuite Chime Pack Preview",
-        "Click any chime button to preview it on the SFX channel."
-    )
-    local function CreateChimePackPreviewButton(parentCard, width, labelText, chimeKey)
-        local btn = CreateFrame("Button", nil, parentCard, "BackdropTemplate")
-        btn:SetSize(width, 22)
+    local function CreateObsidianEditBox(parent, width, height, placeholder)
+        local boxWrap = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+        boxWrap:SetSize(width, height or 24)
+        boxWrap:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        boxWrap:SetBackdropColor(0.043, 0.051, 0.071, 0.98) -- #0B0D12
+        boxWrap:SetBackdropBorderColor(0.20, 0.24, 0.30, 0.95)
+
+        local eb = CreateFrame("EditBox", nil, boxWrap)
+        eb:SetPoint("LEFT", boxWrap, "LEFT", 8, 0)
+        eb:SetPoint("RIGHT", boxWrap, "RIGHT", -8, 0)
+        eb:SetHeight((height or 24) - 4)
+        eb:SetAutoFocus(false)
+        SetSafeFont(eb, 10.5, "")
+        eb:SetTextColor(0.976, 0.984, 1.00, 1)
+
+        local ph = boxWrap:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(ph, 10, "")
+        ph:SetPoint("LEFT", boxWrap, "LEFT", 8, 0)
+        ph:SetPoint("RIGHT", boxWrap, "RIGHT", -8, 0)
+        ph:SetJustifyH("LEFT")
+        ph:SetWordWrap(false)
+        ph:SetTextColor(0.45, 0.50, 0.58, 0.90)
+        ph:SetText(placeholder or "")
+        boxWrap.placeholder = ph
+        boxWrap.editBox = eb
+
+        local function UpdatePlaceholder()
+            ph:SetShown((eb:GetText() or "") == "" and not eb:HasFocus())
+        end
+        eb:SetScript("OnEditFocusGained", function()
+            boxWrap:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95) -- #F97316
+            UpdatePlaceholder()
+        end)
+        eb:SetScript("OnEditFocusLost", function()
+            boxWrap:SetBackdropBorderColor(0.20, 0.24, 0.30, 0.95)
+            UpdatePlaceholder()
+        end)
+        eb:SetScript("OnTextChanged", UpdatePlaceholder)
+        eb:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+        UpdatePlaceholder()
+        return boxWrap
+    end
+
+    local function CreateAccentActionButton(parent, width, height, labelText, onClick)
+        local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        btn:SetSize(width, height or 24)
         btn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
             edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -9444,29 +9761,251 @@ local function RenderChatEmbedded(arg1, arg2)
             s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
             s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85)
         end)
-        btn:SetScript("OnClick", function()
-            DynamicChat:PlaySuiteChime(chimeKey)
-        end)
+        btn:SetScript("OnClick", onClick)
         return btn
     end
-    local chimeAnchorLeft = nil
-    local btnW, btnGapX, btnGapY = 60, 5, 6
-    for idx, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
-        local col = (idx - 1) % 5
-        local row = math.floor((idx - 1) / 5)
-        local btn = CreateChimePackPreviewButton(c3_chimePack, btnW, entry.short, entry.key)
-        local xOff = -14 - (4 - col) * (btnW + btnGapX)
-        local yOff = (row == 0) and 14 or -(22 + btnGapY - 14)
-        btn:SetPoint("RIGHT", c3_chimePack, "RIGHT", xOff, yOff)
-        if idx == 1 then
-            chimeAnchorLeft = btn
+
+    -- Section 3C: Name & Keyword Mention Alerts
+    local sec3_mentions = CreateSectionBox(
+        page3,
+        "NAME & KEYWORD MENTION ALERTS",
+        "Get notified with a distinct chime, chat highlight, or alert banner when someone mentions your character name or a custom keyword.",
+        root
+    )
+
+    local c3_mEnable = CreateCardRow(sec3_mentions, 60,
+        "Enable Mention & Keyword Alerts",
+        "Automatically detects your active character name and custom keywords in incoming chat (always ignores messages sent by you).",
+        "Enable Mention & Keyword Alerts",
+        "Turn Name and Keyword Mention Alerts On or Off."
+    )
+    AttachSegmentedSwitchToCard(c3_mEnable,
+        function() return EnsureDB().enableMentionAlerts ~= false end,
+        function(val)
+            EnsureDB().enableMentionAlerts = (val == true)
+            DynamicChat:RefreshConfigUI()
+        end,
+        "Off", "Enabled",
+        "Toggle Name & Keyword Mention Alerts."
+    )
+    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mEnable
+    root.allControls[#root.allControls + 1] = c3_mEnable
+
+    local c3_mKeywords = CreateCardRow(sec3_mentions, 64,
+        "Custom Keywords",
+        "Comma-separated words to watch for (e.g. dentee, lust, brez, innervate). Whole-word, case-insensitive.",
+        "Custom Keywords",
+        "Type comma-separated keywords and click Save."
+    )
+    local kwSaveBtn = CreateAccentActionButton(c3_mKeywords, 58, 24, "Save", nil)
+    kwSaveBtn:SetPoint("RIGHT", c3_mKeywords, "RIGHT", -14, 0)
+    local kwBox = CreateObsidianEditBox(c3_mKeywords, 210, 24, "e.g. dentee, lust, brez, innervate")
+    kwBox:SetPoint("RIGHT", kwSaveBtn, "LEFT", -6, 0)
+    kwBox.editBox:SetText(EnsureDB().mentionKeywords or "")
+    local function SaveKeywords()
+        local raw = kwBox.editBox:GetText() or ""
+        local trimmed = raw:gsub("^%s+", ""):gsub("%s+$", "")
+        EnsureDB().mentionKeywords = trimmed
+        kwBox.editBox:ClearFocus()
+        PrintChat("Saved mention keywords.")
+    end
+    kwSaveBtn:SetScript("OnClick", SaveKeywords)
+    kwBox.editBox:SetScript("OnEnterPressed", SaveKeywords)
+    function kwBox:RefreshValue()
+        if not self.editBox:HasFocus() then
+            self.editBox:SetText(EnsureDB().mentionKeywords or "")
         end
     end
-    if chimeAnchorLeft then
-        AnchorCardTextToRightWidget(c3_chimePack, chimeAnchorLeft)
+    c3_mKeywords.toggleBtn = kwBox
+    AnchorCardTextToRightWidget(c3_mKeywords, kwBox)
+    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mKeywords
+    root.allControls[#root.allControls + 1] = c3_mKeywords
+
+    local c3_mNameSnd = CreateCardRow(sec3_mentions, 60,
+        "Name Mention Sound",
+        "Chime played when another player mentions your active character name in chat.",
+        "Name Mention Sound",
+        "Choose a sound effect for direct character name mentions."
+    )
+    AttachSoundDropdownToCard(c3_mNameSnd, "MENTION_NAME")
+    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mNameSnd
+    root.allControls[#root.allControls + 1] = c3_mNameSnd
+
+    local c3_mKwSnd = CreateCardRow(sec3_mentions, 60,
+        "Keyword Trigger Sound",
+        "Chime played when an incoming message matches one of your saved custom keywords.",
+        "Keyword Trigger Sound",
+        "Choose a sound effect for custom keyword matches."
+    )
+    AttachSoundDropdownToCard(c3_mKwSnd, "MENTION_KEYWORD")
+    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mKwSnd
+    root.allControls[#root.allControls + 1] = c3_mKwSnd
+
+    local c3_mHighlight = CreateCardRow(sec3_mentions, 60,
+        "Highlight Mention in Chat",
+        "Prints an accent-highlighted callout in your chat window when a name or keyword matches (safe zero-taint in Retail 12.1.5).",
+        "Highlight Mention in Chat",
+        "Toggle accent-highlighted chat callouts for mentions and keywords."
+    )
+    AttachSegmentedSwitchToCard(c3_mHighlight,
+        function() return EnsureDB().mentionHighlightInChat ~= false end,
+        function(val) EnsureDB().mentionHighlightInChat = (val == true) end,
+        "Off", "Enabled",
+        "Toggle chat highlight callouts for mentions."
+    )
+    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mHighlight
+    root.allControls[#root.allControls + 1] = c3_mHighlight
+
+    local c3_mToast = CreateCardRow(sec3_mentions, 60,
+        "Show Alert Toast Banner",
+        "Displays a brief floating alert banner at the top of your screen when a name or keyword matches.",
+        "Show Alert Toast Banner",
+        "Toggle the floating top-screen alert banner for mentions."
+    )
+    AttachSegmentedSwitchToCard(c3_mToast,
+        function() return EnsureDB().mentionAlertToast ~= false end,
+        function(val) EnsureDB().mentionAlertToast = (val == true) end,
+        "Off", "Enabled",
+        "Toggle floating alert toast banners."
+    )
+    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mToast
+    root.allControls[#root.allControls + 1] = c3_mToast
+
+    -- Section 3D: Custom Sound File Manager (.ogg / .mp3)
+    local sec3_custom = CreateSectionBox(
+        page3,
+        "CUSTOM SOUND FILES",
+        "Register your own .ogg or .mp3 files (relative to Interface\\AddOns\\...) to use in any channel or mention dropdown. .wav files are blocked for Retail 12.1.5 compatibility.",
+        root
+    )
+
+    local c3_addCustom = CreateCardRow(sec3_custom, 72,
+        "Add Custom Sound",
+        "Enter a display name and file path (e.g. Interface\\AddOns\\MySounds\\bell.ogg).",
+        "Add Custom Sound",
+        "Add a custom .ogg or .mp3 sound file to all DynamicChat sound dropdowns."
+    )
+    local csTestBtn = CreateAccentActionButton(c3_addCustom, 68, 24, "Test Play", nil)
+    csTestBtn:SetPoint("RIGHT", c3_addCustom, "RIGHT", -14, 0)
+    local csAddBtn = CreateAccentActionButton(c3_addCustom, 48, 24, "Add", nil)
+    csAddBtn:SetPoint("RIGHT", csTestBtn, "LEFT", -6, 0)
+    local csPathBox = CreateObsidianEditBox(c3_addCustom, 178, 24, "Interface\\AddOns\\...\\file.ogg")
+    csPathBox:SetPoint("RIGHT", csAddBtn, "LEFT", -6, 0)
+    local csNameBox = CreateObsidianEditBox(c3_addCustom, 96, 24, "Label")
+    csNameBox:SetPoint("RIGHT", csPathBox, "LEFT", -6, 0)
+    AnchorCardTextToRightWidget(c3_addCustom, csNameBox)
+
+    csTestBtn:SetScript("OnClick", function()
+        local p = (csPathBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if not SoundMgr.IsValidCustomAudioPath(p) then
+            PrintChat("Please enter a valid .ogg or .mp3 path (.wav is not supported).")
+            return
+        end
+        local outChan = EnsureDB().soundOutputChannel or "Master"
+        if type(_G.PlaySoundFile) == "function" then
+            local okF, willPlay = pcall(_G.PlaySoundFile, p, outChan)
+            if not (okF and willPlay ~= false) then
+                PrintChat("Could not play file. Ensure the path is valid and restart WoW if the file was just added.")
+            end
+        end
+    end)
+
+    local MAX_CUSTOM_SOUND_ROWS = 6
+    local customSoundRows = {}
+
+    local function RefreshCustomSoundRows()
+        local list = EnsureDB().customSounds or {}
+        for i = 1, MAX_CUSTOM_SOUND_ROWS do
+            local rowCard = customSoundRows[i]
+            local entry = list[i]
+            if rowCard then
+                if entry then
+                    rowCard._customEntry = entry
+                    rowCard.title:SetText(entry.label or entry.id)
+                    rowCard.desc:SetText(entry.path or "")
+                    rowCard:Show()
+                else
+                    rowCard._customEntry = nil
+                    rowCard:Hide()
+                end
+            end
+        end
+        if root and root.RefreshLayout then
+            root:RefreshLayout()
+        end
     end
-    sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_chimePack
-    root.allControls[#root.allControls + 1] = c3_chimePack
+
+    csAddBtn:SetScript("OnClick", function()
+        local lbl = (csNameBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        local p   = (csPathBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if not SoundMgr.IsValidCustomAudioPath(p) then
+            PrintChat("Only .ogg and .mp3 sound files are supported (.wav files are blocked).")
+            return
+        end
+        if lbl == "" then
+            lbl = p:match("([^\\/]+)%.[^%.]+$") or "Custom Sound"
+        end
+        local db = EnsureDB()
+        db.customSounds = db.customSounds or {}
+        if #db.customSounds >= MAX_CUSTOM_SOUND_ROWS then
+            PrintChat("Maximum of " .. MAX_CUSTOM_SOUND_ROWS .. " custom sounds reached. Delete one to add another.")
+            return
+        end
+        local slug = lbl:lower():gsub("[^%w]+", "_"):gsub("^_+", ""):gsub("_+$", "")
+        if slug == "" then slug = "sound" end
+        local id = "CUSTOM:" .. slug .. "_" .. tostring(#db.customSounds + 1)
+        for _, existing in ipairs(db.customSounds) do
+            if existing.id == id then
+                id = id .. "_" .. tostring(math.floor((_G.GetTime and _G.GetTime() or 1) * 100))
+                break
+            end
+        end
+        db.customSounds[#db.customSounds + 1] = {
+            id    = id,
+            label = lbl,
+            path  = p,
+        }
+        csNameBox.editBox:SetText("")
+        csPathBox.editBox:SetText("")
+        csNameBox.editBox:ClearFocus()
+        csPathBox.editBox:ClearFocus()
+        RefreshCustomSoundRows()
+        DynamicChat:RefreshConfigUI()
+        PrintChat("Added custom sound: " .. lbl)
+    end)
+
+    sec3_custom.orderedCards[#sec3_custom.orderedCards + 1] = c3_addCustom
+    root.allControls[#root.allControls + 1] = c3_addCustom
+
+    for i = 1, MAX_CUSTOM_SOUND_ROWS do
+        local rowCard = CreateCardRow(sec3_custom, 54, "Custom Sound", "", nil, nil)
+        local delBtn = CreateAccentActionButton(rowCard, 56, 22, "Delete", function()
+            if not rowCard._customEntry then return end
+            local targetId = rowCard._customEntry.id
+            local db = EnsureDB()
+            local newList = {}
+            for _, item in ipairs(db.customSounds or {}) do
+                if item.id ~= targetId then
+                    newList[#newList + 1] = item
+                end
+            end
+            db.customSounds = newList
+            EnsureDB()
+            RefreshCustomSoundRows()
+            DynamicChat:RefreshConfigUI()
+        end)
+        delBtn:SetPoint("RIGHT", rowCard, "RIGHT", -14, 0)
+        local playBtn = CreateAccentActionButton(rowCard, 50, 22, "Play", function()
+            if not rowCard._customEntry then return end
+            DynamicChat:PlaySoundOptionKey(rowCard._customEntry.id, nil, true)
+        end)
+        playBtn:SetPoint("RIGHT", delBtn, "LEFT", -6, 0)
+        AnchorCardTextToRightWidget(rowCard, playBtn)
+        rowCard:Hide()
+        customSoundRows[i] = rowCard
+        sec3_custom.orderedCards[#sec3_custom.orderedCards + 1] = rowCard
+    end
+    RefreshCustomSoundRows()
 
     -- ========================================================================
     -- TAB 4: Links, Scroll & History
@@ -10194,6 +10733,14 @@ SlashCmdList["DYNAMICCHAT"] = function(msg)
         DynamicChat:ShowURLCopyPopup("https://www.curseforge.com/wow/addons")
     elseif cmd == "testaudio" then
         DynamicChat:PreviewSuiteChimePack()
+    elseif cmd == "mute" then
+        local db = EnsureDB()
+        local nextState = (db.enableChatSounds == false)
+        db.enableChatSounds = nextState
+        db.enableSoundAlerts = nextState
+        DynamicChat:ApplyWhisperDefaultSoundMuteState()
+        DynamicChat:RefreshConfigUI()
+        PrintChat("Chat notification sounds " .. (nextState and "enabled." or "muted (saved chimes preserved)."))
     else
         OpenChatWorkspace()
     end
@@ -10391,6 +10938,6 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
             end)
         end
     elseif CHAT_EVENT_TO_SOUND_CHANNEL[event] then
-        self:HandleIncomingChatSoundEvent(event, arg2, arg12)
+        self:HandleIncomingChatSoundEvent(event, arg2, arg12, arg1)
     end
 end)

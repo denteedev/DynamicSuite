@@ -2517,6 +2517,34 @@ local function ScanMediaKind(kind, skipNames, skipPaths)
     return outList
 end
 
+local function BuildSuiteChimesTable()
+    local base = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\"
+    local defs = {
+        { value = "DC_CHIME_SPARK",   name = "Spark",   label = "DynamicSuite: Spark (High Pluck)",     file = "DynamicChat_ChimeSpark.ogg" },
+        { value = "DC_KEYWORD_PULSE", name = "Pulse",   label = "DynamicSuite: Pulse (Warm Bell)",      file = "DynamicChat_KeywordPulse.ogg" },
+        { value = "DC_CHIME_DUO",     name = "Duo",     label = "DynamicSuite: Duo (Rising Fifth)",     file = "DynamicChat_ChimeDuo.ogg" },
+        { value = "DC_CHIME_CASCADE", name = "Cascade", label = "DynamicSuite: Cascade (Crystal Harp)", file = "DynamicChat_MentionWarm.ogg" },
+        { value = "DC_CHIME_ECHO",    name = "Echo",    label = "DynamicSuite: Echo (Glass Ping)",      file = "DynamicChat_ChimeEcho.ogg" },
+        { value = "DC_CHIME_FOURTH",  name = "Chime",   label = "DynamicSuite: Chime (Rising Fourth)",  file = "DynamicChat_ChimeFourth.ogg" },
+        { value = "DC_CHIME_BLOOM",   name = "Bloom",   label = "DynamicSuite: Bloom (Major Ninth)",    file = "DynamicChat_ChimeBloom.ogg" },
+        { value = "DC_CHIME_DEWDROP", name = "Dewdrop", label = "DynamicSuite: Dewdrop (Low Bell)",     file = "DynamicChat_ChimeDewdrop.ogg" },
+        { value = "DC_CHIME_RIPPLE",  name = "Ripple",  label = "DynamicSuite: Ripple (Grace Flick)",   file = "DynamicChat_ChimeRipple.ogg" },
+        { value = "DC_CHIME_PRISM",   name = "Prism",   label = "DynamicSuite: Prism (Falling Triad)",  file = "DynamicChat_ChimePrism.ogg" },
+    }
+    local out = {}
+    for _, d in ipairs(defs) do
+        out[#out + 1] = {
+            value  = d.value,
+            name   = d.name,
+            label  = d.label,
+            path   = base .. d.file,
+            source = "DynamicSuite",
+            group  = "BUILTIN",
+        }
+    end
+    return out
+end
+
 function DynamicSuite:ScanExternalMedia(force)
     if mediaRegistry.scannedOnce and not force then
         return mediaRegistry
@@ -2526,6 +2554,11 @@ function DynamicSuite:ScanExternalMedia(force)
     local sReg = { builtin = {}, blizzard = {}, external = {}, byKey = {} }
     local skipSoundNames = {}
     local skipSoundPaths = {}
+
+    for _, cDef in ipairs(BuildSuiteChimesTable()) do
+        table.insert(sReg.builtin, cDef)
+        sReg.byKey[cDef.value] = cDef
+    end
 
     for _, bDef in ipairs(BuildBlizzardSoundsTable()) do
         table.insert(sReg.blizzard, bDef)
