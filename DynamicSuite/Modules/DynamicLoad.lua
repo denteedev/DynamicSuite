@@ -180,6 +180,7 @@ DynamicSuite.Changelogs["DynamicLoad"] = {
     version = ADDON_VERSION,
     date = "16/11/2026",
     entries = {
+        { type = "FIX",     text = "Toolbar Search Box Width & HUD Edit Mode 'Apply All' Appearance Action (16/11/2026): tightened DynamicLoad toolbar button padding, gaps, and adaptive minimum widths so the 'Filter addons...' search box retains at least 125px cleanly at the default 980x680 window size without clipping; and added an 'Apply All' Opacity & Border Style button on Row 3 of the HUD Edit Mode Inspector to copy the selected HUD's opacity and border style across all 6 suite HUDs in one click." },
         { type = "FEATURE", text = "One-Click 'Copy From...' Zone Profile & Persistent Tree Collapse (16/11/2026): added a compact 'Copy From...' button on the DynamicLoad toolbar so you can copy another zone's By Zone addon selections into the active zone tab in one click (preserving Always/Never locks and Suite Core protections), and ensured collapsed parent addon groups persist reliably across /reload and logins with clear expand/collapse tooltips." },
         { type = "FIX",     text = "Universal 'Never' ('FROZEN') Persistence Across All Addons & Sub-Addons (12/11/2026): Normalised all security and zone assignment operations to canonical folder names (ResolveCanonicalAddonName); made SetAddonFrozen(name, true) atomically persist 'FROZEN' across DynamicLoadDB/globalData/charData, wipe all 5 zone tables, and call C_AddOns.DisableAddOn; merged DynamicLoadDB root and globalData security tables in SyncScopeBindings() and used in-place wipe() in RestoreStash() so SavedVariables deserialization never reverts 'FROZEN' states on /reload; prevented ReconcileStartupProfileBaseline from overwriting knownAddons; protected individual child 'FROZEN' / 'LOCKED' states from parent cascades; and added EnforceFrozenAddonsDisabled() + a hooksecurefunc(C_AddOns, 'EnableAddOn', ...) guard so external parent suites cannot re-enable 'FROZEN' sub-addons." },
         { type = "FIX",     text = "Fixed 'attempt to call a nil value' in EvaluateAddonItemEffectiveState (DynamicLoad.lua:4724) when evaluating the DynamicSuite parent hub item and child modules across scoped do ... end chunks by declaring a local IsSuiteModuleExplicitlyDisabled helper in the UI chunk with addonTable / DynamicSuiteDB fallbacks and defensive nil guards across GetParentSuiteStats and EvaluateAddonItemEffectiveState." },
@@ -7599,12 +7600,12 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     toolbar:Show()
     f.toolbar = toolbar
 
-    local stashBtn = CreateFlatButton(toolbar, 96, 22, "Backup State", false)
+    local stashBtn = CreateFlatButton(toolbar, 72, 22, "Backup State", false)
     stashBtn:SetPoint("LEFT", toolbar, "LEFT", 0, 0)
     stashBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
-    local copyFromBtn = CreateFlatButton(toolbar, 90, 22, "Copy From...", false)
-    copyFromBtn:SetPoint("LEFT", stashBtn, "RIGHT", 5, 0)
+    local copyFromBtn = CreateFlatButton(toolbar, 68, 22, "Copy From...", false)
+    copyFromBtn:SetPoint("LEFT", stashBtn, "RIGHT", 3, 0)
     copyFromBtn:SetScript("OnClick", function(self)
         local targetLabel = (addonTable.CONTEXT_LABELS and addonTable.CONTEXT_LABELS[selectedTabKey]) or selectedTabKey
         if f.OpenZoneTabMenu then
@@ -7631,8 +7632,8 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         GameTooltip:Hide()
     end)
 
-    local blizzAddonsBtn = CreateFlatButton(toolbar, 108, 22, "Blizzard AddOns", false)
-    blizzAddonsBtn:SetPoint("LEFT", copyFromBtn, "RIGHT", 5, 0)
+    local blizzAddonsBtn = CreateFlatButton(toolbar, 86, 22, "Blizzard AddOns", false)
+    blizzAddonsBtn:SetPoint("LEFT", copyFromBtn, "RIGHT", 3, 0)
     blizzAddonsBtn:SetScript("OnClick", function()
         if addonTable.OpenBlizzardAddonList then
             addonTable.OpenBlizzardAddonList()
@@ -7652,21 +7653,21 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     end)
     blizzAddonsBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-    local sortBtn = CreateFlatButton(toolbar, 82, 22, "Sort: A-Z", false)
-    sortBtn:SetPoint("LEFT", blizzAddonsBtn, "RIGHT", 5, 0)
+    local sortBtn = CreateFlatButton(toolbar, 56, 22, "Sort: A-Z", false)
+    sortBtn:SetPoint("LEFT", blizzAddonsBtn, "RIGHT", 3, 0)
 
-    local collapseAllBtn = CreateFlatButton(toolbar, 56, 22, "[-] All", false)
-    collapseAllBtn:SetPoint("LEFT", sortBtn, "RIGHT", 5, 0)
+    local collapseAllBtn = CreateFlatButton(toolbar, 40, 22, "[-] All", false)
+    collapseAllBtn:SetPoint("LEFT", sortBtn, "RIGHT", 3, 0)
 
     local toolbarSep = UI.SolidTex(toolbar, "OVERLAY", 2, 1, 1, 1, 0.14)
     toolbarSep:SetSize(1, 16)
-    toolbarSep:SetPoint("LEFT", collapseAllBtn, "RIGHT", 6, 0)
+    toolbarSep:SetPoint("LEFT", collapseAllBtn, "RIGHT", 4, 0)
 
-    local chipAll = CreateFlatButton(toolbar, 40, 22, "All", securityFilter == "ALL")
-    chipAll:SetPoint("LEFT", toolbarSep, "RIGHT", 6, 0)
+    local chipAll = CreateFlatButton(toolbar, 28, 22, "All", securityFilter == "ALL")
+    chipAll:SetPoint("LEFT", toolbarSep, "RIGHT", 4, 0)
 
-    local chipPending = CreateFlatButton(toolbar, 84, 22, "Pending (0)", securityFilter == "PENDING")
-    chipPending:SetPoint("LEFT", chipAll, "RIGHT", 5, 0)
+    local chipPending = CreateFlatButton(toolbar, 64, 22, "Pending (0)", securityFilter == "PENDING")
+    chipPending:SetPoint("LEFT", chipAll, "RIGHT", 3, 0)
     chipPending.OnCustomEnter = function(self)
         if f.PopulatePendingReloadTooltip then f.PopulatePendingReloadTooltip(self, "ANCHOR_TOP") end
     end
@@ -7674,30 +7675,70 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         GameTooltip:Hide()
     end
 
-    local chipCore = CreateFlatButton(toolbar, 84, 22, "Always (0)", securityFilter == "CORE")
-    chipCore:SetPoint("LEFT", chipPending, "RIGHT", 5, 0)
+    local chipCore = CreateFlatButton(toolbar, 60, 22, "Always (0)", securityFilter == "CORE")
+    chipCore:SetPoint("LEFT", chipPending, "RIGHT", 3, 0)
 
-    local chipFrozen = CreateFlatButton(toolbar, 80, 22, "Never (0)", securityFilter == "FROZEN")
-    chipFrozen:SetPoint("LEFT", chipCore, "RIGHT", 5, 0)
+    local chipFrozen = CreateFlatButton(toolbar, 56, 22, "Never (0)", securityFilter == "FROZEN")
+    chipFrozen:SetPoint("LEFT", chipCore, "RIGHT", 3, 0)
+
+    for _, tbBtn in ipairs({ stashBtn, copyFromBtn, blizzAddonsBtn, sortBtn, collapseAllBtn, chipAll, chipPending, chipCore, chipFrozen }) do
+        if tbBtn.label then
+            tbBtn.label:ClearAllPoints()
+            tbBtn.label:SetPoint("LEFT", tbBtn, "LEFT", 4, 0)
+            tbBtn.label:SetPoint("RIGHT", tbBtn, "RIGHT", -4, 0)
+            tbBtn.label:SetJustifyH("CENTER")
+            tbBtn.label:SetWordWrap(false)
+            UI.SetFont(tbBtn.label, 10, "", 1, 1, 1, 0.94)
+        end
+    end
 
     local function AutoSizeToolbarButtons()
         local function FitBtn(b, minW, pad)
-            local strW = (b.label and b.label.GetStringWidth and b.label:GetStringWidth()) or 0
-            local newW = math.max(minW, math.ceil(strW + (pad or 18)))
+            local strW = (b.label and b.label.GetUnboundedStringWidth and b.label:GetUnboundedStringWidth())
+                or (b.label and b.label.GetStringWidth and b.label:GetStringWidth()) or 0
+            local newW = math.max(minW, math.ceil(strW + (pad or 10)))
             if math.abs((b:GetWidth() or 0) - newW) > 0.5 then
                 b:SetWidth(newW)
             end
         end
-        FitBtn(stashBtn, 84, 16)
-        FitBtn(copyFromBtn, 82, 16)
-        FitBtn(blizzAddonsBtn, 100, 16)
-        FitBtn(sortBtn, 72, 16)
-        FitBtn(collapseAllBtn, 50, 14)
-        FitBtn(chipAll, 36, 14)
-        FitBtn(chipPending, 74, 14)
-        FitBtn(chipCore, 64, 14)
-        FitBtn(chipFrozen, 72, 14)
+        FitBtn(stashBtn, 68, 10)
+        FitBtn(copyFromBtn, 66, 10)
+        FitBtn(blizzAddonsBtn, 82, 10)
+        FitBtn(sortBtn, 54, 10)
+        FitBtn(collapseAllBtn, 38, 8)
+        FitBtn(chipAll, 26, 8)
+        FitBtn(chipPending, 60, 10)
+        FitBtn(chipCore, 54, 10)
+        FitBtn(chipFrozen, 52, 10)
+
+        local tbW = (toolbar.GetWidth and toolbar:GetWidth()) or 0
+        if tbW > 400 then
+            local gapSum = 33
+            local used = (stashBtn:GetWidth() or 72) + (copyFromBtn:GetWidth() or 68) + (blizzAddonsBtn:GetWidth() or 86)
+                + (sortBtn:GetWidth() or 56) + (collapseAllBtn:GetWidth() or 40) + 1
+                + (chipAll:GetWidth() or 28) + (chipPending:GetWidth() or 64) + (chipCore:GetWidth() or 60) + (chipFrozen:GetWidth() or 56) + gapSum
+            local searchAvail = tbW - used
+            if searchAvail < 125 then
+                local deficit = 125 - searchAvail
+                for _, shrinkTarget in ipairs({
+                    { btn = sortBtn, minW = 54 },
+                    { btn = blizzAddonsBtn, minW = 80 },
+                    { btn = copyFromBtn, minW = 64 },
+                    { btn = stashBtn, minW = 64 },
+                }) do
+                    if deficit <= 0 then break end
+                    local curW = shrinkTarget.btn:GetWidth() or shrinkTarget.minW
+                    local canShrink = math.max(0, curW - shrinkTarget.minW)
+                    if canShrink > 0 then
+                        local take = math.min(deficit, canShrink)
+                        shrinkTarget.btn:SetWidth(curW - take)
+                        deficit = deficit - take
+                    end
+                end
+            end
+        end
     end
+    toolbar:HookScript("OnSizeChanged", AutoSizeToolbarButtons)
     f.AutoSizeToolbarButtons = AutoSizeToolbarButtons
 
     local function UpdateStashButton()
@@ -7961,7 +8002,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
 
     -- Search Box with "Filter addons..." Placeholder & [X] Clear Button
     local searchBoxFrame = CreateFrame("Frame", nil, toolbar)
-    searchBoxFrame:SetPoint("LEFT", chipFrozen, "RIGHT", 6, 0)
+    searchBoxFrame:SetPoint("LEFT", chipFrozen, "RIGHT", 4, 0)
     searchBoxFrame:SetPoint("RIGHT", toolbar, "RIGHT", 0, 0)
     searchBoxFrame:SetHeight(22)
     searchBoxFrame.bg = UI.SolidTex(searchBoxFrame, "BACKGROUND", 0, 0.03, 0.035, 0.045, 0.95)

@@ -2517,10 +2517,29 @@ local function OnLFGListSearchEntryUpdate(entry)
         topPill:Hide()
     end
 
+    local isSimApplied = (DynamicGroup._testApplyActive == true and resultID ~= nil and DynamicGroup._testApplyResultID == resultID)
+    if not (InCombatLockdown and InCombatLockdown()) and entry.CancelButton then
+        if isSimApplied then
+            if eState.wasCancelShown == nil then
+                eState.wasCancelShown = entry.CancelButton:IsShown() and true or false
+            end
+            entry.CancelButton:Show()
+        elseif eState.wasCancelShown ~= nil then
+            if not eState.wasCancelShown then
+                entry.CancelButton:Hide()
+            end
+            eState.wasCancelShown = nil
+        end
+    end
+
     -- Overlay Desaturated Tank / Healer / DPS Icons Directly on Empty Grey Dots in Enumerate
     local enumSlots = ov.enumRoleSlots
     if enumSlots then
         local enumFrame = entry.DataDisplay and entry.DataDisplay.Enumerate
+        if isSimApplied and not (InCombatLockdown and InCombatLockdown()) then
+            if entry.DataDisplay and entry.DataDisplay.Show then entry.DataDisplay:Show() end
+            if enumFrame and enumFrame.Show then enumFrame:Show() end
+        end
         if meta.maxMembers == 5 and enumFrame and enumFrame.IsShown and enumFrame:IsShown() then
             local slotAnchors = {}
             for i = 1, 5 do
@@ -2541,7 +2560,11 @@ local function OnLFGListSearchEntryUpdate(entry)
                     slotAnchors = children
                 end
             end
-            -- Idempotent -2px vertical baseline nudge on Enumerate (preserving all original points)
+            local cancelShown = (entry.CancelButton and entry.CancelButton.IsShown and entry.CancelButton:IsShown()) or isSimApplied
+            local baseShiftX = cancelShown and -18 or 0
+            local iconGap = cancelShown and 2 or 3
+
+            -- Idempotent vertical baseline nudge and CancelButton clearance on Enumerate
             if not enumFrame._dgOrigPoints and enumFrame.GetNumPoints and enumFrame.GetPoint then
                 local numPts = enumFrame:GetNumPoints()
                 if numPts and numPts > 0 then
@@ -2557,13 +2580,13 @@ local function OnLFGListSearchEntryUpdate(entry)
                     end
                 end
             end
-            if enumFrame._dgOrigPoints and enumFrame.SetPoint then
+            if not (InCombatLockdown and InCombatLockdown()) and enumFrame._dgOrigPoints and enumFrame.SetPoint then
                 for _, p in ipairs(enumFrame._dgOrigPoints) do
-                    enumFrame:SetPoint(p[1], p[2], p[3], p[4], p[5] - 4)
+                    enumFrame:SetPoint(p[1], p[2], p[3], p[4] + baseShiftX, p[5] - 4)
                 end
             end
 
-            -- Idempotent 4px horizontal gap between sibling Enumerate icons in Blizzard's native chain
+            -- Idempotent horizontal gap between sibling Enumerate icons in Blizzard's native chain
             for _, ic in ipairs(slotAnchors) do
                 if ic and not ic._dgOrigPoint and ic.GetPoint then
                     local pt, relTo, relPt, x, y = ic:GetPoint(1)
@@ -2571,11 +2594,33 @@ local function OnLFGListSearchEntryUpdate(entry)
                         ic._dgOrigPoint = { pt, relTo, relPt, x or 0, y or 0 }
                     end
                 end
-                if ic and ic._dgOrigPoint and ic.SetPoint then
+                if not (InCombatLockdown and InCombatLockdown()) and ic and ic._dgOrigPoint and ic.SetPoint then
                     local op = ic._dgOrigPoint
                     if op[2] and op[2] ~= enumFrame then
-                        local nx = (op[1]:find("LEFT") and (op[4] + 4) or (op[4] - 4))
+                        local nx = (op[1]:find("LEFT") and (op[4] + iconGap) or (op[4] - iconGap))
                         ic:SetPoint(op[1], op[2], op[3], nx, op[5])
+                    end
+                end
+            end
+
+            if not (InCombatLockdown and InCombatLockdown()) and cancelShown and entry.CancelButton and entry.CancelButton.GetLeft and enumFrame._dgOrigPoints and enumFrame.SetPoint then
+                local cancelLeft = entry.CancelButton:GetLeft()
+                local maxIconRight = nil
+                for _, ic in ipairs(slotAnchors) do
+                    if ic and (not ic.IsShown or ic:IsShown()) and ic.GetRight then
+                        local ir = ic:GetRight()
+                        if ir and (not maxIconRight or ir > maxIconRight) then
+                            maxIconRight = ir
+                        end
+                    end
+                end
+                if cancelLeft and maxIconRight and maxIconRight > (cancelLeft - 6) then
+                    local enumScale = (enumFrame.GetEffectiveScale and enumFrame:GetEffectiveScale()) or 1
+                    local entryScale = (entry.GetEffectiveScale and entry:GetEffectiveScale()) or enumScale
+                    local relScale = (enumScale > 0 and entryScale > 0) and (enumScale / entryScale) or 1
+                    local extraShift = math.floor(((cancelLeft - 6) - maxIconRight) / relScale)
+                    for _, p in ipairs(enumFrame._dgOrigPoints) do
+                        enumFrame:SetPoint(p[1], p[2], p[3], p[4] + baseShiftX + extraShift, p[5] - 4)
                     end
                 end
             end
@@ -4939,6 +4984,50 @@ function DynamicGroup:CycleTeleportToastPreview()
     end
 end
 
+function DynamicGroup:ToggleTestApplyPreview()
+    if InCombatLockdown and InCombatLockdown() then
+        PrintMsg("Cannot toggle /dg testapply preview during combat.")
+        return
+    end
+    local sp = _G.LFGListFrame and _G.LFGListFrame.SearchPanel
+    if not sp or not sp:IsShown() or not sp.ScrollBox or type(sp.ScrollBox.ForEachFrame) ~= "function" then
+        self._testApplyActive = false
+        self._testApplyResultID = nil
+        PrintMsg("Open Group Finder -> Premade Groups with at least one visible listing to use /dg testapply.")
+        return
+    end
+
+    local nextActive = not (self._testApplyActive == true)
+    if nextActive then
+        local firstEntry = nil
+        local firstResultID = nil
+        pcall(sp.ScrollBox.ForEachFrame, sp.ScrollBox, function(entry)
+            if not firstEntry and entry and entry:IsShown() then
+                local rID = entry.resultID or ResolveLiveResultID(entry)
+                if rID then
+                    firstEntry = entry
+                    firstResultID = rID
+                end
+            end
+        end)
+        if not firstEntry or not firstResultID then
+            self._testApplyActive = false
+            self._testApplyResultID = nil
+            PrintMsg("Open Group Finder -> Premade Groups with at least one visible listing to use /dg testapply.")
+            return
+        end
+        self._testApplyActive = true
+        self._testApplyResultID = firstResultID
+        pcall(sp.ScrollBox.ForEachFrame, sp.ScrollBox, OnLFGListSearchEntryUpdate)
+        PrintMsg("Simulated applied state ON for the first visible Premade Group row (/dg testapply again to clear).")
+    else
+        self._testApplyActive = false
+        self._testApplyResultID = nil
+        pcall(sp.ScrollBox.ForEachFrame, sp.ScrollBox, OnLFGListSearchEntryUpdate)
+        PrintMsg("Simulated applied state cleared.")
+    end
+end
+
 function DynamicGroup:UpdateLFGMiniBar()
     local bar = self.lfgMiniBar
     if not bar then return end
@@ -5140,6 +5229,8 @@ function DynamicGroup:InstallLFGHooks()
             hooksecurefunc("LFGListSearchPanel_DoSearch", function(sp)
                 lastSearchTimestamp = (type(_G.GetTime) == "function" and _G.GetTime()) or nil
                 wipe(declinedResultIDs)
+                DynamicGroup._testApplyActive = false
+                DynamicGroup._testApplyResultID = nil
                 if sp then
                     local pState = GetPanelState(sp)
                     pState.needsInitialSort = true
@@ -7441,6 +7532,7 @@ local function RegisterWithDynamicSuite()
         version = DynamicGroup.version or VERSION,
         date = "16/11/2026",
         entries = {
+            { type = "FIX",     text = "LFG CancelButton Clearance & /dg testapply Preview (16/11/2026): updated OnLFGListSearchEntryUpdate() to tighten Enumerate role-icon spacing and shift Enumerate left whenever CancelButton ('X') is shown, guaranteeing at least 6px of horizontal clearance from the 5th role icon; added /dg testapply (/dgroup testapply) to preview an applied row out of combat." },
             { type = "FEATURE", text = "Declined Premade LFG Group Dimming, Crimson Badge & Search Freshness Tooltip (16/11/2026): records declined and invite-declined searchResultIDs for the current session (cleared on new search or category change), dims declined Premade Group rows to 0.35 alpha with a compact crimson 'Declined' tag inside the top-right pill so you never accidentally re-apply, and tracks LFGListSearchPanel_DoSearch timestamps to show 'Last Refreshed: Xs ago' inside the LFG Mini-Bar filter and region tooltips." },
             { type = "FEATURE", text = "Portal Deck Owned Keystone Telemetry & Right-Click Teleport (15/11/2026): Upgraded the Portal Deck's Owned Keystone pill (pbar.keyBtn) to support secure Right-Click Dungeon Teleport casting out of combat with a synced cooldown swipe overlay, plus Season Best (timed/over-time level and score) and Dungeon Teleport readiness/cooldown lines in the tooltip while preserving Left-Click exclusive dungeon filtering." },
             { type = "FEATURE", text = "Dungeon Joined & Group Full Teleport Toast (15/11/2026): Displays a 410x74 Alert Toast-matched banner with a one-click Dungeon Teleport button and Right-Click dismissal when your Premade Group application is accepted, chimes as players join, and highlights when the group reaches 5/5. Shares DynamicSuite's Alert Toast HUD Edit slot with automatic mutual stacking, plus Test Join (3/5), Test Full (5/5), Edit HUD buttons, and /dg testtoast." },
@@ -7488,6 +7580,8 @@ SlashCmdList["DYNAMICGROUP"] = function(msg)
         if C_PartyInfo and type(C_PartyInfo.DoCountdown) == "function" then C_PartyInfo.DoCountdown(10) end
     elseif cmd == "testtoast" then
         DynamicGroup:CycleTeleportToastPreview()
+    elseif cmd == "testapply" then
+        DynamicGroup:ToggleTestApplyPreview()
     else
         OpenGroupWorkspace()
     end

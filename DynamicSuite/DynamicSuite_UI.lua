@@ -11178,6 +11178,18 @@ function addonTable.CreateMainConfigUI()
                     _G.DynamicPrep.db.raidBuffs = _G.DynamicPrep.db.raidBuffs or {}
                     _G.DynamicPrep.db.raidBuffs.hudOpacity = snapped
                 end
+                if type(_G.DynamicPrepDB) == "table" then
+                    _G.DynamicPrepDB.raidBuffs = _G.DynamicPrepDB.raidBuffs or {}
+                    _G.DynamicPrepDB.raidBuffs.hudOpacity = snapped
+                    if type(_G.DynamicPrepDB.global) == "table" then
+                        _G.DynamicPrepDB.global.raidBuffs = _G.DynamicPrepDB.global.raidBuffs or {}
+                        _G.DynamicPrepDB.global.raidBuffs.hudOpacity = snapped
+                    end
+                    if type(_G.DynamicPrepDB.profile) == "table" then
+                        _G.DynamicPrepDB.profile.raidBuffs = _G.DynamicPrepDB.profile.raidBuffs or {}
+                        _G.DynamicPrepDB.profile.raidBuffs.hudOpacity = snapped
+                    end
+                end
                 if _G.DynamicPrep and _G.DynamicPrep.RefreshClickableBuffs then
                     pcall(_G.DynamicPrep.RefreshClickableBuffs, _G.DynamicPrep, true)
                 end
@@ -11317,6 +11329,18 @@ function addonTable.CreateMainConfigUI()
                 if _G.DynamicPrep and type(_G.DynamicPrep.db) == "table" then
                     _G.DynamicPrep.db.raidBuffs = _G.DynamicPrep.db.raidBuffs or {}
                     _G.DynamicPrep.db.raidBuffs.hudBorderStyle = norm
+                end
+                if type(_G.DynamicPrepDB) == "table" then
+                    _G.DynamicPrepDB.raidBuffs = _G.DynamicPrepDB.raidBuffs or {}
+                    _G.DynamicPrepDB.raidBuffs.hudBorderStyle = norm
+                    if type(_G.DynamicPrepDB.global) == "table" then
+                        _G.DynamicPrepDB.global.raidBuffs = _G.DynamicPrepDB.global.raidBuffs or {}
+                        _G.DynamicPrepDB.global.raidBuffs.hudBorderStyle = norm
+                    end
+                    if type(_G.DynamicPrepDB.profile) == "table" then
+                        _G.DynamicPrepDB.profile.raidBuffs = _G.DynamicPrepDB.profile.raidBuffs or {}
+                        _G.DynamicPrepDB.profile.raidBuffs.hudBorderStyle = norm
+                    end
                 end
                 if _G.DynamicPrep and _G.DynamicPrep.RefreshClickableBuffs then
                     pcall(_G.DynamicPrep.RefreshClickableBuffs, _G.DynamicPrep, true)
@@ -13336,13 +13360,14 @@ function addonTable.CreateMainConfigUI()
 
         -- 1. Opacity Slider (20% - 100%, step 5%)
         local opaLbl = inspRow3:CreateFontString(nil, "OVERLAY")
-        opaLbl:SetPoint("LEFT", inspRow3, "LEFT", 8, 0)
+        opaLbl:SetPoint("LEFT", inspRow3, "LEFT", 6, 0)
         UI.SetFont(opaLbl, 10, "", 0.78, 0.82, 0.90, 1)
         opaLbl:SetText("Opacity:")
 
-        local OPA_SLIDER_W = 58
-        local opaMinusBtn = CreateFlatButton(inspRow3, 20, 22, "-", false)
-        opaMinusBtn:SetPoint("LEFT", opaLbl, "RIGHT", 4, 0)
+        local OPA_SLIDER_W = 44
+        local opaMinusBtn = CreateFlatButton(inspRow3, 18, 22, "-", false)
+        TightenCompactButtonLabel(opaMinusBtn, 2)
+        opaMinusBtn:SetPoint("LEFT", opaLbl, "RIGHT", 3, 0)
         opaMinusBtn:SetScript("OnClick", function()
             local cur = GetHudOpacity(selectedHudTarget)
             SetHudOpacity(selectedHudTarget, cur - HUD_OPACITY_STEP)
@@ -13351,7 +13376,7 @@ function addonTable.CreateMainConfigUI()
 
         local opaSliderHit = CreateFrame("Frame", nil, inspRow3)
         opaSliderHit:SetSize(OPA_SLIDER_W, 22)
-        opaSliderHit:SetPoint("LEFT", opaMinusBtn, "RIGHT", 4, 0)
+        opaSliderHit:SetPoint("LEFT", opaMinusBtn, "RIGHT", 3, 0)
         opaSliderHit:EnableMouse(true)
         opaSliderHit:EnableMouseWheel(true)
 
@@ -13372,8 +13397,9 @@ function addonTable.CreateMainConfigUI()
             opaThumb:SetTexelSnappingBias(0)
         end
 
-        local opaPlusBtn = CreateFlatButton(inspRow3, 20, 22, "+", false)
-        opaPlusBtn:SetPoint("LEFT", opaSliderHit, "RIGHT", 4, 0)
+        local opaPlusBtn = CreateFlatButton(inspRow3, 18, 22, "+", false)
+        TightenCompactButtonLabel(opaPlusBtn, 2)
+        opaPlusBtn:SetPoint("LEFT", opaSliderHit, "RIGHT", 3, 0)
         opaPlusBtn:SetScript("OnClick", function()
             local cur = GetHudOpacity(selectedHudTarget)
             SetHudOpacity(selectedHudTarget, cur + HUD_OPACITY_STEP)
@@ -13381,8 +13407,8 @@ function addonTable.CreateMainConfigUI()
         end)
 
         local opaBadge = CreateFrame("Frame", nil, inspRow3)
-        opaBadge:SetSize(38, 22)
-        opaBadge:SetPoint("LEFT", opaPlusBtn, "RIGHT", 4, 0)
+        opaBadge:SetSize(34, 22)
+        opaBadge:SetPoint("LEFT", opaPlusBtn, "RIGHT", 3, 0)
         opaBadge.bg = UI.SolidTex(opaBadge, "BACKGROUND", 2, 0.043, 0.051, 0.071, 0.98)
         opaBadge.bg:SetAllPoints()
         UI.CreatePixelBorder(opaBadge, 0.165, 0.192, 0.259, 0.95, 3)
@@ -13445,39 +13471,78 @@ function addonTable.CreateMainConfigUI()
             m.RefreshState()
         end)
 
-        -- 2. Border Style Segmented Pills ([Accent] [Dark] [None])
+        -- 2. Border Style Segmented Pills ([Accent] [Dark] [None]) + [Apply All]
         local bdrLbl = inspRow3:CreateFontString(nil, "OVERLAY")
-        bdrLbl:SetPoint("LEFT", opaBadge, "RIGHT", 10, 0)
+        bdrLbl:SetPoint("LEFT", opaBadge, "RIGHT", 5, 0)
         UI.SetFont(bdrLbl, 10, "", 0.78, 0.82, 0.90, 1)
         bdrLbl:SetText("Border:")
 
-        local bdrAccentBtn = CreateFlatButton(inspRow3, 48, 22, "Accent", false)
-        TightenCompactButtonLabel(bdrAccentBtn, 3)
-        bdrAccentBtn:SetPoint("LEFT", bdrLbl, "RIGHT", 4, 0)
+        local bdrAccentBtn = CreateFlatButton(inspRow3, 42, 22, "Accent", false)
+        TightenCompactButtonLabel(bdrAccentBtn, 2)
+        if bdrAccentBtn.label then UI.SetFont(bdrAccentBtn.label, 10, "", 1, 1, 1, 0.94) end
+        bdrAccentBtn:SetPoint("LEFT", bdrLbl, "RIGHT", 3, 0)
         bdrAccentBtn:SetScript("OnClick", function()
             SetHudBorderStyle(selectedHudTarget, "ACCENT")
             m.RefreshState()
         end)
 
-        local bdrDarkBtn = CreateFlatButton(inspRow3, 40, 22, "Dark", false)
-        TightenCompactButtonLabel(bdrDarkBtn, 3)
+        local bdrDarkBtn = CreateFlatButton(inspRow3, 34, 22, "Dark", false)
+        TightenCompactButtonLabel(bdrDarkBtn, 2)
+        if bdrDarkBtn.label then UI.SetFont(bdrDarkBtn.label, 10, "", 1, 1, 1, 0.94) end
         bdrDarkBtn:SetPoint("LEFT", bdrAccentBtn, "RIGHT", 2, 0)
         bdrDarkBtn:SetScript("OnClick", function()
             SetHudBorderStyle(selectedHudTarget, "DARK")
             m.RefreshState()
         end)
 
-        local bdrNoneBtn = CreateFlatButton(inspRow3, 40, 22, "None", false)
-        TightenCompactButtonLabel(bdrNoneBtn, 3)
+        local bdrNoneBtn = CreateFlatButton(inspRow3, 34, 22, "None", false)
+        TightenCompactButtonLabel(bdrNoneBtn, 2)
+        if bdrNoneBtn.label then UI.SetFont(bdrNoneBtn.label, 10, "", 1, 1, 1, 0.94) end
         bdrNoneBtn:SetPoint("LEFT", bdrDarkBtn, "RIGHT", 2, 0)
         bdrNoneBtn:SetScript("OnClick", function()
             SetHudBorderStyle(selectedHudTarget, "NONE")
             m.RefreshState()
         end)
 
+        local applyAllBtn = CreateFlatButton(inspRow3, 52, 22, "Apply All", false)
+        TightenCompactButtonLabel(applyAllBtn, 2)
+        if applyAllBtn.label then UI.SetFont(applyAllBtn.label, 10, "", 1, 1, 1, 0.95) end
+        applyAllBtn.idleBgColor = { r = 0.043, g = 0.051, b = 0.071, a = 0.98 } -- #0B0D12
+        applyAllBtn.idleBorderColor = { r = 0.976, g = 0.451, b = 0.086, a = 0.72 } -- #F97316
+        applyAllBtn.idleTextColor = { r = 0.976, g = 0.451, b = 0.086, a = 1.0 }
+        ApplyFlatButtonVisual(applyAllBtn, false)
+        applyAllBtn:SetPoint("LEFT", bdrNoneBtn, "RIGHT", 5, 0)
+        applyAllBtn:SetScript("OnClick", function()
+            if InCombatLockdown and InCombatLockdown() then
+                print("|cFFF97316DynamicSuite:|r Cannot apply HUD appearance during combat lockdown.")
+                return
+            end
+            local srcKey = (selectedHudTarget == "ALL" or not selectedHudTarget) and "TOAST" or selectedHudTarget
+            local curOpa = GetHudOpacity(srcKey)
+            local curBdr = GetHudBorderStyle(srcKey)
+            for _, k in ipairs({ "TOAST", "PREP", "prepBuffs", "TARGET", "FLARE", "CHAT" }) do
+                SetHudOpacity(k, curOpa)
+                SetHudBorderStyle(k, curBdr)
+            end
+            SyncAllEditModeHuds(true)
+            m.RefreshState()
+            local bdrName = (curBdr == "DARK" and "Dark") or (curBdr == "NONE" and "None") or "Accent"
+            print(string.format("|cFFF97316DynamicSuite:|r Applied %d%% opacity and %s border style to all 6 HUDs.", math.floor(curOpa * 100 + 0.5), bdrName))
+        end)
+        applyAllBtn.OnCustomEnter = function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText("Apply Opacity & Border to All HUDs", 1, 1, 1)
+            GameTooltip:AddLine("Copies this HUD's current Opacity and Border Style to all 6 DynamicSuite HUDs (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame).", 0.82, 0.86, 0.92, true)
+            GameTooltip:Show()
+        end
+        applyAllBtn.OnCustomLeave = function()
+            if GameTooltip then GameTooltip:Hide() end
+        end
+
         -- 3. Orientation Segmented Pills ([Horiz] [Vert]) anchored cleanly at right
-        local orientVertBtn = CreateFlatButton(inspRow3, 40, 22, "Vert", false)
-        TightenCompactButtonLabel(orientVertBtn, 3)
+        local orientVertBtn = CreateFlatButton(inspRow3, 34, 22, "Vert", false)
+        TightenCompactButtonLabel(orientVertBtn, 2)
+        if orientVertBtn.label then UI.SetFont(orientVertBtn.label, 10, "", 1, 1, 1, 0.94) end
         orientVertBtn:SetPoint("RIGHT", inspRow3, "RIGHT", -6, 0)
         orientVertBtn:SetScript("OnClick", function()
             if not DoesHudSupportOrientation(selectedHudTarget) then return end
@@ -13485,8 +13550,9 @@ function addonTable.CreateMainConfigUI()
             m.RefreshState()
         end)
 
-        local orientHorizBtn = CreateFlatButton(inspRow3, 44, 22, "Horiz", false)
-        TightenCompactButtonLabel(orientHorizBtn, 3)
+        local orientHorizBtn = CreateFlatButton(inspRow3, 38, 22, "Horiz", false)
+        TightenCompactButtonLabel(orientHorizBtn, 2)
+        if orientHorizBtn.label then UI.SetFont(orientHorizBtn.label, 10, "", 1, 1, 1, 0.94) end
         orientHorizBtn:SetPoint("RIGHT", orientVertBtn, "LEFT", -2, 0)
         orientHorizBtn:SetScript("OnClick", function()
             if not DoesHudSupportOrientation(selectedHudTarget) then return end
@@ -13495,7 +13561,7 @@ function addonTable.CreateMainConfigUI()
         end)
 
         local orientLbl = inspRow3:CreateFontString(nil, "OVERLAY")
-        orientLbl:SetPoint("RIGHT", orientHorizBtn, "LEFT", -4, 0)
+        orientLbl:SetPoint("RIGHT", orientHorizBtn, "LEFT", -3, 0)
         UI.SetFont(orientLbl, 10, "", 0.78, 0.82, 0.90, 1)
         orientLbl:SetText("Orient:")
 
@@ -13521,6 +13587,7 @@ function addonTable.CreateMainConfigUI()
         m.bdrAccentBtn = bdrAccentBtn
         m.bdrDarkBtn = bdrDarkBtn
         m.bdrNoneBtn = bdrNoneBtn
+        m.applyAllBtn = applyAllBtn
         m.orientHorizBtn = orientHorizBtn
         m.orientVertBtn = orientVertBtn
 

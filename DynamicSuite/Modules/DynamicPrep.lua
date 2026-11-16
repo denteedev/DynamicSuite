@@ -646,7 +646,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "16/11/2026",
     entries = {
-        { type = "FEATURE", text = "Paperdoll Missing-Enchant & Empty-Socket Slot Highlights (16/11/2026): extended ScanEquippedGearEnchantsAndGems() to store flagged slot IDs missing Midnight Season 2 enchants or containing empty gem sockets, and hooked CharacterFrame / PaperDollFrame OnShow, PLAYER_EQUIPMENT_CHANGED, and SOCKET_INFO_UPDATE out of combat to draw crisp 1px Warm Amber-Gold (#FBBF24) border overlays on the matching Blizzard paperdoll gear slots." },
+        { type = "FEATURE", text = "Paperdoll Missing-Enchant & Empty-Socket Slot Highlights + /dprep testaudit (16/11/2026): extended ScanEquippedGearEnchantsAndGems() to store flagged slot IDs missing Midnight Season 2 enchants or containing empty gem sockets, hooked CharacterFrame / PaperDollFrame OnShow, PLAYER_EQUIPMENT_CHANGED, and SOCKET_INFO_UPDATE out of combat to draw crisp 1px Warm Amber-Gold (#FBBF24) border overlays on the matching Blizzard paperdoll gear slots, and added /dprep testaudit (/dp testaudit) to preview the highlight borders on Head and Ring 1." },
         { type = "FEATURE", text = "Colour-Coded Food Stat Benefits on Clickable Raid Buffs HUD & Readiness Strip (15/11/2026): added FormatColoredFoodBenefit to colour-code parsed food stats (Mint Teal Primary/Int/Agi/Str, Sky Cyan Haste, Royal Amethyst Mastery, Warm Amber-Gold Crit, Emerald Green Versatility, Blaze Orange Highest Secondary Stat, and Slate-Silver Stamina) across Clickable Raid Buffs food tooltip titles, 'Food Benefit:' summary lines, expiring 'Current Buff:' lines, Readiness Strip Slot 3, and capsule tooltips." },
         { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
         { type = "FEATURE", text = "Blizzard Window Quality of Life & Silent Multi-Addon Coexistence (15/11/2026): added Tab 3 controls to keep 31 standard Blizzard panels (Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Social & Friends, Collections, Transmogrify, Adventure Guide, Professions, Professions Book, Crafting Orders, Achievements, Item Upgrade, Item Socketing, Revival Catalyst, Renown, Delves, Trainer, Calendar, Macros, NPC Gossip, Quest, Trade, Merchant, Mail, Bank, Auction House, and AddOn List) open together via ShowUIPanel multi-panel restoration and Escape-protected UISpecialFrames / HideUIPanel / CloseWindows / ToggleGameMenu handling (leaving Pinned windows open past Escape while [X] and keybind toggles still close them, and dismissing strictly one unpinned window per Escape) while freezing already-open windows in place so opening another panel never shifts them, smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag window moving out of combat with unclamped SetClampedToScreen(false) free movement, scale-aware UIParent CENTER persistence, SetPoint tab-switch snap-back protection, TitleContainer-cleared header overlay layering (+50 frame levels, (-58, -2) Maximize/Minimize clearance), Ctrl+Wheel header scaling for the current session or Ctrl+Shift+Wheel anywhere on a window to save permanently (70%-140% in 5% steps with an auto-fading Obsidian/Blaze-Orange toast), Right-Click header reset and [Reset All Windows] (restoring default position, 100% scale, and screen clamping), strict World Map / Game Menu exclusion with zero combat taint, and automatic silent yielding for NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, and ElvUI." },
@@ -1747,10 +1747,11 @@ function DynamicPrep:UpdatePaperdollSlotHighlights()
 
     local audit = self._gearAuditCache or self:ScanEquippedGearEnchantsAndGems()
     local flagged = audit and audit.flaggedSlotIDs
+    local simAudit = (self._simPaperdollAudit == true)
 
     for slotID, frameName in pairs(PAPERDOLL_SLOT_FRAMES) do
         local slotBtn = _G[frameName]
-        local isFlagged = flagged and flagged[slotID] == true
+        local isFlagged = (flagged and flagged[slotID] == true) or (simAudit and (slotID == 1 or slotID == 11))
         if isFlagged and slotBtn then
             local ov = paperdollSlotOverlays[slotID]
             if not ov then
@@ -1768,6 +1769,25 @@ function DynamicPrep:UpdatePaperdollSlotHighlights()
         elseif paperdollSlotOverlays[slotID] then
             paperdollSlotOverlays[slotID]:Hide()
         end
+    end
+end
+
+function DynamicPrep:TogglePaperdollAuditPreview()
+    if (InCombatLockdown and InCombatLockdown()) or _IsInActiveKeyOrCombat() then
+        print("|cFFF97316DynamicPrep:|r Cannot toggle /dprep testaudit preview during combat or an active Mythic+ run.")
+        return
+    end
+    self._simPaperdollAudit = not (self._simPaperdollAudit == true)
+    if self._simPaperdollAudit then
+        if not (_G.CharacterFrame and _G.CharacterFrame:IsShown() and _G.PaperDollFrame and _G.PaperDollFrame:IsShown()) and type(ToggleCharacter) == "function" then
+            pcall(ToggleCharacter, "PaperDollFrame")
+        end
+        self:UpdatePaperdollSlotHighlights()
+        print("|cFFF97316DynamicPrep:|r Paperdoll audit preview |cFFFBBF24ON|r (Head & Ring 1 highlighted; run /dprep testaudit again to clear).")
+    else
+        self:ScanEquippedGearEnchantsAndGems()
+        self:UpdatePaperdollSlotHighlights()
+        print("|cFFF97316DynamicPrep:|r Paperdoll audit preview cleared.")
     end
 end
 end
@@ -10529,6 +10549,8 @@ SlashCmdList["DYNAMICPREP"] = function(msg)
         DynamicPrep:SetEditMode(not DynamicPrep.inEditMode)
     elseif cmd == "reset" then
         DynamicPrep:ResetModuleDefaults()
+    elseif cmd == "testaudit" then
+        DynamicPrep:TogglePaperdollAuditPreview()
     elseif cmd == "qol" or cmd == "3" then
         DynamicPrep:OpenWorkspace(3)
     elseif cmd == "buffs" or cmd == "2" then
@@ -14503,6 +14525,9 @@ do
             local clean = (msg or ""):lower():match("^%s*(.-)%s*$")
             if clean == "simkey" or clean == "testkey" then
                 DynamicPrep:RunKeystoneSimulation()
+                return
+            elseif clean == "testaudit" then
+                DynamicPrep:TogglePaperdollAuditPreview()
                 return
             end
             oldSlash(msg)

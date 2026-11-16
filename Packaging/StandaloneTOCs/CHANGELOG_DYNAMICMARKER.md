@@ -6,6 +6,7 @@
 ## DynamicMarker v2.3.0 (16/11/2026)
 
 ### Improved
+* **HUD Edit Mode `Apply All` Appearance Action:** Added a compact Dark-Obsidian (`#0B0D12`) / Blaze Orange (`#F97316`) `Apply All` button to Row 3 of `DynamicMarkerEditModeInspector` to copy the active bar's Opacity and Border Style across both Focus Icons and World Flare Bar in one click.
 * **Version & Coexistence Lockstep Parity:** Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to `v2.3.0` for Retail 12.1.5 (Interface 120105, Midnight Season 2).
 
 ---

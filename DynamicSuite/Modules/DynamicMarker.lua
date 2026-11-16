@@ -6607,11 +6607,11 @@ function DM:EnsureEditModeInspector()
         insp.inspRow3 = inspRow3
 
         -- Left cluster: Opacity Slider (20% - 100%, step 5%)
-        local HUD_MIN_OPA, HUD_MAX_OPA, HUD_OPA_STEP, OPA_SLIDER_W = 0.20, 1.00, 0.05, 64
+        local HUD_MIN_OPA, HUD_MAX_OPA, HUD_OPA_STEP, OPA_SLIDER_W = 0.20, 1.00, 0.05, 44
         local opaLbl = inspRow3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        opaLbl:SetPoint("LEFT", inspRow3, "LEFT", 8, 0)
+        opaLbl:SetPoint("LEFT", inspRow3, "LEFT", 6, 0)
         DM:StyleFont(opaLbl, 10, "", COLORS.TextMuted)
-        opaLbl:SetText("Opacity")
+        opaLbl:SetText("Opacity:")
 
         local function GetSelectedHudOpacity()
             local primaryKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
@@ -6634,16 +6634,16 @@ function DM:EnsureEditModeInspector()
             DM:RefreshAll()
         end
 
-        local opaMinusBtn = DM:CreateButton(inspRow3, "-", 20, 22, function()
+        local opaMinusBtn = DM:CreateButton(inspRow3, "-", 18, 22, function()
             SetSelectedHudOpacity(GetSelectedHudOpacity() - HUD_OPA_STEP)
             DM:RefreshEditModeInspector()
         end)
-        TightenLabel(opaMinusBtn, 2, 20)
-        opaMinusBtn:SetPoint("LEFT", opaLbl, "RIGHT", 4, 0)
+        TightenLabel(opaMinusBtn, 2, 18)
+        opaMinusBtn:SetPoint("LEFT", opaLbl, "RIGHT", 3, 0)
 
         local opaHit = CreateFrame("Frame", nil, inspRow3)
         opaHit:SetSize(OPA_SLIDER_W, 22)
-        opaHit:SetPoint("LEFT", opaMinusBtn, "RIGHT", 4, 0)
+        opaHit:SetPoint("LEFT", opaMinusBtn, "RIGHT", 3, 0)
         opaHit:EnableMouse(true)
         opaHit:EnableMouseWheel(true)
 
@@ -6665,16 +6665,16 @@ function DM:EnsureEditModeInspector()
             opaThumb:SetTexelSnappingBias(0)
         end
 
-        local opaPlusBtn = DM:CreateButton(inspRow3, "+", 20, 22, function()
+        local opaPlusBtn = DM:CreateButton(inspRow3, "+", 18, 22, function()
             SetSelectedHudOpacity(GetSelectedHudOpacity() + HUD_OPA_STEP)
             DM:RefreshEditModeInspector()
         end)
-        TightenLabel(opaPlusBtn, 2, 20)
-        opaPlusBtn:SetPoint("LEFT", opaHit, "RIGHT", 4, 0)
+        TightenLabel(opaPlusBtn, 2, 18)
+        opaPlusBtn:SetPoint("LEFT", opaHit, "RIGHT", 3, 0)
 
         local opaBadge = CreateFrame("Frame", nil, inspRow3, "BackdropTemplate")
-        opaBadge:SetSize(38, 22)
-        opaBadge:SetPoint("LEFT", opaPlusBtn, "RIGHT", 4, 0)
+        opaBadge:SetSize(34, 22)
+        opaBadge:SetPoint("LEFT", opaPlusBtn, "RIGHT", 3, 0)
         DM:ApplyBackdrop(opaBadge, { r = 0.043, g = 0.051, b = 0.071, a = 0.98 }, COLORS.BorderStrong, 1)
         local opaBadgeText = opaBadge:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         opaBadgeText:SetPoint("CENTER", opaBadge, "CENTER", 0, 0)
@@ -6736,11 +6736,11 @@ function DM:EnsureEditModeInspector()
             DM:RefreshEditModeInspector()
         end)
 
-        -- Center cluster: Border Style Segmented Pills (Accent | Dark | None)
+        -- Center cluster: Border Style Segmented Pills (Accent | Dark | None) + Apply All
         local bdrLbl = inspRow3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        bdrLbl:SetPoint("LEFT", opaBadge, "RIGHT", 10, 0)
+        bdrLbl:SetPoint("LEFT", opaBadge, "RIGHT", 5, 0)
         DM:StyleFont(bdrLbl, 10, "", COLORS.TextMuted)
-        bdrLbl:SetText("Border")
+        bdrLbl:SetText("Border:")
 
         local function GetSelectedHudBorderStyle()
             local primaryKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
@@ -6767,20 +6767,51 @@ function DM:EnsureEditModeInspector()
             DM:RefreshAll()
         end
 
-        local bdrAccentBtn = DM:CreateButton(inspRow3, "Accent", 48, 22, function() SetSelectedHudBorderStyle("ACCENT") end, false)
-        TightenLabel(bdrAccentBtn, 3, 48)
+        local bdrAccentBtn = DM:CreateButton(inspRow3, "Accent", 42, 22, function() SetSelectedHudBorderStyle("ACCENT") end, false)
+        TightenLabel(bdrAccentBtn, 2, 42)
+        if bdrAccentBtn.Text then DM:StyleFont(bdrAccentBtn.Text, 10, "", COLORS.TextPrimary) end
         AttachToggleStyle(bdrAccentBtn, false)
-        bdrAccentBtn:SetPoint("LEFT", bdrLbl, "RIGHT", 5, 0)
+        bdrAccentBtn:SetPoint("LEFT", bdrLbl, "RIGHT", 3, 0)
 
-        local bdrDarkBtn = DM:CreateButton(inspRow3, "Dark", 40, 22, function() SetSelectedHudBorderStyle("DARK") end, false)
-        TightenLabel(bdrDarkBtn, 3, 40)
+        local bdrDarkBtn = DM:CreateButton(inspRow3, "Dark", 34, 22, function() SetSelectedHudBorderStyle("DARK") end, false)
+        TightenLabel(bdrDarkBtn, 2, 34)
+        if bdrDarkBtn.Text then DM:StyleFont(bdrDarkBtn.Text, 10, "", COLORS.TextPrimary) end
         AttachToggleStyle(bdrDarkBtn, false)
         bdrDarkBtn:SetPoint("LEFT", bdrAccentBtn, "RIGHT", 2, 0)
 
-        local bdrNoneBtn = DM:CreateButton(inspRow3, "None", 40, 22, function() SetSelectedHudBorderStyle("NONE") end, false)
-        TightenLabel(bdrNoneBtn, 3, 40)
+        local bdrNoneBtn = DM:CreateButton(inspRow3, "None", 34, 22, function() SetSelectedHudBorderStyle("NONE") end, false)
+        TightenLabel(bdrNoneBtn, 2, 34)
+        if bdrNoneBtn.Text then DM:StyleFont(bdrNoneBtn.Text, 10, "", COLORS.TextPrimary) end
         AttachToggleStyle(bdrNoneBtn, true)
         bdrNoneBtn:SetPoint("LEFT", bdrDarkBtn, "RIGHT", 2, 0)
+
+        local applyAllBtn = DM:CreateButton(inspRow3, "Apply All", 52, 22, function()
+            if InCombatLockdown() then
+                print("|cFFF97316DynamicMarker|r: Cannot apply HUD appearance during combat lockdown.")
+                return
+            end
+            local curOpa = GetSelectedHudOpacity()
+            local curBdr = GetSelectedHudBorderStyle()
+            DM:SetSetting("targetBarOpacity", curOpa)
+            DM:SetSetting("flareBarOpacity", curOpa)
+            DM:SetSetting("targetBarBorderStyle", curBdr)
+            DM:SetSetting("flareBarBorderStyle", curBdr)
+            DM:SetSetting("hudBorderStyle", curBdr)
+            DM:RefreshTargetBar()
+            DM:RefreshFlareBar()
+            if DM.SyncEditBarStates then DM:SyncEditBarStates() end
+            DM:RefreshEditModeInspector()
+            DM:RefreshAll()
+            local bdrName = (curBdr == "DARK" and "Dark") or (curBdr == "NONE" and "None") or "Accent"
+            print(string.format("|cFFF97316DynamicMarker|r: Applied %d%% opacity and %s border style to all bars.", math.floor(curOpa * 100 + 0.5), bdrName))
+        end, false)
+        TightenLabel(applyAllBtn, 2, 52)
+        if applyAllBtn.Text then DM:StyleFont(applyAllBtn.Text, 10, "", { r = 0.976, g = 0.451, b = 0.086 }) end
+        AttachToggleStyle(applyAllBtn, false)
+        applyAllBtn:SetPoint("LEFT", bdrNoneBtn, "RIGHT", 5, 0)
+        applyAllBtn.tooltipTitle = "Apply Opacity & Border to All Bars"
+        applyAllBtn.tooltipText = "Copies the current Opacity and Border Style to both Focus Icons and World Flare Bar."
+        insp.applyAllBtn = applyAllBtn
 
         insp.borderBtns = {
             ACCENT = bdrAccentBtn,
@@ -6821,20 +6852,22 @@ function DM:EnsureEditModeInspector()
             DM:RefreshAll()
         end
 
-        local orientVertBtn = DM:CreateButton(inspRow3, "Vert", 40, 22, function() SetSelectedHudOrientation("VERTICAL") end, false)
-        TightenLabel(orientVertBtn, 3, 40)
+        local orientVertBtn = DM:CreateButton(inspRow3, "Vert", 34, 22, function() SetSelectedHudOrientation("VERTICAL") end, false)
+        TightenLabel(orientVertBtn, 2, 34)
+        if orientVertBtn.Text then DM:StyleFont(orientVertBtn.Text, 10, "", COLORS.TextPrimary) end
         AttachToggleStyle(orientVertBtn, false)
         orientVertBtn:SetPoint("RIGHT", inspRow3, "RIGHT", -6, 0)
 
-        local orientHorizBtn = DM:CreateButton(inspRow3, "Horiz", 44, 22, function() SetSelectedHudOrientation("HORIZONTAL") end, false)
-        TightenLabel(orientHorizBtn, 3, 44)
+        local orientHorizBtn = DM:CreateButton(inspRow3, "Horiz", 38, 22, function() SetSelectedHudOrientation("HORIZONTAL") end, false)
+        TightenLabel(orientHorizBtn, 2, 38)
+        if orientHorizBtn.Text then DM:StyleFont(orientHorizBtn.Text, 10, "", COLORS.TextPrimary) end
         AttachToggleStyle(orientHorizBtn, false)
         orientHorizBtn:SetPoint("RIGHT", orientVertBtn, "LEFT", -2, 0)
 
         local orientLbl = inspRow3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        orientLbl:SetPoint("RIGHT", orientHorizBtn, "LEFT", -5, 0)
+        orientLbl:SetPoint("RIGHT", orientHorizBtn, "LEFT", -3, 0)
         DM:StyleFont(orientLbl, 10, "", COLORS.TextMuted)
-        orientLbl:SetText("Orient")
+        orientLbl:SetText("Orient:")
 
         insp.orientBtns = {
             HORIZONTAL = orientHorizBtn,
@@ -10513,7 +10546,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "16/11/2026",
     entries = {
-        { type = "IMPROVED", text = "Release v2.3.0 - Version & Storefront Lockstep Parity (16/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.3.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
+        { type = "IMPROVED", text = "Release v2.3.0 - HUD Edit Mode 'Apply All' Appearance Action & Lockstep Parity (16/11/2026): Added a compact 'Apply All' Opacity & Border Style button to Row 3 of DynamicMarkerEditModeInspector so you can copy the active bar's opacity and border style across both bars in one click, and synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.3.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "FEATURE", text = "SharedMedia, AddOn & Blizzard Font Discovery in Theme Studio (15/11/2026): Added runtime scanning for LibSharedMedia-3.0, DBM, WeakAuras, and ElvUI fonts alongside Blizzard standard fonts and bundled Expressway fonts inside Theme & Font Studio. Grouped dropdown options under Built-in Fonts, Blizzard, and SharedMedia / AddOns with live search, scroll support, per-font preview rendering, and safe fallback to the default font if an external addon is disabled." },
         { type = "IMPROVED", text = "Unbound-by-Default World Flare Keybinds & Guided Setup Assignment (15/11/2026): Removed the hardcoded F4 and F5 World Flare default keybinds so fresh installs and Resets start with both keys 'Unbound' (leaving your own Blizzard and action bar bindings untouched while preserving any existing saved DynamicMarkerDB hotkeys), added optional single-button Cycle World Flare and Clear All Flares keybind capture rows to both Guided Setup and the World Flare Keys (/dm flares) tab ('Click to bind, Right-click to unbind'), and refined capture behaviour so Escape cancels without losing the current key while Backspace/Delete or Right-Click clears to Unbound." },
         { type = "FEATURE", text = "Release v2.1.1 - 3-Row HUD Edit Appearance Dock (560x110) & First-Click Mover Parity (15/11/2026): Upgraded standalone DynamicMarkerEditModeInspector into a unified 560x110 3-row draggable inspector dock adding Row 3 live Appearance controls: Opacity slider (20%-100%, step 5%, with SetIgnoreParentAlpha mover legibility), Accent | Dark | None Border Style pills synced 1:1 with Target Icon Bar and World Flare Bar sub-settings, Horiz | Vert Orientation toggle with instant screen-bounds re-clamping, and full Position/Scale/Opacity/Border/Orientation [Reset]. Ensured the HUD selector dropdown defaults to closed on entry and Target Icon / World Flare movers appear reliably on first HUD Edit activation." },
