@@ -7,7 +7,15 @@
 
 ### DynamicBags
 - **Inline Search Clear Button & Escape-First Handling:** Added a compact inline `x` clear button inside both the `DynamicBags` and Unified `DynamicBank` search boxes whenever search text is active, and hooked `Escape` so pressing `Escape` clears the active search filter first (pressing `Escape` again when search is empty closes the window normally).
-- **Collapsible Category Section Headers:** Left-Clicking any virtual category header (such as `Crafting & Reagents`, `Equipment Sets`, or `Miscellaneous`) collapses or expands that section out of combat with a subtle chevron indicator and collapsed item-count summary persisted across reloads in `DynamicBagsDB` (`Alt + Left-Click` opens the category reorder menu).
+- **Collapsible Category Section Headers & Shift+Click Collapse/Expand All:** Left-Clicking any virtual category header (such as `Crafting & Reagents`, `Equipment Sets`, or `Miscellaneous`) collapses or expands that section out of combat with a subtle chevron indicator and collapsed item-count summary persisted across reloads in `DynamicBagsDB` (`Alt + Left-Click` opens the category reorder menu). Holding `Shift + Left-Click` on any category header now collapses all expanded categories or expands all collapsed categories at once out of combat.
+- **Interactive Bag Space & Junk Value Breakdown Tooltip:** Hovering the bottom-left footer slot readout (`Bags: X/Y | Reagents: X/Y`) displays a per-bag free/total slot breakdown (`Backpack`, `Bag 1`..`Bag 4`, `Reagent Bag`) plus the total vendor sell value of grey/poor-quality items currently in your bags formatted with coin icons.
+
+### DynamicGroup
+- **Declined Premade LFG Group Dimming & Badge:** Records `searchResultID` entries whose application status transitions to `declined` or `invitedeclined` for the current search session (cleared on new searches or category changes), dims declined rows to `0.35` alpha, and adds a compact crimson `Declined` indicator inside the top-right status pill so you never accidentally re-apply to a group that already declined you.
+- **LFG Search Freshness Tooltip Telemetry:** Records the search timestamp whenever `LFGListSearchPanel_DoSearch` fires and displays `Last Refreshed: Xs ago` inside the LFG Mini-Bar region, M+ score, and group filter tooltips.
+
+### DynamicPrep
+- **Paperdoll Missing-Enchant & Empty-Socket Slot Highlights:** Extended `ScanEquippedGearEnchantsAndGems()` to track exact equipped slot IDs missing Midnight Season 2 enchants or containing empty gem sockets, and hooked `CharacterFrame` / `PaperDollFrame` `OnShow`, `PLAYER_EQUIPMENT_CHANGED`, and `SOCKET_INFO_UPDATE` out of combat to draw a crisp 1px Warm Amber-Gold (`#FBBF24`) border overlay on the matching Blizzard paperdoll slot buttons.
 
 ### DynamicLoad
 - **One-Click `Copy From...` Zone Profile Action:** Added a compact `Copy From...` button on the `DynamicLoad` toolbar (Dark-Obsidian `#0B0D12` / Blaze Orange `#F97316`) so you can copy another zone's `By Zone` addon selections into the active zone tab in one click while preserving universal `Always` / `Never` locks and protected Suite Core rules.
