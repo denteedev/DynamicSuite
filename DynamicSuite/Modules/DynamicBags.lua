@@ -2918,6 +2918,7 @@ function U.ApplyHeaders(content, pool, sections)
                     GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
                     GameTooltip:SetText(self.fullLabel or "Category", 1, 1, 1)
                     GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Collapse or Expand Category|r", 0.886, 0.910, 0.941, true)
+                    GameTooltip:AddLine("|cFF38BDF8Shift + Left-Click:|r |cFFE2E8F0Collapse or Expand All Categories|r", 0.886, 0.910, 0.941, true)
                     GameTooltip:AddLine("|cFFF97316Alt + Left-Click:|r |cFFE2E8F0Reorder Category Menu|r", 0.886, 0.910, 0.941, true)
                     if (S.atBank or S.atGuildBank) and S.bankWindow and S.bankWindow:IsShown() then
                         GameTooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Batch-Transfer Entire Category|r", 0.886, 0.910, 0.941, true)
@@ -2948,7 +2949,25 @@ function U.ApplyHeaders(content, pool, sections)
                 if not self.secKey or self.secKey == "free" then return end
                 if button == "LeftButton" then
                     if IsShiftKeyDown() then
-                        U.MoveSectionOrder(self.secKey, -1, self.allSections)
+                        if InCombatLockdown() then
+                            Print("Cannot collapse or expand categories during combat.")
+                            return
+                        end
+                        local db = DB()
+                        db.collapsedSections = db.collapsedSections or {}
+                        local anyExpanded = false
+                        for _, s in ipairs(self.allSections or {}) do
+                            if s.key and s.key ~= "free" and not (db.collapsedSections[s.key] == true) then
+                                anyExpanded = true
+                                break
+                            end
+                        end
+                        for _, s in ipairs(self.allSections or {}) do
+                            if s.key and s.key ~= "free" then
+                                db.collapsedSections[s.key] = anyExpanded and true or nil
+                            end
+                        end
+                        U.OnSettingChanged("layout")
                     elseif IsAltKeyDown() or IsControlKeyDown() then
                         U.ShowSectionHeaderMenu(self, self.allSections, fromBank)
                     else
@@ -3036,6 +3055,67 @@ function U.CountSlots()
         end
     end
     return regFree, regTotal, reaFree, reaTotal
+end
+
+function U.GetBagBreakdownAndJunkValue()
+    local reagentID = (Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag) or 5
+    local maxBagSlots = NUM_BAG_SLOTS or 4
+    local breakdown = {}
+    local junkCount, junkValue = 0, 0
+
+    local orderedBagIDs = {}
+    for bagID = 0, maxBagSlots do
+        orderedBagIDs[#orderedBagIDs + 1] = bagID
+    end
+    orderedBagIDs[#orderedBagIDs + 1] = reagentID
+
+    for _, bagID in ipairs(orderedBagIDs) do
+        local label
+        if bagID == 0 then
+            label = "Backpack"
+        elseif bagID == reagentID then
+            label = "Reagent Bag"
+        else
+            label = sformat("Bag %d", bagID)
+        end
+
+        local total = 0
+        if C_Container and C_Container.GetContainerNumSlots then
+            local okN, n = pcall(C_Container.GetContainerNumSlots, bagID)
+            if okN and type(n) == "number" and not IsSecret(n) and n > 0 then
+                total = n
+            end
+        elseif S.slotCount[bagID] then
+            total = S.slotCount[bagID]
+        end
+
+        local used = 0
+        for slot = 1, total do
+            local info = U.GetSlotInfo(bagID, slot)
+            if info then
+                used = used + 1
+                if not IsSecret(info.quality) and info.quality == QUALITY_POOR and not IsSecret(info.hasNoValue) and not info.hasNoValue then
+                    local cnt = (type(info.stackCount) == "number" and not IsSecret(info.stackCount) and info.stackCount > 0) and info.stackCount or 1
+                    junkCount = junkCount + cnt
+                    if C_Item and C_Item.GetItemInfo and info.hyperlink and not IsSecret(info.hyperlink) then
+                        local okInfo, _, _, _, _, _, _, _, _, _, _, sp = pcall(C_Item.GetItemInfo, info.hyperlink)
+                        if okInfo and type(sp) == "number" and not IsSecret(sp) and sp > 0 then
+                            junkValue = junkValue + (sp * cnt)
+                        end
+                    end
+                end
+            end
+        end
+
+        breakdown[#breakdown + 1] = {
+            bagID = bagID,
+            label = label,
+            free = max(0, total - used),
+            total = total,
+        }
+    end
+
+    return breakdown, junkCount, junkValue
 end
 
 function U.RefreshLiveOverlaysInPlace()
@@ -5910,7 +5990,45 @@ function U.EnsureWindow()
     SetFont(foot.left, 11, "")
     foot.left:SetPoint("LEFT", foot, "LEFT", 12, 0)
     foot.left:SetTextColor(0.68, 0.74, 0.82, 1)
+    foot.leftBtn = CreateFrame("Button", nil, foot)
+    foot.leftBtn:SetPoint("TOPLEFT", foot.left, "TOPLEFT", -4, 4)
+    foot.leftBtn:SetPoint("BOTTOMRIGHT", foot.left, "BOTTOMRIGHT", 4, -4)
+    foot.leftBtn:SetFrameLevel(foot:GetFrameLevel() + 2)
+    foot.leftBtn:SetScript("OnEnter", function(self)
+        if not S.view or S.view.char or S.view.mode ~= "BAGS" then return end
+        if InCombatLockdown() and not C_Container then return end
+        foot.left:SetTextColor(1, 1, 1, 1)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        GameTooltip:SetText("Bag Space & Junk Summary", 1, 1, 1)
+        local breakdown, junkCount, junkValue = U.GetBagBreakdownAndJunkValue()
+        for _, b in ipairs(breakdown) do
+            if b.total > 0 then
+                local rCol, gCol, bCol = 0.204, 0.827, 0.600
+                if b.free == 0 then
+                    rCol, gCol, bCol = 0.973, 0.443, 0.443
+                elseif b.free <= 3 then
+                    rCol, gCol, bCol = 0.984, 0.749, 0.141
+                end
+                GameTooltip:AddDoubleLine(b.label, sformat("%d / %d Free", b.free, b.total), 0.85, 0.90, 0.96, rCol, gCol, bCol)
+            else
+                GameTooltip:AddDoubleLine(b.label, "Not Equipped", 0.58, 0.64, 0.72, 0.58, 0.64, 0.72)
+            end
+        end
+        GameTooltip:AddLine(" ")
+        if junkCount > 0 then
+            GameTooltip:AddDoubleLine(sformat("Grey Junk Value (%d):", junkCount), U.FormatMoneyWithIcons(junkValue), 0.85, 0.90, 0.96, 1, 1, 1)
+        else
+            GameTooltip:AddDoubleLine("Grey Junk Value:", "|cFF64748BNone|r", 0.85, 0.90, 0.96, 0.58, 0.64, 0.72)
+        end
+        GameTooltip:Show()
+    end)
+    foot.leftBtn:SetScript("OnLeave", function()
+        foot.left:SetTextColor(0.68, 0.74, 0.82, 1)
+        GameTooltip:Hide()
+    end)
     U.MakeFrameDraggable(foot, win, function() U.SaveTopAlignedPos(win, "windowPos") end)
+    U.MakeFrameDraggable(foot.leftBtn, win, function() U.SaveTopAlignedPos(win, "windowPos") end)
     U.MakeFrameDraggable(area.scroll, win, function() U.SaveTopAlignedPos(win, "windowPos") end)
     U.MakeFrameDraggable(S.liveContent, win, function() U.SaveTopAlignedPos(win, "windowPos") end)
 
@@ -5932,7 +6050,8 @@ function U.EnsureWindow()
     AttachCanvasDropHandler(win)
     AttachCanvasDropHandler(head)
     AttachCanvasDropHandler(foot)
-    U.AttachWindowScaleHandlers("bag", head, { win, area, area.scroll, area.content, S.liveContent, S.remoteContent, foot })
+    AttachCanvasDropHandler(foot.leftBtn)
+    U.AttachWindowScaleHandlers("bag", head, { win, area, area.scroll, area.content, S.liveContent, S.remoteContent, foot, foot.leftBtn })
 
     local goldBtn = CreateFrame("Button", nil, foot)
     goldBtn:SetPoint("RIGHT", foot, "RIGHT", -12, 0)

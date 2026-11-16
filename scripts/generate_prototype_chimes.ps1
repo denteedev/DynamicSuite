@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Synthesizes the 10-chime EX3-inspired 44.1 kHz Stereo Vorbis .ogg sound pack
-    for DynamicChat Tab 3.
+    for DynamicChat Tab 3 using neutral, sound-character naming.
 #>
 [CmdletBinding()]
 param(
@@ -213,7 +213,7 @@ function New-ChimeFromNotes {
 $ffmpeg = Resolve-FFmpeg
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "DynamicChatAudioPack10"
+$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "DynamicChatAudioPack10v2"
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
 $packSpecs = @(
@@ -237,27 +237,12 @@ $packSpecs = @(
         ))
     },
     @{
-        Name = "DynamicChat_ChimeWhisper"
-        Data = (New-ChimeFromNotes -TotalSec 0.460 -FadeOutSec 0.050 -HarmonicScale 0.45 -Notes @(
-            @{ Start = 0.000; Freq = 1318.51; Gain = 0.92; Tau = 0.105; Pan = -0.14 },
-            @{ Start = 0.095; Freq = 1108.73; Gain = 1.00; Tau = 0.130; Pan =  0.14 }
-        ))
-    },
-    @{
         Name = "DynamicChat_MentionWarm"
         Data = (New-ChimeFromNotes -TotalSec 0.680 -FadeOutSec 0.055 -Notes @(
             @{ Start = 0.000; Freq = 523.25;  Gain = 0.82; Tau = 0.120; Pan = -0.45 },
             @{ Start = 0.042; Freq = 783.99;  Gain = 0.88; Tau = 0.130; Pan = -0.15 },
             @{ Start = 0.084; Freq = 987.77;  Gain = 0.94; Tau = 0.140; Pan =  0.15 },
             @{ Start = 0.130; Freq = 1318.51; Gain = 1.00; Tau = 0.175; Pan =  0.45 }
-        ))
-    },
-    @{
-        Name = "DynamicChat_ChimeAlert"
-        Data = (New-ChimeFromNotes -TotalSec 0.560 -FadeOutSec 0.045 -HarmonicScale 1.35 -Notes @(
-            @{ Start = 0.000; Freq = 440.00;  Gain = 0.86; Tau = 0.085; Pan =  0.00 },
-            @{ Start = 0.110; Freq = 880.00;  Gain = 0.94; Tau = 0.075; Pan = -0.18 },
-            @{ Start = 0.185; Freq = 880.00;  Gain = 1.00; Tau = 0.135; Pan =  0.18 }
         ))
     },
     @{
@@ -282,12 +267,25 @@ $packSpecs = @(
         ))
     },
     @{
-        Name = "DynamicChat_ChimeBeacon"
-        Data = (New-ChimeFromNotes -TotalSec 0.720 -FadeOutSec 0.055 -Notes @(
-            @{ Start = 0.000; Freq = 783.99;  Gain = 0.84; Tau = 0.110; Pan = -0.22 },
-            @{ Start = 0.065; Freq = 1174.66; Gain = 0.92; Tau = 0.115; Pan =  0.18 },
-            @{ Start = 0.130; Freq = 987.77;  Gain = 0.90; Tau = 0.115; Pan = -0.12 },
-            @{ Start = 0.205; Freq = 1174.66; Gain = 1.00; Tau = 0.170; Pan =  0.00 }
+        Name = "DynamicChat_ChimeDewdrop"
+        Data = (New-ChimeFromNotes -TotalSec 0.450 -FadeOutSec 0.050 -HarmonicScale 0.35 -Notes @(
+            @{ Start = 0.000; Freq = 392.00;  Gain = 0.90; Tau = 0.125; Pan = -0.14 },
+            @{ Start = 0.095; Freq = 587.33;  Gain = 1.00; Tau = 0.145; Pan =  0.14 }
+        ))
+    },
+    @{
+        Name = "DynamicChat_ChimeRipple"
+        Data = (New-ChimeFromNotes -TotalSec 0.350 -FadeOutSec 0.040 -Notes @(
+            @{ Start = 0.000; Freq = 1318.51; Gain = 0.82; Tau = 0.075; Pan = -0.15 },
+            @{ Start = 0.036; Freq = 1567.98; Gain = 1.00; Tau = 0.105; Pan =  0.15 }
+        ))
+    },
+    @{
+        Name = "DynamicChat_ChimePrism"
+        Data = (New-ChimeFromNotes -TotalSec 0.540 -FadeOutSec 0.050 -Notes @(
+            @{ Start = 0.000; Freq = 1318.51; Gain = 0.90; Tau = 0.105; Pan =  0.22 },
+            @{ Start = 0.075; Freq = 987.77;  Gain = 0.94; Tau = 0.115; Pan =  0.00 },
+            @{ Start = 0.150; Freq = 783.99;  Gain = 1.00; Tau = 0.145; Pan = -0.22 }
         ))
     }
 )

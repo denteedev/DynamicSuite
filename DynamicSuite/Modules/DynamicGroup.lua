@@ -1826,6 +1826,14 @@ local function CountActiveUtilityFilters(db)
 end
 
 local recentSearchResultCache = {}
+local declinedResultIDs = {}
+local lastSearchTimestamp = nil
+
+local function AddSearchFreshnessTooltipLine(tooltip)
+    if not tooltip or not lastSearchTimestamp or type(_G.GetTime) ~= "function" then return end
+    local elapsed = math.max(0, math.floor((_G.GetTime() or 0) - lastSearchTimestamp + 0.5))
+    tooltip:AddLine(string.format("Last Refreshed: %ds ago", elapsed), 0.58, 0.64, 0.72)
+end
 
 local function InspectSearchResult(resultID)
     if not IsValidSearchResultID(resultID) then
@@ -2316,6 +2324,10 @@ local function OnLFGListSearchEntryUpdate(entry)
     local db = EnsureDB()
     local eState = GetEntryState(entry)
     if IsYieldingSharedHooks() then
+        if eState.dimmedDeclined and not (InCombatLockdown and InCombatLockdown()) and entry.SetAlpha then
+            eState.dimmedDeclined = nil
+            entry:SetAlpha(1.0)
+        end
         if eState.overlay then
             eState.overlay:Hide()
         end
@@ -2424,6 +2436,10 @@ local function OnLFGListSearchEntryUpdate(entry)
     local resultID = entry.resultID or ResolveLiveResultID(entry)
     local meta = InspectSearchResult(resultID)
     if not meta then
+        if eState.dimmedDeclined and not (InCombatLockdown and InCombatLockdown()) and entry.SetAlpha then
+            eState.dimmedDeclined = nil
+            entry:SetAlpha(1.0)
+        end
         ov:Hide()
         if _G.GameTooltip and _G.GameTooltip:IsOwned(entry) then
             _G.GameTooltip:Hide()
@@ -2442,6 +2458,26 @@ local function OnLFGListSearchEntryUpdate(entry)
         return
     end
 
+    local isDeclined = (resultID and declinedResultIDs[resultID] == true) or false
+    if not isDeclined and resultID and C_LFGList and type(C_LFGList.GetApplicationInfo) == "function" then
+        local okApp, _, appStatus = pcall(C_LFGList.GetApplicationInfo, resultID)
+        if okApp and not IsSecretValue(appStatus) and (appStatus == "declined" or appStatus == "invitedeclined") then
+            declinedResultIDs[resultID] = true
+            isDeclined = true
+        end
+    end
+    if not (InCombatLockdown and InCombatLockdown()) and entry.SetAlpha then
+        if isDeclined then
+            eState.dimmedDeclined = true
+            entry:SetAlpha(0.35)
+        elseif eState.dimmedDeclined then
+            eState.dimmedDeclined = nil
+            if not meta.isDelisted then
+                entry:SetAlpha(1.0)
+            end
+        end
+    end
+
     if not db.lfgFilterEnabled or db.showEntryOverlay == false or db.overlayMode == "OFF" or sbAlpha <= 0.01 or pAlpha <= 0.01 then
         ov:Hide()
         return
@@ -2449,12 +2485,12 @@ local function OnLFGListSearchEntryUpdate(entry)
 
     -- Keep region & score tags legible (>= 78% alpha even on dimmed/delisted or red-selected rows)
     local parentAlpha = (entry.GetAlpha and entry:GetAlpha()) or 1.0
-    ov:SetAlpha((meta.isDelisted or parentAlpha < 0.75) and 0.78 or 0.96)
+    ov:SetAlpha((meta.isDelisted or isDeclined or parentAlpha < 0.75) and 0.78 or 0.96)
 
     local showRegion = (meta.regionKey and meta.regionKey ~= "PENDING")
     local hasScore = (meta.leaderScore and meta.leaderScore > 0)
     local topPill = ov.topPill
-    if showRegion or hasScore then
+    if showRegion or hasScore or isDeclined then
         local parts = {}
         if showRegion then
             local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
@@ -2465,6 +2501,9 @@ local function OnLFGListSearchEntryUpdate(entry)
         if hasScore then
             local sHex = GetScoreColorHex(meta.leaderScore)
             parts[#parts + 1] = "|c" .. sHex .. tostring(meta.leaderScore) .. "|r"
+        end
+        if isDeclined then
+            parts[#parts + 1] = "|cFFF87171Declined|r"
         end
         SetSafeFont(topPill.text, 10, "OUTLINE")
         topPill.text:SetText(table.concat(parts, " |cFF64748B/|r "))
@@ -3645,6 +3684,7 @@ function DynamicGroup:EnsureLFGMiniBar()
             end
             _G.GameTooltip:AddLine(" ")
             _G.GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open datacentre region filter popover.|r", 0.886, 0.910, 0.941)
+            AddSearchFreshnessTooltipLine(_G.GameTooltip)
             _G.GameTooltip:Show()
         end
     end)
@@ -3669,6 +3709,7 @@ function DynamicGroup:EnsureLFGMiniBar()
             _G.GameTooltip:ClearLines()
             _G.GameTooltip:AddLine("Minimum Leader M+ Score", 1, 1, 1)
             _G.GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Select a minimum Mythic+ rating threshold.|r", 0.886, 0.910, 0.941, true)
+            AddSearchFreshnessTooltipLine(_G.GameTooltip)
             _G.GameTooltip:Show()
         end
     end)
@@ -3716,6 +3757,7 @@ function DynamicGroup:EnsureLFGMiniBar()
             end
             _G.GameTooltip:AddLine(" ")
             _G.GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open multi-toggle group filter menu.|r", 0.886, 0.910, 0.941, true)
+            AddSearchFreshnessTooltipLine(_G.GameTooltip)
             _G.GameTooltip:Show()
         end
     end)
@@ -4735,6 +4777,14 @@ function DynamicGroup:HandleApplicationStatusUpdated(searchResultID, newStatus, 
     if IsSecretValue(searchResultID) or IsSecretValue(newStatus) then return end
     if type(searchResultID) ~= "number" or searchResultID <= 0 then return end
 
+    if newStatus == "declined" or newStatus == "invitedeclined" then
+        declinedResultIDs[searchResultID] = true
+        local sp = _G.LFGListFrame and _G.LFGListFrame.SearchPanel
+        if sp and sp:IsShown() and sp.ScrollBox and type(sp.ScrollBox.ForEachFrame) == "function" and not (InCombatLockdown and InCombatLockdown()) then
+            pcall(sp.ScrollBox.ForEachFrame, sp.ScrollBox, OnLFGListSearchEntryUpdate)
+        end
+        return
+    end
     if newStatus == "applied" or newStatus == "invited" then
         pcall(InspectSearchResult, searchResultID)
         return
@@ -5088,6 +5138,8 @@ function DynamicGroup:InstallLFGHooks()
         end
         if type(_G.LFGListSearchPanel_DoSearch) == "function" then
             hooksecurefunc("LFGListSearchPanel_DoSearch", function(sp)
+                lastSearchTimestamp = (type(_G.GetTime) == "function" and _G.GetTime()) or nil
+                wipe(declinedResultIDs)
                 if sp then
                     local pState = GetPanelState(sp)
                     pState.needsInitialSort = true
@@ -5105,6 +5157,7 @@ function DynamicGroup:InstallLFGHooks()
         end
         if type(_G.LFGListSearchPanel_SetCategory) == "function" then
             hooksecurefunc("LFGListSearchPanel_SetCategory", function(sp)
+                wipe(declinedResultIDs)
                 if sp then
                     local pState = GetPanelState(sp)
                     pState.needsInitialSort = true
@@ -5122,6 +5175,7 @@ function DynamicGroup:InstallLFGHooks()
         end
         if type(_G.LFGListSearchPanel_Clear) == "function" then
             hooksecurefunc("LFGListSearchPanel_Clear", function(sp)
+                wipe(declinedResultIDs)
                 if sp then
                     local pState = GetPanelState(sp)
                     pState.needsInitialSort = true

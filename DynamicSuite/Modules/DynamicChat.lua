@@ -302,6 +302,30 @@ local function IsBuiltInBlizzardSoundKey(key)
     return type(key) == "string" and BLIZZARD_SOUND_BY_KEY[key] ~= nil
 end
 
+local SOUND_BASE = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\"
+local BUILTIN_SUITE_CHIMES_LIST = {
+    { key = "DC_CHIME_SPARK",   short = "Spark",   label = "DynamicSuite: Spark (High Pluck)",     file = "DynamicChat_ChimeSpark.ogg" },
+    { key = "DC_KEYWORD_PULSE", short = "Pulse",   label = "DynamicSuite: Pulse (Warm Bell)",      file = "DynamicChat_KeywordPulse.ogg" },
+    { key = "DC_CHIME_DUO",     short = "Duo",     label = "DynamicSuite: Duo (Rising Fifth)",     file = "DynamicChat_ChimeDuo.ogg" },
+    { key = "DC_CHIME_CASCADE", short = "Cascade", label = "DynamicSuite: Cascade (Crystal Harp)", file = "DynamicChat_MentionWarm.ogg" },
+    { key = "DC_CHIME_ECHO",    short = "Echo",    label = "DynamicSuite: Echo (Glass Ping)",      file = "DynamicChat_ChimeEcho.ogg" },
+    { key = "DC_CHIME_FOURTH",  short = "Chime",   label = "DynamicSuite: Chime (Rising Fourth)",  file = "DynamicChat_ChimeFourth.ogg" },
+    { key = "DC_CHIME_BLOOM",   short = "Bloom",   label = "DynamicSuite: Bloom (Major Ninth)",    file = "DynamicChat_ChimeBloom.ogg" },
+    { key = "DC_CHIME_DEWDROP", short = "Dewdrop", label = "DynamicSuite: Dewdrop (Low Bell)",     file = "DynamicChat_ChimeDewdrop.ogg" },
+    { key = "DC_CHIME_RIPPLE",  short = "Ripple",  label = "DynamicSuite: Ripple (Grace Flick)",   file = "DynamicChat_ChimeRipple.ogg" },
+    { key = "DC_CHIME_PRISM",   short = "Prism",   label = "DynamicSuite: Prism (Falling Triad)",  file = "DynamicChat_ChimePrism.ogg" },
+}
+local BUILTIN_SUITE_CHIMES = {}
+for _, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
+    entry.path = SOUND_BASE .. entry.file
+    entry.value = entry.key
+    BUILTIN_SUITE_CHIMES[entry.key] = entry
+end
+
+local function IsBuiltInSuiteChimeKey(key)
+    return type(key) == "string" and BUILTIN_SUITE_CHIMES[key] ~= nil
+end
+
 local DEFAULTS = {
     -- Tab 1: Target Whisper (/ww), Combat Whisper Protection & Input
     enableTargetWhisper         = true,
@@ -539,11 +563,15 @@ local function EnsureDB()
     end
     for chKey, defVal in pairs(DEFAULTS.channelSounds) do
         local cur = _G.DynamicChatDB.channelSounds[chKey]
+        if cur == "DC_MENTION_WARM" then
+            cur = "DC_CHIME_CASCADE"
+            _G.DynamicChatDB.channelSounds[chKey] = cur
+        end
         if type(cur) ~= "string" and type(cur) ~= "number" then
             _G.DynamicChatDB.channelSounds[chKey] = defVal
         elseif cur == "" then
             _G.DynamicChatDB.channelSounds[chKey] = defVal
-        elseif cur ~= "NONE" and not IsBuiltInBlizzardSoundKey(cur) then
+        elseif cur ~= "NONE" and not IsBuiltInBlizzardSoundKey(cur) and not IsBuiltInSuiteChimeKey(cur) then
             local s = tostring(cur)
             local isLegacyWavKey = (type(cur) == "string") and (s:match("^ds_") ~= nil or s:match("^ex_") ~= nil or s:lower():match("%.wav$") ~= nil)
             local validExternal = (not isLegacyWavKey) and (s:find("^LSM:") or s:find("^DBM:") or s:find("^BW:") or s:find("^WA:") or s:find("^ELV:") or s:find("^EXBOSS:") or s:find("[\\/]") or (type(cur) == "number"))
@@ -6709,26 +6737,6 @@ function DynamicChat:ScanExternalSounds(force)
     return dcStandaloneSoundCache
 end
 
-local SOUND_BASE = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\"
-local BUILTIN_SUITE_CHIMES_LIST = {
-    { key = "DC_CHIME_SPARK",   short = "Spark",   label = "DynamicSuite: Spark (High Pluck)",        file = "DynamicChat_ChimeSpark.ogg" },
-    { key = "DC_KEYWORD_PULSE", short = "Pulse",   label = "DynamicSuite: Pulse (Warm Bell)",         file = "DynamicChat_KeywordPulse.ogg" },
-    { key = "DC_CHIME_DUO",     short = "Duo",     label = "DynamicSuite: Duo (Rising Fifth)",        file = "DynamicChat_ChimeDuo.ogg" },
-    { key = "DC_CHIME_WHISPER", short = "Whisper", label = "DynamicSuite: Whisper (Soft Drop)",       file = "DynamicChat_ChimeWhisper.ogg" },
-    { key = "DC_MENTION_WARM",  short = "Mention", label = "DynamicSuite: Mention (Crystal Cascade)", file = "DynamicChat_MentionWarm.ogg" },
-    { key = "DC_CHIME_ALERT",   short = "Alert",   label = "DynamicSuite: Alert (Double Octave)",     file = "DynamicChat_ChimeAlert.ogg" },
-    { key = "DC_CHIME_ECHO",    short = "Echo",    label = "DynamicSuite: Echo (Glass Ping)",         file = "DynamicChat_ChimeEcho.ogg" },
-    { key = "DC_CHIME_FOURTH",  short = "Chime",   label = "DynamicSuite: Chime (Rising Fourth)",     file = "DynamicChat_ChimeFourth.ogg" },
-    { key = "DC_CHIME_BLOOM",   short = "Bloom",   label = "DynamicSuite: Bloom (Major Ninth)",       file = "DynamicChat_ChimeBloom.ogg" },
-    { key = "DC_CHIME_BEACON",  short = "Beacon",  label = "DynamicSuite: Beacon (Bell Fanfare)",     file = "DynamicChat_ChimeBeacon.ogg" },
-}
-local BUILTIN_SUITE_CHIMES = {}
-for _, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
-    entry.path = SOUND_BASE .. entry.file
-    entry.value = entry.key
-    BUILTIN_SUITE_CHIMES[entry.key] = entry
-end
-
 local function ResolveChannelSound(soundKey)
     if not soundKey or soundKey == "" or soundKey == "NONE" then
         return nil, false
@@ -6920,7 +6928,7 @@ end
 
 function DynamicChat:PreviewSuiteChimePack()
     if _G.DEFAULT_CHAT_FRAME and type(_G.DEFAULT_CHAT_FRAME.AddMessage) == "function" then
-        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Auditioning 10-chime DynamicSuite pack on SFX (Spark, Pulse, Duo, Whisper, Mention, Alert, Echo, Chime, Bloom, Beacon)...")
+        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Auditioning 10-chime DynamicSuite pack on SFX (Spark, Pulse, Duo, Cascade, Echo, Chime, Bloom, Dewdrop, Ripple, Prism)...")
     end
     for idx, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
         local delay = (idx - 1) * 0.65
