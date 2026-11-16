@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.2.0"
+    local fb = fallback or "2.2.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.2.0"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.2.1"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.2.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.2.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicGroup", VERSION, _G.DynamicGroup) then
     return
 end
@@ -1114,15 +1114,15 @@ local function IsValidSearchResultID(resultID)
     return true
 end
 
-local MIDNIGHT_S1_FALLBACK_SLOTS = {
-    { code = "DON", name = "Den of Nalorakk",              mapID = 540, spellID = 1216786, icon = 136095,  patterns = { "nalorakk" },                             spellCandidates = { 1216786 } },
-    { code = "AOF", name = "Altar of Fangs",               mapID = 402, spellID = 393273,  icon = 4511692, patterns = { "altar", "fangs", "algeth", "arena of", "forge" }, spellCandidates = { 393273 } },
-    { code = "BV",  name = "The Azure Vault",              mapID = 401, spellID = 393279,  icon = 4511694, patterns = { "azure vault", "bracken", "vault" },        spellCandidates = { 393279, 393267 } },
-    { code = "MR",  name = "Magisters' / Murder Row",      mapID = 541, spellID = 1216788, icon = 135764,  patterns = { "murder", "magister", "row" },            spellCandidates = { 1216788 } },
-    { code = "RLP", name = "Ruby Life Pools",              mapID = 399, spellID = 393256,  icon = 4511698, patterns = { "ruby life" },                            spellCandidates = { 393256 } },
-    { code = "VSA", name = "Venomous Abyss",               mapID = 542, spellID = 1216790, icon = 136051,  patterns = { "venomous", "abyss", "sacred", "ancient", "seat" }, spellCandidates = { 1216790, 1237215 } },
-    { code = "TOS", name = "Temple of Sethraliss",         mapID = 250, spellID = 424167,  icon = 2065604, patterns = { "sethraliss", "jade", "temple", "tides" }, spellCandidates = { 424167, 131204, 424142 } },
-    { code = "KR",  name = "Kings' Rest",                  mapID = 249, spellID = 467553,  icon = 2065599, patterns = { "kings", "karazhan" },                    spellCandidates = { 467553, 445269, 373262 } },
+local MIDNIGHT_S2_FALLBACK_SLOTS = {
+    { code = "AOF", name = "Altar of Fangs",       mapID = 543, spellID = 1286812, icon = 4511692, pathName = "Path of Venomous Evolution", patterns = { "altar", "fangs", "venomous evolution" }, spellCandidates = { 1286812 } },
+    { code = "MR",  name = "Murder Row",           mapID = 541, spellID = 1286809, icon = 135764,  pathName = "Path of the Devious Smuggler", patterns = { "murder", "row", "devious smuggler" },    spellCandidates = { 1286809 } },
+    { code = "DON", name = "Den of Nalorakk",      mapID = 540, spellID = 1286807, icon = 136095,  pathName = "Path of the Worthy Aspirant",  patterns = { "nalorakk", "worthy aspirant" },          spellCandidates = { 1286807 } },
+    { code = "TBV", name = "The Blinding Vale",    mapID = 544, spellID = 1286801, icon = 4511694, pathName = "Path of the Blooming Verdure", patterns = { "blinding", "vale", "blooming verdure" }, spellCandidates = { 1286801 } },
+    { code = "VSA", name = "Voidscar Arena",       mapID = 542, spellID = 1286804, icon = 136051,  pathName = "Path of the Brutal Combatant", patterns = { "voidscar", "arena", "brutal combatant" },spellCandidates = { 1286804 } },
+    { code = "KR",  name = "Kings' Rest",          mapID = 249, spellID = 1286830, icon = 2065599, pathName = "Path of the Slumbering Conqueror", patterns = { "kings", "slumbering conqueror" },    spellCandidates = { 1286830 } },
+    { code = "TOS", name = "Temple of Sethraliss", mapID = 250, spellID = 1286828, icon = 2065604, pathName = "Path of the Sacred Temple",    patterns = { "sethraliss", "sacred temple" },          spellCandidates = { 1286828 } },
+    { code = "RLP", name = "Ruby Life Pools",      mapID = 399, spellID = 393256,  icon = 4511698, pathName = "Path of the Clutch Defender",  patterns = { "ruby life", "clutch defender" },         spellCandidates = { 393256 } },
 }
 
 local KNOWN_DUNGEON_BY_MAP_ID = {
@@ -1142,8 +1142,8 @@ local KNOWN_DUNGEON_BY_MAP_ID = {
     [245] = { code = "FH",  name = "Freehold",                   spellID = 410071,  spellCandidates = { 410071 } },
     [247] = { code = "ML",  name = "The MOTHERLODE!!",           spellID = 467553,  spellCandidates = { 467553, 467555 } },
     [248] = { code = "WCM", name = "Waycrest Manor",             spellID = 424167,  spellCandidates = { 424167 } },
-    [249] = { code = "KR",  name = "Kings' Rest",                spellID = 467553,  spellCandidates = { 467553, 445269 } },
-    [250] = { code = "TOS", name = "Temple of Sethraliss",       spellID = 424167,  spellCandidates = { 424167 } },
+    [249] = { code = "KR",  name = "Kings' Rest",                spellID = 1286830, pathName = "Path of the Slumbering Conqueror", spellCandidates = { 1286830 } },
+    [250] = { code = "TOS", name = "Temple of Sethraliss",       spellID = 1286828, pathName = "Path of the Sacred Temple",        spellCandidates = { 1286828 } },
     [251] = { code = "UNDR",name = "The Underrot",               spellID = 410074,  spellCandidates = { 410074 } },
     [253] = { code = "SOB", name = "Siege of Boralus",           spellID = 445418,  spellCandidates = { 445418, 464256 } },
     [353] = { code = "SOB", name = "Siege of Boralus",           spellID = 445418,  spellCandidates = { 445418, 464256 } },
@@ -1155,7 +1155,7 @@ local KNOWN_DUNGEON_BY_MAP_ID = {
     [382] = { code = "TOP", name = "Theater of Pain",            spellID = 354467,  spellCandidates = { 354467 } },
     [391] = { code = "STRT",name = "Tazavesh: Streets",          spellID = 367416,  spellCandidates = { 367416 } },
     [392] = { code = "GMBT",name = "Tazavesh: Gambit",           spellID = 367416,  spellCandidates = { 367416 } },
-    [399] = { code = "RLP", name = "Ruby Life Pools",            spellID = 393256,  spellCandidates = { 393256 } },
+    [399] = { code = "RLP", name = "Ruby Life Pools",            spellID = 393256,  pathName = "Path of the Clutch Defender",      spellCandidates = { 393256 } },
     [400] = { code = "NO",  name = "The Nokhud Offensive",       spellID = 393262,  spellCandidates = { 393262 } },
     [401] = { code = "BV",  name = "The Azure Vault",            spellID = 393279,  spellCandidates = { 393279 } },
     [402] = { code = "AOF", name = "Altar of Fangs",             spellID = 393273,  spellCandidates = { 393273 } },
@@ -1177,9 +1177,11 @@ local KNOWN_DUNGEON_BY_MAP_ID = {
     [506] = { code = "BREW",name = "Cinderbrew Meadery",         spellID = 445440,  spellCandidates = { 445440 } },
     [507] = { code = "GB",  name = "Grim Batol",                 spellID = 445424,  spellCandidates = { 445424 } },
     [525] = { code = "FG",  name = "Operation: Floodgate",       spellID = 1216786, spellCandidates = { 1216786 } },
-    [540] = { code = "DON", name = "Den of Nalorakk",            spellID = 1216786, spellCandidates = { 1216786 } },
-    [541] = { code = "MR",  name = "Magisters' / Murder Row",    spellID = 1216788, spellCandidates = { 1216788 } },
-    [542] = { code = "VSA", name = "Venomous Abyss",             spellID = 1216790, spellCandidates = { 1216790, 1237215 } },
+    [540] = { code = "DON", name = "Den of Nalorakk",            spellID = 1286807, pathName = "Path of the Worthy Aspirant",      spellCandidates = { 1286807 } },
+    [541] = { code = "MR",  name = "Murder Row",                 spellID = 1286809, pathName = "Path of the Devious Smuggler",     spellCandidates = { 1286809 } },
+    [542] = { code = "VSA", name = "Voidscar Arena",             spellID = 1286804, pathName = "Path of the Brutal Combatant",     spellCandidates = { 1286804 } },
+    [543] = { code = "AOF", name = "Altar of Fangs",             spellID = 1286812, pathName = "Path of Venomous Evolution",       spellCandidates = { 1286812 } },
+    [544] = { code = "TBV", name = "The Blinding Vale",          spellID = 1286801, pathName = "Path of the Blooming Verdure",     spellCandidates = { 1286801 } },
 }
 
 local activityInfoCache = {}
@@ -1202,7 +1204,7 @@ local function BuildDungeonShortCode(dungeonName, mapID)
     end
     local norm = NormalizeDungeonMatchName(dungeonName)
     if norm ~= "" then
-        for _, fb in ipairs(MIDNIGHT_S1_FALLBACK_SLOTS) do
+        for _, fb in ipairs(MIDNIGHT_S2_FALLBACK_SLOTS) do
             if fb.patterns then
                 for _, pat in ipairs(fb.patterns) do
                     if norm:find(pat, 1, true) then
@@ -1431,7 +1433,9 @@ local function ResolveTeleportSpellForDungeon(mapID, code, dungeonName, fallback
             AddKeyword(word)
         end
     end
-    for _, fb in ipairs(MIDNIGHT_S1_FALLBACK_SLOTS) do
+    local targetPathName = nil
+    if known and known.pathName then targetPathName = known.pathName:lower() end
+    for _, fb in ipairs(MIDNIGHT_S2_FALLBACK_SLOTS) do
         local matchFB = (code and fb.code == code)
         if not matchFB and norm ~= "" and fb.patterns then
             for _, pat in ipairs(fb.patterns) do
@@ -1439,6 +1443,7 @@ local function ResolveTeleportSpellForDungeon(mapID, code, dungeonName, fallback
             end
         end
         if matchFB then
+            if not targetPathName and fb.pathName then targetPathName = fb.pathName:lower() end
             AddCand(fb.spellID)
             if fb.spellCandidates then
                 for _, cid in ipairs(fb.spellCandidates) do AddCand(cid) end
@@ -1448,15 +1453,20 @@ local function ResolveTeleportSpellForDungeon(mapID, code, dungeonName, fallback
             end
         end
     end
-    for _, cid in ipairs(candidates) do
-        if IsTeleportSpellKnown(cid) then
-            return cid, true
+
+    -- Source A: Live Spellbook scan for exact "Path of ..." name match or keyword match first
+    local sbEntries = GetSpellbookTeleportEntries()
+    if targetPathName then
+        for _, sb in ipairs(sbEntries) do
+            if sb.haystack:find(targetPathName, 1, true) then
+                if mapID then
+                    challengesMapToSpellCache[mapID] = sb.spellID
+                end
+                return sb.spellID, true
+            end
         end
     end
-
-    -- Source B: Live Spellbook scan for learned "Path of ..." / dungeon teleports
     if #matchKeywords > 0 then
-        local sbEntries = GetSpellbookTeleportEntries()
         local bestSpellID = nil
         local bestScore = 0
         for _, sb in ipairs(sbEntries) do
@@ -1471,16 +1481,18 @@ local function ResolveTeleportSpellForDungeon(mapID, code, dungeonName, fallback
                 bestSpellID = sb.spellID
             end
         end
-        if bestSpellID and bestScore >= 2 then
+        if bestSpellID and bestScore >= 1 then
             if mapID then
                 challengesMapToSpellCache[mapID] = bestSpellID
             end
             return bestSpellID, true
-        elseif bestSpellID and bestScore == 1 then
-            if mapID then
-                challengesMapToSpellCache[mapID] = bestSpellID
-            end
-            return bestSpellID, true
+        end
+    end
+
+    -- Source B: Known fallback spell IDs
+    for _, cid in ipairs(candidates) do
+        if IsTeleportSpellKnown(cid) then
+            return cid, true
         end
     end
 
@@ -1564,7 +1576,7 @@ local function GetSeasonDungeonSlots(forceRefresh)
                 local code = BuildDungeonShortCode(dName, mapID)
                 local patterns = fallbackMeta and fallbackMeta.patterns or nil
                 if not patterns then
-                    for _, fb in ipairs(MIDNIGHT_S1_FALLBACK_SLOTS) do
+                    for _, fb in ipairs(MIDNIGHT_S2_FALLBACK_SLOTS) do
                         if fb.code == code then
                             patterns = fb.patterns
                             if not texture then texture = fb.icon end
@@ -1587,7 +1599,7 @@ local function GetSeasonDungeonSlots(forceRefresh)
     end
 
     if #slots == 0 then
-        for _, fb in ipairs(MIDNIGHT_S1_FALLBACK_SLOTS) do
+        for _, fb in ipairs(MIDNIGHT_S2_FALLBACK_SLOTS) do
             local spellID, spellKnown = ResolveTeleportSpellForDungeon(fb.mapID, fb.code, fb.name, fb.spellID)
             local tex = fb.icon
             if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then

@@ -1,5 +1,12 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.2.0 (15/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.2.1 (16/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.2.1 (16/11/2026)
+
+### DynamicGroup
+- **Midnight Season 2 Dungeon Pool & Teleport Spell Fix:** Updated `MIDNIGHT_S2_FALLBACK_SLOTS` and `KNOWN_DUNGEON_BY_MAP_ID` to the live Midnight Season 2 8-dungeon pool (`Altar of Fangs`, `Murder Row`, `Den of Nalorakk`, `The Blinding Vale`, `Voidscar Arena`, `Kings' Rest`, `Temple of Sethraliss`, and `Ruby Life Pools`), removing stale Season 1 / beta names and incorrect BFA teleport IDs (`467553` / `424167`). Prioritised live spellbook `"Path of ..."` name matching before fallback spell IDs so Portal Deck and Owned Keystone Right-Click teleports always cast the correct dungeon teleport.
 
 ---
 

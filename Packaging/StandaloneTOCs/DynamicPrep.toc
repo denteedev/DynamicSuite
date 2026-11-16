@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r
 ## Notes: Real-time character readiness bar, Midnight Omni Folio tracker, and lightweight everyday convenience automation.
 ## Author: Dentee-Frostmourne
-## Version: 2.2.0
+## Version: 2.2.1
 ## IconTexture: Interface\AddOns\DynamicPrep\icon.tga
 ## Category: DynamicSuite
 ## Category-enUS: DynamicSuite

@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.2.0"
+    local fb = fallback or "2.2.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -99,7 +99,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.2.0"
+            or "2.2.1"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.2.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.2.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -10515,7 +10515,7 @@ DynamicMarker.CHANGELOG = {
     entries = {
         { type = "FEATURE", text = "SharedMedia, AddOn & Blizzard Font Discovery in Theme Studio (15/11/2026): Added runtime scanning for LibSharedMedia-3.0, DBM, WeakAuras, and ElvUI fonts alongside Blizzard standard fonts and bundled Expressway fonts inside Theme & Font Studio. Grouped dropdown options under Built-in Fonts, Blizzard, and SharedMedia / AddOns with live search, scroll support, per-font preview rendering, and safe fallback to the default font if an external addon is disabled." },
         { type = "IMPROVED", text = "Unbound-by-Default World Flare Keybinds & Guided Setup Assignment (15/11/2026): Removed the hardcoded F4 and F5 World Flare default keybinds so fresh installs and Resets start with both keys 'Unbound' (leaving your own Blizzard and action bar bindings untouched while preserving any existing saved DynamicMarkerDB hotkeys), added optional single-button Cycle World Flare and Clear All Flares keybind capture rows to both Guided Setup and the World Flare Keys (/dm flares) tab ('Click to bind, Right-click to unbind'), and refined capture behaviour so Escape cancels without losing the current key while Backspace/Delete or Right-Click clears to Unbound." },
-        { type = "IMPROVED", text = "Release v2.2.0 - Version & Storefront Lockstep Parity (15/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.2.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
+        { type = "IMPROVED", text = "Release v2.2.1 - Version & Storefront Lockstep Parity (15/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.2.1 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "FEATURE", text = "Release v2.1.1 - 3-Row HUD Edit Appearance Dock (560x110) & First-Click Mover Parity (15/11/2026): Upgraded standalone DynamicMarkerEditModeInspector into a unified 560x110 3-row draggable inspector dock adding Row 3 live Appearance controls: Opacity slider (20%-100%, step 5%, with SetIgnoreParentAlpha mover legibility), Accent | Dark | None Border Style pills synced 1:1 with Target Icon Bar and World Flare Bar sub-settings, Horiz | Vert Orientation toggle with instant screen-bounds re-clamping, and full Position/Scale/Opacity/Border/Orientation [Reset]. Ensured the HUD selector dropdown defaults to closed on entry and Target Icon / World Flare movers appear reliably on first HUD Edit activation." },
         { type = "FIX",     text = "HUD Edit Mode Mover Visibility & Drag Shield Layering (15/11/2026): Promoted the Target Icon Bar and World Flare Bar mover overlays (editMover) to HIGH frame strata (FrameLevel + 50) with SetIgnoreParentAlpha(true) and ordered SyncEditBarStates() after bar refreshes in SetEditMode, ensuring any bar set to Shown (Group or Always) immediately displays its live preview and interactive drag shield in HUD Edit Mode (even while solo), while explicitly selecting a Hidden (Off) bar from the HUD dropdown or clicking [Edit HUD] previews it with the 'HIDDEN (Click Shown to Enable)' badge." },
         { type = "FIX",     text = "Release v2.1.0 - World Flare Keybind Dispatch & Instant Telemetry Refresh (15/11/2026): Anchored secure World Flare cycle/clear buttons on-screen (1x1, alpha 0, non-mouse-blocking), removed the SecureHandlerWrapScript button-name override so LeftButton dispatches /wm [@cursor] and /cwm all reliably in and out of combat across key-down and key-up CVars, added Right-Click unbind, and wired instant status telemetry bar and proportional 'World Flare Keys (...)' sub-tab updates whenever bindings are captured, cleared, or reset." },
