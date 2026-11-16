@@ -4863,13 +4863,11 @@ function DynamicChat:GetVisibleContainerExtents()
     if db.enableSleekChatSkin == false then
         return 0, 0, 0, 0
     end
-    local isTopEB = (db.editBoxPosition == "TOP")
-    local alwaysShadedEB = (db.editBoxBackgroundMode ~= "FOCUS_ONLY")
     local hasLeftRail = (db.leftRailMode ~= "OFF")
     local leftExt = hasLeftRail and 36 or 8
     local rightExt = 8
-    local topExt = (isTopEB and alwaysShadedEB) and 54 or 28
-    local bottomExt = ((not isTopEB) and alwaysShadedEB) and 32 or 6
+    local topExt = 28
+    local bottomExt = 6
     return leftExt, rightExt, topExt, bottomExt
 end
 
@@ -5391,10 +5389,10 @@ function DynamicChat:ApplySleekChatSkin()
                 local divLeftX = hasLeftRail and 34 or 0
                 local isTopEB = (i == 1 and db.editBoxPosition == "TOP")
                 local alwaysShadedEB = (i == 1 and db.editBoxBackgroundMode ~= "FOCUS_ONLY")
-                local topPad = (isTopEB and alwaysShadedEB) and 54 or 28
-                local botPad = ((not isTopEB) and alwaysShadedEB) and -32 or -6
-                local topRailInset = (isTopEB and alwaysShadedEB) and -26 or 0
-                local botRailInset = ((not isTopEB) and alwaysShadedEB) and 26 or 0
+                local topPad = 28
+                local botPad = -6
+                local topRailInset = 0
+                local botRailInset = 0
                 local cfScale = (cf.GetScale and cf:GetScale()) or 1.0
                 if p.SetScale then pcall(p.SetScale, p, cfScale) end
 
@@ -5462,16 +5460,31 @@ function DynamicChat:ApplySleekChatSkin()
                     if alwaysShadedEB then
                         p.footerDiv:ClearAllPoints()
                         if isTopEB then
-                            p.footerDiv:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -26)
-                            p.footerDiv:SetPoint("TOPRIGHT", p, "TOPRIGHT", 0, -26)
+                            p.footerDiv:SetPoint("TOPLEFT", cf, "TOPLEFT", 0, -26)
+                            p.footerDiv:SetPoint("TOPRIGHT", cf, "TOPRIGHT", 0, -26)
                         else
-                            p.footerDiv:SetPoint("BOTTOMLEFT", p, "BOTTOMLEFT", 0, 26)
-                            p.footerDiv:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", 0, 26)
+                            p.footerDiv:SetPoint("BOTTOMLEFT", cf, "BOTTOMLEFT", 0, 26)
+                            p.footerDiv:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 0, 26)
                         end
                         p.footerDiv:Show()
                     else
                         p.footerDiv:Hide()
                     end
+                end
+
+                if i == 1 and cf.FontStringContainer and cf.FontStringContainer.ClearAllPoints and cf.FontStringContainer.SetPoint and not (InCombatLockdown and InCombatLockdown()) then
+                    pcall(function()
+                        local fsc = cf.FontStringContainer
+                        fsc:ClearAllPoints()
+                        if isTopEB then
+                            fsc:SetPoint("TOPLEFT", cf, "TOPLEFT", 0, -28)
+                            fsc:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 0, 0)
+                        else
+                            fsc:SetPoint("TOPLEFT", cf, "TOPLEFT", 0, 0)
+                            fsc:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 0, 28)
+                        end
+                        fsc._dgEmbeddedPad = true
+                    end)
                 end
 
                 if p.headerBg and p.headerDiv then
@@ -5582,6 +5595,13 @@ function DynamicChat:ApplySleekChatSkin()
         if not activeFrameSet[cf] or (not isPrimaryCF and (not cf:IsShown() or (cf ~= _G.ChatFrame1 and cf.isDocked))) or not skinEnabled then
             if entry.panel then entry.panel:Hide() end
             if entry.leftRail then entry.leftRail:Hide() end
+            if cf == _G.ChatFrame1 and not skinEnabled and cf.FontStringContainer and cf.FontStringContainer._dgEmbeddedPad and not (InCombatLockdown and InCombatLockdown()) then
+                pcall(function()
+                    cf.FontStringContainer:ClearAllPoints()
+                    cf.FontStringContainer:SetAllPoints(cf)
+                    cf.FontStringContainer._dgEmbeddedPad = nil
+                end)
+            end
         end
         if not activeFrameSet[cf] or not cf:IsShown() or not skinEnabled then
             if entry.scrollThumbFrame then entry.scrollThumbFrame:Hide() end
@@ -5590,53 +5610,40 @@ function DynamicChat:ApplySleekChatSkin()
 
     self:RefreshLeftRailTelemetry()
 
-    -- 6. UIParent-Hosted Sleek Obsidian EditBox Bar (fused inside entry.panel when Always Shaded, or flush at 0px when Focus Only)
+    -- 6. UIParent-Hosted Sleek Obsidian EditBox Bar (embedded inside ChatFrame1 bounds, 26px tall)
     -- Passively yield EditBox anchoring and bar skinning when EllesmereUI is loaded so both addons coexist with zero BN_WHISPER taint.
     local ebBar = EnsureSleekEditBoxBar()
     if skinEnabled and _G.ChatFrame1EditBox and not IsEllesmereUILoaded() then
         local eb1 = _G.ChatFrame1EditBox
         local cf1 = _G.ChatFrame1
-        local cf1Entry = cf1 and chatSkinStore[cf1]
-        local hostPanel = (cf1Entry and cf1Entry.panel and cf1Entry.panel:IsShown()) and cf1Entry.panel or cf1
         local isTopEB = (db.editBoxPosition == "TOP")
         local alwaysShadedEB = (db.editBoxBackgroundMode ~= "FOCUS_ONLY")
         local ebSecret = (issecretvalue and (issecretvalue(eb1:GetAttribute("tellTarget")) or (eb1.header and issecretvalue(eb1.header:GetStringWidth()))))
             or IsEditBoxSecretOrBNWhisper(eb1)
-        if hostPanel and not ebSecret and not (InCombatLockdown and InCombatLockdown()) then
+        if cf1 and not ebSecret and not (InCombatLockdown and InCombatLockdown()) then
             local state = passiveSkinnedEditBoxes[eb1]
             if not state then
                 state = {}
                 passiveSkinnedEditBoxes[eb1] = state
             end
             local function ApplyEditBoxAnchorNow()
-                if DynamicChat._applyingEditBoxPos or not hostPanel then return end
+                if DynamicChat._applyingEditBoxPos or not cf1 then return end
                 if InCombatLockdown and InCombatLockdown() then return end
                 local curEB = _G.ChatFrame1EditBox
                 if not curEB or IsEditBoxSecretOrBNWhisper(curEB) then return end
                 local curDB = EnsureDB()
                 local curTop = (curDB.editBoxPosition == "TOP")
-                local curShaded = (curDB.editBoxBackgroundMode ~= "FOCUS_ONLY")
                 DynamicChat._applyingEditBoxPos = true
                 pcall(function()
                     if curEB.SetClampRectInsets then curEB:SetClampRectInsets(0, 0, 0, 0) end
                     if curEB.SetClampedToScreen then curEB:SetClampedToScreen(false) end
                     curEB:ClearAllPoints()
                     if curTop then
-                        if curShaded then
-                            curEB:SetPoint("TOPLEFT", hostPanel, "TOPLEFT", 0, 0)
-                            curEB:SetPoint("BOTTOMRIGHT", hostPanel, "TOPRIGHT", 0, -26)
-                        else
-                            curEB:SetPoint("BOTTOMLEFT", hostPanel, "TOPLEFT", 0, 0)
-                            curEB:SetPoint("TOPRIGHT", hostPanel, "TOPRIGHT", 0, 26)
-                        end
+                        curEB:SetPoint("TOPLEFT", cf1, "TOPLEFT", 0, 0)
+                        curEB:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -26)
                     else
-                        if curShaded then
-                            curEB:SetPoint("TOPLEFT", hostPanel, "BOTTOMLEFT", 0, 26)
-                            curEB:SetPoint("BOTTOMRIGHT", hostPanel, "BOTTOMRIGHT", 0, 0)
-                        else
-                            curEB:SetPoint("TOPLEFT", hostPanel, "BOTTOMLEFT", 0, 0)
-                            curEB:SetPoint("BOTTOMRIGHT", hostPanel, "BOTTOMRIGHT", 0, -26)
-                        end
+                        curEB:SetPoint("BOTTOMLEFT", cf1, "BOTTOMLEFT", 0, 0)
+                        curEB:SetPoint("TOPRIGHT", cf1, "BOTTOMRIGHT", 0, 26)
                     end
                 end)
                 DynamicChat._applyingEditBoxPos = false
@@ -5653,16 +5660,15 @@ function DynamicChat:ApplySleekChatSkin()
                     local curDB = EnsureDB()
                     if curDB.enableSleekChatSkin == false or IsEllesmereUILoaded() then return end
                     local cf1Now = _G.ChatFrame1
-                    local cf1Ent = cf1Now and chatSkinStore[cf1Now]
-                    if cf1Ent and cf1Ent.panel and cf1Ent.panel:IsShown() then
-                        hostPanel = cf1Ent.panel
+                    if cf1Now then
+                        cf1 = cf1Now
                         ApplyEditBoxAnchorNow()
                     end
                 end)
             end
-            local anchorKey = tostring(hostPanel) .. ":" .. (isTopEB and "TOP" or "BOT") .. ":" .. (alwaysShadedEB and "ALWAYS" or "FOCUS")
+            local anchorKey = tostring(cf1) .. ":" .. (isTopEB and "TOP" or "BOT")
             local okPt, _, relTo = pcall(eb1.GetPoint, eb1, 1)
-            if state.anchorKey ~= anchorKey or not okPt or relTo ~= hostPanel then
+            if state.anchorKey ~= anchorKey or not okPt or relTo ~= cf1 then
                 state.anchorKey = anchorKey
                 ApplyEditBoxAnchorNow()
             end
@@ -5670,23 +5676,13 @@ function DynamicChat:ApplySleekChatSkin()
         local cf1Scale = (cf1 and cf1.GetScale and cf1:GetScale()) or 1.0
         if ebBar.SetScale then pcall(ebBar.SetScale, ebBar, cf1Scale) end
         ebBar:ClearAllPoints()
-        if hostPanel then
+        if cf1 then
             if isTopEB then
-                if alwaysShadedEB then
-                    ebBar:SetPoint("TOPLEFT", hostPanel, "TOPLEFT", 0, 0)
-                    ebBar:SetPoint("BOTTOMRIGHT", hostPanel, "TOPRIGHT", 0, -26)
-                else
-                    ebBar:SetPoint("BOTTOMLEFT", hostPanel, "TOPLEFT", 0, 0)
-                    ebBar:SetPoint("TOPRIGHT", hostPanel, "TOPRIGHT", 0, 26)
-                end
+                ebBar:SetPoint("TOPLEFT", cf1, "TOPLEFT", 0, 0)
+                ebBar:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -26)
             else
-                if alwaysShadedEB then
-                    ebBar:SetPoint("TOPLEFT", hostPanel, "BOTTOMLEFT", 0, 26)
-                    ebBar:SetPoint("BOTTOMRIGHT", hostPanel, "BOTTOMRIGHT", 0, 0)
-                else
-                    ebBar:SetPoint("TOPLEFT", hostPanel, "BOTTOMLEFT", 0, 0)
-                    ebBar:SetPoint("BOTTOMRIGHT", hostPanel, "BOTTOMRIGHT", 0, -26)
-                end
+                ebBar:SetPoint("BOTTOMLEFT", cf1, "BOTTOMLEFT", 0, 0)
+                ebBar:SetPoint("TOPRIGHT", cf1, "BOTTOMRIGHT", 0, 26)
             end
         else
             ebBar:SetPoint("TOPLEFT", _G.ChatFrame1EditBox, "TOPLEFT", 2, -2)
@@ -5710,33 +5706,20 @@ function DynamicChat:ApplySleekChatSkin()
                 end
                 local curDB = EnsureDB()
                 local isTopEB = (curDB.editBoxPosition == "TOP")
-                local alwaysShadedEB = (curDB.editBoxBackgroundMode ~= "FOCUS_ONLY")
                 local bar = EnsureSleekEditBoxBar()
                 local targetBox = editBox or _G.ChatFrame1EditBox
                 if targetBox then
                     -- Never mutate targetBox anchors inside OnEditBoxFocusGained (which runs during Activate -> UpdateHeader);
                     -- only position our external UIParent-hosted bar.
                     local cf1 = _G.ChatFrame1
-                    local cf1Entry = cf1 and chatSkinStore[cf1]
-                    local hostPanel = (cf1Entry and cf1Entry.panel and cf1Entry.panel:IsShown()) and cf1Entry.panel or nil
                     bar:ClearAllPoints()
-                    if hostPanel and targetBox == _G.ChatFrame1EditBox then
+                    if cf1 and targetBox == _G.ChatFrame1EditBox then
                         if isTopEB then
-                            if alwaysShadedEB then
-                                bar:SetPoint("TOPLEFT", hostPanel, "TOPLEFT", 0, 0)
-                                bar:SetPoint("BOTTOMRIGHT", hostPanel, "TOPRIGHT", 0, -26)
-                            else
-                                bar:SetPoint("BOTTOMLEFT", hostPanel, "TOPLEFT", 0, 0)
-                                bar:SetPoint("TOPRIGHT", hostPanel, "TOPRIGHT", 0, 26)
-                            end
+                            bar:SetPoint("TOPLEFT", cf1, "TOPLEFT", 0, 0)
+                            bar:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -26)
                         else
-                            if alwaysShadedEB then
-                                bar:SetPoint("TOPLEFT", hostPanel, "BOTTOMLEFT", 0, 26)
-                                bar:SetPoint("BOTTOMRIGHT", hostPanel, "BOTTOMRIGHT", 0, 0)
-                            else
-                                bar:SetPoint("TOPLEFT", hostPanel, "BOTTOMLEFT", 0, 0)
-                                bar:SetPoint("BOTTOMRIGHT", hostPanel, "BOTTOMRIGHT", 0, -26)
-                            end
+                            bar:SetPoint("BOTTOMLEFT", cf1, "BOTTOMLEFT", 0, 0)
+                            bar:SetPoint("TOPRIGHT", cf1, "BOTTOMRIGHT", 0, 26)
                         end
                     else
                         bar:SetPoint("TOPLEFT", targetBox, "TOPLEFT", 2, -2)
@@ -11114,7 +11097,7 @@ function DynamicChat:RefreshConfigUI()
     end
 end
 
-local function ApplyChatThemeToUI()
+function DynamicChat._ApplyChatThemeToUI()
     if IsModuleDisabledInSuite("DynamicChat") then
         DynamicChat:TeardownDisabledState(false)
         DynamicChat:RefreshConfigUI()
@@ -11132,7 +11115,7 @@ local function ApplyChatThemeToUI()
     end
 end
 
-local function ResetChatModuleDefaults()
+function DynamicChat._ResetChatModuleDefaults()
     CloseActiveDropdown()
     local existingHistory = (type(_G.DynamicChatDB) == "table" and type(_G.DynamicChatDB.savedChatHistory) == "table") and _G.DynamicChatDB.savedChatHistory or {}
     _G.DynamicChatDB = nil
@@ -11147,7 +11130,7 @@ end
 -- 8. STANDALONE SHELL (/dchat & /dc Fallback) & _G.DYNAMICSUITE REGISTRATION
 -- ============================================================================
 
-local function EnsureStandaloneWindow()
+function DynamicChat._EnsureStandaloneWindow()
     if DynamicChat.standaloneFrame then return DynamicChat.standaloneFrame end
 
     local f = CreateFrame("Frame", "DynamicChatStandaloneFrame", UIParent, "BackdropTemplate")
@@ -11313,7 +11296,7 @@ local function EnsureStandaloneWindow()
     return f
 end
 
-local function OpenChatWorkspace()
+function DynamicChat._OpenChatWorkspace()
     if railPopoverFrame and railPopoverFrame:IsShown() then
         railPopoverFrame:Hide()
     end
@@ -11328,7 +11311,7 @@ local function OpenChatWorkspace()
         local ok = pcall(_G.DynamicLoadUI.OpenToModule, _G.DynamicLoadUI, "chat")
         if ok then return end
     end
-    local f = EnsureStandaloneWindow()
+    local f = DynamicChat._EnsureStandaloneWindow()
     local ar, ag, ab = GetSuiteAccent()
     f:SetBackdropBorderColor(ar, ag, ab, 0.75)
     if f.logoTex then f.logoTex:SetVertexColor(ar, ag, ab, 1.0) end
@@ -11352,11 +11335,11 @@ function DynamicChat:BuildEmbeddedPanel(arg1, arg2)
 end
 
 function DynamicChat:ApplyThemeToUI()
-    return ApplyChatThemeToUI()
+    return DynamicChat._ApplyChatThemeToUI()
 end
 
 function DynamicChat:ApplyTheme()
-    return ApplyChatThemeToUI()
+    return DynamicChat._ApplyChatThemeToUI()
 end
 
 function DynamicChat:RestoreBlizzardDefaults()
@@ -11401,22 +11384,22 @@ function DynamicChat:RestoreBlizzardDefaults()
 end
 
 function DynamicChat:ResetModuleDefaults()
-    return ResetChatModuleDefaults()
+    return DynamicChat._ResetChatModuleDefaults()
 end
 
 function DynamicChat:ResetDefaults()
-    return ResetChatModuleDefaults()
+    return DynamicChat._ResetChatModuleDefaults()
 end
 
 function DynamicChat:OpenWorkspace()
-    return OpenChatWorkspace()
+    return DynamicChat._OpenChatWorkspace()
 end
 
 function DynamicChat:Open()
-    return OpenChatWorkspace()
+    return DynamicChat._OpenChatWorkspace()
 end
 
-local function RegisterWithDynamicSuite()
+function DynamicChat._RegisterWithDynamicSuite()
     _G.DynamicSuite = _G.DynamicSuite or {}
     _G.DynamicSuite.modules = _G.DynamicSuite.modules or {}
 
@@ -11439,14 +11422,14 @@ local function RegisterWithDynamicSuite()
         RenderEmbedded     = function(arg1, arg2) return RenderChatEmbedded(arg1, arg2) end,
         BuildEmbeddedPanel = function(arg1, arg2) return RenderChatEmbedded(arg1, arg2) end,
         Render             = function(arg1, arg2) return RenderChatEmbedded(arg1, arg2) end,
-        ApplyThemeToUI     = ApplyChatThemeToUI,
-        ApplyTheme         = ApplyChatThemeToUI,
-        ResetModuleDefaults = ResetChatModuleDefaults,
-        ResetDefaults      = ResetChatModuleDefaults,
-        ResetModule        = ResetChatModuleDefaults,
-        Reset              = ResetChatModuleDefaults,
-        OpenWorkspace      = OpenChatWorkspace,
-        Open               = OpenChatWorkspace,
+        ApplyThemeToUI     = DynamicChat._ApplyChatThemeToUI,
+        ApplyTheme         = DynamicChat._ApplyChatThemeToUI,
+        ResetModuleDefaults = DynamicChat._ResetChatModuleDefaults,
+        ResetDefaults      = DynamicChat._ResetChatModuleDefaults,
+        ResetModule        = DynamicChat._ResetChatModuleDefaults,
+        Reset              = DynamicChat._ResetChatModuleDefaults,
+        OpenWorkspace      = DynamicChat._OpenChatWorkspace,
+        Open               = DynamicChat._OpenChatWorkspace,
         GetStatusText      = function() return GetChatStatusText() end,
         OnDisableInSuite   = function()
             DynamicChat:TeardownDisabledState(true)
@@ -11478,7 +11461,7 @@ local function RegisterWithDynamicSuite()
     DynamicChat.SelectTab = descriptor.SelectSubTab
 
     function _G.DynamicChat_OnAddonCompartmentClick()
-        OpenChatWorkspace()
+        DynamicChat._OpenChatWorkspace()
     end
 
     _G.DynamicSuite.modules["chat"] = descriptor
@@ -11486,8 +11469,9 @@ local function RegisterWithDynamicSuite()
 
     DynamicChat.CHANGELOG = {
         version = DynamicChat.version or VERSION,
-        date = "15/11/2026",
+        date = "16/11/2026",
         entries = {
+            { type = "FIX",      text = "Embedded ChatFrame1 EditBox Dock & Zero Position Shift (16/11/2026): Embedded ebBar and ChatFrame1EditBox directly inside ChatFrame1's own 26px bottom (or top) bounds and padded ChatFrame1.FontStringContainer by 28px so the newest chat line never overlaps the EditBox; locked GetCompositeChatInsets() / GetVisibleContainerExtents() to constant (-leftExt, 8, 28, -6) insets regardless of 'Always Shaded' vs 'Only When Typing' so toggling EditBox shading never shifts ChatFrame1's screen position." },
             { type = "FEATURE",  text = "External Sound Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Default Sounds & Self-Whisper Alerts (15/11/2026): Removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; set clean channel defaults (Blizzard Whisper, Blizzard Battle.net, Blizzard Map Ping, Blizzard Raid Warning, and Say & Yell muted by default) with automatic migration from legacy ds_*/ex_* keys; added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI sound scanning with late-load refresh and safe fallback to Blizzard Raid Warning; restored self-whisper alert playback on incoming CHAT_MSG_WHISPER / CHAT_MSG_BN_WHISPER events while keeping self-message suppression active for group and public channels; and upgraded channel sound dropdowns with Blizzard / SharedMedia headers, inline [>] previews, scrolling, a live search filter, and dedicated [Play] buttons." },
             { type = "FIX",      text = "Flush Bottom-Left (0, 0) Chat Clamping & Persistence (14/11/2026): Enforced ChatFrame1:SetClampedToScreen(false) whenever DynamicChat manages layout, added GetVisibleContainerExtents() and GetLiveOuterBottomLeft() so clamping measures only the visible chat container frame without external button or negative bottom EditBox overhangs, and canonicalised chatFramePos to BOTTOMLEFT outer-container coordinates so dragging or nudging to X = 0, Y = 0 sits flush against the bottom-left screen corner across HUD Edit toggles, UI scale events, and /reload." },
             { type = "FIX",      text = "Unified /ww Instant Target Whisper Across All Chat/Whisper EditBoxes (13/11/2026): Kept /ww as the instant target whisper trigger with self-targeting (UnitIsUnit('target', 'player')) using GetUnitName('target', true), separated group leave cleanly into /lg, called ChatEdit_UpdateHeader before SetText + SetCursorPosition so 'Tell <TargetName>:' updates immediately on spacebar even inside existing whisper tabs, and hooked all 1..NUM_CHAT_WINDOWS editboxes plus FCF_OpenTemporaryWindow and ChatEdit_ActivateChat regardless of external chat addons." },
@@ -11535,7 +11519,7 @@ local function RegisterWithDynamicSuite()
     end
 end
 
-RegisterWithDynamicSuite()
+DynamicChat._RegisterWithDynamicSuite()
 
 SLASH_DYNAMICCHAT1 = "/dchat"
 SLASH_DYNAMICCHAT2 = "/dc"
@@ -11543,7 +11527,7 @@ SLASH_DYNAMICCHAT3 = "/dynamicchat"
 SlashCmdList["DYNAMICCHAT"] = function(msg)
     local cmd = (msg or ""):lower():match("^%s*(.-)%s*$")
     if cmd == "reset" then
-        ResetChatModuleDefaults()
+        DynamicChat._ResetChatModuleDefaults()
     elseif cmd == "history" then
         DynamicChat:ShowFullChatHistoryModal(ResolveActiveChatFrame())
     elseif cmd == "copy" or cmd == "url" then
@@ -11559,7 +11543,7 @@ SlashCmdList["DYNAMICCHAT"] = function(msg)
         DynamicChat:RefreshConfigUI()
         PrintChat("Chat notification sounds " .. (nextState and "enabled." or "muted (saved chimes preserved)."))
     else
-        OpenChatWorkspace()
+        DynamicChat._OpenChatWorkspace()
     end
 end
 
@@ -11611,7 +11595,7 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
             isInitialized = true
             EnsureDB()
             CaptureOriginalChatStrings()
-            RegisterWithDynamicSuite()
+            DynamicChat._RegisterWithDynamicSuite()
             if IsModuleDisabledInSuite("DynamicChat") then
                 if _G.DynamicSuite and _G.DynamicSuite.modules then
                     if _G.DynamicSuite.modules["chat"] then _G.DynamicSuite.modules["chat"]._disabledAtStartup = true end
@@ -11628,7 +11612,7 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
         end
     elseif event == "PLAYER_LOGIN" then
         EnsureDB()
-        RegisterWithDynamicSuite()
+        DynamicChat._RegisterWithDynamicSuite()
         if IsModuleDisabledInSuite("DynamicChat") then
             if _G.DynamicSuite and _G.DynamicSuite.modules then
                 if _G.DynamicSuite.modules["chat"] then _G.DynamicSuite.modules["chat"]._disabledAtStartup = true end

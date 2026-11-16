@@ -2323,9 +2323,9 @@ local function StyleEntryCancelButton(btn, entry)
     if not btn or not entry then return end
     if InCombatLockdown and InCombatLockdown() then return end
 
-    btn:SetSize(18, 18)
+    btn:SetSize(16, 16)
     btn:ClearAllPoints()
-    btn:SetPoint("RIGHT", entry, "RIGHT", -6, -6)
+    btn:SetPoint("TOPRIGHT", entry, "TOPRIGHT", -6, -3)
 
     local function HideBlizzTex(tex)
         if not tex then return end
@@ -2656,6 +2656,25 @@ local function OnLFGListSearchEntryUpdate(entry)
     local parentAlpha = (entry.GetAlpha and entry:GetAlpha()) or 1.0
     ov:SetAlpha((meta.isDelisted or isTerminalDim or parentAlpha < 0.75) and 0.78 or 0.96)
 
+    if not (InCombatLockdown and InCombatLockdown()) and entry.CancelButton then
+        if isSimPending then
+            if eState.wasCancelShown == nil then
+                eState.wasCancelShown = entry.CancelButton:IsShown() and true or false
+            end
+            entry.CancelButton:Show()
+        elseif eState.wasCancelShown ~= nil then
+            if not eState.wasCancelShown then
+                entry.CancelButton:Hide()
+            end
+            eState.wasCancelShown = nil
+        end
+    end
+
+    local cancelShown = (entry.CancelButton and entry.CancelButton.IsShown and entry.CancelButton:IsShown()) or isSimPending
+    if cancelShown and entry.CancelButton and not (InCombatLockdown and InCombatLockdown()) then
+        StyleEntryCancelButton(entry.CancelButton, entry)
+    end
+
     local showRegion = (meta.regionKey and meta.regionKey ~= "PENDING")
     local hasScore = (meta.leaderScore and meta.leaderScore > 0)
     local topPill = ov.topPill
@@ -2681,30 +2700,15 @@ local function OnLFGListSearchEntryUpdate(entry)
         local pillW = math.ceil((topPill.text:GetStringWidth() or 24) + 10)
         topPill:SetSize(math.max(26, pillW), 14)
         topPill:ClearAllPoints()
-        topPill:SetPoint("TOPRIGHT", entry, "TOPRIGHT", -6, -3)
+        if cancelShown and entry.CancelButton then
+            topPill:SetPoint("RIGHT", entry.CancelButton, "LEFT", -4, 0)
+        else
+            topPill:SetPoint("TOPRIGHT", entry, "TOPRIGHT", -6, -3)
+        end
         topPill:Show()
     else
         topPill.text:SetText("")
         topPill:Hide()
-    end
-
-    if not (InCombatLockdown and InCombatLockdown()) and entry.CancelButton then
-        if isSimPending then
-            if eState.wasCancelShown == nil then
-                eState.wasCancelShown = entry.CancelButton:IsShown() and true or false
-            end
-            entry.CancelButton:Show()
-        elseif eState.wasCancelShown ~= nil then
-            if not eState.wasCancelShown then
-                entry.CancelButton:Hide()
-            end
-            eState.wasCancelShown = nil
-        end
-    end
-
-    local cancelShown = (entry.CancelButton and entry.CancelButton.IsShown and entry.CancelButton:IsShown()) or isSimPending
-    if cancelShown and entry.CancelButton and not (InCombatLockdown and InCombatLockdown()) then
-        StyleEntryCancelButton(entry.CancelButton, entry)
     end
 
     -- Overlay Desaturated Tank / Healer / DPS Icons Directly on Empty Grey Dots in Enumerate
@@ -2735,17 +2739,21 @@ local function OnLFGListSearchEntryUpdate(entry)
                     slotAnchors = children
                 end
             end
-            local iconGap = cancelShown and 2 or 3
+            local iconGap = 3
 
-            -- Anchor Enumerate cleanly to CancelButton's left edge (-6, 0) when shown, or entry right edge (-6, -6) when hidden
-            if not (InCombatLockdown and InCombatLockdown()) and enumFrame.ClearAllPoints and enumFrame.SetPoint then
-                enumFrame:ClearAllPoints()
-                if cancelShown and entry.CancelButton then
-                    enumFrame:SetPoint("RIGHT", entry.CancelButton, "LEFT", -6, 0)
-                    enumFrame._dgAnchored = true
-                else
-                    enumFrame:SetPoint("RIGHT", entry, "RIGHT", -6, -6)
-                    enumFrame._dgAnchored = nil
+            -- Preserve Blizzard's dual-anchor Enumerate layout (never call ClearAllPoints on enumFrame)
+            if not enumFrame._dgOrigPoints and enumFrame.GetNumPoints then
+                enumFrame._dgOrigPoints = {}
+                for pIdx = 1, enumFrame:GetNumPoints() do
+                    local pt, relTo, relPt, x, y = enumFrame:GetPoint(pIdx)
+                    if pt then
+                        enumFrame._dgOrigPoints[#enumFrame._dgOrigPoints + 1] = { pt, relTo, relPt, x or 0, y or 0 }
+                    end
+                end
+            end
+            if not (InCombatLockdown and InCombatLockdown()) and enumFrame._dgOrigPoints and enumFrame.SetPoint then
+                for _, p in ipairs(enumFrame._dgOrigPoints) do
+                    enumFrame:SetPoint(p[1], p[2], p[3], p[4], p[5] - 4)
                 end
             end
 
@@ -2763,28 +2771,6 @@ local function OnLFGListSearchEntryUpdate(entry)
                         local nx = (op[1]:find("LEFT") and (op[4] + iconGap) or (op[4] - iconGap))
                         ic:SetPoint(op[1], op[2], op[3], nx, op[5])
                     end
-                end
-            end
-
-            if not (InCombatLockdown and InCombatLockdown()) and cancelShown and entry.CancelButton and entry.CancelButton.GetLeft and enumFrame.ClearAllPoints and enumFrame.SetPoint then
-                local cancelLeft = entry.CancelButton:GetLeft()
-                local maxIconRight = nil
-                for _, ic in ipairs(slotAnchors) do
-                    if ic and (not ic.IsShown or ic:IsShown()) and ic.GetRight then
-                        local ir = ic:GetRight()
-                        if ir and (not maxIconRight or ir > maxIconRight) then
-                            maxIconRight = ir
-                        end
-                    end
-                end
-                if cancelLeft and maxIconRight and maxIconRight > (cancelLeft - 6) then
-                    local enumScale = (enumFrame.GetEffectiveScale and enumFrame:GetEffectiveScale()) or 1
-                    local entryScale = (entry.GetEffectiveScale and entry:GetEffectiveScale()) or enumScale
-                    local relScale = (enumScale > 0 and entryScale > 0) and (enumScale / entryScale) or 1
-                    local extraShift = math.floor(((cancelLeft - 6) - maxIconRight) / relScale)
-                    enumFrame:ClearAllPoints()
-                    enumFrame:SetPoint("RIGHT", entry.CancelButton, "LEFT", -6 + extraShift, 0)
-                    enumFrame._dgAnchored = true
                 end
             end
 
@@ -7704,7 +7690,7 @@ local function RegisterWithDynamicSuite()
         version = DynamicGroup.version or VERSION,
         date = "16/11/2026",
         entries = {
-            { type = "FIX",     text = "LFG Application Status Overlays, Obsidian CancelButton & /dg testapply Cycle (16/11/2026): reskinned entry.CancelButton out of combat into an 18x18 Dark-Obsidian (#0B0D12) / Crimson-Bordered (#F87171) 'x' pill anchored to RIGHT (-6, -6) with Enumerate anchored cleanly to its left edge (-6, 0) so all 5 role icons stay 100% clear; suppressed Blizzard's inline PendingLabel and ResultLabel overlays and routed live pending timers (Warm Amber-Gold) and terminal statuses (Crimson Canceled/Declined/Expired/Timed Out + 0.35 row dim) into the top-right pill; updated /dg testapply to cycle Pending -> Canceled -> Off." },
+            { type = "FIX",     text = "LFG Application Status Overlays, Obsidian CancelButton & /dg testapply Cycle (16/11/2026): reskinned entry.CancelButton out of combat into a 16x16 Dark-Obsidian (#0B0D12) / Crimson-Bordered (#F87171) 'x' pill anchored to TOPRIGHT (-6, -3) with ov.topPill anchored cleanly to its left (-4, 0) so the entire 5-role-icon Enumerate row stays 100% untouched; preserved Blizzard's dual-anchor Enumerate layout via _dgOrigPoints; suppressed Blizzard's inline PendingLabel and ResultLabel overlays and routed live pending timers (Warm Amber-Gold) and terminal statuses (Crimson Canceled/Declined/Expired/Timed Out + 0.35 row dim) into the top-right pill; updated /dg testapply to cycle Pending -> Canceled -> Off." },
             { type = "FEATURE", text = "Declined Premade LFG Group Dimming, Crimson Badge & Search Freshness Tooltip (16/11/2026): records declined and invite-declined searchResultIDs for the current session (cleared on new search or category change), dims declined Premade Group rows to 0.35 alpha with a compact crimson 'Declined' tag inside the top-right pill so you never accidentally re-apply, and tracks LFGListSearchPanel_DoSearch timestamps to show 'Last Refreshed: Xs ago' inside the LFG Mini-Bar filter and region tooltips." },
             { type = "FEATURE", text = "Portal Deck Owned Keystone Telemetry & Right-Click Teleport (15/11/2026): Upgraded the Portal Deck's Owned Keystone pill (pbar.keyBtn) to support secure Right-Click Dungeon Teleport casting out of combat with a synced cooldown swipe overlay, plus Season Best (timed/over-time level and score) and Dungeon Teleport readiness/cooldown lines in the tooltip while preserving Left-Click exclusive dungeon filtering." },
             { type = "FEATURE", text = "Dungeon Joined & Group Full Teleport Toast (15/11/2026): Displays a 410x74 Alert Toast-matched banner with a one-click Dungeon Teleport button and Right-Click dismissal when your Premade Group application is accepted, chimes as players join, and highlights when the group reaches 5/5. Shares DynamicSuite's Alert Toast HUD Edit slot with automatic mutual stacking, plus Test Join (3/5), Test Full (5/5), Edit HUD buttons, and /dg testtoast." },
