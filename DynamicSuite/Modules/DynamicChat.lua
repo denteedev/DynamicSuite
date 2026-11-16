@@ -160,6 +160,8 @@ local ICON_COPY         = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Ico
 local ICON_VAULT        = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_vault.tga"
 local ICON_LOG          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_log.tga"
 local ICON_LOCK         = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_lock.tga"
+local SOUND_MENTION_WARM  = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\DynamicChat_MentionWarm.ogg"
+local SOUND_KEYWORD_PULSE = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\DynamicChat_KeywordPulse.ogg"
 
 -- ============================================================================
 -- 1. SECRET-VALUE & 6-CHAR HEX SANITIZATION GUARDS
@@ -6709,6 +6711,19 @@ function DynamicChat:ScanExternalSounds(force)
     return dcStandaloneSoundCache
 end
 
+local PROTOTYPE_CHIME_SOUNDS = {
+    DC_MENTION_WARM = {
+        value = "DC_MENTION_WARM",
+        label = "Mention Chime (Warm Prototype)",
+        path  = SOUND_MENTION_WARM,
+    },
+    DC_KEYWORD_PULSE = {
+        value = "DC_KEYWORD_PULSE",
+        label = "Keyword Pulse (Warm Prototype)",
+        path  = SOUND_KEYWORD_PULSE,
+    },
+}
+
 local function ResolveChannelSound(soundKey)
     if not soundKey or soundKey == "" or soundKey == "NONE" then
         return nil, false
@@ -6716,6 +6731,9 @@ local function ResolveChannelSound(soundKey)
     if type(soundKey) == "string" and (soundKey:match("^ds_") or soundKey:match("^ex_") or soundKey:lower():match("%.wav$")) then
         local fb = BLIZZARD_SOUND_BY_KEY["BLIZZ_RAID_WARNING"] or BuildBlizzardChatSoundList()[1]
         return fb, true
+    end
+    if PROTOTYPE_CHIME_SOUNDS[soundKey] then
+        return PROTOTYPE_CHIME_SOUNDS[soundKey], false
     end
     if IsBuiltInBlizzardSoundKey(soundKey) then
         return BLIZZARD_SOUND_BY_KEY[soundKey], false
@@ -6745,6 +6763,18 @@ end
 local function GetSoundOptionsForChannel(_)
     local opts = {
         { value = "NONE", label = "None (Muted)" },
+    }
+
+    table.insert(opts, { isHeader = true, label = "DYNAMICCHAT PROTOTYPES" })
+    opts[#opts + 1] = {
+        value = "DC_MENTION_WARM",
+        label = "Mention Chime (Warm Prototype)",
+        path  = SOUND_MENTION_WARM,
+    }
+    opts[#opts + 1] = {
+        value = "DC_KEYWORD_PULSE",
+        label = "Keyword Pulse (Warm Prototype)",
+        path  = SOUND_KEYWORD_PULSE,
     }
 
     local reg = DynamicChat:ScanExternalSounds(true)
@@ -6871,6 +6901,31 @@ function DynamicChat:PlaySoundOptionKey(soundKey, channelKey, isPreview)
     end
 
     return played
+end
+
+function DynamicChat:PlayPrototypeChime(which)
+    local path = (which == "keyword") and SOUND_KEYWORD_PULSE or SOUND_MENTION_WARM
+    local played = false
+    if type(_G.PlaySoundFile) == "function" then
+        local okF, willPlay = pcall(_G.PlaySoundFile, path, "SFX")
+        played = (okF and willPlay ~= false)
+    end
+    if not played and _G.DEFAULT_CHAT_FRAME and type(_G.DEFAULT_CHAT_FRAME.AddMessage) == "function" then
+        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Could not play prototype chime. Brand-new .ogg files require a full WoW client restart to load.")
+    end
+    return played
+end
+
+function DynamicChat:PreviewPrototypeChimes()
+    if _G.DEFAULT_CHAT_FRAME and type(_G.DEFAULT_CHAT_FRAME.AddMessage) == "function" then
+        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Auditioning Mention Chime, then Keyword Pulse on SFX...")
+    end
+    local ok1 = self:PlayPrototypeChime("mention")
+    if ok1 and _G.C_Timer and type(_G.C_Timer.After) == "function" then
+        _G.C_Timer.After(0.55, function()
+            DynamicChat:PlayPrototypeChime("keyword")
+        end)
+    end
 end
 
 function DynamicChat:HandleIncomingChatSoundEvent(event, arg2, arg12)
@@ -9345,6 +9400,48 @@ local function RenderChatEmbedded(arg1, arg2)
     sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_sndCooldown
     root.allControls[#root.allControls + 1] = c3_sndCooldown
 
+    local c3_protoTest = CreateCardRow(sec3_rules, 64,
+        "Prototype Chime Ear Test",
+        "Audition the two warm prototype .ogg chimes back-to-back on the SFX channel (or type /dc testaudio).",
+        "Prototype Chime Ear Test",
+        "Click either button to preview the warm prototype chimes on the SFX channel."
+    )
+    local function CreatePrototypePreviewButton(parentCard, width, labelText, chimeKey)
+        local btn = CreateFrame("Button", nil, parentCard, "BackdropTemplate")
+        btn:SetSize(width, 24)
+        btn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        btn:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- #0B0D12
+        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85) -- #F97316
+        btn.label = btn:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(btn.label, 10, "")
+        btn.label:SetPoint("CENTER", 0, 0)
+        btn.label:SetText(labelText)
+        btn.label:SetTextColor(0.976, 0.984, 1.00, 1)
+        btn:SetScript("OnEnter", function(s)
+            s:SetBackdropColor(0.16, 0.08, 0.02, 0.98)
+            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+        end)
+        btn:SetScript("OnLeave", function(s)
+            s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85)
+        end)
+        btn:SetScript("OnClick", function()
+            DynamicChat:PlayPrototypeChime(chimeKey)
+        end)
+        return btn
+    end
+    local btnProtoKeyword = CreatePrototypePreviewButton(c3_protoTest, 146, "Preview Keyword Pulse", "keyword")
+    btnProtoKeyword:SetPoint("RIGHT", c3_protoTest, "RIGHT", -14, 0)
+    local btnProtoMention = CreatePrototypePreviewButton(c3_protoTest, 142, "Preview Mention Chime", "mention")
+    btnProtoMention:SetPoint("RIGHT", btnProtoKeyword, "LEFT", -8, 0)
+    AnchorCardTextToRightWidget(c3_protoTest, btnProtoMention)
+    sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_protoTest
+    root.allControls[#root.allControls + 1] = c3_protoTest
+
     -- ========================================================================
     -- TAB 4: Links, Scroll & History
     -- ========================================================================
@@ -10069,6 +10166,8 @@ SlashCmdList["DYNAMICCHAT"] = function(msg)
         DynamicChat:ShowFullChatHistoryModal(ResolveActiveChatFrame())
     elseif cmd == "copy" or cmd == "url" then
         DynamicChat:ShowURLCopyPopup("https://www.curseforge.com/wow/addons")
+    elseif cmd == "testaudio" then
+        DynamicChat:PreviewPrototypeChimes()
     else
         OpenChatWorkspace()
     end
