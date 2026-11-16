@@ -646,6 +646,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "16/11/2026",
     entries = {
+        { type = "FIX",     text = "Smooth Cursor-Anchored Blizzard Window Header Dragging (16/11/2026): updated BeginBlizzFrameDrag() to set state.isDragging = true before Raise()/StopMovingOrSizing() and track exact cursor-to-window-center grab offsets (grabOffsetX, grabOffsetY) via overlay OnUpdate, neutralised Blizzard's native TitleContainer drag scripts out of combat, and prevented AttachFrameHooks() OnDragStart from calling StopMovingOrSizing() during an active header drag so Left-Drag on any window header moves as smoothly as Alt + Left-Drag with zero cursor jump." },
         { type = "FEATURE", text = "Paperdoll Missing-Enchant & Empty-Socket Slot Highlights + /dprep testaudit (16/11/2026): extended ScanEquippedGearEnchantsAndGems() to store flagged slot IDs missing Midnight Season 2 enchants or containing empty gem sockets, hooked CharacterFrame / PaperDollFrame OnShow, PLAYER_EQUIPMENT_CHANGED, and SOCKET_INFO_UPDATE out of combat to draw crisp 1px Warm Amber-Gold (#FBBF24) border overlays on the matching Blizzard paperdoll gear slots, and added /dprep testaudit (/dp testaudit) to preview the highlight borders on Head and Ring 1." },
         { type = "FEATURE", text = "Colour-Coded Food Stat Benefits on Clickable Raid Buffs HUD & Readiness Strip (15/11/2026): added FormatColoredFoodBenefit to colour-code parsed food stats (Mint Teal Primary/Int/Agi/Str, Sky Cyan Haste, Royal Amethyst Mastery, Warm Amber-Gold Crit, Emerald Green Versatility, Blaze Orange Highest Secondary Stat, and Slate-Silver Stamina) across Clickable Raid Buffs food tooltip titles, 'Food Benefit:' summary lines, expiring 'Current Buff:' lines, Readiness Strip Slot 3, and capsule tooltips." },
         { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
@@ -5377,6 +5378,11 @@ do
             if not (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false) then return end
             local uip = _G.UIParent
             if not uip or not frameObj then return end
+
+            state.isDragging = true
+            if type(frameObj.StopMovingOrSizing) == "function" then
+                pcall(frameObj.StopMovingOrSizing, frameObj)
+            end
             if type(frameObj.Raise) == "function" then
                 pcall(frameObj.Raise, frameObj)
             end
@@ -5384,6 +5390,7 @@ do
                 pcall(frameObj.SetMovable, frameObj, true)
             end
             SyncFrameClamping(frameObj, fName)
+
             local s = GetActiveFrameScale(fName)
             local fcX, fcY
             if type(frameObj.GetCenter) == "function" then
@@ -5402,12 +5409,15 @@ do
                 startUX = (saved and saved.x) or 0
                 startUY = (saved and saved.y) or 0
             end
+
             local curX, curY = 0, 0
             if type(_G.GetCursorPosition) == "function" then
                 local cx, cy = _G.GetCursorPosition()
                 curX, curY = tonumber(cx) or 0, tonumber(cy) or 0
             end
-            state.isDragging = true
+            local uipEff = (uip.GetEffectiveScale and uip:GetEffectiveScale()) or 1
+            if uipEff <= 0 then uipEff = 1 end
+
             state.dragScale = s
             state.startFCX = fcX
             state.startFCY = fcY
@@ -5415,21 +5425,50 @@ do
             state.dragStartCurY = curY
             state.dragStartUX = startUX
             state.dragStartUY = startUY
+            state.grabOffsetX = startUX - (curX / uipEff)
+            state.grabOffsetY = startUY - (curY / uipEff)
+            state.lastAppliedUX = startUX
+            state.lastAppliedUY = startUY
+            state.usingNativeMove = false
 
-            local startedNative = false
-            if type(frameObj.StartMoving) == "function" then
-                local ok = pcall(frameObj.StartMoving, frameObj)
-                if ok then
-                    startedNative = true
-                end
-            end
-            state.usingNativeMove = startedNative
-            if not startedNative then
-                SecureApplyPoint(frameObj, startUX, startUY, s)
+            SecureApplyPoint(frameObj, startUX, startUY, s)
+
+            if state.overlay and state.overlay.SetScript then
+                state.overlay:SetScript("OnUpdate", function(selfOv)
+                    if not state.isDragging or InCombat() or IsModuleDisabledInSuite("DynamicPrep") or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
+                        selfOv:SetScript("OnUpdate", nil)
+                        if state.isDragging and state.finishDrag then
+                            state.finishDrag()
+                        end
+                        return
+                    end
+                    if type(_G.IsMouseButtonDown) == "function" and not _G.IsMouseButtonDown("LeftButton") then
+                        selfOv:SetScript("OnUpdate", nil)
+                        if state.finishDrag then
+                            state.finishDrag()
+                        end
+                        return
+                    end
+                    if type(_G.GetCursorPosition) ~= "function" then return end
+                    local nx, ny = _G.GetCursorPosition()
+                    if type(nx) ~= "number" or type(ny) ~= "number" then return end
+                    local eff = (uip.GetEffectiveScale and uip:GetEffectiveScale()) or 1
+                    if eff <= 0 then eff = 1 end
+                    local targetUX = (nx / eff) + (state.grabOffsetX or 0)
+                    local targetUY = (ny / eff) + (state.grabOffsetY or 0)
+                    if math.abs(targetUX - (state.lastAppliedUX or targetUX)) >= 0.25 or math.abs(targetUY - (state.lastAppliedUY or targetUY)) >= 0.25 then
+                        state.lastAppliedUX = targetUX
+                        state.lastAppliedUY = targetUY
+                        SecureApplyPoint(frameObj, targetUX, targetUY, state.dragScale or s)
+                    end
+                end)
             end
         end
 
         local function FinishBlizzFrameDrag(frameObj, fName, state)
+            if state and state.overlay and state.overlay.SetScript then
+                state.overlay:SetScript("OnUpdate", nil)
+            end
             if not InCombat() and frameObj and type(frameObj.StopMovingOrSizing) == "function" then
                 pcall(frameObj.StopMovingOrSizing, frameObj)
             end
@@ -5440,35 +5479,33 @@ do
             local uip = _G.UIParent
             if not uip or not frameObj then return end
             local scale = GetActiveFrameScale(fName)
-            local fcX, fcY
-            if type(frameObj.GetCenter) == "function" then
-                fcX, fcY = frameObj:GetCenter()
-            end
-            local ucX, ucY
-            if type(uip.GetCenter) == "function" then
-                ucX, ucY = uip:GetCenter()
-            end
-            local ux, uy
-            if type(fcX) == "number" and type(fcY) == "number" and type(ucX) == "number" and type(ucY) == "number" then
-                ux = (fcX * scale) - ucX
-                uy = (fcY * scale) - ucY
-                if fcX == state.startFCX and fcY == state.startFCY and type(_G.GetCursorPosition) == "function" then
-                    local nx, ny = _G.GetCursorPosition()
-                    if type(nx) == "number" and type(ny) == "number" and (nx ~= state.dragStartCurX or ny ~= state.dragStartCurY) then
-                        local uipEff = (uip.GetEffectiveScale and uip:GetEffectiveScale()) or 1
-                        if uipEff <= 0 then uipEff = 1 end
-                        ux = (state.dragStartUX or ux) + ((nx - state.dragStartCurX) / uipEff)
-                        uy = (state.dragStartUY or uy) + ((ny - state.dragStartCurY) / uipEff)
-                    end
+            local ux = state.lastAppliedUX
+            local uy = state.lastAppliedUY
+            if type(ux) ~= "number" or type(uy) ~= "number" then
+                local fcX, fcY
+                if type(frameObj.GetCenter) == "function" then
+                    fcX, fcY = frameObj:GetCenter()
                 end
-            else
-                ux = state.dragStartUX or 0
-                uy = state.dragStartUY or 0
+                local ucX, ucY
+                if type(uip.GetCenter) == "function" then
+                    ucX, ucY = uip:GetCenter()
+                end
+                if type(fcX) == "number" and type(fcY) == "number" and type(ucX) == "number" and type(ucY) == "number" then
+                    ux = (fcX * scale) - ucX
+                    uy = (fcY * scale) - ucY
+                else
+                    ux = state.dragStartUX or 0
+                    uy = state.dragStartUY or 0
+                end
             end
             local finalUX = math.floor(ux * 100 + 0.5) / 100
             local finalUY = math.floor(uy * 100 + 0.5) / 100
             state.frozenUX = nil
             state.frozenUY = nil
+            state.grabOffsetX = nil
+            state.grabOffsetY = nil
+            state.lastAppliedUX = nil
+            state.lastAppliedUY = nil
             DynamicPrep.db.windowPositions = DynamicPrep.db.windowPositions or {}
             DynamicPrep.db.windowPositions[fName] = {
                 point = "CENTER",
@@ -5545,6 +5582,26 @@ do
         return st
     end
 
+    local function NeutraliseTitleContainerDrag(frame)
+        if not frame or not frame.TitleContainer or InCombat() then return end
+        if IsModuleDisabledInSuite("DynamicPrep") or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then return end
+        if not (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false) then return end
+        local tc = frame.TitleContainer
+        if tc._dpDragNeutralised then return end
+        tc._dpDragNeutralised = true
+        if type(tc.RegisterForDrag) == "function" then
+            pcall(tc.RegisterForDrag, tc)
+        end
+        if type(tc.SetScript) == "function" and type(tc.GetScript) == "function" then
+            if tc:GetScript("OnDragStart") then
+                pcall(tc.SetScript, tc, "OnDragStart", nil)
+            end
+            if tc:GetScript("OnDragStop") then
+                pcall(tc.SetScript, tc, "OnDragStop", nil)
+            end
+        end
+    end
+
     local function SyncOverlayMode(frame, frameName)
         local st = blizzWinState[frame]
         if not st or not st.overlay then return end
@@ -5552,6 +5609,7 @@ do
         if InCombat() or IsModuleDisabledInSuite("DynamicPrep") or DynamicPrep:IsYieldingBlizzardWindowsToEllesmereUI() then
             st.isDragging = false
             st.usingNativeMove = nil
+            ov:SetScript("OnUpdate", nil)
             ov:EnableMouse(false)
             ov:EnableMouseWheel(false)
             ov:Hide()
@@ -5559,6 +5617,9 @@ do
             return
         end
         local canDrag = (DynamicPrep.db and DynamicPrep.db.blizzWinDraggable ~= false) and true or false
+        if canDrag then
+            NeutraliseTitleContainerDrag(frame)
+        end
         local canScale = (DynamicPrep.db and DynamicPrep.db.blizzWinScrollScale ~= false) and true or false
         local canPin = (DynamicPrep.db and DynamicPrep.db.blizzWinNoAutoClose ~= false) and true or false
         ov:EnableMouse(canDrag or canScale or canPin)
@@ -5678,7 +5739,7 @@ do
                 if button and button ~= "LeftButton" then return end
                 local fState = GetFrameState(dragFrame)
                 if not (_G.IsAltKeyDown and _G.IsAltKeyDown()) then
-                    if not InCombat() and type(dragFrame.StopMovingOrSizing) == "function" then
+                    if not (fState and fState.isDragging) and not InCombat() and type(dragFrame.StopMovingOrSizing) == "function" then
                         pcall(dragFrame.StopMovingOrSizing, dragFrame)
                     end
                     return
