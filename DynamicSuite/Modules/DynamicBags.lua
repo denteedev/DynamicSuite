@@ -4653,6 +4653,25 @@ function U.CanPurchaseVaultTab(mode)
     return false, 0, nil
 end
 
+local function PlayBagWindowSound(isOpen)
+    local playFn = _G.PlaySound
+    if type(playFn) ~= "function" then return end
+    local now = (_G.GetTime and _G.GetTime()) or 0
+    if S.lastBagSoundAt and (now - S.lastBagSoundAt) < 0.10 and S.lastBagSoundOpen == (isOpen == true) then
+        return
+    end
+    S.lastBagSoundAt = now
+    S.lastBagSoundOpen = (isOpen == true)
+    local sk = _G.SOUNDKIT
+    local soundId
+    if isOpen then
+        soundId = (type(sk) == "table" and sk.IG_BACKPACK_OPEN) or 862
+    else
+        soundId = (type(sk) == "table" and sk.IG_BACKPACK_CLOSE) or 863
+    end
+    pcall(playFn, soundId, "SFX")
+end
+
 function U.EnsureCompanionBankWindow()
     if S.bankWindow then return S.bankWindow end
     local ar, ag, ab = GetAccent()
@@ -4940,6 +4959,7 @@ function U.EnsureCompanionBankWindow()
     bw.tabGuild:SetScript("OnClick", function() SelectCompanionTab("GUILD") end)
 
     bw:SetScript("OnShow", function()
+        PlayBagWindowSound(true)
         if not InCombatLockdown() then
             U.ApplyWindowScale("bank")
         end
@@ -4951,6 +4971,7 @@ function U.EnsureCompanionBankWindow()
         U.RenderCompanionBank()
     end)
     bw:SetScript("OnHide", function()
+        PlayBagWindowSound(false)
         U.CloseMenu()
         S.sessionBankScale = nil
         if not InCombatLockdown() then
@@ -5976,6 +5997,7 @@ function U.EnsureWindow()
     S.footer = foot
 
     win:SetScript("OnShow", function()
+        PlayBagWindowSound(true)
         if not InCombatLockdown() then
             U.ApplyWindowScale("bag")
         end
@@ -5983,6 +6005,7 @@ function U.EnsureWindow()
         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
     end)
     win:SetScript("OnHide", function()
+        PlayBagWindowSound(false)
         U.CloseMenu()
         S.sessionBagScale = nil
         if not InCombatLockdown() then
