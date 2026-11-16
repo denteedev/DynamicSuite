@@ -401,6 +401,12 @@ local DEFAULTS = {
     editBoxBackgroundMode       = "ALWAYS", -- "ALWAYS" (Seamless Smoked-Glass Dock) | "FOCUS_ONLY" (Show Only When Typing)
     hideChatButtons             = true,
     applySuiteChatFont          = true,
+    chatFontKey                 = "SUITE",
+    chatFontSize                = 13,
+    chatFontOutline             = "OUTLINE", -- "NONE" | "OUTLINE" | "THICKOUTLINE"
+    chatFontShadow              = true,
+    chatLineSpacing             = 2,
+    chatMessageFade             = true,
     chatFramePos                = { point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT", relPoint = "BOTTOMLEFT", x = 0, y = 0, width = 430, height = 200 },
     chatFrameScale              = 1.0,
     leftRailMode                = "ALWAYS", -- "ALWAYS" | "HOVER" | "COMBAT_HIDE" | "OFF"
@@ -490,6 +496,8 @@ local function SetSafeFont(fs, size, flags)
         fs:SetFont("Fonts\\FRIZQT__.TTF", size or 11, flags or "")
     end
 end
+
+local TypographyMgr = {}
 
 local function DisableTexPixelSnap(tex)
     if not tex then return end
@@ -671,6 +679,23 @@ local function EnsureDB()
     end
     _G.DynamicChatDB.mentionHighlightInChat = (_G.DynamicChatDB.mentionHighlightInChat ~= false)
     _G.DynamicChatDB.mentionAlertToast = (_G.DynamicChatDB.mentionAlertToast ~= false)
+    if type(_G.DynamicChatDB.chatFontKey) ~= "string" or _G.DynamicChatDB.chatFontKey == "" then
+        _G.DynamicChatDB.chatFontKey = "SUITE"
+    end
+    local fSize = tonumber(_G.DynamicChatDB.chatFontSize) or 13
+    fSize = math.floor(fSize + 0.5)
+    if fSize < 10 then fSize = 10 elseif fSize > 22 then fSize = 22 end
+    _G.DynamicChatDB.chatFontSize = fSize
+    local fOut = _G.DynamicChatDB.chatFontOutline
+    if fOut ~= "NONE" and fOut ~= "OUTLINE" and fOut ~= "THICKOUTLINE" then
+        _G.DynamicChatDB.chatFontOutline = "OUTLINE"
+    end
+    _G.DynamicChatDB.chatFontShadow = (_G.DynamicChatDB.chatFontShadow ~= false)
+    local lSpace = tonumber(_G.DynamicChatDB.chatLineSpacing) or 2
+    lSpace = math.floor(lSpace + 0.5)
+    if lSpace < 0 then lSpace = 0 elseif lSpace > 8 then lSpace = 8 end
+    _G.DynamicChatDB.chatLineSpacing = lSpace
+    _G.DynamicChatDB.chatMessageFade = (_G.DynamicChatDB.chatMessageFade ~= false)
     return _G.DynamicChatDB
 end
 
@@ -4971,6 +4996,266 @@ local function RestoreOriginalButtonAnchors(f)
     end)
 end
 
+do
+    local BLIZZ_FONTS = {
+        { value = "BLIZZ_FRIZQT",   label = "Friz Quadrata (Blizzard)",   path = "Fonts\\FRIZQT__.TTF",   source = "Blizzard" },
+        { value = "BLIZZ_2002",     label = "2002 (Blizzard)",            path = "Fonts\\2002.TTF",       source = "Blizzard" },
+        { value = "BLIZZ_2002B",    label = "2002 Bold (Blizzard)",       path = "Fonts\\2002B.TTF",      source = "Blizzard" },
+        { value = "BLIZZ_ARIALN",   label = "Arial Narrow (Blizzard)",    path = "Fonts\\ARIALN.TTF",     source = "Blizzard" },
+        { value = "BLIZZ_MORPHEUS", label = "Morpheus (Blizzard)",        path = "Fonts\\MORPHEUS.TTF",   source = "Blizzard" },
+        { value = "BLIZZ_SKURRI",   label = "Skurri (Blizzard)",          path = "Fonts\\SKURRI.TTF",     source = "Blizzard" },
+    }
+    local BLIZZ_BY_KEY = {}
+    for _, b in ipairs(BLIZZ_FONTS) do
+        BLIZZ_BY_KEY[b.value] = b
+    end
+
+    function TypographyMgr.ResolveFontPath(fontKey)
+        if not fontKey or fontKey == "" or fontKey == "SUITE" then
+            return GetFontPath()
+        end
+        if BLIZZ_BY_KEY[fontKey] then
+            return BLIZZ_BY_KEY[fontKey].path
+        end
+        if _G.DynamicSuite then
+            if type(_G.DynamicSuite.ResolveFontChoice) == "function" then
+                local ok, p, _, usedFallback = pcall(_G.DynamicSuite.ResolveFontChoice, _G.DynamicSuite, fontKey)
+                if ok and type(p) == "string" and p ~= "" and not usedFallback then
+                    return p
+                end
+            end
+            if type(_G.DynamicSuite.GetSharedFonts) == "function" then
+                local okR, fReg = pcall(_G.DynamicSuite.GetSharedFonts, _G.DynamicSuite, false)
+                if okR and type(fReg) == "table" and type(fReg.byKey) == "table" and fReg.byKey[fontKey] then
+                    local p = fReg.byKey[fontKey].path
+                    if type(p) == "string" and p ~= "" then return p end
+                end
+            end
+            if _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.FONT_FAMILIES) == "table" then
+                local entry = _G.DynamicSuite.UI.FONT_FAMILIES[fontKey]
+                if type(entry) == "table" then
+                    local p = entry.resolvedPath or entry.path
+                    if type(p) == "string" and p ~= "" then return p end
+                end
+            end
+        end
+        return GetFontPath()
+    end
+
+    function TypographyMgr.GetFontOptions()
+        local out = {
+            { value = "SUITE", label = "Use Suite Theme Font (Default)", group = "DYNAMICSUITE", source = "DynamicSuite" },
+        }
+        local seen = { SUITE = true }
+
+        local builtinItems = {}
+        local uiFonts = _G.DynamicSuite and _G.DynamicSuite.UI and _G.DynamicSuite.UI.FONT_FAMILIES
+        if type(uiFonts) == "table" then
+            for fKey, entry in pairs(uiFonts) do
+                if type(fKey) == "string" and fKey ~= "EXTERNAL_UI" and type(entry) == "table" then
+                    local fName = entry.name or fKey
+                    if not seen[fKey] then
+                        seen[fKey] = true
+                        builtinItems[#builtinItems + 1] = {
+                            value  = fKey,
+                            label  = fName,
+                            group  = "BUILTIN FONTS",
+                            source = "DynamicSuite",
+                            path   = entry.resolvedPath or entry.path,
+                        }
+                    end
+                end
+            end
+            table.sort(builtinItems, function(a, b) return (a.label or "") < (b.label or "") end)
+        else
+            builtinItems[#builtinItems + 1] = {
+                value  = "EXPRESSWAY",
+                label  = "Expressway",
+                group  = "BUILTIN FONTS",
+                source = "DynamicChat",
+                path   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Expressway.ttf",
+            }
+            seen["EXPRESSWAY"] = true
+        end
+        for _, item in ipairs(builtinItems) do
+            out[#out + 1] = item
+        end
+
+        for _, b in ipairs(BLIZZ_FONTS) do
+            if not seen[b.value] then
+                seen[b.value] = true
+                out[#out + 1] = {
+                    value  = b.value,
+                    label  = b.label,
+                    group  = "BLIZZARD FONTS",
+                    source = b.source,
+                    path   = b.path,
+                }
+            end
+        end
+
+        if _G.DynamicSuite and type(_G.DynamicSuite.GetSharedFonts) == "function" then
+            local okR, fReg = pcall(_G.DynamicSuite.GetSharedFonts, _G.DynamicSuite, false)
+            if okR and type(fReg) == "table" and type(fReg.external) == "table" then
+                local extItems = {}
+                for _, ext in ipairs(fReg.external) do
+                    local key = ext.value or ext.name
+                    if type(key) == "string" and key ~= "" and not seen[key] then
+                        seen[key] = true
+                        extItems[#extItems + 1] = {
+                            value  = key,
+                            label  = ext.label or ext.name or key,
+                            group  = "SHAREDMEDIA & ADDON FONTS",
+                            source = ext.source or "SharedMedia",
+                            path   = ext.path,
+                        }
+                    end
+                end
+                table.sort(extItems, function(a, b) return (a.label or "") < (b.label or "") end)
+                for _, item in ipairs(extItems) do
+                    out[#out + 1] = item
+                end
+            end
+        end
+
+        return out
+    end
+
+    function TypographyMgr.GetFontLabel(fontKey)
+        if not fontKey or fontKey == "" or fontKey == "SUITE" then
+            return "Use Suite Theme Font (Default)"
+        end
+        if BLIZZ_BY_KEY[fontKey] then
+            return BLIZZ_BY_KEY[fontKey].label
+        end
+        local uiFonts = _G.DynamicSuite and _G.DynamicSuite.UI and _G.DynamicSuite.UI.FONT_FAMILIES
+        if type(uiFonts) == "table" and type(uiFonts[fontKey]) == "table" then
+            return uiFonts[fontKey].name or fontKey
+        end
+        if _G.DynamicSuite and type(_G.DynamicSuite.GetSharedFonts) == "function" then
+            local okR, fReg = pcall(_G.DynamicSuite.GetSharedFonts, _G.DynamicSuite, false)
+            if okR and type(fReg) == "table" and type(fReg.byKey) == "table" and fReg.byKey[fontKey] then
+                return fReg.byKey[fontKey].label or fReg.byKey[fontKey].name or fontKey
+            end
+        end
+        return tostring(fontKey)
+    end
+
+    function TypographyMgr.ApplyToEditBox(eb, fontPath, size, flags, hasShadow)
+        if not eb then return end
+        local ebSize = math.max(11, math.min(size, 18))
+        if eb.SetFont then
+            local ok, setOk = pcall(eb.SetFont, eb, fontPath, ebSize, flags)
+            if not ok or setOk == false then
+                pcall(eb.SetFont, eb, "Fonts\\FRIZQT__.TTF", ebSize, flags)
+            end
+        end
+        if eb.SetShadowOffset then
+            pcall(eb.SetShadowOffset, eb, hasShadow and 1 or 0, hasShadow and -1 or 0)
+        end
+        if eb.SetShadowColor then
+            pcall(eb.SetShadowColor, eb, 0, 0, 0, hasShadow and 0.90 or 0)
+        end
+        if eb.header and eb.header.SetFont then
+            local okH, setH = pcall(eb.header.SetFont, eb.header, fontPath, ebSize, flags)
+            if not okH or setH == false then
+                pcall(eb.header.SetFont, eb.header, "Fonts\\FRIZQT__.TTF", ebSize, flags)
+            end
+        end
+    end
+
+    function TypographyMgr.ApplyToSingleFrame(cf, cfName, fontPath, size, flags, hasShadow, spacing, fading)
+        if not cf then return end
+        if cf.SetFont then
+            local ok, setOk = pcall(cf.SetFont, cf, fontPath, size, flags)
+            if not ok or setOk == false then
+                pcall(cf.SetFont, cf, "Fonts\\FRIZQT__.TTF", size, flags)
+            end
+        end
+        if cf.SetShadowOffset then
+            pcall(cf.SetShadowOffset, cf, hasShadow and 1 or 0, hasShadow and -1 or 0)
+        end
+        if cf.SetShadowColor then
+            pcall(cf.SetShadowColor, cf, 0, 0, 0, hasShadow and 0.90 or 0)
+        end
+        if cf.SetSpacing then
+            pcall(cf.SetSpacing, cf, spacing)
+        end
+        if cf.SetFading then
+            pcall(cf.SetFading, cf, fading)
+        end
+        if fading and cf.SetTimeVisible then
+            pcall(cf.SetTimeVisible, cf, 120)
+        end
+        local eb = cfName and _G[cfName .. "EditBox"]
+        if eb then
+            TypographyMgr.ApplyToEditBox(eb, fontPath, size, flags, hasShadow)
+        end
+    end
+
+    function TypographyMgr.InstallHooks()
+        if TypographyMgr.hooksInstalled then return end
+        TypographyMgr.hooksInstalled = true
+        if type(_G.hooksecurefunc) == "function" then
+            if type(_G.FCF_SetChatWindowFontSize) == "function" then
+                hooksecurefunc("FCF_SetChatWindowFontSize", function()
+                    if TypographyMgr.applying then return end
+                    if C_Timer and C_Timer.After then
+                        C_Timer.After(0, function()
+                            DynamicChat:ApplyChatFrameTypography()
+                        end)
+                    end
+                end)
+            end
+            if type(_G.FCF_OpenTemporaryWindow) == "function" then
+                hooksecurefunc("FCF_OpenTemporaryWindow", function()
+                    if C_Timer and C_Timer.After then
+                        C_Timer.After(0, function()
+                            DynamicChat:ApplyChatFrameTypography()
+                        end)
+                    end
+                end)
+            end
+        end
+    end
+end
+
+function DynamicChat:ApplyChatFrameTypography()
+    if IsModuleDisabledInSuite("DynamicChat") or self:IsExternalChatEngineLoaded() then
+        return
+    end
+    TypographyMgr.InstallHooks()
+
+    local db = EnsureDB()
+    local fontPath = TypographyMgr.ResolveFontPath(db.chatFontKey)
+    local size = tonumber(db.chatFontSize) or 13
+    if size < 10 then size = 10 elseif size > 22 then size = 22 end
+    local out = db.chatFontOutline
+    local flags = ""
+    if out == "OUTLINE" then
+        flags = "OUTLINE"
+    elseif out == "THICKOUTLINE" then
+        flags = "THICKOUTLINE"
+    end
+    local hasShadow = (db.chatFontShadow ~= false)
+    local spacing = tonumber(db.chatLineSpacing) or 2
+    if spacing < 0 then spacing = 0 elseif spacing > 8 then spacing = 8 end
+    local fading = (db.chatMessageFade ~= false)
+
+    TypographyMgr.applying = true
+    local allFrames = CollectAllChatFrames()
+    local seenEditBox = {}
+    for _, item in ipairs(allFrames) do
+        TypographyMgr.ApplyToSingleFrame(item.cf, item.name, fontPath, size, flags, hasShadow, spacing, fading)
+        local eb = item.name and _G[item.name .. "EditBox"]
+        if eb then seenEditBox[eb] = true end
+    end
+    if _G.ChatFrame1EditBox and not seenEditBox[_G.ChatFrame1EditBox] then
+        TypographyMgr.ApplyToEditBox(_G.ChatFrame1EditBox, fontPath, size, flags, hasShadow)
+    end
+    TypographyMgr.applying = false
+end
+
 function DynamicChat:ApplySleekChatSkin()
     -- Auto-yield 100% of chat frame skinning when EllesmereUIChat, Chattynator, Prat-3.0, or LS: Glass is loaded
     if self:IsExternalChatEngineLoaded() then
@@ -7419,6 +7704,7 @@ function DynamicChat:ApplyAllEngineSettings()
     self:ApplyWhisperDefaultSoundMuteState()
     self:ApplySavedChatFramePosition()
     self:ApplySleekChatSkin()
+    self:ApplyChatFrameTypography()
     self:ApplyShortChannelNames()
     self:ApplyEditBoxSettings()
     self:ApplyStickyChannelSettings()
@@ -7925,7 +8211,6 @@ local function AttachSegmentedSwitchToCard(card, getValue, onToggle, offText, on
     card.toggleBtn = wrap
     return wrap
 end
-
 local function EnsureDropdownClickCatcher()
     if dropdownClickCatcher then return dropdownClickCatcher end
     local cc = CreateFrame("Button", nil, UIParent)
@@ -8787,6 +9072,427 @@ local function AttachMultiPillSelectorToCard(card, options, getValue, onSelect, 
     return wrap
 end
 
+do
+    local fontDropdownMenu
+
+    local function OpenFontDropdownMenu(ownerBtn)
+        if activeDropdownFrame and activeDropdownFrame == fontDropdownMenu and fontDropdownMenu:IsShown() and fontDropdownMenu.ownerBtn == ownerBtn then
+            CloseActiveDropdown()
+            return
+        end
+        CloseActiveDropdown()
+
+        if not fontDropdownMenu then
+            local m = CreateFrame("Frame", "DynamicChatFontDropdownMenu", UIParent, "BackdropTemplate")
+            m:SetFrameStrata("FULLSCREEN_DIALOG")
+            m:SetFrameLevel(90)
+            m:SetSize(290, 310)
+            m:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 1,
+            })
+            m:SetClampedToScreen(true)
+            m:EnableMouse(true)
+
+            local sb = CreateFrame("EditBox", nil, m, "BackdropTemplate")
+            sb:SetHeight(24)
+            sb:SetPoint("TOPLEFT", m, "TOPLEFT", 8, -8)
+            sb:SetPoint("TOPRIGHT", m, "TOPRIGHT", -8, -8)
+            sb:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 1,
+            })
+            sb:SetAutoFocus(false)
+            sb:SetTextInsets(8, 8, 0, 0)
+            SetSafeFont(sb, 10.5, "")
+            sb:SetTextColor(0.95, 0.96, 0.98, 1)
+            sb:SetScript("OnEscapePressed", function() CloseActiveDropdown() end)
+            m.searchBox = sb
+
+            local ph = sb:CreateFontString(nil, "OVERLAY")
+            SetSafeFont(ph, 10, "")
+            ph:SetPoint("LEFT", sb, "LEFT", 8, 0)
+            ph:SetText("Search fonts (Blizzard, Suite, SharedMedia)...")
+            ph:SetTextColor(0.45, 0.50, 0.58, 0.9)
+            m.searchPlaceholder = ph
+
+            local sf = CreateFrame("ScrollFrame", nil, m)
+            sf:SetPoint("TOPLEFT", sb, "BOTTOMLEFT", 0, -6)
+            sf:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", -14, 8)
+            sf:EnableMouseWheel(true)
+            m.scrollFrame = sf
+
+            local sc = CreateFrame("Frame", nil, sf)
+            sc:SetSize(260, 1)
+            sf:SetScrollChild(sc)
+            m.scrollChild = sc
+
+            local track = CreateFrame("Frame", nil, m, "BackdropTemplate")
+            track:SetWidth(4)
+            track:SetPoint("TOPRIGHT", m, "TOPRIGHT", -5, -40)
+            track:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", -5, 8)
+            track:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+            track:SetBackdropColor(0.08, 0.09, 0.12, 0.85)
+
+            local thumb = track:CreateTexture(nil, "OVERLAY")
+            thumb:SetWidth(4)
+            thumb:SetPoint("TOP", track, "TOP", 0, 0)
+            thumb:SetHeight(40)
+            DisableTexPixelSnap(thumb)
+            m.thumb = thumb
+
+            m.UpdateMenuThumb = function()
+                local maxScroll = math.max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 1))
+                if maxScroll <= 1 then
+                    thumb:Hide()
+                    return
+                end
+                thumb:Show()
+                local trackH = track:GetHeight() or 200
+                local viewH = sf:GetHeight() or 200
+                local totalH = sc:GetHeight() or viewH
+                local tH = math.max(24, math.min(trackH, trackH * (viewH / totalH)))
+                thumb:SetHeight(tH)
+                local cur = sf:GetVerticalScroll() or 0
+                local pct = math.max(0, math.min(1, cur / maxScroll))
+                thumb:ClearAllPoints()
+                thumb:SetPoint("TOP", track, "TOP", 0, -pct * (trackH - tH))
+            end
+
+            sf:SetScript("OnMouseWheel", function(_, delta)
+                local maxScroll = math.max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 1))
+                local nextS = math.max(0, math.min(maxScroll, (sf:GetVerticalScroll() or 0) - delta * 28))
+                sf:SetVerticalScroll(nextS)
+                m.UpdateMenuThumb()
+            end)
+
+            m.rows = {}
+            fontDropdownMenu = m
+        end
+
+        local m = fontDropdownMenu
+        m.ownerBtn = ownerBtn
+        local ar, ag, ab = GetSuiteAccent()
+        m:SetBackdropColor(0.043, 0.051, 0.071, 0.98)
+        m:SetBackdropBorderColor(ar, ag, ab, 0.88)
+        m.searchBox:SetBackdropColor(0.07, 0.082, 0.11, 0.98)
+        m.searchBox:SetBackdropBorderColor(0.18, 0.21, 0.27, 0.95)
+        m.thumb:SetColorTexture(ar, ag, ab, 0.85)
+
+        m:ClearAllPoints()
+        m:SetPoint("TOPRIGHT", ownerBtn, "BOTTOMRIGHT", 0, -4)
+
+        local function RenderFontRows(filterText)
+            local q = string.lower(string.gsub(filterText or "", "^%s*(.-)%s*$", "%1"))
+            local opts = TypographyMgr.GetFontOptions()
+            local items = {}
+            local lastGroup = nil
+            for _, opt in ipairs(opts) do
+                local lblLow = string.lower(opt.label or "")
+                local srcLow = string.lower(opt.source or "")
+                if q == "" or string.find(lblLow, q, 1, true) or string.find(srcLow, q, 1, true) then
+                    if opt.group ~= lastGroup then
+                        lastGroup = opt.group
+                        items[#items + 1] = { isHeader = true, label = opt.group }
+                    end
+                    items[#items + 1] = { isHeader = false, opt = opt }
+                end
+            end
+
+            local curKey = EnsureDB().chatFontKey or "SUITE"
+            local yOff = 0
+            local sc = m.scrollChild
+            for idx, entry in ipairs(items) do
+                local row = m.rows[idx]
+                if not row then
+                    row = CreateFrame("Button", nil, sc, "BackdropTemplate")
+                    row:SetHeight(22)
+                    row:SetBackdrop({
+                        bgFile = "Interface\\Buttons\\WHITE8x8",
+                        edgeFile = "Interface\\Buttons\\WHITE8x8",
+                        edgeSize = 1,
+                    })
+                    row.label = row:CreateFontString(nil, "OVERLAY")
+                    row.label:SetPoint("LEFT", row, "LEFT", 8, 0)
+                    row.label:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+                    row.label:SetJustifyH("LEFT")
+                    row.label:SetWordWrap(false)
+                    m.rows[idx] = row
+                end
+
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, -yOff)
+                row:SetPoint("TOPRIGHT", sc, "TOPRIGHT", 0, -yOff)
+
+                if entry.isHeader then
+                    row:SetHeight(18)
+                    row:EnableMouse(false)
+                    row:SetBackdropColor(0, 0, 0, 0)
+                    row:SetBackdropBorderColor(0, 0, 0, 0)
+                    SetSafeFont(row.label, 9, "OUTLINE")
+                    row.label:SetText(entry.label)
+                    row.label:SetTextColor(ar, ag, ab, 0.95)
+                    row:SetScript("OnEnter", nil)
+                    row:SetScript("OnLeave", nil)
+                    row:SetScript("OnClick", nil)
+                    yOff = yOff + 20
+                else
+                    local opt = entry.opt
+                    local isSel = (curKey == opt.value)
+                    row:SetHeight(23)
+                    row:EnableMouse(true)
+                    local previewPath = opt.path or TypographyMgr.ResolveFontPath(opt.value)
+                    local okF = row.label:SetFont(previewPath, 11, "")
+                    if not okF then SetSafeFont(row.label, 11, "") end
+                    row.label:SetText(opt.label)
+
+                    local function StyleFontRow(hovered)
+                        if isSel then
+                            row:SetBackdropColor(ar * 0.24, ag * 0.24, ab * 0.24, 0.98)
+                            row:SetBackdropBorderColor(ar, ag, ab, 0.95)
+                            row.label:SetTextColor(1, 1, 1, 1)
+                        elseif hovered then
+                            row:SetBackdropColor(0.11, 0.13, 0.17, 0.96)
+                            row:SetBackdropBorderColor(0.28, 0.33, 0.42, 0.90)
+                            row.label:SetTextColor(0.95, 0.97, 1, 1)
+                        else
+                            row:SetBackdropColor(0.065, 0.075, 0.098, 0.88)
+                            row:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.60)
+                            row.label:SetTextColor(0.84, 0.88, 0.94, 1)
+                        end
+                    end
+                    StyleFontRow(false)
+                    row:SetScript("OnEnter", function() StyleFontRow(true) end)
+                    row:SetScript("OnLeave", function() StyleFontRow(false) end)
+                    row:SetScript("OnClick", function()
+                        EnsureDB().chatFontKey = opt.value
+                        DynamicChat:ApplyChatFrameTypography()
+                        if ownerBtn and ownerBtn.RefreshValue then ownerBtn:RefreshValue() end
+                        CloseActiveDropdown()
+                    end)
+                    yOff = yOff + 25
+                end
+                row:Show()
+            end
+
+            for idx = #items + 1, #m.rows do
+                m.rows[idx]:Hide()
+            end
+            sc:SetHeight(math.max(1, yOff))
+            m.scrollFrame:SetVerticalScroll(0)
+            m.UpdateMenuThumb()
+        end
+
+        m.searchBox:SetScript("OnTextChanged", function(sbEdit)
+            if m:IsShown() and m.ownerBtn == ownerBtn then
+                RenderFontRows(sbEdit:GetText())
+            end
+        end)
+        m.searchBox:SetScript("OnEditFocusGained", function()
+            if m.searchPlaceholder then m.searchPlaceholder:Hide() end
+        end)
+        m.searchBox:SetScript("OnEditFocusLost", function(sbEdit)
+            if m.searchPlaceholder then m.searchPlaceholder:SetShown((sbEdit:GetText() or "") == "") end
+        end)
+
+        m.searchBox:SetText("")
+        if m.searchPlaceholder then m.searchPlaceholder:Show() end
+        RenderFontRows("")
+        m:Show()
+        activeDropdownFrame = m
+    end
+
+    function TypographyMgr.AttachFontDropdownToCard(card)
+        local btn = CreateFrame("Button", nil, card, "BackdropTemplate")
+        btn:SetSize(224, 26)
+        btn:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -17)
+        btn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        AnchorCardTextToRightWidget(card, btn)
+
+        local lbl = btn:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(lbl, 10.5, "")
+        lbl:SetPoint("LEFT", btn, "LEFT", 10, 0)
+        lbl:SetPoint("RIGHT", btn, "RIGHT", -24, 0)
+        lbl:SetJustifyH("LEFT")
+        lbl:SetWordWrap(false)
+        btn.label = lbl
+
+        local chev = btn:CreateTexture(nil, "ARTWORK")
+        chev:SetSize(10, 10)
+        chev:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+        chev:SetTexture(ICON_CHEVRON_DOWN)
+        DisableTexPixelSnap(chev)
+        btn.chevron = chev
+
+        local bar = btn:CreateTexture(nil, "OVERLAY")
+        bar:SetHeight(1.5)
+        bar:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 1, 1)
+        bar:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -1, 1)
+        DisableTexPixelSnap(bar)
+        btn.tierBar = bar
+
+        btn.RefreshValue = function(self)
+            local ar, ag, ab = GetSuiteAccent()
+            local curKey = EnsureDB().chatFontKey or "SUITE"
+            SetSafeFont(self.label, 10.5, "")
+            self.label:SetText(TypographyMgr.GetFontLabel(curKey))
+            self:SetBackdropColor(0.065, 0.075, 0.098, 0.96)
+            self:SetBackdropBorderColor(0.24, 0.28, 0.36, 0.95)
+            self.label:SetTextColor(0.95, 0.97, 1, 1)
+            self.chevron:SetVertexColor(ar, ag, ab, 0.95)
+            self.tierBar:SetColorTexture(ar, ag, ab, 0.85)
+        end
+
+        btn:SetScript("OnEnter", function(selfBtn)
+            local ar, ag, ab = GetSuiteAccent()
+            selfBtn:SetBackdropColor(ar * 0.14, ag * 0.14, ab * 0.14, 0.98)
+            selfBtn:SetBackdropBorderColor(ar, ag, ab, 1.0)
+            if _G.GameTooltip then
+                _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
+                _G.GameTooltip:ClearLines()
+                _G.GameTooltip:AddLine("Chat Font Family", 1, 1, 1)
+                _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Browse built-in, Blizzard, and SharedMedia fonts.", "34D399"), 0.886, 0.910, 0.941)
+                _G.GameTooltip:AddLine(FormatTooltipCmd("Right-Click:", "Reset to Use Suite Theme Font (Default).", "FBBF24"), 0.886, 0.910, 0.941)
+                _G.GameTooltip:Show()
+            end
+        end)
+        btn:SetScript("OnLeave", function(selfBtn)
+            selfBtn:RefreshValue()
+            if _G.GameTooltip then _G.GameTooltip:Hide() end
+        end)
+        btn:SetScript("OnClick", function(selfBtn, mouseBtn)
+            if mouseBtn == "RightButton" then
+                EnsureDB().chatFontKey = "SUITE"
+                DynamicChat:ApplyChatFrameTypography()
+                selfBtn:RefreshValue()
+                CloseActiveDropdown()
+                return
+            end
+            OpenFontDropdownMenu(selfBtn)
+        end)
+
+        btn:RefreshValue()
+        card.toggleBtn = btn
+        return btn
+    end
+
+    function TypographyMgr.AttachSliderToCard(card, minVal, maxVal, stepVal, suffix, getValue, onChanged, tooltipAction)
+        local wrap = CreateFrame("Frame", nil, card)
+        wrap:SetSize(236, 26)
+        wrap:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -17)
+        AnchorCardTextToRightWidget(card, wrap)
+
+        local valBox = CreateFrame("Frame", nil, wrap, "BackdropTemplate")
+        valBox:SetSize(52, 24)
+        valBox:SetPoint("RIGHT", wrap, "RIGHT", 0, 0)
+        valBox:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        valBox:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+        valBox:SetBackdropBorderColor(0.18, 0.21, 0.27, 0.95)
+
+        local valText = valBox:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(valText, 10.5, "")
+        valText:SetPoint("CENTER", valBox, "CENTER", 0, 0)
+        valText:SetTextColor(0.976, 0.984, 1.0, 1)
+
+        local slider = CreateFrame("Slider", nil, wrap, "BackdropTemplate")
+        slider:SetPoint("LEFT", wrap, "LEFT", 4, 0)
+        slider:SetPoint("RIGHT", valBox, "LEFT", -10, 0)
+        slider:SetHeight(16)
+        slider:SetOrientation("HORIZONTAL")
+        slider:SetMinMaxValues(minVal, maxVal)
+        slider:SetValueStep(stepVal)
+        slider:SetObeyStepOnDrag(true)
+
+        local trackBg = slider:CreateTexture(nil, "BACKGROUND")
+        trackBg:SetPoint("LEFT", slider, "LEFT", 0, 0)
+        trackBg:SetPoint("RIGHT", slider, "RIGHT", 0, 0)
+        trackBg:SetHeight(6)
+        trackBg:SetColorTexture(0.08, 0.095, 0.13, 0.96)
+        DisableTexPixelSnap(trackBg)
+
+        local trackBorder = CreateFrame("Frame", nil, slider, "BackdropTemplate")
+        trackBorder:SetPoint("LEFT", slider, "LEFT", 0, 0)
+        trackBorder:SetPoint("RIGHT", slider, "RIGHT", 0, 0)
+        trackBorder:SetHeight(6)
+        trackBorder:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+        trackBorder:SetBackdropBorderColor(0.18, 0.22, 0.28, 0.95)
+
+        local fillTex = slider:CreateTexture(nil, "ARTWORK")
+        fillTex:SetPoint("LEFT", trackBg, "LEFT", 1, 0)
+        fillTex:SetHeight(4)
+        DisableTexPixelSnap(fillTex)
+
+        local thumbTex = slider:CreateTexture(nil, "OVERLAY")
+        thumbTex:SetSize(12, 16)
+        thumbTex:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        DisableTexPixelSnap(thumbTex)
+        slider:SetThumbTexture(thumbTex)
+
+        local function UpdateSliderVisual(val)
+            local ar, ag, ab = GetSuiteAccent()
+            local pct = (maxVal > minVal) and ((val - minVal) / (maxVal - minVal)) or 0
+            if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
+            local w = math.max(1, (slider:GetWidth() or 160) - 2)
+            fillTex:SetWidth(math.max(1, w * pct))
+            fillTex:SetColorTexture(ar, ag, ab, 0.90)
+            thumbTex:SetColorTexture(ar, ag, ab, 1.0)
+            SetSafeFont(valText, 10.5, "")
+            valText:SetText(tostring(val) .. (suffix or ""))
+        end
+
+        wrap.RefreshValue = function()
+            wrap._refreshing = true
+            local v = tonumber(getValue()) or minVal
+            v = math.floor(v / stepVal + 0.5) * stepVal
+            if v < minVal then v = minVal elseif v > maxVal then v = maxVal end
+            slider:SetValue(v)
+            UpdateSliderVisual(v)
+            wrap._refreshing = false
+        end
+
+        slider:SetScript("OnSizeChanged", function()
+            UpdateSliderVisual(math.floor((slider:GetValue() or minVal) / stepVal + 0.5) * stepVal)
+        end)
+
+        slider:SetScript("OnValueChanged", function(_, rawVal, userInput)
+            local v = math.floor((tonumber(rawVal) or minVal) / stepVal + 0.5) * stepVal
+            if v < minVal then v = minVal elseif v > maxVal then v = maxVal end
+            UpdateSliderVisual(v)
+            if not wrap._refreshing and userInput ~= false then
+                onChanged(v)
+            end
+        end)
+
+        slider:SetScript("OnEnter", function(selfS)
+            if _G.GameTooltip then
+                _G.GameTooltip:SetOwner(selfS, "ANCHOR_TOP")
+                _G.GameTooltip:ClearLines()
+                _G.GameTooltip:AddLine((card.title and card.title:GetText()) or "Slider", 1, 1, 1)
+                _G.GameTooltip:AddLine(FormatTooltipCmd("Drag:", tooltipAction or "Adjust value.", "34D399"), 0.886, 0.910, 0.941)
+                _G.GameTooltip:Show()
+            end
+        end)
+        slider:SetScript("OnLeave", function()
+            if _G.GameTooltip then _G.GameTooltip:Hide() end
+        end)
+
+        wrap:RefreshValue()
+        card.toggleBtn = wrap
+        return wrap
+    end
+end
+
 local function GetActiveChatConflicts()
     local active = {}
     if not (_G.C_AddOns and type(_G.C_AddOns.IsAddOnLoaded) == "function") then
@@ -9241,6 +9947,12 @@ local function RenderChatEmbedded(arg1, arg2)
         end)
     end
     chatEditHudBtn:SetPoint("TOPRIGHT", sec2_skin, "TOPRIGHT", -14, -7)
+    local sec2_typo = CreateSectionBox(
+        page2,
+        "CHAT TYPOGRAPHY & READABILITY",
+        "Customise the font family, text size, outline, drop shadow, line spacing, and message fading across all chat windows.",
+        root
+    )
     local sec2a = CreateSectionBox(
         page2,
         "COMPACT CHANNEL TAGS",
@@ -9502,6 +10214,110 @@ local function RenderChatEmbedded(arg1, arg2)
     end
     sec2_skin.orderedCards[#sec2_skin.orderedCards + 1] = c2_railChips
     root.allControls[#root.allControls + 1] = c2_railChips
+
+    do
+        local c2_typoFont = CreateCardRow(sec2_typo, 62,
+            "Chat Font Family",
+            "Choose your chat message font or follow your active DynamicSuite Theme & Font Studio selection.",
+            "Chat Font Family",
+            "Select the font family used across ChatFrame1..10 and the typing box."
+        )
+        TypographyMgr.AttachFontDropdownToCard(c2_typoFont)
+        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoFont
+        root.allControls[#root.allControls + 1] = c2_typoFont
+
+        local c2_typoSize = CreateCardRow(sec2_typo, 60,
+            "Chat Font Size",
+            "Adjust chat message text size from 10 px to 22 px across all chat windows.",
+            "Chat Font Size",
+            "Drag to set chat message font size (10 px to 22 px)."
+        )
+        TypographyMgr.AttachSliderToCard(c2_typoSize, 10, 22, 1, " px",
+            function() return tonumber(EnsureDB().chatFontSize) or 13 end,
+            function(val)
+                EnsureDB().chatFontSize = val
+                DynamicChat:ApplyChatFrameTypography()
+            end,
+            "Adjust chat font size between 10 px and 22 px."
+        )
+        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoSize
+        root.allControls[#root.allControls + 1] = c2_typoSize
+
+        local c2_typoOutline = CreateCardRow(sec2_typo, 62,
+            "Font Outline",
+            "Add a crisp dark outline around chat text so messages stay readable over bright spell effects.",
+            "Font Outline",
+            "Choose None, Thin Outline, or Thick Outline for chat text."
+        )
+        AttachMultiPillSelectorToCard(c2_typoOutline,
+            {
+                { value = "NONE",         label = "None" },
+                { value = "OUTLINE",      label = "Thin Outline" },
+                { value = "THICKOUTLINE", label = "Thick Outline" },
+            },
+            function() return EnsureDB().chatFontOutline or "OUTLINE" end,
+            function(val)
+                EnsureDB().chatFontOutline = val
+                DynamicChat:ApplyChatFrameTypography()
+            end,
+            "Select chat text outline thickness."
+        )
+        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoOutline
+        root.allControls[#root.allControls + 1] = c2_typoOutline
+
+        local c2_typoShadow = CreateCardRow(sec2_typo, 60,
+            "Text Drop Shadow",
+            "Render a subtle (1, -1) dark drop shadow behind chat letters for extra contrast.",
+            "Text Drop Shadow",
+            "Toggle crisp drop shadows behind chat text."
+        )
+        AttachSegmentedSwitchToCard(c2_typoShadow,
+            function() return EnsureDB().chatFontShadow ~= false end,
+            function(val)
+                EnsureDB().chatFontShadow = val
+                DynamicChat:ApplyChatFrameTypography()
+            end,
+            "Off", "Enabled",
+            "Toggle chat text drop shadow."
+        )
+        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoShadow
+        root.allControls[#root.allControls + 1] = c2_typoShadow
+
+        local c2_typoSpacing = CreateCardRow(sec2_typo, 60,
+            "Line Spacing",
+            "Add vertical breathing room between chat lines (0 px compact to 8 px airy).",
+            "Line Spacing",
+            "Drag to adjust vertical spacing between chat lines (0 px to 8 px)."
+        )
+        TypographyMgr.AttachSliderToCard(c2_typoSpacing, 0, 8, 1, " px",
+            function() return tonumber(EnsureDB().chatLineSpacing) or 2 end,
+            function(val)
+                EnsureDB().chatLineSpacing = val
+                DynamicChat:ApplyChatFrameTypography()
+            end,
+            "Adjust line spacing between 0 px and 8 px."
+        )
+        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoSpacing
+        root.allControls[#root.allControls + 1] = c2_typoSpacing
+
+        local c2_typoFade = CreateCardRow(sec2_typo, 60,
+            "Auto-Fade Old Messages",
+            "Smoothly fade out older chat messages after 2 minutes, or keep them visible permanently.",
+            "Auto-Fade Old Messages",
+            "Toggle whether older chat lines fade out after 2 minutes."
+        )
+        AttachSegmentedSwitchToCard(c2_typoFade,
+            function() return EnsureDB().chatMessageFade ~= false end,
+            function(val)
+                EnsureDB().chatMessageFade = val
+                DynamicChat:ApplyChatFrameTypography()
+            end,
+            "Off", "Enabled",
+            "Toggle automatic fading of old chat messages."
+        )
+        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoFade
+        root.allControls[#root.allControls + 1] = c2_typoFade
+    end
 
     local c2_short = CreateCardRow(sec2a, 64,
         "Safe Channel Names in Raids & Mythic+",
@@ -10305,6 +11121,7 @@ local function ApplyChatThemeToUI()
         return
     end
     DynamicChat:ApplySleekChatSkin()
+    DynamicChat:ApplyChatFrameTypography()
     DynamicChat:RefreshConfigUI()
     if DynamicChat.standaloneFrame and DynamicChat.standaloneFrame:IsShown() then
         local ar, ag, ab = GetSuiteAccent()
@@ -10750,35 +11567,33 @@ end
 -- 9. EVENT DISPATCHER
 -- ============================================================================
 
-local RUNTIME_EVENTS = {
-    "PLAYER_LOGOUT",
-    "PLAYER_ENTERING_WORLD",
-    "PLAYER_REGEN_DISABLED",
-    "PLAYER_REGEN_ENABLED",
-    "UPDATE_CHAT_WINDOWS",
-    "UPDATE_FLOATING_CHAT_WINDOWS",
-    "DISPLAY_SIZE_CHANGED",
-    "UI_SCALE_CHANGED",
-    "EDIT_MODE_LAYOUTS_UPDATED",
-    "FRIENDLIST_UPDATE",
-    "BN_FRIEND_INFO_CHANGED",
-    "GUILD_ROSTER_UPDATE",
-    "UPDATE_INVENTORY_DURABILITY",
-    "WEEKLY_REWARDS_UPDATE",
-}
-
-local function SafeRegisterEvent(frame, eventName)
-    if not frame or not eventName then return end
-    if _G.C_EventUtils and type(_G.C_EventUtils.IsEventValid) == "function" then
-        if not _G.C_EventUtils.IsEventValid(eventName) then
-            return
-        end
-    end
-    frame:RegisterEvent(eventName)
-end
-
 function DynamicChat:RegisterRuntimeEvents()
     if IsModuleDisabledInSuite("DynamicChat") then return end
+    local RUNTIME_EVENTS = {
+        "PLAYER_LOGOUT",
+        "PLAYER_ENTERING_WORLD",
+        "PLAYER_REGEN_DISABLED",
+        "PLAYER_REGEN_ENABLED",
+        "UPDATE_CHAT_WINDOWS",
+        "UPDATE_FLOATING_CHAT_WINDOWS",
+        "DISPLAY_SIZE_CHANGED",
+        "UI_SCALE_CHANGED",
+        "EDIT_MODE_LAYOUTS_UPDATED",
+        "FRIENDLIST_UPDATE",
+        "BN_FRIEND_INFO_CHANGED",
+        "GUILD_ROSTER_UPDATE",
+        "UPDATE_INVENTORY_DURABILITY",
+        "WEEKLY_REWARDS_UPDATE",
+    }
+    local function SafeRegisterEvent(frame, eventName)
+        if not frame or not eventName then return end
+        if _G.C_EventUtils and type(_G.C_EventUtils.IsEventValid) == "function" then
+            if not _G.C_EventUtils.IsEventValid(eventName) then
+                return
+            end
+        end
+        frame:RegisterEvent(eventName)
+    end
     for _, ev in ipairs(RUNTIME_EVENTS) do
         SafeRegisterEvent(self, ev)
     end

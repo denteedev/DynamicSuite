@@ -2319,6 +2319,176 @@ local function GetPanelState(panel)
     return st
 end
 
+local function StyleEntryCancelButton(btn, entry)
+    if not btn or not entry then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+
+    btn:SetSize(18, 18)
+    btn:ClearAllPoints()
+    btn:SetPoint("RIGHT", entry, "RIGHT", -6, -6)
+
+    local function HideBlizzTex(tex)
+        if not tex then return end
+        if tex.SetAlpha then tex:SetAlpha(0) end
+        if tex.Hide then tex:Hide() end
+    end
+    if btn.GetNormalTexture then HideBlizzTex(btn:GetNormalTexture()) end
+    if btn.GetPushedTexture then HideBlizzTex(btn:GetPushedTexture()) end
+    if btn.GetHighlightTexture then HideBlizzTex(btn:GetHighlightTexture()) end
+    if btn.GetDisabledTexture then HideBlizzTex(btn:GetDisabledTexture()) end
+    HideBlizzTex(btn.NormalTexture)
+    HideBlizzTex(btn.PushedTexture)
+    HideBlizzTex(btn.HighlightTexture)
+    HideBlizzTex(btn.DisabledTexture)
+
+    if btn._dgReskinned then return end
+    btn._dgReskinned = true
+
+    local bg = btn:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints(btn)
+    bg:SetColorTexture(0.043, 0.051, 0.071, 0.92) -- #0B0D12 Dark Obsidian
+    btn._dgBg = bg
+
+    local borders = {}
+    local edgeSpecs = {
+        { "TOPLEFT", "TOPRIGHT", 1, true },
+        { "BOTTOMLEFT", "BOTTOMRIGHT", 1, true },
+        { "TOPLEFT", "BOTTOMLEFT", 1, false },
+        { "TOPRIGHT", "BOTTOMRIGHT", 1, false },
+    }
+    for _, spec in ipairs(edgeSpecs) do
+        local edge = btn:CreateTexture(nil, "BORDER")
+        edge:SetPoint(spec[1], btn, spec[1], 0, 0)
+        edge:SetPoint(spec[2], btn, spec[2], 0, 0)
+        if spec[4] then
+            edge:SetHeight(spec[3])
+        else
+            edge:SetWidth(spec[3])
+        end
+        edge:SetColorTexture(0.973, 0.443, 0.443, 0.85) -- #F87171 Crimson
+        borders[#borders + 1] = edge
+    end
+    btn._dgBorders = borders
+
+    local label = btn:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(label, 11, "OUTLINE")
+    label:SetPoint("CENTER", btn, "CENTER", 0, 1)
+    label:SetJustifyH("CENTER")
+    label:SetText("|cFFF87171x|r")
+    btn._dgLabel = label
+
+    if btn.HookScript then
+        btn:HookScript("OnEnter", function(selfBtn)
+            if selfBtn._dgBg then
+                selfBtn._dgBg:SetColorTexture(0.140, 0.055, 0.065, 0.96)
+            end
+            if selfBtn._dgBorders then
+                for _, edge in ipairs(selfBtn._dgBorders) do
+                    edge:SetColorTexture(0.973, 0.443, 0.443, 1.0)
+                end
+            end
+            if selfBtn._dgLabel then
+                selfBtn._dgLabel:SetText("|cFFFFFFFFx|r")
+            end
+        end)
+        btn:HookScript("OnLeave", function(selfBtn)
+            if selfBtn._dgBg then
+                selfBtn._dgBg:SetColorTexture(0.043, 0.051, 0.071, 0.92)
+            end
+            if selfBtn._dgBorders then
+                for _, edge in ipairs(selfBtn._dgBorders) do
+                    edge:SetColorTexture(0.973, 0.443, 0.443, 0.85)
+                end
+            end
+            if selfBtn._dgLabel then
+                selfBtn._dgLabel:SetText("|cFFF87171x|r")
+            end
+        end)
+    end
+end
+
+local function ReadAndSuppressEntryStatus(entry, resultID, isSimPending, isSimCanceled)
+    local pendingTimer = nil
+    local terminalStatus = nil
+
+    local function CollectAndSuppress(lbl, isPending)
+        if not lbl then return end
+        local shown = lbl.IsShown and lbl:IsShown() or false
+        if shown and lbl.GetText then
+            local okTxt, txt = pcall(lbl.GetText, lbl)
+            if okTxt and type(txt) == "string" and not IsSecretValue(txt) and txt ~= "" then
+                if isPending then
+                    local tMatch = txt:match("(%d+:%d%d)")
+                    pendingTimer = tMatch or "Pending"
+                else
+                    local lower = txt:lower()
+                    if lower:find("declin") then
+                        terminalStatus = "Declined"
+                        if resultID then
+                            declinedResultIDs[resultID] = true
+                        end
+                    elseif lower:find("cancel") then
+                        terminalStatus = "Canceled"
+                    elseif lower:find("expir") then
+                        terminalStatus = "Expired"
+                    elseif lower:find("time") then
+                        terminalStatus = "Timed Out"
+                    end
+                end
+            end
+        end
+        if lbl.SetAlpha then lbl:SetAlpha(0) end
+        if lbl.Hide then lbl:Hide() end
+    end
+
+    local dd = entry.DataDisplay
+    local enum = dd and dd.Enumerate
+    CollectAndSuppress(entry.PendingLabel, true)
+    CollectAndSuppress(dd and dd.PendingLabel, true)
+    CollectAndSuppress(enum and enum.PendingLabel, true)
+    CollectAndSuppress(entry.ResultLabel, false)
+    CollectAndSuppress(dd and dd.ResultLabel, false)
+    CollectAndSuppress(enum and enum.ResultLabel, false)
+
+    if resultID and C_LFGList and type(C_LFGList.GetApplicationInfo) == "function" then
+        local okApp, _, appStatus, _, appDuration = pcall(C_LFGList.GetApplicationInfo, resultID)
+        if okApp and not IsSecretValue(appStatus) then
+            if appStatus == "declined" or appStatus == "invitedeclined" then
+                declinedResultIDs[resultID] = true
+                terminalStatus = terminalStatus or "Declined"
+            elseif appStatus == "cancelled" or appStatus == "canceled" then
+                terminalStatus = terminalStatus or "Canceled"
+            elseif appStatus == "timedout" then
+                terminalStatus = terminalStatus or "Timed Out"
+            elseif (appStatus == "applied" or appStatus == "invited") and not terminalStatus and not pendingTimer then
+                if type(appDuration) == "number" and not IsSecretValue(appDuration) and appDuration > 0 then
+                    pendingTimer = string.format("%d:%02d", math.floor(appDuration / 60), math.floor(appDuration % 60))
+                else
+                    pendingTimer = "Pending"
+                end
+            end
+        end
+    end
+
+    if resultID and declinedResultIDs[resultID] == true then
+        terminalStatus = terminalStatus or "Declined"
+    end
+
+    if isSimPending then
+        pendingTimer = "4:59"
+        terminalStatus = nil
+    elseif isSimCanceled then
+        terminalStatus = "Canceled"
+        pendingTimer = nil
+    end
+
+    if terminalStatus then
+        pendingTimer = nil
+    end
+
+    return pendingTimer, terminalStatus
+end
+
 local function OnLFGListSearchEntryUpdate(entry)
     if not entry then return end
     local db = EnsureDB()
@@ -2458,16 +2628,15 @@ local function OnLFGListSearchEntryUpdate(entry)
         return
     end
 
-    local isDeclined = (resultID and declinedResultIDs[resultID] == true) or false
-    if not isDeclined and resultID and C_LFGList and type(C_LFGList.GetApplicationInfo) == "function" then
-        local okApp, _, appStatus = pcall(C_LFGList.GetApplicationInfo, resultID)
-        if okApp and not IsSecretValue(appStatus) and (appStatus == "declined" or appStatus == "invitedeclined") then
-            declinedResultIDs[resultID] = true
-            isDeclined = true
-        end
-    end
+    local isSimPending = (DynamicGroup._testApplyActive == true and DynamicGroup._testApplyMode == "PENDING" and resultID ~= nil and DynamicGroup._testApplyResultID == resultID)
+    local isSimCanceled = (DynamicGroup._testApplyActive == true and DynamicGroup._testApplyMode == "CANCELED" and resultID ~= nil and DynamicGroup._testApplyResultID == resultID)
+    local isSimPreview = isSimPending or isSimCanceled
+
+    local pendingTimer, terminalStatus = ReadAndSuppressEntryStatus(entry, resultID, isSimPending, isSimCanceled)
+    local isTerminalDim = (terminalStatus ~= nil)
+
     if not (InCombatLockdown and InCombatLockdown()) and entry.SetAlpha then
-        if isDeclined then
+        if isTerminalDim then
             eState.dimmedDeclined = true
             entry:SetAlpha(0.35)
         elseif eState.dimmedDeclined then
@@ -2483,14 +2652,14 @@ local function OnLFGListSearchEntryUpdate(entry)
         return
     end
 
-    -- Keep region & score tags legible (>= 78% alpha even on dimmed/delisted or red-selected rows)
+    -- Keep region, score & status tags legible (>= 78% alpha even on dimmed/delisted or red-selected rows)
     local parentAlpha = (entry.GetAlpha and entry:GetAlpha()) or 1.0
-    ov:SetAlpha((meta.isDelisted or isDeclined or parentAlpha < 0.75) and 0.78 or 0.96)
+    ov:SetAlpha((meta.isDelisted or isTerminalDim or parentAlpha < 0.75) and 0.78 or 0.96)
 
     local showRegion = (meta.regionKey and meta.regionKey ~= "PENDING")
     local hasScore = (meta.leaderScore and meta.leaderScore > 0)
     local topPill = ov.topPill
-    if showRegion or hasScore or isDeclined then
+    if showRegion or hasScore or pendingTimer or terminalStatus then
         local parts = {}
         if showRegion then
             local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
@@ -2502,8 +2671,10 @@ local function OnLFGListSearchEntryUpdate(entry)
             local sHex = GetScoreColorHex(meta.leaderScore)
             parts[#parts + 1] = "|c" .. sHex .. tostring(meta.leaderScore) .. "|r"
         end
-        if isDeclined then
-            parts[#parts + 1] = "|cFFF87171Declined|r"
+        if terminalStatus then
+            parts[#parts + 1] = "|cFFF87171" .. terminalStatus .. "|r"
+        elseif pendingTimer then
+            parts[#parts + 1] = "|cFFFBBF24" .. pendingTimer .. "|r"
         end
         SetSafeFont(topPill.text, 10, "OUTLINE")
         topPill.text:SetText(table.concat(parts, " |cFF64748B/|r "))
@@ -2517,9 +2688,8 @@ local function OnLFGListSearchEntryUpdate(entry)
         topPill:Hide()
     end
 
-    local isSimApplied = (DynamicGroup._testApplyActive == true and resultID ~= nil and DynamicGroup._testApplyResultID == resultID)
     if not (InCombatLockdown and InCombatLockdown()) and entry.CancelButton then
-        if isSimApplied then
+        if isSimPending then
             if eState.wasCancelShown == nil then
                 eState.wasCancelShown = entry.CancelButton:IsShown() and true or false
             end
@@ -2532,11 +2702,16 @@ local function OnLFGListSearchEntryUpdate(entry)
         end
     end
 
+    local cancelShown = (entry.CancelButton and entry.CancelButton.IsShown and entry.CancelButton:IsShown()) or isSimPending
+    if cancelShown and entry.CancelButton and not (InCombatLockdown and InCombatLockdown()) then
+        StyleEntryCancelButton(entry.CancelButton, entry)
+    end
+
     -- Overlay Desaturated Tank / Healer / DPS Icons Directly on Empty Grey Dots in Enumerate
     local enumSlots = ov.enumRoleSlots
     if enumSlots then
         local enumFrame = entry.DataDisplay and entry.DataDisplay.Enumerate
-        if isSimApplied and not (InCombatLockdown and InCombatLockdown()) then
+        if isSimPreview and not (InCombatLockdown and InCombatLockdown()) then
             if entry.DataDisplay and entry.DataDisplay.Show then entry.DataDisplay:Show() end
             if enumFrame and enumFrame.Show then enumFrame:Show() end
         end
@@ -2560,29 +2735,17 @@ local function OnLFGListSearchEntryUpdate(entry)
                     slotAnchors = children
                 end
             end
-            local cancelShown = (entry.CancelButton and entry.CancelButton.IsShown and entry.CancelButton:IsShown()) or isSimApplied
-            local baseShiftX = cancelShown and -18 or 0
             local iconGap = cancelShown and 2 or 3
 
-            -- Idempotent vertical baseline nudge and CancelButton clearance on Enumerate
-            if not enumFrame._dgOrigPoints and enumFrame.GetNumPoints and enumFrame.GetPoint then
-                local numPts = enumFrame:GetNumPoints()
-                if numPts and numPts > 0 then
-                    local pts = {}
-                    for p = 1, numPts do
-                        local pt, relTo, relPt, x, y = enumFrame:GetPoint(p)
-                        if pt then
-                            pts[#pts + 1] = { pt, relTo, relPt, x or 0, y or 0 }
-                        end
-                    end
-                    if #pts > 0 then
-                        enumFrame._dgOrigPoints = pts
-                    end
-                end
-            end
-            if not (InCombatLockdown and InCombatLockdown()) and enumFrame._dgOrigPoints and enumFrame.SetPoint then
-                for _, p in ipairs(enumFrame._dgOrigPoints) do
-                    enumFrame:SetPoint(p[1], p[2], p[3], p[4] + baseShiftX, p[5] - 4)
+            -- Anchor Enumerate cleanly to CancelButton's left edge (-6, 0) when shown, or entry right edge (-6, -6) when hidden
+            if not (InCombatLockdown and InCombatLockdown()) and enumFrame.ClearAllPoints and enumFrame.SetPoint then
+                enumFrame:ClearAllPoints()
+                if cancelShown and entry.CancelButton then
+                    enumFrame:SetPoint("RIGHT", entry.CancelButton, "LEFT", -6, 0)
+                    enumFrame._dgAnchored = true
+                else
+                    enumFrame:SetPoint("RIGHT", entry, "RIGHT", -6, -6)
+                    enumFrame._dgAnchored = nil
                 end
             end
 
@@ -2603,7 +2766,7 @@ local function OnLFGListSearchEntryUpdate(entry)
                 end
             end
 
-            if not (InCombatLockdown and InCombatLockdown()) and cancelShown and entry.CancelButton and entry.CancelButton.GetLeft and enumFrame._dgOrigPoints and enumFrame.SetPoint then
+            if not (InCombatLockdown and InCombatLockdown()) and cancelShown and entry.CancelButton and entry.CancelButton.GetLeft and enumFrame.ClearAllPoints and enumFrame.SetPoint then
                 local cancelLeft = entry.CancelButton:GetLeft()
                 local maxIconRight = nil
                 for _, ic in ipairs(slotAnchors) do
@@ -2619,9 +2782,9 @@ local function OnLFGListSearchEntryUpdate(entry)
                     local entryScale = (entry.GetEffectiveScale and entry:GetEffectiveScale()) or enumScale
                     local relScale = (enumScale > 0 and entryScale > 0) and (enumScale / entryScale) or 1
                     local extraShift = math.floor(((cancelLeft - 6) - maxIconRight) / relScale)
-                    for _, p in ipairs(enumFrame._dgOrigPoints) do
-                        enumFrame:SetPoint(p[1], p[2], p[3], p[4] + baseShiftX + extraShift, p[5] - 4)
-                    end
+                    enumFrame:ClearAllPoints()
+                    enumFrame:SetPoint("RIGHT", entry.CancelButton, "LEFT", -6 + extraShift, 0)
+                    enumFrame._dgAnchored = true
                 end
             end
 
@@ -4992,13 +5155,13 @@ function DynamicGroup:ToggleTestApplyPreview()
     local sp = _G.LFGListFrame and _G.LFGListFrame.SearchPanel
     if not sp or not sp:IsShown() or not sp.ScrollBox or type(sp.ScrollBox.ForEachFrame) ~= "function" then
         self._testApplyActive = false
+        self._testApplyMode = nil
         self._testApplyResultID = nil
         PrintMsg("Open Group Finder -> Premade Groups with at least one visible listing to use /dg testapply.")
         return
     end
 
-    local nextActive = not (self._testApplyActive == true)
-    if nextActive then
+    if not self._testApplyActive or not self._testApplyMode then
         local firstEntry = nil
         local firstResultID = nil
         pcall(sp.ScrollBox.ForEachFrame, sp.ScrollBox, function(entry)
@@ -5012,16 +5175,24 @@ function DynamicGroup:ToggleTestApplyPreview()
         end)
         if not firstEntry or not firstResultID then
             self._testApplyActive = false
+            self._testApplyMode = nil
             self._testApplyResultID = nil
             PrintMsg("Open Group Finder -> Premade Groups with at least one visible listing to use /dg testapply.")
             return
         end
         self._testApplyActive = true
+        self._testApplyMode = "PENDING"
         self._testApplyResultID = firstResultID
         pcall(sp.ScrollBox.ForEachFrame, sp.ScrollBox, OnLFGListSearchEntryUpdate)
-        PrintMsg("Simulated applied state ON for the first visible Premade Group row (/dg testapply again to clear).")
+        PrintMsg("Simulated Pending preview ON (18x18 'x' button + 4:59 badge) for the first visible Premade Group row (/dg testapply again for Canceled preview).")
+    elseif self._testApplyMode == "PENDING" then
+        self._testApplyActive = true
+        self._testApplyMode = "CANCELED"
+        pcall(sp.ScrollBox.ForEachFrame, sp.ScrollBox, OnLFGListSearchEntryUpdate)
+        PrintMsg("Simulated Canceled preview ON (Canceled badge + 0.35 row dim) for the first visible Premade Group row (/dg testapply again to clear).")
     else
         self._testApplyActive = false
+        self._testApplyMode = nil
         self._testApplyResultID = nil
         pcall(sp.ScrollBox.ForEachFrame, sp.ScrollBox, OnLFGListSearchEntryUpdate)
         PrintMsg("Simulated applied state cleared.")
@@ -5230,6 +5401,7 @@ function DynamicGroup:InstallLFGHooks()
                 lastSearchTimestamp = (type(_G.GetTime) == "function" and _G.GetTime()) or nil
                 wipe(declinedResultIDs)
                 DynamicGroup._testApplyActive = false
+                DynamicGroup._testApplyMode = nil
                 DynamicGroup._testApplyResultID = nil
                 if sp then
                     local pState = GetPanelState(sp)
@@ -7532,7 +7704,7 @@ local function RegisterWithDynamicSuite()
         version = DynamicGroup.version or VERSION,
         date = "16/11/2026",
         entries = {
-            { type = "FIX",     text = "LFG CancelButton Clearance & /dg testapply Preview (16/11/2026): updated OnLFGListSearchEntryUpdate() to tighten Enumerate role-icon spacing and shift Enumerate left whenever CancelButton ('X') is shown, guaranteeing at least 6px of horizontal clearance from the 5th role icon; added /dg testapply (/dgroup testapply) to preview an applied row out of combat." },
+            { type = "FIX",     text = "LFG Application Status Overlays, Obsidian CancelButton & /dg testapply Cycle (16/11/2026): reskinned entry.CancelButton out of combat into an 18x18 Dark-Obsidian (#0B0D12) / Crimson-Bordered (#F87171) 'x' pill anchored to RIGHT (-6, -6) with Enumerate anchored cleanly to its left edge (-6, 0) so all 5 role icons stay 100% clear; suppressed Blizzard's inline PendingLabel and ResultLabel overlays and routed live pending timers (Warm Amber-Gold) and terminal statuses (Crimson Canceled/Declined/Expired/Timed Out + 0.35 row dim) into the top-right pill; updated /dg testapply to cycle Pending -> Canceled -> Off." },
             { type = "FEATURE", text = "Declined Premade LFG Group Dimming, Crimson Badge & Search Freshness Tooltip (16/11/2026): records declined and invite-declined searchResultIDs for the current session (cleared on new search or category change), dims declined Premade Group rows to 0.35 alpha with a compact crimson 'Declined' tag inside the top-right pill so you never accidentally re-apply, and tracks LFGListSearchPanel_DoSearch timestamps to show 'Last Refreshed: Xs ago' inside the LFG Mini-Bar filter and region tooltips." },
             { type = "FEATURE", text = "Portal Deck Owned Keystone Telemetry & Right-Click Teleport (15/11/2026): Upgraded the Portal Deck's Owned Keystone pill (pbar.keyBtn) to support secure Right-Click Dungeon Teleport casting out of combat with a synced cooldown swipe overlay, plus Season Best (timed/over-time level and score) and Dungeon Teleport readiness/cooldown lines in the tooltip while preserving Left-Click exclusive dungeon filtering." },
             { type = "FEATURE", text = "Dungeon Joined & Group Full Teleport Toast (15/11/2026): Displays a 410x74 Alert Toast-matched banner with a one-click Dungeon Teleport button and Right-Click dismissal when your Premade Group application is accepted, chimes as players join, and highlights when the group reaches 5/5. Shares DynamicSuite's Alert Toast HUD Edit slot with automatic mutual stacking, plus Test Join (3/5), Test Full (5/5), Edit HUD buttons, and /dg testtoast." },
