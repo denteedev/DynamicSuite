@@ -1410,6 +1410,7 @@ local CHAT_TAB_TEXTURE_SUFFIXES = {
 local EDITBOX_TEXTURE_SUFFIXES = {
     "Left", "Mid", "Right",
     "FocusLeft", "FocusMid", "FocusRight",
+    "HeaderSuffix",
 }
 
 local function SetRegionAlphaSafe(region, alpha)
@@ -3167,21 +3168,21 @@ local function EnsureSleekEditBoxBar()
     if chatEditBoxSkin then return chatEditBoxSkin end
     local bar = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     bar:SetFrameStrata("BACKGROUND")
-    bar:SetFrameLevel(2)
+    bar:SetFrameLevel(3)
     bar:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
         edgeSize = 1,
     })
-    bar:SetBackdropColor(0.035, 0.039, 0.051, 0.25)
+    bar:SetBackdropColor(0, 0, 0, 0)
+    bar:SetBackdropBorderColor(0, 0, 0, 0)
     local ar, ag, ab = GetSuiteAccent()
-    bar:SetBackdropBorderColor(ar, ag, ab, 0.85)
 
     local leftBar = bar:CreateTexture(nil, "OVERLAY")
-    leftBar:SetWidth(3)
+    leftBar:SetWidth(2)
     leftBar:SetPoint("TOPLEFT", bar, "TOPLEFT", 1, -1)
     leftBar:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 1, 1)
-    leftBar:SetColorTexture(ar, ag, ab, 1.0)
+    leftBar:SetColorTexture(ar, ag, ab, 0.55)
     DisableTexPixelSnap(leftBar)
     bar.leftBar = leftBar
 
@@ -3227,9 +3228,13 @@ local function ApplyPassiveEditBoxSkinOnInit(editBox, cfName, skinEnabled, syncF
         for _, suffix in ipairs(EDITBOX_TEXTURE_SUFFIXES) do
             StripTextureSafe(_G[cfName .. "EditBox" .. suffix], skinEnabled)
         end
+        if editBox.Left then StripTextureSafe(editBox.Left, skinEnabled) end
+        if editBox.Mid then StripTextureSafe(editBox.Mid, skinEnabled) end
+        if editBox.Right then StripTextureSafe(editBox.Right, skinEnabled) end
         if editBox.FocusLeft then StripTextureSafe(editBox.FocusLeft, skinEnabled) end
         if editBox.FocusMid then StripTextureSafe(editBox.FocusMid, skinEnabled) end
         if editBox.FocusRight then StripTextureSafe(editBox.FocusRight, skinEnabled) end
+        if editBox.NineSlice then SetRegionAlphaSafe(editBox.NineSlice, skinEnabled and 0 or 1) end
     end
 
     if syncFont and state.fontPath ~= fontPath then
@@ -3275,22 +3280,27 @@ local function RefreshSleekEditBoxBarColor(editBox, hasFocusOverride)
             cb = tonumber(info.b) or ab
         end
     end
+    if cr > 0.88 and cg > 0.88 and cb > 0.88 then
+        cr, cg, cb = 0.72, 0.78, 0.86
+    end
 
-    local hasFocus = hasFocusOverride
-    if hasFocus == nil then
-        hasFocus = (_G.ChatEdit_GetActiveWindow and _G.ChatEdit_GetActiveWindow() ~= nil)
-            or (targetEB and targetEB.IsShown and targetEB:IsShown() and targetEB.HasFocus and targetEB:HasFocus())
+    local hasFocus
+    if hasFocusOverride ~= nil then
+        hasFocus = (hasFocusOverride == true)
+    else
+        hasFocus = (targetEB and targetEB.IsShown and targetEB:IsShown() and targetEB.HasFocus and targetEB:HasFocus())
+            or (_G.ChatEdit_GetActiveWindow and _G.ChatEdit_GetActiveWindow() ~= nil)
             or false
     end
 
     if hasFocus then
         chatEditBoxSkin:SetFrameStrata("LOW")
         chatEditBoxSkin:SetFrameLevel(5)
-        chatEditBoxSkin:SetBackdropColor(0.043, 0.051, 0.071, math.max(bgAlpha, 0.85))
-        chatEditBoxSkin:SetBackdropBorderColor(cr, cg, cb, 0.85)
+        chatEditBoxSkin:SetBackdropColor(0.035, 0.039, 0.051, 0.94) -- #090A0D low-glare focused dock
+        chatEditBoxSkin:SetBackdropBorderColor(cr, cg, cb, 0.40)
         if chatEditBoxSkin.leftBar then
-            chatEditBoxSkin.leftBar:SetWidth(3)
-            chatEditBoxSkin.leftBar:SetColorTexture(cr, cg, cb, 1.0)
+            chatEditBoxSkin.leftBar:SetWidth(2)
+            chatEditBoxSkin.leftBar:SetColorTexture(cr, cg, cb, 0.90)
             chatEditBoxSkin.leftBar:Show()
         end
         if chatEditBoxSkin.promptHint then
@@ -3305,7 +3315,12 @@ local function RefreshSleekEditBoxBarColor(editBox, hasFocusOverride)
         chatEditBoxSkin:SetBackdropBorderColor(0, 0, 0, 0)
         if chatEditBoxSkin.leftBar then
             chatEditBoxSkin.leftBar:SetWidth(2)
-            chatEditBoxSkin.leftBar:SetColorTexture(ar, ag, ab, 0.45)
+            local bStyle = db.chatBorderStyle or "ACCENT"
+            if bStyle == "DARK" or bStyle == "SUBTLE" or bStyle == "NONE" then
+                chatEditBoxSkin.leftBar:SetColorTexture(0.392, 0.455, 0.545, 0.55) -- Slate #64748B
+            else
+                chatEditBoxSkin.leftBar:SetColorTexture(ar, ag, ab, 0.55)
+            end
             chatEditBoxSkin.leftBar:SetShown(bgAlpha > 0.02)
         end
         if chatEditBoxSkin.promptHint then
@@ -5369,7 +5384,7 @@ function DynamicChat:ApplySleekChatSkin()
                     -- 1px horizontal interior divider separating the fused EditBox dock from the chat frame
                     local footerDiv = p:CreateTexture(nil, "BORDER")
                     footerDiv:SetHeight(1)
-                    footerDiv:SetColorTexture(1, 1, 1, 0.06)
+                    footerDiv:SetColorTexture(1, 1, 1, 0.08)
                     DisableTexPixelSnap(footerDiv)
                     footerDiv:Hide()
                     p.footerDiv = footerDiv
@@ -5459,6 +5474,7 @@ function DynamicChat:ApplySleekChatSkin()
                 if p.footerDiv then
                     if alwaysShadedEB then
                         p.footerDiv:ClearAllPoints()
+                        p.footerDiv:SetColorTexture(1, 1, 1, 0.08)
                         if isTopEB then
                             p.footerDiv:SetPoint("TOPLEFT", cf, "TOPLEFT", 0, -26)
                             p.footerDiv:SetPoint("TOPRIGHT", cf, "TOPRIGHT", 0, -26)
