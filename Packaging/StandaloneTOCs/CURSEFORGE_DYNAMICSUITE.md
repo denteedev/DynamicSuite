@@ -26,7 +26,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 * **Global Smart Search (`/ds search <query>`):** Search any setting in plain English (like "auto repair", "flare", or "whisper") and jump straight to the exact option with a visual highlight.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, scale (60%-150%), and align all 6 movable suite bars (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
 * **9-Step Guided Setup & Conflict Scanner (`/ds setup`, `/ds conflicts`):** Detects overlapping addons (such as ElvUI, Leatrix Plus, BetterBags, Baganator, Prat-3.0, DialogueUI, and FocusMarker) and lets you pick which addon handles each feature in one click.
-* **Theme & Font Studio (`/ds theme`):** Customise your UI with 17 accent colours (including all 13 WoW Class Colours and a custom picker), 4 dark surface themes, 21+ fonts, and adjustable text scaling.
+* **Theme & Font Studio (`/ds theme`):** Customise your UI with 17 accent colours (including all 13 WoW Class Colours and a custom picker), 4 dark surface themes, 21+ built-in fonts, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI with searchable grouped dropdowns, and adjustable text scaling.
 * **Automatic Standalone Coexistence:** If standalone DynamicMarker is also installed, DynamicSuite disables the standalone copy automatically and prompts a clean UI reload so you never get duplicate bars or conflicting HUD Edit windows.
 
 ---
@@ -39,7 +39,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ### 2. DynamicPrep (`/dprep`, `/dp`) -- Telemetry Bar, Raid Buffs & QoL
 * **Top Info Bar:** Customisable bar showing Primary Stat, Secondary Stats, Spec & Loot Spec, M+ Keystone, Durability, FPS/Ping, plus Ready Check and Pull Countdown buttons for leaders.
-* **Clickable Raid Buffs, Survival Macro & Blizzard Window QoL:** One-click reminders for missing class raid buffs and consumables, a smart `[DynamicHeal]` macro (Healthstone into Healing Potion), quest/gossip & One-Click Catalyst automation, Hold CTRL to Release Spirit protection, and side-by-side Blizzard windows with saved drag positions, header Ctrl+Scroll / Ctrl+Shift+Scroll scaling, and automatic EllesmereUI coexistence.
+* **Clickable Raid Buffs, Survival Macro & Blizzard Window QoL:** One-click reminders for missing class raid buffs and consumables with Midnight food tooltip stats on the Raid Buffs HUD, a smart `[DynamicHeal]` macro (Healthstone into Healing Potion), quest/gossip & One-Click Catalyst automation, Hold CTRL to Release Spirit protection, and side-by-side Blizzard windows with saved drag positions, header `Ctrl+Scroll` / `Ctrl+Shift+Scroll` scaling, and automatic EllesmereUI coexistence.
 
 ### 3. DynamicMarker (`/dm`, `/fm`) -- Target Marking, World Flares & Macros
 * **Smart Macros:** One-click `[DynamicMark]` focus/raid marker macro and `[DynamicKick]` interrupt macro that automatically updates your interrupt spell when you swap specs across all 13 classes.
@@ -47,11 +47,11 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ### 4. DynamicBags (`/dbag`, `/dbags`) -- Category Bags & Bank Viewer
 * **Fast Category Bags:** Sorts your items into clean categories (Keystones, Consumables, Gear Sets, BoE/WuE, Reagents, Junk) with A-Z sorting, live search, and upgrade/binding badges without server-sort lag.
-* **Unified Bank & Alt Vault:** View your Personal, Reagent, Warband, and Guild Bank in one window, track items across all your alts, split/merge stacks (`/dbag merge`), and automate repairs, grey junk selling, and fast looting.
+* **Unified Bank, Scaling & Alt Vault:** View your Personal, Reagent, Warband, and Guild Bank in one window, scale Bags and Unified Bank smoothly (70%-140%) with header `Ctrl+Scroll`, track items across all your alts, split/merge stacks (`/dbag merge`), and automate repairs, grey junk selling, and fast looting.
 
 ### 5. DynamicChat (`/dchat`, `/dc`, `/dynamicchat`) -- Whispers, Chat Skin & History
 * **Quick Chat Shortcuts:** Type `/ww` to whisper your friendly target (even in combat), `/rl` to reload your UI, and `/lg` to leave your party or raid quickly.
-* **Clean Smoked-Glass Chat:** Borderless chat frame with compact channel tags, clickable URLs (`/dc copy`), per-channel sound alerts, and chat history saved across UI reloads.
+* **Clean Smoked-Glass Chat & Alert Sounds:** Borderless chat frame with compact channel tags, clickable URLs (`/dc copy`), 7 built-in Blizzard chat alert sounds, external SharedMedia/DBM/EXBOSS/BigWigs/WeakAuras/ElvUI sound pack support with inline preview buttons, incoming/self-whisper chimes, and chat history saved across UI reloads.
 
 ### 6. DynamicFPS (`/dfps`) -- Zone Graphics & Responsiveness
 * **Zero-Reload Zone Graphics:** Automatically adjusts view distance, shadows, clutter, and spell density between Cities, Outdoor, Delves, Dungeons, Raid, and PvP while keeping boss floor mechanics clearly visible.

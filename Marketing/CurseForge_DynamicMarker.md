@@ -61,7 +61,7 @@ Type `/dm hud` (or click **Edit Mode (HUDs)** in the sidebar) to position your f
 
 ## Obsidian Theme & Font Studio
 
-* **Custom Colours & Surfaces:** Pick from 5 built-in accent themes (including Player Class Colour), 4 dark surface palettes, and adjustable font scaling.
+* **Custom Colours, Surfaces & Fonts:** Pick from 5 built-in accent themes (including Player Class Colour), 4 dark surface palettes, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI, and adjustable font scaling.
 * **Quick Window Controls:** Adjust standalone window Opacity (50%-100%) and Scale (80%-120%) or trigger Reload UI from the bottom-right dock.
 
 ---

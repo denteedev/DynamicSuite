@@ -20,7 +20,7 @@
 * **Global Smart Search (`/ds search <query>`):** Type what you are looking for in plain English (like "auto repair", "flare", or "whisper") and jump straight to the exact setting with a visual highlight.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, resize (60%-150%), and align all 6 suite HUD bars (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
 * **9-Step Guided Setup (`/ds setup`, `/ds conflicts`):** Walks you through resolving addon conflicts and configuring each module in minutes.
-* **Theme & Font Studio (`/ds theme`):** Customise your UI with 17 accent colours (including all 13 WoW Class Colours and a custom colour picker), 4 dark surface themes, 21+ fonts, and adjustable text scaling.
+* **Theme & Font Studio (`/ds theme`):** Customise your UI with 17 accent colours (including all 13 WoW Class Colours and a custom colour picker), 4 dark surface themes, 21+ built-in fonts, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI with searchable grouped dropdowns, and adjustable text scaling.
 
 ---
 
@@ -34,8 +34,8 @@
 | **DynamicZoom** | `/dz` | Unlocks 39-yard max camera zoom, speeds up scroll zooming, and fades trees/pillars instead of snapping your camera |
 | **DynamicFPS** | `/dfps` | Switches graphics settings automatically per zone, protects combat FPS, and tunes SpellQueueWindow from live ping + haste |
 | **DynamicGroup** | `/dgroup`, `/dg` | Adds region tags, M+ scores, and Lust/B-Res icons to Premade Groups, 1-click sign-up, party audit, and auto-keystone |
-| **DynamicBags** | `/dbag` | Fast category-sorted bags, unified Personal/Warband/Guild Bank viewer, Alt Inventory Vault, auto-repair, and auto-sell junk |
-| **DynamicChat** | `/dchat`, `/dc`, `/dynamicchat` | Smoked-glass chat frame, `/ww` target whispers, `/rl` reload, `/lg` group leave, sound alerts, clickable URLs, and reload history |
+| **DynamicBags** | `/dbag` | Fast category-sorted bags, unified Personal/Warband/Guild Bank viewer with header `Ctrl+Scroll` scaling (70%-140%), Alt Inventory Vault, auto-repair, and auto-sell junk |
+| **DynamicChat** | `/dchat`, `/dc`, `/dynamicchat` | Smoked-glass chat frame, `/ww` target whispers, `/rl` reload, `/lg` group leave, 7 built-in & external sound pack alerts with preview buttons, whisper chimes, clickable URLs, and reload history |
 
 ---
 
