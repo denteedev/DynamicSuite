@@ -4425,68 +4425,57 @@ function DynamicPrep:UpdateTalkingHeadSuppression()
 end
 
 function DynamicPrep:HandleCinematicOrMovie(event, arg1)
-    if not self.db or (IsShiftKeyDown and IsShiftKeyDown()) then return end
+    if not self.db then return end
+    if IsModifierKeyDown and IsModifierKeyDown() then return end
     local mode = self.db.cinematicMode or "BOTH"
     if mode == "OFF" then return end
 
-    _G.DynamicSuiteDB = _G.DynamicSuiteDB or {}
-    _G.DynamicSuiteDB.global = _G.DynamicSuiteDB.global or {}
-    local seenMovies = _G.DynamicSuiteDB.global.seenMovies
-    if type(seenMovies) ~= "table" then
-        seenMovies = {}
-        _G.DynamicSuiteDB.global.seenMovies = seenMovies
-    end
-    local seenCinematics = _G.DynamicSuiteDB.global.seenCinematics
-    if type(seenCinematics) ~= "table" then
-        seenCinematics = {}
-        _G.DynamicSuiteDB.global.seenCinematics = seenCinematics
-    end
-
     if event == "PLAY_MOVIE" then
-        if not arg1 or _IsSecret(arg1) then return end
-        local movieID = tonumber(arg1) or tostring(arg1)
-        if seenMovies[movieID] then
-            if MovieFrame_StopMovie and _G.MovieFrame then
-                pcall(MovieFrame_StopMovie, _G.MovieFrame)
+        if arg1 and not _IsSecret(arg1) then
+            _G.DynamicSuiteDB = _G.DynamicSuiteDB or {}
+            _G.DynamicSuiteDB.global = _G.DynamicSuiteDB.global or {}
+            if type(_G.DynamicSuiteDB.global.seenMovies) ~= "table" then
+                _G.DynamicSuiteDB.global.seenMovies = {}
             end
-        else
-            seenMovies[movieID] = true
+            local movieID = tonumber(arg1) or tostring(arg1)
+            _G.DynamicSuiteDB.global.seenMovies[movieID] = true
+        end
+        if MovieFrame_StopMovie and _G.MovieFrame then
+            pcall(MovieFrame_StopMovie, _G.MovieFrame)
+        end
+        if _G.MovieFrame and _G.MovieFrame.StopMovie then
+            pcall(_G.MovieFrame.StopMovie, _G.MovieFrame)
+        end
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.1, function()
+                if _G.MovieFrame and _G.MovieFrame:IsShown() then
+                    if MovieFrame_StopMovie then
+                        pcall(MovieFrame_StopMovie, _G.MovieFrame)
+                    end
+                    if _G.MovieFrame.StopMovie then
+                        pcall(_G.MovieFrame.StopMovie, _G.MovieFrame)
+                    end
+                end
+            end)
         end
     elseif event == "CINEMATIC_START" then
-        local mapID = 0
-        if C_Map and C_Map.GetBestMapForUnit then
-            local okM, m = pcall(C_Map.GetBestMapForUnit, "player")
-            if okM and m and not _IsSecret(m) then
-                mapID = m
-            end
+        if CinematicFrame_CancelCinematic then
+            pcall(CinematicFrame_CancelCinematic)
         end
-        local zoneText = ""
-        if GetSubZoneText then
-            local okS, sz = pcall(GetSubZoneText)
-            if okS and sz and not _IsSecret(sz) and type(sz) == "string" and sz ~= "" then
-                zoneText = sz
-            end
+        if StopCinematic then
+            pcall(StopCinematic)
         end
-        if zoneText == "" and GetRealZoneText then
-            local okZ, rz = pcall(GetRealZoneText)
-            if okZ and rz and not _IsSecret(rz) and type(rz) == "string" and rz ~= "" then
-                zoneText = rz
-            end
-        end
-        local lastContext = self._lastCutsceneContext or "0"
-        if GetQuestID then
-            local okQ, qid = pcall(GetQuestID)
-            if okQ and qid and not _IsSecret(qid) and type(qid) == "number" and qid > 0 then
-                lastContext = "Q" .. tostring(qid)
-            end
-        end
-        local fingerprint = tostring(mapID) .. ":" .. tostring(zoneText) .. ":" .. tostring(lastContext)
-        if seenCinematics[fingerprint] then
-            if CinematicFrame_CancelCinematic then
-                pcall(CinematicFrame_CancelCinematic)
-            end
-        else
-            seenCinematics[fingerprint] = true
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.1, function()
+                if _G.CinematicFrame and _G.CinematicFrame:IsShown() then
+                    if CinematicFrame_CancelCinematic then
+                        pcall(CinematicFrame_CancelCinematic)
+                    end
+                    if StopCinematic then
+                        pcall(StopCinematic)
+                    end
+                end
+            end)
         end
     end
 end
@@ -8877,19 +8866,19 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         rCatalyst:BindRightControl(pillsCatalyst)
         table.insert(self.refreshWidgets, pillsCatalyst)
 
-        -- 2. Hide Talking Head & Skip Seen Cutscenes
+        -- 2. Hide Talking Head & Skip Cutscenes
         local rCine = CreateSpaciousRow(
             cQoL, -114,
-            "Hide Talking Head & Skip Seen Cutscenes",
-            "Hides Talking Head popups and skips cutscenes you have already watched once (plays first-time cutscenes; hold Shift to rewatch).",
+            "Hide Talking Head & Skip Cutscenes",
+            "Hides Talking Head popups and skips cutscenes and movies automatically. Hold Shift to watch a cutscene without skipping.",
             280
         )
         local pillsCine = CreateSegmentedPills(
             rCine, 280,
             {
                 { value = "OFF",       label = "Off" },
-                { value = "SKIP_ONLY", label = "Seen Cutscenes" },
-                { value = "BOTH",      label = "Hide Head & Seen" },
+                { value = "SKIP_ONLY", label = "Skip Cutscenes" },
+                { value = "BOTH",      label = "Hide Head & Skip" },
             },
             function() return self.db.cinematicMode or "BOTH" end,
             function(v)

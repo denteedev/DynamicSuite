@@ -8,6 +8,9 @@
 ### DynamicGroup
 - **Midnight Season 2 Dungeon Pool & Teleport Spell Fix:** Updated `MIDNIGHT_S2_FALLBACK_SLOTS` and `KNOWN_DUNGEON_BY_MAP_ID` to the live Midnight Season 2 8-dungeon pool (`Altar of Fangs`, `Murder Row`, `Den of Nalorakk`, `The Blinding Vale`, `Voidscar Arena`, `Kings' Rest`, `Temple of Sethraliss`, and `Ruby Life Pools`), removing stale Season 1 / beta names and incorrect BFA teleport IDs (`467553` / `424167`). Prioritised live spellbook `"Path of ..."` name matching before fallback spell IDs so Portal Deck and Owned Keystone Right-Click teleports always cast the correct dungeon teleport.
 
+### DynamicPrep
+- **Reliable Auto-Skip Cinematics & Movies:** Replaced the zone-fingerprint cinematic check with immediate `CinematicFrame_CancelCinematic()` + `StopCinematic()` (for `CINEMATIC_START`) and `MovieFrame_StopMovie` (for `PLAY_MOVIE`), each backed by a `0.1s` `C_Timer.After` safety check. Holding any modifier key (`Shift`, `Ctrl`, or `Alt`) lets the cutscene or movie play without skipping.
+
 ---
 
 ## DynamicSuite & All 8 Modules v2.2.0 (15/11/2026)
