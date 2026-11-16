@@ -57,10 +57,11 @@ DynamicSuite.Changelogs = DynamicSuite.Changelogs or {}
 
 DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
-    date = "15/11/2026",
+    date = "16/11/2026",
     entries = {
+        { type = "FEATURE", text = "Release v2.3.0 - 2-Tab Suite Studio, Core MS-Windows Desktop Window Manager & 32-Panel Quest Log Coexistence (16/11/2026): Upgraded Suite Studio into a 2-tab workspace (Tab 1 'Theme & Typography' via /ds studio or /ds theme; Tab 2 'Desktop Windows & Menus' via /ds windows or /ds win) and migrated the Blizzard Desktop Window Manager into DynamicSuite Core (_G.DynamicSuite.DesktopWindows & DynamicSuiteDB.global.desktopWindows with automatic one-time migration from DynamicPrepDB so window management works even when DynamicPrep is disabled). Expanded side-by-side coexistence to 32 Blizzard panels by bringing the windowed/docked WorldMapFrame (Quest Log 'L') into full coexistence alongside PlayerSpellsFrame, CharacterFrame, PVEFrame, CollectionsJournal, ProfessionsFrame, and all standard panels while keeping fullscreen WorldMapFrame and GameMenuFrame untouched; replaced unclamped free-floating movement with mandatory scale-aware ClampDesktopWindowOffset boundary clamping across drag ticks, drag stop, OnShow, OnSizeChanged (Talent/Spec/Spellbook switches), UI_SCALE_CHANGED, and DISPLAY_SIZE_CHANGED so no panel or [X] close button can ever spawn or get stuck off-screen; enabled modifier-free Left-Click dragging from any empty window background or passive chrome (guarded via GetMouseFoci() so interactive child controls are never hijacked); added a zero-taint GLOBAL_MOUSE_DOWN click-to-raise z-order listener and UISpecialFrames sorter so clicking any open window brings it to the front and pressing Escape always closes the top-most window first; and preserved silent external mover coexistence (NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, ElvUI) with a live status banner on Tab 2." },
+        { type = "UI",      text = "Central Popover Auto-Close Registry, Suite-Wide 3-Way Interactive 4px Obsidian Scrollbars & DynamicChat Polish (16/11/2026): Added UI.RegisterPopupCloser(key, closeFn) and owner-button OnHide hooks across DynamicSuite and all 8 modules so closing the main window, minimising, switching tabs/modules, or entering HUD Edit Mode cleanly dismisses all active dropdowns and popovers; upgraded every scrollbar across Suite Studio, Global Smart Search, Guided Setup, dropdown popovers, and module workspaces to full 3-way interaction (Mousewheel, Left-Click & Drag on the Button thumb with IsMouseButtonDown release guard and OnHide cleanup, and Left-Click on the track to jump to cursor position); and fixed DynamicChat's Font Dropdown popover/scrollbar, PrintMsg routing, and StaticPopup-free dark-obsidian reload confirmation modal." },
         { type = "FEATURE", text = "Shared Media Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Chat Sounds & Self-Whisper Alerts (15/11/2026): Added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI discovery for both Sounds and Fonts across Theme & Font Studio (and standalone DynamicMarker) plus DynamicChat Tab 3 with PLAYER_LOGIN delayed scanning and searchable grouped dropdowns; removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; restored self-whisper notification alerts on incoming WHISPER / BN_WHISPER events; and added automatic runtime fallback (to Blizzard Raid Warning for sounds or Expressway for fonts) when an external media pack is disabled." },
-        { type = "FEATURE", text = "Release v2.3.0 - DynamicPrep Blizzard Window QoL & Silent External Coexistence (15/11/2026): Added Tab 3 'Blizzard Window Quality of Life' controls in DynamicPrep: 'Keep Blizzard Windows Open Side-by-Side' (all 31 standard Blizzard panels -- Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Social & Friends, Collections, Transmogrify, Adventure Guide, Professions, Professions Book, Crafting Orders, Achievements, Item Upgrade, Item Socketing, Revival Catalyst, Renown, Delves, Trainer, Calendar, Macros, NPC Gossip, Quest, Trade, Merchant, Mail, Bank, Auction House, and AddOn List -- stay open together via multi-panel restoration and Escape-protected UISpecialFrames / HideUIPanel / CloseWindows / ToggleGameMenu handling while freezing already-open windows in place so opening another panel never shifts them, closing strictly the most recently opened window per Escape while [X] and keybind toggles still close cleanly; excludes World Map and Game Menu with 0% combat taint), 'Draggable Blizzard Windows (Save Position)' (smooth native StartMoving/StopMovingOrSizing header and Alt + Left-Drag moving out of combat with unclamped SetClampedToScreen(false) free movement, scale-aware UIParent CENTER persistence, SetPoint tab-switch snap-back protection, TitleContainer-cleared overlay layering, (-58, -2) Maximize/Minimize button clearance, and Right-Click header reset), 'Window Ctrl+Scroll Scaling' (Ctrl + Scroll on a header for temporary session scaling 70%-140% in 5% steps that resets on close, Ctrl + Shift + Scroll anywhere on a window to save permanently with a Dark-Obsidian/Blaze-Orange readout toast), [Reset All Windows] (restores default positions, 100% scale, and screen clamping), defensive C_Item.GetItemInfoInstant and TooltipDataProcessor hardening, and zero-config automatic silent coexistence when NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, or ElvUI frame management is active." },
         { type = "IMPROVED", text = "DynamicMarker Unbound-by-Default World Flare Hotkeys & Guided Setup Assignment (15/11/2026): Removed the hardcoded F4 and F5 World Flare defaults so fresh installs and Resets start with both keys 'Unbound' (leaving your own Blizzard and action bar bindings untouched while preserving any existing saved DynamicMarkerDB hotkeys), added optional single-button Cycle World Flare and Clear All Flares keybind capture rows to both Suite/Standalone Guided Setup and the World Flare Keys (/dm flares) tab ('Click to bind, Right-click to unbind'), and refined capture behaviour so Escape cancels without losing the current key while Backspace/Delete or Right-Click clears to Unbound." },
         { type = "FIX",     text = "Release v2.1.2 - DynamicPrep Midnight Season 2 Enchantable Slot List Fix (15/11/2026): Updated DynamicPrep's equipped gear enchant scanner to remove false-positive missing-enchant alerts on Cloak and Wrist (which do not have enchants in Midnight) and added Head and Shoulder to the Midnight Season 2 enchantable slot list (Head, Shoulder, Chest, Legs, Feet, Ring 1, Ring 2, Main Hand, and Off-Hand weapons)." },
         { type = "FEATURE", text = "Release v2.1.1 - Live 3-Row HUD Appearance Bar (560x110) & First-Open /ds + First-Click [+ HUD] Fixes (15/11/2026): Expanded DynamicSuiteEditModeModal into a unified 560x110 3-row draggable dock by adding Row 3 (Live Appearance Bar) with a 20%-100% Opacity slider (step 5%, keeping mover borders/labels readable via SetIgnoreParentAlpha), Accent | Dark | None Border Style segmented pills synced 1:1 with module sub-settings, Horiz | Vert Orientation toggle for Target Icon Bar, World Flare Bar, and Raid Buffs (with automatic screen-bounds re-clamping and dimmed fixed-layout state for Alert Toast, Prep Bar, and Chat Frame), and full Position/Scale/Opacity/Border/Orientation [Reset]. Fixed first-open /ds empty Left Suite Rail (unconditional explicit Left Rail dimensions, child population, and OnShow visibility plus guarded lazy wrappers), eliminated first-click [+ HUD] missing movers via EnsureAllEditModeHudFramesInitialized() and callback-first SyncAllEditModeHuds ordering, guarded modal construction against premature OnHide cancellation, and kept the HUD Selector popup closed on entry." },
@@ -478,10 +479,10 @@ local CONFLICT_YIELD_FEATURES = {
     ["EllesmereUIChat"]          = "chat/editbox skinning",
     ["EllesmereUI_Chat"]         = "chat/editbox skinning",
     ["EllesmereUIGroupFinder"]   = "shared Group Finder features",
-    ["NoAutoClose"]              = "Blizzard Window QoL: Side-by-Side Panels, Drag & Scroll Scale",
-    ["BlizzMove"]                = "Blizzard Window QoL: Side-by-Side Panels, Drag & Scroll Scale",
-    ["DeModal"]                  = "Blizzard Window QoL: Side-by-Side Panels, Drag & Scroll Scale",
-    ["MoveAny"]                  = "Blizzard Window QoL: Side-by-Side Panels, Drag & Scroll Scale",
+    ["NoAutoClose"]              = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
+    ["BlizzMove"]                = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
+    ["DeModal"]                  = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
+    ["MoveAny"]                  = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
 }
 addonTable.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
 DynamicSuite.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
@@ -503,6 +504,18 @@ local CONTEXT_LABELS = {
 addonTable.CONTEXT_LABELS = CONTEXT_LABELS
 
 -- Default Account-Wide Suite Settings (DynamicSuiteDB.global)
+local DEFAULT_DESKTOP_WINDOWS = {
+    enabled          = true,
+    sideBySide       = true,
+    dragAnywhere     = true,
+    draggable        = true,
+    scrollScale      = true,
+    positions        = {},
+    scales           = {},
+    migratedFromPrep = false,
+}
+addonTable.DEFAULT_DESKTOP_WINDOWS = DEFAULT_DESKTOP_WINDOWS
+
 local DEFAULT_SUITE_GLOBAL = {
     windowWidth      = 1040,
     windowHeight     = 680,
@@ -536,6 +549,7 @@ local DEFAULT_SUITE_GLOBAL = {
     showGameMenuSuiteBtn     = true,
     showGameMenuHudBtn       = true,
     replaceBlizzardAddonList = true,
+    desktopWindows           = CopyTable(DEFAULT_DESKTOP_WINDOWS),
     v120_windowWidth1040 = false,
 }
 addonTable.DEFAULT_SUITE_GLOBAL = DEFAULT_SUITE_GLOBAL
@@ -622,6 +636,133 @@ local function EnsureSuiteGlobal()
 end
 addonTable.GetSuiteGlobal = EnsureSuiteGlobal
 DynamicSuite.GetSuiteGlobal = EnsureSuiteGlobal
+
+local desktopWindowsSyncCache = setmetatable({}, { __mode = "k" })
+
+local function SyncDesktopWindowsDBFlags(db)
+    if type(db) ~= "table" then return end
+    local cache = desktopWindowsSyncCache[db]
+    if not cache then
+        cache = {}
+        desktopWindowsSyncCache[db] = cache
+    end
+
+    if cache.sideBySide ~= nil and cache.enabled ~= nil then
+        if db.sideBySide ~= cache.sideBySide and db.enabled == cache.enabled then
+            db.enabled = (db.sideBySide ~= false)
+        elseif db.enabled ~= cache.enabled and db.sideBySide == cache.sideBySide then
+            db.sideBySide = (db.enabled ~= false)
+        end
+    end
+    if db.sideBySide == nil and db.enabled ~= nil then
+        db.sideBySide = (db.enabled ~= false)
+    elseif db.enabled == nil and db.sideBySide ~= nil then
+        db.enabled = (db.sideBySide ~= false)
+    else
+        db.sideBySide = (db.sideBySide ~= false)
+        db.enabled = db.sideBySide
+    end
+
+    if cache.dragAnywhere ~= nil and cache.draggable ~= nil then
+        if db.dragAnywhere ~= cache.dragAnywhere and db.draggable == cache.draggable then
+            db.draggable = (db.dragAnywhere ~= false)
+        elseif db.draggable ~= cache.draggable and db.dragAnywhere == cache.dragAnywhere then
+            db.dragAnywhere = (db.draggable ~= false)
+        end
+    end
+    if db.dragAnywhere == nil and db.draggable ~= nil then
+        db.dragAnywhere = (db.draggable ~= false)
+    elseif db.draggable == nil and db.dragAnywhere ~= nil then
+        db.draggable = (db.dragAnywhere ~= false)
+    else
+        db.dragAnywhere = (db.dragAnywhere ~= false)
+        db.draggable = db.dragAnywhere
+    end
+
+    if db.scrollScale == nil then
+        db.scrollScale = true
+    else
+        db.scrollScale = (db.scrollScale ~= false)
+    end
+    if type(db.positions) ~= "table" then db.positions = {} end
+    if type(db.scales) ~= "table" then db.scales = {} end
+
+    cache.sideBySide   = db.sideBySide
+    cache.enabled      = db.enabled
+    cache.dragAnywhere = db.dragAnywhere
+    cache.draggable    = db.draggable
+end
+
+local function MigrateDesktopWindowsFromPrep(db, markCompletedIfNoPrepDB)
+    if type(db) ~= "table" then return db end
+    if db.migratedFromPrep == true then
+        SyncDesktopWindowsDBFlags(db)
+        return db
+    end
+    local prepDB = _G.DynamicPrepDB
+    if type(prepDB) == "table" then
+        if prepDB.blizzWinNoAutoClose ~= nil then
+            local v = (prepDB.blizzWinNoAutoClose ~= false)
+            db.sideBySide = v
+            db.enabled = v
+        end
+        if prepDB.blizzWinDraggable ~= nil then
+            local v = (prepDB.blizzWinDraggable ~= false)
+            db.dragAnywhere = v
+            db.draggable = v
+        end
+        if prepDB.blizzWinScrollScale ~= nil then
+            db.scrollScale = (prepDB.blizzWinScrollScale ~= false)
+        end
+        if type(prepDB.windowPositions) == "table" then
+            db.positions = type(db.positions) == "table" and db.positions or {}
+            for frameName, pos in pairs(prepDB.windowPositions) do
+                if db.positions[frameName] == nil and type(pos) == "table" and type(pos.x) == "number" and type(pos.y) == "number" then
+                    db.positions[frameName] = {
+                        point    = pos.point or "CENTER",
+                        relPoint = pos.relPoint or "CENTER",
+                        x        = pos.x,
+                        y        = pos.y,
+                    }
+                end
+            end
+        end
+        if type(prepDB.windowScales) == "table" then
+            db.scales = type(db.scales) == "table" and db.scales or {}
+            for frameName, s in pairs(prepDB.windowScales) do
+                if db.scales[frameName] == nil and type(s) == "number" and s > 0 then
+                    db.scales[frameName] = s
+                end
+            end
+        end
+        db.migratedFromPrep = true
+    elseif markCompletedIfNoPrepDB == true then
+        db.migratedFromPrep = true
+    end
+    SyncDesktopWindowsDBFlags(db)
+    return db
+end
+
+local function GetDesktopWindowsDB()
+    EnsureSuiteGlobal()
+    local rootGlobal = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
+    if not rootGlobal then
+        rootGlobal = EnsureSuiteGlobal()
+    end
+    if type(rootGlobal.desktopWindows) ~= "table" then
+        rootGlobal.desktopWindows = CopyTable(DEFAULT_DESKTOP_WINDOWS)
+    end
+    local db = rootGlobal.desktopWindows
+    MigrateDesktopWindowsFromPrep(db, false)
+    local activeScope = EnsureSuiteGlobal()
+    if activeScope and activeScope ~= rootGlobal then
+        activeScope.desktopWindows = db
+    end
+    return db
+end
+addonTable.GetDesktopWindowsDB = GetDesktopWindowsDB
+DynamicSuite.GetDesktopWindowsDB = GetDesktopWindowsDB
+addonTable.MigrateDesktopWindowsFromPrep = MigrateDesktopWindowsFromPrep
 
 local function IsAddonProtected(name)
     if not name then return false end
@@ -1200,9 +1341,22 @@ local function RestoreBlizzardDefaults(disableSuiteAddons)
     if type(_G.DynamicPrepDB) == "table" then
         _G.DynamicPrepDB.barPos = nil
         _G.DynamicPrepDB.pos = nil
+        _G.DynamicPrepDB.windowPositions = {}
+        _G.DynamicPrepDB.windowScales = {}
+        _G.DynamicPrepDB.blizzWinNoAutoClose = true
+        _G.DynamicPrepDB.blizzWinDraggable = true
+        _G.DynamicPrepDB.blizzWinScrollScale = true
     end
     if type(_G.DynamicChatDB) == "table" then
         _G.DynamicChatDB.chatFramePos = nil
+    end
+    if addonTable.DesktopWindows and type(addonTable.DesktopWindows.ResetAllWindows) == "function" then
+        pcall(addonTable.DesktopWindows.ResetAllWindows, addonTable.DesktopWindows, true)
+    end
+    g.desktopWindows = CopyTable(DEFAULT_DESKTOP_WINDOWS)
+    g.desktopWindows.migratedFromPrep = true
+    if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" then
+        _G.DynamicSuiteDB.global.desktopWindows = g.desktopWindows
     end
 
     if disableSuiteAddons == true and C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
@@ -1336,7 +1490,10 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
                     return true, "HARD", "chat skin/frame control"
                 end
                 return false
-            elseif shortKey == "prep" or dynamicModule == "DynamicPrep" then
+            elseif shortKey == "prep" or dynamicModule == "DynamicPrep" or shortKey == "suite" or dynamicModule == "DynamicSuite" then
+                if E.private and E.private.skins and E.private.skins.blizzard and E.private.skins.blizzard.enable == true then
+                    return true, "SOFT", "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)"
+                end
                 if E.db and E.db.general then
                     if (E.db.general.autoRepair and E.db.general.autoRepair ~= "NONE")
                         or E.db.general.vendorGrays == true
@@ -1370,7 +1527,10 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
                     return true, "SOFT", "shared chat features"
                 end
                 return false
-            elseif shortKey == "prep" or dynamicModule == "DynamicPrep" then
+            elseif shortKey == "prep" or dynamicModule == "DynamicPrep" or shortKey == "suite" or dynamicModule == "DynamicSuite" then
+                if ldb["UseEasyFrameResizing"] == "On" or ldb["MoveBlizzFrames"] == "On" or ldb["NoAutoClose"] == "On" or ldb["ManageFrames"] == "On" then
+                    return true, "SOFT", "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)"
+                end
                 if ldb["AutomateQuests"] == "On" or ldb["AutomateGossip"] == "On" or ldb["FasterMovieSkip"] == "On" or ldb["AcceptResurrect"] == "On" then
                     return true, "SOFT", "quest/gossip control"
                 end
@@ -1393,7 +1553,21 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
             return false, nil, nil
         end
         local ok, isSubActive, subTier, subFeature = pcall(function()
-            if shortKey == "chat" or dynamicModule == "DynamicChat" then
+            if shortKey == "prep" or dynamicModule == "DynamicPrep" or shortKey == "suite" or dynamicModule == "DynamicSuite" then
+                local edb = _G.EllesmereUIDB
+                if type(edb) == "table" then
+                    if edb.shifterEnabled == true or edb.moveBlizzardFrames == true or edb.blizzFrameMover == true or edb.noAutoClose == true then
+                        return true, "SOFT", "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)"
+                    end
+                    if type(edb.profile) == "table" then
+                        local p = edb.profile
+                        if p.shifterEnabled == true or p.moveBlizzardFrames == true or p.blizzFrameMover == true or p.noAutoClose == true then
+                            return true, "SOFT", "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)"
+                        end
+                    end
+                end
+                return false
+            elseif shortKey == "chat" or dynamicModule == "DynamicChat" then
                 -- If EllesmereUIChat is installed as a separate sub-addon on disk, conflict detection
                 -- belongs strictly to the EllesmereUIChat sub-addon entry.
                 if C_AddOns and C_AddOns.GetAddOnInfo then
@@ -1587,21 +1761,31 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
     end
 
     local isBlizzWinAutoYield = false
-    if tier == 2 and addonNameKey == "DynamicPrep" and (otherAddon == "NoAutoClose" or otherAddon == "BlizzMove" or otherAddon == "DeModal" or otherAddon == "MoveAny" or otherAddon == "EllesmereUI" or otherAddon == "EllesmereUIQoL" or otherAddon == "EllesmereUI_QoL" or otherAddon == "Leatrix_Plus" or otherAddon == "ElvUI") then
+    local isBlizzWinOverlap = (otherAddon == "NoAutoClose" or otherAddon == "BlizzMove" or otherAddon == "DeModal" or otherAddon == "MoveAny")
+        or (type(smartFeature) == "string" and smartFeature:find("Desktop Windows", 1, true) ~= nil)
+    if tier == 2 and (addonNameKey == "DynamicPrep" or addonNameKey == "DynamicSuite") and (isBlizzWinOverlap or otherAddon == "EllesmereUI" or otherAddon == "EllesmereUIQoL" or otherAddon == "EllesmereUI_QoL" or otherAddon == "Leatrix_Plus" or otherAddon == "ElvUI") then
+        local suiteKey = tostring(otherAddon) .. "_DynamicSuite"
+        if ackAction == nil then
+            local altAck = g.acknowledgedConflicts[suiteKey] or g.granularModes[suiteKey]
+            if altAck == "PRIORITISE_DYNAMIC" or altAck == "USE_DYNAMIC" or altAck == "PREFER_DYNAMIC" then
+                ackAction = "PRIORITISE_DYNAMIC"
+            end
+        end
         if ackAction == nil then
             ackAction = "YIELD_TO_EXTERNAL"
             isBlizzWinAutoYield = true
         elseif ackAction == "YIELD_TO_EXTERNAL" then
             isBlizzWinAutoYield = true
         end
-        smartFeature = smartFeature or "Blizzard Window QoL: Side-by-Side Panels, Drag & Scroll Scale"
+        smartFeature = smartFeature or "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)"
     end
 
     local friendly = FRIENDLY_CONFLICT_NAMES[otherAddon] or otherAddon
     local displayTarget = (otherAddon == "DialogueUI" or otherAddon == "DialogUI" or otherAddon == "Plumber" or otherAddon == "Baganator" or otherAddon == "Immersion" or otherAddon == "Storyline" or otherAddon == "AutoTurnIn" or otherAddon == "WIM" or otherAddon == "EllesmereUI")
         and otherAddon or friendly
+    local ownerLabel = isBlizzWinOverlap and "Suite Studio -> Desktop Windows & Menus" or addonNameKey
     local bannerText = (tier == 2)
-        and string.format("QoL Overlap: %s shares sub-features with %s. Choose which addon owns the shared triggers.", displayTarget, addonNameKey)
+        and string.format("QoL Overlap: %s shares sub-features with %s. Choose which addon owns the shared triggers.", displayTarget, ownerLabel)
         or string.format("Conflict Detected: %s is currently active and may cause UI errors or duplicate frames.", displayTarget)
     return {
         conflictKey    = conflictKey,
@@ -1609,7 +1793,7 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
         moduleKey      = modKey,
         conflictAddon  = otherAddon,
         friendlyName   = friendly,
-        category       = reg and reg.category or modInfo.category or addonNameKey,
+        category       = isBlizzWinOverlap and "Suite Studio -> Desktop Windows & Menus" or (reg and reg.category or modInfo.category or addonNameKey),
         tier           = tier,
         severity       = (tier == 2) and "GRANULAR" or "HARD",
         isPartial      = (tier == 2),
@@ -1623,6 +1807,8 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
         isSimulated    = (isSim == true),
     }
 end
+addonTable.BuildConflictEntry = BuildConflictItem
+addonTable.BuildConflictItem = BuildConflictItem
 
 local function ScanAllConflicts(includeGranular, includeAcknowledgedDisabled)
     local results = {}
@@ -2086,11 +2272,25 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
         print(string.format("%s: Disabled %s and kept '%s' active (reload UI to apply).", ADDON_TITLE, canonMod, conflictAddon))
 
     elseif action == "PRIORITISE_DYNAMIC" then
+        local suiteKey = tostring(conflictAddon) .. "_DynamicSuite"
+        local prepKey  = tostring(conflictAddon) .. "_DynamicPrep"
         g.granularModes = type(g.granularModes) == "table" and g.granularModes or {}
         g.granularModes[conflictKey] = "PRIORITISE_DYNAMIC"
+        if canonMod == "DynamicPrep" or canonMod == "DynamicSuite" then
+            g.granularModes[suiteKey] = "PRIORITISE_DYNAMIC"
+            g.granularModes[prepKey]  = "PRIORITISE_DYNAMIC"
+            g.acknowledgedConflicts[suiteKey] = "PRIORITISE_DYNAMIC"
+            g.acknowledgedConflicts[prepKey]  = "PRIORITISE_DYNAMIC"
+        end
         if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" then
             _G.DynamicSuiteDB.global.granularModes = type(_G.DynamicSuiteDB.global.granularModes) == "table" and _G.DynamicSuiteDB.global.granularModes or {}
             _G.DynamicSuiteDB.global.granularModes[conflictKey] = "PRIORITISE_DYNAMIC"
+            if canonMod == "DynamicPrep" or canonMod == "DynamicSuite" then
+                _G.DynamicSuiteDB.global.granularModes[suiteKey] = "PRIORITISE_DYNAMIC"
+                _G.DynamicSuiteDB.global.granularModes[prepKey]  = "PRIORITISE_DYNAMIC"
+                _G.DynamicSuiteDB.global.acknowledgedConflicts[suiteKey] = "PRIORITISE_DYNAMIC"
+                _G.DynamicSuiteDB.global.acknowledgedConflicts[prepKey]  = "PRIORITISE_DYNAMIC"
+            end
         end
         SetSuiteModuleEnabled(canonMod, true, true)
         -- Safely suppress overlapping sub-toggles in Leatrix_Plus / EllesmereUI if accessible
@@ -2100,7 +2300,7 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
                     _G.LeaPlusDB["AutoRepairGear"] = "Off"
                     _G.LeaPlusDB["AutoSellJunk"] = "Off"
                 end
-                if shortKey == "prep" then
+                if shortKey == "prep" or shortKey == "suite" then
                     _G.LeaPlusDB["AutomateGossip"] = "Off"
                 elseif shortKey == "zoom" then
                     _G.LeaPlusDB["MaxCameraZoom"] = "Off"
@@ -2112,7 +2312,9 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
                 end
             end
         end)
-        if shortKey == "zoom" and _G.DynamicZoom and _G.DynamicZoom.ApplyAllSettings then
+        if (shortKey == "prep" or shortKey == "suite") and addonTable.DesktopWindows and type(addonTable.DesktopWindows.ApplyAllWindowStates) == "function" then
+            pcall(addonTable.DesktopWindows.ApplyAllWindowStates, addonTable.DesktopWindows)
+        elseif shortKey == "zoom" and _G.DynamicZoom and _G.DynamicZoom.ApplyAllSettings then
             pcall(_G.DynamicZoom.ApplyAllSettings, _G.DynamicZoom)
         elseif shortKey == "fps" and _G.DynamicFPS and _G.DynamicFPS.ApplyGraphicsPipeline then
             pcall(_G.DynamicFPS.ApplyGraphicsPipeline, true)
@@ -2125,14 +2327,31 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
         print(string.format("%s: Prioritising %s features while keeping %s enabled.", ADDON_TITLE, canonMod, conflictAddon))
 
     elseif action == "YIELD_TO_EXTERNAL" then
+        local suiteKey = tostring(conflictAddon) .. "_DynamicSuite"
+        local prepKey  = tostring(conflictAddon) .. "_DynamicPrep"
         g.granularModes = type(g.granularModes) == "table" and g.granularModes or {}
         g.granularModes[conflictKey] = "YIELD_TO_EXTERNAL"
+        if canonMod == "DynamicPrep" or canonMod == "DynamicSuite" then
+            g.granularModes[suiteKey] = "YIELD_TO_EXTERNAL"
+            g.granularModes[prepKey]  = "YIELD_TO_EXTERNAL"
+            g.acknowledgedConflicts[suiteKey] = "YIELD_TO_EXTERNAL"
+            g.acknowledgedConflicts[prepKey]  = "YIELD_TO_EXTERNAL"
+        end
         if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" then
             _G.DynamicSuiteDB.global.granularModes = type(_G.DynamicSuiteDB.global.granularModes) == "table" and _G.DynamicSuiteDB.global.granularModes or {}
             _G.DynamicSuiteDB.global.granularModes[conflictKey] = "YIELD_TO_EXTERNAL"
+            if canonMod == "DynamicPrep" or canonMod == "DynamicSuite" then
+                _G.DynamicSuiteDB.global.granularModes[suiteKey] = "YIELD_TO_EXTERNAL"
+                _G.DynamicSuiteDB.global.granularModes[prepKey]  = "YIELD_TO_EXTERNAL"
+                _G.DynamicSuiteDB.global.acknowledgedConflicts[suiteKey] = "YIELD_TO_EXTERNAL"
+                _G.DynamicSuiteDB.global.acknowledgedConflicts[prepKey]  = "YIELD_TO_EXTERNAL"
+            end
         end
         -- Turn off ONLY overlapping micro-toggles inside DynamicSuite, leaving the rest of the module active
         pcall(function()
+            if (shortKey == "prep" or shortKey == "suite") and addonTable.DesktopWindows and type(addonTable.DesktopWindows.ApplyAllWindowStates) == "function" then
+                addonTable.DesktopWindows:ApplyAllWindowStates()
+            end
             if shortKey == "prep" and type(_G.DynamicPrepDB) == "table" then
                 if conflictAddon == "DialogUI" or conflictAddon == "DialogueUI" or conflictAddon == "Plumber" or conflictAddon == "Immersion" or conflictAddon == "Storyline" or conflictAddon == "AutoTurnIn" then
                     _G.DynamicPrepDB.autoGossip = false
@@ -2666,11 +2885,23 @@ addonTable.ResolveFontChoice  = function(key) return DynamicSuite:ResolveFontCho
 -- Extensible Module Registration & Suite Reset Engine
 --------------------------------------------------------------------------------
 function addonTable.ResetDynamicSuite()
+    if addonTable.DesktopWindows and type(addonTable.DesktopWindows.ResetAllWindows) == "function" then
+        pcall(addonTable.DesktopWindows.ResetAllWindows, addonTable.DesktopWindows, true)
+    end
     local preservedSnapshots = (_G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" and type(_G.DynamicSuiteDB.global.cvarSnapshots) == "table")
         and _G.DynamicSuiteDB.global.cvarSnapshots or nil
     _G.DynamicSuiteDB = {
         global = CopyTable(DEFAULT_SUITE_GLOBAL)
     }
+    _G.DynamicSuiteDB.global.desktopWindows = CopyTable(DEFAULT_DESKTOP_WINDOWS)
+    _G.DynamicSuiteDB.global.desktopWindows.migratedFromPrep = true
+    if type(_G.DynamicPrepDB) == "table" then
+        _G.DynamicPrepDB.windowPositions = {}
+        _G.DynamicPrepDB.windowScales = {}
+        _G.DynamicPrepDB.blizzWinNoAutoClose = true
+        _G.DynamicPrepDB.blizzWinDraggable = true
+        _G.DynamicPrepDB.blizzWinScrollScale = true
+    end
     if preservedSnapshots then
         _G.DynamicSuiteDB.global.cvarSnapshots = preservedSnapshots
     end
@@ -2699,11 +2930,16 @@ function addonTable.ResetDynamicSuite()
             end
         end
     end
+    if addonTable.DesktopWindows and type(addonTable.DesktopWindows.ApplyAllWindowStates) == "function" then
+        pcall(addonTable.DesktopWindows.ApplyAllWindowStates, addonTable.DesktopWindows)
+    end
     if addonTable.ApplySuiteThemeAndGeometry then
         addonTable.ApplySuiteThemeAndGeometry()
     end
-    print(string.format("%s: Entire DynamicSuite configuration (Theme, Window Geometry, HUDs, and Profiles) reset to factory defaults.", ADDON_TITLE))
+    print(string.format("%s: Entire DynamicSuite configuration (Theme, Desktop Windows, Window Geometry, HUDs, and Profiles) reset to factory defaults.", ADDON_TITLE))
 end
+addonTable.ResetAllSuiteDefaults = addonTable.ResetDynamicSuite
+DynamicSuite.ResetAllSuiteDefaults = addonTable.ResetDynamicSuite
 
 DynamicSuite.ResetModule = function(arg1, arg2)
     local modKey = (arg1 == DynamicSuite or type(arg1) == "table") and arg2 or arg1
@@ -2909,7 +3145,7 @@ local MODULE_META_BY_KEY = {
     group  = { addonName = "DynamicGroup",  moduleTitle = "DynamicGroup",  slash = "/dgroup", icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga" },
     bags   = { addonName = "DynamicBags",   moduleTitle = "DynamicBags",   slash = "/dbag",   icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga" },
     chat   = { addonName = "DynamicChat",   moduleTitle = "DynamicChat",   slash = "/dchat",  icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga" },
-    STUDIO = { addonName = "DynamicSuite",  moduleTitle = "Theme & Font",  slash = "/ds",     icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_palette.tga" },
+    STUDIO = { addonName = "DynamicSuite",  moduleTitle = "Suite Studio",  slash = "/ds studio", icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_palette.tga" },
     SETUP  = { addonName = "DynamicSuite",  moduleTitle = "Guided Setup",  slash = "/ds",     icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_spark.tga" },
     HUD    = { addonName = "DynamicSuite",  moduleTitle = "HUD Edit Mode", slash = "/ds hud", icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_grid.tga" },
 }
@@ -2934,7 +3170,7 @@ local function NormalizeSearchEntry(moduleKey, rawEntry)
     local addonNameKey = rawEntry.addonName or meta.addonName or "DynamicSuite"
     local modTitle     = rawEntry.moduleTitle or meta.moduleTitle or addonNameKey
     local tabIdx       = rawEntry.tabIndex or 1
-    local tabLbl       = rawEntry.tabLabel or rawEntry.breadcrumb or "General"
+    local tabLbl       = rawEntry.tabLabel or rawEntry.tabName or rawEntry.breadcrumb or "General"
     local titleStr     = tostring(rawEntry.title)
     local descStr      = tostring(rawEntry.desc or "")
     local kwStr        = tostring(rawEntry.keywords or "")
@@ -2956,6 +3192,7 @@ local function NormalizeSearchEntry(moduleKey, rawEntry)
         category        = catKey,
         categoryLabel   = catLabel,
         tabIndex        = tabIdx,
+        tabName         = tabLbl,
         tabLabel        = tabLbl,
         breadcrumb      = tabLbl,
         viewKey         = resolvedView,
@@ -3075,45 +3312,61 @@ end
 -- Seed comprehensive built-in search metadata covering DynamicSuite & all 8 peer modules
 local BUILTIN_SEARCH_SEED = {
     -- ========================================================================
-    -- DYNAMICSUITE: THEME & FONT STUDIO ("STUDIO"), GUIDED SETUP ("SETUP"), HUD ("HUD")
+    -- DYNAMICSUITE: SUITE STUDIO ("STUDIO" Tab 1 & Tab 2), GUIDED SETUP ("SETUP"), HUD ("HUD")
     -- ========================================================================
-    { moduleKey = "STUDIO", category = "HUD_LOOK", tabIndex = "THEME_STUDIO", tabLabel = "Theme & Font Studio",
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "THEME_STUDIO", tabIndex = 1, tabName = "Theme & Typography", tabLabel = "Theme & Typography", slash = "/ds theme",
       title = "ACCENT COLOUR PRESETS & CUSTOM PALETTE", highlightTitle = "ACCENT COLOUR PRESETS & CUSTOM PALETTE",
       desc = "Choose from 17 curated accent swatches, auto-match your class colour, or pick a custom hex colour.",
       keywords = "accent colour color theme palette swatch class colour hex custom picker tint border" },
-    { moduleKey = "STUDIO", category = "HUD_LOOK", tabIndex = "THEME_STUDIO", tabLabel = "Theme & Font Studio",
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "THEME_STUDIO", tabIndex = 1, tabName = "Theme & Typography", tabLabel = "Theme & Typography", slash = "/ds theme",
       title = "Window Surface Theme",
       desc = "Select the Obsidian backdrop palette across all DynamicSuite windows (Midnight Pitch Black, Obsidian Dark, Slate Steel, Smoked Glass).",
       keywords = "surface theme dark mode background midnight black obsidian slate steel smoked glass translucent backdrop" },
-    { moduleKey = "STUDIO", category = "HUD_LOOK", tabIndex = "THEME_STUDIO", tabLabel = "Theme & Font Studio",
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "THEME_STUDIO", tabIndex = 1, tabName = "Theme & Typography", tabLabel = "Theme & Typography", slash = "/ds theme",
       title = "Suite Font Family",
       desc = "Select the typography family applied across headers, lists, and HUD readouts (Built-in, Blizzard, LibSharedMedia, DBM, ElvUI, WeakAuras).",
       keywords = "font family typeface text typography expressway friz quadrata arialn morpheus skurri sharedmedia dbm elvui weakauras addons search" },
-    { moduleKey = "STUDIO", category = "HUD_LOOK", tabIndex = "THEME_STUDIO", tabLabel = "Theme & Font Studio",
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "THEME_STUDIO", tabIndex = 1, tabName = "Theme & Typography", tabLabel = "Theme & Typography", slash = "/ds theme",
       title = "Sync Font & Palette with Installed UI",
       desc = "Automatically inherit typography and accent colours from EllesmereUI, ElvUI, or LibSharedMedia.",
       keywords = "sync external ui ellesmereui eui elvui sharedmedia match theme font" },
-    { moduleKey = "STUDIO", category = "HUD_LOOK", tabIndex = "THEME_STUDIO", tabLabel = "Theme & Font Studio",
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "THEME_STUDIO", tabIndex = 1, tabName = "Theme & Typography", tabLabel = "Theme & Typography", slash = "/ds theme",
       title = "Sync Theme & Font to On-Screen HUD Bars",
       desc = "Automatically apply the active Suite Accent Colour, Surface Theme, and Font Family to all HUD bars.",
       keywords = "sync hud bars toast prep bar focus bar flare bar theme colour font" },
-    { moduleKey = "STUDIO", category = "HUD_LOOK", tabIndex = "THEME_STUDIO", tabLabel = "Theme & Font Studio",
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "THEME_STUDIO", tabIndex = 1, tabName = "Theme & Typography", tabLabel = "Theme & Typography", slash = "/ds theme",
       title = "Preserve Window Size, Scale & Layout Across All Characters",
       desc = "Share your custom window dimensions, UI scale, and HUD bar coordinates across every character.",
       keywords = "account wide alt sync window size scale layout position coordinates share" },
-    { moduleKey = "STUDIO", category = "HUD_LOOK", tabIndex = "THEME_STUDIO", tabLabel = "Theme & Font Studio",
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "THEME_STUDIO", tabIndex = 1, tabName = "Theme & Typography", tabLabel = "Theme & Typography", slash = "/ds theme",
       title = "Active Control Fill Intensity",
       desc = "Adjust the colour fill strength of selected tabs, pills, and switches (24% Subtle, 32% Balanced, 42% Bold).",
       keywords = "fill intensity alpha pill button brightness subtle balanced bold contrast" },
-    { moduleKey = "STUDIO", category = "BAGS_QOL", tabIndex = "THEME_STUDIO", tabLabel = "Game Menu & Shortcuts",
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
+      title = "Keep Blizzard Windows Open Side-by-Side", highlightTitle = "Keep Blizzard Windows Open Side-by-Side",
+      desc = "Keep all 32 standard Blizzard panels (including Character, Talents & Spells, Professions, Collections, Auction House, and windowed Quest Log / World Map 'L') open side-by-side without auto-closing, with click-to-raise z-order and top-most Escape dismissal.",
+      keywords = "blizzard desktop window manager multi panel no auto close side by side quest log worldmapframe world map l talents playerspellsframe character pve merchant mail auction escape click to raise z-order /ds windows /ds win" },
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
+      title = "Drag Blizzard Windows Anywhere (Save Position)", highlightTitle = "Drag Blizzard Windows Anywhere (Save Position)",
+      desc = "Left-Click and drag any managed Blizzard window from its title bar or any empty background space (no Alt key needed), automatically clamped on-screen and saved across sessions (Right-Click title bar to reset).",
+      keywords = "drag blizzard windows anywhere move save position empty space no alt left drag clamped on screen clamp right click header reset /ds windows /ds win" },
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
+      title = "Window Ctrl+Scroll Scaling", highlightTitle = "Window Ctrl+Scroll Scaling",
+      desc = "Hold Ctrl + Mousewheel on a Blizzard window header for temporary session scaling (70% to 140% in 5% steps), or Ctrl + Shift + Mousewheel anywhere on a window to save permanent scale.",
+      keywords = "window ctrl scroll scaling wheel resize zoom 70% 140% session permanent scale blizzard panel /ds windows /ds win" },
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
+      title = "Reset Blizzard Window Layout", highlightTitle = "Reset Blizzard Window Layout",
+      desc = "Restore all 32 managed Blizzard windows (including windowed Quest Log / World Map) to their default 100% scale and centred positions, with automatic silent yield when BlizzMove, NoAutoClose, DeModal, MoveAny, or EllesmereUI is active.",
+      keywords = "reset blizzard window layout reset all windows default 100% scale position blizzmove noautoclose demodal moveany ellesmereui shifter leatrix elvui coexistence /ds windows /ds win" },
+    { moduleKey = "STUDIO", category = "BAGS_QOL", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
       title = "Game Menu: DynamicSuite Button",
       desc = "Show or hide the 'DynamicSuite' shortcut button inside the Esc Game Menu.",
       keywords = "game menu esc escape button shortcut dynamicsuite hide show" },
-    { moduleKey = "STUDIO", category = "HUD_LOOK", tabIndex = "THEME_STUDIO", tabLabel = "Game Menu & Shortcuts",
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
       title = "Game Menu: DynamicSuite HUD Button",
       desc = "Show or hide the 'DynamicSuite HUD' button in the Esc Game Menu to unlock and move suite bars.",
       keywords = "game menu esc escape hud edit mode button shortcut move bars" },
-    { moduleKey = "STUDIO", category = "BAGS_QOL", tabIndex = "THEME_STUDIO", tabLabel = "Game Menu & Shortcuts",
+    { moduleKey = "STUDIO", category = "BAGS_QOL", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
       title = "Replace Blizzard AddOns Button",
       desc = "Open DynamicSuite instead of Blizzard's default AddOn list when clicking 'AddOns' in the Esc menu.",
       keywords = "replace blizzard addons list esc menu button intercept default addon list" },
@@ -3566,18 +3819,6 @@ local BUILTIN_SEARCH_SEED = {
       title = "Automated Healing Macro ([DynamicHeal])",
       desc = "Maintain a 1-button [DynamicHeal] macro that prioritises Recuperate out of combat and Warlock Healthstones > Healing Potions in combat.",
       keywords = "automated healing macro dynamicheal healthstone potion silvermoon recuperate survival" },
-    { moduleKey = "prep", category = "GENERAL", tabIndex = 3, tabLabel = "World & Survival QoL",
-      title = "Keep Blizzard Windows Open Side-by-Side",
-      desc = "Prevent opening standard Blizzard panels (Character, Talents, Dungeon Finder, Collections, Professions, Merchant, Mail, Auction House) from auto-closing other windows, with 1-by-1 Escape dismissal.",
-      keywords = "blizzard window multi panel no auto close side by side escape character pve merchant mail auction" },
-    { moduleKey = "prep", category = "GENERAL", tabIndex = 3, tabLabel = "World & Survival QoL",
-      title = "Draggable Blizzard Windows & Ctrl+Scroll Header Scaling",
-      desc = "Drag supported Blizzard window headers out of combat to save positions, Ctrl+Wheel to scale temporarily for the session or Ctrl+Shift+Wheel to save scale (70%-140%), and Right-Click header to reset.",
-      keywords = "draggable blizzard windows move save position ctrl scroll scale resize header right click reset" },
-    { moduleKey = "prep", category = "GENERAL", tabIndex = 3, tabLabel = "World & Survival QoL",
-      title = "Reset All Windows & Silent EllesmereUI Coexistence",
-      desc = "Restore all supported Blizzard panel positions and scales to defaults, or coexist silently when EllesmereUI Shifter frame management is enabled.",
-      keywords = "reset blizzard windows layout ellesmereui shifter coexistence" },
 
     -- ========================================================================
     -- 6. DYNAMICGROUP ("group") - LFG Region Filter, Auto-Invite & Keystones
@@ -4154,6 +4395,2168 @@ function addonTable.RestoreHubAfterCombat()
     EnsureHubWindowHooks()
 end
 
+--------------------------------------------------------------------------------
+-- Core Blizzard Desktop Window Manager (32 Managed Panels, True MS-Windows Behaviour)
+--------------------------------------------------------------------------------
+local function SafeRegisterSuiteEvent(frame, eventName)
+    if not frame or not eventName then return end
+    if _G.C_EventUtils and type(_G.C_EventUtils.IsEventValid) == "function" then
+        if not _G.C_EventUtils.IsEventValid(eventName) then
+            return
+        end
+    end
+    frame:RegisterEvent(eventName)
+end
+
+local DesktopWindows = {}
+addonTable.DesktopWindows = DesktopWindows
+DynamicSuite.DesktopWindows = DesktopWindows
+
+do
+    local SUPPORTED_BLIZZ_FRAMES = {
+        { name = "CharacterFrame",                 label = "Character" },
+        { name = "InspectFrame",                   label = "Inspect",            addon = "Blizzard_InspectUI" },
+        { name = "DressUpFrame",                   label = "Dressing Room" },
+        { name = "PlayerSpellsFrame",              label = "Talents & Spells",   addon = "Blizzard_PlayerSpells",              protected = true },
+        { name = "PVEFrame",                       label = "Group Finder",       addon = "Blizzard_GroupFinder",               protected = true },
+        { name = "WeeklyRewardsFrame",             label = "Great Vault",        addon = "Blizzard_WeeklyRewards" },
+        { name = "CommunitiesFrame",               label = "Guild & Communities", addon = "Blizzard_Communities" },
+        { name = "FriendsFrame",                   label = "Social & Friends" },
+        { name = "CollectionsJournal",             label = "Collections",        addon = "Blizzard_Collections" },
+        { name = "EncounterJournal",               label = "Adventure Guide",    addon = "Blizzard_EncounterJournal" },
+        { name = "ProfessionsFrame",               label = "Professions",        addon = "Blizzard_Professions",               protected = true },
+        { name = "ProfessionsBookFrame",           label = "Professions Book",   addon = "Blizzard_ProfessionsBook",           protected = true },
+        { name = "AchievementFrame",               label = "Achievements",       addon = "Blizzard_AchievementUI" },
+        { name = "ItemUpgradeFrame",               label = "Item Upgrade",       addon = "Blizzard_ItemUpgradeUI" },
+        { name = "CalendarFrame",                  label = "Calendar",           addon = "Blizzard_Calendar" },
+        { name = "MacroFrame",                     label = "Macros",             addon = "Blizzard_MacroUI" },
+        { name = "MerchantFrame",                  label = "Merchant" },
+        { name = "MailFrame",                      label = "Mail" },
+        { name = "AuctionHouseFrame",              label = "Auction House",      addon = "Blizzard_AuctionHouseUI" },
+        { name = "TradeFrame",                     label = "Trade" },
+        { name = "ItemSocketingFrame",             label = "Item Socketing",     addon = "Blizzard_ItemSocketingUI" },
+        { name = "ItemInteractionFrame",           label = "Revival Catalyst",   addon = "Blizzard_ItemInteractionUI" },
+        { name = "WardrobeFrame",                  label = "Transmogrify",       addon = "Blizzard_Collections" },
+        { name = "ProfessionsCustomerOrdersFrame", label = "Crafting Orders",    addon = "Blizzard_ProfessionsCustomerOrders", protected = true },
+        { name = "MajorFactionRenownFrame",        label = "Renown",             addon = "Blizzard_MajorFactions" },
+        { name = "DelvesDifficultyPickerFrame",    label = "Delves",             addon = "Blizzard_DelvesDifficultyPicker" },
+        { name = "ClassTrainerFrame",              label = "Trainer",            addon = "Blizzard_TrainerUI" },
+        { name = "GossipFrame",                    label = "NPC Gossip" },
+        { name = "QuestFrame",                     label = "Quest" },
+        { name = "BankFrame",                      label = "Bank" },
+        { name = "AddonList",                      label = "AddOn List" },
+        { name = "WorldMapFrame",                  label = "Map & Quest Log",    addon = "Blizzard_WorldMap",                  protected = true, windowedOnly = true },
+    }
+
+    local SUPPORTED_BY_NAME = {}
+    local SUPPORTED_ADDON_TRIGGER = {
+        NoAutoClose = true,
+        BlizzMove = true,
+        DeModal = true,
+        MoveAny = true,
+        EllesmereUI = true,
+        EllesmereUIQoL = true,
+        EllesmereUI_QoL = true,
+        Leatrix_Plus = true,
+        ElvUI = true,
+    }
+    for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+        SUPPORTED_BY_NAME[spec.name] = spec
+        if spec.addon then
+            SUPPORTED_ADDON_TRIGGER[spec.addon] = true
+        end
+    end
+
+    local EXCLUDED_BLIZZ_FRAMES = {
+        GameMenuFrame = true,
+    }
+
+    local SCALE_MIN  = 0.70
+    local SCALE_MAX  = 1.40
+    local SCALE_STEP = 0.05
+
+    local W = {
+        blizzWinState                = setmetatable({}, { __mode = "k" }),
+        hookedFrameNames             = {},
+        origUIPanelInfo              = {},
+        sessionScales                = {},
+        openPanelsSnapshot           = {},
+        lastShownAt                  = {},
+        lastAutoHiddenAt             = {},
+        lastExplicitCloseAt          = {},
+        showSeqCounter               = 0,
+        restoringPanels              = false,
+        escapeProtectedReShow        = {},
+        escapeClosedCount            = 0,
+        inShowUIPanelPostHook        = false,
+        inCloseSpecialWindowsPostHook = false,
+        inEscapeRestorePostHook      = false,
+        explicitCloseFrame           = nil,
+        showUIPanelHooked            = false,
+        hideUIPanelHooked            = false,
+        updateUIPanelHooked          = false,
+        closeSpecialHooked           = false,
+        closeWindowsHooked           = false,
+        closeAllHooked               = false,
+        toggleGameMenuHooked         = false,
+        toggleProfBookHooked         = false,
+        toggleFriendsHooked          = false,
+        toggleWorldMapHooked         = false,
+        toggleExtraHooksDone         = false,
+        globalMouseHooked            = false,
+        addonContinueRegistered      = {},
+        ellesmereHooksInstalled      = false,
+        secureHandler                = nil,
+        secureHandlerWorks           = nil,
+        scaleToast                   = nil,
+    }
+
+    DesktopWindows.SUPPORTED_BLIZZ_FRAMES  = SUPPORTED_BLIZZ_FRAMES
+    DesktopWindows.SUPPORTED_BY_NAME       = SUPPORTED_BY_NAME
+    DesktopWindows.SUPPORTED_ADDON_TRIGGER = SUPPORTED_ADDON_TRIGGER
+
+    local function InCombat()
+        return (type(_G.InCombatLockdown) == "function") and (_G.InCombatLockdown() == true)
+    end
+
+    local function SafeNum(val, fallback)
+        if val == nil then return fallback end
+        if issecretvalue and issecretvalue(val) then return fallback end
+        if type(canaccessvalue) == "function" then
+            local ok, canAcc = pcall(canaccessvalue, val)
+            if ok and not canAcc then return fallback end
+        end
+        local n = tonumber(val)
+        if type(n) == "number" then return n end
+        return fallback
+    end
+
+    local function GetFrameState(frame)
+        if not frame then return nil end
+        local st = W.blizzWinState[frame]
+        if not st then
+            st = {}
+            W.blizzWinState[frame] = st
+        end
+        return st
+    end
+
+    local function ClampNumber(v, minV, maxV)
+        if v < minV then return minV end
+        if v > maxV then return maxV end
+        return v
+    end
+
+    local function RoundScale(s)
+        local rounded = math.floor(SafeNum(s, 1.0) * 100 + 0.5) / 100
+        return ClampNumber(rounded, SCALE_MIN, SCALE_MAX)
+    end
+
+    local function IsWorldMapMaximized(frame, frameName)
+        if frameName ~= "WorldMapFrame" and frame ~= _G.WorldMapFrame then
+            return false
+        end
+        local wmf = frame or _G.WorldMapFrame
+        if not wmf then return false end
+        if type(wmf.IsMaximized) == "function" then
+            local ok, isMax = pcall(wmf.IsMaximized, wmf)
+            if ok and isMax == true then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function ClampDesktopWindowOffset(arg1, arg2, arg3, arg4, arg5)
+        local frame, ux, uy, scale
+        if arg1 == DesktopWindows then
+            frame, ux, uy, scale = arg2, arg3, arg4, arg5
+        else
+            frame, ux, uy, scale = arg1, arg2, arg3, arg4
+        end
+        ux = SafeNum(ux, 0)
+        uy = SafeNum(uy, 0)
+        local s = SafeNum(scale, 1.0)
+        if s <= 0 then s = 1.0 end
+        local uip = _G.UIParent
+        if not uip or not frame then return ux, uy end
+        local okW, rawUipW = pcall(uip.GetWidth, uip)
+        local okH, rawUipH = pcall(uip.GetHeight, uip)
+        local okFW, rawFW = pcall(frame.GetWidth, frame)
+        local okFH, rawFH = pcall(frame.GetHeight, frame)
+        local uipW = okW and SafeNum(rawUipW, 0) or 0
+        local uipH = okH and SafeNum(rawUipH, 0) or 0
+        local fw   = (okFW and SafeNum(rawFW, 0) or 0) * s
+        local fh   = (okFH and SafeNum(rawFH, 0) or 0) * s
+        if uipW <= 0 or uipH <= 0 or fw <= 0 or fh <= 0 then
+            return ux, uy
+        end
+        local halfUipW = uipW * 0.5
+        local halfUipH = uipH * 0.5
+        local halfFW   = fw * 0.5
+        local halfFH   = fh * 0.5
+
+        local minUX = -halfUipW + halfFW
+        local maxUX = halfUipW - halfFW
+        if minUX <= maxUX then
+            ux = ClampNumber(ux, minUX, maxUX)
+        else
+            -- Oversized scaled width: pin right edge and [X] Close button inside visible right bound of UIParent
+            ux = maxUX
+        end
+
+        local minUY = -halfUipH + halfFH
+        local maxUY = halfUipH - halfFH
+        if minUY <= maxUY then
+            uy = ClampNumber(uy, minUY, maxUY)
+        else
+            -- Oversized scaled height: pin top title bar and [X] Close button inside visible top bound of UIParent
+            uy = maxUY
+        end
+        return ux, uy
+    end
+    DesktopWindows.ClampWindowOffset        = ClampDesktopWindowOffset
+    DesktopWindows.ClampDesktopWindowOffset = ClampDesktopWindowOffset
+    addonTable.ClampDesktopWindowOffset     = ClampDesktopWindowOffset
+    DynamicSuite.ClampDesktopWindowOffset   = ClampDesktopWindowOffset
+
+    local function GetTopMouseFocus()
+        if type(_G.GetMouseFoci) == "function" then
+            local ok, foci = pcall(_G.GetMouseFoci)
+            if ok and type(foci) == "table" and foci[1] then
+                return foci[1]
+            end
+        end
+        if type(_G.GetMouseFocus) == "function" then
+            local ok, focus = pcall(_G.GetMouseFocus)
+            if ok and focus then
+                return focus
+            end
+        end
+        return nil
+    end
+
+    local INTERACTIVE_WIDGET_TYPES = {
+        Button               = true,
+        ItemButton           = true,
+        CheckButton          = true,
+        EditBox              = true,
+        Slider               = true,
+        ScrollFrame          = true,
+        EventScrollFrame     = true,
+        Cooldown             = true,
+        ColorSelect          = true,
+        DropDownToggleButton = true,
+        EventButton          = true,
+        ModelScene           = true,
+        PlayerModel          = true,
+        DressUpModel         = true,
+        TabardModel          = true,
+        CinematicModel       = true,
+    }
+
+    local function IsPassiveWindowDragTarget(focusRegion, rootFrame)
+        if not rootFrame then return false end
+        if not focusRegion then return true end
+        if focusRegion == rootFrame then return true end
+        local st = W.blizzWinState[rootFrame]
+        if st and focusRegion == st.overlay then return true end
+        if rootFrame.TitleContainer and focusRegion == rootFrame.TitleContainer then return true end
+        if focusRegion == _G.UIParent or focusRegion == _G.WorldFrame then return false end
+
+        local cur = focusRegion
+        local foundRoot = false
+        for _ = 1, 16 do
+            if not cur then break end
+            if cur == rootFrame then
+                foundRoot = true
+                break
+            end
+            if st and cur == st.overlay then
+                return true
+            end
+            if rootFrame.TitleContainer and cur == rootFrame.TitleContainer then
+                return true
+            end
+            if not cur._dsPassiveChrome then
+                if type(cur.GetObjectType) == "function" then
+                    local okT, objType = pcall(cur.GetObjectType, cur)
+                    if okT and objType and INTERACTIVE_WIDGET_TYPES[objType] then
+                        return false
+                    end
+                end
+                if type(cur.GetScript) == "function" then
+                    local ok1, sClick = pcall(cur.GetScript, cur, "OnClick")
+                    if ok1 and sClick then return false end
+                    local ok2, sDbl = pcall(cur.GetScript, cur, "OnDoubleClick")
+                    if ok2 and sDbl then return false end
+                    local ok3, sDrag = pcall(cur.GetScript, cur, "OnDragStart")
+                    if ok3 and sDrag then return false end
+                    local ok4, sDown = pcall(cur.GetScript, cur, "OnMouseDown")
+                    if ok4 and sDown then return false end
+                    local ok5, sUp = pcall(cur.GetScript, cur, "OnMouseUp")
+                    if ok5 and sUp then return false end
+                end
+            end
+            if type(cur.GetParent) ~= "function" then break end
+            local okP, parent = pcall(cur.GetParent, cur)
+            if not okP then break end
+            cur = parent
+        end
+        return foundRoot
+    end
+
+    local function IsFunctionOnStack(fnRef, fnName, altName)
+        if type(_G.debug) == "table" and type(_G.debug.getinfo) == "function" then
+            for level = 2, 18 do
+                local ok, info = pcall(_G.debug.getinfo, level, "nf")
+                if not ok or not info then break end
+                if (fnRef and info.func == fnRef)
+                    or (fnName and info.name == fnName)
+                    or (altName and info.name == altName) then
+                    return true
+                end
+            end
+        end
+        if type(_G.debugstack) == "function" then
+            local ok, stack = pcall(_G.debugstack, 2, 14, 0)
+            if ok and type(stack) == "string" then
+                if (fnName and stack:find(fnName, 1, true))
+                    or (altName and stack:find(altName, 1, true)) then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
+    local function IsShowUIPanelOnStack()
+        if W.inShowUIPanelPostHook then return false end
+        if IsFunctionOnStack(_G.ShowUIPanel, "ShowUIPanel", "SetUIPanel") then return true end
+        if IsFunctionOnStack(_G.ToggleQuestLog, "ToggleQuestLog", "OpenWorldMap") then return true end
+        if IsFunctionOnStack(_G.ToggleWorldMap, "ToggleWorldMap", "OpenWorldMap") then return true end
+        return false
+    end
+
+    local function IsEscapeCloseOnStack()
+        if W.inEscapeRestorePostHook or W.inCloseSpecialWindowsPostHook then return false end
+        if IsFunctionOnStack(_G.ToggleGameMenu, "ToggleGameMenu", "CloseWindows") then return true end
+        if IsFunctionOnStack(_G.CloseWindows, "CloseWindows", "CloseAllWindows") then return true end
+        if IsFunctionOnStack(_G.CloseAllWindows, "CloseAllWindows", "CloseSpecialWindows") then return true end
+        if IsFunctionOnStack(_G.CloseSpecialWindows, "CloseSpecialWindows", "CloseWindows") then return true end
+        return false
+    end
+
+    local function GetSuiteAccentHex()
+        if addonTable.UI and type(addonTable.UI.GetActiveAccentColor) == "function" then
+            local ok, r, g, b = pcall(addonTable.UI.GetActiveAccentColor)
+            if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                return string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+            end
+        end
+        return "F97316"
+    end
+
+    local function EnsureScaleToast()
+        if W.scaleToast then return W.scaleToast end
+        local parent = _G.UIParent
+        if not parent then return nil end
+        local f = CreateFrame("Frame", "DynamicSuiteWindowScaleToast", parent, "BackdropTemplate")
+        f:SetSize(210, 26)
+        f:SetFrameStrata("TOOLTIP")
+        f:SetFrameLevel(200)
+        if f.SetBackdrop then
+            f:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 1,
+            })
+            f:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+            f:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
+        end
+
+        local bar = f:CreateTexture(nil, "ARTWORK")
+        bar:SetSize(3, 24)
+        bar:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
+        bar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 1)
+        bar:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        f.accentBar = bar
+
+        local lbl = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        local fontPath = (addonTable.ResolveFontChoice and addonTable.ResolveFontChoice()) or ("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Expressway.TTF")
+        pcall(lbl.SetFont, lbl, fontPath, 11, "")
+        lbl:SetPoint("CENTER", f, "CENTER", 2, 0)
+        lbl:SetJustifyH("CENTER")
+        lbl:SetWordWrap(false)
+        f.label = lbl
+
+        f.expireAt = 0
+        f:SetScript("OnUpdate", function(selfToast)
+            if not selfToast:IsShown() then return end
+            local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+            local rem = (selfToast.expireAt or 0) - now
+            if rem <= 0 then
+                selfToast:SetAlpha(1)
+                selfToast:Hide()
+            elseif rem < 0.35 then
+                selfToast:SetAlpha(ClampNumber(rem / 0.35, 0, 1))
+            else
+                selfToast:SetAlpha(1)
+            end
+        end)
+        f:Hide()
+        W.scaleToast = f
+        return f
+    end
+
+    local function ShowWindowToast(anchorFrame, text, isSaved)
+        local toast = EnsureScaleToast()
+        if not toast or not text then return end
+        local badge = isSaved and "|cFFF97316Saved|r" or "|cFFCBD5E1Session|r"
+        if text:find("^Reset") then
+            toast.label:SetText("|cFFF97316" .. text .. "|r")
+        else
+            toast.label:SetText(string.format("%s  |cFFFFFFFF%s|r", badge, text))
+        end
+        local tw = (toast.label.GetStringWidth and toast.label:GetStringWidth()) or 140
+        toast:SetWidth(math.max(156, SafeNum(tw, 140) + 26))
+        toast:ClearAllPoints()
+        if anchorFrame and _G.UIParent then
+            toast:SetPoint("BOTTOM", anchorFrame, "TOP", 0, 8)
+            toast:SetClampedToScreen(true)
+        elseif _G.UIParent then
+            toast:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 180)
+        end
+        local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+        toast.expireAt = now + 1.35
+        toast:SetAlpha(1)
+        toast:Show()
+    end
+
+    local function EnsureSecureHandler()
+        if W.secureHandlerWorks ~= nil then
+            return W.secureHandler, W.secureHandlerWorks
+        end
+        local parent = _G.UIParent
+        if not parent or type(_G.CreateFrame) ~= "function" then
+            W.secureHandlerWorks = false
+            return nil, false
+        end
+        local ok, sec = pcall(_G.CreateFrame, "Frame", "DynamicSuiteBlizzWinSecureHandler", parent, "SecureHandlerBaseTemplate")
+        if ok and sec and type(sec.Execute) == "function" and type(sec.SetFrameRef) == "function" then
+            sec:Hide()
+            local okProbe = pcall(function()
+                sec:SetAttribute("ds_probe", 0)
+                sec:Execute([[ self:SetAttribute("ds_probe", 1) ]])
+            end)
+            if okProbe and type(sec.GetAttribute) == "function" and sec:GetAttribute("ds_probe") == 1 then
+                pcall(sec.SetFrameRef, sec, "uip", parent)
+                W.secureHandler = sec
+                W.secureHandlerWorks = true
+                return sec, true
+            end
+        end
+        W.secureHandler = sec
+        W.secureHandlerWorks = false
+        return sec, false
+    end
+
+    local function SecureApplyPoint(frame, ux, uy, scale)
+        if InCombat() or not frame then return false, ux, uy end
+        local fName = frame.GetName and frame:GetName()
+        if IsWorldMapMaximized(frame, fName) then return false, ux, uy end
+        local st = GetFrameState(frame)
+        if st.applyingPoint then return false, ux, uy end
+        st.applyingPoint = true
+        local s = (type(scale) == "number" and scale > 0) and scale or 1.0
+        local clampedUX, clampedUY = ClampDesktopWindowOffset(frame, ux, uy, s)
+        local argX = clampedUX / s
+        local argY = clampedUY / s
+        local applied = false
+        local sec, works = EnsureSecureHandler()
+        if works and sec then
+            applied = pcall(function()
+                sec:SetFrameRef("f", frame)
+                sec:SetAttribute("ds_x", argX)
+                sec:SetAttribute("ds_y", argY)
+                sec:Execute([[
+                    local f = self:GetFrameRef("f")
+                    local uip = self:GetFrameRef("uip")
+                    local x = tonumber(self:GetAttribute("ds_x")) or 0
+                    local y = tonumber(self:GetAttribute("ds_y")) or 0
+                    if f and uip then
+                        f:ClearAllPoints()
+                        f:SetPoint("CENTER", uip, "CENTER", x, y)
+                    end
+                ]])
+            end)
+        end
+        if not applied then
+            applied = pcall(function()
+                if type(frame.ClearAllPoints) == "function" then
+                    frame:ClearAllPoints()
+                end
+                if type(frame.SetPoint) == "function" then
+                    frame:SetPoint("CENTER", _G.UIParent, "CENTER", argX, argY)
+                end
+            end)
+        end
+        st.applyingPoint = false
+        return applied, clampedUX, clampedUY
+    end
+
+    local function SecureApplyScale(frame, scale)
+        if InCombat() or not frame then return false end
+        local fName = frame.GetName and frame:GetName()
+        if IsWorldMapMaximized(frame, fName) then return false end
+        local s = RoundScale(scale)
+        local sec, works = EnsureSecureHandler()
+        if works and sec then
+            local ok = pcall(function()
+                sec:SetFrameRef("f", frame)
+                sec:SetAttribute("ds_scale", s)
+                sec:Execute([[
+                    local f = self:GetFrameRef("f")
+                    local s = tonumber(self:GetAttribute("ds_scale")) or 1
+                    if f and s > 0 then
+                        f:SetScale(s)
+                    end
+                ]])
+            end)
+            if ok then return true end
+        end
+        if type(frame.SetScale) == "function" then
+            return pcall(frame.SetScale, frame, s)
+        end
+        return false
+    end
+
+    local function SnapshotOrigUIPanelInfo(frame, frameName)
+        if W.origUIPanelInfo[frameName] then return W.origUIPanelInfo[frameName] end
+        local uipInfo = (_G.UIPanelWindows and _G.UIPanelWindows[frameName]) or nil
+        local attrDefined = frame.GetAttribute and frame:GetAttribute("UIPanelLayout-defined")
+        local attrEnabled = frame.GetAttribute and frame:GetAttribute("UIPanelLayout-enabled")
+        local attrArea = frame.GetAttribute and frame:GetAttribute("UIPanelLayout-area")
+        local whileDead = (uipInfo and uipInfo.whileDead) or (frame.GetAttribute and frame:GetAttribute("UIPanelLayout-whileDead"))
+        local clamped = true
+        if type(frame.IsClampedToScreen) == "function" then
+            local okC, valC = pcall(frame.IsClampedToScreen, frame)
+            if okC and type(valC) == "boolean" then
+                clamped = valC
+            end
+        end
+        local origStrata = (type(frame.GetFrameStrata) == "function" and frame:GetFrameStrata()) or "MEDIUM"
+        local origTopLvl = (type(frame.IsToplevel) == "function" and frame:IsToplevel()) or false
+        local pt, relTo, relPt, px, py
+        if type(frame.GetPoint) == "function" then
+            local okP, a, b, c, d, e = pcall(frame.GetPoint, frame, 1)
+            if okP and a then
+                pt, relTo, relPt, px, py = a, b, c, d, e
+            end
+        end
+        W.origUIPanelInfo[frameName] = {
+            defined         = attrDefined,
+            enabled         = attrEnabled,
+            area            = attrArea or (uipInfo and uipInfo.area) or "left",
+            whileDead       = whileDead and true or false,
+            clampedToScreen = clamped,
+            defaultScale    = SafeNum(frame.GetScale and frame:GetScale(), 1.0),
+            strata          = origStrata,
+            toplevel        = origTopLvl,
+            point           = pt,
+            relTo           = relTo,
+            relPoint        = relPt,
+            x               = SafeNum(px, 0),
+            y               = SafeNum(py, 0),
+        }
+        return W.origUIPanelInfo[frameName]
+    end
+
+    local function IsInUISpecialFrames(frameName)
+        if type(_G.UISpecialFrames) ~= "table" or not frameName then return false, nil end
+        for i = 1, #_G.UISpecialFrames do
+            if _G.UISpecialFrames[i] == frameName then
+                return true, i
+            end
+        end
+        return false, nil
+    end
+
+    local function AddToUISpecialFrames(frameName)
+        if type(_G.UISpecialFrames) ~= "table" or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] then return end
+        if not IsInUISpecialFrames(frameName) then
+            table.insert(_G.UISpecialFrames, frameName)
+        end
+    end
+
+    local function RemoveFromUISpecialFrames(frameName)
+        if type(_G.UISpecialFrames) ~= "table" or not frameName then return end
+        for i = #_G.UISpecialFrames, 1, -1 do
+            if _G.UISpecialFrames[i] == frameName then
+                table.remove(_G.UISpecialFrames, i)
+            end
+        end
+    end
+
+    local function SyncAllUISpecialFrames()
+        if type(_G.UISpecialFrames) ~= "table" or InCombat() then return end
+        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+            if not (spec.name == "WorldMapFrame" and IsWorldMapMaximized(_G.WorldMapFrame, "WorldMapFrame")) then
+                RemoveFromUISpecialFrames(spec.name)
+            end
+        end
+        if DesktopWindows:IsYielding() then
+            return
+        end
+        local shownList = {}
+        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+            local bf = _G[spec.name]
+            if bf and bf.IsShown and bf:IsShown() and not IsWorldMapMaximized(bf, spec.name) then
+                shownList[#shownList + 1] = spec.name
+            end
+        end
+        -- Order most recently opened/focused windows first so CloseSpecialWindows hits top-most panel first
+        table.sort(shownList, function(a, b)
+            return (W.lastShownAt[a] or 0) > (W.lastShownAt[b] or 0)
+        end)
+        for _, name in ipairs(shownList) do
+            AddToUISpecialFrames(name)
+        end
+    end
+
+    local function HasNewerShownPanel(targetName)
+        local targetSeq = W.lastShownAt[targetName] or 0
+        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+            if spec.name ~= targetName then
+                local bf = _G[spec.name]
+                if bf and bf.IsShown and bf:IsShown() and not IsWorldMapMaximized(bf, spec.name) and (W.lastShownAt[spec.name] or 0) > targetSeq then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
+    local function GetActiveFrameScale(frameName)
+        if W.sessionScales[frameName] then
+            return RoundScale(W.sessionScales[frameName])
+        end
+        local db = GetDesktopWindowsDB()
+        local saved = db and db.scales and db.scales[frameName]
+        if type(saved) == "number" and saved > 0 then
+            return RoundScale(saved)
+        end
+        local orig = W.origUIPanelInfo[frameName]
+        return (orig and orig.defaultScale) or 1.0
+    end
+
+    local function CaptureFrameCenterOffset(frame, frameName)
+        local uip = _G.UIParent
+        if not uip or not frame or type(frame.GetCenter) ~= "function" or type(uip.GetCenter) ~= "function" then
+            return nil, nil
+        end
+        local okF, fcX, fcY = pcall(frame.GetCenter, frame)
+        local okU, ucX, ucY = pcall(uip.GetCenter, uip)
+        fcX, fcY = okF and SafeNum(fcX, nil) or nil, okF and SafeNum(fcY, nil) or nil
+        ucX, ucY = okU and SafeNum(ucX, nil) or nil, okU and SafeNum(ucY, nil) or nil
+        if not fcX or not fcY or not ucX or not ucY then
+            return nil, nil
+        end
+        local scale = GetActiveFrameScale(frameName)
+        return (fcX * scale) - ucX, (fcY * scale) - ucY
+    end
+
+    local function SyncFrameClamping(frame, frameName)
+        if InCombat() or not frame or IsWorldMapMaximized(frame, frameName) then return end
+        if type(frame.SetClampedToScreen) == "function" then
+            pcall(frame.SetClampedToScreen, frame, true)
+        end
+        if type(frame.SetClampRectInsets) == "function" then
+            pcall(frame.SetClampRectInsets, frame, 0, 0, 0, 0)
+        end
+    end
+
+    local function NormalizeDesktopWindowLayer(frame, frameName)
+        if InCombat() or not frame or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) then return end
+        if DesktopWindows:IsYielding() then return end
+        local db = GetDesktopWindowsDB()
+        if not (db and db.sideBySide ~= false) then return end
+        if type(frame.GetFrameStrata) == "function" and type(frame.SetFrameStrata) == "function" then
+            local okS, curStrata = pcall(frame.GetFrameStrata, frame)
+            if okS and (curStrata == "BACKGROUND" or curStrata == "LOW" or curStrata == "MEDIUM") then
+                pcall(frame.SetFrameStrata, frame, "HIGH")
+            end
+        end
+        if type(frame.SetToplevel) == "function" then
+            pcall(frame.SetToplevel, frame, true)
+        end
+    end
+
+    local function FocusAndRaiseDesktopWindow(frame, frameName)
+        if InCombat() or not frame or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) then return end
+        if DesktopWindows:IsYielding() then return end
+        NormalizeDesktopWindowLayer(frame, frameName)
+        W.showSeqCounter = W.showSeqCounter + 1
+        W.lastShownAt[frameName] = W.showSeqCounter
+        if type(frame.Raise) == "function" then
+            pcall(frame.Raise, frame)
+        end
+        SyncAllUISpecialFrames()
+    end
+
+    local function ClampAndReanchorFrame(frame, frameName)
+        if InCombat() or not frame or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) then return end
+        if DesktopWindows:IsYielding() then return end
+        local st = GetFrameState(frame)
+        if st and st.isDragging then return end
+        SyncFrameClamping(frame, frameName)
+        local db = GetDesktopWindowsDB()
+        if not db then return end
+        local scale = GetActiveFrameScale(frameName)
+        local canDrag = (db.dragAnywhere ~= false)
+        local noAutoClose = (db.sideBySide ~= false)
+        local savedPos = canDrag and db.positions and db.positions[frameName]
+        if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
+            local cx, cy = ClampDesktopWindowOffset(frame, savedPos.x, savedPos.y, scale)
+            SecureApplyPoint(frame, cx, cy, scale)
+        elseif noAutoClose and st and st.frozenUX and st.frozenUY then
+            local cx, cy = ClampDesktopWindowOffset(frame, st.frozenUX, st.frozenUY, scale)
+            st.frozenUX, st.frozenUY = cx, cy
+            SecureApplyPoint(frame, cx, cy, scale)
+        elseif frame.IsShown and frame:IsShown() then
+            local fx, fy = CaptureFrameCenterOffset(frame, frameName)
+            if fx and fy then
+                local cx, cy = ClampDesktopWindowOffset(frame, fx, fy, scale)
+                if math.abs(cx - fx) > 0.5 or math.abs(cy - fy) > 0.5 then
+                    SecureApplyPoint(frame, cx, cy, scale)
+                end
+            end
+        end
+    end
+
+    local function StepBlizzardFrameScale(frame, frameName, delta, savePermanent)
+        if not frame or not frameName or InCombat() or IsWorldMapMaximized(frame, frameName) then return false end
+        if DesktopWindows:IsYielding() then return false end
+        local db = GetDesktopWindowsDB()
+        if not (db and db.scrollScale ~= false) then return false end
+        if type(delta) ~= "number" or delta == 0 then return false end
+
+        local st = GetFrameState(frame)
+        local step = (delta > 0) and SCALE_STEP or -SCALE_STEP
+        if savePermanent == false and _G.IsShiftKeyDown and _G.IsShiftKeyDown() then
+            step = (delta > 0) and 0.01 or -0.01
+        end
+        local curScale = GetActiveFrameScale(frameName)
+        local newScale = RoundScale(curScale + step)
+        local persist = (savePermanent == true)
+
+        if persist then
+            db.scales = type(db.scales) == "table" and db.scales or {}
+            db.scales[frameName] = newScale
+            W.sessionScales[frameName] = nil
+        else
+            W.sessionScales[frameName] = newScale
+        end
+
+        SecureApplyScale(frame, newScale)
+        local savedPos = db.positions and db.positions[frameName]
+        if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
+            local _, cx, cy = SecureApplyPoint(frame, savedPos.x, savedPos.y, newScale)
+            if persist and cx and cy then
+                savedPos.x = math.floor(cx * 100 + 0.5) / 100
+                savedPos.y = math.floor(cy * 100 + 0.5) / 100
+            end
+        elseif st and st.frozenUX and st.frozenUY then
+            local _, cx, cy = SecureApplyPoint(frame, st.frozenUX, st.frozenUY, newScale)
+            st.frozenUX, st.frozenUY = cx, cy
+        else
+            local fx, fy = CaptureFrameCenterOffset(frame, frameName)
+            if fx and fy then
+                SecureApplyPoint(frame, fx, fy, newScale)
+            end
+        end
+        ShowWindowToast(frame, string.format("Scale: %d%%", math.floor(newScale * 100 + 0.5)), persist)
+        return true
+    end
+
+    local function EnsureHeaderOverlay(frame, frameName)
+        local st = GetFrameState(frame)
+        if st.overlay then return st end
+
+        local ov = CreateFrame("Frame", nil, frame)
+        ov._dsPassiveChrome = true
+        ov:SetPoint("TOPLEFT", frame, "TOPLEFT", 24, -2)
+        ov:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -58, -2)
+        ov:SetHeight(26)
+        local titleLvl = (frame.TitleContainer and frame.TitleContainer.GetFrameLevel and frame.TitleContainer:GetFrameLevel()) or 0
+        local baseLvl = math.max((frame.GetFrameLevel and frame:GetFrameLevel()) or 1, titleLvl)
+        ov:SetFrameLevel(baseLvl + 50)
+
+        local function BeginBlizzFrameDrag(frameObj, fName, state)
+            if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(frameObj, fName) then return end
+            local db = GetDesktopWindowsDB()
+            if not (db and db.dragAnywhere ~= false) then return end
+            local uip = _G.UIParent
+            if not uip or not frameObj then return end
+
+            state.isDragging = true
+            if type(frameObj.StopMovingOrSizing) == "function" then
+                pcall(frameObj.StopMovingOrSizing, frameObj)
+            end
+            FocusAndRaiseDesktopWindow(frameObj, fName)
+            if type(frameObj.SetMovable) == "function" then
+                pcall(frameObj.SetMovable, frameObj, true)
+            end
+            SyncFrameClamping(frameObj, fName)
+
+            local s = GetActiveFrameScale(fName)
+            local startUX, startUY = CaptureFrameCenterOffset(frameObj, fName)
+            if not startUX or not startUY then
+                local saved = db.positions and db.positions[fName]
+                startUX = (saved and saved.x) or 0
+                startUY = (saved and saved.y) or 0
+            end
+            startUX, startUY = ClampDesktopWindowOffset(frameObj, startUX, startUY, s)
+
+            local curX, curY = 0, 0
+            if type(_G.GetCursorPosition) == "function" then
+                local cx, cy = _G.GetCursorPosition()
+                curX, curY = SafeNum(cx, 0), SafeNum(cy, 0)
+            end
+            local uipEff = SafeNum(uip.GetEffectiveScale and uip:GetEffectiveScale(), 1)
+            if uipEff <= 0 then uipEff = 1 end
+
+            state.dragScale     = s
+            state.dragStartCurX = curX
+            state.dragStartCurY = curY
+            state.dragStartUX   = startUX
+            state.dragStartUY   = startUY
+            state.grabOffsetX   = startUX - (curX / uipEff)
+            state.grabOffsetY   = startUY - (curY / uipEff)
+            state.lastAppliedUX = startUX
+            state.lastAppliedUY = startUY
+            state.usingNativeMove = false
+
+            SecureApplyPoint(frameObj, startUX, startUY, s)
+
+            if state.overlay and state.overlay.SetScript then
+                state.overlay:SetScript("OnUpdate", function(selfOv)
+                    if not state.isDragging or InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(frameObj, fName) then
+                        selfOv:SetScript("OnUpdate", nil)
+                        if state.isDragging and state.finishDrag then
+                            state.finishDrag()
+                        end
+                        return
+                    end
+                    if type(_G.IsMouseButtonDown) == "function" and not _G.IsMouseButtonDown("LeftButton") then
+                        selfOv:SetScript("OnUpdate", nil)
+                        if state.finishDrag then
+                            state.finishDrag()
+                        end
+                        return
+                    end
+                    if type(_G.GetCursorPosition) ~= "function" then return end
+                    local nx, ny = _G.GetCursorPosition()
+                    nx, ny = SafeNum(nx, nil), SafeNum(ny, nil)
+                    if not nx or not ny then return end
+                    local eff = SafeNum(uip.GetEffectiveScale and uip:GetEffectiveScale(), 1)
+                    if eff <= 0 then eff = 1 end
+                    local rawUX = (nx / eff) + (state.grabOffsetX or 0)
+                    local rawUY = (ny / eff) + (state.grabOffsetY or 0)
+                    local dragScale = state.dragScale or s
+                    local targetUX, targetUY = ClampDesktopWindowOffset(frameObj, rawUX, rawUY, dragScale)
+                    if math.abs(targetUX - (state.lastAppliedUX or targetUX)) >= 0.25 or math.abs(targetUY - (state.lastAppliedUY or targetUY)) >= 0.25 then
+                        state.lastAppliedUX = targetUX
+                        state.lastAppliedUY = targetUY
+                        SecureApplyPoint(frameObj, targetUX, targetUY, dragScale)
+                    end
+                end)
+            end
+        end
+
+        local function FinishBlizzFrameDrag(frameObj, fName, state)
+            if state and state.overlay and state.overlay.SetScript then
+                state.overlay:SetScript("OnUpdate", nil)
+            end
+            if not InCombat() and frameObj and type(frameObj.StopMovingOrSizing) == "function" then
+                pcall(frameObj.StopMovingOrSizing, frameObj)
+            end
+            if not state or not state.isDragging then return end
+            state.isDragging = false
+            state.usingNativeMove = nil
+            if InCombat() then return end
+            local db = GetDesktopWindowsDB()
+            local uip = _G.UIParent
+            if not db or not uip or not frameObj or IsWorldMapMaximized(frameObj, fName) then return end
+            local scale = GetActiveFrameScale(fName)
+            local ux = state.lastAppliedUX
+            local uy = state.lastAppliedUY
+            if type(ux) ~= "number" or type(uy) ~= "number" then
+                local fx, fy = CaptureFrameCenterOffset(frameObj, fName)
+                if fx and fy then
+                    ux, uy = fx, fy
+                else
+                    ux = state.dragStartUX or 0
+                    uy = state.dragStartUY or 0
+                end
+            end
+            ux, uy = ClampDesktopWindowOffset(frameObj, ux, uy, scale)
+            local finalUX = math.floor(ux * 100 + 0.5) / 100
+            local finalUY = math.floor(uy * 100 + 0.5) / 100
+            state.frozenUX = nil
+            state.frozenUY = nil
+            state.grabOffsetX = nil
+            state.grabOffsetY = nil
+            state.lastAppliedUX = nil
+            state.lastAppliedUY = nil
+            db.positions = type(db.positions) == "table" and db.positions or {}
+            db.positions[fName] = {
+                point    = "CENTER",
+                relPoint = "CENTER",
+                x        = finalUX,
+                y        = finalUY,
+            }
+            SecureApplyPoint(frameObj, finalUX, finalUY, scale)
+        end
+
+        st.beginDrag = function() BeginBlizzFrameDrag(frame, frameName, st) end
+        st.finishDrag = function() FinishBlizzFrameDrag(frame, frameName, st) end
+
+        ov:RegisterForDrag("LeftButton")
+        ov:SetScript("OnMouseDown", function()
+            if InCombat() or DesktopWindows:IsYielding() then return end
+            FocusAndRaiseDesktopWindow(frame, frameName)
+        end)
+        ov:SetScript("OnDragStart", function(_, button)
+            if button and button ~= "LeftButton" then return end
+            BeginBlizzFrameDrag(frame, frameName, st)
+        end)
+        ov:SetScript("OnDragStop", function()
+            FinishBlizzFrameDrag(frame, frameName, st)
+        end)
+        ov:SetScript("OnHide", function()
+            FinishBlizzFrameDrag(frame, frameName, st)
+        end)
+        ov:SetScript("OnMouseUp", function(selfOv, button)
+            if button ~= "RightButton" then return end
+            if InCombat() or DesktopWindows:IsYielding() then return end
+            if type(_G.MouseIsOver) == "function" and not _G.MouseIsOver(selfOv) then return end
+            DesktopWindows:ResetSingleWindow(frameName, true)
+        end)
+        ov:SetScript("OnMouseWheel", function(_, delta)
+            if InCombat() or DesktopWindows:IsYielding() then return end
+            local db = GetDesktopWindowsDB()
+            if not (db and db.scrollScale ~= false) then return end
+            if not (_G.IsControlKeyDown and _G.IsControlKeyDown()) then return end
+            local savePermanent = (_G.IsShiftKeyDown and _G.IsShiftKeyDown()) and true or false
+            StepBlizzardFrameScale(frame, frameName, delta, savePermanent)
+        end)
+        ov:SetScript("OnEnter", function(selfOv)
+            if InCombat() or DesktopWindows:IsYielding() then return end
+            if not _G.GameTooltip then return end
+            local db = GetDesktopWindowsDB()
+            local canDrag = db and (db.dragAnywhere ~= false)
+            local canScale = db and (db.scrollScale ~= false)
+            if not canDrag and not canScale then return end
+            _G.GameTooltip:SetOwner(selfOv, "ANCHOR_TOP")
+            _G.GameTooltip:AddLine("DynamicSuite Window Controls", 0.976, 0.451, 0.086)
+            if canDrag then
+                _G.GameTooltip:AddLine("Left-Drag Header or Empty Space: Move and save position", 0.90, 0.93, 0.96)
+            end
+            if canScale then
+                _G.GameTooltip:AddLine("Ctrl + Scroll Header: Scale this session (70%-140%)", 0.90, 0.93, 0.96)
+                _G.GameTooltip:AddLine("Ctrl + Shift + Scroll Anywhere: Save permanent scale", 0.90, 0.93, 0.96)
+            end
+            _G.GameTooltip:AddLine("Right-Click Header: Reset position & scale", 0.65, 0.72, 0.80)
+            _G.GameTooltip:Show()
+        end)
+        ov:SetScript("OnLeave", function()
+            if _G.GameTooltip then _G.GameTooltip:Hide() end
+        end)
+
+        st.overlay = ov
+        return st
+    end
+
+    local function NeutraliseTitleContainerDrag(frame, frameName, st)
+        if not frame or not frame.TitleContainer or InCombat() or IsWorldMapMaximized(frame, frameName) then return end
+        if DesktopWindows:IsYielding() then return end
+        local db = GetDesktopWindowsDB()
+        if not (db and db.dragAnywhere ~= false) then return end
+        local tc = frame.TitleContainer
+        tc._dsPassiveChrome = true
+        if tc._dsDragHooked then return end
+        tc._dsDragHooked = true
+        if type(tc.RegisterForDrag) == "function" then
+            pcall(tc.RegisterForDrag, tc, "LeftButton")
+        end
+        if type(tc.SetScript) == "function" then
+            pcall(tc.SetScript, tc, "OnDragStart", function(_, button)
+                if button and button ~= "LeftButton" then return end
+                if st and st.beginDrag then st.beginDrag() end
+            end)
+            pcall(tc.SetScript, tc, "OnDragStop", function()
+                if st and st.finishDrag then st.finishDrag() end
+            end)
+        end
+    end
+
+    local function AttachPassiveChromeDragHooks(frame, frameName, st)
+        if not frame or not st then return end
+        local chromeKeys = { "NineSlice", "Bg", "Inset", "LeftInset", "RightInset", "BottomInset", "TitleContainer" }
+        for _, key in ipairs(chromeKeys) do
+            local child = frame[key]
+            if type(child) == "table" and not child._dsPassiveChromeHooked then
+                child._dsPassiveChrome = true
+                child._dsPassiveChromeHooked = true
+                if key == "TitleContainer" then
+                    NeutraliseTitleContainerDrag(frame, frameName, st)
+                elseif type(child.HookScript) == "function" and type(child.RegisterForDrag) == "function" then
+                    pcall(child.RegisterForDrag, child, "LeftButton")
+                    pcall(child.HookScript, child, "OnDragStart", function(_, button)
+                        if button and button ~= "LeftButton" then return end
+                        if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(frame, frameName) then return end
+                        local db = GetDesktopWindowsDB()
+                        if not (db and db.dragAnywhere ~= false) then return end
+                        if st.beginDrag then st.beginDrag() end
+                    end)
+                    pcall(child.HookScript, child, "OnDragStop", function()
+                        if st.finishDrag then st.finishDrag() end
+                    end)
+                end
+            end
+        end
+    end
+
+    local function SyncOverlayMode(frame, frameName)
+        local st = W.blizzWinState[frame]
+        if not st or not st.overlay then return end
+        local ov = st.overlay
+        if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(frame, frameName) then
+            st.isDragging = false
+            st.usingNativeMove = nil
+            ov:SetScript("OnUpdate", nil)
+            ov:EnableMouse(false)
+            ov:EnableMouseWheel(false)
+            ov:Hide()
+            return
+        end
+        local db = GetDesktopWindowsDB()
+        local canDrag = (db and db.dragAnywhere ~= false) and true or false
+        if canDrag then
+            NeutraliseTitleContainerDrag(frame, frameName, st)
+        end
+        local canScale = (db and db.scrollScale ~= false) and true or false
+        ov:EnableMouse(canDrag or canScale)
+        ov:EnableMouseWheel(canScale)
+        if canDrag or canScale then
+            local titleLvl = (frame.TitleContainer and frame.TitleContainer.GetFrameLevel and frame.TitleContainer:GetFrameLevel()) or 0
+            local baseLvl = math.max((frame.GetFrameLevel and frame:GetFrameLevel()) or 1, titleLvl)
+            ov:SetFrameLevel(baseLvl + 50)
+            ov:Show()
+        else
+            ov:Hide()
+        end
+    end
+
+    local function ApplyBlizzardFrameTransform(frame, frameName)
+        if not frame or InCombat() then return end
+        if DesktopWindows:IsYielding() then return end
+        local st = EnsureHeaderOverlay(frame, frameName)
+        AttachPassiveChromeDragHooks(frame, frameName, st)
+        SyncOverlayMode(frame, frameName)
+        if IsWorldMapMaximized(frame, frameName) then
+            return
+        end
+
+        if type(frame.SetMovable) == "function" then
+            pcall(frame.SetMovable, frame, true)
+        end
+        SyncFrameClamping(frame, frameName)
+        NormalizeDesktopWindowLayer(frame, frameName)
+
+        local db = GetDesktopWindowsDB()
+        local targetScale = GetActiveFrameScale(frameName)
+        if targetScale ~= 1.0 or (db and db.scales and db.scales[frameName]) or W.sessionScales[frameName] then
+            SecureApplyScale(frame, targetScale)
+        end
+
+        local noAutoClose = (db and db.sideBySide ~= false)
+        local canDrag = (db and db.dragAnywhere ~= false)
+        local savedPos = canDrag and db and db.positions and db.positions[frameName]
+        if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
+            st.frozenUX = nil
+            st.frozenUY = nil
+            SecureApplyPoint(frame, savedPos.x, savedPos.y, targetScale)
+        elseif noAutoClose and st.frozenUX and st.frozenUY then
+            local _, cx, cy = SecureApplyPoint(frame, st.frozenUX, st.frozenUY, targetScale)
+            st.frozenUX, st.frozenUY = cx, cy
+        elseif noAutoClose and frame.IsShown and frame:IsShown() then
+            local fx, fy = CaptureFrameCenterOffset(frame, frameName)
+            if fx and fy then
+                local cx, cy = ClampDesktopWindowOffset(frame, fx, fy, targetScale)
+                st.frozenUX = cx
+                st.frozenUY = cy
+                if math.abs(cx - fx) > 0.5 or math.abs(cy - fy) > 0.5 then
+                    SecureApplyPoint(frame, cx, cy, targetScale)
+                end
+            end
+        end
+    end
+
+    local EnsureGlobalPanelHooks
+    local AttachFrameHooks
+
+    local function RestoreCoexistingPanels(newlyShownName)
+        if W.restoringPanels or InCombat() then return end
+        if DesktopWindows:IsYielding() then return end
+        local db = GetDesktopWindowsDB()
+        local noAutoClose = (db and db.sideBySide ~= false)
+        if not noAutoClose then return end
+        if newlyShownName == "WorldMapFrame" and IsWorldMapMaximized(_G.WorldMapFrame, "WorldMapFrame") then
+            return
+        end
+
+        local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+        W.restoringPanels = true
+        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+            local otherName = spec.name
+            if otherName ~= newlyShownName then
+                local autoHiddenRecent = (W.lastAutoHiddenAt[otherName] ~= nil and (now - W.lastAutoHiddenAt[otherName]) < 0.30)
+                local explicitRecent = (W.lastExplicitCloseAt[otherName] ~= nil and (now - W.lastExplicitCloseAt[otherName]) <= 0.25)
+                if (W.openPanelsSnapshot[otherName] or autoHiddenRecent) and not explicitRecent then
+                    local otherFrame = _G[otherName]
+                    if otherFrame and not IsWorldMapMaximized(otherFrame, otherName) then
+                        local otherSt = GetFrameState(otherFrame)
+                        if otherSt and not otherSt.frozenUX and otherSt.lastFrozenUX and (now - (otherSt.lastFrozenAt or 0)) < 0.40 then
+                            otherSt.frozenUX = otherSt.lastFrozenUX
+                            otherSt.frozenUY = otherSt.lastFrozenUY
+                        end
+                        if not (otherFrame.IsShown and otherFrame:IsShown()) then
+                            if otherSt then otherSt.restoringFromAutoClose = true end
+                            pcall(otherFrame.Show, otherFrame)
+                            if otherSt then otherSt.restoringFromAutoClose = false end
+                        end
+                        if otherFrame.IsShown and otherFrame:IsShown() then
+                            W.openPanelsSnapshot[otherName] = true
+                            W.lastAutoHiddenAt[otherName] = nil
+                            ApplyBlizzardFrameTransform(otherFrame, otherName)
+                            if otherSt then otherSt.wasOpenConfirmed = true end
+                        end
+                    end
+                end
+            end
+        end
+        local topFrame = newlyShownName and _G[newlyShownName]
+        if topFrame and topFrame.IsShown and topFrame:IsShown() and not IsWorldMapMaximized(topFrame, newlyShownName) then
+            if type(topFrame.Raise) == "function" then
+                pcall(topFrame.Raise, topFrame)
+            end
+        end
+        W.restoringPanels = false
+    end
+
+    AttachFrameHooks = function(frameName)
+        if W.hookedFrameNames[frameName] or EXCLUDED_BLIZZ_FRAMES[frameName] then return false end
+        local frame = _G[frameName]
+        if not frame then return false end
+        W.hookedFrameNames[frameName] = true
+        SnapshotOrigUIPanelInfo(frame, frameName)
+        local st = EnsureHeaderOverlay(frame, frameName)
+        AttachPassiveChromeDragHooks(frame, frameName, st)
+        if EnsureGlobalPanelHooks then
+            EnsureGlobalPanelHooks()
+        end
+
+        if not InCombat() and not IsWorldMapMaximized(frame, frameName) then
+            if type(frame.SetMovable) == "function" then
+                pcall(frame.SetMovable, frame, true)
+            end
+            SyncFrameClamping(frame, frameName)
+            if type(frame.EnableMouseWheel) == "function" then
+                pcall(frame.EnableMouseWheel, frame, true)
+            end
+        end
+
+        if type(frame.RegisterForDrag) == "function" then
+            pcall(frame.RegisterForDrag, frame, "LeftButton")
+        end
+
+        if type(_G.hooksecurefunc) == "function" and not st.setPointHooked then
+            st.setPointHooked = true
+            _G.hooksecurefunc(frame, "SetPoint", function(selfFrame)
+                local fState = W.blizzWinState[selfFrame]
+                if not fState or fState.applyingPoint or fState.isDragging then return end
+                if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(selfFrame, frameName) then return end
+                local db = GetDesktopWindowsDB()
+                if not db then return end
+                local scale = GetActiveFrameScale(frameName)
+                local canDrag = (db.dragAnywhere ~= false)
+                local savedPos = canDrag and db.positions and db.positions[frameName]
+                if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
+                    SecureApplyPoint(selfFrame, savedPos.x, savedPos.y, scale)
+                elseif (db.sideBySide ~= false) and fState.frozenUX and fState.frozenUY then
+                    SecureApplyPoint(selfFrame, fState.frozenUX, fState.frozenUY, scale)
+                end
+            end)
+        end
+
+        if frameName == "WorldMapFrame" and type(_G.hooksecurefunc) == "function" and type(frame.SynchronizeDisplayState) == "function" and not st.syncDisplayHooked then
+            st.syncDisplayHooked = true
+            _G.hooksecurefunc(frame, "SynchronizeDisplayState", function(wmf)
+                if InCombat() or DesktopWindows:IsYielding() then return end
+                SyncOverlayMode(wmf, "WorldMapFrame")
+                if IsWorldMapMaximized(wmf, "WorldMapFrame") then
+                    SecureApplyScale(wmf, 1.0)
+                elseif wmf.IsShown and wmf:IsShown() then
+                    ApplyBlizzardFrameTransform(wmf, "WorldMapFrame")
+                    RestoreCoexistingPanels("WorldMapFrame")
+                    SyncAllUISpecialFrames()
+                end
+            end)
+        end
+
+        if type(frame.HookScript) == "function" then
+            frame:HookScript("OnMouseDown", function(clickedFrame)
+                if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(clickedFrame, frameName) then return end
+                FocusAndRaiseDesktopWindow(clickedFrame, frameName)
+            end)
+            frame:HookScript("OnMouseWheel", function(wheelFrame, delta)
+                if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(wheelFrame, frameName) then return end
+                local db = GetDesktopWindowsDB()
+                if not (db and db.scrollScale ~= false) then return end
+                if not (_G.IsControlKeyDown and _G.IsControlKeyDown()) then return end
+                if not (_G.IsShiftKeyDown and _G.IsShiftKeyDown()) then return end
+                StepBlizzardFrameScale(wheelFrame, frameName, delta, true)
+            end)
+            frame:HookScript("OnDragStart", function(dragFrame, button)
+                if button and button ~= "LeftButton" then return end
+                local fState = GetFrameState(dragFrame)
+                if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(dragFrame, frameName) then
+                    if not (fState and fState.isDragging) and not InCombat() and type(dragFrame.StopMovingOrSizing) == "function" then
+                        pcall(dragFrame.StopMovingOrSizing, dragFrame)
+                    end
+                    return
+                end
+                local db = GetDesktopWindowsDB()
+                if not (db and db.dragAnywhere ~= false) then
+                    if not (fState and fState.isDragging) and type(dragFrame.StopMovingOrSizing) == "function" then
+                        pcall(dragFrame.StopMovingOrSizing, dragFrame)
+                    end
+                    return
+                end
+                local altHeld = (_G.IsAltKeyDown and _G.IsAltKeyDown()) and true or false
+                if not altHeld and not IsPassiveWindowDragTarget(GetTopMouseFocus(), dragFrame) then
+                    if not (fState and fState.isDragging) and type(dragFrame.StopMovingOrSizing) == "function" then
+                        pcall(dragFrame.StopMovingOrSizing, dragFrame)
+                    end
+                    return
+                end
+                if fState and fState.beginDrag then
+                    fState.beginDrag()
+                end
+            end)
+            frame:HookScript("OnDragStop", function(dragFrame)
+                if not InCombat() and type(dragFrame.StopMovingOrSizing) == "function" then
+                    pcall(dragFrame.StopMovingOrSizing, dragFrame)
+                end
+                local fState = W.blizzWinState[dragFrame]
+                if fState and fState.finishDrag then
+                    fState.finishDrag()
+                end
+            end)
+            frame:HookScript("OnSizeChanged", function(sizedFrame)
+                if InCombat() or DesktopWindows:IsYielding() then return end
+                if not (sizedFrame.IsShown and sizedFrame:IsShown()) then return end
+                if IsWorldMapMaximized(sizedFrame, frameName) then
+                    SyncOverlayMode(sizedFrame, frameName)
+                    return
+                end
+                ClampAndReanchorFrame(sizedFrame, frameName)
+            end)
+            frame:HookScript("OnShow", function(shownFrame)
+                if EnsureGlobalPanelHooks then
+                    EnsureGlobalPanelHooks()
+                end
+                local fState = GetFrameState(shownFrame)
+                if InCombat() then return end
+                if DesktopWindows:IsYielding() or IsWorldMapMaximized(shownFrame, frameName) then
+                    SyncOverlayMode(shownFrame, frameName)
+                    return
+                end
+                if not (fState and fState.restoringFromAutoClose) then
+                    W.showSeqCounter = W.showSeqCounter + 1
+                    W.lastShownAt[frameName] = W.showSeqCounter
+                end
+                W.openPanelsSnapshot[frameName] = true
+                W.lastAutoHiddenAt[frameName] = nil
+                ApplyBlizzardFrameTransform(shownFrame, frameName)
+                if fState then fState.wasOpenConfirmed = true end
+                if not W.restoringPanels and not (fState and fState.restoringFromAutoClose) then
+                    RestoreCoexistingPanels(frameName)
+                    if type(shownFrame.Raise) == "function" then
+                        pcall(shownFrame.Raise, shownFrame)
+                    end
+                    if _G.C_Timer and _G.C_Timer.After then
+                        _G.C_Timer.After(0, function()
+                            if InCombat() or DesktopWindows:IsYielding() then return end
+                            RestoreCoexistingPanels(frameName)
+                            SyncAllUISpecialFrames()
+                        end)
+                    end
+                end
+                SyncAllUISpecialFrames()
+            end)
+            frame:HookScript("OnHide", function(hiddenFrame)
+                if not InCombat() and type(hiddenFrame.StopMovingOrSizing) == "function" then
+                    pcall(hiddenFrame.StopMovingOrSizing, hiddenFrame)
+                end
+                local fState = W.blizzWinState[hiddenFrame]
+                if fState and fState.isDragging and fState.finishDrag then
+                    fState.finishDrag()
+                end
+                local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+                if IsShowUIPanelOnStack() or W.inShowUIPanelPostHook or W.restoringPanels then
+                    W.openPanelsSnapshot[frameName] = true
+                    W.lastAutoHiddenAt[frameName] = now
+                    return
+                end
+                local db = GetDesktopWindowsDB()
+                if W.explicitCloseFrame ~= frameName and IsEscapeCloseOnStack() and not InCombat() and not DesktopWindows:IsYielding() then
+                    local noAutoClose = (db and db.sideBySide ~= false)
+                    if noAutoClose then
+                        if W.escapeClosedCount == 0 and not HasNewerShownPanel(frameName) then
+                            W.escapeClosedCount = 1
+                            W.lastExplicitCloseAt[frameName] = now
+                            W.openPanelsSnapshot[frameName] = nil
+                            W.lastAutoHiddenAt[frameName] = nil
+                            for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                                RemoveFromUISpecialFrames(spec.name)
+                            end
+                        else
+                            W.escapeProtectedReShow[frameName] = hiddenFrame
+                            W.openPanelsSnapshot[frameName] = true
+                            return
+                        end
+                    end
+                end
+                if W.explicitCloseFrame == frameName then
+                    W.lastExplicitCloseAt[frameName] = now
+                    W.lastAutoHiddenAt[frameName] = nil
+                    W.openPanelsSnapshot[frameName] = nil
+                else
+                    W.lastAutoHiddenAt[frameName] = now
+                    W.openPanelsSnapshot[frameName] = nil
+                end
+                if fState then
+                    if fState.frozenUX and W.explicitCloseFrame ~= frameName then
+                        fState.lastFrozenUX = fState.frozenUX
+                        fState.lastFrozenUY = fState.frozenUY
+                        fState.lastFrozenAt = now
+                    end
+                    fState.wasOpenConfirmed = false
+                    fState.frozenUX = nil
+                    fState.frozenUY = nil
+                end
+                local hadSession = (W.sessionScales[frameName] ~= nil)
+                W.sessionScales[frameName] = nil
+                if InCombat() then return end
+                if hadSession and not DesktopWindows:IsYielding() then
+                    local savedOrOrig = (db and db.scales and db.scales[frameName])
+                        or (W.origUIPanelInfo[frameName] and W.origUIPanelInfo[frameName].defaultScale) or 1.0
+                    SecureApplyScale(hiddenFrame, savedOrOrig)
+                end
+                RemoveFromUISpecialFrames(frameName)
+            end)
+        end
+
+        local closeBtn = frame.CloseButton or _G[frameName .. "CloseButton"]
+        if not closeBtn and frame.BorderFrame and frame.BorderFrame.CloseButton then
+            closeBtn = frame.BorderFrame.CloseButton
+        end
+        if closeBtn and type(closeBtn.HookScript) == "function" and not closeBtn._dsCloseHooked then
+            closeBtn._dsCloseHooked = true
+            closeBtn:HookScript("OnMouseDown", function(_, mouseBtn)
+                if mouseBtn == "LeftButton" and not InCombat() and not DesktopWindows:IsYielding() then
+                    local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+                    W.lastExplicitCloseAt[frameName] = now
+                    W.lastAutoHiddenAt[frameName] = nil
+                    W.openPanelsSnapshot[frameName] = nil
+                end
+            end)
+            closeBtn:HookScript("OnClick", function()
+                if InCombat() or not frame or DesktopWindows:IsYielding() then return end
+                local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+                W.lastExplicitCloseAt[frameName] = now
+                W.lastAutoHiddenAt[frameName] = nil
+                W.openPanelsSnapshot[frameName] = nil
+                if st then
+                    st.wasOpenConfirmed = false
+                    st.frozenUX = nil
+                    st.frozenUY = nil
+                end
+                if frame.IsShown and frame:IsShown() then
+                    local prevExplicit = W.explicitCloseFrame
+                    W.explicitCloseFrame = frameName
+                    pcall(frame.Hide, frame)
+                    W.explicitCloseFrame = prevExplicit
+                end
+            end)
+        end
+
+        if frame.IsShown and frame:IsShown() and not IsWorldMapMaximized(frame, frameName) then
+            W.openPanelsSnapshot[frameName] = true
+            if not W.lastShownAt[frameName] then
+                W.showSeqCounter = W.showSeqCounter + 1
+                W.lastShownAt[frameName] = W.showSeqCounter
+            end
+            st.wasOpenConfirmed = true
+            local db = GetDesktopWindowsDB()
+            if not (db and db.positions and db.positions[frameName]) then
+                local fx, fy = CaptureFrameCenterOffset(frame, frameName)
+                if fx and fy then
+                    local cx, cy = ClampDesktopWindowOffset(frame, fx, fy, GetActiveFrameScale(frameName))
+                    st.frozenUX = cx
+                    st.frozenUY = cy
+                end
+            end
+        end
+        return true
+    end
+
+    EnsureGlobalPanelHooks = function()
+        if type(_G.hooksecurefunc) ~= "function" then return end
+
+        if not W.globalMouseHooked then
+            W.globalMouseHooked = true
+            local mouseFrame = CreateFrame("Frame", "DynamicSuiteDesktopWindowsMouseFrame")
+            SafeRegisterSuiteEvent(mouseFrame, "GLOBAL_MOUSE_DOWN")
+            mouseFrame:SetScript("OnEvent", function(_, event, button)
+                if event ~= "GLOBAL_MOUSE_DOWN" then return end
+                if button ~= "LeftButton" and button ~= "RightButton" then return end
+                if InCombat() or DesktopWindows:IsYielding() then return end
+                local db = GetDesktopWindowsDB()
+                if not (db and db.sideBySide ~= false) then return end
+                local cur = GetTopMouseFocus()
+                for _ = 1, 14 do
+                    if not cur or cur == _G.UIParent or cur == _G.WorldFrame then break end
+                    local cName = (type(cur.GetName) == "function") and cur:GetName() or nil
+                    if cName and SUPPORTED_BY_NAME[cName] and _G[cName] == cur then
+                        if not EXCLUDED_BLIZZ_FRAMES[cName] and not IsWorldMapMaximized(cur, cName) then
+                            FocusAndRaiseDesktopWindow(cur, cName)
+                        end
+                        break
+                    end
+                    if type(cur.GetParent) ~= "function" then break end
+                    local okP, p = pcall(cur.GetParent, cur)
+                    if not okP then break end
+                    cur = p
+                end
+            end)
+        end
+
+        if not W.showUIPanelHooked and type(_G.ShowUIPanel) == "function" then
+            W.showUIPanelHooked = true
+            _G.hooksecurefunc("ShowUIPanel", function(frame)
+                if not frame or InCombat() then return end
+                if DesktopWindows:IsYielding() then return end
+                local fName = frame.GetName and frame:GetName()
+                if not fName then return end
+                if EXCLUDED_BLIZZ_FRAMES[fName] or IsWorldMapMaximized(frame, fName) then
+                    for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                        local bf = _G[spec.name]
+                        if not (bf and bf.IsShown and bf:IsShown()) then
+                            W.openPanelsSnapshot[spec.name] = nil
+                            local bst = bf and W.blizzWinState[bf]
+                            if bst then
+                                bst.wasOpenConfirmed = false
+                                bst.frozenUX = nil
+                                bst.frozenUY = nil
+                            end
+                            RemoveFromUISpecialFrames(spec.name)
+                        end
+                    end
+                    return
+                end
+                if not SUPPORTED_BY_NAME[fName] then return end
+
+                W.inShowUIPanelPostHook = true
+                AttachFrameHooks(fName)
+                local st = GetFrameState(frame)
+                local db = GetDesktopWindowsDB()
+                local noAutoClose = (db and db.sideBySide ~= false)
+
+                if not (frame.IsShown and frame:IsShown()) then
+                    local info = W.origUIPanelInfo[fName]
+                    local dead = (_G.UnitIsDeadOrGhost and _G.UnitIsDeadOrGhost("player"))
+                    if not dead or (info and info.whileDead) then
+                        pcall(frame.Show, frame)
+                    end
+                end
+
+                if noAutoClose then
+                    RestoreCoexistingPanels(fName)
+                    if _G.C_Timer and _G.C_Timer.After then
+                        _G.C_Timer.After(0, function()
+                            if InCombat() or DesktopWindows:IsYielding() then return end
+                            AttachFrameHooks(fName)
+                            RestoreCoexistingPanels(fName)
+                            SyncAllUISpecialFrames()
+                        end)
+                    end
+                else
+                    for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                        local otherName = spec.name
+                        if otherName ~= fName then
+                            local otherFrame = _G[otherName]
+                            local otherSt = otherFrame and W.blizzWinState[otherFrame]
+                            W.openPanelsSnapshot[otherName] = nil
+                            W.lastAutoHiddenAt[otherName] = nil
+                            if otherSt then
+                                otherSt.wasOpenConfirmed = false
+                                otherSt.frozenUX = nil
+                                otherSt.frozenUY = nil
+                            end
+                            if W.sessionScales[otherName] ~= nil and otherFrame then
+                                W.sessionScales[otherName] = nil
+                                local savedOrOrig = (db and db.scales and db.scales[otherName])
+                                    or (W.origUIPanelInfo[otherName] and W.origUIPanelInfo[otherName].defaultScale) or 1.0
+                                SecureApplyScale(otherFrame, savedOrOrig)
+                            end
+                            RemoveFromUISpecialFrames(otherName)
+                        end
+                    end
+                end
+
+                if frame.IsShown and frame:IsShown() then
+                    FocusAndRaiseDesktopWindow(frame, fName)
+                    W.openPanelsSnapshot[fName] = true
+                    W.lastAutoHiddenAt[fName] = nil
+                    ApplyBlizzardFrameTransform(frame, fName)
+                    if st then st.wasOpenConfirmed = true end
+                end
+
+                SyncAllUISpecialFrames()
+                W.inShowUIPanelPostHook = false
+            end)
+        end
+
+        local function FlushEscapeProtectedWindows()
+            if InCombat() or DesktopWindows:IsYielding() then
+                W.escapeClosedCount = 0
+                for k in pairs(W.escapeProtectedReShow) do W.escapeProtectedReShow[k] = nil end
+                return
+            end
+            W.inEscapeRestorePostHook = true
+            W.inCloseSpecialWindowsPostHook = true
+            if W.escapeClosedCount == 0 then
+                local newestName, newestFrame, newestSeq = nil, nil, -1
+                for fName, fObj in pairs(W.escapeProtectedReShow) do
+                    local seq = W.lastShownAt[fName] or 0
+                    if seq > newestSeq then
+                        newestSeq = seq
+                        newestName = fName
+                        newestFrame = fObj
+                    end
+                end
+                if newestName and newestFrame then
+                    W.escapeProtectedReShow[newestName] = nil
+                    W.openPanelsSnapshot[newestName] = nil
+                    W.lastExplicitCloseAt[newestName] = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+                    local nst = W.blizzWinState[newestFrame]
+                    if nst then
+                        nst.wasOpenConfirmed = false
+                        nst.frozenUX = nil
+                        nst.frozenUY = nil
+                    end
+                    local prevEx = W.explicitCloseFrame
+                    W.explicitCloseFrame = newestName
+                    if newestFrame.Hide then pcall(newestFrame.Hide, newestFrame) end
+                    W.explicitCloseFrame = prevEx
+                end
+            end
+            W.escapeClosedCount = 0
+            for fName, fObj in pairs(W.escapeProtectedReShow) do
+                W.escapeProtectedReShow[fName] = nil
+                if fObj and not IsWorldMapMaximized(fObj, fName) then
+                    W.openPanelsSnapshot[fName] = true
+                    local st = GetFrameState(fObj)
+                    if not (fObj.IsShown and fObj:IsShown()) then
+                        if st then st.restoringFromAutoClose = true end
+                        pcall(fObj.Show, fObj)
+                        if st then st.restoringFromAutoClose = false end
+                    end
+                    ApplyBlizzardFrameTransform(fObj, fName)
+                    if st then st.wasOpenConfirmed = true end
+                end
+            end
+            SyncAllUISpecialFrames()
+            W.inCloseSpecialWindowsPostHook = false
+            W.inEscapeRestorePostHook = false
+        end
+
+        if not W.hideUIPanelHooked and type(_G.HideUIPanel) == "function" then
+            W.hideUIPanelHooked = true
+            _G.hooksecurefunc("HideUIPanel", function(frame)
+                if not frame or InCombat() then return end
+                if DesktopWindows:IsYielding() then return end
+                local fName = frame.GetName and frame:GetName()
+                if not fName or EXCLUDED_BLIZZ_FRAMES[fName] or not SUPPORTED_BY_NAME[fName] or IsWorldMapMaximized(frame, fName) then return end
+                local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+                if IsShowUIPanelOnStack() or W.inShowUIPanelPostHook or W.restoringPanels then
+                    W.openPanelsSnapshot[fName] = true
+                    W.lastAutoHiddenAt[fName] = now
+                    return
+                end
+                local st = W.blizzWinState[frame]
+                local db = GetDesktopWindowsDB()
+                local noAutoClose = (db and db.sideBySide ~= false)
+                if W.explicitCloseFrame ~= fName and IsEscapeCloseOnStack() then
+                    if noAutoClose and (W.escapeProtectedReShow[fName] ~= nil or W.escapeClosedCount >= 1 or HasNewerShownPanel(fName)) then
+                        W.openPanelsSnapshot[fName] = true
+                        W.escapeProtectedReShow[fName] = nil
+                        RemoveFromUISpecialFrames(fName)
+                        W.inEscapeRestorePostHook = true
+                        if not (frame.IsShown and frame:IsShown()) then
+                            if st then st.restoringFromAutoClose = true end
+                            pcall(frame.Show, frame)
+                            if st then st.restoringFromAutoClose = false end
+                        end
+                        ApplyBlizzardFrameTransform(frame, fName)
+                        if st then st.wasOpenConfirmed = true end
+                        SyncAllUISpecialFrames()
+                        W.inEscapeRestorePostHook = false
+                        return
+                    end
+                    if noAutoClose then
+                        W.escapeClosedCount = 1
+                        W.lastExplicitCloseAt[fName] = now
+                        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                            RemoveFromUISpecialFrames(spec.name)
+                        end
+                    end
+                end
+                local isExplicit = (W.explicitCloseFrame == fName) or (W.lastExplicitCloseAt[fName] and (now - W.lastExplicitCloseAt[fName]) < 0.10)
+                W.openPanelsSnapshot[fName] = nil
+                W.escapeProtectedReShow[fName] = nil
+                if isExplicit then
+                    W.lastExplicitCloseAt[fName] = now
+                    W.lastAutoHiddenAt[fName] = nil
+                else
+                    W.lastAutoHiddenAt[fName] = now
+                end
+                if st then
+                    if st.frozenUX and not isExplicit then
+                        st.lastFrozenUX = st.frozenUX
+                        st.lastFrozenUY = st.frozenUY
+                        st.lastFrozenAt = now
+                    end
+                    st.wasOpenConfirmed = false
+                    st.frozenUX = nil
+                    st.frozenUY = nil
+                end
+                if frame.IsShown and frame:IsShown() then
+                    pcall(frame.Hide, frame)
+                end
+                SyncAllUISpecialFrames()
+            end)
+        end
+
+        if not W.closeSpecialHooked and type(_G.CloseSpecialWindows) == "function" then
+            W.closeSpecialHooked = true
+            _G.hooksecurefunc("CloseSpecialWindows", FlushEscapeProtectedWindows)
+        end
+
+        if not W.closeWindowsHooked and type(_G.CloseWindows) == "function" then
+            W.closeWindowsHooked = true
+            _G.hooksecurefunc("CloseWindows", FlushEscapeProtectedWindows)
+        end
+
+        if not W.closeAllHooked and type(_G.CloseAllWindows) == "function" then
+            W.closeAllHooked = true
+            _G.hooksecurefunc("CloseAllWindows", FlushEscapeProtectedWindows)
+        end
+
+        if not W.toggleGameMenuHooked and type(_G.ToggleGameMenu) == "function" then
+            W.toggleGameMenuHooked = true
+            _G.hooksecurefunc("ToggleGameMenu", FlushEscapeProtectedWindows)
+        end
+
+        local function HandlePostToggle(targetName)
+            if InCombat() or DesktopWindows:IsYielding() then return end
+            local tf = _G[targetName]
+            local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+            if tf then
+                AttachFrameHooks(targetName)
+                if IsWorldMapMaximized(tf, targetName) then
+                    SyncOverlayMode(tf, targetName)
+                    return
+                end
+                if tf.IsShown and tf:IsShown() then
+                    FocusAndRaiseDesktopWindow(tf, targetName)
+                    W.openPanelsSnapshot[targetName] = true
+                    W.lastAutoHiddenAt[targetName] = nil
+                    local st = GetFrameState(tf)
+                    ApplyBlizzardFrameTransform(tf, targetName)
+                    if st then st.wasOpenConfirmed = true end
+                    RestoreCoexistingPanels(targetName)
+                else
+                    W.lastExplicitCloseAt[targetName] = now
+                    W.lastAutoHiddenAt[targetName] = nil
+                    W.openPanelsSnapshot[targetName] = nil
+                end
+                SyncAllUISpecialFrames()
+            end
+            if _G.C_Timer and _G.C_Timer.After then
+                _G.C_Timer.After(0, function()
+                    if InCombat() or DesktopWindows:IsYielding() then return end
+                    local df = _G[targetName]
+                    if df and not IsWorldMapMaximized(df, targetName) then
+                        AttachFrameHooks(targetName)
+                        if df.IsShown and df:IsShown() then
+                            RestoreCoexistingPanels(targetName)
+                        end
+                        SyncAllUISpecialFrames()
+                    end
+                end)
+            end
+        end
+
+        if not W.toggleProfBookHooked and type(_G.ToggleProfessionsBook) == "function" then
+            W.toggleProfBookHooked = true
+            _G.hooksecurefunc("ToggleProfessionsBook", function()
+                HandlePostToggle("ProfessionsBookFrame")
+            end)
+        end
+
+        if not W.toggleFriendsHooked and type(_G.ToggleFriendsFrame) == "function" then
+            W.toggleFriendsHooked = true
+            _G.hooksecurefunc("ToggleFriendsFrame", function()
+                HandlePostToggle("FriendsFrame")
+            end)
+        end
+
+        if not W.toggleWorldMapHooked then
+            W.toggleWorldMapHooked = true
+            if type(_G.ToggleQuestLog) == "function" then
+                _G.hooksecurefunc("ToggleQuestLog", function()
+                    if InCombat() then return end
+                    HandlePostToggle("WorldMapFrame")
+                end)
+            end
+            if type(_G.ToggleWorldMap) == "function" then
+                _G.hooksecurefunc("ToggleWorldMap", function()
+                    if InCombat() then return end
+                    HandlePostToggle("WorldMapFrame")
+                end)
+            end
+            if type(_G.OpenWorldMap) == "function" then
+                _G.hooksecurefunc("OpenWorldMap", function()
+                    if InCombat() then return end
+                    HandlePostToggle("WorldMapFrame")
+                end)
+            end
+        end
+
+        if not W.toggleExtraHooksDone then
+            W.toggleExtraHooksDone = true
+            local toggleGlobals = {
+                { fn = "ToggleCharacter",          frame = "CharacterFrame" },
+                { fn = "ToggleTalentFrame",        frame = "PlayerSpellsFrame" },
+                { fn = "ToggleGuildFrame",         frame = "CommunitiesFrame" },
+                { fn = "ToggleAchievementFrame",   frame = "AchievementFrame" },
+                { fn = "ToggleCollectionsJournal", frame = "CollectionsJournal" },
+                { fn = "PVEFrame_ToggleFrame",     frame = "PVEFrame" },
+                { fn = "ToggleEncounterJournal",   frame = "EncounterJournal" },
+            }
+            for _, spec in ipairs(toggleGlobals) do
+                if type(_G[spec.fn]) == "function" then
+                    _G.hooksecurefunc(spec.fn, function()
+                        HandlePostToggle(spec.frame)
+                    end)
+                end
+            end
+            if type(_G.PlayerSpellsUtil) == "table" and type(_G.PlayerSpellsUtil.TogglePlayerSpellsFrame) == "function" then
+                _G.hooksecurefunc(_G.PlayerSpellsUtil, "TogglePlayerSpellsFrame", function()
+                    HandlePostToggle("PlayerSpellsFrame")
+                end)
+            end
+        end
+
+        if not W.updateUIPanelHooked and type(_G.UpdateUIPanelPositions) == "function" then
+            W.updateUIPanelHooked = true
+            _G.hooksecurefunc("UpdateUIPanelPositions", function()
+                if InCombat() or DesktopWindows:IsYielding() then return end
+                local db = GetDesktopWindowsDB()
+                if not db then return end
+                local canDrag = (db.dragAnywhere ~= false)
+                local noAutoClose = (db.sideBySide ~= false)
+                for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                    local f = _G[spec.name]
+                    if f and f.IsShown and f:IsShown() and not IsWorldMapMaximized(f, spec.name) then
+                        local st = W.blizzWinState[f]
+                        local s = GetActiveFrameScale(spec.name)
+                        local savedPos = canDrag and db.positions and db.positions[spec.name]
+                        if savedPos and type(savedPos.x) == "number" and type(savedPos.y) == "number" then
+                            SecureApplyPoint(f, savedPos.x, savedPos.y, s)
+                        elseif noAutoClose and st and st.frozenUX and st.frozenUY then
+                            SecureApplyPoint(f, st.frozenUX, st.frozenUY, s)
+                        end
+                    end
+                end
+            end)
+        end
+    end
+
+    function DesktopWindows:GetDB()
+        return GetDesktopWindowsDB()
+    end
+
+    function DesktopWindows:GetYieldAddon()
+        local isLoadedFn = (_G.C_AddOns and _G.C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+        local function isAddonLoaded(name)
+            if IsExternalAddonFrozen(name) then return false end
+            return type(isLoadedFn) == "function" and (isLoadedFn(name) == true)
+        end
+        local function isOverriddenToDynamic(...)
+            local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
+            local gm = g and g.granularModes
+            local ack = g and g.acknowledgedConflicts
+            local choices = g and g.conflictChoices
+            local overrides = g and g.conflictOverrides
+            for i = 1, select("#", ...) do
+                local addonKey = select(i, ...)
+                if addonKey then
+                    if GetGranularConflictMode("DynamicSuite", addonKey) == "PRIORITISE_DYNAMIC"
+                        or GetGranularConflictMode("DynamicPrep", addonKey) == "PRIORITISE_DYNAMIC"
+                        or GetGranularConflictMode("DynamicLoad", addonKey) == "PRIORITISE_DYNAMIC" then
+                        return true
+                    end
+                    for _, suffix in ipairs({ "_DynamicSuite", "_DynamicPrep", "_DynamicLoad", "" }) do
+                        local k = tostring(addonKey) .. suffix
+                        for _, tbl in ipairs({ gm, ack, choices, overrides }) do
+                            if type(tbl) == "table" then
+                                local v = tbl[k]
+                                if v == "PRIORITISE_DYNAMIC" or v == "USE_DYNAMIC" or v == "PREFER_DYNAMIC" then
+                                    return true
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            return false
+        end
+
+        if (_G.NoAutoClose ~= nil or isAddonLoaded("NoAutoClose")) and not IsExternalAddonFrozen("NoAutoClose") and not isOverriddenToDynamic("NoAutoClose") then
+            return "NoAutoClose", "NoAutoClose"
+        end
+
+        if (_G.BlizzMoveAPI ~= nil or isAddonLoaded("BlizzMove")) and not IsExternalAddonFrozen("BlizzMove") and not isOverriddenToDynamic("BlizzMove") then
+            return "BlizzMove", "BlizzMove"
+        end
+
+        if (_G.DeModal ~= nil or isAddonLoaded("DeModal")) and not IsExternalAddonFrozen("DeModal") and not isOverriddenToDynamic("DeModal") then
+            return "DeModal", "DeModal"
+        end
+
+        if (isAddonLoaded("MoveAny") or type(_G.MoveAny) == "table") and not IsExternalAddonFrozen("MoveAny") and not isOverriddenToDynamic("MoveAny") then
+            local maDisabled = false
+            local maTab = _G.MATAB
+            if type(maTab) == "table" and maTab["ENABLED"] == false then
+                maDisabled = true
+            end
+            local maDB = _G.MoveAnyDB
+            if type(maDB) == "table" and maDB.disabled == true then
+                maDisabled = true
+            end
+            if not maDisabled then
+                return "MoveAny", "MoveAny"
+            end
+        end
+
+        local euiLoaded = (_G.EllesmereUI ~= nil)
+            or isAddonLoaded("EllesmereUI")
+            or isAddonLoaded("EllesmereUIQoL")
+            or isAddonLoaded("EllesmereUI_QoL")
+        if euiLoaded and not IsExternalAddonFrozen("EllesmereUI") and not isOverriddenToDynamic("EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL") then
+            local edb = _G.EllesmereUIDB
+            if type(edb) == "table" then
+                if edb.shifterEnabled == true
+                   or edb.moveBlizzardFrames == true
+                   or edb.blizzFrameMover == true
+                   or edb.noAutoClose == true then
+                    return "EllesmereUI", "EllesmereUI"
+                end
+                if type(edb.profile) == "table" then
+                    local p = edb.profile
+                    if p.shifterEnabled == true
+                       or p.moveBlizzardFrames == true
+                       or p.blizzFrameMover == true
+                       or p.noAutoClose == true then
+                        return "EllesmereUI", "EllesmereUI"
+                    end
+                end
+            end
+        end
+
+        if (isAddonLoaded("Leatrix_Plus") or type(_G.LeaPlusDB) == "table") and not IsExternalAddonFrozen("Leatrix_Plus") and not isOverriddenToDynamic("Leatrix_Plus") then
+            local ldb = _G.LeaPlusDB
+            if type(ldb) == "table" and (
+                ldb["UseEasyFrameResizing"] == "On"
+                or ldb["MoveBlizzFrames"] == "On"
+                or ldb["NoAutoClose"] == "On"
+                or ldb["ManageFrames"] == "On"
+            ) then
+                return "Leatrix Plus", "Leatrix Plus"
+            end
+        end
+
+        if (isAddonLoaded("ElvUI") or type(_G.ElvUI) == "table") and not IsExternalAddonFrozen("ElvUI") and not isOverriddenToDynamic("ElvUI") then
+            local e = _G.ElvUI
+            local e1 = type(e) == "table" and e[1] or nil
+            if type(e1) == "table"
+               and type(e1.private) == "table"
+               and type(e1.private.skins) == "table"
+               and type(e1.private.skins.blizzard) == "table"
+               and e1.private.skins.blizzard.enable == true then
+                return "ElvUI", "ElvUI"
+            end
+        end
+
+        return nil, nil
+    end
+    DesktopWindows.GetBlizzardWindowYieldAddon = DesktopWindows.GetYieldAddon
+
+    function DesktopWindows:IsYielding()
+        local yieldAddon = DesktopWindows:GetYieldAddon()
+        return (yieldAddon ~= nil and yieldAddon ~= false)
+    end
+    DesktopWindows.IsYieldingBlizzardWindowsToEllesmereUI = DesktopWindows.IsYielding
+
+    local function HookEllesmereUICoexistence()
+        if W.ellesmereHooksInstalled then return end
+        local eui = _G.EllesmereUI
+        if type(eui) ~= "table" or type(_G.hooksecurefunc) ~= "function" then return end
+        W.ellesmereHooksInstalled = true
+        local function onShifterChange()
+            DesktopWindows:ApplyAllWindowStates()
+            if addonTable.mainFrame and addonTable.mainFrame.themeView and addonTable.mainFrame.themeView:IsShown() and addonTable.mainFrame.themeView.Refresh then
+                pcall(addonTable.mainFrame.themeView.Refresh)
+            end
+        end
+        if type(eui._InitShifter) == "function" then
+            _G.hooksecurefunc(eui, "_InitShifter", onShifterChange)
+        end
+        if type(eui._ShutdownShifter) == "function" then
+            _G.hooksecurefunc(eui, "_ShutdownShifter", onShifterChange)
+        end
+    end
+
+    function DesktopWindows:ApplyAllWindowStates()
+        if InCombat() then return end
+        GetDesktopWindowsDB()
+        HookEllesmereUICoexistence()
+        EnsureGlobalPanelHooks()
+        local yielding = DesktopWindows:IsYielding()
+        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+            local frame = _G[spec.name]
+            if frame then
+                AttachFrameHooks(spec.name)
+                if yielding or IsWorldMapMaximized(frame, spec.name) then
+                    SyncOverlayMode(frame, spec.name)
+                else
+                    SyncFrameClamping(frame, spec.name)
+                    SyncOverlayMode(frame, spec.name)
+                    if frame.IsShown and frame:IsShown() then
+                        W.openPanelsSnapshot[spec.name] = true
+                        local st = GetFrameState(frame)
+                        ApplyBlizzardFrameTransform(frame, spec.name)
+                        if st then st.wasOpenConfirmed = true end
+                    end
+                end
+            end
+        end
+        SyncAllUISpecialFrames()
+    end
+    DesktopWindows.ApplyAllBlizzardWindowStates = DesktopWindows.ApplyAllWindowStates
+
+    function DesktopWindows:ResetSingleWindow(arg1, arg2, arg3)
+        local frameName, showToast
+        if arg1 == DesktopWindows then
+            frameName, showToast = arg2, arg3
+        else
+            frameName, showToast = arg1, arg2
+        end
+        if type(frameName) ~= "string" or frameName == "" or InCombat() then return end
+        local db = GetDesktopWindowsDB()
+        if db then
+            db.positions = type(db.positions) == "table" and db.positions or {}
+            db.scales = type(db.scales) == "table" and db.scales or {}
+            db.positions[frameName] = nil
+            db.scales[frameName] = nil
+        end
+        if type(_G.DynamicPrepDB) == "table" then
+            if type(_G.DynamicPrepDB.windowPositions) == "table" then _G.DynamicPrepDB.windowPositions[frameName] = nil end
+            if type(_G.DynamicPrepDB.windowScales) == "table" then _G.DynamicPrepDB.windowScales[frameName] = nil end
+        end
+        W.sessionScales[frameName] = nil
+        local frame = _G[frameName]
+        local st = frame and GetFrameState(frame)
+        if st then
+            st.frozenUX = nil
+            st.frozenUY = nil
+        end
+        if frame and not DesktopWindows:IsYielding() and not IsWorldMapMaximized(frame, frameName) then
+            local orig = W.origUIPanelInfo[frameName]
+            local defScale = (orig and orig.defaultScale) or 1.0
+            SyncFrameClamping(frame, frameName)
+            SecureApplyScale(frame, defScale)
+            if orig and orig.point and _G.UIParent then
+                if st then st.applyingPoint = true end
+                local sec, works = EnsureSecureHandler()
+                local restored = false
+                if works and sec and (orig.relTo == nil or orig.relTo == _G.UIParent) then
+                    restored = pcall(function()
+                        sec:SetFrameRef("f", frame)
+                        sec:SetAttribute("ds_pt", orig.point)
+                        sec:SetAttribute("ds_relpt", orig.relPoint or orig.point)
+                        sec:SetAttribute("ds_x", orig.x or 0)
+                        sec:SetAttribute("ds_y", orig.y or 0)
+                        sec:Execute([[
+                            local f = self:GetFrameRef("f")
+                            local uip = self:GetFrameRef("uip")
+                            local pt = self:GetAttribute("ds_pt") or "TOPLEFT"
+                            local rpt = self:GetAttribute("ds_relpt") or pt
+                            local x = tonumber(self:GetAttribute("ds_x")) or 16
+                            local y = tonumber(self:GetAttribute("ds_y")) or -116
+                            if f and uip then
+                                f:ClearAllPoints()
+                                f:SetPoint(pt, uip, rpt, x, y)
+                            end
+                        ]])
+                    end)
+                end
+                if not restored then
+                    pcall(function()
+                        if type(frame.ClearAllPoints) == "function" then
+                            frame:ClearAllPoints()
+                        end
+                        if type(frame.SetPoint) == "function" then
+                            frame:SetPoint(orig.point, orig.relTo or _G.UIParent, orig.relPoint or orig.point, orig.x or 0, orig.y or 0)
+                        end
+                    end)
+                end
+                if st then st.applyingPoint = false end
+            elseif type(_G.UpdateUIPanelPositions) == "function" then
+                pcall(_G.UpdateUIPanelPositions, frame)
+            else
+                SecureApplyPoint(frame, 0, 0, defScale)
+            end
+            if frame.IsShown and frame:IsShown() and (db and db.sideBySide ~= false) and st then
+                local fx, fy = CaptureFrameCenterOffset(frame, frameName)
+                if fx and fy then
+                    local cx, cy = ClampDesktopWindowOffset(frame, fx, fy, defScale)
+                    st.frozenUX = cx
+                    st.frozenUY = cy
+                    if math.abs(cx - fx) > 0.5 or math.abs(cy - fy) > 0.5 then
+                        SecureApplyPoint(frame, cx, cy, defScale)
+                    end
+                end
+            end
+            SyncAllUISpecialFrames()
+            if showToast and frame.IsShown and frame:IsShown() then
+                ShowWindowToast(frame, "Reset to Default (100%)", false)
+            end
+        end
+    end
+    DesktopWindows.ResetSingleBlizzardWindow = DesktopWindows.ResetSingleWindow
+
+    function DesktopWindows:ResetAllWindows(arg1, arg2)
+        local silent = (arg1 == DesktopWindows) and (arg2 == true) or (arg1 == true)
+        local db = GetDesktopWindowsDB()
+        if db then
+            wipe(db.positions)
+            wipe(db.scales)
+        end
+        if type(_G.DynamicPrepDB) == "table" then
+            _G.DynamicPrepDB.windowPositions = {}
+            _G.DynamicPrepDB.windowScales = {}
+            _G.DynamicPrepDB.windowPinned = nil
+        end
+        for k in pairs(W.sessionScales) do
+            W.sessionScales[k] = nil
+        end
+        if InCombat() then return end
+        if DesktopWindows:IsYielding() then return end
+        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+            DesktopWindows:ResetSingleWindow(spec.name, false)
+        end
+        SyncAllUISpecialFrames()
+        if not silent then
+            print(string.format("|cFF%sDynamicSuite:|r Reset all 32 Blizzard window positions and scales to defaults.", GetSuiteAccentHex()))
+        end
+    end
+    DesktopWindows.ResetAllBlizzardWindows = DesktopWindows.ResetAllWindows
+
+    function DesktopWindows:Init(arg1, arg2)
+        local loadedAddonName = (arg1 == DesktopWindows) and arg2 or arg1
+        GetDesktopWindowsDB()
+        HookEllesmereUICoexistence()
+        EnsureGlobalPanelHooks()
+        if _G.EventUtil and type(_G.EventUtil.ContinueOnAddOnLoaded) == "function" then
+            for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                local aName = spec.addon
+                if aName and not W.addonContinueRegistered[aName] then
+                    W.addonContinueRegistered[aName] = true
+                    _G.EventUtil.ContinueOnAddOnLoaded(aName, function()
+                        DesktopWindows:Init(aName)
+                    end)
+                end
+            end
+        end
+        if InCombat() then return end
+        if loadedAddonName then
+            for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                if spec.addon == loadedAddonName then
+                    AttachFrameHooks(spec.name)
+                end
+            end
+        end
+        DesktopWindows:ApplyAllWindowStates()
+    end
+    DesktopWindows.InitBlizzardWindowQoL = DesktopWindows.Init
+
+    function DesktopWindows:HandleCombatChange(arg1, arg2)
+        local inCombat = (arg1 == DesktopWindows) and (arg2 == true) or (arg1 == true)
+        if inCombat then
+            for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                local f = _G[spec.name]
+                if f then
+                    SyncOverlayMode(f, spec.name)
+                end
+            end
+            if W.scaleToast then W.scaleToast:Hide() end
+        else
+            DesktopWindows:ApplyAllWindowStates()
+        end
+    end
+    DesktopWindows.HandleBlizzardWindowCombatChange = DesktopWindows.HandleCombatChange
+
+    addonTable.ApplyAllBlizzardWindowStates         = function() return DesktopWindows:ApplyAllWindowStates() end
+    addonTable.ApplyAllWindowStates                 = function() return DesktopWindows:ApplyAllWindowStates() end
+    addonTable.ResetSingleBlizzardWindow            = function(fName, toast) return DesktopWindows:ResetSingleWindow(fName, toast) end
+    addonTable.ResetAllBlizzardWindows              = function(silent) return DesktopWindows:ResetAllWindows(silent) end
+    addonTable.GetBlizzardWindowYieldAddon          = function() return DesktopWindows:GetYieldAddon() end
+    addonTable.IsYieldingBlizzardWindowsToEllesmereUI = function() return DesktopWindows:IsYielding() end
+    DynamicSuite.ApplyAllBlizzardWindowStates       = addonTable.ApplyAllBlizzardWindowStates
+    DynamicSuite.ApplyAllWindowStates               = addonTable.ApplyAllWindowStates
+    DynamicSuite.ResetSingleBlizzardWindow          = addonTable.ResetSingleBlizzardWindow
+    DynamicSuite.ResetAllBlizzardWindows            = addonTable.ResetAllBlizzardWindows
+    DynamicSuite.GetBlizzardWindowYieldAddon        = addonTable.GetBlizzardWindowYieldAddon
+    DynamicSuite.IsYieldingBlizzardWindowsToEllesmereUI = addonTable.IsYieldingBlizzardWindowsToEllesmereUI
+end
+
 -- Commands that only print / reload / defer in combat; everything else opens the config window.
 local COMBAT_SAFE_SUITE_COMMANDS = {
     reload = true, auto = true, status = true, lock = true, unlock = true, freeze = true, profile = true,
@@ -4181,9 +6584,33 @@ local function HandleSuiteSlashCommandInner(msg)
             OpenMainSuiteWindowFallback()
         end
 
-    elseif cmd == "theme" or cmd == "studio" then
+    elseif cmd == "theme" then
+        if addonTable.OpenWorkspaceView then
+            addonTable.OpenWorkspaceView("THEME_STUDIO", 1)
+            if addonTable.OpenSuiteStudioTab then
+                pcall(addonTable.OpenSuiteStudioTab, 1)
+            end
+        elseif addonTable.OpenSuiteStudioTab then
+            addonTable.OpenSuiteStudioTab(1)
+        else
+            OpenMainSuiteWindowFallback()
+        end
+
+    elseif cmd == "studio" then
         if addonTable.OpenWorkspaceView then
             addonTable.OpenWorkspaceView("THEME_STUDIO")
+        else
+            OpenMainSuiteWindowFallback()
+        end
+
+    elseif cmd == "windows" or cmd == "win" or cmd == "window" or cmd == "desktop" then
+        if addonTable.OpenWorkspaceView then
+            addonTable.OpenWorkspaceView("DESKTOP_WINDOWS", 2)
+            if addonTable.OpenSuiteStudioTab then
+                pcall(addonTable.OpenSuiteStudioTab, 2)
+            end
+        elseif addonTable.OpenSuiteStudioTab then
+            addonTable.OpenSuiteStudioTab(2)
         else
             OpenMainSuiteWindowFallback()
         end
@@ -4247,6 +6674,7 @@ SlashCmdList["DYNAMICSUITE"] = HandleSuiteSlashCommand
 
 function addonTable.ReassertSuiteSlashRouting()
     _G.DynamicSuite = _G.DynamicSuite or {}
+    _G.DynamicSuite.DesktopWindows       = DesktopWindows
     _G.DynamicSuite.EnterHudEditMode     = addonTable.EnterHudEditMode
     _G.DynamicSuite.EnterEditMode        = addonTable.EnterHudEditMode
     _G.DynamicSuite.ResetAllHudPositions = addonTable.ResetAllHudPositions
@@ -4334,16 +6762,6 @@ function _G.DynamicSuite_OnAddonCompartmentClick(_, buttonName)
     end
 end
 
-local function SafeRegisterSuiteEvent(frame, eventName)
-    if not frame or not eventName then return end
-    if _G.C_EventUtils and type(_G.C_EventUtils.IsEventValid) == "function" then
-        if not _G.C_EventUtils.IsEventValid(eventName) then
-            return
-        end
-    end
-    frame:RegisterEvent(eventName)
-end
-
 local isSuiteCoreInitialized = false
 local hasEnteredWorld = false
 local suiteEventFrame = CreateFrame("Frame", "DynamicSuiteEventFrame", UIParent)
@@ -4356,6 +6774,7 @@ SafeRegisterSuiteEvent(suiteEventFrame, "UI_SCALE_CHANGED")
 SafeRegisterSuiteEvent(suiteEventFrame, "DISPLAY_SIZE_CHANGED")
 suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
     if event == "PLAYER_REGEN_DISABLED" then
+        DesktopWindows:HandleCombatChange(true)
         if addonTable.IsHudEditModeActive and addonTable.IsHudEditModeActive() and addonTable.ExitHudEditMode then
             addonTable.ExitHudEditMode()
         end
@@ -4365,6 +6784,7 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
         addonTable.CollapseHubForCombat()
         return
     elseif event == "PLAYER_REGEN_ENABLED" then
+        DesktopWindows:HandleCombatChange(false)
         if addonTable.OnSuiteLeaveCombat then
             addonTable.OnSuiteLeaveCombat()
         end
@@ -4386,6 +6806,9 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
             addonTable.ReclampMainWindowToScreen()
         end
         ApplyHubClampInsets()
+        if not InCombatLockdown() then
+            DesktopWindows:ApplyAllWindowStates()
+        end
         if addonTable.ClampAllSuiteHudsToScreen then
             if InCombatLockdown() then
                 addonTable._pendingHudClamp = true
@@ -4416,6 +6839,7 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
             end
             if not g.windowWidth or g.windowWidth < 980 then g.windowWidth = 1040 end
             if not g.windowHeight or g.windowHeight < 640 then g.windowHeight = 680 end
+            GetDesktopWindowsDB()
             EnforceProtectedSuiteModules()
             SnapshotAllSuiteCVars()
             if addonTable.EnforceFrozenAddonsDisabled then
@@ -4424,18 +6848,33 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
             if addonTable.HookGameMenu then
                 addonTable.HookGameMenu()
             end
+            DesktopWindows:Init()
+        elseif arg1 == "DynamicPrep" then
+            GetDesktopWindowsDB()
+            if isSuiteCoreInitialized then
+                DesktopWindows:ApplyAllWindowStates()
+            end
+        elseif isSuiteCoreInitialized and DesktopWindows.SUPPORTED_ADDON_TRIGGER and DesktopWindows.SUPPORTED_ADDON_TRIGGER[arg1] then
+            DesktopWindows:Init(arg1)
+            if addonTable.mainFrame and addonTable.mainFrame.themeView and addonTable.mainFrame.themeView:IsShown() and addonTable.mainFrame.themeView.Refresh then
+                pcall(addonTable.mainFrame.themeView.Refresh)
+            end
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
         hasEnteredWorld = true
         InvalidateConflictCache()
         EnsureConflictCache()
         EnforceStandaloneDynamicMarkerExclusion(true)
+        DesktopWindows:ApplyAllWindowStates()
         if standaloneMarkerWasEnabledAtBoot or addonTable.standaloneMarkerWasEnabledAtBoot or (DynamicSuite and DynamicSuite.standaloneMarkerWasEnabledAtBoot) or (_G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot == true) then
             ShowMarkerConflictReloadModal()
         end
     elseif event == "PLAYER_LOGIN" then
         InvalidateConflictCache()
         EnsureSuiteGlobal()
+        local dwDB = GetDesktopWindowsDB()
+        MigrateDesktopWindowsFromPrep(dwDB, true)
+        DesktopWindows:Init()
         DynamicSuite:ScanExternalMedia(true)
         SnapshotAllSuiteCVars()
         EnforceProtectedSuiteModules()

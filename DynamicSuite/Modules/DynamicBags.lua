@@ -1906,15 +1906,38 @@ end
 -- ---- Popup menu (used by dropdowns and the Alt+Right-Click pin menu) --------
 
 function U.CloseMenu()
-    if S.menu then S.menu:Hide() end
-    if S.menuCatcher then S.menuCatcher:Hide() end
+    if S.menuAnchor and S.menuAnchor.chevronTex then
+        S.menuAnchor.chevronTex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
+    end
     S.menuAnchor = nil
+    if S.menu then
+        if S.menu.searchBox then S.menu.searchBox:ClearFocus() end
+        if S.menu:IsShown() then S.menu:Hide() end
+    end
+    if S.menuCatcher and S.menuCatcher:IsShown() then S.menuCatcher:Hide() end
 end
 
+local function RegisterBagsPopupCloser()
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.RegisterPopupCloser) == "function" then
+        pcall(_G.DynamicSuite.UI.RegisterPopupCloser, "DynamicBags", U.CloseMenu)
+    end
+end
+RegisterBagsPopupCloser()
+
 function U.ShowMenu(anchor, entries, minWidth)
+    RegisterBagsPopupCloser()
     if S.menu and S.menu:IsShown() and S.menuAnchor == anchor then
         U.CloseMenu()
         return
+    end
+    U.CloseMenu()
+    if anchor and anchor.HookScript and not anchor._dbagMenuOnHideHooked then
+        anchor._dbagMenuOnHideHooked = true
+        anchor:HookScript("OnHide", function(self)
+            if S.menuAnchor == self then
+                U.CloseMenu()
+            end
+        end)
     end
     if not S.menuCatcher then
         local c = CreateFrame("Button", nil, UIParent)
@@ -1927,76 +1950,357 @@ function U.ShowMenu(anchor, entries, minWidth)
         S.menuCatcher = c
     end
     if not S.menu then
-        local m = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        m:SetFrameStrata("FULLSCREEN_DIALOG")
-        m:SetFrameLevel(100)
+        local m = CreateFrame("Frame", "DynamicBagsDropdownMenu", UIParent, "BackdropTemplate")
+        m:SetFrameStrata("TOOLTIP")
+        m:SetFrameLevel(220)
+        m:SetToplevel(true)
+        m:SetClampedToScreen(true)
+        m:EnableMouse(true)
         m.rows = {}
         m.measure = m:CreateFontString(nil, "OVERLAY")
         m.measure:Hide()
+
+        local searchWrap = CreateFrame("Frame", nil, m, "BackdropTemplate")
+        searchWrap:SetFrameLevel(225)
+        searchWrap:SetHeight(24)
+        searchWrap:SetPoint("TOPLEFT", m, "TOPLEFT", 6, -5)
+        searchWrap:SetPoint("TOPRIGHT", m, "TOPRIGHT", -6, -5)
+        Backdrop(searchWrap, 0.035, 0.042, 0.060, 0.98, 0.16, 0.19, 0.25, 0.90)
+        m.searchWrap = searchWrap
+
+        local sb = CreateFrame("EditBox", nil, searchWrap)
+        sb:SetFrameLevel(226)
+        sb:SetPoint("TOPLEFT", searchWrap, "TOPLEFT", 8, -2)
+        sb:SetPoint("BOTTOMRIGHT", searchWrap, "BOTTOMRIGHT", -24, 2)
+        sb:SetAutoFocus(false)
+        sb:SetMaxLetters(64)
+        SetFont(sb, 10.5)
+        sb:SetTextColor(0.95, 0.97, 1.0, 1.0)
+        sb:SetScript("OnEscapePressed", function() U.CloseMenu() end)
+        m.searchBox = sb
+
+        local ph = searchWrap:CreateFontString(nil, "OVERLAY")
+        ph:SetPoint("LEFT", sb, "LEFT", 0, 0)
+        SetFont(ph, 10.5)
+        ph:SetTextColor(0.48, 0.54, 0.64, 0.90)
+        ph:SetText("Search...")
+        m.searchPlaceholder = ph
+
+        local clrBtn = CreateFrame("Button", nil, searchWrap)
+        clrBtn:SetSize(18, 18)
+        clrBtn:SetPoint("RIGHT", searchWrap, "RIGHT", -3, 0)
+        clrBtn:SetFrameLevel(227)
+        local clrTxt = clrBtn:CreateFontString(nil, "OVERLAY")
+        clrTxt:SetPoint("CENTER", 0, 0)
+        SetFont(clrTxt, 9.5)
+        clrTxt:SetTextColor(0.62, 0.68, 0.78, 0.95)
+        clrTxt:SetText("X")
+        clrBtn.txt = clrTxt
+        clrBtn:Hide()
+        clrBtn:SetScript("OnEnter", function(cb)
+            local r2, g2, b2 = GetAccent()
+            cb.txt:SetTextColor(r2, g2, b2, 1.0)
+        end)
+        clrBtn:SetScript("OnLeave", function(cb)
+            cb.txt:SetTextColor(0.62, 0.68, 0.78, 0.95)
+        end)
+        clrBtn:SetScript("OnClick", function()
+            sb:SetText("")
+            sb:ClearFocus()
+        end)
+        m.searchClear = clrBtn
+
+        local sf = CreateFrame("ScrollFrame", nil, m)
+        sf:SetFrameLevel(222)
+        sf:SetClipsChildren(true)
+        sf:EnableMouseWheel(true)
+        m.scrollFrame = sf
+
+        local sc = CreateFrame("Frame", nil, sf)
+        sc:SetFrameLevel(223)
+        sc:SetSize(200, 100)
+        sf:SetScrollChild(sc)
+        m.scrollChild = sc
+
+        local sbTrack = CreateFrame("Frame", nil, m, "BackdropTemplate")
+        sbTrack:SetFrameLevel(224)
+        sbTrack:SetWidth(4)
+        sbTrack:EnableMouse(true)
+        sbTrack:SetBackdrop({ bgFile = WHITE })
+        sbTrack:SetBackdropColor(1, 1, 1, 0.06)
+        m.sbTrack = sbTrack
+
+        local sbThumb = CreateFrame("Button", nil, sbTrack, "BackdropTemplate")
+        sbThumb:SetFrameLevel(225)
+        sbThumb:SetWidth(4)
+        sbThumb:SetHeight(32)
+        sbThumb:SetPoint("TOP", sbTrack, "TOP", 0, 0)
+        sbThumb:EnableMouse(true)
+        sbThumb:SetBackdrop({ bgFile = WHITE })
+        sbThumb:SetBackdropColor(0.38, 0.45, 0.56, 0.85)
+        m.sbThumb = sbThumb
+
+        local borderOverlay = CreateFrame("Frame", nil, m, "BackdropTemplate")
+        borderOverlay:SetAllPoints(m)
+        borderOverlay:SetFrameLevel(230)
+        borderOverlay:SetBackdrop({ edgeFile = WHITE, edgeSize = 1 })
+        m.borderOverlay = borderOverlay
+
+        local function RefreshMenuThumbColor()
+            if sbThumb.isDragging then
+                local r2, g2, b2 = GetAccent()
+                sbThumb:SetBackdropColor(r2, g2, b2, 0.95)
+            elseif sbThumb:IsMouseOver() then
+                sbThumb:SetBackdropColor(0.52, 0.60, 0.72, 0.95)
+            else
+                sbThumb:SetBackdropColor(0.38, 0.45, 0.56, 0.85)
+            end
+        end
+
+        local function UpdateMenuThumb()
+            local maxS = max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 0))
+            if maxS <= 1 then
+                sbTrack:Hide()
+                sf:SetVerticalScroll(0)
+                return
+            end
+            sbTrack:Show()
+            local trackH = max(20, sbTrack:GetHeight() or 180)
+            local ratio = min(1, (sf:GetHeight() or 1) / max(1, sc:GetHeight() or 1))
+            local thumbH = max(24, floor(trackH * ratio))
+            sbThumb:SetHeight(thumbH)
+            local cur = min(maxS, max(0, sf:GetVerticalScroll() or 0))
+            local travel = max(1, trackH - thumbH)
+            sbThumb:ClearAllPoints()
+            sbThumb:SetPoint("TOP", sbTrack, "TOP", 0, -(cur / maxS) * travel)
+            RefreshMenuThumbColor()
+        end
+        m.UpdateMenuThumb = UpdateMenuThumb
+
+        sf:SetScript("OnMouseWheel", function(self, delta)
+            local maxS = max(0, (sc:GetHeight() or 0) - (self:GetHeight() or 0))
+            local nextS = min(maxS, max(0, (self:GetVerticalScroll() or 0) - delta * 26))
+            self:SetVerticalScroll(nextS)
+            UpdateMenuThumb()
+        end)
+
+        sbTrack:SetScript("OnMouseDown", function(self, button)
+            if button ~= "LeftButton" then return end
+            local maxS = max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 0))
+            if maxS <= 0 then return end
+            local scale = self:GetEffectiveScale() or 1
+            local _, cy = GetCursorPosition()
+            cy = cy / scale
+            local top, bottom = self:GetTop(), self:GetBottom()
+            if top and bottom and top > bottom then
+                local trackH = top - bottom
+                local thumbH = sbThumb:GetHeight() or 24
+                local travel = max(1, trackH - thumbH)
+                local ratio = max(0, min(1, ((top - cy) - (thumbH * 0.5)) / travel))
+                sf:SetVerticalScroll(ratio * maxS)
+                UpdateMenuThumb()
+            end
+        end)
+
+        sbThumb:SetScript("OnEnter", function() RefreshMenuThumbColor() end)
+        sbThumb:SetScript("OnLeave", function() RefreshMenuThumbColor() end)
+        sbThumb:SetScript("OnMouseDown", function(self, button)
+            if button ~= "LeftButton" then return end
+            self.isDragging = true
+            RefreshMenuThumbColor()
+            local startY = select(2, GetCursorPosition()) / (self:GetEffectiveScale() or 1)
+            local startScroll = sf:GetVerticalScroll() or 0
+            self:SetScript("OnUpdate", function()
+                if not IsMouseButtonDown("LeftButton") then
+                    self.isDragging = false
+                    self:SetScript("OnUpdate", nil)
+                    RefreshMenuThumbColor()
+                    return
+                end
+                local curY = select(2, GetCursorPosition()) / (self:GetEffectiveScale() or 1)
+                local maxS = max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 0))
+                local trackH = max(20, sbTrack:GetHeight() or 180)
+                local travel = max(1, trackH - (self:GetHeight() or 24))
+                sf:SetVerticalScroll(min(maxS, max(0, startScroll + ((startY - curY) / travel) * maxS)))
+                UpdateMenuThumb()
+            end)
+        end)
+        sbThumb:SetScript("OnMouseUp", function(self)
+            self.isDragging = false
+            self:SetScript("OnUpdate", nil)
+            RefreshMenuThumbColor()
+        end)
+        sbThumb:SetScript("OnHide", function(self)
+            self.isDragging = false
+            self:SetScript("OnUpdate", nil)
+            RefreshMenuThumbColor()
+        end)
+
+        m:SetScript("OnHide", function(self)
+            if self.searchBox then self.searchBox:ClearFocus() end
+            if S.menuAnchor and S.menuAnchor.chevronTex then
+                S.menuAnchor.chevronTex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
+            end
+            S.menuAnchor = nil
+            if S.menuCatcher and S.menuCatcher:IsShown() then
+                S.menuCatcher:Hide()
+            end
+        end)
         S.menu = m
+    end
+    if not InCombatLockdown() and type(UISpecialFrames) == "table" and not S.menu._specialRegistered then
+        S.menu._specialRegistered = true
+        local found = false
+        for i = 1, #UISpecialFrames do
+            if UISpecialFrames[i] == "DynamicBagsDropdownMenu" then found = true; break end
+        end
+        if not found then tinsert(UISpecialFrames, "DynamicBagsDropdownMenu") end
     end
     local m = S.menu
     local ar, ag, ab = GetAccent()
-    Backdrop(m, 0.08, 0.09, 0.12, 0.98, ar, ag, ab, 0.90)
+    Backdrop(m, 0.043, 0.051, 0.071, 0.99, ar, ag, ab, 0.90)
+    if m.borderOverlay then
+        m.borderOverlay:SetFrameLevel(230)
+        m.borderOverlay:SetBackdropBorderColor(ar, ag, ab, 0.90)
+    end
+    if m.searchWrap then
+        m.searchWrap:SetBackdropBorderColor(ar, ag, ab, 0.35)
+    end
     SetFont(m.measure, 11)
     local widest = 0
     for _, en in ipairs(entries) do
         m.measure:SetText(en.label or "")
         widest = max(widest, m.measure:GetStringWidth() or 0)
     end
-    local width = max(minWidth or 140, ceil(widest) + 46)
+    local showSearch = (#entries > 12)
+    local searchAreaH = showSearch and 28 or 0
+    m.searchWrap:SetShown(showSearch)
+    local width = max(minWidth or 140, ceil(widest) + 46, showSearch and 220 or 140)
     local rowH, pad = 24, 4
-    for _, r in ipairs(m.rows) do r:Hide() end
-    for i, en in ipairs(entries) do
-        local row = m.rows[i]
-        if not row then
-            row = CreateFrame("Button", nil, m)
-            row:SetHeight(rowH)
-            row.bg = row:CreateTexture(nil, "BACKGROUND")
-            row.bg:SetAllPoints()
-            row.bg:SetColorTexture(1, 1, 1, 0)
-            row.mark = row:CreateTexture(nil, "ARTWORK")
-            row.mark:SetSize(6, 6)
-            row.mark:SetPoint("LEFT", row, "LEFT", 10, 0)
-            row.text = row:CreateFontString(nil, "OVERLAY")
-            row.text:SetPoint("LEFT", row, "LEFT", 26, 0)
-            row.text:SetPoint("RIGHT", row, "RIGHT", -8, 0)
-            row.text:SetJustifyH("LEFT")
-            row.text:SetWordWrap(false)
-            row:SetScript("OnEnter", function(self)
-                local r2, g2, b2 = GetAccent()
-                self.bg:SetColorTexture(r2, g2, b2, 0.16)
-            end)
-            row:SetScript("OnLeave", function(self) self.bg:SetColorTexture(1, 1, 1, 0) end)
-            m.rows[i] = row
+    local maxVisH = 264
+
+    local function RenderMenuRows(query)
+        local qLower = tostring(query or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+        if m.searchPlaceholder then
+            m.searchPlaceholder:SetShown(qLower == "" and not m.searchBox:HasFocus())
         end
-        row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", m, "TOPLEFT", pad, -pad - (i - 1) * rowH)
-        row:SetPoint("TOPRIGHT", m, "TOPRIGHT", -pad, -pad - (i - 1) * rowH)
-        SetFont(row.text, 11)
-        row.text:SetText(en.label or "")
-        if en.checked then
-            row.mark:SetColorTexture(ar, ag, ab, 1)
-            row.mark:Show()
-            row.text:SetTextColor(ar, ag, ab, 1)
-        elseif en.color then
-            row.mark:Hide()
-            row.text:SetTextColor(en.color[1], en.color[2], en.color[3], 1)
+        if m.searchClear then
+            m.searchClear:SetShown(qLower ~= "")
+        end
+        local filtered = {}
+        if qLower == "" then
+            filtered = entries
         else
-            row.mark:Hide()
-            row.text:SetTextColor(0.90, 0.93, 0.97, 1)
+            for _, en in ipairs(entries) do
+                local cleanL = tostring(en.label or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                if cleanL:lower():find(qLower, 1, true) then
+                    filtered[#filtered + 1] = en
+                end
+            end
+            if #filtered == 0 then
+                filtered[1] = { label = "No matching options", isEmptyNotice = true }
+            end
         end
-        row:SetScript("OnClick", function()
-            if not en.keepOpen then U.CloseMenu() end
-            if en.onClick then en.onClick() end
-        end)
-        row:Show()
+
+        for _, r in ipairs(m.rows) do r:Hide() end
+        for i, en in ipairs(filtered) do
+            local row = m.rows[i]
+            if not row then
+                row = CreateFrame("Button", nil, m.scrollChild)
+                row:SetFrameLevel(225)
+                row:SetHeight(rowH)
+                row.bg = row:CreateTexture(nil, "BACKGROUND")
+                row.bg:SetAllPoints()
+                row.bg:SetColorTexture(1, 1, 1, 0)
+                row.mark = row:CreateTexture(nil, "ARTWORK")
+                row.mark:SetSize(6, 6)
+                row.mark:SetPoint("LEFT", row, "LEFT", 10, 0)
+                row.text = row:CreateFontString(nil, "OVERLAY")
+                row.text:SetPoint("LEFT", row, "LEFT", 26, 0)
+                row.text:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+                row.text:SetJustifyH("LEFT")
+                row.text:SetWordWrap(false)
+                m.rows[i] = row
+            end
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", m.scrollChild, "TOPLEFT", 0, -((i - 1) * rowH))
+            row:SetPoint("TOPRIGHT", m.scrollChild, "TOPRIGHT", 0, -((i - 1) * rowH))
+            SetFont(row.text, 11)
+            row.text:SetText(en.label or "")
+            if en.isEmptyNotice then
+                row:Disable()
+                row.mark:Hide()
+                row.bg:SetColorTexture(1, 1, 1, 0)
+                row.text:SetTextColor(0.55, 0.60, 0.70, 0.90)
+                row:SetScript("OnEnter", nil)
+                row:SetScript("OnLeave", nil)
+                row:SetScript("OnClick", nil)
+            else
+                row:Enable()
+                if en.checked then
+                    row.mark:SetColorTexture(ar, ag, ab, 1)
+                    row.mark:Show()
+                    row.text:SetTextColor(ar, ag, ab, 1)
+                elseif en.color then
+                    row.mark:Hide()
+                    row.text:SetTextColor(en.color[1], en.color[2], en.color[3], 1)
+                else
+                    row.mark:Hide()
+                    row.text:SetTextColor(0.90, 0.93, 0.97, 1)
+                end
+                row:SetScript("OnEnter", function(self)
+                    local r2, g2, b2 = GetAccent()
+                    self.bg:SetColorTexture(r2, g2, b2, 0.16)
+                end)
+                row:SetScript("OnLeave", function(self) self.bg:SetColorTexture(1, 1, 1, 0) end)
+                row:SetScript("OnClick", function()
+                    if not en.keepOpen then U.CloseMenu() end
+                    if en.onClick then en.onClick() end
+                end)
+            end
+            row:Show()
+        end
+
+        local totalH = max(rowH, #filtered * rowH)
+        local viewH = min(totalH, maxVisH)
+        local hasScroll = (totalH > viewH + 1)
+        local topOff = pad + searchAreaH
+        m:SetSize(width, topOff + viewH + pad)
+        m.scrollFrame:ClearAllPoints()
+        m.scrollFrame:SetPoint("TOPLEFT", m, "TOPLEFT", pad, -topOff)
+        m.scrollFrame:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", hasScroll and -10 or -pad, pad)
+        m.scrollChild:SetSize(width - (hasScroll and (pad + 10) or (pad * 2)), totalH)
+        m.scrollFrame:SetVerticalScroll(0)
+        m.sbTrack:ClearAllPoints()
+        m.sbTrack:SetPoint("TOPRIGHT", m, "TOPRIGHT", -3, -topOff)
+        m.sbTrack:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", -3, pad)
+        m.UpdateMenuThumb()
     end
-    m:SetSize(width, #entries * rowH + pad * 2)
+
+    m.searchBox:SetScript("OnTextChanged", function(sbEdit)
+        if m:IsShown() and S.menuAnchor == anchor then
+            RenderMenuRows(sbEdit:GetText())
+        end
+    end)
+    m.searchBox:SetScript("OnEditFocusGained", function()
+        if m.searchPlaceholder then m.searchPlaceholder:Hide() end
+    end)
+    m.searchBox:SetScript("OnEditFocusLost", function(sbEdit)
+        if m.searchPlaceholder then
+            m.searchPlaceholder:SetShown((sbEdit:GetText() or "") == "")
+        end
+    end)
+    m.searchBox:SetText("")
+    m.searchBox:ClearFocus()
+    RenderMenuRows("")
+
     m:ClearAllPoints()
     m:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -2)
     m:SetClampedToScreen(true)
     S.menuAnchor = anchor
+    if anchor and anchor.chevronTex then
+        anchor.chevronTex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_up.tga")
+    end
     S.menuCatcher:Show()
     m:Show()
 end
@@ -2017,6 +2321,7 @@ function U.CreateScrollArea(parent)
     track:SetWidth(4)
     track:SetPoint("TOPRIGHT", scroll, "TOPRIGHT", 10, -2)
     track:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 10, 2)
+    track:EnableMouse(true)
     track:SetBackdrop({ bgFile = WHITE })
     track:SetBackdropColor(1, 1, 1, 0.05)
 
@@ -2024,8 +2329,20 @@ function U.CreateScrollArea(parent)
     thumb:SetWidth(4)
     thumb:SetHeight(48)
     thumb:SetPoint("TOP", track, "TOP", 0, 0)
+    thumb:EnableMouse(true)
     thumb:SetBackdrop({ bgFile = WHITE })
     thumb:SetBackdropColor(COL.slate[1], COL.slate[2], COL.slate[3], COL.slate[4])
+
+    local function RefreshThumbColor()
+        if thumb.isDragging then
+            local ar, ag, ab = GetAccent()
+            thumb:SetBackdropColor(ar, ag, ab, 0.95)
+        elseif thumb:IsMouseOver() then
+            thumb:SetBackdropColor(0.52, 0.60, 0.72, 0.95)
+        else
+            thumb:SetBackdropColor(COL.slate[1], COL.slate[2], COL.slate[3], COL.slate[4])
+        end
+    end
 
     local function MaxScroll()
         return max(0, (content:GetHeight() or 0) - (scroll:GetHeight() or 0))
@@ -2047,6 +2364,7 @@ function U.CreateScrollArea(parent)
         local travel = max(1, trackH - thumbH)
         thumb:ClearAllPoints()
         thumb:SetPoint("TOP", track, "TOP", 0, -(cur / maxS) * travel)
+        RefreshThumbColor()
     end
 
     scroll:EnableMouseWheel(true)
@@ -2057,13 +2375,39 @@ function U.CreateScrollArea(parent)
         UpdateThumb()
     end)
 
+    track:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        U.CloseMenu()
+        local maxS = MaxScroll()
+        if maxS <= 0 then return end
+        local scale = self:GetEffectiveScale() or 1
+        local _, cy = GetCursorPosition()
+        cy = cy / scale
+        local top, bottom = self:GetTop(), self:GetBottom()
+        if top and bottom and top > bottom then
+            local trackH = top - bottom
+            local thumbH = thumb:GetHeight() or 28
+            local travel = max(1, trackH - thumbH)
+            local ratio = max(0, min(1, ((top - cy) - (thumbH * 0.5)) / travel))
+            scroll:SetVerticalScroll(ratio * maxS)
+            UpdateThumb()
+        end
+    end)
+
+    thumb:SetScript("OnEnter", function() RefreshThumbColor() end)
+    thumb:SetScript("OnLeave", function() RefreshThumbColor() end)
     thumb:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
+        U.CloseMenu()
+        self.isDragging = true
+        RefreshThumbColor()
         local startY = select(2, GetCursorPosition()) / (self:GetEffectiveScale() or 1)
         local startScroll = scroll:GetVerticalScroll() or 0
         self:SetScript("OnUpdate", function()
             if not IsMouseButtonDown("LeftButton") then
+                self.isDragging = false
                 self:SetScript("OnUpdate", nil)
+                RefreshThumbColor()
                 return
             end
             local curY = select(2, GetCursorPosition()) / (self:GetEffectiveScale() or 1)
@@ -2073,6 +2417,16 @@ function U.CreateScrollArea(parent)
             scroll:SetVerticalScroll(min(maxS, max(0, startScroll + ((startY - curY) / travel) * maxS)))
             UpdateThumb()
         end)
+    end)
+    thumb:SetScript("OnMouseUp", function(self)
+        self.isDragging = false
+        self:SetScript("OnUpdate", nil)
+        RefreshThumbColor()
+    end)
+    thumb:SetScript("OnHide", function(self)
+        self.isDragging = false
+        self:SetScript("OnUpdate", nil)
+        RefreshThumbColor()
     end)
 
     scroll:SetScript("OnSizeChanged", function(_, w)
@@ -6630,6 +6984,10 @@ function U.AddCard(page, spec)
             self:SetScript("OnUpdate", nil)
             card:Refresh()
         end)
+        slider:SetScript("OnHide", function(self)
+            isDragging = false
+            self:SetScript("OnUpdate", nil)
+        end)
         slider:SetScript("OnEnter", function(self)
             UpdateFillAndThumb()
             if GameTooltip then
@@ -7520,6 +7878,7 @@ function U.RenderWorkspace(arg1, arg2)
     local parent = (type(arg1) == "table" and type(arg1.GetObjectType) == "function") and arg1 or arg2
     if not parent or type(parent.GetObjectType) ~= "function" then return nil end
     DB()
+    RegisterBagsPopupCloser()
     parent:Show()
 
     if parent.DynamicBagsContainer then
@@ -7740,6 +8099,7 @@ local function EnsureStandalone()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:HookScript("OnHide", function() U.CloseMenu() end)
     local ar, ag, ab = GetAccent()
     Backdrop(f, COL.panel[1], COL.panel[2], COL.panel[3], COL.panel[4], ar, ag, ab, 0.9)
     local footer = CreateFrame("Frame", nil, f, "BackdropTemplate")

@@ -145,6 +145,9 @@ local function PreRegisterDynamicChatSpecialFrames()
     SafeRegisterUISpecialFrame("DynamicChatRailCustomizerMenu")
     SafeRegisterUISpecialFrame("DynamicChatCopyPopup")
     SafeRegisterUISpecialFrame("DynamicChatStandaloneFrame")
+    SafeRegisterUISpecialFrame("DynamicChatSoundDropdownPopover")
+    SafeRegisterUISpecialFrame("DynamicChatFontDropdownMenu")
+    SafeRegisterUISpecialFrame("DynamicChatReloadPromptModal")
 end
 
 local ICON_MAIN         = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga"
@@ -1608,6 +1611,27 @@ local function CreateDynamicChatScrollbar(parent, opts)
         end
     end)
 
+    thumb:SetScript("OnHide", function()
+        bar._isDragging = false
+        bar._isHovered = false
+        bar:UpdateVisuals()
+    end)
+
+    if thumb.EnableMouseWheel then
+        thumb:EnableMouseWheel(true)
+        thumb:SetScript("OnMouseWheel", function(_, delta)
+            if type(bar._onMouseWheel) == "function" then
+                bar._onMouseWheel(delta)
+            end
+        end)
+    end
+
+    bar:SetScript("OnHide", function(self)
+        self._isDragging = false
+        self._isHovered = false
+        self:UpdateVisuals()
+    end)
+
     bar:SetScript("OnUpdate", function(self, elapsed)
         if self._isDragging then
             if not IsMouseButtonDown("LeftButton") then
@@ -2044,6 +2068,13 @@ local function EnsureChatHistoryModal()
         autoHide = false,
         onValueChanged = function(newVal)
             sf:SetVerticalScroll(newVal)
+        end,
+        onMouseWheel = function(delta)
+            local maxRange = sf:GetVerticalScrollRange() or 0
+            local cur = sf:GetVerticalScroll() or 0
+            local step = 36
+            local nextVal = math.max(0, math.min(maxRange, cur - (delta * step)))
+            sf:SetVerticalScroll(nextVal)
         end,
     })
     histScrollBar:SetPoint("TOPRIGHT", boxWrap, "TOPRIGHT", -6, -8)
@@ -2706,11 +2737,22 @@ local function ShowLeftRailCustomizerMenu(anchorBtn)
         if railPopoverClickCatcher then railPopoverClickCatcher:Hide() end
         return
     end
+    if anchorBtn and not anchorBtn._dcRailPopHooked then
+        anchorBtn._dcRailPopHooked = true
+        anchorBtn:HookScript("OnHide", function()
+            if railPopoverFrame and railPopoverFrame:IsShown() then
+                railPopoverFrame:Hide()
+            end
+            if railPopoverClickCatcher and railPopoverClickCatcher:IsShown() then
+                railPopoverClickCatcher:Hide()
+            end
+        end)
+    end
     if not railPopoverFrame then
         local pop = CreateFrame("Frame", "DynamicChatRailCustomizerMenu", UIParent, "BackdropTemplate")
         pop:SetSize(226, 268)
-        pop:SetFrameStrata("DIALOG")
-        pop:SetFrameLevel(10)
+        pop:SetFrameStrata("TOOLTIP")
+        pop:SetFrameLevel(220)
         pop:SetToplevel(true)
         pop:SetClampedToScreen(true)
         pop:EnableMouse(true)
@@ -2719,8 +2761,13 @@ local function ShowLeftRailCustomizerMenu(anchorBtn)
             edgeFile = "Interface\\Buttons\\WHITE8x8",
             edgeSize = 1,
         })
-        pop:SetBackdropColor(0.039, 0.047, 0.063, 0.98)
+        pop:SetBackdropColor(0.043, 0.051, 0.071, 0.99)
         SafeRegisterUISpecialFrame("DynamicChatRailCustomizerMenu")
+        local borderOverlay = CreateFrame("Frame", nil, pop, "BackdropTemplate")
+        borderOverlay:SetAllPoints(pop)
+        borderOverlay:SetFrameLevel(pop:GetFrameLevel() + 10)
+        borderOverlay:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+        pop.borderOverlay = borderOverlay
         pop:HookScript("OnHide", function()
             if railPopoverClickCatcher and railPopoverClickCatcher:IsShown() then
                 railPopoverClickCatcher:Hide()
@@ -2806,7 +2853,10 @@ local function ShowLeftRailCustomizerMenu(anchorBtn)
             local db = EnsureDB()
             local curMode = db.leftRailMode or "ALWAYS"
             local rb = db.railButtons or DEFAULTS.railButtons
-            self:SetBackdropBorderColor(ar, ag, ab, 0.85)
+            self:SetBackdropBorderColor(ar, ag, ab, 0.92)
+            if self.borderOverlay then
+                self.borderOverlay:SetBackdropBorderColor(ar, ag, ab, 0.92)
+            end
             self.hdr:SetTextColor(ar, ag, ab, 1.0)
 
             for _, mb in ipairs(self.modeBtns) do
@@ -7737,10 +7787,19 @@ end
 
 local activeDropdownMenu = nil
 local dropdownClickCatcher = nil
+local soundDropdownPopover = nil
+local fontDropdownMenu = nil
 
 local function CloseActiveDropdown()
     if activeDropdownMenu then
         activeDropdownMenu:Hide()
+        activeDropdownMenu = nil
+    end
+    if soundDropdownPopover and soundDropdownPopover:IsShown() then
+        soundDropdownPopover:Hide()
+    end
+    if fontDropdownMenu and fontDropdownMenu:IsShown() then
+        fontDropdownMenu:Hide()
     end
     if dropdownClickCatcher then
         dropdownClickCatcher:Hide()
@@ -7752,6 +7811,15 @@ local function CloseActiveDropdown()
         railPopoverClickCatcher:Hide()
     end
 end
+DynamicChat.CloseActiveDropdown = CloseActiveDropdown
+
+local function RegisterDynamicChatPopupClosers()
+    local ui = _G.DynamicSuite and _G.DynamicSuite.UI
+    if ui and type(ui.RegisterPopupCloser) == "function" then
+        pcall(ui.RegisterPopupCloser, "DynamicChat", CloseActiveDropdown)
+    end
+end
+RegisterDynamicChatPopupClosers()
 
 local function CreateObsidianScrollArea(parent)
     local holder = CreateFrame("Frame", nil, parent)
@@ -7772,6 +7840,7 @@ local function CreateObsidianScrollArea(parent)
     track:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", 10, 2)
     track:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
     track:SetBackdropColor(1, 1, 1, 0.05)
+    track:EnableMouse(true)
 
     local thumb = CreateFrame("Button", nil, track, "BackdropTemplate")
     thumb:SetWidth(4)
@@ -7779,6 +7848,17 @@ local function CreateObsidianScrollArea(parent)
     thumb:SetPoint("TOP", track, "TOP", 0, 0)
     thumb:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
     thumb:SetBackdropColor(0.38, 0.45, 0.56, 0.85)
+    thumb:EnableMouse(true)
+    thumb:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
+
+    local function RefreshThumbColor()
+        if thumb._isDragging or thumb._isHovered then
+            local ar, ag, ab = GetSuiteAccent()
+            thumb:SetBackdropColor(ar, ag, ab, 1.0)
+        else
+            thumb:SetBackdropColor(0.38, 0.45, 0.56, 0.85)
+        end
+    end
 
     local function UpdateThumb()
         local maxScroll = math.max(0, (content:GetHeight() or 0) - (scrollFrame:GetHeight() or 0))
@@ -7798,26 +7878,72 @@ local function CreateObsidianScrollArea(parent)
         local yOff = -(cur / maxScroll) * travel
         thumb:ClearAllPoints()
         thumb:SetPoint("TOP", track, "TOP", 0, yOff)
+        RefreshThumbColor()
+    end
+
+    local function StepScrollByDelta(delta)
+        CloseActiveDropdown()
+        local maxScroll = math.max(0, (content:GetHeight() or 0) - (scrollFrame:GetHeight() or 0))
+        local nextScroll = math.min(maxScroll, math.max(0, (scrollFrame:GetVerticalScroll() or 0) - (delta * 36)))
+        scrollFrame:SetVerticalScroll(nextScroll)
+        UpdateThumb()
     end
 
     scrollFrame:EnableMouseWheel(true)
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+    scrollFrame:SetScript("OnMouseWheel", function(_, delta)
+        StepScrollByDelta(delta)
+    end)
+    track:EnableMouseWheel(true)
+    track:SetScript("OnMouseWheel", function(_, delta)
+        StepScrollByDelta(delta)
+    end)
+    thumb:EnableMouseWheel(true)
+    thumb:SetScript("OnMouseWheel", function(_, delta)
+        StepScrollByDelta(delta)
+    end)
+
+    track:SetScript("OnMouseDown", function(selfT, button)
+        if button ~= "LeftButton" then return end
         CloseActiveDropdown()
-        local maxScroll = math.max(0, (content:GetHeight() or 0) - (self:GetHeight() or 0))
-        local nextScroll = math.min(maxScroll, math.max(0, (self:GetVerticalScroll() or 0) - (delta * 36)))
-        self:SetVerticalScroll(nextScroll)
+        local maxScroll = math.max(0, (content:GetHeight() or 0) - (scrollFrame:GetHeight() or 0))
+        if maxScroll <= 1 then return end
+        local top = selfT:GetTop()
+        local bot = selfT:GetBottom()
+        if not top or not bot or top <= bot then return end
+        local scale = selfT:GetEffectiveScale() or 1
+        local curY = select(2, GetCursorPosition()) / scale
+        local trackH = top - bot
+        local thumbH = thumb:GetHeight() or 28
+        local travel = math.max(1, trackH - thumbH)
+        local clickOff = (top - curY) - (thumbH * 0.5)
+        local pct = math.max(0, math.min(1, clickOff / travel))
+        scrollFrame:SetVerticalScroll(pct * maxScroll)
         UpdateThumb()
+    end)
+
+    thumb:SetScript("OnEnter", function(self)
+        self._isHovered = true
+        RefreshThumbColor()
+    end)
+    thumb:SetScript("OnLeave", function(self)
+        self._isHovered = false
+        RefreshThumbColor()
     end)
 
     thumb:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
+        CloseActiveDropdown()
+        self._isDragging = true
+        RefreshThumbColor()
         local startY = select(2, GetCursorPosition()) / (self:GetEffectiveScale() or 1)
         local lastY = startY
         local startScroll = scrollFrame:GetVerticalScroll() or 0
         local elapsedAcc = 0
         self:SetScript("OnUpdate", function(_, elapsed)
             if not IsMouseButtonDown("LeftButton") then
+                self._isDragging = false
                 self:SetScript("OnUpdate", nil)
+                RefreshThumbColor()
                 return
             end
             elapsedAcc = elapsedAcc + (elapsed or 0)
@@ -7836,10 +7962,15 @@ local function CreateObsidianScrollArea(parent)
         end)
     end)
     thumb:SetScript("OnMouseUp", function(self)
+        self._isDragging = false
         self:SetScript("OnUpdate", nil)
+        RefreshThumbColor()
     end)
     thumb:SetScript("OnHide", function(self)
+        self._isDragging = false
+        self._isHovered = false
         self:SetScript("OnUpdate", nil)
+        RefreshThumbColor()
     end)
 
     scrollFrame:SetScript("OnSizeChanged", function(self, w)
@@ -7853,6 +7984,7 @@ local function CreateObsidianScrollArea(parent)
     holder.content = content
     holder.UpdateThumb = UpdateThumb
     holder.thumb = thumb
+    holder.track = track
     return holder
 end
 
@@ -8226,8 +8358,6 @@ local function EnsureDropdownClickCatcher()
     return cc
 end
 
-local soundDropdownPopover = nil
-
 local function EnsureSoundDropdownPopover()
     if soundDropdownPopover then return soundDropdownPopover end
     local menu = CreateFrame("Frame", "DynamicChatSoundDropdownPopover", UIParent, "BackdropTemplate")
@@ -8244,6 +8374,14 @@ local function EnsureSoundDropdownPopover()
     menu:SetBackdropColor(0.043, 0.051, 0.071, 0.99)
     menu:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.92)
     menu:EnableMouse(true)
+    SafeRegisterUISpecialFrame("DynamicChatSoundDropdownPopover")
+
+    local borderOverlay = CreateFrame("Frame", nil, menu, "BackdropTemplate")
+    borderOverlay:SetAllPoints(menu)
+    borderOverlay:SetFrameLevel(menu:GetFrameLevel() + 10)
+    borderOverlay:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+    borderOverlay:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.92)
+    menu.borderOverlay = borderOverlay
 
     local searchWrap = CreateFrame("Frame", nil, menu, "BackdropTemplate")
     searchWrap:SetHeight(24)
@@ -8316,6 +8454,7 @@ local function EnsureSoundDropdownPopover()
     track:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -3, 5)
     track:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
     track:SetBackdropColor(1, 1, 1, 0.06)
+    track:EnableMouse(true)
 
     local thumb = CreateFrame("Button", nil, track, "BackdropTemplate")
     thumb:SetWidth(4)
@@ -8323,6 +8462,17 @@ local function EnsureSoundDropdownPopover()
     thumb:SetPoint("TOP", track, "TOP", 0, 0)
     thumb:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
     thumb:SetBackdropColor(0.38, 0.45, 0.56, 0.90)
+    thumb:EnableMouse(true)
+    thumb:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
+
+    local function RefreshMenuThumbColor()
+        if thumb._isDragging or thumb._isHovered then
+            local ar, ag, ab = GetSuiteAccent()
+            thumb:SetBackdropColor(ar, ag, ab, 1.0)
+        else
+            thumb:SetBackdropColor(0.38, 0.45, 0.56, 0.90)
+        end
+    end
 
     local function UpdateMenuThumb()
         local maxScroll = math.max(0, (content:GetHeight() or 0) - (sf:GetHeight() or 0))
@@ -8332,6 +8482,7 @@ local function EnsureSoundDropdownPopover()
             return
         end
         track:Show()
+        thumb:Show()
         local trackH = math.max(20, track:GetHeight() or 180)
         local ratio = math.min(1, (sf:GetHeight() or 1) / math.max(1, content:GetHeight() or 1))
         local thumbH = math.max(24, math.floor(trackH * ratio))
@@ -8342,25 +8493,69 @@ local function EnsureSoundDropdownPopover()
         local yOff = -(cur / maxScroll) * travel
         thumb:ClearAllPoints()
         thumb:SetPoint("TOP", track, "TOP", 0, yOff)
+        RefreshMenuThumbColor()
+    end
+
+    local function StepSoundMenuScroll(delta)
+        local maxScroll = math.max(0, (content:GetHeight() or 0) - (sf:GetHeight() or 0))
+        local nextScroll = math.min(maxScroll, math.max(0, (sf:GetVerticalScroll() or 0) - (delta * 26)))
+        sf:SetVerticalScroll(nextScroll)
+        UpdateMenuThumb()
     end
 
     sf:EnableMouseWheel(true)
-    sf:SetScript("OnMouseWheel", function(self, delta)
-        local maxScroll = math.max(0, (content:GetHeight() or 0) - (self:GetHeight() or 0))
-        local nextScroll = math.min(maxScroll, math.max(0, (self:GetVerticalScroll() or 0) - (delta * 26)))
-        self:SetVerticalScroll(nextScroll)
+    sf:SetScript("OnMouseWheel", function(_, delta)
+        StepSoundMenuScroll(delta)
+    end)
+    track:EnableMouseWheel(true)
+    track:SetScript("OnMouseWheel", function(_, delta)
+        StepSoundMenuScroll(delta)
+    end)
+    thumb:EnableMouseWheel(true)
+    thumb:SetScript("OnMouseWheel", function(_, delta)
+        StepSoundMenuScroll(delta)
+    end)
+
+    track:SetScript("OnMouseDown", function(selfT, button)
+        if button ~= "LeftButton" then return end
+        local maxScroll = math.max(0, (content:GetHeight() or 0) - (sf:GetHeight() or 0))
+        if maxScroll <= 1 then return end
+        local top = selfT:GetTop()
+        local bot = selfT:GetBottom()
+        if not top or not bot or top <= bot then return end
+        local scale = selfT:GetEffectiveScale() or 1
+        local curY = select(2, GetCursorPosition()) / scale
+        local trackH = top - bot
+        local thumbH = thumb:GetHeight() or 24
+        local travel = math.max(1, trackH - thumbH)
+        local clickOff = (top - curY) - (thumbH * 0.5)
+        local pct = math.max(0, math.min(1, clickOff / travel))
+        sf:SetVerticalScroll(pct * maxScroll)
         UpdateMenuThumb()
+    end)
+
+    thumb:SetScript("OnEnter", function(self)
+        self._isHovered = true
+        RefreshMenuThumbColor()
+    end)
+    thumb:SetScript("OnLeave", function(self)
+        self._isHovered = false
+        RefreshMenuThumbColor()
     end)
 
     thumb:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
+        self._isDragging = true
+        RefreshMenuThumbColor()
         local startY = select(2, GetCursorPosition()) / (self:GetEffectiveScale() or 1)
         local lastY = startY
         local startScroll = sf:GetVerticalScroll() or 0
         local elapsedAcc = 0
         self:SetScript("OnUpdate", function(_, elapsed)
             if not IsMouseButtonDown("LeftButton") then
+                self._isDragging = false
                 self:SetScript("OnUpdate", nil)
+                RefreshMenuThumbColor()
                 return
             end
             elapsedAcc = elapsedAcc + (elapsed or 0)
@@ -8379,10 +8574,15 @@ local function EnsureSoundDropdownPopover()
         end)
     end)
     thumb:SetScript("OnMouseUp", function(self)
+        self._isDragging = false
         self:SetScript("OnUpdate", nil)
+        RefreshMenuThumbColor()
     end)
     thumb:SetScript("OnHide", function(self)
+        self._isDragging = false
+        self._isHovered = false
         self:SetScript("OnUpdate", nil)
+        RefreshMenuThumbColor()
     end)
 
     menu.scrollFrame = sf
@@ -8395,10 +8595,22 @@ local function EnsureSoundDropdownPopover()
 
     menu:SetScript("OnHide", function(self)
         if self.searchBox then self.searchBox:ClearFocus() end
-        if self.ownerBtn and self.ownerBtn.RefreshValue then
-            self.ownerBtn:RefreshValue()
+        if dropdownClickCatcher and dropdownClickCatcher:IsShown() then
+            dropdownClickCatcher:Hide()
         end
+        local prevOwner = self.ownerBtn
         self.ownerBtn = nil
+        if activeDropdownMenu == self then
+            activeDropdownMenu = nil
+        end
+        if prevOwner then
+            if prevOwner.chevron then
+                prevOwner.chevron:SetTexture(ICON_CHEVRON_DOWN)
+            end
+            if prevOwner.RefreshValue then
+                prevOwner:RefreshValue()
+            end
+        end
     end)
 
     soundDropdownPopover = menu
@@ -8406,6 +8618,7 @@ local function EnsureSoundDropdownPopover()
 end
 
 local function OpenSoundDropdownMenu(ownerBtn, channelKey)
+    RegisterDynamicChatPopupClosers()
     local menu = EnsureSoundDropdownPopover()
     if activeDropdownMenu == menu and menu:IsShown() and menu.ownerBtn == ownerBtn then
         CloseActiveDropdown()
@@ -8413,9 +8626,17 @@ local function OpenSoundDropdownMenu(ownerBtn, channelKey)
     end
     CloseActiveDropdown()
 
+    if ownerBtn and not ownerBtn._dcDropdownOnHideHooked then
+        ownerBtn._dcDropdownOnHideHooked = true
+        ownerBtn:HookScript("OnHide", CloseActiveDropdown)
+    end
+
     local ar, ag, ab = GetSuiteAccent()
     local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
     menu:SetBackdropBorderColor(ar, ag, ab, 0.92)
+    if menu.borderOverlay then
+        menu.borderOverlay:SetBackdropBorderColor(ar, ag, ab, 0.92)
+    end
     menu.ownerBtn = ownerBtn
     if menu.searchWrap then
         menu.searchWrap:SetBackdropBorderColor(ar, ag, ab, 0.40)
@@ -8432,7 +8653,7 @@ local function OpenSoundDropdownMenu(ownerBtn, channelKey)
 
     local curVal = GetSoundSlotValue(channelKey)
 
-    local showSearch = (#rawOptions > 10)
+    local showSearch = (#rawOptions > 12)
     local searchAreaH = showSearch and 29 or 0
     menu.searchWrap:SetShown(showSearch)
     local maxVisH = 286
@@ -8895,6 +9116,14 @@ local function AttachSoundDropdownToCard(card, channelKey)
         end
         OpenSoundDropdownMenu(selfBtn, channelKey)
     end)
+    if not btn._dcDropdownOnHideHooked then
+        btn._dcDropdownOnHideHooked = true
+        btn:HookScript("OnHide", function(selfBtn)
+            if activeDropdownMenu and activeDropdownMenu:IsShown() and activeDropdownMenu.ownerBtn == selfBtn then
+                CloseActiveDropdown()
+            end
+        end)
+    end
 
     btn:RefreshValue()
     card.playBtn = playBtn
@@ -9072,19 +9301,24 @@ local function AttachMultiPillSelectorToCard(card, options, getValue, onSelect, 
 end
 
 do
-    local fontDropdownMenu
-
     local function OpenFontDropdownMenu(ownerBtn)
-        if activeDropdownFrame and activeDropdownFrame == fontDropdownMenu and fontDropdownMenu:IsShown() and fontDropdownMenu.ownerBtn == ownerBtn then
+        RegisterDynamicChatPopupClosers()
+        if activeDropdownMenu and activeDropdownMenu == fontDropdownMenu and fontDropdownMenu:IsShown() and fontDropdownMenu.ownerBtn == ownerBtn then
             CloseActiveDropdown()
             return
         end
         CloseActiveDropdown()
 
+        if ownerBtn and not ownerBtn._dcDropdownOnHideHooked then
+            ownerBtn._dcDropdownOnHideHooked = true
+            ownerBtn:HookScript("OnHide", CloseActiveDropdown)
+        end
+
         if not fontDropdownMenu then
             local m = CreateFrame("Frame", "DynamicChatFontDropdownMenu", UIParent, "BackdropTemplate")
-            m:SetFrameStrata("FULLSCREEN_DIALOG")
-            m:SetFrameLevel(90)
+            m:SetFrameStrata("TOOLTIP")
+            m:SetFrameLevel(220)
+            m:SetToplevel(true)
             m:SetSize(290, 310)
             m:SetBackdrop({
                 bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -9093,6 +9327,14 @@ do
             })
             m:SetClampedToScreen(true)
             m:EnableMouse(true)
+            SafeRegisterUISpecialFrame("DynamicChatFontDropdownMenu")
+
+            local borderOverlay = CreateFrame("Frame", nil, m, "BackdropTemplate")
+            borderOverlay:SetAllPoints(m)
+            borderOverlay:SetFrameLevel(m:GetFrameLevel() + 10)
+            borderOverlay:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+            borderOverlay:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.92)
+            m.borderOverlay = borderOverlay
 
             local sb = CreateFrame("EditBox", nil, m, "BackdropTemplate")
             sb:SetHeight(24)
@@ -9104,7 +9346,7 @@ do
                 edgeSize = 1,
             })
             sb:SetAutoFocus(false)
-            sb:SetTextInsets(8, 8, 0, 0)
+            sb:SetTextInsets(8, 24, 0, 0)
             SetSafeFont(sb, 10.5, "")
             sb:SetTextColor(0.95, 0.96, 0.98, 1)
             sb:SetScript("OnEscapePressed", function() CloseActiveDropdown() end)
@@ -9117,9 +9359,33 @@ do
             ph:SetTextColor(0.45, 0.50, 0.58, 0.9)
             m.searchPlaceholder = ph
 
+            local clrBtn = CreateFrame("Button", nil, sb)
+            clrBtn:SetSize(18, 18)
+            clrBtn:SetPoint("RIGHT", sb, "RIGHT", -3, 0)
+            local clrTxt = clrBtn:CreateFontString(nil, "OVERLAY")
+            clrTxt:SetPoint("CENTER", 0, 0)
+            SetSafeFont(clrTxt, 9.5, "")
+            clrTxt:SetTextColor(0.62, 0.68, 0.78, 0.95)
+            clrTxt:SetText("X")
+            clrBtn.txt = clrTxt
+            clrBtn:Hide()
+            clrBtn:SetScript("OnEnter", function(cb)
+                local rA, gA, bA = GetSuiteAccent()
+                cb.txt:SetTextColor(rA, gA, bA, 1.0)
+            end)
+            clrBtn:SetScript("OnLeave", function(cb)
+                cb.txt:SetTextColor(0.62, 0.68, 0.78, 0.95)
+            end)
+            clrBtn:SetScript("OnClick", function()
+                sb:SetText("")
+                sb:ClearFocus()
+            end)
+            m.searchClear = clrBtn
+
             local sf = CreateFrame("ScrollFrame", nil, m)
             sf:SetPoint("TOPLEFT", sb, "BOTTOMLEFT", 0, -6)
             sf:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", -14, 8)
+            sf:SetClipsChildren(true)
             sf:EnableMouseWheel(true)
             m.scrollFrame = sf
 
@@ -9130,61 +9396,188 @@ do
 
             local track = CreateFrame("Frame", nil, m, "BackdropTemplate")
             track:SetWidth(4)
-            track:SetPoint("TOPRIGHT", m, "TOPRIGHT", -5, -40)
+            track:SetPoint("TOPRIGHT", m, "TOPRIGHT", -5, -38)
             track:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", -5, 8)
             track:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
-            track:SetBackdropColor(0.08, 0.09, 0.12, 0.85)
+            track:SetBackdropColor(1, 1, 1, 0.06)
+            track:EnableMouse(true)
+            m.track = track
 
-            local thumb = track:CreateTexture(nil, "OVERLAY")
+            local thumb = CreateFrame("Button", nil, track, "BackdropTemplate")
             thumb:SetWidth(4)
+            thumb:SetHeight(32)
             thumb:SetPoint("TOP", track, "TOP", 0, 0)
-            thumb:SetHeight(40)
-            DisableTexPixelSnap(thumb)
+            thumb:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+            thumb:SetBackdropColor(0.38, 0.45, 0.56, 0.90)
+            thumb:EnableMouse(true)
+            thumb:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
             m.thumb = thumb
+
+            local function RefreshFontThumbColor()
+                if thumb._isDragging or thumb._isHovered then
+                    local rA, gA, bA = GetSuiteAccent()
+                    thumb:SetBackdropColor(rA, gA, bA, 1.0)
+                else
+                    thumb:SetBackdropColor(0.38, 0.45, 0.56, 0.90)
+                end
+            end
 
             m.UpdateMenuThumb = function()
                 local maxScroll = math.max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 1))
                 if maxScroll <= 1 then
-                    thumb:Hide()
+                    track:Hide()
+                    sf:SetVerticalScroll(0)
                     return
                 end
+                track:Show()
                 thumb:Show()
-                local trackH = track:GetHeight() or 200
-                local viewH = sf:GetHeight() or 200
-                local totalH = sc:GetHeight() or viewH
-                local tH = math.max(24, math.min(trackH, trackH * (viewH / totalH)))
-                thumb:SetHeight(tH)
-                local cur = sf:GetVerticalScroll() or 0
-                local pct = math.max(0, math.min(1, cur / maxScroll))
+                local trackH = math.max(20, track:GetHeight() or 200)
+                local viewH = math.max(1, sf:GetHeight() or 200)
+                local totalH = math.max(1, sc:GetHeight() or viewH)
+                local ratio = math.min(1, viewH / totalH)
+                local thumbH = math.max(24, math.floor(trackH * ratio))
+                thumb:SetHeight(thumbH)
+
+                local cur = math.min(maxScroll, math.max(0, sf:GetVerticalScroll() or 0))
+                local travel = math.max(1, trackH - thumbH)
+                local yOff = -(cur / maxScroll) * travel
                 thumb:ClearAllPoints()
-                thumb:SetPoint("TOP", track, "TOP", 0, -pct * (trackH - tH))
+                thumb:SetPoint("TOP", track, "TOP", 0, yOff)
+                RefreshFontThumbColor()
             end
 
-            sf:SetScript("OnMouseWheel", function(_, delta)
+            local function StepFontMenuScroll(delta)
                 local maxScroll = math.max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 1))
                 local nextS = math.max(0, math.min(maxScroll, (sf:GetVerticalScroll() or 0) - delta * 28))
                 sf:SetVerticalScroll(nextS)
                 m.UpdateMenuThumb()
+            end
+
+            sf:SetScript("OnMouseWheel", function(_, delta)
+                StepFontMenuScroll(delta)
+            end)
+            track:EnableMouseWheel(true)
+            track:SetScript("OnMouseWheel", function(_, delta)
+                StepFontMenuScroll(delta)
+            end)
+            thumb:EnableMouseWheel(true)
+            thumb:SetScript("OnMouseWheel", function(_, delta)
+                StepFontMenuScroll(delta)
+            end)
+
+            track:SetScript("OnMouseDown", function(selfT, button)
+                if button ~= "LeftButton" then return end
+                local maxScroll = math.max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 1))
+                if maxScroll <= 1 then return end
+                local top = selfT:GetTop()
+                local bot = selfT:GetBottom()
+                if not top or not bot or top <= bot then return end
+                local scale = selfT:GetEffectiveScale() or 1
+                local curY = select(2, GetCursorPosition()) / scale
+                local trackH = top - bot
+                local thumbH = thumb:GetHeight() or 24
+                local travel = math.max(1, trackH - thumbH)
+                local clickOff = (top - curY) - (thumbH * 0.5)
+                local pct = math.max(0, math.min(1, clickOff / travel))
+                sf:SetVerticalScroll(pct * maxScroll)
+                m.UpdateMenuThumb()
+            end)
+
+            thumb:SetScript("OnEnter", function(self)
+                self._isHovered = true
+                RefreshFontThumbColor()
+            end)
+            thumb:SetScript("OnLeave", function(self)
+                self._isHovered = false
+                RefreshFontThumbColor()
+            end)
+
+            thumb:SetScript("OnMouseDown", function(self, button)
+                if button ~= "LeftButton" then return end
+                self._isDragging = true
+                RefreshFontThumbColor()
+                local startY = select(2, GetCursorPosition()) / (self:GetEffectiveScale() or 1)
+                local lastY = startY
+                local startScroll = sf:GetVerticalScroll() or 0
+                local elapsedAcc = 0
+                self:SetScript("OnUpdate", function(_, elapsed)
+                    if not IsMouseButtonDown("LeftButton") then
+                        self._isDragging = false
+                        self:SetScript("OnUpdate", nil)
+                        RefreshFontThumbColor()
+                        return
+                    end
+                    elapsedAcc = elapsedAcc + (elapsed or 0)
+                    if elapsedAcc < 0.016 then return end
+                    elapsedAcc = 0
+                    local curY = select(2, GetCursorPosition()) / (self:GetEffectiveScale() or 1)
+                    if math.abs(curY - lastY) < 0.5 then return end
+                    lastY = curY
+                    local dy = startY - curY
+                    local maxScroll = math.max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 1))
+                    local trackH = math.max(20, track:GetHeight() or 200)
+                    local travel = math.max(1, trackH - (self:GetHeight() or 24))
+                    local nextScroll = math.min(maxScroll, math.max(0, startScroll + (dy / travel) * maxScroll))
+                    sf:SetVerticalScroll(nextScroll)
+                    m.UpdateMenuThumb()
+                end)
+            end)
+            thumb:SetScript("OnMouseUp", function(self)
+                self._isDragging = false
+                self:SetScript("OnUpdate", nil)
+                RefreshFontThumbColor()
+            end)
+            thumb:SetScript("OnHide", function(self)
+                self._isDragging = false
+                self._isHovered = false
+                self:SetScript("OnUpdate", nil)
+                RefreshFontThumbColor()
+            end)
+
+            m:SetScript("OnHide", function(self)
+                if self.searchBox then self.searchBox:ClearFocus() end
+                if dropdownClickCatcher and dropdownClickCatcher:IsShown() then
+                    dropdownClickCatcher:Hide()
+                end
+                local prevOwner = self.ownerBtn
+                self.ownerBtn = nil
+                if activeDropdownMenu == self then
+                    activeDropdownMenu = nil
+                end
+                if prevOwner then
+                    if prevOwner.chevron then
+                        prevOwner.chevron:SetTexture(ICON_CHEVRON_DOWN)
+                    end
+                    if prevOwner.RefreshValue then
+                        prevOwner:RefreshValue()
+                    end
+                end
             end)
 
             m.rows = {}
+            m:Hide()
             fontDropdownMenu = m
         end
 
         local m = fontDropdownMenu
         m.ownerBtn = ownerBtn
         local ar, ag, ab = GetSuiteAccent()
-        m:SetBackdropColor(0.043, 0.051, 0.071, 0.98)
-        m:SetBackdropBorderColor(ar, ag, ab, 0.88)
-        m.searchBox:SetBackdropColor(0.07, 0.082, 0.11, 0.98)
-        m.searchBox:SetBackdropBorderColor(0.18, 0.21, 0.27, 0.95)
-        m.thumb:SetColorTexture(ar, ag, ab, 0.85)
-
-        m:ClearAllPoints()
-        m:SetPoint("TOPRIGHT", ownerBtn, "BOTTOMRIGHT", 0, -4)
+        m:SetBackdropColor(0.043, 0.051, 0.071, 0.99)
+        m:SetBackdropBorderColor(ar, ag, ab, 0.92)
+        if m.borderOverlay then
+            m.borderOverlay:SetBackdropBorderColor(ar, ag, ab, 0.92)
+        end
+        m.searchBox:SetBackdropColor(0.035, 0.042, 0.060, 0.98)
+        m.searchBox:SetBackdropBorderColor(ar, ag, ab, 0.40)
 
         local function RenderFontRows(filterText)
             local q = string.lower(string.gsub(filterText or "", "^%s*(.-)%s*$", "%1"))
+            if m.searchPlaceholder then
+                m.searchPlaceholder:SetShown(q == "" and not m.searchBox:HasFocus())
+            end
+            if m.searchClear then
+                m.searchClear:SetShown(q ~= "")
+            end
             local opts = TypographyMgr.GetFontOptions()
             local items = {}
             local lastGroup = nil
@@ -9297,10 +9690,32 @@ do
         end)
 
         m.searchBox:SetText("")
+        m.searchBox:ClearFocus()
         if m.searchPlaceholder then m.searchPlaceholder:Show() end
+        if m.searchClear then m.searchClear:Hide() end
         RenderFontRows("")
+
+        local cc = EnsureDropdownClickCatcher()
+        cc:Show()
+
+        m:ClearAllPoints()
+        local menuH = m:GetHeight() or 310
+        local btnBottom = ownerBtn.GetBottom and ownerBtn:GetBottom() or 300
+        if btnBottom and btnBottom < (menuH + 24) then
+            m:SetPoint("BOTTOMRIGHT", ownerBtn, "TOPRIGHT", 0, 2)
+        else
+            m:SetPoint("TOPRIGHT", ownerBtn, "BOTTOMRIGHT", 0, -2)
+        end
+
         m:Show()
-        activeDropdownFrame = m
+        m.UpdateMenuThumb()
+        activeDropdownMenu = m
+        if ownerBtn.chevron then
+            ownerBtn.chevron:SetTexture(ICON_CHEVRON_UP)
+        end
+        if ownerBtn.RefreshValue then
+            ownerBtn:RefreshValue()
+        end
     end
 
     function TypographyMgr.AttachFontDropdownToCard(card)
@@ -9340,11 +9755,13 @@ do
         btn.RefreshValue = function(self)
             local ar, ag, ab = GetSuiteAccent()
             local curKey = EnsureDB().chatFontKey or "SUITE"
+            local isOpen = (activeDropdownMenu and activeDropdownMenu:IsShown() and activeDropdownMenu.ownerBtn == self)
             SetSafeFont(self.label, 10.5, "")
             self.label:SetText(TypographyMgr.GetFontLabel(curKey))
             self:SetBackdropColor(0.065, 0.075, 0.098, 0.96)
-            self:SetBackdropBorderColor(0.24, 0.28, 0.36, 0.95)
+            self:SetBackdropBorderColor(isOpen and ar or 0.24, isOpen and ag or 0.28, isOpen and ab or 0.36, 0.95)
             self.label:SetTextColor(0.95, 0.97, 1, 1)
+            self.chevron:SetTexture(isOpen and ICON_CHEVRON_UP or ICON_CHEVRON_DOWN)
             self.chevron:SetVertexColor(ar, ag, ab, 0.95)
             self.tierBar:SetColorTexture(ar, ag, ab, 0.85)
         end
@@ -9376,6 +9793,14 @@ do
             end
             OpenFontDropdownMenu(selfBtn)
         end)
+        if not btn._dcDropdownOnHideHooked then
+            btn._dcDropdownOnHideHooked = true
+            btn:HookScript("OnHide", function(selfBtn)
+                if activeDropdownMenu and activeDropdownMenu:IsShown() and activeDropdownMenu.ownerBtn == selfBtn then
+                    CloseActiveDropdown()
+                end
+            end)
+        end
 
         btn:RefreshValue()
         card.toggleBtn = btn
@@ -9496,6 +9921,7 @@ do
 
         slider:SetScript("OnMouseDown", function(selfS, button)
             if button == "LeftButton" then
+                CloseActiveDropdown()
                 isDragging = true
                 UpdateSliderFromCursor()
                 selfS:SetScript("OnUpdate", UpdateSliderFromCursor)
@@ -9511,6 +9937,7 @@ do
             selfS:SetScript("OnUpdate", nil)
         end)
         slider:SetScript("OnMouseWheel", function(_, delta)
+            CloseActiveDropdown()
             local cur = SnapValue(getValue())
             local newVal = SnapValue(cur + (delta > 0 and stepVal or -stepVal))
             if newVal ~= lastCommitted then
@@ -9591,6 +10018,7 @@ local function RenderChatEmbedded(arg1, arg2)
     if not parent or type(parent.GetObjectType) ~= "function" then return nil end
 
     EnsureDB()
+    RegisterDynamicChatPopupClosers()
     parent:Show()
 
     if parent.DynamicChatContainer then
@@ -10672,7 +11100,7 @@ local function RenderChatEmbedded(arg1, arg2)
         local trimmed = raw:gsub("^%s+", ""):gsub("%s+$", "")
         EnsureDB().mentionKeywords = trimmed
         kwBox.editBox:ClearFocus()
-        PrintChat("Saved mention keywords.")
+        PrintMsg("Saved mention keywords.")
     end
     kwSaveBtn:SetScript("OnClick", SaveKeywords)
     kwBox.editBox:SetScript("OnEnterPressed", SaveKeywords)
@@ -10763,14 +11191,14 @@ local function RenderChatEmbedded(arg1, arg2)
     csTestBtn:SetScript("OnClick", function()
         local p = (csPathBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
         if not SoundMgr.IsValidCustomAudioPath(p) then
-            PrintChat("Please enter a valid .ogg or .mp3 path (.wav is not supported).")
+            PrintMsg("Please enter a valid .ogg or .mp3 path (.wav is not supported).")
             return
         end
         local outChan = EnsureDB().soundOutputChannel or "Master"
         if type(_G.PlaySoundFile) == "function" then
             local okF, willPlay = pcall(_G.PlaySoundFile, p, outChan)
             if not (okF and willPlay ~= false) then
-                PrintChat("Could not play file. Ensure the path is valid and restart WoW if the file was just added.")
+                PrintMsg("Could not play file. Ensure the path is valid and restart WoW if the file was just added.")
             end
         end
     end)
@@ -10804,7 +11232,7 @@ local function RenderChatEmbedded(arg1, arg2)
         local lbl = (csNameBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
         local p   = (csPathBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
         if not SoundMgr.IsValidCustomAudioPath(p) then
-            PrintChat("Only .ogg and .mp3 sound files are supported (.wav files are blocked).")
+            PrintMsg("Only .ogg and .mp3 sound files are supported (.wav files are blocked).")
             return
         end
         if lbl == "" then
@@ -10813,7 +11241,7 @@ local function RenderChatEmbedded(arg1, arg2)
         local db = EnsureDB()
         db.customSounds = db.customSounds or {}
         if #db.customSounds >= MAX_CUSTOM_SOUND_ROWS then
-            PrintChat("Maximum of " .. MAX_CUSTOM_SOUND_ROWS .. " custom sounds reached. Delete one to add another.")
+            PrintMsg("Maximum of " .. MAX_CUSTOM_SOUND_ROWS .. " custom sounds reached. Delete one to add another.")
             return
         end
         local slug = lbl:lower():gsub("[^%w]+", "_"):gsub("^_+", ""):gsub("_+$", "")
@@ -10836,7 +11264,7 @@ local function RenderChatEmbedded(arg1, arg2)
         csPathBox.editBox:ClearFocus()
         RefreshCustomSoundRows()
         DynamicChat:RefreshConfigUI()
-        PrintChat("Added custom sound: " .. lbl)
+        PrintMsg("Added custom sound: " .. lbl)
     end)
 
     sec3_custom.orderedCards[#sec3_custom.orderedCards + 1] = c3_addCustom
@@ -11357,6 +11785,7 @@ function DynamicChat._EnsureStandaloneWindow()
     end)
 
     RenderChatEmbedded(body)
+    f:HookScript("OnHide", CloseActiveDropdown)
     f:Hide()
     DynamicChat.standaloneFrame = f
     return f
@@ -11408,9 +11837,162 @@ function DynamicChat:ApplyTheme()
     return DynamicChat._ApplyChatThemeToUI()
 end
 
+local reloadPromptModal = nil
+
+local function ShowDynamicChatReloadPromptModal()
+    if InCombatLockdown and InCombatLockdown() then
+        return
+    end
+    CloseActiveDropdown()
+    if not reloadPromptModal then
+        local modal = CreateFrame("Frame", "DynamicChatReloadPromptModal", UIParent, "BackdropTemplate")
+        modal:SetSize(432, 180)
+        modal:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
+        modal:SetFrameStrata("DIALOG")
+        modal:SetFrameLevel(260)
+        modal:SetToplevel(true)
+        modal:SetClampedToScreen(true)
+        modal:SetMovable(true)
+        modal:EnableMouse(true)
+        modal:RegisterForDrag("LeftButton")
+        modal:SetScript("OnDragStart", modal.StartMoving)
+        modal:SetScript("OnDragStop", modal.StopMovingOrSizing)
+        modal:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        -- Dark Obsidian (#0B0D12) + Blaze Orange (#F97316) border
+        modal:SetBackdropColor(0.043, 0.051, 0.071, 0.98)
+        modal:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
+        SafeRegisterUISpecialFrame("DynamicChatReloadPromptModal")
+
+        local topAccent = modal:CreateTexture(nil, "OVERLAY")
+        topAccent:SetHeight(2)
+        topAccent:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
+        topAccent:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
+        topAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        modal.topAccent = topAccent
+
+        local closeBtn = CreateFrame("Button", nil, modal, "BackdropTemplate")
+        closeBtn:SetSize(22, 20)
+        closeBtn:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -10, -10)
+        closeBtn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        closeBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+        closeBtn:SetBackdropBorderColor(0.200, 0.240, 0.310, 0.95)
+        local closeTxt = closeBtn:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(closeTxt, 10, "")
+        closeTxt:SetPoint("CENTER", 0, 0)
+        closeTxt:SetTextColor(0.92, 0.95, 0.99, 1.0)
+        closeTxt:SetText("X")
+        closeBtn:SetScript("OnEnter", function(selfBtn)
+            selfBtn:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
+            selfBtn:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+            closeTxt:SetTextColor(1, 1, 1, 1)
+        end)
+        closeBtn:SetScript("OnLeave", function(selfBtn)
+            selfBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+            selfBtn:SetBackdropBorderColor(0.200, 0.240, 0.310, 0.95)
+            closeTxt:SetTextColor(0.92, 0.95, 0.99, 1.0)
+        end)
+        closeBtn:SetScript("OnClick", function() modal:Hide() end)
+
+        local title = modal:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(title, 12, "")
+        title:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -14)
+        title:SetPoint("RIGHT", closeBtn, "LEFT", -8, 0)
+        title:SetJustifyH("LEFT")
+        title:SetText("|cFFF97316DynamicChat|r  |cFF94A3B8-- Restore Blizzard Defaults|r")
+        modal.title = title
+
+        local headerSep = modal:CreateTexture(nil, "ARTWORK")
+        headerSep:SetHeight(1)
+        headerSep:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -38)
+        headerSep:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -18, -38)
+        headerSep:SetColorTexture(0.200, 0.240, 0.310, 0.65)
+
+        local body = modal:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(body, 10.5, "")
+        body:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -50)
+        body:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -18, -50)
+        body:SetJustifyH("LEFT")
+        body:SetJustifyV("TOP")
+        body:SetSpacing(3)
+        body:SetTextColor(0.886, 0.910, 0.941, 1.0)
+        body:SetText("DynamicChat has restored Blizzard default chat settings and windows.\n\nReload UI now to complete cleanup?")
+        modal.body = body
+
+        local function CreateModalButton(parent, label, width, height, isPrimary, onClick)
+            local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+            btn:SetSize(width, height)
+            btn:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 1,
+            })
+            btn.txt = btn:CreateFontString(nil, "OVERLAY")
+            SetSafeFont(btn.txt, 10.5, "")
+            btn.txt:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            btn.txt:SetText(label)
+
+            local function ApplyState(hover)
+                if isPrimary then
+                    if hover then
+                        btn:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
+                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+                        btn.txt:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        btn:SetBackdropColor(0.220, 0.100, 0.022, 0.96)
+                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
+                        btn.txt:SetTextColor(0.976, 0.451, 0.086, 1.0)
+                    end
+                else
+                    if hover then
+                        btn:SetBackdropColor(0.150, 0.180, 0.240, 1.0)
+                        btn:SetBackdropBorderColor(0.320, 0.380, 0.480, 1.0)
+                        btn.txt:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        btn:SetBackdropColor(0.090, 0.110, 0.150, 0.96)
+                        btn:SetBackdropBorderColor(0.200, 0.240, 0.310, 0.95)
+                        btn.txt:SetTextColor(0.796, 0.835, 0.882, 1.0)
+                    end
+                end
+            end
+            ApplyState(false)
+            btn:SetScript("OnEnter", function() ApplyState(true) end)
+            btn:SetScript("OnLeave", function() ApplyState(false) end)
+            btn:SetScript("OnClick", onClick)
+            return btn
+        end
+
+        modal.reloadBtn = CreateModalButton(modal, "Reload UI", 138, 28, true, function()
+            modal:Hide()
+            if type(_G.ReloadUI) == "function" then
+                _G.ReloadUI()
+            end
+        end)
+        modal.reloadBtn:SetPoint("BOTTOMRIGHT", modal, "BOTTOM", -6, 16)
+
+        modal.laterBtn = CreateModalButton(modal, "Later", 138, 28, false, function()
+            modal:Hide()
+        end)
+        modal.laterBtn:SetPoint("BOTTOMLEFT", modal, "BOTTOM", 6, 16)
+
+        modal:Hide()
+        reloadPromptModal = modal
+    end
+    SafeRegisterUISpecialFrame("DynamicChatReloadPromptModal")
+    reloadPromptModal:Show()
+    reloadPromptModal:Raise()
+end
+
 function DynamicChat:RestoreBlizzardDefaults()
     if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
-        print("|cFF38BDF8DynamicChat:|r Cannot restore Blizzard chat defaults while in combat. Please leave combat and try again.")
+        PrintMsg("Cannot restore Blizzard chat defaults while in combat. Please leave combat and try again.")
         return false
     end
     local chatCVars = {
@@ -11431,21 +12013,8 @@ function DynamicChat:RestoreBlizzardDefaults()
     if type(_G.DynamicChatDB) == "table" then
         _G.DynamicChatDB.chatFramePos = nil
     end
-    print("|cFF38BDF8DynamicChat:|r Restored Blizzard default chat settings and windows. Reload UI to complete cleanup.")
-    if type(_G.StaticPopupDialogs) == "table" and type(_G.StaticPopup_Show) == "function" then
-        _G.StaticPopupDialogs["DYNAMICCHAT_RELOAD_PROMPT"] = _G.StaticPopupDialogs["DYNAMICCHAT_RELOAD_PROMPT"] or {
-            text = "DynamicChat has restored Blizzard default chat settings and windows. Reload UI now?",
-            button1 = "Reload UI",
-            button2 = "Later",
-            OnAccept = function()
-                if type(_G.ReloadUI) == "function" then _G.ReloadUI() end
-            end,
-            timeout = 0,
-            whileDead = true,
-            hideOnEscape = true,
-        }
-        _G.StaticPopup_Show("DYNAMICCHAT_RELOAD_PROMPT")
-    end
+    PrintMsg("Restored Blizzard default chat settings and windows. Reload UI to complete cleanup.")
+    ShowDynamicChatReloadPromptModal()
     return true
 end
 
@@ -11468,6 +12037,7 @@ end
 function DynamicChat._RegisterWithDynamicSuite()
     _G.DynamicSuite = _G.DynamicSuite or {}
     _G.DynamicSuite.modules = _G.DynamicSuite.modules or {}
+    RegisterDynamicChatPopupClosers()
 
     local descriptor = {
         id                 = "chat",
@@ -11496,6 +12066,8 @@ function DynamicChat._RegisterWithDynamicSuite()
         Reset              = DynamicChat._ResetChatModuleDefaults,
         OpenWorkspace      = DynamicChat._OpenChatWorkspace,
         Open               = DynamicChat._OpenChatWorkspace,
+        CloseActiveDropdown = CloseActiveDropdown,
+        ClosePopups        = CloseActiveDropdown,
         GetStatusText      = function() return GetChatStatusText() end,
         OnDisableInSuite   = function()
             DynamicChat:TeardownDisabledState(true)
@@ -11537,6 +12109,7 @@ function DynamicChat._RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "16/11/2026",
         entries = {
+            { type = "FIX",      text = "Font Dropdown Popover, 3-Way Interactive Scrollbars, Custom Reload Prompt & Chat Feedback (16/11/2026): Fixed the Chat Font Family dropdown menu so clicking outside the menu, pressing Escape, or switching tabs closes it cleanly and updates its arrow icon; upgraded the font picker, sound picker, and settings scrollbars to support mousewheel scrolling, dragging the scrollbar handle (with Suite Accent colour highlight), and clicking anywhere on the track to jump; fixed chat confirmation messages when saving mention keywords, testing or adding custom sounds, and using '/dc mute'; and replaced the default Blizzard reload popup when restoring chat defaults with a custom dark-obsidian and Blaze Orange confirmation window." },
             { type = "FIX",      text = "Embedded ChatFrame1 EditBox Dock & Zero Position Shift (16/11/2026): Embedded ebBar and ChatFrame1EditBox directly inside ChatFrame1's own 26px bottom (or top) bounds and padded ChatFrame1.FontStringContainer by 28px so the newest chat line never overlaps the EditBox; locked GetCompositeChatInsets() / GetVisibleContainerExtents() to constant (-leftExt, 8, 28, -6) insets regardless of 'Always Shaded' vs 'Only When Typing' so toggling EditBox shading never shifts ChatFrame1's screen position." },
             { type = "FEATURE",  text = "External Sound Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Default Sounds & Self-Whisper Alerts (15/11/2026): Removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; set clean channel defaults (Blizzard Whisper, Blizzard Battle.net, Blizzard Map Ping, Blizzard Raid Warning, and Say & Yell muted by default) with automatic migration from legacy ds_*/ex_* keys; added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI sound scanning with late-load refresh and safe fallback to Blizzard Raid Warning; restored self-whisper alert playback on incoming CHAT_MSG_WHISPER / CHAT_MSG_BN_WHISPER events while keeping self-message suppression active for group and public channels; and upgraded channel sound dropdowns with Blizzard / SharedMedia headers, inline [>] previews, scrolling, a live search filter, and dedicated [Play] buttons." },
             { type = "FIX",      text = "Flush Bottom-Left (0, 0) Chat Clamping & Persistence (14/11/2026): Enforced ChatFrame1:SetClampedToScreen(false) whenever DynamicChat manages layout, added GetVisibleContainerExtents() and GetLiveOuterBottomLeft() so clamping measures only the visible chat container frame without external button or negative bottom EditBox overhangs, and canonicalised chatFramePos to BOTTOMLEFT outer-container coordinates so dragging or nudging to X = 0, Y = 0 sits flush against the bottom-left screen corner across HUD Edit toggles, UI scale events, and /reload." },
@@ -11607,7 +12180,7 @@ SlashCmdList["DYNAMICCHAT"] = function(msg)
         db.enableSoundAlerts = nextState
         DynamicChat:ApplyWhisperDefaultSoundMuteState()
         DynamicChat:RefreshConfigUI()
-        PrintChat("Chat notification sounds " .. (nextState and "enabled." or "muted (saved chimes preserved)."))
+        PrintMsg("Chat notification sounds " .. (nextState and "enabled." or "muted (saved chimes preserved)."))
     else
         DynamicChat._OpenChatWorkspace()
     end

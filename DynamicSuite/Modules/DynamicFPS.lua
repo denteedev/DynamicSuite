@@ -1935,12 +1935,22 @@ local function CloseActiveDropdownMenu()
         if activeDropdownPopup.ownerBtn and activeDropdownPopup.ownerBtn.chevronTex then
             activeDropdownPopup.ownerBtn.chevronTex:SetTexture(ICON_CHEVRON_DOWN)
         end
-        activeDropdownPopup:Hide()
+        activeDropdownPopup.ownerBtn = nil
+        if activeDropdownPopup:IsShown() then
+            activeDropdownPopup:Hide()
+        end
     end
-    if dropdownClickCatcher then
+    if dropdownClickCatcher and dropdownClickCatcher:IsShown() then
         dropdownClickCatcher:Hide()
     end
 end
+
+local function RegisterFPSPopupCloser()
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.RegisterPopupCloser) == "function" then
+        pcall(_G.DynamicSuite.UI.RegisterPopupCloser, "DynamicFPS", CloseActiveDropdownMenu)
+    end
+end
+RegisterFPSPopupCloser()
 
 -- 8A. 2-Pill Binary Segmented Switch: [ Off | Enabled ]
 local function CreateBinarySegmentedSwitch(parent, getValFn, setValFn, offText, onText)
@@ -2379,11 +2389,14 @@ local function CreateObsidianDropdown(parent, width, options, getValueFn, setVal
     end
 
     -- Item #24: Auto-close popup if dropdown button hides (zero ghost menus)
-    btn:HookScript("OnHide", function(self)
-        if activeDropdownPopup and activeDropdownPopup.ownerBtn == self then
-            CloseActiveDropdownMenu()
-        end
-    end)
+    if not btn._dfpsOnHideHooked then
+        btn._dfpsOnHideHooked = true
+        btn:HookScript("OnHide", function(self)
+            if activeDropdownPopup and activeDropdownPopup.ownerBtn == self then
+                CloseActiveDropdownMenu()
+            end
+        end)
+    end
 
     btn:SetScript("OnEnter", function(self)
         local ar, ag, ab = GetSuiteAccentColor()
@@ -2394,6 +2407,7 @@ local function CreateObsidianDropdown(parent, width, options, getValueFn, setVal
     end)
 
     btn:SetScript("OnClick", function(self)
+        RegisterFPSPopupCloser()
         if activeDropdownPopup and activeDropdownPopup.ownerBtn == self and activeDropdownPopup:IsShown() then
             CloseActiveDropdownMenu()
             return
@@ -2413,13 +2427,37 @@ local function CreateObsidianDropdown(parent, width, options, getValueFn, setVal
         if not activeDropdownPopup then
             local popup = CreateFrame("Frame", "DynamicFPSDropdownPopup", UIParent)
             popup:SetFrameStrata("TOOLTIP")
+            popup:SetFrameLevel(220)
             popup:SetToplevel(true)
+            popup:SetClampedToScreen(true)
             popup:EnableMouse(true)
             popup.bg = CreateSolidTex(popup, "BACKGROUND", 0, PALETTE.VOID.r, PALETTE.VOID.g, PALETTE.VOID.b, 0.99)
             popup.bg:SetAllPoints()
             Create1PxBorder(popup, PALETTE.BORDER_CELL.r, PALETTE.BORDER_CELL.g, PALETTE.BORDER_CELL.b, 1.0)
             popup.measureFS = popup:CreateFontString(nil, "OVERLAY")
+            popup.measureFS:Hide()
             popup.rows = {}
+            popup:SetScript("OnHide", function(p)
+                if p.ownerBtn and p.ownerBtn.chevronTex then
+                    p.ownerBtn.chevronTex:SetTexture(ICON_CHEVRON_DOWN)
+                end
+                p.ownerBtn = nil
+                if dropdownClickCatcher and dropdownClickCatcher:IsShown() then
+                    dropdownClickCatcher:Hide()
+                end
+            end)
+            if type(UISpecialFrames) == "table" then
+                local found = false
+                for i = 1, #UISpecialFrames do
+                    if UISpecialFrames[i] == "DynamicFPSDropdownPopup" then
+                        found = true
+                        break
+                    end
+                end
+                if not found then
+                    table.insert(UISpecialFrames, "DynamicFPSDropdownPopup")
+                end
+            end
             activeDropdownPopup = popup
         end
 
@@ -2445,6 +2483,9 @@ local function CreateObsidianDropdown(parent, width, options, getValueFn, setVal
 
         local curVal = getValueFn()
         local ar, ag, ab = GetSuiteAccentColor()
+        if popup.SetBorderColor then
+            popup:SetBorderColor(ar, ag, ab, 0.90)
+        end
         local rowH = 26
 
         for i, opt in ipairs(options) do
@@ -2639,6 +2680,10 @@ local function CreateInlineSliderControl(parent, width, minVal, maxVal, stepVal,
         isDragging = false
         self:SetScript("OnUpdate", nil)
         wrap:RefreshValue()
+    end)
+    slider:SetScript("OnHide", function(self)
+        isDragging = false
+        self:SetScript("OnUpdate", nil)
     end)
     slider:SetScript("OnEnter", function(self)
         UpdateFillAndThumb()
@@ -3397,6 +3442,7 @@ end
 local function RenderFPSEmbedded(parent)
     if not parent then return end
     EnsureDBInitialized()
+    RegisterFPSPopupCloser()
     CloseActiveDropdownMenu()
 
     if standaloneWindow and standaloneWindow:IsShown() and parent ~= standaloneWindow.contentHost then
@@ -3413,6 +3459,9 @@ local function RenderFPSEmbedded(parent)
 
     local root = CreateFrame("Frame", nil, parent)
     root:SetAllPoints(parent)
+    root:SetScript("OnHide", function()
+        CloseActiveDropdownMenu()
+    end)
     parent.dfpsEmbeddedFrame = root
 
     local refreshCallbacks = {}
@@ -3549,6 +3598,7 @@ local function RenderFPSEmbedded(parent)
     scrollTrack:SetPoint("BOTTOM", scrollContainer, "BOTTOM", 0, 0)
     scrollTrack:SetPoint("RIGHT", root, "RIGHT", -6, 0)
     scrollTrack:SetWidth(4)
+    scrollTrack:EnableMouse(true)
     scrollTrack.bg = CreateSolidTex(scrollTrack, "BACKGROUND", 1, PALETTE.SURFACE_BASE.r, PALETTE.SURFACE_BASE.g, PALETTE.SURFACE_BASE.b, 0.85)
     scrollTrack.bg:SetAllPoints()
 
@@ -3556,8 +3606,24 @@ local function RenderFPSEmbedded(parent)
     scrollThumb:SetWidth(4)
     scrollThumb:SetHeight(64)
     scrollThumb:SetPoint("TOP", scrollTrack, "TOP", 0, 0)
+    scrollThumb:EnableMouse(true)
     scrollThumb.tex = CreateSolidTex(scrollThumb, "OVERLAY", 2, 0.38, 0.45, 0.56, 0.85)
     scrollThumb.tex:SetAllPoints()
+
+    local isDraggingThumb = false
+    local dragStartY = 0
+    local dragStartScroll = 0
+
+    local function RefreshThumbColor()
+        if isDraggingThumb then
+            local cr, cg, cb = GetSuiteAccentColor()
+            scrollThumb.tex:SetColorTexture(cr, cg, cb, 0.95)
+        elseif scrollThumb:IsMouseOver() then
+            scrollThumb.tex:SetColorTexture(0.52, 0.60, 0.72, 0.95)
+        else
+            scrollThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+        end
+    end
 
     local function UpdateScrollbarVisual()
         local viewH = scrollFrame:GetHeight() or 1
@@ -3586,6 +3652,7 @@ local function RenderFPSEmbedded(parent)
         local maxOffset = math.max(0, trackH - thumbH)
         scrollThumb:ClearAllPoints()
         scrollThumb:SetPoint("TOP", scrollTrack, "TOP", 0, -(ratio * maxOffset))
+        RefreshThumbColor()
     end
 
     scrollFrame:EnableMouseWheel(true)
@@ -3600,14 +3667,33 @@ local function RenderFPSEmbedded(parent)
         UpdateScrollbarVisual()
     end)
 
-    local isDraggingThumb = false
-    local dragStartY = 0
-    local dragStartScroll = 0
+    scrollTrack:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        CloseActiveDropdownMenu()
+        local viewH = scrollFrame:GetHeight() or 1
+        local contentH = scrollChild:GetHeight() or 1
+        local maxScroll = math.max(0, contentH - viewH)
+        if maxScroll <= 0 then return end
+        local scale = self:GetEffectiveScale() or 1
+        local _, cy = GetCursorPosition()
+        cy = cy / scale
+        local top = self:GetTop()
+        local bottom = self:GetBottom()
+        if top and bottom and top > bottom then
+            local trackH = top - bottom
+            local thumbH = scrollThumb:GetHeight() or 28
+            local travel = math.max(1, trackH - thumbH)
+            local ratio = math.max(0, math.min(1, ((top - cy) - (thumbH * 0.5)) / travel))
+            scrollFrame:SetVerticalScroll(ratio * maxScroll)
+            UpdateScrollbarVisual()
+        end
+    end)
 
     local function OnScrollThumbDragUpdate(self)
         if not isDraggingThumb or not IsMouseButtonDown("LeftButton") then
             isDraggingThumb = false
             self:SetScript("OnUpdate", nil)
+            RefreshThumbColor()
             return
         end
         local _, cursorY = GetCursorPosition()
@@ -3627,22 +3713,28 @@ local function RenderFPSEmbedded(parent)
         UpdateScrollbarVisual()
     end
 
+    scrollThumb:SetScript("OnEnter", function() RefreshThumbColor() end)
+    scrollThumb:SetScript("OnLeave", function() RefreshThumbColor() end)
     scrollThumb:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
+        CloseActiveDropdownMenu()
         isDraggingThumb = true
         local _, cursorY = GetCursorPosition()
         local scale = self:GetEffectiveScale() or 1
         dragStartY = cursorY / scale
         dragStartScroll = scrollFrame:GetVerticalScroll() or 0
+        RefreshThumbColor()
         self:SetScript("OnUpdate", OnScrollThumbDragUpdate)
     end)
     scrollThumb:SetScript("OnMouseUp", function(self)
         isDraggingThumb = false
         self:SetScript("OnUpdate", nil)
+        RefreshThumbColor()
     end)
     scrollThumb:SetScript("OnHide", function(self)
         isDraggingThumb = false
         self:SetScript("OnUpdate", nil)
+        RefreshThumbColor()
     end)
 
     scrollFrame:SetScript("OnSizeChanged", function(self, w)
@@ -4311,6 +4403,7 @@ local function OpenFPSWorkspace()
         f:RegisterForDrag("LeftButton")
         f:SetScript("OnDragStart", function(self) self:StartMoving() end)
         f:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+        f:HookScript("OnHide", function() CloseActiveDropdownMenu() end)
 
         f.bg = CreateSolidTex(f, "BACKGROUND", 0, PALETTE.VOID.r, PALETTE.VOID.g, PALETTE.VOID.b, PALETTE.VOID.a)
         f.bg:SetAllPoints()

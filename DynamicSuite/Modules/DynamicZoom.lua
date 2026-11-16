@@ -1057,6 +1057,7 @@ end
 local activeEmbeddedRoot = nil
 local standaloneWindow = nil
 local openDropdownMenu = nil
+local zoomDropdownPopup = nil
 local dropdownCatcher = nil
 
 local function CloseAnyDropdown()
@@ -1064,13 +1065,25 @@ local function CloseAnyDropdown()
         if openDropdownMenu.chevronTex then
             openDropdownMenu.chevronTex:SetTexture(ICON_CHEVRON_DOWN)
         end
-        openDropdownMenu:Hide()
+        local m = openDropdownMenu
         openDropdownMenu = nil
+        m.ownerBtn = nil
+        m.chevronTex = nil
+        if m:IsShown() then
+            m:Hide()
+        end
     end
-    if dropdownCatcher then
+    if dropdownCatcher and dropdownCatcher:IsShown() then
         dropdownCatcher:Hide()
     end
 end
+
+local function RegisterZoomPopupCloser()
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.RegisterPopupCloser) == "function" then
+        pcall(_G.DynamicSuite.UI.RegisterPopupCloser, "DynamicZoom", CloseAnyDropdown)
+    end
+end
+RegisterZoomPopupCloser()
 
 local function EnsureDropdownCatcher()
     if dropdownCatcher then return dropdownCatcher end
@@ -1723,8 +1736,17 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
             CloseAnyDropdown()
         end
     end)
+    if not dropBtn._dzOnHideHooked then
+        dropBtn._dzOnHideHooked = true
+        dropBtn:HookScript("OnHide", function(self)
+            if openDropdownMenu and openDropdownMenu.ownerBtn == self then
+                CloseAnyDropdown()
+            end
+        end)
+    end
 
     dropBtn:SetScript("OnClick", function(self)
+        RegisterZoomPopupCloser()
         if openDropdownMenu and openDropdownMenu:IsShown() and openDropdownMenu.ownerBtn == self then
             CloseAnyDropdown()
             return
@@ -1734,9 +1756,46 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
         local catcher = EnsureDropdownCatcher()
         catcher:Show()
 
-        local s, a = GetTheme()
-        local menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-        menu:SetFrameStrata("TOOLTIP")
+        local _, a = GetTheme()
+        if not zoomDropdownPopup then
+            local menu = CreateFrame("Frame", "DynamicZoomDropdownPopup", UIParent, "BackdropTemplate")
+            menu:SetFrameStrata("TOOLTIP")
+            menu:SetFrameLevel(220)
+            menu:SetToplevel(true)
+            menu:SetClampedToScreen(true)
+            menu:EnableMouse(true)
+            menu.measureFS = menu:CreateFontString(nil, "OVERLAY")
+            menu.measureFS:Hide()
+            menu.rows = {}
+            menu:SetScript("OnHide", function(m)
+                if m.chevronTex then
+                    m.chevronTex:SetTexture(ICON_CHEVRON_DOWN)
+                end
+                m.ownerBtn = nil
+                m.chevronTex = nil
+                if openDropdownMenu == m then
+                    openDropdownMenu = nil
+                end
+                if dropdownCatcher and dropdownCatcher:IsShown() then
+                    dropdownCatcher:Hide()
+                end
+            end)
+            if type(UISpecialFrames) == "table" then
+                local found = false
+                for i = 1, #UISpecialFrames do
+                    if UISpecialFrames[i] == "DynamicZoomDropdownPopup" then
+                        found = true
+                        break
+                    end
+                end
+                if not found then
+                    tinsert(UISpecialFrames, "DynamicZoomDropdownPopup")
+                end
+            end
+            zoomDropdownPopup = menu
+        end
+
+        local menu = zoomDropdownPopup
         menu.ownerBtn = self
         menu.chevronTex = chevron
         chevron:SetTexture(ICON_CHEVRON_UP)
@@ -1744,22 +1803,45 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
 
         -- Measure max option width so zero text is ever truncated (Item #28)
         local maxW = 272
-        local measureFS = menu:CreateFontString(nil, "OVERLAY")
+        local measureFS = menu.measureFS
         SetFontSafe(measureFS, 11, "")
         for _, opt in ipairs(optionsList) do
             measureFS:SetText(opt.label or "")
             local w = ((measureFS.GetUnboundedStringWidth and measureFS:GetUnboundedStringWidth()) or measureFS:GetStringWidth() or 200) + 46
             if w > maxW then maxW = w end
         end
-        measureFS:Hide()
 
         menu:SetSize(maxW, (#optionsList * 26) + 6)
+        menu:ClearAllPoints()
         menu:SetPoint("TOPRIGHT", self, "BOTTOMRIGHT", 0, -2)
-        ApplyBackdrop(menu, s.header, { a.r, a.g, a.b, 0.90 })
+        ApplyBackdrop(menu, { 0.043, 0.051, 0.071, 0.99 }, { a.r, a.g, a.b, 0.90 })
+
+        for _, r in ipairs(menu.rows) do
+            r:Hide()
+        end
 
         for idx, opt in ipairs(optionsList) do
-            local item = CreateFrame("Button", nil, menu, "BackdropTemplate")
+            local item = menu.rows[idx]
+            if not item then
+                item = CreateFrame("Button", nil, menu, "BackdropTemplate")
+                local chk = item:CreateTexture(nil, "ARTWORK")
+                chk:SetSize(10, 10)
+                chk:SetPoint("LEFT", item, "LEFT", 8, 0)
+                chk:SetTexture(ICON_CHECK)
+                item.chk = chk
+
+                local itemText = item:CreateFontString(nil, "OVERLAY")
+                SetFontSafe(itemText, 11, "")
+                itemText:SetPoint("LEFT", item, "LEFT", 24, 0)
+                itemText:SetPoint("RIGHT", item, "RIGHT", -8, 0)
+                itemText:SetJustifyH("LEFT")
+                itemText:SetWordWrap(false)
+                item.itemText = itemText
+                menu.rows[idx] = item
+            end
+
             item:SetSize(maxW - 6, 24)
+            item:ClearAllPoints()
             item:SetPoint("TOPLEFT", menu, "TOPLEFT", 3, -3 - ((idx - 1) * 26))
             local isCurrent = (tostring(getter()) == tostring(opt.key))
             if isCurrent then
@@ -1768,22 +1850,16 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
                 ApplyBackdrop(item, { 0, 0, 0, 0 }, { 0, 0, 0, 0 })
             end
 
-            local chk = item:CreateTexture(nil, "ARTWORK")
-            chk:SetSize(10, 10)
-            chk:SetPoint("LEFT", item, "LEFT", 8, 0)
-            chk:SetTexture(ICON_CHECK)
             if isCurrent then
-                chk:SetVertexColor(a.r, a.g, a.b, 1.0)
-                chk:Show()
+                item.chk:SetVertexColor(a.r, a.g, a.b, 1.0)
+                item.chk:Show()
             else
-                chk:Hide()
+                item.chk:Hide()
             end
 
-            local itemText = item:CreateFontString(nil, "OVERLAY")
-            SetFontSafe(itemText, 11, "")
-            itemText:SetPoint("LEFT", item, "LEFT", 24, 0)
-            itemText:SetText(opt.label)
-            itemText:SetTextColor(isCurrent and a.r or 0.90, isCurrent and a.g or 0.93, isCurrent and a.b or 0.98, 1.0)
+            SetFontSafe(item.itemText, 11, "")
+            item.itemText:SetText(opt.label)
+            item.itemText:SetTextColor(isCurrent and a.r or 0.90, isCurrent and a.g or 0.93, isCurrent and a.b or 0.98, 1.0)
 
             item:SetScript("OnEnter", function()
                 ApplyBackdrop(item, { a.r * 0.30, a.g * 0.30, a.b * 0.30, 0.95 }, { a.r, a.g, a.b, 0.85 })
@@ -1801,7 +1877,9 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
                 CloseAnyDropdown()
                 DynamicZoom:ApplyEngineSettings()
             end)
+            item:Show()
         end
+        menu:Show()
     end)
 
     return card, -62
@@ -1812,6 +1890,7 @@ end
 -- ============================================================================
 local function RenderZoomEmbedded(parent)
     if not parent then return end
+    RegisterZoomPopupCloser()
     CloseAnyDropdown()
     local db = EnsureDB()
     local surf, acc = GetTheme()
@@ -2629,13 +2708,26 @@ local function RenderZoomEmbedded(parent)
     track:SetWidth(4)
     track:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", 10, 0)
     track:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", 10, 0)
+    track:EnableMouse(true)
     ApplyBackdrop(track, { 0.04, 0.05, 0.07, 0.65 }, { 1, 1, 1, 0.04 })
 
     local thumb = CreateFrame("Button", nil, track, "BackdropTemplate")
     thumb:SetWidth(4)
     thumb:SetHeight(48)
     thumb:SetPoint("TOP", track, "TOP", 0, 0)
+    thumb:EnableMouse(true)
     ApplyBackdrop(thumb, { 0.38, 0.45, 0.56, 0.85 }, { 0, 0, 0, 0 })
+
+    local function RefreshThumbColor()
+        if thumb.isDragging then
+            local _, a = GetTheme()
+            ApplyBackdrop(thumb, { a.r, a.g, a.b, 0.95 }, { 0, 0, 0, 0 })
+        elseif thumb:IsMouseOver() then
+            ApplyBackdrop(thumb, { 0.52, 0.60, 0.72, 0.95 }, { 0, 0, 0, 0 })
+        else
+            ApplyBackdrop(thumb, { 0.38, 0.45, 0.56, 0.85 }, { 0, 0, 0, 0 })
+        end
+    end
 
     UpdateScrollbar = function()
         local viewH = scrollFrame:GetHeight() or 1
@@ -2648,14 +2740,15 @@ local function RenderZoomEmbedded(parent)
         end
         track:Show()
         local trackH = track:GetHeight() or 200
-        local thumbH = math.max(28, math.min(trackH, (viewH / contentH) * trackH))
+        local thumbH = math.max(28, math.min(trackH, math.floor((viewH / contentH) * trackH + 0.5)))
         thumb:SetHeight(thumbH)
 
         local curScroll = math.max(0, math.min(maxScroll, scrollFrame:GetVerticalScroll()))
         local pct = curScroll / maxScroll
-        local offset = -pct * (trackH - thumbH)
+        local offset = -pct * math.max(1, trackH - thumbH)
         thumb:ClearAllPoints()
         thumb:SetPoint("TOP", track, "TOP", 0, offset)
+        RefreshThumbColor()
     end
 
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
@@ -2673,39 +2766,67 @@ local function RenderZoomEmbedded(parent)
         UpdateScrollbar()
     end)
 
-    thumb:EnableMouse(true)
-    thumb:RegisterForDrag("LeftButton")
+    track:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        CloseAnyDropdown()
+        local viewH = scrollFrame:GetHeight() or 1
+        local contentH = scrollContent:GetHeight() or 1
+        local maxScroll = math.max(0, contentH - viewH)
+        if maxScroll <= 0 then return end
+        local scale = self:GetEffectiveScale() or 1
+        local _, cy = GetCursorPosition()
+        cy = cy / scale
+        local top = self:GetTop()
+        local bottom = self:GetBottom()
+        if top and bottom and top > bottom then
+            local trackH = top - bottom
+            local thumbH = thumb:GetHeight() or 28
+            local travel = math.max(1, trackH - thumbH)
+            local ratio = math.max(0, math.min(1, ((top - cy) - (thumbH * 0.5)) / travel))
+            scrollFrame:SetVerticalScroll(ratio * maxScroll)
+            UpdateScrollbar()
+        end
+    end)
+
     local function OnThumbDragUpdate(self)
         if not self.isDragging or (IsMouseButtonDown and not IsMouseButtonDown("LeftButton")) then
             self.isDragging = false
             self:SetScript("OnUpdate", nil)
+            RefreshThumbColor()
             return
         end
         local _, cursorY = GetCursorPosition()
-        local curY = cursorY / UIParent:GetEffectiveScale()
+        local curY = cursorY / (self:GetEffectiveScale() or 1)
         local dy = (self.startY or curY) - curY
         local viewH = scrollFrame:GetHeight() or 1
         local contentH = scrollContent:GetHeight() or 1
         local maxScroll = math.max(0, contentH - viewH)
-        local trackH = math.max(1, (track:GetHeight() or 200) - self:GetHeight())
+        local trackH = math.max(1, (track:GetHeight() or 200) - (self:GetHeight() or 28))
         local nextScroll = math.max(0, math.min(maxScroll, (self.startScroll or 0) + (dy / trackH) * maxScroll))
         scrollFrame:SetVerticalScroll(nextScroll)
         UpdateScrollbar()
     end
-    thumb:SetScript("OnDragStart", function(self)
+    thumb:SetScript("OnEnter", function() RefreshThumbColor() end)
+    thumb:SetScript("OnLeave", function() RefreshThumbColor() end)
+    thumb:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        CloseAnyDropdown()
         self.isDragging = true
         local _, cursorY = GetCursorPosition()
-        self.startY = cursorY / UIParent:GetEffectiveScale()
-        self.startScroll = scrollFrame:GetVerticalScroll()
+        self.startY = cursorY / (self:GetEffectiveScale() or 1)
+        self.startScroll = scrollFrame:GetVerticalScroll() or 0
+        RefreshThumbColor()
         self:SetScript("OnUpdate", OnThumbDragUpdate)
     end)
-    thumb:SetScript("OnDragStop", function(self)
+    thumb:SetScript("OnMouseUp", function(self)
         self.isDragging = false
         self:SetScript("OnUpdate", nil)
+        RefreshThumbColor()
     end)
     thumb:SetScript("OnHide", function(self)
         self.isDragging = false
         self:SetScript("OnUpdate", nil)
+        RefreshThumbColor()
     end)
 
     RefreshTabBarVisuals()

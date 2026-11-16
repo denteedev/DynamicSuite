@@ -3192,23 +3192,67 @@ local function CloseActiveDropdown()
             activeDropdownMenu.anchorBtn:SetChevronOpen(false)
         end
         activeDropdownMenu.anchorBtn = nil
-        activeDropdownMenu:Hide()
+        if activeDropdownMenu:IsShown() then
+            activeDropdownMenu:Hide()
+        end
     end
     if activeRegionPopover then
         if activeRegionPopover.anchorBtn and activeRegionPopover.anchorBtn.SetChevronOpen then
             activeRegionPopover.anchorBtn:SetChevronOpen(false)
         end
         activeRegionPopover.anchorBtn = nil
-        activeRegionPopover:Hide()
+        if activeRegionPopover:IsShown() then
+            activeRegionPopover:Hide()
+        end
     end
     if activeFilterPopover then
         if activeFilterPopover.anchorBtn and activeFilterPopover.anchorBtn.SetChevronOpen then
             activeFilterPopover.anchorBtn:SetChevronOpen(false)
         end
         activeFilterPopover.anchorBtn = nil
-        activeFilterPopover:Hide()
+        if activeFilterPopover:IsShown() then
+            activeFilterPopover:Hide()
+        end
     end
-    if dropdownClickCatcher then
+    if dropdownClickCatcher and dropdownClickCatcher:IsShown() then
+        dropdownClickCatcher:Hide()
+    end
+end
+
+local function RegisterGroupPopupCloser()
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.RegisterPopupCloser) == "function" then
+        pcall(_G.DynamicSuite.UI.RegisterPopupCloser, "DynamicGroup", CloseActiveDropdown)
+    end
+end
+RegisterGroupPopupCloser()
+
+local function EnsureUISpecialFrameRegistered(frameName)
+    if type(UISpecialFrames) ~= "table" or not frameName then return end
+    for i = 1, #UISpecialFrames do
+        if UISpecialFrames[i] == frameName then
+            return
+        end
+    end
+    table.insert(UISpecialFrames, frameName)
+end
+
+local function HookOwnerButtonOnHide(anchorBtn)
+    if not anchorBtn or not anchorBtn.HookScript or anchorBtn._dgOnHideHooked then return end
+    anchorBtn._dgOnHideHooked = true
+    anchorBtn:HookScript("OnHide", function(self)
+        if (activeDropdownMenu and activeDropdownMenu.anchorBtn == self)
+            or (activeRegionPopover and activeRegionPopover.anchorBtn == self)
+            or (activeFilterPopover and activeFilterPopover.anchorBtn == self) then
+            CloseActiveDropdown()
+        end
+    end)
+end
+
+local function HideCatcherIfNoPopoverShown()
+    local anyShown = (activeDropdownMenu and activeDropdownMenu:IsShown())
+        or (activeRegionPopover and activeRegionPopover:IsShown())
+        or (activeFilterPopover and activeFilterPopover:IsShown())
+    if not anyShown and dropdownClickCatcher and dropdownClickCatcher:IsShown() then
         dropdownClickCatcher:Hide()
     end
 end
@@ -3218,12 +3262,17 @@ EnsureDropdownClickCatcher():SetScript("OnClick", function()
 end)
 
 local function ShowObsidianDropdown(anchorBtn, options, currentValue, onSelect, alignMode)
+    RegisterGroupPopupCloser()
     EnsureDropdownClickCatcher()
+    HookOwnerButtonOnHide(anchorBtn)
 
     if not activeDropdownMenu then
         activeDropdownMenu = CreateFrame("Frame", "DynamicGroupDropdownMenu", UIParent, "BackdropTemplate")
-        activeDropdownMenu:SetFrameStrata("FULLSCREEN_DIALOG")
-        activeDropdownMenu:SetFrameLevel(100)
+        activeDropdownMenu:SetFrameStrata("TOOLTIP")
+        activeDropdownMenu:SetFrameLevel(220)
+        activeDropdownMenu:SetToplevel(true)
+        activeDropdownMenu:SetClampedToScreen(true)
+        activeDropdownMenu:EnableMouse(true)
         activeDropdownMenu:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
             edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -3233,6 +3282,14 @@ local function ShowObsidianDropdown(anchorBtn, options, currentValue, onSelect, 
         SetSafeFont(activeDropdownMenu.measureFs, 11, "")
         activeDropdownMenu.measureFs:Hide()
         activeDropdownMenu.rows = {}
+        activeDropdownMenu:SetScript("OnHide", function(self)
+            if self.anchorBtn and self.anchorBtn.SetChevronOpen then
+                self.anchorBtn:SetChevronOpen(false)
+            end
+            self.anchorBtn = nil
+            HideCatcherIfNoPopoverShown()
+        end)
+        EnsureUISpecialFrameRegistered("DynamicGroupDropdownMenu")
     end
 
     if activeDropdownMenu:IsShown() and activeDropdownMenu.anchorBtn == anchorBtn then
@@ -3243,7 +3300,7 @@ local function ShowObsidianDropdown(anchorBtn, options, currentValue, onSelect, 
     CloseActiveDropdown()
 
     local ar, ag, ab = GetSuiteAccent()
-    activeDropdownMenu:SetBackdropColor(0.08, 0.09, 0.12, 0.98)
+    activeDropdownMenu:SetBackdropColor(0.043, 0.051, 0.071, 0.99)
     activeDropdownMenu:SetBackdropBorderColor(ar, ag, ab, 0.90)
     activeDropdownMenu.anchorBtn = anchorBtn
     if anchorBtn.SetChevronOpen then
@@ -3334,18 +3391,31 @@ local function ShowObsidianDropdown(anchorBtn, options, currentValue, onSelect, 
 end
 
 local function ShowRegionPopover(anchorBtn)
+    RegisterGroupPopupCloser()
     EnsureDropdownClickCatcher()
+    HookOwnerButtonOnHide(anchorBtn)
 
     if not activeRegionPopover then
         local pop = CreateFrame("Frame", "DynamicGroupRegionPopover", UIParent, "BackdropTemplate")
-        pop:SetFrameStrata("FULLSCREEN_DIALOG")
-        pop:SetFrameLevel(100)
+        pop:SetFrameStrata("TOOLTIP")
+        pop:SetFrameLevel(220)
+        pop:SetToplevel(true)
+        pop:SetClampedToScreen(true)
+        pop:EnableMouse(true)
         pop:SetWidth(242)
         pop:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
             edgeFile = "Interface\\Buttons\\WHITE8x8",
             edgeSize = 1,
         })
+        pop:SetScript("OnHide", function(self)
+            if self.anchorBtn and self.anchorBtn.SetChevronOpen then
+                self.anchorBtn:SetChevronOpen(false)
+            end
+            self.anchorBtn = nil
+            HideCatcherIfNoPopoverShown()
+        end)
+        EnsureUISpecialFrameRegistered("DynamicGroupRegionPopover")
 
         pop.headerLabel = pop:CreateFontString(nil, "OVERLAY")
         SetSafeFont(pop.headerLabel, 11, "")
@@ -3485,8 +3555,8 @@ local function ShowRegionPopover(anchorBtn)
         function pop:RefreshRows()
             local db = EnsureDB()
             local ar, ag, ab = GetSuiteAccent()
-            self:SetBackdropColor(0.07, 0.08, 0.11, 0.98)
-            self:SetBackdropBorderColor(ar, ag, ab, 0.92)
+            self:SetBackdropColor(0.043, 0.051, 0.071, 0.99)
+            self:SetBackdropBorderColor(ar, ag, ab, 0.90)
             SetSafeFont(self.headerLabel, 11, "")
             SetSafeFont(self.allBtn.txt, 10, "")
             SetSafeFont(self.noneBtn.txt, 10, "")
@@ -3577,18 +3647,31 @@ local function GetUtilityFilterSummary(db, compact)
 end
 
 local function ShowFilterPopover(anchorBtn)
+    RegisterGroupPopupCloser()
     EnsureDropdownClickCatcher()
+    HookOwnerButtonOnHide(anchorBtn)
 
     if not activeFilterPopover then
         local pop = CreateFrame("Frame", "DynamicGroupFilterPopover", UIParent, "BackdropTemplate")
-        pop:SetFrameStrata("FULLSCREEN_DIALOG")
-        pop:SetFrameLevel(100)
+        pop:SetFrameStrata("TOOLTIP")
+        pop:SetFrameLevel(220)
+        pop:SetToplevel(true)
+        pop:SetClampedToScreen(true)
+        pop:EnableMouse(true)
         pop:SetWidth(268)
         pop:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
             edgeFile = "Interface\\Buttons\\WHITE8x8",
             edgeSize = 1,
         })
+        pop:SetScript("OnHide", function(self)
+            if self.anchorBtn and self.anchorBtn.SetChevronOpen then
+                self.anchorBtn:SetChevronOpen(false)
+            end
+            self.anchorBtn = nil
+            HideCatcherIfNoPopoverShown()
+        end)
+        EnsureUISpecialFrameRegistered("DynamicGroupFilterPopover")
 
         pop.headerLabel = pop:CreateFontString(nil, "OVERLAY")
         SetSafeFont(pop.headerLabel, 11, "")
@@ -3713,8 +3796,8 @@ local function ShowFilterPopover(anchorBtn)
         function pop:RefreshRows()
             local db = EnsureDB()
             local ar, ag, ab = GetSuiteAccent()
-            self:SetBackdropColor(0.07, 0.08, 0.11, 0.98)
-            self:SetBackdropBorderColor(ar, ag, ab, 0.92)
+            self:SetBackdropColor(0.043, 0.051, 0.071, 0.99)
+            self:SetBackdropBorderColor(ar, ag, ab, 0.90)
             SetSafeFont(self.headerLabel, 11, "")
             SetSafeFont(self.resetBtn.txt, 10, "")
 
@@ -5597,6 +5680,7 @@ local function CreateObsidianScrollArea(parent)
     track:SetWidth(4)
     track:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", 10, -2)
     track:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", 10, 2)
+    track:EnableMouse(true)
     track:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
     track:SetBackdropColor(1, 1, 1, 0.05)
 
@@ -5604,8 +5688,20 @@ local function CreateObsidianScrollArea(parent)
     thumb:SetWidth(4)
     thumb:SetHeight(48)
     thumb:SetPoint("TOP", track, "TOP", 0, 0)
+    thumb:EnableMouse(true)
     thumb:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
     thumb:SetBackdropColor(0.38, 0.45, 0.56, 0.85)
+
+    local function RefreshThumbColor()
+        if thumb.isDragging then
+            local ar, ag, ab = GetSuiteAccent()
+            thumb:SetBackdropColor(ar, ag, ab, 0.95)
+        elseif thumb:IsMouseOver() then
+            thumb:SetBackdropColor(0.52, 0.60, 0.72, 0.95)
+        else
+            thumb:SetBackdropColor(0.38, 0.45, 0.56, 0.85)
+        end
+    end
 
     local function UpdateThumb()
         local maxScroll = math.max(0, (content:GetHeight() or 0) - (scrollFrame:GetHeight() or 0))
@@ -5625,6 +5721,7 @@ local function CreateObsidianScrollArea(parent)
         local yOff = -(cur / maxScroll) * travel
         thumb:ClearAllPoints()
         thumb:SetPoint("TOP", track, "TOP", 0, yOff)
+        RefreshThumbColor()
     end
 
     scrollFrame:EnableMouseWheel(true)
@@ -5636,13 +5733,40 @@ local function CreateObsidianScrollArea(parent)
         UpdateThumb()
     end)
 
+    track:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        CloseActiveDropdown()
+        local maxScroll = math.max(0, (content:GetHeight() or 0) - (scrollFrame:GetHeight() or 0))
+        if maxScroll <= 0 then return end
+        local scale = self:GetEffectiveScale() or 1
+        local _, cy = GetCursorPosition()
+        cy = cy / scale
+        local top = self:GetTop()
+        local bottom = self:GetBottom()
+        if top and bottom and top > bottom then
+            local trackH = top - bottom
+            local thumbH = thumb:GetHeight() or 28
+            local travel = math.max(1, trackH - thumbH)
+            local ratio = math.max(0, math.min(1, ((top - cy) - (thumbH * 0.5)) / travel))
+            scrollFrame:SetVerticalScroll(ratio * maxScroll)
+            UpdateThumb()
+        end
+    end)
+
+    thumb:SetScript("OnEnter", function() RefreshThumbColor() end)
+    thumb:SetScript("OnLeave", function() RefreshThumbColor() end)
     thumb:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
+        CloseActiveDropdown()
+        self.isDragging = true
+        RefreshThumbColor()
         local startY = select(2, GetCursorPosition()) / (self:GetEffectiveScale() or 1)
         local startScroll = scrollFrame:GetVerticalScroll() or 0
         self:SetScript("OnUpdate", function()
             if not IsMouseButtonDown("LeftButton") then
+                self.isDragging = false
                 self:SetScript("OnUpdate", nil)
+                RefreshThumbColor()
                 return
             end
             local curY = select(2, GetCursorPosition()) / (self:GetEffectiveScale() or 1)
@@ -5656,10 +5780,14 @@ local function CreateObsidianScrollArea(parent)
         end)
     end)
     thumb:SetScript("OnMouseUp", function(self)
+        self.isDragging = false
         self:SetScript("OnUpdate", nil)
+        RefreshThumbColor()
     end)
     thumb:SetScript("OnHide", function(self)
+        self.isDragging = false
         self:SetScript("OnUpdate", nil)
+        RefreshThumbColor()
     end)
 
     scrollFrame:SetScript("OnSizeChanged", function(self, w)
@@ -7525,6 +7653,7 @@ local function EnsureStandaloneWindow()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    f:HookScript("OnHide", function() CloseActiveDropdown() end)
     f:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",

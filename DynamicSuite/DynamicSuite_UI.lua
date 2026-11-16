@@ -1480,6 +1480,28 @@ addonTable.CreateEditHudButton = CreateEditHudButton
 _G.DynamicSuite = _G.DynamicSuite or {}
 _G.DynamicSuite.CreateEditHudButton = CreateEditHudButton
 
+local registeredPopupClosers = {}
+function UI.RegisterPopupCloser(key, closeFn)
+    if key ~= nil and type(closeFn) == "function" then
+        registeredPopupClosers[key] = closeFn
+    elseif type(key) == "function" and closeFn == nil then
+        table.insert(registeredPopupClosers, key)
+    end
+end
+addonTable.RegisterPopupCloser = UI.RegisterPopupCloser
+_G.DynamicSuite.UI = _G.DynamicSuite.UI or UI
+_G.DynamicSuite.UI.RegisterPopupCloser = UI.RegisterPopupCloser
+_G.DynamicSuite.RegisterPopupCloser = UI.RegisterPopupCloser
+
+local function RunRegisteredPopupClosers()
+    for _, fn in pairs(registeredPopupClosers) do
+        if type(fn) == "function" then
+            pcall(fn)
+        end
+    end
+end
+UI.RunRegisteredPopupClosers = RunRegisteredPopupClosers
+
 local function CloseAltDropdown()
     if altDropdownFrame then altDropdownFrame:Hide() end
     if addonTable._closeDLAltDropdown then addonTable._closeDLAltDropdown() end
@@ -1495,6 +1517,16 @@ local function CloseContextMenu()
     end
 end
 UI.CloseContextMenu = CloseContextMenu
+
+UI.CloseAllPopups = function()
+    CloseContextMenu()
+    CloseAltDropdown()
+    if _G.DynamicSuiteHudSelectorPopup and _G.DynamicSuiteHudSelectorPopup:IsShown() then
+        _G.DynamicSuiteHudSelectorPopup:Hide()
+    end
+    RunRegisteredPopupClosers()
+end
+_G.DynamicSuite.UI.CloseAllPopups = UI.CloseAllPopups
 
 local function GetClickCatcher()
     if not clickCatcher then
@@ -2729,6 +2761,7 @@ function addonTable.CreateMainConfigUI()
     closeBtn:SetScript("OnClick", function()
         f._minimizedForHudDrag = false
         if f.minimizedBar then f.minimizedBar:Hide() end
+        if UI.CloseAllPopups then UI.CloseAllPopups() end
         f:Hide()
         CloseContextMenu()
     end)
@@ -2837,6 +2870,7 @@ function addonTable.CreateMainConfigUI()
                 mbCloseLine2:SetColorTexture(1, 1, 1, 0.70)
             end)
             mbCloseBtn:SetScript("OnClick", function()
+                if UI.CloseAllPopups then UI.CloseAllPopups() end
                 mb:Hide()
                 f:Hide()
             end)
@@ -2949,6 +2983,9 @@ function addonTable.CreateMainConfigUI()
     altPillBtn.chevron = UI.CreateChevronDown(altPillBtn, "RIGHT", altPillBtn, "RIGHT", -8, 0, 1, 1, 1, 0.65)
     altPillBtn:SetScript("OnClick", function(self)
         OpenAltDropdown(self, f)
+    end)
+    altPillBtn:HookScript("OnHide", function()
+        CloseAltDropdown()
     end)
     altPillBtn.OnCustomEnter = function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
@@ -3199,7 +3236,7 @@ function addonTable.CreateMainConfigUI()
             end
             return tostring(selectedPeerModuleKey)
         elseif activeWorkspaceView == "THEME_STUDIO" then
-            return "Theme & Font Studio"
+            return "Suite Studio"
         elseif activeWorkspaceView == "GUIDED_SETUP" then
             return "Guided Setup & Conflict Scanner"
         elseif activeWorkspaceView == "CHANGELOG_VIEW" then
@@ -4990,9 +5027,9 @@ function addonTable.CreateMainConfigUI()
         },
         {
             key = "THEME_STUDIO",
-            label = "Theme & Font",
-            sub = "Colours, Surface & Fonts",
-            slash = "/ds",
+            label = "Suite Studio",
+            sub = "Theme, Fonts & Windows",
+            slash = "/ds studio",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_palette.tga",
             yBottom = 68,
         },
@@ -5023,9 +5060,21 @@ function addonTable.CreateMainConfigUI()
         iconTex:SetVertexColor(0.72, 0.76, 0.84, 0.95)
         sBtn.iconTex = iconTex
 
+        local sSlash = nil
+        if sItem.slash then
+            sSlash = sBtn:CreateFontString(nil, "OVERLAY")
+            sSlash:SetPoint("TOPRIGHT", sBtn, "TOPRIGHT", -6, -5)
+            UI.SetFont(sSlash, 9, "", 0.48, 0.53, 0.60, 0.90)
+            sSlash:SetText(sItem.slash)
+        end
+
         local sTitle = sBtn:CreateFontString(nil, "OVERLAY")
         sTitle:SetPoint("TOPLEFT", sBtn, "TOPLEFT", 26, -4)
-        sTitle:SetPoint("RIGHT", sBtn, "RIGHT", sItem.hasConflictBadge and -48 or -8, 0)
+        if sSlash then
+            sTitle:SetPoint("RIGHT", sSlash, "LEFT", -4, 0)
+        else
+            sTitle:SetPoint("RIGHT", sBtn, "RIGHT", sItem.hasConflictBadge and -48 or -8, 0)
+        end
         sTitle:SetJustifyH("LEFT")
         sTitle:SetWordWrap(false)
         UI.SetFont(sTitle, 11, "", 0.95, 0.97, 1.0, 1)
@@ -5034,19 +5083,12 @@ function addonTable.CreateMainConfigUI()
 
         local sSub = sBtn:CreateFontString(nil, "OVERLAY")
         sSub:SetPoint("BOTTOMLEFT", sBtn, "BOTTOMLEFT", 26, 3)
-        sSub:SetPoint("RIGHT", sBtn, "RIGHT", -8, 0)
+        sSub:SetPoint("RIGHT", sBtn, "RIGHT", -6, 0)
         sSub:SetJustifyH("LEFT")
         sSub:SetWordWrap(false)
         UI.SetFont(sSub, 9, "", UI.COLORS.TEXT_DIM.r, UI.COLORS.TEXT_DIM.g, UI.COLORS.TEXT_DIM.b, 0.88)
         sSub:SetText(sItem.sub)
         sBtn.subLabel = sSub
-
-        if sItem.slash then
-            local sSlash = sBtn:CreateFontString(nil, "OVERLAY")
-            sSlash:SetPoint("BOTTOMRIGHT", sBtn, "BOTTOMRIGHT", -8, 3)
-            UI.SetFont(sSlash, 9, "", 0.48, 0.53, 0.60, 0.90)
-            sSlash:SetText(sItem.slash)
-        end
 
         if sItem.hasConflictBadge then
             -- Subtle 6x6 emerald status pip (#22C55E) when 0 conflicts exist
@@ -5141,6 +5183,7 @@ function addonTable.CreateMainConfigUI()
     railChangelogBtn.label:SetPoint("RIGHT", railChangelogBtn, "RIGHT", -3, 0)
     railChangelogBtn.label:SetJustifyH("CENTER")
     railChangelogBtn:SetScript("OnClick", function()
+        if UI.CloseAllPopups then UI.CloseAllPopups() end
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
         local curVer = addonTable.ADDON_VERSION or "1.3.0"
         local curSig = GetSuiteChangelogSignature()
@@ -5170,6 +5213,7 @@ function addonTable.CreateMainConfigUI()
     railSupportBtn.label:SetPoint("RIGHT", railSupportBtn, "RIGHT", -4, 0)
     railSupportBtn.label:SetJustifyH("CENTER")
     railSupportBtn:SetScript("OnClick", function()
+        if UI.CloseAllPopups then UI.CloseAllPopups() end
         addonTable.OpenWorkspaceView("SUPPORT_VIEW")
     end)
     table.insert(railStudioBtns, railSupportBtn)
@@ -5771,7 +5815,7 @@ function addonTable.CreateMainConfigUI()
     end
 
     ----------------------------------------------------------------------------
-    -- VIEW B: THEME & FONT STUDIO (16 Unique Swatches + Auto-Match Class + Custom Picker + Surface + Font)
+    -- VIEW B: SUITE STUDIO (Tab 1: Theme & Typography | Tab 2: Desktop Windows & Menus)
     ----------------------------------------------------------------------------
     local themeView = CreateFrame("Frame", nil, workspace)
     themeView:SetAllPoints()
@@ -5780,31 +5824,58 @@ function addonTable.CreateMainConfigUI()
     themeView:Hide()
     f.themeView = themeView
     f.themeStudioView = themeView
+    f.suiteStudioView = themeView
 
     do
-    local tvTitle = themeView:CreateFontString(nil, "OVERLAY")
-    tvTitle:SetPoint("TOPLEFT", themeView, "TOPLEFT", 14, -14)
-    UI.SetFont(tvTitle, 14, "", 1, 1, 1, 0.98)
-    tvTitle:SetText("THEME & FONT STUDIO")
+    local activeStudioTab = 1
+    themeView.activeTab = 1
 
-    local tvResetBtn = CreateFlatButton(themeView, 146, 24, "Reset Theme Defaults", false)
-    tvResetBtn:SetPoint("TOPRIGHT", themeView, "TOPRIGHT", -16, -12)
+    -- 1. Universal 34px #0B0D12 Recessed Top 2-Tab Bar at (14, -10) to (-16, -10)
+    local studioTabBar = CreateFrame("Frame", nil, themeView)
+    studioTabBar:SetPoint("TOPLEFT", themeView, "TOPLEFT", 14, -10)
+    studioTabBar:SetPoint("TOPRIGHT", themeView, "TOPRIGHT", -16, -10)
+    studioTabBar:SetHeight(34)
+    studioTabBar.bg = UI.SolidTex(studioTabBar, "BACKGROUND", 1, 0.043, 0.051, 0.071, 0.98)
+    studioTabBar.bg:SetAllPoints()
+    UI.CreatePixelBorder(studioTabBar, 1, 1, 1, 0.08, 2)
+    themeView.tabBar = studioTabBar
 
-    -- Obsidian Scrollable Body Container + 4px Slate-Grey Scrollbar (zero clipping at 640px min height)
+    local studioTabDefs = {
+        { id = 1, label = "Theme & Typography",      icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_palette.tga" },
+        { id = 2, label = "Desktop Windows & Menus", icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_grid.tga" },
+    }
+    local studioTabBtns = {}
+
+    local studioHdrRow = CreateFrame("Frame", nil, themeView)
+    studioHdrRow:SetPoint("TOPLEFT", studioTabBar, "BOTTOMLEFT", 0, -6)
+    studioHdrRow:SetPoint("TOPRIGHT", studioTabBar, "BOTTOMRIGHT", 0, -6)
+    studioHdrRow:SetHeight(24)
+
+    local tvTitle = studioHdrRow:CreateFontString(nil, "OVERLAY")
+    tvTitle:SetPoint("LEFT", studioHdrRow, "LEFT", 0, 0)
+    UI.SetFont(tvTitle, 13, "", 1, 1, 1, 0.98)
+    tvTitle:SetText("SUITE STUDIO")
+
+    local tvResetBtn = CreateFlatButton(studioHdrRow, 158, 24, "Reset Theme Defaults", false)
+    tvResetBtn:SetPoint("RIGHT", studioHdrRow, "RIGHT", 0, 0)
+
+    -- Obsidian Scrollable Body Container + 4px 3-Way Interactive Scrollbar (zero clipping at 640px min height)
     local tvScroll = CreateFrame("ScrollFrame", nil, themeView)
-    tvScroll:SetPoint("TOPLEFT", themeView, "TOPLEFT", 14, -44)
+    tvScroll:SetPoint("TOPLEFT", studioHdrRow, "BOTTOMLEFT", 0, -6)
     tvScroll:SetPoint("BOTTOMRIGHT", themeView, "BOTTOMRIGHT", -16, 10)
     tvScroll:SetClipsChildren(true)
     tvScroll:EnableMouseWheel(true)
 
     local tvChild = CreateFrame("Frame", nil, tvScroll)
-    tvChild:SetSize(780, 1073)
+    tvChild:SetSize(780, 847)
     tvScroll:SetScrollChild(tvChild)
 
     local tvTrack = CreateFrame("Frame", nil, themeView)
     tvTrack:SetWidth(4)
     tvTrack:SetPoint("TOPRIGHT", tvScroll, "TOPRIGHT", 10, -2)
     tvTrack:SetPoint("BOTTOMRIGHT", tvScroll, "BOTTOMRIGHT", 10, 2)
+    tvTrack:EnableMouse(true)
+    tvTrack:SetHitRectInsets(-5, -5, 0, 0)
     tvTrack.bg = UI.SolidTex(tvTrack, "BACKGROUND", 1, 1, 1, 1, 0.05)
     tvTrack.bg:SetAllPoints()
 
@@ -5812,38 +5883,168 @@ function addonTable.CreateMainConfigUI()
     tvThumb:SetWidth(4)
     tvThumb:SetHeight(64)
     tvThumb:SetPoint("TOP", tvTrack, "TOP", 0, 0)
+    tvThumb:EnableMouse(true)
+    tvThumb:SetHitRectInsets(-5, -5, 0, 0)
     tvThumb.tex = UI.SolidTex(tvThumb, "OVERLAY", 2, 0.38, 0.45, 0.56, 0.85)
     tvThumb.tex:SetAllPoints()
 
     local function UpdateThemeScrollbar()
+        if tvScroll.UpdateScrollChildRect then
+            pcall(tvScroll.UpdateScrollChildRect, tvScroll)
+        end
         local trackH = tvTrack:GetHeight() or 400
         local viewH = tvScroll:GetHeight() or 400
-        local contentH = tvChild:GetHeight() or 1073
+        local contentH = tvChild:GetHeight() or 847
+        if trackH <= 1 or viewH <= 1 then return end
         local maxScroll = math.max(0, contentH - viewH)
         if maxScroll <= 1 then
             tvTrack:Hide()
+            tvThumb:Hide()
             tvScroll:SetVerticalScroll(0)
             return
         end
         tvTrack:Show()
+        tvThumb:Show()
         local ratio = math.max(0.12, math.min(1, viewH / contentH))
-        local thumbH = math.max(28, math.floor(trackH * ratio))
+        local thumbH = math.max(28, math.floor(trackH * ratio + 0.5))
         tvThumb:SetHeight(thumbH)
         local cur = math.max(0, math.min(maxScroll, tvScroll:GetVerticalScroll() or 0))
         local travel = math.max(1, trackH - thumbH)
         local yOff = -(cur / maxScroll) * travel
         tvThumb:ClearAllPoints()
         tvThumb:SetPoint("TOP", tvTrack, "TOP", 0, yOff)
-        tvThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+        if not tvThumb.isDragging then
+            if tvThumb.isHovered then
+                local ar, ag, ab = UI.GetActiveAccentColor()
+                tvThumb.tex:SetColorTexture(ar, ag, ab, 0.92)
+            else
+                tvThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+            end
+        end
     end
 
-    tvScroll:SetScript("OnMouseWheel", function(self, delta)
+    local function ScrollThemeFromCursor()
+        if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            tvThumb.isDragging = false
+            tvThumb:SetScript("OnUpdate", nil)
+            tvTrack:SetScript("OnUpdate", nil)
+            if tvThumb.isHovered then
+                local ar, ag, ab = UI.GetActiveAccentColor()
+                tvThumb.tex:SetColorTexture(ar, ag, ab, 0.92)
+            else
+                tvThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+            end
+            return
+        end
+        local viewH = tvScroll:GetHeight() or 0
+        local contentH = tvChild:GetHeight() or 0
+        local maxScroll = math.max(0, contentH - viewH)
+        if maxScroll <= 0 then return end
+
+        local eff = tvTrack:GetEffectiveScale() or 1
+        local _, cy = GetCursorPosition()
+        cy = cy / eff
+        local top = tvTrack:GetTop()
+        local bottom = tvTrack:GetBottom()
+        if top and bottom and top > bottom then
+            local trackH = top - bottom
+            local thumbH = tvThumb:GetHeight() or 28
+            local usableH = math.max(1, trackH - thumbH)
+            local offsetFromTop = (top - cy) - (thumbH * 0.5)
+            local ratio = math.max(0, math.min(1, offsetFromTop / usableH))
+            tvScroll:SetVerticalScroll(ratio * maxScroll)
+            UpdateThemeScrollbar()
+        end
+    end
+
+    tvThumb:SetScript("OnEnter", function(self)
+        self.isHovered = true
+        if not self.isDragging then
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            self.tex:SetColorTexture(ar, ag, ab, 0.92)
+        end
+    end)
+    tvThumb:SetScript("OnLeave", function(self)
+        self.isHovered = false
+        if not self.isDragging then
+            self.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+        end
+    end)
+    tvThumb:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            if UI.CloseAllPopups then UI.CloseAllPopups() end
+            self.isDragging = true
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            self.tex:SetColorTexture(ar, ag, ab, 1.0)
+            ScrollThemeFromCursor()
+            self:SetScript("OnUpdate", ScrollThemeFromCursor)
+        end
+    end)
+    tvThumb:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then
+            self.isDragging = false
+            self:SetScript("OnUpdate", nil)
+            if self.isHovered then
+                local ar, ag, ab = UI.GetActiveAccentColor()
+                self.tex:SetColorTexture(ar, ag, ab, 0.92)
+            else
+                self.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+            end
+        end
+    end)
+    tvThumb:SetScript("OnHide", function(self)
+        self.isDragging = false
+        self.isHovered = false
+        self:SetScript("OnUpdate", nil)
+        self.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+    end)
+
+    tvTrack:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            if UI.CloseAllPopups then UI.CloseAllPopups() end
+            tvThumb.isDragging = true
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            tvThumb.tex:SetColorTexture(ar, ag, ab, 1.0)
+            ScrollThemeFromCursor()
+            self:SetScript("OnUpdate", ScrollThemeFromCursor)
+        end
+    end)
+    tvTrack:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then
+            tvThumb.isDragging = false
+            self:SetScript("OnUpdate", nil)
+            tvThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+        end
+    end)
+    tvTrack:SetScript("OnHide", function(self)
+        tvThumb.isDragging = false
+        self:SetScript("OnUpdate", nil)
+        tvThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+    end)
+
+    local function ScrollThemeByDelta(delta)
         if UI.IsDropdownPopupShown and UI.IsDropdownPopupShown() and UI.CloseAllPopups then
             UI.CloseAllPopups()
         end
-        local maxScroll = math.max(0, (tvChild:GetHeight() or 1073) - (self:GetHeight() or 400))
-        local nextScroll = math.max(0, math.min(maxScroll, (self:GetVerticalScroll() or 0) - (delta * 44)))
-        self:SetVerticalScroll(nextScroll)
+        local maxScroll = math.max(0, (tvChild:GetHeight() or 847) - (tvScroll:GetHeight() or 400))
+        local nextScroll = math.max(0, math.min(maxScroll, (tvScroll:GetVerticalScroll() or 0) - (delta * 44)))
+        tvScroll:SetVerticalScroll(nextScroll)
+        UpdateThemeScrollbar()
+    end
+
+    tvScroll:SetScript("OnMouseWheel", function(_, delta)
+        ScrollThemeByDelta(delta)
+    end)
+    tvTrack:SetScript("OnMouseWheel", function(_, delta)
+        ScrollThemeByDelta(delta)
+    end)
+    tvThumb:SetScript("OnMouseWheel", function(_, delta)
+        ScrollThemeByDelta(delta)
+    end)
+    tvScroll:SetScript("OnVerticalScroll", function()
+        UpdateThemeScrollbar()
+    end)
+    tvScroll:SetScript("OnScrollRangeChanged", function()
         UpdateThemeScrollbar()
     end)
 
@@ -5984,11 +6185,15 @@ function addonTable.CreateMainConfigUI()
     function UI.CloseAllPopups()
         CloseDSDropdownPopup()
         CloseContextMenu()
+        if CloseAltDropdown then CloseAltDropdown() end
         if f.zoneTabMenu and f.zoneTabMenu:IsShown() then f.zoneTabMenu:Hide() end
         if dsColorPicker and dsColorPicker:IsShown() then dsColorPicker:Hide() end
         if clickCatcher and clickCatcher:IsShown() then clickCatcher:Hide() end
         if _G.DynamicSuiteHudSelectorPopup and _G.DynamicSuiteHudSelectorPopup:IsShown() then
             _G.DynamicSuiteHudSelectorPopup:Hide()
+        end
+        if UI.RunRegisteredPopupClosers then
+            UI.RunRegisteredPopupClosers()
         end
     end
 
@@ -6119,15 +6324,28 @@ function addonTable.CreateMainConfigUI()
                 sf:SetScrollChild(sc)
                 dsDropdownPopup.scrollChild = sc
 
-                local sbTrack = UI.SolidTex(dsDropdownPopup, "ARTWORK", 1, 1, 1, 1, 0.06)
+                local sbTrack = CreateFrame("Frame", nil, dsDropdownPopup)
+                sbTrack:SetFrameLevel(261)
                 sbTrack:SetWidth(4)
                 sbTrack:SetPoint("TOPRIGHT", dsDropdownPopup, "TOPRIGHT", -3, -4)
                 sbTrack:SetPoint("BOTTOMRIGHT", dsDropdownPopup, "BOTTOMRIGHT", -3, 4)
+                sbTrack:EnableMouse(true)
+                sbTrack:SetHitRectInsets(-5, -5, 0, 0)
+                sbTrack.bg = UI.SolidTex(sbTrack, "ARTWORK", 1, 1, 1, 1, 0.06)
+                sbTrack.bg:SetAllPoints()
                 dsDropdownPopup.sbTrack = sbTrack
 
-                local sbThumb = UI.SolidTex(dsDropdownPopup, "OVERLAY", 2, 0.38, 0.45, 0.56, 0.85)
+                local sbThumb = CreateFrame("Button", nil, sbTrack)
+                sbThumb:SetFrameLevel(262)
                 sbThumb:SetSize(4, 32)
                 sbThumb:SetPoint("TOP", sbTrack, "TOP", 0, 0)
+                sbThumb:EnableMouse(true)
+                sbThumb:SetHitRectInsets(-5, -5, 0, 0)
+                sbThumb.tex = UI.SolidTex(sbThumb, "OVERLAY", 2, 0.38, 0.45, 0.56, 0.85)
+                sbThumb.tex:SetAllPoints()
+                function sbThumb:SetColorTexture(r, g, b, a)
+                    self.tex:SetColorTexture(r, g, b, a)
+                end
                 dsDropdownPopup.sbThumb = sbThumb
 
                 -- High-level border frame drawn on top of ScrollFrame & itemBtns so bottom border never clips
@@ -6138,17 +6356,169 @@ function addonTable.CreateMainConfigUI()
                 dsDropdownPopup.dsBorder = borderOverlay.dsBorder
                 dsDropdownPopup.borderOverlay = borderOverlay
 
-                sf:SetScript("OnMouseWheel", function(sFrame, delta)
-                    local maxScroll = math.max(0, sc:GetHeight() - sFrame:GetHeight())
-                    local nextVal = math.max(0, math.min(maxScroll, sFrame:GetVerticalScroll() - (delta * 26)))
-                    sFrame:SetVerticalScroll(nextVal)
-                    if maxScroll > 0 then
-                        local thumbH = sbThumb:GetHeight() or 32
-                        local trackH = math.max(10, sbTrack:GetHeight() - thumbH)
-                        sbThumb:ClearAllPoints()
-                        sbThumb:SetPoint("TOP", sbTrack, "TOP", 0, -(nextVal / maxScroll) * trackH)
+                local function UpdateDropdownScrollbar()
+                    local viewH = sf:GetHeight() or 0
+                    local totalH = sc:GetHeight() or 0
+                    local maxScroll = math.max(0, totalH - viewH)
+                    if maxScroll <= 1 then
+                        sbTrack:Hide()
+                        sbThumb:Hide()
+                        sf:SetVerticalScroll(0)
+                        return
+                    end
+                    sbTrack:Show()
+                    sbThumb:Show()
+                    local trackH = sbTrack:GetHeight() or viewH
+                    if trackH < 16 then trackH = viewH end
+                    local ratio = math.max(0.12, math.min(1, viewH / math.max(1, totalH)))
+                    local thumbH = math.max(18, math.floor(trackH * ratio + 0.5))
+                    sbThumb:SetSize(4, thumbH)
+                    local cur = math.max(0, math.min(maxScroll, sf:GetVerticalScroll() or 0))
+                    local travel = math.max(1, trackH - thumbH)
+                    sbThumb:ClearAllPoints()
+                    sbThumb:SetPoint("TOP", sbTrack, "TOP", 0, -(cur / maxScroll) * travel)
+                    if not sbThumb.isDragging then
+                        if sbThumb.isHovered then
+                            local cr, cg, cb = UI.GetActiveAccentColor()
+                            sbThumb.tex:SetColorTexture(cr, cg, cb, 0.92)
+                        else
+                            sbThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+                        end
+                    end
+                end
+                dsDropdownPopup.UpdateDropdownScrollbar = UpdateDropdownScrollbar
+
+                local function ScrollDropdownFromCursor()
+                    if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+                        sbThumb.isDragging = false
+                        sbThumb:SetScript("OnUpdate", nil)
+                        sbTrack:SetScript("OnUpdate", nil)
+                        if sbThumb.isHovered then
+                            local cr, cg, cb = UI.GetActiveAccentColor()
+                            sbThumb.tex:SetColorTexture(cr, cg, cb, 0.92)
+                        else
+                            sbThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+                        end
+                        return
+                    end
+                    local viewH = sf:GetHeight() or 0
+                    local totalH = sc:GetHeight() or 0
+                    local maxScroll = math.max(0, totalH - viewH)
+                    if maxScroll <= 0 then return end
+
+                    local eff = sbTrack:GetEffectiveScale() or 1
+                    local _, cy = GetCursorPosition()
+                    cy = cy / eff
+                    local top = sbTrack:GetTop()
+                    local bottom = sbTrack:GetBottom()
+                    if top and bottom and top > bottom then
+                        local trackH = top - bottom
+                        local thumbH = sbThumb:GetHeight() or 18
+                        local usableH = math.max(1, trackH - thumbH)
+                        local offsetFromTop = (top - cy) - (thumbH * 0.5)
+                        local ratio = math.max(0, math.min(1, offsetFromTop / usableH))
+                        sf:SetVerticalScroll(ratio * maxScroll)
+                        UpdateDropdownScrollbar()
+                    end
+                end
+
+                local function ScrollDropdownByDelta(delta)
+                    local maxScroll = math.max(0, sc:GetHeight() - sf:GetHeight())
+                    local nextVal = math.max(0, math.min(maxScroll, sf:GetVerticalScroll() - (delta * 26)))
+                    sf:SetVerticalScroll(nextVal)
+                    UpdateDropdownScrollbar()
+                end
+
+                sbThumb:SetScript("OnEnter", function(tSelf)
+                    tSelf.isHovered = true
+                    if not tSelf.isDragging then
+                        local cr, cg, cb = UI.GetActiveAccentColor()
+                        tSelf.tex:SetColorTexture(cr, cg, cb, 0.92)
                     end
                 end)
+                sbThumb:SetScript("OnLeave", function(tSelf)
+                    tSelf.isHovered = false
+                    if not tSelf.isDragging then
+                        tSelf.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+                    end
+                end)
+                sbThumb:SetScript("OnMouseDown", function(tSelf, button)
+                    if button == "LeftButton" then
+                        tSelf.isDragging = true
+                        local cr, cg, cb = UI.GetActiveAccentColor()
+                        tSelf.tex:SetColorTexture(cr, cg, cb, 1.0)
+                        ScrollDropdownFromCursor()
+                        tSelf:SetScript("OnUpdate", ScrollDropdownFromCursor)
+                    end
+                end)
+                sbThumb:SetScript("OnMouseUp", function(tSelf, button)
+                    if button == "LeftButton" then
+                        tSelf.isDragging = false
+                        tSelf:SetScript("OnUpdate", nil)
+                        if tSelf.isHovered then
+                            local cr, cg, cb = UI.GetActiveAccentColor()
+                            tSelf.tex:SetColorTexture(cr, cg, cb, 0.92)
+                        else
+                            tSelf.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+                        end
+                    end
+                end)
+                sbThumb:SetScript("OnHide", function(tSelf)
+                    tSelf.isDragging = false
+                    tSelf.isHovered = false
+                    tSelf:SetScript("OnUpdate", nil)
+                    tSelf.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+                end)
+                sbThumb:SetScript("OnMouseWheel", function(_, delta)
+                    ScrollDropdownByDelta(delta)
+                end)
+
+                sbTrack:SetScript("OnMouseDown", function(trSelf, button)
+                    if button == "LeftButton" then
+                        sbThumb.isDragging = true
+                        local cr, cg, cb = UI.GetActiveAccentColor()
+                        sbThumb.tex:SetColorTexture(cr, cg, cb, 1.0)
+                        ScrollDropdownFromCursor()
+                        trSelf:SetScript("OnUpdate", ScrollDropdownFromCursor)
+                    end
+                end)
+                sbTrack:SetScript("OnMouseUp", function(trSelf, button)
+                    if button == "LeftButton" then
+                        sbThumb.isDragging = false
+                        trSelf:SetScript("OnUpdate", nil)
+                        sbThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+                    end
+                end)
+                sbTrack:SetScript("OnHide", function(trSelf)
+                    sbThumb.isDragging = false
+                    trSelf:SetScript("OnUpdate", nil)
+                    sbThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+                end)
+                sbTrack:SetScript("OnMouseWheel", function(_, delta)
+                    ScrollDropdownByDelta(delta)
+                end)
+
+                sf:SetScript("OnMouseWheel", function(_, delta)
+                    ScrollDropdownByDelta(delta)
+                end)
+                sf:SetScript("OnVerticalScroll", function()
+                    UpdateDropdownScrollbar()
+                end)
+                sf:SetScript("OnScrollRangeChanged", function()
+                    UpdateDropdownScrollbar()
+                end)
+
+                dsDropdownPopup:HookScript("OnHide", function(pSelf)
+                    if pSelf.searchBox then pSelf.searchBox:ClearFocus() end
+                    if pSelf.ownerBtn then
+                        UI.SetChevronState(pSelf.ownerBtn, false)
+                        pSelf.ownerBtn = nil
+                    end
+                    if clickCatcher and clickCatcher:IsShown() and (not contextMenuFrame or not contextMenuFrame:IsShown()) and (not altDropdownFrame or not altDropdownFrame:IsShown()) then
+                        clickCatcher:Hide()
+                    end
+                end)
+                table.insert(UISpecialFrames, "DynamicSuiteDropdownPopup")
 
                 dsDropdownPopup.itemBtns = {}
             end
@@ -6354,11 +6724,8 @@ function addonTable.CreateMainConfigUI()
                 dsDropdownPopup.sbTrack:SetPoint("BOTTOMRIGHT", dsDropdownPopup, "BOTTOMRIGHT", -3, pad)
                 dsDropdownPopup.sbTrack:SetShown(hasScroll)
                 dsDropdownPopup.sbThumb:SetShown(hasScroll)
-                if hasScroll then
-                    local thumbH = math.max(18, math.floor(viewH * (viewH / totalH)))
-                    dsDropdownPopup.sbThumb:SetSize(4, thumbH)
-                    dsDropdownPopup.sbThumb:ClearAllPoints()
-                    dsDropdownPopup.sbThumb:SetPoint("TOP", dsDropdownPopup.sbTrack, "TOP", 0, 0)
+                if dsDropdownPopup.UpdateDropdownScrollbar then
+                    dsDropdownPopup.UpdateDropdownScrollbar()
                 end
             end
 
@@ -6624,7 +6991,9 @@ function addonTable.CreateMainConfigUI()
         _G.DynamicSuite.UI.CreateSubDrawerButton = UI.CreateSubDrawerButton
         _G.DynamicSuite.UI.CreateSubDrawerTuneButton = UI.CreateSubDrawerButton
         _G.DynamicSuite.UI.NormalizeEmbeddedSubDrawers = UI.NormalizeEmbeddedSubDrawers
+        _G.DynamicSuite.UI.RegisterPopupCloser = UI.RegisterPopupCloser
         _G.DynamicSuite.UI.CloseAllPopups = UI.CloseAllPopups
+        _G.DynamicSuite.RegisterPopupCloser = UI.RegisterPopupCloser
         _G.DynamicSuite.GetSuiteAccent = function()
             return UI.GetActiveAccentColor()
         end
@@ -7075,10 +7444,10 @@ function addonTable.CreateMainConfigUI()
     replaceAddonListPills:SetPoint("RIGHT", replaceAddonListRow, "RIGHT", -14, 0)
     replaceAddonListRow:BindRightControl(replaceAddonListPills)
 
-    -- Card 4: Shared Alert & Teleport Toast HUD Configuration Card (Visibility, Border Style, Scale, Opacity, Test Toast, Edit HUD)
+    -- Tab 1 Card 3: Shared Alert & Teleport Toast HUD Configuration Card (Visibility, Border Style, Scale, Opacity, Test Toast, Edit HUD)
     local toastSectionCard = CreateFrame("Frame", nil, tvChild)
-    toastSectionCard:SetPoint("TOPLEFT", shortcutSectionCard, "BOTTOMLEFT", 0, -10)
-    toastSectionCard:SetPoint("TOPRIGHT", shortcutSectionCard, "BOTTOMRIGHT", 0, -10)
+    toastSectionCard:SetPoint("TOPLEFT", surfaceSectionCard, "BOTTOMLEFT", 0, -10)
+    toastSectionCard:SetPoint("TOPRIGHT", surfaceSectionCard, "BOTTOMRIGHT", 0, -10)
     toastSectionCard:SetHeight(274)
     toastSectionCard.bg = UI.SolidTex(toastSectionCard, "BACKGROUND", 0, 0.031, 0.039, 0.055, 0.72)
     toastSectionCard.bg:SetAllPoints()
@@ -7272,6 +7641,256 @@ function addonTable.CreateMainConfigUI()
     toastOpacitySlider:SetPoint("RIGHT", toastOpacityRow, "RIGHT", -14, 0)
     toastOpacityRow:BindRightControl(toastOpacitySlider)
 
+    ----------------------------------------------------------------------------
+    -- TAB 2: DESKTOP WINDOWS & MENUS (Blizzard Desktop Window Manager + Game Menu & Options Shortcuts)
+    ----------------------------------------------------------------------------
+    local yieldStatusBanner, desktopWinSectionCard, winSecHdr
+    local winSideBySideRow, winSideBySidePills, winDragRow, winDragPills, winScaleRow, winScalePills, winResetRow, winResetAllBtn
+    local GetDesktopWindowsDBTable, ApplyDesktopWindowStatesSafe, ResetAllDesktopWindowsSafe, GetActiveDesktopWindowYieldAddon
+
+    do
+        GetDesktopWindowsDBTable = function()
+            local dw = (_G.DynamicSuite and _G.DynamicSuite.DesktopWindows) or addonTable.DesktopWindows
+            if dw and type(dw.GetDB) == "function" then
+                local ok, db = pcall(dw.GetDB, dw)
+                if ok and type(db) == "table" then return db end
+            end
+            if addonTable.GetDesktopWindowsDB then
+                local ok, db = pcall(addonTable.GetDesktopWindowsDB)
+                if ok and type(db) == "table" then return db end
+            end
+            local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+            if type(gTbl) == "table" then
+                if type(gTbl.desktopWindows) ~= "table" then
+                    gTbl.desktopWindows = {
+                        enabled = true,
+                        sideBySide = true,
+                        dragAnywhere = true,
+                        draggable = true,
+                        scrollScale = true,
+                        positions = {},
+                        scales = {},
+                    }
+                end
+                return gTbl.desktopWindows
+            end
+            return { enabled = true, sideBySide = true, dragAnywhere = true, draggable = true, scrollScale = true, positions = {}, scales = {} }
+        end
+
+        ApplyDesktopWindowStatesSafe = function()
+            local dw = (_G.DynamicSuite and _G.DynamicSuite.DesktopWindows) or addonTable.DesktopWindows
+            if dw and type(dw.ApplyAllWindowStates) == "function" then
+                pcall(dw.ApplyAllWindowStates, dw)
+            elseif dw and type(dw.ApplyAllBlizzardWindowStates) == "function" then
+                pcall(dw.ApplyAllBlizzardWindowStates, dw)
+            elseif _G.DynamicPrep and type(_G.DynamicPrep.ApplyAllBlizzardWindowStates) == "function" then
+                pcall(_G.DynamicPrep.ApplyAllBlizzardWindowStates, _G.DynamicPrep)
+            end
+        end
+
+        ResetAllDesktopWindowsSafe = function(silent)
+            local dw = (_G.DynamicSuite and _G.DynamicSuite.DesktopWindows) or addonTable.DesktopWindows
+            if dw and type(dw.ResetAllWindows) == "function" then
+                pcall(dw.ResetAllWindows, dw, silent == true)
+            elseif dw and type(dw.ResetAllBlizzardWindows) == "function" then
+                pcall(dw.ResetAllBlizzardWindows, dw, silent == true)
+            elseif _G.DynamicPrep and type(_G.DynamicPrep.ResetAllBlizzardWindows) == "function" then
+                pcall(_G.DynamicPrep.ResetAllBlizzardWindows, _G.DynamicPrep, silent == true)
+            else
+                local db = GetDesktopWindowsDBTable()
+                db.positions = {}
+                db.scales = {}
+            end
+        end
+
+        GetActiveDesktopWindowYieldAddon = function()
+            local dw = (_G.DynamicSuite and _G.DynamicSuite.DesktopWindows) or addonTable.DesktopWindows
+            if dw and type(dw.GetYieldAddon) == "function" then
+                local ok, res = pcall(dw.GetYieldAddon, dw)
+                if ok and type(res) == "string" and res ~= "" then
+                    return res
+                end
+            end
+            if addonTable.GetBlizzardWindowYieldAddon then
+                local ok, res = pcall(addonTable.GetBlizzardWindowYieldAddon)
+                if ok and type(res) == "string" and res ~= "" then
+                    return res
+                end
+            end
+            if _G.DynamicPrep and type(_G.DynamicPrep.GetBlizzardWindowYieldAddon) == "function" then
+                local ok, res = pcall(_G.DynamicPrep.GetBlizzardWindowYieldAddon, _G.DynamicPrep)
+                if ok and type(res) == "string" and res ~= "" then
+                    return res
+                end
+            end
+            return nil
+        end
+
+        -- Calm External-Mover Yield Status Banner (Shown only when an external mover addon manages Blizzard frames)
+        yieldStatusBanner = CreateFrame("Frame", nil, tvChild)
+        yieldStatusBanner:SetPoint("TOPLEFT", tvChild, "TOPLEFT", 0, 0)
+        yieldStatusBanner:SetPoint("TOPRIGHT", tvChild, "TOPRIGHT", 0, 0)
+        yieldStatusBanner:SetHeight(54)
+        yieldStatusBanner.bg = UI.SolidTex(yieldStatusBanner, "BACKGROUND", 1, 0.04, 0.11, 0.16, 0.94)
+        yieldStatusBanner.bg:SetAllPoints()
+        UI.CreatePixelBorder(yieldStatusBanner, 0.220, 0.741, 0.973, 0.85, 2)
+        yieldStatusBanner.leftBar = UI.SolidTex(yieldStatusBanner, "OVERLAY", 4, 0.220, 0.741, 0.973, 1.0)
+        yieldStatusBanner.leftBar:SetWidth(3)
+        yieldStatusBanner.leftBar:SetPoint("TOPLEFT", yieldStatusBanner, "TOPLEFT", 0, 0)
+        yieldStatusBanner.leftBar:SetPoint("BOTTOMLEFT", yieldStatusBanner, "BOTTOMLEFT", 0, 0)
+
+        local yieldSetupBtn = CreateFlatButton(yieldStatusBanner, 148, 24, "Open Guided Setup", false)
+        yieldSetupBtn:SetPoint("RIGHT", yieldStatusBanner, "RIGHT", -12, 0)
+        yieldSetupBtn:SetSelected(true, { r = 0.220, g = 0.741, b = 0.973 })
+        yieldSetupBtn:SetScript("OnClick", function()
+            addonTable.OpenWorkspaceView("GUIDED_SETUP")
+        end)
+        yieldStatusBanner.setupBtn = yieldSetupBtn
+
+        local yieldTitle = yieldStatusBanner:CreateFontString(nil, "OVERLAY")
+        yieldTitle:SetPoint("TOPLEFT", yieldStatusBanner, "TOPLEFT", 14, -8)
+        yieldTitle:SetPoint("RIGHT", yieldSetupBtn, "LEFT", -12, 0)
+        yieldTitle:SetJustifyH("LEFT")
+        yieldTitle:SetWordWrap(false)
+        UI.SetFont(yieldTitle, 11, "", 0.220, 0.741, 0.973, 1.0)
+        yieldStatusBanner.title = yieldTitle
+
+        local yieldSub = yieldStatusBanner:CreateFontString(nil, "OVERLAY")
+        yieldSub:SetPoint("TOPLEFT", yieldTitle, "BOTTOMLEFT", 0, -2)
+        yieldSub:SetPoint("RIGHT", yieldSetupBtn, "LEFT", -12, 0)
+        yieldSub:SetJustifyH("LEFT")
+        yieldSub:SetWordWrap(true)
+        UI.SetFont(yieldSub, 9.5, "", 0.82, 0.88, 0.94, 0.95)
+        yieldStatusBanner.sub = yieldSub
+        yieldStatusBanner:Hide()
+
+        -- Section 1: BLIZZARD DESKTOP WINDOW MANAGER (4 Rows with 2-Line Tall 36px L-Bracket Header)
+        desktopWinSectionCard = CreateFrame("Frame", nil, tvChild)
+        desktopWinSectionCard:SetPoint("TOPLEFT", tvChild, "TOPLEFT", 0, 0)
+        desktopWinSectionCard:SetPoint("TOPRIGHT", tvChild, "TOPRIGHT", 0, 0)
+        desktopWinSectionCard:SetHeight(304)
+        desktopWinSectionCard.bg = UI.SolidTex(desktopWinSectionCard, "BACKGROUND", 0, 0.031, 0.039, 0.055, 0.72)
+        desktopWinSectionCard.bg:SetAllPoints()
+        UI.CreatePixelBorder(desktopWinSectionCard, 1, 1, 1, 0.08, 2)
+
+        winSecHdr = UI.CreateSectionHeader(
+            desktopWinSectionCard,
+            -10,
+            "BLIZZARD DESKTOP WINDOW MANAGER",
+            "Open Blizzard panels side-by-side (including windowed Quest Log), drag from any empty space, click to raise, and Ctrl+Scroll to scale.",
+            14
+        )
+
+        local function CreateDesktopWinRow(rowTitle, rowDesc, anchorAbove, gapY)
+            local row = CreateThemeStudioRow(desktopWinSectionCard, rowTitle, rowDesc, anchorAbove, gapY)
+            row:SetHeight(56)
+            row.titleText:ClearAllPoints()
+            row.titleText:SetPoint("TOPLEFT", row, "TOPLEFT", 16, -7)
+            row.titleText:SetPoint("RIGHT", row, "RIGHT", -190, 0)
+            row.descText:ClearAllPoints()
+            row.descText:SetPoint("TOPLEFT", row.titleText, "BOTTOMLEFT", 0, -2)
+            row.descText:SetPoint("RIGHT", row, "RIGHT", -190, 0)
+            row.descText:SetWordWrap(true)
+            return row
+        end
+
+        -- Row 1: Keep Blizzard Windows Open Side-by-Side
+        winSideBySideRow = CreateDesktopWinRow(
+            "Keep Blizzard Windows Open Side-by-Side",
+            "Opening Character, Spellbook & Talents, Professions, Bags, Collections, or the windowed Quest Log (L) keeps existing panels open side-by-side, clicking any window brings it to the front, and Esc closes the top-most window first.",
+            winSecHdr, -8
+        )
+        winSideBySidePills = UI.CreateSegmentedPills(winSideBySideRow, {
+            { value = false, label = "Off",     width = 68 },
+            { value = true,  label = "Enabled", width = 84 },
+        }, function()
+            local db = GetDesktopWindowsDBTable()
+            if db.sideBySide ~= nil then return db.sideBySide ~= false end
+            return db.enabled ~= false
+        end, function(val)
+            local isOn = (val == true)
+            local db = GetDesktopWindowsDBTable()
+            db.sideBySide = isOn
+            db.enabled = isOn
+            if _G.DynamicPrepDB then _G.DynamicPrepDB.blizzWinNoAutoClose = isOn end
+            ApplyDesktopWindowStatesSafe()
+            if themeView.Refresh then themeView.Refresh() end
+        end)
+        winSideBySidePills:SetPoint("RIGHT", winSideBySideRow, "RIGHT", -14, 0)
+        winSideBySideRow:BindRightControl(winSideBySidePills)
+
+        -- Row 2: Drag Blizzard Windows Anywhere (Save Position)
+        winDragRow = CreateDesktopWinRow(
+            "Drag Blizzard Windows Anywhere (Save Position)",
+            "Left-Click and drag any Blizzard window from its title bar or any empty background space (no Alt key needed), automatically clamped on-screen and saved across sessions (Right-Click title bar to reset a single window).",
+            winSideBySideRow, -6
+        )
+        winDragPills = UI.CreateSegmentedPills(winDragRow, {
+            { value = false, label = "Off",     width = 68 },
+            { value = true,  label = "Enabled", width = 84 },
+        }, function()
+            local db = GetDesktopWindowsDBTable()
+            if db.dragAnywhere ~= nil then return db.dragAnywhere ~= false end
+            return db.draggable ~= false
+        end, function(val)
+            local isOn = (val == true)
+            local db = GetDesktopWindowsDBTable()
+            db.dragAnywhere = isOn
+            db.draggable = isOn
+            if _G.DynamicPrepDB then _G.DynamicPrepDB.blizzWinDraggable = isOn end
+            ApplyDesktopWindowStatesSafe()
+            if themeView.Refresh then themeView.Refresh() end
+        end)
+        winDragPills:SetPoint("RIGHT", winDragRow, "RIGHT", -14, 0)
+        winDragRow:BindRightControl(winDragPills)
+
+        -- Row 3: Window Ctrl+Scroll Scaling
+        winScaleRow = CreateDesktopWinRow(
+            "Window Ctrl+Scroll Scaling",
+            "Hold Ctrl + Mousewheel on a Blizzard window title bar for temporary session scaling (70% to 140% in 5% steps), or Ctrl + Shift + Mousewheel anywhere on a window to save permanent scale.",
+            winDragRow, -6
+        )
+        winScalePills = UI.CreateSegmentedPills(winScaleRow, {
+            { value = false, label = "Off",     width = 68 },
+            { value = true,  label = "Enabled", width = 84 },
+        }, function()
+            local db = GetDesktopWindowsDBTable()
+            return db.scrollScale ~= false
+        end, function(val)
+            local isOn = (val == true)
+            local db = GetDesktopWindowsDBTable()
+            db.scrollScale = isOn
+            if _G.DynamicPrepDB then _G.DynamicPrepDB.blizzWinScrollScale = isOn end
+            ApplyDesktopWindowStatesSafe()
+            if themeView.Refresh then themeView.Refresh() end
+        end)
+        winScalePills:SetPoint("RIGHT", winScaleRow, "RIGHT", -14, 0)
+        winScaleRow:BindRightControl(winScalePills)
+
+        -- Row 4: Reset Blizzard Window Layout
+        winResetRow = CreateDesktopWinRow(
+            "Reset Blizzard Window Layout",
+            "Restores all 32 managed Blizzard windows to default 100% scale and centred positions.",
+            winScaleRow, -6
+        )
+        winResetAllBtn = CreateFlatButton(winResetRow, 156, 26, "Reset All Windows", false)
+        winResetAllBtn:SetPoint("RIGHT", winResetRow, "RIGHT", -14, 0)
+        winResetAllBtn:SetScript("OnClick", function()
+            ResetAllDesktopWindowsSafe(false)
+            if themeView.Refresh then themeView.Refresh() end
+        end)
+        winResetRow:BindRightControl(winResetAllBtn)
+
+        -- Anchor Section 2 (GAME MENU & OPTIONS SHORTCUTS) directly below Section 1 on Tab 2
+        shortcutSectionCard:ClearAllPoints()
+        shortcutSectionCard:SetPoint("TOPLEFT", desktopWinSectionCard, "BOTTOMLEFT", 0, -10)
+        shortcutSectionCard:SetPoint("TOPRIGHT", desktopWinSectionCard, "BOTTOMRIGHT", 0, -10)
+    end
+
+    local function GetDefaultStudioResetLabel()
+        return (activeStudioTab == 2) and "Reset Window Defaults" or "Reset Theme Defaults"
+    end
+
     local resetThemeConfirmTimer = nil
     local function CancelThemeResetConfirmation(showCancelledFeedback)
         if resetThemeConfirmTimer then
@@ -7285,17 +7904,98 @@ function addonTable.CreateMainConfigUI()
             tvResetBtn.dsBorder:SetColor(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 0.90)
             C_Timer.After(1.2, function()
                 if not tvResetBtn.isConfirming then
-                    tvResetBtn.label:SetText("Reset Theme Defaults")
+                    tvResetBtn.label:SetText(GetDefaultStudioResetLabel())
                     tvResetBtn.label:SetTextColor(0.86, 0.88, 0.92, 0.95)
                     tvResetBtn.dsBorder:SetColor(UI.COLORS.BTN_BORDER.r, UI.COLORS.BTN_BORDER.g, UI.COLORS.BTN_BORDER.b, UI.COLORS.BTN_BORDER.a)
                 end
             end)
         else
-            tvResetBtn.label:SetText("Reset Theme Defaults")
+            tvResetBtn.label:SetText(GetDefaultStudioResetLabel())
             tvResetBtn.label:SetTextColor(0.86, 0.88, 0.92, 0.95)
             tvResetBtn.dsBorder:SetColor(UI.COLORS.BTN_BORDER.r, UI.COLORS.BTN_BORDER.g, UI.COLORS.BTN_BORDER.b, UI.COLORS.BTN_BORDER.a)
         end
     end
+
+    local function SetSuiteStudioTab(tabIdx, skipRefresh)
+        local targetTab = (tonumber(tabIdx) == 2 or tabIdx == "DESKTOP_WINDOWS" or tabIdx == "WINDOWS") and 2 or 1
+        if activeStudioTab ~= targetTab then
+            if UI.CloseAllPopups then UI.CloseAllPopups() end
+            CancelThemeResetConfirmation(false)
+            activeStudioTab = targetTab
+            themeView.activeTab = targetTab
+            tvScroll:SetVerticalScroll(0)
+        end
+        if not skipRefresh and themeView.Refresh then
+            themeView.Refresh()
+        end
+    end
+    f.SetSuiteStudioTab = SetSuiteStudioTab
+    themeView.SelectTab = SetSuiteStudioTab
+    themeView.SelectSubTab = SetSuiteStudioTab
+
+    for idx, tDef in ipairs(studioTabDefs) do
+        local tBtn = CreateFrame("Button", nil, studioTabBar)
+        tBtn:SetHeight(26)
+        tBtn.bg = UI.SolidTex(tBtn, "BACKGROUND", 2, 0.078, 0.090, 0.122, 0.96)
+        tBtn.bg:SetAllPoints()
+        UI.CreatePixelBorder(tBtn, 0.145, 0.165, 0.212, 0.95, 3)
+
+        local tIcon = tBtn:CreateTexture(nil, "ARTWORK", nil, 3)
+        tIcon:SetSize(13, 13)
+        tIcon:SetPoint("LEFT", tBtn, "LEFT", 12, 0)
+        tIcon:SetTexture(tDef.icon)
+        tBtn.iconTex = tIcon
+
+        local tLbl = tBtn:CreateFontString(nil, "OVERLAY")
+        tLbl:SetPoint("LEFT", tIcon, "RIGHT", 6, 0)
+        tLbl:SetPoint("RIGHT", tBtn, "RIGHT", -8, 0)
+        tLbl:SetJustifyH("CENTER")
+        tLbl:SetWordWrap(false)
+        UI.SetFont(tLbl, 11, "", 0.68, 0.74, 0.82, 1)
+        tLbl:SetText(tDef.label)
+        tBtn.label = tLbl
+
+        tBtn:SetScript("OnEnter", function(self)
+            if activeStudioTab ~= tDef.id then
+                local cr, cg, cb = UI.GetActiveAccentColor()
+                self.bg:SetColorTexture(0.10, 0.12, 0.16, 0.98)
+                self.dsBorder:SetColor(cr, cg, cb, 0.65)
+                self.label:SetTextColor(0.94, 0.96, 1.0, 1)
+            end
+        end)
+        tBtn:SetScript("OnLeave", function(self)
+            if activeStudioTab ~= tDef.id then
+                self.bg:SetColorTexture(0.078, 0.090, 0.122, 0.96)
+                self.dsBorder:SetColor(0.145, 0.165, 0.212, 0.95)
+                self.label:SetTextColor(0.68, 0.74, 0.82, 1)
+            end
+        end)
+        tBtn:SetScript("OnClick", function()
+            PlaySound(SOUNDKIT.IG_CHARACTER_INFO_TAB or 841)
+            SetSuiteStudioTab(tDef.id)
+        end)
+        studioTabBtns[idx] = tBtn
+    end
+
+    local function ReflowStudioTabBar()
+        local w = studioTabBar:GetWidth() or 780
+        if w < 200 then w = 780 end
+        local gap = 4
+        local count = #studioTabBtns
+        local eachW = math.floor((w - 8 - ((count - 1) * gap)) / count)
+        for i, b in ipairs(studioTabBtns) do
+            b:ClearAllPoints()
+            b:SetHeight(26)
+            if i == 1 then
+                b:SetPoint("LEFT", studioTabBar, "LEFT", 4, 0)
+                b:SetWidth(eachW)
+            else
+                b:SetPoint("LEFT", studioTabBtns[i - 1], "RIGHT", gap, 0)
+                b:SetPoint("RIGHT", studioTabBar, "RIGHT", -4, 0)
+            end
+        end
+    end
+    studioTabBar:SetScript("OnSizeChanged", ReflowStudioTabBar)
 
     tvResetBtn:SetScript("OnClick", function()
         if not tvResetBtn.isConfirming then
@@ -7305,7 +8005,7 @@ function addonTable.CreateMainConfigUI()
             tvResetBtn.dsBorder:SetColor(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 0.95)
             resetThemeConfirmTimer = C_Timer.NewTimer(3.0, function()
                 CancelThemeResetConfirmation(true)
-                print(string.format("%s: Theme & Font reset cancelled - no settings were changed.", UI.FormatTwoToneBrand("Suite")))
+                print(string.format("%s: Suite Studio reset cancelled - no settings were changed.", UI.FormatTwoToneBrand("Suite")))
             end)
             return
         end
@@ -7315,10 +8015,40 @@ function addonTable.CreateMainConfigUI()
             resetThemeConfirmTimer = nil
         end
         tvResetBtn.isConfirming = false
-        tvResetBtn.label:SetText("Reset Theme Defaults")
+        tvResetBtn.label:SetText(GetDefaultStudioResetLabel())
         tvResetBtn.label:SetTextColor(0.86, 0.88, 0.92, 0.95)
 
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        if activeStudioTab == 2 then
+            local db = GetDesktopWindowsDBTable()
+            db.enabled      = true
+            db.sideBySide   = true
+            db.dragAnywhere = true
+            db.draggable    = true
+            db.scrollScale  = true
+            if _G.DynamicPrepDB then
+                _G.DynamicPrepDB.blizzWinNoAutoClose = true
+                _G.DynamicPrepDB.blizzWinDraggable   = true
+                _G.DynamicPrepDB.blizzWinScrollScale = true
+            end
+            ResetAllDesktopWindowsSafe(true)
+            ApplyDesktopWindowStatesSafe()
+            if gTbl then
+                gTbl.showGameMenuSuiteBtn     = true
+                gTbl.showGameMenuHudBtn       = true
+                gTbl.replaceBlizzardAddonList = true
+            end
+            if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+                _G.DynamicSuiteDB.global.showGameMenuSuiteBtn     = true
+                _G.DynamicSuiteDB.global.showGameMenuHudBtn       = true
+                _G.DynamicSuiteDB.global.replaceBlizzardAddonList = true
+            end
+            if addonTable.RefreshGameMenuButtons then addonTable.RefreshGameMenuButtons() end
+            if themeView.Refresh then themeView.Refresh() end
+            print(string.format("%s: Reset Desktop Windows & Game Menu shortcuts to factory defaults (Side-by-Side, Drag Anywhere, Ctrl+Scroll Scale, and 100%% centred positions).", UI.FormatTwoToneBrand("Suite")))
+            return
+        end
+
         if gTbl then
             gTbl.accentKey                = "AUTO_CLASS"
             gTbl.customAccent             = nil
@@ -7330,14 +8060,6 @@ function addonTable.CreateMainConfigUI()
             gTbl.syncThemeToToast         = true
             gTbl.syncThemeToHuds          = "all"
             gTbl.layoutSyncScope          = "account"
-            gTbl.showGameMenuSuiteBtn     = true
-            gTbl.showGameMenuHudBtn       = true
-            gTbl.replaceBlizzardAddonList = true
-        end
-        if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
-            _G.DynamicSuiteDB.global.showGameMenuSuiteBtn     = true
-            _G.DynamicSuiteDB.global.showGameMenuHudBtn       = true
-            _G.DynamicSuiteDB.global.replaceBlizzardAddonList = true
         end
         if DynamicLoadDB then
             DynamicLoadDB.surfaceTheme = "MIDNIGHT_BLACK"
@@ -7347,26 +8069,91 @@ function addonTable.CreateMainConfigUI()
             DynamicLoadDB.fontFamily   = "EXPRESSWAY"
             DynamicLoadDB.pillFillAlpha= 0.42
         end
-        if addonTable.RefreshGameMenuButtons then addonTable.RefreshGameMenuButtons() end
         activeWorkspaceView = "THEME_STUDIO"
         if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
         if f.themeView then f.themeView:Show() end
         if themeView.Refresh then themeView.Refresh() end
-        print(string.format("%s: Reset Theme & Font settings to factory defaults (MIDNIGHT_BLACK, AUTO_CLASS, EXPRESSWAY, 42%% Bold fill).", UI.FormatTwoToneBrand("Suite")))
+        print(string.format("%s: Reset Theme & Typography settings to factory defaults (MIDNIGHT_BLACK, AUTO_CLASS, EXPRESSWAY, 42%% Bold fill).", UI.FormatTwoToneBrand("Suite")))
     end)
+
+    local studioSectionHeaders = { scHdr, surfSecHdr, winSecHdr, shortSecHdr, toastSecHdr }
+    local studioVisualBtns = { toastEditHudBtn, toastTestBtn, winResetAllBtn }
+    local studioValueControls = {
+        surfDropdown, extSyncPills, syncPills, altSyncPills, fillPills,
+        winSideBySidePills, winDragPills, winScalePills,
+        gmSuitePills, gmHudPills, replaceAddonListPills,
+        toastVisPills, toastBorderPills, toastScaleSlider, toastOpacitySlider,
+    }
 
     themeView.Refresh = function()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         local ar, ag, ab = UI.GetActiveAccentColor()
         local accentCol = { r = ar, g = ag, b = ab }
         local curAccentKey = gTbl.accentKey or "AUTO_CLASS"
+        local fa = gTbl.pillFillAlpha or 0.42
 
-        if scHdr and scHdr.RefreshAccent then scHdr:RefreshAccent() end
-        if surfSecHdr and surfSecHdr.RefreshAccent then surfSecHdr:RefreshAccent() end
-        if shortSecHdr and shortSecHdr.RefreshAccent then shortSecHdr:RefreshAccent() end
-        if toastSecHdr and toastSecHdr.RefreshAccent then toastSecHdr:RefreshAccent() end
-        if toastEditHudBtn and toastEditHudBtn.RefreshVisual then toastEditHudBtn:RefreshVisual() end
-        if toastTestBtn and toastTestBtn.RefreshVisual then toastTestBtn:RefreshVisual() end
+        ReflowStudioTabBar()
+        for idx, tBtn in ipairs(studioTabBtns) do
+            local isSel = (idx == activeStudioTab)
+            if isSel then
+                tBtn.bg:SetColorTexture(ar * fa, ag * fa, ab * fa, 0.98)
+                tBtn.dsBorder:SetColor(ar, ag, ab, 0.95)
+                tBtn.label:SetTextColor(1, 1, 1, 1)
+                tBtn.iconTex:SetVertexColor(ar, ag, ab, 1.0)
+            else
+                tBtn.bg:SetColorTexture(0.078, 0.090, 0.122, 0.96)
+                tBtn.dsBorder:SetColor(0.145, 0.165, 0.212, 0.95)
+                tBtn.label:SetTextColor(0.68, 0.74, 0.82, 1)
+                tBtn.iconTex:SetVertexColor(0.68, 0.74, 0.82, 0.90)
+            end
+        end
+
+        if activeStudioTab == 2 then
+            tvTitle:SetText("SUITE STUDIO  |cFF64748B-|r  |cFFCBD5E1DESKTOP WINDOWS & MENUS|r")
+        else
+            tvTitle:SetText("SUITE STUDIO  |cFF64748B-|r  |cFFCBD5E1THEME & TYPOGRAPHY|r")
+        end
+        if not tvResetBtn.isConfirming then
+            tvResetBtn.label:SetText(GetDefaultStudioResetLabel())
+        end
+
+        local isTab1 = (activeStudioTab == 1)
+        local isTab2 = (activeStudioTab == 2)
+        swatchCard:SetShown(isTab1)
+        surfaceSectionCard:SetShown(isTab1)
+        toastSectionCard:SetShown(isTab1)
+
+        desktopWinSectionCard:SetShown(isTab2)
+        shortcutSectionCard:SetShown(isTab2)
+
+        if isTab2 then
+            local yieldAddon = GetActiveDesktopWindowYieldAddon()
+            if yieldAddon and yieldAddon ~= "" then
+                yieldStatusBanner.title:SetText(string.format("Auto-Yield Active: %s Currently Manages Blizzard Windows", yieldAddon))
+                yieldStatusBanner.sub:SetText(string.format("DynamicSuite automatically yields Blizzard frame dragging and scaling to %s so both addons coexist cleanly. Open Guided Setup if you prefer DynamicSuite to take priority.", yieldAddon))
+                yieldStatusBanner:Show()
+                desktopWinSectionCard:ClearAllPoints()
+                desktopWinSectionCard:SetPoint("TOPLEFT", yieldStatusBanner, "BOTTOMLEFT", 0, -10)
+                desktopWinSectionCard:SetPoint("TOPRIGHT", yieldStatusBanner, "BOTTOMRIGHT", 0, -10)
+                tvChild:SetHeight(54 + 10 + 304 + 10 + 220 + 12)
+            else
+                yieldStatusBanner:Hide()
+                desktopWinSectionCard:ClearAllPoints()
+                desktopWinSectionCard:SetPoint("TOPLEFT", tvChild, "TOPLEFT", 0, 0)
+                desktopWinSectionCard:SetPoint("TOPRIGHT", tvChild, "TOPRIGHT", 0, 0)
+                tvChild:SetHeight(304 + 10 + 220 + 12)
+            end
+        else
+            yieldStatusBanner:Hide()
+            tvChild:SetHeight(162 + 10 + 379 + 10 + 274 + 12)
+        end
+
+        for _, hdr in ipairs(studioSectionHeaders) do
+            if hdr and hdr.RefreshAccent then hdr:RefreshAccent() end
+        end
+        for _, vBtn in ipairs(studioVisualBtns) do
+            if vBtn and vBtn.RefreshVisual then vBtn:RefreshVisual() end
+        end
 
         for _, sBtn in ipairs(presetSwatchBtns) do
             local isSel = (curAccentKey == sBtn.pDef.key)
@@ -7402,21 +8189,12 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        if surfDropdown and surfDropdown.RefreshValue then surfDropdown:RefreshValue() end
         if fontDropdown then
             if fontDropdown.SetOptions then fontDropdown:SetOptions(UI.BuildFontDropdownOptions(true)) elseif fontDropdown.RefreshValue then fontDropdown:RefreshValue() end
         end
-        if extSyncPills and extSyncPills.RefreshValue then extSyncPills:RefreshValue() end
-        if syncPills and syncPills.RefreshValue then syncPills:RefreshValue() end
-        if altSyncPills and altSyncPills.RefreshValue then altSyncPills:RefreshValue() end
-        if fillPills and fillPills.RefreshValue then fillPills:RefreshValue() end
-        if gmSuitePills and gmSuitePills.RefreshValue then gmSuitePills:RefreshValue() end
-        if gmHudPills and gmHudPills.RefreshValue then gmHudPills:RefreshValue() end
-        if replaceAddonListPills and replaceAddonListPills.RefreshValue then replaceAddonListPills:RefreshValue() end
-        if toastVisPills and toastVisPills.RefreshValue then toastVisPills:RefreshValue() end
-        if toastBorderPills and toastBorderPills.RefreshValue then toastBorderPills:RefreshValue() end
-        if toastScaleSlider and toastScaleSlider.RefreshValue then toastScaleSlider:RefreshValue() end
-        if toastOpacitySlider and toastOpacitySlider.RefreshValue then toastOpacitySlider:RefreshValue() end
+        for _, ctrl in ipairs(studioValueControls) do
+            if ctrl and ctrl.RefreshValue then ctrl:RefreshValue() end
+        end
 
         local scrollW = tvScroll:GetWidth()
         if scrollW and scrollW > 40 then
@@ -7428,7 +8206,7 @@ function addonTable.CreateMainConfigUI()
     themeView:SetScript("OnShow", function()
         if themeView.Refresh then themeView.Refresh() end
     end)
-    for _, tc in ipairs({ swatchCard, surfRow, fontRow, extSyncRow, syncRow, altSyncRow, fillRow, gmSuiteRow, gmHudRow, replaceAddonListRow, toastSectionCard, toastVisRow, toastBorderRow, toastScaleRow, toastOpacityRow }) do
+    for _, tc in ipairs({ swatchCard, surfRow, fontRow, extSyncRow, syncRow, altSyncRow, fillRow, desktopWinSectionCard, winSideBySideRow, winDragRow, winScaleRow, winResetRow, shortcutSectionCard, gmSuiteRow, gmHudRow, replaceAddonListRow, toastSectionCard, toastVisRow, toastBorderRow, toastScaleRow, toastOpacityRow }) do
         table.insert(f.themeCards, tc)
     end
     end
@@ -7451,19 +8229,22 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.2.0"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.3.0"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
             key = "suite",
             tabLabel = "DynamicLoad",
             ver = DS_LIVE_VER_TAG,
-            date = "15/11/2026 (Retail 12.1.5)",
+            date = "16/11/2026 (Retail 12.1.5)",
             title = "DynamicSuite Hub & DynamicLoad " .. DS_LIVE_VER_TAG,
-            subtitle = "Context-Aware Addon Manager, External Conflict Detector & Auto-Yield Engine (/dl, /ds)",
+            subtitle = "Context-Aware Addon Manager, Suite Studio, Desktop Window Manager & Auto-Yield Engine (/dl, /ds)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "NEW",      title = "v2.3.0 Release: 2-Tab Suite Studio (Theme & Typography + Desktop Windows & Menus) & /ds windows", desc = "Upgraded the Left Suite Rail 'Theme & Font' workspace into the 2-tab 'Suite Studio' (/ds studio, /ds theme, /ds windows, /ds win), pairing 'Theme & Typography' (Tab 1: 17 Accent Swatches, Surface Theme, Font Family, External UI Sync, and Toast HUD) with 'Desktop Windows & Menus' (Tab 2: Core Blizzard Desktop Window Manager, External Mover Auto-Yield Status Banner, and relocated Game Menu & Options Shortcuts)." },
+                { badge = "NEW",      title = "v2.3.0 Release: Core Blizzard Desktop Window Manager (32 Panels, Windowed Quest Log, On-Screen Clamping & Empty-Space Drag)", desc = "Migrated the Blizzard Desktop Window Manager from DynamicPrep into DynamicSuite Core (DynamicSuiteDB.global.desktopWindows with automatic one-time migration from DynamicPrepDB) so window management stays active even when DynamicPrep is disabled; brought windowed WorldMapFrame / Quest Log (L) into side-by-side coexistence across all 32 managed panels; enforced scale-aware ClampDesktopWindowOffset on-screen clamping on drag, show, resize, scale, and display changes so windows never get stuck off-screen; enabled modifier-free Left-Click dragging from any empty background space (no Alt key needed) with interactive child widget protection; and added GLOBAL_MOUSE_DOWN click-to-raise z-order layering with top-most Esc dismissal." },
+                { badge = "UI",       title = "v2.3.0 Release: Central Popover Auto-Close Registry (UI.RegisterPopupCloser) & 3-Way Interactive Obsidian Scrollbars", desc = "Added UI.RegisterPopupCloser(key, closeFn) invoked automatically by UI.CloseAllPopups() across window close, minimise, combat collapse, HUD Edit Mode entry, and module/tab switches; hooked owner button OnHide across all dropdowns and popovers; and upgraded all scrollbars across DynamicSuite (Suite Studio, dsDropdownPopup, Guided Setup, and Global Smart Search) and all 8 modules to full 3-way interaction (Mousewheel, Left-Click & Drag thumb with cursor-release guard and Suite Accent highlight, and Left-Click track jump)." },
                 { badge = "NEW",      title = "Shared Media Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI) & Searchable Grouped Pickers", desc = "Upgraded Theme & Font Studio (and standalone DynamicMarker) plus DynamicChat to scan LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI for custom fonts and sounds alongside Built-in and Blizzard options, added grouped dropdowns with live search filtering and pcall-guarded previews, and added clean runtime fallback (Expressway for fonts, Blizzard Raid Warning for sounds) if an external pack is disabled." },
                 { badge = "FIXED",    title = "Curated Blizzard Default Chat Sounds, Self-Whisper Alerts & LibSharedMedia-3.0 Cleanups (DynamicChat)", desc = "Removed temporary .wav chat sound files and LibSharedMedia .wav registration in favour of 7 native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) played via PlaySound / PlaySoundFile, added CHAT NOTIFICATION SOUNDS controls in Tab 3 with clean defaults (Blizzard Whisper, Blizzard Battle.net, Blizzard Map Ping, Blizzard Raid Warning, and Say & Yell off), compact [Play] preview buttons, legacy key migration, and restored self-whisper alert playback on incoming WHISPER / BN_WHISPER messages while preserving self-suppression on group and public channels." },
                 { badge = "NEW",      title = "v2.2.0 Release: DynamicPrep Blizzard Window QoL (Side-by-Side, Header/Alt+Drag, Click-to-Raise, Ctrl+Scroll Scale & Multi-Addon Coexistence)", desc = "Added Tab 3 Blizzard Window Quality of Life controls in DynamicPrep so Character, Inspect, Dressing Room, Talents & Spells, Group Finder, Great Vault, Guild & Communities, Collections, Adventure Guide, Professions, Achievements, Item Upgrade, Calendar, Macros, Merchant, Mail, and Auction House stay open side-by-side without trapping Escape (with header Pin buttons and click-to-raise layering), remember dragged header or Alt + Left-Drag anywhere positions across reloads, scale via Ctrl+Scroll (temporary session) or Ctrl+Shift+Scroll (permanent 70%-140% with Obsidian/Blaze-Orange toast), reset on header Right-Click or [Reset All Windows], exclude World Map and Game Menu cleanly out of combat, and yield silently with dynamic banner detection when BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, or ElvUI frame management is active." },
@@ -7521,12 +8302,13 @@ function addonTable.CreateMainConfigUI()
             key = "marker",
             tabLabel = "DynamicMarker",
             ver = DS_LIVE_VER_TAG,
-            date = "15/11/2026 (Retail 12.1.5)",
+            date = "16/11/2026 (Retail 12.1.5)",
             title = "DynamicMarker " .. DS_LIVE_VER_TAG,
             subtitle = "Modifier-Free Target Marking, World Flares & Multi-Spec Interrupt Macro (/dm)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
             openModule = "DynamicMarker",
             items = {
+                { badge = "UI",       title = "v2.3.0 Release: 3-Way Interactive Obsidian Scrollbars & Central Popover Auto-Close", desc = "Upgraded DynamicMarkerDropdownPopover, embedded sub-tab pages, and the standalone Changelog modal to full 3-way interactive 4px Obsidian scrollbars (Mousewheel, Left-Click & Drag thumb with Suite Accent highlight, and Left-Click track jump), hooked OnHide on all dropdown and HUD selector owner buttons, and registered DM:CloseDropdownMenu() with UI.RegisterPopupCloser." },
                 { badge = "IMPROVED", title = "v2.2.0 Release: Version & Storefront Lockstep Parity", desc = "Synchronised version metadata and duplicate-install coexistence checks cleanly to v2.2.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
                 { badge = "NEW",      title = "v2.1.1 Release: 3-Row 560x110 HUD Edit Inspector (Row 3 Live Appearance Bar) & Mover Visibility Fix", desc = "Upgraded DynamicMarkerEditModeInspector into a 560x110 3-row draggable inspector dock with live Row 3 appearance controls for Focus Icons and World Flares: Opacity slider (20%-100%, step 5%), Border Style segmented pills (Accent | Dark | None), Orientation toggle (Horiz | Vert) with automatic screen-bounds re-clamping, and full [Reset] recovery." },
                 { badge = "FIXED",    title = "v2.1.0 World Flare Hardware Keybinds & Instant Telemetry / Sub-Tab Label Refresh", desc = "Anchored the secure flare cycle/clear buttons on-screen (1x1, alpha 0, non-mouse-blocking), removed the SecureHandlerWrapScript button override return so LeftButton reliably runs /wm [@cursor] and /cwm all cleanly in and out of combat, added Right-Click unbind, updated top Suite telemetry and 'World Flare Keys (...)' labels live on every bind/clear/reset, standardised [Edit HUD] buttons, and brought the compact 560x74 draggable HUD Edit dock with 60px fail-safe clamping and Hidden-by-default movers to both Suite and standalone DynamicMarker." },
@@ -7553,12 +8335,13 @@ function addonTable.CreateMainConfigUI()
             key = "zoom",
             tabLabel = "DynamicZoom",
             ver = DS_LIVE_VER_TAG,
-            date = "11/11/2026 (Retail 12.1.5)",
+            date = "16/11/2026 (Retail 12.1.5)",
             title = "DynamicZoom " .. DS_LIVE_VER_TAG,
             subtitle = "39-Yard Tactical Camera Engine, Reactive Scroll & Occlusion Shield (/dz)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_zoom.tga",
             openModule = "DynamicZoom",
             items = {
+                { badge = "UI",       title = "v2.3.0 Release: 3-Way Interactive Obsidian Scrollbar & Central Popover Auto-Close", desc = "Upgraded DynamicZoom's workspace scrollbar to full 3-way interaction (Mousewheel, immediate Left-Click & Drag thumb with cursor-release guard and Suite Accent highlight, and Left-Click track jump), hooked OnHide on all dropdown owner buttons, and registered CloseAnyDropdown with UI.RegisterPopupCloser." },
                 { badge = "UI",       title = "Right-Aligned 256px Sleek Precision Track Sliders & Option 3 'Off' Pills", desc = "Converted all full-width bottom-anchored sliders (CreateSliderCard) across Tabs 1, 2, and 3 into standard 58px right-aligned option rows (52px in sub-drawers) with 256x26px Sleek Precision Track sliders (4px #090A0D track, live Suite Accent FillBar, 6x14px blade thumb, smooth drag, click-to-seek, mousewheel fine-tuning, and right-click quick actions), and updated CreateSegmentedSwitchCard with Option 3 'Off' pill styling." },
                 { badge = "UI",       title = "2-Line Tall L-Bracket Section Headers (Section 2.4)", desc = "Upgraded all 6 section headers across Tabs 1-3 (Distance Unlock, Terrain & Foliage Occlusion, Combat Auto-Zoom Profiles, Smart Indoor/Mount Rules, ActionCam Offset, and Dynamic Pitch) to 36px 2-Line Tall L-Brackets with enclosed Slate-Silver subtitles." },
                 { badge = "UI",       title = "Horizontal Chevron Toggle Bar & Outer Group Border", desc = "Converted Reactive Scroll Wheel Accelerator and Foliage/Pillar sub-drawers to full-width horizontal chevron toggle bars with bracketed sub-setting counts and a unified outer container border." },
@@ -7573,12 +8356,13 @@ function addonTable.CreateMainConfigUI()
             key = "fps",
             tabLabel = "DynamicFPS",
             ver = DS_LIVE_VER_TAG,
-            date = "11/11/2026 (Retail 12.1.5)",
+            date = "16/11/2026 (Retail 12.1.5)",
             title = "DynamicFPS " .. DS_LIVE_VER_TAG,
             subtitle = "Zero-Reload Per-Zone Graphics Governor & Boss Telegraph Safety Lock (/dfps)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_fps.tga",
             openModule = "DynamicFPS",
             items = {
+                { badge = "UI",       title = "v2.3.0 Release: 3-Way Interactive Obsidian Scrollbar & Central Popover Auto-Close", desc = "Upgraded DynamicFPS's workspace scrollbar with track click-to-jump and Suite Accent thumb hover/drag highlights, added OnHide drag cleanup on sliders and dropdown owner buttons, and registered CloseActiveDropdownMenu with UI.RegisterPopupCloser." },
                 { badge = "UI",       title = "Sleek Precision Track Sliders & Option 3 'Disabled' / 'Off' Pills", desc = "Upgraded CreateInlineSliderControl (View Distance, Environment Detail, Ground Clutter, and Custom Manual SpellQueueWindow) to the 256x26px Sleek Precision Track (4px #090A0D track, live Suite Accent FillBar, 6x14px blade thumb, smooth drag, click-to-seek, and mousewheel fine-tuning) and updated CreateSegmentedPills and CreateBinarySegmentedSwitch so 'Disabled' and 'Off' pills use Option 3 styling (#1E2430 fill, #64748B border, #E2E8F0 text, and 1.5px #F87171 bottom OffBar)." },
                 { badge = "FIXED",    title = "Complete Secret-Value Sweep & Combat-Protected CVar Guard", desc = "Swept all numeric conversions in DynamicFPS through _IsSecret(), _SafeNum(), and _SafeNumber() with out-of-combat Haste/Ping caching (_dfpsCachedHaste / _dfpsCachedPing) and combat-protected CVar guards so active Mythic+ keys and boss encounters never throw secret-number errors." },
                 { badge = "NEW",      title = "Quick Zone Profile Replication ('Copy From...' & 'Apply to All Zones')", desc = "Added a Quick Zone Profile Replication bar right below the Zone Preset toolbar so users can copy settings from any zone into the current zone or replicate the active zone profile across all 6 zones in 1 click." },
@@ -7596,12 +8380,13 @@ function addonTable.CreateMainConfigUI()
             key = "prep",
             tabLabel = "DynamicPrep",
             ver = DS_LIVE_VER_TAG,
-            date = "15/11/2026 (Retail 12.1.5)",
+            date = "16/11/2026 (Retail 12.1.5)",
             title = "DynamicPrep " .. DS_LIVE_VER_TAG,
             subtitle = "Readiness Omni-Bar, Clickable Raid Buffs & World/Survival QoL (/dprep)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
             openModule = "DynamicPrep",
             items = {
+                { badge = "UI",       title = "v2.3.0 Release: Relocated Blizzard Desktop Window Manager to Suite Studio (/ds windows) & 3-Way Scrollbar Upgrade", desc = "Relocated the Blizzard Desktop Window Manager from DynamicPrep Tab 3 into DynamicSuite Core ('Suite Studio -> Desktop Windows & Menus', /ds windows) with automatic SavedVariables migration and backward-compatible bridge stubs so Tab 3 focuses purely on World, Instance & Survival Automation; upgraded StyleObsidianScrollBar to full 3-way interaction; and registered DynamicPrep's dropdown and bar popover closers with UI.RegisterPopupCloser." },
                 { badge = "FIXED",    title = "v2.2.0 Release: Secure Blizzard Window Probe Attribute Fix", desc = "Renamed the Blizzard window secure handler probe attribute from '_ds_probe' to 'ds_probe' inside EnsureSecureHandler() so restricted attribute validation in Blizzard's RestrictedFrames.lua passes cleanly on login and /reload without triggering an 'Invalid attribute name' Lua error." },
                 { badge = "FIXED",    title = "v2.2.0 Release: Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD", desc = "Expanded ParseFoodBenefitFromTooltipText to match Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (+1,250 Haste), and 'Highest Secondary Stat' (+445 Highest Sec); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallbacks) in ScanOwnedFoods; and displayed each food's exact stat benefit in the Raid Buffs HUD tooltip title and body." },
                 { badge = "NEW",      title = "v2.2.0 Release: Blizzard Window QoL (Side-by-Side Panels, Header/Alt+Drag, Click-to-Raise, Ctrl+Scroll Scaling & Multi-Addon Coexistence)", desc = "Added Tab 3 controls for 'Keep Blizzard Windows Open Side-by-Side' (including Inspect, Dressing Room, Great Vault, Guild & Communities, Calendar, and Macros with compact header Pin buttons, click-to-raise layering, and clean Escape closing), 'Draggable Blizzard Windows (Save Position)' (drag headers or hold Alt + Left-Drag anywhere on a window, with Right-Click header reset and [Reset All Windows]), and 'Header Ctrl+Scroll Window Scaling' (Ctrl+Scroll for temporary session scale vs Ctrl+Shift+Scroll to save permanently between 70%-140% with an auto-fading Dark-Obsidian/Blaze-Orange toast); strictly excludes World Map and Game Menu, guards all hooks out of combat, and automatically yields with dynamic banner detection to BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, or ElvUI frame management." },
@@ -7631,12 +8416,13 @@ function addonTable.CreateMainConfigUI()
             key = "group",
             tabLabel = "DynamicGroup",
             ver = DS_LIVE_VER_TAG,
-            date = "11/11/2026 (Retail 12.1.5)",
+            date = "16/11/2026 (Retail 12.1.5)",
             title = "DynamicGroup " .. DS_LIVE_VER_TAG,
             subtitle = "Premade LFG Datacenter Region Filter, Live Roster & Auto-Invite Engine (/dgroup)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga",
             openModule = "DynamicGroup",
             items = {
+                { badge = "UI",       title = "v2.3.0 Release: 3-Way Interactive Obsidian Scrollbar & Central Popover Auto-Close", desc = "Upgraded CreateObsidianScrollArea with track click-to-jump and Suite Accent thumb hover/drag highlights, hooked OnHide across LFG Mini-Bar pills and workspace dropdowns, and registered CloseActiveDropdown with UI.RegisterPopupCloser." },
                 { badge = "UI",       title = "Option 3 'Off' Pill Styling (Section 2.9)", desc = "Updated AttachSegmentedSwitchToCard across all 3 tabs so selected 'Off' pills use Option 3 styling (#1E2430 Slate-Charcoal fill, #64748B Slate-Silver border, #E2E8F0 Silver-White text, and 1.5px #F87171 bottom OffBar)." },
                 { badge = "UI",       title = "Consolidated Single-Home M+ Keystone Auto-Slotting", desc = "Consolidated Auto-Insert Mythic+ Keystone exclusively inside DynamicGroup Tab 3 (Party & Keystone Automation) with automatic SavedVariables migration from DynamicPrepDB.autoSlotKeystone." },
                 { badge = "UI",       title = "Command-Prefix-Only Tooltip Highlighting (Section 2.7)", desc = "Standardized all LFG Mini-Bar and Datacenter Region filter pill tooltips to highlight only the command prefix (Left-Click:, Hold Shift / Alt:) in color paired with Silver-White action descriptions." },
@@ -7653,12 +8439,13 @@ function addonTable.CreateMainConfigUI()
             key = "bags",
             tabLabel = "DynamicBags",
             ver = DS_LIVE_VER_TAG,
-            date = "15/11/2026 (Retail 12.1.5)",
+            date = "16/11/2026 (Retail 12.1.5)",
             title = "DynamicBags " .. DS_LIVE_VER_TAG,
             subtitle = "Zero-Lag Virtual Category Bags, Remote Bank & Alt Inventory Vault (/dbag)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga",
             openModule = "DynamicBags",
             items = {
+                { badge = "UI",       title = "v2.3.0 Release: 3-Way Interactive Obsidian Scrollbars, Searchable Dropdowns & Central Popover Auto-Close", desc = "Upgraded U.CreateScrollArea across DynamicBagsFrame, DynamicBagsBankFrame, and the settings workspace with track click-to-jump and Suite Accent thumb hover/drag highlights; added live search filtering and 3-way scrolling to U.ShowMenu when entries exceed 12; and registered U.CloseMenu with UI.RegisterPopupCloser." },
                 { badge = "NEW",      title = "Dual-Mode Ctrl+Scroll Window Scaling, Header Controls Tooltip & Scale-Aware Docked Bank Alignment", desc = "Added 70%-140% (5% steps, out of combat) scaling across DynamicBags and companion DynamicBank (Personal Bank, Warband Bank, and Guild Bank): Ctrl + Scroll across the full header scales temporarily for the current open session (resetting on hide), Ctrl + Shift + Scroll anywhere on either window (header, item grid ScrollFrame, or footer) saves bagScale / bankScale permanently without hijacking normal scrolling or Ctrl+Click item previews, Right-Click anywhere on the empty header resets scale to 100%, matching Blaze-Orange (#F97316) DynamicBags / DynamicBank Window Controls tooltips appear on header hover (hiding cleanly on OnLeave/OnDragStart) alongside an auto-fading Dark-Obsidian (#0B0D12) / Blaze-Orange (#F97316) readout pill, and scale-aware anchor math keeps a docked DynamicBank flush beside DynamicBags at any scale." },
                 { badge = "FIXED",    title = "Zero-Flash Bank/Guild Bank After /reload, Merge & Automation Hardening", desc = "Added Scale+Alpha suppression and GUILDBANKFRAME_OPENED handling so Guild Bank and Bank never flash Blizzard frames after /reload, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live tab withdrawals down to 0 items, fixed strict weak ordering in Sort: A-Z for uncached items, verified compatible slot placement across Reagent bags and Guild Bank tab permissions, prevented Guild Bank T1-Tn badge collisions and view-only item alpha overwrites, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, and expanded /dbag slash commands (/dbag merge, clear, bank, warband, guild, help)." },
                 { badge = "FIXED",    title = "Header Button Overlap Fix, 0.00s Bank Pre-Warm & Deferred Tooltip Snapshots", desc = "Eliminated Row 1 header button overlap ('View: Bags' vs 'Clear') across all column and icon-size slider settings by trimming redundant 'Char: ' and 'View: ' prefixes, auto-fitting dropdown widths with mouseover tooltips ('Character & Alt Vault' and 'Active Inventory View'), enforcing dynamic minimum header width floors on DynamicBagsFrame and DynamicBagsBankFrame (640px), centring narrow item grids inside the scroll area, pre-warming DynamicBank at 0.00s on Banker gossip selection, and deferring full bank tooltip snapshots off the open frame for zero-stutter bank opening." },
@@ -7679,12 +8466,13 @@ function addonTable.CreateMainConfigUI()
             key = "chat",
             tabLabel = "DynamicChat",
             ver = DS_LIVE_VER_TAG,
-            date = "15/11/2026 (Retail 12.1.5)",
+            date = "16/11/2026 (Retail 12.1.5)",
             title = "DynamicChat " .. DS_LIVE_VER_TAG,
             subtitle = "Target Whisper (/ww), Sound Alerts, Smoked-Glass Chat Skin & History Retention (/dchat)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
             openModule = "DynamicChat",
             items = {
+                { badge = "FIXED",    title = "v2.3.0 Release: Font Dropdown Popover & 3-Way Scrollbar Upgrade, PrintMsg Fixes & Custom Reload Modal", desc = "Fixed OpenFontDropdownMenu activeDropdownMenu tracking, click-catcher activation, owner button OnHide auto-close, and chevron sync; upgraded DynamicChatFontDropdownMenu, DynamicChatSoundDropdownPopover, CreateObsidianScrollArea, and DynamicChatHistoryModal to full 3-way interactive 4px Obsidian scrollbars; replaced undefined PrintChat calls with PrintMsg across keyword saving, custom sound testing/adding, and /dc mute; replaced StaticPopupDialogs['DYNAMICCHAT_RELOAD_PROMPT'] with DynamicChatReloadPromptModal (#0B0D12 dark-obsidian + #F97316 Blaze Orange modal); and registered CloseActiveDropdown with UI.RegisterPopupCloser." },
                 { badge = "NEW",      title = "External Sound Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Default Sounds & Self-Whisper Alerts", desc = "Removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; configured clean Blizzard defaults across Tab 3's CHAT NOTIFICATION SOUNDS section (Whisper & Battle.net Whisper, Guild & Officer Chat, Party & Instance Chat, Raid & Raid Warning, and Say & Yell off by default) with automatic legacy ds_*/ex_* key migration, dropdown preview on selection, compact [Play] buttons, and 1.5s anti-spam cooldowns; added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI sound scanning with safe fallback to Blizzard Raid Warning and searchable grouped dropdowns; and restored self-whisper alert playback on incoming WHISPER / BN_WHISPER events while keeping self-message suppression active for group and public channels." },
                 { badge = "FIXED",    title = "v1.9.8 Flush (0, 0) Bottom-Left Clamping & Persistence", desc = "Disabled C++ SetClampedToScreen(true) on ChatFrame1 whenever DynamicChat manages layout, restricted composite clamping solely to visible container extents (GetVisibleContainerExtents), and canonicalised CHAT to BOTTOMLEFT outer-container coordinates so (0, 0) sits flush at the bottom-left screen corner." },
                 { badge = "FIXED",    title = "Accurate Frozen/Unloaded Conflict Detection & Universal 'Use DynamicChat' Takeover", desc = "Updated IsAddonLoadedNow, IsAddonActiveInSession, and IsEllesmereUIChatSubModuleEnabled so any external chat addon set to 'FROZEN' (Never) in DynamicLoad or overridden via 'USE_DYNAMIC' / 'RUN_BOTH' is treated as inactive (false), and prevented IsEllesmereUIChatSubModuleEnabled from falling back to parent EllesmereUI when EllesmereUIChat is installed as a separate sub-addon on disk and unloaded." },
@@ -7913,9 +8701,14 @@ function addonTable.CreateMainConfigUI()
     end
 
     clvThumb:SetScript("OnEnter", function(self)
-        self.tex:SetColorTexture(0.48, 0.55, 0.66, 0.95)
+        self.isHovered = true
+        if not self.isDragging then
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            self.tex:SetColorTexture(ar, ag, ab, 0.92)
+        end
     end)
     clvThumb:SetScript("OnLeave", function(self)
+        self.isHovered = false
         if not self.isDragging then
             self.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
         end
@@ -7923,7 +8716,8 @@ function addonTable.CreateMainConfigUI()
     clvThumb:SetScript("OnMouseDown", function(self, button)
         if button == "LeftButton" then
             self.isDragging = true
-            self.tex:SetColorTexture(0.52, 0.60, 0.72, 1.0)
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            self.tex:SetColorTexture(ar, ag, ab, 1.0)
             ScrollChangelogFromCursor()
             self:SetScript("OnUpdate", ScrollChangelogFromCursor)
         end
@@ -7932,11 +8726,17 @@ function addonTable.CreateMainConfigUI()
         if button == "LeftButton" then
             self.isDragging = false
             self:SetScript("OnUpdate", nil)
-            self.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+            if self.isHovered then
+                local ar, ag, ab = UI.GetActiveAccentColor()
+                self.tex:SetColorTexture(ar, ag, ab, 0.92)
+            else
+                self.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+            end
         end
     end)
     clvThumb:SetScript("OnHide", function(self)
         self.isDragging = false
+        self.isHovered = false
         self:SetScript("OnUpdate", nil)
         self.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
     end)
@@ -7944,7 +8744,8 @@ function addonTable.CreateMainConfigUI()
     clvTrack:SetScript("OnMouseDown", function(self, button)
         if button == "LeftButton" then
             clvThumb.isDragging = true
-            clvThumb.tex:SetColorTexture(0.52, 0.60, 0.72, 1.0)
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            clvThumb.tex:SetColorTexture(ar, ag, ab, 1.0)
             ScrollChangelogFromCursor()
             self:SetScript("OnUpdate", ScrollChangelogFromCursor)
         end
@@ -7962,13 +8763,23 @@ function addonTable.CreateMainConfigUI()
         clvThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
     end)
 
-    clvScroll:SetScript("OnMouseWheel", function(self, delta)
-        local viewH = self:GetHeight() or 0
+    local function ScrollChangelogByDelta(delta)
+        local viewH = clvScroll:GetHeight() or 0
         local contentH = clvChild:GetHeight() or 0
         local maxScroll = math.max(0, contentH - viewH)
-        local nextScroll = math.max(0, math.min(maxScroll, (self:GetVerticalScroll() or 0) - (delta * 44)))
-        self:SetVerticalScroll(nextScroll)
+        local nextScroll = math.max(0, math.min(maxScroll, (clvScroll:GetVerticalScroll() or 0) - (delta * 44)))
+        clvScroll:SetVerticalScroll(nextScroll)
         UpdateChangelogScrollbar()
+    end
+
+    clvScroll:SetScript("OnMouseWheel", function(_, delta)
+        ScrollChangelogByDelta(delta)
+    end)
+    clvTrack:SetScript("OnMouseWheel", function(_, delta)
+        ScrollChangelogByDelta(delta)
+    end)
+    clvThumb:SetScript("OnMouseWheel", function(_, delta)
+        ScrollChangelogByDelta(delta)
     end)
     clvScroll:SetScript("OnScrollRangeChanged", function() UpdateChangelogScrollbar() end)
     clvScroll:SetScript("OnVerticalScroll", function() UpdateChangelogScrollbar() end)
@@ -8404,24 +9215,20 @@ function addonTable.CreateMainConfigUI()
     conflictScrollTrack:SetPoint("TOPLEFT", conflictScrollFrame, "TOPRIGHT", 12, 0)
     conflictScrollTrack:SetPoint("BOTTOMLEFT", conflictScrollFrame, "BOTTOMRIGHT", 12, 0)
     conflictScrollTrack:SetWidth(6)
+    conflictScrollTrack:EnableMouse(true)
+    conflictScrollTrack:SetHitRectInsets(-5, -5, 0, 0)
     conflictScrollTrack.bg = UI.SolidTex(conflictScrollTrack, "BACKGROUND", 1, 0.035, 0.042, 0.058, 0.94)
     conflictScrollTrack.bg:SetAllPoints()
     UI.CreatePixelBorder(conflictScrollTrack, 0.22, 0.26, 0.34, 0.85, 2)
 
-    local conflictScrollThumb = CreateFrame("Frame", nil, conflictScrollTrack)
+    local conflictScrollThumb = CreateFrame("Button", nil, conflictScrollTrack)
     conflictScrollThumb:SetPoint("TOP", conflictScrollTrack, "TOP", 0, 0)
     conflictScrollThumb:SetSize(6, 36)
     conflictScrollThumb:EnableMouse(true)
+    conflictScrollThumb:SetHitRectInsets(-5, -5, 0, 0)
     conflictScrollThumb.tex = UI.SolidTex(conflictScrollThumb, "OVERLAY", 2, 0.56, 0.65, 0.78, 0.92)
     conflictScrollThumb.tex:SetPoint("TOPLEFT", conflictScrollThumb, "TOPLEFT", 1, -1)
     conflictScrollThumb.tex:SetPoint("BOTTOMRIGHT", conflictScrollThumb, "BOTTOMRIGHT", -1, 1)
-    conflictScrollThumb:SetScript("OnEnter", function(self)
-        local ar, ag, ab = UI.GetActiveAccentColor()
-        self.tex:SetColorTexture(ar, ag, ab, 1.0)
-    end)
-    conflictScrollThumb:SetScript("OnLeave", function(self)
-        self.tex:SetColorTexture(0.56, 0.65, 0.78, 0.92)
-    end)
 
     local conflictCards = {}
 
@@ -8454,14 +9261,17 @@ function addonTable.CreateMainConfigUI()
 
         if not needsScroll then
             conflictScrollTrack:Hide()
+            conflictScrollThumb:Hide()
             conflictScrollFrame:SetVerticalScroll(0)
             return
         end
 
         conflictScrollTrack:Show()
+        conflictScrollThumb:Show()
         local trackH = conflictScrollTrack:GetHeight()
         if not trackH or trackH < 20 then trackH = viewH end
-        local thumbH = math.max(24, math.floor((viewH / ch) * trackH))
+        local ratioH = math.max(0.12, math.min(1, viewH / math.max(1, ch)))
+        local thumbH = math.max(24, math.floor(ratioH * trackH + 0.5))
         conflictScrollThumb:SetHeight(thumbH)
         local cur = math.min(maxScroll, conflictScrollFrame:GetVerticalScroll() or 0)
         if cur ~= (conflictScrollFrame:GetVerticalScroll() or 0) then
@@ -8471,6 +9281,47 @@ function addonTable.CreateMainConfigUI()
         local yOff = -math.floor(ratio * math.max(0, trackH - thumbH))
         conflictScrollThumb:ClearAllPoints()
         conflictScrollThumb:SetPoint("TOP", conflictScrollTrack, "TOP", 0, yOff)
+        if not conflictScrollThumb.isDragging then
+            if conflictScrollThumb.isHovered then
+                local ar, ag, ab = UI.GetActiveAccentColor()
+                conflictScrollThumb.tex:SetColorTexture(ar, ag, ab, 0.92)
+            else
+                conflictScrollThumb.tex:SetColorTexture(0.56, 0.65, 0.78, 0.92)
+            end
+        end
+    end
+
+    local function ScrollConflictFromCursor()
+        if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            conflictScrollThumb.isDragging = false
+            conflictScrollThumb:SetScript("OnUpdate", nil)
+            conflictScrollTrack:SetScript("OnUpdate", nil)
+            if conflictScrollThumb.isHovered then
+                local ar, ag, ab = UI.GetActiveAccentColor()
+                conflictScrollThumb.tex:SetColorTexture(ar, ag, ab, 0.92)
+            else
+                conflictScrollThumb.tex:SetColorTexture(0.56, 0.65, 0.78, 0.92)
+            end
+            return
+        end
+        local vh = conflictScrollFrame:GetHeight() or 294
+        local maxScroll = math.max(0, (conflictScrollChild:GetHeight() or 1) - vh)
+        if maxScroll <= 2 then return end
+
+        local eff = conflictScrollTrack:GetEffectiveScale() or 1
+        local _, cy = GetCursorPosition()
+        cy = cy / eff
+        local top = conflictScrollTrack:GetTop()
+        local bottom = conflictScrollTrack:GetBottom()
+        if top and bottom and top > bottom then
+            local trackH = top - bottom
+            local thumbH = conflictScrollThumb:GetHeight() or 24
+            local usableH = math.max(1, trackH - thumbH)
+            local offsetFromTop = (top - cy) - (thumbH * 0.5)
+            local ratio = math.max(0, math.min(1, offsetFromTop / usableH))
+            conflictScrollFrame:SetVerticalScroll(ratio * maxScroll)
+            UpdateConflictScrollbar()
+        end
     end
 
     local function ScrollConflictList(delta)
@@ -8483,8 +9334,83 @@ function addonTable.CreateMainConfigUI()
         UpdateConflictScrollbar()
     end
 
+    conflictScrollThumb:SetScript("OnEnter", function(self)
+        self.isHovered = true
+        if not self.isDragging then
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            self.tex:SetColorTexture(ar, ag, ab, 0.92)
+        end
+    end)
+    conflictScrollThumb:SetScript("OnLeave", function(self)
+        self.isHovered = false
+        if not self.isDragging then
+            self.tex:SetColorTexture(0.56, 0.65, 0.78, 0.92)
+        end
+    end)
+    conflictScrollThumb:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            self.isDragging = true
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            self.tex:SetColorTexture(ar, ag, ab, 1.0)
+            ScrollConflictFromCursor()
+            self:SetScript("OnUpdate", ScrollConflictFromCursor)
+        end
+    end)
+    conflictScrollThumb:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then
+            self.isDragging = false
+            self:SetScript("OnUpdate", nil)
+            if self.isHovered then
+                local ar, ag, ab = UI.GetActiveAccentColor()
+                self.tex:SetColorTexture(ar, ag, ab, 0.92)
+            else
+                self.tex:SetColorTexture(0.56, 0.65, 0.78, 0.92)
+            end
+        end
+    end)
+    conflictScrollThumb:SetScript("OnHide", function(self)
+        self.isDragging = false
+        self.isHovered = false
+        self:SetScript("OnUpdate", nil)
+        self.tex:SetColorTexture(0.56, 0.65, 0.78, 0.92)
+    end)
+    conflictScrollThumb:SetScript("OnMouseWheel", function(_, delta)
+        ScrollConflictList(delta)
+    end)
+
+    conflictScrollTrack:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            conflictScrollThumb.isDragging = true
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            conflictScrollThumb.tex:SetColorTexture(ar, ag, ab, 1.0)
+            ScrollConflictFromCursor()
+            self:SetScript("OnUpdate", ScrollConflictFromCursor)
+        end
+    end)
+    conflictScrollTrack:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then
+            conflictScrollThumb.isDragging = false
+            self:SetScript("OnUpdate", nil)
+            conflictScrollThumb.tex:SetColorTexture(0.56, 0.65, 0.78, 0.92)
+        end
+    end)
+    conflictScrollTrack:SetScript("OnHide", function(self)
+        conflictScrollThumb.isDragging = false
+        self:SetScript("OnUpdate", nil)
+        conflictScrollThumb.tex:SetColorTexture(0.56, 0.65, 0.78, 0.92)
+    end)
+    conflictScrollTrack:SetScript("OnMouseWheel", function(_, delta)
+        ScrollConflictList(delta)
+    end)
+
     conflictScrollFrame:SetScript("OnMouseWheel", function(_, delta)
         ScrollConflictList(delta)
+    end)
+    conflictScrollFrame:SetScript("OnVerticalScroll", function()
+        UpdateConflictScrollbar()
+    end)
+    conflictScrollFrame:SetScript("OnScrollRangeChanged", function()
+        UpdateConflictScrollbar()
     end)
     conflictScrollChild:SetScript("OnMouseWheel", function(_, delta)
         ScrollConflictList(delta)
@@ -8918,7 +9844,7 @@ function addonTable.CreateMainConfigUI()
                 pill = "1. Conflicts",
                 title = "STEP 1: CONFLICT SCANNER, VISUAL THEME & ACCOUNT-WIDE ALT SYNC",
                 desc = "DynamicSuite checks for overlapping addons (auto-freezing disabled addons in DynamicLoad so zone switches never re-enable them) and syncs your layout across all alts.",
-                actionLabel = "Open Theme & Font Studio",
+                actionLabel = "Open Suite Studio",
                 onAction = function() addonTable.OpenWorkspaceView("THEME_STUDIO") end,
             },
         }
@@ -9559,7 +10485,8 @@ function addonTable.CreateMainConfigUI()
                         elseif cleanModName == "zoom" then cleanModName = "DynamicZoom"
                         elseif cleanModName == "fps" then cleanModName = "DynamicFPS"
                         elseif cleanModName == "prep" then cleanModName = "DynamicPrep"
-                        elseif cleanModName == "group" then cleanModName = "DynamicGroup" end
+                        elseif cleanModName == "group" then cleanModName = "DynamicGroup"
+                        elseif cleanModName == "studio" or cleanModName == "STUDIO" or cleanModName == "DynamicSuite" or cleanModName == "DesktopWindows" then cleanModName = "DynamicSuite (Suite Studio)" end
 
                         local activeChoice = item.resolvedAction
                         local isTier2 = (item.tier == 2 or item.isGranular == true)
@@ -9714,10 +10641,10 @@ function addonTable.CreateMainConfigUI()
                     end,
                 },
                 {
-                    title = "Custom Accent & Font Studio",
+                    title = "Suite Studio (Theme, Fonts & Windows)",
                     badge = (curAccent ~= "OBSIDIAN_SLATE" and curAccent ~= "AUTO_CLASS") and "Custom Active" or "Open Studio ->",
                     isSel = (curAccent ~= "OBSIDIAN_SLATE" and curAccent ~= "AUTO_CLASS"),
-                    desc = "Open the full Theme & Font Studio to pick from 17 swatches, custom hex colours, and 26 font families.",
+                    desc = "Open Suite Studio to pick from 17 swatches, custom hex colours, 26 font families, and Blizzard Desktop Window settings.",
                     onClick = function()
                         addonTable.OpenWorkspaceView("THEME_STUDIO")
                     end,
@@ -12906,10 +13833,28 @@ function addonTable.CreateMainConfigUI()
                 pop.rows[i] = rb
             end
             pop:SetSize(192, (pad * 2) + (#hudTargetDefs * rowH) + ((#hudTargetDefs - 1) * gapY))
+            pop:SetScript("OnHide", function()
+                UI.SetChevronState(hudSelectorBtn, false)
+            end)
+            if type(UISpecialFrames) == "table" then
+                local found = false
+                for _, n in ipairs(UISpecialFrames) do
+                    if n == "DynamicSuiteHudSelectorPopup" then found = true; break end
+                end
+                if not found then
+                    table.insert(UISpecialFrames, "DynamicSuiteHudSelectorPopup")
+                end
+            end
             hudSelectorPopup = pop
             m.hudSelectorPopup = pop
             return pop
         end
+
+        hudSelectorBtn:HookScript("OnHide", function()
+            if hudSelectorPopup and hudSelectorPopup:IsShown() then
+                hudSelectorPopup:Hide()
+            end
+        end)
 
         hudSelectorBtn:SetScript("OnClick", function(selfBtn)
             local pop = EnsureHudSelectorPopup()
@@ -12935,6 +13880,7 @@ function addonTable.CreateMainConfigUI()
             pop:ClearAllPoints()
             pop:SetPoint("TOPLEFT", selfBtn, "BOTTOMLEFT", 0, -2)
             pop:Show()
+            UI.SetChevronState(selfBtn, true)
         end)
 
         -- 1. Visibility 2-Pill Switch ([ Hidden | Shown ]) with explicit full-word 60x22 sizing
@@ -14178,6 +15124,8 @@ function addonTable.CreateMainConfigUI()
     resultsTrack:SetPoint("TOPLEFT", resultsScroll, "TOPRIGHT", 4, 0)
     resultsTrack:SetPoint("BOTTOMLEFT", resultsScroll, "BOTTOMRIGHT", 4, 0)
     resultsTrack:SetWidth(6)
+    resultsTrack:EnableMouse(true)
+    resultsTrack:EnableMouseWheel(true)
     resultsTrack.bg = UI.SolidTex(resultsTrack, "BACKGROUND", 0, 0.05, 0.06, 0.08, 0.85)
     resultsTrack.bg:SetAllPoints()
 
@@ -14185,8 +15133,20 @@ function addonTable.CreateMainConfigUI()
     resultsThumb:SetWidth(6)
     resultsThumb:SetHeight(48)
     resultsThumb:SetPoint("TOP", resultsTrack, "TOP", 0, 0)
+    resultsThumb:EnableMouse(true)
+    resultsThumb:EnableMouseWheel(true)
     resultsThumb.tex = UI.SolidTex(resultsThumb, "ARTWORK", 1, 0.28, 0.34, 0.44, 0.85)
     resultsThumb.tex:SetAllPoints()
+
+    local isDraggingSearchThumb = false
+    local function RefreshSearchThumbVisual()
+        if isDraggingSearchThumb or resultsThumb:IsMouseOver() then
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            resultsThumb.tex:SetColorTexture(ar, ag, ab, 1.0)
+        else
+            resultsThumb.tex:SetColorTexture(0.28, 0.34, 0.44, 0.85)
+        end
+    end
 
     local function UpdateSearchScrollThumb()
         local maxRange = resultsScroll:GetVerticalScrollRange() or 0
@@ -14205,15 +15165,66 @@ function addonTable.CreateMainConfigUI()
         local yOfs = -pct * math.max(0, trackH - thumbH)
         resultsThumb:ClearAllPoints()
         resultsThumb:SetPoint("TOP", resultsTrack, "TOP", 0, yOfs)
+        RefreshSearchThumbVisual()
     end
 
-    resultsScroll:SetScript("OnMouseWheel", function(self, delta)
-        local cur = self:GetVerticalScroll() or 0
-        local maxRange = self:GetVerticalScrollRange() or 0
-        local nextVal = math.max(0, math.min(maxRange, cur - (delta * 44)))
-        self:SetVerticalScroll(nextVal)
-        UpdateSearchScrollThumb()
+    local function ScrollSearchResultsFromCursor()
+        if isDraggingSearchThumb and IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            isDraggingSearchThumb = false
+            resultsThumb:SetScript("OnUpdate", nil)
+            RefreshSearchThumbVisual()
+            return
+        end
+        local maxRange = resultsScroll:GetVerticalScrollRange() or 0
+        if maxRange <= 0 then return end
+        local scale = resultsTrack:GetEffectiveScale()
+        local _, cy = GetCursorPosition()
+        cy = cy / scale
+        local top = resultsTrack:GetTop()
+        local trackH = resultsTrack:GetHeight()
+        local thumbH = resultsThumb:GetHeight() or 32
+        if top and trackH and trackH > thumbH then
+            local pct = math.max(0, math.min(1, (top - cy - (thumbH * 0.5)) / (trackH - thumbH)))
+            resultsScroll:SetVerticalScroll(pct * maxRange)
+            UpdateSearchScrollThumb()
+        end
+    end
+
+    resultsThumb:SetScript("OnEnter", RefreshSearchThumbVisual)
+    resultsThumb:SetScript("OnLeave", RefreshSearchThumbVisual)
+    resultsThumb:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            isDraggingSearchThumb = true
+            RefreshSearchThumbVisual()
+            self:SetScript("OnUpdate", ScrollSearchResultsFromCursor)
+        end
     end)
+    resultsThumb:SetScript("OnMouseUp", function(self)
+        isDraggingSearchThumb = false
+        self:SetScript("OnUpdate", nil)
+        RefreshSearchThumbVisual()
+    end)
+    resultsThumb:SetScript("OnHide", function(self)
+        isDraggingSearchThumb = false
+        self:SetScript("OnUpdate", nil)
+        RefreshSearchThumbVisual()
+    end)
+    resultsTrack:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" then
+            ScrollSearchResultsFromCursor()
+        end
+    end)
+
+    local function OnSearchMouseWheel(_, delta)
+        local cur = resultsScroll:GetVerticalScroll() or 0
+        local maxRange = resultsScroll:GetVerticalScrollRange() or 0
+        local nextVal = math.max(0, math.min(maxRange, cur - (delta * 44)))
+        resultsScroll:SetVerticalScroll(nextVal)
+        UpdateSearchScrollThumb()
+    end
+    resultsScroll:SetScript("OnMouseWheel", OnSearchMouseWheel)
+    resultsTrack:SetScript("OnMouseWheel", OnSearchMouseWheel)
+    resultsThumb:SetScript("OnMouseWheel", OnSearchMouseWheel)
     resultsScroll:SetScript("OnVerticalScroll", function()
         UpdateSearchScrollThumb()
     end)
@@ -14318,10 +15329,17 @@ function addonTable.CreateMainConfigUI()
             return
         end
 
-        -- 2. DynamicSuite Studio Views (Theme Studio, Changelog, Support, Guided Setup)
-        if mKey == "STUDIO" or mKey == "SETUP" then
+        -- 2. DynamicSuite Studio Views (Suite Studio, Changelog, Support, Guided Setup)
+        if mKey == "STUDIO" or mKey == "studio" or mKey == "SETUP" or entry.viewKey == "THEME_STUDIO" or entry.viewKey == "DESKTOP_WINDOWS" or entry.viewKey == "SUITE_STUDIO_WINDOWS" then
             local vKey = entry.viewKey or (type(entry.tabIndex) == "string" and entry.tabIndex) or (mKey == "SETUP" and "GUIDED_SETUP" or "THEME_STUDIO")
             addonTable.OpenWorkspaceView(vKey)
+            if f.SetSuiteStudioTab then
+                if tonumber(entry.tabIndex) == 2 or vKey == "DESKTOP_WINDOWS" or vKey == "SUITE_STUDIO_WINDOWS" then
+                    f.SetSuiteStudioTab(2)
+                elseif tonumber(entry.tabIndex) == 1 or vKey == "SUITE_STUDIO_THEME" then
+                    f.SetSuiteStudioTab(1)
+                end
+            end
             C_Timer.After(0.06, function()
                 local root = f.themeView
                 if vKey == "GUIDED_SETUP" then root = f.setupView
@@ -14538,7 +15556,7 @@ function addonTable.CreateMainConfigUI()
     }
     local function FormatModuleBrandForEntry(entry)
         local mKey = entry.moduleKey or "STUDIO"
-        if mKey == "STUDIO" or mKey == "SETUP" or mKey == "HUD" or mKey == "DynamicSuite" then
+        if mKey == "STUDIO" or mKey == "studio" or mKey == "SETUP" or mKey == "HUD" or mKey == "DynamicSuite" then
             return UI.FormatTwoToneBrand("Suite")
         end
         local suffix = BRAND_SUFFIX_MAP[mKey] or tostring(entry.moduleTitle or entry.addonName or mKey):gsub("^Dynamic", "")
@@ -14730,12 +15748,26 @@ function addonTable.CreateMainConfigUI()
     ----------------------------------------------------------------------------
     -- Workspace Router & Live Theme Application
     ----------------------------------------------------------------------------
-    function addonTable.OpenWorkspaceView(viewKey)
+    function addonTable.OpenWorkspaceView(viewKey, optionalTabIndex)
         if not mainFrame then
             addonTable.CreateMainConfigUI()
         end
         UI.CloseAllPopups()
-        if viewKey == "THEME" then viewKey = "THEME_STUDIO"
+        local requestedStudioTab = nil
+        if tonumber(optionalTabIndex) == 1 or tonumber(optionalTabIndex) == 2 then
+            requestedStudioTab = tonumber(optionalTabIndex)
+        end
+        if viewKey == "DESKTOP_WINDOWS" or viewKey == "SUITE_STUDIO_WINDOWS" or viewKey == "WINDOWS" then
+            viewKey = "THEME_STUDIO"
+            requestedStudioTab = requestedStudioTab or 2
+        elseif viewKey == "SUITE_STUDIO_THEME" then
+            viewKey = "THEME_STUDIO"
+            requestedStudioTab = requestedStudioTab or 1
+        elseif viewKey == "THEME" then
+            viewKey = "THEME_STUDIO"
+            if requestedStudioTab == nil then requestedStudioTab = 1 end
+        elseif viewKey == "STUDIO" then
+            viewKey = "THEME_STUDIO"
         elseif viewKey == "SETUP" then viewKey = "GUIDED_SETUP"
         elseif viewKey == "EDIT" then viewKey = "EDIT_MODE"
         elseif viewKey == "LOAD" then viewKey = "DYNAMICLOAD"
@@ -14766,11 +15798,13 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.2.0"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.3.0"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
                 f.dockHint:SetText("Global Feature Finder   |cFF475569|||r   Slash: /ds search <keyword>")
+            elseif activeWorkspaceView == "THEME_STUDIO" then
+                f.dockHint:SetText("Active Module: Suite Studio   |cFF475569|||r   Slash: /ds studio")
             elseif activeWorkspaceView == "DYNAMICLOAD" then
                 f.dockHint:SetText("Active Module: DynamicLoad   |cFF475569|||r   Slash: /dl")
             elseif (activeWorkspaceView == "PEER_MODULE" or activeWorkspaceView == "PEER_HOST") and selectedPeerModuleKey then
@@ -14830,8 +15864,13 @@ function addonTable.CreateMainConfigUI()
             f.searchView.Refresh()
         elseif activeWorkspaceView == "PEER_MODULE" and peerView.Refresh then
             peerView.Refresh()
-        elseif activeWorkspaceView == "THEME_STUDIO" and themeView.Refresh then
-            themeView.Refresh()
+        elseif activeWorkspaceView == "THEME_STUDIO" then
+            if requestedStudioTab and f.SetSuiteStudioTab then
+                f.SetSuiteStudioTab(requestedStudioTab, true)
+            end
+            if themeView.Refresh then
+                themeView.Refresh()
+            end
         elseif activeWorkspaceView == "GUIDED_SETUP" and setupView.Refresh then
             setupView.Refresh()
         elseif activeWorkspaceView == "CHANGELOG_VIEW" and changelogView.Refresh then
@@ -14853,6 +15892,18 @@ function addonTable.CreateMainConfigUI()
         end
         UpdateStatusBar()
     end
+
+    function addonTable.OpenSuiteStudioTab(tabIdx)
+        if not mainFrame then
+            addonTable.CreateMainConfigUI()
+        end
+        local t = (tonumber(tabIdx) == 2) and 2 or 1
+        addonTable.OpenWorkspaceView(t == 2 and "SUITE_STUDIO_WINDOWS" or "SUITE_STUDIO_THEME")
+        if f and f.SetSuiteStudioTab then
+            f.SetSuiteStudioTab(t)
+        end
+    end
+    f.OpenSuiteStudioTab = addonTable.OpenSuiteStudioTab
 
     -- Item #42: Slash Command Routing Fix (Ensure /dm, /dz, /dfps, /dprep, /dgroup switch to target module AFTER f:Show())
     function addonTable.OpenPeerModule(targetKey)
@@ -15735,6 +16786,8 @@ do
     _G.DynamicSuite.UI.CreateSubDrawerTuneButton = UI.CreateSubDrawerButton
     _G.DynamicSuite.UI.NormalizeEmbeddedSubDrawers = UI.NormalizeEmbeddedSubDrawers
     _G.DynamicSuite.UI.CloseAllPopups = UI.CloseAllPopups
+    _G.DynamicSuite.UI.RegisterPopupCloser = UI.RegisterPopupCloser
+    _G.DynamicSuite.RegisterPopupCloser = UI.RegisterPopupCloser
     _G.DynamicSuite.GetSuiteAccent = function()
         return UI.GetActiveAccentColor()
     end
@@ -15827,12 +16880,12 @@ do
         addonTable.EnterHudEditMode = stubFn
     end
 
-    function addonTable.OpenWorkspaceViewSafe(viewKey)
+    function addonTable.OpenWorkspaceViewSafe(viewKey, optionalTabIndex)
         if not mainFrame or not mainFrame._initComplete then
             addonTable.CreateMainConfigUI()
         end
         if addonTable.OpenWorkspaceView then
-            addonTable.OpenWorkspaceView(viewKey)
+            addonTable.OpenWorkspaceView(viewKey, optionalTabIndex)
         end
     end
 
@@ -15847,12 +16900,12 @@ do
 
     if not addonTable.OpenWorkspaceView then
         local stubOpenView
-        stubOpenView = function(viewKey)
+        stubOpenView = function(viewKey, optionalTabIndex)
             if not mainFrame or not mainFrame._initComplete then
                 addonTable.CreateMainConfigUI()
             end
             if addonTable.OpenWorkspaceView and addonTable.OpenWorkspaceView ~= stubOpenView then
-                addonTable.OpenWorkspaceView(viewKey)
+                addonTable.OpenWorkspaceView(viewKey, optionalTabIndex)
             end
         end
         addonTable.OpenWorkspaceView = stubOpenView
@@ -15884,16 +16937,35 @@ do
         addonTable.OpenSearchView = addonTable.OpenSearchViewSafe
     end
 
+    function addonTable.OpenSuiteStudioTabSafe(tabIdx)
+        if not mainFrame or not mainFrame._initComplete then
+            addonTable.CreateMainConfigUI()
+        end
+        local t = (tonumber(tabIdx) == 2) and 2 or 1
+        if addonTable.OpenWorkspaceView then
+            addonTable.OpenWorkspaceView(t == 2 and "SUITE_STUDIO_WINDOWS" or "SUITE_STUDIO_THEME")
+        end
+        if mainFrame and mainFrame.SetSuiteStudioTab then
+            mainFrame.SetSuiteStudioTab(t)
+        end
+    end
+
+    if not addonTable.OpenSuiteStudioTab then
+        addonTable.OpenSuiteStudioTab = addonTable.OpenSuiteStudioTabSafe
+    end
+
     _G.DynamicSuite = _G.DynamicSuite or {}
-    _G.DynamicSuite.OpenWorkspaceView = addonTable.OpenWorkspaceViewSafe
-    _G.DynamicSuite.OpenSearchView    = addonTable.OpenSearchViewSafe
-    _G.DynamicSuite.EnterHudEditMode = addonTable.EnterHudEditMode
-    _G.DynamicSuite.EnterEditMode    = addonTable.EnterHudEditMode
+    _G.DynamicSuite.OpenWorkspaceView  = addonTable.OpenWorkspaceViewSafe
+    _G.DynamicSuite.OpenSuiteStudioTab = addonTable.OpenSuiteStudioTabSafe
+    _G.DynamicSuite.OpenSearchView     = addonTable.OpenSearchViewSafe
+    _G.DynamicSuite.EnterHudEditMode   = addonTable.EnterHudEditMode
+    _G.DynamicSuite.EnterEditMode      = addonTable.EnterHudEditMode
     if _G.DynamicLoad or addonTable.IsDynamicLoadModuleLoaded then
         _G.DynamicLoad = _G.DynamicLoad or {}
-        _G.DynamicLoad.OpenWorkspaceView = addonTable.OpenWorkspaceViewSafe
-        _G.DynamicLoad.OpenSearchView    = addonTable.OpenSearchViewSafe
-        _G.DynamicLoad.EnterHudEditMode  = addonTable.EnterHudEditMode
-        _G.DynamicLoad.EnterEditMode     = addonTable.EnterHudEditMode
+        _G.DynamicLoad.OpenWorkspaceView  = addonTable.OpenWorkspaceViewSafe
+        _G.DynamicLoad.OpenSuiteStudioTab = addonTable.OpenSuiteStudioTabSafe
+        _G.DynamicLoad.OpenSearchView     = addonTable.OpenSearchViewSafe
+        _G.DynamicLoad.EnterHudEditMode   = addonTable.EnterHudEditMode
+        _G.DynamicLoad.EnterEditMode      = addonTable.EnterHudEditMode
     end
 end

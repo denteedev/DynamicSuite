@@ -26,7 +26,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 * **Global Smart Search (`/ds search <query>`):** Search any setting in plain English (like "auto repair", "flare", or "whisper") and jump straight to the exact option with a visual highlight.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, scale (60%-150%), and align all 6 movable suite bars (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
 * **9-Step Guided Setup & Conflict Scanner (`/ds setup`, `/ds conflicts`):** Detects overlapping addons (such as ElvUI, Leatrix Plus, BetterBags, Baganator, Prat-3.0, DialogueUI, and FocusMarker) and lets you pick which addon handles each feature in one click.
-* **Theme & Font Studio (`/ds theme`):** Customise your UI with 17 accent colours (including all 13 WoW Class Colours and a custom picker), 4 dark surface themes, 21+ built-in fonts, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI with searchable grouped dropdowns, and adjustable text scaling.
+* **Suite Studio -- Theme, Typography & Blizzard Desktop Window Manager (`/ds studio`, `/ds theme`, `/ds windows`):** Customise your UI in Tab 1 (`Theme & Typography`) with 17 accent colours (including all 13 WoW Class Colours and a custom picker), 4 dark surface themes, 21+ built-in fonts, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI with searchable grouped dropdowns, and adjustable text scaling. In Tab 2 (`Desktop Windows & Menus`, `/ds windows`), keep 32 Blizzard panels (including Character, Talents & Spellbook, Professions, Collections, and the windowed Quest Log `L`) open side-by-side, drag any Blizzard window from its title bar or empty background space (clamped cleanly on-screen and saved across reloads), click any window to bring it to the front, scale panels with `Ctrl+Scroll` / `Ctrl+Shift+Scroll`, and access quick Game Menu shortcuts.
 * **Automatic Standalone Coexistence:** If standalone DynamicMarker is also installed, DynamicSuite disables the standalone copy automatically and prompts a clean UI reload so you never get duplicate bars or conflicting HUD Edit windows.
 
 ---
@@ -39,7 +39,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ### 2. DynamicPrep (`/dprep`, `/dp`) -- Telemetry Bar, Raid Buffs & QoL
 * **Top Info Bar:** Customisable bar showing Primary Stat, Secondary Stats, Spec & Loot Spec, M+ Keystone, Durability, FPS/Ping, plus Ready Check and Pull Countdown buttons for leaders.
-* **Clickable Raid Buffs, Survival Macro & Blizzard Window QoL:** One-click reminders for missing class raid buffs and consumables with Midnight food tooltip stats on the Raid Buffs HUD, a smart `[DynamicHeal]` macro (Healthstone into Healing Potion), quest/gossip & One-Click Catalyst automation, Hold CTRL to Release Spirit protection, and side-by-side Blizzard windows with saved drag positions, header `Ctrl+Scroll` / `Ctrl+Shift+Scroll` scaling, and automatic EllesmereUI coexistence.
+* **Clickable Raid Buffs, Gear Audit & World/Survival QoL:** One-click reminders for missing class raid buffs, single-target partner buffs, and consumables with colour-coded food stat benefits on the Raid Buffs HUD, paperdoll missing-enchant and empty-socket highlights, a smart `[DynamicHeal]` macro (Healthstone into Healing Potion), quest/gossip & One-Click Catalyst automation, seen-cinematic auto-skip, and Hold CTRL to Release Spirit protection.
 
 ### 3. DynamicMarker (`/dm`, `/fm`) -- Target Marking, World Flares & Macros
 * **Smart Macros:** One-click `[DynamicMark]` focus/raid marker macro and `[DynamicKick]` interrupt macro that automatically updates your interrupt spell when you swap specs across all 13 classes.
@@ -51,7 +51,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ### 5. DynamicChat (`/dchat`, `/dc`, `/dynamicchat`) -- Whispers, Chat Skin & History
 * **Quick Chat Shortcuts:** Type `/ww` to whisper your friendly target (even in combat), `/rl` to reload your UI, and `/lg` to leave your party or raid quickly.
-* **Clean Smoked-Glass Chat & Alert Sounds:** Borderless chat frame with compact channel tags, clickable URLs (`/dc copy`), 7 built-in Blizzard chat alert sounds, external SharedMedia/DBM/EXBOSS/BigWigs/WeakAuras/ElvUI sound pack support with inline preview buttons, incoming/self-whisper chimes, and chat history saved across UI reloads.
+* **Clean Smoked-Glass Chat, Typography & Alert Sounds:** Borderless chat frame with an embedded EditBox dock, customisable chat font family/size/outline/line-spacing, compact channel tags, clickable URLs (`/dc copy`), 10 built-in DynamicSuite chimes + 7 Blizzard alert sounds, custom `.ogg`/`.mp3` sound registration, character name & keyword mention alerts, external SharedMedia/DBM/EXBOSS/BigWigs/WeakAuras/ElvUI sound pack support, `/dc mute`, and chat history saved across UI reloads.
 
 ### 6. DynamicFPS (`/dfps`) -- Zone Graphics & Responsiveness
 * **Zero-Reload Zone Graphics:** Automatically adjusts view distance, shadows, clutter, and spell density between Cities, Outdoor, Delves, Dungeons, Raid, and PvP while keeping boss floor mechanics clearly visible.
@@ -78,17 +78,18 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 | `/ds search <query>` | Open Global Smart Search with your query pre-filled |
 | `/ds setup` or `/ds guided` | Open the 9-Step Guided Setup Wizard |
 | `/ds conflicts` | Check for conflicting addons and print a summary in chat |
-| `/ds theme` or `/ds studio` | Open the Theme & Font Studio |
+| `/ds studio` or `/ds theme` | Open Suite Studio (`Theme & Typography` and `Desktop Windows & Menus`) |
+| `/ds windows` or `/ds win` | Open Suite Studio directly to the Blizzard Desktop Window Manager |
 | `/ds changelog` | View the DynamicSuite release notes |
 | `/ds reset` | Reset the DynamicSuite window size and position |
 | `/ds reload` | Reload your user interface |
 | `/dl` or `/dynamicload` | Open DynamicLoad (supports auto, status, lock, unlock, freeze, profile, toast) |
-| `/dprep` or `/dp` | Open DynamicPrep (supports edit, buffs, qol, reset) |
+| `/dprep` or `/dp` | Open DynamicPrep (supports edit, buffs, qol, testaudit, reset) |
 | `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, import, reset) |
 | `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
-| `/dchat`, `/dc`, or `/dynamicchat` | Open DynamicChat (supports history, copy, reset; plus `/ww` target whisper, `/rl` reload UI, and `/lg` leave group) |
+| `/dchat`, `/dc`, or `/dynamicchat` | Open DynamicChat (supports history, copy, mute, reset; plus `/ww` target whisper, `/rl` reload UI, and `/lg` leave group) |
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
-| `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, testtoast, reset) |
+| `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, testtoast, testapply, reset) |
 | `/dz` or `/dynamiczoom` | Open DynamicZoom (supports max, 39, reset) |
 
 ---

@@ -5598,17 +5598,61 @@ end
 --------------------------------------------------------------------------------
 -- Right-Click Context Menu (ASSIGN TO ZONES + 3-State Security Pills)
 --------------------------------------------------------------------------------
+local activeZoneTabMenu = nil
+
 local function CloseAltDropdown()
-    if altDropdownFrame then altDropdownFrame:Hide() end
+    if altDropdownFrame then
+        if altDropdownFrame.ownerBtn then
+            UI.SetChevronState(altDropdownFrame.ownerBtn, false)
+            altDropdownFrame.ownerBtn = nil
+        end
+        altDropdownFrame:Hide()
+    end
 end
 
 local function CloseContextMenu()
-    if contextMenuFrame then contextMenuFrame:Hide() end
-    if altDropdownFrame then altDropdownFrame:Hide() end
+    if contextMenuFrame then
+        contextMenuFrame.ownerBtn = nil
+        contextMenuFrame:Hide()
+    end
+    CloseAltDropdown()
+    if activeZoneTabMenu then
+        activeZoneTabMenu.ownerBtn = nil
+        activeZoneTabMenu:Hide()
+    end
     if addonTable.mainFrame and addonTable.mainFrame.zoneTabMenu then
         addonTable.mainFrame.zoneTabMenu:Hide()
     end
     if clickCatcher and (not UI.IsDropdownPopupShown or not UI.IsDropdownPopupShown()) then
+        clickCatcher:Hide()
+    end
+end
+
+local function RegisterLoadPopupCloser()
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.RegisterPopupCloser) == "function" then
+        pcall(_G.DynamicSuite.UI.RegisterPopupCloser, "DynamicLoad", CloseContextMenu)
+    end
+end
+RegisterLoadPopupCloser()
+
+local function HookDLButtonOnHide(anchorBtn)
+    if not anchorBtn or not anchorBtn.HookScript or anchorBtn._dlOnHideHooked then return end
+    anchorBtn._dlOnHideHooked = true
+    anchorBtn:HookScript("OnHide", function(self)
+        if (contextMenuFrame and contextMenuFrame.ownerBtn == self)
+            or (altDropdownFrame and altDropdownFrame.ownerBtn == self)
+            or (activeZoneTabMenu and activeZoneTabMenu.ownerBtn == self) then
+            CloseContextMenu()
+        end
+    end)
+end
+
+local function HideDLClickCatcherIfIdle()
+    local anyOpen = (contextMenuFrame and contextMenuFrame:IsShown())
+        or (altDropdownFrame and altDropdownFrame:IsShown())
+        or (activeZoneTabMenu and activeZoneTabMenu:IsShown())
+        or (UI.IsDropdownPopupShown and UI.IsDropdownPopupShown())
+    if not anyOpen and clickCatcher and clickCatcher:IsShown() then
         clickCatcher:Hide()
     end
 end
@@ -5635,12 +5679,21 @@ end
 
 local function OpenContextMenu(anchorFrame, item)
     if not item or item.isDynamicSuiteHub or item.isSuiteModule then return end
+    RegisterLoadPopupCloser()
+    HookDLButtonOnHide(anchorFrame)
     UI.RefreshPaletteCache()
     if not contextMenuFrame then
         local menu = CreateFrame("Frame", "DynamicLoadContextMenu", UIParent)
         menu:SetSize(264, 215)
         menu:SetFrameStrata("TOOLTIP")
+        menu:SetFrameLevel(220)
+        menu:SetToplevel(true)
         menu:SetClampedToScreen(true)
+        menu:EnableMouse(true)
+        menu:SetScript("OnHide", function(self)
+            self.ownerBtn = nil
+            HideDLClickCatcherIfIdle()
+        end)
 
         menu.bg = UI.SolidTex(menu, "BACKGROUND", 0, UI.COLORS.PANEL_BG.r, UI.COLORS.PANEL_BG.g, UI.COLORS.PANEL_BG.b, 0.98)
         menu.bg:SetAllPoints()
@@ -5950,6 +6003,7 @@ local function OpenContextMenu(anchorFrame, item)
     end
 
     RefreshMenuState()
+    menu.ownerBtn = anchorFrame
     GetClickCatcher():Show()
     menu:ClearAllPoints()
     menu:SetPoint("TOPLEFT", anchorFrame, "BOTTOMLEFT", 10, -2)
@@ -6995,21 +7049,40 @@ end
 -- Scope Switcher & Alt Cloner Dropdown Menu ([All Characters v] <-> [<Player> (Char) v])
 --------------------------------------------------------------------------------
 local function OpenAltDropdown(anchorFrame, f)
+    RegisterLoadPopupCloser()
+    HookDLButtonOnHide(anchorFrame)
+    if altDropdownFrame and altDropdownFrame:IsShown() and altDropdownFrame.ownerBtn == anchorFrame then
+        CloseContextMenu()
+        return
+    end
+    CloseContextMenu()
     UI.RefreshPaletteCache()
     if not altDropdownFrame then
         local menu = CreateFrame("Frame", "DynamicLoadAltDropdown", UIParent)
         menu:SetSize(244, 150)
         menu:SetFrameStrata("TOOLTIP")
+        menu:SetFrameLevel(220)
+        menu:SetToplevel(true)
         menu:SetClampedToScreen(true)
+        menu:EnableMouse(true)
         menu.bg = UI.SolidTex(menu, "BACKGROUND", 0, UI.COLORS.PANEL_BG.r, UI.COLORS.PANEL_BG.g, UI.COLORS.PANEL_BG.b, 0.98)
         menu.bg:SetAllPoints()
         UI.CreatePixelBorder(menu, UI.COLORS.ACCENT.r, UI.COLORS.ACCENT.g, UI.COLORS.ACCENT.b, 0.9, 3)
         menu.rowPool = {}
+        menu:SetScript("OnHide", function(self)
+            if self.ownerBtn then
+                UI.SetChevronState(self.ownerBtn, false)
+                self.ownerBtn = nil
+            end
+            HideDLClickCatcherIfIdle()
+        end)
         tinsert(UISpecialFrames, "DynamicLoadAltDropdown")
         altDropdownFrame = menu
     end
 
     local menu = altDropdownFrame
+    menu.ownerBtn = anchorFrame
+    UI.SetChevronState(anchorFrame, true)
     menu.rowPool = menu.rowPool or {}
     menu.dsBorder:SetColor(UI.COLORS.ACCENT.r, UI.COLORS.ACCENT.g, UI.COLORS.ACCENT.b, 0.9)
     for i = 1, #menu.rowPool do
@@ -7135,6 +7208,7 @@ addonTable._closeDLAltDropdown  = CloseAltDropdown
 
 function addonTable.MountDynamicLoadWorkspace(f, workspace)
     if not f or not workspace then return end
+    RegisterLoadPopupCloser()
     local UpdateAllTabVisuals
     local UpdateAutoToggleVisual
     -- VIEW A: DYNAMICLOAD WORKSPACE (6 Segmented Sub-Tabs + Toolbar + Addon Tree)
@@ -7143,6 +7217,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     dlView:SetPoint("TOPLEFT", workspace, "TOPLEFT", 0, 0)
     dlView:SetPoint("BOTTOMRIGHT", workspace, "BOTTOMRIGHT", 0, 0)
     dlView:SetFrameLevel((workspace:GetFrameLevel() or 6) + 2)
+    dlView:HookScript("OnHide", function() CloseContextMenu() end)
     if dlView.SetClipsChildren then dlView:SetClipsChildren(false) end
     if (dlView:GetWidth() or 0) <= 0 or (dlView:GetHeight() or 0) <= 0 then
         local ww = (workspace:GetWidth() or 0) > 0 and workspace:GetWidth() or (((f:GetWidth() or 1040) - 204) - 2)
@@ -7481,12 +7556,21 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     -- Zone Tab Ctrl+Right-Click Menu ("COPY ADDONS INTO <ZONE> FROM:")
     local zoneTabMenu = nil
     f.OpenZoneTabMenu = function(anchorBtn, targetKey, targetLabel)
+        RegisterLoadPopupCloser()
+        HookDLButtonOnHide(anchorBtn)
+        if zoneTabMenu and zoneTabMenu:IsShown() and zoneTabMenu.ownerBtn == anchorBtn then
+            CloseContextMenu()
+            return
+        end
         CloseContextMenu()
         if not zoneTabMenu then
             zoneTabMenu = CreateFrame("Frame", "DynamicLoadZoneTabMenu", UIParent)
             zoneTabMenu:SetSize(248, 202)
             zoneTabMenu:SetFrameStrata("TOOLTIP")
+            zoneTabMenu:SetFrameLevel(220)
+            zoneTabMenu:SetToplevel(true)
             zoneTabMenu:SetClampedToScreen(true)
+            zoneTabMenu:EnableMouse(true)
             zoneTabMenu.bg = UI.SolidTex(zoneTabMenu, "BACKGROUND", 0, UI.COLORS.PANEL_BG.r, UI.COLORS.PANEL_BG.g, UI.COLORS.PANEL_BG.b, 0.98)
             zoneTabMenu.bg:SetAllPoints()
             UI.CreatePixelBorder(zoneTabMenu, UI.COLORS.ACCENT.r, UI.COLORS.ACCENT.g, UI.COLORS.ACCENT.b, 0.9, 3)
@@ -7501,8 +7585,27 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
                 rBtn:SetPoint("TOPLEFT", zoneTabMenu, "TOPLEFT", 10, -28 - ((i - 1) * 23))
                 zoneTabMenu.rows[i] = rBtn
             end
+            zoneTabMenu:SetScript("OnHide", function(self)
+                self.ownerBtn = nil
+                HideDLClickCatcherIfIdle()
+            end)
+            if type(UISpecialFrames) == "table" then
+                local found = false
+                for i = 1, #UISpecialFrames do
+                    if UISpecialFrames[i] == "DynamicLoadZoneTabMenu" then
+                        found = true
+                        break
+                    end
+                end
+                if not found then
+                    tinsert(UISpecialFrames, "DynamicLoadZoneTabMenu")
+                end
+            end
             f.zoneTabMenu = zoneTabMenu
+            activeZoneTabMenu = zoneTabMenu
         end
+        activeZoneTabMenu = zoneTabMenu
+        zoneTabMenu.ownerBtn = anchorBtn
 
         local ar, ag, ab = UI.GetActiveAccentColor()
         zoneTabMenu.dsBorder:SetColor(ar, ag, ab, 0.9)
@@ -8295,7 +8398,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     scrollTrack.bg:SetPoint("BOTTOM", scrollTrack, "BOTTOM", 0, 0)
     f.scrollTrack = scrollTrack
 
-    local scrollThumb = CreateFrame("Frame", nil, scrollTrack)
+    local scrollThumb = CreateFrame("Button", nil, scrollTrack)
     scrollThumb:SetWidth(4)
     scrollThumb:SetPoint("TOP", scrollTrack, "TOP", 0, 0)
     scrollThumb:EnableMouse(true)
@@ -8836,6 +8939,7 @@ if not DynamicSuite._isHubLoaded then
         f:RegisterForDrag("LeftButton")
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f:HookScript("OnHide", function() CloseContextMenu() end)
         f.bg = UI.SolidTex(f, "BACKGROUND", 0, UI.COLORS.PANEL_BG.r, UI.COLORS.PANEL_BG.g, UI.COLORS.PANEL_BG.b, 0.99)
         f.bg:SetAllPoints()
         UI.CreatePixelBorder(f, 1, 1, 1, 0.16, 4)

@@ -1798,6 +1798,28 @@ function DM:CloseDropdownMenu()
     if activeDropdownMenu and activeDropdownMenu:IsShown() then
         activeDropdownMenu:Hide()
     end
+    if self.editInspector and self.editInspector.selectorPopup and self.editInspector.selectorPopup:IsShown() then
+        self.editInspector.selectorPopup:Hide()
+    elseif _G.DynamicMarkerHudSelectorPopup and _G.DynamicMarkerHudSelectorPopup:IsShown() then
+        _G.DynamicMarkerHudSelectorPopup:Hide()
+    end
+end
+
+local function RegisterMarkerPopupCloser()
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.RegisterPopupCloser) == "function" then
+        pcall(_G.DynamicSuite.UI.RegisterPopupCloser, "DynamicMarker", function() DM:CloseDropdownMenu() end)
+    end
+end
+RegisterMarkerPopupCloser()
+
+local function EnsureDMUISpecialFrame(frameName)
+    if type(UISpecialFrames) ~= "table" or not frameName then return end
+    for i = 1, #UISpecialFrames do
+        if UISpecialFrames[i] == frameName then
+            return
+        end
+    end
+    table.insert(UISpecialFrames, frameName)
 end
 
 function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
@@ -1850,13 +1872,17 @@ function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
         s.Chevron:SetVertexColor(COLORS.TextSilver.r, COLORS.TextSilver.g, COLORS.TextSilver.b, 0.95)
     end)
 
-    dd:HookScript("OnHide", function(s)
-        if activeDropdownMenu and activeDropdownMenu.owner == s then
-            activeDropdownMenu:Hide()
-        end
-    end)
+    if not dd._dmOnHideHooked then
+        dd._dmOnHideHooked = true
+        dd:HookScript("OnHide", function(s)
+            if activeDropdownMenu and activeDropdownMenu.owner == s then
+                activeDropdownMenu:Hide()
+            end
+        end)
+    end
 
     dd:SetScript("OnClick", function(s)
+        RegisterMarkerPopupCloser()
         if onBeforeOpen then
             local updated = onBeforeOpen(s)
             if type(updated) == "table" then
@@ -1872,6 +1898,7 @@ function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
             activeDropdownMenu:SetClampedToScreen(true)
             activeDropdownMenu:EnableMouse(true)
             activeDropdownMenu.rows = {}
+            EnsureDMUISpecialFrame("DynamicMarkerDropdownPopover")
 
             local searchWrap = CreateFrame("Frame", nil, activeDropdownMenu, "BackdropTemplate")
             searchWrap:SetHeight(24)
@@ -1928,26 +1955,120 @@ function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
             sf:SetScrollChild(sc)
             activeDropdownMenu.scrollChild = sc
 
-            local sbTrack = activeDropdownMenu:CreateTexture(nil, "ARTWORK")
+            local sbTrack = CreateFrame("Frame", nil, activeDropdownMenu)
+            sbTrack:SetFrameLevel(224)
             sbTrack:SetWidth(4)
-            sbTrack:SetColorTexture(1, 1, 1, 0.06)
+            sbTrack:EnableMouse(true)
+            sbTrack.bg = sbTrack:CreateTexture(nil, "ARTWORK")
+            sbTrack.bg:SetAllPoints(sbTrack)
+            sbTrack.bg:SetColorTexture(1, 1, 1, 0.06)
             activeDropdownMenu.sbTrack = sbTrack
 
-            local sbThumb = activeDropdownMenu:CreateTexture(nil, "OVERLAY")
+            local sbThumb = CreateFrame("Button", nil, sbTrack)
+            sbThumb:SetFrameLevel(225)
             sbThumb:SetSize(4, 32)
-            sbThumb:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+            sbThumb:SetPoint("TOP", sbTrack, "TOP", 0, 0)
+            sbThumb:EnableMouse(true)
+            sbThumb.bg = sbThumb:CreateTexture(nil, "OVERLAY")
+            sbThumb.bg:SetAllPoints(sbThumb)
+            sbThumb.bg:SetColorTexture(0.38, 0.45, 0.56, 0.85)
             activeDropdownMenu.sbThumb = sbThumb
+
+            local borderOverlay = CreateFrame("Frame", nil, activeDropdownMenu, "BackdropTemplate")
+            borderOverlay:SetAllPoints(activeDropdownMenu)
+            borderOverlay:SetFrameLevel(230)
+            activeDropdownMenu.borderOverlay = borderOverlay
+
+            local function RefreshMenuThumbColor()
+                if sbThumb.isDragging then
+                    local r2, g2, b2 = DM:GetAccentColor()
+                    sbThumb.bg:SetColorTexture(r2, g2, b2, 0.95)
+                elseif sbThumb:IsMouseOver() then
+                    sbThumb.bg:SetColorTexture(0.52, 0.60, 0.72, 0.95)
+                else
+                    sbThumb.bg:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+                end
+            end
+
+            local function UpdateMenuThumb()
+                local maxScroll = math.max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 0))
+                if maxScroll <= 1 then
+                    sbTrack:Hide()
+                    sbThumb:Hide()
+                    sf:SetVerticalScroll(0)
+                    return
+                end
+                sbTrack:Show()
+                sbThumb:Show()
+                local trackH = math.max(20, sbTrack:GetHeight() or 180)
+                local ratio = math.min(1, (sf:GetHeight() or 1) / math.max(1, sc:GetHeight() or 1))
+                local thumbH = math.max(24, math.floor(trackH * ratio))
+                sbThumb:SetSize(4, thumbH)
+                local cur = math.min(maxScroll, math.max(0, sf:GetVerticalScroll() or 0))
+                local travel = math.max(1, trackH - thumbH)
+                sbThumb:ClearAllPoints()
+                sbThumb:SetPoint("TOP", sbTrack, "TOP", 0, -(cur / maxScroll) * travel)
+                RefreshMenuThumbColor()
+            end
+            activeDropdownMenu.UpdateMenuThumb = UpdateMenuThumb
 
             sf:SetScript("OnMouseWheel", function(sFrame, delta)
                 local maxScroll = math.max(0, sc:GetHeight() - sFrame:GetHeight())
                 local nextVal = math.max(0, math.min(maxScroll, sFrame:GetVerticalScroll() - (delta * 26)))
                 sFrame:SetVerticalScroll(nextVal)
-                if maxScroll > 0 then
-                    local thumbH = sbThumb:GetHeight() or 32
-                    local trackH = math.max(10, sbTrack:GetHeight() - thumbH)
-                    sbThumb:ClearAllPoints()
-                    sbThumb:SetPoint("TOP", sbTrack, "TOP", 0, -(nextVal / maxScroll) * trackH)
+                UpdateMenuThumb()
+            end)
+
+            sbTrack:SetScript("OnMouseDown", function(selfTrack, button)
+                if button ~= "LeftButton" then return end
+                local maxScroll = math.max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 0))
+                if maxScroll <= 0 then return end
+                local scale = selfTrack:GetEffectiveScale() or 1
+                local _, cy = GetCursorPosition()
+                cy = cy / scale
+                local top, bottom = selfTrack:GetTop(), selfTrack:GetBottom()
+                if top and bottom and top > bottom then
+                    local trackH = top - bottom
+                    local thumbH = sbThumb:GetHeight() or 24
+                    local travel = math.max(1, trackH - thumbH)
+                    local ratio = math.max(0, math.min(1, ((top - cy) - (thumbH * 0.5)) / travel))
+                    sf:SetVerticalScroll(ratio * maxScroll)
+                    UpdateMenuThumb()
                 end
+            end)
+
+            sbThumb:SetScript("OnEnter", function() RefreshMenuThumbColor() end)
+            sbThumb:SetScript("OnLeave", function() RefreshMenuThumbColor() end)
+            sbThumb:SetScript("OnMouseDown", function(selfThumb, button)
+                if button ~= "LeftButton" then return end
+                selfThumb.isDragging = true
+                RefreshMenuThumbColor()
+                local startY = select(2, GetCursorPosition()) / (selfThumb:GetEffectiveScale() or 1)
+                local startScroll = sf:GetVerticalScroll() or 0
+                selfThumb:SetScript("OnUpdate", function()
+                    if not IsMouseButtonDown("LeftButton") then
+                        selfThumb.isDragging = false
+                        selfThumb:SetScript("OnUpdate", nil)
+                        RefreshMenuThumbColor()
+                        return
+                    end
+                    local curY = select(2, GetCursorPosition()) / (selfThumb:GetEffectiveScale() or 1)
+                    local maxScroll = math.max(0, (sc:GetHeight() or 0) - (sf:GetHeight() or 0))
+                    local trackH = math.max(20, sbTrack:GetHeight() or 180)
+                    local travel = math.max(1, trackH - (selfThumb:GetHeight() or 24))
+                    sf:SetVerticalScroll(math.min(maxScroll, math.max(0, startScroll + ((startY - curY) / travel) * maxScroll)))
+                    UpdateMenuThumb()
+                end)
+            end)
+            sbThumb:SetScript("OnMouseUp", function(selfThumb)
+                selfThumb.isDragging = false
+                selfThumb:SetScript("OnUpdate", nil)
+                RefreshMenuThumbColor()
+            end)
+            sbThumb:SetScript("OnHide", function(selfThumb)
+                selfThumb.isDragging = false
+                selfThumb:SetScript("OnUpdate", nil)
+                RefreshMenuThumbColor()
             end)
 
             local catcher = CreateFrame("Button", nil, activeDropdownMenu)
@@ -1965,6 +2086,7 @@ function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
                 if menu.owner and menu.owner.Chevron then
                     menu.owner.Chevron:SetTexture(ICON_CHEVRON_DOWN)
                 end
+                menu.owner = nil
             end)
         end
 
@@ -1974,7 +2096,11 @@ function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
         end
 
         local ar, ag, ab = DM:GetAccentColor()
-        DM:ApplyBackdrop(activeDropdownMenu, COLORS.BgVoid, { r = ar, g = ag, b = ab, a = 0.70 })
+        DM:ApplyBackdrop(activeDropdownMenu, COLORS.BgVoid, { r = ar, g = ag, b = ab, a = 0.90 })
+        if activeDropdownMenu.borderOverlay then
+            activeDropdownMenu.borderOverlay:SetFrameLevel(230)
+            DM:ApplyBackdrop(activeDropdownMenu.borderOverlay, { r = 0, g = 0, b = 0, a = 0 }, { r = ar, g = ag, b = ab, a = 0.90 }, 1)
+        end
         if activeDropdownMenu.searchWrap then
             DM:ApplyBackdrop(activeDropdownMenu.searchWrap, { r = 0.035, g = 0.042, b = 0.060, a = 0.98 }, { r = ar, g = ag, b = ab, a = 0.35 })
         end
@@ -2154,13 +2280,8 @@ function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
             activeDropdownMenu.sbTrack:ClearAllPoints()
             activeDropdownMenu.sbTrack:SetPoint("TOPRIGHT", activeDropdownMenu, "TOPRIGHT", -3, -topScrollOffset)
             activeDropdownMenu.sbTrack:SetPoint("BOTTOMRIGHT", activeDropdownMenu, "BOTTOMRIGHT", -3, 3)
-            activeDropdownMenu.sbTrack:SetShown(hasScroll)
-            activeDropdownMenu.sbThumb:SetShown(hasScroll)
-            if hasScroll then
-                local thumbH = math.max(18, math.floor(viewH * (viewH / totalH)))
-                activeDropdownMenu.sbThumb:SetSize(4, thumbH)
-                activeDropdownMenu.sbThumb:ClearAllPoints()
-                activeDropdownMenu.sbThumb:SetPoint("TOP", activeDropdownMenu.sbTrack, "TOP", 0, 0)
+            if activeDropdownMenu.UpdateMenuThumb then
+                activeDropdownMenu.UpdateMenuThumb()
             end
         end
 
@@ -2834,6 +2955,10 @@ function DM:CreateSliderControl(parent, minVal, maxVal, stepVal, getter, setter,
         self:SetScript("OnUpdate", nil)
         holder:RefreshValue()
     end)
+    slider:SetScript("OnHide", function(self)
+        isDragging = false
+        self:SetScript("OnUpdate", nil)
+    end)
     slider:SetScript("OnEnter", function(self)
         UpdateFillAndThumb()
         if GameTooltip then
@@ -2900,6 +3025,7 @@ function DM:CreateObsidianScrollPage(parent, topAnchor, contentHeight)
     track:SetWidth(4)
     track:SetPoint("TOPRIGHT", page, "TOPRIGHT", 10, 0)
     track:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 10, 0)
+    track:EnableMouse(true)
     track.bg = track:CreateTexture(nil, "BACKGROUND")
     track.bg:SetAllPoints(track)
     track.bg:SetColorTexture(1, 1, 1, 0.05)
@@ -2909,9 +3035,21 @@ function DM:CreateObsidianScrollPage(parent, topAnchor, contentHeight)
     thumb:SetWidth(4)
     thumb:SetHeight(48)
     thumb:SetPoint("TOP", track, "TOP", 0, 0)
+    thumb:EnableMouse(true)
     thumb.bg = thumb:CreateTexture(nil, "ARTWORK")
     thumb.bg:SetAllPoints(thumb)
     thumb.bg:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+
+    local function RefreshPageThumbColor()
+        if thumb.isDragging then
+            local ar, ag, ab = DM:GetAccentColor()
+            thumb.bg:SetColorTexture(ar, ag, ab, 0.95)
+        elseif thumb:IsMouseOver() then
+            thumb.bg:SetColorTexture(0.52, 0.60, 0.72, 0.95)
+        else
+            thumb.bg:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+        end
+    end
 
     local function UpdateScrollLayout()
         local viewH = page:GetHeight() or 0
@@ -2933,6 +3071,7 @@ function DM:CreateObsidianScrollPage(parent, topAnchor, contentHeight)
             local offset = -(cur / maxScroll) * travel
             thumb:ClearAllPoints()
             thumb:SetPoint("TOP", track, "TOP", 0, offset)
+            RefreshPageThumbColor()
         else
             track:Hide()
             sf:SetVerticalScroll(0)
@@ -2940,6 +3079,7 @@ function DM:CreateObsidianScrollPage(parent, topAnchor, contentHeight)
     end
 
     sf:SetScript("OnMouseWheel", function(_, delta)
+        DM:CloseDropdownMenu()
         local viewH = page:GetHeight() or 0
         local maxScroll = math.max(0, (contentHeight or 460) - viewH)
         if maxScroll <= 0 then return end
@@ -2949,8 +3089,33 @@ function DM:CreateObsidianScrollPage(parent, topAnchor, contentHeight)
         UpdateScrollLayout()
     end)
 
+    track:SetScript("OnMouseDown", function(selfTrack, btn)
+        if btn ~= "LeftButton" then return end
+        DM:CloseDropdownMenu()
+        local viewH = page:GetHeight() or 0
+        local maxScroll = math.max(0, (contentHeight or 460) - viewH)
+        if maxScroll <= 0 then return end
+        local scale = selfTrack:GetEffectiveScale() or 1
+        local _, cy = GetCursorPosition()
+        cy = cy / scale
+        local top, bottom = selfTrack:GetTop(), selfTrack:GetBottom()
+        if top and bottom and top > bottom then
+            local trackH = top - bottom
+            local thumbH = thumb:GetHeight() or 28
+            local travel = math.max(1, trackH - thumbH)
+            local ratio = math.max(0, math.min(1, ((top - cy) - (thumbH * 0.5)) / travel))
+            sf:SetVerticalScroll(ratio * maxScroll)
+            UpdateScrollLayout()
+        end
+    end)
+
+    thumb:SetScript("OnEnter", function() RefreshPageThumbColor() end)
+    thumb:SetScript("OnLeave", function() RefreshPageThumbColor() end)
     thumb:SetScript("OnMouseDown", function(s, btn)
         if btn ~= "LeftButton" then return end
+        DM:CloseDropdownMenu()
+        s.isDragging = true
+        RefreshPageThumbColor()
         local _, startCursorY = GetCursorPosition()
         local scale = s:GetEffectiveScale() or 1
         startCursorY = startCursorY / scale
@@ -2958,7 +3123,9 @@ function DM:CreateObsidianScrollPage(parent, topAnchor, contentHeight)
 
         s:SetScript("OnUpdate", function()
             if not IsMouseButtonDown("LeftButton") then
+                s.isDragging = false
                 s:SetScript("OnUpdate", nil)
+                RefreshPageThumbColor()
                 return
             end
             local viewH = page:GetHeight() or 0
@@ -2976,10 +3143,14 @@ function DM:CreateObsidianScrollPage(parent, topAnchor, contentHeight)
         end)
     end)
     thumb:SetScript("OnMouseUp", function(s)
+        s.isDragging = false
         s:SetScript("OnUpdate", nil)
+        RefreshPageThumbColor()
     end)
     thumb:SetScript("OnHide", function(s)
+        s.isDragging = false
         s:SetScript("OnUpdate", nil)
+        RefreshPageThumbColor()
     end)
 
     function page:SetContentHeight(newH)
@@ -6144,6 +6315,7 @@ function DM:EnsureEditModeInspector()
             pop:SetClampedToScreen(true)
             pop:EnableMouse(true)
             DM:ApplyBackdrop(pop, { r = 0.043, g = 0.051, b = 0.071, a = 0.99 }, DM:GetAccentColorTable(0.85), 1)
+            EnsureDMUISpecialFrame("DynamicMarkerHudSelectorPopup")
 
             local catcher = CreateFrame("Button", nil, pop)
             catcher:SetAllPoints(UIParent)
@@ -6152,6 +6324,11 @@ function DM:EnsureEditModeInspector()
             catcher:RegisterForClicks("AnyDown", "AnyUp")
             catcher:SetScript("OnClick", function() pop:Hide() end)
             pop.catcher = catcher
+            pop:SetScript("OnHide", function()
+                if selectorBtn and selectorBtn.chevron then
+                    selectorBtn.chevron:SetTexture(ICON_CHEVRON_DOWN)
+                end
+            end)
             pop:Hide()
 
             pop.rows = {}
@@ -6185,11 +6362,23 @@ function DM:EnsureEditModeInspector()
             return pop
         end
 
+        if not selectorBtn._dmOnHideHooked then
+            selectorBtn._dmOnHideHooked = true
+            selectorBtn:HookScript("OnHide", function()
+                if insp.selectorPopup and insp.selectorPopup:IsShown() then
+                    insp.selectorPopup:Hide()
+                end
+            end)
+        end
+
         selectorBtn:SetScript("OnClick", function(sBtn)
             local pop = EnsureSelectorPopup()
             if pop:IsShown() then
                 pop:Hide()
                 return
+            end
+            if sBtn.chevron then
+                sBtn.chevron:SetTexture(ICON_CHEVRON_UP)
             end
             DM:ApplyBackdrop(pop, { r = 0.043, g = 0.051, b = 0.071, a = 0.99 }, DM:GetAccentColorTable(0.85), 1)
             local selKey = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
@@ -7116,6 +7305,7 @@ function DM:SyncEditBarStates()
 end
 
 function DM:SetEditMode(enabled, opts)
+    self:CloseDropdownMenu()
     local inCombat = (InCombatLockdown and InCombatLockdown()) or (opts and opts.fromCombat == true)
     if enabled and inCombat then
         print("|cFF38BDF8DynamicMarker|r: HUD Edit Mode cannot be activated during combat.")
@@ -7265,6 +7455,7 @@ function DM:SetEditMode(enabled, opts)
 end
 
 function DM:ToggleHudEditMode(preferredHudKey)
+    self:CloseDropdownMenu()
     local explicitFromCard = (preferredHudKey ~= nil and preferredHudKey ~= "")
     if explicitFromCard then
         local primaryKey = ResolveHUDKeyAliases(preferredHudKey)
@@ -7464,6 +7655,7 @@ end
 -- ============================================================================
 
 function DM:BuildWorkspace(parentContainer)
+    RegisterMarkerPopupCloser()
     if self.workspaceFrame then
         self.workspaceFrame:SetParent(parentContainer)
         self.workspaceFrame:ClearAllPoints()
@@ -7478,7 +7670,7 @@ function DM:BuildWorkspace(parentContainer)
     ws:SetPoint("TOPLEFT", parentContainer, "TOPLEFT", 0, 0)
     ws:SetPoint("BOTTOMRIGHT", parentContainer, "BOTTOMRIGHT", 0, 0)
     ws:SetScript("OnShow", function() self:RefreshTargetBar(); self:RefreshFlareBar() end)
-    ws:SetScript("OnHide", function() self:RefreshTargetBar(); self:RefreshFlareBar() end)
+    ws:SetScript("OnHide", function() self:CloseDropdownMenu(); self:RefreshTargetBar(); self:RefreshFlareBar() end)
     self.workspaceFrame = ws
     self.refreshables = {}
     self.hudEditToggleButtons = {}
@@ -8715,6 +8907,7 @@ end
 -- ============================================================================
 
 function DM:CloseStudioModal()
+    self:CloseDropdownMenu()
     if self.modalFrame then
         if not (InCombatLockdown and InCombatLockdown()) and self.modalFrame.EnableKeyboard then
             pcall(self.modalFrame.EnableKeyboard, self.modalFrame, false)
@@ -8729,6 +8922,7 @@ function DM:CloseStudioModal()
 end
 
 function DM:ShowStudioModal(mode)
+    self:CloseDropdownMenu()
     local anchorTarget = (self.shellFrame and self.shellFrame:IsShown() and self.shellFrame) or UIParent
     local surf, surfKey = GetStandaloneSurfaceColors(self)
     local solidPanel = { r = surf.panel.r, g = surf.panel.g, b = surf.panel.b, a = 1.00 }
@@ -9089,6 +9283,7 @@ function DM:ShowStudioModal(mode)
             track:SetWidth(4)
             track:SetPoint("TOPRIGHT", clBox, "TOPRIGHT", 0, -2)
             track:SetPoint("BOTTOMRIGHT", clBox, "BOTTOMRIGHT", 0, 2)
+            track:EnableMouse(true)
             track.bg = track:CreateTexture(nil, "BACKGROUND")
             track.bg:SetAllPoints(track)
             track.bg:SetColorTexture(1, 1, 1, 0.06)
@@ -9098,9 +9293,21 @@ function DM:ShowStudioModal(mode)
             thumb:SetWidth(4)
             thumb:SetHeight(48)
             thumb:SetPoint("TOP", track, "TOP", 0, 0)
+            thumb:EnableMouse(true)
             thumb.bg = thumb:CreateTexture(nil, "ARTWORK")
             thumb.bg:SetAllPoints(thumb)
             thumb.bg:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+
+            local function RefreshClThumbColor()
+                if thumb.isDragging then
+                    local ar, ag, ab = self:GetAccentColor()
+                    thumb.bg:SetColorTexture(ar, ag, ab, 0.95)
+                elseif thumb:IsMouseOver() then
+                    thumb.bg:SetColorTexture(0.52, 0.60, 0.72, 0.95)
+                else
+                    thumb.bg:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+                end
+            end
 
             local function UpdateClScroll()
                 local viewH = math.max(100, sf:GetHeight() or 300)
@@ -9120,6 +9327,7 @@ function DM:ShowStudioModal(mode)
                     local travel = math.max(1, trackH - thumbH)
                     thumb:ClearAllPoints()
                     thumb:SetPoint("TOP", track, "TOP", 0, -(cur / maxScroll) * travel)
+                    RefreshClThumbColor()
                 else
                     track:Hide()
                     sf:SetVerticalScroll(0)
@@ -9135,14 +9343,39 @@ function DM:ShowStudioModal(mode)
                 UpdateClScroll()
             end)
 
+            track:SetScript("OnMouseDown", function(selfTrack, btn)
+                if btn ~= "LeftButton" then return end
+                local viewH = sf:GetHeight() or 300
+                local maxScroll = math.max(0, (child:GetHeight() or 300) - viewH)
+                if maxScroll <= 0 then return end
+                local scale = selfTrack:GetEffectiveScale() or 1
+                local _, cy = GetCursorPosition()
+                cy = cy / scale
+                local top, bottom = selfTrack:GetTop(), selfTrack:GetBottom()
+                if top and bottom and top > bottom then
+                    local trackH = top - bottom
+                    local thumbH = thumb:GetHeight() or 26
+                    local travel = math.max(1, trackH - thumbH)
+                    local ratio = math.max(0, math.min(1, ((top - cy) - (thumbH * 0.5)) / travel))
+                    sf:SetVerticalScroll(ratio * maxScroll)
+                    UpdateClScroll()
+                end
+            end)
+
+            thumb:SetScript("OnEnter", function() RefreshClThumbColor() end)
+            thumb:SetScript("OnLeave", function() RefreshClThumbColor() end)
             thumb:SetScript("OnMouseDown", function(s, btn)
                 if btn ~= "LeftButton" then return end
+                s.isDragging = true
+                RefreshClThumbColor()
                 local _, startCursorY = GetCursorPosition()
                 startCursorY = startCursorY / (s:GetEffectiveScale() or 1)
                 local startScroll = sf:GetVerticalScroll() or 0
                 s:SetScript("OnUpdate", function()
                     if not IsMouseButtonDown("LeftButton") then
+                        s.isDragging = false
                         s:SetScript("OnUpdate", nil)
+                        RefreshClThumbColor()
                         return
                     end
                     local viewH = sf:GetHeight() or 300
@@ -9158,8 +9391,16 @@ function DM:ShowStudioModal(mode)
                     UpdateClScroll()
                 end)
             end)
-            thumb:SetScript("OnMouseUp", function(s) s:SetScript("OnUpdate", nil) end)
-            thumb:SetScript("OnHide", function(s) s:SetScript("OnUpdate", nil) end)
+            thumb:SetScript("OnMouseUp", function(s)
+                s.isDragging = false
+                s:SetScript("OnUpdate", nil)
+                RefreshClThumbColor()
+            end)
+            thumb:SetScript("OnHide", function(s)
+                s.isDragging = false
+                s:SetScript("OnUpdate", nil)
+                RefreshClThumbColor()
+            end)
 
             clBox.sf = sf
             clBox.txt = txt
@@ -9420,8 +9661,14 @@ function DM:EnsureStandaloneShell()
         end
     end)
     f:HookScript("OnHide", function()
+        self:CloseDropdownMenu()
         self:CloseStudioModal()
     end)
+    function f:Minimize()
+        DM:CloseDropdownMenu()
+        DM:CloseStudioModal()
+        self:Hide()
+    end
     f:HookScript("OnShow", function(s)
         if s.Raise then s:Raise() end
         if not s._postLayoutPending and C_Timer and C_Timer.After then
@@ -10171,6 +10418,8 @@ function DM:EnsureStandaloneShell()
 end
 
 function DM:SelectActiveModuleInShell(modKey, externalMod)
+    self:CloseDropdownMenu()
+    self:CloseStudioModal()
     local f = self:EnsureStandaloneShell()
     for _, child in ipairs({ f.Content:GetChildren() }) do
         child:Hide()
@@ -10546,6 +10795,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "16/11/2026",
     entries = {
+        { type = "UI",       text = "3-Way Interactive Obsidian Scrollbars & Automatic Popover Dismissal (16/11/2026): Upgraded all scrollbars across the settings tabs, dropdown menus, and the Changelog viewer to support full 3-way interaction (mousewheel scrolling, Left-Click & Drag on the scrollbar thumb with hover highlights, and Left-Click on the scrollbar track to jump directly to that position), added an unclipped 1px accent border overlay and Escape-key dismissal to dropdown menus, and ensured open dropdowns and HUD selector popovers close automatically when switching tabs, entering HUD Edit Mode, or closing the window." },
         { type = "IMPROVED", text = "Release v2.3.0 - HUD Edit Mode 'Apply All' Appearance Action & Lockstep Parity (16/11/2026): Added a compact 'Apply All' Opacity & Border Style button to Row 3 of DynamicMarkerEditModeInspector so you can copy the active bar's opacity and border style across both bars in one click, and synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.3.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "FEATURE", text = "SharedMedia, AddOn & Blizzard Font Discovery in Theme Studio (15/11/2026): Added runtime scanning for LibSharedMedia-3.0, DBM, WeakAuras, and ElvUI fonts alongside Blizzard standard fonts and bundled Expressway fonts inside Theme & Font Studio. Grouped dropdown options under Built-in Fonts, Blizzard, and SharedMedia / AddOns with live search, scroll support, per-font preview rendering, and safe fallback to the default font if an external addon is disabled." },
         { type = "IMPROVED", text = "Unbound-by-Default World Flare Keybinds & Guided Setup Assignment (15/11/2026): Removed the hardcoded F4 and F5 World Flare default keybinds so fresh installs and Resets start with both keys 'Unbound' (leaving your own Blizzard and action bar bindings untouched while preserving any existing saved DynamicMarkerDB hotkeys), added optional single-button Cycle World Flare and Clear All Flares keybind capture rows to both Guided Setup and the World Flare Keys (/dm flares) tab ('Click to bind, Right-click to unbind'), and refined capture behaviour so Escape cancels without losing the current key while Backspace/Delete or Right-Click clears to Unbound." },
