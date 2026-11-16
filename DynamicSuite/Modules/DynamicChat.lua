@@ -9368,105 +9368,155 @@ do
 
     function TypographyMgr.AttachSliderToCard(card, minVal, maxVal, stepVal, suffix, getValue, onChanged, tooltipAction)
         local wrap = CreateFrame("Frame", nil, card)
-        wrap:SetSize(236, 26)
+        wrap:SetSize(256, 26)
         wrap:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -17)
         AnchorCardTextToRightWidget(card, wrap)
 
-        local valBox = CreateFrame("Frame", nil, wrap, "BackdropTemplate")
-        valBox:SetSize(52, 24)
-        valBox:SetPoint("RIGHT", wrap, "RIGHT", 0, 0)
-        valBox:SetBackdrop({
+        local valText = wrap:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(valText, 11, "")
+        valText:SetPoint("RIGHT", wrap, "RIGHT", 0, 0)
+        valText:SetWidth(52)
+        valText:SetJustifyH("RIGHT")
+        valText:SetWordWrap(false)
+
+        local slider = CreateFrame("Slider", nil, wrap, "BackdropTemplate")
+        slider:SetPoint("LEFT", wrap, "LEFT", 0, 0)
+        slider:SetPoint("RIGHT", valText, "LEFT", -10, 0)
+        slider:SetHeight(4)
+        slider:SetHitRectInsets(0, 0, -10, -10)
+        slider:SetOrientation("HORIZONTAL")
+        slider:SetMinMaxValues(minVal, maxVal)
+        slider:SetValueStep(stepVal)
+        slider:SetObeyStepOnDrag(false)
+        slider:EnableMouse(true)
+        slider:EnableMouseWheel(true)
+        slider:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
             edgeFile = "Interface\\Buttons\\WHITE8x8",
             edgeSize = 1,
         })
-        valBox:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
-        valBox:SetBackdropBorderColor(0.18, 0.21, 0.27, 0.95)
-
-        local valText = valBox:CreateFontString(nil, "OVERLAY")
-        SetSafeFont(valText, 10.5, "")
-        valText:SetPoint("CENTER", valBox, "CENTER", 0, 0)
-        valText:SetTextColor(0.976, 0.984, 1.0, 1)
-
-        local slider = CreateFrame("Slider", nil, wrap, "BackdropTemplate")
-        slider:SetPoint("LEFT", wrap, "LEFT", 4, 0)
-        slider:SetPoint("RIGHT", valBox, "LEFT", -10, 0)
-        slider:SetHeight(16)
-        slider:SetOrientation("HORIZONTAL")
-        slider:SetMinMaxValues(minVal, maxVal)
-        slider:SetValueStep(stepVal)
-        slider:SetObeyStepOnDrag(true)
-
-        local trackBg = slider:CreateTexture(nil, "BACKGROUND")
-        trackBg:SetPoint("LEFT", slider, "LEFT", 0, 0)
-        trackBg:SetPoint("RIGHT", slider, "RIGHT", 0, 0)
-        trackBg:SetHeight(6)
-        trackBg:SetColorTexture(0.08, 0.095, 0.13, 0.96)
-        DisableTexPixelSnap(trackBg)
-
-        local trackBorder = CreateFrame("Frame", nil, slider, "BackdropTemplate")
-        trackBorder:SetPoint("LEFT", slider, "LEFT", 0, 0)
-        trackBorder:SetPoint("RIGHT", slider, "RIGHT", 0, 0)
-        trackBorder:SetHeight(6)
-        trackBorder:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-        trackBorder:SetBackdropBorderColor(0.18, 0.22, 0.28, 0.95)
+        slider:SetBackdropColor(0.035, 0.039, 0.051, 0.98)
+        slider:SetBackdropBorderColor(1, 1, 1, 0.14)
 
         local fillTex = slider:CreateTexture(nil, "ARTWORK")
-        fillTex:SetPoint("LEFT", trackBg, "LEFT", 1, 0)
-        fillTex:SetHeight(4)
+        fillTex:SetPoint("TOPLEFT", slider, "TOPLEFT", 1, -1)
+        fillTex:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 1, 1)
+        fillTex:SetWidth(1)
         DisableTexPixelSnap(fillTex)
 
         local thumbTex = slider:CreateTexture(nil, "OVERLAY")
-        thumbTex:SetSize(12, 16)
-        thumbTex:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        thumbTex:SetSize(6, 14)
+        thumbTex:SetColorTexture(0.973, 0.980, 0.988, 1.0) -- #F8FAFC at rest
         DisableTexPixelSnap(thumbTex)
         slider:SetThumbTexture(thumbTex)
 
-        local function UpdateSliderVisual(val)
+        local isDragging = false
+        local lastCommitted = nil
+
+        local function SnapValue(v)
+            v = math.max(minVal, math.min(maxVal, tonumber(v) or minVal))
+            if stepVal and stepVal > 0 then
+                v = math.floor(((v - minVal) / stepVal) + 0.5) * stepVal + minVal
+            end
+            return math.max(minVal, math.min(maxVal, v))
+        end
+
+        local function UpdateSliderVisual(rawVal)
             local ar, ag, ab = GetSuiteAccent()
-            local pct = (maxVal > minVal) and ((val - minVal) / (maxVal - minVal)) or 0
+            fillTex:SetColorTexture(ar, ag, ab, 0.85)
+            valText:SetTextColor(ar, ag, ab, 1.0)
+            if isDragging or slider:IsMouseOver() then
+                thumbTex:SetColorTexture(ar, ag, ab, 1.0)
+            else
+                thumbTex:SetColorTexture(0.973, 0.980, 0.988, 1.0)
+            end
+            local v = rawVal or slider:GetValue() or minVal
+            local pct = (maxVal > minVal) and ((v - minVal) / (maxVal - minVal)) or 0
             if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
-            local w = math.max(1, (slider:GetWidth() or 160) - 2)
-            fillTex:SetWidth(math.max(1, w * pct))
-            fillTex:SetColorTexture(ar, ag, ab, 0.90)
-            thumbTex:SetColorTexture(ar, ag, ab, 1.0)
-            SetSafeFont(valText, 10.5, "")
-            valText:SetText(tostring(val) .. (suffix or ""))
+            local tw = slider:GetWidth()
+            if not tw or tw <= 0 then tw = 194 end
+            fillTex:SetWidth(math.max(1, pct * math.max(1, tw - 2)))
+            SetSafeFont(valText, 11, "")
+            valText:SetText(tostring(SnapValue(v)) .. (suffix or ""))
         end
 
         wrap.RefreshValue = function()
             wrap._refreshing = true
-            local v = tonumber(getValue()) or minVal
-            v = math.floor(v / stepVal + 0.5) * stepVal
-            if v < minVal then v = minVal elseif v > maxVal then v = maxVal end
+            local v = SnapValue(getValue())
+            lastCommitted = v
             slider:SetValue(v)
             UpdateSliderVisual(v)
             wrap._refreshing = false
         end
 
+        local function UpdateSliderFromCursor()
+            if isDragging and IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+                isDragging = false
+                slider:SetScript("OnUpdate", nil)
+                wrap:RefreshValue()
+                return
+            end
+            local scale = slider:GetEffectiveScale() or 1
+            local cx = (select(1, GetCursorPosition()) or 0) / scale
+            local left, tw = slider:GetLeft(), slider:GetWidth()
+            if left and tw and tw > 0 then
+                local pct = math.max(0, math.min(1, (cx - left) / tw))
+                slider:SetValue(minVal + pct * (maxVal - minVal))
+            end
+        end
+
         slider:SetScript("OnSizeChanged", function()
-            UpdateSliderVisual(math.floor((slider:GetValue() or minVal) / stepVal + 0.5) * stepVal)
+            UpdateSliderVisual(slider:GetValue())
         end)
 
-        slider:SetScript("OnValueChanged", function(_, rawVal, userInput)
-            local v = math.floor((tonumber(rawVal) or minVal) / stepVal + 0.5) * stepVal
-            if v < minVal then v = minVal elseif v > maxVal then v = maxVal end
-            UpdateSliderVisual(v)
-            if not wrap._refreshing and userInput ~= false then
-                onChanged(v)
+        slider:SetScript("OnValueChanged", function(_, rawVal)
+            local stepped = SnapValue(rawVal)
+            UpdateSliderVisual(rawVal)
+            if not wrap._refreshing and stepped ~= lastCommitted then
+                lastCommitted = stepped
+                onChanged(stepped)
             end
         end)
 
+        slider:SetScript("OnMouseDown", function(selfS, button)
+            if button == "LeftButton" then
+                isDragging = true
+                UpdateSliderFromCursor()
+                selfS:SetScript("OnUpdate", UpdateSliderFromCursor)
+            end
+        end)
+        slider:SetScript("OnMouseUp", function(selfS)
+            isDragging = false
+            selfS:SetScript("OnUpdate", nil)
+            wrap:RefreshValue()
+        end)
+        slider:SetScript("OnHide", function(selfS)
+            isDragging = false
+            selfS:SetScript("OnUpdate", nil)
+        end)
+        slider:SetScript("OnMouseWheel", function(_, delta)
+            local cur = SnapValue(getValue())
+            local newVal = SnapValue(cur + (delta > 0 and stepVal or -stepVal))
+            if newVal ~= lastCommitted then
+                lastCommitted = newVal
+                onChanged(newVal)
+            end
+            wrap:RefreshValue()
+        end)
+
         slider:SetScript("OnEnter", function(selfS)
+            UpdateSliderVisual(slider:GetValue())
             if _G.GameTooltip then
                 _G.GameTooltip:SetOwner(selfS, "ANCHOR_TOP")
                 _G.GameTooltip:ClearLines()
                 _G.GameTooltip:AddLine((card.title and card.title:GetText()) or "Slider", 1, 1, 1)
-                _G.GameTooltip:AddLine(FormatTooltipCmd("Drag:", tooltipAction or "Adjust value.", "34D399"), 0.886, 0.910, 0.941)
+                _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click / Drag:", tooltipAction or "Adjust value.", "34D399"), 0.886, 0.910, 0.941)
+                _G.GameTooltip:AddLine(FormatTooltipCmd("Mousewheel:", "Fine-tune by 1 step.", "38BDF8"), 0.886, 0.910, 0.941)
                 _G.GameTooltip:Show()
             end
         end)
         slider:SetScript("OnLeave", function()
+            UpdateSliderVisual(slider:GetValue())
             if _G.GameTooltip then _G.GameTooltip:Hide() end
         end)
 
