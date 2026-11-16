@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Synthesizes the 6-chime EX3-inspired 44.1 kHz Stereo Vorbis .ogg sound pack
+    Synthesizes the 10-chime EX3-inspired 44.1 kHz Stereo Vorbis .ogg sound pack
     for DynamicChat Tab 3.
 #>
 [CmdletBinding()]
@@ -97,7 +97,8 @@ function Add-CrystallineBellPluck {
         [double]$Freq,
         [double]$Gain,
         [double]$TauMain,
-        [double]$Pan
+        [double]$Pan,
+        [double]$HarmonicScale = 1.0
     )
     $n = $Left.Length
     $startIdx = [int][Math]::Round($StartSec * $SampleRate)
@@ -108,6 +109,10 @@ function Add-CrystallineBellPluck {
     $angle = ($Pan + 1.0) * 0.25 * [Math]::PI
     $gainL = $Gain * [Math]::Cos($angle)
     $gainR = $Gain * [Math]::Sin($angle)
+
+    $h2 = 0.34 * $HarmonicScale
+    $h3 = 0.14 * $HarmonicScale
+    $h4 = 0.06 * $HarmonicScale
 
     for ($i = $startIdx; $i -lt $n; $i++) {
         $t = ($i - $startIdx) / [double]$SampleRate
@@ -126,15 +131,15 @@ function Add-CrystallineBellPluck {
 
         $sigL = (
             1.00 * [Math]::Sin($twoPi * $Freq * $t) * $d1 +
-            0.34 * [Math]::Sin($twoPi * (2.0 * $fL) * $t) * $d2 +
-            0.14 * [Math]::Sin($twoPi * (3.0 * $fL) * $t) * $d3 +
-            0.06 * [Math]::Sin($twoPi * (4.02 * $fL) * $t) * $d4
+            $h2  * [Math]::Sin($twoPi * (2.0 * $fL) * $t) * $d2 +
+            $h3  * [Math]::Sin($twoPi * (3.0 * $fL) * $t) * $d3 +
+            $h4  * [Math]::Sin($twoPi * (4.02 * $fL) * $t) * $d4
         )
         $sigR = (
             1.00 * [Math]::Sin($twoPi * $Freq * $t) * $d1 +
-            0.34 * [Math]::Sin($twoPi * (2.0 * $fR) * $t) * $d2 +
-            0.14 * [Math]::Sin($twoPi * (3.0 * $fR) * $t) * $d3 +
-            0.06 * [Math]::Sin($twoPi * (4.02 * $fR) * $t) * $d4
+            $h2  * [Math]::Sin($twoPi * (2.0 * $fR) * $t) * $d2 +
+            $h3  * [Math]::Sin($twoPi * (3.0 * $fR) * $t) * $d3 +
+            $h4  * [Math]::Sin($twoPi * (4.02 * $fR) * $t) * $d4
         )
 
         $Left[$i]  += $gainL * $envAtk * $sigL
@@ -147,13 +152,17 @@ function Apply-StereoTailAndFade {
         [double[]]$Left,
         [double[]]$Right,
         [int]$SampleRate,
-        [double]$FadeOutSec = 0.045
+        [double]$FadeOutSec = 0.045,
+        [double]$Tap1LSec = 0.140,
+        [double]$Tap1RSec = 0.165,
+        [double]$Tap2LSec = 0.255,
+        [double]$Tap2RSec = 0.285
     )
     $n = $Left.Length
-    $dL1 = [int][Math]::Round(0.140 * $SampleRate)
-    $dR1 = [int][Math]::Round(0.165 * $SampleRate)
-    $dL2 = [int][Math]::Round(0.255 * $SampleRate)
-    $dR2 = [int][Math]::Round(0.285 * $SampleRate)
+    $dL1 = [int][Math]::Round($Tap1LSec * $SampleRate)
+    $dR1 = [int][Math]::Round($Tap1RSec * $SampleRate)
+    $dL2 = [int][Math]::Round($Tap2LSec * $SampleRate)
+    $dR2 = [int][Math]::Round($Tap2RSec * $SampleRate)
 
     $copyL = $Left.Clone()
     $copyR = $Right.Clone()
@@ -182,6 +191,9 @@ function New-ChimeFromNotes {
         [double]$TotalSec,
         [double]$FadeOutSec,
         [hashtable[]]$Notes,
+        [double]$HarmonicScale = 1.0,
+        [double]$Tap1LSec = 0.140,
+        [double]$Tap1RSec = 0.165,
         [int]$SampleRate = 44100
     )
     $n = [int][Math]::Round($TotalSec * $SampleRate)
@@ -189,9 +201,11 @@ function New-ChimeFromNotes {
     $right = New-Object double[] $n
     foreach ($note in $Notes) {
         Add-CrystallineBellPluck -Left $left -Right $right -SampleRate $SampleRate `
-            -StartSec $note.Start -Freq $note.Freq -Gain $note.Gain -TauMain $note.Tau -Pan $note.Pan
+            -StartSec $note.Start -Freq $note.Freq -Gain $note.Gain -TauMain $note.Tau -Pan $note.Pan `
+            -HarmonicScale $HarmonicScale
     }
-    Apply-StereoTailAndFade -Left $left -Right $right -SampleRate $SampleRate -FadeOutSec $FadeOutSec
+    Apply-StereoTailAndFade -Left $left -Right $right -SampleRate $SampleRate -FadeOutSec $FadeOutSec `
+        -Tap1LSec $Tap1LSec -Tap1RSec $Tap1RSec
     Normalize-StereoPeakDbFS -Left $left -Right $right -TargetDbFS -6.0
     return @{ Left = $left; Right = $right }
 }
@@ -199,7 +213,7 @@ function New-ChimeFromNotes {
 $ffmpeg = Resolve-FFmpeg
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "DynamicChatAudioPack"
+$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "DynamicChatAudioPack10"
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
 $packSpecs = @(
@@ -224,25 +238,56 @@ $packSpecs = @(
     },
     @{
         Name = "DynamicChat_ChimeWhisper"
-        Data = (New-ChimeFromNotes -TotalSec 0.560 -FadeOutSec 0.050 -Notes @(
-            @{ Start = 0.000; Freq = 783.99;  Gain = 0.88; Tau = 0.125; Pan = -0.18 },
-            @{ Start = 0.075; Freq = 1174.66; Gain = 1.00; Tau = 0.150; Pan =  0.18 }
+        Data = (New-ChimeFromNotes -TotalSec 0.460 -FadeOutSec 0.050 -HarmonicScale 0.45 -Notes @(
+            @{ Start = 0.000; Freq = 1318.51; Gain = 0.92; Tau = 0.105; Pan = -0.14 },
+            @{ Start = 0.095; Freq = 1108.73; Gain = 1.00; Tau = 0.130; Pan =  0.14 }
         ))
     },
     @{
         Name = "DynamicChat_MentionWarm"
         Data = (New-ChimeFromNotes -TotalSec 0.680 -FadeOutSec 0.055 -Notes @(
-            @{ Start = 0.000; Freq = 783.99;  Gain = 0.85; Tau = 0.130; Pan = -0.22 },
-            @{ Start = 0.055; Freq = 987.77;  Gain = 0.92; Tau = 0.140; Pan =  0.00 },
-            @{ Start = 0.115; Freq = 1174.66; Gain = 1.00; Tau = 0.175; Pan =  0.22 }
+            @{ Start = 0.000; Freq = 523.25;  Gain = 0.82; Tau = 0.120; Pan = -0.45 },
+            @{ Start = 0.042; Freq = 783.99;  Gain = 0.88; Tau = 0.130; Pan = -0.15 },
+            @{ Start = 0.084; Freq = 987.77;  Gain = 0.94; Tau = 0.140; Pan =  0.15 },
+            @{ Start = 0.130; Freq = 1318.51; Gain = 1.00; Tau = 0.175; Pan =  0.45 }
         ))
     },
     @{
         Name = "DynamicChat_ChimeAlert"
-        Data = (New-ChimeFromNotes -TotalSec 0.640 -FadeOutSec 0.050 -Notes @(
-            @{ Start = 0.000; Freq = 587.33;  Gain = 0.85; Tau = 0.125; Pan = -0.20 },
-            @{ Start = 0.060; Freq = 880.00;  Gain = 0.92; Tau = 0.135; Pan =  0.00 },
-            @{ Start = 0.125; Freq = 1174.66; Gain = 1.00; Tau = 0.165; Pan =  0.20 }
+        Data = (New-ChimeFromNotes -TotalSec 0.560 -FadeOutSec 0.045 -HarmonicScale 1.35 -Notes @(
+            @{ Start = 0.000; Freq = 440.00;  Gain = 0.86; Tau = 0.085; Pan =  0.00 },
+            @{ Start = 0.110; Freq = 880.00;  Gain = 0.94; Tau = 0.075; Pan = -0.18 },
+            @{ Start = 0.185; Freq = 880.00;  Gain = 1.00; Tau = 0.135; Pan =  0.18 }
+        ))
+    },
+    @{
+        Name = "DynamicChat_ChimeEcho"
+        Data = (New-ChimeFromNotes -TotalSec 0.300 -FadeOutSec 0.040 -Tap1LSec 0.070 -Tap1RSec 0.070 -Notes @(
+            @{ Start = 0.000; Freq = 1046.50; Gain = 1.00; Tau = 0.065; Pan = -0.25 }
+        ))
+    },
+    @{
+        Name = "DynamicChat_ChimeFourth"
+        Data = (New-ChimeFromNotes -TotalSec 0.440 -FadeOutSec 0.045 -Notes @(
+            @{ Start = 0.000; Freq = 659.25;  Gain = 0.88; Tau = 0.105; Pan = -0.16 },
+            @{ Start = 0.080; Freq = 880.00;  Gain = 1.00; Tau = 0.130; Pan =  0.16 }
+        ))
+    },
+    @{
+        Name = "DynamicChat_ChimeBloom"
+        Data = (New-ChimeFromNotes -TotalSec 0.620 -FadeOutSec 0.055 -Notes @(
+            @{ Start = 0.000; Freq = 698.46;  Gain = 0.84; Tau = 0.135; Pan = -0.24 },
+            @{ Start = 0.070; Freq = 1046.50; Gain = 0.92; Tau = 0.145; Pan =  0.00 },
+            @{ Start = 0.145; Freq = 1567.98; Gain = 1.00; Tau = 0.175; Pan =  0.24 }
+        ))
+    },
+    @{
+        Name = "DynamicChat_ChimeBeacon"
+        Data = (New-ChimeFromNotes -TotalSec 0.720 -FadeOutSec 0.055 -Notes @(
+            @{ Start = 0.000; Freq = 783.99;  Gain = 0.84; Tau = 0.110; Pan = -0.22 },
+            @{ Start = 0.065; Freq = 1174.66; Gain = 0.92; Tau = 0.115; Pan =  0.18 },
+            @{ Start = 0.130; Freq = 987.77;  Gain = 0.90; Tau = 0.115; Pan = -0.12 },
+            @{ Start = 0.205; Freq = 1174.66; Gain = 1.00; Tau = 0.170; Pan =  0.00 }
         ))
     }
 )

@@ -6711,12 +6711,16 @@ end
 
 local SOUND_BASE = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\"
 local BUILTIN_SUITE_CHIMES_LIST = {
-    { key = "DC_CHIME_SPARK",   short = "Spark",   label = "DynamicSuite: Spark (High Pluck)",      file = "DynamicChat_ChimeSpark.ogg" },
-    { key = "DC_KEYWORD_PULSE", short = "Pulse",   label = "DynamicSuite: Pulse (Warm Bell)",       file = "DynamicChat_KeywordPulse.ogg" },
-    { key = "DC_CHIME_DUO",     short = "Duo",     label = "DynamicSuite: Duo (Rising Fifth)",      file = "DynamicChat_ChimeDuo.ogg" },
-    { key = "DC_CHIME_WHISPER", short = "Whisper", label = "DynamicSuite: Whisper (Bright Fifth)",  file = "DynamicChat_ChimeWhisper.ogg" },
-    { key = "DC_MENTION_WARM",  short = "Mention", label = "DynamicSuite: Mention (G-Major Triad)", file = "DynamicChat_MentionWarm.ogg" },
-    { key = "DC_CHIME_ALERT",   short = "Alert",   label = "DynamicSuite: Alert (Fifth-Octave)",    file = "DynamicChat_ChimeAlert.ogg" },
+    { key = "DC_CHIME_SPARK",   short = "Spark",   label = "DynamicSuite: Spark (High Pluck)",        file = "DynamicChat_ChimeSpark.ogg" },
+    { key = "DC_KEYWORD_PULSE", short = "Pulse",   label = "DynamicSuite: Pulse (Warm Bell)",         file = "DynamicChat_KeywordPulse.ogg" },
+    { key = "DC_CHIME_DUO",     short = "Duo",     label = "DynamicSuite: Duo (Rising Fifth)",        file = "DynamicChat_ChimeDuo.ogg" },
+    { key = "DC_CHIME_WHISPER", short = "Whisper", label = "DynamicSuite: Whisper (Soft Drop)",       file = "DynamicChat_ChimeWhisper.ogg" },
+    { key = "DC_MENTION_WARM",  short = "Mention", label = "DynamicSuite: Mention (Crystal Cascade)", file = "DynamicChat_MentionWarm.ogg" },
+    { key = "DC_CHIME_ALERT",   short = "Alert",   label = "DynamicSuite: Alert (Double Octave)",     file = "DynamicChat_ChimeAlert.ogg" },
+    { key = "DC_CHIME_ECHO",    short = "Echo",    label = "DynamicSuite: Echo (Glass Ping)",         file = "DynamicChat_ChimeEcho.ogg" },
+    { key = "DC_CHIME_FOURTH",  short = "Chime",   label = "DynamicSuite: Chime (Rising Fourth)",     file = "DynamicChat_ChimeFourth.ogg" },
+    { key = "DC_CHIME_BLOOM",   short = "Bloom",   label = "DynamicSuite: Bloom (Major Ninth)",       file = "DynamicChat_ChimeBloom.ogg" },
+    { key = "DC_CHIME_BEACON",  short = "Beacon",  label = "DynamicSuite: Beacon (Bell Fanfare)",     file = "DynamicChat_ChimeBeacon.ogg" },
 }
 local BUILTIN_SUITE_CHIMES = {}
 for _, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
@@ -6916,7 +6920,7 @@ end
 
 function DynamicChat:PreviewSuiteChimePack()
     if _G.DEFAULT_CHAT_FRAME and type(_G.DEFAULT_CHAT_FRAME.AddMessage) == "function" then
-        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Auditioning 6-chime DynamicSuite pack on SFX (Spark, Pulse, Duo, Whisper, Mention, Alert)...")
+        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Auditioning 10-chime DynamicSuite pack on SFX (Spark, Pulse, Duo, Whisper, Mention, Alert, Echo, Chime, Bloom, Beacon)...")
     end
     for idx, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
         local delay = (idx - 1) * 0.65
@@ -9405,7 +9409,7 @@ local function RenderChatEmbedded(arg1, arg2)
 
     local c3_chimePack = CreateCardRow(sec3_rules, 74,
         "DynamicSuite Chime Pack Preview",
-        "Audition all 6 built-in crystalline bell-pluck chimes on the SFX channel (or type /dc testaudio).",
+        "Audition all 10 built-in crystalline bell-pluck chimes on the SFX channel (or type /dc testaudio).",
         "DynamicSuite Chime Pack Preview",
         "Click any chime button to preview it on the SFX channel."
     )
@@ -9438,12 +9442,12 @@ local function RenderChatEmbedded(arg1, arg2)
         return btn
     end
     local chimeAnchorLeft = nil
-    local btnW, btnGapX, btnGapY = 74, 6, 6
+    local btnW, btnGapX, btnGapY = 60, 5, 6
     for idx, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
-        local col = (idx - 1) % 3
-        local row = math.floor((idx - 1) / 3)
+        local col = (idx - 1) % 5
+        local row = math.floor((idx - 1) / 5)
         local btn = CreateChimePackPreviewButton(c3_chimePack, btnW, entry.short, entry.key)
-        local xOff = -14 - (2 - col) * (btnW + btnGapX)
+        local xOff = -14 - (4 - col) * (btnW + btnGapX)
         local yOff = (row == 0) and 14 or -(22 + btnGapY - 14)
         btn:SetPoint("RIGHT", c3_chimePack, "RIGHT", xOff, yOff)
         if idx == 1 then
