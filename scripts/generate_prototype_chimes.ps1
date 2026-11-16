@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Synthesizes two 100% original, clean-room 44.1 kHz Stereo Vorbis .ogg chimes
-    modelled on the crystalline glass-bell / plucked-harp acoustic profile of EX3.
+    Synthesizes the 6-chime EX3-inspired 44.1 kHz Stereo Vorbis .ogg sound pack
+    for DynamicChat Tab 3.
 #>
 [CmdletBinding()]
 param(
@@ -37,20 +37,17 @@ function Write-StereoWavFile {
     $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::Create)
     $bw = New-Object System.IO.BinaryWriter($fs)
     try {
-        # RIFF header
         $bw.Write([System.Text.Encoding]::ASCII.GetBytes("RIFF"))
         $bw.Write([int](36 + $dataSize))
         $bw.Write([System.Text.Encoding]::ASCII.GetBytes("WAVE"))
-        # fmt chunk
         $bw.Write([System.Text.Encoding]::ASCII.GetBytes("fmt "))
         $bw.Write([int]16)
-        $bw.Write([int16]1)                    # PCM
-        $bw.Write([int16]$channels)            # Stereo
+        $bw.Write([int16]1)
+        $bw.Write([int16]$channels)
         $bw.Write([int]$SampleRate)
         $bw.Write([int]($SampleRate * $channels * 2))
-        $bw.Write([int16]($channels * 2))       # BlockAlign
-        $bw.Write([int16]16)                   # BitsPerSample
-        # data chunk
+        $bw.Write([int16]($channels * 2))
+        $bw.Write([int16]16)
         $bw.Write([System.Text.Encoding]::ASCII.GetBytes("data"))
         $bw.Write([int]$dataSize)
 
@@ -100,15 +97,14 @@ function Add-CrystallineBellPluck {
         [double]$Freq,
         [double]$Gain,
         [double]$TauMain,
-        [double]$Pan # -1.0 (L) to +1.0 (R)
+        [double]$Pan
     )
     $n = $Left.Length
     $startIdx = [int][Math]::Round($StartSec * $SampleRate)
     $twoPi = 2.0 * [Math]::PI
     $attackSec = 0.0028
-    $detune = 0.0022 # +/- 0.22% micro-detuned stereo shimmer (~3.8 cents)
+    $detune = 0.0022
 
-    # Constant-power pan
     $angle = ($Pan + 1.0) * 0.25 * [Math]::PI
     $gainL = $Gain * [Math]::Cos($angle)
     $gainR = $Gain * [Math]::Sin($angle)
@@ -128,7 +124,6 @@ function Add-CrystallineBellPluck {
         $fL = $Freq * (1.0 - $detune)
         $fR = $Freq * (1.0 + $detune)
 
-        # Crisp crystalline glass-bell / harp-pluck partials
         $sigL = (
             1.00 * [Math]::Sin($twoPi * $Freq * $t) * $d1 +
             0.34 * [Math]::Sin($twoPi * (2.0 * $fL) * $t) * $d2 +
@@ -155,7 +150,6 @@ function Apply-StereoTailAndFade {
         [double]$FadeOutSec = 0.045
     )
     $n = $Left.Length
-    # Subtle stereo shimmer tap-delay (+140ms / +240ms) for lively crystalline air
     $dL1 = [int][Math]::Round(0.140 * $SampleRate)
     $dR1 = [int][Math]::Round(0.165 * $SampleRate)
     $dL2 = [int][Math]::Round(0.255 * $SampleRate)
@@ -171,7 +165,6 @@ function Apply-StereoTailAndFade {
         if ($i -ge $dR2) { $Right[$i] += 0.07 * $copyR[$i - $dR2] }
     }
 
-    # Smooth raised-cosine fade-out to exact zero
     $fadeSamples = [int][Math]::Round($FadeOutSec * $SampleRate)
     $fadeStart = $n - $fadeSamples
     if ($fadeStart -lt 0) { $fadeStart = 0 }
@@ -184,34 +177,21 @@ function Apply-StereoTailAndFade {
     }
 }
 
-function New-MentionWarmStereo {
-    param([int]$SampleRate = 44100)
-    $totalSec = 0.680
-    $n = [int][Math]::Round($totalSec * $SampleRate)
+function New-ChimeFromNotes {
+    param(
+        [double]$TotalSec,
+        [double]$FadeOutSec,
+        [hashtable[]]$Notes,
+        [int]$SampleRate = 44100
+    )
+    $n = [int][Math]::Round($TotalSec * $SampleRate)
     $left  = New-Object double[] $n
     $right = New-Object double[] $n
-
-    # Crisp 3-note ascending G major crystalline arpeggio (G5 -> B5 -> D6)
-    Add-CrystallineBellPluck -Left $left -Right $right -SampleRate $SampleRate -StartSec 0.000 -Freq 783.99  -Gain 0.85 -TauMain 0.130 -Pan -0.22
-    Add-CrystallineBellPluck -Left $left -Right $right -SampleRate $SampleRate -StartSec 0.055 -Freq 987.77  -Gain 0.92 -TauMain 0.140 -Pan  0.00
-    Add-CrystallineBellPluck -Left $left -Right $right -SampleRate $SampleRate -StartSec 0.115 -Freq 1174.66 -Gain 1.00 -TauMain 0.175 -Pan  0.22
-
-    Apply-StereoTailAndFade -Left $left -Right $right -SampleRate $SampleRate -FadeOutSec 0.055
-    Normalize-StereoPeakDbFS -Left $left -Right $right -TargetDbFS -6.0
-    return @{ Left = $left; Right = $right }
-}
-
-function New-KeywordPulseStereo {
-    param([int]$SampleRate = 44100)
-    $totalSec = 0.440
-    $n = [int][Math]::Round($totalSec * $SampleRate)
-    $left  = New-Object double[] $n
-    $right = New-Object double[] $n
-
-    # Single-note sister chime in the same EX3 crystalline family at D5 (587.33 Hz)
-    Add-CrystallineBellPluck -Left $left -Right $right -SampleRate $SampleRate -StartSec 0.000 -Freq 587.33 -Gain 1.00 -TauMain 0.125 -Pan 0.00
-
-    Apply-StereoTailAndFade -Left $left -Right $right -SampleRate $SampleRate -FadeOutSec 0.045
+    foreach ($note in $Notes) {
+        Add-CrystallineBellPluck -Left $left -Right $right -SampleRate $SampleRate `
+            -StartSec $note.Start -Freq $note.Freq -Gain $note.Gain -TauMain $note.Tau -Pan $note.Pan
+    }
+    Apply-StereoTailAndFade -Left $left -Right $right -SampleRate $SampleRate -FadeOutSec $FadeOutSec
     Normalize-StereoPeakDbFS -Left $left -Right $right -TargetDbFS -6.0
     return @{ Left = $left; Right = $right }
 }
@@ -219,15 +199,55 @@ function New-KeywordPulseStereo {
 $ffmpeg = Resolve-FFmpeg
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
-$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "DynamicChatAudioProto"
+$tempDir = Join-Path ([System.IO.Path]::GetTempPath()) "DynamicChatAudioPack"
 New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
-$specs = @(
-    @{ Name = "DynamicChat_MentionWarm";  Data = (New-MentionWarmStereo) },
-    @{ Name = "DynamicChat_KeywordPulse"; Data = (New-KeywordPulseStereo) }
+$packSpecs = @(
+    @{
+        Name = "DynamicChat_ChimeSpark"
+        Data = (New-ChimeFromNotes -TotalSec 0.340 -FadeOutSec 0.040 -Notes @(
+            @{ Start = 0.000; Freq = 987.77;  Gain = 1.00; Tau = 0.095; Pan = 0.00 }
+        ))
+    },
+    @{
+        Name = "DynamicChat_KeywordPulse"
+        Data = (New-ChimeFromNotes -TotalSec 0.420 -FadeOutSec 0.045 -Notes @(
+            @{ Start = 0.000; Freq = 587.33;  Gain = 1.00; Tau = 0.120; Pan = 0.00 }
+        ))
+    },
+    @{
+        Name = "DynamicChat_ChimeDuo"
+        Data = (New-ChimeFromNotes -TotalSec 0.480 -FadeOutSec 0.045 -Notes @(
+            @{ Start = 0.000; Freq = 587.33;  Gain = 0.88; Tau = 0.115; Pan = -0.15 },
+            @{ Start = 0.065; Freq = 880.00;  Gain = 1.00; Tau = 0.135; Pan =  0.15 }
+        ))
+    },
+    @{
+        Name = "DynamicChat_ChimeWhisper"
+        Data = (New-ChimeFromNotes -TotalSec 0.560 -FadeOutSec 0.050 -Notes @(
+            @{ Start = 0.000; Freq = 783.99;  Gain = 0.88; Tau = 0.125; Pan = -0.18 },
+            @{ Start = 0.075; Freq = 1174.66; Gain = 1.00; Tau = 0.150; Pan =  0.18 }
+        ))
+    },
+    @{
+        Name = "DynamicChat_MentionWarm"
+        Data = (New-ChimeFromNotes -TotalSec 0.680 -FadeOutSec 0.055 -Notes @(
+            @{ Start = 0.000; Freq = 783.99;  Gain = 0.85; Tau = 0.130; Pan = -0.22 },
+            @{ Start = 0.055; Freq = 987.77;  Gain = 0.92; Tau = 0.140; Pan =  0.00 },
+            @{ Start = 0.115; Freq = 1174.66; Gain = 1.00; Tau = 0.175; Pan =  0.22 }
+        ))
+    },
+    @{
+        Name = "DynamicChat_ChimeAlert"
+        Data = (New-ChimeFromNotes -TotalSec 0.640 -FadeOutSec 0.050 -Notes @(
+            @{ Start = 0.000; Freq = 587.33;  Gain = 0.85; Tau = 0.125; Pan = -0.20 },
+            @{ Start = 0.060; Freq = 880.00;  Gain = 0.92; Tau = 0.135; Pan =  0.00 },
+            @{ Start = 0.125; Freq = 1174.66; Gain = 1.00; Tau = 0.165; Pan =  0.20 }
+        ))
+    }
 )
 
-foreach ($spec in $specs) {
+foreach ($spec in $packSpecs) {
     $wavPath = Join-Path $tempDir ($spec.Name + ".wav")
     $oggPath = Join-Path $OutputDir ($spec.Name + ".ogg")
     Write-StereoWavFile -Path $wavPath -Left $spec.Data.Left -Right $spec.Data.Right -SampleRate 44100

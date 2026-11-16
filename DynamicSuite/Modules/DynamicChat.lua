@@ -160,8 +160,6 @@ local ICON_COPY         = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Ico
 local ICON_VAULT        = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_vault.tga"
 local ICON_LOG          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_log.tga"
 local ICON_LOCK         = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_lock.tga"
-local SOUND_MENTION_WARM  = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\DynamicChat_MentionWarm.ogg"
-local SOUND_KEYWORD_PULSE = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\DynamicChat_KeywordPulse.ogg"
 
 -- ============================================================================
 -- 1. SECRET-VALUE & 6-CHAR HEX SANITIZATION GUARDS
@@ -6711,29 +6709,32 @@ function DynamicChat:ScanExternalSounds(force)
     return dcStandaloneSoundCache
 end
 
-local PROTOTYPE_CHIME_SOUNDS = {
-    DC_MENTION_WARM = {
-        value = "DC_MENTION_WARM",
-        label = "Mention Chime (Warm Prototype)",
-        path  = SOUND_MENTION_WARM,
-    },
-    DC_KEYWORD_PULSE = {
-        value = "DC_KEYWORD_PULSE",
-        label = "Keyword Pulse (Warm Prototype)",
-        path  = SOUND_KEYWORD_PULSE,
-    },
+local SOUND_BASE = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Sounds\\"
+local BUILTIN_SUITE_CHIMES_LIST = {
+    { key = "DC_CHIME_SPARK",   short = "Spark",   label = "DynamicSuite: Spark (High Pluck)",      file = "DynamicChat_ChimeSpark.ogg" },
+    { key = "DC_KEYWORD_PULSE", short = "Pulse",   label = "DynamicSuite: Pulse (Warm Bell)",       file = "DynamicChat_KeywordPulse.ogg" },
+    { key = "DC_CHIME_DUO",     short = "Duo",     label = "DynamicSuite: Duo (Rising Fifth)",      file = "DynamicChat_ChimeDuo.ogg" },
+    { key = "DC_CHIME_WHISPER", short = "Whisper", label = "DynamicSuite: Whisper (Bright Fifth)",  file = "DynamicChat_ChimeWhisper.ogg" },
+    { key = "DC_MENTION_WARM",  short = "Mention", label = "DynamicSuite: Mention (G-Major Triad)", file = "DynamicChat_MentionWarm.ogg" },
+    { key = "DC_CHIME_ALERT",   short = "Alert",   label = "DynamicSuite: Alert (Fifth-Octave)",    file = "DynamicChat_ChimeAlert.ogg" },
 }
+local BUILTIN_SUITE_CHIMES = {}
+for _, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
+    entry.path = SOUND_BASE .. entry.file
+    entry.value = entry.key
+    BUILTIN_SUITE_CHIMES[entry.key] = entry
+end
 
 local function ResolveChannelSound(soundKey)
     if not soundKey or soundKey == "" or soundKey == "NONE" then
         return nil, false
     end
     if type(soundKey) == "string" and (soundKey:match("^ds_") or soundKey:match("^ex_") or soundKey:lower():match("%.wav$")) then
-        local fb = BLIZZARD_SOUND_BY_KEY["BLIZZ_RAID_WARNING"] or BuildBlizzardChatSoundList()[1]
+        local fb = BLIZZARD_SOUND_BY_KEY["BLIZZARD_RAID_WARNING"] or BLIZZARD_SOUND_BY_KEY["BLIZZ_RAID_WARNING"] or BuildBlizzardChatSoundList()[1]
         return fb, true
     end
-    if PROTOTYPE_CHIME_SOUNDS[soundKey] then
-        return PROTOTYPE_CHIME_SOUNDS[soundKey], false
+    if BUILTIN_SUITE_CHIMES[soundKey] then
+        return BUILTIN_SUITE_CHIMES[soundKey], false
     end
     if IsBuiltInBlizzardSoundKey(soundKey) then
         return BLIZZARD_SOUND_BY_KEY[soundKey], false
@@ -6765,17 +6766,14 @@ local function GetSoundOptionsForChannel(_)
         { value = "NONE", label = "None (Muted)" },
     }
 
-    table.insert(opts, { isHeader = true, label = "DYNAMICCHAT PROTOTYPES" })
-    opts[#opts + 1] = {
-        value = "DC_MENTION_WARM",
-        label = "Mention Chime (Warm Prototype)",
-        path  = SOUND_MENTION_WARM,
-    }
-    opts[#opts + 1] = {
-        value = "DC_KEYWORD_PULSE",
-        label = "Keyword Pulse (Warm Prototype)",
-        path  = SOUND_KEYWORD_PULSE,
-    }
+    table.insert(opts, { isHeader = true, label = "DYNAMICSUITE CHIMES" })
+    for _, chime in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
+        opts[#opts + 1] = {
+            value = chime.key,
+            label = chime.label,
+            path  = chime.path,
+        }
+    end
 
     local reg = DynamicChat:ScanExternalSounds(true)
     local blizzList = (reg and type(reg.blizzard) == "table" and #reg.blizzard > 0 and reg.blizzard) or BuildBlizzardChatSoundList()
@@ -6903,28 +6901,33 @@ function DynamicChat:PlaySoundOptionKey(soundKey, channelKey, isPreview)
     return played
 end
 
-function DynamicChat:PlayPrototypeChime(which)
-    local path = (which == "keyword") and SOUND_KEYWORD_PULSE or SOUND_MENTION_WARM
+function DynamicChat:PlaySuiteChime(chimeKey)
+    local entry = BUILTIN_SUITE_CHIMES[chimeKey] or BUILTIN_SUITE_CHIMES_LIST[1]
     local played = false
-    if type(_G.PlaySoundFile) == "function" then
-        local okF, willPlay = pcall(_G.PlaySoundFile, path, "SFX")
+    if entry and type(_G.PlaySoundFile) == "function" then
+        local okF, willPlay = pcall(_G.PlaySoundFile, entry.path, "SFX")
         played = (okF and willPlay ~= false)
     end
     if not played and _G.DEFAULT_CHAT_FRAME and type(_G.DEFAULT_CHAT_FRAME.AddMessage) == "function" then
-        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Could not play prototype chime. Brand-new .ogg files require a full WoW client restart to load.")
+        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Could not play chime. Newly added .ogg files require a full WoW client restart to load.")
     end
     return played
 end
 
-function DynamicChat:PreviewPrototypeChimes()
+function DynamicChat:PreviewSuiteChimePack()
     if _G.DEFAULT_CHAT_FRAME and type(_G.DEFAULT_CHAT_FRAME.AddMessage) == "function" then
-        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Auditioning Mention Chime, then Keyword Pulse on SFX...")
+        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Auditioning 6-chime DynamicSuite pack on SFX (Spark, Pulse, Duo, Whisper, Mention, Alert)...")
     end
-    local ok1 = self:PlayPrototypeChime("mention")
-    if ok1 and _G.C_Timer and type(_G.C_Timer.After) == "function" then
-        _G.C_Timer.After(0.55, function()
-            DynamicChat:PlayPrototypeChime("keyword")
-        end)
+    for idx, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
+        local delay = (idx - 1) * 0.65
+        if delay == 0 then
+            self:PlaySuiteChime(entry.key)
+        elseif _G.C_Timer and type(_G.C_Timer.After) == "function" then
+            local k = entry.key
+            _G.C_Timer.After(delay, function()
+                DynamicChat:PlaySuiteChime(k)
+            end)
+        end
     end
 end
 
@@ -9400,15 +9403,15 @@ local function RenderChatEmbedded(arg1, arg2)
     sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_sndCooldown
     root.allControls[#root.allControls + 1] = c3_sndCooldown
 
-    local c3_protoTest = CreateCardRow(sec3_rules, 64,
-        "Prototype Chime Ear Test",
-        "Audition the two warm prototype .ogg chimes back-to-back on the SFX channel (or type /dc testaudio).",
-        "Prototype Chime Ear Test",
-        "Click either button to preview the warm prototype chimes on the SFX channel."
+    local c3_chimePack = CreateCardRow(sec3_rules, 74,
+        "DynamicSuite Chime Pack Preview",
+        "Audition all 6 built-in crystalline bell-pluck chimes on the SFX channel (or type /dc testaudio).",
+        "DynamicSuite Chime Pack Preview",
+        "Click any chime button to preview it on the SFX channel."
     )
-    local function CreatePrototypePreviewButton(parentCard, width, labelText, chimeKey)
+    local function CreateChimePackPreviewButton(parentCard, width, labelText, chimeKey)
         local btn = CreateFrame("Button", nil, parentCard, "BackdropTemplate")
-        btn:SetSize(width, 24)
+        btn:SetSize(width, 22)
         btn:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
             edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -9430,17 +9433,28 @@ local function RenderChatEmbedded(arg1, arg2)
             s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85)
         end)
         btn:SetScript("OnClick", function()
-            DynamicChat:PlayPrototypeChime(chimeKey)
+            DynamicChat:PlaySuiteChime(chimeKey)
         end)
         return btn
     end
-    local btnProtoKeyword = CreatePrototypePreviewButton(c3_protoTest, 146, "Preview Keyword Pulse", "keyword")
-    btnProtoKeyword:SetPoint("RIGHT", c3_protoTest, "RIGHT", -14, 0)
-    local btnProtoMention = CreatePrototypePreviewButton(c3_protoTest, 142, "Preview Mention Chime", "mention")
-    btnProtoMention:SetPoint("RIGHT", btnProtoKeyword, "LEFT", -8, 0)
-    AnchorCardTextToRightWidget(c3_protoTest, btnProtoMention)
-    sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_protoTest
-    root.allControls[#root.allControls + 1] = c3_protoTest
+    local chimeAnchorLeft = nil
+    local btnW, btnGapX, btnGapY = 74, 6, 6
+    for idx, entry in ipairs(BUILTIN_SUITE_CHIMES_LIST) do
+        local col = (idx - 1) % 3
+        local row = math.floor((idx - 1) / 3)
+        local btn = CreateChimePackPreviewButton(c3_chimePack, btnW, entry.short, entry.key)
+        local xOff = -14 - (2 - col) * (btnW + btnGapX)
+        local yOff = (row == 0) and 14 or -(22 + btnGapY - 14)
+        btn:SetPoint("RIGHT", c3_chimePack, "RIGHT", xOff, yOff)
+        if idx == 1 then
+            chimeAnchorLeft = btn
+        end
+    end
+    if chimeAnchorLeft then
+        AnchorCardTextToRightWidget(c3_chimePack, chimeAnchorLeft)
+    end
+    sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_chimePack
+    root.allControls[#root.allControls + 1] = c3_chimePack
 
     -- ========================================================================
     -- TAB 4: Links, Scroll & History
@@ -10167,7 +10181,7 @@ SlashCmdList["DYNAMICCHAT"] = function(msg)
     elseif cmd == "copy" or cmd == "url" then
         DynamicChat:ShowURLCopyPopup("https://www.curseforge.com/wow/addons")
     elseif cmd == "testaudio" then
-        DynamicChat:PreviewPrototypeChimes()
+        DynamicChat:PreviewSuiteChimePack()
     else
         OpenChatWorkspace()
     end
