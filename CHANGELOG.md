@@ -1,5 +1,17 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.2.1 (16/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.3.0 (16/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.3.0 (16/11/2026)
+
+### DynamicBags
+- **Inline Search Clear Button & Escape-First Handling:** Added a compact inline `x` clear button inside both the `DynamicBags` and Unified `DynamicBank` search boxes whenever search text is active, and hooked `Escape` so pressing `Escape` clears the active search filter first (pressing `Escape` again when search is empty closes the window normally).
+- **Collapsible Category Section Headers:** Left-Clicking any virtual category header (such as `Crafting & Reagents`, `Equipment Sets`, or `Miscellaneous`) collapses or expands that section out of combat with a subtle chevron indicator and collapsed item-count summary persisted across reloads in `DynamicBagsDB` (`Alt + Left-Click` opens the category reorder menu).
+
+### DynamicLoad
+- **One-Click `Copy From...` Zone Profile Action:** Added a compact `Copy From...` button on the `DynamicLoad` toolbar (Dark-Obsidian `#0B0D12` / Blaze Orange `#F97316`) so you can copy another zone's `By Zone` addon selections into the active zone tab in one click while preserving universal `Always` / `Never` locks and protected Suite Core rules.
+- **Persistent Parent Addon Tree Collapse State:** Normalised canonical parent collapse keys and preserved collapsed parent addon groups (such as `DBM`, `WeakAuras`, and `Details`) across `/reload` and logins with clear expand/collapse tooltips.
 
 ---
 

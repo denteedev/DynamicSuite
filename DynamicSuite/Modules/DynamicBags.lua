@@ -24,7 +24,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.2.1"
+    local fb = fallback or "2.3.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -73,7 +73,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.2.1"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.3.0"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -105,7 +105,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.2.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.3.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicBags", VERSION, _G.DynamicBags) then
     return
 end
@@ -319,6 +319,7 @@ local DEFAULTS = {
     yieldHooks = false,
     tooltipCounts = true,
     pinnedCategories = {},
+    collapsedSections = {},
     activeSubTab = 1,
     vault = { characters = {} },
 }
@@ -1173,16 +1174,20 @@ function U.PackLayout(objs, mode, cols, size, spacing, freeObjs)
     end
 
     -- Measure exact pixel width of each section header so we reserve enough columns and NEVER overlap titles!
+    db.collapsedSections = db.collapsedSections or {}
     local mfs = U.GetSectionMeasureFS()
     for _, sec in ipairs(ordered) do
         local n = #sec.items
         local hdrCount = (sec.label == "Free Space" and sec.items[1] and sec.items[1].freeCount) or n
-        mfs:SetText(string.upper(sec.label) .. "  " .. tostring(hdrCount))
-        local textPx = (mfs:GetStringWidth() or (#sec.label * 7.5)) + 16
+        local isCollapsed = (sec.key ~= "free") and (db.collapsedSections[sec.key] == true)
+        sec.collapsed = isCollapsed
+        local countLabel = isCollapsed and sformat("(%d)", hdrCount) or tostring(hdrCount)
+        mfs:SetText(string.upper(sec.label) .. "  " .. countLabel)
+        local textPx = (mfs:GetStringWidth() or (#sec.label * 7.5)) + 30
         local minColsForTitle = ceil((textPx + SLOT_GAP) / step)
         sec.hdrCount = hdrCount
         sec.itemCols = min(cols, max(1, n))
-        sec.secCols  = min(cols, max(sec.itemCols, minColsForTitle))
+        sec.secCols  = isCollapsed and min(cols, max(2, minColsForTitle)) or min(cols, max(sec.itemCols, minColsForTitle))
     end
 
     -- Family-Cohesive 2D Row Packing:
@@ -1256,8 +1261,9 @@ function U.PackLayout(objs, mode, cols, size, spacing, freeObjs)
             local secCols = sec.secCols
             local itemCols = sec.itemCols
             local x0 = floor(curSlot * step + 0.5)
-            local rows = max(1, ceil(n / itemCols))
-            local secH = SECTION_HEADER_H + rows * step
+            local isCollapsed = sec.collapsed == true
+            local rows = isCollapsed and 0 or max(1, ceil(n / itemCols))
+            local secH = SECTION_HEADER_H + (isCollapsed and 0 or (rows * step))
 
             sections[#sections + 1] = {
                 key = sec.key,
@@ -1265,18 +1271,21 @@ function U.PackLayout(objs, mode, cols, size, spacing, freeObjs)
                 label = sec.label,
                 order = sec.order,
                 count = sec.hdrCount,
+                collapsed = isCollapsed,
                 items = sec.items,
                 x = x0,
                 y = rowY,
                 w = secCols * step - SLOT_GAP,
             }
-            for i, o in ipairs(sec.items) do
-                local idx = i - 1
-                placed[#placed + 1] = {
-                    obj = o,
-                    x = x0 + (idx % itemCols) * step,
-                    y = rowY + SECTION_HEADER_H + floor(idx / itemCols) * step,
-                }
+            if not isCollapsed then
+                for i, o in ipairs(sec.items) do
+                    local idx = i - 1
+                    placed[#placed + 1] = {
+                        obj = o,
+                        x = x0 + (idx % itemCols) * step,
+                        y = rowY + SECTION_HEADER_H + floor(idx / itemCols) * step,
+                    }
+                end
             end
             -- Always add SEC_GAP_COLS (18px) between side-by-side categories so POTIONS and FLASKS never touch!
             curSlot = curSlot + secCols + SEC_GAP_COLS
@@ -2422,6 +2431,99 @@ function U.ObjMatches(o, q)
     return false
 end
 
+function U.ClearAllSearchBoxes()
+    S.search = ""
+    if S.window and S.window.searchBox then
+        if S.window.searchBox:GetText() ~= "" then
+            S.window.searchBox:SetText("")
+        end
+        S.window.searchBox:ClearFocus()
+        if S.window.searchBox.clearBtn then S.window.searchBox.clearBtn:Hide() end
+        if S.window.searchBox.placeholder then S.window.searchBox.placeholder:Show() end
+    end
+    if S.bankWindow and S.bankWindow.searchBox then
+        if S.bankWindow.searchBox:GetText() ~= "" then
+            S.bankWindow.searchBox:SetText("")
+        end
+        S.bankWindow.searchBox:ClearFocus()
+        if S.bankWindow.searchBox.clearBtn then S.bankWindow.searchBox.clearBtn:Hide() end
+        if S.bankWindow.searchBox.placeholder then S.bankWindow.searchBox.placeholder:Show() end
+    end
+    U.ApplySearch()
+end
+
+function U.AttachSearchClearAndEscape(sb, ownerWin)
+    if not sb then return end
+    sb:SetTextInsets(8, 22, 0, 0)
+    local clr = CreateFrame("Button", nil, sb)
+    clr:SetSize(16, 16)
+    clr:SetPoint("RIGHT", sb, "RIGHT", -4, 0)
+    clr:SetFrameLevel((sb:GetFrameLevel() or 5) + 3)
+    local lbl = clr:CreateFontString(nil, "OVERLAY")
+    SetFont(lbl, 11, "")
+    lbl:SetPoint("CENTER", clr, "CENTER", 0, 0)
+    lbl:SetText("x")
+    lbl:SetTextColor(0.58, 0.64, 0.72, 1)
+    clr.lbl = lbl
+    clr:SetScript("OnEnter", function(self)
+        local ar, ag, ab = GetAccent()
+        self.lbl:SetTextColor(ar, ag, ab, 1)
+        if GameTooltip then
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Clear Search Filter (Esc)", 1, 1, 1)
+            GameTooltip:Show()
+        end
+    end)
+    clr:SetScript("OnLeave", function(self)
+        self.lbl:SetTextColor(0.58, 0.64, 0.72, 1)
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+    clr:SetScript("OnClick", function()
+        U.ClearAllSearchBoxes()
+    end)
+    clr:Hide()
+    sb.clearBtn = clr
+
+    sb:SetScript("OnTextChanged", function(self, userInput)
+        local raw = self:GetText() or ""
+        local t = strtrim(raw):lower()
+        if self.placeholder then self.placeholder:SetShown(raw == "") end
+        if self.clearBtn then self.clearBtn:SetShown(raw ~= "") end
+        if userInput ~= false then
+            if S.window and S.window.searchBox and S.window.searchBox ~= self and S.window.searchBox:GetText() ~= raw then
+                S.window.searchBox:SetText(raw)
+            end
+            if S.bankWindow and S.bankWindow.searchBox and S.bankWindow.searchBox ~= self and S.bankWindow.searchBox:GetText() ~= raw then
+                S.bankWindow.searchBox:SetText(raw)
+            end
+        end
+        if t ~= S.search then
+            S.search = t
+            U.ApplySearch()
+        end
+    end)
+    sb:SetScript("OnEscapePressed", function()
+        U.ClearAllSearchBoxes()
+    end)
+    sb:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+    end)
+
+    if ownerWin and not ownerWin._dsEscHooked then
+        ownerWin._dsEscHooked = true
+        if ownerWin.EnableKeyboard then ownerWin:EnableKeyboard(true) end
+        ownerWin:SetScript("OnKeyDown", function(self, key)
+            if InCombatLockdown() then return end
+            if key == "ESCAPE" and (S.search or "") ~= "" then
+                if self.SetPropagateKeyboardInput then self:SetPropagateKeyboardInput(false) end
+                U.ClearAllSearchBoxes()
+            else
+                if self.SetPropagateKeyboardInput then self:SetPropagateKeyboardInput(true) end
+            end
+        end)
+    end
+end
+
 function U.ApplySearch()
     local q = S.search or ""
     for _, btn in pairs(S.buttons) do
@@ -2796,8 +2898,13 @@ function U.ApplyHeaders(content, pool, sections)
             h = CreateFrame("Button", nil, content)
             h:SetHeight(SECTION_HEADER_H)
             h:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            h.chevron = h:CreateTexture(nil, "ARTWORK")
+            h.chevron:SetSize(9, 9)
+            h.chevron:SetPoint("TOPLEFT", h, "TOPLEFT", 1, -4)
+            h.chevron:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
+            if h.chevron.SetSnapToPixelGrid then h.chevron:SetSnapToPixelGrid(false); h.chevron:SetTexelSnappingBias(0) end
             h.text = h:CreateFontString(nil, "OVERLAY")
-            h.text:SetPoint("TOPLEFT", h, "TOPLEFT", 0, -2)
+            h.text:SetPoint("TOPLEFT", h, "TOPLEFT", 14, -2)
             h.text:SetJustifyH("LEFT")
             h.text:SetWordWrap(false)
             h.count = h:CreateFontString(nil, "OVERLAY")
@@ -2806,11 +2913,12 @@ function U.ApplyHeaders(content, pool, sections)
             h.line:SetPoint("BOTTOMLEFT", h, "BOTTOMLEFT", 0, 2)
             h.line:SetPoint("BOTTOMRIGHT", h, "BOTTOMRIGHT", 0, 2)
             h:SetScript("OnEnter", function(self)
-                if self.catKey and self.catKey ~= "free" then
+                if self.secKey and self.secKey ~= "free" then
                     self.text:SetTextColor(1, 1, 1, 1)
                     GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
                     GameTooltip:SetText(self.fullLabel or "Category", 1, 1, 1)
-                    GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Reorder Category Menu|r", 0.886, 0.910, 0.941, true)
+                    GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Collapse or Expand Category|r", 0.886, 0.910, 0.941, true)
+                    GameTooltip:AddLine("|cFFF97316Alt + Left-Click:|r |cFFE2E8F0Reorder Category Menu|r", 0.886, 0.910, 0.941, true)
                     if (S.atBank or S.atGuildBank) and S.bankWindow and S.bankWindow:IsShown() then
                         GameTooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Batch-Transfer Entire Category|r", 0.886, 0.910, 0.941, true)
                     end
@@ -2837,16 +2945,25 @@ function U.ApplyHeaders(content, pool, sections)
                     end
                     return
                 end
-                if not self.catKey or self.catKey == "free" then return end
+                if not self.secKey or self.secKey == "free" then return end
                 if button == "LeftButton" then
                     if IsShiftKeyDown() then
-                        U.MoveSectionOrder(self.catKey, -1, self.allSections)
-                    else
+                        U.MoveSectionOrder(self.secKey, -1, self.allSections)
+                    elseif IsAltKeyDown() or IsControlKeyDown() then
                         U.ShowSectionHeaderMenu(self, self.allSections, fromBank)
+                    else
+                        if InCombatLockdown() then
+                            Print("Cannot collapse or expand categories during combat.")
+                            return
+                        end
+                        local db = DB()
+                        db.collapsedSections = db.collapsedSections or {}
+                        db.collapsedSections[self.secKey] = not (db.collapsedSections[self.secKey] == true) or nil
+                        U.OnSettingChanged("layout")
                     end
                 elseif button == "RightButton" then
                     if IsShiftKeyDown() then
-                        U.MoveSectionOrder(self.catKey, 1, self.allSections)
+                        U.MoveSectionOrder(self.secKey, 1, self.allSections)
                     elseif self.secItems then
                         U.BatchTransferSection(self.secItems, fromBank)
                     end
@@ -2854,6 +2971,7 @@ function U.ApplyHeaders(content, pool, sections)
             end)
             pool[i] = h
         end
+        h.secKey = sec.key
         h.catKey = sec.key
         h.secItems = sec.items
         h.allSections = sections
@@ -2862,15 +2980,37 @@ function U.ApplyHeaders(content, pool, sections)
         h:SetPoint("TOPLEFT", content, "TOPLEFT", sec.x, -sec.y)
         h:SetWidth(sec.w)
 
+        local isCollapsed = (sec.collapsed == true)
+        if h.chevron then
+            if sec.key == "free" then
+                h.chevron:Hide()
+                h.text:ClearAllPoints()
+                h.text:SetPoint("TOPLEFT", h, "TOPLEFT", 0, -2)
+            else
+                h.chevron:Show()
+                if h.chevron.SetRotation then
+                    h.chevron:SetRotation(isCollapsed and math.rad(-90) or 0)
+                end
+                if isCollapsed then
+                    h.chevron:SetVertexColor(ar, ag, ab, 0.95)
+                else
+                    h.chevron:SetVertexColor(0.68, 0.74, 0.82, 0.90)
+                end
+                h.text:ClearAllPoints()
+                h.text:SetPoint("TOPLEFT", h, "TOPLEFT", 14, -2)
+            end
+        end
+
         SetFont(h.count, 10, "")
-        h.count:SetText(tostring(sec.count))
+        h.count:SetText(isCollapsed and sformat("(%d)", sec.count) or tostring(sec.count))
         h.count:SetTextColor(ar, ag, ab, 1)
 
         SetFont(h.text, 11, "")
         h.text:SetWidth(0)
         h.text:SetText(h.fullLabel)
         h.text:SetTextColor(0.78, 0.82, 0.88, 1)
-        local maxTextW = max(24, sec.w - (h.count:GetStringWidth() or 14) - 8)
+        local leftPad = (sec.key == "free") and 0 or 14
+        local maxTextW = max(24, sec.w - leftPad - (h.count:GetStringWidth() or 14) - 8)
         if (h.text:GetStringWidth() or 0) > maxTextW then
             h.text:SetWidth(maxTextW)
         end
@@ -3883,8 +4023,12 @@ function U.UpdateHeaderLabels()
     end
     local p = PRESETS[db.preset]
     win.presetBtn:SetLabel("Preset: " .. (p and p.label or "Custom"))
+    local hint = U.GetDynamicIlvlHint()
     if win.searchBox and win.searchBox.placeholder then
-        win.searchBox.placeholder:SetText(sformat("Search items, sets, ilvl > %d, upgrade, WUE, BoE...", U.GetDynamicIlvlHint()))
+        win.searchBox.placeholder:SetText(sformat("Search items, sets, ilvl > %d, upgrade, WUE, BoE...", hint))
+    end
+    if S.bankWindow and S.bankWindow.searchBox and S.bankWindow.searchBox.placeholder then
+        S.bankWindow.searchBox.placeholder:SetText(sformat("Search bank items, sets, ilvl > %d, upgrade, WUE, BoE...", hint))
     end
 end
 
@@ -4540,7 +4684,7 @@ function U.EnsureCompanionBankWindow()
     local head = CreateFrame("Frame", nil, bw)
     head:SetPoint("TOPLEFT", bw, "TOPLEFT", 1, -1)
     head:SetPoint("TOPRIGHT", bw, "TOPRIGHT", -1, -1)
-    head:SetHeight(70)
+    head:SetHeight(98)
     head:EnableMouse(true)
     head:RegisterForDrag("LeftButton")
     local function OnVaultDragStop()
@@ -4716,8 +4860,24 @@ function U.EnsureCompanionBankWindow()
     depositBtn:ClearAllPoints()
     depositBtn:SetPoint("RIGHT", subBar, "RIGHT", -2, 0)
 
+    local bankSB = CreateFrame("EditBox", nil, head, "BackdropTemplate")
+    bankSB:SetAutoFocus(false)
+    bankSB:SetHeight(24)
+    bankSB:SetPoint("TOPLEFT", head, "TOPLEFT", 10, -68)
+    bankSB:SetPoint("TOPRIGHT", head, "TOPRIGHT", -10, -68)
+    SetFont(bankSB, 11, "")
+    bankSB:SetTextColor(0.92, 0.95, 0.99, 1)
+    Backdrop(bankSB, 0.059, 0.071, 0.094, 0.98, COL.cardEdge[1], COL.cardEdge[2], COL.cardEdge[3], 1)
+    bankSB.placeholder = bankSB:CreateFontString(nil, "OVERLAY")
+    SetFont(bankSB.placeholder, 11, "")
+    bankSB.placeholder:SetPoint("LEFT", bankSB, "LEFT", 8, 0)
+    bankSB.placeholder:SetTextColor(0.45, 0.52, 0.62, 1)
+    bankSB.placeholder:SetText("Search bank items, gear sets, ilvl > 610, WUE, BoE...")
+    U.AttachSearchClearAndEscape(bankSB, bw)
+    bw.searchBox = bankSB
+
     local area = U.CreateScrollArea(bw)
-    area:SetPoint("TOPLEFT", bw, "TOPLEFT", 12, -76)
+    area:SetPoint("TOPLEFT", bw, "TOPLEFT", 12, -104)
     area:SetPoint("BOTTOMRIGHT", bw, "BOTTOMRIGHT", -16, 32)
     bw.scrollArea = area
 
@@ -5297,7 +5457,7 @@ function U.RenderCompanionBank(forceRender)
     bw.scrollArea.content:SetSize(innerW, layout.height + 8)
     bw.scrollArea.UpdateThumb()
     local maxH = floor((UIParent:GetHeight() or 900) * 0.82)
-    local height = min(maxH, max(300, layout.height + 124))
+    local height = min(maxH, max(300, layout.height + 152))
     if not InCombatLockdown() then bw:SetSize(width, height); U.ApplyCompanionAnchor() end
     local totalSlots = 0
     if mode == "GUILD" then
@@ -5700,16 +5860,7 @@ function U.EnsureWindow()
     sb.placeholder:SetPoint("LEFT", sb, "LEFT", 8, 0)
     sb.placeholder:SetTextColor(0.45, 0.52, 0.62, 1)
     sb.placeholder:SetText("Search items, gear sets, ilvl > 610, WUE, BoE...")
-    sb:SetScript("OnTextChanged", function(self)
-        local t = strtrim(self:GetText() or ""):lower()
-        self.placeholder:SetShown(t == "")
-        if t ~= S.search then
-            S.search = t
-            U.ApplySearch()
-        end
-    end)
-    sb:SetScript("OnEscapePressed", function(self) self:SetText(""); self:ClearFocus() end)
-    sb:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    U.AttachSearchClearAndEscape(sb, win)
     win.searchBox = sb
 
     -- Scrolling content --------------------------------------------------------
@@ -9414,8 +9565,9 @@ end
 
 DynamicBags.CHANGELOG = {
     version = VERSION,
-    date = "15/11/2026",
+    date = "16/11/2026",
     entries = {
+        { type = "FEATURE", text = "Search Clear Button, Escape-First Clearing & Collapsible Category Headers (16/11/2026): added an inline 'x' clear button to both the DynamicBags and Unified DynamicBank search boxes, Escape-first clearing when search text is active (pressing Escape a second time closes the window cleanly), and Left-Click collapsing on virtual category headers with chevron indicators and collapsed item-count summaries saved in DynamicBagsDB (Alt+Left-Click opens the category reorder menu)." },
         { type = "FEATURE", text = "Dual-Mode Ctrl+Scroll Window Scaling, Header Controls Tooltip & Scale-Aware Docked Bank Alignment (15/11/2026): added 70%-140% (5% steps, out of combat) scaling across DynamicBagsFrame and DynamicBagsBankFrame (Personal Bank, Warband Bank, and Guild Bank). Ctrl + Scroll across the full header scales temporarily for the open session (resetting on hide); Ctrl + Shift + Scroll anywhere on the window (header, item grid ScrollFrame, or footer) saves bagScale / bankScale permanently without affecting normal wheel scrolling or Ctrl+Click item previews; Right-Click anywhere on the empty header (or Reset DynamicBags) resets scale to 100%; added DynamicBags / DynamicBank Window Controls header tooltips (auto-hiding on OnLeave/OnDragStart) and an auto-fading Dark-Obsidian (#0B0D12) / Blaze-Orange (#F97316) readout toast; and keeps docked DynamicBank flush beside DynamicBags at any scale." },
         { type = "FEATURE", text = "Unified Auto-Open for Gold Pouches, Housing Decor & Profession Knowledge (15/11/2026): expanded the automatic container opener to use/open Soulbound and Warband-bound gold pouches, coin/loot satchels, Housing Decor, and Profession Knowledge items (Treatises, Shards, Notes, Curios matching your character's known professions) out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Added default-enabled 'Auto-Open Soulbound Housing Decor' and 'Auto-Open Soulbound Profession Knowledge' toggles in Tab 3, while keeping protected-spell items (via C_Item.GetItemSpell or ADDON_ACTION_BLOCKED) safely queued in the 1-click Open (N) header button with a per-item retry cooldown and session blacklist." },
         { type = "FIX",     text = "Hardened zero-flash Bank/Guild Bank opening after /reload (14/11/2026): added Scale+Alpha suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, enforced strict weak ordering in Sort: A-Z when uncached items appear, verified compatible slot placement in Drop-Anywhere Split-Stack Placement, fixed Guild Bank T1-Tn badge overlap and view-only slot dimming, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, and expanded /dbag slash subcommands." },

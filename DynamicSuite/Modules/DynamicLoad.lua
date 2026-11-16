@@ -8,7 +8,7 @@ local addonName, rawAddonTable = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.2.1"
+    local fb = fallback or "2.3.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.ADDON_VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.2.1"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.ADDON_VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.3.0"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.2.1")
+local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.3.0")
 
 -- Guard E: Version-aware duplicate-install guard if standalone DynamicLoad is installed alongside bundled DynamicSuite
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicLoad", RESOLVED_ADDON_VERSION, _G.DynamicLoad) then
@@ -178,8 +178,9 @@ DynamicSuite.Changelogs = DynamicSuite.Changelogs or {}
 
 DynamicSuite.Changelogs["DynamicLoad"] = {
     version = ADDON_VERSION,
-    date = "12/11/2026",
+    date = "16/11/2026",
     entries = {
+        { type = "FEATURE", text = "One-Click 'Copy From...' Zone Profile & Persistent Tree Collapse (16/11/2026): added a compact 'Copy From...' button on the DynamicLoad toolbar so you can copy another zone's By Zone addon selections into the active zone tab in one click (preserving Always/Never locks and Suite Core protections), and ensured collapsed parent addon groups persist reliably across /reload and logins with clear expand/collapse tooltips." },
         { type = "FIX",     text = "Universal 'Never' ('FROZEN') Persistence Across All Addons & Sub-Addons (12/11/2026): Normalised all security and zone assignment operations to canonical folder names (ResolveCanonicalAddonName); made SetAddonFrozen(name, true) atomically persist 'FROZEN' across DynamicLoadDB/globalData/charData, wipe all 5 zone tables, and call C_AddOns.DisableAddOn; merged DynamicLoadDB root and globalData security tables in SyncScopeBindings() and used in-place wipe() in RestoreStash() so SavedVariables deserialization never reverts 'FROZEN' states on /reload; prevented ReconcileStartupProfileBaseline from overwriting knownAddons; protected individual child 'FROZEN' / 'LOCKED' states from parent cascades; and added EnforceFrozenAddonsDisabled() + a hooksecurefunc(C_AddOns, 'EnableAddOn', ...) guard so external parent suites cannot re-enable 'FROZEN' sub-addons." },
         { type = "FIX",     text = "Fixed 'attempt to call a nil value' in EvaluateAddonItemEffectiveState (DynamicLoad.lua:4724) when evaluating the DynamicSuite parent hub item and child modules across scoped do ... end chunks by declaring a local IsSuiteModuleExplicitlyDisabled helper in the UI chunk with addonTable / DynamicSuiteDB fallbacks and defensive nil guards across GetParentSuiteStats and EvaluateAddonItemEffectiveState." },
         { type = "FEATURE", text = "External Addon Conflict Detector & Yield Engine (12/11/2026): Added curated conflict detection for ACP, SimpleAddonManager, and BetterAddonList, one-time non-spam login alerts for newly detected HARD conflicts, and /ds conflicts diagnostic reporting." },
@@ -541,6 +542,7 @@ end
 local function SyncScopeBindings()
     if not DynamicLoadDB then return end
     DynamicLoadDB.allowCoreOverride = nil
+    DynamicLoadDB.collapsedParents = DynamicLoadDB.collapsedParents or {}
     DynamicLoadDB.charScopeMode = DynamicLoadDB.charScopeMode or {}
     DynamicLoadDB.charData = DynamicLoadDB.charData or {}
 
@@ -5243,26 +5245,36 @@ local function GetCollapsedParents()
     return collapsedParents
 end
 
+local function NormalizeParentCollapseKey(parentName)
+    if not parentName then return nil end
+    if addonTable and addonTable.ResolveCanonicalAddonName then
+        return addonTable.ResolveCanonicalAddonName(parentName)
+    end
+    return parentName
+end
+
 local function IsParentCollapsed(parentName)
     local cp = GetCollapsedParents()
-    return cp[parentName] == true
+    local key = NormalizeParentCollapseKey(parentName)
+    return (key and cp[key] == true) or (parentName and cp[parentName] == true) or false
 end
 
 local function SetParentCollapsed(parentName, isCollapsed)
     local cp = GetCollapsedParents()
+    local key = NormalizeParentCollapseKey(parentName)
     if isCollapsed then
-        cp[parentName] = true
+        if key then cp[key] = true end
     else
-        cp[parentName] = nil
+        if key then cp[key] = nil end
+        if parentName then cp[parentName] = nil end
     end
 end
 
 local function AreAnyParentsExpanded(topLevel)
     local list = topLevel or BuildAddonHierarchy()
-    local cp = GetCollapsedParents()
     for _, item in ipairs(list) do
         if item.isParent and item.children and #item.children > 0 then
-            if not cp[item.name] then
+            if not IsParentCollapsed(item.name) then
                 return true
             end
         end
@@ -5276,14 +5288,9 @@ local function ToggleAllParentsCollapsed(forceCollapse)
     if shouldCollapse == nil then
         shouldCollapse = AreAnyParentsExpanded(list)
     end
-    local cp = GetCollapsedParents()
     for _, item in ipairs(list) do
         if item.isParent and item.children and #item.children > 0 then
-            if shouldCollapse then
-                cp[item.name] = true
-            else
-                cp[item.name] = nil
-            end
+            SetParentCollapsed(item.name, shouldCollapse)
         end
     end
     return shouldCollapse
@@ -6293,7 +6300,7 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
             GameTooltip:AddDoubleLine("Load Mode:", "|cFFFACC15[Always]|r", 0.75, 0.78, 0.82, 0.980, 0.800, 0.082)
             GameTooltip:AddLine(string.format("Forced ON across all 5 zone profiles (%d of %d child modules set to [Always]).", lockedChildren, totalChildren), 0.82, 0.85, 0.90)
             if item.children and #item.children > 0 then
-                GameTooltip:AddLine("|cFF" .. accentHex .. "Left-Click [-]:|r |cFFE2E8F0Expand or Collapse Group|r  (|cFF" .. accentHex .. "Shift-Click:|r |cFFE2E8F0Collapse/Expand All|r)", 1, 1, 1)
+                GameTooltip:AddLine("|cFFF97316Left-Click Group:|r |cFFE2E8F0Expand or collapse child addons (Shift+Click: All groups)|r", 0.886, 0.910, 0.941)
             end
             GameTooltip:AddLine("|cFF34D399Left-Click Row:|r |cFFE2E8F0Reset to|r |cFF34D399[By Zone]|r   |cFF475569|||r   |cFF38BDF8Right-Click Row:|r |cFFE2E8F0Set to|r |cFF38BDF8[Never]|r", 1, 1, 1)
             GameTooltip:AddLine("|cFF" .. accentHex .. "Ctrl + Right-Click:|r |cFFE2E8F0Open Zone Assignment Menu|r", 1, 1, 1)
@@ -6301,7 +6308,7 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
             GameTooltip:AddDoubleLine("Load Mode:", "|cFFFACC15[Always]|r", 0.75, 0.78, 0.82, 0.980, 0.800, 0.082)
             GameTooltip:AddLine("Forced ON across all 5 zone profiles.", 0.82, 0.85, 0.90)
             if isParent and item.children and #item.children > 0 then
-                GameTooltip:AddLine("|cFF" .. accentHex .. "Left-Click [-]:|r |cFFE2E8F0Expand or Collapse Group|r  (|cFF" .. accentHex .. "Shift-Click:|r |cFFE2E8F0Collapse/Expand All|r)", 1, 1, 1)
+                GameTooltip:AddLine("|cFFF97316Left-Click Group:|r |cFFE2E8F0Expand or collapse child addons (Shift+Click: All groups)|r", 0.886, 0.910, 0.941)
             end
             GameTooltip:AddLine("|cFF34D399Left-Click Row:|r |cFFE2E8F0Reset to|r |cFF34D399[By Zone]|r   |cFF475569|||r   |cFF38BDF8Right-Click Row:|r |cFFE2E8F0Set to|r |cFF38BDF8[Never]|r", 1, 1, 1)
             GameTooltip:AddLine("|cFF" .. accentHex .. "Ctrl + Right-Click:|r |cFFE2E8F0Open Zone Assignment Menu|r", 1, 1, 1)
@@ -6312,7 +6319,7 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
             GameTooltip:AddLine("Managed per zone profile (Outdoor, Delves, Dungeons, Raid, PvP).", 0.82, 0.85, 0.90)
             GameTooltip:AddDoubleLine(zoneLabel .. " Profile:", inZone and "|cFF22C55EEnabled|r" or "|cFF8892A0Disabled|r", 0.75, 0.78, 0.82, 1, 1, 1)
             if isParent and item.children and #item.children > 0 then
-                GameTooltip:AddLine("|cFF" .. accentHex .. "Left-Click [-]:|r |cFFE2E8F0Expand or Collapse Group|r  (|cFF" .. accentHex .. "Shift-Click:|r |cFFE2E8F0Collapse/Expand All|r)", 1, 1, 1)
+                GameTooltip:AddLine("|cFFF97316Left-Click Group:|r |cFFE2E8F0Expand or collapse child addons (Shift+Click: All groups)|r", 0.886, 0.910, 0.941)
             end
             GameTooltip:AddLine("|cFFFACC15Left-Click Row:|r |cFFE2E8F0Set to|r |cFFFACC15[Always]|r   |cFF475569|||r   |cFF38BDF8Right-Click Row:|r |cFFE2E8F0Set to|r |cFF38BDF8[Never]|r", 1, 1, 1)
             GameTooltip:AddLine("|cFF" .. accentHex .. "Ctrl + Right-Click:|r |cFFE2E8F0Open Zone Assignment Menu|r", 1, 1, 1)
@@ -6360,6 +6367,7 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
         else
             SetParentCollapsed(name, not IsParentCollapsed(name))
         end
+        if f and f.UpdateCollapseAllButton then f.UpdateCollapseAllButton() end
         if scrollChild.Refresh then scrollChild:Refresh() end
     end
 
@@ -7511,7 +7519,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
                     if srcProf and dstProf then
                         dstProf.addons = {}
                         for k, v in pairs(srcProf.addons or {}) do
-                            if IsStandaloneMarkerExcludedBySuite(k) then
+                            if IsStandaloneMarkerExcludedBySuite(k) or addonTable.IsAddonFrozen(k) then
                                 dstProf.addons[k] = false
                             else
                                 dstProf.addons[k] = v
@@ -7520,12 +7528,15 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
                         if IsStandaloneMarkerExcludedBySuite("DynamicMarker") then
                             dstProf.addons["DynamicMarker"] = false
                         end
+                        if addonTable.EnforceProtectedSuiteModules then
+                            addonTable.EnforceProtectedSuiteModules()
+                        end
                         if selectedTabKey == targetKey then
                             addonTable.StageAddonProfile(targetKey)
                             if f.scrollChild then RefreshAddonTree(f.scrollChild) end
                             if f.UpdateStatusBar then f.UpdateStatusBar() end
                         end
-                        print(string.format("|cFF38BDF8DynamicLoad|r: Copied %s profile addons into %s.", srcTab.label, targetLabel))
+                        print(string.format("|cFF38BDF8DynamicLoad|r: Copied %s profile addons into %s (Always/Never locks and Suite Core rules preserved).", srcTab.label, targetLabel))
                     end
                     zoneTabMenu:Hide()
                     if clickCatcher then clickCatcher:Hide() end
@@ -7592,8 +7603,36 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     stashBtn:SetPoint("LEFT", toolbar, "LEFT", 0, 0)
     stashBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
+    local copyFromBtn = CreateFlatButton(toolbar, 90, 22, "Copy From...", false)
+    copyFromBtn:SetPoint("LEFT", stashBtn, "RIGHT", 5, 0)
+    copyFromBtn:SetScript("OnClick", function(self)
+        local targetLabel = (addonTable.CONTEXT_LABELS and addonTable.CONTEXT_LABELS[selectedTabKey]) or selectedTabKey
+        if f.OpenZoneTabMenu then
+            f.OpenZoneTabMenu(self, selectedTabKey, targetLabel)
+        end
+    end)
+    copyFromBtn:SetScript("OnEnter", function(self)
+        if not self:IsVisible() then return end
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        self.bg:SetColorTexture(UI.COLORS.BTN_HOVER.r, UI.COLORS.BTN_HOVER.g, UI.COLORS.BTN_HOVER.b, 0.95)
+        self.dsBorder:SetColor(ar, ag, ab, 0.85)
+        self.label:SetTextColor(1, 1, 1, 1)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Copy Zone Profile From...", 1, 1, 1)
+        GameTooltip:AddLine("Copy another zone's By Zone addon selections into the active zone tab in one click. Universal Always and Never locks and protected Suite Core rules are preserved.", 0.82, 0.85, 0.90, true)
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Choose source zone profile to copy|r", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    copyFromBtn:SetScript("OnLeave", function(self)
+        self.bg:SetColorTexture(0.078, 0.090, 0.122, 0.95)
+        self.dsBorder:SetColor(0.141, 0.161, 0.212, 0.90)
+        self.label:SetTextColor(0.84, 0.86, 0.90, 1)
+        GameTooltip:Hide()
+    end)
+
     local blizzAddonsBtn = CreateFlatButton(toolbar, 108, 22, "Blizzard AddOns", false)
-    blizzAddonsBtn:SetPoint("LEFT", stashBtn, "RIGHT", 5, 0)
+    blizzAddonsBtn:SetPoint("LEFT", copyFromBtn, "RIGHT", 5, 0)
     blizzAddonsBtn:SetScript("OnClick", function()
         if addonTable.OpenBlizzardAddonList then
             addonTable.OpenBlizzardAddonList()
@@ -7649,14 +7688,15 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
                 b:SetWidth(newW)
             end
         end
-        FitBtn(stashBtn, 86, 18)
-        FitBtn(blizzAddonsBtn, 102, 18)
-        FitBtn(sortBtn, 72, 18)
-        FitBtn(collapseAllBtn, 52, 16)
-        FitBtn(chipAll, 38, 16)
-        FitBtn(chipPending, 76, 16)
-        FitBtn(chipCore, 66, 16)
-        FitBtn(chipFrozen, 74, 16)
+        FitBtn(stashBtn, 84, 16)
+        FitBtn(copyFromBtn, 82, 16)
+        FitBtn(blizzAddonsBtn, 100, 16)
+        FitBtn(sortBtn, 72, 16)
+        FitBtn(collapseAllBtn, 50, 14)
+        FitBtn(chipAll, 36, 14)
+        FitBtn(chipPending, 74, 14)
+        FitBtn(chipCore, 64, 14)
+        FitBtn(chipFrozen, 72, 14)
     end
     f.AutoSizeToolbarButtons = AutoSizeToolbarButtons
 
@@ -8877,7 +8917,7 @@ do
         slash = "/dl",
         order = 10,
         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
-        version = addonTable.ADDON_VERSION or "2.2.1",
+        version = addonTable.ADDON_VERSION or "2.3.0",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         CHANGELOG = DynamicSuite.Changelogs and DynamicSuite.Changelogs["DynamicLoad"] and DynamicSuite.Changelogs["DynamicLoad"].entries or addonTable.CHANGELOG,
         Open = function(...) if addonTable.ShowConfigUI then return addonTable.ShowConfigUI(...) end end,
