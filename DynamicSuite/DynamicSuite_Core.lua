@@ -59,7 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "17/11/2026",
     entries = {
-        { type = "FIX",     text = "Desktop Window Coexistence, Strata-Safe Layering, Spellbook Tab Memory & Free Dragging (17/11/2026): Eliminated the double-resize lag spike and talent pool blanking when opening Group Finder (I), Guild & Communities (J), Character Info (C), or Quest Log (L) alongside Talents & Spellbook by keeping Talents & Spellbook natively registered with screen-fit auto-shrinking disabled cleanly, never hiding already-open panels during setup, and using strata-safe focus ordering (MEDIUM when unfocused behind HIGH panels, restored cleanly on click) with zero synthetic frame-level inflation so talent trees, Dungeon Finder rewards, and loadout sidebars never disappear behind window backgrounds; fixed Spellbook tab selection getting forced back to Talents when opening C, I, or L by reading the active tab bar first and recording left-click tab releases; stopped C from getting pushed next to Group Finder (I) or locked in place and fixed dragging across stats and background panes; kept Adventure Guide boss loot lists intact, Guild & Communities and Group Finder taint-free, and fullscreen World Map untouched; added one-window-at-a-time reverse-order Escape closing both in and out of combat; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling) across all headers and Talents & Spellbook canvases; and ensured Right-Click header resets and Reset Window Defaults persist cleanly across /reload." },
+        { type = "FIX",     text = "Desktop Window Coexistence, Freeze-Free Layering, Spellbook Tab Memory & Free Dragging (17/11/2026): Eliminated client freezes and talent tree/sidebar blanking when opening Group Finder (I), Guild & Communities (J), Character Info (C), or Quest Log (L) alongside Talents & Spellbook by keeping Talents & Spellbook on its native MEDIUM strata while standard coexisting panels sit on HIGH strata (with zero dynamic strata flipping, zero synthetic frame-level inflation, single-window focus raising, and direct out-of-combat positioning/scaling without SecureHandler wrapper overhead or UpdateUIPanelPositions re-anchor loops); detached side-by-side panels cleanly without ever hiding already-open frames so talent node pools, Dungeon Finder rewards, and loadout sidebars render cleanly every time; fixed Spellbook tab selection getting forced back to Talents when opening C, I, or L by reading the active tab bar first and recording left-click tab releases; stopped C from getting pushed next to Group Finder (I) or locked in place and fixed dragging across stats and background panes; kept Adventure Guide boss loot lists intact, Guild & Communities and Group Finder taint-free, and fullscreen World Map untouched; added one-window-at-a-time reverse-order Escape closing both in and out of combat; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling) across all headers and Talents & Spellbook canvases; and ensured Right-Click header resets and Reset Window Defaults persist cleanly across /reload." },
         { type = "FEATURE", text = "Release v2.3.0 - 2-Tab Suite Studio, Core MS-Windows Desktop Window Manager & 32-Panel Quest Log Coexistence (16/11/2026): Upgraded Suite Studio into a 2-tab workspace (Tab 1 'Theme & Typography' via /ds studio or /ds theme; Tab 2 'Desktop Windows & Menus' via /ds windows or /ds win) and migrated the Blizzard Desktop Window Manager into DynamicSuite Core (_G.DynamicSuite.DesktopWindows & DynamicSuiteDB.global.desktopWindows with automatic one-time migration from DynamicPrepDB so window management works even when DynamicPrep is disabled). Expanded side-by-side coexistence to 32 Blizzard panels by bringing the windowed/docked WorldMapFrame (Quest Log 'L') into full coexistence alongside PlayerSpellsFrame, CharacterFrame, PVEFrame, CollectionsJournal, ProfessionsFrame, and all standard panels while keeping fullscreen WorldMapFrame and GameMenuFrame untouched; replaced unclamped free-floating movement with mandatory scale-aware ClampDesktopWindowOffset boundary clamping across drag ticks, drag stop, OnShow, OnSizeChanged (Talent/Spec/Spellbook switches), UI_SCALE_CHANGED, and DISPLAY_SIZE_CHANGED so no panel or [X] close button can ever spawn or get stuck off-screen; enabled modifier-free Left-Click dragging from any empty window background or passive chrome (guarded via GetMouseFoci() so interactive child controls are never hijacked); added a zero-taint GLOBAL_MOUSE_DOWN click-to-raise z-order listener and UISpecialFrames sorter so clicking any open window brings it to the front and pressing Escape always closes the top-most window first; and preserved silent external mover coexistence (NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, ElvUI) with a live status banner on Tab 2." },
         { type = "UI",      text = "Central Popover Auto-Close Registry, Suite-Wide 3-Way Interactive 4px Obsidian Scrollbars & DynamicChat Polish (16/11/2026): Added UI.RegisterPopupCloser(key, closeFn) and owner-button OnHide hooks across DynamicSuite and all 8 modules so closing the main window, minimising, switching tabs/modules, or entering HUD Edit Mode cleanly dismisses all active dropdowns and popovers; upgraded every scrollbar across Suite Studio, Global Smart Search, Guided Setup, dropdown popovers, and module workspaces to full 3-way interaction (Mousewheel, Left-Click & Drag on the Button thumb with IsMouseButtonDown release guard and OnHide cleanup, and Left-Click on the track to jump to cursor position); and fixed DynamicChat's Font Dropdown popover/scrollbar, PrintMsg routing, and StaticPopup-free dark-obsidian reload confirmation modal." },
         { type = "FEATURE", text = "Shared Media Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Chat Sounds & Self-Whisper Alerts (15/11/2026): Added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI discovery for both Sounds and Fonts across Theme & Font Studio (and standalone DynamicMarker) plus DynamicChat Tab 3 with PLAYER_LOGIN delayed scanning and searchable grouped dropdowns; removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; restored self-whisper notification alerts on incoming WHISPER / BN_WHISPER events; and added automatic runtime fallback (to Blizzard Raid Warning for sounds or Expressway for fonts) when an external media pack is disabled." },
@@ -4488,15 +4488,13 @@ do
 
     local W = {
         KEEP_UIPANEL_LAYOUT = {
-            WorldMapFrame     = true,
-            CommunitiesFrame  = true,
-            PlayerSpellsFrame = true,
+            WorldMapFrame    = true,
+            CommunitiesFrame = true,
         },
         NO_STRATA_LIFT = {
             EncounterJournal = true,
         },
         HEADER_OVERLAY_OFFSET         = 25,
-        securePositioner              = nil,
         blizzWinState                 = setmetatable({}, { __mode = "k" }),
         rawFrameMethods               = setmetatable({}, { __mode = "k" }),
         hookedFrameNames              = {},
@@ -4644,19 +4642,6 @@ do
             end
         end
         return false
-    end
-
-    function W.EnsureSecurePositioner()
-        if W.securePositioner then return W.securePositioner end
-        if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() == true then
-            return nil
-        end
-        if not _G.UIParent then return nil end
-        local ok, p = pcall(CreateFrame, "Frame", nil, _G.UIParent, "SecureHandlerBaseTemplate")
-        if ok and p then
-            W.securePositioner = p
-        end
-        return W.securePositioner
     end
 
     local function InCombat()
@@ -5275,40 +5260,7 @@ do
     end
 
     function W.ApplyUIParentPoint(frame, pt, relPt, argX, argY)
-        if not frame or not _G.UIParent then return false end
-        if type(frame.IsProtected) == "function" then
-            local okProt, isProt = pcall(frame.IsProtected, frame)
-            if okProt and isProt == true then
-                local sec = W.EnsureSecurePositioner()
-                if sec and type(sec.SetFrameRef) == "function" and type(sec.SetAttribute) == "function" and type(sec.Execute) == "function" then
-                    local okSec = pcall(function()
-                        sec:SetFrameRef("f", frame)
-                        sec:SetAttribute("p", pt)
-                        sec:SetAttribute("rp", relPt)
-                        sec:SetAttribute("x", argX)
-                        sec:SetAttribute("y", argY)
-                        sec:Execute([[
-                            local f = self:GetFrameRef("f")
-                            if not f then return end
-                            f:ClearAllPoints()
-                            f:SetPoint(self:GetAttribute("p"), self:GetParent(), self:GetAttribute("rp"), self:GetAttribute("x"), self:GetAttribute("y"))
-                        ]])
-                    end)
-                    if okSec and type(frame.GetNumPoints) == "function" and type(frame.GetPoint) == "function" then
-                        local okN, numPts = pcall(frame.GetNumPoints, frame)
-                        if okN and numPts == 1 then
-                            local okP, gotPt, gotRelTo, gotRelPt, gotX, gotY = pcall(frame.GetPoint, frame, 1)
-                            gotX = okP and SafeNum(gotX, nil) or nil
-                            gotY = okP and SafeNum(gotY, nil) or nil
-                            if okP and gotPt == pt and gotRelTo == _G.UIParent and gotRelPt == relPt
-                                and gotX and gotY and math.abs(gotX - argX) <= 0.50 and math.abs(gotY - argY) <= 0.50 then
-                                return true
-                            end
-                        end
-                    end
-                end
-            end
-        end
+        if InCombat() or not frame or not _G.UIParent then return false end
         return W.RawClearAndSetPoint(frame, pt, _G.UIParent, relPt, argX, argY)
     end
 
@@ -5353,29 +5305,7 @@ do
             return true
         end
         if st then st.applyingScale = true end
-        local ok = false
-        if type(frame.IsProtected) == "function" then
-            local okProt, isProt = pcall(frame.IsProtected, frame)
-            if okProt and isProt == true then
-                local sec = W.EnsureSecurePositioner()
-                if sec and type(sec.SetFrameRef) == "function" and type(sec.SetAttribute) == "function" and type(sec.Execute) == "function" then
-                    local okSec = pcall(function()
-                        sec:SetFrameRef("f", frame)
-                        sec:SetAttribute("s", s)
-                        sec:Execute([[
-                            local f = self:GetFrameRef("f")
-                            if f then f:SetScale(self:GetAttribute("s")) end
-                        ]])
-                    end)
-                    if okSec and math.abs(GetFrameLiveScale(frame) - s) <= 0.005 then
-                        ok = true
-                    end
-                end
-            end
-        end
-        if not ok then
-            ok = W.RawSetScale(frame, s)
-        end
+        local ok = W.RawSetScale(frame, s)
         if st then st.applyingScale = false end
         return ok
     end
@@ -5482,16 +5412,6 @@ do
         elseif st then
             st.anchoredAtDefaultCenter = false
         end
-        if frame.IsShown and frame:IsShown() then
-            local fx, fy = CaptureFrameCenterOffset(frame, frameName)
-            if fx and fy then
-                local cx, cy = ClampDesktopWindowOffset(frame, fx, fy, s)
-                if math.abs(cx - fx) > 0.5 or math.abs(cy - fy) > 0.5 then
-                    if st then st.anchoredAtDefaultCenter = true end
-                    SecureApplyPoint(frame, cx, cy, s)
-                end
-            end
-        end
         return applied
     end
 
@@ -5538,26 +5458,6 @@ do
                 end
                 if not curMaxPt then
                     pcall(frame.SetAttribute, frame, "UIPanelLayout-maximizePoint", "TOP")
-                end
-            elseif frameName == "PlayerSpellsFrame" then
-                local uipWin = type(_G.UIPanelWindows) == "table" and _G.UIPanelWindows["PlayerSpellsFrame"] or nil
-                if not yielding and db and (db.sideBySide ~= false or db.scrollScale ~= false) then
-                    if type(uipWin) == "table" and uipWin.checkFit ~= nil then
-                        uipWin.checkFit = nil
-                    end
-                    if type(frame.SetAttribute) == "function" then
-                        local curCF = frame.GetAttribute and frame:GetAttribute("UIPanelLayout-checkFit")
-                        if curCF ~= nil then
-                            pcall(frame.SetAttribute, frame, "UIPanelLayout-checkFit", nil)
-                        end
-                    end
-                elseif orig and orig.checkFit ~= nil then
-                    if type(uipWin) == "table" and uipWin.checkFit == nil then
-                        uipWin.checkFit = orig.checkFit
-                    end
-                    if type(frame.SetAttribute) == "function" then
-                        pcall(frame.SetAttribute, frame, "UIPanelLayout-checkFit", orig.checkFit)
-                    end
                 end
             end
             return
@@ -5698,47 +5598,13 @@ do
         local db = GetDesktopWindowsDB()
         if not (db and db.sideBySide ~= false) then return end
         if not W.NO_STRATA_LIFT[frameName] and type(frame.GetFrameStrata) == "function" then
-            local targetStrata = "HIGH"
-            if frameName == "PlayerSpellsFrame" then
-                local topName = W.zOrderStack[#W.zOrderStack]
-                if topName and topName ~= "PlayerSpellsFrame" then
-                    targetStrata = "MEDIUM"
-                end
-            end
+            local targetStrata = (frameName == "PlayerSpellsFrame") and "MEDIUM" or "HIGH"
             local okS, curStrata = pcall(frame.GetFrameStrata, frame)
             if okS and curStrata ~= targetStrata then
                 W.RawSetFrameStrata(frame, targetStrata)
             end
         end
         W.RawSetToplevel(frame, true)
-    end
-
-    function W.SyncDesktopWindowLayers(raiseChanged)
-        if InCombat() or DesktopWindows:IsYielding() then return end
-        local db = GetDesktopWindowsDB()
-        if not (db and db.sideBySide ~= false) then return end
-        W.PruneZOrderStack()
-        local count = #W.zOrderStack
-        if count == 0 then
-            W.lastTopFocusedWindow = nil
-            return
-        end
-        local topName = W.zOrderStack[count]
-        for i = 1, count do
-            local name = W.zOrderStack[i]
-            local f = _G[name]
-            if f and f.IsShown and f:IsShown() and not IsWorldMapMaximized(f, name) then
-                W.NormalizeDesktopWindowLayer(f, name)
-                local st = W.blizzWinState[f]
-                if st then
-                    W.SyncHeaderOverlayLevel(f, st)
-                end
-                if raiseChanged then
-                    W.RawRaise(f)
-                end
-            end
-        end
-        W.lastTopFocusedWindow = topName
     end
 
     function W.RemoveFromZOrderStack(frameName)
@@ -5749,9 +5615,7 @@ do
             end
         end
         W.PruneZOrderStack()
-        if #W.zOrderStack > 0 then
-            W.SyncDesktopWindowLayers(true)
-        end
+        W.lastTopFocusedWindow = W.zOrderStack[#W.zOrderStack]
     end
 
     function W.GetTopMostShownWindowName(unprotectedOnly)
@@ -5823,14 +5687,7 @@ do
         if not (db and db.sideBySide ~= false) then return end
         W.PruneZOrderStack()
         local curTop = W.zOrderStack[#W.zOrderStack]
-        local alreadyTopStrata = (curTop == frameName and W.lastTopFocusedWindow == frameName)
-        if alreadyTopStrata and frameName == "PlayerSpellsFrame" and type(frame.GetFrameStrata) == "function" then
-            local okS, curStrata = pcall(frame.GetFrameStrata, frame)
-            if okS and curStrata ~= "HIGH" then
-                alreadyTopStrata = false
-            end
-        end
-        if alreadyTopStrata then
+        if curTop == frameName and W.lastTopFocusedWindow == frameName then
             if (W.lastShownAt[frameName] or 0) < W.showSeqCounter then
                 W.showSeqCounter = W.showSeqCounter + 1
                 W.lastShownAt[frameName] = W.showSeqCounter
@@ -5846,7 +5703,13 @@ do
         W.zOrderStack[#W.zOrderStack + 1] = frameName
         W.showSeqCounter = W.showSeqCounter + 1
         W.lastShownAt[frameName] = W.showSeqCounter
-        W.SyncDesktopWindowLayers(true)
+        W.NormalizeDesktopWindowLayer(frame, frameName)
+        local st = W.blizzWinState[frame]
+        if st then
+            W.SyncHeaderOverlayLevel(frame, st)
+        end
+        W.RawRaise(frame)
+        W.lastTopFocusedWindow = frameName
         W.SyncAllUISpecialFrames()
     end
 
@@ -6970,7 +6833,7 @@ do
                 ApplyBlizzardFrameTransform(shownFrame, frameName)
                 if fState then fState.wasOpenConfirmed = true end
                 if fState and fState.restoringFromAutoClose then
-                    W.SyncDesktopWindowLayers(false)
+                    W.PruneZOrderStack()
                 elseif not W.restoringPanels then
                     RestoreCoexistingPanels(frameName)
                     W.FocusAndRaiseDesktopWindow(shownFrame, frameName)
@@ -7405,7 +7268,7 @@ do
                     end
                 end
             end
-            W.SyncDesktopWindowLayers(false)
+            W.PruneZOrderStack()
             W.SyncAllUISpecialFrames()
             W.inCloseSpecialWindowsPostHook = false
             W.inEscapeRestorePostHook = false
@@ -7447,7 +7310,7 @@ do
                         if st then
                             st.wasOpenConfirmed = true
                         end
-                        W.SyncDesktopWindowLayers(false)
+                        W.PruneZOrderStack()
                         W.SyncAllUISpecialFrames()
                         W.inEscapeRestorePostHook = false
                         return
@@ -7628,14 +7491,10 @@ do
             _G.hooksecurefunc("UpdateUIPanelPositions", function()
                 if InCombat() or DesktopWindows:IsYielding() then return end
                 local db = GetDesktopWindowsDB()
-                if not db then return end
-                local noAutoClose = (db.sideBySide ~= false)
+                if not db or db.sideBySide ~= false then return end
                 for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
                     local f = _G[spec.name]
                     if f and f.IsShown and f:IsShown() and not IsWorldMapMaximized(f, spec.name) then
-                        if spec.name == "PlayerSpellsFrame" and noAutoClose then
-                            RestorePlayerSpellsFrameState(f)
-                        end
                         local s = GetActiveFrameScale(spec.name, f)
                         if math.abs(GetFrameLiveScale(f) - s) > 0.005 then
                             SecureApplyScale(f, s)
@@ -7643,8 +7502,6 @@ do
                         local customX, customY = W.GetActiveWindowCustomOffset(spec.name, db)
                         if customX and customY then
                             SecureApplyPoint(f, customX, customY, s)
-                        elseif noAutoClose then
-                            ApplyCanonicalDefaultPoint(f, spec.name, s)
                         end
                     end
                 end
