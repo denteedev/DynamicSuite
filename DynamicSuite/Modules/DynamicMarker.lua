@@ -10800,7 +10800,7 @@ end
 
 DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
-    date    = "17/11/2026",
+    date    = "18/11/2026",
     entries = {
         { type = "IMPROVED", text = "[DynamicMark] Macro Template Streamlining & Raid Marker Note (17/11/2026): Removed the redundant /stopmacro [@focus,noexists] line from generated [DynamicMark] macros (since /tm already gates on @focus,exists across all group scopes) and added a concise troubleshooting note in Macro Setup explaining that /tm requires Raid Leader or Assistant in raids and that a full game restart (not /reload) clears Blizzard's intermittent raid-marker lockout bug." },
         { type = "UI",       text = "3-Way Interactive Obsidian Scrollbars & Automatic Popover Dismissal (16/11/2026): Upgraded all scrollbars across the settings tabs, dropdown menus, and the Changelog viewer to support full 3-way interaction (mousewheel scrolling, Left-Click & Drag on the scrollbar thumb with hover highlights, and Left-Click on the scrollbar track to jump directly to that position), added an unclipped 1px accent border overlay and Escape-key dismissal to dropdown menus, and ensured open dropdowns and HUD selector popovers close automatically when switching tabs, entering HUD Edit Mode, or closing the window." },

@@ -1,9 +1,9 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.3.0 (17/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.3.0 (18/11/2026 - Retail 12.1.5 / Interface 120105)*
 
 ---
 
-## DynamicSuite & All 8 Modules v2.3.0 (17/11/2026)
+## DynamicSuite & All 8 Modules v2.3.0 (18/11/2026)
 
 ### DynamicSuite Hub, Suite Studio & HUD Edit Mode
 - **2-Tab `Suite Studio` (`Theme & Typography` + `Desktop Windows & Menus`) & `/ds windows`:** Upgraded the Left Suite Rail `Suite Studio` workspace (`/ds studio`) into a 2-tab studio with `Tab 1: Theme & Typography` (`/ds theme`) and `Tab 2: Desktop Windows & Menus` (`/ds windows` or `/ds win`), housing the Core Blizzard Desktop Window Manager alongside Game Menu & Options Shortcuts and a calm status banner when yielding to external frame-mover addons.

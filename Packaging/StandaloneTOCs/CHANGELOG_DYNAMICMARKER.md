@@ -1,9 +1,9 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.3.0 (17/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.3.0 (18/11/2026 - Retail 12.1.5 / Interface 120105)*
 
 ---
 
-## DynamicMarker v2.3.0 (17/11/2026)
+## DynamicMarker v2.3.0 (18/11/2026)
 
 ### Improved
 * **`[DynamicMark]` Macro Template Streamlining & Raid Marker Note:** Removed the redundant `/stopmacro [@focus,noexists]` line from generated `[DynamicMark]` macros (since `/tm` already gates on `@focus,exists` across all group scopes) and added a concise troubleshooting note in `Macro Setup` explaining that `/tm` requires Raid Leader or Assistant in raids and that a full game restart (not `/reload`) clears Blizzard's intermittent raid-marker lockout bug.
