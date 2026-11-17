@@ -59,7 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "18/11/2026",
     entries = {
-        { type = "FIX",     text = "Desktop Window Coexistence, Native Layering, Character Sheet Pane Visibility, Spellbook Tab Memory & Free Dragging (18/11/2026): Eliminated client freezes, buried Character Info left/right panes (both stock Blizzard gear slots/model and EllesmereUIBlizzardSkin right-side Character Stats), and talent tree/sidebar blanking by keeping all standard panels on their native frame strata (with Talents & Spellbook on MEDIUM strata), removing forced SetToplevel(true) calls that caused C++ Raise() to elevate window backgrounds above fixed-level child panels, and relying strictly on single-window Raise() without synthetic frame-level inflation, SecureHandler wrapper overhead, or UpdateUIPanelPositions re-anchor loops; ensured Character Info (C) keeps its right-side stats pane expanded and refreshed on open whenever not collapsed by the user; detached side-by-side panels cleanly without ever hiding already-open frames; fixed Spellbook tab selection getting forced back to Talents when opening C, I, or L; stopped C from getting pushed next to Group Finder (I) or locked in place and fixed dragging across stats and background panes; kept Adventure Guide boss loot lists intact, Guild & Communities and Group Finder taint-free, and fullscreen World Map untouched; added one-window-at-a-time reverse-order Escape closing both in and out of combat; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling); and ensured Right-Click header resets and Reset Window Defaults persist cleanly across /reload." },
+        { type = "FIX",     text = "Desktop Window Coexistence, Strata-Based Focus, Character Sheet Pane Visibility, Spellbook Tab Memory & Free Dragging (18/11/2026): Eliminated client freezes, buried Character Info left/right panes (both stock Blizzard gear slots/model at FrameLevel 101 and EllesmereUIBlizzardSkin right-side Character Stats at FrameLevel 50), and talent tree/sidebar blanking by disabling SetToplevel and removing C++ Raise() calls that jumped root window backgrounds to FrameLevel 5020 above third-party 5000-level frames, clamping any stray FrameLevel > 15 back to 1, keeping Talents & Spellbook permanently on MEDIUM strata, and managing z-order cleanly via strata focus (HIGH for the active window, MEDIUM/LOW for background windows) without synthetic frame-level inflation, SecureHandler wrapper overhead, or UpdateUIPanelPositions re-anchor loops; ensured Character Info (C) keeps its right-side stats pane expanded and refreshed on open whenever not collapsed by the user; detached side-by-side panels cleanly without ever hiding already-open frames; fixed Spellbook tab selection getting forced back to Talents when opening C, I, or L; stopped C from getting pushed next to Group Finder (I) or locked in place and fixed dragging across stats and background panes; kept Adventure Guide boss loot lists intact, Guild & Communities and Group Finder taint-free, and fullscreen World Map untouched; added one-window-at-a-time reverse-order Escape closing both in and out of combat; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling); and ensured Right-Click header resets and Reset Window Defaults persist cleanly across /reload." },
         { type = "FEATURE", text = "Release v2.3.0 - 2-Tab Suite Studio, Core MS-Windows Desktop Window Manager & 32-Panel Quest Log Coexistence (16/11/2026): Upgraded Suite Studio into a 2-tab workspace (Tab 1 'Theme & Typography' via /ds studio or /ds theme; Tab 2 'Desktop Windows & Menus' via /ds windows or /ds win) and migrated the Blizzard Desktop Window Manager into DynamicSuite Core (_G.DynamicSuite.DesktopWindows & DynamicSuiteDB.global.desktopWindows with automatic one-time migration from DynamicPrepDB so window management works even when DynamicPrep is disabled). Expanded side-by-side coexistence to 32 Blizzard panels by bringing the windowed/docked WorldMapFrame (Quest Log 'L') into full coexistence alongside PlayerSpellsFrame, CharacterFrame, PVEFrame, CollectionsJournal, ProfessionsFrame, and all standard panels while keeping fullscreen WorldMapFrame and GameMenuFrame untouched; replaced unclamped free-floating movement with mandatory scale-aware ClampDesktopWindowOffset boundary clamping across drag ticks, drag stop, OnShow, OnSizeChanged (Talent/Spec/Spellbook switches), UI_SCALE_CHANGED, and DISPLAY_SIZE_CHANGED so no panel or [X] close button can ever spawn or get stuck off-screen; enabled modifier-free Left-Click dragging from any empty window background or passive chrome (guarded via GetMouseFoci() so interactive child controls are never hijacked); added a zero-taint GLOBAL_MOUSE_DOWN click-to-raise z-order listener and UISpecialFrames sorter so clicking any open window brings it to the front and pressing Escape always closes the top-most window first; and preserved silent external mover coexistence (NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, ElvUI) with a live status banner on Tab 2." },
         { type = "UI",      text = "Central Popover Auto-Close Registry, Suite-Wide 3-Way Interactive 4px Obsidian Scrollbars & DynamicChat Polish (16/11/2026): Added UI.RegisterPopupCloser(key, closeFn) and owner-button OnHide hooks across DynamicSuite and all 8 modules so closing the main window, minimising, switching tabs/modules, or entering HUD Edit Mode cleanly dismisses all active dropdowns and popovers; upgraded every scrollbar across Suite Studio, Global Smart Search, Guided Setup, dropdown popovers, and module workspaces to full 3-way interaction (Mousewheel, Left-Click & Drag on the Button thumb with IsMouseButtonDown release guard and OnHide cleanup, and Left-Click on the track to jump to cursor position); and fixed DynamicChat's Font Dropdown popover/scrollbar, PrintMsg routing, and StaticPopup-free dark-obsidian reload confirmation modal." },
         { type = "FEATURE", text = "Shared Media Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Chat Sounds & Self-Whisper Alerts (15/11/2026): Added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI discovery for both Sounds and Fonts across Theme & Font Studio (and standalone DynamicMarker) plus DynamicChat Tab 3 with PLAYER_LOGIN delayed scanning and searchable grouped dropdowns; removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; restored self-whisper notification alerts on incoming WHISPER / BN_WHISPER events; and added automatic runtime fallback (to Blizzard Raid Warning for sounds or Expressway for fonts) when an external media pack is disabled." },
@@ -5597,14 +5597,51 @@ do
         if DesktopWindows:IsYielding() then return end
         local db = GetDesktopWindowsDB()
         if not (db and db.sideBySide ~= false) then return end
-        if frameName == "PlayerSpellsFrame" and type(frame.GetFrameStrata) == "function" then
-            local okS, curStrata = pcall(frame.GetFrameStrata, frame)
-            if okS and curStrata ~= "MEDIUM" then
-                W.RawSetFrameStrata(frame, "MEDIUM")
-            end
-        end
         -- Disable C++ toplevel FrameLevel inflation so Raise() never jumps root Bg/Inset above fixed-level children (e.g. PaperDollFrame / EUI stats at level 50).
         W.RawSetToplevel(frame, false)
+        if frameName == "PlayerSpellsFrame" then
+            if type(frame.GetFrameStrata) == "function" then
+                local okS, curStrata = pcall(frame.GetFrameStrata, frame)
+                if okS and curStrata ~= "MEDIUM" then
+                    W.RawSetFrameStrata(frame, "MEDIUM")
+                end
+            end
+            return
+        end
+        -- Clamp any stray high FrameLevel (e.g. 5020 from C++ Raise() above DetailsFramework.IconPickFrame at 5000) back to 1 so fixed-level children (CharacterHeadSlot at 101, EUI_CharSheet_StatsPanel at 50) are never buried.
+        if type(frame.GetFrameLevel) == "function" then
+            local okL, curLvl = pcall(frame.GetFrameLevel, frame)
+            if okL and type(curLvl) == "number" and curLvl > 15 then
+                W.RawSetFrameLevel(frame, 1)
+            end
+        end
+        local topName = W.zOrderStack[#W.zOrderStack]
+        local isFocused = (topName == nil or topName == frameName)
+        local targetStrata = isFocused and "HIGH" or ((topName == "PlayerSpellsFrame") and "LOW" or "MEDIUM")
+        if type(frame.GetFrameStrata) == "function" then
+            local okS, curStrata = pcall(frame.GetFrameStrata, frame)
+            if okS and curStrata ~= targetStrata then
+                W.RawSetFrameStrata(frame, targetStrata)
+            end
+        else
+            W.RawSetFrameStrata(frame, targetStrata)
+        end
+    end
+
+    function W.SyncAllDesktopWindowLayers()
+        if InCombat() or DesktopWindows:IsYielding() then return end
+        local db = GetDesktopWindowsDB()
+        if not (db and db.sideBySide ~= false) then return end
+        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+            local bf = _G[spec.name]
+            if bf and bf.IsShown and bf:IsShown() and not IsWorldMapMaximized(bf, spec.name) then
+                W.NormalizeDesktopWindowLayer(bf, spec.name)
+                local bSt = W.blizzWinState[bf]
+                if bSt then
+                    W.SyncHeaderOverlayLevel(bf, bSt)
+                end
+            end
+        end
     end
 
     function W.RemoveFromZOrderStack(frameName)
@@ -5616,6 +5653,7 @@ do
         end
         W.PruneZOrderStack()
         W.lastTopFocusedWindow = W.zOrderStack[#W.zOrderStack]
+        W.SyncAllDesktopWindowLayers()
     end
 
     function W.GetTopMostShownWindowName(unprotectedOnly)
@@ -5703,12 +5741,12 @@ do
         W.zOrderStack[#W.zOrderStack + 1] = frameName
         W.showSeqCounter = W.showSeqCounter + 1
         W.lastShownAt[frameName] = W.showSeqCounter
+        W.SyncAllDesktopWindowLayers()
         W.NormalizeDesktopWindowLayer(frame, frameName)
         local st = W.blizzWinState[frame]
         if st then
             W.SyncHeaderOverlayLevel(frame, st)
         end
-        W.RawRaise(frame)
         W.lastTopFocusedWindow = frameName
         W.SyncAllUISpecialFrames()
     end
@@ -6477,6 +6515,7 @@ do
                 pcall(frame.SetMovable, frame, true)
             end
             W.SyncFrameClamping(frame, frameName)
+            W.NormalizeDesktopWindowLayer(frame, frameName)
             if type(frame.EnableMouseWheel) == "function" then
                 pcall(frame.EnableMouseWheel, frame, true)
             end
