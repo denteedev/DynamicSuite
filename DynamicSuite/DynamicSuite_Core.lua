@@ -59,7 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "18/11/2026",
     entries = {
-        { type = "FIX",     text = "Talents & Spellbook Layering and Adventure Guide Mousewheel Scrolling Fixes (18/11/2026): Updated the Blizzard Desktop Window Manager so Talents & Spellbook uses the same focus-based layering as every other managed window (bringing it cleanly to HIGH strata when active so Cooldown Manager icons no longer bleed through Spellbook and Specialisation tabs, while clamping root FrameLevel <= 15 so talent sidebars and child panes stay cleanly layered above the background), and stopped root Adventure Guide and passive border chrome from capturing mousewheel input so scrolling through boss overviews, abilities, loot lists, and lore works smoothly again while preserving Ctrl+Scroll and Ctrl+Shift+Scroll scaling when Ctrl is held." },
+        { type = "FIX",     text = "Item Socketing Esc Close, Talents & Spellbook Layering, and Adventure Guide Mousewheel Scrolling Fixes (18/11/2026): Marked session-bound interaction panels (Item Socketing, Trade, Gossip, Quest, Item Upgrade, and Revival Catalyst) as non-restorable so closing them clears their state immediately without ever re-showing an empty ghost shell on Esc (pressing Esc once cleanly closes Item Socketing and pressing Esc again closes Character Info); updated Talents & Spellbook to use the same focus-based layering as every other managed window (HIGH strata when active, MEDIUM when unfocused, with root FrameLevel clamped to 1 and SetToplevel disabled) so Cooldown Manager icons no longer bleed through Spellbook and Specialisation tabs while talent sidebars and child panes stay neatly layered; and stopped the Adventure Guide root frame and passive border chrome from swallowing mousewheel input so scrolling boss overviews, abilities, loot lists, and lore works smoothly again while preserving Ctrl+Scroll and Ctrl+Shift+Scroll window scaling when Ctrl is held." },
         { type = "FIX",     text = "Desktop Window Coexistence, Strata-Based Focus, Character Sheet Pane Visibility, Spellbook Tab Memory & Free Dragging (18/11/2026): Eliminated client freezes, buried Character Info left/right panes (both stock Blizzard gear slots/model at FrameLevel 101 and EllesmereUIBlizzardSkin right-side Character Stats at FrameLevel 50), and talent tree/sidebar blanking by disabling SetToplevel and removing C++ Raise() calls that jumped root window backgrounds to FrameLevel 5020 above third-party 5000-level frames, clamping any stray FrameLevel > 15 back to 1, and managing z-order cleanly via strata focus (HIGH for the active window, MEDIUM for background windows) without synthetic frame-level inflation, SecureHandler wrapper overhead, or UpdateUIPanelPositions re-anchor loops; ensured Character Info (C) keeps its right-side stats pane expanded and refreshed on open whenever not collapsed by the user; detached side-by-side panels cleanly without ever hiding already-open frames; fixed Spellbook tab selection getting forced back to Talents when opening C, I, or L; stopped C from getting pushed next to Group Finder (I) or locked in place and fixed dragging across stats and background panes; kept Adventure Guide boss loot lists intact, Guild & Communities and Group Finder taint-free, and fullscreen World Map untouched; added one-window-at-a-time reverse-order Escape closing both in and out of combat; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling); and ensured Right-Click header resets and Reset Window Defaults persist cleanly across /reload." },
         { type = "FEATURE", text = "Release v2.3.0 - 2-Tab Suite Studio, Core MS-Windows Desktop Window Manager & 32-Panel Quest Log Coexistence (16/11/2026): Upgraded Suite Studio into a 2-tab workspace (Tab 1 'Theme & Typography' via /ds studio or /ds theme; Tab 2 'Desktop Windows & Menus' via /ds windows or /ds win) and migrated the Blizzard Desktop Window Manager into DynamicSuite Core (_G.DynamicSuite.DesktopWindows & DynamicSuiteDB.global.desktopWindows with automatic one-time migration from DynamicPrepDB so window management works even when DynamicPrep is disabled). Expanded side-by-side coexistence to 32 Blizzard panels by bringing the windowed/docked WorldMapFrame (Quest Log 'L') into full coexistence alongside PlayerSpellsFrame, CharacterFrame, PVEFrame, CollectionsJournal, ProfessionsFrame, and all standard panels while keeping fullscreen WorldMapFrame and GameMenuFrame untouched; replaced unclamped free-floating movement with mandatory scale-aware ClampDesktopWindowOffset boundary clamping across drag ticks, drag stop, OnShow, OnSizeChanged (Talent/Spec/Spellbook switches), UI_SCALE_CHANGED, and DISPLAY_SIZE_CHANGED so no panel or [X] close button can ever spawn or get stuck off-screen; enabled modifier-free Left-Click dragging from any empty window background or passive chrome (guarded via GetMouseFoci() so interactive child controls are never hijacked); added a zero-taint GLOBAL_MOUSE_DOWN click-to-raise z-order listener and UISpecialFrames sorter so clicking any open window brings it to the front and pressing Escape always closes the top-most window first; and preserved silent external mover coexistence (NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, ElvUI) with a live status banner on Tab 2." },
         { type = "UI",      text = "Central Popover Auto-Close Registry, Suite-Wide 3-Way Interactive 4px Obsidian Scrollbars & DynamicChat Polish (16/11/2026): Added UI.RegisterPopupCloser(key, closeFn) and owner-button OnHide hooks across DynamicSuite and all 8 modules so closing the main window, minimising, switching tabs/modules, or entering HUD Edit Mode cleanly dismisses all active dropdowns and popovers; upgraded every scrollbar across Suite Studio, Global Smart Search, Guided Setup, dropdown popovers, and module workspaces to full 3-way interaction (Mousewheel, Left-Click & Drag on the Button thumb with IsMouseButtonDown release guard and OnHide cleanup, and Left-Click on the track to jump to cursor position); and fixed DynamicChat's Font Dropdown popover/scrollbar, PrintMsg routing, and StaticPopup-free dark-obsidian reload confirmation modal." },
@@ -4495,6 +4495,14 @@ do
         ROOT_WHEEL_EXEMPT = {
             EncounterJournal = true,
         },
+        NON_RESTORABLE_PANELS = {
+            ItemSocketingFrame   = true,
+            TradeFrame           = true,
+            GossipFrame          = true,
+            QuestFrame           = true,
+            ItemUpgradeFrame     = true,
+            ItemInteractionFrame = true,
+        },
         HEADER_OVERLAY_OFFSET         = 25,
         blizzWinState                 = setmetatable({}, { __mode = "k" }),
         rawFrameMethods               = setmetatable({}, { __mode = "k" }),
@@ -6564,6 +6572,47 @@ do
     local EnsureGlobalPanelHooks
     local AttachFrameHooks
 
+    local function IsNonRestorablePanel(frameName)
+        return (frameName and W.NON_RESTORABLE_PANELS[frameName]) and true or false
+    end
+
+    local function HasActiveSocketSession()
+        local getInfo = (_G.C_ItemSocketInfo and _G.C_ItemSocketInfo.GetSocketItemInfo) or _G.GetSocketItemInfo
+        if type(getInfo) == "function" then
+            local ok, itemName = pcall(getInfo)
+            return (ok and itemName ~= nil) and true or false
+        end
+        return true
+    end
+
+    local function GuardEmptyItemSocketingFrame()
+        if InCombat() or DesktopWindows:IsYielding() then return end
+        local isf = _G.ItemSocketingFrame
+        if isf and isf.IsShown and isf:IsShown() and not HasActiveSocketSession() then
+            W.openPanelsSnapshot["ItemSocketingFrame"] = nil
+            W.escapeProtectedReShow["ItemSocketingFrame"] = nil
+            W.lastAutoHiddenAt["ItemSocketingFrame"] = nil
+            W.RemoveFromZOrderStack("ItemSocketingFrame")
+            W.RemoveFromUISpecialFrames("ItemSocketingFrame")
+            local prevEx = W.explicitCloseFrame
+            W.explicitCloseFrame = "ItemSocketingFrame"
+            pcall(isf.Hide, isf)
+            W.explicitCloseFrame = prevEx
+        end
+    end
+
+    local function ClearNonRestorablePanelState(frameName, now)
+        if not frameName then return end
+        W.openPanelsSnapshot[frameName] = nil
+        W.escapeProtectedReShow[frameName] = nil
+        W.lastAutoHiddenAt[frameName] = nil
+        if now then
+            W.lastExplicitCloseAt[frameName] = now
+        end
+        W.RemoveFromZOrderStack(frameName)
+        W.RemoveFromUISpecialFrames(frameName)
+    end
+
     local function RestoreCoexistingPanels(newlyShownName)
         if W.restoringPanels or InCombat() then return end
         if DesktopWindows:IsYielding() then return end
@@ -6587,20 +6636,30 @@ do
                         local otherSt = GetFrameState(otherFrame)
                         local wasShown = (otherFrame.IsShown and otherFrame:IsShown()) and true or false
                         if not wasShown then
-                            if otherSt then otherSt.restoringFromAutoClose = true end
-                            pcall(otherFrame.Show, otherFrame)
-                            if otherSt then otherSt.restoringFromAutoClose = false end
-                            if otherFrame.IsShown and otherFrame:IsShown() then
-                                W.openPanelsSnapshot[otherName] = true
-                                W.lastAutoHiddenAt[otherName] = nil
-                                W.lastExplicitCloseAt[otherName] = nil
-                                if otherName == "PlayerSpellsFrame" then
-                                    RestorePlayerSpellsFrameState(otherFrame)
+                            if IsNonRestorablePanel(otherName) then
+                                ClearNonRestorablePanelState(otherName, nil)
+                            else
+                                if otherSt then otherSt.restoringFromAutoClose = true end
+                                pcall(otherFrame.Show, otherFrame)
+                                if otherSt then otherSt.restoringFromAutoClose = false end
+                                if otherFrame.IsShown and otherFrame:IsShown() then
+                                    W.openPanelsSnapshot[otherName] = true
+                                    W.lastAutoHiddenAt[otherName] = nil
+                                    W.lastExplicitCloseAt[otherName] = nil
+                                    if otherName == "PlayerSpellsFrame" then
+                                        RestorePlayerSpellsFrameState(otherFrame)
+                                    end
+                                    ApplyBlizzardFrameTransform(otherFrame, otherName)
+                                    W.NormalizeDesktopWindowLayer(otherFrame, otherName)
+                                    if otherSt then otherSt.wasOpenConfirmed = true end
                                 end
-                                ApplyBlizzardFrameTransform(otherFrame, otherName)
-                                W.NormalizeDesktopWindowLayer(otherFrame, otherName)
-                                if otherSt then otherSt.wasOpenConfirmed = true end
                             end
+                        elseif otherName == "ItemSocketingFrame" and not HasActiveSocketSession() then
+                            ClearNonRestorablePanelState(otherName, now)
+                            local prevEx = W.explicitCloseFrame
+                            W.explicitCloseFrame = otherName
+                            pcall(otherFrame.Hide, otherFrame)
+                            W.explicitCloseFrame = prevEx
                         else
                             W.openPanelsSnapshot[otherName] = true
                             W.lastAutoHiddenAt[otherName] = nil
@@ -7140,8 +7199,12 @@ do
                     SnapshotPlayerSpellsState(hiddenFrame, false)
                 end
                 if IsShowUIPanelOnStack() or W.inShowUIPanelPostHook or W.restoringPanels then
-                    W.openPanelsSnapshot[frameName] = true
-                    W.lastAutoHiddenAt[frameName] = now
+                    if IsNonRestorablePanel(frameName) then
+                        ClearNonRestorablePanelState(frameName, now)
+                    else
+                        W.openPanelsSnapshot[frameName] = true
+                        W.lastAutoHiddenAt[frameName] = now
+                    end
                     return
                 end
                 local db = GetDesktopWindowsDB()
@@ -7158,7 +7221,7 @@ do
                             for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
                                 W.RemoveFromUISpecialFrames(spec.name)
                             end
-                        else
+                        elseif not IsNonRestorablePanel(frameName) then
                             W.escapeProtectedReShow[frameName] = hiddenFrame
                             W.openPanelsSnapshot[frameName] = true
                             return
@@ -7301,10 +7364,47 @@ do
             mouseFrame:Show()
             SafeRegisterSuiteEvent(mouseFrame, "GLOBAL_MOUSE_DOWN")
             SafeRegisterSuiteEvent(mouseFrame, "MODIFIER_STATE_CHANGED")
+            SafeRegisterSuiteEvent(mouseFrame, "SOCKET_INFO_UPDATE")
+            SafeRegisterSuiteEvent(mouseFrame, "SOCKET_INFO_CLOSE")
             SafeRegisterSuiteEvent(mouseFrame, "PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
             mouseFrame:SetScript("OnEvent", function(selfMF, event, arg1)
                 if event == "MODIFIER_STATE_CHANGED" then
                     SyncCtrlWheelOverlay()
+                    return
+                end
+                if event == "SOCKET_INFO_UPDATE" then
+                    if InCombat() or DesktopWindows:IsYielding() then return end
+                    local function FocusSocketPanelIfReady()
+                        if InCombat() or DesktopWindows:IsYielding() then return end
+                        local isf = _G.ItemSocketingFrame
+                        if isf then
+                            AttachFrameHooks("ItemSocketingFrame")
+                            if isf.IsShown and isf:IsShown() and HasActiveSocketSession() then
+                                local db = GetDesktopWindowsDB()
+                                W.openPanelsSnapshot["ItemSocketingFrame"] = true
+                                if db and db.sideBySide ~= false then
+                                    W.FocusAndRaiseDesktopWindow(isf, "ItemSocketingFrame")
+                                else
+                                    W.SyncAllUISpecialFrames()
+                                end
+                            end
+                        end
+                    end
+                    FocusSocketPanelIfReady()
+                    if _G.C_Timer and _G.C_Timer.After then
+                        _G.C_Timer.After(0, FocusSocketPanelIfReady)
+                    end
+                    return
+                end
+                if event == "SOCKET_INFO_CLOSE" then
+                    if InCombat() or DesktopWindows:IsYielding() then return end
+                    GuardEmptyItemSocketingFrame()
+                    if _G.C_Timer and _G.C_Timer.After then
+                        _G.C_Timer.After(0, function()
+                            GuardEmptyItemSocketingFrame()
+                            W.SyncAllUISpecialFrames()
+                        end)
+                    end
                     return
                 end
                 if event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
@@ -7545,7 +7645,7 @@ do
             W.escapeClosedFrame = nil
             for fName, fObj in pairs(W.escapeProtectedReShow) do
                 W.escapeProtectedReShow[fName] = nil
-                if fObj and not IsWorldMapMaximized(fObj, fName) then
+                if fObj and not IsNonRestorablePanel(fName) and not IsWorldMapMaximized(fObj, fName) then
                     W.openPanelsSnapshot[fName] = true
                     local st = GetFrameState(fObj)
                     if not (fObj.IsShown and fObj:IsShown()) then
@@ -7559,6 +7659,7 @@ do
                     end
                 end
             end
+            GuardEmptyItemSocketingFrame()
             W.PruneZOrderStack()
             W.SyncAllUISpecialFrames()
             W.inCloseSpecialWindowsPostHook = false
@@ -7579,15 +7680,19 @@ do
                 end
                 local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
                 if IsShowUIPanelOnStack() or W.inShowUIPanelPostHook or W.restoringPanels then
-                    W.openPanelsSnapshot[fName] = true
-                    W.lastAutoHiddenAt[fName] = now
+                    if IsNonRestorablePanel(fName) then
+                        ClearNonRestorablePanelState(fName, now)
+                    else
+                        W.openPanelsSnapshot[fName] = true
+                        W.lastAutoHiddenAt[fName] = now
+                    end
                     return
                 end
                 local db = GetDesktopWindowsDB()
                 local noAutoClose = (db and db.sideBySide ~= false)
                 local isEscapeClose = (W.explicitCloseFrame ~= fName and IsEscapeCloseOnStack())
                 if isEscapeClose and W.escapeClosedFrame ~= fName then
-                    if noAutoClose and (W.escapeProtectedReShow[fName] ~= nil or W.escapeClosedCount >= 1 or W.HasNewerShownPanel(fName)) then
+                    if not IsNonRestorablePanel(fName) and noAutoClose and (W.escapeProtectedReShow[fName] ~= nil or W.escapeClosedCount >= 1 or W.HasNewerShownPanel(fName)) then
                         W.openPanelsSnapshot[fName] = true
                         W.escapeProtectedReShow[fName] = nil
                         W.RemoveFromUISpecialFrames(fName)
@@ -7606,7 +7711,7 @@ do
                         W.inEscapeRestorePostHook = false
                         return
                     end
-                    if noAutoClose then
+                    if noAutoClose and (W.escapeClosedCount == 0 and not W.HasNewerShownPanel(fName)) then
                         W.escapeClosedCount = 1
                         W.escapeClosedFrame = fName
                         W.lastExplicitCloseAt[fName] = now
@@ -7630,8 +7735,12 @@ do
                     end
                 end
                 W.RemoveFromZOrderStack(fName)
+                W.RemoveFromUISpecialFrames(fName)
                 if frame.IsShown and frame:IsShown() then
                     pcall(frame.Hide, frame)
+                end
+                if fName == "ItemSocketingFrame" or isEscapeClose then
+                    GuardEmptyItemSocketingFrame()
                 end
                 if not isEscapeClose then
                     W.SyncAllUISpecialFrames()
