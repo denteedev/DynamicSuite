@@ -59,7 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "18/11/2026",
     entries = {
-        { type = "FIX",     text = "Item Socketing Esc Close, HIGH-Strata FrameLevel Banding (No Cooldown Manager Bleed-Through), and Adventure Guide Mousewheel Scrolling Fixes (18/11/2026): Marked session-bound interaction panels (Item Socketing, Trade, Gossip, Quest, Item Upgrade, and Revival Catalyst) as non-restorable so closing them clears their state immediately without ever re-showing an empty ghost shell on Esc (pressing Esc once cleanly closes Item Socketing and pressing Esc again closes Character Info); kept all active managed Blizzard panels (including Talents & Spellbook, Character Info, and Group Finder) permanently on HIGH strata using safe low FrameLevel bands (25 for the active focused window, 1 for unfocused windows, clamping any stray level > 30 with SetToplevel disabled and zero C++ Raise calls) so Cooldown Manager icons never bleed through either focused or unfocused open panels while Character gear slots, EllesmereUI stats panes, and TalentLoadoutManager overlays stay cleanly layered above their parent panels; and stopped the Adventure Guide root frame and passive border chrome from swallowing mousewheel input so scrolling boss overviews, abilities, loot lists, and lore works smoothly again while preserving Ctrl+Scroll and Ctrl+Shift+Scroll window scaling when Ctrl is held." },
+        { type = "FIX",     text = "Item Socketing Esc Close, DIALOG-vs-HIGH Click-to-Front Strata Focus (Zero Cooldown Manager Bleed-Through), and Adventure Guide Mousewheel Scrolling Fixes (18/11/2026): Marked session-bound interaction panels (Item Socketing, Trade, Gossip, Quest, Item Upgrade, and Revival Catalyst) as non-restorable so closing them clears their state immediately without ever re-showing an empty ghost shell on Esc (pressing Esc once cleanly closes Item Socketing and pressing Esc again closes Character Info); placed the top-focused managed window on DIALOG strata and all unfocused open panels on HIGH strata (with SetToplevel disabled, zero C++ Raise calls, and root FrameLevel clamped to 1) so Cooldown Manager icons never bleed through either focused or unfocused panels while whichever window you click or open always sits cleanly on top of all other windows with Character gear slots, EllesmereUI stats panes, and TalentLoadoutManager overlays properly layered; and stopped the Adventure Guide root frame and passive border chrome from swallowing mousewheel input so scrolling boss overviews, abilities, loot lists, and lore works smoothly again while preserving Ctrl+Scroll and Ctrl+Shift+Scroll window scaling when Ctrl is held." },
         { type = "FIX",     text = "Desktop Window Coexistence, Strata-Based Focus, Character Sheet Pane Visibility, Spellbook Tab Memory & Free Dragging (18/11/2026): Eliminated client freezes, buried Character Info left/right panes (both stock Blizzard gear slots/model at FrameLevel 101 and EllesmereUIBlizzardSkin right-side Character Stats at FrameLevel 50), and talent tree/sidebar blanking by disabling SetToplevel and removing C++ Raise() calls that jumped root window backgrounds to FrameLevel 5020 above third-party 5000-level frames, clamping any stray FrameLevel > 15 back to 1, and managing z-order cleanly via strata focus (HIGH for the active window, MEDIUM for background windows) without synthetic frame-level inflation, SecureHandler wrapper overhead, or UpdateUIPanelPositions re-anchor loops; ensured Character Info (C) keeps its right-side stats pane expanded and refreshed on open whenever not collapsed by the user; detached side-by-side panels cleanly without ever hiding already-open frames; fixed Spellbook tab selection getting forced back to Talents when opening C, I, or L; stopped C from getting pushed next to Group Finder (I) or locked in place and fixed dragging across stats and background panes; kept Adventure Guide boss loot lists intact, Guild & Communities and Group Finder taint-free, and fullscreen World Map untouched; added one-window-at-a-time reverse-order Escape closing both in and out of combat; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling); and ensured Right-Click header resets and Reset Window Defaults persist cleanly across /reload." },
         { type = "FEATURE", text = "Release v2.3.0 - 2-Tab Suite Studio, Core MS-Windows Desktop Window Manager & 32-Panel Quest Log Coexistence (16/11/2026): Upgraded Suite Studio into a 2-tab workspace (Tab 1 'Theme & Typography' via /ds studio or /ds theme; Tab 2 'Desktop Windows & Menus' via /ds windows or /ds win) and migrated the Blizzard Desktop Window Manager into DynamicSuite Core (_G.DynamicSuite.DesktopWindows & DynamicSuiteDB.global.desktopWindows with automatic one-time migration from DynamicPrepDB so window management works even when DynamicPrep is disabled). Expanded side-by-side coexistence to 32 Blizzard panels by bringing the windowed/docked WorldMapFrame (Quest Log 'L') into full coexistence alongside PlayerSpellsFrame, CharacterFrame, PVEFrame, CollectionsJournal, ProfessionsFrame, and all standard panels while keeping fullscreen WorldMapFrame and GameMenuFrame untouched; replaced unclamped free-floating movement with mandatory scale-aware ClampDesktopWindowOffset boundary clamping across drag ticks, drag stop, OnShow, OnSizeChanged (Talent/Spec/Spellbook switches), UI_SCALE_CHANGED, and DISPLAY_SIZE_CHANGED so no panel or [X] close button can ever spawn or get stuck off-screen; enabled modifier-free Left-Click dragging from any empty window background or passive chrome (guarded via GetMouseFoci() so interactive child controls are never hijacked); added a zero-taint GLOBAL_MOUSE_DOWN click-to-raise z-order listener and UISpecialFrames sorter so clicking any open window brings it to the front and pressing Escape always closes the top-most window first; and preserved silent external mover coexistence (NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, ElvUI) with a live status banner on Tab 2." },
         { type = "UI",      text = "Central Popover Auto-Close Registry, Suite-Wide 3-Way Interactive 4px Obsidian Scrollbars & DynamicChat Polish (16/11/2026): Added UI.RegisterPopupCloser(key, closeFn) and owner-button OnHide hooks across DynamicSuite and all 8 modules so closing the main window, minimising, switching tabs/modules, or entering HUD Edit Mode cleanly dismisses all active dropdowns and popovers; upgraded every scrollbar across Suite Studio, Global Smart Search, Guided Setup, dropdown popovers, and module workspaces to full 3-way interaction (Mousewheel, Left-Click & Drag on the Button thumb with IsMouseButtonDown release guard and OnHide cleanup, and Left-Click on the track to jump to cursor position); and fixed DynamicChat's Font Dropdown popover/scrollbar, PrintMsg routing, and StaticPopup-free dark-obsidian reload confirmation modal." },
@@ -5595,6 +5595,12 @@ do
 
     function W.SyncHeaderOverlayLevel(frame, st)
         if not frame or not st or not st.overlay then return end
+        if type(frame.GetFrameStrata) == "function" then
+            local okS, curStrata = pcall(frame.GetFrameStrata, frame)
+            if okS and type(curStrata) == "string" and curStrata ~= "" then
+                W.RawSetFrameStrata(st.overlay, curStrata)
+            end
+        end
         local titleLvl = (frame.TitleContainer and frame.TitleContainer.GetFrameLevel and SafeNum(frame.TitleContainer:GetFrameLevel(), 0)) or 0
         local nineLvl = (frame.NineSlice and frame.NineSlice.GetFrameLevel and SafeNum(frame.NineSlice:GetFrameLevel(), 0)) or 0
         local frameLvl = (frame.GetFrameLevel and SafeNum(frame:GetFrameLevel(), 1)) or 1
@@ -5609,8 +5615,12 @@ do
         if not (db and db.sideBySide ~= false) then return end
         -- Disable C++ toplevel FrameLevel inflation so Raise() never jumps root Bg/Inset above fixed-level children (e.g. PaperDollFrame / EUI stats at level 50).
         W.RawSetToplevel(frame, false)
-        -- Keep all active managed windows permanently on HIGH strata so MEDIUM-strata Cooldown Manager icons never bleed through focused or unfocused panels.
-        local targetStrata = "HIGH"
+        -- Use DIALOG strata for the top focused window and HIGH strata for all unfocused windows:
+        -- 1) Both DIALOG and HIGH sit cleanly above MEDIUM-strata Cooldown Manager icons (zero CDM bleed-through on any open panel).
+        -- 2) Putting the top-focused window on DIALOG guarantees whichever window is clicked or opened sits completely above every unfocused HIGH-strata panel regardless of child FrameLevels (e.g. CharacterHeadSlot at 101, EUI stats at 50, NineSlice at 500, or TalentLoadoutManager overlays).
+        local topName = W.zOrderStack[#W.zOrderStack]
+        local isFocused = (topName == nil or topName == frameName)
+        local targetStrata = isFocused and "DIALOG" or "HIGH"
         if type(frame.GetFrameStrata) == "function" then
             local okS, curStrata = pcall(frame.GetFrameStrata, frame)
             if okS and curStrata ~= targetStrata then
@@ -5619,17 +5629,20 @@ do
         else
             W.RawSetFrameStrata(frame, targetStrata)
         end
-        -- Band z-order inside HIGH strata via safe low FrameLevels (25 focused, 1 unfocused; clamping any stray level > 30) so fixed-level children (CharacterHeadSlot at 101, EUI_CharSheet_StatsPanel at 50, TalentLoadoutManager overlays) stay cleanly above their parent panels.
-        local topName = W.zOrderStack[#W.zOrderStack]
-        local isFocused = (topName == nil or topName == frameName)
-        local targetLevel = isFocused and 25 or 1
+        if frameName == "InspectFrame" and type(frame.TitleContainer) == "table" and type(frame.TitleContainer.GetFrameStrata) == "function" then
+            local okTS, tcStrata = pcall(frame.TitleContainer.GetFrameStrata, frame.TitleContainer)
+            if okTS and tcStrata ~= targetStrata then
+                W.RawSetFrameStrata(frame.TitleContainer, targetStrata)
+            end
+        end
+        -- Clamp any stray high root FrameLevel (e.g. > 15) back to 1 so fixed-level children (CharacterHeadSlot at 101, EUI_CharSheet_StatsPanel at 50, TalentLoadoutManager overlays) stay cleanly above their parent's root background.
         if type(frame.GetFrameLevel) == "function" then
             local okL, curLvl = pcall(frame.GetFrameLevel, frame)
-            if not okL or type(curLvl) ~= "number" or curLvl ~= targetLevel or curLvl > 30 then
-                W.RawSetFrameLevel(frame, targetLevel)
+            if not okL or type(curLvl) ~= "number" or curLvl > 15 or curLvl < 1 then
+                W.RawSetFrameLevel(frame, 1)
             end
         else
-            W.RawSetFrameLevel(frame, targetLevel)
+            W.RawSetFrameLevel(frame, 1)
         end
         local st = W.blizzWinState[frame]
         if st then
@@ -5739,6 +5752,7 @@ do
                 W.showSeqCounter = W.showSeqCounter + 1
                 W.lastShownAt[frameName] = W.showSeqCounter
             end
+            W.NormalizeDesktopWindowLayer(frame, frameName)
             W.SyncAllUISpecialFrames()
             return
         end
