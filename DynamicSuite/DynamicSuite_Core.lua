@@ -59,7 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "17/11/2026",
     entries = {
-        { type = "FIX",     text = "Desktop Window Coexistence, Direct Out-of-Combat Positioning, 4px Empty-Space Dragging & PlayerSpellsFrame Mode/Scale Lock (17/11/2026): Replaced the silent no-op SecureHandlerBaseTemplate wrapper with direct out-of-combat ClearAllPoints, SetPoint, and SetScale calls using live frame:GetScale() coordinates so protected panels (PlayerSpellsFrame, PVEFrame, ProfessionsFrame, WorldMapFrame) move, scale, and reset reliably; added a 4px cursor-movement drag watcher on GLOBAL_MOUSE_DOWN so multi-layered windows (PlayerSpellsFrame, PVEFrame, CommunitiesFrame, CollectionsJournal) drag smoothly from headers or empty background space without hijacking talent nodes, spell icons, tabs, or buttons; locked PlayerSpellsFrame's active tab, maximised/minimised state, and standalone ~80% checkFit scale against forced UIParent minimisation or shrinking when opening I, J, C, or L alongside it; hardened DesktopWindows:GetYieldAddon() to require external mover addons to be loaded before inspecting SavedVariables; and updated Right-Click header reset, Reset Window Defaults, and Reset All Windows to wipe saved positions/scales across all Suite, Module, and Character tables and restore canonical defaults across /reload." },
+        { type = "FIX",     text = "Desktop Window Coexistence, Direct Out-of-Combat Positioning, 4px Empty-Space Dragging & PlayerSpellsFrame Mode/Scale Lock (17/11/2026): Replaced the silent no-op SecureHandlerBaseTemplate wrapper with direct out-of-combat ClearAllPoints, SetPoint, and SetScale calls using live frame:GetScale() coordinates; added a 4px cursor-movement drag watcher on GLOBAL_MOUSE_DOWN so multi-layered windows drag smoothly from headers or empty background space; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling) across all window headers, chrome, and PlayerSpellsFrame sub-canvases with a 15ms bubble debounce; fixed ComputePlayerSpellsNativeScale so it only caches PlayerSpellsFrame's native ~80% standalone scale once shown instead of locking a hidden ~75% estimate; added zero-cost pre-guards on PlayerSpellsFrame minimise calls plus redundant SetScale/SetPoint skips and single-latch deferred coexistence checks to eliminate lag spikes when opening I, J, C, or L alongside Talents; hardened DesktopWindows:GetYieldAddon() to require external mover addons to be loaded; and updated Right-Click header reset and Reset Window Defaults to wipe all DB tables cleanly across /reload." },
         { type = "FEATURE", text = "Release v2.3.0 - 2-Tab Suite Studio, Core MS-Windows Desktop Window Manager & 32-Panel Quest Log Coexistence (16/11/2026): Upgraded Suite Studio into a 2-tab workspace (Tab 1 'Theme & Typography' via /ds studio or /ds theme; Tab 2 'Desktop Windows & Menus' via /ds windows or /ds win) and migrated the Blizzard Desktop Window Manager into DynamicSuite Core (_G.DynamicSuite.DesktopWindows & DynamicSuiteDB.global.desktopWindows with automatic one-time migration from DynamicPrepDB so window management works even when DynamicPrep is disabled). Expanded side-by-side coexistence to 32 Blizzard panels by bringing the windowed/docked WorldMapFrame (Quest Log 'L') into full coexistence alongside PlayerSpellsFrame, CharacterFrame, PVEFrame, CollectionsJournal, ProfessionsFrame, and all standard panels while keeping fullscreen WorldMapFrame and GameMenuFrame untouched; replaced unclamped free-floating movement with mandatory scale-aware ClampDesktopWindowOffset boundary clamping across drag ticks, drag stop, OnShow, OnSizeChanged (Talent/Spec/Spellbook switches), UI_SCALE_CHANGED, and DISPLAY_SIZE_CHANGED so no panel or [X] close button can ever spawn or get stuck off-screen; enabled modifier-free Left-Click dragging from any empty window background or passive chrome (guarded via GetMouseFoci() so interactive child controls are never hijacked); added a zero-taint GLOBAL_MOUSE_DOWN click-to-raise z-order listener and UISpecialFrames sorter so clicking any open window brings it to the front and pressing Escape always closes the top-most window first; and preserved silent external mover coexistence (NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, ElvUI) with a live status banner on Tab 2." },
         { type = "UI",      text = "Central Popover Auto-Close Registry, Suite-Wide 3-Way Interactive 4px Obsidian Scrollbars & DynamicChat Polish (16/11/2026): Added UI.RegisterPopupCloser(key, closeFn) and owner-button OnHide hooks across DynamicSuite and all 8 modules so closing the main window, minimising, switching tabs/modules, or entering HUD Edit Mode cleanly dismisses all active dropdowns and popovers; upgraded every scrollbar across Suite Studio, Global Smart Search, Guided Setup, dropdown popovers, and module workspaces to full 3-way interaction (Mousewheel, Left-Click & Drag on the Button thumb with IsMouseButtonDown release guard and OnHide cleanup, and Left-Click on the track to jump to cursor position); and fixed DynamicChat's Font Dropdown popover/scrollbar, PrintMsg routing, and StaticPopup-free dark-obsidian reload confirmation modal." },
         { type = "FEATURE", text = "Shared Media Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Chat Sounds & Self-Whisper Alerts (15/11/2026): Added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI discovery for both Sounds and Fonts across Theme & Font Studio (and standalone DynamicMarker) plus DynamicChat Tab 3 with PLAYER_LOGIN delayed scanning and searchable grouped dropdowns; removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; restored self-whisper notification alerts on incoming WHISPER / BN_WHISPER events; and added automatic runtime fallback (to Blizzard Raid Warning for sounds or Expressway for fonts) when an external media pack is disabled." },
@@ -4518,6 +4518,7 @@ do
         addonContinueRegistered      = {},
         ellesmereHooksInstalled      = false,
         userOpeningPlayerSpells      = false,
+        deferredRestorePending       = false,
         pendingDragWatch             = nil,
         dragDriverFrame              = nil,
         scaleToast                   = nil,
@@ -4859,7 +4860,7 @@ do
 
     local function ComputePlayerSpellsNativeScale(psf)
         psf = psf or _G.PlayerSpellsFrame
-        if not psf then return 1.0 end
+        if not psf then return 0.80 end
         local st = GetFrameState(psf)
         if st and type(st.nativeScale) == "number" and st.nativeScale >= 0.50 and st.nativeScale <= 1.0 then
             return st.nativeScale
@@ -4867,37 +4868,18 @@ do
         local db = GetDesktopWindowsDB()
         local hasCustom = (W.sessionScales["PlayerSpellsFrame"] ~= nil)
             or (db and db.scales and type(db.scales["PlayerSpellsFrame"]) == "number")
-        if not hasCustom and not GetPlayerSpellsIsMinimized(psf) and not IsUIParentSlotOccupiedBesideCenter() then
+        if (psf.IsShown and psf:IsShown())
+            and not hasCustom
+            and not GetPlayerSpellsIsMinimized(psf)
+            and not IsUIParentSlotOccupiedBesideCenter() then
             local liveS = GetFrameLiveScale(psf)
             if liveS >= 0.50 and liveS < 0.999 then
-                if st then st.nativeScale = liveS end
-                return liveS
+                local rounded = RoundScale(liveS)
+                if st then st.nativeScale = rounded end
+                return rounded
             end
         end
-        local uip = _G.UIParent
-        if uip then
-            local uipInfo = _G.UIPanelWindows and _G.UIPanelWindows["PlayerSpellsFrame"]
-            local extraW = SafeNum((psf.GetAttribute and psf:GetAttribute("UIPanelLayout-checkFitExtraWidth")) or (uipInfo and uipInfo.checkFitExtraWidth), 200)
-            local extraH = SafeNum((psf.GetAttribute and psf:GetAttribute("UIPanelLayout-checkFitExtraHeight")) or (uipInfo and uipInfo.checkFitExtraHeight), 140)
-            local okUW, rawUW = pcall(uip.GetWidth, uip)
-            local okUH, rawUH = pcall(uip.GetHeight, uip)
-            local okFW, rawFW = pcall(psf.GetWidth, psf)
-            local okFH, rawFH = pcall(psf.GetHeight, psf)
-            local uipW = okUW and SafeNum(rawUW, 0) or 0
-            local uipH = okUH and SafeNum(rawUH, 0) or 0
-            local fw   = okFW and SafeNum(rawFW, 0) or 0
-            local fh   = okFH and SafeNum(rawFH, 0) or 0
-            if fw < 1000 then fw = 1610 end
-            if fh < 500 then fh = 895 end
-            if uipW > 0 and uipH > 0 and fw > 0 and fh > 0 then
-                local fitW = uipW / (fw + extraW)
-                local fitH = uipH / (fh + extraH)
-                local computed = ClampNumber(math.min(1.0, fitW, fitH), SCALE_MIN, 1.0)
-                if st then st.nativeScale = computed end
-                return computed
-            end
-        end
-        return (st and st.nativeScale) or 0.80
+        return 0.80
     end
 
     local function GetDefaultFrameScale(frameName, frame)
@@ -5096,12 +5078,25 @@ do
         if IsWorldMapMaximized(frame, fName) then return false, ux, uy end
         local st = GetFrameState(frame)
         if st.applyingPoint then return false, ux, uy end
-        st.applyingPoint = true
         local liveScale = GetFrameLiveScale(frame)
         local s = (type(liveScale) == "number" and liveScale > 0) and liveScale or ((type(scale) == "number" and scale > 0) and scale or 1.0)
         local clampedUX, clampedUY = ClampDesktopWindowOffset(frame, ux, uy, s)
         local argX = clampedUX / s
         local argY = clampedUY / s
+        if not st.isDragging and type(frame.GetNumPoints) == "function" and type(frame.GetPoint) == "function" then
+            local okN, numPts = pcall(frame.GetNumPoints, frame)
+            if okN and numPts == 1 then
+                local okP, pt, relTo, relPt, curX, curY = pcall(frame.GetPoint, frame, 1)
+                if okP and pt == "CENTER" and relTo == _G.UIParent and relPt == "CENTER" then
+                    curX = SafeNum(curX, nil)
+                    curY = SafeNum(curY, nil)
+                    if curX and curY and math.abs(curX - argX) <= 0.25 and math.abs(curY - argY) <= 0.25 then
+                        return true, clampedUX, clampedUY
+                    end
+                end
+            end
+        end
+        st.applyingPoint = true
         local applied = pcall(function()
             if type(frame.ClearAllPoints) == "function" then
                 frame:ClearAllPoints()
@@ -5121,6 +5116,9 @@ do
         local st = GetFrameState(frame)
         if st and st.applyingScale then return false end
         local s = ClampNumber(SafeNum(scale, 1.0), 0.50, SCALE_MAX)
+        if math.abs(GetFrameLiveScale(frame) - s) <= 0.002 then
+            return true
+        end
         if type(frame.SetScale) == "function" then
             if st then st.applyingScale = true end
             local ok = pcall(frame.SetScale, frame, s)
@@ -5409,9 +5407,6 @@ do
 
         local st = GetFrameState(frame)
         local step = (delta > 0) and SCALE_STEP or -SCALE_STEP
-        if savePermanent == false and _G.IsShiftKeyDown and _G.IsShiftKeyDown() then
-            step = (delta > 0) and 0.01 or -0.01
-        end
         local curScale = GetActiveFrameScale(frameName, frame)
         local newScale = RoundScale(curScale + step)
         local persist = (savePermanent == true)
@@ -5451,6 +5446,46 @@ do
         end
         ShowWindowToast(frame, string.format("Scale: %d%%", math.floor(newScale * 100 + 0.5)), persist)
         return true
+    end
+
+    local function HandleManagedWindowMouseWheel(rootFrame, frameName, delta)
+        if not rootFrame or not frameName then return end
+        if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(rootFrame, frameName) then return end
+        local db = GetDesktopWindowsDB()
+        if not (db and db.scrollScale ~= false) then return end
+        if not (_G.IsControlKeyDown and _G.IsControlKeyDown()) then return end
+        local st = GetFrameState(rootFrame)
+        local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+        if st and st.lastWheelAt and (now - st.lastWheelAt) < 0.015 then
+            return
+        end
+        if st then
+            st.lastWheelAt = now
+        end
+        local savePermanent = (_G.IsShiftKeyDown and _G.IsShiftKeyDown()) and true or false
+        StepBlizzardFrameScale(rootFrame, frameName, delta, savePermanent)
+    end
+
+    local function HookMouseWheelTarget(targetRegion, rootFrame, frameName)
+        if type(targetRegion) ~= "table" or targetRegion._dsWheelHooked then return end
+        if type(targetRegion.HookScript) ~= "function" then return end
+        targetRegion._dsWheelHooked = true
+        if not InCombat() and type(targetRegion.EnableMouseWheel) == "function" then
+            pcall(targetRegion.EnableMouseWheel, targetRegion, true)
+        end
+        pcall(targetRegion.HookScript, targetRegion, "OnMouseWheel", function(_, delta)
+            HandleManagedWindowMouseWheel(rootFrame, frameName, delta)
+        end)
+    end
+
+    local function AttachPlayerSpellsSubCanvasWheelHooks(psf)
+        if not psf then return end
+        HookMouseWheelTarget(psf.TalentsFrame, psf, "PlayerSpellsFrame")
+        if type(psf.TalentsFrame) == "table" then
+            HookMouseWheelTarget(psf.TalentsFrame.ButtonsParent, psf, "PlayerSpellsFrame")
+        end
+        HookMouseWheelTarget(psf.SpellBookFrame, psf, "PlayerSpellsFrame")
+        HookMouseWheelTarget(psf.SpecFrame, psf, "PlayerSpellsFrame")
     end
 
     local function EnsureDragDriverFrame()
@@ -5638,12 +5673,7 @@ do
             DesktopWindows:ResetSingleWindow(frameName, true)
         end)
         ov:SetScript("OnMouseWheel", function(_, delta)
-            if InCombat() or DesktopWindows:IsYielding() then return end
-            local db = GetDesktopWindowsDB()
-            if not (db and db.scrollScale ~= false) then return end
-            if not (_G.IsControlKeyDown and _G.IsControlKeyDown()) then return end
-            local savePermanent = (_G.IsShiftKeyDown and _G.IsShiftKeyDown()) and true or false
-            StepBlizzardFrameScale(frame, frameName, delta, savePermanent)
+            HandleManagedWindowMouseWheel(frame, frameName, delta)
         end)
         ov:SetScript("OnEnter", function(selfOv)
             if InCombat() or DesktopWindows:IsYielding() then return end
@@ -5701,6 +5731,7 @@ do
                 DesktopWindows:ResetSingleWindow(frameName, true)
             end)
         end
+        HookMouseWheelTarget(tc, frame, frameName)
     end
 
     local function AttachPassiveChromeDragHooks(frame, frameName, st)
@@ -5713,18 +5744,21 @@ do
                 child._dsPassiveChromeHooked = true
                 if key == "TitleContainer" then
                     NeutraliseTitleContainerDrag(frame, frameName, st)
-                elseif type(child.HookScript) == "function" and type(child.RegisterForDrag) == "function" then
-                    pcall(child.RegisterForDrag, child, "LeftButton")
-                    pcall(child.HookScript, child, "OnDragStart", function(_, button)
-                        if button and button ~= "LeftButton" then return end
-                        if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(frame, frameName) then return end
-                        local db = GetDesktopWindowsDB()
-                        if not (db and db.dragAnywhere ~= false) then return end
-                        if st.beginDrag then st.beginDrag() end
-                    end)
-                    pcall(child.HookScript, child, "OnDragStop", function()
-                        if st.finishDrag then st.finishDrag() end
-                    end)
+                else
+                    if type(child.HookScript) == "function" and type(child.RegisterForDrag) == "function" then
+                        pcall(child.RegisterForDrag, child, "LeftButton")
+                        pcall(child.HookScript, child, "OnDragStart", function(_, button)
+                            if button and button ~= "LeftButton" then return end
+                            if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(frame, frameName) then return end
+                            local db = GetDesktopWindowsDB()
+                            if not (db and db.dragAnywhere ~= false) then return end
+                            if st.beginDrag then st.beginDrag() end
+                        end)
+                        pcall(child.HookScript, child, "OnDragStop", function()
+                            if st.finishDrag then st.finishDrag() end
+                        end)
+                    end
+                    HookMouseWheelTarget(child, frame, frameName)
                 end
             end
         end
@@ -5837,18 +5871,51 @@ do
                             otherSt.frozenUX = otherSt.lastFrozenUX
                             otherSt.frozenUY = otherSt.lastFrozenUY
                         end
-                        if not (otherFrame.IsShown and otherFrame:IsShown()) then
+                        local wasShown = (otherFrame.IsShown and otherFrame:IsShown()) and true or false
+                        if not wasShown then
                             if otherSt then otherSt.restoringFromAutoClose = true end
                             pcall(otherFrame.Show, otherFrame)
                             if otherSt then otherSt.restoringFromAutoClose = false end
-                        end
-                        if otherFrame.IsShown and otherFrame:IsShown() then
+                            if otherFrame.IsShown and otherFrame:IsShown() then
+                                W.openPanelsSnapshot[otherName] = true
+                                W.lastAutoHiddenAt[otherName] = nil
+                                if otherName == "PlayerSpellsFrame" then
+                                    RestorePlayerSpellsFrameState(otherFrame)
+                                end
+                                ApplyBlizzardFrameTransform(otherFrame, otherName)
+                                if otherSt then otherSt.wasOpenConfirmed = true end
+                            end
+                        else
                             W.openPanelsSnapshot[otherName] = true
                             W.lastAutoHiddenAt[otherName] = nil
-                            if otherName == "PlayerSpellsFrame" then
-                                RestorePlayerSpellsFrameState(otherFrame)
+                            local targetScale = GetActiveFrameScale(otherName, otherFrame)
+                            local drifted = math.abs(GetFrameLiveScale(otherFrame) - targetScale) > 0.005
+                            if not drifted then
+                                local canDrag = (db.dragAnywhere ~= false)
+                                local savedPos = canDrag and db.positions and db.positions[otherName]
+                                local targetUX = (savedPos and type(savedPos.x) == "number" and savedPos.x) or (otherSt and otherSt.frozenUX)
+                                local targetUY = (savedPos and type(savedPos.y) == "number" and savedPos.y) or (otherSt and otherSt.frozenUY)
+                                if type(targetUX) == "number" and type(targetUY) == "number" and _G.UIParent
+                                    and type(otherFrame.GetNumPoints) == "function" and type(otherFrame.GetPoint) == "function" then
+                                    local cUX, cUY = ClampDesktopWindowOffset(otherFrame, targetUX, targetUY, targetScale)
+                                    local argX, argY = cUX / targetScale, cUY / targetScale
+                                    local okN, numPts = pcall(otherFrame.GetNumPoints, otherFrame)
+                                    if okN and numPts == 1 then
+                                        local okP, pt, relTo, relPt, curX, curY = pcall(otherFrame.GetPoint, otherFrame, 1)
+                                        curX = okP and SafeNum(curX, nil) or nil
+                                        curY = okP and SafeNum(curY, nil) or nil
+                                        if not (okP and pt == "CENTER" and relTo == _G.UIParent and relPt == "CENTER"
+                                            and curX and curY and math.abs(curX - argX) <= 0.25 and math.abs(curY - argY) <= 0.25) then
+                                            drifted = true
+                                        end
+                                    else
+                                        drifted = true
+                                    end
+                                end
                             end
-                            ApplyBlizzardFrameTransform(otherFrame, otherName)
+                            if drifted then
+                                ApplyBlizzardFrameTransform(otherFrame, otherName)
+                            end
                             if otherSt then otherSt.wasOpenConfirmed = true end
                         end
                     end
@@ -5862,6 +5929,27 @@ do
             end
         end
         W.restoringPanels = false
+    end
+
+    local function ScheduleDeferredCoexistencePass(frameName)
+        if W.deferredRestorePending then return end
+        if not (_G.C_Timer and _G.C_Timer.After) then return end
+        W.deferredRestorePending = true
+        _G.C_Timer.After(0, function()
+            W.deferredRestorePending = false
+            W.userOpeningPlayerSpells = false
+            if InCombat() or DesktopWindows:IsYielding() then return end
+            if frameName then
+                local df = _G[frameName]
+                if df and not IsWorldMapMaximized(df, frameName) then
+                    AttachFrameHooks(frameName)
+                    if df.IsShown and df:IsShown() then
+                        RestoreCoexistingPanels(frameName)
+                    end
+                end
+            end
+            SyncAllUISpecialFrames()
+        end)
     end
 
     AttachFrameHooks = function(frameName)
@@ -5913,6 +6001,41 @@ do
         if frameName == "PlayerSpellsFrame" and type(_G.hooksecurefunc) == "function" and not st.playerSpellsHooksDone then
             st.playerSpellsHooksDone = true
             SnapshotPlayerSpellsState(frame, false)
+            AttachPlayerSpellsSubCanvasWheelHooks(frame)
+
+            if not st.playerSpellsPreGuardsDone then
+                st.playerSpellsPreGuardsDone = true
+                for _, methodName in ipairs({ "TrySetMinimized", "UpdateFrameMinimizeState", "CheckAndUpdateMinimizedState" }) do
+                    if type(frame[methodName]) == "function" then
+                        local origFn = frame[methodName]
+                        frame[methodName] = function(self, ...)
+                            if not InCombat() and not DesktopWindows:IsYielding() then
+                                local db = GetDesktopWindowsDB()
+                                local fState = GetFrameState(self)
+                                if db and db.sideBySide ~= false and fState and not fState.allowUserMinimizeChange and not fState.restoringPlayerSpellsState then
+                                    return
+                                end
+                            end
+                            return origFn(self, ...)
+                        end
+                    end
+                end
+                if type(frame.SetMinimized) == "function" then
+                    local origSetMin = frame.SetMinimized
+                    frame.SetMinimized = function(self, isMinimized, ...)
+                        if not InCombat() and not DesktopWindows:IsYielding() then
+                            local db = GetDesktopWindowsDB()
+                            local fState = GetFrameState(self)
+                            if db and db.sideBySide ~= false and fState and not fState.allowUserMinimizeChange and not fState.restoringPlayerSpellsState then
+                                if (isMinimized == true) ~= (fState.userIsMinimized == true) then
+                                    return
+                                end
+                            end
+                        end
+                        return origSetMin(self, isMinimized, ...)
+                    end
+                end
+            end
 
             if type(frame.SetScale) == "function" then
                 _G.hooksecurefunc(frame, "SetScale", function(psf, newScale)
@@ -5923,12 +6046,13 @@ do
                     local hasCustom = (W.sessionScales["PlayerSpellsFrame"] ~= nil)
                         or (db and db.scales and type(db.scales["PlayerSpellsFrame"]) == "number")
                     local sNum = SafeNum(newScale, nil)
-                    if not hasCustom and sNum and sNum >= 0.50 and sNum <= 1.0
+                    if (psf.IsShown and psf:IsShown())
+                        and not hasCustom and sNum and sNum >= 0.50 and sNum <= 1.0
                         and not GetPlayerSpellsIsMinimized(psf)
                         and not IsUIParentSlotOccupiedBesideCenter()
                         and not W.restoringPanels
                         and not fState.restoringFromAutoClose then
-                        fState.nativeScale = sNum
+                        fState.nativeScale = RoundScale(sNum)
                         return
                     end
                     if db and (db.sideBySide ~= false or db.scrollScale ~= false) then
@@ -5950,6 +6074,7 @@ do
             if type(frame.SetTab) == "function" then
                 _G.hooksecurefunc(frame, "SetTab", function(psf, tabID)
                     if InCombat() or DesktopWindows:IsYielding() then return end
+                    AttachPlayerSpellsSubCanvasWheelHooks(psf)
                     local fState = GetFrameState(psf)
                     if not fState or fState.restoringPlayerSpellsState then return end
                     local db = GetDesktopWindowsDB()
@@ -6004,21 +6129,22 @@ do
                 end
             end
 
-            if type(frame.SetMinimized) == "function" then
-                _G.hooksecurefunc(frame, "SetMinimized", OnPlayerSpellsMinimizeHook)
-            end
-            if type(frame.TrySetMinimized) == "function" then
-                _G.hooksecurefunc(frame, "TrySetMinimized", OnPlayerSpellsMinimizeHook)
-            end
-            if type(frame.UpdateFrameMinimizeState) == "function" then
-                _G.hooksecurefunc(frame, "UpdateFrameMinimizeState", function(psf)
-                    OnPlayerSpellsMinimizeHook(psf, nil)
-                end)
-            end
-
             local mmf = frame.MaximizeMinimizeFrame
             if type(mmf) == "table" then
                 if mmf.MaximizeButton and type(mmf.MaximizeButton.HookScript) == "function" then
+                    mmf.MaximizeButton:HookScript("OnMouseDown", function(_, mouseBtn)
+                        if mouseBtn ~= "LeftButton" then return end
+                        local fState = GetFrameState(frame)
+                        if fState then fState.allowUserMinimizeChange = true end
+                    end)
+                    mmf.MaximizeButton:HookScript("OnMouseUp", function()
+                        local fState = GetFrameState(frame)
+                        if fState and _G.C_Timer and _G.C_Timer.After then
+                            _G.C_Timer.After(0, function()
+                                if fState then fState.allowUserMinimizeChange = false end
+                            end)
+                        end
+                    end)
                     mmf.MaximizeButton:HookScript("OnClick", function()
                         local fState = GetFrameState(frame)
                         if fState then
@@ -6030,6 +6156,19 @@ do
                     end)
                 end
                 if mmf.MinimizeButton and type(mmf.MinimizeButton.HookScript) == "function" then
+                    mmf.MinimizeButton:HookScript("OnMouseDown", function(_, mouseBtn)
+                        if mouseBtn ~= "LeftButton" then return end
+                        local fState = GetFrameState(frame)
+                        if fState then fState.allowUserMinimizeChange = true end
+                    end)
+                    mmf.MinimizeButton:HookScript("OnMouseUp", function()
+                        local fState = GetFrameState(frame)
+                        if fState and _G.C_Timer and _G.C_Timer.After then
+                            _G.C_Timer.After(0, function()
+                                if fState then fState.allowUserMinimizeChange = false end
+                            end)
+                        end
+                    end)
                     mmf.MinimizeButton:HookScript("OnClick", function()
                         local fState = GetFrameState(frame)
                         if fState then
@@ -6045,40 +6184,52 @@ do
                         end
                     end)
                 end
-                if type(mmf.Maximize) == "function" then
-                    _G.hooksecurefunc(mmf, "Maximize", function()
-                        if InCombat() or DesktopWindows:IsYielding() then return end
-                        local fState = GetFrameState(frame)
-                        if not fState or fState.restoringPlayerSpellsState then return end
-                        local userClicked = fState.allowUserMinimizeChange
-                            or ((_G.IsMouseButtonDown and _G.IsMouseButtonDown("LeftButton")) and (type(_G.MouseIsOver) == "function" and _G.MouseIsOver(mmf)))
-                        if userClicked then
-                            fState.userIsMinimized = false
-                            fState.savedIsMinimized = false
-                        else
-                            OnPlayerSpellsMinimizeHook(frame, false)
-                        end
-                    end)
-                end
-                if type(mmf.Minimize) == "function" then
-                    _G.hooksecurefunc(mmf, "Minimize", function()
-                        if InCombat() or DesktopWindows:IsYielding() then return end
-                        local fState = GetFrameState(frame)
-                        if not fState or fState.restoringPlayerSpellsState then return end
-                        local userClicked = fState.allowUserMinimizeChange
-                            or ((_G.IsMouseButtonDown and _G.IsMouseButtonDown("LeftButton")) and (type(_G.MouseIsOver) == "function" and _G.MouseIsOver(mmf)))
-                        if userClicked then
-                            fState.userIsMinimized = true
-                            fState.savedIsMinimized = true
-                            local curT = GetPlayerSpellsActiveTab(frame)
-                            if curT then
-                                fState.userSelectedTabID = curT
-                                fState.savedTabID = curT
+                if type(mmf.Maximize) == "function" and not mmf._dsMaxPreGuarded then
+                    mmf._dsMaxPreGuarded = true
+                    local origMax = mmf.Maximize
+                    mmf.Maximize = function(selfMmf, ...)
+                        if not InCombat() and not DesktopWindows:IsYielding() then
+                            local fState = GetFrameState(frame)
+                            local db = GetDesktopWindowsDB()
+                            if fState and not fState.restoringPlayerSpellsState then
+                                local userClicked = fState.allowUserMinimizeChange
+                                    or ((_G.IsMouseButtonDown and _G.IsMouseButtonDown("LeftButton")) and (type(_G.MouseIsOver) == "function" and _G.MouseIsOver(mmf)))
+                                if userClicked then
+                                    fState.userIsMinimized = false
+                                    fState.savedIsMinimized = false
+                                elseif db and db.sideBySide ~= false and fState.userIsMinimized == true then
+                                    return
+                                end
                             end
-                        else
-                            OnPlayerSpellsMinimizeHook(frame, true)
                         end
-                    end)
+                        return origMax(selfMmf, ...)
+                    end
+                end
+                if type(mmf.Minimize) == "function" and not mmf._dsMinPreGuarded then
+                    mmf._dsMinPreGuarded = true
+                    local origMin = mmf.Minimize
+                    mmf.Minimize = function(selfMmf, ...)
+                        if not InCombat() and not DesktopWindows:IsYielding() then
+                            local fState = GetFrameState(frame)
+                            local db = GetDesktopWindowsDB()
+                            if fState and not fState.restoringPlayerSpellsState then
+                                local userClicked = fState.allowUserMinimizeChange
+                                    or ((_G.IsMouseButtonDown and _G.IsMouseButtonDown("LeftButton")) and (type(_G.MouseIsOver) == "function" and _G.MouseIsOver(mmf)))
+                                if userClicked then
+                                    fState.userIsMinimized = true
+                                    fState.savedIsMinimized = true
+                                    local curT = GetPlayerSpellsActiveTab(frame)
+                                    if curT then
+                                        fState.userSelectedTabID = curT
+                                        fState.savedTabID = curT
+                                    end
+                                elseif db and db.sideBySide ~= false and fState.userIsMinimized ~= true then
+                                    return
+                                end
+                            end
+                        end
+                        return origMin(selfMmf, ...)
+                    end
                 end
             end
         end
@@ -6104,12 +6255,7 @@ do
                 FocusAndRaiseDesktopWindow(clickedFrame, frameName)
             end)
             frame:HookScript("OnMouseWheel", function(wheelFrame, delta)
-                if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(wheelFrame, frameName) then return end
-                local db = GetDesktopWindowsDB()
-                if not (db and db.scrollScale ~= false) then return end
-                if not (_G.IsControlKeyDown and _G.IsControlKeyDown()) then return end
-                if not (_G.IsShiftKeyDown and _G.IsShiftKeyDown()) then return end
-                StepBlizzardFrameScale(wheelFrame, frameName, delta, true)
+                HandleManagedWindowMouseWheel(wheelFrame, frameName, delta)
             end)
             frame:HookScript("OnDragStart", function(dragFrame, button)
                 if button and button ~= "LeftButton" then return end
@@ -6173,6 +6319,7 @@ do
                 W.openPanelsSnapshot[frameName] = true
                 W.lastAutoHiddenAt[frameName] = nil
                 if frameName == "PlayerSpellsFrame" then
+                    AttachPlayerSpellsSubCanvasWheelHooks(shownFrame)
                     if W.restoringPanels or (fState and fState.restoringFromAutoClose) then
                         RestorePlayerSpellsFrameState(shownFrame)
                         if _G.C_Timer and _G.C_Timer.After then
@@ -6192,13 +6339,7 @@ do
                     if type(shownFrame.Raise) == "function" then
                         pcall(shownFrame.Raise, shownFrame)
                     end
-                    if _G.C_Timer and _G.C_Timer.After then
-                        _G.C_Timer.After(0, function()
-                            if InCombat() or DesktopWindows:IsYielding() then return end
-                            RestoreCoexistingPanels(frameName)
-                            SyncAllUISpecialFrames()
-                        end)
-                    end
+                    ScheduleDeferredCoexistencePass(frameName)
                 end
                 SyncAllUISpecialFrames()
             end)
@@ -6466,14 +6607,7 @@ do
 
                 if noAutoClose then
                     RestoreCoexistingPanels(fName)
-                    if _G.C_Timer and _G.C_Timer.After then
-                        _G.C_Timer.After(0, function()
-                            if InCombat() or DesktopWindows:IsYielding() then return end
-                            AttachFrameHooks(fName)
-                            RestoreCoexistingPanels(fName)
-                            SyncAllUISpecialFrames()
-                        end)
-                    end
+                    ScheduleDeferredCoexistencePass(fName)
                 else
                     for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
                         local otherName = spec.name
@@ -6691,20 +6825,7 @@ do
                 end
                 SyncAllUISpecialFrames()
             end
-            if _G.C_Timer and _G.C_Timer.After then
-                _G.C_Timer.After(0, function()
-                    W.userOpeningPlayerSpells = false
-                    if InCombat() or DesktopWindows:IsYielding() then return end
-                    local df = _G[targetName]
-                    if df and not IsWorldMapMaximized(df, targetName) then
-                        AttachFrameHooks(targetName)
-                        if df.IsShown and df:IsShown() then
-                            RestoreCoexistingPanels(targetName)
-                        end
-                        SyncAllUISpecialFrames()
-                    end
-                end)
-            end
+            ScheduleDeferredCoexistencePass(targetName)
         end
 
         if not W.toggleProfBookHooked and type(_G.ToggleProfessionsBook) == "function" then
@@ -7029,6 +7150,7 @@ do
         end
         if frame and not DesktopWindows:IsYielding() and not IsWorldMapMaximized(frame, frameName) then
             if frameName == "PlayerSpellsFrame" and st then
+                st.nativeScale = nil
                 st.userIsMinimized = false
                 st.savedIsMinimized = false
                 if GetPlayerSpellsIsMinimized(frame) then
