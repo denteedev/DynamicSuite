@@ -6,6 +6,7 @@
 ## DynamicMarker v2.3.0 (16/11/2026)
 
 ### Improved
+* **`[DynamicMark]` Macro Template Streamlining & Raid Marker Note:** Removed the redundant `/stopmacro [@focus,noexists]` line from generated `[DynamicMark]` macros (since `/tm` already gates on `@focus,exists` across all group scopes) and added a concise troubleshooting note in `Macro Setup` explaining that `/tm` requires Raid Leader or Assistant in raids and that a full game restart (not `/reload`) clears Blizzard's intermittent raid-marker lockout bug.
 * **HUD Edit Mode `Apply All` Appearance Action:** Added a compact Dark-Obsidian (`#0B0D12`) / Blaze Orange (`#F97316`) `Apply All` button to Row 3 of `DynamicMarkerEditModeInspector` to copy the active bar's Opacity and Border Style across both Focus Icons and World Flare Bar in one click.
 * **3-Way Interactive Obsidian Scrollbars & Popover Auto-Close Polish:** Upgraded all scrollbars across dropdown popovers, settings sub-tabs, and the Changelog viewer to support full 3-way interaction (Mousewheel scrolling, Left-Click & Drag on the scrollbar thumb with off-frame release guards and accent hover highlights, and Left-Click on the scrollbar track to jump to the cursor position), and ensured all dropdowns and HUD selector popovers close automatically when switching tabs, minimising, closing the window, or entering HUD Edit Mode.
 * **Version & Coexistence Lockstep Parity:** Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to `v2.3.0` for Retail 12.1.5 (Interface 120105, Midnight Season 2).

@@ -3748,7 +3748,6 @@ function DM:BuildFocusMarkerMacroBody()
     else
         table.insert(lines, "/focus [@mouseover,exists,nodead][]")
     end
-    table.insert(lines, "/stopmacro [@focus,noexists]")
 
     local tmCond = "[@focus,exists]"
     if scope == "PARTY" then
@@ -8723,6 +8722,14 @@ function DM:BuildWorkspace(parentContainer)
     end, true)
     btnStep1Focus:SetPoint("RIGHT", btnStep2Focus, "LEFT", -8, 0)
 
+    local focusMacroNote = mPreviewCard1:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    focusMacroNote:SetPoint("LEFT", mPreviewCard1, "BOTTOMLEFT", 14, 23)
+    focusMacroNote:SetPoint("RIGHT", btnStep1Focus, "LEFT", -10, 0)
+    focusMacroNote:SetJustifyH("LEFT")
+    focusMacroNote:SetWordWrap(true)
+    self:StyleFont(focusMacroNote, 10, "", COLORS.TextMuted)
+    focusMacroNote:SetText("Note: /tm requires Raid Lead/Assist in raids; restart the game (not /reload) if Blizzard's marker lockout occurs.")
+
     -- Section 2: [DynamicKick] (Character Macro - Per-Character)
     local p3Sec2 = self:CreateSectionBox(p3, nil, 388)
     if p3Sec2.SetClipsChildren then p3Sec2:SetClipsChildren(true) end
@@ -10793,8 +10800,9 @@ end
 
 DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
-    date    = "16/11/2026",
+    date    = "17/11/2026",
     entries = {
+        { type = "IMPROVED", text = "[DynamicMark] Macro Template Streamlining & Raid Marker Note (17/11/2026): Removed the redundant /stopmacro [@focus,noexists] line from generated [DynamicMark] macros (since /tm already gates on @focus,exists across all group scopes) and added a concise troubleshooting note in Macro Setup explaining that /tm requires Raid Leader or Assistant in raids and that a full game restart (not /reload) clears Blizzard's intermittent raid-marker lockout bug." },
         { type = "UI",       text = "3-Way Interactive Obsidian Scrollbars & Automatic Popover Dismissal (16/11/2026): Upgraded all scrollbars across the settings tabs, dropdown menus, and the Changelog viewer to support full 3-way interaction (mousewheel scrolling, Left-Click & Drag on the scrollbar thumb with hover highlights, and Left-Click on the scrollbar track to jump directly to that position), added an unclipped 1px accent border overlay and Escape-key dismissal to dropdown menus, and ensured open dropdowns and HUD selector popovers close automatically when switching tabs, entering HUD Edit Mode, or closing the window." },
         { type = "IMPROVED", text = "Release v2.3.0 - HUD Edit Mode 'Apply All' Appearance Action & Lockstep Parity (16/11/2026): Added a compact 'Apply All' Opacity & Border Style button to Row 3 of DynamicMarkerEditModeInspector so you can copy the active bar's opacity and border style across both bars in one click, and synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.3.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "FEATURE", text = "SharedMedia, AddOn & Blizzard Font Discovery in Theme Studio (15/11/2026): Added runtime scanning for LibSharedMedia-3.0, DBM, WeakAuras, and ElvUI fonts alongside Blizzard standard fonts and bundled Expressway fonts inside Theme & Font Studio. Grouped dropdown options under Built-in Fonts, Blizzard, and SharedMedia / AddOns with live search, scroll support, per-font preview rendering, and safe fallback to the default font if an external addon is disabled." },
