@@ -59,7 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "17/11/2026",
     entries = {
-        { type = "FIX",     text = "Desktop Window Coexistence, Instant Opening, Free Dragging & Front-Window Layering (17/11/2026): Eliminated the double-resize lag spike and flicker when opening Group Finder (I), Guild & Communities (J), Character Info (C), or Quest Log (L) alongside Talents & Spellbook by stopping Blizzard's auto-shrink and panel-slot pushing out of combat while keeping Talents & Spellbook at its clean standalone scale; detached side-by-side panels from Blizzard's left/centre slot grid and removed position snap-backs so opening Character Info (C) alongside Group Finder (I) no longer pushes it sideways or locks it in place; fixed Character Info (C) dragging across all background panes and native move calls; upgraded click-to-focus and window opening to dedicated layered bands so newly opened or clicked windows always appear cleanly in front of Talents & Spellbook and World Map pins (while keeping Adventure Guide boss loot lists intact, Guild & Communities / Group Finder taint-free, and fullscreen World Map untouched); added one-window-at-a-time reverse-order Escape closing out of combat plus combat-safe Escape closing; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling) across all window headers and Talents & Spellbook canvases; and ensured Right-Click header resets and Reset Window Defaults persist cleanly across /reload." },
+        { type = "FIX",     text = "Desktop Window Coexistence, Strata-Safe Layering, Spellbook Tab Memory & Free Dragging (17/11/2026): Eliminated the double-resize lag spike and talent pool blanking when opening Group Finder (I), Guild & Communities (J), Character Info (C), or Quest Log (L) alongside Talents & Spellbook by keeping Talents & Spellbook natively registered with screen-fit auto-shrinking disabled cleanly, never hiding already-open panels during setup, and using strata-safe focus ordering (MEDIUM when unfocused behind HIGH panels, restored cleanly on click) with zero synthetic frame-level inflation so talent trees, Dungeon Finder rewards, and loadout sidebars never disappear behind window backgrounds; fixed Spellbook tab selection getting forced back to Talents when opening C, I, or L by reading the active tab bar first and recording left-click tab releases; stopped C from getting pushed next to Group Finder (I) or locked in place and fixed dragging across stats and background panes; kept Adventure Guide boss loot lists intact, Guild & Communities and Group Finder taint-free, and fullscreen World Map untouched; added one-window-at-a-time reverse-order Escape closing both in and out of combat; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling) across all headers and Talents & Spellbook canvases; and ensured Right-Click header resets and Reset Window Defaults persist cleanly across /reload." },
         { type = "FEATURE", text = "Release v2.3.0 - 2-Tab Suite Studio, Core MS-Windows Desktop Window Manager & 32-Panel Quest Log Coexistence (16/11/2026): Upgraded Suite Studio into a 2-tab workspace (Tab 1 'Theme & Typography' via /ds studio or /ds theme; Tab 2 'Desktop Windows & Menus' via /ds windows or /ds win) and migrated the Blizzard Desktop Window Manager into DynamicSuite Core (_G.DynamicSuite.DesktopWindows & DynamicSuiteDB.global.desktopWindows with automatic one-time migration from DynamicPrepDB so window management works even when DynamicPrep is disabled). Expanded side-by-side coexistence to 32 Blizzard panels by bringing the windowed/docked WorldMapFrame (Quest Log 'L') into full coexistence alongside PlayerSpellsFrame, CharacterFrame, PVEFrame, CollectionsJournal, ProfessionsFrame, and all standard panels while keeping fullscreen WorldMapFrame and GameMenuFrame untouched; replaced unclamped free-floating movement with mandatory scale-aware ClampDesktopWindowOffset boundary clamping across drag ticks, drag stop, OnShow, OnSizeChanged (Talent/Spec/Spellbook switches), UI_SCALE_CHANGED, and DISPLAY_SIZE_CHANGED so no panel or [X] close button can ever spawn or get stuck off-screen; enabled modifier-free Left-Click dragging from any empty window background or passive chrome (guarded via GetMouseFoci() so interactive child controls are never hijacked); added a zero-taint GLOBAL_MOUSE_DOWN click-to-raise z-order listener and UISpecialFrames sorter so clicking any open window brings it to the front and pressing Escape always closes the top-most window first; and preserved silent external mover coexistence (NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, ElvUI) with a live status banner on Tab 2." },
         { type = "UI",      text = "Central Popover Auto-Close Registry, Suite-Wide 3-Way Interactive 4px Obsidian Scrollbars & DynamicChat Polish (16/11/2026): Added UI.RegisterPopupCloser(key, closeFn) and owner-button OnHide hooks across DynamicSuite and all 8 modules so closing the main window, minimising, switching tabs/modules, or entering HUD Edit Mode cleanly dismisses all active dropdowns and popovers; upgraded every scrollbar across Suite Studio, Global Smart Search, Guided Setup, dropdown popovers, and module workspaces to full 3-way interaction (Mousewheel, Left-Click & Drag on the Button thumb with IsMouseButtonDown release guard and OnHide cleanup, and Left-Click on the track to jump to cursor position); and fixed DynamicChat's Font Dropdown popover/scrollbar, PrintMsg routing, and StaticPopup-free dark-obsidian reload confirmation modal." },
         { type = "FEATURE", text = "Shared Media Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Chat Sounds & Self-Whisper Alerts (15/11/2026): Added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI discovery for both Sounds and Fonts across Theme & Font Studio (and standalone DynamicMarker) plus DynamicChat Tab 3 with PLAYER_LOGIN delayed scanning and searchable grouped dropdowns; removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; restored self-whisper notification alerts on incoming WHISPER / BN_WHISPER events; and added automatic runtime fallback (to Blizzard Raid Warning for sounds or Expressway for fonts) when an external media pack is disabled." },
@@ -4488,15 +4488,13 @@ do
 
     local W = {
         KEEP_UIPANEL_LAYOUT = {
-            WorldMapFrame    = true,
-            CommunitiesFrame = true,
+            WorldMapFrame     = true,
+            CommunitiesFrame  = true,
+            PlayerSpellsFrame = true,
         },
         NO_STRATA_LIFT = {
             EncounterJournal = true,
         },
-        Z_BAND_BASE                   = 20,
-        Z_BAND_STEP                   = 2500,
-        Z_BAND_MAX                    = 57520,
         HEADER_OVERLAY_OFFSET         = 25,
         securePositioner              = nil,
         blizzWinState                 = setmetatable({}, { __mode = "k" }),
@@ -4504,12 +4502,12 @@ do
         hookedFrameNames              = {},
         origUIPanelInfo               = {},
         detachedPanels                = {},
+        pendingSlotEviction           = {},
         sessionScales                 = {},
         sessionPositions              = {},
         openPanelsSnapshot            = {},
         zOrderStack                   = {},
-        nextZBaseLevel                = 20,
-        currentTopZBase               = 20,
+        lastTopFocusedWindow          = nil,
         combatEscHandlers             = setmetatable({}, { __mode = "k" }),
         combatEscCounter              = 0,
         lastShownAt                   = {},
@@ -4528,6 +4526,7 @@ do
         hideUIPanelHooked             = false,
         updateUIPanelHooked           = false,
         registerUIPanelHooked         = false,
+        scaleFitPreGuarded            = false,
         closeSpecialHooked            = false,
         closeWindowsHooked            = false,
         closeAllHooked                = false,
@@ -4930,20 +4929,35 @@ do
 
     local function GetPlayerSpellsActiveTab(psf)
         if not psf then return nil end
+        if psf.TabSystem and type(psf.TabSystem.GetSelectedTabID) == "function" then
+            local ok, t = pcall(psf.TabSystem.GetSelectedTabID, psf.TabSystem)
+            if ok and type(t) == "number" and t > 0 then
+                return t
+            end
+        end
+        if psf.tabSystem and type(psf.tabSystem.GetSelectedTabID) == "function" then
+            local ok, t = pcall(psf.tabSystem.GetSelectedTabID, psf.tabSystem)
+            if ok and type(t) == "number" and t > 0 then
+                return t
+            end
+        end
         if type(psf.GetTab) == "function" then
             local ok, t = pcall(psf.GetTab, psf)
             if ok and type(t) == "number" and t > 0 then
                 return t
             end
         end
+        if psf.SpellBookFrame and psf.SpellBookFrame.IsShown and psf.SpellBookFrame:IsShown() then
+            return psf.spellBookTabID or 3
+        end
+        if psf.TalentsFrame and psf.TalentsFrame.IsShown and psf.TalentsFrame:IsShown() then
+            return psf.talentsTabID or 2
+        end
+        if psf.SpecFrame and psf.SpecFrame.IsShown and psf.SpecFrame:IsShown() then
+            return psf.specTabID or 1
+        end
         if type(psf.selectedTab) == "number" and psf.selectedTab > 0 then
             return psf.selectedTab
-        end
-        if psf.TabSystem and type(psf.TabSystem.GetSelectedTabID) == "function" then
-            local ok, t = pcall(psf.TabSystem.GetSelectedTabID, psf.TabSystem)
-            if ok and type(t) == "number" and t > 0 then
-                return t
-            end
         end
         return nil
     end
@@ -4966,6 +4980,71 @@ do
             end
         end
         return false
+    end
+
+    function W.RecordPlayerSpellsUserTab(psf, explicitTabID)
+        if not psf or InCombat() or DesktopWindows:IsYielding() then return end
+        local fState = GetFrameState(psf)
+        if not fState or fState.restoringPlayerSpellsState then return end
+        local resolvedTab = (type(explicitTabID) == "number" and explicitTabID > 0 and explicitTabID)
+            or GetPlayerSpellsActiveTab(psf)
+        if resolvedTab then
+            fState.userSelectedTabID = resolvedTab
+            fState.savedTabID = resolvedTab
+        end
+        if not GetPlayerSpellsIsMinimized(psf) then
+            fState.userIsMinimized = false
+            fState.savedIsMinimized = false
+        end
+    end
+
+    function W.AttachPlayerSpellsTabHooks(psf)
+        if not psf then return end
+        local st = GetFrameState(psf)
+        if not st then return end
+        local tabSys = psf.TabSystem or psf.tabSystem
+        if type(tabSys) ~= "table" then return end
+        if type(tabSys.SetTab) == "function" and not st.tabSysSetTabHooked and type(_G.hooksecurefunc) == "function" then
+            st.tabSysSetTabHooked = true
+            _G.hooksecurefunc(tabSys, "SetTab", function(_, tabID)
+                if InCombat() or DesktopWindows:IsYielding() then return end
+                local fState = GetFrameState(psf)
+                if not fState or fState.restoringPlayerSpellsState then return end
+                local overTabBar = (type(_G.MouseIsOver) == "function" and _G.MouseIsOver(tabSys)) and true or false
+                local inAutoRestore = W.restoringPanels or fState.restoringFromAutoClose or W.inShowUIPanelPostHook or IsShowUIPanelOnStack()
+                if W.userOpeningPlayerSpells or fState.userSelectedTabID == nil or overTabBar
+                    or ((psf.IsShown and psf:IsShown()) and not inAutoRestore) then
+                    W.RecordPlayerSpellsUserTab(psf, tabID)
+                end
+            end)
+        end
+        local function HookTabBtn(btn, btnTabID)
+            if type(btn) ~= "table" or btn._dsTabBtnHooked or type(btn.HookScript) ~= "function" then return end
+            btn._dsTabBtnHooked = true
+            local resolvedBtnID = (type(btnTabID) == "number" and btnTabID)
+                or btn.tabID
+                or (type(btn.GetID) == "function" and btn:GetID())
+                or nil
+            pcall(btn.HookScript, btn, "OnClick", function()
+                W.RecordPlayerSpellsUserTab(psf, resolvedBtnID)
+            end)
+        end
+        if type(tabSys.GetTabSet) == "function" and type(tabSys.GetTabButton) == "function" then
+            local okSet, tabSet = pcall(tabSys.GetTabSet, tabSys)
+            if okSet and type(tabSet) == "table" then
+                for _, tID in ipairs(tabSet) do
+                    local okBtn, btn = pcall(tabSys.GetTabButton, tabSys, tID)
+                    if okBtn and btn then
+                        HookTabBtn(btn, tID)
+                    end
+                end
+            end
+        end
+        if type(tabSys.tabs) == "table" then
+            for idx, btn in ipairs(tabSys.tabs) do
+                HookTabBtn(btn, (type(btn) == "table" and btn.tabID) or idx)
+            end
+        end
     end
 
     local function ComputePlayerSpellsNativeScale(psf)
@@ -5460,6 +5539,26 @@ do
                 if not curMaxPt then
                     pcall(frame.SetAttribute, frame, "UIPanelLayout-maximizePoint", "TOP")
                 end
+            elseif frameName == "PlayerSpellsFrame" then
+                local uipWin = type(_G.UIPanelWindows) == "table" and _G.UIPanelWindows["PlayerSpellsFrame"] or nil
+                if not yielding and db and (db.sideBySide ~= false or db.scrollScale ~= false) then
+                    if type(uipWin) == "table" and uipWin.checkFit ~= nil then
+                        uipWin.checkFit = nil
+                    end
+                    if type(frame.SetAttribute) == "function" then
+                        local curCF = frame.GetAttribute and frame:GetAttribute("UIPanelLayout-checkFit")
+                        if curCF ~= nil then
+                            pcall(frame.SetAttribute, frame, "UIPanelLayout-checkFit", nil)
+                        end
+                    end
+                elseif orig and orig.checkFit ~= nil then
+                    if type(uipWin) == "table" and uipWin.checkFit == nil then
+                        uipWin.checkFit = orig.checkFit
+                    end
+                    if type(frame.SetAttribute) == "function" then
+                        pcall(frame.SetAttribute, frame, "UIPanelLayout-checkFit", orig.checkFit)
+                    end
+                end
             end
             return
         end
@@ -5497,19 +5596,21 @@ do
                     end
                 end
             end
-            if inSlot and type(_G.HideUIPanel) == "function"
-                and not IsShowUIPanelOnStack() and not W.inShowUIPanelPostHook then
-                local wasShown = (frame.IsShown and frame:IsShown()) and true or false
-                if st then st.detachingFromUIPanel = true end
-                if not wasShown and type(frame.Show) == "function" then
-                    pcall(frame.Show, frame)
+            if inSlot then
+                local isShownNow = (frame.IsShown and frame:IsShown()) and true or false
+                if isShownNow then
+                    -- Never HideUIPanel an already-visible frame (it runs OnHide and releases Blizzard pools);
+                    -- mark it for slot cleanup once the user hides it naturally.
+                    W.pendingSlotEviction[frameName] = true
+                elseif type(_G.HideUIPanel) == "function" and not IsShowUIPanelOnStack() and not W.inShowUIPanelPostHook then
+                    if st then st.detachingFromUIPanel = true end
+                    pcall(_G.HideUIPanel, frame)
+                    ClearDetachedLayoutAttributes(frame)
+                    if st then st.detachingFromUIPanel = false end
+                    W.pendingSlotEviction[frameName] = nil
                 end
-                pcall(_G.HideUIPanel, frame)
-                ClearDetachedLayoutAttributes(frame)
-                if wasShown and type(frame.Show) == "function" then
-                    pcall(frame.Show, frame)
-                end
-                if st then st.detachingFromUIPanel = false end
+            else
+                W.pendingSlotEviction[frameName] = nil
             end
             W.detachedPanels[frameName] = true
             if type(frame.GetPoint) == "function" then
@@ -5527,6 +5628,7 @@ do
         else
             if W.detachedPanels[frameName] then
                 W.detachedPanels[frameName] = nil
+                W.pendingSlotEviction[frameName] = nil
                 if orig and orig.uipWindowEntry and type(_G.UIPanelWindows) == "table" then
                     _G.UIPanelWindows[frameName] = orig.uipWindowEntry
                 end
@@ -5537,25 +5639,6 @@ do
                     pcall(frame.SetAttribute, frame, "UIPanelLayout-pushable", orig.pushable)
                     pcall(frame.SetAttribute, frame, "UIPanelLayout-whileDead", orig.rawWhileDead)
                     pcall(frame.SetAttribute, frame, "UIPanelLayout-checkFit", orig.checkFit)
-                end
-            end
-            if frameName == "PlayerSpellsFrame" and not yielding and db and db.scrollScale ~= false then
-                local hasCustomScale = (W.sessionScales["PlayerSpellsFrame"] ~= nil)
-                    or (db.scales and type(db.scales["PlayerSpellsFrame"]) == "number")
-                if hasCustomScale then
-                    if type(frame.SetAttribute) == "function" then
-                        pcall(frame.SetAttribute, frame, "UIPanelLayout-checkFit", nil)
-                    end
-                    if orig and type(orig.uipWindowEntry) == "table" then
-                        W.SafeRemoveTableKey(orig.uipWindowEntry, "checkFit")
-                    end
-                elseif orig and orig.checkFit ~= nil then
-                    if type(frame.SetAttribute) == "function" then
-                        pcall(frame.SetAttribute, frame, "UIPanelLayout-checkFit", orig.checkFit)
-                    end
-                    if type(orig.uipWindowEntry) == "table" and orig.uipWindowEntry.checkFit == nil then
-                        orig.uipWindowEntry.checkFit = orig.checkFit
-                    end
                 end
             end
         end
@@ -5596,19 +5679,8 @@ do
             end
         end
         if #W.zOrderStack == 0 then
-            W.nextZBaseLevel = W.Z_BAND_BASE
-            W.currentTopZBase = W.Z_BAND_BASE
+            W.lastTopFocusedWindow = nil
         end
-    end
-
-    function W.RemoveFromZOrderStack(frameName)
-        if not frameName then return end
-        for i = #W.zOrderStack, 1, -1 do
-            if W.zOrderStack[i] == frameName then
-                table.remove(W.zOrderStack, i)
-            end
-        end
-        W.PruneZOrderStack()
     end
 
     function W.SyncHeaderOverlayLevel(frame, st)
@@ -5626,43 +5698,60 @@ do
         local db = GetDesktopWindowsDB()
         if not (db and db.sideBySide ~= false) then return end
         if not W.NO_STRATA_LIFT[frameName] and type(frame.GetFrameStrata) == "function" then
+            local targetStrata = "HIGH"
+            if frameName == "PlayerSpellsFrame" then
+                local topName = W.zOrderStack[#W.zOrderStack]
+                if topName and topName ~= "PlayerSpellsFrame" then
+                    targetStrata = "MEDIUM"
+                end
+            end
             local okS, curStrata = pcall(frame.GetFrameStrata, frame)
-            if okS and (curStrata == "BACKGROUND" or curStrata == "LOW" or curStrata == "MEDIUM") then
-                W.RawSetFrameStrata(frame, "HIGH")
+            if okS and curStrata ~= targetStrata then
+                W.RawSetFrameStrata(frame, targetStrata)
             end
         end
         W.RawSetToplevel(frame, true)
     end
 
-    function W.AssignWindowZBand(frame, frameName, baseLvl)
-        if InCombat() or not frame or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) then return end
-        W.NormalizeDesktopWindowLayer(frame, frameName)
-        W.RawSetFrameLevel(frame, baseLvl)
-        local st = GetFrameState(frame)
-        if st then
-            st.assignedZBase = baseLvl
-            W.SyncHeaderOverlayLevel(frame, st)
-        end
-        W.RawRaise(frame)
-    end
-
-    function W.CompactZOrderStack()
+    function W.SyncDesktopWindowLayers(raiseChanged)
+        if InCombat() or DesktopWindows:IsYielding() then return end
+        local db = GetDesktopWindowsDB()
+        if not (db and db.sideBySide ~= false) then return end
         W.PruneZOrderStack()
         local count = #W.zOrderStack
-        if count == 0 then return end
-        local step = (count * W.Z_BAND_STEP > 60000) and math.max(100, math.floor(60000 / count)) or W.Z_BAND_STEP
-        local topLvl = W.Z_BAND_BASE
+        if count == 0 then
+            W.lastTopFocusedWindow = nil
+            return
+        end
+        local topName = W.zOrderStack[count]
         for i = 1, count do
             local name = W.zOrderStack[i]
             local f = _G[name]
-            if f then
-                local lvl = W.Z_BAND_BASE + (i - 1) * step
-                W.AssignWindowZBand(f, name, lvl)
-                topLvl = lvl
+            if f and f.IsShown and f:IsShown() and not IsWorldMapMaximized(f, name) then
+                W.NormalizeDesktopWindowLayer(f, name)
+                local st = W.blizzWinState[f]
+                if st then
+                    W.SyncHeaderOverlayLevel(f, st)
+                end
+                if raiseChanged then
+                    W.RawRaise(f)
+                end
             end
         end
-        W.currentTopZBase = topLvl
-        W.nextZBaseLevel = topLvl + step
+        W.lastTopFocusedWindow = topName
+    end
+
+    function W.RemoveFromZOrderStack(frameName)
+        if not frameName then return end
+        for i = #W.zOrderStack, 1, -1 do
+            if W.zOrderStack[i] == frameName then
+                table.remove(W.zOrderStack, i)
+            end
+        end
+        W.PruneZOrderStack()
+        if #W.zOrderStack > 0 then
+            W.SyncDesktopWindowLayers(true)
+        end
     end
 
     function W.GetTopMostShownWindowName(unprotectedOnly)
@@ -5733,11 +5822,15 @@ do
         local db = GetDesktopWindowsDB()
         if not (db and db.sideBySide ~= false) then return end
         W.PruneZOrderStack()
-        W.NormalizeDesktopWindowLayer(frame, frameName)
-        local st = GetFrameState(frame)
         local curTop = W.zOrderStack[#W.zOrderStack]
-        local liveLvl = (type(frame.GetFrameLevel) == "function" and SafeNum(frame:GetFrameLevel(), 0)) or 0
-        if curTop == frameName and st and st.assignedZBase and liveLvl >= st.assignedZBase then
+        local alreadyTopStrata = (curTop == frameName and W.lastTopFocusedWindow == frameName)
+        if alreadyTopStrata and frameName == "PlayerSpellsFrame" and type(frame.GetFrameStrata) == "function" then
+            local okS, curStrata = pcall(frame.GetFrameStrata, frame)
+            if okS and curStrata ~= "HIGH" then
+                alreadyTopStrata = false
+            end
+        end
+        if alreadyTopStrata then
             if (W.lastShownAt[frameName] or 0) < W.showSeqCounter then
                 W.showSeqCounter = W.showSeqCounter + 1
                 W.lastShownAt[frameName] = W.showSeqCounter
@@ -5753,17 +5846,7 @@ do
         W.zOrderStack[#W.zOrderStack + 1] = frameName
         W.showSeqCounter = W.showSeqCounter + 1
         W.lastShownAt[frameName] = W.showSeqCounter
-        if #W.zOrderStack == 1 then
-            W.nextZBaseLevel = W.Z_BAND_BASE
-        end
-        if W.nextZBaseLevel > W.Z_BAND_MAX then
-            W.CompactZOrderStack()
-        else
-            local newBase = W.nextZBaseLevel
-            W.nextZBaseLevel = newBase + W.Z_BAND_STEP
-            W.currentTopZBase = newBase
-            W.AssignWindowZBand(frame, frameName, newBase)
-        end
+        W.SyncDesktopWindowLayers(true)
         W.SyncAllUISpecialFrames()
     end
 
@@ -6427,18 +6510,18 @@ do
                             if otherFrame.IsShown and otherFrame:IsShown() then
                                 W.openPanelsSnapshot[otherName] = true
                                 W.lastAutoHiddenAt[otherName] = nil
+                                W.lastExplicitCloseAt[otherName] = nil
                                 if otherName == "PlayerSpellsFrame" then
                                     RestorePlayerSpellsFrameState(otherFrame)
                                 end
                                 ApplyBlizzardFrameTransform(otherFrame, otherName)
-                                if otherSt and otherSt.assignedZBase then
-                                    W.AssignWindowZBand(otherFrame, otherName, otherSt.assignedZBase)
-                                end
+                                W.NormalizeDesktopWindowLayer(otherFrame, otherName)
                                 if otherSt then otherSt.wasOpenConfirmed = true end
                             end
                         else
                             W.openPanelsSnapshot[otherName] = true
                             W.lastAutoHiddenAt[otherName] = nil
+                            W.lastExplicitCloseAt[otherName] = nil
                             local targetScale = GetActiveFrameScale(otherName, otherFrame)
                             local drifted = math.abs(GetFrameLiveScale(otherFrame) - targetScale) > 0.005
                             if not drifted and _G.UIParent
@@ -6627,25 +6710,31 @@ do
                 end)
             end
 
+            W.AttachPlayerSpellsTabHooks(frame)
             if type(frame.SetTab) == "function" then
                 _G.hooksecurefunc(frame, "SetTab", function(psf, tabID)
                     if InCombat() or DesktopWindows:IsYielding() then return end
                     AttachPlayerSpellsSubCanvasWheelHooks(psf)
+                    W.AttachPlayerSpellsTabHooks(psf)
                     local fState = GetFrameState(psf)
                     if not fState or fState.restoringPlayerSpellsState then return end
                     local db = GetDesktopWindowsDB()
-                    local clickedTabBar = (_G.IsMouseButtonDown and _G.IsMouseButtonDown("LeftButton"))
-                        and (psf.TabSystem and type(_G.MouseIsOver) == "function" and _G.MouseIsOver(psf.TabSystem))
+                    local tabSys = psf.TabSystem or psf.tabSystem
+                    local overTabBar = (tabSys and type(_G.MouseIsOver) == "function" and _G.MouseIsOver(tabSys)) and true or false
+                    local inAutoRestore = W.restoringPanels or fState.restoringFromAutoClose or W.inShowUIPanelPostHook or IsShowUIPanelOnStack()
+                    local isShownUserChange = (psf.IsShown and psf:IsShown() and not inAutoRestore) and true or false
                     local isUserTabSelect = W.userOpeningPlayerSpells
                         or (fState.userSelectedTabID == nil)
-                        or (clickedTabBar and not W.restoringPanels and not fState.restoringFromAutoClose and not W.inShowUIPanelPostHook)
+                        or overTabBar
+                        or isShownUserChange
                     if isUserTabSelect then
-                        local resolvedTab = tabID or GetPlayerSpellsActiveTab(psf)
+                        local resolvedTab = (type(tabID) == "number" and tabID > 0 and tabID)
+                            or GetPlayerSpellsActiveTab(psf)
                         if resolvedTab then
                             fState.userSelectedTabID = resolvedTab
                             fState.savedTabID = resolvedTab
                         end
-                        if clickedTabBar and not GetPlayerSpellsIsMinimized(psf) then
+                        if (overTabBar or isShownUserChange) and not GetPlayerSpellsIsMinimized(psf) then
                             fState.userIsMinimized = false
                             fState.savedIsMinimized = false
                         end
@@ -6852,6 +6941,7 @@ do
                 end
                 W.openPanelsSnapshot[frameName] = true
                 W.lastAutoHiddenAt[frameName] = nil
+                W.lastExplicitCloseAt[frameName] = nil
                 if not W.restoringPanels and not (fState and fState.restoringFromAutoClose) and W.detachedPanels[frameName] then
                     local siblingName = (frameName == "GossipFrame" and "QuestFrame") or (frameName == "QuestFrame" and "GossipFrame") or nil
                     local sibling = siblingName and _G[siblingName]
@@ -6864,6 +6954,7 @@ do
                 end
                 if frameName == "PlayerSpellsFrame" then
                     AttachPlayerSpellsSubCanvasWheelHooks(shownFrame)
+                    W.AttachPlayerSpellsTabHooks(shownFrame)
                     if W.restoringPanels or (fState and fState.restoringFromAutoClose) then
                         RestorePlayerSpellsFrameState(shownFrame)
                         if _G.C_Timer and _G.C_Timer.After then
@@ -6879,9 +6970,7 @@ do
                 ApplyBlizzardFrameTransform(shownFrame, frameName)
                 if fState then fState.wasOpenConfirmed = true end
                 if fState and fState.restoringFromAutoClose then
-                    if fState.assignedZBase then
-                        W.AssignWindowZBand(shownFrame, frameName, fState.assignedZBase)
-                    end
+                    W.SyncDesktopWindowLayers(false)
                 elseif not W.restoringPanels then
                     RestoreCoexistingPanels(frameName)
                     W.FocusAndRaiseDesktopWindow(shownFrame, frameName)
@@ -6940,7 +7029,6 @@ do
                 end
                 if fState then
                     fState.wasOpenConfirmed = false
-                    fState.assignedZBase = nil
                     if frameName == "PlayerSpellsFrame" and (W.explicitCloseFrame == frameName or isEscapeClose) then
                         fState.userSelectedTabID = nil
                         fState.savedTabID = nil
@@ -6951,6 +7039,13 @@ do
                 local hadSession = (W.sessionScales[frameName] ~= nil)
                 W.sessionScales[frameName] = nil
                 if InCombat() then return end
+                if W.pendingSlotEviction[frameName] and not (hiddenFrame.IsShown and hiddenFrame:IsShown())
+                    and type(_G.HideUIPanel) == "function" then
+                    W.pendingSlotEviction[frameName] = nil
+                    if fState then fState.detachingFromUIPanel = true end
+                    pcall(_G.HideUIPanel, hiddenFrame)
+                    if fState then fState.detachingFromUIPanel = false end
+                end
                 if hadSession and not DesktopWindows:IsYielding() then
                     local savedOrOrig = (db and db.scales and db.scales[frameName])
                         or GetDefaultFrameScale(frameName, hiddenFrame)
@@ -6986,7 +7081,6 @@ do
                 W.sessionPositions[frameName] = nil
                 if st then
                     st.wasOpenConfirmed = false
-                    st.assignedZBase = nil
                     if frameName == "PlayerSpellsFrame" then
                         st.userSelectedTabID = nil
                         st.savedTabID = nil
@@ -7026,6 +7120,29 @@ do
 
     EnsureGlobalPanelHooks = function()
         if type(_G.hooksecurefunc) ~= "function" then return end
+
+        if not W.scaleFitPreGuarded then
+            W.scaleFitPreGuarded = true
+            local function GuardFitScaleFn(tbl, key)
+                if type(tbl) == "table" and type(tbl[key]) == "function" then
+                    local origFitFn = tbl[key]
+                    tbl[key] = function(fitFrame, ...)
+                        if fitFrame and fitFrame == _G.PlayerSpellsFrame and not InCombat() and not DesktopWindows:IsYielding() then
+                            local db = GetDesktopWindowsDB()
+                            if db and (db.sideBySide ~= false or db.scrollScale ~= false) then
+                                return
+                            end
+                        end
+                        return origFitFn(fitFrame, ...)
+                    end
+                end
+            end
+            GuardFitScaleFn(_G, "UpdateScaleForFit")
+            GuardFitScaleFn(_G, "UIPanelUpdateScaleForFit")
+            if type(_G.FrameUtil) == "table" then
+                GuardFitScaleFn(_G.FrameUtil, "UpdateScaleForFit")
+            end
+        end
 
         if not W.globalMouseHooked then
             W.globalMouseHooked = true
@@ -7167,7 +7284,6 @@ do
                             local bst = bf and W.blizzWinState[bf]
                             if bst then
                                 bst.wasOpenConfirmed = false
-                                bst.assignedZBase = nil
                             end
                             W.RemoveFromZOrderStack(spec.name)
                             W.RemoveFromUISpecialFrames(spec.name)
@@ -7209,7 +7325,6 @@ do
                             W.sessionPositions[otherName] = nil
                             if otherSt then
                                 otherSt.wasOpenConfirmed = false
-                                otherSt.assignedZBase = nil
                             end
                             W.RemoveFromZOrderStack(otherName)
                             if W.sessionScales[otherName] ~= nil and otherFrame then
@@ -7226,6 +7341,7 @@ do
                 if frame.IsShown and frame:IsShown() then
                     W.openPanelsSnapshot[fName] = true
                     W.lastAutoHiddenAt[fName] = nil
+                    W.lastExplicitCloseAt[fName] = nil
                     ApplyBlizzardFrameTransform(frame, fName)
                     if st then st.wasOpenConfirmed = true end
                     W.FocusAndRaiseDesktopWindow(frame, fName)
@@ -7263,7 +7379,6 @@ do
                     local nst = W.blizzWinState[newestFrame]
                     if nst then
                         nst.wasOpenConfirmed = false
-                        nst.assignedZBase = nil
                     end
                     W.RemoveFromZOrderStack(newestName)
                     local prevEx = W.explicitCloseFrame
@@ -7287,12 +7402,10 @@ do
                     ApplyBlizzardFrameTransform(fObj, fName)
                     if st then
                         st.wasOpenConfirmed = true
-                        if st.assignedZBase then
-                            W.AssignWindowZBand(fObj, fName, st.assignedZBase)
-                        end
                     end
                 end
             end
+            W.SyncDesktopWindowLayers(false)
             W.SyncAllUISpecialFrames()
             W.inCloseSpecialWindowsPostHook = false
             W.inEscapeRestorePostHook = false
@@ -7333,10 +7446,8 @@ do
                         ApplyBlizzardFrameTransform(frame, fName)
                         if st then
                             st.wasOpenConfirmed = true
-                            if st.assignedZBase then
-                                W.AssignWindowZBand(frame, fName, st.assignedZBase)
-                            end
                         end
+                        W.SyncDesktopWindowLayers(false)
                         W.SyncAllUISpecialFrames()
                         W.inEscapeRestorePostHook = false
                         return
@@ -7359,7 +7470,6 @@ do
                 W.lastAutoHiddenAt[fName] = nil
                 if st then
                     st.wasOpenConfirmed = false
-                    st.assignedZBase = nil
                     if fName == "PlayerSpellsFrame" and isExplicit then
                         st.userSelectedTabID = nil
                         st.savedTabID = nil
@@ -7410,6 +7520,7 @@ do
                 if tf.IsShown and tf:IsShown() then
                     W.openPanelsSnapshot[targetName] = true
                     W.lastAutoHiddenAt[targetName] = nil
+                    W.lastExplicitCloseAt[targetName] = nil
                     if targetName == "PlayerSpellsFrame" and st then
                         local curT = GetPlayerSpellsActiveTab(tf)
                         if curT then
@@ -7428,7 +7539,6 @@ do
                     W.sessionPositions[targetName] = nil
                     if st then
                         st.wasOpenConfirmed = false
-                        st.assignedZBase = nil
                     end
                     W.RemoveFromZOrderStack(targetName)
                 end
