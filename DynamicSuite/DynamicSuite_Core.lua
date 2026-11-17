@@ -59,7 +59,8 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "18/11/2026",
     entries = {
-        { type = "FIX",     text = "Desktop Window Coexistence, Strata-Based Focus, Character Sheet Pane Visibility, Spellbook Tab Memory & Free Dragging (18/11/2026): Eliminated client freezes, buried Character Info left/right panes (both stock Blizzard gear slots/model at FrameLevel 101 and EllesmereUIBlizzardSkin right-side Character Stats at FrameLevel 50), and talent tree/sidebar blanking by disabling SetToplevel and removing C++ Raise() calls that jumped root window backgrounds to FrameLevel 5020 above third-party 5000-level frames, clamping any stray FrameLevel > 15 back to 1, keeping Talents & Spellbook permanently on MEDIUM strata, and managing z-order cleanly via strata focus (HIGH for the active window, MEDIUM/LOW for background windows) without synthetic frame-level inflation, SecureHandler wrapper overhead, or UpdateUIPanelPositions re-anchor loops; ensured Character Info (C) keeps its right-side stats pane expanded and refreshed on open whenever not collapsed by the user; detached side-by-side panels cleanly without ever hiding already-open frames; fixed Spellbook tab selection getting forced back to Talents when opening C, I, or L; stopped C from getting pushed next to Group Finder (I) or locked in place and fixed dragging across stats and background panes; kept Adventure Guide boss loot lists intact, Guild & Communities and Group Finder taint-free, and fullscreen World Map untouched; added one-window-at-a-time reverse-order Escape closing both in and out of combat; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling); and ensured Right-Click header resets and Reset Window Defaults persist cleanly across /reload." },
+        { type = "FIX",     text = "Talents & Spellbook Layering and Adventure Guide Mousewheel Scrolling Fixes (18/11/2026): Updated the Blizzard Desktop Window Manager so Talents & Spellbook uses the same focus-based layering as every other managed window (bringing it cleanly to HIGH strata when active so Cooldown Manager icons no longer bleed through Spellbook and Specialisation tabs, while clamping root FrameLevel <= 15 so talent sidebars and child panes stay cleanly layered above the background), and stopped root Adventure Guide and passive border chrome from capturing mousewheel input so scrolling through boss overviews, abilities, loot lists, and lore works smoothly again while preserving Ctrl+Scroll and Ctrl+Shift+Scroll scaling when Ctrl is held." },
+        { type = "FIX",     text = "Desktop Window Coexistence, Strata-Based Focus, Character Sheet Pane Visibility, Spellbook Tab Memory & Free Dragging (18/11/2026): Eliminated client freezes, buried Character Info left/right panes (both stock Blizzard gear slots/model at FrameLevel 101 and EllesmereUIBlizzardSkin right-side Character Stats at FrameLevel 50), and talent tree/sidebar blanking by disabling SetToplevel and removing C++ Raise() calls that jumped root window backgrounds to FrameLevel 5020 above third-party 5000-level frames, clamping any stray FrameLevel > 15 back to 1, and managing z-order cleanly via strata focus (HIGH for the active window, MEDIUM for background windows) without synthetic frame-level inflation, SecureHandler wrapper overhead, or UpdateUIPanelPositions re-anchor loops; ensured Character Info (C) keeps its right-side stats pane expanded and refreshed on open whenever not collapsed by the user; detached side-by-side panels cleanly without ever hiding already-open frames; fixed Spellbook tab selection getting forced back to Talents when opening C, I, or L; stopped C from getting pushed next to Group Finder (I) or locked in place and fixed dragging across stats and background panes; kept Adventure Guide boss loot lists intact, Guild & Communities and Group Finder taint-free, and fullscreen World Map untouched; added one-window-at-a-time reverse-order Escape closing both in and out of combat; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling); and ensured Right-Click header resets and Reset Window Defaults persist cleanly across /reload." },
         { type = "FEATURE", text = "Release v2.3.0 - 2-Tab Suite Studio, Core MS-Windows Desktop Window Manager & 32-Panel Quest Log Coexistence (16/11/2026): Upgraded Suite Studio into a 2-tab workspace (Tab 1 'Theme & Typography' via /ds studio or /ds theme; Tab 2 'Desktop Windows & Menus' via /ds windows or /ds win) and migrated the Blizzard Desktop Window Manager into DynamicSuite Core (_G.DynamicSuite.DesktopWindows & DynamicSuiteDB.global.desktopWindows with automatic one-time migration from DynamicPrepDB so window management works even when DynamicPrep is disabled). Expanded side-by-side coexistence to 32 Blizzard panels by bringing the windowed/docked WorldMapFrame (Quest Log 'L') into full coexistence alongside PlayerSpellsFrame, CharacterFrame, PVEFrame, CollectionsJournal, ProfessionsFrame, and all standard panels while keeping fullscreen WorldMapFrame and GameMenuFrame untouched; replaced unclamped free-floating movement with mandatory scale-aware ClampDesktopWindowOffset boundary clamping across drag ticks, drag stop, OnShow, OnSizeChanged (Talent/Spec/Spellbook switches), UI_SCALE_CHANGED, and DISPLAY_SIZE_CHANGED so no panel or [X] close button can ever spawn or get stuck off-screen; enabled modifier-free Left-Click dragging from any empty window background or passive chrome (guarded via GetMouseFoci() so interactive child controls are never hijacked); added a zero-taint GLOBAL_MOUSE_DOWN click-to-raise z-order listener and UISpecialFrames sorter so clicking any open window brings it to the front and pressing Escape always closes the top-most window first; and preserved silent external mover coexistence (NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, ElvUI) with a live status banner on Tab 2." },
         { type = "UI",      text = "Central Popover Auto-Close Registry, Suite-Wide 3-Way Interactive 4px Obsidian Scrollbars & DynamicChat Polish (16/11/2026): Added UI.RegisterPopupCloser(key, closeFn) and owner-button OnHide hooks across DynamicSuite and all 8 modules so closing the main window, minimising, switching tabs/modules, or entering HUD Edit Mode cleanly dismisses all active dropdowns and popovers; upgraded every scrollbar across Suite Studio, Global Smart Search, Guided Setup, dropdown popovers, and module workspaces to full 3-way interaction (Mousewheel, Left-Click & Drag on the Button thumb with IsMouseButtonDown release guard and OnHide cleanup, and Left-Click on the track to jump to cursor position); and fixed DynamicChat's Font Dropdown popover/scrollbar, PrintMsg routing, and StaticPopup-free dark-obsidian reload confirmation modal." },
         { type = "FEATURE", text = "Shared Media Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Chat Sounds & Self-Whisper Alerts (15/11/2026): Added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI discovery for both Sounds and Fonts across Theme & Font Studio (and standalone DynamicMarker) plus DynamicChat Tab 3 with PLAYER_LOGIN delayed scanning and searchable grouped dropdowns; removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; restored self-whisper notification alerts on incoming WHISPER / BN_WHISPER events; and added automatic runtime fallback (to Blizzard Raid Warning for sounds or Expressway for fonts) when an external media pack is disabled." },
@@ -4491,7 +4492,7 @@ do
             WorldMapFrame    = true,
             CommunitiesFrame = true,
         },
-        NO_STRATA_LIFT = {
+        ROOT_WHEEL_EXEMPT = {
             EncounterJournal = true,
         },
         HEADER_OVERLAY_OFFSET         = 25,
@@ -4541,6 +4542,7 @@ do
         deferredRestorePending        = false,
         pendingDragWatch              = nil,
         dragDriverFrame               = nil,
+        ctrlWheelOverlay              = nil,
         scaleToast                    = nil,
     }
 
@@ -5599,16 +5601,7 @@ do
         if not (db and db.sideBySide ~= false) then return end
         -- Disable C++ toplevel FrameLevel inflation so Raise() never jumps root Bg/Inset above fixed-level children (e.g. PaperDollFrame / EUI stats at level 50).
         W.RawSetToplevel(frame, false)
-        if frameName == "PlayerSpellsFrame" then
-            if type(frame.GetFrameStrata) == "function" then
-                local okS, curStrata = pcall(frame.GetFrameStrata, frame)
-                if okS and curStrata ~= "MEDIUM" then
-                    W.RawSetFrameStrata(frame, "MEDIUM")
-                end
-            end
-            return
-        end
-        -- Clamp any stray high FrameLevel (e.g. 5020 from C++ Raise() above DetailsFramework.IconPickFrame at 5000) back to 1 so fixed-level children (CharacterHeadSlot at 101, EUI_CharSheet_StatsPanel at 50) are never buried.
+        -- Clamp any stray high FrameLevel (e.g. 5020 from C++ Raise() above DetailsFramework.IconPickFrame at 5000) back to 1 so fixed-level children (CharacterHeadSlot at 101, EUI_CharSheet_StatsPanel at 50, TalentLoadoutManager / EUI child panes) are never buried.
         if type(frame.GetFrameLevel) == "function" then
             local okL, curLvl = pcall(frame.GetFrameLevel, frame)
             if okL and type(curLvl) == "number" and curLvl > 15 then
@@ -5617,7 +5610,7 @@ do
         end
         local topName = W.zOrderStack[#W.zOrderStack]
         local isFocused = (topName == nil or topName == frameName)
-        local targetStrata = isFocused and "HIGH" or ((topName == "PlayerSpellsFrame") and "LOW" or "MEDIUM")
+        local targetStrata = isFocused and "HIGH" or "MEDIUM"
         if type(frame.GetFrameStrata) == "function" then
             local okS, curStrata = pcall(frame.GetFrameStrata, frame)
             if okS and curStrata ~= targetStrata then
@@ -6042,6 +6035,190 @@ do
         HookMouseWheelTarget(psf.SpecFrame, psf, "PlayerSpellsFrame")
     end
 
+    local function EnsureScrollRegionWheelEnabled(region)
+        if type(region) ~= "table" then return end
+        if region.IsForbidden and region:IsForbidden() then return end
+        if type(region.EnableMouseWheel) == "function" then
+            local isEnabled = true
+            if type(region.IsMouseWheelEnabled) == "function" then
+                local okE, val = pcall(region.IsMouseWheelEnabled, region)
+                if okE then isEnabled = (val == true) end
+            end
+            if not isEnabled then
+                pcall(region.EnableMouseWheel, region, true)
+            end
+        end
+    end
+
+    local function DisableRootWheelCapture(region)
+        if type(region) ~= "table" then return end
+        if region.IsForbidden and region:IsForbidden() then return end
+        if type(region.EnableMouseWheel) == "function" then
+            local isEnabled = false
+            if type(region.IsMouseWheelEnabled) == "function" then
+                local okE, val = pcall(region.IsMouseWheelEnabled, region)
+                if okE then isEnabled = (val == true) end
+            end
+            if isEnabled then
+                pcall(region.EnableMouseWheel, region, false)
+            end
+        end
+    end
+
+    local function EnsureEncounterJournalScrollBoxesWheelEnabled(ej)
+        if InCombat() or DesktopWindows:IsYielding() then return end
+        ej = ej or _G.EncounterJournal
+        if type(ej) ~= "table" or (ej.IsForbidden and ej:IsForbidden()) then return end
+
+        -- Keep root EncounterJournal and full-frame passive chrome from swallowing wheel input
+        -- intended for child scroll containers (Overview, Abilities, Loot, Lore/Boss lists).
+        DisableRootWheelCapture(ej)
+        for _, chromeKey in ipairs({ "NineSlice", "Bg", "Inset", "inset", "LeftInset", "RightInset", "BottomInset", "BorderFrame" }) do
+            if type(ej[chromeKey]) == "table" then
+                DisableRootWheelCapture(ej[chromeKey])
+            end
+        end
+
+        EnsureScrollRegionWheelEnabled(ej.instanceSelect and ej.instanceSelect.ScrollBox)
+        EnsureScrollRegionWheelEnabled(ej.MonthlyActivitiesFrame and ej.MonthlyActivitiesFrame.ScrollBox)
+        EnsureScrollRegionWheelEnabled(ej.JourneysFrame and ej.JourneysFrame.ScrollBox)
+        EnsureScrollRegionWheelEnabled(ej.JourneysFrame and ej.JourneysFrame.JourneysList)
+        EnsureScrollRegionWheelEnabled(ej.TutorialsFrame and ej.TutorialsFrame.ScrollBox)
+        EnsureScrollRegionWheelEnabled(ej.LootJournal and ej.LootJournal.ScrollBox)
+        EnsureScrollRegionWheelEnabled(ej.LootJournal and ej.LootJournal.PowersFrame and ej.LootJournal.PowersFrame.ScrollBox)
+        EnsureScrollRegionWheelEnabled(ej.LootJournalItems and ej.LootJournalItems.ItemSetsFrame and ej.LootJournalItems.ItemSetsFrame.ScrollBox)
+
+        local enc = ej.encounter
+        if type(enc) == "table" then
+            local info = enc.info
+            if type(info) == "table" then
+                EnsureScrollRegionWheelEnabled(info.BossesScrollBox)
+                EnsureScrollRegionWheelEnabled(info.overviewScroll)
+                EnsureScrollRegionWheelEnabled(info.detailsScroll)
+                EnsureScrollRegionWheelEnabled(info.LootContainer and info.LootContainer.ScrollBox)
+            end
+            local inst = enc.instance
+            if type(inst) == "table" then
+                EnsureScrollRegionWheelEnabled(inst.loreScroll)
+            end
+        end
+
+        EnsureScrollRegionWheelEnabled(_G.EncounterJournalEncounterFrameInfoOverviewScrollFrame)
+        EnsureScrollRegionWheelEnabled(_G.EncounterJournalEncounterFrameInfoDetailsScrollFrame)
+        EnsureScrollRegionWheelEnabled(_G.EncounterJournalEncounterFrameInstanceLoreScrollFrame)
+        EnsureScrollRegionWheelEnabled(_G.EncounterJournalEncounterFrameInfoLootContainerScrollBox)
+        EnsureScrollRegionWheelEnabled(_G.EncounterJournalSearchResults and _G.EncounterJournalSearchResults.ScrollBox)
+    end
+
+    local function IsPointOverFrame(f)
+        if not f or not (f.IsShown and f:IsShown()) then return false end
+        if type(_G.MouseIsOver) == "function" then
+            local ok, over = pcall(_G.MouseIsOver, f)
+            if ok and over == true then return true end
+        end
+        return false
+    end
+
+    local function FindTopHoveredWheelExemptWindow()
+        if InCombat() or DesktopWindows:IsYielding() then return nil, nil end
+        local db = GetDesktopWindowsDB()
+        if not (db and db.scrollScale ~= false) then return nil, nil end
+        if not (_G.IsControlKeyDown and _G.IsControlKeyDown()) then return nil, nil end
+        W.PruneZOrderStack()
+        local topFocused = W.zOrderStack[#W.zOrderStack]
+        if topFocused and IsPointOverFrame(_G[topFocused]) then
+            if W.ROOT_WHEEL_EXEMPT[topFocused] then
+                return _G[topFocused], topFocused
+            end
+            return nil, nil
+        end
+        for i = #W.zOrderStack, 1, -1 do
+            local name = W.zOrderStack[i]
+            local bf = name and _G[name]
+            if bf and IsPointOverFrame(bf) then
+                if W.ROOT_WHEEL_EXEMPT[name] then
+                    return bf, name
+                end
+                return nil, nil
+            end
+        end
+        for name in pairs(W.ROOT_WHEEL_EXEMPT) do
+            local bf = _G[name]
+            if bf and IsPointOverFrame(bf) then
+                return bf, name
+            end
+        end
+        return nil, nil
+    end
+
+    local function EnsureCtrlWheelOverlay()
+        if W.ctrlWheelOverlay then return W.ctrlWheelOverlay end
+        local uip = _G.UIParent
+        if not uip then return nil end
+        local cov = CreateFrame("Frame", "DynamicSuiteDesktopWindowsCtrlWheelOverlay", uip)
+        cov:SetFrameStrata("TOOLTIP")
+        cov:EnableMouse(false)
+        cov:EnableMouseWheel(false)
+        cov:SetScript("OnMouseWheel", function(selfCov, delta)
+            if selfCov.targetFrame and selfCov.targetName then
+                HandleManagedWindowMouseWheel(selfCov.targetFrame, selfCov.targetName, delta)
+            end
+        end)
+        cov:Hide()
+        W.ctrlWheelOverlay = cov
+        return cov
+    end
+
+    local function SyncCtrlWheelOverlay()
+        local anyShown = false
+        for name in pairs(W.ROOT_WHEEL_EXEMPT) do
+            local bf = _G[name]
+            if bf and bf.IsShown and bf:IsShown() then
+                anyShown = true
+                break
+            end
+        end
+        local db = GetDesktopWindowsDB()
+        local ctrlHeld = (_G.IsControlKeyDown and _G.IsControlKeyDown()) and true or false
+        if not anyShown or InCombat() or DesktopWindows:IsYielding() or not (db and db.scrollScale ~= false) or not ctrlHeld then
+            local cov = W.ctrlWheelOverlay
+            if cov then
+                cov.targetFrame = nil
+                cov.targetName = nil
+                cov:SetScript("OnUpdate", nil)
+                cov:EnableMouseWheel(false)
+                cov:Hide()
+            end
+            return
+        end
+        local cov = EnsureCtrlWheelOverlay()
+        if not cov then return end
+        local targetFrame, targetName = FindTopHoveredWheelExemptWindow()
+        cov:ClearAllPoints()
+        if targetFrame then
+            cov.targetFrame = targetFrame
+            cov.targetName = targetName
+            cov:SetAllPoints(targetFrame)
+            cov:EnableMouseWheel(true)
+        else
+            cov.targetFrame = nil
+            cov.targetName = nil
+            cov:SetSize(1, 1)
+            cov:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", -20, -20)
+            cov:EnableMouseWheel(false)
+        end
+        cov:Show()
+        if not cov:GetScript("OnUpdate") then
+            local acc = 0
+            cov:SetScript("OnUpdate", function(_, elapsed)
+                acc = acc + (elapsed or 0)
+                if acc < 0.05 then return end
+                acc = 0
+                SyncCtrlWheelOverlay()
+            end)
+        end
+    end
+
     local function EnsureDragDriverFrame()
         if W.dragDriverFrame then return W.dragDriverFrame end
         local f = CreateFrame("Frame", "DynamicSuiteDesktopWindowsDragDriver", _G.UIParent)
@@ -6308,7 +6485,9 @@ do
                             if st.finishDrag then st.finishDrag() end
                         end)
                     end
-                    HookMouseWheelTarget(child, frame, frameName)
+                    if not W.ROOT_WHEEL_EXEMPT[frameName] then
+                        HookMouseWheelTarget(child, frame, frameName)
+                    end
                 end
             end
         end
@@ -6359,6 +6538,9 @@ do
         end
         W.SyncFrameClamping(frame, frameName)
         W.NormalizeDesktopWindowLayer(frame, frameName)
+        if frameName == "EncounterJournal" then
+            EnsureEncounterJournalScrollBoxesWheelEnabled(frame)
+        end
         if frame.IsProtected and frame:IsProtected() and W.detachedPanels[frameName] then
             W.EnsureCombatEscapeButton(frame, frameName)
         end
@@ -6516,7 +6698,9 @@ do
             end
             W.SyncFrameClamping(frame, frameName)
             W.NormalizeDesktopWindowLayer(frame, frameName)
-            if type(frame.EnableMouseWheel) == "function" then
+            if frameName == "EncounterJournal" then
+                EnsureEncounterJournalScrollBoxesWheelEnabled(frame)
+            elseif not W.ROOT_WHEEL_EXEMPT[frameName] and type(frame.EnableMouseWheel) == "function" then
                 pcall(frame.EnableMouseWheel, frame, true)
             end
             local db = GetDesktopWindowsDB()
@@ -6549,6 +6733,19 @@ do
                     fState.beginDrag()
                 end
             end)
+        end
+
+        if frameName == "EncounterJournal" and type(_G.hooksecurefunc) == "function" and not st.ejScrollHooksDone then
+            st.ejScrollHooksDone = true
+            local function RefreshEJScrollWheel()
+                if InCombat() or DesktopWindows:IsYielding() then return end
+                EnsureEncounterJournalScrollBoxesWheelEnabled(_G.EncounterJournal)
+            end
+            for _, ejFn in ipairs({ "EncounterJournal_DisplayInstance", "EncounterJournal_DisplayEncounter", "EncounterJournal_SetTab", "EJ_ContentTab_Select" }) do
+                if type(_G[ejFn]) == "function" then
+                    _G.hooksecurefunc(ejFn, RefreshEJScrollWheel)
+                end
+            end
         end
 
         if frameName == "PlayerSpellsFrame" and type(_G.hooksecurefunc) == "function" and not st.playerSpellsHooksDone then
@@ -6618,6 +6815,7 @@ do
                     if InCombat() or DesktopWindows:IsYielding() then return end
                     AttachPlayerSpellsSubCanvasWheelHooks(psf)
                     W.AttachPlayerSpellsTabHooks(psf)
+                    W.NormalizeDesktopWindowLayer(psf, "PlayerSpellsFrame")
                     local fState = GetFrameState(psf)
                     if not fState or fState.restoringPlayerSpellsState then return end
                     local db = GetDesktopWindowsDB()
@@ -6910,6 +7108,12 @@ do
                     end
                 end
                 ApplyBlizzardFrameTransform(shownFrame, frameName)
+                if frameName == "EncounterJournal" then
+                    EnsureEncounterJournalScrollBoxesWheelEnabled(shownFrame)
+                end
+                if W.ROOT_WHEEL_EXEMPT[frameName] then
+                    SyncCtrlWheelOverlay()
+                end
                 if fState then fState.wasOpenConfirmed = true end
                 if fState and fState.restoringFromAutoClose then
                     W.PruneZOrderStack()
@@ -6977,6 +7181,9 @@ do
                     end
                 end
                 W.RemoveFromZOrderStack(frameName)
+                if W.ROOT_WHEEL_EXEMPT[frameName] then
+                    SyncCtrlWheelOverlay()
+                end
                 W.sessionPositions[frameName] = nil
                 local hadSession = (W.sessionScales[frameName] ~= nil)
                 W.sessionScales[frameName] = nil
@@ -7093,8 +7300,13 @@ do
             mouseFrame:SetPoint("TOPLEFT", _G.UIParent, "TOPLEFT", 0, 0)
             mouseFrame:Show()
             SafeRegisterSuiteEvent(mouseFrame, "GLOBAL_MOUSE_DOWN")
+            SafeRegisterSuiteEvent(mouseFrame, "MODIFIER_STATE_CHANGED")
             SafeRegisterSuiteEvent(mouseFrame, "PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
             mouseFrame:SetScript("OnEvent", function(selfMF, event, arg1)
+                if event == "MODIFIER_STATE_CHANGED" then
+                    SyncCtrlWheelOverlay()
+                    return
+                end
                 if event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
                     if InCombat() or DesktopWindows:IsYielding() then return end
                     local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
@@ -7786,6 +7998,7 @@ do
             end
         end
         W.SyncAllUISpecialFrames()
+        SyncCtrlWheelOverlay()
     end
     DesktopWindows.ApplyAllBlizzardWindowStates = DesktopWindows.ApplyAllWindowStates
 
@@ -7906,6 +8119,7 @@ do
                 end
             end
             W.SyncCombatEscapeHandlers(true)
+            SyncCtrlWheelOverlay()
             if W.scaleToast then W.scaleToast:Hide() end
         else
             W.SyncCombatEscapeHandlers(false)
