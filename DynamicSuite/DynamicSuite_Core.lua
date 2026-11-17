@@ -5603,6 +5603,8 @@ do
                 W.RawSetFrameStrata(frame, "MEDIUM")
             end
         end
+        -- Disable C++ toplevel FrameLevel inflation so Raise() never jumps root Bg/Inset above fixed-level children (e.g. PaperDollFrame / EUI stats at level 50).
+        W.RawSetToplevel(frame, false)
     end
 
     function W.RemoveFromZOrderStack(frameName)
@@ -6831,6 +6833,15 @@ do
                     local onPaperDoll = ((shownFrame.selectedTab or 1) == 1)
                         or (_G.PaperDollFrame and _G.PaperDollFrame.IsShown and _G.PaperDollFrame:IsShown())
                     local userCollapsed = (_G.GetCVarBool and _G.GetCVarBool("characterFrameCollapsed")) and true or false
+                    if onPaperDoll then
+                        if _G.PaperDollFrame and not (_G.PaperDollFrame.IsShown and _G.PaperDollFrame:IsShown()) then
+                            if type(_G.CharacterFrame_ShowSubFrame) == "function" then
+                                pcall(_G.CharacterFrame_ShowSubFrame, "PaperDollFrame")
+                            elseif type(_G.PaperDollFrame.Show) == "function" then
+                                pcall(_G.PaperDollFrame.Show, _G.PaperDollFrame)
+                            end
+                        end
+                    end
                     if onPaperDoll and not userCollapsed then
                         if shownFrame.Expanded == false then
                             if type(shownFrame.Expand) == "function" then
