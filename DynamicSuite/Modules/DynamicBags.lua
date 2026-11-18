@@ -9140,20 +9140,29 @@ function U.ScanAndConfirmDecorPopup(expectedWhich, targetPopup)
     end
 
     local candidates = {}
+    local seenCandidates = {}
+    local function AddCandidatePopup(p)
+        if p and not seenCandidates[p] then
+            seenCandidates[p] = true
+            candidates[#candidates + 1] = p
+        end
+    end
     if targetPopup then
-        candidates[1] = targetPopup
+        AddCandidatePopup(targetPopup)
     else
         if expectedWhich and type(_G.StaticPopup_FindVisible) == "function" then
             local okF, vis = pcall(_G.StaticPopup_FindVisible, expectedWhich)
             if okF and vis then
-                candidates[#candidates + 1] = vis
+                AddCandidatePopup(vis)
             end
         end
+        if type(_G.StaticPopup_ForEachShownDialog) == "function" then
+            pcall(_G.StaticPopup_ForEachShownDialog, function(dlg)
+                AddCandidatePopup(dlg)
+            end)
+        end
         for i = 1, 4 do
-            local p = _G["StaticPopup" .. i]
-            if p and p ~= candidates[1] then
-                candidates[#candidates + 1] = p
-            end
+            AddCandidatePopup(_G["StaticPopup" .. i])
         end
     end
 
@@ -10784,6 +10793,46 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
             U.UpdateQuickOpenButton()
         end
         U.ScheduleAutoOpenContainers()
+    elseif event == "END_BOUND_TRADEABLE" or event == "USE_NO_REFUND_CONFIRM" then
+        if U.IsDecorUseConfirmActive() and not InCombatLockdown() then
+            local confirmed = false
+            if event == "END_BOUND_TRADEABLE" and type(_G.EndBoundTradeable) == "function" and arg1 ~= nil and not IsSecret(arg1) then
+                S.decorUseConfirmCount = max(0, (S.decorUseConfirmCount or 1) - 1)
+                if S.decorUseConfirmCount <= 0 then
+                    U.ClearDecorUseConfirmWindow()
+                end
+                local okE = pcall(_G.EndBoundTradeable, arg1)
+                if okE then
+                    confirmed = true
+                    if type(_G.StaticPopup_Hide) == "function" then
+                        pcall(_G.StaticPopup_Hide, "NON_TRADEABLE_ITEM")
+                        pcall(_G.StaticPopup_Hide, "END_BOUND_TRADEABLE")
+                    end
+                end
+            elseif event == "USE_NO_REFUND_CONFIRM" and type(_G.ConfirmNoRefundOnUse) == "function" then
+                S.decorUseConfirmCount = max(0, (S.decorUseConfirmCount or 1) - 1)
+                if S.decorUseConfirmCount <= 0 then
+                    U.ClearDecorUseConfirmWindow()
+                end
+                local okC = pcall(_G.ConfirmNoRefundOnUse)
+                if okC then
+                    confirmed = true
+                    if type(_G.StaticPopup_Hide) == "function" then
+                        pcall(_G.StaticPopup_Hide, "USE_NO_REFUND_CONFIRM")
+                        pcall(_G.StaticPopup_Hide, "CONFIRM_USE_NO_REFUND")
+                    end
+                end
+            end
+            if not confirmed then
+                if not U.ScanAndConfirmDecorPopup() and C_Timer and C_Timer.After then
+                    C_Timer.After(0, function()
+                        if U.IsDecorUseConfirmActive() then
+                            U.ScanAndConfirmDecorPopup()
+                        end
+                    end)
+                end
+            end
+        end
     elseif event == "ADDON_ACTION_BLOCKED" then
         S.decorActionBlocked = true
         if S.autoOpenActiveItemID then
@@ -10803,7 +10852,8 @@ for _, ev in ipairs({
     "GOSSIP_SHOW", "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYER_BANKSLOTS_CHANGED", "BANK_TAB_SETTINGS_UPDATED",
     "ITEM_DATA_LOAD_RESULT", "GUILDBANKBAGSLOTS_CHANGED", "GUILDBANK_UPDATE_TABS", "GUILDBANK_UPDATE_WITHDRAWMONEY", "GUILDBANKFRAME_OPENED", "GUILDBANKFRAME_CLOSED", "MERCHANT_SHOW",
     "MERCHANT_CLOSED", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "MAIL_SHOW", "MAIL_CLOSED",
-    "TRADE_SHOW", "TRADE_CLOSED", "LOOT_READY", "LOOT_OPENED", "LOOT_CLOSED", "ADDON_ACTION_BLOCKED",
+    "TRADE_SHOW", "TRADE_CLOSED", "LOOT_READY", "LOOT_OPENED", "LOOT_CLOSED",
+    "END_BOUND_TRADEABLE", "USE_NO_REFUND_CONFIRM", "ADDON_ACTION_BLOCKED",
 }) do
     SafeRegister(DynamicBags, ev)
 end
@@ -10813,6 +10863,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "FIX",     text = "Pooled StaticPopup & Event Hardening for Housing Decor Non-Tradeable Bypass (18/11/2026): Extended U.ScanAndConfirmDecorPopup with StaticPopup_ForEachShownDialog for Retail 12.1.5 pooled dialogs and registered END_BOUND_TRADEABLE / USE_NO_REFUND_CONFIRM under the strictly scoped Housing Decor auto-open and Open (N) confirmation window out of combat while leaving manual clicks, loot rolls, and non-Decor items untouched." },
         { type = "FIX",     text = "Mousewheel Scrolling in DynamicBags/DynamicBank & 1-Click Housing Decor Learn Completion (18/11/2026): Stopped calling EnableMouseWheel(true) on ScrollFrame child content containers (area.content, S.liveContent, S.remoteContent, bw.content) in U.AttachWindowScaleHandlers and updated U.CreateScrollArea to route Ctrl+Shift+Scroll scaling directly while scrolling normally whenever Ctrl+Shift is not held; appended hardware-click /click StaticPopup1Button1 (and /click StaticPopup2Button1 within 255 chars) after Housing Decor /use lines in DynamicBagsQuickOpenBtn (guarded against unrelated popups) so Open (N) / Alt+Scroll learns trade-timer Housing Decor in one click; and stopped dismissing StaticPopup dialogs before confirmation succeeds in the background auto-opener, invoking OnAccept / EndBoundTradeable / ConfirmBindOnUse via pcall and keeping Open (N) ready whenever WoW requires a hardware click." },
         { type = "FIX",     text = "ESC / B Keybind Closure, Top-Most Window Escape Priority & GameMenu Failsafe Guard (18/11/2026): Removed the conflicting GameMenuFrame OnShow hide hack from U.EnsureWindow() and added nil-hole/duplicate compaction plus single top-most Escape ordering to UISpecialFrames (DynamicBagsBankFrame -> DynamicBagsFrame -> DynamicBagsStandaloneFrame -> DynamicSuite DesktopWindows); guarded CloseAllBags against ESC calls and added a CloseSpecialWindows + ToggleGameMenu failsafe so even if DynamicBagsFrame or DynamicBagsBankFrame is protected by slot children or skipped by CloseSpecialWindows, pressing ESC reliably clears active search or closes the top-most window one at a time without opening the Options / Game Menu while preserving clean two-way B toggling before and after ESC." },
         { type = "FIX",     text = "ESC & B Keybind Window Closing, CloseAllBags & Unfocused Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) and OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so pressing B or ESC always reaches Blizzard's keybind and UISpecialFrames handlers without swallowing input; preserved Escape-first search clearing via OnEscapePressed when the search box is focused and a combat-guarded CloseSpecialWindows post-hook when search text is active while unfocused (restoring the open window once, clearing both search boxes, and letting the second ESC close cleanly); and updated ToggleWindow() and hooked CloseAllBags() so pressing B or CloseAllBags toggles DynamicBagsFrame (alongside DynamicBagsBankFrame when open) reliably out of combat." },

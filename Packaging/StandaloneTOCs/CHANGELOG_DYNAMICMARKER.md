@@ -5,7 +5,8 @@
 
 ## DynamicMarker v2.3.2 (18/11/2026)
 
-### Improved
+### Added & Improved
+* **Proactive `DecorVendor` Quarantine & `ADDON_ACTION_FORBIDDEN` Obsidian Modal:** Promoted `DecorVendor` (`Decor Vendor`) to a Tier-1 `HARD` conflict and added a custom Midnight Pitch Black (`#06070A`-`#090A0D`) Obsidian modal (`Raid Marker Blocked by Addon Conflict`, deferred safely until `PLAYER_REGEN_ENABLED` if in combat) whenever `DecorVendor` is active on `PLAYER_ENTERING_WORLD` or whenever `ADDON_ACTION_FORBIDDEN` blocks `SetRaidTarget` / `SetRaidTargetIcon`. Includes a 1-click `Disable <Addon> (Set to Never)` action, session-throttled `Dismiss`, and clear plain-English instructions to completely Exit & Restart World of Warcraft (`/reload` alone will not clear Blizzard's raid-marker lockout).
 * **Version & Coexistence Lockstep Parity:** Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to `v2.3.2` for Retail 12.1.5 (Interface 120105, Midnight Season 2).
 
 ---
