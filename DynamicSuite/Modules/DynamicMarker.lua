@@ -322,6 +322,7 @@ local CONFLICT_ADDONS = {
     { name = "TargetCharms", label = "TargetCharms", isLegacy = false },
     { name = "DejaMark",     label = "DejaMark",     isLegacy = false },
     { name = "EasyMarker",   label = "EasyMarker",   isLegacy = false },
+    { name = "DecorVendor",  label = "Decor Vendor", isLegacy = false, isSoft = true },
 }
 
 local ADVISORY_CONFLICT_ADDONS = {
@@ -3362,7 +3363,7 @@ end
 function DM:ScanConflicts()
     local activeConflicts = {}
     for _, item in ipairs(CONFLICT_ADDONS) do
-        if self:IsAddonEnabled(item.name) then
+        if not item.isSoft and self:IsAddonEnabled(item.name) then
             table.insert(activeConflicts, item)
         end
     end
@@ -3476,11 +3477,18 @@ function DM:ResolveAdvisoryDisable(addonName)
         pcall(C_AddOns.DisableAddOn, addonName, UnitName("player"))
         pcall(C_AddOns.DisableAddOn, addonName)
     end
+    if Suite and type(Suite.SetAddonFrozen) == "function" then
+        pcall(Suite.SetAddonFrozen, addonName, true)
+    end
     FreezeAddonInLoadDB(addonName)
+    if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" then
+        _G.DynamicSuiteDB.global.acknowledgedConflicts = _G.DynamicSuiteDB.global.acknowledgedConflicts or {}
+        _G.DynamicSuiteDB.global.acknowledgedConflicts[tostring(addonName) .. "_DynamicMarker"] = "USE_DYNAMIC"
+    end
     self.pendingConflictReload = addonName
     self:ScanAdvisoryConflicts()
     self:RefreshAll()
-    print(string.format("|cFF38BDF8DynamicMarker|r: Disabled |cFFFFFFFF%s|r (and froze it in DynamicLoad if present). Click |cFF10B981[Reload UI]|r to complete.", addonName))
+    print(string.format("|cFF38BDF8DynamicMarker|r: Disabled |cFFFFFFFF%s|r and set it to Never in DynamicLoad. Click |cFF10B981[Reload UI]|r (or completely restart the game if Blizzard's /tm lockout already occurred).", addonName))
 end
 
 function DM:DismissAdvisoryConflict(addonName)
@@ -8823,7 +8831,7 @@ function DM:BuildWorkspace(parentContainer)
     focusMacroNote:SetJustifyH("LEFT")
     focusMacroNote:SetWordWrap(true)
     self:StyleFont(focusMacroNote, 10, "", COLORS.TextMuted)
-    focusMacroNote:SetText("Note: /tm needs Raid Lead/Assist in raids. Addons hooking chat or slash commands (such as DecorVendor) can block /tm until disabled for group content or reloaded; restart the game if Blizzard's marker lockout occurs.")
+    focusMacroNote:SetText("Note: /tm needs Raid Lead or Assistant in raids. Third-party addons that hook chat or slash commands (such as DecorVendor) can block /tm; if Blizzard locks out SetRaidTarget(), disable the addon and completely restart the game (/reload alone will not clear it).")
 
     -- Section 2: [DynamicKick] (Character Macro - Per-Character)
     local p3Sec2 = self:CreateSectionBox(p3, nil, 388)
@@ -10635,7 +10643,7 @@ function DM:RefreshAll()
                 self:StyleFont(ws.conflictBanner.Title, 12, "", COLORS.Green)
                 if self.pendingConflictReload == "DecorVendor" then
                     ws.conflictBanner.Title:SetText(READY_CHECK_TEX .. " DecorVendor Disabled for Next Session")
-                    ws.conflictBanner.Sub:SetText("DecorVendor has been disabled (and frozen in DynamicLoad if present). Click [Reload UI] to finish.")
+                    ws.conflictBanner.Sub:SetText("DecorVendor is set to Never. Click [Reload UI], or exit and restart the game if /tm was already blocked.")
                 else
                     ws.conflictBanner.Title:SetText(READY_CHECK_TEX .. " Conflict Resolution Staged for " .. cName)
                     ws.conflictBanner.Sub:SetText("Settings imported and " .. cName .. " is locked off across all zone profiles. Click [Reload UI] to finish.")
@@ -10973,7 +10981,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "18/11/2026",
     entries = {
-        { type = "FIX",      text = "Release v2.3.1 - Runtime /tm Taint Listener, DecorVendor Compatibility Guard & Lockstep Parity (18/11/2026): Registered ADDON_ACTION_FORBIDDEN on DynamicMarker's event frame for SetRaidTarget/SetRaidTarget() to print a rate-limited (once per 30 seconds per offending addon) plain-English chat alert naming the third-party addon that tainted Blizzard's /tm slash command and advising Outdoor Only mode or disabling + reloading UI; added DecorVendor soft-conflict detection across Guided Setup and standalone DynamicMarker's advisory banner with 1-click Disable DecorVendor and persistent Dismiss; updated Macro Setup's [DynamicMark] troubleshooting note; and synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.3.1." },
+        { type = "FIX",      text = "Release v2.3.1 - Runtime /tm Taint Listener, DecorVendor Compatibility Guard & Lockstep Parity (18/11/2026): Registered ADDON_ACTION_FORBIDDEN on DynamicMarker's event frame for SetRaidTarget/SetRaidTarget() in both DynamicSuite and standalone modes to print a rate-limited (once per 30 seconds per offending addon) plain-English chat alert naming the offending addon and advising disabling it and completely restarting the game client (/reload alone will not clear Blizzard's raid-marker lockout); added DecorVendor ('Decor Vendor') to DynamicMarker's conflict registries (CONFLICT_ADDONS and ADVISORY_CONFLICT_ADDONS) with 1-click Disable (setting it to Never in DynamicLoadDB) and persistent Dismiss; updated Macro Setup's [DynamicMark] troubleshooting note; and synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.3.1." },
         { type = "FIX",      text = "Runtime /tm Taint Listener & DecorVendor Compatibility Guard (18/11/2026): Registered ADDON_ACTION_FORBIDDEN on DynamicMarker's event frame for SetRaidTarget/SetRaidTarget() to print a rate-limited (once per 30 seconds per offending addon) plain-English chat alert naming the third-party addon that tainted Blizzard's /tm slash command and advising Outdoor Only mode or disabling + reloading UI; added DecorVendor soft-conflict detection across Guided Setup and standalone DynamicMarker's advisory banner with 1-click Disable DecorVendor and persistent Dismiss; and updated Macro Setup's [DynamicMark] troubleshooting note." },
         { type = "IMPROVED", text = "[DynamicMark] Macro Template Streamlining & Raid Marker Note (17/11/2026): Removed the redundant /stopmacro [@focus,noexists] line from generated [DynamicMark] macros (since /tm already gates on @focus,exists across all group scopes) and added a concise troubleshooting note in Macro Setup explaining that /tm requires Raid Leader or Assistant in raids and that a full game restart (not /reload) clears Blizzard's intermittent raid-marker lockout bug." },
         { type = "UI",       text = "3-Way Interactive Obsidian Scrollbars & Automatic Popover Dismissal (16/11/2026): Upgraded all scrollbars across the settings tabs, dropdown menus, and the Changelog viewer to support full 3-way interaction (mousewheel scrolling, Left-Click & Drag on the scrollbar thumb with hover highlights, and Left-Click on the scrollbar track to jump directly to that position), added an unclipped 1px accent border overlay and Escape-key dismissal to dropdown menus, and ensured open dropdowns and HUD selector popovers close automatically when switching tabs, entering HUD Edit Mode, or closing the window." },
@@ -11383,7 +11391,7 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
             return
         end
         local blockedFn = SafeReadableString(arg2)
-        if blockedFn == "SetRaidTarget()" or blockedFn == "SetRaidTarget" then
+        if blockedFn and (blockedFn == "SetRaidTarget()" or blockedFn == "SetRaidTarget" or blockedFn:find("SetRaidTarget", 1, true) ~= nil) then
             local offender = SafeReadableString(arg1)
             if not offender or offender == "" then
                 offender = "A third-party addon"
@@ -11393,7 +11401,7 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
             if not lastAlert or (now - lastAlert) >= 30 then
                 taintAlertCooldowns[offender] = now
                 print(string.format(
-                    "|cFF38BDF8DynamicMarker|r: |cFFF5B82EBlocked Action:|r |cFFFFFFFF%s|r tainted Blizzard's |cFFFFFFFF/tm|r raid marker command (SetRaidTarget) -- this is caused by |cFFFFFFFF%s|r, not DynamicMarker. Set |cFFFFFFFF%s|r to Outdoor Only in DynamicLoad (|cFF38BDF8/dl|r) or disable it and reload your UI.",
+                    "|cFF38BDF8DynamicMarker|r: |cFFF5B82EBlocked Action:|r |cFFFFFFFF%s|r tainted Blizzard's |cFFFFFFFF/tm|r raid marker command (SetRaidTarget) -- this is caused by |cFFFFFFFF%s|r, not DynamicMarker. Disable |cFFFFFFFF%s|r (or set it to Outdoor Only in DynamicLoad |cFF38BDF8/dl|r) and completely exit and restart the game client (/reload alone will not clear Blizzard's raid-marker lockout).",
                     offender, offender, offender
                 ))
             end
