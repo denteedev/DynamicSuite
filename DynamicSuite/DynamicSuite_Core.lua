@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "FIX",     text = "Post-Combat MacroFrame Persistence, Icon Grid Auto-Refresh & Selector Layering (18/11/2026): Marked MacroFrame (Blizzard_MacroUI) as combat-protected in DesktopWindows so DynamicSuite never detaches, moves, rescales, or attaches overlays during combat lockdown, deferring setup cleanly until PLAYER_REGEN_ENABLED; automatically refreshes the macro list and selector grid when leaving combat with MacroFrame open so General and Character-Specific macro icons reappear without switching tabs or reopening the window; and enforces clean FrameLevel layering on MacroFrame.MacroSelector, ScrollBox, ScrollBar, Inset, text area, and ElvUI Blizzard skin backdrops across DIALOG/HIGH focus transitions." },
         { type = "FIX",     text = "DynamicBags ESC / B Keybind Closure, Top-Most Window Escape Priority & GameMenu Failsafe Guard (18/11/2026): Removed the conflicting GameMenuFrame OnShow hide hack from DynamicBagsFrame and compacted nil holes/duplicates out of UISpecialFrames in both DynamicSuite_Core.lua and DynamicBags.lua; coordinated top-most one-window-at-a-time Escape ordering across DynamicBagsBankFrame, DynamicBagsFrame, DynamicBagsStandaloneFrame, and DesktopWindows SUPPORTED_BLIZZ_FRAMES (closing bank -> bags -> Blizzard panels sequentially before GameMenuFrame can open); and added a ToggleGameMenu/CloseSpecialWindows failsafe in DynamicBags.lua so even if DynamicBagsFrame or DynamicBagsBankFrame is protected by slot children or missed by CloseSpecialWindows, ESC reliably clears search first or closes the top-most bag/bank window without opening Options / Game Menu while keeping B keybind two-way toggling spotless before and after ESC." },
         { type = "FIX",     text = "DynamicBags ESC & B Keybind Closing, CloseAllBags & Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) / OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so B and ESC never get swallowed; preserved Escape-first search clearing when focused (OnEscapePressed) or unfocused via a combat-guarded CloseSpecialWindows post-hook (restoring open bag/bank windows once while clearing search, then closing cleanly on the second ESC via UISpecialFrames); and updated ToggleWindow() and hooked CloseAllBags() so B and CloseAllBags hide both DynamicBagsFrame and DynamicBagsBankFrame reliably out of combat." },
         { type = "FIX",     text = "DecorVendor /tm Taint Guard & Conflict Scanner Support (18/11/2026): Added runtime ADDON_ACTION_FORBIDDEN listening in DynamicMarker for SetRaidTarget/SetRaidTarget() with 30-second per-addon rate-limited chat alerts naming the offending addon and advising DynamicLoad Outdoor Only or disable + reload; added DecorVendor ('Decor Vendor') to DynamicMarker softConflicts/partialConflicts with one-click Outdoor Housing Only (enabled in Outdoor, disabled in Delves, Dungeons, Raid, and PvP via DynamicLoadDB) and Disable Decor Vendor + Reload UI resolutions across Guided Setup, DynamicMarker's module banner, and standalone DynamicMarker (with persistent Dismiss); and updated DynamicMarker's [DynamicMark] Macro Setup note." },
@@ -4626,7 +4627,7 @@ do
         { name = "AchievementFrame",               label = "Achievements",       addon = "Blizzard_AchievementUI" },
         { name = "ItemUpgradeFrame",               label = "Item Upgrade",       addon = "Blizzard_ItemUpgradeUI" },
         { name = "CalendarFrame",                  label = "Calendar",           addon = "Blizzard_Calendar" },
-        { name = "MacroFrame",                     label = "Macros",             addon = "Blizzard_MacroUI" },
+        { name = "MacroFrame",                     label = "Macros",             addon = "Blizzard_MacroUI",                   protected = true },
         { name = "MerchantFrame",                  label = "Merchant" },
         { name = "MailFrame",                      label = "Mail" },
         { name = "AuctionHouseFrame",              label = "Auction House",      addon = "Blizzard_AuctionHouseUI" },
@@ -4733,6 +4734,7 @@ do
         ellesmereHooksInstalled       = false,
         userOpeningPlayerSpells       = false,
         deferredRestorePending        = false,
+        pendingCombatWindowSetup      = {},
         pendingDragWatch              = nil,
         dragDriverFrame               = nil,
         ctrlWheelOverlay              = nil,
@@ -4824,6 +4826,11 @@ do
         local fn = W.GetRawFrameMethod(frame, "Raise")
         if type(fn) ~= "function" then return false end
         return pcall(fn, frame)
+    end
+
+    local function IsCombatProtectedPanel(frameName)
+        local spec = frameName and SUPPORTED_BY_NAME[frameName]
+        return (spec and spec.protected == true) and true or false
     end
 
     function W.IsTaintSensitiveFrame(frame, frameName)
@@ -5832,6 +5839,144 @@ do
         W.RawSetFrameLevel(st.overlay, math.min(baseLvl + W.HEADER_OVERLAY_OFFSET, 65000))
     end
 
+    local function EnsureMacroFrameChildLayering(mf, targetStrata, rootLvl)
+        if InCombat() or not mf then return end
+        local strata = targetStrata
+        if not strata and type(mf.GetFrameStrata) == "function" then
+            local okS, s = pcall(mf.GetFrameStrata, mf)
+            if okS and type(s) == "string" then strata = s end
+        end
+        strata = strata or "HIGH"
+        local baseLvl = SafeNum(rootLvl, 1) or 1
+        local function PlaceChildLayer(region, minLvl, exactLvl)
+            if type(region) ~= "table" or (region.IsForbidden and region:IsForbidden()) then return end
+            if type(region.GetFrameStrata) == "function" then
+                local okS, curS = pcall(region.GetFrameStrata, region)
+                if okS and curS ~= strata then
+                    W.RawSetFrameStrata(region, strata)
+                end
+            else
+                W.RawSetFrameStrata(region, strata)
+            end
+            if exactLvl then
+                W.RawSetFrameLevel(region, exactLvl)
+            elseif minLvl then
+                local curL = (type(region.GetFrameLevel) == "function") and SafeNum(region:GetFrameLevel(), 0) or 0
+                if curL < minLvl then
+                    W.RawSetFrameLevel(region, minLvl)
+                end
+            end
+        end
+
+        if mf.backdrop then
+            PlaceChildLayer(mf.backdrop, nil, math.max(1, baseLvl))
+        end
+        local inset = mf.Inset or _G.MacroFrameInset
+        if inset then
+            PlaceChildLayer(inset, baseLvl + 1)
+            local insetLvl = (type(inset.GetFrameLevel) == "function") and SafeNum(inset:GetFrameLevel(), baseLvl + 1) or (baseLvl + 1)
+            if inset.backdrop then
+                PlaceChildLayer(inset.backdrop, nil, math.max(1, insetLvl))
+            end
+        end
+
+        local selector = mf.MacroSelector or _G.MacroButtonContainer
+        if selector then
+            PlaceChildLayer(selector, baseLvl + 5)
+            local selLvl = (type(selector.GetFrameLevel) == "function") and SafeNum(selector:GetFrameLevel(), baseLvl + 5) or (baseLvl + 5)
+            if selector.backdrop then
+                PlaceChildLayer(selector.backdrop, nil, math.max(baseLvl + 2, selLvl - 1))
+            end
+            local sb = selector.ScrollBox
+            if sb then
+                PlaceChildLayer(sb, selLvl + 1)
+                local sbLvl = (type(sb.GetFrameLevel) == "function") and SafeNum(sb:GetFrameLevel(), selLvl + 1) or (selLvl + 1)
+                if type(sb.ForEachFrame) == "function" then
+                    pcall(sb.ForEachFrame, sb, function(btnFrame)
+                        PlaceChildLayer(btnFrame, sbLvl + 1)
+                    end)
+                end
+            end
+            if selector.ScrollBar then
+                PlaceChildLayer(selector.ScrollBar, selLvl + 2)
+            end
+            if selector == _G.MacroButtonContainer and type(selector.GetChildren) == "function" then
+                local okC, children = pcall(function() return { selector:GetChildren() } end)
+                if okC and type(children) == "table" then
+                    for _, child in ipairs(children) do
+                        PlaceChildLayer(child, selLvl + 1)
+                    end
+                end
+            end
+        end
+
+        local textBg = _G.MacroFrameTextBackground
+        if textBg then
+            PlaceChildLayer(textBg, baseLvl + 4)
+            local tbLvl = (type(textBg.GetFrameLevel) == "function") and SafeNum(textBg:GetFrameLevel(), baseLvl + 4) or (baseLvl + 4)
+            if textBg.backdrop then
+                PlaceChildLayer(textBg.backdrop, nil, math.max(1, tbLvl))
+            end
+        end
+        if _G.MacroFrameScrollFrame then
+            PlaceChildLayer(_G.MacroFrameScrollFrame, baseLvl + 6)
+        end
+        if _G.MacroFrameSelectedMacroButton then
+            PlaceChildLayer(_G.MacroFrameSelectedMacroButton, baseLvl + 6)
+        end
+    end
+
+    local function RefreshMacroFrameAfterCombat(mf)
+        mf = mf or _G.MacroFrame
+        if not mf or InCombat() or not (mf.IsShown and mf:IsShown()) then return end
+        local sel = mf.MacroSelector
+        if sel and sel.ScrollBox and type(sel.ScrollBox.HasDataProvider) == "function" then
+            local okDP, hasDP = pcall(sel.ScrollBox.HasDataProvider, sel.ScrollBox)
+            local emptyGrid = (not okDP or not hasDP)
+            if not emptyGrid and type(sel.ScrollBox.GetDataProviderSize) == "function" then
+                local okSz, sz = pcall(sel.ScrollBox.GetDataProviderSize, sel.ScrollBox)
+                if okSz and SafeNum(sz, 0) == 0 then
+                    emptyGrid = true
+                end
+            end
+            if emptyGrid then
+                if (mf.macroBase or 0) > 0 and type(_G.MacroFrame_SetCharacterMacros) == "function" then
+                    pcall(_G.MacroFrame_SetCharacterMacros)
+                elseif type(_G.MacroFrame_SetAccountMacros) == "function" then
+                    pcall(_G.MacroFrame_SetAccountMacros)
+                end
+            end
+        end
+        if type(mf.Update) == "function" then
+            pcall(mf.Update, mf)
+        end
+        if type(_G.MacroFrame_Update) == "function" then
+            pcall(_G.MacroFrame_Update)
+        end
+        if sel then
+            if type(sel.UpdateSelections) == "function" then
+                pcall(sel.UpdateSelections, sel)
+            end
+            if type(sel.UpdateAllSelected) == "function" then
+                pcall(sel.UpdateAllSelected, sel)
+            end
+            if sel.ScrollBox and type(sel.ScrollBox.FullUpdate) == "function" then
+                pcall(sel.ScrollBox.FullUpdate, sel.ScrollBox, true)
+            end
+        end
+        if not DesktopWindows:IsYielding() then
+            EnsureMacroFrameChildLayering(mf)
+        end
+        if _G.C_Timer and _G.C_Timer.After then
+            _G.C_Timer.After(0, function()
+                if InCombat() or not (_G.MacroFrame and _G.MacroFrame.IsShown and _G.MacroFrame:IsShown()) then return end
+                if not DesktopWindows:IsYielding() then
+                    EnsureMacroFrameChildLayering(_G.MacroFrame)
+                end
+            end)
+        end
+    end
+
     function W.NormalizeDesktopWindowLayer(frame, frameName)
         if InCombat() or not frame or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) then return end
         if DesktopWindows:IsYielding() then return end
@@ -5871,6 +6016,9 @@ do
         local st = W.blizzWinState[frame]
         if st then
             W.SyncHeaderOverlayLevel(frame, st)
+        end
+        if frameName == "MacroFrame" then
+            EnsureMacroFrameChildLayering(frame, targetStrata, 1)
         end
     end
 
@@ -6078,7 +6226,7 @@ do
     end
 
     function W.SyncCombatEscapeHandlers(enteringCombat)
-        if InCombat() then return end
+if InCombat() then return end
         for _, btn in pairs(W.combatEscHandlers) do
             if type(_G.ClearOverrideBindings) == "function" then
                 pcall(_G.ClearOverrideBindings, btn)
@@ -6604,7 +6752,7 @@ do
             if not state or not state.isDragging then return end
             state.isDragging = false
             state.usingNativeMove = nil
-            if InCombat() then return end
+    if InCombat() then return end
             local db = GetDesktopWindowsDB()
             local uip = _G.UIParent
             if not db or not uip or not frameObj or IsWorldMapMaximized(frameObj, fName) then return end
@@ -6993,9 +7141,14 @@ do
 
     AttachFrameHooks = function(frameName)
         if W.hookedFrameNames[frameName] or EXCLUDED_BLIZZ_FRAMES[frameName] then return false end
+        if InCombat() and IsCombatProtectedPanel(frameName) then
+            W.pendingCombatWindowSetup[frameName] = true
+            return false
+        end
         local frame = _G[frameName]
         if not frame then return false end
         W.hookedFrameNames[frameName] = true
+        W.pendingCombatWindowSetup[frameName] = nil
         SnapshotOrigUIPanelInfo(frame, frameName)
         W.SyncPanelLayoutDetachment(frame, frameName)
         local st = EnsureHeaderOverlay(frame, frameName)
@@ -7046,6 +7199,32 @@ do
                     fState.beginDrag()
                 end
             end)
+        end
+
+        if frameName == "MacroFrame" and type(_G.hooksecurefunc) == "function" and not st.macroLayerHooksDone then
+            st.macroLayerHooksDone = true
+            local function RefreshMacroLayersDeferred()
+                if InCombat() or DesktopWindows:IsYielding() then return end
+                local mf = _G.MacroFrame
+                if mf and mf.IsShown and mf:IsShown() then
+                    EnsureMacroFrameChildLayering(mf)
+                    if _G.C_Timer and _G.C_Timer.After then
+                        _G.C_Timer.After(0, function()
+                            if not InCombat() and not DesktopWindows:IsYielding() and _G.MacroFrame and _G.MacroFrame.IsShown and _G.MacroFrame:IsShown() then
+                                EnsureMacroFrameChildLayering(_G.MacroFrame)
+                            end
+                        end)
+                    end
+                end
+            end
+            for _, macroFn in ipairs({ "MacroFrame_SetAccountMacros", "MacroFrame_SetCharacterMacros", "MacroFrame_Update" }) do
+                if type(_G[macroFn]) == "function" then
+                    _G.hooksecurefunc(macroFn, RefreshMacroLayersDeferred)
+                end
+            end
+            if type(frame.Update) == "function" then
+                _G.hooksecurefunc(frame, "Update", RefreshMacroLayersDeferred)
+            end
         end
 
         if frameName == "EncounterJournal" and type(_G.hooksecurefunc) == "function" and not st.ejScrollHooksDone then
@@ -7343,7 +7522,15 @@ do
                 end
                 local fState = GetFrameState(shownFrame)
                 if fState and fState.detachingFromUIPanel then return end
-                if InCombat() then return end
+                if InCombat() then
+                    if IsCombatProtectedPanel(frameName) then
+                        W.pendingCombatWindowSetup[frameName] = true
+                        W.openPanelsSnapshot[frameName] = true
+                        W.showSeqCounter = W.showSeqCounter + 1
+                        W.lastShownAt[frameName] = W.showSeqCounter
+                    end
+                    return
+                end
                 if DesktopWindows:IsYielding() or IsWorldMapMaximized(shownFrame, frameName) then
                     W.SyncOverlayMode(shownFrame, frameName)
                     return
@@ -7504,7 +7691,7 @@ do
                 W.sessionPositions[frameName] = nil
                 local hadSession = (W.sessionScales[frameName] ~= nil)
                 W.sessionScales[frameName] = nil
-                if InCombat() then return end
+        if InCombat() then return end
                 if W.pendingSlotEviction[frameName] and not (hiddenFrame.IsShown and hiddenFrame:IsShown())
                     and type(_G.HideUIPanel) == "function" then
                     W.pendingSlotEviction[frameName] = nil
@@ -7767,7 +7954,7 @@ do
             W.registerUIPanelHooked = true
             _G.hooksecurefunc("RegisterUIPanel", function(name)
                 if type(name) ~= "string" or not SUPPORTED_BY_NAME[name] or EXCLUDED_BLIZZ_FRAMES[name] then return end
-                if InCombat() then return end
+        if InCombat() then return end
                 AttachFrameHooks(name)
                 local bf = _G[name]
                 if bf then
@@ -8082,19 +8269,19 @@ do
             W.toggleWorldMapHooked = true
             if type(_G.ToggleQuestLog) == "function" then
                 _G.hooksecurefunc("ToggleQuestLog", function()
-                    if InCombat() then return end
+            if InCombat() then return end
                     HandlePostToggle("WorldMapFrame")
                 end)
             end
             if type(_G.ToggleWorldMap) == "function" then
                 _G.hooksecurefunc("ToggleWorldMap", function()
-                    if InCombat() then return end
+            if InCombat() then return end
                     HandlePostToggle("WorldMapFrame")
                 end)
             end
             if type(_G.OpenWorldMap) == "function" then
                 _G.hooksecurefunc("OpenWorldMap", function()
-                    if InCombat() then return end
+            if InCombat() then return end
                     HandlePostToggle("WorldMapFrame")
                 end)
             end
@@ -8326,7 +8513,7 @@ do
     end
 
     function DesktopWindows:ApplyAllWindowStates()
-        if InCombat() then return end
+if InCombat() then return end
         local db = GetDesktopWindowsDB()
         W.HookEllesmereUICoexistence()
         EnsureGlobalPanelHooks()
@@ -8348,7 +8535,15 @@ do
                 end
                 if yielding or IsWorldMapMaximized(frame, spec.name) then
                     W.SyncOverlayMode(frame, spec.name)
+                    if spec.name == "MacroFrame" and W.pendingCombatWindowSetup["MacroFrame"] then
+                        W.pendingCombatWindowSetup["MacroFrame"] = nil
+                        if frame.IsShown and frame:IsShown() then
+                            RefreshMacroFrameAfterCombat(frame)
+                        end
+                    end
                 else
+                    local wasPendingCombat = W.pendingCombatWindowSetup[spec.name]
+                    W.pendingCombatWindowSetup[spec.name] = nil
                     W.SyncFrameClamping(frame, spec.name)
                     W.SyncOverlayMode(frame, spec.name)
                     if frame.IsShown and frame:IsShown() then
@@ -8356,6 +8551,12 @@ do
                         local st = GetFrameState(frame)
                         ApplyBlizzardFrameTransform(frame, spec.name)
                         if st then st.wasOpenConfirmed = true end
+                        if wasPendingCombat then
+                            W.FocusAndRaiseDesktopWindow(frame, spec.name)
+                        end
+                        if spec.name == "MacroFrame" then
+                            RefreshMacroFrameAfterCombat(frame)
+                        end
                     end
                 end
             end
@@ -8432,7 +8633,7 @@ do
         for k in pairs(W.sessionPositions) do
             W.sessionPositions[k] = nil
         end
-        if InCombat() then return end
+if InCombat() then return end
         if DesktopWindows:IsYielding() then return end
         for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
             DesktopWindows:ResetSingleWindow(spec.name, false)
@@ -8460,7 +8661,14 @@ do
                 end
             end
         end
-        if InCombat() then return end
+        if InCombat() then
+            for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                if spec.protected and (loadedAddonName == nil or spec.addon == loadedAddonName) and _G[spec.name] then
+                    W.pendingCombatWindowSetup[spec.name] = true
+                end
+            end
+            return
+        end
         if loadedAddonName then
             for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
                 if spec.addon == loadedAddonName then
@@ -8478,7 +8686,15 @@ do
             for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
                 local f = _G[spec.name]
                 if f then
-                    W.SyncOverlayMode(f, spec.name)
+                    if IsCombatProtectedPanel(spec.name) then
+                        if W.blizzWinState[f] and W.blizzWinState[f].overlay then
+                            W.SyncOverlayMode(f, spec.name)
+                        elseif f.IsShown and f:IsShown() then
+                            W.pendingCombatWindowSetup[spec.name] = true
+                        end
+                    else
+                        W.SyncOverlayMode(f, spec.name)
+                    end
                 end
             end
             W.SyncCombatEscapeHandlers(true)
