@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.3.1"
+    local fb = fallback or "2.3.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.3.1")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.3.2")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "FIX",     text = "DesktopWindows Universal Mousewheel Scrolling, DynamicBags ScrollArea Wheel Fix & 1-Click Housing Decor Learn Completion (18/11/2026): Removed EnableMouseWheel(true) from root managed Blizzard frames, passive chrome overlays (NineSlice, BorderFrame, Bg, Insets), and PlayerSpellsFrame sub-canvases in DesktopWindows, keeping EnableMouseWheel(true) strictly on the 28px top title bar (TitleContainer and header overlay) for Ctrl+Scroll session scaling while routing Ctrl+Shift+Scroll anywhere over all 32 managed panels through SyncCtrlWheelOverlay on MODIFIER_STATE_CHANGED so normal mousewheel scrolling works across Collections, Achievements, Professions, MacroFrame, Character/Reputation, Adventure Guide, and every Blizzard panel; stopped calling EnableMouseWheel(true) on DynamicBags/DynamicBank ScrollFrame child content containers; and appended /click StaticPopup1Button1 (plus StaticPopup2Button1) inside DynamicBagsQuickOpenBtn while invoking OnAccept/EndBoundTradeable safely without premature popup dismissal." },
         { type = "FIX",     text = "Post-Combat MacroFrame Persistence, Icon Grid Auto-Refresh & Selector Layering (18/11/2026): Marked MacroFrame (Blizzard_MacroUI) as combat-protected in DesktopWindows so DynamicSuite never detaches, moves, rescales, or attaches overlays during combat lockdown, deferring setup cleanly until PLAYER_REGEN_ENABLED; automatically refreshes the macro list and selector grid when leaving combat with MacroFrame open so General and Character-Specific macro icons reappear without switching tabs or reopening the window; and enforces clean FrameLevel layering on MacroFrame.MacroSelector, ScrollBox, ScrollBar, Inset, text area, and ElvUI Blizzard skin backdrops across DIALOG/HIGH focus transitions." },
         { type = "FIX",     text = "DynamicBags ESC / B Keybind Closure, Top-Most Window Escape Priority & GameMenu Failsafe Guard (18/11/2026): Removed the conflicting GameMenuFrame OnShow hide hack from DynamicBagsFrame and compacted nil holes/duplicates out of UISpecialFrames in both DynamicSuite_Core.lua and DynamicBags.lua; coordinated top-most one-window-at-a-time Escape ordering across DynamicBagsBankFrame, DynamicBagsFrame, DynamicBagsStandaloneFrame, and DesktopWindows SUPPORTED_BLIZZ_FRAMES (closing bank -> bags -> Blizzard panels sequentially before GameMenuFrame can open); and added a ToggleGameMenu/CloseSpecialWindows failsafe in DynamicBags.lua so even if DynamicBagsFrame or DynamicBagsBankFrame is protected by slot children or missed by CloseSpecialWindows, ESC reliably clears search first or closes the top-most bag/bank window without opening Options / Game Menu while keeping B keybind two-way toggling spotless before and after ESC." },
         { type = "FIX",     text = "DynamicBags ESC & B Keybind Closing, CloseAllBags & Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) / OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so B and ESC never get swallowed; preserved Escape-first search clearing when focused (OnEscapePressed) or unfocused via a combat-guarded CloseSpecialWindows post-hook (restoring open bag/bank windows once while clearing search, then closing cleanly on the second ESC via UISpecialFrames); and updated ToggleWindow() and hooked CloseAllBags() so B and CloseAllBags hide both DynamicBagsFrame and DynamicBagsBankFrame reliably out of combat." },
@@ -288,12 +289,12 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
         category = "Addon Managers",
     },
     DynamicMarker = {
-        "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers",
+        "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers", "DecorVendor",
         addons = { "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers", "DecorVendor" },
-        conflicts = { "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers" },
-        hardConflicts = { "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers" },
-        partialConflicts = { "DecorVendor" },
-        softConflicts = { "DecorVendor" },
+        conflicts = { "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers", "DecorVendor" },
+        hardConflicts = { "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers", "DecorVendor" },
+        partialConflicts = {},
+        softConflicts = {},
         category = "Target & Ground Markers",
         hasLegacyMigration = { FocusMarker = true },
     },
@@ -1094,6 +1095,405 @@ end
 addonTable.ShowMarkerConflictReloadModal = ShowMarkerConflictReloadModal
 DynamicSuite.ShowMarkerConflictReloadModal = ShowMarkerConflictReloadModal
 
+local function GetRaidTaintModalSession()
+    _G.DynamicSuite_RaidTaintModalSession = type(_G.DynamicSuite_RaidTaintModalSession) == "table"
+        and _G.DynamicSuite_RaidTaintModalSession
+        or {}
+    local s = _G.DynamicSuite_RaidTaintModalSession
+    s.dismissed = type(s.dismissed) == "table" and s.dismissed or {}
+    s.quarantined = type(s.quarantined) == "table" and s.quarantined or {}
+    return s
+end
+
+local function SafeReadableTaintString(val)
+    if val == nil then return nil end
+    if issecretvalue and issecretvalue(val) then return nil end
+    if type(canaccessvalue) == "function" then
+        local okA, canA = pcall(canaccessvalue, val)
+        if okA and not canA then return nil end
+    end
+    if type(val) ~= "string" then return nil end
+    return val
+end
+
+local function IsSetRaidTargetFunctionName(fnName)
+    if type(fnName) ~= "string" or fnName == "" then return false end
+    return fnName == "SetRaidTarget"
+        or fnName == "SetRaidTarget()"
+        or fnName == "SetRaidTargetIcon"
+        or fnName == "SetRaidTargetIcon()"
+        or fnName:find("SetRaidTarget", 1, true) ~= nil
+end
+
+local function ForceFreezeAddonAcrossDynamicLoadDB(addonFolder)
+    if type(addonFolder) ~= "string" or addonFolder == "" then return end
+    if type(_G.DynamicLoadDB) ~= "table" then return end
+    local function ApplyNeverToScope(tbl)
+        if type(tbl) ~= "table" then return end
+        tbl.addonStates = type(tbl.addonStates) == "table" and tbl.addonStates or {}
+        tbl.frozenAddons = type(tbl.frozenAddons) == "table" and tbl.frozenAddons or {}
+        tbl.lockedAddons = type(tbl.lockedAddons) == "table" and tbl.lockedAddons or {}
+        tbl.addonStates[addonFolder] = "FROZEN"
+        tbl.frozenAddons[addonFolder] = true
+        tbl.lockedAddons[addonFolder] = nil
+        if type(tbl.profiles) == "table" then
+            for _, prof in pairs(tbl.profiles) do
+                if type(prof) == "table" and type(prof.addons) == "table" then
+                    prof.addons[addonFolder] = nil
+                end
+            end
+        end
+        if type(tbl.zones) == "table" then
+            for _, zTbl in pairs(tbl.zones) do
+                if type(zTbl) == "table" then
+                    zTbl[addonFolder] = nil
+                end
+            end
+        end
+        for _, zKey in ipairs({ "outdoor", "delves", "dungeons", "raid", "pvp" }) do
+            if type(tbl[zKey]) == "table" then
+                tbl[zKey][addonFolder] = nil
+            end
+        end
+    end
+    ApplyNeverToScope(_G.DynamicLoadDB)
+    ApplyNeverToScope(_G.DynamicLoadDB.globalData)
+    if type(_G.DynamicLoadDB.charData) == "table" then
+        for _, cd in pairs(_G.DynamicLoadDB.charData) do
+            ApplyNeverToScope(cd)
+        end
+    end
+end
+
+local function QuarantineRaidTaintAddon(offendingAddon)
+    if type(offendingAddon) ~= "string" or offendingAddon == "" or offendingAddon == "Unknown Addon" then
+        return false
+    end
+    local pName = UnitName and UnitName("player") or nil
+    if C_AddOns and C_AddOns.DisableAddOn then
+        if pName then pcall(C_AddOns.DisableAddOn, offendingAddon, pName) end
+        pcall(C_AddOns.DisableAddOn, offendingAddon)
+    elseif type(_G.DisableAddOn) == "function" then
+        pcall(_G.DisableAddOn, offendingAddon)
+    end
+    if addonTable.SetAddonFrozen then
+        pcall(addonTable.SetAddonFrozen, offendingAddon, true)
+    end
+    ForceFreezeAddonAcrossDynamicLoadDB(offendingAddon)
+    if addonTable.ResolveConflict then
+        pcall(addonTable.ResolveConflict, "DynamicMarker", offendingAddon, "USE_DYNAMIC")
+    end
+    local session = GetRaidTaintModalSession()
+    session.quarantined[offendingAddon] = true
+    if _G.DynamicMarker and type(_G.DynamicMarker.ScanConflicts) == "function" then
+        pcall(_G.DynamicMarker.ScanConflicts, _G.DynamicMarker)
+        if type(_G.DynamicMarker.RefreshAll) == "function" then
+            pcall(_G.DynamicMarker.RefreshAll, _G.DynamicMarker)
+        end
+    end
+    if addonTable.mainFrame then
+        if addonTable.mainFrame.UpdateModuleConflictBanner then
+            pcall(addonTable.mainFrame.UpdateModuleConflictBanner)
+        end
+        if addonTable.mainFrame.RefreshLeftRailVisuals then
+            pcall(addonTable.mainFrame.RefreshLeftRailVisuals)
+        end
+    end
+    return true
+end
+addonTable.QuarantineRaidTaintAddon = QuarantineRaidTaintAddon
+DynamicSuite.QuarantineRaidTaintAddon = QuarantineRaidTaintAddon
+
+local function IsDynamicMarkerDisabledInSuiteCore()
+    local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
+    if type(g) == "table" and type(g.disabledModules) == "table" then
+        if g.disabledModules["DynamicMarker"] == true or g.disabledModules["marker"] == true then
+            return true
+        end
+    end
+    if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.disabledModules) == "table" then
+        if _G.DynamicSuiteDB.disabledModules["DynamicMarker"] == true or _G.DynamicSuiteDB.disabledModules["marker"] == true then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsDecorVendorActiveForQuarantine()
+    if IsDynamicMarkerDisabledInSuiteCore() then return false end
+    local session = GetRaidTaintModalSession()
+    if session.quarantined["DecorVendor"] or session.dismissed["DecorVendor"] then
+        return false
+    end
+    local loaded = (C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DecorVendor"))
+        or (type(_G.IsAddOnLoaded) == "function" and _G.IsAddOnLoaded("DecorVendor"))
+    if loaded then
+        return true
+    end
+    if C_AddOns and type(C_AddOns.GetAddOnEnableState) == "function" then
+        local pName = UnitName and UnitName("player") or nil
+        local okE, st = pcall(C_AddOns.GetAddOnEnableState, "DecorVendor", pName)
+        if okE and type(st) == "number" and st > 0 then
+            return true
+        end
+        local okE2, st2 = pcall(C_AddOns.GetAddOnEnableState, pName, "DecorVendor")
+        if okE2 and type(st2) == "number" and st2 > 0 then
+            return true
+        end
+    end
+    return false
+end
+
+local function ShowRaidMarkerTaintModal(selfOrAddon, maybeAddon, maybeReason)
+    local offendingAddon, reason
+    if selfOrAddon == DynamicSuite or selfOrAddon == addonTable then
+        offendingAddon, reason = maybeAddon, maybeReason
+    else
+        offendingAddon, reason = selfOrAddon, maybeAddon
+    end
+    offendingAddon = SafeReadableTaintString(offendingAddon)
+    if not offendingAddon or offendingAddon == "" then
+        local dvLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DecorVendor"))
+        offendingAddon = dvLoaded and "DecorVendor" or "Unknown Addon"
+    end
+    if IsDynamicMarkerDisabledInSuiteCore() then return end
+
+    local session = GetRaidTaintModalSession()
+    if session.dismissed[offendingAddon] then
+        return
+    end
+    if session.quarantined[offendingAddon] and reason == "PROACTIVE" then
+        return
+    end
+
+    if InCombatLockdown and InCombatLockdown() then
+        addonTable._pendingRaidTaintModal = { addon = offendingAddon, reason = reason or "FORBIDDEN" }
+        return
+    end
+    addonTable._pendingRaidTaintModal = nil
+
+    local modal = _G.DynamicSuiteRaidTaintModal
+    if not modal then
+        modal = CreateFrame("Frame", "DynamicSuiteRaidTaintModal", UIParent, "BackdropTemplate")
+        modal:SetSize(484, 226)
+        modal:SetPoint("CENTER", UIParent, "CENTER", 0, 70)
+        modal:SetFrameStrata("DIALOG")
+        modal:SetFrameLevel(275)
+        modal:SetToplevel(true)
+        modal:SetClampedToScreen(true)
+        modal:SetMovable(true)
+        modal:EnableMouse(true)
+        modal:RegisterForDrag("LeftButton")
+        modal:SetScript("OnDragStart", modal.StartMoving)
+        modal:SetScript("OnDragStop", modal.StopMovingOrSizing)
+        if modal.SetBackdrop then
+            modal:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 1,
+            })
+            -- Midnight Pitch Black (#06070A / alpha 0.98) + 1px dark slate border (#333D4F)
+            modal:SetBackdropColor(0.024, 0.027, 0.039, 0.98)
+            modal:SetBackdropBorderColor(0.200, 0.240, 0.310, 0.96)
+        end
+
+        modal.InnerSurface = CreateFrame("Frame", nil, modal, "BackdropTemplate")
+        modal.InnerSurface:SetPoint("TOPLEFT", modal, "TOPLEFT", 14, -44)
+        modal.InnerSurface:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 54)
+        if modal.InnerSurface.SetBackdrop then
+            modal.InnerSurface:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 1,
+            })
+            -- Obsidian Core inner card (#090A0D)
+            modal.InnerSurface:SetBackdropColor(0.035, 0.039, 0.051, 0.96)
+            modal.InnerSurface:SetBackdropBorderColor(0.145, 0.169, 0.216, 0.85)
+        end
+
+        modal.TopAccent = modal:CreateTexture(nil, "OVERLAY")
+        modal.TopAccent:SetHeight(2)
+        modal.TopAccent:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
+        modal.TopAccent:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
+        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+
+        modal.Title = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        modal.Title:SetPoint("TOPLEFT", modal, "TOPLEFT", 16, -15)
+        modal.Title:SetText("|cFFF97316Raid Marker Blocked by Addon Conflict|r")
+
+        modal.Body = modal.InnerSurface:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        modal.Body:SetPoint("TOPLEFT", modal.InnerSurface, "TOPLEFT", 12, -11)
+        modal.Body:SetPoint("TOPRIGHT", modal.InnerSurface, "TOPRIGHT", -12, -11)
+        modal.Body:SetJustifyH("LEFT")
+        modal.Body:SetJustifyV("TOP")
+        modal.Body:SetSpacing(3)
+        modal.Body:SetTextColor(0.886, 0.910, 0.941, 1.0)
+
+        local function CreateTaintModalButton(parent, label, width, height, styleMode)
+            local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+            btn:SetSize(width, height)
+            if btn.SetBackdrop then
+                btn:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeSize = 1,
+                })
+            end
+            btn.Text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            btn.Text:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            btn.Text:SetText(label)
+            btn._styleMode = styleMode or "PRIMARY"
+
+            function btn:ApplyVisualState(hover)
+                if not self.SetBackdropColor then return end
+                if self._styleMode == "EMERALD" then
+                    if hover then
+                        self:SetBackdropColor(0.055, 0.260, 0.180, 1.0)
+                        self:SetBackdropBorderColor(0.063, 0.725, 0.506, 1.0)
+                        self.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        self:SetBackdropColor(0.035, 0.165, 0.115, 0.98)
+                        self:SetBackdropBorderColor(0.063, 0.725, 0.506, 0.95)
+                        self.Text:SetTextColor(0.204, 0.827, 0.600, 1.0)
+                    end
+                elseif self._styleMode == "PRIMARY" then
+                    if hover then
+                        self:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
+                        self:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+                        self.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        self:SetBackdropColor(0.220, 0.100, 0.022, 0.98)
+                        self:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
+                        self.Text:SetTextColor(0.976, 0.451, 0.086, 1.0)
+                    end
+                else
+                    if hover then
+                        self:SetBackdropColor(0.120, 0.145, 0.195, 1.0)
+                        self:SetBackdropBorderColor(0.320, 0.380, 0.480, 1.0)
+                        self.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        self:SetBackdropColor(0.055, 0.067, 0.094, 0.98)
+                        self:SetBackdropBorderColor(0.200, 0.240, 0.310, 0.95)
+                        self.Text:SetTextColor(0.796, 0.835, 0.882, 1.0)
+                    end
+                end
+            end
+            btn:ApplyVisualState(false)
+            btn:SetScript("OnEnter", function(s) s:ApplyVisualState(true) end)
+            btn:SetScript("OnLeave", function(s) s:ApplyVisualState(false) end)
+            return btn
+        end
+
+        modal.PrimaryBtn = CreateTaintModalButton(modal, "Disable DecorVendor (Set to Never)", 260, 28, "PRIMARY")
+        modal.DismissBtn = CreateTaintModalButton(modal, "Dismiss", 108, 28, "SECONDARY")
+
+        modal:HookScript("OnHide", function(selfModal)
+            if selfModal._activeAddon then
+                local s = GetRaidTaintModalSession()
+                s.dismissed[selfModal._activeAddon] = true
+            end
+        end)
+
+        if type(_G.UISpecialFrames) == "table" then
+            local found = false
+            for i = 1, #_G.UISpecialFrames do
+                if _G.UISpecialFrames[i] == "DynamicSuiteRaidTaintModal" then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                table.insert(_G.UISpecialFrames, "DynamicSuiteRaidTaintModal")
+            end
+        end
+    end
+
+    modal._activeAddon = offendingAddon
+    local canQuarantine = (offendingAddon ~= "Unknown Addon")
+    local alreadyQuarantined = (session.quarantined[offendingAddon] == true)
+
+    if alreadyQuarantined then
+        modal.TopAccent:SetColorTexture(0.063, 0.725, 0.506, 1.0)
+        modal.Title:SetText("|cFF34D399Raid Marker Blocked by Addon Conflict|r")
+        modal.Body:SetText(string.format(
+            "|cFFFFFFFF%s|r is already set to Never for your next session, however Blizzard's raid-marker security lockout remains active until World of Warcraft restarts.\n\nPlease completely |cFFF97316Exit & Restart|r the game client now (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
+            offendingAddon
+        ))
+        modal.DismissBtn:Hide()
+        modal.PrimaryBtn._styleMode = "EMERALD"
+        modal.PrimaryBtn.Text:SetText("Understood (Close)")
+        modal.PrimaryBtn:SetWidth(176)
+        modal.PrimaryBtn:ClearAllPoints()
+        modal.PrimaryBtn:SetPoint("BOTTOM", modal, "BOTTOM", 0, 14)
+        modal.PrimaryBtn:ApplyVisualState(false)
+        modal.PrimaryBtn:Show()
+        modal.PrimaryBtn:SetScript("OnClick", function()
+            session.dismissed[offendingAddon] = true
+            modal:Hide()
+        end)
+    else
+        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        modal.Title:SetText("|cFFF97316Raid Marker Blocked by Addon Conflict|r")
+        local friendly = FRIENDLY_CONFLICT_NAMES[offendingAddon] or offendingAddon
+        local displayLabel = (friendly ~= offendingAddon) and string.format("%s (%s)", friendly, offendingAddon) or offendingAddon
+        modal.Body:SetText(string.format(
+            "|cFFFFFFFF%s|r taints Blizzard's |cFFFFFFFF/tm|r raid marker command (|cFFFFFFFFSetRaidTarget()|r), causing action-bar focus markers to be blocked.\n\nBecause of how World of Warcraft's security engine works, you must disable |cFFFFFFFF%s|r and |cFFF97316fully Exit & Restart the game client|r (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
+            displayLabel, offendingAddon
+        ))
+
+        modal.DismissBtn:ClearAllPoints()
+        modal.DismissBtn:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 14)
+        modal.DismissBtn:Show()
+        modal.DismissBtn:SetScript("OnClick", function()
+            session.dismissed[offendingAddon] = true
+            modal:Hide()
+        end)
+
+        if canQuarantine then
+            local pLabel = string.format("Disable %s (Set to Never)", offendingAddon)
+            modal.PrimaryBtn._styleMode = "PRIMARY"
+            modal.PrimaryBtn.Text:SetText(pLabel)
+            local tw = (modal.PrimaryBtn.Text.GetStringWidth and modal.PrimaryBtn.Text:GetStringWidth()) or 230
+            modal.PrimaryBtn:SetWidth(math.max(236, math.min(336, math.ceil(tw + 26))))
+            modal.PrimaryBtn:ClearAllPoints()
+            modal.PrimaryBtn:SetPoint("RIGHT", modal.DismissBtn, "LEFT", -8, 0)
+            modal.PrimaryBtn:ApplyVisualState(false)
+            modal.PrimaryBtn:Show()
+            modal.PrimaryBtn:SetScript("OnClick", function()
+                QuarantineRaidTaintAddon(offendingAddon)
+                modal.TopAccent:SetColorTexture(0.063, 0.725, 0.506, 1.0)
+                modal.Title:SetText("|cFF34D399" .. offendingAddon .. " Disabled (Set to Never)|r")
+                modal.Body:SetText(string.format(
+                    "|cFFFFFFFF%s|r has been disabled and set to |cFF34D399Never|r across DynamicLoad so zone changes will never re-enable it.\n\nPlease |cFFF97316completely Exit & Restart World of Warcraft|r now to clear Blizzard's raid-marker lockout (a |cFFFFFFFF/reload|r alone will not clear it).",
+                    offendingAddon
+                ))
+                modal.DismissBtn:Hide()
+                modal.PrimaryBtn._styleMode = "EMERALD"
+                modal.PrimaryBtn.Text:SetText("Understood (Close)")
+                modal.PrimaryBtn:SetWidth(176)
+                modal.PrimaryBtn:ClearAllPoints()
+                modal.PrimaryBtn:SetPoint("BOTTOM", modal, "BOTTOM", 0, 14)
+                modal.PrimaryBtn:ApplyVisualState(false)
+                modal.PrimaryBtn:SetScript("OnClick", function()
+                    session.dismissed[offendingAddon] = true
+                    modal:Hide()
+                end)
+                print(string.format(
+                    "|cFF38BDF8DynamicSuite|r: Disabled |cFFFFFFFF%s|r and set it to |cFF34D399Never|r in DynamicLoad. Please completely Exit & Restart World of Warcraft now (/reload alone will not clear SetRaidTarget taint).",
+                    offendingAddon
+                ))
+            end)
+        else
+            modal.PrimaryBtn:Hide()
+        end
+    end
+
+    modal:Show()
+    modal:Raise()
+end
+addonTable.ShowRaidMarkerTaintModal = ShowRaidMarkerTaintModal
+DynamicSuite.ShowRaidMarkerTaintModal = ShowRaidMarkerTaintModal
+
 local function ScrubStandaloneDynamicMarkerFromLoadDB(tbl)
     if type(tbl) ~= "table" then return end
     if type(tbl.lockedAddons) == "table" then tbl.lockedAddons["DynamicMarker"] = nil end
@@ -1806,15 +2206,6 @@ local function IsThirdPartyConflictActive(dynamicModule, otherAddon, pName)
         end
         return InspectSmartSubModuleConflict(dynamicModule, otherAddon)
     end
-    if otherAddon == "DecorVendor" then
-        if IsExternalAddonFrozen(otherAddon) then
-            return false, nil, nil
-        end
-        if SafeIsAddOnLoaded(otherAddon) or SafeIsAddOnEnabledInClient(otherAddon, pName) or IsQueuedInDynamicLoad(otherAddon) then
-            return true, "SOFT", CONFLICT_YIELD_FEATURES[otherAddon]
-        end
-        return false, nil, nil
-    end
     if SafeIsAddOnLoaded(otherAddon) then
         return true, "HARD", nil
     end
@@ -1905,27 +2296,6 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
                 ackAction = nil
             end
         end
-    elseif otherAddon == "DecorVendor" then
-        local isOutdoorOnly = IsAddonConfiguredOutdoorOnly(otherAddon)
-        local isOtherFrozen = IsExternalAddonFrozen(otherAddon)
-        if ackAction == "OUTDOOR_ONLY" then
-            if not isSim and not isOutdoorOnly then
-                ackAction = nil
-                g.acknowledgedConflicts[conflictKey] = nil
-            end
-        elseif ackAction == "USE_DYNAMIC" then
-            if not isSim and not isOtherFrozen then
-                ackAction = nil
-                g.acknowledgedConflicts[conflictKey] = nil
-            end
-        else
-            if not isSim and isOutdoorOnly then
-                ackAction = "OUTDOOR_ONLY"
-            else
-                ackAction = nil
-                g.acknowledgedConflicts[conflictKey] = nil
-            end
-        end
     else
         if ackAction == "PREFER_DYNAMIC" or ackAction == "USE_DYNAMIC" then
             ackAction = "PRIORITISE_DYNAMIC"
@@ -1966,7 +2336,7 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
     local ownerLabel = isBlizzWinOverlap and "Suite Studio -> Desktop Windows & Menus" or addonNameKey
     local bannerText
     if otherAddon == "DecorVendor" then
-        bannerText = "Taint Risk: DecorVendor taints Blizzard's raid target marker (/tm) command when active in dungeons and raids. Disable it (Never) or keep for Outdoor Housing only, then restart the game if /tm was already locked out."
+        bannerText = "Conflict Detected: DecorVendor taints Blizzard's /tm raid marker command (SetRaidTarget). Disable it (Set to Never) and exit & restart the game client (/reload will not clear the lockout)."
     elseif tier == 2 then
         bannerText = string.format("QoL Overlap: %s shares sub-features with %s. Choose which addon owns the shared triggers.", displayTarget, ownerLabel)
     else
@@ -5954,6 +6324,9 @@ do
             pcall(_G.MacroFrame_Update)
         end
         if sel then
+            if type(sel.Update) == "function" then
+                pcall(sel.Update, sel)
+            end
             if type(sel.UpdateSelections) == "function" then
                 pcall(sel.UpdateSelections, sel)
             end
@@ -6435,14 +6808,9 @@ if InCombat() then return end
         end)
     end
 
-    local function AttachPlayerSpellsSubCanvasWheelHooks(psf)
-        if not psf then return end
-        HookMouseWheelTarget(psf.TalentsFrame, psf, "PlayerSpellsFrame")
-        if type(psf.TalentsFrame) == "table" then
-            HookMouseWheelTarget(psf.TalentsFrame.ButtonsParent, psf, "PlayerSpellsFrame")
-        end
-        HookMouseWheelTarget(psf.SpellBookFrame, psf, "PlayerSpellsFrame")
-        HookMouseWheelTarget(psf.SpecFrame, psf, "PlayerSpellsFrame")
+    local function AttachPlayerSpellsSubCanvasWheelHooks()
+        -- Intentionally no-op: never capture mousewheel on TalentsFrame, SpellBookFrame, or SpecFrame.
+        -- Ctrl+Shift+Scroll scaling is handled on modifier hold via SyncCtrlWheelOverlay.
     end
 
     local function EnsureScrollRegionWheelEnabled(region)
@@ -6529,32 +6897,25 @@ if InCombat() then return end
         return false
     end
 
-    local function FindTopHoveredWheelExemptWindow()
+    local function FindTopHoveredManagedWindow()
         if InCombat() or DesktopWindows:IsYielding() then return nil, nil end
         local db = GetDesktopWindowsDB()
         if not (db and db.scrollScale ~= false) then return nil, nil end
-        if not (_G.IsControlKeyDown and _G.IsControlKeyDown()) then return nil, nil end
-        W.PruneZOrderStack()
-        local topFocused = W.zOrderStack[#W.zOrderStack]
-        if topFocused and IsPointOverFrame(_G[topFocused]) then
-            if W.ROOT_WHEEL_EXEMPT[topFocused] then
-                return _G[topFocused], topFocused
-            end
+        if not (_G.IsControlKeyDown and _G.IsControlKeyDown() and _G.IsShiftKeyDown and _G.IsShiftKeyDown()) then
             return nil, nil
         end
+        W.PruneZOrderStack()
         for i = #W.zOrderStack, 1, -1 do
             local name = W.zOrderStack[i]
             local bf = name and _G[name]
-            if bf and IsPointOverFrame(bf) then
-                if W.ROOT_WHEEL_EXEMPT[name] then
-                    return bf, name
-                end
-                return nil, nil
+            if bf and IsPointOverFrame(bf) and not IsWorldMapMaximized(bf, name) then
+                return bf, name
             end
         end
-        for name in pairs(W.ROOT_WHEEL_EXEMPT) do
+        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+            local name = spec.name
             local bf = _G[name]
-            if bf and IsPointOverFrame(bf) then
+            if bf and IsPointOverFrame(bf) and not IsWorldMapMaximized(bf, name) then
                 return bf, name
             end
         end
@@ -6581,16 +6942,16 @@ if InCombat() then return end
 
     local function SyncCtrlWheelOverlay()
         local anyShown = false
-        for name in pairs(W.ROOT_WHEEL_EXEMPT) do
-            local bf = _G[name]
-            if bf and bf.IsShown and bf:IsShown() then
+        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+            local bf = _G[spec.name]
+            if bf and bf.IsShown and bf:IsShown() and not IsWorldMapMaximized(bf, spec.name) then
                 anyShown = true
                 break
             end
         end
         local db = GetDesktopWindowsDB()
-        local ctrlHeld = (_G.IsControlKeyDown and _G.IsControlKeyDown()) and true or false
-        if not anyShown or InCombat() or DesktopWindows:IsYielding() or not (db and db.scrollScale ~= false) or not ctrlHeld then
+        local ctrlShiftHeld = (_G.IsControlKeyDown and _G.IsControlKeyDown() and _G.IsShiftKeyDown and _G.IsShiftKeyDown()) and true or false
+        if not anyShown or InCombat() or DesktopWindows:IsYielding() or not (db and db.scrollScale ~= false) or not ctrlShiftHeld then
             local cov = W.ctrlWheelOverlay
             if cov then
                 cov.targetFrame = nil
@@ -6603,7 +6964,7 @@ if InCombat() then return end
         end
         local cov = EnsureCtrlWheelOverlay()
         if not cov then return end
-        local targetFrame, targetName = FindTopHoveredWheelExemptWindow()
+        local targetFrame, targetName = FindTopHoveredManagedWindow()
         cov:ClearAllPoints()
         if targetFrame then
             cov.targetFrame = targetFrame
@@ -6895,9 +7256,6 @@ if InCombat() then return end
                             if st.finishDrag then st.finishDrag() end
                         end)
                     end
-                    if not W.ROOT_WHEEL_EXEMPT[frameName] then
-                        HookMouseWheelTarget(child, frame, frameName)
-                    end
                 end
             end
         end
@@ -7166,8 +7524,6 @@ if InCombat() then return end
             W.NormalizeDesktopWindowLayer(frame, frameName)
             if frameName == "EncounterJournal" then
                 EnsureEncounterJournalScrollBoxesWheelEnabled(frame)
-            elseif not W.ROOT_WHEEL_EXEMPT[frameName] and type(frame.EnableMouseWheel) == "function" then
-                pcall(frame.EnableMouseWheel, frame, true)
             end
             local db = GetDesktopWindowsDB()
             if frame.IsProtected and frame:IsProtected() and W.detachedPanels[frameName] then
@@ -7468,9 +7824,6 @@ if InCombat() then return end
                 if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(clickedFrame, frameName) then return end
                 W.FocusAndRaiseDesktopWindow(clickedFrame, frameName)
             end)
-            frame:HookScript("OnMouseWheel", function(wheelFrame, delta)
-                HandleManagedWindowMouseWheel(wheelFrame, frameName, delta)
-            end)
             frame:HookScript("OnDragStart", function(dragFrame, button)
                 if button and button ~= "LeftButton" then return end
                 local fState = GetFrameState(dragFrame)
@@ -7611,9 +7964,7 @@ if InCombat() then return end
                 if frameName == "EncounterJournal" then
                     EnsureEncounterJournalScrollBoxesWheelEnabled(shownFrame)
                 end
-                if W.ROOT_WHEEL_EXEMPT[frameName] then
-                    SyncCtrlWheelOverlay()
-                end
+                SyncCtrlWheelOverlay()
                 if fState then fState.wasOpenConfirmed = true end
                 if fState and fState.restoringFromAutoClose then
                     W.PruneZOrderStack()
@@ -7685,9 +8036,7 @@ if InCombat() then return end
                     end
                 end
                 W.RemoveFromZOrderStack(frameName)
-                if W.ROOT_WHEEL_EXEMPT[frameName] then
-                    SyncCtrlWheelOverlay()
-                end
+                SyncCtrlWheelOverlay()
                 W.sessionPositions[frameName] = nil
                 local hadSession = (W.sessionScales[frameName] ~= nil)
                 W.sessionScales[frameName] = nil
@@ -8936,8 +9285,21 @@ SafeRegisterSuiteEvent(suiteEventFrame, "PLAYER_REGEN_DISABLED")
 SafeRegisterSuiteEvent(suiteEventFrame, "PLAYER_REGEN_ENABLED")
 SafeRegisterSuiteEvent(suiteEventFrame, "UI_SCALE_CHANGED")
 SafeRegisterSuiteEvent(suiteEventFrame, "DISPLAY_SIZE_CHANGED")
-suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
-    if event == "PLAYER_REGEN_DISABLED" then
+SafeRegisterSuiteEvent(suiteEventFrame, "ADDON_ACTION_FORBIDDEN")
+suiteEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
+    if event == "ADDON_ACTION_FORBIDDEN" then
+        if IsDynamicMarkerDisabledInSuiteCore() then return end
+        local blockedFn = SafeReadableTaintString(arg2)
+        if IsSetRaidTargetFunctionName(blockedFn) then
+            local offender = SafeReadableTaintString(arg1)
+            if not offender or offender == "" then
+                local dvLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DecorVendor"))
+                offender = dvLoaded and "DecorVendor" or "Unknown Addon"
+            end
+            ShowRaidMarkerTaintModal(offender, "FORBIDDEN")
+        end
+        return
+    elseif event == "PLAYER_REGEN_DISABLED" then
         DesktopWindows:HandleCombatChange(true)
         if addonTable.IsHudEditModeActive and addonTable.IsHudEditModeActive() and addonTable.ExitHudEditMode then
             addonTable.ExitHudEditMode()
@@ -8955,6 +9317,11 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
         addonTable.RestoreHubAfterCombat()
         if addonTable._pendingMarkerConflictModal then
             ShowMarkerConflictReloadModal()
+        end
+        if addonTable._pendingRaidTaintModal then
+            local pend = addonTable._pendingRaidTaintModal
+            addonTable._pendingRaidTaintModal = nil
+            ShowRaidMarkerTaintModal(pend.addon, pend.reason)
         end
         if addonTable._pendingHudPositionReset and addonTable.ResetAllHudPositions then
             addonTable._pendingHudPositionReset = false
@@ -9033,6 +9400,9 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1)
         DesktopWindows:ApplyAllWindowStates()
         if standaloneMarkerWasEnabledAtBoot or addonTable.standaloneMarkerWasEnabledAtBoot or (DynamicSuite and DynamicSuite.standaloneMarkerWasEnabledAtBoot) or (_G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot == true) then
             ShowMarkerConflictReloadModal()
+        end
+        if IsDecorVendorActiveForQuarantine() then
+            ShowRaidMarkerTaintModal("DecorVendor", "PROACTIVE")
         end
     elseif event == "PLAYER_LOGIN" then
         InvalidateConflictCache()

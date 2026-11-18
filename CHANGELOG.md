@@ -1,5 +1,16 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.3.1 (18/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.3.2 (18/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 8 Modules v2.3.2 (18/11/2026)
+
+### DynamicSuite Hub & Core (`DesktopWindows`)
+- **Universal Mousewheel Scrolling Across All 32 Managed Blizzard Panels (18/11/2026):** Stopped calling `EnableMouseWheel(true)` on root managed Blizzard frames, passive chrome overlays (`NineSlice`, `BorderFrame`, `Bg`, `Inset`, `LeftInset`, `RightInset`, `BottomInset`), and `PlayerSpellsFrame` sub-canvases in `DesktopWindows`, keeping `EnableMouseWheel(true)` strictly on the `28px` top title bar (`TitleContainer` and header overlay) for `Ctrl+Scroll` session scaling while routing `Ctrl+Shift+Scroll` anywhere over all 32 managed panels through `SyncCtrlWheelOverlay` on `MODIFIER_STATE_CHANGED` so normal mousewheel scrolling works cleanly across Collections, Achievements, Professions, `MacroFrame`, Character/Reputation, Adventure Guide, and every Blizzard panel.
+
+### DynamicBags
+- **Mousewheel Scrolling Fix in `DynamicBags` & `DynamicBank` (18/11/2026):** Stopped calling `EnableMouseWheel(true)` on `ScrollFrame` child content containers (`area.content`, `S.liveContent`, `S.remoteContent`, `bw.content`) in `U.AttachWindowScaleHandlers` and updated `U.CreateScrollArea` to handle `Ctrl+Shift+Scroll` scaling directly while scrolling bag, bank, and settings content smoothly whenever `Ctrl+Shift` is not held.
+- **1-Click Housing Decor Open / Learn Completion & Safe Non-Tradeable Confirmation (18/11/2026):** Appended hardware-click `/click StaticPopup1Button1` (and `/click StaticPopup2Button1` within 255 characters) after Housing Decor `/use <bag> <slot>` lines in `DynamicBagsQuickOpenBtn` (`PreClick` strips `/click` lines if an unrelated `StaticPopup` is already open) so clicking `Open (N)` or scrolling `Alt+MouseWheel` uses and confirms trade-timer Housing Decor items in one click; and stopped calling `popup:Hide()` before confirmation succeeds in the scoped background auto-opener, invoking `OnAccept` / `EndBoundTradeable` / `ConfirmBindOnUse` via `pcall` and keeping `Open (N)` ready whenever Blizzard requires a hardware click while strictly ignoring manual bag clicks, dungeon/raid loot rolls, and non-Decor items.
 
 ---
 

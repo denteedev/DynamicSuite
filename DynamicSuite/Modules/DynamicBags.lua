@@ -24,7 +24,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.3.1"
+    local fb = fallback or "2.3.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -73,7 +73,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.3.1"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.3.2"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -105,7 +105,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.3.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.3.2")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicBags", VERSION, _G.DynamicBags) then
     return
 end
@@ -180,11 +180,15 @@ local S = {
     quickOpenCurrent = nil,
     quickOpenBtn = nil,
     quickOpenBatchDecorCount = 0,
+    quickOpenBaseMacroText = nil,
+    quickOpenPreClickStripped = false,
     pendingQuickOpenSync = false,
     decorUseConfirmCount = 0,
     decorUseConfirmExpiresAt = 0,
     decorUseConfirmSource = nil,
     decorUseConfirmToken = 0,
+    decorPendingVerify = nil,
+    decorActionBlocked = false,
 }
 
 local U = {}
@@ -2317,6 +2321,7 @@ function U.CreateScrollArea(parent)
 
     local scroll = CreateFrame("ScrollFrame", nil, holder)
     scroll:SetAllPoints(holder)
+    holder._dbagForwardScroll = scroll
 
     local content = CreateFrame("Frame", nil, scroll)
     content:SetSize(600, 400)
@@ -2374,6 +2379,12 @@ function U.CreateScrollArea(parent)
 
     scroll:EnableMouseWheel(true)
     scroll:SetScript("OnMouseWheel", function(self, delta)
+        if self._dbagScaleTarget and IsControlKeyDown and IsControlKeyDown() and IsShiftKeyDown and IsShiftKeyDown() then
+            if U.StepBagOrBankScale then
+                U.StepBagOrBankScale(self._dbagScaleTarget, delta, true)
+            end
+            return
+        end
         U.CloseMenu()
         local nextS = min(MaxScroll(), max(0, (self:GetVerticalScroll() or 0) - delta * 40))
         self:SetVerticalScroll(nextS)
@@ -4817,15 +4828,36 @@ function U.AttachWindowScaleHandlers(targetKind, headFrame, fullFrames)
     end
     if type(fullFrames) == "table" then
         for _, f in ipairs(fullFrames) do
-            if f and f.EnableMouseWheel and f.HookScript then
-                f:EnableMouseWheel(true)
-                f:HookScript("OnMouseWheel", function(_, delta)
-                    local ctrl = IsControlKeyDown and IsControlKeyDown()
-                    local shift = IsShiftKeyDown and IsShiftKeyDown()
-                    if ctrl and shift then
-                        U.StepBagOrBankScale(targetKind, delta, true)
+            if f then
+                local objType = (type(f.GetObjectType) == "function") and f:GetObjectType() or nil
+                if objType == "ScrollFrame" then
+                    f._dbagScaleTarget = targetKind
+                    if f.EnableMouseWheel then f:EnableMouseWheel(true) end
+                    if type(f.GetScrollChild) == "function" then
+                        local child = f:GetScrollChild()
+                        if child and child.EnableMouseWheel then
+                            child:EnableMouseWheel(false)
+                        end
                     end
-                end)
+                elseif f._dbagIsScrollContent then
+                    if f.EnableMouseWheel then f:EnableMouseWheel(false) end
+                elseif f.EnableMouseWheel and f.HookScript then
+                    f:EnableMouseWheel(true)
+                    f:HookScript("OnMouseWheel", function(_, delta)
+                        local ctrl = IsControlKeyDown and IsControlKeyDown()
+                        local shift = IsShiftKeyDown and IsShiftKeyDown()
+                        if ctrl and shift then
+                            U.StepBagOrBankScale(targetKind, delta, true)
+                            return
+                        end
+                        if f._dbagForwardScroll and f._dbagForwardScroll.GetScript then
+                            local onWheel = f._dbagForwardScroll:GetScript("OnMouseWheel")
+                            if type(onWheel) == "function" then
+                                onWheel(f._dbagForwardScroll, delta)
+                            end
+                        end
+                    end)
+                end
             end
         end
     end
@@ -5454,6 +5486,8 @@ function U.EnsureCompanionBankWindow()
     bw.content = CreateFrame("Frame", nil, area.content)
     bw.content:SetPoint("TOPLEFT", area.content, "TOPLEFT", 0, 0)
     bw.content:SetSize(580, 300)
+    area.content._dbagIsScrollContent = true
+    bw.content._dbagIsScrollContent = true
     U.MakeFrameDraggable(area.scroll, bw, OnVaultDragStop)
     U.MakeFrameDraggable(bw.content, bw, OnVaultDragStop)
     bw.buttons = {}
@@ -5491,7 +5525,7 @@ function U.EnsureCompanionBankWindow()
     AttachBankCanvasDropHandler(bw)
     AttachBankCanvasDropHandler(head)
     AttachBankCanvasDropHandler(foot)
-    U.AttachWindowScaleHandlers("bank", head, { bw, area, area.scroll, area.content, bw.content, foot })
+    U.AttachWindowScaleHandlers("bank", head, { bw, area, area.scroll, foot })
 
     local function SelectCompanionTab(mode)
         local db = DB()
@@ -6446,6 +6480,9 @@ function U.EnsureWindow()
     S.remoteContent:SetPoint("TOPLEFT", area.content, "TOPLEFT", 0, 0)
     S.remoteContent:SetSize(600, 300)
     S.remoteContent:Hide()
+    area.content._dbagIsScrollContent = true
+    S.liveContent._dbagIsScrollContent = true
+    S.remoteContent._dbagIsScrollContent = true
 
     -- Footer ------------------------------------------------------------------
     local foot = CreateFrame("Frame", nil, win)
@@ -6520,7 +6557,7 @@ function U.EnsureWindow()
     AttachCanvasDropHandler(head)
     AttachCanvasDropHandler(foot)
     AttachCanvasDropHandler(foot.leftBtn)
-    U.AttachWindowScaleHandlers("bag", head, { win, area, area.scroll, area.content, S.liveContent, S.remoteContent, foot, foot.leftBtn })
+    U.AttachWindowScaleHandlers("bag", head, { win, area, area.scroll, foot, foot.leftBtn })
 
     local goldBtn = CreateFrame("Button", nil, foot)
     goldBtn:SetPoint("RIGHT", foot, "RIGHT", -12, 0)
@@ -8917,6 +8954,8 @@ function DynamicBags:SetupDeleteConfirmationHook()
 end
 
 local NON_TRADEABLE_DIALOG_KEYS = {
+    END_BOUND_TRADEABLE = true,
+    CONFIRM_BINDER = true,
     NON_TRADEABLE_ITEM = true,
     USE_NO_REFUND_CONFIRM = true,
     CONFIRM_USE_NO_REFUND = true,
@@ -9014,6 +9053,8 @@ local function IsNonTradeableDecorPopup(popup, expectedWhich)
             return true
         end
         for _, gKey in ipairs({
+            "END_BOUND_TRADEABLE",
+            "CONFIRM_BINDER",
             "NON_TRADEABLE_ITEM",
             "TRADE_POTENTIAL_REMOVE_BIND_CONFIRM",
             "USE_NO_REFUND_CONFIRM",
@@ -9038,6 +9079,8 @@ function U.ClearDecorUseConfirmWindow()
     S.decorUseConfirmExpiresAt = 0
     S.decorUseConfirmSource = nil
     S.decorUseConfirmToken = (S.decorUseConfirmToken or 0) + 1
+    S.decorPendingVerify = nil
+    S.decorActionBlocked = false
 end
 
 function U.IsDecorUseConfirmActive()
@@ -9124,26 +9167,45 @@ function U.ScanAndConfirmDecorPopup(expectedWhich, targetPopup)
                 if b1 and b1.IsEnabled and not b1:IsEnabled() then
                     return false
                 end
+                local activeSource = S.decorUseConfirmSource
                 S.decorUseConfirmCount = max(0, (S.decorUseConfirmCount or 1) - 1)
                 if S.decorUseConfirmCount <= 0 then
-                    U.ClearDecorUseConfirmWindow()
+                    S.decorUseConfirmExpiresAt = 0
+                    S.decorUseConfirmSource = nil
+                    S.decorUseConfirmToken = (S.decorUseConfirmToken or 0) + 1
                 end
 
-                local accepted = false
-                if b1 and type(b1.Click) == "function" then
-                    local okClick = pcall(b1.Click, b1)
-                    if okClick and not (popup.IsShown and popup:IsShown()) then
-                        accepted = true
-                    end
+                -- For hardware clicks on DynamicBagsQuickOpenBtn, let the macro's
+                -- /click StaticPopup1Button1 (/click StaticPopup2Button1) execute
+                -- the confirmation natively without prematurely hiding the popup.
+                if activeSource == "QUICK" then
+                    return true
                 end
-                if not accepted and popup.IsShown and popup:IsShown() and type(_G.StaticPopup_OnClick) == "function" then
-                    local okOnClick = pcall(_G.StaticPopup_OnClick, popup, 1)
-                    if okOnClick and not (popup.IsShown and popup:IsShown()) then
-                        accepted = true
-                    end
-                end
-                if not accepted and popup.IsShown and popup:IsShown() and type(popup.OnButtonClick) == "function" then
-                    pcall(popup.OnButtonClick, popup, 1)
+
+                local resolvedWhich = (type(pWhich) == "string" and not IsSecret(pWhich) and pWhich ~= "") and pWhich or expectedWhich
+                S.decorActionBlocked = false
+                S.decorPendingVerify = {
+                    popup = popup,
+                    which = resolvedWhich,
+                    bag = S.autoOpenActiveBag,
+                    slot = S.autoOpenActiveSlot,
+                    itemID = S.autoOpenActiveItemID,
+                    prevCount = S.autoOpenActivePrevCount,
+                }
+
+                local dlg = (type(StaticPopupDialogs) == "table" and resolvedWhich) and StaticPopupDialogs[resolvedWhich] or nil
+                if dlg and type(dlg.OnAccept) == "function" then
+                    pcall(dlg.OnAccept, popup, popup.data)
+                elseif resolvedWhich == "END_BOUND_TRADEABLE" and type(_G.EndBoundTradeable) == "function" then
+                    pcall(_G.EndBoundTradeable, popup.data or 1)
+                elseif (resolvedWhich == "CONFIRM_BINDER" or resolvedWhich == "ACTION_WILL_BIND_ITEM") and type(_G.ConfirmBindOnUse) == "function" then
+                    pcall(_G.ConfirmBindOnUse)
+                elseif (resolvedWhich == "USE_NO_REFUND_CONFIRM" or resolvedWhich == "CONFIRM_USE_NO_REFUND") and type(_G.ConfirmNoRefundOnUse) == "function" then
+                    pcall(_G.ConfirmNoRefundOnUse)
+                elseif type(_G.EndBoundTradeable) == "function" then
+                    pcall(_G.EndBoundTradeable, popup.data or 1)
+                elseif type(_G.ConfirmBindOnUse) == "function" then
+                    pcall(_G.ConfirmBindOnUse)
                 end
                 return true
             end
@@ -9741,6 +9803,10 @@ function U.RunNextAutoOpenContainer()
     S.autoOpenRetryAfter[cand.itemID] = now + 1.0
 
     S.autoOpenActiveItemID = cand.itemID
+    S.autoOpenActiveBag = cand.bag
+    S.autoOpenActiveSlot = cand.slot
+    S.autoOpenActivePrevCount = prevCount
+    S.decorActionBlocked = false
     if cand.kind == "DECOR" then
         U.ArmDecorUseConfirmWindow(1, "AUTO", 0.60)
     else
@@ -9748,6 +9814,9 @@ function U.RunNextAutoOpenContainer()
     end
     local ok = pcall(C_Container.UseContainerItem, cand.bag, cand.slot)
     S.autoOpenActiveItemID = nil
+    S.autoOpenActiveBag = nil
+    S.autoOpenActiveSlot = nil
+    S.autoOpenActivePrevCount = nil
     if not ok then
         if cand.kind == "DECOR" then
             U.ClearDecorUseConfirmWindow()
@@ -9766,19 +9835,39 @@ function U.RunNextAutoOpenContainer()
     if C_Timer and C_Timer.After then
         C_Timer.After(0.45, function()
             local afterInfo = U.GetSlotInfo(cand.bag, cand.slot)
-            if afterInfo and afterInfo.itemID == cand.itemID and (afterInfo.stackCount or 1) >= prevCount then
-                S.autoOpenFailCount[cand.itemID] = (S.autoOpenFailCount[cand.itemID] or 0) + 1
-                S.autoOpenRetryAfter[cand.itemID] = (GetTime and GetTime() or 0) + 30.0
-                if S.autoOpenFailCount[cand.itemID] >= 2 then
+            local pendingVerify = S.decorPendingVerify
+            local wasConsumed = (not afterInfo) or (afterInfo.itemID ~= cand.itemID) or ((afterInfo.stackCount or 1) < prevCount)
+            if not wasConsumed then
+                if cand.kind == "DECOR" and (S.decorActionBlocked or (pendingVerify and pendingVerify.itemID == cand.itemID)) then
+                    -- Hardware click required on StaticPopup1Button1: keep the dialog open,
+                    -- stop background auto-open retries for this item, and keep Open (N) ready.
                     S.autoOpenBlacklist[cand.itemID] = true
+                else
+                    S.autoOpenFailCount[cand.itemID] = (S.autoOpenFailCount[cand.itemID] or 0) + 1
+                    S.autoOpenRetryAfter[cand.itemID] = (GetTime and GetTime() or 0) + 30.0
+                    if S.autoOpenFailCount[cand.itemID] >= 2 then
+                        S.autoOpenBlacklist[cand.itemID] = true
+                    end
                 end
             else
                 S.autoOpenFailCount[cand.itemID] = 0
                 S.autoOpenRetryAfter[cand.itemID] = nil
+                if pendingVerify and pendingVerify.itemID == cand.itemID and not S.decorActionBlocked then
+                    local pop = pendingVerify.popup
+                    local pWhich = pendingVerify.which
+                    if pop and pop.IsShown and pop:IsShown() and pWhich and type(_G.StaticPopup_Hide) == "function" then
+                        local curW = pop.which
+                        if type(curW) ~= "string" or IsSecret(curW) or curW == "" or curW == pWhich then
+                            pcall(_G.StaticPopup_Hide, pWhich)
+                        end
+                    end
+                end
                 if S.decorUseConfirmSource == "AUTO" then
                     U.ClearDecorUseConfirmWindow()
                 end
             end
+            S.decorPendingVerify = nil
+            S.decorActionBlocked = false
             if not InCombatLockdown() and U.UpdateQuickOpenButton and S.window and S.window:IsShown() then
                 U.UpdateQuickOpenButton()
             end
@@ -9923,13 +10012,40 @@ function U.EnsureQuickOpenButton()
         local cur = S.quickOpenCurrent
         local decorCount = S.quickOpenBatchDecorCount or 0
         if (cur and cur.kind == "DECOR") or decorCount > 0 then
+            -- If an unrelated StaticPopup (e.g. loot roll, delete, party invite) is
+            -- already visible before clicking Open (N), strip /click StaticPopup*
+            -- lines for this click so it can never confirm an unrelated dialog.
+            local hasUnrelatedPopup = false
+            for idx = 1, 2 do
+                local pop = _G["StaticPopup" .. idx]
+                if pop and pop.IsShown and pop:IsShown() and not IsNonTradeableDecorPopup(pop, pop.which) then
+                    hasUnrelatedPopup = true
+                    break
+                end
+            end
+            if hasUnrelatedPopup and type(S.quickOpenBaseMacroText) == "string" then
+                local stripped = S.quickOpenBaseMacroText:gsub("\n?/click StaticPopup%dButton1", "")
+                self:SetAttribute("macrotext", stripped)
+                self:SetAttribute("macrotext1", stripped)
+                S.quickOpenPreClickStripped = true
+            else
+                S.quickOpenPreClickStripped = false
+            end
             U.ArmDecorUseConfirmWindow(max(1, decorCount), "QUICK", 1.25)
         else
+            S.quickOpenPreClickStripped = false
             U.ClearDecorUseConfirmWindow()
         end
     end)
 
     btn:SetScript("PostClick", function(self, button, down)
+        if button == "LeftButton" and S.quickOpenPreClickStripped and not InCombatLockdown() then
+            S.quickOpenPreClickStripped = false
+            if type(S.quickOpenBaseMacroText) == "string" then
+                self:SetAttribute("macrotext", S.quickOpenBaseMacroText)
+                self:SetAttribute("macrotext1", S.quickOpenBaseMacroText)
+            end
+        end
         if button == "RightButton" then
             if down then return end
             if IsShiftKeyDown and IsShiftKeyDown() then
@@ -10017,6 +10133,8 @@ function U.UpdateQuickOpenButton()
 
     if not shouldShow then
         S.quickOpenBatchDecorCount = 0
+        S.quickOpenBaseMacroText = nil
+        S.quickOpenPreClickStripped = false
         local btn = S.quickOpenBtn
         if btn then
             U.ClearQuickOpenBindings(btn)
@@ -10048,38 +10166,75 @@ function U.UpdateQuickOpenButton()
     local macroLines = {}
     local curLen = 0
     local batchDecorCount = 0
+    local clickPopup1 = "/click StaticPopup1Button1"
+    local clickPopup2 = "/click StaticPopup2Button1"
+
+    local function CanAppendLines(linesToAdd)
+        local extra = 0
+        for i, l in ipairs(linesToAdd) do
+            local needNewline = (#macroLines > 0) or (i > 1)
+            extra = extra + (needNewline and (#l + 1) or #l)
+        end
+        return (curLen + extra) <= 255
+    end
+
+    local function AppendLines(linesToAdd)
+        for _, l in ipairs(linesToAdd) do
+            curLen = curLen + ((#macroLines == 0) and #l or (#l + 1))
+            macroLines[#macroLines + 1] = l
+        end
+    end
+
     if headItem.hasLoot and not headItem.sawUseLine then
-        macroLines[1] = sformat("/use %d %d", headItem.bag, headItem.slot)
-        S.quickOpenBatchCount = 1
+        local useLine = sformat("/use %d %d", headItem.bag, headItem.slot)
+        AppendLines({ useLine })
         if headItem.kind == "DECOR" then
             batchDecorCount = 1
+            if CanAppendLines({ clickPopup1 }) then AppendLines({ clickPopup1 }) end
+            if CanAppendLines({ clickPopup2 }) then AppendLines({ clickPopup2 }) end
         end
+        S.quickOpenBatchCount = 1
     else
+        local usedItems = 0
         for _, cand in ipairs(queueList or {}) do
             if not (cand.hasLoot and not cand.sawUseLine) then
-                local line = sformat("/use %d %d", cand.bag, cand.slot)
-                local addLen = (#macroLines == 0) and #line or (#line + 1)
-                if (curLen + addLen) <= 255 then
-                    macroLines[#macroLines + 1] = line
-                    curLen = curLen + addLen
-                    if cand.kind == "DECOR" then
+                local useLine = sformat("/use %d %d", cand.bag, cand.slot)
+                if cand.kind == "DECOR" then
+                    if CanAppendLines({ useLine, clickPopup1 }) then
+                        AppendLines({ useLine, clickPopup1 })
                         batchDecorCount = batchDecorCount + 1
+                        usedItems = usedItems + 1
+                    else
+                        break
                     end
                 else
-                    break
+                    if CanAppendLines({ useLine }) then
+                        AppendLines({ useLine })
+                        usedItems = usedItems + 1
+                    else
+                        break
+                    end
                 end
             end
         end
-        if #macroLines == 0 then
-            macroLines[1] = sformat("/use %d %d", headItem.bag, headItem.slot)
-            if headItem.kind == "DECOR" then
+        if usedItems == 0 then
+            local fallbackLine = sformat("/use %d %d", headItem.bag, headItem.slot)
+            if headItem.kind == "DECOR" and CanAppendLines({ fallbackLine, clickPopup1 }) then
+                AppendLines({ fallbackLine, clickPopup1 })
                 batchDecorCount = 1
+            else
+                AppendLines({ fallbackLine })
             end
+            usedItems = 1
         end
-        S.quickOpenBatchCount = #macroLines
+        if batchDecorCount > 0 and CanAppendLines({ clickPopup2 }) then
+            AppendLines({ clickPopup2 })
+        end
+        S.quickOpenBatchCount = usedItems
     end
     S.quickOpenBatchDecorCount = batchDecorCount
     local macroText = table.concat(macroLines, "\n")
+    S.quickOpenBaseMacroText = macroText
 
     btn:SetAttribute("type", "macro")
     btn:SetAttribute("type1", "macro")
@@ -10630,6 +10785,7 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
         U.ScheduleAutoOpenContainers()
     elseif event == "ADDON_ACTION_BLOCKED" then
+        S.decorActionBlocked = true
         if S.autoOpenActiveItemID then
             S.autoOpenBlacklist[S.autoOpenActiveItemID] = true
             S.autoOpenActiveItemID = nil
@@ -10657,7 +10813,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "18/11/2026",
     entries = {
-        { type = "FIX",     text = "Auto-Confirm Non-Tradeable Popup for Housing Decor (18/11/2026): Scoped a brief Housing Decor use window whenever DynamicBags opens or learns a Housing Decor item via either the automatic container opener or the header Open (N) button (including Alt+Scroll and batch macros), automatically accepting Blizzard's 'Performing this action will make this item non-tradeable.' confirmation popup out of combat and clearing the pending flag immediately afterwards while strictly ignoring manual bag clicks, dungeon/raid loot rolls, and non-Decor items." },
+        { type = "FIX",     text = "Mousewheel Scrolling in DynamicBags/DynamicBank & 1-Click Housing Decor Learn Completion (18/11/2026): Stopped calling EnableMouseWheel(true) on ScrollFrame child content containers (area.content, S.liveContent, S.remoteContent, bw.content) in U.AttachWindowScaleHandlers and updated U.CreateScrollArea to route Ctrl+Shift+Scroll scaling directly while scrolling normally whenever Ctrl+Shift is not held; appended hardware-click /click StaticPopup1Button1 (and /click StaticPopup2Button1 within 255 chars) after Housing Decor /use lines in DynamicBagsQuickOpenBtn (guarded against unrelated popups) so Open (N) / Alt+Scroll learns trade-timer Housing Decor in one click; and stopped dismissing StaticPopup dialogs before confirmation succeeds in the background auto-opener, invoking OnAccept / EndBoundTradeable / ConfirmBindOnUse via pcall and keeping Open (N) ready whenever WoW requires a hardware click." },
         { type = "FIX",     text = "ESC / B Keybind Closure, Top-Most Window Escape Priority & GameMenu Failsafe Guard (18/11/2026): Removed the conflicting GameMenuFrame OnShow hide hack from U.EnsureWindow() and added nil-hole/duplicate compaction plus single top-most Escape ordering to UISpecialFrames (DynamicBagsBankFrame -> DynamicBagsFrame -> DynamicBagsStandaloneFrame -> DynamicSuite DesktopWindows); guarded CloseAllBags against ESC calls and added a CloseSpecialWindows + ToggleGameMenu failsafe so even if DynamicBagsFrame or DynamicBagsBankFrame is protected by slot children or skipped by CloseSpecialWindows, pressing ESC reliably clears active search or closes the top-most window one at a time without opening the Options / Game Menu while preserving clean two-way B toggling before and after ESC." },
         { type = "FIX",     text = "ESC & B Keybind Window Closing, CloseAllBags & Unfocused Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) and OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so pressing B or ESC always reaches Blizzard's keybind and UISpecialFrames handlers without swallowing input; preserved Escape-first search clearing via OnEscapePressed when the search box is focused and a combat-guarded CloseSpecialWindows post-hook when search text is active while unfocused (restoring the open window once, clearing both search boxes, and letting the second ESC close cleanly); and updated ToggleWindow() and hooked CloseAllBags() so pressing B or CloseAllBags toggles DynamicBagsFrame (alongside DynamicBagsBankFrame when open) reliably out of combat." },
         { type = "FEATURE", text = "Shift+Click Collapse/Expand All Categories & Footer Bag Space / Junk Breakdown Tooltip (16/11/2026): Shift + Left-Click on any category header collapses all expanded categories or expands all categories at once out of combat (replacing the old single-step shift reorder action while keeping Alt + Left-Click for the reorder menu); made the bottom-left footer slot readout interactive with a hover tooltip showing per-bag free/total slots (Backpack, Bag 1-4, Reagent Bag) plus the total vendor sell value of grey/poor-quality items currently in your bags." },

@@ -5560,11 +5560,19 @@ function addonTable.CreateMainConfigUI()
                 mcTitle:SetPoint("TOPLEFT", mcBanner, "TOPLEFT", 12, -8)
                 mcTitle:SetPoint("RIGHT", mcBtnPrimary, "LEFT", -10, 0)
                 UI.SetFont(mcTitle, 10.5, "", UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 1.0)
-                mcTitle:SetText(string.format("Conflict Detected: %s is currently active and may cause UI errors or blocked actions.", nameDisplay))
+                if cAddon == "DecorVendor" then
+                    mcTitle:SetText("Raid Marker Blocked: Decor Vendor taints Blizzard's /tm command (SetRaidTarget).")
+                else
+                    mcTitle:SetText(string.format("Conflict Detected: %s is currently active and may cause UI errors or blocked actions.", nameDisplay))
+                end
 
                 mcSub:Show()
                 UI.SetFont(mcSub, 9.5, "", 0.84, 0.88, 0.94, 0.95)
-                mcSub:SetText(string.format("Both %s and %s replace %s. Disable %s or manage it in DynamicLoad.", cFriendly, primary.dynamicModule or activeModKey, (primary.category or "this UI"):lower(), cFriendly))
+                if cAddon == "DecorVendor" then
+                    mcSub:SetText("Disable Decor Vendor (Set to Never) and completely Exit & Restart World of Warcraft (/reload alone will not clear it).")
+                else
+                    mcSub:SetText(string.format("Both %s and %s replace %s. Disable %s or manage it in DynamicLoad.", cFriendly, primary.dynamicModule or activeModKey, (primary.category or "this UI"):lower(), cFriendly))
+                end
 
                 local dlLoaded = (addonTable.IsDynamicLoadModuleLoaded == true) or (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DynamicLoad"))
                 if activeModKey ~= "DynamicLoad" and dlLoaded then
@@ -5587,18 +5595,27 @@ function addonTable.CreateMainConfigUI()
 
                 mcBtnPrimary:Show()
                 if mcBanner._pendingReloadFor == cAddon then
-                    mcBtnPrimary.label:SetText("Reload UI Now")
-                    mcBtnPrimary:SetWidth(124)
-                    mcBtnPrimary:SetSelected(true, UI.COLORS.EMERALD)
-                    mcSub:SetText(string.format("%s has been disabled and locked to [Never]. Click 'Reload UI Now' to complete unloading.", cFriendly))
-                    mcBtnPrimary:SetScript("OnClick", function()
-                        if type(_G.ReloadUI) == "function" then
-                            _G.ReloadUI()
-                        end
-                    end)
+                    if cAddon == "DecorVendor" then
+                        mcBanner.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.88)
+                        mcBanner.leftBar:SetColorTexture(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.b and UI.COLORS.EMERALD.g or 0.725, UI.COLORS.EMERALD.b, 1.0)
+                        mcTitle:SetText("Decor Vendor Disabled (Set to Never) - Exit & Restart Required.")
+                        mcSub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear SetRaidTarget taint).")
+                        mcBtnPrimary:Hide()
+                        mcBtnSecondary:Hide()
+                    else
+                        mcBtnPrimary.label:SetText("Reload UI Now")
+                        mcBtnPrimary:SetWidth(124)
+                        mcBtnPrimary:SetSelected(true, UI.COLORS.EMERALD)
+                        mcSub:SetText(string.format("%s has been disabled and locked to [Never]. Click 'Reload UI Now' to complete unloading.", cFriendly))
+                        mcBtnPrimary:SetScript("OnClick", function()
+                            if type(_G.ReloadUI) == "function" then
+                                _G.ReloadUI()
+                            end
+                        end)
+                    end
                 else
-                    local disText = "Use " .. tostring(primary.dynamicModule or activeModKey) .. " Only"
-                    if #disText > 24 then disText = "Use Dynamic Only" end
+                    local disText = (cAddon == "DecorVendor") and "Disable DecorVendor (Never)" or ("Use " .. tostring(primary.dynamicModule or activeModKey) .. " Only")
+                    if cAddon ~= "DecorVendor" and #disText > 24 then disText = "Use Dynamic Only" end
                     mcBtnPrimary.label:SetText(disText)
                     local pw = (mcBtnPrimary.label.GetStringWidth and mcBtnPrimary.label:GetStringWidth()) or 110
                     mcBtnPrimary:SetWidth(math.max(128, math.ceil(pw + 22)))
@@ -5606,24 +5623,37 @@ function addonTable.CreateMainConfigUI()
                     mcBtnPrimary:SetScript("OnClick", function()
                         PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or 856)
                         for _, hItem in ipairs(hardList) do
-                            if C_AddOns and C_AddOns.DisableAddOn then
-                                pcall(C_AddOns.DisableAddOn, hItem.conflictAddon)
-                            end
-                            if addonTable.ResolveConflict then
-                                addonTable.ResolveConflict(hItem.dynamicModule or activeModKey, hItem.conflictAddon, "USE_DYNAMIC")
+                            if addonTable.QuarantineRaidTaintAddon and hItem.conflictAddon == "DecorVendor" then
+                                addonTable.QuarantineRaidTaintAddon("DecorVendor")
+                            else
+                                if C_AddOns and C_AddOns.DisableAddOn then
+                                    pcall(C_AddOns.DisableAddOn, hItem.conflictAddon)
+                                end
+                                if addonTable.ResolveConflict then
+                                    addonTable.ResolveConflict(hItem.dynamicModule or activeModKey, hItem.conflictAddon, "USE_DYNAMIC")
+                                end
                             end
                         end
                         mcBanner._pendingReloadFor = cAddon
-                        mcTitle:SetText(string.format("Conflict Resolved: %s disabled for next session.", cFriendly))
-                        mcSub:SetText(string.format("%s is now disabled and set to [Never]. Click 'Reload UI Now' to apply cleanly.", cFriendly))
-                        mcBtnPrimary.label:SetText("Reload UI Now")
-                        mcBtnPrimary:SetWidth(124)
-                        mcBtnPrimary:SetSelected(true, UI.COLORS.EMERALD)
-                        mcBtnPrimary:SetScript("OnClick", function()
-                            if type(_G.ReloadUI) == "function" then
-                                _G.ReloadUI()
-                            end
-                        end)
+                        if cAddon == "DecorVendor" then
+                            mcBanner.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.88)
+                            mcBanner.leftBar:SetColorTexture(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
+                            mcTitle:SetText("Decor Vendor Disabled (Set to Never) - Exit & Restart Required.")
+                            mcSub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear SetRaidTarget taint).")
+                            mcBtnPrimary:Hide()
+                            mcBtnSecondary:Hide()
+                        else
+                            mcTitle:SetText(string.format("Conflict Resolved: %s disabled for next session.", cFriendly))
+                            mcSub:SetText(string.format("%s is now disabled and set to [Never]. Click 'Reload UI Now' to apply cleanly.", cFriendly))
+                            mcBtnPrimary.label:SetText("Reload UI Now")
+                            mcBtnPrimary:SetWidth(124)
+                            mcBtnPrimary:SetSelected(true, UI.COLORS.EMERALD)
+                            mcBtnPrimary:SetScript("OnClick", function()
+                                if type(_G.ReloadUI) == "function" then
+                                    _G.ReloadUI()
+                                end
+                            end)
+                        end
                         if f.RefreshLeftRailVisuals then f.RefreshLeftRailVisuals() end
                         if f.scrollChild and RefreshAddonTree then RefreshAddonTree(f.scrollChild) end
                     end)
@@ -5632,99 +5662,21 @@ function addonTable.CreateMainConfigUI()
                 mcBanner:Show()
                 ApplyWorkspaceHostTopOffset(56)
             else
-                local dvItem = nil
-                if #softList > 0 then
-                    for _, sItem in ipairs(softList) do
-                        if sItem.conflictAddon == "DecorVendor" and not sItem.isAcknowledged then
-                            dvItem = sItem
-                            break
-                        end
-                    end
-                end
-                if mcBanner._pendingReloadFor == "DecorVendor" or dvItem then
+                if mcBanner._pendingReloadFor == "DecorVendor" then
                     mcBanner:SetHeight(50)
                     mcBanner.bg:SetColorTexture(0.035, 0.039, 0.051, 0.96)
+                    mcBanner.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.88)
+                    mcBanner.leftBar:SetColorTexture(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
                     mcTitle:ClearAllPoints()
                     mcTitle:SetPoint("TOPLEFT", mcBanner, "TOPLEFT", 12, -8)
-                    mcTitle:SetPoint("RIGHT", mcBtnPrimary, "LEFT", -10, 0)
+                    mcTitle:SetPoint("RIGHT", mcBanner, "RIGHT", -12, 0)
+                    UI.SetFont(mcTitle, 10.5, "", UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
+                    mcTitle:SetText("Decor Vendor Disabled (Set to Never) - Exit & Restart Required.")
                     mcSub:Show()
                     UI.SetFont(mcSub, 9.5, "", 0.84, 0.88, 0.94, 0.95)
-
-                    if mcBanner._pendingReloadFor == "DecorVendor" then
-                        mcBanner.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.88)
-                        mcBanner.leftBar:SetColorTexture(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
-                        UI.SetFont(mcTitle, 10.5, "", UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
-                        if mcBanner._pendingReloadMode == "OUTDOOR_ONLY" then
-                            mcTitle:SetText("Conflict Resolved: Decor Vendor set to Outdoor Housing only.")
-                            mcSub:SetText("Enabled in Outdoor and off in Delves/Dungeons/Raid/PvP. Click 'Reload UI Now' to unload here.")
-                        else
-                            mcTitle:SetText("Conflict Resolved: Decor Vendor disabled for next session.")
-                            mcSub:SetText("Decor Vendor is now disabled and set to [Never]. Click 'Reload UI Now' to apply cleanly.")
-                        end
-                        mcBtnSecondary:Hide()
-                        mcBtnPrimary:ClearAllPoints()
-                        mcBtnPrimary:SetPoint("RIGHT", mcBanner, "RIGHT", -10, 0)
-                        mcBtnPrimary:Show()
-                        mcBtnPrimary.label:SetText("Reload UI Now")
-                        mcBtnPrimary:SetWidth(124)
-                        mcBtnPrimary:SetSelected(true, UI.COLORS.EMERALD)
-                        mcBtnPrimary:SetScript("OnClick", function()
-                            if type(_G.ReloadUI) == "function" then
-                                _G.ReloadUI()
-                            end
-                        end)
-                    else
-                        mcBanner.dsBorder:SetColor(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 0.88)
-                        mcBanner.leftBar:SetColorTexture(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 1.0)
-                        UI.SetFont(mcTitle, 10.5, "", UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 1.0)
-                        mcTitle:SetText("Taint Warning: DecorVendor can taint Blizzard's /tm command in dungeons and raids.")
-                        mcSub:SetText("Recommended: keep Decor Vendor for Outdoor Housing only via DynamicLoad, or disable it.")
-
-                        mcBtnSecondary:Show()
-                        mcBtnSecondary.label:SetText("Disable Decor Vendor")
-                        local sw = (mcBtnSecondary.label.GetStringWidth and mcBtnSecondary.label:GetStringWidth()) or 130
-                        mcBtnSecondary:SetWidth(math.max(142, math.ceil(sw + 20)))
-                        mcBtnSecondary:SetSelected(false)
-                        mcBtnSecondary:SetScript("OnClick", function()
-                            PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or 856)
-                            if C_AddOns and C_AddOns.DisableAddOn then
-                                pcall(C_AddOns.DisableAddOn, "DecorVendor")
-                            end
-                            if addonTable.ResolveConflict then
-                                addonTable.ResolveConflict("DynamicMarker", "DecorVendor", "USE_DYNAMIC")
-                            end
-                            mcBanner._pendingReloadFor = "DecorVendor"
-                            mcBanner._pendingReloadMode = "DISABLE"
-                            f.UpdateModuleConflictBanner(activeModKey)
-                            if f.RefreshLeftRailVisuals then f.RefreshLeftRailVisuals() end
-                            if f.scrollChild and RefreshAddonTree then RefreshAddonTree(f.scrollChild) end
-                        end)
-
-                        mcBtnPrimary:ClearAllPoints()
-                        mcBtnPrimary:SetPoint("RIGHT", mcBtnSecondary, "LEFT", -6, 0)
-                        mcBtnPrimary:Show()
-                        mcBtnPrimary.label:SetText("Outdoor Housing Only")
-                        local pw = (mcBtnPrimary.label.GetStringWidth and mcBtnPrimary.label:GetStringWidth()) or 134
-                        mcBtnPrimary:SetWidth(math.max(146, math.ceil(pw + 22)))
-                        mcBtnPrimary:SetSelected(true, UI.COLORS.EMERALD)
-                        mcBtnPrimary:SetScript("OnClick", function()
-                            PlaySound(SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON or 856)
-                            if addonTable.ResolveConflict then
-                                addonTable.ResolveConflict("DynamicMarker", "DecorVendor", "OUTDOOR_ONLY")
-                            end
-                            if addonTable._conflictPendingReload then
-                                mcBanner._pendingReloadFor = "DecorVendor"
-                                mcBanner._pendingReloadMode = "OUTDOOR_ONLY"
-                            else
-                                mcBanner._pendingReloadFor = nil
-                                mcBanner._pendingReloadMode = nil
-                            end
-                            f.UpdateModuleConflictBanner(activeModKey)
-                            if f.RefreshLeftRailVisuals then f.RefreshLeftRailVisuals() end
-                            if f.scrollChild and RefreshAddonTree then RefreshAddonTree(f.scrollChild) end
-                        end)
-                    end
-
+                    mcSub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear SetRaidTarget taint).")
+                    mcBtnPrimary:Hide()
+                    mcBtnSecondary:Hide()
                     mcBanner:Show()
                     ApplyWorkspaceHostTopOffset(56)
                 else
@@ -8326,7 +8278,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.3.1"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.3.2"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -10510,9 +10462,7 @@ function addonTable.CreateMainConfigUI()
                         for _, item in ipairs(conflicts) do
                             if not item.isAcknowledged then
                                 local act
-                                if item.conflictAddon == "DecorVendor" then
-                                    act = "OUTDOOR_ONLY"
-                                elseif item.tier == 2 or item.isGranular then
+                                if item.tier == 2 or item.isGranular then
                                     act = "PRIORITISE_DYNAMIC"
                                 else
                                     act = "USE_DYNAMIC"
@@ -10599,8 +10549,8 @@ function addonTable.CreateMainConfigUI()
 
                         cCard.title:SetText(string.format("%s  <->  %s", cleanFriendly, cleanModName))
                         if isDecorVendor then
-                            cCard.btnUseDynamic.label:SetText("Outdoor Housing Only (Recommended)")
-                            cCard.btnKeepOther.label:SetText("Disable Decor Vendor")
+                            cCard.btnUseDynamic.label:SetText("Disable Decor Vendor (Set to Never)")
+                            cCard.btnKeepOther.label:SetText("Keep Decor Vendor")
                         elseif isTier2 then
                             cCard.btnUseDynamic.label:SetText("Prioritise DynamicSuite Features")
                             cCard.btnKeepOther.label:SetText("Yield Features to " .. shortExternal)
@@ -10613,33 +10563,33 @@ function addonTable.CreateMainConfigUI()
                         local skySel     = { r = 0.220, g = 0.741, b = 0.973 }
 
                         if isDecorVendor then
-                            if activeChoice == "OUTDOOR_ONLY" then
+                            if activeChoice == "USE_DYNAMIC" then
                                 cCard.bg:SetColorTexture(0.024, 0.039, 0.031, 0.96)
                                 cCard.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.85)
                                 cCard.leftBar:SetColorTexture(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
                                 cCard.statusPill.bg:SetColorTexture(0.035, 0.14, 0.10, 0.92)
                                 cCard.statusPill.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.90)
                                 cCard.statusText:SetTextColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
-                                cCard.statusText:SetText(string.format("[%s Outdoor Only]", checkTex))
-                                cCard.desc:SetText("Resolved: DecorVendor is enabled in Outdoor and disabled in Delves, Dungeons, Raid, and PvP.")
-                            elseif activeChoice == "USE_DYNAMIC" then
-                                cCard.bg:SetColorTexture(0.024, 0.039, 0.031, 0.96)
-                                cCard.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.85)
-                                cCard.leftBar:SetColorTexture(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
-                                cCard.statusPill.bg:SetColorTexture(0.035, 0.14, 0.10, 0.92)
-                                cCard.statusPill.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.90)
-                                cCard.statusText:SetTextColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
-                                cCard.statusText:SetText(string.format("[%s Disabled - Reload UI]", checkTex))
-                                cCard.desc:SetText("Resolved: Decor Vendor is disabled and frozen in DynamicLoad [Never]. Click 'Reload UI Now' to apply.")
-                            else
+                                cCard.statusText:SetText(string.format("[%s Disabled - Exit & Restart]", checkTex))
+                                cCard.desc:SetText("Resolved: Decor Vendor is disabled and set to [Never]. Exit & Restart World of Warcraft to clear /tm taint.")
+                            elseif activeChoice == "KEEP_OTHER" then
                                 cCard.bg:SetColorTexture(0.035, 0.039, 0.051, 0.96)
-                                cCard.dsBorder:SetColor(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 0.85)
+                                cCard.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.85)
+                                cCard.leftBar:SetColorTexture(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
+                                cCard.statusPill.bg:SetColorTexture(0.035, 0.14, 0.10, 0.92)
+                                cCard.statusPill.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.90)
+                                cCard.statusText:SetTextColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
+                                cCard.statusText:SetText(string.format("[%s Keeping Decor Vendor]", checkTex))
+                                cCard.desc:SetText("Keeping Decor Vendor enabled and disabling DynamicMarker.")
+                            else
+                                cCard.bg:SetColorTexture(0.13, 0.08, 0.04, 0.96)
+                                cCard.dsBorder:SetColor(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 0.88)
                                 cCard.leftBar:SetColorTexture(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 1.0)
-                                cCard.statusPill.bg:SetColorTexture(0.055, 0.063, 0.082, 0.95)
+                                cCard.statusPill.bg:SetColorTexture(0.16, 0.10, 0.04, 0.95)
                                 cCard.statusPill.dsBorder:SetColor(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 0.90)
                                 cCard.statusText:SetTextColor(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 1.0)
-                                cCard.statusText:SetText("[! /tm Taint Risk]")
-                                cCard.desc:SetText("DecorVendor taints /tm in dungeons and raids. Recommended: keep for Outdoor Housing only, or disable.")
+                                cCard.statusText:SetText("[! /tm Taint Conflict]")
+                                cCard.desc:SetText("Action Required: Decor Vendor taints Blizzard's /tm raid marker command. Disable it (Set to Never) and restart the game.")
                             end
                         elseif isTier2 then
                             if activeChoice == "PRIORITISE_DYNAMIC" then
@@ -10710,11 +10660,11 @@ function addonTable.CreateMainConfigUI()
 
                         if isDecorVendor then
                             if activeChoice == nil then
-                                cCard.btnUseDynamic:SetSelected(true, emeraldSel)
+                                cCard.btnUseDynamic:SetSelected(true, UI.COLORS.GOLD)
                                 cCard.btnKeepOther:SetSelected(false)
                             else
-                                cCard.btnUseDynamic:SetSelected(activeChoice == "OUTDOOR_ONLY", emeraldSel)
-                                cCard.btnKeepOther:SetSelected(activeChoice == "USE_DYNAMIC", emeraldSel)
+                                cCard.btnUseDynamic:SetSelected(activeChoice == "USE_DYNAMIC", emeraldSel)
+                                cCard.btnKeepOther:SetSelected(activeChoice == "KEEP_OTHER", emeraldSel)
                             end
                         elseif isTier2 then
                             if activeChoice == nil then
@@ -10733,14 +10683,18 @@ function addonTable.CreateMainConfigUI()
                         end
 
                         cCard.btnUseDynamic:SetScript("OnClick", function()
-                            local act = isDecorVendor and "OUTDOOR_ONLY" or (isTier2 and "PRIORITISE_DYNAMIC" or "USE_DYNAMIC")
-                            addonTable.ResolveConflict(item.dynamicModule, item.conflictAddon, act, item.isSimulated)
+                            local act = (isTier2 and "PRIORITISE_DYNAMIC" or "USE_DYNAMIC")
+                            if isDecorVendor and addonTable.QuarantineRaidTaintAddon and not item.isSimulated then
+                                addonTable.QuarantineRaidTaintAddon("DecorVendor")
+                            else
+                                addonTable.ResolveConflict(item.dynamicModule, item.conflictAddon, act, item.isSimulated)
+                            end
                             setupView.Refresh()
                             if f.scrollChild then RefreshAddonTree(f.scrollChild) end
                             UpdateStatusBar()
                         end)
                         cCard.btnKeepOther:SetScript("OnClick", function()
-                            local act = isDecorVendor and "USE_DYNAMIC" or (isTier2 and "YIELD_TO_EXTERNAL" or "KEEP_OTHER")
+                            local act = (isTier2 and "YIELD_TO_EXTERNAL" or "KEEP_OTHER")
                             addonTable.ResolveConflict(item.dynamicModule, item.conflictAddon, act, item.isSimulated)
                             setupView.Refresh()
                             if f.scrollChild then RefreshAddonTree(f.scrollChild) end
@@ -15944,7 +15898,7 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.3.1"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.3.2"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then

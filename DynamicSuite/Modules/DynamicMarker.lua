@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.3.1"
+    local fb = fallback or "2.3.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -99,7 +99,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.3.1"
+            or "2.3.2"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.3.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.3.2")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -322,12 +322,10 @@ local CONFLICT_ADDONS = {
     { name = "TargetCharms", label = "TargetCharms", isLegacy = false },
     { name = "DejaMark",     label = "DejaMark",     isLegacy = false },
     { name = "EasyMarker",   label = "EasyMarker",   isLegacy = false },
-    { name = "DecorVendor",  label = "Decor Vendor", isLegacy = false, isSoft = true },
+    { name = "DecorVendor",  label = "Decor Vendor", isLegacy = false },
 }
 
-local ADVISORY_CONFLICT_ADDONS = {
-    { name = "DecorVendor",  label = "Decor Vendor", isAdvisory = true, severity = "SOFT" },
-}
+local ADVISORY_CONFLICT_ADDONS = {}
 
 local SUITE_MODULE_LIST = {
     { key = "load",   addon = "DynamicLoad",   title = "DynamicLoad",   sub = "Zone Addon Profiles",    subtitle = "Zone Addon Profiles",    slash = "/dl",     desc = "Automatically stages addon loadouts across Outdoor, Delves, Dungeons, Raid, and PvP using By Zone, Always, and Never rules." },
@@ -3360,11 +3358,20 @@ function DM:PrintFocusMarkerImportStatus()
     end
 end
 
+local FreezeAddonInLoadDB
+
 function DM:ScanConflicts()
     local activeConflicts = {}
+    local session = _G.DynamicSuite_RaidTaintModalSession
+    local quarantined = (type(session) == "table" and type(session.quarantined) == "table") and session.quarantined or nil
     for _, item in ipairs(CONFLICT_ADDONS) do
-        if not item.isSoft and self:IsAddonEnabled(item.name) then
-            table.insert(activeConflicts, item)
+        if not item.isSoft and self.pendingConflictReload ~= item.name and not (quarantined and quarantined[item.name]) then
+            local isLoaded = (item.name == "DecorVendor")
+                and (C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded(item.name) == true)
+                or false
+            if self:IsAddonEnabled(item.name) or isLoaded then
+                table.insert(activeConflicts, item)
+            end
         end
     end
     self.activeConflicts = activeConflicts
@@ -3381,19 +3388,30 @@ function DM:ResolveConflictUseDynamic(conflictAddonName)
         pcall(C_AddOns.DisableAddOn, conflictAddonName)
     end
 
-    -- Freeze in DynamicLoadDB so DynamicLoad zone transitions never re-enable it
-    if type(_G.DynamicLoadDB) == "table" then
-        _G.DynamicLoadDB.addonStates = _G.DynamicLoadDB.addonStates or {}
-        _G.DynamicLoadDB.addonStates[conflictAddonName] = "FROZEN"
-        if type(_G.DynamicLoadDB.frozenAddons) == "table" then
-            _G.DynamicLoadDB.frozenAddons[conflictAddonName] = true
-        end
+    if Suite and type(Suite.SetAddonFrozen) == "function" then
+        pcall(Suite.SetAddonFrozen, conflictAddonName, true)
+    end
+    if type(FreezeAddonInLoadDB) == "function" then
+        FreezeAddonInLoadDB(conflictAddonName)
+    end
+    if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" then
+        _G.DynamicSuiteDB.global.acknowledgedConflicts = _G.DynamicSuiteDB.global.acknowledgedConflicts or {}
+        _G.DynamicSuiteDB.global.acknowledgedConflicts[tostring(conflictAddonName) .. "_DynamicMarker"] = "USE_DYNAMIC"
+    end
+    if conflictAddonName == "DecorVendor" then
+        _G.DynamicSuite_RaidTaintModalSession = type(_G.DynamicSuite_RaidTaintModalSession) == "table" and _G.DynamicSuite_RaidTaintModalSession or {}
+        _G.DynamicSuite_RaidTaintModalSession.quarantined = _G.DynamicSuite_RaidTaintModalSession.quarantined or {}
+        _G.DynamicSuite_RaidTaintModalSession.quarantined["DecorVendor"] = true
     end
 
     self.pendingConflictReload = conflictAddonName
     self:ScanConflicts()
     self:RefreshAll()
-    print(string.format("|cFF38BDF8DynamicMarker|r: Imported settings and disabled |cFFFFFFFF%s|r. Click |cFF10B981[Reload UI]|r to complete.", conflictAddonName))
+    if conflictAddonName == "DecorVendor" then
+        print("|cFF38BDF8DynamicMarker|r: Disabled |cFFFFFFFFDecorVendor|r and set it to |cFF34D399Never|r across all zone profiles. Please completely |cFFF97316Exit & Restart|r World of Warcraft now (/reload alone will not clear SetRaidTarget taint).")
+    else
+        print(string.format("|cFF38BDF8DynamicMarker|r: Imported settings and disabled |cFFFFFFFF%s|r. Click |cFF10B981[Reload UI]|r to complete.", conflictAddonName))
+    end
 end
 
 function DM:ResolveConflictKeepOther(conflictAddonName)
@@ -3429,7 +3447,7 @@ local function IsAddonFrozenInLoadDB(addonName)
     return false
 end
 
-local function FreezeAddonInLoadDB(addonName)
+FreezeAddonInLoadDB = function(addonName)
     if type(_G.DynamicLoadDB) ~= "table" then return end
     local function ApplyFreeze(tbl)
         if type(tbl) ~= "table" then return end
@@ -3444,6 +3462,18 @@ local function FreezeAddonInLoadDB(addonName)
                 if type(prof) == "table" and type(prof.addons) == "table" then
                     prof.addons[addonName] = nil
                 end
+            end
+        end
+        if type(tbl.zones) == "table" then
+            for _, zTbl in pairs(tbl.zones) do
+                if type(zTbl) == "table" then
+                    zTbl[addonName] = nil
+                end
+            end
+        end
+        for _, zKey in ipairs({ "outdoor", "delves", "dungeons", "raid", "pvp" }) do
+            if type(tbl[zKey]) == "table" then
+                tbl[zKey][addonName] = nil
             end
         end
     end
@@ -9281,7 +9311,11 @@ function DM:ShowStudioModal(mode)
 
         local conflictStatus
         if #conflicts > 0 then
-            conflictStatus = "Detected Active Conflict: " .. conflicts[1].name .. " (Click button below to import & disable)"
+            if conflicts[1].name == "DecorVendor" then
+                conflictStatus = "Detected Active Conflict: DecorVendor taints Blizzard's /tm command (Disable & restart game)"
+            else
+                conflictStatus = "Detected Active Conflict: " .. conflicts[1].name .. " (Click button below to import & disable)"
+            end
         elseif #advisories > 0 then
             conflictStatus = "Compatibility Notice: " .. advisories[1].name .. " can taint Blizzard's /tm command in dungeons & raids."
         else
@@ -9297,7 +9331,10 @@ function DM:ShowStudioModal(mode)
 
         local yCursor = -94
         if #conflicts > 0 then
-            local cBtn = self:CreateButton(m.Body, "Import & Use DynamicMarker", 220, 28, function()
+            local isDV = (conflicts[1].name == "DecorVendor")
+            local btnLbl = isDV and "Disable DecorVendor (Set to Never)" or "Import & Use DynamicMarker"
+            local btnW   = isDV and 254 or 220
+            local cBtn = self:CreateButton(m.Body, btnLbl, btnW, 28, function()
                 self:ResolveConflictUseDynamic(conflicts[1].name)
                 self:ShowStudioModal("SETUP")
             end, true)
@@ -10642,39 +10679,55 @@ function DM:RefreshAll()
                 self:ApplyBackdrop(ws.conflictBanner, { r = 0.035, g = 0.075, b = 0.055, a = 0.96 }, COLORS.Green, 1)
                 self:StyleFont(ws.conflictBanner.Title, 12, "", COLORS.Green)
                 if self.pendingConflictReload == "DecorVendor" then
-                    ws.conflictBanner.Title:SetText(READY_CHECK_TEX .. " DecorVendor Disabled for Next Session")
-                    ws.conflictBanner.Sub:SetText("DecorVendor is set to Never. Click [Reload UI], or exit and restart the game if /tm was already blocked.")
+                    ws.conflictBanner.Title:SetText(READY_CHECK_TEX .. " DecorVendor Disabled (Set to Never) - Exit & Restart Required")
+                    ws.conflictBanner.Sub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear SetRaidTarget taint).")
+                    ws.conflictBanner.Title:ClearAllPoints()
+                    ws.conflictBanner.Title:SetPoint("TOPLEFT", ws.conflictBanner, "TOPLEFT", 14, -10)
+                    ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner, "RIGHT", -14, 0)
+                    ws.conflictBanner.Sub:ClearAllPoints()
+                    ws.conflictBanner.Sub:SetPoint("TOPLEFT", ws.conflictBanner.Title, "BOTTOMLEFT", 0, -4)
+                    ws.conflictBanner.Sub:SetPoint("RIGHT", ws.conflictBanner, "RIGHT", -14, 0)
+                    ws.conflictBanner.BtnUseDynamic:Hide()
+                    ws.conflictBanner.BtnKeepOther:Hide()
+                    ws.conflictBanner.BtnReload:Hide()
                 else
                     ws.conflictBanner.Title:SetText(READY_CHECK_TEX .. " Conflict Resolution Staged for " .. cName)
                     ws.conflictBanner.Sub:SetText("Settings imported and " .. cName .. " is locked off across all zone profiles. Click [Reload UI] to finish.")
+                    ws.conflictBanner.Title:ClearAllPoints()
+                    ws.conflictBanner.Title:SetPoint("TOPLEFT", ws.conflictBanner, "TOPLEFT", 14, -10)
+                    ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner.BtnReload, "LEFT", -16, 0)
+                    ws.conflictBanner.Sub:ClearAllPoints()
+                    ws.conflictBanner.Sub:SetPoint("TOPLEFT", ws.conflictBanner.Title, "BOTTOMLEFT", 0, -4)
+                    ws.conflictBanner.Sub:SetPoint("RIGHT", ws.conflictBanner.BtnReload, "LEFT", -16, 0)
+                    ws.conflictBanner.BtnUseDynamic:Hide()
+                    ws.conflictBanner.BtnKeepOther:Hide()
+                    ws.conflictBanner.BtnReload:Show()
                 end
-                ws.conflictBanner.Title:ClearAllPoints()
-                ws.conflictBanner.Title:SetPoint("TOPLEFT", ws.conflictBanner, "TOPLEFT", 14, -10)
-                ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner.BtnReload, "LEFT", -16, 0)
-                ws.conflictBanner.Sub:ClearAllPoints()
-                ws.conflictBanner.Sub:SetPoint("TOPLEFT", ws.conflictBanner.Title, "BOTTOMLEFT", 0, -4)
-                ws.conflictBanner.Sub:SetPoint("RIGHT", ws.conflictBanner.BtnReload, "LEFT", -16, 0)
-                ws.conflictBanner.BtnUseDynamic:Hide()
-                ws.conflictBanner.BtnKeepOther:Hide()
-                ws.conflictBanner.BtnReload:Show()
             elseif #conflicts > 0 then
                 ws.conflictBanner._mode = "HARD"
                 ws.conflictBanner._addonName = cName
                 self:ApplyBackdrop(ws.conflictBanner, { r = 0.20, g = 0.14, b = 0.05, a = 0.96 }, COLORS.Amber, 1)
                 self:StyleFont(ws.conflictBanner.Title, 12, "", COLORS.Amber)
-                ws.conflictBanner.BtnKeepOther:SetWidth(145)
-                ws.conflictBanner.BtnUseDynamic:SetWidth(195)
+                local isDV = (cName == "DecorVendor")
+                ws.conflictBanner.BtnKeepOther:SetWidth(isDV and 148 or 145)
+                ws.conflictBanner.BtnUseDynamic:SetWidth(isDV and 216 or 195)
                 ws.conflictBanner.Title:ClearAllPoints()
                 ws.conflictBanner.Title:SetPoint("TOPLEFT", ws.conflictBanner, "TOPLEFT", 14, -10)
                 ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -16, 0)
                 ws.conflictBanner.Sub:ClearAllPoints()
                 ws.conflictBanner.Sub:SetPoint("TOPLEFT", ws.conflictBanner.Title, "BOTTOMLEFT", 0, -4)
                 ws.conflictBanner.Sub:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -16, 0)
-                ws.conflictBanner.Title:SetText("Conflict Detected: " .. cName .. " is currently active and may cause UI errors or blocked actions.")
-                ws.conflictBanner.Sub:SetText("Running duplicate marker addons causes macro and raid icon collisions. Choose 1-click resolution:")
-                ws.conflictBanner.BtnUseDynamic:SetLabel(cName == "FocusMarker"
-                    and "Import & Use DynamicMarker"
-                    or ("Use DynamicMarker"))
+                if isDV then
+                    ws.conflictBanner.Title:SetText("Raid Marker Blocked: Decor Vendor taints Blizzard's /tm command (SetRaidTarget).")
+                    ws.conflictBanner.Sub:SetText("Disable DecorVendor (Set to Never) and completely Exit & Restart World of Warcraft (/reload will not clear it).")
+                    ws.conflictBanner.BtnUseDynamic:SetLabel("Disable DecorVendor (Never)")
+                else
+                    ws.conflictBanner.Title:SetText("Conflict Detected: " .. cName .. " is currently active and may cause UI errors or blocked actions.")
+                    ws.conflictBanner.Sub:SetText("Running duplicate marker addons causes macro and raid icon collisions. Choose 1-click resolution:")
+                    ws.conflictBanner.BtnUseDynamic:SetLabel(cName == "FocusMarker"
+                        and "Import & Use DynamicMarker"
+                        or ("Use DynamicMarker"))
+                end
                 ws.conflictBanner.BtnKeepOther:SetLabel("Keep " .. cName)
                 ws.conflictBanner.BtnUseDynamic:Show()
                 ws.conflictBanner.BtnKeepOther:Show()
@@ -11306,6 +11359,304 @@ function DM:ShowMarkerConflictReloadModal()
     modal:Raise()
 end
 
+local function GetSharedRaidTaintSession()
+    _G.DynamicSuite_RaidTaintModalSession = type(_G.DynamicSuite_RaidTaintModalSession) == "table"
+        and _G.DynamicSuite_RaidTaintModalSession
+        or {}
+    local s = _G.DynamicSuite_RaidTaintModalSession
+    s.dismissed = type(s.dismissed) == "table" and s.dismissed or {}
+    s.quarantined = type(s.quarantined) == "table" and s.quarantined or {}
+    return s
+end
+
+local function IsSetRaidTargetBlockedName(fnName)
+    if type(fnName) ~= "string" or fnName == "" then return false end
+    return fnName == "SetRaidTarget"
+        or fnName == "SetRaidTarget()"
+        or fnName == "SetRaidTargetIcon"
+        or fnName == "SetRaidTargetIcon()"
+        or fnName:find("SetRaidTarget", 1, true) ~= nil
+end
+
+local function IsDecorVendorActiveForStandaloneModal()
+    local session = GetSharedRaidTaintSession()
+    if session.quarantined["DecorVendor"] or session.dismissed["DecorVendor"] then
+        return false
+    end
+    local loaded = (C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DecorVendor"))
+        or (type(_G.IsAddOnLoaded) == "function" and _G.IsAddOnLoaded("DecorVendor"))
+    if loaded then
+        return true
+    end
+    return DM:IsAddonEnabled("DecorVendor")
+end
+
+function DM:ShowRaidMarkerTaintModal(offendingAddon, reason)
+    if IsModuleDisabledInSuite("DynamicMarker") or MarkerModuleDescriptor._disabledAtStartup then
+        return
+    end
+    offendingAddon = SafeReadableString(offendingAddon)
+    if not offendingAddon or offendingAddon == "" then
+        local dvLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DecorVendor"))
+        offendingAddon = dvLoaded and "DecorVendor" or "Unknown Addon"
+    end
+
+    if _G.DynamicSuite and type(_G.DynamicSuite.ShowRaidMarkerTaintModal) == "function" then
+        pcall(_G.DynamicSuite.ShowRaidMarkerTaintModal, _G.DynamicSuite, offendingAddon, reason)
+        return
+    end
+
+    local session = GetSharedRaidTaintSession()
+    if session.dismissed[offendingAddon] then
+        return
+    end
+    if session.quarantined[offendingAddon] and reason == "PROACTIVE" then
+        return
+    end
+
+    if InCombatLockdown and InCombatLockdown() then
+        self._pendingRaidTaintModal = { addon = offendingAddon, reason = reason or "FORBIDDEN" }
+        return
+    end
+    self._pendingRaidTaintModal = nil
+
+    local modal = _G.DynamicSuiteRaidTaintModal
+    if not modal then
+        modal = CreateFrame("Frame", "DynamicSuiteRaidTaintModal", UIParent, "BackdropTemplate")
+        modal:SetSize(484, 226)
+        modal:SetPoint("CENTER", UIParent, "CENTER", 0, 70)
+        modal:SetFrameStrata("DIALOG")
+        modal:SetFrameLevel(275)
+        modal:SetToplevel(true)
+        modal:SetClampedToScreen(true)
+        modal:SetMovable(true)
+        modal:EnableMouse(true)
+        modal:RegisterForDrag("LeftButton")
+        modal:SetScript("OnDragStart", modal.StartMoving)
+        modal:SetScript("OnDragStop", modal.StopMovingOrSizing)
+        if modal.SetBackdrop then
+            modal:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 1,
+            })
+            -- Midnight Pitch Black (#06070A / alpha 0.98) + 1px dark slate border (#333D4F)
+            modal:SetBackdropColor(0.024, 0.027, 0.039, 0.98)
+            modal:SetBackdropBorderColor(0.200, 0.240, 0.310, 0.96)
+        end
+
+        modal.InnerSurface = CreateFrame("Frame", nil, modal, "BackdropTemplate")
+        modal.InnerSurface:SetPoint("TOPLEFT", modal, "TOPLEFT", 14, -44)
+        modal.InnerSurface:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 54)
+        if modal.InnerSurface.SetBackdrop then
+            modal.InnerSurface:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8X8",
+                edgeFile = "Interface\\Buttons\\WHITE8X8",
+                edgeSize = 1,
+            })
+            -- Obsidian Core inner card (#090A0D)
+            modal.InnerSurface:SetBackdropColor(0.035, 0.039, 0.051, 0.96)
+            modal.InnerSurface:SetBackdropBorderColor(0.145, 0.169, 0.216, 0.85)
+        end
+
+        modal.TopAccent = modal:CreateTexture(nil, "OVERLAY")
+        modal.TopAccent:SetHeight(2)
+        modal.TopAccent:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
+        modal.TopAccent:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
+        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+
+        modal.Title = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        modal.Title:SetPoint("TOPLEFT", modal, "TOPLEFT", 16, -15)
+        modal.Title:SetText("|cFFF97316Raid Marker Blocked by Addon Conflict|r")
+
+        modal.Body = modal.InnerSurface:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        modal.Body:SetPoint("TOPLEFT", modal.InnerSurface, "TOPLEFT", 12, -11)
+        modal.Body:SetPoint("TOPRIGHT", modal.InnerSurface, "TOPRIGHT", -12, -11)
+        modal.Body:SetJustifyH("LEFT")
+        modal.Body:SetJustifyV("TOP")
+        modal.Body:SetSpacing(3)
+        modal.Body:SetTextColor(0.886, 0.910, 0.941, 1.0)
+
+        local function CreateTaintModalButton(parent, label, width, height, styleMode)
+            local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+            btn:SetSize(width, height)
+            if btn.SetBackdrop then
+                btn:SetBackdrop({
+                    bgFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeFile = "Interface\\Buttons\\WHITE8X8",
+                    edgeSize = 1,
+                })
+            end
+            btn.Text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            btn.Text:SetPoint("CENTER", btn, "CENTER", 0, 0)
+            btn.Text:SetText(label)
+            btn._styleMode = styleMode or "PRIMARY"
+
+            function btn:ApplyVisualState(hover)
+                if not self.SetBackdropColor then return end
+                if self._styleMode == "EMERALD" then
+                    if hover then
+                        self:SetBackdropColor(0.055, 0.260, 0.180, 1.0)
+                        self:SetBackdropBorderColor(0.063, 0.725, 0.506, 1.0)
+                        self.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        self:SetBackdropColor(0.035, 0.165, 0.115, 0.98)
+                        self:SetBackdropBorderColor(0.063, 0.725, 0.506, 0.95)
+                        self.Text:SetTextColor(0.204, 0.827, 0.600, 1.0)
+                    end
+                elseif self._styleMode == "PRIMARY" then
+                    if hover then
+                        self:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
+                        self:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+                        self.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        self:SetBackdropColor(0.220, 0.100, 0.022, 0.98)
+                        self:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
+                        self.Text:SetTextColor(0.976, 0.451, 0.086, 1.0)
+                    end
+                else
+                    if hover then
+                        self:SetBackdropColor(0.120, 0.145, 0.195, 1.0)
+                        self:SetBackdropBorderColor(0.320, 0.380, 0.480, 1.0)
+                        self.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
+                    else
+                        self:SetBackdropColor(0.055, 0.067, 0.094, 0.98)
+                        self:SetBackdropBorderColor(0.200, 0.240, 0.310, 0.95)
+                        self.Text:SetTextColor(0.796, 0.835, 0.882, 1.0)
+                    end
+                end
+            end
+            btn:ApplyVisualState(false)
+            btn:SetScript("OnEnter", function(s) s:ApplyVisualState(true) end)
+            btn:SetScript("OnLeave", function(s) s:ApplyVisualState(false) end)
+            return btn
+        end
+
+        modal.PrimaryBtn = CreateTaintModalButton(modal, "Disable DecorVendor (Set to Never)", 260, 28, "PRIMARY")
+        modal.DismissBtn = CreateTaintModalButton(modal, "Dismiss", 108, 28, "SECONDARY")
+
+        modal:HookScript("OnHide", function(selfModal)
+            if selfModal._activeAddon then
+                local s = GetSharedRaidTaintSession()
+                s.dismissed[selfModal._activeAddon] = true
+            end
+        end)
+
+        if type(_G.UISpecialFrames) == "table" then
+            local found = false
+            for i = 1, #_G.UISpecialFrames do
+                if _G.UISpecialFrames[i] == "DynamicSuiteRaidTaintModal" then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                table.insert(_G.UISpecialFrames, "DynamicSuiteRaidTaintModal")
+            end
+        end
+    end
+
+    modal._activeAddon = offendingAddon
+    local canQuarantine = (offendingAddon ~= "Unknown Addon")
+    local alreadyQuarantined = (session.quarantined[offendingAddon] == true)
+
+    if alreadyQuarantined then
+        modal.TopAccent:SetColorTexture(0.063, 0.725, 0.506, 1.0)
+        modal.Title:SetText("|cFF34D399Raid Marker Blocked by Addon Conflict|r")
+        modal.Body:SetText(string.format(
+            "|cFFFFFFFF%s|r is already set to Never for your next session, however Blizzard's raid-marker security lockout remains active until World of Warcraft restarts.\n\nPlease completely |cFFF97316Exit & Restart|r the game client now (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
+            offendingAddon
+        ))
+        modal.DismissBtn:Hide()
+        modal.PrimaryBtn._styleMode = "EMERALD"
+        modal.PrimaryBtn.Text:SetText("Understood (Close)")
+        modal.PrimaryBtn:SetWidth(176)
+        modal.PrimaryBtn:ClearAllPoints()
+        modal.PrimaryBtn:SetPoint("BOTTOM", modal, "BOTTOM", 0, 14)
+        modal.PrimaryBtn:ApplyVisualState(false)
+        modal.PrimaryBtn:Show()
+        modal.PrimaryBtn:SetScript("OnClick", function()
+            session.dismissed[offendingAddon] = true
+            modal:Hide()
+        end)
+    else
+        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        modal.Title:SetText("|cFFF97316Raid Marker Blocked by Addon Conflict|r")
+        local displayLabel = (offendingAddon == "DecorVendor") and "Decor Vendor (DecorVendor)" or offendingAddon
+        modal.Body:SetText(string.format(
+            "|cFFFFFFFF%s|r taints Blizzard's |cFFFFFFFF/tm|r raid marker command (|cFFFFFFFFSetRaidTarget()|r), causing action-bar focus markers to be blocked.\n\nBecause of how World of Warcraft's security engine works, you must disable |cFFFFFFFF%s|r and |cFFF97316fully Exit & Restart the game client|r (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
+            displayLabel, offendingAddon
+        ))
+
+        modal.DismissBtn:ClearAllPoints()
+        modal.DismissBtn:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 14)
+        modal.DismissBtn:Show()
+        modal.DismissBtn:SetScript("OnClick", function()
+            session.dismissed[offendingAddon] = true
+            modal:Hide()
+        end)
+
+        if canQuarantine then
+            local pLabel = string.format("Disable %s (Set to Never)", offendingAddon)
+            modal.PrimaryBtn._styleMode = "PRIMARY"
+            modal.PrimaryBtn.Text:SetText(pLabel)
+            local tw = (modal.PrimaryBtn.Text.GetStringWidth and modal.PrimaryBtn.Text:GetStringWidth()) or 230
+            modal.PrimaryBtn:SetWidth(math.max(236, math.min(336, math.ceil(tw + 26))))
+            modal.PrimaryBtn:ClearAllPoints()
+            modal.PrimaryBtn:SetPoint("RIGHT", modal.DismissBtn, "LEFT", -8, 0)
+            modal.PrimaryBtn:ApplyVisualState(false)
+            modal.PrimaryBtn:Show()
+            modal.PrimaryBtn:SetScript("OnClick", function()
+                local pName = UnitName and UnitName("player") or nil
+                if C_AddOns and C_AddOns.DisableAddOn then
+                    if pName then pcall(C_AddOns.DisableAddOn, offendingAddon, pName) end
+                    pcall(C_AddOns.DisableAddOn, offendingAddon)
+                end
+                if Suite and type(Suite.SetAddonFrozen) == "function" then
+                    pcall(Suite.SetAddonFrozen, offendingAddon, true)
+                end
+                if type(FreezeAddonInLoadDB) == "function" then
+                    FreezeAddonInLoadDB(offendingAddon)
+                end
+                if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" then
+                    _G.DynamicSuiteDB.global.acknowledgedConflicts = _G.DynamicSuiteDB.global.acknowledgedConflicts or {}
+                    _G.DynamicSuiteDB.global.acknowledgedConflicts[tostring(offendingAddon) .. "_DynamicMarker"] = "USE_DYNAMIC"
+                end
+                session.quarantined[offendingAddon] = true
+                DM.pendingConflictReload = offendingAddon
+                DM:ScanConflicts()
+                DM:RefreshAll()
+                modal.TopAccent:SetColorTexture(0.063, 0.725, 0.506, 1.0)
+                modal.Title:SetText("|cFF34D399" .. offendingAddon .. " Disabled (Set to Never)|r")
+                modal.Body:SetText(string.format(
+                    "|cFFFFFFFF%s|r has been disabled and set to |cFF34D399Never|r across all zone profiles.\n\nPlease |cFFF97316completely Exit & Restart World of Warcraft|r now to clear Blizzard's raid-marker lockout (a |cFFFFFFFF/reload|r alone will not clear it).",
+                    offendingAddon
+                ))
+                modal.DismissBtn:Hide()
+                modal.PrimaryBtn._styleMode = "EMERALD"
+                modal.PrimaryBtn.Text:SetText("Understood (Close)")
+                modal.PrimaryBtn:SetWidth(176)
+                modal.PrimaryBtn:ClearAllPoints()
+                modal.PrimaryBtn:SetPoint("BOTTOM", modal, "BOTTOM", 0, 14)
+                modal.PrimaryBtn:ApplyVisualState(false)
+                modal.PrimaryBtn:SetScript("OnClick", function()
+                    session.dismissed[offendingAddon] = true
+                    modal:Hide()
+                end)
+                print(string.format(
+                    "|cFF38BDF8DynamicMarker|r: Disabled |cFFFFFFFF%s|r and set it to |cFF34D399Never|r across all zone profiles. Please completely Exit & Restart World of Warcraft now (/reload alone will not clear SetRaidTarget taint).",
+                    offendingAddon
+                ))
+            end)
+        else
+            modal.PrimaryBtn:Hide()
+        end
+    end
+
+    modal:Show()
+    modal:Raise()
+end
+
 local function EnforceSuiteDuplicateExclusion(showPopupIfLoaded)
     if ADDON_FOLDER == "DynamicSuite" then return false end
     local isSuiteActive = (C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DynamicSuite"))
@@ -11391,20 +11742,22 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
             return
         end
         local blockedFn = SafeReadableString(arg2)
-        if blockedFn and (blockedFn == "SetRaidTarget()" or blockedFn == "SetRaidTarget" or blockedFn:find("SetRaidTarget", 1, true) ~= nil) then
+        if IsSetRaidTargetBlockedName(blockedFn) then
             local offender = SafeReadableString(arg1)
             if not offender or offender == "" then
-                offender = "A third-party addon"
+                local dvLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("DecorVendor"))
+                offender = dvLoaded and "DecorVendor" or "Unknown Addon"
             end
             local now = (type(GetTime) == "function" and GetTime()) or 0
             local lastAlert = taintAlertCooldowns[offender]
             if not lastAlert or (now - lastAlert) >= 30 then
                 taintAlertCooldowns[offender] = now
                 print(string.format(
-                    "|cFF38BDF8DynamicMarker|r: |cFFF5B82EBlocked Action:|r |cFFFFFFFF%s|r tainted Blizzard's |cFFFFFFFF/tm|r raid marker command (SetRaidTarget) -- this is caused by |cFFFFFFFF%s|r, not DynamicMarker. Disable |cFFFFFFFF%s|r (or set it to Outdoor Only in DynamicLoad |cFF38BDF8/dl|r) and completely exit and restart the game client (/reload alone will not clear Blizzard's raid-marker lockout).",
+                    "|cFF38BDF8DynamicMarker|r: |cFFF5B82EBlocked Action:|r |cFFFFFFFF%s|r tainted Blizzard's |cFFFFFFFF/tm|r raid marker command (SetRaidTarget) -- this is caused by |cFFFFFFFF%s|r, not DynamicMarker. Disable |cFFFFFFFF%s|r (Set to Never) and completely exit and restart the game client (/reload alone will not clear Blizzard's raid-marker lockout).",
                     offender, offender, offender
                 ))
             end
+            DM:ShowRaidMarkerTaintModal(offender, "FORBIDDEN")
         end
         return
     end
@@ -11538,6 +11891,9 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
             DM:RefreshAllSecureButtonClicks()
             DM:SyncSecureFlareEngine()
             DM:ApplyFlareKeybinds()
+            if IsDecorVendorActiveForStandaloneModal() then
+                DM:ShowRaidMarkerTaintModal("DecorVendor", "PROACTIVE")
+            end
         end
         if DM.db.kickSpecMode == "SMART_SWAP" then
             DM:CreateOrUpdateDynamicKickMacro(false)
@@ -11596,6 +11952,11 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     elseif event == "PLAYER_REGEN_ENABLED" then
         if DM._pendingMarkerConflictModal then
             DM:ShowMarkerConflictReloadModal()
+        end
+        if DM._pendingRaidTaintModal then
+            local pend = DM._pendingRaidTaintModal
+            DM._pendingRaidTaintModal = nil
+            DM:ShowRaidMarkerTaintModal(pend.addon, pend.reason)
         end
         if DM.pendingSecureClickSync then
             DM:RefreshAllSecureButtonClicks()
