@@ -67,8 +67,8 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 * **Smart Occlusion & Auto-Zoom:** Fades blocking trees and dungeon pillars instead of snapping your camera forward, with optional zoom presets for combat, mounting, and indoors.
 
 ### 9. DynamicMail (`/dmail`, `/dynamicmail`) -- Smart Inbox, Alt Picker & Express Attach
-* **1-Click Inbox Collection:** Adds clean Obsidian **Open All**, **AH Gold**, and **Items Only** buttons below the Mailbox window with automatic COD protection, configurable free bag-slot reserves (`0-8`), Auction House gold collection when bags are full, and Coin batch summaries.
-* **Alt Vault Recipient Picker & Express Bag Attach:** Docks a 4-tab recipient panel (`Alts`, `Recent`, `Guild`, `Friends`) beside Send Mail that syncs class-coloured alts and gold balances straight from `DynamicBags` Alt Vault with `*` Favourite pinning and `Alt + Left-Click` item attaching from your bags.
+* **1-Click Inbox Collection & Safety:** Adds clean Obsidian **Open All**, **AH Gold**, and **Items Only** buttons below the Mailbox window with `Shift+Click` quick-loot, Expiring (`<3d`) mail alerts, automatic COD protection, configurable free bag-slot reserves (`0-8`), Auction House gold collection when bags are full, and Coin batch summaries.
+* **Alt Vault Picker, Smart Bulk-Attach & Quick Gold:** Docks a 4-tab recipient panel (`Alts`, `Recent`, `Guild`, `Friends`) beside Send Mail syncing class-coloured alts, gold balances, and pending sent-mail badges straight from `DynamicBags` Alt Vault, plus 1-click `+ Mats` / `+ BoE` / `+ Warband` / `+ Same` bulk-attach presets, `+1k` / `+10k` / `+100k` Quick Gold pills, and `Alt + Left-Click` bag attaching.
 
 ---
 
@@ -91,7 +91,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 | `/dprep` or `/dp` | Open DynamicPrep (supports edit, buffs, qol, testaudit, reset) |
 | `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, import, reset) |
 | `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
-| `/dmail` or `/dynamicmail` | Open DynamicMail (supports all, gold, items, stop, reset) |
+| `/dmail` or `/dynamicmail` | Open DynamicMail (supports all, gold, items, mats, boe, warband, same, stop, reset) |
 | `/dchat`, `/dc`, or `/dynamicchat` | Open DynamicChat (supports history, copy, mute, reset; plus `/ww` target whisper, `/rl` reload UI, and `/lg` leave group) |
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
 | `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, testtoast, testapply, reset) |

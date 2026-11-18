@@ -245,6 +245,12 @@ local DEFAULTS = {
     autoFillSubject         = true,
     clearAfterSend          = true,
     autoOpenBagsAtMail      = false,
+    showQuickAttachBar      = true,
+    showQuickGoldBar        = true,
+    showPendingAltBadge     = true,
+    restoreLastRecipient    = false,
+    shiftClickInboxLoot     = true,
+    warnExpiringMail        = true,
 
     activeSubTab            = 1,
     activePickerTab         = "ALTS", -- "ALTS", "RECENT", "GUILD", "FRIENDS"
@@ -255,6 +261,7 @@ local DEFAULTS = {
     favourites              = {},
     recentRecipients        = {},
     knownChars              = {},
+    sentWatch               = {},
     historyLog              = {},
     stats = {
         totalCopperLooted   = 0,
@@ -525,7 +532,22 @@ local function BuildRecipientList(category, filterText)
                 local sendTarget = FormatRecipientForMail(rec.name, rec.realm)
                 local favKey = sendTarget:lower()
                 local isFav = (favs[favKey] == true) or (favs[normKey] == true)
+                local watch = (db.showPendingAltBadge ~= false and type(db.sentWatch) == "table") and db.sentWatch[normKey] or nil
+                local watchSuffix = ""
+                if type(watch) == "table" and ((SafeNum(watch.copper, 0) > 0) or (SafeNum(watch.items, 0) > 0)) then
+                    local partsW = {}
+                    if SafeNum(watch.items, 0) > 0 then
+                        table.insert(partsW, string.format("%d item%s", watch.items, watch.items == 1 and "" or "s"))
+                    end
+                    if SafeNum(watch.copper, 0) > 0 then
+                        table.insert(partsW, FormatCopper(watch.copper))
+                    end
+                    watchSuffix = string.format("  |cFFFBBF24[Sent: %s]|r", table.concat(partsW, ", "))
+                end
                 if MatchesFilter(rec.name, sendTarget, rec.realm) then
+                    local baseSub = (NormalizeRealmNoSpace(rec.realm):lower() == NormalizeRealmNoSpace(myRealm):lower())
+                        and (db.showAltGold and FormatCopper(rec.money) or "Same Realm")
+                        or (rec.realm .. (db.showAltGold and ("  " .. FormatCopper(rec.money)) or ""))
                     table.insert(rows, {
                         name       = rec.name,
                         realm      = rec.realm,
@@ -533,9 +555,7 @@ local function BuildRecipientList(category, filterText)
                         favKey     = favKey,
                         classFile  = rec.classFile,
                         money      = rec.money,
-                        subText    = (NormalizeRealmNoSpace(rec.realm):lower() == NormalizeRealmNoSpace(myRealm):lower())
-                            and (db.showAltGold and FormatCopper(rec.money) or "Same Realm")
-                            or (rec.realm .. (db.showAltGold and ("  " .. FormatCopper(rec.money)) or "")),
+                        subText    = baseSub .. watchSuffix,
                         isFav      = isFav,
                         canFav     = true,
                     })
@@ -754,12 +774,13 @@ local function GetInboxSummary()
             totalItems = SafeNum(tot, numItems)
         end
     end
-    local totalCopper, totalAttachments, codCount, unreadCount = 0, 0, 0, 0
+    local totalCopper, totalAttachments, codCount, unreadCount, expiringCount = 0, 0, 0, 0, 0
     for i = 1, numItems do
-        local _, _, sender, subject, money, cod, _, hasItem, wasRead = GetInboxHeaderInfo(i)
+        local _, _, _, _, money, cod, daysLeft, hasItem, wasRead = GetInboxHeaderInfo(i)
         local m = SafeNum(money, 0)
         local c = SafeNum(cod, 0)
         local att = SafeNum(hasItem, 0)
+        local dLeft = SafeNum(daysLeft, 30)
         if c > 0 then
             codCount = codCount + 1
         else
@@ -769,6 +790,9 @@ local function GetInboxSummary()
         if not wasRead then
             unreadCount = unreadCount + 1
         end
+        if dLeft > 0 and dLeft < 3 then
+            expiringCount = expiringCount + 1
+        end
     end
     return {
         numItems         = numItems,
@@ -777,6 +801,7 @@ local function GetInboxSummary()
         totalAttachments = totalAttachments,
         codCount         = codCount,
         unreadCount      = unreadCount,
+        expiringCount    = expiringCount,
     }
 end
 
@@ -1090,15 +1115,303 @@ function DynamicMail:HandleBagSlotAltClick(bagID, slotID)
     return false
 end
 
+local function BuildEquipSetSlotMap()
+    local map = {}
+    if not (C_EquipmentSet and type(C_EquipmentSet.GetEquipmentSetIDs) == "function") then
+        return map
+    end
+    local okIds, ids = pcall(C_EquipmentSet.GetEquipmentSetIDs)
+    if not okIds or type(ids) ~= "table" then return map end
+    for _, setID in ipairs(ids) do
+        local okLocs, locs = pcall(C_EquipmentSet.GetItemLocations, setID)
+        if okLocs and type(locs) == "table" then
+            for _, loc in pairs(locs) do
+                if type(loc) == "number" and loc > 0 and _G.EquipmentManager_UnpackLocation then
+                    local okU, player, bank, bags, voidStorage, slot, bag = pcall(_G.EquipmentManager_UnpackLocation, loc)
+                    if okU and bags and type(bag) == "number" and type(slot) == "number" then
+                        map[bag .. ":" .. slot] = true
+                    end
+                elseif type(loc) == "number" and _G.EquipmentManager_GetLocationData then
+                    local okD, data = pcall(_G.EquipmentManager_GetLocationData, loc)
+                    if okD and type(data) == "table" and data.isBags and type(data.bag) == "number" and type(data.slot) == "number" then
+                        map[data.bag .. ":" .. data.slot] = true
+                    end
+                end
+            end
+        end
+    end
+    return map
+end
+
+local function InspectContainerMailCategory(bagID, slotID, equipMap)
+    if not (C_Container and type(C_Container.GetContainerItemInfo) == "function") then
+        return nil
+    end
+    local info = C_Container.GetContainerItemInfo(bagID, slotID)
+    if not info or not info.itemID or info.isLocked then
+        return nil
+    end
+    if equipMap and equipMap[bagID .. ":" .. slotID] then
+        return nil
+    end
+    if type(C_Container.GetContainerItemPurchaseInfo) == "function" then
+        local okP, refundInfo = pcall(C_Container.GetContainerItemPurchaseInfo, bagID, slotID)
+        if okP and type(refundInfo) == "table" and SafeNum(refundInfo.refundSecRemaining, 0) > 0 then
+            return nil
+        end
+    end
+
+    local loc = _G.ItemLocation and _G.ItemLocation.CreateFromBagAndSlot and _G.ItemLocation:CreateFromBagAndSlot(bagID, slotID)
+    local isBound = (info.isBound == true)
+    local isWuE = false
+    if loc and loc.IsValid and loc:IsValid() then
+        if C_Item and type(C_Item.IsBound) == "function" then
+            local okB, bRes = pcall(C_Item.IsBound, loc)
+            if okB and bRes ~= nil then isBound = (bRes == true) end
+        end
+        if C_Item and type(C_Item.IsBoundToAccountUntilEquipped) == "function" then
+            local okW, wRes = pcall(C_Item.IsBoundToAccountUntilEquipped, loc)
+            if okW and wRes then isWuE = true end
+        end
+    end
+
+    local isWarbound = isWuE
+    if not isWarbound and C_TooltipInfo and type(C_TooltipInfo.GetBagItem) == "function" then
+        local okT, tip = pcall(C_TooltipInfo.GetBagItem, bagID, slotID)
+        if okT and type(tip) == "table" and type(tip.lines) == "table" then
+            local wue1 = SafeStr(_G.ITEM_ACCOUNTBOUND_UNTIL_EQUIP, "Warbound until equipped"):lower()
+            local wue2 = SafeStr(_G.ITEM_BNETACCOUNTBOUND, "Warband Bound"):lower()
+            local wue3 = SafeStr(_G.ITEM_BIND_TO_BNETACCOUNT, "Account Bound"):lower()
+            local sb = SafeStr(_G.ITEM_SOULBOUND, "Soulbound"):lower()
+            local seenSoulbound = false
+            for _, ln in ipairs(tip.lines) do
+                local lt = SafeStr(ln.leftText, ""):lower()
+                if lt ~= "" then
+                    if lt:find(wue1, 1, true) or lt:find(wue2, 1, true) or lt:find(wue3, 1, true) or lt:find("warbound", 1, true) then
+                        isWarbound = true
+                    elseif lt == sb then
+                        seenSoulbound = true
+                    end
+                end
+            end
+            if seenSoulbound and not isWarbound then
+                isBound = true
+            end
+        end
+    end
+
+    if isBound and not isWarbound then
+        return nil
+    end
+
+    local classID = nil
+    if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+        local okI, _, _, _, _, _, cID = pcall(C_Item.GetItemInfoInstant, info.itemID)
+        if okI then classID = cID end
+    end
+    local IC = _G.Enum and _G.Enum.ItemClass
+    if IC and classID == IC.Questitem then
+        return nil
+    end
+
+    local isMat = false
+    if IC then
+        isMat = (classID == IC.Tradegoods or classID == IC.Profession or classID == IC.Recipe or classID == IC.Gem or classID == IC.ItemEnhancement)
+    else
+        isMat = (classID == 5 or classID == 7 or classID == 9 or classID == 3 or classID == 8)
+    end
+    local isGear = IC and (classID == IC.Armor or classID == IC.Weapon) or (classID == 4 or classID == 2)
+    local isBoE = (not isBound) and isGear
+
+    local itemName = nil
+    if C_Item and type(C_Item.GetItemNameByID) == "function" and info.hyperlink then
+        local okN, nStr = pcall(C_Item.GetItemNameByID, info.hyperlink)
+        if okN and type(nStr) == "string" then itemName = nStr end
+    end
+
+    return {
+        bagID      = bagID,
+        slotID     = slotID,
+        itemID     = info.itemID,
+        itemName   = itemName or info.itemName,
+        isMat      = isMat,
+        isBoE      = isBoE,
+        isWarbound = isWarbound,
+    }
+end
+
+function DynamicMail:BatchAttachByPreset(presetKey)
+    local db = EnsureDB()
+    if IsModuleDisabledInSuite("DynamicMail") or not db.enabled then return 0 end
+    if InCombatLockdown() then
+        Print("Cannot attach items during combat.")
+        return 0
+    end
+    if not (_G.MailFrame and _G.MailFrame:IsShown() and _G.SendMailFrame and _G.SendMailFrame:IsShown()) then
+        Print("Open the Send Mail tab at any mailbox first.")
+        return 0
+    end
+    local yielding = IsYieldingToExternalMailAddon()
+    if yielding then return 0 end
+
+    local key = tostring(presetKey or "MATS"):upper()
+    local sameNames = {}
+    if key == "SAME" then
+        local maxAttach = _G.ATTACHMENTS_MAX_SEND or 12
+        for idx = 1, maxAttach do
+            if type(GetSendMailItem) == "function" then
+                local okG, itemName = pcall(GetSendMailItem, idx)
+                if okG and type(itemName) == "string" and itemName ~= "" and not SafeIsSecret(itemName) then
+                    sameNames[itemName:lower()] = true
+                end
+            end
+        end
+        if not next(sameNames) then
+            Print("Attach at least one item first before using [+ Same].")
+            return 0
+        end
+    end
+
+    local equipMap = BuildEquipSetSlotMap()
+    local bagList = {}
+    local maxBag = _G.NUM_BAG_SLOTS or 4
+    for b = 0, maxBag do table.insert(bagList, b) end
+    local reagentIdx = _G.Enum and _G.Enum.BagIndex and _G.Enum.BagIndex.ReagentBag
+    if type(reagentIdx) == "number" and reagentIdx > maxBag then
+        table.insert(bagList, reagentIdx)
+    end
+
+    local attached = 0
+    local firstItemName = nil
+    for _, bagID in ipairs(bagList) do
+        local numSlots = (C_Container and C_Container.GetContainerNumSlots) and SafeNum(C_Container.GetContainerNumSlots(bagID), 0) or 0
+        for slotID = 1, numSlots do
+            local freeIdx = FindNextFreeSendAttachmentSlot()
+            if not freeIdx then break end
+            local cat = InspectContainerMailCategory(bagID, slotID, equipMap)
+            if cat then
+                local match = false
+                if key == "MATS" then
+                    match = cat.isMat and true or false
+                elseif key == "BOE" then
+                    match = cat.isBoE and true or false
+                elseif key == "WARBAND" then
+                    match = cat.isWarbound and true or false
+                elseif key == "SAME" then
+                    match = (type(cat.itemName) == "string" and sameNames[cat.itemName:lower()] == true)
+                end
+                if match then
+                    if type(ClearCursor) == "function" then ClearCursor() end
+                    if C_Container and type(C_Container.PickupContainerItem) == "function" then
+                        C_Container.PickupContainerItem(bagID, slotID)
+                    end
+                    if type(CursorHasItem) == "function" and CursorHasItem() then
+                        if type(ClickSendMailItemButton) == "function" then
+                            pcall(ClickSendMailItemButton, freeIdx)
+                        end
+                        if type(ClearCursor) == "function" and CursorHasItem() then
+                            ClearCursor()
+                        end
+                        attached = attached + 1
+                        if not firstItemName then firstItemName = cat.itemName end
+                    end
+                end
+            end
+        end
+        if not FindNextFreeSendAttachmentSlot() then break end
+    end
+
+    if attached > 0 then
+        if db.autoFillSubject and _G.SendMailSubjectEditBox and SafeStr(_G.SendMailSubjectEditBox:GetText(), "") == "" then
+            local subjLabel = (key == "MATS" and "Crafting Reagents")
+                or (key == "BOE" and "BoE Gear")
+                or (key == "WARBAND" and "Warbound Items")
+                or firstItemName
+                or "Mail Items"
+            _G.SendMailSubjectEditBox:SetText(subjLabel)
+        end
+        Print(string.format("Attached %d item stack(s) [%s].", attached, key))
+    else
+        Print(string.format("No eligible mailable items found for [%s].", key))
+    end
+    if RefreshSendPickerUI then
+        C_Timer.After(0.05, function() if RefreshSendPickerUI then RefreshSendPickerUI() end end)
+    end
+    return attached
+end
+
+function DynamicMail:AdjustSendGold(deltaCopper, resetToZero)
+    if InCombatLockdown() or not _G.SendMailMoney then return end
+    if type(MoneyInputFrame_SetCopper) ~= "function" then return end
+    if resetToZero then
+        pcall(MoneyInputFrame_SetCopper, _G.SendMailMoney, 0)
+        return
+    end
+    local cur = (type(MoneyInputFrame_GetCopper) == "function") and SafeNum(MoneyInputFrame_GetCopper(_G.SendMailMoney), 0) or 0
+    local myMoney = (type(GetMoney) == "function") and SafeNum(GetMoney(), 0) or 0
+    local postage = 30
+    local maxAllowed = math.max(0, myMoney - postage)
+    local nextVal = math.max(0, math.min(maxAllowed, cur + SafeNum(deltaCopper, 0)))
+    pcall(MoneyInputFrame_SetCopper, _G.SendMailMoney, nextVal)
+end
+
+function DynamicMail:GetPendingAltMailSummary(charKey)
+    local db = EnsureDB()
+    if type(db.sentWatch) ~= "table" then return nil end
+    local k = SafeStr(charKey, ""):lower()
+    if k == "" then return nil end
+    local base, rlm = k:match("^([^%-]+)%-(.+)$")
+    local norm = base and (base .. "-" .. NormalizeRealmNoSpace(rlm)) or k
+    return db.sentWatch[norm] or db.sentWatch[k]
+end
+
 local pendingSentRecord = nil
 local mailHooksInstalled = false
 
-local function RecordSentMailTarget(recipient, subject, copperAmt)
+local function RecordSentMailTarget(recipient, subject, copperAmt, attachCount)
     local db = EnsureDB()
     local target = SafeStr(recipient, ""):match("^%s*(.-)%s*$") or ""
     if target == "" then return end
     db.lastRecipient = target
     db.stats.totalMailsSent = (db.stats.totalMailsSent or 0) + 1
+
+    local _, _, myRealm = GetPlayerKeyAndParts()
+    local tBase, tRealm = target:match("^([^%-]+)%-(.+)$")
+    local tNormKey = (tBase and (tBase .. "-" .. NormalizeRealmNoSpace(tRealm)) or (target .. "-" .. NormalizeRealmNoSpace(myRealm))):lower()
+
+    local isKnownAlt = false
+    for ck, kc in pairs(db.knownChars or {}) do
+        if type(kc) == "table" then
+            local kNorm = (SafeStr(kc.name, "") .. "-" .. NormalizeRealmNoSpace(kc.realm)):lower()
+            if kNorm == tNormKey or SafeStr(ck, ""):lower() == tNormKey then
+                isKnownAlt = true
+                break
+            end
+        end
+    end
+    if not isKnownAlt and type(_G.DynamicBagsDB) == "table" and type(_G.DynamicBagsDB.vault) == "table" and type(_G.DynamicBagsDB.vault.characters) == "table" then
+        for ck, rec in pairs(_G.DynamicBagsDB.vault.characters) do
+            if type(rec) == "table" then
+                local cName = SafeStr(rec.name, "")
+                local cRealm = SafeStr(rec.realm, myRealm)
+                local vNorm = (cName .. "-" .. NormalizeRealmNoSpace(cRealm)):lower()
+                if vNorm == tNormKey or SafeStr(ck, ""):lower() == tNormKey then
+                    isKnownAlt = true
+                    break
+                end
+            end
+        end
+    end
+
+    if isKnownAlt then
+        db.sentWatch = db.sentWatch or {}
+        local w = db.sentWatch[tNormKey] or { copper = 0, items = 0, mails = 0 }
+        w.copper = SafeNum(w.copper, 0) + SafeNum(copperAmt, 0)
+        w.items  = SafeNum(w.items, 0) + SafeNum(attachCount, 0)
+        w.mails  = SafeNum(w.mails, 0) + 1
+        w.lastAt = time and time() or 0
+        db.sentWatch[tNormKey] = w
+    end
 
     if db.rememberRecent then
         local targetLow = target:lower()
@@ -1143,11 +1456,17 @@ local function InstallMailboxHooks()
                 local r = _G.SendMailNameEditBox and SafeStr(_G.SendMailNameEditBox:GetText(), "") or ""
                 local s = _G.SendMailSubjectEditBox and SafeStr(_G.SendMailSubjectEditBox:GetText(), "") or ""
                 local m = (type(MoneyInputFrame_GetCopper) == "function" and _G.SendMailMoney) and SafeNum(MoneyInputFrame_GetCopper(_G.SendMailMoney), 0) or 0
-                pendingSentRecord = { target = r, subject = s, money = m }
+                pendingSentRecord = { target = r, subject = s, money = m, attachCount = CountUsedSendAttachmentSlots() }
             end)
         end
         if type(_G.SendMailFrame_Update) == "function" then
             hooksecurefunc("SendMailFrame_Update", function()
+                local db = EnsureDB()
+                if db.restoreLastRecipient and db.lastRecipient ~= "" and _G.SendMailNameEditBox and _G.SendMailFrame and _G.SendMailFrame:IsShown() then
+                    if SafeStr(_G.SendMailNameEditBox:GetText(), "") == "" then
+                        _G.SendMailNameEditBox:SetText(db.lastRecipient)
+                    end
+                end
                 if RefreshSendPickerUI then RefreshSendPickerUI() end
             end)
         end
@@ -1155,6 +1474,26 @@ local function InstallMailboxHooks()
             hooksecurefunc("MailFrameTab_OnClick", function()
                 if RefreshInboxToolbarUI then RefreshInboxToolbarUI() end
                 if RefreshSendPickerUI then RefreshSendPickerUI() end
+            end)
+        end
+        if type(_G.InboxFrameItem_OnClick) == "function" then
+            hooksecurefunc("InboxFrameItem_OnClick", function(self, button)
+                local db = EnsureDB()
+                if IsModuleDisabledInSuite("DynamicMail") or not db.enabled or not db.shiftClickInboxLoot then return end
+                if InCombatLockdown() or not IsShiftKeyDown() or button ~= "LeftButton" then return end
+                local yielding = IsYieldingToExternalMailAddon()
+                if yielding then return end
+                local idx = self and self.index or (self and self.GetID and self:GetID())
+                if type(idx) == "number" and idx > 0 then
+                    local _, _, _, _, money, cod, _, hasItem = GetInboxHeaderInfo(idx)
+                    if SafeNum(cod, 0) <= 0 then
+                        if SafeNum(hasItem, 0) > 0 and type(AutoLootMailItem) == "function" then
+                            pcall(AutoLootMailItem, idx)
+                        elseif SafeNum(money, 0) > 0 and type(TakeInboxMoney) == "function" then
+                            pcall(TakeInboxMoney, idx)
+                        end
+                    end
+                end
             end)
         end
         if type(_G.ContainerFrameItemButton_OnModifiedClick) == "function" then
@@ -1362,6 +1701,9 @@ RefreshInboxToolbarUI = function(customNote)
         if sum.codCount > 0 then
             table.insert(parts, string.format("|cFFF87171%d COD|r", sum.codCount))
         end
+        if db.warnExpiringMail and SafeNum(sum.expiringCount, 0) > 0 then
+            table.insert(parts, string.format("|cFFFBBF24%d Expiring (<3d)|r", sum.expiringCount))
+        end
         bar.statusText:SetText(table.concat(parts, "   |   "))
     end
     bar:Show()
@@ -1545,11 +1887,70 @@ local function EnsureSendPickerPanel()
     end, "Clear Attached Items", "Return all currently attached items back to your bags.")
     panel.btnClearAttach:SetPoint("RIGHT", foot, "RIGHT", -6, 0)
 
+    -- Quick Attach & Quick Gold Action Dock (above footer)
+    local quickBar = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+    quickBar:SetHeight(52)
+    quickBar:SetPoint("BOTTOMLEFT", foot, "TOPLEFT", 0, 5)
+    quickBar:SetPoint("BOTTOMRIGHT", foot, "TOPRIGHT", 0, 5)
+    ApplyBackdrop(quickBar, { 0.035, 0.039, 0.051, 0.98 }, surf.border)
+    panel.quickBar = quickBar
+
+    local qaDefs = {
+        { key = "MATS",    label = "+ Mats",    tip = "Attach Crafting Reagents, Recipes, Gems & Enchants (up to 12 slots)." },
+        { key = "BOE",     label = "+ BoE",     tip = "Attach unbound Bind-on-Equip gear (skips Equipment Manager sets)." },
+        { key = "WARBAND", label = "+ Warband", tip = "Attach Warbound Until Equipped (WuE) and Account-Bound items." },
+        { key = "SAME",    label = "+ Same",    tip = "Find and attach more stacks matching items already queued in Send Mail." },
+    }
+    panel.qaBtns = {}
+    for idx, qd in ipairs(qaDefs) do
+        local qb = CreateOverlayActionBtn(quickBar, 56, 20, qd.label, false, function()
+            DynamicMail:BatchAttachByPreset(qd.key)
+        end, "Quick Attach: " .. qd.label, qd.tip)
+        panel.qaBtns[idx] = qb
+    end
+
+    local qgDefs = {
+        { delta = 10000000,   reset = false, label = "+1k g",  tip = "Add 1,000g to the Send Mail gold field." },
+        { delta = 100000000,  reset = false, label = "+10k g", tip = "Add 10,000g to the Send Mail gold field." },
+        { delta = 1000000000, reset = false, label = "+100k",  tip = "Add 100,000g to the Send Mail gold field." },
+        { delta = 0,          reset = true,  label = "Clear G",tip = "Reset Send Mail attached gold back to 0g." },
+    }
+    panel.qgBtns = {}
+    for idx, gd in ipairs(qgDefs) do
+        local gb = CreateOverlayActionBtn(quickBar, 56, 20, gd.label, false, function()
+            DynamicMail:AdjustSendGold(gd.delta, gd.reset)
+        end, "Quick Gold: " .. gd.label, gd.tip)
+        panel.qgBtns[idx] = gb
+    end
+    quickBar:SetScript("OnSizeChanged", function(self, w)
+        if not w or w < 60 then return end
+        local gap = 4
+        local eachW = math.floor((w - 10 - (3 * gap)) / 4)
+        for idx, qb in ipairs(panel.qaBtns) do
+            qb:ClearAllPoints()
+            qb:SetWidth(eachW)
+            if idx == 1 then
+                qb:SetPoint("TOPLEFT", self, "TOPLEFT", 5, -5)
+            else
+                qb:SetPoint("LEFT", panel.qaBtns[idx - 1], "RIGHT", gap, 0)
+            end
+        end
+        for idx, gb in ipairs(panel.qgBtns) do
+            gb:ClearAllPoints()
+            gb:SetWidth(eachW)
+            if idx == 1 then
+                gb:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 5, 5)
+            else
+                gb:SetPoint("LEFT", panel.qgBtns[idx - 1], "RIGHT", gap, 0)
+            end
+        end
+    end)
+
     -- Scrollable Recipient List with 3-Way Interactive 4px Obsidian Scrollbar
     local listFrame = CreateFrame("Frame", nil, panel, "BackdropTemplate")
     listFrame:SetPoint("TOPLEFT", sbHolder, "BOTTOMLEFT", 0, -6)
     listFrame:SetPoint("TOPRIGHT", sbHolder, "BOTTOMRIGHT", 0, -6)
-    listFrame:SetPoint("BOTTOM", foot, "TOP", 0, 6)
+    listFrame:SetPoint("BOTTOM", quickBar, "TOP", 0, 5)
     ApplyBackdrop(listFrame, { 0.030, 0.035, 0.046, 0.98 }, surf.border)
     panel.listFrame = listFrame
 
@@ -1725,6 +2126,28 @@ RefreshSendPickerUI = function()
     local usedAttach = CountUsedSendAttachmentSlots()
     panel.attachLabel:SetText(string.format("Attached: |cFF%s%d / 12|r", acc.hex, usedAttach))
     StyleObsidianOverlayBtn(panel.btnClearAttach, false)
+    if panel.quickBar then
+        local showQuick = (db.showQuickAttachBar ~= false) or (db.showQuickGoldBar ~= false)
+        panel.quickBar:SetShown(showQuick)
+        panel.listFrame:ClearAllPoints()
+        panel.listFrame:SetPoint("TOPLEFT", panel.sbHolder, "BOTTOMLEFT", 0, -6)
+        panel.listFrame:SetPoint("TOPRIGHT", panel.sbHolder, "BOTTOMRIGHT", 0, -6)
+        if showQuick then
+            local wantH = ((db.showQuickAttachBar ~= false) and (db.showQuickGoldBar ~= false)) and 52 or 28
+            panel.quickBar:SetHeight(wantH)
+            for _, qb in ipairs(panel.qaBtns or {}) do
+                qb:SetShown(db.showQuickAttachBar ~= false)
+                StyleObsidianOverlayBtn(qb, false)
+            end
+            for _, gb in ipairs(panel.qgBtns or {}) do
+                gb:SetShown(db.showQuickGoldBar ~= false)
+                StyleObsidianOverlayBtn(gb, false)
+            end
+            panel.listFrame:SetPoint("BOTTOM", panel.quickBar, "TOP", 0, 5)
+        else
+            panel.listFrame:SetPoint("BOTTOM", panel.foot, "TOP", 0, 6)
+        end
+    end
 
     local listW = math.max(180, (panel.scroll:GetWidth() or 220) - 2)
     panel.child:SetWidth(listW)
@@ -2536,6 +2959,18 @@ local function RenderMailEmbedded(parent)
                 function(v) db.deleteEmptySystemMail = v end, false)
             sy2 = sy2 + dy8
 
+            local _, dy9 = CreateSegmentedSwitchCard(sec2, sy2, "Shift-Click Inbox Row to Quick-Loot",
+                "Hold Shift and Left-Click any non-COD inbox letter to loot its gold or items without opening it.",
+                function() return db.shiftClickInboxLoot end,
+                function(v) db.shiftClickInboxLoot = v end, false)
+            sy2 = sy2 + dy9
+
+            local _, dy10 = CreateSegmentedSwitchCard(sec2, sy2, "Warn on Expiring Mail (< 3 Days Left)",
+                "Highlight expiring mails in the Mailbox Quick Action Bar when fewer than 3 days remain.",
+                function() return db.warnExpiringMail end,
+                function(v) db.warnExpiringMail = v; RefreshInboxToolbarUI() end, false)
+            sy2 = sy2 + dy10
+
             local sec2H = math.abs(sy2) + 8
             sec2:SetHeight(sec2H)
             y = y - (sec2H + 10)
@@ -2603,6 +3038,24 @@ local function RenderMailEmbedded(parent)
                 function() return db.autoOpenBagsAtMail end,
                 function(v) db.autoOpenBagsAtMail = v end, false)
             sy2 = sy2 + dy8
+
+            local _, dy9 = CreateSegmentedSwitchCard(sec2, sy2, "Show Quick-Attach Preset Buttons (+ Mats / BoE / Warband / Same)",
+                "Display 1-click batch attachment preset buttons in the Send Mail Recipient Picker.",
+                function() return db.showQuickAttachBar end,
+                function(v) db.showQuickAttachBar = v; RefreshSendPickerUI() end, false)
+            sy2 = sy2 + dy9
+
+            local _, dy10 = CreateSegmentedSwitchCard(sec2, sy2, "Show Quick-Gold Buttons (+1k / +10k / +100k / Clear G)",
+                "Display 1-click gold increment buttons in the Send Mail Recipient Picker.",
+                function() return db.showQuickGoldBar end,
+                function(v) db.showQuickGoldBar = v; RefreshSendPickerUI() end, false)
+            sy2 = sy2 + dy10
+
+            local _, dy11 = CreateSegmentedSwitchCard(sec2, sy2, "Show Pending Alt Mail Badges & Auto-Restore Recipient",
+                "Badge alts after sending them gold or items (clears when that alt opens mail) and restore last target.",
+                function() return db.showPendingAltBadge end,
+                function(v) db.showPendingAltBadge = v; db.restoreLastRecipient = v; RefreshSendPickerUI() end, false)
+            sy2 = sy2 + dy11
 
             local sec2H = math.abs(sy2) + 8
             sec2:SetHeight(sec2H)
@@ -2896,6 +3349,14 @@ DynamicMail.SEARCH_ENTRIES = {
       title = "Alt + Left-Click Bag Item to Attach",
       desc = "Quickly attach bag items directly into Send Mail slots with Alt + Left-Click.",
       keywords = "mail express attach alt left click bags send item" },
+    { moduleKey = "mail", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Sending & Alt Picker",
+      title = "Quick-Attach Preset Buttons (+ Mats / BoE / Warband / Same)",
+      desc = "Fill up to 12 Send Mail attachment slots with reagents, BoE gear, Warbound items, or matching stacks in 1 click.",
+      keywords = "mail quick attach mats boe warbound same reagent stacks bulk" },
+    { moduleKey = "mail", category = "BAGS_QOL", tabIndex = 1, tabLabel = "Inbox & Automation",
+      title = "Shift-Click Inbox Row & Expiring Mail Alerts",
+      desc = "Shift + Left-Click inbox rows to loot instantly and highlight mails with fewer than 3 days remaining.",
+      keywords = "mail shift click quick loot expiring alert days left" },
     { moduleKey = "mail", category = "BAGS_QOL", tabIndex = 3, tabLabel = "History, Stats & Reset",
       title = "Mailbox Lifetime Telemetry & Log",
       desc = "View lifetime gold looted, items collected, sent mail counts, and recent mailbox history.",
@@ -2906,6 +3367,7 @@ DynamicMail.CHANGELOG = {
     version = VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "NEW", text = "Smart Bulk-Attach Presets, Quick Gold & Pending Alt Mail Tracking (18/11/2026): Added 1-click Quick-Attach preset buttons ([+ Mats], [+ BoE], [+ Warband], [+ Same]) with Equipment Manager & Soulbound protection; [+1k g] / [+10k g] / [+100k] / [Clear G] Quick-Gold buttons; Pending Alt Mail Sent badges in the Alts picker (auto-clearing when that alt visits a mailbox); Shift + Left-Click inbox row quick-loot; and Expiring (<3d) mailbox alerts." },
         { type = "NEW", text = "Initial v2.4.0 Release (18/11/2026): Added DynamicMail (/dmail, /dynamicmail) with 1-click Inbox Open All, AH Gold, and Items Only collection; automatic COD and bag-reserve protection; 4-tab Recipient Picker (Alts synced from DynamicBags Vault with class colours & gold, Recent, Guild, and Friends with Favourite pinning); Alt + Left-Click Express Multi-Attach from bags; auto-subject fill; lifetime gold & item telemetry; and full DynamicSuite + standalone compatibility." },
     },
 }
@@ -3013,6 +3475,11 @@ DynamicMail:SetScript("OnEvent", function(self, event, arg1)
         RecordCurrentCharacterSnapshot()
         InstallMailboxHooks()
         local db = EnsureDB()
+        local _, pName, pRealm = GetPlayerKeyAndParts()
+        local myNormKey = (pName .. "-" .. NormalizeRealmNoSpace(pRealm)):lower()
+        if type(db.sentWatch) == "table" and db.sentWatch[myNormKey] then
+            db.sentWatch[myNormKey] = nil
+        end
         if not IsModuleDisabledInSuite("DynamicMail") and db.enabled then
             if db.autoOpenBagsAtMail and not InCombatLockdown() and type(OpenAllBags) == "function" then
                 pcall(OpenAllBags)
@@ -3032,7 +3499,7 @@ DynamicMail:SetScript("OnEvent", function(self, event, arg1)
         if sendPanel then sendPanel:Hide() end
     elseif event == "MAIL_SEND_SUCCESS" then
         if pendingSentRecord then
-            RecordSentMailTarget(pendingSentRecord.target, pendingSentRecord.subject, pendingSentRecord.money)
+            RecordSentMailTarget(pendingSentRecord.target, pendingSentRecord.subject, pendingSentRecord.money, pendingSentRecord.attachCount)
             pendingSentRecord = nil
         end
         RecordCurrentCharacterSnapshot()
@@ -3062,6 +3529,8 @@ SlashCmdList["DYNAMICMAIL"] = function(msg)
         DynamicMail:StartBatchOpen("AH_GOLD")
     elseif cmd == "items" or cmd == "loot" then
         DynamicMail:StartBatchOpen("ITEMS")
+    elseif cmd == "mats" or cmd == "boe" or cmd == "warband" or cmd == "same" then
+        DynamicMail:BatchAttachByPreset(cmd)
     elseif cmd == "stop" or cmd == "abort" then
         DynamicMail:AbortBatchOpen()
     elseif cmd == "reset" then
