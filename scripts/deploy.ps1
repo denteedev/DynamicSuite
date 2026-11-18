@@ -185,7 +185,7 @@ if ($markerChangelogHead -notmatch [regex]::Escape("Release: v$suiteVer")) {
     throw "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md header does not match lockstep version v$suiteVer"
 }
 $markerChangelogRaw = [System.IO.File]::ReadAllText($markerChangelogPath)
-$forbiddenMarkerChangelogTerms = @("DynamicGroup", "DynamicPrep", "DynamicBags", "DynamicLoad", "DynamicChat", "DynamicFPS", "DynamicZoom", "All 8 Modules")
+$forbiddenMarkerChangelogTerms = @("DynamicGroup", "DynamicPrep", "DynamicBags", "DynamicLoad", "DynamicChat", "DynamicFPS", "DynamicZoom", "DynamicMail", "All 8 Modules", "All 9 Modules")
 $foundBleed = @()
 foreach ($term in $forbiddenMarkerChangelogTerms) {
     if ($markerChangelogRaw -match [regex]::Escape($term)) {

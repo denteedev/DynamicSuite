@@ -22,7 +22,7 @@ local CONTEXT_TABS = {
     { key = "raid",    label = "Raid" },
     { key = "pvp",     label = "PvP" },
 }
-local STANDALONE_FRAME_NAMES = { "DynamicFPSMainFrame", "DynamicFPSStandaloneFrame", "DynamicFrameMainFrame", "DynamicZoomStandaloneFrame", "DynamicMarkerMainFrame", "DynamicPrepMainFrame", "DynamicGroupMainFrame", "DynamicBagsStandaloneFrame", "DynamicChatStandaloneFrame" }
+local STANDALONE_FRAME_NAMES = { "DynamicFPSMainFrame", "DynamicFPSStandaloneFrame", "DynamicFrameMainFrame", "DynamicZoomStandaloneFrame", "DynamicMarkerMainFrame", "DynamicPrepMainFrame", "DynamicGroupMainFrame", "DynamicBagsStandaloneFrame", "DynamicChatStandaloneFrame", "DynamicMailStandaloneWindow" }
 
 local selectedTabKey = "outdoor"
 local selectedAltKey = nil
@@ -1008,6 +1008,8 @@ local MODULE_ICON_PATHS = {
     ["bags"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga",
     ["DynamicChat"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
     ["chat"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
+    ["DynamicMail"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga",
+    ["mail"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga",
 }
 
 function UI.GetModuleIconPath(modKey, fallbackIcon)
@@ -4718,6 +4720,9 @@ function addonTable.CreateMainConfigUI()
                     if addonKey == "DynamicChat" and _G.DynamicChat and type(_G.DynamicChat.TeardownDisabledState) == "function" then
                         pcall(_G.DynamicChat.TeardownDisabledState, _G.DynamicChat, true)
                     end
+                    if addonKey == "DynamicMail" and _G.DynamicMail and type(_G.DynamicMail.TeardownDisabledState) == "function" then
+                        pcall(_G.DynamicMail.TeardownDisabledState, _G.DynamicMail)
+                    end
                     addonTable._pendingSuiteModuleReload = true
                     if selectedPeerModuleKey == addonKey and activeWorkspaceView == "PEER_HOST" then
                         addonTable.OpenWorkspaceView("PEER_MODULE")
@@ -5130,7 +5135,7 @@ function addonTable.CreateMainConfigUI()
         local parts = { tostring(addonTable.ADDON_VERSION or "1.3.0") }
         local clReg = _G.DynamicSuite and _G.DynamicSuite.Changelogs
         if type(clReg) == "table" then
-            for _, k in ipairs({ "DynamicLoad", "DynamicMarker", "DynamicZoom", "DynamicFPS", "DynamicPrep", "DynamicGroup", "DynamicBags", "DynamicChat" }) do
+            for _, k in ipairs({ "DynamicLoad", "DynamicMarker", "DynamicZoom", "DynamicFPS", "DynamicPrep", "DynamicGroup", "DynamicBags", "DynamicChat", "DynamicMail" }) do
                 local c = clReg[k]
                 if type(c) == "table" then
                     local entries = c.entries or {}
@@ -8291,6 +8296,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "NEW",      title = "v2.4.0 Release: New DynamicMail Module (/dmail), Alt Vault Picker & Express Attach", desc = "Added DynamicMail as DynamicSuite's 9th dual-mode module with 1-click Inbox Open All, AH Gold, and Items Only collection; automatic COD and bag-reserve protection; a 4-tab Recipient Picker synced with DynamicBags Alt Vault (class colours, gold balances & Favourite stars); Alt + Left-Click Express Multi-Attach from bags; and lifetime gold/item telemetry." },
                 { badge = "FIXED",    title = "v2.3.2 Release (18/11/2026): Proactive DecorVendor /tm Quarantine Modal & Tier-1 Conflict Protection", desc = "Promoted DecorVendor ('Decor Vendor') to a Tier-1 HARD conflict under DynamicMarker across Guided Setup, module conflict banners, and /ds conflicts, and added a Midnight Pitch Black (#06070A-#090A0D) Obsidian warning modal ('Raid Marker Blocked by Addon Conflict', safely deferred until out of combat) whenever DecorVendor is active on login/reload or whenever World of Warcraft blocks SetRaidTarget() / SetRaidTargetIcon(). Includes a 1-click 'Disable <Addon> (Set to Never)' button across all DynamicLoad zone profiles, session-throttled Dismiss, and plain-English instructions to completely Exit & Restart World of Warcraft." },
                 { badge = "FIXED",    title = "v2.3.2 Release (18/11/2026): Post-Combat MacroFrame Protection & Automatic Icon Grid Refresh", desc = "Protected the Blizzard Macros window (MacroFrame) inside DesktopWindows during combat lockdown so opening or viewing Macros mid-fight never detaches, moves, rescales, or hides the window, and added an automatic post-combat refresh on PLAYER_REGEN_ENABLED so all General and Character-Specific macro icons reappear cleanly across DIALOG/HIGH focus transitions and ElvUI Blizzard skinning without switching tabs or reopening the window." },
                 { badge = "FIXED",    title = "v2.3.2 Release (18/11/2026): Universal Mousewheel Scrolling Across All 32 Managed Blizzard Windows", desc = "Restored smooth normal mousewheel scrolling across Collections, Achievements, Professions, Macros, Character/Reputation, Adventure Guide, Talents & Spellbook, and all 32 managed Blizzard Desktop Windows by restricting Ctrl+Scroll session scaling to the 28px top title bar and activating the window-wide Ctrl+Shift+Scroll permanent scale overlay strictly while Ctrl+Shift is held." },
@@ -8545,6 +8551,19 @@ function addonTable.CreateMainConfigUI()
                 { badge = "NEW",      title = "GPU & Framerate Chat Buffer Optimizer (SetMaxLines)", desc = "Caps ChatFrame1..10 line retention via SetMaxLines ([ 120 Lines | 250 Lines | 500 Lines | 1000 Lines ], default 250) out of combat to prevent chat-history vertex buffer bloat over long raid/M+ sessions, with zero SavedVariables chat log bloat." },
                 { badge = "NEW",      title = "2-Tier Chat Conflict Scanner & Shared-Hook Auto-Yield Engine", desc = "Detects Direct Replacement chat addons (Chattynator, Prat 3.0, BasicChatMods, Chatter, LS: Glass, Glass, PhanxChat, DejaChat) with 1-click [Use DynamicChat] freeze or [Keep <Addon>], plus Partial Shared-Hook auto-yield (WIM, Leatrix Plus, ElvUI, WindTools)." },
                 { badge = "NEW",      title = "Zero-Taint Compact Channel Tags, Arrow History & Clickable URLs", desc = "Replaces verbose channel prefixes with clean [P], [PL], [R], [RL], [RW], [I], [IL], [G], and [O] tags via global format strings, enables Up/Down arrow history without Alt, and opens DynamicChatCopyPopup on URL clicks." },
+            },
+        },
+        {
+            key = "mail",
+            tabLabel = "DynamicMail",
+            ver = DS_LIVE_VER_TAG,
+            date = "18/11/2026 (Retail 12.1.5)",
+            title = "DynamicMail " .. DS_LIVE_VER_TAG,
+            subtitle = "1-Click Inbox Open All / AH Gold, Alt Vault Recipient Picker & Express Bag Attach (/dmail)",
+            icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga",
+            openModule = "DynamicMail",
+            items = {
+                { badge = "NEW",      title = "v2.4.0 Release: Smart Inbox Collection, Alt Vault Picker & Express Multi-Attach", desc = "Launched DynamicMail (/dmail, /dynamicmail) with 1-click Open All, AH Gold, and Items Only buttons below MailFrame; strict COD protection and configurable free bag-slot reserve; a 4-tab Obsidian Recipient Picker beside Send Mail (Alts synced automatically from DynamicBags Vault with class colours & gold balances, Recent, Guild, and Friends with Favourite stars); Alt + Left-Click Express Multi-Attach from bags with optional Subject auto-fill; and lifetime gold & item telemetry." },
             },
         },
     }
@@ -9127,7 +9146,7 @@ function addonTable.CreateMainConfigUI()
     UI.CreatePixelBorder(stepNavBar, 1, 1, 1, 0.08, 2)
 
     local stepPillBtns = {}
-    for i = 1, 9 do
+    for i = 1, 10 do
         local spBtn = CreateFlatButton(stepNavBar, 100, 26, "", false)
         spBtn.label:ClearAllPoints()
         spBtn.label:SetPoint("LEFT", spBtn, "LEFT", 3, 0)
@@ -9926,7 +9945,7 @@ function addonTable.CreateMainConfigUI()
                 actionLabel = "Open DynamicLoad (/dl)",
                 onAction = function() addonTable.OpenWorkspaceView("DYNAMICLOAD") end,
                 summaryText = "|cFF38BDF8Smart Addon Scan Summary:|r\n" ..
-                    "- |cFFFACC15Suite Core Modules Active Across All 5 Zones:|r DynamicLoad, DynamicMarker, DynamicZoom, DynamicFPS, DynamicPrep, DynamicGroup, DynamicBags, DynamicChat\n" ..
+                    "- |cFFFACC15Suite Core Modules Active Across All 5 Zones:|r DynamicLoad, DynamicMarker, DynamicZoom, DynamicFPS, DynamicPrep, DynamicGroup, DynamicBags, DynamicChat, DynamicMail\n" ..
                     "- |cFF22C55ERoutes Economy & Collection Addons to Outdoor Safe Harbor:|r TSM, Auctionator, AllTheThings, RareScanner, HandyNotes, TomTom\n" ..
                     "- |cFFCBD5E1New Addon Protection:|r Any future addon you install defaults safely to Outdoor Only until you approve it.",
                 choices = {
@@ -10322,6 +10341,57 @@ function addonTable.CreateMainConfigUI()
             })
         end
 
+        if IsModActive("DynamicMail") then
+            table.insert(steps, {
+                key = "mail",
+                pill = (#steps + 1) .. ". Mail",
+                title = "DYNAMICMAIL - INBOX AUTOMATION, ALT PICKER & EXPRESS ATTACH",
+                desc = "1-click Open All, AH Gold, and Items Only collection with bag-reserve protection plus an Obsidian Alt Vault recipient picker (/dmail).",
+                actionLabel = "Open DynamicMail (/dmail)",
+                onAction = function() addonTable.OpenPeerModule("DynamicMail") end,
+                summaryText = "|cFF38BDF8DynamicMail Automation:|r\n" ..
+                    "- |cFF22C55ESmart Inbox Bar:|r Open All, AH Gold, and Items Only buttons below MailFrame with strict COD & free bag-slot reserve guards.\n" ..
+                    "- |cFFF5B82EAlt Vault Picker & Express Attach:|r Syncs alts & gold from DynamicBags Vault and lets you Alt + Left-Click bag items into Send Mail.",
+                choices = {
+                    {
+                        title = "Enable Inbox Bar, Alt Picker & Express Attach",
+                        badge = "Recommended",
+                        isSelected = function()
+                            return (not _G.DynamicMailDB) or (_G.DynamicMailDB.mailboxBarEnabled ~= false and _G.DynamicMailDB.recipientPanelEnabled ~= false and _G.DynamicMailDB.altClickAttach ~= false)
+                        end,
+                        desc = "Enables Open All / AH Gold / Items Only mailbox buttons, the 4-tab Recipient Picker, DynamicBags Vault sync, and Alt + Left-Click attach.",
+                        onClick = function(card)
+                            if _G.DynamicMailDB then
+                                _G.DynamicMailDB.enabled = true
+                                _G.DynamicMailDB.mailboxBarEnabled = true
+                                _G.DynamicMailDB.recipientPanelEnabled = true
+                                _G.DynamicMailDB.syncDynamicBagsVault = true
+                                _G.DynamicMailDB.altClickAttach = true
+                            end
+                            card.badge:SetText("Mail Tools Active!")
+                            StyleChoiceCard(card, true)
+                        end,
+                    },
+                    {
+                        title = "Reserve 2 Free Bag Slots During Open All",
+                        badge = "Safe Mode",
+                        isSelected = function()
+                            return _G.DynamicMailDB and (_G.DynamicMailDB.keepFreeBagSlots or 1) >= 2
+                        end,
+                        desc = "Pauses item looting once 2 bag slots remain free while continuing to collect pure Auction House gold payouts.",
+                        onClick = function(card)
+                            if _G.DynamicMailDB then
+                                _G.DynamicMailDB.keepFreeBagSlots = 2
+                                _G.DynamicMailDB.collectGoldWhenBagsFull = true
+                            end
+                            card.badge:SetText("2-Slot Reserve Set!")
+                            StyleChoiceCard(card, true)
+                        end,
+                    },
+                },
+            })
+        end
+
         return steps
     end
 
@@ -10334,7 +10404,7 @@ function addonTable.CreateMainConfigUI()
         local ar, ag, ab = UI.GetActiveAccentColor()
         local accentCol = { r = ar, g = ag, b = ab }
 
-        for i = 1, 9 do
+        for i = 1, 10 do
             local btn = stepPillBtns[i]
             local sDef = steps[i]
             if sDef then

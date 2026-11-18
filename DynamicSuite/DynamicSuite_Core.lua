@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.3.2"
+    local fb = fallback or "2.4.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.3.2")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.4.0")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "FEATURE", text = "Release v2.4.0 - New DynamicMail Module (/dmail), Alt Vault Recipient Picker & Express Bag Attach (18/11/2026): Added DynamicMail as DynamicSuite's 9th dual-mode module (both bundled and standalone) with 1-click Inbox Open All, AH Gold, and Items Only collection; automatic COD protection and configurable free bag-slot reserve; a 4-tab Recipient Picker docked cleanly beside Send Mail (Alts synced automatically from DynamicBags Vault with class colours & gold balances, Recent, Guild, and Friends with Favourite pinning); Alt + Left-Click Express Multi-Attach from bags; auto-subject fill; lifetime gold & item telemetry; and full Guided Setup + Global Smart Search integration." },
         { type = "FIX",     text = "Release v2.3.2 - Proactive DecorVendor /tm Quarantine Modal, Post-Combat MacroFrame Refresh, 1-Click Housing Decor Open & Universal Mousewheel Fixes (18/11/2026): Promoted DecorVendor ('Decor Vendor') to a Tier-1 HARD conflict under DynamicMarker across DynamicSuite and standalone DynamicMarker, and added a Midnight Pitch Black (#06070A-#090A0D) Obsidian warning modal ('Raid Marker Blocked by Addon Conflict', safely deferred until out of combat) whenever DecorVendor is active on login/reload or whenever World of Warcraft blocks SetRaidTarget() / SetRaidTargetIcon(), with 1-click 'Disable <Addon> (Set to Never)' across all DynamicLoad zone profiles, session-throttled Dismiss, and plain-English Exit & Restart guidance; protected the Blizzard Macros window (MacroFrame) during combat and automatically refreshed its macro selector list and icon grid on leaving combat across DIALOG/HIGH focus transitions and ElvUI Blizzard skinning; enabled 1-click Housing Decor non-tradeable confirmation handling in DynamicBags Open (N) / Alt+MouseWheel (with Retail 12.1.5 pooled StaticPopup, END_BOUND_TRADEABLE, and USE_NO_REFUND_CONFIRM support out of combat while ignoring manual bag clicks, loot rolls, and non-Decor items); and restored smooth mousewheel scrolling across DynamicBags, DynamicBank, and all 32 managed Blizzard Desktop Windows." },
         { type = "FIX",     text = "DynamicBags ESC / B Keybind Closure, Top-Most Window Escape Priority & GameMenu Failsafe Guard (18/11/2026): Removed the conflicting GameMenuFrame OnShow hide hack from DynamicBagsFrame and compacted nil holes/duplicates out of UISpecialFrames in both DynamicSuite_Core.lua and DynamicBags.lua; coordinated top-most one-window-at-a-time Escape ordering across DynamicBagsBankFrame, DynamicBagsFrame, DynamicBagsStandaloneFrame, and DesktopWindows SUPPORTED_BLIZZ_FRAMES (closing bank -> bags -> Blizzard panels sequentially before GameMenuFrame can open); and added a ToggleGameMenu/CloseSpecialWindows failsafe in DynamicBags.lua so even if DynamicBagsFrame or DynamicBagsBankFrame is protected by slot children or missed by CloseSpecialWindows, ESC reliably clears search first or closes the top-most bag/bank window without opening Options / Game Menu while keeping B keybind two-way toggling spotless before and after ESC." },
         { type = "FIX",     text = "DynamicBags ESC & B Keybind Closing, CloseAllBags & Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) / OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so B and ESC never get swallowed; preserved Escape-first search clearing when focused (OnEscapePressed) or unfocused via a combat-guarded CloseSpecialWindows post-hook (restoring open bag/bank windows once while clearing search, then closing cleanly on the second ESC via UISpecialFrames); and updated ToggleWindow() and hooked CloseAllBags() so B and CloseAllBags hide both DynamicBagsFrame and DynamicBagsBankFrame reliably out of combat." },
@@ -141,6 +142,7 @@ local CORE_SUITE_ADDONS = addonTable.CORE_SUITE_ADDONS or {
     ["DynamicGroup"]  = true,
     ["DynamicBags"]   = true,
     ["DynamicChat"]   = true,
+    ["DynamicMail"]   = true,
 }
 local SUITE_MODULES = addonTable.SUITE_MODULES or {
     "DynamicSuite",
@@ -152,6 +154,7 @@ local SUITE_MODULES = addonTable.SUITE_MODULES or {
     "DynamicGroup",
     "DynamicBags",
     "DynamicChat",
+    "DynamicMail",
 }
 addonTable.PROTECTED_ADDONS    = PROTECTED_ADDONS
 addonTable.CORE_SUITE_ADDONS   = CORE_SUITE_ADDONS
@@ -272,6 +275,19 @@ local SUITE_MODULE_LIST = addonTable.SUITE_MODULE_LIST or {
         category = "Target Whisper (/ww), Channel Tags & Performance",
         desc = "Instant /ww target whispers, smoked-glass chat skin with left shortcut bar, clickable links, and saved chat history across reloads.",
     },
+    {
+        key = "mail",
+        id = "mail",
+        order = 90,
+        name = "DynamicMail",
+        title = "DynamicMail",
+        addonName = "DynamicMail",
+        slash = "/dmail",
+        icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga",
+        subtitle = "Inbox, Alts & Gold Mail",
+        category = "Mailbox Automation, Alt Picker & Express Attach",
+        desc = "1-click Open All, AH Gold, and Items Only collection, DynamicBags Alt Vault recipient picker, and Alt+Left-Click bag attach.",
+    },
 }
 addonTable.SUITE_MODULE_LIST = SUITE_MODULE_LIST
 DynamicSuite.MODULE_LIST = SUITE_MODULE_LIST
@@ -359,6 +375,15 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
         softConflicts = { "EnhanceQoL", "EnhanceQoLChatSocial", "Leatrix_Plus", "WindTools" },
         category = "Chat & Communications",
     },
+    DynamicMail = {
+        "Postal", "EasyMail", "CT_MailMod", "InboxMailBag", "MailCommander",
+        addons = { "Postal", "EasyMail", "CT_MailMod", "InboxMailBag", "MailCommander", "TradeSkillMaster", "Leatrix_Plus", "EnhanceQoL", "ElvUI" },
+        conflicts = { "Postal", "EasyMail", "CT_MailMod", "InboxMailBag", "MailCommander" },
+        hardConflicts = { "Postal", "EasyMail", "CT_MailMod", "InboxMailBag", "MailCommander" },
+        partialConflicts = { "TradeSkillMaster", "Leatrix_Plus", "EnhanceQoL", "ElvUI" },
+        softConflicts = { "TradeSkillMaster", "Leatrix_Plus", "EnhanceQoL", "ElvUI" },
+        category = "Mailbox & Auction Gold",
+    },
 }
 CONFLICT_REGISTRY.load   = CONFLICT_REGISTRY.DynamicLoad
 CONFLICT_REGISTRY.marker = CONFLICT_REGISTRY.DynamicMarker
@@ -368,6 +393,7 @@ CONFLICT_REGISTRY.prep   = CONFLICT_REGISTRY.DynamicPrep
 CONFLICT_REGISTRY.group  = CONFLICT_REGISTRY.DynamicGroup
 CONFLICT_REGISTRY.bags   = CONFLICT_REGISTRY.DynamicBags
 CONFLICT_REGISTRY.chat   = CONFLICT_REGISTRY.DynamicChat
+CONFLICT_REGISTRY.mail   = CONFLICT_REGISTRY.DynamicMail
 addonTable.CONFLICT_REGISTRY = CONFLICT_REGISTRY
 DynamicSuite.CONFLICT_REGISTRY = CONFLICT_REGISTRY
 
@@ -458,6 +484,12 @@ local FRIENDLY_CONFLICT_NAMES = addonTable.FRIENDLY_CONFLICT_NAMES or {
     ["BlizzMove"]                = "BlizzMove",
     ["DeModal"]                  = "DeModal",
     ["MoveAny"]                  = "MoveAny",
+    ["Postal"]                   = "Postal",
+    ["EasyMail"]                 = "EasyMail",
+    ["CT_MailMod"]               = "CT_MailMod",
+    ["InboxMailBag"]             = "InboxMailBag",
+    ["MailCommander"]            = "MailCommander",
+    ["TradeSkillMaster"]         = "TradeSkillMaster (TSM)",
 }
 addonTable.FRIENDLY_CONFLICT_NAMES = FRIENDLY_CONFLICT_NAMES
 DynamicSuite.FRIENDLY_CONFLICT_NAMES = FRIENDLY_CONFLICT_NAMES
@@ -491,6 +523,7 @@ local CONFLICT_YIELD_FEATURES = {
     ["DeModal"]                  = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
     ["MoveAny"]                  = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
     ["DecorVendor"]              = "raid target marker (/tm) taint in dungeons & raids",
+    ["TradeSkillMaster"]         = "mailbox / sending overlap (DynamicMail)",
 }
 addonTable.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
 DynamicSuite.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
@@ -802,6 +835,7 @@ local function NormalizeSuiteModuleId(modKeyOrName)
     elseif low == "group" then return "DynamicGroup", "group"
     elseif low == "bags" then return "DynamicBags", "bags"
     elseif low == "chat" then return "DynamicChat", "chat"
+    elseif low == "mail" then return "DynamicMail", "mail"
     end
     return s, low
 end
@@ -890,6 +924,9 @@ local function SetSuiteModuleEnabled(modName, isEnabled, skipUIRefresh)
         end
         if canonMod == "DynamicChat" and _G.DynamicChat and type(_G.DynamicChat.TeardownDisabledState) == "function" then
             pcall(_G.DynamicChat.TeardownDisabledState, _G.DynamicChat, true)
+        end
+        if canonMod == "DynamicMail" and _G.DynamicMail and type(_G.DynamicMail.TeardownDisabledState) == "function" then
+            pcall(_G.DynamicMail.TeardownDisabledState, _G.DynamicMail)
         end
     end
 
@@ -2228,6 +2265,7 @@ local function NormalizeSuiteModuleName(modKeyOrName)
     elseif low == "group" then return "DynamicGroup", "group"
     elseif low == "bags" then return "DynamicBags", "bags"
     elseif low == "chat" then return "DynamicChat", "chat"
+    elseif low == "mail" then return "DynamicMail", "mail"
     end
     return s, low
 end
@@ -2242,7 +2280,7 @@ local function ClearAllLegacyYieldState()
             end
         end
     end
-    for _, dbTbl in ipairs({ _G.DynamicPrepDB, _G.DynamicZoomDB, _G.DynamicChatDB, _G.DynamicFPSDB, _G.DynamicBagsDB }) do
+    for _, dbTbl in ipairs({ _G.DynamicPrepDB, _G.DynamicZoomDB, _G.DynamicChatDB, _G.DynamicFPSDB, _G.DynamicBagsDB, _G.DynamicMailDB }) do
         if type(dbTbl) == "table" then
             if type(dbTbl.yieldHooks) == "table" then wipe(dbTbl.yieldHooks) end
             if dbTbl.yieldSharedHooks ~= nil then dbTbl.yieldSharedHooks = false end
@@ -3695,6 +3733,8 @@ local MODULE_ADDON_MAP = {
     DynamicBags   = "DynamicBags",
     chat          = "DynamicChat",
     DynamicChat   = "DynamicChat",
+    mail          = "DynamicMail",
+    DynamicMail   = "DynamicMail",
     STUDIO        = "DynamicSuite",
     SETUP         = "DynamicSuite",
     HUD           = "DynamicSuite",
@@ -3712,6 +3752,7 @@ local MODULE_META_BY_KEY = {
     group  = { addonName = "DynamicGroup",  moduleTitle = "DynamicGroup",  slash = "/dgroup", icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga" },
     bags   = { addonName = "DynamicBags",   moduleTitle = "DynamicBags",   slash = "/dbag",   icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga" },
     chat   = { addonName = "DynamicChat",   moduleTitle = "DynamicChat",   slash = "/dchat",  icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga" },
+    mail   = { addonName = "DynamicMail",   moduleTitle = "DynamicMail",   slash = "/dmail",  icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga" },
     STUDIO = { addonName = "DynamicSuite",  moduleTitle = "Suite Studio",  slash = "/ds studio", icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_palette.tga" },
     SETUP  = { addonName = "DynamicSuite",  moduleTitle = "Guided Setup",  slash = "/ds",     icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_spark.tga" },
     HUD    = { addonName = "DynamicSuite",  moduleTitle = "HUD Edit Mode", slash = "/ds hud", icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_grid.tga" },
@@ -9225,6 +9266,7 @@ function addonTable.ReassertSuiteSlashRouting()
         ["DYNAMICGROUP"]  = "DynamicGroup",
         ["DYNAMICBAGS"]   = "DynamicBags",
         ["DYNAMICCHAT"]   = "DynamicChat",
+        ["DYNAMICMAIL"]   = "DynamicMail",
     }
     for slashKey, modName in pairs(peerSlashMap) do
         local origHandler = SlashCmdList[slashKey]

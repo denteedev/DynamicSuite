@@ -24,7 +24,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.3.2"
+    local fb = fallback or "2.4.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -73,7 +73,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.3.2"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.4.0"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -105,7 +105,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.3.2")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.4.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicBags", VERSION, _G.DynamicBags) then
     return
 end
@@ -3183,11 +3183,23 @@ function U.CreateSlotButton(bagID, slotID)
             end
         end
     end)
-    btn:HookScript("PostClick", function(self)
+    btn:HookScript("PostClick", function(self, button, down)
         if self._bankIntercepted and not InCombatLockdown() then
             self._bankIntercepted = nil
             self:SetAttribute("type2", self._origType2)
             self:SetAttribute("macrotext2", nil)
+        end
+        if not InCombatLockdown() and button == "LeftButton"
+            and IsAltKeyDown and IsAltKeyDown()
+            and not (IsControlKeyDown and IsControlKeyDown())
+            and not (IsShiftKeyDown and IsShiftKeyDown())
+            and _G.MailFrame and _G.MailFrame:IsShown()
+            and _G.SendMailFrame and _G.SendMailFrame:IsShown()
+            and _G.DynamicMail and type(_G.DynamicMail.HandleBagSlotAltClick) == "function" then
+            local useKeyDown = C_CVar and C_CVar.GetCVarBool and C_CVar.GetCVarBool("ActionButtonUseKeyDown")
+            if useKeyDown == nil or down == useKeyDown or down == nil then
+                pcall(_G.DynamicMail.HandleBagSlotAltClick, _G.DynamicMail, self.dbBag, self.dbSlot)
+            end
         end
     end)
     btn:Hide()

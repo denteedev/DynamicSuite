@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.3.2"
+    local fb = fallback or "2.4.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -99,7 +99,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.3.2"
+            or "2.4.0"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.3.2")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.4.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -11034,6 +11034,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "18/11/2026",
     entries = {
+        { type = "IMPROVED", text = "Release v2.4.0 - Version & Coexistence Lockstep Parity (18/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks cleanly to v2.4.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "FIX",      text = "Release v2.3.2 - Proactive DecorVendor /tm Quarantine & Obsidian Modal (18/11/2026): Promoted DecorVendor ('Decor Vendor') to a Tier-1 HARD conflict across Guided Setup and the Conflict Banner, and added a Midnight Pitch Black (#06070A-#090A0D) Obsidian warning modal ('Raid Marker Blocked by Addon Conflict', safely deferred until out of combat) across bundled and standalone modes whenever DecorVendor is active on login/reload or whenever World of Warcraft blocks SetRaidTarget() / SetRaidTargetIcon(). Includes 1-click 'Disable <Addon> (Set to Never)', session-throttled Dismiss, plain-English Exit & Restart instructions, and v2.3.2 lockstep parity." },
         { type = "FIX",      text = "Release v2.3.1 - Runtime /tm Taint Listener, DecorVendor Compatibility Guard & Lockstep Parity (18/11/2026): Registered ADDON_ACTION_FORBIDDEN on DynamicMarker's event frame for SetRaidTarget/SetRaidTarget() in both DynamicSuite and standalone modes to print a rate-limited (once per 30 seconds per offending addon) plain-English chat alert naming the offending addon and advising disabling it and completely restarting the game client (/reload alone will not clear Blizzard's raid-marker lockout); added DecorVendor ('Decor Vendor') to DynamicMarker's conflict registries (CONFLICT_ADDONS and ADVISORY_CONFLICT_ADDONS) with 1-click Disable (setting it to Never in DynamicLoadDB) and persistent Dismiss; updated Macro Setup's [DynamicMark] troubleshooting note; and synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.3.1." },
         { type = "FIX",      text = "Runtime /tm Taint Listener & DecorVendor Compatibility Guard (18/11/2026): Registered ADDON_ACTION_FORBIDDEN on DynamicMarker's event frame for SetRaidTarget/SetRaidTarget() to print a rate-limited (once per 30 seconds per offending addon) plain-English chat alert naming the third-party addon that tainted Blizzard's /tm slash command and advising Outdoor Only mode or disabling + reloading UI; added DecorVendor soft-conflict detection across Guided Setup and standalone DynamicMarker's advisory banner with 1-click Disable DecorVendor and persistent Dismiss; and updated Macro Setup's [DynamicMark] troubleshooting note." },

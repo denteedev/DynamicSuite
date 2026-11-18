@@ -1,8 +1,8 @@
-# DynamicSuite -- 8-Module QoL, Utility & Performance Hub
+# DynamicSuite -- 9-Module QoL, Utility & Performance Hub
 
-**Version:** v2.3.2 (18/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Version:** v2.4.0 (18/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
-**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, chat, and performance hub for World of Warcraft Retail. All 8 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
+**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, mailbox, chat, and performance hub for World of Warcraft Retail. All 9 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
 ---
 
@@ -16,10 +16,10 @@
 
 ## Core Suite Features
 
-* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with an 8-module sidebar, individual On/Off switches, reorderable module cards, Window Opacity (50%-100%), Window Scale (80%-120%), and a quick Reload UI button.
-* **Global Smart Search (`/ds search <query>`):** Type what you are looking for in plain English (like "auto repair", "flare", or "whisper") and jump straight to the exact setting with a visual highlight.
+* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 9-module sidebar, individual On/Off switches, reorderable module cards, Window Opacity (50%-100%), Window Scale (80%-120%), and a quick Reload UI button.
+* **Global Smart Search (`/ds search <query>`):** Type what you are looking for in plain English (like "auto repair", "flare", "mail", or "whisper") and jump straight to the exact setting with a visual highlight.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, resize (60%-150%), and align all 6 suite HUD bars (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
-* **9-Step Guided Setup (`/ds setup`, `/ds conflicts`):** Walks you through resolving addon conflicts and configuring each module in minutes.
+* **10-Step Guided Setup (`/ds setup`, `/ds conflicts`):** Walks you through resolving addon conflicts and configuring each module in minutes.
 * **Theme & Font Studio (`/ds theme`):** Customise your UI with 17 accent colours (including all 13 WoW Class Colours and a custom colour picker), 4 dark surface themes, 21+ built-in fonts, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI with searchable grouped dropdowns, and adjustable text scaling.
 
 ---
@@ -35,6 +35,7 @@
 | **DynamicFPS** | `/dfps` | Switches graphics settings automatically per zone, protects combat FPS, and tunes SpellQueueWindow from live ping + haste |
 | **DynamicGroup** | `/dgroup`, `/dg` | Adds region tags, M+ scores, and Lust/B-Res icons to Premade Groups, 1-click sign-up, party audit, and auto-keystone |
 | **DynamicBags** | `/dbag` | Fast category-sorted bags, unified Personal/Warband/Guild Bank viewer with header `Ctrl+Scroll` scaling (70%-140%), Alt Inventory Vault, auto-repair, and auto-sell junk |
+| **DynamicMail** | `/dmail`, `/dynamicmail` | 1-click Inbox Open All, AH Gold, and Items Only collection with bag-reserve safety, class-coloured Alt Vault recipient picker, and `Alt+Left-Click` bag attach |
 | **DynamicChat** | `/dchat`, `/dc`, `/dynamicchat` | Smoked-glass chat frame, `/ww` target whispers, `/rl` reload, `/lg` group leave, 7 built-in & external sound pack alerts with preview buttons, whisper chimes, clickable URLs, and reload history |
 
 ---
@@ -47,7 +48,7 @@
 | `/ds hud`, `/ds edit`, `/ds move` | Toggle HUD Edit Mode across all movable suite bars |
 | `/ds resethud` | Reset all suite HUD bars to safe screen-clamped default positions |
 | `/ds search <query>` | Open Global Smart Search with your query pre-filled |
-| `/ds setup` or `/ds guided` | Open the 9-Step Guided Setup Wizard |
+| `/ds setup` or `/ds guided` | Open the 10-Step Guided Setup Wizard |
 | `/ds conflicts` | Check for conflicting addons and print a summary in chat |
 | `/ds theme` or `/ds studio` | Open the Theme & Font Studio |
 | `/ds changelog` | View the DynamicSuite release notes |
@@ -60,6 +61,7 @@
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
 | `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, testtoast, reset) |
 | `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
+| `/dmail` or `/dynamicmail` | Open DynamicMail (supports all, gold, items, stop, reset) |
 | `/dchat`, `/dc`, or `/dynamicchat` | Open DynamicChat (supports history, copy, reset; plus `/ww` target whisper, `/rl` reload UI, and `/lg` leave group) |
 
 ---
@@ -77,4 +79,4 @@
 
 ## License & Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for the complete release history across all 8 modules.
+See [CHANGELOG.md](CHANGELOG.md) for the complete release history across all 9 modules.
