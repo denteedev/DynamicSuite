@@ -2911,26 +2911,11 @@ local function RenderMailEmbedded(parent)
     activeEmbeddedRoot = root
     root:SetScript("OnHide", CloseAnyDropdown)
 
-    local liveBar = CreateFrame("Frame", nil, root, "BackdropTemplate")
-    liveBar:SetHeight(28)
-    ApplyBackdrop(liveBar, { 0.065, 0.075, 0.100, 0.96 }, surf.border)
-    local liveText = liveBar:CreateFontString(nil, "OVERLAY")
-    SetFontSafe(liveText, 11, "")
-    liveText:SetPoint("LEFT", liveBar, "LEFT", 12, 0)
-    liveText:SetPoint("RIGHT", liveBar, "RIGHT", -12, 0)
-    liveText:SetJustifyH("LEFT")
-    liveText:SetWordWrap(false)
-    liveText:SetTextColor(0.88, 0.93, 1.0, 1.0)
-    liveText:SetText(DynamicMail:GetStatusText())
-
     local tabBar = CreateFrame("Frame", nil, root, "BackdropTemplate")
     tabBar:SetHeight(34)
-    tabBar:SetPoint("TOPLEFT", root, "TOPLEFT", 12, -10)
-    tabBar:SetPoint("TOPRIGHT", root, "TOPRIGHT", -12, -10)
-    ApplyBackdrop(tabBar, surf.header, surf.border)
-
-    liveBar:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -8)
-    liveBar:SetPoint("TOPRIGHT", tabBar, "BOTTOMRIGHT", 0, -8)
+    tabBar:SetPoint("TOPLEFT", root, "TOPLEFT", 14, -10)
+    tabBar:SetPoint("TOPRIGHT", root, "TOPRIGHT", -16, -10)
+    ApplyBackdrop(tabBar, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 }) -- #0B0D12 bevel track
 
     local subTabs = {
         { id = 1, label = "Inbox & Automation" },
@@ -2943,46 +2928,71 @@ local function RenderMailEmbedded(parent)
         tb:SetHeight(26)
         local lbl = tb:CreateFontString(nil, "OVERLAY")
         SetFontSafe(lbl, 11, "")
-        lbl:SetPoint("CENTER")
+        lbl:SetPoint("LEFT", tb, "LEFT", 6, 0)
+        lbl:SetPoint("RIGHT", tb, "RIGHT", -6, 0)
+        lbl:SetJustifyH("CENTER")
+        lbl:SetWordWrap(false)
         lbl:SetText(tInfo.label)
         tb.label = lbl
         tb.subId = tInfo.id
+        tb.hover = false
         tabButtons[idx] = tb
     end
-    tabBar:SetScript("OnSizeChanged", function(self, w)
-        if not w or w < 100 then return end
-        local gap = 6
-        local eachW = (w - 12 - ((#tabButtons - 1) * gap)) / #tabButtons
-        for idx, tb in ipairs(tabButtons) do
-            tb:ClearAllPoints()
-            tb:SetWidth(eachW)
-            if idx == 1 then
-                tb:SetPoint("LEFT", self, "LEFT", 6, 0)
-            else
-                tb:SetPoint("LEFT", tabButtons[idx - 1], "RIGHT", gap, 0)
-            end
-        end
-    end)
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, root)
-    scrollFrame:SetPoint("TOPLEFT", liveBar, "BOTTOMLEFT", 0, -10)
-    scrollFrame:SetPoint("BOTTOMRIGHT", root, "BOTTOMRIGHT", -24, 10)
+    scrollFrame:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -8)
+    scrollFrame:SetPoint("TOPRIGHT", tabBar, "BOTTOMRIGHT", 0, -8)
+    scrollFrame:SetPoint("BOTTOM", root, "BOTTOM", 0, 10)
     scrollFrame:EnableMouseWheel(true)
 
     local scrollContent = CreateFrame("Frame", nil, scrollFrame)
-    scrollContent:SetWidth(680)
+    scrollContent:SetWidth(760)
     scrollContent:SetHeight(1)
     scrollFrame:SetScrollChild(scrollContent)
 
-    local track = CreateFrame("Frame", nil, root, "BackdropTemplate")
-    track:SetWidth(6)
-    track:SetPoint("TOPRIGHT", root, "TOPRIGHT", -12, -88)
-    track:SetPoint("BOTTOMRIGHT", root, "BOTTOMRIGHT", -12, 12)
-    ApplyBackdrop(track, { 0.05, 0.06, 0.08, 0.9 }, { 1, 1, 1, 0.06 })
+    local function ReflowMailTabBar()
+        local w = tabBar:GetWidth()
+        if not w or w < 100 then
+            w = (root:GetWidth() and root:GetWidth() > 100) and (root:GetWidth() - 30) or 760
+        end
+        local sfW = scrollFrame and scrollFrame:GetWidth()
+        if sfW and sfW > 100 then
+            scrollContent:SetWidth(sfW)
+        elseif w > 100 then
+            scrollContent:SetWidth(w)
+        end
+        local nTabs = math.max(1, #tabButtons)
+        local totalGap = 4 * (nTabs + 1)
+        local eachW = math.floor((w - totalGap) / nTabs)
+        for idx, tb in ipairs(tabButtons) do
+            tb:ClearAllPoints()
+            tb:SetHeight(26)
+            if idx == 1 then
+                tb:SetPoint("LEFT", tabBar, "LEFT", 4, 0)
+                tb:SetWidth(eachW)
+            elseif idx < nTabs then
+                tb:SetPoint("LEFT", tabButtons[idx - 1], "RIGHT", 4, 0)
+                tb:SetWidth(eachW)
+            else
+                tb:SetPoint("LEFT", tabButtons[idx - 1], "RIGHT", 4, 0)
+                tb:SetPoint("RIGHT", tabBar, "RIGHT", -4, 0)
+            end
+        end
+    end
+    tabBar:SetScript("OnSizeChanged", ReflowMailTabBar)
+    tabBar:HookScript("OnShow", function() C_Timer.After(0, ReflowMailTabBar) end)
+    ReflowMailTabBar()
 
-    local thumb = CreateFrame("Button", nil, track)
+    local track = CreateFrame("Frame", nil, root, "BackdropTemplate")
+    track:SetWidth(4)
+    track:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", 10, -2)
+    track:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", 10, 2)
+    track:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+    track:SetBackdropColor(1, 1, 1, 0.05)
+
+    local thumb = CreateFrame("Button", nil, track, "BackdropTemplate")
     thumb:SetWidth(4)
-    thumb:SetHeight(36)
+    thumb:SetHeight(48)
     thumb:SetPoint("TOP", track, "TOP", 0, 0)
     local thumbTex = thumb:CreateTexture(nil, "ARTWORK")
     thumbTex:SetAllPoints()
@@ -3055,9 +3065,12 @@ local function RenderMailEmbedded(parent)
             if db.activeSubTab == tb.subId then
                 ApplyBackdrop(tb, { a.r * fillA, a.g * fillA, a.b * fillA, 0.98 }, { a.r, a.g, a.b, 0.95 })
                 tb.label:SetTextColor(1, 1, 1, 1)
+            elseif tb.hover then
+                ApplyBackdrop(tb, { 0.105, 0.122, 0.165, 0.98 }, { a.r, a.g, a.b, 0.75 })
+                tb.label:SetTextColor(0.95, 0.97, 1.0, 1)
             else
-                ApplyBackdrop(tb, { 0, 0, 0, 0 }, { 0, 0, 0, 0 })
-                tb.label:SetTextColor(0.62, 0.68, 0.78, 1)
+                ApplyBackdrop(tb, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 })
+                tb.label:SetTextColor(0.68, 0.74, 0.82, 1)
             end
         end
     end
@@ -3068,7 +3081,21 @@ local function RenderMailEmbedded(parent)
 
         local tabId = db.activeSubTab or 1
         local y = 0
+
+        local liveBar = CreateFrame("Frame", nil, scrollContent, "BackdropTemplate")
+        liveBar:SetHeight(28)
+        liveBar:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 0, y)
+        liveBar:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", 0, y)
+        ApplyBackdrop(liveBar, { 0.065, 0.075, 0.100, 0.96 }, surf.border)
+        local liveText = liveBar:CreateFontString(nil, "OVERLAY")
+        SetFontSafe(liveText, 11, "")
+        liveText:SetPoint("LEFT", liveBar, "LEFT", 12, 0)
+        liveText:SetPoint("RIGHT", liveBar, "RIGHT", -12, 0)
+        liveText:SetJustifyH("LEFT")
+        liveText:SetWordWrap(false)
+        liveText:SetTextColor(0.88, 0.93, 1.0, 1.0)
         liveText:SetText(DynamicMail:GetStatusText())
+        y = y - 36
 
         if tabId == 1 then
             local sec1 = CreateSectionBox(scrollContent, y)
@@ -3331,6 +3358,14 @@ local function RenderMailEmbedded(parent)
     end
 
     for _, tb in ipairs(tabButtons) do
+        tb:SetScript("OnEnter", function(self)
+            self.hover = true
+            RefreshTabVisuals()
+        end)
+        tb:SetScript("OnLeave", function(self)
+            self.hover = false
+            RefreshTabVisuals()
+        end)
         tb:SetScript("OnClick", function()
             CloseAnyDropdown()
             db.activeSubTab = tb.subId
@@ -3350,14 +3385,9 @@ local function RenderMailEmbedded(parent)
     RefreshTabVisuals()
     PopulateActiveTab()
 
-    C_Timer.After(0.02, function()
-        if tabBar and tabBar:GetWidth() then
-            tabBar:GetScript("OnSizeChanged")(tabBar, tabBar:GetWidth())
-        end
-        if scrollFrame and scrollFrame:GetWidth() then
-            scrollContent:SetWidth(scrollFrame:GetWidth())
-            UpdateScrollbar()
-        end
+    C_Timer.After(0, function()
+        ReflowMailTabBar()
+        UpdateScrollbar()
     end)
 end
 
@@ -3557,6 +3587,7 @@ DynamicMail.CHANGELOG = {
     version = VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "UI", text = "Suite-Matched 3-Tab Top Bar & 4px Scrollbar Alignment (18/11/2026): Updated the /dmail and /ds workspace top 3-tab bevel bar (14/-16px margins, #0B0D12 container, #14171F inactive card fill and #252A36 borders with hover highlight, equal-width 4px-gapped tab sizing, -8px direct scroll-area anchor, and 4px Obsidian scrollbar track) to match DynamicSuite, DynamicBags, and DynamicChat 1:1." },
         { type = "FIX", text = "Top-Docked Inbox Bar, Left Suite Rail Entry, Express Alt+Click & EllesmereUI / ElvUI Skin Coexistence (18/11/2026): Registered 'mail' in DynamicSuite's Left Suite Rail order; moved DynamicMailInboxBar cleanly above MailFrame so bottom inbox/send tabs never cover it; fixed Alt + Left-Click attaching across both DynamicBags and Blizzard bags regardless of ActionButtonUseKeyDown or cursor lock state; auto-docked DynamicMailSendPickerPanel cleanly away from EllesmereUIMailAltList; and added Mailbox Overlay Skin Auto-Match for EllesmereUIBlizzardSkin and ElvUI." },
         { type = "NEW", text = "Smart Bulk-Attach Presets, Quick Gold & Pending Alt Mail Tracking (18/11/2026): Added 1-click Quick-Attach preset buttons ([+ Mats], [+ BoE], [+ Warband], [+ Same]) with Equipment Manager & Soulbound protection; [+1k g] / [+10k g] / [+100k] / [Clear G] Quick-Gold buttons; Pending Alt Mail Sent badges in the Alts picker (auto-clearing when that alt visits a mailbox); Shift + Left-Click inbox row quick-loot; and Expiring (<3d) mailbox alerts." },
         { type = "NEW", text = "Initial v2.4.0 Release (18/11/2026): Added DynamicMail (/dmail, /dynamicmail) with 1-click Inbox Open All, AH Gold, and Items Only collection; automatic COD and bag-reserve protection; 4-tab Recipient Picker (Alts synced from DynamicBags Vault with class colours & gold, Recent, Guild, and Friends with Favourite pinning); Alt + Left-Click Express Multi-Attach from bags; auto-subject fill; lifetime gold & item telemetry; and full DynamicSuite + standalone compatibility." },
