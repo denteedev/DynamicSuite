@@ -2794,20 +2794,117 @@ local function IsStackMatching(pattern1, pattern2)
     return false
 end
 
-function U.EnsureBagSpecialFrames()
-    if InCombatLockdown() or type(UISpecialFrames) ~= "table" then return end
-    for _, fName in ipairs({ "DynamicBagsFrame", "DynamicBagsBankFrame", "DynamicBagsStandaloneFrame" }) do
-        local found = false
-        for i = 1, #UISpecialFrames do
-            if UISpecialFrames[i] == fName then
-                found = true
-                break
-            end
-        end
-        if not found then
-            tinsert(UISpecialFrames, fName)
+local function CompactUISpecialFramesList()
+    local dw = _G.DynamicSuite and _G.DynamicSuite.DesktopWindows
+    if dw and type(dw.CompactUISpecialFrames) == "function" then
+        dw.CompactUISpecialFrames()
+        return
+    end
+    local t = _G.UISpecialFrames
+    if type(t) ~= "table" then return end
+    local keys = {}
+    for k in pairs(t) do
+        if type(k) == "number" and k >= 1 and floor(k) == k then
+            keys[#keys + 1] = k
         end
     end
+    table.sort(keys)
+    local clean = {}
+    local seen = {}
+    for _, k in ipairs(keys) do
+        local name = t[k]
+        if type(name) == "string" and name ~= "" and not seen[name] then
+            seen[name] = true
+            clean[#clean + 1] = name
+        end
+    end
+    for _, k in ipairs(keys) do
+        t[k] = nil
+    end
+    for i = 1, #clean do
+        t[i] = clean[i]
+    end
+end
+
+local function RemoveSpecialFrameEntry(t, frameName)
+    for i = #t, 1, -1 do
+        if t[i] == frameName then
+            table.remove(t, i)
+        end
+    end
+end
+
+local function AddSpecialFrameEntry(t, frameName)
+    for i = 1, #t do
+        if t[i] == frameName then
+            return
+        end
+    end
+    tinsert(t, frameName)
+end
+
+function U.GetTopMostShownBagFrameName()
+    if S.bankWindow and S.bankWindow:IsShown() then
+        return "DynamicBagsBankFrame"
+    end
+    if S.window and S.window:IsShown() then
+        return "DynamicBagsFrame"
+    end
+    if S.standalone and S.standalone:IsShown() then
+        return "DynamicBagsStandaloneFrame"
+    end
+    return nil
+end
+
+function U.EnsureBagSpecialFrames()
+    if InCombatLockdown() or type(UISpecialFrames) ~= "table" then return end
+    CompactUISpecialFramesList()
+    local topName = U.GetTopMostShownBagFrameName()
+    local allBagFrames = { "DynamicBagsBankFrame", "DynamicBagsFrame", "DynamicBagsStandaloneFrame" }
+    if topName then
+        for _, fName in ipairs(allBagFrames) do
+            if fName ~= topName then
+                RemoveSpecialFrameEntry(UISpecialFrames, fName)
+            end
+        end
+        AddSpecialFrameEntry(UISpecialFrames, topName)
+    else
+        for _, fName in ipairs({ "DynamicBagsFrame", "DynamicBagsBankFrame", "DynamicBagsStandaloneFrame" }) do
+            AddSpecialFrameEntry(UISpecialFrames, fName)
+        end
+    end
+    if not S.syncingSpecialFrames then
+        S.syncingSpecialFrames = true
+        local dw = _G.DynamicSuite and _G.DynamicSuite.DesktopWindows
+        if dw and type(dw.SyncAllUISpecialFrames) == "function" then
+            pcall(dw.SyncAllUISpecialFrames)
+        end
+        S.syncingSpecialFrames = false
+    end
+end
+
+function U.CloseTopMostBagOnEscape()
+    local topName = U.GetTopMostShownBagFrameName()
+    if not topName then return false end
+    local frame = _G[topName]
+    if not frame or not frame:IsShown() then return false end
+    local isProt = (frame.IsProtected and frame:IsProtected()) and true or false
+    if InCombatLockdown() and isProt then
+        if topName == "DynamicBagsFrame" then
+            S.pendingCombatVis = "HIDE"
+        elseif topName == "DynamicBagsBankFrame" then
+            S.pendingCombatHideBank = true
+        end
+        return false
+    end
+    S.explicitClosing = (S.explicitClosing or 0) + 1
+    if topName == "DynamicBagsFrame" then
+        U.HideWindow()
+    else
+        frame:Hide()
+    end
+    S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
+    return true
 end
 
 function U.ClearAllSearchBoxes()
@@ -5434,6 +5531,9 @@ function U.EnsureCompanionBankWindow()
             if math.abs((bw.GetScale and bw:GetScale() or 1) - savedScale) > 0.001 then
                 bw:SetScale(savedScale)
             end
+            if not IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+                U.EnsureBagSpecialFrames()
+            end
         end
         if S._closingGuildBank or S.atGuildBank then return end
         if S._justClosedGuildBank and GetTime and (GetTime() - S._justClosedGuildBank) < 1.0 then return end
@@ -6119,27 +6219,6 @@ function U.EnsureWindow()
     else
         win:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -80 / initScale, 100 / initScale)
     end
-    if GameMenuFrame and GameMenuFrame.HookScript and not S.escMenuHooked then
-        S.escMenuHooked = true
-        GameMenuFrame:HookScript("OnShow", function()
-            if S.window and S.window:IsShown() then
-                if not S.window:IsProtected() or not InCombatLockdown() then
-                    S.explicitClosing = (S.explicitClosing or 0) + 1
-                    if S.bankWindow and S.bankWindow:IsShown() and (not S.bankWindow:IsProtected() or not InCombatLockdown()) then
-                        S.bankWindow:Hide()
-                    end
-                    U.HideWindow()
-                    S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
-                    if not InCombatLockdown() and GameMenuFrame.Hide then GameMenuFrame:Hide() end
-                else
-                    S.pendingCombatVis = "HIDE"
-                    if S.bankWindow and S.bankWindow:IsShown() then
-                        S.pendingCombatHideBank = true
-                    end
-                end
-            end
-        end)
-    end
     U.EnsureBagSpecialFrames()
     win:Hide()
     S.window = win
@@ -6524,6 +6603,9 @@ function U.EnsureWindow()
                 win:SetScale(savedScale)
             end
             ApplySavedTopAlignedPos(win, "windowPos")
+            if not IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+                U.EnsureBagSpecialFrames()
+            end
         end
         S.autoOpened = {}
         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
@@ -8206,15 +8288,17 @@ local function EnsureStandalone()
     local x = U.NewButton(f, 24, 22, "x")
     x:SetPoint("TOPRIGHT", f, "TOPRIGHT", -6, -4)
     x:SetScript("OnClick", function() f:Hide() end)
-    if not InCombatLockdown() and UISpecialFrames then
-        local found = false
-        for i = 1, #UISpecialFrames do
-            if UISpecialFrames[i] == "DynamicBagsStandaloneFrame" then found = true; break end
+    f:SetScript("OnShow", function()
+        U.EnsureBagSpecialFrames()
+    end)
+    f:SetScript("OnHide", function()
+        if not InCombatLockdown() and not IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+            U.EnsureBagSpecialFrames()
         end
-        if not found then tinsert(UISpecialFrames, "DynamicBagsStandaloneFrame") end
-    end
+    end)
     f:Hide()
     S.standalone = f
+    U.EnsureBagSpecialFrames()
     return f
 end
 
@@ -8624,6 +8708,9 @@ function U.InstallBagHooks()
             if IsStackMatching("ToggleAllBags", "ToggleBackpack") or IsStackMatching("ToggleBag", nil) then
                 return
             end
+            if IsStackMatching("CloseSpecialWindows", "CloseWindows") or IsStackMatching("ToggleGameMenu", nil) then
+                return
+            end
             if S.autoOpenGraceUntil and GetTime and GetTime() < S.autoOpenGraceUntil then
                 return
             end
@@ -8633,6 +8720,7 @@ function U.InstallBagHooks()
             end
             U.HideWindow()
             S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
+            U.EnsureBagSpecialFrames()
         end)
     end
     if not S.closeSpecialHooked and type(_G.CloseSpecialWindows) == "function" then
@@ -8659,9 +8747,38 @@ function U.InstallBagHooks()
                 end
                 S.escRestoringFromSearch = nil
                 U.ClearAllSearchBoxes()
-            else
-                S.escRestoreBag = nil
-                S.escRestoreBank = nil
+                U.EnsureBagSpecialFrames()
+                return
+            end
+            S.escRestoreBag = nil
+            S.escRestoreBank = nil
+            if (IsStackMatching("CloseWindows", "ToggleGameMenu") or IsStackMatching("ToggleGameMenu", nil))
+                and U.GetTopMostShownBagFrameName() ~= nil then
+                if (S.search or "") ~= "" then
+                    U.ClearAllSearchBoxes()
+                    S.escClosedBagOnThisToggle = true
+                elseif U.CloseTopMostBagOnEscape() then
+                    S.escClosedBagOnThisToggle = true
+                end
+                if S.escClosedBagOnThisToggle and C_Timer and C_Timer.After then
+                    C_Timer.After(0, function() S.escClosedBagOnThisToggle = nil end)
+                end
+            end
+            U.EnsureBagSpecialFrames()
+        end)
+    end
+    if not S.toggleGameMenuHooked and type(_G.ToggleGameMenu) == "function" then
+        S.toggleGameMenuHooked = true
+        hooksecurefunc("ToggleGameMenu", function()
+            if not S.escClosedBagOnThisToggle then return end
+            S.escClosedBagOnThisToggle = nil
+            if not InCombatLockdown() and GameMenuFrame and GameMenuFrame:IsShown() then
+                if type(_G.HideUIPanel) == "function" then
+                    pcall(_G.HideUIPanel, GameMenuFrame)
+                end
+                if GameMenuFrame:IsShown() and GameMenuFrame.Hide then
+                    pcall(GameMenuFrame.Hide, GameMenuFrame)
+                end
             end
         end)
     end
@@ -10195,6 +10312,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "FIX",     text = "ESC / B Keybind Closure, Top-Most Window Escape Priority & GameMenu Failsafe Guard (18/11/2026): Removed the conflicting GameMenuFrame OnShow hide hack from U.EnsureWindow() and added nil-hole/duplicate compaction plus single top-most Escape ordering to UISpecialFrames (DynamicBagsBankFrame -> DynamicBagsFrame -> DynamicBagsStandaloneFrame -> DynamicSuite DesktopWindows); guarded CloseAllBags against ESC calls and added a CloseSpecialWindows + ToggleGameMenu failsafe so even if DynamicBagsFrame or DynamicBagsBankFrame is protected by slot children or skipped by CloseSpecialWindows, pressing ESC reliably clears active search or closes the top-most window one at a time without opening the Options / Game Menu while preserving clean two-way B toggling before and after ESC." },
         { type = "FIX",     text = "ESC & B Keybind Window Closing, CloseAllBags & Unfocused Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) and OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so pressing B or ESC always reaches Blizzard's keybind and UISpecialFrames handlers without swallowing input; preserved Escape-first search clearing via OnEscapePressed when the search box is focused and a combat-guarded CloseSpecialWindows post-hook when search text is active while unfocused (restoring the open window once, clearing both search boxes, and letting the second ESC close cleanly); and updated ToggleWindow() and hooked CloseAllBags() so pressing B or CloseAllBags toggles DynamicBagsFrame (alongside DynamicBagsBankFrame when open) reliably out of combat." },
         { type = "FEATURE", text = "Shift+Click Collapse/Expand All Categories & Footer Bag Space / Junk Breakdown Tooltip (16/11/2026): Shift + Left-Click on any category header collapses all expanded categories or expands all categories at once out of combat (replacing the old single-step shift reorder action while keeping Alt + Left-Click for the reorder menu); made the bottom-left footer slot readout interactive with a hover tooltip showing per-bag free/total slots (Backpack, Bag 1-4, Reagent Bag) plus the total vendor sell value of grey/poor-quality items currently in your bags." },
         { type = "FEATURE", text = "Search Clear Button, Escape-First Clearing & Collapsible Category Headers (16/11/2026): added an inline 'x' clear button to both the DynamicBags and Unified DynamicBank search boxes, Escape-first clearing when search text is active (pressing Escape a second time closes the window cleanly), and Left-Click collapsing on virtual category headers with chevron indicators and collapsed item-count summaries saved in DynamicBagsDB (Alt+Left-Click opens the category reorder menu)." },

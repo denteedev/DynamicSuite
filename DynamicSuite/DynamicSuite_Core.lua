@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "FIX",     text = "DynamicBags ESC / B Keybind Closure, Top-Most Window Escape Priority & GameMenu Failsafe Guard (18/11/2026): Removed the conflicting GameMenuFrame OnShow hide hack from DynamicBagsFrame and compacted nil holes/duplicates out of UISpecialFrames in both DynamicSuite_Core.lua and DynamicBags.lua; coordinated top-most one-window-at-a-time Escape ordering across DynamicBagsBankFrame, DynamicBagsFrame, DynamicBagsStandaloneFrame, and DesktopWindows SUPPORTED_BLIZZ_FRAMES (closing bank -> bags -> Blizzard panels sequentially before GameMenuFrame can open); and added a ToggleGameMenu/CloseSpecialWindows failsafe in DynamicBags.lua so even if DynamicBagsFrame or DynamicBagsBankFrame is protected by slot children or missed by CloseSpecialWindows, ESC reliably clears search first or closes the top-most bag/bank window without opening Options / Game Menu while keeping B keybind two-way toggling spotless before and after ESC." },
         { type = "FIX",     text = "DynamicBags ESC & B Keybind Closing, CloseAllBags & Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) / OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so B and ESC never get swallowed; preserved Escape-first search clearing when focused (OnEscapePressed) or unfocused via a combat-guarded CloseSpecialWindows post-hook (restoring open bag/bank windows once while clearing search, then closing cleanly on the second ESC via UISpecialFrames); and updated ToggleWindow() and hooked CloseAllBags() so B and CloseAllBags hide both DynamicBagsFrame and DynamicBagsBankFrame reliably out of combat." },
         { type = "FIX",     text = "DecorVendor /tm Taint Guard & Conflict Scanner Support (18/11/2026): Added runtime ADDON_ACTION_FORBIDDEN listening in DynamicMarker for SetRaidTarget/SetRaidTarget() with 30-second per-addon rate-limited chat alerts naming the offending addon and advising DynamicLoad Outdoor Only or disable + reload; added DecorVendor ('Decor Vendor') to DynamicMarker softConflicts/partialConflicts with one-click Outdoor Housing Only (enabled in Outdoor, disabled in Delves, Dungeons, Raid, and PvP via DynamicLoadDB) and Disable Decor Vendor + Reload UI resolutions across Guided Setup, DynamicMarker's module banner, and standalone DynamicMarker (with persistent Dismiss); and updated DynamicMarker's [DynamicMark] Macro Setup note." },
         { type = "FIX",     text = "Item Socketing Esc Close, DIALOG-vs-HIGH Click-to-Front Strata Focus (Zero Cooldown Manager Bleed-Through), and Adventure Guide Mousewheel Scrolling Fixes (18/11/2026): Marked session-bound interaction panels (Item Socketing, Trade, Gossip, Quest, Item Upgrade, and Revival Catalyst) as non-restorable so closing them clears their state immediately without ever re-showing an empty ghost shell on Esc (pressing Esc once cleanly closes Item Socketing and pressing Esc again closes Character Info); placed the top-focused managed window on DIALOG strata and all unfocused open panels on HIGH strata (with SetToplevel disabled, zero C++ Raise calls, and root FrameLevel clamped to 1) so Cooldown Manager icons never bleed through either focused or unfocused panels while whichever window you click or open always sits cleanly on top of all other windows with Character gear slots, EllesmereUI stats panes, and TalentLoadoutManager overlays properly layered; and stopped the Adventure Guide root frame and passive border chrome from swallowing mousewheel input so scrolling boss overviews, abilities, loot lists, and lore works smoothly again while preserving Ctrl+Scroll and Ctrl+Shift+Scroll window scaling when Ctrl is held." },
@@ -5738,8 +5739,46 @@ do
         end
     end
 
+    local function IsDynamicBagsModalBlockingEscape()
+        for _, name in ipairs({ "DynamicBagsBankFrame", "DynamicBagsFrame", "DynamicBagsStandaloneFrame" }) do
+            local bf = _G[name]
+            if bf and bf.IsShown and bf:IsShown() then
+                return true
+            end
+        end
+        return false
+    end
+
+    function W.CompactUISpecialFrames()
+        local t = _G.UISpecialFrames
+        if type(t) ~= "table" then return end
+        local keys = {}
+        for k, v in pairs(t) do
+            if type(k) == "number" and k >= 1 and math.floor(k) == k then
+                keys[#keys + 1] = k
+            end
+        end
+        table.sort(keys)
+        local clean = {}
+        local seen = {}
+        for _, k in ipairs(keys) do
+            local name = t[k]
+            if type(name) == "string" and name ~= "" and not seen[name] then
+                seen[name] = true
+                clean[#clean + 1] = name
+            end
+        end
+        for _, k in ipairs(keys) do
+            t[k] = nil
+        end
+        for i = 1, #clean do
+            t[i] = clean[i]
+        end
+    end
+
     function W.IsInUISpecialFrames(frameName)
         if type(_G.UISpecialFrames) ~= "table" or not frameName then return false, nil end
+        W.CompactUISpecialFrames()
         for i = 1, #_G.UISpecialFrames do
             if _G.UISpecialFrames[i] == frameName then
                 return true, i
@@ -5757,6 +5796,7 @@ do
 
     function W.RemoveFromUISpecialFrames(frameName)
         if type(_G.UISpecialFrames) ~= "table" or not frameName then return end
+        W.CompactUISpecialFrames()
         for i = #_G.UISpecialFrames, 1, -1 do
             if _G.UISpecialFrames[i] == frameName then
                 table.remove(_G.UISpecialFrames, i)
@@ -5891,12 +5931,18 @@ do
 
     function W.SyncAllUISpecialFrames(forCombat)
         if type(_G.UISpecialFrames) ~= "table" or InCombat() then return end
+        W.CompactUISpecialFrames()
         for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
             if not (spec.name == "WorldMapFrame" and IsWorldMapMaximized(_G.WorldMapFrame, "WorldMapFrame")) then
                 W.RemoveFromUISpecialFrames(spec.name)
             end
         end
         if DesktopWindows:IsYielding() then
+            return
+        end
+        -- When any DynamicBags modal window is shown, keep Blizzard desktop frames out of
+        -- UISpecialFrames so ESC closes DynamicBank -> DynamicBags -> Blizzard panels one at a time.
+        if forCombat ~= true and IsDynamicBagsModalBlockingEscape() then
             return
         end
         local db = GetDesktopWindowsDB()
@@ -5923,6 +5969,8 @@ do
             end
         end
     end
+    DesktopWindows.CompactUISpecialFrames = W.CompactUISpecialFrames
+    DesktopWindows.SyncAllUISpecialFrames = W.SyncAllUISpecialFrames
 
     function W.FocusAndRaiseDesktopWindow(frame, frameName)
         if InCombat() or not frame or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) then return end
