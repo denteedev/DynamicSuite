@@ -1,9 +1,18 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.3.0 (18/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.3.1 (18/11/2026 - Retail 12.1.5 / Interface 120105)*
 
 ---
 
-## DynamicMarker v2.3.0 (18/11/2026)
+## DynamicMarker v2.3.1 (18/11/2026)
+
+### Fixed & Improved
+* **Runtime `/tm` Taint Listener & `DecorVendor` Compatibility Guard:** Registered `ADDON_ACTION_FORBIDDEN` for `SetRaidTarget()` / `SetRaidTarget` to print a 30-second per-addon rate-limited plain-English chat alert whenever a third-party addon (such as `DecorVendor`) taints Blizzard's `/tm` slash command, clarifying that the third-party addon caused the block rather than `DynamicMarker` and advising disabling it for group content or reloading UI. Added a distinct Midnight Pitch Black advisory banner and Guided Setup check for active `DecorVendor` with one-click `Disable DecorVendor` and persistent `Dismiss` buttons.
+* **`[DynamicMark]` Macro Setup Troubleshooting Note:** Updated the `Macro Setup` troubleshooting note beneath the preview box to cover addons hooking chat or slash commands (such as `DecorVendor`) alongside Raid Leader/Assistant requirements and game-restart recovery for Blizzard's intermittent raid-marker lockout bug.
+* **Version & Coexistence Lockstep Parity:** Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to `v2.3.1` for Retail 12.1.5 (Interface 120105, Midnight Season 2).
+
+---
+
+## DynamicMarker v2.3.0 (16/11/2026)
 
 ### Added
 * **Runtime `/tm` Taint Listener & `DecorVendor` Compatibility Guard:** Registered `ADDON_ACTION_FORBIDDEN` for `SetRaidTarget()` / `SetRaidTarget` to print a 30-second per-addon rate-limited plain-English chat alert whenever a third-party addon (such as `DecorVendor`) taints Blizzard's `/tm` slash command, clarifying that the third-party addon caused the block rather than `DynamicMarker` and advising disabling it for group content or reloading UI. Added a distinct Midnight Pitch Black advisory banner and Guided Setup check for active `DecorVendor` with one-click `Disable DecorVendor` and persistent `Dismiss` buttons.

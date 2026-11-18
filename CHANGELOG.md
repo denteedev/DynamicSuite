@@ -1,9 +1,22 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.3.0 (18/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.3.1 (18/11/2026 - Retail 12.1.5 / Interface 120105)*
 
 ---
 
-## DynamicSuite & All 8 Modules v2.3.0 (18/11/2026)
+## DynamicSuite & All 8 Modules v2.3.1 (18/11/2026)
+
+### DynamicSuite Hub & Core (`DesktopWindows`)
+- **`DIALOG`-vs-`HIGH` Strata Focus (Zero Cooldown Manager Bleed-Through), Item Socketing `ESC` Close & Adventure Guide Mousewheel Fix:** Placed the active focused panel on `DIALOG` strata and unfocused panels on `HIGH` strata (with `SetToplevel` disabled, zero C++ `Raise()` calls, and root `FrameLevel` clamped to `1`) so Cooldown Manager icons never bleed through; marked session-bound interaction panels (`ItemSocketingFrame`, `TradeFrame`, `GossipFrame`, `QuestFrame`, `ItemUpgradeFrame`, `ItemInteractionFrame`) as non-restorable so `ESC` closes them cleanly without ghost shells; and fixed `EncounterJournal` (Adventure Guide) mousewheel scrolling while preserving `Ctrl+Scroll` / `Ctrl+Shift+Scroll` scaling.
+
+### DynamicMarker
+- **Runtime `/tm` Taint Listener, `DecorVendor` Soft-Conflict Guard & `[DynamicMark]` Macro Note:** Registered `ADDON_ACTION_FORBIDDEN` for `SetRaidTarget()` / `SetRaidTarget` with 30-second per-addon rate-limited chat alerts naming the offending addon and advising `DynamicLoad` Outdoor Only or disable + reload; added `DecorVendor` (`Decor Vendor`) to `softConflicts` / `partialConflicts` with one-click `Outdoor Housing Only` and `Disable Decor Vendor` + Reload UI resolutions across Guided Setup, module banner, and standalone `DynamicMarker`; and updated the `[DynamicMark]` Macro Setup troubleshooting note.
+
+### DynamicBags
+- **Clean `ESC` & `B` Keybind Window Closing & Escape-First Search Clear:** Removed raw `EnableKeyboard(true)` / `OnKeyDown` capture and the conflicting `GameMenuFrame:HookScript("OnShow", ...)` hack from `U.EnsureWindow()`, compacted `nil` holes/duplicates out of `UISpecialFrames` across `DynamicBags.lua` and `DynamicSuite_Core.lua`, coordinated strict top-most one-window-at-a-time Escape priority (`DynamicBagsBankFrame` -> `DynamicBagsFrame` -> `DynamicBagsStandaloneFrame` -> `DesktopWindows` Blizzard panels -> `GameMenuFrame`), preserved Escape-first search clearing, and added a `CloseSpecialWindows` + `ToggleGameMenu` failsafe while keeping two-way `B` toggling working before and after `ESC`.
+
+---
+
+## DynamicSuite & All 8 Modules v2.3.0 (16/11/2026)
 
 ### DynamicSuite Hub, Suite Studio & HUD Edit Mode
 - **2-Tab `Suite Studio` (`Theme & Typography` + `Desktop Windows & Menus`) & `/ds windows`:** Upgraded the Left Suite Rail `Suite Studio` workspace (`/ds studio`) into a 2-tab studio with `Tab 1: Theme & Typography` (`/ds theme`) and `Tab 2: Desktop Windows & Menus` (`/ds windows` or `/ds win`), housing the Core Blizzard Desktop Window Manager alongside Game Menu & Options Shortcuts and a calm status banner when yielding to external frame-mover addons.

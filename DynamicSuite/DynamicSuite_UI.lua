@@ -8326,7 +8326,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.3.0"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.3.1"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -15944,7 +15944,7 @@ function addonTable.CreateMainConfigUI()
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.3.0"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.3.1"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
