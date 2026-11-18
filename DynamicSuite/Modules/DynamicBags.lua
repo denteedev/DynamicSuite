@@ -179,7 +179,12 @@ local S = {
     quickOpenQueue = {},
     quickOpenCurrent = nil,
     quickOpenBtn = nil,
+    quickOpenBatchDecorCount = 0,
     pendingQuickOpenSync = false,
+    decorUseConfirmCount = 0,
+    decorUseConfirmExpiresAt = 0,
+    decorUseConfirmSource = nil,
+    decorUseConfirmToken = 0,
 }
 
 local U = {}
@@ -3143,6 +3148,9 @@ function U.CreateSlotButton(bagID, slotID)
     btn:SetAttribute("alt-type2", "macro")
     btn:SetAttribute("alt-macrotext2", "")
     btn:HookScript("PreClick", function(self, button, down)
+        if U.ClearDecorUseConfirmWindow then
+            U.ClearDecorUseConfirmWindow()
+        end
         if button == "RightButton" and IsAltKeyDown() then
             U.ShowPinMenu(self)
             return
@@ -8908,6 +8916,287 @@ function DynamicBags:SetupDeleteConfirmationHook()
     end
 end
 
+local NON_TRADEABLE_DIALOG_KEYS = {
+    NON_TRADEABLE_ITEM = true,
+    USE_NO_REFUND_CONFIRM = true,
+    CONFIRM_USE_NO_REFUND = true,
+    TRADE_POTENTIAL_REMOVE_BIND_CONFIRM = true,
+    EQUIP_BIND_TRADEABLE = true,
+    BIND_TRADEABLE = true,
+    ACTION_WILL_BIND_ITEM = true,
+}
+
+local NON_TRADEABLE_DENY_KEYS = {
+    CONFIRM_LOOT_ROLL = true,
+    LOOT_BIND = true,
+    LOOT_BIND_CONFIRM = true,
+    CONFIRM_DISENCHANT_ROLL = true,
+    DELETE_ITEM = true,
+    DELETE_GOOD_ITEM = true,
+    DELETE_GOOD_QUEST_ITEM = true,
+    CONFIRM_DESTROY_COMMUNITY = true,
+    CONFIRM_BUY_BANK_SLOT = true,
+    CONFIRM_BUY_GUILDBANK_TAB = true,
+    CONFIRM_PURCHASE_TOKEN_ITEM = true,
+    CONFIRM_PURCHASE_NONREFUNDABLE_ITEM = true,
+    CONFIRM_MERCHANT_TRADE_TIMER_REMOVAL = true,
+    CONFIRM_MAIL_ITEM_UNREFUNDABLE = true,
+    PARTY_INVITE = true,
+    PARTY_INVITE_XREALM = true,
+    RESURRECT = true,
+    RESURRECT_NO_SICKNESS = true,
+    RESURRECT_NO_TIMER = true,
+    DEATH = true,
+    DEATH_PVP = true,
+    DYNAMICBAGS_RELOAD_PROMPT = true,
+}
+
+local function GetStaticPopupButton1(popup)
+    if not popup then return nil end
+    if popup.button1 then return popup.button1 end
+    if popup.Button1 then return popup.Button1 end
+    if type(popup.GetButton1) == "function" then
+        local ok, b = pcall(popup.GetButton1, popup)
+        if ok and b then return b end
+    end
+    local name = (type(popup.GetName) == "function") and popup:GetName() or nil
+    if type(name) == "string" and name ~= "" and not IsSecret(name) then
+        return _G[name .. "Button1"]
+    end
+    return nil
+end
+
+local function GetStaticPopupTextString(popup)
+    if not popup then return nil end
+    local fs = popup.text or popup.Text
+    if not fs and type(popup.GetTextFontString) == "function" then
+        local ok, res = pcall(popup.GetTextFontString, popup)
+        if ok and res then fs = res end
+    end
+    if not fs and type(popup.GetName) == "function" then
+        local name = popup:GetName()
+        if type(name) == "string" and name ~= "" and not IsSecret(name) then
+            fs = _G[name .. "Text"]
+        end
+    end
+    if fs and type(fs.GetText) == "function" then
+        local ok, txt = pcall(fs.GetText, fs)
+        if ok and type(txt) == "string" and not IsSecret(txt) and txt ~= "" then
+            return txt
+        end
+    end
+    return nil
+end
+
+local function IsNonTradeableDecorPopup(popup, expectedWhich)
+    if not popup then return false end
+    local which = popup.which
+    if type(which) ~= "string" or IsSecret(which) or which == "" then
+        which = expectedWhich
+    end
+    if type(which) == "string" and not IsSecret(which) and which ~= "" then
+        if NON_TRADEABLE_DENY_KEYS[which] then
+            return false
+        end
+        if NON_TRADEABLE_DIALOG_KEYS[which] then
+            return true
+        end
+    end
+    local txt = GetStaticPopupTextString(popup)
+    if type(txt) == "string" and txt ~= "" then
+        local tl = txt:lower()
+        if tl:find("make this item non-tradeable", 1, true)
+            or tl:find("make this item non tradeable", 1, true)
+            or tl:find("make it non-tradeable", 1, true)
+            or tl:find("make this item untradeable", 1, true)
+            or tl:find("make this item non-refundable", 1, true)
+            or (tl:find("performing this action", 1, true) and (tl:find("non-tradeable", 1, true) or tl:find("non-refundable", 1, true))) then
+            return true
+        end
+        for _, gKey in ipairs({
+            "NON_TRADEABLE_ITEM",
+            "TRADE_POTENTIAL_REMOVE_BIND_CONFIRM",
+            "USE_NO_REFUND_CONFIRM",
+            "CONFIRM_USE_NO_REFUND",
+            "EQUIP_BIND_TRADEABLE",
+            "BIND_TRADEABLE",
+        }) do
+            local gv = _G[gKey]
+            if type(gv) == "string" and not IsSecret(gv) and gv ~= "" then
+                local needle = gv:gsub("%%s", ""):gsub("^%s+", ""):gsub("%s+$", ""):lower()
+                if #needle >= 12 and tl:find(needle, 1, true) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+function U.ClearDecorUseConfirmWindow()
+    S.decorUseConfirmCount = 0
+    S.decorUseConfirmExpiresAt = 0
+    S.decorUseConfirmSource = nil
+    S.decorUseConfirmToken = (S.decorUseConfirmToken or 0) + 1
+end
+
+function U.IsDecorUseConfirmActive()
+    if IsModuleDisabledInSuite("DynamicBags") then return false end
+    if InCombatLockdown() or (UnitAffectingCombat and UnitAffectingCombat("player")) then
+        return false
+    end
+    if DynamicBags:IsYieldingSharedHooks() then return false end
+    if (S.decorUseConfirmCount or 0) <= 0 then return false end
+    local now = (type(GetTime) == "function" and GetTime()) or 0
+    if now > (S.decorUseConfirmExpiresAt or 0) then
+        U.ClearDecorUseConfirmWindow()
+        return false
+    end
+    return true
+end
+
+function U.ArmDecorUseConfirmWindow(count, source, durationSec)
+    if IsModuleDisabledInSuite("DynamicBags") then
+        U.ClearDecorUseConfirmWindow()
+        return false
+    end
+    if InCombatLockdown() or (UnitAffectingCombat and UnitAffectingCombat("player")) then
+        U.ClearDecorUseConfirmWindow()
+        return false
+    end
+    if DynamicBags:IsYieldingSharedHooks() then
+        U.ClearDecorUseConfirmWindow()
+        return false
+    end
+    local n = tonumber(count) or 0
+    if n <= 0 then
+        U.ClearDecorUseConfirmWindow()
+        return false
+    end
+    local now = (type(GetTime) == "function" and GetTime()) or 0
+    local ttl = tonumber(durationSec) or 1.25
+    S.decorUseConfirmCount = n
+    S.decorUseConfirmExpiresAt = now + ttl
+    S.decorUseConfirmSource = source or "AUTO"
+    local token = (S.decorUseConfirmToken or 0) + 1
+    S.decorUseConfirmToken = token
+    if C_Timer and C_Timer.After then
+        C_Timer.After(ttl + 0.05, function()
+            if S.decorUseConfirmToken == token then
+                U.ClearDecorUseConfirmWindow()
+            end
+        end)
+    end
+    return true
+end
+
+function U.ScanAndConfirmDecorPopup(expectedWhich, targetPopup)
+    if not U.IsDecorUseConfirmActive() then return false end
+    if type(expectedWhich) == "string" and not IsSecret(expectedWhich) and NON_TRADEABLE_DENY_KEYS[expectedWhich] then
+        return false
+    end
+
+    local candidates = {}
+    if targetPopup then
+        candidates[1] = targetPopup
+    else
+        if expectedWhich and type(_G.StaticPopup_FindVisible) == "function" then
+            local okF, vis = pcall(_G.StaticPopup_FindVisible, expectedWhich)
+            if okF and vis then
+                candidates[#candidates + 1] = vis
+            end
+        end
+        for i = 1, 4 do
+            local p = _G["StaticPopup" .. i]
+            if p and p ~= candidates[1] then
+                candidates[#candidates + 1] = p
+            end
+        end
+    end
+
+    for _, popup in ipairs(candidates) do
+        if popup and popup.IsShown and popup:IsShown() then
+            local pWhich = popup.which
+            local matchesExpected = (not expectedWhich)
+                or (type(pWhich) ~= "string" or IsSecret(pWhich) or pWhich == "" or pWhich == expectedWhich)
+            if matchesExpected and IsNonTradeableDecorPopup(popup, expectedWhich) then
+                local b1 = GetStaticPopupButton1(popup)
+                if b1 and b1.IsEnabled and not b1:IsEnabled() then
+                    return false
+                end
+                S.decorUseConfirmCount = max(0, (S.decorUseConfirmCount or 1) - 1)
+                if S.decorUseConfirmCount <= 0 then
+                    U.ClearDecorUseConfirmWindow()
+                end
+
+                local accepted = false
+                if b1 and type(b1.Click) == "function" then
+                    local okClick = pcall(b1.Click, b1)
+                    if okClick and not (popup.IsShown and popup:IsShown()) then
+                        accepted = true
+                    end
+                end
+                if not accepted and popup.IsShown and popup:IsShown() and type(_G.StaticPopup_OnClick) == "function" then
+                    local okOnClick = pcall(_G.StaticPopup_OnClick, popup, 1)
+                    if okOnClick and not (popup.IsShown and popup:IsShown()) then
+                        accepted = true
+                    end
+                end
+                if not accepted and popup.IsShown and popup:IsShown() and type(popup.OnButtonClick) == "function" then
+                    pcall(popup.OnButtonClick, popup, 1)
+                end
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function DynamicBags:SetupDecorNonTradeableConfirmHook()
+    if not self._decorStaticPopupShowHooked and type(hooksecurefunc) == "function" and type(_G.StaticPopup_Show) == "function" then
+        self._decorStaticPopupShowHooked = true
+        hooksecurefunc("StaticPopup_Show", function(which)
+            if not U.IsDecorUseConfirmActive() then return end
+            if not U.ScanAndConfirmDecorPopup(which) and C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    if U.IsDecorUseConfirmActive() then
+                        U.ScanAndConfirmDecorPopup(which)
+                    end
+                end)
+            end
+        end)
+    end
+
+    if not self._decorNonTradeableDlgHooked and type(StaticPopupDialogs) == "table" and type(hooksecurefunc) == "function" then
+        local dlg = StaticPopupDialogs["NON_TRADEABLE_ITEM"]
+        if dlg and type(dlg.OnShow) == "function" then
+            self._decorNonTradeableDlgHooked = true
+            hooksecurefunc(dlg, "OnShow", function(s)
+                if U.IsDecorUseConfirmActive() then
+                    U.ScanAndConfirmDecorPopup("NON_TRADEABLE_ITEM", s)
+                end
+            end)
+        end
+    end
+
+    for i = 1, 4 do
+        local popup = _G["StaticPopup" .. i]
+        if popup and popup.HookScript and not popup._dbagDecorConfirmHooked then
+            popup._dbagDecorConfirmHooked = true
+            popup:HookScript("OnShow", function(selfPopup)
+                if not U.IsDecorUseConfirmActive() then return end
+                if not U.ScanAndConfirmDecorPopup(selfPopup.which, selfPopup) and C_Timer and C_Timer.After then
+                    C_Timer.After(0, function()
+                        if U.IsDecorUseConfirmActive() and selfPopup:IsShown() then
+                            U.ScanAndConfirmDecorPopup(selfPopup.which, selfPopup)
+                        end
+                    end)
+                end
+            end)
+        end
+    end
+end
+
 function U.AutoSellJunk()
     local db = DB()
     if db.autoSellGrey == false or db.autoSellJunk == false then return end
@@ -9452,9 +9741,17 @@ function U.RunNextAutoOpenContainer()
     S.autoOpenRetryAfter[cand.itemID] = now + 1.0
 
     S.autoOpenActiveItemID = cand.itemID
+    if cand.kind == "DECOR" then
+        U.ArmDecorUseConfirmWindow(1, "AUTO", 0.60)
+    else
+        U.ClearDecorUseConfirmWindow()
+    end
     local ok = pcall(C_Container.UseContainerItem, cand.bag, cand.slot)
     S.autoOpenActiveItemID = nil
     if not ok then
+        if cand.kind == "DECOR" then
+            U.ClearDecorUseConfirmWindow()
+        end
         S.autoOpenFailCount[cand.itemID] = (S.autoOpenFailCount[cand.itemID] or 0) + 1
         S.autoOpenRetryAfter[cand.itemID] = now + 30.0
         if S.autoOpenFailCount[cand.itemID] >= 2 then
@@ -9478,6 +9775,9 @@ function U.RunNextAutoOpenContainer()
             else
                 S.autoOpenFailCount[cand.itemID] = 0
                 S.autoOpenRetryAfter[cand.itemID] = nil
+                if S.decorUseConfirmSource == "AUTO" then
+                    U.ClearDecorUseConfirmWindow()
+                end
             end
             if not InCombatLockdown() and U.UpdateQuickOpenButton and S.window and S.window:IsShown() then
                 U.UpdateQuickOpenButton()
@@ -9531,7 +9831,7 @@ function U.RefreshQuickOpenTooltip(btn)
     end
     GameTooltip:AddDoubleLine("|cFF94A3B8Quick-Open Queue:|r", "|cFFFFFFFF" .. tagText .. "|r")
     if batchCount > 1 then
-        GameTooltip:AddLine(sformat("|cFF34D399Left-Click / Alt+Scroll:|r |cFFE2E8F0Batch-Open %d pouches in 1 click (%d queued)|r", batchCount, max(1, totalCount)), 0.886, 0.910, 0.941)
+        GameTooltip:AddLine(sformat("|cFF34D399Left-Click / Alt+Scroll:|r |cFFE2E8F0Batch-Open %d items in 1 click (%d queued)|r", batchCount, max(1, totalCount)), 0.886, 0.910, 0.941)
     else
         GameTooltip:AddLine(sformat("|cFF34D399Left-Click / Alt+Scroll:|r |cFFE2E8F0Open / Learn (%d queued)|r", max(1, totalCount)), 0.886, 0.910, 0.941)
     end
@@ -9614,6 +9914,21 @@ function U.EnsureQuickOpenButton()
         if GameTooltip then GameTooltip:Hide() end
     end)
 
+    btn:SetScript("PreClick", function(self, button, down)
+        if button ~= "LeftButton" or InCombatLockdown() then return end
+        local useKeyDown = C_CVar and C_CVar.GetCVarBool and C_CVar.GetCVarBool("ActionButtonUseKeyDown")
+        if useKeyDown ~= nil and down ~= nil and down ~= useKeyDown then
+            return
+        end
+        local cur = S.quickOpenCurrent
+        local decorCount = S.quickOpenBatchDecorCount or 0
+        if (cur and cur.kind == "DECOR") or decorCount > 0 then
+            U.ArmDecorUseConfirmWindow(max(1, decorCount), "QUICK", 1.25)
+        else
+            U.ClearDecorUseConfirmWindow()
+        end
+    end)
+
     btn:SetScript("PostClick", function(self, button, down)
         if button == "RightButton" then
             if down then return end
@@ -9634,6 +9949,19 @@ function U.EnsureQuickOpenButton()
                 S.pendingQuickOpenSync = true
             end
             return
+        end
+
+        if button == "LeftButton" and S.decorUseConfirmSource == "QUICK" and (S.decorUseConfirmCount or 0) > 0 then
+            local now = (type(GetTime) == "function" and GetTime()) or 0
+            S.decorUseConfirmExpiresAt = min(S.decorUseConfirmExpiresAt or (now + 0.45), now + 0.45)
+            local postToken = S.decorUseConfirmToken
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0.50, function()
+                    if S.decorUseConfirmToken == postToken then
+                        U.ClearDecorUseConfirmWindow()
+                    end
+                end)
+            end
         end
 
         if C_Timer and C_Timer.After then
@@ -9688,6 +10016,7 @@ function U.UpdateQuickOpenButton()
     end
 
     if not shouldShow then
+        S.quickOpenBatchDecorCount = 0
         local btn = S.quickOpenBtn
         if btn then
             U.ClearQuickOpenBindings(btn)
@@ -9718,9 +10047,13 @@ function U.UpdateQuickOpenButton()
 
     local macroLines = {}
     local curLen = 0
+    local batchDecorCount = 0
     if headItem.hasLoot and not headItem.sawUseLine then
         macroLines[1] = sformat("/use %d %d", headItem.bag, headItem.slot)
         S.quickOpenBatchCount = 1
+        if headItem.kind == "DECOR" then
+            batchDecorCount = 1
+        end
     else
         for _, cand in ipairs(queueList or {}) do
             if not (cand.hasLoot and not cand.sawUseLine) then
@@ -9729,6 +10062,9 @@ function U.UpdateQuickOpenButton()
                 if (curLen + addLen) <= 255 then
                     macroLines[#macroLines + 1] = line
                     curLen = curLen + addLen
+                    if cand.kind == "DECOR" then
+                        batchDecorCount = batchDecorCount + 1
+                    end
                 else
                     break
                 end
@@ -9736,9 +10072,13 @@ function U.UpdateQuickOpenButton()
         end
         if #macroLines == 0 then
             macroLines[1] = sformat("/use %d %d", headItem.bag, headItem.slot)
+            if headItem.kind == "DECOR" then
+                batchDecorCount = 1
+            end
         end
         S.quickOpenBatchCount = #macroLines
     end
+    S.quickOpenBatchDecorCount = batchDecorCount
     local macroText = table.concat(macroLines, "\n")
 
     btn:SetAttribute("type", "macro")
@@ -9817,6 +10157,7 @@ local function RegisterWithDynamicSuite()
         Open = function() return DynamicBags:OpenWorkspace() end,
         GetStatusText = function() return DynamicBags:GetStatusText() end,
         OnDisableInSuite = function()
+            if U.ClearDecorUseConfirmWindow then U.ClearDecorUseConfirmWindow() end
             S.explicitClosing = (S.explicitClosing or 0) + 1
             if S.window and not (InCombatLockdown and InCombatLockdown()) then S.window:Hide() end
             if S.bankWindow and not (InCombatLockdown and InCombatLockdown()) then S.bankWindow:Hide() end
@@ -9972,6 +10313,7 @@ function U.OnLogin()
     U.InstallTooltipHook()
     U.HookCharacterFrame()
     DynamicBags:SetupDeleteConfirmationHook()
+    DynamicBags:SetupDecorNonTradeableConfirmHook()
     wipe(S.bindCache); S.forceFull = true
     pcall(U.ProcessDirtyBags)
     if not InCombatLockdown() then
@@ -10003,6 +10345,7 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
             S.bagIDs = U.GetLiveBagIDs()
             OnBagIDSet()
             DynamicBags:SetupDeleteConfirmationHook()
+            DynamicBags:SetupDecorNonTradeableConfirmHook()
         elseif arg1 == "Blizzard_GuildBankUI" or arg1 == "Blizzard_BankUI" then
             if not IsModuleDisabledInSuite("DynamicBags") then
                 U.HideBlizzardBags()
@@ -10022,6 +10365,7 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         U.OnLogin()
     elseif event == "PLAYER_ENTERING_WORLD" then
         U.HookCharacterFrame()
+        DynamicBags:SetupDecorNonTradeableConfirmHook()
         if not S.loginBaselineDone then
             S.forceFull = true
             pcall(U.ProcessDirtyBags)
@@ -10106,6 +10450,7 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
     elseif event == "PLAYER_MONEY" or event == "CURRENCY_DISPLAY_UPDATE" then
         if S.window and S.window:IsShown() then U.UpdateFooter() end
     elseif event == "PLAYER_REGEN_DISABLED" then
+        if U.ClearDecorUseConfirmWindow then U.ClearDecorUseConfirmWindow() end
         if S.autoOpenTimer then
             if S.autoOpenTimer.Cancel then pcall(S.autoOpenTimer.Cancel, S.autoOpenTimer) end
             S.autoOpenTimer = nil
@@ -10312,6 +10657,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "FIX",     text = "Auto-Confirm Non-Tradeable Popup for Housing Decor (18/11/2026): Scoped a brief Housing Decor use window whenever DynamicBags opens or learns a Housing Decor item via either the automatic container opener or the header Open (N) button (including Alt+Scroll and batch macros), automatically accepting Blizzard's 'Performing this action will make this item non-tradeable.' confirmation popup out of combat and clearing the pending flag immediately afterwards while strictly ignoring manual bag clicks, dungeon/raid loot rolls, and non-Decor items." },
         { type = "FIX",     text = "ESC / B Keybind Closure, Top-Most Window Escape Priority & GameMenu Failsafe Guard (18/11/2026): Removed the conflicting GameMenuFrame OnShow hide hack from U.EnsureWindow() and added nil-hole/duplicate compaction plus single top-most Escape ordering to UISpecialFrames (DynamicBagsBankFrame -> DynamicBagsFrame -> DynamicBagsStandaloneFrame -> DynamicSuite DesktopWindows); guarded CloseAllBags against ESC calls and added a CloseSpecialWindows + ToggleGameMenu failsafe so even if DynamicBagsFrame or DynamicBagsBankFrame is protected by slot children or skipped by CloseSpecialWindows, pressing ESC reliably clears active search or closes the top-most window one at a time without opening the Options / Game Menu while preserving clean two-way B toggling before and after ESC." },
         { type = "FIX",     text = "ESC & B Keybind Window Closing, CloseAllBags & Unfocused Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) and OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so pressing B or ESC always reaches Blizzard's keybind and UISpecialFrames handlers without swallowing input; preserved Escape-first search clearing via OnEscapePressed when the search box is focused and a combat-guarded CloseSpecialWindows post-hook when search text is active while unfocused (restoring the open window once, clearing both search boxes, and letting the second ESC close cleanly); and updated ToggleWindow() and hooked CloseAllBags() so pressing B or CloseAllBags toggles DynamicBagsFrame (alongside DynamicBagsBankFrame when open) reliably out of combat." },
         { type = "FEATURE", text = "Shift+Click Collapse/Expand All Categories & Footer Bag Space / Junk Breakdown Tooltip (16/11/2026): Shift + Left-Click on any category header collapses all expanded categories or expands all categories at once out of combat (replacing the old single-step shift reorder action while keeping Alt + Left-Click for the reorder menu); made the bottom-left footer slot readout interactive with a hover tooltip showing per-bag free/total slots (Backpack, Bag 1-4, Reagent Bag) plus the total vendor sell value of grey/poor-quality items currently in your bags." },
