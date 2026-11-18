@@ -24,6 +24,7 @@
 * **Automatic Settings Import:** On first login, DynamicMarker safely imports your saved FocusMarker bar positions, scale, opacity, visibility rules (Always, Group, or Off), orientation, and custom icon/flare orders without touching your original backup.
 * **Automatic Macro Upgrade:** Any existing [FocusMarker] or [FocusMark] macro on your action bars is upgraded in-place to [DynamicMark].
 * **One-Click Cleanup & Re-Import:** If FocusMarker is still enabled, Guided Setup lets you import and disable it in one click. You can also run `/dm import` or `/dm import status` out of combat anytime.
+* **Built-In `/tm` Taint Diagnostics:** Automatically alerts you in chat if a third-party addon (such as DecorVendor) blocks Blizzard's `/tm` raid marker command, with an optional one-click disable or dismiss banner.
 
 ---
 

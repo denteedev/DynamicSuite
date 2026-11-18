@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "FIX",     text = "DecorVendor /tm Taint Guard & Conflict Scanner Support (18/11/2026): Added runtime ADDON_ACTION_FORBIDDEN listening in DynamicMarker for SetRaidTarget/SetRaidTarget() with 30-second per-addon rate-limited chat alerts naming the offending addon and advising DynamicLoad Outdoor Only or disable + reload; added DecorVendor ('Decor Vendor') to DynamicMarker softConflicts/partialConflicts with one-click Outdoor Housing Only (enabled in Outdoor, disabled in Delves, Dungeons, Raid, and PvP via DynamicLoadDB) and Disable Decor Vendor + Reload UI resolutions across Guided Setup, DynamicMarker's module banner, and standalone DynamicMarker (with persistent Dismiss); and updated DynamicMarker's [DynamicMark] Macro Setup note." },
         { type = "FIX",     text = "Item Socketing Esc Close, DIALOG-vs-HIGH Click-to-Front Strata Focus (Zero Cooldown Manager Bleed-Through), and Adventure Guide Mousewheel Scrolling Fixes (18/11/2026): Marked session-bound interaction panels (Item Socketing, Trade, Gossip, Quest, Item Upgrade, and Revival Catalyst) as non-restorable so closing them clears their state immediately without ever re-showing an empty ghost shell on Esc (pressing Esc once cleanly closes Item Socketing and pressing Esc again closes Character Info); placed the top-focused managed window on DIALOG strata and all unfocused open panels on HIGH strata (with SetToplevel disabled, zero C++ Raise calls, and root FrameLevel clamped to 1) so Cooldown Manager icons never bleed through either focused or unfocused panels while whichever window you click or open always sits cleanly on top of all other windows with Character gear slots, EllesmereUI stats panes, and TalentLoadoutManager overlays properly layered; and stopped the Adventure Guide root frame and passive border chrome from swallowing mousewheel input so scrolling boss overviews, abilities, loot lists, and lore works smoothly again while preserving Ctrl+Scroll and Ctrl+Shift+Scroll window scaling when Ctrl is held." },
         { type = "FIX",     text = "Desktop Window Coexistence, Strata-Based Focus, Character Sheet Pane Visibility, Spellbook Tab Memory & Free Dragging (18/11/2026): Eliminated client freezes, buried Character Info left/right panes (both stock Blizzard gear slots/model at FrameLevel 101 and EllesmereUIBlizzardSkin right-side Character Stats at FrameLevel 50), and talent tree/sidebar blanking by disabling SetToplevel and removing C++ Raise() calls that jumped root window backgrounds to FrameLevel 5020 above third-party 5000-level frames, clamping any stray FrameLevel > 15 back to 1, and managing z-order cleanly via strata focus (HIGH for the active window, MEDIUM for background windows) without synthetic frame-level inflation, SecureHandler wrapper overhead, or UpdateUIPanelPositions re-anchor loops; ensured Character Info (C) keeps its right-side stats pane expanded and refreshed on open whenever not collapsed by the user; detached side-by-side panels cleanly without ever hiding already-open frames; fixed Spellbook tab selection getting forced back to Talents when opening C, I, or L; stopped C from getting pushed next to Group Finder (I) or locked in place and fixed dragging across stats and background panes; kept Adventure Guide boss loot lists intact, Guild & Communities and Group Finder taint-free, and fullscreen World Map untouched; added one-window-at-a-time reverse-order Escape closing both in and out of combat; routed Ctrl+Scroll (session 5% scaling) and Ctrl+Shift+Scroll (permanent 5% scaling); and ensured Right-Click header resets and Reset Window Defaults persist cleanly across /reload." },
         { type = "FEATURE", text = "Release v2.3.0 - 2-Tab Suite Studio, Core MS-Windows Desktop Window Manager & 32-Panel Quest Log Coexistence (16/11/2026): Upgraded Suite Studio into a 2-tab workspace (Tab 1 'Theme & Typography' via /ds studio or /ds theme; Tab 2 'Desktop Windows & Menus' via /ds windows or /ds win) and migrated the Blizzard Desktop Window Manager into DynamicSuite Core (_G.DynamicSuite.DesktopWindows & DynamicSuiteDB.global.desktopWindows with automatic one-time migration from DynamicPrepDB so window management works even when DynamicPrep is disabled). Expanded side-by-side coexistence to 32 Blizzard panels by bringing the windowed/docked WorldMapFrame (Quest Log 'L') into full coexistence alongside PlayerSpellsFrame, CharacterFrame, PVEFrame, CollectionsJournal, ProfessionsFrame, and all standard panels while keeping fullscreen WorldMapFrame and GameMenuFrame untouched; replaced unclamped free-floating movement with mandatory scale-aware ClampDesktopWindowOffset boundary clamping across drag ticks, drag stop, OnShow, OnSizeChanged (Talent/Spec/Spellbook switches), UI_SCALE_CHANGED, and DISPLAY_SIZE_CHANGED so no panel or [X] close button can ever spawn or get stuck off-screen; enabled modifier-free Left-Click dragging from any empty window background or passive chrome (guarded via GetMouseFoci() so interactive child controls are never hijacked); added a zero-taint GLOBAL_MOUSE_DOWN click-to-raise z-order listener and UISpecialFrames sorter so clicking any open window brings it to the front and pressing Escape always closes the top-most window first; and preserved silent external mover coexistence (NoAutoClose, BlizzMove, DeModal, MoveAny, EllesmereUI, Leatrix Plus, ElvUI) with a live status banner on Tab 2." },
@@ -285,11 +286,11 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
     },
     DynamicMarker = {
         "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers",
-        addons = { "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers" },
+        addons = { "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers", "DecorVendor" },
         conflicts = { "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers" },
         hardConflicts = { "FocusMarker", "EllesmereUIQuickdraw", "EllesmereUI_Quickdraw", "MRT", "TargetCharms", "DejaMark", "EasyMarker", "WorldMarkers" },
-        partialConflicts = {},
-        softConflicts = {},
+        partialConflicts = { "DecorVendor" },
+        softConflicts = { "DecorVendor" },
         category = "Target & Ground Markers",
         hasLegacyMigration = { FocusMarker = true },
     },
@@ -377,6 +378,7 @@ local FRIENDLY_CONFLICT_NAMES = addonTable.FRIENDLY_CONFLICT_NAMES or {
     ["WorldMarkers"]             = "WorldMarkers",
     ["DejaMark"]                 = "DejaMark",
     ["EasyMarker"]               = "EasyMarker",
+    ["DecorVendor"]              = "Decor Vendor",
     ["DynamicCam"]               = "DynamicCam",
     ["MaxCam"]                   = "MaxCam",
     ["ActionCamPlus"]            = "ActionCamPlus",
@@ -485,6 +487,7 @@ local CONFLICT_YIELD_FEATURES = {
     ["BlizzMove"]                = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
     ["DeModal"]                  = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
     ["MoveAny"]                  = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
+    ["DecorVendor"]              = "raid target marker (/tm) taint in dungeons & raids",
 }
 addonTable.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
 DynamicSuite.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
@@ -1661,12 +1664,153 @@ local function IsQueuedInDynamicLoad(addonFolder)
     return false
 end
 
+local function IsAddonLockedInDynamicLoad(addonFolder)
+    if not addonFolder or type(addonFolder) ~= "string" then return false end
+    if addonTable.IsAddonLocked and addonTable.IsAddonLocked(addonFolder) then
+        return true
+    end
+    local dl = _G.DynamicLoadDB
+    if type(dl) ~= "table" then return false end
+    if (dl.addonStates and dl.addonStates[addonFolder] == "LOCKED")
+        or (dl.lockedAddons and dl.lockedAddons[addonFolder] == true) then
+        return true
+    end
+    if GetCharScopeMode() ~= "CHARACTER" and type(dl.globalData) == "table" then
+        if (dl.globalData.addonStates and dl.globalData.addonStates[addonFolder] == "LOCKED")
+            or (dl.globalData.lockedAddons and dl.globalData.lockedAddons[addonFolder] == true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function GetActiveDynamicLoadProfilesTable()
+    local dl = _G.DynamicLoadDB
+    if type(dl) ~= "table" then return nil end
+    if GetCharScopeMode() == "CHARACTER" and type(dl.charData) == "table" then
+        local cd = dl.charData[GetCurrentCharKey()]
+        if type(cd) == "table" and type(cd.profiles) == "table" then
+            return cd.profiles
+        end
+    elseif type(dl.globalData) == "table" and type(dl.globalData.profiles) == "table" then
+        return dl.globalData.profiles
+    end
+    return dl.profiles
+end
+
+local function IsAddonConfiguredOutdoorOnly(addonFolder)
+    if not addonFolder or type(addonFolder) ~= "string" then return false end
+    if IsExternalAddonFrozen(addonFolder) or IsAddonLockedInDynamicLoad(addonFolder) then
+        return false
+    end
+    local profiles = GetActiveDynamicLoadProfilesTable()
+    if type(profiles) ~= "table" then return false end
+    local outProf = profiles[CONTEXT_OUTDOOR]
+    if type(outProf) ~= "table" or type(outProf.addons) ~= "table" or outProf.addons[addonFolder] ~= true then
+        return false
+    end
+    for _, ctx in ipairs({ CONTEXT_DELVE, CONTEXT_DUNGEON, CONTEXT_RAID, CONTEXT_PVP }) do
+        local p = profiles[ctx]
+        if type(p) ~= "table" or type(p.addons) ~= "table" or p.addons[addonFolder] ~= false then
+            return false
+        end
+    end
+    return true
+end
+addonTable.IsAddonConfiguredOutdoorOnly = IsAddonConfiguredOutdoorOnly
+DynamicSuite.IsAddonConfiguredOutdoorOnly = IsAddonConfiguredOutdoorOnly
+
+local function SetAddonOutdoorOnlyInDynamicLoad(addonFolder)
+    if not addonFolder or type(addonFolder) ~= "string" then return false end
+    local pName = GetPlayer()
+    if type(addonTable.SetAddonFrozen) == "function" then
+        pcall(addonTable.SetAddonFrozen, addonFolder, false)
+    end
+    if type(addonTable.SetAddonLocked) == "function" then
+        pcall(addonTable.SetAddonLocked, addonFolder, false)
+    end
+
+    _G.DynamicLoadDB = type(_G.DynamicLoadDB) == "table" and _G.DynamicLoadDB or {}
+    local dl = _G.DynamicLoadDB
+    dl.knownAddons = type(dl.knownAddons) == "table" and dl.knownAddons or {}
+    dl.knownAddons[addonFolder] = true
+
+    local function ClearStateFlags(tbl)
+        if type(tbl) ~= "table" then return end
+        tbl.frozenAddons = type(tbl.frozenAddons) == "table" and tbl.frozenAddons or {}
+        tbl.lockedAddons = type(tbl.lockedAddons) == "table" and tbl.lockedAddons or {}
+        tbl.addonStates = type(tbl.addonStates) == "table" and tbl.addonStates or {}
+        tbl.frozenAddons[addonFolder] = nil
+        tbl.lockedAddons[addonFolder] = nil
+        tbl.addonStates[addonFolder] = "NORMAL"
+    end
+
+    local function ApplyOutdoorProfiles(profilesTbl)
+        if type(profilesTbl) ~= "table" then return end
+        for _, ctx in ipairs({ CONTEXT_OUTDOOR, CONTEXT_DELVE, CONTEXT_DUNGEON, CONTEXT_RAID, CONTEXT_PVP }) do
+            profilesTbl[ctx] = type(profilesTbl[ctx]) == "table" and profilesTbl[ctx] or { name = CONTEXT_LABELS[ctx] or ctx, addons = {} }
+            profilesTbl[ctx].addons = type(profilesTbl[ctx].addons) == "table" and profilesTbl[ctx].addons or {}
+            profilesTbl[ctx].addons[addonFolder] = (ctx == CONTEXT_OUTDOOR)
+        end
+    end
+
+    ClearStateFlags(dl)
+    dl.profiles = type(dl.profiles) == "table" and dl.profiles or {}
+    ApplyOutdoorProfiles(dl.profiles)
+
+    if GetCharScopeMode() == "CHARACTER" then
+        dl.charData = type(dl.charData) == "table" and dl.charData or {}
+        local charKey = GetCurrentCharKey()
+        dl.charData[charKey] = type(dl.charData[charKey]) == "table" and dl.charData[charKey] or {}
+        ClearStateFlags(dl.charData[charKey])
+        dl.charData[charKey].profiles = type(dl.charData[charKey].profiles) == "table" and dl.charData[charKey].profiles or {}
+        ApplyOutdoorProfiles(dl.charData[charKey].profiles)
+    else
+        dl.globalData = type(dl.globalData) == "table" and dl.globalData or {}
+        ClearStateFlags(dl.globalData)
+        dl.globalData.profiles = type(dl.globalData.profiles) == "table" and dl.globalData.profiles or {}
+        ApplyOutdoorProfiles(dl.globalData.profiles)
+    end
+
+    local activeCtx = (type(addonTable.DetectEnvironment) == "function" and addonTable.DetectEnvironment())
+        or dl.activeProfile
+        or CONTEXT_OUTDOOR
+
+    if type(addonTable.StageAddonProfile) == "function" then
+        pcall(addonTable.StageAddonProfile, activeCtx, false)
+    elseif C_AddOns then
+        if activeCtx == CONTEXT_OUTDOOR then
+            if C_AddOns.EnableAddOn then
+                pcall(C_AddOns.EnableAddOn, addonFolder, pName)
+                pcall(C_AddOns.EnableAddOn, addonFolder)
+            end
+        elseif C_AddOns.DisableAddOn then
+            pcall(C_AddOns.DisableAddOn, addonFolder, pName)
+            pcall(C_AddOns.DisableAddOn, addonFolder)
+        end
+    end
+
+    local needsReload = (activeCtx ~= CONTEXT_OUTDOOR) and SafeIsAddOnLoaded(addonFolder)
+    return needsReload
+end
+addonTable.SetAddonOutdoorOnlyInDynamicLoad = SetAddonOutdoorOnlyInDynamicLoad
+DynamicSuite.SetAddonOutdoorOnlyInDynamicLoad = SetAddonOutdoorOnlyInDynamicLoad
+
 local function IsThirdPartyConflictActive(dynamicModule, otherAddon, pName)
     if otherAddon == "ElvUI" or otherAddon == "Leatrix_Plus" or otherAddon == "EllesmereUI" then
         if IsExternalAddonFrozen(otherAddon) then
             return false, nil, nil
         end
         return InspectSmartSubModuleConflict(dynamicModule, otherAddon)
+    end
+    if otherAddon == "DecorVendor" then
+        if IsExternalAddonFrozen(otherAddon) then
+            return false, nil, nil
+        end
+        if SafeIsAddOnLoaded(otherAddon) or SafeIsAddOnEnabledInClient(otherAddon, pName) or IsQueuedInDynamicLoad(otherAddon) then
+            return true, "SOFT", CONFLICT_YIELD_FEATURES[otherAddon]
+        end
+        return false, nil, nil
     end
     if SafeIsAddOnLoaded(otherAddon) then
         return true, "HARD", nil
@@ -1758,6 +1902,27 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
                 ackAction = nil
             end
         end
+    elseif otherAddon == "DecorVendor" then
+        local isOutdoorOnly = IsAddonConfiguredOutdoorOnly(otherAddon)
+        local isOtherFrozen = IsExternalAddonFrozen(otherAddon)
+        if ackAction == "OUTDOOR_ONLY" then
+            if not isSim and not isOutdoorOnly then
+                ackAction = nil
+                g.acknowledgedConflicts[conflictKey] = nil
+            end
+        elseif ackAction == "USE_DYNAMIC" then
+            if not isSim and not isOtherFrozen then
+                ackAction = nil
+                g.acknowledgedConflicts[conflictKey] = nil
+            end
+        else
+            if not isSim and isOutdoorOnly then
+                ackAction = "OUTDOOR_ONLY"
+            else
+                ackAction = nil
+                g.acknowledgedConflicts[conflictKey] = nil
+            end
+        end
     else
         if ackAction == "PREFER_DYNAMIC" or ackAction == "USE_DYNAMIC" then
             ackAction = "PRIORITISE_DYNAMIC"
@@ -1796,9 +1961,14 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
     local displayTarget = (otherAddon == "DialogueUI" or otherAddon == "DialogUI" or otherAddon == "Plumber" or otherAddon == "Baganator" or otherAddon == "Immersion" or otherAddon == "Storyline" or otherAddon == "AutoTurnIn" or otherAddon == "WIM" or otherAddon == "EllesmereUI")
         and otherAddon or friendly
     local ownerLabel = isBlizzWinOverlap and "Suite Studio -> Desktop Windows & Menus" or addonNameKey
-    local bannerText = (tier == 2)
-        and string.format("QoL Overlap: %s shares sub-features with %s. Choose which addon owns the shared triggers.", displayTarget, ownerLabel)
-        or string.format("Conflict Detected: %s is currently active and may cause UI errors or duplicate frames.", displayTarget)
+    local bannerText
+    if otherAddon == "DecorVendor" then
+        bannerText = "Taint Risk: DecorVendor taints Blizzard's raid target marker (/tm) command when active in dungeons and raids. Keep it enabled for Outdoor Housing only, or disable it."
+    elseif tier == 2 then
+        bannerText = string.format("QoL Overlap: %s shares sub-features with %s. Choose which addon owns the shared triggers.", displayTarget, ownerLabel)
+    else
+        bannerText = string.format("Conflict Detected: %s is currently active and may cause UI errors or duplicate frames.", displayTarget)
+    end
     return {
         conflictKey    = conflictKey,
         dynamicModule  = addonNameKey,
@@ -2388,7 +2558,20 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
             end
         end)
         print(string.format("%s: Yielded overlapping %s sub-features to %s (other %s features remain active).", ADDON_TITLE, canonMod, conflictAddon, canonMod))
+
+    elseif action == "OUTDOOR_ONLY" then
+        local needsReload = SetAddonOutdoorOnlyInDynamicLoad(conflictAddon)
+        SetSuiteModuleEnabled(canonMod, true, true)
+        InvalidateConflictCache()
+        if needsReload then
+            addonTable._conflictPendingReload = true
+            print(string.format("%s: Configured '%s' for Outdoor Housing only via DynamicLoad (reload UI to unload in this instance).", ADDON_TITLE, conflictAddon))
+        else
+            print(string.format("%s: Configured '%s' for Outdoor Housing only via DynamicLoad (enabled in Outdoor; disabled in Delves, Dungeons, Raid, and PvP).", ADDON_TITLE, conflictAddon))
+        end
     end
+
+    InvalidateConflictCache()
 
     if addonTable.mainFrame and addonTable.mainFrame.UpdateModuleConflictBanner then
         pcall(addonTable.mainFrame.UpdateModuleConflictBanner)

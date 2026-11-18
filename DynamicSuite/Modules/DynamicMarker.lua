@@ -324,6 +324,10 @@ local CONFLICT_ADDONS = {
     { name = "EasyMarker",   label = "EasyMarker",   isLegacy = false },
 }
 
+local ADVISORY_CONFLICT_ADDONS = {
+    { name = "DecorVendor",  label = "Decor Vendor", isAdvisory = true, severity = "SOFT" },
+}
+
 local SUITE_MODULE_LIST = {
     { key = "load",   addon = "DynamicLoad",   title = "DynamicLoad",   sub = "Zone Addon Profiles",    subtitle = "Zone Addon Profiles",    slash = "/dl",     desc = "Automatically stages addon loadouts across Outdoor, Delves, Dungeons, Raid, and PvP using By Zone, Always, and Never rules." },
     { key = "marker", addon = "DynamicMarker", title = "DynamicMarker", sub = "Targets, Flares, Macros", subtitle = "Targets, Flares, Macros", slash = "/dm",     desc = "One-button focus target marking, optional ground flare hotkeys (unbound by default), and an auto-swapping interrupt macro across all 13 classes." },
@@ -430,6 +434,7 @@ local DB_DEFAULTS = {
     migratedFromFocusMarker = false,
     focusMarkerBridgeVersion = 0,
     focusMarkerHintShown = false,
+    dismissedAdvisoryConflicts = {},
 }
 
 local SUITE_GLOBAL_DEFAULTS = {
@@ -3405,6 +3410,88 @@ function DM:ResolveConflictKeepOther(conflictAddonName)
     self.pendingConflictReload = "DynamicMarker"
     self:RefreshAll()
     print(string.format("|cFF38BDF8DynamicMarker|r: Kept |cFFFFFFFF%s|r and staged |cFFFFFFFFDynamicMarker|r for disable. Click |cFF10B981[Reload UI]|r to apply.", conflictAddonName))
+end
+
+local function IsAddonFrozenInLoadDB(addonName)
+    local dl = _G.DynamicLoadDB
+    if type(dl) ~= "table" then return false end
+    if (dl.addonStates and dl.addonStates[addonName] == "FROZEN")
+        or (dl.frozenAddons and dl.frozenAddons[addonName] == true) then
+        return true
+    end
+    if type(dl.globalData) == "table" then
+        if (dl.globalData.addonStates and dl.globalData.addonStates[addonName] == "FROZEN")
+            or (dl.globalData.frozenAddons and dl.globalData.frozenAddons[addonName] == true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function FreezeAddonInLoadDB(addonName)
+    if type(_G.DynamicLoadDB) ~= "table" then return end
+    local function ApplyFreeze(tbl)
+        if type(tbl) ~= "table" then return end
+        tbl.addonStates = type(tbl.addonStates) == "table" and tbl.addonStates or {}
+        tbl.frozenAddons = type(tbl.frozenAddons) == "table" and tbl.frozenAddons or {}
+        tbl.lockedAddons = type(tbl.lockedAddons) == "table" and tbl.lockedAddons or {}
+        tbl.addonStates[addonName] = "FROZEN"
+        tbl.frozenAddons[addonName] = true
+        tbl.lockedAddons[addonName] = nil
+        if type(tbl.profiles) == "table" then
+            for _, prof in pairs(tbl.profiles) do
+                if type(prof) == "table" and type(prof.addons) == "table" then
+                    prof.addons[addonName] = nil
+                end
+            end
+        end
+    end
+    ApplyFreeze(_G.DynamicLoadDB)
+    ApplyFreeze(_G.DynamicLoadDB.globalData)
+    if type(_G.DynamicLoadDB.charData) == "table" then
+        for _, cd in pairs(_G.DynamicLoadDB.charData) do
+            ApplyFreeze(cd)
+        end
+    end
+end
+
+function DM:ScanAdvisoryConflicts()
+    local advisories = {}
+    local dismissed = (self.db and type(self.db.dismissedAdvisoryConflicts) == "table") and self.db.dismissedAdvisoryConflicts or nil
+    for _, item in ipairs(ADVISORY_CONFLICT_ADDONS) do
+        local isDismissed = dismissed and dismissed[item.name] == true
+        local isLoaded = C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(item.name) == true
+        local isActive = self:IsAddonEnabled(item.name) or isLoaded
+        if isActive and not isDismissed and not IsAddonFrozenInLoadDB(item.name) and self.pendingConflictReload ~= item.name then
+            table.insert(advisories, item)
+        end
+    end
+    self.activeAdvisoryConflicts = advisories
+    return advisories
+end
+
+function DM:ResolveAdvisoryDisable(addonName)
+    if not addonName or addonName == "" then return end
+    if C_AddOns and C_AddOns.DisableAddOn then
+        pcall(C_AddOns.DisableAddOn, addonName, UnitName("player"))
+        pcall(C_AddOns.DisableAddOn, addonName)
+    end
+    FreezeAddonInLoadDB(addonName)
+    self.pendingConflictReload = addonName
+    self:ScanAdvisoryConflicts()
+    self:RefreshAll()
+    print(string.format("|cFF38BDF8DynamicMarker|r: Disabled |cFFFFFFFF%s|r (and froze it in DynamicLoad if present). Click |cFF10B981[Reload UI]|r to complete.", addonName))
+end
+
+function DM:DismissAdvisoryConflict(addonName)
+    if not addonName or addonName == "" then return end
+    if self.db then
+        self.db.dismissedAdvisoryConflicts = type(self.db.dismissedAdvisoryConflicts) == "table" and self.db.dismissedAdvisoryConflicts or {}
+        self.db.dismissedAdvisoryConflicts[addonName] = true
+    end
+    self:ScanAdvisoryConflicts()
+    self:RefreshAll()
+    print(string.format("|cFF38BDF8DynamicMarker|r: Dismissed compatibility notice for |cFFFFFFFF%s|r.", addonName))
 end
 
 -- ============================================================================
@@ -7685,14 +7772,22 @@ function DM:BuildWorkspace(parentContainer)
     self:ApplyBackdrop(banner, { r = 0.20, g = 0.14, b = 0.05, a = 0.96 }, COLORS.Amber, 1)
 
     banner.BtnKeepOther = self:CreateButton(banner, "Keep FocusMarker", 145, 26, function()
-        local c = (self.activeConflicts and self.activeConflicts[1] and self.activeConflicts[1].name) or "FocusMarker"
-        self:ResolveConflictKeepOther(c)
+        if banner._mode == "ADVISORY" then
+            self:DismissAdvisoryConflict(banner._addonName or "DecorVendor")
+        else
+            local c = banner._addonName or (self.activeConflicts and self.activeConflicts[1] and self.activeConflicts[1].name) or "FocusMarker"
+            self:ResolveConflictKeepOther(c)
+        end
     end)
     banner.BtnKeepOther:SetPoint("RIGHT", banner, "RIGHT", -12, 0)
 
     banner.BtnUseDynamic = self:CreateButton(banner, "Import & Use DynamicMarker", 195, 26, function()
-        local c = (self.activeConflicts and self.activeConflicts[1] and self.activeConflicts[1].name) or "FocusMarker"
-        self:ResolveConflictUseDynamic(c)
+        if banner._mode == "ADVISORY" then
+            self:ResolveAdvisoryDisable(banner._addonName or "DecorVendor")
+        else
+            local c = banner._addonName or (self.activeConflicts and self.activeConflicts[1] and self.activeConflicts[1].name) or "FocusMarker"
+            self:ResolveConflictUseDynamic(c)
+        end
     end, true)
     banner.BtnUseDynamic:SetPoint("RIGHT", banner.BtnKeepOther, "LEFT", -8, 0)
 
@@ -8583,11 +8678,11 @@ function DM:BuildWorkspace(parentContainer)
     -- ========================================================================
     local p3 = ws.subTabPages[3].content
     if ws.subTabPages[3].SetContentHeight then
-        ws.subTabPages[3]:SetContentHeight(742)
+        ws.subTabPages[3]:SetContentHeight(752)
     end
 
     -- Section 1: [DynamicMark] (General Macro - All Characters)
-    local p3Sec1 = self:CreateSectionBox(p3, 0, 328)
+    local p3Sec1 = self:CreateSectionBox(p3, 0, 338)
     if p3Sec1.SetClipsChildren then p3Sec1:SetClipsChildren(true) end
     local p3Hdr1 = self:CreateSectionHeader(p3Sec1, -10, "[DYNAMICMARK] - FOCUS & RAID TARGET MARKER (GENERAL MACRO)", "One-button modifier-free macro that sets focus and applies your preferred raid target icon.")
 
@@ -8630,7 +8725,7 @@ function DM:BuildWorkspace(parentContainer)
     mRowTargetMode:BindControl(pillsTargetMode)
 
     local mPreviewCard1 = CreateFrame("Frame", nil, p3Sec1, "BackdropTemplate")
-    mPreviewCard1:SetHeight(134)
+    mPreviewCard1:SetHeight(144)
     mPreviewCard1:SetPoint("TOPLEFT", p3Sec1, "TOPLEFT", 14, -182)
     mPreviewCard1:SetPoint("TOPRIGHT", p3Sec1, "TOPRIGHT", -14, -182)
     if mPreviewCard1.SetClipsChildren then mPreviewCard1:SetClipsChildren(true) end
@@ -8723,12 +8818,12 @@ function DM:BuildWorkspace(parentContainer)
     btnStep1Focus:SetPoint("RIGHT", btnStep2Focus, "LEFT", -8, 0)
 
     local focusMacroNote = mPreviewCard1:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    focusMacroNote:SetPoint("LEFT", mPreviewCard1, "BOTTOMLEFT", 14, 23)
+    focusMacroNote:SetPoint("LEFT", mPreviewCard1, "BOTTOMLEFT", 14, 27)
     focusMacroNote:SetPoint("RIGHT", btnStep1Focus, "LEFT", -10, 0)
     focusMacroNote:SetJustifyH("LEFT")
     focusMacroNote:SetWordWrap(true)
     self:StyleFont(focusMacroNote, 10, "", COLORS.TextMuted)
-    focusMacroNote:SetText("Note: /tm requires Raid Lead/Assist in raids; restart the game (not /reload) if Blizzard's marker lockout occurs.")
+    focusMacroNote:SetText("Note: /tm needs Raid Lead/Assist in raids. Addons hooking chat or slash commands (such as DecorVendor) can block /tm until disabled for group content or reloaded; restart the game if Blizzard's marker lockout occurs.")
 
     -- Section 2: [DynamicKick] (Character Macro - Per-Character)
     local p3Sec2 = self:CreateSectionBox(p3, nil, 388)
@@ -9163,7 +9258,9 @@ function DM:ShowStudioModal(mode)
         table.insert(m.Body._modeWidgets, fontDd)
 
     elseif mode == "SETUP" then
-        m:SetSize(560, 368)
+        local conflicts = self:ScanConflicts()
+        local advisories = (#conflicts == 0) and self:ScanAdvisoryConflicts() or {}
+        m:SetSize(560, (#conflicts > 0 or #advisories > 0) and 402 or 368)
         m.Title:SetText("DynamicMarker Guided Setup")
         local txt = m.Body.textBlock or m.Body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         m.Body.textBlock = txt
@@ -9174,10 +9271,14 @@ function DM:ShowStudioModal(mode)
         txt:SetWordWrap(true)
         self:StyleFont(txt, 12, "", COLORS.TextPrimary)
 
-        local conflicts = self:ScanConflicts()
-        local conflictStatus = (#conflicts > 0)
-            and ("Detected Active Conflict: " .. conflicts[1].name .. " (Click button below to import & disable)")
-            or (READY_CHECK_TEX .. " No conflicting marker addons detected.")
+        local conflictStatus
+        if #conflicts > 0 then
+            conflictStatus = "Detected Active Conflict: " .. conflicts[1].name .. " (Click button below to import & disable)"
+        elseif #advisories > 0 then
+            conflictStatus = "Compatibility Notice: " .. advisories[1].name .. " can taint Blizzard's /tm command in dungeons & raids."
+        else
+            conflictStatus = READY_CHECK_TEX .. " No conflicting marker addons detected."
+        end
 
         txt:SetText(
             "1. Conflict Check: " .. conflictStatus .. "\n\n" ..
@@ -9195,6 +9296,24 @@ function DM:ShowStudioModal(mode)
             cBtn:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, yCursor)
             cBtn:SetFrameLevel(303)
             table.insert(m.Body._modeWidgets, cBtn)
+            yCursor = yCursor - 38
+        elseif #advisories > 0 then
+            local advAddon = advisories[1].name
+            local disBtn = self:CreateButton(m.Body, "Disable " .. advAddon, 180, 28, function()
+                self:ResolveAdvisoryDisable(advAddon)
+                self:ShowStudioModal("SETUP")
+            end, true)
+            disBtn:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, yCursor)
+            disBtn:SetFrameLevel(303)
+            table.insert(m.Body._modeWidgets, disBtn)
+
+            local dimBtn = self:CreateButton(m.Body, "Dismiss", 104, 28, function()
+                self:DismissAdvisoryConflict(advAddon)
+                self:ShowStudioModal("SETUP")
+            end)
+            dimBtn:SetPoint("LEFT", disBtn, "RIGHT", 10, 0)
+            dimBtn:SetFrameLevel(303)
+            table.insert(m.Body._modeWidgets, dimBtn)
             yCursor = yCursor - 38
         end
 
@@ -10505,22 +10624,72 @@ function DM:RefreshAll()
         -- Update Conflict Banner Visibility & Position
         local hostedInSuite = (_G.DynamicSuite and _G.DynamicSuite.HasUnifiedModuleConflictBanner and _G.DynamicSuiteMainFrame and ws:GetParent() ~= UIParent)
         local conflicts = hostedInSuite and {} or self:ScanConflicts()
-        if not hostedInSuite and (#conflicts > 0 or self.pendingConflictReload) and ws.conflictBanner then
-            local cName = (conflicts[1] and conflicts[1].name) or self.pendingConflictReload or "FocusMarker"
+        local advisories = hostedInSuite and {} or self:ScanAdvisoryConflicts()
+        if not hostedInSuite and (#conflicts > 0 or #advisories > 0 or self.pendingConflictReload) and ws.conflictBanner then
+            local cName = (conflicts[1] and conflicts[1].name) or (advisories[1] and advisories[1].name) or self.pendingConflictReload or "FocusMarker"
             ws.conflictBanner:Show()
             if self.pendingConflictReload then
-                ws.conflictBanner.Title:SetText(READY_CHECK_TEX .. " Conflict Resolution Staged for " .. cName)
-                ws.conflictBanner.Sub:SetText("Settings imported and " .. cName .. " is locked off across all zone profiles. Click [Reload UI] to finish.")
+                ws.conflictBanner._mode = "RELOAD"
+                ws.conflictBanner._addonName = self.pendingConflictReload
+                self:ApplyBackdrop(ws.conflictBanner, { r = 0.035, g = 0.075, b = 0.055, a = 0.96 }, COLORS.Green, 1)
+                self:StyleFont(ws.conflictBanner.Title, 12, "", COLORS.Green)
+                if self.pendingConflictReload == "DecorVendor" then
+                    ws.conflictBanner.Title:SetText(READY_CHECK_TEX .. " DecorVendor Disabled for Next Session")
+                    ws.conflictBanner.Sub:SetText("DecorVendor has been disabled (and frozen in DynamicLoad if present). Click [Reload UI] to finish.")
+                else
+                    ws.conflictBanner.Title:SetText(READY_CHECK_TEX .. " Conflict Resolution Staged for " .. cName)
+                    ws.conflictBanner.Sub:SetText("Settings imported and " .. cName .. " is locked off across all zone profiles. Click [Reload UI] to finish.")
+                end
+                ws.conflictBanner.Title:ClearAllPoints()
+                ws.conflictBanner.Title:SetPoint("TOPLEFT", ws.conflictBanner, "TOPLEFT", 14, -10)
+                ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner.BtnReload, "LEFT", -16, 0)
+                ws.conflictBanner.Sub:ClearAllPoints()
+                ws.conflictBanner.Sub:SetPoint("TOPLEFT", ws.conflictBanner.Title, "BOTTOMLEFT", 0, -4)
+                ws.conflictBanner.Sub:SetPoint("RIGHT", ws.conflictBanner.BtnReload, "LEFT", -16, 0)
                 ws.conflictBanner.BtnUseDynamic:Hide()
                 ws.conflictBanner.BtnKeepOther:Hide()
                 ws.conflictBanner.BtnReload:Show()
-            else
+            elseif #conflicts > 0 then
+                ws.conflictBanner._mode = "HARD"
+                ws.conflictBanner._addonName = cName
+                self:ApplyBackdrop(ws.conflictBanner, { r = 0.20, g = 0.14, b = 0.05, a = 0.96 }, COLORS.Amber, 1)
+                self:StyleFont(ws.conflictBanner.Title, 12, "", COLORS.Amber)
+                ws.conflictBanner.BtnKeepOther:SetWidth(145)
+                ws.conflictBanner.BtnUseDynamic:SetWidth(195)
+                ws.conflictBanner.Title:ClearAllPoints()
+                ws.conflictBanner.Title:SetPoint("TOPLEFT", ws.conflictBanner, "TOPLEFT", 14, -10)
+                ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -16, 0)
+                ws.conflictBanner.Sub:ClearAllPoints()
+                ws.conflictBanner.Sub:SetPoint("TOPLEFT", ws.conflictBanner.Title, "BOTTOMLEFT", 0, -4)
+                ws.conflictBanner.Sub:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -16, 0)
                 ws.conflictBanner.Title:SetText("Conflict Detected: " .. cName .. " is currently active and may cause UI errors or blocked actions.")
                 ws.conflictBanner.Sub:SetText("Running duplicate marker addons causes macro and raid icon collisions. Choose 1-click resolution:")
                 ws.conflictBanner.BtnUseDynamic:SetLabel(cName == "FocusMarker"
                     and "Import & Use DynamicMarker"
                     or ("Use DynamicMarker"))
                 ws.conflictBanner.BtnKeepOther:SetLabel("Keep " .. cName)
+                ws.conflictBanner.BtnUseDynamic:Show()
+                ws.conflictBanner.BtnKeepOther:Show()
+                ws.conflictBanner.BtnReload:Hide()
+            else
+                local adv = advisories[1]
+                local advName = adv.name
+                ws.conflictBanner._mode = "ADVISORY"
+                ws.conflictBanner._addonName = advName
+                self:ApplyBackdrop(ws.conflictBanner, COLORS.BgVoid, COLORS.Cyan, 1)
+                self:StyleFont(ws.conflictBanner.Title, 12, "", COLORS.Cyan)
+                ws.conflictBanner.BtnKeepOther:SetWidth(94)
+                ws.conflictBanner.BtnUseDynamic:SetWidth(168)
+                ws.conflictBanner.Title:ClearAllPoints()
+                ws.conflictBanner.Title:SetPoint("TOPLEFT", ws.conflictBanner, "TOPLEFT", 14, -10)
+                ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -16, 0)
+                ws.conflictBanner.Sub:ClearAllPoints()
+                ws.conflictBanner.Sub:SetPoint("TOPLEFT", ws.conflictBanner.Title, "BOTTOMLEFT", 0, -4)
+                ws.conflictBanner.Sub:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -16, 0)
+                ws.conflictBanner.Title:SetText("Compatibility Notice: " .. (adv.label or advName) .. " (" .. advName .. ") is active")
+                ws.conflictBanner.Sub:SetText("DecorVendor can taint Blizzard's /tm raid marker command in dungeons and raids (not a DynamicMarker bug).")
+                ws.conflictBanner.BtnUseDynamic:SetLabel("Disable " .. advName)
+                ws.conflictBanner.BtnKeepOther:SetLabel("Dismiss")
                 ws.conflictBanner.BtnUseDynamic:Show()
                 ws.conflictBanner.BtnKeepOther:Show()
                 ws.conflictBanner.BtnReload:Hide()
@@ -10613,12 +10782,14 @@ function DM:RefreshAll()
         end
         if self.shellFrame.Rail and self.shellFrame.Rail.studioBtns then
             local conflicts = self:ScanConflicts()
+            local advisories = self:ScanAdvisoryConflicts()
+            local totalNotices = #conflicts + #advisories
             for _, sBtn in ipairs(self.shellFrame.Rail.studioBtns) do
                 if sBtn.studioKey == "GUIDED_SETUP" and sBtn.okPip and sBtn.conflictPill then
                     self:ApplyBackdrop(sBtn, cardBg, cardBd, 1)
-                    if #conflicts > 0 then
+                    if totalNotices > 0 then
                         sBtn.okPip:Hide()
-                        sBtn.conflictBadge:SetText("! " .. tostring(#conflicts))
+                        sBtn.conflictBadge:SetText("! " .. tostring(totalNotices))
                         sBtn.conflictPill:Show()
                     else
                         sBtn.conflictPill:Hide()
@@ -10802,6 +10973,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "18/11/2026",
     entries = {
+        { type = "FIX",      text = "Runtime /tm Taint Listener & DecorVendor Compatibility Guard (18/11/2026): Registered ADDON_ACTION_FORBIDDEN on DynamicMarker's event frame for SetRaidTarget/SetRaidTarget() to print a rate-limited (once per 30 seconds per offending addon) plain-English chat alert naming the third-party addon that tainted Blizzard's /tm slash command and advising Outdoor Only mode or disabling + reloading UI; added DecorVendor soft-conflict detection across Guided Setup and standalone DynamicMarker's advisory banner with 1-click Disable DecorVendor and persistent Dismiss; and updated Macro Setup's [DynamicMark] troubleshooting note." },
         { type = "IMPROVED", text = "[DynamicMark] Macro Template Streamlining & Raid Marker Note (17/11/2026): Removed the redundant /stopmacro [@focus,noexists] line from generated [DynamicMark] macros (since /tm already gates on @focus,exists across all group scopes) and added a concise troubleshooting note in Macro Setup explaining that /tm requires Raid Leader or Assistant in raids and that a full game restart (not /reload) clears Blizzard's intermittent raid-marker lockout bug." },
         { type = "UI",       text = "3-Way Interactive Obsidian Scrollbars & Automatic Popover Dismissal (16/11/2026): Upgraded all scrollbars across the settings tabs, dropdown menus, and the Changelog viewer to support full 3-way interaction (mousewheel scrolling, Left-Click & Drag on the scrollbar thumb with hover highlights, and Left-Click on the scrollbar track to jump directly to that position), added an unclipped 1px accent border overlay and Escape-key dismissal to dropdown menus, and ensured open dropdowns and HUD selector popovers close automatically when switching tabs, entering HUD Edit Mode, or closing the window." },
         { type = "IMPROVED", text = "Release v2.3.0 - HUD Edit Mode 'Apply All' Appearance Action & Lockstep Parity (16/11/2026): Added a compact 'Apply All' Opacity & Border Style button to Row 3 of DynamicMarkerEditModeInspector so you can copy the active bar's opacity and border style across both bars in one click, and synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.3.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
@@ -11156,6 +11328,20 @@ local function EnforceSuiteDuplicateExclusion(showPopupIfLoaded)
     return true
 end
 
+local taintAlertCooldowns = {}
+
+local function SafeReadableString(v)
+    if v == nil then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    if type(canaccessvalue) == "function" then
+        local okAcc, canAcc = pcall(canaccessvalue, v)
+        if okAcc and not canAcc then return nil end
+    end
+    local okStr, s = pcall(tostring, v)
+    if not okStr then return nil end
+    return s
+end
+
 local evtFrame = CreateFrame("Frame")
 evtFrame:RegisterEvent("ADDON_LOADED")
 evtFrame:RegisterEvent("PLAYER_LOGIN")
@@ -11172,8 +11358,9 @@ evtFrame:RegisterEvent("UPDATE_BINDINGS")
 evtFrame:RegisterEvent("CVAR_UPDATE")
 evtFrame:RegisterEvent("UI_SCALE_CHANGED")
 evtFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
+evtFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
 
-evtFrame:SetScript("OnEvent", function(_, event, arg1)
+evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if ADDON_FOLDER ~= "DynamicSuite" then
         local isSuiteActive = (event == "ADDON_LOADED" and arg1 == "DynamicSuite")
             or (C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DynamicSuite"))
@@ -11189,6 +11376,28 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1)
             end
             return
         end
+    end
+    if event == "ADDON_ACTION_FORBIDDEN" then
+        if IsModuleDisabledInSuite("DynamicMarker") or MarkerModuleDescriptor._disabledAtStartup then
+            return
+        end
+        local blockedFn = SafeReadableString(arg2)
+        if blockedFn == "SetRaidTarget()" or blockedFn == "SetRaidTarget" then
+            local offender = SafeReadableString(arg1)
+            if not offender or offender == "" then
+                offender = "A third-party addon"
+            end
+            local now = (type(GetTime) == "function" and GetTime()) or 0
+            local lastAlert = taintAlertCooldowns[offender]
+            if not lastAlert or (now - lastAlert) >= 30 then
+                taintAlertCooldowns[offender] = now
+                print(string.format(
+                    "|cFF38BDF8DynamicMarker|r: |cFFF5B82EBlocked Action:|r |cFFFFFFFF%s|r tainted Blizzard's |cFFFFFFFF/tm|r raid marker command (SetRaidTarget) -- this is caused by |cFFFFFFFF%s|r, not DynamicMarker. Set |cFFFFFFFF%s|r to Outdoor Only in DynamicLoad (|cFF38BDF8/dl|r) or disable it and reload your UI.",
+                    offender, offender, offender
+                ))
+            end
+        end
+        return
     end
     if event == "ADDON_LOADED" then
         if (arg1 == ADDON_FOLDER or arg1 == "DynamicMarker") and not isInitialized then
