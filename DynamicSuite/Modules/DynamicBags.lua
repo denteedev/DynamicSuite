@@ -2785,6 +2785,31 @@ function U.ObjMatches(o, q)
     return false
 end
 
+local function IsStackMatching(pattern1, pattern2)
+    if type(debugstack) ~= "function" then return false end
+    local ok, stack = pcall(debugstack, 1, 14, 0)
+    if not ok or type(stack) ~= "string" then return false end
+    if pattern1 and stack:find(pattern1, 1, true) then return true end
+    if pattern2 and stack:find(pattern2, 1, true) then return true end
+    return false
+end
+
+function U.EnsureBagSpecialFrames()
+    if InCombatLockdown() or type(UISpecialFrames) ~= "table" then return end
+    for _, fName in ipairs({ "DynamicBagsFrame", "DynamicBagsBankFrame", "DynamicBagsStandaloneFrame" }) do
+        local found = false
+        for i = 1, #UISpecialFrames do
+            if UISpecialFrames[i] == fName then
+                found = true
+                break
+            end
+        end
+        if not found then
+            tinsert(UISpecialFrames, fName)
+        end
+    end
+end
+
 function U.ClearAllSearchBoxes()
     S.search = ""
     if S.window and S.window.searchBox then
@@ -2856,26 +2881,15 @@ function U.AttachSearchClearAndEscape(sb, ownerWin)
             U.ApplySearch()
         end
     end)
-    sb:SetScript("OnEscapePressed", function()
+    sb:SetScript("OnEscapePressed", function(self)
         U.ClearAllSearchBoxes()
+        if self and self.ClearFocus then
+            self:ClearFocus()
+        end
     end)
     sb:SetScript("OnEnterPressed", function(self)
         self:ClearFocus()
     end)
-
-    if ownerWin and not ownerWin._dsEscHooked then
-        ownerWin._dsEscHooked = true
-        if ownerWin.EnableKeyboard then ownerWin:EnableKeyboard(true) end
-        ownerWin:SetScript("OnKeyDown", function(self, key)
-            if InCombatLockdown() then return end
-            if key == "ESCAPE" and (S.search or "") ~= "" then
-                if self.SetPropagateKeyboardInput then self:SetPropagateKeyboardInput(false) end
-                U.ClearAllSearchBoxes()
-            else
-                if self.SetPropagateKeyboardInput then self:SetPropagateKeyboardInput(true) end
-            end
-        end)
-    end
 end
 
 function U.ApplySearch()
@@ -5124,13 +5138,7 @@ function U.EnsureCompanionBankWindow()
     else
         bw:SetPoint("CENTER", UIParent, "CENTER", -220, 0)
     end
-    if not InCombatLockdown() and UISpecialFrames then
-        local found = false
-        for i = 1, #UISpecialFrames do
-            if UISpecialFrames[i] == "DynamicBagsBankFrame" then found = true; break end
-        end
-        if not found then tinsert(UISpecialFrames, "DynamicBagsBankFrame") end
-    end
+    U.EnsureBagSpecialFrames()
     bw:Hide()
     S.bankWindow = bw
 
@@ -5186,7 +5194,11 @@ function U.EnsureCompanionBankWindow()
 
     local closeBtn = U.NewButton(head, 26, 24, "x")
     closeBtn:SetPoint("TOPRIGHT", head, "TOPRIGHT", -8, -6)
-    closeBtn:SetScript("OnClick", function() bw:Hide() end)
+    closeBtn:SetScript("OnClick", function()
+        S.explicitClosing = (S.explicitClosing or 0) + 1
+        bw:Hide()
+        S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
+    end)
 
     local dockBtn = U.NewIconButton(head, 26, 24, "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_pin.tga", "Pin / Detach DynamicBank Window", "Pinned (Lit): Top-aligned side-by-side to the left of DynamicBags.\nUnpinned (Dim): Detached so you can drag DynamicBank anywhere on screen.")
     dockBtn:SetPoint("RIGHT", closeBtn, "LEFT", -4, 0)
@@ -5393,7 +5405,10 @@ function U.EnsureCompanionBankWindow()
     bw.tabGuild:SetScript("OnClick", function() SelectCompanionTab("GUILD") end)
 
     bw:SetScript("OnShow", function()
-        PlayBagWindowSound(true)
+        U.EnsureBagSpecialFrames()
+        if not S.escRestoringFromSearch then
+            PlayBagWindowSound(true)
+        end
         if not InCombatLockdown() then
             U.ApplyWindowScale("bank")
         end
@@ -5405,6 +5420,12 @@ function U.EnsureCompanionBankWindow()
         U.RenderCompanionBank()
     end)
     bw:SetScript("OnHide", function()
+        if (not S.explicitClosing or S.explicitClosing == 0) and not InCombatLockdown()
+            and ((S.search or "") ~= "") and IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+            S.escRestoreBank = true
+            U.CloseMenu()
+            return
+        end
         PlayBagWindowSound(false)
         U.CloseMenu()
         S.sessionBankScale = nil
@@ -6103,21 +6124,23 @@ function U.EnsureWindow()
         GameMenuFrame:HookScript("OnShow", function()
             if S.window and S.window:IsShown() then
                 if not S.window:IsProtected() or not InCombatLockdown() then
+                    S.explicitClosing = (S.explicitClosing or 0) + 1
+                    if S.bankWindow and S.bankWindow:IsShown() and (not S.bankWindow:IsProtected() or not InCombatLockdown()) then
+                        S.bankWindow:Hide()
+                    end
                     U.HideWindow()
+                    S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
                     if not InCombatLockdown() and GameMenuFrame.Hide then GameMenuFrame:Hide() end
                 else
                     S.pendingCombatVis = "HIDE"
+                    if S.bankWindow and S.bankWindow:IsShown() then
+                        S.pendingCombatHideBank = true
+                    end
                 end
             end
         end)
     end
-    if not InCombatLockdown() and UISpecialFrames then
-        local found = false
-        for i = 1, #UISpecialFrames do
-            if UISpecialFrames[i] == "DynamicBagsFrame" then found = true; break end
-        end
-        if not found then tinsert(UISpecialFrames, "DynamicBagsFrame") end
-    end
+    U.EnsureBagSpecialFrames()
     win:Hide()
     S.window = win
 
@@ -6194,7 +6217,12 @@ function U.EnsureWindow()
     win.viewBtn:SetPoint("LEFT", win.charBtn, "RIGHT", 4, 0)
     win.viewBtn:SetScript("OnClick", function(self)
         U.ShowMenu(self, {
-            { label = "Bags Only",               checked = not (S.bankWindow and S.bankWindow:IsShown()), onClick = function() if S.bankWindow then S.bankWindow:Hide() end; U.SetView(S.view.char, "BAGS") end },
+            { label = "Bags Only",               checked = not (S.bankWindow and S.bankWindow:IsShown()), onClick = function()
+                S.explicitClosing = (S.explicitClosing or 0) + 1
+                if S.bankWindow then S.bankWindow:Hide() end
+                S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
+                U.SetView(S.view.char, "BAGS")
+            end },
             { label = "Bank Window",      checked = (S.bankWindow and S.bankWindow:IsShown() and S.companionMode == "BANK"),    onClick = function() U.OpenCompanionBank("BANK") end },
             { label = "Warband Bank Window",   checked = (S.bankWindow and S.bankWindow:IsShown() and S.companionMode == "WARBAND"), onClick = function() U.OpenCompanionBank("WARBAND") end },
             { label = "Guild Bank Window",checked = (S.bankWindow and S.bankWindow:IsShown() and S.companionMode == "GUILD"),   onClick = function() U.OpenCompanionBank("GUILD") end },
@@ -6470,7 +6498,10 @@ function U.EnsureWindow()
     S.footer = foot
 
     win:SetScript("OnShow", function()
-        PlayBagWindowSound(true)
+        U.EnsureBagSpecialFrames()
+        if not S.escRestoringFromSearch then
+            PlayBagWindowSound(true)
+        end
         if not InCombatLockdown() then
             U.ApplyWindowScale("bag")
         end
@@ -6478,6 +6509,12 @@ function U.EnsureWindow()
         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
     end)
     win:SetScript("OnHide", function()
+        if (not S.explicitClosing or S.explicitClosing == 0) and not InCombatLockdown()
+            and ((S.search or "") ~= "") and IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+            S.escRestoreBag = true
+            U.CloseMenu()
+            return
+        end
         PlayBagWindowSound(false)
         U.CloseMenu()
         S.sessionBagScale = nil
@@ -6543,7 +6580,12 @@ end
 function U.HideWindow()
     if S.window and not (S.window.IsProtected and S.window:IsProtected()) then
         S.pendingCombatVis = nil
-        if S.window:IsShown() then S.window:Hide() end
+        S.pendingCombatHideBank = nil
+        if S.window:IsShown() then
+            S.explicitClosing = (S.explicitClosing or 0) + 1
+            S.window:Hide()
+            S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
+        end
         return
     end
     if InCombatLockdown() then
@@ -6556,28 +6598,55 @@ function U.HideWindow()
         return
     end
     S.pendingCombatVis = nil
-    if S.window and S.window:IsShown() then S.window:Hide() end
+    S.pendingCombatHideBank = nil
+    if S.window and S.window:IsShown() then
+        S.explicitClosing = (S.explicitClosing or 0) + 1
+        S.window:Hide()
+        S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
+    end
 end
 
 function U.ToggleWindow()
     if S.window and not (S.window.IsProtected and S.window:IsProtected()) then
         S.pendingCombatVis = nil
-        if S.window:IsShown() then S.window:Hide() else S.window:Show() end
+        S.pendingCombatHideBank = nil
+        if S.window:IsShown() then
+            S.explicitClosing = (S.explicitClosing or 0) + 1
+            if S.bankWindow and S.bankWindow:IsShown() and (not InCombatLockdown() or not (S.bankWindow.IsProtected and S.bankWindow:IsProtected())) then
+                S.bankWindow:Hide()
+            end
+            S.window:Hide()
+            S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
+        else
+            S.window:Show()
+        end
         return
     end
     if InCombatLockdown() then
         local isCurrentlyShown = (S.window and S.window:IsShown()) and true or false
         if S.pendingCombatVis then
             S.pendingCombatVis = nil
+            S.pendingCombatHideBank = nil
         else
             S.pendingCombatVis = isCurrentlyShown and "HIDE" or "SHOW"
+            S.pendingCombatHideBank = (isCurrentlyShown and S.bankWindow and S.bankWindow:IsShown()) and true or false
             NotifyCombatDeferredBagToggle(isCurrentlyShown and "close" or "open")
         end
         return
     end
     S.pendingCombatVis = nil
+    S.pendingCombatHideBank = nil
     local win = U.EnsureWindow()
-    if win:IsShown() then win:Hide() else win:Show() end
+    if win:IsShown() then
+        S.explicitClosing = (S.explicitClosing or 0) + 1
+        if S.bankWindow and S.bankWindow:IsShown() then
+            S.bankWindow:Hide()
+        end
+        win:Hide()
+        S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
+    else
+        win:Show()
+    end
 end
 
 -- ============================================================================
@@ -8199,6 +8268,7 @@ end
 function U.TriggerAutoOpenKey(key)
     if not key or not DB().autoOpen[key] then return end
     S.autoOpened[key] = true
+    S.autoOpenGraceUntil = (GetTime and GetTime() or 0) + 0.25
     U.ShowWindow()
     -- Re-assert after 0.05s and 0.15s in case Blizzard's UI Panel Manager (e.g. AuctionHouseFrame on Brutosaur mount) calls CloseAllBags() on show!
     C_Timer.After(0.05, function()
@@ -8219,8 +8289,10 @@ function U.TriggerAutoCloseKey(key)
     if not key or not S.autoOpened[key] then return end
     S.autoOpened[key] = nil
     if not next(S.autoOpened) then
+        S.explicitClosing = (S.explicitClosing or 0) + 1
         if S.bankWindow then S.bankWindow:Hide() end
         U.HideWindow()
+        S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
     end
 end
 
@@ -8355,9 +8427,11 @@ function U.OnInteractionHide(interactionType)
     S.autoOpened[key] = nil
     if not next(S.autoOpened) then
         S._closingGuildBank = (key == "guildbank")
+        S.explicitClosing = (S.explicitClosing or 0) + 1
         if S.bankWindow then S.bankWindow:Hide() end
         S._closingGuildBank = nil
         U.HideWindow()
+        S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
     end
 end
 
@@ -8530,6 +8604,9 @@ function U.InstallBagHooks()
         if now - (S.lastToggle or -1) < 0.15 then return end
         S.lastToggle = now
         U.ToggleWindow()
+        if not InCombatLockdown() then
+            U.HideBlizzardBags()
+        end
         C_Timer.After(0, U.HideBlizzardBags)
     end
     local function justHide()
@@ -8540,6 +8617,53 @@ function U.InstallBagHooks()
     end
     for _, fname in ipairs({ "OpenAllBags", "OpenBackpack", "OpenBag" }) do
         if type(_G[fname]) == "function" then hooksecurefunc(fname, justHide) end
+    end
+    if type(_G.CloseAllBags) == "function" then
+        hooksecurefunc("CloseAllBags", function()
+            if not DB().replaceBlizzardBags or InCombatLockdown() then return end
+            if IsStackMatching("ToggleAllBags", "ToggleBackpack") or IsStackMatching("ToggleBag", nil) then
+                return
+            end
+            if S.autoOpenGraceUntil and GetTime and GetTime() < S.autoOpenGraceUntil then
+                return
+            end
+            S.explicitClosing = (S.explicitClosing or 0) + 1
+            if S.bankWindow and S.bankWindow:IsShown() then
+                S.bankWindow:Hide()
+            end
+            U.HideWindow()
+            S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
+        end)
+    end
+    if not S.closeSpecialHooked and type(_G.CloseSpecialWindows) == "function" then
+        S.closeSpecialHooked = true
+        hooksecurefunc("CloseSpecialWindows", function()
+            if InCombatLockdown() then
+                S.escRestoreBag = nil
+                S.escRestoreBank = nil
+                return
+            end
+            if (S.escRestoreBag or S.escRestoreBank) and ((S.search or "") ~= "") then
+                local restoreBag = S.escRestoreBag
+                local restoreBank = S.escRestoreBank
+                S.escRestoreBag = nil
+                S.escRestoreBank = nil
+                S.escRestoringFromSearch = true
+                if restoreBag and S.window and not S.window:IsShown() then
+                    S.window:Show()
+                end
+                if restoreBank and S.bankWindow and not S.bankWindow:IsShown() then
+                    S._skipNextOnShowRender = true
+                    S.bankWindow:Show()
+                    S._skipNextOnShowRender = nil
+                end
+                S.escRestoringFromSearch = nil
+                U.ClearAllSearchBoxes()
+            else
+                S.escRestoreBag = nil
+                S.escRestoreBank = nil
+            end
+        end)
     end
     if ContainerFrameCombinedBags and ContainerFrameCombinedBags.HookScript then
         ContainerFrameCombinedBags:HookScript("OnShow", justHide)
@@ -9576,8 +9700,10 @@ local function RegisterWithDynamicSuite()
         Open = function() return DynamicBags:OpenWorkspace() end,
         GetStatusText = function() return DynamicBags:GetStatusText() end,
         OnDisableInSuite = function()
+            S.explicitClosing = (S.explicitClosing or 0) + 1
             if S.window and not (InCombatLockdown and InCombatLockdown()) then S.window:Hide() end
             if S.bankWindow and not (InCombatLockdown and InCombatLockdown()) then S.bankWindow:Hide() end
+            S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
             if S.quickOpenBtn and not (InCombatLockdown and InCombatLockdown()) then S.quickOpenBtn:Hide() end
             DynamicBags:UnregisterAllEvents()
         end,
@@ -9732,15 +9858,7 @@ function U.OnLogin()
     wipe(S.bindCache); S.forceFull = true
     pcall(U.ProcessDirtyBags)
     if not InCombatLockdown() then
-        if UISpecialFrames then
-            for _, fName in ipairs({ "DynamicBagsFrame", "DynamicBagsBankFrame", "DynamicBagsStandaloneFrame" }) do
-                local found = false
-                for i = 1, #UISpecialFrames do
-                    if UISpecialFrames[i] == fName then found = true; break end
-                end
-                if not found then tinsert(UISpecialFrames, fName) end
-            end
-        end
+        U.EnsureBagSpecialFrames()
         pcall(U.EnsureWindow)
         pcall(U.EnsureQuickOpenButton)
         pcall(U.EnsureButtons)
@@ -9879,12 +9997,20 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         if U.ClearQuickOpenBindings then U.ClearQuickOpenBindings(S.quickOpenBtn) end
         U.CloseMenu()
     elseif event == "PLAYER_REGEN_ENABLED" then
+        U.EnsureBagSpecialFrames()
         if S.pendingCombatVis then
             local targetVis = S.pendingCombatVis
+            local hideBank = S.pendingCombatHideBank
             S.pendingCombatVis = nil
+            S.pendingCombatHideBank = nil
             if targetVis == "SHOW" then
                 U.ShowWindow()
             elseif targetVis == "HIDE" then
+                if hideBank and S.bankWindow and S.bankWindow:IsShown() then
+                    S.explicitClosing = (S.explicitClosing or 0) + 1
+                    S.bankWindow:Hide()
+                    S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
+                end
                 U.HideWindow()
             end
         end
@@ -10067,8 +10193,9 @@ end
 
 DynamicBags.CHANGELOG = {
     version = VERSION,
-    date = "16/11/2026",
+    date = "18/11/2026",
     entries = {
+        { type = "FIX",     text = "ESC & B Keybind Window Closing, CloseAllBags & Unfocused Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) and OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so pressing B or ESC always reaches Blizzard's keybind and UISpecialFrames handlers without swallowing input; preserved Escape-first search clearing via OnEscapePressed when the search box is focused and a combat-guarded CloseSpecialWindows post-hook when search text is active while unfocused (restoring the open window once, clearing both search boxes, and letting the second ESC close cleanly); and updated ToggleWindow() and hooked CloseAllBags() so pressing B or CloseAllBags toggles DynamicBagsFrame (alongside DynamicBagsBankFrame when open) reliably out of combat." },
         { type = "FEATURE", text = "Shift+Click Collapse/Expand All Categories & Footer Bag Space / Junk Breakdown Tooltip (16/11/2026): Shift + Left-Click on any category header collapses all expanded categories or expands all categories at once out of combat (replacing the old single-step shift reorder action while keeping Alt + Left-Click for the reorder menu); made the bottom-left footer slot readout interactive with a hover tooltip showing per-bag free/total slots (Backpack, Bag 1-4, Reagent Bag) plus the total vendor sell value of grey/poor-quality items currently in your bags." },
         { type = "FEATURE", text = "Search Clear Button, Escape-First Clearing & Collapsible Category Headers (16/11/2026): added an inline 'x' clear button to both the DynamicBags and Unified DynamicBank search boxes, Escape-first clearing when search text is active (pressing Escape a second time closes the window cleanly), and Left-Click collapsing on virtual category headers with chevron indicators and collapsed item-count summaries saved in DynamicBagsDB (Alt+Left-Click opens the category reorder menu)." },
         { type = "FEATURE", text = "Dual-Mode Ctrl+Scroll Window Scaling, Header Controls Tooltip & Scale-Aware Docked Bank Alignment (15/11/2026): added 70%-140% (5% steps, out of combat) scaling across DynamicBagsFrame and DynamicBagsBankFrame (Personal Bank, Warband Bank, and Guild Bank). Ctrl + Scroll across the full header scales temporarily for the open session (resetting on hide); Ctrl + Shift + Scroll anywhere on the window (header, item grid ScrollFrame, or footer) saves bagScale / bankScale permanently without affecting normal wheel scrolling or Ctrl+Click item previews; Right-Click anywhere on the empty header (or Reset DynamicBags) resets scale to 100%; added DynamicBags / DynamicBank Window Controls header tooltips (auto-hiding on OnLeave/OnDragStart) and an auto-fading Dark-Obsidian (#0B0D12) / Blaze-Orange (#F97316) readout toast; and keeps docked DynamicBank flush beside DynamicBags at any scale." },
