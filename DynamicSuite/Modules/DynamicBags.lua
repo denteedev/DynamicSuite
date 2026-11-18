@@ -3196,8 +3196,9 @@ function U.CreateSlotButton(bagID, slotID)
             and _G.MailFrame and _G.MailFrame:IsShown()
             and _G.SendMailFrame and _G.SendMailFrame:IsShown()
             and _G.DynamicMail and type(_G.DynamicMail.HandleBagSlotAltClick) == "function" then
-            local useKeyDown = C_CVar and C_CVar.GetCVarBool and C_CVar.GetCVarBool("ActionButtonUseKeyDown")
-            if useKeyDown == nil or down == useKeyDown or down == nil then
+            local now = (type(GetTime) == "function" and GetTime()) or 0
+            if (now - (self._dmLastAltClick or 0)) > 0.08 then
+                self._dmLastAltClick = now
                 pcall(_G.DynamicMail.HandleBagSlotAltClick, _G.DynamicMail, self.dbBag, self.dbSlot)
             end
         end
@@ -6696,10 +6697,28 @@ local function NotifyCombatDeferredBagToggle(actionWord)
     end
 end
 
+function U.RefreshAllSlotLocks()
+    for bagID, bc in pairs(S.slotCache) do
+        if type(bc) == "table" then
+            for slotID, e in pairs(bc) do
+                if type(e) == "table" then
+                    local info = U.GetSlotInfo(bagID, slotID)
+                    e.locked = info and info.isLocked and true or false
+                    local btn = S.buttons[bagID .. ":" .. slotID]
+                    if btn and btn.dbIcon then
+                        btn.dbIcon:SetDesaturated(e.locked)
+                    end
+                end
+            end
+        end
+    end
+end
+
 function U.ShowWindow()
     if S.window and not (S.window.IsProtected and S.window:IsProtected()) then
         S.pendingCombatVis = nil
         if not S.window:IsShown() then S.window:Show() end
+        U.RefreshAllSlotLocks()
         return
     end
     if InCombatLockdown() then
@@ -6714,6 +6733,7 @@ function U.ShowWindow()
     S.pendingCombatVis = nil
     local win = U.EnsureWindow()
     if not win:IsShown() then win:Show() end
+    U.RefreshAllSlotLocks()
 end
 
 function U.HideWindow()
@@ -10581,15 +10601,20 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
     elseif event == "BAG_NEW_ITEMS_UPDATED" then
         S.recheckNew = true
     elseif event == "ITEM_LOCK_CHANGED" or event == "ITEM_UNLOCKED" then
-        if arg1 and arg2 and S.window and S.window:IsShown() then
+        if arg1 and arg2 then
             local bc = S.slotCache[arg1]
             local e = bc and bc[arg2]
             local btn = S.buttons[arg1 .. ":" .. arg2]
-            if e and btn and btn.dbIcon then
+            if e or (btn and btn.dbIcon) then
                 local info = U.GetSlotInfo(arg1, arg2)
-                e.locked = info and info.isLocked and true or false
-                btn.dbIcon:SetDesaturated(e.locked)
+                local isLocked = info and info.isLocked and true or false
+                if e then e.locked = isLocked end
+                if btn and btn.dbIcon then
+                    btn.dbIcon:SetDesaturated(isLocked)
+                end
             end
+        elseif U.RefreshAllSlotLocks then
+            U.RefreshAllSlotLocks()
         end
         if event == "ITEM_UNLOCKED" and not InCombatLockdown() and S.window and S.window:IsShown() then
             U.UpdateQuickOpenButton()
@@ -10786,6 +10811,13 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
     elseif event == "MAIL_CLOSED" then
         U.TriggerAutoCloseKey("mail")
         U.ScheduleAutoOpenContainers()
+        if U.RefreshAllSlotLocks then
+            U.RefreshAllSlotLocks()
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0.05, U.RefreshAllSlotLocks)
+                C_Timer.After(0.25, U.RefreshAllSlotLocks)
+            end
+        end
     elseif event == "TRADE_SHOW" then
         U.TriggerAutoOpenKey("trade")
     elseif event == "TRADE_CLOSED" then
@@ -10875,6 +10907,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "FIX",     text = "v2.4.0 DynamicMail Alt+Left-Click Attach & Stuck Lock Release on Mail Close (18/11/2026): Removed the ActionButtonUseKeyDown edge filter blocking Alt + Left-Click mail attachments on ContainerFrameItemButton slot buttons, and updated ITEM_LOCK_CHANGED / ITEM_UNLOCKED plus MAIL_CLOSED and U.ShowWindow() lock refreshes so bag icons never stay desaturated after closing Mailbox with attached or dragged items." },
         { type = "FIX",     text = "Release v2.3.2 - 1-Click Housing Decor Non-Tradeable Confirmation & Smooth Mousewheel Scrolling (18/11/2026): Clicking Open (N) or scrolling Alt+MouseWheel now uses and confirms refundable/trade-timer Housing Decor items in one click out of combat (supporting Retail 12.1.5 pooled StaticPopup dialogs, END_BOUND_TRADEABLE, and USE_NO_REFUND_CONFIRM while keeping Open (N) ready whenever a background auto-open requires a hardware click and strictly ignoring manual bag clicks, dungeon/raid loot rolls, and non-Decor items); and restored smooth mousewheel scrolling across DynamicBags, DynamicBank (Personal, Warband, and Guild Bank), and settings scroll areas whenever Ctrl+Shift is not held." },
         { type = "FIX",     text = "ESC / B Keybind Closure, Top-Most Window Escape Priority & GameMenu Failsafe Guard (18/11/2026): Removed the conflicting GameMenuFrame OnShow hide hack from U.EnsureWindow() and added nil-hole/duplicate compaction plus single top-most Escape ordering to UISpecialFrames (DynamicBagsBankFrame -> DynamicBagsFrame -> DynamicBagsStandaloneFrame -> DynamicSuite DesktopWindows); guarded CloseAllBags against ESC calls and added a CloseSpecialWindows + ToggleGameMenu failsafe so even if DynamicBagsFrame or DynamicBagsBankFrame is protected by slot children or skipped by CloseSpecialWindows, pressing ESC reliably clears active search or closes the top-most window one at a time without opening the Options / Game Menu while preserving clean two-way B toggling before and after ESC." },
         { type = "FIX",     text = "ESC & B Keybind Window Closing, CloseAllBags & Unfocused Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) and OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so pressing B or ESC always reaches Blizzard's keybind and UISpecialFrames handlers without swallowing input; preserved Escape-first search clearing via OnEscapePressed when the search box is focused and a combat-guarded CloseSpecialWindows post-hook when search text is active while unfocused (restoring the open window once, clearing both search boxes, and letting the second ESC close cleanly); and updated ToggleWindow() and hooked CloseAllBags() so pressing B or CloseAllBags toggles DynamicBagsFrame (alongside DynamicBagsBankFrame when open) reliably out of combat." },

@@ -3997,7 +3997,7 @@ function addonTable.CreateMainConfigUI()
     leftRail.divider:SetWidth(1)
 
     do
-    local DEFAULT_MODULE_KEYS = { "load", "marker", "zoom", "fps", "prep", "group", "bags", "chat" }
+    local DEFAULT_MODULE_KEYS = { "load", "marker", "zoom", "fps", "prep", "group", "bags", "chat", "mail" }
     UI.DEFAULT_MODULE_KEYS = DEFAULT_MODULE_KEYS
 
     function UI.GetOrderedModuleList()
@@ -4040,12 +4040,22 @@ function addonTable.CreateMainConfigUI()
         end
 
         local result = {}
+        local addedModules = {}
         for _, key in ipairs(list) do
             for _, m in ipairs(addonTable.SUITE_MODULE_LIST or {}) do
                 if m.key == key or m.id == key or m.addonName == key then
-                    table.insert(result, m)
+                    if not addedModules[m] then
+                        addedModules[m] = true
+                        table.insert(result, m)
+                    end
                     break
                 end
+            end
+        end
+        for _, m in ipairs(addonTable.SUITE_MODULE_LIST or {}) do
+            if not addedModules[m] then
+                addedModules[m] = true
+                table.insert(result, m)
             end
         end
         return result
@@ -10611,6 +10621,7 @@ function addonTable.CreateMainConfigUI()
                         local cleanModName = item.dynamicModule or "DynamicSuite"
                         if cleanModName == "bags" then cleanModName = "DynamicBags"
                         elseif cleanModName == "chat" then cleanModName = "DynamicChat"
+                        elseif cleanModName == "mail" then cleanModName = "DynamicMail"
                         elseif cleanModName == "load" then cleanModName = "DynamicLoad"
                         elseif cleanModName == "marker" then cleanModName = "DynamicMarker"
                         elseif cleanModName == "zoom" then cleanModName = "DynamicZoom"
@@ -15729,6 +15740,7 @@ function addonTable.CreateMainConfigUI()
         group = "Group", DynamicGroup = "Group",
         bags = "Bags", DynamicBags = "Bags",
         chat = "Chat", DynamicChat = "Chat",
+        mail = "Mail", DynamicMail = "Mail",
     }
     local function FormatModuleBrandForEntry(entry)
         local mKey = entry.moduleKey or "STUDIO"

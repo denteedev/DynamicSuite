@@ -251,6 +251,7 @@ local DEFAULTS = {
     restoreLastRecipient    = false,
     shiftClickInboxLoot     = true,
     warnExpiringMail        = true,
+    mailSkinMode            = "AUTO", -- "AUTO" (match EllesmereUI/ElvUI when active) or "OBSIDIAN"
 
     activeSubTab            = 1,
     activePickerTab         = "ALTS", -- "ALTS", "RECENT", "GUILD", "FRIENDS"
@@ -389,6 +390,104 @@ local function GetTheme()
         if okC and type(r) == "number" then
             acc.r, acc.g, acc.b = r, g, b
             acc.hex = string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+        end
+    end
+
+    return surf, acc
+end
+
+local ellesmereFacade = nil
+local ellesmereHooked = false
+
+local function EnsureEllesmereSkinRegistered()
+    if ellesmereHooked then return end
+    if type(_G.EllesmereUI) == "table" and type(_G.EllesmereUI.RegisterSkin) == "function" then
+        ellesmereHooked = true
+        pcall(_G.EllesmereUI.RegisterSkin, "DynamicMail", function(S)
+            ellesmereFacade = S
+            if type(S) == "table" and type(S.OnLooksChanged) == "function" then
+                S.OnLooksChanged(function()
+                    if RefreshInboxToolbarUI then RefreshInboxToolbarUI() end
+                    if RefreshSendPickerUI then RefreshSendPickerUI() end
+                end)
+            end
+            if RefreshInboxToolbarUI then RefreshInboxToolbarUI() end
+            if RefreshSendPickerUI then RefreshSendPickerUI() end
+        end)
+    end
+end
+
+local function GetOverlayTheme()
+    local surf, acc = GetTheme()
+    local db = EnsureDB()
+    if (db.mailSkinMode or "AUTO") == "OBSIDIAN" then
+        return surf, acc
+    end
+
+    local euiActive = false
+    if ellesmereFacade and type(ellesmereFacade.GetPanelColor) == "function" then
+        local enabled = true
+        if type(ellesmereFacade.IsEnabled) == "function" then
+            local okE, en = pcall(ellesmereFacade.IsEnabled)
+            if okE then enabled = (en ~= false) end
+        end
+        if enabled then
+            euiActive = true
+            local okP, r, g, b, a = pcall(ellesmereFacade.GetPanelColor)
+            if okP and type(r) == "number" then
+                local panelA = math.max(0.92, tonumber(a) or 0.94)
+                surf = {
+                    bg     = { r, g, b, panelA },
+                    header = { math.max(0, r * 0.72), math.max(0, g * 0.72), math.max(0, b * 0.72), 0.98 },
+                    card   = { math.min(1, r + 0.03), math.min(1, g + 0.03), math.min(1, b + 0.03), 0.96 },
+                    panel  = { math.max(0, r * 0.78), math.max(0, g * 0.78), math.max(0, b * 0.78), 0.98 },
+                    border = { 1, 1, 1, 0.16 },
+                }
+            end
+            if type(ellesmereFacade.GetAccentColor) == "function" then
+                local okA, ar, ag, ab = pcall(ellesmereFacade.GetAccentColor)
+                if okA and type(ar) == "number" then
+                    acc = {
+                        r = ar, g = ag, b = ab,
+                        hex = string.format("%02X%02X%02X", math.floor(ar * 255 + 0.5), math.floor(ag * 255 + 0.5), math.floor(ab * 255 + 0.5)),
+                    }
+                    surf.border = { ar, ag, ab, 0.50 }
+                end
+            end
+        end
+    end
+
+    if not euiActive and type(_G.ElvUI) == "table" and type(_G.ElvUI[1]) == "table" then
+        local E = _G.ElvUI[1]
+        local mailSkinned = E.private and E.private.skins and E.private.skins.blizzard
+            and (E.private.skins.blizzard.enable ~= false) and (E.private.skins.blizzard.mail ~= false)
+        if mailSkinned and type(E.media) == "table" then
+            local bg = E.media.backdropfadecolor or E.media.backdropcolor
+            local hdr = E.media.backdropcolor
+            local bd = E.media.bordercolor
+            local vc = E.media.rgbvaluecolor
+            if type(bg) == "table" then
+                local r, g, b = bg.r or bg[1] or 0.06, bg.g or bg[2] or 0.06, bg.b or bg[3] or 0.06
+                local hr = (type(hdr) == "table" and (hdr.r or hdr[1])) or r
+                local hg = (type(hdr) == "table" and (hdr.g or hdr[2])) or g
+                local hb = (type(hdr) == "table" and (hdr.b or hdr[3])) or b
+                local br = (type(bd) == "table" and (bd.r or bd[1])) or 0
+                local bgg = (type(bd) == "table" and (bd.g or bd[2])) or 0
+                local bb = (type(bd) == "table" and (bd.b or bd[3])) or 0
+                surf = {
+                    bg     = { r, g, b, 0.94 },
+                    header = { math.max(0, hr * 0.85), math.max(0, hg * 0.85), math.max(0, hb * 0.85), 0.98 },
+                    card   = { math.min(1, r + 0.04), math.min(1, g + 0.04), math.min(1, b + 0.04), 0.96 },
+                    panel  = { math.max(0, hr * 0.80), math.max(0, hg * 0.80), math.max(0, hb * 0.80), 0.98 },
+                    border = { br, bgg, bb, 0.95 },
+                }
+            end
+            if type(vc) == "table" and type(vc.r) == "number" then
+                acc = {
+                    r = vc.r, g = vc.g, b = vc.b,
+                    hex = string.format("%02X%02X%02X", math.floor(vc.r * 255 + 0.5), math.floor(vc.g * 255 + 0.5), math.floor(vc.b * 255 + 0.5)),
+                }
+            end
         end
     end
 
@@ -1062,6 +1161,8 @@ local function CountUsedSendAttachmentSlots()
     return used
 end
 
+local lastAltAttachTimes = {}
+
 function DynamicMail:HandleBagSlotAltClick(bagID, slotID)
     local db = EnsureDB()
     if IsModuleDisabledInSuite("DynamicMail") or not db.enabled or not db.altClickAttach then
@@ -1074,21 +1175,49 @@ function DynamicMail:HandleBagSlotAltClick(bagID, slotID)
     local yielding = IsYieldingToExternalMailAddon()
     if yielding then return false end
 
+    local slotKey = tostring(bagID) .. ":" .. tostring(slotID)
+    local now = (type(GetTime) == "function" and GetTime()) or 0
+    if (now - (lastAltAttachTimes[slotKey] or 0)) < 0.08 then
+        return true
+    end
+
+    local cursorSameSlot = false
+    if type(CursorHasItem) == "function" and CursorHasItem() and C_Cursor and C_Cursor.GetCursorItem then
+        local okLoc, loc = pcall(C_Cursor.GetCursorItem)
+        if okLoc and loc and loc.IsBagAndSlot and loc:IsBagAndSlot() and loc.GetBagAndSlot then
+            local okBS, cBag, cSlot = pcall(loc.GetBagAndSlot, loc)
+            if okBS and cBag == bagID and cSlot == slotID then
+                cursorSameSlot = true
+            end
+        end
+    end
+
     local freeIdx = FindNextFreeSendAttachmentSlot()
     if not freeIdx then
+        if cursorSameSlot and type(ClearCursor) == "function" then
+            ClearCursor()
+        end
         Print("All 12 attachment slots are full. Send this mail or clear a slot first.")
         return true
     end
 
     local info = (C_Container and C_Container.GetContainerItemInfo) and C_Container.GetContainerItemInfo(bagID, slotID)
-    if not info or not info.itemID then return false end
-    if info.isLocked then return true end
+    if not info or not info.itemID then
+        if cursorSameSlot and type(ClearCursor) == "function" then
+            ClearCursor()
+        end
+        return false
+    end
+    if info.isLocked and not cursorSameSlot then return true end
 
-    if type(ClearCursor) == "function" then ClearCursor() end
-    if C_Container and type(C_Container.PickupContainerItem) == "function" then
-        C_Container.PickupContainerItem(bagID, slotID)
-    elseif _G.PickupContainerItem then
-        _G.PickupContainerItem(bagID, slotID)
+    lastAltAttachTimes[slotKey] = now
+    if not cursorSameSlot then
+        if type(ClearCursor) == "function" then ClearCursor() end
+        if C_Container and type(C_Container.PickupContainerItem) == "function" then
+            C_Container.PickupContainerItem(bagID, slotID)
+        elseif _G.PickupContainerItem then
+            _G.PickupContainerItem(bagID, slotID)
+        end
     end
     if type(CursorHasItem) == "function" and CursorHasItem() then
         if type(ClickSendMailItemButton) == "function" then
@@ -1473,7 +1602,12 @@ local function InstallMailboxHooks()
         if type(_G.MailFrameTab_OnClick) == "function" then
             hooksecurefunc("MailFrameTab_OnClick", function()
                 if RefreshInboxToolbarUI then RefreshInboxToolbarUI() end
-                if RefreshSendPickerUI then RefreshSendPickerUI() end
+                if RefreshSendPickerUI then
+                    RefreshSendPickerUI()
+                    if C_Timer and C_Timer.After then
+                        C_Timer.After(0.05, function() if RefreshSendPickerUI then RefreshSendPickerUI() end end)
+                    end
+                end
             end)
         end
         if type(_G.InboxFrameItem_OnClick) == "function" then
@@ -1496,18 +1630,42 @@ local function InstallMailboxHooks()
                 end
             end)
         end
-        if type(_G.ContainerFrameItemButton_OnModifiedClick) == "function" then
-            hooksecurefunc("ContainerFrameItemButton_OnModifiedClick", function(self, button)
-                if button == "LeftButton" and IsAltKeyDown() and not IsControlKeyDown() and not IsShiftKeyDown() then
-                    if self and self.GetBagID and self.GetID then
-                        local okB, b = pcall(self.GetBagID, self)
-                        local okS, s = pcall(self.GetID, self)
-                        if okB and okS and type(b) == "number" and type(s) == "number" then
-                            DynamicMail:HandleBagSlotAltClick(b, s)
-                        end
+        local function DispatchBlizzardBagAltClick(self, button)
+            if button == "LeftButton" and IsAltKeyDown and IsAltKeyDown()
+                and not (IsControlKeyDown and IsControlKeyDown())
+                and not (IsShiftKeyDown and IsShiftKeyDown()) then
+                if not (_G.MailFrame and _G.MailFrame:IsShown() and _G.SendMailFrame and _G.SendMailFrame:IsShown()) then
+                    return
+                end
+                local b, s
+                if self and self.GetBagID then
+                    local okB, resB = pcall(self.GetBagID, self)
+                    if okB and type(resB) == "number" then b = resB end
+                end
+                if not b and self and self.GetParent then
+                    local p = self:GetParent()
+                    if p and p.GetID then
+                        local okP, resP = pcall(p.GetID, p)
+                        if okP and type(resP) == "number" then b = resP end
                     end
                 end
-            end)
+                if self and self.GetID then
+                    local okS, resS = pcall(self.GetID, self)
+                    if okS and type(resS) == "number" then s = resS end
+                end
+                if type(b) == "number" and type(s) == "number" then
+                    DynamicMail:HandleBagSlotAltClick(b, s)
+                end
+            end
+        end
+        if type(_G.ContainerFrameItemButtonMixin) == "table" and type(_G.ContainerFrameItemButtonMixin.OnClick) == "function" then
+            hooksecurefunc(_G.ContainerFrameItemButtonMixin, "OnClick", DispatchBlizzardBagAltClick)
+        end
+        if type(_G.ContainerFrameItemButton_OnClick) == "function" then
+            hooksecurefunc("ContainerFrameItemButton_OnClick", DispatchBlizzardBagAltClick)
+        end
+        if type(_G.ContainerFrameItemButton_OnModifiedClick) == "function" then
+            hooksecurefunc("ContainerFrameItemButton_OnModifiedClick", DispatchBlizzardBagAltClick)
         end
     end
 end
@@ -1519,13 +1677,13 @@ local inboxBar = nil
 local sendPanel = nil
 
 local function StyleObsidianOverlayBtn(btn, isPrimary)
-    local surf, acc = GetTheme()
+    local surf, acc = GetOverlayTheme()
     local fillA = ((_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42)
     if isPrimary then
         ApplyBackdrop(btn, { acc.r * fillA, acc.g * fillA, acc.b * fillA, 0.98 }, { acc.r, acc.g, acc.b, 0.95 })
         if btn.txt then btn.txt:SetTextColor(1, 1, 1, 1) end
     else
-        ApplyBackdrop(btn, { 0.068, 0.078, 0.106, 0.98 }, surf.border)
+        ApplyBackdrop(btn, surf.card or { 0.068, 0.078, 0.106, 0.98 }, surf.border)
         if btn.txt then btn.txt:SetTextColor(0.86, 0.90, 0.96, 1) end
     end
 end
@@ -1544,7 +1702,7 @@ local function CreateOverlayActionBtn(parent, width, height, label, isPrimary, o
     btn.isPrimary = isPrimary and true or false
     StyleObsidianOverlayBtn(btn, btn.isPrimary)
     btn:SetScript("OnEnter", function(self)
-        local _, acc = GetTheme()
+        local _, acc = GetOverlayTheme()
         local fillA = ((_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42)
         ApplyBackdrop(self, { acc.r * (fillA + 0.14), acc.g * (fillA + 0.14), acc.b * (fillA + 0.14), 1.0 }, { acc.r, acc.g, acc.b, 1.0 })
         if self.txt then self.txt:SetTextColor(1, 1, 1, 1) end
@@ -1572,12 +1730,13 @@ local function EnsureInboxToolbar()
     if inboxBar then return inboxBar end
     if not _G.MailFrame then return nil end
 
-    local surf, acc = GetTheme()
+    local surf, acc = GetOverlayTheme()
     local bar = CreateFrame("Frame", "DynamicMailInboxBar", _G.MailFrame, "BackdropTemplate")
     bar:SetHeight(56)
-    bar:SetPoint("TOPLEFT", _G.MailFrame, "BOTTOMLEFT", 0, -4)
-    bar:SetPoint("TOPRIGHT", _G.MailFrame, "BOTTOMRIGHT", 0, -4)
+    bar:SetPoint("BOTTOMLEFT", _G.MailFrame, "TOPLEFT", 0, 6)
+    bar:SetPoint("BOTTOMRIGHT", _G.MailFrame, "TOPRIGHT", 0, 6)
     bar:SetFrameStrata("HIGH")
+    bar:SetFrameLevel((_G.MailFrame:GetFrameLevel() or 1) + 5)
     bar:EnableMouse(true)
     ApplyBackdrop(bar, surf.bg, { acc.r, acc.g, acc.b, 0.72 })
 
@@ -1612,13 +1771,13 @@ local function EnsureInboxToolbar()
     cogTex:SetTexture(ICON_COG)
     cogTex:SetVertexColor(0.84, 0.89, 0.96, 1.0)
     bar.btnCfg:SetScript("OnEnter", function(s)
-        local _, a = GetTheme()
+        local _, a = GetOverlayTheme()
         ApplyBackdrop(s, { a.r * 0.35, a.g * 0.35, a.b * 0.35, 0.98 }, { a.r, a.g, a.b, 1.0 })
         cogTex:SetVertexColor(1, 1, 1, 1)
     end)
     bar.btnCfg:SetScript("OnLeave", function(s)
-        local sf = GetTheme()
-        ApplyBackdrop(s, { 0.068, 0.078, 0.106, 0.98 }, sf.border)
+        local sf = GetOverlayTheme()
+        ApplyBackdrop(s, sf.card or { 0.068, 0.078, 0.106, 0.98 }, sf.border)
         cogTex:SetVertexColor(0.84, 0.89, 0.96, 1.0)
     end)
     bar.btnCfg:SetScript("OnClick", function()
@@ -1663,22 +1822,26 @@ RefreshInboxToolbarUI = function(customNote)
 
     local bar = EnsureInboxToolbar()
     if not bar then return end
-    local surf, acc = GetTheme()
+    bar:SetFrameLevel((_G.MailFrame:GetFrameLevel() or 1) + 5)
+    local surf, acc = GetOverlayTheme()
     ApplyBackdrop(bar, surf.bg, { acc.r, acc.g, acc.b, 0.72 })
     if bar.topAcc then bar.topAcc:SetColorTexture(acc.r, acc.g, acc.b, 1.0) end
     StyleObsidianOverlayBtn(bar.btnAll, true)
     StyleObsidianOverlayBtn(bar.btnGold, false)
     StyleObsidianOverlayBtn(bar.btnItems, false)
+    StyleObsidianOverlayBtn(bar.btnAbort, false)
+    if bar.btnCfg then ApplyBackdrop(bar.btnCfg, surf.card or { 0.068, 0.078, 0.106, 0.98 }, surf.border) end
 
-    -- Keep cleanly inside viewport vertically if MailFrame sits near screen bottom
+    -- Dock cleanly at the top of MailFrame above header chrome; only flip below tabs if near screen top
     bar:ClearAllPoints()
-    local mfBot = _G.MailFrame.GetBottom and _G.MailFrame:GetBottom() or 120
-    if mfBot < 68 then
-        bar:SetPoint("BOTTOMLEFT", _G.MailFrame, "TOPLEFT", 0, 4)
-        bar:SetPoint("BOTTOMRIGHT", _G.MailFrame, "TOPRIGHT", 0, 4)
+    local uiTop = (UIParent and UIParent.GetTop and UIParent:GetTop()) or 1080
+    local mfTop = (_G.MailFrame.GetTop and _G.MailFrame:GetTop()) or 600
+    if (uiTop - mfTop) < 66 then
+        bar:SetPoint("TOPLEFT", _G.MailFrame, "BOTTOMLEFT", 0, -34)
+        bar:SetPoint("TOPRIGHT", _G.MailFrame, "BOTTOMRIGHT", 0, -34)
     else
-        bar:SetPoint("TOPLEFT", _G.MailFrame, "BOTTOMLEFT", 0, -4)
-        bar:SetPoint("TOPRIGHT", _G.MailFrame, "BOTTOMRIGHT", 0, -4)
+        bar:SetPoint("BOTTOMLEFT", _G.MailFrame, "TOPLEFT", 0, 6)
+        bar:SetPoint("BOTTOMRIGHT", _G.MailFrame, "TOPRIGHT", 0, 6)
     end
 
     bar.btnAbort:SetShown(batchState.active)
@@ -2093,18 +2256,35 @@ RefreshSendPickerUI = function()
     local panel = EnsureSendPickerPanel()
     if not panel then return end
 
-    local surf, acc = GetTheme()
+    local surf, acc = GetOverlayTheme()
     local fillA = ((_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42)
     ApplyBackdrop(panel, surf.bg, { acc.r, acc.g, acc.b, 0.72 })
     if panel.topBar then panel.topBar:SetColorTexture(acc.r, acc.g, acc.b, 1.0) end
     ApplyBackdrop(panel.tabTrack, surf.header, surf.border)
-    ApplyBackdrop(panel.listFrame, { 0.030, 0.035, 0.046, 0.98 }, surf.border)
+    ApplyBackdrop(panel.listFrame, surf.panel or { 0.030, 0.035, 0.046, 0.98 }, surf.border)
+    if panel.foot then ApplyBackdrop(panel.foot, surf.panel or { 0.035, 0.039, 0.051, 0.98 }, surf.border) end
+    if panel.sbHolder then ApplyBackdrop(panel.sbHolder, surf.header or { 0.035, 0.039, 0.051, 0.98 }, surf.border) end
+    if panel.cfgBtn then ApplyBackdrop(panel.cfgBtn, surf.card or { 0.068, 0.078, 0.106, 0.98 }, surf.border) end
 
-    -- Auto-flip side if MailFrame sits close to right viewport edge
+    -- Auto-dodge EllesmereUIMailAltList (if shown on right edge) and right viewport edge cleanly
     panel:ClearAllPoints()
-    local mfRight = _G.MailFrame.GetRight and _G.MailFrame:GetRight() or 400
-    local uiRight = UIParent and UIParent.GetRight and UIParent:GetRight() or 1920
-    if (mfRight + 272) > uiRight then
+    local mfLeft  = (_G.MailFrame.GetLeft and _G.MailFrame:GetLeft()) or 200
+    local mfRight = (_G.MailFrame.GetRight and _G.MailFrame:GetRight()) or 400
+    local uiRight = (UIParent and UIParent.GetRight and UIParent:GetRight()) or 1920
+    local altList = _G.EllesmereUIMailAltList
+    if altList and altList.IsShown and altList:IsShown() then
+        local altRight = (altList.GetRight and altList:GetRight()) or (mfRight + 210)
+        if mfLeft >= 272 then
+            panel:SetPoint("TOPRIGHT", _G.MailFrame, "TOPLEFT", -6, 0)
+            panel:SetPoint("BOTTOMRIGHT", _G.MailFrame, "BOTTOMLEFT", -6, 0)
+        elseif (altRight + 272) <= uiRight then
+            panel:SetPoint("TOPLEFT", altList, "TOPRIGHT", 6, 0)
+            panel:SetPoint("BOTTOMLEFT", altList, "BOTTOMRIGHT", 6, 0)
+        else
+            panel:SetPoint("TOPRIGHT", _G.MailFrame, "TOPLEFT", -6, 0)
+            panel:SetPoint("BOTTOMRIGHT", _G.MailFrame, "BOTTOMLEFT", -6, 0)
+        end
+    elseif (mfRight + 272) > uiRight then
         panel:SetPoint("TOPRIGHT", _G.MailFrame, "TOPLEFT", -6, 0)
         panel:SetPoint("BOTTOMRIGHT", _G.MailFrame, "BOTTOMLEFT", -6, 0)
     else
@@ -2897,10 +3077,20 @@ local function RenderMailEmbedded(parent)
             sy = sy + dy
 
             local _, dy1 = CreateSegmentedSwitchCard(sec1, sy, "Mailbox Quick Action Bar",
-                "Show Open All, AH Gold, and Items Only buttons cleanly below MailFrame.",
+                "Show Open All, AH Gold, and Items Only buttons cleanly above MailFrame (or below if at screen top).",
                 function() return db.mailboxBarEnabled end,
                 function(v) db.mailboxBarEnabled = v; RefreshHostTelemetry() end, false)
             sy = sy + dy1
+
+            local _, dySkin = CreateMultiPillCard(sec1, sy, "Mailbox Overlay Skin",
+                "Auto-Match adapts to EllesmereUI or ElvUI MailFrame skins automatically; Suite Obsidian keeps dark chrome.",
+                {
+                    { value = "AUTO", label = "Auto-Match" },
+                    { value = "OBSIDIAN", label = "Suite Obsidian" },
+                },
+                function() return db.mailSkinMode or "AUTO" end,
+                function(v) db.mailSkinMode = v; RefreshHostTelemetry() end)
+            sy = sy + dySkin
 
             local _, dy2 = CreateMultiPillCard(sec1, sy, "Collection Speed",
                 "Delay between automated inbox takes (Balanced 0.14s works reliably on busy realms).",
@@ -3367,6 +3557,7 @@ DynamicMail.CHANGELOG = {
     version = VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "FIX", text = "Top-Docked Inbox Bar, Left Suite Rail Entry, Express Alt+Click & EllesmereUI / ElvUI Skin Coexistence (18/11/2026): Registered 'mail' in DynamicSuite's Left Suite Rail order; moved DynamicMailInboxBar cleanly above MailFrame so bottom inbox/send tabs never cover it; fixed Alt + Left-Click attaching across both DynamicBags and Blizzard bags regardless of ActionButtonUseKeyDown or cursor lock state; auto-docked DynamicMailSendPickerPanel cleanly away from EllesmereUIMailAltList; and added Mailbox Overlay Skin Auto-Match for EllesmereUIBlizzardSkin and ElvUI." },
         { type = "NEW", text = "Smart Bulk-Attach Presets, Quick Gold & Pending Alt Mail Tracking (18/11/2026): Added 1-click Quick-Attach preset buttons ([+ Mats], [+ BoE], [+ Warband], [+ Same]) with Equipment Manager & Soulbound protection; [+1k g] / [+10k g] / [+100k] / [Clear G] Quick-Gold buttons; Pending Alt Mail Sent badges in the Alts picker (auto-clearing when that alt visits a mailbox); Shift + Left-Click inbox row quick-loot; and Expiring (<3d) mailbox alerts." },
         { type = "NEW", text = "Initial v2.4.0 Release (18/11/2026): Added DynamicMail (/dmail, /dynamicmail) with 1-click Inbox Open All, AH Gold, and Items Only collection; automatic COD and bag-reserve protection; 4-tab Recipient Picker (Alts synced from DynamicBags Vault with class colours & gold, Recent, Guild, and Friends with Favourite pinning); Alt + Left-Click Express Multi-Attach from bags; auto-subject fill; lifetime gold & item telemetry; and full DynamicSuite + standalone compatibility." },
     },
@@ -3461,17 +3652,22 @@ DynamicMail:SetScript("OnEvent", function(self, event, arg1)
                 RegisterWithDynamicSuite()
             end
         end
+        if arg1 == "EllesmereUIBlizzardSkin" or arg1 == "EllesmereUI" then
+            EnsureEllesmereSkinRegistered()
+        end
         if arg1 == "Blizzard_MailFrame" then
             InstallMailboxHooks()
         end
     elseif event == "PLAYER_LOGIN" then
         EnsureDB()
         RecordCurrentCharacterSnapshot()
+        EnsureEllesmereSkinRegistered()
         InstallMailboxHooks()
         RegisterWithDynamicSuite()
     elseif event == "PLAYER_MONEY" then
         RecordCurrentCharacterSnapshot()
     elseif event == "MAIL_SHOW" then
+        EnsureEllesmereSkinRegistered()
         RecordCurrentCharacterSnapshot()
         InstallMailboxHooks()
         local db = EnsureDB()
@@ -3487,6 +3683,12 @@ DynamicMail:SetScript("OnEvent", function(self, event, arg1)
             C_Timer.After(0.05, function()
                 RefreshInboxToolbarUI()
                 RefreshSendPickerUI()
+            end)
+            C_Timer.After(0.18, function()
+                if _G.MailFrame and _G.MailFrame:IsShown() then
+                    RefreshInboxToolbarUI()
+                    RefreshSendPickerUI()
+                end
             end)
         end
     elseif event == "MAIL_INBOX_UPDATE" then
