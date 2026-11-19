@@ -595,6 +595,7 @@ local DEFAULT_SEGMENT_ORDER = {
     "primary",
     "stats",
     "loot",
+    "talents",
     "folio",
     "dur",
     "bags",
@@ -610,6 +611,7 @@ local SEGMENT_META = {
     stats   = { id = "stats",   icon = "#", label = "Secondary Stats",        short = "Secondaries" },
     weights = { id = "weights", icon = "=", label = "Stat Weights",           short = "Weights" },
     loot    = { id = "loot",    icon = "+", label = "Spec & Loot",            short = "Spec/Loot" },
+    talents = { id = "talents", icon = "+", label = "Talent Loadout",         short = "Talents" },
     folio   = { id = "folio",   icon = "+", label = "Omni Folio",             short = "Folio" },
     dur     = { id = "dur",     icon = "+", label = "Durability",             short = "Durability" },
     bags    = { id = "bags",    icon = "+", label = "Bag Space",              short = "Bags" },
@@ -710,12 +712,13 @@ local DEFAULTS = {
     combatRefreshRate = 0.2,
     barScale = 1.0,
     barOpacity = 0.95,
-    segmentOrder = { "primary", "stats", "loot", "folio", "dur", "bags", "key", "rc", "pull", "fps", "ping" },
+    segmentOrder = { "primary", "stats", "loot", "talents", "folio", "dur", "bags", "key", "rc", "pull", "fps", "ping" },
     segments = {
         primary = true,
         stats   = true,
         weights = false,
         loot    = true,
+        talents = true,
         folio   = true,
         dur     = true,
         bags    = true,
@@ -859,6 +862,7 @@ function DynamicPrep:InitDB()
         AddSegKey(key)
     end
     self.db.segmentOrder = cleanOrder
+    if self.db.segments.talents == nil then self.db.segments.talents = true end
     if self.db.segments.fps == nil then self.db.segments.fps = true end
     if self.db.segments.ping == nil then self.db.segments.ping = true end
     if self.db.segments.rc == nil then self.db.segments.rc = true end
@@ -3006,6 +3010,13 @@ function DynamicPrep:CreatePrepBar()
                 else
                     DynamicPrep:ToggleLootSpecPopover(selfSeg)
                 end
+            elseif segKey == "talents" then
+                if button == "RightButton" then
+                    DynamicPrep:HideBarPopovers()
+                    DynamicPrep:OpenTalentManagerModal()
+                else
+                    DynamicPrep:ToggleTalentPopover(selfSeg)
+                end
             elseif segKey == "folio" then
                 if button == "RightButton" then
                     DynamicPrep:ToggleFolioPopover(selfSeg)
@@ -3562,6 +3573,12 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
         tooltip:AddDoubleLine("Loot Specialisation:", isOffSpec and (lootSpec .. " (Off-Spec)") or ("Auto (" .. activeSpec .. ")"), 0.8, 0.84, 0.88, isOffSpec and 0.984 or 0.204, isOffSpec and 0.749 or 0.827, isOffSpec and 0.141 or 0.600)
         tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open Loot Spec Selector|r", 1, 1, 1)
         tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Cycle Active Specialisation (Out of Combat)|r", 1, 1, 1)
+    elseif segKey == "talents" then
+        local _, activeName = self:GetTalentLoadoutBarData()
+        tooltip:AddLine("Talent Loadout Quick-Switcher", ar, ag, ab)
+        tooltip:AddDoubleLine("Active Loadout:", activeName or "Default", 0.8, 0.84, 0.88, 1, 1, 1)
+        tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open 1-Click Talent Loadout Switcher|r", 1, 1, 1)
+        tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Open Boss & WCL / NS Import Manager|r", 1, 1, 1)
     elseif segKey == "folio" then
         local _, isMismatch, targetStat, activeStat, zoneTag = self:GetOmniFolioData()
         local targetLabel = STAT_LABELS[targetStat] or targetStat or "Haste"
@@ -3745,6 +3762,8 @@ function DynamicPrep:GetSegmentTelemetryText(segKey)
         return self:GetStatWeightsText()
     elseif segKey == "loot" then
         return self:GetSpecAndLootData()
+    elseif segKey == "talents" then
+        return self:GetTalentLoadoutBarData()
     elseif segKey == "folio" then
         local folioText, isMismatch = self:GetOmniFolioData()
         return folioText, isMismatch
@@ -9651,6 +9670,136 @@ SafeRegisterEvent(eventFrame, "BAG_UPDATE_COOLDOWN")
 -- ZONE-AWARE TALENT LOADOUT REMINDER & SAFE AUTO-ACCEPT SUMMON
 -- ============================================================================
 local talentReminderToast = nil
+local talentPopoverFrame = nil
+
+function DynamicPrep:GetTalentLoadoutBarData()
+    local specID = self:GetActiveSpecID()
+    local _, _, _, accentHex = GetActiveAccentRGB()
+    local activeName = "Default"
+    local activeID = nil
+    if specID and C_ClassTalents and type(C_ClassTalents.GetLastSelectedSavedConfigID) == "function" then
+        local ok, cid = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
+        if ok and type(cid) == "number" and cid > 0 then
+            activeID = cid
+            if C_Traits and type(C_Traits.GetConfigInfo) == "function" then
+                local okI, info = pcall(C_Traits.GetConfigInfo, cid)
+                if okI and type(info) == "table" and not _IsSecret(info.name) and type(info.name) == "string" and info.name ~= "" then
+                    activeName = info.name
+                end
+            end
+        end
+    end
+    local display = activeName
+    if #display > 14 then display = display:sub(1, 13) .. "." end
+    return string.format("|cFF94A3B8Talent|r |cFF%s%s|r", accentHex, display), activeName, activeID
+end
+
+function DynamicPrep:HideTalentPopover()
+    if talentPopoverFrame then talentPopoverFrame:Hide() end
+end
+
+function DynamicPrep:ToggleTalentPopover(anchor)
+    if InCombatLockdown and InCombatLockdown() then
+        print("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Cannot switch Talent Loadouts during combat.")
+        return
+    end
+    if talentPopoverFrame and talentPopoverFrame:IsShown() then
+        talentPopoverFrame:Hide()
+        return
+    end
+    if self.HideBarPopovers then self:HideBarPopovers() end
+    local ar, ag, ab = GetActiveAccentRGB()
+    if not talentPopoverFrame then
+        local p = CreateFrame("Frame", "DynamicPrepTalentPopover", UIParent, "BackdropTemplate")
+        p:SetWidth(236)
+        p:SetFrameStrata("DIALOG")
+        p:EnableMouse(true)
+        p:SetClampedToScreen(true)
+        p.rows = {}
+        talentPopoverFrame = p
+    end
+
+    local p = talentPopoverFrame
+    SetPixelBackdrop(p, { 0.031, 0.039, 0.055, 0.98 }, { ar, ag, ab, 0.90 }, 1)
+    for _, r in ipairs(p.rows) do r:Hide() end
+
+    local loadouts = self:GetSavedTalentLoadouts()
+    local specID = self:GetActiveSpecID()
+    local curID = (specID and C_ClassTalents and C_ClassTalents.GetLastSelectedSavedConfigID) and C_ClassTalents.GetLastSelectedSavedConfigID(specID) or nil
+    local lib = (specID and self.db and self.db.talentStringLibrary and self.db.talentStringLibrary[specID]) or {}
+
+    local rowIdx = 0
+    local function EnsureRow()
+        rowIdx = rowIdx + 1
+        local btn = p.rows[rowIdx]
+        if not btn then
+            btn = CreateFrame("Button", nil, p, "BackdropTemplate")
+            btn:SetSize(220, 24)
+            btn.dot = btn:CreateTexture(nil, "OVERLAY")
+            btn.dot:SetSize(6, 6)
+            btn.dot:SetPoint("LEFT", btn, "LEFT", 8, 0)
+            btn.txt = CreateText(btn, "OVERLAY", "GameFontHighlightSmall")
+            btn.txt:SetPoint("LEFT", btn.dot, "RIGHT", 7, 0)
+            btn.txt:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+            btn.txt:SetJustifyH("LEFT")
+            btn.txt:SetWordWrap(false)
+            p.rows[rowIdx] = btn
+        end
+        btn:ClearAllPoints()
+        btn:SetPoint("TOPLEFT", p, "TOPLEFT", 8, -8 - ((rowIdx - 1) * 27))
+        return btn
+    end
+
+    for _, item in ipairs(loadouts) do
+        local btn = EnsureRow()
+        local isAct = (curID == item.id)
+        btn.dot:SetColorTexture(isAct and 0.063 or 0.35, isAct and 0.725 or 0.42, isAct and 0.506 or 0.52, 1)
+        btn.txt:SetText(item.name)
+        btn.txt:SetTextColor(isAct and 1 or 0.85, isAct and 1 or 0.89, isAct and 1 or 0.95, 1)
+        SetPixelBackdrop(btn, isAct and { ar * 0.32, ag * 0.32, ab * 0.32, 0.96 } or COLORS.BgElevated, isAct and { ar, ag, ab, 0.90 } or COLORS.BorderSubtle, 1)
+        btn:SetScript("OnClick", function()
+            p:Hide()
+            if not (InCombatLockdown and InCombatLockdown()) and C_ClassTalents and C_ClassTalents.LoadConfig then
+                pcall(C_ClassTalents.LoadConfig, item.id, true)
+            end
+        end)
+        btn:Show()
+    end
+
+    for _, libItem in ipairs(lib) do
+        local btn = EnsureRow()
+        btn.dot:SetColorTexture(0.98, 0.75, 0.14, 1)
+        btn.txt:SetText("[Lib] " .. tostring(libItem.name or "Build"))
+        btn.txt:SetTextColor(0.95, 0.88, 0.65, 1)
+        SetPixelBackdrop(btn, COLORS.BgElevated, { 0.98, 0.75, 0.14, 0.45 }, 1)
+        btn:SetScript("OnClick", function()
+            p:Hide()
+            DynamicPrep:ImportTalentString(libItem.name, libItem.importString)
+        end)
+        btn:Show()
+    end
+
+    -- Action Row: Boss & Import Manager
+    local mgrRow = EnsureRow()
+    mgrRow.dot:SetColorTexture(ar, ag, ab, 1)
+    mgrRow.txt:SetText("Boss & WCL / NS Import Manager...")
+    mgrRow.txt:SetTextColor(1, 1, 1, 1)
+    SetPixelBackdrop(mgrRow, { ar * 0.38, ag * 0.38, ab * 0.38, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+    mgrRow:SetScript("OnClick", function()
+        p:Hide()
+        DynamicPrep:OpenTalentManagerModal()
+    end)
+    mgrRow:Show()
+
+    p:SetHeight(16 + (rowIdx * 27))
+    p:ClearAllPoints()
+    if anchor then
+        p:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+    else
+        p:SetPoint("CENTER")
+    end
+    p:Show()
+end
 
 function DynamicPrep:GetActiveSpecID()
     if type(GetSpecialization) ~= "function" or type(GetSpecializationInfo) ~= "function" then return nil end
@@ -10176,6 +10325,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
         DynamicPrep:HideTalentReminderToast()
+        DynamicPrep:HideTalentPopover()
         if DynamicPrep.inEditMode then
             DynamicPrep:SetEditMode(false)
         end
@@ -10317,6 +10467,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         if DynamicPrep.HideTalentReminderToast then
             DynamicPrep:HideTalentReminderToast()
         end
+        DynamicPrep:RefreshBar()
     elseif event == "PLAYER_DEAD" then
         DynamicPrep:HandlePlayerDead()
     elseif event == "PLAYER_ALIVE" or event == "PLAYER_UNGHOST" then
