@@ -737,6 +737,11 @@ local DEFAULTS = {
     activeFolioStat = nil,
     autoQuestGossip = true,
     oneClickCatalyst = true,
+    autoAcceptSummon = false,
+    talentReminderEnabled = true,
+    talentPreferredBySpec = {},
+    talentBossMap = {},
+    talentStringLibrary = {},
     cinematicMode = "BOTH", -- "BOTH", "SKIP_ONLY", "OFF"
     autoRezMode = "OUT_OF_COMBAT", -- "OUT_OF_COMBAT", "ALWAYS", "OFF"
     autoReleaseMode = "WIPE_AND_CTRL", -- "WIPE_AND_CTRL", "HOLD_CTRL", "PVP_AUTO_WIPE_PVE", "ALWAYS", "OFF"
@@ -7963,6 +7968,106 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         rCatalyst:BindRightControl(pillsCatalyst)
         table.insert(self.refreshWidgets, pillsCatalyst)
 
+        -- 1c. Auto-Accept Group Summons (CONFIRM_SUMMON, 1.5s out-of-combat safety delay)
+        local rAutoSummon = CreateSpaciousRow(
+            cQoL, -114,
+            "Auto-Accept Group Summons",
+            "Automatically accepts Warlock and Meeting Stone summons after a 1.5s out-of-combat safety delay (skipped while dead or in combat; hold Shift to cancel).",
+            200
+        )
+        local pillsAutoSummon = CreateSegmentedPills(
+            rAutoSummon, 200,
+            {
+                { value = false, label = "Off" },
+                { value = true,  label = "Enabled" },
+            },
+            function() return self.db.autoAcceptSummon == true end,
+            function(v) self.db.autoAcceptSummon = v end
+        )
+        rAutoSummon:BindRightControl(pillsAutoSummon)
+        table.insert(self.refreshWidgets, pillsAutoSummon)
+
+        -- 1d. Zone-Aware Smart Talent Loadout Reminder (1-Click Swap Toast)
+        local rTalentReminder = CreateSpaciousRow(
+            cQoL, -114,
+            "Zone-Aware Talent Loadout Reminder",
+            "Shows a 1-click Obsidian swap toast when entering a Delve, Dungeon, Raid, or PvP instance (or on Ready Check) with a different saved talent loadout active.",
+            200
+        )
+        local pillsTalentReminder = CreateSegmentedPills(
+            rTalentReminder, 200,
+            {
+                { value = false, label = "Off" },
+                { value = true,  label = "Enabled" },
+            },
+            function() return self.db.talentReminderEnabled ~= false end,
+            function(v) self.db.talentReminderEnabled = v end
+        )
+        rTalentReminder:BindRightControl(pillsTalentReminder)
+        table.insert(self.refreshWidgets, pillsTalentReminder)
+
+        -- 1e. Preferred Talent Loadouts for Active Spec (Click zone chip to cycle saved loadouts)
+        local rTalentPicker = CreateSpaciousRow(
+            cQoL, -114,
+            "Preferred Loadouts (Active Spec)",
+            "Click any zone button to cycle through your saved Blizzard Talent Loadouts for this spec.",
+            340
+        )
+        local tpWrap = CreateFrame("Frame", nil, rTalentPicker)
+        tpWrap:SetSize(420, 26)
+        local tpZones = {
+            { key = "delve",   label = "Delve" },
+            { key = "dungeon", label = "M+" },
+            { key = "raid",    label = "Raid" },
+            { key = "pvp",     label = "PvP" },
+        }
+        local tpBtns = {}
+        for idx, zDef in ipairs(tpZones) do
+            local b = CreateFrame("Button", nil, tpWrap, "BackdropTemplate")
+            b:SetSize(74, 24)
+            b:SetPoint("LEFT", tpWrap, "LEFT", (idx - 1) * 78, 0)
+            b.txt = CreateText(b, "OVERLAY", "GameFontHighlightSmall")
+            b.txt:SetPoint("CENTER")
+            b.txt:SetWordWrap(false)
+            b.zoneKey = zDef.key
+            b.zoneLabel = zDef.label
+            b:SetScript("OnClick", function(btn)
+                DynamicPrep:CyclePreferredTalentLoadout(btn.zoneKey)
+                for _, ob in ipairs(tpBtns) do if ob.RefreshValue then ob:RefreshValue() end end
+            end)
+            function b:RefreshValue()
+                local ar, ag, ab = GetActiveAccentRGB()
+                local cfgID, cfgName = DynamicPrep:GetPreferredTalentLoadout(self.zoneKey)
+                if cfgID and cfgName and cfgName ~= "" then
+                    local short = cfgName
+                    if #short > 6 then short = short:sub(1, 5) .. "." end
+                    self.txt:SetText(self.zoneLabel .. ": " .. short)
+                    SetPixelBackdrop(self, { ar * 0.35, ag * 0.35, ab * 0.35, 0.96 }, { ar, ag, ab, 0.90 }, 1)
+                    self.txt:SetTextColor(1, 1, 1, 1)
+                else
+                    self.txt:SetText(self.zoneLabel .. ": Any")
+                    SetPixelBackdrop(self, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+                    self.txt:SetTextColor(0.68, 0.74, 0.82, 1)
+                end
+            end
+            table.insert(tpBtns, b)
+            table.insert(self.refreshWidgets, b)
+        end
+        local mgrBtn = CreateFrame("Button", nil, tpWrap, "BackdropTemplate")
+        mgrBtn:SetSize(104, 24)
+        mgrBtn:SetPoint("LEFT", tpWrap, "LEFT", 4 * 78, 0)
+        mgrBtn.txt = CreateText(mgrBtn, "OVERLAY", "GameFontHighlightSmall")
+        mgrBtn.txt:SetPoint("CENTER")
+        mgrBtn.txt:SetText("Boss & Import")
+        mgrBtn:SetScript("OnClick", function() DynamicPrep:OpenTalentManagerModal() end)
+        function mgrBtn:RefreshValue()
+            local ar, ag, ab = GetActiveAccentRGB()
+            SetPixelBackdrop(self, { ar * 0.35, ag * 0.35, ab * 0.35, 0.96 }, { ar, ag, ab, 0.95 }, 1)
+            self.txt:SetTextColor(1, 1, 1, 1)
+        end
+        table.insert(self.refreshWidgets, mgrBtn)
+        rTalentPicker:BindRightControl(tpWrap)
+
         -- 2. Hide Talking Head & Skip Cutscenes
         local rCine = CreateSpaciousRow(
             cQoL, -114,
@@ -8119,7 +8224,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             rHealMacro    = rHealMacro,
             tuneHealMacro = tuneHealMacro,
             dHealMacro    = dHealMacro,
-            others        = { rQuestGossip, rCatalyst, rCine, rRez, rRelease },
+            others        = { rQuestGossip, rCatalyst, rAutoSummon, rTalentReminder, rTalentPicker, rCine, rRez, rRelease },
         }
     end
 
@@ -9528,6 +9633,10 @@ SafeRegisterEvent(eventFrame, "PLAY_MOVIE")
 SafeRegisterEvent(eventFrame, "TALKINGHEAD_REQUESTED")
 SafeRegisterEvent(eventFrame, "ENCOUNTER_START")
 SafeRegisterEvent(eventFrame, "RESURRECT_REQUEST")
+SafeRegisterEvent(eventFrame, "CONFIRM_SUMMON")
+SafeRegisterEvent(eventFrame, "READY_CHECK")
+SafeRegisterEvent(eventFrame, "PLAYER_TARGET_CHANGED")
+SafeRegisterEvent(eventFrame, "TRAIT_CONFIG_UPDATED")
 SafeRegisterEvent(eventFrame, "PLAYER_DEAD")
 SafeRegisterEvent(eventFrame, "PLAYER_ALIVE")
 SafeRegisterEvent(eventFrame, "PLAYER_UNGHOST")
@@ -9537,6 +9646,434 @@ SafeRegisterEvent(eventFrame, "ACTIONBAR_SLOT_CHANGED")
 SafeRegisterEvent(eventFrame, "UPDATE_MACROS")
 SafeRegisterEvent(eventFrame, "SPELL_UPDATE_COOLDOWN")
 SafeRegisterEvent(eventFrame, "BAG_UPDATE_COOLDOWN")
+
+-- ============================================================================
+-- ZONE-AWARE TALENT LOADOUT REMINDER & SAFE AUTO-ACCEPT SUMMON
+-- ============================================================================
+local talentReminderToast = nil
+
+function DynamicPrep:GetActiveSpecID()
+    if type(GetSpecialization) ~= "function" or type(GetSpecializationInfo) ~= "function" then return nil end
+    local idx = GetSpecialization()
+    if not idx then return nil end
+    local specID = GetSpecializationInfo(idx)
+    return (type(specID) == "number" and specID > 0) and specID or nil
+end
+
+function DynamicPrep:GetSavedTalentLoadouts()
+    local list = {}
+    local specID = self:GetActiveSpecID()
+    if not specID or not (C_ClassTalents and C_ClassTalents.GetConfigIDsBySpecID and C_Traits and C_Traits.GetConfigInfo) then
+        return list
+    end
+    local ok, ids = pcall(C_ClassTalents.GetConfigIDsBySpecID, specID)
+    if not ok or type(ids) ~= "table" then return list end
+    for _, cid in ipairs(ids) do
+        local okI, info = pcall(C_Traits.GetConfigInfo, cid)
+        if okI and type(info) == "table" and not _IsSecret(info.name) and type(info.name) == "string" and info.name ~= "" then
+            table.insert(list, { id = cid, name = info.name })
+        end
+    end
+    table.sort(list, function(a, b) return a.name < b.name end)
+    return list
+end
+
+function DynamicPrep:GetPreferredTalentLoadout(zoneKey)
+    if not self.db then return nil, nil end
+    local specID = self:GetActiveSpecID()
+    if not specID then return nil, nil end
+    local bySpec = self.db.talentPreferredBySpec and self.db.talentPreferredBySpec[specID]
+    local targetID = bySpec and bySpec[zoneKey]
+    if not targetID then return nil, nil end
+    for _, item in ipairs(self:GetSavedTalentLoadouts()) do
+        if item.id == targetID then
+            return item.id, item.name
+        end
+    end
+    return nil, nil
+end
+
+function DynamicPrep:CyclePreferredTalentLoadout(zoneKey)
+    if not self.db then self:InitDB() end
+    local specID = self:GetActiveSpecID()
+    if not specID then return end
+    local loadouts = self:GetSavedTalentLoadouts()
+    if #loadouts == 0 then
+        print("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: No saved Blizzard Talent Loadouts found for your active spec.")
+        return
+    end
+    self.db.talentPreferredBySpec = self.db.talentPreferredBySpec or {}
+    self.db.talentPreferredBySpec[specID] = self.db.talentPreferredBySpec[specID] or {}
+    local curID = self.db.talentPreferredBySpec[specID][zoneKey]
+    local nextID = nil
+    if not curID then
+        nextID = loadouts[1].id
+    else
+        for i, item in ipairs(loadouts) do
+            if item.id == curID then
+                if i < #loadouts then nextID = loadouts[i + 1].id else nextID = nil end
+                break
+            end
+        end
+    end
+    self.db.talentPreferredBySpec[specID][zoneKey] = nextID
+end
+
+function DynamicPrep:HideTalentReminderToast()
+    if talentReminderToast then talentReminderToast:Hide() end
+end
+
+function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel)
+    if InCombatLockdown and InCombatLockdown() then return end
+    if not talentReminderToast then
+        local f = CreateFrame("Frame", "DynamicPrepTalentReminderToast", UIParent, "BackdropTemplate")
+        f:SetSize(330, 58)
+        f:SetPoint("TOP", UIParent, "TOP", 0, -140)
+        f:SetFrameStrata("HIGH")
+        f:SetClampedToScreen(true)
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+
+        f.title = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+        f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -9)
+        f.title:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -9)
+        f.title:SetJustifyH("LEFT")
+
+        f.swapBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+        f.swapBtn:SetSize(196, 22)
+        f.swapBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 8)
+        f.swapBtn.txt = CreateText(f.swapBtn, "OVERLAY", "GameFontHighlightSmall")
+        f.swapBtn.txt:SetPoint("CENTER")
+
+        f.dismissBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+        f.dismissBtn:SetSize(96, 22)
+        f.dismissBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 8)
+        f.dismissBtn.txt = CreateText(f.dismissBtn, "OVERLAY", "GameFontHighlightSmall")
+        f.dismissBtn.txt:SetPoint("CENTER")
+        f.dismissBtn.txt:SetText("Dismiss")
+        f.dismissBtn:SetScript("OnClick", function() f:Hide() end)
+
+        talentReminderToast = f
+    end
+
+    local f = talentReminderToast
+    local ar, ag, ab = GetActiveAccentRGB()
+    SetPixelBackdrop(f, { 0.031, 0.039, 0.055, 0.96 }, { ar, ag, ab, 0.90 }, 1)
+    SetPixelBackdrop(f.swapBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+    SetPixelBackdrop(f.dismissBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+
+    f.title:SetText(string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |  |cFFFBBF24%s Talent Mismatch|r", zoneLabel or "Zone"))
+    f.swapBtn.txt:SetText("Swap to: " .. tostring(targetName or "Loadout"))
+    f.swapBtn:SetScript("OnClick", function()
+        if InCombatLockdown and InCombatLockdown() then return end
+        if C_ClassTalents and type(C_ClassTalents.LoadConfig) == "function" then
+            pcall(C_ClassTalents.LoadConfig, targetID, true)
+        end
+        f:Hide()
+    end)
+    f:Show()
+end
+
+function DynamicPrep:CheckZoneTalentLoadout()
+    if not self.db or self.db.talentReminderEnabled == false or IsModuleDisabledInSuite("DynamicPrep") then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    local specID = self:GetActiveSpecID()
+    if not specID or not (C_ClassTalents and C_ClassTalents.GetLastSelectedSavedConfigID) then return end
+
+    local zKey, zLabel = nil, nil
+    local isDelve = (C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve())
+        or (C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress())
+    if isDelve then
+        zKey, zLabel = "delve", "Delve"
+    elseif type(IsInInstance) == "function" then
+        local inInst, instType = IsInInstance()
+        if inInst then
+            if instType == "party" then zKey, zLabel = "dungeon", "Mythic+ / Dungeon"
+            elseif instType == "raid" then zKey, zLabel = "raid", "Raid"
+            elseif instType == "pvp" or instType == "arena" then zKey, zLabel = "pvp", "PvP"
+            end
+        end
+    end
+    if not zKey then return end
+
+    local prefID, prefName = self:GetPreferredTalentLoadout(zKey)
+    if not prefID or not prefName then return end
+    local okCur, curID = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
+    if okCur and curID == prefID then
+        self:HideTalentReminderToast()
+        return
+    end
+    self:ShowTalentReminderToast(prefID, prefName, zLabel)
+end
+
+function DynamicPrep:ImportTalentString(loadoutName, importString)
+    if not self.db then self:InitDB() end
+    local specID = self:GetActiveSpecID()
+    if not specID then return false, "No active specialisation found." end
+    local cleanName = strtrim(tostring(loadoutName or ""))
+    local cleanStr = strtrim(tostring(importString or ""))
+    if cleanName == "" or cleanStr == "" then
+        return false, "Enter both a loadout name and a Warcraft Logs / Northern Sky / Blizzard export string."
+    end
+    self.db.talentStringLibrary = self.db.talentStringLibrary or {}
+    self.db.talentStringLibrary[specID] = self.db.talentStringLibrary[specID] or {}
+    local lib = self.db.talentStringLibrary[specID]
+    local updated = false
+    for _, entry in ipairs(lib) do
+        if entry.name:lower() == cleanName:lower() then
+            entry.name = cleanName
+            entry.importString = cleanStr
+            updated = true
+            break
+        end
+    end
+    if not updated then
+        table.insert(lib, { name = cleanName, importString = cleanStr })
+    end
+    -- Attempt live import into Blizzard's Talent Loadout system out of combat
+    if not (InCombatLockdown and InCombatLockdown()) and C_ClassTalents and type(C_ClassTalents.ImportLoadout) == "function" then
+        local activeCfg = (C_ClassTalents.GetActiveConfigID and C_ClassTalents.GetActiveConfigID()) or nil
+        if activeCfg then
+            local okImp, okRes, errMsg = pcall(C_ClassTalents.ImportLoadout, activeCfg, cleanStr, cleanName)
+            if okImp and okRes then
+                print(string.format("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Imported talent loadout |cFF10B981%s|r into Blizzard Talents and saved to your library.", cleanName))
+                return true, "Imported & saved."
+            elseif okImp and type(errMsg) == "string" and errMsg ~= "" then
+                print(string.format("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Saved |cFFFFFFFF%s|r to library (Blizzard import note: %s).", cleanName, errMsg))
+                return true, errMsg
+            end
+        end
+    end
+    print(string.format("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Saved talent string |cFF10B981%s|r to your spec library.", cleanName))
+    return true, "Saved to library."
+end
+
+function DynamicPrep:CheckBossTalentLoadout()
+    if not self.db or self.db.talentReminderEnabled == false or IsModuleDisabledInSuite("DynamicPrep") then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    local specID = self:GetActiveSpecID()
+    if not specID then return end
+    local bossMap = self.db.talentBossMap and self.db.talentBossMap[specID]
+    if type(bossMap) ~= "table" or next(bossMap) == nil then return end
+    if not (UnitExists and UnitExists("target")) then return end
+    local tName = UnitName and UnitName("target") or nil
+    if not tName or _IsSecret(tName) or type(tName) ~= "string" or tName == "" then return end
+
+    local lowTarget = tName:lower()
+    local matchEntry = bossMap[lowTarget]
+    if not matchEntry then
+        for bKey, entry in pairs(bossMap) do
+            if lowTarget:find(bKey, 1, true) or bKey:find(lowTarget, 1, true) then
+                matchEntry = entry
+                break
+            end
+        end
+    end
+    if not matchEntry or not matchEntry.configID then return end
+    local okCur, curID = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
+    if okCur and curID == matchEntry.configID then
+        self:HideTalentReminderToast()
+        return
+    end
+    self:ShowTalentReminderToast(matchEntry.configID, matchEntry.loadoutName or "Boss Loadout", "Boss: " .. tName)
+end
+
+local talentMgrModal = nil
+function DynamicPrep:OpenTalentManagerModal()
+    if not self.db then self:InitDB() end
+    if talentMgrModal then
+        talentMgrModal:RefreshList()
+        talentMgrModal:Show()
+        return
+    end
+    local ar, ag, ab = GetActiveAccentRGB()
+    local f = CreateFrame("Frame", "DynamicPrepTalentManagerModal", UIParent, "BackdropTemplate")
+    f:SetSize(520, 400)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetMovable(true)
+    f:EnableMouse(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+    SetPixelBackdrop(f, { 0.031, 0.039, 0.055, 0.98 }, { ar, ag, ab, 0.90 }, 1)
+
+    local hdr = CreateText(f, "OVERLAY", "GameFontHighlight")
+    hdr:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -12)
+    hdr:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |  |cFF38BDF8Boss Talents & WCL / NS Importer|r")
+
+    local closeBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+    closeBtn:SetSize(24, 22)
+    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -10)
+    SetPixelBackdrop(closeBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+    closeBtn.txt = CreateText(closeBtn, "OVERLAY", "GameFontHighlightSmall")
+    closeBtn.txt:SetPoint("CENTER")
+    closeBtn.txt:SetText("X")
+    closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+    -- Section 1: Import Warcraft Logs / Northern Sky / Blizzard Talent String
+    local impLbl = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+    impLbl:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -42)
+    impLbl:SetText("|cFF38BDF8IMPORT TALENT STRING (Warcraft Logs / Northern Sky / Blizzard)|r")
+
+    local nameEB = CreateFrame("EditBox", nil, f, "BackdropTemplate")
+    nameEB:SetSize(160, 24)
+    nameEB:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -62)
+    nameEB:SetAutoFocus(false)
+    nameEB:SetFontObject("GameFontHighlightSmall")
+    nameEB:SetTextInsets(6, 6, 0, 0)
+    SetPixelBackdrop(nameEB, { 0.043, 0.051, 0.071, 0.98 }, COLORS.BorderSubtle, 1)
+    nameEB:SetText("Raid ST")
+    nameEB:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+
+    local strEB = CreateFrame("EditBox", nil, f, "BackdropTemplate")
+    strEB:SetSize(224, 24)
+    strEB:SetPoint("LEFT", nameEB, "RIGHT", 6, 0)
+    strEB:SetAutoFocus(false)
+    strEB:SetFontObject("GameFontHighlightSmall")
+    strEB:SetTextInsets(6, 6, 0, 0)
+    SetPixelBackdrop(strEB, { 0.043, 0.051, 0.071, 0.98 }, COLORS.BorderSubtle, 1)
+    strEB:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+
+    local impBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+    impBtn:SetSize(92, 24)
+    impBtn:SetPoint("LEFT", strEB, "RIGHT", 6, 0)
+    SetPixelBackdrop(impBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+    impBtn.txt = CreateText(impBtn, "OVERLAY", "GameFontHighlightSmall")
+    impBtn.txt:SetPoint("CENTER")
+    impBtn.txt:SetText("Import")
+    impBtn:SetScript("OnClick", function()
+        DynamicPrep:ImportTalentString(nameEB:GetText(), strEB:GetText())
+        strEB:SetText("")
+        f:RefreshList()
+    end)
+
+    -- Section 2: Bind Boss Name -> Active Saved Blizzard Loadout
+    local bossLbl = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+    bossLbl:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -102)
+    bossLbl:SetText("|cFF38BDF8BIND BOSS TO CURRENTLY ACTIVE BLIZZARD LOADOUT|r")
+
+    local bossEB = CreateFrame("EditBox", nil, f, "BackdropTemplate")
+    bossEB:SetSize(240, 24)
+    bossEB:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -122)
+    bossEB:SetAutoFocus(false)
+    bossEB:SetFontObject("GameFontHighlightSmall")
+    bossEB:SetTextInsets(6, 6, 0, 0)
+    SetPixelBackdrop(bossEB, { 0.043, 0.051, 0.071, 0.98 }, COLORS.BorderSubtle, 1)
+    bossEB:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+
+    local tgtBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+    tgtBtn:SetSize(112, 24)
+    tgtBtn:SetPoint("LEFT", bossEB, "RIGHT", 6, 0)
+    SetPixelBackdrop(tgtBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+    tgtBtn.txt = CreateText(tgtBtn, "OVERLAY", "GameFontHighlightSmall")
+    tgtBtn.txt:SetPoint("CENTER")
+    tgtBtn.txt:SetText("Use Target")
+    tgtBtn:SetScript("OnClick", function()
+        local tn = (UnitExists and UnitExists("target") and UnitName("target")) or ""
+        if type(tn) == "string" and not _IsSecret(tn) and tn ~= "" then
+            bossEB:SetText(tn)
+        end
+    end)
+
+    local bindBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+    bindBtn:SetSize(124, 24)
+    bindBtn:SetPoint("LEFT", tgtBtn, "RIGHT", 6, 0)
+    SetPixelBackdrop(bindBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+    bindBtn.txt = CreateText(bindBtn, "OVERLAY", "GameFontHighlightSmall")
+    bindBtn.txt:SetPoint("CENTER")
+    bindBtn.txt:SetText("Bind Active")
+    bindBtn:SetScript("OnClick", function()
+        local specID = DynamicPrep:GetActiveSpecID()
+        local bName = strtrim(bossEB:GetText() or "")
+        if not specID or bName == "" then return end
+        local curID = (C_ClassTalents and C_ClassTalents.GetLastSelectedSavedConfigID) and C_ClassTalents.GetLastSelectedSavedConfigID(specID) or nil
+        if not curID then
+            print("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Select a saved Blizzard Talent Loadout first before binding a boss.")
+            return
+        end
+        local info = (C_Traits and C_Traits.GetConfigInfo) and C_Traits.GetConfigInfo(curID) or nil
+        local lName = (info and not _IsSecret(info.name) and info.name) or ("Loadout #" .. tostring(curID))
+        DynamicPrep.db.talentBossMap = DynamicPrep.db.talentBossMap or {}
+        DynamicPrep.db.talentBossMap[specID] = DynamicPrep.db.talentBossMap[specID] or {}
+        DynamicPrep.db.talentBossMap[specID][bName:lower()] = {
+            bossName = bName,
+            configID = curID,
+            loadoutName = lName,
+        }
+        bossEB:SetText("")
+        print(string.format("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Bound boss |cFFFBBF24%s|r -> |cFF10B981%s|r.", bName, lName))
+        f:RefreshList()
+    end)
+
+    -- Bound Boss List Display
+    f.rows = {}
+    function f:RefreshList()
+        for _, r in ipairs(self.rows) do r:Hide() end
+        local specID = DynamicPrep:GetActiveSpecID()
+        local map = (specID and DynamicPrep.db and DynamicPrep.db.talentBossMap and DynamicPrep.db.talentBossMap[specID]) or {}
+        local keys = {}
+        for k in pairs(map) do table.insert(keys, k) end
+        table.sort(keys)
+        for i = 1, math.min(#keys, 8) do
+            local k = keys[i]
+            local entry = map[k]
+            local row = self.rows[i]
+            if not row then
+                row = CreateFrame("Frame", nil, self, "BackdropTemplate")
+                row:SetSize(488, 24)
+                SetPixelBackdrop(row, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+                row.fs = CreateText(row, "OVERLAY", "GameFontHighlightSmall")
+                row.fs:SetPoint("LEFT", row, "LEFT", 8, 0)
+                row.del = CreateFrame("Button", nil, row)
+                row.del:SetSize(20, 20)
+                row.del:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+                row.del.txt = CreateText(row.del, "OVERLAY", "GameFontHighlightSmall")
+                row.del.txt:SetPoint("CENTER")
+                row.del.txt:SetText("x")
+                self.rows[i] = row
+            end
+            row:SetPoint("TOPLEFT", self, "TOPLEFT", 16, -162 - ((i - 1) * 28))
+            row.fs:SetText(string.format("|cFFFBBF24%s|r  ->  |cFF10B981%s|r", tostring(entry.bossName or k), tostring(entry.loadoutName or "Loadout")))
+            row.del:SetScript("OnClick", function()
+                map[k] = nil
+                f:RefreshList()
+            end)
+            row:Show()
+        end
+    end
+
+    talentMgrModal = f
+    f:RefreshList()
+    f:Show()
+end
+
+function DynamicPrep:HandleConfirmSummon()
+    if not self.db or self.db.autoAcceptSummon ~= true or IsModuleDisabledInSuite("DynamicPrep") then return end
+    if (InCombatLockdown and InCombatLockdown()) or (UnitIsDeadOrGhost and UnitIsDeadOrGhost("player")) then return end
+    if IsShiftKeyDown and IsShiftKeyDown() then return end
+    if not (C_SummonInfo and C_SummonInfo.ConfirmSummon) then return end
+    local summoner = (C_SummonInfo.GetSummonConfirmSummoner and C_SummonInfo.GetSummonConfirmSummoner()) or "Someone"
+    local area = (C_SummonInfo.GetSummonConfirmAreaName and C_SummonInfo.GetSummonConfirmAreaName()) or "destination"
+    if _IsSecret(summoner) then summoner = "Party Member" end
+    if _IsSecret(area) then area = "destination" end
+    print(string.format("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Auto-accepting summon from |cFFFFFFFF%s|r to |cFF38BDF8%s|r in 1.5s (hold Shift to cancel).", tostring(summoner), tostring(area)))
+    if C_Timer and C_Timer.After then
+        C_Timer.After(1.5, function()
+            if not DynamicPrep.db or DynamicPrep.db.autoAcceptSummon ~= true then return end
+            if (InCombatLockdown and InCombatLockdown()) or (UnitIsDeadOrGhost and UnitIsDeadOrGhost("player")) then return end
+            if IsShiftKeyDown and IsShiftKeyDown() then return end
+            local left = (C_SummonInfo.GetSummonConfirmTimeLeft and C_SummonInfo.GetSummonConfirmTimeLeft()) or 0
+            if left > 0 then
+                pcall(C_SummonInfo.ConfirmSummon)
+                if _G.StaticPopup_Hide then pcall(_G.StaticPopup_Hide, "CONFIRM_SUMMON") end
+            end
+        end)
+    end
+end
 
 eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     if event == "ADDON_LOADED" then
@@ -9629,12 +10166,16 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             DynamicPrep:ScanEquippedGearEnchantsAndGems()
         end
         DynamicPrep:RefreshBar()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(1.2, function() DynamicPrep:CheckZoneTalentLoadout() end)
+        end
     elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "SOCKET_INFO_UPDATE" then
         DynamicPrep:ScanEquippedGearEnchantsAndGems()
         if not (InCombatLockdown and InCombatLockdown()) then
             DynamicPrep:RefreshBar()
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
+        DynamicPrep:HideTalentReminderToast()
         if DynamicPrep.inEditMode then
             DynamicPrep:SetEditMode(false)
         end
@@ -9765,6 +10306,17 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:UpdateTalkingHeadSuppression()
     elseif event == "RESURRECT_REQUEST" then
         DynamicPrep:HandleResurrectRequest(arg1)
+    elseif event == "CONFIRM_SUMMON" then
+        DynamicPrep:HandleConfirmSummon()
+    elseif event == "READY_CHECK" then
+        DynamicPrep:CheckBossTalentLoadout()
+        DynamicPrep:CheckZoneTalentLoadout("READY_CHECK")
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        DynamicPrep:CheckBossTalentLoadout()
+    elseif event == "TRAIT_CONFIG_UPDATED" then
+        if DynamicPrep.HideTalentReminderToast then
+            DynamicPrep:HideTalentReminderToast()
+        end
     elseif event == "PLAYER_DEAD" then
         DynamicPrep:HandlePlayerDead()
     elseif event == "PLAYER_ALIVE" or event == "PLAYER_UNGHOST" then

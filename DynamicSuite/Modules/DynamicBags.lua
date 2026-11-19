@@ -315,6 +315,9 @@ local DEFAULTS = {
     repairFunding = "GUILD_FIRST",
     autoSellGrey = true,
     autoSellJunk = true,
+    merchantBulkBuy = true,
+    autoRestockEnabled = false,
+    autoRestockList = {},
     fastAutoLoot = true,
     autoFillDelete = true,
     autoOpenContainers = true,
@@ -7886,6 +7889,18 @@ function U.BuildPage3(page)
         end,
     })
     U.AddCard(page, {
+        title = "Merchant Quick-Stack Bulk Buy (Alt + Right-Click)", kind = "toggle",
+        desc = "Hold Alt and Right-Click any stackable vendor item to purchase a full stack immediately without opening the split-stack popup.",
+        get = function() return db.merchantBulkBuy ~= false end,
+        set = function(v) db.merchantBulkBuy = v and true or false end,
+    })
+    U.AddCard(page, {
+        title = "Smart Vendor Auto-Restock", kind = "toggle",
+        desc = "Automatically tops up items in your restock list when visiting any merchant selling them. Configure via '/dbag restock <itemID or link> <qty>', '/dbag restock list', or '/dbag restock clear'.",
+        get = function() return db.autoRestockEnabled == true end,
+        set = function(v) db.autoRestockEnabled = v and true or false end,
+    })
+    U.AddCard(page, {
         title = "Faster Auto-Loot", kind = "toggle",
         desc = "Accelerates looting by collecting all items in a single step as soon as the loot window opens.",
         get = function() return db.fastAutoLoot ~= false end,
@@ -8931,13 +8946,85 @@ function DynamicBags:HandleMerchantShow()
         if C_MerchantFrame and C_MerchantFrame.SellAllJunkItems and C_MerchantFrame.GetNumJunkItems then
             local okCount, numJunk = pcall(C_MerchantFrame.GetNumJunkItems)
             if okCount and type(numJunk) == "number" and numJunk > 0 then
-                local okSell = pcall(C_MerchantFrame.SellAllJunkItems)
-                if okSell then
-                    return
+                pcall(C_MerchantFrame.SellAllJunkItems)
+            end
+        else
+            U.AutoSellJunk()
+        end
+    end
+
+    -- 3. Smart Vendor Auto-Restock (top up configured items up to target stock)
+    if not sess.restocked and db.autoRestockEnabled == true and type(db.autoRestockList) == "table" and next(db.autoRestockList) ~= nil then
+        sess.restocked = true
+        U.AutoRestockAtMerchant()
+    end
+end
+
+local merchantBulkBuyHooked = false
+function U.EnsureMerchantBulkBuyHook()
+    if merchantBulkBuyHooked then return end
+    if type(_G.MerchantItemButton_OnModifiedClick) == "function" and type(_G.hooksecurefunc) == "function" then
+        merchantBulkBuyHooked = true
+        _G.hooksecurefunc("MerchantItemButton_OnModifiedClick", function(self, button)
+            local db = DB()
+            if db.merchantBulkBuy == false or IsModuleDisabledInSuite("DynamicBags") then return end
+            if button ~= "RightButton" or not (IsAltKeyDown and IsAltKeyDown()) then return end
+            if InCombatLockdown and InCombatLockdown() then return end
+            local idx = self and self.GetID and self:GetID()
+            if not idx or idx <= 0 then return end
+            if type(_G.GetMerchantItemMaxStack) == "function" and type(_G.BuyMerchantItem) == "function" then
+                local maxStack = tonumber(_G.GetMerchantItemMaxStack(idx)) or 1
+                if maxStack > 1 then
+                    pcall(_G.BuyMerchantItem, idx, maxStack)
+                end
+            end
+        end)
+    end
+end
+
+function U.AutoRestockAtMerchant()
+    local db = DB()
+    if db.autoRestockEnabled ~= true or type(db.autoRestockList) ~= "table" or IsModuleDisabledInSuite("DynamicBags") then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    if type(_G.GetMerchantNumItems) ~= "function" or type(_G.BuyMerchantItem) ~= "function" then return end
+
+    local numMerchant = tonumber(_G.GetMerchantNumItems()) or 0
+    local boughtParts = {}
+    for i = 1, numMerchant do
+        local itemID = (type(_G.GetMerchantItemID) == "function") and _G.GetMerchantItemID(i) or nil
+        if itemID and db.autoRestockList[itemID] then
+            local targetQty = tonumber(db.autoRestockList[itemID]) or 0
+            local haveQty = (C_Item and C_Item.GetItemCount) and (tonumber(C_Item.GetItemCount(itemID, false)) or 0) or 0
+            local missing = targetQty - haveQty
+            if missing > 0 then
+                local info = (C_MerchantFrame and C_MerchantFrame.GetItemInfo) and C_MerchantFrame.GetItemInfo(i) or nil
+                local price = (type(info) == "table" and tonumber(info.price)) or 0
+                local stackCount = (type(info) == "table" and tonumber(info.stackCount)) or 1
+                if stackCount < 1 then stackCount = 1 end
+                local maxStack = (type(_G.GetMerchantItemMaxStack) == "function" and tonumber(_G.GetMerchantItemMaxStack(i))) or 1
+                if maxStack < 1 then maxStack = 1 end
+                local playerMoney = (type(_G.GetMoney) == "function" and tonumber(_G.GetMoney())) or 0
+                local unitsNeeded = math.ceil(missing / stackCount)
+                if price > 0 then
+                    local maxAfford = math.floor(playerMoney / price)
+                    unitsNeeded = math.min(unitsNeeded, maxAfford)
+                end
+                local boughtTotal = 0
+                while unitsNeeded > 0 do
+                    local chunk = math.min(unitsNeeded, maxStack)
+                    pcall(_G.BuyMerchantItem, i, chunk)
+                    boughtTotal = boughtTotal + (chunk * stackCount)
+                    unitsNeeded = unitsNeeded - chunk
+                end
+                if boughtTotal > 0 then
+                    local iName = (type(info) == "table" and type(info.name) == "string" and info.name ~= "") and info.name or ("Item #" .. tostring(itemID))
+                    table.insert(boughtParts, string.format("%dx %s", boughtTotal, iName))
                 end
             end
         end
-        U.AutoSellJunk()
+    end
+    if #boughtParts > 0 then
+        Print("Auto-Restocked: " .. table.concat(boughtParts, ", ") .. ".")
     end
 end
 
@@ -10409,8 +10496,40 @@ SlashCmdList["DYNAMICBAGS"] = function(msg)
     elseif cmd == "vault clear" then
         U.ClearAltCache()
         Print("Alt & Warband cache cleared.")
+    elseif cmd:match("^restock") then
+        local db = DB()
+        db.autoRestockList = db.autoRestockList or {}
+        local rest = (msg or ""):match("^%s*[Rr][Ee][Ss][Tt][Oo][Cc][Kk]%s*(.*)$") or ""
+        local sub = rest:lower():match("^%s*(.-)%s*$")
+        if sub == "" or sub == "list" then
+            local items = {}
+            for id, qty in pairs(db.autoRestockList) do
+                table.insert(items, string.format("#%d -> %d", id, qty))
+            end
+            if #items == 0 then
+                Print("Auto-Restock list is empty. Usage: /dbag restock <itemID or link> <qty>")
+            else
+                Print("Auto-Restock (" .. (db.autoRestockEnabled and "ON" or "OFF") .. "): " .. table.concat(items, ", "))
+            end
+        elseif sub == "clear" then
+            wipe(db.autoRestockList)
+            Print("Cleared Auto-Restock list.")
+        else
+            local itemID = tonumber(rest:match("item:(%d+)")) or tonumber(rest:match("^(%d+)"))
+            local qty = tonumber(rest:match("(%d+)%s*$"))
+            if itemID and qty and qty > 0 then
+                db.autoRestockList[itemID] = qty
+                db.autoRestockEnabled = true
+                Print(string.format("Added Item #%d to Auto-Restock (target: %d) and enabled Auto-Restock.", itemID, qty))
+            elseif itemID and (qty == 0) then
+                db.autoRestockList[itemID] = nil
+                Print(string.format("Removed Item #%d from Auto-Restock.", itemID))
+            else
+                Print("Usage: /dbag restock <itemID or item link> <targetQty>  (use 0 to remove, or 'list' / 'clear')")
+            end
+        end
     elseif cmd == "help" or cmd == "?" then
-        Print("Commands: /dbag (settings), /dbag bag, /dbag bank, /dbag warband, /dbag guild, /dbag merge, /dbag clear, /dbag vault clear, /dbag reset")
+        Print("Commands: /dbag (settings), /dbag bag, /dbag bank, /dbag warband, /dbag guild, /dbag merge, /dbag clear, /dbag restock, /dbag vault clear, /dbag reset")
     else
         DynamicBags:OpenWorkspace()
     end
@@ -10824,6 +10943,7 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         U.TriggerAutoCloseKey("trade")
         U.ScheduleAutoOpenContainers()
     elseif event == "MERCHANT_SHOW" then
+        U.EnsureMerchantBulkBuyHook()
         U.TriggerAutoOpenKey("vendor")
         DynamicBags:HandleMerchantShow()
     elseif event == "MERCHANT_CLOSED" then

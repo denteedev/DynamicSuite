@@ -4807,6 +4807,22 @@ local BUILTIN_SEARCH_SEED = {
       title = "Great Vault Top Dock, Auto-Match Skin & On-Screen Overlay",
       desc = "Automatically dock your Account Vault bar flush on top of Blizzard's Great Vault with EllesmereUI/ElvUI Auto-Match skinning, plus optional /dv overlay.",
       keywords = "great vault top dock auto-match ellesmere elvui skin overlay hud /dv" },
+    { moduleKey = "prep", category = "COMBAT", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Zone & Boss Talent Loadout Reminder + WCL/NS String Importer",
+      desc = "Import Warcraft Logs / Northern Sky / Blizzard talent strings, bind loadouts per zone or specific Raid Boss, and get a 1-click swap toast on mismatch.",
+      keywords = "talent loadout reminder boss warcraft logs northern sky ns import string swap toast /dprep" },
+    { moduleKey = "prep", category = "BAGS_QOL", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Auto-Accept Group Summons (1.5s Safety Delay)",
+      desc = "Automatically accept Warlock and Meeting Stone summons out of combat after a 1.5s safety countdown (hold Shift to cancel).",
+      keywords = "auto accept summon warlock meeting stone confirm summon teleport /dprep" },
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Automation & Merchant",
+      title = "Merchant Quick-Stack Bulk Buy & Smart Auto-Restock",
+      desc = "Hold Alt + Right-Click at merchants to buy full stacks instantly, and configure '/dbag restock <item> <qty>' to top up vendor supplies automatically.",
+      keywords = "merchant bulk buy full stack alt right click auto restock vendor supplies /dbag" },
+    { moduleKey = "group", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Party & Keystone Automation",
+      title = "Auto-Respond to '!keys' in Party, Raid & Guild Chat",
+      desc = "Automatically link your owned Mythic+ Keystone when someone types !keys or !key in Party, Raid, or Guild chat (10s anti-spam cooldown).",
+      keywords = "!keys !key keystone auto responder party raid guild chat mythic+ /dg" },
 }
 addonTable.SEARCH_INDEX_DATA = BUILTIN_SEARCH_SEED
 DynamicSuite.SEARCH_INDEX_DATA = BUILTIN_SEARCH_SEED

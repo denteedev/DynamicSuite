@@ -195,6 +195,8 @@ local DEFAULTS = {
     protectActiveQueues = true,
     announceInvites = true,
     autoInsertKeystone = true,
+    autoRespondKeys = true,
+    autoRespondKeysGuild = true,
     showGroupTeleportToast = true,
     oneClickSignUp = true,
     autoSelectRole = true,
@@ -7201,6 +7203,31 @@ local function RenderGroupEmbedded(arg1, arg2)
     page3.orderedCards[#page3.orderedCards + 1] = c3_keystone
     root.allControls[#root.allControls + 1] = c3_keystone
 
+    -- Card 3.3b: !keys Mythic+ Keystone Auto-Responder
+    local c3_keysRespond = CreateCardRow(sec3a, 62,
+        "Auto-Respond to '!keys' in Party & Raid",
+        "Automatically links your owned Mythic+ Keystone when someone types !keys or !key in Party, Raid, or Instance chat (10s anti-spam cooldown)."
+    )
+    AttachSegmentedSwitchToCard(c3_keysRespond,
+        function() return EnsureDB().autoRespondKeys ~= false end,
+        function(val) EnsureDB().autoRespondKeys = val end
+    )
+    sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_keysRespond
+    page3.orderedCards[#page3.orderedCards + 1] = c3_keysRespond
+    root.allControls[#root.allControls + 1] = c3_keysRespond
+
+    local c3_keysGuild = CreateCardRow(sec3a, 62,
+        "Also Respond to '!keys' in Guild Chat",
+        "Links your owned Mythic+ Keystone when a guildmate types !keys or !key in Guild chat."
+    )
+    AttachSegmentedSwitchToCard(c3_keysGuild,
+        function() return EnsureDB().autoRespondKeysGuild ~= false end,
+        function(val) EnsureDB().autoRespondKeysGuild = val end
+    )
+    sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_keysGuild
+    page3.orderedCards[#page3.orderedCards + 1] = c3_keysGuild
+    root.allControls[#root.allControls + 1] = c3_keysGuild
+
     -- Card 3.3c: Dungeon Joined & Group Full Teleport Toast
     local c3_tpToast = CreateCardRow(sec3a, 94,
         "Dungeon Joined & Group Full Teleport Toast",
@@ -7900,6 +7927,13 @@ SafeRegisterEvent(DynamicGroup, "SPELLS_CHANGED")
 SafeRegisterEvent(DynamicGroup, "PARTY_INVITE_REQUEST")
 SafeRegisterEvent(DynamicGroup, "CHAT_MSG_WHISPER")
 SafeRegisterEvent(DynamicGroup, "CHAT_MSG_BN_WHISPER")
+SafeRegisterEvent(DynamicGroup, "CHAT_MSG_PARTY")
+SafeRegisterEvent(DynamicGroup, "CHAT_MSG_PARTY_LEADER")
+SafeRegisterEvent(DynamicGroup, "CHAT_MSG_RAID")
+SafeRegisterEvent(DynamicGroup, "CHAT_MSG_RAID_LEADER")
+SafeRegisterEvent(DynamicGroup, "CHAT_MSG_INSTANCE_CHAT")
+SafeRegisterEvent(DynamicGroup, "CHAT_MSG_INSTANCE_CHAT_LEADER")
+SafeRegisterEvent(DynamicGroup, "CHAT_MSG_GUILD")
 SafeRegisterEvent(DynamicGroup, "LFG_ROLE_CHECK_SHOW")
 SafeRegisterEvent(DynamicGroup, "GROUP_ROSTER_UPDATE")
 SafeRegisterEvent(DynamicGroup, "CHALLENGE_MODE_KEYSTONE_RECEPTABLE_OPEN")
@@ -8026,6 +8060,49 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         local text, senderDisplayName, _, _, _, _, _, _, _, _, _, _, bnetIDAccount = ...
         if IsSecretValue(text) or IsSecretValue(senderDisplayName) then return end
         HandleBNetWhisperAutoInvite(text, senderDisplayName, bnetIDAccount)
+    elseif event == "CHAT_MSG_PARTY" or event == "CHAT_MSG_PARTY_LEADER"
+        or event == "CHAT_MSG_RAID" or event == "CHAT_MSG_RAID_LEADER"
+        or event == "CHAT_MSG_INSTANCE_CHAT" or event == "CHAT_MSG_INSTANCE_CHAT_LEADER"
+        or event == "CHAT_MSG_GUILD" then
+        local text = ...
+        if IsSecretValue(text) or type(text) ~= "string" then return end
+        local trimmed = text:match("^%s*(.-)%s*$"):lower()
+        if trimmed ~= "!keys" and trimmed ~= "!key" then return end
+        local db = EnsureDB()
+        local isGuild = (event == "CHAT_MSG_GUILD")
+        if isGuild then
+            if db.autoRespondKeysGuild == false then return end
+        else
+            if db.autoRespondKeys == false then return end
+        end
+        local chatType = isGuild and "GUILD"
+            or ((event == "CHAT_MSG_RAID" or event == "CHAT_MSG_RAID_LEADER") and "RAID")
+            or ((event == "CHAT_MSG_INSTANCE_CHAT" or event == "CHAT_MSG_INSTANCE_CHAT_LEADER") and "INSTANCE_CHAT")
+            or "PARTY"
+        self._lastKeyReplyAt = self._lastKeyReplyAt or {}
+        local now = (type(GetTime) == "function" and GetTime()) or 0
+        if self._lastKeyReplyAt[chatType] and (now - self._lastKeyReplyAt[chatType]) < 10 then return end
+        local keyLink = (C_MythicPlus and type(C_MythicPlus.GetOwnedKeystoneLink) == "function") and C_MythicPlus.GetOwnedKeystoneLink() or nil
+        if (not keyLink or keyLink == "") and C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemLink then
+            for bag = 0, 4 do
+                local slots = C_Container.GetContainerNumSlots(bag) or 0
+                for sl = 1, slots do
+                    local lnk = C_Container.GetContainerItemLink(bag, sl)
+                    if type(lnk) == "string" and not IsSecretValue(lnk) and lnk:find("keystone:", 1, true) then
+                        keyLink = lnk
+                        break
+                    end
+                end
+                if keyLink and keyLink ~= "" then break end
+            end
+        end
+        if type(keyLink) == "string" and keyLink ~= "" and not IsSecretValue(keyLink) then
+            self._lastKeyReplyAt[chatType] = now
+            local sendFn = (C_ChatInfo and C_ChatInfo.SendChatMessage) or _G.SendChatMessage
+            if type(sendFn) == "function" then
+                pcall(sendFn, keyLink, chatType)
+            end
+        end
     elseif event == "LFG_ROLE_CHECK_SHOW" then
         if EnsureDB().autoAcceptRoleCheck and not (InCombatLockdown and InCombatLockdown()) then
             if type(CompleteLFGRoleCheck) == "function" then
