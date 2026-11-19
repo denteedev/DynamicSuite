@@ -9757,12 +9757,186 @@ function DynamicPrep:GetActiveTalentMismatch()
     return nil
 end
 
+local function CategoriseTalentGroup(name)
+    local low = tostring(name or ""):lower()
+    if low:find("raid", 1, true) or low:find("boss", 1, true) then return "Raid" end
+    if low:find("m+", 1, true) or low:find("mythic", 1, true) or low:find("dungeon", 1, true) then return "M+" end
+    if low:find("delve", 1, true) then return "Delves" end
+    if low:find("arena", 1, true) or low:find("bg", 1, true) or low:find("blitz", 1, true) or low:find("pvp", 1, true) or low:find("shuffle", 1, true) then return "PvP" end
+    return "Custom"
+end
+
+function DynamicPrep:GetActiveTalentString()
+    if not (C_ClassTalents and C_ClassTalents.GetActiveConfigID and C_Traits and C_Traits.GenerateImportString) then return nil end
+    local okA, activeID = pcall(C_ClassTalents.GetActiveConfigID)
+    if not okA or not activeID or activeID <= 0 then return nil end
+    local okS, str = pcall(C_Traits.GenerateImportString, activeID)
+    if okS and type(str) == "string" and str ~= "" and not _IsSecret(str) then
+        return str
+    end
+    return nil
+end
+
+function DynamicPrep:ImportFromTalentLoadoutManager()
+    if not self.db then self:InitDB() end
+    local api = _G.TalentLoadoutManagerAPI
+    if type(api) ~= "table" or type(api.GlobalAPI) ~= "table" or type(api.GlobalAPI.GetLoadouts) ~= "function" then
+        print("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: TalentLoadoutManager is not currently loaded.")
+        return 0
+    end
+    local specID = self:GetActiveSpecID()
+    if not specID then return 0 end
+    local okL, list = pcall(api.GlobalAPI.GetLoadouts, api.GlobalAPI, specID)
+    if not okL or type(list) ~= "table" then return 0 end
+
+    self.db.talentStringLibrary = self.db.talentStringLibrary or {}
+    self.db.talentStringLibrary[specID] = self.db.talentStringLibrary[specID] or {}
+    local lib = self.db.talentStringLibrary[specID]
+    local imported = 0
+    for _, lo in ipairs(list) do
+        if type(lo) == "table" and lo.id and type(lo.name) == "string" and lo.name ~= "" and lo.name ~= "TalentLoadoutManager" then
+            local expStr = nil
+            if type(api.GlobalAPI.GetExportString) == "function" then
+                local okE, s = pcall(api.GlobalAPI.GetExportString, api.GlobalAPI, lo.id)
+                if okE and type(s) == "string" and s ~= "" then expStr = s end
+            end
+            if expStr then
+                local found = false
+                for _, ex in ipairs(lib) do
+                    if ex.name:lower() == lo.name:lower() then
+                        ex.importString = expStr
+                        ex.group = ex.group or CategoriseTalentGroup(lo.name)
+                        found = true
+                        break
+                    end
+                end
+                if not found then
+                    table.insert(lib, {
+                        name         = lo.name,
+                        group        = CategoriseTalentGroup(lo.name),
+                        importString = expStr,
+                    })
+                end
+                imported = imported + 1
+            end
+        end
+    end
+    print(string.format("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Imported |cFF10B981%d|r Talent Loadout(s) from TalentLoadoutManager for your active spec.", imported))
+    self:RefreshBar()
+    if self.RefreshTalentDock then self:RefreshTalentDock() end
+    return imported
+end
+
+function DynamicPrep:ApplyTalentLibraryEntry(entry)
+    if not entry or type(entry.importString) ~= "string" or entry.importString == "" then return end
+    if InCombatLockdown and InCombatLockdown() then
+        print("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Cannot switch Talent Loadouts during combat.")
+        return
+    end
+    local specID = self:GetActiveSpecID()
+    -- If TLM is loaded and has a matching loadout name, delegate cleanly; else use native C_ClassTalents.ImportLoadout
+    local api = _G.TalentLoadoutManagerAPI
+    if type(api) == "table" and type(api.GlobalAPI) == "table" and type(api.CharacterAPI) == "table" and specID then
+        local okL, list = pcall(api.GlobalAPI.GetLoadouts, api.GlobalAPI, specID)
+        if okL and type(list) == "table" then
+            for _, lo in ipairs(list) do
+                if type(lo) == "table" and lo.id and lo.name == entry.name then
+                    pcall(api.CharacterAPI.LoadLoadout, api.CharacterAPI, lo.id, true)
+                    self.db.lastAppliedTalentName = self.db.lastAppliedTalentName or {}
+                    self.db.lastAppliedTalentName[specID] = entry.name
+                    self:RefreshBar()
+                    return
+                end
+            end
+        end
+    end
+    if C_ClassTalents and type(C_ClassTalents.ImportLoadout) == "function" then
+        local activeCfg = (C_ClassTalents.GetActiveConfigID and C_ClassTalents.GetActiveConfigID()) or nil
+        if activeCfg then
+            pcall(C_ClassTalents.ImportLoadout, activeCfg, entry.importString, entry.name)
+            if specID then
+                self.db.lastAppliedTalentName = self.db.lastAppliedTalentName or {}
+                self.db.lastAppliedTalentName[specID] = entry.name
+            end
+            self:RefreshBar()
+        end
+    end
+end
+
+function DynamicPrep:ShowShareTalentPopup(title, exportStr)
+    if not exportStr or exportStr == "" then
+        print("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: No active talent export string available.")
+        return
+    end
+    if not self._sharePopup then
+        local ar, ag, ab = GetActiveAccentRGB()
+        local f = CreateFrame("Frame", "DynamicPrepTalentSharePopup", UIParent, "BackdropTemplate")
+        f:SetSize(420, 96)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("DIALOG")
+        f:SetMovable(true)
+        f:EnableMouse(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        SetPixelBackdrop(f, { 0.031, 0.039, 0.055, 0.98 }, { ar, ag, ab, 0.92 }, 1)
+        f.hdr = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+        f.hdr:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -10)
+        f.eb = CreateFrame("EditBox", nil, f, "BackdropTemplate")
+        f.eb:SetSize(396, 26)
+        f.eb:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -34)
+        f.eb:SetFontObject("GameFontHighlightSmall")
+        f.eb:SetTextInsets(6, 6, 0, 0)
+        SetPixelBackdrop(f.eb, { 0.043, 0.051, 0.071, 0.98 }, COLORS.BorderSubtle, 1)
+        f.eb:SetScript("OnEscapePressed", function() f:Hide() end)
+        local close = CreateFrame("Button", nil, f, "BackdropTemplate")
+        close:SetSize(72, 22)
+        close:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 8)
+        SetPixelBackdrop(close, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+        close.txt = CreateText(close, "OVERLAY", "GameFontHighlightSmall")
+        close.txt:SetPoint("CENTER")
+        close.txt:SetText("Close")
+        close:SetScript("OnClick", function() f:Hide() end)
+        self._sharePopup = f
+    end
+    self._sharePopup.hdr:SetText("|cFF38BDF8Share Loadout (Press Ctrl+C):|r  " .. tostring(title or "Active Build"))
+    self._sharePopup.eb:SetText(exportStr)
+    self._sharePopup:Show()
+    self._sharePopup.eb:SetFocus()
+    self._sharePopup.eb:HighlightText()
+end
+
 function DynamicPrep:GetTalentLoadoutBarData()
     local specID = self:GetActiveSpecID()
     local _, _, _, accentHex = GetActiveAccentRGB()
     local activeName = "Default"
     local activeID = nil
-    if specID and C_ClassTalents and type(C_ClassTalents.GetLastSelectedSavedConfigID) == "function" then
+
+    -- 1. If TalentLoadoutManager is active, read its real active loadout name
+    local api = _G.TalentLoadoutManagerAPI
+    if type(api) == "table" and type(api.CharacterAPI) == "table" and type(api.CharacterAPI.GetActiveLoadoutInfo) == "function" then
+        local okT, info = pcall(api.CharacterAPI.GetActiveLoadoutInfo, api.CharacterAPI)
+        if okT and type(info) == "table" and type(info.name) == "string" and info.name ~= "" then
+            activeName = info.name
+        end
+    end
+
+    -- 2. Match live export string against our unlimited Talent Loadouts library
+    if activeName == "Default" or activeName == "TalentLoadoutManager" then
+        local liveStr = self:GetActiveTalentString()
+        local lib = (specID and self.db and self.db.talentStringLibrary and self.db.talentStringLibrary[specID]) or {}
+        if liveStr then
+            for _, entry in ipairs(lib) do
+                if entry.importString == liveStr and type(entry.name) == "string" and entry.name ~= "" then
+                    activeName = entry.name
+                    break
+                end
+            end
+        end
+    end
+
+    -- 3. Fallback to Blizzard native saved loadout name
+    if activeName == "Default" and specID and C_ClassTalents and type(C_ClassTalents.GetLastSelectedSavedConfigID) == "function" then
         local ok, cid = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
         if ok and type(cid) == "number" and cid > 0 then
             activeID = cid
@@ -9859,21 +10033,36 @@ function DynamicPrep:ToggleTalentPopover(anchor)
 
     for _, libItem in ipairs(lib) do
         local btn = EnsureRow()
+        local gTag = libItem.group and ("[" .. libItem.group .. "] ") or ""
         btn.dot:SetColorTexture(0.98, 0.75, 0.14, 1)
-        btn.txt:SetText("[Lib] " .. tostring(libItem.name or "Build"))
-        btn.txt:SetTextColor(0.95, 0.88, 0.65, 1)
+        btn.txt:SetText(gTag .. tostring(libItem.name or "Loadout"))
+        btn.txt:SetTextColor(0.95, 0.90, 0.72, 1)
         SetPixelBackdrop(btn, COLORS.BgElevated, { 0.98, 0.75, 0.14, 0.45 }, 1)
         btn:SetScript("OnClick", function()
             p:Hide()
-            DynamicPrep:ImportTalentString(libItem.name, libItem.importString)
+            DynamicPrep:ApplyTalentLibraryEntry(libItem)
         end)
         btn:Show()
     end
 
-    -- Action Row: Boss & Import Manager
+    -- 1-Click Migrate from TalentLoadoutManager when detected
+    if type(_G.TalentLoadoutManagerAPI) == "table" then
+        local tlmRow = EnsureRow()
+        tlmRow.dot:SetColorTexture(0.063, 0.725, 0.506, 1)
+        tlmRow.txt:SetText("Import All from TalentLoadoutManager")
+        tlmRow.txt:SetTextColor(0.55, 0.98, 0.78, 1)
+        SetPixelBackdrop(tlmRow, { 0.063 * 0.25, 0.725 * 0.25, 0.506 * 0.25, 0.96 }, { 0.063, 0.725, 0.506, 0.85 }, 1)
+        tlmRow:SetScript("OnClick", function()
+            p:Hide()
+            DynamicPrep:ImportFromTalentLoadoutManager()
+        end)
+        tlmRow:Show()
+    end
+
+    -- Action Row: New Loadout / Import / Share / Boss Bind
     local mgrRow = EnsureRow()
     mgrRow.dot:SetColorTexture(ar, ag, ab, 1)
-    mgrRow.txt:SetText("Boss & WCL / NS Import Manager...")
+    mgrRow.txt:SetText("New Loadout / Import / Boss Bind...")
     mgrRow.txt:SetTextColor(1, 1, 1, 1)
     SetPixelBackdrop(mgrRow, { ar * 0.38, ag * 0.38, ab * 0.38, 0.98 }, { ar, ag, ab, 0.95 }, 1)
     mgrRow:SetScript("OnClick", function()
@@ -9882,14 +10071,185 @@ function DynamicPrep:ToggleTalentPopover(anchor)
     end)
     mgrRow:Show()
 
-    p:SetHeight(16 + (rowIdx * 27))
+    p:SetHeight(math.min(480, 16 + (rowIdx * 27)))
     p:ClearAllPoints()
     if anchor then
-        p:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+        local uiW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+        local aRight = (anchor.GetRight and anchor:GetRight()) or 0
+        if aRight > (uiW * 0.65) then
+            p:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -4)
+        else
+            p:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -4)
+        end
     else
         p:SetPoint("CENTER")
     end
     p:Show()
+end
+
+-- ============================================================================
+-- LEFT-DOCKED TALENT LOADOUTS PANEL ON BLIZZARD'S TALENTS WINDOW (PlayerSpellsFrame)
+-- ============================================================================
+local talentDockFrame = nil
+local talentDockHooked = false
+
+function DynamicPrep:RefreshTalentDock()
+    local psf = _G.PlayerSpellsFrame
+    local tf = psf and psf.TalentsFrame
+    if not (psf and psf.IsShown and psf:IsShown() and tf and tf.IsShown and tf:IsShown())
+        or IsModuleDisabledInSuite("DynamicPrep") then
+        if talentDockFrame then talentDockFrame:Hide() end
+        return
+    end
+
+    -- Auto-yield cleanly if TalentLoadoutManager is loaded so there is zero overlap
+    local tlmLoaded = (type(_G.TalentLoadoutManagerAPI) == "table")
+    local ar, ag, ab = GetActiveAccentRGB()
+    if not talentDockFrame then
+        local f = CreateFrame("Frame", "DynamicPrepTalentLoadoutsDock", psf, "BackdropTemplate")
+        f:SetFrameStrata("HIGH")
+        f:EnableMouse(true)
+        f.rows = {}
+
+        f.hdr = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+        f.hdr:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -9)
+        f.hdr:SetJustifyH("LEFT")
+
+        local function MkTopBtn(lbl, x, y, w, cb)
+            local b = CreateFrame("Button", nil, f, "BackdropTemplate")
+            b:SetSize(w, 20)
+            b:SetPoint("TOPLEFT", f, "TOPLEFT", x, y)
+            b.txt = CreateText(b, "OVERLAY", "GameFontHighlightSmall")
+            b.txt:SetPoint("CENTER")
+            b.txt:SetText(lbl)
+            b:SetScript("OnClick", cb)
+            return b
+        end
+
+        f.btnNew    = MkTopBtn("New Loadout", 8, -28, 98, function()
+            local str = DynamicPrep:GetActiveTalentString()
+            local specID = DynamicPrep:GetActiveSpecID()
+            if str and specID then
+                local lib = DynamicPrep.db.talentStringLibrary[specID] or {}
+                DynamicPrep.db.talentStringLibrary[specID] = lib
+                local name = "Loadout " .. tostring(#lib + 1)
+                table.insert(lib, { name = name, group = "Custom", importString = str })
+                print("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Saved current tree as |cFF10B981" .. name .. "|r.")
+                DynamicPrep:RefreshTalentDock()
+            end
+        end)
+        f.btnImport = MkTopBtn("Import", 110, -28, 98, function() DynamicPrep:OpenTalentManagerModal() end)
+        f.btnShare  = MkTopBtn("Share", 8, -52, 98, function()
+            local _, actName = DynamicPrep:GetTalentLoadoutBarData()
+            DynamicPrep:ShowShareTalentPopup(actName, DynamicPrep:GetActiveTalentString())
+        end)
+        f.btnBoss   = MkTopBtn("Boss Bind", 110, -52, 98, function() DynamicPrep:OpenTalentManagerModal() end)
+
+        f.tlmBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+        f.tlmBtn:SetSize(200, 24)
+        f.tlmBtn:SetPoint("CENTER", f, "CENTER", 0, 0)
+        f.tlmBtn.txt = CreateText(f.tlmBtn, "OVERLAY", "GameFontHighlightSmall")
+        f.tlmBtn.txt:SetPoint("CENTER")
+        f.tlmBtn.txt:SetText("Import All from TLM -> DynamicPrep")
+        f.tlmBtn:SetScript("OnClick", function() DynamicPrep:ImportFromTalentLoadoutManager() end)
+
+        talentDockFrame = f
+    end
+
+    local f = talentDockFrame
+    f:SetParent(psf)
+    SetPixelBackdrop(f, { 0.031, 0.039, 0.055, 0.96 }, { ar, ag, ab, 0.78 }, 1)
+
+    if tlmLoaded then
+        -- Compact non-overlapping migration pill above the Talents window while TLM is active
+        f:SetSize(216, 32)
+        f:ClearAllPoints()
+        f:SetPoint("BOTTOMLEFT", psf, "TOPLEFT", 0, 6)
+        f.hdr:Hide()
+        f.btnNew:Hide(); f.btnImport:Hide(); f.btnShare:Hide(); f.btnBoss:Hide()
+        for _, r in ipairs(f.rows) do r:Hide() end
+        SetPixelBackdrop(f.tlmBtn, { 0.063 * 0.30, 0.725 * 0.30, 0.506 * 0.30, 0.98 }, { 0.063, 0.725, 0.506, 0.92 }, 1)
+        f.tlmBtn:Show()
+        f:Show()
+        return
+    end
+
+    f.tlmBtn:Hide()
+    f:SetWidth(216)
+    f:ClearAllPoints()
+    f:SetPoint("TOPRIGHT", psf, "TOPLEFT", -6, 0)
+    f:SetPoint("BOTTOMRIGHT", psf, "BOTTOMLEFT", -6, 0)
+    f.hdr:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |  |cFF38BDF8Talent Loadouts|r")
+    f.hdr:Show()
+    for _, tb in ipairs({ f.btnNew, f.btnImport, f.btnShare, f.btnBoss }) do
+        SetPixelBackdrop(tb, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+        tb:Show()
+    end
+
+    for _, r in ipairs(f.rows) do r:Hide() end
+    local specID = self:GetActiveSpecID()
+    local lib = (specID and self.db and self.db.talentStringLibrary and self.db.talentStringLibrary[specID]) or {}
+    local liveStr = self:GetActiveTalentString()
+    local yPos = -80
+    local groups = { "Raid", "M+", "Delves", "PvP", "Custom" }
+    local rowIdx = 0
+    for _, grp in ipairs(groups) do
+        local members = {}
+        for _, entry in ipairs(lib) do
+            if (entry.group or CategoriseTalentGroup(entry.name)) == grp then
+                table.insert(members, entry)
+            end
+        end
+        if #members > 0 then
+            table.sort(members, function(a, b) return tostring(a.name) < tostring(b.name) end)
+            for _, entry in ipairs(members) do
+                rowIdx = rowIdx + 1
+                if rowIdx > 22 then break end
+                local row = f.rows[rowIdx]
+                if not row then
+                    row = CreateFrame("Button", nil, f, "BackdropTemplate")
+                    row:SetSize(200, 22)
+                    row.txt = CreateText(row, "OVERLAY", "GameFontHighlightSmall")
+                    row.txt:SetPoint("LEFT", row, "LEFT", 7, 0)
+                    row.txt:SetPoint("RIGHT", row, "RIGHT", -7, 0)
+                    row.txt:SetJustifyH("LEFT")
+                    row.txt:SetWordWrap(false)
+                    f.rows[rowIdx] = row
+                end
+                local isAct = (liveStr and entry.importString == liveStr)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", f, "TOPLEFT", 8, yPos)
+                yPos = yPos - 24
+                row.txt:SetText(string.format("|cFF64748B[%s]|r %s", grp, tostring(entry.name or "Loadout")))
+                row.txt:SetTextColor(isAct and 1 or 0.86, isAct and 1 or 0.90, isAct and 1 or 0.96, 1)
+                SetPixelBackdrop(row, isAct and { 0.063 * 0.35, 0.725 * 0.35, 0.506 * 0.35, 0.96 } or COLORS.BgElevated, isAct and { 0.063, 0.725, 0.506, 0.95 } or COLORS.BorderSubtle, 1)
+                row:SetScript("OnClick", function() DynamicPrep:ApplyTalentLibraryEntry(entry) end)
+                row:Show()
+            end
+        end
+    end
+    f:Show()
+end
+
+function DynamicPrep:EnsureTalentDockHooks()
+    if talentDockHooked then return end
+    local psf = _G.PlayerSpellsFrame
+    if not psf or type(psf.HookScript) ~= "function" then return end
+    talentDockHooked = true
+    psf:HookScript("OnShow", function()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.05, function() DynamicPrep:RefreshTalentDock() end)
+        else
+            DynamicPrep:RefreshTalentDock()
+        end
+    end)
+    psf:HookScript("OnHide", function()
+        if talentDockFrame then talentDockFrame:Hide() end
+    end)
+    if psf.TalentsFrame and type(psf.TalentsFrame.HookScript) == "function" then
+        psf.TalentsFrame:HookScript("OnShow", function() DynamicPrep:RefreshTalentDock() end)
+        psf.TalentsFrame:HookScript("OnHide", function() if talentDockFrame then talentDockFrame:Hide() end end)
+    end
 end
 
 function DynamicPrep:GetActiveSpecID()
@@ -10330,6 +10690,9 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             or arg1 == "Leatrix_Plus"
             or arg1 == "ElvUI" then
             if isInitialized and not IsModuleDisabledInSuite("DynamicPrep") then
+                if arg1 == "Blizzard_PlayerSpells" and DynamicPrep.EnsureTalentDockHooks then
+                    DynamicPrep:EnsureTalentDockHooks()
+                end
                 DynamicPrep:InitBlizzardWindowQoL(arg1)
                 if DynamicPrep.workspaceFrame and DynamicPrep.workspaceFrame.IsShown and DynamicPrep.workspaceFrame:IsShown() then
                     DynamicPrep:RefreshWorkspaceView()
@@ -10349,6 +10712,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:EnsureCatalystHooks()
         DynamicPrep:EnsureDeathPopupHooks()
         DynamicPrep:EnsurePaperdollHighlightHooks()
+        DynamicPrep:EnsureTalentDockHooks()
         DynamicPrep:InitBlizzardWindowQoL()
         DynamicPrep:UpdateTalkingHeadSuppression()
         DynamicPrep:RefreshBar()
@@ -10513,6 +10877,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             DynamicPrep:HideTalentReminderToast()
         end
         DynamicPrep:RefreshBar()
+        if DynamicPrep.RefreshTalentDock then DynamicPrep:RefreshTalentDock() end
     elseif event == "PLAYER_DEAD" then
         DynamicPrep:HandlePlayerDead()
     elseif event == "PLAYER_ALIVE" or event == "PLAYER_UNGHOST" then
