@@ -22,7 +22,7 @@ local CONTEXT_TABS = {
     { key = "raid",    label = "Raid" },
     { key = "pvp",     label = "PvP" },
 }
-local STANDALONE_FRAME_NAMES = { "DynamicFPSMainFrame", "DynamicFPSStandaloneFrame", "DynamicFrameMainFrame", "DynamicZoomStandaloneFrame", "DynamicMarkerMainFrame", "DynamicPrepMainFrame", "DynamicGroupMainFrame", "DynamicBagsStandaloneFrame", "DynamicChatStandaloneFrame", "DynamicMailStandaloneWindow" }
+local STANDALONE_FRAME_NAMES = { "DynamicFPSMainFrame", "DynamicFPSStandaloneFrame", "DynamicFrameMainFrame", "DynamicZoomStandaloneFrame", "DynamicMarkerMainFrame", "DynamicPrepMainFrame", "DynamicGroupMainFrame", "DynamicBagsStandaloneFrame", "DynamicChatStandaloneFrame", "DynamicMailStandaloneWindow", "DynamicVaultStandaloneFrame" }
 
 local selectedTabKey = "outdoor"
 local selectedAltKey = nil
@@ -1010,6 +1010,8 @@ local MODULE_ICON_PATHS = {
     ["chat"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
     ["DynamicMail"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga",
     ["mail"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga",
+    ["DynamicVault"]  = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga",
+    ["vault"]         = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga",
 }
 
 function UI.GetModuleIconPath(modKey, fallbackIcon)
@@ -3997,7 +3999,7 @@ function addonTable.CreateMainConfigUI()
     leftRail.divider:SetWidth(1)
 
     do
-    local DEFAULT_MODULE_KEYS = { "load", "marker", "zoom", "fps", "prep", "group", "bags", "chat", "mail" }
+    local DEFAULT_MODULE_KEYS = { "load", "marker", "zoom", "fps", "prep", "group", "bags", "chat", "mail", "vault" }
     UI.DEFAULT_MODULE_KEYS = DEFAULT_MODULE_KEYS
 
     function UI.GetOrderedModuleList()
@@ -5145,7 +5147,7 @@ function addonTable.CreateMainConfigUI()
         local parts = { tostring(addonTable.ADDON_VERSION or "1.3.0") }
         local clReg = _G.DynamicSuite and _G.DynamicSuite.Changelogs
         if type(clReg) == "table" then
-            for _, k in ipairs({ "DynamicLoad", "DynamicMarker", "DynamicZoom", "DynamicFPS", "DynamicPrep", "DynamicGroup", "DynamicBags", "DynamicChat", "DynamicMail" }) do
+            for _, k in ipairs({ "DynamicLoad", "DynamicMarker", "DynamicZoom", "DynamicFPS", "DynamicPrep", "DynamicGroup", "DynamicBags", "DynamicChat", "DynamicMail", "DynamicVault" }) do
                 local c = clReg[k]
                 if type(c) == "table" then
                     local entries = c.entries or {}

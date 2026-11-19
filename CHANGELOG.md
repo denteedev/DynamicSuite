@@ -1,5 +1,17 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.4.0 (18/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.5.0 (19/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 10 Modules v2.5.0 (19/11/2026)
+
+### DynamicVault (New 10th Module `/dv`, `/dynamicvault`)
+- **Account-Wide Great Vault Matrix:** Added a clean dark-obsidian cross-character dashboard in `/ds` -> **DynamicVault** (and standalone `/dv`) displaying all 3 Great Vault tracks (**Raid**, **Mythic+**, and **World / Delves**) with 3 visual slot pips per track, unlocked reward iLvl badges, unclaimed `REWARD READY` alerts, a live Weekly Reset countdown timer, automatic weekly rollover on reset, Favourite `*` pinning, Max-Level filtering, and sorting by Vault Slots, iLvl, M+ Rating, or Name.
+- **Live Delve Keys, Catalyst, Crests & Keystones:** Automatically snapshots Restored Coffer Keys, Coffer Key Shards, Catalyst charges, active seasonal Crests (Weathered / Carved / Runed / Gilded), owned Mythic+ Keystones, and Gold (syncing known alts from `DynamicBags` Alt Vault), plus a 1-click **Open Great Vault** button (`/dv open`) to preview your Vault from anywhere.
+- **Auto-Tracked & Custom Weekly Checklists:** Includes live auto-checked milestones (Great Vault Claimed, 3/3 Delves, 3/3 Mythic+, 3/3 Raid, Bountiful Delve Keys) plus custom Character-scoped or Account-wide weekly tasks that automatically reset every weekly maintenance.
+
+### DynamicSuite Core & Lockstep Metadata (`v2.5.0`)
+- **10-Module Suite Integration:** Added `DynamicVaultDB` to `DynamicSuite.toc`, wired `vault` / `DynamicVault` into the `/ds` Left Suite Rail, custom `32x32` monochrome vector icon `icon_mod_vault.tga`, standalone `Packaging\StandaloneTOCs\DynamicVault.toc`, and synchronised all 11 `.toc` manifests and version fallbacks to `2.5.0`.
 
 ---
 

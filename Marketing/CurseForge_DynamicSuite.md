@@ -10,11 +10,11 @@
 ## CurseForge Project Description (Copy & Paste Markdown)
 
 ```markdown
-# DynamicSuite -- 9-Module QoL, Utility & Performance Hub
+# DynamicSuite -- 10-Module QoL, Utility & Performance Hub
 
 **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
-**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, mailbox, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5**. It brings **9 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, plain-English Smart Search, a unified HUD Edit Mode, and a 10-step Guided Setup.
+**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, mailbox, Great Vault, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5**. It brings **10 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, plain-English Smart Search, a unified HUD Edit Mode, and a 10-step Guided Setup.
 
 Only want target marking, world flares, and smart interrupt macros? Check out standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
@@ -22,7 +22,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ## Core Suite Features
 
-* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 9-module sidebar, individual On/Off switches, reorderable module cards, Game Menu shortcuts, and bottom-right Window Opacity (50%-100%), Scale (80%-120%), and Reload UI controls.
+* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 10-module sidebar, individual On/Off switches, reorderable module cards, Game Menu shortcuts, and bottom-right Window Opacity (50%-100%), Scale (80%-120%), and Reload UI controls.
 * **Global Smart Search (`/ds search <query>`):** Search any setting in plain English (like "auto repair", "flare", "mail", or "whisper") and jump straight to the exact option with a visual highlight.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, scale (60%-150%), and align all 6 movable suite bars (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
 * **10-Step Guided Setup & Conflict Scanner (`/ds setup`, `/ds conflicts`):** Detects overlapping addons (such as ElvUI, Leatrix Plus, BetterBags, Baganator, Postal, Prat-3.0, DialogueUI, FocusMarker, and slash-command taint risks like DecorVendor) and lets you pick which addon handles each feature -- or route DecorVendor to Outdoor Housing only -- in one click.
@@ -31,7 +31,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ---
 
-## All 9 Integrated Modules
+## All 10 Integrated Modules
 
 ### 1. DynamicLoad (`/dl`) -- Zone Addon Profile Manager
 * **5 Zone Profiles:** Automatically prepares tailored addon sets for Outdoor, Delves, Dungeons, Raid, and PvP, with a clean reload prompt after loading screens (never mid-fight).
@@ -70,6 +70,10 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 * **1-Click Inbox Collection, Empty Letter Cleanup & Safety:** Docks an Obsidian action bar cleanly above Blizzard's Mailbox header (auto-matching `EllesmereUI` and `ElvUI` skins when active, or Suite Obsidian) with **Open All**, **AH Gold**, **Items**, and **Clear Empty** buttons, optional **Auto-Delete Empty Letters on Open All** (wiping empty NPC Lost Currency, Postmaster, and Auction receipts while protecting COD, items, gold, and GM mail), `Shift+Click` quick-loot, Expiring (`<3d`) mail alerts, configurable free bag-slot reserves (`0-8`), Auction House gold collection when bags are full, and Coin batch summaries.
 * **Alt Vault Picker, Smart Bulk-Attach & Quick Gold:** Docks a 4-tab recipient panel (`Alts`, `Recent`, `Guild`, `Friends`) beside Send Mail (dodging `EllesmereUIMailAltList` automatically) syncing class-coloured alts, gold balances, and pending sent-mail badges straight from `DynamicBags` Alt Vault, plus 1-click `+ Mats` / `+ BoE` / `+ Warband` / `+ Same` bulk-attach presets, `+1k` / `+10k` / `+100k` Quick Gold pills, and `Alt + Left-Click` bag attaching.
 
+### 10. DynamicVault (`/dv`, `/dynamicvault`) -- Account Great Vault, Crests & Weekly Checklist
+* **Account-Wide Great Vault Matrix:** Track Raid, Mythic+, and World/Delves 3-slot Great Vault progress (with target reward iLvl and unclaimed `REWARD READY` alerts), Weekly Reset countdown with automatic weekly rollover, owned Mythic+ Keystones, Restored Coffer Keys, Shards, Catalyst charges, and seasonal Crests across every alt (synced with `DynamicBags` Alt Vault), plus 1-click **Open Great Vault** anywhere (`/dv open`).
+* **Auto-Tracked & Custom Weekly Checklists:** Live auto-checked weekly milestones paired with custom Character or Account-wide weekly tasks that reset automatically every weekly maintenance.
+
 ---
 
 ## Slash Commands
@@ -92,6 +96,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 | `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, import, reset) |
 | `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
 | `/dmail` or `/dynamicmail` | Open DynamicMail (supports all, gold, items, mats, boe, warband, same, stop, reset) |
+| `/dv` or `/dynamicvault` | Open DynamicVault (supports open, scan, reset) |
 | `/dchat`, `/dc`, or `/dynamicchat` | Open DynamicChat (supports history, copy, mute, reset; plus `/ww` target whisper, `/rl` reload UI, and `/lg` leave group) |
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
 | `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, testtoast, testapply, reset) |

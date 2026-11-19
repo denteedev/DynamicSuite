@@ -1,8 +1,8 @@
-# DynamicSuite -- 9-Module QoL, Utility & Performance Hub
+# DynamicSuite -- 10-Module QoL, Utility & Performance Hub
 
-**Version:** v2.4.0 (18/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Version:** v2.5.0 (19/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
-**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, mailbox, chat, and performance hub for World of Warcraft Retail. All 9 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
+**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, mailbox, Great Vault, chat, and performance hub for World of Warcraft Retail. All 10 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
 ---
 
@@ -16,7 +16,7 @@
 
 ## Core Suite Features
 
-* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 9-module sidebar, individual On/Off switches, reorderable module cards, Window Opacity (50%-100%), Window Scale (80%-120%), and a quick Reload UI button.
+* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 10-module sidebar, individual On/Off switches, reorderable module cards, Window Opacity (50%-100%), Window Scale (80%-120%), and a quick Reload UI button.
 * **Global Smart Search (`/ds search <query>`):** Type what you are looking for in plain English (like "auto repair", "flare", "mail", or "whisper") and jump straight to the exact setting with a visual highlight.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, resize (60%-150%), and align all 6 suite HUD bars (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
 * **10-Step Guided Setup (`/ds setup`, `/ds conflicts`):** Walks you through resolving addon conflicts and configuring each module in minutes.
@@ -37,6 +37,7 @@
 | **DynamicBags** | `/dbag` | Fast category-sorted bags, unified Personal/Warband/Guild Bank viewer with header `Ctrl+Scroll` scaling (70%-140%), Alt Inventory Vault, auto-repair, and auto-sell junk |
 | **DynamicMail** | `/dmail`, `/dynamicmail` | 1-click Inbox Open All, AH Gold, and Items Only collection with bag-reserve safety, class-coloured Alt Vault recipient picker, and `Alt+Left-Click` bag attach |
 | **DynamicChat** | `/dchat`, `/dc`, `/dynamicchat` | Smoked-glass chat frame, `/ww` target whispers, `/rl` reload, `/lg` group leave, 7 built-in & external sound pack alerts with preview buttons, whisper chimes, clickable URLs, and reload history |
+| **DynamicVault** | `/dv`, `/dynamicvault` | Account-wide Great Vault matrix (Raid, Mythic+, Delves), Restored Coffer Keys, Catalyst, seasonal Crests, owned Keystones, Weekly Reset countdown, and auto-resetting Weekly Checklists |
 
 ---
 

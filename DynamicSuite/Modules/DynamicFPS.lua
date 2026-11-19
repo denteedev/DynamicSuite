@@ -10,7 +10,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.4.0"
+    local fb = fallback or "2.5.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -59,7 +59,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.4.0"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.5.0"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -91,7 +91,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.4.0")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.5.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicFPS", ADDON_VERSION, _G.DynamicFPS) then
     return
 end
@@ -4553,7 +4553,7 @@ _G.DynamicSuite.modules["fps"] = moduleEntry
 _G.DynamicSuite.modules["DynamicFPS"] = moduleEntry
 
 DynamicFPS.CHANGELOG = {
-    version = ADDON_VERSION or "2.4.0",
+    version = ADDON_VERSION or "2.5.0",
     date = "13/11/2026",
     entries = {
         { type = "FIX",     text = "1:1 Blizzard Graphics CVar & SettingsPanel Synchronisation (13/11/2026): Fixed 0-based index offsets for Texture Resolution (0..2), View Distance / Environment Detail / Ground Clutter (0..9 CVars mapped to 1..10 UI sliders), and Particle Density; added runtime Settings.GetSetting label resolution + Settings.SetValue synchronisation alongside C_CVar.SetCVar; disabled RAIDsettingsEnabled split override and graphicsQuality cascade so every setting matches Blizzard's Graphics menu 1:1; and added CVAR_UPDATE two-way sync." },

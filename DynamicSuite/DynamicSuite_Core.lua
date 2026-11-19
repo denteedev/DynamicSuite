@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.4.0"
+    local fb = fallback or "2.5.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.4.0")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.5.0")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -143,6 +143,7 @@ local CORE_SUITE_ADDONS = addonTable.CORE_SUITE_ADDONS or {
     ["DynamicBags"]   = true,
     ["DynamicChat"]   = true,
     ["DynamicMail"]   = true,
+    ["DynamicVault"]  = true,
 }
 local SUITE_MODULES = addonTable.SUITE_MODULES or {
     "DynamicSuite",
@@ -155,6 +156,7 @@ local SUITE_MODULES = addonTable.SUITE_MODULES or {
     "DynamicBags",
     "DynamicChat",
     "DynamicMail",
+    "DynamicVault",
 }
 addonTable.PROTECTED_ADDONS    = PROTECTED_ADDONS
 addonTable.CORE_SUITE_ADDONS   = CORE_SUITE_ADDONS
@@ -288,6 +290,19 @@ local SUITE_MODULE_LIST = addonTable.SUITE_MODULE_LIST or {
         category = "Mailbox Automation, Alt Picker & Express Attach",
         desc = "1-click Open All, AH Gold, and Items Only collection, DynamicBags Alt Vault recipient picker, and Alt+Left-Click bag attach.",
     },
+    {
+        key = "vault",
+        id = "vault",
+        order = 95,
+        name = "DynamicVault",
+        title = "DynamicVault",
+        addonName = "DynamicVault",
+        slash = "/dv",
+        icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga",
+        subtitle = "Great Vault, Crests & Weeklies",
+        category = "Great Vault, Currencies & Weekly Tracker",
+        desc = "Account-wide Great Vault matrix (Raid, M+, Delves), Restored Coffer Keys, Catalyst, Crests, owned Keystones, and auto-resetting Weekly Checklists.",
+    },
 }
 addonTable.SUITE_MODULE_LIST = SUITE_MODULE_LIST
 DynamicSuite.MODULE_LIST = SUITE_MODULE_LIST
@@ -384,6 +399,14 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
         softConflicts = { "TradeSkillMaster", "Leatrix_Plus", "EnhanceQoL", "ElvUI" },
         category = "Mailbox & Auction Gold",
     },
+    DynamicVault = {
+        addons = { "SavedInstances", "Altoholic", "ChoreTracker", "WeeklyKnowledge", "PermoksAccountManager" },
+        conflicts = {},
+        hardConflicts = {},
+        partialConflicts = { "SavedInstances", "Altoholic", "ChoreTracker", "WeeklyKnowledge", "PermoksAccountManager" },
+        softConflicts = { "SavedInstances", "Altoholic", "ChoreTracker", "WeeklyKnowledge", "PermoksAccountManager" },
+        category = "Account Vault & Weekly Tracking",
+    },
 }
 CONFLICT_REGISTRY.load   = CONFLICT_REGISTRY.DynamicLoad
 CONFLICT_REGISTRY.marker = CONFLICT_REGISTRY.DynamicMarker
@@ -394,6 +417,7 @@ CONFLICT_REGISTRY.group  = CONFLICT_REGISTRY.DynamicGroup
 CONFLICT_REGISTRY.bags   = CONFLICT_REGISTRY.DynamicBags
 CONFLICT_REGISTRY.chat   = CONFLICT_REGISTRY.DynamicChat
 CONFLICT_REGISTRY.mail   = CONFLICT_REGISTRY.DynamicMail
+CONFLICT_REGISTRY.vault  = CONFLICT_REGISTRY.DynamicVault
 addonTable.CONFLICT_REGISTRY = CONFLICT_REGISTRY
 DynamicSuite.CONFLICT_REGISTRY = CONFLICT_REGISTRY
 
@@ -837,6 +861,7 @@ local function NormalizeSuiteModuleId(modKeyOrName)
     elseif low == "bags" then return "DynamicBags", "bags"
     elseif low == "chat" then return "DynamicChat", "chat"
     elseif low == "mail" then return "DynamicMail", "mail"
+    elseif low == "vault" then return "DynamicVault", "vault"
     end
     return s, low
 end
@@ -2267,6 +2292,7 @@ local function NormalizeSuiteModuleName(modKeyOrName)
     elseif low == "bags" then return "DynamicBags", "bags"
     elseif low == "chat" then return "DynamicChat", "chat"
     elseif low == "mail" then return "DynamicMail", "mail"
+    elseif low == "vault" then return "DynamicVault", "vault"
     end
     return s, low
 end
@@ -3736,6 +3762,8 @@ local MODULE_ADDON_MAP = {
     DynamicChat   = "DynamicChat",
     mail          = "DynamicMail",
     DynamicMail   = "DynamicMail",
+    vault         = "DynamicVault",
+    DynamicVault  = "DynamicVault",
     STUDIO        = "DynamicSuite",
     SETUP         = "DynamicSuite",
     HUD           = "DynamicSuite",
@@ -3754,6 +3782,7 @@ local MODULE_META_BY_KEY = {
     bags   = { addonName = "DynamicBags",   moduleTitle = "DynamicBags",   slash = "/dbag",   icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga" },
     chat   = { addonName = "DynamicChat",   moduleTitle = "DynamicChat",   slash = "/dchat",  icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga" },
     mail   = { addonName = "DynamicMail",   moduleTitle = "DynamicMail",   slash = "/dmail",  icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga" },
+    vault  = { addonName = "DynamicVault",  moduleTitle = "DynamicVault",  slash = "/dv",     icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga" },
     STUDIO = { addonName = "DynamicSuite",  moduleTitle = "Suite Studio",  slash = "/ds studio", icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_palette.tga" },
     SETUP  = { addonName = "DynamicSuite",  moduleTitle = "Guided Setup",  slash = "/ds",     icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_spark.tga" },
     HUD    = { addonName = "DynamicSuite",  moduleTitle = "HUD Edit Mode", slash = "/ds hud", icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_grid.tga" },
@@ -9295,6 +9324,7 @@ function addonTable.ReassertSuiteSlashRouting()
         ["DYNAMICBAGS"]   = "DynamicBags",
         ["DYNAMICCHAT"]   = "DynamicChat",
         ["DYNAMICMAIL"]   = "DynamicMail",
+        ["DYNAMICVAULT"]  = "DynamicVault",
     }
     for slashKey, modName in pairs(peerSlashMap) do
         local origHandler = SlashCmdList[slashKey]

@@ -1,0 +1,13 @@
+## Interface: 120105
+## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFVault|r
+## Notes: Account-Wide Great Vault Matrix, Crests, Delve Keys & Weekly Checklist (/dv).
+## Author: Dentee-Frostmourne
+## Version: 2.5.0
+## SavedVariables: DynamicVaultDB
+## OptionalDeps: DynamicSuite, DynamicBags
+## IconTexture: Interface\AddOns\DynamicVault\icon.tga
+## AddonCompartmentFunc: DynamicVault_OnAddonCompartmentClick
+## Category: DynamicSuite
+## Category-enUS: DynamicSuite
+
+DynamicVault.lua
