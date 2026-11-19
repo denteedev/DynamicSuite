@@ -742,6 +742,7 @@ local DEFAULTS = {
     oneClickCatalyst = true,
     autoAcceptSummon = false,
     talentReminderEnabled = true,
+    talentReminderToastEnabled = false,
     talentPreferredBySpec = {},
     talentBossMap = {},
     talentStringLibrary = {},
@@ -3011,7 +3012,18 @@ function DynamicPrep:CreatePrepBar()
                     DynamicPrep:ToggleLootSpecPopover(selfSeg)
                 end
             elseif segKey == "talents" then
-                if button == "RightButton" then
+                local mID, mName, mLabel, mKey = DynamicPrep:GetActiveTalentMismatch()
+                if mID then
+                    if button == "RightButton" then
+                        DynamicPrep:SilenceTalentMismatch(mKey, mLabel)
+                        DynamicPrep:RefreshBar()
+                    else
+                        DynamicPrep:HideBarPopovers()
+                        if not (InCombatLockdown and InCombatLockdown()) and C_ClassTalents and C_ClassTalents.LoadConfig then
+                            pcall(C_ClassTalents.LoadConfig, mID, true)
+                        end
+                    end
+                elseif button == "RightButton" then
                     DynamicPrep:HideBarPopovers()
                     DynamicPrep:OpenTalentManagerModal()
                 else
@@ -3575,10 +3587,17 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
         tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Cycle Active Specialisation (Out of Combat)|r", 1, 1, 1)
     elseif segKey == "talents" then
         local _, activeName = self:GetTalentLoadoutBarData()
+        local mID, mName, mLabel = self:GetActiveTalentMismatch()
         tooltip:AddLine("Talent Loadout Quick-Switcher", ar, ag, ab)
         tooltip:AddDoubleLine("Active Loadout:", activeName or "Default", 0.8, 0.84, 0.88, 1, 1, 1)
-        tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open 1-Click Talent Loadout Switcher|r", 1, 1, 1)
-        tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Open Boss & WCL / NS Import Manager|r", 1, 1, 1)
+        if mID then
+            tooltip:AddDoubleLine("Recommended (" .. tostring(mLabel or "Zone") .. "):", tostring(mName or "Loadout"), 0.984, 0.749, 0.141, 0.984, 0.749, 0.141)
+            tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Swap Immediately to " .. tostring(mName or "Loadout") .. "|r", 1, 1, 1)
+            tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Silence This Reminder for Session|r", 1, 1, 1)
+        else
+            tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open 1-Click Talent Loadout Switcher|r", 1, 1, 1)
+            tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Open Boss & WCL / NS Import Manager|r", 1, 1, 1)
+        end
     elseif segKey == "folio" then
         local _, isMismatch, targetStat, activeStat, zoneTag = self:GetOmniFolioData()
         local targetLabel = STAT_LABELS[targetStat] or targetStat or "Haste"
@@ -3763,7 +3782,8 @@ function DynamicPrep:GetSegmentTelemetryText(segKey)
     elseif segKey == "loot" then
         return self:GetSpecAndLootData()
     elseif segKey == "talents" then
-        return self:GetTalentLoadoutBarData()
+        local tText, _, _, isMismatch = self:GetTalentLoadoutBarData()
+        return tText, isMismatch
     elseif segKey == "folio" then
         local folioText, isMismatch = self:GetOmniFolioData()
         return folioText, isMismatch
@@ -3875,7 +3895,7 @@ function DynamicPrep:RefreshBar()
         local segWidth = 90
 
         local displayStr, isMismatch = self:GetSegmentTelemetryText(segKey)
-        seg.isFolioMismatch = (segKey == "folio") and isMismatch or false
+        seg.isFolioMismatch = (segKey == "folio" or segKey == "talents") and isMismatch or false
         ApplyDefaultCapsuleStyle(seg)
         seg.text:SetText(displayStr or "")
 
@@ -9671,6 +9691,71 @@ SafeRegisterEvent(eventFrame, "BAG_UPDATE_COOLDOWN")
 -- ============================================================================
 local talentReminderToast = nil
 local talentPopoverFrame = nil
+local silencedTalentMismatches = {}
+
+function DynamicPrep:SilenceTalentMismatch(mKey, label)
+    if not mKey then return end
+    silencedTalentMismatches[mKey] = true
+    self:HideTalentReminderToast()
+    print(string.format("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Silenced talent reminder for |cFFFBBF24%s|r for this session.", tostring(label or mKey)))
+end
+
+function DynamicPrep:GetActiveTalentMismatch()
+    if not self.db or self.db.talentReminderEnabled == false or IsModuleDisabledInSuite("DynamicPrep") then return nil end
+    local specID = self:GetActiveSpecID()
+    if not specID or not (C_ClassTalents and C_ClassTalents.GetLastSelectedSavedConfigID) then return nil end
+    local okCur, curID = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
+    if not okCur then return nil end
+
+    -- Priority 1: Specific Raid Boss target override
+    local bossMap = self.db.talentBossMap and self.db.talentBossMap[specID]
+    if type(bossMap) == "table" and next(bossMap) ~= nil and UnitExists and UnitExists("target") then
+        local tName = UnitName and UnitName("target") or nil
+        if tName and not _IsSecret(tName) and type(tName) == "string" and tName ~= "" then
+            local lowTarget = tName:lower()
+            local matchEntry = bossMap[lowTarget]
+            if not matchEntry then
+                for bKey, entry in pairs(bossMap) do
+                    if lowTarget:find(bKey, 1, true) or bKey:find(lowTarget, 1, true) then
+                        matchEntry = entry
+                        break
+                    end
+                end
+            end
+            if matchEntry and matchEntry.configID then
+                local mKey = "boss:" .. lowTarget
+                if not silencedTalentMismatches[mKey] and curID ~= matchEntry.configID then
+                    return matchEntry.configID, matchEntry.loadoutName or "Boss Loadout", "Boss: " .. tName, mKey
+                end
+                return nil
+            end
+        end
+    end
+
+    -- Priority 2: Zone Default (Delve / M+ / Raid / PvP)
+    local zKey, zLabel = nil, nil
+    local isDelve = (C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve())
+        or (C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress())
+    if isDelve then
+        zKey, zLabel = "delve", "Delve"
+    elseif type(IsInInstance) == "function" then
+        local inInst, instType = IsInInstance()
+        if inInst then
+            if instType == "party" then zKey, zLabel = "dungeon", "M+"
+            elseif instType == "raid" then zKey, zLabel = "raid", "Raid"
+            elseif instType == "pvp" or instType == "arena" then zKey, zLabel = "pvp", "PvP"
+            end
+        end
+    end
+    if zKey then
+        local prefID, prefName = self:GetPreferredTalentLoadout(zKey)
+        local mKey = "zone:" .. zKey
+        if prefID and prefName and not silencedTalentMismatches[mKey] and curID ~= prefID then
+            return prefID, prefName, zLabel, mKey
+        end
+    end
+    return nil
+end
 
 function DynamicPrep:GetTalentLoadoutBarData()
     local specID = self:GetActiveSpecID()
@@ -9689,9 +9774,15 @@ function DynamicPrep:GetTalentLoadoutBarData()
             end
         end
     end
+    local mID, mName = self:GetActiveTalentMismatch()
+    if mID and mName then
+        local shortTgt = mName
+        if #shortTgt > 12 then shortTgt = shortTgt:sub(1, 11) .. "." end
+        return string.format("|cFFFBBF24Swap -> %s|r", shortTgt), activeName, activeID, true
+    end
     local display = activeName
     if #display > 14 then display = display:sub(1, 13) .. "." end
-    return string.format("|cFF94A3B8Talent|r |cFF%s%s|r", accentHex, display), activeName, activeID
+    return string.format("|cFF94A3B8Talent|r |cFF%s%s|r", accentHex, display), activeName, activeID, false
 end
 
 function DynamicPrep:HideTalentPopover()
@@ -9929,33 +10020,13 @@ end
 function DynamicPrep:CheckZoneTalentLoadout()
     if not self.db or self.db.talentReminderEnabled == false or IsModuleDisabledInSuite("DynamicPrep") then return end
     if InCombatLockdown and InCombatLockdown() then return end
-    local specID = self:GetActiveSpecID()
-    if not specID or not (C_ClassTalents and C_ClassTalents.GetLastSelectedSavedConfigID) then return end
-
-    local zKey, zLabel = nil, nil
-    local isDelve = (C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve())
-        or (C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress())
-    if isDelve then
-        zKey, zLabel = "delve", "Delve"
-    elseif type(IsInInstance) == "function" then
-        local inInst, instType = IsInInstance()
-        if inInst then
-            if instType == "party" then zKey, zLabel = "dungeon", "Mythic+ / Dungeon"
-            elseif instType == "raid" then zKey, zLabel = "raid", "Raid"
-            elseif instType == "pvp" or instType == "arena" then zKey, zLabel = "pvp", "PvP"
-            end
-        end
-    end
-    if not zKey then return end
-
-    local prefID, prefName = self:GetPreferredTalentLoadout(zKey)
-    if not prefID or not prefName then return end
-    local okCur, curID = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
-    if okCur and curID == prefID then
+    self:RefreshBar()
+    local mID, mName, mLabel = self:GetActiveTalentMismatch()
+    if mID and self.db.talentReminderToastEnabled == true then
+        self:ShowTalentReminderToast(mID, mName, mLabel)
+    else
         self:HideTalentReminderToast()
-        return
     end
-    self:ShowTalentReminderToast(prefID, prefName, zLabel)
 end
 
 function DynamicPrep:ImportTalentString(loadoutName, importString)
@@ -10001,33 +10072,7 @@ function DynamicPrep:ImportTalentString(loadoutName, importString)
 end
 
 function DynamicPrep:CheckBossTalentLoadout()
-    if not self.db or self.db.talentReminderEnabled == false or IsModuleDisabledInSuite("DynamicPrep") then return end
-    if InCombatLockdown and InCombatLockdown() then return end
-    local specID = self:GetActiveSpecID()
-    if not specID then return end
-    local bossMap = self.db.talentBossMap and self.db.talentBossMap[specID]
-    if type(bossMap) ~= "table" or next(bossMap) == nil then return end
-    if not (UnitExists and UnitExists("target")) then return end
-    local tName = UnitName and UnitName("target") or nil
-    if not tName or _IsSecret(tName) or type(tName) ~= "string" or tName == "" then return end
-
-    local lowTarget = tName:lower()
-    local matchEntry = bossMap[lowTarget]
-    if not matchEntry then
-        for bKey, entry in pairs(bossMap) do
-            if lowTarget:find(bKey, 1, true) or bKey:find(lowTarget, 1, true) then
-                matchEntry = entry
-                break
-            end
-        end
-    end
-    if not matchEntry or not matchEntry.configID then return end
-    local okCur, curID = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
-    if okCur and curID == matchEntry.configID then
-        self:HideTalentReminderToast()
-        return
-    end
-    self:ShowTalentReminderToast(matchEntry.configID, matchEntry.loadoutName or "Boss Loadout", "Boss: " .. tName)
+    self:CheckZoneTalentLoadout()
 end
 
 local talentMgrModal = nil
