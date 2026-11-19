@@ -6390,19 +6390,34 @@ do
         end
     end
 
+    local NATIVE_LAYER_FRAMES = {
+        ProfessionsFrame               = true,
+        ProfessionsCustomerOrdersFrame = true,
+        ProfessionsBookFrame           = true,
+    }
+
     function W.NormalizeDesktopWindowLayer(frame, frameName)
         if InCombat() or not frame or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) then return end
         if DesktopWindows:IsYielding() or DesktopWindows:IsMasterDisabled() then return end
         local db = GetDesktopWindowsDB()
         if not (db and db.sideBySide ~= false) then return end
+        -- Complex Blizzard frames with native HIGH-strata flyouts, Spec tabs, and QualityMeter
+        -- indicators (e.g. ProfessionsFrame) must keep Blizzard's native strata & FrameLevel tree.
+        if NATIVE_LAYER_FRAMES[frameName] then
+            local st = W.blizzWinState[frame]
+            if st then
+                W.SyncHeaderOverlayLevel(frame, st)
+            end
+            return
+        end
         -- Disable C++ toplevel FrameLevel inflation so Raise() never jumps root Bg/Inset above fixed-level children (e.g. PaperDollFrame / EUI stats at level 50).
         W.RawSetToplevel(frame, false)
-        -- Use DIALOG strata for the top focused window and HIGH strata for all unfocused windows:
-        -- 1) Both DIALOG and HIGH sit cleanly above MEDIUM-strata Cooldown Manager icons (zero CDM bleed-through on any open panel).
-        -- 2) Putting the top-focused window on DIALOG guarantees whichever window is clicked or opened sits completely above every unfocused HIGH-strata panel regardless of child FrameLevels (e.g. CharacterHeadSlot at 101, EUI stats at 50, NineSlice at 500, or TalentLoadoutManager overlays).
+        -- Use HIGH strata for the top focused window and MEDIUM strata for unfocused windows.
+        -- Never force Blizzard windows up to DIALOG strata, which would bury HIGH-strata Blizzard
+        -- flyouts (Reagent/Salvage/Equipment flyouts), Specialization tabs, dropdowns, and popups.
         local topName = W.zOrderStack[#W.zOrderStack]
         local isFocused = (topName == nil or topName == frameName)
-        local targetStrata = isFocused and "DIALOG" or "HIGH"
+        local targetStrata = isFocused and "HIGH" or "MEDIUM"
         if type(frame.GetFrameStrata) == "function" then
             local okS, curStrata = pcall(frame.GetFrameStrata, frame)
             if okS and curStrata ~= targetStrata then
