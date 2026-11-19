@@ -222,6 +222,7 @@ end
 local DEFAULTS = {
     enabled            = true,
     dockOnGreatVault   = true,
+    vaultSkinMode      = "AUTO", -- "AUTO" (match EllesmereUI/ElvUI when active) or "OBSIDIAN"
     showScreenOverlay  = false,
     overlayPos         = nil,
     loginVaultReminder = true,
@@ -230,11 +231,14 @@ local DEFAULTS = {
     minLevelFilter     = 80,
     showCurrencies     = true,
     showKeystones      = true,
+    showRaidLockouts   = true,
+    showBountifulDelves = true,
     sortMode           = "VAULT", -- "VAULT", "ILVL", "RATING", "NAME"
     activeSubTab       = 1,
     characters         = {},
     favourites         = {},
     customTasks        = {}, -- { id, title, scope = "CHAR"|"ACCT", doneAcct = false, doneChars = {}, resetEpoch = 0 }
+    bountifulDelves    = {},
 }
 
 local function CopyDefaults(dst, src)
@@ -279,6 +283,88 @@ local function GetTheme()
         border = { 0.145, 0.165, 0.212, 0.95 },
     }
     return surf, { r = ar, g = ag, b = ab }
+end
+
+local ellesmereSkinHandle = nil
+local function EnsureEllesmereSkinRegistered()
+    if ellesmereSkinHandle then return ellesmereSkinHandle end
+    local eui = _G.EllesmereUI
+    if type(eui) == "table" and type(eui.RegisterSkin) == "function" then
+        local ok, handle = pcall(eui.RegisterSkin, "DynamicVault", {
+            title = "DynamicVault",
+            blizzWindowKey = "greatvault",
+        })
+        if ok and type(handle) == "table" then
+            ellesmereSkinHandle = handle
+            if type(handle.OnLooksChanged) == "function" then
+                pcall(handle.OnLooksChanged, function()
+                    if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end
+                end)
+            end
+        end
+    end
+    return ellesmereSkinHandle
+end
+
+local function GetOverlayTheme()
+    local db = EnsureDB()
+    local surf, acc = GetTheme()
+    if (db.vaultSkinMode or "AUTO") == "OBSIDIAN" then
+        return surf, acc, "OBSIDIAN"
+    end
+    -- Auto-Match EllesmereUIBlizzardSkin when active
+    local eui = _G.EllesmereUI
+    if type(eui) == "table" then
+        local handle = EnsureEllesmereSkinRegistered()
+        local isEnabled = true
+        if handle and type(handle.IsEnabled) == "function" then
+            local okE, en = pcall(handle.IsEnabled)
+            if okE and en == false then isEnabled = false end
+        end
+        if isEnabled then
+            local pr, pg, pb, pa = 0.045, 0.048, 0.058, 0.96
+            if handle and type(handle.GetPanelColor) == "function" then
+                local okP, r, g, b, a = pcall(handle.GetPanelColor)
+                if okP and type(r) == "number" then pr, pg, pb, pa = r, g, b, (a or 0.96) end
+            elseif type(eui.GetPanelColor) == "function" then
+                local okP, r, g, b, a = pcall(eui.GetPanelColor)
+                if okP and type(r) == "number" then pr, pg, pb, pa = r, g, b, (a or 0.96) end
+            end
+            local ar, ag, ab = acc.r, acc.g, acc.b
+            if handle and type(handle.GetAccentColor) == "function" then
+                local okA, r, g, b = pcall(handle.GetAccentColor)
+                if okA and type(r) == "number" then ar, ag, ab = r, g, b end
+            elseif type(eui.GetAccentColor) == "function" then
+                local okA, r, g, b = pcall(eui.GetAccentColor)
+                if okA and type(r) == "number" then ar, ag, ab = r, g, b end
+            end
+            return {
+                bg     = { pr, pg, pb, math.max(0.92, pa or 0.96) },
+                card   = { math.min(1, pr + 0.025), math.min(1, pg + 0.028), math.min(1, pb + 0.032), 0.94 },
+                bevel  = { pr, pg, pb, 0.98 },
+                tabOff = { math.min(1, pr + 0.03), math.min(1, pg + 0.03), math.min(1, pb + 0.035), 0.96 },
+                border = { 1, 1, 1, 0.14 },
+            }, { r = ar, g = ag, b = ab }, "ELLESMERE"
+        end
+    end
+    -- Auto-Match ElvUI when active
+    if type(_G.ElvUI) == "table" and type(_G.ElvUI[1]) == "table" then
+        local E = _G.ElvUI[1]
+        local m = E.media
+        if type(m) == "table" then
+            local bg = m.backdropfadecolor or m.backdropcolor or { 0.06, 0.06, 0.06, 0.92 }
+            local bd = m.bordercolor or { 0.25, 0.25, 0.25, 1.0 }
+            local ac = m.rgbvaluecolor or { acc.r, acc.g, acc.b }
+            return {
+                bg     = { bg[1] or 0.06, bg[2] or 0.06, bg[3] or 0.06, bg[4] or 0.94 },
+                card   = { (bg[1] or 0.06) + 0.03, (bg[2] or 0.06) + 0.03, (bg[3] or 0.06) + 0.03, 0.95 },
+                bevel  = { bg[1] or 0.06, bg[2] or 0.06, bg[3] or 0.06, 0.96 },
+                tabOff = { (bg[1] or 0.06) + 0.04, (bg[2] or 0.06) + 0.04, (bg[3] or 0.06) + 0.04, 0.96 },
+                border = { bd[1] or 0.25, bd[2] or 0.25, bd[3] or 0.25, bd[4] or 1.0 },
+            }, { r = ac[1] or acc.r, g = ac[2] or acc.g, b = ac[3] or acc.b }, "ELVUI"
+        end
+    end
+    return surf, acc, "OBSIDIAN"
 end
 
 local function SetFontSafe(fs, size, flags)
@@ -370,28 +456,35 @@ local function ScanCharacterCurrencies()
                     or low:find("runed", 1, true)
                     or low:find("gilded", 1, true)
                     or low:find("dawn", 1, true)
+                    or low:find("adventurer", 1, true)
+                    or low:find("veteran", 1, true)
                     or low:find("champion", 1, true)
                     or low:find("hero", 1, true)
                     or low:find("myth", 1, true)
                 ) then
-                    local short = "Crest"
+                    local firstWord = name:match("^(%a+)") or "Crest"
+                    local short = firstWord
                     local hex = "94A3B8"
-                    local order = 5
+                    local order = 6
                     if low:find("weathered", 1, true) or low:find("adventurer", 1, true) then
-                        short = "Weath"; hex = "22C55E"; order = 1
+                        short = low:find("adventurer", 1, true) and "Adv" or "Weath"; hex = "22C55E"; order = 1
                     elseif low:find("carved", 1, true) or low:find("veteran", 1, true) then
-                        short = "Carved"; hex = "38BDF8"; order = 2
+                        short = low:find("veteran", 1, true) and "Vet" or "Carved"; hex = "38BDF8"; order = 2
+                    elseif low:find("champion", 1, true) then
+                        short = "Champ"; hex = "06B6D4"; order = 3
                     elseif low:find("runed", 1, true) or low:find("hero", 1, true) then
-                        short = "Runed"; hex = "A855F7"; order = 3
+                        short = low:find("hero", 1, true) and "Hero" or "Runed"; hex = "A855F7"; order = 4
                     elseif low:find("gilded", 1, true) or low:find("myth", 1, true) then
-                        short = "Gilded"; hex = "F59E0B"; order = 4
+                        short = low:find("myth", 1, true) and "Myth" or "Gilded"; hex = "F59E0B"; order = 5
                     end
+                    local earned = SafeNum(info.totalEarned, 0)
                     if not seenCrests[short] and (qty > 0 or maxQ > 0) then
                         seenCrests[short] = true
                         table.insert(res.crests, {
                             name   = name,
                             short  = short,
                             qty    = qty,
+                            earned = earned,
                             maxQty = maxQ,
                             hex    = hex,
                             order  = order,
@@ -415,6 +508,101 @@ local function ScanCharacterCurrencies()
     end
 
     return res
+end
+
+local function ScanRaidLockouts()
+    local lockouts = {}
+    if type(GetNumSavedInstances) ~= "function" or type(GetSavedInstanceInfo) ~= "function" then
+        return lockouts
+    end
+    local diffShortMap = {
+        [17] = { tag = "LFR", hex = "94A3B8", ord = 1 },
+        [14] = { tag = "N",   hex = "22C55E", ord = 2 },
+        [15] = { tag = "H",   hex = "38BDF8", ord = 3 },
+        [16] = { tag = "M",   hex = "A855F7", ord = 4 },
+    }
+    local okN, num = pcall(GetNumSavedInstances)
+    num = okN and SafeNum(num, 0) or 0
+    for i = 1, num do
+        local okI, name, _, reset, difficulty, locked, extended, _, isRaid, _, _, numEncounters, encounterProgress = pcall(GetSavedInstanceInfo, i)
+        if okI and isRaid and (locked or extended) and SafeNum(reset, 0) > 0 and SafeNum(encounterProgress, 0) > 0 then
+            local dm = diffShortMap[SafeNum(difficulty, 0)] or { tag = "R", hex = "CBD5E1", ord = 0 }
+            table.insert(lockouts, {
+                name   = SafeStr(name, "Raid"),
+                diff   = dm.tag,
+                hex    = dm.hex,
+                ord    = dm.ord,
+                killed = SafeNum(encounterProgress, 0),
+                total  = SafeNum(numEncounters, 0),
+            })
+        end
+    end
+    table.sort(lockouts, function(a, b) return (a.ord or 0) > (b.ord or 0) end)
+    return lockouts
+end
+
+local function ScanBountifulDelves()
+    local results = {}
+    if not (C_Map and C_AreaPoiInfo and type(C_AreaPoiInfo.GetDelvesForMap) == "function" and type(C_AreaPoiInfo.GetAreaPOIInfo) == "function") then
+        return results
+    end
+    local visited = {}
+    local seenPoi = {}
+    local function ScanMapTree(mapID, depth)
+        if not mapID or visited[mapID] or depth > 3 then return end
+        visited[mapID] = true
+        local okD, delvePOIs = pcall(C_AreaPoiInfo.GetDelvesForMap, mapID)
+        if okD and type(delvePOIs) == "table" then
+            local mapInfo = C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
+            local zoneName = (mapInfo and not SafeIsSecret(mapInfo.name)) and SafeStr(mapInfo.name, "") or ""
+            for _, poiID in ipairs(delvePOIs) do
+                if not seenPoi[poiID] then
+                    local okP, info = pcall(C_AreaPoiInfo.GetAreaPOIInfo, mapID, poiID)
+                    if okP and type(info) == "table" and not SafeIsSecret(info.atlasName) then
+                        local atlas = SafeStr(info.atlasName, ""):lower()
+                        if atlas:find("bountiful", 1, true) then
+                            seenPoi[poiID] = true
+                            table.insert(results, {
+                                name  = SafeStr(info.name, "Bountiful Delve"),
+                                zone  = zoneName,
+                                mapID = mapID,
+                            })
+                        end
+                    end
+                end
+            end
+        end
+        if type(C_Map.GetMapChildrenInfo) == "function" then
+            local okC, children = pcall(C_Map.GetMapChildrenInfo, mapID)
+            if okC and type(children) == "table" then
+                for _, child in ipairs(children) do
+                    if type(child) == "table" and child.mapID then
+                        ScanMapTree(child.mapID, depth + 1)
+                    end
+                end
+            end
+        end
+    end
+    -- Scan player's current continent + Cosmic/Azeroth roots (Midnight / Khaz Algar zones)
+    local curMap = C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+    if curMap then
+        local root = curMap
+        for _ = 1, 4 do
+            local mi = C_Map.GetMapInfo and C_Map.GetMapInfo(root)
+            if mi and mi.parentMapID and mi.parentMapID > 0 and mi.mapType and mi.mapType > 2 then
+                root = mi.parentMapID
+            else
+                break
+            end
+        end
+        ScanMapTree(root, 0)
+    end
+    -- Also scan known expansion continents (2274 Khaz Algar, 2537 Quel'Thalas / Midnight)
+    for _, contID in ipairs({ 2537, 2274 }) do
+        ScanMapTree(contID, 0)
+    end
+    table.sort(results, function(a, b) return SafeStr(a.name, "") < SafeStr(b.name, "") end)
+    return results
 end
 
 local function ScanGreatVaultTracks()
@@ -620,13 +808,18 @@ function DynamicVault:SnapshotCurrentCharacter(silent)
     existing.gold       = gold
     existing.specName   = specName
     existing.resetEpoch = GetCurrentResetEpoch()
-    existing.vault      = ScanGreatVaultTracks()
-    existing.currencies = ScanCharacterCurrencies()
-    existing.keystone   = ScanOwnedKeystone()
-    existing.lastSeen   = (type(time) == "function") and time() or 0
-    existing.fromBags   = false
+    existing.vault        = ScanGreatVaultTracks()
+    existing.currencies   = ScanCharacterCurrencies()
+    existing.keystone     = ScanOwnedKeystone()
+    existing.raidLockouts = ScanRaidLockouts()
+    existing.lastSeen     = (type(time) == "function") and time() or 0
+    existing.fromBags     = false
 
     db.characters[pKey] = existing
+    local bDelves = ScanBountifulDelves()
+    if #bDelves > 0 then
+        db.bountifulDelves = bDelves
+    end
 
     if not silent and RefreshEmbeddedUI then
         RefreshEmbeddedUI()
@@ -1184,9 +1377,20 @@ local function RenderVaultEmbedded(parent)
         bSub:SetPoint("TOPLEFT", bTitle, "BOTTOMLEFT", 0, -2)
         bSub:SetJustifyH("LEFT")
         bSub:SetTextColor(0.60, 0.67, 0.76, 1.0)
-        local charCount = 0
-        for _ in pairs(db.characters or {}) do charCount = charCount + 1 end
-        bSub:SetText(string.format("Tracking %d character(s)  |  Click Open Great Vault to preview or claim rewards anywhere.", charCount))
+        local charCount, totalGold, totalKeys, readyCount = 0, 0, 0, 0
+        for _, cData in pairs(db.characters or {}) do
+            if type(cData) == "table" then
+                charCount = charCount + 1
+                totalGold = totalGold + SafeNum(cData.gold, 0)
+                totalKeys = totalKeys + SafeNum(cData.currencies and cData.currencies.cofferKeys, 0)
+                if cData.vault and cData.vault.hasAvailableReward then readyCount = readyCount + 1 end
+            end
+        end
+        local wbGold = (_G.DynamicBagsDB and _G.DynamicBagsDB.vault and SafeNum(_G.DynamicBagsDB.vault.warbandGold, 0)) or 0
+        totalGold = totalGold + wbGold
+        bSub:SetText(string.format("%d Alts  |  Account Gold: |cFFFCD34D%s|r  |  Total Keys: |cFFFBBF24%d|r%s",
+            charCount, FormatGoldCompact(totalGold), totalKeys,
+            readyCount > 0 and string.format("  |  |cFFFBBF24%d Vault(s) Ready|r", readyCount) or ""))
 
         local openBtn = CreateStyledButton(banner, "Open Great Vault", 128, 26, true, function()
             DynamicVault:OpenBlizzardVault()
@@ -1230,6 +1434,31 @@ local function RenderVaultEmbedded(parent)
         hintFs:SetText("Star (*) pins favourites  |  Log alts in once to populate Vault & Crests")
 
         y = y - 42
+
+        -- Today's Bountiful Delves Compact Strip (when active delves discovered)
+        if db.showBountifulDelves ~= false and type(db.bountifulDelves) == "table" and #db.bountifulDelves > 0 then
+            local bdBar = CreateFrame("Frame", nil, scrollContent, "BackdropTemplate")
+            bdBar:SetHeight(30)
+            bdBar:SetPoint("TOPLEFT", scrollContent, "TOPLEFT", 0, y)
+            bdBar:SetPoint("TOPRIGHT", scrollContent, "TOPRIGHT", 0, y)
+            ApplyBackdrop(bdBar, { 0.043, 0.051, 0.071, 0.96 }, { 0.96, 0.62, 0.04, 0.45 })
+
+            local dNames = {}
+            for i = 1, math.min(#db.bountifulDelves, 5) do
+                local d = db.bountifulDelves[i]
+                local zPart = (d.zone and d.zone ~= "") and (" (" .. d.zone .. ")") or ""
+                table.insert(dNames, SafeStr(d.name, "Delve") .. zPart)
+            end
+            local bdFs = bdBar:CreateFontString(nil, "OVERLAY")
+            SetFontSafe(bdFs, 9.5, "")
+            bdFs:SetPoint("LEFT", bdBar, "LEFT", 12, 0)
+            bdFs:SetPoint("RIGHT", bdBar, "RIGHT", -12, 0)
+            bdFs:SetJustifyH("LEFT")
+            bdFs:SetWordWrap(false)
+            bdFs:SetTextColor(0.88, 0.92, 0.98, 1.0)
+            bdFs:SetText("|cFFFBBF24Today's Bountiful Delves:|r  " .. table.concat(dNames, "  |  "))
+            y = y - 38
+        end
 
         -- Character Matrix Cards
         local sorted = GetSortedCharacters(db)
@@ -1314,6 +1543,10 @@ local function RenderVaultEmbedded(parent)
                     if #kName > 16 then kName = kName:sub(1, 15) .. "." end
                     table.insert(metaParts, string.format("|cFFA855F7+%d %s|r", ch.keystone.level, kName))
                 end
+                if db.showRaidLockouts ~= false and type(ch.raidLockouts) == "table" and #ch.raidLockouts > 0 then
+                    local lo = ch.raidLockouts[1]
+                    table.insert(metaParts, string.format("|cFF%s%d/%d %s|r", lo.hex or "38BDF8", SafeNum(lo.killed, 0), SafeNum(lo.total, 0), SafeStr(lo.diff, "R")))
+                end
 
                 local metaFs = card:CreateFontString(nil, "OVERLAY")
                 SetFontSafe(metaFs, 10, "")
@@ -1340,7 +1573,8 @@ local function RenderVaultEmbedded(parent)
                         table.insert(cParts, string.format("|cFF38BDF8Catalyst:|r %d", SafeNum(cur.catalyst, 0)))
                     end
                     for _, cr in ipairs(cur.crests or {}) do
-                        table.insert(cParts, string.format("|cFF%s%s:|r %d", cr.hex or "94A3B8", cr.short or "Crest", SafeNum(cr.qty, 0)))
+                        local capTxt = (SafeNum(cr.maxQty, 0) > 0) and string.format("/%d", SafeNum(cr.maxQty, 0)) or ""
+                        table.insert(cParts, string.format("|cFF%s%s:|r %d%s", cr.hex or "94A3B8", cr.short or "Crest", SafeNum(cr.qty, 0), capTxt))
                     end
                     if SafeNum(ch.gold, 0) > 0 then
                         table.insert(cParts, string.format("|cFFFCD34D%s|r", FormatGoldCompact(ch.gold)))
@@ -1580,6 +1814,12 @@ local function RenderVaultEmbedded(parent)
             function(v) db.showScreenOverlay = v; if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end end)
         sy = sy + dyHud
 
+        local _, dySkin = CreateSegmentedSwitchCard(sec1, sy, "Great Vault Top Dock Skin: Auto-Match External UI",
+            "Enabled = automatically match EllesmereUI / ElvUI panel & border colours on the Great Vault top dock. Off = always use DynamicSuite Obsidian.",
+            function() return (db.vaultSkinMode or "AUTO") ~= "OBSIDIAN" end,
+            function(v) db.vaultSkinMode = v and "AUTO" or "OBSIDIAN"; if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end end)
+        sy = sy + dySkin
+
         local _, dy2 = CreateSegmentedSwitchCard(sec1, sy, "Login Reminder When Great Vault Reward Is Ready",
             "Print a subtle chat reminder on login when your current character has an unclaimed Great Vault reward.",
             function() return db.loginVaultReminder end,
@@ -1699,17 +1939,31 @@ local function ShowCharacterVaultTooltip(owner, ch)
         local mp = SafeNum(tr and tr.maxProgress, 0)
         local mt = SafeNum(tr and tr.maxThreshold, 0)
         local ilvls = {}
+        local nextNeed = nil
         for _, sl in ipairs((tr and tr.slots) or {}) do
             if sl.unlocked and SafeNum(sl.ilvl, 0) > 0 then
                 table.insert(ilvls, tostring(sl.ilvl))
+            elseif not sl.unlocked and not nextNeed and SafeNum(sl.threshold, 0) > mp then
+                nextNeed = SafeNum(sl.threshold, 0) - mp
             end
         end
-        local right = string.format("%d/3 (%d/%d)%s", u, mp, mt, (#ilvls > 0) and ("  [" .. table.concat(ilvls, "/") .. "]") or "")
+        local extra = (#ilvls > 0) and ("  [" .. table.concat(ilvls, "/") .. "]") or ""
+        if nextNeed and nextNeed > 0 then
+            extra = extra .. string.format("  (+%d next)", nextNeed)
+        end
+        local right = string.format("%d/3 (%d/%d)%s", u, mp, mt, extra)
         GameTooltip:AddDoubleLine(lbl, right, 0.65, 0.72, 0.82, u > 0 and 0.35 or 0.55, u > 0 and 0.92 or 0.62, u > 0 and 0.68 or 0.70)
     end
     AddTrackLine("Raid", v.raid)
     AddTrackLine("Mythic+", v.mplus)
     AddTrackLine("World / Delves", v.world)
+
+    if type(ch.raidLockouts) == "table" and #ch.raidLockouts > 0 then
+        GameTooltip:AddLine(" ")
+        for _, lo in ipairs(ch.raidLockouts) do
+            GameTooltip:AddDoubleLine(SafeStr(lo.name, "Raid"), string.format("|cFF%s%d/%d %s|r", lo.hex or "38BDF8", SafeNum(lo.killed, 0), SafeNum(lo.total, 0), SafeStr(lo.diff, "R")), 0.65, 0.72, 0.82, 1, 1, 1)
+        end
+    end
 
     local cur = ch.currencies or {}
     GameTooltip:AddLine(" ")
@@ -1718,13 +1972,23 @@ local function ShowCharacterVaultTooltip(owner, ch)
         GameTooltip:AddDoubleLine("Catalyst Charges", tostring(SafeNum(cur.catalyst, 0)), 0.65, 0.72, 0.82, 0.22, 0.74, 0.97)
     end
     for _, cr in ipairs(cur.crests or {}) do
-        GameTooltip:AddDoubleLine(SafeStr(cr.name, cr.short or "Crest"), tostring(SafeNum(cr.qty, 0)), 0.65, 0.72, 0.82, 0.92, 0.95, 1.0)
+        local capTxt = (SafeNum(cr.maxQty, 0) > 0) and string.format(" / %d", SafeNum(cr.maxQty, 0)) or ""
+        GameTooltip:AddDoubleLine(SafeStr(cr.name, cr.short or "Crest"), tostring(SafeNum(cr.qty, 0)) .. capTxt, 0.65, 0.72, 0.82, 0.92, 0.95, 1.0)
     end
     if type(ch.keystone) == "table" and SafeNum(ch.keystone.level, 0) > 0 then
         GameTooltip:AddDoubleLine("Keystone", string.format("+%d %s", ch.keystone.level, SafeStr(ch.keystone.name, "")), 0.65, 0.72, 0.82, 0.75, 0.52, 0.98)
     end
     if SafeNum(ch.gold, 0) > 0 then
         GameTooltip:AddDoubleLine("Gold", FormatGoldCompact(ch.gold), 0.65, 0.72, 0.82, 0.99, 0.83, 0.30)
+    end
+    local dbRef = EnsureDB()
+    if type(dbRef.bountifulDelves) == "table" and #dbRef.bountifulDelves > 0 then
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("Today's Bountiful Delves:", 0.98, 0.75, 0.14)
+        for i = 1, math.min(#dbRef.bountifulDelves, 5) do
+            local d = dbRef.bountifulDelves[i]
+            GameTooltip:AddDoubleLine("  " .. SafeStr(d.name, "Delve"), SafeStr(d.zone, ""), 0.88, 0.92, 0.98, 0.58, 0.65, 0.74)
+        end
     end
     GameTooltip:Show()
 end
@@ -1738,7 +2002,7 @@ local function RefreshGreatVaultDock()
         return
     end
 
-    local surf, acc = GetTheme()
+    local surf, acc = GetOverlayTheme()
     if not vaultDockFrame then
         local bar = CreateFrame("Frame", "DynamicVaultBlizzDock", wf, "BackdropTemplate")
         bar:SetHeight(64)

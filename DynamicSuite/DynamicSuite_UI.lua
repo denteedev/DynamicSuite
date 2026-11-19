@@ -8642,6 +8642,19 @@ function addonTable.CreateMainConfigUI()
                 { badge = "NEW",      title = "v2.4.0 Release: Smart Inbox Collection, Quick-Attach Presets, Alt Vault Picker & Quick Gold", desc = "Launched DynamicMail (/dmail, /dynamicmail) with 1-click Open All, AH Gold, and Items Only buttons below MailFrame; Shift+Click quick-loot & Expiring (<3d) mail alerts; strict COD protection and free bag-slot reserve; a 4-tab Obsidian Recipient Picker beside Send Mail (Alts synced from DynamicBags Vault with class colours, gold & Pending Sent Mail badges, Recent, Guild, and Friends with Favourite stars); 1-click Quick-Attach presets ([+ Mats], [+ BoE], [+ Warband], [+ Same]) with Equipment Set & Soulbound safety; Quick Gold buttons ([+1k g], [+10k g], [+100k]); Alt + Left-Click bag attach; and lifetime gold & item telemetry." },
             },
         },
+        {
+            key = "vault",
+            tabLabel = "DynamicVault",
+            ver = DS_LIVE_VER_TAG,
+            date = "19/11/2026 (Retail 12.1.5)",
+            title = "DynamicVault " .. DS_LIVE_VER_TAG,
+            subtitle = "Account Great Vault Matrix, Raid Lockouts, Bountiful Delves & Weekly Checklist (/dv)",
+            icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga",
+            openModule = "DynamicVault",
+            items = {
+                { badge = "NEW",      title = "v2.5.0 Release: Account-Wide Great Vault Matrix, Raid Lockouts & Bountiful Delves Scanner", desc = "Launched DynamicVault (/dv, /dynamicvault) as the 10th integrated module with an automatic flush-width Great Vault top dock (zero minimap buttons, EllesmereUI/ElvUI Auto-Match skinning), Raid/M+/Delves 3-slot Vault progress + Next-Slot calculator, per-character Raid Boss Lockouts (LFR/N/H/M), live Today's Bountiful Delves scanner, Restored Coffer Keys / Shards / Catalyst / Seasonal Crest weekly cap telemetry, Account Gold & Key totals, auto-resetting Weekly Checklists, and an optional /dv overlay." },
+            },
+        },
     }
     f.dsChangelogModules = DS_CHANGELOG_MODULES
 

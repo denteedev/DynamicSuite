@@ -4789,6 +4789,24 @@ local BUILTIN_SEARCH_SEED = {
       title = "Enable '/rl' (Reload UI) & '/lg' (Leave Group)",
       desc = "Register quick '/rl' (ReloadUI) and '/lg' (C_PartyInfo.LeaveParty) slash commands.",
       keywords = "enable /rl reload ui /lg leave group party slash command shortcut" },
+
+    -- DynamicVault (/dv)
+    { moduleKey = "vault", category = "BAGS_QOL", tabIndex = 1, tabLabel = "Account Matrix",
+      title = "Account-Wide Great Vault Matrix & Raid Lockouts",
+      desc = "View Raid, Mythic+, and World/Delves Great Vault slots, target reward iLvls, Raid boss lockouts, owned Keystones, and Account Gold across all alts.",
+      keywords = "great vault matrix raid lockout boss kills mythic+ delves slots ilvl keystone alts account gold /dv" },
+    { moduleKey = "vault", category = "BAGS_QOL", tabIndex = 1, tabLabel = "Account Matrix",
+      title = "Today's Bountiful Delves, Delve Keys & Seasonal Crests",
+      desc = "Live scan of today's active Bountiful Delves alongside Restored Coffer Keys, Shards, Catalyst charges, and seasonal Crests with weekly caps.",
+      keywords = "bountiful delves coffer keys shards catalyst crests weekly cap midnight" },
+    { moduleKey = "vault", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Weekly Checklist",
+      title = "Auto-Tracked & Custom Weekly Checklist",
+      desc = "Track weekly Great Vault milestones and add custom character or account-wide chores that reset automatically every weekly maintenance.",
+      keywords = "weekly checklist chores tasks reset rollover maintenance" },
+    { moduleKey = "vault", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Settings & Maintenance",
+      title = "Great Vault Top Dock, Auto-Match Skin & On-Screen Overlay",
+      desc = "Automatically dock your Account Vault bar flush on top of Blizzard's Great Vault with EllesmereUI/ElvUI Auto-Match skinning, plus optional /dv overlay.",
+      keywords = "great vault top dock auto-match ellesmere elvui skin overlay hud /dv" },
 }
 addonTable.SEARCH_INDEX_DATA = BUILTIN_SEARCH_SEED
 DynamicSuite.SEARCH_INDEX_DATA = BUILTIN_SEARCH_SEED
