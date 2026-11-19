@@ -546,6 +546,7 @@ addonTable.CONTEXT_LABELS = CONTEXT_LABELS
 
 -- Default Account-Wide Suite Settings (DynamicSuiteDB.global)
 local DEFAULT_DESKTOP_WINDOWS = {
+    masterEnabled    = true,
     enabled          = true,
     sideBySide       = true,
     dragAnywhere     = true,
@@ -5047,7 +5048,6 @@ do
         { name = "WardrobeFrame",                  label = "Transmogrify",       addon = "Blizzard_Collections" },
         { name = "ProfessionsCustomerOrdersFrame", label = "Crafting Orders",    addon = "Blizzard_ProfessionsCustomerOrders", protected = true },
         { name = "MajorFactionRenownFrame",        label = "Renown",             addon = "Blizzard_MajorFactions" },
-        { name = "DelvesDifficultyPickerFrame",    label = "Delves",             addon = "Blizzard_DelvesDifficultyPicker" },
         { name = "ClassTrainerFrame",              label = "Trainer",            addon = "Blizzard_TrainerUI" },
         { name = "GossipFrame",                    label = "NPC Gossip" },
         { name = "QuestFrame",                     label = "Quest" },
@@ -5077,6 +5077,7 @@ do
 
     local EXCLUDED_BLIZZ_FRAMES = {
         GameMenuFrame = true,
+        DelvesDifficultyPickerFrame = true,
     }
 
     local SCALE_MIN  = 0.70
@@ -5509,7 +5510,6 @@ do
         AuctionHouseFrame              = true,
         WeeklyRewardsFrame             = true,
         MajorFactionRenownFrame        = true,
-        DelvesDifficultyPickerFrame    = true,
         AddonList                      = true,
     }
 
@@ -6058,7 +6058,7 @@ do
         if InCombat() or not frame or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] then return end
         local orig = SnapshotOrigUIPanelInfo(frame, frameName)
         local db = GetDesktopWindowsDB()
-        local yielding = DesktopWindows:IsYielding()
+        local yielding = DesktopWindows:IsYielding() or DesktopWindows:IsMasterDisabled()
         local sideBySide = (not yielding) and (db and db.sideBySide ~= false)
 
         if W.KEEP_UIPANEL_LAYOUT[frameName] then
@@ -6392,7 +6392,7 @@ do
 
     function W.NormalizeDesktopWindowLayer(frame, frameName)
         if InCombat() or not frame or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) then return end
-        if DesktopWindows:IsYielding() then return end
+        if DesktopWindows:IsYielding() or DesktopWindows:IsMasterDisabled() then return end
         local db = GetDesktopWindowsDB()
         if not (db and db.sideBySide ~= false) then return end
         -- Disable C++ toplevel FrameLevel inflation so Raise() never jumps root Bg/Inset above fixed-level children (e.g. PaperDollFrame / EUI stats at level 50).
@@ -6436,7 +6436,7 @@ do
     end
 
     function W.SyncAllDesktopWindowLayers()
-        if InCombat() or DesktopWindows:IsYielding() then return end
+        if InCombat() or DesktopWindows:IsYielding() or DesktopWindows:IsMasterDisabled() then return end
         local db = GetDesktopWindowsDB()
         if not (db and db.sideBySide ~= false) then return end
         for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
@@ -8868,6 +8868,11 @@ if InCombat() then return end
     end
     DesktopWindows.GetBlizzardWindowYieldAddon = DesktopWindows.GetYieldAddon
 
+    function DesktopWindows:IsMasterDisabled()
+        local db = GetDesktopWindowsDB()
+        return (db and db.masterEnabled == false) and true or false
+    end
+
     function DesktopWindows:IsYielding()
         local yieldAddon = DesktopWindows:GetYieldAddon()
         return (yieldAddon ~= nil and yieldAddon ~= false)
@@ -8902,16 +8907,21 @@ if InCombat() then return end
     end
 
     function DesktopWindows:ApplyAllWindowStates()
-if InCombat() then return end
+        if InCombat() then return end
         local db = GetDesktopWindowsDB()
-        W.HookEllesmereUICoexistence()
-        EnsureGlobalPanelHooks()
-        local yielding = DesktopWindows:IsYielding()
+        local masterOff = DesktopWindows:IsMasterDisabled()
+        if not masterOff then
+            W.HookEllesmereUICoexistence()
+            EnsureGlobalPanelHooks()
+        end
+        local yielding = DesktopWindows:IsYielding() or masterOff
         local sideBySide = (not yielding) and (db and db.sideBySide ~= false)
         for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
             local frame = _G[spec.name]
             if frame then
-                AttachFrameHooks(spec.name)
+                if not masterOff then
+                    AttachFrameHooks(spec.name)
+                end
                 W.SyncPanelLayoutDetachment(frame, spec.name)
                 if frame.IsProtected and frame:IsProtected() then
                     local escBtn = W.combatEscHandlers[frame]
@@ -9037,6 +9047,9 @@ if InCombat() then return end
     function DesktopWindows:Init(arg1, arg2)
         local loadedAddonName = (arg1 == DesktopWindows) and arg2 or arg1
         GetDesktopWindowsDB()
+        if DesktopWindows:IsMasterDisabled() then
+            return
+        end
         W.HookEllesmereUICoexistence()
         EnsureGlobalPanelHooks()
         if _G.EventUtil and type(_G.EventUtil.ContinueOnAddOnLoaded) == "function" then
@@ -9435,10 +9448,13 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
         hasEnteredWorld = true
-        InvalidateConflictCache()
-        EnsureConflictCache()
-        EnforceStandaloneDynamicMarkerExclusion(true)
-        DesktopWindows:ApplyAllWindowStates()
+        local isLoginOrReload = (arg1 == true or arg2 == true)
+        if isLoginOrReload then
+            InvalidateConflictCache()
+            EnsureConflictCache()
+            EnforceStandaloneDynamicMarkerExclusion(true)
+            DesktopWindows:ApplyAllWindowStates()
+        end
         if standaloneMarkerWasEnabledAtBoot or addonTable.standaloneMarkerWasEnabledAtBoot or (DynamicSuite and DynamicSuite.standaloneMarkerWasEnabledAtBoot) or (_G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot == true) then
             ShowMarkerConflictReloadModal()
         end

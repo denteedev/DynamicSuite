@@ -4723,21 +4723,30 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
 
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
         EnforceProjectedTexturesLock()
-        currentZoneContext = GetCurrentZoneContext()
-        ApplyZoneGraphicsConfig(currentZoneContext, false)
-        ApplySpellQueueWindow(false)
-        if event == "PLAYER_ENTERING_WORLD" and C_Timer and C_Timer.After then
-            C_Timer.After(0.2, function()
-                local getGranular = _G.DynamicSuite and _G.DynamicSuite.GetGranularConflictMode
-                local yieldSQ = type(getGranular) == "function"
-                    and (getGranular("DynamicFPS", "EnhanceQoL") == "YIELD_TO_EXTERNAL" or getGranular("DynamicFPS", "Leatrix_Plus") == "YIELD_TO_EXTERNAL")
-                if not yieldSQ and not IsInRestrictedCombatOrKey() then
-                    ApplySpellQueueWindow(false)
-                end
-            end)
+        -- Coalesce & defer heavy graphics CVar writes slightly after zone-in so back-to-back
+        -- PLAYER_ENTERING_WORLD + ZONE_CHANGED_NEW_AREA (e.g. entering a Delve) never stall
+        -- the loading screen with duplicate synchronous DirectX shader/pipeline rebuilds.
+        if DynamicFPS._zoneGraphicsTimer and DynamicFPS._zoneGraphicsTimer.Cancel then
+            pcall(DynamicFPS._zoneGraphicsTimer.Cancel, DynamicFPS._zoneGraphicsTimer)
+            DynamicFPS._zoneGraphicsTimer = nil
         end
-        EvaluateCombatLogAutoPurge()
-        EvaluateQuestTrackerDeclutter(false, InCombatLockdown and InCombatLockdown())
+        local function RunCoalescedZoneTransition()
+            DynamicFPS._zoneGraphicsTimer = nil
+            local nextZone = GetCurrentZoneContext()
+            currentZoneContext = nextZone
+            if DynamicFPS._lastAppliedZoneContext ~= nextZone then
+                DynamicFPS._lastAppliedZoneContext = nextZone
+                ApplyZoneGraphicsConfig(nextZone, false)
+            end
+            ApplySpellQueueWindow(false)
+            EvaluateCombatLogAutoPurge()
+            EvaluateQuestTrackerDeclutter(false, InCombatLockdown and InCombatLockdown())
+        end
+        if C_Timer and C_Timer.NewTimer then
+            DynamicFPS._zoneGraphicsTimer = C_Timer.NewTimer(0.45, RunCoalescedZoneTransition)
+        else
+            RunCoalescedZoneTransition()
+        end
 
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         if not arg1 or arg1 == "player" then

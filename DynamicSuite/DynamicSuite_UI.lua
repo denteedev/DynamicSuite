@@ -7709,7 +7709,7 @@ function addonTable.CreateMainConfigUI()
     -- TAB 2: DESKTOP WINDOWS & MENUS (Blizzard Desktop Window Manager + Game Menu & Options Shortcuts)
     ----------------------------------------------------------------------------
     local yieldStatusBanner, desktopWinSectionCard, winSecHdr
-    local winSideBySideRow, winSideBySidePills, winDragRow, winDragPills, winScaleRow, winScalePills, winResetRow, winResetAllBtn
+    local winMasterRow, winMasterPills, winSideBySideRow, winSideBySidePills, winDragRow, winDragPills, winScaleRow, winScalePills, winResetRow, winResetAllBtn
     local GetDesktopWindowsDBTable, ApplyDesktopWindowStatesSafe, ResetAllDesktopWindowsSafe, GetActiveDesktopWindowYieldAddon
 
     do
@@ -7828,11 +7828,11 @@ function addonTable.CreateMainConfigUI()
         yieldStatusBanner.sub = yieldSub
         yieldStatusBanner:Hide()
 
-        -- Section 1: BLIZZARD DESKTOP WINDOW MANAGER (4 Rows with 2-Line Tall 36px L-Bracket Header)
+        -- Section 1: BLIZZARD DESKTOP WINDOW MANAGER (5 Rows with 2-Line Tall 36px L-Bracket Header)
         desktopWinSectionCard = CreateFrame("Frame", nil, tvChild)
         desktopWinSectionCard:SetPoint("TOPLEFT", tvChild, "TOPLEFT", 0, 0)
         desktopWinSectionCard:SetPoint("TOPRIGHT", tvChild, "TOPRIGHT", 0, 0)
-        desktopWinSectionCard:SetHeight(304)
+        desktopWinSectionCard:SetHeight(366)
         desktopWinSectionCard.bg = UI.SolidTex(desktopWinSectionCard, "BACKGROUND", 0, 0.031, 0.039, 0.055, 0.72)
         desktopWinSectionCard.bg:SetAllPoints()
         UI.CreatePixelBorder(desktopWinSectionCard, 1, 1, 1, 0.08, 2)
@@ -7858,11 +7858,60 @@ function addonTable.CreateMainConfigUI()
             return row
         end
 
+        -- Row 0: Master Switch - Enable Blizzard Desktop Window Manager
+        winMasterRow = CreateDesktopWinRow(
+            "Enable Blizzard Desktop Window Manager",
+            "Master switch for Side-by-Side (No Auto-Close), Drag Anywhere, and Ctrl+Scroll Scaling on Blizzard frames. Turn Off to leave all Blizzard windows 100% untouched (reload recommended for a completely unhooked session).",
+            winSecHdr, -8
+        )
+        winMasterPills = UI.CreateSegmentedPills(winMasterRow, {
+            { value = false, label = "Off",     width = 68 },
+            { value = true,  label = "Enabled", width = 84 },
+        }, function()
+            local db = GetDesktopWindowsDBTable()
+            return db.masterEnabled ~= false
+        end, function(val)
+            local isOn = (val == true)
+            local db = GetDesktopWindowsDBTable()
+            db.masterEnabled = isOn
+            if not isOn then
+                db.sideBySide = false
+                db.enabled = false
+                db.dragAnywhere = false
+                db.draggable = false
+                db.scrollScale = false
+                if _G.DynamicPrepDB then
+                    _G.DynamicPrepDB.blizzWinNoAutoClose = false
+                    _G.DynamicPrepDB.blizzWinDraggable = false
+                    _G.DynamicPrepDB.blizzWinScrollScale = false
+                end
+            else
+                db.sideBySide = true
+                db.enabled = true
+                db.dragAnywhere = true
+                db.draggable = true
+                db.scrollScale = true
+                if _G.DynamicPrepDB then
+                    _G.DynamicPrepDB.blizzWinNoAutoClose = true
+                    _G.DynamicPrepDB.blizzWinDraggable = true
+                    _G.DynamicPrepDB.blizzWinScrollScale = true
+                end
+                local dw = (_G.DynamicSuite and _G.DynamicSuite.DesktopWindows) or addonTable.DesktopWindows
+                if dw and type(dw.Init) == "function" then
+                    pcall(dw.Init, dw)
+                end
+            end
+            ApplyDesktopWindowStatesSafe()
+            if themeView.Refresh then themeView.Refresh() end
+        end)
+        winMasterPills:SetPoint("RIGHT", winMasterRow, "RIGHT", -14, 0)
+        winMasterRow:BindRightControl(winMasterPills)
+
         -- Row 1: Keep Blizzard Windows Open Side-by-Side
         winSideBySideRow = CreateDesktopWinRow(
             "Keep Blizzard Windows Open Side-by-Side",
             "Opening Character, Spellbook & Talents, Professions, Bags, Collections, or the windowed Quest Log (L) keeps existing panels open side-by-side, clicking any window brings it to the front, and Esc closes the top-most window first.",
-            winSecHdr, -8
+            winMasterRow, -6
         )
         winSideBySidePills = UI.CreateSegmentedPills(winSideBySideRow, {
             { value = false, label = "Off",     width = 68 },
@@ -7874,6 +7923,11 @@ function addonTable.CreateMainConfigUI()
         end, function(val)
             local isOn = (val == true)
             local db = GetDesktopWindowsDBTable()
+            if isOn and db.masterEnabled == false then
+                db.masterEnabled = true
+                local dw = (_G.DynamicSuite and _G.DynamicSuite.DesktopWindows) or addonTable.DesktopWindows
+                if dw and type(dw.Init) == "function" then pcall(dw.Init, dw) end
+            end
             db.sideBySide = isOn
             db.enabled = isOn
             if _G.DynamicPrepDB then _G.DynamicPrepDB.blizzWinNoAutoClose = isOn end
@@ -7899,6 +7953,11 @@ function addonTable.CreateMainConfigUI()
         end, function(val)
             local isOn = (val == true)
             local db = GetDesktopWindowsDBTable()
+            if isOn and db.masterEnabled == false then
+                db.masterEnabled = true
+                local dw = (_G.DynamicSuite and _G.DynamicSuite.DesktopWindows) or addonTable.DesktopWindows
+                if dw and type(dw.Init) == "function" then pcall(dw.Init, dw) end
+            end
             db.dragAnywhere = isOn
             db.draggable = isOn
             if _G.DynamicPrepDB then _G.DynamicPrepDB.blizzWinDraggable = isOn end
@@ -7923,6 +7982,11 @@ function addonTable.CreateMainConfigUI()
         end, function(val)
             local isOn = (val == true)
             local db = GetDesktopWindowsDBTable()
+            if isOn and db.masterEnabled == false then
+                db.masterEnabled = true
+                local dw = (_G.DynamicSuite and _G.DynamicSuite.DesktopWindows) or addonTable.DesktopWindows
+                if dw and type(dw.Init) == "function" then pcall(dw.Init, dw) end
+            end
             db.scrollScale = isOn
             if _G.DynamicPrepDB then _G.DynamicPrepDB.blizzWinScrollScale = isOn end
             ApplyDesktopWindowStatesSafe()
@@ -7934,7 +7998,7 @@ function addonTable.CreateMainConfigUI()
         -- Row 4: Reset Blizzard Window Layout
         winResetRow = CreateDesktopWinRow(
             "Reset Blizzard Window Layout",
-            "Restores all 32 managed Blizzard windows to default 100% scale and centred positions.",
+            "Restores all 31 managed Blizzard windows to default 100% scale and centred positions.",
             winScaleRow, -6
         )
         winResetAllBtn = CreateFlatButton(winResetRow, 156, 26, "Reset All Windows", false)
@@ -8144,7 +8208,7 @@ function addonTable.CreateMainConfigUI()
     local studioVisualBtns = { toastEditHudBtn, toastTestBtn, winResetAllBtn }
     local studioValueControls = {
         surfDropdown, extSyncPills, syncPills, altSyncPills, fillPills,
-        winSideBySidePills, winDragPills, winScalePills,
+        winMasterPills, winSideBySidePills, winDragPills, winScalePills,
         gmSuitePills, gmHudPills, replaceAddonListPills,
         toastVisPills, toastBorderPills, toastScaleSlider, toastOpacitySlider,
     }
@@ -8199,13 +8263,13 @@ function addonTable.CreateMainConfigUI()
                 desktopWinSectionCard:ClearAllPoints()
                 desktopWinSectionCard:SetPoint("TOPLEFT", yieldStatusBanner, "BOTTOMLEFT", 0, -10)
                 desktopWinSectionCard:SetPoint("TOPRIGHT", yieldStatusBanner, "BOTTOMRIGHT", 0, -10)
-                tvChild:SetHeight(54 + 10 + 304 + 10 + 220 + 12)
+                tvChild:SetHeight(54 + 10 + 366 + 10 + 220 + 12)
             else
                 yieldStatusBanner:Hide()
                 desktopWinSectionCard:ClearAllPoints()
                 desktopWinSectionCard:SetPoint("TOPLEFT", tvChild, "TOPLEFT", 0, 0)
                 desktopWinSectionCard:SetPoint("TOPRIGHT", tvChild, "TOPRIGHT", 0, 0)
-                tvChild:SetHeight(304 + 10 + 220 + 12)
+                tvChild:SetHeight(366 + 10 + 220 + 12)
             end
         else
             yieldStatusBanner:Hide()

@@ -4344,6 +4344,14 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
     end
 
     if event == "GOSSIP_SHOW" and C_GossipInfo then
+        -- Never intercept custom gossip frames (e.g. DelvesDifficultyPickerFrame passes textureKit string in arg1)
+        if type(arg1) == "string" and arg1 ~= "" then
+            return
+        end
+        if (_G.DelvesDifficultyPickerFrame and _G.DelvesDifficultyPickerFrame.IsShown and _G.DelvesDifficultyPickerFrame:IsShown())
+            or (_G.DelvesCompanionConfigurationFrame and _G.DelvesCompanionConfigurationFrame.IsShown and _G.DelvesCompanionConfigurationFrame:IsShown()) then
+            return
+        end
         local getGranular = _G.DynamicSuite and _G.DynamicSuite.GetGranularConflictMode
         if type(getGranular) == "function" then
             if getGranular("DynamicPrep", "DialogUI") == "YIELD_TO_EXTERNAL"
@@ -9577,7 +9585,6 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             or arg1 == "Blizzard_ItemSocketingUI"
             or arg1 == "Blizzard_ProfessionsCustomerOrders"
             or arg1 == "Blizzard_MajorFactions"
-            or arg1 == "Blizzard_DelvesDifficultyPicker"
             or arg1 == "Blizzard_TrainerUI"
             or arg1 == "Blizzard_Calendar"
             or arg1 == "Blizzard_MacroUI"

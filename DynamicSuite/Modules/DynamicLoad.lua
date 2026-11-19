@@ -3213,7 +3213,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
                 end
             end)
         end
-        EnforceFrozenAddonsDisabled()
+        if arg1 == true or arg2 == true then
+            EnforceFrozenAddonsDisabled()
+        end
         ScheduleEnvironmentCheck(true)
 
     elseif event == "SCENARIO_UPDATE" or event == "ZONE_CHANGED_NEW_AREA" or event == "ZONE_CHANGED" or event == "ZONE_CHANGED_INDOORS" then
