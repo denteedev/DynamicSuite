@@ -1773,16 +1773,29 @@ local function RefreshGreatVaultDock()
     ApplyBackdrop(bar, surf.bg, { acc.r, acc.g, acc.b, 0.72 })
     bar.topAcc:SetColorTexture(acc.r, acc.g, acc.b, 1.0)
 
-    -- Dock cleanly above WeeklyRewardsFrame (flip below only if near screen top)
+    -- Dock cleanly above WeeklyRewardsFrame's visible inner frame (BackgroundTile/Background)
+    -- so left/right edges align pixel-for-pixel across EllesmereUI, ElvUI, and default Blizzard UI.
+    local anchorTarget = wf
+    for _, cand in ipairs({ wf.BackgroundTile, wf.Background }) do
+        if cand and type(cand.GetWidth) == "function" and type(cand.GetLeft) == "function" then
+            local okW, cw = pcall(cand.GetWidth, cand)
+            local okL, cl = pcall(cand.GetLeft, cand)
+            if okW and okL and type(cw) == "number" and cw > 200 and type(cl) == "number" then
+                anchorTarget = cand
+                break
+            end
+        end
+    end
+
     bar:ClearAllPoints()
     local uiTop = (UIParent and UIParent.GetTop and UIParent:GetTop()) or 1080
-    local wfTop = (wf.GetTop and wf:GetTop()) or 600
+    local wfTop = (anchorTarget.GetTop and anchorTarget:GetTop()) or (wf.GetTop and wf:GetTop()) or 600
     if (uiTop - wfTop) < 72 then
-        bar:SetPoint("TOPLEFT", wf, "BOTTOMLEFT", 0, -6)
-        bar:SetPoint("TOPRIGHT", wf, "BOTTOMRIGHT", 0, -6)
+        bar:SetPoint("TOPLEFT", anchorTarget, "BOTTOMLEFT", 0, -6)
+        bar:SetPoint("TOPRIGHT", anchorTarget, "BOTTOMRIGHT", 0, -6)
     else
-        bar:SetPoint("BOTTOMLEFT", wf, "TOPLEFT", 0, 6)
-        bar:SetPoint("BOTTOMRIGHT", wf, "TOPRIGHT", 0, 6)
+        bar:SetPoint("BOTTOMLEFT", anchorTarget, "TOPLEFT", 0, 6)
+        bar:SetPoint("BOTTOMRIGHT", anchorTarget, "TOPRIGHT", 0, 6)
     end
 
     local secsLeft = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset) and SafeNum(C_DateAndTime.GetSecondsUntilWeeklyReset(), 0) or 0
@@ -1804,7 +1817,7 @@ local function RefreshGreatVaultDock()
     -- Render compact alt vault chips on Row 2 (automatically visible, zero clicks needed)
     for _, chip in ipairs(bar.chips) do chip:Hide() end
     local sorted = GetSortedCharacters(db)
-    local barW = (wf.GetWidth and wf:GetWidth()) or 900
+    local barW = (anchorTarget.GetWidth and anchorTarget:GetWidth()) or (wf.GetWidth and wf:GetWidth()) or 900
     local maxChips = math.max(1, math.min(8, math.floor((barW - 20) / 146)))
     local xPos = 10
     for i = 1, math.min(#sorted, maxChips) do
