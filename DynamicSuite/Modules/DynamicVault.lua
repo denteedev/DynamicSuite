@@ -221,6 +221,9 @@ end
 -- ============================================================================
 local DEFAULTS = {
     enabled            = true,
+    dockOnGreatVault   = true,
+    showScreenOverlay  = false,
+    overlayPos         = nil,
     loginVaultReminder = true,
     syncDynamicBags    = true,
     filterMaxLevelOnly = false,
@@ -1562,8 +1565,20 @@ local function RenderVaultEmbedded(parent)
         local _, dy1 = CreateSegmentedSwitchCard(sec1, sy, "Enable DynamicVault Module",
             "Automatically snapshot Great Vault slots, Crests, Delve Keys, and Keystones across all characters.",
             function() return db.enabled end,
-            function(v) db.enabled = v end)
+            function(v) db.enabled = v; if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end end)
         sy = sy + dy1
+
+        local _, dyDock = CreateSegmentedSwitchCard(sec1, sy, "Dock Account Strip on Top of Great Vault",
+            "Automatically display your Reset timer, Delve Keys, Crests, and all alts' Vault slots directly on top of Blizzard's Great Vault window (zero extra buttons to click).",
+            function() return db.dockOnGreatVault ~= false end,
+            function(v) db.dockOnGreatVault = v; if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end end)
+        sy = sy + dyDock
+
+        local _, dyHud = CreateSegmentedSwitchCard(sec1, sy, "Show Compact On-Screen Vault Overlay",
+            "Optional floating obsidian strip showing Vault slots, Keys & Reset timer (hover for all alts, Shift+Drag to move, Left-Click Great Vault, Right-Click /dv).",
+            function() return db.showScreenOverlay == true end,
+            function(v) db.showScreenOverlay = v; if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end end)
+        sy = sy + dyHud
 
         local _, dy2 = CreateSegmentedSwitchCard(sec1, sy, "Login Reminder When Great Vault Reward Is Ready",
             "Print a subtle chat reminder on login when your current character has an unclaimed Great Vault reward.",
@@ -1640,6 +1655,9 @@ RefreshEmbeddedUI = function()
     if activeEmbeddedRoot and activeEmbeddedRoot:IsShown() and activeEmbeddedRoot:GetParent() then
         RenderVaultEmbedded(activeEmbeddedRoot:GetParent())
     end
+    if DynamicVault.RefreshOverlays then
+        DynamicVault:RefreshOverlays()
+    end
 end
 
 function DynamicVault:ResetModuleDefaults()
@@ -1657,7 +1675,290 @@ function DynamicVault:ResetModuleDefaults()
 end
 
 -- ============================================================================
--- 7. STANDALONE SHELL & SUITE REGISTRATION
+-- 7. GREAT VAULT TOP DOCK & OPTIONAL ON-SCREEN OVERLAY (ZERO MINIMAP BUTTONS)
+-- ============================================================================
+local vaultDockFrame = nil
+local vaultDockHooked = false
+local screenOverlayFrame = nil
+
+local function ShowCharacterVaultTooltip(owner, ch)
+    if not owner or not ch or not GameTooltip then return end
+    GameTooltip:SetOwner(owner, "ANCHOR_BOTTOM")
+    local hex = GetClassHex(ch.classFile)
+    GameTooltip:AddLine(string.format("|cFF%s%s|r |cFF64748B-%s|r", hex, SafeStr(ch.name, "?"), SafeStr(ch.realm, "")), 1, 1, 1)
+    if SafeNum(ch.ilvl, 0) > 0 or SafeNum(ch.rating, 0) > 0 then
+        GameTooltip:AddLine(string.format("iLvl %d   |   M+ Rating %d", SafeNum(ch.ilvl, 0), SafeNum(ch.rating, 0)), 0.80, 0.86, 0.94)
+    end
+    local v = ch.vault or {}
+    if v.hasAvailableReward then
+        GameTooltip:AddLine("GREAT VAULT REWARD READY TO CLAIM!", 0.98, 0.75, 0.14)
+    end
+    GameTooltip:AddLine(" ")
+    local function AddTrackLine(lbl, tr)
+        local u = SafeNum(tr and tr.unlocked, 0)
+        local mp = SafeNum(tr and tr.maxProgress, 0)
+        local mt = SafeNum(tr and tr.maxThreshold, 0)
+        local ilvls = {}
+        for _, sl in ipairs((tr and tr.slots) or {}) do
+            if sl.unlocked and SafeNum(sl.ilvl, 0) > 0 then
+                table.insert(ilvls, tostring(sl.ilvl))
+            end
+        end
+        local right = string.format("%d/3 (%d/%d)%s", u, mp, mt, (#ilvls > 0) and ("  [" .. table.concat(ilvls, "/") .. "]") or "")
+        GameTooltip:AddDoubleLine(lbl, right, 0.65, 0.72, 0.82, u > 0 and 0.35 or 0.55, u > 0 and 0.92 or 0.62, u > 0 and 0.68 or 0.70)
+    end
+    AddTrackLine("Raid", v.raid)
+    AddTrackLine("Mythic+", v.mplus)
+    AddTrackLine("World / Delves", v.world)
+
+    local cur = ch.currencies or {}
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddDoubleLine("Delve Keys / Shards", string.format("%d / %d", SafeNum(cur.cofferKeys, 0), SafeNum(cur.keyShards, 0)), 0.65, 0.72, 0.82, 0.98, 0.80, 0.25)
+    if SafeNum(cur.catalyst, 0) > 0 or SafeNum(cur.catalystMax, 0) > 0 then
+        GameTooltip:AddDoubleLine("Catalyst Charges", tostring(SafeNum(cur.catalyst, 0)), 0.65, 0.72, 0.82, 0.22, 0.74, 0.97)
+    end
+    for _, cr in ipairs(cur.crests or {}) do
+        GameTooltip:AddDoubleLine(SafeStr(cr.name, cr.short or "Crest"), tostring(SafeNum(cr.qty, 0)), 0.65, 0.72, 0.82, 0.92, 0.95, 1.0)
+    end
+    if type(ch.keystone) == "table" and SafeNum(ch.keystone.level, 0) > 0 then
+        GameTooltip:AddDoubleLine("Keystone", string.format("+%d %s", ch.keystone.level, SafeStr(ch.keystone.name, "")), 0.65, 0.72, 0.82, 0.75, 0.52, 0.98)
+    end
+    if SafeNum(ch.gold, 0) > 0 then
+        GameTooltip:AddDoubleLine("Gold", FormatGoldCompact(ch.gold), 0.65, 0.72, 0.82, 0.99, 0.83, 0.30)
+    end
+    GameTooltip:Show()
+end
+
+local function RefreshGreatVaultDock()
+    local db = EnsureDB()
+    local wf = _G.WeeklyRewardsFrame
+    if IsModuleDisabledInSuite("DynamicVault") or not db.enabled or db.dockOnGreatVault == false
+        or not (wf and wf.IsShown and wf:IsShown()) then
+        if vaultDockFrame then vaultDockFrame:Hide() end
+        return
+    end
+
+    local surf, acc = GetTheme()
+    if not vaultDockFrame then
+        local bar = CreateFrame("Frame", "DynamicVaultBlizzDock", wf, "BackdropTemplate")
+        bar:SetHeight(64)
+        bar:SetFrameStrata("HIGH")
+        bar:SetFrameLevel((wf:GetFrameLevel() or 1) + 5)
+        bar:EnableMouse(true)
+
+        bar.topAcc = CreateSolidTex(bar, "OVERLAY", 2, acc.r, acc.g, acc.b, 1.0)
+        bar.topAcc:SetHeight(2)
+        bar.topAcc:SetPoint("TOPLEFT", bar, "TOPLEFT", 1, -1)
+        bar.topAcc:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -1, -1)
+
+        bar.headText = bar:CreateFontString(nil, "OVERLAY")
+        SetFontSafe(bar.headText, 11, "")
+        bar.headText:SetPoint("TOPLEFT", bar, "TOPLEFT", 12, -8)
+        bar.headText:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -124, -8)
+        bar.headText:SetJustifyH("LEFT")
+        bar.headText:SetWordWrap(false)
+
+        bar.openMatrixBtn = CreateStyledButton(bar, "Full Matrix (/dv)", 108, 20, false, function()
+            DynamicVault:Open()
+        end)
+        bar.openMatrixBtn:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -10, -6)
+
+        bar.chips = {}
+        vaultDockFrame = bar
+    end
+
+    local bar = vaultDockFrame
+    bar:SetParent(wf)
+    bar:SetFrameLevel((wf:GetFrameLevel() or 1) + 5)
+    ApplyBackdrop(bar, surf.bg, { acc.r, acc.g, acc.b, 0.72 })
+    bar.topAcc:SetColorTexture(acc.r, acc.g, acc.b, 1.0)
+
+    -- Dock cleanly above WeeklyRewardsFrame (flip below only if near screen top)
+    bar:ClearAllPoints()
+    local uiTop = (UIParent and UIParent.GetTop and UIParent:GetTop()) or 1080
+    local wfTop = (wf.GetTop and wf:GetTop()) or 600
+    if (uiTop - wfTop) < 72 then
+        bar:SetPoint("TOPLEFT", wf, "BOTTOMLEFT", 0, -6)
+        bar:SetPoint("TOPRIGHT", wf, "BOTTOMRIGHT", 0, -6)
+    else
+        bar:SetPoint("BOTTOMLEFT", wf, "TOPLEFT", 0, 6)
+        bar:SetPoint("BOTTOMRIGHT", wf, "TOPRIGHT", 0, 6)
+    end
+
+    local secsLeft = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset) and SafeNum(C_DateAndTime.GetSecondsUntilWeeklyReset(), 0) or 0
+    local pKey = GetPlayerKey()
+    local curCh = pKey and db.characters[pKey]
+    local cur = (curCh and curCh.currencies) or {}
+    local parts = {
+        string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFVault|r  |  Reset in |cFF38BDF8%s|r", FormatTimeRemaining(secsLeft)),
+        string.format("|cFFFBBF24Keys:|r %d (%d Shards)", SafeNum(cur.cofferKeys, 0), SafeNum(cur.keyShards, 0)),
+    }
+    if SafeNum(cur.catalyst, 0) > 0 then
+        table.insert(parts, string.format("|cFF38BDF8Catalyst:|r %d", SafeNum(cur.catalyst, 0)))
+    end
+    for _, cr in ipairs(cur.crests or {}) do
+        table.insert(parts, string.format("|cFF%s%s:|r %d", cr.hex or "94A3B8", cr.short or "Crest", SafeNum(cr.qty, 0)))
+    end
+    bar.headText:SetText(table.concat(parts, "   |   "))
+
+    -- Render compact alt vault chips on Row 2 (automatically visible, zero clicks needed)
+    for _, chip in ipairs(bar.chips) do chip:Hide() end
+    local sorted = GetSortedCharacters(db)
+    local barW = (wf.GetWidth and wf:GetWidth()) or 900
+    local maxChips = math.max(1, math.min(8, math.floor((barW - 20) / 146)))
+    local xPos = 10
+    for i = 1, math.min(#sorted, maxChips) do
+        local ch = sorted[i]
+        local chip = bar.chips[i]
+        if not chip then
+            chip = CreateFrame("Button", nil, bar, "BackdropTemplate")
+            chip:SetSize(140, 26)
+            chip.fs = chip:CreateFontString(nil, "OVERLAY")
+            SetFontSafe(chip.fs, 9.5, "")
+            chip.fs:SetPoint("LEFT", chip, "LEFT", 7, 0)
+            chip.fs:SetPoint("RIGHT", chip, "RIGHT", -7, 0)
+            chip.fs:SetJustifyH("LEFT")
+            chip.fs:SetWordWrap(false)
+            bar.chips[i] = chip
+        end
+        chip:ClearAllPoints()
+        chip:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", xPos, 7)
+        xPos = xPos + 146
+
+        local v = ch.vault or {}
+        local rU = SafeNum(v.raid and v.raid.unlocked, 0)
+        local mU = SafeNum(v.mplus and v.mplus.unlocked, 0)
+        local dU = SafeNum(v.world and v.world.unlocked, 0)
+        local hasRew = (v.hasAvailableReward == true)
+        local hex = GetClassHex(ch.classFile)
+        local shortName = SafeStr(ch.name, "?")
+        if #shortName > 9 then shortName = shortName:sub(1, 8) .. "." end
+        chip.fs:SetText(string.format("|cFF%s%s|r %s",
+            hex, shortName,
+            hasRew and "|cFFFBBF24REWARD!|r" or string.format("|cFF94A3B8R%d M%d D%d|r", rU, mU, dU)))
+        if hasRew then
+            ApplyBackdrop(chip, { 0.96, 0.62, 0.04, 0.18 }, { 0.96, 0.62, 0.04, 0.90 })
+        elseif ch.key == pKey then
+            ApplyBackdrop(chip, { acc.r * 0.22, acc.g * 0.22, acc.b * 0.22, 0.92 }, { acc.r, acc.g, acc.b, 0.85 })
+        else
+            ApplyBackdrop(chip, surf.card, surf.border)
+        end
+        chip:SetScript("OnEnter", function(s) ShowCharacterVaultTooltip(s, ch) end)
+        chip:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+        chip:SetScript("OnClick", function() DynamicVault:Open() end)
+        chip:Show()
+    end
+
+    bar:Show()
+end
+
+local function HookWeeklyRewardsFrame()
+    if vaultDockHooked then return end
+    local wf = _G.WeeklyRewardsFrame
+    if not wf or type(wf.HookScript) ~= "function" then return end
+    vaultDockHooked = true
+    wf:HookScript("OnShow", function()
+        DynamicVault:SnapshotCurrentCharacter(true)
+        RefreshGreatVaultDock()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.1, RefreshGreatVaultDock)
+        end
+    end)
+    wf:HookScript("OnHide", function()
+        if vaultDockFrame then vaultDockFrame:Hide() end
+    end)
+end
+
+local function RefreshScreenOverlay()
+    local db = EnsureDB()
+    if IsModuleDisabledInSuite("DynamicVault") or not db.enabled or db.showScreenOverlay ~= true then
+        if screenOverlayFrame then screenOverlayFrame:Hide() end
+        return
+    end
+
+    local surf, acc = GetTheme()
+    if not screenOverlayFrame then
+        local f = CreateFrame("Button", "DynamicVaultScreenOverlay", UIParent, "BackdropTemplate")
+        f:SetSize(258, 26)
+        f:SetFrameStrata("MEDIUM")
+        f:SetMovable(true)
+        f:SetClampedToScreen(true)
+        f:EnableMouse(true)
+        f:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", function(self)
+            if IsShiftKeyDown and IsShiftKeyDown() then self:StartMoving() end
+        end)
+        f:SetScript("OnDragStop", function(self)
+            self:StopMovingOrSizing()
+            local pt, _, relPt, x, y = self:GetPoint(1)
+            EnsureDB().overlayPos = { pt or "TOP", relPt or "TOP", math.floor((x or 0) + 0.5), math.floor((y or -42) + 0.5) }
+        end)
+        f:SetScript("OnClick", function(_, btn)
+            if btn == "RightButton" then
+                DynamicVault:Open()
+            else
+                DynamicVault:OpenBlizzardVault()
+            end
+        end)
+        f:SetScript("OnEnter", function(self)
+            if not GameTooltip then return end
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:AddLine("|cFFCBD5E1Dynamic|r|cFFFFFFFFVault|r  Account Summary", 1, 1, 1)
+            local sorted = GetSortedCharacters(EnsureDB())
+            for i = 1, math.min(#sorted, 10) do
+                local ch = sorted[i]
+                local v = ch.vault or {}
+                local hex = GetClassHex(ch.classFile)
+                local right = (v.hasAvailableReward == true)
+                    and "|cFFFBBF24REWARD READY|r"
+                    or string.format("R %d/3  |  M+ %d/3  |  D %d/3", SafeNum(v.raid and v.raid.unlocked, 0), SafeNum(v.mplus and v.mplus.unlocked, 0), SafeNum(v.world and v.world.unlocked, 0))
+                GameTooltip:AddDoubleLine(string.format("|cFF%s%s|r", hex, SafeStr(ch.name, "?")), right, 1, 1, 1, 0.78, 0.85, 0.94)
+            end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Left-Click: Open Great Vault  |  Right-Click: /dv  |  Shift+Drag: Move", 0.58, 0.65, 0.74)
+            GameTooltip:Show()
+        end)
+        f:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+
+        f.fs = f:CreateFontString(nil, "OVERLAY")
+        SetFontSafe(f.fs, 10.5, "")
+        f.fs:SetPoint("CENTER", f, "CENTER", 0, 0)
+        screenOverlayFrame = f
+    end
+
+    local f = screenOverlayFrame
+    f:ClearAllPoints()
+    if type(db.overlayPos) == "table" and #db.overlayPos >= 4 then
+        f:SetPoint(db.overlayPos[1], UIParent, db.overlayPos[2], db.overlayPos[3], db.overlayPos[4])
+    else
+        f:SetPoint("TOP", UIParent, "TOP", 0, -42)
+    end
+
+    local pKey = GetPlayerKey()
+    local ch = pKey and db.characters[pKey]
+    local v = (ch and ch.vault) or {}
+    local cur = (ch and ch.currencies) or {}
+    local total = SafeNum(v.raid and v.raid.unlocked, 0) + SafeNum(v.mplus and v.mplus.unlocked, 0) + SafeNum(v.world and v.world.unlocked, 0)
+    local secsLeft = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset) and SafeNum(C_DateAndTime.GetSecondsUntilWeeklyReset(), 0) or 0
+    if v.hasAvailableReward then
+        ApplyBackdrop(f, { 0.14, 0.10, 0.02, 0.94 }, { 0.98, 0.75, 0.14, 0.95 })
+        f.fs:SetText("|cFFFBBF24VAULT REWARD READY!|r  |  Keys: " .. tostring(SafeNum(cur.cofferKeys, 0)))
+    else
+        ApplyBackdrop(f, surf.bg, { acc.r, acc.g, acc.b, 0.72 })
+        f.fs:SetText(string.format("Vault: |cFF10B981%d/9|r  |  Keys: |cFFFBBF24%d|r  |  |cFF38BDF8%s|r", total, SafeNum(cur.cofferKeys, 0), FormatTimeRemaining(secsLeft)))
+    end
+    f:Show()
+end
+
+function DynamicVault:RefreshOverlays()
+    HookWeeklyRewardsFrame()
+    RefreshGreatVaultDock()
+    RefreshScreenOverlay()
+end
+
+-- ============================================================================
+-- 8. STANDALONE SHELL & SUITE REGISTRATION
 -- ============================================================================
 local standaloneWin = nil
 
@@ -1797,15 +2098,20 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2)
         if arg1 == ADDON_FOLDER or arg1 == "DynamicSuite" or arg1 == "DynamicVault" then
             EnsureDB()
             RegisterWithDynamicSuite()
+        elseif arg1 == "Blizzard_WeeklyRewards" then
+            HookWeeklyRewardsFrame()
+            RefreshGreatVaultDock()
         end
     elseif event == "PLAYER_LOGIN" then
         EnsureDB()
         RegisterWithDynamicSuite()
+        HookWeeklyRewardsFrame()
         QueueSnapshot()
     elseif event == "PLAYER_ENTERING_WORLD" then
         if arg1 == true or arg2 == true then
             C_Timer.After(2.0, function()
                 DynamicVault:SnapshotCurrentCharacter(true)
+                DynamicVault:RefreshOverlays()
                 local db = EnsureDB()
                 if not loginReminded and db.enabled and db.loginVaultReminder and not IsModuleDisabledInSuite("DynamicVault") then
                     local pKey = GetPlayerKey()
@@ -1836,6 +2142,11 @@ _G.SlashCmdList["DYNAMICVAULT"] = function(msg)
     local cmd = strtrim((msg or ""):lower())
     if cmd == "open" or cmd == "vault" then
         DynamicVault:OpenBlizzardVault()
+    elseif cmd == "overlay" or cmd == "hud" then
+        local db = EnsureDB()
+        db.showScreenOverlay = not (db.showScreenOverlay == true)
+        DynamicVault:RefreshOverlays()
+        Print("On-Screen Vault Overlay " .. (db.showScreenOverlay and "|cFF10B981Enabled|r." or "|cFFF43F5EDisabled|r."))
     elseif cmd == "scan" or cmd == "refresh" then
         DynamicVault:SnapshotCurrentCharacter(false)
         Print("Refreshed current character Great Vault, Currencies, and Keystone snapshot.")
