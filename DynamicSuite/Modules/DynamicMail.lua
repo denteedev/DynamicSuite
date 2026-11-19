@@ -237,6 +237,7 @@ local DEFAULTS = {
     protectUnreadText       = true,
     collectGoldWhenBagsFull = true,
     ahIncludeAllNonCodGold  = false,
+    deleteEmptyLetters      = true,
     deleteEmptySystemMail   = false,
     printBatchSummary       = true,
     playFinishSound         = true,
@@ -905,15 +906,17 @@ local function GetInboxSummary()
 end
 
 local batchState = {
-    active        = false,
-    mode          = "ALL", -- "ALL", "AH_GOLD", "ITEMS"
-    currentIndex  = 0,
-    lootedCopper  = 0,
-    lootedItems   = 0,
-    lootedMails   = 0,
-    timerHandle   = nil,
-    lastStepAt    = 0,
-    waitCheckMail = false,
+    active         = false,
+    mode           = "ALL", -- "ALL", "AH_GOLD", "ITEMS", "CLEAN_EMPTY"
+    currentIndex   = 0,
+    lootedCopper   = 0,
+    lootedItems    = 0,
+    lootedMails    = 0,
+    deletedMails   = 0,
+    deleteAttempts = {},
+    timerHandle    = nil,
+    lastStepAt     = 0,
+    waitCheckMail  = false,
 }
 
 local RefreshInboxToolbarUI -- forward decl
@@ -931,15 +934,24 @@ local function StopBatchCollection(reasonMsg, isPaused)
     local c = batchState.lootedCopper or 0
     local it = batchState.lootedItems or 0
     local m = batchState.lootedMails or 0
-    if c > 0 or it > 0 or m > 0 then
+    local del = batchState.deletedMails or 0
+    if c > 0 or it > 0 or m > 0 or del > 0 then
         db.stats.totalCopperLooted = (db.stats.totalCopperLooted or 0) + c
         db.stats.totalItemsLooted  = (db.stats.totalItemsLooted or 0) + it
         db.stats.totalMailsLooted  = (db.stats.totalMailsLooted or 0) + m
-        local summary = string.format("Collected %d item(s) across %d mail(s)", it, m)
+        local summary
+        if c > 0 or it > 0 or m > 0 then
+            summary = string.format("Collected %d item(s) across %d mail(s)", it, m)
+            if del > 0 then
+                summary = string.format("%s and deleted %d empty letter(s)", summary, del)
+            end
+        else
+            summary = string.format("Deleted %d empty letter(s)", del)
+        end
         AppendHistoryLog("LOOT", summary, c)
         if db.printBatchSummary then
             if c > 0 then
-                Print(string.format("%s and %s.%s", summary, FormatCopper(c), reasonMsg and (" " .. reasonMsg) or ""))
+                Print(string.format("%s (%s).%s", summary, FormatCopper(c), reasonMsg and (" " .. reasonMsg) or ""))
             else
                 Print(string.format("%s.%s", summary, reasonMsg and (" " .. reasonMsg) or ""))
             end
@@ -954,6 +966,8 @@ local function StopBatchCollection(reasonMsg, isPaused)
     batchState.lootedCopper = 0
     batchState.lootedItems = 0
     batchState.lootedMails = 0
+    batchState.deletedMails = 0
+    batchState.deleteAttempts = {}
     if RefreshInboxToolbarUI then RefreshInboxToolbarUI(reasonMsg) end
 end
 
@@ -994,11 +1008,11 @@ local function ProcessNextMailStep()
     local freeSlots = CountFreeGeneralBagSlots()
     local bagsAtReserve = (freeSlots <= reserve)
 
-    local targetIdx, takeMode, expectedMoney, expectedHasItem = nil, nil, 0, 0
+    local targetIdx, takeMode, expectedMoney, expectedHasItem, targetDelKey = nil, nil, 0, 0, nil
     local foundItemBlockedByBags = false
 
     for i = numItems, 1, -1 do
-        local _, _, sender, subject, money, cod, _, hasItem, wasRead = GetInboxHeaderInfo(i)
+        local _, _, sender, subject, money, cod, daysLeft, hasItem, wasRead, _, _, _, isGM = GetInboxHeaderInfo(i)
         local m = SafeNum(money, 0)
         local c = SafeNum(cod, 0)
         local att = SafeNum(hasItem, 0)
@@ -1007,7 +1021,23 @@ local function ProcessNextMailStep()
             local _, _, _, isInvoice = GetInboxText(i)
             local isAH = isInvoice or IsAuctionHouseMail(i, sender, subject)
 
-            if batchState.mode == "AH_GOLD" then
+            local delKey = string.format("%s|%s|%.2f", SafeStr(sender, ""), SafeStr(subject, ""), SafeNum(daysLeft, 0))
+            local canDeleteEmpty = (att == 0 and m == 0 and not isGM and ((batchState.deleteAttempts and batchState.deleteAttempts[delKey]) or 0) < 2)
+            if canDeleteEmpty and type(InboxItemCanDelete) == "function" then
+                local okCan, canDel = pcall(InboxItemCanDelete, i)
+                if okCan and not canDel then
+                    canDeleteEmpty = false
+                end
+            end
+
+            if batchState.mode == "CLEAN_EMPTY" then
+                if canDeleteEmpty then
+                    targetIdx = i
+                    takeMode = "DELETE"
+                    targetDelKey = delKey
+                    break
+                end
+            elseif batchState.mode == "AH_GOLD" then
                 if m > 0 and (isAH or db.ahIncludeAllNonCodGold) then
                     targetIdx = i
                     takeMode = "MONEY"
@@ -1044,9 +1074,10 @@ local function ProcessNextMailStep()
                         expectedMoney = m
                         break
                     end
-                elseif db.deleteEmptySystemMail and isAH and wasRead and att == 0 and m == 0 then
+                elseif (db.deleteEmptyLetters or db.deleteEmptySystemMail) and canDeleteEmpty then
                     targetIdx = i
                     takeMode = "DELETE"
+                    targetDelKey = delKey
                     break
                 end
             end
@@ -1067,7 +1098,10 @@ local function ProcessNextMailStep()
 
     batchState.currentIndex = targetIdx
     if RefreshInboxToolbarUI then
-        RefreshInboxToolbarUI(string.format("Collecting mail %d of %d...", targetIdx, numItems))
+        local stepLabel = (takeMode == "DELETE")
+            and string.format("Clearing empty letter %d of %d...", targetIdx, numItems)
+            or string.format("Collecting mail %d of %d...", targetIdx, numItems)
+        RefreshInboxToolbarUI(stepLabel)
     end
 
     if takeMode == "MONEY" then
@@ -1088,6 +1122,13 @@ local function ProcessNextMailStep()
             end
         end
     elseif takeMode == "DELETE" then
+        if targetDelKey then
+            batchState.deleteAttempts = batchState.deleteAttempts or {}
+            batchState.deleteAttempts[targetDelKey] = (batchState.deleteAttempts[targetDelKey] or 0) + 1
+            if batchState.deleteAttempts[targetDelKey] == 1 then
+                batchState.deletedMails = (batchState.deletedMails or 0) + 1
+            end
+        end
         if type(DeleteInboxItem) == "function" then
             pcall(DeleteInboxItem, targetIdx)
         end
@@ -1111,11 +1152,13 @@ function DynamicMail:StartBatchOpen(mode)
         StopBatchCollection("Stopped by user.", true)
         return
     end
-    batchState.active       = true
-    batchState.mode         = mode or "ALL"
-    batchState.lootedCopper = 0
-    batchState.lootedItems  = 0
-    batchState.lootedMails  = 0
+    batchState.active         = true
+    batchState.mode           = mode or "ALL"
+    batchState.lootedCopper   = 0
+    batchState.lootedItems    = 0
+    batchState.lootedMails    = 0
+    batchState.deletedMails   = 0
+    batchState.deleteAttempts = {}
     ProcessNextMailStep()
 end
 
@@ -1746,20 +1789,25 @@ local function EnsureInboxToolbar()
     topAcc:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -1, -1)
     bar.topAcc = topAcc
 
-    bar.btnAll = CreateOverlayActionBtn(bar, 88, 22, "Open All", true, function()
+    bar.btnAll = CreateOverlayActionBtn(bar, 72, 22, "Open All", true, function()
         DynamicMail:StartBatchOpen("ALL")
-    end, "Open All Mail", "Collect attachments and gold cleanly (protects COD & unread text letters).")
+    end, "Open All Mail", "Collect all non-COD attachments and gold (and delete empty zero-gold/zero-item letters when enabled in settings).")
     bar.btnAll:SetPoint("TOPLEFT", bar, "TOPLEFT", 8, -7)
 
-    bar.btnGold = CreateOverlayActionBtn(bar, 84, 22, "AH Gold", false, function()
+    bar.btnGold = CreateOverlayActionBtn(bar, 66, 22, "AH Gold", false, function()
         DynamicMail:StartBatchOpen("AH_GOLD")
     end, "Collect Auction House Gold", "Collect gold from Auction House & invoice mails without looting item stacks.")
-    bar.btnGold:SetPoint("LEFT", bar.btnAll, "RIGHT", 6, 0)
+    bar.btnGold:SetPoint("LEFT", bar.btnAll, "RIGHT", 5, 0)
 
-    bar.btnItems = CreateOverlayActionBtn(bar, 84, 22, "Items Only", false, function()
+    bar.btnItems = CreateOverlayActionBtn(bar, 56, 22, "Items", false, function()
         DynamicMail:StartBatchOpen("ITEMS")
     end, "Collect Attachments Only", "Loot mails with item attachments while pausing cleanly if bags hit your free-slot reserve.")
-    bar.btnItems:SetPoint("LEFT", bar.btnGold, "RIGHT", 6, 0)
+    bar.btnItems:SetPoint("LEFT", bar.btnGold, "RIGHT", 5, 0)
+
+    bar.btnClean = CreateOverlayActionBtn(bar, 84, 22, "Clear Empty", false, function()
+        DynamicMail:StartBatchOpen("CLEAN_EMPTY")
+    end, "Clear Empty Letters", "Delete empty text-only letters (NPC Lost Currency, Postmaster, Auction receipts, and notices with zero gold and zero items). Never deletes COD, items, gold, or GM mail.")
+    bar.btnClean:SetPoint("LEFT", bar.btnItems, "RIGHT", 5, 0)
 
     bar.btnCfg = CreateFrame("Button", nil, bar, "BackdropTemplate")
     bar.btnCfg:SetSize(24, 22)
@@ -1829,6 +1877,7 @@ RefreshInboxToolbarUI = function(customNote)
     StyleObsidianOverlayBtn(bar.btnAll, true)
     StyleObsidianOverlayBtn(bar.btnGold, false)
     StyleObsidianOverlayBtn(bar.btnItems, false)
+    if bar.btnClean then StyleObsidianOverlayBtn(bar.btnClean, false) end
     StyleObsidianOverlayBtn(bar.btnAbort, false)
     if bar.btnCfg then ApplyBackdrop(bar.btnCfg, surf.card or { 0.068, 0.078, 0.106, 0.98 }, surf.border) end
 
@@ -1844,6 +1893,7 @@ RefreshInboxToolbarUI = function(customNote)
         bar:SetPoint("BOTTOMRIGHT", _G.MailFrame, "TOPRIGHT", 0, 6)
     end
 
+    if bar.btnClean then bar.btnClean:SetShown(not batchState.active) end
     bar.btnAbort:SetShown(batchState.active)
     if type(customNote) == "string" and customNote ~= "" then
         bar.statusText:SetText(customNote)
@@ -3170,10 +3220,10 @@ local function RenderMailEmbedded(parent)
                 function(v) db.playFinishSound = v end, false)
             sy2 = sy2 + dy7
 
-            local _, dy8 = CreateSegmentedSwitchCard(sec2, sy2, "Delete Empty Read Auction Receipts",
-                "Clear empty, already-read Auction House notices that contain zero gold and zero items during Open All.",
-                function() return db.deleteEmptySystemMail end,
-                function(v) db.deleteEmptySystemMail = v end, false)
+            local _, dy8 = CreateSegmentedSwitchCard(sec2, sy2, "Auto-Delete Empty Letters on Open All",
+                "Automatically delete empty text-only letters (NPC Lost Currency, Postmaster, Auction receipts, and read/unread notices with zero gold and zero items) during Open All. Never deletes COD, items, gold, or GM mail.",
+                function() return db.deleteEmptyLetters end,
+                function(v) db.deleteEmptyLetters = v; db.deleteEmptySystemMail = v end, false)
             sy2 = sy2 + dy8
 
             local _, dy9 = CreateSegmentedSwitchCard(sec2, sy2, "Shift-Click Inbox Row to Quick-Loot",
@@ -3587,6 +3637,7 @@ DynamicMail.CHANGELOG = {
     version = VERSION,
     date = "18/11/2026",
     entries = {
+        { type = "NEW", text = "Auto-Delete Empty Letters & 1-Click Clear Empty Button (19/11/2026): Added the 'Auto-Delete Empty Letters on Open All' option (enabled by default) and a dedicated 1-click [Clear Empty] button on DynamicMailInboxBar to wipe empty NPC notices (Lost Currency, Postmaster), Auction receipts, and zero-gold/zero-item letters without opening each one manually, while always protecting COD, items, gold, and GM mail." },
         { type = "UI", text = "Suite-Matched 3-Tab Top Bar & 4px Scrollbar Alignment (18/11/2026): Updated the /dmail and /ds workspace top 3-tab bevel bar (14/-16px margins, #0B0D12 container, #14171F inactive card fill and #252A36 borders with hover highlight, equal-width 4px-gapped tab sizing, -8px direct scroll-area anchor, and 4px Obsidian scrollbar track) to match DynamicSuite, DynamicBags, and DynamicChat 1:1." },
         { type = "FIX", text = "Top-Docked Inbox Bar, Left Suite Rail Entry, Express Alt+Click & EllesmereUI / ElvUI Skin Coexistence (18/11/2026): Registered 'mail' in DynamicSuite's Left Suite Rail order; moved DynamicMailInboxBar cleanly above MailFrame so bottom inbox/send tabs never cover it; fixed Alt + Left-Click attaching across both DynamicBags and Blizzard bags regardless of ActionButtonUseKeyDown or cursor lock state; auto-docked DynamicMailSendPickerPanel cleanly away from EllesmereUIMailAltList; and added Mailbox Overlay Skin Auto-Match for EllesmereUIBlizzardSkin and ElvUI." },
         { type = "NEW", text = "Smart Bulk-Attach Presets, Quick Gold & Pending Alt Mail Tracking (18/11/2026): Added 1-click Quick-Attach preset buttons ([+ Mats], [+ BoE], [+ Warband], [+ Same]) with Equipment Manager & Soulbound protection; [+1k g] / [+10k g] / [+100k] / [Clear G] Quick-Gold buttons; Pending Alt Mail Sent badges in the Alts picker (auto-clearing when that alt visits a mailbox); Shift + Left-Click inbox row quick-loot; and Expiring (<3d) mailbox alerts." },
