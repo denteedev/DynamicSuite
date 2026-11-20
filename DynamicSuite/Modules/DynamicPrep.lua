@@ -11134,7 +11134,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         f:RegisterForDrag("LeftButton")
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
-        SetPixelBackdrop(f, { 0.031, 0.039, 0.055, 0.98 }, { ar, ag, ab, 0.90 }, 1)
+        SetPixelBackdrop(f, { 0.031, 0.039, 0.055, 1.00 }, { ar, ag, ab, 0.92 }, 1)
         if _G.UISpecialFrames then
             table.insert(_G.UISpecialFrames, "DynamicPrepTalentManagerModal")
         end
@@ -11217,10 +11217,6 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         end
         StyleGrpBtns()
 
-        local l2 = CreateText(p1, "OVERLAY", "GameFontHighlightSmall")
-        l2:SetPoint("TOPLEFT", p1, "TOPLEFT", 2, -62)
-        l2:SetText("|cFF38BDF8Talent Export String|r  |cFF94A3B8(Current Tree or Paste WCL / Wowhead)|r")
-
         local useCurBtn = CreateFrame("Button", nil, p1, "BackdropTemplate")
         useCurBtn:SetSize(116, 20)
         useCurBtn:SetPoint("TOPRIGHT", p1, "TOPRIGHT", -86, -58)
@@ -11236,6 +11232,13 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         clearStrBtn.txt = CreateText(clearStrBtn, "OVERLAY", "GameFontHighlightSmall")
         clearStrBtn.txt:SetPoint("CENTER")
         clearStrBtn.txt:SetText("Clear / Paste")
+
+        local l2 = CreateText(p1, "OVERLAY", "GameFontHighlightSmall")
+        l2:SetPoint("TOPLEFT", p1, "TOPLEFT", 2, -62)
+        l2:SetPoint("RIGHT", useCurBtn, "LEFT", -8, 0)
+        l2:SetJustifyH("LEFT")
+        l2:SetWordWrap(false)
+        l2:SetText("|cFF38BDF8Talent Export String|r  |cFF94A3B8(Current or Paste)|r")
 
         local strEB = CreateFrame("EditBox", nil, p1, "BackdropTemplate")
         strEB:SetSize(508, 28)
@@ -11381,6 +11384,12 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         bossEB:SetTextInsets(8, 8, 0, 0)
         SetPixelBackdrop(bossEB, { 0.043, 0.051, 0.071, 0.98 }, COLORS.BorderSubtle, 1)
         bossEB:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+        local bossHint = CreateText(bossEB, "OVERLAY", "GameFontHighlightSmall")
+        bossHint:SetPoint("LEFT", bossEB, "LEFT", 8, 0)
+        bossHint:SetText("|cFF64748BBoss name or click Target...|r")
+        bossEB:SetScript("OnTextChanged", function(s)
+            bossHint:SetShown(strtrim(s:GetText() or "") == "")
+        end)
 
         local tgtBtn = CreateFrame("Button", nil, p2, "BackdropTemplate")
         tgtBtn:SetSize(76, 26)
@@ -11456,6 +11465,12 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             f:RefreshBossList()
         end)
 
+        local emptyBossHint = CreateText(p2, "OVERLAY", "GameFontHighlightSmall")
+        emptyBossHint:SetPoint("TOPLEFT", p2, "TOPLEFT", 4, -64)
+        emptyBossHint:SetPoint("TOPRIGHT", p2, "TOPRIGHT", -4, -64)
+        emptyBossHint:SetJustifyH("LEFT")
+        emptyBossHint:SetText("|cFF64748BNo boss reminders bound yet. Type a boss name or click Target, pick a build, then click + Bind.|r")
+
         f.bossRows = {}
         function f:RefreshBossList()
             UpdatePickBtn()
@@ -11465,6 +11480,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             local keys = {}
             for k in pairs(map) do table.insert(keys, k) end
             table.sort(keys)
+            emptyBossHint:SetShown(#keys == 0)
             for i = 1, math.min(#keys, 9) do
                 local k = keys[i]
                 local entry = map[k]
@@ -11497,14 +11513,20 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             self.activeTab = tabNum or 1
             local r, g, b = GetActiveAccentRGB()
             local on1 = (self.activeTab == 1)
+            local hasLegacy = on1 and DynamicPrep:HasLegacyTLMSlot()
             SetPixelBackdrop(tab1Btn, on1 and { r * 0.42, g * 0.42, b * 0.42, 0.98 } or COLORS.BgElevated, on1 and { r, g, b, 0.95 } or COLORS.BorderSubtle, 1)
             SetPixelBackdrop(tab2Btn, (not on1) and { r * 0.42, g * 0.42, b * 0.42, 0.98 } or COLORS.BgElevated, (not on1) and { r, g, b, 0.95 } or COLORS.BorderSubtle, 1)
             p1:SetShown(on1)
             p2:SetShown(not on1)
             if self.renameLegacyBtn then
-                self.renameLegacyBtn:SetShown(on1 and DynamicPrep:HasLegacyTLMSlot())
+                self.renameLegacyBtn:SetShown(hasLegacy)
             end
-            if not on1 then self:RefreshBossList() end
+            if on1 then
+                self:SetHeight(hasLegacy and 308 or 272)
+            else
+                self:SetHeight(396)
+                self:RefreshBossList()
+            end
         end
 
         tab1Btn:SetScript("OnClick", function() f:SelectTab(1) end)
