@@ -1,8 +1,8 @@
-# DynamicSuite -- 10-Module QoL, Utility & Performance Hub
+# DynamicSuite -- 11-Module QoL, Utility & Performance Hub
 
-**Version:** v2.5.0 (19/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Version:** v2.6.0 (20/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
-**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, mailbox, Great Vault, chat, and performance hub for World of Warcraft Retail. All 10 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
+**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for World of Warcraft Retail. All 11 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
 ---
 
@@ -63,6 +63,8 @@
 | `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, testtoast, reset) |
 | `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
 | `/dmail` or `/dynamicmail` | Open DynamicMail (supports all, gold, items, mats, boe, warband, same, stop, reset) |
+| `/dv` or `/dynamicvault` | Open DynamicVault (supports open, overlay, scan, reset) |
+| `/dd`, `/ddlg`, or `/dynamicdialogue` | Open DynamicDialogue Obsidian Quest & Gossip Reader (supports preview, status, reset) |
 | `/dchat`, `/dc`, or `/dynamicchat` | Open DynamicChat (supports history, copy, reset; plus `/ww` target whisper, `/rl` reload UI, and `/lg` leave group) |
 
 ---
@@ -80,4 +82,4 @@
 
 ## License & Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for the complete release history across all 9 modules.
+See [CHANGELOG.md](CHANGELOG.md) for the complete release history across all 11 modules.

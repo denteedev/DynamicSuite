@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.5.0"
+    local fb = fallback or "2.6.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.5.0")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.0")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -303,6 +303,19 @@ local SUITE_MODULE_LIST = addonTable.SUITE_MODULE_LIST or {
         category = "Great Vault, Currencies & Weekly Tracker",
         desc = "Account-wide Great Vault matrix (Raid, M+, Delves), Restored Coffer Keys, Catalyst, Crests, owned Keystones, and auto-resetting Weekly Checklists.",
     },
+    {
+        key = "dialogue",
+        id = "dialogue",
+        order = 100,
+        name = "DynamicDialogue",
+        title = "DynamicDialogue",
+        addonName = "DynamicDialogue",
+        slash = "/dd",
+        icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_dialogue.tga",
+        subtitle = "Obsidian Quest & Gossip Reader",
+        category = "Quest & Gossip Dialogue Reader",
+        desc = "High-contrast Obsidian Quest & Gossip reader with 1-9 option hotkeys, Space accept/complete, reward choice cards, and zero-taint external addon yielding.",
+    },
 }
 addonTable.SUITE_MODULE_LIST = SUITE_MODULE_LIST
 DynamicSuite.MODULE_LIST = SUITE_MODULE_LIST
@@ -409,17 +422,27 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
         softConflicts = { "SavedInstances", "Altoholic", "ChoreTracker", "WeeklyKnowledge", "PermoksAccountManager" },
         category = "Account Vault & Weekly Tracking",
     },
+    DynamicDialogue = {
+        "DialogueUI", "DialogUI", "Immersion", "Storyline",
+        addons = { "DialogueUI", "DialogUI", "Immersion", "Storyline", "EllesmereUIQoL", "EllesmereUI_QoL", "EnhanceQoL", "AutoTurnIn", "Leatrix_Plus" },
+        conflicts = { "DialogueUI", "DialogUI", "Immersion", "Storyline" },
+        hardConflicts = { "DialogueUI", "DialogUI", "Immersion", "Storyline" },
+        partialConflicts = { "EllesmereUIQoL", "EllesmereUI_QoL", "EnhanceQoL", "AutoTurnIn", "Leatrix_Plus" },
+        softConflicts = { "EllesmereUIQoL", "EllesmereUI_QoL", "EnhanceQoL", "AutoTurnIn", "Leatrix_Plus" },
+        category = "Quest & Gossip Dialogue Reader",
+    },
 }
-CONFLICT_REGISTRY.load   = CONFLICT_REGISTRY.DynamicLoad
-CONFLICT_REGISTRY.marker = CONFLICT_REGISTRY.DynamicMarker
-CONFLICT_REGISTRY.zoom   = CONFLICT_REGISTRY.DynamicZoom
-CONFLICT_REGISTRY.fps    = CONFLICT_REGISTRY.DynamicFPS
-CONFLICT_REGISTRY.prep   = CONFLICT_REGISTRY.DynamicPrep
-CONFLICT_REGISTRY.group  = CONFLICT_REGISTRY.DynamicGroup
-CONFLICT_REGISTRY.bags   = CONFLICT_REGISTRY.DynamicBags
-CONFLICT_REGISTRY.chat   = CONFLICT_REGISTRY.DynamicChat
-CONFLICT_REGISTRY.mail   = CONFLICT_REGISTRY.DynamicMail
-CONFLICT_REGISTRY.vault  = CONFLICT_REGISTRY.DynamicVault
+CONFLICT_REGISTRY.load     = CONFLICT_REGISTRY.DynamicLoad
+CONFLICT_REGISTRY.marker   = CONFLICT_REGISTRY.DynamicMarker
+CONFLICT_REGISTRY.zoom     = CONFLICT_REGISTRY.DynamicZoom
+CONFLICT_REGISTRY.fps      = CONFLICT_REGISTRY.DynamicFPS
+CONFLICT_REGISTRY.prep     = CONFLICT_REGISTRY.DynamicPrep
+CONFLICT_REGISTRY.group    = CONFLICT_REGISTRY.DynamicGroup
+CONFLICT_REGISTRY.bags     = CONFLICT_REGISTRY.DynamicBags
+CONFLICT_REGISTRY.chat     = CONFLICT_REGISTRY.DynamicChat
+CONFLICT_REGISTRY.mail     = CONFLICT_REGISTRY.DynamicMail
+CONFLICT_REGISTRY.vault    = CONFLICT_REGISTRY.DynamicVault
+CONFLICT_REGISTRY.dialogue = CONFLICT_REGISTRY.DynamicDialogue
 addonTable.CONFLICT_REGISTRY = CONFLICT_REGISTRY
 DynamicSuite.CONFLICT_REGISTRY = CONFLICT_REGISTRY
 
@@ -2070,14 +2093,12 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
                 end
                 local edb = _G.EllesmereUIDB
                 if type(edb) == "table" then
-                    if type(edb.chat) == "table" and edb.chat.enable == false then
-                        return false
-                    end
-                    if type(edb.modules) == "table" and edb.modules.chat == false then
-                        return false
+                    if (type(edb.chat) == "table" and edb.chat.enable == true)
+                        or (type(edb.modules) == "table" and edb.modules.chat == true) then
+                        return true, "HARD", "chat/editbox skinning"
                     end
                 end
-                return true, "HARD", "chat/editbox skinning"
+                return false
             elseif shortKey == "bags" or dynamicModule == "DynamicBags" then
                 -- If EllesmereUIBags is installed as a separate sub-addon on disk, conflict detection
                 -- belongs strictly to the EllesmereUIBags sub-addon entry.
@@ -2091,14 +2112,12 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
                 end
                 local edb = _G.EllesmereUIDB
                 if type(edb) == "table" then
-                    if type(edb.bags) == "table" and edb.bags.enable == false then
-                        return false
-                    end
-                    if type(edb.modules) == "table" and edb.modules.bags == false then
-                        return false
+                    if (type(edb.bags) == "table" and edb.bags.enable == true)
+                        or (type(edb.modules) == "table" and edb.modules.bags == true) then
+                        return true, "HARD", "bag/bank frame replacement"
                     end
                 end
-                return true, "HARD", "bag/bank frame replacement"
+                return false
             end
             return false
         end)
@@ -2106,11 +2125,162 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
             return true, subTier or "HARD", subFeature
         end
         return false, nil, nil
+
+    elseif otherAddon == "EllesmereUIQoL" or otherAddon == "EllesmereUI_QoL" then
+        if not SafeIsAddOnLoaded(otherAddon) then
+            return false, nil, nil
+        end
+        local ok, isSubActive, subTier, subFeature = pcall(function()
+            local qdb = _G.EllesmereUIQoLDB or (_G.EllesmereUIDB and _G.EllesmereUIDB.qol)
+            if type(qdb) ~= "table" then
+                return false
+            end
+            if shortKey == "dialogue" or dynamicModule == "DynamicDialogue" then
+                if qdb.dialogueUI == true or qdb.dialogUI == true or qdb.questDialogue == true or qdb.gossipReplacement == true then
+                    return true, "SOFT", "dialogue/quest reader replacement"
+                end
+                return false
+            elseif shortKey == "bags" or dynamicModule == "DynamicBags" then
+                if qdb.autoSellJunk == true or qdb.autoSell == true or qdb.fastLoot == true or qdb.autoRepair == true then
+                    return true, "SOFT", "vendor/loot automation"
+                end
+                return false
+            elseif shortKey == "prep" or dynamicModule == "DynamicPrep" then
+                if qdb.autoQuest == true or qdb.autoAcceptQuest == true or qdb.autoGossip == true or qdb.skipCinematics == true then
+                    return true, "SOFT", "quest/gossip automation"
+                end
+                return false
+            end
+            return false
+        end)
+        if ok and isSubActive == true then
+            return true, subTier or "SOFT", subFeature
+        end
+        return false, nil, nil
+
+    elseif otherAddon == "EnhanceQoL" then
+        if not SafeIsAddOnLoaded("EnhanceQoL") then
+            return false, nil, nil
+        end
+        local ok, isSubActive, subTier, subFeature = pcall(function()
+            local edb = _G.EnhanceQoLDB
+            local prof = (type(edb) == "table" and type(edb.profile) == "table") and edb.profile or edb
+            if type(prof) ~= "table" then return false end
+            if shortKey == "chat" or dynamicModule == "DynamicChat" then
+                if SafeIsAddOnLoaded("EnhanceQoLChatSocial") or prof.enableChat == true or prof.chatCopy == true then
+                    return true, "SOFT", "shared chat features"
+                end
+                return false
+            elseif shortKey == "bags" or dynamicModule == "DynamicBags" then
+                if prof.autoSellJunk == true or prof.fastAutoLoot == true or prof.autoRepair == true then
+                    return true, "SOFT", "vendor/loot automation"
+                end
+                return false
+            elseif shortKey == "dialogue" or dynamicModule == "DynamicDialogue" then
+                if prof.questDialogue == true or prof.autoAcceptQuest == true or prof.autoTurnInQuest == true then
+                    return true, "SOFT", "quest/dialogue automation"
+                end
+                return false
+            elseif shortKey == "prep" or dynamicModule == "DynamicPrep" then
+                if prof.autoAcceptQuest == true or prof.autoGossip == true or prof.skipCinematics == true or prof.hideTalkingHead == true then
+                    return true, "SOFT", "quest/gossip automation"
+                end
+                return false
+            elseif shortKey == "zoom" or dynamicModule == "DynamicZoom" then
+                if prof.maxCameraZoom == true or prof.cameraZoom == true then
+                    return true, "SOFT", "camera zoom control"
+                end
+                return false
+            elseif shortKey == "mail" or dynamicModule == "DynamicMail" then
+                if prof.mailAutomation == true or prof.openAllMail == true then
+                    return true, "SOFT", "mailbox automation"
+                end
+                return false
+            end
+            return false
+        end)
+        if ok and isSubActive == true then
+            return true, subTier or "SOFT", subFeature
+        end
+        return false, nil, nil
     end
     return nil, nil, nil
 end
 addonTable.InspectSmartSubModuleConflict = InspectSmartSubModuleConflict
 DynamicSuite.InspectSmartSubModuleConflict = InspectSmartSubModuleConflict
+
+-- Zero-Taint Read-Only Runtime Blizzard Frame & Event Ownership Prober
+-- Detects both known and unknown competing addons on the fly without hooking globals or causing taint.
+function DynamicSuite:ProbeBlizzardFrameConflict(domain)
+    local d = tostring(domain or ""):upper()
+    if d == "DIALOGUE" then
+        for _, name in ipairs({ "DialogueUI", "DialogUI", "Immersion", "Storyline" }) do
+            if SafeIsAddOnLoaded(name) then
+                return true, FRIENDLY_CONFLICT_NAMES[name] or name, "Known dialogue replacement addon loaded"
+            end
+        end
+        local qf = _G.QuestFrame
+        if qf and type(qf.IsEventRegistered) == "function" then
+            local okQ, regQ = pcall(qf.IsEventRegistered, qf, "QUEST_DETAIL")
+            if okQ and regQ == false then
+                return true, "External Dialogue Addon", "QuestFrame QUEST_DETAIL event unregistered by another addon"
+            end
+        end
+        local gf = _G.GossipFrame
+        if gf and type(gf.IsEventRegistered) == "function" then
+            local okG, regG = pcall(gf.IsEventRegistered, gf, "GOSSIP_SHOW")
+            if okG and regG == false then
+                return true, "External Dialogue Addon", "GossipFrame GOSSIP_SHOW event unregistered by another addon"
+            end
+        end
+        return false, nil, nil
+    elseif d == "CHAT" then
+        for _, name in ipairs({ "EllesmereUIChat", "EllesmereUI_Chat", "Chattynator", "Prat-3.0", "ls_Glass", "LS_Glass", "Glass" }) do
+            if SafeIsAddOnLoaded(name) then
+                return true, FRIENDLY_CONFLICT_NAMES[name] or name, "Dedicated chat replacement addon loaded"
+            end
+        end
+        local elvActive, _, elvFeat = InspectSmartSubModuleConflict("DynamicChat", "ElvUI")
+        if elvActive then
+            return true, "ElvUI", elvFeat or "ElvUI chat module enabled"
+        end
+        local euiActive, _, euiFeat = InspectSmartSubModuleConflict("DynamicChat", "EllesmereUI")
+        if euiActive then
+            return true, "EllesmereUI", euiFeat or "EllesmereUI chat module enabled"
+        end
+        return false, nil, nil
+    elseif d == "BAGS" then
+        for _, name in ipairs({ "EllesmereUIBags", "EllesmereUI_Bags", "Baganator", "BetterBags", "AdiBags", "ArkInventory", "Bagnon", "Sorted", "LiteBag" }) do
+            if SafeIsAddOnLoaded(name) then
+                return true, FRIENDLY_CONFLICT_NAMES[name] or name, "Dedicated bag replacement addon loaded"
+            end
+        end
+        local elvActive = InspectSmartSubModuleConflict("DynamicBags", "ElvUI")
+        if elvActive then return true, "ElvUI", "ElvUI bags module enabled" end
+        local euiActive = InspectSmartSubModuleConflict("DynamicBags", "EllesmereUI")
+        if euiActive then return true, "EllesmereUI", "EllesmereUI bags module enabled" end
+        return false, nil, nil
+    elseif d == "WINDOWS" then
+        if addonTable.DesktopWindows and type(addonTable.DesktopWindows.GetYieldAddon) == "function" then
+            local ok, yAddon = pcall(addonTable.DesktopWindows.GetYieldAddon, addonTable.DesktopWindows)
+            if ok and yAddon then
+                return true, FRIENDLY_CONFLICT_NAMES[yAddon] or yAddon, "External Blizzard window mover active"
+            end
+        end
+        return false, nil, nil
+    elseif d == "TALENTS" then
+        for _, name in ipairs({ "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts" }) do
+            if SafeIsAddOnLoaded(name) then
+                return true, FRIENDLY_CONFLICT_NAMES[name] or name, "External talent loadout manager loaded"
+            end
+        end
+        return false, nil, nil
+    end
+    return false, nil, nil
+end
+addonTable.ProbeBlizzardFrameConflict = function(domain)
+    return DynamicSuite:ProbeBlizzardFrameConflict(domain)
+end
 
 local function IsQueuedInDynamicLoad(addonFolder)
     if not addonFolder or type(addonFolder) ~= "string" then return false end
@@ -2272,7 +2442,8 @@ addonTable.SetAddonOutdoorOnlyInDynamicLoad = SetAddonOutdoorOnlyInDynamicLoad
 DynamicSuite.SetAddonOutdoorOnlyInDynamicLoad = SetAddonOutdoorOnlyInDynamicLoad
 
 local function IsThirdPartyConflictActive(dynamicModule, otherAddon, pName)
-    if otherAddon == "ElvUI" or otherAddon == "Leatrix_Plus" or otherAddon == "EllesmereUI" then
+    if otherAddon == "ElvUI" or otherAddon == "Leatrix_Plus" or otherAddon == "EllesmereUI"
+        or otherAddon == "EllesmereUIQoL" or otherAddon == "EllesmereUI_QoL" or otherAddon == "EnhanceQoL" then
         if IsExternalAddonFrozen(otherAddon) then
             return false, nil, nil
         end
@@ -2303,6 +2474,7 @@ local function NormalizeSuiteModuleName(modKeyOrName)
     elseif low == "chat" then return "DynamicChat", "chat"
     elseif low == "mail" then return "DynamicMail", "mail"
     elseif low == "vault" then return "DynamicVault", "vault"
+    elseif low == "dialogue" then return "DynamicDialogue", "dialogue"
     end
     return s, low
 end

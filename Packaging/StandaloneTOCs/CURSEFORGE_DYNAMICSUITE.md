@@ -96,7 +96,8 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 | `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, import, reset) |
 | `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
 | `/dmail` or `/dynamicmail` | Open DynamicMail (supports all, gold, items, mats, boe, warband, same, stop, reset) |
-| `/dv` or `/dynamicvault` | Open DynamicVault (supports open, scan, reset) |
+| `/dv` or `/dynamicvault` | Open DynamicVault (supports open, overlay, scan, reset) |
+| `/dd`, `/ddlg`, or `/dynamicdialogue` | Open DynamicDialogue Obsidian Quest & Gossip Reader (supports preview, status, reset) |
 | `/dchat`, `/dc`, or `/dynamicchat` | Open DynamicChat (supports history, copy, mute, reset; plus `/ww` target whisper, `/rl` reload UI, and `/lg` leave group) |
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
 | `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, testtoast, testapply, reset) |

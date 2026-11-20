@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.5.0"
+    local fb = fallback or "2.6.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.5.0"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.0"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.5.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicChat", VERSION, _G.DynamicChat) then
     return
 end
@@ -274,10 +274,10 @@ DynamicChat.CONFLICT_REGISTRY = {
 _G.DynamicSuite = _G.DynamicSuite or {}
 _G.DynamicSuite.CONFLICT_REGISTRY = _G.DynamicSuite.CONFLICT_REGISTRY or {}
 _G.DynamicSuite.CONFLICT_REGISTRY["DynamicChat"] = {
-    conflicts        = { "Chattynator", "Prat-3.0", "BasicChatMods", "Chatter", "ls_Glass", "LS_Glass", "Glass", "PhanxChat", "DejaChat", "EllesmereUIChat", "EllesmereUI_Chat", "EllesmereUI", "ElvUI", "WIM", "EnhanceQoLChatSocial", "Leatrix_Plus", "WindTools" },
-    hardConflicts    = { "Chattynator", "Prat-3.0", "BasicChatMods", "Chatter", "ls_Glass", "LS_Glass", "Glass", "PhanxChat", "DejaChat", "EllesmereUIChat", "EllesmereUI_Chat", "EllesmereUI", "ElvUI", "WIM", "EnhanceQoLChatSocial", "Leatrix_Plus", "WindTools" },
-    partialConflicts = {},
-    softConflicts    = {},
+    conflicts        = { "EllesmereUIChat", "EllesmereUI_Chat", "EllesmereUI", "Chattynator", "Prat-3.0", "ls_Glass", "LS_Glass", "Glass", "BasicChatMods", "Chatter", "PhanxChat", "DejaChat", "WIM", "ElvUI" },
+    hardConflicts    = { "EllesmereUIChat", "EllesmereUI_Chat", "EllesmereUI", "Chattynator", "Prat-3.0", "ls_Glass", "LS_Glass", "Glass", "BasicChatMods", "Chatter", "PhanxChat", "DejaChat", "WIM", "ElvUI" },
+    partialConflicts = { "EnhanceQoL", "EnhanceQoLChatSocial", "Leatrix_Plus", "WindTools" },
+    softConflicts    = { "EnhanceQoL", "EnhanceQoLChatSocial", "Leatrix_Plus", "WindTools" },
     category         = "Chat & Communications",
     entries          = DynamicChat.CONFLICT_REGISTRY,
 }
@@ -575,15 +575,11 @@ local function EnsureDB()
     CopyDefaults(DEFAULTS, _G.DynamicChatDB)
     -- Force target whisper shortcut mode cleanly to /ww
     _G.DynamicChatDB.whisperTriggerMode = "WW"
-    -- Clean out any legacy Auto-Yield state so DynamicChat always asserts full priority
-    _G.DynamicChatDB.yieldSharedHooks = false
-    if type(_G.DynamicChatDB.yieldHooks) == "table" then
-        wipe(_G.DynamicChatDB.yieldHooks)
-    else
-        _G.DynamicChatDB.yieldHooks = {}
+    if _G.DynamicChatDB.autoYieldEllesmereChat == nil then
+        _G.DynamicChatDB.autoYieldEllesmereChat = true
     end
-    if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" and type(_G.DynamicSuiteDB.global.yieldHooks) == "table" then
-        wipe(_G.DynamicSuiteDB.global.yieldHooks)
+    if type(_G.DynamicChatDB.yieldHooks) ~= "table" then
+        _G.DynamicChatDB.yieldHooks = {}
     end
     if not _G.DynamicChatDB._v102_smoked25 then
         _G.DynamicChatDB._v102_smoked25 = true
@@ -893,11 +889,33 @@ function DynamicChat:HideHudEditMover()
     end
 end
 
+function DynamicChat:GetAutoYieldChatAddon()
+    local db = _G.DynamicChatDB
+    if type(db) == "table" and db.autoYieldEllesmereChat == false then
+        return nil
+    end
+    if IsAddonActiveInSession("EllesmereUIChat") then return "EllesmereUI Chat" end
+    if IsAddonActiveInSession("EllesmereUI_Chat") then return "EllesmereUI Chat" end
+    if _G.DynamicSuite and type(_G.DynamicSuite.InspectSmartSubModuleConflict) == "function" then
+        local ok, active = pcall(_G.DynamicSuite.InspectSmartSubModuleConflict, "DynamicChat", "EllesmereUI")
+        if ok and active == true then
+            return "EllesmereUI Chat"
+        end
+    end
+    return nil
+end
+
 function DynamicChat:IsYieldingSharedHooks()
+    if self:GetAutoYieldChatAddon() ~= nil then
+        return true
+    end
     return false
 end
 
 function DynamicChat:HasActivePartialSuiteConflict()
+    if self:GetAutoYieldChatAddon() ~= nil then
+        return true
+    end
     return false
 end
 
@@ -908,8 +926,17 @@ end
 function DynamicChat:ScanConflicts()
     local results = {}
     local seenLabels = {}
+    local inspectSmart = _G.DynamicSuite and _G.DynamicSuite.InspectSmartSubModuleConflict
     for _, entry in ipairs(self.CONFLICT_REGISTRY or {}) do
-        if IsAddonActiveInSession(entry.addon) then
+        local isSmartAddon = (entry.addon == "EllesmereUI" or entry.addon == "ElvUI" or entry.addon == "Leatrix_Plus" or entry.addon == "EnhanceQoL")
+        local isActive = false
+        if isSmartAddon and type(inspectSmart) == "function" then
+            local ok, subActive = pcall(inspectSmart, "DynamicChat", entry.addon)
+            isActive = (ok and subActive == true)
+        else
+            isActive = IsAddonActiveInSession(entry.addon)
+        end
+        if isActive then
             local dedupeKey = (entry.kind or "DIRECT") .. ":" .. (entry.label or entry.addon)
             if not seenLabels[dedupeKey] then
                 seenLabels[dedupeKey] = true

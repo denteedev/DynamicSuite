@@ -1,5 +1,23 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.5.0 (19/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.6.0 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.6.0 (20/11/2026)
+
+### DynamicDialogue (New 11th Module `/dd`, `/ddlg`, `/dynamicdialogue`)
+- **Obsidian Quest & Gossip Reader:** Launched `DynamicDialogue` as DynamicSuite's 11th dual-mode module, presenting Quest (`QUEST_GREETING`, `QUEST_DETAIL`, `QUEST_PROGRESS`, `QUEST_COMPLETE`) and NPC Gossip (`GOSSIP_SHOW`) interactions in a crisp, high-contrast Midnight Obsidian window synced live to your Suite Accent, surface theme, and font.
+- **1-9 Option Hotkeys, Space Confirm & Interactive Reward Cards:** Press `1`-`9` out of combat to pick gossip or quest options immediately, `Space` to Accept/Continue/Complete, `Escape` to close cleanly, or hold `Shift` while talking to any NPC to bypass to the native Blizzard frame. Displays guaranteed rewards, clickable choice reward cards with rarity borders and full hover tooltips, gold/XP summary, draggable reader positioning, live Preview mode (`/dd preview`), and optional Quest Complete Bloom chime.
+- **Zero-Taint Dynamic Auto-Yield:** Automatically yields to `DialogueUI`, `DialogUI`, `Immersion`, `Storyline`, `EllesmereUIQoL` (when its dialogue feature is enabled), and any unknown dialogue replacement addon detected via read-only Blizzard frame/event probing (`QuestFrame` / `GossipFrame`).
+
+### Suite-Wide EllesmereUI, EnhanceQoL & Zero-Taint Auto-Yield Audit (`v2.6.0`, 20/11/2026)
+- **Zero-Taint Read-Only Runtime Frame/Event Prober (`DynamicSuite:ProbeBlizzardFrameConflict`):** Added a 100% read-only runtime frame and event ownership prober across `DIALOGUE`, `CHAT`, `BAGS`, `WINDOWS`, and `TALENTS` domains (zero global hooks, zero `debugstack()` wrapping, zero taint).
+- **Feature-Level Smart Sub-Module Detection (`EllesmereUI`, `EllesmereUIQoL`, `EnhanceQoL`):** Upgraded `InspectSmartSubModuleConflict` so installing base `EllesmereUI`, `EllesmereUIQoL`, or `EnhanceQoL` no longer triggers false-positive hard conflicts unless the specific overlapping sub-module or SavedVariables feature flag is actually enabled.
+- **`DynamicChat` Clean Auto-Yield for `EllesmereUIChat` & Global Hook Fix:** Enabled clean automatic yielding in `DynamicChat` when `EllesmereUIChat` / `EllesmereUI_Chat` is active, and removed the legacy `EnsureDB()` wipe on `DynamicSuiteDB.global.yieldHooks` so other modules' yield states are never disturbed.
+- **Suite-Wide Conflict Registry Parity (`DynamicPrep`, `DynamicChat`, `DynamicBags`):** Stopped module-level `CONFLICT_REGISTRY` blocks from overwriting `DynamicSuite_Core.lua` entries or misclassifying soft/partial QoL overlaps (`EnhanceQoL`, `Leatrix_Plus`, `Scrap`, `WindTools`) as hard conflicts, preserving `EllesmereUIAuraBuffReminders` and Talent Loadout Manager (`TLM` / `BtWLoadouts`) detection.
+
+### DynamicSuite Core & Lockstep Metadata (`v2.6.0`)
+- **11-Module Suite Integration:** Added `DynamicDialogueDB` and `Modules\DynamicDialogue.lua` to `DynamicSuite.toc`, wired `dialogue` / `DynamicDialogue` into the `/ds` Left Suite Rail, custom `32x32` RGBA vector icon `icon_mod_dialogue.tga`, standalone `Packaging\StandaloneTOCs\DynamicDialogue.toc`, and synchronised all 12 `.toc` manifests and version fallbacks to `2.6.0`.
 
 ---
 

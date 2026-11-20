@@ -22,7 +22,7 @@ local CONTEXT_TABS = {
     { key = "raid",    label = "Raid" },
     { key = "pvp",     label = "PvP" },
 }
-local STANDALONE_FRAME_NAMES = { "DynamicFPSMainFrame", "DynamicFPSStandaloneFrame", "DynamicFrameMainFrame", "DynamicZoomStandaloneFrame", "DynamicMarkerMainFrame", "DynamicPrepMainFrame", "DynamicGroupMainFrame", "DynamicBagsStandaloneFrame", "DynamicChatStandaloneFrame", "DynamicMailStandaloneWindow", "DynamicVaultStandaloneFrame" }
+local STANDALONE_FRAME_NAMES = { "DynamicFPSMainFrame", "DynamicFPSStandaloneFrame", "DynamicFrameMainFrame", "DynamicZoomStandaloneFrame", "DynamicMarkerMainFrame", "DynamicPrepMainFrame", "DynamicGroupMainFrame", "DynamicBagsStandaloneFrame", "DynamicChatStandaloneFrame", "DynamicMailStandaloneWindow", "DynamicVaultStandaloneFrame", "DynamicDialogueStandaloneFrame" }
 
 local selectedTabKey = "outdoor"
 local selectedAltKey = nil
@@ -1010,8 +1010,10 @@ local MODULE_ICON_PATHS = {
     ["chat"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
     ["DynamicMail"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga",
     ["mail"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga",
-    ["DynamicVault"]  = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga",
-    ["vault"]         = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga",
+    ["DynamicVault"]    = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga",
+    ["vault"]           = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga",
+    ["DynamicDialogue"] = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_dialogue.tga",
+    ["dialogue"]        = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_dialogue.tga",
 }
 
 function UI.GetModuleIconPath(modKey, fallbackIcon)
@@ -3999,7 +4001,7 @@ function addonTable.CreateMainConfigUI()
     leftRail.divider:SetWidth(1)
 
     do
-    local DEFAULT_MODULE_KEYS = { "load", "marker", "zoom", "fps", "prep", "group", "bags", "chat", "mail", "vault" }
+    local DEFAULT_MODULE_KEYS = { "load", "marker", "zoom", "fps", "prep", "group", "bags", "chat", "mail", "vault", "dialogue" }
     UI.DEFAULT_MODULE_KEYS = DEFAULT_MODULE_KEYS
 
     function UI.GetOrderedModuleList()
@@ -5147,7 +5149,7 @@ function addonTable.CreateMainConfigUI()
         local parts = { tostring(addonTable.ADDON_VERSION or "1.3.0") }
         local clReg = _G.DynamicSuite and _G.DynamicSuite.Changelogs
         if type(clReg) == "table" then
-            for _, k in ipairs({ "DynamicLoad", "DynamicMarker", "DynamicZoom", "DynamicFPS", "DynamicPrep", "DynamicGroup", "DynamicBags", "DynamicChat", "DynamicMail", "DynamicVault" }) do
+            for _, k in ipairs({ "DynamicLoad", "DynamicMarker", "DynamicZoom", "DynamicFPS", "DynamicPrep", "DynamicGroup", "DynamicBags", "DynamicChat", "DynamicMail", "DynamicVault", "DynamicDialogue" }) do
                 local c = clReg[k]
                 if type(c) == "table" then
                     local entries = c.entries or {}
@@ -8653,6 +8655,19 @@ function addonTable.CreateMainConfigUI()
             openModule = "DynamicVault",
             items = {
                 { badge = "NEW",      title = "v2.5.0 Release: Account-Wide Great Vault Matrix, Raid Lockouts & Bountiful Delves Scanner", desc = "Launched DynamicVault (/dv, /dynamicvault) as the 10th integrated module with an automatic flush-width Great Vault top dock (zero minimap buttons, EllesmereUI/ElvUI Auto-Match skinning), Raid/M+/Delves 3-slot Vault progress + Next-Slot calculator, per-character Raid Boss Lockouts (LFR/N/H/M), live Today's Bountiful Delves scanner, Restored Coffer Keys / Shards / Catalyst / Seasonal Crest weekly cap telemetry, Account Gold & Key totals, auto-resetting Weekly Checklists, and an optional /dv overlay." },
+            },
+        },
+        {
+            key = "dialogue",
+            tabLabel = "DynamicDialogue",
+            ver = DS_LIVE_VER_TAG,
+            date = "20/11/2026 (Retail 12.1.5)",
+            title = "DynamicDialogue " .. DS_LIVE_VER_TAG,
+            subtitle = "Obsidian Quest & Gossip Reader with 1-9 Hotkeys & Reward Cards (/dd)",
+            icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_dialogue.tga",
+            openModule = "DynamicDialogue",
+            items = {
+                { badge = "NEW",      title = "v2.6.0 Release: Obsidian Quest & Gossip Reader, Hotkeys & Zero-Taint Auto-Yield", desc = "Launched DynamicDialogue (/dd, /ddlg) as the 11th integrated module with a high-contrast Obsidian Quest & Gossip reader, 1-9 option hotkeys, Space accept/continue/complete, interactive reward choice cards with hover tooltips, Shift-bypass to native Blizzard frames, draggable positioning, live Preview mode, and zero-taint dynamic yielding for DialogueUI, Immersion, Storyline, EllesmereUI QoL, and unknown Blizzard frame owners." },
             },
         },
     }

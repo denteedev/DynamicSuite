@@ -1,0 +1,13 @@
+## Interface: 120105
+## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFDialogue|r
+## Notes: Obsidian Quest & Gossip Reader with 1-9 Hotkeys, Space Accept/Complete & Reward Cards (/dd).
+## Author: Dentee-Frostmourne
+## Version: 2.6.0
+## SavedVariables: DynamicDialogueDB
+## OptionalDeps: DynamicSuite
+## IconTexture: Interface\AddOns\DynamicDialogue\icon.tga
+## AddonCompartmentFunc: DynamicDialogue_OnAddonCompartmentClick
+## Category: DynamicSuite
+## Category-enUS: DynamicSuite
+
+DynamicDialogue.lua

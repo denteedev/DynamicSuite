@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.5.0"
+    local fb = fallback or "2.6.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -208,7 +208,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.5.0"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.0"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.5.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -626,10 +626,16 @@ local DEFAULT_CUSTOM_SECONDARY_ORDER = { "HASTE", "MASTERY", "CRIT", "VERS" }
 local PULL_TIMER_PRESETS = { 3, 5, 7, 10, 15, 20 }
 
 -- ============================================================================
--- Conflict Registry for DynamicPrep
+-- Conflict Registry for DynamicPrep (1:1 parity with DynamicSuite_Core.lua)
 -- ============================================================================
-local DIRECT_CONFLICTS  = { "ClickableRaidBuffs", "EnhanceQoL" }
-local PARTIAL_CONFLICTS = { "DialogueUI", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "Leatrix_Plus", "ElvUI", "WindTools" }
+local DIRECT_CONFLICTS  = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" }
+local PARTIAL_CONFLICTS = {
+    "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts",
+    "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL",
+    "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
+    "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
+    "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
+}
 
 Suite.CONFLICT_REGISTRY = Suite.CONFLICT_REGISTRY or {}
 Suite.CONFLICT_REGISTRY.DynamicPrep = {
@@ -5486,7 +5492,8 @@ function DynamicPrep:ScanActiveConflicts()
     end
     for _, addonName in ipairs(PARTIAL_CONFLICTS) do
         local isConflict = false
-        if addonName == "ElvUI" or addonName == "Leatrix_Plus" then
+        if addonName == "ElvUI" or addonName == "Leatrix_Plus" or addonName == "EllesmereUI"
+            or addonName == "EllesmereUIQoL" or addonName == "EllesmereUI_QoL" or addonName == "EnhanceQoL" then
             if _G.DynamicSuite and type(_G.DynamicSuite.InspectSmartSubModuleConflict) == "function" then
                 local ok, subConflict = pcall(_G.DynamicSuite.InspectSmartSubModuleConflict, "DynamicPrep", addonName)
                 if ok and subConflict == true then
