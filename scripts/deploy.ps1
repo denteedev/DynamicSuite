@@ -378,13 +378,19 @@ foreach ($luaCheck in $allLuaCheckFiles) {
         throw "$($luaCheck.Name) still contains forbidden legacy StaticPopup token DYNAMICSUITE_MARKER_CONFLICT_RELOAD"
     }
 }
-foreach ($modalTok in @("ShowMarkerConflictReloadModal", "DynamicSuiteMarkerConflictModal", "0.043, 0.051, 0.071, 0.96", "0.976, 0.451, 0.086")) {
+foreach ($modalTok in @("ShowMarkerConflictReloadModal", "DynamicSuiteMarkerConflictModal", "0.043, 0.051, 0.071, 0.96")) {
     if ($suiteCoreText.IndexOf($modalTok, [System.StringComparison]::Ordinal) -lt 0) {
         throw "DynamicSuite_Core.lua missing custom dark-obsidian coexistence modal token: $modalTok"
     }
     if ($markerLuaText.IndexOf($modalTok, [System.StringComparison]::Ordinal) -lt 0) {
         throw "DynamicMarker.lua missing custom dark-obsidian coexistence modal token: $modalTok"
     }
+}
+if ($suiteCoreText.IndexOf("GetCoreAccentRGB", [System.StringComparison]::Ordinal) -lt 0) {
+    throw "DynamicSuite_Core.lua coexistence modals must use live Suite Accent helper GetCoreAccentRGB."
+}
+if ($markerLuaText.IndexOf("DM:GetAccentColor", [System.StringComparison]::Ordinal) -lt 0) {
+    throw "DynamicMarker.lua coexistence modals must use live Suite Accent helper DM:GetAccentColor."
 }
 if ($suiteCoreText -notmatch '(?s)(local function EnforceStandaloneDynamicMarkerExclusion\(.*?\r?\nend(?=\r?\n))') {
     throw "DynamicSuite_Core.lua missing complete EnforceStandaloneDynamicMarkerExclusion block."

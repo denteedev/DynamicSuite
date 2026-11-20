@@ -13,7 +13,7 @@
 
 **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
-**DynamicMarker** (`/dm`, `/fm`) is a fast Mythic+ and Raid utility addon for instant target marking, cursor-placed world flares, floating icon and flare bars, and smart focus/interrupt macros across all 13 classes. Use it standalone or as part of the full 8-module **[DynamicSuite](https://www.curseforge.com/wow/addons/dynamicsuite)** bundle.
+**DynamicMarker** (`/dm`, `/fm`) is a fast Mythic+ and Raid utility addon for instant target marking, cursor-placed world flares, floating icon and flare bars, and smart focus/interrupt macros across all 13 classes. Use it standalone or as part of the full 11-module **[DynamicSuite](https://www.curseforge.com/wow/addons/dynamicsuite)** bundle.
 
 ---
 
@@ -69,7 +69,7 @@ Type `/dm hud` (or click **Edit Mode (HUDs)** in the sidebar) to position your f
 
 ## Part of DynamicSuite
 
-Want 7 more lightweight QoL and performance modules in one unified window? Check out **[DynamicSuite on CurseForge](https://www.curseforge.com/wow/addons/dynamicsuite)** (https://www.curseforge.com/wow/addons/dynamicsuite), which includes DynamicLoad, DynamicPrep, DynamicMarker, DynamicZoom, DynamicFPS, DynamicGroup, DynamicBags, and DynamicChat.
+Want 10 more lightweight QoL and performance modules in one unified window? Check out **[DynamicSuite on CurseForge](https://www.curseforge.com/wow/addons/dynamicsuite)** (https://www.curseforge.com/wow/addons/dynamicsuite), which includes DynamicLoad, DynamicPrep, DynamicMarker, DynamicZoom, DynamicFPS, DynamicGroup, DynamicBags, DynamicChat, DynamicVault, DynamicDialogue, and DynamicMail.
 
 * **Automatic Coexistence:** If you install DynamicSuite later, DynamicSuite automatically disables standalone DynamicMarker and prompts a clean UI reload so you never lose settings or see duplicate bars.
 

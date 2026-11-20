@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicGroup", VERSION, _G.DynamicGroup) then
     return
 end
@@ -4200,8 +4200,10 @@ local function SetPortalTileActiveBorder(tile, isActive, ar, ag, ab)
     if not tile or not tile.activeEdges then return end
     for _, edge in ipairs(tile.activeEdges) do
         if isActive then
-            -- Blaze Orange #F97316 highlight for active filtered dungeons
-            edge:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+            if type(ar) ~= "number" then
+                ar, ag, ab = GetSuiteAccent()
+            end
+            edge:SetColorTexture(ar, ag, ab, 1.0)
             edge:Show()
         else
             edge:Hide()
@@ -4250,7 +4252,7 @@ local function PopulateDungeonTileTooltip(tile)
 
     _G.GameTooltip:AddDoubleLine(
         "LFG Dungeon Filter:",
-        isFiltered and "|cFFF97316Filtered (Shown)|r" or "|cFF94A3B8Unfiltered|r",
+        isFiltered and ("|c" .. accHex .. "Filtered (Shown)|r") or "|cFF94A3B8Unfiltered|r",
         0.64, 0.70, 0.78,
         1, 1, 1
     )
@@ -4259,7 +4261,7 @@ local function PopulateDungeonTileTooltip(tile)
     _G.GameTooltip:AddLine("|cFF22C55ELeft-Click:|r |cFFE2E8F0Toggle LFG filter for this dungeon.|r", 0.886, 0.910, 0.941)
     _G.GameTooltip:AddLine("|c" .. accHex .. "Shift + Left-Click:|r |cFFE2E8F0Filter exclusively to this dungeon.|r", 0.886, 0.910, 0.941)
     if slot.spellKnown then
-        _G.GameTooltip:AddLine("|cFFF97316Right-Click:|r |cFFE2E8F0Cast Dungeon Teleport.|r", 0.886, 0.910, 0.941)
+        _G.GameTooltip:AddLine("|c" .. accHex .. "Right-Click:|r |cFFE2E8F0Cast Dungeon Teleport.|r", 0.886, 0.910, 0.941)
     else
         _G.GameTooltip:AddLine("|cFF64748BRight-Click:|r |cFF94A3B8Not learned yet (complete +10 in time).|r", 0.886, 0.910, 0.941)
     end
@@ -4360,8 +4362,9 @@ function DynamicGroup:EnsurePortalBar()
 
                 _G.GameTooltip:AddLine(" ")
                 _G.GameTooltip:AddLine("|cFF22C55ELeft-Click:|r |cFFE2E8F0Filter Premade Groups to your keystone dungeon.|r", 0.886, 0.910, 0.941, true)
+                local _, _, _, accHex = GetSuiteAccent()
                 if kSpellKnown and kSpellID then
-                    _G.GameTooltip:AddLine("|cFFF97316Right-Click:|r |cFFE2E8F0Cast Dungeon Teleport.|r", 0.886, 0.910, 0.941, true)
+                    _G.GameTooltip:AddLine("|c" .. accHex .. "Right-Click:|r |cFFE2E8F0Cast Dungeon Teleport.|r", 0.886, 0.910, 0.941, true)
                 else
                     _G.GameTooltip:AddLine("|cFF64748BRight-Click:|r |cFF94A3B8Cast Dungeon Teleport (not learned yet).|r", 0.886, 0.910, 0.941, true)
                 end
@@ -4592,7 +4595,7 @@ function DynamicGroup:UpdatePortalBarVisuals()
             pbar.keyBtn.label:SetText("|c" .. accHex .. "Key:|r |cFFFFFFFF+" .. tostring(kLvl) .. " " .. tostring(kCode) .. "|r")
             local isKeyFiltered = (db.filteredDungeons[kCode] == true)
             if isKeyFiltered then
-                pbar.keyBtn:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+                pbar.keyBtn:SetBackdropBorderColor(ar, ag, ab, 1.0)
             else
                 pbar.keyBtn:SetBackdropBorderColor(ar, ag, ab, 0.65)
             end
@@ -4785,6 +4788,26 @@ local function GetSharedAlertToastPosAndScale()
     return pos, scale
 end
 
+local function GetResolvedSharedToastStyle()
+    if _G.DynamicSuite and type(_G.DynamicSuite.GetSharedToastStyle) == "function" then
+        local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle)
+        if ok and type(st) == "table" then return st end
+    end
+    local pos, scale = GetSharedAlertToastPosAndScale()
+    local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
+    local dl = type(_G.DynamicLoadDB) == "table" and _G.DynamicLoadDB or nil
+    local ar, ag, ab = GetSuiteAccent()
+    return {
+        scale = scale,
+        opacity = (g and (g.toastOpacity or g.toastAlpha)) or (dl and (dl.toastOpacity or dl.toastAlpha)) or 0.96,
+        borderStyle = tostring((g and g.toastBorderStyle) or (dl and dl.toastBorderStyle) or "ACCENT"):upper(),
+        duration = tonumber((g and g.toastDuration) or (dl and dl.toastDuration)) or 8,
+        pos = pos,
+        bgR = 0.035, bgG = 0.039, bgB = 0.051,
+        ar = ar, ag = ag, ab = ab,
+    }
+end
+
 function DynamicGroup:ApplyTeleportToastPosition()
     local toast = self.teleportToast
     if not toast then return end
@@ -4792,30 +4815,40 @@ function DynamicGroup:ApplyTeleportToastPosition()
         self.pendingTeleportToastUpdate = true
         return
     end
-    local pos, scale = GetSharedAlertToastPosAndScale()
+    local st = GetResolvedSharedToastStyle()
     if toast.SetScale then
-        toast:SetScale(scale)
+        toast:SetScale(st.scale or 1.0)
     end
-    local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
-    local alpha = (g and (g.toastOpacity or g.toastAlpha)) or (_G.DynamicLoadDB and (_G.DynamicLoadDB.toastOpacity or _G.DynamicLoadDB.toastAlpha)) or 0.96
-    local bStyle = (g and g.toastBorderStyle) or (_G.DynamicLoadDB and _G.DynamicLoadDB.toastBorderStyle) or "ACCENT"
-    toast:SetBackdropColor(0.043, 0.051, 0.071, alpha)
-    if bStyle == "NONE" then
+    toast:SetBackdropColor(st.bgR or 0.035, st.bgG or 0.039, st.bgB or 0.051, st.opacity or 0.96)
+    local isFull = (self.activeTeleportToastData and (self.activeTeleportToastData.numMembers or 0) >= 5)
+    local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
+    if bStyle == "NONE" or bStyle == "BORDERLESS" then
         toast:SetBackdropBorderColor(0, 0, 0, 0)
-    elseif bStyle == "SUBTLE" then
+    elseif (bStyle == "SUBTLE" or bStyle == "DARK") and not isFull then
         toast:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+    elseif isFull then
+        toast:SetBackdropBorderColor(0.133, 0.773, 0.369, 0.95)
     else
-        local ar, ag, ab = GetSuiteAccent()
-        toast:SetBackdropBorderColor(ar, ag, ab, 0.85)
+        toast:SetBackdropBorderColor(st.ar, st.ag, st.ab, 0.92)
     end
-    toast:ClearAllPoints()
-    local dlToast = _G.DynamicLoadToastFrame
-    if dlToast and dlToast:IsShown() and not dlToast._dsStackedUnderGroup then
-        toast._dsStackedUnderLoad = true
-        toast:SetPoint("TOP", dlToast, "BOTTOM", 0, -8)
+    if toast.iconBorder then
+        if isFull then
+            toast.iconBorder:SetBackdropBorderColor(0.133, 0.773, 0.369, 0.95)
+        else
+            toast.iconBorder:SetBackdropBorderColor(st.ar, st.ag, st.ab, 0.85)
+        end
+    end
+    if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+        pcall(_G.DynamicSuite.RestackAllToasts)
     else
-        toast._dsStackedUnderLoad = false
-        toast:SetPoint(pos.point or "TOP", UIParent, pos.relPoint or pos.point or "TOP", tonumber(pos.x) or 0, tonumber(pos.y) or -140)
+        local pos = st.pos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
+        toast:ClearAllPoints()
+        local dlToast = _G.DynamicLoadToastFrame
+        if dlToast and dlToast:IsShown() then
+            toast:SetPoint("TOP", dlToast, "BOTTOM", 0, -8)
+        else
+            toast:SetPoint(pos.point or "TOP", UIParent, pos.relPoint or pos.point or "TOP", tonumber(pos.x) or 0, tonumber(pos.y) or -140)
+        end
     end
 end
 
@@ -4873,11 +4906,15 @@ function DynamicGroup:EnsureTeleportToast()
 
     toast:HookScript("OnHide", function(selfToast)
         selfToast._dsStackedUnderLoad = false
-        local dlToast = _G.DynamicLoadToastFrame
-        if dlToast and dlToast:IsShown() and dlToast._dsStackedUnderGroup then
-            dlToast._dsStackedUnderGroup = false
-            if _G.DynamicSuite and type(_G.DynamicSuite.ApplyToastVisuals) == "function" then
-                pcall(_G.DynamicSuite.ApplyToastVisuals)
+        if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+            pcall(_G.DynamicSuite.RestackAllToasts)
+        else
+            local dlToast = _G.DynamicLoadToastFrame
+            if dlToast and dlToast:IsShown() and dlToast._dsStackedUnderGroup then
+                dlToast._dsStackedUnderGroup = false
+                if _G.DynamicSuite and type(_G.DynamicSuite.ApplyToastVisuals) == "function" then
+                    pcall(_G.DynamicSuite.ApplyToastVisuals)
+                end
             end
         end
     end)
@@ -5100,9 +5137,10 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
                 tpBtn:SetBackdropBorderColor(0.133, 0.773, 0.369, 0.95)
                 tpBtn.label:SetTextColor(0.204, 0.827, 0.600, 1)
             else
-                tpBtn:SetBackdropColor(0.20, 0.10, 0.03, 0.96)
-                tpBtn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
-                tpBtn.label:SetTextColor(1.0, 0.72, 0.36, 1)
+                local tr, tg, tb = GetSuiteAccent()
+                tpBtn:SetBackdropColor(tr * 0.28, tg * 0.28, tb * 0.28, 0.96)
+                tpBtn:SetBackdropBorderColor(tr, tg, tb, 0.95)
+                tpBtn.label:SetTextColor(1.0, 1.0, 1.0, 1)
             end
         else
             tpBtn.label:SetText("No Portal")
@@ -5118,6 +5156,7 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
     elseif not toast:IsShown() then
         toast:Show()
     end
+    self:ApplyTeleportToastPosition()
     self.pendingTeleportToastUpdate = false
 end
 
@@ -5654,9 +5693,10 @@ function DynamicGroup:InstallLFGHooks()
                 end
 
                 if meta.numMembers and meta.numMembers > 0 then
+                    local _, _, _, accHex = GetSuiteAccent()
                     tooltip:AddDoubleLine(
                         "Your Class in Group:",
-                        meta.hasPlayerClass and "|cFFF97316Yes|r" or "|cFF34D399No|r",
+                        meta.hasPlayerClass and ("|c" .. accHex .. "Yes|r") or "|cFF34D399No|r",
                         0.64, 0.70, 0.78,
                         1, 1, 1
                     )
@@ -7300,7 +7340,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 3.3c: Dungeon Joined & Group Full Teleport Toast
     local c3_tpToast = CreateCardRow(sec3a, 94,
         "Dungeon Joined & Group Full Teleport Toast",
-        "Shows a quick-teleport toast when your Premade Group application is accepted, plays a chime as members join, and alerts you once the group reaches 5/5."
+        "Shows a quick-teleport alert when your Premade Group application is accepted and chimes as players join. Appearance and position follow Suite Studio's Shared Alert Toast settings."
     )
     local tpToastSwitch = AttachSegmentedSwitchToCard(c3_tpToast,
         function() return EnsureDB().showGroupTeleportToast ~= false end,
@@ -7326,20 +7366,23 @@ local function RenderGroupEmbedded(arg1, arg2)
             edgeFile = "Interface\\Buttons\\WHITE8x8",
             edgeSize = 1,
         })
+        local ar0, ag0, ab0 = GetSuiteAccent()
         btn:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- #0B0D12
-        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85) -- #F97316
+        btn:SetBackdropBorderColor(ar0, ag0, ab0, 0.85)
         btn.label = btn:CreateFontString(nil, "OVERLAY")
         SetSafeFont(btn.label, 11, "")
         btn.label:SetPoint("CENTER", 0, 0)
         btn.label:SetText(btnLabel)
         btn.label:SetTextColor(0.976, 0.984, 1.00, 1)
         btn:SetScript("OnEnter", function(s)
-            s:SetBackdropColor(0.16, 0.08, 0.02, 0.98)
-            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+            local ar, ag, ab = GetSuiteAccent()
+            s:SetBackdropColor(ar * 0.22, ag * 0.22, ab * 0.22, 0.98)
+            s:SetBackdropBorderColor(ar, ag, ab, 1.0)
         end)
         btn:SetScript("OnLeave", function(s)
+            local ar, ag, ab = GetSuiteAccent()
             s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
-            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85)
+            s:SetBackdropBorderColor(ar, ag, ab, 0.85)
         end)
         btn:SetScript("OnClick", onClickFn)
         return btn
@@ -7351,21 +7394,6 @@ local function RenderGroupEmbedded(arg1, arg2)
     local testFullBtn = CreateToastPreviewBtn("Test Full (5/5)", testJoinBtn, 8, function()
         DynamicGroup:TriggerTeleportToastPreview("FULL")
     end, 104)
-    local tpEditHudBtn
-    if _G.DynamicSuite and type(_G.DynamicSuite.CreateEditHudButton) == "function" then
-        tpEditHudBtn = _G.DynamicSuite.CreateEditHudButton(c3_tpToast, "TOAST")
-        tpEditHudBtn:SetPoint("LEFT", testFullBtn, "RIGHT", 8, 0)
-    else
-        CreateToastPreviewBtn("Edit HUD", testFullBtn, 8, function()
-            if _G.DynamicSuite and type(_G.DynamicSuite.IsHudEditModeActive) == "function" and _G.DynamicSuite.IsHudEditModeActive() then
-                if type(_G.DynamicSuite.ExitHudEditMode) == "function" then
-                    _G.DynamicSuite.ExitHudEditMode(false)
-                end
-            elseif _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
-                _G.DynamicSuite.EnterHudEditMode("TOAST")
-            end
-        end, 86)
-    end
 
     sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_tpToast
     page3.orderedCards[#page3.orderedCards + 1] = c3_tpToast
@@ -7913,8 +7941,9 @@ local function RegisterWithDynamicSuite()
 
     DynamicGroup.CHANGELOG = {
         version = DynamicGroup.version or VERSION,
-        date = "16/11/2026",
+        date = "21/11/2026",
         entries = {
+            { type = "UI",      text = "Release v2.7.0 - Shared Teleport Toast Inheritance & Live Suite Accent Portal Borders (21/11/2026): Removed the stray Edit HUD button from the Teleport Toast settings card (leaving a clean Off/Enabled toggle plus Test Join and Test Full preview buttons), connected DynamicGroupTeleportToast to DynamicSuite's shared Alert Toast appearance, sound, Right-Click dismissal, and vertical toast stack, and replaced remaining Blaze Orange portal tile/keystone borders and tooltip prefixes with the live Suite Accent." },
             { type = "FIX",     text = "LFG Application Status Overlays, Obsidian CancelButton & /dg testapply Cycle (16/11/2026): reskinned entry.CancelButton out of combat into a 16x16 Dark-Obsidian (#0B0D12) / Crimson-Bordered (#F87171) 'x' pill anchored to TOPRIGHT (-6, -3) with ov.topPill anchored cleanly to its left (-4, 0) so the entire 5-role-icon Enumerate row stays 100% untouched; preserved Blizzard's dual-anchor Enumerate layout via _dgOrigPoints; suppressed Blizzard's inline PendingLabel and ResultLabel overlays and routed live pending timers (Warm Amber-Gold) and terminal statuses (Crimson Canceled/Declined/Expired/Timed Out + 0.35 row dim) into the top-right pill; updated /dg testapply to cycle Pending -> Canceled -> Off." },
             { type = "FEATURE", text = "Declined Premade LFG Group Dimming, Crimson Badge & Search Freshness Tooltip (16/11/2026): records declined and invite-declined searchResultIDs for the current session (cleared on new search or category change), dims declined Premade Group rows to 0.35 alpha with a compact crimson 'Declined' tag inside the top-right pill so you never accidentally re-apply, and tracks LFGListSearchPanel_DoSearch timestamps to show 'Last Refreshed: Xs ago' inside the LFG Mini-Bar filter and region tooltips." },
             { type = "FEATURE", text = "Portal Deck Owned Keystone Telemetry & Right-Click Teleport (15/11/2026): Upgraded the Portal Deck's Owned Keystone pill (pbar.keyBtn) to support secure Right-Click Dungeon Teleport casting out of combat with a synced cooldown swipe overlay, plus Season Best (timed/over-time level and score) and Dungeon Teleport readiness/cooldown lines in the tooltip while preserving Left-Click exclusive dungeon filtering." },

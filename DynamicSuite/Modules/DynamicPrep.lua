@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -484,6 +484,9 @@ local function ApplyPrepThemeToUI()
     if DynamicPrep.RefreshCombatBuffAlert then
         DynamicPrep:RefreshCombatBuffAlert()
     end
+    if DynamicPrep.ApplyTalentReminderToastVisuals then
+        DynamicPrep:ApplyTalentReminderToastVisuals()
+    end
     if DynamicPrep.workspaceFrame and DynamicPrep.workspaceFrame:IsShown() then
         DynamicPrep:RefreshWorkspaceView()
     end
@@ -654,8 +657,9 @@ Suite.CONFLICT_REGISTRY.DynamicPrep = {
 -- ============================================================================
 DynamicPrep.CHANGELOG = {
     version = VERSION,
-    date = "16/11/2026",
+    date = "21/11/2026",
     entries = {
+        { type = "UI",      text = "Release v2.7.0 - Unified Talent Reminder Toast, Shared HUD Headers & Uniform Switches (21/11/2026): Updated the Talent Loadout Reminder Toast to inherit DynamicSuite's shared Toast Scale, Opacity, Border Style, Auto-Fade Duration, Alert Sound, and vertical toast stacking with a clean Off/Enabled toggle + [Test Toast] preview button; standardised binary toggle switches to 156x26px (68px Off / 84px Enabled); clamped section header titles and subtitles beside Edit HUD and Reset Order buttons; and replaced legacy Blaze Orange chat alerts with live Suite Accent." },
         { type = "UI",      text = "Blizzard Desktop Window Manager Relocated to Suite Studio (16/11/2026): moved the Blizzard Window Quality of Life controls out of DynamicPrep Tab 3 into their dedicated home in Suite Studio -> Desktop Windows & Menus (/ds windows) powered by the Core MS-Windows-style 32-panel Desktop Window Manager, keeping DynamicPrep Tab 3 focused purely on World, Instance & Survival Automation while preserving backward-compatible bridge stubs and automatic position/scale migration." },
         { type = "UI",      text = "3-Way Interactive Obsidian Scrollbar & Central Popover Auto-Close (16/11/2026): upgraded DynamicPrep's workspace and dropdown scrollbars to full 3-way interaction (Mousewheel, Left-Click & Drag on the thumb with Suite Accent hover/drag highlight and release guard, and Left-Click on the track to jump to the cursor position), added OnHide drag cleanup to Sleek Precision Track Sliders, and registered DynamicPrep's dropdown and top-bar popovers with DynamicSuite's central popover auto-close registry." },
         { type = "FIX",     text = "Smooth Cursor-Anchored Blizzard Window Header Dragging (16/11/2026): updated BeginBlizzFrameDrag() to set state.isDragging = true before Raise()/StopMovingOrSizing() and track exact cursor-to-window-center grab offsets (grabOffsetX, grabOffsetY) via overlay OnUpdate, neutralised Blizzard's native TitleContainer drag scripts out of combat, and prevented AttachFrameHooks() OnDragStart from calling StopMovingOrSizing() during an active header drag so Left-Drag on any window header moves as smoothly as Alt + Left-Drag with zero cursor jump." },
@@ -752,7 +756,7 @@ local DEFAULTS = {
     oneClickCatalyst = true,
     autoAcceptSummon = false,
     talentReminderEnabled = true,
-    talentReminderToastEnabled = false,
+    talentReminderToastEnabled = true,
     talentPreferredBySpec = {},
     talentBossMap = {},
     talentDungeonMap = {},
@@ -1797,7 +1801,7 @@ end
 
 function DynamicPrep:TogglePaperdollAuditPreview()
     if (InCombatLockdown and InCombatLockdown()) or _IsInActiveKeyOrCombat() then
-        print("|cFFF97316DynamicPrep:|r Cannot toggle /dprep testaudit preview during combat or an active Mythic+ run.")
+        print(string.format("|cFF%sDynamicPrep:|r Cannot toggle /dprep testaudit preview during combat or an active Mythic+ run.", GetAccentHex()))
         return
     end
     self._simPaperdollAudit = not (self._simPaperdollAudit == true)
@@ -1806,11 +1810,11 @@ function DynamicPrep:TogglePaperdollAuditPreview()
             pcall(ToggleCharacter, "PaperDollFrame")
         end
         self:UpdatePaperdollSlotHighlights()
-        print("|cFFF97316DynamicPrep:|r Paperdoll audit preview |cFFFBBF24ON|r (Head & Ring 1 highlighted; run /dprep testaudit again to clear).")
+        print(string.format("|cFF%sDynamicPrep:|r Paperdoll audit preview |cFFFBBF24ON|r (Head & Ring 1 highlighted; run /dprep testaudit again to clear).", GetAccentHex()))
     else
         self:ScanEquippedGearEnchantsAndGems()
         self:UpdatePaperdollSlotHighlights()
-        print("|cFFF97316DynamicPrep:|r Paperdoll audit preview cleared.")
+        print(string.format("|cFF%sDynamicPrep:|r Paperdoll audit preview cleared.", GetAccentHex()))
     end
 end
 end
@@ -3197,7 +3201,7 @@ function DynamicPrep:CreatePrepBar()
                 DynamicPrep:HideBarPopovers()
                 if button == "RightButton" then
                     if InCombatLockdown and InCombatLockdown() then
-                        print("|cFFF97316DynamicPrep:|r Cannot toggle Group Finder while in combat.")
+                        print(string.format("|cFF%sDynamicPrep:|r Cannot toggle Group Finder while in combat.", GetAccentHex()))
                     elseif type(PVEFrame_ToggleFrame) == "function" then
                         pcall(PVEFrame_ToggleFrame, "GroupFinderFrame", LFDParentFrame)
                     elseif type(ToggleLFDParentFrame) == "function" then
@@ -3249,7 +3253,7 @@ function DynamicPrep:CreatePrepBar()
             elseif segKey == "dur" then
                 DynamicPrep:HideBarPopovers()
                 if InCombatLockdown and InCombatLockdown() then
-                    print("|cFFF97316DynamicPrep:|r Cannot open Character Frame while in combat.")
+                    print(string.format("|cFF%sDynamicPrep:|r Cannot open Character Frame while in combat.", GetAccentHex()))
                 elseif type(ToggleCharacter) == "function" then
                     pcall(ToggleCharacter, "PaperDollFrame")
                 end
@@ -6442,17 +6446,26 @@ local function CreateSegmentedPills(parent, totalWidth, options, getValue, setVa
     function container:LayoutPills()
         local x = 0
         for idx, p in ipairs(self.pills) do
-            local strW = (p.label.GetUnboundedStringWidth and p.label:GetUnboundedStringWidth()) or p.label:GetStringWidth() or 0
-            if strW < 18 then
-                strW = (#tostring(p.label:GetText() or "") * 6.5)
+            local isBinOff = (count == 2 and p.optLabel == "Off")
+            local isBinOn  = (count == 2 and p.optLabel == "Enabled")
+            local btnW
+            if isBinOff then
+                btnW = 68
+            elseif isBinOn then
+                btnW = 84
+            else
+                local strW = (p.label.GetUnboundedStringWidth and p.label:GetUnboundedStringWidth()) or p.label:GetStringWidth() or 0
+                if strW < 18 then
+                    strW = (#tostring(p.label:GetText() or "") * 6.5)
+                end
+                btnW = math.max(p.minW or 58, math.ceil(strW + 20))
             end
-            local btnW = math.max(p.minW or 58, math.ceil(strW + 20))
             p:SetSize(btnW, 26)
             p:ClearAllPoints()
             p:SetPoint("LEFT", self, "LEFT", x, 0)
             x = x + btnW + (idx < #self.pills and gap or 0)
         end
-        self:SetSize(math.max(baseW, x), 26)
+        self:SetSize(math.max(count == 2 and (self.pills[1] and self.pills[1].optLabel == "Off" and 156 or baseW) or baseW, x), 26)
     end
 
     function container:RefreshValue()
@@ -7241,15 +7254,16 @@ local function BuildRaidBuffsTab(self, ws)
         "1-click reminders, Symbiotic tank-link detection, exact Food Buff stat parser, and In-Combat Brez / MotW tracker.",
         14
     )
-    cbHdr.title:SetPoint("RIGHT", cBuffs, "RIGHT", -108, 0)
-    if cbHdr.subtitle then
-        cbHdr.subtitle:SetPoint("RIGHT", cBuffs, "RIGHT", -108, 0)
-    end
     local cbEditHudBtn = self:CreateEditHudButton(cBuffs, "prepBuffs", function()
         self:SetEditMode(true)
     end)
     cbEditHudBtn:SetPoint("TOPRIGHT", cBuffs, "TOPRIGHT", -14, -7)
     ws.raidBuffsEditHudBtn = cbEditHudBtn
+    cbHdr.title:SetPoint("RIGHT", cbEditHudBtn, "LEFT", -10, 0)
+    cbHdr.title:SetWordWrap(false)
+    if cbHdr.subtitle then
+        cbHdr.subtitle:SetPoint("RIGHT", cbEditHudBtn, "LEFT", -10, 0)
+    end
 
     -- Live 3-Slot Readiness Status Strip (Raid Buff / Brez | Symbiotic Partner Link | Exact Food Buff Stat)
     local readinessStrip = CreateFrame("Frame", nil, cBuffs)
@@ -7682,10 +7696,6 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             "Click any capsule to toggle it on/off, drag to reorder, and customise your Top Info Bar appearance.",
             14
         )
-        c1Hdr.title:SetPoint("RIGHT", card1, "RIGHT", -214, 0)
-        if c1Hdr.subtitle then
-            c1Hdr.subtitle:SetPoint("RIGHT", card1, "RIGHT", -214, 0)
-        end
 
         local c1EditHudBtn = self:CreateEditHudButton(card1, "PREP", function()
             self:SetEditMode(true)
@@ -7707,6 +7717,12 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             self:RefreshBar()
             self:RefreshWorkspaceView()
         end)
+
+        c1Hdr.title:SetPoint("RIGHT", resetSegOrderBtn, "LEFT", -10, 0)
+        c1Hdr.title:SetWordWrap(false)
+        if c1Hdr.subtitle then
+            c1Hdr.subtitle:SetPoint("RIGHT", resetSegOrderBtn, "LEFT", -10, 0)
+        end
 
         -- Dynamic 3-column Grid of Interactive Pill Cards (Tactile Drag-and-Drop)
         local numPillRows = math.max(1, math.ceil(#DEFAULT_SEGMENT_ORDER / 3))
@@ -8313,19 +8329,57 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         local rTalentReminder = CreateSpaciousRow(
             cQoL, -114,
             "Zone-Aware Talent Loadout Reminder",
-            "Shows a 1-click Obsidian swap toast when entering a Delve, Dungeon, Raid, or PvP instance (or on Ready Check) with a different saved talent loadout active.",
-            200
+            "Shows a shared 1-click alert toast when entering a Delve, Dungeon, Raid, or PvP instance with a different saved loadout active. Toast style and position follow Suite Studio.",
+            252
         )
+        local trRightWrap = CreateFrame("Frame", nil, rTalentReminder)
+        trRightWrap:SetSize(252, 26)
+
+        local testReminderBtn = CreateFrame("Button", nil, trRightWrap, "BackdropTemplate")
+        testReminderBtn:SetSize(88, 26)
+        testReminderBtn:SetPoint("LEFT", trRightWrap, "LEFT", 0, 0)
+        testReminderBtn.txt = CreateText(testReminderBtn, "OVERLAY", "GameFontHighlightSmall")
+        testReminderBtn.txt:SetPoint("CENTER")
+        testReminderBtn.txt:SetText("Test Toast")
+        function testReminderBtn:RefreshValue()
+            local ar, ag, ab = GetActiveAccentRGB()
+            SetPixelBackdrop(self, { 0.043, 0.051, 0.071, 0.96 }, { ar, ag, ab, 0.85 }, 1)
+            self.txt:SetTextColor(0.976, 0.984, 1.0, 1.0)
+        end
+        testReminderBtn:SetScript("OnEnter", function(s)
+            local ar, ag, ab = GetActiveAccentRGB()
+            SetPixelBackdrop(s, { ar * 0.22, ag * 0.22, ab * 0.22, 0.98 }, { ar, ag, ab, 1.0 }, 1)
+        end)
+        testReminderBtn:SetScript("OnLeave", function(s)
+            s:RefreshValue()
+        end)
+        testReminderBtn:SetScript("OnClick", function()
+            local list = DynamicPrep:GetSortedTalentProfiles()
+            local sample = list[1] or { name = "Raid Build", group = "Raid" }
+            DynamicPrep:ShowTalentReminderToast(sample, sample.name, "Preview Reminder", true)
+        end)
+        testReminderBtn:RefreshValue()
+        table.insert(self.refreshWidgets, testReminderBtn)
+
         local pillsTalentReminder = CreateSegmentedPills(
-            rTalentReminder, 200,
+            trRightWrap, 156,
             {
                 { value = false, label = "Off" },
                 { value = true,  label = "Enabled" },
             },
-            function() return self.db.talentReminderEnabled ~= false end,
-            function(v) self.db.talentReminderEnabled = v end
+            function()
+                return self.db.talentReminderEnabled ~= false and self.db.talentReminderToastEnabled ~= false
+            end,
+            function(v)
+                self.db.talentReminderEnabled = (v == true)
+                self.db.talentReminderToastEnabled = (v == true)
+                if not v then
+                    self:HideTalentReminderToast()
+                end
+            end
         )
-        rTalentReminder:BindRightControl(pillsTalentReminder)
+        pillsTalentReminder:SetPoint("RIGHT", trRightWrap, "RIGHT", 0, 0)
+        rTalentReminder:BindRightControl(trRightWrap)
         table.insert(self.refreshWidgets, pillsTalentReminder)
 
         -- 1e. Preferred Talent Loadouts for Active Spec (Click zone chip to cycle saved loadouts)
@@ -11501,6 +11555,56 @@ function DynamicPrep:CyclePreferredTalentLoadout(zoneKey)
     self.db.talentPreferredBySpec[specID][zoneKey] = nextID
 end
 
+local function GetPrepSharedToastStyle()
+    if _G.DynamicSuite and type(_G.DynamicSuite.GetSharedToastStyle) == "function" then
+        local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle)
+        if ok and type(st) == "table" then return st end
+    end
+    local ar, ag, ab = GetActiveAccentRGB()
+    local g = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global) or {}
+    return {
+        scale = math.max(0.60, math.min(1.50, tonumber(g.toastScale) or 1.0)),
+        opacity = math.max(0.20, math.min(1.00, tonumber(g.toastOpacity or g.toastAlpha) or 0.96)),
+        borderStyle = tostring(g.toastBorderStyle or "ACCENT"):upper(),
+        duration = tonumber(g.toastDuration) or 8,
+        pos = g.toastPos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 },
+        bgR = 0.035, bgG = 0.039, bgB = 0.051,
+        ar = ar, ag = ag, ab = ab,
+    }
+end
+
+function DynamicPrep:ApplyTalentReminderToastVisuals()
+    local f = talentReminderToast
+    if not f then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    local st = GetPrepSharedToastStyle()
+    local ar, ag, ab = st.ar, st.ag, st.ab
+    local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
+
+    f:SetScale(st.scale or 1.0)
+    f:SetBackdropColor(st.bgR or 0.035, st.bgG or 0.039, st.bgB or 0.051, st.opacity or 0.96)
+    if bStyle == "NONE" or bStyle == "BORDERLESS" then
+        f:SetBackdropBorderColor(0, 0, 0, 0)
+    elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+        f:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+    else
+        f:SetBackdropBorderColor(ar, ag, ab, 0.92)
+    end
+    if f.iconBorder then
+        f.iconBorder:SetBackdropBorderColor(ar, ag, ab, 0.85)
+    end
+    if f.iconTex then
+        f.iconTex:SetVertexColor(ar, ag, ab, 1.0)
+    end
+    if f.swapBtn then
+        SetPixelBackdrop(f.swapBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+        f.swapBtn.txt:SetTextColor(1, 1, 1, 1)
+    end
+    if f:IsShown() and _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+        pcall(_G.DynamicSuite.RestackAllToasts)
+    end
+end
+
 function DynamicPrep:HideTalentReminderToast()
     if talentReminderToast then
         if talentReminderToast.animGroup then talentReminderToast.animGroup:Stop() end
@@ -11509,7 +11613,7 @@ function DynamicPrep:HideTalentReminderToast()
     end
 end
 
-function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel)
+function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel, isPreview)
     if InCombatLockdown and InCombatLockdown() then return end
     if not talentReminderToast then
         local f = CreateFrame("Button", "DynamicPrepTalentReminderToast", UIParent, "BackdropTemplate")
@@ -11605,10 +11709,14 @@ function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel)
             selfT:SetAlpha(1)
         end)
         f:SetScript("OnLeave", function(selfT)
-            local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
-            local dur = (g and g.toastDuration) or 8
-            if dur > 0 then
+            local stLeave = GetPrepSharedToastStyle()
+            if (stLeave.duration or 8) > 0 then
                 selfT.animGroup:Play()
+            end
+        end)
+        f:HookScript("OnHide", function()
+            if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+                pcall(_G.DynamicSuite.RestackAllToasts)
             end
         end)
 
@@ -11616,46 +11724,20 @@ function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel)
     end
 
     local f = talentReminderToast
-    local ar, ag, ab = GetActiveAccentRGB()
-    local g = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global) or {}
-    local toastScale = math.max(0.60, math.min(1.50, tonumber(g.toastScale) or 1.0))
-    local toastAlpha = math.max(0.20, math.min(1.00, tonumber(g.toastOpacity or g.toastAlpha) or 0.96))
-    local bStyle = tostring(g.toastBorderStyle or "ACCENT"):upper()
-    local dur = tonumber(g.toastDuration) or 8
+    local st = GetPrepSharedToastStyle()
+    local dur = tonumber(st.duration) or 8
 
-    f:SetScale(toastScale)
-    f:SetBackdropColor(0.035, 0.039, 0.051, toastAlpha)
-    if bStyle == "NONE" or bStyle == "BORDERLESS" then
-        f:SetBackdropBorderColor(0, 0, 0, 0)
-    elseif bStyle == "DARK" or bStyle == "SUBTLE" then
-        f:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
-    else
-        f:SetBackdropBorderColor(ar, ag, ab, 0.92)
-    end
-    f.iconBorder:SetBackdropBorderColor(ar, ag, ab, 0.85)
-    f.iconTex:SetVertexColor(ar, ag, ab, 1.0)
-    SetPixelBackdrop(f.swapBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 0.98 }, { ar, ag, ab, 0.95 }, 1)
-    f.swapBtn.txt:SetTextColor(1, 1, 1, 1)
+    self:ApplyTalentReminderToastVisuals()
     f.swapBtn:SetScript("OnEnter", function(s)
+        local curSt = GetPrepSharedToastStyle()
         f.animGroup:Pause()
         f:SetAlpha(1)
-        SetPixelBackdrop(s, { ar * 0.56, ag * 0.56, ab * 0.56, 1.00 }, { ar, ag, ab, 1.00 }, 1)
+        SetPixelBackdrop(s, { curSt.ar * 0.56, curSt.ag * 0.56, curSt.ab * 0.56, 1.00 }, { curSt.ar, curSt.ag, curSt.ab, 1.00 }, 1)
     end)
     f.swapBtn:SetScript("OnLeave", function(s)
-        SetPixelBackdrop(s, { ar * 0.42, ag * 0.42, ab * 0.42, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+        local curSt = GetPrepSharedToastStyle()
+        SetPixelBackdrop(s, { curSt.ar * 0.42, curSt.ag * 0.42, curSt.ab * 0.42, 0.98 }, { curSt.ar, curSt.ag, curSt.ab, 0.95 }, 1)
     end)
-
-    -- Stack cleanly 8px below DynamicLoadToastFrame when visible, otherwise mirror saved Suite Toast position
-    f:ClearAllPoints()
-    local dsToast = (_G.DynamicLoadToastFrame and _G.DynamicLoadToastFrame.IsShown and _G.DynamicLoadToastFrame:IsShown() and _G.DynamicLoadToastFrame)
-        or (_G.DynamicSuiteToastFrame and _G.DynamicSuiteToastFrame.IsShown and _G.DynamicSuiteToastFrame:IsShown() and _G.DynamicSuiteToastFrame)
-    if dsToast then
-        f:SetPoint("TOP", dsToast, "BOTTOM", 0, -8)
-    elseif type(g.toastPos) == "table" and g.toastPos.point then
-        f:SetPoint(g.toastPos.point, UIParent, g.toastPos.relPoint or g.toastPos.point, g.toastPos.x or 0, g.toastPos.y or -140)
-    else
-        f:SetPoint("TOP", UIParent, "TOP", 0, -140)
-    end
 
     local dispTarget = tostring(targetName or "Loadout")
     if type(targetID) == "table" and targetID.group and TALENT_GROUP_HEX[targetID.group] then
@@ -11669,6 +11751,12 @@ function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel)
 
     f.swapBtn:SetScript("OnClick", function(_, button)
         if button == "RightButton" then
+            f.animGroup:Stop()
+            f:Hide()
+            f:SetAlpha(1)
+            return
+        end
+        if isPreview then
             f.animGroup:Stop()
             f:Hide()
             f:SetAlpha(1)
@@ -11688,6 +11776,24 @@ function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel)
     f.animGroup:Stop()
     f:SetAlpha(1)
     f:Show()
+    if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+        pcall(_G.DynamicSuite.RestackAllToasts)
+    else
+        f:ClearAllPoints()
+        local dsToast = (_G.DynamicLoadToastFrame and _G.DynamicLoadToastFrame.IsShown and _G.DynamicLoadToastFrame:IsShown() and _G.DynamicLoadToastFrame)
+        if dsToast then
+            f:SetPoint("TOP", dsToast, "BOTTOM", 0, -8)
+        elseif type(st.pos) == "table" and st.pos.point then
+            f:SetPoint(st.pos.point, UIParent, st.pos.relPoint or st.pos.point, st.pos.x or 0, st.pos.y or -140)
+        else
+            f:SetPoint("TOP", UIParent, "TOP", 0, -140)
+        end
+    end
+    if not isPreview and _G.DynamicSuite and type(_G.DynamicSuite.PlaySharedToastSound) == "function" then
+        pcall(_G.DynamicSuite.PlaySharedToastSound)
+    elseif isPreview and _G.DynamicSuite and type(_G.DynamicSuite.PlaySharedToastSound) == "function" then
+        pcall(_G.DynamicSuite.PlaySharedToastSound)
+    end
     if dur > 0 then
         f.holdAnim:SetDuration(dur)
         f.animGroup:Play()
@@ -11699,7 +11805,7 @@ function DynamicPrep:CheckZoneTalentLoadout()
     if InCombatLockdown and InCombatLockdown() then return end
     self:RefreshBar()
     local mID, mName, mLabel = self:GetActiveTalentMismatch()
-    if mID and self.db.talentReminderToastEnabled == true then
+    if mID and self.db.talentReminderToastEnabled ~= false then
         self:ShowTalentReminderToast(mID, mName, mLabel)
     else
         self:HideTalentReminderToast()

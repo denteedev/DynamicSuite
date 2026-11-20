@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicZoom", VERSION, _G.DynamicZoom) then
     return
 end
@@ -2949,7 +2949,7 @@ local function EnsureStandaloneWindow()
     body:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", -6, 4)
     win.body = body
 
-    -- Unified Bottom-Right Corner Resize Grip (14x14, -4/4, Slate at rest -> #F97316 Blaze Orange hover)
+    -- Unified Bottom-Right Corner Resize Grip (14x14, -4/4, Slate at rest -> live Suite Accent hover)
     local grip = CreateFrame("Button", nil, win)
     grip:SetSize(14, 14)
     grip:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -4, 4)
@@ -2963,9 +2963,10 @@ local function EnsureStandaloneWindow()
     gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
 
     grip:SetScript("OnEnter", function()
+        local _, acc = GetTheme()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
         gripTex:SetDesaturated(false)
-        gripTex:SetVertexColor(0.976, 0.451, 0.086, 0.95)
+        gripTex:SetVertexColor(acc.r, acc.g, acc.b, 0.95)
     end)
     grip:SetScript("OnLeave", function()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
@@ -3132,8 +3133,9 @@ local function RegisterWithDynamicSuite()
 
     DynamicZoom.CHANGELOG = {
         version = DynamicZoom.VERSION or VERSION,
-        date = "12/11/2026",
+        date = "21/11/2026",
         entries = {
+            { type = "UI",      text = "Release v2.7.0 (21/11/2026): Updated the standalone window corner resize grip hover highlight to track the active Suite Accent colour instead of hardcoded Blaze Orange." },
             { type = "FEATURE", text = "External Addon Conflict Detector & Auto-Yield Engine (12/11/2026): Added DynamicCam, MaxCam, and ActionCamPlus to the curated HARD conflict registry and automatically yielded NPC dialogue camera framing when DialogueUI, Immersion, or Storyline is active." },
             { type = "FIX",     text = "Eliminated StaticPopupDialogs and UIParent experimental CVar event taint by gating popup suppression to a hooksecurefunc post-hook during active CVar writes." },
             { type = "FIX",     text = "Guarded GetCameraZoom() and C_CVar.GetCVar() against 12.1.5 secret values and deferred CVar writes during combat lockdown to PLAYER_REGEN_ENABLED." },

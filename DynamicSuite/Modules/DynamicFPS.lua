@@ -10,7 +10,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -91,7 +91,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicFPS", ADDON_VERSION, _G.DynamicFPS) then
     return
 end
@@ -2860,6 +2860,9 @@ local function CreateCardRow(parent, yTop, rowHeight, titleText, descText, isRec
 
     function row:ClampDescToControl(ctrl)
         if not ctrl then return end
+        title:ClearAllPoints()
+        title:SetPoint("TOPLEFT", row, "TOPLEFT", 14, -10)
+        title:SetPoint("RIGHT", ctrl, "LEFT", -16, 0)
         desc:ClearAllPoints()
         desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -3)
         desc:SetPoint("RIGHT", ctrl, "LEFT", -16, 0)
@@ -4553,9 +4556,10 @@ _G.DynamicSuite.modules["fps"] = moduleEntry
 _G.DynamicSuite.modules["DynamicFPS"] = moduleEntry
 
 DynamicFPS.CHANGELOG = {
-    version = ADDON_VERSION or "2.6.6",
-    date = "13/11/2026",
+    version = ADDON_VERSION or "2.7.0",
+    date = "21/11/2026",
     entries = {
+        { type = "UI",      text = "v2.7.0 Layout & Contrast Polish (21/11/2026): Anchored row titles directly to the left of right-hand switches and sliders in ClampDescToControl so labels never clip at the 800x520 minimum window width." },
         { type = "FIX",     text = "1:1 Blizzard Graphics CVar & SettingsPanel Synchronisation (13/11/2026): Fixed 0-based index offsets for Texture Resolution (0..2), View Distance / Environment Detail / Ground Clutter (0..9 CVars mapped to 1..10 UI sliders), and Particle Density; added runtime Settings.GetSetting label resolution + Settings.SetValue synchronisation alongside C_CVar.SetCVar; disabled RAIDsettingsEnabled split override and graphicsQuality cascade so every setting matches Blizzard's Graphics menu 1:1; and added CVAR_UPDATE two-way sync." },
         { type = "FEATURE", text = "External Addon Conflict Detector & Auto-Yield Engine (12/11/2026): Registered Hyperframe as a HARD graphics CVar conflict and AutoCombatLogger, LoggerHead, RaiderIO_AutoCombatLog, and !ArchonLogger as SOFT auto-yield overlaps in DynamicSuite." },
         { type = "FIX",     text = "Fixed RAIDsettingsEnabled CVar toggling (1 in instances, 0 in outdoor/cities), added PLAYER_LOGOUT and module-disable baseline CVar restoration without mutating saved zone tables, wired DynamicFPSDB.yieldHooks AUTO_YIELD checks across all CVar/declutter engines, and attached scrollThumb OnUpdate strictly during active mouse drag." },

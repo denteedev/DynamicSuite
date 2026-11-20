@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -1751,12 +1751,13 @@ function DM:CreateEditHudButton(parent, onClick, isActiveFn)
 
     local function RefreshEditHudStyle(hovered)
         local active = (isActiveFn and isActiveFn()) or (DM.isEditMode == true)
+        local ar, ag, ab = DM:GetAccentColor()
         if active then
-            DM:ApplyBackdrop(btn, { r = 0.22, g = 0.10, b = 0.025, a = 0.98 }, { r = 0.976, g = 0.451, b = 0.086, a = 1.0 }, 1)
+            DM:ApplyBackdrop(btn, { r = ar * 0.34, g = ag * 0.34, b = ab * 0.34, a = 0.98 }, { r = ar, g = ag, b = ab, a = 1.0 }, 1)
         elseif hovered then
-            DM:ApplyBackdrop(btn, { r = 0.16, g = 0.08, b = 0.02, a = 0.98 }, { r = 0.976, g = 0.451, b = 0.086, a = 1.0 }, 1)
+            DM:ApplyBackdrop(btn, { r = ar * 0.22, g = ag * 0.22, b = ab * 0.22, a = 0.98 }, { r = ar, g = ag, b = ab, a = 1.0 }, 1)
         else
-            DM:ApplyBackdrop(btn, { r = 0.043, g = 0.051, b = 0.071, a = 0.96 }, { r = 0.976, g = 0.451, b = 0.086, a = 0.85 }, 1)
+            DM:ApplyBackdrop(btn, { r = 0.043, g = 0.051, b = 0.071, a = 0.96 }, { r = ar, g = ag, b = ab, a = 0.85 }, 1)
         end
         if btn.Text then
             DM:StyleFont(btn.Text, 11, "", { r = 0.976, g = 0.984, b = 1.0, a = 1.0 })
@@ -3408,7 +3409,8 @@ function DM:ResolveConflictUseDynamic(conflictAddonName)
     self:ScanConflicts()
     self:RefreshAll()
     if conflictAddonName == "DecorVendor" then
-        print("|cFF38BDF8DynamicMarker|r: Disabled |cFFFFFFFFDecorVendor|r and set it to |cFF34D399Never|r across all zone profiles. Please completely |cFFF97316Exit & Restart|r World of Warcraft now (/reload alone will not clear SetRaidTarget taint).")
+        local _, _, _, accHex = DM:GetAccentColor()
+        print(string.format("|cFF%sDynamicMarker|r: Disabled |cFFFFFFFFDecorVendor|r and set it to |cFF34D399Never|r across all zone profiles. Please completely |cFF%sExit & Restart|r World of Warcraft now (/reload alone will not clear SetRaidTarget taint).", accHex, accHex))
     else
         print(string.format("|cFF38BDF8DynamicMarker|r: Imported settings and disabled |cFFFFFFFF%s|r. Click |cFF10B981[Reload UI]|r to complete.", conflictAddonName))
     end
@@ -7099,8 +7101,9 @@ function DM:EnsureEditModeInspector()
         bdrNoneBtn:SetPoint("LEFT", bdrDarkBtn, "RIGHT", 2, 0)
 
         local applyAllBtn = DM:CreateButton(inspRow3, "Apply All", 52, 22, function()
+            local _, _, _, accHex = DM:GetAccentColor()
             if InCombatLockdown() then
-                print("|cFFF97316DynamicMarker|r: Cannot apply HUD appearance during combat lockdown.")
+                print(string.format("|cFF%sDynamicMarker|r: Cannot apply HUD appearance during combat lockdown.", accHex))
                 return
             end
             local curOpa = GetSelectedHudOpacity()
@@ -7116,10 +7119,11 @@ function DM:EnsureEditModeInspector()
             DM:RefreshEditModeInspector()
             DM:RefreshAll()
             local bdrName = (curBdr == "DARK" and "Dark") or (curBdr == "NONE" and "None") or "Accent"
-            print(string.format("|cFFF97316DynamicMarker|r: Applied %d%% opacity and %s border style to all bars.", math.floor(curOpa * 100 + 0.5), bdrName))
+            print(string.format("|cFF%sDynamicMarker|r: Applied %d%% opacity and %s border style to all bars.", accHex, math.floor(curOpa * 100 + 0.5), bdrName))
         end, false)
         TightenLabel(applyAllBtn, 2, 52)
-        if applyAllBtn.Text then DM:StyleFont(applyAllBtn.Text, 10, "", { r = 0.976, g = 0.451, b = 0.086 }) end
+        local arApply, agApply, abApply = DM:GetAccentColor()
+        if applyAllBtn.Text then DM:StyleFont(applyAllBtn.Text, 10, "", { r = arApply, g = agApply, b = abApply }) end
         AttachToggleStyle(applyAllBtn, false)
         applyAllBtn:SetPoint("LEFT", bdrNoneBtn, "RIGHT", 5, 0)
         applyAllBtn.tooltipTitle = "Apply Opacity & Border to All Bars"
@@ -7269,6 +7273,14 @@ function DM:RefreshEditModeInspector()
         local activeBorder = insp.GetSelectedHudBorderStyle()
         for styleKey, bBtn in pairs(insp.borderBtns) do
             bBtn:SetSelected(styleKey == activeBorder)
+        end
+    end
+    if insp.applyAllBtn then
+        if insp.applyAllBtn.Text and insp.applyAllBtn.Text.SetTextColor then
+            insp.applyAllBtn.Text:SetTextColor(ar, ag, ab, 1.0)
+        end
+        if insp.applyAllBtn.SetSelected then
+            insp.applyAllBtn:SetSelected(false)
         end
     end
     if insp.orientBtns and insp.GetSelectedHudOrientation then
@@ -7993,6 +8005,10 @@ function DM:BuildWorkspace(parentContainer)
     end)
     if self.isEditMode and p1HudBtn.SetLabel then p1HudBtn:SetLabel("Lock HUD") end
     p1HudBtn:SetPoint("RIGHT", p1Hdr2, "RIGHT", 0, 2)
+    if p1Hdr2.title then
+        p1Hdr2.title:SetPoint("RIGHT", p1HudBtn, "LEFT", -10, 0)
+        p1Hdr2.title:SetWordWrap(false)
+    end
     if p1Hdr2.subtitle then
         p1Hdr2.subtitle:SetPoint("RIGHT", p1HudBtn, "LEFT", -10, 0)
     end
@@ -8329,6 +8345,10 @@ function DM:BuildWorkspace(parentContainer)
     end)
     if self.isEditMode and p2HudBtn.SetLabel then p2HudBtn:SetLabel("Lock HUD") end
     p2HudBtn:SetPoint("RIGHT", p2Hdr2, "RIGHT", 0, 2)
+    if p2Hdr2.title then
+        p2Hdr2.title:SetPoint("RIGHT", p2HudBtn, "LEFT", -10, 0)
+        p2Hdr2.title:SetWordWrap(false)
+    end
     if p2Hdr2.subtitle then
         p2Hdr2.subtitle:SetPoint("RIGHT", p2HudBtn, "LEFT", -10, 0)
     end
@@ -11037,8 +11057,9 @@ end
 
 DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
-    date    = "18/11/2026",
+    date    = "21/11/2026",
     entries = {
+        { type = "UI",       text = "Release v2.7.0 - Live Suite Accent Parity & Clean Header Clamping (21/11/2026): Updated standalone Edit HUD buttons, the HUD Edit Inspector [Apply All] action button, and conflict reload modals to follow the live Suite Accent colour cleanly instead of Blaze Orange fallbacks, and clamped the Focus and World Flare HUD section titles beside their Edit HUD buttons so headers never collide at 800x520." },
         { type = "IMPROVED", text = "Release v2.4.0 - Version & Coexistence Lockstep Parity (18/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks cleanly to v2.4.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "FIX",      text = "Release v2.3.2 - Proactive DecorVendor /tm Quarantine & Obsidian Modal (18/11/2026): Promoted DecorVendor ('Decor Vendor') to a Tier-1 HARD conflict across Guided Setup and the Conflict Banner, and added a Midnight Pitch Black (#06070A-#090A0D) Obsidian warning modal ('Raid Marker Blocked by Addon Conflict', safely deferred until out of combat) across bundled and standalone modes whenever DecorVendor is active on login/reload or whenever World of Warcraft blocks SetRaidTarget() / SetRaidTargetIcon(). Includes 1-click 'Disable <Addon> (Set to Never)', session-throttled Dismiss, plain-English Exit & Restart instructions, and v2.3.2 lockstep parity." },
         { type = "FIX",      text = "Release v2.3.1 - Runtime /tm Taint Listener, DecorVendor Compatibility Guard & Lockstep Parity (18/11/2026): Registered ADDON_ACTION_FORBIDDEN on DynamicMarker's event frame for SetRaidTarget/SetRaidTarget() in both DynamicSuite and standalone modes to print a rate-limited (once per 30 seconds per offending addon) plain-English chat alert naming the offending addon and advising disabling it and completely restarting the game client (/reload alone will not clear Blizzard's raid-marker lockout); added DecorVendor ('Decor Vendor') to DynamicMarker's conflict registries (CONFLICT_ADDONS and ADVISORY_CONFLICT_ADDONS) with 1-click Disable (setting it to Never in DynamicLoadDB) and persistent Dismiss; updated Macro Setup's [DynamicMark] troubleshooting note; and synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.3.1." },
@@ -11251,12 +11272,12 @@ function DM:ShowMarkerConflictReloadModal()
         modal.TopAccent:SetHeight(2)
         modal.TopAccent:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
         modal.TopAccent:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
-        -- Blaze Orange (#F97316)
-        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        local ar0, ag0, ab0, hex0 = DM:GetAccentColor()
+        modal.TopAccent:SetColorTexture(ar0, ag0, ab0, 1.0)
 
         modal.Title = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         modal.Title:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -16)
-        modal.Title:SetText("|cFFF97316DynamicSuite|r  |cFF94A3B8-- Coexistence Guard|r")
+        modal.Title:SetText(string.format("|cFF%sDynamicSuite|r  |cFF94A3B8-- Coexistence Guard|r", hex0))
 
         modal.HeaderSep = modal:CreateTexture(nil, "ARTWORK")
         modal.HeaderSep:SetHeight(1)
@@ -11290,14 +11311,15 @@ function DM:ShowMarkerConflictReloadModal()
             local function ApplyState(hover)
                 if not btn.SetBackdropColor then return end
                 if isPrimary then
+                    local ar, ag, ab = DM:GetAccentColor()
                     if hover then
-                        btn:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
-                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+                        btn:SetBackdropColor(ar * 0.36, ag * 0.36, ab * 0.36, 1.0)
+                        btn:SetBackdropBorderColor(ar, ag, ab, 1.0)
                         btn.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
                     else
-                        btn:SetBackdropColor(0.220, 0.100, 0.022, 0.96)
-                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
-                        btn.Text:SetTextColor(0.976, 0.451, 0.086, 1.0)
+                        btn:SetBackdropColor(ar * 0.24, ag * 0.24, ab * 0.24, 0.96)
+                        btn:SetBackdropBorderColor(ar, ag, ab, 0.95)
+                        btn.Text:SetTextColor(1.0, 1.0, 1.0, 0.98)
                     end
                 else
                     if hover then
@@ -11311,6 +11333,7 @@ function DM:ShowMarkerConflictReloadModal()
                     end
                 end
             end
+            btn.RefreshStyle = ApplyState
             ApplyState(false)
             btn:SetScript("OnEnter", function() ApplyState(true) end)
             btn:SetScript("OnLeave", function() ApplyState(false) end)
@@ -11356,6 +11379,12 @@ function DM:ShowMarkerConflictReloadModal()
             end
         end
     end
+
+    local arShow, agShow, abShow, hexShow = DM:GetAccentColor()
+    if modal.TopAccent then modal.TopAccent:SetColorTexture(arShow, agShow, abShow, 1.0) end
+    if modal.Title then modal.Title:SetText(string.format("|cFF%sDynamicSuite|r  |cFF94A3B8-- Coexistence Guard|r", hexShow)) end
+    if modal.ReloadBtn and modal.ReloadBtn.RefreshStyle then modal.ReloadBtn.RefreshStyle(false) end
+    if modal.LaterBtn and modal.LaterBtn.RefreshStyle then modal.LaterBtn.RefreshStyle(false) end
 
     shownMarkerConflictModalThisSession = true
     DM._shownMarkerConflictModalThisSession = true
@@ -11470,11 +11499,12 @@ function DM:ShowRaidMarkerTaintModal(offendingAddon, reason)
         modal.TopAccent:SetHeight(2)
         modal.TopAccent:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
         modal.TopAccent:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
-        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        local ar0, ag0, ab0, hex0 = DM:GetAccentColor()
+        modal.TopAccent:SetColorTexture(ar0, ag0, ab0, 1.0)
 
         modal.Title = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         modal.Title:SetPoint("TOPLEFT", modal, "TOPLEFT", 16, -15)
-        modal.Title:SetText("|cFFF97316Raid Marker Blocked by Addon Conflict|r")
+        modal.Title:SetText(string.format("|cFF%sRaid Marker Blocked by Addon Conflict|r", hex0))
 
         modal.Body = modal.InnerSurface:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         modal.Body:SetPoint("TOPLEFT", modal.InnerSurface, "TOPLEFT", 12, -11)
@@ -11512,14 +11542,15 @@ function DM:ShowRaidMarkerTaintModal(offendingAddon, reason)
                         self.Text:SetTextColor(0.204, 0.827, 0.600, 1.0)
                     end
                 elseif self._styleMode == "PRIMARY" then
+                    local ar, ag, ab = DM:GetAccentColor()
                     if hover then
-                        self:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
-                        self:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+                        self:SetBackdropColor(ar * 0.36, ag * 0.36, ab * 0.36, 1.0)
+                        self:SetBackdropBorderColor(ar, ag, ab, 1.0)
                         self.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
                     else
-                        self:SetBackdropColor(0.220, 0.100, 0.022, 0.98)
-                        self:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
-                        self.Text:SetTextColor(0.976, 0.451, 0.086, 1.0)
+                        self:SetBackdropColor(ar * 0.24, ag * 0.24, ab * 0.24, 0.98)
+                        self:SetBackdropBorderColor(ar, ag, ab, 0.95)
+                        self.Text:SetTextColor(1.0, 1.0, 1.0, 0.98)
                     end
                 else
                     if hover then
@@ -11566,13 +11597,14 @@ function DM:ShowRaidMarkerTaintModal(offendingAddon, reason)
     modal._activeAddon = offendingAddon
     local canQuarantine = (offendingAddon ~= "Unknown Addon")
     local alreadyQuarantined = (session.quarantined[offendingAddon] == true)
+    local arShow, agShow, abShow, accHex = DM:GetAccentColor()
 
     if alreadyQuarantined then
         modal.TopAccent:SetColorTexture(0.063, 0.725, 0.506, 1.0)
         modal.Title:SetText("|cFF34D399Raid Marker Blocked by Addon Conflict|r")
         modal.Body:SetText(string.format(
-            "|cFFFFFFFF%s|r is already set to Never for your next session, however Blizzard's raid-marker security lockout remains active until World of Warcraft restarts.\n\nPlease completely |cFFF97316Exit & Restart|r the game client now (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
-            offendingAddon
+            "|cFFFFFFFF%s|r is already set to Never for your next session, however Blizzard's raid-marker security lockout remains active until World of Warcraft restarts.\n\nPlease completely |cFF%sExit & Restart|r the game client now (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
+            offendingAddon, accHex
         ))
         modal.DismissBtn:Hide()
         modal.PrimaryBtn._styleMode = "EMERALD"
@@ -11587,12 +11619,12 @@ function DM:ShowRaidMarkerTaintModal(offendingAddon, reason)
             modal:Hide()
         end)
     else
-        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
-        modal.Title:SetText("|cFFF97316Raid Marker Blocked by Addon Conflict|r")
+        modal.TopAccent:SetColorTexture(arShow, agShow, abShow, 1.0)
+        modal.Title:SetText(string.format("|cFF%sRaid Marker Blocked by Addon Conflict|r", accHex))
         local displayLabel = (offendingAddon == "DecorVendor") and "Decor Vendor (DecorVendor)" or offendingAddon
         modal.Body:SetText(string.format(
-            "|cFFFFFFFF%s|r taints Blizzard's |cFFFFFFFF/tm|r raid marker command (|cFFFFFFFFSetRaidTarget()|r), causing action-bar focus markers to be blocked.\n\nBecause of how World of Warcraft's security engine works, you must disable |cFFFFFFFF%s|r and |cFFF97316fully Exit & Restart the game client|r (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
-            displayLabel, offendingAddon
+            "|cFFFFFFFF%s|r taints Blizzard's |cFFFFFFFF/tm|r raid marker command (|cFFFFFFFFSetRaidTarget()|r), causing action-bar focus markers to be blocked.\n\nBecause of how World of Warcraft's security engine works, you must disable |cFFFFFFFF%s|r and |cFF%sfully Exit & Restart the game client|r (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
+            displayLabel, offendingAddon, accHex
         ))
 
         modal.DismissBtn:ClearAllPoints()
@@ -11633,11 +11665,12 @@ function DM:ShowRaidMarkerTaintModal(offendingAddon, reason)
                 DM.pendingConflictReload = offendingAddon
                 DM:ScanConflicts()
                 DM:RefreshAll()
+                local _, _, _, curHex = DM:GetAccentColor()
                 modal.TopAccent:SetColorTexture(0.063, 0.725, 0.506, 1.0)
                 modal.Title:SetText("|cFF34D399" .. offendingAddon .. " Disabled (Set to Never)|r")
                 modal.Body:SetText(string.format(
-                    "|cFFFFFFFF%s|r has been disabled and set to |cFF34D399Never|r across all zone profiles.\n\nPlease |cFFF97316completely Exit & Restart World of Warcraft|r now to clear Blizzard's raid-marker lockout (a |cFFFFFFFF/reload|r alone will not clear it).",
-                    offendingAddon
+                    "|cFFFFFFFF%s|r has been disabled and set to |cFF34D399Never|r across all zone profiles.\n\nPlease |cFF%scompletely Exit & Restart World of Warcraft|r now to clear Blizzard's raid-marker lockout (a |cFFFFFFFF/reload|r alone will not clear it).",
+                    offendingAddon, curHex
                 ))
                 modal.DismissBtn:Hide()
                 modal.PrimaryBtn._styleMode = "EMERALD"

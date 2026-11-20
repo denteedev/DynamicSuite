@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "21/11/2026",
     entries = {
+        { type = "UI",      text = "Release v2.7.0 - Unified Shared Alert Toast System, Live Suite Accent Across All Buttons/Grips/Modals, 800x520 Uniform Widget Geometry & 11-Module Documentation Parity (21/11/2026): Centralised all Toast appearance and sound controls (Scale, Opacity, Border Style, Auto-Fade Duration, and Alert Sound) inside Suite Studio and DynamicLoad under one Alert Toast HUD target; updated DynamicPrep Talent Reminder Toasts, DynamicGroup Teleport Toasts, and DynamicChat Mention Alert Toasts to share one consistent Obsidian appearance, live Suite Accent, Right-Click dismissal, and clean non-overlapping vertical stacking; removed stray Edit HUD buttons from toast-consumer panels and kept inline Edit HUD buttons strictly on the 6 true movable HUD owner cards with non-overlapping title/subtitle anchors; replaced all remaining hardcoded Blaze Orange buttons, modal borders, focus boxes, portal highlights, Apply All buttons, window scale toasts, and corner resize grips with the live Suite Accent colour; upgraded DynamicDialogue to the universal 34px 2-tab header bar, dedicated 44px Action & Status strip, clean non-outlined card fonts, 156x26px binary switches, and 2-line wrapped descriptions; standardised relative text clamping and control sizing across DynamicVault, DynamicMail, DynamicBags, DynamicFPS, and DynamicSuite_UI so all panels fit cleanly down to 800x520; and updated README and CurseForge storefront docs for all 11 modules." },
         { type = "FIX",     text = "Release v2.6.9 - DynamicDialogue Panel & Retail Yield Probe Fix, DynamicVault Multi-Alt Dock Crash & Escape Close, and DynamicMail Parity (21/11/2026): Assigned fonts before calling SetText and ran ApplySubTab() on initial RenderDialogueEmbedded setup so DynamicDialogue's sub-tabs never throw a Font not set error or overlap on first open, added the standard 4px 3-way Obsidian settings scrollbar, matched standalone title colours, updated DynamicDialogue.CHANGELOG to use VERSION, and fixed the Retail 12.1.5 Blizzard Quest/Gossip probe in both DynamicSuite_Core and DynamicDialogue so clean installs show Active reliably; fixed an undefined width variable crash in RefreshGreatVaultDock when 2 or more alts are tracked, registered DynamicVaultStandaloneFrame in UISpecialFrames for Escape closing, updated /dv overlay and /dv hud to point to DynamicPrep's Top Info Bar, and registered DynamicVault's changelog with DynamicSuite; and guarded DynamicMail workspace opening when disabled in the suite, synced its standalone resize handle to the active Suite Accent, updated Quick Action Bar search copy, and standardised its changelog format." },
         { type = "UI",      text = "Release v2.6.8 - Great Vault Dock Alignment, Standalone Vault Overlay Removal, DynamicPrep 13-Capsule Grid Fix, DynamicDialogue 2-Tab Redesign & Macro Note Cleanup (21/11/2026): Fixed DynamicVaultBlizzDock overhanging WeeklyRewardsFrame by anchoring directly to WeeklyRewardsFrame with the exact 10px horizontal inset and 6px vertical panel clearance; removed the redundant standalone On-Screen Vault Overlay (and VAULT HUD Edit Mode target) since Great Vault status lives cleanly inside DynamicPrep's Prep Bar; removed per-module Auto-Match External UI skin toggles from DynamicVault and DynamicMail so every module strictly follows Suite Studio's active Obsidian and Suite Accent settings; fixed DynamicPrep's Bar Layout & Style 13-capsule grid overflowing onto HUD Border Style by sizing the grid container dynamically to 5 rows (200px) and shifting lower rows cleanly; redesigned DynamicDialogue into 2 clean sub-tabs (Reader & Controls | Appearance & Sound) with exact section heights (zero bottom dead space) and removed the redundant Auto-Yield toggle (managed centrally in Guided Setup); and trimmed DynamicMarker's Macro Setup DecorVendor note to a crisp 1-line summary." },
         { type = "UI",      text = "Release v2.6.7 - Suite-Wide Accent Unification, Unified Talent Reminder Toast, Quick Spec Dropdown, Vault Dock Width & LFG Cancel Fix (21/11/2026): Unified the active Suite Accent colour across every module, toast, dropdown, Edit HUD button, window scale toast, and resize grip (eliminating hardcoded Blaze Orange fallbacks and migrating DynamicMail & DynamicVault top docks from AUTO to OBSIDIAN by default so all overlays share DynamicSuite's colour scheme); rebuilt DynamicPrep's Talent Reminder Toast to match DynamicLoad's Alert Toast 1:1 (removed Dismiss button in favour of Right-Click anywhere to dismiss, matched surface/border/opacity/scale/duration, and stacked cleanly below DynamicLoadToastFrame); upgraded DynamicPrep's Talent Loadouts Manager dropdowns with directional chevrons, active square pip, screen-bottom flip, scrolling, and Escape/click-outside dismissal; replaced Prep Bar Right-Click blind spec cycling with an Obsidian Switch Active Specialisation dropdown (Left-Click remains Loot Spec selector); fixed DynamicVault's Great Vault top dock overhanging Blizzard's WeeklyRewardsFrame width and collapsed it to a sleek single-row 34px bar when only 1 character is tracked (showing Row 2 'Alts:' chips only when 2+ characters are tracked); and fixed duplicate cross ('x') textures on DynamicGroup's LFG search entry cancel buttons." },
@@ -669,6 +670,7 @@ local DEFAULT_SUITE_GLOBAL = {
     toastAlpha       = 0.96,
     toastOpacity     = 0.96,
     toastDuration    = 8,
+    toastSoundEnabled = false,
     hudSnapMode      = "MAGNET",
     minimizedBarPos  = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0 },
     editModeModalPos = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0 },
@@ -726,7 +728,7 @@ local function EnsureSuiteGlobal()
         _G.DynamicSuiteDB.global = CopyTable(DEFAULT_SUITE_GLOBAL)
         -- Seamless migration from legacy DynamicLoadDB theme/window keys if present
         if type(_G.DynamicLoadDB) == "table" then
-            for _, k in ipairs({ "windowWidth", "windowHeight", "windowScale", "windowAlpha", "surfaceTheme", "accentKey", "customAccent", "fontKey", "fontFamily", "pillFillAlpha", "recentColors", "toastPos", "toastDisplayMode", "toastScale", "toastAlpha", "toastDuration", "moduleOrder" }) do
+            for _, k in ipairs({ "windowWidth", "windowHeight", "windowScale", "windowAlpha", "surfaceTheme", "accentKey", "customAccent", "fontKey", "fontFamily", "pillFillAlpha", "recentColors", "toastPos", "toastDisplayMode", "toastScale", "toastAlpha", "toastDuration", "toastSoundEnabled", "moduleOrder" }) do
                 if _G.DynamicLoadDB[k] ~= nil then
                     if type(_G.DynamicLoadDB[k]) == "table" then
                         _G.DynamicSuiteDB.global[k] = CopyTable(_G.DynamicLoadDB[k])
@@ -770,6 +772,147 @@ local function EnsureSuiteGlobal()
 end
 addonTable.GetSuiteGlobal = EnsureSuiteGlobal
 DynamicSuite.GetSuiteGlobal = EnsureSuiteGlobal
+
+function addonTable.GetCoreAccentRGB()
+    if addonTable.UI and type(addonTable.UI.GetActiveAccentColor) == "function" then
+        local ok, r, g, b = pcall(addonTable.UI.GetActiveAccentColor)
+        if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            return r, g, b
+        end
+    end
+    return 0.220, 0.741, 0.973
+end
+
+function addonTable.GetCoreAccentHex()
+    local r, g, b = addonTable.GetCoreAccentRGB()
+    return string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+end
+
+do
+local lastSharedToastSoundAt = -999
+local isRestackingToasts = false
+
+function DynamicSuite.GetSharedToastStyle()
+    local g = EnsureSuiteGlobal()
+    local dl = (type(_G.DynamicLoadDB) == "table") and _G.DynamicLoadDB or nil
+
+    local ar, ag, ab = 0.220, 0.741, 0.973
+    local bgR, bgG, bgB = 0.035, 0.039, 0.051
+    if addonTable.UI then
+        if type(addonTable.UI.GetActiveAccentColor) == "function" then
+            local ok, r, g2, b = pcall(addonTable.UI.GetActiveAccentColor)
+            if ok and type(r) == "number" then ar, ag, ab = r, g2, b end
+        end
+        if type(addonTable.UI.GetActiveSurfaceColors) == "function" then
+            local okS, surf = pcall(addonTable.UI.GetActiveSurfaceColors)
+            if okS and type(surf) == "table" and type(surf.panel) == "table" then
+                bgR = surf.panel.r or bgR
+                bgG = surf.panel.g or bgG
+                bgB = surf.panel.b or bgB
+            end
+        end
+    end
+
+    local enabled = true
+    if g and g.toastEnabled ~= nil then
+        enabled = (g.toastEnabled == true)
+    elseif dl and dl.toastEnabled ~= nil then
+        enabled = (dl.toastEnabled == true)
+    end
+    local dMode = (g and g.toastDisplayMode) or (dl and dl.toastDisplayMode)
+    if dMode == "OFF" then enabled = false end
+
+    local scale = tonumber((g and g.toastScale) or (dl and dl.toastScale)) or 1.0
+    scale = math.max(0.60, math.min(1.50, scale))
+
+    local opacity = tonumber((g and (g.toastOpacity or g.toastAlpha)) or (dl and (dl.toastOpacity or dl.toastAlpha))) or 0.96
+    opacity = math.max(0.20, math.min(1.00, opacity))
+
+    local bStyle = tostring((g and g.toastBorderStyle) or (dl and dl.toastBorderStyle) or "ACCENT"):upper()
+    if bStyle == "DARK" then bStyle = "SUBTLE" end
+
+    local duration = tonumber((g and g.toastDuration) or (dl and dl.toastDuration))
+    if duration == nil then duration = 8 end
+
+    local soundEnabled = (g and g.toastSoundEnabled == true) or (dl and dl.toastSoundEnabled == true) or false
+    local pos = (g and type(g.toastPos) == "table" and g.toastPos)
+        or (dl and type(dl.toastPos) == "table" and dl.toastPos)
+        or { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
+
+    return {
+        enabled      = enabled,
+        scale        = scale,
+        opacity      = opacity,
+        borderStyle  = bStyle,
+        duration     = duration,
+        soundEnabled = soundEnabled,
+        pos          = pos,
+        bgR          = bgR,
+        bgG          = bgG,
+        bgB          = bgB,
+        ar           = ar,
+        ag           = ag,
+        ab           = ab,
+    }
+end
+addonTable.GetSharedToastStyle = DynamicSuite.GetSharedToastStyle
+
+function DynamicSuite.PlaySharedToastSound()
+    local st = DynamicSuite.GetSharedToastStyle()
+    if not st.soundEnabled then return end
+    local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+    if (now - lastSharedToastSoundAt) < 0.5 then return end
+    lastSharedToastSoundAt = now
+    if type(_G.PlaySound) == "function" then
+        local sk = _G.SOUNDKIT
+        local kitID = (sk and sk.UI_BNET_TOAST) or 18019
+        pcall(_G.PlaySound, kitID, "Master")
+    end
+end
+addonTable.PlaySharedToastSound = DynamicSuite.PlaySharedToastSound
+
+function DynamicSuite.RestackAllToasts()
+    if isRestackingToasts then return end
+    if _G.InCombatLockdown and _G.InCombatLockdown() then return end
+    isRestackingToasts = true
+    local okErr, errMsg = pcall(function()
+        local st = DynamicSuite.GetSharedToastStyle()
+        local pos = st.pos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
+        local candidates = {
+            _G.DynamicLoadToastFrame,
+            _G.DynamicGroupTeleportToast,
+            _G.DynamicPrepTalentReminderToast,
+            _G.DynamicChatMentionToast,
+        }
+        local prev = nil
+        for _, f in ipairs(candidates) do
+            if f and type(f) == "table" and f.IsShown and f:IsShown() then
+                local isDragging = (f.isEditingMode == true) or (f.isDraggingMode == true) or (f._dsDragging == true)
+                if not isDragging then
+                    if f == _G.DynamicLoadToastFrame then
+                        prev = f
+                    else
+                        f:ClearAllPoints()
+                        if prev then
+                            f:SetPoint("TOP", prev, "BOTTOM", 0, -8)
+                        else
+                            local pt = pos.point or "TOP"
+                            local rp = pos.relPoint or pt
+                            f:SetPoint(pt, _G.UIParent, rp, tonumber(pos.x) or 0, tonumber(pos.y) or -140)
+                        end
+                        prev = f
+                    end
+                end
+            end
+        end
+    end)
+    isRestackingToasts = false
+    if not okErr and errMsg then
+        -- Silent resilience if a frame is mid-teardown
+    end
+end
+addonTable.RestackAllToasts = DynamicSuite.RestackAllToasts
+end
 
 local desktopWindowsSyncCache = setmetatable({}, { __mode = "k" })
 
@@ -1115,12 +1258,12 @@ local function ShowMarkerConflictReloadModal()
         modal.TopAccent:SetHeight(2)
         modal.TopAccent:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
         modal.TopAccent:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
-        -- Blaze Orange (#F97316)
-        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        local ar0, ag0, ab0 = addonTable.GetCoreAccentRGB()
+        modal.TopAccent:SetColorTexture(ar0, ag0, ab0, 1.0)
 
         modal.Title = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         modal.Title:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -16)
-        modal.Title:SetText("|cFFF97316DynamicSuite|r  |cFF94A3B8-- Coexistence Guard|r")
+        modal.Title:SetText(string.format("|cFF%sDynamicSuite|r  |cFF94A3B8-- Coexistence Guard|r", addonTable.GetCoreAccentHex()))
 
         modal.HeaderSep = modal:CreateTexture(nil, "ARTWORK")
         modal.HeaderSep:SetHeight(1)
@@ -1129,7 +1272,7 @@ local function ShowMarkerConflictReloadModal()
         modal.HeaderSep:SetColorTexture(0.200, 0.240, 0.310, 0.65)
 
         modal.Body = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        modal.Body:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -52)
+        modal.Body:SetPoint("TOPLEFT", modal.InnerSurface or modal, "TOPLEFT", 18, -52)
         modal.Body:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -18, -52)
         modal.Body:SetJustifyH("LEFT")
         modal.Body:SetJustifyV("TOP")
@@ -1154,14 +1297,15 @@ local function ShowMarkerConflictReloadModal()
             local function ApplyState(hover)
                 if not btn.SetBackdropColor then return end
                 if isPrimary then
+                    local ar, ag, ab = addonTable.GetCoreAccentRGB()
                     if hover then
-                        btn:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
-                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+                        btn:SetBackdropColor(ar * 0.36, ag * 0.36, ab * 0.36, 1.0)
+                        btn:SetBackdropBorderColor(ar, ag, ab, 1.0)
                         btn.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
                     else
-                        btn:SetBackdropColor(0.220, 0.100, 0.022, 0.96)
-                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
-                        btn.Text:SetTextColor(0.976, 0.451, 0.086, 1.0)
+                        btn:SetBackdropColor(ar * 0.24, ag * 0.24, ab * 0.24, 0.96)
+                        btn:SetBackdropBorderColor(ar, ag, ab, 0.95)
+                        btn.Text:SetTextColor(1.0, 1.0, 1.0, 0.98)
                     end
                 else
                     if hover then
@@ -1175,6 +1319,7 @@ local function ShowMarkerConflictReloadModal()
                     end
                 end
             end
+            btn.RefreshStyle = ApplyState
             ApplyState(false)
             btn:SetScript("OnEnter", function() ApplyState(true) end)
             btn:SetScript("OnLeave", function() ApplyState(false) end)
@@ -1214,6 +1359,12 @@ local function ShowMarkerConflictReloadModal()
             end
         end
     end
+
+    local arShow, agShow, abShow = addonTable.GetCoreAccentRGB()
+    if modal.TopAccent then modal.TopAccent:SetColorTexture(arShow, agShow, abShow, 1.0) end
+    if modal.Title then modal.Title:SetText(string.format("|cFF%sDynamicSuite|r  |cFF94A3B8-- Coexistence Guard|r", addonTable.GetCoreAccentHex())) end
+    if modal.ReloadBtn and modal.ReloadBtn.RefreshStyle then modal.ReloadBtn.RefreshStyle(false) end
+    if modal.LaterBtn and modal.LaterBtn.RefreshStyle then modal.LaterBtn.RefreshStyle(false) end
 
     shownMarkerConflictModalThisSession = true
     DynamicSuite._shownMarkerConflictModalThisSession = true
@@ -1443,11 +1594,12 @@ local function ShowRaidMarkerTaintModal(selfOrAddon, maybeAddon, maybeReason)
         modal.TopAccent:SetHeight(2)
         modal.TopAccent:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
         modal.TopAccent:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
-        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        local ar0, ag0, ab0 = addonTable.GetCoreAccentRGB()
+        modal.TopAccent:SetColorTexture(ar0, ag0, ab0, 1.0)
 
         modal.Title = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         modal.Title:SetPoint("TOPLEFT", modal, "TOPLEFT", 16, -15)
-        modal.Title:SetText("|cFFF97316Raid Marker Blocked by Addon Conflict|r")
+        modal.Title:SetText(string.format("|cFF%sRaid Marker Blocked by Addon Conflict|r", addonTable.GetCoreAccentHex()))
 
         modal.Body = modal.InnerSurface:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         modal.Body:SetPoint("TOPLEFT", modal.InnerSurface, "TOPLEFT", 12, -11)
@@ -1485,14 +1637,15 @@ local function ShowRaidMarkerTaintModal(selfOrAddon, maybeAddon, maybeReason)
                         self.Text:SetTextColor(0.204, 0.827, 0.600, 1.0)
                     end
                 elseif self._styleMode == "PRIMARY" then
+                    local ar, ag, ab = addonTable.GetCoreAccentRGB()
                     if hover then
-                        self:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
-                        self:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+                        self:SetBackdropColor(ar * 0.36, ag * 0.36, ab * 0.36, 1.0)
+                        self:SetBackdropBorderColor(ar, ag, ab, 1.0)
                         self.Text:SetTextColor(1.0, 1.0, 1.0, 1.0)
                     else
-                        self:SetBackdropColor(0.220, 0.100, 0.022, 0.98)
-                        self:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
-                        self.Text:SetTextColor(0.976, 0.451, 0.086, 1.0)
+                        self:SetBackdropColor(ar * 0.24, ag * 0.24, ab * 0.24, 0.98)
+                        self:SetBackdropBorderColor(ar, ag, ab, 0.95)
+                        self.Text:SetTextColor(1.0, 1.0, 1.0, 0.98)
                     end
                 else
                     if hover then
@@ -1539,13 +1692,15 @@ local function ShowRaidMarkerTaintModal(selfOrAddon, maybeAddon, maybeReason)
     modal._activeAddon = offendingAddon
     local canQuarantine = (offendingAddon ~= "Unknown Addon")
     local alreadyQuarantined = (session.quarantined[offendingAddon] == true)
+    local arShow, agShow, abShow = addonTable.GetCoreAccentRGB()
+    local accHex = addonTable.GetCoreAccentHex()
 
     if alreadyQuarantined then
         modal.TopAccent:SetColorTexture(0.063, 0.725, 0.506, 1.0)
         modal.Title:SetText("|cFF34D399Raid Marker Blocked by Addon Conflict|r")
         modal.Body:SetText(string.format(
-            "|cFFFFFFFF%s|r is already set to Never for your next session, however Blizzard's raid-marker security lockout remains active until World of Warcraft restarts.\n\nPlease completely |cFFF97316Exit & Restart|r the game client now (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
-            offendingAddon
+            "|cFFFFFFFF%s|r is already set to Never for your next session, however Blizzard's raid-marker security lockout remains active until World of Warcraft restarts.\n\nPlease completely |cFF%sExit & Restart|r the game client now (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
+            offendingAddon, accHex
         ))
         modal.DismissBtn:Hide()
         modal.PrimaryBtn._styleMode = "EMERALD"
@@ -1560,13 +1715,13 @@ local function ShowRaidMarkerTaintModal(selfOrAddon, maybeAddon, maybeReason)
             modal:Hide()
         end)
     else
-        modal.TopAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
-        modal.Title:SetText("|cFFF97316Raid Marker Blocked by Addon Conflict|r")
+        modal.TopAccent:SetColorTexture(arShow, agShow, abShow, 1.0)
+        modal.Title:SetText(string.format("|cFF%sRaid Marker Blocked by Addon Conflict|r", accHex))
         local friendly = FRIENDLY_CONFLICT_NAMES[offendingAddon] or offendingAddon
         local displayLabel = (friendly ~= offendingAddon) and string.format("%s (%s)", friendly, offendingAddon) or offendingAddon
         modal.Body:SetText(string.format(
-            "|cFFFFFFFF%s|r taints Blizzard's |cFFFFFFFF/tm|r raid marker command (|cFFFFFFFFSetRaidTarget()|r), causing action-bar focus markers to be blocked.\n\nBecause of how World of Warcraft's security engine works, you must disable |cFFFFFFFF%s|r and |cFFF97316fully Exit & Restart the game client|r (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
-            displayLabel, offendingAddon
+            "|cFFFFFFFF%s|r taints Blizzard's |cFFFFFFFF/tm|r raid marker command (|cFFFFFFFFSetRaidTarget()|r), causing action-bar focus markers to be blocked.\n\nBecause of how World of Warcraft's security engine works, you must disable |cFFFFFFFF%s|r and |cFF%sfully Exit & Restart the game client|r (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
+            displayLabel, offendingAddon, accHex
         ))
 
         modal.DismissBtn:ClearAllPoints()
@@ -1592,8 +1747,8 @@ local function ShowRaidMarkerTaintModal(selfOrAddon, maybeAddon, maybeReason)
                 modal.TopAccent:SetColorTexture(0.063, 0.725, 0.506, 1.0)
                 modal.Title:SetText("|cFF34D399" .. offendingAddon .. " Disabled (Set to Never)|r")
                 modal.Body:SetText(string.format(
-                    "|cFFFFFFFF%s|r has been disabled and set to |cFF34D399Never|r across DynamicLoad so zone changes will never re-enable it.\n\nPlease |cFFF97316completely Exit & Restart World of Warcraft|r now to clear Blizzard's raid-marker lockout (a |cFFFFFFFF/reload|r alone will not clear it).",
-                    offendingAddon
+                    "|cFFFFFFFF%s|r has been disabled and set to |cFF34D399Never|r across DynamicLoad so zone changes will never re-enable it.\n\nPlease |cFF%scompletely Exit & Restart World of Warcraft|r now to clear Blizzard's raid-marker lockout (a |cFFFFFFFF/reload|r alone will not clear it).",
+                    offendingAddon, addonTable.GetCoreAccentHex()
                 ))
                 modal.DismissBtn:Hide()
                 modal.PrimaryBtn._styleMode = "EMERALD"
@@ -6154,9 +6309,10 @@ do
     local function ShowWindowToast(anchorFrame, text, isSaved)
         local toast = EnsureScaleToast()
         if not toast or not text then return end
-        local badge = isSaved and "|cFFF97316Saved|r" or "|cFFCBD5E1Session|r"
+        local accHex = GetSuiteAccentHex()
+        local badge = isSaved and ("|cFF" .. accHex .. "Saved|r") or "|cFFCBD5E1Session|r"
         if text:find("^Reset") then
-            toast.label:SetText("|cFFF97316" .. text .. "|r")
+            toast.label:SetText("|cFF" .. accHex .. text .. "|r")
         else
             toast.label:SetText(string.format("%s  |cFFFFFFFF%s|r", badge, text))
         end

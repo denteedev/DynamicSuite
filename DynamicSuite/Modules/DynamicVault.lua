@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicVault", VERSION, _G.DynamicVault) then
     return
 end
@@ -900,19 +900,24 @@ local function CreateStyledButton(parent, label, width, height, primary, onClick
     return btn
 end
 
--- Option 3 Coral-Rose OffBar Segmented Switch Card (Off LEFT / Enabled RIGHT)
+-- Option 3 Coral-Rose OffBar Segmented Switch Card (Off LEFT 68 / Enabled RIGHT 84 inside 156x26)
 local function CreateSegmentedSwitchCard(parent, yOffset, title, desc, getter, setter)
     local surf, acc = GetTheme()
     local card = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    card:SetHeight(56)
+    card:SetHeight(60)
     card:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, yOffset)
     card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -12, yOffset)
     ApplyBackdrop(card, surf.card, { 1, 1, 1, 0.06 })
 
+    local track = CreateFrame("Frame", nil, card, "BackdropTemplate")
+    track:SetSize(156, 26)
+    track:SetPoint("RIGHT", card, "RIGHT", -12, 0)
+    ApplyBackdrop(track, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 })
+
     local titleFs = card:CreateFontString(nil, "OVERLAY")
     SetFontSafe(titleFs, 11.5, "")
     titleFs:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -9)
-    titleFs:SetPoint("RIGHT", card, "RIGHT", -180, 0)
+    titleFs:SetPoint("RIGHT", track, "LEFT", -14, 0)
     titleFs:SetJustifyH("LEFT")
     titleFs:SetWordWrap(false)
     titleFs:SetTextColor(0.95, 0.97, 1.0, 1.0)
@@ -921,20 +926,17 @@ local function CreateSegmentedSwitchCard(parent, yOffset, title, desc, getter, s
     local descFs = card:CreateFontString(nil, "OVERLAY")
     SetFontSafe(descFs, 9.5, "")
     descFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -3)
-    descFs:SetPoint("RIGHT", card, "RIGHT", -180, 0)
+    descFs:SetPoint("RIGHT", track, "LEFT", -14, 0)
     descFs:SetJustifyH("LEFT")
+    descFs:SetJustifyV("TOP")
     descFs:SetWordWrap(true)
+    if descFs.SetMaxLines then descFs:SetMaxLines(2) end
     descFs:SetTextColor(0.58, 0.65, 0.74, 0.95)
     descFs:SetText(desc or "")
 
-    local track = CreateFrame("Frame", nil, card, "BackdropTemplate")
-    track:SetSize(156, 26)
-    track:SetPoint("RIGHT", card, "RIGHT", -12, 0)
-    ApplyBackdrop(track, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 })
-
     local btnOff = CreateFrame("Button", nil, track, "BackdropTemplate")
     btnOff:SetSize(68, 22)
-    btnOff:SetPoint("LEFT", track, "LEFT", 2, 0)
+    btnOff:SetPoint("LEFT", track, "LEFT", 1, 0)
     local offFs = btnOff:CreateFontString(nil, "OVERLAY")
     SetFontSafe(offFs, 10.5, "")
     offFs:SetPoint("CENTER")
@@ -945,8 +947,8 @@ local function CreateSegmentedSwitchCard(parent, yOffset, title, desc, getter, s
     offBar:SetPoint("BOTTOMRIGHT", btnOff, "BOTTOMRIGHT", -1, 1)
 
     local btnOn = CreateFrame("Button", nil, track, "BackdropTemplate")
-    btnOn:SetSize(82, 22)
-    btnOn:SetPoint("RIGHT", track, "RIGHT", -2, 0)
+    btnOn:SetSize(84, 22)
+    btnOn:SetPoint("RIGHT", track, "RIGHT", -1, 0)
     local onFs = btnOn:CreateFontString(nil, "OVERLAY")
     SetFontSafe(onFs, 10.5, "")
     onFs:SetPoint("CENTER")
@@ -979,22 +981,27 @@ local function CreateSegmentedSwitchCard(parent, yOffset, title, desc, getter, s
         UpdateVisual()
     end)
     UpdateVisual()
-    return card, -62
+    return card, -66
 end
 
 -- 256x26 Sleek Precision Track Slider Card (DESIGN_SYSTEM.md)
 local function CreateSliderCard(parent, yOffset, title, desc, minVal, maxVal, step, getter, setter, formatFn)
     local surf, acc = GetTheme()
     local card = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    card:SetHeight(58)
+    card:SetHeight(60)
     card:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, yOffset)
     card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -12, yOffset)
     ApplyBackdrop(card, surf.card, { 1, 1, 1, 0.06 })
 
+    local host = CreateFrame("Frame", nil, card, "BackdropTemplate")
+    host:SetSize(256, 26)
+    host:SetPoint("RIGHT", card, "RIGHT", -12, 0)
+    ApplyBackdrop(host, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 })
+
     local titleFs = card:CreateFontString(nil, "OVERLAY")
     SetFontSafe(titleFs, 11.5, "")
     titleFs:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -9)
-    titleFs:SetPoint("RIGHT", card, "RIGHT", -280, 0)
+    titleFs:SetPoint("RIGHT", host, "LEFT", -14, 0)
     titleFs:SetJustifyH("LEFT")
     titleFs:SetWordWrap(false)
     titleFs:SetTextColor(0.95, 0.97, 1.0, 1.0)
@@ -1003,21 +1010,18 @@ local function CreateSliderCard(parent, yOffset, title, desc, minVal, maxVal, st
     local descFs = card:CreateFontString(nil, "OVERLAY")
     SetFontSafe(descFs, 9.5, "")
     descFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -3)
-    descFs:SetPoint("RIGHT", card, "RIGHT", -280, 0)
+    descFs:SetPoint("RIGHT", host, "LEFT", -14, 0)
     descFs:SetJustifyH("LEFT")
+    descFs:SetJustifyV("TOP")
     descFs:SetWordWrap(true)
+    if descFs.SetMaxLines then descFs:SetMaxLines(2) end
     descFs:SetTextColor(0.58, 0.65, 0.74, 0.95)
     descFs:SetText(desc or "")
-
-    local host = CreateFrame("Frame", nil, card, "BackdropTemplate")
-    host:SetSize(256, 26)
-    host:SetPoint("RIGHT", card, "RIGHT", -12, 0)
-    ApplyBackdrop(host, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 })
 
     local valFs = host:CreateFontString(nil, "OVERLAY")
     SetFontSafe(valFs, 10.5, "")
     valFs:SetPoint("RIGHT", host, "RIGHT", -8, 0)
-    valFs:SetWidth(54)
+    valFs:SetWidth(52)
     valFs:SetJustifyH("RIGHT")
     valFs:SetTextColor(acc.r, acc.g, acc.b, 1.0)
 
@@ -1029,6 +1033,7 @@ local function CreateSliderCard(parent, yOffset, title, desc, minVal, maxVal, st
     slider:SetMinMaxValues(minVal, maxVal)
     slider:SetValueStep(step or 1)
     slider:SetObeyStepOnDrag(true)
+    slider:EnableMouseWheel(true)
 
     local trackBg = CreateSolidTex(slider, "BACKGROUND", 0, 0.145, 0.165, 0.212, 0.95)
     trackBg:SetHeight(4)
@@ -1040,28 +1045,45 @@ local function CreateSliderCard(parent, yOffset, title, desc, minVal, maxVal, st
     fill:SetPoint("LEFT", trackBg, "LEFT", 0, 0)
 
     local thumb = slider:CreateTexture(nil, "OVERLAY")
-    thumb:SetSize(10, 14)
+    thumb:SetSize(6, 14)
     thumb:SetColorTexture(1, 1, 1, 0.98)
+    if thumb.SetSnapToPixelGrid then thumb:SetSnapToPixelGrid(false) end
+    if thumb.SetTexelSnappingBias then thumb:SetTexelSnappingBias(0) end
     slider:SetThumbTexture(thumb)
 
     local function SyncVal(v)
+        local _, curAcc = GetTheme()
         local pct = (maxVal > minVal) and ((v - minVal) / (maxVal - minVal)) or 0
         pct = math.max(0, math.min(1, pct))
         local w = slider:GetWidth() or 170
+        fill:SetColorTexture(curAcc.r, curAcc.g, curAcc.b, 0.95)
         fill:SetWidth(math.max(2, w * pct))
+        valFs:SetTextColor(curAcc.r, curAcc.g, curAcc.b, 1.0)
         valFs:SetText(formatFn and formatFn(v) or tostring(v))
     end
 
     local cur = math.max(minVal, math.min(maxVal, SafeNum(getter(), minVal)))
     slider:SetValue(cur)
     C_Timer.After(0, function() SyncVal(slider:GetValue()) end)
+    slider:SetScript("OnEnter", function()
+        local _, curAcc = GetTheme()
+        ApplyBackdrop(host, { 0.043, 0.051, 0.071, 0.98 }, { curAcc.r, curAcc.g, curAcc.b, 0.65 })
+    end)
+    slider:SetScript("OnLeave", function()
+        ApplyBackdrop(host, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 })
+    end)
+    slider:SetScript("OnMouseWheel", function(self, delta)
+        local stp = step or 1
+        local nxt = math.max(minVal, math.min(maxVal, (self:GetValue() or cur) + (delta * stp)))
+        self:SetValue(nxt)
+    end)
     slider:SetScript("OnValueChanged", function(_, v)
         local snapped = math.floor((v / (step or 1)) + 0.5) * (step or 1)
         SyncVal(snapped)
         setter(snapped)
     end)
 
-    return card, -64
+    return card, -66
 end
 
 -- ============================================================================
@@ -2296,6 +2318,7 @@ DynamicVault.CHANGELOG = {
         version = VERSION,
         date = "21/11/2026",
         entries = {
+            { type = "UI", text = "Release v2.7.0 (21/11/2026): Standardised settings toggle switches (68px Off / 84px Enabled inside 156x26px) and 256x26px Precision Track sliders (6x14px thumb, 52px readout, mousewheel & hover highlight), and anchored card titles/descriptions relative to right-hand controls with 2-line wrapping so nothing clips at 800x520." },
             { type = "FIX", text = "Release v2.6.9 (21/11/2026): Fixed a Great Vault top dock width calculation error when 2 or more alts are tracked, enabled Escape key closing on the standalone /dv window, cleaned up legacy /dv overlay hints to point to DynamicPrep's Top Info Bar, and registered DynamicVault's changelog with DynamicSuite." },
             { type = "NEW", text = "Initial v2.5.0 Release (19/11/2026): Added DynamicVault (/dv, /dynamicvault) with Account-Wide Great Vault Matrix (Raid, Mythic+, and World/Delves 3-slot progress and target iLvl), live Restored Coffer Keys / Shards / Catalyst / Seasonal Crests tracking, Weekly Reset countdown and automatic rollover, Owned Keystone details, Auto-Tracked & Custom Weekly Checklists, 1-click Open Great Vault anywhere (/dv open), and full DynamicSuite + DynamicBags Alt Vault integration." },
         },

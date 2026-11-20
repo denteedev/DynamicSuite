@@ -1,5 +1,12 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.6.9 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.7.0 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicMarker v2.7.0 (21/11/2026)
+
+### Improved
+* **Live Suite Accent Consistency & Clean Header Anchoring:** Updated standalone DynamicMarker `Edit HUD` buttons, the HUD Edit Mode Inspector `[Apply All]` button, and conflict reload modals to follow the live Suite Accent colour rather than legacy orange accents, and anchored the Focus and World Flare section titles cleanly beside their `Edit HUD` buttons so headers never collide when resizing the window.
 
 ---
 

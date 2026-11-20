@@ -24,7 +24,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -105,7 +105,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicBags", VERSION, _G.DynamicBags) then
     return
 end
@@ -3419,7 +3419,9 @@ function U.ApplyHeaders(content, pool, sections)
                     GameTooltip:SetText(self.fullLabel or "Category", 1, 1, 1)
                     GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Collapse or Expand Category|r", 0.886, 0.910, 0.941, true)
                     GameTooltip:AddLine("|cFF38BDF8Shift + Left-Click:|r |cFFE2E8F0Collapse or Expand All Categories|r", 0.886, 0.910, 0.941, true)
-                    GameTooltip:AddLine("|cFFF97316Alt + Left-Click:|r |cFFE2E8F0Reorder Category Menu|r", 0.886, 0.910, 0.941, true)
+                    local ar, ag, ab = GetAccent()
+                    local accHex = sformat("%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
+                    GameTooltip:AddLine("|cFF" .. accHex .. "Alt + Left-Click:|r |cFFE2E8F0Reorder Category Menu|r", 0.886, 0.910, 0.941, true)
                     if (S.atBank or S.atGuildBank) and S.bankWindow and S.bankWindow:IsShown() then
                         GameTooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Batch-Transfer Entire Category|r", 0.886, 0.910, 0.941, true)
                     end
@@ -6965,20 +6967,30 @@ function U.AddCard(page, spec)
     if kind == "pills" or kind == "toggle" then
         local options = spec.options
         if kind == "toggle" then
-            options = { { value = false, label = "Off" }, { value = true, label = "Enabled" } }
+            options = {
+                { value = false, label = "Off", width = 68 },
+                { value = true,  label = "Enabled", width = 84 },
+            }
         end
-        local w = spec.pillWidth or (kind == "toggle" and 86 or 128)
         local holder = CreateFrame("Frame", nil, card)
-        holder:SetSize(#options * w + (#options - 1) * 4, 26)
+        local totalW = 0
+        for i, opt in ipairs(options) do
+            local bw = (kind == "toggle" and (opt.width or 76)) or spec.pillWidth or 128
+            totalW = totalW + bw + ((i > 1) and 4 or 0)
+        end
+        holder:SetSize(totalW, 26)
         holder:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -17)
         card.btns = {}
+        local xCur = 0
         for i, opt in ipairs(options) do
-            local b = U.NewButton(holder, w, 26, opt.label)
+            local bw = (kind == "toggle" and (opt.width or 76)) or spec.pillWidth or 128
+            local b = U.NewButton(holder, bw, 26, opt.label)
             b.isPillOption = true
             b.optValue = opt.value
             b.optLabel = opt.label
             b.isNegativeOpt = IsNegativePillOption(opt.value, opt.label)
-            b:SetPoint("LEFT", holder, "LEFT", (i - 1) * (w + 4), 0)
+            b:SetPoint("LEFT", holder, "LEFT", xCur, 0)
+            xCur = xCur + bw + 4
             b:SetScript("OnClick", function()
                 spec.set(opt.value)
                 card:Refresh()
@@ -11015,8 +11027,9 @@ end
 
 DynamicBags.CHANGELOG = {
     version = VERSION,
-    date = "18/11/2026",
+    date = "21/11/2026",
     entries = {
+        { type = "UI",      text = "Release v2.7.0 - 156x26px Binary Switch Alignment & Live Accent Tooltips (21/11/2026): Standardised binary Off/Enabled option switches across all tabs to 68px Off + 84px Enabled (156x26px total) and updated Alt + Left-Click category tooltips to track the live Suite Accent colour." },
         { type = "FIX",     text = "v2.4.0 DynamicMail Alt+Left-Click Attach & Stuck Lock Release on Mail Close (18/11/2026): Removed the ActionButtonUseKeyDown edge filter blocking Alt + Left-Click mail attachments on ContainerFrameItemButton slot buttons, and updated ITEM_LOCK_CHANGED / ITEM_UNLOCKED plus MAIL_CLOSED and U.ShowWindow() lock refreshes so bag icons never stay desaturated after closing Mailbox with attached or dragged items." },
         { type = "FIX",     text = "Release v2.3.2 - 1-Click Housing Decor Non-Tradeable Confirmation & Smooth Mousewheel Scrolling (18/11/2026): Clicking Open (N) or scrolling Alt+MouseWheel now uses and confirms refundable/trade-timer Housing Decor items in one click out of combat (supporting Retail 12.1.5 pooled StaticPopup dialogs, END_BOUND_TRADEABLE, and USE_NO_REFUND_CONFIRM while keeping Open (N) ready whenever a background auto-open requires a hardware click and strictly ignoring manual bag clicks, dungeon/raid loot rolls, and non-Decor items); and restored smooth mousewheel scrolling across DynamicBags, DynamicBank (Personal, Warband, and Guild Bank), and settings scroll areas whenever Ctrl+Shift is not held." },
         { type = "FIX",     text = "ESC / B Keybind Closure, Top-Most Window Escape Priority & GameMenu Failsafe Guard (18/11/2026): Removed the conflicting GameMenuFrame OnShow hide hack from U.EnsureWindow() and added nil-hole/duplicate compaction plus single top-most Escape ordering to UISpecialFrames (DynamicBagsBankFrame -> DynamicBagsFrame -> DynamicBagsStandaloneFrame -> DynamicSuite DesktopWindows); guarded CloseAllBags against ESC calls and added a CloseSpecialWindows + ToggleGameMenu failsafe so even if DynamicBagsFrame or DynamicBagsBankFrame is protected by slot children or skipped by CloseSpecialWindows, pressing ESC reliably clears active search or closes the top-most window one at a time without opening the Options / Game Menu while preserving clean two-way B toggling before and after ESC." },

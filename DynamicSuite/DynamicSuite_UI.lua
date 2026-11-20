@@ -7811,11 +7811,11 @@ function addonTable.CreateMainConfigUI()
     replaceAddonListPills:SetPoint("RIGHT", replaceAddonListRow, "RIGHT", -14, 0)
     replaceAddonListRow:BindRightControl(replaceAddonListPills)
 
-    -- Tab 1 Card 3: Shared Alert & Teleport Toast HUD Configuration Card (Visibility, Border Style, Scale, Opacity, Test Toast, Edit HUD)
+    -- Tab 1 Card 3: Shared Alert Toast HUD Configuration Card (Visibility, Border Style, Scale, Opacity, Duration, Sound, Test Toast, Edit HUD)
     local toastSectionCard = CreateFrame("Frame", nil, tvChild)
     toastSectionCard:SetPoint("TOPLEFT", surfaceSectionCard, "BOTTOMLEFT", 0, -10)
     toastSectionCard:SetPoint("TOPRIGHT", surfaceSectionCard, "BOTTOMRIGHT", 0, -10)
-    toastSectionCard:SetHeight(274)
+    toastSectionCard:SetHeight(386)
     toastSectionCard.bg = UI.SolidTex(toastSectionCard, "BACKGROUND", 0, 0.031, 0.039, 0.055, 0.72)
     toastSectionCard.bg:SetAllPoints()
     UI.CreatePixelBorder(toastSectionCard, 1, 1, 1, 0.08, 2)
@@ -7823,8 +7823,8 @@ function addonTable.CreateMainConfigUI()
     local toastSecHdr = UI.CreateSectionHeader(
         toastSectionCard,
         -10,
-        "ON-SCREEN ALERT & TELEPORT TOAST HUD",
-        "Customise visibility, border style, scale, and opacity for the shared Alert & Teleport Toast popup.",
+        "SHARED ALERT TOAST HUD",
+        "Customise visibility, border style, scale, opacity, auto-fade duration, and sound for all suite toasts.",
         14
     )
     local toastEditHudBtn = UI.CreateEditHudButton(toastSecHdr, "TOAST")
@@ -7839,6 +7839,11 @@ function addonTable.CreateMainConfigUI()
             pcall(_G.DynamicGroup.ShowTeleportToast, _G.DynamicGroup, "Preview Destination", "Preview Party Lead", true)
         end
     end)
+    if toastSecHdr.title then
+        toastSecHdr.title:ClearAllPoints()
+        toastSecHdr.title:SetPoint("TOPLEFT", toastSecHdr.leftBar, "TOPRIGHT", 8, 0)
+        toastSecHdr.title:SetPoint("RIGHT", toastTestBtn, "LEFT", -10, 0)
+    end
     if toastSecHdr.subtitle then
         toastSecHdr.subtitle:ClearAllPoints()
         toastSecHdr.subtitle:SetPoint("TOPLEFT", toastSecHdr.title, "BOTTOMLEFT", 0, -2)
@@ -7847,8 +7852,17 @@ function addonTable.CreateMainConfigUI()
 
     local function SyncSharedToastHudVisuals()
         if addonTable.ApplyToastVisuals then pcall(addonTable.ApplyToastVisuals) end
-        if _G.DynamicGroup and _G.DynamicGroup.UpdateTeleportToast then
-            pcall(_G.DynamicGroup.UpdateTeleportToast, _G.DynamicGroup)
+        if _G.DynamicGroup and type(_G.DynamicGroup.ApplyTeleportToastPosition) == "function" then
+            pcall(_G.DynamicGroup.ApplyTeleportToastPosition, _G.DynamicGroup)
+        end
+        if _G.DynamicPrep and type(_G.DynamicPrep.ApplyTalentReminderToastVisuals) == "function" then
+            pcall(_G.DynamicPrep.ApplyTalentReminderToastVisuals, _G.DynamicPrep)
+        end
+        if _G.DynamicChat and type(_G.DynamicChat.ApplyMentionToastVisuals) == "function" then
+            pcall(_G.DynamicChat.ApplyMentionToastVisuals, _G.DynamicChat)
+        end
+        if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+            pcall(_G.DynamicSuite.RestackAllToasts)
         end
         if f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
             pcall(f.toastConfigPanel.RefreshControls)
@@ -7859,12 +7873,12 @@ function addonTable.CreateMainConfigUI()
     local toastVisRow = CreateThemeStudioRow(
         toastSectionCard,
         "Toast Banner Visibility",
-        "Show or hide the shared Alert & Teleport Toast HUD banner across your screen.",
+        "Show or hide the shared Alert Toast banners across your screen.",
         toastSecHdr, -8
     )
     local toastVisPills = UI.CreateSegmentedPills(toastVisRow, {
         { value = false, label = "Hidden", width = 68 },
-        { value = true,  label = "Shown",  width = 68 },
+        { value = true,  label = "Shown",  width = 84 },
     }, function()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         if gTbl.toastEnabled ~= nil then return gTbl.toastEnabled == true end
@@ -7911,7 +7925,7 @@ function addonTable.CreateMainConfigUI()
     local toastBorderRow = CreateThemeStudioRow(
         toastSectionCard,
         "Toast Border Style",
-        "Choose the 1px outer frame border accent for the floating Alert & Teleport Toast.",
+        "Choose the 1px outer frame border accent shared across all suite alert toasts.",
         toastVisRow, -5
     )
     local toastBorderPills = UI.CreateSegmentedPills(toastBorderRow, {
@@ -7938,11 +7952,11 @@ function addonTable.CreateMainConfigUI()
     local toastScaleRow = CreateThemeStudioRow(
         toastSectionCard,
         "Toast HUD Scale",
-        "Adjust the size of the Alert & Teleport Toast popup (60% to 150%).",
+        "Adjust the visual size of all shared suite alert toasts (60% to 150%).",
         toastBorderRow, -5
     )
     local toastScaleSlider = CreateDSOptionSlider(
-        toastScaleRow, 240, 0.60, 1.50, 0.05,
+        toastScaleRow, 256, 0.60, 1.50, 0.05,
         function(v) return string.format("%d%%", math.floor((v or 1.0) * 100 + 0.5)) end,
         function()
             local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
@@ -7957,8 +7971,14 @@ function addonTable.CreateMainConfigUI()
             end
             if DynamicLoadDB then DynamicLoadDB.toastScale = clamped end
             if addonTable.ApplyToastVisuals then pcall(addonTable.ApplyToastVisuals) end
-            if _G.DynamicGroup and _G.DynamicGroup.UpdateTeleportToast then
-                pcall(_G.DynamicGroup.UpdateTeleportToast, _G.DynamicGroup)
+            if _G.DynamicGroup and type(_G.DynamicGroup.ApplyTeleportToastPosition) == "function" then
+                pcall(_G.DynamicGroup.ApplyTeleportToastPosition, _G.DynamicGroup)
+            end
+            if _G.DynamicPrep and type(_G.DynamicPrep.ApplyTalentReminderToastVisuals) == "function" then
+                pcall(_G.DynamicPrep.ApplyTalentReminderToastVisuals, _G.DynamicPrep)
+            end
+            if _G.DynamicChat and type(_G.DynamicChat.ApplyMentionToastVisuals) == "function" then
+                pcall(_G.DynamicChat.ApplyMentionToastVisuals, _G.DynamicChat)
             end
             if f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
                 pcall(f.toastConfigPanel.RefreshControls)
@@ -7971,11 +7991,11 @@ function addonTable.CreateMainConfigUI()
     local toastOpacityRow = CreateThemeStudioRow(
         toastSectionCard,
         "Toast Background Opacity",
-        "Adjust the dark-obsidian backdrop transparency of the Alert & Teleport Toast (20% to 100%).",
+        "Adjust the Obsidian backdrop transparency shared by all suite alert toasts (20% to 100%).",
         toastScaleRow, -5
     )
     local toastOpacitySlider = CreateDSOptionSlider(
-        toastOpacityRow, 240, 0.20, 1.00, 0.05,
+        toastOpacityRow, 256, 0.20, 1.00, 0.05,
         function(v) return string.format("%d%%", math.floor((v or 0.96) * 100 + 0.5)) end,
         function()
             local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
@@ -7997,8 +8017,14 @@ function addonTable.CreateMainConfigUI()
                 DynamicLoadDB.toastAlpha = clamped
             end
             if addonTable.ApplyToastVisuals then pcall(addonTable.ApplyToastVisuals) end
-            if _G.DynamicGroup and _G.DynamicGroup.UpdateTeleportToast then
-                pcall(_G.DynamicGroup.UpdateTeleportToast, _G.DynamicGroup)
+            if _G.DynamicGroup and type(_G.DynamicGroup.ApplyTeleportToastPosition) == "function" then
+                pcall(_G.DynamicGroup.ApplyTeleportToastPosition, _G.DynamicGroup)
+            end
+            if _G.DynamicPrep and type(_G.DynamicPrep.ApplyTalentReminderToastVisuals) == "function" then
+                pcall(_G.DynamicPrep.ApplyTalentReminderToastVisuals, _G.DynamicPrep)
+            end
+            if _G.DynamicChat and type(_G.DynamicChat.ApplyMentionToastVisuals) == "function" then
+                pcall(_G.DynamicChat.ApplyMentionToastVisuals, _G.DynamicChat)
             end
             if f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
                 pcall(f.toastConfigPanel.RefreshControls)
@@ -8007,6 +8033,59 @@ function addonTable.CreateMainConfigUI()
     )
     toastOpacitySlider:SetPoint("RIGHT", toastOpacityRow, "RIGHT", -14, 0)
     toastOpacityRow:BindRightControl(toastOpacitySlider)
+
+    local toastDurRow = CreateThemeStudioRow(
+        toastSectionCard,
+        "Auto-Fade Duration",
+        "How long alert toasts stay on screen before smoothly fading out (hovering pauses the timer).",
+        toastOpacityRow, -5
+    )
+    local toastDurPills = UI.CreateSegmentedPills(toastDurRow, {
+        { value = 5,  label = "5s",           width = 50 },
+        { value = 8,  label = "8s (Default)", width = 94 },
+        { value = 12, label = "12s",          width = 52 },
+        { value = 0,  label = "Stay",         width = 56 },
+    }, function()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        local d = gTbl.toastDuration
+        if d == nil then d = (DynamicLoadDB and DynamicLoadDB.toastDuration) or 8 end
+        return d
+    end, function(val)
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        if gTbl then gTbl.toastDuration = val end
+        if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+            _G.DynamicSuiteDB.global.toastDuration = val
+        end
+        if DynamicLoadDB then DynamicLoadDB.toastDuration = val end
+        SyncSharedToastHudVisuals()
+    end)
+    toastDurPills:SetPoint("RIGHT", toastDurRow, "RIGHT", -14, 0)
+    toastDurRow:BindRightControl(toastDurPills)
+
+    local toastSoundRow = CreateThemeStudioRow(
+        toastSectionCard,
+        "Toast Alert Sound",
+        "Play a crisp Battle.net notification chime when a shared suite alert toast appears.",
+        toastDurRow, -5
+    )
+    local toastSoundPills = UI.CreateSegmentedPills(toastSoundRow, {
+        { value = false, label = "Off",     width = 68 },
+        { value = true,  label = "Enabled", width = 84 },
+    }, function()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        return gTbl.toastSoundEnabled == true or (DynamicLoadDB and DynamicLoadDB.toastSoundEnabled == true) or false
+    end, function(val)
+        local enabled = (val == true)
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        if gTbl then gTbl.toastSoundEnabled = enabled end
+        if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+            _G.DynamicSuiteDB.global.toastSoundEnabled = enabled
+        end
+        if DynamicLoadDB then DynamicLoadDB.toastSoundEnabled = enabled end
+        SyncSharedToastHudVisuals()
+    end)
+    toastSoundPills:SetPoint("RIGHT", toastSoundRow, "RIGHT", -14, 0)
+    toastSoundRow:BindRightControl(toastSoundPills)
 
     ----------------------------------------------------------------------------
     -- TAB 2: DESKTOP WINDOWS & MENUS (Blizzard Desktop Window Manager + Game Menu & Options Shortcuts)
@@ -8513,7 +8592,7 @@ function addonTable.CreateMainConfigUI()
         surfDropdown, extSyncPills, syncPills, altSyncPills, fillPills,
         winMasterPills, winSideBySidePills, winDragPills, winScalePills,
         gmSuitePills, gmHudPills, replaceAddonListPills,
-        toastVisPills, toastBorderPills, toastScaleSlider, toastOpacitySlider,
+        toastVisPills, toastBorderPills, toastScaleSlider, toastOpacitySlider, toastDurPills, toastSoundPills,
     }
 
     themeView.Refresh = function()
@@ -8576,7 +8655,7 @@ function addonTable.CreateMainConfigUI()
             end
         else
             yieldStatusBanner:Hide()
-            tvChild:SetHeight(162 + 10 + 379 + 10 + 274 + 12)
+            tvChild:SetHeight(162 + 10 + 379 + 10 + 386 + 12)
         end
 
         for _, hdr in ipairs(studioSectionHeaders) do
@@ -8637,7 +8716,7 @@ function addonTable.CreateMainConfigUI()
     themeView:SetScript("OnShow", function()
         if themeView.Refresh then themeView.Refresh() end
     end)
-    for _, tc in ipairs({ swatchCard, surfRow, fontRow, extSyncRow, syncRow, altSyncRow, fillRow, desktopWinSectionCard, winSideBySideRow, winDragRow, winScaleRow, winResetRow, shortcutSectionCard, gmSuiteRow, gmHudRow, replaceAddonListRow, toastSectionCard, toastVisRow, toastBorderRow, toastScaleRow, toastOpacityRow }) do
+    for _, tc in ipairs({ swatchCard, surfRow, fontRow, extSyncRow, syncRow, altSyncRow, fillRow, desktopWinSectionCard, winSideBySideRow, winDragRow, winScaleRow, winResetRow, shortcutSectionCard, gmSuiteRow, gmHudRow, replaceAddonListRow, toastSectionCard, toastVisRow, toastBorderRow, toastScaleRow, toastOpacityRow, toastDurRow, toastSoundRow }) do
         table.insert(f.themeCards, tc)
     end
     end
@@ -8660,19 +8739,20 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.3.2"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.7.0"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
             key = "suite",
             tabLabel = "DynamicLoad",
             ver = DS_LIVE_VER_TAG,
-            date = "18/11/2026 (Retail 12.1.5)",
+            date = "21/11/2026 (Retail 12.1.5)",
             title = "DynamicSuite Hub & DynamicLoad " .. DS_LIVE_VER_TAG,
             subtitle = "Context-Aware Addon Manager, Suite Studio, Desktop Window Manager & Auto-Yield Engine (/dl, /ds)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "UI",       title = "v2.7.0 Release (21/11/2026): Unified Shared Alert Toast System, Live Suite Accent Across All Chrome, DynamicDialogue 34px Tab Bar & 800x520 Widget Parity", desc = "Centralised Alert Toast styling and chime controls under Suite Studio and DynamicLoad; unified DynamicPrep Talent Reminder, DynamicGroup Teleport, and DynamicChat Mention Alert Toasts with clean vertical stacking; removed stray Edit HUD buttons from toast-consumer panels and kept inline Edit HUD buttons strictly on the 6 movable HUD owner cards with non-overlapping headers; replaced hardcoded Blaze Orange buttons, modal borders, Apply All buttons, window scale toasts, and corner resize grips with live Suite Accent; upgraded DynamicDialogue with the 34px 2-tab bar, dedicated 44px Action & Status strip, clean card fonts, and 156x26 switches; and clamped right-anchored switches/sliders across DynamicVault, DynamicMail, DynamicBags, DynamicFPS, and DynamicSuite_UI cleanly down to 800x520." },
                 { badge = "NEW",      title = "v2.4.0 Release: New DynamicMail Module (/dmail), Smart Quick-Attach Presets, Alt Vault Picker & Quick Gold", desc = "Added DynamicMail as DynamicSuite's 9th dual-mode module with 1-click Inbox Open All, AH Gold, and Items Only collection; Shift+Click inbox quick-loot and Expiring (<3d) alerts; automatic COD and bag-reserve protection; a 4-tab Recipient Picker synced with DynamicBags Alt Vault (class colours, gold balances, Pending Alt Mail Sent badges & Favourite stars); 1-click Quick-Attach presets ([+ Mats], [+ BoE], [+ Warband], [+ Same]) + Quick Gold buttons ([+1k g], [+10k g], [+100k]); Alt + Left-Click Express Multi-Attach; and lifetime telemetry." },
                 { badge = "FIXED",    title = "v2.3.2 Release (18/11/2026): Proactive DecorVendor /tm Quarantine Modal & Tier-1 Conflict Protection", desc = "Promoted DecorVendor ('Decor Vendor') to a Tier-1 HARD conflict under DynamicMarker across Guided Setup, module conflict banners, and /ds conflicts, and added a Midnight Pitch Black (#06070A-#090A0D) Obsidian warning modal ('Raid Marker Blocked by Addon Conflict', safely deferred until out of combat) whenever DecorVendor is active on login/reload or whenever World of Warcraft blocks SetRaidTarget() / SetRaidTargetIcon(). Includes a 1-click 'Disable <Addon> (Set to Never)' button across all DynamicLoad zone profiles, session-throttled Dismiss, and plain-English instructions to completely Exit & Restart World of Warcraft." },
                 { badge = "FIXED",    title = "v2.3.2 Release (18/11/2026): Post-Combat MacroFrame Protection & Automatic Icon Grid Refresh", desc = "Protected the Blizzard Macros window (MacroFrame) inside DesktopWindows during combat lockdown so opening or viewing Macros mid-fight never detaches, moves, rescales, or hides the window, and added an automatic post-combat refresh on PLAYER_REGEN_ENABLED so all General and Character-Specific macro icons reappear cleanly across DIALOG/HIGH focus transitions and ElvUI Blizzard skinning without switching tabs or reopening the window." },
@@ -9580,7 +9660,8 @@ function addonTable.CreateMainConfigUI()
     upDesc:SetPoint("TOPLEFT", upTitle, "BOTTOMLEFT", 0, -2)
     upDesc:SetPoint("RIGHT", uninstallPrepCard, "RIGHT", -220, 0)
     upDesc:SetJustifyH("LEFT")
-    upDesc:SetWordWrap(false)
+    upDesc:SetWordWrap(true)
+    if upDesc.SetMaxLines then upDesc:SetMaxLines(2) end
     UI.SetFont(upDesc, 10, "", 0.78, 0.83, 0.90, 0.92)
     upDesc:SetText("Resets game settings, chat windows, and graphics back to Blizzard defaults before uninstalling.")
 
@@ -9978,7 +10059,9 @@ function addonTable.CreateMainConfigUI()
         cCard.desc:SetPoint("TOPLEFT", cCard, "TOPLEFT", 12, -21)
         cCard.desc:SetPoint("TOPRIGHT", cCard, "TOPRIGHT", -12, -21)
         cCard.desc:SetJustifyH("LEFT")
-        cCard.desc:SetWordWrap(false)
+        cCard.desc:SetJustifyV("TOP")
+        cCard.desc:SetWordWrap(true)
+        if cCard.desc.SetMaxLines then cCard.desc:SetMaxLines(2) end
         UI.SetFont(cCard.desc, 10, "", UI.COLORS.TEXT_DIM.r, UI.COLORS.TEXT_DIM.g, UI.COLORS.TEXT_DIM.b, 0.95)
 
         cCard:Hide()
@@ -15118,27 +15201,28 @@ function addonTable.CreateMainConfigUI()
         local applyAllBtn = CreateFlatButton(inspRow3, 52, 22, "Apply All", false)
         TightenCompactButtonLabel(applyAllBtn, 2)
         if applyAllBtn.label then UI.SetFont(applyAllBtn.label, 10, "", 1, 1, 1, 0.95) end
+        local arInit, agInit, abInit = UI.GetActiveAccentColor()
         applyAllBtn.idleBgColor = { r = 0.043, g = 0.051, b = 0.071, a = 0.98 } -- #0B0D12
-        applyAllBtn.idleBorderColor = { r = 0.976, g = 0.451, b = 0.086, a = 0.72 } -- #F97316
-        applyAllBtn.idleTextColor = { r = 0.976, g = 0.451, b = 0.086, a = 1.0 }
+        applyAllBtn.idleBorderColor = { r = arInit, g = agInit, b = abInit, a = 0.72 }
+        applyAllBtn.idleTextColor = { r = arInit, g = agInit, b = abInit, a = 1.0 }
         ApplyFlatButtonVisual(applyAllBtn, false)
         applyAllBtn:SetPoint("LEFT", bdrNoneBtn, "RIGHT", 5, 0)
         applyAllBtn:SetScript("OnClick", function()
             if InCombatLockdown and InCombatLockdown() then
-                print("|cFFF97316DynamicSuite:|r Cannot apply HUD appearance during combat lockdown.")
+                print(string.format("|cFF%sDynamicSuite:|r Cannot apply HUD appearance during combat lockdown.", UI.GetActiveAccentHex()))
                 return
             end
             local srcKey = (selectedHudTarget == "ALL" or not selectedHudTarget) and "TOAST" or selectedHudTarget
             local curOpa = GetHudOpacity(srcKey)
             local curBdr = GetHudBorderStyle(srcKey)
-            for _, k in ipairs({ "TOAST", "PREP", "prepBuffs", "TARGET", "FLARE", "CHAT", "VAULT" }) do
+            for _, k in ipairs({ "TOAST", "PREP", "prepBuffs", "TARGET", "FLARE", "CHAT" }) do
                 SetHudOpacity(k, curOpa)
                 SetHudBorderStyle(k, curBdr)
             end
             SyncAllEditModeHuds(true)
             m.RefreshState()
             local bdrName = (curBdr == "DARK" and "Dark") or (curBdr == "NONE" and "None") or "Accent"
-            print(string.format("|cFFF97316DynamicSuite:|r Applied %d%% opacity and %s border style to all 6 HUDs.", math.floor(curOpa * 100 + 0.5), bdrName))
+            print(string.format("|cFF%sDynamicSuite:|r Applied %d%% opacity and %s border style to all 6 HUDs.", UI.GetActiveAccentHex(), math.floor(curOpa * 100 + 0.5), bdrName))
         end)
         applyAllBtn.OnCustomEnter = function(self)
             GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
@@ -15286,6 +15370,12 @@ function addonTable.CreateMainConfigUI()
                 orientVertBtn:SetSelected(false, accentCol)
                 orientHorizBtn:SetAlpha(0.38)
                 orientVertBtn:SetAlpha(0.38)
+            end
+
+            if applyAllBtn then
+                applyAllBtn.idleBorderColor = { r = accentCol.r, g = accentCol.g, b = accentCol.b, a = 0.72 }
+                applyAllBtn.idleTextColor = { r = accentCol.r, g = accentCol.g, b = accentCol.b, a = 1.0 }
+                ApplyFlatButtonVisual(applyAllBtn, applyAllBtn:IsMouseOver())
             end
 
             if not rowResetConfirmPending then
@@ -16475,7 +16565,7 @@ function addonTable.CreateMainConfigUI()
             f.UpdateRailScrollBar()
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.3.2"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.7.0"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -17333,7 +17423,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.2.0") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.7.0") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -17394,7 +17484,7 @@ function addonTable.HookGameMenu()
             cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
             if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
-            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.2.0") .. "|r")
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.7.0") .. "|r")
             openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
             if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
@@ -17502,7 +17592,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "2.2.0",
+        version = addonTable.ADDON_VERSION or "2.7.0",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,

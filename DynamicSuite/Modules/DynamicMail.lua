@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMail", VERSION, _G.DynamicMail) then
     return
 end
@@ -2587,14 +2587,17 @@ local function CreateSegmentedSwitchCard(parent, yOffset, titleText, descText, g
     local pillGroup = CreateFrame("Frame", nil, card, "BackdropTemplate")
     pillGroup:SetPoint("RIGHT", card, "RIGHT", -14, 0)
     ApplyBackdrop(pillGroup, surf.header, surf.border)
+    title:SetPoint("RIGHT", pillGroup, "LEFT", -14, 0)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
 
     local offBtn = CreateFrame("Button", nil, pillGroup, "BackdropTemplate")
-    offBtn:SetPoint("LEFT", pillGroup, "LEFT", 2, 0)
+    offBtn:SetPoint("LEFT", pillGroup, "LEFT", 1, 0)
     local offTxt = offBtn:CreateFontString(nil, "OVERLAY")
     SetFontSafe(offTxt, 11, "")
     offTxt:SetPoint("CENTER")
     offTxt:SetText("Off")
-    offBtn:SetSize(64, 22)
+    offBtn:SetSize(68, 22)
     local offBar = offBtn:CreateTexture(nil, "OVERLAY")
     offBar:SetHeight(1.5)
     offBar:SetPoint("BOTTOMLEFT", offBtn, "BOTTOMLEFT", 1, 1)
@@ -2603,18 +2606,18 @@ local function CreateSegmentedSwitchCard(parent, yOffset, titleText, descText, g
     offBar:Hide()
 
     local onBtn = CreateFrame("Button", nil, pillGroup, "BackdropTemplate")
-    onBtn:SetPoint("RIGHT", pillGroup, "RIGHT", -2, 0)
+    onBtn:SetPoint("RIGHT", pillGroup, "RIGHT", -1, 0)
     local onTxt = onBtn:CreateFontString(nil, "OVERLAY")
     SetFontSafe(onTxt, 11, "")
     onTxt:SetPoint("CENTER")
     onTxt:SetText("Enabled")
-    onBtn:SetSize(86, 22)
-    pillGroup:SetSize(64 + 86 + 6, 26)
+    onBtn:SetSize(84, 22)
+    pillGroup:SetSize(156, 26)
 
     local desc = card:CreateFontString(nil, "OVERLAY")
     SetFontSafe(desc, 10.5, "")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -3)
-    desc:SetPoint("RIGHT", pillGroup, "LEFT", -16, 0)
+    desc:SetPoint("RIGHT", pillGroup, "LEFT", -14, 0)
     desc:SetJustifyH("LEFT")
     desc:SetWordWrap(true)
     if desc.SetMaxLines then desc:SetMaxLines(2) end
@@ -3579,6 +3582,7 @@ DynamicMail.CHANGELOG = {
         version = VERSION,
         date = "21/11/2026",
         entries = {
+            { type = "UI", text = "Release v2.7.0 (21/11/2026): Standardised binary Off/Enabled switches to 68px Off / 84px Enabled (156x26px) and clamped card titles directly to the left of right-hand switches for clean 800x520 framing." },
             { type = "FIX", text = "Release v2.6.9 (21/11/2026): Guarded suite window routing when DynamicMail is disabled inside DynamicSuite, aligned the standalone resize handle with the active Suite Accent, updated Quick Action Bar search copy, and standardised the module changelog structure." },
             { type = "NEW", text = "Auto-Delete Empty Letters & 1-Click Clear Empty Button (19/11/2026): Added the 'Auto-Delete Empty Letters on Open All' option (enabled by default) and a dedicated 1-click [Clear Empty] button on DynamicMailInboxBar to wipe empty NPC notices (Lost Currency, Postmaster), Auction receipts, and zero-gold/zero-item letters without opening each one manually, while always protecting COD, items, gold, and GM mail." },
             { type = "UI", text = "Suite-Matched 3-Tab Top Bar & 4px Scrollbar Alignment (18/11/2026): Updated the /dmail and /ds workspace top 3-tab bevel bar (14/-16px margins, #0B0D12 container, #14171F inactive card fill and #252A36 borders with hover highlight, equal-width 4px-gapped tab sizing, -8px direct scroll-area anchor, and 4px Obsidian scrollbar track) to match DynamicSuite, DynamicBags, and DynamicChat 1:1." },

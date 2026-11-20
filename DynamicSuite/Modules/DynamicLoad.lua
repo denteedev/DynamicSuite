@@ -8,7 +8,7 @@ local addonName, rawAddonTable = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 
 -- Guard E: Version-aware duplicate-install guard if standalone DynamicLoad is installed alongside bundled DynamicSuite
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicLoad", RESOLVED_ADDON_VERSION, _G.DynamicLoad) then
@@ -178,8 +178,9 @@ DynamicSuite.Changelogs = DynamicSuite.Changelogs or {}
 
 DynamicSuite.Changelogs["DynamicLoad"] = {
     version = ADDON_VERSION,
-    date = "16/11/2026",
+    date = "21/11/2026",
     entries = {
+        { type = "UI",      text = "Release v2.7.0 - Shared Alert Toast HUD Consolidation & Accent Tooltip Polish (21/11/2026): Wrapped DynamicLoad's Alert Toast settings card in a scrollable container with the 4px 3-way Obsidian scrollbar, added the shared Toast Alert Sound switch, standardised 68px/84px switches and compact duration pills, updated group tooltip links to use the live Suite Accent, and synchronised all Shared Alert Toast appearance and sound controls with Suite Studio." },
         { type = "FIX",     text = "Toolbar Search Box Width & HUD Edit Mode 'Apply All' Appearance Action (16/11/2026): tightened DynamicLoad toolbar button padding, gaps, and adaptive minimum widths so the 'Filter addons...' search box retains at least 125px cleanly at the default 980x680 window size without clipping; and added an 'Apply All' Opacity & Border Style button on Row 3 of the HUD Edit Mode Inspector to copy the selected HUD's opacity and border style across all 6 suite HUDs in one click." },
         { type = "FEATURE", text = "One-Click 'Copy From...' Zone Profile & Persistent Tree Collapse (16/11/2026): added a compact 'Copy From...' button on the DynamicLoad toolbar so you can copy another zone's By Zone addon selections into the active zone tab in one click (preserving Always/Never locks and Suite Core protections), and ensured collapsed parent addon groups persist reliably across /reload and logins with clear expand/collapse tooltips." },
         { type = "FIX",     text = "Universal 'Never' ('FROZEN') Persistence Across All Addons & Sub-Addons (12/11/2026): Normalised all security and zone assignment operations to canonical folder names (ResolveCanonicalAddonName); made SetAddonFrozen(name, true) atomically persist 'FROZEN' across DynamicLoadDB/globalData/charData, wipe all 5 zone tables, and call C_AddOns.DisableAddOn; merged DynamicLoadDB root and globalData security tables in SyncScopeBindings() and used in-place wipe() in RestoreStash() so SavedVariables deserialization never reverts 'FROZEN' states on /reload; prevented ReconcileStartupProfileBaseline from overwriting knownAddons; protected individual child 'FROZEN' / 'LOCKED' states from parent cascades; and added EnforceFrozenAddonsDisabled() + a hooksecurefunc(C_AddOns, 'EnableAddOn', ...) guard so external parent suites cannot re-enable 'FROZEN' sub-addons." },
@@ -1258,7 +1259,7 @@ local function RefreshToastContent(f)
     local bdgHex = RGBToHex(bdg.r, bdg.g, bdg.b)
     local profKey = f.previewProfileKey or (DynamicLoadDB and DynamicLoadDB.activeProfile) or "outdoor"
     local profileName = (DynamicLoadDB and DynamicLoadDB.profiles and DynamicLoadDB.profiles[profKey] and DynamicLoadDB.profiles[profKey].name) or "Outdoor"
-    local deltaCount = f.previewDelta or 4
+    local deltaCount = tonumber(f.previewDelta) or 4
 
     local fontPath = (addonTable.UI and addonTable.UI.GetFont and addonTable.UI.GetFont()) or STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
     f.title:SetFont(fontPath, 13, "")
@@ -1535,17 +1536,13 @@ local function ApplyToastPosition(f)
         f:SetPoint("TOP", UIParent, "TOP", cx, cy)
     end
 
-    local dgToast = _G.DynamicGroupTeleportToast
-    if dgToast and dgToast:IsShown() and not dgToast._dsStackedUnderLoad and not f.isEditingMode and not f.isDraggingMode and not (mf and mf:IsShown()) then
-        f._dsStackedUnderGroup = true
-        f:ClearAllPoints()
-        f:SetPoint("TOP", dgToast, "BOTTOM", 0, -8)
-    else
-        f._dsStackedUnderGroup = false
-    end
+    f._dsStackedUnderGroup = false
 
     if f.toastType ~= "CONFLICT_ALERT" and f.toastType ~= "NEW_ADDON" then
         RefreshToastContent(f)
+    end
+    if f:IsShown() and _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+        pcall(_G.DynamicSuite.RestackAllToasts)
     end
 end
 
@@ -1555,6 +1552,15 @@ addonTable.ApplyToastVisuals = function()
     end
     if _G.DynamicGroup and type(_G.DynamicGroup.ApplyTeleportToastPosition) == "function" then
         pcall(_G.DynamicGroup.ApplyTeleportToastPosition, _G.DynamicGroup)
+    end
+    if _G.DynamicPrep and type(_G.DynamicPrep.ApplyTalentReminderToastVisuals) == "function" then
+        pcall(_G.DynamicPrep.ApplyTalentReminderToastVisuals, _G.DynamicPrep)
+    end
+    if _G.DynamicChat and type(_G.DynamicChat.ApplyMentionToastVisuals) == "function" then
+        pcall(_G.DynamicChat.ApplyMentionToastVisuals, _G.DynamicChat)
+    end
+    if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+        pcall(_G.DynamicSuite.RestackAllToasts)
     end
 end
 _G.DynamicSuite = _G.DynamicSuite or {}
@@ -1911,6 +1917,9 @@ local function CreateToastFrame()
         if _G.DynamicGroup and type(_G.DynamicGroup.OnAlertToastHidden) == "function" then
             pcall(_G.DynamicGroup.OnAlertToastHidden, _G.DynamicGroup)
         end
+        if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+            pcall(_G.DynamicSuite.RestackAllToasts)
+        end
     end)
     return toastFrame
 end
@@ -2038,6 +2047,12 @@ local function ShowToast(profileKey, deltaCount, isTestPreview)
     end
 
     f:Show()
+    if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+        pcall(_G.DynamicSuite.RestackAllToasts)
+    end
+    if not isTestPreview and _G.DynamicSuite and type(_G.DynamicSuite.PlaySharedToastSound) == "function" then
+        pcall(_G.DynamicSuite.PlaySharedToastSound)
+    end
     if duration and duration > 0 then
         f.holdAnim:SetDuration(duration)
         f.animGroup:Play()
@@ -6357,7 +6372,7 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
             GameTooltip:AddDoubleLine("Load Mode:", "|cFFFACC15[Always]|r", 0.75, 0.78, 0.82, 0.980, 0.800, 0.082)
             GameTooltip:AddLine(string.format("Forced ON across all 5 zone profiles (%d of %d child modules set to [Always]).", lockedChildren, totalChildren), 0.82, 0.85, 0.90)
             if item.children and #item.children > 0 then
-                GameTooltip:AddLine("|cFFF97316Left-Click Group:|r |cFFE2E8F0Expand or collapse child addons (Shift+Click: All groups)|r", 0.886, 0.910, 0.941)
+                GameTooltip:AddLine("|cFF" .. accentHex .. "Left-Click Group:|r |cFFE2E8F0Expand or collapse child addons (Shift+Click: All groups)|r", 0.886, 0.910, 0.941)
             end
             GameTooltip:AddLine("|cFF34D399Left-Click Row:|r |cFFE2E8F0Reset to|r |cFF34D399[By Zone]|r   |cFF475569|||r   |cFF38BDF8Right-Click Row:|r |cFFE2E8F0Set to|r |cFF38BDF8[Never]|r", 1, 1, 1)
             GameTooltip:AddLine("|cFF" .. accentHex .. "Ctrl + Right-Click:|r |cFFE2E8F0Open Zone Assignment Menu|r", 1, 1, 1)
@@ -6365,7 +6380,7 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
             GameTooltip:AddDoubleLine("Load Mode:", "|cFFFACC15[Always]|r", 0.75, 0.78, 0.82, 0.980, 0.800, 0.082)
             GameTooltip:AddLine("Forced ON across all 5 zone profiles.", 0.82, 0.85, 0.90)
             if isParent and item.children and #item.children > 0 then
-                GameTooltip:AddLine("|cFFF97316Left-Click Group:|r |cFFE2E8F0Expand or collapse child addons (Shift+Click: All groups)|r", 0.886, 0.910, 0.941)
+                GameTooltip:AddLine("|cFF" .. accentHex .. "Left-Click Group:|r |cFFE2E8F0Expand or collapse child addons (Shift+Click: All groups)|r", 0.886, 0.910, 0.941)
             end
             GameTooltip:AddLine("|cFF34D399Left-Click Row:|r |cFFE2E8F0Reset to|r |cFF34D399[By Zone]|r   |cFF475569|||r   |cFF38BDF8Right-Click Row:|r |cFFE2E8F0Set to|r |cFF38BDF8[Never]|r", 1, 1, 1)
             GameTooltip:AddLine("|cFF" .. accentHex .. "Ctrl + Right-Click:|r |cFFE2E8F0Open Zone Assignment Menu|r", 1, 1, 1)
@@ -6376,7 +6391,7 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
             GameTooltip:AddLine("Managed per zone profile (Outdoor, Delves, Dungeons, Raid, PvP).", 0.82, 0.85, 0.90)
             GameTooltip:AddDoubleLine(zoneLabel .. " Profile:", inZone and "|cFF22C55EEnabled|r" or "|cFF8892A0Disabled|r", 0.75, 0.78, 0.82, 1, 1, 1)
             if isParent and item.children and #item.children > 0 then
-                GameTooltip:AddLine("|cFFF97316Left-Click Group:|r |cFFE2E8F0Expand or collapse child addons (Shift+Click: All groups)|r", 0.886, 0.910, 0.941)
+                GameTooltip:AddLine("|cFF" .. accentHex .. "Left-Click Group:|r |cFFE2E8F0Expand or collapse child addons (Shift+Click: All groups)|r", 0.886, 0.910, 0.941)
             end
             GameTooltip:AddLine("|cFFFACC15Left-Click Row:|r |cFFE2E8F0Set to|r |cFFFACC15[Always]|r   |cFF475569|||r   |cFF38BDF8Right-Click Row:|r |cFFE2E8F0Set to|r |cFF38BDF8[Never]|r", 1, 1, 1)
             GameTooltip:AddLine("|cFF" .. accentHex .. "Ctrl + Right-Click:|r |cFFE2E8F0Open Zone Assignment Menu|r", 1, 1, 1)
@@ -8657,7 +8672,9 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
 
     -- Standardize stageBox (38px height) with right-aligned [Test Toast] + [Edit HUD] buttons
     stageBox:SetHeight(38)
-    stageBadge:SetText("ON-SCREEN ALERT & TELEPORT TOAST HUD")
+    stageBadge:SetText("SHARED ALERT TOAST HUD")
+    stageBadge:SetJustifyH("LEFT")
+    stageBadge:SetWordWrap(false)
 
     local openHudEditBtn
     if UI and type(UI.CreateEditHudButton) == "function" then
@@ -8680,6 +8697,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
 
     local testToastBtn = CreateFlatButton(stageBox, 110, 22, "Test Toast", true)
     testToastBtn:SetPoint("RIGHT", openHudEditBtn, "LEFT", -6, 0)
+    stageBadge:SetPoint("RIGHT", testToastBtn, "LEFT", -8, 0)
     local testEyeIcon = testToastBtn:CreateTexture(nil, "OVERLAY", nil, 3)
     testEyeIcon:SetSize(13, 13)
     testEyeIcon:SetPoint("LEFT", testToastBtn, "LEFT", 9, 0)
@@ -8693,6 +8711,9 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     testToastBtn:SetScript("OnClick", function()
         if addonTable.ShowToast then
             addonTable.ShowToast(selectedTabKey, 4, true)
+        end
+        if _G.DynamicSuite and type(_G.DynamicSuite.PlaySharedToastSound) == "function" then
+            pcall(_G.DynamicSuite.PlaySharedToastSound)
         end
         local realToast = _G.DynamicLoadToastFrame
         if realToast and realToast:IsShown() then
@@ -8720,11 +8741,146 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         end
     end)
 
-    -- Row 1: Shared Alert & Teleport Toast Visibility (Hidden / Shown)
-    local rowToastVis = CreateSpaciousOptionRow(toastPanel, 1, "Alert & Teleport Toast Visibility", "Choose whether the floating Alert Toast and Dungeon Teleport banner are shown or hidden.")
+    -- ScrollFrame + 4px 3-way Obsidian Scrollbar so all 8 shared toast rows fit cleanly at 800x520
+    local toastScroll = CreateFrame("ScrollFrame", nil, toastPanel)
+    toastScroll:SetPoint("TOPLEFT", stageBox, "BOTTOMLEFT", 0, -8)
+    toastScroll:SetPoint("TOPRIGHT", stageBox, "BOTTOMRIGHT", 0, -8)
+    toastScroll:SetPoint("BOTTOM", toastPanel, "BOTTOM", 0, 0)
+    toastScroll:SetClipsChildren(true)
+    toastScroll:EnableMouseWheel(true)
+
+    local toastScrollChild = CreateFrame("Frame", nil, toastScroll)
+    toastScrollChild:SetWidth(760)
+    toastScrollChild:SetHeight(8 * 58)
+    toastScroll:SetScrollChild(toastScrollChild)
+
+    local toastSbTrack = CreateFrame("Frame", nil, toastPanel)
+    toastSbTrack:SetWidth(4)
+    toastSbTrack:SetPoint("TOPRIGHT", toastScroll, "TOPRIGHT", 10, -2)
+    toastSbTrack:SetPoint("BOTTOMRIGHT", toastScroll, "BOTTOMRIGHT", 10, 2)
+    toastSbTrack:EnableMouse(true)
+    toastSbTrack:SetHitRectInsets(-5, -5, 0, 0)
+    toastSbTrack.bg = UI.SolidTex(toastSbTrack, "BACKGROUND", 1, 0.043, 0.051, 0.071, 0.85)
+    toastSbTrack.bg:SetAllPoints()
+
+    local toastSbThumb = CreateFrame("Button", nil, toastSbTrack)
+    toastSbThumb:SetWidth(4)
+    toastSbThumb:SetHeight(48)
+    toastSbThumb:SetPoint("TOP", toastSbTrack, "TOP", 0, 0)
+    toastSbThumb:EnableMouse(true)
+    toastSbThumb:SetHitRectInsets(-5, -5, 0, 0)
+    toastSbThumb.tex = UI.SolidTex(toastSbThumb, "OVERLAY", 2, UI.COLORS.ACCENT.r, UI.COLORS.ACCENT.g, UI.COLORS.ACCENT.b, 0.78)
+    toastSbThumb.tex:SetAllPoints()
+
+    local function UpdateToastScrollbar()
+        if toastScroll.UpdateScrollChildRect then pcall(toastScroll.UpdateScrollChildRect, toastScroll) end
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        if toastSbThumb.isDragging then
+            toastSbThumb.tex:SetColorTexture(ar, ag, ab, 1.0)
+        elseif toastSbThumb.isHovered then
+            toastSbThumb.tex:SetColorTexture(ar, ag, ab, 0.92)
+        else
+            toastSbThumb.tex:SetColorTexture(ar, ag, ab, 0.78)
+        end
+        local viewH = toastScroll:GetHeight() or 0
+        local totalH = toastScrollChild:GetHeight() or 0
+        local trackH = toastSbTrack:GetHeight() or 0
+        if viewH <= 1 or trackH <= 1 then return end
+        local maxScroll = math.max(0, totalH - viewH)
+        if maxScroll <= 1 then
+            toastSbTrack:Hide()
+            toastSbThumb:Hide()
+            toastScroll:SetVerticalScroll(0)
+            return
+        end
+        toastSbTrack:Show()
+        toastSbThumb:Show()
+        local cur = math.max(0, math.min(maxScroll, toastScroll:GetVerticalScroll() or 0))
+        local thumbH = math.max(24, math.floor(trackH * math.min(1, viewH / totalH) + 0.5))
+        local travel = math.max(1, trackH - thumbH)
+        toastSbThumb:SetHeight(thumbH)
+        toastSbThumb:ClearAllPoints()
+        toastSbThumb:SetPoint("TOP", toastSbTrack, "TOP", 0, -math.floor((cur / maxScroll) * travel + 0.5))
+    end
+
+    local function ScrollToastPanelFromCursor()
+        if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            toastSbThumb.isDragging = false
+            toastSbThumb:SetScript("OnUpdate", nil)
+            toastSbTrack:SetScript("OnUpdate", nil)
+            UpdateToastScrollbar()
+            return
+        end
+        local viewH = toastScroll:GetHeight() or 0
+        local totalH = toastScrollChild:GetHeight() or 0
+        local trackH = toastSbTrack:GetHeight() or 0
+        local maxScroll = math.max(0, totalH - viewH)
+        if maxScroll <= 1 or trackH <= 1 then return end
+        local tTop = toastSbTrack:GetTop()
+        local eff = toastSbTrack:GetEffectiveScale() or 1
+        if not tTop or eff <= 0 then return end
+        local _, cy = GetCursorPosition()
+        local relY = math.max(0, math.min(trackH, tTop - (cy / eff)))
+        local thumbH = toastSbThumb:GetHeight() or 24
+        local travel = math.max(1, trackH - thumbH)
+        local ratio = math.max(0, math.min(1, (relY - (thumbH * 0.5)) / travel))
+        toastScroll:SetVerticalScroll(ratio * maxScroll)
+        UpdateToastScrollbar()
+    end
+
+    toastSbThumb:SetScript("OnEnter", function(s) s.isHovered = true; UpdateToastScrollbar() end)
+    toastSbThumb:SetScript("OnLeave", function(s) s.isHovered = false; UpdateToastScrollbar() end)
+    toastSbThumb:SetScript("OnMouseDown", function(s, button)
+        if button == "LeftButton" then
+            s.isDragging = true
+            ScrollToastPanelFromCursor()
+            s:SetScript("OnUpdate", ScrollToastPanelFromCursor)
+        end
+    end)
+    toastSbThumb:SetScript("OnMouseUp", function(s, button)
+        if button == "LeftButton" then s.isDragging = false; s:SetScript("OnUpdate", nil); UpdateToastScrollbar() end
+    end)
+    toastSbThumb:SetScript("OnHide", function(s) s.isDragging = false; s.isHovered = false; s:SetScript("OnUpdate", nil) end)
+    toastSbTrack:SetScript("OnMouseDown", function(s, button)
+        if button == "LeftButton" then
+            toastSbThumb.isDragging = true
+            ScrollToastPanelFromCursor()
+            s:SetScript("OnUpdate", ScrollToastPanelFromCursor)
+        end
+    end)
+    toastSbTrack:SetScript("OnMouseUp", function(s, button)
+        if button == "LeftButton" then toastSbThumb.isDragging = false; s:SetScript("OnUpdate", nil); UpdateToastScrollbar() end
+    end)
+    toastSbTrack:SetScript("OnHide", function(s) toastSbThumb.isDragging = false; s:SetScript("OnUpdate", nil) end)
+
+    local function ScrollToastByDelta(delta)
+        local viewH = toastScroll:GetHeight() or 0
+        local totalH = toastScrollChild:GetHeight() or 0
+        local maxScroll = math.max(0, totalH - viewH)
+        toastScroll:SetVerticalScroll(math.max(0, math.min(maxScroll, (toastScroll:GetVerticalScroll() or 0) - (delta * 42))))
+        UpdateToastScrollbar()
+    end
+    toastScroll:SetScript("OnSizeChanged", function(_, w)
+        if w and w > 100 then toastScrollChild:SetWidth(w) end
+        UpdateToastScrollbar()
+    end)
+    toastScroll:SetScript("OnShow", UpdateToastScrollbar)
+    toastScroll:SetScript("OnMouseWheel", function(_, delta) ScrollToastByDelta(delta) end)
+    toastSbTrack:SetScript("OnMouseWheel", function(_, delta) ScrollToastByDelta(delta) end)
+    toastSbThumb:SetScript("OnMouseWheel", function(_, delta) ScrollToastByDelta(delta) end)
+
+    local function PlaceToastRow(row, rowIdx)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", toastScrollChild, "TOPLEFT", 0, -((rowIdx - 1) * 58))
+        row:SetPoint("TOPRIGHT", toastScrollChild, "TOPRIGHT", 0, -((rowIdx - 1) * 58))
+        return row
+    end
+
+    -- Row 1: Shared Alert Toast Visibility (Hidden / Shown)
+    local rowToastVis = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 1, "Toast Banner Visibility", "Show or hide the shared Alert Toast banners across your screen."), 1)
     local visSegPills = UI.CreateSegmentedPills(rowToastVis, {
-        { value = false, label = "Hidden", width = 104 },
-        { value = true,  label = "Shown",  width = 104 },
+        { value = false, label = "Hidden", width = 68 },
+        { value = true,  label = "Shown",  width = 84 },
     }, function()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         if gTbl.toastEnabled ~= nil then return gTbl.toastEnabled == true end
@@ -8756,11 +8912,11 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     rowToastVis:BindRightControl(visSegPills)
 
     -- Row 2: Shared Border Style
-    local rowToastBorder = CreateSpaciousOptionRow(toastPanel, 2, "Toast Border Style", "Choose the outer border treatment shared by Alert and Teleport Toasts.")
+    local rowToastBorder = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 2, "Toast Border Style", "Choose the outer border treatment shared across all suite alert toasts."), 2)
     local borderSegPills = UI.CreateSegmentedPills(rowToastBorder, {
-        { value = "ACCENT", label = "Suite Accent", width = 114 },
-        { value = "SUBTLE", label = "Subtle Dark",  width = 114 },
-        { value = "NONE",   label = "Borderless",   width = 114 },
+        { value = "ACCENT", label = "Suite Accent", width = 98 },
+        { value = "SUBTLE", label = "Subtle Dark",  width = 92 },
+        { value = "NONE",   label = "Borderless",   width = 84 },
     }, function()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         local raw = gTbl.toastBorderStyle or (DynamicLoadDB and DynamicLoadDB.toastBorderStyle) or "ACCENT"
@@ -8771,21 +8927,18 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         if gTbl then gTbl.toastBorderStyle = val end
         if DynamicLoadDB then DynamicLoadDB.toastBorderStyle = val end
         if addonTable.ApplyToastVisuals then addonTable.ApplyToastVisuals() end
-        if _G.DynamicGroup and _G.DynamicGroup.UpdateTeleportToast then
-            pcall(_G.DynamicGroup.UpdateTeleportToast, _G.DynamicGroup, false)
-        end
         if toastPanel.RefreshControls then toastPanel.RefreshControls() end
     end)
     borderSegPills:SetPoint("RIGHT", rowToastBorder, "RIGHT", -14, 0)
     rowToastBorder:BindRightControl(borderSegPills)
 
-    -- Row 3: Toast Display Mode (Using Suite-Standard Segmented Pills with Checkmark Icons!)
-    local rowToastMode = CreateSpaciousOptionRow(toastPanel, 3, "Toast Display Mode", "Select 3-line detailed cards, 1-line compact pills, or exception-only alerts.")
+    -- Row 3: Toast Display Mode
+    local rowToastMode = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 3, "Toast Display Mode", "Select 3-line detailed cards, 1-line compact pills, or exception-only alerts."), 3)
     local modeSegPills
     modeSegPills = UI.CreateSegmentedPills(rowToastMode, {
-        { value = "DETAILED",        label = "Detailed (3-Line)", width = 126 },
-        { value = "COMPACT",         label = "Compact (1-Line)",  width = 124 },
-        { value = "EXCEPTIONS_ONLY", label = "Exceptions Only",   width = 120 },
+        { value = "DETAILED",        label = "Detailed (3-Line)", width = 120 },
+        { value = "COMPACT",         label = "Compact (1-Line)",  width = 118 },
+        { value = "EXCEPTIONS_ONLY", label = "Exceptions Only",   width = 114 },
     }, function()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         return gTbl.toastDisplayMode or (DynamicLoadDB and DynamicLoadDB.toastDisplayMode) or "DETAILED"
@@ -8800,7 +8953,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     rowToastMode:BindRightControl(modeSegPills)
 
     -- Row 4: Toast Scale Slider (60% - 150%)
-    local rowToastScale = CreateSpaciousOptionRow(toastPanel, 4, "Toast Scale", "Adjust the visual size of Alert and Teleport Toast banners (60% to 150%).")
+    local rowToastScale = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 4, "Toast Scale", "Adjust the visual size of all shared suite alert toasts (60% to 150%)."), 4)
     local toastScaleSlider = CreateDSOptionSlider(rowToastScale, 256, 0.60, 1.50, 0.05,
         function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
         function()
@@ -8819,7 +8972,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     rowToastScale:BindRightControl(toastScaleSlider)
 
     -- Row 5: Toast Opacity Slider (20% - 100%)
-    local rowToastAlpha = CreateSpaciousOptionRow(toastPanel, 5, "Toast Background Opacity", "Control the backdrop transparency of Alert and Teleport Toast banners (20% to 100%).")
+    local rowToastAlpha = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 5, "Toast Background Opacity", "Control the backdrop transparency of all shared suite alert toasts (20% to 100%)."), 5)
     local toastAlphaSlider = CreateDSOptionSlider(rowToastAlpha, 256, 0.20, 1.00, 0.05,
         function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
         function()
@@ -8843,14 +8996,14 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     toastAlphaSlider:SetPoint("RIGHT", rowToastAlpha, "RIGHT", -14, 0)
     rowToastAlpha:BindRightControl(toastAlphaSlider)
 
-    -- Row 6: Auto-Fade Duration (Using Suite-Standard Segmented Pills with Checkmark Icons!)
-    local rowToastDur = CreateSpaciousOptionRow(toastPanel, 6, "Auto-Fade Duration", "How long the Alert Toast remains on screen before smoothly fading out.")
+    -- Row 6: Auto-Fade Duration
+    local rowToastDur = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 6, "Auto-Fade Duration", "How long shared alert toasts remain on screen before smoothly fading out."), 6)
     local durSegPills
     durSegPills = UI.CreateSegmentedPills(rowToastDur, {
-        { value = 5,  label = "5s",                 width = 62 },
-        { value = 8,  label = "8s (Default)",       width = 104 },
-        { value = 12, label = "12s",                width = 62 },
-        { value = 0,  label = "Stay Until Clicked", width = 142 },
+        { value = 5,  label = "5s",           width = 50 },
+        { value = 8,  label = "8s (Default)", width = 94 },
+        { value = 12, label = "12s",          width = 52 },
+        { value = 0,  label = "Stay",         width = 56 },
     }, function()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         local d = gTbl.toastDuration
@@ -8865,8 +9018,26 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     durSegPills:SetPoint("RIGHT", rowToastDur, "RIGHT", -14, 0)
     rowToastDur:BindRightControl(durSegPills)
 
-    -- Row 7: Factory Toast Recovery (Clean 1-Button Row matching DynamicZoom & DynamicFPS)
-    local rowToastActions = CreateSpaciousOptionRow(toastPanel, 7, "Factory Toast Recovery", "Restore Alert Toast visibility, border style, scale, opacity, and coordinates to defaults.")
+    -- Row 7: Toast Alert Sound
+    local rowToastSound = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 7, "Toast Alert Sound", "Play a crisp Battle.net notification chime when a shared suite alert toast appears."), 7)
+    local soundSegPills = UI.CreateSegmentedPills(rowToastSound, {
+        { value = false, label = "Off",     width = 68 },
+        { value = true,  label = "Enabled", width = 84 },
+    }, function()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        return gTbl.toastSoundEnabled == true or (DynamicLoadDB and DynamicLoadDB.toastSoundEnabled == true) or false
+    end, function(val)
+        local enabled = (val == true)
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        if gTbl then gTbl.toastSoundEnabled = enabled end
+        if DynamicLoadDB then DynamicLoadDB.toastSoundEnabled = enabled end
+        if toastPanel.RefreshControls then toastPanel.RefreshControls() end
+    end)
+    soundSegPills:SetPoint("RIGHT", rowToastSound, "RIGHT", -14, 0)
+    rowToastSound:BindRightControl(soundSegPills)
+
+    -- Row 8: Factory Toast Recovery
+    local rowToastActions = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 8, "Factory Toast Recovery", "Restore Alert Toast visibility, border style, scale, opacity, and coordinates to defaults."), 8)
     local resetToastAllBtn = CreateFlatButton(rowToastActions, 168, 26, "Reset Toast Defaults", false)
     resetToastAllBtn:SetPoint("RIGHT", rowToastActions, "RIGHT", -14, 0)
     resetToastAllBtn:SetScript("OnClick", function()
@@ -8883,6 +9054,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         if borderSegPills and borderSegPills.RefreshValue then borderSegPills:RefreshValue() end
         if modeSegPills and modeSegPills.RefreshValue then modeSegPills:RefreshValue() end
         if durSegPills and durSegPills.RefreshValue then durSegPills:RefreshValue() end
+        if soundSegPills and soundSegPills.RefreshValue then soundSegPills:RefreshValue() end
 
         if openHudEditBtn and openHudEditBtn.iconTex then
             openHudEditBtn.iconTex:SetVertexColor(ar, ag, ab, 1.0)
@@ -8896,11 +9068,12 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         if toastScaleSlider.RefreshVisual then toastScaleSlider.RefreshVisual() end
         if toastAlphaSlider.RefreshVisual then toastAlphaSlider.RefreshVisual() end
         UpdateEmbeddedStageToast()
+        UpdateToastScrollbar()
         if addonTable.ShowToast then
             addonTable.ShowToast(selectedTabKey, 4, true)
         end
     end
-    for _, tc in ipairs({ rowToastVis, rowToastBorder, rowToastMode, rowToastScale, rowToastAlpha, rowToastDur, rowToastActions }) do
+    for _, tc in ipairs({ rowToastVis, rowToastBorder, rowToastMode, rowToastScale, rowToastAlpha, rowToastDur, rowToastSound, rowToastActions }) do
         table.insert(f.themeCards, tc)
     end
     end

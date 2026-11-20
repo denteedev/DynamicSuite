@@ -1,5 +1,15 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.6.9 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.7.0 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.7.0 (21/11/2026)
+
+### Unified Shared Alert Toast System, Live Suite Accent Polish, 800x520 Uniform Widget Geometry & 11-Module Docs Parity (`v2.7.0`, 21/11/2026)
+- **Unified Shared Alert Toast HUD (`DynamicSuite_Core`, `DynamicSuite_UI`, `DynamicLoad`, `DynamicPrep`, `DynamicGroup`, `DynamicChat`):** Centralised Alert Toast Scale (60%-150%), Opacity (20%-100%), Border Style (`Accent` / `Dark` / `None`), Auto-Fade Duration (`2s` / `3s` / `5s` / `8s`), and Toast Alert Sound (`Off` / `Enabled`, rate-limited) in `Suite Studio` and `DynamicLoad`; rebuilt `DynamicPrep`'s Talent Reminder Toast, `DynamicGroup`'s Dungeon Teleport Toast, and `DynamicChat`'s Mention Alert Toast around the shared Obsidian look, live Suite Accent, Right-Click dismissal, and strict top-down non-overlapping stacking (`DynamicLoadToastFrame` -> `DynamicGroupTeleportToast` -> `DynamicPrepTalentReminderToast` -> `DynamicChatMentionToast`), while leaving clean `Off`/`Enabled` toggles (plus preview test buttons) on individual module tabs.
+- **Standardised 6 `Edit HUD` Headers & Live Suite Accent Across All UI Chrome (`DynamicSuite_Core`, `DynamicSuite_UI`, `DynamicMarker`, `DynamicPrep`, `DynamicChat`, `DynamicGroup`, `DynamicZoom`, `DynamicLoad`, `DynamicBags`):** Removed the stray `Edit HUD` button from `DynamicGroup`'s Teleport Toast card (keeping inline `Edit HUD` strictly on the 6 true movable HUD owner cards) and anchored section header titles and subtitles directly left of right-side buttons so headers never collide at narrower widths; removed `"VAULT"` from the HUD Inspector `[Apply All]` list; and replaced all remaining hardcoded Blaze Orange buttons, modal borders, focus outlines, active portal tile/keystone borders, `[Apply All]` actions, window scale toasts, and corner resize grips with the active Suite Accent colour.
+- **Uniform Widget Geometry & `800x520` Text-Fit (`DynamicDialogue`, `DynamicVault`, `DynamicMail`, `DynamicBags`, `DynamicFPS`, `DynamicSuite_UI`):** Upgraded `DynamicDialogue` to the universal `34px` `#0B0D12` equal-width 2-tab bar with a dedicated `44px` Action & Status strip inside its scrollable panel, stripped `"OUTLINE"` from Obsidian settings cards, standardised binary switches to `156x26px` (`68px Off` / `84px Enabled`) across `DynamicDialogue`, `DynamicVault`, `DynamicMail`, and `DynamicBags`, aligned `DynamicVault`'s sliders to `256x26px` (`6x14px` thumb, `52px` readout, hover/mousewheel), clamped titles and 2-line wrapped descriptions relative to right-hand controls across `DynamicDialogue`, `DynamicVault`, `DynamicMail`, `DynamicFPS`, and `DynamicSuite_UI` so every panel fits down to `800x520`.
+- **11-Module Documentation Parity (`README.md` & CurseForge Storefront Copy):** Updated module counts, feature descriptions, Shared Alert Toast notes, and slash command references across all 11 modules (`DynamicLoad` through `DynamicDialogue`), removing stale skin auto-match and `/dv overlay` references.
 
 ---
 

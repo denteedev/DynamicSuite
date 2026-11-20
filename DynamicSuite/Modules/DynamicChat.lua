@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicChat", VERSION, _G.DynamicChat) then
     return
 end
@@ -7451,14 +7451,14 @@ function DynamicChat:PlaySuiteChime(chimeKey)
         played = (okF and willPlay ~= false)
     end
     if not played and _G.DEFAULT_CHAT_FRAME and type(_G.DEFAULT_CHAT_FRAME.AddMessage) == "function" then
-        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Could not play chime. Newly added .ogg files require a full WoW client restart to load.")
+        _G.DEFAULT_CHAT_FRAME:AddMessage(ColorWithAccent("DynamicChat:") .. " Could not play chime. Newly added .ogg files require a full WoW client restart to load.")
     end
     return played
 end
 
 function DynamicChat:PreviewSuiteChimePack()
     if _G.DEFAULT_CHAT_FRAME and type(_G.DEFAULT_CHAT_FRAME.AddMessage) == "function" then
-        _G.DEFAULT_CHAT_FRAME:AddMessage("|cFFF97316DynamicChat:|r Auditioning 10-chime DynamicSuite pack on SFX (Spark, Pulse, Duo, Cascade, Echo, Chime, Bloom, Dewdrop, Ripple, Prism)...")
+        _G.DEFAULT_CHAT_FRAME:AddMessage(ColorWithAccent("DynamicChat:") .. " Auditioning 10-chime DynamicSuite pack on SFX (Spark, Pulse, Duo, Cascade, Echo, Chime, Bloom, Dewdrop, Ripple, Prism)...")
     end
     for idx, entry in ipairs(SoundMgr.chimesList) do
         local delay = (idx - 1) * 0.65
@@ -7475,59 +7475,177 @@ end
 
 do
     local mentionToastFrame = nil
-    local mentionToastTimerSeq = 0
+
+    local function GetChatSharedToastStyle()
+        if _G.DynamicSuite and type(_G.DynamicSuite.GetSharedToastStyle) == "function" then
+            local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle)
+            if ok and type(st) == "table" then return st end
+        end
+        local ar, ag, ab = GetSuiteAccent()
+        local g = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global) or {}
+        return {
+            scale = math.max(0.60, math.min(1.50, tonumber(g.toastScale) or 1.0)),
+            opacity = math.max(0.20, math.min(1.00, tonumber(g.toastOpacity or g.toastAlpha) or 0.96)),
+            borderStyle = tostring(g.toastBorderStyle or "ACCENT"):upper(),
+            duration = tonumber(g.toastDuration) or 8,
+            pos = g.toastPos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 },
+            bgR = 0.035, bgG = 0.039, bgB = 0.051,
+            ar = ar, ag = ag, ab = ab,
+        }
+    end
+
+    function DynamicChat:ApplyMentionToastVisuals()
+        local f = mentionToastFrame
+        if not f then return end
+        if InCombatLockdown and InCombatLockdown() then return end
+        local st = GetChatSharedToastStyle()
+        f:SetScale(st.scale or 1.0)
+        f:SetBackdropColor(st.bgR or 0.035, st.bgG or 0.039, st.bgB or 0.051, st.opacity or 0.96)
+        local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
+        if bStyle == "NONE" or bStyle == "BORDERLESS" then
+            f:SetBackdropBorderColor(0, 0, 0, 0)
+        elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+            f:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+        else
+            f:SetBackdropBorderColor(st.ar, st.ag, st.ab, 0.92)
+        end
+        if f.iconBorder then
+            f.iconBorder:SetBackdropBorderColor(st.ar, st.ag, st.ab, 0.85)
+        end
+        if f.iconTex then
+            f.iconTex:SetVertexColor(st.ar, st.ag, st.ab, 1.0)
+        end
+        if f:IsShown() and _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+            pcall(_G.DynamicSuite.RestackAllToasts)
+        end
+    end
 
     function SoundMgr.ShowMentionAlertToast(kindLabel, senderName, snippet)
         if not _G.UIParent then return end
+        if InCombatLockdown and InCombatLockdown() then return end
         if not mentionToastFrame then
-            local f = CreateFrame("Frame", "DynamicChatMentionToast", _G.UIParent, "BackdropTemplate")
-            f:SetSize(420, 56)
-            f:SetPoint("TOP", _G.UIParent, "TOP", 0, -110)
-            f:SetFrameStrata("DIALOG")
+            local f = CreateFrame("Button", "DynamicChatMentionToast", _G.UIParent, "BackdropTemplate")
+            f:SetSize(410, 74)
+            f:SetFrameStrata("HIGH")
+            f:SetToplevel(true)
+            f:SetClampedToScreen(true)
+            f:EnableMouse(true)
+            f:RegisterForClicks("RightButtonUp")
             f:SetBackdrop({
                 bgFile = "Interface\\Buttons\\WHITE8x8",
                 edgeFile = "Interface\\Buttons\\WHITE8x8",
-                edgeSize = 1,
+                tile = false, tileSize = 0, edgeSize = 1.5,
+                insets = { left = 1, right = 1, top = 1, bottom = 1 },
             })
-            f:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- #0B0D12
+
+            local iconBorder = CreateFrame("Frame", nil, f, "BackdropTemplate")
+            iconBorder:SetSize(44, 44)
+            iconBorder:SetPoint("LEFT", f, "LEFT", 14, 0)
+            iconBorder:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                tile = false, tileSize = 0, edgeSize = 1,
+                insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            })
+            iconBorder:SetBackdropColor(0.04, 0.05, 0.07, 1)
+            local ic = iconBorder:CreateTexture(nil, "ARTWORK")
+            ic:SetSize(30, 30)
+            ic:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+            ic:SetTexture(ICON_MAIN)
+            f.iconBorder = iconBorder
+            f.iconTex = ic
+
             f.title = f:CreateFontString(nil, "OVERLAY")
-            SetSafeFont(f.title, 11, "")
-            f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -10)
+            SetSafeFont(f.title, 12, "")
+            f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -11)
             f.title:SetPoint("RIGHT", f, "RIGHT", -14, 0)
             f.title:SetJustifyH("LEFT")
             f.title:SetWordWrap(false)
 
             f.body = f:CreateFontString(nil, "OVERLAY")
-            SetSafeFont(f.body, 10, "")
-            f.body:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -4)
+            SetSafeFont(f.body, 11, "")
+            f.body:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -5)
             f.body:SetPoint("RIGHT", f, "RIGHT", -14, 0)
             f.body:SetJustifyH("LEFT")
             f.body:SetWordWrap(false)
-            f.body:SetTextColor(0.82, 0.86, 0.92, 1.0)
+            f.body:SetTextColor(0.88, 0.92, 0.97, 1.0)
+
+            f.subtext = f:CreateFontString(nil, "OVERLAY")
+            SetSafeFont(f.subtext, 10, "")
+            f.subtext:SetPoint("TOPLEFT", f.body, "BOTTOMLEFT", 0, -5)
+            f.subtext:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+            f.subtext:SetJustifyH("LEFT")
+            f.subtext:SetWordWrap(false)
+            f.subtext:SetText("|cFF38BDF8Right-Click:|r |cFF94A3B8Dismiss|r")
+
+            local animGroup = f:CreateAnimationGroup()
+            local holdAnim = animGroup:CreateAnimation("Animation")
+            holdAnim:SetDuration(8)
+            holdAnim:SetOrder(1)
+            local fadeAnim = animGroup:CreateAnimation("Alpha")
+            fadeAnim:SetFromAlpha(1)
+            fadeAnim:SetToAlpha(0)
+            fadeAnim:SetDuration(1.2)
+            fadeAnim:SetOrder(2)
+            animGroup:SetScript("OnFinished", function()
+                f:Hide()
+                f:SetAlpha(1)
+            end)
+            f.animGroup = animGroup
+            f.holdAnim = holdAnim
+
+            f:SetScript("OnClick", function(selfT, button)
+                if button == "RightButton" then
+                    selfT.animGroup:Stop()
+                    selfT:Hide()
+                    selfT:SetAlpha(1)
+                end
+            end)
+            f:SetScript("OnEnter", function(selfT)
+                selfT.animGroup:Pause()
+                selfT:SetAlpha(1)
+            end)
+            f:SetScript("OnLeave", function(selfT)
+                local curSt = GetChatSharedToastStyle()
+                if (curSt.duration or 8) > 0 then
+                    selfT.animGroup:Play()
+                end
+            end)
+            f:HookScript("OnHide", function()
+                if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+                    pcall(_G.DynamicSuite.RestackAllToasts)
+                end
+            end)
+
             f:Hide()
             mentionToastFrame = f
         end
 
-        local ar, ag, ab = GetSuiteAccent()
-        mentionToastFrame:SetBackdropBorderColor(ar, ag, ab, 0.95)
+        DynamicChat:ApplyMentionToastVisuals()
         local who = (type(senderName) == "string" and senderName ~= "") and senderName or "Player"
-        mentionToastFrame.title:SetText(ColorWithAccent(kindLabel) .. "  |cFFF8FAFCfrom " .. who .. "|r")
+        mentionToastFrame.title:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFChat|r  |cFF475569|||r  " .. ColorWithAccent(kindLabel) .. "  |cFFF8FAFCfrom " .. who .. "|r")
         local cleanSnap = tostring(snippet or ""):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-        if #cleanSnap > 72 then
-            cleanSnap = cleanSnap:sub(1, 69) .. "..."
+        if #cleanSnap > 68 then
+            cleanSnap = cleanSnap:sub(1, 65) .. "..."
         end
-        mentionToastFrame.body:SetText(cleanSnap)
+        mentionToastFrame.body:SetText(cleanSnap ~= "" and cleanSnap or "Matched your name or alert keyword in chat.")
+        mentionToastFrame.animGroup:Stop()
         mentionToastFrame:SetAlpha(1.0)
         mentionToastFrame:Show()
-
-        mentionToastTimerSeq = mentionToastTimerSeq + 1
-        local mySeq = mentionToastTimerSeq
-        if _G.C_Timer and type(_G.C_Timer.After) == "function" then
-            _G.C_Timer.After(4.0, function()
-                if mentionToastTimerSeq == mySeq and mentionToastFrame then
-                    mentionToastFrame:Hide()
-                end
-            end)
+        if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+            pcall(_G.DynamicSuite.RestackAllToasts)
+        else
+            local stPos = GetChatSharedToastStyle().pos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
+            mentionToastFrame:ClearAllPoints()
+            mentionToastFrame:SetPoint(stPos.point or "TOP", _G.UIParent, stPos.relPoint or stPos.point or "TOP", tonumber(stPos.x) or 0, tonumber(stPos.y) or -140)
+        end
+        if _G.DynamicSuite and type(_G.DynamicSuite.PlaySharedToastSound) == "function" then
+            pcall(_G.DynamicSuite.PlaySharedToastSound)
+        end
+        local dur = tonumber(GetChatSharedToastStyle().duration) or 8
+        if dur > 0 then
+            mentionToastFrame.holdAnim:SetDuration(dur)
+            mentionToastFrame.animGroup:Play()
         end
     end
 
@@ -9388,7 +9506,8 @@ do
             borderOverlay:SetAllPoints(m)
             borderOverlay:SetFrameLevel(m:GetFrameLevel() + 10)
             borderOverlay:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-            borderOverlay:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.92)
+            local arB, agB, abB = GetSuiteAccent()
+            borderOverlay:SetBackdropBorderColor(arB, agB, abB, 0.92)
             m.borderOverlay = borderOverlay
 
             local sb = CreateFrame("EditBox", nil, m, "BackdropTemplate")
@@ -10438,14 +10557,6 @@ local function RenderChatEmbedded(arg1, arg2)
         "Customise the smoked-glass chat frame, top tab bar, font, and left-hand shortcut buttons.",
         root
     )
-    if sec2_skin.hdr then
-        if sec2_skin.hdr.title then
-            sec2_skin.hdr.title:SetPoint("RIGHT", sec2_skin, "RIGHT", -108, 0)
-        end
-        if sec2_skin.hdr.subtitle then
-            sec2_skin.hdr.subtitle:SetPoint("RIGHT", sec2_skin, "RIGHT", -108, 0)
-        end
-    end
     local chatEditHudBtn
     if _G.DynamicSuite and type(_G.DynamicSuite.CreateEditHudButton) == "function" then
         chatEditHudBtn = _G.DynamicSuite.CreateEditHudButton(sec2_skin, "CHAT")
@@ -10482,6 +10593,15 @@ local function RenderChatEmbedded(arg1, arg2)
         end)
     end
     chatEditHudBtn:SetPoint("TOPRIGHT", sec2_skin, "TOPRIGHT", -14, -7)
+    if sec2_skin.hdr then
+        if sec2_skin.hdr.title then
+            sec2_skin.hdr.title:SetPoint("RIGHT", chatEditHudBtn, "LEFT", -10, 0)
+            sec2_skin.hdr.title:SetWordWrap(false)
+        end
+        if sec2_skin.hdr.subtitle then
+            sec2_skin.hdr.subtitle:SetPoint("RIGHT", chatEditHudBtn, "LEFT", -10, 0)
+        end
+    end
     local sec2_typo = CreateSectionBox(
         page2,
         "CHAT TYPOGRAPHY & READABILITY",
@@ -11076,7 +11196,8 @@ local function RenderChatEmbedded(arg1, arg2)
             ph:SetShown((eb:GetText() or "") == "" and not eb:HasFocus())
         end
         eb:SetScript("OnEditFocusGained", function()
-            boxWrap:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95) -- #F97316
+            local ar, ag, ab = GetSuiteAccent()
+            boxWrap:SetBackdropBorderColor(ar, ag, ab, 0.95)
             UpdatePlaceholder()
         end)
         eb:SetScript("OnEditFocusLost", function()
@@ -11097,20 +11218,33 @@ local function RenderChatEmbedded(arg1, arg2)
             edgeFile = "Interface\\Buttons\\WHITE8x8",
             edgeSize = 1,
         })
+        local ar0, ag0, ab0 = GetSuiteAccent()
         btn:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- #0B0D12
-        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85) -- #F97316
+        btn:SetBackdropBorderColor(ar0, ag0, ab0, 0.85)
         btn.label = btn:CreateFontString(nil, "OVERLAY")
         SetSafeFont(btn.label, 10, "")
         btn.label:SetPoint("CENTER", 0, 0)
         btn.label:SetText(labelText)
         btn.label:SetTextColor(0.976, 0.984, 1.00, 1)
+        function btn:RefreshAccent()
+            local ar, ag, ab = GetSuiteAccent()
+            if self:IsMouseOver() then
+                self:SetBackdropColor(ar * 0.24, ag * 0.24, ab * 0.24, 0.98)
+                self:SetBackdropBorderColor(ar, ag, ab, 1.0)
+            else
+                self:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+                self:SetBackdropBorderColor(ar, ag, ab, 0.85)
+            end
+        end
         btn:SetScript("OnEnter", function(s)
-            s:SetBackdropColor(0.16, 0.08, 0.02, 0.98)
-            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+            local ar, ag, ab = GetSuiteAccent()
+            s:SetBackdropColor(ar * 0.24, ag * 0.24, ab * 0.24, 0.98)
+            s:SetBackdropBorderColor(ar, ag, ab, 1.0)
         end)
         btn:SetScript("OnLeave", function(s)
+            local ar, ag, ab = GetSuiteAccent()
             s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
-            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85)
+            s:SetBackdropBorderColor(ar, ag, ab, 0.85)
         end)
         btn:SetScript("OnClick", onClick)
         return btn
@@ -11208,10 +11342,10 @@ local function RenderChatEmbedded(arg1, arg2)
     root.allControls[#root.allControls + 1] = c3_mHighlight
 
     local c3_mToast = CreateCardRow(sec3_mentions, 60,
-        "Show Alert Toast Banner",
-        "Displays a brief floating alert banner at the top of your screen when a name or keyword matches.",
-        "Show Alert Toast Banner",
-        "Toggle the floating top-screen alert banner for mentions."
+        "Mention Alert Toast",
+        "Shows a shared alert banner when your name or a keyword matches. Style and position follow Suite Studio's Shared Alert Toast settings.",
+        "Mention Alert Toast",
+        "Toggle shared floating alert toast banners for chat mentions and keywords."
     )
     AttachSegmentedSwitchToCard(c3_mToast,
         function() return EnsureDB().mentionAlertToast ~= false end,
@@ -11657,6 +11791,9 @@ function DynamicChat._ApplyChatThemeToUI()
     end
     DynamicChat:ApplySleekChatSkin()
     DynamicChat:ApplyChatFrameTypography()
+    if DynamicChat.ApplyMentionToastVisuals then
+        DynamicChat:ApplyMentionToastVisuals()
+    end
     DynamicChat:RefreshConfigUI()
     if DynamicChat.standaloneFrame and DynamicChat.standaloneFrame:IsShown() then
         local ar, ag, ab = GetSuiteAccent()
@@ -11921,16 +12058,16 @@ local function ShowDynamicChatReloadPromptModal()
             edgeFile = "Interface\\Buttons\\WHITE8x8",
             edgeSize = 1,
         })
-        -- Dark Obsidian (#0B0D12) + Blaze Orange (#F97316) border
+        local ar0, ag0, ab0 = GetSuiteAccent()
         modal:SetBackdropColor(0.043, 0.051, 0.071, 0.98)
-        modal:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
+        modal:SetBackdropBorderColor(ar0, ag0, ab0, 0.95)
         SafeRegisterUISpecialFrame("DynamicChatReloadPromptModal")
 
         local topAccent = modal:CreateTexture(nil, "OVERLAY")
         topAccent:SetHeight(2)
         topAccent:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
         topAccent:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
-        topAccent:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        topAccent:SetColorTexture(ar0, ag0, ab0, 1.0)
         modal.topAccent = topAccent
 
         local closeBtn = CreateFrame("Button", nil, modal, "BackdropTemplate")
@@ -11949,8 +12086,9 @@ local function ShowDynamicChatReloadPromptModal()
         closeTxt:SetTextColor(0.92, 0.95, 0.99, 1.0)
         closeTxt:SetText("X")
         closeBtn:SetScript("OnEnter", function(selfBtn)
-            selfBtn:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
-            selfBtn:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+            local ar, ag, ab = GetSuiteAccent()
+            selfBtn:SetBackdropColor(ar * 0.36, ag * 0.36, ab * 0.36, 1.0)
+            selfBtn:SetBackdropBorderColor(ar, ag, ab, 1.0)
             closeTxt:SetTextColor(1, 1, 1, 1)
         end)
         closeBtn:SetScript("OnLeave", function(selfBtn)
@@ -11965,7 +12103,7 @@ local function ShowDynamicChatReloadPromptModal()
         title:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -14)
         title:SetPoint("RIGHT", closeBtn, "LEFT", -8, 0)
         title:SetJustifyH("LEFT")
-        title:SetText("|cFFF97316DynamicChat|r  |cFF94A3B8-- Restore Blizzard Defaults|r")
+        title:SetText(ColorWithAccent("DynamicChat") .. "  |cFF94A3B8-- Restore Blizzard Defaults|r")
         modal.title = title
 
         local headerSep = modal:CreateTexture(nil, "ARTWORK")
@@ -12000,14 +12138,15 @@ local function ShowDynamicChatReloadPromptModal()
 
             local function ApplyState(hover)
                 if isPrimary then
+                    local ar, ag, ab = GetSuiteAccent()
                     if hover then
-                        btn:SetBackdropColor(0.350, 0.160, 0.035, 1.0)
-                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+                        btn:SetBackdropColor(ar * 0.36, ag * 0.36, ab * 0.36, 1.0)
+                        btn:SetBackdropBorderColor(ar, ag, ab, 1.0)
                         btn.txt:SetTextColor(1.0, 1.0, 1.0, 1.0)
                     else
-                        btn:SetBackdropColor(0.220, 0.100, 0.022, 0.96)
-                        btn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
-                        btn.txt:SetTextColor(0.976, 0.451, 0.086, 1.0)
+                        btn:SetBackdropColor(ar * 0.24, ag * 0.24, ab * 0.24, 0.96)
+                        btn:SetBackdropBorderColor(ar, ag, ab, 0.95)
+                        btn.txt:SetTextColor(1.0, 1.0, 1.0, 0.98)
                     end
                 else
                     if hover then
@@ -12021,6 +12160,7 @@ local function ShowDynamicChatReloadPromptModal()
                     end
                 end
             end
+            btn.RefreshStyle = ApplyState
             ApplyState(false)
             btn:SetScript("OnEnter", function() ApplyState(true) end)
             btn:SetScript("OnLeave", function() ApplyState(false) end)
@@ -12044,6 +12184,12 @@ local function ShowDynamicChatReloadPromptModal()
         modal:Hide()
         reloadPromptModal = modal
     end
+    local arShow, agShow, abShow = GetSuiteAccent()
+    reloadPromptModal:SetBackdropBorderColor(arShow, agShow, abShow, 0.95)
+    if reloadPromptModal.topAccent then reloadPromptModal.topAccent:SetColorTexture(arShow, agShow, abShow, 1.0) end
+    if reloadPromptModal.title then reloadPromptModal.title:SetText(ColorWithAccent("DynamicChat") .. "  |cFF94A3B8-- Restore Blizzard Defaults|r") end
+    if reloadPromptModal.reloadBtn and reloadPromptModal.reloadBtn.RefreshStyle then reloadPromptModal.reloadBtn.RefreshStyle(false) end
+    if reloadPromptModal.laterBtn and reloadPromptModal.laterBtn.RefreshStyle then reloadPromptModal.laterBtn.RefreshStyle(false) end
     SafeRegisterUISpecialFrame("DynamicChatReloadPromptModal")
     reloadPromptModal:Show()
     reloadPromptModal:Raise()
@@ -12166,8 +12312,9 @@ function DynamicChat._RegisterWithDynamicSuite()
 
     DynamicChat.CHANGELOG = {
         version = DynamicChat.version or VERSION,
-        date = "16/11/2026",
+        date = "21/11/2026",
         entries = {
+            { type = "UI",       text = "Release v2.7.0 - Unified Mention Alert Toast & Live Suite Accent Polish (21/11/2026): Upgraded DynamicChatMentionToast to the shared 410x74 Obsidian alert toast style (live Suite Accent, Scale, Opacity, Border Style, Auto-Fade Duration, Sound, Right-Click dismissal, and clean vertical stacking under suite toasts), clamped Chat Skin section header titles beside the Edit HUD button at 800x520, and replaced Blaze Orange focus borders, action buttons, font menu borders, and Restore Blizzard Defaults modal chrome with the live Suite Accent." },
             { type = "FIX",      text = "Font Dropdown Popover, 3-Way Interactive Scrollbars, Custom Reload Prompt & Chat Feedback (16/11/2026): Fixed the Chat Font Family dropdown menu so clicking outside the menu, pressing Escape, or switching tabs closes it cleanly and updates its arrow icon; upgraded the font picker, sound picker, and settings scrollbars to support mousewheel scrolling, dragging the scrollbar handle (with Suite Accent colour highlight), and clicking anywhere on the track to jump; fixed chat confirmation messages when saving mention keywords, testing or adding custom sounds, and using '/dc mute'; and replaced the default Blizzard reload popup when restoring chat defaults with a custom dark-obsidian and Blaze Orange confirmation window." },
             { type = "FIX",      text = "Embedded ChatFrame1 EditBox Dock & Zero Position Shift (16/11/2026): Embedded ebBar and ChatFrame1EditBox directly inside ChatFrame1's own 26px bottom (or top) bounds and padded ChatFrame1.FontStringContainer by 28px so the newest chat line never overlaps the EditBox; locked GetCompositeChatInsets() / GetVisibleContainerExtents() to constant (-leftExt, 8, 28, -6) insets regardless of 'Always Shaded' vs 'Only When Typing' so toggling EditBox shading never shifts ChatFrame1's screen position." },
             { type = "FEATURE",  text = "External Sound Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Default Sounds & Self-Whisper Alerts (15/11/2026): Removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; set clean channel defaults (Blizzard Whisper, Blizzard Battle.net, Blizzard Map Ping, Blizzard Raid Warning, and Say & Yell muted by default) with automatic migration from legacy ds_*/ex_* keys; added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI sound scanning with late-load refresh and safe fallback to Blizzard Raid Warning; restored self-whisper alert playback on incoming CHAT_MSG_WHISPER / CHAT_MSG_BN_WHISPER events while keeping self-message suppression active for group and public channels; and upgraded channel sound dropdowns with Blizzard / SharedMedia headers, inline [>] previews, scrolling, a live search filter, and dedicated [Play] buttons." },

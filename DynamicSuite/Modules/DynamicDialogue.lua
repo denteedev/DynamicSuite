@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.9"
+    local fb = fallback or "2.7.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicDialogue", VERSION, _G.DynamicDialogue) then
     return
 end
@@ -1456,7 +1456,10 @@ local function CreateSectionHeader(parent, titleText, subText, yOffset)
 
     hdr.title = hdr:CreateFontString(nil, "OVERLAY")
     hdr.title:SetPoint("TOPLEFT", hdr.leftBar, "TOPRIGHT", 8, 0)
-    ApplyFont(hdr.title, 11, "OUTLINE")
+    hdr.title:SetPoint("RIGHT", hdr, "RIGHT", -12, 0)
+    hdr.title:SetJustifyH("LEFT")
+    hdr.title:SetWordWrap(false)
+    ApplyFont(hdr.title, 11, "")
     hdr.title:SetText(string.upper(titleText or ""))
     hdr.title:SetTextColor(ar, ag, ab, 1.0)
 
@@ -1480,20 +1483,20 @@ end
 local function CreateToggleRow(parent, yOffset, title, desc, getter, setter)
     local surf = GetSurfaceColors()
     local row = CreateFrame("Frame", nil, parent)
-    row:SetHeight(56)
+    row:SetHeight(60)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, yOffset)
     row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -14, yOffset)
     row.bg = SolidTex(row, "BACKGROUND", 1, surf.PANEL_BG.r, surf.PANEL_BG.g, surf.PANEL_BG.b, 0.96)
     row.bg:SetAllPoints()
     row.border = CreatePixelBorder(row, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
 
-    -- Option 3 Binary Toggle: [ Off | Enabled ] (Left = Off, Right = Enabled)
+    -- Option 3 Binary Toggle: [ Off (68) | Enabled (84) ] = 156x26
     local pillHolder = CreateFrame("Frame", nil, row)
-    pillHolder:SetSize(176, 26)
+    pillHolder:SetSize(156, 26)
     pillHolder:SetPoint("RIGHT", row, "RIGHT", -14, 0)
 
     local offBtn = CreateFrame("Button", nil, pillHolder)
-    offBtn:SetSize(86, 26)
+    offBtn:SetSize(68, 26)
     offBtn:SetPoint("LEFT", pillHolder, "LEFT", 0, 0)
     offBtn.bg = SolidTex(offBtn, "BACKGROUND", 2, surf.CELL_BG.r, surf.CELL_BG.g, surf.CELL_BG.b, 0.96)
     offBtn.bg:SetAllPoints()
@@ -1504,18 +1507,18 @@ local function CreateToggleRow(parent, yOffset, title, desc, getter, setter)
     offBtn.offBar:SetPoint("BOTTOMRIGHT", offBtn, "BOTTOMRIGHT", -1, 1)
     offBtn.lbl = offBtn:CreateFontString(nil, "OVERLAY")
     offBtn.lbl:SetPoint("CENTER", offBtn, "CENTER", 0, 0)
-    ApplyFont(offBtn.lbl, 11, "OUTLINE")
+    ApplyFont(offBtn.lbl, 11, "")
     offBtn.lbl:SetText("Off")
 
     local onBtn = CreateFrame("Button", nil, pillHolder)
-    onBtn:SetSize(86, 26)
+    onBtn:SetSize(84, 26)
     onBtn:SetPoint("RIGHT", pillHolder, "RIGHT", 0, 0)
     onBtn.bg = SolidTex(onBtn, "BACKGROUND", 2, surf.CELL_BG.r, surf.CELL_BG.g, surf.CELL_BG.b, 0.96)
     onBtn.bg:SetAllPoints()
     onBtn.border = CreatePixelBorder(onBtn, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
     onBtn.lbl = onBtn:CreateFontString(nil, "OVERLAY")
     onBtn.lbl:SetPoint("CENTER", onBtn, "CENTER", 0, 0)
-    ApplyFont(onBtn.lbl, 11, "OUTLINE")
+    ApplyFont(onBtn.lbl, 11, "")
     onBtn.lbl:SetText("Enabled")
 
     local function Refresh()
@@ -1546,19 +1549,21 @@ local function CreateToggleRow(parent, yOffset, title, desc, getter, setter)
     onBtn:SetScript("OnClick", function() setter(true); Refresh() end)
 
     local tFs = row:CreateFontString(nil, "OVERLAY")
-    tFs:SetPoint("TOPLEFT", row, "TOPLEFT", 14, -10)
-    tFs:SetPoint("RIGHT", pillHolder, "LEFT", -12, 0)
+    tFs:SetPoint("TOPLEFT", row, "TOPLEFT", 14, -9)
+    tFs:SetPoint("RIGHT", pillHolder, "LEFT", -14, 0)
     tFs:SetJustifyH("LEFT")
     tFs:SetWordWrap(false)
-    ApplyFont(tFs, 12, "OUTLINE")
+    ApplyFont(tFs, 11.5, "")
     tFs:SetText(title)
     tFs:SetTextColor(0.97, 0.98, 1.0, 1)
 
     local dFs = row:CreateFontString(nil, "OVERLAY")
-    dFs:SetPoint("TOPLEFT", tFs, "BOTTOMLEFT", 0, -4)
-    dFs:SetPoint("RIGHT", pillHolder, "LEFT", -12, 0)
+    dFs:SetPoint("TOPLEFT", tFs, "BOTTOMLEFT", 0, -3)
+    dFs:SetPoint("RIGHT", pillHolder, "LEFT", -14, 0)
     dFs:SetJustifyH("LEFT")
-    dFs:SetWordWrap(false)
+    dFs:SetJustifyV("TOP")
+    dFs:SetWordWrap(true)
+    if dFs.SetMaxLines then dFs:SetMaxLines(2) end
     ApplyFont(dFs, 10, "")
     dFs:SetText(desc)
     dFs:SetTextColor(0.62, 0.68, 0.78, 1)
@@ -1572,7 +1577,7 @@ local function CreateSliderRow(parent, yOffset, title, desc, minVal, maxVal, ste
     local surf = GetSurfaceColors()
     local ar, ag, ab = GetAccentColor()
     local row = CreateFrame("Frame", nil, parent)
-    row:SetHeight(58)
+    row:SetHeight(60)
     row:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, yOffset)
     row:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -14, yOffset)
     row.bg = SolidTex(row, "BACKGROUND", 1, surf.PANEL_BG.r, surf.PANEL_BG.g, surf.PANEL_BG.b, 0.96)
@@ -1588,7 +1593,7 @@ local function CreateSliderRow(parent, yOffset, title, desc, minVal, maxVal, ste
     valText:SetWidth(52)
     valText:SetPoint("RIGHT", holder, "RIGHT", 0, 0)
     valText:SetJustifyH("RIGHT")
-    ApplyFont(valText, 11, "OUTLINE")
+    ApplyFont(valText, 11, "")
     valText:SetTextColor(ar, ag, ab, 1.0)
 
     local slider = CreateFrame("Slider", nil, holder)
@@ -1647,19 +1652,21 @@ local function CreateSliderRow(parent, yOffset, title, desc, minVal, maxVal, ste
     end)
 
     local tFs = row:CreateFontString(nil, "OVERLAY")
-    tFs:SetPoint("TOPLEFT", row, "TOPLEFT", 14, -10)
-    tFs:SetPoint("RIGHT", holder, "LEFT", -12, 0)
+    tFs:SetPoint("TOPLEFT", row, "TOPLEFT", 14, -9)
+    tFs:SetPoint("RIGHT", holder, "LEFT", -14, 0)
     tFs:SetJustifyH("LEFT")
     tFs:SetWordWrap(false)
-    ApplyFont(tFs, 12, "OUTLINE")
+    ApplyFont(tFs, 11.5, "")
     tFs:SetText(title)
     tFs:SetTextColor(0.97, 0.98, 1.0, 1)
 
     local dFs = row:CreateFontString(nil, "OVERLAY")
-    dFs:SetPoint("TOPLEFT", tFs, "BOTTOMLEFT", 0, -4)
-    dFs:SetPoint("RIGHT", holder, "LEFT", -12, 0)
+    dFs:SetPoint("TOPLEFT", tFs, "BOTTOMLEFT", 0, -3)
+    dFs:SetPoint("RIGHT", holder, "LEFT", -14, 0)
     dFs:SetJustifyH("LEFT")
-    dFs:SetWordWrap(false)
+    dFs:SetJustifyV("TOP")
+    dFs:SetWordWrap(true)
+    if dFs.SetMaxLines then dFs:SetMaxLines(2) end
     ApplyFont(dFs, 10, "")
     dFs:SetText(desc)
     dFs:SetTextColor(0.62, 0.68, 0.78, 1)
@@ -1691,7 +1698,7 @@ local function CreateActionButton(parent, width, height, text, isAccent, onClick
     btn.bg:SetAllPoints()
     btn.lbl = btn:CreateFontString(nil, "OVERLAY")
     btn.lbl:SetPoint("CENTER", btn, "CENTER", 0, 0)
-    ApplyFont(btn.lbl, 11, "OUTLINE")
+    ApplyFont(btn.lbl, 11, "")
     btn.lbl:SetText(text)
     btn.lbl:SetTextColor(1, 1, 1, 1)
     btn:SetScript("OnClick", onClick)
@@ -1716,38 +1723,26 @@ local function RenderDialogueEmbedded(parent)
     parent._ddRoot = root
     activeEmbeddedRoot = root
 
-    -- Top Sub-Tab & Action Bar (matches DynamicVault / DynamicMail / DynamicChat)
-    local topBar = CreateFrame("Frame", nil, root)
-    topBar:SetHeight(36)
-    topBar:SetPoint("TOPLEFT", root, "TOPLEFT", 14, -10)
-    topBar:SetPoint("TOPRIGHT", root, "TOPRIGHT", -16, -10)
-    topBar.bg = SolidTex(topBar, "BACKGROUND", 1, 0.043, 0.051, 0.071, 0.96)
-    topBar.bg:SetAllPoints()
-    topBar.border = CreatePixelBorder(topBar, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
-
-    local resetPosBtn = CreateActionButton(topBar, 110, 24, "Reset Position", false, function()
-        DynamicDialogue:ResetPosition()
-    end)
-    resetPosBtn:SetPoint("RIGHT", topBar, "RIGHT", -8, 0)
-
-    local previewBtn = CreateActionButton(topBar, 118, 24, "Preview Reader", true, function()
-        DynamicDialogue:ShowPreview()
-    end)
-    previewBtn:SetPoint("RIGHT", resetPosBtn, "LEFT", -6, 0)
+    -- 34px Obsidian Equal-Width 2-Tab Bar (#0B0D12, matches Suite standard)
+    local tabBar = CreateFrame("Frame", nil, root)
+    tabBar:SetHeight(34)
+    tabBar:SetPoint("TOPLEFT", root, "TOPLEFT", 14, -10)
+    tabBar:SetPoint("TOPRIGHT", root, "TOPRIGHT", -16, -10)
+    tabBar.bg = SolidTex(tabBar, "BACKGROUND", 1, 0.043, 0.051, 0.071, 0.98)
+    tabBar.bg:SetAllPoints()
+    tabBar.border = CreatePixelBorder(tabBar, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
 
     local activeSubTab = db.activeSubTab or 1
     if activeSubTab ~= 1 and activeSubTab ~= 2 then activeSubTab = 1 end
 
     local tabDefs = {
-        { id = 1, label = "Reader & Controls", w = 136 },
-        { id = 2, label = "Appearance & Sound", w = 148 },
+        { id = 1, label = "Reader & Controls" },
+        { id = 2, label = "Appearance & Sound" },
     }
     local subTabBtns = {}
-    local tx = 8
-    for _, td in ipairs(tabDefs) do
-        local tb = CreateFrame("Button", nil, topBar)
-        tb:SetSize(td.w, 24)
-        tb:SetPoint("LEFT", topBar, "LEFT", tx, 0)
+    for idx, td in ipairs(tabDefs) do
+        local tb = CreateFrame("Button", nil, tabBar)
+        tb:SetHeight(24)
         tb.bg = SolidTex(tb, "BACKGROUND", 1, surf.CELL_BG.r, surf.CELL_BG.g, surf.CELL_BG.b, 0.96)
         tb.bg:SetAllPoints()
         tb.border = CreatePixelBorder(tb, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
@@ -1756,14 +1751,61 @@ local function RenderDialogueEmbedded(parent)
         ApplyFont(tb.txt, 11, "")
         tb.txt:SetText(td.label)
         tb._tabId = td.id
-        subTabBtns[td.id] = tb
-        tx = tx + td.w + 6
+        subTabBtns[idx] = tb
     end
 
-    local statusHit = CreateFrame("Frame", nil, topBar)
-    statusHit:SetPoint("LEFT", topBar, "LEFT", tx + 8, 0)
-    statusHit:SetPoint("RIGHT", previewBtn, "LEFT", -10, 0)
-    statusHit:SetHeight(24)
+    local function ReflowTabBar()
+        local w = tabBar:GetWidth() or 700
+        if w < 200 then w = 700 end
+        local pad = 6
+        local gap = 6
+        local tabW = math.max(110, math.floor((w - (pad * 2) - gap) / 2))
+        for i, tb in ipairs(subTabBtns) do
+            tb:ClearAllPoints()
+            tb:SetWidth(tabW)
+            tb:SetPoint("LEFT", tabBar, "LEFT", pad + ((i - 1) * (tabW + gap)), 0)
+        end
+    end
+    tabBar:SetScript("OnSizeChanged", ReflowTabBar)
+    tabBar:HookScript("OnShow", function() C_Timer.After(0, ReflowTabBar) end)
+    ReflowTabBar()
+
+    -- ScrollFrame (-8px below 34px tabBar) + 4px 3-way Obsidian Scrollbar
+    local sf = CreateFrame("ScrollFrame", nil, root)
+    sf:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -8)
+    sf:SetPoint("TOPRIGHT", tabBar, "BOTTOMRIGHT", 0, -8)
+    sf:SetPoint("BOTTOM", root, "BOTTOM", 0, 10)
+    sf:SetClipsChildren(true)
+    sf:EnableMouseWheel(true)
+
+    local child = CreateFrame("Frame", nil, sf)
+    child:SetWidth(760)
+    child:SetHeight(520)
+    sf:SetScrollChild(child)
+
+    -- Dedicated 44px Action & Status Strip inside scrollable canvas
+    local actionStrip = CreateFrame("Frame", nil, child)
+    actionStrip:SetHeight(44)
+    actionStrip:SetPoint("TOPLEFT", child, "TOPLEFT", 0, 0)
+    actionStrip:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, 0)
+    actionStrip.bg = SolidTex(actionStrip, "BACKGROUND", 0, 0.043, 0.051, 0.071, 0.96)
+    actionStrip.bg:SetAllPoints()
+    actionStrip.border = CreatePixelBorder(actionStrip, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
+
+    local resetPosBtn = CreateActionButton(actionStrip, 112, 26, "Reset Position", false, function()
+        DynamicDialogue:ResetPosition()
+    end)
+    resetPosBtn:SetPoint("RIGHT", actionStrip, "RIGHT", -12, 0)
+
+    local previewBtn = CreateActionButton(actionStrip, 122, 26, "Preview Reader", true, function()
+        DynamicDialogue:ShowPreview()
+    end)
+    previewBtn:SetPoint("RIGHT", resetPosBtn, "LEFT", -8, 0)
+
+    local statusHit = CreateFrame("Frame", nil, actionStrip)
+    statusHit:SetPoint("LEFT", actionStrip, "LEFT", 14, 0)
+    statusHit:SetPoint("RIGHT", previewBtn, "LEFT", -12, 0)
+    statusHit:SetHeight(26)
     statusHit:EnableMouse(true)
 
     local statusLbl = statusHit:CreateFontString(nil, "OVERLAY")
@@ -1783,19 +1825,6 @@ local function RenderDialogueEmbedded(parent)
         end
     end)
     statusHit:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-
-    -- ScrollFrame for Settings Cards + 4px 3-way Obsidian Scrollbar
-    local sf = CreateFrame("ScrollFrame", nil, root)
-    sf:SetPoint("TOPLEFT", topBar, "BOTTOMLEFT", 0, -8)
-    sf:SetPoint("TOPRIGHT", topBar, "BOTTOMRIGHT", 0, -8)
-    sf:SetPoint("BOTTOM", root, "BOTTOM", 0, 10)
-    sf:SetClipsChildren(true)
-    sf:EnableMouseWheel(true)
-
-    local child = CreateFrame("Frame", nil, sf)
-    child:SetWidth(760)
-    child:SetHeight(456)
-    sf:SetScrollChild(child)
 
     local track = CreateFrame("Frame", nil, root)
     track:SetWidth(4)
@@ -1935,11 +1964,11 @@ local function RenderDialogueEmbedded(parent)
 
     local refreshables = {}
 
-    -- Tab 1: Reader & Controls (exact tight height, zero dead space)
+    -- Tab 1: Reader & Controls (exact tight height for 60px rows + 8px gap + 14px bottom pad)
     local sec1 = CreateFrame("Frame", nil, child)
-    sec1:SetPoint("TOPLEFT", child, "TOPLEFT", 0, 0)
-    sec1:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, 0)
-    local sec1H = 54 + (6 * 64) - 8 + 14 -- 444px exact fit for 6 rows (56px row + 8px gap) + 14px bottom pad
+    sec1:SetPoint("TOPLEFT", actionStrip, "BOTTOMLEFT", 0, -10)
+    sec1:SetPoint("TOPRIGHT", actionStrip, "BOTTOMRIGHT", 0, -10)
+    local sec1H = 54 + (6 * 68) - 8 + 14 -- 468px
     sec1:SetHeight(sec1H)
     sec1.bg = SolidTex(sec1, "BACKGROUND", 0, surf.CARD_BG.r, surf.CARD_BG.g, surf.CARD_BG.b, 0.96)
     sec1.bg:SetAllPoints()
@@ -1951,29 +1980,29 @@ local function RenderDialogueEmbedded(parent)
         CreateToggleRow(sec1, -54,  "Enable DynamicDialogue Reader", "Master switch for the Obsidian Quest & Gossip reader.",
             function() return db.enabled == true end,
             function(v) db.enabled = v; if not v then CloseActiveInteraction() end; if root.RefreshStatus then root.RefreshStatus() end end),
-        CreateToggleRow(sec1, -118, "Replace Quest Dialogue Windows", "Present Quest Detail, Progress, Greeting, and Turn-In in Obsidian cards with reward tooltips.",
+        CreateToggleRow(sec1, -122, "Replace Quest Dialogue Windows", "Present Quest Detail, Progress, Greeting, and Turn-In in Obsidian cards with reward tooltips.",
             function() return db.replaceQuests ~= false end,
             function(v) db.replaceQuests = v end),
-        CreateToggleRow(sec1, -182, "Replace NPC Gossip Windows", "Present NPC gossip menus in a clean Obsidian reader with numbered option buttons.",
+        CreateToggleRow(sec1, -190, "Replace NPC Gossip Windows", "Present NPC gossip menus in a clean Obsidian reader with numbered option buttons.",
             function() return db.replaceGossip ~= false end,
             function(v) db.replaceGossip = v end),
-        CreateToggleRow(sec1, -246, "1-9 Number Option Hotkeys", "Press keys 1 through 9 out of combat to pick gossip or quest options immediately.",
+        CreateToggleRow(sec1, -258, "1-9 Number Option Hotkeys", "Press keys 1 through 9 out of combat to pick gossip or quest options immediately.",
             function() return db.enableNumberHotkeys ~= false end,
             function(v) db.enableNumberHotkeys = v end),
-        CreateToggleRow(sec1, -310, "Space Bar Accept & Complete", "Press Space out of combat to Accept, Continue, or Complete the active quest.",
+        CreateToggleRow(sec1, -326, "Space Bar Accept & Complete", "Press Space out of combat to Accept, Continue, or Complete the active quest.",
             function() return db.enableSpaceConfirm ~= false end,
             function(v) db.enableSpaceConfirm = v end),
-        CreateToggleRow(sec1, -374, "Hold Shift for Native Blizzard Frame", "Hold Shift while interacting with an NPC to bypass DynamicDialogue for that interaction.",
+        CreateToggleRow(sec1, -394, "Hold Shift for Native Blizzard Frame", "Hold Shift while interacting with an NPC to bypass DynamicDialogue for that interaction.",
             function() return db.shiftBypassNative ~= false end,
             function(v) db.shiftBypassNative = v end),
     }
     for _, r in ipairs(rows1) do table.insert(refreshables, r) end
 
-    -- Tab 2: Appearance & Sound (exact tight height, zero dead space; auto-yielding managed centrally in Guided Setup)
+    -- Tab 2: Appearance & Sound (exact tight height; auto-yielding managed centrally in Guided Setup)
     local sec2 = CreateFrame("Frame", nil, child)
-    sec2:SetPoint("TOPLEFT", child, "TOPLEFT", 0, 0)
-    sec2:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, 0)
-    local sec2H = 252 + 56 + 14 -- 322px exact fit for 3 sliders + 1 toggle + 14px bottom pad
+    sec2:SetPoint("TOPLEFT", actionStrip, "BOTTOMLEFT", 0, -10)
+    sec2:SetPoint("TOPRIGHT", actionStrip, "BOTTOMRIGHT", 0, -10)
+    local sec2H = 54 + (4 * 68) - 8 + 14 -- 332px
     sec2:SetHeight(sec2H)
     sec2.bg = SolidTex(sec2, "BACKGROUND", 0, surf.CARD_BG.r, surf.CARD_BG.g, surf.CARD_BG.b, 0.96)
     sec2.bg:SetAllPoints()
@@ -1986,15 +2015,15 @@ local function RenderDialogueEmbedded(parent)
             0.70, 1.40, 0.05, function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             function() return db.frameScale or 1.0 end,
             function(v) db.frameScale = v; DynamicDialogue:ApplyReaderTheme() end),
-        CreateSliderRow(sec2, -120, "Backdrop Opacity", "Control Obsidian panel opacity behind quest text (50% - 100%).",
+        CreateSliderRow(sec2, -122, "Backdrop Opacity", "Control Obsidian panel opacity behind quest text (50% - 100%).",
             0.50, 1.00, 0.05, function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             function() return db.backdropAlpha or 0.96 end,
             function(v) db.backdropAlpha = v; DynamicDialogue:ApplyReaderTheme() end),
-        CreateSliderRow(sec2, -186, "Dialogue Font Size", "Body text size for quest descriptions and gossip lore (11pt - 18pt).",
+        CreateSliderRow(sec2, -190, "Dialogue Font Size", "Body text size for quest descriptions and gossip lore (11pt - 18pt).",
             11, 18, 1, function(v) return string.format("%dpt", math.floor(v + 0.5)) end,
             function() return db.fontSize or 13 end,
             function(v) db.fontSize = v; DynamicDialogue:ApplyReaderTheme() end),
-        CreateToggleRow(sec2, -252, "Quest Complete Signature Chime", "Play the DynamicSuite Bloom chime when completing a quest.",
+        CreateToggleRow(sec2, -258, "Quest Complete Signature Chime", "Play the DynamicSuite Bloom chime when completing a quest.",
             function() return db.playCompleteChime ~= false end,
             function(v) db.playCompleteChime = v end),
     }
@@ -2005,11 +2034,11 @@ local function RenderDialogueEmbedded(parent)
         local pAlpha = GetPillFillAlpha()
         sec1:SetShown(activeSubTab == 1)
         sec2:SetShown(activeSubTab == 2)
-        child:SetHeight((activeSubTab == 1) and (sec1H + 12) or (sec2H + 12))
+        child:SetHeight(44 + 10 + ((activeSubTab == 1) and sec1H or sec2H) + 12)
         sf:SetVerticalScroll(0)
-        for id, tb in pairs(subTabBtns) do
-            if id == activeSubTab then
-                tb.bg:SetColorTexture(nr, ng, nb, pAlpha)
+        for _, tb in ipairs(subTabBtns) do
+            if tb._tabId == activeSubTab then
+                tb.bg:SetColorTexture(nr * pAlpha, ng * pAlpha, nb * pAlpha, 0.98)
                 tb.border:SetColor(nr, ng, nb, 0.95)
                 tb.txt:SetTextColor(1, 1, 1, 1)
             else
@@ -2021,10 +2050,10 @@ local function RenderDialogueEmbedded(parent)
         UpdateScrollBar()
     end
 
-    for id, tb in pairs(subTabBtns) do
+    for _, tb in ipairs(subTabBtns) do
         tb:SetScript("OnClick", function()
-            activeSubTab = id
-            db.activeSubTab = id
+            activeSubTab = tb._tabId
+            db.activeSubTab = tb._tabId
             ApplySubTab()
         end)
     end
@@ -2138,6 +2167,7 @@ DynamicDialogue.CHANGELOG = {
         version = VERSION,
         date = "21/11/2026",
         entries = {
+            { type = "UI",      text = "Release v2.7.0 (21/11/2026): Upgraded DynamicDialogue to the universal 34px #0B0D12 equal-width 2-tab header bar, dedicated 44px Action & Status strip inside the settings canvas, crisp non-outlined card fonts, standardised 156x26px (68px Off / 84px Enabled) binary switches, and 2-line wrapped descriptions so every row fits cleanly down to 800x520." },
             { type = "FIX",     text = "Release v2.6.9 (21/11/2026): Fixed first-open FontString rendering and overlapping sub-tab cards, added the 4px Obsidian settings scrollbar, matched standalone title colours, and fixed the Retail 12.1.5 Blizzard Quest/Gossip conflict check so clean installs show Active cleanly." },
             { type = "FEATURE", text = "Initial Release of DynamicDialogue (20/11/2026): High-contrast Obsidian Quest & Gossip Reader with 1-9 number hotkeys, Space bar Accept/Continue/Complete, interactive reward choice cards with item tooltips, Shift-bypass for native Blizzard frames, draggable reader positioning, live Preview mode, and automatic yielding for DialogueUI, Immersion, Storyline, EllesmereUI QoL, and other dialogue addons." },
         },
