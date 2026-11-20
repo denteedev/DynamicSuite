@@ -4394,13 +4394,16 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
     end
 
     if event == "GOSSIP_SHOW" and C_GossipInfo then
-        -- Never intercept custom gossip frames (e.g. DelvesDifficultyPickerFrame passes textureKit string in arg1)
-        if type(arg1) == "string" and arg1 ~= "" then
-            return
-        end
+        -- Never intercept Delve difficulty/companion picker frames (allow Midnight dungeon/world object custom textureKits)
         if (_G.DelvesDifficultyPickerFrame and _G.DelvesDifficultyPickerFrame.IsShown and _G.DelvesDifficultyPickerFrame:IsShown())
             or (_G.DelvesCompanionConfigurationFrame and _G.DelvesCompanionConfigurationFrame.IsShown and _G.DelvesCompanionConfigurationFrame:IsShown()) then
             return
+        end
+        if type(arg1) == "string" and arg1 ~= "" then
+            local lowKit = arg1:lower()
+            if lowKit:find("delve", 1, true) and lowKit:find("picker", 1, true) then
+                return
+            end
         end
         local getGranular = _G.DynamicSuite and _G.DynamicSuite.GetGranularConflictMode
         if type(getGranular) == "function" then
@@ -4625,13 +4628,13 @@ function DynamicPrep:HandlePlayerChoiceUpdate()
     if not self.db or self.db.autoSinglePlayerChoice == false or IsModuleDisabledInSuite("DynamicPrep") then
         return
     end
-    if InCombatLockdown and InCombatLockdown() then return end
     if IsShiftKeyDown and IsShiftKeyDown() then return end
     if not (C_PlayerChoice and type(C_PlayerChoice.GetCurrentPlayerChoiceInfo) == "function"
         and type(C_PlayerChoice.SendPlayerChoiceResponse) == "function") then
         return
     end
 
+    local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
     local ok, info = pcall(C_PlayerChoice.GetCurrentPlayerChoiceInfo)
     if not ok or type(info) ~= "table" or _IsSecret(info) then return end
     if type(info.options) ~= "table" or _IsSecret(info.options) or #info.options ~= 1 then
@@ -4640,14 +4643,20 @@ function DynamicPrep:HandlePlayerChoiceUpdate()
 
     local opt = info.options[1]
     if type(opt) ~= "table" or _IsSecret(opt) then return end
-    if not _IsSecret(opt.disabledOption) and opt.disabledOption then return end
+    if not _IsSecret(opt.disabledOption) and opt.disabledOption then
+        if inCombat then self._pendingPlayerChoiceAfterCombat = true end
+        return
+    end
     if type(opt.buttons) ~= "table" or _IsSecret(opt.buttons) or #opt.buttons ~= 1 then
         return
     end
 
     local btn = opt.buttons[1]
     if type(btn) ~= "table" or _IsSecret(btn) then return end
-    if not _IsSecret(btn.disabled) and btn.disabled then return end
+    if not _IsSecret(btn.disabled) and btn.disabled then
+        if inCombat then self._pendingPlayerChoiceAfterCombat = true end
+        return
+    end
     if not _IsSecret(btn.hideButtonShowText) and btn.hideButtonShowText then return end
     if not _IsSecret(btn.confirmation) and type(btn.confirmation) == "string" and btn.confirmation ~= "" then
         return
@@ -4664,9 +4673,19 @@ function DynamicPrep:HandlePlayerChoiceUpdate()
     self._lastPlayerChoiceKey = key
     self._lastPlayerChoiceTime = now
 
+    -- C_PlayerChoice.SendPlayerChoiceResponse is a safe network call (works in combat with zero taint).
     pcall(C_PlayerChoice.SendPlayerChoiceResponse, respID)
+    if inCombat then
+        self._pendingPlayerChoiceAfterCombat = true
+    else
+        self._pendingPlayerChoiceAfterCombat = nil
+    end
+
     local function CloseChoiceUI()
-        if InCombatLockdown and InCombatLockdown() then return end
+        if InCombatLockdown and InCombatLockdown() then
+            DynamicPrep._pendingPlayerChoiceAfterCombat = true
+            return
+        end
         local pcf = _G.PlayerChoiceFrame
         if pcf and pcf.IsShown and pcf:IsShown() then
             if HideUIPanel then
@@ -12306,6 +12325,23 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             DynamicPrep:ApplyBarGeometry()
         end
         DynamicPrep:HandleBlizzardWindowCombatChange(false)
+        -- Re-evaluate any single-option PlayerChoice / Gossip window that opened during combat
+        local pcfOpen = _G.PlayerChoiceFrame and _G.PlayerChoiceFrame.IsShown and _G.PlayerChoiceFrame:IsShown()
+        if DynamicPrep._pendingPlayerChoiceAfterCombat or pcfOpen then
+            DynamicPrep._pendingPlayerChoiceAfterCombat = nil
+            DynamicPrep._lastPlayerChoiceKey = nil
+            DynamicPrep:HandlePlayerChoiceUpdate()
+            if _G.PlayerChoiceFrame and _G.PlayerChoiceFrame.IsShown and _G.PlayerChoiceFrame:IsShown() then
+                if HideUIPanel then
+                    pcall(HideUIPanel, _G.PlayerChoiceFrame)
+                elseif _G.PlayerChoiceFrame.Hide then
+                    pcall(_G.PlayerChoiceFrame.Hide, _G.PlayerChoiceFrame)
+                end
+            end
+        end
+        if _G.GossipFrame and _G.GossipFrame.IsShown and _G.GossipFrame:IsShown() then
+            DynamicPrep:HandleQuestAndGossip("GOSSIP_SHOW", true)
+        end
         DynamicPrep:ScanEquippedGearEnchantsAndGems()
         DynamicPrep:RefreshBar()
         DynamicPrep.pendingHealMacroUpdate = nil
