@@ -4664,6 +4664,22 @@ function DynamicPrep:HandlePlayerChoiceUpdate()
     self._lastPlayerChoiceTime = now
 
     pcall(C_PlayerChoice.SendPlayerChoiceResponse, respID)
+    local function CloseChoiceUI()
+        if InCombatLockdown and InCombatLockdown() then return end
+        local pcf = _G.PlayerChoiceFrame
+        if pcf and pcf.IsShown and pcf:IsShown() then
+            if HideUIPanel then
+                pcall(HideUIPanel, pcf)
+            elseif pcf.Hide then
+                pcall(pcf.Hide, pcf)
+            end
+        end
+    end
+    CloseChoiceUI()
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, CloseChoiceUI)
+        C_Timer.After(0.05, CloseChoiceUI)
+    end
 end
 
 local function SuppressTalkingHeadNow()
