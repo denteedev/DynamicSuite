@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.2"
+    local fb = fallback or "2.6.3"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.2"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.3"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.2")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.3")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicChat", VERSION, _G.DynamicChat) then
     return
 end
@@ -1893,9 +1893,29 @@ local function ResolveChatTabLabel(cf, tab, tabName, entry)
     local fs = tab.Text or (tabName and _G[tabName .. "Text"]) or (tab.GetFontString and tab:GetFontString())
     if not fs then return nil, nil end
 
+    local chatType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
+    local isBNWhisperTab = (chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION")
+    local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or (cf.isTemporary == true)
+
+    -- Midnight 12.1.5 Zero-Taint Guard: Battle.net / Whisper temporary tab names may be secret strings
+    -- already rendered on fs by Blizzard. Never overwrite a secret tab label with "ChatFrame11".
+    if type(fs.GetText) == "function" then
+        local okExisting, existingTxt = pcall(fs.GetText, fs)
+        if okExisting and existingTxt ~= nil and IsSecretValue(existingTxt) then
+            if type(fs.Show) == "function" then pcall(fs.Show, fs) end
+            if type(fs.SetAlpha) == "function" then pcall(fs.SetAlpha, fs, 1.0) end
+            return fs, nil
+        end
+    end
+    if cf.isTemporary == true and (IsSecretValue(cf.name) or IsSecretValue(cf.chatTarget)) then
+        if type(fs.Show) == "function" then pcall(fs.Show, fs) end
+        if type(fs.SetAlpha) == "function" then pcall(fs.SetAlpha, fs, 1.0) end
+        return fs, nil
+    end
+
     local rawLabel = nil
     local cfID = cf.GetID and cf:GetID()
-    if type(cfID) == "number" and cfID > 0 then
+    if type(cfID) == "number" and cfID > 0 and not cf.isTemporary then
         local infoName = nil
         if type(_G.GetChatWindowInfo) == "function" then
             local ok, n = pcall(_G.GetChatWindowInfo, cfID)
@@ -1914,24 +1934,29 @@ local function ResolveChatTabLabel(cf, tab, tabName, entry)
 
     if (not rawLabel or rawLabel == "") and type(fs.GetText) == "function" then
         local okTxt, curTxt = pcall(fs.GetText, fs)
-        if okTxt and not IsSecretValue(curTxt) and type(curTxt) == "string" and curTxt ~= "" then
+        if okTxt and not IsSecretValue(curTxt) and type(curTxt) == "string" and curTxt ~= "" and not curTxt:match("^ChatFrame%d+$") then
             rawLabel = curTxt
         end
     end
 
-    if (not rawLabel or rawLabel == "") and not IsSecretValue(cf.name) and type(cf.name) == "string" and cf.name ~= "" then
+    if (not rawLabel or rawLabel == "") and not IsSecretValue(cf.name) and type(cf.name) == "string" and cf.name ~= "" and not cf.name:match("^ChatFrame%d+$") then
         rawLabel = cf.name
     end
 
+    if (not rawLabel or rawLabel == "") and isWhisperTab and not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" then
+        rawLabel = cf.chatTarget
+    end
+
     if not rawLabel or rawLabel == "" then
-        if cfID == 1 then rawLabel = _G.GENERAL or "General"
+        if cf.isTemporary == true then
+            -- Temporary whisper/BNet tab not yet populated by Blizzard; leave fs untouched so FCF_SetWindowName can set it.
+            if type(fs.Show) == "function" then pcall(fs.Show, fs) end
+            if type(fs.SetAlpha) == "function" then pcall(fs.SetAlpha, fs, 1.0) end
+            return fs, nil
+        elseif cfID == 1 then rawLabel = _G.GENERAL or "General"
         elseif cfID == 2 then rawLabel = _G.COMBAT_LOG or "Combat Log"
         else rawLabel = GetChatFrameTabTitle(cf) end
     end
-
-    local chatType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
-    local isBNWhisperTab = (chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION")
-    local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or (cf.isTemporary == true)
 
     local cleanFull = tostring(rawLabel):gsub("|T.-|t", ""):gsub("|A.-|a", "")
     if entry and (not entry.fullTabLabel or cleanFull:find("-", 1, true)) then
@@ -1948,7 +1973,7 @@ local function ResolveChatTabLabel(cf, tab, tabName, entry)
 
     if type(fs.SetText) == "function" then
         local okCur, curTxt = pcall(fs.GetText, fs)
-        if not okCur or IsSecretValue(curTxt) or curTxt ~= displayLabel then
+        if not okCur or (not IsSecretValue(curTxt) and curTxt ~= displayLabel) then
             pcall(fs.SetText, fs, displayLabel)
         end
     end
@@ -4748,6 +4773,8 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
                 end)
                 if okW and not IsSecretValue(w) and type(w) == "number" and w > 8 then
                     rawTextW = w
+                elseif isWhisperTab and IsSecretValue(w) then
+                    rawTextW = 78
                 end
             end
 

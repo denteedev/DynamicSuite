@@ -1,5 +1,12 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.6.2 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.6.3 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.6.3 (20/11/2026)
+
+### DynamicChat Battle.net Whisper Tab Name Fix (`v2.6.3`, 20/11/2026)
+- **Preserve Midnight 12.1.5 Secret Battle.net Whisper Tab Names:** Fixed `ResolveChatTabLabel()` in `DynamicChat` overwriting Blizzard's secret Battle.net friend name on temporary whisper tabs (`ChatFrame11+`) with `"ChatFrame11"`. Secret tab text is now preserved untouched with generous natural tab width (`~104px`) so Battle.net sender names display cleanly.
 
 ---
 
