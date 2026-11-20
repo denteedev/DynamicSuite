@@ -1,5 +1,16 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.6.5 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.6.6 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.6.6 (21/11/2026)
+
+### DynamicVault HUD Integration, Obsidian Overlay Redesign, Checklist Polish & Talent Duplication (`v2.6.6`, 21/11/2026)
+- **Great Vault Overlay Integrated into Master HUD Edit Mode (`VAULT`):** Registered `DynamicVault`'s standalone On-Screen Vault Overlay as the 7th target in DynamicSuite's Master HUD Edit Mode (`/ds hud` and `DynamicVault`'s `Edit HUD` button), with full drag/nudge/centre positioning, `60%-150%` scale, `20%-100%` opacity, `Accent`/`Dark`/`None` border styles, `Hidden`/`Shown` toggle, `Apply All`, and `Reset`.
+- **Redesigned On-Screen Vault Overlay to Match Obsidian HUD:** Rebuilt `DynamicVaultScreenOverlay` with `#090A0D` backdrop, `2px` vertical Suite Accent left bar, Suite Accent-tinted Vault icon, slate pipe dividers, and dynamic auto-fit width to match the `Prep Bar` and suite HUD aesthetic.
+- **Weekly Checklist Clarity (`DynamicVault`):** Replaced the misleading green checkbox boxes on read-only **Auto-Tracked Weekly Progress** rows with clean non-interactive `3px` vertical status bars so only clickable **Custom Weekly Checklist** rows display checkboxes.
+- **Account Matrix `Refresh` Button (`DynamicVault`):** Renamed the ambiguous `Scan` button in `Account Matrix` to **`Refresh`** and added a clear hover tooltip explaining that it re-reads your current character's Great Vault, Keystones, Crests, and Coffer Keys.
+- **1-Click `Duplicate Loadout` & Seasonal M+ Pool Hydration (`DynamicPrep`):** Added **`Duplicate Loadout`** to the Left-Hand Talent Dock right-click context menu (cloning the build cleanly as `<Name> (Copy)` without stealing 1-to-1 boss bindings), and added `C_ChallengeMode.RequestMapInfo()` hydration so the 8 current-season Mythic+ dungeons always load even on a fresh login.
 
 ---
 

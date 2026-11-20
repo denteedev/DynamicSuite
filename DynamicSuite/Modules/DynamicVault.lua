@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.5"
+    local fb = fallback or "2.6.6"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.5"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.6"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.5")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.6")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicVault", VERSION, _G.DynamicVault) then
     return
 end
@@ -225,6 +225,9 @@ local DEFAULTS = {
     vaultSkinMode      = "AUTO", -- "AUTO" (match EllesmereUI/ElvUI when active) or "OBSIDIAN"
     showScreenOverlay  = false,
     overlayPos         = nil,
+    overlayScale       = 1.0,
+    overlayOpacity     = 0.96,
+    overlayBorderStyle = "ACCENT",
     loginVaultReminder = true,
     syncDynamicBags    = true,
     filterMaxLevelOnly = false,
@@ -1397,10 +1400,19 @@ local function RenderVaultEmbedded(parent)
         end)
         openBtn:SetPoint("RIGHT", banner, "RIGHT", -12, 0)
 
-        local scanBtn = CreateStyledButton(banner, "Scan", 58, 26, false, function()
+        local scanBtn = CreateStyledButton(banner, "Refresh", 68, 26, false, function()
             DynamicVault:SnapshotCurrentCharacter(false)
         end)
         scanBtn:SetPoint("RIGHT", openBtn, "LEFT", -6, 0)
+        scanBtn:HookScript("OnEnter", function(s)
+            if GameTooltip then
+                GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                GameTooltip:SetText("Refresh Character Data", 1, 1, 1)
+                GameTooltip:AddLine("Re-reads your current character's Great Vault progress, Keystones, Crests, and Coffer Keys right now.", 0.82, 0.86, 0.92, true)
+                GameTooltip:Show()
+            end
+        end)
+        scanBtn:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
 
         y = y - 56
 
@@ -1602,7 +1614,7 @@ local function RenderVaultEmbedded(parent)
 
         local sec1 = CreateSectionBox(scrollContent, y)
         local sy = -10
-        local _, dyh = CreateSectionHeader(sec1, sy, "AUTO-TRACKED WEEKLY PROGRESS", "Live Great Vault milestones, Delve Keys, and Catalyst status for your current character.")
+        local _, dyh = CreateSectionHeader(sec1, sy, "AUTO-TRACKED WEEKLY PROGRESS", "Read-only live progress from Blizzard (updates automatically -- no manual clicking needed).")
         sy = sy + dyh
 
         local autoRows = {
@@ -1640,21 +1652,19 @@ local function RenderVaultEmbedded(parent)
             row:SetPoint("TOPRIGHT", sec1, "TOPRIGHT", -12, sy)
             ApplyBackdrop(row, surf.card, { 1, 1, 1, 0.06 })
 
-            -- Square Dot Status Box (DESIGN_SYSTEM.md)
-            local box = CreateFrame("Frame", nil, row, "BackdropTemplate")
-            box:SetSize(14, 14)
-            box:SetPoint("LEFT", row, "LEFT", 12, 0)
-            ApplyBackdrop(box, { 0.043, 0.051, 0.071, 0.98 }, rowDef.done and { 0.063, 0.725, 0.506, 0.95 } or surf.border)
-            if rowDef.done then
-                local dot = CreateSolidTex(box, "OVERLAY", 2, 0.063, 0.725, 0.506, 1.0)
-                dot:SetSize(6, 6)
-                dot:SetPoint("CENTER")
-            end
+            -- Non-interactive 3px status bar (distinguishes read-only live stats from clickable Custom Tasks below)
+            local bar = CreateSolidTex(row, "OVERLAY", 2,
+                rowDef.done and 0.063 or 0.28,
+                rowDef.done and 0.725 or 0.34,
+                rowDef.done and 0.506 or 0.44,
+                0.95)
+            bar:SetSize(3, 20)
+            bar:SetPoint("LEFT", row, "LEFT", 10, 0)
 
             local tFs = row:CreateFontString(nil, "OVERLAY")
             SetFontSafe(tFs, 11, "")
-            tFs:SetPoint("LEFT", box, "RIGHT", 10, 0)
-            tFs:SetTextColor(rowDef.done and 0.65 or 0.95, rowDef.done and 0.74 or 0.97, rowDef.done and 0.80 or 1.0, 1.0)
+            tFs:SetPoint("LEFT", bar, "RIGHT", 10, 0)
+            tFs:SetTextColor(rowDef.done and 0.78 or 0.96, rowDef.done and 0.86 or 0.98, rowDef.done and 0.92 or 1.0, 1.0)
             tFs:SetText(rowDef.title)
 
             local pFs = row:CreateFontString(nil, "OVERLAY")
@@ -1796,10 +1806,8 @@ local function RenderVaultEmbedded(parent)
         local hdr1, dyh = CreateSectionHeader(sec1, sy, "TRACKING & MATRIX DISPLAY", "Configure Great Vault reminders, Alt Vault syncing, and card details.")
         if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.CreateEditHudButton) == "function" then
             local editBtn = _G.DynamicSuite.UI.CreateEditHudButton(sec1, "Edit HUD", function()
-                db.showScreenOverlay = true
-                if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end
                 if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
-                    _G.DynamicSuite:EnterHudEditMode("PREP", true)
+                    _G.DynamicSuite:EnterHudEditMode("VAULT", true)
                 end
             end)
             if editBtn then
@@ -2165,11 +2173,14 @@ local function HookWeeklyRewardsFrame()
     end)
 end
 
-local function RefreshScreenOverlay()
+local function RefreshScreenOverlay(forceCreate)
     local db = EnsureDB()
-    if IsModuleDisabledInSuite("DynamicVault") or not db.enabled or db.showScreenOverlay ~= true then
-        if screenOverlayFrame then screenOverlayFrame:Hide() end
-        return
+    local isHidden = IsModuleDisabledInSuite("DynamicVault") or not db.enabled or db.showScreenOverlay ~= true
+    if isHidden and not forceCreate then
+        if screenOverlayFrame and not screenOverlayFrame._dsEditModeActive then
+            screenOverlayFrame:Hide()
+        end
+        return screenOverlayFrame
     end
 
     local surf, acc = GetTheme()
@@ -2217,18 +2228,47 @@ local function RefreshScreenOverlay()
         end)
         f:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
 
+        f.leftBar = CreateSolidTex(f, "OVERLAY", 3, acc.r, acc.g, acc.b, 0.95)
+        f.leftBar:SetWidth(2)
+        f.leftBar:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
+        f.leftBar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 1)
+
+        f.icon = f:CreateTexture(nil, "OVERLAY", nil, 3)
+        f.icon:SetSize(14, 14)
+        f.icon:SetPoint("LEFT", f, "LEFT", 9, 0)
+        f.icon:SetTexture(ICON_COLOR)
+        f.icon:SetVertexColor(acc.r, acc.g, acc.b, 0.95)
+
         f.fs = f:CreateFontString(nil, "OVERLAY")
         SetFontSafe(f.fs, 10.5, "")
-        f.fs:SetPoint("CENTER", f, "CENTER", 0, 0)
+        f.fs:SetPoint("LEFT", f.icon, "RIGHT", 7, 0)
+        f.fs:SetPoint("RIGHT", f, "RIGHT", -10, 0)
+        f.fs:SetJustifyH("LEFT")
+        f.fs:SetWordWrap(false)
         screenOverlayFrame = f
     end
 
     local f = screenOverlayFrame
+    local ovScale = math.max(0.60, math.min(1.50, tonumber(db.overlayScale) or 1.0))
+    if not InCombatLockdown() then
+        f:SetScale(ovScale)
+    end
     f:ClearAllPoints()
     if type(db.overlayPos) == "table" and #db.overlayPos >= 4 then
         f:SetPoint(db.overlayPos[1], UIParent, db.overlayPos[2], db.overlayPos[3], db.overlayPos[4])
     else
         f:SetPoint("TOP", UIParent, "TOP", 0, -42)
+    end
+
+    local ovAlpha = math.max(0.20, math.min(1.0, tonumber(db.overlayOpacity) or 0.96))
+    local bStyle = tostring(db.overlayBorderStyle or "ACCENT"):upper()
+    local borderCol
+    if bStyle == "NONE" or bStyle == "BORDERLESS" then
+        borderCol = { 0, 0, 0, 0 }
+    elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+        borderCol = { 0.145, 0.165, 0.212, 0.95 }
+    else
+        borderCol = { acc.r, acc.g, acc.b, 0.92 }
     end
 
     local pKey = GetPlayerKey()
@@ -2237,14 +2277,54 @@ local function RefreshScreenOverlay()
     local cur = (ch and ch.currencies) or {}
     local total = SafeNum(v.raid and v.raid.unlocked, 0) + SafeNum(v.mplus and v.mplus.unlocked, 0) + SafeNum(v.world and v.world.unlocked, 0)
     local secsLeft = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset) and SafeNum(C_DateAndTime.GetSecondsUntilWeeklyReset(), 0) or 0
+    local sep = "  |cFF475569|||r  "
     if v.hasAvailableReward then
-        ApplyBackdrop(f, { 0.14, 0.10, 0.02, 0.94 }, { 0.98, 0.75, 0.14, 0.95 })
-        f.fs:SetText("|cFFFBBF24VAULT REWARD READY!|r  |  Keys: " .. tostring(SafeNum(cur.cofferKeys, 0)))
+        ApplyBackdrop(f, { 0.035, 0.039, 0.051, ovAlpha }, (bStyle == "NONE") and { 0, 0, 0, 0 } or { 0.98, 0.75, 0.14, 0.95 })
+        if f.leftBar then f.leftBar:SetColorTexture(0.98, 0.75, 0.14, 1.0) end
+        if f.icon then f.icon:SetVertexColor(0.98, 0.75, 0.14, 1.0) end
+        f.fs:SetText("|cFFFBBF24VAULT REWARD READY!|r" .. sep .. "|cFF94A3B8Keys:|r |cFFFBBF24" .. tostring(SafeNum(cur.cofferKeys, 0)) .. "|r")
     else
-        ApplyBackdrop(f, surf.bg, { acc.r, acc.g, acc.b, 0.72 })
-        f.fs:SetText(string.format("Vault: |cFF10B981%d/9|r  |  Keys: |cFFFBBF24%d|r  |  |cFF38BDF8%s|r", total, SafeNum(cur.cofferKeys, 0), FormatTimeRemaining(secsLeft)))
+        ApplyBackdrop(f, { 0.035, 0.039, 0.051, ovAlpha }, borderCol)
+        if f.leftBar then f.leftBar:SetColorTexture(acc.r, acc.g, acc.b, 0.95) end
+        if f.icon then f.icon:SetVertexColor(acc.r, acc.g, acc.b, 0.95) end
+        local col = (total > 0) and "34D399" or "94A3B8"
+        f.fs:SetText(string.format("|cFF94A3B8Vault|r |cFF%s%d/9|r%s|cFF94A3B8Keys|r |cFFFBBF24%d|r%s|cFF38BDF8%s|r",
+            col, total, sep, SafeNum(cur.cofferKeys, 0), sep, FormatTimeRemaining(secsLeft)))
     end
-    f:Show()
+    local txtW = (f.fs and f.fs.GetStringWidth and f.fs:GetStringWidth()) or 220
+    if not InCombatLockdown() then
+        f:SetSize(math.max(228, math.ceil(txtW + 44)), 28)
+    end
+    if not f._dsEditModeActive then
+        f:SetAlpha(1.0)
+    end
+    if not isHidden then
+        f:Show()
+    elseif not f._dsEditModeActive then
+        f:Hide()
+    end
+    return f
+end
+
+function DynamicVault:GetOverlayFrame(forceCreate)
+    if not screenOverlayFrame and forceCreate then
+        RefreshScreenOverlay(true)
+    end
+    return screenOverlayFrame
+end
+
+function DynamicVault:SaveOverlayPosition(pt, relPt, x, y)
+    local db = EnsureDB()
+    db.overlayPos = { pt or "TOP", relPt or pt or "TOP", math.floor((x or 0) + 0.5), math.floor((y or -42) + 0.5) }
+end
+
+function DynamicVault:ResetOverlayPosition()
+    local db = EnsureDB()
+    db.overlayPos = { "TOP", "TOP", 0, -42 }
+    db.overlayScale = 1.0
+    db.overlayOpacity = 0.96
+    db.overlayBorderStyle = "ACCENT"
+    RefreshScreenOverlay(false)
 end
 
 function DynamicVault:GetPrepBarCapsuleData()

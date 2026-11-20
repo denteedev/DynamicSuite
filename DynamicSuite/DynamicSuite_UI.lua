@@ -1443,7 +1443,7 @@ local function CreateEditHudButton(parent, labelOrTargetKey, onClickOrWidth, hei
 
     if type(labelOrTargetKey) == "string" then
         if labelOrTargetKey == "TOAST" or labelOrTargetKey == "PREP" or labelOrTargetKey == "TARGET"
-            or labelOrTargetKey == "FLARE" or labelOrTargetKey == "prepBuffs" or labelOrTargetKey == "CHAT" then
+            or labelOrTargetKey == "FLARE" or labelOrTargetKey == "prepBuffs" or labelOrTargetKey == "CHAT" or labelOrTargetKey == "VAULT" then
             hudKey = labelOrTargetKey
         elseif labelOrTargetKey ~= "" then
             labelText = labelOrTargetKey
@@ -11379,15 +11379,17 @@ function addonTable.CreateMainConfigUI()
         ["FLARE"]     = { label = "World Flare Bar", header = "POSITIONING: WORLD FLARE BAR", owner = "DynamicMarker", defPoint = "CENTER",     defRelPoint = "CENTER",     defX = 0, defY = -182 },
         ["prepBuffs"] = { label = "Prep Raid Buffs", header = "POSITIONING: PREP RAID BUFFS", owner = "DynamicPrep",   defPoint = "CENTER",     defRelPoint = "CENTER",     defX = 0, defY = 140  },
         ["CHAT"]      = { label = "Chat Frame",      header = "POSITIONING: CHAT FRAME",      owner = "DynamicChat",   defPoint = "BOTTOMLEFT", defRelPoint = "BOTTOMLEFT", defX = 0, defY = 0    },
+        ["VAULT"]     = { label = "Vault Overlay",   header = "POSITIONING: VAULT OVERLAY",   owner = "DynamicVault",  defPoint = "TOP",        defRelPoint = "TOP",        defX = 0, defY = -42  },
     }
-    -- 6 tabs sized to fit 880px modal width cleanly (690px track width)
+    -- 7 HUD targets for the Master HUD Edit Mode selector
     local hudTargetDefs = {
-        { key = "TOAST",     label = "Alert Toast",  w = 110 },
-        { key = "PREP",      label = "Prep Bar",     w = 98 },
-        { key = "TARGET",    label = "Focus Icons",  w = 110 },
-        { key = "FLARE",     label = "World Flares", w = 120 },
-        { key = "prepBuffs", label = "Raid Buffs",   w = 108 },
-        { key = "CHAT",      label = "Chat Frame",   w = 116 },
+        { key = "TOAST",     label = "Alert Toast",   w = 110 },
+        { key = "PREP",      label = "Prep Bar",      w = 98 },
+        { key = "TARGET",    label = "Focus Icons",   w = 110 },
+        { key = "FLARE",     label = "World Flares",  w = 120 },
+        { key = "prepBuffs", label = "Raid Buffs",    w = 108 },
+        { key = "CHAT",      label = "Chat Frame",    w = 116 },
+        { key = "VAULT",     label = "Vault Overlay", w = 116 },
     }
 
     local snapGridOverlay = nil
@@ -11549,12 +11551,18 @@ function addonTable.CreateMainConfigUI()
                 return nil
             end
             return _G.ChatFrame1
+        elseif targetKey == "VAULT" then
+            if _G.DynamicVault and type(_G.DynamicVault.GetOverlayFrame) == "function" then
+                local ok, ov = pcall(_G.DynamicVault.GetOverlayFrame, _G.DynamicVault, true)
+                if ok and ov then return ov end
+            end
+            return _G.DynamicVaultScreenOverlay
         end
         return nil
     end
 
     local function EnsureAllEditModeHudFramesInitialized()
-        for _, k in ipairs({ "TOAST", "PREP", "TARGET", "FLARE", "prepBuffs" }) do
+        for _, k in ipairs({ "TOAST", "PREP", "TARGET", "FLARE", "prepBuffs", "VAULT" }) do
             GetLiveHudFrame(k)
         end
         if IsChatHudTargetOwned() and _G.DynamicChat and _G.DynamicChat.ApplySavedChatFramePosition then
@@ -11672,6 +11680,11 @@ function addonTable.CreateMainConfigUI()
             if ok and bpt and bx ~= nil and by ~= nil then
                 return bpt, brp or bpt, math.floor(bx + 0.5), math.floor(by + 0.5)
             end
+        elseif targetKey == "VAULT" then
+            local pos = _G.DynamicVaultDB and _G.DynamicVaultDB.overlayPos
+            if type(pos) == "table" and #pos >= 4 then
+                return pos[1] or "TOP", pos[2] or pos[1] or "TOP", math.floor((pos[3] or 0) + 0.5), math.floor((pos[4] or -42) + 0.5)
+            end
         end
         return nil
     end
@@ -11679,7 +11692,7 @@ function addonTable.CreateMainConfigUI()
     local function IngestLiveHudPositions()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         gTbl.hudPositions = gTbl.hudPositions or {}
-        for _, k in ipairs({ "PREP", "TARGET", "FLARE", "prepBuffs", "CHAT" }) do
+        for _, k in ipairs({ "PREP", "TARGET", "FLARE", "prepBuffs", "CHAT", "VAULT" }) do
             local pt, relPt, lx, ly = ReadPeerOrLiveHudPos(k)
             if pt and lx ~= nil and ly ~= nil then
                 gTbl.hudPositions[k] = { point = pt, relPoint = relPt or pt, x = lx, y = ly }
@@ -11825,6 +11838,12 @@ function addonTable.CreateMainConfigUI()
                     width         = (cf and cf.GetWidth and math.floor(cf:GetWidth() + 0.5)) or 430,
                     height        = (cf and cf.GetHeight and math.floor(cf:GetHeight() + 0.5)) or 200,
                 }
+            end
+        elseif targetKey == "VAULT" then
+            if _G.DynamicVault and type(_G.DynamicVault.SaveOverlayPosition) == "function" then
+                pcall(_G.DynamicVault.SaveOverlayPosition, _G.DynamicVault, pt, relPt, rx, ry)
+            elseif type(_G.DynamicVaultDB) == "table" then
+                _G.DynamicVaultDB.overlayPos = { pt or "TOP", relPt or pt or "TOP", rx, ry }
             end
         end
     end
@@ -11981,6 +12000,8 @@ function addonTable.CreateMainConfigUI()
         elseif targetKey == "CHAT" then
             if not IsChatHudTargetOwned() then return nil end
             return _G.ChatFrame1
+        elseif targetKey == "VAULT" then
+            return _G.DynamicVaultScreenOverlay
         end
         return nil
     end
@@ -12468,6 +12489,11 @@ function addonTable.CreateMainConfigUI()
                 or (gTbl.hudScales and gTbl.hudScales["CHAT"])
                 or (_G.ChatFrame1 and _G.ChatFrame1.GetScale and _G.ChatFrame1:GetScale())
                 or 1.0
+        elseif key == "VAULT" then
+            raw = (_G.DynamicVaultDB and _G.DynamicVaultDB.overlayScale)
+                or (gTbl.hudScales and gTbl.hudScales["VAULT"])
+                or (_G.DynamicVaultScreenOverlay and _G.DynamicVaultScreenOverlay.GetScale and _G.DynamicVaultScreenOverlay:GetScale())
+                or 1.0
         end
         local snapped = math.floor((tonumber(raw) or 1.0) * 20 + 0.5) / 20
         return math.max(HUD_SCALE_MIN, math.min(HUD_SCALE_MAX, snapped))
@@ -12552,6 +12578,15 @@ function addonTable.CreateMainConfigUI()
                 if _G.DynamicChat and _G.DynamicChat.ApplySleekChatSkin then
                     pcall(_G.DynamicChat.ApplySleekChatSkin, _G.DynamicChat)
                 end
+            elseif k == "VAULT" then
+                if type(_G.DynamicVaultDB) == "table" then
+                    _G.DynamicVaultDB.overlayScale = snapped
+                end
+                local lf = GetLiveHudFrame("VAULT")
+                if lf and lf.SetScale and not InCombatLockdown() then lf:SetScale(snapped) end
+                if _G.DynamicVault and _G.DynamicVault.RefreshOverlays then
+                    pcall(_G.DynamicVault.RefreshOverlays, _G.DynamicVault)
+                end
             end
 
             if not InCombatLockdown() then
@@ -12622,6 +12657,9 @@ function addonTable.CreateMainConfigUI()
             raw = (_G.DynamicChat and _G.DynamicChat.db and _G.DynamicChat.db.chatBgAlpha)
                 or (_G.DynamicChatDB and _G.DynamicChatDB.chatBgAlpha)
                 or (gTbl.hudOpacities and gTbl.hudOpacities["CHAT"])
+        elseif key == "VAULT" then
+            raw = (_G.DynamicVaultDB and _G.DynamicVaultDB.overlayOpacity)
+                or (gTbl.hudOpacities and gTbl.hudOpacities["VAULT"])
         end
         return SnapHudOpacity(raw, key)
     end
@@ -12746,6 +12784,13 @@ function addonTable.CreateMainConfigUI()
                 if _G.ChatFrame1 and _G.ChatFrame1.SetAlpha then
                     _G.ChatFrame1:SetAlpha(1.0)
                 end
+            elseif k == "VAULT" then
+                if type(_G.DynamicVaultDB) == "table" then
+                    _G.DynamicVaultDB.overlayOpacity = snapped
+                end
+                if _G.DynamicVault and _G.DynamicVault.RefreshOverlays then
+                    pcall(_G.DynamicVault.RefreshOverlays, _G.DynamicVault)
+                end
             end
 
             local liveHud = GetLiveHudFrame(k)
@@ -12789,6 +12834,9 @@ function addonTable.CreateMainConfigUI()
             raw = (_G.DynamicChat and _G.DynamicChat.db and _G.DynamicChat.db.chatBorderStyle)
                 or (_G.DynamicChatDB and _G.DynamicChatDB.chatBorderStyle)
                 or (gTbl.hudBorderStyles and gTbl.hudBorderStyles["CHAT"])
+        elseif key == "VAULT" then
+            raw = (_G.DynamicVaultDB and _G.DynamicVaultDB.overlayBorderStyle)
+                or (gTbl.hudBorderStyles and gTbl.hudBorderStyles["VAULT"])
         end
         return NormalizeHudBorderStyle(raw, false)
     end
@@ -12899,6 +12947,13 @@ function addonTable.CreateMainConfigUI()
                 end
                 if _G.DynamicChat and _G.DynamicChat.ApplySleekChatSkin then
                     pcall(_G.DynamicChat.ApplySleekChatSkin, _G.DynamicChat)
+                end
+            elseif k == "VAULT" then
+                if type(_G.DynamicVaultDB) == "table" then
+                    _G.DynamicVaultDB.overlayBorderStyle = norm
+                end
+                if _G.DynamicVault and _G.DynamicVault.RefreshOverlays then
+                    pcall(_G.DynamicVault.RefreshOverlays, _G.DynamicVault)
                 end
             end
 
@@ -13069,6 +13124,11 @@ function addonTable.CreateMainConfigUI()
         elseif targetKey == "CHAT" then
             local hv = gTbl.hudVisibility and gTbl.hudVisibility["CHAT"]
             return (hv ~= "HIDDEN" and hv ~= "OFF" and hv ~= false)
+        elseif targetKey == "VAULT" then
+            if type(_G.DynamicVaultDB) == "table" then
+                return _G.DynamicVaultDB.showScreenOverlay == true
+            end
+            return false
         end
         return true
     end
@@ -13219,6 +13279,13 @@ function addonTable.CreateMainConfigUI()
                 end
                 if _G.DynamicChat and _G.DynamicChat.ApplySleekChatSkin then
                     pcall(_G.DynamicChat.ApplySleekChatSkin, _G.DynamicChat)
+                end
+            elseif k == "VAULT" then
+                if type(_G.DynamicVaultDB) == "table" then
+                    _G.DynamicVaultDB.showScreenOverlay = (isShown == true)
+                end
+                if _G.DynamicVault and _G.DynamicVault.RefreshOverlays then
+                    pcall(_G.DynamicVault.RefreshOverlays, _G.DynamicVault)
                 end
             end
         end
@@ -13775,7 +13842,7 @@ function addonTable.CreateMainConfigUI()
             end
             if floatingEditPill then floatingEditPill:Hide() end
             local dmOwnsMovers = (_G.DynamicMarker and _G.DynamicMarker.HasEncapsulatedHudMovers)
-            for _, k in ipairs({ "PREP", "TARGET", "FLARE", "prepBuffs", "CHAT" }) do
+            for _, k in ipairs({ "PREP", "TARGET", "FLARE", "prepBuffs", "CHAT", "VAULT" }) do
                 local lf = GetLiveHudFrame(k)
                 if lf then
                     local carrier = GetHudStateCarrier(lf, k)
@@ -13879,7 +13946,7 @@ function addonTable.CreateMainConfigUI()
 
         -- Unlock and show active/shown (or explicitly previewed hidden) HUD frames in-place WITHOUT moving coordinates
         local dmOwnsMovers = (_G.DynamicMarker and _G.DynamicMarker.HasEncapsulatedHudMovers)
-        for _, k in ipairs({ "PREP", "TARGET", "FLARE", "prepBuffs", "CHAT" }) do
+        for _, k in ipairs({ "PREP", "TARGET", "FLARE", "prepBuffs", "CHAT", "VAULT" }) do
             local showMover = ShouldShowHudMoverInEditMode(k)
             if (k == "TARGET" or k == "FLARE") and dmOwnsMovers then
                 local liveFrame = GetLiveHudFrame(k)
@@ -14190,6 +14257,14 @@ function addonTable.CreateMainConfigUI()
                         pcall(_G.DynamicPrep.ResetHUDPosition, _G.DynamicPrep, true)
                     end
                     SetStoredHudPos("PREP", pt, relPt, meta.defX, meta.defY)
+                elseif k == "VAULT" then
+                    SetHudScale("VAULT", 1.0)
+                    SetHudOpacity("VAULT", GetDefaultHudOpacity("VAULT"))
+                    SetHudBorderStyle("VAULT", "ACCENT")
+                    if _G.DynamicVault and _G.DynamicVault.ResetOverlayPosition then
+                        pcall(_G.DynamicVault.ResetOverlayPosition, _G.DynamicVault)
+                    end
+                    SetStoredHudPos("VAULT", pt, relPt, meta.defX, meta.defY)
                 else
                     SetHudScale(k, 1.0)
                     SetHudOpacity(k, GetDefaultHudOpacity(k))
@@ -14591,6 +14666,14 @@ function addonTable.CreateMainConfigUI()
                     pcall(_G.DynamicPrep.ResetHUDPosition, _G.DynamicPrep, true)
                 end
                 SetStoredHudPos("PREP", pt, relPt, meta.defX, meta.defY)
+            elseif k == "VAULT" then
+                SetHudScale("VAULT", 1.0)
+                SetHudOpacity("VAULT", GetDefaultHudOpacity("VAULT"))
+                SetHudBorderStyle("VAULT", "ACCENT")
+                if _G.DynamicVault and _G.DynamicVault.ResetOverlayPosition then
+                    pcall(_G.DynamicVault.ResetOverlayPosition, _G.DynamicVault)
+                end
+                SetStoredHudPos("VAULT", pt, relPt, meta.defX, meta.defY)
             else
                 SetHudScale(k, 1.0)
                 SetHudOpacity(k, GetDefaultHudOpacity(k))
@@ -15044,7 +15127,7 @@ function addonTable.CreateMainConfigUI()
             local srcKey = (selectedHudTarget == "ALL" or not selectedHudTarget) and "TOAST" or selectedHudTarget
             local curOpa = GetHudOpacity(srcKey)
             local curBdr = GetHudBorderStyle(srcKey)
-            for _, k in ipairs({ "TOAST", "PREP", "prepBuffs", "TARGET", "FLARE", "CHAT" }) do
+            for _, k in ipairs({ "TOAST", "PREP", "prepBuffs", "TARGET", "FLARE", "CHAT", "VAULT" }) do
                 SetHudOpacity(k, curOpa)
                 SetHudBorderStyle(k, curBdr)
             end

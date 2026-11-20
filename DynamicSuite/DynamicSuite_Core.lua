@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.5"
+    local fb = fallback or "2.6.6"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.5")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.6")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "20/11/2026",
     entries = {
+        { type = "FEATURE", text = "Release v2.6.6 - DynamicVault Master HUD Edit Mode Integration, Obsidian Vault Overlay Redesign, Weekly Checklist Polish & Talent Duplicate Loadout (21/11/2026): Integrated DynamicVault's standalone On-Screen Vault Overlay ('VAULT') into DynamicSuite's Master HUD Edit Mode (selector dropdown, drag/nudge/centre, 60%-150% scale, 20%-100% opacity, Accent/Dark/None borders, Hidden/Shown toggle, Apply All, and Reset) and redesigned the overlay bar to match the Prep Bar Obsidian HUD aesthetic (#090A0D backdrop, 2px Suite Accent left bar, tinted Vault icon, slate dividers, and auto-fit width); replaced misleading green checkboxes on read-only Auto-Tracked Weekly Progress rows in DynamicVault with clean 3px vertical status bars so only clickable Custom Weekly Tasks show checkboxes; renamed the ambiguous 'Scan' button in Account Matrix to 'Refresh' with an explanatory tooltip; added 1-click 'Duplicate Loadout' to DynamicPrep's Left-Hand Talent Dock right-click menu; and ensured current-season Mythic+ dungeons auto-hydrate via RequestMapInfo() on fresh login." },
         { type = "UI",      text = "Release v2.6.5 - 4-Category Left-Rail Layout, Suite-Wide Design Audit & Plain-English Copy Sweep (20/11/2026): Grouped all 11 modules in the Left Suite Rail under 4 clean category sub-headers -- COMBAT & GROUP (Marker, Group, Prep), PROGRESSION & QUESTS (Vault, Dialogue), INVENTORY & SOCIAL (Bags, Mail, Chat), and PERFORMANCE & SYSTEM (Load, FPS, Zoom) -- with a clipped scrollable rail and 3-way 4px Obsidian scrollbar that auto-hides when all modules fit, full 11-module drag/arrow/right-click custom reordering, and an updated Reset Sort button; registered DynamicDialogue across Suite Core protection, slash routing, and Global Smart Search; aligned DynamicVault's Off pill Coral-Rose indicator bar to 1.5px (#F87171) and wired live Suite Accent ApplyTheme syncing into both DynamicVault and DynamicDialogue; and rewrote technical jargon across module titles, tooltips, and Guided Setup into plain Australian English." },
         { type = "FEATURE", text = "Release v2.4.0 - New DynamicMail Module (/dmail), Smart Bulk-Attach Presets, Alt Vault Picker & Quick Gold (18/11/2026): Added DynamicMail as DynamicSuite's 9th dual-mode module (both bundled and standalone) with 1-click Inbox Open All, AH Gold, and Items Only collection; Shift+Left-Click inbox quick-loot and Expiring (<3d) alerts; automatic COD protection and configurable free bag-slot reserve; a 4-tab Recipient Picker docked beside Send Mail (Alts synced automatically from DynamicBags Vault with class colours, gold balances & Pending Sent Mail badges, Recent, Guild, and Friends with Favourite pinning); 1-click Quick-Attach preset pills ([+ Mats], [+ BoE], [+ Warband], [+ Same]) with Equipment Manager & Soulbound safety checks plus [+1k g] / [+10k g] / [+100k] Quick Gold buttons; Alt + Left-Click Express Multi-Attach from bags; auto-subject fill; lifetime gold & item telemetry; and full Guided Setup + Global Smart Search integration." },
         { type = "FIX",     text = "Release v2.3.2 - Proactive DecorVendor /tm Quarantine Modal, Post-Combat MacroFrame Refresh, 1-Click Housing Decor Open & Universal Mousewheel Fixes (18/11/2026): Promoted DecorVendor ('Decor Vendor') to a Tier-1 HARD conflict under DynamicMarker across DynamicSuite and standalone DynamicMarker, and added a Midnight Pitch Black (#06070A-#090A0D) Obsidian warning modal ('Raid Marker Blocked by Addon Conflict', safely deferred until out of combat) whenever DecorVendor is active on login/reload or whenever World of Warcraft blocks SetRaidTarget() / SetRaidTargetIcon(), with 1-click 'Disable <Addon> (Set to Never)' across all DynamicLoad zone profiles, session-throttled Dismiss, and plain-English Exit & Restart guidance; protected the Blizzard Macros window (MacroFrame) during combat and automatically refreshed its macro selector list and icon grid on leaving combat across DIALOG/HIGH focus transitions and ElvUI Blizzard skinning; enabled 1-click Housing Decor non-tradeable confirmation handling in DynamicBags Open (N) / Alt+MouseWheel (with Retail 12.1.5 pooled StaticPopup, END_BOUND_TRADEABLE, and USE_NO_REFUND_CONFIRM support out of combat while ignoring manual bag clicks, loot rolls, and non-Decor items); and restored smooth mousewheel scrolling across DynamicBags, DynamicBank, and all 32 managed Blizzard Desktop Windows." },
@@ -174,7 +175,7 @@ local RETIRED_IGNORED_ADDONS = {
 }
 addonTable.RETIRED_IGNORED_ADDONS = RETIRED_IGNORED_ADDONS
 
--- Canonical 4-Category Left-Rail Grouping (v2.6.5+)
+-- Canonical 4-Category Left-Rail Grouping (v2.6.6+)
 local SUITE_RAIL_CATEGORIES = {
     { key = "COMBAT_GROUP",       label = "COMBAT & GROUP",       modules = { "marker", "group", "prep" } },
     { key = "PROGRESSION_QUESTS", label = "PROGRESSION & QUESTS", modules = { "vault", "dialogue" } },

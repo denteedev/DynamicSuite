@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.5"
+    local fb = fallback or "2.6.6"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -208,7 +208,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.5"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.6"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.5")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.6")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -10248,6 +10248,42 @@ function DynamicPrep:DeleteTalentLibraryEntry(targetEntry)
     if self.RefreshTalentDock then self:RefreshTalentDock() end
 end
 
+function DynamicPrep:DuplicateTalentLibraryEntry(targetEntry)
+    if not self.db then self:InitDB() end
+    local specID = self:GetActiveSpecID()
+    if not specID or type(targetEntry) ~= "table" then return nil end
+    self.db.talentStringLibrary = self.db.talentStringLibrary or {}
+    self.db.talentStringLibrary[specID] = self.db.talentStringLibrary[specID] or {}
+    local rawLib = self.db.talentStringLibrary[specID]
+
+    local baseName = tostring(targetEntry.name or "Loadout"):gsub("%s*%(Copy%s*%d*%)$", "")
+    local existing = {}
+    for _, it in ipairs(rawLib) do
+        if type(it) == "table" and type(it.name) == "string" then
+            existing[it.name:lower()] = true
+        end
+    end
+    local copyName = baseName .. " (Copy)"
+    local n = 2
+    while existing[copyName:lower()] do
+        copyName = string.format("%s (Copy %d)", baseName, n)
+        n = n + 1
+    end
+
+    local clone = {
+        name         = copyName,
+        group        = targetEntry.group or "Custom",
+        importString = targetEntry.importString or "",
+        liveHash     = targetEntry.liveHash or targetEntry.importString or "",
+    }
+    table.insert(rawLib, clone)
+    local gHex = TALENT_GROUP_HEX[clone.group] or "94A3B8"
+    print(string.format("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Duplicated loadout as |cFF%s[%s]|r |cFFFFFFFF%s|r.", gHex, clone.group, copyName))
+    self:RefreshBar()
+    if self.RefreshTalentDock then self:RefreshTalentDock() end
+    return clone
+end
+
 function DynamicPrep:RenameLegacyTLMSlot()
     local specID = self:GetActiveSpecID()
     if not specID or not (C_ClassTalents and C_ClassTalents.GetConfigIDsBySpecID and C_ClassTalents.RenameConfig and C_Traits and C_Traits.GetConfigInfo) then
@@ -10821,6 +10857,14 @@ function DynamicPrep:ShowTalentRowContextMenu(anchorRow, entry)
             fn = function()
                 DynamicPrep:HideTalentRowContextMenu()
                 DynamicPrep:SaveCurrentTreeOverEntry(entry)
+            end,
+        },
+        {
+            label = "Duplicate Loadout",
+            color = { 0.659, 0.333, 0.969 },
+            fn = function()
+                DynamicPrep:HideTalentRowContextMenu()
+                DynamicPrep:DuplicateTalentLibraryEntry(entry)
             end,
         },
         {
@@ -11516,6 +11560,10 @@ local function GetCurrentSeasonMythicPlusDungeons()
         return list
     end
     local okT, mapIDs = pcall(C_ChallengeMode.GetMapTable)
+    if (not okT or type(mapIDs) ~= "table" or #mapIDs == 0) and type(C_ChallengeMode.RequestMapInfo) == "function" then
+        pcall(C_ChallengeMode.RequestMapInfo)
+        okT, mapIDs = pcall(C_ChallengeMode.GetMapTable)
+    end
     if not okT or type(mapIDs) ~= "table" then return list end
     local seen = {}
     for _, mapID in ipairs(mapIDs) do
