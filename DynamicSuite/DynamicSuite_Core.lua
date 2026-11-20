@@ -348,19 +348,21 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
     },
     DynamicPrep = {
         "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs",
+        "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts",
         "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
         "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
         "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
         addons = {
             "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs",
+            "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts",
             "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
             "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
             "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
         },
         conflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
         hardConflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
-        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
-        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
+        partialConflicts = { "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts", "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
+        softConflicts = { "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts", "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
         category = "Readiness & Automation",
     },
     DynamicGroup = {
@@ -514,12 +516,20 @@ local FRIENDLY_CONFLICT_NAMES = addonTable.FRIENDLY_CONFLICT_NAMES or {
     ["InboxMailBag"]             = "InboxMailBag",
     ["MailCommander"]            = "MailCommander",
     ["TradeSkillMaster"]         = "TradeSkillMaster (TSM)",
+    ["TalentLoadoutManager"]     = "Talent Loadout Manager (TLM)",
+    ["TalentLoadoutsEx"]         = "Talent Loadouts Ex",
+    ["BtWLoadouts"]              = "BtWLoadouts",
+    ["ImprovedTalentLoadouts"]   = "Improved Talent Loadouts",
 }
 addonTable.FRIENDLY_CONFLICT_NAMES = FRIENDLY_CONFLICT_NAMES
 DynamicSuite.FRIENDLY_CONFLICT_NAMES = FRIENDLY_CONFLICT_NAMES
 
 local CONFLICT_YIELD_FEATURES = {
-    ["DialogueUI"]           = "gossip/camera control",
+    ["DialogueUI"]               = "gossip/camera control",
+    ["TalentLoadoutManager"]     = "Talent Loadouts rail (auto-yields & offers 1-click import)",
+    ["TalentLoadoutsEx"]         = "Talent Loadouts rail",
+    ["BtWLoadouts"]              = "Talent Loadouts rail",
+    ["ImprovedTalentLoadouts"]   = "Talent Loadouts rail",
     ["Immersion"]            = "gossip/camera control",
     ["Storyline"]            = "gossip/camera control",
     ["AutoTurnIn"]           = "quest/gossip control",
@@ -6669,14 +6679,30 @@ do
         return false
     end
 
+    W.combatEscList = W.combatEscList or {}
+
+    function W.RebuildCombatEscapeRing()
+        if InCombat() then return end
+        local list = W.combatEscList
+        local n = #list
+        for i = 1, n do
+            local b = list[i]
+            local nxt = list[(i % n) + 1]
+            if b and type(b.SetFrameRef) == "function" then
+                pcall(b.SetFrameRef, b, "ringNext", (nxt ~= b) and nxt or nil)
+            end
+        end
+    end
+
     function W.EnsureCombatEscapeButton(frame, frameName)
         if InCombat() or not frame or not frameName then return nil end
         if W.combatEscHandlers[frame] then return W.combatEscHandlers[frame] end
         W.combatEscCounter = W.combatEscCounter + 1
         local btnName = "DynamicSuiteDesktopEscBtn" .. tostring(W.combatEscCounter)
-        local ok, btn = pcall(CreateFrame, "Button", btnName, frame, "SecureHandlerShowHideTemplate,SecureHandlerClickTemplate")
+        local ok, btn = pcall(CreateFrame, "Button", btnName, frame, "SecureHandlerShowHideTemplate,SecureHandlerClickTemplate,SecureHandlerStateTemplate")
         if not ok or not btn then return nil end
         W.combatEscHandlers[frame] = btn
+        table.insert(W.combatEscList, btn)
         if type(btn.SetSize) == "function" then btn:SetSize(1, 1) end
         if type(btn.SetPoint) == "function" then btn:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0) end
         if type(btn.EnableMouse) == "function" then btn:EnableMouse(false) end
@@ -6684,13 +6710,21 @@ do
             pcall(btn.SetFrameRef, btn, "panel", frame)
         end
         if type(btn.SetAttribute) == "function" then
-            pcall(btn.SetAttribute, btn, "dsCombatEsc", false)
             pcall(btn.SetAttribute, btn, "dsCombatEscReady", false)
             pcall(btn.SetAttribute, btn, "_onclick", [[
                 self:ClearBindings()
                 local p = self:GetFrameRef("panel")
                 if p and p:IsShown() then
                     p:Hide()
+                end
+            ]])
+            pcall(btn.SetAttribute, btn, "_onstate-combat", [[
+                if newstate == 1 then
+                    if self:GetAttribute("dsCombatEscReady") and self:IsVisible() then
+                        self:SetBindingClick(true, "ESCAPE", self)
+                    end
+                else
+                    self:ClearBindings()
                 end
             ]])
             pcall(btn.SetAttribute, btn, "_onshow", [[
@@ -6700,67 +6734,36 @@ do
             ]])
             pcall(btn.SetAttribute, btn, "_onhide", [[
                 self:ClearBindings()
-                if PlayerInCombat() and self:GetAttribute("dsCombatEsc") then
-                    local nxt = self:GetFrameRef("nextEsc")
-                    while nxt do
-                        local np = nxt:GetFrameRef("panel")
-                        if np and np:IsShown() then
+                if PlayerInCombat() then
+                    local nxt = self:GetFrameRef("ringNext")
+                    local guard = 0
+                    while nxt and nxt ~= self and guard < 48 do
+                        guard = guard + 1
+                        if nxt:GetAttribute("dsCombatEscReady") and nxt:IsVisible() then
                             nxt:SetBindingClick(true, "ESCAPE", nxt)
                             break
                         end
-                        nxt = nxt:GetFrameRef("nextEsc")
+                        nxt = nxt:GetFrameRef("ringNext")
                     end
                 end
             ]])
         end
+        if type(_G.RegisterStateDriver) == "function" then
+            pcall(_G.RegisterStateDriver, btn, "combat", "[combat] 1; 0")
+        end
+        W.RebuildCombatEscapeRing()
         return btn
     end
 
     function W.SyncCombatEscapeHandlers(enteringCombat)
-if InCombat() then return end
+        if InCombat() then return end
         for _, btn in pairs(W.combatEscHandlers) do
             if type(_G.ClearOverrideBindings) == "function" then
                 pcall(_G.ClearOverrideBindings, btn)
             end
-            if type(btn.SetAttribute) == "function" then
-                pcall(btn.SetAttribute, btn, "dsCombatEsc", false)
-            end
-            if type(btn.SetFrameRef) == "function" then
-                pcall(btn.SetFrameRef, btn, "nextEsc", nil)
-            end
         end
-        if enteringCombat ~= true or DesktopWindows:IsYielding() then
-            return
-        end
-        local db = GetDesktopWindowsDB()
-        if not (db and db.sideBySide ~= false) then return end
-        W.SyncAllUISpecialFrames(true)
-        W.PruneZOrderStack()
-        local btns = {}
-        for i = #W.zOrderStack, 1, -1 do
-            local name = W.zOrderStack[i]
-            local f = _G[name]
-            if f and f.IsShown and f:IsShown() and W.detachedPanels[name] and f.IsProtected and f:IsProtected() then
-                local escBtn = W.EnsureCombatEscapeButton(f, name)
-                if escBtn then
-                    btns[#btns + 1] = escBtn
-                end
-            end
-        end
-        for i = 1, #btns do
-            local b = btns[i]
-            if type(b.SetAttribute) == "function" then
-                pcall(b.SetAttribute, b, "dsCombatEsc", true)
-            end
-            if type(b.SetFrameRef) == "function" then
-                pcall(b.SetFrameRef, b, "nextEsc", btns[i + 1])
-            end
-        end
-        if btns[1] and type(_G.SetOverrideBindingClick) == "function" and type(btns[1].GetName) == "function" then
-            local bName = btns[1]:GetName()
-            if bName then
-                pcall(_G.SetOverrideBindingClick, btns[1], true, "ESCAPE", bName)
-            end
+        if enteringCombat ~= true then
+            W.RebuildCombatEscapeRing()
         end
     end
 
@@ -7644,7 +7647,7 @@ if InCombat() then return end
                 EnsureEncounterJournalScrollBoxesWheelEnabled(frame)
             end
             local db = GetDesktopWindowsDB()
-            if frame.IsProtected and frame:IsProtected() and W.detachedPanels[frameName] then
+            if W.detachedPanels[frameName] then
                 local escBtn = W.EnsureCombatEscapeButton(frame, frameName)
                 if escBtn and type(escBtn.SetAttribute) == "function" then
                     local ready = (not DesktopWindows:IsYielding()) and (db and db.sideBySide ~= false) and true or false
