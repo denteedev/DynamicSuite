@@ -739,6 +739,7 @@ local DEFAULTS = {
     },
     activeFolioStat = nil,
     autoQuestGossip = true,
+    autoSinglePlayerChoice = true,
     oneClickCatalyst = true,
     autoAcceptSummon = false,
     talentReminderEnabled = true,
@@ -4618,6 +4619,53 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
     end
 end
 
+function DynamicPrep:HandlePlayerChoiceUpdate()
+    if not self.db then self:InitDB() end
+    if not self.db or self.db.autoSinglePlayerChoice == false or IsModuleDisabledInSuite("DynamicPrep") then
+        return
+    end
+    if InCombatLockdown and InCombatLockdown() then return end
+    if IsShiftKeyDown and IsShiftKeyDown() then return end
+    if not (C_PlayerChoice and type(C_PlayerChoice.GetCurrentPlayerChoiceInfo) == "function"
+        and type(C_PlayerChoice.SendPlayerChoiceResponse) == "function") then
+        return
+    end
+
+    local ok, info = pcall(C_PlayerChoice.GetCurrentPlayerChoiceInfo)
+    if not ok or type(info) ~= "table" or _IsSecret(info) then return end
+    if type(info.options) ~= "table" or _IsSecret(info.options) or #info.options ~= 1 then
+        return
+    end
+
+    local opt = info.options[1]
+    if type(opt) ~= "table" or _IsSecret(opt) then return end
+    if not _IsSecret(opt.disabledOption) and opt.disabledOption then return end
+    if type(opt.buttons) ~= "table" or _IsSecret(opt.buttons) or #opt.buttons ~= 1 then
+        return
+    end
+
+    local btn = opt.buttons[1]
+    if type(btn) ~= "table" or _IsSecret(btn) then return end
+    if not _IsSecret(btn.disabled) and btn.disabled then return end
+    if not _IsSecret(btn.hideButtonShowText) and btn.hideButtonShowText then return end
+    if not _IsSecret(btn.confirmation) and type(btn.confirmation) == "string" and btn.confirmation ~= "" then
+        return
+    end
+    local respID = (not _IsSecret(btn.id) and type(btn.id) == "number") and btn.id or nil
+    if not respID then return end
+
+    local choiceID = (not _IsSecret(info.choiceID) and type(info.choiceID) == "number") and info.choiceID or 0
+    local key = tostring(choiceID) .. ":" .. tostring(respID)
+    local now = (type(GetTime) == "function" and GetTime()) or 0
+    if self._lastPlayerChoiceKey == key and self._lastPlayerChoiceTime and (now - self._lastPlayerChoiceTime) < 1.2 then
+        return
+    end
+    self._lastPlayerChoiceKey = key
+    self._lastPlayerChoiceTime = now
+
+    pcall(C_PlayerChoice.SendPlayerChoiceResponse, respID)
+end
+
 local function SuppressTalkingHeadNow()
     if not DynamicPrep.db or ( DynamicPrep.db.cinematicMode or "BOTH" ) ~= "BOTH" then return end
     if IsShiftKeyDown and IsShiftKeyDown() then return end
@@ -7993,6 +8041,25 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         rQuestGossip:BindRightControl(pillsQuestGossip)
         table.insert(self.refreshWidgets, pillsQuestGossip)
 
+        -- 1a-ii. Auto-Confirm Single-Option Chamber Doors & Player Choices (Labyrinth / Delve PlayerChoiceFrame)
+        local rAutoChoice = CreateSpaciousRow(
+            cQoL, -114,
+            "Auto-Confirm Single-Option Doors & Choices",
+            "Automatically confirms single-option choice popups like Labyrinth 'Enter Chamber' doors on Right-Click (hold Shift + Right-Click to open manually).",
+            200
+        )
+        local pillsAutoChoice = CreateSegmentedPills(
+            rAutoChoice, 200,
+            {
+                { value = false, label = "Off" },
+                { value = true,  label = "Enabled" },
+            },
+            function() return self.db.autoSinglePlayerChoice ~= false end,
+            function(v) self.db.autoSinglePlayerChoice = v end
+        )
+        rAutoChoice:BindRightControl(pillsAutoChoice)
+        table.insert(self.refreshWidgets, pillsAutoChoice)
+
         -- 1b. One-Click Catalyst (Revival Catalyst instant item conversion without confirmation popup)
         local rCatalyst = CreateSpaciousRow(
             cQoL, -114,
@@ -8268,7 +8335,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             rHealMacro    = rHealMacro,
             tuneHealMacro = tuneHealMacro,
             dHealMacro    = dHealMacro,
-            others        = { rQuestGossip, rCatalyst, rAutoSummon, rTalentReminder, rTalentPicker, rCine, rRez, rRelease },
+            others        = { rQuestGossip, rAutoChoice, rCatalyst, rAutoSummon, rTalentReminder, rTalentPicker, rCine, rRez, rRelease },
         }
     end
 
@@ -9663,6 +9730,7 @@ SafeRegisterEvent(eventFrame, "GROUP_ROSTER_UPDATE")
 SafeRegisterEvent(eventFrame, "PARTY_LEADER_CHANGED")
 SafeRegisterEvent(eventFrame, "GOSSIP_SHOW")
 SafeRegisterEvent(eventFrame, "GOSSIP_CLOSED")
+SafeRegisterEvent(eventFrame, "PLAYER_CHOICE_UPDATE")
 SafeRegisterEvent(eventFrame, "PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
 SafeRegisterEvent(eventFrame, "BANKFRAME_OPENED")
 SafeRegisterEvent(eventFrame, "QUEST_GREETING")
@@ -11677,6 +11745,8 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         end
     elseif event == "GOSSIP_SHOW" or event == "QUEST_GREETING" or event == "QUEST_DETAIL" or event == "QUEST_ACCEPT_CONFIRM" or event == "QUEST_AUTOCOMPLETE" or event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" or event == "ITEM_TEXT_READY" then
         DynamicPrep:HandleQuestAndGossip(event, arg1)
+    elseif event == "PLAYER_CHOICE_UPDATE" then
+        DynamicPrep:HandlePlayerChoiceUpdate()
     elseif event == "GOSSIP_CLOSED" or event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" or event == "BANKFRAME_OPENED" then
         local keepHidden = (event == "BANKFRAME_OPENED")
         if event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" then
