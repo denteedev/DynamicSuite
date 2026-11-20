@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.6"
+    local fb = fallback or "2.6.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.6")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicChat", VERSION, _G.DynamicChat) then
     return
 end
@@ -8425,8 +8425,9 @@ local function EnsureSoundDropdownPopover()
         edgeFile = "Interface\\Buttons\\WHITE8x8",
         edgeSize = 1,
     })
+    local ar0, ag0, ab0 = GetSuiteAccent()
     menu:SetBackdropColor(0.043, 0.051, 0.071, 0.99)
-    menu:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.92)
+    menu:SetBackdropBorderColor(ar0, ag0, ab0, 0.92)
     menu:EnableMouse(true)
     SafeRegisterUISpecialFrame("DynamicChatSoundDropdownPopover")
 
@@ -8434,7 +8435,7 @@ local function EnsureSoundDropdownPopover()
     borderOverlay:SetAllPoints(menu)
     borderOverlay:SetFrameLevel(menu:GetFrameLevel() + 10)
     borderOverlay:SetBackdrop({ edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-    borderOverlay:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.92)
+    borderOverlay:SetBackdropBorderColor(ar0, ag0, ab0, 0.92)
     menu.borderOverlay = borderOverlay
 
     local searchWrap = CreateFrame("Frame", nil, menu, "BackdropTemplate")
@@ -10456,20 +10457,23 @@ local function RenderChatEmbedded(arg1, arg2)
             edgeFile = "Interface\\Buttons\\WHITE8x8",
             edgeSize = 1,
         })
+        local ar0, ag0, ab0 = GetSuiteAccent()
         chatEditHudBtn:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
-        chatEditHudBtn:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85)
+        chatEditHudBtn:SetBackdropBorderColor(ar0, ag0, ab0, 0.85)
         chatEditHudBtn.label = chatEditHudBtn:CreateFontString(nil, "OVERLAY")
         SetSafeFont(chatEditHudBtn.label, 11, "")
         chatEditHudBtn.label:SetPoint("CENTER", 0, 0)
         chatEditHudBtn.label:SetText("Edit HUD")
         chatEditHudBtn.label:SetTextColor(0.976, 0.984, 1.00, 1)
         chatEditHudBtn:SetScript("OnEnter", function(s)
-            s:SetBackdropColor(0.16, 0.08, 0.02, 0.98)
-            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 1.0)
+            local ar, ag, ab = GetSuiteAccent()
+            s:SetBackdropColor(ar * 0.22, ag * 0.22, ab * 0.22, 0.98)
+            s:SetBackdropBorderColor(ar, ag, ab, 1.0)
         end)
         chatEditHudBtn:SetScript("OnLeave", function(s)
+            local ar, ag, ab = GetSuiteAccent()
             s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
-            s:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.85)
+            s:SetBackdropBorderColor(ar, ag, ab, 0.85)
         end)
         chatEditHudBtn:SetScript("OnClick", function()
             if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
@@ -11820,9 +11824,10 @@ function DynamicChat._EnsureStandaloneWindow()
     gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
 
     resizeGrip:SetScript("OnEnter", function()
+        local ar, ag, ab = GetSuiteAccent()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
         gripTex:SetDesaturated(false)
-        gripTex:SetVertexColor(0.976, 0.451, 0.086, 0.95)
+        gripTex:SetVertexColor(ar, ag, ab, 0.95)
     end)
     resizeGrip:SetScript("OnLeave", function()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")

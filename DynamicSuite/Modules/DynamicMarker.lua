@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.6"
+    local fb = fallback or "2.6.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.6")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -10542,9 +10542,14 @@ function DM:EnsureStandaloneShell()
     gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
 
     grip:SetScript("OnEnter", function()
+        local ar, ag, ab = 0.220, 0.741, 0.973
+        if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.GetActiveAccentColor) == "function" then
+            local ok, r, g, b = pcall(_G.DynamicSuite.UI.GetActiveAccentColor)
+            if ok and type(r) == "number" then ar, ag, ab = r, g, b end
+        end
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
         gripTex:SetDesaturated(false)
-        gripTex:SetVertexColor(0.976, 0.451, 0.086, 0.95)
+        gripTex:SetVertexColor(ar, ag, ab, 0.95)
     end)
     grip:SetScript("OnLeave", function()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")

@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.6"
+    local fb = fallback or "2.6.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.6")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicGroup", VERSION, _G.DynamicGroup) then
     return
 end
@@ -2360,11 +2360,20 @@ local function StyleEntryCancelButton(btn, entry)
     HideBlizzTex(btn.PushedTexture)
     HideBlizzTex(btn.HighlightTexture)
     HideBlizzTex(btn.DisabledTexture)
+    HideBlizzTex(btn.Icon)
+    if btn.GetRegions then
+        for _, reg in ipairs({ btn:GetRegions() }) do
+            if reg and not reg._dgOwned then
+                HideBlizzTex(reg)
+            end
+        end
+    end
 
     if btn._dgReskinned then return end
     btn._dgReskinned = true
 
     local bg = btn:CreateTexture(nil, "BACKGROUND")
+    bg._dgOwned = true
     bg:SetAllPoints(btn)
     bg:SetColorTexture(0.043, 0.051, 0.071, 0.92) -- #0B0D12 Dark Obsidian
     btn._dgBg = bg
@@ -2378,6 +2387,7 @@ local function StyleEntryCancelButton(btn, entry)
     }
     for _, spec in ipairs(edgeSpecs) do
         local edge = btn:CreateTexture(nil, "BORDER")
+        edge._dgOwned = true
         edge:SetPoint(spec[1], btn, spec[1], 0, 0)
         edge:SetPoint(spec[2], btn, spec[2], 0, 0)
         if spec[4] then
@@ -2391,6 +2401,7 @@ local function StyleEntryCancelButton(btn, entry)
     btn._dgBorders = borders
 
     local label = btn:CreateFontString(nil, "OVERLAY")
+    label._dgOwned = true
     SetSafeFont(label, 11, "OUTLINE")
     label:SetPoint("CENTER", btn, "CENTER", 0, 1)
     label:SetJustifyH("CENTER")
@@ -4793,6 +4804,9 @@ function DynamicGroup:ApplyTeleportToastPosition()
         toast:SetBackdropBorderColor(0, 0, 0, 0)
     elseif bStyle == "SUBTLE" then
         toast:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+    else
+        local ar, ag, ab = GetSuiteAccent()
+        toast:SetBackdropBorderColor(ar, ag, ab, 0.85)
     end
     toast:ClearAllPoints()
     local dlToast = _G.DynamicLoadToastFrame

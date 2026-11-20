@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.6"
+    local fb = fallback or "2.6.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.6")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -57,8 +57,9 @@ DynamicSuite.Changelogs = DynamicSuite.Changelogs or {}
 
 DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
-    date = "20/11/2026",
+    date = "21/11/2026",
     entries = {
+        { type = "UI",      text = "Release v2.6.7 - Suite-Wide Accent Unification, Unified Talent Reminder Toast, Quick Spec Dropdown, Vault Dock Width & LFG Cancel Fix (21/11/2026): Unified the active Suite Accent colour across every module, toast, dropdown, Edit HUD button, window scale toast, and resize grip (eliminating hardcoded Blaze Orange fallbacks and migrating DynamicMail & DynamicVault top docks from AUTO to OBSIDIAN by default so all overlays share DynamicSuite's colour scheme); rebuilt DynamicPrep's Talent Reminder Toast to match DynamicLoad's Alert Toast 1:1 (removed Dismiss button in favour of Right-Click anywhere to dismiss, matched surface/border/opacity/scale/duration, and stacked cleanly below DynamicLoadToastFrame); upgraded DynamicPrep's Talent Loadouts Manager dropdowns with directional chevrons, active square pip, screen-bottom flip, scrolling, and Escape/click-outside dismissal; replaced Prep Bar Right-Click blind spec cycling with an Obsidian Switch Active Specialisation dropdown (Left-Click remains Loot Spec selector); fixed DynamicVault's Great Vault top dock overhanging Blizzard's WeeklyRewardsFrame width and collapsed it to a sleek single-row 34px bar when only 1 character is tracked (showing Row 2 'Alts:' chips only when 2+ characters are tracked); and fixed duplicate cross ('x') textures on DynamicGroup's LFG search entry cancel buttons." },
         { type = "FEATURE", text = "Release v2.6.6 - DynamicVault Master HUD Edit Mode Integration, Obsidian Vault Overlay Redesign, Weekly Checklist Polish & Talent Duplicate Loadout (21/11/2026): Integrated DynamicVault's standalone On-Screen Vault Overlay ('VAULT') into DynamicSuite's Master HUD Edit Mode (selector dropdown, drag/nudge/centre, 60%-150% scale, 20%-100% opacity, Accent/Dark/None borders, Hidden/Shown toggle, Apply All, and Reset) and redesigned the overlay bar to match the Prep Bar Obsidian HUD aesthetic (#090A0D backdrop, 2px Suite Accent left bar, tinted Vault icon, slate dividers, and auto-fit width); replaced misleading green checkboxes on read-only Auto-Tracked Weekly Progress rows in DynamicVault with clean 3px vertical status bars so only clickable Custom Weekly Tasks show checkboxes; renamed the ambiguous 'Scan' button in Account Matrix to 'Refresh' with an explanatory tooltip; added 1-click 'Duplicate Loadout' to DynamicPrep's Left-Hand Talent Dock right-click menu; and ensured current-season Mythic+ dungeons auto-hydrate via RequestMapInfo() on fresh login." },
         { type = "UI",      text = "Release v2.6.5 - 4-Category Left-Rail Layout, Suite-Wide Design Audit & Plain-English Copy Sweep (20/11/2026): Grouped all 11 modules in the Left Suite Rail under 4 clean category sub-headers -- COMBAT & GROUP (Marker, Group, Prep), PROGRESSION & QUESTS (Vault, Dialogue), INVENTORY & SOCIAL (Bags, Mail, Chat), and PERFORMANCE & SYSTEM (Load, FPS, Zoom) -- with a clipped scrollable rail and 3-way 4px Obsidian scrollbar that auto-hides when all modules fit, full 11-module drag/arrow/right-click custom reordering, and an updated Reset Sort button; registered DynamicDialogue across Suite Core protection, slash routing, and Global Smart Search; aligned DynamicVault's Off pill Coral-Rose indicator bar to 1.5px (#F87171) and wired live Suite Accent ApplyTheme syncing into both DynamicVault and DynamicDialogue; and rewrote technical jargon across module titles, tooltips, and Guided Setup into plain Australian English." },
         { type = "FEATURE", text = "Release v2.4.0 - New DynamicMail Module (/dmail), Smart Bulk-Attach Presets, Alt Vault Picker & Quick Gold (18/11/2026): Added DynamicMail as DynamicSuite's 9th dual-mode module (both bundled and standalone) with 1-click Inbox Open All, AH Gold, and Items Only collection; Shift+Left-Click inbox quick-loot and Expiring (<3d) alerts; automatic COD protection and configurable free bag-slot reserve; a 4-tab Recipient Picker docked beside Send Mail (Alts synced automatically from DynamicBags Vault with class colours, gold balances & Pending Sent Mail badges, Recent, Guild, and Friends with Favourite pinning); 1-click Quick-Attach preset pills ([+ Mats], [+ BoE], [+ Warband], [+ Same]) with Equipment Manager & Soulbound safety checks plus [+1k g] / [+10k g] / [+100k] Quick Gold buttons; Alt + Left-Click Express Multi-Attach from bags; auto-subject fill; lifetime gold & item telemetry; and full Guided Setup + Global Smart Search integration." },
@@ -6058,18 +6059,32 @@ do
         ComputePlayerSpellsNativeScale(psf)
     end
 
-    local function GetSuiteAccentHex()
+    local function GetSuiteAccentRGB()
         if addonTable.UI and type(addonTable.UI.GetActiveAccentColor) == "function" then
             local ok, r, g, b = pcall(addonTable.UI.GetActiveAccentColor)
             if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
-                return string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+                return r, g, b
             end
         end
-        return "F97316"
+        return 0.220, 0.741, 0.973
+    end
+
+    local function GetSuiteAccentHex()
+        local r, g, b = GetSuiteAccentRGB()
+        return string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
     end
 
     local function EnsureScaleToast()
-        if W.scaleToast then return W.scaleToast end
+        local ar, ag, ab = GetSuiteAccentRGB()
+        if W.scaleToast then
+            if W.scaleToast.SetBackdropBorderColor then
+                W.scaleToast:SetBackdropBorderColor(ar, ag, ab, 0.95)
+            end
+            if W.scaleToast.accentBar then
+                W.scaleToast.accentBar:SetColorTexture(ar, ag, ab, 1.0)
+            end
+            return W.scaleToast
+        end
         local parent = _G.UIParent
         if not parent then return nil end
         local f = CreateFrame("Frame", "DynamicSuiteWindowScaleToast", parent, "BackdropTemplate")
@@ -6083,14 +6098,14 @@ do
                 edgeSize = 1,
             })
             f:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
-            f:SetBackdropBorderColor(0.976, 0.451, 0.086, 0.95)
+            f:SetBackdropBorderColor(ar, ag, ab, 0.95)
         end
 
         local bar = f:CreateTexture(nil, "ARTWORK")
         bar:SetSize(3, 24)
         bar:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
         bar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 1)
-        bar:SetColorTexture(0.976, 0.451, 0.086, 1.0)
+        bar:SetColorTexture(ar, ag, ab, 1.0)
         f.accentBar = bar
 
         local lbl = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -7502,8 +7517,9 @@ do
             local canDrag = db and (db.dragAnywhere ~= false)
             local canScale = db and (db.scrollScale ~= false)
             if not canDrag and not canScale then return end
+            local ar, ag, ab = GetSuiteAccentRGB()
             _G.GameTooltip:SetOwner(selfOv, "ANCHOR_TOP")
-            _G.GameTooltip:AddLine("DynamicSuite Window Controls", 0.976, 0.451, 0.086)
+            _G.GameTooltip:AddLine("DynamicSuite Window Controls", ar, ag, ab)
             if canDrag then
                 _G.GameTooltip:AddLine("Left-Drag Header or Empty Space: Move and save position", 0.90, 0.93, 0.96)
             end

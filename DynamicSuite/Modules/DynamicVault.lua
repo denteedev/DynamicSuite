@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.6"
+    local fb = fallback or "2.6.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.6")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicVault", VERSION, _G.DynamicVault) then
     return
 end
@@ -222,7 +222,7 @@ end
 local DEFAULTS = {
     enabled            = true,
     dockOnGreatVault   = true,
-    vaultSkinMode      = "AUTO", -- "AUTO" (match EllesmereUI/ElvUI when active) or "OBSIDIAN"
+    vaultSkinMode      = "OBSIDIAN", -- "OBSIDIAN" (Suite Obsidian & Accent, default) or "AUTO" (match EllesmereUI/ElvUI)
     showScreenOverlay  = false,
     overlayPos         = nil,
     overlayScale       = 1.0,
@@ -265,6 +265,12 @@ local function EnsureDB()
         _G.DynamicVaultDB = {}
     end
     CopyDefaults(_G.DynamicVaultDB, DEFAULTS)
+    if not _G.DynamicVaultDB.skinDefaultMigrated267 then
+        if _G.DynamicVaultDB.vaultSkinMode == "AUTO" then
+            _G.DynamicVaultDB.vaultSkinMode = "OBSIDIAN"
+        end
+        _G.DynamicVaultDB.skinDefaultMigrated267 = true
+    end
     return _G.DynamicVaultDB
 end
 
@@ -312,7 +318,7 @@ end
 local function GetOverlayTheme()
     local db = EnsureDB()
     local surf, acc = GetTheme()
-    if (db.vaultSkinMode or "AUTO") == "OBSIDIAN" then
+    if (db.vaultSkinMode or "OBSIDIAN") ~= "AUTO" then
         return surf, acc, "OBSIDIAN"
     end
     -- Auto-Match EllesmereUIBlizzardSkin when active
@@ -1852,8 +1858,8 @@ local function RenderVaultEmbedded(parent)
         sy = sy + dyHud
 
         local _, dySkin = CreateSegmentedSwitchCard(sec1, sy, "Great Vault Top Dock Skin: Auto-Match External UI",
-            "Enabled = automatically match EllesmereUI / ElvUI panel & border colours on the Great Vault top dock. Off = always use DynamicSuite Obsidian.",
-            function() return (db.vaultSkinMode or "AUTO") ~= "OBSIDIAN" end,
+            "Off (Default) = always match DynamicSuite's Obsidian surface and Suite Accent colour. Enabled = match EllesmereUI / ElvUI.",
+            function() return (db.vaultSkinMode or "OBSIDIAN") == "AUTO" end,
             function(v) db.vaultSkinMode = v and "AUTO" or "OBSIDIAN"; if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end end)
         sy = sy + dySkin
 
@@ -2074,27 +2080,47 @@ local function RefreshGreatVaultDock()
     ApplyBackdrop(bar, surf.bg, { acc.r, acc.g, acc.b, 0.72 })
     bar.topAcc:SetColorTexture(acc.r, acc.g, acc.b, 1.0)
 
-    -- Dock flush edge-to-edge above WeeklyRewardsFrame (exact width match, never oversized BackgroundTile)
-    local wfW = (wf.GetWidth and SafeNum(wf:GetWidth(), 860)) or 860
-    local dockInset = 0
+    -- Match visible WeeklyRewardsFrame width cleanly (never overhang outer Blizzard chrome padding)
+    local anchorTarget = (wf.BorderContainer and wf.BorderContainer.GetWidth and SafeNum(wf.BorderContainer:GetWidth(), 0) > 400)
+        and wf.BorderContainer or wf
+    local wfW = (anchorTarget.GetWidth and SafeNum(anchorTarget:GetWidth(), 860)) or 860
+    local dockInset = (anchorTarget == wf and wfW > 950) and 22 or 0
+
+    local sorted = GetSortedCharacters(db)
+    local showAltRow = (#sorted >= 2)
+    bar:SetHeight(showAltRow and 62 or 34)
 
     bar:ClearAllPoints()
     local uiTop = (UIParent and UIParent.GetTop and UIParent:GetTop()) or 1080
-    local wfTop = (wf.GetTop and wf:GetTop()) or 600
-    if (uiTop - wfTop) < 66 then
-        bar:SetPoint("TOPLEFT", wf, "BOTTOMLEFT", dockInset, -6)
-        bar:SetPoint("TOPRIGHT", wf, "BOTTOMRIGHT", -dockInset, -6)
+    local wfTop = (anchorTarget.GetTop and anchorTarget:GetTop()) or 600
+    if (uiTop - wfTop) < 68 then
+        bar:SetPoint("TOPLEFT", anchorTarget, "BOTTOMLEFT", dockInset, -6)
+        bar:SetPoint("TOPRIGHT", anchorTarget, "BOTTOMRIGHT", -dockInset, -6)
     else
-        bar:SetPoint("BOTTOMLEFT", wf, "TOPLEFT", dockInset, 6)
-        bar:SetPoint("BOTTOMRIGHT", wf, "TOPRIGHT", -dockInset, 6)
+        bar:SetPoint("BOTTOMLEFT", anchorTarget, "TOPLEFT", dockInset, 6)
+        bar:SetPoint("BOTTOMRIGHT", anchorTarget, "TOPRIGHT", -dockInset, 6)
+    end
+
+    bar.headText:ClearAllPoints()
+    if showAltRow then
+        bar.headText:SetPoint("TOPLEFT", bar, "TOPLEFT", 12, -8)
+        bar.headText:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -124, -8)
+        bar.openMatrixBtn:ClearAllPoints()
+        bar.openMatrixBtn:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -8, -6)
+    else
+        bar.headText:SetPoint("LEFT", bar, "LEFT", 12, 0)
+        bar.headText:SetPoint("RIGHT", bar, "RIGHT", -124, 0)
+        bar.openMatrixBtn:ClearAllPoints()
+        bar.openMatrixBtn:SetPoint("RIGHT", bar, "RIGHT", -8, 0)
     end
 
     local secsLeft = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset) and SafeNum(C_DateAndTime.GetSecondsUntilWeeklyReset(), 0) or 0
     local pKey = GetPlayerKey()
     local curCh = pKey and db.characters[pKey]
     local cur = (curCh and curCh.currencies) or {}
+    local sep = "  |cFF475569|||r  "
     local parts = {
-        string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFVault|r  |  Reset in |cFF38BDF8%s|r", FormatTimeRemaining(secsLeft)),
+        string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFVault|r%s|cFF94A3B8Reset:|r |cFF38BDF8%s|r", sep, FormatTimeRemaining(secsLeft)),
         string.format("|cFFFBBF24Keys:|r %d (%d Shards)", SafeNum(cur.cofferKeys, 0), SafeNum(cur.keyShards, 0)),
     }
     if SafeNum(cur.catalyst, 0) > 0 then
@@ -2103,54 +2129,64 @@ local function RefreshGreatVaultDock()
     for _, cr in ipairs(cur.crests or {}) do
         table.insert(parts, string.format("|cFF%s%s:|r %d", cr.hex or "94A3B8", cr.short or "Crest", SafeNum(cr.qty, 0)))
     end
-    bar.headText:SetText(table.concat(parts, "   |   "))
+    bar.headText:SetText(table.concat(parts, sep))
 
-    -- Render compact alt vault chips on Row 2 (automatically visible, zero clicks needed)
+    -- Render Row 2 alt vault chips ONLY when 2+ characters are tracked (prevents bare empty space on single-char profiles)
     for _, chip in ipairs(bar.chips) do chip:Hide() end
-    local sorted = GetSortedCharacters(db)
-    local barW = math.max(400, wfW - (dockInset * 2))
-    local maxChips = math.max(1, math.min(8, math.floor((barW - 20) / 146)))
-    local xPos = 10
-    for i = 1, math.min(#sorted, maxChips) do
-        local ch = sorted[i]
-        local chip = bar.chips[i]
-        if not chip then
-            chip = CreateFrame("Button", nil, bar, "BackdropTemplate")
-            chip:SetSize(140, 24)
-            chip.fs = chip:CreateFontString(nil, "OVERLAY")
-            SetFontSafe(chip.fs, 9.5, "")
-            chip.fs:SetPoint("LEFT", chip, "LEFT", 7, 0)
-            chip.fs:SetPoint("RIGHT", chip, "RIGHT", -7, 0)
-            chip.fs:SetJustifyH("LEFT")
-            chip.fs:SetWordWrap(false)
-            bar.chips[i] = chip
+    if bar.altLabel then bar.altLabel:SetShown(showAltRow) end
+    if showAltRow then
+        if not bar.altLabel then
+            bar.altLabel = bar:CreateFontString(nil, "OVERLAY")
+            SetFontSafe(bar.altLabel, 9.5, "")
+            bar.altLabel:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 12, 11)
+            bar.altLabel:SetTextColor(0.55, 0.62, 0.72, 1)
+            bar.altLabel:SetText("Alts:")
         end
-        chip:ClearAllPoints()
-        chip:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", xPos, 6)
-        xPos = xPos + 146
+        bar.altLabel:Show()
+        local barW = math.max(400, wfW - (dockInset * 2))
+        local maxChips = math.max(1, math.min(8, math.floor((barW - 52) / 146)))
+        local xPos = 44
+        for i = 1, math.min(#sorted, maxChips) do
+            local ch = sorted[i]
+            local chip = bar.chips[i]
+            if not chip then
+                chip = CreateFrame("Button", nil, bar, "BackdropTemplate")
+                chip:SetSize(140, 24)
+                chip.fs = chip:CreateFontString(nil, "OVERLAY")
+                SetFontSafe(chip.fs, 9.5, "")
+                chip.fs:SetPoint("LEFT", chip, "LEFT", 7, 0)
+                chip.fs:SetPoint("RIGHT", chip, "RIGHT", -7, 0)
+                chip.fs:SetJustifyH("LEFT")
+                chip.fs:SetWordWrap(false)
+                bar.chips[i] = chip
+            end
+            chip:ClearAllPoints()
+            chip:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", xPos, 6)
+            xPos = xPos + 146
 
-        local v = ch.vault or {}
-        local rU = SafeNum(v.raid and v.raid.unlocked, 0)
-        local mU = SafeNum(v.mplus and v.mplus.unlocked, 0)
-        local dU = SafeNum(v.world and v.world.unlocked, 0)
-        local hasRew = (v.hasAvailableReward == true)
-        local hex = GetClassHex(ch.classFile)
-        local shortName = SafeStr(ch.name, "?")
-        if #shortName > 9 then shortName = shortName:sub(1, 8) .. "." end
-        chip.fs:SetText(string.format("|cFF%s%s|r %s",
-            hex, shortName,
-            hasRew and "|cFFFBBF24REWARD!|r" or string.format("|cFF94A3B8R%d M%d D%d|r", rU, mU, dU)))
-        if hasRew then
-            ApplyBackdrop(chip, { 0.96, 0.62, 0.04, 0.18 }, { 0.96, 0.62, 0.04, 0.90 })
-        elseif ch.key == pKey then
-            ApplyBackdrop(chip, { acc.r * 0.22, acc.g * 0.22, acc.b * 0.22, 0.92 }, { acc.r, acc.g, acc.b, 0.85 })
-        else
-            ApplyBackdrop(chip, surf.card, surf.border)
+            local v = ch.vault or {}
+            local rU = SafeNum(v.raid and v.raid.unlocked, 0)
+            local mU = SafeNum(v.mplus and v.mplus.unlocked, 0)
+            local dU = SafeNum(v.world and v.world.unlocked, 0)
+            local hasRew = (v.hasAvailableReward == true)
+            local hex = GetClassHex(ch.classFile)
+            local shortName = SafeStr(ch.name, "?")
+            if #shortName > 9 then shortName = shortName:sub(1, 8) .. "." end
+            chip.fs:SetText(string.format("|cFF%s%s|r %s",
+                hex, shortName,
+                hasRew and "|cFFFBBF24REWARD!|r" or string.format("|cFF94A3B8R%d M%d D%d|r", rU, mU, dU)))
+            if hasRew then
+                ApplyBackdrop(chip, { 0.96, 0.62, 0.04, 0.18 }, { 0.96, 0.62, 0.04, 0.90 })
+            elseif ch.key == pKey then
+                ApplyBackdrop(chip, { acc.r * 0.22, acc.g * 0.22, acc.b * 0.22, 0.92 }, { acc.r, acc.g, acc.b, 0.85 })
+            else
+                ApplyBackdrop(chip, surf.card, surf.border)
+            end
+            chip:SetScript("OnEnter", function(s) ShowCharacterVaultTooltip(s, ch) end)
+            chip:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+            chip:SetScript("OnClick", function() DynamicVault:Open() end)
+            chip:Show()
         end
-        chip:SetScript("OnEnter", function(s) ShowCharacterVaultTooltip(s, ch) end)
-        chip:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-        chip:SetScript("OnClick", function() DynamicVault:Open() end)
-        chip:Show()
     end
 
     bar:Show()

@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.6"
+    local fb = fallback or "2.6.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.6")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -2196,6 +2196,7 @@ end
 
 function DynamicPrep:AreAnyBarPopoversShown()
     if self.lootPopover and self.lootPopover:IsShown() then return true end
+    if self.specSwitchPopover and self.specSwitchPopover:IsShown() then return true end
     if self.folioPopover and self.folioPopover:IsShown() then return true end
     if self.pullTimerPopover and self.pullTimerPopover:IsShown() then return true end
     return false
@@ -2205,6 +2206,9 @@ end
 function DynamicPrep:HideBarPopovers()
     if self.lootPopover and self.lootPopover:IsShown() then
         self.lootPopover:Hide()
+    end
+    if self.specSwitchPopover and self.specSwitchPopover:IsShown() then
+        self.specSwitchPopover:Hide()
     end
     if self.folioPopover and self.folioPopover:IsShown() then
         self.folioPopover:Hide()
@@ -2345,6 +2349,134 @@ function DynamicPrep:ToggleLootSpecPopover(anchorBtn)
     catcher:Show()
 
     pop:SetSize(math.max(246, math.ceil(maxTextW) + 52), math.abs(yOffset) + 8)
+    pop:ClearAllPoints()
+    pop:SetPoint("TOP", anchorBtn, "BOTTOM", 0, -4)
+    pop:Show()
+end
+
+function DynamicPrep:ToggleActiveSpecPopover(anchorBtn)
+    GameTooltip:Hide()
+    if self.inEditMode then
+        self:HideBarPopovers()
+        return
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        print(string.format("|cFF%sDynamicPrep:|r Cannot switch active specialisation while in combat.", GetAccentHex()))
+        return
+    end
+    HookPopoverAnchorOnHide(anchorBtn)
+    if not self.specSwitchPopover then
+        local pop = CreateFrame("Frame", "DynamicPrepSpecSwitchPopover", UIParent, "BackdropTemplate")
+        pop:SetFrameStrata("TOOLTIP")
+        pop:SetFrameLevel(220)
+        pop:SetClampedToScreen(true)
+        pop:EnableMouse(true)
+        pop:Hide()
+        pop.borderOverlay = CreateFrame("Frame", nil, pop, "BackdropTemplate")
+        pop.borderOverlay:SetAllPoints(pop)
+        pop.borderOverlay:SetFrameStrata("TOOLTIP")
+        pop.borderOverlay:SetFrameLevel(230)
+        pop.header = CreateText(pop, "OVERLAY", "GameFontHighlightSmall")
+        pop.header:SetPoint("TOPLEFT", pop, "TOPLEFT", 10, -8)
+        pop.header:SetJustifyH("LEFT")
+        pop.buttons = {}
+        SafeRegisterUISpecialFrame("DynamicPrepSpecSwitchPopover")
+        pop:SetScript("OnHide", function()
+            if DynamicPrep.popoverClickCatcher and not DynamicPrep:AreAnyBarPopoversShown() then
+                DynamicPrep.popoverClickCatcher:Hide()
+            end
+        end)
+        self.specSwitchPopover = pop
+    end
+
+    local pop = self.specSwitchPopover
+    if pop:IsShown() then
+        pop:Hide()
+        return
+    end
+
+    if self.lootPopover then self.lootPopover:Hide() end
+    if self.folioPopover then self.folioPopover:Hide() end
+    if self.pullTimerPopover then self.pullTimerPopover:Hide() end
+
+    local ar, ag, ab, accentHex = GetActiveAccentRGB()
+    SetPixelBackdrop(pop, { 0.043, 0.051, 0.071, 0.99 }, { ar, ag, ab, 1.0 }, 1)
+    if pop.borderOverlay then
+        SetPixelBackdrop(pop.borderOverlay, { 0, 0, 0, 0 }, { ar, ag, ab, 1.0 }, 1)
+    end
+    pop.header:SetText(string.format("|cFF%sSwitch Active Specialisation|r", accentHex))
+
+    for _, b in ipairs(pop.buttons) do b:Hide() end
+
+    local curSpecIdx = SafeGetSpecialization() or 1
+    local numSpecs = SafeGetNumSpecializations()
+    local maxTextW = pop.header:GetStringWidth() or 180
+    local yOffset = -28
+    for i = 1, numSpecs do
+        local specID, name, _, icon = SafeGetSpecializationInfo(i)
+        if specID and name then
+            local btn = pop.buttons[i]
+            if not btn then
+                btn = CreateFrame("Button", nil, pop, "BackdropTemplate")
+                btn:SetHeight(26)
+                btn.iconTex = btn:CreateTexture(nil, "ARTWORK")
+                btn.iconTex:SetSize(16, 16)
+                btn.iconTex:SetPoint("LEFT", btn, "LEFT", 8, 0)
+                btn.iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                btn.text = CreateText(btn, "OVERLAY", "GameFontHighlightSmall")
+                btn.text:SetPoint("LEFT", btn.iconTex, "RIGHT", 7, 0)
+                btn.text:SetJustifyH("LEFT")
+                btn.text:SetWordWrap(false)
+                pop.buttons[i] = btn
+            end
+            btn:SetPoint("TOPLEFT", pop, "TOPLEFT", 8, yOffset)
+            btn:SetPoint("TOPRIGHT", pop, "TOPRIGHT", -8, yOffset)
+
+            local isActive = (i == curSpecIdx)
+            SetPixelBackdrop(
+                btn,
+                isActive and { ar * 0.34, ag * 0.34, ab * 0.34, 0.98 } or COLORS.BgSurface,
+                isActive and { ar, ag, ab, 0.95 } or COLORS.BorderSubtle,
+                1
+            )
+            btn.iconTex:SetTexture(icon or 134400)
+            local lblTxt = isActive and ("|cFFFFFFFF" .. name .. "|r  |cFF34D399(Active)|r") or ("|cFFCBD5E1" .. name .. "|r")
+            btn.text:SetText(lblTxt)
+            local tw = (btn.text:GetStringWidth() or 120) + 26
+            if tw > maxTextW then maxTextW = tw end
+
+            btn:SetScript("OnEnter", function(selfB)
+                SetPixelBackdrop(selfB, COLORS.BgHover, { ar, ag, ab, 0.85 }, 1)
+            end)
+            btn:SetScript("OnLeave", function(selfB)
+                SetPixelBackdrop(
+                    selfB,
+                    isActive and { ar * 0.34, ag * 0.34, ab * 0.34, 0.98 } or COLORS.BgSurface,
+                    isActive and { ar, ag, ab, 0.95 } or COLORS.BorderSubtle,
+                    1
+                )
+            end)
+            local targetIdx = i
+            btn:SetScript("OnClick", function()
+                pop:Hide()
+                if InCombatLockdown and InCombatLockdown() then return end
+                if targetIdx ~= curSpecIdx then
+                    if C_SpecializationInfo and C_SpecializationInfo.SetSpecialization then
+                        pcall(C_SpecializationInfo.SetSpecialization, targetIdx)
+                    elseif SetSpecialization then
+                        pcall(SetSpecialization, targetIdx)
+                    end
+                end
+            end)
+            btn:Show()
+            yOffset = yOffset - 30
+        end
+    end
+
+    local catcher = self:EnsurePopoverClickCatcher()
+    catcher:Show()
+
+    pop:SetSize(math.max(246, math.ceil(maxTextW) + 34), math.abs(yOffset) + 8)
     pop:ClearAllPoints()
     pop:SetPoint("TOP", anchorBtn, "BOTTOM", 0, -4)
     pop:Show()
@@ -3017,8 +3149,7 @@ function DynamicPrep:CreatePrepBar()
             end
             if segKey == "loot" then
                 if button == "RightButton" then
-                    DynamicPrep:HideBarPopovers()
-                    DynamicPrep:CycleActiveSpec()
+                    DynamicPrep:ToggleActiveSpecPopover(selfSeg)
                 else
                     DynamicPrep:ToggleLootSpecPopover(selfSeg)
                 end
@@ -3610,7 +3741,7 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
         tooltip:AddDoubleLine("Active Specialisation:", activeSpec, 0.8, 0.84, 0.88, 1, 1, 1)
         tooltip:AddDoubleLine("Loot Specialisation:", isOffSpec and (lootSpec .. " (Off-Spec)") or ("Auto (" .. activeSpec .. ")"), 0.8, 0.84, 0.88, isOffSpec and 0.984 or 0.204, isOffSpec and 0.749 or 0.827, isOffSpec and 0.141 or 0.600)
         tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open Loot Spec Selector|r", 1, 1, 1)
-        tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Cycle Active Specialisation (Out of Combat)|r", 1, 1, 1)
+        tooltip:AddLine(string.format("|cFF%sRight-Click:|r |cFFE2E8F0Open Active Specialisation Selector (Out of Combat)|r", GetAccentHex()), 1, 1, 1)
     elseif segKey == "talents" then
         local _, activeName = self:GetTalentLoadoutBarData()
         local mID, mName, mLabel = self:GetActiveTalentMismatch()
@@ -7063,15 +7194,18 @@ function DynamicPrep:CreateEditHudButton(parent, targetKey, fallbackFn)
     end
     local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
     btn:SetSize(86, 22)
-    SetPixelBackdrop(btn, { 0.043, 0.051, 0.071, 0.96 }, { 0.976, 0.451, 0.086, 0.85 }, 1)
+    local ar0, ag0, ab0 = GetActiveAccentRGB()
+    SetPixelBackdrop(btn, { 0.043, 0.051, 0.071, 0.96 }, { ar0, ag0, ab0, 0.85 }, 1)
     btn.txt = CreateText(btn, "OVERLAY", "GameFontHighlightSmall", 11, "Edit HUD")
     btn.txt:SetPoint("CENTER")
     btn.txt:SetTextColor(0.976, 0.984, 1.0, 1.0)
     btn:SetScript("OnEnter", function(s)
-        SetPixelBackdrop(s, { 0.16, 0.08, 0.02, 0.98 }, { 0.976, 0.451, 0.086, 1.0 }, 1)
+        local ar, ag, ab = GetActiveAccentRGB()
+        SetPixelBackdrop(s, { ar * 0.22, ag * 0.22, ab * 0.22, 0.98 }, { ar, ag, ab, 1.0 }, 1)
     end)
     btn:SetScript("OnLeave", function(s)
-        SetPixelBackdrop(s, { 0.043, 0.051, 0.071, 0.96 }, { 0.976, 0.451, 0.086, 0.85 }, 1)
+        local ar, ag, ab = GetActiveAccentRGB()
+        SetPixelBackdrop(s, { 0.043, 0.051, 0.071, 0.96 }, { ar, ag, ab, 0.85 }, 1)
     end)
     btn:SetScript("OnClick", function()
         if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
@@ -9438,9 +9572,10 @@ function DynamicPrep:EnsureSuiteWindowShell()
     gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
 
     resizeGrip:SetScript("OnEnter", function()
+        local ar, ag, ab = GetActiveAccentRGB()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
         gripTex:SetDesaturated(false)
-        gripTex:SetVertexColor(0.976, 0.451, 0.086, 0.95)
+        gripTex:SetVertexColor(ar, ag, ab, 0.95)
     end)
     resizeGrip:SetScript("OnLeave", function()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
@@ -11364,77 +11499,196 @@ function DynamicPrep:CyclePreferredTalentLoadout(zoneKey)
 end
 
 function DynamicPrep:HideTalentReminderToast()
-    if talentReminderToast then talentReminderToast:Hide() end
+    if talentReminderToast then
+        if talentReminderToast.animGroup then talentReminderToast.animGroup:Stop() end
+        talentReminderToast:Hide()
+        talentReminderToast:SetAlpha(1)
+    end
 end
 
 function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel)
     if InCombatLockdown and InCombatLockdown() then return end
     if not talentReminderToast then
-        local f = CreateFrame("Frame", "DynamicPrepTalentReminderToast", UIParent, "BackdropTemplate")
-        f:SetSize(330, 58)
-        f:SetPoint("TOP", UIParent, "TOP", 0, -140)
+        local f = CreateFrame("Button", "DynamicPrepTalentReminderToast", UIParent, "BackdropTemplate")
+        f:SetSize(410, 74)
         f:SetFrameStrata("HIGH")
+        f:SetToplevel(true)
         f:SetClampedToScreen(true)
-        f:SetMovable(true)
         f:EnableMouse(true)
-        f:RegisterForDrag("LeftButton")
-        f:SetScript("OnDragStart", f.StartMoving)
-        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        f:SetBackdrop({
+            bgFile   = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            tile = false, tileSize = 0, edgeSize = 1.5,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
 
-        f.title = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
-        f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -9)
-        f.title:SetPoint("TOPRIGHT", f, "TOPRIGHT", -12, -9)
-        f.title:SetJustifyH("LEFT")
+        -- 1:1 DynamicLoadToastFrame 44x44 Left Icon Badge
+        local iconBorder = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        iconBorder:SetSize(44, 44)
+        iconBorder:SetPoint("LEFT", f, "LEFT", 14, 0)
+        iconBorder:SetBackdrop({
+            bgFile   = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            tile = false, tileSize = 0, edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        iconBorder:SetBackdropColor(0.04, 0.05, 0.07, 1)
+        local ic = iconBorder:CreateTexture(nil, "ARTWORK")
+        ic:SetSize(30, 30)
+        ic:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+        ic:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga")
+        f.iconBorder = iconBorder
+        f.iconTex = ic
 
-        f.swapBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
-        f.swapBtn:SetSize(196, 22)
-        f.swapBtn:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 8)
-        f.swapBtn.txt = CreateText(f.swapBtn, "OVERLAY", "GameFontHighlightSmall")
-        f.swapBtn.txt:SetPoint("CENTER")
+        -- Right-aligned single [Swap] Action Pill (NO Dismiss button -- Right-Click anywhere dismisses)
+        local swapBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+        swapBtn:SetSize(74, 26)
+        swapBtn:SetPoint("RIGHT", f, "RIGHT", -12, 0)
+        swapBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        swapBtn.txt = CreateText(swapBtn, "OVERLAY", "GameFontHighlightSmall")
+        swapBtn.txt:SetPoint("CENTER")
+        swapBtn.txt:SetText("Swap")
+        f.swapBtn = swapBtn
 
-        f.dismissBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
-        f.dismissBtn:SetSize(96, 22)
-        f.dismissBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -12, 8)
-        f.dismissBtn.txt = CreateText(f.dismissBtn, "OVERLAY", "GameFontHighlightSmall")
-        f.dismissBtn.txt:SetPoint("CENTER")
-        f.dismissBtn.txt:SetText("Dismiss")
-        f.dismissBtn:SetScript("OnClick", function() f:Hide() end)
+        -- 3-Line Centre Stack (1:1 DynamicLoadToastFrame geometry)
+        local title = CreateText(f, "OVERLAY", "GameFontHighlight")
+        title:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -11)
+        title:SetPoint("RIGHT", swapBtn, "LEFT", -10, 0)
+        title:SetJustifyH("LEFT")
+        title:SetWordWrap(false)
+        f.title = title
+
+        local badge = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+        badge:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
+        badge:SetPoint("RIGHT", swapBtn, "LEFT", -10, 0)
+        badge:SetJustifyH("LEFT")
+        badge:SetWordWrap(false)
+        f.badge = badge
+
+        local subtext = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+        subtext:SetPoint("TOPLEFT", badge, "BOTTOMLEFT", 0, -5)
+        subtext:SetPoint("RIGHT", swapBtn, "LEFT", -10, 0)
+        subtext:SetJustifyH("LEFT")
+        subtext:SetWordWrap(false)
+        f.subtext = subtext
+
+        -- Auto-fade AnimationGroup with Hover Pause (1:1 DynamicLoadToastFrame)
+        local animGroup = f:CreateAnimationGroup()
+        local holdAnim = animGroup:CreateAnimation("Animation")
+        holdAnim:SetDuration(8)
+        holdAnim:SetOrder(1)
+        local fadeAnim = animGroup:CreateAnimation("Alpha")
+        fadeAnim:SetFromAlpha(1)
+        fadeAnim:SetToAlpha(0)
+        fadeAnim:SetDuration(1.2)
+        fadeAnim:SetOrder(2)
+        animGroup:SetScript("OnFinished", function()
+            f:Hide()
+            f:SetAlpha(1)
+        end)
+        f.animGroup = animGroup
+        f.holdAnim = holdAnim
+
+        f:SetScript("OnClick", function(selfT, button)
+            if button == "RightButton" then
+                selfT.animGroup:Stop()
+                selfT:Hide()
+                selfT:SetAlpha(1)
+            end
+        end)
+        f:SetScript("OnEnter", function(selfT)
+            selfT.animGroup:Pause()
+            selfT:SetAlpha(1)
+        end)
+        f:SetScript("OnLeave", function(selfT)
+            local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
+            local dur = (g and g.toastDuration) or 8
+            if dur > 0 then
+                selfT.animGroup:Play()
+            end
+        end)
 
         talentReminderToast = f
     end
 
     local f = talentReminderToast
     local ar, ag, ab = GetActiveAccentRGB()
-    SetPixelBackdrop(f, { 0.031, 0.039, 0.055, 0.96 }, { ar, ag, ab, 0.90 }, 1)
-    SetPixelBackdrop(f.swapBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 0.98 }, { ar, ag, ab, 0.95 }, 1)
-    SetPixelBackdrop(f.dismissBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+    local g = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global) or {}
+    local toastScale = math.max(0.60, math.min(1.50, tonumber(g.toastScale) or 1.0))
+    local toastAlpha = math.max(0.20, math.min(1.00, tonumber(g.toastOpacity or g.toastAlpha) or 0.96))
+    local bStyle = tostring(g.toastBorderStyle or "ACCENT"):upper()
+    local dur = tonumber(g.toastDuration) or 8
 
-    -- Stack cleanly 8px below DynamicSuiteToastFrame whenever a Zone Profile Alert Toast is visible
-    -- so zoning from Outdoor/Delves into M+ or Raid never overlaps two alerts!
-    f:ClearAllPoints()
-    local dsToast = _G.DynamicSuiteToastFrame
-    if dsToast and dsToast.IsShown and dsToast:IsShown() then
-        f:SetPoint("TOP", dsToast, "BOTTOM", 0, -8)
+    f:SetScale(toastScale)
+    f:SetBackdropColor(0.035, 0.039, 0.051, toastAlpha)
+    if bStyle == "NONE" or bStyle == "BORDERLESS" then
+        f:SetBackdropBorderColor(0, 0, 0, 0)
+    elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+        f:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
     else
-        f:SetPoint("TOP", UIParent, "TOP", 0, -96)
+        f:SetBackdropBorderColor(ar, ag, ab, 0.92)
+    end
+    f.iconBorder:SetBackdropBorderColor(ar, ag, ab, 0.85)
+    f.iconTex:SetVertexColor(ar, ag, ab, 1.0)
+    SetPixelBackdrop(f.swapBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+    f.swapBtn.txt:SetTextColor(1, 1, 1, 1)
+    f.swapBtn:SetScript("OnEnter", function(s)
+        f.animGroup:Pause()
+        f:SetAlpha(1)
+        SetPixelBackdrop(s, { ar * 0.56, ag * 0.56, ab * 0.56, 1.00 }, { ar, ag, ab, 1.00 }, 1)
+    end)
+    f.swapBtn:SetScript("OnLeave", function(s)
+        SetPixelBackdrop(s, { ar * 0.42, ag * 0.42, ab * 0.42, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+    end)
+
+    -- Stack cleanly 8px below DynamicLoadToastFrame when visible, otherwise mirror saved Suite Toast position
+    f:ClearAllPoints()
+    local dsToast = (_G.DynamicLoadToastFrame and _G.DynamicLoadToastFrame.IsShown and _G.DynamicLoadToastFrame:IsShown() and _G.DynamicLoadToastFrame)
+        or (_G.DynamicSuiteToastFrame and _G.DynamicSuiteToastFrame.IsShown and _G.DynamicSuiteToastFrame:IsShown() and _G.DynamicSuiteToastFrame)
+    if dsToast then
+        f:SetPoint("TOP", dsToast, "BOTTOM", 0, -8)
+    elseif type(g.toastPos) == "table" and g.toastPos.point then
+        f:SetPoint(g.toastPos.point, UIParent, g.toastPos.relPoint or g.toastPos.point, g.toastPos.x or 0, g.toastPos.y or -140)
+    else
+        f:SetPoint("TOP", UIParent, "TOP", 0, -140)
     end
 
     local dispTarget = tostring(targetName or "Loadout")
     if type(targetID) == "table" and targetID.group and TALENT_GROUP_HEX[targetID.group] then
-        dispTarget = string.format("|cFF%s[%s]|r %s", TALENT_GROUP_HEX[targetID.group], targetID.group, dispTarget)
+        dispTarget = string.format("|cFF%s[%s]|r |cFFFFFFFF%s|r", TALENT_GROUP_HEX[targetID.group], targetID.group, dispTarget)
+    else
+        dispTarget = "|cFFFFFFFF" .. dispTarget .. "|r"
     end
-    f.title:SetText(string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |  |cFFFBBF24%s Talent Mismatch|r", zoneLabel or "Zone"))
-    f.swapBtn.txt:SetText("Swap to: " .. dispTarget)
-    f.swapBtn:SetScript("OnClick", function()
+    f.title:SetText(string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFFBBF24%s Talent Alert|r", zoneLabel or "Zone"))
+    f.badge:SetText("|cFF94A3B8Recommended:|r " .. dispTarget)
+    f.subtext:SetText("|cFF34D399Click Swap|r |cFF94A3B8to switch|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r")
+
+    f.swapBtn:SetScript("OnClick", function(_, button)
+        if button == "RightButton" then
+            f.animGroup:Stop()
+            f:Hide()
+            f:SetAlpha(1)
+            return
+        end
         if InCombatLockdown and InCombatLockdown() then return end
         if type(targetID) == "table" then
             DynamicPrep:ApplyTalentLibraryEntry(targetID)
         elseif targetID and C_ClassTalents and type(C_ClassTalents.LoadConfig) == "function" then
             pcall(C_ClassTalents.LoadConfig, targetID, true)
         end
+        f.animGroup:Stop()
         f:Hide()
+        f:SetAlpha(1)
     end)
+
+    f.animGroup:Stop()
+    f:SetAlpha(1)
     f:Show()
+    if dur > 0 then
+        f.holdAnim:SetDuration(dur)
+        f.animGroup:Play()
+    end
 end
 
 function DynamicPrep:CheckZoneTalentLoadout()
@@ -11985,27 +12239,45 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         raidGrp:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -50)
         raidGrp:SetPoint("BOTTOMRIGHT", bCard, "BOTTOMRIGHT", -12, 8)
 
+        local ICON_CHEV_DOWN = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga"
+        local ICON_CHEV_UP   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_up.tga"
+        local function StyleDropdownTrigger(btn)
+            SetPixelBackdrop(btn, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+            local chev = btn:CreateTexture(nil, "OVERLAY")
+            chev:SetSize(10, 10)
+            chev:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+            chev:SetTexture(ICON_CHEV_DOWN)
+            chev:SetVertexColor(0.68, 0.74, 0.84, 0.95)
+            btn.chev = chev
+            btn.txt = CreateText(btn, "OVERLAY", "GameFontHighlightSmall")
+            btn.txt:SetPoint("LEFT", btn, "LEFT", 8, 0)
+            btn.txt:SetPoint("RIGHT", chev, "LEFT", -6, 0)
+            btn.txt:SetJustifyH("LEFT")
+            btn.txt:SetWordWrap(false)
+            btn:SetScript("OnEnter", function(s)
+                local r, g, b = GetActiveAccentRGB()
+                SetPixelBackdrop(s, { 0.105, 0.122, 0.160, 0.98 }, { r, g, b, 0.92 }, 1)
+                if s.chev then s.chev:SetVertexColor(r, g, b, 1.0) end
+            end)
+            btn:SetScript("OnLeave", function(s)
+                if not s._dropOpen then
+                    SetPixelBackdrop(s, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+                    if s.chev then s.chev:SetVertexColor(0.68, 0.74, 0.84, 0.95) end
+                end
+            end)
+        end
+
         local raidPickBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
         raidPickBtn:SetSize(214, 26)
         raidPickBtn:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 0, 0)
         raidPickBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        SetPixelBackdrop(raidPickBtn, INPUT_BG, COLORS.BorderSubtle, 1)
-        raidPickBtn.txt = CreateText(raidPickBtn, "OVERLAY", "GameFontHighlightSmall")
-        raidPickBtn.txt:SetPoint("LEFT", raidPickBtn, "LEFT", 8, 0)
-        raidPickBtn.txt:SetPoint("RIGHT", raidPickBtn, "RIGHT", -8, 0)
-        raidPickBtn.txt:SetJustifyH("LEFT")
-        raidPickBtn.txt:SetWordWrap(false)
+        StyleDropdownTrigger(raidPickBtn)
 
         local bossPickBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
         bossPickBtn:SetSize(230, 26)
         bossPickBtn:SetPoint("LEFT", raidPickBtn, "RIGHT", 6, 0)
         bossPickBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        SetPixelBackdrop(bossPickBtn, INPUT_BG, COLORS.BorderSubtle, 1)
-        bossPickBtn.txt = CreateText(bossPickBtn, "OVERLAY", "GameFontHighlightSmall")
-        bossPickBtn.txt:SetPoint("LEFT", bossPickBtn, "LEFT", 8, 0)
-        bossPickBtn.txt:SetPoint("RIGHT", bossPickBtn, "RIGHT", -8, 0)
-        bossPickBtn.txt:SetJustifyH("LEFT")
-        bossPickBtn.txt:SetWordWrap(false)
+        StyleDropdownTrigger(bossPickBtn)
 
         local tgtBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
         tgtBtn:SetSize(72, 26)
@@ -12056,12 +12328,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         raidBuildBtn:SetSize(222, 26)
         raidBuildBtn:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 212, -34)
         raidBuildBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        SetPixelBackdrop(raidBuildBtn, INPUT_BG, COLORS.BorderSubtle, 1)
-        raidBuildBtn.txt = CreateText(raidBuildBtn, "OVERLAY", "GameFontHighlightSmall")
-        raidBuildBtn.txt:SetPoint("LEFT", raidBuildBtn, "LEFT", 8, 0)
-        raidBuildBtn.txt:SetPoint("RIGHT", raidBuildBtn, "RIGHT", -8, 0)
-        raidBuildBtn.txt:SetJustifyH("LEFT")
-        raidBuildBtn.txt:SetWordWrap(false)
+        StyleDropdownTrigger(raidBuildBtn)
 
         local raidBindBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
         raidBindBtn:SetSize(88, 26)
@@ -12075,7 +12342,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         raidTip:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 2, -68)
         raidTip:SetPoint("TOPRIGHT", raidGrp, "TOPRIGHT", -2, -68)
         raidTip:SetJustifyH("LEFT")
-        raidTip:SetText("|cFF64748BLeft-click Raid / Boss / Build to cycle (Right-click prev). Toggle N, H, M in any combination.|r")
+        raidTip:SetText("|cFF64748BClick Raid, Boss, or Build to pick from the dropdown. Toggle Normal, Heroic, or Mythic in any combination.|r")
 
         -- M+ MODE CONTROLS
         local mplusGrp = CreateFrame("Frame", nil, bCard)
@@ -12128,12 +12395,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         mplusBuildBtn:SetSize(222, 26)
         mplusBuildBtn:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 212, -34)
         mplusBuildBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        SetPixelBackdrop(mplusBuildBtn, INPUT_BG, COLORS.BorderSubtle, 1)
-        mplusBuildBtn.txt = CreateText(mplusBuildBtn, "OVERLAY", "GameFontHighlightSmall")
-        mplusBuildBtn.txt:SetPoint("LEFT", mplusBuildBtn, "LEFT", 8, 0)
-        mplusBuildBtn.txt:SetPoint("RIGHT", mplusBuildBtn, "RIGHT", -8, 0)
-        mplusBuildBtn.txt:SetJustifyH("LEFT")
-        mplusBuildBtn.txt:SetWordWrap(false)
+        StyleDropdownTrigger(mplusBuildBtn)
 
         local mplusBindBtn = CreateFrame("Button", nil, mplusGrp, "BackdropTemplate")
         mplusBindBtn:SetSize(88, 26)
@@ -12215,55 +12477,153 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             UpdatePickBtns()
         end
 
-        -- Obsidian Dropdown Helper for Raid, Numbered Boss, Dungeon & Build Pickers
-        local tmDrop = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        -- Standard DESIGN_SYSTEM.md Obsidian Dropdown Popover (Click-Catcher, ESC, Chevron Flip, Hover/Pip, Scroll)
+        local tmDropCatcher = CreateFrame("Button", "DynamicPrepTalentModalDropCatcher", UIParent)
+        tmDropCatcher:SetAllPoints(UIParent)
+        tmDropCatcher:SetFrameStrata("FULLSCREEN_DIALOG")
+        tmDropCatcher:SetFrameLevel(40)
+        tmDropCatcher:EnableMouse(true)
+        tmDropCatcher:RegisterForClicks("AnyDown")
+        tmDropCatcher:Hide()
+
+        local tmDrop = CreateFrame("Frame", "DynamicPrepTalentModalDrop", UIParent, "BackdropTemplate")
         tmDrop:SetFrameStrata("TOOLTIP")
+        tmDrop:SetFrameLevel(60)
         tmDrop:SetClampedToScreen(true)
         tmDrop:EnableMouse(true)
         tmDrop:Hide()
+        tmDrop.borderOverlay = CreateFrame("Frame", nil, tmDrop, "BackdropTemplate")
+        tmDrop.borderOverlay:SetAllPoints(tmDrop)
+        tmDrop.borderOverlay:SetFrameLevel(70)
+        tmDrop.scroll = CreateFrame("ScrollFrame", nil, tmDrop)
+        tmDrop.scroll:SetPoint("TOPLEFT", tmDrop, "TOPLEFT", 4, -4)
+        tmDrop.scroll:SetPoint("BOTTOMRIGHT", tmDrop, "BOTTOMRIGHT", -4, 4)
+        tmDrop.scroll:EnableMouseWheel(true)
+        tmDrop.content = CreateFrame("Frame", nil, tmDrop.scroll)
+        tmDrop.scroll:SetScrollChild(tmDrop.content)
         tmDrop.rows = {}
+
+        local function CloseModalDropdown()
+            if tmDrop._owner then
+                local prev = tmDrop._owner
+                prev._dropOpen = false
+                SetPixelBackdrop(prev, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+                if prev.chev then
+                    prev.chev:SetTexture(ICON_CHEV_DOWN)
+                    prev.chev:SetVertexColor(0.68, 0.74, 0.84, 0.95)
+                end
+                tmDrop._owner = nil
+            end
+            tmDrop:Hide()
+            tmDropCatcher:Hide()
+        end
+        tmDropCatcher:SetScript("OnClick", CloseModalDropdown)
+        tmDrop:SetScript("OnHide", function()
+            if tmDrop._owner then
+                local prev = tmDrop._owner
+                prev._dropOpen = false
+                SetPixelBackdrop(prev, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+                if prev.chev then
+                    prev.chev:SetTexture(ICON_CHEV_DOWN)
+                    prev.chev:SetVertexColor(0.68, 0.74, 0.84, 0.95)
+                end
+                tmDrop._owner = nil
+            end
+            tmDropCatcher:Hide()
+        end)
+        if _G.UISpecialFrames then
+            table.insert(_G.UISpecialFrames, "DynamicPrepTalentModalDrop")
+        end
+        if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.RegisterPopupCloser) == "function" then
+            _G.DynamicSuite.UI.RegisterPopupCloser("DynamicPrepTalentModalDrop", CloseModalDropdown)
+        end
+        tmDrop.scroll:SetScript("OnMouseWheel", function(selfS, delta)
+            local maxS = math.max(0, (tmDrop.content:GetHeight() or 0) - (selfS:GetHeight() or 0))
+            if maxS <= 0 then selfS:SetVerticalScroll(0); return end
+            selfS:SetVerticalScroll(math.max(0, math.min(maxS, (selfS:GetVerticalScroll() or 0) - (delta * 26))))
+        end)
+
         local function ShowModalDropdown(anchorBtn, items, width)
             if tmDrop:IsShown() and tmDrop._owner == anchorBtn then
-                tmDrop:Hide()
+                CloseModalDropdown()
                 return
+            end
+            CloseModalDropdown()
+            if not anchorBtn._dsHideHooked then
+                anchorBtn._dsHideHooked = true
+                anchorBtn:HookScript("OnHide", function()
+                    if tmDrop._owner == anchorBtn then CloseModalDropdown() end
+                end)
             end
             local r, g, b = GetActiveAccentRGB()
             SetPixelBackdrop(tmDrop, { 0.043, 0.051, 0.071, 0.99 }, { r, g, b, 0.95 }, 1)
+            SetPixelBackdrop(tmDrop.borderOverlay, { 0, 0, 0, 0 }, { r, g, b, 0.95 }, 1)
             tmDrop._owner = anchorBtn
+            anchorBtn._dropOpen = true
+            SetPixelBackdrop(anchorBtn, { 0.105, 0.122, 0.160, 0.98 }, { r, g, b, 0.95 }, 1)
+            if anchorBtn.chev then
+                anchorBtn.chev:SetTexture(ICON_CHEV_UP)
+                anchorBtn.chev:SetVertexColor(r, g, b, 1.0)
+            end
+
             for _, rw in ipairs(tmDrop.rows) do rw:Hide() end
             local w = math.max(width or 220, anchorBtn:GetWidth() or 200)
             tmDrop:SetWidth(w)
-            local y = -4
+            tmDrop.content:SetWidth(w - 8)
+            local y = 0
             for idx, it in ipairs(items) do
                 local rw = tmDrop.rows[idx]
                 if not rw then
-                    rw = CreateFrame("Button", nil, tmDrop, "BackdropTemplate")
-                    rw:SetHeight(22)
+                    rw = CreateFrame("Button", nil, tmDrop.content, "BackdropTemplate")
+                    rw:SetHeight(24)
+                    rw.pip = rw:CreateTexture(nil, "OVERLAY")
+                    rw.pip:SetSize(5, 5)
+                    rw.pip:SetPoint("LEFT", rw, "LEFT", 7, 0)
                     rw.txt = CreateText(rw, "OVERLAY", "GameFontHighlightSmall")
-                    rw.txt:SetPoint("LEFT", rw, "LEFT", 8, 0)
+                    rw.txt:SetPoint("LEFT", rw, "LEFT", 18, 0)
                     rw.txt:SetPoint("RIGHT", rw, "RIGHT", -8, 0)
                     rw.txt:SetJustifyH("LEFT")
                     rw.txt:SetWordWrap(false)
                     tmDrop.rows[idx] = rw
                 end
                 rw:ClearAllPoints()
-                rw:SetPoint("TOPLEFT", tmDrop, "TOPLEFT", 4, y)
-                rw:SetPoint("TOPRIGHT", tmDrop, "TOPRIGHT", -4, y)
+                rw:SetPoint("TOPLEFT", tmDrop.content, "TOPLEFT", 0, y)
+                rw:SetPoint("TOPRIGHT", tmDrop.content, "TOPRIGHT", 0, y)
                 rw.txt:SetText(it.label or "")
-                SetPixelBackdrop(rw, it.selected and { r * 0.38, g * 0.38, b * 0.38, 0.98 } or { 0.06, 0.07, 0.09, 0.90 }, it.selected and { r, g, b, 0.95 } or { 0, 0, 0, 0 }, 1)
+                rw.pip:SetColorTexture(r, g, b, 1.0)
+                rw.pip:SetShown(it.selected == true)
+                local idleBg = it.selected and { r * 0.42, g * 0.42, b * 0.42, 0.98 } or { 0.055, 0.063, 0.082, 0.90 }
+                local idleBdr = it.selected and { r, g, b, 0.95 } or { 0, 0, 0, 0 }
+                SetPixelBackdrop(rw, idleBg, idleBdr, 1)
+                rw:SetScript("OnEnter", function(s)
+                    SetPixelBackdrop(s, { r * 0.30, g * 0.30, b * 0.30, 0.98 }, { r, g, b, 0.85 }, 1)
+                end)
+                rw:SetScript("OnLeave", function(s)
+                    SetPixelBackdrop(s, idleBg, idleBdr, 1)
+                end)
                 rw:SetScript("OnClick", function()
-                    tmDrop:Hide()
+                    CloseModalDropdown()
                     if it.onSelect then it.onSelect() end
                 end)
                 rw:Show()
-                y = y - 24
+                y = y - 26
             end
-            tmDrop:SetHeight(math.max(28, math.abs(y) + 4))
+            local totalH = math.max(26, math.abs(y))
+            local visH = math.min(totalH, 260)
+            tmDrop.content:SetHeight(totalH)
+            tmDrop.scroll:SetVerticalScroll(0)
+            tmDrop:SetHeight(visH + 8)
             tmDrop:ClearAllPoints()
-            tmDrop:SetPoint("TOPLEFT", anchorBtn, "BOTTOMLEFT", 0, -2)
+            local btnBot = (anchorBtn.GetBottom and anchorBtn:GetBottom()) or 300
+            if btnBot < (visH + 24) then
+                tmDrop:SetPoint("BOTTOMLEFT", anchorBtn, "TOPLEFT", 0, 2)
+            else
+                tmDrop:SetPoint("TOPLEFT", anchorBtn, "BOTTOMLEFT", 0, -2)
+            end
+            tmDropCatcher:Show()
             tmDrop:Show()
         end
-        f:HookScript("OnHide", function() tmDrop:Hide() end)
+        f:HookScript("OnHide", CloseModalDropdown)
 
         -- 8-Icon M+ Dungeon Portal Grid inside mplusGrp (1-click selection!)
         local portalGridBtns = {}

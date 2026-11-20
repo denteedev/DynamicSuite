@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.6"
+    local fb = fallback or "2.6.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.6")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMail", VERSION, _G.DynamicMail) then
     return
 end
@@ -252,7 +252,7 @@ local DEFAULTS = {
     restoreLastRecipient    = false,
     shiftClickInboxLoot     = true,
     warnExpiringMail        = true,
-    mailSkinMode            = "AUTO", -- "AUTO" (match EllesmereUI/ElvUI when active) or "OBSIDIAN"
+    mailSkinMode            = "OBSIDIAN", -- "OBSIDIAN" (Suite Obsidian & Accent, default) or "AUTO" (match EllesmereUI/ElvUI)
 
     activeSubTab            = 1,
     activePickerTab         = "ALTS", -- "ALTS", "RECENT", "GUILD", "FRIENDS"
@@ -291,6 +291,12 @@ local function EnsureDB()
         _G.DynamicMailDB = {}
     end
     CopyDefaults(_G.DynamicMailDB, DEFAULTS)
+    if not _G.DynamicMailDB.skinDefaultMigrated267 then
+        if _G.DynamicMailDB.mailSkinMode == "AUTO" then
+            _G.DynamicMailDB.mailSkinMode = "OBSIDIAN"
+        end
+        _G.DynamicMailDB.skinDefaultMigrated267 = true
+    end
     return _G.DynamicMailDB
 end
 
@@ -421,7 +427,7 @@ end
 local function GetOverlayTheme()
     local surf, acc = GetTheme()
     local db = EnsureDB()
-    if (db.mailSkinMode or "AUTO") == "OBSIDIAN" then
+    if (db.mailSkinMode or "OBSIDIAN") ~= "AUTO" then
         return surf, acc
     end
 
@@ -3179,8 +3185,8 @@ local function RenderMailEmbedded(parent)
                     { value = "AUTO", label = "Auto-Match" },
                     { value = "OBSIDIAN", label = "Suite Obsidian" },
                 },
-                function() return db.mailSkinMode or "AUTO" end,
-                function(v) db.mailSkinMode = v; RefreshHostTelemetry() end)
+                function() return db.mailSkinMode or "OBSIDIAN" end,
+                function(v) db.mailSkinMode = v; RefreshHostTelemetry(); RefreshInboxBarUI(); RefreshSendPickerUI() end)
             sy = sy + dySkin
 
             local _, dy2 = CreateMultiPillCard(sec1, sy, "Collection Speed",

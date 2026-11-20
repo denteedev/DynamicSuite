@@ -1295,12 +1295,12 @@ local function ApplyFlatButtonVisual(btn, isHovered)
 
     if btn.isEditHudButton then
         if isActive or isHovered then
-            btn.bg:SetColorTexture(0.18, 0.09, 0.03, 0.98)
-            btn.dsBorder:SetColor(0.976, 0.451, 0.086, 1.0)
+            btn.bg:SetColorTexture(cr * 0.24, cg * 0.24, cb * 0.24, 0.98)
+            btn.dsBorder:SetColor(cr, cg, cb, 1.0)
             if btn.label then btn.label:SetTextColor(1, 1, 1, 1) end
         else
             btn.bg:SetColorTexture(0.043, 0.051, 0.071, 0.96)
-            btn.dsBorder:SetColor(0.976, 0.451, 0.086, 0.85)
+            btn.dsBorder:SetColor(cr, cg, cb, 0.85)
             if btn.label then btn.label:SetTextColor(0.976, 0.984, 1.0, 1.0) end
         end
         return
@@ -3738,9 +3738,10 @@ function addonTable.CreateMainConfigUI()
     gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
 
     resizeGrip:SetScript("OnEnter", function()
+        local ar, ag, ab = GetActiveAccentColor()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
         gripTex:SetDesaturated(false)
-        gripTex:SetVertexColor(0.976, 0.451, 0.086, 0.95)
+        gripTex:SetVertexColor(ar, ag, ab, 0.95)
     end)
     resizeGrip:SetScript("OnLeave", function()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
@@ -13493,9 +13494,10 @@ function addonTable.CreateMainConfigUI()
                 gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
 
                 grip:SetScript("OnEnter", function(selfGrip)
+                    local ar, ag, ab = GetActiveAccentColor()
                     gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
                     gripTex:SetDesaturated(false)
-                    gripTex:SetVertexColor(0.976, 0.451, 0.086, 0.95)
+                    gripTex:SetVertexColor(ar, ag, ab, 0.95)
                     GameTooltip:SetOwner(selfGrip, "ANCHOR_TOP")
                     GameTooltip:SetText("Resize Chat Frame", 1, 1, 1)
                     GameTooltip:AddLine("Drag to resize your chat window (width 240-1200, height 100-900).", 0.82, 0.86, 0.92, true)

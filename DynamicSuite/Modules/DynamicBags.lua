@@ -24,7 +24,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.6"
+    local fb = fallback or "2.6.7"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -105,7 +105,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.6")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicBags", VERSION, _G.DynamicBags) then
     return
 end
@@ -4708,16 +4708,17 @@ end
 local scaleToastFrame = nil
 local function ShowBagScaleToast(anchorFrame, msg)
     if not CreateFrame then return end
+    local ar, ag, ab = U.GetSuiteAccent()
     if not scaleToastFrame then
         local tf = CreateFrame("Frame", "DynamicBagsWindowScaleToast", UIParent, "BackdropTemplate")
         tf:SetSize(196, 28)
         tf:SetFrameStrata("DIALOG")
         tf:SetClampedToScreen(true)
-        Backdrop(tf, 0.043, 0.051, 0.071, 0.96, 0.976, 0.451, 0.086, 0.90)
+        Backdrop(tf, 0.043, 0.051, 0.071, 0.96, ar, ag, ab, 0.90)
         local txt = tf:CreateFontString(nil, "OVERLAY")
         SetFont(txt, 11, "")
         txt:SetPoint("CENTER", tf, "CENTER", 0, 0)
-        txt:SetTextColor(0.976, 0.451, 0.086, 1)
+        txt:SetTextColor(ar, ag, ab, 1)
         tf.text = txt
         tf:SetScript("OnUpdate", function(self, elapsed)
             self._t = (self._t or 0) + elapsed
@@ -4734,6 +4735,8 @@ local function ShowBagScaleToast(anchorFrame, msg)
         end)
         scaleToastFrame = tf
     end
+    Backdrop(scaleToastFrame, 0.043, 0.051, 0.071, 0.96, ar, ag, ab, 0.90)
+    scaleToastFrame.text:SetTextColor(ar, ag, ab, 1)
     scaleToastFrame.text:SetText(msg or "")
     scaleToastFrame:ClearAllPoints()
     if anchorFrame then
@@ -4830,8 +4833,9 @@ function U.AttachWindowScaleHandlers(targetKind, headFrame, fullFrames)
         headFrame:HookScript("OnEnter", function(selfHead)
             if not _G.GameTooltip then return end
             local title = (targetKind == "bank") and "DynamicBank Window Controls" or "DynamicBags Window Controls"
+            local ar, ag, ab = U.GetSuiteAccent()
             _G.GameTooltip:SetOwner(selfHead, "ANCHOR_TOP")
-            _G.GameTooltip:AddLine(title, 0.976, 0.451, 0.086)
+            _G.GameTooltip:AddLine(title, ar, ag, ab)
             _G.GameTooltip:AddLine("Left-Drag Header: Move window position", 0.90, 0.93, 0.96)
             _G.GameTooltip:AddLine("Ctrl + Scroll Header: Scale this session (70%-140%)", 0.90, 0.93, 0.96)
             _G.GameTooltip:AddLine("Ctrl + Shift + Scroll Anywhere: Save permanent scale", 0.90, 0.93, 0.96)

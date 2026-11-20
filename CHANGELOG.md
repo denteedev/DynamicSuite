@@ -1,5 +1,17 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.6.6 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.6.7 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.6.7 (21/11/2026)
+
+### Suite-Wide Accent Unification, Unified Talent Toast, Quick Spec Menu, Vault Dock Polish & LFG Cancel Fix (`v2.6.7`, 21/11/2026)
+- **Suite-Wide Live Accent Colour Consistency:** Audited all modules, toasts, dropdowns, `Edit HUD` buttons, window scale toasts, and resize grips (`DynamicSuite_UI`, `DynamicSuite_Core`, `DynamicBags`, `DynamicChat`, `DynamicGroup`, `DynamicMarker`, `DynamicPrep`, `DynamicMail`, and `DynamicVault`) so every frame dynamically tracks the active Suite Accent colour instead of falling back to hardcoded orange or third-party skin colours. Defaulted `DynamicMail` and `DynamicVault` top docks to `OBSIDIAN` (with a one-time profile migration from `AUTO`) so Mailbox and Great Vault headers match DynamicSuite seamlessly.
+- **Unified Talent Reminder Alert Toast (`DynamicPrep`):** Rebuilt `DynamicPrepTalentReminderToast` to match `DynamicLoadToastFrame` 1:1 (`410x74` Obsidian frame, `44x44` left icon badge, 3-line centre stack, single `[Swap]` button with no `Dismiss` button -- **Right-Click anywhere to dismiss**), inheriting Suite Accent, opacity, scale, border, and duration settings while stacking cleanly `8px` below `DynamicLoadToastFrame`.
+- **Upgraded Talent Loadouts Manager Dropdowns (`DynamicPrep`):** Rebuilt `OpenTalentManagerModal` dropdown triggers and menus with directional chevrons (`icon_chevron_down.tga` / `icon_chevron_up.tga`), hover Suite Accent borders, active `5x5` square pip, full-screen click-outside catcher, `Escape` dismissal, screen-bottom flip, and scrolling.
+- **Prep Bar Direct Specialisation Switcher (`DynamicPrep`):** Left-Click on the Prep Bar spec/loot segment continues to open the Obsidian Loot Specialisation dropdown, while **Right-Click** now opens a dedicated Obsidian **Switch Active Specialisation** dropdown (`ToggleActiveSpecPopover`) instead of blind spec cycling.
+- **Great Vault Top Dock Width & Compact Layout (`DynamicVault`):** Anchored `DynamicVaultBlizzDock` cleanly to `WeeklyRewardsFrame.BorderContainer` so it matches the Blizzard Vault frame width with zero overhang, and collapsed it to a sleek single-row `34px` bar when only 1 character is tracked (showing Row 2 `Alts:` chips only once 2 or more characters are tracked).
+- **Duplicate Cross (`x`) Button Fix (`DynamicGroup`):** Hid Blizzard's underlying `CancelButton.Icon` and native button regions in `StyleEntryCancelButton` so LFG search entries display a single crisp `x` cancel button beside group ratings.
 
 ---
 
