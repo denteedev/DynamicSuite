@@ -1,5 +1,15 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.7.0 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.7.1 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.7.1 (21/11/2026)
+
+### Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Talent Binds, LFR/Normal Merge, 'Talent Binds' Rename & Dropdown Scrollbar (`v2.7.1`, 21/11/2026)
+- **Standardised Spec & Loot Spec Clicks (`DynamicPrep`):** Aligned both the Top Info Bar Spec segment and the Left-Hand Talent Loadouts Dock spec buttons to use the exact same click mapping: **Left-Click** opens the Active Specialisation selector / switches active specialisation (out of combat), and **Right-Click** opens the Loot Specialisation selector / sets Loot Specialisation, with 1:1 plain Australian English tooltips.
+- **Multi-Select M+ Dungeons & `'All'` Toggle (`DynamicPrep`):** Upgraded the Mythic+ Talent Binds panel in Talent Loadouts Manager with an `'All'` toggle pill beside all 8 current-season dungeon tiles so you can toggle individual dungeons, click `'All'` to select or clear all 8, and click `+ Bind M+` to save either a single clean `All M+ Dungeons` rule or multiple per-dungeon binds in one click. Specific per-dungeon binds take priority over `All M+ Dungeons` when evaluating reminders.
+- **`LFR / Normal` Raid Difficulty Merge & `'Talent Binds'` Rename (`DynamicPrep`, `DynamicSuite_Core`):** Renamed `'Boss Binds'` to `'Talent Binds'` across the Talent Dock, context menus, settings, and Global Smart Search, and combined LFR (difficulty `17`) and Normal (difficulty `14`) into one `'LFR / Normal'` difficulty pill alongside `'Heroic'` and `'Mythic'`.
+- **`4px` Interactive 3-Way Obsidian Dropdown Scrollbars (`DynamicPrep`):** Added the standard `4px` interactive 3-way Obsidian scrollbar (mousewheel, track click-to-jump, and draggable thumb, auto-hiding cleanly when all options fit) to Talent Loadouts Manager's Build, Raid, and Boss dropdown popups.
 
 ---
 

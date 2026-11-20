@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.7.0"
+    local fb = fallback or "2.7.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.1")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "21/11/2026",
     entries = {
+        { type = "FEATURE", text = "Release v2.7.1 - Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Talent Binds, LFR / Normal Raid Merge, 'Talent Binds' Rename & Dropdown Scrollbar (21/11/2026): Standardised Left-Click (Switch Active Specialisation out of combat) and Right-Click (Loot Specialisation) across both DynamicPrep's Top Info Bar and Left-Hand Talent Loadouts Dock with 1:1 plain Australian English tooltips; upgraded Tab 2's Pre-Keystone M+ Binder with an 'All' toggle pill and multi-select season dungeon tiles so you can batch-bind selected dungeons or save a single 'All M+ Dungeons' rule in one click (with specific per-dungeon binds taking priority); merged LFR (difficulty 17) and Normal (difficulty 14) into a single 'LFR / Normal' Raid difficulty option alongside Heroic and Mythic; renamed 'Boss Binds' to 'Talent Binds' across the Talent Dock, context menus, settings, and Global Smart Search; and added a 4px interactive 3-way Obsidian scrollbar to Talent Loadouts Manager dropdowns." },
         { type = "UI",      text = "Release v2.7.0 - Unified Shared Alert Toast System, Live Suite Accent Across All Buttons/Grips/Modals, 800x520 Uniform Widget Geometry & 11-Module Documentation Parity (21/11/2026): Centralised all Toast appearance and sound controls (Scale, Opacity, Border Style, Auto-Fade Duration, and Alert Sound) inside Suite Studio and DynamicLoad under one Alert Toast HUD target; updated DynamicPrep Talent Reminder Toasts, DynamicGroup Teleport Toasts, and DynamicChat Mention Alert Toasts to share one consistent Obsidian appearance, live Suite Accent, Right-Click dismissal, and clean non-overlapping vertical stacking; removed stray Edit HUD buttons from toast-consumer panels and kept inline Edit HUD buttons strictly on the 6 true movable HUD owner cards with non-overlapping title/subtitle anchors; replaced all remaining hardcoded Blaze Orange buttons, modal borders, focus boxes, portal highlights, Apply All buttons, window scale toasts, and corner resize grips with the live Suite Accent colour; upgraded DynamicDialogue to the universal 34px 2-tab header bar, dedicated 44px Action & Status strip, clean non-outlined card fonts, 156x26px binary switches, and 2-line wrapped descriptions; standardised relative text clamping and control sizing across DynamicVault, DynamicMail, DynamicBags, DynamicFPS, and DynamicSuite_UI so all panels fit cleanly down to 800x520; and updated README and CurseForge storefront docs for all 11 modules." },
         { type = "FIX",     text = "Release v2.6.9 - DynamicDialogue Panel & Retail Yield Probe Fix, DynamicVault Multi-Alt Dock Crash & Escape Close, and DynamicMail Parity (21/11/2026): Assigned fonts before calling SetText and ran ApplySubTab() on initial RenderDialogueEmbedded setup so DynamicDialogue's sub-tabs never throw a Font not set error or overlap on first open, added the standard 4px 3-way Obsidian settings scrollbar, matched standalone title colours, updated DynamicDialogue.CHANGELOG to use VERSION, and fixed the Retail 12.1.5 Blizzard Quest/Gossip probe in both DynamicSuite_Core and DynamicDialogue so clean installs show Active reliably; fixed an undefined width variable crash in RefreshGreatVaultDock when 2 or more alts are tracked, registered DynamicVaultStandaloneFrame in UISpecialFrames for Escape closing, updated /dv overlay and /dv hud to point to DynamicPrep's Top Info Bar, and registered DynamicVault's changelog with DynamicSuite; and guarded DynamicMail workspace opening when disabled in the suite, synced its standalone resize handle to the active Suite Accent, updated Quick Action Bar search copy, and standardised its changelog format." },
         { type = "UI",      text = "Release v2.6.8 - Great Vault Dock Alignment, Standalone Vault Overlay Removal, DynamicPrep 13-Capsule Grid Fix, DynamicDialogue 2-Tab Redesign & Macro Note Cleanup (21/11/2026): Fixed DynamicVaultBlizzDock overhanging WeeklyRewardsFrame by anchoring directly to WeeklyRewardsFrame with the exact 10px horizontal inset and 6px vertical panel clearance; removed the redundant standalone On-Screen Vault Overlay (and VAULT HUD Edit Mode target) since Great Vault status lives cleanly inside DynamicPrep's Prep Bar; removed per-module Auto-Match External UI skin toggles from DynamicVault and DynamicMail so every module strictly follows Suite Studio's active Obsidian and Suite Accent settings; fixed DynamicPrep's Bar Layout & Style 13-capsule grid overflowing onto HUD Border Style by sizing the grid container dynamically to 5 rows (200px) and shifting lower rows cleanly; redesigned DynamicDialogue into 2 clean sub-tabs (Reader & Controls | Appearance & Sound) with exact section heights (zero bottom dead space) and removed the redundant Auto-Yield toggle (managed centrally in Guided Setup); and trimmed DynamicMarker's Macro Setup DecorVendor note to a crisp 1-line summary." },
@@ -232,7 +233,7 @@ local SUITE_MODULE_LIST = addonTable.SUITE_MODULE_LIST or {
         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
         subtitle = "Prep Bar, Talents & Buffs",
         category = "Combat & Group -- Readiness Bar, Talent Manager & Quick QoL",
-        desc = "Live readiness top bar with Great Vault summary, Talent Loadout Manager with boss bindings, clickable raid buffs, consumables, and fast quest/cutscene skipping.",
+        desc = "Live readiness top bar with Great Vault summary, Talent Loadout Manager with talent binds, clickable raid buffs, consumables, and fast quest/cutscene skipping.",
     },
     -- PROGRESSION & QUESTS
     {
@@ -4839,6 +4840,10 @@ local BUILTIN_SEARCH_SEED = {
       title = "Automated Healing Macro ([DynamicHeal])",
       desc = "Maintain a 1-button [DynamicHeal] macro that prioritises Recuperate out of combat and Warlock Healthstones > Healing Potions in combat.",
       keywords = "automated healing macro dynamicheal healthstone potion silvermoon recuperate survival" },
+    { moduleKey = "prep", category = "COMBAT", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Talent Binds & Loadout Manager",
+      desc = "Bind saved talent loadouts to Raid Bosses (LFR / Normal, Heroic, Mythic) and Mythic+ Dungeons with pre-pull reminder toasts.",
+      keywords = "talent binds boss binds raid bosses mythic+ dungeons lfr normal heroic mythic loadout manager reminders" },
 
     -- ========================================================================
     -- 6. DYNAMICGROUP ("group") - LFG Region Filter, Auto-Invite & Keystones

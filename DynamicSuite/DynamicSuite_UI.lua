@@ -8739,7 +8739,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.7.0"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.7.1"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -8752,6 +8752,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "NEW",      title = "v2.7.1 Release (21/11/2026): Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Binds, LFR/Normal Merge, 'Talent Binds' & Dropdown Scrollbars", desc = "Standardised Left-Click (Active Specialisation out of combat) and Right-Click (Loot Specialisation) across DynamicPrep's Top Info Bar and Talent Loadouts Dock with 1:1 plain Australian English tooltips; added an 'All' toggle and multi-select dungeon tiles to the M+ Binder (saving one 'All M+ Dungeons' catch-all or batch per-dungeon binds with specific priority); merged LFR and Normal raids into 'LFR / Normal'; renamed 'Boss Binds' to 'Talent Binds'; and added a 4px interactive Obsidian scrollbar to Talent Manager dropdowns." },
                 { badge = "UI",       title = "v2.7.0 Release (21/11/2026): Unified Shared Alert Toast System, Live Suite Accent Across All Chrome, DynamicDialogue 34px Tab Bar & 800x520 Widget Parity", desc = "Centralised Alert Toast styling and chime controls under Suite Studio and DynamicLoad; unified DynamicPrep Talent Reminder, DynamicGroup Teleport, and DynamicChat Mention Alert Toasts with clean vertical stacking; removed stray Edit HUD buttons from toast-consumer panels and kept inline Edit HUD buttons strictly on the 6 movable HUD owner cards with non-overlapping headers; replaced hardcoded Blaze Orange buttons, modal borders, Apply All buttons, window scale toasts, and corner resize grips with live Suite Accent; upgraded DynamicDialogue with the 34px 2-tab bar, dedicated 44px Action & Status strip, clean card fonts, and 156x26 switches; and clamped right-anchored switches/sliders across DynamicVault, DynamicMail, DynamicBags, DynamicFPS, and DynamicSuite_UI cleanly down to 800x520." },
                 { badge = "NEW",      title = "v2.4.0 Release: New DynamicMail Module (/dmail), Smart Quick-Attach Presets, Alt Vault Picker & Quick Gold", desc = "Added DynamicMail as DynamicSuite's 9th dual-mode module with 1-click Inbox Open All, AH Gold, and Items Only collection; Shift+Click inbox quick-loot and Expiring (<3d) alerts; automatic COD and bag-reserve protection; a 4-tab Recipient Picker synced with DynamicBags Alt Vault (class colours, gold balances, Pending Alt Mail Sent badges & Favourite stars); 1-click Quick-Attach presets ([+ Mats], [+ BoE], [+ Warband], [+ Same]) + Quick Gold buttons ([+1k g], [+10k g], [+100k]); Alt + Left-Click Express Multi-Attach; and lifetime telemetry." },
                 { badge = "FIXED",    title = "v2.3.2 Release (18/11/2026): Proactive DecorVendor /tm Quarantine Modal & Tier-1 Conflict Protection", desc = "Promoted DecorVendor ('Decor Vendor') to a Tier-1 HARD conflict under DynamicMarker across Guided Setup, module conflict banners, and /ds conflicts, and added a Midnight Pitch Black (#06070A-#090A0D) Obsidian warning modal ('Raid Marker Blocked by Addon Conflict', safely deferred until out of combat) whenever DecorVendor is active on login/reload or whenever World of Warcraft blocks SetRaidTarget() / SetRaidTargetIcon(). Includes a 1-click 'Disable <Addon> (Set to Never)' button across all DynamicLoad zone profiles, session-throttled Dismiss, and plain-English instructions to completely Exit & Restart World of Warcraft." },
@@ -8897,12 +8898,13 @@ function addonTable.CreateMainConfigUI()
             key = "prep",
             tabLabel = "DynamicPrep",
             ver = DS_LIVE_VER_TAG,
-            date = "16/11/2026 (Retail 12.1.5)",
+            date = "21/11/2026 (Retail 12.1.5)",
             title = "DynamicPrep " .. DS_LIVE_VER_TAG,
             subtitle = "Readiness Omni-Bar, Clickable Raid Buffs & World/Survival QoL (/dprep)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
             openModule = "DynamicPrep",
             items = {
+                { badge = "NEW",      title = "v2.7.1 Release (21/11/2026): Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Binds, LFR/Normal Merge, 'Talent Binds' & 4px Scrollbars", desc = "Aligned Left-Click (Switch Active Specialisation out of combat) and Right-Click (Loot Specialisation) across Prep Bar and Talent Dock with matching plain Australian English tooltips; added 'All' + multi-select M+ dungeon tiles with specific-over-All reminder precedence; merged LFR and Normal into 'LFR / Normal'; renamed 'Boss Binds' to 'Talent Binds'; and added a 4px 3-way Obsidian scrollbar to Talent Loadouts Manager dropdowns." },
                 { badge = "UI",       title = "v2.3.0 Release: Relocated Blizzard Desktop Window Manager to Suite Studio (/ds windows) & 3-Way Scrollbar Upgrade", desc = "Relocated the Blizzard Desktop Window Manager from DynamicPrep Tab 3 into DynamicSuite Core ('Suite Studio -> Desktop Windows & Menus', /ds windows) with automatic SavedVariables migration and backward-compatible bridge stubs so Tab 3 focuses purely on World, Instance & Survival Automation; upgraded StyleObsidianScrollBar to full 3-way interaction; and registered DynamicPrep's dropdown and bar popover closers with UI.RegisterPopupCloser." },
                 { badge = "FIXED",    title = "v2.2.0 Release: Secure Blizzard Window Probe Attribute Fix", desc = "Renamed the Blizzard window secure handler probe attribute from '_ds_probe' to 'ds_probe' inside EnsureSecureHandler() so restricted attribute validation in Blizzard's RestrictedFrames.lua passes cleanly on login and /reload without triggering an 'Invalid attribute name' Lua error." },
                 { badge = "FIXED",    title = "v2.2.0 Release: Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD", desc = "Expanded ParseFoodBenefitFromTooltipText to match Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (+1,250 Haste), and 'Highest Secondary Stat' (+445 Highest Sec); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallbacks) in ScanOwnedFoods; and displayed each food's exact stat benefit in the Raid Buffs HUD tooltip title and body." },
@@ -16565,7 +16567,7 @@ function addonTable.CreateMainConfigUI()
             f.UpdateRailScrollBar()
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.7.0"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.7.1"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -17423,7 +17425,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.7.0") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.7.1") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -17484,7 +17486,7 @@ function addonTable.HookGameMenu()
             cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
             if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
-            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.7.0") .. "|r")
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.7.1") .. "|r")
             openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
             if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
@@ -17592,7 +17594,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "2.7.0",
+        version = addonTable.ADDON_VERSION or "2.7.1",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,

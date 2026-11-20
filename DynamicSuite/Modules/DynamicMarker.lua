@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.7.0"
+    local fb = fallback or "2.7.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -11059,6 +11059,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "21/11/2026",
     entries = {
+        { type = "IMPROVED", text = "Release v2.7.1 - Version & Coexistence Lockstep Parity (21/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.7.1 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "UI",       text = "Release v2.7.0 - Live Suite Accent Parity & Clean Header Clamping (21/11/2026): Updated standalone Edit HUD buttons, the HUD Edit Inspector [Apply All] action button, and conflict reload modals to follow the live Suite Accent colour cleanly instead of Blaze Orange fallbacks, and clamped the Focus and World Flare HUD section titles beside their Edit HUD buttons so headers never collide at 800x520." },
         { type = "IMPROVED", text = "Release v2.4.0 - Version & Coexistence Lockstep Parity (18/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks cleanly to v2.4.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "FIX",      text = "Release v2.3.2 - Proactive DecorVendor /tm Quarantine & Obsidian Modal (18/11/2026): Promoted DecorVendor ('Decor Vendor') to a Tier-1 HARD conflict across Guided Setup and the Conflict Banner, and added a Midnight Pitch Black (#06070A-#090A0D) Obsidian warning modal ('Raid Marker Blocked by Addon Conflict', safely deferred until out of combat) across bundled and standalone modes whenever DecorVendor is active on login/reload or whenever World of Warcraft blocks SetRaidTarget() / SetRaidTargetIcon(). Includes 1-click 'Disable <Addon> (Set to Never)', session-throttled Dismiss, plain-English Exit & Restart instructions, and v2.3.2 lockstep parity." },
