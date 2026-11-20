@@ -4156,15 +4156,15 @@ function DynamicPrep:SuppressDialogueUIForGossipSkip()
     if self:GetActiveGossipCameraConflict() then
         return
     end
+    -- NOTE: NEVER call _G.GossipFrame:Hide() or dui:Hide() before SelectOption;
+    -- Blizzard's GossipFrame:OnHide calls C_GossipInfo.CloseGossip(), which cancels
+    -- the NPC/object interaction before C_GossipInfo.SelectOption() can execute.
     self._autoSkippingGossip = true
     if self._dialogueUIRestoreTimer then
         pcall(function() self._dialogueUIRestoreTimer:Cancel() end)
         self._dialogueUIRestoreTimer = nil
     end
     pcall(function()
-        if _G.GossipFrame and _G.GossipFrame.Hide then
-            _G.GossipFrame:Hide()
-        end
         local dui = _G.DUIQuestFrame
         if dui then
             if not self._duiOnShowHooked and type(dui.HookScript) == "function" then
@@ -4173,22 +4173,20 @@ function DynamicPrep:SuppressDialogueUIForGossipSkip()
                     if DynamicPrep._autoSkippingGossip then
                         pcall(function()
                             if frame.SetAlpha then frame:SetAlpha(0) end
-                            if frame.Hide then frame:Hide() end
                         end)
                     end
                 end)
             end
             if dui.SetAlpha then dui:SetAlpha(0) end
-            if dui.Hide then dui:Hide() end
         end
     end)
     if C_Timer and C_Timer.NewTimer then
-        self._dialogueUIRestoreTimer = C_Timer.NewTimer(0.80, function()
+        self._dialogueUIRestoreTimer = C_Timer.NewTimer(0.60, function()
             DynamicPrep._dialogueUIRestoreTimer = nil
             DynamicPrep:RestoreDialogueUIAfterGossipSkip(false)
         end)
     elseif C_Timer and C_Timer.After then
-        C_Timer.After(0.80, function()
+        C_Timer.After(0.60, function()
             DynamicPrep:RestoreDialogueUIAfterGossipSkip(false)
         end)
     end
@@ -4233,7 +4231,11 @@ local function SelectGossipOptionSafe(opt, fallbackIndex)
         return true
     end
     if type(C_GossipInfo.SelectOptionByIndex) == "function" then
-        local idx = (not _IsSecret(opt.orderIndex) and type(opt.orderIndex) == "number") and opt.orderIndex or fallbackIndex or 1
+        -- C_GossipInfo.SelectOptionByIndex is 1-based; opt.orderIndex is 0-based on Retail
+        local idx = fallbackIndex or 1
+        if not fallbackIndex and not _IsSecret(opt.orderIndex) and type(opt.orderIndex) == "number" then
+            idx = opt.orderIndex + 1
+        end
         pcall(C_GossipInfo.SelectOptionByIndex, idx)
         return true
     end
@@ -4494,7 +4496,6 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                     if IsQuestOrSkipGossipOption(opt) and CanAutoSelectGossip(optKey) then
                         if not inCombat or (inInstance and (instType == "party" or instType == "raid" or instType == "scenario")) then
                             MarkGossipSelected(optKey)
-                            self:SuppressDialogueUIForGossipSkip()
                             SelectGossipOptionSafe(opt, i)
                             return
                         end
@@ -4509,7 +4510,9 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                 if optKey and ShouldAutoSelectSingleGossip(opt, inInstance, instType) and CanAutoSelectGossip(optKey) then
                     local bankKind = DetectBankerGossipKind(opt)
                     MarkGossipSelected(optKey)
-                    self:SuppressDialogueUIForGossipSkip()
+                    if bankKind then
+                        self:SuppressDialogueUIForGossipSkip()
+                    end
                     SelectGossipOptionSafe(opt, 1)
                     if bankKind and _G.DynamicBags and type(_G.DynamicBags.PreWarmCompanionBank) == "function" then
                         pcall(_G.DynamicBags.PreWarmCompanionBank, bankKind)
