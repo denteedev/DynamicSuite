@@ -1,5 +1,14 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.6.1 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.6.2 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.6.2 (20/11/2026)
+
+### UI Alignment, Great Vault Dock & DynamicDialogue Fixes (`v2.6.2`, 20/11/2026)
+- **`DynamicVault` Great Vault Top Dock (`anchorTarget` Fix + Flush Width):** Fixed a nil `anchorTarget` Lua error in `RefreshGreatVaultDock()` that prevented Row 2 alt vault chips from rendering inside the Great Vault top bar, tightened the dock height (`58px`) to eliminate empty space, and set `dockInset = 0` so the dock matches the exact width of `WeeklyRewardsFrame`.
+- **Suite-Wide `Edit HUD` Placement Consistency (`DynamicVault`):** Moved `DynamicVault`'s `Edit HUD` button out of the standalone overlay toggle row and into the `TRACKING & MATRIX DISPLAY` section header top-right (matching `DynamicChat`, `DynamicPrep`, `DynamicMarker`, `DynamicLoad`, and `DynamicSuite_UI`), and fixed its 3-argument `CreateEditHudButton` callback wiring.
+- **`DynamicDialogue` Top Bar Status Text:** Shortened the header status string so it never truncates before `Preview Reader` (`Active - Obsidian Reader Ready` / `Auto-Yielding -> <Addon>` / `Paused - Reader Disabled`) and added a hover tooltip displaying the full read-only probe details.
 
 ---
 

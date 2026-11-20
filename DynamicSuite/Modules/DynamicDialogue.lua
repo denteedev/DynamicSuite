@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.1"
+    local fb = fallback or "2.6.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.1"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.2"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.2")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicDialogue", VERSION, _G.DynamicDialogue) then
     return
 end
@@ -1720,13 +1720,28 @@ local function RenderDialogueEmbedded(parent)
     end)
     previewBtn:SetPoint("RIGHT", resetPosBtn, "LEFT", -8, 0)
 
-    local statusLbl = topBar:CreateFontString(nil, "OVERLAY")
-    statusLbl:SetPoint("LEFT", topBar, "LEFT", 12, 0)
-    statusLbl:SetPoint("RIGHT", previewBtn, "LEFT", -10, 0)
+    local statusHit = CreateFrame("Frame", nil, topBar)
+    statusHit:SetPoint("TOPLEFT", topBar, "TOPLEFT", 12, 0)
+    statusHit:SetPoint("BOTTOMRIGHT", previewBtn, "BOTTOMLEFT", -10, 0)
+    statusHit:EnableMouse(true)
+
+    local statusLbl = statusHit:CreateFontString(nil, "OVERLAY")
+    statusLbl:SetPoint("LEFT", statusHit, "LEFT", 0, 0)
+    statusLbl:SetPoint("RIGHT", statusHit, "RIGHT", 0, 0)
     statusLbl:SetJustifyH("LEFT")
     statusLbl:SetWordWrap(false)
     ApplyFont(statusLbl, 11, "OUTLINE")
     root.statusLbl = statusLbl
+    root.statusTooltipText = ""
+    statusHit:SetScript("OnEnter", function(s)
+        if GameTooltip and root.statusTooltipText and root.statusTooltipText ~= "" then
+            GameTooltip:SetOwner(s, "ANCHOR_BOTTOMLEFT")
+            GameTooltip:AddLine("DynamicDialogue Status", 1, 1, 1)
+            GameTooltip:AddLine(root.statusTooltipText, 0.80, 0.85, 0.92, true)
+            GameTooltip:Show()
+        end
+    end)
+    statusHit:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
 
     -- ScrollFrame for Settings Cards
     local sf = CreateFrame("ScrollFrame", nil, root)
@@ -1817,11 +1832,14 @@ local function RenderDialogueEmbedded(parent)
     local function RefreshStatus()
         local yielding, label, reason = DynamicDialogue:GetYieldInfo()
         if yielding then
-            statusLbl:SetText("|cFFFACC15Auto-Yielding to " .. tostring(label) .. "|r  |cFF94A3B8(" .. tostring(reason or "Active") .. ")|r")
+            statusLbl:SetText("|cFFFACC15Auto-Yielding|r  |cFF94A3B8-> " .. tostring(label or "External Addon") .. "|r")
+            root.statusTooltipText = "Auto-Yielding to " .. tostring(label or "External Addon") .. " (" .. tostring(reason or "Active") .. ")."
         elseif db.enabled then
-            statusLbl:SetText("|cFF22C55EActive|r  |cFF94A3B8- Zero conflicting dialogue addons detected (Read-Only Probe OK)|r")
+            statusLbl:SetText("|cFF22C55EActive|r  |cFF94A3B8- Obsidian Reader Ready|r")
+            root.statusTooltipText = "Active - Zero conflicting dialogue addons detected (Read-Only Probe OK). Talk to any quest giver or gossip NPC to open the Obsidian reader."
         else
-            statusLbl:SetText("|cFFF87171Paused|r  |cFF94A3B8- Toggle Enabled below to activate Obsidian Reader|r")
+            statusLbl:SetText("|cFFF87171Paused|r  |cFF94A3B8- Reader Disabled|r")
+            root.statusTooltipText = "Paused - Enable DynamicDialogue Reader below to activate the Obsidian Quest & Gossip reader."
         end
     end
     root.RefreshStatus = RefreshStatus
@@ -1900,7 +1918,7 @@ end
 -- ============================================================================
 DynamicDialogue.CHANGELOG = {
     {
-        version = "2.6.1",
+        version = "2.6.2",
         date = "20/11/2026",
         entries = {
             { type = "FEATURE", text = "Initial Release of DynamicDialogue (v2.6.0): High-contrast Obsidian Quest & Gossip Reader with 1-9 number hotkeys, Space bar Accept/Continue/Complete, interactive reward choice cards with item tooltips, Shift-bypass for native Blizzard frames, draggable reader positioning, live Preview mode, and zero-taint automatic yielding for DialogueUI, Immersion, Storyline, EllesmereUI QoL, and unknown Blizzard frame owners." },

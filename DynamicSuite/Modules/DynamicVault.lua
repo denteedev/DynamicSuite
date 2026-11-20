@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.1"
+    local fb = fallback or "2.6.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.1"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.2"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.2")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicVault", VERSION, _G.DynamicVault) then
     return
 end
@@ -1793,7 +1793,20 @@ local function RenderVaultEmbedded(parent)
         -- Tab 3: Settings & Maintenance
         local sec1 = CreateSectionBox(scrollContent, y)
         local sy = -10
-        local _, dyh = CreateSectionHeader(sec1, sy, "TRACKING & MATRIX DISPLAY", "Configure Great Vault reminders, Alt Vault syncing, and card telemetry.")
+        local hdr1, dyh = CreateSectionHeader(sec1, sy, "TRACKING & MATRIX DISPLAY", "Configure Great Vault reminders, Alt Vault syncing, and card telemetry.")
+        if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.CreateEditHudButton) == "function" then
+            local editBtn = _G.DynamicSuite.UI.CreateEditHudButton(sec1, "Edit HUD", function()
+                db.showScreenOverlay = true
+                if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end
+                if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
+                    _G.DynamicSuite:EnterHudEditMode("PREP", true)
+                end
+            end)
+            if editBtn then
+                editBtn:ClearAllPoints()
+                editBtn:SetPoint("TOPRIGHT", sec1, "TOPRIGHT", -14, -10)
+            end
+        end
         sy = sy + dyh
 
         local _, dy1 = CreateSegmentedSwitchCard(sec1, sy, "Enable DynamicVault Module",
@@ -1824,23 +1837,10 @@ local function RenderVaultEmbedded(parent)
             end)
         sy = sy + dyPrepCap
 
-        local hudCard, dyHud = CreateSegmentedSwitchCard(sec1, sy, "Show Standalone On-Screen Vault Overlay",
-            "Optional separate floating obsidian strip (Off by default). Use Edit HUD to move/position or Shift+Drag; Left-Click opens /dv, Right-Click opens Great Vault.",
+        local _, dyHud = CreateSegmentedSwitchCard(sec1, sy, "Show Standalone On-Screen Vault Overlay",
+            "Optional separate floating obsidian strip (Off by default). Use Edit HUD in the header above or Shift+Drag to move; Left-Click opens /dv, Right-Click opens Great Vault.",
             function() return db.showScreenOverlay == true end,
             function(v) db.showScreenOverlay = v; if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end end)
-        if hudCard and _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.CreateEditHudButton) == "function" then
-            local editBtn = _G.DynamicSuite.UI.CreateEditHudButton(hudCard, function()
-                db.showScreenOverlay = true
-                if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end
-                if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
-                    _G.DynamicSuite:EnterHudEditMode("PREP")
-                end
-            end)
-            if editBtn then
-                editBtn:ClearAllPoints()
-                editBtn:SetPoint("RIGHT", hudCard, "RIGHT", -196, 0)
-            end
-        end
         sy = sy + dyHud
 
         local _, dySkin = CreateSegmentedSwitchCard(sec1, sy, "Great Vault Top Dock Skin: Auto-Match External UI",
@@ -2034,7 +2034,7 @@ local function RefreshGreatVaultDock()
     local surf, acc = GetOverlayTheme()
     if not vaultDockFrame then
         local bar = CreateFrame("Frame", "DynamicVaultBlizzDock", wf, "BackdropTemplate")
-        bar:SetHeight(64)
+        bar:SetHeight(58)
         bar:SetFrameStrata("HIGH")
         bar:SetFrameLevel((wf:GetFrameLevel() or 1) + 5)
         bar:EnableMouse(true)
@@ -2046,15 +2046,15 @@ local function RefreshGreatVaultDock()
 
         bar.headText = bar:CreateFontString(nil, "OVERLAY")
         SetFontSafe(bar.headText, 11, "")
-        bar.headText:SetPoint("TOPLEFT", bar, "TOPLEFT", 12, -8)
-        bar.headText:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -124, -8)
+        bar.headText:SetPoint("TOPLEFT", bar, "TOPLEFT", 10, -7)
+        bar.headText:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -124, -7)
         bar.headText:SetJustifyH("LEFT")
         bar.headText:SetWordWrap(false)
 
         bar.openMatrixBtn = CreateStyledButton(bar, "Full Matrix (/dv)", 108, 20, false, function()
             DynamicVault:Open()
         end)
-        bar.openMatrixBtn:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -10, -6)
+        bar.openMatrixBtn:SetPoint("TOPRIGHT", bar, "TOPRIGHT", -8, -5)
 
         bar.chips = {}
         vaultDockFrame = bar
@@ -2066,15 +2066,14 @@ local function RefreshGreatVaultDock()
     ApplyBackdrop(bar, surf.bg, { acc.r, acc.g, acc.b, 0.72 })
     bar.topAcc:SetColorTexture(acc.r, acc.g, acc.b, 1.0)
 
-    -- Dock cleanly above WeeklyRewardsFrame itself (never oversized BackgroundTile)
-    -- inset cleanly so the bar is always equal to or slightly narrower than the Great Vault window.
+    -- Dock flush edge-to-edge above WeeklyRewardsFrame (exact width match, never oversized BackgroundTile)
     local wfW = (wf.GetWidth and SafeNum(wf:GetWidth(), 860)) or 860
-    local dockInset = (wfW > 960) and 48 or 14
+    local dockInset = 0
 
     bar:ClearAllPoints()
     local uiTop = (UIParent and UIParent.GetTop and UIParent:GetTop()) or 1080
     local wfTop = (wf.GetTop and wf:GetTop()) or 600
-    if (uiTop - wfTop) < 72 then
+    if (uiTop - wfTop) < 66 then
         bar:SetPoint("TOPLEFT", wf, "BOTTOMLEFT", dockInset, -6)
         bar:SetPoint("TOPRIGHT", wf, "BOTTOMRIGHT", -dockInset, -6)
     else
@@ -2101,7 +2100,7 @@ local function RefreshGreatVaultDock()
     -- Render compact alt vault chips on Row 2 (automatically visible, zero clicks needed)
     for _, chip in ipairs(bar.chips) do chip:Hide() end
     local sorted = GetSortedCharacters(db)
-    local barW = (anchorTarget.GetWidth and anchorTarget:GetWidth()) or (wf.GetWidth and wf:GetWidth()) or 900
+    local barW = math.max(400, wfW - (dockInset * 2))
     local maxChips = math.max(1, math.min(8, math.floor((barW - 20) / 146)))
     local xPos = 10
     for i = 1, math.min(#sorted, maxChips) do
@@ -2109,7 +2108,7 @@ local function RefreshGreatVaultDock()
         local chip = bar.chips[i]
         if not chip then
             chip = CreateFrame("Button", nil, bar, "BackdropTemplate")
-            chip:SetSize(140, 26)
+            chip:SetSize(140, 24)
             chip.fs = chip:CreateFontString(nil, "OVERLAY")
             SetFontSafe(chip.fs, 9.5, "")
             chip.fs:SetPoint("LEFT", chip, "LEFT", 7, 0)
@@ -2119,7 +2118,7 @@ local function RefreshGreatVaultDock()
             bar.chips[i] = chip
         end
         chip:ClearAllPoints()
-        chip:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", xPos, 7)
+        chip:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", xPos, 6)
         xPos = xPos + 146
 
         local v = ch.vault or {}
@@ -2213,7 +2212,7 @@ local function RefreshScreenOverlay()
                 GameTooltip:AddDoubleLine(string.format("|cFF%s%s|r", hex, SafeStr(ch.name, "?")), right, 1, 1, 1, 0.78, 0.85, 0.94)
             end
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("Left-Click: Open Great Vault  |  Right-Click: /dv  |  Shift+Drag: Move", 0.58, 0.65, 0.74)
+            GameTooltip:AddLine("Left-Click: /dv  |  Right-Click: Open Great Vault  |  Shift+Drag: Move", 0.58, 0.65, 0.74)
             GameTooltip:Show()
         end)
         f:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
