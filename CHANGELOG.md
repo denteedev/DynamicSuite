@@ -1,5 +1,22 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.6.0 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.6.1 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.6.1 (20/11/2026)
+
+### DynamicPrep & DynamicVault Integration (`v2.6.1`, 20/11/2026)
+- **Unified Great Vault Capsule in `DynamicPrep` Top Info Bar:** Integrated a compact **Great Vault Capsule** directly into `DynamicPrep`'s Top Info Bar (`Prep Bar`) showing live `R / M+ / D` progress and unclaimed reward badges, with full hover tooltips (Next-Slot progress, Raid Lockouts, Today's Bountiful Delves, and alts). Left-Click opens `/dv`; Right-Click opens Blizzard's Great Vault. Kept the standalone On-Screen Vault Overlay Off by default with a Blaze-Orange `Edit HUD` button.
+- **Consistent Coloured `[Group] Name` Talent Labels Everywhere:** Standardised Talent Loadout formatting across the Left-Hand Talent Dock, Prep Bar, Swap Alert Toast, Boss/M+ Binding Manager, and chat swap announcements (`Switching to [Group] Name...`) using identical group badge colours (`Raid`, `M+`, `Delves`, `PvP`, `Custom`).
+- **Talent Manager & Left-Hand Talent Dock Upgrades:**
+  - Added an embedded **Quick Spec & Loot Spec Switcher** bar at the top of the Left-Hand Talent Dock (Left-Click switches Spec, Right-Click sets Loot Spec) and displayed bound Raid Boss (`#1 BossName`) / M+ Dungeon tags directly on each loadout row.
+  - Added a 1-click `[Copy String]` button in Tab 1 (Loadout Library), replaced Raid/Boss/Build cycling in Tab 2 with real **Obsidian Dropdown Menus**, restricted Raid selection to current-tier Raid instances in exact Encounter Journal boss order (`1. Boss`, `2. Boss`, ...), added an **8-Icon M+ Dungeon Portal Grid**, enforced clean 1-to-1 default bindings per Boss/Dungeon, and added a `[Test Alert Toast]` button that automatically stacks `8px` below the Zone Profile Alert Toast so dual alerts never overlap.
+- **`DynamicVault` Polish & Great Vault Dock Alignment:** Fixed `DynamicVault`'s `Off` switch styling to Option 3 Slate-Charcoal (`#1E2430` + `#64748B` border) and constrained the Great Vault Top Dock (`WeeklyRewardsFrame`) strictly within the native window width instead of extending across `BackgroundTile`.
+
+### DynamicDialogue, DynamicMail & DynamicGroup Fixes (`v2.6.1`, 20/11/2026)
+- **`DynamicDialogue` Live NPC Triggering, Header Layout, Accent Sync & Icon:** Fixed false-positive auto-yielding on Retail 12.1.5 (where `GOSSIP_SHOW`/`QUEST_DETAIL` are registered on `UIParent` rather than `GossipFrame`/`QuestFrame`), prevented the status text from overlapping the `Preview Reader` button, unpacked `UI.GetActiveAccentColor()` properly so buttons match the live Suite Accent, and regenerated `icon_mod_dialogue.tga` as pure monochrome white matching all other Left-Rail icons.
+- **`DynamicMail` Reliable Empty Letter Deletion (`Open & Del`):** Renamed `Clear Empty` to `Open & Del` and updated batch deletion to open unread empty text letters via `GetInboxText()` before calling `DeleteInboxItem()`, preventing deleted letters from reappearing.
+- **`DynamicGroup` Recycled Row Role Icons, Async Rating Refresh & Keystone Deserter Handling:** Restored `Enumerate` role-icon alpha on all early returns to prevent recycled ScrollBox rows from losing icons, re-rendered visible rows immediately on `LFG_LIST_SEARCH_RESULT_UPDATED`, excluded Blizzard's `LeaverIcon` from role slot anchors, and added safe Keystone Deserter (`Deserter`) detection alongside region and rating badges.
 
 ---
 

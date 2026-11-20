@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.0"
+    local fb = fallback or "2.6.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.0"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.1"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicVault", VERSION, _G.DynamicVault) then
     return
 end
@@ -1009,8 +1009,8 @@ local function CreateSegmentedSwitchCard(parent, yOffset, title, desc, getter, s
             ApplyBackdrop(btnOn, { a.r * 0.42, a.g * 0.42, a.b * 0.42, 0.98 }, { a.r, a.g, a.b, 0.95 })
             onFs:SetTextColor(1, 1, 1, 1)
         else
-            ApplyBackdrop(btnOff, { 0.957 * 0.22, 0.247 * 0.22, 0.369 * 0.22, 0.96 }, { 0.957, 0.247, 0.369, 0.85 })
-            offFs:SetTextColor(1, 0.86, 0.89, 1)
+            ApplyBackdrop(btnOff, { 0.118, 0.141, 0.188, 0.98 }, { 0.392, 0.455, 0.545, 0.90 })
+            offFs:SetTextColor(0.886, 0.910, 0.941, 1)
             offBar:Show()
             ApplyBackdrop(btnOn, { 0.043, 0.051, 0.071, 0.0 }, { 0, 0, 0, 0 })
             onFs:SetTextColor(0.52, 0.58, 0.68, 0.90)
@@ -1808,10 +1808,39 @@ local function RenderVaultEmbedded(parent)
             function(v) db.dockOnGreatVault = v; if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end end)
         sy = sy + dyDock
 
-        local _, dyHud = CreateSegmentedSwitchCard(sec1, sy, "Show Compact On-Screen Vault Overlay",
-            "Optional floating obsidian strip showing Vault slots, Keys & Reset timer (hover for all alts, Shift+Drag to move, Left-Click Great Vault, Right-Click /dv).",
+        local _, dyPrepCap = CreateSegmentedSwitchCard(sec1, sy, "Show Great Vault Capsule on Prep Bar (Recommended)",
+            "Integrates a compact Great Vault capsule directly into DynamicPrep's Top Info Bar (Left-Click /dv, Right-Click Great Vault, hover for all alts). Zero extra screen boxes.",
+            function()
+                return _G.DynamicPrepDB and _G.DynamicPrepDB.segments and _G.DynamicPrepDB.segments.vault == true
+            end,
+            function(v)
+                if type(_G.DynamicPrepDB) == "table" then
+                    _G.DynamicPrepDB.segments = _G.DynamicPrepDB.segments or {}
+                    _G.DynamicPrepDB.segments.vault = (v == true)
+                    if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
+                        pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+                    end
+                end
+            end)
+        sy = sy + dyPrepCap
+
+        local hudCard, dyHud = CreateSegmentedSwitchCard(sec1, sy, "Show Standalone On-Screen Vault Overlay",
+            "Optional separate floating obsidian strip (Off by default). Use Edit HUD to move/position or Shift+Drag; Left-Click opens /dv, Right-Click opens Great Vault.",
             function() return db.showScreenOverlay == true end,
             function(v) db.showScreenOverlay = v; if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end end)
+        if hudCard and _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.CreateEditHudButton) == "function" then
+            local editBtn = _G.DynamicSuite.UI.CreateEditHudButton(hudCard, function()
+                db.showScreenOverlay = true
+                if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end
+                if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
+                    _G.DynamicSuite:EnterHudEditMode("PREP")
+                end
+            end)
+            if editBtn then
+                editBtn:ClearAllPoints()
+                editBtn:SetPoint("RIGHT", hudCard, "RIGHT", -196, 0)
+            end
+        end
         sy = sy + dyHud
 
         local _, dySkin = CreateSegmentedSwitchCard(sec1, sy, "Great Vault Top Dock Skin: Auto-Match External UI",
@@ -2037,29 +2066,20 @@ local function RefreshGreatVaultDock()
     ApplyBackdrop(bar, surf.bg, { acc.r, acc.g, acc.b, 0.72 })
     bar.topAcc:SetColorTexture(acc.r, acc.g, acc.b, 1.0)
 
-    -- Dock cleanly above WeeklyRewardsFrame's visible inner frame (BackgroundTile/Background)
-    -- so left/right edges align pixel-for-pixel across EllesmereUI, ElvUI, and default Blizzard UI.
-    local anchorTarget = wf
-    for _, cand in ipairs({ wf.BackgroundTile, wf.Background }) do
-        if cand and type(cand.GetWidth) == "function" and type(cand.GetLeft) == "function" then
-            local okW, cw = pcall(cand.GetWidth, cand)
-            local okL, cl = pcall(cand.GetLeft, cand)
-            if okW and okL and type(cw) == "number" and cw > 200 and type(cl) == "number" then
-                anchorTarget = cand
-                break
-            end
-        end
-    end
+    -- Dock cleanly above WeeklyRewardsFrame itself (never oversized BackgroundTile)
+    -- inset cleanly so the bar is always equal to or slightly narrower than the Great Vault window.
+    local wfW = (wf.GetWidth and SafeNum(wf:GetWidth(), 860)) or 860
+    local dockInset = (wfW > 960) and 48 or 14
 
     bar:ClearAllPoints()
     local uiTop = (UIParent and UIParent.GetTop and UIParent:GetTop()) or 1080
-    local wfTop = (anchorTarget.GetTop and anchorTarget:GetTop()) or (wf.GetTop and wf:GetTop()) or 600
+    local wfTop = (wf.GetTop and wf:GetTop()) or 600
     if (uiTop - wfTop) < 72 then
-        bar:SetPoint("TOPLEFT", anchorTarget, "BOTTOMLEFT", 0, -6)
-        bar:SetPoint("TOPRIGHT", anchorTarget, "BOTTOMRIGHT", 0, -6)
+        bar:SetPoint("TOPLEFT", wf, "BOTTOMLEFT", dockInset, -6)
+        bar:SetPoint("TOPRIGHT", wf, "BOTTOMRIGHT", -dockInset, -6)
     else
-        bar:SetPoint("BOTTOMLEFT", anchorTarget, "TOPLEFT", 0, 6)
-        bar:SetPoint("BOTTOMRIGHT", anchorTarget, "TOPRIGHT", 0, 6)
+        bar:SetPoint("BOTTOMLEFT", wf, "TOPLEFT", dockInset, 6)
+        bar:SetPoint("BOTTOMRIGHT", wf, "TOPRIGHT", -dockInset, 6)
     end
 
     local secsLeft = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset) and SafeNum(C_DateAndTime.GetSecondsUntilWeeklyReset(), 0) or 0
@@ -2173,9 +2193,9 @@ local function RefreshScreenOverlay()
         end)
         f:SetScript("OnClick", function(_, btn)
             if btn == "RightButton" then
-                DynamicVault:Open()
-            else
                 DynamicVault:OpenBlizzardVault()
+            else
+                DynamicVault:Open()
             end
         end)
         f:SetScript("OnEnter", function(self)
@@ -2228,10 +2248,65 @@ local function RefreshScreenOverlay()
     f:Show()
 end
 
+function DynamicVault:GetPrepBarCapsuleData()
+    local db = EnsureDB()
+    local pKey = GetPlayerKey()
+    local ch = pKey and db.characters and db.characters[pKey]
+    local v = (ch and ch.vault) or {}
+    local total = SafeNum(v.raid and v.raid.unlocked, 0) + SafeNum(v.mplus and v.mplus.unlocked, 0) + SafeNum(v.world and v.world.unlocked, 0)
+    if v.hasAvailableReward then
+        return "|cFFFBBF24Vault: REWARD!|r", true
+    end
+    local col = (total > 0) and "34D399" or "94A3B8"
+    return string.format("Vault |cFF%s%d/9|r", col, total), false
+end
+
+function DynamicVault:PopulatePrepBarTooltip(tooltip)
+    if not tooltip then return end
+    local db = EnsureDB()
+    local pKey = GetPlayerKey()
+    local ch = pKey and db.characters and db.characters[pKey]
+    local v = (ch and ch.vault) or {}
+    local cur = (ch and ch.currencies) or {}
+    local secsLeft = (C_DateAndTime and C_DateAndTime.GetSecondsUntilWeeklyReset) and SafeNum(C_DateAndTime.GetSecondsUntilWeeklyReset(), 0) or 0
+
+    tooltip:AddLine("|cFFCBD5E1Dynamic|r|cFFFFFFFFVault|r  Great Vault Summary", 1, 1, 1)
+    if v.hasAvailableReward then
+        tooltip:AddLine("|cFFFBBF24Unclaimed Great Vault Reward Ready!|r", 0.98, 0.75, 0.14)
+    end
+    tooltip:AddDoubleLine("Raid / M+ / Delves:", string.format("R %d/3  |  M+ %d/3  |  D %d/3",
+        SafeNum(v.raid and v.raid.unlocked, 0),
+        SafeNum(v.mplus and v.mplus.unlocked, 0),
+        SafeNum(v.world and v.world.unlocked, 0)), 0.72, 0.78, 0.86, 1, 1, 1)
+    tooltip:AddDoubleLine("Coffer Keys / Reset:", string.format("|cFFFBBF24%d Keys|r  |  |cFF38BDF8%s|r",
+        SafeNum(cur.cofferKeys, 0), FormatTimeRemaining(secsLeft)), 0.72, 0.78, 0.86, 1, 1, 1)
+
+    local sorted = GetSortedCharacters(db)
+    if #sorted > 1 then
+        tooltip:AddLine(" ")
+        tooltip:AddLine("Account Characters:", 0.64, 0.72, 0.82)
+        for i = 1, math.min(#sorted, 8) do
+            local alt = sorted[i]
+            local av = alt.vault or {}
+            local hex = GetClassHex(alt.classFile)
+            local right = (av.hasAvailableReward == true)
+                and "|cFFFBBF24REWARD READY|r"
+                or string.format("R %d/3  M+ %d/3  D %d/3", SafeNum(av.raid and av.raid.unlocked, 0), SafeNum(av.mplus and av.mplus.unlocked, 0), SafeNum(av.world and av.world.unlocked, 0))
+            tooltip:AddDoubleLine(string.format("|cFF%s%s|r", hex, SafeStr(alt.name, "?")), right, 1, 1, 1, 0.78, 0.85, 0.94)
+        end
+    end
+    tooltip:AddLine(" ")
+    tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open DynamicVault Account Matrix (/dv)|r", 1, 1, 1)
+    tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Open Blizzard Great Vault|r", 1, 1, 1)
+end
+
 function DynamicVault:RefreshOverlays()
     HookWeeklyRewardsFrame()
     RefreshGreatVaultDock()
     RefreshScreenOverlay()
+    if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
+        pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+    end
 end
 
 -- ============================================================================

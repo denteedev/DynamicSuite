@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.0"
+    local fb = fallback or "2.6.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.0"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.1"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMail", VERSION, _G.DynamicMail) then
     return
 end
@@ -1122,6 +1122,20 @@ local function ProcessNextMailStep()
             end
         end
     elseif takeMode == "DELETE" then
+        -- Retail WoW requires unread empty letters to be opened via GetInboxText() before DeleteInboxItem()
+        -- will permanently remove them on the server. Open unread letters on pass 1, then delete on pass 2.
+        local wasRead = false
+        if type(GetInboxHeaderInfo) == "function" then
+            local _, _, _, _, _, _, _, _, rFlag = GetInboxHeaderInfo(targetIdx)
+            wasRead = (rFlag == true)
+        end
+        if not wasRead and type(GetInboxText) == "function" then
+            pcall(GetInboxText, targetIdx)
+            if C_Timer and type(C_Timer.NewTimer) == "function" then
+                batchState.timerHandle = C_Timer.NewTimer(0.26, ProcessNextMailStep)
+            end
+            return
+        end
         if targetDelKey then
             batchState.deleteAttempts = batchState.deleteAttempts or {}
             batchState.deleteAttempts[targetDelKey] = (batchState.deleteAttempts[targetDelKey] or 0) + 1
@@ -1804,9 +1818,9 @@ local function EnsureInboxToolbar()
     end, "Collect Attachments Only", "Loot mails with item attachments while pausing cleanly if bags hit your free-slot reserve.")
     bar.btnItems:SetPoint("LEFT", bar.btnGold, "RIGHT", 5, 0)
 
-    bar.btnClean = CreateOverlayActionBtn(bar, 84, 22, "Clear Empty", false, function()
+    bar.btnClean = CreateOverlayActionBtn(bar, 84, 22, "Open & Del", false, function()
         DynamicMail:StartBatchOpen("CLEAN_EMPTY")
-    end, "Clear Empty Letters", "Delete empty text-only letters (NPC Lost Currency, Postmaster, Auction receipts, and notices with zero gold and zero items). Never deletes COD, items, gold, or GM mail.")
+    end, "Open & Delete Empty Letters", "Opens unread text-only letters and permanently deletes all zero-gold, zero-item notices (NPC Lost Currency, Postmaster, Auction receipts). Never deletes COD, items, gold, or GM mail.")
     bar.btnClean:SetPoint("LEFT", bar.btnItems, "RIGHT", 5, 0)
 
     bar.btnCfg = CreateFrame("Button", nil, bar, "BackdropTemplate")

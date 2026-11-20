@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.0"
+    local fb = fallback or "2.6.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.0"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.1"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicGroup", VERSION, _G.DynamicGroup) then
     return
 end
@@ -1930,6 +1930,23 @@ local function InspectSearchResult(resultID)
     end
 
     local isDelisted = (not IsSecretValue(searchInfo.isDelisted) and searchInfo.isDelisted) and true or false
+    local hasLeaver = false
+    if not IsSecretValue(searchInfo.hasLeaver) and searchInfo.hasLeaver then
+        hasLeaver = true
+    elseif not IsSecretValue(searchInfo.isLeaver) and searchInfo.isLeaver then
+        hasLeaver = true
+    end
+    if not hasLeaver and numMembers > 0 and type(C_LFGList.GetSearchResultPlayerInfo) == "function" then
+        for i = 1, math.min(numMembers, 5) do
+            local pOk, pInfo = pcall(C_LFGList.GetSearchResultPlayerInfo, resultID, i)
+            if pOk and type(pInfo) == "table" and not IsSecretValue(pInfo) then
+                if (not IsSecretValue(pInfo.isLeaver) and pInfo.isLeaver) or (not IsSecretValue(pInfo.isDeserter) and pInfo.isDeserter) then
+                    hasLeaver = true
+                    break
+                end
+            end
+        end
+    end
 
     return {
         resultID = resultID,
@@ -1942,6 +1959,7 @@ local function InspectSearchResult(resultID)
         maxMembers = maxMembers,
         openSlots = math.max(0, maxMembers - numMembers),
         isDelisted = isDelisted,
+        hasLeaver = hasLeaver,
         isFull = (numMembers >= maxMembers),
         tanks = tanks,
         healers = healers,
@@ -2491,6 +2509,48 @@ local function ReadAndSuppressEntryStatus(entry, resultID, isSimPending, isSimCa
     return pendingTimer, terminalStatus
 end
 
+local function RestoreEnumerateIcons(entry, enumSlots)
+    local enumFrame = entry and entry.DataDisplay and entry.DataDisplay.Enumerate
+    if enumFrame then
+        for i = 1, 5 do
+            local ic = enumFrame["Icon" .. i]
+            if ic then
+                if ic.IsObjectType and ic:IsObjectType("Texture") and ic.SetAlpha then
+                    ic:SetAlpha(1)
+                elseif ic.GetRegions then
+                    for _, reg in ipairs({ ic:GetRegions() }) do
+                        if reg and reg.IsObjectType and reg:IsObjectType("Texture") and reg.SetAlpha then
+                            reg:SetAlpha(1)
+                        end
+                    end
+                end
+            end
+        end
+        if type(enumFrame.Icons) == "table" then
+            for _, ic in ipairs(enumFrame.Icons) do
+                if ic then
+                    if ic.IsObjectType and ic:IsObjectType("Texture") and ic.SetAlpha then
+                        ic:SetAlpha(1)
+                    elseif ic.GetRegions then
+                        for _, reg in ipairs({ ic:GetRegions() }) do
+                            if reg and reg.IsObjectType and reg:IsObjectType("Texture") and reg.SetAlpha then
+                                reg:SetAlpha(1)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if enumSlots then
+        for idx = 1, 5 do
+            if enumSlots[idx] then
+                enumSlots[idx]:Hide()
+            end
+        end
+    end
+end
+
 local function OnLFGListSearchEntryUpdate(entry)
     if not entry then return end
     local db = EnsureDB()
@@ -2501,7 +2561,10 @@ local function OnLFGListSearchEntryUpdate(entry)
             entry:SetAlpha(1.0)
         end
         if eState.overlay then
+            RestoreEnumerateIcons(entry, eState.overlay.enumRoleSlots)
             eState.overlay:Hide()
+        else
+            RestoreEnumerateIcons(entry, nil)
         end
         return
     end
@@ -2612,6 +2675,7 @@ local function OnLFGListSearchEntryUpdate(entry)
             eState.dimmedDeclined = nil
             entry:SetAlpha(1.0)
         end
+        RestoreEnumerateIcons(entry, ov.enumRoleSlots)
         ov:Hide()
         if _G.GameTooltip and _G.GameTooltip:IsOwned(entry) then
             _G.GameTooltip:Hide()
@@ -2623,6 +2687,7 @@ local function OnLFGListSearchEntryUpdate(entry)
     end
 
     if db.lfgFilterEnabled and meta.regionKey ~= "PENDING" and db.enabledRegions[meta.regionKey] == false then
+        RestoreEnumerateIcons(entry, ov.enumRoleSlots)
         ov:Hide()
         if ScheduleAsyncResultRefilter then
             ScheduleAsyncResultRefilter()
@@ -2650,6 +2715,7 @@ local function OnLFGListSearchEntryUpdate(entry)
     end
 
     if not db.lfgFilterEnabled or db.showEntryOverlay == false or db.overlayMode == "OFF" or sbAlpha <= 0.01 or pAlpha <= 0.01 then
+        RestoreEnumerateIcons(entry, ov.enumRoleSlots)
         ov:Hide()
         return
     end
@@ -2678,9 +2744,9 @@ local function OnLFGListSearchEntryUpdate(entry)
     end
 
     local showRegion = (meta.regionKey and meta.regionKey ~= "PENDING")
-    local hasScore = (meta.leaderScore and meta.leaderScore > 0)
+    local hasScore = (meta.leaderScore and meta.leaderScore > 0) or (meta.isMythicPlusActivity == true)
     local topPill = ov.topPill
-    if showRegion or hasScore or pendingTimer or terminalStatus then
+    if showRegion or hasScore or pendingTimer or terminalStatus or meta.hasLeaver then
         local parts = {}
         if showRegion then
             local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
@@ -2689,8 +2755,12 @@ local function OnLFGListSearchEntryUpdate(entry)
             parts[#parts + 1] = "|c" .. rc.hex .. cleanReg .. "|r"
         end
         if hasScore then
-            local sHex = GetScoreColorHex(meta.leaderScore)
-            parts[#parts + 1] = "|c" .. sHex .. tostring(meta.leaderScore) .. "|r"
+            local scoreVal = tonumber(meta.leaderScore) or 0
+            local sHex = (scoreVal > 0) and GetScoreColorHex(scoreVal) or "FF64748B"
+            parts[#parts + 1] = "|c" .. sHex .. tostring(scoreVal) .. "|r"
+        end
+        if meta.hasLeaver then
+            parts[#parts + 1] = "|cFFF87171Deserter|r"
         end
         if terminalStatus then
             parts[#parts + 1] = "|cFFF87171" .. terminalStatus .. "|r"
@@ -2736,9 +2806,14 @@ local function OnLFGListSearchEntryUpdate(entry)
                 end
             end
             if #slotAnchors < 5 and enumFrame.GetChildren then
-                local children = { enumFrame:GetChildren() }
-                if #children > 0 then
-                    slotAnchors = children
+                local filteredChildren = {}
+                for _, ch in ipairs({ enumFrame:GetChildren() }) do
+                    if ch and ch ~= enumFrame.LeaverIcon and ch ~= enumFrame.DeserterIcon then
+                        filteredChildren[#filteredChildren + 1] = ch
+                    end
+                end
+                if #filteredChildren > 0 then
+                    slotAnchors = filteredChildren
                 end
             end
             local iconGap = 3
@@ -2857,27 +2932,7 @@ local function OnLFGListSearchEntryUpdate(entry)
                 end
             end
         else
-            if enumFrame then
-                for i = 1, 5 do
-                    local ic = enumFrame["Icon" .. i]
-                    if ic then
-                        if ic.IsObjectType and ic:IsObjectType("Texture") and ic.SetAlpha then
-                            ic:SetAlpha(1)
-                        elseif ic.GetRegions then
-                            for _, reg in ipairs({ ic:GetRegions() }) do
-                                if reg and reg.IsObjectType and reg:IsObjectType("Texture") and reg.SetAlpha then
-                                    reg:SetAlpha(1)
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-            for idx = 1, 5 do
-                if enumSlots[idx] then
-                    enumSlots[idx]:Hide()
-                end
-            end
+            RestoreEnumerateIcons(entry, enumSlots)
         end
     end
 
@@ -8047,6 +8102,12 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
                 local db = EnsureDB()
                 if db.lfgFilterEnabled and not self:DoesResultPassFilters(resultID) then
                     ScheduleAsyncResultRefilter()
+                elseif sp.ScrollBox and sp.ScrollBox.ForEachFrame then
+                    sp.ScrollBox:ForEachFrame(function(frame)
+                        if frame and (frame.resultID == resultID or ResolveLiveResultID(frame) == resultID) then
+                            OnLFGListSearchEntryUpdate(frame)
+                        end
+                    end)
                 end
             end
         end

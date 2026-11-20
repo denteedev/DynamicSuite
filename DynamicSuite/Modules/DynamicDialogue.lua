@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.0"
+    local fb = fallback or "2.6.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.0"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.1"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicDialogue", VERSION, _G.DynamicDialogue) then
     return
 end
@@ -215,12 +215,14 @@ end
 local function GetAccentColor()
     local ui = GetSuiteUI()
     if ui and type(ui.GetActiveAccentColor) == "function" then
-        local ok, c = pcall(ui.GetActiveAccentColor)
-        if ok and type(c) == "table" and c.r then
-            return c.r, c.g, c.b
+        local ok, r, g, b = pcall(ui.GetActiveAccentColor)
+        if ok and type(r) == "table" and r.r then
+            return r.r, r.g, r.b
+        elseif ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            return r, g, b
         end
     end
-    return 0.984, 0.573, 0.235 -- Sunset Coral #FB923C fallback
+    return 0.796, 0.835, 0.882 -- Obsidian Silver #CBD5E1 fallback
 end
 
 local function GetAccentHex()
@@ -369,18 +371,11 @@ function DynamicDialogue:GetYieldInfo()
         end
     else
         -- Standalone read-only fallback probe (zero hooks, zero taint)
-        local qf = _G.QuestFrame
-        local gf = _G.GossipFrame
-        if qf and type(qf.IsEventRegistered) == "function" then
-            local okQ, regQ = pcall(qf.IsEventRegistered, qf, "QUEST_DETAIL")
-            if okQ and regQ == false then
-                return true, "External Dialogue Addon", "QuestFrame QUEST_DETAIL event is unregistered by another addon"
-            end
-        end
-        if gf and type(gf.IsEventRegistered) == "function" then
-            local okG, regG = pcall(gf.IsEventRegistered, gf, "GOSSIP_SHOW")
-            if okG and regG == false then
-                return true, "External Dialogue Addon", "GossipFrame GOSSIP_SHOW event is unregistered by another addon"
+        if _G.UIParent and type(_G.UIParent.IsEventRegistered) == "function" then
+            local okG, regG = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "GOSSIP_SHOW")
+            local okQ, regQ = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "QUEST_DETAIL")
+            if (okG and regG == false) or (okQ and regQ == false) then
+                return true, "External Dialogue Addon", "UIParent quest/gossip dispatch is overridden by another addon"
             end
         end
     end
@@ -1715,11 +1710,6 @@ local function RenderDialogueEmbedded(parent)
     topBar.bg:SetAllPoints()
     topBar.border = CreatePixelBorder(topBar, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
 
-    local statusLbl = topBar:CreateFontString(nil, "OVERLAY")
-    statusLbl:SetPoint("LEFT", topBar, "LEFT", 12, 0)
-    ApplyFont(statusLbl, 11, "OUTLINE")
-    root.statusLbl = statusLbl
-
     local resetPosBtn = CreateActionButton(topBar, 118, 24, "Reset Position", false, function()
         DynamicDialogue:ResetPosition()
     end)
@@ -1729,6 +1719,14 @@ local function RenderDialogueEmbedded(parent)
         DynamicDialogue:ShowPreview()
     end)
     previewBtn:SetPoint("RIGHT", resetPosBtn, "LEFT", -8, 0)
+
+    local statusLbl = topBar:CreateFontString(nil, "OVERLAY")
+    statusLbl:SetPoint("LEFT", topBar, "LEFT", 12, 0)
+    statusLbl:SetPoint("RIGHT", previewBtn, "LEFT", -10, 0)
+    statusLbl:SetJustifyH("LEFT")
+    statusLbl:SetWordWrap(false)
+    ApplyFont(statusLbl, 11, "OUTLINE")
+    root.statusLbl = statusLbl
 
     -- ScrollFrame for Settings Cards
     local sf = CreateFrame("ScrollFrame", nil, root)
@@ -1902,7 +1900,7 @@ end
 -- ============================================================================
 DynamicDialogue.CHANGELOG = {
     {
-        version = "2.6.0",
+        version = "2.6.1",
         date = "20/11/2026",
         entries = {
             { type = "FEATURE", text = "Initial Release of DynamicDialogue (v2.6.0): High-contrast Obsidian Quest & Gossip Reader with 1-9 number hotkeys, Space bar Accept/Continue/Complete, interactive reward choice cards with item tooltips, Shift-bypass for native Blizzard frames, draggable reader positioning, live Preview mode, and zero-taint automatic yielding for DialogueUI, Immersion, Storyline, EllesmereUI QoL, and unknown Blizzard frame owners." },

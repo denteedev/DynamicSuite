@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.0"
+    local fb = fallback or "2.6.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.0")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.1")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -2214,23 +2214,18 @@ DynamicSuite.InspectSmartSubModuleConflict = InspectSmartSubModuleConflict
 function DynamicSuite:ProbeBlizzardFrameConflict(domain)
     local d = tostring(domain or ""):upper()
     if d == "DIALOGUE" then
-        for _, name in ipairs({ "DialogueUI", "DialogUI", "Immersion", "Storyline" }) do
+        for _, name in ipairs({ "DialogueUI", "DialogUI", "Immersion", "Storyline", "QuestFrameFixer" }) do
             if SafeIsAddOnLoaded(name) then
                 return true, FRIENDLY_CONFLICT_NAMES[name] or name, "Known dialogue replacement addon loaded"
             end
         end
-        local qf = _G.QuestFrame
-        if qf and type(qf.IsEventRegistered) == "function" then
-            local okQ, regQ = pcall(qf.IsEventRegistered, qf, "QUEST_DETAIL")
-            if okQ and regQ == false then
-                return true, "External Dialogue Addon", "QuestFrame QUEST_DETAIL event unregistered by another addon"
-            end
-        end
-        local gf = _G.GossipFrame
-        if gf and type(gf.IsEventRegistered) == "function" then
-            local okG, regG = pcall(gf.IsEventRegistered, gf, "GOSSIP_SHOW")
-            if okG and regG == false then
-                return true, "External Dialogue Addon", "GossipFrame GOSSIP_SHOW event unregistered by another addon"
+        -- Retail 12.x dispatches GOSSIP_SHOW / QUEST_DETAIL through UIParent (not GossipFrame/QuestFrame directly).
+        -- Only flag an unknown external dialogue addon if UIParent itself has unregistered GOSSIP_SHOW or QUEST_DETAIL.
+        if _G.UIParent and type(_G.UIParent.IsEventRegistered) == "function" then
+            local okG, regG = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "GOSSIP_SHOW")
+            local okQ, regQ = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "QUEST_DETAIL")
+            if (okG and regG == false) or (okQ and regQ == false) then
+                return true, "External Dialogue Addon", "UIParent quest/gossip dispatch is overridden by another addon"
             end
         end
         return false, nil, nil
