@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.7"
+    local fb = fallback or "2.6.8"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.8")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicDialogue", VERSION, _G.DynamicDialogue) then
     return
 end
@@ -1701,7 +1701,7 @@ local function RenderDialogueEmbedded(parent)
     parent._ddRoot = root
     activeEmbeddedRoot = root
 
-    -- Top Action Bar (34px recessed bar with Preview & Reset Position)
+    -- Top Sub-Tab & Action Bar (matches DynamicVault / DynamicMail / DynamicChat)
     local topBar = CreateFrame("Frame", nil, root)
     topBar:SetHeight(36)
     topBar:SetPoint("TOPLEFT", root, "TOPLEFT", 14, -10)
@@ -1710,19 +1710,45 @@ local function RenderDialogueEmbedded(parent)
     topBar.bg:SetAllPoints()
     topBar.border = CreatePixelBorder(topBar, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
 
-    local resetPosBtn = CreateActionButton(topBar, 118, 24, "Reset Position", false, function()
+    local resetPosBtn = CreateActionButton(topBar, 110, 24, "Reset Position", false, function()
         DynamicDialogue:ResetPosition()
     end)
     resetPosBtn:SetPoint("RIGHT", topBar, "RIGHT", -8, 0)
 
-    local previewBtn = CreateActionButton(topBar, 128, 24, "Preview Reader", true, function()
+    local previewBtn = CreateActionButton(topBar, 118, 24, "Preview Reader", true, function()
         DynamicDialogue:ShowPreview()
     end)
-    previewBtn:SetPoint("RIGHT", resetPosBtn, "LEFT", -8, 0)
+    previewBtn:SetPoint("RIGHT", resetPosBtn, "LEFT", -6, 0)
+
+    local activeSubTab = db.activeSubTab or 1
+    if activeSubTab ~= 1 and activeSubTab ~= 2 then activeSubTab = 1 end
+
+    local tabDefs = {
+        { id = 1, label = "Reader & Controls", w = 136 },
+        { id = 2, label = "Appearance & Sound", w = 148 },
+    }
+    local subTabBtns = {}
+    local tx = 8
+    for _, td in ipairs(tabDefs) do
+        local tb = CreateFrame("Button", nil, topBar)
+        tb:SetSize(td.w, 24)
+        tb:SetPoint("LEFT", topBar, "LEFT", tx, 0)
+        tb.bg = SolidTex(tb, "BACKGROUND", 1, surf.CELL_BG.r, surf.CELL_BG.g, surf.CELL_BG.b, 0.96)
+        tb.bg:SetAllPoints()
+        tb.border = CreatePixelBorder(tb, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
+        tb.txt = tb:CreateFontString(nil, "OVERLAY")
+        tb.txt:SetPoint("CENTER", 0, 0)
+        tb.txt:SetText(td.label)
+        ApplyFont(tb.txt, 11, "")
+        tb._tabId = td.id
+        subTabBtns[td.id] = tb
+        tx = tx + td.w + 6
+    end
 
     local statusHit = CreateFrame("Frame", nil, topBar)
-    statusHit:SetPoint("TOPLEFT", topBar, "TOPLEFT", 12, 0)
-    statusHit:SetPoint("BOTTOMRIGHT", previewBtn, "BOTTOMLEFT", -10, 0)
+    statusHit:SetPoint("LEFT", topBar, "LEFT", tx + 8, 0)
+    statusHit:SetPoint("RIGHT", previewBtn, "LEFT", -10, 0)
+    statusHit:SetHeight(24)
     statusHit:EnableMouse(true)
 
     local statusLbl = statusHit:CreateFontString(nil, "OVERLAY")
@@ -1730,7 +1756,7 @@ local function RenderDialogueEmbedded(parent)
     statusLbl:SetPoint("RIGHT", statusHit, "RIGHT", 0, 0)
     statusLbl:SetJustifyH("LEFT")
     statusLbl:SetWordWrap(false)
-    ApplyFont(statusLbl, 11, "OUTLINE")
+    ApplyFont(statusLbl, 11, "")
     root.statusLbl = statusLbl
     root.statusTooltipText = ""
     statusHit:SetScript("OnEnter", function(s)
@@ -1751,7 +1777,7 @@ local function RenderDialogueEmbedded(parent)
 
     local child = CreateFrame("Frame", nil, sf)
     child:SetWidth(760)
-    child:SetHeight(920)
+    child:SetHeight(460)
     sf:SetScrollChild(child)
     sf:SetScript("OnSizeChanged", function(_, w)
         if w and w > 200 then child:SetWidth(w - 4) end
@@ -1763,11 +1789,12 @@ local function RenderDialogueEmbedded(parent)
 
     local refreshables = {}
 
-    -- Section 1: Reader & Hotkeys
+    -- Tab 1: Reader & Controls (exact tight height, zero dead space)
     local sec1 = CreateFrame("Frame", nil, child)
     sec1:SetPoint("TOPLEFT", child, "TOPLEFT", 0, 0)
     sec1:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, 0)
-    sec1:SetHeight(470)
+    local sec1H = 54 + (6 * 64) - 8 + 14 -- 444px exact fit for 6 rows (56px row + 8px gap) + 14px bottom pad
+    sec1:SetHeight(sec1H)
     sec1.bg = SolidTex(sec1, "BACKGROUND", 0, surf.CARD_BG.r, surf.CARD_BG.g, surf.CARD_BG.b, 0.96)
     sec1.bg:SetAllPoints()
     sec1.border = CreatePixelBorder(sec1, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
@@ -1796,16 +1823,17 @@ local function RenderDialogueEmbedded(parent)
     }
     for _, r in ipairs(rows1) do table.insert(refreshables, r) end
 
-    -- Section 2: Appearance, Audio & Zero-Taint Auto-Yield
+    -- Tab 2: Appearance & Sound (exact tight height, zero dead space; auto-yielding managed centrally in Guided Setup)
     local sec2 = CreateFrame("Frame", nil, child)
-    sec2:SetPoint("TOPLEFT", sec1, "BOTTOMLEFT", 0, -14)
-    sec2:SetPoint("TOPRIGHT", sec1, "BOTTOMRIGHT", 0, -14)
-    sec2:SetHeight(420)
+    sec2:SetPoint("TOPLEFT", child, "TOPLEFT", 0, 0)
+    sec2:SetPoint("TOPRIGHT", child, "TOPRIGHT", 0, 0)
+    local sec2H = 252 + 56 + 14 -- 322px exact fit for 3 sliders + 1 toggle + 14px bottom pad
+    sec2:SetHeight(sec2H)
     sec2.bg = SolidTex(sec2, "BACKGROUND", 0, surf.CARD_BG.r, surf.CARD_BG.g, surf.CARD_BG.b, 0.96)
     sec2.bg:SetAllPoints()
     sec2.border = CreatePixelBorder(sec2, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
 
-    local sec2Hdr = CreateSectionHeader(sec2, "APPEARANCE, SOUNDS & ADDON COMPATIBILITY", "Adjust text readability, subtle sound cues, and automatic yielding to other dialogue addons.", -10)
+    local sec2Hdr = CreateSectionHeader(sec2, "APPEARANCE & SOUND", "Adjust reader scale, panel opacity, body text size, and quest completion chime.", -10)
 
     local rows2 = {
         CreateSliderRow(sec2, -54, "Reader Scale", "Adjust overall size of the Obsidian dialogue reader (70% - 140%).",
@@ -1823,20 +1851,45 @@ local function RenderDialogueEmbedded(parent)
         CreateToggleRow(sec2, -252, "Quest Complete Signature Chime", "Play the DynamicSuite Bloom chime when completing a quest.",
             function() return db.playCompleteChime ~= false end,
             function(v) db.playCompleteChime = v end),
-        CreateToggleRow(sec2, -316, "Auto-Yield to Competing Dialogue Addons", "Automatically step aside if you have DialogueUI, Immersion, Storyline, or another quest reader enabled.",
-            function() return db.autoYield ~= false end,
-            function(v) db.autoYield = v; if root.RefreshStatus then root.RefreshStatus() end end),
     }
     for _, r in ipairs(rows2) do table.insert(refreshables, r) end
+
+    local function ApplySubTab()
+        local nr, ng, nb = GetAccentColor()
+        local pAlpha = GetPillFillAlpha()
+        sec1:SetShown(activeSubTab == 1)
+        sec2:SetShown(activeSubTab == 2)
+        child:SetHeight((activeSubTab == 1) and (sec1H + 12) or (sec2H + 12))
+        sf:SetVerticalScroll(0)
+        for id, tb in pairs(subTabBtns) do
+            if id == activeSubTab then
+                tb.bg:SetColorTexture(nr, ng, nb, pAlpha)
+                tb.border:SetColor(nr, ng, nb, 0.95)
+                tb.txt:SetTextColor(1, 1, 1, 1)
+            else
+                tb.bg:SetColorTexture(surf.CELL_BG.r, surf.CELL_BG.g, surf.CELL_BG.b, 0.96)
+                tb.border:SetColor(surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95)
+                tb.txt:SetTextColor(0.75, 0.80, 0.88, 1)
+            end
+        end
+    end
+
+    for id, tb in pairs(subTabBtns) do
+        tb:SetScript("OnClick", function()
+            activeSubTab = id
+            db.activeSubTab = id
+            ApplySubTab()
+        end)
+    end
 
     local function RefreshStatus()
         local yielding, label, reason = DynamicDialogue:GetYieldInfo()
         if yielding then
-            statusLbl:SetText("|cFFFACC15Auto-Yielding|r  |cFF94A3B8-> " .. tostring(label or "External Addon") .. "|r")
-            root.statusTooltipText = "Auto-Yielding to " .. tostring(label or "External Addon") .. " (" .. tostring(reason or "Active") .. ")."
+            statusLbl:SetText("|cFFFACC15Yielding|r  |cFF94A3B8-> " .. tostring(label or "External Addon") .. "|r")
+            root.statusTooltipText = "Automatically yielding to " .. tostring(label or "External Addon") .. " (" .. tostring(reason or "Active") .. "). Manage competing addons in Guided Setup."
         elseif db.enabled then
             statusLbl:SetText("|cFF22C55EActive|r  |cFF94A3B8- Obsidian Reader Ready|r")
-            root.statusTooltipText = "Active - Zero conflicting dialogue addons detected (Read-Only Probe OK). Talk to any quest giver or gossip NPC to open the Obsidian reader."
+            root.statusTooltipText = "Active - Talk to any quest giver or gossip NPC to open the Obsidian reader."
         else
             statusLbl:SetText("|cFFF87171Paused|r  |cFF94A3B8- Reader Disabled|r")
             root.statusTooltipText = "Paused - Enable DynamicDialogue Reader below to activate the Obsidian Quest & Gossip reader."
@@ -1853,6 +1906,7 @@ local function RenderDialogueEmbedded(parent)
                 if hdr.botLine then hdr.botLine:SetColorTexture(nr, ng, nb, 0.35) end
             end
         end
+        ApplySubTab()
         RefreshStatus()
         for _, r in ipairs(refreshables) do
             if r.Refresh then r.Refresh() end

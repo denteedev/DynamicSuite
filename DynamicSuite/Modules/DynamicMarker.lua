@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.7"
+    local fb = fallback or "2.6.8"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.8")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -8861,7 +8861,7 @@ function DM:BuildWorkspace(parentContainer)
     focusMacroNote:SetJustifyH("LEFT")
     focusMacroNote:SetWordWrap(true)
     self:StyleFont(focusMacroNote, 10, "", COLORS.TextMuted)
-    focusMacroNote:SetText("Note: /tm needs Raid Lead or Assistant in raids. Third-party addons that hook chat or slash commands (such as DecorVendor) can block /tm; if Blizzard locks out SetRaidTarget(), disable the addon and completely restart the game (/reload alone will not clear it).")
+    focusMacroNote:SetText("Note: /tm requires Raid Lead or Assistant in raids. Check Guided Setup if another addon blocks raid markers.")
 
     -- Section 2: [DynamicKick] (Character Macro - Per-Character)
     local p3Sec2 = self:CreateSectionBox(p3, nil, 388)

@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.7"
+    local fb = fallback or "2.6.8"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.8")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMail", VERSION, _G.DynamicMail) then
     return
 end
@@ -426,78 +426,6 @@ end
 
 local function GetOverlayTheme()
     local surf, acc = GetTheme()
-    local db = EnsureDB()
-    if (db.mailSkinMode or "OBSIDIAN") ~= "AUTO" then
-        return surf, acc
-    end
-
-    local euiActive = false
-    if ellesmereFacade and type(ellesmereFacade.GetPanelColor) == "function" then
-        local enabled = true
-        if type(ellesmereFacade.IsEnabled) == "function" then
-            local okE, en = pcall(ellesmereFacade.IsEnabled)
-            if okE then enabled = (en ~= false) end
-        end
-        if enabled then
-            euiActive = true
-            local okP, r, g, b, a = pcall(ellesmereFacade.GetPanelColor)
-            if okP and type(r) == "number" then
-                local panelA = math.max(0.92, tonumber(a) or 0.94)
-                surf = {
-                    bg     = { r, g, b, panelA },
-                    header = { math.max(0, r * 0.72), math.max(0, g * 0.72), math.max(0, b * 0.72), 0.98 },
-                    card   = { math.min(1, r + 0.03), math.min(1, g + 0.03), math.min(1, b + 0.03), 0.96 },
-                    panel  = { math.max(0, r * 0.78), math.max(0, g * 0.78), math.max(0, b * 0.78), 0.98 },
-                    border = { 1, 1, 1, 0.16 },
-                }
-            end
-            if type(ellesmereFacade.GetAccentColor) == "function" then
-                local okA, ar, ag, ab = pcall(ellesmereFacade.GetAccentColor)
-                if okA and type(ar) == "number" then
-                    acc = {
-                        r = ar, g = ag, b = ab,
-                        hex = string.format("%02X%02X%02X", math.floor(ar * 255 + 0.5), math.floor(ag * 255 + 0.5), math.floor(ab * 255 + 0.5)),
-                    }
-                    surf.border = { ar, ag, ab, 0.50 }
-                end
-            end
-        end
-    end
-
-    if not euiActive and type(_G.ElvUI) == "table" and type(_G.ElvUI[1]) == "table" then
-        local E = _G.ElvUI[1]
-        local mailSkinned = E.private and E.private.skins and E.private.skins.blizzard
-            and (E.private.skins.blizzard.enable ~= false) and (E.private.skins.blizzard.mail ~= false)
-        if mailSkinned and type(E.media) == "table" then
-            local bg = E.media.backdropfadecolor or E.media.backdropcolor
-            local hdr = E.media.backdropcolor
-            local bd = E.media.bordercolor
-            local vc = E.media.rgbvaluecolor
-            if type(bg) == "table" then
-                local r, g, b = bg.r or bg[1] or 0.06, bg.g or bg[2] or 0.06, bg.b or bg[3] or 0.06
-                local hr = (type(hdr) == "table" and (hdr.r or hdr[1])) or r
-                local hg = (type(hdr) == "table" and (hdr.g or hdr[2])) or g
-                local hb = (type(hdr) == "table" and (hdr.b or hdr[3])) or b
-                local br = (type(bd) == "table" and (bd.r or bd[1])) or 0
-                local bgg = (type(bd) == "table" and (bd.g or bd[2])) or 0
-                local bb = (type(bd) == "table" and (bd.b or bd[3])) or 0
-                surf = {
-                    bg     = { r, g, b, 0.94 },
-                    header = { math.max(0, hr * 0.85), math.max(0, hg * 0.85), math.max(0, hb * 0.85), 0.98 },
-                    card   = { math.min(1, r + 0.04), math.min(1, g + 0.04), math.min(1, b + 0.04), 0.96 },
-                    panel  = { math.max(0, hr * 0.80), math.max(0, hg * 0.80), math.max(0, hb * 0.80), 0.98 },
-                    border = { br, bgg, bb, 0.95 },
-                }
-            end
-            if type(vc) == "table" and type(vc.r) == "number" then
-                acc = {
-                    r = vc.r, g = vc.g, b = vc.b,
-                    hex = string.format("%02X%02X%02X", math.floor(vc.r * 255 + 0.5), math.floor(vc.g * 255 + 0.5), math.floor(vc.b * 255 + 0.5)),
-                }
-            end
-        end
-    end
-
     return surf, acc
 end
 
@@ -3178,16 +3106,6 @@ local function RenderMailEmbedded(parent)
                 function() return db.mailboxBarEnabled end,
                 function(v) db.mailboxBarEnabled = v; RefreshHostTelemetry() end, false)
             sy = sy + dy1
-
-            local _, dySkin = CreateMultiPillCard(sec1, sy, "Mailbox Overlay Skin",
-                "Auto-Match adapts to EllesmereUI or ElvUI MailFrame skins automatically; Suite Obsidian keeps dark chrome.",
-                {
-                    { value = "AUTO", label = "Auto-Match" },
-                    { value = "OBSIDIAN", label = "Suite Obsidian" },
-                },
-                function() return db.mailSkinMode or "OBSIDIAN" end,
-                function(v) db.mailSkinMode = v; RefreshHostTelemetry(); RefreshInboxBarUI(); RefreshSendPickerUI() end)
-            sy = sy + dySkin
 
             local _, dy2 = CreateMultiPillCard(sec1, sy, "Collection Speed",
                 "Delay between automated inbox takes (Balanced 0.14s works reliably on busy realms).",

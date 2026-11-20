@@ -1,5 +1,16 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.6.7 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.6.8 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.6.8 (21/11/2026)
+
+### Great Vault Dock Alignment, Vault Overlay Cleanup, Prep 13-Capsule Fix, Dialogue 2-Tab Redesign & Copy Polish (`v2.6.8`, 21/11/2026)
+- **Flush Great Vault Top Dock Width (`DynamicVault`):** Anchored `DynamicVaultBlizzDock` directly to `WeeklyRewardsFrame` with the exact `10px` left/right inset and `-2px`/`+2px` vertical offset (`6px` clean gap above the visible inner Vault panel) instead of `BorderContainer` (which external skins like EllesmereUI reparent to a hidden frame), aligning the dock flush with both stock Blizzard and skinned Great Vault windows.
+- **Removed Redundant Standalone Vault Overlay & Per-Module Skin Overrides (`DynamicVault`, `DynamicMail`, `DynamicSuite_UI`):** Removed the standalone On-Screen Vault Overlay (and its `VAULT` HUD Edit Mode target) since Great Vault status lives cleanly inside `DynamicPrep`'s Prep Bar, and removed the `Auto-Match External UI` skin toggles from `DynamicVault` and `DynamicMail` so every module strictly follows Suite Studio's Obsidian surface and active Suite Accent colour.
+- **DynamicPrep 13-Capsule Grid Overflow Fix (`DynamicPrep`):** Sized the `Bar Layout & Style` capsule grid container dynamically to 5 rows (`200px`) for all 13 segments and shifted lower rows cleanly below it so the 13th capsule (`Great Vault`) sits neatly inside the grid box instead of covering `HUD Border Style`.
+- **DynamicDialogue 2-Tab Redesign & Dead-Space Fix (`DynamicDialogue`):** Split `DynamicDialogue` into 2 clean sub-tabs (**Reader & Controls** and **Appearance & Sound**) with exact computed section heights (eliminating the empty gaps at the bottom of both cards), removed the redundant `Auto-Yield` toggle (conflict management belongs centrally in Guided Setup), and matched Suite Studio font styling.
+- **Cramped Copy Cleanup (`DynamicMarker`):** Trimmed the oversized DecorVendor troubleshooting wall of text on `Macro Setup` down to a crisp 1-line note pointing to Guided Setup.
 
 ---
 

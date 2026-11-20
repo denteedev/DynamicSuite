@@ -8,7 +8,7 @@ local addonName, rawAddonTable = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.7"
+    local fb = fallback or "2.6.8"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
+local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.8")
 
 -- Guard E: Version-aware duplicate-install guard if standalone DynamicLoad is installed alongside bundled DynamicSuite
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicLoad", RESOLVED_ADDON_VERSION, _G.DynamicLoad) then

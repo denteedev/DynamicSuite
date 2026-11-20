@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.7"
+    local fb = fallback or "2.6.8"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.7")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.8")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -7708,11 +7708,13 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             self:RefreshWorkspaceView()
         end)
 
-        -- 4x3 Grid of 10 Interactive Pill Cards (Tactile Drag-and-Drop)
+        -- Dynamic 3-column Grid of Interactive Pill Cards (Tactile Drag-and-Drop)
+        local numPillRows = math.max(1, math.ceil(#DEFAULT_SEGMENT_ORDER / 3))
+        local pillStripH = 16 + (numPillRows * 32) + ((numPillRows - 1) * 6)
         local pillStrip = CreateFrame("Frame", nil, card1, "BackdropTemplate")
         pillStrip:SetPoint("TOPLEFT", card1, "TOPLEFT", 14, -54)
         pillStrip:SetPoint("TOPRIGHT", card1, "TOPRIGHT", -14, -54)
-        pillStrip:SetHeight(162)
+        pillStrip:SetHeight(pillStripH)
         SetPixelBackdrop(pillStrip, COLORS.BgVoid, COLORS.BorderSubtle, 1)
         pillStrip:SetScript("OnSizeChanged", function()
             self:LayoutPillGrid()
@@ -8558,7 +8560,8 @@ function DynamicPrep:LayoutTab1CardRows()
     if not ws or not ws.card1 or not ws.tab1Rows then return 758 end
     local card1 = ws.card1
     local tr = ws.tab1Rows
-    local y = -222
+    local stripH = (ws.pillStrip and ws.pillStrip.GetHeight and ws.pillStrip:GetHeight()) or 200
+    local y = -(54 + math.floor(stripH + 0.5) + 8)
 
     for _, row in ipairs({ tr.rBorder, tr.rColorTheme, tr.rStatSort }) do
         row:ClearAllPoints()

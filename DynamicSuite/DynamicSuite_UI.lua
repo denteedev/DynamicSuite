@@ -11380,9 +11380,8 @@ function addonTable.CreateMainConfigUI()
         ["FLARE"]     = { label = "World Flare Bar", header = "POSITIONING: WORLD FLARE BAR", owner = "DynamicMarker", defPoint = "CENTER",     defRelPoint = "CENTER",     defX = 0, defY = -182 },
         ["prepBuffs"] = { label = "Prep Raid Buffs", header = "POSITIONING: PREP RAID BUFFS", owner = "DynamicPrep",   defPoint = "CENTER",     defRelPoint = "CENTER",     defX = 0, defY = 140  },
         ["CHAT"]      = { label = "Chat Frame",      header = "POSITIONING: CHAT FRAME",      owner = "DynamicChat",   defPoint = "BOTTOMLEFT", defRelPoint = "BOTTOMLEFT", defX = 0, defY = 0    },
-        ["VAULT"]     = { label = "Vault Overlay",   header = "POSITIONING: VAULT OVERLAY",   owner = "DynamicVault",  defPoint = "TOP",        defRelPoint = "TOP",        defX = 0, defY = -42  },
     }
-    -- 7 HUD targets for the Master HUD Edit Mode selector
+    -- 6 HUD targets for the Master HUD Edit Mode selector
     local hudTargetDefs = {
         { key = "TOAST",     label = "Alert Toast",   w = 110 },
         { key = "PREP",      label = "Prep Bar",      w = 98 },
@@ -11390,7 +11389,6 @@ function addonTable.CreateMainConfigUI()
         { key = "FLARE",     label = "World Flares",  w = 120 },
         { key = "prepBuffs", label = "Raid Buffs",    w = 108 },
         { key = "CHAT",      label = "Chat Frame",    w = 116 },
-        { key = "VAULT",     label = "Vault Overlay", w = 116 },
     }
 
     local snapGridOverlay = nil
