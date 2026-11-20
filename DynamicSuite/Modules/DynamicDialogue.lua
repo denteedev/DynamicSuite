@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.4"
+    local fb = fallback or "2.6.5"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.4"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.5"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.4")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.5")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicDialogue", VERSION, _G.DynamicDialogue) then
     return
 end
@@ -1772,7 +1772,7 @@ local function RenderDialogueEmbedded(parent)
     sec1.bg:SetAllPoints()
     sec1.border = CreatePixelBorder(sec1, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
 
-    CreateSectionHeader(sec1, "OBSIDIAN QUEST & GOSSIP READER", "High-contrast dialogue presentation with 1-9 option hotkeys and Space confirm.", -10)
+    local sec1Hdr = CreateSectionHeader(sec1, "QUEST & GOSSIP READER", "Clean, easy-to-read dialogue window with 1-9 option keys and Spacebar confirm.", -10)
 
     local rows1 = {
         CreateToggleRow(sec1, -54,  "Enable DynamicDialogue Reader", "Master switch for the Obsidian Quest & Gossip reader.",
@@ -1805,7 +1805,7 @@ local function RenderDialogueEmbedded(parent)
     sec2.bg:SetAllPoints()
     sec2.border = CreatePixelBorder(sec2, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
 
-    CreateSectionHeader(sec2, "APPEARANCE, AUDIO & AUTO-YIELD COEXISTENCE", "Fine-tune readability, signature sound cues, and zero-taint external addon yielding.", -10)
+    local sec2Hdr = CreateSectionHeader(sec2, "APPEARANCE, SOUNDS & ADDON COMPATIBILITY", "Adjust text readability, subtle sound cues, and automatic yielding to other dialogue addons.", -10)
 
     local rows2 = {
         CreateSliderRow(sec2, -54, "Reader Scale", "Adjust overall size of the Obsidian dialogue reader (70% - 140%).",
@@ -1823,7 +1823,7 @@ local function RenderDialogueEmbedded(parent)
         CreateToggleRow(sec2, -252, "Quest Complete Signature Chime", "Play the DynamicSuite Bloom chime when completing a quest.",
             function() return db.playCompleteChime ~= false end,
             function(v) db.playCompleteChime = v end),
-        CreateToggleRow(sec2, -316, "Auto-Yield to Competing Dialogue Addons", "Automatically yield via zero-taint detection to DialogueUI, Immersion, Storyline, EllesmereUI QoL, or unknown frame owners.",
+        CreateToggleRow(sec2, -316, "Auto-Yield to Competing Dialogue Addons", "Automatically step aside if you have DialogueUI, Immersion, Storyline, or another quest reader enabled.",
             function() return db.autoYield ~= false end,
             function(v) db.autoYield = v; if root.RefreshStatus then root.RefreshStatus() end end),
     }
@@ -1845,6 +1845,14 @@ local function RenderDialogueEmbedded(parent)
     root.RefreshStatus = RefreshStatus
 
     root.RefreshAll = function()
+        local nr, ng, nb = GetAccentColor()
+        for _, hdr in ipairs({ sec1Hdr, sec2Hdr }) do
+            if hdr then
+                if hdr.leftBar then hdr.leftBar:SetColorTexture(nr, ng, nb, 1.0) end
+                if hdr.title then hdr.title:SetTextColor(nr, ng, nb, 1.0) end
+                if hdr.botLine then hdr.botLine:SetColorTexture(nr, ng, nb, 0.35) end
+            end
+        end
         RefreshStatus()
         for _, r in ipairs(refreshables) do
             if r.Refresh then r.Refresh() end
@@ -1853,6 +1861,13 @@ local function RenderDialogueEmbedded(parent)
     RefreshStatus()
 
     return root
+end
+
+function DynamicDialogue:ApplyTheme()
+    self:ApplyReaderTheme()
+    if activeEmbeddedRoot and activeEmbeddedRoot.RefreshAll then
+        activeEmbeddedRoot.RefreshAll()
+    end
 end
 
 function DynamicDialogue:ResetModuleDefaults()
@@ -1918,7 +1933,7 @@ end
 -- ============================================================================
 DynamicDialogue.CHANGELOG = {
     {
-        version = "2.6.4",
+        version = "2.6.5",
         date = "20/11/2026",
         entries = {
             { type = "FEATURE", text = "Initial Release of DynamicDialogue (v2.6.0): High-contrast Obsidian Quest & Gossip Reader with 1-9 number hotkeys, Space bar Accept/Continue/Complete, interactive reward choice cards with item tooltips, Shift-bypass for native Blizzard frames, draggable reader positioning, live Preview mode, and zero-taint automatic yielding for DialogueUI, Immersion, Storyline, EllesmereUI QoL, and unknown Blizzard frame owners." },
@@ -1945,7 +1960,7 @@ local function RegisterWithDynamicSuite()
         iconAccent   = ICON_ACCENT,
         slash        = "/dd",
         category     = "Quest & Gossip Dialogue Reader",
-        desc         = "High-contrast Obsidian Quest & Gossip reader with 1-9 option hotkeys, Space accept/complete, reward choice cards, and zero-taint external addon yielding.",
+        desc         = "Clean, easy-to-read Quest and Gossip reader with 1-9 option hotkeys, Spacebar accept and turn-in, clear reward cards, and automatic yielding to other dialogue addons.",
         conflictRegistry = {
             conflicts        = { "DialogueUI", "DialogUI", "Immersion", "Storyline" },
             hardConflicts    = { "DialogueUI", "DialogUI", "Immersion", "Storyline" },
@@ -1962,6 +1977,9 @@ local function RegisterWithDynamicSuite()
             local parent = (type(a) == "table" and a.CreateFrame == nil and b) and b or a
             return RenderDialogueEmbedded(parent)
         end,
+        ApplyTheme          = function() DynamicDialogue:ApplyTheme() end,
+        ApplyThemeToUI      = function() DynamicDialogue:ApplyTheme() end,
+        RefreshTheme        = function() DynamicDialogue:ApplyTheme() end,
         ResetDefaults       = function() DynamicDialogue:ResetModuleDefaults() end,
         ResetModuleDefaults = function() DynamicDialogue:ResetModuleDefaults() end,
         ResetModule         = function() DynamicDialogue:ResetModuleDefaults() end,

@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.4"
+    local fb = fallback or "2.6.5"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.4"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.5"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.4")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.5")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicChat", VERSION, _G.DynamicChat) then
     return
 end
@@ -2978,7 +2978,7 @@ local function EnsureChatLeftRail(entry, panel)
         local _, _, _, hex6 = GetSuiteAccent()
         local totalOnline, friendsOnline, guildOnline = ComputeOnlineFriendsAndGuildCount()
         _G.GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        _G.GameTooltip:AddLine("|cFF" .. hex6 .. "Social & Guild Telemetry|r")
+        _G.GameTooltip:AddLine("|cFF" .. hex6 .. "Social & Guild Overview|r")
         _G.GameTooltip:AddLine(string.format("|cFF94A3B8Friends Online:|r |cFFF8FAFC%d|r   |cFF94A3B8Guild Online:|r |cFFF8FAFC%d|r   |cFF94A3B8Total:|r |cFF%s%d|r", friendsOnline, guildOnline, hex6, totalOnline))
         _G.GameTooltip:AddLine(" ")
         _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Toggle Friends List", "34D399"))
@@ -11190,7 +11190,7 @@ local function RenderChatEmbedded(arg1, arg2)
 
     local c3_mHighlight = CreateCardRow(sec3_mentions, 60,
         "Highlight Mention in Chat",
-        "Prints an accent-highlighted callout in your chat window when a name or keyword matches (safe zero-taint in Retail 12.1.5).",
+        "Prints a highlighted alert in your chat window whenever your name or a keyword is mentioned.",
         "Highlight Mention in Chat",
         "Toggle accent-highlighted chat callouts for mentions and keywords."
     )

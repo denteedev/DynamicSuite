@@ -2635,6 +2635,9 @@ function addonTable.CreateMainConfigUI()
         if f.UpdateThinScrollBar then
             f.UpdateThinScrollBar()
         end
+        if f.UpdateRailScrollBar then
+            f.UpdateRailScrollBar()
+        end
     end)
 
     f:HookScript("OnHide", function()
@@ -3377,7 +3380,7 @@ function addonTable.CreateMainConfigUI()
                 SetStatusCapsuleDisplay(string.format("Max Zoom: |cFFFFFFFF39 yd|r   |   Foliage Shield: |cFF%sActive|r   |   Skyriding & Boss Framing: |cFF22C55EON|r", accHex))
                 return
             elseif addonKey == "DynamicFPS" or shortKey == "fps" then
-                SetStatusCapsuleDisplay(string.format("Zone Graphics Guard: |cFFFFFFFFActive|r   |   SpellQueueWindow: |cFF%sAuto-Tuned|r   |   Ground Mechanics: |cFF22C55EProtected|r", accHex))
+                SetStatusCapsuleDisplay(string.format("Zone Graphics: |cFFFFFFFFActive|r   |   Spell Queue: |cFF%sAuto-Tuned|r   |   Boss Ground Effects: |cFF22C55EProtected|r", accHex))
                 return
             elseif addonKey == "DynamicMarker" or shortKey == "marker" then
                 SetStatusCapsuleDisplay(string.format("FocusMarker Macro: |cFFFFFFFFReady|r   |   DynamicKick: |cFF%sAuto-Spec Sync|r   |   World Flares: |cFF22C55EActive|r", accHex))
@@ -4001,8 +4004,16 @@ function addonTable.CreateMainConfigUI()
     leftRail.divider:SetWidth(1)
 
     do
-    local DEFAULT_MODULE_KEYS = { "load", "marker", "zoom", "fps", "prep", "group", "bags", "chat", "mail", "vault", "dialogue" }
+    local DEFAULT_MODULE_KEYS = { "marker", "group", "prep", "vault", "dialogue", "bags", "mail", "chat", "load", "fps", "zoom" }
     UI.DEFAULT_MODULE_KEYS = DEFAULT_MODULE_KEYS
+
+    function UI.IsUsingCustomRailOrder()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        local saved = gTbl.moduleOrder
+                   or (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.moduleOrder)
+                   or (DynamicLoadDB and DynamicLoadDB.moduleOrder)
+        return (type(saved) == "table" and #saved > 0)
+    end
 
     function UI.GetOrderedModuleList()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
@@ -4012,14 +4023,9 @@ function addonTable.CreateMainConfigUI()
         local list = {}
         local seen = {}
 
-        -- Rule: DynamicLoad is always fixed at index 1
-        table.insert(list, "load")
-        seen["load"] = true
-        seen["DynamicLoad"] = true
-
-        if type(saved) == "table" then
+        if type(saved) == "table" and #saved > 0 then
             for _, key in ipairs(saved) do
-                if key ~= "load" and key ~= "DynamicLoad" and not seen[key] then
+                if not seen[key] then
                     for _, m in ipairs(addonTable.SUITE_MODULE_LIST or {}) do
                         if m.key == key or m.id == key or m.addonName == key then
                             local mKey = m.key or m.id
@@ -4066,7 +4072,7 @@ function addonTable.CreateMainConfigUI()
     end
 
     function UI.MoveRailModule(targetKey, delta)
-        if not targetKey or targetKey == "load" or targetKey == "DynamicLoad" then return end
+        if not targetKey then return end
         local ordered = UI.GetOrderedModuleList()
         local curIdx = nil
         for i, m in ipairs(ordered) do
@@ -4077,7 +4083,7 @@ function addonTable.CreateMainConfigUI()
         end
         if not curIdx then return end
         local newIdx = curIdx + delta
-        newIdx = math.max(2, math.min(#ordered, newIdx))
+        newIdx = math.max(1, math.min(#ordered, newIdx))
         if newIdx == curIdx then return end
 
         local item = table.remove(ordered, curIdx)
@@ -4102,7 +4108,7 @@ function addonTable.CreateMainConfigUI()
     end
 
     function UI.SwapRailModules(key1, key2)
-        if not key1 or not key2 or key1 == "load" or key2 == "load" or key1 == "DynamicLoad" or key2 == "DynamicLoad" or key1 == key2 then return end
+        if not key1 or not key2 or key1 == key2 then return end
         local ordered = UI.GetOrderedModuleList()
         local idx1, idx2 = nil, nil
         for i, m in ipairs(ordered) do
@@ -4298,7 +4304,7 @@ function addonTable.CreateMainConfigUI()
         resetSortTxt:SetTextColor(1, 1, 1, 1)
         GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
         GameTooltip:SetText("Reset Module Order", 1, 1, 1)
-        GameTooltip:AddLine("Restores the canonical suite order (DynamicLoad, Marker, Zoom, FPS, Prep, Group, Bags, Chat).", 0.82, 0.86, 0.92, true)
+        GameTooltip:AddLine("Restores the default 4-category module layout (Combat & Group, Progression & Quests, Inventory & Social, Performance & System).", 0.82, 0.86, 0.92, true)
         GameTooltip:Show()
     end)
     resetSortBtn:SetScript("OnLeave", function(selfBtn)
@@ -4366,32 +4372,210 @@ function addonTable.CreateMainConfigUI()
     railModuleScroll:SetPoint("BOTTOMRIGHT", leftRail, "BOTTOMRIGHT", 0, 152)
     railModuleScroll:SetWidth(RAIL_W)
     railModuleScroll:SetFrameLevel((leftRail:GetFrameLevel() or 6) + 2)
-    if railModuleScroll.SetClipsChildren then railModuleScroll:SetClipsChildren(false) end
+    if railModuleScroll.SetClipsChildren then railModuleScroll:SetClipsChildren(true) end
     railModuleScroll:Show()
     railModuleScroll:EnableMouseWheel(true)
-    railModuleScroll.GetVerticalScroll = function() return 0 end
-    railModuleScroll.SetVerticalScroll = function() end
-    railModuleScroll.UpdateScrollChildRect = function() end
     f.railModuleScroll = railModuleScroll
 
     local railModuleChild = CreateFrame("Frame", nil, railModuleScroll)
     railModuleChild:SetPoint("TOPLEFT", railModuleScroll, "TOPLEFT", 0, 0)
-    railModuleChild:SetSize(RAIL_W, 304)
+    railModuleChild:SetSize(RAIL_W, 498)
     railModuleChild:SetFrameLevel((railModuleScroll:GetFrameLevel() or 8) + 1)
     if railModuleChild.SetClipsChildren then railModuleChild:SetClipsChildren(false) end
     railModuleChild:Show()
     f.railModuleChild = railModuleChild
     f.railCards = railModuleCards
 
-    railModuleScroll:SetScript("OnMouseWheel", function(self, delta)
-        local maxScroll = math.max(0, (railModuleChild:GetHeight() or 0) - (self:GetHeight() or 0))
-        if maxScroll <= 0 then
-            self:SetVerticalScroll(0)
+    local curRailScroll = 0
+
+    -- 3-Way Interactive 4px Obsidian Scrollbar for Left Suite Rail
+    local railScrollTrack = CreateFrame("Frame", nil, railModuleScroll)
+    railScrollTrack:SetPoint("TOPRIGHT", railModuleScroll, "TOPRIGHT", -3, -2)
+    railScrollTrack:SetPoint("BOTTOMRIGHT", railModuleScroll, "BOTTOMRIGHT", -3, 2)
+    railScrollTrack:SetWidth(4)
+    railScrollTrack:SetFrameLevel((railModuleScroll:GetFrameLevel() or 8) + 6)
+    railScrollTrack:EnableMouse(true)
+    railScrollTrack:EnableMouseWheel(true)
+    railScrollTrack.bg = UI.SolidTex(railScrollTrack, "BACKGROUND", 1, 0.035, 0.039, 0.051, 0.90)
+    railScrollTrack.bg:SetAllPoints()
+
+    local railScrollThumb = CreateFrame("Button", nil, railScrollTrack)
+    railScrollThumb:SetWidth(4)
+    railScrollThumb:SetHeight(36)
+    railScrollThumb:SetPoint("TOP", railScrollTrack, "TOP", 0, 0)
+    railScrollThumb:EnableMouse(true)
+    railScrollThumb:EnableMouseWheel(true)
+    railScrollThumb.tex = UI.SolidTex(railScrollThumb, "OVERLAY", 2, 0.42, 0.47, 0.56, 0.85)
+    railScrollThumb.tex:SetAllPoints()
+    railScrollThumb._isDragging = false
+
+    local function UpdateRailScrollBar()
+        local visH = railModuleScroll:GetHeight() or 0
+        if visH <= 10 then
+            local fh = (f:GetHeight() or PANEL_H)
+            visH = math.max(120, fh - HDR_H - DOCK_H - 54 - 152)
+        end
+        local totalH = railModuleChild:GetHeight() or 0
+        local maxRange = math.max(0, totalH - visH)
+        if curRailScroll > maxRange then curRailScroll = maxRange end
+        if curRailScroll < 0 then curRailScroll = 0 end
+
+        railModuleChild:ClearAllPoints()
+        railModuleChild:SetPoint("TOPLEFT", railModuleScroll, "TOPLEFT", 0, curRailScroll)
+
+        if maxRange <= 0.5 then
+            railScrollTrack:Hide()
+            railScrollThumb:Hide()
             return
         end
-        local nextScroll = math.max(0, math.min(maxScroll, (self:GetVerticalScroll() or 0) - (delta * 38)))
-        self:SetVerticalScroll(nextScroll)
+        railScrollTrack:Show()
+        railScrollThumb:Show()
+
+        local trackH = railScrollTrack:GetHeight() or 0
+        if trackH <= 10 then trackH = math.max(40, visH - 4) end
+        local thumbH = math.max(24, math.floor((visH / math.max(1, totalH)) * trackH))
+        thumbH = math.min(trackH, thumbH)
+        railScrollThumb:SetHeight(thumbH)
+
+        local ratio = (maxRange > 0) and (curRailScroll / maxRange) or 0
+        local maxThumbOff = math.max(0, trackH - thumbH)
+        railScrollThumb:ClearAllPoints()
+        railScrollThumb:SetPoint("TOP", railScrollTrack, "TOP", 0, -(ratio * maxThumbOff))
+
+        if railScrollThumb._isDragging or railScrollThumb:IsMouseOver() then
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            railScrollThumb.tex:SetColorTexture(ar, ag, ab, 1.0)
+        else
+            railScrollThumb.tex:SetColorTexture(0.42, 0.47, 0.56, 0.80)
+        end
+    end
+    f.UpdateRailScrollBar = UpdateRailScrollBar
+
+    railModuleScroll.GetVerticalScroll = function() return curRailScroll end
+    railModuleScroll.SetVerticalScroll = function(_, val)
+        local visH = railModuleScroll:GetHeight() or 0
+        if visH <= 10 then
+            visH = math.max(120, (f:GetHeight() or PANEL_H) - HDR_H - DOCK_H - 54 - 152)
+        end
+        local maxRange = math.max(0, (railModuleChild:GetHeight() or 0) - visH)
+        curRailScroll = math.max(0, math.min(maxRange, tonumber(val) or 0))
+        UpdateRailScrollBar()
+    end
+    railModuleScroll.UpdateScrollChildRect = UpdateRailScrollBar
+
+    local function StepRailMouseWheel(_, delta)
+        local visH = railModuleScroll:GetHeight() or 0
+        if visH <= 10 then
+            visH = math.max(120, (f:GetHeight() or PANEL_H) - HDR_H - DOCK_H - 54 - 152)
+        end
+        local maxRange = math.max(0, (railModuleChild:GetHeight() or 0) - visH)
+        if maxRange <= 0.5 then
+            curRailScroll = 0
+            UpdateRailScrollBar()
+            return
+        end
+        curRailScroll = math.max(0, math.min(maxRange, curRailScroll - (delta * 38)))
+        UpdateRailScrollBar()
+    end
+    railModuleScroll:SetScript("OnMouseWheel", StepRailMouseWheel)
+    railScrollTrack:SetScript("OnMouseWheel", StepRailMouseWheel)
+    railScrollThumb:SetScript("OnMouseWheel", StepRailMouseWheel)
+
+    local function StopRailThumbDrag()
+        railScrollThumb._isDragging = false
+        railScrollThumb:SetScript("OnUpdate", nil)
+        UpdateRailScrollBar()
+    end
+    railScrollThumb:SetScript("OnEnter", function()
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        railScrollThumb.tex:SetColorTexture(ar, ag, ab, 1.0)
     end)
+    railScrollThumb:SetScript("OnLeave", function()
+        if not railScrollThumb._isDragging then
+            railScrollThumb.tex:SetColorTexture(0.42, 0.47, 0.56, 0.80)
+        end
+    end)
+    railScrollThumb:SetScript("OnMouseDown", function(selfBtn, button)
+        if button ~= "LeftButton" then return end
+        selfBtn._isDragging = true
+        local _, cy = GetCursorPosition()
+        local scale = selfBtn:GetEffectiveScale() or 1
+        if scale <= 0 then scale = 1 end
+        local dragStartY = (cy or 0) / scale
+        local dragStartScroll = curRailScroll
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        selfBtn.tex:SetColorTexture(ar, ag, ab, 1.0)
+        selfBtn:SetScript("OnUpdate", function()
+            if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+                StopRailThumbDrag()
+                return
+            end
+            local _, curY = GetCursorPosition()
+            local sc = selfBtn:GetEffectiveScale() or 1
+            if sc <= 0 then sc = 1 end
+            local dy = dragStartY - ((curY or 0) / sc)
+            local visH = railModuleScroll:GetHeight() or 350
+            local totalH = railModuleChild:GetHeight() or 498
+            local maxRange = math.max(0, totalH - visH)
+            local trackH = math.max(1, (railScrollTrack:GetHeight() or visH) - (selfBtn:GetHeight() or 24))
+            if maxRange > 0 then
+                curRailScroll = math.max(0, math.min(maxRange, dragStartScroll + (dy / trackH) * maxRange))
+                UpdateRailScrollBar()
+            end
+        end)
+    end)
+    railScrollThumb:SetScript("OnMouseUp", StopRailThumbDrag)
+    railScrollThumb:SetScript("OnHide", StopRailThumbDrag)
+
+    railScrollTrack:SetScript("OnMouseDown", function(selfTrack, button)
+        if button ~= "LeftButton" then return end
+        local trackTop = selfTrack:GetTop()
+        local trackH = selfTrack:GetHeight() or 0
+        if not trackTop or trackH <= 10 then return end
+        local _, cy = GetCursorPosition()
+        local scale = selfTrack:GetEffectiveScale() or 1
+        if scale <= 0 then scale = 1 end
+        local clickY = trackTop - ((cy or 0) / scale)
+        local thumbH = railScrollThumb:GetHeight() or 24
+        local usableH = math.max(1, trackH - thumbH)
+        local ratio = math.max(0, math.min(1, (clickY - (thumbH * 0.5)) / usableH))
+        local visH = railModuleScroll:GetHeight() or 350
+        local maxRange = math.max(0, (railModuleChild:GetHeight() or 498) - visH)
+        curRailScroll = ratio * maxRange
+        UpdateRailScrollBar()
+    end)
+
+    -- 4 Category Sub-Headers inside railModuleChild (shown in default grouped order)
+    local railCategoryHeaders = {}
+    local function GetOrCreateRailCategoryHeader(catKey, catLabel)
+        local hdr = railCategoryHeaders[catKey]
+        if hdr then
+            if hdr.label then hdr.label:SetText(catLabel or "") end
+            return hdr
+        end
+        hdr = CreateFrame("Frame", nil, railModuleChild)
+        hdr:SetSize(RAIL_W - 20, 16)
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        hdr.tick = UI.SolidTex(hdr, "OVERLAY", 3, ar, ag, ab, 0.85)
+        hdr.tick:SetSize(2, 9)
+        hdr.tick:SetPoint("LEFT", hdr, "LEFT", 0, 0)
+
+        hdr.label = hdr:CreateFontString(nil, "OVERLAY")
+        hdr.label:SetPoint("LEFT", hdr.tick, "RIGHT", 5, 0)
+        hdr.label:SetJustifyH("LEFT")
+        hdr.label:SetWordWrap(false)
+        UI.SetFont(hdr.label, 8.5, "", 0.58, 0.65, 0.76, 0.95)
+        hdr.label:SetText(catLabel or "")
+
+        hdr.line = UI.SolidTex(hdr, "ARTWORK", 2, 1, 1, 1, 0.08)
+        hdr.line:SetHeight(1)
+        hdr.line:SetPoint("LEFT", hdr.label, "RIGHT", 6, 0)
+        hdr.line:SetPoint("RIGHT", hdr, "RIGHT", 0, 0)
+
+        railCategoryHeaders[catKey] = hdr
+        return hdr
+    end
+    f.railCategoryHeaders = railCategoryHeaders
 
     local function CreateRailModuleCard(idx, modInfo)
         local card = CreateFrame("Button", nil, railModuleChild)
@@ -4455,7 +4639,7 @@ function addonTable.CreateMainConfigUI()
         card.pillSwitch = pillSwitch
         card.pillThumb = pillThumb
 
-        if shortKey ~= "load" and addonKey ~= "DynamicLoad" then
+        do
             card:RegisterForDrag("LeftButton")
 
             local downBtn = CreateFrame("Button", nil, card)
@@ -4535,9 +4719,9 @@ function addonTable.CreateMainConfigUI()
                     mTitle:SetPoint("TOPLEFT", card, "TOPLEFT", 28, -5)
                     mTitle:SetPoint("RIGHT", pillSwitch, "LEFT", -6, 0)
                 else
-                    local totalCount = #railModuleCards > 0 and #railModuleCards or 8
-                    local rIdx = card.railIndex or 2
-                    local showUp = (rIdx > 2)
+                    local totalCount = #railModuleCards > 0 and #railModuleCards or 11
+                    local rIdx = card.railIndex or 1
+                    local showUp = (rIdx > 1)
                     local showDown = (rIdx < totalCount)
 
                     if showUp and showDown then
@@ -4588,7 +4772,6 @@ function addonTable.CreateMainConfigUI()
             end)
 
             card:SetScript("OnDragStart", function(self)
-                if (self.railIndex or 1) <= 1 then return end
                 railSwapArmedKey = nil
                 self._isDragging = true
                 if self.upBtn then self.upBtn:Hide() end
@@ -4631,8 +4814,19 @@ function addonTable.CreateMainConfigUI()
                         local ordered = UI.GetOrderedModuleList()
                         local scrollTop = (railModuleScroll and railModuleScroll:GetTop()) or (railTop - 54)
                         local scrollOff = (railModuleScroll and railModuleScroll:GetVerticalScroll()) or 0
-                        local rawSlot = math.floor((((scrollTop - ly + scrollOff) / 38)) + 1.5)
-                        local targetSlot = math.max(2, math.min(#ordered, rawSlot))
+                        local cursorRelY = scrollTop - ly + scrollOff
+                        local targetSlot = nil
+                        for i, rc in ipairs(railModuleCards) do
+                            local cTop = rc._railY or ((i - 1) * 38)
+                            if cursorRelY < (cTop + 19) then
+                                targetSlot = i
+                                break
+                            end
+                        end
+                        if not targetSlot then
+                            targetSlot = #ordered
+                        end
+                        targetSlot = math.max(1, math.min(#ordered, targetSlot))
                         if targetSlot ~= self.railIndex then
                             local curIdx = nil
                             for i, m in ipairs(ordered) do
@@ -4798,9 +4992,6 @@ function addonTable.CreateMainConfigUI()
 
         card:SetScript("OnClick", function(self, button)
             if button == "RightButton" then
-                if shortKey == "load" or addonKey == "DynamicLoad" then
-                    return
-                end
                 if not railSwapArmedKey then
                     railSwapArmedKey = shortKey
                 elseif railSwapArmedKey == shortKey or railSwapArmedKey == addonKey then
@@ -4814,7 +5005,7 @@ function addonTable.CreateMainConfigUI()
             end
 
             if railSwapArmedKey then
-                if railSwapArmedKey ~= shortKey and railSwapArmedKey ~= addonKey and shortKey ~= "load" and addonKey ~= "DynamicLoad" then
+                if railSwapArmedKey ~= shortKey and railSwapArmedKey ~= addonKey then
                     UI.SwapRailModules(railSwapArmedKey, shortKey)
                     railSwapArmedKey = nil
                     if RefreshLeftRailVisuals then RefreshLeftRailVisuals() end
@@ -4988,37 +5179,132 @@ function addonTable.CreateMainConfigUI()
                 if sBtn and sBtn.Show then sBtn:Show() end
             end
         end
+
         local ordered = UI.GetOrderedModuleList()
+        local isCustom = UI.IsUsingCustomRailOrder and UI.IsUsingCustomRailOrder()
         wipe(railModuleCards)
-        for idx, modInfo in ipairs(ordered) do
-            local aKey = modInfo.addonName or modInfo.name or modInfo.key
-            local sKey = modInfo.id or modInfo.key or tostring(aKey):gsub("^Dynamic", ""):lower()
-            local card = railModuleCardsByKey[sKey] or railModuleCardsByKey[aKey] or (modInfo.key and railModuleCardsByKey[modInfo.key])
-            if not card then
-                card = CreateRailModuleCard(idx, modInfo)
+
+        for _, hdr in pairs(railCategoryHeaders) do
+            if hdr and hdr.Hide then hdr:Hide() end
+        end
+
+        local curY = 0
+        if not isCustom and type(addonTable.SUITE_RAIL_CATEGORIES) == "table" and #addonTable.SUITE_RAIL_CATEGORIES > 0 then
+            local modByKey = {}
+            for _, modInfo in ipairs(ordered) do
+                local aKey = modInfo.addonName or modInfo.name or modInfo.key
+                local sKey = modInfo.id or modInfo.key or tostring(aKey):gsub("^Dynamic", ""):lower()
+                if sKey then modByKey[sKey] = modInfo end
+                if aKey then modByKey[aKey] = modInfo end
+                if modInfo.key then modByKey[modInfo.key] = modInfo end
             end
-            if card then
-                card.modInfo = modInfo
-                if card.modIcon then
-                    card.modIcon:SetTexture(UI.GetModuleIconPath(aKey, modInfo.icon))
+
+            local placed = {}
+            local cardIdx = 0
+            for catIdx, catDef in ipairs(addonTable.SUITE_RAIL_CATEGORIES) do
+                local catMods = {}
+                for _, mKey in ipairs(catDef.modules or {}) do
+                    local mInfo = modByKey[mKey]
+                    if mInfo and not placed[mInfo] then
+                        placed[mInfo] = true
+                        table.insert(catMods, mInfo)
+                    end
                 end
-                card:ClearAllPoints()
-                card:SetPoint("TOPLEFT", railModuleChild, "TOPLEFT", 10, -((idx - 1) * 38))
-                card.railIndex = idx
-                card:Show()
-                if card.UpdateNudgeVisibility then
-                    card.UpdateNudgeVisibility()
+                if #catMods > 0 then
+                    if catIdx > 1 then
+                        curY = curY + 4
+                    end
+                    local hdr = GetOrCreateRailCategoryHeader(catDef.key, catDef.label)
+                    hdr:ClearAllPoints()
+                    hdr:SetPoint("TOPLEFT", railModuleChild, "TOPLEFT", 10, -curY)
+                    hdr:Show()
+                    curY = curY + 17
+
+                    for _, modInfo in ipairs(catMods) do
+                        cardIdx = cardIdx + 1
+                        local aKey = modInfo.addonName or modInfo.name or modInfo.key
+                        local sKey = modInfo.id or modInfo.key or tostring(aKey):gsub("^Dynamic", ""):lower()
+                        local card = railModuleCardsByKey[sKey] or railModuleCardsByKey[aKey] or (modInfo.key and railModuleCardsByKey[modInfo.key])
+                        if not card then
+                            card = CreateRailModuleCard(cardIdx, modInfo)
+                        end
+                        if card then
+                            card.modInfo = modInfo
+                            if card.modIcon then
+                                card.modIcon:SetTexture(UI.GetModuleIconPath(aKey, modInfo.icon))
+                            end
+                            card:ClearAllPoints()
+                            card:SetPoint("TOPLEFT", railModuleChild, "TOPLEFT", 10, -curY)
+                            card.railIndex = cardIdx
+                            card._railY = curY
+                            card:Show()
+                            if card.UpdateNudgeVisibility then
+                                card.UpdateNudgeVisibility()
+                            end
+                            table.insert(railModuleCards, card)
+                            curY = curY + 38
+                        end
+                    end
                 end
-                table.insert(railModuleCards, card)
+            end
+
+            -- Append any extra/third-party registered modules not in the 4 core categories
+            for _, modInfo in ipairs(ordered) do
+                if not placed[modInfo] then
+                    cardIdx = cardIdx + 1
+                    local aKey = modInfo.addonName or modInfo.name or modInfo.key
+                    local sKey = modInfo.id or modInfo.key or tostring(aKey):gsub("^Dynamic", ""):lower()
+                    local card = railModuleCardsByKey[sKey] or railModuleCardsByKey[aKey] or (modInfo.key and railModuleCardsByKey[modInfo.key])
+                    if not card then
+                        card = CreateRailModuleCard(cardIdx, modInfo)
+                    end
+                    if card then
+                        card.modInfo = modInfo
+                        if card.modIcon then
+                            card.modIcon:SetTexture(UI.GetModuleIconPath(aKey, modInfo.icon))
+                        end
+                        card:ClearAllPoints()
+                        card:SetPoint("TOPLEFT", railModuleChild, "TOPLEFT", 10, -curY)
+                        card.railIndex = cardIdx
+                        card._railY = curY
+                        card:Show()
+                        if card.UpdateNudgeVisibility then
+                            card.UpdateNudgeVisibility()
+                        end
+                        table.insert(railModuleCards, card)
+                        curY = curY + 38
+                    end
+                end
+            end
+        else
+            for idx, modInfo in ipairs(ordered) do
+                local aKey = modInfo.addonName or modInfo.name or modInfo.key
+                local sKey = modInfo.id or modInfo.key or tostring(aKey):gsub("^Dynamic", ""):lower()
+                local card = railModuleCardsByKey[sKey] or railModuleCardsByKey[aKey] or (modInfo.key and railModuleCardsByKey[modInfo.key])
+                if not card then
+                    card = CreateRailModuleCard(idx, modInfo)
+                end
+                if card then
+                    card.modInfo = modInfo
+                    if card.modIcon then
+                        card.modIcon:SetTexture(UI.GetModuleIconPath(aKey, modInfo.icon))
+                    end
+                    card:ClearAllPoints()
+                    card:SetPoint("TOPLEFT", railModuleChild, "TOPLEFT", 10, -curY)
+                    card.railIndex = idx
+                    card._railY = curY
+                    card:Show()
+                    if card.UpdateNudgeVisibility then
+                        card.UpdateNudgeVisibility()
+                    end
+                    table.insert(railModuleCards, card)
+                    curY = curY + 38
+                end
             end
         end
-        railModuleChild:SetHeight(math.max(1, #ordered * 38))
-        if railModuleScroll then
-            local maxScroll = math.max(0, (railModuleChild:GetHeight() or 0) - (railModuleScroll:GetHeight() or 0))
-            if (railModuleScroll:GetVerticalScroll() or 0) > maxScroll then
-                railModuleScroll:SetVerticalScroll(maxScroll)
-            end
-        end
+
+        railModuleChild:SetHeight(math.max(1, curY + 4))
+        UpdateRailScrollBar()
         if RefreshLeftRailVisuals then
             RefreshLeftRailVisuals()
         end
@@ -5249,6 +5535,17 @@ function addonTable.CreateMainConfigUI()
 
         if f.headerTitle then
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
+        end
+
+        if f.railCategoryHeaders then
+            for _, hdr in pairs(f.railCategoryHeaders) do
+                if hdr and hdr.tick then
+                    hdr.tick:SetColorTexture(ar, ag, ab, 0.85)
+                end
+            end
+        end
+        if f.UpdateRailScrollBar then
+            f.UpdateRailScrollBar()
         end
 
         for _, card in ipairs(railModuleCards) do
@@ -8475,7 +8772,7 @@ function addonTable.CreateMainConfigUI()
             ver = DS_LIVE_VER_TAG,
             date = "16/11/2026 (Retail 12.1.5)",
             title = "DynamicZoom " .. DS_LIVE_VER_TAG,
-            subtitle = "39-Yard Tactical Camera Engine, Reactive Scroll & Occlusion Shield (/dz)",
+            subtitle = "39-Yard Max Camera Zoom, Fast Scroll & See-Through Foliage (/dz)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_zoom.tga",
             openModule = "DynamicZoom",
             items = {
@@ -8496,7 +8793,7 @@ function addonTable.CreateMainConfigUI()
             ver = DS_LIVE_VER_TAG,
             date = "16/11/2026 (Retail 12.1.5)",
             title = "DynamicFPS " .. DS_LIVE_VER_TAG,
-            subtitle = "Zero-Reload Per-Zone Graphics Governor & Boss Telegraph Safety Lock (/dfps)",
+            subtitle = "Instant Per-Zone Graphics Switcher & Boss Ground-Effect Protection (/dfps)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_fps.tga",
             openModule = "DynamicFPS",
             items = {
@@ -10087,8 +10384,8 @@ function addonTable.CreateMainConfigUI()
                 desc = "Auto-loads your specialisation's Recommended Stat Priority for Midnight Omni Folio and enables lightweight everyday convenience automation.",
                 actionLabel = "Open DynamicPrep (/dprep)",
                 onAction = function() addonTable.OpenPeerModule("DynamicPrep") end,
-                summaryText = "|cFF38BDF8DynamicPrep Zero-OnUpdate Telemetry & QoL:|r\n" ..
-                    "- |cFF22C55EPriority Telemetry Omni-Bar:|r Displays Primary Stat, Ranked Secondaries, Spec/Loot, M+ Keystone, Durability, and FPS/Ping.\n" ..
+                summaryText = "|cFF38BDF8DynamicPrep Readiness Bar & Quick QoL:|r\n" ..
+                    "- |cFF22C55ELive Readiness Bar:|r Displays Primary Stat, Secondary Stats, Spec/Loot, Great Vault, Keystone, Durability, and FPS/Ping.\n" ..
                     "- |cFFF5B82ELead/Assist Smart Visibility:|r Ready Check (+ RC) and Pull Timer (> Pull) automatically appear when you are Party/Raid Lead or Assist.",
                 choices = {
                     {
@@ -10196,7 +10493,7 @@ function addonTable.CreateMainConfigUI()
             table.insert(steps, {
                 key = "zoom",
                 pill = (#steps + 1) .. ". Zoom",
-                title = "DYNAMICZOOM - 39-YARD CAMERA UNLOCK & OCCLUSION SHIELD",
+                title = "DYNAMICZOOM - 39-YARD MAX CAMERA & SEE-THROUGH FOLIAGE",
                 desc = "Unlock the maximum 39-yard tactical overview and stop tree branches, doorways, or dungeon pillars from snapping your camera inward.",
                 actionLabel = "Open DynamicZoom (/dz)",
                 onAction = function() addonTable.OpenPeerModule("DynamicZoom") end,
@@ -10259,7 +10556,7 @@ function addonTable.CreateMainConfigUI()
             table.insert(steps, {
                 key = "fps",
                 pill = (#steps + 1) .. ". FPS",
-                title = "DYNAMICFPS - PICK YOUR PC HARDWARE TIER (ZERO-RELOAD GRAPHICS)",
+                title = "DYNAMICFPS - PICK YOUR PC HARDWARE TIER (INSTANT GRAPHICS SWITCHING)",
                 desc = "Click your PC tier below to pre-configure all 6 Zone Graphics tabs. Boss ground swirlies and projected textures are 100% hard-locked ON.",
                 actionLabel = "Open DynamicFPS (/dfps)",
                 onAction = function() addonTable.OpenPeerModule("DynamicFPS") end,
@@ -10282,14 +10579,14 @@ function addonTable.CreateMainConfigUI()
                         title = "Balanced Visuals & Smooth FPS",
                         badge = (selectedTier == "BALANCED") and "Active Tier" or "Click to Apply",
                         isSelected = function() return selectedTier == "BALANCED" end,
-                        desc = "Rich outdoor scenery with automatic zero-reload reductions when entering Raids, Mythic+ Keys, or busy city hubs.",
+                        desc = "Rich outdoor visuals with instant automatic graphics reductions when entering Raids, Mythic+, or busy cities.",
                         onClick = function(card) ApplyTierToAllCombatZones("BALANCED", card) end,
                     },
                     {
                         title = "High-End PC Ultra",
                         badge = (selectedTier == "ULTRA") and "Active Tier" or "Click to Apply",
                         isSelected = function() return selectedTier == "ULTRA" end,
-                        desc = "High visual fidelity across all zones while keeping SpellQueueWindow auto-tuned and boss telegraphs protected.",
+                        desc = "High visual quality across all zones while keeping your spell queue smooth and boss ground effects visible.",
                         onClick = function(card) ApplyTierToAllCombatZones("ULTRA", card) end,
                     },
                 },
@@ -16079,6 +16376,17 @@ function addonTable.CreateMainConfigUI()
         if f.headerTitle then
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
         end
+
+        if f.railCategoryHeaders then
+            for _, hdr in pairs(f.railCategoryHeaders) do
+                if hdr and hdr.tick then
+                    hdr.tick:SetColorTexture(ar, ag, ab, 0.85)
+                end
+            end
+        end
+        if f.UpdateRailScrollBar then
+            f.UpdateRailScrollBar()
+        end
         if f.verPill and f.verPill.label then
             f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.3.2"))
         end
@@ -16258,6 +16566,17 @@ function addonTable.CreateMainConfigUI()
 
         if f.headerTitle then
             f.headerTitle:SetText(UI.FormatTwoToneBrand("Suite"))
+        end
+
+        if f.railCategoryHeaders then
+            for _, hdr in pairs(f.railCategoryHeaders) do
+                if hdr and hdr.tick then
+                    hdr.tick:SetColorTexture(ar, ag, ab, 0.85)
+                end
+            end
+        end
+        if f.UpdateRailScrollBar then
+            f.UpdateRailScrollBar()
         end
         if f.UpdateRailSearchBoxVisual then
             f.UpdateRailSearchBoxVisual()
@@ -16933,7 +17252,7 @@ function addonTable.HookGameMenu()
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
         desc:SetWidth(520)
         desc:SetJustifyH("LEFT")
-        desc:SetText("Context-aware addon manager, target markers, camera stepping, zero-reload raid FPS guard, and suite studio.")
+        desc:SetText("All-in-one WoW suite: focus markers, group finder, prep bar, Great Vault, quest reader, bags, mail, chat, zone addons, FPS, and camera zoom.")
 
         local slashSummary = card:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         slashSummary:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -12)

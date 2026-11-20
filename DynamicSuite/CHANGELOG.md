@@ -1,5 +1,14 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.6.4 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.6.5 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.6.5 (20/11/2026)
+
+### 4-Category Left-Rail Layout, Design System Audit & Plain-English Polish (`v2.6.5`, 20/11/2026)
+- **4-Category Left-Rail Sub-Headers & Module Order (`DynamicSuite_Core.lua`, `DynamicSuite_UI.lua`):** Grouped all 11 modules in the Left Suite Rail under **COMBAT & GROUP** (`DynamicMarker`, `DynamicGroup`, `DynamicPrep`), **PROGRESSION & QUESTS** (`DynamicVault`, `DynamicDialogue`), **INVENTORY & SOCIAL** (`DynamicBags`, `DynamicMail`, `DynamicChat`), and **PERFORMANCE & SYSTEM** (`DynamicLoad`, `DynamicFPS`, `DynamicZoom`). Added clipped vertical scrolling with a 3-way interactive `4px` Obsidian scrollbar (auto-hides when all modules fit), full 11-module drag-and-drop / arrow / right-click swap support, an updated `Reset Sort` tooltip, refreshed plain-English Overview descriptions, and full `DynamicDialogue` Core protection and Smart Search registration.
+- **Suite-Wide Design System Audit (`DynamicVault`, `DynamicDialogue`):** Aligned `DynamicVault`'s selected `Off` pill bottom indicator bar to the exact `1.5px` `#F87171` Coral-Rose standard and wired live Suite Accent `ApplyTheme` / `RefreshTheme` callbacks into both `DynamicVault` and `DynamicDialogue` (including live section-header re-tinting).
+- **Plain-English ("Layman's Terms") Copy Sweep:** Replaced technical jargon (`zero-taint`, `Occlusion Shield`, `Telemetry`, `Zero-Reload Governor`, `SpellQueueWindow` labels) with clear, everyday Australian English across `DynamicSuite_UI`, `DynamicChat`, `DynamicDialogue`, `DynamicMail`, `DynamicPrep`, `DynamicVault`, and `DynamicZoom`.
 
 ---
 

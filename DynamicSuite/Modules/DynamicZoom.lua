@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.4"
+    local fb = fallback or "2.6.5"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.4"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.5"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.4")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.5")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicZoom", VERSION, _G.DynamicZoom) then
     return
 end
@@ -2048,7 +2048,7 @@ local function RenderZoomEmbedded(parent)
 
             local _, dHdr1b = CreateDzSectionHeader(
                 sec1b, -10,
-                "COLLISION & OCCLUSION SHIELD",
+                "SEE-THROUGH FOLIAGE & WALL PROTECTION",
                 "Turn intersecting trees, dungeon pillars, and water surfaces see-through instead of snapping the camera inward."
             )
             local sy2PillarTop = -10 + dHdr1b

@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.4"
+    local fb = fallback or "2.6.5"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -57,7 +57,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.4"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.5"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.4")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.5")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicVault", VERSION, _G.DynamicVault) then
     return
 end
@@ -986,10 +986,10 @@ local function CreateSegmentedSwitchCard(parent, yOffset, title, desc, getter, s
     SetFontSafe(offFs, 10.5, "")
     offFs:SetPoint("CENTER")
     offFs:SetText("Off")
-    local offBar = CreateSolidTex(btnOff, "OVERLAY", 2, 0.957, 0.247, 0.369, 1.0) -- #F43F5E Coral-Rose OffBar
-    offBar:SetHeight(2)
-    offBar:SetPoint("BOTTOMLEFT", btnOff, "BOTTOMLEFT", 2, 1)
-    offBar:SetPoint("BOTTOMRIGHT", btnOff, "BOTTOMRIGHT", -2, 1)
+    local offBar = CreateSolidTex(btnOff, "OVERLAY", 2, 0.973, 0.443, 0.443, 0.90) -- #F87171 Coral-Rose OffBar
+    offBar:SetHeight(1.5)
+    offBar:SetPoint("BOTTOMLEFT", btnOff, "BOTTOMLEFT", 1, 1)
+    offBar:SetPoint("BOTTOMRIGHT", btnOff, "BOTTOMRIGHT", -1, 1)
 
     local btnOn = CreateFrame("Button", nil, track, "BackdropTemplate")
     btnOn:SetSize(82, 22)
@@ -1793,7 +1793,7 @@ local function RenderVaultEmbedded(parent)
         -- Tab 3: Settings & Maintenance
         local sec1 = CreateSectionBox(scrollContent, y)
         local sy = -10
-        local hdr1, dyh = CreateSectionHeader(sec1, sy, "TRACKING & MATRIX DISPLAY", "Configure Great Vault reminders, Alt Vault syncing, and card telemetry.")
+        local hdr1, dyh = CreateSectionHeader(sec1, sy, "TRACKING & MATRIX DISPLAY", "Configure Great Vault reminders, Alt Vault syncing, and card details.")
         if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.CreateEditHudButton) == "function" then
             local editBtn = _G.DynamicSuite.UI.CreateEditHudButton(sec1, "Edit HUD", function()
                 db.showScreenOverlay = true
@@ -2350,7 +2350,21 @@ function DynamicVault:Open()
     standaloneWin:Show()
 end
 
+function DynamicVault:ApplyTheme()
+    if type(RefreshScreenOverlay) == "function" then
+        pcall(RefreshScreenOverlay)
+    end
+    if type(RefreshGreatVaultDock) == "function" then
+        pcall(RefreshGreatVaultDock)
+    end
+    if activeEmbeddedRoot and activeEmbeddedRoot:IsShown() and activeEmbeddedRoot:GetParent() then
+        pcall(RenderVaultEmbedded, activeEmbeddedRoot:GetParent())
+    end
+end
+
 DynamicVault.RenderEmbedded      = function(self, parent) return RenderVaultEmbedded(parent or self) end
+DynamicVault.ApplyThemeToUI      = function() return DynamicVault:ApplyTheme() end
+DynamicVault.RefreshTheme        = function() return DynamicVault:ApplyTheme() end
 DynamicVault.ResetDefaults       = function() return DynamicVault:ResetModuleDefaults() end
 DynamicVault.ResetModule         = function() return DynamicVault:ResetModuleDefaults() end
 DynamicVault.Reset               = function() return DynamicVault:ResetModuleDefaults() end
@@ -2402,6 +2416,9 @@ local function RegisterWithDynamicSuite()
             DynamicVault:SnapshotCurrentCharacter(true)
             return RenderVaultEmbedded(parent)
         end,
+        ApplyTheme          = function() DynamicVault:ApplyTheme() end,
+        ApplyThemeToUI      = function() DynamicVault:ApplyTheme() end,
+        RefreshTheme        = function() DynamicVault:ApplyTheme() end,
         ResetDefaults       = function() DynamicVault:ResetModuleDefaults() end,
         ResetModuleDefaults = function() DynamicVault:ResetModuleDefaults() end,
         ResetModule         = function() DynamicVault:ResetModuleDefaults() end,
