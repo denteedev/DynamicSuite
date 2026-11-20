@@ -24,7 +24,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.3"
+    local fb = fallback or "2.6.4"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -73,7 +73,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.3"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.4"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -105,7 +105,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.3")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.4")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicBags", VERSION, _G.DynamicBags) then
     return
 end
@@ -8716,41 +8716,27 @@ function U.HideBlizzardBags()
         SuppressBankPanel(GuildBankFrame)
         if not S.uiPanelPosHooked then
             S.uiPanelPosHooked = true
+            local function SuppressOpenBankPanelsSafe()
+                if InCombatLockdown and InCombatLockdown() then return end
+                if not DB().replaceBlizzardBags then return end
+                if BankFrame and BankFrame.IsShown and BankFrame:IsShown() then
+                    BankFrame:SetAlpha(0)
+                    if BankFrame.SetScale then pcall(BankFrame.SetScale, BankFrame, 0.0001) end
+                    BankFrame:ClearAllPoints()
+                    BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
+                end
+                if GuildBankFrame and GuildBankFrame.IsShown and GuildBankFrame:IsShown() then
+                    GuildBankFrame:SetAlpha(0)
+                    if GuildBankFrame.SetScale then pcall(GuildBankFrame.SetScale, GuildBankFrame, 0.0001) end
+                    GuildBankFrame:ClearAllPoints()
+                    GuildBankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
+                end
+            end
             if type(_G.UIParentManageFramePositions) == "function" then
-                hooksecurefunc("UIParentManageFramePositions", function()
-                    if DB().replaceBlizzardBags then
-                        if BankFrame then
-                            BankFrame:SetAlpha(0)
-                            if BankFrame.SetScale then pcall(BankFrame.SetScale, BankFrame, 0.0001) end
-                            BankFrame:ClearAllPoints()
-                            BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
-                        end
-                        if GuildBankFrame then
-                            GuildBankFrame:SetAlpha(0)
-                            if GuildBankFrame.SetScale then pcall(GuildBankFrame.SetScale, GuildBankFrame, 0.0001) end
-                            GuildBankFrame:ClearAllPoints()
-                            GuildBankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
-                        end
-                    end
-                end)
+                hooksecurefunc("UIParentManageFramePositions", SuppressOpenBankPanelsSafe)
             end
             if type(_G.UpdateUIPanelPositions) == "function" then
-                hooksecurefunc("UpdateUIPanelPositions", function()
-                    if DB().replaceBlizzardBags then
-                        if BankFrame then
-                            BankFrame:SetAlpha(0)
-                            if BankFrame.SetScale then pcall(BankFrame.SetScale, BankFrame, 0.0001) end
-                            BankFrame:ClearAllPoints()
-                            BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
-                        end
-                        if GuildBankFrame then
-                            GuildBankFrame:SetAlpha(0)
-                            if GuildBankFrame.SetScale then pcall(GuildBankFrame.SetScale, GuildBankFrame, 0.0001) end
-                            GuildBankFrame:ClearAllPoints()
-                            GuildBankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
-                        end
-                    end
-                end)
+                hooksecurefunc("UpdateUIPanelPositions", SuppressOpenBankPanelsSafe)
             end
         end
         for _, f in ipairs(frames) do

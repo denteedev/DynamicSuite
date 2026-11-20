@@ -1,5 +1,12 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.6.3 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.6.4 (20/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.6.4 (20/11/2026)
+
+### DynamicBags Combat Taint Fix (`v2.6.4`, 20/11/2026)
+- **Zero-Taint `UpdateUIPanelPositions` / `UIParentManageFramePositions` Guard:** Guarded `BankFrame` and `GuildBankFrame` suppression hooks in `DynamicBags` with `InCombatLockdown()` and `IsShown()` checks so dying in combat (`HandlePlayerDead -> CloseAllWindows -> UpdateUIPanelPositions`) never triggers `[ADDON_ACTION_BLOCKED]` on protected frames.
 
 ---
 

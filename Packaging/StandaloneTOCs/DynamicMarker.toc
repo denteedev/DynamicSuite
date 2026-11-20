@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFMarker|r
 ## Notes: Raid Target Icons, World Flare Keybinds & Smart Focus/Interrupt Macro Engine.
 ## Author: Dentee-Frostmourne
-## Version: 2.6.3
+## Version: 2.6.4
 ## Category: DynamicSuite
 ## Category-enUS: DynamicSuite
 ## SavedVariables: DynamicMarkerDB, FocusMarkerDB
