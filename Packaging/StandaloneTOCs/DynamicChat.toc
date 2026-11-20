@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFChat|r
 ## Notes: Zero-Taint Target Whisper (/ww & /qq), Combat Whisper Protection, Compact Channel Tags & GPU Buffer Optimiser for DynamicSuite.
 ## Author: Dentee-Frostmourne
-## Version: 2.6.8
+## Version: 2.6.9
 ## SavedVariables: DynamicChatDB
 ## OptionalDeps: DynamicSuite
 ## IconTexture: Interface\AddOns\DynamicChat\icon.tga

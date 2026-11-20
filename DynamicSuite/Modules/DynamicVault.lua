@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.8"
+    local fb = fallback or "2.6.9"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.8")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicVault", VERSION, _G.DynamicVault) then
     return
 end
@@ -2062,7 +2062,12 @@ local function RefreshGreatVaultDock()
             bar.altLabel:SetText("Alts:")
         end
         bar.altLabel:Show()
-        local barW = math.max(400, wfW - (dockInset * 2))
+        local dockW = (bar.GetWidth and SafeNum(bar:GetWidth(), 0)) or 0
+        if dockW < 400 then
+            local rawW = (wf and wf.GetWidth and SafeNum(wf:GetWidth(), 860)) or 860
+            dockW = rawW - 20
+        end
+        local barW = math.max(400, dockW)
         local maxChips = math.max(1, math.min(8, math.floor((barW - 52) / 146)))
         local xPos = 44
         for i = 1, math.min(#sorted, maxChips) do
@@ -2233,12 +2238,20 @@ function DynamicVault:Open()
         f:SetSize(740, 520)
         f:SetPoint("CENTER")
         f:SetMovable(true)
+        f:SetClampedToScreen(true)
         f:EnableMouse(true)
         f:RegisterForDrag("LeftButton")
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
         f:SetFrameStrata("HIGH")
         ApplyBackdrop(f, surf.bg, { acc.r, acc.g, acc.b, 0.85 })
+        if type(_G.UISpecialFrames) == "table" then
+            local seen = false
+            for _, n in ipairs(_G.UISpecialFrames) do
+                if n == "DynamicVaultStandaloneFrame" then seen = true; break end
+            end
+            if not seen then table.insert(_G.UISpecialFrames, "DynamicVaultStandaloneFrame") end
+        end
 
         local title = f:CreateFontString(nil, "OVERLAY")
         SetFontSafe(title, 13, "")
@@ -2281,9 +2294,10 @@ DynamicVault.Reset               = function() return DynamicVault:ResetModuleDef
 DynamicVault.CHANGELOG = {
     {
         version = VERSION,
-        date = "19/11/2026",
+        date = "21/11/2026",
         entries = {
-            { type = "NEW", text = "Initial v2.5.0 Release (19/11/2026): Added DynamicVault (/dv, /dynamicvault) with Account-Wide Great Vault Matrix (Raid, Mythic+, and World/Delves 3-slot progress + target iLvl), live Restored Coffer Keys / Shards / Catalyst / Seasonal Crests tracking, Weekly Reset countdown and automatic rollover, Owned Keystone telemetry, Auto-Tracked & Custom Weekly Checklists, 1-click Open Great Vault anywhere (/dv open), and full DynamicSuite + DynamicBags Alt Vault integration." },
+            { type = "FIX", text = "Release v2.6.9 (21/11/2026): Fixed a Great Vault top dock width calculation error when 2 or more alts are tracked, enabled Escape key closing on the standalone /dv window, cleaned up legacy /dv overlay hints to point to DynamicPrep's Top Info Bar, and registered DynamicVault's changelog with DynamicSuite." },
+            { type = "NEW", text = "Initial v2.5.0 Release (19/11/2026): Added DynamicVault (/dv, /dynamicvault) with Account-Wide Great Vault Matrix (Raid, Mythic+, and World/Delves 3-slot progress and target iLvl), live Restored Coffer Keys / Shards / Catalyst / Seasonal Crests tracking, Weekly Reset countdown and automatic rollover, Owned Keystone details, Auto-Tracked & Custom Weekly Checklists, 1-click Open Great Vault anywhere (/dv open), and full DynamicSuite + DynamicBags Alt Vault integration." },
         },
     },
 }
@@ -2291,6 +2305,9 @@ DynamicVault.CHANGELOG = {
 local function RegisterWithDynamicSuite()
     _G.DynamicSuite = _G.DynamicSuite or {}
     _G.DynamicSuite.modules = _G.DynamicSuite.modules or {}
+    _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}
+    _G.DynamicSuite.Changelogs["DynamicVault"] = DynamicVault.CHANGELOG
+    _G.DynamicSuite.Changelogs["vault"] = DynamicVault.CHANGELOG
 
     local registration = {
         id = "vault",
@@ -2420,10 +2437,7 @@ _G.SlashCmdList["DYNAMICVAULT"] = function(msg)
     if cmd == "open" or cmd == "vault" then
         DynamicVault:OpenBlizzardVault()
     elseif cmd == "overlay" or cmd == "hud" then
-        local db = EnsureDB()
-        db.showScreenOverlay = not (db.showScreenOverlay == true)
-        DynamicVault:RefreshOverlays()
-        Print("On-Screen Vault Overlay " .. (db.showScreenOverlay and "|cFF10B981Enabled|r." or "|cFFF43F5EDisabled|r."))
+        Print("Great Vault status now lives in DynamicPrep's Top Info Bar. Enable 'Great Vault' in DynamicPrep -> Bar Layout & Style, or under DynamicVault -> Settings & Maintenance.")
     elseif cmd == "scan" or cmd == "refresh" then
         DynamicVault:SnapshotCurrentCharacter(false)
         Print("Refreshed current character Great Vault, Currencies, and Keystone snapshot.")

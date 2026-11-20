@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.8"
+    local fb = fallback or "2.6.9"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.8")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "21/11/2026",
     entries = {
+        { type = "FIX",     text = "Release v2.6.9 - DynamicDialogue Panel & Retail Yield Probe Fix, DynamicVault Multi-Alt Dock Crash & Escape Close, and DynamicMail Parity (21/11/2026): Assigned fonts before calling SetText and ran ApplySubTab() on initial RenderDialogueEmbedded setup so DynamicDialogue's sub-tabs never throw a Font not set error or overlap on first open, added the standard 4px 3-way Obsidian settings scrollbar, matched standalone title colours, updated DynamicDialogue.CHANGELOG to use VERSION, and fixed the Retail 12.1.5 Blizzard Quest/Gossip probe in both DynamicSuite_Core and DynamicDialogue so clean installs show Active reliably; fixed an undefined width variable crash in RefreshGreatVaultDock when 2 or more alts are tracked, registered DynamicVaultStandaloneFrame in UISpecialFrames for Escape closing, updated /dv overlay and /dv hud to point to DynamicPrep's Top Info Bar, and registered DynamicVault's changelog with DynamicSuite; and guarded DynamicMail workspace opening when disabled in the suite, synced its standalone resize handle to the active Suite Accent, updated Quick Action Bar search copy, and standardised its changelog format." },
         { type = "UI",      text = "Release v2.6.8 - Great Vault Dock Alignment, Standalone Vault Overlay Removal, DynamicPrep 13-Capsule Grid Fix, DynamicDialogue 2-Tab Redesign & Macro Note Cleanup (21/11/2026): Fixed DynamicVaultBlizzDock overhanging WeeklyRewardsFrame by anchoring directly to WeeklyRewardsFrame with the exact 10px horizontal inset and 6px vertical panel clearance; removed the redundant standalone On-Screen Vault Overlay (and VAULT HUD Edit Mode target) since Great Vault status lives cleanly inside DynamicPrep's Prep Bar; removed per-module Auto-Match External UI skin toggles from DynamicVault and DynamicMail so every module strictly follows Suite Studio's active Obsidian and Suite Accent settings; fixed DynamicPrep's Bar Layout & Style 13-capsule grid overflowing onto HUD Border Style by sizing the grid container dynamically to 5 rows (200px) and shifting lower rows cleanly; redesigned DynamicDialogue into 2 clean sub-tabs (Reader & Controls | Appearance & Sound) with exact section heights (zero bottom dead space) and removed the redundant Auto-Yield toggle (managed centrally in Guided Setup); and trimmed DynamicMarker's Macro Setup DecorVendor note to a crisp 1-line summary." },
         { type = "UI",      text = "Release v2.6.7 - Suite-Wide Accent Unification, Unified Talent Reminder Toast, Quick Spec Dropdown, Vault Dock Width & LFG Cancel Fix (21/11/2026): Unified the active Suite Accent colour across every module, toast, dropdown, Edit HUD button, window scale toast, and resize grip (eliminating hardcoded Blaze Orange fallbacks and migrating DynamicMail & DynamicVault top docks from AUTO to OBSIDIAN by default so all overlays share DynamicSuite's colour scheme); rebuilt DynamicPrep's Talent Reminder Toast to match DynamicLoad's Alert Toast 1:1 (removed Dismiss button in favour of Right-Click anywhere to dismiss, matched surface/border/opacity/scale/duration, and stacked cleanly below DynamicLoadToastFrame); upgraded DynamicPrep's Talent Loadouts Manager dropdowns with directional chevrons, active square pip, screen-bottom flip, scrolling, and Escape/click-outside dismissal; replaced Prep Bar Right-Click blind spec cycling with an Obsidian Switch Active Specialisation dropdown (Left-Click remains Loot Spec selector); fixed DynamicVault's Great Vault top dock overhanging Blizzard's WeeklyRewardsFrame width and collapsed it to a sleek single-row 34px bar when only 1 character is tracked (showing Row 2 'Alts:' chips only when 2+ characters are tracked); and fixed duplicate cross ('x') textures on DynamicGroup's LFG search entry cancel buttons." },
         { type = "FEATURE", text = "Release v2.6.6 - DynamicVault Master HUD Edit Mode Integration, Obsidian Vault Overlay Redesign, Weekly Checklist Polish & Talent Duplicate Loadout (21/11/2026): Integrated DynamicVault's standalone On-Screen Vault Overlay ('VAULT') into DynamicSuite's Master HUD Edit Mode (selector dropdown, drag/nudge/centre, 60%-150% scale, 20%-100% opacity, Accent/Dark/None borders, Hidden/Shown toggle, Apply All, and Reset) and redesigned the overlay bar to match the Prep Bar Obsidian HUD aesthetic (#090A0D backdrop, 2px Suite Accent left bar, tinted Vault icon, slate dividers, and auto-fit width); replaced misleading green checkboxes on read-only Auto-Tracked Weekly Progress rows in DynamicVault with clean 3px vertical status bars so only clickable Custom Weekly Tasks show checkboxes; renamed the ambiguous 'Scan' button in Account Matrix to 'Refresh' with an explanatory tooltip; added 1-click 'Duplicate Loadout' to DynamicPrep's Left-Hand Talent Dock right-click menu; and ensured current-season Mythic+ dungeons auto-hydrate via RequestMapInfo() on fresh login." },
@@ -2251,14 +2252,28 @@ function DynamicSuite:ProbeBlizzardFrameConflict(domain)
                 return true, FRIENDLY_CONFLICT_NAMES[name] or name, "Known dialogue replacement addon loaded"
             end
         end
-        -- Retail 12.x dispatches GOSSIP_SHOW / QUEST_DETAIL through UIParent (not GossipFrame/QuestFrame directly).
-        -- Only flag an unknown external dialogue addon if UIParent itself has unregistered GOSSIP_SHOW or QUEST_DETAIL.
-        if _G.UIParent and type(_G.UIParent.IsEventRegistered) == "function" then
-            local okG, regG = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "GOSSIP_SHOW")
-            local okQ, regQ = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "QUEST_DETAIL")
-            if (okG and regG == false) or (okQ and regQ == false) then
-                return true, "External Dialogue Addon", "UIParent quest/gossip dispatch is overridden by another addon"
+        -- Retail 12.1.5 registers GOSSIP_SHOW on GossipFrame and QUEST_DETAIL on QuestFrame (not UIParent).
+        -- Only flag an unknown external dialogue addon if the loaded Blizzard frame AND UIParent both have the event unregistered.
+        local gossipOverridden = false
+        if _G.GossipFrame and type(_G.GossipFrame.IsEventRegistered) == "function"
+            and _G.UIParent and type(_G.UIParent.IsEventRegistered) == "function" then
+            local okGF, regGF = pcall(_G.GossipFrame.IsEventRegistered, _G.GossipFrame, "GOSSIP_SHOW")
+            local okUP, regUP = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "GOSSIP_SHOW")
+            if (okGF and regGF == false) and (okUP and regUP == false) then
+                gossipOverridden = true
             end
+        end
+        local questOverridden = false
+        if _G.QuestFrame and type(_G.QuestFrame.IsEventRegistered) == "function"
+            and _G.UIParent and type(_G.UIParent.IsEventRegistered) == "function" then
+            local okQF, regQF = pcall(_G.QuestFrame.IsEventRegistered, _G.QuestFrame, "QUEST_DETAIL")
+            local okUP, regUP = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "QUEST_DETAIL")
+            if (okQF and regQF == false) and (okUP and regUP == false) then
+                questOverridden = true
+            end
+        end
+        if gossipOverridden or questOverridden then
+            return true, "External Dialogue Addon", "Blizzard Quest or Gossip frames are being handled by another addon"
         end
         return false, nil, nil
     elseif d == "CHAT" then

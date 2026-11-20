@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.8"
+    local fb = fallback or "2.6.9"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.8")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMail", VERSION, _G.DynamicMail) then
     return
 end
@@ -3464,9 +3464,10 @@ local function EnsureStandaloneWindow()
     gripTex:SetDesaturated(true)
     gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
     grip:SetScript("OnEnter", function()
+        local _, acc = GetTheme()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
         gripTex:SetDesaturated(false)
-        gripTex:SetVertexColor(0.976, 0.451, 0.086, 0.95)
+        gripTex:SetVertexColor(acc.r, acc.g, acc.b, 0.95)
     end)
     grip:SetScript("OnLeave", function()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
@@ -3496,13 +3497,15 @@ function DynamicMail:ResetModuleDefaults()
 end
 
 local function OpenMailWorkspace()
-    if _G.DynamicSuite and type(_G.DynamicSuite.OpenModule) == "function" then
-        local ok = pcall(_G.DynamicSuite.OpenModule, _G.DynamicSuite, "DynamicMail")
-        if ok then return end
-    end
-    if _G.DynamicLoadUI and type(_G.DynamicLoadUI.OpenToModule) == "function" then
-        local ok = pcall(_G.DynamicLoadUI.OpenToModule, "DynamicMail")
-        if ok then return end
+    if not IsModuleDisabledInSuite("DynamicMail") then
+        if _G.DynamicSuite and type(_G.DynamicSuite.OpenModule) == "function" then
+            local ok = pcall(_G.DynamicSuite.OpenModule, _G.DynamicSuite, "DynamicMail")
+            if ok then return end
+        end
+        if _G.DynamicLoadUI and type(_G.DynamicLoadUI.OpenToModule) == "function" then
+            local ok = pcall(_G.DynamicLoadUI.OpenToModule, "DynamicMail")
+            if ok then return end
+        end
     end
     local win = EnsureStandaloneWindow()
     win:Show()
@@ -3535,7 +3538,7 @@ DynamicMail.Open                = function() return OpenMailWorkspace() end
 DynamicMail.SEARCH_ENTRIES = {
     { moduleKey = "mail", category = "BAGS_QOL", tabIndex = 1, tabLabel = "Inbox & Automation",
       title = "Mailbox Quick Action Bar",
-      desc = "Show 1-click Open All, AH Gold, and Items Only buttons below the Blizzard Mailbox window.",
+      desc = "Show 1-click Open All, AH Gold, and Items Only buttons docked cleanly above the Blizzard Mailbox window (flipping below only near the top of the screen).",
       keywords = "mail mailbox inbox open all ah gold attachments bar" },
     { moduleKey = "mail", category = "BAGS_QOL", tabIndex = 1, tabLabel = "Inbox & Automation",
       title = "Free Bag Slots to Keep Open",
@@ -3572,14 +3575,17 @@ DynamicMail.SEARCH_ENTRIES = {
 }
 
 DynamicMail.CHANGELOG = {
-    version = VERSION,
-    date = "18/11/2026",
-    entries = {
-        { type = "NEW", text = "Auto-Delete Empty Letters & 1-Click Clear Empty Button (19/11/2026): Added the 'Auto-Delete Empty Letters on Open All' option (enabled by default) and a dedicated 1-click [Clear Empty] button on DynamicMailInboxBar to wipe empty NPC notices (Lost Currency, Postmaster), Auction receipts, and zero-gold/zero-item letters without opening each one manually, while always protecting COD, items, gold, and GM mail." },
-        { type = "UI", text = "Suite-Matched 3-Tab Top Bar & 4px Scrollbar Alignment (18/11/2026): Updated the /dmail and /ds workspace top 3-tab bevel bar (14/-16px margins, #0B0D12 container, #14171F inactive card fill and #252A36 borders with hover highlight, equal-width 4px-gapped tab sizing, -8px direct scroll-area anchor, and 4px Obsidian scrollbar track) to match DynamicSuite, DynamicBags, and DynamicChat 1:1." },
-        { type = "FIX", text = "Top-Docked Inbox Bar, Left Suite Rail Entry, Express Alt+Click & EllesmereUI / ElvUI Skin Coexistence (18/11/2026): Registered 'mail' in DynamicSuite's Left Suite Rail order; moved DynamicMailInboxBar cleanly above MailFrame so bottom inbox/send tabs never cover it; fixed Alt + Left-Click attaching across both DynamicBags and Blizzard bags regardless of ActionButtonUseKeyDown or cursor lock state; auto-docked DynamicMailSendPickerPanel cleanly away from EllesmereUIMailAltList; and added Mailbox Overlay Skin Auto-Match for EllesmereUIBlizzardSkin and ElvUI." },
-        { type = "NEW", text = "Smart Bulk-Attach Presets, Quick Gold & Pending Alt Mail Tracking (18/11/2026): Added 1-click Quick-Attach preset buttons ([+ Mats], [+ BoE], [+ Warband], [+ Same]) with Equipment Manager & Soulbound protection; [+1k g] / [+10k g] / [+100k] / [Clear G] Quick-Gold buttons; Pending Alt Mail Sent badges in the Alts picker (auto-clearing when that alt visits a mailbox); Shift + Left-Click inbox row quick-loot; and Expiring (<3d) mailbox alerts." },
-        { type = "NEW", text = "Initial v2.4.0 Release (18/11/2026): Added DynamicMail (/dmail, /dynamicmail) with 1-click Inbox Open All, AH Gold, and Items Only collection; automatic COD and bag-reserve protection; 4-tab Recipient Picker (Alts synced from DynamicBags Vault with class colours & gold, Recent, Guild, and Friends with Favourite pinning); Alt + Left-Click Express Multi-Attach from bags; auto-subject fill; lifetime gold & item telemetry; and full DynamicSuite + standalone compatibility." },
+    {
+        version = VERSION,
+        date = "21/11/2026",
+        entries = {
+            { type = "FIX", text = "Release v2.6.9 (21/11/2026): Guarded suite window routing when DynamicMail is disabled inside DynamicSuite, aligned the standalone resize handle with the active Suite Accent, updated Quick Action Bar search copy, and standardised the module changelog structure." },
+            { type = "NEW", text = "Auto-Delete Empty Letters & 1-Click Clear Empty Button (19/11/2026): Added the 'Auto-Delete Empty Letters on Open All' option (enabled by default) and a dedicated 1-click [Clear Empty] button on DynamicMailInboxBar to wipe empty NPC notices (Lost Currency, Postmaster), Auction receipts, and zero-gold/zero-item letters without opening each one manually, while always protecting COD, items, gold, and GM mail." },
+            { type = "UI", text = "Suite-Matched 3-Tab Top Bar & 4px Scrollbar Alignment (18/11/2026): Updated the /dmail and /ds workspace top 3-tab bevel bar (14/-16px margins, #0B0D12 container, #14171F inactive card fill and #252A36 borders with hover highlight, equal-width 4px-gapped tab sizing, -8px direct scroll-area anchor, and 4px Obsidian scrollbar track) to match DynamicSuite, DynamicBags, and DynamicChat 1:1." },
+            { type = "FIX", text = "Top-Docked Inbox Bar, Left Suite Rail Entry, Express Alt+Click & External UI Coexistence (18/11/2026): Registered 'mail' in DynamicSuite's Left Suite Rail order; moved DynamicMailInboxBar cleanly above MailFrame so bottom inbox/send tabs never cover it; fixed Alt + Left-Click attaching across both DynamicBags and Blizzard bags regardless of ActionButtonUseKeyDown or cursor lock state; and auto-docked DynamicMailSendPickerPanel cleanly away from external alt lists." },
+            { type = "NEW", text = "Smart Bulk-Attach Presets, Quick Gold & Pending Alt Mail Tracking (18/11/2026): Added 1-click Quick-Attach preset buttons ([+ Mats], [+ BoE], [+ Warband], [+ Same]) with Equipment Manager & Soulbound protection; [+1k g] / [+10k g] / [+100k] / [Clear G] Quick-Gold buttons; Pending Alt Mail Sent badges in the Alts picker (auto-clearing when that alt visits a mailbox); Shift + Left-Click inbox row quick-loot; and Expiring (<3d) mailbox alerts." },
+            { type = "NEW", text = "Initial v2.4.0 Release (18/11/2026): Added DynamicMail (/dmail, /dynamicmail) with 1-click Inbox Open All, AH Gold, and Items Only collection; automatic COD and bag-reserve protection; 4-tab Recipient Picker (Alts synced from DynamicBags Vault with class colours & gold, Recent, Guild, and Friends with Favourite pinning); Alt + Left-Click Express Multi-Attach from bags; auto-subject fill; lifetime gold & item totals; and full DynamicSuite + standalone compatibility." },
+        },
     },
 }
 
@@ -3635,12 +3641,12 @@ local function RegisterWithDynamicSuite()
 
     _G.DynamicSuite.modules["mail"] = registration
     _G.DynamicSuite.modules["DynamicMail"] = registration
-    if type(_G.DynamicSuite.RegisterModule) == "function" then
-        pcall(_G.DynamicSuite.RegisterModule, _G.DynamicSuite, "mail", registration)
-    end
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}
     _G.DynamicSuite.Changelogs["DynamicMail"] = DynamicMail.CHANGELOG
     _G.DynamicSuite.Changelogs["mail"] = DynamicMail.CHANGELOG
+    if type(_G.DynamicSuite.RegisterModule) == "function" then
+        pcall(_G.DynamicSuite.RegisterModule, _G.DynamicSuite, "mail", registration)
+    end
 end
 
 RegisterWithDynamicSuite()

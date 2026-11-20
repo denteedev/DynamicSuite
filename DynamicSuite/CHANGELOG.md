@@ -1,5 +1,14 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.6.8 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.6.9 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+
+---
+
+## DynamicSuite & All 11 Modules v2.6.9 (21/11/2026)
+
+### Module Audit Fixes & Suite <-> Standalone Parity (`v2.6.9`, 21/11/2026)
+- **DynamicDialogue Panel & Retail Yield Probe Fixes (`DynamicDialogue`, `DynamicSuite_Core`):** Assigned each sub-tab label font before setting text and applied the active sub-tab on initial panel build so opening `DynamicDialogue` never hits a `Font not set` Lua error or overlapping tab cards; added the standard 4px 3-way Obsidian settings scrollbar; matched standalone header colours with `DynamicVault` and `DynamicMail`; updated the in-addon changelog to use the live version string; and updated the Retail 12.1.5 Quest/Gossip conflict check to require both the Blizzard frame (`GossipFrame` / `QuestFrame` when loaded) and `UIParent` to have the event unregistered before yielding, so clean installs show **Active** instead of false-positive yielding.
+- **DynamicVault Multi-Alt Dock Fix & Escape Support (`DynamicVault`):** Fixed an undefined width variable error in `RefreshGreatVaultDock` when 2 or more characters are tracked, added screen clamping and `Escape` key dismissal (`UISpecialFrames`) to the standalone `/dv` window, updated `/dv overlay` and `/dv hud` slash messages to direct players cleanly to `DynamicPrep`'s Top Info Bar capsule, and registered `DynamicVault`'s changelog with `DynamicSuite`.
+- **DynamicMail & Changelog Parity Cleanup (`DynamicMail`, `DynamicSuite_UI`):** Guarded `/dmail` against opening inside `DynamicSuite` while disabled in the Left Rail, matched the standalone window resize handle to the active Suite Accent colour, updated the `Mailbox Quick Action Bar` Global Search description to reflect top-docked placement, and aligned `DynamicMail.CHANGELOG` (plus `GetSuiteChangelogSignature` and module changelog cards in `DynamicSuite_UI`) to a single standard format.
 
 ---
 

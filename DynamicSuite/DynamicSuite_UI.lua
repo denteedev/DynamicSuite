@@ -5439,9 +5439,10 @@ function addonTable.CreateMainConfigUI()
             for _, k in ipairs({ "DynamicLoad", "DynamicMarker", "DynamicZoom", "DynamicFPS", "DynamicPrep", "DynamicGroup", "DynamicBags", "DynamicChat", "DynamicMail", "DynamicVault", "DynamicDialogue" }) do
                 local c = clReg[k]
                 if type(c) == "table" then
-                    local entries = c.entries or {}
+                    local latest = (type(c.entries) == "table" and c) or (type(c[1]) == "table" and c[1]) or c
+                    local entries = type(latest.entries) == "table" and latest.entries or {}
                     local firstTxt = (entries[1] and (entries[1].text or entries[1].title)) or ""
-                    parts[#parts + 1] = string.format("%s:%s:%s:%d:%s", k, tostring(c.version or ""), tostring(c.date or ""), #entries, tostring(firstTxt):sub(1, 32))
+                    parts[#parts + 1] = string.format("%s:%s:%s:%d:%s", k, tostring(latest.version or c.version or ""), tostring(latest.date or c.date or ""), #entries, tostring(firstTxt):sub(1, 32))
                 end
             end
         end
@@ -8933,39 +8934,42 @@ function addonTable.CreateMainConfigUI()
             key = "mail",
             tabLabel = "DynamicMail",
             ver = DS_LIVE_VER_TAG,
-            date = "18/11/2026 (Retail 12.1.5)",
+            date = "21/11/2026 (Retail 12.1.5)",
             title = "DynamicMail " .. DS_LIVE_VER_TAG,
             subtitle = "1-Click Inbox Open All / AH Gold, Alt Vault Recipient Picker & Express Bag Attach (/dmail)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga",
             openModule = "DynamicMail",
             items = {
-                { badge = "NEW",      title = "v2.4.0 Release: Smart Inbox Collection, Quick-Attach Presets, Alt Vault Picker & Quick Gold", desc = "Launched DynamicMail (/dmail, /dynamicmail) with 1-click Open All, AH Gold, and Items Only buttons below MailFrame; Shift+Click quick-loot & Expiring (<3d) mail alerts; strict COD protection and free bag-slot reserve; a 4-tab Obsidian Recipient Picker beside Send Mail (Alts synced from DynamicBags Vault with class colours, gold & Pending Sent Mail badges, Recent, Guild, and Friends with Favourite stars); 1-click Quick-Attach presets ([+ Mats], [+ BoE], [+ Warband], [+ Same]) with Equipment Set & Soulbound safety; Quick Gold buttons ([+1k g], [+10k g], [+100k]); Alt + Left-Click bag attach; and lifetime gold & item telemetry." },
+                { badge = "FIXED",    title = "v2.6.9 Parity Polish: Disabled Suite Guard, Live Accent Grip & Top-Dock Alignment", desc = "Guarded /dmail opening when disabled inside DynamicSuite, aligned the standalone resize grip with the active Suite Accent, updated search copy, and matched Obsidian styling across all mailbox panels." },
+                { badge = "NEW",      title = "v2.4.0 Release: Smart Inbox Collection, Quick-Attach Presets, Alt Vault Picker & Quick Gold", desc = "Launched DynamicMail (/dmail, /dynamicmail) with 1-click Open All, AH Gold, and Items Only buttons docked cleanly above MailFrame (flipping below only near the top of the screen); Shift+Click quick-loot & Expiring (<3d) mail alerts; strict COD protection and free bag-slot reserve; a 4-tab Obsidian Recipient Picker beside Send Mail (Alts synced from DynamicBags Vault with class colours, gold & Pending Sent Mail badges, Recent, Guild, and Friends with Favourite stars); 1-click Quick-Attach presets ([+ Mats], [+ BoE], [+ Warband], [+ Same]) with Equipment Set & Soulbound safety; Quick Gold buttons ([+1k g], [+10k g], [+100k]); Alt + Left-Click bag attach; and lifetime gold & item totals." },
             },
         },
         {
             key = "vault",
             tabLabel = "DynamicVault",
             ver = DS_LIVE_VER_TAG,
-            date = "19/11/2026 (Retail 12.1.5)",
+            date = "21/11/2026 (Retail 12.1.5)",
             title = "DynamicVault " .. DS_LIVE_VER_TAG,
             subtitle = "Account Great Vault Matrix, Raid Lockouts, Bountiful Delves & Weekly Checklist (/dv)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga",
             openModule = "DynamicVault",
             items = {
-                { badge = "NEW",      title = "v2.5.0 Release: Account-Wide Great Vault Matrix, Raid Lockouts & Bountiful Delves Scanner", desc = "Launched DynamicVault (/dv, /dynamicvault) as the 10th integrated module with an automatic flush-width Great Vault top dock (zero minimap buttons, EllesmereUI/ElvUI Auto-Match skinning), Raid/M+/Delves 3-slot Vault progress + Next-Slot calculator, per-character Raid Boss Lockouts (LFR/N/H/M), live Today's Bountiful Delves scanner, Restored Coffer Keys / Shards / Catalyst / Seasonal Crest weekly cap telemetry, Account Gold & Key totals, auto-resetting Weekly Checklists, and an optional /dv overlay." },
+                { badge = "FIXED",    title = "v2.6.9 Polish: Multi-Alt Great Vault Dock Fix & Escape Key Support", desc = "Fixed a Great Vault top dock width calculation error when 2 or more alts are tracked, registered Escape key dismissal on the standalone /dv window, cleaned up /dv overlay hints to point to DynamicPrep's Top Info Bar, and registered DynamicVault's changelog with DynamicSuite." },
+                { badge = "NEW",      title = "v2.5.0 Release: Account-Wide Great Vault Matrix, Raid Lockouts & Bountiful Delves Scanner", desc = "Launched DynamicVault (/dv, /dynamicvault) as the 10th integrated module with an automatic flush-width Great Vault top dock styled with DynamicSuite Obsidian & active Suite Accent colours, Raid/M+/Delves 3-slot Vault progress + Next-Slot calculator, per-character Raid Boss Lockouts (LFR/N/H/M), live Today's Bountiful Delves scanner, Restored Coffer Keys / Shards / Catalyst / Seasonal Crest weekly cap tracking, Account Gold & Key totals, auto-resetting Weekly Checklists, and the built-in Great Vault capsule in DynamicPrep's Top Info Bar." },
             },
         },
         {
             key = "dialogue",
             tabLabel = "DynamicDialogue",
             ver = DS_LIVE_VER_TAG,
-            date = "20/11/2026 (Retail 12.1.5)",
+            date = "21/11/2026 (Retail 12.1.5)",
             title = "DynamicDialogue " .. DS_LIVE_VER_TAG,
             subtitle = "Obsidian Quest & Gossip Reader with 1-9 Hotkeys & Reward Cards (/dd)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_dialogue.tga",
             openModule = "DynamicDialogue",
             items = {
-                { badge = "NEW",      title = "v2.6.0 Release: Obsidian Quest & Gossip Reader, Hotkeys & Zero-Taint Auto-Yield", desc = "Launched DynamicDialogue (/dd, /ddlg) as the 11th integrated module with a high-contrast Obsidian Quest & Gossip reader, 1-9 option hotkeys, Space accept/continue/complete, interactive reward choice cards with hover tooltips, Shift-bypass to native Blizzard frames, draggable positioning, live Preview mode, and zero-taint dynamic yielding for DialogueUI, Immersion, Storyline, EllesmereUI QoL, and unknown Blizzard frame owners." },
+                { badge = "FIXED",    title = "v2.6.9 Fixes: Panel Rendering, 2-Tab Layout, 4px Scrollbar & Retail Yield Check", desc = "Fixed the sub-tab FontString error and first-open tab overlap in RenderDialogueEmbedded, added the standard 4px Obsidian settings scrollbar, matched standalone header branding, and fixed the Retail 12.1.5 Blizzard Quest/Gossip conflict check so clean installs show Active reliably." },
+                { badge = "NEW",      title = "v2.6.0 Release: Obsidian Quest & Gossip Reader, Hotkeys & Automatic Yielding", desc = "Launched DynamicDialogue (/dd, /ddlg) as the 11th integrated module with a 2-tab Obsidian settings panel (Reader & Controls | Appearance & Sound), 1-9 option hotkeys, Space accept/continue/complete, interactive reward choice cards with hover tooltips, Shift-bypass to native Blizzard frames, draggable positioning, live Preview mode, and automatic yielding for DialogueUI, Immersion, Storyline, EllesmereUI QoL, and other dialogue addons." },
             },
         },
     }

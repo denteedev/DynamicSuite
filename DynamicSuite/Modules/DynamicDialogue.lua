@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.6.8"
+    local fb = fallback or "2.6.9"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.8")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.6.9")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicDialogue", VERSION, _G.DynamicDialogue) then
     return
 end
@@ -363,20 +363,35 @@ function DynamicDialogue:GetYieldInfo()
         end
     end
 
-    -- Layer 2: Central DynamicSuite zero-taint read-only Blizzard frame/event probe
+    -- Layer 2: Central DynamicSuite read-only Blizzard frame/event ownership probe
     if _G.DynamicSuite and type(_G.DynamicSuite.ProbeBlizzardFrameConflict) == "function" then
         local ok, conflicted, ownerLabel, reason = pcall(_G.DynamicSuite.ProbeBlizzardFrameConflict, _G.DynamicSuite, "DIALOGUE")
         if ok and conflicted == true then
-            return true, ownerLabel or "External Dialogue Addon", reason or "Blizzard Quest/Gossip frame events are managed by another addon"
+            return true, ownerLabel or "External Dialogue Addon", reason or "Blizzard Quest or Gossip frames are being handled by another addon"
         end
     else
-        -- Standalone read-only fallback probe (zero hooks, zero taint)
-        if _G.UIParent and type(_G.UIParent.IsEventRegistered) == "function" then
-            local okG, regG = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "GOSSIP_SHOW")
-            local okQ, regQ = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "QUEST_DETAIL")
-            if (okG and regG == false) or (okQ and regQ == false) then
-                return true, "External Dialogue Addon", "UIParent quest/gossip dispatch is overridden by another addon"
+        -- Standalone read-only fallback probe: Retail 12.1.5 registers GOSSIP_SHOW / QUEST_DETAIL on GossipFrame / QuestFrame.
+        -- Only yield to an unknown external addon if the loaded Blizzard frame AND UIParent both have the event unregistered.
+        local gossipOverridden = false
+        if _G.GossipFrame and type(_G.GossipFrame.IsEventRegistered) == "function"
+            and _G.UIParent and type(_G.UIParent.IsEventRegistered) == "function" then
+            local okGF, regGF = pcall(_G.GossipFrame.IsEventRegistered, _G.GossipFrame, "GOSSIP_SHOW")
+            local okUP, regUP = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "GOSSIP_SHOW")
+            if (okGF and regGF == false) and (okUP and regUP == false) then
+                gossipOverridden = true
             end
+        end
+        local questOverridden = false
+        if _G.QuestFrame and type(_G.QuestFrame.IsEventRegistered) == "function"
+            and _G.UIParent and type(_G.UIParent.IsEventRegistered) == "function" then
+            local okQF, regQF = pcall(_G.QuestFrame.IsEventRegistered, _G.QuestFrame, "QUEST_DETAIL")
+            local okUP, regUP = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "QUEST_DETAIL")
+            if (okQF and regQF == false) and (okUP and regUP == false) then
+                questOverridden = true
+            end
+        end
+        if gossipOverridden or questOverridden then
+            return true, "External Dialogue Addon", "Blizzard Quest or Gossip frames are being handled by another addon"
         end
     end
 
@@ -1705,7 +1720,7 @@ local function RenderDialogueEmbedded(parent)
     local topBar = CreateFrame("Frame", nil, root)
     topBar:SetHeight(36)
     topBar:SetPoint("TOPLEFT", root, "TOPLEFT", 14, -10)
-    topBar:SetPoint("TOPRIGHT", root, "TOPRIGHT", -14, -10)
+    topBar:SetPoint("TOPRIGHT", root, "TOPRIGHT", -16, -10)
     topBar.bg = SolidTex(topBar, "BACKGROUND", 1, 0.043, 0.051, 0.071, 0.96)
     topBar.bg:SetAllPoints()
     topBar.border = CreatePixelBorder(topBar, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
@@ -1738,8 +1753,8 @@ local function RenderDialogueEmbedded(parent)
         tb.border = CreatePixelBorder(tb, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
         tb.txt = tb:CreateFontString(nil, "OVERLAY")
         tb.txt:SetPoint("CENTER", 0, 0)
-        tb.txt:SetText(td.label)
         ApplyFont(tb.txt, 11, "")
+        tb.txt:SetText(td.label)
         tb._tabId = td.id
         subTabBtns[td.id] = tb
         tx = tx + td.w + 6
@@ -1769,23 +1784,154 @@ local function RenderDialogueEmbedded(parent)
     end)
     statusHit:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
 
-    -- ScrollFrame for Settings Cards
+    -- ScrollFrame for Settings Cards + 4px 3-way Obsidian Scrollbar
     local sf = CreateFrame("ScrollFrame", nil, root)
-    sf:SetPoint("TOPLEFT", topBar, "BOTTOMLEFT", 0, -10)
-    sf:SetPoint("BOTTOMRIGHT", root, "BOTTOMRIGHT", -16, 10)
+    sf:SetPoint("TOPLEFT", topBar, "BOTTOMLEFT", 0, -8)
+    sf:SetPoint("TOPRIGHT", topBar, "BOTTOMRIGHT", 0, -8)
+    sf:SetPoint("BOTTOM", root, "BOTTOM", 0, 10)
+    sf:SetClipsChildren(true)
     sf:EnableMouseWheel(true)
 
     local child = CreateFrame("Frame", nil, sf)
     child:SetWidth(760)
-    child:SetHeight(460)
+    child:SetHeight(456)
     sf:SetScrollChild(child)
+
+    local track = CreateFrame("Frame", nil, root)
+    track:SetWidth(4)
+    track:SetPoint("TOPRIGHT", sf, "TOPRIGHT", 10, -2)
+    track:SetPoint("BOTTOMRIGHT", sf, "BOTTOMRIGHT", 10, 2)
+    track:EnableMouse(true)
+    track:SetHitRectInsets(-5, -5, 0, 0)
+    track.bg = SolidTex(track, "BACKGROUND", 1, 0.043, 0.051, 0.071, 0.85)
+    track.bg:SetAllPoints()
+
+    local thumb = CreateFrame("Button", nil, track)
+    thumb:SetWidth(4)
+    thumb:SetHeight(48)
+    thumb:SetPoint("TOP", track, "TOP", 0, 0)
+    thumb:EnableMouse(true)
+    thumb:SetHitRectInsets(-5, -5, 0, 0)
+    thumb.tex = SolidTex(thumb, "OVERLAY", 2, ar, ag, ab, 0.78)
+    thumb.tex:SetAllPoints()
+
+    local function UpdateScrollBar()
+        if sf.UpdateScrollChildRect then pcall(sf.UpdateScrollChildRect, sf) end
+        local nr, ng, nb = GetAccentColor()
+        if thumb.isDragging then
+            thumb.tex:SetColorTexture(nr, ng, nb, 1.0)
+        elseif thumb.isHovered then
+            thumb.tex:SetColorTexture(nr, ng, nb, 0.92)
+        else
+            thumb.tex:SetColorTexture(nr, ng, nb, 0.78)
+        end
+        local viewH = sf:GetHeight() or 0
+        local totalH = child:GetHeight() or 0
+        local trackH = track:GetHeight() or 0
+        if viewH <= 1 or trackH <= 1 then return end
+        local maxScroll = math.max(0, totalH - viewH)
+        if maxScroll <= 1 then
+            track:Hide()
+            thumb:Hide()
+            sf:SetVerticalScroll(0)
+            return
+        end
+        track:Show()
+        thumb:Show()
+        local cur = math.max(0, math.min(maxScroll, sf:GetVerticalScroll() or 0))
+        local thumbH = math.max(24, math.floor(trackH * math.min(1, viewH / totalH) + 0.5))
+        local travel = math.max(1, trackH - thumbH)
+        thumb:SetHeight(thumbH)
+        thumb:ClearAllPoints()
+        thumb:SetPoint("TOP", track, "TOP", 0, -math.floor((cur / maxScroll) * travel + 0.5))
+    end
+
+    local function ScrollDialogueFromCursor()
+        if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            thumb.isDragging = false
+            thumb:SetScript("OnUpdate", nil)
+            track:SetScript("OnUpdate", nil)
+            UpdateScrollBar()
+            return
+        end
+        local viewH = sf:GetHeight() or 0
+        local totalH = child:GetHeight() or 0
+        local trackH = track:GetHeight() or 0
+        local maxScroll = math.max(0, totalH - viewH)
+        if maxScroll <= 1 or trackH <= 1 then return end
+        local tTop = track:GetTop()
+        local eff = track:GetEffectiveScale() or 1
+        if not tTop or eff <= 0 then return end
+        local _, cy = GetCursorPosition()
+        local relY = math.max(0, math.min(trackH, tTop - (cy / eff)))
+        local thumbH = thumb:GetHeight() or 24
+        local travel = math.max(1, trackH - thumbH)
+        local ratio = math.max(0, math.min(1, (relY - (thumbH * 0.5)) / travel))
+        sf:SetVerticalScroll(ratio * maxScroll)
+        UpdateScrollBar()
+    end
+
+    thumb:SetScript("OnEnter", function(self)
+        self.isHovered = true
+        UpdateScrollBar()
+    end)
+    thumb:SetScript("OnLeave", function(self)
+        self.isHovered = false
+        UpdateScrollBar()
+    end)
+    thumb:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            self.isDragging = true
+            ScrollDialogueFromCursor()
+            self:SetScript("OnUpdate", ScrollDialogueFromCursor)
+        end
+    end)
+    thumb:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then
+            self.isDragging = false
+            self:SetScript("OnUpdate", nil)
+            UpdateScrollBar()
+        end
+    end)
+    thumb:SetScript("OnHide", function(self)
+        self.isDragging = false
+        self.isHovered = false
+        self:SetScript("OnUpdate", nil)
+    end)
+    track:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            thumb.isDragging = true
+            ScrollDialogueFromCursor()
+            self:SetScript("OnUpdate", ScrollDialogueFromCursor)
+        end
+    end)
+    track:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then
+            thumb.isDragging = false
+            self:SetScript("OnUpdate", nil)
+            UpdateScrollBar()
+        end
+    end)
+    track:SetScript("OnHide", function(self)
+        thumb.isDragging = false
+        self:SetScript("OnUpdate", nil)
+    end)
+
+    local function ScrollByDelta(delta)
+        local viewH = sf:GetHeight() or 0
+        local totalH = child:GetHeight() or 0
+        local maxScroll = math.max(0, totalH - viewH)
+        sf:SetVerticalScroll(math.max(0, math.min(maxScroll, (sf:GetVerticalScroll() or 0) - (delta * 42))))
+        UpdateScrollBar()
+    end
     sf:SetScript("OnSizeChanged", function(_, w)
-        if w and w > 200 then child:SetWidth(w - 4) end
+        if w and w > 100 then child:SetWidth(w) end
+        UpdateScrollBar()
     end)
-    sf:SetScript("OnMouseWheel", function(_, delta)
-        local maxR = math.max(0, sf:GetVerticalScrollRange() or 0)
-        sf:SetVerticalScroll(math.max(0, math.min(maxR, (sf:GetVerticalScroll() or 0) - (delta * 42))))
-    end)
+    sf:SetScript("OnShow", UpdateScrollBar)
+    sf:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
+    track:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
+    thumb:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
 
     local refreshables = {}
 
@@ -1872,6 +2018,7 @@ local function RenderDialogueEmbedded(parent)
                 tb.txt:SetTextColor(0.75, 0.80, 0.88, 1)
             end
         end
+        UpdateScrollBar()
     end
 
     for id, tb in pairs(subTabBtns) do
@@ -1912,6 +2059,7 @@ local function RenderDialogueEmbedded(parent)
             if r.Refresh then r.Refresh() end
         end
     end
+    ApplySubTab()
     RefreshStatus()
 
     return root
@@ -1966,7 +2114,7 @@ function DynamicDialogue:Open()
         local title = hdr:CreateFontString(nil, "OVERLAY")
         title:SetPoint("LEFT", hdr, "LEFT", 14, 0)
         ApplyFont(title, 14, "OUTLINE")
-        title:SetText("|cFFFB923CDynamic|r|cFFFFFFFFDialogue|r  |cFF94A3B8v" .. VERSION .. "|r")
+        title:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFDialogue|r  |cFF94A3B8v" .. VERSION .. "|r")
 
         local closeBtn = CreateActionButton(hdr, 28, 24, "X", false, function() sf:Hide() end)
         closeBtn:SetPoint("RIGHT", hdr, "RIGHT", -8, 0)
@@ -1987,10 +2135,11 @@ end
 -- ============================================================================
 DynamicDialogue.CHANGELOG = {
     {
-        version = "2.6.6",
-        date = "20/11/2026",
+        version = VERSION,
+        date = "21/11/2026",
         entries = {
-            { type = "FEATURE", text = "Initial Release of DynamicDialogue (v2.6.0): High-contrast Obsidian Quest & Gossip Reader with 1-9 number hotkeys, Space bar Accept/Continue/Complete, interactive reward choice cards with item tooltips, Shift-bypass for native Blizzard frames, draggable reader positioning, live Preview mode, and zero-taint automatic yielding for DialogueUI, Immersion, Storyline, EllesmereUI QoL, and unknown Blizzard frame owners." },
+            { type = "FIX",     text = "Release v2.6.9 (21/11/2026): Fixed first-open FontString rendering and overlapping sub-tab cards, added the 4px Obsidian settings scrollbar, matched standalone title colours, and fixed the Retail 12.1.5 Blizzard Quest/Gossip conflict check so clean installs show Active cleanly." },
+            { type = "FEATURE", text = "Initial Release of DynamicDialogue (20/11/2026): High-contrast Obsidian Quest & Gossip Reader with 1-9 number hotkeys, Space bar Accept/Continue/Complete, interactive reward choice cards with item tooltips, Shift-bypass for native Blizzard frames, draggable reader positioning, live Preview mode, and automatic yielding for DialogueUI, Immersion, Storyline, EllesmereUI QoL, and other dialogue addons." },
         },
     },
 }
@@ -2000,6 +2149,7 @@ local function RegisterWithDynamicSuite()
     _G.DynamicSuite.modules = _G.DynamicSuite.modules or {}
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}
     _G.DynamicSuite.Changelogs["DynamicDialogue"] = DynamicDialogue.CHANGELOG
+    _G.DynamicSuite.Changelogs["dialogue"] = DynamicDialogue.CHANGELOG
 
     local registration = {
         key          = "DynamicDialogue",
