@@ -993,10 +993,9 @@ local function CreateSliderCard(parent, yOffset, title, desc, minVal, maxVal, st
     card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -12, yOffset)
     ApplyBackdrop(card, surf.card, { 1, 1, 1, 0.06 })
 
-    local host = CreateFrame("Frame", nil, card, "BackdropTemplate")
+    local host = CreateFrame("Frame", nil, card)
     host:SetSize(256, 26)
     host:SetPoint("RIGHT", card, "RIGHT", -12, 0)
-    ApplyBackdrop(host, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 })
 
     local titleFs = card:CreateFontString(nil, "OVERLAY")
     SetFontSafe(titleFs, 11.5, "")
@@ -1019,68 +1018,157 @@ local function CreateSliderCard(parent, yOffset, title, desc, minVal, maxVal, st
     descFs:SetText(desc or "")
 
     local valFs = host:CreateFontString(nil, "OVERLAY")
-    SetFontSafe(valFs, 10.5, "")
-    valFs:SetPoint("RIGHT", host, "RIGHT", -8, 0)
+    SetFontSafe(valFs, 11, "")
+    valFs:SetPoint("RIGHT", host, "RIGHT", 0, 0)
     valFs:SetWidth(52)
     valFs:SetJustifyH("RIGHT")
+    valFs:SetWordWrap(false)
     valFs:SetTextColor(acc.r, acc.g, acc.b, 1.0)
 
     local slider = CreateFrame("Slider", nil, host)
     slider:SetOrientation("HORIZONTAL")
-    slider:SetPoint("LEFT", host, "LEFT", 10, 0)
-    slider:SetPoint("RIGHT", valFs, "LEFT", -8, 0)
-    slider:SetHeight(14)
+    slider:SetPoint("LEFT", host, "LEFT", 0, 0)
+    slider:SetPoint("RIGHT", valFs, "LEFT", -10, 0)
+    slider:SetHeight(4)
+    slider:SetHitRectInsets(0, 0, -10, -10)
     slider:SetMinMaxValues(minVal, maxVal)
     slider:SetValueStep(step or 1)
-    slider:SetObeyStepOnDrag(true)
+    slider:SetObeyStepOnDrag(false)
+    slider:EnableMouse(true)
     slider:EnableMouseWheel(true)
 
-    local trackBg = CreateSolidTex(slider, "BACKGROUND", 0, 0.145, 0.165, 0.212, 0.95)
-    trackBg:SetHeight(4)
-    trackBg:SetPoint("LEFT", slider, "LEFT", 0, 0)
-    trackBg:SetPoint("RIGHT", slider, "RIGHT", 0, 0)
+    local hairline = CreateSolidTex(slider, "BACKGROUND", -1, 1, 1, 1, 0.14)
+    hairline:SetPoint("TOPLEFT", slider, "TOPLEFT", -1, 1)
+    hairline:SetPoint("BOTTOMRIGHT", slider, "BOTTOMRIGHT", 1, -1)
 
-    local fill = CreateSolidTex(slider, "ARTWORK", 1, acc.r, acc.g, acc.b, 0.95)
-    fill:SetHeight(4)
-    fill:SetPoint("LEFT", trackBg, "LEFT", 0, 0)
+    local trackBg = CreateSolidTex(slider, "BACKGROUND", 0, 0.035, 0.039, 0.051, 0.98)
+    trackBg:SetAllPoints()
+
+    local fill = CreateSolidTex(slider, "ARTWORK", 1, acc.r, acc.g, acc.b, 0.85)
+    fill:SetPoint("TOPLEFT", slider, "TOPLEFT", 0, 0)
+    fill:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 0, 0)
+    fill:SetWidth(1)
 
     local thumb = slider:CreateTexture(nil, "OVERLAY")
     thumb:SetSize(6, 14)
-    thumb:SetColorTexture(1, 1, 1, 0.98)
-    if thumb.SetSnapToPixelGrid then thumb:SetSnapToPixelGrid(false) end
-    if thumb.SetTexelSnappingBias then thumb:SetTexelSnappingBias(0) end
+    thumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+    if thumb.SetSnapToPixelGrid then
+        thumb:SetSnapToPixelGrid(false)
+        thumb:SetTexelSnappingBias(0)
+    end
     slider:SetThumbTexture(thumb)
 
-    local function SyncVal(v)
+    local isDragging = false
+    local suppressCallback = false
+    local lastCommittedValue = nil
+
+    local function SnapValue(v)
+        local stp = step or 1
+        local safeV = math.max(minVal, math.min(maxVal, SafeNum(v, minVal)))
+        local snapped = math.floor(((safeV - minVal) / stp) + 0.5) * stp + minVal
+        return math.max(minVal, math.min(maxVal, snapped))
+    end
+
+    local function SyncVal(v, rawVal)
         local _, curAcc = GetTheme()
-        local pct = (maxVal > minVal) and ((v - minVal) / (maxVal - minVal)) or 0
+        local posVal = rawVal or v
+        local pct = (maxVal > minVal) and ((posVal - minVal) / (maxVal - minVal)) or 0
         pct = math.max(0, math.min(1, pct))
-        local w = slider:GetWidth() or 170
-        fill:SetColorTexture(curAcc.r, curAcc.g, curAcc.b, 0.95)
-        fill:SetWidth(math.max(2, w * pct))
+        local w = slider:GetWidth()
+        if not w or w <= 0 then w = 194 end
+        fill:SetColorTexture(curAcc.r, curAcc.g, curAcc.b, 0.85)
+        fill:SetWidth(math.max(1, w * pct))
+        if isDragging or (slider.IsMouseOver and slider:IsMouseOver()) then
+            thumb:SetColorTexture(curAcc.r, curAcc.g, curAcc.b, 1.0)
+        else
+            thumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+        end
         valFs:SetTextColor(curAcc.r, curAcc.g, curAcc.b, 1.0)
         valFs:SetText(formatFn and formatFn(v) or tostring(v))
     end
 
-    local cur = math.max(minVal, math.min(maxVal, SafeNum(getter(), minVal)))
-    slider:SetValue(cur)
-    C_Timer.After(0, function() SyncVal(slider:GetValue()) end)
-    slider:SetScript("OnEnter", function()
-        local _, curAcc = GetTheme()
-        ApplyBackdrop(host, { 0.043, 0.051, 0.071, 0.98 }, { curAcc.r, curAcc.g, curAcc.b, 0.65 })
+    local function RefreshSlider()
+        suppressCallback = true
+        local cur = SnapValue(getter())
+        lastCommittedValue = cur
+        slider:SetValue(cur)
+        SyncVal(cur, cur)
+        suppressCallback = false
+    end
+
+    local function UpdateFromCursor()
+        if isDragging and IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            isDragging = false
+            slider:SetScript("OnUpdate", nil)
+            RefreshSlider()
+            return
+        end
+        local scale = (slider.GetEffectiveScale and slider:GetEffectiveScale()) or 1
+        local cx = (GetCursorPosition() / scale)
+        local left, tw = slider:GetLeft(), slider:GetWidth()
+        if left and tw and tw > 0 then
+            local pct = math.max(0, math.min(1, (cx - left) / tw))
+            slider:SetValue(minVal + pct * (maxVal - minVal))
+        end
+    end
+
+    RefreshSlider()
+    C_Timer.After(0, RefreshSlider)
+    slider:SetScript("OnSizeChanged", function()
+        local r = SnapValue(slider:GetValue())
+        SyncVal(r, slider:GetValue())
     end)
-    slider:SetScript("OnLeave", function()
-        ApplyBackdrop(host, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 })
+    slider:SetScript("OnEnter", function(self)
+        local r = SnapValue(self:GetValue())
+        SyncVal(r, self:GetValue())
+        if GameTooltip then
+            local _, curAcc = GetTheme()
+            local hex = string.format("%02X%02X%02X", math.floor(curAcc.r * 255 + 0.5), math.floor(curAcc.g * 255 + 0.5), math.floor(curAcc.b * 255 + 0.5))
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine(string.format("|cFF%sLeft-Click / Drag:|r |cFFE2E8F0Adjust value|r", hex))
+            GameTooltip:AddLine(string.format("|cFF%sMousewheel:|r |cFFE2E8F0Fine-tune by 1 step|r", hex))
+            GameTooltip:Show()
+        end
     end)
-    slider:SetScript("OnMouseWheel", function(self, delta)
-        local stp = step or 1
-        local nxt = math.max(minVal, math.min(maxVal, (self:GetValue() or cur) + (delta * stp)))
-        self:SetValue(nxt)
+    slider:SetScript("OnLeave", function(self)
+        local r = SnapValue(self:GetValue())
+        SyncVal(r, self:GetValue())
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+    slider:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            isDragging = true
+            UpdateFromCursor()
+            self:SetScript("OnUpdate", UpdateFromCursor)
+        end
+    end)
+    slider:SetScript("OnMouseUp", function(self)
+        isDragging = false
+        self:SetScript("OnUpdate", nil)
+        RefreshSlider()
+    end)
+    slider:SetScript("OnHide", function(self)
+        isDragging = false
+        self:SetScript("OnUpdate", nil)
+        local r = SnapValue(getter())
+        SyncVal(r, r)
+    end)
+    slider:SetScript("OnMouseWheel", function(_, delta)
+        local cur = SnapValue(getter())
+        local nxt = SnapValue(cur + (delta * (step or 1)))
+        lastCommittedValue = nxt
+        setter(nxt)
+        RefreshSlider()
     end)
     slider:SetScript("OnValueChanged", function(_, v)
-        local snapped = math.floor((v / (step or 1)) + 0.5) * (step or 1)
-        SyncVal(snapped)
-        setter(snapped)
+        if suppressCallback then return end
+        local snapped = SnapValue(v)
+        SyncVal(snapped, v)
+        if snapped ~= lastCommittedValue then
+            lastCommittedValue = snapped
+            setter(snapped)
+        end
     end)
 
     return card, -66

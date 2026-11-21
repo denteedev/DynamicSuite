@@ -2175,13 +2175,16 @@ local function CreateSliderRow(parent, yOffset, title, desc, minVal, maxVal, ste
     slider:SetHitRectInsets(0, 0, -10, -10)
     slider:EnableMouseWheel(true)
 
-    slider.bg = SolidTex(slider, "BACKGROUND", 1, 0.035, 0.039, 0.051, 0.98)
+    slider.hairline = SolidTex(slider, "BACKGROUND", -1, 1, 1, 1, 0.14)
+    slider.hairline:SetPoint("TOPLEFT", slider, "TOPLEFT", -1, 1)
+    slider.hairline:SetPoint("BOTTOMRIGHT", slider, "BOTTOMRIGHT", 1, -1)
+
+    slider.bg = SolidTex(slider, "BACKGROUND", 0, 0.035, 0.039, 0.051, 0.98)
     slider.bg:SetAllPoints()
-    slider.border = CreatePixelBorder(slider, 1, 1, 1, 0.14, 2)
 
     slider.fillBar = SolidTex(slider, "ARTWORK", 2, ar, ag, ab, 0.85)
-    slider.fillBar:SetPoint("TOPLEFT", slider, "TOPLEFT", 1, -1)
-    slider.fillBar:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 1, 1)
+    slider.fillBar:SetPoint("TOPLEFT", slider, "TOPLEFT", 0, 0)
+    slider.fillBar:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 0, 0)
     slider.fillBar:SetWidth(1)
 
     local thumb = slider:CreateTexture(nil, "OVERLAY", nil, 5)
@@ -2191,32 +2194,110 @@ local function CreateSliderRow(parent, yOffset, title, desc, minVal, maxVal, ste
     if thumb.SetTexelSnappingBias then thumb:SetTexelSnappingBias(0) end
     slider:SetThumbTexture(thumb)
 
+    local isDragging = false
+    local suppressCallback = false
     local lastCommitted = nil
-    local function UpdateVisual(v)
+    local function SnapValue(v)
+        v = math.max(minVal, math.min(maxVal, tonumber(v) or minVal))
+        if stepVal and stepVal > 0 then
+            v = math.floor(((v - minVal) / stepVal) + 0.5) * stepVal + minVal
+        end
+        return math.max(minVal, math.min(maxVal, v))
+    end
+
+    local function UpdateVisual(v, rawVal)
         local r, g, b = GetAccentColor()
-        local pct = (maxVal > minVal) and ((v - minVal) / (maxVal - minVal)) or 0
+        local posVal = rawVal or v
+        local pct = (maxVal > minVal) and ((posVal - minVal) / (maxVal - minVal)) or 0
         pct = math.max(0, math.min(1, pct))
-        local w = math.max(10, slider:GetWidth() or 194)
+        local w = slider:GetWidth()
+        if not w or w <= 0 then w = 194 end
         slider.fillBar:SetColorTexture(r, g, b, 0.85)
-        slider.fillBar:SetWidth(math.max(1, pct * (w - 2)))
+        slider.fillBar:SetWidth(math.max(1, pct * w))
+        if isDragging or slider:IsMouseOver() then
+            thumb:SetColorTexture(r, g, b, 1.0)
+        else
+            thumb:SetColorTexture(0.97, 0.98, 1.0, 1.0)
+        end
         valText:SetTextColor(r, g, b, 1.0)
         valText:SetText(formatFn and formatFn(v) or tostring(v))
     end
 
     slider:SetScript("OnValueChanged", function(_, value)
-        local stepped = math.floor(((value - minVal) / stepVal) + 0.5) * stepVal + minVal
-        stepped = math.max(minVal, math.min(maxVal, stepped))
-        UpdateVisual(stepped)
-        if stepped ~= lastCommitted then
+        local stepped = SnapValue(value)
+        UpdateVisual(stepped, value)
+        if not suppressCallback and stepped ~= lastCommitted then
             lastCommitted = stepped
             setter(stepped)
         end
     end)
 
+    local function UpdateSliderFromCursor()
+        if isDragging and IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            isDragging = false
+            slider:SetScript("OnUpdate", nil)
+            local r = SnapValue(getter())
+            suppressCallback = true
+            slider:SetValue(r)
+            UpdateVisual(r, r)
+            suppressCallback = false
+            return
+        end
+        local scale = slider:GetEffectiveScale() or 1
+        local cx = (GetCursorPosition() / scale)
+        local left, tw = slider:GetLeft(), slider:GetWidth()
+        if left and tw and tw > 0 then
+            local pct = math.max(0, math.min(1, (cx - left) / tw))
+            slider:SetValue(minVal + pct * (maxVal - minVal))
+        end
+    end
+
+    slider:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            isDragging = true
+            UpdateSliderFromCursor()
+            self:SetScript("OnUpdate", UpdateSliderFromCursor)
+        end
+    end)
+    slider:SetScript("OnMouseUp", function(self)
+        isDragging = false
+        self:SetScript("OnUpdate", nil)
+        local r = SnapValue(getter())
+        suppressCallback = true
+        slider:SetValue(r)
+        UpdateVisual(r, r)
+        suppressCallback = false
+    end)
+    slider:SetScript("OnHide", function(self)
+        isDragging = false
+        self:SetScript("OnUpdate", nil)
+    end)
+    slider:SetScript("OnEnter", function(self)
+        UpdateVisual(SnapValue(self:GetValue()), self:GetValue())
+        if GameTooltip then
+            local r, g, b = GetAccentColor()
+            local hex = string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine(string.format("|cFF%sLeft-Click / Drag:|r |cFFE2E8F0Adjust value|r", hex))
+            GameTooltip:AddLine(string.format("|cFF%sMousewheel:|r |cFFE2E8F0Fine-tune by 1 step|r", hex))
+            GameTooltip:Show()
+        end
+    end)
+    slider:SetScript("OnLeave", function(self)
+        UpdateVisual(SnapValue(self:GetValue()), self:GetValue())
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+
     slider:SetScript("OnMouseWheel", function(self, delta)
-        local cur = self:GetValue()
-        local nxt = math.max(minVal, math.min(maxVal, cur + (delta * stepVal)))
+        local cur = SnapValue(getter())
+        local nxt = SnapValue(cur + (delta * stepVal))
+        lastCommitted = nxt
+        setter(nxt)
+        suppressCallback = true
         self:SetValue(nxt)
+        UpdateVisual(nxt, nxt)
+        suppressCallback = false
     end)
 
     local tFs = row:CreateFontString(nil, "OVERLAY")

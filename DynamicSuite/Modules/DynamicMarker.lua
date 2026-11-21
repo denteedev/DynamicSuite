@@ -2858,7 +2858,7 @@ function DM:CreateSliderControl(parent, minVal, maxVal, stepVal, getter, setter,
     valText:SetWordWrap(false)
     self:StyleFont(valText, 11, "", self:GetAccentColorTable(1.0))
 
-    local slider = CreateFrame("Slider", nil, holder, "BackdropTemplate")
+    local slider = CreateFrame("Slider", nil, holder)
     slider:SetOrientation("HORIZONTAL")
     slider:SetPoint("LEFT", holder, "LEFT", 0, 0)
     slider:SetPoint("RIGHT", valText, "LEFT", -10, 0)
@@ -2869,12 +2869,20 @@ function DM:CreateSliderControl(parent, minVal, maxVal, stepVal, getter, setter,
     slider:SetObeyStepOnDrag(false)
     slider:EnableMouse(true)
     slider:EnableMouseWheel(true)
-    self:ApplyBackdrop(slider, { r = 0.035, g = 0.039, b = 0.051, a = 0.98 }, { r = 1, g = 1, b = 1, a = 0.14 })
+
+    local hairline = slider:CreateTexture(nil, "BACKGROUND", nil, -1)
+    hairline:SetPoint("TOPLEFT", slider, "TOPLEFT", -1, 1)
+    hairline:SetPoint("BOTTOMRIGHT", slider, "BOTTOMRIGHT", 1, -1)
+    hairline:SetColorTexture(1, 1, 1, 0.14)
+
+    local trackBg = slider:CreateTexture(nil, "BACKGROUND", nil, 0)
+    trackBg:SetAllPoints()
+    trackBg:SetColorTexture(0.035, 0.039, 0.051, 0.98)
 
     local ar0, ag0, ab0 = self:GetAccentColor()
     local fill = slider:CreateTexture(nil, "ARTWORK")
-    fill:SetPoint("TOPLEFT", slider, "TOPLEFT", 1, -1)
-    fill:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 1, 1)
+    fill:SetPoint("TOPLEFT", slider, "TOPLEFT", 0, 0)
+    fill:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 0, 0)
     fill:SetWidth(1)
     fill:SetColorTexture(ar0, ag0, ab0, 0.85)
     slider.FillBar = fill
@@ -2914,7 +2922,7 @@ function DM:CreateSliderControl(parent, minVal, maxVal, stepVal, getter, setter,
         pct = math.max(0, math.min(1, pct))
         local tw = slider:GetWidth()
         if not tw or tw <= 0 then tw = 194 end
-        fill:SetWidth(math.max(1, pct * math.max(1, tw - 2)))
+        fill:SetWidth(math.max(1, pct * tw))
     end
 
     slider:SetScript("OnValueChanged", function(_, value)
@@ -10386,6 +10394,11 @@ function DM:EnsureStandaloneShell()
     scaleTrack:SetPoint("CENTER", scaleHit, "CENTER", 0, 0)
     scaleTrack:SetColorTexture(0.035, 0.039, 0.051, 0.98)
 
+    local scaleHairline = scaleHit:CreateTexture(nil, "BACKGROUND", nil, 0)
+    scaleHairline:SetPoint("TOPLEFT", scaleTrack, "TOPLEFT", -1, 1)
+    scaleHairline:SetPoint("BOTTOMRIGHT", scaleTrack, "BOTTOMRIGHT", 1, -1)
+    scaleHairline:SetColorTexture(1, 1, 1, 0.14)
+
     local scaleFill = scaleHit:CreateTexture(nil, "ARTWORK", nil, 2)
     scaleFill:SetPoint("TOPLEFT", scaleTrack, "TOPLEFT", 0, 0)
     scaleFill:SetPoint("BOTTOMLEFT", scaleTrack, "BOTTOMLEFT", 0, 0)
@@ -10399,6 +10412,15 @@ function DM:EnsureStandaloneShell()
     if scaleThumb.SetSnapToPixelGrid then
         scaleThumb:SetSnapToPixelGrid(false)
         scaleThumb:SetTexelSnappingBias(0)
+    end
+    local scaleDragging = false
+    local function SyncScaleThumbColor()
+        if scaleDragging or (scaleHit.IsMouseOver and scaleHit:IsMouseOver()) then
+            local ar, ag, ab = self:GetAccentColor()
+            scaleThumb:SetColorTexture(ar, ag, ab, 1.0)
+        else
+            scaleThumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+        end
     end
 
     local scaleLbl = footer:CreateFontString(nil, "OVERLAY")
@@ -10416,6 +10438,7 @@ function DM:EnsureStandaloneShell()
         scaleThumb:ClearAllPoints()
         scaleThumb:SetPoint("CENTER", scaleTrack, "LEFT", xOff, 0)
         scaleValText:SetText(string.format("%d%%", math.floor(val * 100 + 0.5)))
+        SyncScaleThumbColor()
     end
     UpdateScaleVisual(savedScale)
 
@@ -10437,10 +10460,15 @@ function DM:EnsureStandaloneShell()
         end
     end
 
+    scaleHit:SetScript("OnEnter", SyncScaleThumbColor)
+    scaleHit:SetScript("OnLeave", SyncScaleThumbColor)
     scaleHit:SetScript("OnMouseDown", function(s, button)
         if button == "LeftButton" then
+            scaleDragging = true
+            SyncScaleThumbColor()
             s:SetScript("OnUpdate", function(up)
                 if not IsMouseButtonDown("LeftButton") then
+                    scaleDragging = false
                     up:SetScript("OnUpdate", nil)
                     CommitWindowScale(pendingScale)
                     return
@@ -10465,11 +10493,16 @@ function DM:EnsureStandaloneShell()
     end)
     scaleHit:SetScript("OnMouseUp", function(s, button)
         if button == "LeftButton" then
+            scaleDragging = false
             s:SetScript("OnUpdate", nil)
             CommitWindowScale(pendingScale)
         end
     end)
-    scaleHit:SetScript("OnHide", function(s) s:SetScript("OnUpdate", nil) end)
+    scaleHit:SetScript("OnHide", function(s)
+        scaleDragging = false
+        s:SetScript("OnUpdate", nil)
+        SyncScaleThumbColor()
+    end)
     scaleHit:SetScript("OnMouseWheel", function(_, delta)
         CommitWindowScale(pendingScale + (delta > 0 and SCALE_STEP or -SCALE_STEP))
     end)
@@ -10486,6 +10519,11 @@ function DM:EnsureStandaloneShell()
     opaTrack:SetPoint("CENTER", opaHit, "CENTER", 0, 0)
     opaTrack:SetColorTexture(0.035, 0.039, 0.051, 0.98)
 
+    local opaHairline = opaHit:CreateTexture(nil, "BACKGROUND", nil, 0)
+    opaHairline:SetPoint("TOPLEFT", opaTrack, "TOPLEFT", -1, 1)
+    opaHairline:SetPoint("BOTTOMRIGHT", opaTrack, "BOTTOMRIGHT", 1, -1)
+    opaHairline:SetColorTexture(1, 1, 1, 0.14)
+
     local opaFill = opaHit:CreateTexture(nil, "ARTWORK", nil, 2)
     opaFill:SetPoint("TOPLEFT", opaTrack, "TOPLEFT", 0, 0)
     opaFill:SetPoint("BOTTOMLEFT", opaTrack, "BOTTOMLEFT", 0, 0)
@@ -10499,6 +10537,15 @@ function DM:EnsureStandaloneShell()
     if opaThumb.SetSnapToPixelGrid then
         opaThumb:SetSnapToPixelGrid(false)
         opaThumb:SetTexelSnappingBias(0)
+    end
+    local opaDragging = false
+    local function SyncOpaThumbColor()
+        if opaDragging or (opaHit.IsMouseOver and opaHit:IsMouseOver()) then
+            local ar, ag, ab = self:GetAccentColor()
+            opaThumb:SetColorTexture(ar, ag, ab, 1.0)
+        else
+            opaThumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+        end
     end
 
     local opaLabel = footer:CreateFontString(nil, "OVERLAY")
@@ -10515,14 +10562,21 @@ function DM:EnsureStandaloneShell()
         opaFill:SetWidth(math.max(1, xOff))
         opaThumb:ClearAllPoints()
         opaThumb:SetPoint("CENTER", opaTrack, "LEFT", xOff, 0)
+        SyncOpaThumbColor()
     end
     ApplyWindowOpacity(savedAlpha)
 
+    opaHit:SetScript("OnEnter", SyncOpaThumbColor)
+    opaHit:SetScript("OnLeave", SyncOpaThumbColor)
     opaHit:SetScript("OnMouseDown", function(s, button)
         if button == "LeftButton" then
+            opaDragging = true
+            SyncOpaThumbColor()
             s:SetScript("OnUpdate", function(up)
                 if not IsMouseButtonDown("LeftButton") then
+                    opaDragging = false
                     up:SetScript("OnUpdate", nil)
+                    SyncOpaThumbColor()
                     return
                 end
                 local eff = opaTrack:GetEffectiveScale()
@@ -10542,8 +10596,16 @@ function DM:EnsureStandaloneShell()
             ApplyWindowOpacity(0.98)
         end
     end)
-    opaHit:SetScript("OnMouseUp", function(s) s:SetScript("OnUpdate", nil) end)
-    opaHit:SetScript("OnHide", function(s) s:SetScript("OnUpdate", nil) end)
+    opaHit:SetScript("OnMouseUp", function(s)
+        opaDragging = false
+        s:SetScript("OnUpdate", nil)
+        SyncOpaThumbColor()
+    end)
+    opaHit:SetScript("OnHide", function(s)
+        opaDragging = false
+        s:SetScript("OnUpdate", nil)
+        SyncOpaThumbColor()
+    end)
     opaHit:SetScript("OnMouseWheel", function(_, delta)
         local cur = (self.db and self.db.standaloneWindowAlpha) or 0.98
         ApplyWindowOpacity(cur + (delta > 0 and 0.05 or -0.05))
@@ -11059,6 +11121,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "21/11/2026",
     entries = {
+        { type = "UI",       text = "[Unreleased] True-4px Sleek Precision Sliders & Footer Thumb Parity (22/11/2026): Moved the 1px track hairline strictly outside the 4px #090A0D track across settings sliders so fill bars render at a true 4px height, and added matching 1px hairlines plus live Suite Accent hover/drag blade thumb highlights to the standalone footer Scale and Opacity sliders." },
         { type = "IMPROVED", text = "Release v2.7.1 - Version & Coexistence Lockstep Parity (21/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.7.1 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "UI",       text = "Release v2.7.0 - Live Suite Accent Parity & Clean Header Clamping (21/11/2026): Updated standalone Edit HUD buttons, the HUD Edit Inspector [Apply All] action button, and conflict reload modals to follow the live Suite Accent colour cleanly instead of Blaze Orange fallbacks, and clamped the Focus and World Flare HUD section titles beside their Edit HUD buttons so headers never collide at 800x520." },
         { type = "IMPROVED", text = "Release v2.4.0 - Version & Coexistence Lockstep Parity (18/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks cleanly to v2.4.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },

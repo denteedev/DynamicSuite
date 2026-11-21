@@ -347,6 +347,7 @@ local DEFAULTS = {
     enabled                    = true,
     activeSubTab               = 1,
     migratedFromPrep           = false,
+    nextLoadoutIDSeq           = 0,
     talentReminderEnabled      = true,
     talentReminderToastEnabled = true,
     prioritiseCurrentZone      = false,
@@ -363,6 +364,7 @@ local DEFAULTS = {
     talentStringLibrary        = {},
     talentMgrModalSize         = { w = 880, h = 580 },
     dismissedTalentQuickStart  = false,
+    lastAppliedTalentID        = {},
     lastAppliedTalentName      = {},
     lastAppliedTalentLiveStr   = {},
 }
@@ -427,6 +429,45 @@ local function SanitizeGroupOrder(rawOrder)
     end
     return out
 end
+
+local function GenerateLoadoutID(db)
+    local d = (type(db) == "table") and db or _G.DynamicTalentDB or {}
+    local seq = (tonumber(d.nextLoadoutIDSeq) or 0) + 1
+    d.nextLoadoutIDSeq = seq
+    local ts = (type(GetTime) == "function") and math.floor((GetTime() or 0) * 1000) or 0
+    return string.format("dt_%d_%d", seq, ts)
+end
+
+local function EnsureEntryID(entry, db)
+    if type(entry) ~= "table" then return nil end
+    if type(entry.id) ~= "string" or entry.id == "" then
+        entry.id = GenerateLoadoutID(db)
+    end
+    return entry.id
+end
+
+local function DoesRuleMatchEntry(rule, entry)
+    if type(rule) ~= "table" or type(entry) ~= "table" then return false end
+    if type(rule.loadoutID) == "string" and rule.loadoutID ~= "" then
+        return (type(entry.id) == "string" and entry.id == rule.loadoutID)
+    end
+    local rStr = (type(rule.importString) == "string" and rule.importString ~= "") and rule.importString or nil
+    local eStr = (type(entry.importString) == "string" and entry.importString ~= "") and entry.importString or nil
+    local eHash = (type(entry.liveHash) == "string" and entry.liveHash ~= "") and entry.liveHash or nil
+    if rStr and eStr then
+        return (rStr == eStr) or (eHash ~= nil and rStr == eHash)
+    end
+    local rName = (type(rule.loadoutName) == "string" and rule.loadoutName ~= "") and rule.loadoutName:lower() or nil
+    local eName = (type(entry.name) == "string" and entry.name ~= "") and entry.name:lower() or nil
+    if rName and eName and rName == eName then
+        if type(rule.group) == "string" and rule.group ~= "" then
+            return NormalizeTalentGroupKey(rule.group) == NormalizeTalentGroupKey(entry.group or "Custom")
+        end
+        return true
+    end
+    return false
+end
+DynamicTalent.DoesRuleMatchEntry = DoesRuleMatchEntry
 
 local function EnsureDB()
     _G.DynamicTalentDB = CopyDefaults(_G.DynamicTalentDB, DEFAULTS)
@@ -523,6 +564,7 @@ local function EnsureDB()
     db.talentDungeonMap = type(db.talentDungeonMap) == "table" and db.talentDungeonMap or {}
     db.talentStringLibrary = type(db.talentStringLibrary) == "table" and db.talentStringLibrary or {}
     db.talentPreferredBySpec = type(db.talentPreferredBySpec) == "table" and db.talentPreferredBySpec or {}
+    db.lastAppliedTalentID = type(db.lastAppliedTalentID) == "table" and db.lastAppliedTalentID or {}
     db.lastAppliedTalentName = type(db.lastAppliedTalentName) == "table" and db.lastAppliedTalentName or {}
     db.lastAppliedTalentLiveStr = type(db.lastAppliedTalentLiveStr) == "table" and db.lastAppliedTalentLiveStr or {}
     db.talentGroupOrder = SanitizeGroupOrder(db.talentGroupOrder)
@@ -540,6 +582,47 @@ local function EnsureDB()
         db.talentBackdropDimmer = math.floor((rawDim / 5) + 0.5) * 5
     end
 
+    -- Guarantee stable unique loadout IDs and backfill unambiguous legacy rule IDs
+    local seenIDs = {}
+    for _, lib in pairs(db.talentStringLibrary) do
+        if type(lib) == "table" then
+            for _, entry in ipairs(lib) do
+                if type(entry) == "table" then
+                    if type(entry.id) ~= "string" or entry.id == "" or seenIDs[entry.id] then
+                        entry.id = GenerateLoadoutID(db)
+                    end
+                    seenIDs[entry.id] = true
+                end
+            end
+        end
+    end
+    local function BackfillRuleTable(mapBySpec)
+        if type(mapBySpec) ~= "table" then return end
+        for specID, specMap in pairs(mapBySpec) do
+            local lib = db.talentStringLibrary[specID]
+            if type(specMap) == "table" and type(lib) == "table" and #lib > 0 then
+                for _, rule in pairs(specMap) do
+                    if type(rule) == "table" and (type(rule.loadoutID) ~= "string" or rule.loadoutID == "") then
+                        local matchID, matchCount = nil, 0
+                        for _, entry in ipairs(lib) do
+                            if type(entry) == "table" and DoesRuleMatchEntry(rule, entry) then
+                                matchID = entry.id
+                                matchCount = matchCount + 1
+                            end
+                        end
+                        if matchCount == 1 and matchID then
+                            rule.loadoutID = matchID
+                        end
+                    end
+                end
+            end
+        end
+    end
+    BackfillRuleTable(db.talentBossMap)
+    BackfillRuleTable(db.talentDungeonMap)
+    BackfillRuleTable(db.talentPvPMap)
+    BackfillRuleTable(db.talentZoneMap)
+
     DynamicTalent.db = db
     return db
 end
@@ -555,7 +638,7 @@ local talentReminderToast = nil
 local talentPopoverFrame = nil
 local silencedTalentMismatches = {}
 local talentMgrModal = nil
-local embeddedMgrCore = nil
+local groupDragGhost = nil
 
 local function GetWarModeFlags()
     local desired, active = false, false
@@ -643,11 +726,17 @@ local function DoesRuleMatchDifficulty(entry, diffKey)
     return d[diffKey] == true
 end
 
-local function IsEntryAlreadyActive(selfObj, specID, targetName, targetStr, liveStr)
+local function IsEntryAlreadyActive(selfObj, specID, ruleOrName, targetStr, liveStr)
     local activeLib = selfObj:GetActiveTalentLibraryEntry(specID)
+    if type(ruleOrName) == "table" then
+        if activeLib and DoesRuleMatchEntry(ruleOrName, activeLib) then return true end
+        local rStr = ruleOrName.importString
+        if liveStr and type(rStr) == "string" and rStr ~= "" and liveStr == rStr then return true end
+        return false
+    end
     if activeLib then
-        if targetName and activeLib.name == targetName then return true end
         if targetStr and (activeLib.importString == targetStr or activeLib.liveHash == targetStr) then return true end
+        if ruleOrName and activeLib.name == ruleOrName then return true end
     end
     if liveStr and targetStr and liveStr == targetStr then return true end
     return false
@@ -734,9 +823,9 @@ function DynamicTalent:GetActiveTalentMismatch()
             local mKey = "boss:" .. bossKey .. ":" .. tostring(diffKey or "any")
             if not silencedTalentMismatches[mKey] then
                 if matchEntry.importString and matchEntry.importString ~= "" then
-                    if not IsEntryAlreadyActive(self, specID, matchEntry.loadoutName, matchEntry.importString, liveStr) then
+                    if not IsEntryAlreadyActive(self, specID, matchEntry, matchEntry.importString, liveStr) then
                         local dispBoss = tostring(matchEntry.bossName or tName)
-                        return { name = matchEntry.loadoutName or "Boss Loadout", importString = matchEntry.importString, group = matchEntry.group or "Raid" },
+                        return { id = matchEntry.loadoutID, name = matchEntry.loadoutName or "Boss Loadout", importString = matchEntry.importString, group = matchEntry.group or "Raid", heroAcronym = matchEntry.heroAcronym },
                             matchEntry.loadoutName or "Boss Loadout", "Boss: " .. dispBoss .. diffTag, mKey
                     end
                 elseif matchEntry.configID and curID ~= matchEntry.configID then
@@ -776,9 +865,9 @@ function DynamicTalent:GetActiveTalentMismatch()
         local dMatch = specExact or specAny
         if dMatch and dMatch.importString and dMatch.importString ~= "" then
             local mKey = "mplus:" .. lowInst .. ":" .. tostring(dMatch.keyTier or "ANY")
-            if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, dMatch.loadoutName, dMatch.importString, liveStr) then
+            if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, dMatch, dMatch.importString, liveStr) then
                 local tLabel = (dMatch.keyTier == "HIGH" and " (+10+)") or (dMatch.keyTier == "LOW" and " (+2-9)") or ""
-                return { name = dMatch.loadoutName or "M+ Loadout", importString = dMatch.importString, group = dMatch.group or "M+" },
+                return { id = dMatch.loadoutID, name = dMatch.loadoutName or "M+ Loadout", importString = dMatch.importString, group = dMatch.group or "M+", heroAcronym = dMatch.heroAcronym },
                     dMatch.loadoutName or "M+ Loadout", "M+: " .. instName .. tLabel, mKey
             end
             return nil
@@ -797,8 +886,8 @@ function DynamicTalent:GetActiveTalentMismatch()
         end
         local pRule = pvpKey and pvpMap[pvpKey]
         if type(pRule) == "table" and type(pRule.importString) == "string" and pRule.importString ~= "" then
-            if not silencedTalentMismatches[pvpMKey] and not IsEntryAlreadyActive(self, specID, pRule.loadoutName, pRule.importString, liveStr) then
-                return { name = pRule.loadoutName or pvpLbl, importString = pRule.importString, group = pRule.group or "PvP" },
+            if not silencedTalentMismatches[pvpMKey] and not IsEntryAlreadyActive(self, specID, pRule, pRule.importString, liveStr) then
+                return { id = pRule.loadoutID, name = pRule.loadoutName or pvpLbl, importString = pRule.importString, group = pRule.group or "PvP", heroAcronym = pRule.heroAcronym },
                     pRule.loadoutName or pvpLbl, pvpLbl, pvpMKey
             end
             return nil
@@ -822,8 +911,8 @@ function DynamicTalent:GetActiveTalentMismatch()
         end
         if allRaidBest and allRaidBest.importString and allRaidBest.importString ~= "" then
             local mKey = "allraid:" .. tostring(diffKey or "any")
-            if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allRaidBest.loadoutName, allRaidBest.importString, liveStr) then
-                return { name = allRaidBest.loadoutName or "Raid Loadout", importString = allRaidBest.importString, group = allRaidBest.group or "Raid" },
+            if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allRaidBest, allRaidBest.importString, liveStr) then
+                return { id = allRaidBest.loadoutID, name = allRaidBest.loadoutName or "Raid Loadout", importString = allRaidBest.importString, group = allRaidBest.group or "Raid", heroAcronym = allRaidBest.heroAcronym },
                     allRaidBest.loadoutName or "Raid Loadout", "All Raids" .. diffTag, mKey
             end
             return nil
@@ -848,9 +937,9 @@ function DynamicTalent:GetActiveTalentMismatch()
         local allM = allExact or allAny
         if allM and allM.importString and allM.importString ~= "" then
             local mKey = "mplus:all:" .. tostring(allM.keyTier or "ANY")
-            if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allM.loadoutName, allM.importString, liveStr) then
+            if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allM, allM.importString, liveStr) then
                 local tLabel = (allM.keyTier == "HIGH" and " (+10+)") or (allM.keyTier == "LOW" and " (+2-9)") or ""
-                return { name = allM.loadoutName or "M+ Loadout", importString = allM.importString, group = allM.group or "M+" },
+                return { id = allM.loadoutID, name = allM.loadoutName or "M+ Loadout", importString = allM.importString, group = allM.group or "M+", heroAcronym = allM.heroAcronym },
                     allM.loadoutName or "M+ Loadout", "All M+" .. tLabel, mKey
             end
             return nil
@@ -863,9 +952,9 @@ function DynamicTalent:GetActiveTalentMismatch()
         if type(allPvPRule) == "table" and type(allPvPRule.importString) == "string" and allPvPRule.importString ~= "" then
             local mKey = "pvp:all"
             if not silencedTalentMismatches[mKey] and not silencedTalentMismatches["zone:pvp"]
-                and not IsEntryAlreadyActive(self, specID, allPvPRule.loadoutName, allPvPRule.importString, liveStr) then
+                and not IsEntryAlreadyActive(self, specID, allPvPRule, allPvPRule.importString, liveStr) then
                 local ctxTag = isArena and "Arena" or (isBG and "Battlegrounds" or "War Mode")
-                return { name = allPvPRule.loadoutName or "PvP Loadout", importString = allPvPRule.importString, group = allPvPRule.group or "PvP" },
+                return { id = allPvPRule.loadoutID, name = allPvPRule.loadoutName or "PvP Loadout", importString = allPvPRule.importString, group = allPvPRule.group or "PvP", heroAcronym = allPvPRule.heroAcronym },
                     allPvPRule.loadoutName or "PvP Loadout", "All PvP (" .. ctxTag .. ")", mKey
             end
             return nil
@@ -885,8 +974,8 @@ function DynamicTalent:GetActiveTalentMismatch()
             zRule, zLbl, zMKey = zoneMap.outdoor, "Outdoor", "zone:outdoor"
         end
         if zRule and zRule.importString and zRule.importString ~= "" then
-            if not silencedTalentMismatches[zMKey] and not IsEntryAlreadyActive(self, specID, zRule.loadoutName, zRule.importString, liveStr) then
-                return { name = zRule.loadoutName or (zLbl .. " Loadout"), importString = zRule.importString, group = zRule.group or "Custom" },
+            if not silencedTalentMismatches[zMKey] and not IsEntryAlreadyActive(self, specID, zRule, zRule.importString, liveStr) then
+                return { id = zRule.loadoutID, name = zRule.loadoutName or (zLbl .. " Loadout"), importString = zRule.importString, group = zRule.group or "Custom", heroAcronym = zRule.heroAcronym },
                     zRule.loadoutName or (zLbl .. " Loadout"), zLbl, zMKey
             end
             return nil
@@ -905,8 +994,8 @@ function DynamicTalent:GetActiveTalentMismatch()
                 or nil
             if ctxLbl then
                 local mKey = "zone:all"
-                if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allRule.loadoutName, allRule.importString, liveStr) then
-                    return { name = allRule.loadoutName or "Default Loadout", importString = allRule.importString, group = allRule.group or "Custom" },
+                if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allRule, allRule.importString, liveStr) then
+                    return { id = allRule.loadoutID, name = allRule.loadoutName or "Default Loadout", importString = allRule.importString, group = allRule.group or "Custom", heroAcronym = allRule.heroAcronym },
                         allRule.loadoutName or "Default Loadout", ctxLbl .. " (All Content)", mKey
                 end
                 return nil
@@ -958,19 +1047,25 @@ function DynamicTalent:ImportFromTalentLoadoutManager()
                 if okE and type(s) == "string" and s ~= "" then expStr = s end
             end
             if expStr then
+                local newGrp = CategoriseTalentGroup(lo.name)
+                local newHero = self:DetectHeroTreeFromString(expStr)
                 local found = false
                 for _, ex in ipairs(lib) do
-                    if ex.name:lower() == lo.name:lower() then
+                    local exGrp = NormalizeTalentGroupKey(ex.group or CategoriseTalentGroup(ex.name))
+                    if ex.importString == expStr or (ex.name:lower() == lo.name:lower() and exGrp == newGrp and (ex.heroAcronym or "") == (newHero or "")) then
+                        EnsureEntryID(ex, self.db)
                         ex.importString = expStr
-                        ex.group = NormalizeTalentGroupKey(ex.group or CategoriseTalentGroup(lo.name))
+                        ex.group = exGrp
+                        ex._heroStrHash = nil
                         found = true
                         break
                     end
                 end
                 if not found then
                     table.insert(lib, {
+                        id           = GenerateLoadoutID(self.db),
                         name         = lo.name,
-                        group        = CategoriseTalentGroup(lo.name),
+                        group        = newGrp,
                         importString = expStr,
                     })
                 end
@@ -1031,11 +1126,14 @@ function DynamicTalent:ImportBlizzardLoadouts(specID)
     self.db.talentStringLibrary[sid] = self.db.talentStringLibrary[sid] or {}
     local lib = self.db.talentStringLibrary[sid]
 
-    local existingNames, existingStrs = {}, {}
+    local existingKeys, existingStrs = {}, {}
     for _, ex in ipairs(lib) do
         if type(ex) == "table" then
+            EnsureEntryID(ex, self.db)
             if type(ex.name) == "string" and ex.name ~= "" then
-                existingNames[ex.name:lower()] = true
+                self:RefreshLoadoutHeroMeta(ex)
+                local grp = NormalizeTalentGroupKey(ex.group or CategoriseTalentGroup(ex.name))
+                existingKeys[ex.name:lower() .. "|" .. grp .. "|" .. tostring(ex.heroAcronym or "")] = true
             end
             if type(ex.importString) == "string" and ex.importString ~= "" then
                 existingStrs[ex.importString] = true
@@ -1055,18 +1153,22 @@ function DynamicTalent:ImportBlizzardLoadouts(specID)
                 if okS and type(expStr) == "string" and not _IsSecret(expStr) then
                     expStr = SafeTrim(expStr)
                     if expStr ~= "" and self:DecodeTalentImportString(expStr) then
-                        if existingNames[low] or existingStrs[expStr] then
+                        local grp = CategoriseTalentGroup(cleanName)
+                        local hAcr = self:DetectHeroTreeFromString(expStr, (liveStr and liveStr == expStr) and liveStr or nil)
+                        local sig = low .. "|" .. grp .. "|" .. tostring(hAcr or "")
+                        if existingStrs[expStr] or existingKeys[sig] then
                             skipped = skipped + 1
                         else
                             local entry = {
+                                id           = GenerateLoadoutID(self.db),
                                 name         = cleanName,
-                                group        = CategoriseTalentGroup(cleanName),
+                                group        = grp,
                                 importString = expStr,
                                 liveHash     = (liveStr and liveStr == expStr) and liveStr or nil,
                             }
                             table.insert(lib, entry)
                             self:RefreshLoadoutHeroMeta(entry)
-                            existingNames[low] = true
+                            existingKeys[sig] = true
                             existingStrs[expStr] = true
                             if not firstImported then firstImported = entry end
                             imported = imported + 1
@@ -1276,6 +1378,36 @@ do
         return self:RefreshLoadoutHeroMeta(entry)
     end
 
+    function DynamicTalent:FindLibraryEntryByID(loadoutID, specID)
+        if type(loadoutID) ~= "string" or loadoutID == "" or not self.db then return nil end
+        local sid = specID or self:GetActiveSpecID()
+        local lib = sid and self.db.talentStringLibrary and self.db.talentStringLibrary[sid]
+        if type(lib) ~= "table" then return nil end
+        for _, it in ipairs(lib) do
+            if type(it) == "table" and it.id == loadoutID then
+                return it
+            end
+        end
+        return nil
+    end
+
+    function DynamicTalent:FindLibraryEntryForRule(rule, specID)
+        if type(rule) ~= "table" or not self.db then return nil end
+        local sid = specID or self:GetActiveSpecID()
+        local lib = sid and self.db.talentStringLibrary and self.db.talentStringLibrary[sid]
+        if type(lib) ~= "table" then return nil end
+        if type(rule.loadoutID) == "string" and rule.loadoutID ~= "" then
+            local byId = self:FindLibraryEntryByID(rule.loadoutID, sid)
+            if byId then return byId end
+        end
+        for _, it in ipairs(lib) do
+            if type(it) == "table" and DoesRuleMatchEntry(rule, it) then
+                return it
+            end
+        end
+        return nil
+    end
+
     function DynamicTalent:FindLibraryEntryByName(loadoutName, specID)
         if type(loadoutName) ~= "string" or loadoutName == "" or not self.db then return nil end
         local sid = specID or self:GetActiveSpecID()
@@ -1298,8 +1430,11 @@ do
             if not hero or hero == "" then
                 hero = self:GetLoadoutHeroAcronym(entryOrGroup)
             end
-            if (not hero or hero == "") and entryOrGroup.loadoutName then
-                local libEntry = self:FindLibraryEntryByName(entryOrGroup.loadoutName)
+            if (not hero or hero == "") and (entryOrGroup.loadoutID or entryOrGroup.loadoutName) then
+                local libEntry = self:FindLibraryEntryForRule(entryOrGroup)
+                if not libEntry and entryOrGroup.loadoutName then
+                    libEntry = self:FindLibraryEntryByName(entryOrGroup.loadoutName)
+                end
                 if libEntry then
                     hero = self:GetLoadoutHeroAcronym(libEntry)
                 end
@@ -1404,16 +1539,34 @@ function DynamicTalent:GetActiveTalentLibraryEntry(specID)
     end
 
     local liveStr = self:GetActiveTalentString()
+    local lastAppliedID = self.db.lastAppliedTalentID and self.db.lastAppliedTalentID[sid]
     local lastApplied = self.db.lastAppliedTalentName and self.db.lastAppliedTalentName[sid]
     local lastLiveStr = self.db.lastAppliedTalentLiveStr and self.db.lastAppliedTalentLiveStr[sid]
 
-    if type(lastApplied) == "string" and lastApplied ~= "" then
+    if type(lastAppliedID) == "string" and lastAppliedID ~= "" then
         for _, entry in ipairs(lib) do
-            if entry.name == lastApplied then
+            if entry.id == lastAppliedID then
                 if not liveStr
                     or entry.importString == liveStr
                     or (entry.liveHash and entry.liveHash == liveStr)
                     or (lastLiveStr and lastLiveStr == liveStr) then
+                    return entry
+                end
+            end
+        end
+    end
+
+    if type(lastApplied) == "string" and lastApplied ~= "" then
+        if liveStr then
+            for _, entry in ipairs(lib) do
+                if entry.name == lastApplied and (entry.importString == liveStr or (entry.liveHash and entry.liveHash == liveStr)) then
+                    return entry
+                end
+            end
+        end
+        for _, entry in ipairs(lib) do
+            if entry.name == lastApplied then
+                if not liveStr or (lastLiveStr and lastLiveStr == liveStr) then
                     return entry
                 end
             end
@@ -1439,8 +1592,8 @@ function DynamicTalent:SyncTalentBindsUI()
     if talentMgrModal and talentMgrModal:IsShown() and talentMgrModal.RefreshBossList then
         talentMgrModal:RefreshBossList()
     end
-    if embeddedMgrCore and embeddedMgrCore:IsShown() and embeddedMgrCore.RefreshBossList then
-        embeddedMgrCore:RefreshBossList()
+    if activeEmbeddedRoot and activeEmbeddedRoot:IsShown() and activeEmbeddedRoot.RefreshActionStrip then
+        activeEmbeddedRoot:RefreshActionStrip()
     end
 end
 
@@ -1460,7 +1613,15 @@ function DynamicTalent:UpdateTalentLibraryEntry(targetEntry, newName, newGroup, 
         return false, errMsg or "Invalid talent export string."
     end
 
+    local targetID = EnsureEntryID(targetEntry, self.db)
     local oldName = targetEntry.name
+    local matchSnapshot = {
+        id           = targetID,
+        name         = oldName,
+        group        = targetEntry.group,
+        importString = targetEntry.importString,
+        liveHash     = targetEntry.liveHash,
+    }
     local grp = NormalizeTalentGroupKey((type(newGroup) == "string" and newGroup ~= "") and newGroup or (targetEntry.group or CategoriseTalentGroup(cleanName)))
     local strChanged = (targetEntry.importString ~= cleanStr)
 
@@ -1474,13 +1635,19 @@ function DynamicTalent:UpdateTalentLibraryEntry(targetEntry, newName, newGroup, 
     end
     self:RefreshLoadoutHeroMeta(targetEntry)
 
-    if self.db.lastAppliedTalentName and self.db.lastAppliedTalentName[specID] == oldName then
+    local isLastApplied = (self.db.lastAppliedTalentID and self.db.lastAppliedTalentID[specID] == targetID)
+        or ((not self.db.lastAppliedTalentID or not self.db.lastAppliedTalentID[specID]) and self.db.lastAppliedTalentName and self.db.lastAppliedTalentName[specID] == oldName)
+    if isLastApplied then
+        self.db.lastAppliedTalentID = self.db.lastAppliedTalentID or {}
+        self.db.lastAppliedTalentID[specID] = targetID
+        self.db.lastAppliedTalentName = self.db.lastAppliedTalentName or {}
         self.db.lastAppliedTalentName[specID] = cleanName
     end
     local function UpdateMapRows(tbl)
         if type(tbl) ~= "table" then return end
         for _, row in pairs(tbl) do
-            if type(row) == "table" and row.loadoutName == oldName then
+            if type(row) == "table" and DoesRuleMatchEntry(row, matchSnapshot) then
+                row.loadoutID = targetID
                 row.loadoutName = cleanName
                 row.importString = cleanStr
                 row.group = grp
@@ -1507,10 +1674,20 @@ function DynamicTalent:SaveCurrentTreeOverEntry(targetEntry)
         Print("Could not read your active talent tree.")
         return false
     end
+    local targetID = EnsureEntryID(targetEntry, self.db)
+    local matchSnapshot = {
+        id           = targetID,
+        name         = targetEntry.name,
+        group        = targetEntry.group,
+        importString = targetEntry.importString,
+        liveHash     = targetEntry.liveHash,
+    }
     targetEntry.importString = liveStr
     targetEntry.liveHash = liveStr
     targetEntry._heroStrHash = nil
     self:RefreshLoadoutHeroMeta(targetEntry)
+    self.db.lastAppliedTalentID = self.db.lastAppliedTalentID or {}
+    self.db.lastAppliedTalentID[specID] = targetID
     self.db.lastAppliedTalentName = self.db.lastAppliedTalentName or {}
     self.db.lastAppliedTalentName[specID] = targetEntry.name
     self.db.lastAppliedTalentLiveStr = self.db.lastAppliedTalentLiveStr or {}
@@ -1519,7 +1696,8 @@ function DynamicTalent:SaveCurrentTreeOverEntry(targetEntry)
     local function UpdateTreeRows(tbl)
         if type(tbl) ~= "table" then return end
         for _, row in pairs(tbl) do
-            if type(row) == "table" and row.loadoutName == targetEntry.name then
+            if type(row) == "table" and DoesRuleMatchEntry(row, matchSnapshot) then
+                row.loadoutID = targetID
                 row.importString = liveStr
                 row.heroAcronym = targetEntry.heroAcronym
             end
@@ -1538,6 +1716,7 @@ end
 function DynamicTalent:DeleteTalentLibraryEntry(targetEntry)
     local specID = self:GetActiveSpecID()
     if not specID or type(targetEntry) ~= "table" then return end
+    local targetID = EnsureEntryID(targetEntry, self.db)
     local rawLib = (self.db and self.db.talentStringLibrary and self.db.talentStringLibrary[specID]) or {}
     for ri = #rawLib, 1, -1 do
         if rawLib[ri] == targetEntry then
@@ -1545,13 +1724,19 @@ function DynamicTalent:DeleteTalentLibraryEntry(targetEntry)
             break
         end
     end
-    if self.db and self.db.lastAppliedTalentName and self.db.lastAppliedTalentName[specID] == targetEntry.name then
-        self.db.lastAppliedTalentName[specID] = nil
+    local wasLast = self.db and (
+        (self.db.lastAppliedTalentID and self.db.lastAppliedTalentID[specID] == targetID)
+        or ((not self.db.lastAppliedTalentID or not self.db.lastAppliedTalentID[specID])
+            and self.db.lastAppliedTalentName and self.db.lastAppliedTalentName[specID] == targetEntry.name)
+    )
+    if wasLast then
+        if self.db.lastAppliedTalentID then self.db.lastAppliedTalentID[specID] = nil end
+        if self.db.lastAppliedTalentName then self.db.lastAppliedTalentName[specID] = nil end
     end
     local function ClearMapRows(tbl)
         if type(tbl) ~= "table" then return end
         for k, row in pairs(tbl) do
-            if type(row) == "table" and row.loadoutName == targetEntry.name then
+            if type(row) == "table" and DoesRuleMatchEntry(row, targetEntry) then
                 tbl[k] = nil
             end
         end
@@ -1562,13 +1747,11 @@ function DynamicTalent:DeleteTalentLibraryEntry(targetEntry)
     ClearMapRows(self.db and self.db.talentZoneMap and self.db.talentZoneMap[specID])
 
     Print("Deleted loadout |cFFF43F5E" .. tostring(targetEntry.name) .. "|r.")
-    for _, hostWin in ipairs({ talentMgrModal, embeddedMgrCore }) do
-        if hostWin and hostWin:IsShown() then
-            if hostWin.state and hostWin.state.selectedEntry == targetEntry and hostWin.SelectLoadout then
-                hostWin:SelectLoadout(nil, true)
-            elseif hostWin.editingEntry == targetEntry and hostWin.LoadEditorEntry then
-                hostWin:LoadEditorEntry(nil, true)
-            end
+    if talentMgrModal and talentMgrModal:IsShown() then
+        if talentMgrModal.state and talentMgrModal.state.selectedEntry == targetEntry and talentMgrModal.SelectLoadout then
+            talentMgrModal:SelectLoadout(nil, true)
+        elseif talentMgrModal.editingEntry == targetEntry and talentMgrModal.LoadEditorEntry then
+            talentMgrModal:LoadEditorEntry(nil, true)
         end
     end
     self:SyncTalentBindsUI()
@@ -1605,11 +1788,13 @@ function DynamicTalent:SetAllRaidDefault(entry, diffs, silent)
             end
         end
     end
+    local eid = EnsureEntryID(entry, self.db)
     bMap[mapKey] = {
         isAllRaid    = true,
         bossName     = "All Raids",
         raidName     = "All Raids",
         raidShort    = "All Raids",
+        loadoutID    = eid,
         loadoutName  = entry.name,
         importString = entry.importString,
         group        = entry.group or "Raid",
@@ -1642,11 +1827,13 @@ function DynamicTalent:SetAllMPlusDefault(entry, keyTier, silent)
             dMap[exK] = nil
         end
     end
+    local eid = EnsureEntryID(entry, self.db)
     dMap["__all__|" .. kt] = {
         isAllMPlus   = true,
         dungeonName  = "All M+ Dungeons",
         mapID        = 0,
         keyTier      = kt,
+        loadoutID    = eid,
         loadoutName  = entry.name,
         importString = entry.importString,
         group        = entry.group or "M+",
@@ -1675,10 +1862,12 @@ function DynamicTalent:SetPvPDefaults(entry, pvpSet, silent)
     self.db.talentPvPMap = self.db.talentPvPMap or {}
     self.db.talentPvPMap[specID] = self.db.talentPvPMap[specID] or {}
     local pMap = self.db.talentPvPMap[specID]
+    local eid = EnsureEntryID(entry, self.db)
     local boundNames = {}
     for _, pk in ipairs({ "all", "arena", "bg", "warmode" }) do
         if pvpSet[pk] then
             pMap[pk] = {
+                loadoutID    = eid,
                 loadoutName  = entry.name,
                 importString = entry.importString,
                 group        = entry.group or "PvP",
@@ -1736,9 +1925,11 @@ function DynamicTalent:SetAllContentDefault(entry)
     local specID = self:GetActiveSpecID()
     if not specID or type(entry) ~= "table" then return false end
     self:RefreshLoadoutHeroMeta(entry)
+    local eid = EnsureEntryID(entry, self.db)
     self.db.talentZoneMap = self.db.talentZoneMap or {}
     self.db.talentZoneMap[specID] = {}
     self.db.talentZoneMap[specID].all = {
+        loadoutID    = eid,
         loadoutName  = entry.name,
         importString = entry.importString,
         group        = entry.group or "Custom",
@@ -1778,16 +1969,17 @@ function DynamicTalent:SetZoneDefaults(entry, zoneSet, isAll)
     if isAll then
         return self:SetAllContentDefault(entry)
     end
+    local eid = EnsureEntryID(entry, self.db)
     self.db.talentZoneMap = self.db.talentZoneMap or {}
     self.db.talentZoneMap[specID] = self.db.talentZoneMap[specID] or {}
     local zMap = self.db.talentZoneMap[specID]
     local names = {}
     if zoneSet.outdoor then
-        zMap.outdoor = { loadoutName = entry.name, importString = entry.importString, group = entry.group or "Custom", heroAcronym = entry.heroAcronym }
+        zMap.outdoor = { loadoutID = eid, loadoutName = entry.name, importString = entry.importString, group = entry.group or "Custom", heroAcronym = entry.heroAcronym }
         table.insert(names, "Outdoor")
     end
     if zoneSet.delves then
-        zMap.delves = { loadoutName = entry.name, importString = entry.importString, group = entry.group or "Delves", heroAcronym = entry.heroAcronym }
+        zMap.delves = { loadoutID = eid, loadoutName = entry.name, importString = entry.importString, group = entry.group or "Delves", heroAcronym = entry.heroAcronym }
         table.insert(names, "Delves")
     end
     if zoneSet.dungeons then
@@ -1926,12 +2118,12 @@ do
         end
         local sid = specID or self:GetActiveSpecID()
         if not sid then return out end
-        local entryLow = entry.name:lower()
+        EnsureEntryID(entry, self.db)
 
         local bMap = self.db.talentBossMap and self.db.talentBossMap[sid]
         if type(bMap) == "table" then
             for _, rule in pairs(bMap) do
-                if type(rule) == "table" and type(rule.loadoutName) == "string" and rule.loadoutName:lower() == entryLow then
+                if type(rule) == "table" and DoesRuleMatchEntry(rule, entry) then
                     local d = type(rule.difficulties) == "table" and rule.difficulties or { normal = true, heroic = true, mythic = true }
                     if rule.isAllRaid == true then
                         out.allRaid.active = true
@@ -1985,7 +2177,7 @@ do
         local dMap = self.db.talentDungeonMap and self.db.talentDungeonMap[sid]
         if type(dMap) == "table" then
             for _, rule in pairs(dMap) do
-                if type(rule) == "table" and type(rule.loadoutName) == "string" and rule.loadoutName:lower() == entryLow and rule.dungeonName then
+                if type(rule) == "table" and DoesRuleMatchEntry(rule, entry) and rule.dungeonName then
                     local kt = rule.keyTier or "ANY"
                     local isAllRule = (rule.isAllMPlus == true) or (tostring(rule.dungeonName):lower() == "all m+ dungeons")
                     if isAllRule then
@@ -2008,7 +2200,7 @@ do
         local pMap = self.db.talentPvPMap and self.db.talentPvPMap[sid]
         if type(pMap) == "table" then
             for _, pk in ipairs({ "all", "arena", "bg", "warmode" }) do
-                if type(pMap[pk]) == "table" and tostring(pMap[pk].loadoutName or ""):lower() == entryLow then
+                if type(pMap[pk]) == "table" and DoesRuleMatchEntry(pMap[pk], entry) then
                     out.pvp[pk] = true
                 end
             end
@@ -2016,16 +2208,16 @@ do
 
         local zMap = self.db.talentZoneMap and self.db.talentZoneMap[sid]
         if type(zMap) == "table" then
-            if type(zMap.delves) == "table" and tostring(zMap.delves.loadoutName or ""):lower() == entryLow then
+            if type(zMap.delves) == "table" and DoesRuleMatchEntry(zMap.delves, entry) then
                 out.zones.delves = true
             end
-            if not out.pvp.all and type(zMap.pvp) == "table" and tostring(zMap.pvp.loadoutName or ""):lower() == entryLow then
+            if not out.pvp.all and type(zMap.pvp) == "table" and DoesRuleMatchEntry(zMap.pvp, entry) then
                 out.pvp.all = true
             end
-            if type(zMap.outdoor) == "table" and tostring(zMap.outdoor.loadoutName or ""):lower() == entryLow then
+            if type(zMap.outdoor) == "table" and DoesRuleMatchEntry(zMap.outdoor, entry) then
                 out.zones.outdoor = true
             end
-            if type(zMap.all) == "table" and tostring(zMap.all.loadoutName or ""):lower() == entryLow then
+            if type(zMap.all) == "table" and DoesRuleMatchEntry(zMap.all, entry) then
                 out.zones.all = true
             end
         end
@@ -2163,11 +2355,33 @@ do
         if not self.db then return nil end
         local sid = specID or self:GetActiveSpecID()
         if not sid then return nil end
+        local nameCounts = {}
+        local rawLib = self.db.talentStringLibrary and self.db.talentStringLibrary[sid]
+        if type(rawLib) == "table" then
+            for _, le in ipairs(rawLib) do
+                if type(le) == "table" and type(le.name) == "string" and le.name ~= "" then
+                    local nl = le.name:lower()
+                    nameCounts[nl] = (nameCounts[nl] or 0) + 1
+                end
+            end
+        end
         local seen, owners = {}, {}
-        local function PushOwner(name)
-            if type(name) == "string" and name ~= "" and not seen[name:lower()] then
-                seen[name:lower()] = true
-                table.insert(owners, name)
+        local function PushOwner(rule, defGroup)
+            if type(rule) ~= "table" then return end
+            local name = rule.loadoutName
+            if type(name) ~= "string" or name == "" then return end
+            local libRef = self:FindLibraryEntryForRule(rule, sid)
+            local grp = NormalizeTalentGroupKey((libRef and libRef.group) or rule.group or defGroup or "Custom")
+            local hero = (libRef and self:GetLoadoutHeroAcronym(libRef)) or rule.heroAcronym
+            local dedupeKey = tostring((libRef and libRef.id) or rule.loadoutID or rule.importString or (grp .. ":" .. tostring(hero or "") .. ":" .. name)):lower()
+            if not seen[dedupeKey] then
+                seen[dedupeKey] = true
+                local label = name
+                if (nameCounts[name:lower()] or 0) > 1 then
+                    local tag = (type(hero) == "string" and hero ~= "") and (grp .. "-" .. hero) or grp
+                    label = "[" .. tag .. "] " .. name
+                end
+                table.insert(owners, label)
             end
         end
         local lowKey = type(key) == "string" and key:lower() or ""
@@ -2176,7 +2390,7 @@ do
             if type(bMap) == "table" then
                 for _, v in pairs(bMap) do
                     if type(v) == "table" and v.isAllRaid ~= true and tostring(v.bossName or ""):lower() == lowKey then
-                        PushOwner(v.loadoutName)
+                        PushOwner(v, "Raid")
                     end
                 end
             end
@@ -2185,7 +2399,7 @@ do
             if type(bMap) == "table" then
                 for _, v in pairs(bMap) do
                     if type(v) == "table" and v.isAllRaid == true then
-                        PushOwner(v.loadoutName)
+                        PushOwner(v, "Raid")
                     end
                 end
             end
@@ -2195,7 +2409,7 @@ do
                 for _, v in pairs(dMap) do
                     local isAllM = type(v) == "table" and (v.isAllMPlus == true or tostring(v.dungeonName or ""):lower() == "all m+ dungeons")
                     if type(v) == "table" and not isAllM and tostring(v.dungeonName or ""):lower() == lowKey then
-                        PushOwner(v.loadoutName)
+                        PushOwner(v, "M+")
                     end
                 end
             end
@@ -2205,18 +2419,18 @@ do
                 for _, v in pairs(dMap) do
                     local isAllM = type(v) == "table" and (v.isAllMPlus == true or tostring(v.dungeonName or ""):lower() == "all m+ dungeons")
                     if isAllM then
-                        PushOwner(v.loadoutName)
+                        PushOwner(v, "M+")
                     end
                 end
             end
         elseif kind == "PVP" and lowKey ~= "" then
             local pMap = self.db.talentPvPMap and self.db.talentPvPMap[sid]
             if type(pMap) == "table" and type(pMap[lowKey]) == "table" then
-                PushOwner(pMap[lowKey].loadoutName)
+                PushOwner(pMap[lowKey], "PvP")
             elseif lowKey == "all" then
                 local zMap = self.db.talentZoneMap and self.db.talentZoneMap[sid]
                 if type(zMap) == "table" and type(zMap.pvp) == "table" then
-                    PushOwner(zMap.pvp.loadoutName)
+                    PushOwner(zMap.pvp, "PvP")
                 end
             end
         elseif kind == "ZONE" and lowKey ~= "" then
@@ -2225,7 +2439,7 @@ do
             end
             local zMap = self.db.talentZoneMap and self.db.talentZoneMap[sid]
             if type(zMap) == "table" and type(zMap[lowKey]) == "table" then
-                PushOwner(zMap[lowKey].loadoutName)
+                PushOwner(zMap[lowKey], lowKey == "delves" and "Delves" or "Custom")
             end
         end
         if #owners == 0 then return nil end
@@ -2239,25 +2453,17 @@ do
         end
         local sid = specID or self:GetActiveSpecID()
         if not sid then return conflicts end
-        local newLow = newEntry.name:lower()
+        EnsureEntryID(newEntry, self.db)
         local bMap = self.db.talentBossMap and self.db.talentBossMap[sid] or {}
         local dMap = self.db.talentDungeonMap and self.db.talentDungeonMap[sid] or {}
         local pMap = self.db.talentPvPMap and self.db.talentPvPMap[sid] or {}
         local zMap = self.db.talentZoneMap and self.db.talentZoneMap[sid] or {}
-        local libByLow = {}
-        local rawLib = self.db.talentStringLibrary and self.db.talentStringLibrary[sid]
-        if type(rawLib) == "table" then
-            for _, le in ipairs(rawLib) do
-                if type(le) == "table" and type(le.name) == "string" and le.name ~= "" then
-                    libByLow[le.name:lower()] = le
-                end
-            end
-        end
 
         local function MakeConflict(scopeStr, ruleTbl, defGroup)
             local exName = type(ruleTbl) == "table" and tostring(ruleTbl.loadoutName or "") or ""
-            local libRef = (exName ~= "") and libByLow[exName:lower()] or nil
+            local libRef = self:FindLibraryEntryForRule(ruleTbl, sid)
             local badge = self:FormatTalentBadge({
+                loadoutID    = (libRef and libRef.id) or (type(ruleTbl) == "table" and ruleTbl.loadoutID) or nil,
                 group        = (libRef and libRef.group) or (type(ruleTbl) == "table" and ruleTbl.group) or defGroup or "Custom",
                 importString = (libRef and libRef.importString) or (type(ruleTbl) == "table" and ruleTbl.importString) or nil,
                 loadoutName  = exName,
@@ -2293,7 +2499,7 @@ do
                     for _, exV in pairs(bMap) do
                         if type(exV) == "table" and exV.isAllRaid ~= true and tostring(exV.bossName or ""):lower() == bLow then
                             local exName = tostring(exV.loadoutName or "")
-                            if exName ~= "" and exName:lower() ~= newLow then
+                            if exName ~= "" and not DoesRuleMatchEntry(exV, newEntry) then
                                 local ovTxt = DiffOverlap(exV.difficulties, ds)
                                 if ovTxt then
                                     local ordPfx = tInfo.order and ("#" .. tInfo.order .. " ") or ""
@@ -2309,7 +2515,7 @@ do
             for _, exV in pairs(bMap) do
                 if type(exV) == "table" and exV.isAllRaid == true then
                     local exName = tostring(exV.loadoutName or "")
-                    if exName ~= "" and exName:lower() ~= newLow then
+                    if exName ~= "" and not DoesRuleMatchEntry(exV, newEntry) then
                         local ovTxt = DiffOverlap(exV.difficulties, ds)
                         if ovTxt then
                             table.insert(conflicts, MakeConflict("All Raids (" .. ovTxt .. ")", exV, "Raid"))
@@ -2329,7 +2535,7 @@ do
                             if not isAllM and tostring(exV.dungeonName or ""):lower() == dLow
                                 and (exKT == kt or kt == "ANY" or exKT == "ANY") then
                                 local exName = tostring(exV.loadoutName or "")
-                                if exName ~= "" and exName:lower() ~= newLow then
+                                if exName ~= "" and not DoesRuleMatchEntry(exV, newEntry) then
                                     table.insert(conflicts, MakeConflict(dObj.name .. " (" .. TierLbl(exKT) .. ")", exV, "M+"))
                                 end
                             end
@@ -2345,7 +2551,7 @@ do
                     local exKT = exV.keyTier or "ANY"
                     if isAllM and (exKT == kt or kt == "ANY" or exKT == "ANY") then
                         local exName = tostring(exV.loadoutName or "")
-                        if exName ~= "" and exName:lower() ~= newLow then
+                        if exName ~= "" and not DoesRuleMatchEntry(exV, newEntry) then
                             table.insert(conflicts, MakeConflict("All M+ (" .. TierLbl(exKT) .. ")", exV, "M+"))
                         end
                     end
@@ -2359,18 +2565,18 @@ do
                 end
                 if type(exV) == "table" then
                     local exName = tostring(exV.loadoutName or "")
-                    if exName ~= "" and exName:lower() ~= newLow then
+                    if exName ~= "" and not DoesRuleMatchEntry(exV, newEntry) then
                         table.insert(conflicts, MakeConflict(PVP_MODE_LABELS[pk] or pk, exV, "PvP"))
                     end
                 end
             end
         elseif kind == "ALL_CONTENT" then
-            if type(zMap.all) == "table" and tostring(zMap.all.loadoutName or "") ~= "" and tostring(zMap.all.loadoutName):lower() ~= newLow then
+            if type(zMap.all) == "table" and tostring(zMap.all.loadoutName or "") ~= "" and not DoesRuleMatchEntry(zMap.all, newEntry) then
                 table.insert(conflicts, MakeConflict("All Content Default", zMap.all, "Custom"))
             end
             for _, zItem in ipairs({ { key = "outdoor", label = "Zone: Outdoor", defGroup = "Custom" }, { key = "delves", label = "Zone: Delves", defGroup = "Delves" } }) do
                 local zv = zMap[zItem.key]
-                if type(zv) == "table" and tostring(zv.loadoutName or "") ~= "" and tostring(zv.loadoutName):lower() ~= newLow then
+                if type(zv) == "table" and tostring(zv.loadoutName or "") ~= "" and not DoesRuleMatchEntry(zv, newEntry) then
                     table.insert(conflicts, MakeConflict(zItem.label, zv, zItem.defGroup))
                 end
             end
@@ -2388,10 +2594,10 @@ do
             if payload and payload.isAll then
                 return self:DetectBindConflicts("ALL_CONTENT", nil, newEntry, sid)
             end
-            if zs.outdoor and type(zMap.outdoor) == "table" and tostring(zMap.outdoor.loadoutName or "") ~= "" and tostring(zMap.outdoor.loadoutName):lower() ~= newLow then
+            if zs.outdoor and type(zMap.outdoor) == "table" and tostring(zMap.outdoor.loadoutName or "") ~= "" and not DoesRuleMatchEntry(zMap.outdoor, newEntry) then
                 table.insert(conflicts, MakeConflict("Zone: Outdoor", zMap.outdoor, "Custom"))
             end
-            if zs.delves and type(zMap.delves) == "table" and tostring(zMap.delves.loadoutName or "") ~= "" and tostring(zMap.delves.loadoutName):lower() ~= newLow then
+            if zs.delves and type(zMap.delves) == "table" and tostring(zMap.delves.loadoutName or "") ~= "" and not DoesRuleMatchEntry(zMap.delves, newEntry) then
                 table.insert(conflicts, MakeConflict("Zone: Delves", zMap.delves, "Delves"))
             end
             if zs.dungeons then
@@ -2812,6 +3018,7 @@ function DynamicTalent:DuplicateTalentLibraryEntry(targetEntry)
     end
 
     local clone = {
+        id           = GenerateLoadoutID(self.db),
         name         = copyName,
         group        = NormalizeTalentGroupKey(targetEntry.group or "Custom"),
         importString = targetEntry.importString or "",
@@ -3021,6 +3228,8 @@ function DynamicTalent:ApplyTalentLibraryEntry(entry)
         self._pendingAppliedEntry = entry
         self._pendingAppliedSpecID = specID
         if specID then
+            self.db.lastAppliedTalentID = self.db.lastAppliedTalentID or {}
+            self.db.lastAppliedTalentID[specID] = EnsureEntryID(entry, self.db)
             self.db.lastAppliedTalentName = self.db.lastAppliedTalentName or {}
             self.db.lastAppliedTalentName[specID] = entry.name
         end
@@ -3962,7 +4171,6 @@ function DynamicTalent:RefreshTalentDock()
                 end
                 GameTooltip:AddLine(" ")
                 local mgr = (talentMgrModal and talentMgrModal:IsShown() and talentMgrModal)
-                    or (embeddedMgrCore and embeddedMgrCore:IsShown() and embeddedMgrCore)
                 local leftHint = mgr
                     and "Load in Talent Loadouts Manager to edit or bind"
                     or "Switch to this Talent Loadout"
@@ -4028,7 +4236,6 @@ function DynamicTalent:RefreshTalentDock()
             else
                 DynamicTalent:HideTalentRowContextMenu()
                 local mgr = (talentMgrModal and talentMgrModal:IsShown() and talentMgrModal)
-                    or (embeddedMgrCore and embeddedMgrCore:IsShown() and embeddedMgrCore)
                 if mgr and mgr.SelectLoadout then
                     mgr:SelectLoadout(entry, true)
                     return
@@ -5206,26 +5413,40 @@ function DynamicTalent:ImportTalentString(loadoutName, importString, groupName)
     self.db.talentStringLibrary[specID] = self.db.talentStringLibrary[specID] or {}
     local lib = self.db.talentStringLibrary[specID]
     local grp = NormalizeTalentGroupKey((type(groupName) == "string" and groupName ~= "") and groupName or CategoriseTalentGroup(cleanName))
+    local newHero = self:DetectHeroTreeFromString(cleanStr) or ""
     local liveStr = self:GetActiveTalentString()
     local isLiveMatch = (liveStr and liveStr == cleanStr)
     local savedEntry = nil
     for _, entry in ipairs(lib) do
-        if entry.name:lower() == cleanName:lower() then
-            entry.name = cleanName
-            entry.group = grp
-            entry.importString = cleanStr
-            entry.liveHash = isLiveMatch and liveStr or nil
-            entry._heroStrHash = nil
-            savedEntry = entry
-            break
+        if type(entry) == "table" and type(entry.name) == "string" and entry.name:lower() == cleanName:lower() then
+            local exGrp = NormalizeTalentGroupKey(entry.group or CategoriseTalentGroup(entry.name))
+            local exHero = self:GetLoadoutHeroAcronym(entry) or ""
+            if exGrp == grp and (exHero == newHero or entry.importString == cleanStr) then
+                EnsureEntryID(entry, self.db)
+                entry.name = cleanName
+                entry.group = grp
+                entry.importString = cleanStr
+                entry.liveHash = isLiveMatch and liveStr or nil
+                entry._heroStrHash = nil
+                savedEntry = entry
+                break
+            end
         end
     end
     if not savedEntry then
-        savedEntry = { name = cleanName, group = grp, importString = cleanStr, liveHash = isLiveMatch and liveStr or nil }
+        savedEntry = {
+            id           = GenerateLoadoutID(self.db),
+            name         = cleanName,
+            group        = grp,
+            importString = cleanStr,
+            liveHash     = isLiveMatch and liveStr or nil,
+        }
         table.insert(lib, savedEntry)
     end
     self:RefreshLoadoutHeroMeta(savedEntry)
     if isLiveMatch then
+        self.db.lastAppliedTalentID = self.db.lastAppliedTalentID or {}
+        self.db.lastAppliedTalentID[specID] = EnsureEntryID(savedEntry, self.db)
         self.db.lastAppliedTalentName = self.db.lastAppliedTalentName or {}
         self.db.lastAppliedTalentName[specID] = cleanName
         self.db.lastAppliedTalentLiveStr = self.db.lastAppliedTalentLiveStr or {}
@@ -5671,7 +5892,7 @@ function DynamicTalent:ToggleTalentQuickGuide(anchorBtn, mgrModal)
             SetPixelBackdrop(s, { r * 0.42, gb * 0.42, b * 0.42, 1.00 }, { r, gb, b, 0.95 }, 1)
         end)
         demoBtn:SetScript("OnClick", function()
-            local ownerModal = DynamicTalent._quickGuideMgr or talentMgrModal or embeddedMgrCore
+            local ownerModal = DynamicTalent._quickGuideMgr or talentMgrModal
             local sample = (ownerModal and ownerModal.GetSelectedLoadout and ownerModal:GetSelectedLoadout())
                 or { name = "Raid ST", group = "Raid", heroAcronym = "WS" }
             DynamicTalent:ShowTalentReminderToast(sample, sample.name, "Preview: #8 Ula'tek (Heroic)", true)
@@ -5741,9 +5962,6 @@ local function CloseAllDynamicTalentPopups()
     DynamicTalent:CloseTalentQuickGuide()
     if talentMgrModal and talentMgrModal.CloseModalDropdown then
         talentMgrModal.CloseModalDropdown()
-    end
-    if embeddedMgrCore and embeddedMgrCore.CloseModalDropdown then
-        embeddedMgrCore.CloseModalDropdown()
     end
 end
 
@@ -7690,7 +7908,7 @@ local function PopulateTalentManagerCore(host, isModal)
         local specID = DynamicTalent:GetActiveSpecID()
         if not specID then return end
         DynamicTalent:RefreshLoadoutHeroMeta(sel)
-        local selLow = tostring(sel.name or ""):lower()
+        local selID = EnsureEntryID(sel, DynamicTalent.db)
         local bMap = (DynamicTalent.db and DynamicTalent.db.talentBossMap and DynamicTalent.db.talentBossMap[specID]) or {}
         local dsSnap = {
             normal = st.diffState.normal and true or false,
@@ -7707,7 +7925,7 @@ local function PopulateTalentManagerCore(host, isModal)
             if #conflicts > 0 then
                 local claimed = { normal = false, heroic = false, mythic = false }
                 for _, exV in pairs(bMap) do
-                    if type(exV) == "table" and exV.isAllRaid == true and type(exV.loadoutName) == "string" and exV.loadoutName ~= "" and exV.loadoutName:lower() ~= selLow then
+                    if type(exV) == "table" and exV.isAllRaid == true and type(exV.loadoutName) == "string" and exV.loadoutName ~= "" and not DoesRuleMatchEntry(exV, sel) then
                         local exAll = (type(exV.difficulties) ~= "table")
                         if exAll or exV.difficulties.normal then claimed.normal = true end
                         if exAll or exV.difficulties.heroic then claimed.heroic = true end
@@ -7783,6 +8001,7 @@ local function PopulateTalentManagerCore(host, isModal)
                                 tMap[bLow .. "|" .. km] = {
                                     bossName = exV.bossName or bName, bossOrder = exV.bossOrder,
                                     raidName = exV.raidName, raidShort = exV.raidShort,
+                                    loadoutID = exV.loadoutID,
                                     loadoutName = exV.loadoutName, importString = exV.importString,
                                     group = exV.group, heroAcronym = exV.heroAcronym,
                                     difficulties = { normal = keepN, heroic = keepH, mythic = keepM },
@@ -7793,7 +8012,7 @@ local function PopulateTalentManagerCore(host, isModal)
                 end
                 tMap[mapKey] = {
                     bossName = bName, bossOrder = tInfo.order, raidName = tInfo.raidName, raidShort = tInfo.raidShort,
-                    loadoutName = sel.name, importString = sel.importString,
+                    loadoutID = selID, loadoutName = sel.name, importString = sel.importString,
                     group = sel.group or "Raid", heroAcronym = sel.heroAcronym,
                     difficulties = { normal = dTbl.normal and true or false, heroic = dTbl.heroic and true or false, mythic = dTbl.mythic and true or false },
                 }
@@ -7819,7 +8038,7 @@ local function PopulateTalentManagerCore(host, isModal)
                 local freeN, freeH, freeM = dsSnap.normal, dsSnap.heroic, dsSnap.mythic
                 for _, exV in pairs(bMap) do
                     if type(exV) == "table" and exV.isAllRaid ~= true and tostring(exV.bossName or ""):lower() == bLow
-                        and type(exV.loadoutName) == "string" and exV.loadoutName ~= "" and exV.loadoutName:lower() ~= selLow then
+                        and type(exV.loadoutName) == "string" and exV.loadoutName ~= "" and not DoesRuleMatchEntry(exV, sel) then
                         local exAll = (type(exV.difficulties) ~= "table")
                         if exAll or exV.difficulties.normal then freeN = false end
                         if exAll or exV.difficulties.heroic then freeH = false end
@@ -7892,6 +8111,7 @@ local function PopulateTalentManagerCore(host, isModal)
                 end
                 dMap[dLow .. "|" .. kt] = {
                     dungeonName = dObj.name, mapID = dObj.id, keyTier = kt,
+                    loadoutID = EnsureEntryID(sel, DynamicTalent.db),
                     loadoutName = sel.name, importString = sel.importString,
                     group = sel.group or "M+", heroAcronym = sel.heroAcronym,
                 }
@@ -8284,18 +8504,13 @@ local function PopulateTalentManagerCore(host, isModal)
         local function RuleMatchesFilter(v)
             if type(v) ~= "table" then return false end
             if not onBuild then return true end
-            if not curBuildLow then return false end
-            if type(v.loadoutName) == "string" and v.loadoutName ~= "" then
-                return v.loadoutName:lower() == curBuildLow
-            end
-            if type(curBuild.importString) == "string" and curBuild.importString ~= "" and v.importString == curBuild.importString then
-                return true
-            end
-            return false
+            if type(curBuild) ~= "table" then return false end
+            return DoesRuleMatchEntry(v, curBuild)
         end
 
         local function FormatRuleTarget(v, defGroup)
             local badge = DynamicTalent:FormatTalentBadge({
+                loadoutID    = v.loadoutID,
                 group        = v.group or defGroup or "Custom",
                 importString = v.importString,
                 loadoutName  = v.loadoutName,
@@ -8742,6 +8957,8 @@ function DynamicTalent:OpenTalentManagerModal(initialTab, targetEntry)
 
         local hdrTitle = CreateText(hdrBar, "OVERLAY", "GameFontHighlight")
         hdrTitle:SetPoint("LEFT", hdrBar, "LEFT", 14, 0)
+        hdrTitle:SetJustifyH("LEFT")
+        hdrTitle:SetWordWrap(false)
         hdrTitle:SetText(string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFTalent|r  |cFF475569|||r  |cFF%sTalent Loadouts Manager|r", accentHex))
         f.hdrTitle = hdrTitle
 
@@ -8789,6 +9006,37 @@ function DynamicTalent:OpenTalentManagerModal(initialTab, targetEntry)
             DynamicTalent:ToggleTalentQuickGuide(s, f)
         end)
         f.helpBtn = helpBtn
+
+        local settingsBtn = CreateFrame("Button", nil, hdrBar, "BackdropTemplate")
+        settingsBtn:SetSize(68, 24)
+        settingsBtn:SetPoint("RIGHT", helpBtn, "LEFT", -6, 0)
+        SetPixelBackdrop(settingsBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+        settingsBtn.txt = CreateText(settingsBtn, "OVERLAY", "GameFontHighlightSmall")
+        settingsBtn.txt:SetPoint("CENTER")
+        settingsBtn.txt:SetText("Settings")
+        settingsBtn.txt:SetTextColor(0.84, 0.90, 0.96, 1)
+        settingsBtn:SetScript("OnEnter", function(s)
+            local r, g, b = GetActiveAccentRGB()
+            SetPixelBackdrop(s, { r * 0.34, g * 0.34, b * 0.34, 0.98 }, { r, g, b, 0.95 }, 1)
+            s.txt:SetTextColor(1, 1, 1, 1)
+            if GameTooltip then
+                GameTooltip:SetOwner(s, "ANCHOR_BOTTOMLEFT")
+                GameTooltip:AddLine("DynamicTalent Settings", 1, 1, 1)
+                GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open Display, Group Order, Backdrop and Reminder settings.|r", 1, 1, 1, true)
+                GameTooltip:Show()
+            end
+        end)
+        settingsBtn:SetScript("OnLeave", function(s)
+            SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+            s.txt:SetTextColor(0.84, 0.90, 0.96, 1)
+            if GameTooltip then GameTooltip:Hide() end
+        end)
+        settingsBtn:SetScript("OnClick", function()
+            DynamicTalent:CloseTalentQuickGuide()
+            DynamicTalent:Open()
+        end)
+        f.settingsBtn = settingsBtn
+        hdrTitle:SetPoint("RIGHT", settingsBtn, "LEFT", -10, 0)
 
         local resizeGrip = CreateFrame("Button", nil, f)
         resizeGrip:SetSize(14, 14)
@@ -9092,15 +9340,21 @@ local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, m
     valText:SetWidth(52)
     valText:SetJustifyH("RIGHT")
 
-    local track = CreateFrame("Frame", nil, holder, "BackdropTemplate")
+    local track = CreateFrame("Frame", nil, holder)
     track:SetPoint("LEFT", holder, "LEFT", 0, 0)
     track:SetPoint("RIGHT", valText, "LEFT", -10, 0)
     track:SetHeight(4)
-    SetPixelBackdrop(track, { 0.035, 0.039, 0.051, 0.98 }, { 1, 1, 1, 0.14 }, 1)
+
+    local hairline = CreateSolidTex(track, "BACKGROUND", -1, 1, 1, 1, 0.14)
+    hairline:SetPoint("TOPLEFT", track, "TOPLEFT", -1, 1)
+    hairline:SetPoint("BOTTOMRIGHT", track, "BOTTOMRIGHT", 1, -1)
+
+    local trackBg = CreateSolidTex(track, "BACKGROUND", 0, 0.035, 0.039, 0.051, 0.98)
+    trackBg:SetAllPoints()
 
     local fill = CreateSolidTex(track, "ARTWORK", 1, 0.220, 0.741, 0.973, 0.85)
-    fill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
-    fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
+    fill:SetPoint("TOPLEFT", track, "TOPLEFT", 0, 0)
+    fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 0, 0)
     fill:SetWidth(1)
 
     local thumb = CreateSolidTex(track, "OVERLAY", 3, 0.97, 0.98, 1.00, 1.0)
@@ -9138,7 +9392,7 @@ local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, m
         pct = math.max(0, math.min(1, pct))
         local tw = track:GetWidth()
         if not tw or tw <= 0 then tw = 194 end
-        fill:SetWidth(math.max(1, pct * math.max(1, tw - 2)))
+        fill:SetWidth(math.max(1, pct * tw))
         thumb:ClearAllPoints()
         thumb:SetPoint("CENTER", track, "LEFT", pct * tw, 0)
         valText:SetText(formatFunc and formatFunc(cur) or tostring(cur))
@@ -9476,408 +9730,557 @@ local GROUP_ROW_META = {
     Custom = { title = "Custom",        desc = "Outdoor & general builds" },
 }
 
+local function EnsureGroupDragGhost()
+    if groupDragGhost then return groupDragGhost end
+    local ghost = CreateFrame("Frame", "DynamicTalentGroupDragGhost", UIParent, "BackdropTemplate")
+    ghost:SetSize(230, 30)
+    ghost:SetFrameStrata("TOOLTIP")
+    ghost:SetFrameLevel(120)
+    ghost:SetClampedToScreen(true)
+    ghost:Hide()
+
+    ghost.txt = ghost:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(ghost.txt, 10.5, "")
+    ghost.txt:SetPoint("CENTER")
+    ghost.txt:SetWordWrap(false)
+
+    function ghost:SetGroupVisual(slotIdx, grpKey)
+        local _, a = GetTheme()
+        SetPixelBackdrop(self, { 0.043, 0.051, 0.071, 0.98 }, { a.r, a.g, a.b, 0.98 }, 1)
+        local gHex = TALENT_GROUP_HEX[grpKey] or "94A3B8"
+        local meta = GROUP_ROW_META[grpKey] or { title = grpKey }
+        self.txt:SetText(string.format("#%d  |cFF%s[%s]|r  |cFFFFFFFF%s|r", tonumber(slotIdx) or 1, gHex, tostring(grpKey), tostring(meta.title or grpKey)))
+        local tw = (self.txt.GetStringWidth and self.txt:GetStringWidth()) or 140
+        self:SetWidth(math.max(180, math.min(340, tw + 28)))
+    end
+
+    groupDragGhost = ghost
+    return ghost
+end
+
 local function RenderTalentEmbedded(parent)
     if not parent then return end
     if activeEmbeddedRoot and activeEmbeddedRoot:GetParent() == parent then
         activeEmbeddedRoot:Hide()
         activeEmbeddedRoot:SetParent(nil)
     end
-    embeddedMgrCore = nil
+    if groupDragGhost then groupDragGhost:Hide() end
 
     local db = EnsureDB()
+    db.activeSubTab = 1
     local _, acc = GetTheme()
     local root = CreateFrame("Frame", nil, parent)
     root:SetAllPoints(parent)
     activeEmbeddedRoot = root
 
-    local tabBar = CreateFrame("Frame", nil, root, "BackdropTemplate")
-    tabBar:SetHeight(34)
-    tabBar:SetPoint("TOPLEFT", root, "TOPLEFT", 14, -10)
-    tabBar:SetPoint("TOPRIGHT", root, "TOPRIGHT", -16, -10)
-    SetPixelBackdrop(tabBar, { 0.043, 0.051, 0.071, 0.98 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+    -- Top Action & Status Strip (#0B0D12)
+    local strip = CreateFrame("Frame", nil, root, "BackdropTemplate")
+    strip:SetHeight(52)
+    strip:SetPoint("TOPLEFT", root, "TOPLEFT", 14, -10)
+    strip:SetPoint("TOPRIGHT", root, "TOPRIGHT", -16, -10)
+    SetPixelBackdrop(strip, { 0.043, 0.051, 0.071, 0.98 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
 
-    local tabDefs = {
-        { idx = 1, label = "Talent Loadouts & Binds" },
-        { idx = 2, label = "Display, Group Order & Reminders" },
-    }
-    local curTab = (db.activeSubTab == 2) and 2 or 1
-    db.activeSubTab = curTab
-    local tabBtns = {}
-
-    local function ReflowTabBar()
-        local w = tabBar:GetWidth() or 700
-        local gap = 4
-        local bw = math.floor((w - 8 - gap) / 2)
-        for i, tb in ipairs(tabBtns) do
-            tb:SetHeight(26)
-            tb:ClearAllPoints()
-            if i == 1 then
-                tb:SetPoint("LEFT", tabBar, "LEFT", 4, 0)
-                tb:SetWidth(bw)
-            else
-                tb:SetPoint("LEFT", tabBtns[1], "RIGHT", gap, 0)
-                tb:SetPoint("RIGHT", tabBar, "RIGHT", -4, 0)
-            end
+    local openMgrBtn = CreateStyledButton(strip, "Open Loadout Manager", 162, 28, true, function()
+        DynamicTalent:OpenTalentManagerModal(1)
+    end)
+    openMgrBtn:SetPoint("RIGHT", strip, "RIGHT", -12, 0)
+    openMgrBtn:HookScript("OnEnter", function(s)
+        if GameTooltip then
+            GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            GameTooltip:AddLine("Open Loadout Manager", 1, 1, 1)
+            GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open the Pop-Out Talent Loadouts Manager alongside Blizzard's Talents window.|r", 1, 1, 1, true)
+            GameTooltip:Show()
         end
-    end
+    end)
+    openMgrBtn:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
 
-    for _, td in ipairs(tabDefs) do
-        local tb = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
-        tb:SetHeight(26)
-        local fs = tb:CreateFontString(nil, "OVERLAY")
-        SetFontSafe(fs, 10.5, "")
-        fs:SetPoint("CENTER")
-        fs:SetText(td.label)
-        local isAct = (curTab == td.idx)
+    local openTalentsBtn = CreateStyledButton(strip, "Open Talents (N)", 132, 28, false, function()
+        if IsPlayerInCombat() then
+            Print("Cannot toggle Blizzard's Talents window during combat.")
+            return
+        end
+        if _G.PlayerSpellsUtil and type(_G.PlayerSpellsUtil.TogglePlayerSpellsFrame) == "function" then
+            pcall(_G.PlayerSpellsUtil.TogglePlayerSpellsFrame)
+        elseif type(_G.ToggleTalentFrame) == "function" then
+            pcall(_G.ToggleTalentFrame)
+        end
+    end)
+    openTalentsBtn:SetPoint("RIGHT", openMgrBtn, "LEFT", -8, 0)
+    openTalentsBtn:HookScript("OnEnter", function(s)
+        if GameTooltip then
+            GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            GameTooltip:AddLine("Open Blizzard Talents", 1, 1, 1)
+            GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Toggle Blizzard's Talent Tree & Left-Hand Loadouts Dock (out of combat).|r", 1, 1, 1, true)
+            GameTooltip:Show()
+        end
+    end)
+    openTalentsBtn:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+
+    local stripTitle = strip:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(stripTitle, 11.5, "")
+    stripTitle:SetPoint("TOPLEFT", strip, "TOPLEFT", 12, -9)
+    stripTitle:SetPoint("RIGHT", openTalentsBtn, "LEFT", -12, 0)
+    stripTitle:SetJustifyH("LEFT")
+    stripTitle:SetWordWrap(false)
+
+    local stripSub = strip:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(stripSub, 9.5, "")
+    stripSub:SetPoint("TOPLEFT", stripTitle, "BOTTOMLEFT", 0, -3)
+    stripSub:SetPoint("RIGHT", openTalentsBtn, "LEFT", -12, 0)
+    stripSub:SetJustifyH("LEFT")
+    stripSub:SetWordWrap(false)
+    stripSub:SetTextColor(0.58, 0.65, 0.74, 0.95)
+
+    local function RefreshActionStrip()
         local _, a = GetTheme()
-        SetPixelBackdrop(tb, isAct and { a.r * 0.42, a.g * 0.42, a.b * 0.42, 0.98 } or { 0.078, 0.090, 0.122, 0.96 }, isAct and { a.r, a.g, a.b, 0.95 } or { 1, 1, 1, 0.08 }, 1)
-        fs:SetTextColor(isAct and 1 or 0.72, isAct and 1 or 0.78, isAct and 1 or 0.86, 1)
-        tb:SetScript("OnClick", function()
-            db.activeSubTab = td.idx
-            RenderTalentEmbedded(parent)
-        end)
-        table.insert(tabBtns, tb)
-    end
-    tabBar:SetScript("OnSizeChanged", ReflowTabBar)
-    tabBar:SetScript("OnShow", ReflowTabBar)
-    ReflowTabBar()
-
-    if curTab == 1 then
-        -- Action Strip (44px, #0B0D12)
-        local strip = CreateFrame("Frame", nil, root, "BackdropTemplate")
-        strip:SetHeight(44)
-        strip:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -8)
-        strip:SetPoint("TOPRIGHT", tabBar, "BOTTOMRIGHT", 0, -8)
-        SetPixelBackdrop(strip, { 0.043, 0.051, 0.071, 0.98 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
-
-        local popMgrBtn = CreateStyledButton(strip, "Open Pop-Out Manager", 156, 26, true, function()
-            DynamicTalent:OpenTalentManagerModal(1)
-        end)
-        popMgrBtn:SetPoint("RIGHT", strip, "RIGHT", -10, 0)
-
-        local saveCurBtn = CreateStyledButton(strip, "+ Save Current Build", 142, 26, false, function()
-            local activeStr = DynamicTalent:GetActiveTalentString()
-            if not activeStr or activeStr == "" then
-                Print("No active Midnight talent tree found -- open Talents once first.")
-                return
-            end
-            local specID = DynamicTalent:GetActiveSpecID()
-            local bName = DynamicTalent:GetSuggestedCurrentBuildName(specID)
-            local ok, _, savedEntry = DynamicTalent:ImportTalentString(bName, activeStr, CategoriseTalentGroup(bName))
-            if ok and embeddedMgrCore and embeddedMgrCore.SelectLoadout then
-                embeddedMgrCore:SelectLoadout(savedEntry, true)
-            end
-        end)
-        saveCurBtn:SetPoint("RIGHT", popMgrBtn, "LEFT", -8, 0)
-
         local specID = DynamicTalent:GetActiveSpecID()
         local lib = (specID and db.talentStringLibrary and db.talentStringLibrary[specID]) or {}
         local activeEntry = DynamicTalent:GetActiveTalentLibraryEntry(specID)
         local _, activeBarName = DynamicTalent:GetTalentLoadoutBarData()
-        local activeBadge = activeEntry and DynamicTalent:FormatTalentBadge(activeEntry) or string.format("|cFF%s[Live]|r", acc.hex)
+        local activeBadge = activeEntry and DynamicTalent:FormatTalentBadge(activeEntry) or string.format("|cFF%s[Live]|r", a.hex)
+        local activeName = tostring((activeEntry and activeEntry.name) or activeBarName or "Default")
+        stripTitle:SetText(string.format("%s |cFFFFFFFF%s|r  |cFF64748B(Active Loadout)|r", activeBadge, activeName))
+        stripSub:SetText(string.format("%d saved %s for your active specialisation  |cFF475569-|r  Left-Hand Talent Dock attaches to Blizzard's Talents window", #lib, (#lib == 1 and "build" or "builds")))
+    end
+    RefreshActionStrip()
+    root.RefreshActionStrip = RefreshActionStrip
+    root.openTalentsBtn = openTalentsBtn
+    root.openMgrBtn = openMgrBtn
 
-        local stripTitle = strip:CreateFontString(nil, "OVERLAY")
-        SetFontSafe(stripTitle, 11, "")
-        stripTitle:SetPoint("TOPLEFT", strip, "TOPLEFT", 12, -7)
-        stripTitle:SetPoint("RIGHT", saveCurBtn, "LEFT", -12, 0)
-        stripTitle:SetJustifyH("LEFT")
-        stripTitle:SetWordWrap(false)
-        stripTitle:SetText(string.format("%s |cFFFFFFFF%s|r", activeBadge, tostring((activeEntry and activeEntry.name) or activeBarName or "Default")))
+    local sf, sc, UpdateScrollBar = CreateThreeWayScrollPane(root, strip, -10, -16, 10)
+    local y = 0
 
-        local stripSub = strip:CreateFontString(nil, "OVERLAY")
-        SetFontSafe(stripSub, 9.5, "")
-        stripSub:SetPoint("TOPLEFT", stripTitle, "BOTTOMLEFT", 0, -2)
-        stripSub:SetPoint("RIGHT", saveCurBtn, "LEFT", -12, 0)
-        stripSub:SetJustifyH("LEFT")
-        stripSub:SetWordWrap(false)
-        stripSub:SetTextColor(0.58, 0.65, 0.74, 0.95)
-        stripSub:SetText(string.format("%d saved %s for your active specialisation", #lib, (#lib == 1 and "loadout" or "loadouts")))
+    -- Section 1: Display & Reminders
+    local sec1 = CreateSectionBox(sc, y)
+    local sy = -10
+    local _, dy1h = CreateSectionHeader(sec1, sy, "TALENT LOADOUT DISPLAY & REMINDERS",
+        "Configure module availability, Top Info Bar capsule visibility, swap alerts, and zone sorting.")
+    sy = sy + dy1h
 
-        -- Scrollable host for embedded 2-column workspace (with vertical stack fallback < 720px)
-        local sf, sc, UpdateScrollBar = CreateThreeWayScrollPane(root, strip, -8, -16, 10)
-        local wsHost = CreateFrame("Frame", nil, sc)
-        wsHost:SetPoint("TOPLEFT", sc, "TOPLEFT", 0, 0)
-        wsHost:SetPoint("TOPRIGHT", sc, "TOPRIGHT", 0, 0)
-        wsHost:SetHeight(480)
-        PopulateTalentManagerCore(wsHost, false)
-        wsHost._onResponsiveHeightChange = function(neededH)
-            local visH = sf:GetHeight() or 480
-            local h = math.max(visH, neededH or 480)
-            wsHost:SetHeight(h)
-            sc:SetHeight(h)
-            UpdateScrollBar()
-        end
-        embeddedMgrCore = wsHost
-        local curSel = DynamicTalent:GetActiveTalentLibraryEntry(specID)
-        wsHost:SelectLoadout(curSel, true)
-        wsHost:SelectTab(1)
-        sf:HookScript("OnSizeChanged", function(_, w)
-            if w and w > 40 then
-                sc:SetWidth(w)
-                wsHost:SetWidth(w)
-                if wsHost.UpdateResponsiveLayout then wsHost:UpdateResponsiveLayout() end
-            end
-            UpdateScrollBar()
-        end)
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                local w = sf:GetWidth()
-                if w and w > 40 then
-                    sc:SetWidth(w)
-                    wsHost:SetWidth(w)
-                    if wsHost.UpdateResponsiveLayout then wsHost:UpdateResponsiveLayout() end
-                end
-                UpdateScrollBar()
-            end)
-        end
-    else
-        -- TAB 2: Display, Group Order & Reminders
-        local sf, sc, UpdateScrollBar = CreateThreeWayScrollPane(root, tabBar, -8, -16, 10)
-        local y = 0
-
-        -- Section 1: Display & Reminders
-        local sec1 = CreateSectionBox(sc, y)
-        local sy = -10
-        local _, dy1h = CreateSectionHeader(sec1, sy, "TALENT LOADOUT DISPLAY & REMINDERS",
-            "Configure module availability, Top Info Bar capsule visibility, swap alerts, and zone sorting.")
-        sy = sy + dy1h
-
-        local _, dyEnable = CreateSegmentedSwitchCard(sec1, sy, "Enable DynamicTalent Module",
-            "Enables the PlayerSpellsFrame Talent Loadouts Dock, Top Info Bar switcher, and zone/boss/PvP reminders.",
-            function() return db.enabled ~= false end,
-            function(v)
-                db.enabled = (v == true)
-                DynamicTalent:RefreshTalentDock()
-                if not v then
-                    DynamicTalent:HideTalentReminderToast()
-                    DynamicTalent:HideTalentPopover()
-                    DynamicTalent:HideTalentTreeBackdrop()
-                else
-                    DynamicTalent:EnsureHeroMedallionHooks()
-                    DynamicTalent:UpdateTalentTreeBackdrop()
-                    DynamicTalent:CheckZoneTalentLoadout()
-                end
-                if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
-                    pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
-                end
-            end)
-        sy = sy + dyEnable
-
-        local _, dyPrepBar = CreateSegmentedSwitchCard(sec1, sy, "Show Talent Capsule on Prep Bar",
-            "Displays your active Talent Loadout and 1-click mismatch swap button inside DynamicPrep's Top Info Bar.",
-            function()
-                return _G.DynamicPrepDB and _G.DynamicPrepDB.segments and _G.DynamicPrepDB.segments.talents == true
-            end,
-            function(v)
-                _G.DynamicPrepDB = _G.DynamicPrepDB or {}
-                _G.DynamicPrepDB.segments = _G.DynamicPrepDB.segments or {}
-                _G.DynamicPrepDB.segments.talents = (v == true)
-                if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
-                    pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
-                end
-            end)
-        sy = sy + dyPrepBar
-
-        local testToastBtn = CreateStyledButton(sec1, "Test Toast", 88, 26, false, function()
-            local list = DynamicTalent:GetSortedTalentProfiles(nil, false)
-            local sample = list[1] or { name = "Raid Build", group = "Raid", heroAcronym = "WS" }
-            DynamicTalent:ShowTalentReminderToast(sample, sample.name, "Preview Reminder", true)
-        end)
-        local _, dyRem = CreateSegmentedSwitchCard(sec1, sy, "Zone-Aware Talent Loadout Reminders",
-            "Shows a shared 1-click alert toast when entering a Raid, Dungeon, Delve, or PvP mode with a different bound loadout.",
-            function() return db.talentReminderEnabled ~= false and db.talentReminderToastEnabled ~= false end,
-            function(v)
-                db.talentReminderEnabled = (v == true)
-                db.talentReminderToastEnabled = (v == true)
-                if not v then DynamicTalent:HideTalentReminderToast() end
-            end,
-            testToastBtn)
-        sy = sy + dyRem
-
-        local _, dyZoneFirst = CreateSegmentedSwitchCard(sec1, sy, "Prioritise Current Zone First",
-            "Automatically floats loadouts matching your active content (Raid, M+, Delves, PvP, or Outdoor) to the top of quick-switchers.",
-            function() return db.prioritiseCurrentZone == true end,
-            function(v)
-                db.prioritiseCurrentZone = (v == true)
-                DynamicTalent:RefreshTalentDock()
-            end)
-        sy = sy + dyZoneFirst
-
-        local _, dyHeroSwap = CreateSegmentedSwitchCard(sec1, sy, "Right-Click Hero Spec Swap",
-            "Right-click the central Hero Talent medallion out of combat to switch to your other Hero tree without opening the picker popup.",
-            function() return db.rightClickHeroSwap ~= false end,
-            function(v)
-                db.rightClickHeroSwap = (v == true)
-                DynamicTalent:EnsureHeroMedallionHooks()
-            end)
-        sy = sy + dyHeroSwap
-
-        local sec1H = math.abs(sy) + 8
-        sec1:SetHeight(sec1H)
-        y = y - (sec1H + 10)
-
-        -- Section 2: Talent Tree Backdrop Studio
-        local secBg = CreateSectionBox(sc, y)
-        local syBg = -10
-        local _, dyBgH = CreateSectionHeader(secBg, syBg, "TALENT TREE BACKDROP",
-            "Customise Blizzard's talent background with Obsidian mist, Hero-synced colour moods, and a readability dimmer.")
-        syBg = syBg + dyBgH
-
-        local _, dyBgMode = CreateBackdropModeCard(secBg, syBg, "Backdrop Mode",
-            "Choose Blizzard's native spec art, a clean Obsidian canvas, or animated mist synced to your Hero tree or Class.",
-            {
-                { value = "BLIZZARD",   label = "Blizzard Default", tip = "Keeps Blizzard's native talent background art intact (Background Dimmer still applies above 0%)." },
-                { value = "OBSIDIAN",   label = "Obsidian Clean",   tip = "Sleek Midnight Obsidian canvas with a soft dark edge vignette for distraction-free editing." },
-                { value = "HERO_MIST",  label = "Hero-Synced Mist", tip = "Layered drifting Obsidian mist that automatically shifts its colour mood when switching Hero Talent trees." },
-                { value = "CLASS_GLOW", label = "Class Glow",       tip = "Subtle breathing Obsidian mist tinted to your active Class Colour or Suite Accent." },
-            },
-            function() return db.talentBackdropMode or "HERO_MIST" end,
-            function(val)
-                db.talentBackdropMode = val
-                DynamicTalent:UpdateTalentTreeBackdrop()
-            end)
-        syBg = syBg + dyBgMode
-
-        local _, dyDimmer = CreatePrecisionSliderCard(secBg, syBg, "Background Dimmer",
-            "Applies a dark Obsidian wash behind talent nodes and over Blizzard's spec art so icons and links stay crisp.",
-            0, 85, 5,
-            function() return db.talentBackdropDimmer ~= nil and db.talentBackdropDimmer or 35 end,
-            function(val)
-                db.talentBackdropDimmer = val
-                DynamicTalent:UpdateTalentTreeBackdrop()
-            end,
-            function(v) return string.format("%d%%", v) end)
-        syBg = syBg + dyDimmer
-
-        local _, dyAnim = CreateSegmentedSwitchCard(secBg, syBg, "Subtle Backdrop Animation",
-            "Animates the drifting mist and gentle glow pulse when Hero-Synced Mist or Class Glow is active.",
-            function() return db.talentBackdropAnimate ~= false end,
-            function(v)
-                db.talentBackdropAnimate = (v == true)
-                DynamicTalent:UpdateTalentTreeBackdrop()
-            end)
-        syBg = syBg + dyAnim
-
-        local secBgH = math.abs(syBg) + 8
-        secBg:SetHeight(secBgH)
-        y = y - (secBgH + 10)
-
-        -- Section 3: Custom Loadout Group Order
-        local sec2 = CreateSectionBox(sc, y)
-        local sy2 = -10
-        local resetOrderBtn = CreateStyledButton(sec2, "Reset Order", 96, 22, false, function()
-            db.talentGroupOrder = { "Raid", "M+", "Delves", "PvP", "Custom" }
-            Print("Restored default loadout group order.")
+    local _, dyEnable = CreateSegmentedSwitchCard(sec1, sy, "Enable DynamicTalent Module",
+        "Enables the PlayerSpellsFrame Talent Loadouts Dock, Top Info Bar switcher, and zone/boss/PvP reminders.",
+        function() return db.enabled ~= false end,
+        function(v)
+            db.enabled = (v == true)
             DynamicTalent:RefreshTalentDock()
-            RenderTalentEmbedded(parent)
+            if not v then
+                DynamicTalent:HideTalentReminderToast()
+                DynamicTalent:HideTalentPopover()
+                DynamicTalent:HideTalentTreeBackdrop()
+            else
+                DynamicTalent:EnsureHeroMedallionHooks()
+                DynamicTalent:UpdateTalentTreeBackdrop()
+                DynamicTalent:CheckZoneTalentLoadout()
+            end
+            if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
+                pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+            end
         end)
-        resetOrderBtn:SetPoint("TOPRIGHT", sec2, "TOPRIGHT", -14, -14)
-        local _, dy2h = CreateSectionHeader(sec2, sy2, "CUSTOM LOADOUT GROUP ORDER",
-            "Set the display order for loadout groups across the Talent Dock, quick-switcher, and dropdowns.", resetOrderBtn)
-        sy2 = sy2 + dy2h
+    sy = sy + dyEnable
 
+    local _, dyPrepBar = CreateSegmentedSwitchCard(sec1, sy, "Show Talent Capsule on Prep Bar",
+        "Displays your active Talent Loadout and 1-click mismatch swap button inside DynamicPrep's Top Info Bar.",
+        function()
+            return _G.DynamicPrepDB and _G.DynamicPrepDB.segments and _G.DynamicPrepDB.segments.talents == true
+        end,
+        function(v)
+            _G.DynamicPrepDB = _G.DynamicPrepDB or {}
+            _G.DynamicPrepDB.segments = _G.DynamicPrepDB.segments or {}
+            _G.DynamicPrepDB.segments.talents = (v == true)
+            if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
+                pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+            end
+        end)
+    sy = sy + dyPrepBar
+
+    local testToastBtn = CreateStyledButton(sec1, "Test Toast", 88, 26, false, function()
+        local list = DynamicTalent:GetSortedTalentProfiles(nil, false)
+        local sample = list[1] or { name = "Raid Build", group = "Raid", heroAcronym = "WS" }
+        DynamicTalent:ShowTalentReminderToast(sample, sample.name, "Preview Reminder", true)
+    end)
+    local _, dyRem = CreateSegmentedSwitchCard(sec1, sy, "Zone-Aware Talent Loadout Reminders",
+        "Shows a shared 1-click alert toast when entering a Raid, Dungeon, Delve, or PvP mode with a different bound loadout.",
+        function() return db.talentReminderEnabled ~= false and db.talentReminderToastEnabled ~= false end,
+        function(v)
+            db.talentReminderEnabled = (v == true)
+            db.talentReminderToastEnabled = (v == true)
+            if not v then DynamicTalent:HideTalentReminderToast() end
+        end,
+        testToastBtn)
+    sy = sy + dyRem
+
+    local _, dyZoneFirst = CreateSegmentedSwitchCard(sec1, sy, "Prioritise Current Zone First",
+        "Automatically floats loadouts matching your active content (Raid, M+, Delves, PvP, or Outdoor) to the top of quick-switchers.",
+        function() return db.prioritiseCurrentZone == true end,
+        function(v)
+            db.prioritiseCurrentZone = (v == true)
+            DynamicTalent:RefreshTalentDock()
+        end)
+    sy = sy + dyZoneFirst
+
+    local _, dyHeroSwap = CreateSegmentedSwitchCard(sec1, sy, "Right-Click Hero Spec Swap",
+        "Right-click the central Hero Talent medallion out of combat to switch to your other Hero tree without opening the picker popup.",
+        function() return db.rightClickHeroSwap ~= false end,
+        function(v)
+            db.rightClickHeroSwap = (v == true)
+            DynamicTalent:EnsureHeroMedallionHooks()
+        end)
+    sy = sy + dyHeroSwap
+
+    local sec1H = math.abs(sy) + 8
+    sec1:SetHeight(sec1H)
+    y = y - (sec1H + 10)
+
+    -- Section 2: Talent Tree Backdrop Studio
+    local secBg = CreateSectionBox(sc, y)
+    local syBg = -10
+    local _, dyBgH = CreateSectionHeader(secBg, syBg, "TALENT TREE BACKDROP",
+        "Customise Blizzard's talent background with Obsidian mist, Hero-synced colour moods, and a readability dimmer.")
+    syBg = syBg + dyBgH
+
+    local _, dyBgMode = CreateBackdropModeCard(secBg, syBg, "Backdrop Mode",
+        "Choose Blizzard's native spec art, a clean Obsidian canvas, or animated mist synced to your Hero tree or Class.",
+        {
+            { value = "BLIZZARD",   label = "Blizzard Default", tip = "Keeps Blizzard's native talent background art intact (Background Dimmer still applies above 0%)." },
+            { value = "OBSIDIAN",   label = "Obsidian Clean",   tip = "Sleek Midnight Obsidian canvas with a soft dark edge vignette for distraction-free editing." },
+            { value = "HERO_MIST",  label = "Hero-Synced Mist", tip = "Layered drifting Obsidian mist that automatically shifts its colour mood when switching Hero Talent trees." },
+            { value = "CLASS_GLOW", label = "Class Glow",       tip = "Subtle breathing Obsidian mist tinted to your active Class Colour or Suite Accent." },
+        },
+        function() return db.talentBackdropMode or "HERO_MIST" end,
+        function(val)
+            db.talentBackdropMode = val
+            DynamicTalent:UpdateTalentTreeBackdrop()
+        end)
+    syBg = syBg + dyBgMode
+
+    local _, dyDimmer = CreatePrecisionSliderCard(secBg, syBg, "Background Dimmer",
+        "Applies a dark Obsidian wash behind talent nodes and over Blizzard's spec art so icons and links stay crisp.",
+        0, 85, 5,
+        function() return db.talentBackdropDimmer ~= nil and db.talentBackdropDimmer or 35 end,
+        function(val)
+            db.talentBackdropDimmer = val
+            DynamicTalent:UpdateTalentTreeBackdrop()
+        end,
+        function(v) return string.format("%d%%", v) end)
+    syBg = syBg + dyDimmer
+
+    local _, dyAnim = CreateSegmentedSwitchCard(secBg, syBg, "Subtle Backdrop Animation",
+        "Animates the drifting mist and gentle glow pulse when Hero-Synced Mist or Class Glow is active.",
+        function() return db.talentBackdropAnimate ~= false end,
+        function(v)
+            db.talentBackdropAnimate = (v == true)
+            DynamicTalent:UpdateTalentTreeBackdrop()
+        end)
+    syBg = syBg + dyAnim
+
+    local secBgH = math.abs(syBg) + 8
+    secBg:SetHeight(secBgH)
+    y = y - (secBgH + 10)
+
+    -- Section 3: Custom Loadout Group Order (Drag-and-Drop + Bordered Chevrons)
+    local sec2 = CreateSectionBox(sc, y)
+    local sy2 = -10
+    local RefreshGroupOrderRows
+    local resetOrderBtn = CreateStyledButton(sec2, "Reset Order", 96, 22, false, function()
+        db.talentGroupOrder = { "Raid", "M+", "Delves", "PvP", "Custom" }
+        Print("Restored default loadout group order.")
+        DynamicTalent:RefreshTalentDock()
+        if RefreshGroupOrderRows then RefreshGroupOrderRows() end
+    end)
+    resetOrderBtn:SetPoint("TOPRIGHT", sec2, "TOPRIGHT", -14, -14)
+    local _, dy2h = CreateSectionHeader(sec2, sy2, "CUSTOM LOADOUT GROUP ORDER",
+        "Drag and drop rows or use arrows to set the group order across the Talent Dock, quick-switcher, and dropdowns.", resetOrderBtn)
+    sy2 = sy2 + dy2h
+
+    db.talentGroupOrder = SanitizeGroupOrder(db.talentGroupOrder)
+    local groupCount = #db.talentGroupOrder
+    local groupListHost = CreateFrame("Frame", nil, sec2)
+    groupListHost:SetHeight((groupCount * 36) + (math.max(0, groupCount - 1) * 4))
+    groupListHost:SetPoint("TOPLEFT", sec2, "TOPLEFT", 12, sy2)
+    groupListHost:SetPoint("TOPRIGHT", sec2, "TOPRIGHT", -12, sy2)
+
+    local groupRows = {}
+    local dragState = { active = false, lifted = false, slotIdx = nil, sx = 0, sy = 0 }
+
+    local function FinishGroupDrag()
+        if not dragState.active then return end
+        dragState.active = false
+        dragState.lifted = false
+        dragState.slotIdx = nil
+        groupListHost:SetScript("OnUpdate", nil)
+        if groupDragGhost then groupDragGhost:Hide() end
+        for _, rFrame in ipairs(groupRows) do
+            rFrame:SetAlpha(1.0)
+            if rFrame.UpdateGripTint then rFrame.UpdateGripTint(false) end
+        end
+        if RefreshGroupOrderRows then RefreshGroupOrderRows() end
+    end
+
+    local function OnGroupDragUpdate()
+        if not dragState.active then return end
+        if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            FinishGroupDrag()
+            return
+        end
+        local cx, cy = GetCursorPosition()
+        if not cx or not cy then return end
+        if not dragState.lifted then
+            local dx = cx - dragState.sx
+            local dy = cy - dragState.sy
+            if ((dx * dx) + (dy * dy)) > 36 then
+                dragState.lifted = true
+                if GameTooltip then GameTooltip:Hide() end
+                local ghost = EnsureGroupDragGhost()
+                local gKey = db.talentGroupOrder[dragState.slotIdx]
+                ghost:SetGroupVisual(dragState.slotIdx, gKey)
+                ghost:Show()
+                if RefreshGroupOrderRows then RefreshGroupOrderRows() end
+            else
+                return
+            end
+        end
+
+        local ghost = EnsureGroupDragGhost()
+        local gEff = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        if gEff <= 0 then gEff = 1 end
+        ghost:ClearAllPoints()
+        ghost:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", (cx / gEff) + 12, (cy / gEff) - 14)
+
+        local hoverSlot = nil
+        for j, rFrame in ipairs(groupRows) do
+            local rEff = (rFrame.GetEffectiveScale and rFrame:GetEffectiveScale()) or gEff
+            if rEff <= 0 then rEff = 1 end
+            local ucy = cy / rEff
+            local topY = rFrame.GetTop and rFrame:GetTop()
+            local botY = rFrame.GetBottom and rFrame:GetBottom()
+            if topY and botY and ucy <= (topY + 2) and ucy >= (botY - 2) then
+                hoverSlot = j
+                break
+            end
+        end
+        if hoverSlot and dragState.slotIdx and hoverSlot ~= dragState.slotIdx then
+            local ord = db.talentGroupOrder
+            local moved = table.remove(ord, dragState.slotIdx)
+            if moved then
+                table.insert(ord, hoverSlot, moved)
+                dragState.slotIdx = hoverSlot
+                ghost:SetGroupVisual(hoverSlot, moved)
+                RefreshGroupOrderRows()
+                DynamicTalent:RefreshTalentDock()
+            end
+        end
+    end
+
+    RefreshGroupOrderRows = function()
         db.talentGroupOrder = SanitizeGroupOrder(db.talentGroupOrder)
-        for idx, grpKey in ipairs(db.talentGroupOrder) do
-            local row = CreateFrame("Frame", nil, sec2, "BackdropTemplate")
-            row:SetHeight(36)
-            row:SetPoint("TOPLEFT", sec2, "TOPLEFT", 12, sy2)
-            row:SetPoint("TOPRIGHT", sec2, "TOPRIGHT", -12, sy2)
-            SetPixelBackdrop(row, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+        local _, a = GetTheme()
+        for i, grpKey in ipairs(db.talentGroupOrder) do
+            local row = groupRows[i]
+            if row then
+                row._slotIdx = i
+                local isDragged = (dragState.lifted and dragState.slotIdx == i)
+                row:SetAlpha(isDragged and 0.35 or 1.0)
+                if isDragged then
+                    SetPixelBackdrop(row, { a.r * 0.16, a.g * 0.16, a.b * 0.16, 0.96 }, { a.r, a.g, a.b, 0.85 }, 1)
+                else
+                    SetPixelBackdrop(row, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+                end
+                row.rankFs:SetTextColor(a.r, a.g, a.b, 1.0)
+                row.rankFs:SetText("#" .. i)
 
-            local downBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
-            downBtn:SetSize(26, 22)
-            downBtn:SetPoint("RIGHT", row, "RIGHT", -8, 0)
-            SetPixelBackdrop(downBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
-            local downTex = downBtn:CreateTexture(nil, "OVERLAY")
-            downTex:SetSize(10, 10)
-            downTex:SetPoint("CENTER")
-            downTex:SetTexture(ICON_CHEVRON_DOWN)
-            local canDown = (idx < #db.talentGroupOrder)
-            downTex:SetVertexColor(canDown and 0.85 or 0.32, canDown and 0.90 or 0.36, canDown and 0.96 or 0.42, canDown and 1 or 0.45)
-            downBtn:SetEnabled(canDown)
-            if canDown then
-                downBtn:SetScript("OnEnter", function(s) local _, a = GetTheme(); SetPixelBackdrop(s, { a.r * 0.35, a.g * 0.35, a.b * 0.35, 0.98 }, { a.r, a.g, a.b, 0.95 }, 1) end)
-                downBtn:SetScript("OnLeave", function(s) SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1) end)
-                downBtn:SetScript("OnClick", function()
+                local meta = GROUP_ROW_META[grpKey] or { title = grpKey, desc = "" }
+                local gHex = TALENT_GROUP_HEX[grpKey] or "94A3B8"
+                row.lblFs:SetText(string.format("|cFF%s[%s]|r  |cFFFFFFFF%s|r  |cFF64748B- %s|r", gHex, grpKey, meta.title, meta.desc))
+
+                local canUp = (i > 1)
+                local canDown = (i < #db.talentGroupOrder)
+                row.upBtn:SetEnabled(canUp)
+                row.upTex:SetVertexColor(canUp and 0.85 or 0.32, canUp and 0.90 or 0.36, canUp and 0.96 or 0.42, canUp and 1 or 0.45)
+                row.upBtn:SetScript("OnEnter", function(s)
+                    if canUp then
+                        local _, ac = GetTheme()
+                        SetPixelBackdrop(s, { ac.r * 0.35, ac.g * 0.35, ac.b * 0.35, 0.98 }, { ac.r, ac.g, ac.b, 0.95 }, 1)
+                    end
+                end)
+                row.upBtn:SetScript("OnLeave", function(s)
+                    SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+                end)
+                row.upBtn:SetScript("OnClick", function()
+                    if not canUp then return end
                     local ord = db.talentGroupOrder
-                    ord[idx], ord[idx + 1] = ord[idx + 1], ord[idx]
+                    ord[i], ord[i - 1] = ord[i - 1], ord[i]
                     DynamicTalent:RefreshTalentDock()
-                    RenderTalentEmbedded(parent)
+                    RefreshGroupOrderRows()
+                end)
+
+                row.downBtn:SetEnabled(canDown)
+                row.downTex:SetVertexColor(canDown and 0.85 or 0.32, canDown and 0.90 or 0.36, canDown and 0.96 or 0.42, canDown and 1 or 0.45)
+                row.downBtn:SetScript("OnEnter", function(s)
+                    if canDown then
+                        local _, ac = GetTheme()
+                        SetPixelBackdrop(s, { ac.r * 0.35, ac.g * 0.35, ac.b * 0.35, 0.98 }, { ac.r, ac.g, ac.b, 0.95 }, 1)
+                    end
+                end)
+                row.downBtn:SetScript("OnLeave", function(s)
+                    SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+                end)
+                row.downBtn:SetScript("OnClick", function()
+                    if not canDown then return end
+                    local ord = db.talentGroupOrder
+                    ord[i], ord[i + 1] = ord[i + 1], ord[i]
+                    DynamicTalent:RefreshTalentDock()
+                    RefreshGroupOrderRows()
                 end)
             end
+        end
+    end
 
-            local upBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
-            upBtn:SetSize(26, 22)
-            upBtn:SetPoint("RIGHT", downBtn, "LEFT", -4, 0)
-            SetPixelBackdrop(upBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
-            local upTex = upBtn:CreateTexture(nil, "OVERLAY")
-            upTex:SetSize(10, 10)
-            upTex:SetPoint("CENTER")
-            upTex:SetTexture(ICON_CHEVRON_UP)
-            local canUp = (idx > 1)
-            upTex:SetVertexColor(canUp and 0.85 or 0.32, canUp and 0.90 or 0.36, canUp and 0.96 or 0.42, canUp and 1 or 0.45)
-            upBtn:SetEnabled(canUp)
-            if canUp then
-                upBtn:SetScript("OnEnter", function(s) local _, a = GetTheme(); SetPixelBackdrop(s, { a.r * 0.35, a.g * 0.35, a.b * 0.35, 0.98 }, { a.r, a.g, a.b, 0.95 }, 1) end)
-                upBtn:SetScript("OnLeave", function(s) SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1) end)
-                upBtn:SetScript("OnClick", function()
-                    local ord = db.talentGroupOrder
-                    ord[idx], ord[idx - 1] = ord[idx - 1], ord[idx]
-                    DynamicTalent:RefreshTalentDock()
-                    RenderTalentEmbedded(parent)
-                end)
+    for idx = 1, groupCount do
+        local row = CreateFrame("Frame", nil, groupListHost, "BackdropTemplate")
+        row:SetHeight(36)
+        row:SetPoint("TOPLEFT", groupListHost, "TOPLEFT", 0, -((idx - 1) * 40))
+        row:SetPoint("TOPRIGHT", groupListHost, "TOPRIGHT", 0, -((idx - 1) * 40))
+        row:EnableMouse(true)
+        row._slotIdx = idx
+        SetPixelBackdrop(row, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+
+        local grip = CreateFrame("Frame", nil, row)
+        grip:SetSize(14, 16)
+        grip:SetPoint("LEFT", row, "LEFT", 10, 0)
+        grip.bars = {}
+        for bi, by in ipairs({ 4, 0, -4 }) do
+            local bTex = grip:CreateTexture(nil, "ARTWORK")
+            bTex:SetSize(10, 2)
+            bTex:SetPoint("CENTER", grip, "CENTER", 0, by)
+            bTex:SetColorTexture(0.48, 0.54, 0.64, 0.72)
+            grip.bars[bi] = bTex
+        end
+        function row.UpdateGripTint(hovered)
+            local _, ac = GetTheme()
+            for _, bTex in ipairs(grip.bars) do
+                if hovered then
+                    bTex:SetColorTexture(ac.r, ac.g, ac.b, 0.95)
+                else
+                    bTex:SetColorTexture(0.48, 0.54, 0.64, 0.72)
+                end
             end
-
-            local rankFs = row:CreateFontString(nil, "OVERLAY")
-            SetFontSafe(rankFs, 10.5, "")
-            rankFs:SetPoint("LEFT", row, "LEFT", 12, 0)
-            rankFs:SetWidth(24)
-            rankFs:SetJustifyH("LEFT")
-            rankFs:SetTextColor(acc.r, acc.g, acc.b, 1.0)
-            rankFs:SetText("#" .. idx)
-
-            local meta = GROUP_ROW_META[grpKey] or { title = grpKey, desc = "" }
-            local gHex = TALENT_GROUP_HEX[grpKey] or "94A3B8"
-            local lblFs = row:CreateFontString(nil, "OVERLAY")
-            SetFontSafe(lblFs, 11, "")
-            lblFs:SetPoint("LEFT", rankFs, "RIGHT", 6, 0)
-            lblFs:SetPoint("RIGHT", upBtn, "LEFT", -10, 0)
-            lblFs:SetJustifyH("LEFT")
-            lblFs:SetWordWrap(false)
-            lblFs:SetText(string.format("|cFF%s[%s]|r  |cFFFFFFFF%s|r  |cFF64748B- %s|r", gHex, grpKey, meta.title, meta.desc))
-
-            sy2 = sy2 - 40
         end
 
-        local sec2H = math.abs(sy2) + 8
-        sec2:SetHeight(sec2H)
-        y = y - (sec2H + 10)
+        local downBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
+        downBtn:SetSize(26, 22)
+        downBtn:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+        SetPixelBackdrop(downBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+        local downTex = downBtn:CreateTexture(nil, "OVERLAY")
+        downTex:SetSize(10, 10)
+        downTex:SetPoint("CENTER")
+        downTex:SetTexture(ICON_CHEVRON_DOWN)
 
-        -- Section 3: Maintenance & Defaults
-        local sec3 = CreateSectionBox(sc, y)
-        local sy3 = -10
-        local _, dy3h = CreateSectionHeader(sec3, sy3, "MAINTENANCE & DEFAULTS",
-            "Reset DynamicTalent display, reminder, and group-order settings while keeping all saved builds and binds.")
-        sy3 = sy3 + dy3h
+        local upBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
+        upBtn:SetSize(26, 22)
+        upBtn:SetPoint("RIGHT", downBtn, "LEFT", -4, 0)
+        SetPixelBackdrop(upBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+        local upTex = upBtn:CreateTexture(nil, "OVERLAY")
+        upTex:SetSize(10, 10)
+        upTex:SetPoint("CENTER")
+        upTex:SetTexture(ICON_CHEVRON_UP)
 
-        local rstBtn = CreateStyledButton(sec3, "Reset DynamicTalent Defaults", 210, 26, false, function()
-            DynamicTalent:ResetModuleDefaults()
+        local rankFs = row:CreateFontString(nil, "OVERLAY")
+        SetFontSafe(rankFs, 10.5, "")
+        rankFs:SetPoint("LEFT", grip, "RIGHT", 6, 0)
+        rankFs:SetWidth(24)
+        rankFs:SetJustifyH("LEFT")
+        rankFs:SetTextColor(acc.r, acc.g, acc.b, 1.0)
+
+        local lblFs = row:CreateFontString(nil, "OVERLAY")
+        SetFontSafe(lblFs, 11, "")
+        lblFs:SetPoint("LEFT", rankFs, "RIGHT", 6, 0)
+        lblFs:SetPoint("RIGHT", upBtn, "LEFT", -10, 0)
+        lblFs:SetJustifyH("LEFT")
+        lblFs:SetWordWrap(false)
+
+        row.grip = grip
+        row.rankFs = rankFs
+        row.lblFs = lblFs
+        row.upBtn = upBtn
+        row.upTex = upTex
+        row.downBtn = downBtn
+        row.downTex = downTex
+
+        row:SetScript("OnEnter", function(s)
+            row.UpdateGripTint(true)
+            if not dragState.lifted then
+                local _, ac = GetTheme()
+                SetPixelBackdrop(s, { 0.094, 0.110, 0.148, 0.98 }, { ac.r, ac.g, ac.b, 0.60 }, 1)
+                if GameTooltip then
+                    local gk = db.talentGroupOrder[s._slotIdx] or ""
+                    local gm = GROUP_ROW_META[gk] or { title = gk }
+                    GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                    GameTooltip:AddLine("Reorder Loadout Group: " .. tostring(gm.title), 1, 1, 1)
+                    GameTooltip:AddLine("|cFF34D399Left-Click & Drag:|r |cFFE2E8F0Drag row up or down to reorder.|r", 1, 1, 1, true)
+                    GameTooltip:AddLine("|cFF38BDF8Up / Down Chevrons:|r |cFFE2E8F0Move this group one step at a time.|r", 1, 1, 1, true)
+                    GameTooltip:Show()
+                end
+            end
         end)
-        rstBtn:SetPoint("TOPLEFT", sec3, "TOPLEFT", 14, sy3)
+        row:SetScript("OnLeave", function(s)
+            if MouseIsOver and MouseIsOver(s) then return end
+            row.UpdateGripTint(false)
+            if not dragState.lifted or dragState.slotIdx ~= s._slotIdx then
+                SetPixelBackdrop(s, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+            end
+            if GameTooltip then GameTooltip:Hide() end
+        end)
+        row:SetScript("OnMouseDown", function(s, btn)
+            if btn ~= "LeftButton" then return end
+            local cx, cy = GetCursorPosition()
+            dragState.active = true
+            dragState.lifted = false
+            dragState.slotIdx = s._slotIdx
+            dragState.sx = cx or 0
+            dragState.sy = cy or 0
+            groupListHost:SetScript("OnUpdate", OnGroupDragUpdate)
+        end)
+        row:SetScript("OnMouseUp", function()
+            FinishGroupDrag()
+        end)
 
-        sy3 = sy3 - 36
-        local sec3H = math.abs(sy3) + 8
-        sec3:SetHeight(sec3H)
-        y = y - (sec3H + 10)
+        groupRows[idx] = row
+    end
+    groupListHost:SetScript("OnHide", FinishGroupDrag)
+    RefreshGroupOrderRows()
+    root.groupListHost = groupListHost
+    root.groupRows = groupRows
+    root.RefreshGroupOrderRows = RefreshGroupOrderRows
 
-        sc:SetHeight(math.max(120, math.abs(y) + 12))
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                local w = sf:GetWidth()
-                if w and w > 40 then sc:SetWidth(w) end
-                UpdateScrollBar()
-            end)
-        end
+    sy2 = sy2 - (groupCount * 40)
+    local sec2H = math.abs(sy2) + 8
+    sec2:SetHeight(sec2H)
+    y = y - (sec2H + 10)
+
+    -- Section 4: Maintenance & Defaults
+    local sec3 = CreateSectionBox(sc, y)
+    local sy3 = -10
+    local _, dy3h = CreateSectionHeader(sec3, sy3, "MAINTENANCE & DEFAULTS",
+        "Reset DynamicTalent display, reminder, and group-order settings while keeping all saved builds and binds.")
+    sy3 = sy3 + dy3h
+
+    local rstBtn = CreateStyledButton(sec3, "Reset DynamicTalent Defaults", 210, 26, false, function()
+        DynamicTalent:ResetModuleDefaults()
+    end)
+    rstBtn:SetPoint("TOPLEFT", sec3, "TOPLEFT", 14, sy3)
+
+    sy3 = sy3 - 36
+    local sec3H = math.abs(sy3) + 8
+    sec3:SetHeight(sec3H)
+    y = y - (sec3H + 10)
+
+    sc:SetHeight(math.max(120, math.abs(y) + 12))
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            local w = sf:GetWidth()
+            if w and w > 40 then sc:SetWidth(w) end
+            UpdateScrollBar()
+        end)
     end
 
     return root
@@ -9885,12 +10288,15 @@ end
 
 function DynamicTalent:SelectSubTab(idx, _, entryOrOpts)
     local db = EnsureDB()
-    db.activeSubTab = (idx == 2) and 2 or 1
+    db.activeSubTab = 1
     if activeEmbeddedRoot and activeEmbeddedRoot:IsShown() and activeEmbeddedRoot:GetParent() then
         RenderTalentEmbedded(activeEmbeddedRoot:GetParent())
     end
-    if db.activeSubTab == 1 and type(entryOrOpts) == "table" and entryOrOpts.subMode and embeddedMgrCore and embeddedMgrCore.SelectSubMode then
-        embeddedMgrCore:SelectSubMode(entryOrOpts.subMode)
+    if type(entryOrOpts) == "table" and (entryOrOpts.openManager == true or entryOrOpts.subMode) then
+        self:OpenTalentManagerModal(1)
+        if entryOrOpts.subMode and talentMgrModal and talentMgrModal.SelectSubMode then
+            talentMgrModal:SelectSubMode(entryOrOpts.subMode)
+        end
     end
 end
 
@@ -9910,40 +10316,7 @@ function DynamicTalent:ApplyTheme()
         if talentMgrModal.RefreshTab2View then talentMgrModal:RefreshTab2View() end
     end
     if activeEmbeddedRoot and activeEmbeddedRoot:IsShown() and activeEmbeddedRoot:GetParent() then
-        local db = EnsureDB()
-        local prevIsTab1 = (db.activeSubTab ~= 2)
-        local prevHadCore = (prevIsTab1 and embeddedMgrCore ~= nil)
-        local prevSubMode = prevHadCore and embeddedMgrCore.state and embeddedMgrCore.state.subMode or nil
-        local prevEntry = nil
-        local prevEntryValid = false
-        if prevHadCore then
-            if embeddedMgrCore.GetSelectedLoadout then
-                prevEntry = embeddedMgrCore:GetSelectedLoadout()
-                prevEntryValid = (prevEntry ~= nil)
-            end
-            if not prevEntryValid and type(embeddedMgrCore.editingEntry) == "table" then
-                local specID = self:GetActiveSpecID()
-                local lib = (specID and db.talentStringLibrary and db.talentStringLibrary[specID]) or {}
-                for _, it in ipairs(lib) do
-                    if it == embeddedMgrCore.editingEntry then
-                        prevEntry = it
-                        prevEntryValid = true
-                        break
-                    end
-                end
-            end
-        end
         pcall(RenderTalentEmbedded, activeEmbeddedRoot:GetParent())
-        if prevHadCore and db.activeSubTab ~= 2 and embeddedMgrCore then
-            if prevEntryValid and embeddedMgrCore.SelectLoadout then
-                embeddedMgrCore:SelectLoadout(prevEntry, true)
-            elseif prevEntry == nil and embeddedMgrCore.SelectLoadout then
-                embeddedMgrCore:SelectLoadout(nil, true)
-            end
-            if prevSubMode and embeddedMgrCore.SelectSubMode then
-                embeddedMgrCore:SelectSubMode(prevSubMode)
-            end
-        end
     end
     self:ApplyTalentReminderToastVisuals()
     self:RefreshTalentDock()
@@ -9953,24 +10326,28 @@ end
 function DynamicTalent:ResetModuleDefaults()
     local db = EnsureDB()
     local keepMigrated = db.migratedFromPrep
+    local keepNextSeq  = tonumber(db.nextLoadoutIDSeq) or 0
     local keepLib      = db.talentStringLibrary
     local keepBoss     = db.talentBossMap
     local keepDung     = db.talentDungeonMap
     local keepPvP      = db.talentPvPMap
     local keepZone     = db.talentZoneMap
     local keepPref     = db.talentPreferredBySpec
+    local keepLastID   = db.lastAppliedTalentID
     local keepLastNm   = db.lastAppliedTalentName
     local keepLastStr  = db.lastAppliedTalentLiveStr
 
     wipe(db)
     CopyDefaults(db, DEFAULTS)
     db.migratedFromPrep         = keepMigrated
+    db.nextLoadoutIDSeq         = keepNextSeq
     db.talentStringLibrary      = keepLib or {}
     db.talentBossMap            = keepBoss or {}
     db.talentDungeonMap         = keepDung or {}
     db.talentPvPMap             = keepPvP or {}
     db.talentZoneMap            = keepZone or {}
     db.talentPreferredBySpec    = keepPref or {}
+    db.lastAppliedTalentID      = keepLastID or {}
     db.lastAppliedTalentName    = keepLastNm or {}
     db.lastAppliedTalentLiveStr = keepLastStr or {}
     db.talentGroupOrder         = SanitizeGroupOrder(DEFAULTS.talentGroupOrder)
@@ -10075,10 +10452,6 @@ function DynamicTalent:Open(subTab)
         f.body = body
         f:SetScript("OnHide", function()
             CloseAllDynamicTalentPopups()
-            if embeddedMgrCore then
-                if embeddedMgrCore.nameEB and embeddedMgrCore.nameEB.ClearFocus then embeddedMgrCore.nameEB:ClearFocus() end
-                if embeddedMgrCore.strEB and embeddedMgrCore.strEB.ClearFocus then embeddedMgrCore.strEB:ClearFocus() end
-            end
         end)
         standaloneWin = f
     end
@@ -10109,9 +10482,11 @@ DynamicTalent.Reset               = function() return DynamicTalent:ResetModuleD
 DynamicTalent.CHANGELOG = {
     {
         version = VERSION,
-        date = "21/11/2026",
+        date = "22/11/2026",
         entries = {
-            { type = "NEW", text = "Right-Click Hero Spec Swap (21/11/2026): Added an enabled-by-default 'Right-Click Hero Spec Swap' option (out of combat, skipped during active Mythic+ keystones and inspection) on Blizzard's central Hero Talent medallion with a clean 'Right-Click: Switch to [Other Hero Tree]' hover hint; immediately stages the alternate Hero tree without opening the picker popup." },
+            { type = "FIXED", text = "Same-Name Loadout Bind Isolation (22/11/2026): Gave every saved build a stable unique id and persisted loadoutID across Raid, M+, PvP, and Zone bind rules (with unambiguous legacy backfill), so builds sharing names (e.g. [M+-WS] Default, [M+-KG] Default, [Raid-KG] Default) never collide or overwrite each other's binds, badges, conflict prompts, or Active Reminders rows." },
+            { type = "UI",    text = "Single Pop-Out Manager, Bidirectional Links & Drag-and-Drop Group Order (22/11/2026): Removed the duplicate embedded manager from /ds -> DynamicTalent in favour of a clean Action & Status strip ('Open Talents (N)' + 'Open Loadout Manager'), added a 'Settings' header button in DynamicTalentManagerModal, upgraded the 5 Custom Loadout Group Order rows with tactile Left-Click & Drag ghost-pill reordering plus bordered Up/Down chevrons, and fixed Precision Track sliders to true 4px fill geometry." },
+            { type = "NEW",   text = "Right-Click Hero Spec Swap (21/11/2026): Added an enabled-by-default 'Right-Click Hero Spec Swap' option (out of combat, skipped during active Mythic+ keystones and inspection) on Blizzard's central Hero Talent medallion with a clean 'Right-Click: Switch to [Other Hero Tree]' hover hint; immediately stages the alternate Hero tree without opening the picker popup." },
             { type = "NEW", text = "Talent Tree Backdrop Studio & Background Dimmer (21/11/2026): Added a non-interactive background studio behind PlayerSpellsFrame.TalentsFrame with 4 Backdrop Modes (Blizzard Default, Obsidian Clean, Hero-Synced Mist shifting automatically across all 40 Hero trees, and Class Glow), a 0%-85% Background Dimmer precision slider (default 35%), and a Subtle Backdrop Animation toggle." },
             { type = "NEW", text = "Extracted DynamicTalent Module (/dt, /dynamictalent) (21/11/2026): Moved the unlimited per-spec Talent Loadout library, Hero Talent acronym badges, WCL/Northern Sky/Blizzard importer, Left-Hand PlayerSpellsFrame Dock, 880x580 Talent Loadouts Manager, and Shared Alert Toast reminders out of DynamicPrep into a dedicated 12th dual-mode module with zero-loss SavedVariables migration (DynamicPrepDB -> DynamicTalentDB) and a clean Top Info Bar capsule hook." },
             { type = "NEW", text = "Dedicated PvP Binder Tab & 3-Tier Mismatch Priority (21/11/2026): Added a 4th 'PvP' binder tab (All PvP, Arena, Battlegrounds, War Mode) alongside Raid Bosses, M+ Dungeons, and Zone Defaults; specific PvP mode binds now take priority over All PvP, while resting in cities suppresses Outdoor and War Mode alerts cleanly." },
@@ -10121,17 +10496,17 @@ DynamicTalent.CHANGELOG = {
 }
 
 DynamicTalent.SEARCH_ENTRIES = {
-    { title = "Talent Loadouts & Binds",               desc = "Manage per-spec talent strings, Hero Talent badges, and Raid/M+/PvP/Zone swap rules.",             keywords = "talent loadout import wcl blizzard string hero", tabIndex = 1, targetTitle = "LOADOUT IDENTITY" },
-    { title = "Talent Export String",                  desc = "Paste Warcraft Logs, Northern Sky, or Blizzard strings, or capture your active talent tree.",      keywords = "talent string export import paste copy",         tabIndex = 1, targetTitle = "TALENT EXPORT STRING" },
-    { title = "PvP Talent Binds",                      desc = "Bind builds to All PvP, Arena, Battlegrounds, or War Mode.",                                       keywords = "pvp arena battlegrounds bg blitz war mode",      tabIndex = 1, subMode = "PVP", targetTitle = "PVP TALENT BINDS" },
-    { title = "Enable DynamicTalent Module",           desc = "Toggle the Talent Loadouts Dock, Prep Bar switcher, and swap reminders.",                          keywords = "enable disable dynamictalent module",            tabIndex = 2, targetTitle = "Enable DynamicTalent Module" },
-    { title = "Show Talent Capsule on Prep Bar",       desc = "Toggle the Talent Loadout capsule inside DynamicPrep's Top Info Bar.",                             keywords = "prep bar capsule segment talents",               tabIndex = 2, targetTitle = "Show Talent Capsule on Prep Bar" },
-    { title = "Zone-Aware Talent Loadout Reminders",   desc = "Show a 1-click alert toast when entering Raid, M+, Delve, or PvP content with a different build.", keywords = "talent reminder toast alert swap",               tabIndex = 2, targetTitle = "Zone-Aware Talent Loadout Reminders" },
-    { title = "Prioritise Current Zone First",         desc = "Float loadouts matching your current zone to the top of quick-switchers.",                         keywords = "prioritise zone first sort quick switch",        tabIndex = 2, targetTitle = "Prioritise Current Zone First" },
-    { title = "Right-Click Hero Spec Swap",            desc = "Right-click Blizzard's Hero Talent medallion out of combat to switch Hero trees cleanly.",          keywords = "hero spec swap medallion right click tree",      tabIndex = 2, targetTitle = "Right-Click Hero Spec Swap" },
-    { title = "Talent Tree Backdrop Studio",           desc = "Choose Blizzard Default, Obsidian Clean, Hero-Synced Mist, or Class Glow talent backgrounds.",     keywords = "backdrop background mist obsidian hero glow tree",tabIndex = 2, targetTitle = "TALENT TREE BACKDROP" },
-    { title = "Background Dimmer & Mist Animation",    desc = "Dim Blizzard's spec background art (0%-85%) or pause subtle animated mist glow.",                   keywords = "dimmer dark opacity mist animation pulse",       tabIndex = 2, targetTitle = "Background Dimmer" },
-    { title = "Custom Loadout Group Order",            desc = "Reorder Raid, M+, Delves, PvP, and Custom groups across Talent Dock and switchers.",               keywords = "group order sort raid m+ delves pvp custom",     tabIndex = 2, targetTitle = "CUSTOM LOADOUT GROUP ORDER" },
+    { title = "Talent Loadouts & Binds",               desc = "Manage per-spec talent strings, Hero Talent badges, and Raid/M+/PvP/Zone swap rules.",             keywords = "talent loadout import wcl blizzard string hero", tabIndex = 1, openManager = true, targetTitle = "Open Loadout Manager" },
+    { title = "Talent Export String",                  desc = "Paste Warcraft Logs, Northern Sky, or Blizzard strings, or capture your active talent tree.",      keywords = "talent string export import paste copy",         tabIndex = 1, openManager = true, targetTitle = "Open Loadout Manager" },
+    { title = "PvP Talent Binds",                      desc = "Bind builds to All PvP, Arena, Battlegrounds, or War Mode.",                                       keywords = "pvp arena battlegrounds bg blitz war mode",      tabIndex = 1, subMode = "PVP", openManager = true, targetTitle = "Open Loadout Manager" },
+    { title = "Enable DynamicTalent Module",           desc = "Toggle the Talent Loadouts Dock, Prep Bar switcher, and swap reminders.",                          keywords = "enable disable dynamictalent module",            tabIndex = 1, targetTitle = "Enable DynamicTalent Module" },
+    { title = "Show Talent Capsule on Prep Bar",       desc = "Toggle the Talent Loadout capsule inside DynamicPrep's Top Info Bar.",                             keywords = "prep bar capsule segment talents",               tabIndex = 1, targetTitle = "Show Talent Capsule on Prep Bar" },
+    { title = "Zone-Aware Talent Loadout Reminders",   desc = "Show a 1-click alert toast when entering Raid, M+, Delve, or PvP content with a different build.", keywords = "talent reminder toast alert swap",               tabIndex = 1, targetTitle = "Zone-Aware Talent Loadout Reminders" },
+    { title = "Prioritise Current Zone First",         desc = "Float loadouts matching your current zone to the top of quick-switchers.",                         keywords = "prioritise zone first sort quick switch",        tabIndex = 1, targetTitle = "Prioritise Current Zone First" },
+    { title = "Right-Click Hero Spec Swap",            desc = "Right-click Blizzard's Hero Talent medallion out of combat to switch Hero trees cleanly.",          keywords = "hero spec swap medallion right click tree",      tabIndex = 1, targetTitle = "Right-Click Hero Spec Swap" },
+    { title = "Talent Tree Backdrop Studio",           desc = "Choose Blizzard Default, Obsidian Clean, Hero-Synced Mist, or Class Glow talent backgrounds.",     keywords = "backdrop background mist obsidian hero glow tree",tabIndex = 1, targetTitle = "TALENT TREE BACKDROP" },
+    { title = "Background Dimmer & Mist Animation",    desc = "Dim Blizzard's spec background art (0%-85%) or pause subtle animated mist glow.",                   keywords = "dimmer dark opacity mist animation pulse",       tabIndex = 1, targetTitle = "Background Dimmer" },
+    { title = "Custom Loadout Group Order",            desc = "Drag and drop or use arrows to reorder Raid, M+, Delves, PvP, and Custom groups across Talent Dock and switchers.", keywords = "group order sort drag drop raid m+ delves pvp custom", tabIndex = 1, targetTitle = "CUSTOM LOADOUT GROUP ORDER" },
 }
 
 local function RegisterWithDynamicSuite()
@@ -10288,9 +10663,8 @@ evt:SetScript("OnEvent", function(_, event, arg1)
                 if talentMgrModal.RefreshQuickStartStrip then talentMgrModal:RefreshQuickStartStrip() end
                 if talentMgrModal.RefreshBossList then talentMgrModal:RefreshBossList() end
             end
-            if embeddedMgrCore and embeddedMgrCore:IsShown() then
-                if embeddedMgrCore.RefreshQuickStartStrip then embeddedMgrCore:RefreshQuickStartStrip() end
-                if embeddedMgrCore.RefreshBossList then embeddedMgrCore:RefreshBossList() end
+            if activeEmbeddedRoot and activeEmbeddedRoot:IsShown() and activeEmbeddedRoot.RefreshActionStrip then
+                activeEmbeddedRoot:RefreshActionStrip()
             end
             if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
                 pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
@@ -10325,6 +10699,8 @@ evt:SetScript("OnEvent", function(_, event, arg1)
             if postStr and postStr ~= "" then
                 appliedEntry.liveHash = postStr
                 if appliedSpec and DynamicTalent.db then
+                    DynamicTalent.db.lastAppliedTalentID = DynamicTalent.db.lastAppliedTalentID or {}
+                    DynamicTalent.db.lastAppliedTalentID[appliedSpec] = EnsureEntryID(appliedEntry, DynamicTalent.db)
                     DynamicTalent.db.lastAppliedTalentName = DynamicTalent.db.lastAppliedTalentName or {}
                     DynamicTalent.db.lastAppliedTalentName[appliedSpec] = appliedEntry.name
                     DynamicTalent.db.lastAppliedTalentLiveStr = DynamicTalent.db.lastAppliedTalentLiveStr or {}

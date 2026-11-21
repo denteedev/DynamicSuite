@@ -9994,7 +9994,7 @@ do
         valText:SetJustifyH("RIGHT")
         valText:SetWordWrap(false)
 
-        local slider = CreateFrame("Slider", nil, wrap, "BackdropTemplate")
+        local slider = CreateFrame("Slider", nil, wrap)
         slider:SetPoint("LEFT", wrap, "LEFT", 0, 0)
         slider:SetPoint("RIGHT", valText, "LEFT", -10, 0)
         slider:SetHeight(4)
@@ -10005,17 +10005,19 @@ do
         slider:SetObeyStepOnDrag(false)
         slider:EnableMouse(true)
         slider:EnableMouseWheel(true)
-        slider:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Buttons\\WHITE8x8",
-            edgeSize = 1,
-        })
-        slider:SetBackdropColor(0.035, 0.039, 0.051, 0.98)
-        slider:SetBackdropBorderColor(1, 1, 1, 0.14)
+
+        local hairline = slider:CreateTexture(nil, "BACKGROUND", nil, -1)
+        hairline:SetPoint("TOPLEFT", slider, "TOPLEFT", -1, 1)
+        hairline:SetPoint("BOTTOMRIGHT", slider, "BOTTOMRIGHT", 1, -1)
+        hairline:SetColorTexture(1, 1, 1, 0.14)
+
+        local trackBg = slider:CreateTexture(nil, "BACKGROUND", nil, 0)
+        trackBg:SetAllPoints()
+        trackBg:SetColorTexture(0.035, 0.039, 0.051, 0.98)
 
         local fillTex = slider:CreateTexture(nil, "ARTWORK")
-        fillTex:SetPoint("TOPLEFT", slider, "TOPLEFT", 1, -1)
-        fillTex:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 1, 1)
+        fillTex:SetPoint("TOPLEFT", slider, "TOPLEFT", 0, 0)
+        fillTex:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 0, 0)
         fillTex:SetWidth(1)
         DisableTexPixelSnap(fillTex)
 
@@ -10050,7 +10052,7 @@ do
             if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
             local tw = slider:GetWidth()
             if not tw or tw <= 0 then tw = 194 end
-            fillTex:SetWidth(math.max(1, pct * math.max(1, tw - 2)))
+            fillTex:SetWidth(math.max(1, pct * tw))
             SetSafeFont(valText, 11, "")
             valText:SetText(tostring(SnapValue(v)) .. (suffix or ""))
         end

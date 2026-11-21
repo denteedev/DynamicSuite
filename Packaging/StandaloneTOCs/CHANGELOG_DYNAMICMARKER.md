@@ -3,6 +3,13 @@
 
 ---
 
+## [Unreleased]
+
+### Improved (22/11/2026)
+* **True-4px Sleek Precision Sliders & Standalone Footer Parity:** Moved the `1px` track hairline strictly outside the `4px` `#090A0D` track in `DM:CreateSliderControl` so active Suite Accent fill bars render at a full `4px` thickness, and added matching outer `1px` hairlines and live Suite Accent hover/drag blade thumb highlights to the standalone `Scale` and `Opacity` footer sliders.
+
+---
+
 ## DynamicMarker v2.7.1 (21/11/2026)
 
 ### Improved

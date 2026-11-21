@@ -2212,13 +2212,15 @@ local function CreateDSOptionSlider(parent, width, minVal, maxVal, stepVal, form
     track:SetPoint("LEFT", holder, "LEFT", 0, 0)
     track:SetPoint("RIGHT", valText, "LEFT", -10, 0)
     track:SetHeight(4)
+    track.hairline = UI.SolidTex(track, "BACKGROUND", -1, 1, 1, 1, 0.14)
+    track.hairline:SetPoint("TOPLEFT", track, "TOPLEFT", -1, 1)
+    track.hairline:SetPoint("BOTTOMRIGHT", track, "BOTTOMRIGHT", 1, -1)
     track.bg = UI.SolidTex(track, "BACKGROUND", 0, 0.035, 0.039, 0.051, 0.98)
     track.bg:SetAllPoints()
-    track.border = UI.CreatePixelBorder(track, 1, 1, 1, 0.14, 1)
 
     local fill = UI.SolidTex(track, "ARTWORK", 1, ar0, ag0, ab0, 0.85)
-    fill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
-    fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
+    fill:SetPoint("TOPLEFT", track, "TOPLEFT", 0, 0)
+    fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 0, 0)
     fill:SetWidth(1)
     track.FillBar = fill
 
@@ -2258,7 +2260,7 @@ local function CreateDSOptionSlider(parent, width, minVal, maxVal, stepVal, form
         pct = math.max(0, math.min(1, pct))
         local tw = track:GetWidth()
         if not tw or tw <= 0 then tw = (width or 256) - 62 end
-        fill:SetWidth(math.max(1, pct * math.max(1, tw - 2)))
+        fill:SetWidth(math.max(1, pct * tw))
         thumb:ClearAllPoints()
         thumb:SetPoint("CENTER", track, "LEFT", pct * tw, 0)
         valText:SetText(formatFunc and formatFunc(cur) or tostring(cur))
@@ -3808,6 +3810,10 @@ function addonTable.CreateMainConfigUI()
     scaleTrack:SetSize(SCALE_W, 4)
     scaleTrack:SetPoint("CENTER", scaleHit, "CENTER", 0, 0)
 
+    local scaleHairline = UI.SolidTex(scaleHit, "BACKGROUND", 0, 1, 1, 1, 0.14)
+    scaleHairline:SetPoint("TOPLEFT", scaleTrack, "TOPLEFT", -1, 1)
+    scaleHairline:SetPoint("BOTTOMRIGHT", scaleTrack, "BOTTOMRIGHT", 1, -1)
+
     local scaleFill = UI.SolidTex(scaleHit, "ARTWORK", 2, UI.COLORS.ACCENT.r, UI.COLORS.ACCENT.g, UI.COLORS.ACCENT.b, 0.85)
     scaleFill:SetPoint("TOPLEFT", scaleTrack, "TOPLEFT", 0, 0)
     scaleFill:SetPoint("BOTTOMLEFT", scaleTrack, "BOTTOMLEFT", 0, 0)
@@ -3818,6 +3824,15 @@ function addonTable.CreateMainConfigUI()
     if scaleThumb.SetSnapToPixelGrid then
         scaleThumb:SetSnapToPixelGrid(false)
         scaleThumb:SetTexelSnappingBias(0)
+    end
+    local scaleDragging = false
+    local function SyncScaleThumbColor()
+        if scaleDragging or (scaleHit.IsMouseOver and scaleHit:IsMouseOver()) then
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            scaleThumb:SetColorTexture(ar, ag, ab, 1.0)
+        else
+            scaleThumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+        end
     end
 
     local scaleLbl = footer:CreateFontString(nil, "OVERLAY")
@@ -3835,6 +3850,7 @@ function addonTable.CreateMainConfigUI()
         scaleThumb:ClearAllPoints()
         scaleThumb:SetPoint("CENTER", scaleTrack, "LEFT", xOff, 0)
         scaleValText:SetText(string.format("%d%%", math.floor(val * 100 + 0.5)))
+        SyncScaleThumbColor()
     end
     UpdateScaleVisual(savedScale)
 
@@ -3862,10 +3878,15 @@ function addonTable.CreateMainConfigUI()
     end
     f.CommitWindowScale = CommitWindowScale
 
+    scaleHit:SetScript("OnEnter", SyncScaleThumbColor)
+    scaleHit:SetScript("OnLeave", SyncScaleThumbColor)
     scaleHit:SetScript("OnMouseDown", function(self, button)
         if button == "LeftButton" then
+            scaleDragging = true
+            SyncScaleThumbColor()
             self:SetScript("OnUpdate", function(s)
                 if not IsMouseButtonDown("LeftButton") then
+                    scaleDragging = false
                     s:SetScript("OnUpdate", nil)
                     CommitWindowScale(pendingScale)
                     return
@@ -3890,11 +3911,16 @@ function addonTable.CreateMainConfigUI()
     end)
     scaleHit:SetScript("OnMouseUp", function(self, button)
         if button == "LeftButton" then
+            scaleDragging = false
             self:SetScript("OnUpdate", nil)
             CommitWindowScale(pendingScale)
         end
     end)
-    scaleHit:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
+    scaleHit:SetScript("OnHide", function(self)
+        scaleDragging = false
+        self:SetScript("OnUpdate", nil)
+        SyncScaleThumbColor()
+    end)
     scaleHit:SetScript("OnMouseWheel", function(_, delta)
         CommitWindowScale(pendingScale + (delta > 0 and SCALE_STEP or -SCALE_STEP))
     end)
@@ -3911,6 +3937,10 @@ function addonTable.CreateMainConfigUI()
     opaTrack:SetSize(OPA_W, 4)
     opaTrack:SetPoint("CENTER", opaHit, "CENTER", 0, 0)
 
+    local opaHairline = UI.SolidTex(opaHit, "BACKGROUND", 0, 1, 1, 1, 0.14)
+    opaHairline:SetPoint("TOPLEFT", opaTrack, "TOPLEFT", -1, 1)
+    opaHairline:SetPoint("BOTTOMRIGHT", opaTrack, "BOTTOMRIGHT", 1, -1)
+
     local opaFill = UI.SolidTex(opaHit, "ARTWORK", 2, UI.COLORS.ACCENT.r, UI.COLORS.ACCENT.g, UI.COLORS.ACCENT.b, 0.85)
     opaFill:SetPoint("TOPLEFT", opaTrack, "TOPLEFT", 0, 0)
     opaFill:SetPoint("BOTTOMLEFT", opaTrack, "BOTTOMLEFT", 0, 0)
@@ -3921,6 +3951,15 @@ function addonTable.CreateMainConfigUI()
     if opaThumb.SetSnapToPixelGrid then
         opaThumb:SetSnapToPixelGrid(false)
         opaThumb:SetTexelSnappingBias(0)
+    end
+    local opaDragging = false
+    local function SyncOpaThumbColor()
+        if opaDragging or (opaHit.IsMouseOver and opaHit:IsMouseOver()) then
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            opaThumb:SetColorTexture(ar, ag, ab, 1.0)
+        else
+            opaThumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+        end
     end
 
     local opaLabel = footer:CreateFontString(nil, "OVERLAY")
@@ -3949,15 +3988,22 @@ function addonTable.CreateMainConfigUI()
         opaFill:SetWidth(math.max(1, xOff))
         opaThumb:ClearAllPoints()
         opaThumb:SetPoint("CENTER", opaTrack, "LEFT", xOff, 0)
+        SyncOpaThumbColor()
     end
     ApplyWindowOpacity(savedAlpha)
     f.ApplyWindowOpacity = ApplyWindowOpacity
 
+    opaHit:SetScript("OnEnter", SyncOpaThumbColor)
+    opaHit:SetScript("OnLeave", SyncOpaThumbColor)
     opaHit:SetScript("OnMouseDown", function(self, button)
         if button == "LeftButton" then
+            opaDragging = true
+            SyncOpaThumbColor()
             self:SetScript("OnUpdate", function(s)
                 if not IsMouseButtonDown("LeftButton") then
+                    opaDragging = false
                     s:SetScript("OnUpdate", nil)
+                    SyncOpaThumbColor()
                     return
                 end
                 local eff = opaTrack:GetEffectiveScale()
@@ -3977,8 +4023,16 @@ function addonTable.CreateMainConfigUI()
             ApplyWindowOpacity(0.98)
         end
     end)
-    opaHit:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
-    opaHit:SetScript("OnHide", function(self) self:SetScript("OnUpdate", nil) end)
+    opaHit:SetScript("OnMouseUp", function(self)
+        opaDragging = false
+        self:SetScript("OnUpdate", nil)
+        SyncOpaThumbColor()
+    end)
+    opaHit:SetScript("OnHide", function(self)
+        opaDragging = false
+        self:SetScript("OnUpdate", nil)
+        SyncOpaThumbColor()
+    end)
     opaHit:SetScript("OnMouseWheel", function(_, delta)
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
         local cur = (gTbl and gTbl.windowAlpha) or (DynamicLoadDB and DynamicLoadDB.windowAlpha) or 0.98
@@ -8760,6 +8814,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "FIXED",    title = "Unreleased (22/11/2026): Same-Name Bind Isolation, Single Manager Flow, Drag-and-Drop Group Order & True-4px Sliders", desc = "Isolated same-name talent loadouts via persistent loadoutID matching across all bind tables; streamlined /ds -> DynamicTalent to one Pop-Out Manager linked two ways with Settings / Open Talents (N) / Open Loadout Manager; added tactile ghost-pill drag-and-drop to Custom Loadout Group Order; and standardised every horizontal slider across all 12 modules and footer docks (including DynamicVault) to true 4px flush tracks with 1px outer hairlines and white-to-accent hover thumbs." },
                 { badge = "NEW",      title = "Unreleased (21/11/2026): DynamicTalent Right-Click Hero Spec Swap & Talent Tree Backdrop Studio", desc = "Added out-of-combat Right-Click Hero Talent medallion swapping on PlayerSpellsFrame.TalentsFrame (without opening the picker popup, skipped during combat/active M+/inspection, with 'Right-Click: Switch to [Other Hero Tree]' hover hint) plus the Talent Tree Backdrop Studio in Tab 2: 4 Backdrop Modes (Blizzard Default, Obsidian Clean, Hero-Synced Mist shifting automatically across all 40 Hero Talent trees, Class Glow), 0%-85% Background Dimmer precision slider (default 35%), and Subtle Backdrop Animation toggle." },
                 { badge = "NEW",      title = "Unreleased (21/11/2026): New DynamicTalent Module (/dt, /dynamictalent), 4-Tab PvP Binder & Custom Group Ordering", desc = "Extracted Talent Loadouts & Talent Binds out of DynamicPrep into DynamicTalent as DynamicSuite's 12th dual-mode module with one-time zero-loss DynamicPrepDB -> DynamicTalentDB migration, a clean Top Info Bar capsule hook, 4-tab Raid/M+/PvP/Zone binder (All PvP, Arena, Battlegrounds, War Mode) with 3-tier mismatch priority, Prioritise Current Zone First sorting, and custom 5-group ordering across Talent Dock and switchers." },
                 { badge = "NEW",      title = "v2.7.1 Release (21/11/2026): Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Binds, LFR/Normal Merge, 'Talent Binds' & Dropdown Scrollbars", desc = "Standardised Left-Click (Active Specialisation out of combat) and Right-Click (Loot Specialisation) across DynamicPrep's Top Info Bar and Talent Loadouts Dock with 1:1 plain Australian English tooltips; added an 'All' toggle and multi-select dungeon tiles to the M+ Binder (saving one 'All M+ Dungeons' catch-all or batch per-dungeon binds with specific priority); merged LFR and Normal raids into 'LFR / Normal'; renamed 'Boss Binds' to 'Talent Binds'; and added a 4px interactive Obsidian scrollbar to Talent Manager dropdowns." },
@@ -8835,6 +8890,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
             openModule = "DynamicMarker",
             items = {
+                { badge = "UI",       title = "Unreleased (22/11/2026): True-4px Sleek Precision Sliders & Standalone Footer Thumb Parity", desc = "Moved the 1px track hairline strictly outside the 4px #090A0D track in DM:CreateSliderControl so Suite Accent fill bars render at a full 4px thickness, and added matching 1px hairlines plus live Suite Accent hover/drag blade thumb highlights to the standalone footer Scale and Opacity sliders." },
                 { badge = "FIXED",    title = "v2.3.2 Release (18/11/2026): Proactive DecorVendor /tm Quarantine Modal & Tier-1 Conflict Protection", desc = "Promoted DecorVendor ('Decor Vendor') to a Tier-1 HARD conflict across bundled DynamicSuite and standalone DynamicMarker, and added a Midnight Pitch Black (#06070A-#090A0D) Obsidian modal ('Raid Marker Blocked by Addon Conflict', safely deferred until out of combat) whenever DecorVendor is active on login/reload or whenever World of Warcraft blocks SetRaidTarget() / SetRaidTargetIcon(). Provides 1-click 'Disable <Addon> (Set to Never)', session-throttled Dismiss, updated [DynamicMark] Macro Setup guidance, and clear instructions to completely Exit & Restart World of Warcraft." },
                 { badge = "UI",       title = "v2.3.0 Release: 3-Way Interactive Obsidian Scrollbars & Central Popover Auto-Close", desc = "Upgraded DynamicMarkerDropdownPopover, embedded sub-tab pages, and the standalone Changelog modal to full 3-way interactive 4px Obsidian scrollbars (Mousewheel, Left-Click & Drag thumb with Suite Accent highlight, and Left-Click track jump), hooked OnHide on all dropdown and HUD selector owner buttons, and registered DM:CloseDropdownMenu() with UI.RegisterPopupCloser." },
                 { badge = "IMPROVED", title = "v2.2.0 Release: Version & Storefront Lockstep Parity", desc = "Synchronised version metadata and duplicate-install coexistence checks cleanly to v2.2.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
@@ -8952,6 +9008,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_talent.tga",
             openModule = "DynamicTalent",
             items = {
+                { badge = "FIXED",    title = "Unreleased (22/11/2026): Same-Name Bind Isolation, Single Pop-Out Manager, Drag-and-Drop Group Order & True-4px Sliders", desc = "Added persistent unique loadoutID matching across all Raid/M+/PvP/Zone bind tables so builds sharing names (e.g. [M+-WS] Default, [M+-KG] Default, [Raid-KG] Default) stay isolated; removed the duplicate embedded manager in /ds -> DynamicTalent in favour of one Pop-Out Manager with Settings / Open Talents (N) / Open Loadout Manager links; upgraded Custom Loadout Group Order with tactile ghost-pill drag-and-drop plus bordered chevrons; and fixed Precision Track sliders to true 4px fill geometry." },
                 { badge = "NEW",      title = "Unreleased (21/11/2026): Right-Click Hero Spec Swap & Talent Tree Backdrop Studio", desc = "Added out-of-combat Right-Click Hero Talent medallion swapping on PlayerSpellsFrame.TalentsFrame (without opening the picker popup, skipped during combat/active M+/inspection, with 'Right-Click: Switch to [Other Hero Tree]' hover hint) plus the Talent Tree Backdrop Studio in Tab 2: 4 Backdrop Modes (Blizzard Default, Obsidian Clean, Hero-Synced Mist across all 40 Hero trees, Class Glow), 0%-85% Background Dimmer precision slider (default 35%), and Subtle Backdrop Animation toggle." },
                 { badge = "NEW",      title = "Unreleased (21/11/2026): Extracted 12th Dual-Mode Module, PvP Binder Tab & Custom Group Order", desc = "Extracted Talent Loadouts & Talent Binds out of DynamicPrep into standalone/bundled DynamicTalent (/dt, /dynamictalent) with zero-loss DynamicPrepDB -> DynamicTalentDB migration, a dedicated 4th PvP binder tab (All PvP, Arena, Battlegrounds, War Mode) with 3-tier mismatch priority, Prioritise Current Zone First, custom 5-group ordering, and a clean DynamicPrep Top Info Bar capsule hook." },
             },

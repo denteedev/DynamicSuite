@@ -6617,7 +6617,7 @@ local function CreateObsidianSlider(parent, width, minVal, maxVal, stepVal, form
     valText:SetJustifyH("RIGHT")
     valText:SetWordWrap(false)
 
-    local slider = CreateFrame("Slider", nil, holder, "BackdropTemplate")
+    local slider = CreateFrame("Slider", nil, holder)
     slider:SetPoint("LEFT", holder, "LEFT", 0, 0)
     slider:SetPoint("RIGHT", valText, "LEFT", -10, 0)
     slider:SetHeight(4)
@@ -6628,12 +6628,20 @@ local function CreateObsidianSlider(parent, width, minVal, maxVal, stepVal, form
     slider:SetObeyStepOnDrag(false)
     slider:EnableMouse(true)
     slider:EnableMouseWheel(true)
-    SetPixelBackdrop(slider, { 0.035, 0.039, 0.051, 0.98 }, { 1, 1, 1, 0.14 }, 1)
+
+    local hairline = slider:CreateTexture(nil, "BACKGROUND", nil, -1)
+    hairline:SetPoint("TOPLEFT", slider, "TOPLEFT", -1, 1)
+    hairline:SetPoint("BOTTOMRIGHT", slider, "BOTTOMRIGHT", 1, -1)
+    hairline:SetColorTexture(1, 1, 1, 0.14)
+
+    local trackBg = slider:CreateTexture(nil, "BACKGROUND", nil, 0)
+    trackBg:SetAllPoints()
+    trackBg:SetColorTexture(0.035, 0.039, 0.051, 0.98)
 
     local ar0, ag0, ab0 = GetActiveAccentRGB()
     local fill = slider:CreateTexture(nil, "ARTWORK")
-    fill:SetPoint("TOPLEFT", slider, "TOPLEFT", 1, -1)
-    fill:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 1, 1)
+    fill:SetPoint("TOPLEFT", slider, "TOPLEFT", 0, 0)
+    fill:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 0, 0)
     fill:SetWidth(1)
     fill:SetColorTexture(ar0, ag0, ab0, 0.85)
     slider.FillBar = fill
@@ -6671,7 +6679,7 @@ local function CreateObsidianSlider(parent, width, minVal, maxVal, stepVal, form
         pct = math.max(0, math.min(1, pct))
         local tw = slider:GetWidth()
         if not tw or tw <= 0 then tw = 194 end
-        fill:SetWidth(math.max(1, pct * math.max(1, tw - 2)))
+        fill:SetWidth(math.max(1, pct * tw))
     end
 
     function holder:RefreshValue()

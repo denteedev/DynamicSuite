@@ -2582,13 +2582,16 @@ local function CreateInlineSliderControl(parent, width, minVal, maxVal, stepVal,
         slider:SetObeyStepOnDrag(false)
     end
 
-    slider.track = CreateSolidTex(slider, "BACKGROUND", 1, 0.035, 0.039, 0.051, 0.98)
+    slider.hairline = CreateSolidTex(slider, "BACKGROUND", -1, 1, 1, 1, 0.14)
+    slider.hairline:SetPoint("TOPLEFT", slider, "TOPLEFT", -1, 1)
+    slider.hairline:SetPoint("BOTTOMRIGHT", slider, "BOTTOMRIGHT", 1, -1)
+
+    slider.track = CreateSolidTex(slider, "BACKGROUND", 0, 0.035, 0.039, 0.051, 0.98)
     slider.track:SetAllPoints()
-    Create1PxBorder(slider, 1, 1, 1, 0.14)
 
     local fill = slider:CreateTexture(nil, "ARTWORK")
-    fill:SetPoint("TOPLEFT", slider, "TOPLEFT", 1, -1)
-    fill:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 1, 1)
+    fill:SetPoint("TOPLEFT", slider, "TOPLEFT", 0, 0)
+    fill:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 0, 0)
     fill:SetWidth(1)
     fill:SetColorTexture(ar0, ag0, ab0, 0.85)
     slider.FillBar = fill
@@ -2628,7 +2631,7 @@ local function CreateInlineSliderControl(parent, width, minVal, maxVal, stepVal,
         pct = math.max(0, math.min(1, pct))
         local tw = slider:GetWidth()
         if not tw or tw <= 0 then tw = 194 end
-        fill:SetWidth(math.max(1, pct * math.max(1, tw - 2)))
+        fill:SetWidth(math.max(1, pct * tw))
     end
 
     function wrap:RefreshValue()

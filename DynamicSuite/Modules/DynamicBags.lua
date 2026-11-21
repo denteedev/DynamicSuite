@@ -7134,7 +7134,7 @@ function U.AddCard(page, spec)
         card.valueText:SetWordWrap(false)
         card.valueText:SetTextColor(ar, ag, ab, 1.0)
 
-        local slider = CreateFrame("Slider", nil, holder, "BackdropTemplate")
+        local slider = CreateFrame("Slider", nil, holder)
         slider:SetPoint("LEFT", holder, "LEFT", 0, 0)
         slider:SetPoint("RIGHT", card.valueText, "LEFT", -10, 0)
         slider:SetHeight(4)
@@ -7145,11 +7145,19 @@ function U.AddCard(page, spec)
         slider:SetObeyStepOnDrag(false)
         slider:EnableMouse(true)
         slider:EnableMouseWheel(true)
-        Backdrop(slider, 0.035, 0.039, 0.051, 0.98, 1, 1, 1, 0.14)
+
+        local hairline = slider:CreateTexture(nil, "BACKGROUND", nil, -1)
+        hairline:SetPoint("TOPLEFT", slider, "TOPLEFT", -1, 1)
+        hairline:SetPoint("BOTTOMRIGHT", slider, "BOTTOMRIGHT", 1, -1)
+        hairline:SetColorTexture(1, 1, 1, 0.14)
+
+        local trackBg = slider:CreateTexture(nil, "BACKGROUND", nil, 0)
+        trackBg:SetAllPoints()
+        trackBg:SetColorTexture(0.035, 0.039, 0.051, 0.98)
 
         local fill = slider:CreateTexture(nil, "ARTWORK")
-        fill:SetPoint("TOPLEFT", slider, "TOPLEFT", 1, -1)
-        fill:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 1, 1)
+        fill:SetPoint("TOPLEFT", slider, "TOPLEFT", 0, 0)
+        fill:SetPoint("BOTTOMLEFT", slider, "BOTTOMLEFT", 0, 0)
         fill:SetWidth(1)
         fill:SetColorTexture(ar, ag, ab, 0.85)
         slider.FillBar = fill
@@ -7189,7 +7197,7 @@ function U.AddCard(page, spec)
             pct = max(0, min(1, pct))
             local tw = slider:GetWidth()
             if not tw or tw <= 0 then tw = 194 end
-            fill:SetWidth(max(1, pct * max(1, tw - 2)))
+            fill:SetWidth(max(1, pct * tw))
         end
 
         slider:SetScript("OnValueChanged", function(_, value)

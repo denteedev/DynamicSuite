@@ -4733,13 +4733,16 @@ local function CreateDSOptionSlider(parent, width, minVal, maxVal, stepVal, form
     track:SetPoint("LEFT", holder, "LEFT", 0, 0)
     track:SetPoint("RIGHT", valText, "LEFT", -10, 0)
     track:SetHeight(4)
+    track.hairline = UI.SolidTex(track, "BACKGROUND", -1, 1, 1, 1, 0.14)
+    track.hairline:SetPoint("TOPLEFT", track, "TOPLEFT", -1, 1)
+    track.hairline:SetPoint("BOTTOMRIGHT", track, "BOTTOMRIGHT", 1, -1)
+
     track.bg = UI.SolidTex(track, "BACKGROUND", 0, 0.035, 0.039, 0.051, 0.98)
     track.bg:SetAllPoints()
-    track.border = UI.CreatePixelBorder(track, 1, 1, 1, 0.14, 1)
 
     local fill = UI.SolidTex(track, "ARTWORK", 1, ar0, ag0, ab0, 0.85)
-    fill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
-    fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
+    fill:SetPoint("TOPLEFT", track, "TOPLEFT", 0, 0)
+    fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 0, 0)
     fill:SetWidth(1)
     track.FillBar = fill
 
@@ -4779,7 +4782,7 @@ local function CreateDSOptionSlider(parent, width, minVal, maxVal, stepVal, form
         pct = math.max(0, math.min(1, pct))
         local tw = track:GetWidth()
         if not tw or tw <= 0 then tw = (width or 256) - 62 end
-        fill:SetWidth(math.max(1, pct * math.max(1, tw - 2)))
+        fill:SetWidth(math.max(1, pct * tw))
         thumb:ClearAllPoints()
         thumb:SetPoint("CENTER", track, "LEFT", pct * tw, 0)
         valText:SetText(formatFunc and formatFunc(cur) or tostring(cur))

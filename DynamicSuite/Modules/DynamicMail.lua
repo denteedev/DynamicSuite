@@ -2759,7 +2759,7 @@ local function CreateSliderCard(parent, yOffset, titleText, descText, minVal, ma
     valBadge:SetJustifyH("RIGHT")
     valBadge:SetWordWrap(false)
 
-    local track = CreateFrame("Slider", nil, holder, "BackdropTemplate")
+    local track = CreateFrame("Slider", nil, holder)
     track:SetPoint("LEFT", holder, "LEFT", 0, 0)
     track:SetPoint("RIGHT", valBadge, "LEFT", -10, 0)
     track:SetHeight(4)
@@ -2770,7 +2770,15 @@ local function CreateSliderCard(parent, yOffset, titleText, descText, minVal, ma
     track:SetObeyStepOnDrag(false)
     track:EnableMouse(true)
     track:EnableMouseWheel(true)
-    ApplyBackdrop(track, { 0.035, 0.039, 0.051, 0.98 }, { 1, 1, 1, 0.14 })
+
+    local hairline = track:CreateTexture(nil, "BACKGROUND", nil, -1)
+    hairline:SetPoint("TOPLEFT", track, "TOPLEFT", -1, 1)
+    hairline:SetPoint("BOTTOMRIGHT", track, "BOTTOMRIGHT", 1, -1)
+    hairline:SetColorTexture(1, 1, 1, 0.14)
+
+    local trackBg = track:CreateTexture(nil, "BACKGROUND", nil, 0)
+    trackBg:SetAllPoints()
+    trackBg:SetColorTexture(0.035, 0.039, 0.051, 0.98)
 
     local desc = card:CreateFontString(nil, "OVERLAY")
     SetFontSafe(desc, 10.5, "")
@@ -2783,14 +2791,18 @@ local function CreateSliderCard(parent, yOffset, titleText, descText, minVal, ma
     desc:SetTextColor(0.62, 0.68, 0.76, 1.0)
 
     local fill = track:CreateTexture(nil, "ARTWORK")
-    fill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
-    fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
+    fill:SetPoint("TOPLEFT", track, "TOPLEFT", 0, 0)
+    fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 0, 0)
     fill:SetWidth(1)
     fill:SetColorTexture(acc.r, acc.g, acc.b, 0.85)
 
     local thumb = track:CreateTexture(nil, "OVERLAY")
     thumb:SetSize(6, 14)
     thumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+    if thumb.SetSnapToPixelGrid then
+        thumb:SetSnapToPixelGrid(false)
+        thumb:SetTexelSnappingBias(0)
+    end
     track:SetThumbTexture(thumb)
 
     local isDragging, isInit, lastCommitted = false, false, nil
@@ -2807,7 +2819,7 @@ local function CreateSliderCard(parent, yOffset, titleText, descText, minVal, ma
         pct = math.max(0, math.min(1.0, pct))
         local w = track:GetWidth()
         if not w or w <= 4 then w = 194 end
-        fill:SetWidth(math.max(1, (w - 2) * pct))
+        fill:SetWidth(math.max(1, w * pct))
         valBadge:SetText(formatFn and formatFn(v) or tostring(v))
         valBadge:SetTextColor(a.r, a.g, a.b, 1.0)
     end
