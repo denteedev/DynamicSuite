@@ -412,8 +412,10 @@ end
 -- 4. OBSIDIAN IN-GAME QUEST & GOSSIP READER ENGINE
 -- ============================================================================
 local readerFrame = nil
-local currentMode = nil       -- "GOSSIP", "GREETING", "DETAIL", "PROGRESS", "COMPLETE", "PREVIEW"
-local activeSessionKind = nil -- "GOSSIP", "QUEST", "PREVIEW"
+local currentMode = nil       -- "GOSSIP", "GREETING", "DETAIL", "PROGRESS", "COMPLETE", "CONFIRM", "PREVIEW"
+local activeSessionKind = nil -- "GOSSIP", "QUEST", "CONFIRM", "PREVIEW"
+local activeConfirmKind = nil -- "GOSSIP", "QUEST_ACCEPT", "BINDER"
+local confirmEnteredAt = 0
 local currentOptions = {}     -- { { label, tag, tagColor, icon, iconDesaturated, onClick } }
 local selectedChoiceIndex = nil
 local suppressedFrames = {}
@@ -623,11 +625,53 @@ function DynamicDialogue:IsHandlingBlizzardFrame(frameName)
     return false
 end
 
+local function IsStaticPopupVisible(which)
+    if type(which) ~= "string" or which == "" or type(_G.StaticPopup_Visible) ~= "function" then
+        return false
+    end
+    local ok, shown = pcall(_G.StaticPopup_Visible, which)
+    return (ok and not SafeIsSecret(shown) and shown ~= nil and shown ~= false) and true or false
+end
+
+local function HideStaticPopupSafe(which)
+    if type(which) == "string" and which ~= "" and type(_G.StaticPopup_Hide) == "function" then
+        pcall(_G.StaticPopup_Hide, which)
+    end
+end
+
+local function WasGossipConfirmAutoHandledByPrep(gossipID)
+    local dp = _G.DynamicPrep
+    if type(dp) ~= "table" or type(dp._lastAutoConfirmedGossipAt) ~= "number" then
+        return false
+    end
+    local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+    if (now - dp._lastAutoConfirmedGossipAt) > 0.40 then
+        return false
+    end
+    if gossipID ~= nil and dp._lastAutoConfirmedGossipID ~= nil then
+        return dp._lastAutoConfirmedGossipID == gossipID
+    end
+    return true
+end
+
+local function CloseConfirmInteraction()
+    currentMode = nil
+    activeSessionKind = nil
+    activeConfirmKind = nil
+    selectedChoiceIndex = nil
+    wipe(currentOptions)
+    if readerFrame and readerFrame:IsShown() and not InCombatLockdown() then
+        readerFrame:Hide()
+    end
+    RestoreAllBlizzardFrames()
+end
+
 local function CloseActiveInteraction()
     local mode = currentMode
     local sess = activeSessionKind
     currentMode = nil
     activeSessionKind = nil
+    activeConfirmKind = nil
     selectedChoiceIndex = nil
     wipe(currentOptions)
     if readerFrame then
@@ -885,6 +929,7 @@ local function EnsureReaderFrame()
     f.footerHint = footer:CreateFontString(nil, "OVERLAY")
     f.footerHint:SetPoint("LEFT", footer, "LEFT", 14, 0)
     f.footerHint:SetJustifyH("LEFT")
+    f.footerHint:SetWordWrap(false)
     ApplyFont(f.footerHint, 10, "")
     f.footerHint:SetTextColor(0.60, 0.66, 0.75, 1)
 
@@ -912,7 +957,7 @@ local function EnsureReaderFrame()
 
     -- Primary button (Accept / Continue / Complete)
     local priBtn = CreateFrame("Button", nil, footer)
-    priBtn:SetSize(164, 28)
+    priBtn:SetSize(176, 28)
     priBtn:SetPoint("RIGHT", secBtn, "LEFT", -8, 0)
     priBtn.bg = SolidTex(priBtn, "BACKGROUND", 2, ar * 0.42, ag * 0.42, ab * 0.42, 0.96)
     priBtn.bg:SetAllPoints()
@@ -932,14 +977,41 @@ local function EnsureReaderFrame()
     end)
     f.priBtn = priBtn
 
-    -- Keyboard handler (1-9 hotkeys, Space accept/confirm, Escape close)
+    -- Keyboard handler (1-9 hotkeys, Space accept/confirm, 1/Space double-tap confirm, Escape close)
     f:EnableKeyboard(true)
     f:SetScript("OnKeyDown", function(self, key)
         if InCombatLockdown() then return end
         local d = EnsureDB()
         if key == "ESCAPE" then
             self:SetPropagateKeyboardInput(false)
-            CloseActiveInteraction()
+            if currentMode == "CONFIRM" and f.secBtn:IsShown() then
+                local fn = f.secBtn:GetScript("OnClick")
+                if fn then
+                    fn(f.secBtn)
+                else
+                    CloseConfirmInteraction()
+                end
+            else
+                CloseActiveInteraction()
+            end
+            return
+        end
+        if currentMode == "CONFIRM" then
+            local wantSpace = (d.enableSpaceConfirm ~= false and key == "SPACE")
+            local wantOne = (d.enableNumberHotkeys ~= false and key == "1")
+            if wantSpace or wantOne then
+                self:SetPropagateKeyboardInput(false)
+                local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+                if (now - (confirmEnteredAt or 0)) < 0.15 then
+                    return
+                end
+                if f.priBtn:IsShown() and f.priBtn:IsEnabled() then
+                    local fn = f.priBtn:GetScript("OnClick")
+                    if fn then fn(f.priBtn) end
+                end
+                return
+            end
+            self:SetPropagateKeyboardInput(true)
             return
         end
         if d.enableNumberHotkeys ~= false then
@@ -1450,7 +1522,23 @@ local function RenderReaderState(opts)
     f:SetHeight(desiredH)
 
     -- Primary / Secondary footer buttons
+    local showSec = not opts.hideSecondary
+    if showSec then
+        f.secBtn:Show()
+        f.secBtn.label:SetText(opts.secondaryLabel or "Close [Esc]")
+        f.secBtn:SetScript("OnClick", opts.onSecondary or CloseActiveInteraction)
+    else
+        f.secBtn:Hide()
+        f.secBtn:SetScript("OnClick", nil)
+    end
+
     if opts.primaryLabel and type(opts.onPrimary) == "function" then
+        f.priBtn:ClearAllPoints()
+        if showSec then
+            f.priBtn:SetPoint("RIGHT", f.secBtn, "LEFT", -8, 0)
+        else
+            f.priBtn:SetPoint("RIGHT", f.footer, "RIGHT", -14, 0)
+        end
         f.priBtn:Show()
         f.priBtn.label:SetText(opts.primaryLabel)
         f.priBtn:SetScript("OnClick", opts.onPrimary)
@@ -1465,14 +1553,36 @@ local function RenderReaderState(opts)
         f.priBtn:Hide()
     end
 
-    f.secBtn:Show()
-    f.secBtn.label:SetText(opts.secondaryLabel or "Close [Esc]")
-    f.secBtn:SetScript("OnClick", opts.onSecondary or CloseActiveInteraction)
+    f.footerHint:ClearAllPoints()
+    f.footerHint:SetPoint("LEFT", f.footer, "LEFT", 14, 0)
+    if f.priBtn:IsShown() then
+        f.footerHint:SetPoint("RIGHT", f.priBtn, "LEFT", -8, 0)
+    elseif showSec then
+        f.footerHint:SetPoint("RIGHT", f.secBtn, "LEFT", -8, 0)
+    else
+        f.footerHint:SetPoint("RIGHT", f.footer, "RIGHT", -14, 0)
+    end
 
     local hints = {}
-    if #list > 0 and db.enableNumberHotkeys ~= false then table.insert(hints, "[1-" .. math.min(9, #list) .. "] Select") end
-    if opts.primaryLabel and db.enableSpaceConfirm ~= false then table.insert(hints, "[Space] Confirm") end
-    table.insert(hints, "[Esc] Close")
+    if currentMode == "CONFIRM" then
+        local cKeys = {}
+        if db.enableNumberHotkeys ~= false then table.insert(cKeys, "[1]") end
+        if db.enableSpaceConfirm ~= false then table.insert(cKeys, "[Space]") end
+        if #cKeys > 0 then
+            table.insert(hints, table.concat(cKeys, " / ") .. " Confirm")
+        end
+        if showSec then
+            table.insert(hints, "[Esc] Cancel")
+        end
+    else
+        if #list > 0 and db.enableNumberHotkeys ~= false then table.insert(hints, "[1-" .. math.min(9, #list) .. "] Select") end
+        if opts.primaryLabel and db.enableSpaceConfirm ~= false then table.insert(hints, "[Space] Confirm") end
+        if showSec then
+            table.insert(hints, "[Esc] Close")
+        else
+            table.insert(hints, "[Esc] Dismiss")
+        end
+    end
     f.footerHint:SetText(table.concat(hints, "  |  "))
 
     f:Show()
@@ -1694,6 +1804,26 @@ function DynamicDialogue:ShowQuestGreeting()
     })
 end
 
+function DynamicDialogue:ShowConfirmPrompt(opts)
+    if InCombatLockdown() then return end
+    opts = type(opts) == "table" and opts or {}
+    activeSessionKind = "CONFIRM"
+    currentMode = "CONFIRM"
+    activeConfirmKind = opts.kind or "GOSSIP"
+    selectedChoiceIndex = nil
+    confirmEnteredAt = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+    RenderReaderState({
+        badge = opts.badge or "CONFIRM",
+        title = opts.title or "Confirmation",
+        subtitle = opts.subtitle or "",
+        body = opts.body or "",
+        primaryLabel = opts.primaryLabel or "Accept [Space]",
+        onPrimary = opts.onPrimary,
+        secondaryLabel = opts.secondaryLabel or "Cancel [Esc]",
+        onSecondary = opts.onSecondary or CloseConfirmInteraction,
+    })
+end
+
 function DynamicDialogue:ShowQuestDetail()
     if not self:ShouldIntercept("QUEST") then
         RestoreBlizzardFrame(_G.QuestFrame)
@@ -1701,6 +1831,7 @@ function DynamicDialogue:ShowQuestDetail()
     end
     activeSessionKind = "QUEST"
     currentMode = "DETAIL"
+    activeConfirmKind = nil
     selectedChoiceIndex = nil
     RestoreBlizzardFrame(_G.GossipFrame)
     SuppressBlizzardFrame(_G.QuestFrame)
@@ -1718,6 +1849,14 @@ function DynamicDialogue:ShowQuestDetail()
         end
     end
 
+    local isAutoAccept = false
+    if type(_G.QuestGetAutoAccept) == "function" then
+        local okAA, resAA = pcall(_G.QuestGetAutoAccept)
+        if okAA and not SafeIsSecret(resAA) and resAA == true then
+            isAutoAccept = true
+        end
+    end
+
     RenderReaderState({
         badge = "QUEST",
         title = npcName,
@@ -1725,19 +1864,29 @@ function DynamicDialogue:ShowQuestDetail()
         body = body,
         showRewards = true,
         isChoiceMode = false,
-        primaryLabel = "Accept Quest [Space]",
+        primaryLabel = isAutoAccept and "Okay [Space]" or "Accept Quest [Space]",
         onPrimary = function()
-            if type(_G.AcceptQuest) == "function" then
-                pcall(_G.AcceptQuest)
+            if isAutoAccept then
+                if type(_G.AcknowledgeAutoAcceptQuest) == "function" then
+                    pcall(_G.AcknowledgeAutoAcceptQuest)
+                elseif type(_G.AcceptQuest) == "function" then
+                    pcall(_G.AcceptQuest)
+                end
+                CloseActiveInteraction()
+            else
+                if type(_G.AcceptQuest) == "function" then
+                    pcall(_G.AcceptQuest)
+                end
             end
         end,
-        secondaryLabel = "Decline [Esc]",
-        onSecondary = function()
+        hideSecondary = isAutoAccept,
+        secondaryLabel = (not isAutoAccept) and "Decline [Esc]" or nil,
+        onSecondary = (not isAutoAccept) and function()
             if type(_G.DeclineQuest) == "function" then
                 pcall(_G.DeclineQuest)
             end
             CloseActiveInteraction()
-        end,
+        end or nil,
     })
 end
 
@@ -2588,6 +2737,7 @@ DynamicDialogue.CHANGELOG = {
         version = VERSION,
         date = "21/11/2026",
         entries = {
+            { type = "FEATURE", text = "Unified Obsidian Confirm Screen & Auto-Accept Quest Fix (21/11/2026): Added a shared Obsidian Confirm screen for gossip confirmations, shared group quests, and Hearthstone innkeeper binding with 1 / Space double-tap confirmation (0.15s debounce) and Esc cancellation while leaving code-entry prompts native; and fixed auto-accepted quests to show Okay [Space] (no Decline) cleanly." },
             { type = "UI",      text = "Release v2.7.0 (21/11/2026): Upgraded DynamicDialogue to the universal 34px #0B0D12 equal-width 2-tab header bar, dedicated 44px Action & Status strip inside the settings canvas, crisp non-outlined card fonts, standardised 156x26px (68px Off / 84px Enabled) binary switches, and 2-line wrapped descriptions so every row fits cleanly down to 800x520." },
             { type = "FIX",     text = "Release v2.6.9 (21/11/2026): Fixed first-open FontString rendering and overlapping sub-tab cards, added the 4px Obsidian settings scrollbar, matched standalone title colours, and fixed the Retail 12.1.5 Blizzard Quest/Gossip conflict check so clean installs show Active cleanly." },
             { type = "FEATURE", text = "Initial Release of DynamicDialogue (20/11/2026): High-contrast Obsidian Quest & Gossip Reader with 1-9 number hotkeys, Space bar Accept/Continue/Complete, interactive reward choice cards with item tooltips, Shift-bypass for native Blizzard frames, draggable reader positioning, live Preview mode, and automatic yielding for DialogueUI, Immersion, Storyline, EllesmereUI QoL, and other dialogue addons." },
@@ -2684,6 +2834,7 @@ local function HideNonPreviewReader()
     if currentMode == "PREVIEW" then return end
     currentMode = nil
     activeSessionKind = nil
+    activeConfirmKind = nil
     selectedChoiceIndex = nil
     wipe(currentOptions)
     if readerFrame and readerFrame:IsShown() then
@@ -2727,9 +2878,13 @@ evt:RegisterEvent("QUEST_COMPLETE")
 evt:RegisterEvent("QUEST_FINISHED")
 evt:RegisterEvent("PLAYER_REGEN_DISABLED")
 evt:RegisterEvent("PLAYER_REGEN_ENABLED")
+pcall(evt.RegisterEvent, evt, "GOSSIP_CONFIRM")
+pcall(evt.RegisterEvent, evt, "GOSSIP_CONFIRM_CANCEL")
+pcall(evt.RegisterEvent, evt, "QUEST_ACCEPT_CONFIRM")
+pcall(evt.RegisterEvent, evt, "CONFIRM_BINDER")
 pcall(evt.RegisterEvent, evt, "PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
 
-evt:SetScript("OnEvent", function(_, event, arg1)
+evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
     if event == "ADDON_LOADED" then
         if arg1 == ADDON_FOLDER or arg1 == "DynamicSuite" or arg1 == "DynamicDialogue" then
             EnsureDB()
@@ -2782,6 +2937,133 @@ evt:SetScript("OnEvent", function(_, event, arg1)
         HandleQuestShowEvent("ShowQuestProgress")
     elseif event == "QUEST_COMPLETE" then
         HandleQuestShowEvent("ShowQuestComplete")
+    elseif event == "GOSSIP_CONFIRM" then
+        local gID = (not SafeIsSecret(arg1)) and tonumber(arg1) or nil
+        local confirmText = SafeStr(arg2, "")
+        local cost = SafeNum(arg3, 0)
+        interactionSeq = interactionSeq + 1
+        local mySeq = interactionSeq
+        -- Yield 1 frame so DynamicPrep's opt-in instance auto-confirm can fire first without flicker
+        C_Timer.After(0, function()
+            if mySeq ~= interactionSeq or InCombatLockdown() then return end
+            if WasGossipConfirmAutoHandledByPrep(gID) then
+                if not IsGossipInteractionActive() then
+                    HideNonPreviewReader()
+                    RestoreAllBlizzardFrames()
+                end
+                return
+            end
+            if not DynamicDialogue:ShouldIntercept("GOSSIP") then
+                return
+            end
+            if type(_G.StaticPopup_Visible) == "function" and not IsStaticPopupVisible("GOSSIP_CONFIRM") then
+                return
+            end
+            HideStaticPopupSafe("GOSSIP_CONFIRM")
+            local body = (confirmText ~= "") and confirmText or "Confirm this action?"
+            if cost > 0 then
+                body = body .. "\n\n|cFFFBBF24Cost:|r " .. FormatGoldText(cost)
+            end
+            local npcName = ResolveNpcName("NPC")
+            DynamicDialogue:ShowConfirmPrompt({
+                kind = "GOSSIP",
+                badge = "CONFIRM",
+                title = npcName,
+                subtitle = "Confirmation Required",
+                body = body,
+                primaryLabel = "Accept [Space]",
+                onPrimary = function()
+                    HideStaticPopupSafe("GOSSIP_CONFIRM")
+                    CloseConfirmInteraction()
+                    if gID and _G.C_GossipInfo and type(_G.C_GossipInfo.SelectOption) == "function" then
+                        pcall(_G.C_GossipInfo.SelectOption, gID, "", true)
+                    end
+                end,
+                secondaryLabel = "Cancel [Esc]",
+                onSecondary = function()
+                    HideStaticPopupSafe("GOSSIP_CONFIRM")
+                    CloseConfirmInteraction()
+                end,
+            })
+        end)
+    elseif event == "GOSSIP_CONFIRM_CANCEL" then
+        if currentMode == "CONFIRM" and activeConfirmKind == "GOSSIP" then
+            CloseConfirmInteraction()
+        end
+    elseif event == "QUEST_ACCEPT_CONFIRM" then
+        local starterName = SafeStr(arg1, "Group Member")
+        local questTitle = SafeStr(arg2, "Shared Quest")
+        C_Timer.After(0, function()
+            if InCombatLockdown() or not DynamicDialogue:ShouldIntercept("QUEST") then
+                return
+            end
+            if not IsStaticPopupVisible("QUEST_ACCEPT") then
+                return
+            end
+            interactionSeq = interactionSeq + 1
+            HideStaticPopupSafe("QUEST_ACCEPT")
+            DynamicDialogue:ShowConfirmPrompt({
+                kind = "QUEST_ACCEPT",
+                badge = "SHARED QUEST",
+                title = starterName,
+                subtitle = questTitle,
+                body = string.format('%s is sharing the quest "%s" with you.\n\nWould you like to accept this quest?', starterName, questTitle),
+                primaryLabel = "Accept Quest [Space]",
+                onPrimary = function()
+                    HideStaticPopupSafe("QUEST_ACCEPT")
+                    if type(_G.ConfirmAcceptQuest) == "function" then
+                        pcall(_G.ConfirmAcceptQuest)
+                    end
+                    CloseConfirmInteraction()
+                end,
+                secondaryLabel = "Decline [Esc]",
+                onSecondary = function()
+                    HideStaticPopupSafe("QUEST_ACCEPT")
+                    CloseConfirmInteraction()
+                end,
+            })
+        end)
+    elseif event == "CONFIRM_BINDER" then
+        local innName = SafeStr(arg1, "this inn")
+        if not DynamicDialogue:ShouldIntercept("GOSSIP") then
+            return
+        end
+        interactionSeq = interactionSeq + 1
+        local mySeq = interactionSeq
+        HideStaticPopupSafe("CONFIRM_BINDER")
+        C_Timer.After(0, function()
+            if mySeq == interactionSeq and currentMode == "CONFIRM" and activeConfirmKind == "BINDER" then
+                HideStaticPopupSafe("CONFIRM_BINDER")
+            end
+        end)
+        local npcName = ResolveNpcName("Innkeeper")
+        DynamicDialogue:ShowConfirmPrompt({
+            kind = "BINDER",
+            badge = "HEARTHSTONE",
+            title = npcName,
+            subtitle = innName,
+            body = string.format("Set your Hearthstone home to %s?\n\nYou will return here whenever you use your Hearthstone.", innName),
+            primaryLabel = "Bind Hearthstone [Space]",
+            onPrimary = function()
+                HideStaticPopupSafe("CONFIRM_BINDER")
+                if _G.C_PlayerInteractionManager and type(_G.C_PlayerInteractionManager.ConfirmationInteraction) == "function"
+                    and _G.Enum and _G.Enum.PlayerInteractionType and _G.Enum.PlayerInteractionType.Binder then
+                    pcall(_G.C_PlayerInteractionManager.ConfirmationInteraction, _G.Enum.PlayerInteractionType.Binder)
+                elseif type(_G.ConfirmBinder) == "function" then
+                    pcall(_G.ConfirmBinder)
+                end
+                CloseConfirmInteraction()
+            end,
+            secondaryLabel = "Cancel [Esc]",
+            onSecondary = function()
+                HideStaticPopupSafe("CONFIRM_BINDER")
+                if _G.C_PlayerInteractionManager and type(_G.C_PlayerInteractionManager.ClearInteraction) == "function"
+                    and _G.Enum and _G.Enum.PlayerInteractionType and _G.Enum.PlayerInteractionType.Binder then
+                    pcall(_G.C_PlayerInteractionManager.ClearInteraction, _G.Enum.PlayerInteractionType.Binder)
+                end
+                CloseConfirmInteraction()
+            end,
+        })
     elseif event == "GOSSIP_CLOSED" then
         activeBypassGossip = false
         local closeSeq = interactionSeq
@@ -2829,6 +3111,10 @@ evt:SetScript("OnEvent", function(_, event, arg1)
                     RestoreBlizzardFrame(_G.GossipFrame)
                 end
             end)
+        elseif arg1 == iEnum.Binder then
+            if currentMode == "CONFIRM" and activeConfirmKind == "BINDER" then
+                CloseConfirmInteraction()
+            end
         elseif arg1 == iEnum.QuestGiver then
             local closeSeq = interactionSeq
             C_Timer.After(0, function()
@@ -2851,6 +3137,7 @@ evt:SetScript("OnEvent", function(_, event, arg1)
             activeBypassGossip = false
             currentMode = nil
             activeSessionKind = nil
+            activeConfirmKind = nil
             selectedChoiceIndex = nil
             wipe(currentOptions)
             if readerFrame and readerFrame:IsShown() then

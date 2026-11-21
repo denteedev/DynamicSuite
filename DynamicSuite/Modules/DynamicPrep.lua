@@ -659,6 +659,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "21/11/2026",
     entries = {
+        { type = "FEATURE", text = "Opt-In Auto-Confirm Free Dungeon & Raid Prompts (21/11/2026): Added an off-by-default 'Auto-Confirm Free Dungeon & Raid Prompts' toggle in Tab 3 under World & Survival Automation to automatically confirm free (0 copper) single-option NPC prompts inside Dungeons, Raids, and Delves (hold Shift to pause), while keeping paid, open-world, hearthstone, and exit/teleport prompts manual." },
         { type = "FEATURE", text = "Release v2.7.1 - Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Binds, LFR/Normal Merge, 'Talent Binds' Rename & 4px Scrollbars (21/11/2026): Standardised Left-Click (Switch Active Specialisation out of combat) and Right-Click (Loot Specialisation) across both the Top Info Bar and Left-Hand Talent Loadouts Dock with 1:1 plain Australian English tooltips; upgraded Tab 2's Pre-Keystone M+ Binder with an 'All' toggle pill alongside multi-select dungeon tiles (saving a single 'All M+ Dungeons' rule when All is selected, or batch-binding specific dungeons which take priority over All M+); merged LFR (difficulty 17) and Normal (difficulty 14) into one 'LFR / Normal' difficulty pill; renamed 'Boss Binds' to 'Talent Binds' across the dock, menus, settings, and headings; and added a 4px interactive 3-way Obsidian scrollbar to Talent Loadouts Manager dropdowns." },
         { type = "UI",      text = "Release v2.7.0 - Unified Talent Reminder Toast, Shared HUD Headers & Uniform Switches (21/11/2026): Updated the Talent Loadout Reminder Toast to inherit DynamicSuite's shared Toast Scale, Opacity, Border Style, Auto-Fade Duration, Alert Sound, and vertical toast stacking with a clean Off/Enabled toggle + [Test Toast] preview button; standardised binary toggle switches to 156x26px (68px Off / 84px Enabled); clamped section header titles and subtitles beside Edit HUD and Reset Order buttons; and replaced legacy Blaze Orange chat alerts with live Suite Accent." },
         { type = "UI",      text = "Blizzard Desktop Window Manager Relocated to Suite Studio (16/11/2026): moved the Blizzard Window Quality of Life controls out of DynamicPrep Tab 3 into their dedicated home in Suite Studio -> Desktop Windows & Menus (/ds windows) powered by the Core MS-Windows-style 32-panel Desktop Window Manager, keeping DynamicPrep Tab 3 focused purely on World, Instance & Survival Automation while preserving backward-compatible bridge stubs and automatic position/scale migration." },
@@ -753,6 +754,7 @@ local DEFAULTS = {
     },
     activeFolioStat = nil,
     autoQuestGossip = true,
+    autoConfirmInstanceGossip = false,
     autoSinglePlayerChoice = true,
     oneClickCatalyst = true,
     autoAcceptSummon = false,
@@ -4422,6 +4424,42 @@ local function SelectGossipOptionSafe(opt, fallbackIndex)
     return false
 end
 
+local function IsPlayerInPvEInstance(inInstanceOpt, instTypeOpt)
+    local inInstance = inInstanceOpt
+    local instType = instTypeOpt
+    if inInstance == nil and IsInInstance then
+        local okInst, rIn, rType = pcall(IsInInstance)
+        if okInst and not _IsSecret(rIn) then
+            inInstance = rIn and true or false
+            instType = (not _IsSecret(rType) and type(rType) == "string") and rType or "none"
+        end
+    end
+    local isDelve = (C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve())
+        or (C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress())
+    return (inInstance == true and (instType == "party" or instType == "raid" or instType == "scenario")) or (isDelve and true or false)
+end
+
+local function HasUnsafeGossipText(rawText)
+    if _IsSecret(rawText) or type(rawText) ~= "string" or rawText == "" then
+        return false
+    end
+    local lower = rawText:lower()
+    for i = 1, #DESTRUCTIVE_GOSSIP_KEYWORDS do
+        if lower:find(DESTRUCTIVE_GOSSIP_KEYWORDS[i], 1, true) then
+            return true
+        end
+    end
+    if lower:find("hearthstone", 1, true)
+        or lower:find("|tinterface\\moneyframe\\", 1, true)
+        or lower:find("ui-goldicon", 1, true)
+        or lower:find("ui-silvericon", 1, true)
+        or lower:find("ui-coppericon", 1, true)
+        or lower:find("gold", 1, true) then
+        return true
+    end
+    return false
+end
+
 local function ShouldAutoSelectSingleGossip(opt, inInstance, instType)
     if not opt or _IsSecret(opt) then return false end
     local optID = (not _IsSecret(opt.gossipOptionID)) and opt.gossipOptionID or nil
@@ -4440,29 +4478,28 @@ local function ShouldAutoSelectSingleGossip(opt, inInstance, instType)
     -- never block options on bracket or "Requires" text.
 
     local confirm = (not _IsSecret(opt.confirm)) and opt.confirm or nil
-    if confirm and confirm ~= "" then
-        return false
-    end
-
+    local hasConfirm = (type(confirm) == "string" and confirm ~= "")
     local rawName = (not _IsSecret(opt.name) and type(opt.name) == "string") and opt.name or nil
-    if rawName then
-        if rawName:find("%(Quest%)") or rawName:find("<Skip") then
-            return true
+    local isPvEInstance = IsPlayerInPvEInstance(inInstance, instType)
+
+    if hasConfirm then
+        if not (DynamicPrep.db and DynamicPrep.db.autoConfirmInstanceGossip == true and isPvEInstance) then
+            return false
         end
-        local lowerName = rawName:lower()
-        for i = 1, #DESTRUCTIVE_GOSSIP_KEYWORDS do
-            if lowerName:find(DESTRUCTIVE_GOSSIP_KEYWORDS[i], 1, true) then
-                return false
-            end
-        end
-        if lowerName:find("|tinterface\\moneyframe\\", 1, true) or lowerName:find("gold", 1, true) then
+        if HasUnsafeGossipText(confirm) or HasUnsafeGossipText(rawName) then
             return false
         end
     end
 
-    local isDelve = (C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve())
-        or (C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress())
-    local isPvEInstance = (inInstance and (instType == "party" or instType == "raid" or instType == "scenario")) or (isDelve and true or false)
+    if rawName then
+        if not hasConfirm and (rawName:find("%(Quest%)") or rawName:find("<Skip")) then
+            return true
+        end
+        if HasUnsafeGossipText(rawName) then
+            return false
+        end
+    end
+
     if isPvEInstance then
         return true
     end
@@ -4798,6 +4835,53 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                 pcall(ItemTextNextPage)
             end
         end
+    end
+end
+
+function DynamicPrep:HandleGossipConfirm(gossipID, text, cost)
+    if not self.db then self:InitDB() end
+    if not self.db or self.db.autoQuestGossip == false or self.db.autoConfirmInstanceGossip ~= true then
+        return
+    end
+    if IsModuleDisabledInSuite("DynamicPrep") or (IsShiftKeyDown and IsShiftKeyDown()) then
+        return
+    end
+    if self:GetActiveGossipCameraConflict() then
+        return
+    end
+    local getGranular = _G.DynamicSuite and _G.DynamicSuite.GetGranularConflictMode
+    if type(getGranular) == "function" then
+        if getGranular("DynamicPrep", "DialogUI") == "YIELD_TO_EXTERNAL"
+            or getGranular("DynamicPrep", "DialogueUI") == "YIELD_TO_EXTERNAL"
+            or getGranular("DynamicPrep", "Plumber") == "YIELD_TO_EXTERNAL" then
+            return
+        end
+    end
+    if not IsPlayerInPvEInstance() then
+        return
+    end
+    if _IsSecret(gossipID) or _IsSecret(cost) or _IsSecret(text) then
+        return
+    end
+    local gID = tonumber(gossipID)
+    if not gID or gID <= 0 then
+        return
+    end
+    local numCost = (cost == nil) and 0 or tonumber(cost)
+    if numCost ~= 0 then
+        return
+    end
+    if HasUnsafeGossipText(text) then
+        return
+    end
+
+    self._lastAutoConfirmedGossipID = gID
+    self._lastAutoConfirmedGossipAt = (type(GetTime) == "function" and GetTime()) or 0
+    if C_GossipInfo and type(C_GossipInfo.SelectOption) == "function" then
+        pcall(C_GossipInfo.SelectOption, gID, "", true)
+    end
+    if type(_G.StaticPopup_Hide) == "function" then
+        pcall(_G.StaticPopup_Hide, "GOSSIP_CONFIRM")
     end
 end
 
@@ -8273,6 +8357,25 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         rQuestGossip:BindRightControl(pillsQuestGossip)
         table.insert(self.refreshWidgets, pillsQuestGossip)
 
+        -- 1a-i. Opt-In Auto-Confirm Free Dungeon & Raid Prompts (Off by default)
+        local rAutoConfirmInstanceGossip = CreateSpaciousRow(
+            cQoL, -114,
+            "Auto-Confirm Free Dungeon & Raid Prompts",
+            "Automatically confirms free single-option NPC prompts (such as boss starts) inside Dungeons, Raids, and Delves. Open-world and paid prompts always ask first (hold Shift to pause).",
+            156
+        )
+        local pillsAutoConfirmInstanceGossip = CreateSegmentedPills(
+            rAutoConfirmInstanceGossip, 156,
+            {
+                { value = false, label = "Off" },
+                { value = true,  label = "Enabled" },
+            },
+            function() return self.db.autoConfirmInstanceGossip == true end,
+            function(v) self.db.autoConfirmInstanceGossip = (v == true) end
+        )
+        rAutoConfirmInstanceGossip:BindRightControl(pillsAutoConfirmInstanceGossip)
+        table.insert(self.refreshWidgets, pillsAutoConfirmInstanceGossip)
+
         -- 1a-ii. Auto-Confirm Single-Option Chamber Doors & Player Choices (Labyrinth / Delve / World PlayerChoiceFrame)
         local rAutoChoice = CreateSpaciousRow(
             cQoL, -114,
@@ -8605,7 +8708,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             rHealMacro    = rHealMacro,
             tuneHealMacro = tuneHealMacro,
             dHealMacro    = dHealMacro,
-            others        = { rQuestGossip, rAutoChoice, rCatalyst, rAutoSummon, rTalentReminder, rTalentPicker, rCine, rRez, rRelease },
+            others        = { rQuestGossip, rAutoConfirmInstanceGossip, rAutoChoice, rCatalyst, rAutoSummon, rTalentReminder, rTalentPicker, rCine, rRez, rRelease },
         }
     end
 
@@ -10010,6 +10113,7 @@ SafeRegisterEvent(eventFrame, "CHALLENGE_MODE_MAPS_UPDATE")
 SafeRegisterEvent(eventFrame, "GROUP_ROSTER_UPDATE")
 SafeRegisterEvent(eventFrame, "PARTY_LEADER_CHANGED")
 SafeRegisterEvent(eventFrame, "GOSSIP_SHOW")
+SafeRegisterEvent(eventFrame, "GOSSIP_CONFIRM")
 SafeRegisterEvent(eventFrame, "GOSSIP_CLOSED")
 SafeRegisterEvent(eventFrame, "PLAYER_CHOICE_UPDATE")
 SafeRegisterEvent(eventFrame, "PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
@@ -17471,6 +17575,8 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         end
     elseif event == "GOSSIP_SHOW" or event == "QUEST_GREETING" or event == "QUEST_DETAIL" or event == "QUEST_ACCEPT_CONFIRM" or event == "QUEST_AUTOCOMPLETE" or event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" or event == "ITEM_TEXT_READY" then
         DynamicPrep:HandleQuestAndGossip(event, arg1)
+    elseif event == "GOSSIP_CONFIRM" then
+        DynamicPrep:HandleGossipConfirm(arg1, arg2, arg3)
     elseif event == "PLAYER_CHOICE_UPDATE" then
         DynamicPrep:HandlePlayerChoiceUpdate()
     elseif event == "GOSSIP_CLOSED" or event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" or event == "BANKFRAME_OPENED" then
