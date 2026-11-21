@@ -4295,6 +4295,7 @@ end
 do
     local hookedHeroButtons    = setmetatable({}, { __mode = "k" })
     local hookedHeroContainers = setmetatable({}, { __mode = "k" })
+    local hookedTalentFrames   = setmetatable({}, { __mode = "k" })
     local heroSelectionNodeCache = {}
     local talentBackdropFrame  = nil
     local suppressHeroDialogUntil = 0
@@ -4793,9 +4794,24 @@ do
         talentBackdropFrame.vigRight:SetWidth(edgeW)
     end
 
+    local function SyncBlizzardSpecBackground(tf, hideSpecArt)
+        if not tf or not tf.Background then return end
+        if type(tf.Background.SetAlpha) == "function" then
+            tf.Background:SetAlpha(hideSpecArt and 0 or 1)
+        end
+    end
+
     function DynamicTalent:EnsureTalentTreeBackdrop()
         local tf = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.TalentsFrame
         if not tf then return nil end
+        if not hookedTalentFrames[tf] then
+            hookedTalentFrames[tf] = true
+            if type(_G.hooksecurefunc) == "function" and type(tf.UpdateSpecBackground) == "function" then
+                _G.hooksecurefunc(tf, "UpdateSpecBackground", function()
+                    DynamicTalent:UpdateTalentTreeBackdrop()
+                end)
+            end
+        end
         if not talentBackdropFrame then
             if IsPlayerInCombat() then return nil end
             local bg = CreateFrame("Frame", "DynamicTalentTreeBackdrop", tf)
@@ -4807,53 +4823,53 @@ do
                 bg:SetAllPoints(tf)
             end
 
-            bg.baseCanvas = bg:CreateTexture(nil, "BACKGROUND", nil, -6)
+            bg.baseCanvas = bg:CreateTexture(nil, "BACKGROUND", nil, 1)
             bg.baseCanvas:SetAllPoints()
-            bg.baseCanvas:SetColorTexture(0.035, 0.039, 0.051, 0.99)
+            bg.baseCanvas:SetColorTexture(0.035, 0.039, 0.051, 1.00)
 
-            bg.mistPrimary = bg:CreateTexture(nil, "BACKGROUND", nil, -4)
+            bg.dimmerWash = bg:CreateTexture(nil, "BACKGROUND", nil, 2)
+            bg.dimmerWash:SetAllPoints()
+            bg.dimmerWash:SetColorTexture(0.012, 0.015, 0.020, 0.35)
+
+            bg.mistPrimary = bg:CreateTexture(nil, "BACKGROUND", nil, 3)
             bg.mistPrimary:SetTexture(TEX_TALENT_MIST)
             if bg.mistPrimary.SetBlendMode then bg.mistPrimary:SetBlendMode("ADD") end
             bg.mistPrimary:SetPoint("CENTER", bg, "CENTER", -90, 45)
-            bg.mistPrimaryAnim = CreateMistAnimGroup(bg.mistPrimary, 34, -18, 15, 0.18, 0.30)
+            bg.mistPrimaryAnim = CreateMistAnimGroup(bg.mistPrimary, 34, -18, 15, 0.28, 0.48)
 
-            bg.mistSecondary = bg:CreateTexture(nil, "BACKGROUND", nil, -3)
+            bg.mistSecondary = bg:CreateTexture(nil, "BACKGROUND", nil, 4)
             bg.mistSecondary:SetTexture(TEX_TALENT_MIST)
             if bg.mistSecondary.SetBlendMode then bg.mistSecondary:SetBlendMode("ADD") end
             bg.mistSecondary:SetPoint("CENTER", bg, "CENTER", 95, -40)
-            bg.mistSecondaryAnim = CreateMistAnimGroup(bg.mistSecondary, -30, 20, 19, 0.14, 0.25)
+            bg.mistSecondaryAnim = CreateMistAnimGroup(bg.mistSecondary, -30, 20, 19, 0.20, 0.36)
 
-            bg.mistFocal = bg:CreateTexture(nil, "BACKGROUND", nil, -2)
+            bg.mistFocal = bg:CreateTexture(nil, "BACKGROUND", nil, 5)
             bg.mistFocal:SetTexture(TEX_TALENT_MIST)
             if bg.mistFocal.SetBlendMode then bg.mistFocal:SetBlendMode("ADD") end
             bg.mistFocal:SetPoint("CENTER", bg, "CENTER", 0, 12)
-            bg.mistFocalAnim = CreateMistAnimGroup(bg.mistFocal, 0, 0, 11, 0.16, 0.26, 0.96, 1.06)
+            bg.mistFocalAnim = CreateMistAnimGroup(bg.mistFocal, 0, 0, 11, 0.24, 0.40, 0.96, 1.06)
 
-            bg.vigTop = bg:CreateTexture(nil, "BACKGROUND", nil, -1)
+            bg.vigTop = bg:CreateTexture(nil, "BACKGROUND", nil, 6)
             bg.vigTop:SetPoint("TOPLEFT", bg, "TOPLEFT", 0, 0)
             bg.vigTop:SetPoint("TOPRIGHT", bg, "TOPRIGHT", 0, 0)
             ApplyGradientSafe(bg.vigTop, "VERTICAL", 0.015, 0.018, 0.024, 0.0, 0.015, 0.018, 0.024, 0.78)
 
-            bg.vigBottom = bg:CreateTexture(nil, "BACKGROUND", nil, -1)
+            bg.vigBottom = bg:CreateTexture(nil, "BACKGROUND", nil, 6)
             bg.vigBottom:SetPoint("BOTTOMLEFT", bg, "BOTTOMLEFT", 0, 0)
             bg.vigBottom:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", 0, 0)
             ApplyGradientSafe(bg.vigBottom, "VERTICAL", 0.015, 0.018, 0.024, 0.78, 0.015, 0.018, 0.024, 0.0)
 
-            bg.vigLeft = bg:CreateTexture(nil, "BACKGROUND", nil, -1)
+            bg.vigLeft = bg:CreateTexture(nil, "BACKGROUND", nil, 6)
             bg.vigLeft:SetPoint("TOPLEFT", bg, "TOPLEFT", 0, 0)
             bg.vigLeft:SetPoint("BOTTOMLEFT", bg, "BOTTOMLEFT", 0, 0)
             ApplyGradientSafe(bg.vigLeft, "HORIZONTAL", 0.015, 0.018, 0.024, 0.72, 0.015, 0.018, 0.024, 0.0)
 
-            bg.vigRight = bg:CreateTexture(nil, "BACKGROUND", nil, -1)
+            bg.vigRight = bg:CreateTexture(nil, "BACKGROUND", nil, 6)
             bg.vigRight:SetPoint("TOPRIGHT", bg, "TOPRIGHT", 0, 0)
             bg.vigRight:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", 0, 0)
             ApplyGradientSafe(bg.vigRight, "HORIZONTAL", 0.015, 0.018, 0.024, 0.0, 0.015, 0.018, 0.024, 0.72)
 
             bg.vignettes = { bg.vigTop, bg.vigBottom, bg.vigLeft, bg.vigRight }
-
-            bg.dimmerWash = bg:CreateTexture(nil, "BACKGROUND", nil, 1)
-            bg.dimmerWash:SetAllPoints()
-            bg.dimmerWash:SetColorTexture(0.015, 0.018, 0.024, 0.35)
 
             bg:SetScript("OnSizeChanged", LayoutBackdropLayers)
             bg:SetScript("OnShow", LayoutBackdropLayers)
@@ -4861,12 +4877,14 @@ do
             LayoutBackdropLayers()
         end
 
-        local tfLvl = (tf.GetFrameLevel and tf:GetFrameLevel()) or 1
-        local bpLvl = (tf.ButtonsParent and tf.ButtonsParent.GetFrameLevel and tf.ButtonsParent:GetFrameLevel()) or (tfLvl + 1)
-        if bpLvl > tfLvl then
-            talentBackdropFrame:SetFrameLevel(tfLvl)
-        else
-            talentBackdropFrame:SetFrameLevel(math.max(0, tfLvl))
+        if not IsPlayerInCombat() then
+            local tfLvl = (tf.GetFrameLevel and tf:GetFrameLevel()) or 1
+            local bpLvl = (tf.ButtonsParent and tf.ButtonsParent.GetFrameLevel and tf.ButtonsParent:GetFrameLevel()) or (tfLvl + 1)
+            if bpLvl > tfLvl then
+                talentBackdropFrame:SetFrameLevel(tfLvl)
+            else
+                talentBackdropFrame:SetFrameLevel(math.max(0, tfLvl))
+            end
         end
         return talentBackdropFrame
     end
@@ -4887,6 +4905,8 @@ do
         if talentBackdropFrame then
             talentBackdropFrame:Hide()
         end
+        local tf = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.TalentsFrame
+        SyncBlizzardSpecBackground(tf, false)
     end
 
     function DynamicTalent:UpdateTalentTreeBackdrop()
@@ -4913,13 +4933,14 @@ do
 
         if mode == "BLIZZARD" then
             self:PauseTalentTreeBackdropAnims()
+            SyncBlizzardSpecBackground(tf, false)
             bg.baseCanvas:Hide()
             bg.mistPrimary:Hide()
             bg.mistSecondary:Hide()
             bg.mistFocal:Hide()
             SetVignettesShown(false)
             if dimmer > 0.001 then
-                bg.dimmerWash:SetColorTexture(0.015, 0.018, 0.024, dimmer)
+                bg.dimmerWash:SetColorTexture(0.012, 0.015, 0.020, dimmer)
                 bg.dimmerWash:Show()
                 bg:Show()
             else
@@ -4929,6 +4950,8 @@ do
             return
         end
 
+        SyncBlizzardSpecBackground(tf, true)
+
         if mode == "OBSIDIAN" then
             self:PauseTalentTreeBackdropAnims()
             bg.baseCanvas:Show()
@@ -4937,7 +4960,7 @@ do
             bg.mistFocal:Hide()
             SetVignettesShown(true)
             if dimmer > 0.001 then
-                bg.dimmerWash:SetColorTexture(0.015, 0.018, 0.024, dimmer * 0.85)
+                bg.dimmerWash:SetColorTexture(0.012, 0.015, 0.020, dimmer)
                 bg.dimmerWash:Show()
             else
                 bg.dimmerWash:Hide()
@@ -4964,7 +4987,7 @@ do
         bg.mistFocal:Show()
 
         if dimmer > 0.001 then
-            bg.dimmerWash:SetColorTexture(0.015, 0.018, 0.024, dimmer)
+            bg.dimmerWash:SetColorTexture(0.012, 0.015, 0.020, dimmer)
             bg.dimmerWash:Show()
         else
             bg.dimmerWash:Hide()
@@ -4976,25 +4999,25 @@ do
         local tfShown = (type(tf.IsShown) ~= "function") or tf:IsShown()
         if animate and tfShown then
             local mistPairs = {
-                { tex = bg.mistPrimary,   ag = bg.mistPrimaryAnim,   alpha = 0.24 },
-                { tex = bg.mistSecondary, ag = bg.mistSecondaryAnim, alpha = 0.19 },
-                { tex = bg.mistFocal,     ag = bg.mistFocalAnim,     alpha = 0.21 },
+                { tex = bg.mistPrimary,   ag = bg.mistPrimaryAnim,   staticAlpha = 0.38 },
+                { tex = bg.mistSecondary, ag = bg.mistSecondaryAnim, staticAlpha = 0.28 },
+                { tex = bg.mistFocal,     ag = bg.mistFocalAnim,     staticAlpha = 0.32 },
             }
             for _, mp in ipairs(mistPairs) do
                 if mp.ag and mp.ag.Play then
+                    mp.tex:SetAlpha(1.0)
                     if not mp.ag.IsPlaying or not mp.ag:IsPlaying() then
-                        mp.tex:SetAlpha(mp.alpha)
                         mp.ag:Play()
                     end
                 else
-                    mp.tex:SetAlpha(mp.alpha)
+                    mp.tex:SetAlpha(mp.staticAlpha)
                 end
             end
         else
             self:PauseTalentTreeBackdropAnims()
-            bg.mistPrimary:SetAlpha(0.24)
-            bg.mistSecondary:SetAlpha(0.19)
-            bg.mistFocal:SetAlpha(0.21)
+            bg.mistPrimary:SetAlpha(0.38)
+            bg.mistSecondary:SetAlpha(0.28)
+            bg.mistFocal:SetAlpha(0.32)
         end
     end
 end
@@ -10484,6 +10507,7 @@ DynamicTalent.CHANGELOG = {
         version = VERSION,
         date = "22/11/2026",
         entries = {
+            { type = "FIXED", text = "Talent Tree Backdrop Studio Layering, Dimmer Order & Mist Opacity (22/11/2026): Moved DynamicTalentTreeBackdrop textures onto strictly positive BACKGROUND sublevels (1-6) strictly above Blizzard's TalentsFrame.Background (safely hidden via alpha 0 in non-Blizzard modes and preserved across spec switches via hooksecurefunc on UpdateSpecBackground, then restored cleanly to alpha 1 in Blizzard Default or when disabled) while remaining below all nodes, edges, and buttons; placed dimmerWash strictly behind the mist and vignette layers so up to 85% Background Dimmer never smothers Hero-Synced Mist or Class Glow; and eliminated double-alpha multiplication by keeping mist base alpha at 1.0 during animations with tuned atmospheric opacity bounds (0.28-0.48 primary, 0.20-0.36 secondary, 0.24-0.40 focal, and 0.38/0.28/0.32 static fallback)." },
             { type = "FIXED", text = "Same-Name Loadout Bind Isolation (22/11/2026): Gave every saved build a stable unique id and persisted loadoutID across Raid, M+, PvP, and Zone bind rules (with unambiguous legacy backfill), so builds sharing names (e.g. [M+-WS] Default, [M+-KG] Default, [Raid-KG] Default) never collide or overwrite each other's binds, badges, conflict prompts, or Active Reminders rows." },
             { type = "UI",    text = "Single Pop-Out Manager, Bidirectional Links & Drag-and-Drop Group Order (22/11/2026): Removed the duplicate embedded manager from /ds -> DynamicTalent in favour of a clean Action & Status strip ('Open Talents (N)' + 'Open Loadout Manager'), added a 'Settings' header button in DynamicTalentManagerModal, upgraded the 5 Custom Loadout Group Order rows with tactile Left-Click & Drag ghost-pill reordering plus bordered Up/Down chevrons, and fixed Precision Track sliders to true 4px fill geometry." },
             { type = "NEW",   text = "Right-Click Hero Spec Swap (21/11/2026): Added an enabled-by-default 'Right-Click Hero Spec Swap' option (out of combat, skipped during active Mythic+ keystones and inspection) on Blizzard's central Hero Talent medallion with a clean 'Right-Click: Switch to [Other Hero Tree]' hover hint; immediately stages the alternate Hero tree without opening the picker popup." },
