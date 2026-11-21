@@ -3,6 +3,15 @@
 
 ---
 
+## [Unreleased]
+
+### Retail 12.1.5 Live NPC Gossip & Quest Reader Takeover Fix (`DynamicDialogue`, `DynamicSuite_Core`, 21/11/2026)
+- **Eliminated False Auto-Yield on Retail 12.1.5 (`DynamicDialogue`, `DynamicSuite_Core`):** Removed the legacy `GossipFrame` / `QuestFrame` event-registration heuristic that triggered false auto-yielding under Midnight 12.1.5's `PlayerInteractionFrameManager` (including alongside skinning-only addons such as `EllesmereUIBlizzardSkin` or `ElvUI` Blizzard skins). Auto-yielding now triggers strictly when a genuine dialogue-replacement addon (`DialogueUI`, `DialogUI`, `Immersion`, `Storyline`) is loaded or when `EllesmereUI QoL` dialogue replacement is explicitly enabled.
+- **Desktop Window Coexistence & Flicker-Free Native Frame Suppression (`DynamicSuite_Core`, `DynamicDialogue`):** Updated `DesktopWindows` hooks (`ShowUIPanel`, `OnShow`, clamping, z-order layering, Escape handling, and Ctrl+Scroll scaling) to yield `GossipFrame` and `QuestFrame` cleanly whenever `DynamicDialogue` is handling the interaction; replaced one-shot `SetAlpha(0)` suppression with synchronous off-screen parking plus `OnShow`/`SetAlpha`/`SetPoint` lock hooks that restore cleanly on close, combat entry, or `[Shift]` bypass; added seamless flicker-free `Gossip <-> Quest` transitions; and bypassed custom `textureKit` panels (such as Delves difficulty pickers) straight to Blizzard's native UI.
+- **Crisp Option Icons, Required/Currency Cards & Plain-English `/dd status` (`DynamicDialogue`):** Added `16x16` quest and gossip icons (available, legendary, daily, turn-in, in-progress, locked, and service/gossip bubble icons) beside `1-9` keycaps, quest progress required-item cards and Retail currency reward tooltips, scale-safe positioning, and clearer `Active`, `Paused`, and `Yielding` explanations in `/dd status` and the module status strip.
+
+---
+
 ## DynamicSuite & All 11 Modules v2.7.1 (21/11/2026)
 
 ### Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Talent Binds, LFR/Normal Merge, 'Talent Binds' Rename & Dropdown Scrollbar (`v2.7.1`, 21/11/2026)

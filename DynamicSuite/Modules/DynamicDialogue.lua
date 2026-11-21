@@ -155,11 +155,10 @@ local ICON_ACCENT  = ICON_COLOR
 local CHIME_QUEST  = MEDIA_BASE .. "Sounds\\ds_bloom.ogg"
 
 local KNOWN_DIALOGUE_ADDONS = {
-    { addon = "DialogueUI",      label = "DialogueUI" },
-    { addon = "DialogUI",        label = "DialogUI" },
-    { addon = "Immersion",       label = "Immersion" },
-    { addon = "Storyline",       label = "Storyline" },
-    { addon = "QuestFrameFixer", label = "QuestFrameFixer" },
+    { addon = "DialogueUI", label = "DialogueUI" },
+    { addon = "DialogUI",   label = "DialogUI" },
+    { addon = "Immersion",  label = "Immersion" },
+    { addon = "Storyline",  label = "Storyline" },
 }
 
 local DEFAULTS = {
@@ -346,14 +345,14 @@ function DynamicDialogue:GetYieldInfo()
         return false, nil, nil
     end
 
-    -- Layer 1: Exact known competing dialogue addons
+    -- Layer 1: Exact known competing dialogue replacement addons (never skinning-only addons)
     for _, entry in ipairs(KNOWN_DIALOGUE_ADDONS) do
         if SafeIsAddOnLoaded(entry.addon) then
-            return true, entry.label, "Known dialogue replacement addon loaded"
+            return true, entry.label, entry.label .. " is loaded"
         end
     end
 
-    -- Layer 1b: Smart feature-level check for EllesmereUIQoL / EllesmereUI_QoL
+    -- Layer 1b: Smart feature-level check for EllesmereUI QoL (only when dialogue replacement is explicitly enabled)
     if SafeIsAddOnLoaded("EllesmereUIQoL") or SafeIsAddOnLoaded("EllesmereUI_QoL") then
         local eq = _G.EllesmereUIQoLDB or (_G.EllesmereUIDB and _G.EllesmereUIDB.qol)
         if type(eq) == "table" then
@@ -363,35 +362,11 @@ function DynamicDialogue:GetYieldInfo()
         end
     end
 
-    -- Layer 2: Central DynamicSuite read-only Blizzard frame/event ownership probe
+    -- Layer 2: Central DynamicSuite read-only conflict probe (explicitly ignores skinning-only addons)
     if _G.DynamicSuite and type(_G.DynamicSuite.ProbeBlizzardFrameConflict) == "function" then
         local ok, conflicted, ownerLabel, reason = pcall(_G.DynamicSuite.ProbeBlizzardFrameConflict, _G.DynamicSuite, "DIALOGUE")
         if ok and conflicted == true then
-            return true, ownerLabel or "External Dialogue Addon", reason or "Blizzard Quest or Gossip frames are being handled by another addon"
-        end
-    else
-        -- Standalone read-only fallback probe: Retail 12.1.5 registers GOSSIP_SHOW / QUEST_DETAIL on GossipFrame / QuestFrame.
-        -- Only yield to an unknown external addon if the loaded Blizzard frame AND UIParent both have the event unregistered.
-        local gossipOverridden = false
-        if _G.GossipFrame and type(_G.GossipFrame.IsEventRegistered) == "function"
-            and _G.UIParent and type(_G.UIParent.IsEventRegistered) == "function" then
-            local okGF, regGF = pcall(_G.GossipFrame.IsEventRegistered, _G.GossipFrame, "GOSSIP_SHOW")
-            local okUP, regUP = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "GOSSIP_SHOW")
-            if (okGF and regGF == false) and (okUP and regUP == false) then
-                gossipOverridden = true
-            end
-        end
-        local questOverridden = false
-        if _G.QuestFrame and type(_G.QuestFrame.IsEventRegistered) == "function"
-            and _G.UIParent and type(_G.UIParent.IsEventRegistered) == "function" then
-            local okQF, regQF = pcall(_G.QuestFrame.IsEventRegistered, _G.QuestFrame, "QUEST_DETAIL")
-            local okUP, regUP = pcall(_G.UIParent.IsEventRegistered, _G.UIParent, "QUEST_DETAIL")
-            if (okQF and regQF == false) and (okUP and regUP == false) then
-                questOverridden = true
-            end
-        end
-        if gossipOverridden or questOverridden then
-            return true, "External Dialogue Addon", "Blizzard Quest or Gossip frames are being handled by another addon"
+            return true, ownerLabel or "External Dialogue Addon", reason or "Another dialogue addon is active"
         end
     end
 
@@ -403,15 +378,34 @@ function DynamicDialogue:IsYielding()
     return yielding == true
 end
 
-function DynamicDialogue:GetStatusText()
-    if IsModuleDisabledInSuite() then return "Disabled" end
-    local db = EnsureDB()
-    if not db.enabled then return "Paused" end
-    local yielding, addonLabel = self:GetYieldInfo()
-    if yielding then
-        return "Yielding (" .. tostring(addonLabel or "External") .. ")"
+function DynamicDialogue:GetDetailedStatus()
+    if IsModuleDisabledInSuite() then
+        return "Paused", "Paused (Off in Sidebar)", "DynamicDialogue is switched off in the DynamicSuite sidebar."
     end
-    return "Active"
+    local db = EnsureDB()
+    if not db.enabled then
+        return "Paused", "Paused", "Reader is switched off in DynamicDialogue settings (/dd to turn it back on)."
+    end
+    if db.replaceQuests == false and db.replaceGossip == false then
+        return "Paused", "Paused", "Both Quest and NPC Gossip replacement are switched off in /dd settings."
+    end
+    local yielding, addonLabel, reason = self:GetYieldInfo()
+    if yielding then
+        local who = tostring(addonLabel or "External Addon")
+        local why = (type(reason) == "string" and reason ~= "") and reason or "active"
+        return "Yielding", "Yielding (" .. who .. ")", "Standing aside for " .. who .. " (" .. why .. ")."
+    end
+    if db.replaceQuests ~= false and db.replaceGossip ~= false then
+        return "Active", "Active", "Replacing Quest and NPC Gossip windows (hold Shift while talking to use Blizzard's default window)."
+    elseif db.replaceQuests ~= false then
+        return "Active", "Active", "Replacing Quest windows only (NPC Gossip is set to Blizzard's default window)."
+    end
+    return "Active", "Active", "Replacing NPC Gossip windows only (Quests are set to Blizzard's default window)."
+end
+
+function DynamicDialogue:GetStatusText()
+    local _, shortLabel = self:GetDetailedStatus()
+    return shortLabel
 end
 
 -- ============================================================================
@@ -419,57 +413,258 @@ end
 -- ============================================================================
 local readerFrame = nil
 local currentMode = nil       -- "GOSSIP", "GREETING", "DETAIL", "PROGRESS", "COMPLETE", "PREVIEW"
-local currentOptions = {}     -- { { label, tag, tagColor, icon, onClick } }
+local activeSessionKind = nil -- "GOSSIP", "QUEST", "PREVIEW"
+local currentOptions = {}     -- { { label, tag, tagColor, icon, iconDesaturated, onClick } }
 local selectedChoiceIndex = nil
-local suppressedBlizzFrame = nil
-local blizzRestoreAlpha = 1
-local blizzRestoreMouse = true
+local suppressedFrames = {}
+local pendingCombatRestore = {}
+local suppressionHooked = {}
+local applyingSuppression = {}
+local activeBypassGossip = false
+local interactionSeq = 0
 
-local function RestoreBlizzardFrame()
-    local bf = suppressedBlizzFrame
-    suppressedBlizzFrame = nil
-    if bf and not InCombatLockdown() then
-        pcall(bf.SetAlpha, bf, blizzRestoreAlpha or 1)
-        pcall(bf.EnableMouse, bf, blizzRestoreMouse ~= false)
+local function IsCustomGossipTextureKit(eventTextureKit)
+    if _G.DelvesDifficultyPickerFrame and _G.DelvesDifficultyPickerFrame.IsShown and _G.DelvesDifficultyPickerFrame:IsShown() then
+        return true, "delves-difficulty-picker"
+    end
+    if _G.DelvesCompanionConfigurationFrame and _G.DelvesCompanionConfigurationFrame.IsShown and _G.DelvesCompanionConfigurationFrame:IsShown() then
+        return true, "delves-companion"
+    end
+    if type(eventTextureKit) == "string" and not SafeIsSecret(eventTextureKit) and eventTextureKit ~= "" then
+        if eventTextureKit:lower() ~= "default" then
+            return true, eventTextureKit
+        end
+    end
+    local gf = _G.GossipFrame
+    local gfKit = gf and gf.textureKit
+    if type(gfKit) == "string" and not SafeIsSecret(gfKit) and gfKit ~= "" then
+        if gfKit:lower() ~= "default" then
+            return true, gfKit
+        end
+    end
+    return false, nil
+end
+
+local function SnapshotFramePoints(bf)
+    local pts = {}
+    if type(bf.GetNumPoints) == "function" and type(bf.GetPoint) == "function" then
+        local okN, numPts = pcall(bf.GetNumPoints, bf)
+        if okN and type(numPts) == "number" and numPts > 0 then
+            for i = 1, numPts do
+                local okP, pt, relTo, relPt, x, y = pcall(bf.GetPoint, bf, i)
+                if okP and pt then
+                    table.insert(pts, { pt, relTo, relPt, SafeNum(x, 0), SafeNum(y, 0) })
+                end
+            end
+        end
+    end
+    return pts
+end
+
+local function ApplySuppressionLock(bf)
+    if not bf or InCombatLockdown() or applyingSuppression[bf] then return end
+    if bf.IsForbidden and bf:IsForbidden() then return end
+    applyingSuppression[bf] = true
+    pcall(function()
+        if type(bf.SetAlpha) == "function" then
+            bf:SetAlpha(0)
+        end
+        if type(bf.EnableMouse) == "function" then
+            bf:EnableMouse(false)
+        end
+        if type(bf.SetClampedToScreen) == "function" then
+            bf:SetClampedToScreen(false)
+        end
+        if type(bf.ClearAllPoints) == "function" and type(bf.SetPoint) == "function" and _G.UIParent then
+            bf:ClearAllPoints()
+            bf:SetPoint("TOPLEFT", _G.UIParent, "TOPLEFT", -10000, 10000)
+        end
+    end)
+    applyingSuppression[bf] = nil
+end
+
+local function EnsureSuppressionHooks(bf)
+    if not bf or suppressionHooked[bf] then return end
+    if bf.IsForbidden and bf:IsForbidden() then return end
+    suppressionHooked[bf] = true
+
+    if type(bf.HookScript) == "function" then
+        pcall(bf.HookScript, bf, "OnShow", function(self)
+            if suppressedFrames[self] and not applyingSuppression[self] and not InCombatLockdown() then
+                ApplySuppressionLock(self)
+            end
+        end)
+    end
+    if type(_G.hooksecurefunc) == "function" then
+        if type(bf.SetAlpha) == "function" then
+            pcall(_G.hooksecurefunc, bf, "SetAlpha", function(self)
+                if suppressedFrames[self] and not applyingSuppression[self] and not InCombatLockdown() then
+                    ApplySuppressionLock(self)
+                end
+            end)
+        end
+        if type(bf.SetPoint) == "function" then
+            pcall(_G.hooksecurefunc, bf, "SetPoint", function(self)
+                if suppressedFrames[self] and not applyingSuppression[self] and not InCombatLockdown() then
+                    ApplySuppressionLock(self)
+                end
+            end)
+        end
     end
 end
 
 local function SuppressBlizzardFrame(bf)
     if not bf or InCombatLockdown() then return end
-    if suppressedBlizzFrame and suppressedBlizzFrame ~= bf then
-        RestoreBlizzardFrame()
+    if bf.IsForbidden and bf:IsForbidden() then return end
+    if not suppressedFrames[bf] then
+        local pending = pendingCombatRestore[bf]
+        pendingCombatRestore[bf] = nil
+        if pending then
+            suppressedFrames[bf] = pending
+        else
+            local okA, curA = pcall(bf.GetAlpha, bf)
+            local okM, curM = pcall(bf.IsMouseEnabled, bf)
+            local okC, curC = pcall(bf.IsClampedToScreen, bf)
+            local pts = SnapshotFramePoints(bf)
+            if #pts == 1 and math.abs((pts[1][4] or 0) + 10000) < 1 and math.abs((pts[1][5] or 0) - 10000) < 1 then
+                pts = {}
+            end
+            suppressedFrames[bf] = {
+                origAlpha   = (okA and type(curA) == "number" and curA > 0.05) and curA or 1,
+                origMouse   = (not okM or curM ~= false),
+                origClamped = (not okC or curC ~= false),
+                origPoints  = pts,
+            }
+        end
     end
-    if suppressedBlizzFrame ~= bf then
-        local okA, curA = pcall(bf.GetAlpha, bf)
-        local okM, curM = pcall(bf.IsMouseEnabled, bf)
-        blizzRestoreAlpha = (okA and type(curA) == "number" and curA > 0.05) and curA or 1
-        blizzRestoreMouse = (okM and curM ~= false)
-        suppressedBlizzFrame = bf
+    EnsureSuppressionHooks(bf)
+    ApplySuppressionLock(bf)
+end
+
+local function ApplySavedFrameRestore(bf, saved)
+    if not bf or not saved then return end
+    if bf.IsForbidden and bf:IsForbidden() then return end
+    pcall(function()
+        if type(bf.SetAlpha) == "function" then
+            bf:SetAlpha(saved.origAlpha or 1)
+        end
+        if InCombatLockdown() then
+            pendingCombatRestore[bf] = saved
+            return
+        end
+        pendingCombatRestore[bf] = nil
+        if type(bf.SetClampedToScreen) == "function" then
+            bf:SetClampedToScreen(saved.origClamped ~= false)
+        end
+        if type(bf.EnableMouse) == "function" then
+            bf:EnableMouse(saved.origMouse ~= false)
+        end
+        if type(bf.ClearAllPoints) == "function" and type(bf.SetPoint) == "function" then
+            bf:ClearAllPoints()
+            local pts = saved.origPoints
+            if type(pts) == "table" and #pts > 0 then
+                for _, pt in ipairs(pts) do
+                    bf:SetPoint(pt[1], pt[2] or _G.UIParent, pt[3] or pt[1], pt[4] or 0, pt[5] or 0)
+                end
+            elseif _G.UIParent then
+                bf:SetPoint("TOPLEFT", _G.UIParent, "TOPLEFT", 16, -116)
+            end
+        end
+    end)
+end
+
+local function RestoreBlizzardFrame(bf)
+    if not bf then return end
+    local saved = suppressedFrames[bf]
+    suppressedFrames[bf] = nil
+    if not saved then return end
+    ApplySavedFrameRestore(bf, saved)
+end
+
+local function RestoreAllBlizzardFrames()
+    local list = {}
+    for bf in pairs(suppressedFrames) do
+        table.insert(list, bf)
     end
-    pcall(bf.SetAlpha, bf, 0)
-    pcall(bf.EnableMouse, bf, false)
+    for _, bf in ipairs(list) do
+        RestoreBlizzardFrame(bf)
+    end
+end
+
+local function FlushPendingCombatRestores()
+    if InCombatLockdown() then return end
+    local list = {}
+    for bf, saved in pairs(pendingCombatRestore) do
+        if not suppressedFrames[bf] then
+            table.insert(list, { bf = bf, saved = saved })
+        end
+    end
+    for _, entry in ipairs(list) do
+        pendingCombatRestore[entry.bf] = nil
+        ApplySavedFrameRestore(entry.bf, entry.saved)
+    end
+end
+
+function DynamicDialogue:IsHandlingBlizzardFrame(frameName)
+    if frameName == "GossipFrame" then
+        if _G.GossipFrame and suppressedFrames[_G.GossipFrame] ~= nil then
+            return true
+        end
+        if activeBypassGossip then
+            return false
+        end
+        return self:ShouldIntercept("GOSSIP")
+    elseif frameName == "QuestFrame" then
+        if _G.QuestFrame and suppressedFrames[_G.QuestFrame] ~= nil then
+            return true
+        end
+        return self:ShouldIntercept("QUEST")
+    end
+    return false
 end
 
 local function CloseActiveInteraction()
     local mode = currentMode
+    local sess = activeSessionKind
     currentMode = nil
+    activeSessionKind = nil
     selectedChoiceIndex = nil
     wipe(currentOptions)
     if readerFrame then
         readerFrame:Hide()
     end
-    RestoreBlizzardFrame()
-    if mode == "GOSSIP" then
-        if C_GossipInfo and type(C_GossipInfo.CloseGossip) == "function" then
-            pcall(C_GossipInfo.CloseGossip)
+    RestoreAllBlizzardFrames()
+    if mode == "GOSSIP" or sess == "GOSSIP" then
+        if _G.C_GossipInfo and type(_G.C_GossipInfo.CloseGossip) == "function" then
+            pcall(_G.C_GossipInfo.CloseGossip)
         elseif type(_G.CloseGossip) == "function" then
             pcall(_G.CloseGossip)
         end
-    elseif mode == "GREETING" or mode == "DETAIL" or mode == "PROGRESS" or mode == "COMPLETE" then
+    elseif mode == "GREETING" or mode == "DETAIL" or mode == "PROGRESS" or mode == "COMPLETE" or sess == "QUEST" then
         if type(_G.CloseQuest) == "function" then
             pcall(_G.CloseQuest)
         end
     end
+    if mode and mode ~= "PREVIEW" and _G.C_PlayerInteractionManager and type(_G.C_PlayerInteractionManager.ClearInteraction) == "function" then
+        local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
+        if mode == "GOSSIP" or sess == "GOSSIP" then
+            if iEnum and iEnum.Gossip then
+                pcall(_G.C_PlayerInteractionManager.ClearInteraction, iEnum.Gossip)
+            end
+        elseif iEnum and iEnum.QuestGiver then
+            pcall(_G.C_PlayerInteractionManager.ClearInteraction, iEnum.QuestGiver)
+        end
+    end
+end
+
+local function ApplyReaderPosition()
+    if not readerFrame or InCombatLockdown() then return end
+    local db = EnsureDB()
+    local scale = math.max(0.70, math.min(1.40, SafeNum(db.frameScale, 1.0)))
+    readerFrame:SetScale(scale)
+    local pos = (type(db.pos) == "table") and db.pos or DEFAULTS.pos
+    readerFrame:ClearAllPoints()
+    readerFrame:SetPoint(pos.point or "CENTER", _G.UIParent, pos.relPoint or "CENTER", SafeNum(pos.x, 0), SafeNum(pos.y, -90))
 end
 
 local function EnsureReaderFrame()
@@ -487,10 +682,8 @@ local function EnsureReaderFrame()
     f:SetMovable(true)
     f:Hide()
 
-    local pos = db.pos or DEFAULTS.pos
-    f:ClearAllPoints()
-    f:SetPoint(pos.point or "CENTER", UIParent, pos.relPoint or "CENTER", SafeNum(pos.x, 0), SafeNum(pos.y, -90))
-    f:SetScale(math.max(0.70, math.min(1.40, SafeNum(db.frameScale, 1.0))))
+    readerFrame = f
+    ApplyReaderPosition()
 
     -- Main opaque backdrop
     f.bg = SolidTex(f, "BACKGROUND", 0, surf.PANEL_BG.r, surf.PANEL_BG.g, surf.PANEL_BG.b, SafeNum(db.backdropAlpha, 0.96))
@@ -512,7 +705,12 @@ local function EnsureReaderFrame()
         local p, _, rp, x, y = f:GetPoint(1)
         if p then
             local d = EnsureDB()
-            d.pos = { point = p, relPoint = rp or p, x = math.floor(x + 0.5), y = math.floor(y + 0.5) }
+            d.pos = {
+                point = p,
+                relPoint = rp or p,
+                x = math.floor(SafeNum(x, 0) + 0.5),
+                y = math.floor(SafeNum(y, -90) + 0.5),
+            }
         end
     end)
     hdr.bg = SolidTex(hdr, "BACKGROUND", 1, surf.HEADER_BG.r, surf.HEADER_BG.g, surf.HEADER_BG.b, 1.0)
@@ -618,12 +816,15 @@ local function EnsureReaderFrame()
     thumb:SetWidth(4)
     thumb:SetHeight(40)
     thumb:SetPoint("TOP", track, "TOP", 0, 0)
-    thumb.tex = SolidTex(thumb, "OVERLAY", 3, 0.45, 0.50, 0.60, 0.85)
+    thumb.tex = SolidTex(thumb, "OVERLAY", 3, ar, ag, ab, 0.85)
     thumb.tex:SetAllPoints()
     f.scrollTrack = track
     f.scrollThumb = thumb
 
     local function UpdateScrollBar()
+        if sf.UpdateScrollChildRect then pcall(sf.UpdateScrollChildRect, sf) end
+        local nr, ng, nb = GetAccentColor()
+        thumb.tex:SetColorTexture(nr, ng, nb, 0.85)
         local maxRange = math.max(0, sf:GetVerticalScrollRange() or 0)
         if maxRange <= 0.5 then
             track:Hide()
@@ -765,10 +966,13 @@ local function EnsureReaderFrame()
     end)
 
     f:SetScript("OnHide", function()
-        GameTooltip:Hide()
+        if _G.GameTooltip then _G.GameTooltip:Hide() end
+        local dw = _G.DynamicSuite and _G.DynamicSuite.DesktopWindows
+        if dw and type(dw.SyncAllUISpecialFrames) == "function" and not InCombatLockdown() then
+            pcall(dw.SyncAllUISpecialFrames)
+        end
     end)
 
-    readerFrame = f
     return f
 end
 
@@ -779,7 +983,7 @@ function DynamicDialogue:ApplyReaderTheme()
     local ar, ag, ab = GetAccentColor()
     local fa = GetPillFillAlpha()
 
-    readerFrame:SetScale(math.max(0.70, math.min(1.40, SafeNum(db.frameScale, 1.0))))
+    ApplyReaderPosition()
     readerFrame.bg:SetColorTexture(surf.PANEL_BG.r, surf.PANEL_BG.g, surf.PANEL_BG.b, SafeNum(db.backdropAlpha, 0.96))
     readerFrame.hdr.bg:SetColorTexture(surf.HEADER_BG.r, surf.HEADER_BG.g, surf.HEADER_BG.b, 1.0)
     readerFrame.hdr.div:SetColorTexture(ar, ag, ab, 0.40)
@@ -796,9 +1000,17 @@ function DynamicDialogue:ApplyReaderTheme()
         readerFrame.border:SetColor(ar, ag, ab, 0.90)
     end
 
-    readerFrame.typeBadge:SetShown(db.showTypeBadge ~= false)
+    local showBadge = (db.showTypeBadge ~= false)
+    readerFrame.typeBadge:SetShown(showBadge)
     readerFrame.typeBadge.bg:SetColorTexture(ar * 0.28, ag * 0.28, ab * 0.28, 0.95)
     readerFrame.typeBadge.border:SetColor(ar, ag, ab, 0.90)
+    readerFrame.titleText:ClearAllPoints()
+    if showBadge then
+        readerFrame.titleText:SetPoint("LEFT", readerFrame.typeBadge, "RIGHT", 10, 0)
+    else
+        readerFrame.titleText:SetPoint("LEFT", readerFrame.hdr.accentBar, "RIGHT", 10, 0)
+    end
+    readerFrame.titleText:SetPoint("RIGHT", readerFrame.closeBtn, "LEFT", -10, 0)
 
     readerFrame.subTitle:SetTextColor(ar, ag, ab, 1)
     ApplyFont(readerFrame.titleText, 14, "OUTLINE")
@@ -806,6 +1018,17 @@ function DynamicDialogue:ApplyReaderTheme()
     ApplyFont(readerFrame.bodyText, SafeNum(db.fontSize, 13), "")
     readerFrame.priBtn.bg:SetColorTexture(ar * fa, ag * fa, ab * fa, 0.96)
     readerFrame.priBtn.border:SetColor(ar, ag, ab, 0.95)
+    readerFrame.secBtn.bg:SetColorTexture(surf.CELL_BG.r, surf.CELL_BG.g, surf.CELL_BG.b, 0.96)
+    readerFrame.secBtn.border:SetColor(surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95)
+    if readerFrame.scrollThumb and readerFrame.scrollThumb.tex then
+        readerFrame.scrollThumb.tex:SetColorTexture(ar, ag, ab, 0.85)
+    end
+    for _, btn in ipairs(readerFrame.optionButtons or {}) do
+        if btn.keycap then
+            btn.keycap.bg:SetColorTexture(ar * 0.25, ag * 0.25, ab * 0.25, 0.95)
+            btn.keycap.border:SetColor(ar, ag, ab, 0.85)
+        end
+    end
 end
 
 local function AcquireOptionButton(parent, index)
@@ -816,7 +1039,7 @@ local function AcquireOptionButton(parent, index)
     local ar, ag, ab = GetAccentColor()
 
     btn = CreateFrame("Button", nil, parent)
-    btn:SetHeight(32)
+    btn:SetHeight(34)
     btn.bg = SolidTex(btn, "BACKGROUND", 1, surf.CARD_BG.r, surf.CARD_BG.g, surf.CARD_BG.b, 0.96)
     btn.bg:SetAllPoints()
     btn.border = CreatePixelBorder(btn, surf.CELL_BORDER.r, surf.CELL_BORDER.g, surf.CELL_BORDER.b, 0.95, 4)
@@ -833,6 +1056,11 @@ local function AcquireOptionButton(parent, index)
     ApplyFont(keycap.text, 10, "OUTLINE")
     keycap.text:SetTextColor(1, 1, 1, 1)
     btn.keycap = keycap
+
+    -- Crisp quest / gossip icon (16x16)
+    btn.icon = btn:CreateTexture(nil, "ARTWORK")
+    btn.icon:SetSize(16, 16)
+    btn.icon:SetTexCoord(0, 1, 0, 1)
 
     btn.tagText = btn:CreateFontString(nil, "OVERLAY")
     btn.tagText:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
@@ -910,7 +1138,7 @@ local function HidePooledWidgets()
     for _, c in ipairs(readerFrame.rewardCards) do c:Hide() end
 end
 
-local function PopulateRewardsSection(yCursor, isChoiceMode)
+local function PopulateRewardsSection(yCursor, isChoiceMode, includeRequired)
     local f = EnsureReaderFrame()
     local db = EnsureDB()
     local ar, ag, ab = GetAccentColor()
@@ -918,57 +1146,117 @@ local function PopulateRewardsSection(yCursor, isChoiceMode)
     local cardIdx = 0
     local rewardsList = {}
 
-    local numChoices = (type(_G.GetNumQuestChoices) == "function") and SafeNum(_G.GetNumQuestChoices(), 0) or 0
-    local numRewards = (type(_G.GetNumQuestRewards) == "function") and SafeNum(_G.GetNumQuestRewards(), 0) or 0
-    local money = (type(_G.GetRewardMoney) == "function") and SafeNum(_G.GetRewardMoney(), 0) or 0
-    local xp = (type(_G.GetRewardXP) == "function") and SafeNum(_G.GetRewardXP(), 0) or 0
-
-    if numChoices > 0 and type(_G.GetQuestItemInfo) == "function" then
-        for i = 1, numChoices do
-            local name, tex, count, quality = _G.GetQuestItemInfo("choice", i)
-            if name then
-                table.insert(rewardsList, {
-                    kind = "choice",
-                    index = i,
-                    name = SafeStr(name),
-                    icon = tex,
-                    count = SafeNum(count, 1),
-                    quality = SafeNum(quality, 1),
-                    sub = isChoiceMode and "Click to Choose" or "Choice Reward",
-                })
+    if includeRequired then
+        local numReq = (type(_G.GetNumQuestItems) == "function") and SafeNum(_G.GetNumQuestItems(), 0) or 0
+        if numReq > 0 and type(_G.GetQuestItemInfo) == "function" then
+            for i = 1, numReq do
+                local name, tex, count, quality = _G.GetQuestItemInfo("required", i)
+                if name and not SafeIsSecret(name) then
+                    table.insert(rewardsList, {
+                        kind = "required",
+                        index = i,
+                        name = SafeStr(name),
+                        icon = tex,
+                        count = SafeNum(count, 1),
+                        quality = SafeNum(quality, 1),
+                        sub = "Required Item",
+                    })
+                end
             end
         end
-    end
+    else
+        local numChoices = (type(_G.GetNumQuestChoices) == "function") and SafeNum(_G.GetNumQuestChoices(), 0) or 0
+        local numRewards = (type(_G.GetNumQuestRewards) == "function") and SafeNum(_G.GetNumQuestRewards(), 0) or 0
+        local money = (type(_G.GetRewardMoney) == "function") and SafeNum(_G.GetRewardMoney(), 0) or 0
+        local xp = (type(_G.GetRewardXP) == "function") and SafeNum(_G.GetRewardXP(), 0) or 0
 
-    if numRewards > 0 and type(_G.GetQuestItemInfo) == "function" then
-        for i = 1, numRewards do
-            local name, tex, count, quality = _G.GetQuestItemInfo("reward", i)
-            if name then
-                table.insert(rewardsList, {
-                    kind = "reward",
-                    index = i,
-                    name = SafeStr(name),
-                    icon = tex,
-                    count = SafeNum(count, 1),
-                    quality = SafeNum(quality, 1),
-                    sub = "Guaranteed Reward",
-                })
+        if numChoices > 0 and type(_G.GetQuestItemInfo) == "function" then
+            for i = 1, numChoices do
+                local name, tex, count, quality = _G.GetQuestItemInfo("choice", i)
+                if name and not SafeIsSecret(name) then
+                    table.insert(rewardsList, {
+                        kind = "choice",
+                        index = i,
+                        name = SafeStr(name),
+                        icon = tex,
+                        count = SafeNum(count, 1),
+                        quality = SafeNum(quality, 1),
+                        sub = isChoiceMode and "Click to Choose" or "Choice Reward",
+                    })
+                end
             end
         end
-    end
 
-    if money > 0 or xp > 0 then
-        local summaryParts = {}
-        if xp > 0 then table.insert(summaryParts, string.format("|cFFA855F7%d XP|r", xp)) end
-        if money > 0 then table.insert(summaryParts, FormatGoldText(money)) end
-        table.insert(rewardsList, {
-            kind = "summary",
-            name = table.concat(summaryParts, "   "),
-            icon = 133784, -- Gold coin icon
-            count = 1,
-            quality = 1,
-            sub = "Quest Completion Bonus",
-        })
+        if numRewards > 0 and type(_G.GetQuestItemInfo) == "function" then
+            for i = 1, numRewards do
+                local name, tex, count, quality = _G.GetQuestItemInfo("reward", i)
+                if name and not SafeIsSecret(name) then
+                    table.insert(rewardsList, {
+                        kind = "reward",
+                        index = i,
+                        name = SafeStr(name),
+                        icon = tex,
+                        count = SafeNum(count, 1),
+                        quality = SafeNum(quality, 1),
+                        sub = "Guaranteed Reward",
+                    })
+                end
+            end
+        end
+
+        local addedCurrency = false
+        if _G.C_QuestInfoSystem and type(_G.C_QuestInfoSystem.GetQuestRewardCurrencies) == "function" then
+            local okCur, curList = pcall(_G.C_QuestInfoSystem.GetQuestRewardCurrencies)
+            if okCur and type(curList) == "table" and not SafeIsSecret(curList) then
+                for idx, cur in ipairs(curList) do
+                    if type(cur) == "table" and not SafeIsSecret(cur) and cur.name and not SafeIsSecret(cur.name) then
+                        addedCurrency = true
+                        table.insert(rewardsList, {
+                            kind = "currency",
+                            currencyIndex = idx,
+                            currencyID = (not SafeIsSecret(cur.currencyID)) and cur.currencyID or nil,
+                            name = SafeStr(cur.name, "Currency"),
+                            icon = (not SafeIsSecret(cur.texture)) and cur.texture or 133784,
+                            count = SafeNum(cur.totalRewardAmount or cur.bonusRewardAmount, 1),
+                            quality = SafeNum(cur.quality, 1),
+                            sub = "Currency Reward",
+                        })
+                    end
+                end
+            end
+        end
+        if not addedCurrency and type(_G.GetNumRewardCurrencies) == "function" and type(_G.GetQuestCurrencyInfo) == "function" then
+            local numCur = SafeNum(_G.GetNumRewardCurrencies(), 0)
+            for i = 1, numCur do
+                local okC, name, tex, count, curID, quality = pcall(_G.GetQuestCurrencyInfo, "reward", i)
+                if okC and name and not SafeIsSecret(name) then
+                    table.insert(rewardsList, {
+                        kind = "currency",
+                        currencyIndex = i,
+                        currencyID = (not SafeIsSecret(curID)) and curID or nil,
+                        name = SafeStr(name, "Currency"),
+                        icon = (not SafeIsSecret(tex)) and tex or 133784,
+                        count = SafeNum(count, 1),
+                        quality = SafeNum(quality, 1),
+                        sub = "Currency Reward",
+                    })
+                end
+            end
+        end
+
+        if money > 0 or xp > 0 then
+            local summaryParts = {}
+            if xp > 0 then table.insert(summaryParts, string.format("|cFFA855F7%d XP|r", xp)) end
+            if money > 0 then table.insert(summaryParts, FormatGoldText(money)) end
+            table.insert(rewardsList, {
+                kind = "summary",
+                name = table.concat(summaryParts, "   "),
+                icon = 133784, -- Gold coin icon
+                count = 1,
+                quality = 1,
+                sub = "Quest Completion Bonus",
+            })
+        end
     end
 
     if #rewardsList == 0 then
@@ -1006,10 +1294,20 @@ local function PopulateRewardsSection(yCursor, isChoiceMode)
         RefreshCardBorder()
 
         card:SetScript("OnEnter", function(self)
-            if db.showRewardTooltips ~= false and (item.kind == "choice" or item.kind == "reward") then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                pcall(GameTooltip.SetQuestItem, GameTooltip, item.kind, item.index)
-                GameTooltip:Show()
+            if db.showRewardTooltips ~= false then
+                if item.kind == "choice" or item.kind == "reward" or item.kind == "required" then
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    pcall(GameTooltip.SetQuestItem, GameTooltip, item.kind, item.index)
+                    GameTooltip:Show()
+                elseif item.kind == "currency" then
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    if item.currencyIndex and type(GameTooltip.SetQuestCurrency) == "function" then
+                        pcall(GameTooltip.SetQuestCurrency, GameTooltip, "reward", item.currencyIndex)
+                    elseif item.currencyID and type(GameTooltip.SetCurrencyByID) == "function" then
+                        pcall(GameTooltip.SetCurrencyByID, GameTooltip, item.currencyID)
+                    end
+                    GameTooltip:Show()
+                end
             end
             card.border:SetColor(ar, ag, ab, 1.0)
         end)
@@ -1060,13 +1358,22 @@ local function RenderReaderState(opts)
     f.typeBadge.text:SetText(opts.badge or "DIALOGUE")
     f.titleText:SetText(opts.title or "Dialogue")
     f.subTitle:SetText(opts.subtitle or "")
-    f.bodyText:SetText(opts.body or "")
+
+    local bodyStr = SafeStr(opts.body, "")
     ApplyFont(f.bodyText, SafeNum(db.fontSize, 13), "")
+    local yCursor
+    if bodyStr == "" then
+        f.bodyText:SetText("")
+        f.bodyText:Hide()
+        yCursor = -4
+    else
+        f.bodyText:Show()
+        f.bodyText:SetText(bodyStr)
+        local bodyH = math.max(18, math.ceil(f.bodyText:GetStringHeight() or 18))
+        yCursor = -(bodyH + 14)
+    end
 
-    local bodyH = math.max(24, math.ceil(f.bodyText:GetStringHeight() or 24))
-    local yCursor = -(bodyH + 14)
-
-    -- Populate option rows (1..9 hotkeys)
+    -- Populate option rows (1..9 hotkeys + crisp quest/gossip icons)
     local list = opts.options or {}
     for i, opt in ipairs(list) do
         currentOptions[i] = opt
@@ -1074,20 +1381,44 @@ local function RenderReaderState(opts)
         btn:ClearAllPoints()
         btn:SetPoint("TOPLEFT", f.content, "TOPLEFT", 2, yCursor)
         btn:SetPoint("TOPRIGHT", f.content, "TOPRIGHT", -2, yCursor)
-        if i <= 9 and db.enableNumberHotkeys ~= false then
+
+        local hasHotkey = (i <= 9 and db.enableNumberHotkeys ~= false)
+        local hasIcon = (opt.icon ~= nil and opt.icon ~= "" and opt.icon ~= 0)
+        if hasHotkey then
             btn.keycap:Show()
             btn.keycap.text:SetText(tostring(i))
             btn.keycap.bg:SetColorTexture(ar * 0.25, ag * 0.25, ab * 0.25, 0.95)
             btn.keycap.border:SetColor(ar, ag, ab, 0.85)
-            btn.label:ClearAllPoints()
-            btn.label:SetPoint("LEFT", btn.keycap, "RIGHT", 10, 0)
-            btn.label:SetPoint("RIGHT", btn.tagText, "LEFT", -8, 0)
         else
             btn.keycap:Hide()
+        end
+
+        if hasIcon then
+            btn.icon:SetTexture(opt.icon)
+            if btn.icon.SetDesaturated then
+                pcall(btn.icon.SetDesaturated, btn.icon, opt.iconDesaturated == true)
+            end
+            btn.icon:ClearAllPoints()
+            if hasHotkey then
+                btn.icon:SetPoint("LEFT", btn.keycap, "RIGHT", 8, 0)
+            else
+                btn.icon:SetPoint("LEFT", btn, "LEFT", 10, 0)
+            end
+            btn.icon:Show()
             btn.label:ClearAllPoints()
-            btn.label:SetPoint("LEFT", btn, "LEFT", 10, 0)
+            btn.label:SetPoint("LEFT", btn.icon, "RIGHT", 7, 0)
+            btn.label:SetPoint("RIGHT", btn.tagText, "LEFT", -8, 0)
+        else
+            btn.icon:Hide()
+            btn.label:ClearAllPoints()
+            if hasHotkey then
+                btn.label:SetPoint("LEFT", btn.keycap, "RIGHT", 10, 0)
+            else
+                btn.label:SetPoint("LEFT", btn, "LEFT", 10, 0)
+            end
             btn.label:SetPoint("RIGHT", btn.tagText, "LEFT", -8, 0)
         end
+
         btn.label:SetText(opt.label or "")
         if opt.tag and opt.tag ~= "" then
             btn.tagText:SetText(opt.tag)
@@ -1102,12 +1433,12 @@ local function RenderReaderState(opts)
             end
         end)
         btn:Show()
-        yCursor = yCursor - 38
+        yCursor = yCursor - 40
     end
 
-    -- Populate rewards if requested
-    if opts.showRewards then
-        yCursor = PopulateRewardsSection(yCursor, opts.isChoiceMode == true)
+    -- Populate rewards or required items if requested
+    if opts.showRewards or opts.showRequired then
+        yCursor = PopulateRewardsSection(yCursor, opts.isChoiceMode == true, opts.showRequired == true)
     end
 
     local totalH = math.max(80, math.abs(yCursor) + 12)
@@ -1145,6 +1476,13 @@ local function RenderReaderState(opts)
     f.footerHint:SetText(table.concat(hints, "  |  "))
 
     f:Show()
+    if type(f.Raise) == "function" then
+        pcall(f.Raise, f)
+    end
+    local dw = _G.DynamicSuite and _G.DynamicSuite.DesktopWindows
+    if dw and type(dw.SyncAllUISpecialFrames) == "function" and not InCombatLockdown() then
+        pcall(dw.SyncAllUISpecialFrames)
+    end
     C_Timer.After(0, function()
         if f and f:IsShown() and f.UpdateScrollBar then
             f.UpdateScrollBar()
@@ -1164,34 +1502,56 @@ function DynamicDialogue:ShouldIntercept(kind)
     return true
 end
 
+local function ResolveNpcName(fallback)
+    local rawNpc = (_G.UnitName and _G.UnitName("npc")) or nil
+    if SafeIsSecret(rawNpc) or type(rawNpc) ~= "string" or rawNpc == "" then
+        rawNpc = (_G.UnitName and _G.UnitName("target")) or nil
+    end
+    local name = SafeStr(rawNpc, "")
+    if name == "" then
+        name = fallback or "NPC"
+    end
+    return name
+end
+
 function DynamicDialogue:ShowGossip()
     if not self:ShouldIntercept("GOSSIP") then
-        RestoreBlizzardFrame()
+        RestoreBlizzardFrame(_G.GossipFrame)
         return
     end
+    activeSessionKind = "GOSSIP"
     currentMode = "GOSSIP"
+    RestoreBlizzardFrame(_G.QuestFrame)
     SuppressBlizzardFrame(_G.GossipFrame)
 
-    local npcName = SafeStr(_G.UnitName and _G.UnitName("npc") or _G.UnitName("target"), "NPC")
+    local npcName = ResolveNpcName("NPC")
     local text = (C_GossipInfo and C_GossipInfo.GetText) and SafeStr(C_GossipInfo.GetText(), "") or ""
     local options = {}
 
-    -- Active (Turn-in) Quests first
+    -- Active (Turn-in / In-Progress) Quests first
     if C_GossipInfo and type(C_GossipInfo.GetActiveQuests) == "function" then
         local activeQ = C_GossipInfo.GetActiveQuests() or {}
         for _, q in ipairs(activeQ) do
-            local qID = q.questID
-            local isComplete = (q.isComplete == true)
-            table.insert(options, {
-                label = SafeStr(q.title, "Active Quest"),
-                tag = isComplete and "[TURN-IN]" or "[IN PROGRESS]",
-                tagColor = isComplete and { 0.20, 0.83, 0.60 } or { 0.64, 0.70, 0.78 },
-                onClick = function()
-                    if qID and C_GossipInfo.SelectActiveQuest then
-                        pcall(C_GossipInfo.SelectActiveQuest, qID)
-                    end
-                end,
-            })
+            if type(q) == "table" and not SafeIsSecret(q) then
+                local qID = (not SafeIsSecret(q.questID)) and q.questID or nil
+                local isComplete = (not SafeIsSecret(q.isComplete) and q.isComplete == true)
+                local freq = SafeNum(q.frequency, 0)
+                local isDaily = (freq > 0) or (not SafeIsSecret(q.repeatable) and q.repeatable == true)
+                local iconPath = isComplete
+                    and (isDaily and "Interface\\GossipFrame\\DailyActiveQuestIcon" or "Interface\\GossipFrame\\ActiveQuestIcon")
+                    or "Interface\\GossipFrame\\IncompleteQuestIcon"
+                table.insert(options, {
+                    label = SafeStr(q.title, "Active Quest"),
+                    tag = isComplete and "[TURN-IN]" or "[IN PROGRESS]",
+                    tagColor = isComplete and { 0.20, 0.83, 0.60 } or { 0.64, 0.70, 0.78 },
+                    icon = iconPath,
+                    onClick = function()
+                        if qID and C_GossipInfo.SelectActiveQuest then
+                            pcall(C_GossipInfo.SelectActiveQuest, qID)
+                        end
+                    end,
+                })
+            end
         end
     end
 
@@ -1199,32 +1559,72 @@ function DynamicDialogue:ShowGossip()
     if C_GossipInfo and type(C_GossipInfo.GetAvailableQuests) == "function" then
         local availQ = C_GossipInfo.GetAvailableQuests() or {}
         for _, q in ipairs(availQ) do
-            local qID = q.questID
-            table.insert(options, {
-                label = SafeStr(q.title, "Available Quest"),
-                tag = "[QUEST]",
-                tagColor = { 0.98, 0.80, 0.08 },
-                onClick = function()
-                    if qID and C_GossipInfo.SelectAvailableQuest then
-                        pcall(C_GossipInfo.SelectAvailableQuest, qID)
-                    end
-                end,
-            })
+            if type(q) == "table" and not SafeIsSecret(q) then
+                local qID = (not SafeIsSecret(q.questID)) and q.questID or nil
+                local freq = SafeNum(q.frequency, 0)
+                local isDaily = (freq > 0) or (not SafeIsSecret(q.repeatable) and q.repeatable == true)
+                local isLegendary = (not SafeIsSecret(q.isLegendary) and q.isLegendary == true)
+                local iconPath = (isLegendary and "Interface\\GossipFrame\\AvailableLegendaryQuestIcon")
+                    or (isDaily and "Interface\\GossipFrame\\DailyQuestIcon")
+                    or "Interface\\GossipFrame\\AvailableQuestIcon"
+                table.insert(options, {
+                    label = SafeStr(q.title, "Available Quest"),
+                    tag = "[QUEST]",
+                    tagColor = { 0.98, 0.80, 0.08 },
+                    icon = iconPath,
+                    onClick = function()
+                        if qID and C_GossipInfo.SelectAvailableQuest then
+                            pcall(C_GossipInfo.SelectAvailableQuest, qID)
+                        end
+                    end,
+                })
+            end
         end
     end
 
-    -- Gossip Options
+    -- Gossip Options (sorted by orderIndex with original array index tie-breaker)
     if C_GossipInfo and type(C_GossipInfo.GetOptions) == "function" then
         local gOpts = C_GossipInfo.GetOptions() or {}
-        for _, opt in ipairs(gOpts) do
-            local optID = opt.gossipOptionID
+        local sorted = {}
+        for idx, opt in ipairs(gOpts) do
+            if type(opt) == "table" and not SafeIsSecret(opt) then
+                table.insert(sorted, { opt = opt, idx = idx, order = SafeNum(opt.orderIndex, idx) })
+            end
+        end
+        table.sort(sorted, function(a, b)
+            if a.order ~= b.order then return a.order < b.order end
+            return a.idx < b.idx
+        end)
+        for _, entry in ipairs(sorted) do
+            local opt = entry.opt
+            local optID = (not SafeIsSecret(opt.gossipOptionID) and opt.gossipOptionID ~= 0) and opt.gossipOptionID or nil
+            local rawIdx = entry.idx
+            local iconVal = opt.overrideIconID
+            if SafeIsSecret(iconVal) or iconVal == nil or iconVal == 0 or iconVal == "" then
+                iconVal = opt.icon
+            end
+            if SafeIsSecret(iconVal) or iconVal == nil or iconVal == 0 or iconVal == "" then
+                iconVal = "Interface\\GossipFrame\\GossipGossipIcon"
+            end
+            local status = SafeNum(opt.status, 0)
+            local isLocked = false
+            if _G.Enum and _G.Enum.GossipOptionStatus then
+                isLocked = (status == _G.Enum.GossipOptionStatus.Unavailable or status == _G.Enum.GossipOptionStatus.Locked)
+            end
+            local flags = SafeNum(opt.flags, 0)
+            local tagText = isLocked and "[LOCKED]" or ((flags > 0) and "[OPTION]" or "")
+            local tagColor = isLocked and { 0.97, 0.44, 0.44 } or { 0.38, 0.65, 0.98 }
             table.insert(options, {
                 label = SafeStr(opt.name, "Dialogue Option"),
-                tag = (opt.flags and opt.flags > 0) and "[OPTION]" or "",
-                tagColor = { 0.38, 0.65, 0.98 },
+                tag = tagText,
+                tagColor = tagColor,
+                icon = iconVal,
+                iconDesaturated = isLocked,
                 onClick = function()
                     if optID and C_GossipInfo.SelectOption then
                         pcall(C_GossipInfo.SelectOption, optID)
+                    elseif C_GossipInfo.SelectOptionByIndex then
+                        pcall(C_GossipInfo.SelectOptionByIndex, rawIdx)
                     end
                 end,
             })
@@ -1243,23 +1643,27 @@ end
 
 function DynamicDialogue:ShowQuestGreeting()
     if not self:ShouldIntercept("QUEST") then
-        RestoreBlizzardFrame()
+        RestoreBlizzardFrame(_G.QuestFrame)
         return
     end
+    activeSessionKind = "QUEST"
     currentMode = "GREETING"
+    RestoreBlizzardFrame(_G.GossipFrame)
     SuppressBlizzardFrame(_G.QuestFrame)
 
-    local npcName = SafeStr(_G.UnitName and _G.UnitName("npc"), "Quest Giver")
+    local npcName = ResolveNpcName("Quest Giver")
     local text = (type(_G.GetGreetingText) == "function") and SafeStr(_G.GetGreetingText(), "") or ""
     local options = {}
 
     local numActive = (type(_G.GetNumActiveQuests) == "function") and SafeNum(_G.GetNumActiveQuests(), 0) or 0
     for i = 1, numActive do
         local title, isComplete = _G.GetActiveTitle(i)
+        local comp = (not SafeIsSecret(isComplete) and isComplete == true)
         table.insert(options, {
             label = SafeStr(title, "Active Quest"),
-            tag = isComplete and "[TURN-IN]" or "[IN PROGRESS]",
-            tagColor = isComplete and { 0.20, 0.83, 0.60 } or { 0.64, 0.70, 0.78 },
+            tag = comp and "[TURN-IN]" or "[IN PROGRESS]",
+            tagColor = comp and { 0.20, 0.83, 0.60 } or { 0.64, 0.70, 0.78 },
+            icon = comp and "Interface\\GossipFrame\\ActiveQuestIcon" or "Interface\\GossipFrame\\IncompleteQuestIcon",
             onClick = function()
                 if type(_G.SelectActiveQuest) == "function" then pcall(_G.SelectActiveQuest, i) end
             end,
@@ -1273,6 +1677,7 @@ function DynamicDialogue:ShowQuestGreeting()
             label = SafeStr(title, "Available Quest"),
             tag = "[QUEST]",
             tagColor = { 0.98, 0.80, 0.08 },
+            icon = "Interface\\GossipFrame\\AvailableQuestIcon",
             onClick = function()
                 if type(_G.SelectAvailableQuest) == "function" then pcall(_G.SelectAvailableQuest, i) end
             end,
@@ -1291,20 +1696,26 @@ end
 
 function DynamicDialogue:ShowQuestDetail()
     if not self:ShouldIntercept("QUEST") then
-        RestoreBlizzardFrame()
+        RestoreBlizzardFrame(_G.QuestFrame)
         return
     end
+    activeSessionKind = "QUEST"
     currentMode = "DETAIL"
     selectedChoiceIndex = nil
+    RestoreBlizzardFrame(_G.GossipFrame)
     SuppressBlizzardFrame(_G.QuestFrame)
 
-    local npcName = SafeStr(_G.UnitName and _G.UnitName("npc"), "Quest")
+    local npcName = ResolveNpcName("Quest")
     local qTitle  = (type(_G.GetTitleText) == "function") and SafeStr(_G.GetTitleText(), "Quest") or "Quest"
     local qDesc   = (type(_G.GetQuestText) == "function") and SafeStr(_G.GetQuestText(), "") or ""
     local qObj    = (type(_G.GetObjectiveText) == "function") and SafeStr(_G.GetObjectiveText(), "") or ""
     local body = qDesc
     if qObj ~= "" then
-        body = body .. "\n\n|cFF" .. GetAccentHex() .. "Objective:|r\n" .. qObj
+        if body ~= "" then
+            body = body .. "\n\n|cFF" .. GetAccentHex() .. "Objective:|r\n" .. qObj
+        else
+            body = "|cFF" .. GetAccentHex() .. "Objective:|r\n" .. qObj
+        end
     end
 
     RenderReaderState({
@@ -1332,13 +1743,15 @@ end
 
 function DynamicDialogue:ShowQuestProgress()
     if not self:ShouldIntercept("QUEST") then
-        RestoreBlizzardFrame()
+        RestoreBlizzardFrame(_G.QuestFrame)
         return
     end
+    activeSessionKind = "QUEST"
     currentMode = "PROGRESS"
+    RestoreBlizzardFrame(_G.GossipFrame)
     SuppressBlizzardFrame(_G.QuestFrame)
 
-    local npcName = SafeStr(_G.UnitName and _G.UnitName("npc"), "Quest")
+    local npcName = ResolveNpcName("Quest")
     local qTitle  = (type(_G.GetTitleText) == "function") and SafeStr(_G.GetTitleText(), "Quest") or "Quest"
     local qProg   = (type(_G.GetProgressText) == "function") and SafeStr(_G.GetProgressText(), "") or ""
     local canComplete = (type(_G.IsQuestCompletable) == "function") and (_G.IsQuestCompletable() == true)
@@ -1348,6 +1761,7 @@ function DynamicDialogue:ShowQuestProgress()
         title = npcName,
         subtitle = qTitle,
         body = qProg,
+        showRequired = true,
         primaryLabel = canComplete and "Continue [Space]" or "In Progress",
         primaryDisabled = not canComplete,
         onPrimary = function()
@@ -1361,15 +1775,17 @@ end
 
 function DynamicDialogue:ShowQuestComplete()
     if not self:ShouldIntercept("QUEST") then
-        RestoreBlizzardFrame()
+        RestoreBlizzardFrame(_G.QuestFrame)
         return
     end
+    activeSessionKind = "QUEST"
     currentMode = "COMPLETE"
     selectedChoiceIndex = nil
+    RestoreBlizzardFrame(_G.GossipFrame)
     SuppressBlizzardFrame(_G.QuestFrame)
 
     local db = EnsureDB()
-    local npcName = SafeStr(_G.UnitName and _G.UnitName("npc"), "Quest")
+    local npcName = ResolveNpcName("Quest")
     local qTitle  = (type(_G.GetTitleText) == "function") and SafeStr(_G.GetTitleText(), "Quest") or "Quest"
     local qReward = (type(_G.GetRewardText) == "function") and SafeStr(_G.GetRewardText(), "") or ""
     local numChoices = (type(_G.GetNumQuestChoices) == "function") and SafeNum(_G.GetNumQuestChoices(), 0) or 0
@@ -1395,7 +1811,11 @@ function DynamicDialogue:ShowQuestComplete()
                 pcall(_G.PlaySoundFile, CHIME_QUEST, "Master")
             end
             if type(_G.GetQuestReward) == "function" then
-                pcall(_G.GetQuestReward, selectedChoiceIndex or 1)
+                if numChoices > 0 then
+                    pcall(_G.GetQuestReward, selectedChoiceIndex or 1)
+                else
+                    pcall(_G.GetQuestReward)
+                end
             end
         end,
         secondaryLabel = "Close [Esc]",
@@ -1403,6 +1823,8 @@ function DynamicDialogue:ShowQuestComplete()
 end
 
 function DynamicDialogue:ShowPreview()
+    RestoreAllBlizzardFrames()
+    activeSessionKind = "PREVIEW"
     currentMode = "PREVIEW"
     selectedChoiceIndex = nil
     RenderReaderState({
@@ -1411,9 +1833,9 @@ function DynamicDialogue:ShowPreview()
         subtitle = "Obsidian Dialogue Reader Preview",
         body = "Welcome to DynamicDialogue! Press [1]-[3] to test option hotkeys, press [Space] to confirm, or drag the dark Obsidian header bar to reposition this reader anywhere on your screen.\n\nHold [Shift] while talking to any NPC to temporarily open the native Blizzard quest frame.",
         options = {
-            { label = "Test Hotkey 1: Inspect Midnight Quest Layout", tag = "[QUEST]", tagColor = { 0.98, 0.80, 0.08 }, onClick = function() Print("Preview Option 1 selected.") end },
-            { label = "Test Hotkey 2: Verify High-Contrast Obsidian Readability", tag = "[OPTION]", tagColor = { 0.38, 0.65, 0.98 }, onClick = function() Print("Preview Option 2 selected.") end },
-            { label = "Test Hotkey 3: Close Preview Reader", tag = "[CLOSE]", tagColor = { 0.20, 0.83, 0.60 }, onClick = function() CloseActiveInteraction() end },
+            { label = "Test Hotkey 1: Inspect Midnight Quest Layout", tag = "[QUEST]", tagColor = { 0.98, 0.80, 0.08 }, icon = "Interface\\GossipFrame\\AvailableQuestIcon", onClick = function() Print("Preview Option 1 selected.") end },
+            { label = "Test Hotkey 2: Verify High-Contrast Obsidian Readability", tag = "[OPTION]", tagColor = { 0.38, 0.65, 0.98 }, icon = "Interface\\GossipFrame\\GossipGossipIcon", onClick = function() Print("Preview Option 2 selected.") end },
+            { label = "Test Hotkey 3: Close Preview Reader", tag = "[TURN-IN]", tagColor = { 0.20, 0.83, 0.60 }, icon = "Interface\\GossipFrame\\ActiveQuestIcon", onClick = function() CloseActiveInteraction() end },
         },
         primaryLabel = "Accept Preview [Space]",
         onPrimary = function()
@@ -1430,10 +1852,7 @@ end
 function DynamicDialogue:ResetPosition()
     local db = EnsureDB()
     db.pos = { point = "CENTER", relPoint = "CENTER", x = 0, y = -90 }
-    if readerFrame then
-        readerFrame:ClearAllPoints()
-        readerFrame:SetPoint("CENTER", UIParent, "CENTER", 0, -90)
-    end
+    ApplyReaderPosition()
     Print("Dialogue Reader position reset to centre.")
 end
 
@@ -1982,10 +2401,10 @@ local function RenderDialogueEmbedded(parent)
             function(v) db.enabled = v; if not v then CloseActiveInteraction() end; if root.RefreshStatus then root.RefreshStatus() end end),
         CreateToggleRow(sec1, -122, "Replace Quest Dialogue Windows", "Present Quest Detail, Progress, Greeting, and Turn-In in Obsidian cards with reward tooltips.",
             function() return db.replaceQuests ~= false end,
-            function(v) db.replaceQuests = v end),
+            function(v) db.replaceQuests = v; if root.RefreshStatus then root.RefreshStatus() end end),
         CreateToggleRow(sec1, -190, "Replace NPC Gossip Windows", "Present NPC gossip menus in a clean Obsidian reader with numbered option buttons.",
             function() return db.replaceGossip ~= false end,
-            function(v) db.replaceGossip = v end),
+            function(v) db.replaceGossip = v; if root.RefreshStatus then root.RefreshStatus() end end),
         CreateToggleRow(sec1, -258, "1-9 Number Option Hotkeys", "Press keys 1 through 9 out of combat to pick gossip or quest options immediately.",
             function() return db.enableNumberHotkeys ~= false end,
             function(v) db.enableNumberHotkeys = v end),
@@ -2059,16 +2478,18 @@ local function RenderDialogueEmbedded(parent)
     end
 
     local function RefreshStatus()
-        local yielding, label, reason = DynamicDialogue:GetYieldInfo()
-        if yielding then
+        local state, shortLabel, detail = DynamicDialogue:GetDetailedStatus()
+        if state == "Yielding" then
+            local _, label = DynamicDialogue:GetYieldInfo()
             statusLbl:SetText("|cFFFACC15Yielding|r  |cFF94A3B8-> " .. tostring(label or "External Addon") .. "|r")
-            root.statusTooltipText = "Automatically yielding to " .. tostring(label or "External Addon") .. " (" .. tostring(reason or "Active") .. "). Manage competing addons in Guided Setup."
-        elseif db.enabled then
+            root.statusTooltipText = detail .. " Manage competing addons in Guided Setup."
+        elseif state == "Active" then
             statusLbl:SetText("|cFF22C55EActive|r  |cFF94A3B8- Obsidian Reader Ready|r")
-            root.statusTooltipText = "Active - Talk to any quest giver or gossip NPC to open the Obsidian reader."
+            root.statusTooltipText = detail
         else
-            statusLbl:SetText("|cFFF87171Paused|r  |cFF94A3B8- Reader Disabled|r")
-            root.statusTooltipText = "Paused - Enable DynamicDialogue Reader below to activate the Obsidian Quest & Gossip reader."
+            local subNote = (shortLabel == "Paused (Off in Sidebar)") and "Off in Sidebar" or "Reader Disabled"
+            statusLbl:SetText("|cFFF87171Paused|r  |cFF94A3B8- " .. subNote .. "|r")
+            root.statusTooltipText = detail
         end
     end
     root.RefreshStatus = RefreshStatus
@@ -2231,6 +2652,69 @@ end
 -- ============================================================================
 -- 7. EVENTS & SLASH COMMANDS
 -- ============================================================================
+local function IsGossipInteractionActive()
+    if _G.GossipFrame and _G.GossipFrame.IsShown and _G.GossipFrame:IsShown() then
+        return true
+    end
+    if _G.C_PlayerInteractionManager and type(_G.C_PlayerInteractionManager.IsInteractingNpcOfType) == "function"
+        and _G.Enum and _G.Enum.PlayerInteractionType and _G.Enum.PlayerInteractionType.Gossip then
+        local ok, active = pcall(_G.C_PlayerInteractionManager.IsInteractingNpcOfType, _G.Enum.PlayerInteractionType.Gossip)
+        if ok and active == true then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsQuestInteractionActive()
+    if _G.QuestFrame and _G.QuestFrame.IsShown and _G.QuestFrame:IsShown() then
+        return true
+    end
+    if _G.C_PlayerInteractionManager and type(_G.C_PlayerInteractionManager.IsInteractingNpcOfType) == "function"
+        and _G.Enum and _G.Enum.PlayerInteractionType and _G.Enum.PlayerInteractionType.QuestGiver then
+        local ok, active = pcall(_G.C_PlayerInteractionManager.IsInteractingNpcOfType, _G.Enum.PlayerInteractionType.QuestGiver)
+        if ok and active == true then
+            return true
+        end
+    end
+    return false
+end
+
+local function HideNonPreviewReader()
+    if currentMode == "PREVIEW" then return end
+    currentMode = nil
+    activeSessionKind = nil
+    selectedChoiceIndex = nil
+    wipe(currentOptions)
+    if readerFrame and readerFrame:IsShown() then
+        readerFrame:Hide()
+    end
+end
+
+local function HandleQuestShowEvent(showMethodName)
+    if not DynamicDialogue:ShouldIntercept("QUEST") then
+        HideNonPreviewReader()
+        RestoreBlizzardFrame(_G.QuestFrame)
+        return
+    end
+    interactionSeq = interactionSeq + 1
+    local mySeq = interactionSeq
+    activeSessionKind = "QUEST"
+    RestoreBlizzardFrame(_G.GossipFrame)
+    SuppressBlizzardFrame(_G.QuestFrame)
+    C_Timer.After(0, function()
+        if mySeq ~= interactionSeq then return end
+        if IsQuestInteractionActive() and type(DynamicDialogue[showMethodName]) == "function" then
+            DynamicDialogue[showMethodName](DynamicDialogue)
+        else
+            if activeSessionKind == "QUEST" then
+                activeSessionKind = nil
+            end
+            RestoreBlizzardFrame(_G.QuestFrame)
+        end
+    end)
+end
+
 local evt = CreateFrame("Frame")
 evt:RegisterEvent("ADDON_LOADED")
 evt:RegisterEvent("PLAYER_LOGIN")
@@ -2242,6 +2726,8 @@ evt:RegisterEvent("QUEST_PROGRESS")
 evt:RegisterEvent("QUEST_COMPLETE")
 evt:RegisterEvent("QUEST_FINISHED")
 evt:RegisterEvent("PLAYER_REGEN_DISABLED")
+evt:RegisterEvent("PLAYER_REGEN_ENABLED")
+pcall(evt.RegisterEvent, evt, "PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
 
 evt:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
@@ -2253,49 +2739,127 @@ evt:SetScript("OnEvent", function(_, event, arg1)
         EnsureDB()
         RegisterWithDynamicSuite()
     elseif event == "GOSSIP_SHOW" then
+        if IsCustomGossipTextureKit(arg1) then
+            activeBypassGossip = true
+            HideNonPreviewReader()
+            RestoreBlizzardFrame(_G.GossipFrame)
+            return
+        end
+        activeBypassGossip = false
+        if not DynamicDialogue:ShouldIntercept("GOSSIP") then
+            HideNonPreviewReader()
+            RestoreBlizzardFrame(_G.GossipFrame)
+            return
+        end
+        interactionSeq = interactionSeq + 1
+        local mySeq = interactionSeq
+        activeSessionKind = "GOSSIP"
+        RestoreBlizzardFrame(_G.QuestFrame)
+        SuppressBlizzardFrame(_G.GossipFrame)
         -- Yield 1 frame so DynamicPrep's instant single-option auto-confirm can fire first without flicker
         C_Timer.After(0, function()
-            if _G.GossipFrame and _G.GossipFrame:IsShown() then
+            if mySeq ~= interactionSeq then return end
+            if IsCustomGossipTextureKit(arg1) then
+                activeBypassGossip = true
+                HideNonPreviewReader()
+                RestoreBlizzardFrame(_G.GossipFrame)
+                return
+            end
+            if IsGossipInteractionActive() then
                 DynamicDialogue:ShowGossip()
+            else
+                if activeSessionKind == "GOSSIP" then
+                    activeSessionKind = nil
+                end
+                RestoreBlizzardFrame(_G.GossipFrame)
             end
         end)
     elseif event == "QUEST_GREETING" then
-        C_Timer.After(0, function()
-            if _G.QuestFrame and _G.QuestFrame:IsShown() then
-                DynamicDialogue:ShowQuestGreeting()
-            end
-        end)
+        HandleQuestShowEvent("ShowQuestGreeting")
     elseif event == "QUEST_DETAIL" then
-        C_Timer.After(0, function()
-            if _G.QuestFrame and _G.QuestFrame:IsShown() then
-                DynamicDialogue:ShowQuestDetail()
-            end
-        end)
+        HandleQuestShowEvent("ShowQuestDetail")
     elseif event == "QUEST_PROGRESS" then
-        C_Timer.After(0, function()
-            if _G.QuestFrame and _G.QuestFrame:IsShown() then
-                DynamicDialogue:ShowQuestProgress()
-            end
-        end)
+        HandleQuestShowEvent("ShowQuestProgress")
     elseif event == "QUEST_COMPLETE" then
+        HandleQuestShowEvent("ShowQuestComplete")
+    elseif event == "GOSSIP_CLOSED" then
+        activeBypassGossip = false
+        local closeSeq = interactionSeq
         C_Timer.After(0, function()
-            if _G.QuestFrame and _G.QuestFrame:IsShown() then
-                DynamicDialogue:ShowQuestComplete()
+            if activeSessionKind ~= "GOSSIP" then
+                RestoreBlizzardFrame(_G.GossipFrame)
+                return
+            end
+            if closeSeq == interactionSeq and not IsGossipInteractionActive() then
+                if currentMode == "GOSSIP" or currentMode == nil then
+                    HideNonPreviewReader()
+                end
+                RestoreBlizzardFrame(_G.GossipFrame)
             end
         end)
-    elseif event == "GOSSIP_CLOSED" or event == "QUEST_FINISHED" then
-        if currentMode ~= "PREVIEW" then
-            currentMode = nil
-            selectedChoiceIndex = nil
-            wipe(currentOptions)
-            if readerFrame then readerFrame:Hide() end
-            RestoreBlizzardFrame()
+    elseif event == "QUEST_FINISHED" then
+        local closeSeq = interactionSeq
+        C_Timer.After(0, function()
+            if activeSessionKind ~= "QUEST" then
+                RestoreBlizzardFrame(_G.QuestFrame)
+                return
+            end
+            if closeSeq == interactionSeq and not IsQuestInteractionActive() then
+                if currentMode ~= "GOSSIP" and currentMode ~= "PREVIEW" then
+                    HideNonPreviewReader()
+                end
+                RestoreBlizzardFrame(_G.QuestFrame)
+            end
+        end)
+    elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
+        local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
+        if not iEnum then return end
+        if arg1 == iEnum.Gossip then
+            activeBypassGossip = false
+            local closeSeq = interactionSeq
+            C_Timer.After(0, function()
+                if activeSessionKind ~= "GOSSIP" then
+                    RestoreBlizzardFrame(_G.GossipFrame)
+                    return
+                end
+                if closeSeq == interactionSeq and not IsGossipInteractionActive() then
+                    if currentMode == "GOSSIP" or currentMode == nil then
+                        HideNonPreviewReader()
+                    end
+                    RestoreBlizzardFrame(_G.GossipFrame)
+                end
+            end)
+        elseif arg1 == iEnum.QuestGiver then
+            local closeSeq = interactionSeq
+            C_Timer.After(0, function()
+                if activeSessionKind ~= "QUEST" then
+                    RestoreBlizzardFrame(_G.QuestFrame)
+                    return
+                end
+                if closeSeq == interactionSeq and not IsQuestInteractionActive() then
+                    if currentMode ~= "GOSSIP" and currentMode ~= "PREVIEW" then
+                        HideNonPreviewReader()
+                    end
+                    RestoreBlizzardFrame(_G.QuestFrame)
+                end
+            end)
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
         local db = EnsureDB()
-        if db.hideInCombat ~= false and readerFrame and readerFrame:IsShown() then
-            readerFrame:Hide()
+        if db.hideInCombat ~= false then
+            interactionSeq = interactionSeq + 1
+            activeBypassGossip = false
+            currentMode = nil
+            activeSessionKind = nil
+            selectedChoiceIndex = nil
+            wipe(currentOptions)
+            if readerFrame and readerFrame:IsShown() then
+                readerFrame:Hide()
+            end
+            RestoreAllBlizzardFrames()
         end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        FlushPendingCombatRestores()
     end
 end)
 
@@ -2313,12 +2877,8 @@ _G.SlashCmdList["DYNAMICDIALOGUE"] = function(msg)
     elseif cmd == "reset" then
         DynamicDialogue:ResetPosition()
     elseif cmd == "status" then
-        local yielding, label, reason = DynamicDialogue:GetYieldInfo()
-        if yielding then
-            Print("Status: Yielding to " .. tostring(label) .. " (" .. tostring(reason or "") .. ").")
-        else
-            Print("Status: " .. DynamicDialogue:GetStatusText() .. ".")
-        end
+        local state, _, detail = DynamicDialogue:GetDetailedStatus()
+        Print("Status: " .. state .. " -- " .. detail)
     else
         DynamicDialogue:Open()
     end
