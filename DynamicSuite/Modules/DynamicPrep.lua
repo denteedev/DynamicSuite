@@ -11358,6 +11358,17 @@ do
         return out
     end
 
+    function DynamicPrep:GetLoadoutBindBadgeText(entry, specID)
+        local bInfo = self:GetLoadoutBindings(entry, specID)
+        if not bInfo then return nil, nil end
+        if bInfo.scopeCount >= 2 then
+            return "(Various)", bInfo
+        elseif bInfo.scopeCount == 1 then
+            return "(" .. tostring(bInfo.singleShortBadge or bInfo.singleBadge or "Bound") .. ")", bInfo
+        end
+        return nil, bInfo
+    end
+
     function DynamicPrep:GetSlotOwnerSummary(kind, key, specID)
         if not self.db then return nil end
         local sid = specID or self:GetActiveSpecID()
@@ -11429,6 +11440,31 @@ do
         local bMap = self.db.talentBossMap and self.db.talentBossMap[sid] or {}
         local dMap = self.db.talentDungeonMap and self.db.talentDungeonMap[sid] or {}
         local zMap = self.db.talentZoneMap and self.db.talentZoneMap[sid] or {}
+        local libByLow = {}
+        local rawLib = self.db.talentStringLibrary and self.db.talentStringLibrary[sid]
+        if type(rawLib) == "table" then
+            for _, le in ipairs(rawLib) do
+                if type(le) == "table" and type(le.name) == "string" and le.name ~= "" then
+                    libByLow[le.name:lower()] = le
+                end
+            end
+        end
+
+        local function MakeConflict(scopeStr, ruleTbl, defGroup)
+            local exName = type(ruleTbl) == "table" and tostring(ruleTbl.loadoutName or "") or ""
+            local libRef = (exName ~= "") and libByLow[exName:lower()] or nil
+            local badge = self:FormatTalentBadge({
+                group        = (libRef and libRef.group) or (type(ruleTbl) == "table" and ruleTbl.group) or defGroup or "Custom",
+                importString = (libRef and libRef.importString) or (type(ruleTbl) == "table" and ruleTbl.importString) or nil,
+                loadoutName  = exName,
+                heroAcronym  = (libRef and libRef.heroAcronym) or (type(ruleTbl) == "table" and ruleTbl.heroAcronym) or nil,
+            })
+            return {
+                scope         = scopeStr,
+                existingName  = exName,
+                existingBadge = badge,
+            }
+        end
 
         local function TierLbl(kt)
             return (kt == "HIGH" and "+10+") or (kt == "LOW" and "+2-9") or "Any Key"
@@ -11457,7 +11493,7 @@ do
                                 local ovTxt = DiffOverlap(exV.difficulties, ds)
                                 if ovTxt then
                                     local ordPfx = tInfo.order and ("#" .. tInfo.order .. " ") or ""
-                                    table.insert(conflicts, { scope = ordPfx .. bName .. " (" .. ovTxt .. ")", existingName = exName })
+                                    table.insert(conflicts, MakeConflict(ordPfx .. bName .. " (" .. ovTxt .. ")", exV, "Raid"))
                                 end
                             end
                         end
@@ -11472,7 +11508,7 @@ do
                     if exName ~= "" and exName:lower() ~= newLow then
                         local ovTxt = DiffOverlap(exV.difficulties, ds)
                         if ovTxt then
-                            table.insert(conflicts, { scope = "All Raids (" .. ovTxt .. ")", existingName = exName })
+                            table.insert(conflicts, MakeConflict("All Raids (" .. ovTxt .. ")", exV, "Raid"))
                         end
                     end
                 end
@@ -11490,7 +11526,7 @@ do
                                 and (exKT == kt or kt == "ANY" or exKT == "ANY") then
                                 local exName = tostring(exV.loadoutName or "")
                                 if exName ~= "" and exName:lower() ~= newLow then
-                                    table.insert(conflicts, { scope = dObj.name .. " (" .. TierLbl(exKT) .. ")", existingName = exName })
+                                    table.insert(conflicts, MakeConflict(dObj.name .. " (" .. TierLbl(exKT) .. ")", exV, "M+"))
                                 end
                             end
                         end
@@ -11506,19 +11542,19 @@ do
                     if isAllM and (exKT == kt or kt == "ANY" or exKT == "ANY") then
                         local exName = tostring(exV.loadoutName or "")
                         if exName ~= "" and exName:lower() ~= newLow then
-                            table.insert(conflicts, { scope = "All M+ (" .. TierLbl(exKT) .. ")", existingName = exName })
+                            table.insert(conflicts, MakeConflict("All M+ (" .. TierLbl(exKT) .. ")", exV, "M+"))
                         end
                     end
                 end
             end
         elseif kind == "ALL_CONTENT" then
             if type(zMap.all) == "table" and tostring(zMap.all.loadoutName or "") ~= "" and tostring(zMap.all.loadoutName):lower() ~= newLow then
-                table.insert(conflicts, { scope = "All Content Default", existingName = zMap.all.loadoutName })
+                table.insert(conflicts, MakeConflict("All Content Default", zMap.all, "Custom"))
             end
-            for _, zItem in ipairs({ { key = "outdoor", label = "Zone: Outdoor" }, { key = "delves", label = "Zone: Delves" }, { key = "pvp", label = "Zone: PvP" } }) do
+            for _, zItem in ipairs({ { key = "outdoor", label = "Zone: Outdoor", defGroup = "Custom" }, { key = "delves", label = "Zone: Delves", defGroup = "Delves" }, { key = "pvp", label = "Zone: PvP", defGroup = "PvP" } }) do
                 local zv = zMap[zItem.key]
                 if type(zv) == "table" and tostring(zv.loadoutName or "") ~= "" and tostring(zv.loadoutName):lower() ~= newLow then
-                    table.insert(conflicts, { scope = zItem.label, existingName = zv.loadoutName })
+                    table.insert(conflicts, MakeConflict(zItem.label, zv, zItem.defGroup))
                 end
             end
             for _, c in ipairs(self:DetectBindConflicts("ALL_RAID", { diffState = { normal = true, heroic = true, mythic = true } }, newEntry, sid)) do
@@ -11533,10 +11569,10 @@ do
                 return self:DetectBindConflicts("ALL_CONTENT", nil, newEntry, sid)
             end
             if zs.outdoor and type(zMap.outdoor) == "table" and tostring(zMap.outdoor.loadoutName or "") ~= "" and tostring(zMap.outdoor.loadoutName):lower() ~= newLow then
-                table.insert(conflicts, { scope = "Zone: Outdoor", existingName = zMap.outdoor.loadoutName })
+                table.insert(conflicts, MakeConflict("Zone: Outdoor", zMap.outdoor, "Custom"))
             end
             if zs.delves and type(zMap.delves) == "table" and tostring(zMap.delves.loadoutName or "") ~= "" and tostring(zMap.delves.loadoutName):lower() ~= newLow then
-                table.insert(conflicts, { scope = "Zone: Delves", existingName = zMap.delves.loadoutName })
+                table.insert(conflicts, MakeConflict("Zone: Delves", zMap.delves, "Delves"))
             end
             if zs.dungeons then
                 for _, c in ipairs(self:DetectBindConflicts("ALL_MPLUS", { keyTier = "ANY" }, newEntry, sid)) do
@@ -11549,13 +11585,13 @@ do
                 end
             end
             if zs.pvp and type(zMap.pvp) == "table" and tostring(zMap.pvp.loadoutName or "") ~= "" and tostring(zMap.pvp.loadoutName):lower() ~= newLow then
-                table.insert(conflicts, { scope = "Zone: PvP", existingName = zMap.pvp.loadoutName })
+                table.insert(conflicts, MakeConflict("Zone: PvP", zMap.pvp, "PvP"))
             end
         end
         return conflicts
     end
 
-    function DynamicPrep:ConfirmBindOverwrite(conflicts, newEntry, onConfirm)
+    function DynamicPrep:ConfirmBindOverwrite(conflicts, newEntry, onConfirm, opts)
         if type(conflicts) ~= "table" or #conflicts == 0 then
             if type(onConfirm) == "function" then onConfirm() end
             return
@@ -11575,7 +11611,7 @@ do
         end
         if not self._overwriteModal then
             local f = CreateFrame("Frame", "DynamicPrepTalentOverwriteModal", UIParent, "BackdropTemplate")
-            f:SetSize(456, 220)
+            f:SetSize(560, 220)
             f:SetPoint("CENTER")
             f:SetFrameStrata("FULLSCREEN_DIALOG")
             f:SetFrameLevel(90)
@@ -11586,46 +11622,189 @@ do
                 table.insert(_G.UISpecialFrames, "DynamicPrepTalentOverwriteModal")
             end
 
-            local hdr = CreateFrame("Frame", nil, f, "BackdropTemplate")
-            hdr:SetHeight(34)
-            hdr:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
-            hdr:SetPoint("TOPRIGHT", f, "TOPRIGHT", -1, -1)
-            SetPixelBackdrop(hdr, { 0.016, 0.020, 0.024, 1.00 }, { 0, 0, 0, 0 }, 0)
-            local div = hdr:CreateTexture(nil, "ARTWORK")
-            div:SetHeight(1)
-            div:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 0, 0)
-            div:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", 0, 0)
-            div:SetColorTexture(1, 1, 1, 0.08)
+            do
+                local hdr = CreateFrame("Frame", nil, f, "BackdropTemplate")
+                hdr:SetHeight(34)
+                hdr:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
+                hdr:SetPoint("TOPRIGHT", f, "TOPRIGHT", -1, -1)
+                SetPixelBackdrop(hdr, { 0.016, 0.020, 0.024, 1.00 }, { 0, 0, 0, 0 }, 0)
+                local div = hdr:CreateTexture(nil, "ARTWORK")
+                div:SetHeight(1)
+                div:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 0, 0)
+                div:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", 0, 0)
+                div:SetColorTexture(1, 1, 1, 0.08)
 
-            local ttl = CreateText(hdr, "OVERLAY", "GameFontHighlightSmall")
-            ttl:SetPoint("LEFT", hdr, "LEFT", 12, 0)
-            ttl:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFFBBF24Confirm Overwrite|r")
+                local ttl = CreateText(hdr, "OVERLAY", "GameFontHighlightSmall")
+                ttl:SetPoint("LEFT", hdr, "LEFT", 12, 0)
+                ttl:SetPoint("RIGHT", hdr, "RIGHT", -40, 0)
+                ttl:SetJustifyH("LEFT")
+                ttl:SetWordWrap(false)
+                ttl:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFFBBF24Confirm Overwrite|r")
+                f.ttlFS = ttl
 
-            local closeBtn = CreateFrame("Button", nil, hdr)
-            closeBtn:SetSize(34, 33)
-            closeBtn:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", 0, 0)
-            local cbg = closeBtn:CreateTexture(nil, "BACKGROUND")
-            cbg:SetAllPoints()
-            cbg:SetColorTexture(0.957, 0.247, 0.369, 0.00)
-            local x1 = closeBtn:CreateTexture(nil, "OVERLAY")
-            x1:SetSize(11, 1.6); x1:SetPoint("CENTER"); x1:SetColorTexture(0.75, 0.80, 0.88, 0.90); x1:SetRotation(math.rad(45))
-            local x2 = closeBtn:CreateTexture(nil, "OVERLAY")
-            x2:SetSize(11, 1.6); x2:SetPoint("CENTER"); x2:SetColorTexture(0.75, 0.80, 0.88, 0.90); x2:SetRotation(math.rad(-45))
-            closeBtn:SetScript("OnEnter", function() cbg:SetColorTexture(0.957, 0.247, 0.369, 0.22); x1:SetColorTexture(1, 1, 1, 1); x2:SetColorTexture(1, 1, 1, 1) end)
-            closeBtn:SetScript("OnLeave", function() cbg:SetColorTexture(0.957, 0.247, 0.369, 0.00); x1:SetColorTexture(0.75, 0.80, 0.88, 0.90); x2:SetColorTexture(0.75, 0.80, 0.88, 0.90) end)
-            closeBtn:SetScript("OnClick", function() f:Hide() end)
+                local closeBtn = CreateFrame("Button", nil, hdr)
+                closeBtn:SetSize(34, 33)
+                closeBtn:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", 0, 0)
+                local cbg = closeBtn:CreateTexture(nil, "BACKGROUND")
+                cbg:SetAllPoints()
+                cbg:SetColorTexture(0.957, 0.247, 0.369, 0.00)
+                local x1 = closeBtn:CreateTexture(nil, "OVERLAY")
+                x1:SetSize(11, 1.6); x1:SetPoint("CENTER"); x1:SetColorTexture(0.75, 0.80, 0.88, 0.90); x1:SetRotation(math.rad(45))
+                local x2 = closeBtn:CreateTexture(nil, "OVERLAY")
+                x2:SetSize(11, 1.6); x2:SetPoint("CENTER"); x2:SetColorTexture(0.75, 0.80, 0.88, 0.90); x2:SetRotation(math.rad(-45))
+                closeBtn:SetScript("OnEnter", function() cbg:SetColorTexture(0.957, 0.247, 0.369, 0.22); x1:SetColorTexture(1, 1, 1, 1); x2:SetColorTexture(1, 1, 1, 1) end)
+                closeBtn:SetScript("OnLeave", function() cbg:SetColorTexture(0.957, 0.247, 0.369, 0.00); x1:SetColorTexture(0.75, 0.80, 0.88, 0.90); x2:SetColorTexture(0.75, 0.80, 0.88, 0.90) end)
+                closeBtn:SetScript("OnClick", function() f:Hide() end)
+            end
 
             f.promptFS = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
-            f.promptFS:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -46)
-            f.promptFS:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -46)
+            f.promptFS:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -44)
+            f.promptFS:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -44)
             f.promptFS:SetJustifyH("LEFT")
             f.promptFS:SetWordWrap(true)
 
             f.box = CreateFrame("Frame", nil, f, "BackdropTemplate")
-            f.box:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -84)
-            f.box:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -84)
+            f.box:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -86)
+            f.box:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -86)
             SetPixelBackdrop(f.box, { 0.043, 0.051, 0.071, 1.00 }, { 1, 1, 1, 0.08 }, 1)
             f.rows = {}
+
+            f.scroll = CreateFrame("ScrollFrame", nil, f.box)
+            f.scroll:SetPoint("TOPLEFT", f.box, "TOPLEFT", 6, -6)
+            f.scroll:SetPoint("BOTTOMRIGHT", f.box, "BOTTOMRIGHT", -6, 6)
+            f.scroll:EnableMouseWheel(true)
+            f.scrollChild = CreateFrame("Frame", nil, f.scroll)
+            f.scrollChild:SetWidth(520)
+            f.scrollChild:SetHeight(26)
+            f.scroll:SetScrollChild(f.scrollChild)
+
+            f.track = CreateFrame("Frame", nil, f.box, "BackdropTemplate")
+            f.track:SetWidth(4)
+            f.track:SetPoint("TOPRIGHT", f.box, "TOPRIGHT", -4, -6)
+            f.track:SetPoint("BOTTOMRIGHT", f.box, "BOTTOMRIGHT", -4, 6)
+            f.track:SetFrameLevel(95)
+            f.track:EnableMouse(true)
+            f.track:EnableMouseWheel(true)
+            f.track:SetHitRectInsets(-5, -4, 0, 0)
+            SetPixelBackdrop(f.track, { 0.031, 0.035, 0.047, 0.95 }, { 0, 0, 0, 0 }, 0)
+            f.track:Hide()
+
+            f.thumb = CreateFrame("Button", nil, f.track)
+            f.thumb:SetWidth(4)
+            f.thumb:SetHeight(24)
+            f.thumb:SetPoint("TOP", f.track, "TOP", 0, 0)
+            f.thumb:SetFrameLevel(96)
+            f.thumb:EnableMouse(true)
+            f.thumb:SetHitRectInsets(-5, -4, 0, 0)
+            f.thumb.tex = f.thumb:CreateTexture(nil, "OVERLAY")
+            f.thumb.tex:SetAllPoints()
+            f.thumb.tex:SetColorTexture(ar, ag, ab, 0.78)
+            f.thumb:Hide()
+
+            f.UpdateScrollBar = function()
+                local r, g, b = GetActiveAccentRGB()
+                if f.thumb.isDragging then
+                    f.thumb.tex:SetColorTexture(r, g, b, 1.0)
+                elseif f.thumb.isHovered then
+                    f.thumb.tex:SetColorTexture(r, g, b, 0.92)
+                else
+                    f.thumb.tex:SetColorTexture(r, g, b, 0.78)
+                end
+                local visH = f._visH or f.scroll:GetHeight() or 0
+                local totalH = f.scrollChild:GetHeight() or 0
+                local boxW = f.box:GetWidth() or 532
+                local maxS = math.max(0, totalH - visH)
+                f.scroll:ClearAllPoints()
+                f.scroll:SetPoint("TOPLEFT", f.box, "TOPLEFT", 6, -6)
+                if maxS <= 1 or visH <= 1 then
+                    f.scroll:SetPoint("BOTTOMRIGHT", f.box, "BOTTOMRIGHT", -6, 6)
+                    f.scrollChild:SetWidth(math.max(100, boxW - 12))
+                    f.track:Hide()
+                    f.thumb:Hide()
+                    f.scroll:SetVerticalScroll(0)
+                else
+                    f.scroll:SetPoint("BOTTOMRIGHT", f.box, "BOTTOMRIGHT", -14, 6)
+                    f.scrollChild:SetWidth(math.max(100, boxW - 20))
+                    f.track:Show()
+                    f.thumb:Show()
+                    local trackH = f.track:GetHeight()
+                    if not trackH or trackH <= 1 then trackH = visH end
+                    local cur = math.max(0, math.min(maxS, f.scroll:GetVerticalScroll() or 0))
+                    local thumbH = math.max(20, math.floor(trackH * math.min(1, visH / totalH) + 0.5))
+                    local travel = math.max(1, trackH - thumbH)
+                    f.thumb:SetHeight(thumbH)
+                    f.thumb:ClearAllPoints()
+                    f.thumb:SetPoint("TOP", f.track, "TOP", 0, -math.floor((cur / maxS) * travel + 0.5))
+                end
+                local cw = f.scrollChild:GetWidth()
+                for _, rw in ipairs(f.rows) do
+                    if rw:IsShown() then rw:SetWidth(cw) end
+                end
+            end
+
+            f.ScrollFromCursor = function()
+                if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+                    f.thumb.isDragging = false
+                    f.thumb:SetScript("OnUpdate", nil)
+                    f.track:SetScript("OnUpdate", nil)
+                    f.UpdateScrollBar()
+                    return
+                end
+                local visH = f._visH or f.scroll:GetHeight() or 0
+                local totalH = f.scrollChild:GetHeight() or 0
+                local maxS = math.max(0, totalH - visH)
+                local trackH = f.track:GetHeight()
+                if not trackH or trackH <= 1 then trackH = visH end
+                if maxS <= 1 or trackH <= 1 then return end
+                local tTop = f.track:GetTop()
+                local eff = f.track:GetEffectiveScale() or 1
+                if not tTop or eff <= 0 or not GetCursorPosition then return end
+                local _, cy = GetCursorPosition()
+                local relY = math.max(0, math.min(trackH, tTop - (cy / eff)))
+                local thumbH = f.thumb:GetHeight() or 20
+                local travel = math.max(1, trackH - thumbH)
+                local ratio = math.max(0, math.min(1, (relY - (thumbH * 0.5)) / travel))
+                f.scroll:SetVerticalScroll(ratio * maxS)
+                f.UpdateScrollBar()
+            end
+
+            f.thumb:SetScript("OnEnter", function(s) s.isHovered = true; f.UpdateScrollBar() end)
+            f.thumb:SetScript("OnLeave", function(s) s.isHovered = false; f.UpdateScrollBar() end)
+            f.thumb:SetScript("OnMouseDown", function(s, btn)
+                if btn ~= "LeftButton" then return end
+                s.isDragging = true
+                s:SetScript("OnUpdate", f.ScrollFromCursor)
+                f.ScrollFromCursor()
+            end)
+            f.thumb:SetScript("OnMouseUp", function(s)
+                s.isDragging = false
+                s:SetScript("OnUpdate", nil)
+                f.UpdateScrollBar()
+            end)
+            f.track:SetScript("OnMouseDown", function(s, btn)
+                if btn ~= "LeftButton" then return end
+                f.thumb.isDragging = true
+                s:SetScript("OnUpdate", f.ScrollFromCursor)
+                f.ScrollFromCursor()
+            end)
+            f.track:SetScript("OnMouseUp", function(s)
+                f.thumb.isDragging = false
+                s:SetScript("OnUpdate", nil)
+                f.UpdateScrollBar()
+            end)
+
+            local function HandleOverwriteWheel(delta)
+                local visH = f._visH or f.scroll:GetHeight() or 0
+                local maxS = math.max(0, (f.scrollChild:GetHeight() or 0) - visH)
+                if maxS <= 1 then
+                    f.scroll:SetVerticalScroll(0)
+                else
+                    f.scroll:SetVerticalScroll(math.max(0, math.min(maxS, (f.scroll:GetVerticalScroll() or 0) - (delta * 26))))
+                end
+                f.UpdateScrollBar()
+            end
+            f.scroll:SetScript("OnMouseWheel", function(_, delta) HandleOverwriteWheel(delta) end)
+            f.track:SetScript("OnMouseWheel", function(_, delta) HandleOverwriteWheel(delta) end)
 
             f.cancelBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
             f.cancelBtn:SetSize(84, 26)
@@ -11634,16 +11813,49 @@ do
             f.cancelBtn.txt = CreateText(f.cancelBtn, "OVERLAY", "GameFontHighlightSmall")
             f.cancelBtn.txt:SetPoint("CENTER")
             f.cancelBtn.txt:SetText("Cancel")
+            f.cancelBtn:SetScript("OnEnter", function(s)
+                SetPixelBackdrop(s, { 0.14, 0.16, 0.21, 0.98 }, { 0.45, 0.52, 0.64, 0.95 }, 1)
+            end)
+            f.cancelBtn:SetScript("OnLeave", function(s)
+                SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+            end)
             f.cancelBtn:SetScript("OnClick", function() f:Hide() end)
 
+            f.unboundBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+            f.unboundBtn:SetSize(144, 26)
+            f.unboundBtn:SetPoint("RIGHT", f.cancelBtn, "LEFT", -8, 0)
+            SetPixelBackdrop(f.unboundBtn, { 0.063 * 0.34, 0.725 * 0.34, 0.506 * 0.34, 1.00 }, { 0.063, 0.725, 0.506, 0.90 }, 1)
+            f.unboundBtn.txt = CreateText(f.unboundBtn, "OVERLAY", "GameFontHighlightSmall")
+            f.unboundBtn.txt:SetPoint("CENTER")
+            f.unboundBtn.txt:SetText("Bind Unbound Only")
+            f.unboundBtn:SetScript("OnEnter", function(s)
+                SetPixelBackdrop(s, { 0.063 * 0.50, 0.725 * 0.50, 0.506 * 0.50, 1.00 }, { 0.20, 0.85, 0.62, 1.00 }, 1)
+            end)
+            f.unboundBtn:SetScript("OnLeave", function(s)
+                SetPixelBackdrop(s, { 0.063 * 0.34, 0.725 * 0.34, 0.506 * 0.34, 1.00 }, { 0.063, 0.725, 0.506, 0.90 }, 1)
+            end)
+            f.unboundBtn:Hide()
+
             f.confirmBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
-            f.confirmBtn:SetSize(108, 26)
+            f.confirmBtn:SetSize(112, 26)
             f.confirmBtn:SetPoint("RIGHT", f.cancelBtn, "LEFT", -8, 0)
             f.confirmBtn.txt = CreateText(f.confirmBtn, "OVERLAY", "GameFontHighlightSmall")
             f.confirmBtn.txt:SetPoint("CENTER")
             f.confirmBtn.txt:SetText("Overwrite")
+            f.confirmBtn:SetScript("OnEnter", function(s)
+                local r, g, b = GetActiveAccentRGB()
+                SetPixelBackdrop(s, { math.min(1, r * 0.55), math.min(1, g * 0.55), math.min(1, b * 0.55), 1.00 }, { r, g, b, 1.00 }, 1)
+            end)
+            f.confirmBtn:SetScript("OnLeave", function(s)
+                local r, g, b = GetActiveAccentRGB()
+                SetPixelBackdrop(s, { r * 0.42, g * 0.42, b * 0.42, 1.00 }, { r, g, b, 0.95 }, 1)
+            end)
 
             f:SetScript("OnHide", function()
+                f.thumb.isDragging = false
+                f.thumb:SetScript("OnUpdate", nil)
+                f.track:SetScript("OnUpdate", nil)
+                if GameTooltip then GameTooltip:Hide() end
                 if DynamicPrep._overwriteCatcher then DynamicPrep._overwriteCatcher:Hide() end
             end)
             self._overwriteCatcher:SetScript("OnClick", function() f:Hide() end)
@@ -11653,47 +11865,105 @@ do
         local f = self._overwriteModal
         SetPixelBackdrop(f, { 0.035, 0.039, 0.051, 1.00 }, { ar, ag, ab, 0.92 }, 1)
         SetPixelBackdrop(f.confirmBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
-        local badge = self:FormatTalentBadge(newEntry)
-        f.promptFS:SetText(string.format("|cFFE2E8F0The following bind(s) already belong to another loadout. Overwrite them with|r %s |cFFFFFFFF%s|r|cFFE2E8F0?|r", badge, tostring(newEntry and newEntry.name or "this build")))
+
+        local nConflicts = #conflicts
+        if f.ttlFS then
+            f.ttlFS:SetText(string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFFBBF24Confirm Overwrite|r  |cFF94A3B8(%d %s)|r", nConflicts, (nConflicts == 1 and "conflict" or "conflicts")))
+        end
+
+        local newBadge = self:FormatTalentBadge(newEntry)
+        local newNameStr = tostring(newEntry and newEntry.name or "this build")
+        local hasUnbound = (type(opts) == "table" and type(opts.onBindUnboundOnly) == "function")
+        local unboundCount = (hasUnbound and tonumber(opts.unboundCount)) or 0
+
+        f.confirmBtn:ClearAllPoints()
+        if hasUnbound then
+            f.unboundBtn:Show()
+            f.unboundBtn:SetScript("OnClick", function()
+                f:Hide()
+                opts.onBindUnboundOnly()
+            end)
+            f.confirmBtn:SetPoint("RIGHT", f.unboundBtn, "LEFT", -8, 0)
+            f.confirmBtn.txt:SetText("Overwrite All")
+            f.promptFS:SetText(string.format(
+                "|cFFE2E8F0%d selected %s already bound to another loadout. Overwrite all with|r %s |cFFFFFFFF%s|r|cFFE2E8F0, or bind only the %d unbound %s?|r",
+                nConflicts,
+                (nConflicts == 1 and "slot is" or "slots are"),
+                newBadge,
+                newNameStr,
+                math.max(1, unboundCount),
+                (math.max(1, unboundCount) == 1 and "slot" or "slots")
+            ))
+        else
+            f.unboundBtn:Hide()
+            f.confirmBtn:SetPoint("RIGHT", f.cancelBtn, "LEFT", -8, 0)
+            f.confirmBtn.txt:SetText("Overwrite")
+            f.promptFS:SetText(string.format(
+                "|cFFE2E8F0%d selected %s already bound to another loadout. Overwrite with|r %s |cFFFFFFFF%s|r|cFFE2E8F0?|r",
+                nConflicts,
+                (nConflicts == 1 and "bind is" or "binds are"),
+                newBadge,
+                newNameStr
+            ))
+        end
 
         for _, rw in ipairs(f.rows) do rw:Hide() end
-        local shownCount = math.min(6, #conflicts)
-        local hasOverflow = (#conflicts > 6)
-        local lineCount = shownCount + (hasOverflow and 1 or 0)
-        for i = 1, shownCount do
-            local fs = f.rows[i]
-            if not fs then
-                fs = CreateText(f.box, "OVERLAY", "GameFontHighlightSmall")
-                fs:SetJustifyH("LEFT")
-                fs:SetWordWrap(false)
-                f.rows[i] = fs
+        local stride = 26
+        local rowW = (nConflicts >= 4) and 512 or 520
+        for i, c in ipairs(conflicts) do
+            local row = f.rows[i]
+            if not row then
+                row = CreateFrame("Frame", nil, f.scrollChild, "BackdropTemplate")
+                row:SetHeight(24)
+                row:EnableMouse(true)
+                SetPixelBackdrop(row, COLORS.BgElevated, { 1, 1, 1, 0.05 }, 1)
+                row.fs = CreateText(row, "OVERLAY", "GameFontHighlightSmall")
+                row.fs:SetPoint("LEFT", row, "LEFT", 8, 0)
+                row.fs:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+                row.fs:SetJustifyH("LEFT")
+                row.fs:SetWordWrap(false)
+                row:SetScript("OnEnter", function(s)
+                    local r, g, b = GetActiveAccentRGB()
+                    SetPixelBackdrop(s, { r * 0.22, g * 0.22, b * 0.22, 0.96 }, { r, g, b, 0.75 }, 1)
+                    if GameTooltip and s._cData then
+                        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                        GameTooltip:AddLine("Conflict Details", 1, 1, 1)
+                        GameTooltip:AddLine("|cFFFBBF24Scope:|r |cFFE2E8F0" .. tostring(s._cData.scope) .. "|r", 1, 1, 1)
+                        GameTooltip:AddLine("|cFFF43F5ECurrent:|r " .. tostring(s._cData.existingBadge or "") .. " |cFFFFFFFF" .. tostring(s._cData.existingName or "") .. "|r", 1, 1, 1)
+                        GameTooltip:AddLine("|cFF10B981New:|r " .. newBadge .. " |cFFFFFFFF" .. newNameStr .. "|r", 1, 1, 1)
+                        GameTooltip:Show()
+                    end
+                end)
+                row:SetScript("OnLeave", function(s)
+                    SetPixelBackdrop(s, COLORS.BgElevated, { 1, 1, 1, 0.05 }, 1)
+                    if GameTooltip then GameTooltip:Hide() end
+                end)
+                f.rows[i] = row
             end
-            fs:ClearAllPoints()
-            fs:SetPoint("TOPLEFT", f.box, "TOPLEFT", 10, -8 - ((i - 1) * 20))
-            fs:SetPoint("TOPRIGHT", f.box, "TOPRIGHT", -10, -8 - ((i - 1) * 20))
-            local c = conflicts[i]
-            fs:SetText(string.format("|cFFFBBF24-|r |cFFFFFFFF%s|r  |cFF94A3B8(currently:|r |cFFF43F5E%s|r|cFF94A3B8)|r", tostring(c.scope), tostring(c.existingName)))
-            fs:Show()
-        end
-        if hasOverflow then
-            local ovIdx = shownCount + 1
-            local fs = f.rows[ovIdx]
-            if not fs then
-                fs = CreateText(f.box, "OVERLAY", "GameFontHighlightSmall")
-                fs:SetJustifyH("LEFT")
-                fs:SetWordWrap(false)
-                f.rows[ovIdx] = fs
-            end
-            fs:ClearAllPoints()
-            fs:SetPoint("TOPLEFT", f.box, "TOPLEFT", 10, -8 - (shownCount * 20))
-            fs:SetPoint("TOPRIGHT", f.box, "TOPRIGHT", -10, -8 - (shownCount * 20))
-            fs:SetText(string.format("|cFF94A3B8...and %d more conflicting bind(s).|r", #conflicts - shownCount))
-            fs:Show()
+            row._cData = c
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", f.scrollChild, "TOPLEFT", 0, -((i - 1) * stride))
+            row:SetWidth(rowW)
+            local exBdg = (c.existingBadge and c.existingBadge ~= "") and (tostring(c.existingBadge) .. " ") or ""
+            row.fs:SetText(string.format(
+                "|cFFFBBF24%s:|r  %s|cFFF43F5E%s|r  |cFF64748B->|r  %s |cFF10B981%s|r",
+                tostring(c.scope),
+                exBdg,
+                tostring(c.existingName or ""),
+                newBadge,
+                newNameStr
+            ))
+            row:Show()
         end
 
-        local boxH = 14 + (lineCount * 20)
+        local totalH = math.max(stride, nConflicts * stride)
+        local visH = (nConflicts >= 4) and 92 or math.max(stride, totalH)
+        local boxH = visH + 12
+        f._visH = visH
+        f.scrollChild:SetHeight(totalH)
+        f.scroll:SetVerticalScroll(0)
         f.box:SetHeight(boxH)
-        f:SetHeight(144 + boxH)
+        f:SetHeight(148 + boxH)
 
         f.confirmBtn:SetScript("OnClick", function()
             f:Hide()
@@ -11701,6 +11971,7 @@ do
         end)
         self._overwriteCatcher:Show()
         f:Show()
+        f.UpdateScrollBar()
     end
 end
 
@@ -13730,8 +14001,38 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             pickBtn:SetPoint("RIGHT", newBtn, "LEFT", -8, 0)
             pickBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             StyleDropdownTrigger(pickBtn)
+            pickBtn.bindTag = CreateText(pickBtn, "OVERLAY", "GameFontHighlightSmall")
+            pickBtn.bindTag:SetPoint("RIGHT", pickBtn.chev, "LEFT", -6, 0)
+            pickBtn.bindTag:SetJustifyH("RIGHT")
+            pickBtn.bindTag:SetWordWrap(false)
+            pickBtn.bindTag:Hide()
             pickBtn.txt:SetText("|cFF10B981+ New / Import Loadout|r")
+            pickBtn:HookScript("OnEnter", function(btnSelf)
+                if tmDrop and tmDrop:IsShown() then return end
+                local curSel = f.GetSelectedLoadout and f:GetSelectedLoadout() or nil
+                if type(curSel) == "table" and GameTooltip then
+                    local _, bInfo = DynamicPrep:GetLoadoutBindBadgeText(curSel)
+                    local heroAcr, heroName = DynamicPrep:GetLoadoutHeroAcronym(curSel)
+                    GameTooltip:SetOwner(btnSelf, "ANCHOR_RIGHT")
+                    GameTooltip:AddLine(string.format("%s %s", DynamicPrep:FormatTalentBadge(curSel, heroAcr), tostring(curSel.name or "Loadout")), 1, 1, 1)
+                    if heroName and heroAcr then
+                        GameTooltip:AddLine(string.format("|cFF94A3B8Hero Tree:|r |cFFE2E8F0%s (%s)|r", tostring(heroName), tostring(heroAcr)), 1, 1, 1)
+                    end
+                    if bInfo and #bInfo.detailLines > 0 then
+                        for _, bl in ipairs(bInfo.detailLines) do
+                            GameTooltip:AddLine("|cFFFBBF24Bound:|r |cFFE2E8F0" .. bl .. "|r", 1, 1, 1)
+                        end
+                    else
+                        GameTooltip:AddLine("|cFF94A3B8Unbound -- click dropdown to switch builds or open Talent Binds.|r", 1, 1, 1)
+                    end
+                    GameTooltip:Show()
+                end
+            end)
+            pickBtn:HookScript("OnLeave", function()
+                if GameTooltip then GameTooltip:Hide() end
+            end)
             pickBtn:SetScript("OnClick", function(btnSelf)
+                if GameTooltip then GameTooltip:Hide() end
                 if not f.ShowModalDropdown then return end
                 local curSel = f.GetSelectedLoadout and f:GetSelectedLoadout() or nil
                 local items = {
@@ -13745,16 +14046,41 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 }
                 local list = DynamicPrep:GetSortedTalentProfiles()
                 for _, it in ipairs(list) do
+                    local bTag, bInfo = DynamicPrep:GetLoadoutBindBadgeText(it)
                     table.insert(items, {
-                        label = string.format("%s %s", DynamicPrep:FormatTalentBadge(it), tostring(it.name or "Loadout")),
-                        selected = (curSel == it),
-                        onSelect = function()
+                        label        = string.format("%s %s", DynamicPrep:FormatTalentBadge(it), tostring(it.name or "Loadout")),
+                        bindTag      = bTag,
+                        tooltipEntry = it,
+                        tooltipBInfo = bInfo,
+                        selected     = (curSel == it),
+                        onSelect     = function()
                             if f.SelectLoadout then f:SelectLoadout(it, (f.activeTab ~= 1)) end
                         end,
                     })
                 end
                 f.ShowModalDropdown(btnSelf, items, btnSelf:GetWidth())
             end)
+
+            function f:UpdateTopLoadoutTriggerBadge()
+                local btn = self.editPickBtn
+                if not btn or not btn.txt or not btn.bindTag then return end
+                local curSel = self.GetSelectedLoadout and self:GetSelectedLoadout() or nil
+                local bTag = (type(curSel) == "table") and DynamicPrep:GetLoadoutBindBadgeText(curSel) or nil
+                btn.txt:ClearAllPoints()
+                btn.txt:SetPoint("LEFT", btn, "LEFT", 8, 0)
+                if bTag and bTag ~= "" then
+                    btn.bindTag:SetText("|cFFFBBF24" .. tostring(bTag) .. "|r")
+                    btn.bindTag:Show()
+                    btn.txt:SetPoint("RIGHT", btn.bindTag, "LEFT", -8, 0)
+                else
+                    btn.bindTag:Hide()
+                    if btn.chev then
+                        btn.txt:SetPoint("RIGHT", btn.chev, "LEFT", -6, 0)
+                    else
+                        btn.txt:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+                    end
+                end
+            end
 
             f.topLoadoutBar = pickBar
             f.editPickBar = pickBar
@@ -13777,14 +14103,14 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         tab1Btn:SetPoint("LEFT", tabBar, "LEFT", 4, 0)
         tab1Btn.txt = CreateText(tab1Btn, "OVERLAY", "GameFontHighlightSmall")
         tab1Btn.txt:SetPoint("CENTER")
-        tab1Btn.txt:SetText("1. Save / Edit / Import")
+        tab1Btn.txt:SetText("Build Details")
 
         local tab2Btn = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
         tab2Btn:SetSize(290, 26)
         tab2Btn:SetPoint("RIGHT", tabBar, "RIGHT", -4, 0)
         tab2Btn.txt = CreateText(tab2Btn, "OVERLAY", "GameFontHighlightSmall")
         tab2Btn.txt:SetPoint("CENTER")
-        tab2Btn.txt:SetText("2. Talent Binds & Defaults")
+        tab2Btn.txt:SetText("Talent Binds")
         f.tab1Btn = tab1Btn
         f.tab2Btn = tab2Btn
 
@@ -13881,7 +14207,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
 
         -- Bottom Action Row inside Card 2 (Zero overlap!)
         local useCurBtn = CreateFrame("Button", nil, c2, "BackdropTemplate")
-        useCurBtn:SetSize(124, 26)
+        useCurBtn:SetSize(116, 26)
         useCurBtn:SetPoint("BOTTOMLEFT", c2, "BOTTOMLEFT", 12, 12)
         SetPixelBackdrop(useCurBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
         useCurBtn.txt = CreateText(useCurBtn, "OVERLAY", "GameFontHighlightSmall")
@@ -13893,7 +14219,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         end)
 
         local clearStrBtn = CreateFrame("Button", nil, c2, "BackdropTemplate")
-        clearStrBtn:SetSize(82, 26)
+        clearStrBtn:SetSize(56, 26)
         clearStrBtn:SetPoint("LEFT", useCurBtn, "RIGHT", 6, 0)
         SetPixelBackdrop(clearStrBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
         clearStrBtn.txt = CreateText(clearStrBtn, "OVERLAY", "GameFontHighlightSmall")
@@ -13906,7 +14232,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         end)
 
         local copyStrBtn = CreateFrame("Button", nil, c2, "BackdropTemplate")
-        copyStrBtn:SetSize(96, 26)
+        copyStrBtn:SetSize(82, 26)
         copyStrBtn:SetPoint("LEFT", clearStrBtn, "RIGHT", 6, 0)
         SetPixelBackdrop(copyStrBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
         copyStrBtn.txt = CreateText(copyStrBtn, "OVERLAY", "GameFontHighlightSmall")
@@ -13924,7 +14250,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         end)
 
         local saveImpBtn = CreateFrame("Button", nil, c2, "BackdropTemplate")
-        saveImpBtn:SetSize(134, 26)
+        saveImpBtn:SetSize(106, 26)
         saveImpBtn:SetPoint("BOTTOMRIGHT", c2, "BOTTOMRIGHT", -12, 12)
         SetPixelBackdrop(saveImpBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
         saveImpBtn.txt = CreateText(saveImpBtn, "OVERLAY", "GameFontHighlightSmall")
@@ -13932,13 +14258,50 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         saveImpBtn.txt:SetText("Save Loadout")
 
         local cancelEditBtn = CreateFrame("Button", nil, c2, "BackdropTemplate")
-        cancelEditBtn:SetSize(92, 26)
-        cancelEditBtn:SetPoint("RIGHT", saveImpBtn, "LEFT", -8, 0)
+        cancelEditBtn:SetSize(60, 26)
+        cancelEditBtn:SetPoint("RIGHT", saveImpBtn, "LEFT", -6, 0)
         SetPixelBackdrop(cancelEditBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
         cancelEditBtn.txt = CreateText(cancelEditBtn, "OVERLAY", "GameFontHighlightSmall")
         cancelEditBtn.txt:SetPoint("CENTER")
         cancelEditBtn.txt:SetText("Revert")
         cancelEditBtn:Hide()
+
+        do
+            local saveAndNewBtn = CreateFrame("Button", nil, c2, "BackdropTemplate")
+            saveAndNewBtn:SetSize(94, 26)
+            saveAndNewBtn:SetPoint("RIGHT", saveImpBtn, "LEFT", -6, 0)
+            SetPixelBackdrop(saveAndNewBtn, { 0.063 * 0.30, 0.725 * 0.30, 0.506 * 0.30, 1.00 }, { 0.063, 0.725, 0.506, 0.85 }, 1)
+            saveAndNewBtn.txt = CreateText(saveAndNewBtn, "OVERLAY", "GameFontHighlightSmall")
+            saveAndNewBtn.txt:SetPoint("CENTER")
+            saveAndNewBtn.txt:SetText("|cFF34D399Save & New|r")
+            saveAndNewBtn:SetScript("OnEnter", function(s)
+                SetPixelBackdrop(s, { 0.063 * 0.46, 0.725 * 0.46, 0.506 * 0.46, 1.00 }, { 0.20, 0.85, 0.62, 1.00 }, 1)
+            end)
+            saveAndNewBtn:SetScript("OnLeave", function(s)
+                SetPixelBackdrop(s, { 0.063 * 0.30, 0.725 * 0.30, 0.506 * 0.30, 1.00 }, { 0.063, 0.725, 0.506, 0.85 }, 1)
+            end)
+            f.saveAndNewBtn = saveAndNewBtn
+
+            local goBindsBtn = CreateFrame("Button", nil, c2, "BackdropTemplate")
+            goBindsBtn:SetSize(94, 26)
+            goBindsBtn:SetPoint("RIGHT", cancelEditBtn, "LEFT", -6, 0)
+            SetPixelBackdrop(goBindsBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+            goBindsBtn.txt = CreateText(goBindsBtn, "OVERLAY", "GameFontHighlightSmall")
+            goBindsBtn.txt:SetPoint("CENTER")
+            goBindsBtn.txt:SetText("Set Binds ->")
+            goBindsBtn:SetScript("OnEnter", function(s)
+                local r, g, b = GetActiveAccentRGB()
+                SetPixelBackdrop(s, { r * 0.28, g * 0.28, b * 0.28, 0.98 }, { r, g, b, 0.95 }, 1)
+            end)
+            goBindsBtn:SetScript("OnLeave", function(s)
+                SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+            end)
+            goBindsBtn:SetScript("OnClick", function()
+                f:SelectTab(2)
+            end)
+            goBindsBtn:Hide()
+            f.goBindsBtn = goBindsBtn
+        end
 
         function f:GetSelectedLoadout()
             local cand = self.state and self.state.selectedEntry
@@ -13973,6 +14336,8 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 saveImpBtn.txt:SetText("Save Changes")
                 cancelEditBtn.txt:SetText("Revert")
                 cancelEditBtn:Show()
+                if self.saveAndNewBtn then self.saveAndNewBtn:Hide() end
+                if self.goBindsBtn then self.goBindsBtn:Show() end
                 if self:IsShown() and not keepFocusQuiet and self.activeTab == 1 then
                     nameEB:SetFocus()
                     nameEB:HighlightText()
@@ -13991,15 +14356,20 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 strEB:SetText(DynamicPrep:GetActiveTalentString() or "")
                 saveImpBtn.txt:SetText("Save Loadout")
                 cancelEditBtn:Hide()
+                if self.goBindsBtn then self.goBindsBtn:Hide() end
+                if self.saveAndNewBtn then self.saveAndNewBtn:Show() end
                 if self:IsShown() and not keepFocusQuiet and self.activeTab == 1 then
                     nameEB:SetFocus()
                     nameEB:HighlightText()
                 end
             end
+            if self.UpdateTopLoadoutTriggerBadge then
+                self:UpdateTopLoadoutTriggerBadge()
+            end
             ValidateStringBox()
         end
 
-        local function CommitLoadoutEditor()
+        local function CommitLoadoutEditor(saveAndNew)
             local curSel = f:GetSelectedLoadout()
             if curSel then
                 local ok, msg = DynamicPrep:UpdateTalentLibraryEntry(curSel, nameEB:GetText(), selGroup, strEB:GetText())
@@ -14012,8 +14382,19 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             else
                 local ok, msg, savedEntry = DynamicPrep:ImportTalentString(nameEB:GetText(), strEB:GetText(), selGroup)
                 if ok then
-                    if f.SelectLoadout then f:SelectLoadout(savedEntry, true) else f:LoadEditorEntry(savedEntry, true) end
-                    valStatus:SetText("|cFF10B981" .. tostring(msg) .. "|r")
+                    if saveAndNew then
+                        local savedName = tostring((savedEntry and savedEntry.name) or nameEB:GetText() or "Loadout")
+                        if f.SelectLoadout then f:SelectLoadout(nil, false) else f:LoadEditorEntry(nil, false) end
+                        strEB:SetText("")
+                        valStatus:SetText("|cFF10B981Saved '" .. savedName .. "' -- paste or capture your next build.|r")
+                        if nameEB then
+                            nameEB:SetFocus()
+                            nameEB:HighlightText()
+                        end
+                    else
+                        if f.SelectLoadout then f:SelectLoadout(savedEntry, true) else f:LoadEditorEntry(savedEntry, true) end
+                        valStatus:SetText("|cFF10B981" .. tostring(msg) .. "|r")
+                    end
                 else
                     valStatus:SetText("|cFFF43F5E" .. tostring(msg) .. "|r")
                 end
@@ -14029,9 +14410,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             end
         end
 
-        nameEB:SetScript("OnEnterPressed", function(s) s:ClearFocus(); CommitLoadoutEditor() end)
+        nameEB:SetScript("OnEnterPressed", function(s) s:ClearFocus(); CommitLoadoutEditor(false) end)
         nameEB:SetScript("OnEscapePressed", CancelOrBlurEditor)
-        strEB:SetScript("OnEnterPressed", function(s) s:ClearFocus(); CommitLoadoutEditor() end)
+        strEB:SetScript("OnEnterPressed", function(s) s:ClearFocus(); CommitLoadoutEditor(false) end)
         strEB:SetScript("OnEscapePressed", CancelOrBlurEditor)
         cancelEditBtn:SetScript("OnClick", function()
             local curSel = f:GetSelectedLoadout()
@@ -14040,7 +14421,10 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 valStatus:SetText("|cFF94A3B8Reverted unsaved changes.|r")
             end
         end)
-        saveImpBtn:SetScript("OnClick", CommitLoadoutEditor)
+        saveImpBtn:SetScript("OnClick", function() CommitLoadoutEditor(false) end)
+        if f.saveAndNewBtn then
+            f.saveAndNewBtn:SetScript("OnClick", function() CommitLoadoutEditor(true) end)
+        end
 
         local renameBtn = CreateFrame("Button", nil, p1, "BackdropTemplate")
         renameBtn:SetSize(290, 26)
@@ -14141,7 +14525,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             SetPixelBackdrop(goTab1Btn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
             goTab1Btn.txt = CreateText(goTab1Btn, "OVERLAY", "GameFontHighlightSmall")
             goTab1Btn.txt:SetPoint("CENTER")
-            goTab1Btn.txt:SetText("Save in Tab 1")
+            goTab1Btn.txt:SetText("Build Details")
             goTab1Btn:SetScript("OnClick", function()
                 f:SelectTab(1)
                 if f.nameEB then
@@ -14155,7 +14539,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             ubFS:SetPoint("RIGHT", goTab1Btn, "LEFT", -10, 0)
             ubFS:SetJustifyH("LEFT")
             ubFS:SetWordWrap(true)
-            ubFS:SetText("|cFFFBBF24Unsaved build selected:|r |cFFE2E8F0Save this build in Tab 1 or choose an existing loadout in the top bar before binding.|r")
+            ubFS:SetText("|cFFFBBF24Unsaved build selected:|r |cFFE2E8F0Save this build in Build Details or choose an existing loadout in the top bar before binding.|r")
 
             ub:Hide()
             f.unsavedBanner = ub
@@ -14626,6 +15010,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             tmDrop.thumb.isHovered = false
             tmDrop.thumb:SetScript("OnUpdate", nil)
             tmDrop.track:SetScript("OnUpdate", nil)
+            if GameTooltip then GameTooltip:Hide() end
             tmDrop:Hide()
             tmDropCatcher:Hide()
         end
@@ -14645,6 +15030,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             tmDrop.thumb.isHovered = false
             tmDrop.thumb:SetScript("OnUpdate", nil)
             tmDrop.track:SetScript("OnUpdate", nil)
+            if GameTooltip then GameTooltip:Hide() end
             tmDropCatcher:Hide()
         end)
         if _G.UISpecialFrames then
@@ -14690,6 +15076,11 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                     rw.pip = rw:CreateTexture(nil, "OVERLAY")
                     rw.pip:SetSize(5, 5)
                     rw.pip:SetPoint("LEFT", rw, "LEFT", 7, 0)
+                    rw.bindTag = CreateText(rw, "OVERLAY", "GameFontHighlightSmall")
+                    rw.bindTag:SetPoint("RIGHT", rw, "RIGHT", -8, 0)
+                    rw.bindTag:SetJustifyH("RIGHT")
+                    rw.bindTag:SetWordWrap(false)
+                    rw.bindTag:Hide()
                     rw.txt = CreateText(rw, "OVERLAY", "GameFontHighlightSmall")
                     rw.txt:SetPoint("LEFT", rw, "LEFT", 18, 0)
                     rw.txt:SetPoint("RIGHT", rw, "RIGHT", -8, 0)
@@ -14700,6 +15091,16 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 rw:ClearAllPoints()
                 rw:SetPoint("TOPLEFT", tmDrop.content, "TOPLEFT", 0, y)
                 rw:SetPoint("TOPRIGHT", tmDrop.content, "TOPRIGHT", 0, y)
+                rw.txt:ClearAllPoints()
+                rw.txt:SetPoint("LEFT", rw, "LEFT", 18, 0)
+                if it.bindTag and it.bindTag ~= "" then
+                    rw.bindTag:SetText("|cFFFBBF24" .. tostring(it.bindTag) .. "|r")
+                    rw.bindTag:Show()
+                    rw.txt:SetPoint("RIGHT", rw.bindTag, "LEFT", -8, 0)
+                else
+                    rw.bindTag:Hide()
+                    rw.txt:SetPoint("RIGHT", rw, "RIGHT", -8, 0)
+                end
                 rw.txt:SetText(it.label or "")
                 rw.pip:SetColorTexture(r, g, b, 1.0)
                 rw.pip:SetShown(it.selected == true)
@@ -14708,9 +15109,28 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 SetPixelBackdrop(rw, idleBg, idleBdr, 1)
                 rw:SetScript("OnEnter", function(s)
                     SetPixelBackdrop(s, { r * 0.30, g * 0.30, b * 0.30, 0.98 }, { r, g, b, 0.85 }, 1)
+                    if GameTooltip and it.tooltipEntry then
+                        local e = it.tooltipEntry
+                        local bInfo = it.tooltipBInfo
+                        local heroAcr, heroName = DynamicPrep:GetLoadoutHeroAcronym(e)
+                        GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                        GameTooltip:AddLine(string.format("%s %s", DynamicPrep:FormatTalentBadge(e, heroAcr), tostring(e.name or "Loadout")), 1, 1, 1)
+                        if heroName and heroAcr then
+                            GameTooltip:AddLine(string.format("|cFF94A3B8Hero Tree:|r |cFFE2E8F0%s (%s)|r", tostring(heroName), tostring(heroAcr)), 1, 1, 1)
+                        end
+                        if bInfo and #bInfo.detailLines > 0 then
+                            for _, bl in ipairs(bInfo.detailLines) do
+                                GameTooltip:AddLine("|cFFFBBF24Bound:|r |cFFE2E8F0" .. bl .. "|r", 1, 1, 1)
+                            end
+                        else
+                            GameTooltip:AddLine("|cFF94A3B8Unbound -- click to edit or assign binds.|r", 1, 1, 1)
+                        end
+                        GameTooltip:Show()
+                    end
                 end)
                 rw:SetScript("OnLeave", function(s)
                     SetPixelBackdrop(s, idleBg, idleBdr, 1)
+                    if GameTooltip then GameTooltip:Hide() end
                 end)
                 rw:SetScript("OnClick", function()
                     CloseModalDropdown()
@@ -15165,17 +15585,55 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             local specID = DynamicPrep:GetActiveSpecID()
             local sel = f:GetSelectedLoadout()
             if not specID or not sel then
-                print(string.format("|cFF%sDynamicPrep:|r Save this build in Tab 1 or choose an existing loadout at the top before binding.", GetAccentHex()))
+                print(string.format("|cFF%sDynamicPrep:|r Save this build in Build Details or choose an existing loadout at the top before binding.", GetAccentHex()))
                 return
             end
             DynamicPrep:RefreshLoadoutHeroMeta(sel)
+            local selLow = tostring(sel.name or ""):lower()
+            local bMap = (DynamicPrep.db and DynamicPrep.db.talentBossMap and DynamicPrep.db.talentBossMap[specID]) or {}
+            local dsSnap = {
+                normal = st.diffState.normal and true or false,
+                heroic = st.diffState.heroic and true or false,
+                mythic = st.diffState.mythic and true or false,
+            }
+            if not (dsSnap.normal or dsSnap.heroic or dsSnap.mythic) then
+                dsSnap.normal, dsSnap.heroic, dsSnap.mythic = true, true, true
+            end
+
             if st.selAllRaidBosses then
-                local conflicts = DynamicPrep:DetectBindConflicts("ALL_RAID", { diffState = st.diffState }, sel, specID)
+                local conflicts = DynamicPrep:DetectBindConflicts("ALL_RAID", { diffState = dsSnap }, sel, specID)
+                local opts = nil
+                if #conflicts > 0 then
+                    local claimed = { normal = false, heroic = false, mythic = false }
+                    for _, exV in pairs(bMap) do
+                        if type(exV) == "table" and exV.isAllRaid == true and type(exV.loadoutName) == "string" and exV.loadoutName ~= "" and exV.loadoutName:lower() ~= selLow then
+                            local exAll = (type(exV.difficulties) ~= "table")
+                            if exAll or exV.difficulties.normal then claimed.normal = true end
+                            if exAll or exV.difficulties.heroic then claimed.heroic = true end
+                            if exAll or exV.difficulties.mythic then claimed.mythic = true end
+                        end
+                    end
+                    local unboundDiffs = {
+                        normal = dsSnap.normal and (not claimed.normal) or false,
+                        heroic = dsSnap.heroic and (not claimed.heroic) or false,
+                        mythic = dsSnap.mythic and (not claimed.mythic) or false,
+                    }
+                    local unboundCount = (unboundDiffs.normal and 1 or 0) + (unboundDiffs.heroic and 1 or 0) + (unboundDiffs.mythic and 1 or 0)
+                    if unboundCount > 0 then
+                        opts = {
+                            unboundCount = unboundCount,
+                            onBindUnboundOnly = function()
+                                DynamicPrep:SetAllRaidDefault(sel, unboundDiffs, false)
+                            end,
+                        }
+                    end
+                end
                 DynamicPrep:ConfirmBindOverwrite(conflicts, sel, function()
-                    DynamicPrep:SetAllRaidDefault(sel, st.diffState, false)
-                end)
+                    DynamicPrep:SetAllRaidDefault(sel, dsSnap, false)
+                end, opts)
                 return
             end
+
             local targets = {}
             if st.customTargetBoss and st.customTargetBoss ~= "" then
                 table.insert(targets, { name = st.customTargetBoss, order = nil, raidName = nil, raidShort = nil })
@@ -15198,38 +15656,51 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 return
             end
 
-            local dsSnap = {
-                normal = st.diffState.normal and true or false,
-                heroic = st.diffState.heroic and true or false,
-                mythic = st.diffState.mythic and true or false,
-            }
-            local conflicts = DynamicPrep:DetectBindConflicts("BOSS_LIST", { targets = targets, diffState = dsSnap }, sel, specID)
-            DynamicPrep:ConfirmBindOverwrite(conflicts, sel, function()
-                local mask = (dsSnap.normal and "N" or "") .. (dsSnap.heroic and "H" or "") .. (dsSnap.mythic and "M" or "")
-                if mask == "" then mask = "NHM" end
+            local function ApplyBossTargetSpecs(specList)
                 DynamicPrep.db.talentBossMap = DynamicPrep.db.talentBossMap or {}
                 DynamicPrep.db.talentBossMap[specID] = DynamicPrep.db.talentBossMap[specID] or {}
-                local bMap = DynamicPrep.db.talentBossMap[specID]
+                local tMap = DynamicPrep.db.talentBossMap[specID]
                 local boundNames = {}
-                for _, tInfo in ipairs(targets) do
+                for _, item in ipairs(specList) do
+                    local tInfo = item.tInfo
+                    local dTbl = item.diffs or dsSnap
+                    local mask = (dTbl.normal and "N" or "") .. (dTbl.heroic and "H" or "") .. (dTbl.mythic and "M" or "")
+                    if mask == "" then mask = "NHM" end
                     local bName = tInfo.name
                     local bLow = bName:lower()
                     local mapKey = bLow .. "|" .. mask
-                    for exK, exV in pairs(bMap) do
+                    for exK, exV in pairs(tMap) do
                         if type(exV) == "table" and not exV.isAllRaid and tostring(exV.bossName or exK):lower() == bLow and exK ~= mapKey then
                             if type(exV.difficulties) == "table" then
-                                if dsSnap.normal then exV.difficulties.normal = false end
-                                if dsSnap.heroic then exV.difficulties.heroic = false end
-                                if dsSnap.mythic then exV.difficulties.mythic = false end
+                                if dTbl.normal then exV.difficulties.normal = false end
+                                if dTbl.heroic then exV.difficulties.heroic = false end
+                                if dTbl.mythic then exV.difficulties.mythic = false end
                                 if not (exV.difficulties.normal or exV.difficulties.heroic or exV.difficulties.mythic) then
-                                    bMap[exK] = nil
+                                    tMap[exK] = nil
                                 end
                             else
-                                bMap[exK] = nil
+                                local keepN = (not dTbl.normal)
+                                local keepH = (not dTbl.heroic)
+                                local keepM = (not dTbl.mythic)
+                                tMap[exK] = nil
+                                if keepN or keepH or keepM then
+                                    local km = (keepN and "N" or "") .. (keepH and "H" or "") .. (keepM and "M" or "")
+                                    tMap[bLow .. "|" .. km] = {
+                                        bossName     = exV.bossName or bName,
+                                        bossOrder    = exV.bossOrder,
+                                        raidName     = exV.raidName,
+                                        raidShort    = exV.raidShort,
+                                        loadoutName  = exV.loadoutName,
+                                        importString = exV.importString,
+                                        group        = exV.group,
+                                        heroAcronym  = exV.heroAcronym,
+                                        difficulties = { normal = keepN, heroic = keepH, mythic = keepM },
+                                    }
+                                end
                             end
                         end
                     end
-                    bMap[mapKey] = {
+                    tMap[mapKey] = {
                         bossName     = bName,
                         bossOrder    = tInfo.order,
                         raidName     = tInfo.raidName,
@@ -15239,22 +15710,61 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                         group        = sel.group or "Raid",
                         heroAcronym  = sel.heroAcronym,
                         difficulties = {
-                            normal = dsSnap.normal,
-                            heroic = dsSnap.heroic,
-                            mythic = dsSnap.mythic,
+                            normal = dTbl.normal and true or false,
+                            heroic = dTbl.heroic and true or false,
+                            mythic = dTbl.mythic and true or false,
                         },
                     }
-                    table.insert(boundNames, (tInfo.order and ("#" .. tInfo.order .. " ") or "") .. bName)
+                    table.insert(boundNames, ((tInfo.order and ("#" .. tInfo.order .. " ") or "") .. bName .. " [" .. DynamicPrep:FormatDifficultySummary(dTbl) .. "]"))
                 end
                 st.customTargetBoss = nil
-                local dDisp = DynamicPrep:FormatDifficultySummary(dsSnap)
                 if #boundNames == 1 then
-                    print(string.format("|cFF%sDynamicPrep:|r Bound boss |cFFFBBF24%s|r [%s] -> %s |cFFFFFFFF%s|r.", GetAccentHex(), boundNames[1], dDisp, DynamicPrep:FormatTalentBadge(sel), sel.name))
+                    print(string.format("|cFF%sDynamicPrep:|r Bound boss |cFFFBBF24%s|r -> %s |cFFFFFFFF%s|r.", GetAccentHex(), boundNames[1], DynamicPrep:FormatTalentBadge(sel), sel.name))
                 else
-                    print(string.format("|cFF%sDynamicPrep:|r Bound %d bosses (%s) [%s] -> %s |cFFFFFFFF%s|r.", GetAccentHex(), #boundNames, table.concat(boundNames, ", "), dDisp, DynamicPrep:FormatTalentBadge(sel), sel.name))
+                    print(string.format("|cFF%sDynamicPrep:|r Bound %d bosses (%s) -> %s |cFFFFFFFF%s|r.", GetAccentHex(), #boundNames, table.concat(boundNames, ", "), DynamicPrep:FormatTalentBadge(sel), sel.name))
                 end
                 DynamicPrep:SyncTalentBindsUI()
-            end)
+            end
+
+            local fullSpecs = {}
+            for _, tInfo in ipairs(targets) do
+                table.insert(fullSpecs, { tInfo = tInfo, diffs = dsSnap })
+            end
+            local conflicts = DynamicPrep:DetectBindConflicts("BOSS_LIST", { targets = targets, diffState = dsSnap }, sel, specID)
+            local opts = nil
+            if #conflicts > 0 then
+                local unboundSpecs = {}
+                local unboundCount = 0
+                for _, tInfo in ipairs(targets) do
+                    local bLow = tostring(tInfo.name or ""):lower()
+                    local freeN, freeH, freeM = dsSnap.normal, dsSnap.heroic, dsSnap.mythic
+                    for _, exV in pairs(bMap) do
+                        if type(exV) == "table" and exV.isAllRaid ~= true and tostring(exV.bossName or ""):lower() == bLow
+                            and type(exV.loadoutName) == "string" and exV.loadoutName ~= "" and exV.loadoutName:lower() ~= selLow then
+                            local exAll = (type(exV.difficulties) ~= "table")
+                            if exAll or exV.difficulties.normal then freeN = false end
+                            if exAll or exV.difficulties.heroic then freeH = false end
+                            if exAll or exV.difficulties.mythic then freeM = false end
+                        end
+                    end
+                    local rem = (freeN and 1 or 0) + (freeH and 1 or 0) + (freeM and 1 or 0)
+                    if rem > 0 then
+                        table.insert(unboundSpecs, { tInfo = tInfo, diffs = { normal = freeN, heroic = freeH, mythic = freeM } })
+                        unboundCount = unboundCount + rem
+                    end
+                end
+                if unboundCount > 0 then
+                    opts = {
+                        unboundCount = unboundCount,
+                        onBindUnboundOnly = function()
+                            ApplyBossTargetSpecs(unboundSpecs)
+                        end,
+                    }
+                end
+            end
+            DynamicPrep:ConfirmBindOverwrite(conflicts, sel, function()
+                ApplyBossTargetSpecs(fullSpecs)
+            end, opts)
         end)
 
         mplusBindBtn:SetScript("OnClick", function()
@@ -15262,7 +15772,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             local specID = DynamicPrep:GetActiveSpecID()
             local sel = f:GetSelectedLoadout()
             if not specID or not sel then
-                print(string.format("|cFF%sDynamicPrep:|r Save this build in Tab 1 or choose an existing loadout at the top before binding.", GetAccentHex()))
+                print(string.format("|cFF%sDynamicPrep:|r Save this build in Build Details or choose an existing loadout at the top before binding.", GetAccentHex()))
                 return
             end
             DynamicPrep:RefreshLoadoutHeroMeta(sel)
@@ -15271,9 +15781,23 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
 
             if st.selAllDungeons then
                 local conflicts = DynamicPrep:DetectBindConflicts("ALL_MPLUS", { keyTier = kt }, sel, specID)
+                local opts = nil
+                if #conflicts > 0 and kt == "ANY" then
+                    local lowBusy = (#DynamicPrep:DetectBindConflicts("ALL_MPLUS", { keyTier = "LOW" }, sel, specID) > 0)
+                    local highBusy = (#DynamicPrep:DetectBindConflicts("ALL_MPLUS", { keyTier = "HIGH" }, sel, specID) > 0)
+                    local unboundTier = (not lowBusy and highBusy and "LOW") or (not highBusy and lowBusy and "HIGH") or nil
+                    if unboundTier then
+                        opts = {
+                            unboundCount = 1,
+                            onBindUnboundOnly = function()
+                                DynamicPrep:SetAllMPlusDefault(sel, unboundTier, false)
+                            end,
+                        }
+                    end
+                end
                 DynamicPrep:ConfirmBindOverwrite(conflicts, sel, function()
                     DynamicPrep:SetAllMPlusDefault(sel, kt, false)
-                end)
+                end, opts)
                 return
             end
             if #st.mplusDungeons == 0 then st.mplusDungeons = GetCurrentSeasonMythicPlusDungeons() end
@@ -15289,13 +15813,12 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 return
             end
 
-            local conflicts = DynamicPrep:DetectBindConflicts("MPLUS_LIST", { dungeons = chosen, keyTier = kt }, sel, specID)
-            DynamicPrep:ConfirmBindOverwrite(conflicts, sel, function()
+            local function ApplyMPlusList(listToBind)
                 DynamicPrep.db.talentDungeonMap = DynamicPrep.db.talentDungeonMap or {}
                 DynamicPrep.db.talentDungeonMap[specID] = DynamicPrep.db.talentDungeonMap[specID] or {}
                 local dMap = DynamicPrep.db.talentDungeonMap[specID]
                 local shortList = {}
-                for _, dObj in ipairs(chosen) do
+                for _, dObj in ipairs(listToBind) do
                     local dLow = dObj.name:lower()
                     for exK, exV in pairs(dMap) do
                         local exAll = type(exV) == "table" and (exV.isAllMPlus == true or tostring(exV.dungeonName or exK):lower() == "all m+ dungeons")
@@ -15315,20 +15838,43 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                     }
                     table.insert(shortList, dObj.short or dObj.name)
                 end
-                if #chosen == 1 then
-                    print(string.format("|cFF%sDynamicPrep:|r Bound M+ |cFF38BDF8%s|r [%s] -> %s |cFFFFFFFF%s|r.", GetAccentHex(), chosen[1].name, tLbl, DynamicPrep:FormatTalentBadge(sel), sel.name))
+                if #listToBind == 1 then
+                    print(string.format("|cFF%sDynamicPrep:|r Bound M+ |cFF38BDF8%s|r [%s] -> %s |cFFFFFFFF%s|r.", GetAccentHex(), listToBind[1].name, tLbl, DynamicPrep:FormatTalentBadge(sel), sel.name))
                 else
-                    print(string.format("|cFF%sDynamicPrep:|r Bound %d M+ dungeons (%s) [%s] -> %s |cFFFFFFFF%s|r.", GetAccentHex(), #chosen, table.concat(shortList, ", "), tLbl, DynamicPrep:FormatTalentBadge(sel), sel.name))
+                    print(string.format("|cFF%sDynamicPrep:|r Bound %d M+ dungeons (%s) [%s] -> %s |cFFFFFFFF%s|r.", GetAccentHex(), #listToBind, table.concat(shortList, ", "), tLbl, DynamicPrep:FormatTalentBadge(sel), sel.name))
                 end
                 DynamicPrep:SyncTalentBindsUI()
-            end)
+            end
+
+            local conflicts = DynamicPrep:DetectBindConflicts("MPLUS_LIST", { dungeons = chosen, keyTier = kt }, sel, specID)
+            local opts = nil
+            if #conflicts > 0 then
+                local unboundChosen = {}
+                for _, dObj in ipairs(chosen) do
+                    local singleC = DynamicPrep:DetectBindConflicts("MPLUS_LIST", { dungeons = { dObj }, keyTier = kt }, sel, specID)
+                    if #singleC == 0 then
+                        table.insert(unboundChosen, dObj)
+                    end
+                end
+                if #unboundChosen > 0 then
+                    opts = {
+                        unboundCount = #unboundChosen,
+                        onBindUnboundOnly = function()
+                            ApplyMPlusList(unboundChosen)
+                        end,
+                    }
+                end
+            end
+            DynamicPrep:ConfirmBindOverwrite(conflicts, sel, function()
+                ApplyMPlusList(chosen)
+            end, opts)
         end)
 
         zoneBindBtn:SetScript("OnClick", function()
             local st = f.state
             local sel = f:GetSelectedLoadout()
             if not sel then
-                print(string.format("|cFF%sDynamicPrep:|r Save this build in Tab 1 or choose an existing loadout at the top before binding.", GetAccentHex()))
+                print(string.format("|cFF%sDynamicPrep:|r Save this build in Build Details or choose an existing loadout at the top before binding.", GetAccentHex()))
                 return
             end
             if not st.selAllZones and not next(st.selZoneSet) then
@@ -15340,10 +15886,33 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             for k, v in pairs(st.selZoneSet) do if v then zoneSnap[k] = true end end
             local isAllSnap = (st.selAllZones == true)
             local conflicts = DynamicPrep:DetectBindConflicts("ZONES", { zoneSet = zoneSnap, isAll = isAllSnap }, sel)
+            local opts = nil
+            if not isAllSnap and #conflicts > 0 then
+                local unboundZoneSnap = {}
+                local unboundCount = 0
+                for zk, enabled in pairs(zoneSnap) do
+                    if enabled then
+                        local singleC = DynamicPrep:DetectBindConflicts("ZONES", { zoneSet = { [zk] = true }, isAll = false }, sel)
+                        if #singleC == 0 then
+                            unboundZoneSnap[zk] = true
+                            unboundCount = unboundCount + 1
+                        end
+                    end
+                end
+                if unboundCount > 0 then
+                    opts = {
+                        unboundCount = unboundCount,
+                        onBindUnboundOnly = function()
+                            DynamicPrep:SetZoneDefaults(sel, unboundZoneSnap, false)
+                            zoneTip:SetText("|cFF10B981Unbound zone default(s) updated; existing binds left untouched.|r")
+                        end,
+                    }
+                end
+            end
             DynamicPrep:ConfirmBindOverwrite(conflicts, sel, function()
                 DynamicPrep:SetZoneDefaults(sel, zoneSnap, isAllSnap)
                 zoneTip:SetText("|cFF10B981Zone default(s) updated! Specific Raid bosses & M+ dungeons still override zone defaults.|r")
-            end)
+            end, opts)
         end)
 
         zoneClearBtn:SetScript("OnClick", function()
@@ -15569,6 +16138,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         function f:RefreshBossList()
             local st = self.state
             local curBuild = self:UpdatePickBtns()
+            if self.UpdateTopLoadoutTriggerBadge then
+                self:UpdateTopLoadoutTriggerBadge()
+            end
             local filterMode = st.reminderFilter or "BUILD"
             local onBuild = (filterMode == "BUILD")
             local curBuildLow = (type(curBuild) == "table" and type(curBuild.name) == "string" and curBuild.name ~= "") and curBuild.name:lower() or nil
