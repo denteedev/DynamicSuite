@@ -10496,7 +10496,6 @@ function DynamicPrep:ImportBlizzardLoadouts(specID)
 end
 
 local TALENT_GROUP_ORDER = { "Raid", "M+", "Delves", "PvP", "Custom" }
-local TALENT_GROUP_RANK  = { Raid = 1, ["M+"] = 2, Delves = 3, PvP = 4, Custom = 5 }
 local TALENT_GROUP_HEX   = { Raid = "F87171", ["M+"] = "38BDF8", Delves = "FBBF24", PvP = "A855F7", Custom = "94A3B8" }
 
 do
@@ -10749,15 +10748,31 @@ function DynamicPrep:GetSortedTalentProfiles(specID)
     local out = {}
     for _, entry in ipairs(lib) do
         if type(entry) == "table" and type(entry.name) == "string" and entry.name ~= "" then
-            entry.group = entry.group or CategoriseTalentGroup(entry.name)
+            entry.group = (type(entry.group) == "string" and entry.group ~= "") and entry.group or CategoriseTalentGroup(entry.name)
+            self:RefreshLoadoutHeroMeta(entry)
             table.insert(out, entry)
         end
     end
     table.sort(out, function(a, b)
-        local ra = TALENT_GROUP_RANK[a.group or "Custom"] or 9
-        local rb = TALENT_GROUP_RANK[b.group or "Custom"] or 9
-        if ra ~= rb then return ra < rb end
-        return tostring(a.name):lower() < tostring(b.name):lower()
+        local ga = tostring(a.group or "Custom")
+        local gb = tostring(b.group or "Custom")
+        local gal, gbl = ga:lower(), gb:lower()
+        if gal ~= gbl then return gal < gbl end
+
+        local ha = (type(a.heroAcronym) == "string" and a.heroAcronym ~= "") and a.heroAcronym or nil
+        local hb = (type(b.heroAcronym) == "string" and b.heroAcronym ~= "") and b.heroAcronym or nil
+        if ha ~= hb then
+            if not ha then return false end
+            if not hb then return true end
+            local hal, hbl = ha:lower(), hb:lower()
+            if hal ~= hbl then return hal < hbl end
+        end
+
+        local na = tostring(a.name or "")
+        local nb = tostring(b.name or "")
+        local nal, nbl = na:lower(), nb:lower()
+        if nal ~= nbl then return nal < nbl end
+        return na < nb
     end)
     return out
 end
@@ -13258,7 +13273,13 @@ function DynamicPrep:GetSavedTalentLoadouts()
             table.insert(list, { id = cid, name = info.name })
         end
     end
-    table.sort(list, function(a, b) return a.name < b.name end)
+    table.sort(list, function(a, b)
+        local na = tostring(a.name or "")
+        local nb = tostring(b.name or "")
+        local nal, nbl = na:lower(), nb:lower()
+        if nal ~= nbl then return nal < nbl end
+        return na < nb
+    end)
     return list
 end
 
