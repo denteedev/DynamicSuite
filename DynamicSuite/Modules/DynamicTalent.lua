@@ -352,8 +352,10 @@ local DEFAULTS = {
     talentReminderToastEnabled = true,
     prioritiseCurrentZone      = false,
     rightClickHeroSwap         = true,
-    talentBackdropMode         = "HERO_MIST",
+    talentBackdropBase         = "OBSIDIAN",
+    talentBackdropMist         = "HERO_MIST",
     talentBackdropDimmer       = 35,
+    talentBackdropMistIntensity = 60,
     talentBackdropAnimate      = true,
     talentGroupOrder           = { "Raid", "M+", "Delves", "PvP", "Custom" },
     talentPreferredBySpec      = {},
@@ -470,6 +472,24 @@ end
 DynamicTalent.DoesRuleMatchEntry = DoesRuleMatchEntry
 
 local function EnsureDB()
+    if type(_G.DynamicTalentDB) == "table" then
+        local oldMode = _G.DynamicTalentDB.talentBackdropMode
+        if type(oldMode) == "string" and (_G.DynamicTalentDB.talentBackdropBase == nil or _G.DynamicTalentDB.talentBackdropMist == nil) then
+            if oldMode == "BLIZZARD" then
+                if _G.DynamicTalentDB.talentBackdropBase == nil then _G.DynamicTalentDB.talentBackdropBase = "BLIZZARD" end
+                if _G.DynamicTalentDB.talentBackdropMist == nil then _G.DynamicTalentDB.talentBackdropMist = "OFF" end
+            elseif oldMode == "OBSIDIAN" then
+                if _G.DynamicTalentDB.talentBackdropBase == nil then _G.DynamicTalentDB.talentBackdropBase = "OBSIDIAN" end
+                if _G.DynamicTalentDB.talentBackdropMist == nil then _G.DynamicTalentDB.talentBackdropMist = "OFF" end
+            elseif oldMode == "HERO_MIST" then
+                if _G.DynamicTalentDB.talentBackdropBase == nil then _G.DynamicTalentDB.talentBackdropBase = "OBSIDIAN" end
+                if _G.DynamicTalentDB.talentBackdropMist == nil then _G.DynamicTalentDB.talentBackdropMist = "HERO_MIST" end
+            elseif oldMode == "CLASS_GLOW" then
+                if _G.DynamicTalentDB.talentBackdropBase == nil then _G.DynamicTalentDB.talentBackdropBase = "OBSIDIAN" end
+                if _G.DynamicTalentDB.talentBackdropMist == nil then _G.DynamicTalentDB.talentBackdropMist = "CLASS_GLOW" end
+            end
+        end
+    end
     _G.DynamicTalentDB = CopyDefaults(_G.DynamicTalentDB, DEFAULTS)
     local db = _G.DynamicTalentDB
 
@@ -570,9 +590,12 @@ local function EnsureDB()
     db.talentGroupOrder = SanitizeGroupOrder(db.talentGroupOrder)
     db.rightClickHeroSwap = (db.rightClickHeroSwap ~= false)
     db.talentBackdropAnimate = (db.talentBackdropAnimate ~= false)
-    local validModes = { BLIZZARD = true, OBSIDIAN = true, HERO_MIST = true, CLASS_GLOW = true }
-    if type(db.talentBackdropMode) ~= "string" or not validModes[db.talentBackdropMode] then
-        db.talentBackdropMode = "HERO_MIST"
+    if db.talentBackdropBase ~= "BLIZZARD" and db.talentBackdropBase ~= "OBSIDIAN" then
+        db.talentBackdropBase = "OBSIDIAN"
+    end
+    local validMists = { OFF = true, HERO_MIST = true, CLASS_GLOW = true }
+    if type(db.talentBackdropMist) ~= "string" or not validMists[db.talentBackdropMist] then
+        db.talentBackdropMist = "HERO_MIST"
     end
     local rawDim = tonumber(db.talentBackdropDimmer)
     if rawDim == nil then
@@ -580,6 +603,13 @@ local function EnsureDB()
     else
         rawDim = math.max(0, math.min(85, rawDim))
         db.talentBackdropDimmer = math.floor((rawDim / 5) + 0.5) * 5
+    end
+    local rawInt = tonumber(db.talentBackdropMistIntensity)
+    if rawInt == nil then
+        db.talentBackdropMistIntensity = 60
+    else
+        rawInt = math.max(15, math.min(100, rawInt))
+        db.talentBackdropMistIntensity = math.floor((rawInt / 5) + 0.5) * 5
     end
 
     -- Guarantee stable unique loadout IDs and backfill unambiguous legacy rule IDs
@@ -674,27 +704,71 @@ function DynamicTalent:GetActiveTalentString()
     return nil
 end
 
-function DynamicTalent:GetActiveContentGroup()
-    local isDelveActive = (C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve())
-        or (C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress())
-    local inInst, instType = false, "none"
+local function DetectCurrentZoneContext()
+    local instName, instType, diffID = "", "none", 0
     if type(GetInstanceInfo) == "function" then
-        local okInst, _, iType = pcall(GetInstanceInfo)
-        if okInst and type(iType) == "string" and not _IsSecret(iType) then
-            instType = iType
-            inInst = (iType ~= "none")
+        local okInst, iName, iType, iDiff = pcall(GetInstanceInfo)
+        if okInst then
+            if type(iName) == "string" and not _IsSecret(iName) then
+                instName = iName
+            end
+            if type(iType) == "string" and not _IsSecret(iType) then
+                instType = iType
+            end
+            if type(iDiff) == "number" and not _IsSecret(iDiff) then
+                diffID = iDiff
+            end
         end
     end
-    if instType == "raid" then return "Raid" end
-    if instType == "party" and not isDelveActive then return "M+" end
-    if isDelveActive then return "Delves" end
-    if instType == "arena" or instType == "pvp" then return "PvP" end
+
+    local inInst = (instType ~= "none" and instType ~= "")
+    local isDelveActive = (diffID == 208)
+    if not isDelveActive and C_DelvesUI and type(C_DelvesUI.HasActiveDelve) == "function" then
+        local okD, d = pcall(C_DelvesUI.HasActiveDelve)
+        if okD and not _IsSecret(d) and d == true then isDelveActive = true end
+    end
+    if not isDelveActive and C_PartyInfo and type(C_PartyInfo.IsDelveInProgress) == "function" then
+        local okP, p = pcall(C_PartyInfo.IsDelveInProgress)
+        if okP and not _IsSecret(p) and p == true then isDelveActive = true end
+    end
+    if not isDelveActive and C_PartyInfo and type(C_PartyInfo.IsDelveComplete) == "function" then
+        local okC, c = pcall(C_PartyInfo.IsDelveComplete)
+        if okC and not _IsSecret(c) and c == true then isDelveActive = true end
+    end
+
+    local isRaid = (instType == "raid")
+    local isParty = (instType == "party" and not isDelveActive and diffID ~= 208)
+    local isArena = (instType == "arena")
+    local isBG = (instType == "pvp")
     local isOutdoor = (not inInst and not isDelveActive)
     local isResting = (type(IsResting) == "function" and IsResting() == true)
-    if isOutdoor and not isResting then
-        local wmDesired, wmActive = GetWarModeFlags()
-        if wmDesired or wmActive then return "PvP" end
-    end
+    local wmDesired, wmActive = GetWarModeFlags()
+    local isWarMode = isOutdoor and (not isResting) and (wmDesired or wmActive)
+    local isAnyPvP = (isArena or isBG or isWarMode)
+
+    return {
+        instName      = instName,
+        instType      = instType,
+        diffID        = diffID,
+        inInst        = inInst,
+        isDelveActive = isDelveActive,
+        isRaid        = isRaid,
+        isParty       = isParty,
+        isArena       = isArena,
+        isBG          = isBG,
+        isOutdoor     = isOutdoor,
+        isResting     = isResting,
+        isWarMode     = isWarMode,
+        isAnyPvP      = isAnyPvP,
+    }
+end
+
+function DynamicTalent:GetActiveContentGroup()
+    local zc = DetectCurrentZoneContext()
+    if zc.isRaid then return "Raid" end
+    if zc.isDelveActive then return "Delves" end
+    if zc.isParty then return "M+" end
+    if zc.isAnyPvP then return "PvP" end
     return "Custom"
 end
 
@@ -756,28 +830,16 @@ function DynamicTalent:GetActiveTalentMismatch()
     if isKeyActive then return nil end
 
     local liveStr = self:GetActiveTalentString()
-    local isDelveActive = (C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve())
-        or (C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress())
-    local inInst, instType, instName = false, "none", ""
-    if type(GetInstanceInfo) == "function" then
-        local okInst, iName, iType = pcall(GetInstanceInfo)
-        if okInst and type(iType) == "string" and not _IsSecret(iType) then
-            instType = iType
-            inInst = (iType ~= "none")
-            if type(iName) == "string" and not _IsSecret(iName) then
-                instName = iName
-            end
-        end
-    end
-    local isRaid = (instType == "raid")
-    local isParty = (instType == "party" and not isDelveActive)
-    local isArena = (instType == "arena")
-    local isBG = (instType == "pvp")
-    local isOutdoor = (not inInst and not isDelveActive)
-    local isResting = (type(IsResting) == "function" and IsResting() == true)
-    local wmDesired, wmActive = GetWarModeFlags()
-    local isWarMode = isOutdoor and (not isResting) and (wmDesired or wmActive)
-    local isAnyPvP = (isArena or isBG or isWarMode)
+    local zc = DetectCurrentZoneContext()
+    local isDelveActive = zc.isDelveActive
+    local instName      = zc.instName
+    local isRaid        = zc.isRaid
+    local isParty       = zc.isParty
+    local isArena       = zc.isArena
+    local isBG          = zc.isBG
+    local isOutdoor     = zc.isOutdoor
+    local isResting     = zc.isResting
+    local isAnyPvP      = zc.isAnyPvP
 
     local diffKey = isRaid and GetActiveRaidDifficultyKey() or nil
     local diffLbl = (diffKey == "normal" and "LFR/N") or (diffKey == "heroic" and "H") or (diffKey == "mythic" and "M") or nil
@@ -4759,6 +4821,7 @@ do
             if al.SetToAlpha then al:SetToAlpha(aTo) end
             if al.SetDuration then al:SetDuration(duration) end
             if al.SetSmoothing then al:SetSmoothing("IN_OUT") end
+            ag._alphaAnim = al
         end
         return ag
     end
@@ -4921,8 +4984,10 @@ do
         local bg = self:EnsureTalentTreeBackdrop()
         if not bg then return end
 
-        local mode = db.talentBackdropMode or "HERO_MIST"
+        local base = (db.talentBackdropBase == "BLIZZARD") and "BLIZZARD" or "OBSIDIAN"
+        local mist = (db.talentBackdropMist == "OFF" or db.talentBackdropMist == "CLASS_GLOW") and db.talentBackdropMist or "HERO_MIST"
         local dimmer = math.max(0, math.min(0.85, (tonumber(db.talentBackdropDimmer) or 35) / 100))
+        local intensity = math.max(15, math.min(100, tonumber(db.talentBackdropMistIntensity) or 60))
         local animate = (db.talentBackdropAnimate ~= false)
 
         local function SetVignettesShown(show)
@@ -4931,51 +4996,43 @@ do
             end
         end
 
-        if mode == "BLIZZARD" then
-            self:PauseTalentTreeBackdropAnims()
+        -- 1. Base Background & Dimmer (Dimmer darkens Blizzard Spec Art strictly behind Ambient Mist)
+        if base == "BLIZZARD" then
             SyncBlizzardSpecBackground(tf, false)
             bg.baseCanvas:Hide()
-            bg.mistPrimary:Hide()
-            bg.mistSecondary:Hide()
-            bg.mistFocal:Hide()
             SetVignettesShown(false)
             if dimmer > 0.001 then
                 bg.dimmerWash:SetColorTexture(0.012, 0.015, 0.020, dimmer)
                 bg.dimmerWash:Show()
-                bg:Show()
             else
                 bg.dimmerWash:Hide()
-                bg:Hide()
             end
-            return
+        else
+            SyncBlizzardSpecBackground(tf, true)
+            bg.baseCanvas:Show()
+            bg.dimmerWash:Hide()
+            SetVignettesShown(true)
         end
 
-        SyncBlizzardSpecBackground(tf, true)
-
-        if mode == "OBSIDIAN" then
+        -- 2. Ambient Mist (layers independently over both Blizzard Spec Art and Solid Obsidian)
+        if mist == "OFF" then
             self:PauseTalentTreeBackdropAnims()
-            bg.baseCanvas:Show()
             bg.mistPrimary:Hide()
             bg.mistSecondary:Hide()
             bg.mistFocal:Hide()
-            SetVignettesShown(true)
-            if dimmer > 0.001 then
-                bg.dimmerWash:SetColorTexture(0.012, 0.015, 0.020, dimmer)
-                bg.dimmerWash:Show()
+            if base == "BLIZZARD" and dimmer <= 0.001 then
+                bg:Hide()
             else
-                bg.dimmerWash:Hide()
+                bg:Show()
+                LayoutBackdropLayers()
             end
-            bg:Show()
             return
         end
 
-        local pal = (mode == "HERO_MIST") and self:GetHeroMoodPalette() or self:GetClassGlowPalette()
+        local pal = (mist == "HERO_MIST") and self:GetHeroMoodPalette() or self:GetClassGlowPalette()
         local p = pal.primary
         local s = pal.secondary
         local g = pal.glow
-
-        bg.baseCanvas:Show()
-        SetVignettesShown(true)
 
         bg.mistPrimary:SetVertexColor(p[1], p[2], p[3], 1)
         bg.mistPrimary:Show()
@@ -4986,38 +5043,65 @@ do
         bg.mistFocal:SetVertexColor(g[1], g[2], g[3], 1)
         bg.mistFocal:Show()
 
-        if dimmer > 0.001 then
-            bg.dimmerWash:SetColorTexture(0.012, 0.015, 0.020, dimmer)
-            bg.dimmerWash:Show()
-        else
-            bg.dimmerWash:Hide()
-        end
-
         bg:Show()
         LayoutBackdropLayers()
 
+        local intScale = intensity / 60
+        local function ClampAlpha(v)
+            return math.max(0.04, math.min(0.90, v))
+        end
+
+        local mistLayers = {
+            {
+                tex    = bg.mistPrimary,
+                ag     = bg.mistPrimaryAnim,
+                aFrom  = ClampAlpha(0.28 * intScale),
+                aTo    = ClampAlpha(0.48 * intScale),
+                aStat  = ClampAlpha(0.38 * intScale),
+            },
+            {
+                tex    = bg.mistSecondary,
+                ag     = bg.mistSecondaryAnim,
+                aFrom  = ClampAlpha(0.20 * intScale),
+                aTo    = ClampAlpha(0.36 * intScale),
+                aStat  = ClampAlpha(0.28 * intScale),
+            },
+            {
+                tex    = bg.mistFocal,
+                ag     = bg.mistFocalAnim,
+                aFrom  = ClampAlpha(0.24 * intScale),
+                aTo    = ClampAlpha(0.40 * intScale),
+                aStat  = ClampAlpha(0.32 * intScale),
+            },
+        }
+
         local tfShown = (type(tf.IsShown) ~= "function") or tf:IsShown()
         if animate and tfShown then
-            local mistPairs = {
-                { tex = bg.mistPrimary,   ag = bg.mistPrimaryAnim,   staticAlpha = 0.38 },
-                { tex = bg.mistSecondary, ag = bg.mistSecondaryAnim, staticAlpha = 0.28 },
-                { tex = bg.mistFocal,     ag = bg.mistFocalAnim,     staticAlpha = 0.32 },
-            }
-            for _, mp in ipairs(mistPairs) do
+            for _, mp in ipairs(mistLayers) do
                 if mp.ag and mp.ag.Play then
+                    local boundsChanged = (mp.ag._lastAFrom ~= mp.aFrom or mp.ag._lastATo ~= mp.aTo)
+                    if mp.ag._alphaAnim then
+                        if mp.ag._alphaAnim.SetFromAlpha then mp.ag._alphaAnim:SetFromAlpha(mp.aFrom) end
+                        if mp.ag._alphaAnim.SetToAlpha then mp.ag._alphaAnim:SetToAlpha(mp.aTo) end
+                    end
+                    mp.ag._lastAFrom = mp.aFrom
+                    mp.ag._lastATo = mp.aTo
                     mp.tex:SetAlpha(1.0)
+                    if boundsChanged and mp.ag.Stop and (not mp.ag.IsPlaying or mp.ag:IsPlaying()) then
+                        mp.ag:Stop()
+                    end
                     if not mp.ag.IsPlaying or not mp.ag:IsPlaying() then
                         mp.ag:Play()
                     end
                 else
-                    mp.tex:SetAlpha(mp.staticAlpha)
+                    mp.tex:SetAlpha(mp.aStat)
                 end
             end
         else
             self:PauseTalentTreeBackdropAnims()
-            bg.mistPrimary:SetAlpha(0.38)
-            bg.mistSecondary:SetAlpha(0.28)
-            bg.mistFocal:SetAlpha(0.32)
+            for _, mp in ipairs(mistLayers) do
+                mp.tex:SetAlpha(mp.aStat)
+            end
         end
     end
 end
@@ -9322,7 +9406,7 @@ local function CreateSegmentedSwitchCard(parent, yOffset, title, desc, getter, s
     return card, -66
 end
 
-local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, maxVal, stepVal, getter, setter, formatFunc)
+local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, maxVal, stepVal, getter, setter, formatFunc, isEnabledFn, disabledNote)
     local surf, _ = GetTheme()
     local card = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     card:SetHeight(60)
@@ -9346,6 +9430,8 @@ local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, m
     titleFs:SetTextColor(0.95, 0.97, 1.0, 1.0)
     titleFs:SetText(title)
 
+    local descText = desc or ""
+    local disabledText = disabledNote or descText
     local descFs = card:CreateFontString(nil, "OVERLAY")
     SetFontSafe(descFs, 9.5, "")
     descFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -3)
@@ -9355,7 +9441,7 @@ local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, m
     descFs:SetWordWrap(true)
     if descFs.SetMaxLines then descFs:SetMaxLines(2) end
     descFs:SetTextColor(0.58, 0.65, 0.74, 0.95)
-    descFs:SetText(desc or "")
+    descFs:SetText(descText)
 
     local valText = holder:CreateFontString(nil, "OVERLAY")
     SetFontSafe(valText, 11, "")
@@ -9390,6 +9476,10 @@ local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, m
     local isDragging = false
     local lastCommittedValue = nil
 
+    local function IsControlEnabled()
+        return (type(isEnabledFn) ~= "function") or (isEnabledFn() == true)
+    end
+
     local function SnapValue(v)
         v = math.max(minVal, math.min(maxVal, tonumber(v) or minVal))
         if stepVal and stepVal > 0 then
@@ -9400,12 +9490,18 @@ local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, m
 
     local function RefreshSliderVisual(v, rawPct)
         local _, a = GetTheme()
-        fill:SetColorTexture(a.r, a.g, a.b, 0.85)
-        valText:SetTextColor(a.r, a.g, a.b, 1.0)
-        if isDragging or (holder.IsMouseOver and holder:IsMouseOver()) then
+        local enabled = IsControlEnabled()
+        if not enabled then isDragging = false end
+        holder:SetAlpha(enabled and 1.0 or 0.38)
+        titleFs:SetTextColor(enabled and 0.95 or 0.58, enabled and 0.97 or 0.64, enabled and 1.0 or 0.72, 1.0)
+        descFs:SetText(enabled and descText or disabledText)
+        descFs:SetTextColor(enabled and 0.58 or 0.52, enabled and 0.65 or 0.58, enabled and 0.74 or 0.68, 0.95)
+        fill:SetColorTexture(a.r, a.g, a.b, enabled and 0.85 or 0.45)
+        valText:SetTextColor(a.r, a.g, a.b, enabled and 1.0 or 0.65)
+        if enabled and (isDragging or (holder.IsMouseOver and holder:IsMouseOver())) then
             thumb:SetColorTexture(a.r, a.g, a.b, 1.0)
         else
-            thumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+            thumb:SetColorTexture(0.97, 0.98, 1.00, enabled and 1.0 or 0.65)
         end
         local cur = SnapValue((type(v) == "number" and v) or getter() or minVal)
         local pct = rawPct
@@ -9422,7 +9518,7 @@ local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, m
     end
 
     local function UpdateFromCursor()
-        if isDragging and IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+        if not IsControlEnabled() or (isDragging and IsMouseButtonDown and not IsMouseButtonDown("LeftButton")) then
             isDragging = false
             holder:SetScript("OnUpdate", nil)
             RefreshSliderVisual()
@@ -9444,6 +9540,7 @@ local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, m
     end
 
     holder:SetScript("OnMouseDown", function(self, button)
+        if not IsControlEnabled() then return end
         if button == "LeftButton" then
             isDragging = true
             UpdateFromCursor()
@@ -9465,8 +9562,13 @@ local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, m
             local hex = GetAccentHex()
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
             GameTooltip:ClearLines()
-            GameTooltip:AddLine(string.format("|cFF%sLeft-Click / Drag:|r |cFFE2E8F0Adjust value|r", hex))
-            GameTooltip:AddLine(string.format("|cFF%sMousewheel:|r |cFFE2E8F0Fine-tune by 1 step|r", hex))
+            if IsControlEnabled() then
+                GameTooltip:AddLine(string.format("|cFF%sLeft-Click / Drag:|r |cFFE2E8F0Adjust value|r", hex))
+                GameTooltip:AddLine(string.format("|cFF%sMousewheel:|r |cFFE2E8F0Fine-tune by 1 step|r", hex))
+            else
+                GameTooltip:AddLine(title, 0.72, 0.78, 0.88)
+                GameTooltip:AddLine("|cFF94A3B8" .. disabledText .. "|r", 1, 1, 1, true)
+            end
             GameTooltip:Show()
         end
     end)
@@ -9475,6 +9577,7 @@ local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, m
         if GameTooltip then GameTooltip:Hide() end
     end)
     holder:SetScript("OnMouseWheel", function(_, delta)
+        if not IsControlEnabled() then return end
         local cur = getter() or minVal
         local step = stepVal or ((maxVal - minVal) / 10)
         local newVal = SnapValue(cur + (delta > 0 and step or -step))
@@ -9489,6 +9592,7 @@ local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, m
             RefreshSliderVisual()
         end
     end)
+    card.RefreshEnabledState = RefreshSliderVisual
     RefreshSliderVisual()
     return card, -66
 end
@@ -9958,37 +10062,69 @@ local function RenderTalentEmbedded(parent)
     local secBg = CreateSectionBox(sc, y)
     local syBg = -10
     local _, dyBgH = CreateSectionHeader(secBg, syBg, "TALENT TREE BACKDROP",
-        "Customise Blizzard's talent background with Obsidian mist, Hero-synced colour moods, and a readability dimmer.")
+        "Customise Blizzard's talent background, dimmer strength, and optional Hero-synced or class-tinted ambient mist.")
     syBg = syBg + dyBgH
 
-    local _, dyBgMode = CreateBackdropModeCard(secBg, syBg, "Backdrop Mode",
-        "Choose Blizzard's native spec art, a clean Obsidian canvas, or animated mist synced to your Hero tree or Class.",
+    local dimmerCard, mistIntCard
+    local _, dyBgBase = CreateBackdropModeCard(secBg, syBg, "Base Background",
+        "Choose between Blizzard's native spec artwork or a clean Midnight Obsidian canvas.",
         {
-            { value = "BLIZZARD",   label = "Blizzard Default", tip = "Keeps Blizzard's native talent background art intact (Background Dimmer still applies above 0%)." },
-            { value = "OBSIDIAN",   label = "Obsidian Clean",   tip = "Sleek Midnight Obsidian canvas with a soft dark edge vignette for distraction-free editing." },
-            { value = "HERO_MIST",  label = "Hero-Synced Mist", tip = "Layered drifting Obsidian mist that automatically shifts its colour mood when switching Hero Talent trees." },
-            { value = "CLASS_GLOW", label = "Class Glow",       tip = "Subtle breathing Obsidian mist tinted to your active Class Colour or Suite Accent." },
+            { value = "BLIZZARD", label = "Blizzard Spec Art", tip = "Keeps Blizzard's native specialisation artwork visible behind talent nodes (adjustable with Background Dimmer)." },
+            { value = "OBSIDIAN", label = "Solid Obsidian",    tip = "Replaces Blizzard's spec artwork with a sleek Solid Obsidian canvas and subtle dark perimeter vignette." },
         },
-        function() return db.talentBackdropMode or "HERO_MIST" end,
+        function() return (db.talentBackdropBase == "BLIZZARD") and "BLIZZARD" or "OBSIDIAN" end,
         function(val)
-            db.talentBackdropMode = val
+            db.talentBackdropBase = val
+            if dimmerCard and dimmerCard.RefreshEnabledState then dimmerCard.RefreshEnabledState() end
             DynamicTalent:UpdateTalentTreeBackdrop()
         end)
-    syBg = syBg + dyBgMode
+    syBg = syBg + dyBgBase
 
-    local _, dyDimmer = CreatePrecisionSliderCard(secBg, syBg, "Background Dimmer",
-        "Applies a dark Obsidian wash behind talent nodes and over Blizzard's spec art so icons and links stay crisp.",
+    local dyDimmer
+    dimmerCard, dyDimmer = CreatePrecisionSliderCard(secBg, syBg, "Background Dimmer",
+        "Darkens Blizzard's spec artwork behind talent nodes so icons and links stay crisp.",
         0, 85, 5,
         function() return db.talentBackdropDimmer ~= nil and db.talentBackdropDimmer or 35 end,
         function(val)
             db.talentBackdropDimmer = val
             DynamicTalent:UpdateTalentTreeBackdrop()
         end,
-        function(v) return string.format("%d%%", v) end)
+        function(v) return string.format("%d%%", v) end,
+        function() return (db.talentBackdropBase == "BLIZZARD") end,
+        "Only applies when Blizzard Spec Art is selected.")
     syBg = syBg + dyDimmer
 
+    local _, dyMistMode = CreateBackdropModeCard(secBg, syBg, "Ambient Mist",
+        "Overlay soft drifting mist onto your talent background, synced to your Hero tree or Class.",
+        {
+            { value = "OFF",        label = "Off",         tip = "Turns off the drifting mist and focal glow overlay." },
+            { value = "HERO_MIST",  label = "Hero-Synced", tip = "Layered Obsidian mist that shifts its colour mood automatically across all 40 Hero Talent trees." },
+            { value = "CLASS_GLOW", label = "Class Glow",  tip = "Soft Obsidian mist tinted to your active Class Colour or Suite Accent." },
+        },
+        function() return db.talentBackdropMist or "HERO_MIST" end,
+        function(val)
+            db.talentBackdropMist = val
+            if mistIntCard and mistIntCard.RefreshEnabledState then mistIntCard.RefreshEnabledState() end
+            DynamicTalent:UpdateTalentTreeBackdrop()
+        end)
+    syBg = syBg + dyMistMode
+
+    local dyMistInt
+    mistIntCard, dyMistInt = CreatePrecisionSliderCard(secBg, syBg, "Mist Intensity",
+        "Controls how strongly the ambient mist and focal glow stand out behind your talent tree.",
+        15, 100, 5,
+        function() return db.talentBackdropMistIntensity ~= nil and db.talentBackdropMistIntensity or 60 end,
+        function(val)
+            db.talentBackdropMistIntensity = val
+            DynamicTalent:UpdateTalentTreeBackdrop()
+        end,
+        function(v) return string.format("%d%%", v) end,
+        function() return ((db.talentBackdropMist or "HERO_MIST") ~= "OFF") end,
+        "Only applies when Ambient Mist is enabled.")
+    syBg = syBg + dyMistInt
+
     local _, dyAnim = CreateSegmentedSwitchCard(secBg, syBg, "Subtle Backdrop Animation",
-        "Animates the drifting mist and gentle glow pulse when Hero-Synced Mist or Class Glow is active.",
+        "Gently drifts and pulses the ambient mist when Hero-Synced or Class Glow is active.",
         function() return db.talentBackdropAnimate ~= false end,
         function(v)
             db.talentBackdropAnimate = (v == true)
@@ -10507,6 +10643,8 @@ DynamicTalent.CHANGELOG = {
         version = VERSION,
         date = "22/11/2026",
         entries = {
+            { type = "FIXED", text = "Delve vs Mythic+ Zone Priority Detection (22/11/2026): Updated GetInstanceInfo() parsing across GetActiveTalentMismatch() and GetActiveContentGroup() to read difficultyID alongside instanceType and check difficultyID == 208, C_DelvesUI.HasActiveDelve(), C_PartyInfo.IsDelveInProgress(), and C_PartyInfo.IsDelveComplete(). Delves and non-dungeon scenarios never misclassify as Mythic+; [Zone: Delves] always takes priority inside Delves, [Zone: Outdoor] wins in open world zones outside resting cities, and Talent Dock / Prep Bar refresh cleanly after zoning." },
+            { type = "UI",    text = "Option 1 Talent Tree Backdrop Studio Redesign (22/11/2026): Split Backdrop Studio into independent Base Background ('Blizzard Spec Art' | 'Solid Obsidian') and Ambient Mist ('Off' | 'Hero-Synced' | 'Class Glow') controls with a muted-when-inactive Background Dimmer (0%-85% for Blizzard Spec Art) and a live Mist Intensity slider (15%-100%, default 60%) so Hero-Synced and Class Glow mist can layer cleanly over either base, migrating legacy talentBackdropMode settings automatically." },
             { type = "FIXED", text = "Talent Tree Backdrop Studio Layering, Dimmer Order & Mist Opacity (22/11/2026): Moved DynamicTalentTreeBackdrop textures onto strictly positive BACKGROUND sublevels (1-6) strictly above Blizzard's TalentsFrame.Background (safely hidden via alpha 0 in non-Blizzard modes and preserved across spec switches via hooksecurefunc on UpdateSpecBackground, then restored cleanly to alpha 1 in Blizzard Default or when disabled) while remaining below all nodes, edges, and buttons; placed dimmerWash strictly behind the mist and vignette layers so up to 85% Background Dimmer never smothers Hero-Synced Mist or Class Glow; and eliminated double-alpha multiplication by keeping mist base alpha at 1.0 during animations with tuned atmospheric opacity bounds (0.28-0.48 primary, 0.20-0.36 secondary, 0.24-0.40 focal, and 0.38/0.28/0.32 static fallback)." },
             { type = "FIXED", text = "Same-Name Loadout Bind Isolation (22/11/2026): Gave every saved build a stable unique id and persisted loadoutID across Raid, M+, PvP, and Zone bind rules (with unambiguous legacy backfill), so builds sharing names (e.g. [M+-WS] Default, [M+-KG] Default, [Raid-KG] Default) never collide or overwrite each other's binds, badges, conflict prompts, or Active Reminders rows." },
             { type = "UI",    text = "Single Pop-Out Manager, Bidirectional Links & Drag-and-Drop Group Order (22/11/2026): Removed the duplicate embedded manager from /ds -> DynamicTalent in favour of a clean Action & Status strip ('Open Talents (N)' + 'Open Loadout Manager'), added a 'Settings' header button in DynamicTalentManagerModal, upgraded the 5 Custom Loadout Group Order rows with tactile Left-Click & Drag ghost-pill reordering plus bordered Up/Down chevrons, and fixed Precision Track sliders to true 4px fill geometry." },
@@ -10528,8 +10666,9 @@ DynamicTalent.SEARCH_ENTRIES = {
     { title = "Zone-Aware Talent Loadout Reminders",   desc = "Show a 1-click alert toast when entering Raid, M+, Delve, or PvP content with a different build.", keywords = "talent reminder toast alert swap",               tabIndex = 1, targetTitle = "Zone-Aware Talent Loadout Reminders" },
     { title = "Prioritise Current Zone First",         desc = "Float loadouts matching your current zone to the top of quick-switchers.",                         keywords = "prioritise zone first sort quick switch",        tabIndex = 1, targetTitle = "Prioritise Current Zone First" },
     { title = "Right-Click Hero Spec Swap",            desc = "Right-click Blizzard's Hero Talent medallion out of combat to switch Hero trees cleanly.",          keywords = "hero spec swap medallion right click tree",      tabIndex = 1, targetTitle = "Right-Click Hero Spec Swap" },
-    { title = "Talent Tree Backdrop Studio",           desc = "Choose Blizzard Default, Obsidian Clean, Hero-Synced Mist, or Class Glow talent backgrounds.",     keywords = "backdrop background mist obsidian hero glow tree",tabIndex = 1, targetTitle = "TALENT TREE BACKDROP" },
-    { title = "Background Dimmer & Mist Animation",    desc = "Dim Blizzard's spec background art (0%-85%) or pause subtle animated mist glow.",                   keywords = "dimmer dark opacity mist animation pulse",       tabIndex = 1, targetTitle = "Background Dimmer" },
+    { title = "Talent Tree Backdrop Studio",           desc = "Choose Blizzard Spec Art or Solid Obsidian with optional Hero-Synced or Class Glow mist.",        keywords = "backdrop background obsidian blizzard spec art tree", tabIndex = 1, targetTitle = "Base Background" },
+    { title = "Background Dimmer",                     desc = "Darken Blizzard Spec Art (0%-85%) behind talent nodes for sharper readability.",                  keywords = "dimmer dark opacity spec art readability",       tabIndex = 1, targetTitle = "Background Dimmer" },
+    { title = "Ambient Mist & Mist Intensity",         desc = "Layer Hero-Synced or Class Glow mist (15%-100% intensity) over either Base Background.",         keywords = "ambient mist intensity hero glow animation pulse",tabIndex = 1, targetTitle = "Ambient Mist" },
     { title = "Custom Loadout Group Order",            desc = "Drag and drop or use arrows to reorder Raid, M+, Delves, PvP, and Custom groups across Talent Dock and switchers.", keywords = "group order sort drag drop raid m+ delves pvp custom", tabIndex = 1, targetTitle = "CUSTOM LOADOUT GROUP ORDER" },
 }
 
@@ -10661,10 +10800,17 @@ evt:SetScript("OnEvent", function(_, event, arg1)
             end
         end
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
-        if C_Timer and C_Timer.After then
-            C_Timer.After(1.2, function() DynamicTalent:CheckZoneTalentLoadout() end)
-        else
+        local function RefreshZoneContextUI()
             DynamicTalent:CheckZoneTalentLoadout()
+            DynamicTalent:RefreshTalentDock()
+            if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
+                pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+            end
+        end
+        if C_Timer and C_Timer.After then
+            C_Timer.After(1.2, RefreshZoneContextUI)
+        else
+            RefreshZoneContextUI()
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
         DynamicTalent:HideTalentReminderToast()
