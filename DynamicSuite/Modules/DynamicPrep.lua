@@ -763,6 +763,7 @@ local DEFAULTS = {
     talentDungeonMap = {},
     talentZoneMap = {},
     talentStringLibrary = {},
+    talentMgrModalSize = { w = 620, h = 620 },
     cinematicMode = "BOTH", -- "BOTH", "SKIP_ONLY", "OFF"
     autoRezMode = "OUT_OF_COMBAT", -- "OUT_OF_COMBAT", "ALWAYS", "OFF"
     autoReleaseMode = "WIPE_AND_CTRL", -- "WIPE_AND_CTRL", "HOLD_CTRL", "PVP_AUTO_WIPE_PVE", "ALWAYS", "OFF"
@@ -9225,6 +9226,12 @@ local function ResetPrepModuleDefaults()
     DynamicPrep:SaveBarEditPosition("TOP", "TOP", 0, -8)
     DynamicPrep.previewZoneKey = nil
     DynamicPrep.previewFolioMismatch = nil
+    if DynamicPrep._talentMgrModal then
+        DynamicPrep._talentMgrModal:SetSize(620, 620)
+        if DynamicPrep._talentMgrModal.UpdateResponsiveLayout then
+            DynamicPrep._talentMgrModal:UpdateResponsiveLayout()
+        end
+    end
     DynamicPrep:ApplyBarGeometry()
     DynamicPrep:RefreshBar()
     DynamicPrep:RefreshWorkspaceView()
@@ -10882,7 +10889,9 @@ function DynamicPrep:DeleteTalentLibraryEntry(targetEntry)
     self:RefreshBar()
     if self.RefreshTalentDock then self:RefreshTalentDock() end
     if self._talentMgrModal and self._talentMgrModal:IsShown() then
-        if self._talentMgrModal.editingEntry == targetEntry and self._talentMgrModal.LoadEditorEntry then
+        if self._talentMgrModal.state and self._talentMgrModal.state.selectedEntry == targetEntry and self._talentMgrModal.SelectLoadout then
+            self._talentMgrModal:SelectLoadout(nil, true)
+        elseif self._talentMgrModal.editingEntry == targetEntry and self._talentMgrModal.LoadEditorEntry then
             self._talentMgrModal:LoadEditorEntry(nil, true)
         end
         if self._talentMgrModal.RefreshBossList then
@@ -11179,20 +11188,29 @@ do
                             local rShort = rule.raidShort
                             local rName = rule.raidName
                             local bOrder = rule.bossOrder
-                            if (not rShort or not bOrder) and type(self.MatchBossTargetName) == "function" then
+                            local bShort = nil
+                            if type(self.MatchBossTargetName) == "function" then
                                 local _, _, rObj, bObj = self:MatchBossTargetName(rule.bossName)
                                 if rObj then
                                     rShort = rShort or rObj.short or rObj.name
                                     rName = rName or rObj.name
                                 end
-                                if bObj then bOrder = bOrder or bObj.order end
+                                if bObj then
+                                    bOrder = bOrder or bObj.order
+                                    bShort = bObj.short
+                                end
+                            end
+                            local cleanShort = nil
+                            if type(bShort) == "string" and bShort ~= "" then
+                                cleanShort = bShort:gsub("^(%d+)%.%s*", "#%1 ")
                             end
                             rec = {
-                                name      = tostring(rule.bossName),
-                                order     = bOrder,
-                                raidShort = rShort,
-                                raidName  = rName,
-                                diffs     = { normal = false, heroic = false, mythic = false },
+                                name       = tostring(rule.bossName),
+                                short      = cleanShort,
+                                order      = bOrder,
+                                raidShort  = rShort,
+                                raidName   = rName,
+                                diffs      = { normal = false, heroic = false, mythic = false },
                             }
                             out.bosses[bLow] = rec
                         end
@@ -11245,7 +11263,7 @@ do
             end
         end
 
-        local lastSingle = nil
+        local lastSingle, lastShort = nil, nil
         local bossList = {}
         for _, rec in pairs(out.bosses) do table.insert(bossList, rec) end
         table.sort(bossList, function(a, b)
@@ -11259,11 +11277,13 @@ do
             local diffTxt = self:FormatDifficultySummary(rec.diffs)
             local numPfx = (tonumber(rec.order) and tonumber(rec.order) > 0) and ("#" .. tonumber(rec.order) .. " ") or ""
             local tag = numPfx .. rec.name
+            local shortTag = rec.short or ((#tag > 15) and (tag:sub(1, 13) .. ".") or tag)
             local raidPfx = rec.raidShort and (rec.raidShort .. " ") or ""
             table.insert(out.summaryTags, tag .. " (" .. diffTxt .. ")")
             table.insert(out.detailLines, string.format("Raid Boss: %s%s [%s]", raidPfx, tag, diffTxt))
             out.scopeCount = out.scopeCount + 1
             lastSingle = tag
+            lastShort = shortTag
         end
 
         local dungList = {}
@@ -11271,10 +11291,19 @@ do
         table.sort(dungList, function(a, b) return a.name:lower() < b.name:lower() end)
         for _, rec in ipairs(dungList) do
             local tStr = FormatTierMap(rec.tiers)
+            local dShort = rec.name
+            if #dShort > 12 then
+                local acr = ""
+                for w in dShort:gmatch("%a+") do
+                    if #acr < 4 then acr = acr .. w:sub(1, 1):upper() end
+                end
+                dShort = (#acr >= 2) and ("M+ " .. acr) or dShort:sub(1, 11)
+            end
             table.insert(out.summaryTags, rec.name .. " (" .. tStr .. ")")
             table.insert(out.detailLines, string.format("M+ Dungeon: %s [%s]", rec.name, tStr))
             out.scopeCount = out.scopeCount + 1
             lastSingle = rec.name
+            lastShort = dShort
         end
 
         if out.allRaid.active then
@@ -11283,6 +11312,7 @@ do
             table.insert(out.detailLines, string.format("Raid Default: All Raids [%s]", dStr))
             out.scopeCount = out.scopeCount + 1
             lastSingle = "All Raids"
+            lastShort = "All Raids"
         end
         if out.allMPlus.active then
             local tStr = FormatTierMap(out.allMPlus.tiers)
@@ -11290,34 +11320,40 @@ do
             table.insert(out.detailLines, string.format("M+ Default: All M+ [%s]", tStr))
             out.scopeCount = out.scopeCount + 1
             lastSingle = "All M+"
+            lastShort = "All M+"
         end
         if out.zones.delves then
             table.insert(out.summaryTags, "Zone: Delves")
             table.insert(out.detailLines, "Zone Default: Delves")
             out.scopeCount = out.scopeCount + 1
             lastSingle = "Delves"
+            lastShort = "Delves"
         end
         if out.zones.pvp then
             table.insert(out.summaryTags, "Zone: PvP")
             table.insert(out.detailLines, "Zone Default: PvP")
             out.scopeCount = out.scopeCount + 1
             lastSingle = "PvP"
+            lastShort = "PvP"
         end
         if out.zones.outdoor then
             table.insert(out.summaryTags, "Zone: Outdoor")
             table.insert(out.detailLines, "Zone Default: Outdoor")
             out.scopeCount = out.scopeCount + 1
             lastSingle = "Outdoor"
+            lastShort = "Outdoor"
         end
         if out.zones.all then
             table.insert(out.summaryTags, "All Content")
             table.insert(out.detailLines, "Global Default: All Content")
             out.scopeCount = out.scopeCount + 1
             lastSingle = "All Content"
+            lastShort = "All Content"
         end
 
         if out.scopeCount == 1 then
             out.singleBadge = lastSingle
+            out.singleShortBadge = lastShort or lastSingle
         end
         return out
     end
@@ -12658,9 +12694,14 @@ function DynamicPrep:RefreshTalentDock()
             row.editBtn.txt:SetPoint("CENTER")
             row.editBtn.txt:SetText("Edit")
             row.editBtn:Hide()
+            row.bindTag = CreateText(row, "OVERLAY", "GameFontHighlightSmall")
+            row.bindTag:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+            row.bindTag:SetJustifyH("RIGHT")
+            row.bindTag:SetWordWrap(false)
+            row.bindTag:Hide()
             row.txt = CreateText(row, "OVERLAY", "GameFontHighlightSmall")
             row.txt:SetPoint("LEFT", row.dot, "RIGHT", 6, 0)
-            row.txt:SetPoint("RIGHT", row, "RIGHT", -7, 0)
+            row.txt:SetPoint("RIGHT", row, "RIGHT", -6, 0)
             row.txt:SetJustifyH("LEFT")
             row.txt:SetWordWrap(false)
             f.rows[idx] = row
@@ -12675,16 +12716,34 @@ function DynamicPrep:RefreshTalentDock()
         row.editBtn:Hide()
         SetPixelBackdrop(row.editBtn, { 0.055, 0.063, 0.082, 0.96 }, { 0.25, 0.29, 0.38, 0.95 }, 1)
         row.editBtn.txt:SetTextColor(0.84, 0.88, 0.95, 1)
-        row.txt:ClearAllPoints()
-        row.txt:SetPoint("LEFT", row.dot, "RIGHT", 6, 0)
-        row.txt:SetPoint("RIGHT", row, "RIGHT", -7, 0)
-        local bindSuffix = ""
+
+        local tagText = nil
         if bInfo.scopeCount >= 2 then
-            bindSuffix = " |cFFFBBF24(Various)|r"
-        elseif bInfo.scopeCount == 1 and bInfo.singleBadge and bInfo.singleBadge ~= "" then
-            bindSuffix = " |cFFFBBF24(" .. tostring(bInfo.singleBadge) .. ")|r"
+            tagText = "(Various)"
+        elseif bInfo.scopeCount == 1 then
+            tagText = "(" .. tostring(bInfo.singleShortBadge or bInfo.singleBadge or "Bound") .. ")"
         end
-        row.txt:SetText(string.format("%s %s%s", badgePrefix, tostring(entry.name or "Loadout"), bindSuffix))
+        row._hasBindTag = (tagText ~= nil)
+        if row._hasBindTag then
+            row.bindTag:SetText("|cFFFBBF24" .. tagText .. "|r")
+            row.bindTag:Show()
+        else
+            row.bindTag:Hide()
+        end
+
+        local function ApplyIdleRowAnchors()
+            row.txt:ClearAllPoints()
+            row.txt:SetPoint("LEFT", row.dot, "RIGHT", 6, 0)
+            if row._hasBindTag then
+                row.bindTag:Show()
+                row.txt:SetPoint("RIGHT", row.bindTag, "LEFT", -4, 0)
+            else
+                row.bindTag:Hide()
+                row.txt:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+            end
+        end
+        ApplyIdleRowAnchors()
+        row.txt:SetText(string.format("%s %s", badgePrefix, tostring(entry.name or "Loadout")))
         row.txt:SetTextColor(isAct and 1 or 0.86, isAct and 1 or 0.90, isAct and 1 or 0.96, 1)
         SetPixelBackdrop(row, isAct and { 0.063 * 0.36, 0.725 * 0.36, 0.506 * 0.36, 0.98 } or COLORS.BgElevated, isAct and { 0.063, 0.725, 0.506, 0.98 } or COLORS.BorderSubtle, 1)
 
@@ -12704,7 +12763,7 @@ function DynamicPrep:RefreshTalentDock()
                 local mgr = DynamicPrep._talentMgrModal
                 local mgrOpen = (mgr and mgr:IsShown()) and true or false
                 local leftHint = mgrOpen
-                    and (((mgr.activeTab or 1) == 1) and "Load build into Editor (Tab 1)" or "Select build in Talent Binds & highlight its binds")
+                    and (((mgr.activeTab or 1) == 1) and "Select in Talent Loadouts Manager (Edit)" or "Select in Talent Loadouts Manager & view binds")
                     or "Switch to this Talent Loadout"
                 GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0" .. leftHint .. "|r", 1, 1, 1)
                 GameTooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Rename, Quick Assign, Update or Delete|r", 1, 1, 1)
@@ -12718,14 +12777,13 @@ function DynamicPrep:RefreshTalentDock()
             local overEdit = MouseIsOver and MouseIsOver(row.editBtn)
             if not overRow and not overEdit then
                 row.editBtn:Hide()
-                row.txt:ClearAllPoints()
-                row.txt:SetPoint("LEFT", row.dot, "RIGHT", 6, 0)
-                row.txt:SetPoint("RIGHT", row, "RIGHT", -7, 0)
+                ApplyIdleRowAnchors()
                 if GameTooltip then GameTooltip:Hide() end
             end
         end
 
         row:SetScript("OnEnter", function(s)
+            row.bindTag:Hide()
             row.editBtn:Show()
             row.txt:ClearAllPoints()
             row.txt:SetPoint("LEFT", row.dot, "RIGHT", 6, 0)
@@ -12737,6 +12795,7 @@ function DynamicPrep:RefreshTalentDock()
             local r, g, b = GetActiveAccentRGB()
             SetPixelBackdrop(eb, { r * 0.42, g * 0.42, b * 0.42, 0.98 }, { r, g, b, 0.95 }, 1)
             eb.txt:SetTextColor(1, 1, 1, 1)
+            row.bindTag:Hide()
             eb:Show()
             row.txt:ClearAllPoints()
             row.txt:SetPoint("LEFT", row.dot, "RIGHT", 6, 0)
@@ -12768,12 +12827,8 @@ function DynamicPrep:RefreshTalentDock()
             else
                 DynamicPrep:HideTalentRowContextMenu()
                 local mgr = DynamicPrep._talentMgrModal
-                if mgr and mgr:IsShown() then
-                    if (mgr.activeTab or 1) == 1 then
-                        mgr:LoadEditorEntry(entry)
-                    elseif mgr.SelectBuildForTab2 then
-                        mgr:SelectBuildForTab2(entry)
-                    end
+                if mgr and mgr:IsShown() and mgr.SelectLoadout then
+                    mgr:SelectLoadout(entry, (mgr.activeTab ~= 1))
                     return
                 end
                 DynamicPrep:ApplyTalentLibraryEntry(entry)
@@ -13479,11 +13534,21 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
     local CARD_BDR  = { 1, 1, 1, 0.08 }
 
     if not talentMgrModal then
+        local sz = (self.db and self.db.talentMgrModalSize) or {}
+        local initW = math.max(620, math.min(760, tonumber(sz.w) or 620))
+        local initH = math.max(520, math.min(820, tonumber(sz.h) or 620))
         local f = CreateFrame("Frame", "DynamicPrepTalentManagerModal", UIParent, "BackdropTemplate")
-        f:SetSize(620, 356)
+        f:SetSize(initW, initH)
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
         f:SetMovable(true)
+        f:SetResizable(true)
+        if f.SetResizeBounds then
+            f:SetResizeBounds(620, 520, 760, 820)
+        elseif f.SetMinResize then
+            f:SetMinResize(620, 520)
+            if f.SetMaxResize then f:SetMaxResize(760, 820) end
+        end
         f:EnableMouse(true)
         f:SetClampedToScreen(true)
         f:RegisterForDrag("LeftButton")
@@ -13496,6 +13561,8 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
 
         f.state = {
             subMode          = "RAID",
+            reminderFilter   = "BUILD",
+            selectedEntry    = nil,
             selRaidIdx       = 1,
             selBossIdx       = 1,
             selAllRaidBosses = false,
@@ -13557,28 +13624,46 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         end)
         closeBtn:SetScript("OnClick", function() f:Hide() end)
 
-        -- 2-Tab #0B0D12 Recessed Bevel Bar (DESIGN_SYSTEM.md)
-        local tabBar = CreateFrame("Frame", nil, f, "BackdropTemplate")
-        tabBar:SetHeight(34)
-        tabBar:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -46)
-        tabBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -46)
-        SetPixelBackdrop(tabBar, TAB_BG, CARD_BDR, 1)
-
-        f.activeTab = 1
-        f.editingEntry = nil
-        local tab1Btn = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
-        tab1Btn:SetSize(290, 26)
-        tab1Btn:SetPoint("LEFT", tabBar, "LEFT", 4, 0)
-        tab1Btn.txt = CreateText(tab1Btn, "OVERLAY", "GameFontHighlightSmall")
-        tab1Btn.txt:SetPoint("CENTER")
-        tab1Btn.txt:SetText("1. Save / Edit / Import")
-
-        local tab2Btn = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
-        tab2Btn:SetSize(290, 26)
-        tab2Btn:SetPoint("RIGHT", tabBar, "RIGHT", -4, 0)
-        tab2Btn.txt = CreateText(tab2Btn, "OVERLAY", "GameFontHighlightSmall")
-        tab2Btn.txt:SetPoint("CENTER")
-        tab2Btn.txt:SetText("2. Talent Binds & Defaults")
+        -- Standard 14x14 Bottom-Right Corner Resize Grip (live Suite Accent hover)
+        do
+            local resizeGrip = CreateFrame("Button", nil, f)
+            resizeGrip:SetSize(14, 14)
+            resizeGrip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
+            resizeGrip:SetFrameLevel(f:GetFrameLevel() + 12)
+            resizeGrip:EnableMouse(true)
+            local gripTex = resizeGrip:CreateTexture(nil, "OVERLAY", nil, 5)
+            gripTex:SetAllPoints()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+            gripTex:SetDesaturated(true)
+            gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+            resizeGrip:SetScript("OnEnter", function()
+                local r, g, b = GetActiveAccentRGB()
+                gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+                gripTex:SetDesaturated(false)
+                gripTex:SetVertexColor(r, g, b, 0.95)
+            end)
+            resizeGrip:SetScript("OnLeave", function()
+                gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+                gripTex:SetDesaturated(true)
+                gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+            end)
+            resizeGrip:SetScript("OnMouseDown", function(_, mBtn)
+                if mBtn == "LeftButton" then
+                    f:StartSizing("BOTTOMRIGHT")
+                end
+            end)
+            resizeGrip:SetScript("OnMouseUp", function()
+                f:StopMovingOrSizing()
+                if DynamicPrep.db then
+                    DynamicPrep.db.talentMgrModalSize = {
+                        w = math.max(620, math.min(760, math.floor((f:GetWidth() or 620) + 0.5))),
+                        h = math.max(520, math.min(820, math.floor((f:GetHeight() or 620) + 0.5))),
+                    }
+                end
+                if f.UpdateResponsiveLayout then f:UpdateResponsiveLayout() end
+            end)
+            f.resizeGrip = resizeGrip
+        end
 
         local ICON_CHEV_DOWN = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga"
         local ICON_CHEV_UP   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_up.tga"
@@ -13608,57 +13693,21 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             end)
         end
 
-        -- =====================================================================
-        -- PAGE 1: SAVE / EDIT / IMPORT LOADOUT (Switcher + 2 Obsidian Cards)
-        -- =====================================================================
-        local p1 = CreateFrame("Frame", nil, f)
-        p1:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -10)
-        p1:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 14)
-
+        -- Persistent Top Loadout Bar (Above Tabs 1 & 2)
         do
-            local pickBar = CreateFrame("Frame", nil, p1, "BackdropTemplate")
-            pickBar:SetHeight(34)
-            pickBar:SetPoint("TOPLEFT", p1, "TOPLEFT", 0, 0)
-            pickBar:SetPoint("TOPRIGHT", p1, "TOPRIGHT", 0, 0)
+            local pickBar = CreateFrame("Frame", nil, f, "BackdropTemplate")
+            pickBar:SetHeight(36)
+            pickBar:SetPoint("TOPLEFT", f, "TOPLEFT", 14, -44)
+            pickBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -14, -44)
             SetPixelBackdrop(pickBar, CARD_BG, CARD_BDR, 1)
 
             local pickLbl = CreateText(pickBar, "OVERLAY", "GameFontHighlightSmall")
-            pickLbl:SetPoint("LEFT", pickBar, "LEFT", 12, 0)
+            pickLbl:SetPoint("LEFT", pickLbl:GetParent() or pickBar, "LEFT", 12, 0)
             pickLbl:SetText("|cFF94A3B8Loadout:|r")
-
-            local pickBtn = CreateFrame("Button", nil, pickBar, "BackdropTemplate")
-            pickBtn:SetSize(418, 24)
-            pickBtn:SetPoint("LEFT", pickLbl, "RIGHT", 8, 0)
-            pickBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-            StyleDropdownTrigger(pickBtn)
-            pickBtn.txt:SetText("|cFF10B981+ New / Import Loadout|r")
-            pickBtn:SetScript("OnClick", function(btnSelf)
-                if not f.ShowModalDropdown then return end
-                local items = {
-                    {
-                        label = "|cFF10B981+ New / Import Loadout|r",
-                        selected = (f.editingEntry == nil),
-                        onSelect = function()
-                            f:LoadEditorEntry(nil)
-                        end,
-                    },
-                }
-                local list = DynamicPrep:GetSortedTalentProfiles()
-                for _, it in ipairs(list) do
-                    table.insert(items, {
-                        label = string.format("%s %s", DynamicPrep:FormatTalentBadge(it), tostring(it.name or "Loadout")),
-                        selected = (f.editingEntry == it),
-                        onSelect = function()
-                            f:LoadEditorEntry(it)
-                        end,
-                    })
-                end
-                f.ShowModalDropdown(btnSelf, items, 418)
-            end)
 
             local newBtn = CreateFrame("Button", nil, pickBar, "BackdropTemplate")
             newBtn:SetSize(84, 24)
-            newBtn:SetPoint("RIGHT", pickBar, "RIGHT", -10, 0)
+            newBtn:SetPoint("RIGHT", pickBar, "RIGHT", -8, 0)
             SetPixelBackdrop(newBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
             newBtn.txt = CreateText(newBtn, "OVERLAY", "GameFontHighlightSmall")
             newBtn.txt:SetPoint("CENTER")
@@ -13671,20 +13720,89 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1)
             end)
             newBtn:SetScript("OnClick", function()
-                f:LoadEditorEntry(nil)
+                if f.SelectLoadout then f:SelectLoadout(nil, false) else f:LoadEditorEntry(nil) end
+                f:SelectTab(1)
             end)
 
+            local pickBtn = CreateFrame("Button", nil, pickBar, "BackdropTemplate")
+            pickBtn:SetHeight(24)
+            pickBtn:SetPoint("LEFT", pickLbl, "RIGHT", 8, 0)
+            pickBtn:SetPoint("RIGHT", newBtn, "LEFT", -8, 0)
+            pickBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            StyleDropdownTrigger(pickBtn)
+            pickBtn.txt:SetText("|cFF10B981+ New / Import Loadout|r")
+            pickBtn:SetScript("OnClick", function(btnSelf)
+                if not f.ShowModalDropdown then return end
+                local curSel = f.GetSelectedLoadout and f:GetSelectedLoadout() or nil
+                local items = {
+                    {
+                        label = "|cFF10B981+ New / Import Loadout|r",
+                        selected = (curSel == nil),
+                        onSelect = function()
+                            if f.SelectLoadout then f:SelectLoadout(nil, (f.activeTab ~= 1)) end
+                        end,
+                    },
+                }
+                local list = DynamicPrep:GetSortedTalentProfiles()
+                for _, it in ipairs(list) do
+                    table.insert(items, {
+                        label = string.format("%s %s", DynamicPrep:FormatTalentBadge(it), tostring(it.name or "Loadout")),
+                        selected = (curSel == it),
+                        onSelect = function()
+                            if f.SelectLoadout then f:SelectLoadout(it, (f.activeTab ~= 1)) end
+                        end,
+                    })
+                end
+                f.ShowModalDropdown(btnSelf, items, btnSelf:GetWidth())
+            end)
+
+            f.topLoadoutBar = pickBar
             f.editPickBar = pickBar
             f.editPickBtn = pickBtn
             f.newBuildBtn = newBtn
         end
 
+        -- 2-Tab #0B0D12 Recessed Bevel Bar (DESIGN_SYSTEM.md)
+        local tabBar = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        tabBar:SetHeight(34)
+        tabBar:SetPoint("TOPLEFT", f.topLoadoutBar, "BOTTOMLEFT", 0, -8)
+        tabBar:SetPoint("TOPRIGHT", f.topLoadoutBar, "BOTTOMRIGHT", 0, -8)
+        SetPixelBackdrop(tabBar, TAB_BG, CARD_BDR, 1)
+        f.tabBar = tabBar
+
+        f.activeTab = 1
+        f.editingEntry = nil
+        local tab1Btn = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
+        tab1Btn:SetSize(290, 26)
+        tab1Btn:SetPoint("LEFT", tabBar, "LEFT", 4, 0)
+        tab1Btn.txt = CreateText(tab1Btn, "OVERLAY", "GameFontHighlightSmall")
+        tab1Btn.txt:SetPoint("CENTER")
+        tab1Btn.txt:SetText("1. Save / Edit / Import")
+
+        local tab2Btn = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
+        tab2Btn:SetSize(290, 26)
+        tab2Btn:SetPoint("RIGHT", tabBar, "RIGHT", -4, 0)
+        tab2Btn.txt = CreateText(tab2Btn, "OVERLAY", "GameFontHighlightSmall")
+        tab2Btn.txt:SetPoint("CENTER")
+        tab2Btn.txt:SetText("2. Talent Binds & Defaults")
+        f.tab1Btn = tab1Btn
+        f.tab2Btn = tab2Btn
+
+        -- =====================================================================
+        -- PAGE 1: SAVE / EDIT / IMPORT LOADOUT (2 Clean Obsidian Cards)
+        -- =====================================================================
+        local p1 = CreateFrame("Frame", nil, f)
+        p1:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -10)
+        p1:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 18)
+        f.p1 = p1
+
         -- Card 1: Loadout Identity & Category
         local c1 = CreateFrame("Frame", nil, p1, "BackdropTemplate")
         c1:SetHeight(92)
-        c1:SetPoint("TOPLEFT", f.editPickBar, "BOTTOMLEFT", 0, -8)
-        c1:SetPoint("TOPRIGHT", f.editPickBar, "BOTTOMRIGHT", 0, -8)
+        c1:SetPoint("TOPLEFT", p1, "TOPLEFT", 0, 0)
+        c1:SetPoint("TOPRIGHT", p1, "TOPRIGHT", 0, 0)
         SetPixelBackdrop(c1, CARD_BG, CARD_BDR, 1)
+        f.c1 = c1
 
         local c1Hdr = CreateModalSectionHeader(c1, "|cFFFFFFFFLOADOUT IDENTITY & CATEGORY|r", "Name your build and choose its Left Rail pillar group", -10)
 
@@ -13819,8 +13937,19 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         SetPixelBackdrop(cancelEditBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
         cancelEditBtn.txt = CreateText(cancelEditBtn, "OVERLAY", "GameFontHighlightSmall")
         cancelEditBtn.txt:SetPoint("CENTER")
-        cancelEditBtn.txt:SetText("Cancel Edit")
+        cancelEditBtn.txt:SetText("Revert")
         cancelEditBtn:Hide()
+
+        function f:GetSelectedLoadout()
+            local cand = self.state and self.state.selectedEntry
+            if type(cand) ~= "table" then return nil end
+            local specID = DynamicPrep:GetActiveSpecID()
+            local lib = (specID and DynamicPrep.db and DynamicPrep.db.talentStringLibrary and DynamicPrep.db.talentStringLibrary[specID]) or {}
+            for _, it in ipairs(lib) do
+                if it == cand then return cand end
+            end
+            return nil
+        end
 
         function f:LoadEditorEntry(entry, keepFocusQuiet)
             local r, g, b = GetActiveAccentRGB()
@@ -13830,6 +13959,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             c2Hdr.bar:SetColorTexture(r, g, b, 0.95)
             c2Hdr.line:SetColorTexture(r, g, b, 0.35)
             self.editingEntry = entry
+            self.state.selectedEntry = entry
             if type(entry) == "table" then
                 c1Hdr.titleFS:SetText("|cFFFBBF24EDITING LOADOUT:|r |cFFFFFFFF" .. tostring(entry.name or "Loadout") .. "|r")
                 c1Hdr.subFS:SetText("|cFF94A3B8Rename, switch pillar group, or update the saved talent string|r")
@@ -13843,7 +13973,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 saveImpBtn.txt:SetText("Save Changes")
                 cancelEditBtn.txt:SetText("Revert")
                 cancelEditBtn:Show()
-                if self:IsShown() and not keepFocusQuiet then
+                if self:IsShown() and not keepFocusQuiet and self.activeTab == 1 then
                     nameEB:SetFocus()
                     nameEB:HighlightText()
                 end
@@ -13861,7 +13991,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 strEB:SetText(DynamicPrep:GetActiveTalentString() or "")
                 saveImpBtn.txt:SetText("Save Loadout")
                 cancelEditBtn:Hide()
-                if self:IsShown() and not keepFocusQuiet then
+                if self:IsShown() and not keepFocusQuiet and self.activeTab == 1 then
                     nameEB:SetFocus()
                     nameEB:HighlightText()
                 end
@@ -13870,22 +14000,20 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         end
 
         local function CommitLoadoutEditor()
-            if f.editingEntry then
-                local edited = f.editingEntry
-                local ok, msg = DynamicPrep:UpdateTalentLibraryEntry(edited, nameEB:GetText(), selGroup, strEB:GetText())
+            local curSel = f:GetSelectedLoadout()
+            if curSel then
+                local ok, msg = DynamicPrep:UpdateTalentLibraryEntry(curSel, nameEB:GetText(), selGroup, strEB:GetText())
                 if ok then
-                    f:LoadEditorEntry(edited, true)
+                    if f.SelectLoadout then f:SelectLoadout(curSel, true) else f:LoadEditorEntry(curSel, true) end
                     valStatus:SetText("|cFF10B981" .. tostring(msg) .. "|r")
-                    if f.RefreshBossList then f:RefreshBossList() end
                 else
                     valStatus:SetText("|cFFF43F5E" .. tostring(msg) .. "|r")
                 end
             else
                 local ok, msg, savedEntry = DynamicPrep:ImportTalentString(nameEB:GetText(), strEB:GetText(), selGroup)
                 if ok then
-                    f:LoadEditorEntry(savedEntry, true)
+                    if f.SelectLoadout then f:SelectLoadout(savedEntry, true) else f:LoadEditorEntry(savedEntry, true) end
                     valStatus:SetText("|cFF10B981" .. tostring(msg) .. "|r")
-                    if f.RefreshBossList then f:RefreshBossList() end
                 else
                     valStatus:SetText("|cFFF43F5E" .. tostring(msg) .. "|r")
                 end
@@ -13894,8 +14022,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
 
         local function CancelOrBlurEditor(box)
             if box and box.ClearFocus then box:ClearFocus() end
-            if f.editingEntry then
-                f:LoadEditorEntry(f.editingEntry, true)
+            local curSel = f:GetSelectedLoadout()
+            if curSel then
+                f:LoadEditorEntry(curSel, true)
                 valStatus:SetText("|cFF94A3B8Reverted unsaved changes.|r")
             end
         end
@@ -13905,8 +14034,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         strEB:SetScript("OnEnterPressed", function(s) s:ClearFocus(); CommitLoadoutEditor() end)
         strEB:SetScript("OnEscapePressed", CancelOrBlurEditor)
         cancelEditBtn:SetScript("OnClick", function()
-            if f.editingEntry then
-                f:LoadEditorEntry(f.editingEntry, true)
+            local curSel = f:GetSelectedLoadout()
+            if curSel then
+                f:LoadEditorEntry(curSel, true)
                 valStatus:SetText("|cFF94A3B8Reverted unsaved changes.|r")
             end
         end)
@@ -13935,13 +14065,15 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         -- =====================================================================
         local p2 = CreateFrame("Frame", nil, f)
         p2:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -10)
-        p2:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 14)
+        p2:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 18)
+        f.p2 = p2
 
         local subBar = CreateFrame("Frame", nil, p2, "BackdropTemplate")
         subBar:SetHeight(30)
         subBar:SetPoint("TOPLEFT", p2, "TOPLEFT", 0, 0)
         subBar:SetPoint("TOPRIGHT", p2, "TOPRIGHT", 0, 0)
         SetPixelBackdrop(subBar, TAB_BG, CARD_BDR, 1)
+        f.subBar = subBar
 
         local modeRaidBtn = CreateFrame("Button", nil, subBar, "BackdropTemplate")
         modeRaidBtn:SetSize(192, 22)
@@ -13966,7 +14098,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
 
         -- Binder Card
         local bCard = CreateFrame("Frame", nil, p2, "BackdropTemplate")
-        bCard:SetHeight(260)
+        bCard:SetHeight(234)
         bCard:SetPoint("TOPLEFT", subBar, "BOTTOMLEFT", 0, -8)
         bCard:SetPoint("TOPRIGHT", subBar, "BOTTOMRIGHT", 0, -8)
         SetPixelBackdrop(bCard, CARD_BG, CARD_BDR, 1)
@@ -13983,8 +14115,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         testToastBtn.txt:SetPoint("CENTER")
         testToastBtn.txt:SetText("Test Alert Toast")
         testToastBtn:SetScript("OnClick", function()
-            local list = DynamicPrep:GetSortedTalentProfiles()
-            local sample = list[f.state.pickedIdx] or { name = "Raid ST", group = "Raid" }
+            local sample = f:GetSelectedLoadout() or { name = "Raid ST", group = "Raid" }
             DynamicPrep:ShowTalentReminderToast(sample, sample.name, "Preview Reminder", true)
         end)
 
@@ -13996,44 +14127,44 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         bHdr.subFS:SetPoint("TOPLEFT", bHdr.titleFS, "BOTTOMLEFT", 0, -2)
         bHdr.subFS:SetPoint("RIGHT", testToastBtn, "LEFT", -10, 0)
 
-        -- Live "Currently Bound To:" Strip (highlights selected build's active binds)
+        -- Unsaved New-Build Prompt Banner (shown on Tab 2 when top bar is on "+ New / Import")
         do
-            local sumBar = CreateFrame("Frame", nil, bCard, "BackdropTemplate")
-            sumBar:SetHeight(20)
-            sumBar:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -46)
-            sumBar:SetPoint("TOPRIGHT", bCard, "TOPRIGHT", -12, -46)
-            SetPixelBackdrop(sumBar, TAB_BG, { 1, 1, 1, 0.08 }, 1)
-            sumBar:EnableMouse(true)
-            local sumFS = CreateText(sumBar, "OVERLAY", "GameFontHighlightSmall")
-            sumFS:SetPoint("LEFT", sumBar, "LEFT", 8, 0)
-            sumFS:SetPoint("RIGHT", sumBar, "RIGHT", -8, 0)
-            sumFS:SetJustifyH("LEFT")
-            sumFS:SetWordWrap(false)
-            sumFS:SetText("|cFF94A3B8Currently Bound To:|r |cFF64748B--|r")
-            sumBar:SetScript("OnEnter", function(s)
-                local list = DynamicPrep:GetSortedTalentProfiles()
-                local curBuild = list[f.state.pickedIdx]
-                if not curBuild or not GameTooltip then return end
-                local bInfo = DynamicPrep:GetLoadoutBindings(curBuild)
-                GameTooltip:SetOwner(s, "ANCHOR_TOP")
-                GameTooltip:AddLine(string.format("%s %s", DynamicPrep:FormatTalentBadge(curBuild), tostring(curBuild.name or "Loadout")), 1, 1, 1)
-                if #bInfo.detailLines > 0 then
-                    for _, dl in ipairs(bInfo.detailLines) do
-                        GameTooltip:AddLine("|cFF10B981-|r |cFFE2E8F0" .. dl .. "|r", 1, 1, 1)
-                    end
-                else
-                    GameTooltip:AddLine("|cFF94A3B8Not bound to any boss, dungeon, or zone yet.|r", 1, 1, 1)
+            local ub = CreateFrame("Frame", nil, bCard, "BackdropTemplate")
+            ub:SetHeight(42)
+            ub:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -50)
+            ub:SetPoint("TOPRIGHT", bCard, "TOPRIGHT", -12, -50)
+            SetPixelBackdrop(ub, TAB_BG, { 0.984, 0.749, 0.141, 0.75 }, 1)
+
+            local goTab1Btn = CreateFrame("Button", nil, ub, "BackdropTemplate")
+            goTab1Btn:SetSize(104, 24)
+            goTab1Btn:SetPoint("RIGHT", ub, "RIGHT", -10, 0)
+            SetPixelBackdrop(goTab1Btn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
+            goTab1Btn.txt = CreateText(goTab1Btn, "OVERLAY", "GameFontHighlightSmall")
+            goTab1Btn.txt:SetPoint("CENTER")
+            goTab1Btn.txt:SetText("Save in Tab 1")
+            goTab1Btn:SetScript("OnClick", function()
+                f:SelectTab(1)
+                if f.nameEB then
+                    f.nameEB:SetFocus()
+                    f.nameEB:HighlightText()
                 end
-                GameTooltip:Show()
             end)
-            sumBar:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-            f.boundSummaryBar = sumBar
-            f.boundSummaryFS = sumFS
+
+            local ubFS = CreateText(ub, "OVERLAY", "GameFontHighlightSmall")
+            ubFS:SetPoint("LEFT", ub, "LEFT", 10, 0)
+            ubFS:SetPoint("RIGHT", goTab1Btn, "LEFT", -10, 0)
+            ubFS:SetJustifyH("LEFT")
+            ubFS:SetWordWrap(true)
+            ubFS:SetText("|cFFFBBF24Unsaved build selected:|r |cFFE2E8F0Save this build in Tab 1 or choose an existing loadout in the top bar before binding.|r")
+
+            ub:Hide()
+            f.unsavedBanner = ub
+            f.unsavedBannerBtn = goTab1Btn
         end
 
         -- RAID MODE CONTROLS
         local raidGrp = CreateFrame("Frame", nil, bCard)
-        raidGrp:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -72)
+        raidGrp:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -50)
         raidGrp:SetPoint("BOTTOMRIGHT", bCard, "BOTTOMRIGHT", -12, 8)
         raidGrp.raidPillBtns = {}
         raidGrp.bossGridBtns = {}
@@ -14091,11 +14222,11 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         customChip:Hide()
         raidGrp.customChip = customChip
 
-        -- Multi-select Difficulty Pills (LFR / Normal, Heroic, Mythic)
+        -- Multi-select Difficulty Pills (LFR / Normal, Heroic, Mythic) + Right-Anchored + Bind Raid
         local diffDefs = {
-            { key = "normal", label = "LFR / Normal", w = 88, x = 0,   r = 0.063, g = 0.725, b = 0.506 },
-            { key = "heroic", label = "Heroic",       w = 60, x = 92,  r = 0.220, g = 0.741, b = 0.973 },
-            { key = "mythic", label = "Mythic",       w = 60, x = 156, r = 0.957, g = 0.247, b = 0.369 },
+            { key = "normal", label = "LFR / Normal", w = 96, x = 0,   r = 0.063, g = 0.725, b = 0.506 },
+            { key = "heroic", label = "Heroic",       w = 72, x = 102, r = 0.220, g = 0.741, b = 0.973 },
+            { key = "mythic", label = "Mythic",       w = 72, x = 180, r = 0.957, g = 0.247, b = 0.369 },
         }
         local diffBtns = {}
         local function StyleDiffBtns()
@@ -14129,15 +14260,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         end
         StyleDiffBtns()
 
-        local raidBuildBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
-        raidBuildBtn:SetSize(244, 26)
-        raidBuildBtn:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 222, -114)
-        raidBuildBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        StyleDropdownTrigger(raidBuildBtn)
-
         local raidBindBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
-        raidBindBtn:SetSize(96, 26)
-        raidBindBtn:SetPoint("LEFT", raidBuildBtn, "RIGHT", 6, 0)
+        raidBindBtn:SetSize(124, 26)
+        raidBindBtn:SetPoint("TOPRIGHT", raidGrp, "TOPRIGHT", 0, -114)
         SetPixelBackdrop(raidBindBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
         raidBindBtn.txt = CreateText(raidBindBtn, "OVERLAY", "GameFontHighlightSmall")
         raidBindBtn.txt:SetPoint("CENTER")
@@ -14149,20 +14274,20 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         raidTip:SetHeight(28)
         raidTip:SetJustifyH("LEFT")
         raidTip:SetWordWrap(true)
-        raidTip:SetText("|cFF64748BPick a raid and toggle bosses (or All Raids), choose difficulties and a build, then click + Bind Raid.|r")
+        raidTip:SetText("|cFF64748BPick a raid and toggle bosses (or All Raids), choose difficulties, and click + Bind Raid to assign the top loadout.|r")
         raidGrp.raidTip = raidTip
 
         -- M+ MODE CONTROLS
         local mplusGrp = CreateFrame("Frame", nil, bCard)
-        mplusGrp:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -72)
+        mplusGrp:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -50)
         mplusGrp:SetPoint("BOTTOMRIGHT", bCard, "BOTTOMRIGHT", -12, 8)
         mplusGrp:Hide()
         f.mplusGrp = mplusGrp
 
         local tierDefs = {
-            { key = "ANY",  label = "Any Key", w = 72, x = 0   },
-            { key = "LOW",  label = "+2 - 9",  w = 66, x = 77  },
-            { key = "HIGH", label = "+10+",    w = 62, x = 148 },
+            { key = "ANY",  label = "Any Key", w = 82, x = 0   },
+            { key = "LOW",  label = "+2 - 9",  w = 74, x = 88  },
+            { key = "HIGH", label = "+10+",    w = 70, x = 168 },
         }
         local tierBtns = {}
         local function StyleTierBtns()
@@ -14186,15 +14311,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         end
         StyleTierBtns()
 
-        local mplusBuildBtn = CreateFrame("Button", nil, mplusGrp, "BackdropTemplate")
-        mplusBuildBtn:SetSize(254, 26)
-        mplusBuildBtn:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 216, -34)
-        mplusBuildBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        StyleDropdownTrigger(mplusBuildBtn)
-
         local mplusBindBtn = CreateFrame("Button", nil, mplusGrp, "BackdropTemplate")
-        mplusBindBtn:SetSize(92, 26)
-        mplusBindBtn:SetPoint("LEFT", mplusBuildBtn, "RIGHT", 6, 0)
+        mplusBindBtn:SetSize(124, 26)
+        mplusBindBtn:SetPoint("TOPRIGHT", mplusGrp, "TOPRIGHT", 0, -34)
         SetPixelBackdrop(mplusBindBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
         mplusBindBtn.txt = CreateText(mplusBindBtn, "OVERLAY", "GameFontHighlightSmall")
         mplusBindBtn.txt:SetPoint("CENTER")
@@ -14206,11 +14325,11 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         mplusTip:SetHeight(28)
         mplusTip:SetJustifyH("LEFT")
         mplusTip:SetWordWrap(true)
-        mplusTip:SetText("|cFF64748BSelect one or more dungeons (or All), pick a key tier and build, then click + Bind M+. Specific dungeons override All M+.|r")
+        mplusTip:SetText("|cFF64748BSelect one or more dungeons (or All) & key tier, then click + Bind M+. Specific dungeons override All M+.|r")
 
         -- ZONE DEFAULTS MODE CONTROLS (5-Zone Pattern + All Content)
         local zoneGrp = CreateFrame("Frame", nil, bCard)
-        zoneGrp:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -72)
+        zoneGrp:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -50)
         zoneGrp:SetPoint("BOTTOMRIGHT", bCard, "BOTTOMRIGHT", -12, 8)
         zoneGrp.zoneBtns = {}
         zoneGrp:Hide()
@@ -14243,23 +14362,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             table.insert(zoneGrp.zoneBtns, zb)
         end
 
-        local zoneBuildBtn = CreateFrame("Button", nil, zoneGrp, "BackdropTemplate")
-        zoneBuildBtn:SetSize(354, 26)
-        zoneBuildBtn:SetPoint("TOPLEFT", zoneGrp, "TOPLEFT", 0, -34)
-        zoneBuildBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        StyleDropdownTrigger(zoneBuildBtn)
-
-        local zoneBindBtn = CreateFrame("Button", nil, zoneGrp, "BackdropTemplate")
-        zoneBindBtn:SetSize(120, 26)
-        zoneBindBtn:SetPoint("LEFT", zoneBuildBtn, "RIGHT", 6, 0)
-        SetPixelBackdrop(zoneBindBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
-        zoneBindBtn.txt = CreateText(zoneBindBtn, "OVERLAY", "GameFontHighlightSmall")
-        zoneBindBtn.txt:SetPoint("CENTER")
-        zoneBindBtn.txt:SetText("+ Bind Zones")
-
         local zoneClearBtn = CreateFrame("Button", nil, zoneGrp, "BackdropTemplate")
-        zoneClearBtn:SetSize(82, 26)
-        zoneClearBtn:SetPoint("LEFT", zoneBindBtn, "RIGHT", 6, 0)
+        zoneClearBtn:SetSize(88, 26)
+        zoneClearBtn:SetPoint("TOPRIGHT", zoneGrp, "TOPRIGHT", 0, -34)
         SetPixelBackdrop(zoneClearBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
         zoneClearBtn.txt = CreateText(zoneClearBtn, "OVERLAY", "GameFontHighlightSmall")
         zoneClearBtn.txt:SetPoint("CENTER")
@@ -14271,6 +14376,21 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1)
         end)
 
+        local zoneBindBtn = CreateFrame("Button", nil, zoneGrp, "BackdropTemplate")
+        zoneBindBtn:SetSize(134, 26)
+        zoneBindBtn:SetPoint("RIGHT", zoneClearBtn, "LEFT", -6, 0)
+        SetPixelBackdrop(zoneBindBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
+        zoneBindBtn.txt = CreateText(zoneBindBtn, "OVERLAY", "GameFontHighlightSmall")
+        zoneBindBtn.txt:SetPoint("CENTER")
+        zoneBindBtn.txt:SetText("+ Bind Zones")
+
+        local zoneBindNote = CreateText(zoneGrp, "OVERLAY", "GameFontHighlightSmall")
+        zoneBindNote:SetPoint("LEFT", zoneGrp, "TOPLEFT", 2, -47)
+        zoneBindNote:SetPoint("RIGHT", zoneBindBtn, "LEFT", -10, 0)
+        zoneBindNote:SetJustifyH("LEFT")
+        zoneBindNote:SetWordWrap(false)
+        zoneBindNote:SetText("|cFF94A3B8Binds apply directly to the loadout selected in the top bar.|r")
+
         local zoneTip = CreateText(zoneGrp, "OVERLAY", "GameFontHighlightSmall")
         zoneTip:SetPoint("TOPLEFT", zoneGrp, "TOPLEFT", 2, -66)
         zoneTip:SetPoint("TOPRIGHT", zoneGrp, "TOPRIGHT", -2, -66)
@@ -14280,57 +14400,49 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         zoneTip:SetText("|cFF64748BAll saves a single [All Content] rule. Specific Raid bosses & M+ dungeons override zone defaults; Outdoor skips resting cities.|r")
         zoneGrp.zoneTip = zoneTip
 
-        -- Picker & Live Binding Summary Helpers
-        function f:RefreshBoundSummary()
-            if not self.boundSummaryFS then return end
-            local list = DynamicPrep:GetSortedTalentProfiles()
-            local curBuild = list[self.state.pickedIdx]
-            if not curBuild then
-                self.boundSummaryFS:SetText("|cFF94A3B8Currently Bound To:|r |cFF64748BNo saved loadouts.|r")
-                return
-            end
-            local bInfo = DynamicPrep:GetLoadoutBindings(curBuild)
-            if #bInfo.summaryTags > 0 then
-                self.boundSummaryFS:SetText(string.format("|cFF94A3B8Currently Bound To:|r |cFF10B981%s|r", table.concat(bInfo.summaryTags, ", ")))
-            else
-                self.boundSummaryFS:SetText("|cFF94A3B8Currently Bound To:|r |cFF64748BNot bound to any boss, dungeon, or zone yet.|r")
-            end
-        end
-
+        -- Unified Selected-Loadout & Picker Helpers
         function f:UpdatePickBtns()
             local st = self.state
-            local list = DynamicPrep:GetSortedTalentProfiles()
-            local curBuild = nil
-            if #list == 0 then
-                raidBuildBtn.txt:SetText("|cFF64748BNo Saved Loadouts|r")
-                mplusBuildBtn.txt:SetText("|cFF64748BNo Saved Loadouts|r")
-                zoneBuildBtn.txt:SetText("|cFF64748BNo Saved Loadouts|r")
-            else
-                if st.pickedIdx > #list then st.pickedIdx = 1 end
-                if st.pickedIdx < 1 then st.pickedIdx = #list end
-                curBuild = list[st.pickedIdx]
-                local bTxt = string.format("|cFF94A3B8Build:|r %s |cFFFFFFFF%s|r", DynamicPrep:FormatTalentBadge(curBuild), tostring(curBuild.name or "Loadout"))
-                raidBuildBtn.txt:SetText(bTxt)
-                mplusBuildBtn.txt:SetText(bTxt)
-                zoneBuildBtn.txt:SetText(bTxt)
-            end
             if #st.ejRaids == 0 then st.ejRaids = GetCurrentTierRaids() end
             if #st.mplusDungeons == 0 then st.mplusDungeons = GetCurrentSeasonMythicPlusDungeons() end
-            self:RefreshBoundSummary()
-            return curBuild
+            return self:GetSelectedLoadout()
+        end
+
+        function f:SelectLoadout(entry, keepFocusQuiet)
+            local st = self.state
+            self:LoadEditorEntry(entry, keepFocusQuiet)
+            local validEntry = self:GetSelectedLoadout()
+            if type(validEntry) == "table" then
+                local list = DynamicPrep:GetSortedTalentProfiles()
+                for idx, it in ipairs(list) do
+                    if it == validEntry then
+                        st.pickedIdx = idx
+                        break
+                    end
+                end
+                if st.subMode == "RAID" and #st.ejRaids > 0 then
+                    local bInfo = DynamicPrep:GetLoadoutBindings(validEntry)
+                    local curRaid = st.ejRaids[st.selRaidIdx]
+                    local curHas = curRaid and (bInfo.raidsWithBinds[curRaid.name:lower()] or (curRaid.short and bInfo.raidsWithBinds[curRaid.short:lower()]))
+                    if not curHas then
+                        for rIdx, rObj in ipairs(st.ejRaids) do
+                            if bInfo.raidsWithBinds[rObj.name:lower()] or (rObj.short and bInfo.raidsWithBinds[rObj.short:lower()]) then
+                                st.selRaidIdx = rIdx
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            if self.RefreshTab2View then
+                self:RefreshTab2View()
+            end
         end
 
         function f:SelectBuildForTab2(entry, keepMode)
             if type(entry) ~= "table" then return end
             local st = self.state
-            local list = DynamicPrep:GetSortedTalentProfiles()
-            for idx, it in ipairs(list) do
-                if it == entry or it.name == entry.name then
-                    st.pickedIdx = idx
-                    break
-                end
-            end
-            if not keepMode then
+            if keepMode == false then
                 if entry.group == "M+" then
                     st.subMode = "MPLUS"
                 elseif entry.group == "Raid" then
@@ -14339,24 +14451,8 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                     st.subMode = "ZONE"
                 end
             end
-            if st.subMode == "RAID" and #st.ejRaids > 0 then
-                local bInfo = DynamicPrep:GetLoadoutBindings(entry)
-                local curRaid = st.ejRaids[st.selRaidIdx]
-                local curHas = curRaid and (bInfo.raidsWithBinds[curRaid.name:lower()] or (curRaid.short and bInfo.raidsWithBinds[curRaid.short:lower()]))
-                if not curHas then
-                    for rIdx, rObj in ipairs(st.ejRaids) do
-                        if bInfo.raidsWithBinds[rObj.name:lower()] or (rObj.short and bInfo.raidsWithBinds[rObj.short:lower()]) then
-                            st.selRaidIdx = rIdx
-                            break
-                        end
-                    end
-                end
-            end
-            self:UpdatePickBtns()
-            if self.RefreshRaidGrid then self:RefreshRaidGrid() end
-            if self.RefreshPortalGrid then self:RefreshPortalGrid() end
-            if self.RefreshZonePills then self:RefreshZonePills() end
-            if keepMode == false and self.SelectSubMode then
+            self:SelectLoadout(entry, true)
+            if keepMode == false and self.activeTab == 2 and self.SelectSubMode then
                 self:SelectSubMode(st.subMode)
             end
         end
@@ -14668,14 +14764,15 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             local r, g, b = GetActiveAccentRGB()
             if #st.ejRaids == 0 then st.ejRaids = GetCurrentTierRaids() end
             local raids = st.ejRaids
-            local list = DynamicPrep:GetSortedTalentProfiles()
-            local curBuild = list[st.pickedIdx]
+            local curBuild = self:GetSelectedLoadout()
             local bInfo = DynamicPrep:GetLoadoutBindings(curBuild)
             for _, rp in ipairs(raidGrp.raidPillBtns) do rp:Hide() end
             for _, bp in ipairs(raidGrp.bossGridBtns) do bp:Hide() end
 
+            local innerW = math.max(540, math.floor((raidGrp:GetWidth() or 568) + 0.5))
+            local raidBarW = innerW - 92 -- 86px Target button + 6px gap
             local numRaids = math.max(1, #raids)
-            local rPillW = math.floor((476 - ((numRaids - 1) * 4)) / numRaids)
+            local rPillW = math.floor((raidBarW - ((numRaids - 1) * 4)) / numRaids)
             if st.selRaidIdx > #raids then st.selRaidIdx = 1 end
             if st.selRaidIdx < 1 then st.selRaidIdx = 1 end
 
@@ -14762,8 +14859,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 if not st.selAllRaidBosses and (not st.customTargetBoss or st.customTargetBoss == "") and not next(st.selBossSet) then
                     st.selBossSet[math.min(st.selBossIdx or 1, bCount)] = true
                 end
+                local bossAreaW = innerW - 72 -- 66px All Raids pill + 6px gap
                 local cols = (bCount == 1 and 1) or math.min(4, bCount)
-                local cellW = (bCount == 1) and 246 or math.floor((496 - ((cols - 1) * 4)) / cols)
+                local cellW = (bCount == 1) and math.min(280, math.floor(bossAreaW * 0.5)) or math.floor((bossAreaW - ((cols - 1) * 4)) / cols)
                 for bIdx = 1, bCount do
                     local bObj = bosses[bIdx]
                     local bp = raidGrp.bossGridBtns[bIdx]
@@ -14829,7 +14927,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                     if not st.selAllRaidBosses and not next(st.selBossSet) then
                         st.selBossSet[1] = true
                     end
-                    raidGrp.raidTip:SetText("|cFF64748BPick a raid and toggle bosses (or All Raids), choose difficulties and a build, then click + Bind Raid.|r")
+                    raidGrp.raidTip:SetText("|cFF64748BPick a raid and toggle bosses (or All Raids), choose difficulties, and click + Bind Raid to assign the top loadout.|r")
                     self:RefreshRaidGrid()
                 end)
                 raidGrp.customChip:Show()
@@ -14846,8 +14944,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             for _, pb in ipairs(mplusGrp.portalGridBtns) do pb:Hide() end
             if #st.mplusDungeons == 0 then st.mplusDungeons = GetCurrentSeasonMythicPlusDungeons() end
             local count = math.min(8, #st.mplusDungeons)
-            local list = DynamicPrep:GetSortedTalentProfiles()
-            local curBuild = list[st.pickedIdx]
+            local curBuild = self:GetSelectedLoadout()
             local bInfo = DynamicPrep:GetLoadoutBindings(curBuild)
 
             if not mplusGrp.allBtn then
@@ -14893,7 +14990,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             mplusGrp.allBtn:Show()
 
             if count == 0 then return end
-            local cellW = math.floor((512 - ((count - 1) * 4)) / count)
+            local innerW = math.max(540, math.floor((mplusGrp:GetWidth() or 568) + 0.5))
+            local dungAreaW = innerW - 56 -- 52px All button + 4px gap
+            local cellW = math.floor((dungAreaW - ((count - 1) * 4)) / count)
             for idx = 1, count do
                 local dObj = st.mplusDungeons[idx]
                 local pb = mplusGrp.portalGridBtns[idx]
@@ -14951,8 +15050,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         function f:RefreshZonePills()
             local st = self.state
             local r, g, b = GetActiveAccentRGB()
-            local list = DynamicPrep:GetSortedTalentProfiles()
-            local curBuild = list[st.pickedIdx]
+            local curBuild = self:GetSelectedLoadout()
             local bInfo = DynamicPrep:GetLoadoutBindings(curBuild)
 
             local allOn = (st.selAllZones == true)
@@ -14987,7 +15085,14 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             end)
             zoneGrp.allZoneBtn:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
 
-            for _, zb in ipairs(zoneGrp.zoneBtns) do
+            local innerW = math.max(540, math.floor((zoneGrp:GetWidth() or 568) + 0.5))
+            local zAreaW = innerW - 67 -- 62px All pill + 5px gap
+            local numZ = math.max(1, #zoneGrp.zoneBtns)
+            local zCellW = math.floor((zAreaW - ((numZ - 1) * 4)) / numZ)
+            for zi, zb in ipairs(zoneGrp.zoneBtns) do
+                zb:SetWidth(zCellW)
+                zb:ClearAllPoints()
+                zb:SetPoint("TOPLEFT", zoneGrp, "TOPLEFT", 67 + ((zi - 1) * (zCellW + 4)), 0)
                 local zOn = (st.selZoneSet[zb.zKey] == true)
                 local zBound = (bInfo.zones[zb.zKey] == true)
                 zb.txt:SetTextColor((zOn or zBound) and 1 or 0.78, (zOn or zBound) and 1 or 0.84, (zOn or zBound) and 1 or 0.92, 1)
@@ -15044,42 +15149,23 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 f:RefreshRaidGrid()
                 local ord = bObj.order or mB
                 print(string.format("|cFF%sDynamicPrep:|r Matched target |cFFFFFFFF%s|r -> |cFFFBBF24%s #%d %s|r.", GetAccentHex(), tn, tostring(rObj.short or rObj.name), ord, tostring(bObj.name)))
-                raidTip:SetText(string.format("|cFF10B981Matched %s -> %s #%d %s.|r Toggle difficulties, choose a build, and click + Bind Raid.", tn, tostring(rObj.short or rObj.name), ord, tostring(bObj.name)))
+                raidTip:SetText(string.format("|cFF10B981Matched %s -> %s #%d %s.|r Toggle difficulties and click + Bind Raid.", tn, tostring(rObj.short or rObj.name), ord, tostring(bObj.name)))
             else
                 st.customTargetBoss = tn
                 st.selAllRaidBosses = false
                 wipe(st.selBossSet)
                 f:RefreshRaidGrid()
-                print(string.format("|cFF%sDynamicPrep:|r Custom target set to |cFFFBBF24%s|r. Choose difficulties & build, then click + Bind Raid.", GetAccentHex(), tn))
-                raidTip:SetText(string.format("|cFFFBBF24Custom target active: %s.|r Choose difficulties & build, then click + Bind Raid (or click x to dismiss).", tn))
+                print(string.format("|cFF%sDynamicPrep:|r Custom target set to |cFFFBBF24%s|r. Choose difficulties and click + Bind Raid.", GetAccentHex(), tn))
+                raidTip:SetText(string.format("|cFFFBBF24Custom target active: %s.|r Choose difficulties and click + Bind Raid (or click x to dismiss).", tn))
             end
         end)
-
-        local function OpenBuildDropdown(btnSelf)
-            local st = f.state
-            local list = DynamicPrep:GetSortedTalentProfiles()
-            local items = {}
-            for idx, entry in ipairs(list) do
-                table.insert(items, {
-                    label = string.format("%s %s", DynamicPrep:FormatTalentBadge(entry), tostring(entry.name or "Loadout")),
-                    selected = (idx == st.pickedIdx),
-                    onSelect = function()
-                        f:SelectBuildForTab2(entry, true)
-                    end,
-                })
-            end
-            if #items > 0 then ShowModalDropdown(btnSelf, items, 270) end
-        end
-        raidBuildBtn:SetScript("OnClick", OpenBuildDropdown)
-        mplusBuildBtn:SetScript("OnClick", OpenBuildDropdown)
-        zoneBuildBtn:SetScript("OnClick", OpenBuildDropdown)
 
         raidBindBtn:SetScript("OnClick", function()
             local st = f.state
             local specID = DynamicPrep:GetActiveSpecID()
-            local sel = f:UpdatePickBtns()
+            local sel = f:GetSelectedLoadout()
             if not specID or not sel then
-                print(string.format("|cFF%sDynamicPrep:|r Save at least one talent loadout before binding.", GetAccentHex()))
+                print(string.format("|cFF%sDynamicPrep:|r Save this build in Tab 1 or choose an existing loadout at the top before binding.", GetAccentHex()))
                 return
             end
             DynamicPrep:RefreshLoadoutHeroMeta(sel)
@@ -15174,9 +15260,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         mplusBindBtn:SetScript("OnClick", function()
             local st = f.state
             local specID = DynamicPrep:GetActiveSpecID()
-            local sel = f:UpdatePickBtns()
+            local sel = f:GetSelectedLoadout()
             if not specID or not sel then
-                print(string.format("|cFF%sDynamicPrep:|r Save at least one talent loadout before binding.", GetAccentHex()))
+                print(string.format("|cFF%sDynamicPrep:|r Save this build in Tab 1 or choose an existing loadout at the top before binding.", GetAccentHex()))
                 return
             end
             DynamicPrep:RefreshLoadoutHeroMeta(sel)
@@ -15240,14 +15326,14 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
 
         zoneBindBtn:SetScript("OnClick", function()
             local st = f.state
-            local sel = f:UpdatePickBtns()
+            local sel = f:GetSelectedLoadout()
             if not sel then
-                print(string.format("|cFF%sDynamicPrep:|r Save at least one talent loadout before binding.", GetAccentHex()))
+                print(string.format("|cFF%sDynamicPrep:|r Save this build in Tab 1 or choose an existing loadout at the top before binding.", GetAccentHex()))
                 return
             end
             if not st.selAllZones and not next(st.selZoneSet) then
                 print(string.format("|cFF%sDynamicPrep:|r Select at least one zone pill (or All) before binding.", GetAccentHex()))
-                zoneTip:SetText("|cFFFBBF24Select at least one zone pill (or All), choose a build, and click + Bind Zones.|r")
+                zoneTip:SetText("|cFFFBBF24Select at least one zone pill (or All), then click + Bind Zones.|r")
                 return
             end
             local zoneSnap = {}
@@ -15289,12 +15375,47 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         local listHdr = CreateModalSectionHeader(listCard, "|cFFFFFFFFACTIVE REMINDERS|r", "Priority order: Specific Boss / M+ Dungeon overrides Content & Zone Defaults", -10)
         f.listHdr = listHdr
 
+        do
+            local listFilterBar = CreateFrame("Frame", nil, listCard, "BackdropTemplate")
+            listFilterBar:SetSize(136, 22)
+            listFilterBar:SetPoint("TOPRIGHT", listCard, "TOPRIGHT", -12, -12)
+            SetPixelBackdrop(listFilterBar, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+
+            local filterBuildBtn = CreateFrame("Button", nil, listFilterBar, "BackdropTemplate")
+            filterBuildBtn:SetSize(68, 18)
+            filterBuildBtn:SetPoint("LEFT", listFilterBar, "LEFT", 2, 0)
+            filterBuildBtn.txt = CreateText(filterBuildBtn, "OVERLAY", "GameFontHighlightSmall")
+            filterBuildBtn.txt:SetPoint("CENTER")
+            filterBuildBtn.txt:SetText("This Build")
+
+            local filterAllBtn = CreateFrame("Button", nil, listFilterBar, "BackdropTemplate")
+            filterAllBtn:SetSize(62, 18)
+            filterAllBtn:SetPoint("RIGHT", listFilterBar, "RIGHT", -2, 0)
+            filterAllBtn.txt = CreateText(filterAllBtn, "OVERLAY", "GameFontHighlightSmall")
+            filterAllBtn.txt:SetPoint("CENTER")
+            filterAllBtn.txt:SetText("All")
+
+            if listHdr.titleFS then
+                listHdr.titleFS:SetPoint("RIGHT", listFilterBar, "LEFT", -10, 0)
+                listHdr.titleFS:SetWordWrap(false)
+            end
+            if listHdr.subFS then
+                listHdr.subFS:SetPoint("RIGHT", listFilterBar, "LEFT", -10, 0)
+                listHdr.subFS:SetWordWrap(false)
+            end
+
+            f.listFilterBar = listFilterBar
+            f.filterBuildBtn = filterBuildBtn
+            f.filterAllBtn = filterAllBtn
+        end
+
         local emptyBossHint = CreateText(listCard, "OVERLAY", "GameFontHighlightSmall")
         emptyBossHint:SetPoint("TOPLEFT", listCard, "TOPLEFT", 14, -56)
         emptyBossHint:SetPoint("TOPRIGHT", listCard, "TOPRIGHT", -14, -56)
         emptyBossHint:SetJustifyH("LEFT")
         emptyBossHint:SetWordWrap(true)
-        emptyBossHint:SetText("|cFF64748BNo reminders bound yet. Pick a Raid Boss, M+ Dungeon, or Zone Default above, choose a build, and click + Bind.|r")
+        emptyBossHint:SetText("|cFF64748BNo reminders bound for this build yet. Pick a Raid Boss, M+ Dungeon, or Zone Default above and click + Bind.|r")
+        f.emptyBossHint = emptyBossHint
 
         local scrollF = CreateFrame("ScrollFrame", nil, listCard)
         scrollF:SetPoint("TOPLEFT", listCard, "TOPLEFT", 12, -50)
@@ -15431,27 +15552,93 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         listCard.track:SetScript("OnMouseWheel", function(_, delta) HandleListWheel(delta) end)
         scrollF:SetScript("OnSizeChanged", function() listCard.UpdateScrollBar() end)
 
+        if f.filterBuildBtn then
+            f.filterBuildBtn:SetScript("OnClick", function()
+                f.state.reminderFilter = "BUILD"
+                f:RefreshBossList()
+            end)
+        end
+        if f.filterAllBtn then
+            f.filterAllBtn:SetScript("OnClick", function()
+                f.state.reminderFilter = "ALL"
+                f:RefreshBossList()
+            end)
+        end
+
         f.bossRows = {}
         function f:RefreshBossList()
             local st = self.state
-            self:UpdatePickBtns()
-            for _, r in ipairs(self.bossRows) do r:Hide() end
+            local curBuild = self:UpdatePickBtns()
+            local filterMode = st.reminderFilter or "BUILD"
+            local onBuild = (filterMode == "BUILD")
+            local curBuildLow = (type(curBuild) == "table" and type(curBuild.name) == "string" and curBuild.name ~= "") and curBuild.name:lower() or nil
+            local r, g, b = GetActiveAccentRGB()
+
+            if self.filterBuildBtn then
+                SetPixelBackdrop(self.filterBuildBtn, onBuild and { r * 0.42, g * 0.42, b * 0.42, 1.00 } or COLORS.BgElevated, onBuild and { r, g, b, 0.95 } or { 1, 1, 1, 0.05 }, 1)
+                if self.filterBuildBtn.txt then
+                    self.filterBuildBtn.txt:SetTextColor(onBuild and 1 or 0.65, onBuild and 1 or 0.72, onBuild and 1 or 0.82, 1)
+                end
+            end
+            if self.filterAllBtn then
+                SetPixelBackdrop(self.filterAllBtn, (not onBuild) and { r * 0.42, g * 0.42, b * 0.42, 1.00 } or COLORS.BgElevated, (not onBuild) and { r, g, b, 0.95 } or { 1, 1, 1, 0.05 }, 1)
+                if self.filterAllBtn.txt then
+                    self.filterAllBtn.txt:SetTextColor((not onBuild) and 1 or 0.65, (not onBuild) and 1 or 0.72, (not onBuild) and 1 or 0.82, 1)
+                end
+            end
+
+            if self.listHdr and self.listFilterBar then
+                if self.listHdr.titleFS then
+                    self.listHdr.titleFS:ClearAllPoints()
+                    self.listHdr.titleFS:SetPoint("TOPLEFT", self.listHdr.bar, "TOPRIGHT", 8, -1)
+                    self.listHdr.titleFS:SetPoint("RIGHT", self.listFilterBar, "LEFT", -10, 0)
+                end
+                if self.listHdr.subFS then
+                    self.listHdr.subFS:ClearAllPoints()
+                    self.listHdr.subFS:SetPoint("TOPLEFT", self.listHdr.titleFS, "BOTTOMLEFT", 0, -2)
+                    self.listHdr.subFS:SetPoint("RIGHT", self.listFilterBar, "LEFT", -10, 0)
+                    if onBuild then
+                        if type(curBuild) == "table" then
+                            self.listHdr.subFS:SetText("|cFF94A3B8Showing reminders for |r" .. DynamicPrep:FormatTalentBadge(curBuild) .. " |cFFFFFFFF" .. tostring(curBuild.name or "Loadout") .. "|r")
+                        else
+                            self.listHdr.subFS:SetText("|cFF94A3B8No saved loadout selected -- pick one above or switch to All|r")
+                        end
+                    else
+                        self.listHdr.subFS:SetText("|cFF94A3B8Showing all builds (Boss / M+ overrides Content & Zone Defaults)|r")
+                    end
+                end
+            end
+
+            for _, rFrame in ipairs(self.bossRows) do rFrame:Hide() end
             local specID = DynamicPrep:GetActiveSpecID()
             local items = {}
 
+            local function RuleMatchesFilter(v)
+                if type(v) ~= "table" then return false end
+                if not onBuild then return true end
+                if not curBuildLow then return false end
+                if type(v.loadoutName) == "string" and v.loadoutName ~= "" then
+                    return v.loadoutName:lower() == curBuildLow
+                end
+                if type(curBuild.importString) == "string" and curBuild.importString ~= "" and v.importString == curBuild.importString then
+                    return true
+                end
+                return false
+            end
+
             local function FormatRuleTarget(v, defGroup)
-                local b = DynamicPrep:FormatTalentBadge({
+                local badge = DynamicPrep:FormatTalentBadge({
                     group        = v.group or defGroup or "Custom",
                     importString = v.importString,
                     loadoutName  = v.loadoutName,
                     heroAcronym  = v.heroAcronym,
                 })
-                return b .. " |cFF10B981" .. tostring(v.loadoutName or "Loadout") .. "|r"
+                return badge .. " |cFF10B981" .. tostring(v.loadoutName or "Loadout") .. "|r"
             end
 
             local bossMap = (specID and DynamicPrep.db and DynamicPrep.db.talentBossMap and DynamicPrep.db.talentBossMap[specID]) or {}
             for k, v in pairs(bossMap) do
-                if type(v) == "table" then
+                if RuleMatchesFilter(v) then
                     local diffTxt = DynamicPrep:FormatDifficultySummary(v.difficulties)
                     if v.isAllRaid == true then
                         table.insert(items, {
@@ -15492,7 +15679,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
 
             local dungMap = (specID and DynamicPrep.db and DynamicPrep.db.talentDungeonMap and DynamicPrep.db.talentDungeonMap[specID]) or {}
             for k, v in pairs(dungMap) do
-                if type(v) == "table" then
+                if RuleMatchesFilter(v) then
                     local kt = v.keyTier or "ANY"
                     local tierTxt = (kt == "HIGH" and "+10+") or (kt == "LOW" and "+2-9") or "Any Key"
                     local isAllRule = (v.isAllMPlus == true) or (tostring(v.dungeonName or ""):lower() == "all m+ dungeons")
@@ -15519,7 +15706,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             end
 
             local zoneMap = (specID and DynamicPrep.db and DynamicPrep.db.talentZoneMap and DynamicPrep.db.talentZoneMap[specID]) or {}
-            if type(zoneMap.delves) == "table" then
+            if RuleMatchesFilter(zoneMap.delves) then
                 table.insert(items, {
                     sortKey = "2:3:delves",
                     text = string.format("|cFFA78BFA[Zone: Delves]|r  ->  %s", FormatRuleTarget(zoneMap.delves, "Delves")),
@@ -15529,7 +15716,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                     end,
                 })
             end
-            if type(zoneMap.pvp) == "table" then
+            if RuleMatchesFilter(zoneMap.pvp) then
                 table.insert(items, {
                     sortKey = "2:4:pvp",
                     text = string.format("|cFFF472B6[Zone: PvP]|r  ->  %s", FormatRuleTarget(zoneMap.pvp, "PvP")),
@@ -15539,7 +15726,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                     end,
                 })
             end
-            if type(zoneMap.outdoor) == "table" then
+            if RuleMatchesFilter(zoneMap.outdoor) then
                 table.insert(items, {
                     sortKey = "2:5:outdoor",
                     text = string.format("|cFF34D399[Zone: Outdoor]|r  ->  %s", FormatRuleTarget(zoneMap.outdoor, "Custom")),
@@ -15549,7 +15736,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                     end,
                 })
             end
-            if type(zoneMap.all) == "table" then
+            if RuleMatchesFilter(zoneMap.all) then
                 table.insert(items, {
                     sortKey = "2:9:all",
                     text = string.format("|cFF10B981[All Content]|r  ->  %s", FormatRuleTarget(zoneMap.all, "Custom")),
@@ -15560,8 +15747,19 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 })
             end
 
-            table.sort(items, function(a, b) return a.sortKey < b.sortKey end)
-            emptyBossHint:SetShown(#items == 0)
+            table.sort(items, function(a, c) return a.sortKey < c.sortKey end)
+            if self.emptyBossHint then
+                if onBuild and type(curBuild) == "table" then
+                    self.emptyBossHint:SetText("|cFF64748BNo reminders bound to |r|cFFE2E8F0" .. tostring(curBuild.name or "this build") .. "|r|cFF64748B yet. Select a Raid Boss, M+ Dungeon, or Zone Default above and click + Bind.|r")
+                elseif onBuild then
+                    self.emptyBossHint:SetText("|cFF64748BPick an existing loadout in the top bar (or click All) to inspect or create reminders.|r")
+                else
+                    self.emptyBossHint:SetText("|cFF64748BNo reminders bound yet. Select a loadout in the top bar, pick targets above, and click + Bind.|r")
+                end
+                self.emptyBossHint:SetShown(#items == 0)
+            end
+
+            local rowWidth = math.max(100, scrollChild:GetWidth() or 562)
             for i, it in ipairs(items) do
                 local row = self.bossRows[i]
                 if not row then
@@ -15583,6 +15781,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 end
                 row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -((i - 1) * 27))
+                row:SetWidth(rowWidth)
                 row.fs:SetText(it.text)
                 row.del:SetScript("OnClick", it.onDelete)
                 row:Show()
@@ -15595,9 +15794,40 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             if self.RefreshZonePills then self:RefreshZonePills() end
         end
 
-        function f:SelectSubMode(mode)
-            mode = mode or "RAID"
-            self.state.subMode = mode
+        function f:UpdateResponsiveLayout()
+            if self._inLayoutUpdate then return end
+            self._inLayoutUpdate = true
+            local fw = math.max(620, self:GetWidth() or 620)
+            local cw = math.max(592, fw - 28)
+            local tw = math.floor((cw - 12) * 0.5)
+            tab1Btn:SetWidth(tw)
+            tab2Btn:SetWidth(cw - 12 - tw)
+            local sw = math.floor((cw - 16) / 3)
+            modeRaidBtn:SetWidth(sw)
+            modeMPlusBtn:SetWidth(sw)
+            modeZoneBtn:SetWidth(cw - 16 - (sw * 2))
+            if self.nameEB then
+                self.nameEB:SetWidth(math.max(240, cw - 332))
+            end
+            if self.activeTab == 2 then
+                local st = self.state
+                if st and st.subMode == "RAID" and self.RefreshRaidGrid then
+                    self:RefreshRaidGrid()
+                elseif st and st.subMode == "MPLUS" and self.RefreshPortalGrid then
+                    self:RefreshPortalGrid()
+                elseif st and st.subMode == "ZONE" and self.RefreshZonePills then
+                    self:RefreshZonePills()
+                end
+            end
+            if self.listCard and self.listCard.UpdateScrollBar then
+                self.listCard.UpdateScrollBar()
+            end
+            self._inLayoutUpdate = false
+        end
+
+        function f:RefreshTab2View()
+            local st = self.state
+            local mode = (st and st.subMode) or "RAID"
             local r, g, b = GetActiveAccentRGB()
             local isRaid = (mode == "RAID")
             local isMPlus = (mode == "MPLUS")
@@ -15605,10 +15835,6 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             SetPixelBackdrop(modeRaidBtn, isRaid and { r * 0.42, g * 0.42, b * 0.42, 1.00 } or COLORS.BgElevated, isRaid and { r, g, b, 0.95 } or COLORS.BorderSubtle, 1)
             SetPixelBackdrop(modeMPlusBtn, isMPlus and { r * 0.42, g * 0.42, b * 0.42, 1.00 } or COLORS.BgElevated, isMPlus and { r, g, b, 0.95 } or COLORS.BorderSubtle, 1)
             SetPixelBackdrop(modeZoneBtn, isZone and { r * 0.42, g * 0.42, b * 0.42, 1.00 } or COLORS.BgElevated, isZone and { r, g, b, 0.95 } or COLORS.BorderSubtle, 1)
-            bCard:SetHeight(isRaid and 260 or 178)
-            raidGrp:SetShown(isRaid)
-            mplusGrp:SetShown(isMPlus)
-            zoneGrp:SetShown(isZone)
             bHdr.bar:SetColorTexture(r, g, b, 0.95)
             bHdr.line:SetColorTexture(r, g, b, 0.35)
             listHdr.bar:SetColorTexture(r, g, b, 0.95)
@@ -15616,21 +15842,51 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             SetPixelBackdrop(raidBindBtn, { r * 0.42, g * 0.42, b * 0.42, 1.00 }, { r, g, b, 0.95 }, 1)
             SetPixelBackdrop(mplusBindBtn, { r * 0.42, g * 0.42, b * 0.42, 1.00 }, { r, g, b, 0.95 }, 1)
             SetPixelBackdrop(zoneBindBtn, { r * 0.42, g * 0.42, b * 0.42, 1.00 }, { r, g, b, 0.95 }, 1)
+            if self.unsavedBannerBtn then
+                SetPixelBackdrop(self.unsavedBannerBtn, { r * 0.42, g * 0.42, b * 0.42, 1.00 }, { r, g, b, 0.95 }, 1)
+            end
             if isRaid then
                 bHdr.titleFS:SetText("|cFFFFFFFFRAID BOSS TALENT BINDS|r")
                 bHdr.subFS:SetText("|cFF94A3B8Pick a Season 2 raid & boss (or All Raids) and choose difficulties below|r")
-                self:RefreshRaidGrid()
             elseif isMPlus then
                 bHdr.titleFS:SetText("|cFFFFFFFFMYTHIC+ TALENT BINDS|r")
                 bHdr.subFS:SetText("|cFF94A3B8Toggle season dungeons (or All M+) & key tier -- alerts before key starts|r")
-                self:RefreshPortalGrid()
             else
                 bHdr.titleFS:SetText("|cFFFFFFFFZONE & ALL CONTENT DEFAULTS|r")
                 bHdr.subFS:SetText("|cFF94A3B8Pick zones or All Content to set fallback builds when no boss/M+ matches|r")
-                self:RefreshZonePills()
             end
-            self:UpdatePickBtns()
-            listCard.UpdateScrollBar()
+
+            local hasBuild = (type(self:GetSelectedLoadout()) == "table")
+            if self.unsavedBanner then
+                self.unsavedBanner:SetShown(not hasBuild)
+            end
+            if not hasBuild then
+                bCard:SetHeight(104)
+                raidGrp:Hide()
+                mplusGrp:Hide()
+                zoneGrp:Hide()
+            else
+                bCard:SetHeight(isRaid and 234 or 152)
+                raidGrp:SetShown(isRaid)
+                mplusGrp:SetShown(isMPlus)
+                zoneGrp:SetShown(isZone)
+                if isRaid then
+                    self:RefreshRaidGrid()
+                elseif isMPlus then
+                    self:RefreshPortalGrid()
+                else
+                    self:RefreshZonePills()
+                end
+            end
+            self:RefreshBossList()
+            if listCard and listCard.UpdateScrollBar then
+                listCard.UpdateScrollBar()
+            end
+        end
+
+        function f:SelectSubMode(mode)
+            self.state.subMode = mode or "RAID"
+            self:RefreshTab2View()
         end
         modeRaidBtn:SetScript("OnClick", function() f:SelectSubMode("RAID") end)
         modeMPlusBtn:SetScript("OnClick", function() f:SelectSubMode("MPLUS") end)
@@ -15638,6 +15894,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
 
         function f:SelectTab(tabNum)
             self.activeTab = tabNum or 1
+            CloseModalDropdown()
             local r, g, b = GetActiveAccentRGB()
             SetPixelBackdrop(self, MODAL_BG, { r, g, b, 0.90 }, 1)
             local on1 = (self.activeTab == 1)
@@ -15650,12 +15907,13 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 self.renameLegacyBtn:SetShown(hasLegacy)
             end
             if on1 then
-                self:SetHeight(hasLegacy and 432 or 396)
+                if self.editingEntry ~= self:GetSelectedLoadout() then
+                    self:LoadEditorEntry(self:GetSelectedLoadout(), true)
+                end
             else
-                self:SetHeight(604)
-                self:SelectSubMode(self.state.subMode or "RAID")
-                self:RefreshBossList()
+                self:RefreshTab2View()
             end
+            self:UpdateResponsiveLayout()
             if self:IsShown() and DynamicPrep.RefreshTalentDock then
                 C_Timer.After(0, function() DynamicPrep:RefreshTalentDock() end)
             end
@@ -15663,14 +15921,23 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
 
         tab1Btn:SetScript("OnClick", function() f:SelectTab(1) end)
         tab2Btn:SetScript("OnClick", function() f:SelectTab(2) end)
-        f:HookScript("OnShow", function()
+        f:HookScript("OnSizeChanged", function(self)
+            if self.UpdateResponsiveLayout then
+                self:UpdateResponsiveLayout()
+            end
+        end)
+        f:HookScript("OnShow", function(self)
+            if self.UpdateResponsiveLayout then
+                self:UpdateResponsiveLayout()
+            end
             if DynamicPrep.RefreshTalentDock then
                 C_Timer.After(0, function() DynamicPrep:RefreshTalentDock() end)
             end
         end)
         f:HookScript("OnHide", function(self)
-            self.editingEntry = nil
+            CloseModalDropdown()
             if self.nameEB and self.nameEB.ClearFocus then self.nameEB:ClearFocus() end
+            if strEB and strEB.ClearFocus then strEB:ClearFocus() end
             if DynamicPrep.RefreshTalentDock then
                 C_Timer.After(0, function() DynamicPrep:RefreshTalentDock() end)
             end
@@ -15688,14 +15955,26 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         DynamicPrep._talentMgrModal = f
     end
 
-    if (initialTab or 1) == 1 then
-        talentMgrModal:LoadEditorEntry(targetEntry)
-    elseif targetEntry then
-        talentMgrModal:SelectBossPickEntry(targetEntry)
+    local sz = (self.db and self.db.talentMgrModalSize) or {}
+    talentMgrModal:SetSize(
+        math.max(620, math.min(760, tonumber(sz.w) or 620)),
+        math.max(520, math.min(820, tonumber(sz.h) or 620))
+    )
+    local tabToOpen = initialTab or 1
+    if targetEntry ~= nil then
+        talentMgrModal:SelectLoadout(targetEntry, (tabToOpen ~= 1))
+    elseif tabToOpen == 1 then
+        talentMgrModal:SelectLoadout(nil, false)
+    else
+        local curSel = talentMgrModal:GetSelectedLoadout() or DynamicPrep:GetActiveTalentLibraryEntry()
+        talentMgrModal:SelectLoadout(curSel, true)
     end
-    talentMgrModal:SelectTab(initialTab or 1)
+    talentMgrModal:SelectTab(tabToOpen)
     talentMgrModal:Show()
-    if (initialTab or 1) == 1 and talentMgrModal.nameEB then
+    if talentMgrModal.UpdateResponsiveLayout then
+        talentMgrModal:UpdateResponsiveLayout()
+    end
+    if tabToOpen == 1 and talentMgrModal.nameEB then
         talentMgrModal.nameEB:SetFocus()
         talentMgrModal.nameEB:HighlightText()
     end
