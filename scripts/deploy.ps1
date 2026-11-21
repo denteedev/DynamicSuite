@@ -94,7 +94,7 @@ $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite")
 if (Test-Path -LiteralPath (Join-Path $RepoRoot "Packaging")) {
     $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "Packaging") -Filter "*.toc" -Recurse -File
 }
-foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md", "README.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md", "Packaging\StandaloneTOCs\.pkgmeta-dynamicmarker", "AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", ".pkgmeta", ".pkgmeta-dynamicmarker", ".github\workflows\release.yml")) {
+foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "docs\CHANGELOG_ARCHIVE.md", "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md", "README.md", "Packaging\StandaloneTOCs\.pkgmeta-dynamicmarker", "AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", ".pkgmeta", ".pkgmeta-dynamicmarker", ".github\workflows\release.yml")) {
     $docPath = Join-Path $RepoRoot $docName
     if (Test-Path -LiteralPath $docPath) {
         $asciiTargets += Get-Item -LiteralPath $docPath
@@ -133,7 +133,7 @@ Write-Host "[ASCII OK] Verified $($asciiTargets.Count) file(s) (NonASCII=0, HasB
 
 # 3b. Public doc leak guard & Lockstep Suite <-> Standalone parity checks
 $leakPattern = 'AGENTS\.md|DESIGN_SYSTEM\.md|TASKS\.md|Design/|scripts/'
-$pubDocs = @("README.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md", "CHANGELOG.md", "DynamicSuite\CHANGELOG.md")
+$pubDocs = @("README.md", "CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "docs\CHANGELOG_ARCHIVE.md")
 if (Test-Path -LiteralPath $marketingDir) {
     foreach ($mf in (Get-ChildItem -LiteralPath $marketingDir -Filter "*.md" -File)) {
         $pubDocs += "Marketing\$($mf.Name)"
@@ -185,7 +185,7 @@ if ($markerChangelogHead -notmatch [regex]::Escape("Release: v$suiteVer")) {
     throw "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md header does not match lockstep version v$suiteVer"
 }
 $markerChangelogRaw = [System.IO.File]::ReadAllText($markerChangelogPath)
-$forbiddenMarkerChangelogTerms = @("DynamicGroup", "DynamicPrep", "DynamicBags", "DynamicLoad", "DynamicChat", "DynamicFPS", "DynamicZoom", "DynamicMail", "All 8 Modules", "All 9 Modules")
+$forbiddenMarkerChangelogTerms = @("DynamicGroup", "DynamicPrep", "DynamicBags", "DynamicLoad", "DynamicChat", "DynamicFPS", "DynamicZoom", "DynamicMail", "DynamicVault", "DynamicDialogue", "All 8 Modules", "All 9 Modules", "All 10 Modules", "All 11 Modules")
 $foundBleed = @()
 foreach ($term in $forbiddenMarkerChangelogTerms) {
     if ($markerChangelogRaw -match [regex]::Escape($term)) {
@@ -199,40 +199,24 @@ $readmeText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot "README.md"))
 if ($readmeText -notmatch [regex]::Escape("v$suiteVer")) {
     throw "README.md does not match lockstep version v$suiteVer"
 }
-$cfStandaloneDoc = Join-Path $RepoRoot "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md"
 $cfMarketingDoc = Join-Path $RepoRoot "Marketing\CurseForge_DynamicMarker.md"
-foreach ($markerDoc in @($cfStandaloneDoc, $cfMarketingDoc)) {
-    if (-not (Test-Path -LiteralPath $markerDoc)) {
-        throw "Missing required DynamicMarker storefront document: $markerDoc"
-    }
-    $markerDocText = [System.IO.File]::ReadAllText($markerDoc)
-    if ($markerDocText -match '(?m)^(?:\*\*Version:\*\*|> \*\*Version:\*\*|## Section 2: CurseForge File Changelog Block)') {
-        throw "Storefront document must remain evergreen (no version/date/changelog block): $markerDoc"
-    }
+if (-not (Test-Path -LiteralPath $cfMarketingDoc)) {
+    throw "Missing required DynamicMarker storefront document: $cfMarketingDoc"
 }
-$normMarkerStandalone = ([System.IO.File]::ReadAllText($cfStandaloneDoc)).Replace("`r`n", "`n").TrimEnd()
-$normMarkerMarketing = ([System.IO.File]::ReadAllText($cfMarketingDoc)).Replace("`r`n", "`n").TrimEnd()
-if ($normMarkerStandalone -ne $normMarkerMarketing) {
-    throw "Marketing\CurseForge_DynamicMarker.md and Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md have diverged."
+$markerDocText = [System.IO.File]::ReadAllText($cfMarketingDoc)
+if ($markerDocText -match '(?m)^(?:\*\*Version:\*\*|> \*\*Version:\*\*|## Section 2: CurseForge File Changelog Block)') {
+    throw "Storefront document must remain evergreen (no version/date/changelog block): $cfMarketingDoc"
 }
-$cfSuiteStandaloneDoc = Join-Path $RepoRoot "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md"
 $cfSuiteMarketingDoc = Join-Path $RepoRoot "Marketing\CurseForge_DynamicSuite.md"
-foreach ($suiteDoc in @($cfSuiteStandaloneDoc, $cfSuiteMarketingDoc)) {
-    if (-not (Test-Path -LiteralPath $suiteDoc)) {
-        throw "Missing required DynamicSuite storefront document: $suiteDoc"
-    }
-    $suiteDocText = [System.IO.File]::ReadAllText($suiteDoc)
-    if ($suiteDocText -match '(?m)^(?:\*\*Version:\*\*|> \*\*Version:\*\*|## Section 2: CurseForge File Changelog Block)') {
-        throw "Storefront document must remain evergreen (no version/date/changelog block): $suiteDoc"
-    }
-    if ($suiteDocText -notmatch '1804382' -or $suiteDocText -notmatch [regex]::Escape("https://www.curseforge.com/wow/addons/dynamicsuite")) {
-        throw "$suiteDoc is missing verified CurseForge project ID 1804382 or live URL."
-    }
+if (-not (Test-Path -LiteralPath $cfSuiteMarketingDoc)) {
+    throw "Missing required DynamicSuite storefront document: $cfSuiteMarketingDoc"
 }
-$normSuiteStandalone = ([System.IO.File]::ReadAllText($cfSuiteStandaloneDoc)).Replace("`r`n", "`n").TrimEnd()
-$normSuiteMarketing = ([System.IO.File]::ReadAllText($cfSuiteMarketingDoc)).Replace("`r`n", "`n").TrimEnd()
-if ($normSuiteStandalone -ne $normSuiteMarketing) {
-    throw "Marketing\CurseForge_DynamicSuite.md and Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md have diverged."
+$suiteDocText = [System.IO.File]::ReadAllText($cfSuiteMarketingDoc)
+if ($suiteDocText -match '(?m)^(?:\*\*Version:\*\*|> \*\*Version:\*\*|## Section 2: CurseForge File Changelog Block)') {
+    throw "Storefront document must remain evergreen (no version/date/changelog block): $cfSuiteMarketingDoc"
+}
+if ($suiteDocText -notmatch '1804382' -or $suiteDocText -notmatch [regex]::Escape("https://www.curseforge.com/wow/addons/dynamicsuite")) {
+    throw "$cfSuiteMarketingDoc is missing verified CurseForge project ID 1804382 or live URL."
 }
 
 $noComingSoonTargets = @(
@@ -241,9 +225,7 @@ $noComingSoonTargets = @(
     "DynamicSuite\Modules\DynamicMarker.lua",
     "README.md",
     "Marketing\CurseForge_DynamicSuite.md",
-    "Marketing\CurseForge_DynamicMarker.md",
-    "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md",
-    "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md"
+    "Marketing\CurseForge_DynamicMarker.md"
 )
 foreach ($relCheck in $noComingSoonTargets) {
     $absCheck = Join-Path $RepoRoot $relCheck
@@ -433,8 +415,6 @@ foreach ($markerForbiddenHudTok in @("DynamicSuiteGridOverlay", "DynamicSuite HU
 }
 $readmeSupportDocs = @(
     "README.md",
-    "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md",
-    "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md",
     "Marketing\CurseForge_DynamicMarker.md",
     "Marketing\CurseForge_DynamicSuite.md"
 )
@@ -489,10 +469,9 @@ $qqAuditFiles = @(
     "README.md",
     "CHANGELOG.md",
     "DynamicSuite\CHANGELOG.md",
+    "docs\CHANGELOG_ARCHIVE.md",
     "Marketing\CurseForge_DynamicSuite.md",
-    "Marketing\CurseForge_DynamicMarker.md",
-    "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md",
-    "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md"
+    "Marketing\CurseForge_DynamicMarker.md"
 )
 foreach ($docRel in $qqAuditFiles) {
     $docText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot $docRel))
@@ -523,7 +502,7 @@ foreach ($luaCheck in $allLuaCheckFiles) {
 if ($registeredSlashCmds.Count -eq 0 -or $markerSlashCmds.Count -eq 0) {
     throw "Dynamic SLASH_* extraction found 0 commands; audit regex failed."
 }
-foreach ($docRel in @("README.md", "Marketing\CurseForge_DynamicSuite.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICSUITE.md")) {
+foreach ($docRel in @("README.md", "Marketing\CurseForge_DynamicSuite.md")) {
     $docText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot $docRel))
     foreach ($cmd in $registeredSlashCmds) {
         $cmdPat = '(?i)(?<![a-z0-9_])' + [regex]::Escape($cmd) + '(?![a-z0-9_])'
@@ -532,7 +511,7 @@ foreach ($docRel in @("README.md", "Marketing\CurseForge_DynamicSuite.md", "Pack
         }
     }
 }
-foreach ($docRel in @("Marketing\CurseForge_DynamicMarker.md", "Packaging\StandaloneTOCs\CURSEFORGE_DYNAMICMARKER.md")) {
+foreach ($docRel in @("Marketing\CurseForge_DynamicMarker.md")) {
     $docText = [System.IO.File]::ReadAllText((Join-Path $RepoRoot $docRel))
     foreach ($cmd in $markerSlashCmds) {
         $cmdPat = '(?i)(?<![a-z0-9_])' + [regex]::Escape($cmd) + '(?![a-z0-9_])'
@@ -992,7 +971,7 @@ try {
             Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite\Modules") -Filter "*.lua" -File | ForEach-Object {
                 Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $driveModulesTxtDir ($_.Name + ".txt")) -Force
             }
-            Write-Host "[TXT MIRRORED] DynamicSuite_Core.lua.txt, DynamicSuite_UI.lua.txt, & 8 Module .lua.txt files -> $driveModulesTxtDir" -ForegroundColor DarkCyan
+            Write-Host "[TXT MIRRORED] DynamicSuite_Core.lua.txt, DynamicSuite_UI.lua.txt, & 11 Module .lua.txt files -> $driveModulesTxtDir" -ForegroundColor DarkCyan
             Write-Host "[CURSEFORGE DOCS SYNCED] README.md, CURSEFORGE_DYNAMICMARKER.md, & CURSEFORGE_DYNAMICSUITE.md -> $driveSyncRoot" -ForegroundColor DarkCyan
         }
     } else {
@@ -1055,9 +1034,7 @@ try {
             if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($prevTag)) {
                 $storefrontPaths = @(
                     "Marketing/CurseForge_DynamicSuite.md",
-                    "Marketing/CurseForge_DynamicMarker.md",
-                    "Packaging/StandaloneTOCs/CURSEFORGE_DYNAMICSUITE.md",
-                    "Packaging/StandaloneTOCs/CURSEFORGE_DYNAMICMARKER.md"
+                    "Marketing/CurseForge_DynamicMarker.md"
                 )
                 $changedStorefront = & $gitExe diff --name-only "$prevTag" "$ReleaseTag" -- @storefrontPaths
                 if ($changedStorefront) {

@@ -1,6 +1,6 @@
-# BigWigsMods/packager configuration for full DynamicSuite bundle (Hub + 8 Modules)
+# BigWigsMods/packager configuration for full DynamicSuite bundle (Hub + 11 Modules)
 # Consolidated single-entry architecture: DynamicSuite/DynamicSuite.toc loads
-# DynamicSuite_Core.lua, DynamicSuite_UI.lua, and all 8 Modules\Dynamic*.lua.
+# DynamicSuite_Core.lua, DynamicSuite_UI.lua, and all 11 Modules\Dynamic*.lua.
 package-as: DynamicSuite
 enable-nolib-creation: no
 

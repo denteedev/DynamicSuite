@@ -85,4 +85,4 @@
 
 ## License & Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for the complete release history across all 11 modules.
+See [CHANGELOG.md](CHANGELOG.md) for v2.0.0+ releases and [docs/CHANGELOG_ARCHIVE.md](docs/CHANGELOG_ARCHIVE.md) for pre-v2.0.0 history across all 11 modules.
