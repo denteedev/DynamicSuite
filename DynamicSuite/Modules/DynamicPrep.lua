@@ -764,6 +764,7 @@ local DEFAULTS = {
     talentZoneMap = {},
     talentStringLibrary = {},
     talentMgrModalSize = { w = 620, h = 620 },
+    dismissedTalentQuickStart = false,
     cinematicMode = "BOTH", -- "BOTH", "SKIP_ONLY", "OFF"
     autoRezMode = "OUT_OF_COMBAT", -- "OUT_OF_COMBAT", "ALWAYS", "OFF"
     autoReleaseMode = "WIPE_AND_CTRL", -- "WIPE_AND_CTRL", "HOLD_CTRL", "PVP_AUTO_WIPE_PVE", "ALWAYS", "OFF"
@@ -9231,6 +9232,9 @@ local function ResetPrepModuleDefaults()
         if DynamicPrep._talentMgrModal.UpdateResponsiveLayout then
             DynamicPrep._talentMgrModal:UpdateResponsiveLayout()
         end
+        if DynamicPrep._talentMgrModal.RefreshQuickStartStrip then
+            DynamicPrep._talentMgrModal:RefreshQuickStartStrip()
+        end
     end
     DynamicPrep:ApplyBarGeometry()
     DynamicPrep:RefreshBar()
@@ -10391,6 +10395,104 @@ function DynamicPrep:ImportFromTalentLoadoutManager()
     self:RefreshBar()
     if self.RefreshTalentDock then self:RefreshTalentDock() end
     return imported
+end
+
+function DynamicPrep:GetSuggestedCurrentBuildName(specID)
+    local sid = specID or self:GetActiveSpecID()
+    if sid and C_ClassTalents and type(C_ClassTalents.GetLastSelectedSavedConfigID) == "function"
+        and C_Traits and type(C_Traits.GetConfigInfo) == "function" then
+        local okC, cid = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, sid)
+        if okC and cid and cid > 0 then
+            local okI, info = pcall(C_Traits.GetConfigInfo, cid)
+            if okI and type(info) == "table" and not _IsSecret(info.name) and type(info.name) == "string" then
+                local nm = strtrim(info.name)
+                local low = nm:lower()
+                if nm ~= "" and low ~= "dynamicprep" and low ~= "talentloadoutmanager" then
+                    return nm
+                end
+            end
+        end
+    end
+    local idx = GetSpecialization and GetSpecialization()
+    if idx and GetSpecializationInfo then
+        local _, specName = GetSpecializationInfo(idx)
+        if type(specName) == "string" and not _IsSecret(specName) then
+            specName = strtrim(specName)
+            if specName ~= "" then
+                return specName .. " Build"
+            end
+        end
+    end
+    return "Current Build"
+end
+
+function DynamicPrep:ImportBlizzardLoadouts(specID)
+    if not self.db then self:InitDB() end
+    local sid = specID or self:GetActiveSpecID()
+    if not sid then return 0, 0, nil end
+    if not (C_ClassTalents and type(C_ClassTalents.GetConfigIDsBySpecID) == "function"
+        and C_Traits and type(C_Traits.GetConfigInfo) == "function"
+        and type(C_Traits.GenerateImportString) == "function") then
+        return 0, 0, nil
+    end
+    local okIDs, ids = pcall(C_ClassTalents.GetConfigIDsBySpecID, sid)
+    if not okIDs or type(ids) ~= "table" then return 0, 0, nil end
+
+    self.db.talentStringLibrary = self.db.talentStringLibrary or {}
+    self.db.talentStringLibrary[sid] = self.db.talentStringLibrary[sid] or {}
+    local lib = self.db.talentStringLibrary[sid]
+
+    local existingNames, existingStrs = {}, {}
+    for _, ex in ipairs(lib) do
+        if type(ex) == "table" then
+            if type(ex.name) == "string" and ex.name ~= "" then
+                existingNames[ex.name:lower()] = true
+            end
+            if type(ex.importString) == "string" and ex.importString ~= "" then
+                existingStrs[ex.importString] = true
+            end
+        end
+    end
+
+    local liveStr = self:GetActiveTalentString()
+    local imported, skipped, firstImported = 0, 0, nil
+    for _, cid in ipairs(ids) do
+        local okI, info = pcall(C_Traits.GetConfigInfo, cid)
+        if okI and type(info) == "table" and not _IsSecret(info.name) and type(info.name) == "string" then
+            local cleanName = strtrim(info.name)
+            local low = cleanName:lower()
+            if cleanName ~= "" and low ~= "dynamicprep" and low ~= "talentloadoutmanager" then
+                local okS, expStr = pcall(C_Traits.GenerateImportString, cid)
+                if okS and type(expStr) == "string" and not _IsSecret(expStr) then
+                    expStr = strtrim(expStr)
+                    if expStr ~= "" and self:DecodeTalentImportString(expStr) then
+                        if existingNames[low] or existingStrs[expStr] then
+                            skipped = skipped + 1
+                        else
+                            local entry = {
+                                name         = cleanName,
+                                group        = CategoriseTalentGroup(cleanName),
+                                importString = expStr,
+                                liveHash     = (liveStr and liveStr == expStr) and liveStr or nil,
+                            }
+                            table.insert(lib, entry)
+                            self:RefreshLoadoutHeroMeta(entry)
+                            existingNames[low] = true
+                            existingStrs[expStr] = true
+                            if not firstImported then firstImported = entry end
+                            imported = imported + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if imported > 0 then
+        print(string.format("|cFF%sDynamicPrep:|r Imported |cFF10B981%d|r Blizzard talent loadout(s) into your active spec library.", GetAccentHex(), imported))
+        self:SyncTalentBindsUI()
+    end
+    return imported, skipped, firstImported
 end
 
 local TALENT_GROUP_ORDER = { "Raid", "M+", "Delves", "PvP", "Custom" }
@@ -13793,6 +13895,213 @@ local function CreateModalSectionHeader(parent, title, subtitle, yOff)
     return wrap
 end
 
+function DynamicPrep:CloseTalentQuickGuide()
+    if self._quickGuideOwner then
+        local owner = self._quickGuideOwner
+        owner._guideOpen = false
+        SetPixelBackdrop(owner, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+        if owner.txt then owner.txt:SetTextColor(0.84, 0.90, 0.96, 1) end
+        self._quickGuideOwner = nil
+    end
+    if GameTooltip then GameTooltip:Hide() end
+    if self._quickGuidePopover then self._quickGuidePopover:Hide() end
+    if self._quickGuideCatcher then self._quickGuideCatcher:Hide() end
+end
+
+function DynamicPrep:ToggleTalentQuickGuide(anchorBtn, mgrModal)
+    if self._quickGuidePopover and self._quickGuidePopover:IsShown() then
+        self:CloseTalentQuickGuide()
+        return
+    end
+    if mgrModal and mgrModal.CloseModalDropdown then
+        mgrModal.CloseModalDropdown()
+    end
+    if GameTooltip then GameTooltip:Hide() end
+
+    local ar, ag, ab = GetActiveAccentRGB()
+    if not self._quickGuideCatcher then
+        local cat = CreateFrame("Button", "DynamicPrepTalentQuickGuideCatcher", UIParent)
+        cat:SetAllPoints(UIParent)
+        cat:SetFrameStrata("FULLSCREEN_DIALOG")
+        cat:SetFrameLevel(70)
+        cat:EnableMouse(true)
+        cat:RegisterForClicks("AnyDown")
+        cat:Hide()
+        cat:SetScript("OnClick", function()
+            DynamicPrep:CloseTalentQuickGuide()
+        end)
+        self._quickGuideCatcher = cat
+    end
+
+    if not self._quickGuidePopover then
+        local g = CreateFrame("Frame", "DynamicPrepTalentQuickGuidePopover", UIParent, "BackdropTemplate")
+        g:SetSize(420, 288)
+        g:SetFrameStrata("FULLSCREEN_DIALOG")
+        g:SetFrameLevel(75)
+        g:SetClampedToScreen(true)
+        g:EnableMouse(true)
+        g:Hide()
+        if _G.UISpecialFrames then
+            table.insert(_G.UISpecialFrames, "DynamicPrepTalentQuickGuidePopover")
+        end
+        if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.RegisterPopupCloser) == "function" then
+            _G.DynamicSuite.UI.RegisterPopupCloser("DynamicPrepTalentQuickGuidePopover", function()
+                DynamicPrep:CloseTalentQuickGuide()
+            end)
+        end
+
+        do
+            local hdr = CreateFrame("Frame", nil, g, "BackdropTemplate")
+            hdr:SetHeight(32)
+            hdr:SetPoint("TOPLEFT", g, "TOPLEFT", 1, -1)
+            hdr:SetPoint("TOPRIGHT", g, "TOPRIGHT", -1, -1)
+            SetPixelBackdrop(hdr, { 0.016, 0.020, 0.024, 1.00 }, { 0, 0, 0, 0 }, 0)
+            local div = hdr:CreateTexture(nil, "ARTWORK")
+            div:SetHeight(1)
+            div:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 0, 0)
+            div:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", 0, 0)
+            div:SetColorTexture(1, 1, 1, 0.08)
+
+            local ttl = CreateText(hdr, "OVERLAY", "GameFontHighlightSmall")
+            ttl:SetPoint("LEFT", hdr, "LEFT", 12, 0)
+            ttl:SetPoint("RIGHT", hdr, "RIGHT", -36, 0)
+            ttl:SetJustifyH("LEFT")
+            ttl:SetWordWrap(false)
+            ttl:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFF38BDF8Quick Guide|r")
+
+            local closeBtn = CreateFrame("Button", nil, hdr)
+            closeBtn:SetSize(32, 31)
+            closeBtn:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", 0, 0)
+            local cbg = closeBtn:CreateTexture(nil, "BACKGROUND")
+            cbg:SetAllPoints()
+            cbg:SetColorTexture(0.957, 0.247, 0.369, 0.00)
+            local x1 = closeBtn:CreateTexture(nil, "OVERLAY")
+            x1:SetSize(11, 1.6); x1:SetPoint("CENTER"); x1:SetColorTexture(0.75, 0.80, 0.88, 0.90); x1:SetRotation(math.rad(45))
+            local x2 = closeBtn:CreateTexture(nil, "OVERLAY")
+            x2:SetSize(11, 1.6); x2:SetPoint("CENTER"); x2:SetColorTexture(0.75, 0.80, 0.88, 0.90); x2:SetRotation(math.rad(-45))
+            closeBtn:SetScript("OnEnter", function() cbg:SetColorTexture(0.957, 0.247, 0.369, 0.22); x1:SetColorTexture(1, 1, 1, 1); x2:SetColorTexture(1, 1, 1, 1) end)
+            closeBtn:SetScript("OnLeave", function() cbg:SetColorTexture(0.957, 0.247, 0.369, 0.00); x1:SetColorTexture(0.75, 0.80, 0.88, 0.90); x2:SetColorTexture(0.75, 0.80, 0.88, 0.90) end)
+            closeBtn:SetScript("OnClick", function() DynamicPrep:CloseTalentQuickGuide() end)
+        end
+
+        g.pips = {}
+        local sections = {
+            {
+                title = "CREATING & IMPORTING",
+                body  = "Save your active tree, paste a Wowhead or Warcraft Logs string, or use Save & New to queue builds for later. Binding is optional.",
+            },
+            {
+                title = "BINDING PRIORITY",
+                body  = "Specific Raid Boss or M+ Dungeon -> All Raids / All M+ / Zone Defaults -> All Content. Most specific wins; Outdoor skips resting cities.",
+            },
+            {
+                title = "QUICK TIPS",
+                body  = "Click any Left-Hand Talent Dock build to switch while this window is open, or Right-Click any dock build for Quick Assign.",
+            },
+        }
+        for i, sec in ipairs(sections) do
+            local card = CreateFrame("Frame", nil, g, "BackdropTemplate")
+            card:SetHeight(58)
+            card:SetPoint("TOPLEFT", g, "TOPLEFT", 12, -42 - ((i - 1) * 65))
+            card:SetPoint("TOPRIGHT", g, "TOPRIGHT", -12, -42 - ((i - 1) * 65))
+            SetPixelBackdrop(card, { 0.055, 0.063, 0.082, 1.00 }, { 1, 1, 1, 0.08 }, 1)
+
+            local pip = card:CreateTexture(nil, "ARTWORK")
+            pip:SetWidth(3)
+            pip:SetPoint("TOPLEFT", card, "TOPLEFT", 8, -8)
+            pip:SetPoint("BOTTOMLEFT", card, "BOTTOMLEFT", 8, 8)
+            pip:SetColorTexture(ar, ag, ab, 0.95)
+            table.insert(g.pips, pip)
+
+            local tFS = CreateText(card, "OVERLAY", "GameFontHighlightSmall")
+            tFS:SetPoint("TOPLEFT", pip, "TOPRIGHT", 8, 1)
+            tFS:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -7)
+            tFS:SetJustifyH("LEFT")
+            tFS:SetWordWrap(false)
+            tFS:SetText("|cFFFFFFFF" .. sec.title .. "|r")
+
+            local bFS = CreateText(card, "OVERLAY", "GameFontHighlightSmall")
+            bFS:SetPoint("TOPLEFT", tFS, "BOTTOMLEFT", 0, -3)
+            bFS:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -10, 6)
+            bFS:SetJustifyH("LEFT")
+            bFS:SetWordWrap(true)
+            bFS:SetText("|cFFCBD5E1" .. sec.body .. "|r")
+        end
+
+        local demoBtn = CreateFrame("Button", nil, g, "BackdropTemplate")
+        demoBtn:SetSize(148, 24)
+        demoBtn:SetPoint("BOTTOMRIGHT", g, "BOTTOMRIGHT", -12, 12)
+        SetPixelBackdrop(demoBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
+        demoBtn.txt = CreateText(demoBtn, "OVERLAY", "GameFontHighlightSmall")
+        demoBtn.txt:SetPoint("CENTER")
+        demoBtn.txt:SetText("Preview Swap Alert")
+        demoBtn:SetScript("OnEnter", function(s)
+            local r, gb, b = GetActiveAccentRGB()
+            SetPixelBackdrop(s, { math.min(1, r * 0.56), math.min(1, gb * 0.56), math.min(1, b * 0.56), 1.00 }, { r, gb, b, 1.00 }, 1)
+        end)
+        demoBtn:SetScript("OnLeave", function(s)
+            local r, gb, b = GetActiveAccentRGB()
+            SetPixelBackdrop(s, { r * 0.42, gb * 0.42, b * 0.42, 1.00 }, { r, gb, b, 0.95 }, 1)
+        end)
+        demoBtn:SetScript("OnClick", function()
+            local ownerModal = DynamicPrep._quickGuideMgr or DynamicPrep._talentMgrModal
+            local sample = (ownerModal and ownerModal.GetSelectedLoadout and ownerModal:GetSelectedLoadout())
+                or { name = "Raid ST", group = "Raid", heroAcronym = "WS" }
+            DynamicPrep:ShowTalentReminderToast(sample, sample.name, "Preview: #8 Ula'tek (Heroic)", true)
+        end)
+        g.demoBtn = demoBtn
+
+        local footFS = CreateText(g, "OVERLAY", "GameFontHighlightSmall")
+        footFS:SetPoint("LEFT", g, "BOTTOMLEFT", 12, 24)
+        footFS:SetPoint("RIGHT", demoBtn, "LEFT", -10, 0)
+        footFS:SetJustifyH("LEFT")
+        footFS:SetWordWrap(false)
+        footFS:SetText("|cFF94A3B8See how swap alerts look in-game:|r")
+
+        g:SetScript("OnHide", function()
+            if DynamicPrep._quickGuideOwner then
+                local owner = DynamicPrep._quickGuideOwner
+                owner._guideOpen = false
+                SetPixelBackdrop(owner, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+                if owner.txt then owner.txt:SetTextColor(0.84, 0.90, 0.96, 1) end
+                DynamicPrep._quickGuideOwner = nil
+            end
+            if DynamicPrep._quickGuideCatcher then DynamicPrep._quickGuideCatcher:Hide() end
+        end)
+        self._quickGuidePopover = g
+    end
+
+    local g = self._quickGuidePopover
+    self._quickGuideMgr = mgrModal
+    SetPixelBackdrop(g, { 0.035, 0.039, 0.051, 1.00 }, { ar, ag, ab, 0.92 }, 1)
+    for _, pip in ipairs(g.pips or {}) do
+        pip:SetColorTexture(ar, ag, ab, 0.95)
+    end
+    if g.demoBtn then
+        SetPixelBackdrop(g.demoBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
+    end
+
+    g:ClearAllPoints()
+    if anchorBtn then
+        if self._quickGuideOwner and self._quickGuideOwner ~= anchorBtn then
+            local prev = self._quickGuideOwner
+            prev._guideOpen = false
+            SetPixelBackdrop(prev, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+            if prev.txt then prev.txt:SetTextColor(0.84, 0.90, 0.96, 1) end
+        end
+        self._quickGuideOwner = anchorBtn
+        anchorBtn._guideOpen = true
+        SetPixelBackdrop(anchorBtn, { ar * 0.38, ag * 0.38, ab * 0.38, 1.00 }, { ar, ag, ab, 0.95 }, 1)
+        if anchorBtn.txt then anchorBtn.txt:SetTextColor(1, 1, 1, 1) end
+        g:SetPoint("TOPRIGHT", anchorBtn, "BOTTOMRIGHT", 0, -6)
+    else
+        g:SetPoint("CENTER")
+    end
+
+    self._quickGuideCatcher:Show()
+    g:Show()
+end
+
 local talentMgrModal = nil
 function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
     if not self.db then self:InitDB() end
@@ -13894,6 +14203,39 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             xLine2:SetColorTexture(0.75, 0.80, 0.88, 0.90)
         end)
         closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+        do
+            local helpBtn = CreateFrame("Button", nil, hdrBar, "BackdropTemplate")
+            helpBtn:SetSize(24, 24)
+            helpBtn:SetPoint("RIGHT", closeBtn, "LEFT", -6, 0)
+            SetPixelBackdrop(helpBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+            helpBtn.txt = CreateText(helpBtn, "OVERLAY", "GameFontHighlightSmall")
+            helpBtn.txt:SetPoint("CENTER")
+            helpBtn.txt:SetText("?")
+            helpBtn.txt:SetTextColor(0.84, 0.90, 0.96, 1)
+            helpBtn:SetScript("OnEnter", function(s)
+                local r, g, b = GetActiveAccentRGB()
+                SetPixelBackdrop(s, { r * 0.34, g * 0.34, b * 0.34, 0.98 }, { r, g, b, 0.95 }, 1)
+                s.txt:SetTextColor(1, 1, 1, 1)
+                if GameTooltip and not (DynamicPrep._quickGuidePopover and DynamicPrep._quickGuidePopover:IsShown()) then
+                    GameTooltip:SetOwner(s, "ANCHOR_BOTTOMLEFT")
+                    GameTooltip:AddLine("Quick Guide & Swap Alert Demo", 1, 1, 1)
+                    GameTooltip:AddLine("View quick tips, priority rules, and test a live swap toast.", 0.88, 0.91, 0.95, true)
+                    GameTooltip:Show()
+                end
+            end)
+            helpBtn:SetScript("OnLeave", function(s)
+                if not s._guideOpen then
+                    SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+                    s.txt:SetTextColor(0.84, 0.90, 0.96, 1)
+                end
+                if GameTooltip then GameTooltip:Hide() end
+            end)
+            helpBtn:SetScript("OnClick", function(s)
+                DynamicPrep:ToggleTalentQuickGuide(s, f)
+            end)
+            f.helpBtn = helpBtn
+        end
 
         -- Standard 14x14 Bottom-Right Corner Resize Grip (live Suite Accent hover)
         do
@@ -14115,12 +14457,145 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         f.tab2Btn = tab2Btn
 
         -- =====================================================================
-        -- PAGE 1: SAVE / EDIT / IMPORT LOADOUT (2 Clean Obsidian Cards)
+        -- PAGE 1: BUILD DETAILS (Quick Start + 2 Clean Obsidian Cards)
         -- =====================================================================
         local p1 = CreateFrame("Frame", nil, f)
         p1:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -10)
         p1:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 18)
         f.p1 = p1
+
+        do
+            local qsCard = CreateFrame("Frame", nil, p1, "BackdropTemplate")
+            qsCard:SetHeight(74)
+            qsCard:SetPoint("TOPLEFT", p1, "TOPLEFT", 0, 0)
+            qsCard:SetPoint("TOPRIGHT", p1, "TOPRIGHT", 0, 0)
+            SetPixelBackdrop(qsCard, CARD_BG, { ar, ag, ab, 0.55 }, 1)
+
+            local accentBar = qsCard:CreateTexture(nil, "ARTWORK")
+            accentBar:SetWidth(3)
+            accentBar:SetPoint("TOPLEFT", qsCard, "TOPLEFT", 0, 0)
+            accentBar:SetPoint("BOTTOMLEFT", qsCard, "BOTTOMLEFT", 0, 0)
+            accentBar:SetColorTexture(ar, ag, ab, 0.95)
+            qsCard.accentBar = accentBar
+
+            local qsDismissBtn = CreateFrame("Button", nil, qsCard, "BackdropTemplate")
+            qsDismissBtn:SetSize(20, 20)
+            qsDismissBtn:SetPoint("TOPRIGHT", qsCard, "TOPRIGHT", -6, -6)
+            SetPixelBackdrop(qsDismissBtn, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, 0)
+            qsDismissBtn.txt = CreateText(qsDismissBtn, "OVERLAY", "GameFontHighlightSmall")
+            qsDismissBtn.txt:SetPoint("CENTER")
+            qsDismissBtn.txt:SetText("|cFF94A3B8x|r")
+            qsDismissBtn:SetScript("OnEnter", function(s)
+                SetPixelBackdrop(s, { 0.957, 0.247, 0.369, 0.22 }, { 0.957, 0.247, 0.369, 0.65 }, 1)
+                s.txt:SetText("|cFFF43F5Ex|r")
+                if GameTooltip then
+                    GameTooltip:SetOwner(s, "ANCHOR_TOPLEFT")
+                    GameTooltip:AddLine("Dismiss Quick Start", 1, 1, 1)
+                    GameTooltip:AddLine("Resettable anytime via Reset Defaults.", 0.88, 0.91, 0.95, true)
+                    GameTooltip:Show()
+                end
+            end)
+            qsDismissBtn:SetScript("OnLeave", function(s)
+                SetPixelBackdrop(s, { 0, 0, 0, 0 }, { 0, 0, 0, 0 }, 0)
+                s.txt:SetText("|cFF94A3B8x|r")
+                if GameTooltip then GameTooltip:Hide() end
+            end)
+            qsDismissBtn:SetScript("OnClick", function()
+                if not DynamicPrep.db then DynamicPrep:InitDB() end
+                DynamicPrep.db.dismissedTalentQuickStart = true
+                if f.RefreshQuickStartStrip then f:RefreshQuickStartStrip() end
+            end)
+
+            local qsHdrFS = CreateText(qsCard, "OVERLAY", "GameFontHighlightSmall")
+            qsHdrFS:SetPoint("TOPLEFT", qsCard, "TOPLEFT", 12, -10)
+            qsHdrFS:SetPoint("RIGHT", qsDismissBtn, "LEFT", -6, 0)
+            qsHdrFS:SetJustifyH("LEFT")
+            qsHdrFS:SetWordWrap(false)
+            qsHdrFS:SetText("|cFFFFFFFFQUICK START|r  |cFF94A3B8Save your active tree or import Blizzard loadouts -- binding is optional.|r")
+
+            local qsSaveBtn = CreateFrame("Button", nil, qsCard, "BackdropTemplate")
+            qsSaveBtn:SetSize(134, 24)
+            qsSaveBtn:SetPoint("BOTTOMLEFT", qsCard, "BOTTOMLEFT", 12, 10)
+            SetPixelBackdrop(qsSaveBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
+            qsSaveBtn.txt = CreateText(qsSaveBtn, "OVERLAY", "GameFontHighlightSmall")
+            qsSaveBtn.txt:SetPoint("CENTER")
+            qsSaveBtn.txt:SetText("Save Current Tree")
+            qsSaveBtn:SetScript("OnEnter", function(s)
+                local r, g, b = GetActiveAccentRGB()
+                SetPixelBackdrop(s, { math.min(1, r * 0.56), math.min(1, g * 0.56), math.min(1, b * 0.56), 1.00 }, { r, g, b, 1.00 }, 1)
+            end)
+            qsSaveBtn:SetScript("OnLeave", function(s)
+                local r, g, b = GetActiveAccentRGB()
+                SetPixelBackdrop(s, { r * 0.42, g * 0.42, b * 0.42, 1.00 }, { r, g, b, 0.95 }, 1)
+            end)
+            qsSaveBtn:SetScript("OnClick", function()
+                local activeStr = DynamicPrep:GetActiveTalentString()
+                if not activeStr or activeStr == "" then
+                    if f.valStatus then
+                        f.valStatus:SetText("|cFFFBBF24No active Midnight talent tree found yet -- open Talents once or paste a string below.|r")
+                    end
+                    return
+                end
+                local specID = DynamicPrep:GetActiveSpecID()
+                local bName = DynamicPrep:GetSuggestedCurrentBuildName(specID)
+                local grp = CategoriseTalentGroup(bName)
+                local ok, msg, savedEntry = DynamicPrep:ImportTalentString(bName, activeStr, grp)
+                if ok then
+                    if f.SelectLoadout then f:SelectLoadout(savedEntry, true) else f:LoadEditorEntry(savedEntry, true) end
+                    if f.valStatus then
+                        f.valStatus:SetText("|cFF10B981Saved '" .. tostring((savedEntry and savedEntry.name) or bName) .. "' from your active tree! Rename anytime or open Talent Binds.|r")
+                    end
+                elseif f.valStatus then
+                    f.valStatus:SetText("|cFFF43F5E" .. tostring(msg) .. "|r")
+                end
+            end)
+
+            local qsImportBtn = CreateFrame("Button", nil, qsCard, "BackdropTemplate")
+            qsImportBtn:SetSize(166, 24)
+            qsImportBtn:SetPoint("LEFT", qsSaveBtn, "RIGHT", 8, 0)
+            SetPixelBackdrop(qsImportBtn, { 0.063 * 0.30, 0.725 * 0.30, 0.506 * 0.30, 1.00 }, { 0.063, 0.725, 0.506, 0.85 }, 1)
+            qsImportBtn.txt = CreateText(qsImportBtn, "OVERLAY", "GameFontHighlightSmall")
+            qsImportBtn.txt:SetPoint("CENTER")
+            qsImportBtn.txt:SetText("|cFF34D399Import Blizzard Loadouts|r")
+            qsImportBtn:SetScript("OnEnter", function(s)
+                SetPixelBackdrop(s, { 0.063 * 0.46, 0.725 * 0.46, 0.506 * 0.46, 1.00 }, { 0.20, 0.85, 0.62, 1.00 }, 1)
+            end)
+            qsImportBtn:SetScript("OnLeave", function(s)
+                SetPixelBackdrop(s, { 0.063 * 0.30, 0.725 * 0.30, 0.506 * 0.30, 1.00 }, { 0.063, 0.725, 0.506, 0.85 }, 1)
+            end)
+            qsImportBtn:SetScript("OnClick", function()
+                local specID = DynamicPrep:GetActiveSpecID()
+                local imported, skipped, firstImported = DynamicPrep:ImportBlizzardLoadouts(specID)
+                if imported > 0 then
+                    if f.SelectLoadout and firstImported then
+                        f:SelectLoadout(firstImported, true)
+                    elseif f.RefreshQuickStartStrip then
+                        f:RefreshQuickStartStrip()
+                    end
+                    if f.valStatus then
+                        f.valStatus:SetText(string.format("|cFF10B981Imported %d Blizzard loadout(s) with Hero Talent badges!|r", imported))
+                    end
+                elseif f.valStatus then
+                    if skipped > 0 then
+                        f.valStatus:SetText("|cFF94A3B8All Blizzard loadouts are already saved -- pick one above or paste a string.|r")
+                    else
+                        f.valStatus:SetText("|cFFFBBF24No saved Blizzard loadouts found for this spec -- use Save Current Tree or paste a string.|r")
+                    end
+                end
+            end)
+
+            local qsNoteFS = CreateText(qsCard, "OVERLAY", "GameFontHighlightSmall")
+            qsNoteFS:SetPoint("LEFT", qsImportBtn, "RIGHT", 10, 0)
+            qsNoteFS:SetPoint("RIGHT", qsCard, "RIGHT", -12, 0)
+            qsNoteFS:SetJustifyH("LEFT")
+            qsNoteFS:SetWordWrap(false)
+            qsNoteFS:SetText("|cFF64748BOr paste a Wowhead / WCL string below|r")
+
+            qsCard:Hide()
+            f.quickStartCard = qsCard
+            f.qsSaveBtn = qsSaveBtn
+            f.qsImportBtn = qsImportBtn
+        end
 
         -- Card 1: Loadout Identity & Category
         local c1 = CreateFrame("Frame", nil, p1, "BackdropTemplate")
@@ -14189,6 +14664,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         valStatus:SetJustifyH("LEFT")
         valStatus:SetWordWrap(false)
         valStatus:SetText("|cFF64748BPaste an export string or click Use Current Tree.|r")
+        f.valStatus = valStatus
 
         local function ValidateStringBox()
             local txt = strtrim(strEB:GetText() or "")
@@ -14366,7 +14842,36 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             if self.UpdateTopLoadoutTriggerBadge then
                 self:UpdateTopLoadoutTriggerBadge()
             end
+            if self.RefreshQuickStartStrip then
+                self:RefreshQuickStartStrip()
+            end
             ValidateStringBox()
+        end
+
+        function f:RefreshQuickStartStrip()
+            if not self.quickStartCard or not self.c1 then return end
+            local specID = DynamicPrep:GetActiveSpecID()
+            local lib = (specID and DynamicPrep.db and DynamicPrep.db.talentStringLibrary and DynamicPrep.db.talentStringLibrary[specID]) or {}
+            local dismissed = (DynamicPrep.db and DynamicPrep.db.dismissedTalentQuickStart == true)
+            local showStrip = (#lib == 0) and (not dismissed)
+            local r, g, b = GetActiveAccentRGB()
+            self.c1:ClearAllPoints()
+            if showStrip then
+                SetPixelBackdrop(self.quickStartCard, CARD_BG, { r, g, b, 0.55 }, 1)
+                if self.quickStartCard.accentBar then
+                    self.quickStartCard.accentBar:SetColorTexture(r, g, b, 0.95)
+                end
+                if self.qsSaveBtn then
+                    SetPixelBackdrop(self.qsSaveBtn, { r * 0.42, g * 0.42, b * 0.42, 1.00 }, { r, g, b, 0.95 }, 1)
+                end
+                self.quickStartCard:Show()
+                self.c1:SetPoint("TOPLEFT", self.quickStartCard, "BOTTOMLEFT", 0, -8)
+                self.c1:SetPoint("TOPRIGHT", self.quickStartCard, "BOTTOMRIGHT", 0, -8)
+            else
+                self.quickStartCard:Hide()
+                self.c1:SetPoint("TOPLEFT", self.p1, "TOPLEFT", 0, 0)
+                self.c1:SetPoint("TOPRIGHT", self.p1, "TOPRIGHT", 0, 0)
+            end
         end
 
         local function CommitLoadoutEditor(saveAndNew)
@@ -15046,6 +15551,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 return
             end
             CloseModalDropdown()
+            if DynamicPrep.CloseTalentQuickGuide then DynamicPrep:CloseTalentQuickGuide() end
             if not anchorBtn._dsHideHooked then
                 anchorBtn._dsHideHooked = true
                 anchorBtn:HookScript("OnHide", function()
@@ -15983,7 +16489,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         emptyBossHint:SetPoint("TOPRIGHT", listCard, "TOPRIGHT", -14, -56)
         emptyBossHint:SetJustifyH("LEFT")
         emptyBossHint:SetWordWrap(true)
-        emptyBossHint:SetText("|cFF64748BNo reminders bound for this build yet. Pick a Raid Boss, M+ Dungeon, or Zone Default above and click + Bind.|r")
+        emptyBossHint:SetText("|cFF64748BNo binds set for this build yet. Binding is optional -- pick a Raid boss, M+ dungeon, or Zone above to get swap reminders.|r")
         f.emptyBossHint = emptyBossHint
 
         local scrollF = CreateFrame("ScrollFrame", nil, listCard)
@@ -16322,11 +16828,11 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             table.sort(items, function(a, c) return a.sortKey < c.sortKey end)
             if self.emptyBossHint then
                 if onBuild and type(curBuild) == "table" then
-                    self.emptyBossHint:SetText("|cFF64748BNo reminders bound to |r|cFFE2E8F0" .. tostring(curBuild.name or "this build") .. "|r|cFF64748B yet. Select a Raid Boss, M+ Dungeon, or Zone Default above and click + Bind.|r")
+                    self.emptyBossHint:SetText("|cFF64748BNo binds set for |r|cFFE2E8F0" .. tostring(curBuild.name or "this build") .. "|r|cFF64748B yet. Binding is optional -- pick a Raid boss, M+ dungeon, or Zone above to get swap reminders.|r")
                 elseif onBuild then
-                    self.emptyBossHint:SetText("|cFF64748BPick an existing loadout in the top bar (or click All) to inspect or create reminders.|r")
+                    self.emptyBossHint:SetText("|cFF64748BPick an existing loadout in the top bar (or click All) to inspect binds. Binding is optional.|r")
                 else
-                    self.emptyBossHint:SetText("|cFF64748BNo reminders bound yet. Select a loadout in the top bar, pick targets above, and click + Bind.|r")
+                    self.emptyBossHint:SetText("|cFF64748BNo binds set yet. Binding is optional -- pick a loadout above and choose a Raid boss, M+ dungeon, or Zone to get swap reminders.|r")
                 end
                 self.emptyBossHint:SetShown(#items == 0)
             end
@@ -16482,6 +16988,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 if self.editingEntry ~= self:GetSelectedLoadout() then
                     self:LoadEditorEntry(self:GetSelectedLoadout(), true)
                 end
+                if self.RefreshQuickStartStrip then
+                    self:RefreshQuickStartStrip()
+                end
             else
                 self:RefreshTab2View()
             end
@@ -16499,6 +17008,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             end
         end)
         f:HookScript("OnShow", function(self)
+            if self.RefreshQuickStartStrip then
+                self:RefreshQuickStartStrip()
+            end
             if self.UpdateResponsiveLayout then
                 self:UpdateResponsiveLayout()
             end
@@ -16508,6 +17020,9 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         end)
         f:HookScript("OnHide", function(self)
             CloseModalDropdown()
+            if DynamicPrep.CloseTalentQuickGuide then
+                DynamicPrep:CloseTalentQuickGuide()
+            end
             if self.nameEB and self.nameEB.ClearFocus then self.nameEB:ClearFocus() end
             if strEB and strEB.ClearFocus then strEB:ClearFocus() end
             if DynamicPrep.RefreshTalentDock then
@@ -16780,8 +17295,13 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             DynamicPrep:UpdateHealMacro(false)
             DynamicPrep:RefreshBar()
             if DynamicPrep.RefreshTalentDock then DynamicPrep:RefreshTalentDock() end
-            if talentMgrModal and talentMgrModal:IsShown() and talentMgrModal.RefreshBossList then
-                talentMgrModal:RefreshBossList()
+            if talentMgrModal and talentMgrModal:IsShown() then
+                if talentMgrModal.RefreshQuickStartStrip then
+                    talentMgrModal:RefreshQuickStartStrip()
+                end
+                if talentMgrModal.RefreshBossList then
+                    talentMgrModal:RefreshBossList()
+                end
             end
             DynamicPrep:RefreshWorkspaceView()
         end
