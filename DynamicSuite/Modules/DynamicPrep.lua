@@ -13342,40 +13342,64 @@ local function GetPrepSharedToastStyle()
     }
 end
 
+local function StylePrepToastSwapButton(swapBtn, st, isHover)
+    if not swapBtn then return end
+    st = st or GetPrepSharedToastStyle()
+    local ar, ag, ab = st.ar, st.ag, st.ab
+    local bgMult = isHover and 0.56 or 0.42
+    local bdrAlpha = isHover and 1.00 or 0.95
+    SetPixelBackdrop(swapBtn, { ar * bgMult, ag * bgMult, ab * bgMult, isHover and 1.00 or 0.98 }, { ar, ag, ab, bdrAlpha }, 1)
+    if swapBtn.txt then swapBtn.txt:SetTextColor(1, 1, 1, 1) end
+end
+
 function DynamicPrep:ApplyTalentReminderToastVisuals()
     local f = talentReminderToast
     if not f then return end
     if InCombatLockdown and InCombatLockdown() then return end
-    local st = GetPrepSharedToastStyle()
-    local ar, ag, ab = st.ar, st.ag, st.ab
-    local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
+    local st = nil
+    if _G.DynamicSuite and type(_G.DynamicSuite.ApplySharedToastLayout) == "function" then
+        local ok, sharedSt = pcall(_G.DynamicSuite.ApplySharedToastLayout, f, { tintIcon = true })
+        if ok and type(sharedSt) == "table" then
+            st = sharedSt
+        end
+    end
+    if not st then
+        st = GetPrepSharedToastStyle()
+        local ar, ag, ab = st.ar, st.ag, st.ab
+        local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
 
-    f:SetScale(st.scale or 1.0)
-    f:SetBackdropColor(st.bgR or 0.035, st.bgG or 0.039, st.bgB or 0.051, st.opacity or 0.96)
-    if bStyle == "NONE" or bStyle == "BORDERLESS" then
-        f:SetBackdropBorderColor(0, 0, 0, 0)
-    elseif bStyle == "DARK" or bStyle == "SUBTLE" then
-        f:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
-    else
-        f:SetBackdropBorderColor(ar, ag, ab, 0.92)
-    end
-    if f.iconBorder then
-        f.iconBorder:SetBackdropBorderColor(ar, ag, ab, 0.85)
-    end
-    if f.iconTex then
-        f.iconTex:SetVertexColor(ar, ag, ab, 1.0)
+        f:SetFrameStrata("TOOLTIP")
+        f:SetFrameLevel(20)
+        f:SetToplevel(false)
+        f:SetScale(st.scale or 1.0)
+        f:SetBackdropColor(st.bgR or 0.035, st.bgG or 0.039, st.bgB or 0.051, st.opacity or 0.96)
+        if bStyle == "NONE" or bStyle == "BORDERLESS" then
+            f:SetBackdropBorderColor(0, 0, 0, 0)
+        elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+            f:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+        else
+            f:SetBackdropBorderColor(ar, ag, ab, 0.92)
+        end
+        if f.iconBorder then
+            f.iconBorder:SetBackdropBorderColor(ar, ag, ab, 0.85)
+        end
+        if f.iconTex then
+            f.iconTex:SetVertexColor(ar, ag, ab, 1.0)
+        end
+        if f:IsShown() and _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+            pcall(_G.DynamicSuite.RestackAllToasts)
+        end
     end
     if f.swapBtn then
-        SetPixelBackdrop(f.swapBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 0.98 }, { ar, ag, ab, 0.95 }, 1)
-        f.swapBtn.txt:SetTextColor(1, 1, 1, 1)
-    end
-    if f:IsShown() and _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
-        pcall(_G.DynamicSuite.RestackAllToasts)
+        StylePrepToastSwapButton(f.swapBtn, st, f.swapBtn.IsMouseOver and f.swapBtn:IsMouseOver())
     end
 end
 
 function DynamicPrep:HideTalentReminderToast()
-    if talentReminderToast then
+    if not talentReminderToast then return end
+    if _G.DynamicSuite and type(_G.DynamicSuite.HideSharedToast) == "function" then
+        pcall(_G.DynamicSuite.HideSharedToast, talentReminderToast)
+    elseif not (InCombatLockdown and InCombatLockdown()) then
         if talentReminderToast.animGroup then talentReminderToast.animGroup:Stop() end
         talentReminderToast:Hide()
         talentReminderToast:SetAlpha(1)
@@ -13385,109 +13409,141 @@ end
 function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel, isPreview)
     if InCombatLockdown and InCombatLockdown() then return end
     if not talentReminderToast then
-        local f = CreateFrame("Button", "DynamicPrepTalentReminderToast", UIParent, "BackdropTemplate")
-        f:SetSize(410, 74)
-        f:SetFrameStrata("HIGH")
-        f:SetToplevel(true)
-        f:SetClampedToScreen(true)
-        f:EnableMouse(true)
-        f:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        f:SetBackdrop({
-            bgFile   = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Buttons\\WHITE8x8",
-            tile = false, tileSize = 0, edgeSize = 1.5,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 },
-        })
+        local f = nil
+        if _G.DynamicSuite and type(_G.DynamicSuite.EnsureSharedToastFrame) == "function" then
+            local ok, sharedFrame = pcall(_G.DynamicSuite.EnsureSharedToastFrame, "DynamicPrepTalentReminderToast", {
+                clickButtons = { "LeftButtonUp", "RightButtonUp" },
+                iconMode = "TINTED",
+                iconTexture = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
+                rightActionWidth = 74,
+                rightActionGap = 10,
+                autoFade = true,
+                onRightClickDismiss = function()
+                    DynamicPrep:HideTalentReminderToast()
+                end,
+            })
+            if ok and sharedFrame then
+                f = sharedFrame
+            end
+        end
 
-        -- 1:1 DynamicLoadToastFrame 44x44 Left Icon Badge
-        local iconBorder = CreateFrame("Frame", nil, f, "BackdropTemplate")
-        iconBorder:SetSize(44, 44)
-        iconBorder:SetPoint("LEFT", f, "LEFT", 14, 0)
-        iconBorder:SetBackdrop({
-            bgFile   = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Buttons\\WHITE8x8",
-            tile = false, tileSize = 0, edgeSize = 1,
-            insets = { left = 1, right = 1, top = 1, bottom = 1 },
-        })
-        iconBorder:SetBackdropColor(0.04, 0.05, 0.07, 1)
-        local ic = iconBorder:CreateTexture(nil, "ARTWORK")
-        ic:SetSize(30, 30)
-        ic:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-        ic:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga")
-        f.iconBorder = iconBorder
-        f.iconTex = ic
+        if not f then
+            -- Standalone fallback when DynamicSuite_Core is not loaded
+            f = CreateFrame("Button", "DynamicPrepTalentReminderToast", UIParent, "BackdropTemplate")
+            f:SetSize(410, 74)
+            f:SetFrameStrata("TOOLTIP")
+            f:SetFrameLevel(20)
+            f:SetToplevel(false)
+            f:SetClampedToScreen(true)
+            f:EnableMouse(true)
+            f:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            f:SetBackdrop({
+                bgFile   = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                tile = false, tileSize = 0, edgeSize = 1.5,
+                insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            })
 
-        -- Right-aligned single [Swap] Action Pill (NO Dismiss button -- Right-Click anywhere dismisses)
-        local swapBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
-        swapBtn:SetSize(74, 26)
-        swapBtn:SetPoint("RIGHT", f, "RIGHT", -12, 0)
-        swapBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        swapBtn.txt = CreateText(swapBtn, "OVERLAY", "GameFontHighlightSmall")
-        swapBtn.txt:SetPoint("CENTER")
-        swapBtn.txt:SetText("Swap")
-        f.swapBtn = swapBtn
+            local iconBorder = CreateFrame("Frame", nil, f, "BackdropTemplate")
+            iconBorder:SetSize(44, 44)
+            iconBorder:SetPoint("LEFT", f, "LEFT", 14, 0)
+            iconBorder:SetBackdrop({
+                bgFile   = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                tile = false, tileSize = 0, edgeSize = 1,
+                insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            })
+            iconBorder:SetBackdropColor(0.04, 0.05, 0.07, 1)
+            local ic = iconBorder:CreateTexture(nil, "ARTWORK")
+            ic:SetSize(30, 30)
+            ic:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+            ic:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga")
+            f.iconBorder = iconBorder
+            f.iconTex = ic
 
-        -- 3-Line Centre Stack (1:1 DynamicLoadToastFrame geometry)
-        local title = CreateText(f, "OVERLAY", "GameFontHighlight")
-        title:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -11)
-        title:SetPoint("RIGHT", swapBtn, "LEFT", -10, 0)
-        title:SetJustifyH("LEFT")
-        title:SetWordWrap(false)
-        f.title = title
+            local title = CreateText(f, "OVERLAY", "GameFontHighlight")
+            title:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -11)
+            title:SetPoint("RIGHT", f, "RIGHT", -96, 0)
+            title:SetJustifyH("LEFT")
+            title:SetWordWrap(false)
+            f.title = title
 
-        local badge = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
-        badge:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
-        badge:SetPoint("RIGHT", swapBtn, "LEFT", -10, 0)
-        badge:SetJustifyH("LEFT")
-        badge:SetWordWrap(false)
-        f.badge = badge
+            local badge = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+            badge:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
+            badge:SetPoint("RIGHT", f, "RIGHT", -96, 0)
+            badge:SetJustifyH("LEFT")
+            badge:SetWordWrap(false)
+            f.badge = badge
 
-        local subtext = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
-        subtext:SetPoint("TOPLEFT", badge, "BOTTOMLEFT", 0, -5)
-        subtext:SetPoint("RIGHT", swapBtn, "LEFT", -10, 0)
-        subtext:SetJustifyH("LEFT")
-        subtext:SetWordWrap(false)
-        f.subtext = subtext
+            local subtext = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+            subtext:SetPoint("TOPLEFT", badge, "BOTTOMLEFT", 0, -5)
+            subtext:SetPoint("RIGHT", f, "RIGHT", -96, 0)
+            subtext:SetJustifyH("LEFT")
+            subtext:SetWordWrap(false)
+            f.subtext = subtext
 
-        -- Auto-fade AnimationGroup with Hover Pause (1:1 DynamicLoadToastFrame)
-        local animGroup = f:CreateAnimationGroup()
-        local holdAnim = animGroup:CreateAnimation("Animation")
-        holdAnim:SetDuration(8)
-        holdAnim:SetOrder(1)
-        local fadeAnim = animGroup:CreateAnimation("Alpha")
-        fadeAnim:SetFromAlpha(1)
-        fadeAnim:SetToAlpha(0)
-        fadeAnim:SetDuration(1.2)
-        fadeAnim:SetOrder(2)
-        animGroup:SetScript("OnFinished", function()
-            f:Hide()
-            f:SetAlpha(1)
-        end)
-        f.animGroup = animGroup
-        f.holdAnim = holdAnim
+            local animGroup = f:CreateAnimationGroup()
+            local holdAnim = animGroup:CreateAnimation("Animation")
+            holdAnim:SetDuration(8)
+            holdAnim:SetOrder(1)
+            local fadeAnim = animGroup:CreateAnimation("Alpha")
+            fadeAnim:SetFromAlpha(1)
+            fadeAnim:SetToAlpha(0)
+            fadeAnim:SetDuration(1.2)
+            fadeAnim:SetOrder(2)
+            animGroup:SetScript("OnFinished", function()
+                f:Hide()
+                f:SetAlpha(1)
+            end)
+            f.animGroup = animGroup
+            f.holdAnim = holdAnim
 
-        f:SetScript("OnClick", function(selfT, button)
-            if button == "RightButton" then
-                selfT.animGroup:Stop()
-                selfT:Hide()
+            f:SetScript("OnClick", function(_, button)
+                if button == "RightButton" then
+                    DynamicPrep:HideTalentReminderToast()
+                end
+            end)
+            f:SetScript("OnEnter", function(selfT)
+                selfT.animGroup:Pause()
                 selfT:SetAlpha(1)
-            end
-        end)
-        f:SetScript("OnEnter", function(selfT)
-            selfT.animGroup:Pause()
-            selfT:SetAlpha(1)
-        end)
-        f:SetScript("OnLeave", function(selfT)
-            local stLeave = GetPrepSharedToastStyle()
-            if (stLeave.duration or 8) > 0 then
-                selfT.animGroup:Play()
-            end
-        end)
-        f:HookScript("OnHide", function()
-            if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
-                pcall(_G.DynamicSuite.RestackAllToasts)
-            end
-        end)
+            end)
+            f:SetScript("OnLeave", function(selfT)
+                if selfT.swapBtn and selfT.swapBtn.IsMouseOver and selfT.swapBtn:IsMouseOver() then return end
+                local stLeave = GetPrepSharedToastStyle()
+                if (stLeave.duration or 8) > 0 then
+                    selfT.animGroup:Play()
+                end
+            end)
+            f:HookScript("OnHide", function()
+                if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+                    pcall(_G.DynamicSuite.RestackAllToasts)
+                end
+            end)
+        end
+
+        if not f.swapBtn then
+            local swapBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+            swapBtn:SetSize(74, 26)
+            swapBtn:SetPoint("RIGHT", f, "RIGHT", -12, 0)
+            swapBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            swapBtn.txt = CreateText(swapBtn, "OVERLAY", "GameFontHighlightSmall")
+            swapBtn.txt:SetPoint("CENTER")
+            swapBtn.txt:SetText("Swap")
+            f.swapBtn = swapBtn
+        end
+        if f.SetRightTextAnchor then
+            f.SetRightTextAnchor(f.swapBtn, 10)
+        elseif f.title and f.badge and f.subtext then
+            f.title:ClearAllPoints()
+            f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -11)
+            f.title:SetPoint("RIGHT", f.swapBtn, "LEFT", -10, 0)
+            f.badge:ClearAllPoints()
+            f.badge:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -5)
+            f.badge:SetPoint("RIGHT", f.swapBtn, "LEFT", -10, 0)
+            f.subtext:ClearAllPoints()
+            f.subtext:SetPoint("TOPLEFT", f.badge, "BOTTOMLEFT", 0, -5)
+            f.subtext:SetPoint("RIGHT", f.swapBtn, "LEFT", -10, 0)
+        end
 
         talentReminderToast = f
     end
@@ -13496,16 +13552,18 @@ function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel, is
     local st = GetPrepSharedToastStyle()
     local dur = tonumber(st.duration) or 8
 
-    self:ApplyTalentReminderToastVisuals()
     f.swapBtn:SetScript("OnEnter", function(s)
         local curSt = GetPrepSharedToastStyle()
-        f.animGroup:Pause()
+        if f.animGroup then f.animGroup:Pause() end
         f:SetAlpha(1)
-        SetPixelBackdrop(s, { curSt.ar * 0.56, curSt.ag * 0.56, curSt.ab * 0.56, 1.00 }, { curSt.ar, curSt.ag, curSt.ab, 1.00 }, 1)
+        StylePrepToastSwapButton(s, curSt, true)
     end)
     f.swapBtn:SetScript("OnLeave", function(s)
         local curSt = GetPrepSharedToastStyle()
-        SetPixelBackdrop(s, { curSt.ar * 0.42, curSt.ag * 0.42, curSt.ab * 0.42, 0.98 }, { curSt.ar, curSt.ag, curSt.ab, 0.95 }, 1)
+        StylePrepToastSwapButton(s, curSt, false)
+        if not (f.IsMouseOver and f:IsMouseOver()) and f.animGroup and (curSt.duration or 8) > 0 then
+            f.animGroup:Play()
+        end
     end)
 
     local dispTarget = tostring(targetName or "Loadout")
@@ -13514,21 +13572,17 @@ function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel, is
     else
         dispTarget = "|cFFFFFFFF" .. dispTarget .. "|r"
     end
-    f.title:SetText(string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFFBBF24%s Talent Alert|r", zoneLabel or "Zone"))
-    f.badge:SetText("|cFF94A3B8Recommended:|r " .. dispTarget)
-    f.subtext:SetText("|cFF34D399Click Swap|r |cFF94A3B8to switch|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r")
+    local titleText = string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFFBBF24%s Talent Alert|r", zoneLabel or "Zone")
+    local badgeText = "|cFF94A3B8Recommended:|r " .. dispTarget
+    local subtextText = "|cFF34D399Click Swap|r |cFF94A3B8to switch|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r"
 
     f.swapBtn:SetScript("OnClick", function(_, button)
         if button == "RightButton" then
-            f.animGroup:Stop()
-            f:Hide()
-            f:SetAlpha(1)
+            DynamicPrep:HideTalentReminderToast()
             return
         end
         if isPreview then
-            f.animGroup:Stop()
-            f:Hide()
-            f:SetAlpha(1)
+            DynamicPrep:HideTalentReminderToast()
             return
         end
         if InCombatLockdown and InCombatLockdown() then return end
@@ -13537,11 +13591,29 @@ function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel, is
         elseif targetID and C_ClassTalents and type(C_ClassTalents.LoadConfig) == "function" then
             pcall(C_ClassTalents.LoadConfig, targetID, true)
         end
-        f.animGroup:Stop()
-        f:Hide()
-        f:SetAlpha(1)
+        DynamicPrep:HideTalentReminderToast()
     end)
 
+    if _G.DynamicSuite and type(_G.DynamicSuite.ShowSharedToast) == "function" then
+        local okShown, resShown = pcall(_G.DynamicSuite.ShowSharedToast, f, {
+            title = titleText,
+            badge = badgeText,
+            subtext = subtextText,
+            tintIcon = true,
+            autoFade = true,
+            playSound = true,
+        })
+        if okShown and resShown then
+            StylePrepToastSwapButton(f.swapBtn, GetPrepSharedToastStyle(), false)
+            return
+        end
+    end
+
+    -- Standalone fallback presentation path
+    self:ApplyTalentReminderToastVisuals()
+    f.title:SetText(titleText)
+    f.badge:SetText(badgeText)
+    f.subtext:SetText(subtextText)
     f.animGroup:Stop()
     f:SetAlpha(1)
     f:Show()
@@ -13558,9 +13630,7 @@ function DynamicPrep:ShowTalentReminderToast(targetID, targetName, zoneLabel, is
             f:SetPoint("TOP", UIParent, "TOP", 0, -140)
         end
     end
-    if not isPreview and _G.DynamicSuite and type(_G.DynamicSuite.PlaySharedToastSound) == "function" then
-        pcall(_G.DynamicSuite.PlaySharedToastSound)
-    elseif isPreview and _G.DynamicSuite and type(_G.DynamicSuite.PlaySharedToastSound) == "function" then
+    if _G.DynamicSuite and type(_G.DynamicSuite.PlaySharedToastSound) == "function" then
         pcall(_G.DynamicSuite.PlaySharedToastSound)
     end
     if dur > 0 then

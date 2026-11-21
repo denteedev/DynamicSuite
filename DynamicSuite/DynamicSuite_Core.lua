@@ -790,8 +790,32 @@ function addonTable.GetCoreAccentHex()
 end
 
 do
+local SHARED_TOAST_STRATA = "TOOLTIP"
+local SHARED_TOAST_LEVEL = 20
 local lastSharedToastSoundAt = -999
 local isRestackingToasts = false
+
+local function ApplySharedToastFont(fs, size)
+    if not fs or type(fs.SetFont) ~= "function" then return end
+    local fontPath = nil
+    if type(DynamicSuite.UI) == "table" and type(DynamicSuite.UI.GetFont) == "function" then
+        local ok, p = pcall(DynamicSuite.UI.GetFont)
+        if ok and type(p) == "string" and p ~= "" then fontPath = p end
+    end
+    if not fontPath and type(DynamicSuite.ResolveFontChoice) == "function" then
+        local g = EnsureSuiteGlobal()
+        local fk = g and (g.fontKey or g.fontFamily) or nil
+        local ok, p = pcall(DynamicSuite.ResolveFontChoice, DynamicSuite, fk)
+        if ok and type(p) == "string" and p ~= "" then fontPath = p end
+    end
+    if not fontPath then
+        fontPath = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Fonts\\Expressway.TTF"
+    end
+    local okSet = pcall(fs.SetFont, fs, fontPath, size or 12, "")
+    if not okSet then
+        pcall(fs.SetFont, fs, _G.STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", size or 12, "")
+    end
+end
 
 function DynamicSuite.GetSharedToastStyle()
     local g = EnsureSuiteGlobal()
@@ -890,6 +914,10 @@ function DynamicSuite.RestackAllToasts()
             if f and type(f) == "table" and f.IsShown and f:IsShown() then
                 local isDragging = (f.isEditingMode == true) or (f.isDraggingMode == true) or (f._dsDragging == true)
                 if not isDragging then
+                    if f._dsSharedToast == true then
+                        if f.SetFrameStrata then f:SetFrameStrata(SHARED_TOAST_STRATA) end
+                        if f.SetFrameLevel then f:SetFrameLevel(SHARED_TOAST_LEVEL) end
+                    end
                     if f == _G.DynamicLoadToastFrame then
                         prev = f
                     else
@@ -913,6 +941,313 @@ function DynamicSuite.RestackAllToasts()
     end
 end
 addonTable.RestackAllToasts = DynamicSuite.RestackAllToasts
+
+function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
+    if type(frameName) ~= "string" or frameName == "" then return nil end
+    opts = type(opts) == "table" and opts or {}
+
+    local existing = _G[frameName]
+    if existing and existing._dsSharedToast then
+        if opts.onRightClickDismiss ~= nil then
+            existing._dsOnRightClickDismiss = opts.onRightClickDismiss
+        end
+        if opts.onHide ~= nil then
+            existing._dsOnHide = opts.onHide
+        end
+        return existing
+    end
+
+    if _G.InCombatLockdown and _G.InCombatLockdown() then return nil end
+    if not _G.UIParent then return nil end
+
+    local f = existing or _G.CreateFrame("Button", frameName, _G.UIParent, "BackdropTemplate")
+    f._dsSharedToast = true
+    f._dsAutoFade = (opts.autoFade ~= false)
+    f._dsIconMode = (opts.iconMode == "FULL") and "FULL" or "TINTED"
+    f._dsOnRightClickDismiss = opts.onRightClickDismiss
+    f._dsOnHide = opts.onHide
+
+    f:SetSize(opts.width or 410, opts.height or 74)
+    f:SetFrameStrata(SHARED_TOAST_STRATA)
+    f:SetFrameLevel(SHARED_TOAST_LEVEL)
+    f:SetToplevel(false)
+    f:SetClampedToScreen(true)
+    f:EnableMouse(true)
+    local clickBtns = opts.clickButtons or { "RightButtonUp" }
+    f:RegisterForClicks(unpack(clickBtns))
+    f:SetBackdrop({
+        bgFile   = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        tile = false, tileSize = 0, edgeSize = 1.5,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+
+    local iconBorder = _G.CreateFrame("Frame", nil, f, "BackdropTemplate")
+    iconBorder:SetSize(44, 44)
+    iconBorder:SetPoint("LEFT", f, "LEFT", 14, 0)
+    iconBorder:SetBackdrop({
+        bgFile   = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        tile = false, tileSize = 0, edgeSize = 1,
+        insets = { left = 1, right = 1, top = 1, bottom = 1 },
+    })
+    iconBorder:SetBackdropColor(0.04, 0.05, 0.07, 1)
+    local ic = iconBorder:CreateTexture(nil, "ARTWORK")
+    if f._dsIconMode == "FULL" then
+        ic:SetSize(40, 40)
+        ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        if ic.SetSnapToPixelGrid then ic:SetSnapToPixelGrid(false) end
+        if ic.SetTexelSnappingBias then ic:SetTexelSnappingBias(0) end
+    else
+        ic:SetSize(30, 30)
+    end
+    ic:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+    if type(opts.iconTexture) == "string" or type(opts.iconTexture) == "number" then
+        ic:SetTexture(opts.iconTexture)
+    end
+    f.iconBorder = iconBorder
+    f.iconTex = ic
+    f.icon = ic
+
+    local actionW = tonumber(opts.rightActionWidth) or 0
+    local actionGap = tonumber(opts.rightActionGap) or 10
+    local rightPad = (actionW > 0) and (12 + actionW + actionGap) or 14
+
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    ApplySharedToastFont(title, 13)
+    title:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -11)
+    title:SetPoint("RIGHT", f, "RIGHT", -rightPad, 0)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
+    title:SetTextColor(0.96, 0.98, 1.00, 1)
+    f.title = title
+
+    local badge = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ApplySharedToastFont(badge, 11)
+    badge:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -5)
+    badge:SetPoint("RIGHT", f, "RIGHT", -rightPad, 0)
+    badge:SetJustifyH("LEFT")
+    badge:SetWordWrap(false)
+    badge:SetTextColor(0.886, 0.910, 0.941, 1)
+    f.badge = badge
+    f.body = badge
+
+    local subtext = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ApplySharedToastFont(subtext, 10)
+    subtext:SetPoint("TOPLEFT", badge, "BOTTOMLEFT", 0, -5)
+    subtext:SetPoint("RIGHT", f, "RIGHT", -rightPad, 0)
+    subtext:SetJustifyH("LEFT")
+    subtext:SetWordWrap(false)
+    subtext:SetTextColor(0.58, 0.64, 0.72, 1)
+    f.subtext = subtext
+
+    function f.SetRightTextAnchor(anchorFrame, gap)
+        f._dsActionBtn = anchorFrame
+        local gVal = -(tonumber(gap) or 10)
+        local function AnchorFS(fs, anchorTo)
+            if not fs then return end
+            fs:ClearAllPoints()
+            if anchorTo then
+                fs:SetPoint("TOPLEFT", anchorTo, "BOTTOMLEFT", 0, -5)
+            else
+                fs:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -11)
+            end
+            if anchorFrame then
+                fs:SetPoint("RIGHT", anchorFrame, "LEFT", gVal, 0)
+            else
+                fs:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+            end
+        end
+        AnchorFS(f.title, nil)
+        AnchorFS(f.badge, f.title)
+        AnchorFS(f.subtext, f.badge)
+    end
+
+    local animGroup = f:CreateAnimationGroup()
+    local holdAnim = animGroup:CreateAnimation("Animation")
+    holdAnim:SetDuration(8)
+    holdAnim:SetOrder(1)
+    local fadeAnim = animGroup:CreateAnimation("Alpha")
+    fadeAnim:SetFromAlpha(1)
+    fadeAnim:SetToAlpha(0)
+    fadeAnim:SetDuration(1.2)
+    fadeAnim:SetOrder(2)
+    animGroup:SetScript("OnFinished", function()
+        if not (_G.InCombatLockdown and _G.InCombatLockdown()) then
+            f:Hide()
+            f:SetAlpha(1)
+        end
+    end)
+    f.animGroup = animGroup
+    f.holdAnim = holdAnim
+
+    f:SetScript("OnClick", function(selfT, button)
+        if button == "RightButton" then
+            if selfT.animGroup then selfT.animGroup:Stop() end
+            selfT:SetAlpha(1)
+            if type(selfT._dsOnRightClickDismiss) == "function" then
+                pcall(selfT._dsOnRightClickDismiss, selfT)
+            elseif not (_G.InCombatLockdown and _G.InCombatLockdown()) then
+                selfT:Hide()
+            end
+        end
+    end)
+    f:SetScript("OnEnter", function(selfT)
+        if selfT._dsAutoFade and selfT.animGroup then
+            selfT.animGroup:Pause()
+            selfT:SetAlpha(1)
+        end
+    end)
+    f:SetScript("OnLeave", function(selfT)
+        if selfT._dsActionBtn and selfT._dsActionBtn.IsMouseOver and selfT._dsActionBtn:IsMouseOver() then
+            return
+        end
+        if selfT._dsAutoFade and selfT.animGroup then
+            local stLeave = DynamicSuite.GetSharedToastStyle()
+            if (stLeave.duration or 8) > 0 then
+                selfT.animGroup:Play()
+            end
+        end
+    end)
+    f:HookScript("OnHide", function(selfT)
+        DynamicSuite.RestackAllToasts()
+        if type(selfT._dsOnHide) == "function" then
+            pcall(selfT._dsOnHide, selfT)
+        end
+    end)
+
+    f:Hide()
+    return f
+end
+addonTable.EnsureSharedToastFrame = DynamicSuite.EnsureSharedToastFrame
+
+function DynamicSuite.ApplySharedToastLayout(frame, styleOpts)
+    if not frame then return false, nil end
+    if _G.InCombatLockdown and _G.InCombatLockdown() then return false, nil end
+
+    styleOpts = type(styleOpts) == "table" and styleOpts or {}
+    local st = DynamicSuite.GetSharedToastStyle()
+    local ar, ag, ab = st.ar, st.ag, st.ab
+    local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
+
+    if frame.SetFrameStrata then frame:SetFrameStrata(SHARED_TOAST_STRATA) end
+    if frame.SetFrameLevel then frame:SetFrameLevel(SHARED_TOAST_LEVEL) end
+    if frame.SetScale then frame:SetScale(st.scale or 1.0) end
+    if frame.SetBackdropColor then
+        frame:SetBackdropColor(st.bgR or 0.035, st.bgG or 0.039, st.bgB or 0.051, st.opacity or 0.96)
+    end
+
+    if frame.SetBackdropBorderColor then
+        if bStyle == "NONE" or bStyle == "BORDERLESS" then
+            frame:SetBackdropBorderColor(0, 0, 0, 0)
+        elseif type(styleOpts.borderOverrideRGB) == "table" then
+            local br, bg2, bb, ba = unpack(styleOpts.borderOverrideRGB)
+            frame:SetBackdropBorderColor(br or ar, bg2 or ag, bb or ab, ba or 0.95)
+        elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+            frame:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+        else
+            frame:SetBackdropBorderColor(ar, ag, ab, 0.92)
+        end
+    end
+
+    if frame.iconBorder and frame.iconBorder.SetBackdropBorderColor then
+        if type(styleOpts.iconBorderOverrideRGB) == "table" then
+            local ir, ig, ib, ia = unpack(styleOpts.iconBorderOverrideRGB)
+            frame.iconBorder:SetBackdropBorderColor(ir or ar, ig or ag, ib or ab, ia or 0.95)
+        else
+            frame.iconBorder:SetBackdropBorderColor(ar, ag, ab, 0.85)
+        end
+    end
+
+    local shouldTint
+    if styleOpts.tintIcon ~= nil then
+        shouldTint = (styleOpts.tintIcon == true)
+    else
+        shouldTint = (frame._dsIconMode ~= "FULL")
+    end
+    if frame.iconTex and frame.iconTex.SetVertexColor then
+        if shouldTint then
+            frame.iconTex:SetVertexColor(ar, ag, ab, 1.0)
+        else
+            frame.iconTex:SetVertexColor(1.0, 1.0, 1.0, 1.0)
+        end
+    end
+
+    ApplySharedToastFont(frame.title, 13)
+    ApplySharedToastFont(frame.badge, 11)
+    ApplySharedToastFont(frame.subtext, 10)
+
+    if styleOpts.restack ~= false and frame.IsShown and frame:IsShown() then
+        DynamicSuite.RestackAllToasts()
+    end
+    return true, st
+end
+addonTable.ApplySharedToastLayout = DynamicSuite.ApplySharedToastLayout
+
+function DynamicSuite.ShowSharedToast(frame, showOpts)
+    if not frame then return false end
+    if _G.InCombatLockdown and _G.InCombatLockdown() then return false end
+
+    showOpts = type(showOpts) == "table" and showOpts or {}
+    if showOpts.title ~= nil and frame.title then
+        frame.title:SetText(showOpts.title)
+    end
+    local badgeText = (showOpts.badge ~= nil) and showOpts.badge or showOpts.body
+    if badgeText ~= nil and frame.badge then
+        frame.badge:SetText(badgeText)
+    end
+    if showOpts.subtext ~= nil and frame.subtext then
+        frame.subtext:SetText(showOpts.subtext)
+    end
+    if showOpts.icon ~= nil and frame.iconTex then
+        frame.iconTex:SetTexture(showOpts.icon)
+    end
+
+    local _, st = DynamicSuite.ApplySharedToastLayout(frame, {
+        borderOverrideRGB = showOpts.borderOverrideRGB,
+        iconBorderOverrideRGB = showOpts.iconBorderOverrideRGB,
+        tintIcon = showOpts.tintIcon,
+        restack = false,
+    })
+
+    if frame.animGroup then frame.animGroup:Stop() end
+    frame:SetAlpha(1)
+    frame:Show()
+    DynamicSuite.RestackAllToasts()
+
+    if showOpts.playSound == true then
+        DynamicSuite.PlaySharedToastSound()
+    end
+
+    local useFade
+    if showOpts.autoFade ~= nil then
+        useFade = (showOpts.autoFade == true)
+    else
+        useFade = (frame._dsAutoFade == true)
+    end
+    if useFade and frame.animGroup then
+        local dur = tonumber(showOpts.duration)
+        if dur == nil then
+            dur = (st and tonumber(st.duration)) or 8
+        end
+        if dur > 0 and frame.holdAnim then
+            frame.holdAnim:SetDuration(dur)
+            frame.animGroup:Play()
+        end
+    end
+    return true
+end
+addonTable.ShowSharedToast = DynamicSuite.ShowSharedToast
+
+function DynamicSuite.HideSharedToast(frame)
+    if not frame then return true end
+    if _G.InCombatLockdown and _G.InCombatLockdown() then return false end
+    if frame.animGroup then frame.animGroup:Stop() end
+    frame:SetAlpha(1)
+    frame:Hide()
+    return true
+end
+addonTable.HideSharedToast = DynamicSuite.HideSharedToast
 end
 
 local desktopWindowsSyncCache = setmetatable({}, { __mode = "k" })

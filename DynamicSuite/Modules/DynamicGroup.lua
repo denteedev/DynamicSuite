@@ -4815,12 +4815,27 @@ function DynamicGroup:ApplyTeleportToastPosition()
         self.pendingTeleportToastUpdate = true
         return
     end
+    local isFull = (self.activeTeleportToastData and ((self.activeTeleportToastData.numMembers or self.activeTeleportToastData.lastMemberCount or 0) >= 5)) and true or false
+    local emeraldRGB = isFull and { 0.133, 0.773, 0.369, 0.95 } or nil
+
+    if _G.DynamicSuite and type(_G.DynamicSuite.ApplySharedToastLayout) == "function" then
+        local okLayout = pcall(_G.DynamicSuite.ApplySharedToastLayout, toast, {
+            borderOverrideRGB = emeraldRGB,
+            iconBorderOverrideRGB = emeraldRGB,
+            tintIcon = false,
+            restack = true,
+        })
+        if okLayout then return end
+    end
+
     local st = GetResolvedSharedToastStyle()
+    toast:SetFrameStrata("TOOLTIP")
+    toast:SetFrameLevel(20)
+    toast:SetToplevel(false)
     if toast.SetScale then
         toast:SetScale(st.scale or 1.0)
     end
     toast:SetBackdropColor(st.bgR or 0.035, st.bgG or 0.039, st.bgB or 0.051, st.opacity or 0.96)
-    local isFull = (self.activeTeleportToastData and (self.activeTeleportToastData.numMembers or 0) >= 5)
     local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
     if bStyle == "NONE" or bStyle == "BORDERLESS" then
         toast:SetBackdropBorderColor(0, 0, 0, 0)
@@ -4860,13 +4875,20 @@ function DynamicGroup:OnAlertToastHidden()
     end
 end
 
-function DynamicGroup:HideTeleportToast()
+function DynamicGroup:HideTeleportToast(markDismissed)
+    if markDismissed == true and self.activeTeleportToastData and not self.activeTeleportToastData.isPreview then
+        self.teleportToastDismissedForGroup = true
+    end
     self.activeTeleportToastData = nil
     if self.teleportToast then
         if InCombatLockdown and InCombatLockdown() then
             self.pendingTeleportToastHide = true
         else
-            self.teleportToast:Hide()
+            if _G.DynamicSuite and type(_G.DynamicSuite.HideSharedToast) == "function" then
+                pcall(_G.DynamicSuite.HideSharedToast, self.teleportToast)
+            else
+                self.teleportToast:Hide()
+            end
             self.pendingTeleportToastHide = false
         end
     else
@@ -4882,140 +4904,186 @@ function DynamicGroup:EnsureTeleportToast()
         return nil
     end
 
-    local toast = CreateFrame("Button", "DynamicGroupTeleportToast", UIParent, "BackdropTemplate")
-    toast:SetSize(410, 74)
-    toast:SetFrameStrata("HIGH")
-    toast:SetToplevel(true)
-    toast:SetClampedToScreen(true)
-    toast:RegisterForClicks("RightButtonUp")
-    toast:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        tile = false, tileSize = 0, edgeSize = 1.5,
-        insets = { left = 1, right = 1, top = 1, bottom = 1 },
-    })
-    toast:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- #0B0D12
-    local ar, ag, ab = GetSuiteAccent()
-    toast:SetBackdropBorderColor(ar, ag, ab, 0.85)
-
-    toast:SetScript("OnClick", function(_, button)
-        if button == "RightButton" then
-            DynamicGroup:HideTeleportToast()
+    local toast = nil
+    if _G.DynamicSuite and type(_G.DynamicSuite.EnsureSharedToastFrame) == "function" then
+        local ok, sharedFrame = pcall(_G.DynamicSuite.EnsureSharedToastFrame, "DynamicGroupTeleportToast", {
+            clickButtons = { "RightButtonUp" },
+            iconMode = "FULL",
+            rightActionWidth = 76,
+            rightActionGap = 8,
+            autoFade = false,
+            onRightClickDismiss = function()
+                DynamicGroup:HideTeleportToast(true)
+            end,
+            onHide = function(selfToast)
+                selfToast._dsStackedUnderLoad = false
+            end,
+        })
+        if ok and sharedFrame then
+            toast = sharedFrame
         end
-    end)
+    end
 
-    toast:HookScript("OnHide", function(selfToast)
-        selfToast._dsStackedUnderLoad = false
-        if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
-            pcall(_G.DynamicSuite.RestackAllToasts)
-        else
-            local dlToast = _G.DynamicLoadToastFrame
-            if dlToast and dlToast:IsShown() and dlToast._dsStackedUnderGroup then
-                dlToast._dsStackedUnderGroup = false
-                if _G.DynamicSuite and type(_G.DynamicSuite.ApplyToastVisuals) == "function" then
-                    pcall(_G.DynamicSuite.ApplyToastVisuals)
+    if not toast then
+        -- Standalone fallback when DynamicSuite_Core is not loaded
+        toast = CreateFrame("Button", "DynamicGroupTeleportToast", UIParent, "BackdropTemplate")
+        toast:SetSize(410, 74)
+        toast:SetFrameStrata("TOOLTIP")
+        toast:SetFrameLevel(20)
+        toast:SetToplevel(false)
+        toast:SetClampedToScreen(true)
+        toast:RegisterForClicks("RightButtonUp")
+        toast:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            tile = false, tileSize = 0, edgeSize = 1.5,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        toast:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- #0B0D12
+        local ar, ag, ab = GetSuiteAccent()
+        toast:SetBackdropBorderColor(ar, ag, ab, 0.85)
+
+        toast:SetScript("OnClick", function(_, button)
+            if button == "RightButton" then
+                DynamicGroup:HideTeleportToast(true)
+            end
+        end)
+
+        toast:HookScript("OnHide", function(selfToast)
+            selfToast._dsStackedUnderLoad = false
+            if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+                pcall(_G.DynamicSuite.RestackAllToasts)
+            else
+                local dlToast = _G.DynamicLoadToastFrame
+                if dlToast and dlToast:IsShown() and dlToast._dsStackedUnderGroup then
+                    dlToast._dsStackedUnderGroup = false
+                    if _G.DynamicSuite and type(_G.DynamicSuite.ApplyToastVisuals) == "function" then
+                        pcall(_G.DynamicSuite.ApplyToastVisuals)
+                    end
                 end
             end
+        end)
+
+        local iconBorder = CreateFrame("Frame", nil, toast, "BackdropTemplate")
+        iconBorder:SetSize(44, 44)
+        iconBorder:SetPoint("LEFT", toast, "LEFT", 14, 0)
+        iconBorder:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            tile = false, tileSize = 0, edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        iconBorder:SetBackdropColor(0.04, 0.05, 0.07, 1)
+        iconBorder:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+        toast.iconBorder = iconBorder
+
+        toast.icon = iconBorder:CreateTexture(nil, "ARTWORK")
+        toast.icon:SetSize(40, 40)
+        toast.icon:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+        toast.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        DisableTexPixelSnap(toast.icon)
+        toast.iconTex = toast.icon
+
+        toast.title = toast:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(toast.title, 13, "")
+        toast.title:SetPoint("TOPLEFT", toast, "TOPLEFT", 70, -11)
+        toast.title:SetPoint("RIGHT", toast, "RIGHT", -96, 0)
+        toast.title:SetJustifyH("LEFT")
+        toast.title:SetWordWrap(false)
+        toast.title:SetTextColor(0.96, 0.98, 1.00, 1)
+
+        toast.badge = toast:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(toast.badge, 11, "")
+        toast.badge:SetPoint("TOPLEFT", toast.title, "BOTTOMLEFT", 0, -5)
+        toast.badge:SetPoint("RIGHT", toast, "RIGHT", -96, 0)
+        toast.badge:SetJustifyH("LEFT")
+        toast.badge:SetWordWrap(false)
+        toast.badge:SetTextColor(0.886, 0.910, 0.941, 1)
+
+        toast.subtext = toast:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(toast.subtext, 10, "")
+        toast.subtext:SetPoint("TOPLEFT", toast.badge, "BOTTOMLEFT", 0, -5)
+        toast.subtext:SetPoint("RIGHT", toast, "RIGHT", -96, 0)
+        toast.subtext:SetJustifyH("LEFT")
+        toast.subtext:SetWordWrap(false)
+        toast.subtext:SetTextColor(0.58, 0.64, 0.72, 1)
+
+        toast:Hide()
+    end
+
+    toast.titleText = toast.title
+    toast.rosterText = toast.badge
+    toast.statusText = toast.subtext
+
+    -- Secure Teleport Action Button (combat-safe SecureActionButtonTemplate child)
+    if not toast.teleportBtn then
+        local tpBtn = _G.DynamicGroupTeleportToastBtn or CreateFrame("Button", "DynamicGroupTeleportToastBtn", toast, "SecureActionButtonTemplate,BackdropTemplate")
+        if tpBtn:GetParent() ~= toast then tpBtn:SetParent(toast) end
+        tpBtn:SetSize(76, 24)
+        tpBtn:ClearAllPoints()
+        tpBtn:SetPoint("RIGHT", toast, "RIGHT", -12, 0)
+        tpBtn:RegisterForClicks("AnyUp", "AnyDown")
+        tpBtn:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            tile = false, tileSize = 0, edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        tpBtn:SetBackdropColor(0.08, 0.10, 0.14, 0.96)
+        tpBtn:SetBackdropBorderColor(0.24, 0.28, 0.36, 0.95)
+        if not tpBtn.label then
+            tpBtn.label = tpBtn:CreateFontString(nil, "OVERLAY")
+            SetSafeFont(tpBtn.label, 11, "")
+            tpBtn.label:SetPoint("CENTER", 0, 0)
         end
-    end)
-
-    -- Left Dungeon Icon (44x44 framed, matching DynamicSuite Alert Toast)
-    local iconBorder = CreateFrame("Frame", nil, toast, "BackdropTemplate")
-    iconBorder:SetSize(44, 44)
-    iconBorder:SetPoint("LEFT", toast, "LEFT", 14, 0)
-    iconBorder:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        tile = false, tileSize = 0, edgeSize = 1,
-        insets = { left = 1, right = 1, top = 1, bottom = 1 },
-    })
-    iconBorder:SetBackdropColor(0.04, 0.05, 0.07, 1)
-    iconBorder:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
-    toast.iconBorder = iconBorder
-
-    toast.icon = iconBorder:CreateTexture(nil, "ARTWORK")
-    toast.icon:SetSize(40, 40)
-    toast.icon:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
-    toast.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    DisableTexPixelSnap(toast.icon)
-
-    -- Secure Teleport Action Button (right-aligned pill, matching Alert Toast)
-    local tpBtn = CreateFrame("Button", "DynamicGroupTeleportToastBtn", toast, "SecureActionButtonTemplate,BackdropTemplate")
-    tpBtn:SetSize(76, 24)
-    tpBtn:SetPoint("RIGHT", toast, "RIGHT", -12, 0)
-    tpBtn:RegisterForClicks("AnyUp", "AnyDown")
-    tpBtn:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        tile = false, tileSize = 0, edgeSize = 1,
-        insets = { left = 1, right = 1, top = 1, bottom = 1 },
-    })
-    tpBtn:SetBackdropColor(0.08, 0.10, 0.14, 0.96)
-    tpBtn:SetBackdropBorderColor(0.24, 0.28, 0.36, 0.95)
-    tpBtn.label = tpBtn:CreateFontString(nil, "OVERLAY")
-    SetSafeFont(tpBtn.label, 11, "")
-    tpBtn.label:SetPoint("CENTER", 0, 0)
-    tpBtn.label:SetText("Teleport")
-    tpBtn:SetScript("OnEnter", function(s)
-        if _G.GameTooltip then
-            _G.GameTooltip:SetOwner(s, "ANCHOR_TOP")
-            _G.GameTooltip:ClearLines()
-            local data = DynamicGroup.activeTeleportToastData
-            _G.GameTooltip:AddLine((data and data.dungeonName) or "Dungeon Teleport", 1, 1, 1)
-            if data and data.spellKnown then
-                _G.GameTooltip:AddLine("|cFF22C55ELeft-Click:|r |cFFE2E8F0Cast dungeon teleport.|r", 0.886, 0.910, 0.941)
-            else
-                _G.GameTooltip:AddLine("Dungeon teleport not learned yet (complete +10 in time).", 0.62, 0.68, 0.76, true)
+        tpBtn.label:SetText("Teleport")
+        tpBtn:SetScript("OnEnter", function(s)
+            if _G.GameTooltip then
+                _G.GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                _G.GameTooltip:ClearLines()
+                local data = DynamicGroup.activeTeleportToastData
+                _G.GameTooltip:AddLine((data and data.dungeonName) or "Dungeon Teleport", 1, 1, 1)
+                if data and data.spellKnown then
+                    _G.GameTooltip:AddLine("|cFF22C55ELeft-Click:|r |cFFE2E8F0Cast dungeon teleport.|r", 0.886, 0.910, 0.941)
+                else
+                    _G.GameTooltip:AddLine("Dungeon teleport not unlocked yet (complete +10 in time).", 0.62, 0.68, 0.76, true)
+                end
+                _G.GameTooltip:Show()
             end
-            _G.GameTooltip:Show()
-        end
-    end)
-    tpBtn:SetScript("OnLeave", function()
-        if _G.GameTooltip then _G.GameTooltip:Hide() end
-    end)
-    tpBtn:SetScript("PostClick", function(selfBtn, button, down)
-        local useKeyDown = (type(_G.GetCVarBool) == "function" and _G.GetCVarBool("ActionButtonUseKeyDown")) and true or false
-        if (down == true) ~= useKeyDown then return end
-        if button == "RightButton" then
-            DynamicGroup:HideTeleportToast()
-            return
-        end
-        if button ~= "LeftButton" then return end
-        local data = DynamicGroup.activeTeleportToastData
-        if data and data.spellKnown then
-            DynamicGroup:HideTeleportToast()
-        end
-    end)
-    toast.teleportBtn = tpBtn
+        end)
+        tpBtn:SetScript("OnLeave", function()
+            if _G.GameTooltip then _G.GameTooltip:Hide() end
+        end)
+        tpBtn:SetScript("PostClick", function(_, button, down)
+            local useKeyDown = (type(_G.GetCVarBool) == "function" and _G.GetCVarBool("ActionButtonUseKeyDown")) and true or false
+            if (down == true) ~= useKeyDown then return end
+            if button == "RightButton" then
+                DynamicGroup:HideTeleportToast(true)
+                return
+            end
+            if button ~= "LeftButton" then return end
+            local data = DynamicGroup.activeTeleportToastData
+            if data and data.spellKnown then
+                DynamicGroup:HideTeleportToast(true)
+            end
+        end)
+        toast.teleportBtn = tpBtn
+    end
 
-    -- Line 1: Title (13pt, matching Alert Toast)
-    toast.titleText = toast:CreateFontString(nil, "OVERLAY")
-    SetSafeFont(toast.titleText, 13, "")
-    toast.titleText:SetPoint("TOPLEFT", toast, "TOPLEFT", 70, -11)
-    toast.titleText:SetPoint("RIGHT", tpBtn, "LEFT", -8, 0)
-    toast.titleText:SetJustifyH("LEFT")
-    toast.titleText:SetWordWrap(false)
-    toast.titleText:SetTextColor(0.96, 0.98, 1.00, 1)
+    if toast.SetRightTextAnchor then
+        toast.SetRightTextAnchor(toast.teleportBtn, 8)
+    elseif toast.titleText and toast.rosterText and toast.statusText then
+        toast.titleText:ClearAllPoints()
+        toast.titleText:SetPoint("TOPLEFT", toast, "TOPLEFT", 70, -11)
+        toast.titleText:SetPoint("RIGHT", toast.teleportBtn, "LEFT", -8, 0)
+        toast.rosterText:ClearAllPoints()
+        toast.rosterText:SetPoint("TOPLEFT", toast.titleText, "BOTTOMLEFT", 0, -5)
+        toast.rosterText:SetPoint("RIGHT", toast.teleportBtn, "LEFT", -8, 0)
+        toast.statusText:ClearAllPoints()
+        toast.statusText:SetPoint("TOPLEFT", toast.rosterText, "BOTTOMLEFT", 0, -5)
+        toast.statusText:SetPoint("RIGHT", toast.teleportBtn, "LEFT", -8, 0)
+    end
 
-    -- Line 2: Status (11pt, matching Alert Toast)
-    toast.rosterText = toast:CreateFontString(nil, "OVERLAY")
-    SetSafeFont(toast.rosterText, 11, "")
-    toast.rosterText:SetPoint("TOPLEFT", toast.titleText, "BOTTOMLEFT", 0, -5)
-    toast.rosterText:SetPoint("RIGHT", tpBtn, "LEFT", -8, 0)
-    toast.rosterText:SetJustifyH("LEFT")
-    toast.rosterText:SetWordWrap(false)
-    toast.rosterText:SetTextColor(0.886, 0.910, 0.941, 1)
-
-    -- Line 3: Action Hint (10pt, matching Alert Toast)
-    toast.statusText = toast:CreateFontString(nil, "OVERLAY")
-    SetSafeFont(toast.statusText, 10, "")
-    toast.statusText:SetPoint("TOPLEFT", toast.rosterText, "BOTTOMLEFT", 0, -5)
-    toast.statusText:SetPoint("RIGHT", tpBtn, "LEFT", -8, 0)
-    toast.statusText:SetJustifyH("LEFT")
-    toast.statusText:SetWordWrap(false)
-    toast.statusText:SetTextColor(0.58, 0.64, 0.72, 1)
-
-    toast:Hide()
     self.teleportToast = toast
     self:ApplyTeleportToastPosition()
     return toast
@@ -5050,6 +5118,7 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
             end
         end
     end
+    data.numMembers = numMembers
     data.lastMemberCount = numMembers
 
     local resolvedSpellID, spellKnown = ResolveTeleportSpellForDungeon(data.mapID, data.code, data.dungeonName, data.spellID)
@@ -5058,36 +5127,19 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
     end
     data.spellKnown = spellKnown and true or false
 
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingTeleportToastUpdate = true
+        return
+    end
+
     local toast = self:EnsureTeleportToast()
     if not toast then
         self.pendingTeleportToastUpdate = true
         return
     end
 
-    local ar, ag, ab = GetSuiteAccent()
     local isFull = (numMembers >= 5)
-    local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
-    local bStyle = (g and g.toastBorderStyle) or (_G.DynamicLoadDB and _G.DynamicLoadDB.toastBorderStyle) or "ACCENT"
-    if bStyle == "NONE" then
-        toast:SetBackdropBorderColor(0, 0, 0, 0)
-    elseif bStyle == "SUBTLE" and not isFull then
-        toast:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
-    elseif isFull then
-        toast:SetBackdropBorderColor(0.133, 0.773, 0.369, 0.95) -- Emerald #22C55E
-    else
-        toast:SetBackdropBorderColor(ar, ag, ab, 0.80)
-    end
-
-    if toast.icon then
-        toast.icon:SetTexture(data.icon or 136095)
-    end
-    if toast.iconBorder then
-        if isFull then
-            toast.iconBorder:SetBackdropBorderColor(0.133, 0.773, 0.369, 0.95)
-        else
-            toast.iconBorder:SetBackdropBorderColor(ar, ag, ab, 0.85)
-        end
-    end
+    local emeraldRGB = isFull and { 0.133, 0.773, 0.369, 0.95 } or nil
 
     local titleDisplay = data.listingName
     if type(titleDisplay) ~= "string" or titleDisplay == "" then
@@ -5095,29 +5147,14 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
     elseif data.code and data.dungeonName and not titleDisplay:lower():find(data.dungeonName:lower():sub(1, 5), 1, true) then
         titleDisplay = tostring(data.code) .. ": " .. titleDisplay
     end
-    SetSafeFont(toast.titleText, 13, "")
-    toast.titleText:SetText(titleDisplay)
 
-    SetSafeFont(toast.rosterText, 11, "")
-    if isFull then
-        toast.rosterText:SetText("|cFF22C55EGroup Full (5/5) - Ready to Teleport!|r")
-    else
-        toast.rosterText:SetText(string.format("Members: %d/5", numMembers))
-    end
+    local rosterLine = isFull
+        and "|cFF22C55EGroup Full (5/5) - Ready to Teleport!|r"
+        or string.format("Members: %d/5", numMembers)
 
-    SetSafeFont(toast.statusText, 10, "")
-    if data.spellKnown then
-        toast.statusText:SetText("|cFF94A3B8Click [Teleport] to Cast   Right-Click: Dismiss|r")
-    else
-        toast.statusText:SetText("|cFF94A3B8No Portal Learned   Right-Click: Dismiss|r")
-    end
-
-    if InCombatLockdown and InCombatLockdown() then
-        self.pendingTeleportToastUpdate = true
-        return
-    end
-
-    self:ApplyTeleportToastPosition()
+    local statusLine = data.spellKnown
+        and "|cFF94A3B8Click [Teleport] to Cast   Right-Click: Dismiss|r"
+        or "|cFF94A3B8No Portal Unlocked   Right-Click: Dismiss|r"
 
     local tpBtn = toast.teleportBtn
     if tpBtn then
@@ -5151,13 +5188,216 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
     end
 
     if self.pendingTeleportToastHide then
-        toast:Hide()
-        self.pendingTeleportToastHide = false
-    elseif not toast:IsShown() then
-        toast:Show()
+        self:HideTeleportToast(false)
+        return
     end
-    self:ApplyTeleportToastPosition()
+
+    local shownViaCore = false
+    if _G.DynamicSuite and type(_G.DynamicSuite.ShowSharedToast) == "function" then
+        local okShown, resShown = pcall(_G.DynamicSuite.ShowSharedToast, toast, {
+            title = titleDisplay,
+            badge = rosterLine,
+            subtext = statusLine,
+            icon = data.icon or 136095,
+            borderOverrideRGB = emeraldRGB,
+            iconBorderOverrideRGB = emeraldRGB,
+            tintIcon = false,
+            autoFade = false,
+            playSound = false,
+        })
+        if okShown and resShown then
+            shownViaCore = true
+        end
+    end
+
+    if not shownViaCore then
+        if toast.icon then toast.icon:SetTexture(data.icon or 136095) end
+        SetSafeFont(toast.titleText, 13, "")
+        toast.titleText:SetText(titleDisplay)
+        SetSafeFont(toast.rosterText, 11, "")
+        toast.rosterText:SetText(rosterLine)
+        SetSafeFont(toast.statusText, 10, "")
+        toast.statusText:SetText(statusLine)
+        self:ApplyTeleportToastPosition()
+        if not toast:IsShown() then
+            toast:Show()
+        end
+        self:ApplyTeleportToastPosition()
+    end
+
     self.pendingTeleportToastUpdate = false
+end
+
+function DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, requireDungeonActivity)
+    local actMeta = (type(activityID) == "number" and activityID > 0) and GetCachedActivityInfo(activityID) or nil
+    local slots = GetSeasonDungeonSlots(false)
+    local matchedSlot = nil
+    if actMeta and actMeta.mapID then
+        for _, slot in ipairs(slots) do
+            if slot.mapID == actMeta.mapID then matchedSlot = slot; break end
+        end
+    end
+    if not matchedSlot and actMeta and actMeta.code then
+        for _, slot in ipairs(slots) do
+            if slot.code == actMeta.code then matchedSlot = slot; break end
+        end
+    end
+    if not matchedSlot and actMeta and actMeta.fullName and actMeta.fullName ~= "" then
+        matchedSlot = MatchTextToDungeonSlot(actMeta.fullName, slots)
+    end
+    if requireDungeonActivity then
+        if not (actMeta and actMeta.isDungeonActivity) then
+            return nil
+        end
+        if not matchedSlot and listingName and listingName ~= "" then
+            matchedSlot = MatchTextToDungeonSlot(listingName, slots)
+        end
+    else
+        if not matchedSlot and listingName and listingName ~= "" then
+            matchedSlot = MatchTextToDungeonSlot(listingName, slots)
+        end
+        if not matchedSlot and not (actMeta and actMeta.isDungeonActivity) then
+            return nil
+        end
+    end
+
+    local dMapID = (matchedSlot and matchedSlot.mapID) or (actMeta and actMeta.mapID) or nil
+    local dCode = (matchedSlot and matchedSlot.code) or (actMeta and actMeta.code) or "M+"
+    local dName = (matchedSlot and matchedSlot.name) or (actMeta and actMeta.fullName ~= "" and actMeta.fullName) or listingName or "Season Dungeon"
+    local dIcon = (matchedSlot and matchedSlot.icon) or 136095
+    local dSpellID, dSpellKnown = ResolveTeleportSpellForDungeon(dMapID, dCode, dName, matchedSlot and matchedSlot.spellID)
+
+    return {
+        activityID = activityID,
+        mapID = dMapID,
+        code = dCode,
+        dungeonName = dName,
+        listingName = (type(listingName) == "string" and listingName ~= "") and listingName or dName,
+        icon = dIcon,
+        spellID = dSpellID,
+        spellKnown = dSpellKnown and true or false,
+    }
+end
+
+function DynamicGroup:CheckHostedListingTeleportToast()
+    if IsModuleDisabledInSuite("DynamicGroup") then return end
+    local db = EnsureDB()
+    if db.showGroupTeleportToast == false or IsYieldingSharedHooks() then return end
+
+    if type(_G.IsInInstance) == "function" then
+        local okI, inInst, instType = pcall(_G.IsInInstance)
+        if okI and inInst and (instType == "party" or instType == "raid" or instType == "scenario") then
+            return
+        end
+    end
+
+    local hasActive = false
+    local entryInfo = nil
+    if C_LFGList and type(C_LFGList.HasActiveEntryInfo) == "function" and type(C_LFGList.GetActiveEntryInfo) == "function" then
+        local okH, rawHas = pcall(C_LFGList.HasActiveEntryInfo)
+        if okH and not IsSecretValue(rawHas) and rawHas == true then
+            local okE, rawInfo = pcall(C_LFGList.GetActiveEntryInfo)
+            if okE and type(rawInfo) == "table" and not IsSecretValue(rawInfo) then
+                hasActive = true
+                entryInfo = rawInfo
+            end
+        end
+    end
+
+    local activityID = nil
+    local listingName = nil
+    if hasActive and entryInfo then
+        if not IsSecretValue(entryInfo.activityID) and tonumber(entryInfo.activityID) and tonumber(entryInfo.activityID) > 0 then
+            activityID = tonumber(entryInfo.activityID)
+        elseif type(entryInfo.activityIDs) == "table" and not IsSecretValue(entryInfo.activityIDs) then
+            local firstAct = entryInfo.activityIDs[1]
+            if not IsSecretValue(firstAct) and tonumber(firstAct) and tonumber(firstAct) > 0 then
+                activityID = tonumber(firstAct)
+            end
+        end
+        if type(entryInfo.name) == "string" and not IsSecretValue(entryInfo.name) and entryInfo.name ~= "" then
+            listingName = entryInfo.name
+        end
+    end
+
+    local inGroup = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
+    local numMembers = inGroup and ((type(_G.GetNumGroupMembers) == "function" and _G.GetNumGroupMembers()) or 1) or 1
+    numMembers = math.max(1, math.min(5, tonumber(numMembers) or 1))
+
+    if hasActive then
+        local isNewListing = (not self.wasHostingListing)
+            or (activityID and self.lastActiveListingActivityID and activityID ~= self.lastActiveListingActivityID)
+        self.wasHostingListing = true
+        if activityID then
+            self.lastActiveListingActivityID = activityID
+        end
+        if isNewListing then
+            self.teleportToastDismissedForGroup = false
+        end
+        local meta = self:ResolveDungeonTeleportMetadata(activityID, listingName, true)
+        self.lastHostedDungeonMeta = meta
+    else
+        self.wasHostingListing = false
+        if not inGroup then
+            self.lastActiveListingActivityID = nil
+            self.lastHostedDungeonMeta = nil
+            self.teleportToastDismissedForGroup = false
+            if self.activeTeleportToastData and not self.activeTeleportToastData.isPreview then
+                self:HideTeleportToast(false)
+            end
+            return
+        end
+    end
+
+    if not inGroup or numMembers < 2 then
+        return
+    end
+    if self.teleportToastDismissedForGroup then
+        return
+    end
+
+    local meta = self.lastHostedDungeonMeta
+    if not meta then
+        return
+    end
+
+    local cur = self.activeTeleportToastData
+    if cur and not cur.isPreview then
+        local sameTarget = (meta.activityID and cur.activityID and meta.activityID == cur.activityID)
+            or (meta.mapID and cur.mapID and meta.mapID == cur.mapID)
+            or (meta.dungeonName and cur.dungeonName and meta.dungeonName == cur.dungeonName)
+        if sameTarget then
+            if meta.listingName and meta.listingName ~= "" then
+                cur.listingName = meta.listingName
+            end
+            self:UpdateTeleportToast(true)
+            return
+        end
+    end
+
+    self.activeTeleportToastData = {
+        isHosted = true,
+        activityID = meta.activityID,
+        mapID = meta.mapID,
+        code = meta.code,
+        dungeonName = meta.dungeonName,
+        listingName = meta.listingName or meta.dungeonName,
+        icon = meta.icon,
+        spellID = meta.spellID,
+        spellKnown = meta.spellKnown,
+        numMembers = numMembers,
+        lastMemberCount = numMembers,
+    }
+
+    if type(_G.PlaySound) == "function" then
+        if numMembers >= 5 then
+            pcall(_G.PlaySound, (_G.SOUNDKIT and _G.SOUNDKIT.READY_CHECK) or 8960, "Master")
+        else
+            pcall(_G.PlaySound, (_G.SOUNDKIT and _G.SOUNDKIT.IG_PLAYER_INVITE) or 880, "Master")
+        end
+    end
+
+    self:UpdateTeleportToast(false)
 end
 
 function DynamicGroup:HandleApplicationStatusUpdated(searchResultID, newStatus, oldStatus, groupName)
@@ -5210,50 +5450,25 @@ function DynamicGroup:HandleApplicationStatusUpdated(searchResultID, newStatus, 
         end
     end
 
-    local actMeta = activityID and GetCachedActivityInfo(activityID) or nil
-    local slots = GetSeasonDungeonSlots(false)
-    local matchedSlot = nil
-    if actMeta and actMeta.mapID then
-        for _, slot in ipairs(slots) do
-            if slot.mapID == actMeta.mapID then matchedSlot = slot; break end
-        end
-    end
-    if not matchedSlot and actMeta and actMeta.code then
-        for _, slot in ipairs(slots) do
-            if slot.code == actMeta.code then matchedSlot = slot; break end
-        end
-    end
-    if not matchedSlot and actMeta and actMeta.fullName and actMeta.fullName ~= "" then
-        matchedSlot = MatchTextToDungeonSlot(actMeta.fullName, slots)
-    end
-    if not matchedSlot and listingName and listingName ~= "" then
-        matchedSlot = MatchTextToDungeonSlot(listingName, slots)
-    end
-
-    if not matchedSlot and not (actMeta and actMeta.isDungeonActivity) then
-        return
-    end
-
-    local dMapID = (matchedSlot and matchedSlot.mapID) or (actMeta and actMeta.mapID) or nil
-    local dCode = (matchedSlot and matchedSlot.code) or (actMeta and actMeta.code) or "M+"
-    local dName = (matchedSlot and matchedSlot.name) or (actMeta and actMeta.fullName ~= "" and actMeta.fullName) or listingName or "Season Dungeon"
-    local dIcon = (matchedSlot and matchedSlot.icon) or 136095
-    local dSpellID, dSpellKnown = ResolveTeleportSpellForDungeon(dMapID, dCode, dName, matchedSlot and matchedSlot.spellID)
+    local meta = self:ResolveDungeonTeleportMetadata(activityID, listingName, false)
+    if not meta then return end
 
     local inGroup = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
     local curMembers = inGroup and ((type(_G.GetNumGroupMembers) == "function" and _G.GetNumGroupMembers()) or 1) or 1
     curMembers = math.max(1, math.min(5, tonumber(curMembers) or 1))
 
+    self.teleportToastDismissedForGroup = false
     self.activeTeleportToastData = {
         resultID = searchResultID,
-        activityID = activityID,
-        mapID = dMapID,
-        code = dCode,
-        dungeonName = dName,
-        listingName = listingName or dName,
-        icon = dIcon,
-        spellID = dSpellID,
-        spellKnown = dSpellKnown and true or false,
+        activityID = meta.activityID,
+        mapID = meta.mapID,
+        code = meta.code,
+        dungeonName = meta.dungeonName,
+        listingName = meta.listingName or meta.dungeonName,
+        icon = meta.icon,
+        spellID = meta.spellID,
+        spellKnown = meta.spellKnown,
+        numMembers = curMembers,
         lastMemberCount = curMembers,
     }
 
@@ -7340,7 +7555,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 3.3c: Dungeon Joined & Group Full Teleport Toast
     local c3_tpToast = CreateCardRow(sec3a, 94,
         "Dungeon Joined & Group Full Teleport Toast",
-        "Shows a quick-teleport alert when your Premade Group application is accepted and chimes as players join. Appearance and position follow Suite Studio's Shared Alert Toast settings."
+        "Shows a quick-teleport alert when hosting (2+ players) or joining a Premade Group dungeon, and chimes as players join. Appearance and position follow Suite Studio's Shared Alert Toast settings."
     )
     local tpToastSwitch = AttachSegmentedSwitchToCard(c3_tpToast,
         function() return EnsureDB().showGroupTeleportToast ~= false end,
@@ -8037,6 +8252,7 @@ SafeRegisterEvent(DynamicGroup, "GROUP_ROSTER_UPDATE")
 SafeRegisterEvent(DynamicGroup, "CHALLENGE_MODE_KEYSTONE_RECEPTABLE_OPEN")
 SafeRegisterEvent(DynamicGroup, "LFG_LIST_SEARCH_RESULT_UPDATED")
 SafeRegisterEvent(DynamicGroup, "LFG_LIST_APPLICATION_STATUS_UPDATED")
+SafeRegisterEvent(DynamicGroup, "LFG_LIST_ACTIVE_ENTRY_UPDATE")
 SafeRegisterEvent(DynamicGroup, "PLAYER_ENTERING_WORLD")
 
 DynamicGroup:SetScript("OnEvent", function(self, event, ...)
@@ -8215,26 +8431,44 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         end
     elseif event == "LFG_LIST_APPLICATION_STATUS_UPDATED" then
         self:HandleApplicationStatusUpdated(...)
+    elseif event == "LFG_LIST_ACTIVE_ENTRY_UPDATE" then
+        self:CheckHostedListingTeleportToast()
     elseif event == "GROUP_ROSTER_UPDATE" then
         HandleAutoPromoteRoster()
-        if self.activeTeleportToastData then
-            local inGroupNow = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
+        local inGroupNow = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
+        if not inGroupNow then
+            self.teleportToastDismissedForGroup = false
+            self.lastHostedDungeonMeta = nil
+            self.wasHostingListing = false
+            self.lastActiveListingActivityID = nil
+            if self.activeTeleportToastData and not self.activeTeleportToastData.isPreview then
+                self:HideTeleportToast(false)
+            end
+        elseif self.activeTeleportToastData then
             if self.activeTeleportToastData.isPreview then
-                if inGroupNow then
-                    self:HideTeleportToast()
-                end
-            elseif not inGroupNow then
-                self:HideTeleportToast()
+                self:HideTeleportToast(false)
+                self:CheckHostedListingTeleportToast()
             else
                 self:UpdateTeleportToast(true)
             end
+        else
+            self:CheckHostedListingTeleportToast()
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
-        if self.activeTeleportToastData and type(_G.IsInInstance) == "function" then
-            local okI, inInst, instType = pcall(_G.IsInInstance)
-            if okI and inInst and (instType == "party" or instType == "raid" or instType == "scenario") then
-                self:HideTeleportToast()
+        local inInst, instType = false, nil
+        if type(_G.IsInInstance) == "function" then
+            local okI, rInInst, rInstType = pcall(_G.IsInInstance)
+            if okI then
+                inInst = rInInst and true or false
+                instType = rInstType
             end
+        end
+        if inInst and (instType == "party" or instType == "raid" or instType == "scenario") then
+            if self.activeTeleportToastData then
+                self:HideTeleportToast(true)
+            end
+        elseif type(_G.IsInGroup) == "function" and _G.IsInGroup() and not self.activeTeleportToastData then
+            self:CheckHostedListingTeleportToast()
         end
     elseif event == "CHALLENGE_MODE_KEYSTONE_RECEPTABLE_OPEN" then
         if not self.keystoneHooked then
