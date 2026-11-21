@@ -5810,6 +5810,43 @@ local function GetCurrentSeasonMythicPlusDungeons()
     return list
 end
 
+-- Reusable truncation safety net: shows the full clean text on hover, but only when
+-- the single-line FontString is actually cut off. Never replaces existing button/tile tooltips.
+function DynamicTalent.AttachTruncationTooltip(fs, owner)
+    if not fs or fs._dtTruncHooked or type(fs.GetText) ~= "function" then return end
+    fs._dtTruncHooked = true
+    local host = owner
+    if not host then
+        local parent = fs.GetParent and fs:GetParent()
+        if not parent then return end
+        host = CreateFrame("Frame", nil, parent)
+        host:SetAllPoints(fs)
+        host:EnableMouse(true)
+        fs._dtTruncHost = host
+    elseif host.EnableMouse then
+        host:EnableMouse(true)
+    end
+    if type(host.HookScript) ~= "function" then return end
+    host:HookScript("OnEnter", function(s)
+        if not (fs.IsTruncated and fs:IsTruncated()) then return end
+        if not GameTooltip then return end
+        local raw = tostring(fs:GetText() or "")
+        local clean = raw:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        if clean == "" then return end
+        GameTooltip:SetOwner(s, "ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        GameTooltip:AddLine(clean, 0.89, 0.91, 0.94, true)
+        GameTooltip:Show()
+        s._dtTruncShown = true
+    end)
+    host:HookScript("OnLeave", function(s)
+        if s._dtTruncShown then
+            s._dtTruncShown = nil
+            if GameTooltip then GameTooltip:Hide() end
+        end
+    end)
+end
+
 local function CreateModalSectionHeader(parent, title, subtitle, yOff)
     local ar, ag, ab = GetActiveAccentRGB()
     local wrap = CreateFrame("Frame", nil, parent)
@@ -5838,6 +5875,7 @@ local function CreateModalSectionHeader(parent, title, subtitle, yOff)
     subFS:SetWordWrap(false)
     subFS:SetText("|cFF94A3B8" .. tostring(subtitle or "") .. "|r")
     wrap.subFS = subFS
+    DynamicTalent.AttachTruncationTooltip(subFS)
 
     local line = wrap:CreateTexture(nil, "ARTWORK")
     line:SetHeight(1)
@@ -6823,7 +6861,7 @@ local function PopulateTalentManagerCore(host, isModal)
     SetPixelBackdrop(bCard, CARD_BG, CARD_BDR, 1)
     f.bCard = bCard
 
-    local bHdr = CreateModalSectionHeader(bCard, "|cFFFFFFFFRAID BOSS TALENT BINDS|r", "Pick a Season 2 raid & boss (or All Raids) and choose difficulties below", -10)
+    local bHdr = CreateModalSectionHeader(bCard, "|cFFFFFFFFRAID BOSS TALENT BINDS|r", "Pick a Season 2 raid, boss (or All Raids) and difficulties", -10)
     f.bHdr = bHdr
 
     local testToastBtn = CreateFrame("Button", nil, bCard, "BackdropTemplate")
@@ -8596,10 +8634,10 @@ local function PopulateTalentManagerCore(host, isModal)
                     if type(curBuild) == "table" then
                         self.listHdr.subFS:SetText("|cFF94A3B8Showing reminders for |r" .. DynamicTalent:FormatTalentBadge(curBuild) .. " |cFFFFFFFF" .. tostring(curBuild.name or "Loadout") .. "|r")
                     else
-                        self.listHdr.subFS:SetText("|cFF94A3B8New build selected -- auto-saves when you bind, or switch to All|r")
+                        self.listHdr.subFS:SetText("|cFF94A3B8New build -- auto-saves on bind, or switch to All|r")
                     end
                 else
-                    self.listHdr.subFS:SetText("|cFF94A3B8Showing all builds (Boss / M+ / PvP Mode overrides defaults)|r")
+                    self.listHdr.subFS:SetText("|cFF94A3B8Showing all builds (specific binds override defaults)|r")
                 end
             end
         end
@@ -8758,6 +8796,7 @@ local function PopulateTalentManagerCore(host, isModal)
                 row.fs:SetPoint("RIGHT", row, "RIGHT", -28, 0)
                 row.fs:SetJustifyH("LEFT")
                 row.fs:SetWordWrap(false)
+                DynamicTalent.AttachTruncationTooltip(row.fs, row)
                 row.del = CreateFrame("Button", nil, row)
                 row.del:SetSize(20, 20)
                 row.del:SetPoint("RIGHT", row, "RIGHT", -4, 0)
@@ -8924,16 +8963,16 @@ local function PopulateTalentManagerCore(host, isModal)
         SetPixelBackdrop(zoneBindBtn,  { r * 0.42, g * 0.42, b * 0.42, 1.00 }, { r, g, b, 0.95 }, 1)
         if isRaid then
             bHdr.titleFS:SetText("|cFFFFFFFFRAID BOSS TALENT BINDS|r")
-            bHdr.subFS:SetText("|cFF94A3B8Pick a Season 2 raid & boss (or All Raids) and choose difficulties below|r")
+            bHdr.subFS:SetText("|cFF94A3B8Pick a Season 2 raid, boss (or All Raids) and difficulties|r")
         elseif isMPlus then
             bHdr.titleFS:SetText("|cFFFFFFFFMYTHIC+ TALENT BINDS|r")
-            bHdr.subFS:SetText("|cFF94A3B8Toggle season dungeons (or All M+) & key tier -- alerts before key starts|r")
+            bHdr.subFS:SetText("|cFF94A3B8Pick season dungeons (or All M+) and key tier|r")
         elseif isPvP then
             bHdr.titleFS:SetText("|cFFFFFFFFPVP TALENT BINDS|r")
-            bHdr.subFS:SetText("|cFF94A3B8Bind builds to Arena, Battlegrounds, War Mode, or All PvP fallback|r")
+            bHdr.subFS:SetText("|cFF94A3B8Bind builds to Arena, Battlegrounds, War Mode, or All PvP|r")
         else
             bHdr.titleFS:SetText("|cFFFFFFFFZONE & ALL CONTENT DEFAULTS|r")
-            bHdr.subFS:SetText("|cFF94A3B8Pick zones or All Content to set fallback builds when no specific bind matches|r")
+            bHdr.subFS:SetText("|cFF94A3B8Set fallback builds when no specific bind matches|r")
         end
 
         bCard:SetHeight(isRaid and 234 or 152)
@@ -9286,6 +9325,7 @@ local function CreateSectionHeader(parent, yOffset, title, subtitle, rightButton
     sFs:SetWordWrap(false)
     sFs:SetTextColor(0.639, 0.702, 0.780, 0.95)
     sFs:SetText(subtitle or "")
+    DynamicTalent.AttachTruncationTooltip(sFs)
 
     return hdr, -44
 end
@@ -9957,6 +9997,7 @@ local function RenderTalentEmbedded(parent)
     stripSub:SetJustifyH("LEFT")
     stripSub:SetWordWrap(false)
     stripSub:SetTextColor(0.58, 0.65, 0.74, 0.95)
+    DynamicTalent.AttachTruncationTooltip(stripSub)
 
     local function RefreshActionStrip()
         local _, a = GetTheme()
@@ -10643,6 +10684,7 @@ DynamicTalent.CHANGELOG = {
         version = VERSION,
         date = "22/11/2026",
         entries = {
+            { type = "UI",    text = "Tighter Header Subtitles & Truncation Hover Safety Net (22/11/2026): Shortened the Raid Bosses, M+ Dungeons, PvP, Zone Defaults, and Active Reminders subtitles so they fit cleanly on one line at the minimum 800px Talent Loadouts Manager width, and added a reusable hover helper that shows the full plain text in a tooltip only when a single-line section subtitle, the Action & Status strip subtitle, or an Active Reminders row is actually cut off (existing button and tile tooltips are never replaced)." },
             { type = "FIXED", text = "Delve vs Mythic+ Zone Priority Detection (22/11/2026): Updated GetInstanceInfo() parsing across GetActiveTalentMismatch() and GetActiveContentGroup() to read difficultyID alongside instanceType and check difficultyID == 208, C_DelvesUI.HasActiveDelve(), C_PartyInfo.IsDelveInProgress(), and C_PartyInfo.IsDelveComplete(). Delves and non-dungeon scenarios never misclassify as Mythic+; [Zone: Delves] always takes priority inside Delves, [Zone: Outdoor] wins in open world zones outside resting cities, and Talent Dock / Prep Bar refresh cleanly after zoning." },
             { type = "UI",    text = "Option 1 Talent Tree Backdrop Studio Redesign (22/11/2026): Split Backdrop Studio into independent Base Background ('Blizzard Spec Art' | 'Solid Obsidian') and Ambient Mist ('Off' | 'Hero-Synced' | 'Class Glow') controls with a muted-when-inactive Background Dimmer (0%-85% for Blizzard Spec Art) and a live Mist Intensity slider (15%-100%, default 60%) so Hero-Synced and Class Glow mist can layer cleanly over either base, migrating legacy talentBackdropMode settings automatically." },
             { type = "FIXED", text = "Talent Tree Backdrop Studio Layering, Dimmer Order & Mist Opacity (22/11/2026): Moved DynamicTalentTreeBackdrop textures onto strictly positive BACKGROUND sublevels (1-6) strictly above Blizzard's TalentsFrame.Background (safely hidden via alpha 0 in non-Blizzard modes and preserved across spec switches via hooksecurefunc on UpdateSpecBackground, then restored cleanly to alpha 1 in Blizzard Default or when disabled) while remaining below all nodes, edges, and buttons; placed dimmerWash strictly behind the mist and vignette layers so up to 85% Background Dimmer never smothers Hero-Synced Mist or Class Glow; and eliminated double-alpha multiplication by keeping mist base alpha at 1.0 during animations with tuned atmospheric opacity bounds (0.28-0.48 primary, 0.20-0.36 secondary, 0.24-0.40 focal, and 0.38/0.28/0.32 static fallback)." },
