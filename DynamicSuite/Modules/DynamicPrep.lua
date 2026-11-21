@@ -761,6 +761,7 @@ local DEFAULTS = {
     talentPreferredBySpec = {},
     talentBossMap = {},
     talentDungeonMap = {},
+    talentZoneMap = {},
     talentStringLibrary = {},
     cinematicMode = "BOTH", -- "BOTH", "SKIP_ONLY", "OFF"
     autoRezMode = "OUT_OF_COMBAT", -- "OUT_OF_COMBAT", "ALWAYS", "OFF"
@@ -10027,6 +10028,7 @@ SafeRegisterEvent(eventFrame, "ACTIONBAR_SLOT_CHANGED")
 SafeRegisterEvent(eventFrame, "UPDATE_MACROS")
 SafeRegisterEvent(eventFrame, "SPELL_UPDATE_COOLDOWN")
 SafeRegisterEvent(eventFrame, "BAG_UPDATE_COOLDOWN")
+SafeRegisterEvent(eventFrame, "PLAYER_UPDATE_RESTING")
 
 -- ============================================================================
 -- ZONE-AWARE TALENT LOADOUT REMINDER & SAFE AUTO-ACCEPT SUMMON
@@ -10079,68 +10081,104 @@ function DynamicPrep:GetActiveTalentMismatch()
     if not specID or not (C_ClassTalents and C_ClassTalents.GetLastSelectedSavedConfigID) then return nil end
     local okCur, curID = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
     if not okCur then return nil end
-    local liveStr = self:GetActiveTalentString()
 
-    -- Priority 1: Specific Raid Boss target override (difficulty-aware: LFR / Normal, Heroic, Mythic)
-    local bossMap = self.db.talentBossMap and self.db.talentBossMap[specID]
-    if type(bossMap) == "table" and next(bossMap) ~= nil and UnitExists and UnitExists("target") then
-        local tName = UnitName and UnitName("target") or nil
-        if tName and not _IsSecret(tName) and type(tName) == "string" and tName ~= "" then
-            local lowTarget = tName:lower()
-            local diffKey = GetActiveRaidDifficultyKey()
-            local matchEntry = nil
-            for bKey, entry in pairs(bossMap) do
-                if type(entry) == "table" then
-                    local bLow = tostring(entry.bossName or bKey):lower()
-                    if (bLow == lowTarget or lowTarget:find(bLow, 1, true) or bLow:find(lowTarget, 1, true))
-                        and DoesRuleMatchDifficulty(entry, diffKey) then
-                        matchEntry = entry
-                        if bLow == lowTarget then break end
-                    end
-                end
-            end
-            if matchEntry then
-                local mKey = "boss:" .. lowTarget .. ":" .. tostring(diffKey or "any")
-                if not silencedTalentMismatches[mKey] then
-                    if matchEntry.importString and matchEntry.importString ~= "" then
-                        if not IsEntryAlreadyActive(self, specID, matchEntry.loadoutName, matchEntry.importString, liveStr) then
-                            local diffLbl = (diffKey == "normal" and "LFR/N") or (diffKey == "heroic" and "H") or (diffKey == "mythic" and "M") or nil
-                            local diffTag = diffLbl and (" (" .. diffLbl .. ")") or ""
-                            return { name = matchEntry.loadoutName or "Boss Loadout", importString = matchEntry.importString }, matchEntry.loadoutName or "Boss Loadout", "Boss: " .. tName .. diffTag, mKey
-                        end
-                    elseif matchEntry.configID and curID ~= matchEntry.configID then
-                        return matchEntry.configID, matchEntry.loadoutName or "Boss Loadout", "Boss: " .. tName, mKey
-                    end
-                end
-                return nil
+    -- Never nag when an active Mythic+ keystone is running (talent swaps are locked)
+    local isKeyActive = C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive()
+    if isKeyActive then return nil end
+
+    local liveStr = self:GetActiveTalentString()
+    local isDelveActive = (C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve())
+        or (C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress())
+    local inInst, instType, instName = false, "none", ""
+    if type(GetInstanceInfo) == "function" then
+        local okInst, iName, iType = pcall(GetInstanceInfo)
+        if okInst and type(iType) == "string" then
+            instType = iType
+            inInst = (iType ~= "none")
+            if type(iName) == "string" and not _IsSecret(iName) then
+                instName = iName
             end
         end
     end
+    local isRaid = (instType == "raid")
+    local isParty = (instType == "party" and not isDelveActive)
+    local isPvP = (instType == "pvp" or instType == "arena")
+    local isOutdoor = (not inInst and not isDelveActive)
+    local isResting = (type(IsResting) == "function" and IsResting() == true)
+    local diffKey = isRaid and GetActiveRaidDifficultyKey() or nil
+    local diffLbl = (diffKey == "normal" and "LFR/N") or (diffKey == "heroic" and "H") or (diffKey == "mythic" and "M") or nil
+    local diffTag = diffLbl and (" (" .. diffLbl .. ")") or ""
 
-    -- Priority 1b: Pre-Keystone M+ Dungeon & Key-Level override (only before the key starts)
-    -- Specific per-dungeon rules always take priority over "All M+ Dungeons" catch-all rules.
+    -- =========================================================================
+    -- PRIORITY 1 (Tier 1): Specific Raid Boss Target or Specific M+ Dungeon
+    -- =========================================================================
+    local bossMap = self.db.talentBossMap and self.db.talentBossMap[specID]
+    local hasTarget, tName = false, nil
+    if type(UnitExists) == "function" and type(UnitName) == "function" then
+        local okE, ex = pcall(UnitExists, "target")
+        if okE and not _IsSecret(ex) and ex then
+            local okN, n = pcall(UnitName, "target")
+            if okN and type(n) == "string" and not _IsSecret(n) and n ~= "" then
+                hasTarget = true
+                tName = n
+            end
+        end
+    end
+    if hasTarget and type(bossMap) == "table" and next(bossMap) ~= nil then
+        local lowTarget = strtrim(tName):lower()
+        local _, _, _, s2Boss = self:MatchBossTargetName(tName)
+        local canonicalLow = s2Boss and tostring(s2Boss.name or ""):lower() or nil
+        local matchEntry = nil
+        for bKey, entry in pairs(bossMap) do
+            if type(entry) == "table" and entry.isAllRaid ~= true then
+                local bLow = tostring(entry.bossName or bKey):lower()
+                local matchedName = false
+                if canonicalLow then
+                    matchedName = (bLow == canonicalLow)
+                else
+                    matchedName = (bLow == lowTarget or lowTarget:find(bLow, 1, true) or bLow:find(lowTarget, 1, true)) and true or false
+                end
+                if matchedName and DoesRuleMatchDifficulty(entry, diffKey) then
+                    matchEntry = entry
+                    if bLow == lowTarget or (canonicalLow and bLow == canonicalLow) then break end
+                end
+            end
+        end
+        if matchEntry then
+            local bossKey = canonicalLow or lowTarget
+            local mKey = "boss:" .. bossKey .. ":" .. tostring(diffKey or "any")
+            if not silencedTalentMismatches[mKey] then
+                if matchEntry.importString and matchEntry.importString ~= "" then
+                    if not IsEntryAlreadyActive(self, specID, matchEntry.loadoutName, matchEntry.importString, liveStr) then
+                        local dispBoss = tostring(matchEntry.bossName or tName)
+                        return { name = matchEntry.loadoutName or "Boss Loadout", importString = matchEntry.importString, group = matchEntry.group or "Raid" },
+                            matchEntry.loadoutName or "Boss Loadout", "Boss: " .. dispBoss .. diffTag, mKey
+                    end
+                elseif matchEntry.configID and curID ~= matchEntry.configID then
+                    return matchEntry.configID, matchEntry.loadoutName or "Boss Loadout", "Boss: " .. tName, mKey
+                end
+            end
+            return nil
+        end
+    end
+
     local dungMap = self.db.talentDungeonMap and self.db.talentDungeonMap[specID]
-    local isDelveActive = (C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve())
-        or (C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress())
-    local isKeyActive = C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive()
-    if type(dungMap) == "table" and next(dungMap) ~= nil and not isDelveActive and not isKeyActive and type(GetInstanceInfo) == "function" then
-        local okI, instName, instType = pcall(GetInstanceInfo)
-        if okI and instType == "party" and type(instName) == "string" and instName ~= "" then
-            local lowInst = instName:lower()
-            local ownedLvl = (C_MythicPlus and C_MythicPlus.GetOwnedKeystoneLevel and C_MythicPlus.GetOwnedKeystoneLevel()) or 0
-            local tierNow = (ownedLvl >= 10) and "HIGH" or ((ownedLvl >= 2) and "LOW" or nil)
-            local specExact, specAny, allExact, allAny = nil, nil, nil, nil
-            for _, dEntry in pairs(dungMap) do
-                if type(dEntry) == "table" and type(dEntry.dungeonName) == "string" then
-                    local dLow = dEntry.dungeonName:lower()
-                    local kt = dEntry.keyTier or "ANY"
-                    if dEntry.isAllMPlus == true or dLow == "all m+ dungeons" then
-                        if tierNow and kt == tierNow then
-                            allExact = dEntry
-                        elseif kt == "ANY" then
-                            allAny = dEntry
-                        end
-                    elseif dLow == lowInst or lowInst:find(dLow, 1, true) or dLow:find(lowInst, 1, true) then
+    local tierNow = nil
+    if isParty and C_MythicPlus and C_MythicPlus.GetOwnedKeystoneLevel then
+        local ownedLvl = C_MythicPlus.GetOwnedKeystoneLevel() or 0
+        if not _IsSecret(ownedLvl) and type(ownedLvl) == "number" then
+            tierNow = (ownedLvl >= 10) and "HIGH" or ((ownedLvl >= 2) and "LOW" or nil)
+        end
+    end
+    if isParty and instName ~= "" and type(dungMap) == "table" and next(dungMap) ~= nil then
+        local lowInst = instName:lower()
+        local specExact, specAny = nil, nil
+        for _, dEntry in pairs(dungMap) do
+            if type(dEntry) == "table" and type(dEntry.dungeonName) == "string" then
+                local dLow = dEntry.dungeonName:lower()
+                if dEntry.isAllMPlus ~= true and dLow ~= "all m+ dungeons" then
+                    if dLow == lowInst or lowInst:find(dLow, 1, true) or dLow:find(lowInst, 1, true) then
+                        local kt = dEntry.keyTier or "ANY"
                         if tierNow and kt == tierNow then
                             specExact = dEntry
                         elseif kt == "ANY" then
@@ -10149,33 +10187,121 @@ function DynamicPrep:GetActiveTalentMismatch()
                     end
                 end
             end
-            local dMatch = specExact or specAny or allExact or allAny
-            if dMatch and dMatch.importString and dMatch.importString ~= "" then
-                local scopeTag = (dMatch.isAllMPlus or dMatch.dungeonName:lower() == "all m+ dungeons") and "all" or lowInst
-                local mKey = "mplus:" .. scopeTag .. ":" .. tostring(dMatch.keyTier or "ANY")
-                if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, dMatch.loadoutName, dMatch.importString, liveStr) then
-                    local tLabel = (dMatch.keyTier == "HIGH" and " (+10+)") or (dMatch.keyTier == "LOW" and " (+2-9)") or ""
-                    return { name = dMatch.loadoutName or "M+ Loadout", importString = dMatch.importString }, dMatch.loadoutName or "M+ Loadout", "M+: " .. instName .. tLabel, mKey
+        end
+        local dMatch = specExact or specAny
+        if dMatch and dMatch.importString and dMatch.importString ~= "" then
+            local mKey = "mplus:" .. lowInst .. ":" .. tostring(dMatch.keyTier or "ANY")
+            if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, dMatch.loadoutName, dMatch.importString, liveStr) then
+                local tLabel = (dMatch.keyTier == "HIGH" and " (+10+)") or (dMatch.keyTier == "LOW" and " (+2-9)") or ""
+                return { name = dMatch.loadoutName or "M+ Loadout", importString = dMatch.importString, group = dMatch.group or "M+" },
+                    dMatch.loadoutName or "M+ Loadout", "M+: " .. instName .. tLabel, mKey
+            end
+            return nil
+        end
+    end
+
+    -- =========================================================================
+    -- PRIORITY 2 (Tier 2): Content-Wide / 5-Zone Defaults (Never Overrides T1)
+    -- =========================================================================
+    -- 2a. All Raids default (difficulty-aware)
+    if isRaid and type(bossMap) == "table" then
+        local allRaidBest, bestScore = nil, 99
+        for _, entry in pairs(bossMap) do
+            if type(entry) == "table" and entry.isAllRaid == true and DoesRuleMatchDifficulty(entry, diffKey) then
+                local d = entry.difficulties
+                local cnt = (type(d) == "table") and ((d.normal and 1 or 0) + (d.heroic and 1 or 0) + (d.mythic and 1 or 0)) or 3
+                if cnt < bestScore then
+                    bestScore = cnt
+                    allRaidBest = entry
+                end
+            end
+        end
+        if allRaidBest and allRaidBest.importString and allRaidBest.importString ~= "" then
+            local mKey = "allraid:" .. tostring(diffKey or "any")
+            if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allRaidBest.loadoutName, allRaidBest.importString, liveStr) then
+                return { name = allRaidBest.loadoutName or "Raid Loadout", importString = allRaidBest.importString, group = allRaidBest.group or "Raid" },
+                    allRaidBest.loadoutName or "Raid Loadout", "All Raids" .. diffTag, mKey
+            end
+            return nil
+        end
+    end
+
+    -- 2b. All M+ default (pre-keystone)
+    if isParty and type(dungMap) == "table" then
+        local allExact, allAny = nil, nil
+        for _, dEntry in pairs(dungMap) do
+            if type(dEntry) == "table" and type(dEntry.dungeonName) == "string" then
+                local dLow = dEntry.dungeonName:lower()
+                if dEntry.isAllMPlus == true or dLow == "all m+ dungeons" then
+                    local kt = dEntry.keyTier or "ANY"
+                    if tierNow and kt == tierNow then
+                        allExact = dEntry
+                    elseif kt == "ANY" then
+                        allAny = dEntry
+                    end
+                end
+            end
+        end
+        local allM = allExact or allAny
+        if allM and allM.importString and allM.importString ~= "" then
+            local mKey = "mplus:all:" .. tostring(allM.keyTier or "ANY")
+            if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allM.loadoutName, allM.importString, liveStr) then
+                local tLabel = (allM.keyTier == "HIGH" and " (+10+)") or (allM.keyTier == "LOW" and " (+2-9)") or ""
+                return { name = allM.loadoutName or "M+ Loadout", importString = allM.importString, group = allM.group or "M+" },
+                    allM.loadoutName or "M+ Loadout", "All M+" .. tLabel, mKey
+            end
+            return nil
+        end
+    end
+
+    -- 2c/2d/2e. Zone Defaults (Delves, PvP, Outdoor -- skip Outdoor while resting in major cities)
+    local zoneMap = self.db.talentZoneMap and self.db.talentZoneMap[specID]
+    if isOutdoor and isResting then
+        return nil
+    end
+    if type(zoneMap) == "table" then
+        local zRule, zLbl, zMKey = nil, nil, nil
+        if isDelveActive and type(zoneMap.delves) == "table" then
+            zRule, zLbl, zMKey = zoneMap.delves, "Delves", "zone:delves"
+        elseif isPvP and type(zoneMap.pvp) == "table" then
+            zRule, zLbl, zMKey = zoneMap.pvp, "PvP", "zone:pvp"
+        elseif isOutdoor and type(zoneMap.outdoor) == "table" then
+            zRule, zLbl, zMKey = zoneMap.outdoor, "Outdoor", "zone:outdoor"
+        end
+        if zRule and zRule.importString and zRule.importString ~= "" then
+            if not silencedTalentMismatches[zMKey] and not IsEntryAlreadyActive(self, specID, zRule.loadoutName, zRule.importString, liveStr) then
+                return { name = zRule.loadoutName or (zLbl .. " Loadout"), importString = zRule.importString, group = zRule.group or "Custom" },
+                    zRule.loadoutName or (zLbl .. " Loadout"), zLbl, zMKey
+            end
+            return nil
+        end
+
+        -- 2f. Global [All Content] Default across Raids, M+ (pre-key), Delves, PvP, and non-resting Outdoor
+        local allRule = zoneMap.all
+        if type(allRule) == "table" and allRule.importString and allRule.importString ~= "" then
+            local ctxLbl = (isRaid and "Raid")
+                or (isParty and "M+")
+                or (isDelveActive and "Delves")
+                or (isPvP and "PvP")
+                or (isOutdoor and "Outdoor")
+                or nil
+            if ctxLbl then
+                local mKey = "zone:all"
+                if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allRule.loadoutName, allRule.importString, liveStr) then
+                    return { name = allRule.loadoutName or "Default Loadout", importString = allRule.importString, group = allRule.group or "Custom" },
+                        allRule.loadoutName or "Default Loadout", ctxLbl .. " (All Content)", mKey
                 end
                 return nil
             end
         end
     end
 
-    -- Priority 2: Zone Default (Delve / M+ / Raid / PvP)
+    -- 2g. Legacy Zone Default fallback (Blizzard config ID)
     local zKey, zLabel = nil, nil
-    local isDelve = (C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve())
-        or (C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress())
-    if isDelve then
-        zKey, zLabel = "delve", "Delve"
-    elseif type(IsInInstance) == "function" then
-        local inInst, instType = IsInInstance()
-        if inInst then
-            if instType == "party" then zKey, zLabel = "dungeon", "M+"
-            elseif instType == "raid" then zKey, zLabel = "raid", "Raid"
-            elseif instType == "pvp" or instType == "arena" then zKey, zLabel = "pvp", "PvP"
-            end
-        end
+    if isDelveActive then zKey, zLabel = "delve", "Delve"
+    elseif isParty then zKey, zLabel = "dungeon", "M+"
+    elseif isRaid then zKey, zLabel = "raid", "Raid"
+    elseif isPvP then zKey, zLabel = "pvp", "PvP"
     end
     if zKey then
         local prefID, prefName = self:GetPreferredTalentLoadout(zKey)
@@ -10367,7 +10493,7 @@ function DynamicPrep:UpdateTalentLibraryEntry(targetEntry, newName, newGroup, ne
         targetEntry.liveHash = (liveStr and liveStr == cleanStr) and liveStr or nil
     end
 
-    -- Keep last-applied tracking and Boss Reminders synced on rename/update
+    -- Keep last-applied tracking and Talent Binds synced on rename/update
     if self.db.lastAppliedTalentName and self.db.lastAppliedTalentName[specID] == oldName then
         self.db.lastAppliedTalentName[specID] = cleanName
     end
@@ -10377,6 +10503,7 @@ function DynamicPrep:UpdateTalentLibraryEntry(targetEntry, newName, newGroup, ne
             if type(bm) == "table" and bm.loadoutName == oldName then
                 bm.loadoutName = cleanName
                 bm.importString = cleanStr
+                bm.group = grp
             end
         end
     end
@@ -10386,6 +10513,17 @@ function DynamicPrep:UpdateTalentLibraryEntry(targetEntry, newName, newGroup, ne
             if type(dm) == "table" and dm.loadoutName == oldName then
                 dm.loadoutName = cleanName
                 dm.importString = cleanStr
+                dm.group = grp
+            end
+        end
+    end
+    local zoneMap = self.db.talentZoneMap and self.db.talentZoneMap[specID]
+    if type(zoneMap) == "table" then
+        for _, zm in pairs(zoneMap) do
+            if type(zm) == "table" and zm.loadoutName == oldName then
+                zm.loadoutName = cleanName
+                zm.importString = cleanStr
+                zm.group = grp
             end
         end
     end
@@ -10393,7 +10531,10 @@ function DynamicPrep:UpdateTalentLibraryEntry(targetEntry, newName, newGroup, ne
     print(string.format("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Updated loadout |cFF10B981[%s] %s|r.", grp, cleanName))
     self:RefreshBar()
     if self.RefreshTalentDock then self:RefreshTalentDock() end
-    return true, "Saved changes cleanly."
+    if self._talentMgrModal and self._talentMgrModal:IsShown() and self._talentMgrModal.RefreshBossList then
+        self._talentMgrModal:RefreshBossList()
+    end
+    return true, "Saved changes to '" .. cleanName .. "'."
 end
 
 function DynamicPrep:SaveCurrentTreeOverEntry(targetEntry)
@@ -10428,6 +10569,14 @@ function DynamicPrep:SaveCurrentTreeOverEntry(targetEntry)
             end
         end
     end
+    local zoneMap = self.db.talentZoneMap and self.db.talentZoneMap[specID]
+    if type(zoneMap) == "table" then
+        for _, zm in pairs(zoneMap) do
+            if type(zm) == "table" and zm.loadoutName == targetEntry.name then
+                zm.importString = liveStr
+            end
+        end
+    end
 
     print(string.format("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Saved current talents over |cFF10B981[%s] %s|r.", tostring(targetEntry.group or "Custom"), tostring(targetEntry.name or "Loadout")))
     self:RefreshBar()
@@ -10448,9 +10597,249 @@ function DynamicPrep:DeleteTalentLibraryEntry(targetEntry)
     if self.db and self.db.lastAppliedTalentName and self.db.lastAppliedTalentName[specID] == targetEntry.name then
         self.db.lastAppliedTalentName[specID] = nil
     end
+    local zoneMap = self.db and self.db.talentZoneMap and self.db.talentZoneMap[specID]
+    if type(zoneMap) == "table" then
+        for zKey, zm in pairs(zoneMap) do
+            if type(zm) == "table" and zm.loadoutName == targetEntry.name then
+                zoneMap[zKey] = nil
+            end
+        end
+    end
     print("|cFFCBD5E1Dynamic|r|cFF38BDF8Prep|r: Deleted loadout |cFFF43F5E" .. tostring(targetEntry.name) .. "|r.")
     self:RefreshBar()
     if self.RefreshTalentDock then self:RefreshTalentDock() end
+    if self._talentMgrModal and self._talentMgrModal:IsShown() and self._talentMgrModal.RefreshBossList then
+        self._talentMgrModal:RefreshBossList()
+    end
+end
+
+function DynamicPrep:SyncTalentBindsUI()
+    self:RefreshBar()
+    if self.RefreshTalentDock then self:RefreshTalentDock() end
+    if self._talentMgrModal and self._talentMgrModal:IsShown() and self._talentMgrModal.RefreshBossList then
+        self._talentMgrModal:RefreshBossList()
+    end
+end
+
+function DynamicPrep:SetAllRaidDefault(entry, diffs, silent)
+    if not self.db then self:InitDB() end
+    local specID = self:GetActiveSpecID()
+    if not specID or type(entry) ~= "table" then return false end
+    local d = type(diffs) == "table" and diffs or { normal = true, heroic = true, mythic = true }
+    local useN = (d.normal == true)
+    local useH = (d.heroic == true)
+    local useM = (d.mythic == true)
+    if not (useN or useH or useM) then
+        useN, useH, useM = true, true, true
+    end
+    local mask = (useN and "N" or "") .. (useH and "H" or "") .. (useM and "M" or "")
+    local mapKey = "__all_raid__|" .. mask
+    self.db.talentBossMap = self.db.talentBossMap or {}
+    self.db.talentBossMap[specID] = self.db.talentBossMap[specID] or {}
+    local bMap = self.db.talentBossMap[specID]
+    for exK, exV in pairs(bMap) do
+        if type(exV) == "table" and exV.isAllRaid == true and exK ~= mapKey then
+            if type(exV.difficulties) == "table" then
+                if useN then exV.difficulties.normal = false end
+                if useH then exV.difficulties.heroic = false end
+                if useM then exV.difficulties.mythic = false end
+                if not (exV.difficulties.normal or exV.difficulties.heroic or exV.difficulties.mythic) then
+                    bMap[exK] = nil
+                end
+            else
+                bMap[exK] = nil
+            end
+        end
+    end
+    bMap[mapKey] = {
+        isAllRaid    = true,
+        bossName     = "All Raids",
+        raidName     = "All Raids",
+        raidShort    = "All Raids",
+        loadoutName  = entry.name,
+        importString = entry.importString,
+        group        = entry.group or "Raid",
+        difficulties = { normal = useN, heroic = useH, mythic = useM },
+    }
+    if not silent then
+        local dLabels = {}
+        if useN then table.insert(dLabels, "LFR/N") end
+        if useH then table.insert(dLabels, "H") end
+        if useM then table.insert(dLabels, "M") end
+        local grp = entry.group or "Raid"
+        local gHex = TALENT_GROUP_HEX[grp] or "F87171"
+        print(string.format("|cFF%sDynamicPrep:|r Set |cFFFBBF24All Raids|r [%s] -> |cFF%s[%s]|r %s (specific boss binds take priority).", GetAccentHex(), table.concat(dLabels, "/"), gHex, grp, tostring(entry.name)))
+    end
+    self:SyncTalentBindsUI()
+    return true
+end
+
+function DynamicPrep:SetAllMPlusDefault(entry, keyTier, silent)
+    if not self.db then self:InitDB() end
+    local specID = self:GetActiveSpecID()
+    if not specID or type(entry) ~= "table" then return false end
+    local kt = keyTier or "ANY"
+    self.db.talentDungeonMap = self.db.talentDungeonMap or {}
+    self.db.talentDungeonMap[specID] = self.db.talentDungeonMap[specID] or {}
+    local dMap = self.db.talentDungeonMap[specID]
+    for exK, exV in pairs(dMap) do
+        local exAll = type(exV) == "table" and (exV.isAllMPlus == true or tostring(exV.dungeonName or exK):lower() == "all m+ dungeons")
+        if exAll and (exV.keyTier == kt or kt == "ANY" or exV.keyTier == "ANY") then
+            dMap[exK] = nil
+        end
+    end
+    dMap["__all__|" .. kt] = {
+        isAllMPlus   = true,
+        dungeonName  = "All M+ Dungeons",
+        mapID        = 0,
+        keyTier      = kt,
+        loadoutName  = entry.name,
+        importString = entry.importString,
+        group        = entry.group or "M+",
+    }
+    if not silent then
+        local tLbl = (kt == "HIGH" and "+10+") or (kt == "LOW" and "+2-9") or "Any Key"
+        local grp = entry.group or "M+"
+        local gHex = TALENT_GROUP_HEX[grp] or "38BDF8"
+        print(string.format("|cFF%sDynamicPrep:|r Set |cFF38BDF8All M+ Dungeons|r [%s] -> |cFF%s[%s]|r %s (specific dungeons take priority).", GetAccentHex(), tLbl, gHex, grp, tostring(entry.name)))
+    end
+    self:SyncTalentBindsUI()
+    return true
+end
+
+function DynamicPrep:SetAllContentDefault(entry)
+    if not self.db then self:InitDB() end
+    local specID = self:GetActiveSpecID()
+    if not specID or type(entry) ~= "table" then return false end
+    self.db.talentZoneMap = self.db.talentZoneMap or {}
+    self.db.talentZoneMap[specID] = {}
+    self.db.talentZoneMap[specID].all = {
+        loadoutName  = entry.name,
+        importString = entry.importString,
+        group        = entry.group or "Custom",
+    }
+    local bMap = self.db.talentBossMap and self.db.talentBossMap[specID]
+    if type(bMap) == "table" then
+        for k, v in pairs(bMap) do
+            if type(v) == "table" and v.isAllRaid == true then
+                bMap[k] = nil
+            end
+        end
+    end
+    local dMap = self.db.talentDungeonMap and self.db.talentDungeonMap[specID]
+    if type(dMap) == "table" then
+        for k, v in pairs(dMap) do
+            local isAll = type(v) == "table" and (v.isAllMPlus == true or tostring(v.dungeonName or k):lower() == "all m+ dungeons")
+            if isAll then
+                dMap[k] = nil
+            end
+        end
+    end
+    local grp = entry.group or "Custom"
+    local gHex = TALENT_GROUP_HEX[grp] or "10B981"
+    print(string.format("|cFF%sDynamicPrep:|r Set |cFF10B981All Content Default|r -> |cFF%s[%s]|r %s (specific boss and dungeon binds take priority).", GetAccentHex(), gHex, grp, tostring(entry.name)))
+    self:SyncTalentBindsUI()
+    return true
+end
+
+function DynamicPrep:SetZoneDefaults(entry, zoneSet, isAll)
+    if not self.db then self:InitDB() end
+    local specID = self:GetActiveSpecID()
+    if not specID or type(entry) ~= "table" then return false end
+    if isAll then
+        return self:SetAllContentDefault(entry)
+    end
+    self.db.talentZoneMap = self.db.talentZoneMap or {}
+    self.db.talentZoneMap[specID] = self.db.talentZoneMap[specID] or {}
+    local zMap = self.db.talentZoneMap[specID]
+    local names = {}
+    if zoneSet.outdoor then
+        zMap.outdoor = { loadoutName = entry.name, importString = entry.importString, group = entry.group or "Custom" }
+        table.insert(names, "Outdoor")
+    end
+    if zoneSet.delves then
+        zMap.delves = { loadoutName = entry.name, importString = entry.importString, group = entry.group or "Delves" }
+        table.insert(names, "Delves")
+    end
+    if zoneSet.dungeons then
+        self:SetAllMPlusDefault(entry, "ANY", true)
+        table.insert(names, "Dungeons")
+    end
+    if zoneSet.raid then
+        self:SetAllRaidDefault(entry, { normal = true, heroic = true, mythic = true }, true)
+        table.insert(names, "Raid")
+    end
+    if zoneSet.pvp then
+        zMap.pvp = { loadoutName = entry.name, importString = entry.importString, group = entry.group or "PvP" }
+        table.insert(names, "PvP")
+    end
+    if #names == 0 then return false end
+    local grp = entry.group or "Custom"
+    local gHex = TALENT_GROUP_HEX[grp] or "10B981"
+    print(string.format("|cFF%sDynamicPrep:|r Bound zones (%s) -> |cFF%s[%s]|r %s.", GetAccentHex(), table.concat(names, ", "), gHex, grp, tostring(entry.name)))
+    self:SyncTalentBindsUI()
+    return true
+end
+
+function DynamicPrep:ClearZoneDefaults(zoneSet, isAll)
+    if not self.db then self:InitDB() end
+    local specID = self:GetActiveSpecID()
+    if not specID then return false end
+    local zMap = self.db.talentZoneMap and self.db.talentZoneMap[specID]
+    local bMap = self.db.talentBossMap and self.db.talentBossMap[specID]
+    local dMap = self.db.talentDungeonMap and self.db.talentDungeonMap[specID]
+    local cleared = {}
+
+    if isAll then
+        if type(zMap) == "table" then wipe(zMap) end
+        if type(bMap) == "table" then
+            for k, v in pairs(bMap) do
+                if type(v) == "table" and v.isAllRaid == true then bMap[k] = nil end
+            end
+        end
+        if type(dMap) == "table" then
+            for k, v in pairs(dMap) do
+                local isAllM = type(v) == "table" and (v.isAllMPlus == true or tostring(v.dungeonName or k):lower() == "all m+ dungeons")
+                if isAllM then dMap[k] = nil end
+            end
+        end
+        print(string.format("|cFF%sDynamicPrep:|r Cleared all Zone & Content defaults (specific boss and dungeon binds kept).", GetAccentHex()))
+        self:SyncTalentBindsUI()
+        return true
+    end
+
+    if type(zMap) == "table" then
+        if zoneSet.outdoor and zMap.outdoor then zMap.outdoor = nil; table.insert(cleared, "Outdoor") end
+        if zoneSet.delves and zMap.delves then zMap.delves = nil; table.insert(cleared, "Delves") end
+        if zoneSet.pvp and zMap.pvp then zMap.pvp = nil; table.insert(cleared, "PvP") end
+    end
+    if zoneSet.raid and type(bMap) == "table" then
+        local removedRaid = false
+        for k, v in pairs(bMap) do
+            if type(v) == "table" and v.isAllRaid == true then
+                bMap[k] = nil
+                removedRaid = true
+            end
+        end
+        if removedRaid then table.insert(cleared, "Raid") end
+    end
+    if zoneSet.dungeons and type(dMap) == "table" then
+        local removedM = false
+        for k, v in pairs(dMap) do
+            local isAllM = type(v) == "table" and (v.isAllMPlus == true or tostring(v.dungeonName or k):lower() == "all m+ dungeons")
+            if isAllM then
+                dMap[k] = nil
+                removedM = true
+            end
+        end
+        if removedM then table.insert(cleared, "Dungeons") end
+    end
+    if #cleared > 0 then
+        print(string.format("|cFF%sDynamicPrep:|r Cleared zone default(s): %s.", GetAccentHex(), table.concat(cleared, ", ")))
+        self:SyncTalentBindsUI()
+        return true
+    end
+    return false
 end
 
 function DynamicPrep:DuplicateTalentLibraryEntry(targetEntry)
@@ -11010,7 +11399,7 @@ function DynamicPrep:ShowTalentRowContextMenu(anchorRow, entry)
 
     if not talentRowMenuFrame then
         local m = CreateFrame("Frame", "DynamicPrepTalentRowContextMenu", UIParent, "BackdropTemplate")
-        m:SetWidth(198)
+        m:SetWidth(232)
         m:SetFrameStrata("TOOLTIP")
         m:SetFrameLevel(50)
         m:EnableMouse(true)
@@ -11026,6 +11415,7 @@ function DynamicPrep:ShowTalentRowContextMenu(anchorRow, entry)
         m.div:SetPoint("TOPRIGHT", m, "TOPRIGHT", -8, -24)
         m.div:SetColorTexture(1, 1, 1, 0.08)
         m.btns = {}
+        m.secDivs = {}
         m:Hide()
         if _G.UISpecialFrames then
             table.insert(_G.UISpecialFrames, "DynamicPrepTalentRowContextMenu")
@@ -11042,6 +11432,7 @@ function DynamicPrep:ShowTalentRowContextMenu(anchorRow, entry)
     end
 
     local m = talentRowMenuFrame
+    m:SetWidth(232)
     SetPixelBackdrop(m, { 0.031, 0.039, 0.055, 0.99 }, { ar, ag, ab, 0.92 }, 1)
     local grp = entry.group or "Custom"
     local gHex = TALENT_GROUP_HEX[grp] or "94A3B8"
@@ -11049,11 +11440,45 @@ function DynamicPrep:ShowTalentRowContextMenu(anchorRow, entry)
 
     local actions = {
         {
-            label = "Edit / Rename / Group...",
+            label = "Rename / Edit Build",
             color = { 0.94, 0.96, 1.00 },
+            divAfter = true,
             fn = function()
                 DynamicPrep:HideTalentRowContextMenu()
                 DynamicPrep:OpenTalentManagerModal(1, entry)
+            end,
+        },
+        {
+            label = "Quick Assign: All Content Default",
+            color = { 0.204, 0.827, 0.600 },
+            fn = function()
+                DynamicPrep:HideTalentRowContextMenu()
+                DynamicPrep:SetAllContentDefault(entry)
+            end,
+        },
+        {
+            label = "Quick Assign: All Raid Default",
+            color = { 0.973, 0.443, 0.443 },
+            fn = function()
+                DynamicPrep:HideTalentRowContextMenu()
+                DynamicPrep:SetAllRaidDefault(entry)
+            end,
+        },
+        {
+            label = "Quick Assign: All M+ Default",
+            color = { 0.220, 0.741, 0.973 },
+            fn = function()
+                DynamicPrep:HideTalentRowContextMenu()
+                DynamicPrep:SetAllMPlusDefault(entry, "ANY")
+            end,
+        },
+        {
+            label = "Bind to Specific Boss / M+...",
+            color = { 0.984, 0.749, 0.141 },
+            divAfter = true,
+            fn = function()
+                DynamicPrep:HideTalentRowContextMenu()
+                DynamicPrep:OpenTalentManagerModal(2, entry)
             end,
         },
         {
@@ -11070,14 +11495,6 @@ function DynamicPrep:ShowTalentRowContextMenu(anchorRow, entry)
             fn = function()
                 DynamicPrep:HideTalentRowContextMenu()
                 DynamicPrep:DuplicateTalentLibraryEntry(entry)
-            end,
-        },
-        {
-            label = "Add Talent Bind...",
-            color = { 0.984, 0.749, 0.141 },
-            fn = function()
-                DynamicPrep:HideTalentRowContextMenu()
-                DynamicPrep:OpenTalentManagerModal(2, entry)
             end,
         },
         {
@@ -11099,19 +11516,24 @@ function DynamicPrep:ShowTalentRowContextMenu(anchorRow, entry)
     }
 
     for _, oldB in ipairs(m.btns) do oldB:Hide() end
+    for _, oldD in ipairs(m.secDivs) do oldD:Hide() end
+    local yPos = -28
+    local divIdx = 0
     for i, act in ipairs(actions) do
         local b = m.btns[i]
         if not b then
             b = CreateFrame("Button", nil, m, "BackdropTemplate")
-            b:SetSize(182, 22)
+            b:SetSize(216, 22)
             b.txt = CreateText(b, "OVERLAY", "GameFontHighlightSmall")
             b.txt:SetPoint("LEFT", b, "LEFT", 8, 0)
             b.txt:SetPoint("RIGHT", b, "RIGHT", -8, 0)
             b.txt:SetJustifyH("LEFT")
+            b.txt:SetWordWrap(false)
             m.btns[i] = b
         end
+        b:SetSize(216, 22)
         b:ClearAllPoints()
-        b:SetPoint("TOPLEFT", m, "TOPLEFT", 8, -28 - ((i - 1) * 24))
+        b:SetPoint("TOPLEFT", m, "TOPLEFT", 8, yPos)
         b.txt:SetText(act.label)
         b.txt:SetTextColor(act.color[1], act.color[2], act.color[3], 1)
         SetPixelBackdrop(b, COLORS.BgElevated, COLORS.BorderSubtle, 1)
@@ -11123,9 +11545,25 @@ function DynamicPrep:ShowTalentRowContextMenu(anchorRow, entry)
         end)
         b:SetScript("OnClick", act.fn)
         b:Show()
+        yPos = yPos - 24
+        if act.divAfter then
+            divIdx = divIdx + 1
+            local d = m.secDivs[divIdx]
+            if not d then
+                d = m:CreateTexture(nil, "ARTWORK")
+                d:SetHeight(1)
+                m.secDivs[divIdx] = d
+            end
+            d:ClearAllPoints()
+            d:SetPoint("TOPLEFT", m, "TOPLEFT", 8, yPos - 2)
+            d:SetPoint("TOPRIGHT", m, "TOPRIGHT", -8, yPos - 2)
+            d:SetColorTexture(1, 1, 1, 0.08)
+            d:Show()
+            yPos = yPos - 6
+        end
     end
 
-    m:SetHeight(34 + (#actions * 24))
+    m:SetHeight(math.abs(yPos) + 6)
     m:ClearAllPoints()
     m:SetPoint("TOPLEFT", anchorRow, "TOPRIGHT", 6, 0)
     talentRowMenuCatcher:Show()
@@ -11191,7 +11629,7 @@ function DynamicPrep:RefreshTalentDock()
             if GameTooltip then
                 GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
                 GameTooltip:AddLine("Talent Binds", 1, 1, 1)
-                GameTooltip:AddLine("Bind saved builds to Raid Bosses and Mythic+ Dungeons.", 0.88, 0.91, 0.95, true)
+                GameTooltip:AddLine("Bind saved builds to Raid Bosses, Mythic+ Dungeons, or Zone Defaults.", 0.88, 0.91, 0.95, true)
                 GameTooltip:Show()
             end
         end)
@@ -11302,18 +11740,13 @@ function DynamicPrep:RefreshTalentDock()
                     sb:SetHeight(24)
                     sb:RegisterForClicks("LeftButtonUp", "RightButtonUp")
                     sb.icon = sb:CreateTexture(nil, "ARTWORK")
-                    sb.icon:SetSize(16, 16)
-                    sb.icon:SetPoint("LEFT", sb, "LEFT", 4, 0)
+                    sb.icon:SetSize(20, 20)
+                    sb.icon:SetPoint("CENTER", sb, "CENTER", 0, 0)
                     sb.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
                     sb.lootPip = sb:CreateTexture(nil, "OVERLAY")
                     sb.lootPip:SetSize(5, 5)
-                    sb.lootPip:SetPoint("TOPRIGHT", sb, "TOPRIGHT", -2, -2)
+                    sb.lootPip:SetPoint("TOPRIGHT", sb, "TOPRIGHT", -3, -3)
                     sb.lootPip:SetColorTexture(0.980, 0.800, 0.082, 1.0)
-                    sb.txt = CreateText(sb, "OVERLAY", "GameFontHighlightSmall")
-                    sb.txt:SetPoint("LEFT", sb.icon, "RIGHT", 3, 0)
-                    sb.txt:SetPoint("RIGHT", sb, "RIGHT", -3, 0)
-                    sb.txt:SetJustifyH("LEFT")
-                    sb.txt:SetWordWrap(false)
                     f.specBtns[sIdx] = sb
                 end
                 local isActiveSpec = (sIdx == curSpecIdx)
@@ -11321,11 +11754,11 @@ function DynamicPrep:RefreshTalentDock()
                 sb:SetWidth(btnW)
                 sb:ClearAllPoints()
                 sb:SetPoint("LEFT", f.specBar, "LEFT", 2 + ((sIdx - 1) * (btnW + 4)), 0)
+                sb.icon:SetSize(20, 20)
+                sb.icon:ClearAllPoints()
+                sb.icon:SetPoint("CENTER", sb, "CENTER", 0, 0)
                 sb.icon:SetTexture(sIcon or 134400)
-                local shortSpec = tostring(sName or ("Spec " .. sIdx))
-                if #shortSpec > 6 then shortSpec = shortSpec:sub(1, 5) .. "." end
-                sb.txt:SetText(shortSpec)
-                sb.txt:SetTextColor(isActiveSpec and 1 or 0.72, isActiveSpec and 1 or 0.78, isActiveSpec and 1 or 0.86, 1)
+                if sb.txt then sb.txt:Hide() end
                 sb.lootPip:SetShown(isLootTarget)
                 SetPixelBackdrop(sb, isActiveSpec and { ar * 0.42, ag * 0.42, ab * 0.42, 0.98 } or COLORS.BgElevated, isActiveSpec and { ar, ag, ab, 0.95 } or COLORS.BorderSubtle, 1)
                 sb:SetScript("OnClick", function(_, btn)
@@ -11375,7 +11808,7 @@ function DynamicPrep:RefreshTalentDock()
     local activeLibEntry = self:GetActiveTalentLibraryEntry(specID)
     local _, activeBarName = self:GetTalentLoadoutBarData()
 
-    -- Build lookup of bound Raid Bosses & M+ Dungeons per loadout name so left-hand rows display boss tags!
+    -- Build lookup of bound Raid Bosses, M+ Dungeons & Zone Defaults per loadout name
     local boundTagsByName = {}
     local boundFullByName = {}
     if specID and self.db then
@@ -11388,19 +11821,26 @@ function DynamicPrep:RefreshTalentDock()
                 end
             end
             table.sort(bList, function(a, b)
+                if (a.isAllRaid == true) ~= (b.isAllRaid == true) then return a.isAllRaid == true end
                 local oa, ob = tonumber(a.bossOrder) or 99, tonumber(b.bossOrder) or 99
                 if oa ~= ob then return oa < ob end
                 return tostring(a.bossName or "") < tostring(b.bossName or "")
             end)
             for _, rule in ipairs(bList) do
                 local key = tostring(rule.loadoutName):lower()
-                local numPfx = (tonumber(rule.bossOrder) and tonumber(rule.bossOrder) > 0) and ("#" .. tostring(rule.bossOrder) .. " ") or ""
-                local shortB = numPfx .. tostring(rule.bossName)
-                if not boundTagsByName[key] then
-                    boundTagsByName[key] = shortB
+                if rule.isAllRaid == true then
+                    if not boundTagsByName[key] then boundTagsByName[key] = "All Raids" end
+                    boundFullByName[key] = boundFullByName[key] or {}
+                    table.insert(boundFullByName[key], "Raid Default: All Raids")
+                else
+                    local numPfx = (tonumber(rule.bossOrder) and tonumber(rule.bossOrder) > 0) and ("#" .. tostring(rule.bossOrder) .. " ") or ""
+                    local shortB = numPfx .. tostring(rule.bossName)
+                    if not boundTagsByName[key] then
+                        boundTagsByName[key] = shortB
+                    end
+                    boundFullByName[key] = boundFullByName[key] or {}
+                    table.insert(boundFullByName[key], "Raid Boss: " .. shortB)
                 end
-                boundFullByName[key] = boundFullByName[key] or {}
-                table.insert(boundFullByName[key], "Raid Boss: " .. shortB)
             end
         end
         local dMap = self.db.talentDungeonMap and self.db.talentDungeonMap[specID]
@@ -11414,7 +11854,23 @@ function DynamicPrep:RefreshTalentDock()
                         boundTagsByName[key] = tagText
                     end
                     boundFullByName[key] = boundFullByName[key] or {}
-                    table.insert(boundFullByName[key], (isAllRule and "M+ Dungeons: " or "M+ Dungeon: ") .. tostring(rule.dungeonName))
+                    table.insert(boundFullByName[key], (isAllRule and "M+ Default: " or "M+ Dungeon: ") .. tostring(rule.dungeonName))
+                end
+            end
+        end
+        local zMap = self.db.talentZoneMap and self.db.talentZoneMap[specID]
+        if type(zMap) == "table" then
+            local zLabels = { all = "All Content", outdoor = "Outdoor", delves = "Delves", pvp = "PvP" }
+            for _, zKey in ipairs({ "all", "outdoor", "delves", "pvp" }) do
+                local rule = zMap[zKey]
+                if type(rule) == "table" and rule.loadoutName then
+                    local key = tostring(rule.loadoutName):lower()
+                    local tagText = zLabels[zKey] or zKey
+                    if not boundTagsByName[key] then
+                        boundTagsByName[key] = tagText
+                    end
+                    boundFullByName[key] = boundFullByName[key] or {}
+                    table.insert(boundFullByName[key], (zKey == "all" and "Global Default: " or "Zone Default: ") .. tagText)
                 end
             end
         end
@@ -11429,6 +11885,13 @@ function DynamicPrep:RefreshTalentDock()
             row.dot = row:CreateTexture(nil, "OVERLAY")
             row.dot:SetSize(6, 6)
             row.dot:SetPoint("LEFT", row, "LEFT", 7, 0)
+            row.editBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
+            row.editBtn:SetSize(34, 17)
+            row.editBtn:SetPoint("RIGHT", row, "RIGHT", -3, 0)
+            row.editBtn.txt = CreateText(row.editBtn, "OVERLAY", "GameFontHighlightSmall")
+            row.editBtn.txt:SetPoint("CENTER")
+            row.editBtn.txt:SetText("Edit")
+            row.editBtn:Hide()
             row.txt = CreateText(row, "OVERLAY", "GameFontHighlightSmall")
             row.txt:SetPoint("LEFT", row.dot, "RIGHT", 6, 0)
             row.txt:SetPoint("RIGHT", row, "RIGHT", -7, 0)
@@ -11442,6 +11905,12 @@ function DynamicPrep:RefreshTalentDock()
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", f.content, "TOPLEFT", 0, -((idx - 1) * 25))
         row.dot:SetColorTexture(isAct and 0.063 or 0.35, isAct and 0.725 or 0.42, isAct and 0.506 or 0.52, 1)
+        row.editBtn:Hide()
+        SetPixelBackdrop(row.editBtn, { 0.055, 0.063, 0.082, 0.96 }, { 0.25, 0.29, 0.38, 0.95 }, 1)
+        row.editBtn.txt:SetTextColor(0.84, 0.88, 0.95, 1)
+        row.txt:ClearAllPoints()
+        row.txt:SetPoint("LEFT", row.dot, "RIGHT", 6, 0)
+        row.txt:SetPoint("RIGHT", row, "RIGHT", -7, 0)
         local lKey = tostring(entry.name or ""):lower()
         local bTag = boundTagsByName[lKey]
         local bFull = boundFullByName[lKey]
@@ -11453,9 +11922,10 @@ function DynamicPrep:RefreshTalentDock()
         end
         row.txt:SetTextColor(isAct and 1 or 0.86, isAct and 1 or 0.90, isAct and 1 or 0.96, 1)
         SetPixelBackdrop(row, isAct and { 0.063 * 0.36, 0.725 * 0.36, 0.506 * 0.36, 0.98 } or COLORS.BgElevated, isAct and { 0.063, 0.725, 0.506, 0.98 } or COLORS.BorderSubtle, 1)
-        row:SetScript("OnEnter", function(s)
+
+        local function ShowRowTooltip(anchorTarget)
             if GameTooltip then
-                GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                GameTooltip:SetOwner(anchorTarget, "ANCHOR_RIGHT")
                 GameTooltip:AddLine(string.format("|cFF%s[%s]|r %s", gHex, grp, tostring(entry.name or "Loadout")) .. (isAct and "  |cFF34D399(Active)|r" or ""), 1, 1, 1)
                 if type(bFull) == "table" and #bFull > 0 then
                     for _, bl in ipairs(bFull) do
@@ -11464,12 +11934,56 @@ function DynamicPrep:RefreshTalentDock()
                 end
                 GameTooltip:AddLine(" ")
                 GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Switch to this Talent Loadout|r", 1, 1, 1)
-                GameTooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Edit, Rename, Group, Update or Delete|r", 1, 1, 1)
+                GameTooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Rename, Quick Assign, Update or Delete|r", 1, 1, 1)
                 GameTooltip:AddLine("|cFFFBBF24Shift + Right-Click:|r |cFFE2E8F0Quick Delete Loadout|r", 1, 1, 1)
                 GameTooltip:Show()
             end
+        end
+
+        local function SyncRowHoverLeave()
+            local overRow = MouseIsOver and MouseIsOver(row)
+            local overEdit = MouseIsOver and MouseIsOver(row.editBtn)
+            if not overRow and not overEdit then
+                row.editBtn:Hide()
+                row.txt:ClearAllPoints()
+                row.txt:SetPoint("LEFT", row.dot, "RIGHT", 6, 0)
+                row.txt:SetPoint("RIGHT", row, "RIGHT", -7, 0)
+                if GameTooltip then GameTooltip:Hide() end
+            end
+        end
+
+        row:SetScript("OnEnter", function(s)
+            row.editBtn:Show()
+            row.txt:ClearAllPoints()
+            row.txt:SetPoint("LEFT", row.dot, "RIGHT", 6, 0)
+            row.txt:SetPoint("RIGHT", row.editBtn, "LEFT", -4, 0)
+            ShowRowTooltip(s)
         end)
-        row:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+        row:SetScript("OnLeave", SyncRowHoverLeave)
+        row.editBtn:SetScript("OnEnter", function(eb)
+            local r, g, b = GetActiveAccentRGB()
+            SetPixelBackdrop(eb, { r * 0.42, g * 0.42, b * 0.42, 0.98 }, { r, g, b, 0.95 }, 1)
+            eb.txt:SetTextColor(1, 1, 1, 1)
+            eb:Show()
+            row.txt:ClearAllPoints()
+            row.txt:SetPoint("LEFT", row.dot, "RIGHT", 6, 0)
+            row.txt:SetPoint("RIGHT", eb, "LEFT", -4, 0)
+            if GameTooltip then
+                GameTooltip:SetOwner(eb, "ANCHOR_RIGHT")
+                GameTooltip:AddLine("Rename / Edit Build", 1, 1, 1)
+                GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open editor pre-filled with " .. tostring(entry.name or "Loadout") .. "|r", 1, 1, 1)
+                GameTooltip:Show()
+            end
+        end)
+        row.editBtn:SetScript("OnLeave", function(eb)
+            SetPixelBackdrop(eb, { 0.055, 0.063, 0.082, 0.96 }, { 0.25, 0.29, 0.38, 0.95 }, 1)
+            eb.txt:SetTextColor(0.84, 0.88, 0.95, 1)
+            SyncRowHoverLeave()
+        end)
+        row.editBtn:SetScript("OnClick", function()
+            DynamicPrep:HideTalentRowContextMenu()
+            DynamicPrep:OpenTalentManagerModal(1, entry)
+        end)
         row:SetScript("OnClick", function(s, btn)
             if btn == "RightButton" then
                 if IsShiftKeyDown and IsShiftKeyDown() then
@@ -11885,60 +12399,220 @@ function DynamicPrep:CheckBossTalentLoadout()
     self:CheckZoneTalentLoadout()
 end
 
-local function GetCurrentTierRaids()
-    local raids = {}
-    if type(EJ_GetNumTiers) ~= "function" or type(EJ_SelectTier) ~= "function"
-        or type(EJ_GetInstanceByIndex) ~= "function" or type(EJ_SelectInstance) ~= "function"
-        or type(EJ_GetEncounterInfoByIndex) ~= "function" then
-        return raids
-    end
-    local prevTier = (type(EJ_GetCurrentTier) == "function") and EJ_GetCurrentTier() or nil
-    local numTiers = EJ_GetNumTiers() or 0
-    local function ScanTier(tierIdx)
-        local found = {}
-        if not tierIdx or tierIdx < 1 then return found end
-        pcall(EJ_SelectTier, tierIdx)
-        local tierName = (type(EJ_GetTierInfo) == "function") and EJ_GetTierInfo(tierIdx) or nil
-        local tierLow = type(tierName) == "string" and tierName:lower() or ""
-        for i = 1, 20 do
-            local okI, instID, instName = pcall(EJ_GetInstanceByIndex, i, true)
-            if not okI or not instID then break end
-            if type(instName) == "string" and instName ~= "" then
-                -- Exclude World Boss hubs (whose name equals the tier name, contains "world", or has dungeonAreaMapID == 0)
-                local instLow = instName:lower()
-                local isWorldBossHub = (tierLow ~= "" and instLow == tierLow) or (instLow:find("world", 1, true) ~= nil)
-                if not isWorldBossHub and type(EJ_GetInstanceInfo) == "function" then
-                    local okInfo, _, _, _, _, _, _, dungeonAreaMapID = pcall(EJ_GetInstanceInfo, instID)
-                    if okInfo and (dungeonAreaMapID == nil or dungeonAreaMapID == 0) then
-                        isWorldBossHub = true
+do
+    DynamicPrep.MIDNIGHT_S2_RAIDS = {
+        {
+            id    = -1001,
+            name  = "The Venomous Abyss",
+            short = "Venomous Abyss",
+            bosses = {
+                { order = 1, id = -101, name = "Nek'zali the Soulcoiler", short = "1. Nek'zali",    aliases = { "nek'zali" } },
+                { order = 2, id = -102, name = "Entombed Sentinels",      short = "2. Sentinels",   aliases = { "breath of ula'tek", "blood of ula'tek", "entombed sentinel" } },
+                { order = 3, id = -103, name = "The Lost Explorers",      short = "3. Explorers",   aliases = { "gebbo", "trader gebbo", "iku", "epu", "scrollsage iku", "scrollsage epu", "nama", "nema", "first mate nama", "first mate nema", "mor'zahi", "lost explorer" } },
+                { order = 4, id = -104, name = "Vashnik the Malignant",   short = "4. Vashnik",     aliases = { "vashnik" } },
+                { order = 5, id = -105, name = "Sszorak",                 short = "5. Sszorak",     aliases = { "sszorak" } },
+                { order = 6, id = -106, name = "The Twin Fangs",          short = "6. Twin Fangs",  aliases = { "vexhul", "ithraz", "twin fang" } },
+                { order = 7, id = -107, name = "The Coiled Altar",        short = "7. Coiled Altar",aliases = { "coiled altar" } },
+                { order = 8, id = -108, name = "Ula'tek",                 short = "8. Ula'tek",     aliases = {} },
+            },
+        },
+        {
+            id    = -1002,
+            name  = "The Unbinding of Kith'ix",
+            short = "Kith'ix",
+            bosses = {
+                { order = 1, id = -201, name = "Kith'ix",                 short = "1. Kith'ix",     aliases = { "kith'ix" } },
+            },
+        },
+        {
+            id    = -1003,
+            name  = "The Tidebound Grotto",
+            short = "Tidebound Grotto",
+            bosses = {
+                { order = 1, id = -301, name = "Nymrissa Wavecaller",     short = "1. Nymrissa",    aliases = { "nymrissa" } },
+            },
+        },
+    }
+
+    local function CloneSeason2Baseline()
+        local out = {}
+        for _, r in ipairs(DynamicPrep.MIDNIGHT_S2_RAIDS) do
+            local rCopy = { id = r.id, name = r.name, short = r.short, bosses = {} }
+            for _, b in ipairs(r.bosses) do
+                local al = {}
+                if type(b.aliases) == "table" then
+                    for _, a in ipairs(b.aliases) do
+                        table.insert(al, tostring(a):lower())
                     end
                 end
-                if not isWorldBossHub then
-                    pcall(EJ_SelectInstance, instID)
-                    local bosses = {}
-                    for j = 1, 30 do
-                        local okB, bName, _, encID = pcall(EJ_GetEncounterInfoByIndex, j, instID)
-                        if not okB or not bName then break end
-                        if type(bName) == "string" and bName ~= "" then
-                            table.insert(bosses, { name = bName, id = encID or j, order = j })
+                table.insert(rCopy.bosses, {
+                    order   = b.order,
+                    id      = b.id,
+                    name    = b.name,
+                    short   = b.short,
+                    aliases = al,
+                })
+            end
+            table.insert(out, rCopy)
+        end
+        return out
+    end
+
+    local function AddAliasUnique(bObj, aliasStr)
+        if type(aliasStr) ~= "string" or _IsSecret(aliasStr) or aliasStr == "" then return end
+        local low = strtrim(aliasStr):lower()
+        if low == "" then return end
+        bObj.aliases = bObj.aliases or {}
+        for _, ex in ipairs(bObj.aliases) do
+            if ex == low then return end
+        end
+        table.insert(bObj.aliases, low)
+    end
+
+    local function TryEnrichWithEJ(raids)
+        if IsPlayerInCombat() then return false end
+        if type(EJ_GetNumTiers) ~= "function" or type(EJ_SelectTier) ~= "function"
+            or type(EJ_GetInstanceByIndex) ~= "function" or type(EJ_SelectInstance) ~= "function"
+            or type(EJ_GetEncounterInfoByIndex) ~= "function" then
+            return false
+        end
+        local prevTier = (type(EJ_GetCurrentTier) == "function") and EJ_GetCurrentTier() or nil
+        local numTiers = EJ_GetNumTiers() or 0
+        if numTiers <= 0 then return false end
+
+        local enriched = false
+        local function ScanTier(tierIdx)
+            if not tierIdx or tierIdx < 1 then return false end
+            local matchedAny = false
+            pcall(EJ_SelectTier, tierIdx)
+            for i = 1, 20 do
+                local okI, instID, instName = pcall(EJ_GetInstanceByIndex, i, true)
+                if not okI or not instID then break end
+                if type(instName) == "string" and not _IsSecret(instName) and instName ~= "" then
+                    local instLow = instName:lower()
+                    local targetRaid = nil
+                    for _, rObj in ipairs(raids) do
+                        local rLow = rObj.name:lower()
+                        local sLow = (rObj.short or ""):lower()
+                        if instLow == rLow or (sLow ~= "" and instLow:find(sLow, 1, true)) then
+                            targetRaid = rObj
+                            break
                         end
                     end
-                    if #bosses > 0 then
-                        table.insert(found, { id = instID, name = instName, bosses = bosses })
+                    if targetRaid then
+                        matchedAny = true
+                        targetRaid.id = instID
+                        pcall(EJ_SelectInstance, instID)
+                        for j = 1, 30 do
+                            local okB, bName, _, encID = pcall(EJ_GetEncounterInfoByIndex, j, instID)
+                            if not okB or not bName then break end
+                            if type(bName) == "string" and not _IsSecret(bName) and bName ~= "" then
+                                local bLow = bName:lower()
+                                local targetBoss = nil
+                                for _, bObj in ipairs(targetRaid.bosses) do
+                                    if bObj.name:lower() == bLow then
+                                        targetBoss = bObj
+                                        break
+                                    end
+                                end
+                                if not targetBoss and targetRaid.bosses[j] then
+                                    targetBoss = targetRaid.bosses[j]
+                                end
+                                if targetBoss then
+                                    if encID then targetBoss.id = encID end
+                                    AddAliasUnique(targetBoss, bName)
+                                    if encID and type(_G.EJ_GetCreatureInfo) == "function" then
+                                        for cIdx = 1, 6 do
+                                            local okC, _, cName = pcall(_G.EJ_GetCreatureInfo, cIdx, encID)
+                                            if not okC or not cName then break end
+                                            AddAliasUnique(targetBoss, cName)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            return matchedAny
+        end
+
+        enriched = ScanTier(numTiers)
+        if not enriched and numTiers > 1 then
+            enriched = ScanTier(numTiers - 1)
+        end
+        if prevTier and prevTier >= 1 then
+            pcall(EJ_SelectTier, prevTier)
+        end
+        return enriched
+    end
+
+    function DynamicPrep:GetSeason2Raids(forceRefresh)
+        if not forceRefresh and type(self._cachedTierRaids) == "table" and #self._cachedTierRaids > 0 then
+            if not self._ejEnriched and not IsPlayerInCombat() then
+                if TryEnrichWithEJ(self._cachedTierRaids) then
+                    self._ejEnriched = true
+                end
+            end
+            return self._cachedTierRaids
+        end
+        local raids = CloneSeason2Baseline()
+        self._ejEnriched = TryEnrichWithEJ(raids) and true or false
+        self._cachedTierRaids = raids
+        return raids
+    end
+
+    function DynamicPrep:MatchBossTargetName(targetName, raidsList)
+        if type(targetName) ~= "string" or _IsSecret(targetName) or targetName == "" then
+            return nil
+        end
+        local lowT = strtrim(targetName):lower()
+        if lowT == "" then return nil end
+        local raids = raidsList or self:GetSeason2Raids()
+
+        -- Pass 1: Exact encounter/boss name match
+        for rIdx, rObj in ipairs(raids) do
+            for bIdx, bObj in ipairs(rObj.bosses or {}) do
+                if tostring(bObj.name or ""):lower() == lowT then
+                    return rIdx, bIdx, rObj, bObj
+                end
+            end
+        end
+        -- Pass 2: Exact alias / council-boss member match (e.g. Breath of Ula'tek -> #2 Entombed Sentinels)
+        for rIdx, rObj in ipairs(raids) do
+            for bIdx, bObj in ipairs(rObj.bosses or {}) do
+                for _, alias in ipairs(bObj.aliases or {}) do
+                    if alias == lowT then
+                        return rIdx, bIdx, rObj, bObj
                     end
                 end
             end
         end
-        return found
+        -- Pass 3: Alias substring match
+        for rIdx, rObj in ipairs(raids) do
+            for bIdx, bObj in ipairs(rObj.bosses or {}) do
+                for _, alias in ipairs(bObj.aliases or {}) do
+                    if #alias >= 3 and (lowT:find(alias, 1, true) or alias:find(lowT, 1, true)) then
+                        return rIdx, bIdx, rObj, bObj
+                    end
+                end
+            end
+        end
+        -- Pass 4: Boss name substring match
+        for rIdx, rObj in ipairs(raids) do
+            for bIdx, bObj in ipairs(rObj.bosses or {}) do
+                local bLow = tostring(bObj.name or ""):lower()
+                if #bLow >= 4 and (lowT:find(bLow, 1, true) or bLow:find(lowT, 1, true)) then
+                    return rIdx, bIdx, rObj, bObj
+                end
+            end
+        end
+        return nil
     end
-    raids = ScanTier(numTiers)
-    if #raids == 0 and numTiers > 1 then
-        raids = ScanTier(numTiers - 1)
-    end
-    if prevTier and prevTier >= 1 then
-        pcall(EJ_SelectTier, prevTier)
-    end
-    return raids
+end
+
+local function GetCurrentTierRaids()
+    return DynamicPrep:GetSeason2Raids()
 end
 
 local function GetCurrentSeasonMythicPlusDungeons()
@@ -12021,11 +12695,12 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
 
     if not talentMgrModal then
         local f = CreateFrame("Frame", "DynamicPrepTalentManagerModal", UIParent, "BackdropTemplate")
-        f:SetSize(580, 356)
+        f:SetSize(620, 356)
         f:SetPoint("CENTER")
         f:SetFrameStrata("DIALOG")
         f:SetMovable(true)
         f:EnableMouse(true)
+        f:SetClampedToScreen(true)
         f:RegisterForDrag("LeftButton")
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
@@ -12033,6 +12708,24 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         if _G.UISpecialFrames then
             table.insert(_G.UISpecialFrames, "DynamicPrepTalentManagerModal")
         end
+
+        f.state = {
+            subMode          = "RAID",
+            selRaidIdx       = 1,
+            selBossIdx       = 1,
+            selAllRaidBosses = false,
+            selBossSet       = {},
+            customTargetBoss = nil,
+            diffState        = { normal = true, heroic = true, mythic = true },
+            selKeyTier       = "ANY",
+            selAllDungeons   = false,
+            selDungeonSet    = {},
+            selAllZones      = false,
+            selZoneSet       = { delves = true },
+            pickedIdx        = 1,
+            ejRaids          = {},
+            mplusDungeons    = {},
+        }
 
         -- Top #040506 Header Bar (DESIGN_SYSTEM.md)
         local hdrBar = CreateFrame("Frame", nil, f, "BackdropTemplate")
@@ -12089,18 +12782,18 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         f.activeTab = 1
         f.editingEntry = nil
         local tab1Btn = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
-        tab1Btn:SetSize(270, 26)
+        tab1Btn:SetSize(290, 26)
         tab1Btn:SetPoint("LEFT", tabBar, "LEFT", 4, 0)
         tab1Btn.txt = CreateText(tab1Btn, "OVERLAY", "GameFontHighlightSmall")
         tab1Btn.txt:SetPoint("CENTER")
         tab1Btn.txt:SetText("1. Save / Edit / Import")
 
         local tab2Btn = CreateFrame("Button", nil, tabBar, "BackdropTemplate")
-        tab2Btn:SetSize(270, 26)
+        tab2Btn:SetSize(290, 26)
         tab2Btn:SetPoint("RIGHT", tabBar, "RIGHT", -4, 0)
         tab2Btn.txt = CreateText(tab2Btn, "OVERLAY", "GameFontHighlightSmall")
         tab2Btn.txt:SetPoint("CENTER")
-        tab2Btn.txt:SetText("2. Raid & M+ Reminders")
+        tab2Btn.txt:SetText("2. Talent Binds & Defaults")
 
         -- =====================================================================
         -- PAGE 1: SAVE / EDIT / IMPORT LOADOUT (2 Clean DESIGN_SYSTEM Cards)
@@ -12119,14 +12812,14 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         local c1Hdr = CreateModalSectionHeader(c1, "|cFFFFFFFFLOADOUT IDENTITY & CATEGORY|r", "Name your build and choose its Left Rail pillar group", -10)
 
         local nameEB = CreateFrame("EditBox", nil, c1, "BackdropTemplate")
-        nameEB:SetSize(216, 26)
+        nameEB:SetSize(256, 26)
         nameEB:SetPoint("TOPLEFT", c1, "TOPLEFT", 12, -54)
         nameEB:SetAutoFocus(false)
         nameEB:SetFontObject("GameFontHighlightSmall")
         nameEB:SetTextInsets(8, 8, 0, 0)
         SetPixelBackdrop(nameEB, INPUT_BG, COLORS.BorderSubtle, 1)
         nameEB:SetText("New Raid Build")
-        nameEB:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+        f.nameEB = nameEB
 
         local selGroup = "Raid"
         local grpBtns = {}
@@ -12168,7 +12861,6 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         strEB:SetFontObject("GameFontHighlightSmall")
         strEB:SetTextInsets(8, 8, 0, 0)
         SetPixelBackdrop(strEB, INPUT_BG, COLORS.BorderSubtle, 1)
-        strEB:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
 
         local valStatus = CreateText(c2, "OVERLAY", "GameFontHighlightSmall")
         valStatus:SetPoint("TOPLEFT", strEB, "BOTTOMLEFT", 2, -6)
@@ -12194,7 +12886,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
 
         -- Bottom Action Row inside Card 2 (Zero overlap!)
         local useCurBtn = CreateFrame("Button", nil, c2, "BackdropTemplate")
-        useCurBtn:SetSize(122, 26)
+        useCurBtn:SetSize(124, 26)
         useCurBtn:SetPoint("BOTTOMLEFT", c2, "BOTTOMLEFT", 12, 12)
         SetPixelBackdrop(useCurBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
         useCurBtn.txt = CreateText(useCurBtn, "OVERLAY", "GameFontHighlightSmall")
@@ -12206,7 +12898,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         end)
 
         local clearStrBtn = CreateFrame("Button", nil, c2, "BackdropTemplate")
-        clearStrBtn:SetSize(84, 26)
+        clearStrBtn:SetSize(82, 26)
         clearStrBtn:SetPoint("LEFT", useCurBtn, "RIGHT", 6, 0)
         SetPixelBackdrop(clearStrBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
         clearStrBtn.txt = CreateText(clearStrBtn, "OVERLAY", "GameFontHighlightSmall")
@@ -12270,6 +12962,10 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 strEB:SetText(tostring(entry.importString or ""))
                 saveImpBtn.txt:SetText("Save Changes")
                 cancelEditBtn:Show()
+                if self:IsShown() then
+                    nameEB:SetFocus()
+                    nameEB:HighlightText()
+                end
             else
                 c1Hdr.titleFS:SetText("|cFFFFFFFFLOADOUT IDENTITY & CATEGORY|r")
                 c1Hdr.subFS:SetText("|cFF94A3B8Name your build and choose its Left Rail pillar group|r")
@@ -12285,9 +12981,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             ValidateStringBox()
         end
 
-        cancelEditBtn:SetScript("OnClick", function() f:LoadEditorEntry(nil) end)
-
-        saveImpBtn:SetScript("OnClick", function()
+        local function CommitLoadoutEditor()
             local ok, msg
             if f.editingEntry then
                 ok, msg = DynamicPrep:UpdateTalentLibraryEntry(f.editingEntry, nameEB:GetText(), selGroup, strEB:GetText())
@@ -12297,11 +12991,29 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             if ok then
                 f:LoadEditorEntry(nil)
                 valStatus:SetText("|cFF10B981" .. tostring(msg) .. "|r")
-                f:RefreshBossList()
+                if f.RefreshBossList then f:RefreshBossList() end
             else
                 valStatus:SetText("|cFFF43F5E" .. tostring(msg) .. "|r")
             end
+        end
+
+        local function CancelOrBlurEditor(box)
+            if box and box.ClearFocus then box:ClearFocus() end
+            if f.editingEntry then
+                f:LoadEditorEntry(nil)
+                valStatus:SetText("|cFF94A3B8Edit cancelled.|r")
+            end
+        end
+
+        nameEB:SetScript("OnEnterPressed", function(s) s:ClearFocus(); CommitLoadoutEditor() end)
+        nameEB:SetScript("OnEscapePressed", CancelOrBlurEditor)
+        strEB:SetScript("OnEnterPressed", function(s) s:ClearFocus(); CommitLoadoutEditor() end)
+        strEB:SetScript("OnEscapePressed", CancelOrBlurEditor)
+        cancelEditBtn:SetScript("OnClick", function()
+            f:LoadEditorEntry(nil)
+            valStatus:SetText("|cFF94A3B8Edit cancelled.|r")
         end)
+        saveImpBtn:SetScript("OnClick", CommitLoadoutEditor)
 
         local renameBtn = CreateFrame("Button", nil, p1, "BackdropTemplate")
         renameBtn:SetSize(290, 26)
@@ -12322,13 +13034,12 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         f.renameLegacyBtn = renameBtn
 
         -- =====================================================================
-        -- PAGE 2: PRE-RAID BOSS (N/H/M) & PRE-KEYSTONE M+ PLANNER
+        -- PAGE 2: TALENT BINDS & DEFAULTS (RAID BOSSES / M+ DUNGEONS / ZONES)
         -- =====================================================================
         local p2 = CreateFrame("Frame", nil, f)
         p2:SetPoint("TOPLEFT", tabBar, "BOTTOMLEFT", 0, -10)
         p2:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -14, 14)
 
-        local subMode = "RAID" -- "RAID" or "MPLUS"
         local subBar = CreateFrame("Frame", nil, p2, "BackdropTemplate")
         subBar:SetHeight(30)
         subBar:SetPoint("TOPLEFT", p2, "TOPLEFT", 0, 0)
@@ -12336,43 +13047,65 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         SetPixelBackdrop(subBar, TAB_BG, CARD_BDR, 1)
 
         local modeRaidBtn = CreateFrame("Button", nil, subBar, "BackdropTemplate")
-        modeRaidBtn:SetSize(270, 22)
+        modeRaidBtn:SetSize(192, 22)
         modeRaidBtn:SetPoint("LEFT", subBar, "LEFT", 4, 0)
         modeRaidBtn.txt = CreateText(modeRaidBtn, "OVERLAY", "GameFontHighlightSmall")
         modeRaidBtn.txt:SetPoint("CENTER")
-        modeRaidBtn.txt:SetText("Raid Bosses (LFR / Normal, Heroic, Mythic)")
+        modeRaidBtn.txt:SetText("Raid Bosses")
 
         local modeMPlusBtn = CreateFrame("Button", nil, subBar, "BackdropTemplate")
-        modeMPlusBtn:SetSize(270, 22)
-        modeMPlusBtn:SetPoint("RIGHT", subBar, "RIGHT", -4, 0)
+        modeMPlusBtn:SetSize(192, 22)
+        modeMPlusBtn:SetPoint("LEFT", modeRaidBtn, "RIGHT", 4, 0)
         modeMPlusBtn.txt = CreateText(modeMPlusBtn, "OVERLAY", "GameFontHighlightSmall")
         modeMPlusBtn.txt:SetPoint("CENTER")
-        modeMPlusBtn.txt:SetText("M+ Dungeons  (Pre-Keystone Level Tier)")
+        modeMPlusBtn.txt:SetText("M+ Dungeons")
+
+        local modeZoneBtn = CreateFrame("Button", nil, subBar, "BackdropTemplate")
+        modeZoneBtn:SetSize(192, 22)
+        modeZoneBtn:SetPoint("LEFT", modeMPlusBtn, "RIGHT", 4, 0)
+        modeZoneBtn.txt = CreateText(modeZoneBtn, "OVERLAY", "GameFontHighlightSmall")
+        modeZoneBtn.txt:SetPoint("CENTER")
+        modeZoneBtn.txt:SetText("Zone Defaults")
 
         -- Binder Card
         local bCard = CreateFrame("Frame", nil, p2, "BackdropTemplate")
-        bCard:SetHeight(148)
+        bCard:SetHeight(236)
         bCard:SetPoint("TOPLEFT", subBar, "BOTTOMLEFT", 0, -8)
         bCard:SetPoint("TOPRIGHT", subBar, "BOTTOMRIGHT", 0, -8)
         SetPixelBackdrop(bCard, CARD_BG, CARD_BDR, 1)
+        f.bCard = bCard
 
-        local bHdr = CreateModalSectionHeader(bCard, "|cFFFFFFFFRAID BOSS TALENT BINDS|r", "Select any current-tier raid & boss -- choose LFR / Normal, Heroic, or Mythic", -10)
+        local bHdr = CreateModalSectionHeader(bCard, "|cFFFFFFFFRAID BOSS TALENT BINDS|r", "Pick a Season 2 raid & boss (or All Raids) and choose difficulties below", -10)
+        f.bHdr = bHdr
 
-        -- Cached EJ / M+ state
-        local ejRaids = {}
-        local mplusDungeons = {}
-        local selRaidIdx, selBossIdx = 1, 1
-        local selAllDungeons = false
-        local selDungeonSet = {}
-        local customTargetBoss = nil
-        local diffState = { normal = true, heroic = true, mythic = true }
-        local selKeyTier = "ANY" -- "ANY", "LOW", "HIGH"
-        local pickedIdx = 1
+        local testToastBtn = CreateFrame("Button", nil, bCard, "BackdropTemplate")
+        testToastBtn:SetSize(116, 20)
+        testToastBtn:SetPoint("TOPRIGHT", bCard, "TOPRIGHT", -12, -14)
+        SetPixelBackdrop(testToastBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+        testToastBtn.txt = CreateText(testToastBtn, "OVERLAY", "GameFontHighlightSmall")
+        testToastBtn.txt:SetPoint("CENTER")
+        testToastBtn.txt:SetText("Test Alert Toast")
+        testToastBtn:SetScript("OnClick", function()
+            local list = DynamicPrep:GetSortedTalentProfiles()
+            local sample = list[f.state.pickedIdx] or { name = "Raid ST", group = "Raid" }
+            DynamicPrep:ShowTalentReminderToast(sample, sample.name, "Preview Reminder")
+        end)
+
+        -- Clamp header title & subtitle cleanly left of Test Alert Toast (never overlaps)
+        bHdr.titleFS:ClearAllPoints()
+        bHdr.titleFS:SetPoint("TOPLEFT", bHdr.bar, "TOPRIGHT", 8, -1)
+        bHdr.titleFS:SetPoint("RIGHT", testToastBtn, "LEFT", -10, 0)
+        bHdr.subFS:ClearAllPoints()
+        bHdr.subFS:SetPoint("TOPLEFT", bHdr.titleFS, "BOTTOMLEFT", 0, -2)
+        bHdr.subFS:SetPoint("RIGHT", testToastBtn, "LEFT", -10, 0)
 
         -- RAID MODE CONTROLS
         local raidGrp = CreateFrame("Frame", nil, bCard)
         raidGrp:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -50)
         raidGrp:SetPoint("BOTTOMRIGHT", bCard, "BOTTOMRIGHT", -12, 8)
+        raidGrp.raidPillBtns = {}
+        raidGrp.bossGridBtns = {}
+        f.raidGrp = raidGrp
 
         local ICON_CHEV_DOWN = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga"
         local ICON_CHEV_UP   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_up.tga"
@@ -12402,36 +13135,69 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             end)
         end
 
-        local raidPickBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
-        raidPickBtn:SetSize(214, 26)
-        raidPickBtn:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 0, 0)
-        raidPickBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        StyleDropdownTrigger(raidPickBtn)
-
-        local bossPickBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
-        bossPickBtn:SetSize(230, 26)
-        bossPickBtn:SetPoint("LEFT", raidPickBtn, "RIGHT", 6, 0)
-        bossPickBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        StyleDropdownTrigger(bossPickBtn)
-
         local tgtBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
-        tgtBtn:SetSize(72, 26)
-        tgtBtn:SetPoint("LEFT", bossPickBtn, "RIGHT", 6, 0)
+        tgtBtn:SetSize(86, 24)
+        tgtBtn:SetPoint("TOPRIGHT", raidGrp, "TOPRIGHT", 0, 0)
         SetPixelBackdrop(tgtBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
         tgtBtn.txt = CreateText(tgtBtn, "OVERLAY", "GameFontHighlightSmall")
         tgtBtn.txt:SetPoint("CENTER")
         tgtBtn.txt:SetText("Target")
+        tgtBtn:SetScript("OnEnter", function(s)
+            local r, g, b = GetActiveAccentRGB()
+            SetPixelBackdrop(s, { r * 0.24, g * 0.24, b * 0.24, 0.98 }, { r, g, b, 0.92 }, 1)
+            if GameTooltip then
+                GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                GameTooltip:AddLine("Match Current Target", 1, 1, 1)
+                GameTooltip:AddLine("|cFFE2E8F0Reads your current target safely, matches Season 2 raids (including council bosses), or sets a dismissible custom target.|r", 1, 1, 1, true)
+                GameTooltip:Show()
+            end
+        end)
+        tgtBtn:SetScript("OnLeave", function(s)
+            SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+            if GameTooltip then GameTooltip:Hide() end
+        end)
+
+        local allRaidBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
+        allRaidBtn:SetSize(66, 56)
+        allRaidBtn:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 0, -30)
+        allRaidBtn.txt = CreateText(allRaidBtn, "OVERLAY", "GameFontHighlightSmall")
+        allRaidBtn.txt:SetPoint("CENTER")
+        allRaidBtn.txt:SetWidth(58)
+        allRaidBtn.txt:SetJustifyH("CENTER")
+        allRaidBtn.txt:SetText("All\nRaids")
+        raidGrp.allRaidBtn = allRaidBtn
+
+        -- Dismissible Custom Target Chip (Row 3 inside raidGrp, shown only when customTargetBoss active)
+        local customChip = CreateFrame("Frame", nil, raidGrp, "BackdropTemplate")
+        customChip:SetHeight(20)
+        customChip:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 0, -90)
+        customChip:SetPoint("TOPRIGHT", raidGrp, "TOPRIGHT", 0, -90)
+        SetPixelBackdrop(customChip, { 0.16, 0.12, 0.04, 0.92 }, { 0.984, 0.749, 0.141, 0.78 }, 1)
+        customChip.txt = CreateText(customChip, "OVERLAY", "GameFontHighlightSmall")
+        customChip.txt:SetPoint("LEFT", customChip, "LEFT", 8, 0)
+        customChip.txt:SetPoint("RIGHT", customChip, "RIGHT", -28, 0)
+        customChip.txt:SetJustifyH("LEFT")
+        customChip.txt:SetWordWrap(false)
+        customChip.clearBtn = CreateFrame("Button", nil, customChip)
+        customChip.clearBtn:SetSize(22, 20)
+        customChip.clearBtn:SetPoint("RIGHT", customChip, "RIGHT", -2, 0)
+        customChip.clearBtn.txt = CreateText(customChip.clearBtn, "OVERLAY", "GameFontHighlightSmall")
+        customChip.clearBtn.txt:SetPoint("CENTER")
+        customChip.clearBtn.txt:SetText("|cFFF43F5Ex|r")
+        customChip:Hide()
+        raidGrp.customChip = customChip
 
         -- Multi-select Difficulty Pills (LFR / Normal, Heroic, Mythic)
         local diffDefs = {
-            { key = "normal", label = "LFR / Normal", w = 82, x = 0,   r = 0.063, g = 0.725, b = 0.506 },
-            { key = "heroic", label = "Heroic",       w = 58, x = 86,  r = 0.220, g = 0.741, b = 0.973 },
-            { key = "mythic", label = "Mythic",       w = 58, x = 148, r = 0.957, g = 0.247, b = 0.369 },
+            { key = "normal", label = "LFR / Normal", w = 88, x = 0,   r = 0.063, g = 0.725, b = 0.506 },
+            { key = "heroic", label = "Heroic",       w = 60, x = 92,  r = 0.220, g = 0.741, b = 0.973 },
+            { key = "mythic", label = "Mythic",       w = 60, x = 156, r = 0.957, g = 0.247, b = 0.369 },
         }
         local diffBtns = {}
         local function StyleDiffBtns()
+            local ds = f.state.diffState
             for _, db in ipairs(diffBtns) do
-                local on = (diffState[db.dKey] == true)
+                local on = (ds[db.dKey] == true)
                 SetPixelBackdrop(db, on and { db.dr * 0.35, db.dg * 0.35, db.db * 0.35, 1.00 } or COLORS.BgElevated, on and { db.dr, db.dg, db.db, 0.95 } or COLORS.BorderSubtle, 1)
                 db.txt:SetTextColor(on and 1 or 0.55, on and 1 or 0.62, on and 1 or 0.70, 1)
             end
@@ -12439,20 +13205,20 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         for _, dd in ipairs(diffDefs) do
             local db = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
             db:SetSize(dd.w, 26)
-            db:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", dd.x, -34)
+            db:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", dd.x, -114)
             db.dKey = dd.key; db.dr = dd.r; db.dg = dd.g; db.db = dd.b
             db.txt = CreateText(db, "OVERLAY", "GameFontHighlightSmall")
             db.txt:SetPoint("CENTER")
             db.txt:SetText(dd.label)
             db:SetScript("OnClick", function(s)
-                local nextVal = not diffState[s.dKey]
-                -- Ensure at least one difficulty remains selected
+                local ds = f.state.diffState
+                local nextVal = not ds[s.dKey]
                 if not nextVal then
                     local others = 0
-                    for k, v in pairs(diffState) do if k ~= s.dKey and v then others = others + 1 end end
+                    for k, v in pairs(ds) do if k ~= s.dKey and v then others = others + 1 end end
                     if others == 0 then return end
                 end
-                diffState[s.dKey] = nextVal
+                ds[s.dKey] = nextVal
                 StyleDiffBtns()
             end)
             table.insert(diffBtns, db)
@@ -12460,80 +13226,70 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         StyleDiffBtns()
 
         local raidBuildBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
-        raidBuildBtn:SetSize(222, 26)
-        raidBuildBtn:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 212, -34)
+        raidBuildBtn:SetSize(244, 26)
+        raidBuildBtn:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 222, -114)
         raidBuildBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         StyleDropdownTrigger(raidBuildBtn)
 
         local raidBindBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
-        raidBindBtn:SetSize(88, 26)
+        raidBindBtn:SetSize(96, 26)
         raidBindBtn:SetPoint("LEFT", raidBuildBtn, "RIGHT", 6, 0)
         SetPixelBackdrop(raidBindBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
         raidBindBtn.txt = CreateText(raidBindBtn, "OVERLAY", "GameFontHighlightSmall")
         raidBindBtn.txt:SetPoint("CENTER")
-        raidBindBtn.txt:SetText("+ Bind Boss")
+        raidBindBtn.txt:SetText("+ Bind Raid")
 
         local raidTip = CreateText(raidGrp, "OVERLAY", "GameFontHighlightSmall")
-        raidTip:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 2, -68)
-        raidTip:SetPoint("TOPRIGHT", raidGrp, "TOPRIGHT", -2, -68)
+        raidTip:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 2, -146)
+        raidTip:SetPoint("TOPRIGHT", raidGrp, "TOPRIGHT", -2, -146)
+        raidTip:SetHeight(28)
         raidTip:SetJustifyH("LEFT")
-        raidTip:SetText("|cFF64748BClick Raid, Boss, or Build to pick from the dropdown. Toggle LFR / Normal, Heroic, or Mythic in any combination.|r")
+        raidTip:SetWordWrap(true)
+        raidTip:SetText("|cFF64748BPick a raid and toggle bosses (or All Raids), choose difficulties and a build, then click + Bind Raid.|r")
+        raidGrp.raidTip = raidTip
 
         -- M+ MODE CONTROLS
         local mplusGrp = CreateFrame("Frame", nil, bCard)
         mplusGrp:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -50)
         mplusGrp:SetPoint("BOTTOMRIGHT", bCard, "BOTTOMRIGHT", -12, 8)
         mplusGrp:Hide()
-
-        local dungPickBtn = CreateFrame("Button", nil, mplusGrp, "BackdropTemplate")
-        dungPickBtn:SetHeight(26)
-        dungPickBtn:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 0, 0)
-        dungPickBtn:SetPoint("TOPRIGHT", mplusGrp, "TOPRIGHT", 0, 0)
-        dungPickBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-        SetPixelBackdrop(dungPickBtn, INPUT_BG, COLORS.BorderSubtle, 1)
-        dungPickBtn.txt = CreateText(dungPickBtn, "OVERLAY", "GameFontHighlightSmall")
-        dungPickBtn.txt:SetPoint("LEFT", dungPickBtn, "LEFT", 8, 0)
-        dungPickBtn.txt:SetPoint("RIGHT", dungPickBtn, "RIGHT", -8, 0)
-        dungPickBtn.txt:SetJustifyH("LEFT")
-        dungPickBtn.txt:SetWordWrap(false)
+        f.mplusGrp = mplusGrp
 
         local tierDefs = {
-            { key = "ANY",  label = "Any Key", w = 72 },
-            { key = "LOW",  label = "+2 - 9",  w = 64 },
-            { key = "HIGH", label = "+10+",    w = 60 },
+            { key = "ANY",  label = "Any Key", w = 72, x = 0   },
+            { key = "LOW",  label = "+2 - 9",  w = 66, x = 77  },
+            { key = "HIGH", label = "+10+",    w = 62, x = 148 },
         }
         local tierBtns = {}
         local function StyleTierBtns()
             local r, g, b = GetActiveAccentRGB()
             for _, tb in ipairs(tierBtns) do
-                local on = (selKeyTier == tb.tKey)
+                local on = (f.state.selKeyTier == tb.tKey)
                 SetPixelBackdrop(tb, on and { r * 0.40, g * 0.40, b * 0.40, 1.00 } or COLORS.BgElevated, on and { r, g, b, 0.95 } or COLORS.BorderSubtle, 1)
                 tb.txt:SetTextColor(on and 1 or 0.72, on and 1 or 0.78, on and 1 or 0.86, 1)
             end
         end
-        local tx = 0
         for _, td in ipairs(tierDefs) do
             local tb = CreateFrame("Button", nil, mplusGrp, "BackdropTemplate")
             tb:SetSize(td.w, 26)
-            tb:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", tx, -34)
-            tx = tx + td.w + 5
+            tb:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", td.x, -34)
             tb.tKey = td.key
             tb.txt = CreateText(tb, "OVERLAY", "GameFontHighlightSmall")
             tb.txt:SetPoint("CENTER")
             tb.txt:SetText(td.label)
-            tb:SetScript("OnClick", function(s) selKeyTier = s.tKey; StyleTierBtns() end)
+            tb:SetScript("OnClick", function(s) f.state.selKeyTier = s.tKey; StyleTierBtns() end)
             table.insert(tierBtns, tb)
         end
         StyleTierBtns()
 
         local mplusBuildBtn = CreateFrame("Button", nil, mplusGrp, "BackdropTemplate")
-        mplusBuildBtn:SetSize(222, 26)
-        mplusBuildBtn:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 212, -34)
+        mplusBuildBtn:SetSize(254, 26)
+        mplusBuildBtn:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 216, -34)
         mplusBuildBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         StyleDropdownTrigger(mplusBuildBtn)
 
         local mplusBindBtn = CreateFrame("Button", nil, mplusGrp, "BackdropTemplate")
-        mplusBindBtn:SetSize(88, 26)
+        mplusBindBtn:SetSize(92, 26)
         mplusBindBtn:SetPoint("LEFT", mplusBuildBtn, "RIGHT", 6, 0)
         SetPixelBackdrop(mplusBindBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
         mplusBindBtn.txt = CreateText(mplusBindBtn, "OVERLAY", "GameFontHighlightSmall")
@@ -12541,55 +13297,107 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         mplusBindBtn.txt:SetText("+ Bind M+")
 
         local mplusTip = CreateText(mplusGrp, "OVERLAY", "GameFontHighlightSmall")
-        mplusTip:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 2, -68)
-        mplusTip:SetPoint("TOPRIGHT", mplusGrp, "TOPRIGHT", -2, -68)
+        mplusTip:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 2, -66)
+        mplusTip:SetPoint("TOPRIGHT", mplusGrp, "TOPRIGHT", -2, -66)
+        mplusTip:SetHeight(28)
         mplusTip:SetJustifyH("LEFT")
+        mplusTip:SetWordWrap(true)
         mplusTip:SetText("|cFF64748BSelect one or more dungeons (or All), pick a key tier and build, then click + Bind M+. Specific dungeons override All M+.|r")
 
-        -- Picker Refresh Helpers
-        local function UpdatePickBtns()
+        -- ZONE DEFAULTS MODE CONTROLS (5-Zone Pattern + All Content)
+        local zoneGrp = CreateFrame("Frame", nil, bCard)
+        zoneGrp:SetPoint("TOPLEFT", bCard, "TOPLEFT", 12, -50)
+        zoneGrp:SetPoint("BOTTOMRIGHT", bCard, "BOTTOMRIGHT", -12, 8)
+        zoneGrp.zoneBtns = {}
+        zoneGrp:Hide()
+        f.zoneGrp = zoneGrp
+
+        zoneGrp.allZoneBtn = CreateFrame("Button", nil, zoneGrp, "BackdropTemplate")
+        zoneGrp.allZoneBtn:SetSize(62, 28)
+        zoneGrp.allZoneBtn:SetPoint("TOPLEFT", zoneGrp, "TOPLEFT", 0, 0)
+        zoneGrp.allZoneBtn.txt = CreateText(zoneGrp.allZoneBtn, "OVERLAY", "GameFontHighlightSmall")
+        zoneGrp.allZoneBtn.txt:SetPoint("CENTER")
+        zoneGrp.allZoneBtn.txt:SetText("All")
+
+        local zoneDefs = {
+            { key = "outdoor",  label = "Outdoor",  desc = "Open world zones & questing (skips resting cities)" },
+            { key = "delves",   label = "Delves",   desc = "Solo or group Delves" },
+            { key = "dungeons", label = "Dungeons", desc = "Maps directly to All M+ Dungeons (Any Key)" },
+            { key = "raid",     label = "Raid",     desc = "Maps directly to All Raids (LFR / Normal, Heroic, Mythic)" },
+            { key = "pvp",      label = "PvP",      desc = "Arenas & Battlegrounds" },
+        }
+        for zi, zd in ipairs(zoneDefs) do
+            local zb = CreateFrame("Button", nil, zoneGrp, "BackdropTemplate")
+            zb:SetSize(97, 28)
+            zb:SetPoint("TOPLEFT", zoneGrp, "TOPLEFT", 67 + ((zi - 1) * 101), 0)
+            zb.zKey = zd.key
+            zb.zLabel = zd.label
+            zb.zDesc = zd.desc
+            zb.txt = CreateText(zb, "OVERLAY", "GameFontHighlightSmall")
+            zb.txt:SetPoint("CENTER")
+            zb.txt:SetText(zd.label)
+            table.insert(zoneGrp.zoneBtns, zb)
+        end
+
+        local zoneBuildBtn = CreateFrame("Button", nil, zoneGrp, "BackdropTemplate")
+        zoneBuildBtn:SetSize(354, 26)
+        zoneBuildBtn:SetPoint("TOPLEFT", zoneGrp, "TOPLEFT", 0, -34)
+        zoneBuildBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        StyleDropdownTrigger(zoneBuildBtn)
+
+        local zoneBindBtn = CreateFrame("Button", nil, zoneGrp, "BackdropTemplate")
+        zoneBindBtn:SetSize(120, 26)
+        zoneBindBtn:SetPoint("LEFT", zoneBuildBtn, "RIGHT", 6, 0)
+        SetPixelBackdrop(zoneBindBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
+        zoneBindBtn.txt = CreateText(zoneBindBtn, "OVERLAY", "GameFontHighlightSmall")
+        zoneBindBtn.txt:SetPoint("CENTER")
+        zoneBindBtn.txt:SetText("+ Bind Zones")
+
+        local zoneClearBtn = CreateFrame("Button", nil, zoneGrp, "BackdropTemplate")
+        zoneClearBtn:SetSize(82, 26)
+        zoneClearBtn:SetPoint("LEFT", zoneBindBtn, "RIGHT", 6, 0)
+        SetPixelBackdrop(zoneClearBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+        zoneClearBtn.txt = CreateText(zoneClearBtn, "OVERLAY", "GameFontHighlightSmall")
+        zoneClearBtn.txt:SetPoint("CENTER")
+        zoneClearBtn.txt:SetText("Clear")
+        zoneClearBtn:SetScript("OnEnter", function(s)
+            SetPixelBackdrop(s, { 0.28, 0.08, 0.12, 0.98 }, { 0.957, 0.247, 0.369, 0.95 }, 1)
+        end)
+        zoneClearBtn:SetScript("OnLeave", function(s)
+            SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+        end)
+
+        local zoneTip = CreateText(zoneGrp, "OVERLAY", "GameFontHighlightSmall")
+        zoneTip:SetPoint("TOPLEFT", zoneGrp, "TOPLEFT", 2, -66)
+        zoneTip:SetPoint("TOPRIGHT", zoneGrp, "TOPRIGHT", -2, -66)
+        zoneTip:SetHeight(28)
+        zoneTip:SetJustifyH("LEFT")
+        zoneTip:SetWordWrap(true)
+        zoneTip:SetText("|cFF64748BAll saves a single [All Content] rule. Specific Raid bosses & M+ dungeons override zone defaults; Outdoor skips resting cities.|r")
+        zoneGrp.zoneTip = zoneTip
+
+        -- Picker Refresh Helper
+        function f:UpdatePickBtns()
+            local st = self.state
             local list = DynamicPrep:GetSortedTalentProfiles()
             local curBuild = nil
             if #list == 0 then
                 raidBuildBtn.txt:SetText("|cFF64748BNo Saved Loadouts|r")
                 mplusBuildBtn.txt:SetText("|cFF64748BNo Saved Loadouts|r")
+                zoneBuildBtn.txt:SetText("|cFF64748BNo Saved Loadouts|r")
             else
-                if pickedIdx > #list then pickedIdx = 1 end
-                if pickedIdx < 1 then pickedIdx = #list end
-                curBuild = list[pickedIdx]
+                if st.pickedIdx > #list then st.pickedIdx = 1 end
+                if st.pickedIdx < 1 then st.pickedIdx = #list end
+                curBuild = list[st.pickedIdx]
                 local cGrp = curBuild.group or "Custom"
                 local cHex = TALENT_GROUP_HEX[cGrp] or "10B981"
                 local bTxt = "|cFF94A3B8Build:|r |cFF" .. cHex .. "[" .. cGrp .. "]|r |cFFFFFFFF" .. tostring(curBuild.name or "Loadout") .. "|r"
                 raidBuildBtn.txt:SetText(bTxt)
                 mplusBuildBtn.txt:SetText(bTxt)
+                zoneBuildBtn.txt:SetText(bTxt)
             end
-
-            if #ejRaids == 0 then ejRaids = GetCurrentTierRaids() end
-            if #ejRaids > 0 then
-                if selRaidIdx > #ejRaids then selRaidIdx = 1 end
-                if selRaidIdx < 1 then selRaidIdx = #ejRaids end
-                local rObj = ejRaids[selRaidIdx]
-                raidPickBtn.txt:SetText("|cFF94A3B8Raid:|r |cFFFFFFFF" .. tostring(rObj.name) .. "|r")
-                if customTargetBoss and customTargetBoss ~= "" then
-                    bossPickBtn.txt:SetText("|cFFFBBF24Target:|r |cFFFFFFFF" .. customTargetBoss .. "|r")
-                elseif rObj.bosses and #rObj.bosses > 0 then
-                    if selBossIdx > #rObj.bosses then selBossIdx = 1 end
-                    if selBossIdx < 1 then selBossIdx = #rObj.bosses end
-                    local bObj = rObj.bosses[selBossIdx]
-                    bossPickBtn.txt:SetText("|cFF94A3B8Boss:|r |cFFFBBF24" .. tostring(bObj.order or selBossIdx) .. ". " .. tostring(bObj.name) .. "|r")
-                else
-                    bossPickBtn.txt:SetText("|cFF64748BNo Bosses Found|r")
-                end
-            else
-                raidPickBtn.txt:SetText("|cFF64748BOpen Journal / Target|r")
-                if customTargetBoss and customTargetBoss ~= "" then
-                    bossPickBtn.txt:SetText("|cFFFBBF24Target:|r |cFFFFFFFF" .. customTargetBoss .. "|r")
-                else
-                    bossPickBtn.txt:SetText("|cFF64748BClick Target on a Boss|r")
-                end
-            end
-
-            if #mplusDungeons == 0 then mplusDungeons = GetCurrentSeasonMythicPlusDungeons() end
+            if #st.ejRaids == 0 then st.ejRaids = GetCurrentTierRaids() end
+            if #st.mplusDungeons == 0 then st.mplusDungeons = GetCurrentSeasonMythicPlusDungeons() end
             return curBuild
         end
 
@@ -12598,11 +13406,18 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             local list = DynamicPrep:GetSortedTalentProfiles()
             for idx, it in ipairs(list) do
                 if it == entry or it.name == entry.name then
-                    pickedIdx = idx
+                    self.state.pickedIdx = idx
                     break
                 end
             end
-            UpdatePickBtns()
+            if entry.group == "M+" then
+                self.state.subMode = "MPLUS"
+            elseif entry.group == "Raid" then
+                self.state.subMode = "RAID"
+            elseif entry.group == "Delves" or entry.group == "PvP" then
+                self.state.subMode = "ZONE"
+            end
+            self:UpdatePickBtns()
         end
 
         -- Standard DESIGN_SYSTEM.md Obsidian Dropdown Popover (Click-Catcher, ESC, Chevron Flip, Hover/Pip, 4px 3-Way Scroll)
@@ -12717,14 +13532,8 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             tmDrop.UpdateScrollBar()
         end
 
-        tmDrop.thumb:SetScript("OnEnter", function(s)
-            s.isHovered = true
-            tmDrop.UpdateScrollBar()
-        end)
-        tmDrop.thumb:SetScript("OnLeave", function(s)
-            s.isHovered = false
-            tmDrop.UpdateScrollBar()
-        end)
+        tmDrop.thumb:SetScript("OnEnter", function(s) s.isHovered = true; tmDrop.UpdateScrollBar() end)
+        tmDrop.thumb:SetScript("OnLeave", function(s) s.isHovered = false; tmDrop.UpdateScrollBar() end)
         tmDrop.thumb:SetScript("OnMouseDown", function(s, btn)
             if btn ~= "LeftButton" then return end
             s.isDragging = true
@@ -12828,7 +13637,7 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             end
 
             for _, rw in ipairs(tmDrop.rows) do rw:Hide() end
-            local w = math.max(width or 220, anchorBtn:GetWidth() or 200)
+            local w = math.max(width or 240, anchorBtn:GetWidth() or 220)
             tmDrop._dropWidth = w
             tmDrop:SetWidth(w)
             local y = 0
@@ -12888,17 +13697,171 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
         end
         f:HookScript("OnHide", CloseModalDropdown)
 
+        -- Season 2 Raid Selector Pills + All Raids + Multi-Select Boss Tiles
+        function f:RefreshRaidGrid()
+            local st = self.state
+            local r, g, b = GetActiveAccentRGB()
+            if #st.ejRaids == 0 then st.ejRaids = GetCurrentTierRaids() end
+            local raids = st.ejRaids
+            for _, rp in ipairs(raidGrp.raidPillBtns) do rp:Hide() end
+            for _, bp in ipairs(raidGrp.bossGridBtns) do bp:Hide() end
+
+            local numRaids = math.max(1, #raids)
+            local rPillW = math.floor((476 - ((numRaids - 1) * 4)) / numRaids)
+            if st.selRaidIdx > #raids then st.selRaidIdx = 1 end
+            if st.selRaidIdx < 1 then st.selRaidIdx = 1 end
+
+            for rIdx, rObj in ipairs(raids) do
+                local rp = raidGrp.raidPillBtns[rIdx]
+                if not rp then
+                    rp = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
+                    rp:SetHeight(24)
+                    rp.txt = CreateText(rp, "OVERLAY", "GameFontHighlightSmall")
+                    rp.txt:SetPoint("LEFT", rp, "LEFT", 6, 0)
+                    rp.txt:SetPoint("RIGHT", rp, "RIGHT", -6, 0)
+                    rp.txt:SetJustifyH("CENTER")
+                    rp.txt:SetWordWrap(false)
+                    raidGrp.raidPillBtns[rIdx] = rp
+                end
+                local isOn = (not st.selAllRaidBosses) and (rIdx == st.selRaidIdx)
+                rp:SetWidth(rPillW)
+                rp:ClearAllPoints()
+                rp:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", (rIdx - 1) * (rPillW + 4), 0)
+                rp.txt:SetText(tostring(rObj.short or rObj.name))
+                rp.txt:SetTextColor(isOn and 1 or 0.78, isOn and 1 or 0.84, isOn and 1 or 0.92, 1)
+                SetPixelBackdrop(rp, isOn and { r * 0.42, g * 0.42, b * 0.42, 0.98 } or INPUT_BG, isOn and { r, g, b, 0.98 } or COLORS.BorderSubtle, 1)
+                rp:SetScript("OnClick", function()
+                    st.selRaidIdx = rIdx
+                    st.selAllRaidBosses = false
+                    st.customTargetBoss = nil
+                    wipe(st.selBossSet)
+                    st.selBossIdx = 1
+                    st.selBossSet[1] = true
+                    self:RefreshRaidGrid()
+                end)
+                rp:SetScript("OnEnter", function(s)
+                    if GameTooltip then
+                        GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                        GameTooltip:AddLine(tostring(rObj.name), 1, 1, 1)
+                        GameTooltip:AddLine(string.format("|cFF94A3B8%d encounter(s) in Midnight Season 2|r", #(rObj.bosses or {})), 1, 1, 1)
+                        GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Show bosses for this raid.|r", 1, 1, 1)
+                        GameTooltip:Show()
+                    end
+                end)
+                rp:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+                rp:Show()
+            end
+
+            raidGrp.allRaidBtn:SetScript("OnClick", function()
+                st.selAllRaidBosses = not st.selAllRaidBosses
+                if st.selAllRaidBosses then
+                    st.customTargetBoss = nil
+                    wipe(st.selBossSet)
+                elseif not next(st.selBossSet) then
+                    st.selBossSet[1] = true
+                end
+                self:RefreshRaidGrid()
+            end)
+            raidGrp.allRaidBtn:SetScript("OnEnter", function(s)
+                if GameTooltip then
+                    GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                    GameTooltip:AddLine("All Midnight Season 2 Raids", 1, 1, 1)
+                    GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Toggle raid-wide fallback for the selected difficulties. Specific boss binds override All Raids.|r", 1, 1, 1, true)
+                    GameTooltip:Show()
+                end
+            end)
+            raidGrp.allRaidBtn:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+            local allOn = (st.selAllRaidBosses == true)
+            raidGrp.allRaidBtn.txt:SetTextColor(allOn and 1 or 0.78, allOn and 1 or 0.84, allOn and 1 or 0.92, 1)
+            SetPixelBackdrop(raidGrp.allRaidBtn, allOn and { r * 0.42, g * 0.42, b * 0.42, 0.98 } or INPUT_BG, allOn and { r, g, b, 0.98 } or COLORS.BorderSubtle, 1)
+
+            local rObj = raids[st.selRaidIdx]
+            local bosses = (rObj and rObj.bosses) or {}
+            local bCount = math.min(8, #bosses)
+            if bCount > 0 then
+                if not st.selAllRaidBosses and (not st.customTargetBoss or st.customTargetBoss == "") and not next(st.selBossSet) then
+                    st.selBossSet[math.min(st.selBossIdx or 1, bCount)] = true
+                end
+                local cols = (bCount == 1 and 1) or math.min(4, bCount)
+                local cellW = (bCount == 1) and 246 or math.floor((496 - ((cols - 1) * 4)) / cols)
+                for bIdx = 1, bCount do
+                    local bObj = bosses[bIdx]
+                    local bp = raidGrp.bossGridBtns[bIdx]
+                    if not bp then
+                        bp = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
+                        bp:SetHeight(26)
+                        bp.txt = CreateText(bp, "OVERLAY", "GameFontHighlightSmall")
+                        bp.txt:SetPoint("LEFT", bp, "LEFT", 6, 0)
+                        bp.txt:SetPoint("RIGHT", bp, "RIGHT", -6, 0)
+                        bp.txt:SetJustifyH("LEFT")
+                        bp.txt:SetWordWrap(false)
+                        raidGrp.bossGridBtns[bIdx] = bp
+                    end
+                    local colIdx = (bIdx - 1) % cols
+                    local rowIdx = math.floor((bIdx - 1) / cols)
+                    local isSel = (not st.selAllRaidBosses) and (st.selBossSet[bIdx] == true)
+                    bp:SetWidth(cellW)
+                    bp:ClearAllPoints()
+                    bp:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 72 + (colIdx * (cellW + 4)), -30 - (rowIdx * 30))
+                    if bCount == 1 then
+                        bp.txt:SetText(string.format("%d. %s", bObj.order or bIdx, tostring(bObj.name)))
+                    else
+                        bp.txt:SetText(tostring(bObj.short or string.format("%d. %s", bObj.order or bIdx, tostring(bObj.name))))
+                    end
+                    bp.txt:SetTextColor(isSel and 1 or 0.78, isSel and 1 or 0.84, isSel and 1 or 0.92, 1)
+                    SetPixelBackdrop(bp, isSel and { r * 0.42, g * 0.42, b * 0.42, 0.98 } or INPUT_BG, isSel and { r, g, b, 0.98 } or COLORS.BorderSubtle, 1)
+                    bp:SetScript("OnClick", function()
+                        st.selAllRaidBosses = false
+                        st.customTargetBoss = nil
+                        st.selBossIdx = bIdx
+                        st.selBossSet[bIdx] = (not st.selBossSet[bIdx]) and true or nil
+                        self:RefreshRaidGrid()
+                    end)
+                    bp:SetScript("OnEnter", function(s)
+                        if GameTooltip then
+                            GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                            GameTooltip:AddLine(string.format("#%d %s", bObj.order or bIdx, tostring(bObj.name)), 1, 0.82, 0.25)
+                            GameTooltip:AddLine(tostring(rObj.name), 0.72, 0.78, 0.86)
+                            if type(bObj.aliases) == "table" and #bObj.aliases > 1 then
+                                GameTooltip:AddLine("Target matching includes council members.", 0.58, 0.64, 0.72, true)
+                            end
+                            GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Toggle this boss for batch raid binding.|r", 1, 1, 1)
+                            GameTooltip:Show()
+                        end
+                    end)
+                    bp:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+                    bp:Show()
+                end
+            end
+
+            if st.customTargetBoss and st.customTargetBoss ~= "" then
+                raidGrp.customChip.txt:SetText("|cFFFBBF24Custom Target:|r |cFFFFFFFF" .. tostring(st.customTargetBoss) .. "|r  |cFF94A3B8(click + Bind Raid to bind, or x to dismiss)|r")
+                raidGrp.customChip.clearBtn:SetScript("OnClick", function()
+                    st.customTargetBoss = nil
+                    if not st.selAllRaidBosses and not next(st.selBossSet) then
+                        st.selBossSet[1] = true
+                    end
+                    raidGrp.raidTip:SetText("|cFF64748BPick a raid and toggle bosses (or All Raids), choose difficulties and a build, then click + Bind Raid.|r")
+                    self:RefreshRaidGrid()
+                end)
+                raidGrp.customChip:Show()
+            else
+                raidGrp.customChip:Hide()
+            end
+        end
+
         -- "All" Toggle Pill + 8-Icon M+ Dungeon Portal Grid inside mplusGrp (multi-select)
         mplusGrp.portalGridBtns = {}
-        local function RefreshPortalGrid()
+        function f:RefreshPortalGrid()
+            local st = self.state
             local r, g, b = GetActiveAccentRGB()
             for _, pb in ipairs(mplusGrp.portalGridBtns) do pb:Hide() end
-            if #mplusDungeons == 0 then mplusDungeons = GetCurrentSeasonMythicPlusDungeons() end
-            local count = math.min(8, #mplusDungeons)
+            if #st.mplusDungeons == 0 then st.mplusDungeons = GetCurrentSeasonMythicPlusDungeons() end
+            local count = math.min(8, #st.mplusDungeons)
 
             if not mplusGrp.allBtn then
                 local abBtn = CreateFrame("Button", nil, mplusGrp, "BackdropTemplate")
-                abBtn:SetSize(48, 28)
+                abBtn:SetSize(52, 28)
                 abBtn:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 0, 0)
                 abBtn.txt = CreateText(abBtn, "OVERLAY", "GameFontHighlightSmall")
                 abBtn.txt:SetPoint("CENTER")
@@ -12906,35 +13869,35 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 mplusGrp.allBtn = abBtn
             end
             mplusGrp.allBtn:SetScript("OnClick", function()
-                if #mplusDungeons == 0 then mplusDungeons = GetCurrentSeasonMythicPlusDungeons() end
-                local cNow = math.min(8, #mplusDungeons)
-                if selAllDungeons then
-                    selAllDungeons = false
-                    wipe(selDungeonSet)
+                if #st.mplusDungeons == 0 then st.mplusDungeons = GetCurrentSeasonMythicPlusDungeons() end
+                local cNow = math.min(8, #st.mplusDungeons)
+                if st.selAllDungeons then
+                    st.selAllDungeons = false
+                    wipe(st.selDungeonSet)
                 else
-                    selAllDungeons = true
-                    wipe(selDungeonSet)
-                    for i = 1, cNow do selDungeonSet[i] = true end
+                    st.selAllDungeons = true
+                    wipe(st.selDungeonSet)
+                    for i = 1, cNow do st.selDungeonSet[i] = true end
                 end
-                RefreshPortalGrid()
+                self:RefreshPortalGrid()
             end)
             mplusGrp.allBtn:SetScript("OnEnter", function(s)
                 if GameTooltip then
                     GameTooltip:SetOwner(s, "ANCHOR_TOP")
                     GameTooltip:AddLine("All Season M+ Dungeons", 1, 1, 1)
-                    GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Select or clear all season dungeons (saves one All M+ Dungeons rule).|r", 1, 1, 1)
+                    GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Select or clear all season dungeons (saves one All M+ rule).|r", 1, 1, 1)
                     GameTooltip:Show()
                 end
             end)
             mplusGrp.allBtn:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-            mplusGrp.allBtn.txt:SetTextColor(selAllDungeons and 1 or 0.78, selAllDungeons and 1 or 0.84, selAllDungeons and 1 or 0.92, 1)
-            SetPixelBackdrop(mplusGrp.allBtn, selAllDungeons and { r * 0.42, g * 0.42, b * 0.42, 0.98 } or INPUT_BG, selAllDungeons and { r, g, b, 0.98 } or COLORS.BorderSubtle, 1)
+            mplusGrp.allBtn.txt:SetTextColor(st.selAllDungeons and 1 or 0.78, st.selAllDungeons and 1 or 0.84, st.selAllDungeons and 1 or 0.92, 1)
+            SetPixelBackdrop(mplusGrp.allBtn, st.selAllDungeons and { r * 0.42, g * 0.42, b * 0.42, 0.98 } or INPUT_BG, st.selAllDungeons and { r, g, b, 0.98 } or COLORS.BorderSubtle, 1)
             mplusGrp.allBtn:Show()
 
             if count == 0 then return end
-            local cellW = math.floor((476 - ((count - 1) * 4)) / count)
+            local cellW = math.floor((512 - ((count - 1) * 4)) / count)
             for idx = 1, count do
-                local dObj = mplusDungeons[idx]
+                local dObj = st.mplusDungeons[idx]
                 local pb = mplusGrp.portalGridBtns[idx]
                 if not pb then
                     pb = CreateFrame("Button", nil, mplusGrp, "BackdropTemplate")
@@ -12950,22 +13913,22 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                     pb.txt:SetWordWrap(false)
                     mplusGrp.portalGridBtns[idx] = pb
                 end
-                local isSel = (selDungeonSet[idx] == true)
+                local isSel = (st.selDungeonSet[idx] == true)
                 pb:SetWidth(cellW)
                 pb:ClearAllPoints()
-                pb:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 52 + ((idx - 1) * (cellW + 4)), 0)
+                pb:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 56 + ((idx - 1) * (cellW + 4)), 0)
                 pb.icon:SetTexture(dObj.icon or 525134)
                 pb.txt:SetText(dObj.short or ("M" .. idx))
                 pb.txt:SetTextColor(isSel and 1 or 0.78, isSel and 1 or 0.84, isSel and 1 or 0.92, 1)
                 SetPixelBackdrop(pb, isSel and { r * 0.42, g * 0.42, b * 0.42, 0.98 } or INPUT_BG, isSel and { r, g, b, 0.98 } or COLORS.BorderSubtle, 1)
                 pb:SetScript("OnClick", function()
-                    selDungeonSet[idx] = (not selDungeonSet[idx]) and true or nil
+                    st.selDungeonSet[idx] = (not st.selDungeonSet[idx]) and true or nil
                     local allChecked = (count > 0)
                     for j = 1, count do
-                        if not selDungeonSet[j] then allChecked = false; break end
+                        if not st.selDungeonSet[j] then allChecked = false; break end
                     end
-                    selAllDungeons = allChecked
-                    RefreshPortalGrid()
+                    st.selAllDungeons = allChecked
+                    self:RefreshPortalGrid()
                 end)
                 pb:SetScript("OnEnter", function(s)
                     if GameTooltip then
@@ -12979,67 +13942,97 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 pb:Show()
             end
         end
-        f.RefreshPortalGrid = RefreshPortalGrid
-        dungPickBtn:Hide()
 
-        -- Test Alert Toast button in mplusTip row
-        local testToastBtn = CreateFrame("Button", nil, bCard, "BackdropTemplate")
-        testToastBtn:SetSize(116, 20)
-        testToastBtn:SetPoint("TOPRIGHT", bCard, "TOPRIGHT", -12, -14)
-        SetPixelBackdrop(testToastBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
-        testToastBtn.txt = CreateText(testToastBtn, "OVERLAY", "GameFontHighlightSmall")
-        testToastBtn.txt:SetPoint("CENTER")
-        testToastBtn.txt:SetText("Test Alert Toast")
-        testToastBtn:SetScript("OnClick", function()
-            local list = DynamicPrep:GetSortedTalentProfiles()
-            local sample = list[pickedIdx] or { name = "Raid ST", group = "Raid" }
-            DynamicPrep:ShowTalentReminderToast(sample, sample.name, "Preview Reminder")
-        end)
-
-        raidPickBtn:SetScript("OnClick", function(btnSelf)
-            customTargetBoss = nil
-            if #ejRaids == 0 then ejRaids = GetCurrentTierRaids() end
-            local items = {}
-            for idx, rObj in ipairs(ejRaids) do
-                table.insert(items, {
-                    label = tostring(rObj.name),
-                    selected = (idx == selRaidIdx),
-                    onSelect = function()
-                        selRaidIdx = idx
-                        selBossIdx = 1
-                        UpdatePickBtns()
-                    end,
-                })
-            end
-            if #items > 0 then ShowModalDropdown(btnSelf, items, 230) end
-        end)
-        bossPickBtn:SetScript("OnClick", function(btnSelf)
-            customTargetBoss = nil
-            local rObj = ejRaids[selRaidIdx]
-            local items = {}
-            if rObj and rObj.bosses then
-                for idx, bObj in ipairs(rObj.bosses) do
-                    local ord = bObj.order or idx
-                    table.insert(items, {
-                        label = string.format("|cFFFBBF24%d.|r %s", ord, tostring(bObj.name)),
-                        selected = (idx == selBossIdx),
-                        onSelect = function()
-                            selBossIdx = idx
-                            UpdatePickBtns()
-                        end,
-                    })
+        function f:RefreshZonePills()
+            local st = self.state
+            local r, g, b = GetActiveAccentRGB()
+            local allOn = (st.selAllZones == true)
+            zoneGrp.allZoneBtn.txt:SetTextColor(allOn and 1 or 0.78, allOn and 1 or 0.84, allOn and 1 or 0.92, 1)
+            SetPixelBackdrop(zoneGrp.allZoneBtn, allOn and { r * 0.42, g * 0.42, b * 0.42, 0.98 } or INPUT_BG, allOn and { r, g, b, 0.98 } or COLORS.BorderSubtle, 1)
+            zoneGrp.allZoneBtn:SetScript("OnClick", function()
+                if st.selAllZones then
+                    st.selAllZones = false
+                    wipe(st.selZoneSet)
+                else
+                    st.selAllZones = true
+                    for _, bBtn in ipairs(zoneGrp.zoneBtns) do
+                        st.selZoneSet[bBtn.zKey] = true
+                    end
                 end
+                self:RefreshZonePills()
+            end)
+            zoneGrp.allZoneBtn:SetScript("OnEnter", function(s)
+                if GameTooltip then
+                    GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                    GameTooltip:AddLine("All Content Default", 1, 1, 1)
+                    GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Select or clear all 5 zones (saving All creates one [All Content] rule).|r", 1, 1, 1, true)
+                    GameTooltip:Show()
+                end
+            end)
+            zoneGrp.allZoneBtn:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+
+            for _, zb in ipairs(zoneGrp.zoneBtns) do
+                local zOn = (st.selZoneSet[zb.zKey] == true)
+                zb.txt:SetTextColor(zOn and 1 or 0.78, zOn and 1 or 0.84, zOn and 1 or 0.92, 1)
+                SetPixelBackdrop(zb, zOn and { r * 0.42, g * 0.42, b * 0.42, 0.98 } or INPUT_BG, zOn and { r, g, b, 0.98 } or COLORS.BorderSubtle, 1)
+                zb:SetScript("OnClick", function()
+                    st.selZoneSet[zb.zKey] = (not st.selZoneSet[zb.zKey]) and true or nil
+                    local allChecked = true
+                    for _, cb in ipairs(zoneGrp.zoneBtns) do
+                        if not st.selZoneSet[cb.zKey] then allChecked = false; break end
+                    end
+                    st.selAllZones = allChecked
+                    self:RefreshZonePills()
+                end)
+                zb:SetScript("OnEnter", function(s)
+                    if GameTooltip then
+                        GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                        GameTooltip:AddLine("Zone: " .. tostring(zb.zLabel), 1, 1, 1)
+                        GameTooltip:AddLine("|cFFE2E8F0" .. tostring(zb.zDesc) .. "|r", 1, 1, 1, true)
+                        GameTooltip:Show()
+                    end
+                end)
+                zb:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
             end
-            if #items > 0 then ShowModalDropdown(btnSelf, items, 240) end
-        end)
+        end
+
         tgtBtn:SetScript("OnClick", function()
-            local tn = (UnitExists and UnitExists("target") and UnitName("target")) or ""
-            if type(tn) == "string" and not _IsSecret(tn) and tn ~= "" then
-                customTargetBoss = tn
-                UpdatePickBtns()
+            local st = f.state
+            local okEx, hasTgt = pcall(function() return UnitExists and UnitExists("target") end)
+            local okNm, tn = false, nil
+            if okEx and hasTgt and UnitName then
+                okNm, tn = pcall(UnitName, "target")
+            end
+            if not (okEx and hasTgt and okNm and type(tn) == "string" and not _IsSecret(tn) and tn ~= "") then
+                print(string.format("|cFF%sDynamicPrep:|r Select an NPC or boss target first before clicking Target.", GetAccentHex()))
+                raidTip:SetText("|cFFFBBF24No valid target selected -- target a raid boss or NPC, then click Target.|r")
+                return
+            end
+            if #st.ejRaids == 0 then st.ejRaids = GetCurrentTierRaids() end
+            local mR, mB, rObj, bObj = DynamicPrep:MatchBossTargetName(tn, st.ejRaids)
+            if mR and mB and bObj then
+                st.selRaidIdx = mR
+                st.selBossIdx = mB
+                st.selAllRaidBosses = false
+                wipe(st.selBossSet)
+                st.selBossSet[mB] = true
+                st.customTargetBoss = nil
+                f:RefreshRaidGrid()
+                local ord = bObj.order or mB
+                print(string.format("|cFF%sDynamicPrep:|r Matched target |cFFFFFFFF%s|r -> |cFFFBBF24%s #%d %s|r.", GetAccentHex(), tn, tostring(rObj.short or rObj.name), ord, tostring(bObj.name)))
+                raidTip:SetText(string.format("|cFF10B981Matched %s -> %s #%d %s.|r Toggle difficulties, choose a build, and click + Bind Raid.", tn, tostring(rObj.short or rObj.name), ord, tostring(bObj.name)))
+            else
+                st.customTargetBoss = tn
+                st.selAllRaidBosses = false
+                wipe(st.selBossSet)
+                f:RefreshRaidGrid()
+                print(string.format("|cFF%sDynamicPrep:|r Custom target set to |cFFFBBF24%s|r. Choose difficulties & build, then click + Bind Raid.", GetAccentHex(), tn))
+                raidTip:SetText(string.format("|cFFFBBF24Custom target active: %s.|r Choose difficulties & build, then click + Bind Raid (or click x to dismiss).", tn))
             end
         end)
+
         local function OpenBuildDropdown(btnSelf)
+            local st = f.state
             local list = DynamicPrep:GetSortedTalentProfiles()
             local items = {}
             for idx, entry in ipairs(list) do
@@ -13047,230 +14040,500 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
                 local gHex = TALENT_GROUP_HEX[grp] or "94A3B8"
                 table.insert(items, {
                     label = string.format("|cFF%s[%s]|r %s", gHex, grp, tostring(entry.name or "Loadout")),
-                    selected = (idx == pickedIdx),
+                    selected = (idx == st.pickedIdx),
                     onSelect = function()
-                        pickedIdx = idx
-                        UpdatePickBtns()
+                        st.pickedIdx = idx
+                        f:UpdatePickBtns()
                     end,
                 })
             end
-            if #items > 0 then ShowModalDropdown(btnSelf, items, 230) end
+            if #items > 0 then ShowModalDropdown(btnSelf, items, 250) end
         end
         raidBuildBtn:SetScript("OnClick", OpenBuildDropdown)
         mplusBuildBtn:SetScript("OnClick", OpenBuildDropdown)
+        zoneBuildBtn:SetScript("OnClick", OpenBuildDropdown)
 
         raidBindBtn:SetScript("OnClick", function()
+            local st = f.state
             local specID = DynamicPrep:GetActiveSpecID()
-            local sel = UpdatePickBtns()
-            local bName = customTargetBoss
-            local bOrder = nil
-            if not bName or bName == "" then
-                local rObj = ejRaids[selRaidIdx]
-                if rObj and rObj.bosses and rObj.bosses[selBossIdx] then
-                    bName = rObj.bosses[selBossIdx].name
-                    bOrder = rObj.bosses[selBossIdx].order or selBossIdx
-                end
+            local sel = f:UpdatePickBtns()
+            if not specID or not sel then
+                print(string.format("|cFF%sDynamicPrep:|r Save at least one talent loadout before binding.", GetAccentHex()))
+                return
             end
-            if not specID or not bName or bName == "" or not sel then return end
-            local mask = (diffState.normal and "N" or "") .. (diffState.heroic and "H" or "") .. (diffState.mythic and "M" or "")
+            if st.selAllRaidBosses then
+                DynamicPrep:SetAllRaidDefault(sel, st.diffState, false)
+                return
+            end
+            local ds = st.diffState
+            local mask = (ds.normal and "N" or "") .. (ds.heroic and "H" or "") .. (ds.mythic and "M" or "")
             if mask == "" then mask = "NHM" end
-            local mapKey = bName:lower() .. "|" .. mask
             DynamicPrep.db.talentBossMap = DynamicPrep.db.talentBossMap or {}
             DynamicPrep.db.talentBossMap[specID] = DynamicPrep.db.talentBossMap[specID] or {}
-            -- Enforce 1-to-1 default binding per Boss + Difficulty
-            for exK, exV in pairs(DynamicPrep.db.talentBossMap[specID]) do
-                if type(exV) == "table" and tostring(exV.bossName or exK):lower() == bName:lower() and exK ~= mapKey then
-                    if type(exV.difficulties) == "table" then
-                        if diffState.normal then exV.difficulties.normal = false end
-                        if diffState.heroic then exV.difficulties.heroic = false end
-                        if diffState.mythic then exV.difficulties.mythic = false end
-                        if not (exV.difficulties.normal or exV.difficulties.heroic or exV.difficulties.mythic) then
-                            DynamicPrep.db.talentBossMap[specID][exK] = nil
-                        end
-                    else
-                        DynamicPrep.db.talentBossMap[specID][exK] = nil
+            local bMap = DynamicPrep.db.talentBossMap[specID]
+
+            local targets = {}
+            if st.customTargetBoss and st.customTargetBoss ~= "" then
+                table.insert(targets, { name = st.customTargetBoss, order = nil, raidName = nil, raidShort = nil })
+            else
+                local rObj = st.ejRaids[st.selRaidIdx]
+                local bosses = (rObj and rObj.bosses) or {}
+                for bIdx = 1, #bosses do
+                    if st.selBossSet[bIdx] and bosses[bIdx] then
+                        table.insert(targets, {
+                            name      = bosses[bIdx].name,
+                            order     = bosses[bIdx].order or bIdx,
+                            raidName  = rObj.name,
+                            raidShort = rObj.short or rObj.name,
+                        })
                     end
                 end
             end
-            DynamicPrep.db.talentBossMap[specID][mapKey] = {
-                bossName     = bName,
-                bossOrder    = bOrder,
-                loadoutName  = sel.name,
-                importString = sel.importString,
-                difficulties = {
-                    normal = diffState.normal and true or false,
-                    heroic = diffState.heroic and true or false,
-                    mythic = diffState.mythic and true or false,
-                },
-            }
-            customTargetBoss = nil
+            if #targets == 0 then
+                print(string.format("|cFF%sDynamicPrep:|r Select at least one boss (or All Raids / Target) before binding.", GetAccentHex()))
+                return
+            end
+            local boundNames = {}
+            for _, tInfo in ipairs(targets) do
+                local bName = tInfo.name
+                local bLow = bName:lower()
+                local mapKey = bLow .. "|" .. mask
+                for exK, exV in pairs(bMap) do
+                    if type(exV) == "table" and not exV.isAllRaid and tostring(exV.bossName or exK):lower() == bLow and exK ~= mapKey then
+                        if type(exV.difficulties) == "table" then
+                            if ds.normal then exV.difficulties.normal = false end
+                            if ds.heroic then exV.difficulties.heroic = false end
+                            if ds.mythic then exV.difficulties.mythic = false end
+                            if not (exV.difficulties.normal or exV.difficulties.heroic or exV.difficulties.mythic) then
+                                bMap[exK] = nil
+                            end
+                        else
+                            bMap[exK] = nil
+                        end
+                    end
+                end
+                bMap[mapKey] = {
+                    bossName     = bName,
+                    bossOrder    = tInfo.order,
+                    raidName     = tInfo.raidName,
+                    raidShort    = tInfo.raidShort,
+                    loadoutName  = sel.name,
+                    importString = sel.importString,
+                    group        = sel.group or "Raid",
+                    difficulties = {
+                        normal = ds.normal and true or false,
+                        heroic = ds.heroic and true or false,
+                        mythic = ds.mythic and true or false,
+                    },
+                }
+                table.insert(boundNames, (tInfo.order and ("#" .. tInfo.order .. " ") or "") .. bName)
+            end
+            st.customTargetBoss = nil
             local grp = sel.group or "Raid"
             local gHex = TALENT_GROUP_HEX[grp] or "10B981"
             local dLabels = {}
-            if diffState.normal then table.insert(dLabels, "LFR/N") end
-            if diffState.heroic then table.insert(dLabels, "H") end
-            if diffState.mythic then table.insert(dLabels, "M") end
+            if ds.normal then table.insert(dLabels, "LFR/N") end
+            if ds.heroic then table.insert(dLabels, "H") end
+            if ds.mythic then table.insert(dLabels, "M") end
             local dDisp = (#dLabels > 0) and table.concat(dLabels, "/") or "LFR/N/H/M"
-            print(string.format("|cFF%sDynamicPrep:|r Bound boss |cFFFBBF24%s%s|r [%s] -> |cFF%s[%s]|r %s.", GetAccentHex(), bOrder and ("#" .. bOrder .. " ") or "", bName, dDisp, gHex, grp, sel.name))
+            if #boundNames == 1 then
+                print(string.format("|cFF%sDynamicPrep:|r Bound boss |cFFFBBF24%s|r [%s] -> |cFF%s[%s]|r %s.", GetAccentHex(), boundNames[1], dDisp, gHex, grp, sel.name))
+            else
+                print(string.format("|cFF%sDynamicPrep:|r Bound %d bosses (%s) [%s] -> |cFF%s[%s]|r %s.", GetAccentHex(), #boundNames, table.concat(boundNames, ", "), dDisp, gHex, grp, sel.name))
+            end
+            f:RefreshRaidGrid()
             f:RefreshBossList()
             DynamicPrep:RefreshBar()
             if DynamicPrep.RefreshTalentDock then DynamicPrep:RefreshTalentDock() end
         end)
 
         mplusBindBtn:SetScript("OnClick", function()
+            local st = f.state
             local specID = DynamicPrep:GetActiveSpecID()
-            local sel = UpdatePickBtns()
-            if not specID or not sel then return end
+            local sel = f:UpdatePickBtns()
+            if not specID or not sel then
+                print(string.format("|cFF%sDynamicPrep:|r Save at least one talent loadout before binding.", GetAccentHex()))
+                return
+            end
             DynamicPrep.db.talentDungeonMap = DynamicPrep.db.talentDungeonMap or {}
             DynamicPrep.db.talentDungeonMap[specID] = DynamicPrep.db.talentDungeonMap[specID] or {}
             local dMap = DynamicPrep.db.talentDungeonMap[specID]
-            local tLbl = (selKeyTier == "HIGH" and "+10+") or (selKeyTier == "LOW" and "+2-9") or "Any Key"
+            local kt = st.selKeyTier
+            local tLbl = (kt == "HIGH" and "+10+") or (kt == "LOW" and "+2-9") or "Any Key"
             local grp = sel.group or "M+"
             local gHex = TALENT_GROUP_HEX[grp] or "38BDF8"
 
-            if selAllDungeons then
+            if st.selAllDungeons then
+                DynamicPrep:SetAllMPlusDefault(sel, kt, false)
+                return
+            end
+            if #st.mplusDungeons == 0 then st.mplusDungeons = GetCurrentSeasonMythicPlusDungeons() end
+            local chosen = {}
+            local count = math.min(8, #st.mplusDungeons)
+            for idx = 1, count do
+                if st.selDungeonSet[idx] and st.mplusDungeons[idx] then
+                    table.insert(chosen, st.mplusDungeons[idx])
+                end
+            end
+            if #chosen == 0 then
+                print(string.format("|cFF%sDynamicPrep:|r Select at least one dungeon (or click All) before binding.", GetAccentHex()))
+                return
+            end
+            local shortList = {}
+            for _, dObj in ipairs(chosen) do
+                local dLow = dObj.name:lower()
                 for exK, exV in pairs(dMap) do
                     local exAll = type(exV) == "table" and (exV.isAllMPlus == true or tostring(exV.dungeonName or exK):lower() == "all m+ dungeons")
-                    if exAll and (exV.keyTier == selKeyTier or selKeyTier == "ANY" or exV.keyTier == "ANY") then
+                    if type(exV) == "table" and not exAll and tostring(exV.dungeonName or exK):lower() == dLow
+                        and (exV.keyTier == kt or kt == "ANY" or exV.keyTier == "ANY") then
                         dMap[exK] = nil
                     end
                 end
-                dMap["__all__|" .. selKeyTier] = {
-                    isAllMPlus   = true,
-                    dungeonName  = "All M+ Dungeons",
-                    mapID        = 0,
-                    keyTier      = selKeyTier,
+                dMap[dLow .. "|" .. kt] = {
+                    dungeonName  = dObj.name,
+                    mapID        = dObj.id,
+                    keyTier      = kt,
                     loadoutName  = sel.name,
                     importString = sel.importString,
+                    group        = sel.group or "M+",
                 }
-                print(string.format("|cFF%sDynamicPrep:|r Bound |cFF38BDF8All M+ Dungeons|r [%s] -> |cFF%s[%s]|r %s (specific dungeons override).", GetAccentHex(), tLbl, gHex, grp, sel.name))
+                table.insert(shortList, dObj.short or dObj.name)
+            end
+            if #chosen == 1 then
+                print(string.format("|cFF%sDynamicPrep:|r Bound M+ |cFF38BDF8%s|r [%s] -> |cFF%s[%s]|r %s.", GetAccentHex(), chosen[1].name, tLbl, gHex, grp, sel.name))
             else
-                if #mplusDungeons == 0 then mplusDungeons = GetCurrentSeasonMythicPlusDungeons() end
-                local chosen = {}
-                local count = math.min(8, #mplusDungeons)
-                for idx = 1, count do
-                    if selDungeonSet[idx] and mplusDungeons[idx] then
-                        table.insert(chosen, mplusDungeons[idx])
-                    end
-                end
-                if #chosen == 0 then
-                    print(string.format("|cFF%sDynamicPrep:|r Select at least one dungeon (or click All) before binding.", GetAccentHex()))
-                    return
-                end
-                local shortList = {}
-                for _, dObj in ipairs(chosen) do
-                    local dLow = dObj.name:lower()
-                    for exK, exV in pairs(dMap) do
-                        local exAll = type(exV) == "table" and (exV.isAllMPlus == true or tostring(exV.dungeonName or exK):lower() == "all m+ dungeons")
-                        if type(exV) == "table" and not exAll and tostring(exV.dungeonName or exK):lower() == dLow
-                            and (exV.keyTier == selKeyTier or selKeyTier == "ANY" or exV.keyTier == "ANY") then
-                            dMap[exK] = nil
-                        end
-                    end
-                    dMap[dLow .. "|" .. selKeyTier] = {
-                        dungeonName  = dObj.name,
-                        mapID        = dObj.id,
-                        keyTier      = selKeyTier,
-                        loadoutName  = sel.name,
-                        importString = sel.importString,
-                    }
-                    table.insert(shortList, dObj.short or dObj.name)
-                end
-                if #chosen == 1 then
-                    print(string.format("|cFF%sDynamicPrep:|r Bound M+ |cFF38BDF8%s|r [%s] -> |cFF%s[%s]|r %s.", GetAccentHex(), chosen[1].name, tLbl, gHex, grp, sel.name))
-                else
-                    print(string.format("|cFF%sDynamicPrep:|r Bound %d M+ dungeons (%s) [%s] -> |cFF%s[%s]|r %s.", GetAccentHex(), #chosen, table.concat(shortList, ", "), tLbl, gHex, grp, sel.name))
-                end
+                print(string.format("|cFF%sDynamicPrep:|r Bound %d M+ dungeons (%s) [%s] -> |cFF%s[%s]|r %s.", GetAccentHex(), #chosen, table.concat(shortList, ", "), tLbl, gHex, grp, sel.name))
             end
             f:RefreshBossList()
             DynamicPrep:RefreshBar()
             if DynamicPrep.RefreshTalentDock then DynamicPrep:RefreshTalentDock() end
         end)
-        RefreshPortalGrid()
 
-        -- Active Reminders Card (Scrollable list of Raid Boss & M+ rules)
+        zoneBindBtn:SetScript("OnClick", function()
+            local st = f.state
+            local sel = f:UpdatePickBtns()
+            if not sel then
+                print(string.format("|cFF%sDynamicPrep:|r Save at least one talent loadout before binding.", GetAccentHex()))
+                return
+            end
+            if not st.selAllZones and not next(st.selZoneSet) then
+                print(string.format("|cFF%sDynamicPrep:|r Select at least one zone pill (or All) before binding.", GetAccentHex()))
+                zoneTip:SetText("|cFFFBBF24Select at least one zone pill (or All), choose a build, and click + Bind Zones.|r")
+                return
+            end
+            DynamicPrep:SetZoneDefaults(sel, st.selZoneSet, st.selAllZones)
+            zoneTip:SetText("|cFF10B981Zone default(s) updated! Specific Raid bosses & M+ dungeons still override zone defaults.|r")
+        end)
+
+        zoneClearBtn:SetScript("OnClick", function()
+            local st = f.state
+            if not st.selAllZones and not next(st.selZoneSet) then
+                print(string.format("|cFF%sDynamicPrep:|r Select one or more zone pills (or All) before clearing.", GetAccentHex()))
+                zoneTip:SetText("|cFFFBBF24Select one or more zone pills (or All) first, then click Clear.|r")
+                return
+            end
+            if not DynamicPrep:ClearZoneDefaults(st.selZoneSet, st.selAllZones) then
+                print(string.format("|cFF%sDynamicPrep:|r No matching zone default rules were active to clear.", GetAccentHex()))
+                zoneTip:SetText("|cFF94A3B8No matching zone defaults were active for the selected pills.|r")
+            else
+                zoneTip:SetText("|cFF10B981Cleared selected zone default(s); specific boss and dungeon binds remain intact.|r")
+            end
+        end)
+
+        f:RefreshRaidGrid()
+        f:RefreshPortalGrid()
+        f:RefreshZonePills()
+
+        -- Active Reminders Card (Priority-Sorted with 4px 3-Way Obsidian Scrollbar)
         local listCard = CreateFrame("Frame", nil, p2, "BackdropTemplate")
         listCard:SetPoint("TOPLEFT", bCard, "BOTTOMLEFT", 0, -8)
         listCard:SetPoint("BOTTOMRIGHT", p2, "BOTTOMRIGHT", 0, 0)
         SetPixelBackdrop(listCard, CARD_BG, CARD_BDR, 1)
+        f.listCard = listCard
 
-        local listHdr = CreateModalSectionHeader(listCard, "|cFFFFFFFFACTIVE REMINDERS|r", "Your saved Raid Boss & Mythic+ Dungeon talent alerts for this spec", -10)
+        local listHdr = CreateModalSectionHeader(listCard, "|cFFFFFFFFACTIVE REMINDERS|r", "Priority order: Specific Boss / M+ Dungeon overrides Content & Zone Defaults", -10)
+        f.listHdr = listHdr
 
         local emptyBossHint = CreateText(listCard, "OVERLAY", "GameFontHighlightSmall")
         emptyBossHint:SetPoint("TOPLEFT", listCard, "TOPLEFT", 14, -56)
         emptyBossHint:SetPoint("TOPRIGHT", listCard, "TOPRIGHT", -14, -56)
         emptyBossHint:SetJustifyH("LEFT")
-        emptyBossHint:SetText("|cFF64748BNo reminders bound yet. Pick a Raid Boss or Season M+ Dungeon above, choose a build, and click + Bind.|r")
+        emptyBossHint:SetWordWrap(true)
+        emptyBossHint:SetText("|cFF64748BNo reminders bound yet. Pick a Raid Boss, M+ Dungeon, or Zone Default above, choose a build, and click + Bind.|r")
 
         local scrollF = CreateFrame("ScrollFrame", nil, listCard)
         scrollF:SetPoint("TOPLEFT", listCard, "TOPLEFT", 12, -50)
-        scrollF:SetPoint("BOTTOMRIGHT", listCard, "BOTTOMRIGHT", -16, 10)
-        local scrollChild = CreateFrame("Frame", nil, scrollF)
-        scrollChild:SetSize(520, 1)
-        scrollF:SetScrollChild(scrollChild)
+        scrollF:SetPoint("BOTTOMRIGHT", listCard, "BOTTOMRIGHT", -10, 10)
         scrollF:EnableMouseWheel(true)
-        scrollF:SetScript("OnMouseWheel", function(selfSF, delta)
-            local cur = selfSF:GetVerticalScroll() or 0
-            local maxS = math.max(0, (scrollChild:GetHeight() or 0) - (selfSF:GetHeight() or 0))
-            local nxt = math.max(0, math.min(maxS, cur - (delta * 28)))
-            selfSF:SetVerticalScroll(nxt)
+        local scrollChild = CreateFrame("Frame", nil, scrollF)
+        scrollChild:SetSize(560, 1)
+        scrollF:SetScrollChild(scrollChild)
+
+        listCard.track = CreateFrame("Frame", nil, listCard, "BackdropTemplate")
+        listCard.track:SetWidth(4)
+        listCard.track:SetPoint("TOPRIGHT", listCard, "TOPRIGHT", -10, -50)
+        listCard.track:SetPoint("BOTTOMRIGHT", listCard, "BOTTOMRIGHT", -10, 10)
+        listCard.track:EnableMouse(true)
+        listCard.track:EnableMouseWheel(true)
+        listCard.track:SetHitRectInsets(-5, -4, 0, 0)
+        SetPixelBackdrop(listCard.track, { 0.043, 0.051, 0.071, 0.90 }, { 0, 0, 0, 0 }, 0)
+        listCard.track:Hide()
+
+        listCard.thumb = CreateFrame("Button", nil, listCard.track)
+        listCard.thumb:SetWidth(4)
+        listCard.thumb:SetHeight(32)
+        listCard.thumb:SetPoint("TOP", listCard.track, "TOP", 0, 0)
+        listCard.thumb:EnableMouse(true)
+        listCard.thumb:SetHitRectInsets(-5, -4, 0, 0)
+        listCard.thumb.tex = listCard.thumb:CreateTexture(nil, "OVERLAY")
+        listCard.thumb.tex:SetAllPoints()
+        listCard.thumb.tex:SetColorTexture(ar, ag, ab, 0.78)
+        listCard.thumb:Hide()
+
+        listCard.UpdateScrollBar = function()
+            local r, g, b = GetActiveAccentRGB()
+            if listCard.thumb.isDragging then
+                listCard.thumb.tex:SetColorTexture(r, g, b, 1.0)
+            elseif listCard.thumb.isHovered then
+                listCard.thumb.tex:SetColorTexture(r, g, b, 0.92)
+            else
+                listCard.thumb.tex:SetColorTexture(r, g, b, 0.78)
+            end
+            local visH = scrollF:GetHeight() or 0
+            local totalH = scrollChild:GetHeight() or 0
+            local cardW = listCard:GetWidth() or 592
+            local maxS = math.max(0, totalH - visH)
+            scrollF:ClearAllPoints()
+            scrollF:SetPoint("TOPLEFT", listCard, "TOPLEFT", 12, -50)
+            if maxS <= 1 or visH <= 1 then
+                scrollF:SetPoint("BOTTOMRIGHT", listCard, "BOTTOMRIGHT", -10, 10)
+                scrollChild:SetWidth(math.max(100, cardW - 22))
+                listCard.track:Hide()
+                listCard.thumb:Hide()
+                scrollF:SetVerticalScroll(0)
+            else
+                scrollF:SetPoint("BOTTOMRIGHT", listCard, "BOTTOMRIGHT", -18, 10)
+                scrollChild:SetWidth(math.max(100, cardW - 30))
+                listCard.track:Show()
+                listCard.thumb:Show()
+                local trackH = listCard.track:GetHeight()
+                if not trackH or trackH <= 1 then trackH = visH end
+                local cur = math.max(0, math.min(maxS, scrollF:GetVerticalScroll() or 0))
+                local thumbH = math.max(22, math.floor(trackH * math.min(1, visH / totalH) + 0.5))
+                local travel = math.max(1, trackH - thumbH)
+                listCard.thumb:SetHeight(thumbH)
+                listCard.thumb:ClearAllPoints()
+                listCard.thumb:SetPoint("TOP", listCard.track, "TOP", 0, -math.floor((cur / maxS) * travel + 0.5))
+            end
+            local cw = scrollChild:GetWidth()
+            for _, rw in ipairs(f.bossRows or {}) do
+                if rw:IsShown() then rw:SetWidth(cw) end
+            end
+        end
+
+        listCard.ScrollFromCursor = function()
+            if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+                listCard.thumb.isDragging = false
+                listCard.thumb:SetScript("OnUpdate", nil)
+                listCard.track:SetScript("OnUpdate", nil)
+                listCard.UpdateScrollBar()
+                return
+            end
+            local visH = scrollF:GetHeight() or 0
+            local totalH = scrollChild:GetHeight() or 0
+            local maxS = math.max(0, totalH - visH)
+            local trackH = listCard.track:GetHeight()
+            if not trackH or trackH <= 1 then trackH = visH end
+            if maxS <= 1 or trackH <= 1 then return end
+            local tTop = listCard.track:GetTop()
+            local eff = listCard.track:GetEffectiveScale() or 1
+            if not tTop or eff <= 0 or not GetCursorPosition then return end
+            local _, cy = GetCursorPosition()
+            local relY = math.max(0, math.min(trackH, tTop - (cy / eff)))
+            local thumbH = listCard.thumb:GetHeight() or 22
+            local travel = math.max(1, trackH - thumbH)
+            local ratio = math.max(0, math.min(1, (relY - (thumbH * 0.5)) / travel))
+            scrollF:SetVerticalScroll(ratio * maxS)
+            listCard.UpdateScrollBar()
+        end
+
+        listCard.thumb:SetScript("OnEnter", function(s) s.isHovered = true; listCard.UpdateScrollBar() end)
+        listCard.thumb:SetScript("OnLeave", function(s) s.isHovered = false; listCard.UpdateScrollBar() end)
+        listCard.thumb:SetScript("OnMouseDown", function(s, btn)
+            if btn ~= "LeftButton" then return end
+            s.isDragging = true
+            s:SetScript("OnUpdate", listCard.ScrollFromCursor)
+            listCard.ScrollFromCursor()
         end)
+        listCard.thumb:SetScript("OnMouseUp", function(s)
+            s.isDragging = false
+            s:SetScript("OnUpdate", nil)
+            listCard.UpdateScrollBar()
+        end)
+        listCard.track:SetScript("OnMouseDown", function(s, btn)
+            if btn ~= "LeftButton" then return end
+            listCard.thumb.isDragging = true
+            s:SetScript("OnUpdate", listCard.ScrollFromCursor)
+            listCard.ScrollFromCursor()
+        end)
+        listCard.track:SetScript("OnMouseUp", function(s)
+            listCard.thumb.isDragging = false
+            s:SetScript("OnUpdate", nil)
+            listCard.UpdateScrollBar()
+        end)
+
+        local function HandleListWheel(delta)
+            local visH = scrollF:GetHeight() or 0
+            local maxS = math.max(0, (scrollChild:GetHeight() or 0) - visH)
+            if maxS <= 1 then
+                scrollF:SetVerticalScroll(0)
+            else
+                scrollF:SetVerticalScroll(math.max(0, math.min(maxS, (scrollF:GetVerticalScroll() or 0) - (delta * 27))))
+            end
+            listCard.UpdateScrollBar()
+        end
+        scrollF:SetScript("OnMouseWheel", function(_, delta) HandleListWheel(delta) end)
+        listCard.track:SetScript("OnMouseWheel", function(_, delta) HandleListWheel(delta) end)
+        scrollF:SetScript("OnSizeChanged", function() listCard.UpdateScrollBar() end)
 
         f.bossRows = {}
         function f:RefreshBossList()
-            UpdatePickBtns()
+            local st = self.state
+            self:UpdatePickBtns()
             for _, r in ipairs(self.bossRows) do r:Hide() end
             local specID = DynamicPrep:GetActiveSpecID()
             local items = {}
+
+            local function FormatDiffTag(d)
+                if type(d) ~= "table" then return "LFR/N / H / M" end
+                if d.normal and not d.heroic and not d.mythic then return "LFR/N" end
+                if d.heroic and not d.normal and not d.mythic then return "Heroic" end
+                if d.mythic and not d.normal and not d.heroic then return "Mythic" end
+                local parts = {}
+                if d.normal then table.insert(parts, "LFR/N") end
+                if d.heroic then table.insert(parts, "H") end
+                if d.mythic then table.insert(parts, "M") end
+                return (#parts > 0) and table.concat(parts, " / ") or "LFR/N / H / M"
+            end
+
             local bossMap = (specID and DynamicPrep.db and DynamicPrep.db.talentBossMap and DynamicPrep.db.talentBossMap[specID]) or {}
             for k, v in pairs(bossMap) do
                 if type(v) == "table" then
-                    local d = v.difficulties
-                    local badges = ""
-                    if type(d) ~= "table" then
-                        badges = "|cFF10B981[LFR/N]|r |cFF38BDF8[H]|r |cFFF43F5E[M]|r"
+                    local diffTxt = FormatDiffTag(v.difficulties)
+                    if v.isAllRaid == true then
+                        table.insert(items, {
+                            sortKey = "2:1:" .. tostring(k),
+                            text = string.format("|cFFF87171[All Raids - %s]|r  ->  |cFF10B981%s|r", diffTxt, tostring(v.loadoutName or "Loadout")),
+                            onDelete = function()
+                                bossMap[k] = nil
+                                DynamicPrep:SyncTalentBindsUI()
+                            end,
+                        })
                     else
-                        if d.normal then badges = badges .. "|cFF10B981[LFR/N]|r " end
-                        if d.heroic then badges = badges .. "|cFF38BDF8[H]|r " end
-                        if d.mythic then badges = badges .. "|cFFF43F5E[M]|r " end
+                        local rShort = v.raidShort
+                        local bOrder = v.bossOrder
+                        if (not rShort or not bOrder) and #st.ejRaids > 0 then
+                            local _, _, rObj, bObj = DynamicPrep:MatchBossTargetName(v.bossName, st.ejRaids)
+                            if rObj then rShort = rShort or rObj.short or rObj.name end
+                            if bObj then bOrder = bOrder or bObj.order end
+                        end
+                        local tagStr, sKey
+                        if rShort and bOrder then
+                            tagStr = string.format("[%s #%d %s - %s]", tostring(rShort), tonumber(bOrder), tostring(v.bossName or k), diffTxt)
+                            sKey = string.format("1:1:%s:%02d:%s:%s", tostring(rShort):lower(), tonumber(bOrder) or 99, tostring(v.bossName or k):lower(), tostring(k))
+                        else
+                            tagStr = string.format("[Target: %s - %s]", tostring(v.bossName or k), diffTxt)
+                            sKey = "1:2:" .. tostring(v.bossName or k):lower() .. ":" .. tostring(k)
+                        end
+                        table.insert(items, {
+                            sortKey = sKey,
+                            text = string.format("|cFFFBBF24%s|r  ->  |cFF10B981%s|r", tagStr, tostring(v.loadoutName or "Loadout")),
+                            onDelete = function()
+                                bossMap[k] = nil
+                                DynamicPrep:SyncTalentBindsUI()
+                            end,
+                        })
                     end
-                    table.insert(items, {
-                        sortKey = "1:" .. tostring(v.bossName or k):lower() .. ":" .. tostring(k),
-                        text = string.format("%s |cFFFBBF24%s|r  ->  |cFF10B981%s|r", strtrim(badges), tostring(v.bossName or k), tostring(v.loadoutName or "Loadout")),
-                        onDelete = function()
-                            bossMap[k] = nil
-                            f:RefreshBossList()
-                            DynamicPrep:RefreshBar()
-                            if DynamicPrep.RefreshTalentDock then DynamicPrep:RefreshTalentDock() end
-                        end,
-                    })
                 end
             end
+
             local dungMap = (specID and DynamicPrep.db and DynamicPrep.db.talentDungeonMap and DynamicPrep.db.talentDungeonMap[specID]) or {}
             for k, v in pairs(dungMap) do
                 if type(v) == "table" then
                     local kt = v.keyTier or "ANY"
-                    local tBadge = (kt == "HIGH" and "|cFFF43F5E[M+ 10+]|r") or (kt == "LOW" and "|cFF38BDF8[M+ 2-9]|r") or "|cFF10B981[M+ Any]|r"
+                    local tierTxt = (kt == "HIGH" and "+10+") or (kt == "LOW" and "+2-9") or "Any Key"
                     local isAllRule = (v.isAllMPlus == true) or (tostring(v.dungeonName or ""):lower() == "all m+ dungeons")
-                    table.insert(items, {
-                        sortKey = (isAllRule and "2:0:" or ("2:1:" .. tostring(v.dungeonName or k):lower() .. ":")) .. kt,
-                        text = string.format("%s |cFF38BDF8%s|r  ->  |cFF10B981%s|r", tBadge, tostring(v.dungeonName or k), tostring(v.loadoutName or "Loadout")),
-                        onDelete = function()
-                            dungMap[k] = nil
-                            f:RefreshBossList()
-                            DynamicPrep:RefreshBar()
-                            if DynamicPrep.RefreshTalentDock then DynamicPrep:RefreshTalentDock() end
-                        end,
-                    })
+                    if isAllRule then
+                        table.insert(items, {
+                            sortKey = "2:2:" .. kt,
+                            text = string.format("|cFF38BDF8[All M+ - %s]|r  ->  |cFF10B981%s|r", tierTxt, tostring(v.loadoutName or "Loadout")),
+                            onDelete = function()
+                                dungMap[k] = nil
+                                DynamicPrep:SyncTalentBindsUI()
+                            end,
+                        })
+                    else
+                        table.insert(items, {
+                            sortKey = string.format("1:3:%s:%s", tostring(v.dungeonName or k):lower(), kt),
+                            text = string.format("|cFF38BDF8[%s - %s]|r  ->  |cFF10B981%s|r", tostring(v.dungeonName or k), tierTxt, tostring(v.loadoutName or "Loadout")),
+                            onDelete = function()
+                                dungMap[k] = nil
+                                DynamicPrep:SyncTalentBindsUI()
+                            end,
+                        })
+                    end
                 end
             end
+
+            local zoneMap = (specID and DynamicPrep.db and DynamicPrep.db.talentZoneMap and DynamicPrep.db.talentZoneMap[specID]) or {}
+            if type(zoneMap.delves) == "table" then
+                table.insert(items, {
+                    sortKey = "2:3:delves",
+                    text = string.format("|cFFA78BFA[Zone: Delves]|r  ->  |cFF10B981%s|r", tostring(zoneMap.delves.loadoutName or "Loadout")),
+                    onDelete = function()
+                        zoneMap.delves = nil
+                        DynamicPrep:SyncTalentBindsUI()
+                    end,
+                })
+            end
+            if type(zoneMap.pvp) == "table" then
+                table.insert(items, {
+                    sortKey = "2:4:pvp",
+                    text = string.format("|cFFF472B6[Zone: PvP]|r  ->  |cFF10B981%s|r", tostring(zoneMap.pvp.loadoutName or "Loadout")),
+                    onDelete = function()
+                        zoneMap.pvp = nil
+                        DynamicPrep:SyncTalentBindsUI()
+                    end,
+                })
+            end
+            if type(zoneMap.outdoor) == "table" then
+                table.insert(items, {
+                    sortKey = "2:5:outdoor",
+                    text = string.format("|cFF34D399[Zone: Outdoor]|r  ->  |cFF10B981%s|r", tostring(zoneMap.outdoor.loadoutName or "Loadout")),
+                    onDelete = function()
+                        zoneMap.outdoor = nil
+                        DynamicPrep:SyncTalentBindsUI()
+                    end,
+                })
+            end
+            if type(zoneMap.all) == "table" then
+                table.insert(items, {
+                    sortKey = "2:9:all",
+                    text = string.format("|cFF10B981[All Content]|r  ->  |cFFFFFFFF%s|r", tostring(zoneMap.all.loadoutName or "Loadout")),
+                    onDelete = function()
+                        zoneMap.all = nil
+                        DynamicPrep:SyncTalentBindsUI()
+                    end,
+                })
+            end
+
             table.sort(items, function(a, b) return a.sortKey < b.sortKey end)
             emptyBossHint:SetShown(#items == 0)
             for i, it in ipairs(items) do
                 local row = self.bossRows[i]
                 if not row then
                     row = CreateFrame("Frame", nil, scrollChild, "BackdropTemplate")
-                    row:SetSize(520, 24)
+                    row:SetHeight(24)
                     SetPixelBackdrop(row, COLORS.BgElevated, COLORS.BorderSubtle, 1)
                     row.fs = CreateText(row, "OVERLAY", "GameFontHighlightSmall")
                     row.fs:SetPoint("LEFT", row, "LEFT", 8, 0)
@@ -13293,34 +14556,49 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             end
             scrollChild:SetHeight(math.max(1, #items * 27))
             scrollF:SetVerticalScroll(0)
+            listCard.UpdateScrollBar()
         end
 
-        local function SelectSubMode(mode)
-            subMode = mode or "RAID"
+        function f:SelectSubMode(mode)
+            mode = mode or "RAID"
+            self.state.subMode = mode
             local r, g, b = GetActiveAccentRGB()
-            local isRaid = (subMode == "RAID")
+            local isRaid = (mode == "RAID")
+            local isMPlus = (mode == "MPLUS")
+            local isZone = (mode == "ZONE")
             SetPixelBackdrop(modeRaidBtn, isRaid and { r * 0.42, g * 0.42, b * 0.42, 1.00 } or COLORS.BgElevated, isRaid and { r, g, b, 0.95 } or COLORS.BorderSubtle, 1)
-            SetPixelBackdrop(modeMPlusBtn, (not isRaid) and { r * 0.42, g * 0.42, b * 0.42, 1.00 } or COLORS.BgElevated, (not isRaid) and { r, g, b, 0.95 } or COLORS.BorderSubtle, 1)
+            SetPixelBackdrop(modeMPlusBtn, isMPlus and { r * 0.42, g * 0.42, b * 0.42, 1.00 } or COLORS.BgElevated, isMPlus and { r, g, b, 0.95 } or COLORS.BorderSubtle, 1)
+            SetPixelBackdrop(modeZoneBtn, isZone and { r * 0.42, g * 0.42, b * 0.42, 1.00 } or COLORS.BgElevated, isZone and { r, g, b, 0.95 } or COLORS.BorderSubtle, 1)
+            bCard:SetHeight(isRaid and 236 or 154)
             raidGrp:SetShown(isRaid)
-            mplusGrp:SetShown(not isRaid)
+            mplusGrp:SetShown(isMPlus)
+            zoneGrp:SetShown(isZone)
             bHdr.bar:SetColorTexture(r, g, b, 0.95)
             bHdr.line:SetColorTexture(r, g, b, 0.35)
             listHdr.bar:SetColorTexture(r, g, b, 0.95)
             listHdr.line:SetColorTexture(r, g, b, 0.35)
             SetPixelBackdrop(raidBindBtn, { r * 0.42, g * 0.42, b * 0.42, 1.00 }, { r, g, b, 0.95 }, 1)
             SetPixelBackdrop(mplusBindBtn, { r * 0.42, g * 0.42, b * 0.42, 1.00 }, { r, g, b, 0.95 }, 1)
+            SetPixelBackdrop(zoneBindBtn, { r * 0.42, g * 0.42, b * 0.42, 1.00 }, { r, g, b, 0.95 }, 1)
             if isRaid then
                 bHdr.titleFS:SetText("|cFFFFFFFFRAID BOSS TALENT BINDS|r")
-                bHdr.subFS:SetText("|cFF94A3B8Select any current-tier raid & boss -- choose LFR / Normal, Heroic, or Mythic|r")
-            else
+                bHdr.subFS:SetText("|cFF94A3B8Pick a Season 2 raid & boss (or All Raids) and choose difficulties below|r")
+                self:RefreshRaidGrid()
+            elseif isMPlus then
                 bHdr.titleFS:SetText("|cFFFFFFFFMYTHIC+ TALENT BINDS|r")
-                bHdr.subFS:SetText("|cFF94A3B8Select one or more season dungeons (or All) & key tier (alerts before key starts)|r")
-                RefreshPortalGrid()
+                bHdr.subFS:SetText("|cFF94A3B8Toggle season dungeons (or All M+) & key tier -- alerts before key starts|r")
+                self:RefreshPortalGrid()
+            else
+                bHdr.titleFS:SetText("|cFFFFFFFFZONE & ALL CONTENT DEFAULTS|r")
+                bHdr.subFS:SetText("|cFF94A3B8Pick zones or All Content to set fallback builds when no boss/M+ matches|r")
+                self:RefreshZonePills()
             end
-            UpdatePickBtns()
+            self:UpdatePickBtns()
+            listCard.UpdateScrollBar()
         end
-        modeRaidBtn:SetScript("OnClick", function() SelectSubMode("RAID") end)
-        modeMPlusBtn:SetScript("OnClick", function() SelectSubMode("MPLUS") end)
+        modeRaidBtn:SetScript("OnClick", function() f:SelectSubMode("RAID") end)
+        modeMPlusBtn:SetScript("OnClick", function() f:SelectSubMode("MPLUS") end)
+        modeZoneBtn:SetScript("OnClick", function() f:SelectSubMode("ZONE") end)
 
         function f:SelectTab(tabNum)
             self.activeTab = tabNum or 1
@@ -13338,25 +14616,29 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
             if on1 then
                 self:SetHeight(hasLegacy and 390 or 354)
             else
-                self:SetHeight(508)
-                SelectSubMode(subMode)
+                self:SetHeight(580)
+                self:SelectSubMode(self.state.subMode or "RAID")
                 self:RefreshBossList()
             end
         end
 
         tab1Btn:SetScript("OnClick", function() f:SelectTab(1) end)
         tab2Btn:SetScript("OnClick", function() f:SelectTab(2) end)
+        f:HookScript("OnHide", function(self)
+            self.editingEntry = nil
+            if self.nameEB and self.nameEB.ClearFocus then self.nameEB:ClearFocus() end
+        end)
 
         f.modeRaidBtn = modeRaidBtn
         f.modeMPlusBtn = modeMPlusBtn
-        f.mplusGrp = mplusGrp
-        f.raidBuildBtn = raidBuildBtn
-        f.mplusBuildBtn = mplusBuildBtn
+        f.modeZoneBtn = modeZoneBtn
         f.raidBindBtn = raidBindBtn
         f.mplusBindBtn = mplusBindBtn
+        f.zoneBindBtn = zoneBindBtn
         f.diffBtns = diffBtns
         f.tmDrop = tmDrop
         talentMgrModal = f
+        DynamicPrep._talentMgrModal = f
     end
 
     if (initialTab or 1) == 1 then
@@ -13366,6 +14648,10 @@ function DynamicPrep:OpenTalentManagerModal(initialTab, targetEntry)
     end
     talentMgrModal:SelectTab(initialTab or 1)
     talentMgrModal:Show()
+    if (initialTab or 1) == 1 and type(targetEntry) == "table" and talentMgrModal.nameEB then
+        talentMgrModal.nameEB:SetFocus()
+        talentMgrModal.nameEB:HighlightText()
+    end
 end
 
 function DynamicPrep:HandleConfirmSummon()
@@ -13455,6 +14741,9 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             if isInitialized and not IsModuleDisabledInSuite("DynamicPrep") then
                 if arg1 == "Blizzard_PlayerSpells" and DynamicPrep.EnsureTalentDockHooks then
                     DynamicPrep:EnsureTalentDockHooks()
+                elseif arg1 == "Blizzard_EncounterJournal" then
+                    DynamicPrep._cachedTierRaids = nil
+                    DynamicPrep._ejEnriched = false
                 end
                 DynamicPrep:InitBlizzardWindowQoL(arg1)
                 if DynamicPrep.workspaceFrame and DynamicPrep.workspaceFrame.IsShown and DynamicPrep.workspaceFrame:IsShown() then
@@ -13591,11 +14880,16 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             end
             DynamicPrep:UpdateHealMacro(false)
             DynamicPrep:RefreshBar()
+            if DynamicPrep.RefreshTalentDock then DynamicPrep:RefreshTalentDock() end
+            if talentMgrModal and talentMgrModal:IsShown() and talentMgrModal.RefreshBossList then
+                talentMgrModal:RefreshBossList()
+            end
             DynamicPrep:RefreshWorkspaceView()
         end
     elseif event == "PLAYER_LOOT_SPEC_UPDATED" or event == "UPDATE_INVENTORY_DURABILITY" or event == "BAG_UPDATE_DELAYED" or event == "CHALLENGE_MODE_MAPS_UPDATE" or event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED" then
         if event == "PLAYER_LOOT_SPEC_UPDATED" then
             DynamicPrep:ResetStableCapsuleWidths()
+            if DynamicPrep.RefreshTalentDock then DynamicPrep:RefreshTalentDock() end
         elseif event == "BAG_UPDATE_DELAYED" then
             DynamicPrep:UpdateHealMacro(false)
             if DynamicPrep.workspaceFrame and DynamicPrep.workspaceFrame:IsShown() then
@@ -13654,6 +14948,10 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:CheckZoneTalentLoadout("READY_CHECK")
     elseif event == "PLAYER_TARGET_CHANGED" then
         DynamicPrep:CheckBossTalentLoadout()
+    elseif event == "PLAYER_UPDATE_RESTING" then
+        if not (InCombatLockdown and InCombatLockdown()) then
+            DynamicPrep:CheckZoneTalentLoadout()
+        end
     elseif event == "TRAIT_CONFIG_UPDATED" then
         if DynamicPrep._pendingSaveConfigID and C_ClassTalents and type(C_ClassTalents.SaveConfig) == "function" then
             local saveID = DynamicPrep._pendingSaveConfigID
