@@ -1,9 +1,13 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.7.1 (21/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.8.0 (22/11/2026 - Retail 12.1.5 / Interface 120105)*
 
 ---
 
 ## [Unreleased]
+
+---
+
+## DynamicSuite & All 12 Modules v2.8.0 (22/11/2026)
 
 ### Tighter Header Subtitles & Truncation Hover Safety Net (`DynamicTalent`, 22/11/2026)
 - **One-Line Subtitles (`DynamicTalent`):** Shortened the Talent Loadouts Manager subtitles (Raid Bosses, M+ Dungeons, PvP, Zone Defaults, and both Active Reminders views) so they fit cleanly beside the right-hand buttons at the minimum `800px` modal width.

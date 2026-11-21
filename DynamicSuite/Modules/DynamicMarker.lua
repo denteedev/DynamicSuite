@@ -45,7 +45,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.7.1"
+    local fb = fallback or "2.8.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -126,7 +126,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.7.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -11119,9 +11119,10 @@ end
 
 DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
-    date    = "21/11/2026",
+    date    = "22/11/2026",
     entries = {
-        { type = "UI",       text = "[Unreleased] True-4px Sleek Precision Sliders & Footer Thumb Parity (22/11/2026): Moved the 1px track hairline strictly outside the 4px #090A0D track across settings sliders so fill bars render at a true 4px height, and added matching 1px hairlines plus live Suite Accent hover/drag blade thumb highlights to the standalone footer Scale and Opacity sliders." },
+        { type = "IMPROVED", text = "Release v2.8.0 - Version & Coexistence Lockstep Parity (22/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.8.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
+        { type = "UI",       text = "Release v2.8.0 - True-4px Sleek Precision Sliders & Footer Thumb Parity (22/11/2026): Moved the 1px track hairline strictly outside the 4px #090A0D track across settings sliders so fill bars render at a true 4px height, and added matching 1px hairlines plus live Suite Accent hover/drag blade thumb highlights to the standalone footer Scale and Opacity sliders." },
         { type = "IMPROVED", text = "Release v2.7.1 - Version & Coexistence Lockstep Parity (21/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.7.1 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "UI",       text = "Release v2.7.0 - Live Suite Accent Parity & Clean Header Clamping (21/11/2026): Updated standalone Edit HUD buttons, the HUD Edit Inspector [Apply All] action button, and conflict reload modals to follow the live Suite Accent colour cleanly instead of Blaze Orange fallbacks, and clamped the Focus and World Flare HUD section titles beside their Edit HUD buttons so headers never collide at 800x520." },
         { type = "IMPROVED", text = "Release v2.4.0 - Version & Coexistence Lockstep Parity (18/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks cleanly to v2.4.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
