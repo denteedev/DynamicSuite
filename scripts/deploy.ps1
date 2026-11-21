@@ -818,7 +818,7 @@ if ($BuildReleaseZip) {
     $suiteChangelogSrc = Join-Path $RepoRoot "DynamicSuite\CHANGELOG.md"
 
     New-VerifiedAddonReleaseZip -AddonName "DynamicSuite" -Version $suiteVer -Interface $suiteIface -MarketingDir $marketingDir `
-        -RequiredFiles @("DynamicSuite.toc", "DynamicSuite_Core.lua", "DynamicSuite_UI.lua", "icon.tga", "Media\Icons\icon_white.tga", "Media\Icons\icon_accent.tga", "CHANGELOG.md", "README.md") `
+        -RequiredFiles @("DynamicSuite.toc", "DynamicSuite_Core.lua", "DynamicSuite_UI.lua", "icon.tga", "Media\Icons\icon_white.tga", "Media\Icons\icon_accent.tga", "Media\Textures\talent_mist_cloud.tga", "CHANGELOG.md", "README.md") `
         -StageAction {
             param($stageAddonDir)
             Copy-Item -LiteralPath (Join-Path $suiteSrcDir "DynamicSuite.toc") -Destination (Join-Path $stageAddonDir "DynamicSuite.toc") -Force
@@ -856,6 +856,14 @@ if ($BuildReleaseZip) {
                 New-Item -ItemType Directory -Force -Path $dstMediaSounds | Out-Null
                 Get-ChildItem -LiteralPath $mediaSoundsSrc -File | Where-Object { $_.Name -notmatch $skipAssetRx } | ForEach-Object {
                     Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $dstMediaSounds $_.Name) -Force
+                }
+            }
+            $mediaTexturesSrc = Join-Path $suiteSrcDir "Media\Textures"
+            if (Test-Path -LiteralPath $mediaTexturesSrc) {
+                $dstMediaTextures = Join-Path $stageAddonDir "Media\Textures"
+                New-Item -ItemType Directory -Force -Path $dstMediaTextures | Out-Null
+                Get-ChildItem -LiteralPath $mediaTexturesSrc -File | Where-Object { $_.Name -notmatch $skipAssetRx } | ForEach-Object {
+                    Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $dstMediaTextures $_.Name) -Force
                 }
             }
             $rootFontsSrc = Join-Path $suiteSrcDir "Fonts"

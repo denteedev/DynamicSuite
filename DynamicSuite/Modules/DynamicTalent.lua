@@ -124,6 +124,7 @@ local ICON_WHITE        = ICON_COLOR
 local ICON_ACCENT       = ICON_COLOR
 local ICON_CHEVRON_DOWN = MEDIA_BASE .. "Icons\\icon_chevron_down.tga"
 local ICON_CHEVRON_UP   = MEDIA_BASE .. "Icons\\icon_chevron_up.tga"
+local TEX_TALENT_MIST   = MEDIA_BASE .. "Textures\\talent_mist_cloud.tga"
 
 -- ============================================================================
 -- 1. SAFE RETAIL 12.1.5 HELPERS, THEME & UI PRIMITIVES
@@ -349,6 +350,10 @@ local DEFAULTS = {
     talentReminderEnabled      = true,
     talentReminderToastEnabled = true,
     prioritiseCurrentZone      = false,
+    rightClickHeroSwap         = true,
+    talentBackdropMode         = "HERO_MIST",
+    talentBackdropDimmer       = 35,
+    talentBackdropAnimate      = true,
     talentGroupOrder           = { "Raid", "M+", "Delves", "PvP", "Custom" },
     talentPreferredBySpec      = {},
     talentBossMap              = {},
@@ -521,6 +526,19 @@ local function EnsureDB()
     db.lastAppliedTalentName = type(db.lastAppliedTalentName) == "table" and db.lastAppliedTalentName or {}
     db.lastAppliedTalentLiveStr = type(db.lastAppliedTalentLiveStr) == "table" and db.lastAppliedTalentLiveStr or {}
     db.talentGroupOrder = SanitizeGroupOrder(db.talentGroupOrder)
+    db.rightClickHeroSwap = (db.rightClickHeroSwap ~= false)
+    db.talentBackdropAnimate = (db.talentBackdropAnimate ~= false)
+    local validModes = { BLIZZARD = true, OBSIDIAN = true, HERO_MIST = true, CLASS_GLOW = true }
+    if type(db.talentBackdropMode) ~= "string" or not validModes[db.talentBackdropMode] then
+        db.talentBackdropMode = "HERO_MIST"
+    end
+    local rawDim = tonumber(db.talentBackdropDimmer)
+    if rawDim == nil then
+        db.talentBackdropDimmer = 35
+    else
+        rawDim = math.max(0, math.min(85, rawDim))
+        db.talentBackdropDimmer = math.floor((rawDim / 5) + 0.5) * 5
+    end
 
     DynamicTalent.db = db
     return db
@@ -3612,14 +3630,22 @@ end
 
 function DynamicTalent:RefreshTalentDock()
     local db = EnsureDB()
+    if db.enabled == false or IsModuleDisabledInSuite("DynamicTalent") then
+        if talentDockFrame then talentDockFrame:Hide() end
+        self:HideTalentRowContextMenu()
+        self:HideTalentTreeBackdrop()
+        return
+    end
     local psf = _G.PlayerSpellsFrame
     local tf = psf and psf.TalentsFrame
-    if not (psf and psf.IsShown and psf:IsShown() and tf and tf.IsShown and tf:IsShown())
-        or db.enabled == false or IsModuleDisabledInSuite("DynamicTalent") then
+    if not (psf and psf.IsShown and psf:IsShown() and tf and tf.IsShown and tf:IsShown()) then
         if talentDockFrame then talentDockFrame:Hide() end
         self:HideTalentRowContextMenu()
         return
     end
+
+    self:EnsureHeroMedallionHooks()
+    self:UpdateTalentTreeBackdrop()
 
     local getGranular = _G.DynamicSuite and _G.DynamicSuite.GetGranularConflictMode
     if type(getGranular) == "function" then
@@ -4018,24 +4044,751 @@ function DynamicTalent:RefreshTalentDock()
 end
 
 function DynamicTalent:EnsureTalentDockHooks()
-    if talentDockHooked then return end
-    local psf = _G.PlayerSpellsFrame
-    if not psf or type(psf.HookScript) ~= "function" then return end
-    talentDockHooked = true
-    psf:HookScript("OnShow", function()
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0.05, function() DynamicTalent:RefreshTalentDock() end)
-        else
-            DynamicTalent:RefreshTalentDock()
+    if not talentDockHooked then
+        local psf = _G.PlayerSpellsFrame
+        if not psf or type(psf.HookScript) ~= "function" then return end
+        talentDockHooked = true
+        psf:HookScript("OnShow", function()
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0.05, function()
+                    DynamicTalent:RefreshTalentDock()
+                    DynamicTalent:EnsureHeroMedallionHooks()
+                    DynamicTalent:UpdateTalentTreeBackdrop()
+                end)
+            else
+                DynamicTalent:RefreshTalentDock()
+                DynamicTalent:EnsureHeroMedallionHooks()
+                DynamicTalent:UpdateTalentTreeBackdrop()
+            end
+        end)
+        psf:HookScript("OnHide", function()
+            if talentDockFrame then talentDockFrame:Hide() end
+            DynamicTalent:HideTalentRowContextMenu()
+            DynamicTalent:PauseTalentTreeBackdropAnims()
+        end)
+        if psf.TalentsFrame and type(psf.TalentsFrame.HookScript) == "function" then
+            psf.TalentsFrame:HookScript("OnShow", function()
+                DynamicTalent:RefreshTalentDock()
+                DynamicTalent:EnsureHeroMedallionHooks()
+                DynamicTalent:UpdateTalentTreeBackdrop()
+            end)
+            psf.TalentsFrame:HookScript("OnHide", function()
+                if talentDockFrame then talentDockFrame:Hide() end
+                DynamicTalent:PauseTalentTreeBackdropAnims()
+            end)
         end
-    end)
-    psf:HookScript("OnHide", function()
-        if talentDockFrame then talentDockFrame:Hide() end
-        DynamicTalent:HideTalentRowContextMenu()
-    end)
-    if psf.TalentsFrame and type(psf.TalentsFrame.HookScript) == "function" then
-        psf.TalentsFrame:HookScript("OnShow", function() DynamicTalent:RefreshTalentDock() end)
-        psf.TalentsFrame:HookScript("OnHide", function() if talentDockFrame then talentDockFrame:Hide() end end)
+    end
+    self:EnsureHeroMedallionHooks()
+    self:UpdateTalentTreeBackdrop()
+end
+
+-- ============================================================================
+-- 7b. RIGHT-CLICK HERO SPEC SWAP & TALENT TREE BACKDROP STUDIO
+-- ============================================================================
+do
+    local hookedHeroButtons    = setmetatable({}, { __mode = "k" })
+    local hookedHeroContainers = setmetatable({}, { __mode = "k" })
+    local heroSelectionNodeCache = {}
+    local talentBackdropFrame  = nil
+    local suppressHeroDialogUntil = 0
+
+    local HERO_MOOD_PALETTES = {
+        -- Death Knight
+        ["deathbringer"]              = { primary = { 0.42, 0.72, 0.96 }, secondary = { 0.58, 0.16, 0.28 }, glow = { 0.36, 0.62, 0.94 } },
+        ["rider of the apocalypse"]   = { primary = { 0.24, 0.78, 0.68 }, secondary = { 0.30, 0.56, 0.86 }, glow = { 0.28, 0.86, 0.76 } },
+        ["san'layn"]                  = { primary = { 0.84, 0.16, 0.26 }, secondary = { 0.46, 0.10, 0.24 }, glow = { 0.92, 0.24, 0.34 } },
+        ["sanlayn"]                   = { primary = { 0.84, 0.16, 0.26 }, secondary = { 0.46, 0.10, 0.24 }, glow = { 0.92, 0.24, 0.34 } },
+        -- Demon Hunter
+        ["aldrachi reaver"]           = { primary = { 0.16, 0.84, 0.46 }, secondary = { 0.40, 0.22, 0.68 }, glow = { 0.22, 0.90, 0.54 } },
+        ["fel-scarred"]               = { primary = { 0.22, 0.92, 0.32 }, secondary = { 0.76, 0.46, 0.12 }, glow = { 0.30, 0.96, 0.40 } },
+        ["felscarred"]                = { primary = { 0.22, 0.92, 0.32 }, secondary = { 0.76, 0.46, 0.12 }, glow = { 0.30, 0.96, 0.40 } },
+        ["scarred"]                   = { primary = { 0.22, 0.92, 0.32 }, secondary = { 0.76, 0.46, 0.12 }, glow = { 0.30, 0.96, 0.40 } },
+        ["void-scarred"]              = { primary = { 0.58, 0.26, 0.92 }, secondary = { 0.24, 0.14, 0.62 }, glow = { 0.70, 0.34, 0.98 } },
+        ["voidscarred"]               = { primary = { 0.58, 0.26, 0.92 }, secondary = { 0.24, 0.14, 0.62 }, glow = { 0.70, 0.34, 0.98 } },
+        ["annihilator"]               = { primary = { 0.68, 0.24, 0.92 }, secondary = { 0.72, 0.18, 0.38 }, glow = { 0.78, 0.32, 0.96 } },
+        -- Druid
+        ["druid of the claw"]         = { primary = { 0.94, 0.52, 0.16 }, secondary = { 0.66, 0.24, 0.14 }, glow = { 0.96, 0.60, 0.22 } },
+        ["elune's chosen"]            = { primary = { 0.38, 0.64, 0.98 }, secondary = { 0.68, 0.78, 0.98 }, glow = { 0.46, 0.74, 1.00 } },
+        ["elunes chosen"]             = { primary = { 0.38, 0.64, 0.98 }, secondary = { 0.68, 0.78, 0.98 }, glow = { 0.46, 0.74, 1.00 } },
+        ["keeper of the grove"]       = { primary = { 0.18, 0.82, 0.52 }, secondary = { 0.34, 0.68, 0.40 }, glow = { 0.24, 0.90, 0.60 } },
+        ["wildstalker"]               = { primary = { 0.36, 0.84, 0.30 }, secondary = { 0.18, 0.62, 0.44 }, glow = { 0.44, 0.92, 0.38 } },
+        -- Evoker
+        ["chronowarden"]              = { primary = { 0.92, 0.74, 0.26 }, secondary = { 0.24, 0.72, 0.82 }, glow = { 0.96, 0.82, 0.36 } },
+        ["flameshaper"]               = { primary = { 0.92, 0.30, 0.20 }, secondary = { 0.94, 0.60, 0.18 }, glow = { 0.98, 0.38, 0.24 } },
+        ["scalecommander"]            = { primary = { 0.76, 0.58, 0.28 }, secondary = { 0.26, 0.54, 0.62 }, glow = { 0.86, 0.68, 0.36 } },
+        -- Hunter
+        ["dark ranger"]               = { primary = { 0.56, 0.28, 0.80 }, secondary = { 0.34, 0.44, 0.60 }, glow = { 0.66, 0.36, 0.88 } },
+        ["pack leader"]               = { primary = { 0.82, 0.58, 0.24 }, secondary = { 0.32, 0.66, 0.42 }, glow = { 0.90, 0.66, 0.30 } },
+        ["sentinel"]                  = { primary = { 0.32, 0.66, 0.94 }, secondary = { 0.54, 0.82, 0.96 }, glow = { 0.40, 0.76, 0.98 } },
+        -- Mage
+        ["frostfire"]                 = { primary = { 0.24, 0.74, 0.98 }, secondary = { 0.94, 0.42, 0.20 }, glow = { 0.44, 0.72, 0.96 } },
+        ["spellslinger"]              = { primary = { 0.48, 0.44, 0.98 }, secondary = { 0.28, 0.74, 0.96 }, glow = { 0.58, 0.52, 1.00 } },
+        ["sunfury"]                   = { primary = { 0.98, 0.62, 0.18 }, secondary = { 0.88, 0.24, 0.22 }, glow = { 1.00, 0.72, 0.24 } },
+        -- Monk
+        ["conduit of the celestials"] = { primary = { 0.18, 0.86, 0.64 }, secondary = { 0.34, 0.74, 0.92 }, glow = { 0.26, 0.92, 0.72 } },
+        ["master of harmony"]         = { primary = { 0.20, 0.84, 0.68 }, secondary = { 0.88, 0.72, 0.28 }, glow = { 0.28, 0.92, 0.76 } },
+        ["shado-pan"]                 = { primary = { 0.42, 0.48, 0.86 }, secondary = { 0.72, 0.24, 0.34 }, glow = { 0.50, 0.56, 0.92 } },
+        ["shadopan"]                  = { primary = { 0.42, 0.48, 0.86 }, secondary = { 0.72, 0.24, 0.34 }, glow = { 0.50, 0.56, 0.92 } },
+        -- Paladin
+        ["herald of the sun"]         = { primary = { 0.98, 0.74, 0.22 }, secondary = { 0.94, 0.44, 0.18 }, glow = { 1.00, 0.82, 0.32 } },
+        ["lightsmith"]                = { primary = { 0.94, 0.76, 0.34 }, secondary = { 0.46, 0.66, 0.92 }, glow = { 0.98, 0.84, 0.44 } },
+        ["templar"]                   = { primary = { 0.96, 0.80, 0.30 }, secondary = { 0.42, 0.70, 0.96 }, glow = { 1.00, 0.86, 0.40 } },
+        -- Priest
+        ["archon"]                    = { primary = { 0.98, 0.84, 0.42 }, secondary = { 0.62, 0.82, 0.98 }, glow = { 1.00, 0.90, 0.54 } },
+        ["oracle"]                    = { primary = { 0.46, 0.78, 0.98 }, secondary = { 0.82, 0.88, 0.98 }, glow = { 0.58, 0.86, 1.00 } },
+        ["voidweaver"]                = { primary = { 0.52, 0.24, 0.92 }, secondary = { 0.24, 0.30, 0.76 }, glow = { 0.64, 0.34, 0.98 } },
+        -- Rogue
+        ["deathstalker"]              = { primary = { 0.26, 0.78, 0.52 }, secondary = { 0.44, 0.34, 0.68 }, glow = { 0.34, 0.86, 0.60 } },
+        ["fatebound"]                 = { primary = { 0.92, 0.74, 0.26 }, secondary = { 0.46, 0.52, 0.68 }, glow = { 0.96, 0.82, 0.38 } },
+        ["trickster"]                 = { primary = { 0.36, 0.62, 0.96 }, secondary = { 0.26, 0.82, 0.74 }, glow = { 0.46, 0.72, 0.98 } },
+        -- Shaman
+        ["farseer"]                   = { primary = { 0.24, 0.64, 0.96 }, secondary = { 0.32, 0.86, 0.82 }, glow = { 0.34, 0.76, 1.00 } },
+        ["stormbringer"]              = { primary = { 0.22, 0.72, 1.00 }, secondary = { 0.44, 0.48, 0.98 }, glow = { 0.34, 0.84, 1.00 } },
+        ["totemic"]                   = { primary = { 0.92, 0.48, 0.20 }, secondary = { 0.24, 0.76, 0.68 }, glow = { 0.96, 0.58, 0.28 } },
+        -- Warlock
+        ["diabolist"]                 = { primary = { 0.92, 0.26, 0.24 }, secondary = { 0.88, 0.52, 0.18 }, glow = { 0.98, 0.34, 0.28 } },
+        ["hellcaller"]                = { primary = { 0.42, 0.86, 0.34 }, secondary = { 0.84, 0.24, 0.34 }, glow = { 0.50, 0.92, 0.40 } },
+        ["soul harvester"]            = { primary = { 0.64, 0.34, 0.94 }, secondary = { 0.24, 0.78, 0.62 }, glow = { 0.74, 0.44, 0.98 } },
+        -- Warrior
+        ["colossus"]                  = { primary = { 0.86, 0.58, 0.28 }, secondary = { 0.44, 0.54, 0.68 }, glow = { 0.92, 0.66, 0.36 } },
+        ["mountain thane"]            = { primary = { 0.30, 0.68, 0.98 }, secondary = { 0.48, 0.80, 0.98 }, glow = { 0.40, 0.78, 1.00 } },
+        ["slayer"]                    = { primary = { 0.90, 0.28, 0.28 }, secondary = { 0.62, 0.44, 0.34 }, glow = { 0.96, 0.38, 0.34 } },
+    }
+
+    local function IsMythicPlusActive()
+        if C_ChallengeMode and type(C_ChallengeMode.IsChallengeModeActive) == "function" then
+            local ok, act = pcall(C_ChallengeMode.IsChallengeModeActive)
+            if ok and not _IsSecret(act) and act then return true end
+        end
+        return false
+    end
+
+    local function GetPlayerClassRGB()
+        if type(UnitClass) == "function" then
+            local ok, _, classFile = pcall(UnitClass, "player")
+            if ok and not _IsSecret(classFile) and type(classFile) == "string" and classFile ~= "" then
+                if C_ClassColor and type(C_ClassColor.GetClassColor) == "function" then
+                    local okC, cc = pcall(C_ClassColor.GetClassColor, classFile)
+                    if okC and cc and type(cc.GetRGB) == "function" then
+                        local r, g, b = cc:GetRGB()
+                        if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                            return r, g, b
+                        end
+                    end
+                end
+                local rcc = _G.RAID_CLASS_COLORS and _G.RAID_CLASS_COLORS[classFile]
+                if type(rcc) == "table" and type(rcc.r) == "number" then
+                    return rcc.r, rcc.g, rcc.b
+                end
+            end
+        end
+        local ar, ag, ab = GetActiveAccentRGB()
+        return ar, ag, ab
+    end
+
+    local function MakePaletteFromRGB(r, g, b)
+        r = math.max(0.08, math.min(1, tonumber(r) or 0.220))
+        g = math.max(0.08, math.min(1, tonumber(g) or 0.741))
+        b = math.max(0.08, math.min(1, tonumber(b) or 0.973))
+        local sr = math.max(0.08, math.min(1, r * 0.72 + 0.08))
+        local sg = math.max(0.08, math.min(1, g * 0.72 + 0.08))
+        local sb = math.max(0.08, math.min(1, b * 0.78 + 0.10))
+        local gr = math.min(1, r * 1.08 + 0.06)
+        local gg = math.min(1, g * 1.08 + 0.06)
+        local gb = math.min(1, b * 1.08 + 0.06)
+        return {
+            primary   = { r, g, b },
+            secondary = { sr, sg, sb },
+            glow      = { gr, gg, gb },
+        }
+    end
+
+    local function ResolveHeroSpecButtons(tf)
+        local list, seen = {}, {}
+        local function AddBtn(b)
+            if b and type(b) == "table" and not seen[b] then
+                seen[b] = true
+                table.insert(list, b)
+            end
+        end
+        local hc = tf and tf.HeroTalentsContainer
+        if hc then
+            AddBtn(hc.HeroSpecButton)
+            if hc.ExpandedContainer then AddBtn(hc.ExpandedContainer.HeroSpecButton) end
+            if hc.CollapsedContainer then AddBtn(hc.CollapsedContainer.HeroSpecButton) end
+            AddBtn(hc.ChooseHeroSpecButton)
+            AddBtn(hc.HeroSpecChoiceButton)
+        end
+        return list
+    end
+
+    local function FindSubTreeSelectionNodeID(configID, specID, tf)
+        local subTreeEnum = (_G.Enum and _G.Enum.TraitNodeType and _G.Enum.TraitNodeType.SubTreeSelection) or 3
+        local hc = tf and tf.HeroTalentsContainer
+        if hc and type(hc.GetSubTreeSelectionNodeID) == "function" then
+            local okN, nid = pcall(hc.GetSubTreeSelectionNodeID, hc)
+            if okN and not _IsSecret(nid) and type(nid) == "number" and nid > 0 then
+                if specID then heroSelectionNodeCache[specID] = nid end
+                return nid
+            end
+        end
+        if specID and heroSelectionNodeCache[specID] and C_Traits and type(C_Traits.GetNodeInfo) == "function" then
+            local okI, cInfo = pcall(C_Traits.GetNodeInfo, configID, heroSelectionNodeCache[specID])
+            if okI and type(cInfo) == "table" and cInfo.type == subTreeEnum and type(cInfo.entryIDs) == "table" and #cInfo.entryIDs >= 2 then
+                return heroSelectionNodeCache[specID]
+            end
+        end
+        if C_Traits and type(C_Traits.GetConfigInfo) == "function" and type(C_Traits.GetTreeNodes) == "function" and type(C_Traits.GetNodeInfo) == "function" then
+            local okCfg, cfgInfo = pcall(C_Traits.GetConfigInfo, configID)
+            if okCfg and type(cfgInfo) == "table" and type(cfgInfo.treeIDs) == "table" then
+                for _, treeID in ipairs(cfgInfo.treeIDs) do
+                    local okT, nodes = pcall(C_Traits.GetTreeNodes, treeID)
+                    if okT and type(nodes) == "table" then
+                        for _, nid in ipairs(nodes) do
+                            local okN, nInfo = pcall(C_Traits.GetNodeInfo, configID, nid)
+                            if okN and type(nInfo) == "table" and nInfo.type == subTreeEnum and type(nInfo.entryIDs) == "table" and #nInfo.entryIDs >= 2 then
+                                if nInfo.isVisible ~= false then
+                                    if specID then heroSelectionNodeCache[specID] = nid end
+                                    return nid
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        return nil
+    end
+
+    function DynamicTalent:GetHeroSwapInfo()
+        if IsPlayerInCombat() then return nil, "COMBAT" end
+        if IsMythicPlusActive() then return nil, "KEYSTONE" end
+        local tf = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.TalentsFrame
+        if tf and type(tf.IsInspecting) == "function" then
+            local okIns, isIns = pcall(tf.IsInspecting, tf)
+            if okIns and not _IsSecret(isIns) and isIns then
+                return nil, "INSPECT"
+            end
+        end
+        if not (C_ClassTalents and C_Traits and type(C_ClassTalents.GetActiveConfigID) == "function" and type(C_Traits.GetNodeInfo) == "function") then
+            return nil, "UNAVAILABLE"
+        end
+        local okC, configID = pcall(C_ClassTalents.GetActiveConfigID)
+        if not okC or _IsSecret(configID) or type(configID) ~= "number" or configID <= 0 then
+            return nil, "UNAVAILABLE"
+        end
+        local specID = self:GetActiveSpecID()
+        if specID and type(C_ClassTalents.GetHeroTalentSpecsForClassSpec) == "function" then
+            local okH, _, reqLevel = pcall(C_ClassTalents.GetHeroTalentSpecsForClassSpec, configID, specID)
+            if okH and not _IsSecret(reqLevel) and type(reqLevel) == "number" and reqLevel > 0 and type(UnitLevel) == "function" then
+                local okL, pLvl = pcall(UnitLevel, "player")
+                if okL and not _IsSecret(pLvl) and type(pLvl) == "number" and pLvl < reqLevel then
+                    return nil, "LOCKED"
+                end
+            end
+        end
+
+        local nodeID = FindSubTreeSelectionNodeID(configID, specID, tf)
+        if not nodeID then return nil, "LOCKED" end
+
+        local okN, nodeInfo = pcall(C_Traits.GetNodeInfo, configID, nodeID)
+        if not okN or type(nodeInfo) ~= "table"
+            or nodeInfo.isVisible == false
+            or nodeInfo.isAvailable == false
+            or nodeInfo.meetsEdgeRequirements == false
+            or type(nodeInfo.entryIDs) ~= "table" or #nodeInfo.entryIDs < 2 then
+            return nil, "LOCKED"
+        end
+
+        local candidates = {}
+        for _, eID in ipairs(nodeInfo.entryIDs) do
+            local okE, eInfo = pcall(C_Traits.GetEntryInfo, configID, eID)
+            if okE and type(eInfo) == "table" and type(eInfo.subTreeID) == "number" and eInfo.subTreeID > 0 and type(C_Traits.GetSubTreeInfo) == "function" then
+                local okS, sInfo = pcall(C_Traits.GetSubTreeInfo, configID, eInfo.subTreeID)
+                if okS and type(sInfo) == "table" and not _IsSecret(sInfo.name) and type(sInfo.name) == "string" then
+                    local sName = SafeTrim(sInfo.name)
+                    if sName ~= "" then
+                        table.insert(candidates, {
+                            entryID         = eID,
+                            subTreeID       = eInfo.subTreeID,
+                            name            = sName,
+                            isSubTreeActive = (sInfo.isActive == true),
+                        })
+                    end
+                end
+            end
+        end
+        if #candidates < 2 then return nil, "LOCKED" end
+
+        local stagedEntryID = (type(nodeInfo.activeEntry) == "table" and not _IsSecret(nodeInfo.activeEntry.entryID) and type(nodeInfo.activeEntry.entryID) == "number")
+            and nodeInfo.activeEntry.entryID or nil
+        local activeSubTreeID = nil
+        if type(C_ClassTalents.GetActiveHeroTalentSpec) == "function" then
+            local okA, stID = pcall(C_ClassTalents.GetActiveHeroTalentSpec)
+            if okA and not _IsSecret(stID) and type(stID) == "number" and stID > 0 then
+                activeSubTreeID = stID
+            end
+        end
+
+        local activeIdx = nil
+        if stagedEntryID then
+            for i, c in ipairs(candidates) do
+                if c.entryID == stagedEntryID then activeIdx = i; break end
+            end
+        end
+        if not activeIdx and activeSubTreeID then
+            for i, c in ipairs(candidates) do
+                if c.subTreeID == activeSubTreeID then activeIdx = i; break end
+            end
+        end
+        if not activeIdx then
+            for i, c in ipairs(candidates) do
+                if c.isSubTreeActive then activeIdx = i; break end
+            end
+        end
+
+        local activeItem = activeIdx and candidates[activeIdx] or nil
+        local targetIdx = activeIdx and ((activeIdx % #candidates) + 1) or 1
+        local targetItem = candidates[targetIdx]
+        if not targetItem then return nil, "LOCKED" end
+
+        return {
+            configID        = configID,
+            nodeID          = nodeID,
+            specID          = specID,
+            activeEntryID   = activeItem and activeItem.entryID or nil,
+            activeSubTreeID = activeItem and activeItem.subTreeID or nil,
+            activeName      = activeItem and activeItem.name or nil,
+            targetEntryID   = targetItem.entryID,
+            targetSubTreeID = targetItem.subTreeID,
+            targetName      = targetItem.name,
+        }, nil
+    end
+
+    local function HideHeroSelectionDialogs()
+        local dlg = _G.HeroTalentsSelectionDialog
+        if dlg and type(dlg.IsShown) == "function" and dlg:IsShown() then
+            pcall(dlg.Hide, dlg)
+        end
+        local tf = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.TalentsFrame
+        local hc = tf and tf.HeroTalentsContainer
+        if hc then
+            for _, k in ipairs({ "SelectionDialog", "ChoiceDialog", "HeroTalentsSelectionDialog" }) do
+                local sub = hc[k]
+                if sub and type(sub.IsShown) == "function" and sub:IsShown() then
+                    pcall(sub.Hide, sub)
+                end
+            end
+        end
+    end
+
+    local function AppendHeroSwapTooltipHint(owner)
+        local db = EnsureDB()
+        if IsModuleDisabledInSuite("DynamicTalent") or db.enabled == false or db.rightClickHeroSwap == false then
+            return
+        end
+        if IsPlayerInCombat() or IsMythicPlusActive() then return end
+        local tt = _G.GameTooltip
+        if not tt or (type(tt.IsShown) == "function" and not tt:IsShown()) then return end
+        local info = DynamicTalent:GetHeroSwapInfo()
+        if not info or type(info.targetName) ~= "string" or info.targetName == "" then return end
+
+        local numLines = (type(tt.NumLines) == "function" and tt:NumLines()) or 0
+        for i = 1, numLines do
+            local fs = _G["GameTooltipTextLeft" .. i]
+            if fs and type(fs.GetText) == "function" then
+                local txt = SafeStr(fs:GetText(), "")
+                if txt:find("Right-Click: Switch to", 1, true) or txt:find("Switch to " .. info.targetName, 1, true) then
+                    return
+                end
+            end
+        end
+
+        if type(tt.AddLine) == "function" then
+            tt:AddLine(" ")
+            tt:AddLine(string.format("|cFF%sRight-Click:|r |cFFE2E8F0Switch to %s|r", GetAccentHex(), info.targetName))
+            if type(tt.Show) == "function" then tt:Show() end
+        end
+    end
+
+    function DynamicTalent:PerformHeroMedallionSwap()
+        local db = EnsureDB()
+        if IsModuleDisabledInSuite("DynamicTalent") or db.enabled == false or db.rightClickHeroSwap == false then
+            return false, "DISABLED"
+        end
+        if IsPlayerInCombat() then return false, "COMBAT" end
+        if IsMythicPlusActive() then return false, "KEYSTONE" end
+
+        local info, reason = self:GetHeroSwapInfo()
+        if not info then return false, reason end
+        if not (C_Traits and type(C_Traits.SetSelection) == "function") then
+            return false, "UNAVAILABLE"
+        end
+
+        local ok, res = pcall(C_Traits.SetSelection, info.configID, info.nodeID, info.targetEntryID, true)
+        if not ok then
+            ok, res = pcall(C_Traits.SetSelection, info.configID, info.nodeID, info.targetEntryID)
+        end
+        if not ok or res == false then
+            return false, "FAILED"
+        end
+
+        suppressHeroDialogUntil = ((type(GetTime) == "function" and GetTime()) or 0) + 0.30
+        HideHeroSelectionDialogs()
+
+        if type(PlaySound) == "function" and _G.SOUNDKIT and _G.SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON then
+            pcall(PlaySound, _G.SOUNDKIT.IG_MAINMENU_OPTION_CHECKBOX_ON)
+        end
+
+        self._heroTreeCache = nil
+        self:UpdateTalentTreeBackdrop()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.05, function()
+                HideHeroSelectionDialogs()
+                DynamicTalent:UpdateTalentTreeBackdrop()
+            end)
+        end
+        return true, info.targetName
+    end
+
+    function DynamicTalent:EnsureHeroMedallionHooks()
+        local tf = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.TalentsFrame
+        if not tf then return end
+        if IsPlayerInCombat() then return end
+
+        local dlg = _G.HeroTalentsSelectionDialog
+        if dlg and not hookedHeroContainers[dlg] and type(dlg.HookScript) == "function" then
+            hookedHeroContainers[dlg] = true
+            dlg:HookScript("OnShow", function(s)
+                local now = (type(GetTime) == "function" and GetTime()) or 0
+                if now <= suppressHeroDialogUntil then
+                    pcall(s.Hide, s)
+                end
+            end)
+        end
+
+        local hc = tf.HeroTalentsContainer
+        if hc and not hookedHeroContainers[hc] and type(hc.HookScript) == "function" then
+            hookedHeroContainers[hc] = true
+            hc:HookScript("OnShow", function()
+                DynamicTalent:EnsureHeroMedallionHooks()
+                DynamicTalent:UpdateTalentTreeBackdrop()
+            end)
+        end
+
+        for _, btn in ipairs(ResolveHeroSpecButtons(tf)) do
+            if not hookedHeroButtons[btn] and type(btn.HookScript) == "function" then
+                hookedHeroButtons[btn] = true
+                btn:HookScript("OnMouseUp", function(_, button, upInside)
+                    if button == "RightButton" and upInside ~= false then
+                        DynamicTalent:PerformHeroMedallionSwap()
+                    end
+                end)
+                btn:HookScript("OnEnter", function(s)
+                    AppendHeroSwapTooltipHint(s)
+                end)
+            end
+        end
+    end
+
+    function DynamicTalent:GetHeroMoodPalette()
+        local heroName = nil
+        if not IsPlayerInCombat() and not IsMythicPlusActive() then
+            local info = self:GetHeroSwapInfo()
+            if info and type(info.activeName) == "string" and info.activeName ~= "" then
+                heroName = info.activeName
+            end
+        end
+        if not heroName then
+            local _, liveName = self:GetLiveHeroTreeInfo()
+            if type(liveName) == "string" and liveName ~= "" then
+                heroName = liveName
+            end
+        end
+        if type(heroName) == "string" and not _IsSecret(heroName) then
+            local low = SafeTrim(heroName):lower()
+            local pal = HERO_MOOD_PALETTES[low] or HERO_MOOD_PALETTES[low:gsub("['`]", "")]
+            if pal then return pal end
+        end
+        local cr, cg, cb = GetPlayerClassRGB()
+        return MakePaletteFromRGB(cr, cg, cb)
+    end
+
+    function DynamicTalent:GetClassGlowPalette()
+        if _G.DynamicSuite and type(_G.DynamicSuite.GetSuiteAccent) == "function" then
+            local ar, ag, ab = GetActiveAccentRGB()
+            return MakePaletteFromRGB(ar, ag, ab)
+        end
+        local cr, cg, cb = GetPlayerClassRGB()
+        return MakePaletteFromRGB(cr, cg, cb)
+    end
+
+    local function CreateMistAnimGroup(tex, dx, dy, duration, aFrom, aTo, scaleFrom, scaleTo)
+        if type(tex.CreateAnimationGroup) ~= "function" then return nil end
+        local ag = tex:CreateAnimationGroup()
+        if ag.SetLooping then ag:SetLooping("BOUNCE") end
+        if dx ~= 0 or dy ~= 0 then
+            local tr = ag:CreateAnimation("Translation")
+            if tr.SetOffset then tr:SetOffset(dx, dy) end
+            if tr.SetDuration then tr:SetDuration(duration) end
+            if tr.SetSmoothing then tr:SetSmoothing("IN_OUT") end
+        end
+        if scaleFrom and scaleTo then
+            local sc = ag:CreateAnimation("Scale")
+            if sc.SetScaleFrom then
+                sc:SetScaleFrom(scaleFrom, scaleFrom)
+                sc:SetScaleTo(scaleTo, scaleTo)
+            elseif sc.SetFromScale then
+                sc:SetFromScale(scaleFrom, scaleFrom)
+                sc:SetToScale(scaleTo, scaleTo)
+            end
+            if sc.SetDuration then sc:SetDuration(duration) end
+            if sc.SetSmoothing then sc:SetSmoothing("IN_OUT") end
+        end
+        if aFrom and aTo then
+            local al = ag:CreateAnimation("Alpha")
+            if al.SetFromAlpha then al:SetFromAlpha(aFrom) end
+            if al.SetToAlpha then al:SetToAlpha(aTo) end
+            if al.SetDuration then al:SetDuration(duration) end
+            if al.SetSmoothing then al:SetSmoothing("IN_OUT") end
+        end
+        return ag
+    end
+
+    local function ApplyGradientSafe(tex, orientation, r1, g1, b1, a1, r2, g2, b2, a2)
+        if type(_G.CreateColor) == "function" and type(tex.SetGradient) == "function" then
+            tex:SetColorTexture(1, 1, 1, 1)
+            tex:SetGradient(orientation, _G.CreateColor(r1, g1, b1, a1), _G.CreateColor(r2, g2, b2, a2))
+        else
+            tex:SetColorTexture(r1, g1, b1, math.max(a1, a2) * 0.45)
+        end
+    end
+
+    local function LayoutBackdropLayers()
+        if not talentBackdropFrame then return end
+        local tf = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.TalentsFrame
+        local w = (talentBackdropFrame.GetWidth and talentBackdropFrame:GetWidth()) or 0
+        local h = (talentBackdropFrame.GetHeight and talentBackdropFrame:GetHeight()) or 0
+        if (w <= 10 or h <= 10) and tf then
+            w = (tf.GetWidth and tf:GetWidth()) or 1180
+            h = (tf.GetHeight and tf:GetHeight()) or 660
+        end
+        if w <= 10 then w = 1180 end
+        if h <= 10 then h = 660 end
+        talentBackdropFrame.mistPrimary:SetSize(w * 1.32, h * 1.24)
+        talentBackdropFrame.mistSecondary:SetSize(w * 1.28, h * 1.18)
+        talentBackdropFrame.mistFocal:SetSize(w * 0.62, h * 0.88)
+        local edgeH = math.max(54, math.floor(h * 0.18))
+        local edgeW = math.max(80, math.floor(w * 0.14))
+        talentBackdropFrame.vigTop:SetHeight(edgeH)
+        talentBackdropFrame.vigBottom:SetHeight(edgeH)
+        talentBackdropFrame.vigLeft:SetWidth(edgeW)
+        talentBackdropFrame.vigRight:SetWidth(edgeW)
+    end
+
+    function DynamicTalent:EnsureTalentTreeBackdrop()
+        local tf = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.TalentsFrame
+        if not tf then return nil end
+        if not talentBackdropFrame then
+            if IsPlayerInCombat() then return nil end
+            local bg = CreateFrame("Frame", "DynamicTalentTreeBackdrop", tf)
+            bg:EnableMouse(false)
+            if bg.SetClipsChildren then bg:SetClipsChildren(true) end
+            if tf.Background then
+                bg:SetAllPoints(tf.Background)
+            else
+                bg:SetAllPoints(tf)
+            end
+
+            bg.baseCanvas = bg:CreateTexture(nil, "BACKGROUND", nil, -6)
+            bg.baseCanvas:SetAllPoints()
+            bg.baseCanvas:SetColorTexture(0.035, 0.039, 0.051, 0.99)
+
+            bg.mistPrimary = bg:CreateTexture(nil, "BACKGROUND", nil, -4)
+            bg.mistPrimary:SetTexture(TEX_TALENT_MIST)
+            if bg.mistPrimary.SetBlendMode then bg.mistPrimary:SetBlendMode("ADD") end
+            bg.mistPrimary:SetPoint("CENTER", bg, "CENTER", -90, 45)
+            bg.mistPrimaryAnim = CreateMistAnimGroup(bg.mistPrimary, 34, -18, 15, 0.18, 0.30)
+
+            bg.mistSecondary = bg:CreateTexture(nil, "BACKGROUND", nil, -3)
+            bg.mistSecondary:SetTexture(TEX_TALENT_MIST)
+            if bg.mistSecondary.SetBlendMode then bg.mistSecondary:SetBlendMode("ADD") end
+            bg.mistSecondary:SetPoint("CENTER", bg, "CENTER", 95, -40)
+            bg.mistSecondaryAnim = CreateMistAnimGroup(bg.mistSecondary, -30, 20, 19, 0.14, 0.25)
+
+            bg.mistFocal = bg:CreateTexture(nil, "BACKGROUND", nil, -2)
+            bg.mistFocal:SetTexture(TEX_TALENT_MIST)
+            if bg.mistFocal.SetBlendMode then bg.mistFocal:SetBlendMode("ADD") end
+            bg.mistFocal:SetPoint("CENTER", bg, "CENTER", 0, 12)
+            bg.mistFocalAnim = CreateMistAnimGroup(bg.mistFocal, 0, 0, 11, 0.16, 0.26, 0.96, 1.06)
+
+            bg.vigTop = bg:CreateTexture(nil, "BACKGROUND", nil, -1)
+            bg.vigTop:SetPoint("TOPLEFT", bg, "TOPLEFT", 0, 0)
+            bg.vigTop:SetPoint("TOPRIGHT", bg, "TOPRIGHT", 0, 0)
+            ApplyGradientSafe(bg.vigTop, "VERTICAL", 0.015, 0.018, 0.024, 0.0, 0.015, 0.018, 0.024, 0.78)
+
+            bg.vigBottom = bg:CreateTexture(nil, "BACKGROUND", nil, -1)
+            bg.vigBottom:SetPoint("BOTTOMLEFT", bg, "BOTTOMLEFT", 0, 0)
+            bg.vigBottom:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", 0, 0)
+            ApplyGradientSafe(bg.vigBottom, "VERTICAL", 0.015, 0.018, 0.024, 0.78, 0.015, 0.018, 0.024, 0.0)
+
+            bg.vigLeft = bg:CreateTexture(nil, "BACKGROUND", nil, -1)
+            bg.vigLeft:SetPoint("TOPLEFT", bg, "TOPLEFT", 0, 0)
+            bg.vigLeft:SetPoint("BOTTOMLEFT", bg, "BOTTOMLEFT", 0, 0)
+            ApplyGradientSafe(bg.vigLeft, "HORIZONTAL", 0.015, 0.018, 0.024, 0.72, 0.015, 0.018, 0.024, 0.0)
+
+            bg.vigRight = bg:CreateTexture(nil, "BACKGROUND", nil, -1)
+            bg.vigRight:SetPoint("TOPRIGHT", bg, "TOPRIGHT", 0, 0)
+            bg.vigRight:SetPoint("BOTTOMRIGHT", bg, "BOTTOMRIGHT", 0, 0)
+            ApplyGradientSafe(bg.vigRight, "HORIZONTAL", 0.015, 0.018, 0.024, 0.0, 0.015, 0.018, 0.024, 0.72)
+
+            bg.vignettes = { bg.vigTop, bg.vigBottom, bg.vigLeft, bg.vigRight }
+
+            bg.dimmerWash = bg:CreateTexture(nil, "BACKGROUND", nil, 1)
+            bg.dimmerWash:SetAllPoints()
+            bg.dimmerWash:SetColorTexture(0.015, 0.018, 0.024, 0.35)
+
+            bg:SetScript("OnSizeChanged", LayoutBackdropLayers)
+            bg:SetScript("OnShow", LayoutBackdropLayers)
+            talentBackdropFrame = bg
+            LayoutBackdropLayers()
+        end
+
+        local tfLvl = (tf.GetFrameLevel and tf:GetFrameLevel()) or 1
+        local bpLvl = (tf.ButtonsParent and tf.ButtonsParent.GetFrameLevel and tf.ButtonsParent:GetFrameLevel()) or (tfLvl + 1)
+        if bpLvl > tfLvl then
+            talentBackdropFrame:SetFrameLevel(tfLvl)
+        else
+            talentBackdropFrame:SetFrameLevel(math.max(0, tfLvl))
+        end
+        return talentBackdropFrame
+    end
+
+    function DynamicTalent:PauseTalentTreeBackdropAnims()
+        if not talentBackdropFrame then return end
+        for _, ag in ipairs({ talentBackdropFrame.mistPrimaryAnim, talentBackdropFrame.mistSecondaryAnim, talentBackdropFrame.mistFocalAnim }) do
+            if ag and ag.Stop then
+                if not ag.IsPlaying or ag:IsPlaying() then
+                    ag:Stop()
+                end
+            end
+        end
+    end
+
+    function DynamicTalent:HideTalentTreeBackdrop()
+        self:PauseTalentTreeBackdropAnims()
+        if talentBackdropFrame then
+            talentBackdropFrame:Hide()
+        end
+    end
+
+    function DynamicTalent:UpdateTalentTreeBackdrop()
+        local db = EnsureDB()
+        if IsModuleDisabledInSuite("DynamicTalent") or db.enabled == false then
+            self:HideTalentTreeBackdrop()
+            return
+        end
+
+        local tf = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.TalentsFrame
+        if not tf then return end
+        local bg = self:EnsureTalentTreeBackdrop()
+        if not bg then return end
+
+        local mode = db.talentBackdropMode or "HERO_MIST"
+        local dimmer = math.max(0, math.min(0.85, (tonumber(db.talentBackdropDimmer) or 35) / 100))
+        local animate = (db.talentBackdropAnimate ~= false)
+
+        local function SetVignettesShown(show)
+            for _, vt in ipairs(bg.vignettes) do
+                if show then vt:Show() else vt:Hide() end
+            end
+        end
+
+        if mode == "BLIZZARD" then
+            self:PauseTalentTreeBackdropAnims()
+            bg.baseCanvas:Hide()
+            bg.mistPrimary:Hide()
+            bg.mistSecondary:Hide()
+            bg.mistFocal:Hide()
+            SetVignettesShown(false)
+            if dimmer > 0.001 then
+                bg.dimmerWash:SetColorTexture(0.015, 0.018, 0.024, dimmer)
+                bg.dimmerWash:Show()
+                bg:Show()
+            else
+                bg.dimmerWash:Hide()
+                bg:Hide()
+            end
+            return
+        end
+
+        if mode == "OBSIDIAN" then
+            self:PauseTalentTreeBackdropAnims()
+            bg.baseCanvas:Show()
+            bg.mistPrimary:Hide()
+            bg.mistSecondary:Hide()
+            bg.mistFocal:Hide()
+            SetVignettesShown(true)
+            if dimmer > 0.001 then
+                bg.dimmerWash:SetColorTexture(0.015, 0.018, 0.024, dimmer * 0.85)
+                bg.dimmerWash:Show()
+            else
+                bg.dimmerWash:Hide()
+            end
+            bg:Show()
+            return
+        end
+
+        local pal = (mode == "HERO_MIST") and self:GetHeroMoodPalette() or self:GetClassGlowPalette()
+        local p = pal.primary
+        local s = pal.secondary
+        local g = pal.glow
+
+        bg.baseCanvas:Show()
+        SetVignettesShown(true)
+
+        bg.mistPrimary:SetVertexColor(p[1], p[2], p[3], 1)
+        bg.mistPrimary:Show()
+
+        bg.mistSecondary:SetVertexColor(s[1], s[2], s[3], 1)
+        bg.mistSecondary:Show()
+
+        bg.mistFocal:SetVertexColor(g[1], g[2], g[3], 1)
+        bg.mistFocal:Show()
+
+        if dimmer > 0.001 then
+            bg.dimmerWash:SetColorTexture(0.015, 0.018, 0.024, dimmer)
+            bg.dimmerWash:Show()
+        else
+            bg.dimmerWash:Hide()
+        end
+
+        bg:Show()
+        LayoutBackdropLayers()
+
+        local tfShown = (type(tf.IsShown) ~= "function") or tf:IsShown()
+        if animate and tfShown then
+            local mistPairs = {
+                { tex = bg.mistPrimary,   ag = bg.mistPrimaryAnim,   alpha = 0.24 },
+                { tex = bg.mistSecondary, ag = bg.mistSecondaryAnim, alpha = 0.19 },
+                { tex = bg.mistFocal,     ag = bg.mistFocalAnim,     alpha = 0.21 },
+            }
+            for _, mp in ipairs(mistPairs) do
+                if mp.ag and mp.ag.Play then
+                    if not mp.ag.IsPlaying or not mp.ag:IsPlaying() then
+                        mp.tex:SetAlpha(mp.alpha)
+                        mp.ag:Play()
+                    end
+                else
+                    mp.tex:SetAlpha(mp.alpha)
+                end
+            end
+        else
+            self:PauseTalentTreeBackdropAnims()
+            bg.mistPrimary:SetAlpha(0.24)
+            bg.mistSecondary:SetAlpha(0.19)
+            bg.mistFocal:SetAlpha(0.21)
+        end
     end
 end
 
@@ -8298,6 +9051,283 @@ local function CreateSegmentedSwitchCard(parent, yOffset, title, desc, getter, s
     return card, -66
 end
 
+local function CreatePrecisionSliderCard(parent, yOffset, title, desc, minVal, maxVal, stepVal, getter, setter, formatFunc)
+    local surf, _ = GetTheme()
+    local card = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    card:SetHeight(60)
+    card:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, yOffset)
+    card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -12, yOffset)
+    SetPixelBackdrop(card, surf.card, { 1, 1, 1, 0.06 }, 1)
+
+    local holder = CreateFrame("Frame", nil, card)
+    holder:SetSize(256, 26)
+    holder:SetPoint("RIGHT", card, "RIGHT", -12, 0)
+    holder:EnableMouse(true)
+    holder:EnableMouseWheel(true)
+    holder:SetHitRectInsets(0, 0, -4, -4)
+
+    local titleFs = card:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(titleFs, 11.5, "")
+    titleFs:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -9)
+    titleFs:SetPoint("RIGHT", holder, "LEFT", -14, 0)
+    titleFs:SetJustifyH("LEFT")
+    titleFs:SetWordWrap(false)
+    titleFs:SetTextColor(0.95, 0.97, 1.0, 1.0)
+    titleFs:SetText(title)
+
+    local descFs = card:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(descFs, 9.5, "")
+    descFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -3)
+    descFs:SetPoint("RIGHT", holder, "LEFT", -14, 0)
+    descFs:SetJustifyH("LEFT")
+    descFs:SetJustifyV("TOP")
+    descFs:SetWordWrap(true)
+    if descFs.SetMaxLines then descFs:SetMaxLines(2) end
+    descFs:SetTextColor(0.58, 0.65, 0.74, 0.95)
+    descFs:SetText(desc or "")
+
+    local valText = holder:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(valText, 11, "")
+    valText:SetPoint("RIGHT", holder, "RIGHT", 0, 0)
+    valText:SetWidth(52)
+    valText:SetJustifyH("RIGHT")
+
+    local track = CreateFrame("Frame", nil, holder, "BackdropTemplate")
+    track:SetPoint("LEFT", holder, "LEFT", 0, 0)
+    track:SetPoint("RIGHT", valText, "LEFT", -10, 0)
+    track:SetHeight(4)
+    SetPixelBackdrop(track, { 0.035, 0.039, 0.051, 0.98 }, { 1, 1, 1, 0.14 }, 1)
+
+    local fill = CreateSolidTex(track, "ARTWORK", 1, 0.220, 0.741, 0.973, 0.85)
+    fill:SetPoint("TOPLEFT", track, "TOPLEFT", 1, -1)
+    fill:SetPoint("BOTTOMLEFT", track, "BOTTOMLEFT", 1, 1)
+    fill:SetWidth(1)
+
+    local thumb = CreateSolidTex(track, "OVERLAY", 3, 0.97, 0.98, 1.00, 1.0)
+    thumb:SetSize(6, 14)
+    if thumb.SetSnapToPixelGrid then
+        thumb:SetSnapToPixelGrid(false)
+        thumb:SetTexelSnappingBias(0)
+    end
+
+    local isDragging = false
+    local lastCommittedValue = nil
+
+    local function SnapValue(v)
+        v = math.max(minVal, math.min(maxVal, tonumber(v) or minVal))
+        if stepVal and stepVal > 0 then
+            v = math.floor((v - minVal) / stepVal + 0.5) * stepVal + minVal
+        end
+        return math.max(minVal, math.min(maxVal, v))
+    end
+
+    local function RefreshSliderVisual(v, rawPct)
+        local _, a = GetTheme()
+        fill:SetColorTexture(a.r, a.g, a.b, 0.85)
+        valText:SetTextColor(a.r, a.g, a.b, 1.0)
+        if isDragging or (holder.IsMouseOver and holder:IsMouseOver()) then
+            thumb:SetColorTexture(a.r, a.g, a.b, 1.0)
+        else
+            thumb:SetColorTexture(0.97, 0.98, 1.00, 1.0)
+        end
+        local cur = SnapValue((type(v) == "number" and v) or getter() or minVal)
+        local pct = rawPct
+        if pct == nil then
+            pct = (maxVal > minVal) and ((cur - minVal) / (maxVal - minVal)) or 0
+        end
+        pct = math.max(0, math.min(1, pct))
+        local tw = track:GetWidth()
+        if not tw or tw <= 0 then tw = 194 end
+        fill:SetWidth(math.max(1, pct * math.max(1, tw - 2)))
+        thumb:ClearAllPoints()
+        thumb:SetPoint("CENTER", track, "LEFT", pct * tw, 0)
+        valText:SetText(formatFunc and formatFunc(cur) or tostring(cur))
+    end
+
+    local function UpdateFromCursor()
+        if isDragging and IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            isDragging = false
+            holder:SetScript("OnUpdate", nil)
+            RefreshSliderVisual()
+            return
+        end
+        if not GetCursorPosition or not track.GetEffectiveScale then return end
+        local scale = track:GetEffectiveScale() or 1
+        local cx = GetCursorPosition() / scale
+        local left, tw = track:GetLeft(), track:GetWidth()
+        if left and tw and tw > 0 then
+            local pct = math.max(0, math.min(1, (cx - left) / tw))
+            local stepped = SnapValue(minVal + pct * (maxVal - minVal))
+            if stepped ~= lastCommittedValue then
+                lastCommittedValue = stepped
+                setter(stepped)
+            end
+            RefreshSliderVisual(stepped, pct)
+        end
+    end
+
+    holder:SetScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            isDragging = true
+            UpdateFromCursor()
+            self:SetScript("OnUpdate", UpdateFromCursor)
+        end
+    end)
+    holder:SetScript("OnMouseUp", function(self)
+        isDragging = false
+        self:SetScript("OnUpdate", nil)
+        RefreshSliderVisual()
+    end)
+    holder:SetScript("OnHide", function(self)
+        isDragging = false
+        self:SetScript("OnUpdate", nil)
+    end)
+    holder:SetScript("OnEnter", function(self)
+        RefreshSliderVisual()
+        if GameTooltip then
+            local hex = GetAccentHex()
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine(string.format("|cFF%sLeft-Click / Drag:|r |cFFE2E8F0Adjust value|r", hex))
+            GameTooltip:AddLine(string.format("|cFF%sMousewheel:|r |cFFE2E8F0Fine-tune by 1 step|r", hex))
+            GameTooltip:Show()
+        end
+    end)
+    holder:SetScript("OnLeave", function()
+        RefreshSliderVisual()
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+    holder:SetScript("OnMouseWheel", function(_, delta)
+        local cur = getter() or minVal
+        local step = stepVal or ((maxVal - minVal) / 10)
+        local newVal = SnapValue(cur + (delta > 0 and step or -step))
+        lastCommittedValue = newVal
+        setter(newVal)
+        RefreshSliderVisual(newVal)
+    end)
+    holder:SetScript("OnShow", function()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function() RefreshSliderVisual() end)
+        else
+            RefreshSliderVisual()
+        end
+    end)
+    RefreshSliderVisual()
+    return card, -66
+end
+
+local function CreateBackdropModeCard(parent, yOffset, title, desc, options, getter, setter)
+    local surf, _ = GetTheme()
+    local card = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    card:SetHeight(90)
+    card:SetPoint("TOPLEFT", parent, "TOPLEFT", 12, yOffset)
+    card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -12, yOffset)
+    SetPixelBackdrop(card, surf.card, { 1, 1, 1, 0.06 }, 1)
+
+    local titleFs = card:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(titleFs, 11.5, "")
+    titleFs:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -9)
+    titleFs:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -9)
+    titleFs:SetJustifyH("LEFT")
+    titleFs:SetWordWrap(false)
+    titleFs:SetTextColor(0.95, 0.97, 1.0, 1.0)
+    titleFs:SetText(title)
+
+    local descFs = card:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(descFs, 9.5, "")
+    descFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -3)
+    descFs:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -9)
+    descFs:SetJustifyH("LEFT")
+    descFs:SetWordWrap(false)
+    descFs:SetTextColor(0.58, 0.65, 0.74, 0.95)
+    descFs:SetText(desc or "")
+
+    local track = CreateFrame("Frame", nil, card, "BackdropTemplate")
+    track:SetHeight(26)
+    track:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -50)
+    track:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -50)
+    SetPixelBackdrop(track, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 }, 1)
+
+    local pills = {}
+    local function UpdateVisual()
+        local cur = getter()
+        local _, a = GetTheme()
+        for _, p in ipairs(pills) do
+            local isAct = (p.opt.value == cur)
+            local isHov = (p.isHovered == true)
+            if isAct then
+                SetPixelBackdrop(p, { a.r * 0.42, a.g * 0.42, a.b * 0.42, 0.98 }, { a.r, a.g, a.b, 0.95 }, 1)
+                p.fs:SetTextColor(1, 1, 1, 1)
+            elseif isHov then
+                SetPixelBackdrop(p, { 0.11, 0.13, 0.17, 0.98 }, { a.r, a.g, a.b, 0.65 }, 1)
+                p.fs:SetTextColor(0.92, 0.95, 0.98, 1)
+            else
+                SetPixelBackdrop(p, { 0.043, 0.051, 0.071, 0.0 }, { 0, 0, 0, 0 }, 1)
+                p.fs:SetTextColor(0.64, 0.70, 0.80, 0.95)
+            end
+        end
+    end
+
+    local function ReflowPills()
+        local n = #pills
+        if n == 0 then return end
+        local w = track:GetWidth() or 640
+        local gap = 3
+        local usable = math.max(120, w - 4 - (gap * (n - 1)))
+        local pw = math.floor(usable / n)
+        for i, p in ipairs(pills) do
+            p:SetHeight(22)
+            p:ClearAllPoints()
+            if i == 1 then
+                p:SetPoint("LEFT", track, "LEFT", 2, 0)
+                p:SetWidth(pw)
+            elseif i == n then
+                p:SetPoint("LEFT", pills[i - 1], "RIGHT", gap, 0)
+                p:SetPoint("RIGHT", track, "RIGHT", -2, 0)
+            else
+                p:SetPoint("LEFT", pills[i - 1], "RIGHT", gap, 0)
+                p:SetWidth(pw)
+            end
+        end
+    end
+
+    for _, opt in ipairs(options or {}) do
+        local p = CreateFrame("Button", nil, track, "BackdropTemplate")
+        p.opt = opt
+        p.fs = p:CreateFontString(nil, "OVERLAY")
+        SetFontSafe(p.fs, 10.5, "")
+        p.fs:SetPoint("CENTER")
+        p.fs:SetWordWrap(false)
+        p.fs:SetText(opt.label or opt.value)
+        p:SetScript("OnEnter", function(s)
+            s.isHovered = true
+            UpdateVisual()
+            if GameTooltip and opt.tip then
+                GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                GameTooltip:ClearLines()
+                GameTooltip:AddLine(opt.label or opt.value, 1, 1, 1)
+                GameTooltip:AddLine(opt.tip, 0.88, 0.91, 0.95, true)
+                GameTooltip:Show()
+            end
+        end)
+        p:SetScript("OnLeave", function(s)
+            s.isHovered = false
+            UpdateVisual()
+            if GameTooltip then GameTooltip:Hide() end
+        end)
+        p:SetScript("OnClick", function()
+            setter(opt.value)
+            UpdateVisual()
+        end)
+        table.insert(pills, p)
+    end
+    track:SetScript("OnSizeChanged", ReflowPills)
+    track:SetScript("OnShow", ReflowPills)
+    ReflowPills()
+    UpdateVisual()
+    return card, -96
+end
+
 local function CreateThreeWayScrollPane(parent, topAnchor, topOffset, rightPad, bottomPad)
     local _, acc = GetTheme()
     local sf = CreateFrame("ScrollFrame", nil, parent)
@@ -8621,7 +9651,10 @@ local function RenderTalentEmbedded(parent)
                 if not v then
                     DynamicTalent:HideTalentReminderToast()
                     DynamicTalent:HideTalentPopover()
+                    DynamicTalent:HideTalentTreeBackdrop()
                 else
+                    DynamicTalent:EnsureHeroMedallionHooks()
+                    DynamicTalent:UpdateTalentTreeBackdrop()
                     DynamicTalent:CheckZoneTalentLoadout()
                 end
                 if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
@@ -8670,11 +9703,66 @@ local function RenderTalentEmbedded(parent)
             end)
         sy = sy + dyZoneFirst
 
+        local _, dyHeroSwap = CreateSegmentedSwitchCard(sec1, sy, "Right-Click Hero Spec Swap",
+            "Right-click the central Hero Talent medallion out of combat to switch to your other Hero tree without opening the picker popup.",
+            function() return db.rightClickHeroSwap ~= false end,
+            function(v)
+                db.rightClickHeroSwap = (v == true)
+                DynamicTalent:EnsureHeroMedallionHooks()
+            end)
+        sy = sy + dyHeroSwap
+
         local sec1H = math.abs(sy) + 8
         sec1:SetHeight(sec1H)
         y = y - (sec1H + 10)
 
-        -- Section 2: Custom Loadout Group Order
+        -- Section 2: Talent Tree Backdrop Studio
+        local secBg = CreateSectionBox(sc, y)
+        local syBg = -10
+        local _, dyBgH = CreateSectionHeader(secBg, syBg, "TALENT TREE BACKDROP",
+            "Customise Blizzard's talent background with Obsidian mist, Hero-synced colour moods, and a readability dimmer.")
+        syBg = syBg + dyBgH
+
+        local _, dyBgMode = CreateBackdropModeCard(secBg, syBg, "Backdrop Mode",
+            "Choose Blizzard's native spec art, a clean Obsidian canvas, or animated mist synced to your Hero tree or Class.",
+            {
+                { value = "BLIZZARD",   label = "Blizzard Default", tip = "Keeps Blizzard's native talent background art intact (Background Dimmer still applies above 0%)." },
+                { value = "OBSIDIAN",   label = "Obsidian Clean",   tip = "Sleek Midnight Obsidian canvas with a soft dark edge vignette for distraction-free editing." },
+                { value = "HERO_MIST",  label = "Hero-Synced Mist", tip = "Layered drifting Obsidian mist that automatically shifts its colour mood when switching Hero Talent trees." },
+                { value = "CLASS_GLOW", label = "Class Glow",       tip = "Subtle breathing Obsidian mist tinted to your active Class Colour or Suite Accent." },
+            },
+            function() return db.talentBackdropMode or "HERO_MIST" end,
+            function(val)
+                db.talentBackdropMode = val
+                DynamicTalent:UpdateTalentTreeBackdrop()
+            end)
+        syBg = syBg + dyBgMode
+
+        local _, dyDimmer = CreatePrecisionSliderCard(secBg, syBg, "Background Dimmer",
+            "Applies a dark Obsidian wash behind talent nodes and over Blizzard's spec art so icons and links stay crisp.",
+            0, 85, 5,
+            function() return db.talentBackdropDimmer ~= nil and db.talentBackdropDimmer or 35 end,
+            function(val)
+                db.talentBackdropDimmer = val
+                DynamicTalent:UpdateTalentTreeBackdrop()
+            end,
+            function(v) return string.format("%d%%", v) end)
+        syBg = syBg + dyDimmer
+
+        local _, dyAnim = CreateSegmentedSwitchCard(secBg, syBg, "Subtle Backdrop Animation",
+            "Animates the drifting mist and gentle glow pulse when Hero-Synced Mist or Class Glow is active.",
+            function() return db.talentBackdropAnimate ~= false end,
+            function(v)
+                db.talentBackdropAnimate = (v == true)
+                DynamicTalent:UpdateTalentTreeBackdrop()
+            end)
+        syBg = syBg + dyAnim
+
+        local secBgH = math.abs(syBg) + 8
+        secBg:SetHeight(secBgH)
+        y = y - (secBgH + 10)
+
+        -- Section 3: Custom Loadout Group Order
         local sec2 = CreateSectionBox(sc, y)
         local sy2 = -10
         local resetOrderBtn = CreateStyledButton(sec2, "Reset Order", 96, 22, false, function()
@@ -8859,6 +9947,7 @@ function DynamicTalent:ApplyTheme()
     end
     self:ApplyTalentReminderToastVisuals()
     self:RefreshTalentDock()
+    self:UpdateTalentTreeBackdrop()
 end
 
 function DynamicTalent:ResetModuleDefaults()
@@ -8901,6 +9990,7 @@ end
 function DynamicTalent:OnDisableInSuite()
     CloseAllDynamicTalentPopups()
     self:HideTalentReminderToast()
+    self:HideTalentTreeBackdrop()
     if talentDockFrame then talentDockFrame:Hide() end
     if talentMgrModal then talentMgrModal:Hide() end
     if standaloneWin then standaloneWin:Hide() end
@@ -8912,7 +10002,9 @@ end
 function DynamicTalent:OnEnableInSuite()
     EnsureDB()
     self:EnsureTalentDockHooks()
+    self:EnsureHeroMedallionHooks()
     self:RefreshTalentDock()
+    self:UpdateTalentTreeBackdrop()
     self:CheckZoneTalentLoadout()
     if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
         pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
@@ -9019,6 +10111,8 @@ DynamicTalent.CHANGELOG = {
         version = VERSION,
         date = "21/11/2026",
         entries = {
+            { type = "NEW", text = "Right-Click Hero Spec Swap (21/11/2026): Added an enabled-by-default 'Right-Click Hero Spec Swap' option (out of combat, skipped during active Mythic+ keystones and inspection) on Blizzard's central Hero Talent medallion with a clean 'Right-Click: Switch to [Other Hero Tree]' hover hint; immediately stages the alternate Hero tree without opening the picker popup." },
+            { type = "NEW", text = "Talent Tree Backdrop Studio & Background Dimmer (21/11/2026): Added a non-interactive background studio behind PlayerSpellsFrame.TalentsFrame with 4 Backdrop Modes (Blizzard Default, Obsidian Clean, Hero-Synced Mist shifting automatically across all 40 Hero trees, and Class Glow), a 0%-85% Background Dimmer precision slider (default 35%), and a Subtle Backdrop Animation toggle." },
             { type = "NEW", text = "Extracted DynamicTalent Module (/dt, /dynamictalent) (21/11/2026): Moved the unlimited per-spec Talent Loadout library, Hero Talent acronym badges, WCL/Northern Sky/Blizzard importer, Left-Hand PlayerSpellsFrame Dock, 880x580 Talent Loadouts Manager, and Shared Alert Toast reminders out of DynamicPrep into a dedicated 12th dual-mode module with zero-loss SavedVariables migration (DynamicPrepDB -> DynamicTalentDB) and a clean Top Info Bar capsule hook." },
             { type = "NEW", text = "Dedicated PvP Binder Tab & 3-Tier Mismatch Priority (21/11/2026): Added a 4th 'PvP' binder tab (All PvP, Arena, Battlegrounds, War Mode) alongside Raid Bosses, M+ Dungeons, and Zone Defaults; specific PvP mode binds now take priority over All PvP, while resting in cities suppresses Outdoor and War Mode alerts cleanly." },
             { type = "NEW", text = "Custom Loadout Group Ordering & Prioritise Current Zone First (21/11/2026): Added Tab 2 controls to reorder the 5 loadout groups (Raid, M+, Delves, PvP, Custom) and optionally float loadouts matching your active content zone to the top of the Talent Dock and Prep Bar quick-switcher." },
@@ -9034,6 +10128,9 @@ DynamicTalent.SEARCH_ENTRIES = {
     { title = "Show Talent Capsule on Prep Bar",       desc = "Toggle the Talent Loadout capsule inside DynamicPrep's Top Info Bar.",                             keywords = "prep bar capsule segment talents",               tabIndex = 2, targetTitle = "Show Talent Capsule on Prep Bar" },
     { title = "Zone-Aware Talent Loadout Reminders",   desc = "Show a 1-click alert toast when entering Raid, M+, Delve, or PvP content with a different build.", keywords = "talent reminder toast alert swap",               tabIndex = 2, targetTitle = "Zone-Aware Talent Loadout Reminders" },
     { title = "Prioritise Current Zone First",         desc = "Float loadouts matching your current zone to the top of quick-switchers.",                         keywords = "prioritise zone first sort quick switch",        tabIndex = 2, targetTitle = "Prioritise Current Zone First" },
+    { title = "Right-Click Hero Spec Swap",            desc = "Right-click Blizzard's Hero Talent medallion out of combat to switch Hero trees cleanly.",          keywords = "hero spec swap medallion right click tree",      tabIndex = 2, targetTitle = "Right-Click Hero Spec Swap" },
+    { title = "Talent Tree Backdrop Studio",           desc = "Choose Blizzard Default, Obsidian Clean, Hero-Synced Mist, or Class Glow talent backgrounds.",     keywords = "backdrop background mist obsidian hero glow tree",tabIndex = 2, targetTitle = "TALENT TREE BACKDROP" },
+    { title = "Background Dimmer & Mist Animation",    desc = "Dim Blizzard's spec background art (0%-85%) or pause subtle animated mist glow.",                   keywords = "dimmer dark opacity mist animation pulse",       tabIndex = 2, targetTitle = "Background Dimmer" },
     { title = "Custom Loadout Group Order",            desc = "Reorder Raid, M+, Delves, PvP, and Custom groups across Talent Dock and switchers.",               keywords = "group order sort raid m+ delves pvp custom",     tabIndex = 2, targetTitle = "CUSTOM LOADOUT GROUP ORDER" },
 }
 
@@ -9126,6 +10223,7 @@ SafeRegisterEvent(evt, "PLAYER_LOGIN")
 SafeRegisterEvent(evt, "PLAYER_ENTERING_WORLD")
 SafeRegisterEvent(evt, "ZONE_CHANGED_NEW_AREA")
 SafeRegisterEvent(evt, "PLAYER_REGEN_DISABLED")
+SafeRegisterEvent(evt, "PLAYER_REGEN_ENABLED")
 SafeRegisterEvent(evt, "PLAYER_SPECIALIZATION_CHANGED")
 SafeRegisterEvent(evt, "PLAYER_LOOT_SPEC_UPDATED")
 SafeRegisterEvent(evt, "READY_CHECK")
@@ -9172,10 +10270,20 @@ evt:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "PLAYER_REGEN_DISABLED" then
         DynamicTalent:HideTalentReminderToast()
         DynamicTalent:HideTalentPopover()
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        local psf = _G.PlayerSpellsFrame
+        local tf = psf and psf.TalentsFrame
+        if psf and psf.IsShown and psf:IsShown() and tf and tf.IsShown and tf:IsShown()
+            and not IsModuleDisabledInSuite("DynamicTalent") and EnsureDB().enabled ~= false then
+            DynamicTalent:EnsureHeroMedallionHooks()
+            DynamicTalent:UpdateTalentTreeBackdrop()
+        end
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         if not arg1 or arg1 == "player" then
             DynamicTalent._heroTreeCache = nil
             DynamicTalent:RefreshTalentDock()
+            DynamicTalent:EnsureHeroMedallionHooks()
+            DynamicTalent:UpdateTalentTreeBackdrop()
             if talentMgrModal and talentMgrModal:IsShown() then
                 if talentMgrModal.RefreshQuickStartStrip then talentMgrModal:RefreshQuickStartStrip() end
                 if talentMgrModal.RefreshBossList then talentMgrModal:RefreshBossList() end
@@ -9226,6 +10334,10 @@ evt:SetScript("OnEvent", function(_, event, arg1)
         end
         DynamicTalent:HideTalentReminderToast()
         DynamicTalent:SyncTalentBindsUI()
+        DynamicTalent:UpdateTalentTreeBackdrop()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.05, function() DynamicTalent:UpdateTalentTreeBackdrop() end)
+        end
     end
 end)
 
