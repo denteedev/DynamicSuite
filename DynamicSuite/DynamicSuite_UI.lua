@@ -22,7 +22,7 @@ local CONTEXT_TABS = {
     { key = "raid",    label = "Raid" },
     { key = "pvp",     label = "PvP" },
 }
-local STANDALONE_FRAME_NAMES = { "DynamicFPSMainFrame", "DynamicFPSStandaloneFrame", "DynamicFrameMainFrame", "DynamicZoomStandaloneFrame", "DynamicMarkerMainFrame", "DynamicPrepMainFrame", "DynamicGroupMainFrame", "DynamicBagsStandaloneFrame", "DynamicChatStandaloneFrame", "DynamicMailStandaloneWindow", "DynamicVaultStandaloneFrame", "DynamicDialogueStandaloneFrame" }
+local STANDALONE_FRAME_NAMES = { "DynamicFPSMainFrame", "DynamicFPSStandaloneFrame", "DynamicFrameMainFrame", "DynamicZoomStandaloneFrame", "DynamicMarkerMainFrame", "DynamicPrepMainFrame", "DynamicTalentStandaloneFrame", "DynamicGroupMainFrame", "DynamicBagsStandaloneFrame", "DynamicChatStandaloneFrame", "DynamicMailStandaloneWindow", "DynamicVaultStandaloneFrame", "DynamicDialogueStandaloneFrame" }
 
 local selectedTabKey = "outdoor"
 local selectedAltKey = nil
@@ -1002,6 +1002,8 @@ local MODULE_ICON_PATHS = {
     ["fps"]           = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_fps.tga",
     ["DynamicPrep"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
     ["prep"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
+    ["DynamicTalent"] = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_talent.tga",
+    ["talent"]        = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_talent.tga",
     ["DynamicGroup"]  = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga",
     ["group"]         = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga",
     ["DynamicBags"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga",
@@ -1018,7 +1020,7 @@ local MODULE_ICON_PATHS = {
 
 function UI.GetModuleIconPath(modKey, fallbackIcon)
     local keyStr = tostring(modKey or "")
-    local shortStr = keyStr:gsub("^Dynamic", ""):lower()
+    local shortStr = keyStr:lower():gsub("^dynamic", "")
     return MODULE_ICON_PATHS[keyStr] or MODULE_ICON_PATHS[shortStr] or fallbackIcon or "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga"
 end
 
@@ -3367,7 +3369,7 @@ function addonTable.CreateMainConfigUI()
                 end
             end
             local addonKey = (mInfo and (mInfo.addonName or mInfo.name or mInfo.key)) or selectedPeerModuleKey
-            local shortKey = (mInfo and mInfo.id) or tostring(addonKey):gsub("^Dynamic", ""):lower()
+            local shortKey = (mInfo and mInfo.id) or tostring(addonKey):lower():gsub("^dynamic", "")
             local regMod = _G.DynamicSuite and _G.DynamicSuite.modules and (_G.DynamicSuite.modules[addonKey] or _G.DynamicSuite.modules[shortKey] or _G.DynamicSuite.modules[selectedPeerModuleKey])
             if regMod and type(regMod.GetStatusText) == "function" then
                 local okStatus, customStatus = pcall(regMod.GetStatusText, regMod)
@@ -4005,7 +4007,7 @@ function addonTable.CreateMainConfigUI()
     leftRail.divider:SetWidth(1)
 
     do
-    local DEFAULT_MODULE_KEYS = { "marker", "group", "prep", "vault", "dialogue", "bags", "mail", "chat", "load", "fps", "zoom" }
+    local DEFAULT_MODULE_KEYS = { "marker", "group", "prep", "talent", "vault", "dialogue", "bags", "mail", "chat", "load", "fps", "zoom" }
     UI.DEFAULT_MODULE_KEYS = DEFAULT_MODULE_KEYS
 
     function UI.IsUsingCustomRailOrder()
@@ -4597,7 +4599,7 @@ function addonTable.CreateMainConfigUI()
         card.leftBar:Hide()
 
         local addonKey = modInfo.addonName or modInfo.name or modInfo.key
-        local shortKey = modInfo.id or modInfo.key or tostring(addonKey):gsub("^Dynamic", ""):lower()
+        local shortKey = modInfo.id or modInfo.key or tostring(addonKey):lower():gsub("^dynamic", "")
 
         railModuleCardsByKey[shortKey] = card
         railModuleCardsByKey[addonKey] = card
@@ -4720,7 +4722,7 @@ function addonTable.CreateMainConfigUI()
                     mTitle:SetPoint("TOPLEFT", card, "TOPLEFT", 28, -5)
                     mTitle:SetPoint("RIGHT", pillSwitch, "LEFT", -6, 0)
                 else
-                    local totalCount = #railModuleCards > 0 and #railModuleCards or 11
+                    local totalCount = #railModuleCards > 0 and #railModuleCards or 12
                     local rIdx = card.railIndex or 1
                     local showUp = (rIdx > 1)
                     local showDown = (rIdx < totalCount)
@@ -5194,7 +5196,7 @@ function addonTable.CreateMainConfigUI()
             local modByKey = {}
             for _, modInfo in ipairs(ordered) do
                 local aKey = modInfo.addonName or modInfo.name or modInfo.key
-                local sKey = modInfo.id or modInfo.key or tostring(aKey):gsub("^Dynamic", ""):lower()
+                local sKey = modInfo.id or modInfo.key or tostring(aKey):lower():gsub("^dynamic", "")
                 if sKey then modByKey[sKey] = modInfo end
                 if aKey then modByKey[aKey] = modInfo end
                 if modInfo.key then modByKey[modInfo.key] = modInfo end
@@ -5224,7 +5226,7 @@ function addonTable.CreateMainConfigUI()
                     for _, modInfo in ipairs(catMods) do
                         cardIdx = cardIdx + 1
                         local aKey = modInfo.addonName or modInfo.name or modInfo.key
-                        local sKey = modInfo.id or modInfo.key or tostring(aKey):gsub("^Dynamic", ""):lower()
+                        local sKey = modInfo.id or modInfo.key or tostring(aKey):lower():gsub("^dynamic", "")
                         local card = railModuleCardsByKey[sKey] or railModuleCardsByKey[aKey] or (modInfo.key and railModuleCardsByKey[modInfo.key])
                         if not card then
                             card = CreateRailModuleCard(cardIdx, modInfo)
@@ -5254,7 +5256,7 @@ function addonTable.CreateMainConfigUI()
                 if not placed[modInfo] then
                     cardIdx = cardIdx + 1
                     local aKey = modInfo.addonName or modInfo.name or modInfo.key
-                    local sKey = modInfo.id or modInfo.key or tostring(aKey):gsub("^Dynamic", ""):lower()
+                    local sKey = modInfo.id or modInfo.key or tostring(aKey):lower():gsub("^dynamic", "")
                     local card = railModuleCardsByKey[sKey] or railModuleCardsByKey[aKey] or (modInfo.key and railModuleCardsByKey[modInfo.key])
                     if not card then
                         card = CreateRailModuleCard(cardIdx, modInfo)
@@ -5280,7 +5282,7 @@ function addonTable.CreateMainConfigUI()
         else
             for idx, modInfo in ipairs(ordered) do
                 local aKey = modInfo.addonName or modInfo.name or modInfo.key
-                local sKey = modInfo.id or modInfo.key or tostring(aKey):gsub("^Dynamic", ""):lower()
+                local sKey = modInfo.id or modInfo.key or tostring(aKey):lower():gsub("^dynamic", "")
                 local card = railModuleCardsByKey[sKey] or railModuleCardsByKey[aKey] or (modInfo.key and railModuleCardsByKey[modInfo.key])
                 if not card then
                     card = CreateRailModuleCard(idx, modInfo)
@@ -5436,7 +5438,7 @@ function addonTable.CreateMainConfigUI()
         local parts = { tostring(addonTable.ADDON_VERSION or "1.3.0") }
         local clReg = _G.DynamicSuite and _G.DynamicSuite.Changelogs
         if type(clReg) == "table" then
-            for _, k in ipairs({ "DynamicLoad", "DynamicMarker", "DynamicZoom", "DynamicFPS", "DynamicPrep", "DynamicGroup", "DynamicBags", "DynamicChat", "DynamicMail", "DynamicVault", "DynamicDialogue" }) do
+            for _, k in ipairs({ "DynamicLoad", "DynamicMarker", "DynamicZoom", "DynamicFPS", "DynamicPrep", "DynamicTalent", "DynamicGroup", "DynamicBags", "DynamicChat", "DynamicMail", "DynamicVault", "DynamicDialogue" }) do
                 local c = clReg[k]
                 if type(c) == "table" then
                     local latest = (type(c.entries) == "table" and c) or (type(c[1]) == "table" and c[1]) or c
@@ -5552,7 +5554,7 @@ function addonTable.CreateMainConfigUI()
 
         for _, card in ipairs(railModuleCards) do
             local mKey = card.modInfo.addonName or card.modInfo.name or card.modInfo.key
-            local shortKey = card.modInfo.id or tostring(mKey):gsub("^Dynamic", ""):lower()
+            local shortKey = card.modInfo.id or tostring(mKey):lower():gsub("^dynamic", "")
             local isSel = (activeWorkspaceView == "DYNAMICLOAD" and mKey == "DynamicLoad")
                        or ((activeWorkspaceView == "PEER_MODULE" or activeWorkspaceView == "PEER_HOST") and (selectedPeerModuleKey == mKey or selectedPeerModuleKey == card.modInfo.key or selectedPeerModuleKey == card.modInfo.id))
             local isDisabledBySuite = (addonTable.IsSuiteModuleExplicitlyDisabled and addonTable.IsSuiteModuleExplicitlyDisabled(mKey))
@@ -6082,7 +6084,7 @@ function addonTable.CreateMainConfigUI()
         if not mInfo then return end
 
         local addonKey = mInfo.addonName or mInfo.name or mInfo.key
-        local shortKey = mInfo.id or mInfo.key or tostring(addonKey):gsub("^Dynamic", ""):lower()
+        local shortKey = mInfo.id or mInfo.key or tostring(addonKey):lower():gsub("^dynamic", "")
         peerTitle:SetText((mInfo.title or addonKey) .. "  (" .. (mInfo.slash or "/ds") .. ")")
         peerCat:SetText(mInfo.category or "DynamicSuite Module")
         peerDesc:SetText(mInfo.desc or "")
@@ -7855,7 +7857,9 @@ function addonTable.CreateMainConfigUI()
         if _G.DynamicGroup and type(_G.DynamicGroup.ApplyTeleportToastPosition) == "function" then
             pcall(_G.DynamicGroup.ApplyTeleportToastPosition, _G.DynamicGroup)
         end
-        if _G.DynamicPrep and type(_G.DynamicPrep.ApplyTalentReminderToastVisuals) == "function" then
+        if _G.DynamicTalent and type(_G.DynamicTalent.ApplyTalentReminderToastVisuals) == "function" then
+            pcall(_G.DynamicTalent.ApplyTalentReminderToastVisuals, _G.DynamicTalent)
+        elseif _G.DynamicPrep and type(_G.DynamicPrep.ApplyTalentReminderToastVisuals) == "function" then
             pcall(_G.DynamicPrep.ApplyTalentReminderToastVisuals, _G.DynamicPrep)
         end
         if _G.DynamicChat and type(_G.DynamicChat.ApplyMentionToastVisuals) == "function" then
@@ -7974,7 +7978,9 @@ function addonTable.CreateMainConfigUI()
             if _G.DynamicGroup and type(_G.DynamicGroup.ApplyTeleportToastPosition) == "function" then
                 pcall(_G.DynamicGroup.ApplyTeleportToastPosition, _G.DynamicGroup)
             end
-            if _G.DynamicPrep and type(_G.DynamicPrep.ApplyTalentReminderToastVisuals) == "function" then
+            if _G.DynamicTalent and type(_G.DynamicTalent.ApplyTalentReminderToastVisuals) == "function" then
+                pcall(_G.DynamicTalent.ApplyTalentReminderToastVisuals, _G.DynamicTalent)
+            elseif _G.DynamicPrep and type(_G.DynamicPrep.ApplyTalentReminderToastVisuals) == "function" then
                 pcall(_G.DynamicPrep.ApplyTalentReminderToastVisuals, _G.DynamicPrep)
             end
             if _G.DynamicChat and type(_G.DynamicChat.ApplyMentionToastVisuals) == "function" then
@@ -8020,7 +8026,9 @@ function addonTable.CreateMainConfigUI()
             if _G.DynamicGroup and type(_G.DynamicGroup.ApplyTeleportToastPosition) == "function" then
                 pcall(_G.DynamicGroup.ApplyTeleportToastPosition, _G.DynamicGroup)
             end
-            if _G.DynamicPrep and type(_G.DynamicPrep.ApplyTalentReminderToastVisuals) == "function" then
+            if _G.DynamicTalent and type(_G.DynamicTalent.ApplyTalentReminderToastVisuals) == "function" then
+                pcall(_G.DynamicTalent.ApplyTalentReminderToastVisuals, _G.DynamicTalent)
+            elseif _G.DynamicPrep and type(_G.DynamicPrep.ApplyTalentReminderToastVisuals) == "function" then
                 pcall(_G.DynamicPrep.ApplyTalentReminderToastVisuals, _G.DynamicPrep)
             end
             if _G.DynamicChat and type(_G.DynamicChat.ApplyMentionToastVisuals) == "function" then
@@ -8752,6 +8760,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "NEW",      title = "Unreleased (21/11/2026): New DynamicTalent Module (/dt, /dynamictalent), 4-Tab PvP Binder & Custom Group Ordering", desc = "Extracted Talent Loadouts & Talent Binds out of DynamicPrep into DynamicTalent as DynamicSuite's 12th dual-mode module with one-time zero-loss DynamicPrepDB -> DynamicTalentDB migration, a clean Top Info Bar capsule hook, 4-tab Raid/M+/PvP/Zone binder (All PvP, Arena, Battlegrounds, War Mode) with 3-tier mismatch priority, Prioritise Current Zone First sorting, and custom 5-group ordering across Talent Dock and switchers." },
                 { badge = "NEW",      title = "v2.7.1 Release (21/11/2026): Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Binds, LFR/Normal Merge, 'Talent Binds' & Dropdown Scrollbars", desc = "Standardised Left-Click (Active Specialisation out of combat) and Right-Click (Loot Specialisation) across DynamicPrep's Top Info Bar and Talent Loadouts Dock with 1:1 plain Australian English tooltips; added an 'All' toggle and multi-select dungeon tiles to the M+ Binder (saving one 'All M+ Dungeons' catch-all or batch per-dungeon binds with specific priority); merged LFR and Normal raids into 'LFR / Normal'; renamed 'Boss Binds' to 'Talent Binds'; and added a 4px interactive Obsidian scrollbar to Talent Manager dropdowns." },
                 { badge = "UI",       title = "v2.7.0 Release (21/11/2026): Unified Shared Alert Toast System, Live Suite Accent Across All Chrome, DynamicDialogue 34px Tab Bar & 800x520 Widget Parity", desc = "Centralised Alert Toast styling and chime controls under Suite Studio and DynamicLoad; unified DynamicPrep Talent Reminder, DynamicGroup Teleport, and DynamicChat Mention Alert Toasts with clean vertical stacking; removed stray Edit HUD buttons from toast-consumer panels and kept inline Edit HUD buttons strictly on the 6 movable HUD owner cards with non-overlapping headers; replaced hardcoded Blaze Orange buttons, modal borders, Apply All buttons, window scale toasts, and corner resize grips with live Suite Accent; upgraded DynamicDialogue with the 34px 2-tab bar, dedicated 44px Action & Status strip, clean card fonts, and 156x26 switches; and clamped right-anchored switches/sliders across DynamicVault, DynamicMail, DynamicBags, DynamicFPS, and DynamicSuite_UI cleanly down to 800x520." },
                 { badge = "NEW",      title = "v2.4.0 Release: New DynamicMail Module (/dmail), Smart Quick-Attach Presets, Alt Vault Picker & Quick Gold", desc = "Added DynamicMail as DynamicSuite's 9th dual-mode module with 1-click Inbox Open All, AH Gold, and Items Only collection; Shift+Click inbox quick-loot and Expiring (<3d) alerts; automatic COD and bag-reserve protection; a 4-tab Recipient Picker synced with DynamicBags Alt Vault (class colours, gold balances, Pending Alt Mail Sent badges & Favourite stars); 1-click Quick-Attach presets ([+ Mats], [+ BoE], [+ Warband], [+ Same]) + Quick Gold buttons ([+1k g], [+10k g], [+100k]); Alt + Left-Click Express Multi-Attach; and lifetime telemetry." },
@@ -8904,6 +8913,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
             openModule = "DynamicPrep",
             items = {
+                { badge = "REFACTOR", title = "Unreleased (21/11/2026): Extracted Talent Loadouts & Talent Binds to DynamicTalent (/dt)", desc = "Moved the unlimited per-spec Talent Loadouts library, PlayerSpellsFrame dock, 880x580 Talent Loadouts Manager, and Shared Alert Toast reminders into the dedicated DynamicTalent module while keeping the Top Info Bar 'Talents' capsule hooked cleanly to DynamicTalent and preserving backward-compatible forwarding stubs." },
                 { badge = "NEW",      title = "v2.7.1 Release (21/11/2026): Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Binds, LFR/Normal Merge, 'Talent Binds' & 4px Scrollbars", desc = "Aligned Left-Click (Switch Active Specialisation out of combat) and Right-Click (Loot Specialisation) across Prep Bar and Talent Dock with matching plain Australian English tooltips; added 'All' + multi-select M+ dungeon tiles with specific-over-All reminder precedence; merged LFR and Normal into 'LFR / Normal'; renamed 'Boss Binds' to 'Talent Binds'; and added a 4px 3-way Obsidian scrollbar to Talent Loadouts Manager dropdowns." },
                 { badge = "UI",       title = "v2.3.0 Release: Relocated Blizzard Desktop Window Manager to Suite Studio (/ds windows) & 3-Way Scrollbar Upgrade", desc = "Relocated the Blizzard Desktop Window Manager from DynamicPrep Tab 3 into DynamicSuite Core ('Suite Studio -> Desktop Windows & Menus', /ds windows) with automatic SavedVariables migration and backward-compatible bridge stubs so Tab 3 focuses purely on World, Instance & Survival Automation; upgraded StyleObsidianScrollBar to full 3-way interaction; and registered DynamicPrep's dropdown and bar popover closers with UI.RegisterPopupCloser." },
                 { badge = "FIXED",    title = "v2.2.0 Release: Secure Blizzard Window Probe Attribute Fix", desc = "Renamed the Blizzard window secure handler probe attribute from '_ds_probe' to 'ds_probe' inside EnsureSecureHandler() so restricted attribute validation in Blizzard's RestrictedFrames.lua passes cleanly on login and /reload without triggering an 'Invalid attribute name' Lua error." },
@@ -8929,6 +8939,19 @@ function addonTable.CreateMainConfigUI()
                 { badge = "NEW",      title = "Auto-Skip Gossip & Quest Automation", desc = "Auto-triggers single-option dungeon, Delve, and raid interactables (even in combat) and open-world dialogues while filtering NPC service icons and destructive/hearth/exit prompts. Automatically accepts and turns in quests; hold Shift to bypass." },
                 { badge = "NEW",      title = "Midnight Clickable Raid Buffs & Consumable HUD", desc = "Upgraded consumable scanner for Midnight: 2-tier quality badges (Rank 2 Gold / Rank 1 Silver), deep Well Fed stat-food detection (Impossibly Royal Roast 255847), Hearty [H] vs Normal badges, 1-click Weapon Oil auto-apply, and [DynamicHeal] Silvermoon Health Potions." },
                 { badge = "PERF",     title = "Mythic+ Secret-Value Shield & O(1) Fast-Path", desc = "Keystone secret-value protection and 0.0019 ms/tick zero-GC fast-path with /dprep simkey diagnostic benchmark to eliminate secret-number Lua errors and combat hitching." },
+            },
+        },
+        {
+            key = "talent",
+            tabLabel = "DynamicTalent",
+            ver = DS_LIVE_VER_TAG,
+            date = "21/11/2026 (Retail 12.1.5)",
+            title = "DynamicTalent " .. DS_LIVE_VER_TAG,
+            subtitle = "Unlimited Talent Loadouts, PlayerSpellsFrame Dock & Raid/M+/PvP/Zone Binds (/dt)",
+            icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_talent.tga",
+            openModule = "DynamicTalent",
+            items = {
+                { badge = "NEW",      title = "Unreleased (21/11/2026): Extracted 12th Dual-Mode Module, PvP Binder Tab & Custom Group Order", desc = "Extracted Talent Loadouts & Talent Binds out of DynamicPrep into standalone/bundled DynamicTalent (/dt, /dynamictalent) with zero-loss DynamicPrepDB -> DynamicTalentDB migration, a dedicated 4th PvP binder tab (All PvP, Arena, Battlegrounds, War Mode) with 3-tier mismatch priority, Prioritise Current Zone First, custom 5-group ordering, and a clean DynamicPrep Top Info Bar capsule hook." },
             },
         },
         {
@@ -9091,18 +9114,18 @@ function addonTable.CreateMainConfigUI()
         UI.CreatePixelBorder(tBtn, 0.145, 0.165, 0.212, 0.95, 3)
 
         local tIcon = tBtn:CreateTexture(nil, "ARTWORK", nil, 3)
-        tIcon:SetSize(13, 13)
-        tIcon:SetPoint("LEFT", tBtn, "LEFT", 8, 0)
+        tIcon:SetSize(12, 12)
+        tIcon:SetPoint("LEFT", tBtn, "LEFT", 5, 0)
         tIcon:SetTexture(mDef.icon)
         tBtn.iconTex = tIcon
 
         local tLbl = tBtn:CreateFontString(nil, "OVERLAY")
-        tLbl:SetPoint("LEFT", tIcon, "RIGHT", 5, 0)
-        tLbl:SetPoint("RIGHT", tBtn, "RIGHT", -4, 0)
+        tLbl:SetPoint("LEFT", tIcon, "RIGHT", 3, 0)
+        tLbl:SetPoint("RIGHT", tBtn, "RIGHT", -2, 0)
         tLbl:SetJustifyH("CENTER")
         tLbl:SetWordWrap(false)
-        UI.SetFont(tLbl, 11, "", 0.68, 0.74, 0.82, 1)
-        tLbl:SetText(mDef.tabLabel)
+        UI.SetFont(tLbl, 10, "", 0.68, 0.74, 0.82, 1)
+        tLbl:SetText((mDef.tabLabel == "DynamicLoad") and "Load" or mDef.tabLabel:gsub("^Dynamic", ""))
         tBtn.label = tLbl
 
         tBtn:SetScript("OnClick", function()
@@ -9113,23 +9136,50 @@ function addonTable.CreateMainConfigUI()
     end
 
     local function ReflowClTabBar()
-        local w = clTabBar:GetWidth() or 780
-        if w < 200 then w = 780 end
-        local gap = 4
+        local w = clTabBar:GetWidth() or 744
+        if w < 200 then w = 744 end
         local count = #clTabBtns
-        local eachW = math.floor((w - 8 - ((count - 1) * gap)) / count)
+        if count <= 0 then return end
+        local outerPad = (count >= 12) and 3 or 4
+        local gap = (count >= 12) and 3 or 4
+        local availW = math.max(100, w - (outerPad * 2) - ((count - 1) * gap))
+        local reqWidths = {}
+        local totalReq = 0
+        for i, b in ipairs(clTabBtns) do
+            local txt = (b.label and b.label:GetText()) or ""
+            local ok, uw = pcall(function()
+                return (b.label and b.label.GetUnboundedStringWidth and b.label:GetUnboundedStringWidth()) or (b.label and b.label:GetStringWidth()) or 0
+            end)
+            local textW = (ok and type(uw) == "number" and uw > 0) and uw or (#tostring(txt) * 5.6)
+            local minW = math.max(40, math.ceil(textW + 22))
+            reqWidths[i] = minW
+            totalReq = totalReq + minW
+        end
+        local extra = availW - totalReq
+        local widths = {}
+        if extra >= 0 then
+            local bonusEach = math.floor(extra / count)
+            for i = 1, count do
+                widths[i] = reqWidths[i] + bonusEach
+            end
+        else
+            local scale = availW / math.max(1, totalReq)
+            for i = 1, count do
+                widths[i] = math.max(36, math.floor(reqWidths[i] * scale))
+            end
+        end
         for i, b in ipairs(clTabBtns) do
             b:ClearAllPoints()
             b:SetHeight(26)
             if i == 1 then
-                b:SetPoint("LEFT", clTabBar, "LEFT", 4, 0)
-                b:SetWidth(eachW)
+                b:SetPoint("LEFT", clTabBar, "LEFT", outerPad, 0)
+                b:SetWidth(widths[i])
             elseif i == count then
                 b:SetPoint("LEFT", clTabBtns[i - 1], "RIGHT", gap, 0)
-                b:SetPoint("RIGHT", clTabBar, "RIGHT", -4, 0)
+                b:SetPoint("RIGHT", clTabBar, "RIGHT", -outerPad, 0)
             else
                 b:SetPoint("LEFT", clTabBtns[i - 1], "RIGHT", gap, 0)
-                b:SetWidth(eachW)
+                b:SetWidth(widths[i])
             end
         end
     end
@@ -9634,14 +9684,19 @@ function addonTable.CreateMainConfigUI()
     UI.CreatePixelBorder(stepNavBar, 1, 1, 1, 0.08, 2)
 
     local stepPillBtns = {}
-    for i = 1, 10 do
-        local spBtn = CreateFlatButton(stepNavBar, 100, 26, "", false)
+    local function EnsureStepPillBtn(idx)
+        if stepPillBtns[idx] then return stepPillBtns[idx] end
+        local spBtn = CreateFlatButton(stepNavBar, 80, 26, "", false)
         spBtn.label:ClearAllPoints()
-        spBtn.label:SetPoint("LEFT", spBtn, "LEFT", 3, 0)
-        spBtn.label:SetPoint("RIGHT", spBtn, "RIGHT", -3, 0)
-        UI.SetFont(spBtn.label, 10, "", 1, 1, 1, 0.94)
+        spBtn.label:SetPoint("LEFT", spBtn, "LEFT", 2, 0)
+        spBtn.label:SetPoint("RIGHT", spBtn, "RIGHT", -2, 0)
+        UI.SetFont(spBtn.label, 9.5, "", 1, 1, 1, 0.94)
         spBtn:Hide()
-        stepPillBtns[i] = spBtn
+        stepPillBtns[idx] = spBtn
+        return spBtn
+    end
+    for i = 1, 14 do
+        EnsureStepPillBtn(i)
     end
 
     -- Bottom Uninstall Prep Card (Restore Blizzard Defaults)
@@ -10420,7 +10475,7 @@ function addonTable.CreateMainConfigUI()
             local isDis = (addonTable.IsSuiteModuleExplicitlyDisabled and addonTable.IsSuiteModuleExplicitlyDisabled(addonKey))
                 or (gTbl.disabledModules and gTbl.disabledModules[addonKey])
                 or (_G.DynamicSuiteDB and _G.DynamicSuiteDB.disabledModules and _G.DynamicSuiteDB.disabledModules[addonKey])
-            local shortKey = tostring(addonKey):gsub("^Dynamic", ""):lower()
+            local shortKey = tostring(addonKey):lower():gsub("^dynamic", "")
             local regMod = (DynamicSuite and DynamicSuite.modules and (DynamicSuite.modules[addonKey] or DynamicSuite.modules[shortKey])) or _G[addonKey]
             local isLoaded = C_AddOns.IsAddOnLoaded(addonKey) or (regMod ~= nil)
             local st = C_AddOns.GetAddOnInfo(addonKey) and (C_AddOns.GetAddOnEnableState(addonKey, pName) or 0) or 0
@@ -10436,7 +10491,7 @@ function addonTable.CreateMainConfigUI()
                 actionLabel = "Open DynamicLoad (/dl)",
                 onAction = function() addonTable.OpenWorkspaceView("DYNAMICLOAD") end,
                 summaryText = "|cFF38BDF8Smart Addon Scan Summary:|r\n" ..
-                    "- |cFFFACC15Suite Core Modules Active Across All 5 Zones:|r DynamicLoad, DynamicMarker, DynamicZoom, DynamicFPS, DynamicPrep, DynamicGroup, DynamicBags, DynamicChat, DynamicMail\n" ..
+                    "- |cFFFACC15Suite Core Modules Active Across All 5 Zones:|r DynamicLoad, DynamicMarker, DynamicZoom, DynamicFPS, DynamicPrep, DynamicTalent, DynamicGroup, DynamicBags, DynamicChat, DynamicMail, DynamicVault, DynamicDialogue\n" ..
                     "- |cFF22C55ERoutes Economy & Collection Addons to Outdoor Safe Harbor:|r TSM, Auctionator, AllTheThings, RareScanner, HandyNotes, TomTom\n" ..
                     "- |cFFCBD5E1New Addon Protection:|r Any future addon you install defaults safely to Outdoor Only until you approve it.",
                 choices = {
@@ -10525,6 +10580,63 @@ function addonTable.CreateMainConfigUI()
                                 pcall(_G.DynamicPrep.UpdateTalkingHeadSuppression, _G.DynamicPrep)
                             end
                             card.badge:SetText("All QoL Enabled!")
+                            StyleChoiceCard(card, true)
+                        end,
+                    },
+                },
+            })
+        end
+
+        if IsModActive("DynamicTalent") then
+            table.insert(steps, {
+                key = "talent",
+                pill = (#steps + 1) .. ". Talent",
+                title = "DYNAMICTALENT - TALENT LOADOUT LIBRARY & ZONE/PVP BINDS",
+                desc = "Store unlimited per-spec talent strings, auto-prompt smart swap alerts per Raid boss, M+ dungeon, PvP mode, or Delve, and attach a quick dock to your Talents frame (/dt).",
+                actionLabel = "Open DynamicTalent (/dt)",
+                onAction = function() addonTable.OpenPeerModule("DynamicTalent") end,
+                summaryText = "|cFF38BDF8DynamicTalent Engine:|r\n" ..
+                    "- |cFF22C55EUnlimited Spec Library & Importer:|r Paste WCL, Northern Sky, or Blizzard strings with automatic Hero Talent acronym badges and 1-click dock switching.\n" ..
+                    "- |cFFF5B82E4-Tab Smart Binds:|r Bind loadouts to Raid Bosses, M+ Dungeons, PvP (Arena / BGs / War Mode), and Zone Defaults with custom group ordering.",
+                choices = {
+                    {
+                        title = "Enable Zone-Aware Swap Reminders & Capsule",
+                        badge = "Recommended",
+                        isSelected = function()
+                            return (not _G.DynamicTalentDB) or (_G.DynamicTalentDB.talentReminderEnabled ~= false and _G.DynamicTalentDB.talentReminderToastEnabled ~= false)
+                        end,
+                        desc = "Shows a 1-click Shared Alert Toast when entering Raid, Mythic+, Delves, or PvP with a different bound build, and enables the Prep Bar Talent capsule.",
+                        onClick = function(card)
+                            if _G.DynamicTalentDB then
+                                _G.DynamicTalentDB.enabled = true
+                                _G.DynamicTalentDB.talentReminderEnabled = true
+                                _G.DynamicTalentDB.talentReminderToastEnabled = true
+                            end
+                            if _G.DynamicPrepDB and type(_G.DynamicPrepDB.segments) == "table" then
+                                _G.DynamicPrepDB.segments.talents = true
+                            end
+                            if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
+                                pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+                            end
+                            card.badge:SetText("Reminders Active!")
+                            StyleChoiceCard(card, true)
+                        end,
+                    },
+                    {
+                        title = "Prioritise Current Zone Builds First",
+                        badge = "Smart Sort",
+                        isSelected = function()
+                            return _G.DynamicTalentDB and _G.DynamicTalentDB.prioritiseCurrentZone == true
+                        end,
+                        desc = "Automatically floats loadouts matching your active content category (Raid, M+, Delves, PvP) to the top of quick-switchers and the Talent Dock.",
+                        onClick = function(card)
+                            if _G.DynamicTalentDB then
+                                _G.DynamicTalentDB.prioritiseCurrentZone = true
+                            end
+                            if _G.DynamicTalent and type(_G.DynamicTalent.RefreshTalentDock) == "function" then
+                                pcall(_G.DynamicTalent.RefreshTalentDock, _G.DynamicTalent)
+                            end
+                            card.badge:SetText("Zone Priority On!")
                             StyleChoiceCard(card, true)
                         end,
                     },
@@ -10883,43 +10995,194 @@ function addonTable.CreateMainConfigUI()
             })
         end
 
+        if IsModActive("DynamicVault") then
+            table.insert(steps, {
+                key = "vault",
+                pill = (#steps + 1) .. ". Vault",
+                title = "DYNAMICVAULT - GREAT VAULT MATRIX, CRESTS & WEEKLIES",
+                desc = "Track Raid, Mythic+, and Delve Great Vault slots, Restored Coffer Keys, Catalyst charges, Seasonal Crests, and Weekly Checklists across all alts (/dv).",
+                actionLabel = "Open DynamicVault (/dv)",
+                onAction = function() addonTable.OpenPeerModule("DynamicVault") end,
+                summaryText = "|cFF38BDF8DynamicVault Account Tracker:|r\n" ..
+                    "- |cFF22C55EGreat Vault Top Dock & Matrix:|r Attaches flush above Blizzard's Great Vault window and tracks 3-slot Vault progress, Raid lockouts, and owned Keystones.\n" ..
+                    "- |cFFF5B82EBountiful Delves & Checklists:|r Scans today's active Bountiful Delves, weekly currency caps, and auto-resetting character or account chores.",
+                choices = {
+                    {
+                        title = "Enable Great Vault Dock & Login Reward Alerts",
+                        badge = "Recommended",
+                        isSelected = function()
+                            return (not _G.DynamicVaultDB) or (_G.DynamicVaultDB.dockOnGreatVault ~= false and _G.DynamicVaultDB.loginVaultReminder ~= false)
+                        end,
+                        desc = "Automatically docks your Account Vault bar onto Blizzard's Great Vault, syncs alt snapshots, and reminds you when an unclaimed Vault reward is ready.",
+                        onClick = function(card)
+                            if _G.DynamicVaultDB then
+                                _G.DynamicVaultDB.enabled = true
+                                _G.DynamicVaultDB.dockOnGreatVault = true
+                                _G.DynamicVaultDB.loginVaultReminder = true
+                                _G.DynamicVaultDB.syncDynamicBags = true
+                            end
+                            if _G.DynamicVault and type(_G.DynamicVault.RefreshOverlays) == "function" then
+                                pcall(_G.DynamicVault.RefreshOverlays, _G.DynamicVault)
+                            end
+                            card.badge:SetText("Vault Dock Active!")
+                            StyleChoiceCard(card, true)
+                        end,
+                    },
+                    {
+                        title = "Show Vault Capsule on Prep Bar & Bountiful Delves",
+                        badge = "Live Tracker",
+                        isSelected = function()
+                            local segOk = (not _G.DynamicPrepDB) or (not _G.DynamicPrepDB.segments) or (_G.DynamicPrepDB.segments.vault ~= false)
+                            local delveOk = (not _G.DynamicVaultDB) or (_G.DynamicVaultDB.showBountifulDelves ~= false and _G.DynamicVaultDB.showCurrencies ~= false)
+                            return segOk and delveOk
+                        end,
+                        desc = "Displays live Great Vault slot progress on DynamicPrep's Top Info Bar alongside today's Bountiful Delves, Coffer Keys, and Keystone details.",
+                        onClick = function(card)
+                            if _G.DynamicVaultDB then
+                                _G.DynamicVaultDB.showBountifulDelves = true
+                                _G.DynamicVaultDB.showCurrencies = true
+                                _G.DynamicVaultDB.showKeystones = true
+                            end
+                            if _G.DynamicPrepDB and type(_G.DynamicPrepDB.segments) == "table" then
+                                _G.DynamicPrepDB.segments.vault = true
+                            end
+                            if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
+                                pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+                            end
+                            if _G.DynamicVault and type(_G.DynamicVault.RefreshOverlays) == "function" then
+                                pcall(_G.DynamicVault.RefreshOverlays, _G.DynamicVault)
+                            end
+                            card.badge:SetText("Vault Telemetry On!")
+                            StyleChoiceCard(card, true)
+                        end,
+                    },
+                },
+            })
+        end
+
+        if IsModActive("DynamicDialogue") then
+            table.insert(steps, {
+                key = "dialogue",
+                pill = (#steps + 1) .. ". Dialogue",
+                title = "DYNAMICDIALOGUE - OBSIDIAN QUEST & GOSSIP READER",
+                desc = "Present Quest and NPC Gossip frames in a clean Obsidian reader with 1-9 option hotkeys, Spacebar turn-ins, and clear reward cards (/dd).",
+                actionLabel = "Open DynamicDialogue (/dd)",
+                onAction = function() addonTable.OpenPeerModule("DynamicDialogue") end,
+                summaryText = "|cFF38BDF8DynamicDialogue Reader:|r\n" ..
+                    "- |cFF22C55EClean Quest & Gossip Cards:|r Displays quest text, reward tooltips, and shared confirmation prompts in high-contrast Obsidian typography.\n" ..
+                    "- |cFFF5B82EFast Keyboard Flow:|r Pick gossip options with keys 1-9, accept or turn in quests with Space, or hold Shift to view Blizzard's native frame.",
+                choices = {
+                    {
+                        title = "Enable Obsidian Quest & Gossip Reader",
+                        badge = "Recommended",
+                        isSelected = function()
+                            return (not _G.DynamicDialogueDB) or (_G.DynamicDialogueDB.replaceQuests ~= false and _G.DynamicDialogueDB.replaceGossip ~= false)
+                        end,
+                        desc = "Replaces standard Blizzard Quest and NPC Gossip panels with DynamicDialogue's readable Obsidian reader while respecting other dialogue addons.",
+                        onClick = function(card)
+                            if _G.DynamicDialogueDB then
+                                _G.DynamicDialogueDB.enabled = true
+                                _G.DynamicDialogueDB.replaceQuests = true
+                                _G.DynamicDialogueDB.replaceGossip = true
+                            end
+                            if _G.DynamicDialogue and type(_G.DynamicDialogue.ApplyTheme) == "function" then
+                                pcall(_G.DynamicDialogue.ApplyTheme, _G.DynamicDialogue)
+                            end
+                            card.badge:SetText("Reader Active!")
+                            StyleChoiceCard(card, true)
+                        end,
+                    },
+                    {
+                        title = "Enable 1-9 Option Hotkeys & Spacebar Turn-In",
+                        badge = "Fast Turn-In",
+                        isSelected = function()
+                            return (not _G.DynamicDialogueDB) or (_G.DynamicDialogueDB.enableNumberHotkeys ~= false and _G.DynamicDialogueDB.enableSpaceConfirm ~= false)
+                        end,
+                        desc = "Lets you press keys 1-9 to select NPC options and Spacebar to accept, continue, or complete quests out of combat (Shift bypasses).",
+                        onClick = function(card)
+                            if _G.DynamicDialogueDB then
+                                _G.DynamicDialogueDB.enableNumberHotkeys = true
+                                _G.DynamicDialogueDB.enableSpaceConfirm = true
+                                _G.DynamicDialogueDB.shiftBypassNative = true
+                            end
+                            if _G.DynamicDialogue and type(_G.DynamicDialogue.ApplyTheme) == "function" then
+                                pcall(_G.DynamicDialogue.ApplyTheme, _G.DynamicDialogue)
+                            end
+                            card.badge:SetText("Hotkeys Active!")
+                            StyleChoiceCard(card, true)
+                        end,
+                    },
+                },
+            })
+        end
+
         return steps
     end
 
     local function LayoutStepPills(steps)
-        local w = stepNavBar:GetWidth() or 780
-        if w < 100 then w = 780 end
+        local w = stepNavBar:GetWidth() or 744
+        if w < 100 then w = 744 end
         local count = #steps
-        local gap = 4
-        local eachW = math.floor((w - 8 - ((count - 1) * gap)) / math.max(1, count))
+        if count <= 0 then return end
+        local outerPad = (count >= 12) and 3 or 4
+        local gap = (count >= 12) and 3 or 4
+        local availW = math.max(100, w - (outerPad * 2) - ((count - 1) * gap))
+        local fontSz = (count >= 11) and 9.5 or 10
         local ar, ag, ab = UI.GetActiveAccentColor()
         local accentCol = { r = ar, g = ag, b = ab }
 
-        for i = 1, 10 do
-            local btn = stepPillBtns[i]
+        local reqWidths = {}
+        local totalReq = 0
+        for i = 1, count do
+            local btn = EnsureStepPillBtn(i)
             local sDef = steps[i]
-            if sDef then
-                btn.label:SetText(sDef.pill)
-                btn:ClearAllPoints()
-                if i == 1 then
-                    btn:SetPoint("LEFT", stepNavBar, "LEFT", 4, 0)
-                    btn:SetWidth(eachW)
-                elseif i == count then
-                    btn:SetPoint("LEFT", stepPillBtns[i - 1], "RIGHT", gap, 0)
-                    btn:SetPoint("RIGHT", stepNavBar, "RIGHT", -4, 0)
-                else
-                    btn:SetPoint("LEFT", stepPillBtns[i - 1], "RIGHT", gap, 0)
-                    btn:SetWidth(eachW)
-                end
-                btn:SetSelected(i == currentGuidedIdx, accentCol)
-                btn:SetScript("OnClick", function()
-                    currentGuidedIdx = i
-                    setupView.Refresh()
-                end)
-                btn:Show()
-            else
-                btn:Hide()
+            UI.SetFont(btn.label, fontSz, "", 1, 1, 1, 0.94)
+            btn.label:SetText(sDef.pill)
+            local ok, uw = pcall(function()
+                return (btn.label.GetUnboundedStringWidth and btn.label:GetUnboundedStringWidth()) or btn.label:GetStringWidth() or 0
+            end)
+            local textW = (ok and type(uw) == "number" and uw > 0) and uw or (#tostring(sDef.pill) * 5.2)
+            local minW = math.max(36, math.ceil(textW + 8))
+            reqWidths[i] = minW
+            totalReq = totalReq + minW
+        end
+
+        local extra = availW - totalReq
+        local widths = {}
+        if extra >= 0 then
+            local bonusEach = math.floor(extra / count)
+            for i = 1, count do
+                widths[i] = reqWidths[i] + bonusEach
             end
+        else
+            local scale = availW / math.max(1, totalReq)
+            for i = 1, count do
+                widths[i] = math.max(32, math.floor(reqWidths[i] * scale))
+            end
+        end
+
+        for i = 1, count do
+            local btn = EnsureStepPillBtn(i)
+            btn:ClearAllPoints()
+            if i == 1 then
+                btn:SetPoint("LEFT", stepNavBar, "LEFT", outerPad, 0)
+                btn:SetWidth(widths[i])
+            elseif i == count then
+                btn:SetPoint("LEFT", stepPillBtns[i - 1], "RIGHT", gap, 0)
+                btn:SetPoint("RIGHT", stepNavBar, "RIGHT", -outerPad, 0)
+            else
+                btn:SetPoint("LEFT", stepPillBtns[i - 1], "RIGHT", gap, 0)
+                btn:SetWidth(widths[i])
+            end
+            btn:SetSelected(i == currentGuidedIdx, accentCol)
+            btn:SetScript("OnClick", function()
+                currentGuidedIdx = i
+                setupView.Refresh()
+            end)
+            btn:Show()
+        end
+        for i = count + 1, #stepPillBtns do
+            stepPillBtns[i]:Hide()
         end
     end
     stepNavBar:SetScript("OnSizeChanged", function()
@@ -11108,7 +11371,10 @@ function addonTable.CreateMainConfigUI()
                         elseif cleanModName == "zoom" then cleanModName = "DynamicZoom"
                         elseif cleanModName == "fps" then cleanModName = "DynamicFPS"
                         elseif cleanModName == "prep" then cleanModName = "DynamicPrep"
+                        elseif cleanModName == "talent" then cleanModName = "DynamicTalent"
                         elseif cleanModName == "group" then cleanModName = "DynamicGroup"
+                        elseif cleanModName == "vault" then cleanModName = "DynamicVault"
+                        elseif cleanModName == "dialogue" then cleanModName = "DynamicDialogue"
                         elseif cleanModName == "studio" or cleanModName == "STUDIO" or cleanModName == "DynamicSuite" or cleanModName == "DesktopWindows" then cleanModName = "DynamicSuite (Suite Studio)" end
 
                         local activeChoice = item.resolvedAction
@@ -16056,7 +16322,7 @@ function addonTable.CreateMainConfigUI()
             gTbl.disabledModules = gTbl.disabledModules or {}
             gTbl.disabledModules[addonName] = nil
             gTbl.disabledModules[mKey] = nil
-            local shortId = tostring(addonName):gsub("^Dynamic", ""):lower()
+            local shortId = tostring(addonName):lower():gsub("^dynamic", "")
             gTbl.disabledModules[shortId] = nil
             if _G.DynamicSuiteDB and _G.DynamicSuiteDB.disabledModules then
                 _G.DynamicSuiteDB.disabledModules[addonName] = nil
@@ -16128,7 +16394,7 @@ function addonTable.CreateMainConfigUI()
             if type(regMod) == "table" then
                 local selFn = regMod.SelectSubTab or regMod.SelectTab or regMod.SetActiveTab
                 if type(selFn) == "function" then
-                    pcall(selFn, regMod, entry.tabIndex, true)
+                    pcall(selFn, regMod, entry.tabIndex, true, entry)
                 end
             end
         end
@@ -16307,10 +16573,13 @@ function addonTable.CreateMainConfigUI()
         zoom = "Zoom", DynamicZoom = "Zoom",
         fps = "FPS", DynamicFPS = "FPS",
         prep = "Prep", DynamicPrep = "Prep",
+        talent = "Talent", DynamicTalent = "Talent",
         group = "Group", DynamicGroup = "Group",
         bags = "Bags", DynamicBags = "Bags",
         chat = "Chat", DynamicChat = "Chat",
         mail = "Mail", DynamicMail = "Mail",
+        vault = "Vault", DynamicVault = "Vault",
+        dialogue = "Dialogue", DynamicDialogue = "Dialogue",
     }
     local function FormatModuleBrandForEntry(entry)
         local mKey = entry.moduleKey or "STUDIO"
@@ -16905,11 +17174,15 @@ function addonTable.CreateMainConfigUI()
         local standaloneMods = {
             { key = "DynamicMarker", obj = _G.DynamicMarker },
             { key = "DynamicPrep", obj = _G.DynamicPrep },
+            { key = "DynamicTalent", obj = _G.DynamicTalent },
             { key = "DynamicFPS", obj = _G.DynamicFPS },
             { key = "DynamicZoom", obj = _G.DynamicZoom },
             { key = "DynamicGroup", obj = _G.DynamicGroup },
             { key = "DynamicBags", obj = _G.DynamicBags },
             { key = "DynamicChat", obj = _G.DynamicChat },
+            { key = "DynamicMail", obj = _G.DynamicMail },
+            { key = "DynamicVault", obj = _G.DynamicVault },
+            { key = "DynamicDialogue", obj = _G.DynamicDialogue },
         }
         for _, entry in ipairs(standaloneMods) do
             local smod = entry.obj
@@ -17431,7 +17704,7 @@ function addonTable.HookGameMenu()
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
         desc:SetWidth(520)
         desc:SetJustifyH("LEFT")
-        desc:SetText("All-in-one WoW suite: focus markers, group finder, prep bar, Great Vault, quest reader, bags, mail, chat, zone addons, FPS, and camera zoom.")
+        desc:SetText("All-in-one WoW suite: focus markers, group finder, prep bar, talent loadouts, Great Vault, quest reader, bags, mail, chat, zone addons, FPS, and camera zoom.")
 
         local slashSummary = card:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         slashSummary:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -12)

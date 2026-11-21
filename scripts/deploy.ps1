@@ -185,7 +185,7 @@ if ($markerChangelogHead -notmatch [regex]::Escape("Release: v$suiteVer")) {
     throw "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md header does not match lockstep version v$suiteVer"
 }
 $markerChangelogRaw = [System.IO.File]::ReadAllText($markerChangelogPath)
-$forbiddenMarkerChangelogTerms = @("DynamicGroup", "DynamicPrep", "DynamicBags", "DynamicLoad", "DynamicChat", "DynamicFPS", "DynamicZoom", "DynamicMail", "DynamicVault", "DynamicDialogue", "All 8 Modules", "All 9 Modules", "All 10 Modules", "All 11 Modules")
+$forbiddenMarkerChangelogTerms = @("DynamicGroup", "DynamicPrep", "DynamicBags", "DynamicLoad", "DynamicChat", "DynamicFPS", "DynamicZoom", "DynamicMail", "DynamicVault", "DynamicDialogue", "DynamicTalent", "All 8 Modules", "All 9 Modules", "All 10 Modules", "All 11 Modules", "All 12 Modules")
 $foundBleed = @()
 foreach ($term in $forbiddenMarkerChangelogTerms) {
     if ($markerChangelogRaw -match [regex]::Escape($term)) {
@@ -968,10 +968,11 @@ try {
             New-Item -ItemType Directory -Force -Path $driveModulesTxtDir | Out-Null
             Copy-Item -LiteralPath (Join-Path $RepoRoot "DynamicSuite\DynamicSuite_Core.lua") -Destination (Join-Path $driveModulesTxtDir "DynamicSuite_Core.lua.txt") -Force
             Copy-Item -LiteralPath (Join-Path $RepoRoot "DynamicSuite\DynamicSuite_UI.lua") -Destination (Join-Path $driveModulesTxtDir "DynamicSuite_UI.lua.txt") -Force
-            Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite\Modules") -Filter "*.lua" -File | ForEach-Object {
+            $moduleLuaFiles = Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite\Modules") -Filter "*.lua" -File
+            $moduleLuaFiles | ForEach-Object {
                 Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $driveModulesTxtDir ($_.Name + ".txt")) -Force
             }
-            Write-Host "[TXT MIRRORED] DynamicSuite_Core.lua.txt, DynamicSuite_UI.lua.txt, & 11 Module .lua.txt files -> $driveModulesTxtDir" -ForegroundColor DarkCyan
+            Write-Host "[TXT MIRRORED] DynamicSuite_Core.lua.txt, DynamicSuite_UI.lua.txt, & $($moduleLuaFiles.Count) Module .lua.txt files -> $driveModulesTxtDir" -ForegroundColor DarkCyan
             Write-Host "[CURSEFORGE DOCS SYNCED] README.md, CURSEFORGE_DYNAMICMARKER.md, & CURSEFORGE_DYNAMICSUITE.md -> $driveSyncRoot" -ForegroundColor DarkCyan
         }
     } else {

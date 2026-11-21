@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "21/11/2026",
     entries = {
+        { type = "FEATURE", text = "[Unreleased] New DynamicTalent Module (/dt, /dynamictalent), Dedicated PvP Binder & Custom Group Ordering (21/11/2026): Extracted Talent Loadouts & Talent Binds out of DynamicPrep into DynamicTalent as DynamicSuite's 12th dual-mode module with one-time zero-loss DynamicPrepDB -> DynamicTalentDB migration, a clean Top Info Bar capsule hook, 4-tab Raid/M+/PvP/Zone binder (All PvP, Arena, Battlegrounds, War Mode) with 3-tier mismatch priority, Prioritise Current Zone First sorting, and custom 5-group ordering across Talent Dock and switchers." },
         { type = "FEATURE", text = "Release v2.7.1 - Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Talent Binds, LFR / Normal Raid Merge, 'Talent Binds' Rename & Dropdown Scrollbar (21/11/2026): Standardised Left-Click (Switch Active Specialisation out of combat) and Right-Click (Loot Specialisation) across both DynamicPrep's Top Info Bar and Left-Hand Talent Loadouts Dock with 1:1 plain Australian English tooltips; upgraded Tab 2's Pre-Keystone M+ Binder with an 'All' toggle pill and multi-select season dungeon tiles so you can batch-bind selected dungeons or save a single 'All M+ Dungeons' rule in one click (with specific per-dungeon binds taking priority); merged LFR (difficulty 17) and Normal (difficulty 14) into a single 'LFR / Normal' Raid difficulty option alongside Heroic and Mythic; renamed 'Boss Binds' to 'Talent Binds' across the Talent Dock, context menus, settings, and Global Smart Search; and added a 4px interactive 3-way Obsidian scrollbar to Talent Loadouts Manager dropdowns." },
         { type = "UI",      text = "Release v2.7.0 - Unified Shared Alert Toast System, Live Suite Accent Across All Buttons/Grips/Modals, 800x520 Uniform Widget Geometry & 11-Module Documentation Parity (21/11/2026): Centralised all Toast appearance and sound controls (Scale, Opacity, Border Style, Auto-Fade Duration, and Alert Sound) inside Suite Studio and DynamicLoad under one Alert Toast HUD target; updated DynamicPrep Talent Reminder Toasts, DynamicGroup Teleport Toasts, and DynamicChat Mention Alert Toasts to share one consistent Obsidian appearance, live Suite Accent, Right-Click dismissal, and clean non-overlapping vertical stacking; removed stray Edit HUD buttons from toast-consumer panels and kept inline Edit HUD buttons strictly on the 6 true movable HUD owner cards with non-overlapping title/subtitle anchors; replaced all remaining hardcoded Blaze Orange buttons, modal borders, focus boxes, portal highlights, Apply All buttons, window scale toasts, and corner resize grips with the live Suite Accent colour; upgraded DynamicDialogue to the universal 34px 2-tab header bar, dedicated 44px Action & Status strip, clean non-outlined card fonts, 156x26px binary switches, and 2-line wrapped descriptions; standardised relative text clamping and control sizing across DynamicVault, DynamicMail, DynamicBags, DynamicFPS, and DynamicSuite_UI so all panels fit cleanly down to 800x520; and updated README and CurseForge storefront docs for all 11 modules." },
         { type = "FIX",     text = "Release v2.6.9 - DynamicDialogue Panel & Retail Yield Probe Fix, DynamicVault Multi-Alt Dock Crash & Escape Close, and DynamicMail Parity (21/11/2026): Assigned fonts before calling SetText and ran ApplySubTab() on initial RenderDialogueEmbedded setup so DynamicDialogue's sub-tabs never throw a Font not set error or overlap on first open, added the standard 4px 3-way Obsidian settings scrollbar, matched standalone title colours, updated DynamicDialogue.CHANGELOG to use VERSION, and fixed the Retail 12.1.5 Blizzard Quest/Gossip probe in both DynamicSuite_Core and DynamicDialogue so clean installs show Active reliably; fixed an undefined width variable crash in RefreshGreatVaultDock when 2 or more alts are tracked, registered DynamicVaultStandaloneFrame in UISpecialFrames for Escape closing, updated /dv overlay and /dv hud to point to DynamicPrep's Top Info Bar, and registered DynamicVault's changelog with DynamicSuite; and guarded DynamicMail workspace opening when disabled in the suite, synced its standalone resize handle to the active Suite Accent, updated Quick Action Bar search copy, and standardised its changelog format." },
@@ -145,6 +146,7 @@ local CORE_SUITE_ADDONS = addonTable.CORE_SUITE_ADDONS or {
     ["DynamicMarker"]   = true,
     ["DynamicZoom"]     = true,
     ["DynamicFPS"]      = true,
+    ["DynamicTalent"]   = true,
     ["DynamicPrep"]     = true,
     ["DynamicGroup"]    = true,
     ["DynamicBags"]     = true,
@@ -158,6 +160,7 @@ local SUITE_MODULES = addonTable.SUITE_MODULES or {
     "DynamicMarker",
     "DynamicGroup",
     "DynamicPrep",
+    "DynamicTalent",
     "DynamicVault",
     "DynamicDialogue",
     "DynamicBags",
@@ -182,7 +185,7 @@ addonTable.RETIRED_IGNORED_ADDONS = RETIRED_IGNORED_ADDONS
 
 -- Canonical 4-Category Left-Rail Grouping (v2.6.6+)
 local SUITE_RAIL_CATEGORIES = {
-    { key = "COMBAT_GROUP",       label = "COMBAT & GROUP",       modules = { "marker", "group", "prep" } },
+    { key = "COMBAT_GROUP",       label = "COMBAT & GROUP",       modules = { "marker", "group", "prep", "talent" } },
     { key = "PROGRESSION_QUESTS", label = "PROGRESSION & QUESTS", modules = { "vault", "dialogue" } },
     { key = "INVENTORY_SOCIAL",   label = "INVENTORY & SOCIAL",   modules = { "bags", "mail", "chat" } },
     { key = "PERFORMANCE_SYSTEM", label = "PERFORMANCE & SYSTEM", modules = { "load", "fps", "zoom" } },
@@ -231,9 +234,23 @@ local SUITE_MODULE_LIST = addonTable.SUITE_MODULE_LIST or {
         addonName = "DynamicPrep",
         slash = "/dprep",
         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
-        subtitle = "Prep Bar, Talents & Buffs",
-        category = "Combat & Group -- Readiness Bar, Talent Manager & Quick QoL",
-        desc = "Live readiness top bar with Great Vault summary, Talent Loadout Manager with talent binds, clickable raid buffs, consumables, and fast quest/cutscene skipping.",
+        subtitle = "Prep Bar & Raid Buffs",
+        category = "Combat & Group -- Readiness Bar, Raid Buffs & Quick QoL",
+        desc = "Live readiness top bar with Great Vault and Talent Loadout capsules, clickable raid buffs, consumables, and fast quest/cutscene skipping.",
+    },
+    {
+        key = "talent",
+        id = "talent",
+        order = 35,
+        railGroup = "COMBAT_GROUP",
+        name = "DynamicTalent",
+        title = "DynamicTalent",
+        addonName = "DynamicTalent",
+        slash = "/dt",
+        icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_talent.tga",
+        subtitle = "Talent Loadouts & Binds",
+        category = "Combat & Group -- Talent Loadouts, Zone/Boss/PvP Binds & Swap Alerts",
+        desc = "Unlimited per-spec talent loadout library, WCL/Northern Sky/Blizzard importer, PlayerSpellsFrame dock, Raid/M+/PvP/Zone talent binds, custom group ordering, and 1-click swap reminder toasts.",
     },
     -- PROGRESSION & QUESTS
     {
@@ -395,22 +412,29 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
     },
     DynamicPrep = {
         "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs",
-        "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts",
         "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
         "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
         "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
         addons = {
             "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs",
-            "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts",
             "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
             "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
             "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
         },
         conflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
         hardConflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
-        partialConflicts = { "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts", "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
-        softConflicts = { "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts", "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
+        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
+        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
         category = "Readiness & Automation",
+    },
+    DynamicTalent = {
+        "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts",
+        addons = { "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts" },
+        conflicts = {},
+        hardConflicts = {},
+        partialConflicts = { "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts" },
+        softConflicts = { "TalentLoadoutManager", "TalentLoadoutsEx", "BtWLoadouts", "ImprovedTalentLoadouts" },
+        category = "Talent Loadouts & Binds",
     },
     DynamicGroup = {
         "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "PremadeGroupsFilter", "PremadeRegionFilter", "LFGListFilter", "PremadeGroupFinder", "WorldQuestGroupFinder",
@@ -471,6 +495,7 @@ CONFLICT_REGISTRY.marker   = CONFLICT_REGISTRY.DynamicMarker
 CONFLICT_REGISTRY.zoom     = CONFLICT_REGISTRY.DynamicZoom
 CONFLICT_REGISTRY.fps      = CONFLICT_REGISTRY.DynamicFPS
 CONFLICT_REGISTRY.prep     = CONFLICT_REGISTRY.DynamicPrep
+CONFLICT_REGISTRY.talent   = CONFLICT_REGISTRY.DynamicTalent
 CONFLICT_REGISTRY.group    = CONFLICT_REGISTRY.DynamicGroup
 CONFLICT_REGISTRY.bags     = CONFLICT_REGISTRY.DynamicBags
 CONFLICT_REGISTRY.chat     = CONFLICT_REGISTRY.DynamicChat
@@ -903,14 +928,15 @@ function DynamicSuite.RestackAllToasts()
     local okErr, errMsg = pcall(function()
         local st = DynamicSuite.GetSharedToastStyle()
         local pos = st.pos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
-        local candidates = {
-            _G.DynamicLoadToastFrame,
-            _G.DynamicGroupTeleportToast,
-            _G.DynamicPrepTalentReminderToast,
-            _G.DynamicChatMentionToast,
+        local candidateNames = {
+            "DynamicLoadToastFrame",
+            "DynamicGroupTeleportToast",
+            "DynamicTalentReminderToast",
+            "DynamicChatMentionToast",
         }
         local prev = nil
-        for _, f in ipairs(candidates) do
+        for _, frameName in ipairs(candidateNames) do
+            local f = _G[frameName]
             if f and type(f) == "table" and f.IsShown and f:IsShown() then
                 local isDragging = (f.isEditingMode == true) or (f.isDraggingMode == true) or (f._dsDragging == true)
                 if not isDragging then
@@ -918,7 +944,7 @@ function DynamicSuite.RestackAllToasts()
                         if f.SetFrameStrata then f:SetFrameStrata(SHARED_TOAST_STRATA) end
                         if f.SetFrameLevel then f:SetFrameLevel(SHARED_TOAST_LEVEL) end
                     end
-                    if f == _G.DynamicLoadToastFrame then
+                    if frameName == "DynamicLoadToastFrame" then
                         prev = f
                     else
                         f:ClearAllPoints()
@@ -1395,12 +1421,13 @@ addonTable.IsAddonProtected = IsAddonProtected
 
 local function NormalizeSuiteModuleId(modKeyOrName)
     local s = tostring(modKeyOrName or "")
-    local low = s:gsub("^Dynamic", ""):lower()
+    local low = s:lower():gsub("^dynamic", "")
     if low == "load" then return "DynamicLoad", "load"
     elseif low == "marker" then return "DynamicMarker", "marker"
     elseif low == "zoom" then return "DynamicZoom", "zoom"
     elseif low == "fps" then return "DynamicFPS", "fps"
     elseif low == "prep" then return "DynamicPrep", "prep"
+    elseif low == "talent" then return "DynamicTalent", "talent"
     elseif low == "group" then return "DynamicGroup", "group"
     elseif low == "bags" then return "DynamicBags", "bags"
     elseif low == "chat" then return "DynamicChat", "chat"
@@ -2509,7 +2536,7 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
     if IsExternalAddonFrozen(otherAddon) then
         return false, nil, nil
     end
-    local shortKey = tostring(dynamicModule or ""):gsub("^Dynamic", ""):lower()
+    local shortKey = tostring(dynamicModule or ""):lower():gsub("^dynamic", "")
     if otherAddon == "ElvUI" then
         if not SafeIsAddOnLoaded("ElvUI") then
             return false, nil, nil
@@ -2985,12 +3012,13 @@ end
 
 local function NormalizeSuiteModuleName(modKeyOrName)
     local s = tostring(modKeyOrName or "")
-    local low = s:gsub("^Dynamic", ""):lower()
+    local low = s:lower():gsub("^dynamic", "")
     if low == "load" then return "DynamicLoad", "load"
     elseif low == "marker" then return "DynamicMarker", "marker"
     elseif low == "zoom" then return "DynamicZoom", "zoom"
     elseif low == "fps" then return "DynamicFPS", "fps"
     elseif low == "prep" then return "DynamicPrep", "prep"
+    elseif low == "talent" then return "DynamicTalent", "talent"
     elseif low == "group" then return "DynamicGroup", "group"
     elseif low == "bags" then return "DynamicBags", "bags"
     elseif low == "chat" then return "DynamicChat", "chat"
@@ -3258,7 +3286,7 @@ local function EnsureConflictCache()
                 end
             end
 
-            local itemShort = tostring(item.moduleKey or item.dynamicModule or ""):gsub("^Dynamic", ""):lower()
+            local itemShort = tostring(item.moduleKey or item.dynamicModule or ""):lower():gsub("^dynamic", "")
             local modDisabled = IsSuiteModuleExplicitlyDisabled(item.dynamicModule or itemShort)
             if not (modDisabled and item.isAcknowledged) then
                 local bucket = cachedConflictSummary.byModule[itemShort]
@@ -3311,7 +3339,7 @@ DynamicSuite.GetUnresolvedActionRequiredConflicts = GetUnresolvedActionRequiredC
 
 local function GetModuleConflicts(modKeyOrName)
     if not modKeyOrName then return emptyConflictList, emptyConflictList, emptyConflictList end
-    local shortKey = tostring(modKeyOrName):gsub("^Dynamic", ""):lower()
+    local shortKey = tostring(modKeyOrName):lower():gsub("^dynamic", "")
     local cache = EnsureConflictCache()
     local bucket = cache.byModule[shortKey]
     if not bucket then
@@ -3324,7 +3352,7 @@ DynamicSuite.GetModuleConflicts = GetModuleConflicts
 
 local function GetCachedModuleConflictFlags(modKeyOrName)
     if not modKeyOrName then return false, false end
-    local shortKey = tostring(modKeyOrName):gsub("^Dynamic", ""):lower()
+    local shortKey = tostring(modKeyOrName):lower():gsub("^dynamic", "")
     local cache = EnsureConflictCache()
     local bucket = cache.byModule[shortKey]
     if not bucket then
@@ -3434,7 +3462,7 @@ local function PrintConflictSummary()
     end
 
     if #hardList == 0 and #softList == 0 then
-        print(string.format("%s |cFF22C55E[Conflict Diagnostic]|r: Zero active third-party addon conflicts or overlaps detected across all 8 DynamicSuite modules.", ADDON_TITLE))
+        print(string.format("%s |cFF22C55E[Conflict Diagnostic]|r: Zero active third-party addon conflicts or overlaps detected across all 12 DynamicSuite modules.", ADDON_TITLE))
         return all
     end
 
@@ -4304,7 +4332,7 @@ DynamicSuite.RegisterModule = function(arg1, arg2, arg3)
         modKey, modTable = arg1, arg2
     end
     if not modKey or type(modTable) ~= "table" then return end
-    local shortKey = tostring(modKey):gsub("^Dynamic", ""):lower()
+    local shortKey = tostring(modKey):lower():gsub("^dynamic", "")
     local addonNameKey = modTable.addonName or modTable.name or (shortKey == modKey and ("Dynamic" .. shortKey:sub(1, 1):upper() .. shortKey:sub(2)) or tostring(modKey))
 
     DynamicSuite.modules[modKey] = modTable
@@ -4458,6 +4486,8 @@ local MODULE_ADDON_MAP = {
     DynamicFPS    = "DynamicFPS",
     prep          = "DynamicPrep",
     DynamicPrep   = "DynamicPrep",
+    talent        = "DynamicTalent",
+    DynamicTalent = "DynamicTalent",
     group         = "DynamicGroup",
     DynamicGroup  = "DynamicGroup",
     bags          = "DynamicBags",
@@ -4484,6 +4514,7 @@ local MODULE_META_BY_KEY = {
     zoom   = { addonName = "DynamicZoom",   moduleTitle = "DynamicZoom",   slash = "/dz",     icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_zoom.tga" },
     fps    = { addonName = "DynamicFPS",    moduleTitle = "DynamicFPS",    slash = "/dfps",   icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_fps.tga" },
     prep   = { addonName = "DynamicPrep",   moduleTitle = "DynamicPrep",   slash = "/dprep",  icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga" },
+    talent = { addonName = "DynamicTalent", moduleTitle = "DynamicTalent", slash = "/dt",     icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_talent.tga" },
     group  = { addonName = "DynamicGroup",  moduleTitle = "DynamicGroup",  slash = "/dgroup", icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga" },
     bags   = { addonName = "DynamicBags",   moduleTitle = "DynamicBags",   slash = "/dbag",   icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga" },
     chat   = { addonName = "DynamicChat",   moduleTitle = "DynamicChat",   slash = "/dchat",  icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga" },
@@ -4501,15 +4532,25 @@ local searchSeedOrderCounter = 0
 local function NormalizeSearchEntry(moduleKey, rawEntry)
     if type(rawEntry) ~= "table" or not rawEntry.title or rawEntry.title == "" then return nil end
     local mKey = rawEntry.moduleKey or moduleKey or "STUDIO"
+    local rawKeyStr = tostring(mKey)
+    local upperKey = rawKeyStr:upper()
+    if upperKey == "STUDIO" or upperKey == "SETUP" or upperKey == "HUD" then
+        mKey = upperKey
+    end
     local meta = MODULE_META_BY_KEY[mKey]
     if not meta then
-        local shortKey = tostring(mKey):gsub("^Dynamic", ""):lower()
-        meta = MODULE_META_BY_KEY[shortKey] or {
-            addonName   = rawEntry.addonName or ("Dynamic" .. shortKey:sub(1, 1):upper() .. shortKey:sub(2)),
-            moduleTitle = rawEntry.moduleTitle or tostring(mKey),
-            slash       = rawEntry.slash or ("/" .. shortKey),
-            icon        = rawEntry.icon or ("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga"),
-        }
+        local shortKey = rawKeyStr:lower():gsub("^dynamic", "")
+        if MODULE_META_BY_KEY[shortKey] then
+            mKey = shortKey
+            meta = MODULE_META_BY_KEY[shortKey]
+        else
+            meta = {
+                addonName   = rawEntry.addonName or ("Dynamic" .. shortKey:sub(1, 1):upper() .. shortKey:sub(2)),
+                moduleTitle = rawEntry.moduleTitle or rawKeyStr,
+                slash       = rawEntry.slash or ("/" .. shortKey),
+                icon        = rawEntry.icon or ("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga"),
+            }
+        end
     end
 
     local addonNameKey = rawEntry.addonName or meta.addonName or "DynamicSuite"
@@ -4548,6 +4589,7 @@ local function NormalizeSearchEntry(moduleKey, rawEntry)
         keywords        = kwStr,
         isSubDrawer     = rawEntry.isSubDrawer == true,
         hudTarget       = rawEntry.hudTarget,
+        subMode         = rawEntry.subMode,
         _titleLower     = titleStr:lower(),
         _kwLower        = kwStr:lower(),
         _keywordsLower  = kwStr:lower(),
@@ -4572,6 +4614,52 @@ function DynamicSuite:RegisterSearchEntries(moduleKey, entries)
             local dedupKey = string.format("%s|%s|%s", tostring(norm.moduleKey), tostring(norm.tabIndex), norm._titleLower)
             local existingIdx = SEARCH_KEY_DEDUP[dedupKey]
             if existingIdx and SEARCH_REGISTRY[existingIdx] then
+                local existing = SEARCH_REGISTRY[existingIdx]
+                if not raw.category and existing.category then
+                    norm.category = existing.category
+                    norm.categoryLabel = existing.categoryLabel
+                    norm._catLower = existing._catLower
+                end
+                if not raw.tabLabel and not raw.tabName and not raw.breadcrumb and existing.tabLabel then
+                    norm.tabLabel = existing.tabLabel
+                    norm.tabName = existing.tabName
+                    norm.breadcrumb = existing.breadcrumb
+                    norm._tabLower = existing._tabLower
+                    norm._crumbLower = existing._crumbLower
+                end
+                if not raw.highlightTitle and not raw.targetTitle then
+                    if existing.highlightTitle and existing.highlightTitle ~= "" then
+                        norm.highlightTitle = existing.highlightTitle
+                    end
+                    if existing.targetTitle and existing.targetTitle ~= "" then
+                        norm.targetTitle = existing.targetTitle
+                    end
+                end
+                if existing.keywords and existing.keywords ~= "" then
+                    local mergedList = {}
+                    local seenTok = {}
+                    local function addKwTokens(str)
+                        if type(str) ~= "string" or str == "" then return end
+                        for tok in str:gmatch("%S+") do
+                            local tokL = tok:lower()
+                            if not seenTok[tokL] then
+                                seenTok[tokL] = true
+                                mergedList[#mergedList + 1] = tok
+                            end
+                        end
+                    end
+                    addKwTokens(existing.keywords)
+                    addKwTokens(norm.keywords)
+                    if #mergedList > 0 then
+                        local mergedKw = table.concat(mergedList, " ")
+                        norm.keywords = mergedKw
+                        norm._kwLower = mergedKw:lower()
+                        norm._keywordsLower = norm._kwLower
+                    end
+                end
+                if existing.seedOrder then
+                    norm.seedOrder = existing.seedOrder
+                end
                 SEARCH_REGISTRY[existingIdx] = norm
             else
                 table.insert(SEARCH_REGISTRY, norm)
@@ -4585,14 +4673,18 @@ addonTable.RegisterSearchEntries = function(moduleKey, entries)
 end
 
 local function IsAddonInstalledOnDisk(addonNameKey)
-    if not addonNameKey or addonNameKey == "DynamicSuite" then
+    if not addonNameKey or addonNameKey == "DynamicSuite" or tostring(addonNameKey):lower() == "dynamicsuite" then
         return true
     end
-    local shortKey = tostring(addonNameKey):gsub("^Dynamic", ""):lower()
-    if _G.DynamicSuite and _G.DynamicSuite.modules and (_G.DynamicSuite.modules[addonNameKey] ~= nil or _G.DynamicSuite.modules[shortKey] ~= nil) then
+    local canonMod, shortKey = NormalizeSuiteModuleId(addonNameKey)
+    if _G.DynamicSuite and _G.DynamicSuite.modules and (
+        _G.DynamicSuite.modules[addonNameKey] ~= nil
+        or _G.DynamicSuite.modules[canonMod] ~= nil
+        or _G.DynamicSuite.modules[shortKey] ~= nil
+    ) then
         return true
     end
-    if addonNameKey == "DynamicLoad" then
+    if canonMod == "DynamicLoad" then
         if addonTable.IsDynamicLoadModuleLoaded then
             return true
         end
@@ -4604,13 +4696,19 @@ local function IsAddonInstalledOnDisk(addonNameKey)
         end
         return false
     end
-    if _G[addonNameKey] ~= nil then
+    if _G[canonMod] ~= nil or _G[addonNameKey] ~= nil then
         return true
     end
     if C_AddOns and C_AddOns.GetAddOnInfo then
-        local aName, _, _, _, aReason = C_AddOns.GetAddOnInfo(addonNameKey)
+        local aName, _, _, _, aReason = C_AddOns.GetAddOnInfo(canonMod)
         if aName ~= nil and aReason ~= "MISSING" then
             return true
+        end
+        if canonMod ~= addonNameKey then
+            local fName, _, _, _, fReason = C_AddOns.GetAddOnInfo(addonNameKey)
+            if fName ~= nil and fReason ~= "MISSING" then
+                return true
+            end
         end
     end
     return false
@@ -4626,7 +4724,7 @@ local function IsSearchModuleDisabled(entry)
     if IsSuiteModuleExplicitlyDisabled(addonNameKey) then
         return true
     end
-    local shortKey = tostring(addonNameKey):gsub("^Dynamic", ""):lower()
+    local shortKey = tostring(addonNameKey):lower():gsub("^dynamic", "")
     local pName = GetPlayer()
     local isLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(addonNameKey))
         or (_G[addonNameKey] ~= nil)
@@ -4654,7 +4752,7 @@ addonTable.GetInstalledSearchEntries = function()
     return DynamicSuite:GetInstalledSearchEntries()
 end
 
--- Seed comprehensive built-in search metadata covering DynamicSuite & all 8 peer modules
+-- Seed comprehensive built-in search metadata covering DynamicSuite & all 12 peer modules
 local BUILTIN_SEARCH_SEED = {
     -- ========================================================================
     -- DYNAMICSUITE: SUITE STUDIO ("STUDIO" Tab 1 & Tab 2), GUIDED SETUP ("SETUP"), HUD ("HUD")
@@ -4724,7 +4822,7 @@ local BUILTIN_SEARCH_SEED = {
     { moduleKey = "SETUP", category = "BAGS_QOL", tabIndex = "GUIDED_SETUP", tabLabel = "Conflict Diagnostic (/ds conflicts)",
       title = "External Addon Conflict Detector & Auto-Yield Diagnostic (/ds conflicts)",
       highlightTitle = "STEP 1: CONFLICT SCANNER, VISUAL THEME & ACCOUNT-WIDE ALT SYNC",
-      desc = "Run /ds conflicts to print and display a clean diagnostic summary of active HARD addon collisions and SOFT Auto-Yield overlaps across all 8 DynamicSuite modules.",
+      desc = "Run /ds conflicts to print and display a clean diagnostic summary of active HARD addon collisions and SOFT Auto-Yield overlaps across all 12 DynamicSuite modules.",
       keywords = "conflict conflicts compatibility error taint diagnostic /ds conflicts auto-yield yield third-party overlap baganator dialogueui elvui leatrix prat chattynator" },
 
     -- HUD Edit Mode Positioning Targets
@@ -5164,10 +5262,42 @@ local BUILTIN_SEARCH_SEED = {
       title = "Automated Healing Macro ([DynamicHeal])",
       desc = "Maintain a 1-button [DynamicHeal] macro that prioritises Recuperate out of combat and Warlock Healthstones > Healing Potions in combat.",
       keywords = "automated healing macro dynamicheal healthstone potion silvermoon recuperate survival" },
-    { moduleKey = "prep", category = "COMBAT", tabIndex = 3, tabLabel = "World & Survival QoL",
-      title = "Talent Binds & Loadout Manager",
-      desc = "Bind saved talent loadouts to Raid Bosses (LFR / Normal, Heroic, Mythic) and Mythic+ Dungeons with pre-pull reminder toasts.",
-      keywords = "talent binds boss binds raid bosses mythic+ dungeons lfr normal heroic mythic loadout manager reminders" },
+
+    -- ========================================================================
+    -- DYNAMICTALENT ("talent") - Talent Loadouts, Raid/M+/PvP/Zone Binds & Group Order
+    -- ========================================================================
+    { moduleKey = "talent", category = "COMBAT", tabIndex = 1, tabLabel = "Talent Loadouts & Binds",
+      title = "Talent Loadouts & Binds", highlightTitle = "LOADOUT IDENTITY",
+      desc = "Manage per-spec talent strings, Hero Talent badges, and Raid/M+/PvP/Zone swap rules.",
+      keywords = "talent loadout bind boss raid mythic+ lfr normal heroic mythic delves outdoor import wcl northern sky blizzard string hero /dt" },
+    { moduleKey = "talent", category = "COMBAT", tabIndex = 1, tabLabel = "Talent Loadouts & Binds",
+      title = "Talent Export String", highlightTitle = "TALENT EXPORT STRING",
+      desc = "Paste Warcraft Logs, Northern Sky, or Blizzard strings, or capture your active talent tree.",
+      keywords = "talent string export import paste copy wcl warcraft logs northern sky ns blizzard /dt" },
+    { moduleKey = "talent", category = "COMBAT", tabIndex = 1, tabLabel = "Talent Loadouts & Binds",
+      title = "PvP Talent Binds", highlightTitle = "PVP TALENT BINDS", subMode = "PVP",
+      desc = "Bind builds to All PvP, Arena, Battlegrounds, or War Mode.",
+      keywords = "pvp arena battlegrounds bg blitz solo shuffle war mode outdoor pvp talent binds /dt" },
+    { moduleKey = "talent", category = "COMBAT", tabIndex = 2, tabLabel = "Display, Group Order & Reminders",
+      title = "Enable DynamicTalent Module", highlightTitle = "Enable DynamicTalent Module",
+      desc = "Toggle the Talent Loadouts Dock, Prep Bar switcher, and swap reminders.",
+      keywords = "enable disable dynamictalent module talent dock switcher /dt" },
+    { moduleKey = "talent", category = "HUD_LOOK", tabIndex = 2, tabLabel = "Display, Group Order & Reminders",
+      title = "Show Talent Capsule on Prep Bar", highlightTitle = "Show Talent Capsule on Prep Bar",
+      desc = "Toggle the Talent Loadout capsule inside DynamicPrep's Top Info Bar.",
+      keywords = "prep bar capsule segment talents top info bar dynamicprep /dt" },
+    { moduleKey = "talent", category = "COMBAT", tabIndex = 2, tabLabel = "Display, Group Order & Reminders",
+      title = "Zone-Aware Talent Loadout Reminders", highlightTitle = "Zone-Aware Talent Loadout Reminders",
+      desc = "Show a 1-click alert toast when entering Raid, M+, Delve, or PvP content with a different build.",
+      keywords = "talent reminder toast alert swap mismatch zone boss raid dungeon pvp /dt" },
+    { moduleKey = "talent", category = "COMBAT", tabIndex = 2, tabLabel = "Display, Group Order & Reminders",
+      title = "Prioritise Current Zone First", highlightTitle = "Prioritise Current Zone First",
+      desc = "Float loadouts matching your current zone to the top of quick-switchers.",
+      keywords = "prioritise zone first sort quick switch talent dock prep bar /dt" },
+    { moduleKey = "talent", category = "COMBAT", tabIndex = 2, tabLabel = "Display, Group Order & Reminders",
+      title = "Custom Loadout Group Order", highlightTitle = "CUSTOM LOADOUT GROUP ORDER",
+      desc = "Reorder Raid, M+, Delves, PvP, and Custom groups across Talent Dock and switchers.",
+      keywords = "group order sort custom reorder raid m+ delves pvp custom talent dock /dt" },
 
     -- ========================================================================
     -- 6. DYNAMICGROUP ("group") - LFG Region Filter, Auto-Invite & Keystones
@@ -5518,10 +5648,6 @@ local BUILTIN_SEARCH_SEED = {
       title = "Great Vault Top Dock, Auto-Match Skin & On-Screen Overlay",
       desc = "Automatically dock your Account Vault bar flush on top of Blizzard's Great Vault with EllesmereUI/ElvUI Auto-Match skinning, plus optional /dv overlay.",
       keywords = "great vault top dock auto-match ellesmere elvui skin overlay hud /dv" },
-    { moduleKey = "prep", category = "COMBAT", tabIndex = 3, tabLabel = "World & Survival QoL",
-      title = "Zone & Boss Talent Loadout Reminder + WCL/NS String Importer",
-      desc = "Import Warcraft Logs / Northern Sky / Blizzard talent strings, bind loadouts per zone or specific Raid Boss, and get a 1-click swap toast on mismatch.",
-      keywords = "talent loadout reminder boss warcraft logs northern sky ns import string swap toast /dprep" },
     { moduleKey = "prep", category = "BAGS_QOL", tabIndex = 3, tabLabel = "World & Survival QoL",
       title = "Auto-Accept Group Summons (1.5s Safety Delay)",
       desc = "Automatically accept Warlock and Meeting Stone summons out of combat after a 1.5s safety countdown (hold Shift to cancel).",
@@ -10109,6 +10235,7 @@ function addonTable.ReassertSuiteSlashRouting()
         ["DYNAMICFPS"]    = "DynamicFPS",
         ["DYNAMICMARKER"] = "DynamicMarker",
         ["DYNAMICPREP"]   = "DynamicPrep",
+        ["DYNAMICTALENT"] = "DynamicTalent",
         ["DYNAMICGROUP"]  = "DynamicGroup",
         ["DYNAMICBAGS"]   = "DynamicBags",
         ["DYNAMICCHAT"]   = "DynamicChat",

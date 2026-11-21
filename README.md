@@ -1,8 +1,8 @@
-# DynamicSuite -- 11-Module QoL, Utility & Performance Hub
+# DynamicSuite -- 12-Module QoL, Utility & Performance Hub
 
 **Version:** v2.7.1 (21/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
-**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for World of Warcraft Retail. All 11 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
+**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for World of Warcraft Retail. All 12 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
 ---
 
@@ -16,11 +16,11 @@
 
 ## Core Suite Features
 
-* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with an 11-module sidebar, individual On/Off switches, reorderable module cards, Window Opacity (50%-100%), Window Scale (80%-120%), and a quick Reload UI button.
-* **Shared Alert Toast HUD:** Centralised Toast Scale, Opacity, Border Style, Auto-Fade Duration, and Alert Sound inside Suite Studio and DynamicLoad, shared cleanly across Zone Load Alerts, DynamicPrep Talent Reminders, DynamicGroup Teleport Toasts, and DynamicChat Mention Alerts with clean vertical stacking and Right-Click dismissal.
+* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 12-module sidebar, individual On/Off switches, reorderable module cards, Window Opacity (50%-100%), Window Scale (80%-120%), and a quick Reload UI button.
+* **Shared Alert Toast HUD:** Centralised Toast Scale, Opacity, Border Style, Auto-Fade Duration, and Alert Sound inside Suite Studio and DynamicLoad, shared cleanly across Zone Load Alerts, DynamicTalent Reminders, DynamicGroup Teleport Toasts, and DynamicChat Mention Alerts with clean vertical stacking and Right-Click dismissal.
 * **Global Smart Search (`/ds search <query>`):** Type what you are looking for in plain English (like "auto repair", "flare", "mail", "quest", or "whisper") and jump straight to the exact setting with a visual highlight.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, resize (60%-150%), and align all 6 suite HUDs (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
-* **11-Step Guided Setup (`/ds setup`, `/ds conflicts`):** Walks you through resolving addon conflicts and configuring each module in minutes.
+* **12-Step Guided Setup (`/ds setup`, `/ds conflicts`):** Walks you through resolving addon conflicts and configuring each module in minutes.
 * **Theme & Font Studio (`/ds theme`, `/ds studio`, `/ds windows`):** Customise your UI with 17 accent colours (including all 13 WoW Class Colours and a custom colour picker), 4 dark surface themes, 21+ built-in fonts, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI with searchable grouped dropdowns, Shared Alert Toast controls, Blizzard Desktop Window Manager (`Desktop Windows & Menus`), and adjustable text scaling.
 
 ---
@@ -30,7 +30,8 @@
 | Module | Slash | What It Does |
 | :--- | :--- | :--- |
 | **DynamicLoad** | `/dl` | Automatically switches addon profiles for Outdoor, Delves, Dungeons, Raid, and PvP with Always and Never load locks |
-| **DynamicPrep** | `/dprep`, `/dp` | Top stat/durability/FPS bar, clickable Raid Buff & Consumable reminders, Talent Reminder Toasts, survival healing macro, and quest/gossip QoL |
+| **DynamicPrep** | `/dprep`, `/dp` | Top stat/durability/FPS bar, Midnight Omni Folio tracker, clickable Raid Buff & Consumable reminders, survival healing macro, and quest/gossip QoL |
+| **DynamicTalent** | `/dt`, `/dynamictalent` | Unlimited per-spec talent loadout library, PlayerSpellsFrame dock, Raid/M+/PvP/Zone talent binds, custom group order, Prep Bar capsule hook, and Swap Reminder Toasts |
 | **DynamicMarker** | `/dm`, `/fm` | Instant focus & raid target marking, optional world flare cycling & clear hotkeys (unbound by default), floating Focus & Flare bars, and smart interrupt macro |
 | **DynamicZoom** | `/dz` | Unlocks 39-yard max camera zoom, speeds up scroll zooming, and fades trees/pillars instead of snapping your camera |
 | **DynamicFPS** | `/dfps` | Switches graphics settings automatically per zone, protects combat FPS, and tunes SpellQueueWindow from live ping + haste |
@@ -51,7 +52,7 @@
 | `/ds hud`, `/ds edit`, `/ds move` | Toggle HUD Edit Mode across all movable suite bars |
 | `/ds resethud` | Reset all suite HUD bars to safe screen-clamped default positions |
 | `/ds search <query>` | Open Global Smart Search with your query pre-filled |
-| `/ds setup` or `/ds guided` | Open the 11-Step Guided Setup Wizard |
+| `/ds setup` or `/ds guided` | Open the 12-Step Guided Setup Wizard |
 | `/ds conflicts` | Check for conflicting addons and print a summary in chat |
 | `/ds theme` or `/ds studio` | Open Suite Studio (`Theme & Typography` and `Desktop Windows & Menus`) |
 | `/ds windows` or `/ds win` | Open Suite Studio directly to the Blizzard Desktop Window Manager |
@@ -60,6 +61,7 @@
 | `/ds reload` | Reload your user interface |
 | `/dl` or `/dynamicload` | Open DynamicLoad (supports auto, status, lock, unlock, freeze, profile, toast) |
 | `/dprep` or `/dp` | Open DynamicPrep (supports edit, buffs, qol, reset) |
+| `/dt` or `/dynamictalent` | Open DynamicTalent (supports binds, edit, hud, reset) |
 | `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, import, reset) |
 | `/dz` or `/dynamiczoom` | Open DynamicZoom (supports max, 39, reset) |
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
@@ -85,4 +87,4 @@
 
 ## License & Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for v2.0.0+ releases and [docs/CHANGELOG_ARCHIVE.md](docs/CHANGELOG_ARCHIVE.md) for pre-v2.0.0 history across all 11 modules.
+See [CHANGELOG.md](CHANGELOG.md) for v2.0.0+ releases and [docs/CHANGELOG_ARCHIVE.md](docs/CHANGELOG_ARCHIVE.md) for pre-v2.0.0 history across all 12 modules.
