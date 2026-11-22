@@ -490,6 +490,9 @@ local function ApplyPrepThemeToUI()
     if DynamicPrep.ApplyMageFoodToastVisuals then
         DynamicPrep:ApplyMageFoodToastVisuals()
     end
+    if DynamicPrep.ApplyDurabilityToastVisuals then
+        DynamicPrep:ApplyDurabilityToastVisuals()
+    end
     if DynamicPrep.workspaceFrame and DynamicPrep.workspaceFrame:IsShown() then
         DynamicPrep:RefreshWorkspaceView()
     end
@@ -661,6 +664,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "21/11/2026",
     entries = {
+        { type = "FEATURE", text = "[Unreleased] Low Durability Shared Alert Toast (22/11/2026): Added an enabled-by-default Low Durability Alert Toast (DynamicPrepDurabilityToast, default 20% threshold, 10%-40% slider + Test Toast in Tab 3) with 1-click Repair Mount summoning outdoors (Grand Expedition Yak, Grizzly Hills Packmaster, Traveler's Tundra Mammoth) or Open Gear indoors, Right-Click silence until gear drops another 10% or is repaired, and automatic suppression in combat and active Mythic+ keystones." },
         { type = "FEATURE", text = "[Unreleased] Healer Mage Food Restock Toasts & Role-Smart [DynamicDrink] Macro (22/11/2026): Added a decoupled Follower Dungeon Conjured Mana Bun restock/leave Shared Alert Toast workflow (independent of Clickable Raid Buffs scope, with Healer Only / Any Mana Spec scope, 5-60 alert threshold, 20-80 auto-leave target, 1-click Queue Follower / Leave Dungeon buttons, Stage 3 'Ask for Table' group Mage prompt with 5-minute cooldown and encounter/chat lockdown safety, and Right-Click session silence) alongside a separate [nocombat]-guarded [DynamicDrink] macro with dynamic level 1-90 bag scanning, Role-Smart / Mana First / Health & Recup / Off priority, Recuperate fallback, and strict Well Fed buff-food exclusion." },
         { type = "REFACTOR", text = "[Unreleased] Extracted Talent Loadouts & Talent Binds to DynamicTalent (/dt) (21/11/2026): Moved the unlimited per-spec Talent Loadouts library, PlayerSpellsFrame dock, 880x580 Talent Loadouts Manager, and Shared Alert Toast reminders into the dedicated DynamicTalent module while keeping the Top Info Bar 'Talents' capsule hooked cleanly to DynamicTalent and preserving backward-compatible forwarding stubs." },
         { type = "FEATURE", text = "Opt-In Auto-Confirm Free Dungeon & Raid Prompts (21/11/2026): Added an off-by-default 'Auto-Confirm Free Dungeon & Raid Prompts' toggle in Tab 3 under World & Survival Automation to automatically confirm free (0 copper) single-option NPC prompts inside Dungeons, Raids, and Delves (hold Shift to pause), while keeping paid, open-world, hearthstone, and exit/teleport prompts manual." },
@@ -774,6 +778,8 @@ local DEFAULTS = {
     drinkMacroMode = "ROLE_SMART", -- "ROLE_SMART", "MANA_FIRST", "HEALTH_RECUP", "OFF"
     drinkMacroAllowBuffFood = false,
     drinkMacroRecupFallback = true,
+    durabilityAlertEnabled = true,
+    durabilityAlertThreshold = 20, -- 10% to 40% step 5%
     blizzWinNoAutoClose = true,
     blizzWinDraggable = true,
     blizzWinScrollScale = true,
@@ -854,6 +860,10 @@ function DynamicPrep:InitDB()
     end
     self.db.drinkMacroAllowBuffFood = (self.db.drinkMacroAllowBuffFood == true)
     if self.db.drinkMacroRecupFallback == nil then self.db.drinkMacroRecupFallback = true end
+    if self.db.durabilityAlertEnabled == nil then self.db.durabilityAlertEnabled = true end
+    local durT = tonumber(self.db.durabilityAlertThreshold) or 20
+    durT = math.max(10, math.min(40, math.floor((durT / 5) + 0.5) * 5))
+    self.db.durabilityAlertThreshold = durT
 
     -- Ensure raidBuffs.trackRunes defaults to true for upgraded profiles
     if self.db.raidBuffs then
@@ -6918,6 +6928,376 @@ function DynamicPrep:TriggerMageFoodToastPreview()
         self:ShowMageFoodToast("ASK_MAGE", bunCount, minT, true)
     end
 end
+
+-- ============================================================================
+-- Low Durability Shared Alert Toast (DynamicPrepDurabilityToast)
+-- ============================================================================
+local REPAIR_MOUNT_IDS = { 460, 2237, 280, 284 } -- Grand Expedition Yak, Grizzly Hills Packmaster, Traveler's Tundra Mammoth (A/H)
+local durabilityToastFrame = nil
+local durabilitySilencedAtPct = nil
+local durabilityLastAlertedPct = nil
+local durabilityCheckPending = false
+
+function DynamicPrep:GetUsableRepairMount()
+    local isOutdoors = true
+    if type(IsOutdoors) == "function" then
+        local okO, out = pcall(IsOutdoors)
+        if okO and not IsSecretValue(out) then
+            isOutdoors = (out == true)
+        end
+    end
+    if isOutdoors and type(IsIndoors) == "function" then
+        local okI, ind = pcall(IsIndoors)
+        if okI and not IsSecretValue(ind) and ind == true then
+            isOutdoors = false
+        end
+    end
+    if not isOutdoors then return nil, nil end
+
+    if C_MountJournal and type(C_MountJournal.GetMountInfoByID) == "function" then
+        for _, mID in ipairs(REPAIR_MOUNT_IDS) do
+            local okM, name, _, _, _, isUsable, _, _, _, _, shouldHideOnChar, isCollected = pcall(C_MountJournal.GetMountInfoByID, mID)
+            if okM and isCollected == true and shouldHideOnChar ~= true and isUsable ~= false then
+                return mID, (type(name) == "string" and not IsSecretValue(name)) and name or "Repair Mount"
+            end
+        end
+    end
+    return nil, nil
+end
+
+function DynamicPrep:HandleDurabilityToastAction(mountID)
+    if InCombatLockdown and InCombatLockdown() then
+        print(string.format("|cFF%sDynamicPrep:|r Leave combat before using that.", GetAccentHex()))
+        return
+    end
+    self:HideDurabilityToast()
+    if mountID and C_MountJournal and type(C_MountJournal.SummonByID) == "function" then
+        pcall(C_MountJournal.SummonByID, mountID)
+    elseif type(ToggleCharacter) == "function" then
+        pcall(ToggleCharacter, "PaperDollFrame")
+    end
+end
+
+function DynamicPrep:ApplyDurabilityToastVisuals()
+    local f = durabilityToastFrame
+    if not f then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    local st = nil
+    if _G.DynamicSuite and type(_G.DynamicSuite.ApplySharedToastLayout) == "function" then
+        local ok, sharedSt = pcall(_G.DynamicSuite.ApplySharedToastLayout, f, { tintIcon = false })
+        if ok and type(sharedSt) == "table" then st = sharedSt end
+    end
+    if not st then
+        st = GetMageFoodSharedToastStyle()
+        local ar, ag, ab = st.ar, st.ag, st.ab
+        local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
+        f:SetFrameStrata("TOOLTIP")
+        f:SetFrameLevel(20)
+        f:SetToplevel(false)
+        f:SetScale(st.scale or 1.0)
+        f:SetBackdropColor(st.bgR or 0.035, st.bgG or 0.039, st.bgB or 0.051, st.opacity or 0.96)
+        if bStyle == "NONE" or bStyle == "BORDERLESS" then
+            f:SetBackdropBorderColor(0, 0, 0, 0)
+        elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+            f:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+        else
+            f:SetBackdropBorderColor(ar, ag, ab, 0.92)
+        end
+        if f.iconBorder then f.iconBorder:SetBackdropBorderColor(ar, ag, ab, 0.85) end
+        if f:IsShown() and _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+            pcall(_G.DynamicSuite.RestackAllToasts)
+        end
+    end
+    if f.actionBtn then
+        StyleMageFoodToastActionBtn(f.actionBtn, st, f.actionBtn.IsMouseOver and f.actionBtn:IsMouseOver())
+    end
+end
+
+function DynamicPrep:HideDurabilityToast()
+    if not durabilityToastFrame then return end
+    if _G.DynamicSuite and type(_G.DynamicSuite.HideSharedToast) == "function" then
+        pcall(_G.DynamicSuite.HideSharedToast, durabilityToastFrame)
+    elseif not (InCombatLockdown and InCombatLockdown()) then
+        if durabilityToastFrame.animGroup then durabilityToastFrame.animGroup:Stop() end
+        durabilityToastFrame:Hide()
+        durabilityToastFrame:SetAlpha(1)
+    end
+end
+
+function DynamicPrep:ResetDurabilityAlertState()
+    durabilitySilencedAtPct = nil
+    durabilityLastAlertedPct = nil
+end
+
+local function SilenceDurabilityToast(f)
+    if f and not f._isPreview and f._lowestPct then
+        durabilitySilencedAtPct = f._lowestPct
+        print(string.format("|cFF%sDynamicPrep:|r Silenced durability alerts until gear drops another 10%% or is repaired.", GetAccentHex()))
+    end
+    DynamicPrep:HideDurabilityToast()
+end
+
+function DynamicPrep:ShowDurabilityToast(lowestPct, avgPct, isPreview)
+    if InCombatLockdown and InCombatLockdown() then return end
+    if not durabilityToastFrame then
+        local f = nil
+        if _G.DynamicSuite and type(_G.DynamicSuite.EnsureSharedToastFrame) == "function" then
+            local ok, sharedFrame = pcall(_G.DynamicSuite.EnsureSharedToastFrame, "DynamicPrepDurabilityToast", {
+                clickButtons = { "LeftButtonUp", "RightButtonUp" },
+                iconMode = "FULL",
+                iconTexture = 136241, -- Repair anvil icon
+                rightActionWidth = 104,
+                rightActionGap = 10,
+                autoFade = true,
+                onRightClickDismiss = function(selfT)
+                    SilenceDurabilityToast(selfT or durabilityToastFrame)
+                end,
+            })
+            if ok and sharedFrame then f = sharedFrame end
+        end
+
+        if not f then
+            local stInit = GetMageFoodSharedToastStyle()
+            f = CreateFrame("Button", "DynamicPrepDurabilityToast", UIParent, "BackdropTemplate")
+            f:SetSize(410, 74)
+            f:SetFrameStrata("TOOLTIP")
+            f:SetFrameLevel(20)
+            f:SetToplevel(false)
+            f:SetClampedToScreen(true)
+            f:EnableMouse(true)
+            f:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            f:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                tile = false, tileSize = 0, edgeSize = 1.5,
+                insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            })
+            local iconBorder = CreateFrame("Frame", nil, f, "BackdropTemplate")
+            iconBorder:SetSize(44, 44)
+            iconBorder:SetPoint("LEFT", f, "LEFT", 14, 0)
+            iconBorder:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                tile = false, tileSize = 0, edgeSize = 1,
+                insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            })
+            iconBorder:SetBackdropColor(0.04, 0.05, 0.07, 1)
+            local ic = iconBorder:CreateTexture(nil, "ARTWORK")
+            ic:SetSize(40, 40)
+            ic:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+            ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            ic:SetTexture(136241)
+            f.iconBorder = iconBorder
+            f.iconTex = ic
+
+            f.title = CreateText(f, "OVERLAY", "GameFontHighlight")
+            f.badge = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+            f.subtext = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+
+            local ag = f:CreateAnimationGroup()
+            local hold = ag:CreateAnimation("Animation")
+            hold:SetDuration(stInit.duration or 8)
+            hold:SetOrder(1)
+            local fade = ag:CreateAnimation("Alpha")
+            fade:SetFromAlpha(1)
+            fade:SetToAlpha(0)
+            fade:SetDuration(1.2)
+            fade:SetOrder(2)
+            ag:SetScript("OnFinished", function()
+                if not (InCombatLockdown and InCombatLockdown()) then
+                    f:Hide()
+                    f:SetAlpha(1)
+                end
+            end)
+            f.animGroup = ag
+            f.holdAnim = hold
+
+            f:SetScript("OnClick", function(selfT, button)
+                if button == "RightButton" then
+                    SilenceDurabilityToast(selfT)
+                end
+            end)
+            f:SetScript("OnEnter", function()
+                if f.animGroup then f.animGroup:Pause() end
+                f:SetAlpha(1)
+            end)
+            f:SetScript("OnLeave", function()
+                if f.actionBtn and f.actionBtn.IsMouseOver and f.actionBtn:IsMouseOver() then return end
+                local curSt = GetMageFoodSharedToastStyle()
+                if f.animGroup and (curSt.duration or 8) > 0 then f.animGroup:Play() end
+            end)
+        end
+
+        if not f.actionBtn then
+            local actionBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+            actionBtn:SetSize(104, 28)
+            actionBtn:SetPoint("RIGHT", f, "RIGHT", -12, 0)
+            actionBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            actionBtn.txt = CreateText(actionBtn, "OVERLAY", "GameFontHighlightSmall")
+            actionBtn.txt:SetPoint("CENTER")
+            actionBtn.txt:SetWordWrap(false)
+            actionBtn.txt:SetText("Open Gear")
+            f.actionBtn = actionBtn
+        end
+
+        if f.SetRightTextAnchor then
+            f.SetRightTextAnchor(f.actionBtn, 10)
+        elseif f.title and f.badge and f.subtext then
+            f.title:ClearAllPoints()
+            f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -11)
+            f.title:SetPoint("RIGHT", f.actionBtn, "LEFT", -10, 0)
+            f.badge:ClearAllPoints()
+            f.badge:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -5)
+            f.badge:SetPoint("RIGHT", f.actionBtn, "LEFT", -10, 0)
+            f.subtext:ClearAllPoints()
+            f.subtext:SetPoint("TOPLEFT", f.badge, "BOTTOMLEFT", 0, -5)
+            f.subtext:SetPoint("RIGHT", f.actionBtn, "LEFT", -10, 0)
+        end
+
+        durabilityToastFrame = f
+    end
+
+    local f = durabilityToastFrame
+    f._lowestPct = tonumber(lowestPct) or 0
+    f._isPreview = (isPreview == true)
+    local st = GetMageFoodSharedToastStyle()
+    local dur = tonumber(st.duration) or 8
+
+    local mountID = self:GetUsableRepairMount()
+    f.actionBtn.txt:SetText(mountID and "Repair Mount" or "Open Gear")
+    f.actionBtn:SetScript("OnEnter", function(s)
+        local curSt = GetMageFoodSharedToastStyle()
+        if f.animGroup then f.animGroup:Pause() end
+        f:SetAlpha(1)
+        StyleMageFoodToastActionBtn(s, curSt, true)
+    end)
+    f.actionBtn:SetScript("OnLeave", function(s)
+        local curSt = GetMageFoodSharedToastStyle()
+        StyleMageFoodToastActionBtn(s, curSt, false)
+        if not (f.IsMouseOver and f:IsMouseOver()) and f.animGroup and (curSt.duration or 8) > 0 then
+            f.animGroup:Play()
+        end
+    end)
+    f.actionBtn:SetScript("OnClick", function(_, button)
+        if button == "RightButton" then
+            SilenceDurabilityToast(f)
+            return
+        end
+        if f._isPreview then
+            DynamicPrep:HideDurabilityToast()
+            return
+        end
+        DynamicPrep:HandleDurabilityToastAction(mountID)
+    end)
+
+    local titleText = "|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFF87171Low Gear Durability|r"
+    local badgeText = string.format("|cFF94A3B8Lowest Slot:|r |cFFF87171%d%%|r |cFF64748B(Average: %d%%)|r", tonumber(lowestPct) or 0, tonumber(avgPct) or 0)
+    local subtextText = mountID
+        and "|cFF34D399Click Repair Mount|r |cFF94A3B8to summon|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
+        or  "|cFF34D399Click Open Gear|r |cFF94A3B8to inspect|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
+
+    if _G.DynamicSuite and type(_G.DynamicSuite.ShowSharedToast) == "function" then
+        local okShown, resShown = pcall(_G.DynamicSuite.ShowSharedToast, f, {
+            title = titleText,
+            badge = badgeText,
+            subtext = subtextText,
+            tintIcon = false,
+            autoFade = true,
+            playSound = true,
+        })
+        if okShown and resShown then
+            StyleMageFoodToastActionBtn(f.actionBtn, GetMageFoodSharedToastStyle(), false)
+            return
+        end
+    end
+
+    self:ApplyDurabilityToastVisuals()
+    f.title:SetText(titleText)
+    f.badge:SetText(badgeText)
+    f.subtext:SetText(subtextText)
+    if f.animGroup then f.animGroup:Stop() end
+    f:SetAlpha(1)
+    f:Show()
+    if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+        pcall(_G.DynamicSuite.RestackAllToasts)
+    else
+        f:ClearAllPoints()
+        if type(st.pos) == "table" and st.pos.point then
+            f:SetPoint(st.pos.point, UIParent, st.pos.relPoint or st.pos.point, st.pos.x or 0, st.pos.y or -140)
+        else
+            f:SetPoint("TOP", UIParent, "TOP", 0, -140)
+        end
+    end
+    if _G.DynamicSuite and type(_G.DynamicSuite.PlaySharedToastSound) == "function" then
+        pcall(_G.DynamicSuite.PlaySharedToastSound)
+    end
+    if dur > 0 and f.animGroup and f.holdAnim then
+        f.holdAnim:SetDuration(dur)
+        f.animGroup:Play()
+    end
+end
+
+function DynamicPrep:CheckDurabilityAlert(triggerReason)
+    if not self.db or self.db.durabilityAlertEnabled == false then
+        self:HideDurabilityToast()
+        return
+    end
+    if IsModuleDisabledInSuite("DynamicPrep") then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+
+    if C_ChallengeMode and type(C_ChallengeMode.IsChallengeModeActive) == "function" then
+        local okK, isKey = pcall(C_ChallengeMode.IsChallengeModeActive)
+        if okK and not IsSecretValue(isKey) and isKey == true then
+            return
+        end
+    end
+
+    local _, lowest, avg = self:GetDurabilityData()
+    local threshold = tonumber(self.db.durabilityAlertThreshold) or 20
+    if lowest > threshold then
+        durabilitySilencedAtPct = nil
+        durabilityLastAlertedPct = nil
+        if durabilityToastFrame and durabilityToastFrame:IsShown() and not durabilityToastFrame._isPreview then
+            self:HideDurabilityToast()
+        end
+        return
+    end
+
+    if durabilitySilencedAtPct ~= nil then
+        if lowest > (durabilitySilencedAtPct - 10) then
+            return
+        end
+        durabilitySilencedAtPct = nil
+    end
+
+    local forcePrompt = (triggerReason == "READY_CHECK" or triggerReason == "TOGGLE")
+    if not forcePrompt and durabilityLastAlertedPct ~= nil and lowest >= durabilityLastAlertedPct then
+        return
+    end
+    durabilityLastAlertedPct = lowest
+    self:ShowDurabilityToast(lowest, avg, false)
+end
+
+function DynamicPrep:RequestDurabilityCheck(triggerReason, delaySec)
+    if delaySec and delaySec > 0 and C_Timer and C_Timer.After then
+        if durabilityCheckPending then return end
+        durabilityCheckPending = true
+        C_Timer.After(delaySec, function()
+            durabilityCheckPending = false
+            DynamicPrep:CheckDurabilityAlert(triggerReason or "DEBOUNCED")
+        end)
+    else
+        self:CheckDurabilityAlert(triggerReason or "IMMEDIATE")
+    end
+end
+
+function DynamicPrep:TriggerDurabilityToastPreview()
+    local _, lowest, avg = self:GetDurabilityData()
+    local threshold = (self.db and tonumber(self.db.durabilityAlertThreshold)) or 20
+    local demoLow = (lowest <= threshold) and lowest or math.max(5, threshold - 5)
+    local demoAvg = (lowest <= threshold) and avg or math.min(100, demoLow + 22)
+    self:ShowDurabilityToast(demoLow, demoAvg, true)
+end
 end)() end
 
 -- ============================================================================
@@ -10036,26 +10416,111 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dMageTest:BindRightControl(btnTestMageToast)
             table.insert(self.refreshWidgets, btnTestMageToast)
 
+            -- 8. Low Durability Alert Toast + 2-Row Sub-Drawer
+            ws.durabilityDrawerOpen = true
+            local rDurabilityAlert = CreateSpaciousRow(
+                cQoL, -294,
+                "Low Durability Alert Toast",
+                "Shows a 1-click alert toast when any equipped gear slot drops to or below your durability threshold (summons a repair mount outdoors or opens your gear).",
+                156
+            )
+            local pillsDurability = CreateSegmentedPills(
+                rDurabilityAlert, 156,
+                {
+                    { value = false, label = "Off" },
+                    { value = true,  label = "Enabled" },
+                },
+                function() return self.db.durabilityAlertEnabled ~= false end,
+                function(v)
+                    self.db.durabilityAlertEnabled = (v == true)
+                    if v == true then
+                        ws.durabilityDrawerOpen = true
+                        self:RequestDurabilityCheck("TOGGLE", 0.1)
+                    else
+                        self:HideDurabilityToast()
+                    end
+                    self:RefreshWorkspaceView()
+                end
+            )
+            rDurabilityAlert:BindRightControl(pillsDurability)
+            table.insert(self.refreshWidgets, pillsDurability)
+
+            local tuneDurability = CreateSubDrawerToggleBar(
+                cQoL, 2,
+                function() return self.db and self.db.durabilityAlertEnabled ~= false end,
+                function() return ws.durabilityDrawerOpen ~= false end,
+                function()
+                    ws.durabilityDrawerOpen = (ws.durabilityDrawerOpen == false)
+                    self:RefreshWorkspaceView()
+                end
+            )
+            rDurabilityAlert.tuneBtn = tuneDurability
+            table.insert(self.refreshWidgets, tuneDurability)
+
+            local dDurThresh = CreateInlineSubDrawer(cQoL, "Alert Threshold (Lowest Equipped Slot)")
+            local sDurThresh = CreateObsidianSlider(
+                dDurThresh, 256, 10, 40, 5,
+                function(val) return string.format("%d%%", val) end,
+                function() return self.db.durabilityAlertThreshold or 20 end,
+                function(val)
+                    self.db.durabilityAlertThreshold = val
+                    self:RequestDurabilityCheck("TOGGLE", 0.1)
+                end
+            )
+            dDurThresh:BindRightControl(sDurThresh)
+            table.insert(self.refreshWidgets, sDurThresh)
+
+            local dDurTest = CreateInlineSubDrawer(cQoL, "Current Lowest Slot: 100% (Average: 100%)")
+            local btnTestDurToast = CreateFrame("Button", nil, dDurTest, "BackdropTemplate")
+            btnTestDurToast:SetSize(156, 26)
+            btnTestDurToast.txt = CreateText(btnTestDurToast, "OVERLAY", "GameFontHighlightSmall")
+            btnTestDurToast.txt:SetPoint("CENTER")
+            btnTestDurToast.txt:SetWordWrap(false)
+            btnTestDurToast.txt:SetText("Test Toast")
+            function btnTestDurToast:RefreshValue()
+                local ar, ag, ab = GetActiveAccentRGB()
+                SetPixelBackdrop(self, COLORS.BgElevated, { ar, ag, ab, 0.90 }, 1)
+                local _, low, avg = DynamicPrep:GetDurabilityData()
+                dDurTest.title:SetText(string.format("|cFFCBD5E1Current Lowest Slot:|r |cFF34D399%d%%|r |cFF64748B(Average: %d%%)|r", low or 100, avg or 100))
+            end
+            btnTestDurToast:SetScript("OnEnter", function(selfBtn)
+                local ar, ag, ab = GetActiveAccentRGB()
+                SetPixelBackdrop(selfBtn, COLORS.BgHover, { ar, ag, ab, 1.0 }, 1)
+            end)
+            btnTestDurToast:SetScript("OnLeave", function(selfBtn)
+                selfBtn:RefreshValue()
+            end)
+            btnTestDurToast:SetScript("OnClick", function()
+                DynamicPrep:TriggerDurabilityToastPreview()
+            end)
+            dDurTest:BindRightControl(btnTestDurToast)
+            table.insert(self.refreshWidgets, btnTestDurToast)
+
             return {
                 rDrinkMacro = rDrinkMacro, tuneDrinkMacro = tuneDrinkMacro,
                 dDrinkDrawers = { dDrinkMacro, dDrinkRecup, dDrinkBuffFood },
                 rMageFood = rMageFood, tuneMageFood = tuneMageFood,
                 dMageDrawers = { dMageScope, dMageMin, dMageLeave, dMageTest },
+                rDurabilityAlert = rDurabilityAlert, tuneDurability = tuneDurability,
+                dDurDrawers = { dDurThresh, dDurTest },
             }
         end
         local recRows = BuildRecoveryQoLRows()
 
         ws.qolRows = {
-            rHealMacro     = rHealMacro,
-            tuneHealMacro  = tuneHealMacro,
-            dHealMacro     = dHealMacro,
-            rDrinkMacro    = recRows.rDrinkMacro,
-            tuneDrinkMacro = recRows.tuneDrinkMacro,
-            dDrinkDrawers  = recRows.dDrinkDrawers,
-            rMageFood      = recRows.rMageFood,
-            tuneMageFood   = recRows.tuneMageFood,
-            dMageDrawers   = recRows.dMageDrawers,
-            others         = { rQuestGossip, rAutoConfirmInstanceGossip, rAutoChoice, rCatalyst, rAutoSummon, rCine, rRez, rRelease },
+            rHealMacro       = rHealMacro,
+            tuneHealMacro    = tuneHealMacro,
+            dHealMacro       = dHealMacro,
+            rDrinkMacro      = recRows.rDrinkMacro,
+            tuneDrinkMacro   = recRows.tuneDrinkMacro,
+            dDrinkDrawers    = recRows.dDrinkDrawers,
+            rMageFood        = recRows.rMageFood,
+            tuneMageFood     = recRows.tuneMageFood,
+            dMageDrawers     = recRows.dMageDrawers,
+            rDurabilityAlert = recRows.rDurabilityAlert,
+            tuneDurability   = recRows.tuneDurability,
+            dDurDrawers      = recRows.dDurDrawers,
+            others           = { rQuestGossip, rAutoConfirmInstanceGossip, rAutoChoice, rCatalyst, rAutoSummon, rCine, rRez, rRelease },
         }
     end
 
@@ -10267,6 +10732,40 @@ function DynamicPrep:LayoutQoLCardRows()
         else
             if tuneMage then tuneMage:Hide() end
             for _, dr in ipairs(qr.dMageDrawers or {}) do dr:Hide() end
+        end
+    end
+
+    if qr.rDurabilityAlert then
+        qr.rDurabilityAlert:ClearAllPoints()
+        qr.rDurabilityAlert:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y)
+        qr.rDurabilityAlert:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y)
+        y = y - 60
+
+        local durEnabled = self.db and self.db.durabilityAlertEnabled ~= false
+        local tuneDur = qr.tuneDurability or (qr.rDurabilityAlert and qr.rDurabilityAlert.tuneBtn)
+        if tuneDur then tuneDur:RefreshValue() end
+        if durEnabled and tuneDur then
+            tuneDur:ClearAllPoints()
+            tuneDur:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
+            tuneDur:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+            tuneDur:Show()
+            y = y - 28
+
+            for _, dr in ipairs(qr.dDurDrawers or {}) do
+                if ws.durabilityDrawerOpen ~= false then
+                    dr:ClearAllPoints()
+                    dr:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
+                    dr:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+                    dr:RefreshBranchAccent()
+                    dr:Show()
+                    y = y - 46
+                else
+                    dr:Hide()
+                end
+            end
+        else
+            if tuneDur then tuneDur:Hide() end
+            for _, dr in ipairs(qr.dDurDrawers or {}) do dr:Hide() end
         end
     end
 
@@ -11403,6 +11902,7 @@ function DynamicPrep:RegisterWithSuite()
         OnDisableInSuite = function()
             CloseAllDynamicPrepPopups()
             if DynamicPrep.HideMageFoodToast then DynamicPrep:HideMageFoodToast() end
+            if DynamicPrep.HideDurabilityToast then DynamicPrep:HideDurabilityToast() end
             if DynamicPrep.barFrame then DynamicPrep.barFrame:Hide() end
             if DynamicPrep.crbBar and not (InCombatLockdown and InCombatLockdown()) then DynamicPrep.crbBar:Hide() end
         end,
@@ -11421,6 +11921,7 @@ function DynamicPrep:RegisterWithSuite()
                 ws.healDrawerOpen = true
                 ws.drinkDrawerOpen = true
                 ws.mageFoodDrawerOpen = true
+                ws.durabilityDrawerOpen = true
             end
             if DynamicPrep.RefreshWorkspaceView then
                 DynamicPrep:RefreshWorkspaceView()
@@ -11558,6 +12059,7 @@ SafeRegisterEvent(eventFrame, "SPELL_UPDATE_COOLDOWN")
 SafeRegisterEvent(eventFrame, "BAG_UPDATE_COOLDOWN")
 SafeRegisterEvent(eventFrame, "LFG_UPDATE")
 SafeRegisterEvent(eventFrame, "PLAYER_LEVEL_UP")
+SafeRegisterEvent(eventFrame, "READY_CHECK")
 
 -- ============================================================================
 -- TALENT LOADOUT FORWARDING STUBS (Extracted to DynamicTalent) & AUTO-ACCEPT SUMMON
@@ -11709,6 +12211,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             DynamicPrep:UpdateHealMacro(false, true)
             DynamicPrep:UpdateDrinkMacro(false)
             DynamicPrep:ScanEquippedGearEnchantsAndGems()
+            DynamicPrep:RequestDurabilityCheck("PLAYER_ENTERING_WORLD", 1.0)
         else
             DynamicPrep:UpdateDrinkMacro(false)
         end
@@ -11722,6 +12225,9 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     elseif event == "PLAYER_REGEN_DISABLED" then
         if DynamicPrep.HideMageFoodToast then
             DynamicPrep:HideMageFoodToast()
+        end
+        if DynamicPrep.HideDurabilityToast then
+            DynamicPrep:HideDurabilityToast()
         end
         if DynamicPrep.inEditMode then
             DynamicPrep:SetEditMode(false)
@@ -11762,6 +12268,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep.pendingDrinkMacroUpdate = nil
         DynamicPrep:UpdateDrinkMacro(false)
         DynamicPrep:RequestMageFoodCheck("PLAYER_REGEN_ENABLED", 0.3)
+        DynamicPrep:RequestDurabilityCheck("PLAYER_REGEN_ENABLED", 0.4)
         if UnitIsDeadOrGhost and UnitIsDeadOrGhost("player") and not (UnitIsGhost and UnitIsGhost("player")) then
             local inInst, instType = IsInInstance()
             if inInst and (instType == "raid" or instType == "party") then
@@ -11828,6 +12335,8 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:RequestMageFoodCheck("PLAYER_LEVEL_UP", 0.3)
     elseif event == "LFG_UPDATE" then
         DynamicPrep:RequestMageFoodCheck("LFG_UPDATE", 0.3)
+    elseif event == "READY_CHECK" then
+        DynamicPrep:CheckDurabilityAlert("READY_CHECK")
     elseif event == "PLAYER_LOOT_SPEC_UPDATED" or event == "UPDATE_INVENTORY_DURABILITY" or event == "BAG_UPDATE_DELAYED" or event == "CHALLENGE_MODE_MAPS_UPDATE" or event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED" then
         if event == "PLAYER_LOOT_SPEC_UPDATED" then
             DynamicPrep:ResetStableCapsuleWidths()
@@ -11840,6 +12349,8 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             end
         elseif event == "GROUP_ROSTER_UPDATE" then
             DynamicPrep:RequestMageFoodCheck("GROUP_ROSTER_UPDATE", 0.4)
+        elseif event == "UPDATE_INVENTORY_DURABILITY" then
+            DynamicPrep:RequestDurabilityCheck("UPDATE_INVENTORY_DURABILITY", 0.4)
         end
         if not InCombatLockdown() or event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED" then
             DynamicPrep:RefreshBar()

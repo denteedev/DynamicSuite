@@ -778,6 +778,9 @@ function DynamicTalent:SilenceTalentMismatch(mKey, label)
     if not mKey then return end
     silencedTalentMismatches[mKey] = true
     self:HideTalentReminderToast()
+    if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
+        pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+    end
     Print(string.format("Silenced talent reminder for |cFFFBBF24%s|r for this session.", tostring(label or mKey)))
 end
 
@@ -5622,7 +5625,15 @@ function DynamicTalent:HideTalentReminderToast()
     end
 end
 
-function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, isPreview)
+local function HandleTalentToastRightClick(toastFrame)
+    if toastFrame and not toastFrame._isPreview and toastFrame._mKey then
+        DynamicTalent:SilenceTalentMismatch(toastFrame._mKey, toastFrame._zoneLabel)
+    else
+        DynamicTalent:HideTalentReminderToast()
+    end
+end
+
+function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, isPreview, mKey)
     if IsPlayerInCombat() then return end
     if not talentReminderToast then
         local f = nil
@@ -5634,8 +5645,8 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
                 rightActionWidth = 74,
                 rightActionGap = 10,
                 autoFade = true,
-                onRightClickDismiss = function()
-                    DynamicTalent:HideTalentReminderToast()
+                onRightClickDismiss = function(selfT)
+                    HandleTalentToastRightClick(selfT or talentReminderToast)
                 end,
             })
             if ok and sharedFrame then
@@ -5713,9 +5724,9 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
             f.animGroup = animGroup
             f.holdAnim = holdAnim
 
-            f:SetScript("OnClick", function(_, button)
+            f:SetScript("OnClick", function(selfT, button)
                 if button == "RightButton" then
-                    DynamicTalent:HideTalentReminderToast()
+                    HandleTalentToastRightClick(selfT)
                 end
             end)
             f:SetScript("OnEnter", function(selfT)
@@ -5764,6 +5775,9 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
     end
 
     local f = talentReminderToast
+    f._mKey = mKey
+    f._zoneLabel = zoneLabel
+    f._isPreview = (isPreview == true)
     local st = GetTalentSharedToastStyle()
     local dur = tonumber(st.duration) or 8
 
@@ -5789,11 +5803,11 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
     end
     local titleText = string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFTalent|r  |cFF475569|||r  |cFFFBBF24%s Talent Alert|r", zoneLabel or "Zone")
     local badgeText = "|cFF94A3B8Recommended:|r " .. dispTarget
-    local subtextText = "|cFF34D399Click Swap|r |cFF94A3B8to switch|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r"
+    local subtextText = "|cFF34D399Click Swap|r |cFF94A3B8to switch|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
 
     f.swapBtn:SetScript("OnClick", function(_, button)
         if button == "RightButton" then
-            DynamicTalent:HideTalentReminderToast()
+            HandleTalentToastRightClick(f)
             return
         end
         if isPreview then
@@ -5872,9 +5886,9 @@ function DynamicTalent:CheckZoneTalentLoadout(reason)
                 return
             end
             lastAlertedBossMismatchKey = mKey
-            self:ShowTalentReminderToast(mID, mName, mLabel)
+            self:ShowTalentReminderToast(mID, mName, mLabel, false, mKey)
         elseif not isPassiveBossTrigger then
-            self:ShowTalentReminderToast(mID, mName, mLabel)
+            self:ShowTalentReminderToast(mID, mName, mLabel, false, mKey)
         end
     elseif not isPassiveBossTrigger then
         self:HideTalentReminderToast()
@@ -11068,6 +11082,7 @@ DynamicTalent.CHANGELOG = {
         version = VERSION,
         date = "22/11/2026",
         entries = {
+            { type = "UI",    text = "[Unreleased] Right-Click Toast Silences Mismatch (22/11/2026): Right-Clicking DynamicTalentReminderToast or its Swap button now silences that specific mismatch key (mKey) for the session, refreshes DynamicPrep's Top Info Bar capsule immediately, updates the toast subtext to 'Right-Click to silence', and clears silenced mismatches on specialisation change or reload." },
             { type = "FIXED", text = "[Unreleased] Sticky Raid Boss Preservation Across Swaps, Real Library Entry Resolution, Focus/Boss1-5 Scanning & Full-Tier /dt why (22/11/2026): Updated SyncTalentBindsUI(clearStickyBoss) so talent swaps (ApplyTalentLibraryEntry / TRAIT_CONFIG_UPDATED) never wipe the sticky raid boss cache while bind edits/deletes still clear it cleanly; resolved transient Prep Bar / Alert Toast rule payloads back to their real saved library entry in ApplyTalentLibraryEntry() so liveHash and lastAppliedTalentID persist onto the actual loadout; added focus and boss1..boss5 scanning to ResolveBoundBossFromSources(); and upgraded /dt why to report winning rules across all 3 tiers plus live unit names (target, softenemy, focus, boss1) and sticky boss state." },
             { type = "UI",    text = "[Unreleased] Prep Bar Capsule, Tooltip & Quick-Switcher Popover Bind-Badge Parity (22/11/2026): Added right-aligned amber-gold bind tags ((Various), (All M+), (#8 Ula'tek)) via GetLoadoutBindBadgeText() and dynamic text anchoring to DynamicTalentPopover (widened to 276px) with hover highlights and full Talent Dock tooltips (Hero Tree + Bound lines); added bind tags and FormatTalentBadge() prefixes to GetTalentLoadoutBarData() and PopulatePrepBarTooltip() (including Hero Tree and Bound/Unbound lines); and reset DynamicPrep capsule widths on bind changes in SyncTalentBindsUI()." },
             { type = "FIXED", text = "[Unreleased] Raid Boss Matching Accuracy, Sticky Boss Cache & /dt why (22/11/2026): Removed inverted substring checks in MatchBossTargetName() and MatchBoundBossByName() and added 'ula'tek'/'ulatek' aliases to #8 Ula'tek so standing at #8 never matches #2 Entombed Sentinels; removed the UnitIsFriend exclusion on nameplates and raid/party targets so pre-pull friendly bosses are detected cleanly while still skipping player units; added a subzone-scoped sticky raid boss cache (cleared on ENCOUNTER_END victory, subzone/zone change, spec change, or bind edits) to prevent All Raids fallback flicker when looking away or targeting an ally; and added /dt why (/dt debug) for plain-English diagnostics." },
@@ -11279,6 +11294,7 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         if not arg1 or arg1 == "player" then
             lastAlertedBossMismatchKey = nil
             stickyRaidBoss = nil
+            wipe(silencedTalentMismatches)
             DynamicTalent._heroTreeCache = nil
             DynamicTalent:RefreshTalentDock()
             DynamicTalent:EnsureHeroMedallionHooks()

@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Right-Click Talent Toast Silence & Low Durability Alert Toast (`DynamicTalent`, `DynamicPrep`, 22/11/2026)
+- **Right-Click Toast Silence (`DynamicTalent`):** Right-Clicking `DynamicTalentReminderToast` or its **Swap** button now silences that specific mismatch (`mKey`) for the session, refreshes `DynamicPrep`'s Top Info Bar capsule immediately, updates the toast subtext to `Right-Click to silence`, and clears silenced mismatches on specialisation change or reload.
+- **Low Durability Shared Alert Toast (`DynamicPrep`):** Added `DynamicPrepDurabilityToast` (default `20%` lowest-slot threshold, `10%`-`40%` slider + **Test Toast** in Tab 3) with 1-click **Repair Mount** summoning outdoors (Grand Expedition Yak, Grizzly Hills Packmaster, Traveler's Tundra Mammoth) or **Open Gear** indoors, Right-Click silence until durability drops another `10%` or is repaired, and automatic suppression in combat and active Mythic+ keystones.
+
 ### Sticky Raid Boss Preservation Across Swaps, `focus`/`boss1`-`boss5` Scanning & Full-Tier `/dt why` (`DynamicTalent`, 22/11/2026)
 - **Preserve Sticky Boss on Swap & Resolve Real Library Entry (`DynamicTalent`):** Updated `SyncTalentBindsUI(clearStickyBoss)` so talent swaps (`ApplyTalentLibraryEntry()` / `TRAIT_CONFIG_UPDATED`) preserve `stickyRaidBoss` instead of falling back to `All Raids`, while bind edits/deletes still clear it cleanly; and resolved transient rule payloads back to their real saved library entry in `ApplyTalentLibraryEntry()` so `liveHash` and `lastAppliedTalentID` persist onto the actual loadout.
 - **`focus` / `boss1`-`boss5` Scanning & Full-Tier `/dt why` (`DynamicTalent`):** Added `focus` and `boss1`-`boss5` to `ResolveBoundBossFromSources()` (out of combat, alive, `pcall` + secret-safe) and upgraded `/dt why` (`self._lastDiag`) to report the winning rule and status across all 3 tiers alongside live `target`, `softenemy`, `focus`, `boss1`, and sticky boss state.

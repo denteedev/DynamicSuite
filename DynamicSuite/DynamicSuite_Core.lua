@@ -938,6 +938,7 @@ function DynamicSuite.RestackAllToasts()
             "DynamicGroupTeleportToast",
             "DynamicTalentReminderToast",
             "DynamicPrepMageFoodToast",
+            "DynamicPrepDurabilityToast",
             "DynamicChatMentionToast",
         }
         local prev = nil
@@ -5277,6 +5278,10 @@ local BUILTIN_SEARCH_SEED = {
       title = "Healer Mage Food Restock (Follower Dungeon)",
       desc = "Prompts solo players to queue a Follower Dungeon when low on Conjured Mana Buns, prompts to leave once restocked, and offers a 1-click Ask for Table toast in groups with a Mage.",
       keywords = "healer mage food restock conjured mana bun follower dungeon queue leave ask for table mage table toast" },
+    { moduleKey = "prep", category = "BAGS_QOL", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Low Durability Alert Toast",
+      desc = "Shows a 1-click alert toast when any equipped gear slot drops to or below your durability threshold (summons a repair mount outdoors or opens your gear).",
+      keywords = "low durability alert toast repair mount yak mammoth packmaster gear broken" },
 
     -- ========================================================================
     -- DYNAMICTALENT ("talent") - Talent Loadouts, Raid/M+/PvP/Zone Binds & Group Order
