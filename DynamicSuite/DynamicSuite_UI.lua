@@ -11508,7 +11508,8 @@ function addonTable.CreateMainConfigUI()
                                 cCard.statusPill.dsBorder:SetColor(skySel.r, skySel.g, skySel.b, 0.90)
                                 cCard.statusText:SetTextColor(skySel.r, skySel.g, skySel.b, 1.0)
                                 cCard.statusText:SetText(item.isAutoYielded and string.format("[%s Auto-Yield Active]", checkTex) or string.format("[%s Yielding to %s]", checkTex, shortExternal))
-                                cCard.desc:SetText(string.format("Both addons stay enabled. Overlapping %s sub-toggles are off while core features stay active.", cleanModName))
+                                local featLabel = (type(item.yieldFeature) == "string" and item.yieldFeature ~= "") and item.yieldFeature or "overlapping sub-features"
+                                cCard.desc:SetText(string.format("Both addons stay enabled. %s yields %s to %s while all other features stay active.", cleanModName, featLabel, shortExternal))
                             else
                                 cCard.bg:SetColorTexture(0.05, 0.10, 0.15, 0.92)
                                 cCard.dsBorder:SetColor(skySel.r, skySel.g, skySel.b, 0.80)

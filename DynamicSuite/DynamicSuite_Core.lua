@@ -420,16 +420,18 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
         "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
         "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
         "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
+        "ErrorFilter", "ErrorMonster",
         addons = {
             "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs",
             "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
             "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
             "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
+            "ErrorFilter", "ErrorMonster",
         },
         conflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
         hardConflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
-        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
-        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools" },
+        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools", "ErrorFilter", "ErrorMonster" },
+        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools", "ErrorFilter", "ErrorMonster" },
         category = "Readiness & Automation",
     },
     DynamicTalent = {
@@ -443,11 +445,11 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
     },
     DynamicGroup = {
         "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "PremadeGroupsFilter", "PremadeRegionFilter", "LFGListFilter", "PremadeGroupFinder", "WorldQuestGroupFinder",
-        addons = { "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "PremadeGroupsFilter", "PremadeRegionFilter", "LFGListFilter", "PremadeGroupFinder", "WorldQuestGroupFinder" },
+        addons = { "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "PremadeGroupsFilter", "PremadeRegionFilter", "LFGListFilter", "PremadeGroupFinder", "WorldQuestGroupFinder", "EnhanceQoL", "Leatrix_Plus" },
         conflicts = { "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "PremadeGroupsFilter", "PremadeRegionFilter", "LFGListFilter", "PremadeGroupFinder", "WorldQuestGroupFinder" },
         hardConflicts = { "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "PremadeGroupsFilter", "PremadeRegionFilter", "LFGListFilter", "PremadeGroupFinder", "WorldQuestGroupFinder" },
-        partialConflicts = {},
-        softConflicts = {},
+        partialConflicts = { "EnhanceQoL", "Leatrix_Plus" },
+        softConflicts = { "EnhanceQoL", "Leatrix_Plus" },
         category = "LFG & Premade Search",
     },
     DynamicBags = {
@@ -607,6 +609,8 @@ local FRIENDLY_CONFLICT_NAMES = addonTable.FRIENDLY_CONFLICT_NAMES or {
     ["TalentLoadoutsEx"]         = "Talent Loadouts Ex",
     ["BtWLoadouts"]              = "BtWLoadouts",
     ["ImprovedTalentLoadouts"]   = "Improved Talent Loadouts",
+    ["ErrorFilter"]              = "ErrorFilter",
+    ["ErrorMonster"]             = "ErrorMonster",
 }
 addonTable.FRIENDLY_CONFLICT_NAMES = FRIENDLY_CONFLICT_NAMES
 DynamicSuite.FRIENDLY_CONFLICT_NAMES = FRIENDLY_CONFLICT_NAMES
@@ -645,6 +649,9 @@ local CONFLICT_YIELD_FEATURES = {
     ["MoveAny"]                  = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
     ["DecorVendor"]              = "raid target marker (/tm) taint in dungeons & raids",
     ["TradeSkillMaster"]         = "mailbox / sending overlap (DynamicMail)",
+    ["EnhanceQoL"]               = "overlapping QoL features",
+    ["ErrorFilter"]              = "red error text filtering",
+    ["ErrorMonster"]             = "red error text filtering",
 }
 addonTable.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
 DynamicSuite.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
@@ -2602,8 +2609,16 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
                 if ldb["UseEasyFrameResizing"] == "On" or ldb["MoveBlizzFrames"] == "On" or ldb["NoAutoClose"] == "On" or ldb["ManageFrames"] == "On" then
                     return true, "SOFT", "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)"
                 end
+                if ldb["HideErrorMessages"] == "On" or ldb["NoErrorFrame"] == "On" or ldb["MuteErrorSpeech"] == "On" then
+                    return true, "SOFT", "Red Error Text & Sound Filter"
+                end
                 if ldb["AutomateQuests"] == "On" or ldb["AutomateGossip"] == "On" or ldb["FasterMovieSkip"] == "On" or ldb["AcceptResurrect"] == "On" then
                     return true, "SOFT", "quest/gossip control"
+                end
+                return false
+            elseif shortKey == "group" or dynamicModule == "DynamicGroup" then
+                if ldb["AcceptRoleCheck"] == "On" or ldb["AutoAcceptRoleCheck"] == "On" or ldb["AutomateRoleCheck"] == "On" or ldb["AutoConfirmRole"] == "On" then
+                    return true, "SOFT", "Auto-Accept Role Check"
                 end
                 return false
             elseif shortKey == "zoom" or dynamicModule == "DynamicZoom" then
@@ -2740,8 +2755,19 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
                 end
                 return false
             elseif shortKey == "prep" or dynamicModule == "DynamicPrep" then
+                if prof.hideErrorText == true or prof.hideErrors == true or prof.hideUIErrors == true or prof.errorFilter == true or prof.muteErrorSpeech == true or prof.hideErrorFrame == true then
+                    return true, "SOFT", "Red Error Text & Sound Filter"
+                end
                 if prof.autoAcceptQuest == true or prof.autoGossip == true or prof.skipCinematics == true or prof.hideTalkingHead == true then
                     return true, "SOFT", "quest/gossip automation"
+                end
+                return false
+            elseif shortKey == "group" or dynamicModule == "DynamicGroup" then
+                if prof.autoAcceptRoleCheck == true or prof.autoRoleCheck == true or prof.acceptRoleCheck == true or prof.autoConfirmRole == true then
+                    return true, "SOFT", "Auto-Accept Role Check"
+                end
+                if type(prof.group) == "table" and (prof.group.autoAcceptRoleCheck == true or prof.group.autoRoleCheck == true or prof.group.acceptRoleCheck == true) then
+                    return true, "SOFT", "Auto-Accept Role Check"
                 end
                 return false
             elseif shortKey == "zoom" or dynamicModule == "DynamicZoom" then
@@ -2759,6 +2785,15 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
         end)
         if ok and isSubActive == true then
             return true, subTier or "SOFT", subFeature
+        end
+        return false, nil, nil
+
+    elseif otherAddon == "ErrorFilter" or otherAddon == "ErrorMonster" then
+        if not SafeIsAddOnLoaded(otherAddon) then
+            return false, nil, nil
+        end
+        if shortKey == "prep" or dynamicModule == "DynamicPrep" then
+            return true, "SOFT", "Red Error Text & Sound Filter"
         end
         return false, nil, nil
     end
@@ -2999,7 +3034,8 @@ DynamicSuite.SetAddonOutdoorOnlyInDynamicLoad = SetAddonOutdoorOnlyInDynamicLoad
 
 local function IsThirdPartyConflictActive(dynamicModule, otherAddon, pName)
     if otherAddon == "ElvUI" or otherAddon == "Leatrix_Plus" or otherAddon == "EllesmereUI"
-        or otherAddon == "EllesmereUIQoL" or otherAddon == "EllesmereUI_QoL" or otherAddon == "EnhanceQoL" then
+        or otherAddon == "EllesmereUIQoL" or otherAddon == "EllesmereUI_QoL" or otherAddon == "EnhanceQoL"
+        or otherAddon == "ErrorFilter" or otherAddon == "ErrorMonster" then
         if IsExternalAddonFrozen(otherAddon) then
             return false, nil, nil
         end
@@ -3131,6 +3167,13 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
             isBlizzWinAutoYield = true
         end
         smartFeature = smartFeature or "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)"
+    elseif tier == 2 and ((addonNameKey == "DynamicGroup" and smartFeature == "Auto-Accept Role Check") or (addonNameKey == "DynamicPrep" and (smartFeature == "Red Error Text & Sound Filter" or otherAddon == "ErrorFilter" or otherAddon == "ErrorMonster"))) then
+        if ackAction == nil then
+            ackAction = "YIELD_TO_EXTERNAL"
+            isBlizzWinAutoYield = true
+        elseif ackAction == "YIELD_TO_EXTERNAL" then
+            isBlizzWinAutoYield = true
+        end
     end
 
     local friendly = FRIENDLY_CONFLICT_NAMES[otherAddon] or otherAddon
@@ -3401,6 +3444,86 @@ function DynamicSuite:IsAutoYielding(modKeyOrName, specificAddon)
 end
 addonTable.IsAutoYielding = function(modKeyOrName, specificAddon)
     return false, nil, nil, nil
+end
+
+function DynamicSuite:GetFeatureAutoYield(moduleName, featureKey)
+    local canonMod = NormalizeSuiteModuleName(moduleName)
+    local fKey = tostring(featureKey or ""):upper()
+    local g = EnsureSuiteGlobal()
+    g.granularModes = type(g.granularModes) == "table" and g.granularModes or {}
+    g.acknowledgedConflicts = type(g.acknowledgedConflicts) == "table" and g.acknowledgedConflicts or {}
+
+    local function IsOverridden(otherAddon)
+        local cKey = tostring(otherAddon) .. "_" .. tostring(canonMod)
+        local gm = g.granularModes[cKey] or g.acknowledgedConflicts[cKey]
+        return (gm == "PRIORITISE_DYNAMIC" or gm == "USE_DYNAMIC" or gm == "PREFER_DYNAMIC")
+    end
+
+    if fKey == "ROLE_CHECK" and canonMod == "DynamicGroup" then
+        for _, other in ipairs({ "EnhanceQoL", "Leatrix_Plus" }) do
+            if not IsExternalAddonFrozen(other) and SafeIsAddOnLoaded(other) and not IsOverridden(other) then
+                local active = false
+                pcall(function()
+                    if other == "EnhanceQoL" then
+                        local edb = _G.EnhanceQoLDB
+                        local prof = (type(edb) == "table" and type(edb.profile) == "table") and edb.profile or edb
+                        if type(prof) == "table" then
+                            if prof.autoAcceptRoleCheck == true or prof.autoRoleCheck == true or prof.acceptRoleCheck == true or prof.autoConfirmRole == true then
+                                active = true
+                            elseif type(prof.group) == "table" and (prof.group.autoAcceptRoleCheck == true or prof.group.autoRoleCheck == true or prof.group.acceptRoleCheck == true) then
+                                active = true
+                            end
+                        end
+                    elseif other == "Leatrix_Plus" then
+                        local ldb = _G.LeaPlusDB
+                        if type(ldb) == "table" and (ldb["AcceptRoleCheck"] == "On" or ldb["AutoAcceptRoleCheck"] == "On" or ldb["AutomateRoleCheck"] == "On" or ldb["AutoConfirmRole"] == "On") then
+                            active = true
+                        end
+                    end
+                end)
+                if active then
+                    return true, other, FRIENDLY_CONFLICT_NAMES[other] or other
+                end
+            end
+        end
+    elseif fKey == "ERROR_FILTER" and canonMod == "DynamicPrep" then
+        for _, other in ipairs({ "ErrorFilter", "ErrorMonster", "EnhanceQoL", "Leatrix_Plus" }) do
+            if not IsExternalAddonFrozen(other) and SafeIsAddOnLoaded(other) and not IsOverridden(other) then
+                local active = false
+                pcall(function()
+                    if other == "ErrorFilter" then
+                        local efdb = _G.ErrorFilterDB
+                        if type(efdb) == "table" and type(efdb.profile) == "table" and efdb.profile.mode == 0 then
+                            active = false
+                        else
+                            active = true
+                        end
+                    elseif other == "ErrorMonster" then
+                        active = true
+                    elseif other == "EnhanceQoL" then
+                        local edb = _G.EnhanceQoLDB
+                        local prof = (type(edb) == "table" and type(edb.profile) == "table") and edb.profile or edb
+                        if type(prof) == "table" and (prof.hideErrorText == true or prof.hideErrors == true or prof.hideUIErrors == true or prof.errorFilter == true or prof.muteErrorSpeech == true or prof.hideErrorFrame == true) then
+                            active = true
+                        end
+                    elseif other == "Leatrix_Plus" then
+                        local ldb = _G.LeaPlusDB
+                        if type(ldb) == "table" and (ldb["HideErrorMessages"] == "On" or ldb["NoErrorFrame"] == "On" or ldb["MuteErrorSpeech"] == "On") then
+                            active = true
+                        end
+                    end
+                end)
+                if active then
+                    return true, other, FRIENDLY_CONFLICT_NAMES[other] or other
+                end
+            end
+        end
+    end
+
+    return false, nil, nil
+end
+addonTable.GetFeatureAutoYield = function(moduleName, featureKey)
+    return DynamicSuite:GetFeatureAutoYield(moduleName, featureKey)
 end
 
 local function CheckConflictingManagers()
@@ -3682,6 +3805,16 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
             _G.DynamicBagsDB.autoSellJunk = true
             _G.DynamicBagsDB.autoSellGrey = true
         end
+        if shortKey == "prep" and _G.DynamicPrep then
+            if type(_G.DynamicPrep.SyncErrorFilterState) == "function" then
+                pcall(_G.DynamicPrep.SyncErrorFilterState, _G.DynamicPrep, false)
+            end
+            if type(_G.DynamicPrep.RefreshWorkspaceView) == "function" then
+                pcall(_G.DynamicPrep.RefreshWorkspaceView, _G.DynamicPrep)
+            end
+        elseif shortKey == "group" and _G.DynamicGroup and type(_G.DynamicGroup.RefreshSettingsUI) == "function" then
+            pcall(_G.DynamicGroup.RefreshSettingsUI, _G.DynamicGroup)
+        end
         print(string.format("%s: Prioritising %s features while keeping %s enabled.", ADDON_TITLE, canonMod, conflictAddon))
 
     elseif action == "YIELD_TO_EXTERNAL" then
@@ -3717,6 +3850,8 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
                     _G.DynamicPrepDB.autoKeystone = false
                 elseif conflictAddon == "BeQuiet" or conflictAddon == "TalkLess" then
                     _G.DynamicPrepDB.hideTalkingHead = false
+                elseif conflictAddon == "ErrorFilter" or conflictAddon == "ErrorMonster" then
+                    -- Feature-level auto-yield handles ErrorFilter/ErrorMonster without touching unrelated toggles
                 else
                     _G.DynamicPrepDB.autoRepair = false
                     _G.DynamicPrepDB.autoSellJunk = false
@@ -3733,6 +3868,16 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
                 _G.DynamicFPSDB.spellQueueMode = "BLIZZARD_DEFAULT"
             end
         end)
+        if shortKey == "prep" and _G.DynamicPrep then
+            if type(_G.DynamicPrep.SyncErrorFilterState) == "function" then
+                pcall(_G.DynamicPrep.SyncErrorFilterState, _G.DynamicPrep, false)
+            end
+            if type(_G.DynamicPrep.RefreshWorkspaceView) == "function" then
+                pcall(_G.DynamicPrep.RefreshWorkspaceView, _G.DynamicPrep)
+            end
+        elseif shortKey == "group" and _G.DynamicGroup and type(_G.DynamicGroup.RefreshSettingsUI) == "function" then
+            pcall(_G.DynamicGroup.RefreshSettingsUI, _G.DynamicGroup)
+        end
         print(string.format("%s: Yielded overlapping %s sub-features to %s (other %s features remain active).", ADDON_TITLE, canonMod, conflictAddon, canonMod))
 
     elseif action == "OUTDOOR_ONLY" then
@@ -5282,6 +5427,22 @@ local BUILTIN_SEARCH_SEED = {
       title = "Low Durability Alert Toast",
       desc = "Shows a 1-click alert toast when any equipped gear slot drops to or below your durability threshold (summons a repair mount outdoors or opens your gear).",
       keywords = "low durability alert toast repair mount yak mammoth packmaster gear broken" },
+    { moduleKey = "prep", category = "BAGS_QOL", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Red Error Text & Sound Filter",
+      desc = "Hides repetitive red combat and movement errors and optionally mutes error voice lines. Quest, encounter, and system messages are never hidden.",
+      keywords = "red error text sound filter spam uierrorsframe hide mute speech cvar" },
+    { moduleKey = "prep", category = "BAGS_QOL", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Hide Combat & Cooldown Spam",
+      desc = "Suppresses repetitive combat red text such as 'Ability is not ready yet', 'Another action is in progress', 'Not enough mana/energy/rage/focus', and 'Out of range'.",
+      keywords = "hide combat cooldown spam ability not ready mana energy rage focus runic power fury insanity out of range" },
+    { moduleKey = "prep", category = "BAGS_QOL", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Hide Movement & Mount Errors",
+      desc = "Suppresses movement and mount red text such as 'Can't do that while moving' and 'You are mounted'.",
+      keywords = "hide movement mount errors cant do that while moving you are mounted" },
+    { moduleKey = "prep", category = "BAGS_QOL", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Mute Error Voice Lines",
+      desc = "Toggles Sound_EnableErrorSpeech to silence 'I can't cast that yet' voice lines and restores your original setting when turned off or disabled.",
+      keywords = "mute error voice lines speech sound_enableerrorspeech cvar" },
 
     -- ========================================================================
     -- DYNAMICTALENT ("talent") - Talent Loadouts, Raid/M+/PvP/Zone Binds & Group Order
@@ -5396,8 +5557,8 @@ local BUILTIN_SEARCH_SEED = {
       keywords = "auto-promote friends tanks assist raid lead" },
     { moduleKey = "group", category = "GROUP_CHAT", tabIndex = 2, tabLabel = "Whisper Auto-Invite & Roles",
       title = "Auto-Accept Role Check",
-      desc = "Automatically confirm your active specialisation role when a Party or Raid Role Check pops up.",
-      keywords = "auto-accept role check confirm tank healer dps" },
+      desc = "Automatically confirms your current specialisation role out of combat after a short delay (hold Shift to skip; never auto-accepts queue pops).",
+      keywords = "auto-accept role check confirm tank healer dps shift bypass lfg_role_check_show" },
     { moduleKey = "group", category = "GROUP_CHAT", tabIndex = 3, tabLabel = "Party & Keystone Automation",
       title = "Incoming Auto-Accept Party & Raid Invites",
       desc = "Automatically accept incoming group invites from Battle.net Friends and Guild Members.",

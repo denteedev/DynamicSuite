@@ -143,8 +143,8 @@ DynamicGroup.CONFLICT_REGISTRY = {
 DynamicGroup.SUITE_CONFLICT_REGISTRY = {
     conflicts = { "PremadeGroupsFilter", "PremadeRegionFilter" },
     hardConflicts = { "PremadeGroupsFilter", "PremadeRegionFilter" },
-    partialConflicts = { "EllesmereUIGroupFinder", "LFGListFilter", "WorldQuestTab" },
-    softConflicts = { "EllesmereUIGroupFinder", "LFGListFilter", "WorldQuestTab" },
+    partialConflicts = { "EllesmereUIGroupFinder", "LFGListFilter", "WorldQuestTab", "EnhanceQoL", "Leatrix_Plus" },
+    softConflicts = { "EllesmereUIGroupFinder", "LFGListFilter", "WorldQuestTab", "EnhanceQoL", "Leatrix_Plus" },
     yieldFeature = "overlapping Group Finder features",
     category = "LFG Filtering & Group Automation",
 }
@@ -188,7 +188,7 @@ local DEFAULTS = {
     whisperKeywords = "inv, invite, 123",
     autoConvertToRaid = true,
     autoPromoteFriendsTanks = false,
-    autoAcceptRoleCheck = true,
+    autoAcceptRoleCheck = false,
 
     -- Tab 3: Party & Keystone Automation
     incomingInviteMode = nil,        -- Migrated on login or defaults to "FRIENDS_AND_GUILD"
@@ -7457,12 +7457,38 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 2.4: Auto-Accept Role Check
     local c2_roleCheck = CreateCardRow(sec2b, 62,
         "Auto-Accept Role Check",
-        "Automatically confirms your active specialisation role when a party or raid leader initiates a Role Check."
+        "Automatically confirms your current specialisation role out of combat after a short delay (hold Shift to skip; never auto-accepts queue pops)."
     )
-    AttachSegmentedSwitchToCard(c2_roleCheck,
-        function() return EnsureDB().autoAcceptRoleCheck end,
-        function(val) EnsureDB().autoAcceptRoleCheck = val end
+    local rcSwitch = AttachSegmentedSwitchToCard(c2_roleCheck,
+        function() return EnsureDB().autoAcceptRoleCheck == true end,
+        function(val) EnsureDB().autoAcceptRoleCheck = (val == true) end
     )
+    local rcYieldNote = c2_roleCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ApplyFont(rcYieldNote, 10)
+    rcYieldNote:SetPoint("TOPLEFT", c2_roleCheck.desc, "BOTTOMLEFT", 0, -4)
+    rcYieldNote:SetPoint("RIGHT", rcSwitch, "LEFT", -14, 0)
+    rcYieldNote:SetJustifyH("LEFT")
+    rcYieldNote:SetWordWrap(true)
+    rcYieldNote:SetMaxLines(2)
+    rcYieldNote:SetTextColor(0.220, 0.741, 0.973, 1.0)
+    rcYieldNote:Hide()
+    c2_roleCheck.yieldNote = rcYieldNote
+    function c2_roleCheck:RefreshValue()
+        local yieldAddon, friendlyName = DynamicGroup:GetRoleCheckYieldAddon()
+        if yieldAddon then
+            local hint = (_G.DynamicSuite and _G.DynamicSuite._isHubLoaded)
+                and "Override in /ds conflicts."
+                or ("Disable in " .. tostring(friendlyName) .. " to use DynamicGroup.")
+            self.yieldNote:SetText("Auto-yielding to " .. tostring(friendlyName) .. " (handling Role Checks). " .. hint)
+            self.yieldNote:Show()
+            self.baseHeight = 82
+            self:SetHeight(82)
+        else
+            self.yieldNote:Hide()
+            self.baseHeight = 62
+            self:SetHeight(62)
+        end
+    end
     sec2b.orderedCards[#sec2b.orderedCards + 1] = c2_roleCheck
     page2.orderedCards[#page2.orderedCards + 1] = c2_roleCheck
     root.allControls[#root.allControls + 1] = c2_roleCheck
@@ -8218,6 +8244,105 @@ end
 -- 9. EVENT DISPATCHER
 -- ============================================================================
 
+function DynamicGroup:GetRoleCheckYieldAddon()
+    if _G.DynamicSuite and type(_G.DynamicSuite.GetFeatureAutoYield) == "function" then
+        local ok, yielding, addonName, friendlyName = pcall(_G.DynamicSuite.GetFeatureAutoYield, _G.DynamicSuite, "DynamicGroup", "ROLE_CHECK")
+        if ok and yielding == true then
+            return addonName, friendlyName or addonName
+        end
+        return nil, nil
+    end
+    local isLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+    if type(isLoaded) ~= "function" then return nil, nil end
+    local okE, loadedE = pcall(isLoaded, "EnhanceQoL")
+    if okE and loadedE then
+        local active = false
+        pcall(function()
+            local edb = _G.EnhanceQoLDB
+            local prof = (type(edb) == "table" and type(edb.profile) == "table") and edb.profile or edb
+            if type(prof) == "table" then
+                if prof.autoAcceptRoleCheck == true or prof.autoRoleCheck == true or prof.acceptRoleCheck == true or prof.autoConfirmRole == true then
+                    active = true
+                elseif type(prof.group) == "table" and (prof.group.autoAcceptRoleCheck == true or prof.group.autoRoleCheck == true or prof.group.acceptRoleCheck == true) then
+                    active = true
+                end
+            end
+        end)
+        if active then return "EnhanceQoL", "EnhanceQoL" end
+    end
+    local okL, loadedL = pcall(isLoaded, "Leatrix_Plus")
+    if okL and loadedL then
+        local active = false
+        pcall(function()
+            local ldb = _G.LeaPlusDB
+            if type(ldb) == "table" and (ldb["AcceptRoleCheck"] == "On" or ldb["AutoAcceptRoleCheck"] == "On" or ldb["AutomateRoleCheck"] == "On" or ldb["AutoConfirmRole"] == "On") then
+                active = true
+            end
+        end)
+        if active then return "Leatrix_Plus", "Leatrix Plus" end
+    end
+    return nil, nil
+end
+
+function DynamicGroup:RefreshSettingsUI()
+    local root = self.settingsRoot
+    if not root then return end
+    if type(root.RefreshAllControls) == "function" then
+        pcall(root.RefreshAllControls)
+    end
+    if root.tabPages and root.tabPages[2] then
+        pcall(LayoutPageCards, root.tabPages[2])
+    end
+end
+
+local function HandleAutoAcceptRoleCheck()
+    if IsDisabledInSuite() then return end
+    if not EnsureDB().autoAcceptRoleCheck then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    if IsShiftKeyDown and IsShiftKeyDown() then return end
+    if DynamicGroup:GetRoleCheckYieldAddon() then return end
+    if DynamicGroup._roleCheckPending then return end
+    DynamicGroup._roleCheckPending = true
+
+    C_Timer.After(0.45, function()
+        DynamicGroup._roleCheckPending = false
+        if IsDisabledInSuite() then return end
+        if not EnsureDB().autoAcceptRoleCheck then return end
+        if InCombatLockdown and InCombatLockdown() then return end
+        if IsShiftKeyDown and IsShiftKeyDown() then return end
+        if DynamicGroup:GetRoleCheckYieldAddon() then return end
+        if type(CompleteLFGRoleCheck) ~= "function" then return end
+
+        if type(GetLFGRoleUpdate) == "function" then
+            local okU, inProgress = pcall(GetLFGRoleUpdate)
+            if okU and not IsSecretValue(inProgress) and inProgress == false then
+                return
+            end
+        end
+
+        local roleLabel = "Current Role"
+        pcall(function()
+            if type(GetSpecialization) == "function" and type(GetSpecializationRole) == "function" then
+                local spec = GetSpecialization()
+                if spec and not IsSecretValue(spec) then
+                    local role = GetSpecializationRole(spec)
+                    if type(role) == "string" and not IsSecretValue(role) then
+                        if role == "TANK" then roleLabel = "Tank"
+                        elseif role == "HEALER" then roleLabel = "Healer"
+                        elseif role == "DAMAGER" then roleLabel = "Damage"
+                        end
+                    end
+                end
+            end
+        end)
+
+        local okAccept = pcall(CompleteLFGRoleCheck, true)
+        if okAccept then
+            PrintMsg("Auto-accepted Role Check (" .. roleLabel .. "). Hold Shift to skip.")
+        end
+    end)
+end
+
 local function SafeRegisterEvent(frame, eventName)
     if not frame or not eventName then return end
     if _G.C_EventUtils and type(_G.C_EventUtils.IsEventValid) == "function" then
@@ -8424,11 +8549,7 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
             end
         end
     elseif event == "LFG_ROLE_CHECK_SHOW" then
-        if EnsureDB().autoAcceptRoleCheck and not (InCombatLockdown and InCombatLockdown()) then
-            if type(CompleteLFGRoleCheck) == "function" then
-                pcall(CompleteLFGRoleCheck, true)
-            end
-        end
+        HandleAutoAcceptRoleCheck()
     elseif event == "LFG_LIST_APPLICATION_STATUS_UPDATED" then
         self:HandleApplicationStatusUpdated(...)
     elseif event == "LFG_LIST_ACTIVE_ENTRY_UPDATE" then

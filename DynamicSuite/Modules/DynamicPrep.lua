@@ -642,6 +642,7 @@ local PULL_TIMER_PRESETS = { 3, 5, 7, 10, 15, 20 }
 local DIRECT_CONFLICTS  = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" }
 local PARTIAL_CONFLICTS = {
     "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL",
+    "ErrorFilter", "ErrorMonster",
     "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
     "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
     "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
@@ -780,6 +781,11 @@ local DEFAULTS = {
     drinkMacroRecupFallback = true,
     durabilityAlertEnabled = true,
     durabilityAlertThreshold = 20, -- 10% to 40% step 5%
+    errorFilterEnabled = false,
+    errorFilterHideCombatSpam = true,
+    errorFilterHideMovement = true,
+    errorFilterMuteSpeech = false,
+    errorFilterSavedSpeechCVar = nil,
     blizzWinNoAutoClose = true,
     blizzWinDraggable = true,
     blizzWinScrollScale = true,
@@ -7029,6 +7035,233 @@ function DynamicPrep:ResetDurabilityAlertState()
     durabilityLastAlertedPct = nil
 end
 
+do
+    local function NormalizeErrorMsg(str)
+        if type(str) ~= "string" then return nil end
+        local s = str:lower():match("^%s*(.-)%s*$")
+        if not s or s == "" then return nil end
+        s = s:gsub("[%.!]+$", "")
+        return s
+    end
+
+    local COMBAT_SPAM_MESSAGES = {}
+    local MOVEMENT_SPAM_MESSAGES = {}
+
+    local function AddGlobalMsg(tbl, globalKey, fallbackText)
+        local gVal = _G[globalKey]
+        if type(gVal) == "string" and not _IsSecret(gVal) then
+            local n = NormalizeErrorMsg(gVal)
+            if n then tbl[n] = true end
+        end
+        if type(fallbackText) == "string" then
+            local nf = NormalizeErrorMsg(fallbackText)
+            if nf then tbl[nf] = true end
+        end
+    end
+
+    for _, pair in ipairs({
+        { "ERR_ABILITY_COOLDOWN",            "Ability is not ready yet" },
+        { "ERR_SPELL_COOLDOWN",              "Spell is not ready yet" },
+        { "ERR_ITEM_COOLDOWN",               "Item is not ready yet" },
+        { "SPELL_FAILED_SPELL_IN_PROGRESS",  "Another action is in progress" },
+        { "SPELL_FAILED_NOT_READY",          "Not yet recovered" },
+        { "ERR_OUT_OF_MANA",                 "Not enough mana" },
+        { "ERR_OUT_OF_ENERGY",               "Not enough energy" },
+        { "ERR_OUT_OF_RAGE",                 "Not enough rage" },
+        { "ERR_OUT_OF_FOCUS",                "Not enough focus" },
+        { "ERR_OUT_OF_RUNIC_POWER",          "Not enough runic power" },
+        { "ERR_OUT_OF_RUNES",                "Not enough runes" },
+        { "ERR_OUT_OF_FURY",                 "Not enough fury" },
+        { "ERR_OUT_OF_PAIN",                 "Not enough pain" },
+        { "ERR_OUT_OF_INSANITY",             "Not enough insanity" },
+        { "ERR_OUT_OF_LUNAR_POWER",          "Not enough astral power" },
+        { "ERR_OUT_OF_MAELSTROM",            "Not enough maelstrom" },
+        { "ERR_OUT_OF_HOLY_POWER",           "Not enough holy power" },
+        { "ERR_OUT_OF_SOUL_SHARDS",          "Not enough soul shards" },
+        { "ERR_OUT_OF_CHI",                  "Not enough chi" },
+        { "ERR_OUT_OF_COMBO_POINTS",         "That ability requires combo points" },
+        { "ERR_OUT_OF_ARCANE_CHARGES",       "Not enough arcane charges" },
+        { "ERR_OUT_OF_ESSENCE",              "Not enough essence" },
+        { "ERR_OUT_OF_RANGE",                "Out of range" },
+        { "SPELL_FAILED_OUT_OF_RANGE",       "Out of range" },
+        { "SPELL_FAILED_UNIT_NOT_INFRONT",   "Target needs to be in front of you" },
+        { "ERR_BADATTACKFACING",             "You are facing the wrong way" },
+        { "ERR_BADATTACKPOS",                "You are too far away" },
+        { "ERR_ATTACK_TOO_FAR",              "You are too far away" },
+        { "SPELL_FAILED_LINE_OF_SIGHT",      "Target not in line of sight" },
+        { "ERR_GENERIC_NO_TARGET",           "You have no target" },
+        { "ERR_NO_ATTACK_TARGET",            "There is nothing to attack" },
+    }) do
+        AddGlobalMsg(COMBAT_SPAM_MESSAGES, pair[1], pair[2])
+    end
+
+    for _, pair in ipairs({
+        { "SPELL_FAILED_MOVING",             "Can't do that while moving" },
+        { "ERR_CANT_DO_THAT_WHILE_MOVING",   "You can't do that while moving" },
+        { "ERR_CANT_USE_ITEM_WHILE_MOVING",  "You cannot use that while moving" },
+        { "SPELL_FAILED_NOT_MOUNTED",        "You are mounted" },
+        { "ERR_NOT_WHILE_MOUNTED",           "You can't do that while mounted" },
+        { "ERR_ATTACK_MOUNTED",              "Can't attack while mounted" },
+        { "SPELL_FAILED_NOT_ON_MOUNTED",     "You are mounted" },
+        { "ERR_TAXIPLAYERALREADYMOUNTED",    "You are already mounted" },
+    }) do
+        AddGlobalMsg(MOVEMENT_SPAM_MESSAGES, pair[1], pair[2])
+    end
+
+    local function SafeGetCVar(name)
+        if _G.C_CVar and type(_G.C_CVar.GetCVar) == "function" then
+            local ok, v = pcall(_G.C_CVar.GetCVar, name)
+            if ok then return v end
+        elseif type(_G.GetCVar) == "function" then
+            local ok, v = pcall(_G.GetCVar, name)
+            if ok then return v end
+        end
+        return nil
+    end
+
+    local function SafeSetCVar(name, val)
+        if _G.C_CVar and type(_G.C_CVar.SetCVar) == "function" then
+            pcall(_G.C_CVar.SetCVar, name, tostring(val))
+        elseif type(_G.SetCVar) == "function" then
+            pcall(_G.SetCVar, name, tostring(val))
+        end
+    end
+
+    function DynamicPrep:GetErrorFilterYieldAddon()
+        if _G.DynamicSuite and type(_G.DynamicSuite.GetFeatureAutoYield) == "function" then
+            local ok, yielding, addonName, friendlyName = pcall(_G.DynamicSuite.GetFeatureAutoYield, _G.DynamicSuite, "DynamicPrep", "ERROR_FILTER")
+            if ok and yielding == true then
+                return addonName, friendlyName or addonName
+            end
+            return nil, nil
+        end
+        local isLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+        if type(isLoaded) ~= "function" then return nil, nil end
+        for _, other in ipairs({ "ErrorFilter", "ErrorMonster", "EnhanceQoL", "Leatrix_Plus" }) do
+            local okL, loaded = pcall(isLoaded, other)
+            if okL and loaded then
+                local active = false
+                pcall(function()
+                    if other == "ErrorFilter" then
+                        local efdb = _G.ErrorFilterDB
+                        if type(efdb) == "table" and type(efdb.profile) == "table" and efdb.profile.mode == 0 then
+                            active = false
+                        else
+                            active = true
+                        end
+                    elseif other == "ErrorMonster" then
+                        active = true
+                    elseif other == "EnhanceQoL" then
+                        local edb = _G.EnhanceQoLDB
+                        local prof = (type(edb) == "table" and type(edb.profile) == "table") and edb.profile or edb
+                        if type(prof) == "table" and (prof.hideErrorText == true or prof.hideErrors == true or prof.hideUIErrors == true or prof.errorFilter == true or prof.muteErrorSpeech == true or prof.hideErrorFrame == true) then
+                            active = true
+                        end
+                    elseif other == "Leatrix_Plus" then
+                        local ldb = _G.LeaPlusDB
+                        if type(ldb) == "table" and (ldb["HideErrorMessages"] == "On" or ldb["NoErrorFrame"] == "On" or ldb["MuteErrorSpeech"] == "On") then
+                            active = true
+                        end
+                    end
+                end)
+                if active then
+                    return other, (other == "Leatrix_Plus" and "Leatrix Plus" or other)
+                end
+            end
+        end
+        return nil, nil
+    end
+
+    local errorFilterFrame = CreateFrame("Frame")
+    errorFilterFrame:SetScript("OnEvent", function(_, event, errorType, message)
+        if event ~= "UI_ERROR_MESSAGE" then return end
+        local function ForwardToBlizzard()
+            local uef = _G.UIErrorsFrame
+            if not uef then return end
+            if type(uef.OnEvent) == "function" then
+                pcall(uef.OnEvent, uef, "UI_ERROR_MESSAGE", errorType, message)
+            elseif type(uef.AddMessage) == "function" and not _IsSecret(message) and type(message) == "string" then
+                pcall(uef.AddMessage, uef, message, 1.0, 0.1, 0.1, 1.0)
+            end
+        end
+
+        if _IsSecret(errorType) or _IsSecret(message) or type(message) ~= "string" then
+            ForwardToBlizzard()
+            return
+        end
+        local db = DynamicPrep.db
+        if IsModuleDisabledInSuite("DynamicPrep") or not db or db.errorFilterEnabled ~= true or DynamicPrep:GetErrorFilterYieldAddon() then
+            ForwardToBlizzard()
+            return
+        end
+
+        local okMatch, suppressed = pcall(function()
+            local norm = NormalizeErrorMsg(message)
+            if not norm then return false end
+            if db.errorFilterHideCombatSpam == true and COMBAT_SPAM_MESSAGES[norm] then
+                return true
+            end
+            if db.errorFilterHideMovement == true and MOVEMENT_SPAM_MESSAGES[norm] then
+                return true
+            end
+            return false
+        end)
+        if okMatch and suppressed == true then
+            return
+        end
+        ForwardToBlizzard()
+    end)
+
+    function DynamicPrep:SyncErrorFilterState(forceRestore)
+        local db = self.db
+        local isDisabled = IsModuleDisabledInSuite("DynamicPrep")
+        local isYielding = (self:GetErrorFilterYieldAddon() ~= nil)
+        local shouldFilterText = (not forceRestore) and (not isDisabled) and (not isYielding)
+            and db and (db.errorFilterEnabled == true)
+            and ((db.errorFilterHideCombatSpam == true) or (db.errorFilterHideMovement == true))
+        local shouldMuteSpeech = (not forceRestore) and (not isDisabled) and (not isYielding)
+            and db and (db.errorFilterEnabled == true) and (db.errorFilterMuteSpeech == true)
+
+        if shouldFilterText then
+            if not self._errorFilterHooked and _G.UIErrorsFrame and type(_G.UIErrorsFrame.UnregisterEvent) == "function" then
+                pcall(_G.UIErrorsFrame.UnregisterEvent, _G.UIErrorsFrame, "UI_ERROR_MESSAGE")
+                self._errorFilterHooked = true
+            end
+            if _G.C_EventUtils and type(_G.C_EventUtils.IsEventValid) == "function" then
+                if _G.C_EventUtils.IsEventValid("UI_ERROR_MESSAGE") then
+                    errorFilterFrame:RegisterEvent("UI_ERROR_MESSAGE")
+                end
+            else
+                errorFilterFrame:RegisterEvent("UI_ERROR_MESSAGE")
+            end
+        else
+            errorFilterFrame:UnregisterEvent("UI_ERROR_MESSAGE")
+            if self._errorFilterHooked and _G.UIErrorsFrame and type(_G.UIErrorsFrame.RegisterEvent) == "function" then
+                pcall(_G.UIErrorsFrame.RegisterEvent, _G.UIErrorsFrame, "UI_ERROR_MESSAGE")
+                self._errorFilterHooked = false
+            end
+        end
+
+        if shouldMuteSpeech then
+            if db.errorFilterSavedSpeechCVar == nil then
+                local cur = SafeGetCVar("Sound_EnableErrorSpeech")
+                if cur ~= nil then
+                    db.errorFilterSavedSpeechCVar = tostring(cur)
+                end
+            end
+            local curNow = SafeGetCVar("Sound_EnableErrorSpeech")
+            if curNow ~= "0" then
+                SafeSetCVar("Sound_EnableErrorSpeech", "0")
+            end
+        else
+            if db and db.errorFilterSavedSpeechCVar ~= nil then
+                SafeSetCVar("Sound_EnableErrorSpeech", tostring(db.errorFilterSavedSpeechCVar))
+                db.errorFilterSavedSpeechCVar = nil
+            end
+        end
+    end
+end
+
 local function SilenceDurabilityToast(f)
     if f and not f._isPreview and f._lowestPct then
         durabilitySilencedAtPct = f._lowestPct
@@ -7306,6 +7539,8 @@ end)() end
 local ADDON_DISPLAY_NAMES = {
     ClickableRaidBuffs = "Clickable Raid Buffs (Funki)",
     EnhanceQoL   = "Enhance QoL",
+    ErrorFilter  = "ErrorFilter",
+    ErrorMonster = "ErrorMonster",
     DialogueUI   = "DialogueUI",
     Immersion    = "Immersion",
     Storyline    = "Storyline",
@@ -10496,6 +10731,139 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dDurTest:BindRightControl(btnTestDurToast)
             table.insert(self.refreshWidgets, btnTestDurToast)
 
+            -- 9. Red Error Text & Sound Filter + 3-Row Sub-Drawer
+            ws.errorFilterDrawerOpen = true
+            local rErrorFilter = CreateSpaciousRow(
+                cQoL, -294,
+                "Red Error Text & Sound Filter",
+                "Hides repetitive red combat and movement errors and optionally mutes error voice lines. Quest, encounter, and system messages are never hidden.",
+                156
+            )
+            local pillsErrorFilter = CreateSegmentedPills(
+                rErrorFilter, 156,
+                {
+                    { value = false, label = "Off" },
+                    { value = true,  label = "Enabled" },
+                },
+                function() return self.db.errorFilterEnabled == true end,
+                function(v)
+                    self.db.errorFilterEnabled = (v == true)
+                    if v == true then
+                        ws.errorFilterDrawerOpen = true
+                    end
+                    self:SyncErrorFilterState(false)
+                    self:RefreshWorkspaceView()
+                end
+            )
+            rErrorFilter:BindRightControl(pillsErrorFilter)
+            table.insert(self.refreshWidgets, pillsErrorFilter)
+
+            local dErrorYieldNote = CreateInlineSubDrawer(cQoL, "Auto-yielding to external addon.")
+            dErrorYieldNote.title:SetTextColor(0.220, 0.741, 0.973, 1.0)
+            function dErrorYieldNote:RefreshValue()
+                local yieldAddon, friendlyName = DynamicPrep:GetErrorFilterYieldAddon()
+                if yieldAddon then
+                    local hint = (_G.DynamicSuite and _G.DynamicSuite._isHubLoaded)
+                        and "Override in /ds conflicts."
+                        or ("Disable in " .. tostring(friendlyName) .. " to use DynamicPrep.")
+                    self.title:SetText("Auto-yielding to " .. tostring(friendlyName) .. " (handling UI error filtering). " .. hint)
+                end
+            end
+            table.insert(self.refreshWidgets, dErrorYieldNote)
+
+            local tuneErrorFilter = CreateSubDrawerToggleBar(
+                cQoL, 3,
+                function() return self.db and self.db.errorFilterEnabled == true end,
+                function() return ws.errorFilterDrawerOpen ~= false end,
+                function()
+                    ws.errorFilterDrawerOpen = (ws.errorFilterDrawerOpen == false)
+                    self:RefreshWorkspaceView()
+                end
+            )
+            rErrorFilter.tuneBtn = tuneErrorFilter
+            table.insert(self.refreshWidgets, tuneErrorFilter)
+
+            local dErrCombat = CreateInlineSubDrawer(cQoL, "Hide Combat & Cooldown Spam")
+            dErrCombat:HookScript("OnEnter", function(selfRow)
+                if GameTooltip then
+                    local ar, ag, ab = GetActiveAccentRGB()
+                    GameTooltip:SetOwner(selfRow, "ANCHOR_TOP")
+                    GameTooltip:AddLine("Hide Combat & Cooldown Spam", ar, ag, ab)
+                    GameTooltip:AddLine("Suppresses 'Ability is not ready yet', 'Another action is in progress', 'Not enough mana/energy/rage/focus/runic power/fury/insanity/astral power', 'Out of range', and 'Target needs to be in front of you'.", 0.88, 0.91, 0.96, true)
+                    GameTooltip:Show()
+                end
+            end)
+            dErrCombat:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+            local pErrCombat = CreateSegmentedPills(
+                dErrCombat, 156,
+                {
+                    { value = false, label = "Off" },
+                    { value = true,  label = "Enabled" },
+                },
+                function() return self.db.errorFilterHideCombatSpam ~= false end,
+                function(v)
+                    self.db.errorFilterHideCombatSpam = (v == true)
+                    self:SyncErrorFilterState(false)
+                    self:RefreshWorkspaceView()
+                end
+            )
+            dErrCombat:BindRightControl(pErrCombat)
+            table.insert(self.refreshWidgets, pErrCombat)
+
+            local dErrMove = CreateInlineSubDrawer(cQoL, "Hide Movement & Mount Errors")
+            dErrMove:HookScript("OnEnter", function(selfRow)
+                if GameTooltip then
+                    local ar, ag, ab = GetActiveAccentRGB()
+                    GameTooltip:SetOwner(selfRow, "ANCHOR_TOP")
+                    GameTooltip:AddLine("Hide Movement & Mount Errors", ar, ag, ab)
+                    GameTooltip:AddLine("Suppresses 'Can't do that while moving', 'You are mounted', and 'You cannot use that while moving'.", 0.88, 0.91, 0.96, true)
+                    GameTooltip:Show()
+                end
+            end)
+            dErrMove:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+            local pErrMove = CreateSegmentedPills(
+                dErrMove, 156,
+                {
+                    { value = false, label = "Off" },
+                    { value = true,  label = "Enabled" },
+                },
+                function() return self.db.errorFilterHideMovement ~= false end,
+                function(v)
+                    self.db.errorFilterHideMovement = (v == true)
+                    self:SyncErrorFilterState(false)
+                    self:RefreshWorkspaceView()
+                end
+            )
+            dErrMove:BindRightControl(pErrMove)
+            table.insert(self.refreshWidgets, pErrMove)
+
+            local dErrSpeech = CreateInlineSubDrawer(cQoL, "Mute Error Voice Lines")
+            dErrSpeech:HookScript("OnEnter", function(selfRow)
+                if GameTooltip then
+                    local ar, ag, ab = GetActiveAccentRGB()
+                    GameTooltip:SetOwner(selfRow, "ANCHOR_TOP")
+                    GameTooltip:AddLine("Mute Error Voice Lines", ar, ag, ab)
+                    GameTooltip:AddLine("Toggles Sound_EnableErrorSpeech to silence 'I can't cast that yet' voice lines, and restores your original setting when turned off or if DynamicPrep is disabled.", 0.88, 0.91, 0.96, true)
+                    GameTooltip:Show()
+                end
+            end)
+            dErrSpeech:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+            local pErrSpeech = CreateSegmentedPills(
+                dErrSpeech, 156,
+                {
+                    { value = false, label = "Off" },
+                    { value = true,  label = "Enabled" },
+                },
+                function() return self.db.errorFilterMuteSpeech == true end,
+                function(v)
+                    self.db.errorFilterMuteSpeech = (v == true)
+                    self:SyncErrorFilterState(false)
+                    self:RefreshWorkspaceView()
+                end
+            )
+            dErrSpeech:BindRightControl(pErrSpeech)
+            table.insert(self.refreshWidgets, pErrSpeech)
+
             return {
                 rDrinkMacro = rDrinkMacro, tuneDrinkMacro = tuneDrinkMacro,
                 dDrinkDrawers = { dDrinkMacro, dDrinkRecup, dDrinkBuffFood },
@@ -10503,6 +10871,9 @@ function DynamicPrep:RenderWorkspace(parentFrame)
                 dMageDrawers = { dMageScope, dMageMin, dMageLeave, dMageTest },
                 rDurabilityAlert = rDurabilityAlert, tuneDurability = tuneDurability,
                 dDurDrawers = { dDurThresh, dDurTest },
+                rErrorFilter = rErrorFilter, tuneErrorFilter = tuneErrorFilter,
+                dErrorYieldNote = dErrorYieldNote,
+                dErrorDrawers = { dErrCombat, dErrMove, dErrSpeech },
             }
         end
         local recRows = BuildRecoveryQoLRows()
@@ -10520,6 +10891,10 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             rDurabilityAlert = recRows.rDurabilityAlert,
             tuneDurability   = recRows.tuneDurability,
             dDurDrawers      = recRows.dDurDrawers,
+            rErrorFilter     = recRows.rErrorFilter,
+            tuneErrorFilter  = recRows.tuneErrorFilter,
+            dErrorYieldNote  = recRows.dErrorYieldNote,
+            dErrorDrawers    = recRows.dErrorDrawers,
             others           = { rQuestGossip, rAutoConfirmInstanceGossip, rAutoChoice, rCatalyst, rAutoSummon, rCine, rRez, rRelease },
         }
     end
@@ -10766,6 +11141,54 @@ function DynamicPrep:LayoutQoLCardRows()
         else
             if tuneDur then tuneDur:Hide() end
             for _, dr in ipairs(qr.dDurDrawers or {}) do dr:Hide() end
+        end
+    end
+
+    if qr.rErrorFilter then
+        qr.rErrorFilter:ClearAllPoints()
+        qr.rErrorFilter:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y)
+        qr.rErrorFilter:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y)
+        y = y - 60
+
+        local isYieldingErr = (self:GetErrorFilterYieldAddon() ~= nil)
+        if qr.dErrorYieldNote then
+            if isYieldingErr then
+                qr.dErrorYieldNote:ClearAllPoints()
+                qr.dErrorYieldNote:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
+                qr.dErrorYieldNote:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+                qr.dErrorYieldNote:RefreshValue()
+                qr.dErrorYieldNote:Show()
+                y = y - 46
+            else
+                qr.dErrorYieldNote:Hide()
+            end
+        end
+
+        local errEnabled = self.db and self.db.errorFilterEnabled == true
+        local tuneErr = qr.tuneErrorFilter or (qr.rErrorFilter and qr.rErrorFilter.tuneBtn)
+        if tuneErr then tuneErr:RefreshValue() end
+        if errEnabled and tuneErr then
+            tuneErr:ClearAllPoints()
+            tuneErr:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
+            tuneErr:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+            tuneErr:Show()
+            y = y - 28
+
+            for _, dr in ipairs(qr.dErrorDrawers or {}) do
+                if ws.errorFilterDrawerOpen ~= false then
+                    dr:ClearAllPoints()
+                    dr:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
+                    dr:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+                    dr:RefreshBranchAccent()
+                    dr:Show()
+                    y = y - 46
+                else
+                    dr:Hide()
+                end
+            end
+        else
+            if tuneErr then tuneErr:Hide() end
+            for _, dr in ipairs(qr.dErrorDrawers or {}) do dr:Hide() end
         end
     end
 
@@ -11855,6 +12278,18 @@ DynamicPrep.ToggleUI = TogglePrepMainWindow
 -- ============================================================================
 -- Register DynamicPrep into _G.DynamicSuite.modules["prep"]
 -- ============================================================================
+function DynamicPrep:OnDisableInSuite()
+    if self.SyncErrorFilterState then
+        self:SyncErrorFilterState(true)
+    end
+end
+
+function DynamicPrep:OnEnableInSuite()
+    if self.SyncErrorFilterState then
+        self:SyncErrorFilterState(false)
+    end
+end
+
 function DynamicPrep:RegisterWithSuite()
     RegisterDynamicPrepPopupClosers()
     local moduleEntry = {
@@ -11922,6 +12357,10 @@ function DynamicPrep:RegisterWithSuite()
                 ws.drinkDrawerOpen = true
                 ws.mageFoodDrawerOpen = true
                 ws.durabilityDrawerOpen = true
+                ws.errorFilterDrawerOpen = true
+            end
+            if DynamicPrep.SyncErrorFilterState then
+                DynamicPrep:SyncErrorFilterState(false)
             end
             if DynamicPrep.RefreshWorkspaceView then
                 DynamicPrep:RefreshWorkspaceView()
@@ -12146,6 +12585,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         elseif arg1 == "Blizzard_TalkingHeadUI" then
             if not IsModuleDisabledInSuite("DynamicPrep") then
                 DynamicPrep:UpdateTalkingHeadSuppression()
+        DynamicPrep:SyncErrorFilterState(false)
             end
         elseif arg1 == "Blizzard_ItemInteractionUI" then
             if not IsModuleDisabledInSuite("DynamicPrep") then
@@ -12201,12 +12641,14 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:EnsurePaperdollHighlightHooks()
         DynamicPrep:InitBlizzardWindowQoL()
         DynamicPrep:UpdateTalkingHeadSuppression()
+        DynamicPrep:SyncErrorFilterState(false)
         DynamicPrep:UpdateDrinkMacro(false)
         DynamicPrep:RequestMageFoodCheck("PLAYER_LOGIN", 0.5)
         DynamicPrep:RefreshBar()
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
         DynamicPrep:ResetStableCapsuleWidths()
         DynamicPrep:UpdateTalkingHeadSuppression()
+        DynamicPrep:SyncErrorFilterState(false)
         if event == "PLAYER_ENTERING_WORLD" then
             DynamicPrep:UpdateHealMacro(false, true)
             DynamicPrep:UpdateDrinkMacro(false)
@@ -12397,6 +12839,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:HandleCinematicOrMovie(event, arg1)
     elseif event == "TALKINGHEAD_REQUESTED" then
         DynamicPrep:UpdateTalkingHeadSuppression()
+        DynamicPrep:SyncErrorFilterState(false)
     elseif event == "RESURRECT_REQUEST" then
         DynamicPrep:HandleResurrectRequest(arg1)
     elseif event == "CONFIRM_SUMMON" then
