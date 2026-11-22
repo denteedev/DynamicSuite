@@ -81,6 +81,28 @@ foreach ($f in $luaFiles) {
 }
 Write-Host "[LUAC OK] Validated $($luaFiles.Count) Lua file(s)" -ForegroundColor Green
 
+# 2b. Bytecode GETGLOBAL undefined-helper guard (catches nil-global calls to module-local helpers)
+$forbiddenGlobalHelpers = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
+    "ApplyFont", "IsDisabledInSuite", "IsModuleDisabledInSuite", "SetSafeFont",
+    "CreateText", "GetAccentHex", "GetActiveAccentRGB", "PrintMsg", "EnsureDB",
+    "SafeRegisterEvent", "LayoutPageCards", "_IsSecret", "IsSecretValue"
+))
+$nilGlobalHits = @()
+foreach ($f in $luaFiles) {
+    $listing = & $luacExe -l -p $f.FullName
+    foreach ($line in $listing) {
+        if ($line -match '\[(\d+)\]\s+GETGLOBAL\s+\d+\s+-\d+\s+;\s+(\S+)') {
+            if ($forbiddenGlobalHelpers.Contains($matches[2])) {
+                $nilGlobalHits += "$($f.Name):$($matches[1]) -> undefined global '$($matches[2])'"
+            }
+        }
+    }
+}
+if ($nilGlobalHits.Count -gt 0) {
+    throw ("Undefined local helper GETGLOBAL check failed:`n - " + ($nilGlobalHits -join "`n - "))
+}
+Write-Host "[GLOBALS OK] Verified 0 undefined module-local helper calls across $($luaFiles.Count) Lua file(s)" -ForegroundColor Green
+
 # 3. Mirror CHANGELOG.md and verify Pure ASCII & No-BOM
 $changelogPath = Join-Path $RepoRoot "CHANGELOG.md"
 $suiteChangelogPath = Join-Path $RepoRoot "DynamicSuite\CHANGELOG.md"

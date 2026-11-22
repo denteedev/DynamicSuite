@@ -7464,7 +7464,7 @@ local function RenderGroupEmbedded(arg1, arg2)
         function(val) EnsureDB().autoAcceptRoleCheck = (val == true) end
     )
     local rcYieldNote = c2_roleCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    ApplyFont(rcYieldNote, 10)
+    SetSafeFont(rcYieldNote, 10, "")
     rcYieldNote:SetPoint("TOPLEFT", c2_roleCheck.desc, "BOTTOMLEFT", 0, -4)
     rcYieldNote:SetPoint("RIGHT", rcSwitch, "LEFT", -14, 0)
     rcYieldNote:SetJustifyH("LEFT")
@@ -7923,6 +7923,12 @@ function DynamicGroup:RefreshConfigUI()
     if root.UpdateWhisperDrawerLayout then root.UpdateWhisperDrawerLayout() end
     if root.UpdateNoteDrawerLayout then root.UpdateNoteDrawerLayout() end
 
+    for _, ctrl in ipairs(root.allControls or {}) do
+        if type(ctrl.RefreshValue) == "function" then
+            ctrl:RefreshValue()
+        end
+    end
+
     for idx, page in ipairs(root.tabPages or {}) do
         LayoutPageCards(page)
         if idx == activeTab then
@@ -7940,6 +7946,7 @@ function DynamicGroup:RefreshConfigUI()
     for _, ctrl in ipairs(root.allControls or {}) do
         if ctrl.title then SetSafeFont(ctrl.title, 12, "") end
         if ctrl.desc then SetSafeFont(ctrl.desc, 10, "") end
+        if ctrl.yieldNote then SetSafeFont(ctrl.yieldNote, 10, "") end
         if ctrl.dropdown and ctrl.dropdown.RefreshValue then ctrl.dropdown:RefreshValue() end
         if ctrl.toggleBtn and ctrl.toggleBtn.RefreshValue then ctrl.toggleBtn:RefreshValue() end
     end
@@ -8285,18 +8292,13 @@ function DynamicGroup:GetRoleCheckYieldAddon()
 end
 
 function DynamicGroup:RefreshSettingsUI()
-    local root = self.settingsRoot
-    if not root then return end
-    if type(root.RefreshAllControls) == "function" then
-        pcall(root.RefreshAllControls)
-    end
-    if root.tabPages and root.tabPages[2] then
-        pcall(LayoutPageCards, root.tabPages[2])
+    if self.embeddedRoot and type(self.RefreshConfigUI) == "function" then
+        self:RefreshConfigUI()
     end
 end
 
 local function HandleAutoAcceptRoleCheck()
-    if IsDisabledInSuite() then return end
+    if IsModuleDisabledInSuite("DynamicGroup") then return end
     if not EnsureDB().autoAcceptRoleCheck then return end
     if InCombatLockdown and InCombatLockdown() then return end
     if IsShiftKeyDown and IsShiftKeyDown() then return end
@@ -8306,7 +8308,7 @@ local function HandleAutoAcceptRoleCheck()
 
     C_Timer.After(0.45, function()
         DynamicGroup._roleCheckPending = false
-        if IsDisabledInSuite() then return end
+        if IsModuleDisabledInSuite("DynamicGroup") then return end
         if not EnsureDB().autoAcceptRoleCheck then return end
         if InCombatLockdown and InCombatLockdown() then return end
         if IsShiftKeyDown and IsShiftKeyDown() then return end

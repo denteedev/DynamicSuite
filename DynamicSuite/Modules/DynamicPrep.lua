@@ -11651,6 +11651,9 @@ end
 -- Atomic Module Reset & Suite Reset Contract
 -- ============================================================================
 local function ResetPrepModuleDefaults()
+    if DynamicPrep.SyncErrorFilterState then
+        DynamicPrep:SyncErrorFilterState(true)
+    end
     local prevDB = _G.DynamicPrepDB
     local savedWinPos = type(prevDB) == "table" and prevDB.windowPositions or nil
     local savedWinScales = type(prevDB) == "table" and prevDB.windowScales or nil
@@ -12336,10 +12339,14 @@ function DynamicPrep:RegisterWithSuite()
         OpenOptions = function() OpenPrepWorkspace() end,
         OnDisableInSuite = function()
             CloseAllDynamicPrepPopups()
+            if DynamicPrep.SyncErrorFilterState then DynamicPrep:SyncErrorFilterState(true) end
             if DynamicPrep.HideMageFoodToast then DynamicPrep:HideMageFoodToast() end
             if DynamicPrep.HideDurabilityToast then DynamicPrep:HideDurabilityToast() end
             if DynamicPrep.barFrame then DynamicPrep.barFrame:Hide() end
             if DynamicPrep.crbBar and not (InCombatLockdown and InCombatLockdown()) then DynamicPrep.crbBar:Hide() end
+        end,
+        OnEnableInSuite = function()
+            if DynamicPrep.SyncErrorFilterState then DynamicPrep:SyncErrorFilterState(false) end
         end,
         GetChangelog = function() return DynamicPrep.CHANGELOG end,
         SelectSubTab = function(a1, a2, a3)
