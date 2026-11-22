@@ -661,7 +661,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "21/11/2026",
     entries = {
-        { type = "FEATURE", text = "[Unreleased] Healer Mage Food Restock Toasts & Role-Smart [DynamicDrink] Macro (22/11/2026): Added a decoupled Follower Dungeon Conjured Mana Bun restock/leave Shared Alert Toast workflow (independent of Clickable Raid Buffs scope, with Healer Only / Any Mana Spec scope, 5-60 alert threshold, 20-80 auto-leave target, 1-click Queue Follower / Leave Dungeon buttons, and Right-Click session silence) alongside a separate [nocombat]-guarded [DynamicDrink] macro with dynamic level 1-90 bag scanning, Role-Smart / Mana First / Health & Recup / Off priority, Recuperate fallback, and strict Well Fed buff-food exclusion." },
+        { type = "FEATURE", text = "[Unreleased] Healer Mage Food Restock Toasts & Role-Smart [DynamicDrink] Macro (22/11/2026): Added a decoupled Follower Dungeon Conjured Mana Bun restock/leave Shared Alert Toast workflow (independent of Clickable Raid Buffs scope, with Healer Only / Any Mana Spec scope, 5-60 alert threshold, 20-80 auto-leave target, 1-click Queue Follower / Leave Dungeon buttons, Stage 3 'Ask for Table' group Mage prompt with 5-minute cooldown and encounter/chat lockdown safety, and Right-Click session silence) alongside a separate [nocombat]-guarded [DynamicDrink] macro with dynamic level 1-90 bag scanning, Role-Smart / Mana First / Health & Recup / Off priority, Recuperate fallback, and strict Well Fed buff-food exclusion." },
         { type = "REFACTOR", text = "[Unreleased] Extracted Talent Loadouts & Talent Binds to DynamicTalent (/dt) (21/11/2026): Moved the unlimited per-spec Talent Loadouts library, PlayerSpellsFrame dock, 880x580 Talent Loadouts Manager, and Shared Alert Toast reminders into the dedicated DynamicTalent module while keeping the Top Info Bar 'Talents' capsule hooked cleanly to DynamicTalent and preserving backward-compatible forwarding stubs." },
         { type = "FEATURE", text = "Opt-In Auto-Confirm Free Dungeon & Raid Prompts (21/11/2026): Added an off-by-default 'Auto-Confirm Free Dungeon & Raid Prompts' toggle in Tab 3 under World & Survival Automation to automatically confirm free (0 copper) single-option NPC prompts inside Dungeons, Raids, and Delves (hold Shift to pause), while keeping paid, open-world, hearthstone, and exit/teleport prompts manual." },
         { type = "FEATURE", text = "Release v2.7.1 - Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Binds, LFR/Normal Merge, 'Talent Binds' Rename & 4px Scrollbars (21/11/2026): Standardised Left-Click (Switch Active Specialisation out of combat) and Right-Click (Loot Specialisation) across both the Top Info Bar and Left-Hand Talent Loadouts Dock with 1:1 plain Australian English tooltips; upgraded Tab 2's Pre-Keystone M+ Binder with an 'All' toggle pill alongside multi-select dungeon tiles (saving a single 'All M+ Dungeons' rule when All is selected, or batch-binding specific dungeons which take priority over All M+); merged LFR (difficulty 17) and Normal (difficulty 14) into one 'LFR / Normal' difficulty pill; renamed 'Boss Binds' to 'Talent Binds' across the dock, menus, settings, and headings; and added a 4px interactive 3-way Obsidian scrollbar to Talent Loadouts Manager dropdowns." },
@@ -5771,9 +5771,12 @@ local RECUPERATE_SPELL_ID = 1231411
 local lastRecoveryScan = nil
 local mageFoodToastFrame = nil
 local mageFoodRestockSilenced = false
+local mageFoodGroupAskSilenced = false
+local mageFoodAskCooldownUntil = 0
+local mageFoodWasInGroup = false
 local mageFoodLeaveAlertedThisRun = false
 local mageFoodCheckPending = false
-local mageFoodPreviewToggle = false
+local mageFoodPreviewIdx = 0
 
 local function SafeExtractTooltipLowerText(tipData)
     if type(tipData) ~= "table" or type(tipData.lines) ~= "table" then return "" end
@@ -6451,7 +6454,113 @@ end
 
 function DynamicPrep:ResetMageFoodSessionState()
     mageFoodRestockSilenced = false
+    mageFoodGroupAskSilenced = false
+    mageFoodAskCooldownUntil = 0
+    mageFoodWasInGroup = false
     mageFoodLeaveAlertedThisRun = false
+end
+
+function DynamicPrep:HasConnectedLivingGroupMage()
+    if type(UnitClass) ~= "function" then return false end
+    local okSelf, _, selfClass = pcall(UnitClass, "player")
+    if okSelf and type(selfClass) == "string" and not IsSecretValue(selfClass) and selfClass == "MAGE" then
+        return false
+    end
+
+    local inRaid = false
+    if type(IsInRaid) == "function" then
+        local okR, r = pcall(IsInRaid)
+        if okR and not IsSecretValue(r) and r == true then inRaid = true end
+    end
+    local inGroup = inRaid
+    if not inGroup and type(IsInGroup) == "function" then
+        local okG, g = pcall(IsInGroup)
+        if okG and not IsSecretValue(g) and g == true then inGroup = true end
+    end
+    if not inGroup then return false end
+
+    local function IsUnitConnectedLivingMage(unit)
+        if type(UnitExists) ~= "function" then return false end
+        local okE, ex = pcall(UnitExists, unit)
+        if not okE or IsSecretValue(ex) or not ex then return false end
+        if type(UnitIsUnit) == "function" then
+            local okU, isSelf = pcall(UnitIsUnit, unit, "player")
+            if okU and not IsSecretValue(isSelf) and isSelf == true then return false end
+        end
+        if type(UnitIsConnected) == "function" then
+            local okC, conn = pcall(UnitIsConnected, unit)
+            if not okC or IsSecretValue(conn) or not conn then return false end
+        end
+        if type(UnitIsDeadOrGhost) == "function" then
+            local okD, dead = pcall(UnitIsDeadOrGhost, unit)
+            if not okD or IsSecretValue(dead) or dead == true then return false end
+        end
+        local okCl, _, uClass = pcall(UnitClass, unit)
+        return (okCl and type(uClass) == "string" and not IsSecretValue(uClass) and uClass == "MAGE")
+    end
+
+    if inRaid then
+        local count = 40
+        if type(GetNumGroupMembers) == "function" then
+            local okN, n = pcall(GetNumGroupMembers)
+            if okN and type(n) == "number" and not IsSecretValue(n) and n > 0 then
+                count = math.min(n, 40)
+            end
+        end
+        for i = 1, count do
+            if IsUnitConnectedLivingMage("raid" .. i) then
+                return true
+            end
+        end
+    else
+        for i = 1, 4 do
+            if IsUnitConnectedLivingMage("party" .. i) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function DynamicPrep:RequestMageTableInChat()
+    if InCombatLockdown and InCombatLockdown() then
+        print(string.format("|cFF%sDynamicPrep:|r Leave combat before asking for a Mage table.", GetAccentHex()))
+        return false
+    end
+    if IsInEncounterOrChatLockdown() then
+        print(string.format("|cFF%sDynamicPrep:|r Chat messaging is currently locked down; ask your group's Mage manually when free.", GetAccentHex()))
+        return false
+    end
+
+    local chatType = nil
+    if type(IsInGroup) == "function" then
+        local okInst, inInstGrp = pcall(IsInGroup, _G.LE_PARTY_CATEGORY_INSTANCE)
+        if okInst and not IsSecretValue(inInstGrp) and inInstGrp == true then
+            chatType = "INSTANCE_CHAT"
+        end
+    end
+    if not chatType and type(IsInRaid) == "function" then
+        local okR, inRaid = pcall(IsInRaid)
+        if okR and not IsSecretValue(inRaid) and inRaid == true then
+            chatType = "RAID"
+        end
+    end
+    if not chatType and type(IsInGroup) == "function" then
+        local okG, inGrp = pcall(IsInGroup)
+        if okG and not IsSecretValue(inGrp) and inGrp == true then
+            chatType = "PARTY"
+        end
+    end
+    if not chatType then
+        print(string.format("|cFF%sDynamicPrep:|r You are not currently in a party or raid.", GetAccentHex()))
+        return false
+    end
+
+    pcall(SafeSendPrepChatMessage, "Could we grab a Mage table when free, please?", chatType)
+    local now = (GetTime and GetTime()) or 0
+    mageFoodAskCooldownUntil = now + 300
+    self:HideMageFoodToast()
+    return true, chatType
 end
 
 function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
@@ -6467,8 +6576,12 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
                 rightActionGap = 10,
                 autoFade = true,
                 onRightClickDismiss = function()
-                    if mageFoodToastFrame and mageFoodToastFrame._stage == "RESTOCK" and not mageFoodToastFrame._isPreview then
-                        mageFoodRestockSilenced = true
+                    if mageFoodToastFrame and not mageFoodToastFrame._isPreview then
+                        if mageFoodToastFrame._stage == "RESTOCK" then
+                            mageFoodRestockSilenced = true
+                        elseif mageFoodToastFrame._stage == "ASK_MAGE" then
+                            mageFoodGroupAskSilenced = true
+                        end
                     end
                     DynamicPrep:HideMageFoodToast()
                 end,
@@ -6534,8 +6647,12 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
 
             f:SetScript("OnClick", function(_, button)
                 if button == "RightButton" then
-                    if f._stage == "RESTOCK" and not f._isPreview then
-                        mageFoodRestockSilenced = true
+                    if not f._isPreview then
+                        if f._stage == "RESTOCK" then
+                            mageFoodRestockSilenced = true
+                        elseif f._stage == "ASK_MAGE" then
+                            mageFoodGroupAskSilenced = true
+                        end
                     end
                     DynamicPrep:HideMageFoodToast()
                 end
@@ -6587,7 +6704,8 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
     local dur = tonumber(st.duration) or 8
 
     local isLeave = (stage == "LEAVE")
-    f.actionBtn.txt:SetText(isLeave and "Leave Dungeon" or "Queue Follower")
+    local isAskMage = (stage == "ASK_MAGE")
+    f.actionBtn.txt:SetText((isLeave and "Leave Dungeon") or (isAskMage and "Ask for Table") or "Queue Follower")
     f.actionBtn:SetScript("OnEnter", function(s)
         local curSt = GetMageFoodSharedToastStyle()
         if f.animGroup then f.animGroup:Pause() end
@@ -6603,8 +6721,12 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
     end)
     f.actionBtn:SetScript("OnClick", function(_, button)
         if button == "RightButton" then
-            if f._stage == "RESTOCK" and not f._isPreview then
-                mageFoodRestockSilenced = true
+            if not f._isPreview then
+                if f._stage == "RESTOCK" then
+                    mageFoodRestockSilenced = true
+                elseif f._stage == "ASK_MAGE" then
+                    mageFoodGroupAskSilenced = true
+                end
             end
             DynamicPrep:HideMageFoodToast()
             return
@@ -6615,6 +6737,8 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
         end
         if isLeave then
             DynamicPrep:LeaveFollowerDungeon()
+        elseif isAskMage then
+            DynamicPrep:RequestMageTableInChat()
         else
             DynamicPrep:QueueFirstFollowerDungeon()
         end
@@ -6625,10 +6749,14 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
         or  "|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFFBBF24Low Conjured Mana Buns|r"
     local badgeText = isLeave
         and string.format("|cFF94A3B8In Bags:|r |cFFFFFFFF%d|r |cFF64748B(Target: %d)|r", tonumber(bunCount) or 0, tonumber(targetCount) or 20)
-        or  string.format("|cFF94A3B8In Bags:|r |cFFF87171%d|r |cFF64748B(Alert below %d)|r", tonumber(bunCount) or 0, tonumber(targetCount) or 20)
+        or (isAskMage
+            and string.format("|cFF94A3B8In Bags:|r |cFFF87171%d|r |cFF64748B(Below %d)  |  |cFF38BDF8Mage in group|r", tonumber(bunCount) or 0, tonumber(targetCount) or 20)
+            or  string.format("|cFF94A3B8In Bags:|r |cFFF87171%d|r |cFF64748B(Alert below %d)|r", tonumber(bunCount) or 0, tonumber(targetCount) or 20))
     local subtextText = isLeave
         and "|cFF34D399Click Leave Dungeon|r |cFF94A3B8to exit|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r"
-        or  "|cFF34D399Click Queue Follower|r |cFF94A3B8for buns|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
+        or (isAskMage
+            and "|cFF34D399Click Ask for Table|r |cFF94A3B8to request|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
+            or  "|cFF34D399Click Queue Follower|r |cFF94A3B8for buns|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r")
 
     if _G.DynamicSuite and type(_G.DynamicSuite.ShowSharedToast) == "function" then
         local okShown, resShown = pcall(_G.DynamicSuite.ShowSharedToast, f, {
@@ -6683,48 +6811,84 @@ function DynamicPrep:CheckMageFoodRestock(triggerReason)
     local minThreshold = tonumber(self.db.mageFoodMinThreshold) or 20
     local leaveTarget = tonumber(self.db.mageFoodLeaveTarget) or 20
 
-    if bunCount >= minThreshold then
-        mageFoodRestockSilenced = false
+    local function HideNonPreviewRestockOrAsk()
+        if mageFoodToastFrame and mageFoodToastFrame:IsShown() and not mageFoodToastFrame._isPreview
+           and (mageFoodToastFrame._stage == "RESTOCK" or mageFoodToastFrame._stage == "ASK_MAGE") then
+            self:HideMageFoodToast()
+        end
     end
 
-    -- Stage 2: Inside a Follower Dungeon -> prompt to leave once target is reached
+    if bunCount >= minThreshold then
+        mageFoodRestockSilenced = false
+        mageFoodGroupAskSilenced = false
+    end
+
+    -- Priority 1 (Stage 2): Inside a Follower Dungeon -> prompt to leave once target is reached
     if self:IsInFollowerDungeon() then
         if bunCount >= leaveTarget and not mageFoodLeaveAlertedThisRun then
             mageFoodLeaveAlertedThisRun = true
             self:ShowMageFoodToast("LEAVE", bunCount, leaveTarget, false)
+        elseif bunCount < leaveTarget then
+            HideNonPreviewRestockOrAsk()
         end
         return
     else
         mageFoodLeaveAlertedThisRun = false
     end
 
-    -- Stage 1: Solo & out of combat, not in group/instance, not queued in LFD
     if not self:MatchesMageFoodScope() then
-        if mageFoodToastFrame and mageFoodToastFrame:IsShown() and mageFoodToastFrame._stage == "RESTOCK" and not mageFoodToastFrame._isPreview then
-            self:HideMageFoodToast()
-        end
+        HideNonPreviewRestockOrAsk()
         return
     end
 
-    local inGroup = (type(IsInGroup) == "function" and IsInGroup() == true)
+    local inGroup = false
+    if type(IsInGroup) == "function" then
+        local okG, g = pcall(IsInGroup)
+        if okG and not IsSecretValue(g) and g == true then inGroup = true end
+    end
+    if not inGroup and type(IsInRaid) == "function" then
+        local okR, r = pcall(IsInRaid)
+        if okR and not IsSecretValue(r) and r == true then inGroup = true end
+    end
+    if not inGroup and mageFoodWasInGroup then
+        mageFoodGroupAskSilenced = false
+    end
+    mageFoodWasInGroup = inGroup
+
     local inInstance = false
     if type(IsInInstance) == "function" then
         local okI, inInst = pcall(IsInInstance)
         if okI and not IsSecretValue(inInst) and inInst == true then inInstance = true end
     end
 
-    if inGroup or inInstance or self:IsQueuedInLFD() then
-        if mageFoodToastFrame and mageFoodToastFrame:IsShown() and mageFoodToastFrame._stage == "RESTOCK" and not mageFoodToastFrame._isPreview then
-            self:HideMageFoodToast()
+    -- Priority 2 (Stage 1): Solo & out of combat, not in group/instance, not queued in LFD
+    if not inGroup and not inInstance and not self:IsQueuedInLFD() then
+        if bunCount < minThreshold and not mageFoodRestockSilenced then
+            self:ShowMageFoodToast("RESTOCK", bunCount, minThreshold, false)
+        else
+            HideNonPreviewRestockOrAsk()
         end
         return
     end
 
-    if bunCount < minThreshold and not mageFoodRestockSilenced then
-        self:ShowMageFoodToast("RESTOCK", bunCount, minThreshold, false)
-    elseif bunCount >= minThreshold and mageFoodToastFrame and mageFoodToastFrame:IsShown() and mageFoodToastFrame._stage == "RESTOCK" and not mageFoodToastFrame._isPreview then
-        self:HideMageFoodToast()
+    -- Priority 3 (Stage 3): In a Party or Raid with a connected living Mage (not active M+)
+    if inGroup then
+        local isKeyActive = false
+        if C_ChallengeMode and type(C_ChallengeMode.IsChallengeModeActive) == "function" then
+            local okK, k = pcall(C_ChallengeMode.IsChallengeModeActive)
+            if okK and not IsSecretValue(k) and k == true then isKeyActive = true end
+        end
+        local now = (GetTime and GetTime()) or 0
+        if not isKeyActive and bunCount < minThreshold and not mageFoodGroupAskSilenced
+           and now >= mageFoodAskCooldownUntil and self:HasConnectedLivingGroupMage() then
+            self:ShowMageFoodToast("ASK_MAGE", bunCount, minThreshold, false)
+        else
+            HideNonPreviewRestockOrAsk()
+        end
+        return
     end
+
+    HideNonPreviewRestockOrAsk()
 end
 
 function DynamicPrep:RequestMageFoodCheck(triggerReason, delaySec)
@@ -6741,14 +6905,17 @@ function DynamicPrep:RequestMageFoodCheck(triggerReason, delaySec)
 end
 
 function DynamicPrep:TriggerMageFoodToastPreview()
-    mageFoodPreviewToggle = not mageFoodPreviewToggle
+    mageFoodPreviewIdx = (mageFoodPreviewIdx % 3) + 1
     local bunCount = self:GetConjuredMageFoodCount()
-    if mageFoodPreviewToggle then
+    if mageFoodPreviewIdx == 1 then
         local minT = (self.db and tonumber(self.db.mageFoodMinThreshold)) or 20
         self:ShowMageFoodToast("RESTOCK", bunCount, minT, true)
-    else
+    elseif mageFoodPreviewIdx == 2 then
         local leaveT = (self.db and tonumber(self.db.mageFoodLeaveTarget)) or 20
         self:ShowMageFoodToast("LEAVE", math.max(bunCount, leaveT), leaveT, true)
+    else
+        local minT = (self.db and tonumber(self.db.mageFoodMinThreshold)) or 20
+        self:ShowMageFoodToast("ASK_MAGE", bunCount, minT, true)
     end
 end
 end)() end
@@ -9752,9 +9919,23 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             local rMageFood = CreateSpaciousRow(
                 cQoL, -294,
                 "Healer Mage Food Restock (Follower Dungeon)",
-                "Prompts solo players to queue a Follower Dungeon when low on Conjured Mana Buns, and prompts to leave once restocked.",
+                "Prompts solo players to queue a Follower Dungeon when low on Conjured Mana Buns, prompts to leave once restocked, and offers a 1-click Ask for Table toast in groups with a Mage.",
                 156
             )
+            rMageFood:HookScript("OnEnter", function(selfRow)
+                if GameTooltip then
+                    local ar, ag, ab = GetActiveAccentRGB()
+                    GameTooltip:SetOwner(selfRow, "ANCHOR_TOP")
+                    GameTooltip:AddLine("Healer Mage Food Restock & Group Table Prompt", ar, ag, ab)
+                    GameTooltip:AddLine("1. Solo & low on buns: shows a 1-click Queue Follower toast.", 0.88, 0.91, 0.96, true)
+                    GameTooltip:AddLine("2. Inside Follower Dungeon at target count: shows Leave Dungeon.", 0.88, 0.91, 0.96, true)
+                    GameTooltip:AddLine("3. In a party or raid with a Mage (outside active M+): shows Ask for Table (5-min cooldown, Right-Click to silence).", 0.88, 0.91, 0.96, true)
+                    GameTooltip:Show()
+                end
+            end)
+            rMageFood:HookScript("OnLeave", function()
+                if GameTooltip then GameTooltip:Hide() end
+            end)
             local pillsMageFood = CreateSegmentedPills(
                 rMageFood, 156,
                 {
@@ -9788,7 +9969,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             rMageFood.tuneBtn = tuneMageFood
             table.insert(self.refreshWidgets, tuneMageFood)
 
-            local dMageScope = CreateInlineSubDrawer(cQoL, "Role Scope (Solo Restock Prompt)")
+            local dMageScope = CreateInlineSubDrawer(cQoL, "Role Scope (Restock & Mage Table Prompts)")
             local pMageScope = CreateSegmentedPills(
                 dMageScope, 240,
                 {

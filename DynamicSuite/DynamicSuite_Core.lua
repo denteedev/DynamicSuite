@@ -5275,8 +5275,8 @@ local BUILTIN_SEARCH_SEED = {
       keywords = "automated drink macro dynamicdrink water mana food recuperate nocombat well fed healer" },
     { moduleKey = "prep", category = "BAGS_QOL", tabIndex = 3, tabLabel = "World & Survival QoL",
       title = "Healer Mage Food Restock (Follower Dungeon)",
-      desc = "Prompts solo players to queue a Follower Dungeon when low on Conjured Mana Buns, and prompts to leave once restocked.",
-      keywords = "healer mage food restock conjured mana bun follower dungeon queue leave toast" },
+      desc = "Prompts solo players to queue a Follower Dungeon when low on Conjured Mana Buns, prompts to leave once restocked, and offers a 1-click Ask for Table toast in groups with a Mage.",
+      keywords = "healer mage food restock conjured mana bun follower dungeon queue leave ask for table mage table toast" },
 
     -- ========================================================================
     -- DYNAMICTALENT ("talent") - Talent Loadouts, Raid/M+/PvP/Zone Binds & Group Order
