@@ -2266,6 +2266,66 @@ function DynamicTalent:SetAllRaidDefault(entry, diffs, silent)
     return true
 end
 
+function DynamicTalent:ClearRaidBinds(isAllRaid, bossNames, diffs)
+    if not self.db then self:InitDB() end
+    local specID = self:GetActiveSpecID()
+    if not specID then return 0 end
+    local bMap = self.db.talentBossMap and self.db.talentBossMap[specID]
+    if type(bMap) ~= "table" then return 0 end
+    local d = type(diffs) == "table" and diffs or { normal = true, heroic = true, mythic = true }
+    local useN = (d.normal == true)
+    local useH = (d.heroic == true)
+    local useM = (d.mythic == true)
+    if not (useN or useH or useM) then
+        useN, useH, useM = true, true, true
+    end
+    local targetSet = {}
+    if not isAllRaid then
+        if type(bossNames) == "string" then
+            targetSet[bossNames:lower()] = true
+        elseif type(bossNames) == "table" then
+            for _, bn in ipairs(bossNames) do
+                if type(bn) == "string" and bn ~= "" then
+                    targetSet[bn:lower()] = true
+                end
+            end
+        end
+    end
+    local removed = 0
+    for k, v in pairs(bMap) do
+        if type(v) == "table" then
+            local matches = false
+            if isAllRaid then
+                matches = (v.isAllRaid == true)
+            else
+                local bn = tostring(v.bossName or ""):lower()
+                matches = (v.isAllRaid ~= true) and (targetSet[bn] == true)
+            end
+            if matches then
+                if type(v.difficulties) == "table" then
+                    local changed = false
+                    if useN and v.difficulties.normal then v.difficulties.normal = false; changed = true end
+                    if useH and v.difficulties.heroic then v.difficulties.heroic = false; changed = true end
+                    if useM and v.difficulties.mythic then v.difficulties.mythic = false; changed = true end
+                    if changed then
+                        removed = removed + 1
+                        if not (v.difficulties.normal or v.difficulties.heroic or v.difficulties.mythic) then
+                            bMap[k] = nil
+                        end
+                    end
+                else
+                    bMap[k] = nil
+                    removed = removed + 1
+                end
+            end
+        end
+    end
+    if removed > 0 then
+        self:SyncTalentBindsUI(true)
+    end
+    return removed
+end
+
 function DynamicTalent:SetAllMPlusDefault(entry, keyTier, silent)
     if not self.db then self:InitDB() end
     local specID = self:GetActiveSpecID()
@@ -7436,14 +7496,28 @@ local function PopulateTalentManagerCore(host, isModal)
     end)
 
     local allRaidBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
-    allRaidBtn:SetSize(58, 56)
-    allRaidBtn:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 0, -30)
+    allRaidBtn:SetSize(74, 24)
+    allRaidBtn:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 0, 0)
     allRaidBtn.txt = CreateText(allRaidBtn, "OVERLAY", "GameFontHighlightSmall")
     allRaidBtn.txt:SetPoint("CENTER")
-    allRaidBtn.txt:SetWidth(52)
+    allRaidBtn.txt:SetWidth(68)
     allRaidBtn.txt:SetJustifyH("CENTER")
-    allRaidBtn.txt:SetText("All\nRaids")
+    allRaidBtn.txt:SetText("All Raids")
     raidGrp.allRaidBtn = allRaidBtn
+
+    local allRaidBanner = CreateFrame("Frame", nil, raidGrp, "BackdropTemplate")
+    allRaidBanner:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 0, -30)
+    allRaidBanner:SetPoint("TOPRIGHT", raidGrp, "TOPRIGHT", 0, -30)
+    allRaidBanner:SetHeight(56)
+    SetPixelBackdrop(allRaidBanner, { 0.08, 0.11, 0.16, 0.92 }, { 0.24, 0.30, 0.40, 0.85 }, 1)
+    allRaidBanner.txt = CreateText(allRaidBanner, "OVERLAY", "GameFontHighlightSmall")
+    allRaidBanner.txt:SetPoint("LEFT", allRaidBanner, "LEFT", 12, 0)
+    allRaidBanner.txt:SetPoint("RIGHT", allRaidBanner, "RIGHT", -12, 0)
+    allRaidBanner.txt:SetJustifyH("LEFT")
+    allRaidBanner.txt:SetTextColor(0.84, 0.88, 0.94)
+    allRaidBanner.txt:SetText("Raid-wide fallback across all Season 2 raids for the selected difficulties. Specific boss binds always take priority over All Raids.")
+    allRaidBanner:Hide()
+    raidGrp.allRaidBanner = allRaidBanner
 
     local customChip = CreateFrame("Frame", nil, raidGrp, "BackdropTemplate")
     customChip:SetHeight(20)
@@ -7465,9 +7539,9 @@ local function PopulateTalentManagerCore(host, isModal)
     raidGrp.customChip = customChip
 
     local diffDefs = {
-        { key = "normal", label = "LFR / Normal", w = 96, x = 0,   r = 0.063, g = 0.725, b = 0.506 },
-        { key = "heroic", label = "Heroic",       w = 72, x = 102, r = 0.220, g = 0.741, b = 0.973 },
-        { key = "mythic", label = "Mythic",       w = 72, x = 180, r = 0.957, g = 0.247, b = 0.369 },
+        { key = "normal", label = "LFR / Normal", w = 88, x = 0,   r = 0.063, g = 0.725, b = 0.506 },
+        { key = "heroic", label = "Heroic",       w = 64, x = 92,  r = 0.220, g = 0.741, b = 0.973 },
+        { key = "mythic", label = "Mythic",       w = 64, x = 160, r = 0.957, g = 0.247, b = 0.369 },
     }
     local diffBtns = {}
     local function StyleDiffBtns()
@@ -7501,9 +7575,62 @@ local function PopulateTalentManagerCore(host, isModal)
     end
     StyleDiffBtns()
 
+    local raidClearBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
+    raidClearBtn:SetSize(70, 26)
+    raidClearBtn:SetPoint("TOPRIGHT", raidGrp, "TOPRIGHT", 0, -114)
+    SetPixelBackdrop(raidClearBtn, { 0.14, 0.08, 0.10, 0.96 }, { 0.45, 0.22, 0.28, 0.85 }, 1)
+    raidClearBtn.txt = CreateText(raidClearBtn, "OVERLAY", "GameFontHighlightSmall")
+    raidClearBtn.txt:SetPoint("CENTER")
+    raidClearBtn.txt:SetTextColor(0.96, 0.72, 0.76)
+    raidClearBtn.txt:SetText("Clear")
+    raidClearBtn:SetScript("OnEnter", function(s)
+        SetPixelBackdrop(s, { 0.28, 0.08, 0.12, 0.98 }, { 0.957, 0.247, 0.369, 0.95 }, 1)
+    end)
+    raidClearBtn:SetScript("OnLeave", function(s)
+        SetPixelBackdrop(s, { 0.14, 0.08, 0.10, 0.96 }, { 0.45, 0.22, 0.28, 0.85 }, 1)
+    end)
+    raidClearBtn:SetScript("OnClick", function()
+        local st = self._bindUIState
+        if not st then return end
+        local ds = st.diffSel or { normal = true, heroic = true, mythic = true }
+        if st.selAllRaidBosses then
+            local removed = self:ClearRaidBinds(true, nil, ds)
+            if removed > 0 then
+                Print("Cleared |cFFFBBF24All Raids|r binds for the selected difficulties.")
+            else
+                Print("No |cFFFBBF24All Raids|r binds found for the selected difficulties.")
+            end
+        else
+            local raids = self:GetSeason2Raids()
+            local rObj = raids and raids[st.selRaidIdx]
+            local bosses = (rObj and rObj.bosses) or {}
+            local bossNames = {}
+            if st.customTargetBoss and st.customTargetBoss ~= "" then
+                table.insert(bossNames, st.customTargetBoss)
+            else
+                for bIdx, isSel in pairs(st.selBossSet or {}) do
+                    if isSel and bosses[bIdx] then
+                        table.insert(bossNames, bosses[bIdx].name)
+                    end
+                end
+            end
+            if #bossNames == 0 then
+                Print("Select All Raids or at least one boss to clear.")
+                return
+            end
+            local removed = self:ClearRaidBinds(false, bossNames, ds)
+            if removed > 0 then
+                Print(string.format("Cleared raid binds for %d selected boss(es).", #bossNames))
+            else
+                Print("No raid binds found for the selected boss(es) and difficulties.")
+            end
+        end
+    end)
+    raidGrp.raidClearBtn = raidClearBtn
+
     local raidBindBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
-    raidBindBtn:SetSize(124, 26)
-    raidBindBtn:SetPoint("TOPRIGHT", raidGrp, "TOPRIGHT", 0, -114)
+    raidBindBtn:SetSize(116, 26)
+    raidBindBtn:SetPoint("RIGHT", raidClearBtn, "LEFT", -6, 0)
     SetPixelBackdrop(raidBindBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
     raidBindBtn.txt = CreateText(raidBindBtn, "OVERLAY", "GameFontHighlightSmall")
     raidBindBtn.txt:SetPoint("CENTER")
@@ -8101,7 +8228,9 @@ local function PopulateTalentManagerCore(host, isModal)
 
         local rawW = raidGrp:GetWidth()
         local innerW = math.max(380, math.floor(((rawW and rawW > 100) and rawW or self._rightInnerW or 498) + 0.5))
-        local raidBarW = innerW - 82
+        local allRaidW = 74
+        local raidBarStart = allRaidW + 4
+        local raidBarW = innerW - raidBarStart - 80
         local numRaids = math.max(1, #raids)
         local rPillW = math.floor((raidBarW - ((numRaids - 1) * 4)) / numRaids)
         if st.selRaidIdx > #raids then st.selRaidIdx = 1 end
@@ -8124,7 +8253,7 @@ local function PopulateTalentManagerCore(host, isModal)
                 or (rObj.short and bInfo.raidsWithBinds[tostring(rObj.short):lower()] == true)
             rp:SetWidth(rPillW)
             rp:ClearAllPoints()
-            rp:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", (rIdx - 1) * (rPillW + 4), 0)
+            rp:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", raidBarStart + ((rIdx - 1) * (rPillW + 4)), 0)
             rp.txt:SetText(tostring(rObj.short or rObj.name))
             rp.txt:SetTextColor((isOn or hasBound) and 1 or 0.78, (isOn or hasBound) and 1 or 0.84, (isOn or hasBound) and 1 or 0.92, 1)
             self:StyleBoundTile(rp, isOn, hasBound, r, g, b)
@@ -8132,8 +8261,6 @@ local function PopulateTalentManagerCore(host, isModal)
                 st.selRaidIdx = rIdx
                 st.selAllRaidBosses = false
                 st.customTargetBoss = nil
-            wipe(st.selBossSet)
-            st.selBossIdx = nil
                 wipe(st.selBossSet)
                 st.selBossIdx = nil
                 self:RefreshRaidGrid()
@@ -8187,10 +8314,17 @@ local function PopulateTalentManagerCore(host, isModal)
         local rObj = raids[st.selRaidIdx]
         local bosses = (rObj and rObj.bosses) or {}
         local bCount = math.min(8, #bosses)
-        if bCount > 0 then
-            local bossAreaW = innerW - 64
-            local cols = (bCount == 1 and 1) or math.min(4, bCount)
-            local cellW = (bCount == 1) and math.min(280, math.floor(bossAreaW * 0.5)) or math.floor((bossAreaW - ((cols - 1) * 4)) / cols)
+        if st.selAllRaidBosses then
+            if raidGrp.allRaidBanner then raidGrp.allRaidBanner:Show() end
+            for i = 1, 8 do
+                if raidGrp.bossGridBtns[i] then raidGrp.bossGridBtns[i]:Hide() end
+            end
+        else
+            if raidGrp.allRaidBanner then raidGrp.allRaidBanner:Hide() end
+            if bCount > 0 then
+                local bossAreaW = innerW
+                local cols = (bCount == 1 and 1) or math.min(4, bCount)
+                local cellW = (bCount == 1) and bossAreaW or math.floor((bossAreaW - ((cols - 1) * 4)) / cols)
             for bIdx = 1, bCount do
                 local bObj = bosses[bIdx]
                 local bp = raidGrp.bossGridBtns[bIdx]
@@ -8211,7 +8345,7 @@ local function PopulateTalentManagerCore(host, isModal)
                 local isBound = (boundRec ~= nil)
                 bp:SetWidth(cellW)
                 bp:ClearAllPoints()
-                bp:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 64 + (colIdx * (cellW + 4)), -30 - (rowIdx * 30))
+                bp:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", colIdx * (cellW + 4), -30 - (rowIdx * 30))
                 if bCount == 1 then
                     bp.txt:SetText(string.format("%d. %s", bObj.order or bIdx, tostring(bObj.name)))
                 else
@@ -8222,8 +8356,6 @@ local function PopulateTalentManagerCore(host, isModal)
                 bp:SetScript("OnClick", function()
                     st.selAllRaidBosses = false
                     st.customTargetBoss = nil
-            wipe(st.selBossSet)
-            st.selBossIdx = nil
                     st.selBossIdx = bIdx
                     st.selBossSet[bIdx] = (not st.selBossSet[bIdx]) and true or nil
                     self:RefreshRaidGrid()
@@ -8248,6 +8380,7 @@ local function PopulateTalentManagerCore(host, isModal)
                 end)
                 bp:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
                 bp:Show()
+            end
             end
         end
 
@@ -11219,6 +11352,7 @@ DynamicTalent.CHANGELOG = {
         version = VERSION,
         date = "22/11/2026",
         entries = {
+            { type = "UI",    text = "[Unreleased] Raid Bosses Binder Redesign (22/11/2026): Promoted All Raids to Row 1 alongside the Season 2 raid pills with an Obsidian Core explanation banner; expanded the boss grid to use the full card width underneath; added a red-hover Clear button beside + Bind Raid (backed by ClearRaidBinds) to remove All Raids or selected boss binds for the toggled difficulties; and fixed multi-select/unselect in bp:OnClick." },
             { type = "FIXED", text = "[Unreleased] Raid Boss Selection & Boss-Specific Build Priority Over All Raids (22/11/2026): Removed forced Boss #1 pre-highlighting in Raid Boss Talent Binds (and cleared pending tile selections when switching loadouts or after binding) so bosses can be freely selected and unselected; added automatic single-boss raid matching (Kith'ix, Tidebound Grotto); cleared sticky boss memory when targeting an unbound Season 2 raid boss; and protected active boss-specific raid builds from being overridden by All Raids when no unbound boss is targeted." },
             { type = "UI",    text = "[Unreleased] Right-Click Toast Silences Mismatch (22/11/2026): Right-Clicking DynamicTalentReminderToast or its Swap button now silences that specific mismatch key (mKey) for the session, refreshes DynamicPrep's Top Info Bar capsule immediately, updates the toast subtext to 'Right-Click to silence', and clears silenced mismatches on specialisation change or reload." },
             { type = "FIXED", text = "[Unreleased] Sticky Raid Boss Preservation Across Swaps, Real Library Entry Resolution, Focus/Boss1-5 Scanning & Full-Tier /dt why (22/11/2026): Updated SyncTalentBindsUI(clearStickyBoss) so talent swaps (ApplyTalentLibraryEntry / TRAIT_CONFIG_UPDATED) never wipe the sticky raid boss cache while bind edits/deletes still clear it cleanly; resolved transient Prep Bar / Alert Toast rule payloads back to their real saved library entry in ApplyTalentLibraryEntry() so liveHash and lastAppliedTalentID persist onto the actual loadout; added focus and boss1..boss5 scanning to ResolveBoundBossFromSources(); and upgraded /dt why to report winning rules across all 3 tiers plus live unit names (target, softenemy, focus, boss1) and sticky boss state." },

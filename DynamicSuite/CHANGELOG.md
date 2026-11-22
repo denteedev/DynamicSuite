@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Raid Bosses Binder Redesign (`DynamicTalent`, 22/11/2026)
+- **Row 1 `All Raids` & Full-Width Boss Grid (`DynamicTalent`):** Promoted **All Raids** to Row 1 alongside the Season 2 raid pills with an Obsidian Core explanation banner, and expanded the boss grid to use the full card width underneath.
+- **Quick `Clear` Button & Multi-Select Fix (`DynamicTalent`):** Added a red-hover **Clear** button beside **+ Bind Raid** (backed by `ClearRaidBinds()`) to remove `All Raids` or selected boss binds for the toggled difficulties, and fixed `bp:OnClick` so multi-selecting and unselecting bosses works cleanly.
+
 ### Raid Boss Selection & Boss-Specific Build Priority Over `All Raids` (`DynamicTalent`, 22/11/2026)
 - **No Forced Boss #1 Pre-Highlight (`DynamicTalent`):** Removed forced Boss #1 auto-selection in **Raid Boss Talent Binds** (and cleared pending tile selections when switching loadouts or after binding) so bosses can be freely selected and unselected.
 - **Boss-Specific Build Priority Over `All Raids` (`DynamicTalent`):** Added automatic single-boss raid matching (`The Unbinding of Kith'ix`, `The Tidebound Grotto`), cleared sticky boss memory when targeting an unbound Season 2 raid boss, and protected active boss-specific raid builds from being overridden by `All Raids` when no unbound boss is targeted.
