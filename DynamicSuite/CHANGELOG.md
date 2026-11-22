@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### Multi-Source Raid Boss Detection for Healers & Action Targeting (`DynamicTalent`, 22/11/2026)
+- **Multi-Source Boss Detection (`DynamicTalent`):** Expanded Tier 1 raid boss matching in `GetActiveTalentMismatch()` to resolve bound bosses cleanly out of combat in priority order: hard target (`target`), Action Target (`softenemy`), cursor hover (`mouseover`), visible enemy nameplates (`C_NamePlate.GetNamePlates()`), and raid/party members' targets (`raid1target..raid40target` / `party1target..party4target`) inside raid instances. Reuses the Season 2 boss catalogue, Encounter Journal council-member aliases, and difficulty matching, ignores defeated bosses (`UnitIsDeadOrGhost`), and guards all unit and nameplate reads with `pcall` and Midnight 12.1.5 secret-value checks.
+- **Event Wiring & Anti-Spam Deduplication (`DynamicTalent`):** Safely registered `PLAYER_SOFT_ENEMY_CHANGED`, `NAME_PLATE_UNIT_ADDED`, `UPDATE_MOUSEOVER_UNIT`, and `START_PLAYER_COUNTDOWN` alongside existing target and ready-check triggers, short-circuiting passive scans when the active specialisation has no specific raid boss binds. Added per-boss alert deduplication so passive hovers, soft-targets, and nameplates do not spam repeat toasts after a reminder fades or is dismissed, while still re-alerting on a different boss, after a talent/spec/zone change, or on explicit Ready Check and Pull Timer cues (unless silenced for the session).
+- **Action Targeting Fallback on `"Target"` Button (`DynamicTalent`):** Updated the **Target** button in the Talent Loadouts Manager (`Raid Bosses` tab) to fall back to your Action Target (`softenemy`) when no hard target is selected.
+
 ---
 
 ## DynamicSuite & All 12 Modules v2.8.0 (22/11/2026)

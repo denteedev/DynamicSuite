@@ -667,6 +667,7 @@ end
 local talentReminderToast = nil
 local talentPopoverFrame = nil
 local silencedTalentMismatches = {}
+local lastAlertedBossMismatchKey = nil
 local talentMgrModal = nil
 local groupDragGhost = nil
 
@@ -816,6 +817,167 @@ local function IsEntryAlreadyActive(selfObj, specID, ruleOrName, targetStr, live
     return false
 end
 
+local function HasSpecificBossBinds(bossMap)
+    if type(bossMap) ~= "table" then return false end
+    for _, entry in pairs(bossMap) do
+        if type(entry) == "table" and entry.isAllRaid ~= true then
+            return true
+        end
+    end
+    return false
+end
+
+local function HasActiveSpecSpecificBossBinds(selfObj)
+    if not selfObj or not selfObj.db or selfObj.db.enabled == false or selfObj.db.talentReminderEnabled == false then
+        return false
+    end
+    if IsModuleDisabledInSuite("DynamicTalent") then return false end
+    local specID = selfObj:GetActiveSpecID()
+    if not specID then return false end
+    local bossMap = selfObj.db.talentBossMap and selfObj.db.talentBossMap[specID]
+    return HasSpecificBossBinds(bossMap)
+end
+
+local function ResolveLiveUnitName(unit, skipFriendlyAndPlayers)
+    if type(unit) ~= "string" or unit == "" then return nil end
+    if type(UnitExists) ~= "function" or type(UnitName) ~= "function" then return nil end
+    local okE, ex = pcall(UnitExists, unit)
+    if not okE or _IsSecret(ex) or not ex then return nil end
+    if type(UnitIsDeadOrGhost) == "function" then
+        local okD, dead = pcall(UnitIsDeadOrGhost, unit)
+        if not okD or _IsSecret(dead) or dead then return nil end
+    end
+    if skipFriendlyAndPlayers then
+        if type(UnitIsPlayer) == "function" then
+            local okP, isPl = pcall(UnitIsPlayer, unit)
+            if okP and not _IsSecret(isPl) and isPl then return nil end
+        end
+        if type(UnitIsFriend) == "function" then
+            local okF, isFr = pcall(UnitIsFriend, "player", unit)
+            if okF and not _IsSecret(isFr) and isFr then return nil end
+        end
+    end
+    local okN, name = pcall(UnitName, unit)
+    if not okN or type(name) ~= "string" or _IsSecret(name) then return nil end
+    local trimmed = SafeTrim(name)
+    return (trimmed ~= "") and trimmed or nil
+end
+
+local function MatchBoundBossByName(selfObj, bossMap, diffKey, unitName)
+    if type(unitName) ~= "string" or unitName == "" or type(bossMap) ~= "table" then return nil end
+    local lowTarget = SafeTrim(unitName):lower()
+    if lowTarget == "" then return nil end
+    local _, _, _, s2Boss = selfObj:MatchBossTargetName(unitName)
+    local canonicalLow = s2Boss and tostring(s2Boss.name or ""):lower() or nil
+    local matchEntry = nil
+    for bKey, entry in pairs(bossMap) do
+        if type(entry) == "table" and entry.isAllRaid ~= true then
+            local bLow = tostring(entry.bossName or bKey):lower()
+            local matchedName = false
+            if canonicalLow then
+                matchedName = (bLow == canonicalLow)
+            else
+                matchedName = (bLow == lowTarget or lowTarget:find(bLow, 1, true) or bLow:find(lowTarget, 1, true)) and true or false
+            end
+            if matchedName and DoesRuleMatchDifficulty(entry, diffKey) then
+                matchEntry = entry
+                if bLow == lowTarget or (canonicalLow and bLow == canonicalLow) then break end
+            end
+        end
+    end
+    if matchEntry then
+        return matchEntry, (canonicalLow or lowTarget), unitName
+    end
+    return nil
+end
+
+local function ResolveBoundBossFromSources(selfObj, bossMap, diffKey, zc)
+    if IsPlayerInCombat() then return nil end
+    if not HasSpecificBossBinds(bossMap) then return nil end
+
+    local seen = {}
+    local function TryUnit(unit, skipFriendlyAndPlayers)
+        local n = ResolveLiveUnitName(unit, skipFriendlyAndPlayers)
+        if not n then return nil end
+        local low = n:lower()
+        if seen[low] then return nil end
+        seen[low] = true
+        return MatchBoundBossByName(selfObj, bossMap, diffKey, n)
+    end
+
+    -- 1) Player's hard target
+    local mEntry, bKey, rawName = TryUnit("target", false)
+    if mEntry then return mEntry, bKey, rawName, "target" end
+
+    -- 2) Player's Action Target (soft enemy target)
+    mEntry, bKey, rawName = TryUnit("softenemy", false)
+    if mEntry then return mEntry, bKey, rawName, "softenemy" end
+
+    -- 3) Mouseover unit
+    mEntry, bKey, rawName = TryUnit("mouseover", false)
+    if mEntry then return mEntry, bKey, rawName, "mouseover" end
+
+    -- 4) Visible enemy nameplates
+    if C_NamePlate and type(C_NamePlate.GetNamePlates) == "function" then
+        local okP, plates = pcall(C_NamePlate.GetNamePlates)
+        if okP and type(plates) == "table" then
+            for i = 1, #plates do
+                local plate = plates[i]
+                if type(plate) == "table" then
+                    local token = plate.namePlateUnitToken
+                    if (type(token) ~= "string" or token == "") and type(plate.UnitFrame) == "table" then
+                        token = plate.UnitFrame.unit
+                    end
+                    if type(token) == "string" and token ~= "" and not _IsSecret(token) then
+                        mEntry, bKey, rawName = TryUnit(token, true)
+                        if mEntry then return mEntry, bKey, rawName, "nameplate" end
+                    end
+                end
+            end
+        end
+    end
+
+    -- 5) Raid or party members' targets when inside a raid instance
+    if zc and zc.isRaid then
+        local inRaid = false
+        if type(IsInRaid) == "function" then
+            local okR, r = pcall(IsInRaid)
+            if okR and not _IsSecret(r) and r then inRaid = true end
+        end
+        local count = 0
+        if type(GetNumGroupMembers) == "function" then
+            local okG, g = pcall(GetNumGroupMembers)
+            if okG and type(g) == "number" and not _IsSecret(g) and g > 0 then count = g end
+        end
+        if inRaid then
+            local limit = math.min((count > 0) and count or 40, 40)
+            for i = 1, limit do
+                mEntry, bKey, rawName = TryUnit("raid" .. i .. "target", true)
+                if mEntry then return mEntry, bKey, rawName, "raidtarget" end
+            end
+        else
+            local inGroup = false
+            if type(IsInGroup) == "function" then
+                local okGrp, grp = pcall(IsInGroup)
+                if okGrp and not _IsSecret(grp) and grp then inGroup = true end
+            end
+            if inGroup or count > 1 then
+                local limit = math.min((count > 0) and count or 4, 4)
+                for i = 1, limit do
+                    mEntry, bKey, rawName = TryUnit("party" .. i .. "target", true)
+                    if mEntry then return mEntry, bKey, rawName, "partytarget" end
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+function DynamicTalent:ResetBossAlertDedupe()
+    lastAlertedBossMismatchKey = nil
+end
+
 function DynamicTalent:GetActiveTalentMismatch()
     if not self.db or self.db.enabled == false or self.db.talentReminderEnabled == false or IsModuleDisabledInSuite("DynamicTalent") then
         return nil
@@ -849,53 +1011,21 @@ function DynamicTalent:GetActiveTalentMismatch()
     -- PRIORITY 1 (Tier 1): Specific Raid Boss, Specific M+ Dungeon, or Specific PvP Mode
     -- =========================================================================
     local bossMap = self.db.talentBossMap and self.db.talentBossMap[specID]
-    local hasTarget, tName = false, nil
-    if type(UnitExists) == "function" and type(UnitName) == "function" then
-        local okE, ex = pcall(UnitExists, "target")
-        if okE and not _IsSecret(ex) and ex then
-            local okN, n = pcall(UnitName, "target")
-            if okN and type(n) == "string" and not _IsSecret(n) and n ~= "" then
-                hasTarget = true
-                tName = n
+    local matchEntry, bossKey, tName = ResolveBoundBossFromSources(self, bossMap, diffKey, zc)
+    if matchEntry then
+        local mKey = "boss:" .. bossKey .. ":" .. tostring(diffKey or "any")
+        if not silencedTalentMismatches[mKey] then
+            if matchEntry.importString and matchEntry.importString ~= "" then
+                if not IsEntryAlreadyActive(self, specID, matchEntry, matchEntry.importString, liveStr) then
+                    local dispBoss = tostring(matchEntry.bossName or tName)
+                    return { id = matchEntry.loadoutID, name = matchEntry.loadoutName or "Boss Loadout", importString = matchEntry.importString, group = matchEntry.group or "Raid", heroAcronym = matchEntry.heroAcronym },
+                        matchEntry.loadoutName or "Boss Loadout", "Boss: " .. dispBoss .. diffTag, mKey
+                end
+            elseif matchEntry.configID and curID ~= matchEntry.configID then
+                return matchEntry.configID, matchEntry.loadoutName or "Boss Loadout", "Boss: " .. tostring(tName or matchEntry.bossName or "Boss"), mKey
             end
         end
-    end
-    if hasTarget and type(bossMap) == "table" and next(bossMap) ~= nil then
-        local lowTarget = SafeTrim(tName):lower()
-        local _, _, _, s2Boss = self:MatchBossTargetName(tName)
-        local canonicalLow = s2Boss and tostring(s2Boss.name or ""):lower() or nil
-        local matchEntry = nil
-        for bKey, entry in pairs(bossMap) do
-            if type(entry) == "table" and entry.isAllRaid ~= true then
-                local bLow = tostring(entry.bossName or bKey):lower()
-                local matchedName = false
-                if canonicalLow then
-                    matchedName = (bLow == canonicalLow)
-                else
-                    matchedName = (bLow == lowTarget or lowTarget:find(bLow, 1, true) or bLow:find(lowTarget, 1, true)) and true or false
-                end
-                if matchedName and DoesRuleMatchDifficulty(entry, diffKey) then
-                    matchEntry = entry
-                    if bLow == lowTarget or (canonicalLow and bLow == canonicalLow) then break end
-                end
-            end
-        end
-        if matchEntry then
-            local bossKey = canonicalLow or lowTarget
-            local mKey = "boss:" .. bossKey .. ":" .. tostring(diffKey or "any")
-            if not silencedTalentMismatches[mKey] then
-                if matchEntry.importString and matchEntry.importString ~= "" then
-                    if not IsEntryAlreadyActive(self, specID, matchEntry, matchEntry.importString, liveStr) then
-                        local dispBoss = tostring(matchEntry.bossName or tName)
-                        return { id = matchEntry.loadoutID, name = matchEntry.loadoutName or "Boss Loadout", importString = matchEntry.importString, group = matchEntry.group or "Raid", heroAcronym = matchEntry.heroAcronym },
-                            matchEntry.loadoutName or "Boss Loadout", "Boss: " .. dispBoss .. diffTag, mKey
-                    end
-                elseif matchEntry.configID and curID ~= matchEntry.configID then
-                    return matchEntry.configID, matchEntry.loadoutName or "Boss Loadout", "Boss: " .. tName, mKey
-                end
-            end
-            return nil
-        end
+        return nil
     end
 
     local dungMap = self.db.talentDungeonMap and self.db.talentDungeonMap[specID]
@@ -5487,7 +5617,7 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
     end
 end
 
-function DynamicTalent:CheckZoneTalentLoadout()
+function DynamicTalent:CheckZoneTalentLoadout(reason)
     if not self.db or self.db.enabled == false or self.db.talentReminderEnabled == false or IsModuleDisabledInSuite("DynamicTalent") then
         return
     end
@@ -5495,10 +5625,22 @@ function DynamicTalent:CheckZoneTalentLoadout()
     if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
         pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
     end
-    local mID, mName, mLabel = self:GetActiveTalentMismatch()
+    local mID, mName, mLabel, mKey = self:GetActiveTalentMismatch()
+    local isPullCue = (reason == "READY_CHECK" or reason == "START_PLAYER_COUNTDOWN")
+    local isPassiveBossTrigger = (reason == "TARGET" or reason == "SOFT_ENEMY" or reason == "MOUSEOVER" or reason == "NAMEPLATE")
+    local isBossMismatch = (type(mKey) == "string" and mKey:sub(1, 5) == "boss:")
+
     if mID and self.db.talentReminderToastEnabled ~= false then
-        self:ShowTalentReminderToast(mID, mName, mLabel)
-    else
+        if isBossMismatch then
+            if not isPullCue and lastAlertedBossMismatchKey == mKey then
+                return
+            end
+            lastAlertedBossMismatchKey = mKey
+            self:ShowTalentReminderToast(mID, mName, mLabel)
+        elseif not isPassiveBossTrigger then
+            self:ShowTalentReminderToast(mID, mName, mLabel)
+        end
+    elseif not isPassiveBossTrigger then
         self:HideTalentReminderToast()
     end
 end
@@ -5564,8 +5706,8 @@ function DynamicTalent:ImportTalentString(loadoutName, importString, groupName)
     return true, "Saved '" .. cleanName .. "' cleanly.", savedEntry
 end
 
-function DynamicTalent:CheckBossTalentLoadout()
-    self:CheckZoneTalentLoadout()
+function DynamicTalent:CheckBossTalentLoadout(reason)
+    self:CheckZoneTalentLoadout(reason or "TARGET")
 end
 
 -- ============================================================================
@@ -6904,7 +7046,7 @@ local function PopulateTalentManagerCore(host, isModal)
         if GameTooltip then
             GameTooltip:SetOwner(s, "ANCHOR_TOP")
             GameTooltip:AddLine("Match Current Target", 1, 1, 1)
-            GameTooltip:AddLine("|cFFE2E8F0Reads your current target safely, matches Season 2 raids (including council bosses), or sets a dismissible custom target.|r", 1, 1, 1, true)
+            GameTooltip:AddLine("|cFFE2E8F0Reads your current target (or Action Target) safely, matches Season 2 raids (including council bosses), or sets a dismissible custom target.|r", 1, 1, 1, true)
             GameTooltip:Show()
         end
     end)
@@ -7972,14 +8114,20 @@ local function PopulateTalentManagerCore(host, isModal)
 
     tgtBtn:SetScript("OnClick", function()
         local st = f.state
-        local okEx, hasTgt = pcall(function() return UnitExists and UnitExists("target") end)
-        local okNm, tn = false, nil
-        if okEx and hasTgt and UnitName then
-            okNm, tn = pcall(UnitName, "target")
+        local tn = nil
+        local function ReadUnitNameSafe(unit)
+            if type(UnitExists) ~= "function" or type(UnitName) ~= "function" then return nil end
+            local okEx, hasUnit = pcall(UnitExists, unit)
+            if not okEx or _IsSecret(hasUnit) or not hasUnit then return nil end
+            local okNm, nm = pcall(UnitName, unit)
+            if not okNm or type(nm) ~= "string" or _IsSecret(nm) then return nil end
+            local trimmed = SafeTrim(nm)
+            return (trimmed ~= "") and trimmed or nil
         end
-        if not (okEx and hasTgt and okNm and type(tn) == "string" and not _IsSecret(tn) and tn ~= "") then
-            Print("Select an NPC or boss target first before clicking Target.")
-            raidTip:SetText("|cFFFBBF24No valid target selected -- target a raid boss or NPC, then click Target.|r")
+        tn = ReadUnitNameSafe("target") or ReadUnitNameSafe("softenemy")
+        if not tn then
+            Print("Select or face an NPC or boss target first before clicking Target.")
+            raidTip:SetText("|cFFFBBF24No valid target selected -- target or face a raid boss or NPC, then click Target.|r")
             return
         end
         if #st.ejRaids == 0 then st.ejRaids = GetCurrentTierRaids() end
@@ -10807,7 +10955,11 @@ SafeRegisterEvent(evt, "PLAYER_REGEN_ENABLED")
 SafeRegisterEvent(evt, "PLAYER_SPECIALIZATION_CHANGED")
 SafeRegisterEvent(evt, "PLAYER_LOOT_SPEC_UPDATED")
 SafeRegisterEvent(evt, "READY_CHECK")
+SafeRegisterEvent(evt, "START_PLAYER_COUNTDOWN")
 SafeRegisterEvent(evt, "PLAYER_TARGET_CHANGED")
+SafeRegisterEvent(evt, "PLAYER_SOFT_ENEMY_CHANGED")
+SafeRegisterEvent(evt, "NAME_PLATE_UNIT_ADDED")
+SafeRegisterEvent(evt, "UPDATE_MOUSEOVER_UNIT")
 SafeRegisterEvent(evt, "PLAYER_UPDATE_RESTING")
 SafeRegisterEvent(evt, "TRAIT_CONFIG_UPDATED")
 
@@ -10842,6 +10994,7 @@ evt:SetScript("OnEvent", function(_, event, arg1)
             end
         end
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
+        lastAlertedBossMismatchKey = nil
         local function RefreshZoneContextUI()
             DynamicTalent:CheckZoneTalentLoadout()
             DynamicTalent:RefreshTalentDock()
@@ -10867,6 +11020,7 @@ evt:SetScript("OnEvent", function(_, event, arg1)
         end
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         if not arg1 or arg1 == "player" then
+            lastAlertedBossMismatchKey = nil
             DynamicTalent._heroTreeCache = nil
             DynamicTalent:RefreshTalentDock()
             DynamicTalent:EnsureHeroMedallionHooks()
@@ -10884,16 +11038,28 @@ evt:SetScript("OnEvent", function(_, event, arg1)
         end
     elseif event == "PLAYER_LOOT_SPEC_UPDATED" then
         DynamicTalent:RefreshTalentDock()
-    elseif event == "READY_CHECK" then
-        DynamicTalent:CheckBossTalentLoadout()
-        DynamicTalent:CheckZoneTalentLoadout("READY_CHECK")
+    elseif event == "READY_CHECK" or event == "START_PLAYER_COUNTDOWN" then
+        DynamicTalent:CheckZoneTalentLoadout(event)
     elseif event == "PLAYER_TARGET_CHANGED" then
-        DynamicTalent:CheckBossTalentLoadout()
+        DynamicTalent:CheckBossTalentLoadout("TARGET")
+    elseif event == "PLAYER_SOFT_ENEMY_CHANGED" then
+        if not IsPlayerInCombat() and HasActiveSpecSpecificBossBinds(DynamicTalent) then
+            DynamicTalent:CheckBossTalentLoadout("SOFT_ENEMY")
+        end
+    elseif event == "NAME_PLATE_UNIT_ADDED" then
+        if not IsPlayerInCombat() and HasActiveSpecSpecificBossBinds(DynamicTalent) then
+            DynamicTalent:CheckBossTalentLoadout("NAMEPLATE")
+        end
+    elseif event == "UPDATE_MOUSEOVER_UNIT" then
+        if not IsPlayerInCombat() and HasActiveSpecSpecificBossBinds(DynamicTalent) then
+            DynamicTalent:CheckBossTalentLoadout("MOUSEOVER")
+        end
     elseif event == "PLAYER_UPDATE_RESTING" then
         if not IsPlayerInCombat() then
             DynamicTalent:CheckZoneTalentLoadout()
         end
     elseif event == "TRAIT_CONFIG_UPDATED" then
+        lastAlertedBossMismatchKey = nil
         DynamicTalent._heroTreeCache = nil
         if DynamicTalent._pendingSaveConfigID and C_ClassTalents and type(C_ClassTalents.SaveConfig) == "function" then
             local saveID = DynamicTalent._pendingSaveConfigID
