@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Raid Boss Selection & Boss-Specific Build Priority Over `All Raids` (`DynamicTalent`, 22/11/2026)
+- **No Forced Boss #1 Pre-Highlight (`DynamicTalent`):** Removed forced Boss #1 auto-selection in **Raid Boss Talent Binds** (and cleared pending tile selections when switching loadouts or after binding) so bosses can be freely selected and unselected.
+- **Boss-Specific Build Priority Over `All Raids` (`DynamicTalent`):** Added automatic single-boss raid matching (`The Unbinding of Kith'ix`, `The Tidebound Grotto`), cleared sticky boss memory when targeting an unbound Season 2 raid boss, and protected active boss-specific raid builds from being overridden by `All Raids` when no unbound boss is targeted.
+
 ### Right-Click Talent Toast Silence & Low Durability Alert Toast (`DynamicTalent`, `DynamicPrep`, 22/11/2026)
 - **Right-Click Toast Silence (`DynamicTalent`):** Right-Clicking `DynamicTalentReminderToast` or its **Swap** button now silences that specific mismatch (`mKey`) for the session, refreshes `DynamicPrep`'s Top Info Bar capsule immediately, updates the toast subtext to `Right-Click to silence`, and clears silenced mismatches on specialisation change or reload.
 - **Low Durability Shared Alert Toast (`DynamicPrep`):** Added `DynamicPrepDurabilityToast` (default `20%` lowest-slot threshold, `10%`-`40%` slider + **Test Toast** in Tab 3) with 1-click **Repair Mount** summoning outdoors (Grand Expedition Yak, Grizzly Hills Packmaster, Traveler's Tundra Mammoth) or **Open Gear** indoors, Right-Click silence until durability drops another `10%` or is repaired, and automatic suppression in combat and active Mythic+ keystones.

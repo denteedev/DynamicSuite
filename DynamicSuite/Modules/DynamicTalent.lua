@@ -985,6 +985,107 @@ local function ResolveBoundBossFromSources(selfObj, bossMap, diffKey, zc)
     return nil
 end
 
+local function FindLiveSeason2BossName(selfObj, zc)
+    if IsPlayerInCombat() or not (zc and zc.isRaid) then return nil end
+    local function CheckUnit(unit, skipPlayers)
+        local n = ResolveLiveUnitName(unit, skipPlayers)
+        if not n then return nil end
+        local _, _, _, s2Boss = selfObj:MatchBossTargetName(n)
+        if s2Boss and s2Boss.name then
+            return s2Boss.name
+        end
+        return nil
+    end
+
+    for _, u in ipairs({ "target", "softenemy", "mouseover", "focus", "boss1", "boss2", "boss3", "boss4", "boss5" }) do
+        local bn = CheckUnit(u, false)
+        if bn then return bn, u end
+    end
+
+    if C_NamePlate and type(C_NamePlate.GetNamePlates) == "function" then
+        local okP, plates = pcall(C_NamePlate.GetNamePlates)
+        if okP and type(plates) == "table" then
+            for i = 1, #plates do
+                local plate = plates[i]
+                if type(plate) == "table" then
+                    local token = plate.namePlateUnitToken
+                    if (type(token) ~= "string" or token == "") and type(plate.UnitFrame) == "table" then
+                        token = plate.UnitFrame.unit
+                    end
+                    if type(token) == "string" and token ~= "" and not _IsSecret(token) then
+                        local bn = CheckUnit(token, true)
+                        if bn then return bn, "nameplate" end
+                    end
+                end
+            end
+        end
+    end
+
+    local inRaid = false
+    if type(IsInRaid) == "function" then
+        local okR, r = pcall(IsInRaid)
+        if okR and not _IsSecret(r) and r then inRaid = true end
+    end
+    local count = 0
+    if type(GetNumGroupMembers) == "function" then
+        local okG, g = pcall(GetNumGroupMembers)
+        if okG and type(g) == "number" and not _IsSecret(g) and g > 0 then count = g end
+    end
+    if inRaid then
+        local limit = math.min((count > 0) and count or 40, 40)
+        for i = 1, limit do
+            local bn = CheckUnit("raid" .. i .. "target", true)
+            if bn then return bn, "raidtarget" end
+        end
+    elseif count > 1 then
+        local limit = math.min(count, 4)
+        for i = 1, limit do
+            local bn = CheckUnit("party" .. i .. "target", true)
+            if bn then return bn, "partytarget" end
+        end
+    end
+    return nil
+end
+
+local function IsActiveBuildBoundToCurrentRaid(selfObj, specID, bossMap, instName, diffKey)
+    if type(bossMap) ~= "table" then return false end
+    local activeLib = selfObj:GetActiveTalentLibraryEntry(specID)
+    if not activeLib then return false end
+
+    local lowInst = type(instName) == "string" and instName:lower() or ""
+    local raidBossSet = nil
+    if lowInst ~= "" then
+        for _, rObj in ipairs(selfObj:GetSeason2Raids()) do
+            local rLow = tostring(rObj.name or ""):lower()
+            local sLow = tostring(rObj.short or ""):lower()
+            if lowInst == rLow or (sLow ~= "" and lowInst:find(sLow, 1, true)) then
+                raidBossSet = {}
+                for _, bObj in ipairs(rObj.bosses or {}) do
+                    raidBossSet[tostring(bObj.name or ""):lower()] = true
+                end
+                break
+            end
+        end
+    end
+
+    for _, entry in pairs(bossMap) do
+        if type(entry) == "table" and entry.isAllRaid ~= true
+           and DoesRuleMatchEntry(entry, activeLib)
+           and DoesRuleMatchDifficulty(entry, diffKey) then
+            local eRaidLow = tostring(entry.raidName or ""):lower()
+            local eShortLow = tostring(entry.raidShort or ""):lower()
+            local eBossLow = tostring(entry.bossName or ""):lower()
+            if lowInst == ""
+               or (eRaidLow ~= "" and (lowInst == eRaidLow or lowInst:find(eRaidLow, 1, true)))
+               or (eShortLow ~= "" and lowInst:find(eShortLow, 1, true))
+               or (raidBossSet and raidBossSet[eBossLow] == true) then
+                return true, activeLib
+            end
+        end
+    end
+    return false
+end
+
 local function SafeGetSubZoneText()
     if type(GetSubZoneText) ~= "function" then return "" end
     local ok, sz = pcall(GetSubZoneText)
@@ -1037,6 +1138,26 @@ function DynamicTalent:GetActiveTalentMismatch()
     local bossMap = self.db.talentBossMap and self.db.talentBossMap[specID]
     local subZone = isRaid and SafeGetSubZoneText() or ""
     local matchEntry, bossKey, tName, matchSource = ResolveBoundBossFromSources(self, bossMap, diffKey, zc)
+    local unboundBossName = nil
+    if not matchEntry and isRaid and type(bossMap) == "table" then
+        unboundBossName = FindLiveSeason2BossName(self, zc)
+        if unboundBossName then
+            stickyRaidBoss = nil
+        elseif instName ~= "" then
+            local lowInst = instName:lower()
+            for _, rObj in ipairs(self:GetSeason2Raids()) do
+                local rLow = tostring(rObj.name or ""):lower()
+                local sLow = tostring(rObj.short or ""):lower()
+                if (lowInst == rLow or (sLow ~= "" and lowInst:find(sLow, 1, true))) and rObj.bosses and #rObj.bosses == 1 then
+                    local mE, bK, rN = MatchBoundBossByName(self, bossMap, diffKey, rObj.bosses[1].name)
+                    if mE then
+                        matchEntry, bossKey, tName, matchSource = mE, bK, rN, "single-boss raid"
+                    end
+                    break
+                end
+            end
+        end
+    end
     if matchEntry then
         if isRaid then
             stickyRaidBoss = {
@@ -1050,7 +1171,7 @@ function DynamicTalent:GetActiveTalentMismatch()
                 source   = matchSource,
             }
         end
-    elseif isRaid and stickyRaidBoss then
+    elseif isRaid and stickyRaidBoss and not unboundBossName then
         local validSticky = (stickyRaidBoss.specID == specID)
             and (stickyRaidBoss.instName == instName)
             and (stickyRaidBoss.subZone == subZone)
@@ -1196,6 +1317,15 @@ function DynamicTalent:GetActiveTalentMismatch()
     -- PRIORITY 2 (Tier 2): Content-Wide & Zone Defaults (Never Overrides T1)
     -- =========================================================================
     if isRaid and type(bossMap) == "table" then
+        if not unboundBossName then
+            local isBossBuild, activeLib = IsActiveBuildBoundToCurrentRaid(self, specID, bossMap, instName, diffKey)
+            if isBossBuild and activeLib then
+                self._lastDiag.source = "Boss Raid Build Active"
+                self._lastDiag.ruleDesc = "Keeping " .. tostring(activeLib.name) .. " (bound in this raid) over All Raids"
+                self._lastDiag.status = "Already active"
+                return nil
+            end
+        end
         local allRaidBest, bestScore = nil, 99
         for _, entry in pairs(bossMap) do
             if type(entry) == "table" and entry.isAllRaid == true and DoesRuleMatchDifficulty(entry, diffKey) then
@@ -7580,6 +7710,12 @@ local function PopulateTalentManagerCore(host, isModal)
 
     function f:SelectLoadout(entry, keepFocusQuiet)
         local st = self.state
+        wipe(st.selBossSet)
+        st.selAllRaidBosses = false
+        st.customTargetBoss = nil
+        st.selBossIdx = nil
+        wipe(st.selDungeonSet)
+        st.selAllDungeons = false
         self:LoadEditorEntry(entry, keepFocusQuiet)
         local validEntry = self:GetSelectedLoadout()
         if type(validEntry) == "table" then
@@ -7996,9 +8132,10 @@ local function PopulateTalentManagerCore(host, isModal)
                 st.selRaidIdx = rIdx
                 st.selAllRaidBosses = false
                 st.customTargetBoss = nil
+            wipe(st.selBossSet)
+            st.selBossIdx = nil
                 wipe(st.selBossSet)
-                st.selBossIdx = 1
-                st.selBossSet[1] = true
+                st.selBossIdx = nil
                 self:RefreshRaidGrid()
             end)
             rp:SetScript("OnEnter", function(s)
@@ -8021,9 +8158,9 @@ local function PopulateTalentManagerCore(host, isModal)
             st.selAllRaidBosses = not st.selAllRaidBosses
             if st.selAllRaidBosses then
                 st.customTargetBoss = nil
+            wipe(st.selBossSet)
+            st.selBossIdx = nil
                 wipe(st.selBossSet)
-            elseif not next(st.selBossSet) then
-                st.selBossSet[1] = true
             end
             self:RefreshRaidGrid()
         end)
@@ -8051,9 +8188,6 @@ local function PopulateTalentManagerCore(host, isModal)
         local bosses = (rObj and rObj.bosses) or {}
         local bCount = math.min(8, #bosses)
         if bCount > 0 then
-            if not st.selAllRaidBosses and (not st.customTargetBoss or st.customTargetBoss == "") and not next(st.selBossSet) then
-                st.selBossSet[math.min(st.selBossIdx or 1, bCount)] = true
-            end
             local bossAreaW = innerW - 64
             local cols = (bCount == 1 and 1) or math.min(4, bCount)
             local cellW = (bCount == 1) and math.min(280, math.floor(bossAreaW * 0.5)) or math.floor((bossAreaW - ((cols - 1) * 4)) / cols)
@@ -8088,6 +8222,8 @@ local function PopulateTalentManagerCore(host, isModal)
                 bp:SetScript("OnClick", function()
                     st.selAllRaidBosses = false
                     st.customTargetBoss = nil
+            wipe(st.selBossSet)
+            st.selBossIdx = nil
                     st.selBossIdx = bIdx
                     st.selBossSet[bIdx] = (not st.selBossSet[bIdx]) and true or nil
                     self:RefreshRaidGrid()
@@ -8119,9 +8255,8 @@ local function PopulateTalentManagerCore(host, isModal)
             raidGrp.customChip.txt:SetText("|cFFFBBF24Custom Target:|r |cFFFFFFFF" .. tostring(st.customTargetBoss) .. "|r  |cFF94A3B8(click + Bind Raid to bind, or x to dismiss)|r")
             raidGrp.customChip.clearBtn:SetScript("OnClick", function()
                 st.customTargetBoss = nil
-                if not st.selAllRaidBosses and not next(st.selBossSet) then
-                    st.selBossSet[1] = true
-                end
+            wipe(st.selBossSet)
+            st.selBossIdx = nil
                 raidGrp.raidTip:SetText("|cFF64748BPick a raid and toggle bosses (or All Raids), choose difficulties, and click + Bind Raid to assign the top loadout.|r")
                 self:RefreshRaidGrid()
             end)
@@ -8562,6 +8697,8 @@ local function PopulateTalentManagerCore(host, isModal)
                 table.insert(boundNames, ((tInfo.order and ("#" .. tInfo.order .. " ") or "") .. bName .. " [" .. DynamicTalent:FormatDifficultySummary(dTbl) .. "]"))
             end
             st.customTargetBoss = nil
+            wipe(st.selBossSet)
+            st.selBossIdx = nil
             if #boundNames == 1 then
                 Print(string.format("Bound boss |cFFFBBF24%s|r -> %s |cFFFFFFFF%s|r.", boundNames[1], DynamicTalent:FormatTalentBadge(sel), sel.name))
             else
@@ -11082,6 +11219,7 @@ DynamicTalent.CHANGELOG = {
         version = VERSION,
         date = "22/11/2026",
         entries = {
+            { type = "FIXED", text = "[Unreleased] Raid Boss Selection & Boss-Specific Build Priority Over All Raids (22/11/2026): Removed forced Boss #1 pre-highlighting in Raid Boss Talent Binds (and cleared pending tile selections when switching loadouts or after binding) so bosses can be freely selected and unselected; added automatic single-boss raid matching (Kith'ix, Tidebound Grotto); cleared sticky boss memory when targeting an unbound Season 2 raid boss; and protected active boss-specific raid builds from being overridden by All Raids when no unbound boss is targeted." },
             { type = "UI",    text = "[Unreleased] Right-Click Toast Silences Mismatch (22/11/2026): Right-Clicking DynamicTalentReminderToast or its Swap button now silences that specific mismatch key (mKey) for the session, refreshes DynamicPrep's Top Info Bar capsule immediately, updates the toast subtext to 'Right-Click to silence', and clears silenced mismatches on specialisation change or reload." },
             { type = "FIXED", text = "[Unreleased] Sticky Raid Boss Preservation Across Swaps, Real Library Entry Resolution, Focus/Boss1-5 Scanning & Full-Tier /dt why (22/11/2026): Updated SyncTalentBindsUI(clearStickyBoss) so talent swaps (ApplyTalentLibraryEntry / TRAIT_CONFIG_UPDATED) never wipe the sticky raid boss cache while bind edits/deletes still clear it cleanly; resolved transient Prep Bar / Alert Toast rule payloads back to their real saved library entry in ApplyTalentLibraryEntry() so liveHash and lastAppliedTalentID persist onto the actual loadout; added focus and boss1..boss5 scanning to ResolveBoundBossFromSources(); and upgraded /dt why to report winning rules across all 3 tiers plus live unit names (target, softenemy, focus, boss1) and sticky boss state." },
             { type = "UI",    text = "[Unreleased] Prep Bar Capsule, Tooltip & Quick-Switcher Popover Bind-Badge Parity (22/11/2026): Added right-aligned amber-gold bind tags ((Various), (All M+), (#8 Ula'tek)) via GetLoadoutBindBadgeText() and dynamic text anchoring to DynamicTalentPopover (widened to 276px) with hover highlights and full Talent Dock tooltips (Hero Tree + Bound lines); added bind tags and FormatTalentBadge() prefixes to GetTalentLoadoutBarData() and PopulatePrepBarTooltip() (including Hero Tree and Bound/Unbound lines); and reset DynamicPrep capsule widths on bind changes in SyncTalentBindsUI()." },
