@@ -7514,6 +7514,7 @@ local function PopulateTalentManagerCore(host, isModal)
     allRaidBanner.txt:SetPoint("LEFT", allRaidBanner, "LEFT", 12, 0)
     allRaidBanner.txt:SetPoint("RIGHT", allRaidBanner, "RIGHT", -12, 0)
     allRaidBanner.txt:SetJustifyH("LEFT")
+    allRaidBanner.txt:SetWordWrap(true)
     allRaidBanner.txt:SetTextColor(0.84, 0.88, 0.94)
     allRaidBanner.txt:SetText("Raid-wide fallback across all Season 2 raids for the selected difficulties. Specific boss binds always take priority over All Raids.")
     allRaidBanner:Hide()
@@ -7578,38 +7579,50 @@ local function PopulateTalentManagerCore(host, isModal)
     local raidClearBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
     raidClearBtn:SetSize(70, 26)
     raidClearBtn:SetPoint("TOPRIGHT", raidGrp, "TOPRIGHT", 0, -114)
-    SetPixelBackdrop(raidClearBtn, { 0.14, 0.08, 0.10, 0.96 }, { 0.45, 0.22, 0.28, 0.85 }, 1)
+    SetPixelBackdrop(raidClearBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
     raidClearBtn.txt = CreateText(raidClearBtn, "OVERLAY", "GameFontHighlightSmall")
     raidClearBtn.txt:SetPoint("CENTER")
-    raidClearBtn.txt:SetTextColor(0.96, 0.72, 0.76)
     raidClearBtn.txt:SetText("Clear")
     raidClearBtn:SetScript("OnEnter", function(s)
         SetPixelBackdrop(s, { 0.28, 0.08, 0.12, 0.98 }, { 0.957, 0.247, 0.369, 0.95 }, 1)
+        if GameTooltip then
+            GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            GameTooltip:AddLine("Clear Raid Binds", 1, 1, 1)
+            GameTooltip:AddLine("|cFFE2E8F0Removes active All Raids or selected boss binds for the toggled difficulties.|r", 1, 1, 1, true)
+            GameTooltip:Show()
+        end
     end)
     raidClearBtn:SetScript("OnLeave", function(s)
-        SetPixelBackdrop(s, { 0.14, 0.08, 0.10, 0.96 }, { 0.45, 0.22, 0.28, 0.85 }, 1)
+        SetPixelBackdrop(s, COLORS.BgElevated, COLORS.BorderSubtle, 1)
+        if GameTooltip then GameTooltip:Hide() end
     end)
     raidClearBtn:SetScript("OnClick", function()
-        local st = self._bindUIState
+        local st = f.state
         if not st then return end
-        local ds = st.diffSel or { normal = true, heroic = true, mythic = true }
+        local ds = {
+            normal = st.diffState.normal and true or false,
+            heroic = st.diffState.heroic and true or false,
+            mythic = st.diffState.mythic and true or false,
+        }
+        if not (ds.normal or ds.heroic or ds.mythic) then
+            ds.normal, ds.heroic, ds.mythic = true, true, true
+        end
         if st.selAllRaidBosses then
-            local removed = self:ClearRaidBinds(true, nil, ds)
+            local removed = DynamicTalent:ClearRaidBinds(true, nil, ds)
             if removed > 0 then
                 Print("Cleared |cFFFBBF24All Raids|r binds for the selected difficulties.")
             else
                 Print("No |cFFFBBF24All Raids|r binds found for the selected difficulties.")
             end
         else
-            local raids = self:GetSeason2Raids()
-            local rObj = raids and raids[st.selRaidIdx]
+            local rObj = st.ejRaids and st.ejRaids[st.selRaidIdx]
             local bosses = (rObj and rObj.bosses) or {}
             local bossNames = {}
             if st.customTargetBoss and st.customTargetBoss ~= "" then
                 table.insert(bossNames, st.customTargetBoss)
             else
-                for bIdx, isSel in pairs(st.selBossSet or {}) do
-                    if isSel and bosses[bIdx] then
+                for bIdx = 1, #bosses do
+                    if st.selBossSet[bIdx] and bosses[bIdx] then
                         table.insert(bossNames, bosses[bIdx].name)
                     end
                 end
@@ -7618,8 +7631,12 @@ local function PopulateTalentManagerCore(host, isModal)
                 Print("Select All Raids or at least one boss to clear.")
                 return
             end
-            local removed = self:ClearRaidBinds(false, bossNames, ds)
+            local removed = DynamicTalent:ClearRaidBinds(false, bossNames, ds)
             if removed > 0 then
+                wipe(st.selBossSet)
+                st.selBossIdx = nil
+                st.customTargetBoss = nil
+                f:RefreshRaidGrid()
                 Print(string.format("Cleared raid binds for %d selected boss(es).", #bossNames))
             else
                 Print("No raid binds found for the selected boss(es) and difficulties.")
@@ -7642,7 +7659,7 @@ local function PopulateTalentManagerCore(host, isModal)
     raidTip:SetHeight(28)
     raidTip:SetJustifyH("LEFT")
     raidTip:SetWordWrap(true)
-    raidTip:SetText("|cFF64748BPick a raid and toggle bosses (or All Raids), choose difficulties, and click + Bind Raid to assign the top loadout.|r")
+    raidTip:SetText("|cFF64748BSelect All Raids or toggle bosses, choose difficulties, then click + Bind Raid (or Clear). Specific boss binds override All Raids.|r")
     raidGrp.raidTip = raidTip
 
     -- 2) M+ MODE CONTROLS
@@ -8285,9 +8302,8 @@ local function PopulateTalentManagerCore(host, isModal)
             st.selAllRaidBosses = not st.selAllRaidBosses
             if st.selAllRaidBosses then
                 st.customTargetBoss = nil
-            wipe(st.selBossSet)
-            st.selBossIdx = nil
                 wipe(st.selBossSet)
+                st.selBossIdx = nil
             end
             self:RefreshRaidGrid()
         end)
