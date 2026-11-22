@@ -487,6 +487,9 @@ local function ApplyPrepThemeToUI()
     if DynamicPrep.ApplyTalentReminderToastVisuals then
         DynamicPrep:ApplyTalentReminderToastVisuals()
     end
+    if DynamicPrep.ApplyMageFoodToastVisuals then
+        DynamicPrep:ApplyMageFoodToastVisuals()
+    end
     if DynamicPrep.workspaceFrame and DynamicPrep.workspaceFrame:IsShown() then
         DynamicPrep:RefreshWorkspaceView()
     end
@@ -658,6 +661,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "21/11/2026",
     entries = {
+        { type = "FEATURE", text = "[Unreleased] Healer Mage Food Restock Toasts & Role-Smart [DynamicDrink] Macro (22/11/2026): Added a decoupled Follower Dungeon Conjured Mana Bun restock/leave Shared Alert Toast workflow (independent of Clickable Raid Buffs scope, with Healer Only / Any Mana Spec scope, 5-60 alert threshold, 20-80 auto-leave target, 1-click Queue Follower / Leave Dungeon buttons, and Right-Click session silence) alongside a separate [nocombat]-guarded [DynamicDrink] macro with dynamic level 1-90 bag scanning, Role-Smart / Mana First / Health & Recup / Off priority, Recuperate fallback, and strict Well Fed buff-food exclusion." },
         { type = "REFACTOR", text = "[Unreleased] Extracted Talent Loadouts & Talent Binds to DynamicTalent (/dt) (21/11/2026): Moved the unlimited per-spec Talent Loadouts library, PlayerSpellsFrame dock, 880x580 Talent Loadouts Manager, and Shared Alert Toast reminders into the dedicated DynamicTalent module while keeping the Top Info Bar 'Talents' capsule hooked cleanly to DynamicTalent and preserving backward-compatible forwarding stubs." },
         { type = "FEATURE", text = "Opt-In Auto-Confirm Free Dungeon & Raid Prompts (21/11/2026): Added an off-by-default 'Auto-Confirm Free Dungeon & Raid Prompts' toggle in Tab 3 under World & Survival Automation to automatically confirm free (0 copper) single-option NPC prompts inside Dungeons, Raids, and Delves (hold Shift to pause), while keeping paid, open-world, hearthstone, and exit/teleport prompts manual." },
         { type = "FEATURE", text = "Release v2.7.1 - Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Binds, LFR/Normal Merge, 'Talent Binds' Rename & 4px Scrollbars (21/11/2026): Standardised Left-Click (Switch Active Specialisation out of combat) and Right-Click (Loot Specialisation) across both the Top Info Bar and Left-Hand Talent Loadouts Dock with 1:1 plain Australian English tooltips; upgraded Tab 2's Pre-Keystone M+ Binder with an 'All' toggle pill alongside multi-select dungeon tiles (saving a single 'All M+ Dungeons' rule when All is selected, or batch-binding specific dungeons which take priority over All M+); merged LFR (difficulty 17) and Normal (difficulty 14) into one 'LFR / Normal' difficulty pill; renamed 'Boss Binds' to 'Talent Binds' across the dock, menus, settings, and headings; and added a 4px interactive 3-way Obsidian scrollbar to Talent Loadouts Manager dropdowns." },
@@ -763,6 +767,13 @@ local DEFAULTS = {
     autoReleaseMode = "WIPE_AND_CTRL", -- "WIPE_AND_CTRL", "HOLD_CTRL", "PVP_AUTO_WIPE_PVE", "ALWAYS", "OFF"
     healMacroOrder = "STONE_FIRST", -- "STONE_FIRST", "POT_FIRST", "BOTH", "OFF"
     autoHealMacroEnabled = true,
+    mageFoodRestockEnabled = true,
+    mageFoodRestockScope = "HEALER_ONLY", -- "HEALER_ONLY" or "ANY_MANA"
+    mageFoodMinThreshold = 20, -- 5 to 60 step 5
+    mageFoodLeaveTarget = 20, -- 20 to 80 step 20
+    drinkMacroMode = "ROLE_SMART", -- "ROLE_SMART", "MANA_FIRST", "HEALTH_RECUP", "OFF"
+    drinkMacroAllowBuffFood = false,
+    drinkMacroRecupFallback = true,
     blizzWinNoAutoClose = true,
     blizzWinDraggable = true,
     blizzWinScrollScale = true,
@@ -825,6 +836,24 @@ function DynamicPrep:InitDB()
     if type(self.db.windowPositions) ~= "table" then self.db.windowPositions = {} end
     if type(self.db.windowScales) ~= "table" then self.db.windowScales = {} end
     self.db.windowPinned = nil
+
+    -- Normalize Mage Food Restock & [DynamicDrink] settings
+    if self.db.mageFoodRestockEnabled == nil then self.db.mageFoodRestockEnabled = true end
+    if self.db.mageFoodRestockScope ~= "HEALER_ONLY" and self.db.mageFoodRestockScope ~= "ANY_MANA" then
+        self.db.mageFoodRestockScope = "HEALER_ONLY"
+    end
+    local minT = tonumber(self.db.mageFoodMinThreshold) or 20
+    minT = math.max(5, math.min(60, math.floor((minT / 5) + 0.5) * 5))
+    self.db.mageFoodMinThreshold = minT
+    local leaveT = tonumber(self.db.mageFoodLeaveTarget) or 20
+    leaveT = math.max(20, math.min(80, math.floor((leaveT / 20) + 0.5) * 20))
+    self.db.mageFoodLeaveTarget = leaveT
+    if self.db.drinkMacroMode ~= "ROLE_SMART" and self.db.drinkMacroMode ~= "MANA_FIRST"
+       and self.db.drinkMacroMode ~= "HEALTH_RECUP" and self.db.drinkMacroMode ~= "OFF" then
+        self.db.drinkMacroMode = "ROLE_SMART"
+    end
+    self.db.drinkMacroAllowBuffFood = (self.db.drinkMacroAllowBuffFood == true)
+    if self.db.drinkMacroRecupFallback == nil then self.db.drinkMacroRecupFallback = true end
 
     -- Ensure raidBuffs.trackRunes defaults to true for upgraded profiles
     if self.db.raidBuffs then
@@ -5721,6 +5750,1010 @@ function DynamicPrep:GetHealMacroActionBarStatus()
 end
 
 -- ============================================================================
+-- Role-Smart [DynamicDrink] Recovery Macro & Decoupled Mage Food Restock Engine
+-- ============================================================================
+do (function()
+local CONJURED_MAGE_FOOD_IDS = {
+    [113509] = true, -- Conjured Mana Bun
+    [80618]  = true, -- Conjured Mana Fritter
+    [80610]  = true, -- Conjured Mana Pudding
+    [65517]  = true, -- Conjured Mana Lollipop
+    [65516]  = true, -- Conjured Mana Cupcake
+    [65515]  = true, -- Conjured Mana Brownie
+    [65500]  = true, -- Conjured Mana Cookie
+    [65499]  = true, -- Conjured Mana Cake
+    [43523]  = true, -- Conjured Mana Strudel
+    [43518]  = true, -- Conjured Mana Pie
+    [34062]  = true, -- Conjured Mana Biscuit
+}
+local RECUPERATE_SPELL_ID = 1231411
+
+local lastRecoveryScan = nil
+local mageFoodToastFrame = nil
+local mageFoodRestockSilenced = false
+local mageFoodLeaveAlertedThisRun = false
+local mageFoodCheckPending = false
+local mageFoodPreviewToggle = false
+
+local function SafeExtractTooltipLowerText(tipData)
+    if type(tipData) ~= "table" or type(tipData.lines) ~= "table" then return "" end
+    local parts = {}
+    for _, line in ipairs(tipData.lines) do
+        if type(line) == "table" then
+            if type(line.leftText) == "string" and not IsSecretValue(line.leftText) and line.leftText ~= "" then
+                parts[#parts + 1] = line.leftText:lower()
+            end
+            if type(line.rightText) == "string" and not IsSecretValue(line.rightText) and line.rightText ~= "" then
+                parts[#parts + 1] = line.rightText:lower()
+            end
+        end
+    end
+    return table.concat(parts, " ")
+end
+
+local function IsPlayerInPvPInstance()
+    if type(GetInstanceInfo) == "function" then
+        local ok, _, instType = pcall(GetInstanceInfo)
+        if ok and type(instType) == "string" and not IsSecretValue(instType) then
+            if instType == "arena" or instType == "pvp" then
+                return true
+            end
+        end
+    end
+    if type(IsInInstance) == "function" then
+        local okI, inInst, instType = pcall(IsInInstance)
+        if okI and not IsSecretValue(inInst) and inInst and type(instType) == "string" and not IsSecretValue(instType) then
+            if instType == "arena" or instType == "pvp" then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function IsConjuredMageFood(itemID, lowerName, tipText)
+    if CONJURED_MAGE_FOOD_IDS[itemID] then return true end
+    if type(lowerName) == "string" and lowerName:find("conjured mana", 1, true) then
+        return true
+    end
+    if type(tipText) == "string" and tipText:find("conjured item", 1, true) and tipText:find("mana", 1, true) then
+        return true
+    end
+    return false
+end
+
+local function IsBuffFoodItem(itemID, lowerName, tipText, spellLowerName)
+    if itemID == 255847 or (itemID >= 255800 and itemID <= 256000) or (itemID >= 222700 and itemID <= 222760) then
+        return true
+    end
+    if type(lowerName) == "string" then
+        if lowerName:find("^hearty") or lowerName:find("hearty ", 1, true)
+           or lowerName:find("feast", 1, true) or lowerName:find("banquet", 1, true) then
+            return true
+        end
+    end
+    if type(spellLowerName) == "string" then
+        if spellLowerName:find("well fed", 1, true) or spellLowerName:find("hearty", 1, true) or spellLowerName:find("feast", 1, true) then
+            return true
+        end
+    end
+    if type(tipText) == "string" and tipText ~= "" then
+        if tipText:find("well fed", 1, true)
+           or tipText:find("spend at least", 1, true)
+           or tipText:find("persists through death", 1, true) then
+            return true
+        end
+        local hasStatWord = tipText:find("haste", 1, true) or tipText:find("mastery", 1, true)
+            or tipText:find("critical strike", 1, true) or tipText:find("versatility", 1, true)
+            or tipText:find("stamina", 1, true) or tipText:find("intellect", 1, true)
+            or tipText:find("agility", 1, true) or tipText:find("strength", 1, true)
+            or tipText:find("primary stat", 1, true) or tipText:find("secondary stat", 1, true)
+        if hasStatWord and (tipText:find("gain", 1, true) or tipText:find("increases", 1, true) or tipText:find("for 1 hour", 1, true)) then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsPvPOnlyFoodOrDrink(lowerName, tipText)
+    if type(tipText) == "string" and tipText ~= "" then
+        if tipText:find("only usable in arena", 1, true)
+           or tipText:find("only usable in battleground", 1, true)
+           or tipText:find("usable only in arena", 1, true)
+           or tipText:find("usable only in battleground", 1, true)
+           or tipText:find("arenas and battlegrounds", 1, true)
+           or tipText:find("battlegrounds and arenas", 1, true) then
+            return true
+        end
+        if tipText:find("requires", 1, true) and (tipText:find("arena", 1, true) or tipText:find("battleground", 1, true)) then
+            return true
+        end
+    end
+    if type(lowerName) == "string" and (lowerName:find("gladiator", 1, true) or lowerName:find("brawler", 1, true)) then
+        return true
+    end
+    return false
+end
+
+local function PickBetterRecoveryItem(cur, cand, inPvP)
+    if not cur then return cand end
+    if inPvP and cand.isPvPOnly ~= cur.isPvPOnly then
+        return cand.isPvPOnly and cand or cur
+    end
+    if (cand.minLevel or 0) ~= (cur.minLevel or 0) then
+        return (cand.minLevel or 0) > (cur.minLevel or 0) and cand or cur
+    end
+    if (cand.itemLevel or 0) ~= (cur.itemLevel or 0) then
+        return (cand.itemLevel or 0) > (cur.itemLevel or 0) and cand or cur
+    end
+    if (cand.count or 0) ~= (cur.count or 0) then
+        return (cand.count or 0) > (cur.count or 0) and cand or cur
+    end
+    return (cand.itemID or 0) > (cur.itemID or 0) and cand or cur
+end
+
+function DynamicPrep:ScanRecoveryConsumables()
+    if InCombatLockdown and InCombatLockdown() and lastRecoveryScan then
+        return lastRecoveryScan
+    end
+
+    local inPvP = IsPlayerInPvPInstance()
+    local playerLevel = 80
+    if type(UnitLevel) == "function" then
+        local okL, lvl = pcall(UnitLevel, "player")
+        if okL and type(lvl) == "number" and not IsSecretValue(lvl) and lvl > 0 then
+            playerLevel = lvl
+        end
+    end
+
+    local byID = {}
+    if C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemInfo then
+        for bag = 0, 4 do
+            local okS, slots = pcall(C_Container.GetContainerNumSlots, bag)
+            slots = (okS and type(slots) == "number" and not IsSecretValue(slots)) and slots or 0
+            for slot = 1, slots do
+                local okI, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+                if okI and type(info) == "table" and info.itemID and not IsSecretValue(info.itemID) then
+                    local itemID = info.itemID
+                    local stackCount = (type(info.stackCount) == "number" and not IsSecretValue(info.stackCount)) and info.stackCount or 1
+                    local rec = byID[itemID]
+                    if rec then
+                        rec.count = rec.count + stackCount
+                    else
+                        local classID, subClassID
+                        if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+                            local okInst, _, _, _, _, _, cID, scID = pcall(C_Item.GetItemInfoInstant, itemID)
+                            if okInst then
+                                classID, subClassID = cID, scID
+                            end
+                        end
+                        if (classID == 0 and subClassID == 5) or CONJURED_MAGE_FOOD_IDS[itemID] then
+                            byID[itemID] = {
+                                itemID = itemID,
+                                bag = bag,
+                                slot = slot,
+                                count = stackCount,
+                                hyperlink = (type(info.hyperlink) == "string" and not IsSecretValue(info.hyperlink)) and info.hyperlink or nil,
+                            }
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    local mageFoodCount = 0
+    local manaDrinkCount = 0
+    local vendorFoodCount = 0
+    local buffFoodCount = 0
+    local bestMageFood, bestManaDrink, bestVendorFood, bestBuffFood = nil, nil, nil, nil
+
+    for itemID, rec in pairs(byID) do
+        local itemName = rec.hyperlink and rec.hyperlink:match("%[(.-)%]")
+        local minLevel, itemLevel = 0, 1
+        if C_Item and type(C_Item.GetItemInfo) == "function" then
+            local okInfo, iName, _, _, iLvl, iMinLvl = pcall(C_Item.GetItemInfo, itemID)
+            if okInfo then
+                if (not itemName or itemName == "") and type(iName) == "string" and not IsSecretValue(iName) then
+                    itemName = iName
+                end
+                if type(iLvl) == "number" and not IsSecretValue(iLvl) then itemLevel = iLvl end
+                if type(iMinLvl) == "number" and not IsSecretValue(iMinLvl) then minLevel = iMinLvl end
+            end
+        end
+        if (not itemName or itemName == "") and C_Item and type(C_Item.GetItemNameByID) == "function" then
+            local okN, n = pcall(C_Item.GetItemNameByID, itemID)
+            if okN and type(n) == "string" and not IsSecretValue(n) then itemName = n end
+        end
+        itemName = itemName or ("Item " .. tostring(itemID))
+        local lowerName = itemName:lower()
+
+        if minLevel <= playerLevel then
+            local tipText = ""
+            if C_TooltipInfo and type(C_TooltipInfo.GetBagItem) == "function" then
+                local okT, tData = pcall(C_TooltipInfo.GetBagItem, rec.bag, rec.slot)
+                if okT and tData then
+                    tipText = SafeExtractTooltipLowerText(tData)
+                end
+            elseif C_TooltipInfo and type(C_TooltipInfo.GetItemByID) == "function" then
+                local okT, tData = pcall(C_TooltipInfo.GetItemByID, itemID)
+                if okT and tData then
+                    tipText = SafeExtractTooltipLowerText(tData)
+                end
+            end
+
+            local spellLowerName = ""
+            local spellTipText = ""
+            if C_Item and type(C_Item.GetItemSpell) == "function" then
+                local okSp, sName, sID = pcall(C_Item.GetItemSpell, itemID)
+                if okSp then
+                    if type(sName) == "string" and not IsSecretValue(sName) then
+                        spellLowerName = sName:lower()
+                    end
+                    if sID and not IsSecretValue(sID) and C_TooltipInfo and type(C_TooltipInfo.GetSpellByID) == "function" then
+                        local okST, sData = pcall(C_TooltipInfo.GetSpellByID, sID)
+                        if okST and sData then
+                            spellTipText = SafeExtractTooltipLowerText(sData)
+                        end
+                    end
+                end
+            end
+
+            local combinedTip = tipText .. " " .. spellTipText
+            local isPvPOnly = IsPvPOnlyFoodOrDrink(lowerName, combinedTip)
+            if not isPvPOnly or inPvP then
+                rec.name = itemName
+                rec.minLevel = minLevel
+                rec.itemLevel = itemLevel
+                rec.isPvPOnly = isPvPOnly
+
+                if IsConjuredMageFood(itemID, lowerName, combinedTip) then
+                    mageFoodCount = mageFoodCount + rec.count
+                    bestMageFood = PickBetterRecoveryItem(bestMageFood, rec, inPvP)
+                elseif IsBuffFoodItem(itemID, lowerName, combinedTip, spellLowerName) then
+                    buffFoodCount = buffFoodCount + rec.count
+                    bestBuffFood = PickBetterRecoveryItem(bestBuffFood, rec, inPvP)
+                else
+                    local restoresMana = (combinedTip:find("mana", 1, true) ~= nil)
+                        or (spellLowerName:find("drink", 1, true) ~= nil)
+                        or (lowerName:find("water", 1, true) ~= nil)
+                        or (lowerName:find("tea", 1, true) ~= nil)
+                        or (lowerName:find("juice", 1, true) ~= nil)
+                        or (lowerName:find("milk", 1, true) ~= nil)
+                    if restoresMana then
+                        manaDrinkCount = manaDrinkCount + rec.count
+                        bestManaDrink = PickBetterRecoveryItem(bestManaDrink, rec, inPvP)
+                    else
+                        vendorFoodCount = vendorFoodCount + rec.count
+                        bestVendorFood = PickBetterRecoveryItem(bestVendorFood, rec, inPvP)
+                    end
+                end
+            end
+        end
+    end
+
+    lastRecoveryScan = {
+        mageFoodCount   = mageFoodCount,
+        bestMageFood    = bestMageFood,
+        manaDrinkCount  = manaDrinkCount,
+        bestManaDrink   = bestManaDrink,
+        vendorFoodCount = vendorFoodCount,
+        bestVendorFood  = bestVendorFood,
+        buffFoodCount   = buffFoodCount,
+        bestBuffFood    = bestBuffFood,
+        inPvP           = inPvP,
+    }
+    return lastRecoveryScan
+end
+
+function DynamicPrep:GetConjuredMageFoodCount()
+    if InCombatLockdown and InCombatLockdown() and lastRecoveryScan then
+        return lastRecoveryScan.mageFoodCount or 0
+    end
+    local scan = self:ScanRecoveryConsumables()
+    return (scan and scan.mageFoodCount) or 0
+end
+
+function DynamicPrep:GetPlayerRole()
+    if type(GetSpecialization) ~= "function" or type(GetSpecializationRole) ~= "function" then
+        return "DAMAGER"
+    end
+    local okIdx, idx = pcall(GetSpecialization)
+    if not okIdx or type(idx) ~= "number" or IsSecretValue(idx) or idx <= 0 then
+        return "DAMAGER"
+    end
+    local okRole, role = pcall(GetSpecializationRole, idx)
+    if okRole and type(role) == "string" and not IsSecretValue(role) and role ~= "" then
+        return role
+    end
+    return "DAMAGER"
+end
+
+function DynamicPrep:IsRecuperateKnown()
+    local known = false
+    if SafeIsPlayerSpellKnown(RECUPERATE_SPELL_ID) then
+        known = true
+    elseif type(IsSpellKnown) == "function" then
+        local okK, k = pcall(IsSpellKnown, RECUPERATE_SPELL_ID)
+        if okK and not IsSecretValue(k) and k == true then known = true end
+    elseif type(IsPlayerSpell) == "function" then
+        local okP, p = pcall(IsPlayerSpell, RECUPERATE_SPELL_ID)
+        if okP and not IsSecretValue(p) and p == true then known = true end
+    end
+    local spellName = "Recuperate"
+    if C_Spell and type(C_Spell.GetSpellInfo) == "function" then
+        local okS, info = pcall(C_Spell.GetSpellInfo, RECUPERATE_SPELL_ID)
+        if okS and type(info) == "table" and type(info.name) == "string" and not IsSecretValue(info.name) and info.name ~= "" then
+            spellName = info.name
+        end
+    end
+    return known, spellName
+end
+
+function DynamicPrep:ResolveDrinkMacroTarget(scan)
+    if not self.db then return nil end
+    local mode = self.db.drinkMacroMode or "ROLE_SMART"
+    if mode == "OFF" then return nil end
+
+    scan = scan or self:ScanRecoveryConsumables()
+    local allowBuff = (self.db.drinkMacroAllowBuffFood == true)
+    local recupFallback = (self.db.drinkMacroRecupFallback ~= false)
+    local recupKnown, recupName = self:IsRecuperateKnown()
+    local role = self:GetPlayerRole()
+
+    local function PickItem(rec, kind)
+        if rec and rec.itemID then
+            return { kind = "item", itemID = rec.itemID, name = rec.name, bucket = kind }
+        end
+        return nil
+    end
+    local function PickRecup()
+        if recupFallback and recupKnown then
+            return { kind = "spell", spellName = recupName or "Recuperate", name = recupName or "Recuperate", bucket = "RECUP" }
+        end
+        return nil
+    end
+
+    if mode == "MANA_FIRST" then
+        return PickItem(scan.bestMageFood, "MAGE")
+            or PickItem(scan.bestManaDrink, "DRINK")
+            or (allowBuff and PickItem(scan.bestBuffFood, "BUFF"))
+            or PickRecup()
+    elseif mode == "HEALTH_RECUP" then
+        return PickItem(scan.bestMageFood, "MAGE")
+            or PickRecup()
+            or PickItem(scan.bestVendorFood, "FOOD")
+            or (allowBuff and PickItem(scan.bestBuffFood, "BUFF"))
+    else
+        -- ROLE_SMART
+        if role == "HEALER" then
+            return PickItem(scan.bestMageFood, "MAGE")
+                or PickItem(scan.bestManaDrink, "DRINK")
+                or (allowBuff and PickItem(scan.bestBuffFood, "BUFF"))
+                or PickRecup()
+        else
+            return PickItem(scan.bestMageFood, "MAGE")
+                or PickItem(scan.bestVendorFood, "FOOD")
+                or PickRecup()
+                or (allowBuff and PickItem(scan.bestBuffFood, "BUFF"))
+        end
+    end
+end
+
+function DynamicPrep:UpdateDrinkMacro(pickupToCursor)
+    if InCombatLockdown and InCombatLockdown() then
+        self.pendingDrinkMacroUpdate = true
+        if pickupToCursor then
+            print(string.format("|cFF%sDynamicPrep:|r Cannot create or pick up [DynamicDrink] while in combat. Queued for combat end.", GetAccentHex()))
+        end
+        return
+    end
+    if not self.db then return end
+
+    local mode = self.db.drinkMacroMode or "ROLE_SMART"
+    if pickupToCursor and mode == "OFF" then
+        mode = "ROLE_SMART"
+        self.db.drinkMacroMode = "ROLE_SMART"
+    end
+    if mode == "OFF" then return end
+
+    local scan = self:ScanRecoveryConsumables()
+    local target = self:ResolveDrinkMacroTarget(scan)
+    local body
+    if target and target.kind == "item" and target.itemID then
+        body = string.format("#showtooltip\n/use [nocombat] item:%d", target.itemID)
+    elseif target and target.kind == "spell" and target.spellName then
+        body = string.format("#showtooltip %s\n/cast [nocombat] %s", target.spellName, target.spellName)
+    else
+        body = "#showtooltip\n/use [nocombat] item:113509"
+    end
+
+    if GetMacroIndexByName then
+        local idx = GetMacroIndexByName("DynamicDrink") or 0
+        if idx and idx > 0 then
+            if EditMacro then
+                local _, _, curBody = GetMacroInfo(idx)
+                if curBody ~= body then
+                    pcall(EditMacro, idx, "DynamicDrink", "INV_Misc_QuestionMark", body)
+                end
+            end
+        elseif CreateMacro then
+            local numGlobal = GetNumMacros and select(1, GetNumMacros()) or 0
+            if numGlobal < 120 then
+                pcall(CreateMacro, "DynamicDrink", "INV_Misc_QuestionMark", body, nil)
+            end
+        end
+    end
+
+    if pickupToCursor and PickupMacro then
+        pcall(PickupMacro, "DynamicDrink")
+    end
+end
+
+function DynamicPrep:GetDrinkMacroActionBarStatus()
+    local idx = (GetMacroIndexByName and GetMacroIndexByName("DynamicDrink")) or 0
+    if not idx or idx <= 0 then
+        return "NOT_CREATED", "|cFFF87171[Not Created]|r", "Create & Pickup Macro"
+    end
+    if type(_G.GetActionInfo) == "function" then
+        for slot = 1, 180 do
+            local ok, actionType, id = pcall(_G.GetActionInfo, slot)
+            if ok and actionType == "macro" then
+                if id == idx then
+                    return "ON_BAR", "|cFF34D399[On Action Bar]|r", "Pickup Macro (On Bar)"
+                end
+                if type(_G.GetActionText) == "function" then
+                    local okT, actionName = pcall(_G.GetActionText, slot)
+                    if okT and actionName == "DynamicDrink" then
+                        return "ON_BAR", "|cFF34D399[On Action Bar]|r", "Pickup Macro (On Bar)"
+                    end
+                end
+            end
+        end
+    end
+    return "NOT_ON_BAR", "|cFFFBBF24[Created - Drag to Bar]|r", "Pickup Macro to Cursor"
+end
+
+-- ============================================================================
+-- Decoupled Healer Mage Food Restock & Leave Toasts (DynamicPrepMageFoodToast)
+-- ============================================================================
+function DynamicPrep:MatchesMageFoodScope()
+    if not self.db then return false end
+    local scope = self.db.mageFoodRestockScope or "HEALER_ONLY"
+    local role = self:GetPlayerRole()
+    if scope == "HEALER_ONLY" then
+        return role == "HEALER"
+    end
+    if role == "HEALER" then return true end
+    if type(UnitPowerMax) == "function" then
+        local okM, maxMana = pcall(UnitPowerMax, "player", 0)
+        if okM and type(maxMana) == "number" and not IsSecretValue(maxMana) and maxMana > 0 then
+            return true
+        end
+    end
+    if type(UnitPowerType) == "function" then
+        local okT, pType = pcall(UnitPowerType, "player")
+        if okT and not IsSecretValue(pType) and pType == 0 then
+            return true
+        end
+    end
+    return false
+end
+
+function DynamicPrep:IsInFollowerDungeon()
+    if C_LFGInfo and type(C_LFGInfo.IsInLFGFollowerDungeon) == "function" then
+        local ok, inFol = pcall(C_LFGInfo.IsInLFGFollowerDungeon)
+        if ok and not IsSecretValue(inFol) and inFol == true then
+            return true
+        end
+    end
+    if type(_G.IsInLFGFollowerDungeon) == "function" then
+        local ok, inFol = pcall(_G.IsInLFGFollowerDungeon)
+        if ok and not IsSecretValue(inFol) and inFol == true then
+            return true
+        end
+    end
+    if type(GetInstanceInfo) == "function" then
+        local okI, _, _, diffID = pcall(GetInstanceInfo)
+        if okI and type(diffID) == "number" and not IsSecretValue(diffID) and diffID == 205 then
+            return true
+        end
+    end
+    return false
+end
+
+function DynamicPrep:IsQueuedInLFD()
+    if type(GetLFGMode) == "function" then
+        local cat = _G.LE_LFG_CATEGORY_LFD or 1
+        local ok, mode = pcall(GetLFGMode, cat)
+        if ok and type(mode) == "string" and not IsSecretValue(mode) then
+            if mode == "queued" or mode == "proposal" or mode == "rolecheck" or mode == "suspended" then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function DynamicPrep:FindJoinableFollowerDungeon()
+    local cat = _G.LE_LFG_CATEGORY_LFD or 1
+    local candidates = {}
+    if C_LFGInfo and type(C_LFGInfo.GetAllEntriesForCategory) == "function" then
+        local ok, list = pcall(C_LFGInfo.GetAllEntriesForCategory, cat)
+        if ok and type(list) == "table" then
+            candidates = list
+        end
+    end
+    if #candidates == 0 and type(GetLFDChoiceOrder) == "function" then
+        local ok, list = pcall(GetLFDChoiceOrder)
+        if ok and type(list) == "table" then
+            candidates = list
+        end
+    end
+
+    for _, dID in ipairs(candidates) do
+        if type(dID) == "number" and not IsSecretValue(dID) and dID > 0 then
+            local isFol = false
+            if C_LFGInfo and type(C_LFGInfo.IsLFGFollowerDungeon) == "function" then
+                local okF, f = pcall(C_LFGInfo.IsLFGFollowerDungeon, dID)
+                if okF and not IsSecretValue(f) and f == true then isFol = true end
+            elseif type(_G.IsLFGFollowerDungeon) == "function" then
+                local okF, f = pcall(_G.IsLFGFollowerDungeon, dID)
+                if okF and not IsSecretValue(f) and f == true then isFol = true end
+            end
+            if isFol then
+                local joinable = true
+                if type(IsLFGDungeonJoinable) == "function" then
+                    local okJ, j = pcall(IsLFGDungeonJoinable, dID)
+                    if not okJ or IsSecretValue(j) or not j then
+                        joinable = false
+                    end
+                end
+                if joinable then
+                    local dName = "Follower Dungeon"
+                    if type(GetLFGDungeonInfo) == "function" then
+                        local okN, name = pcall(GetLFGDungeonInfo, dID)
+                        if okN and type(name) == "string" and not IsSecretValue(name) and name ~= "" then
+                            dName = name
+                        end
+                    end
+                    return dID, dName
+                end
+            end
+        end
+    end
+    return nil, nil
+end
+
+function DynamicPrep:QueueFirstFollowerDungeon()
+    if InCombatLockdown and InCombatLockdown() then
+        print(string.format("|cFF%sDynamicPrep:|r Leave combat before queuing for a Follower Dungeon.", GetAccentHex()))
+        return false
+    end
+    local dID, dName = self:FindJoinableFollowerDungeon()
+    if not dID then
+        print(string.format("|cFF%sDynamicPrep:|r No Follower Dungeon is currently available to queue.", GetAccentHex()))
+        return false
+    end
+
+    local cat = _G.LE_LFG_CATEGORY_LFD or 1
+    local role = self:GetPlayerRole()
+    if type(SetLFGRoles) == "function" then
+        pcall(SetLFGRoles, false, role == "TANK", role == "HEALER", role ~= "TANK" and role ~= "HEALER")
+    end
+    if type(ClearAllLFGDungeons) == "function" then
+        pcall(ClearAllLFGDungeons, cat)
+    end
+    if type(SetLFGDungeon) == "function" then
+        pcall(SetLFGDungeon, cat, dID)
+    elseif type(LFDQueueFrame_SetType) == "function" then
+        pcall(LFDQueueFrame_SetType, dID)
+    end
+    if type(JoinLFG) == "function" then
+        pcall(JoinLFG, cat)
+    elseif type(JoinSingleLFG) == "function" then
+        pcall(JoinSingleLFG, cat, dID)
+    end
+
+    self:HideMageFoodToast()
+    print(string.format("|cFF%sDynamicPrep:|r Queued for |cFFFFFFFF%s|r (Follower Dungeon) to restock Conjured Mana Buns.", GetAccentHex(), tostring(dName)))
+    return true
+end
+
+function DynamicPrep:LeaveFollowerDungeon()
+    if InCombatLockdown and InCombatLockdown() then
+        print(string.format("|cFF%sDynamicPrep:|r Leave combat before exiting the Follower Dungeon.", GetAccentHex()))
+        return false
+    end
+    self:HideMageFoodToast()
+    if C_PartyInfo and type(C_PartyInfo.LeaveParty) == "function" then
+        pcall(C_PartyInfo.LeaveParty)
+    elseif type(LeaveParty) == "function" then
+        pcall(LeaveParty)
+    end
+    print(string.format("|cFF%sDynamicPrep:|r Leaving Follower Dungeon.", GetAccentHex()))
+    return true
+end
+
+local function GetMageFoodSharedToastStyle()
+    if _G.DynamicSuite and type(_G.DynamicSuite.GetSharedToastStyle) == "function" then
+        local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle)
+        if ok and type(st) == "table" then return st end
+    end
+    local ar, ag, ab = GetActiveAccentRGB()
+    local g = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global) or {}
+    return {
+        scale       = math.max(0.60, math.min(1.50, tonumber(g.toastScale) or 1.0)),
+        opacity     = math.max(0.20, math.min(1.00, tonumber(g.toastOpacity or g.toastAlpha) or 0.96)),
+        borderStyle = tostring(g.toastBorderStyle or "ACCENT"):upper(),
+        duration    = tonumber(g.toastDuration) or 8,
+        pos         = g.toastPos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 },
+        bgR = 0.035, bgG = 0.039, bgB = 0.051,
+        ar = ar, ag = ag, ab = ab,
+    }
+end
+
+local function StyleMageFoodToastActionBtn(btn, st, isHover)
+    if not btn then return end
+    st = st or GetMageFoodSharedToastStyle()
+    local ar, ag, ab = st.ar, st.ag, st.ab
+    local bgMult = isHover and 0.56 or 0.42
+    local bdrAlpha = isHover and 1.00 or 0.95
+    SetPixelBackdrop(btn, { ar * bgMult, ag * bgMult, ab * bgMult, isHover and 1.00 or 0.98 }, { ar, ag, ab, bdrAlpha }, 1)
+    if btn.txt then btn.txt:SetTextColor(1, 1, 1, 1) end
+end
+
+function DynamicPrep:ApplyMageFoodToastVisuals()
+    local f = mageFoodToastFrame
+    if not f then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    local st = nil
+    if _G.DynamicSuite and type(_G.DynamicSuite.ApplySharedToastLayout) == "function" then
+        local ok, sharedSt = pcall(_G.DynamicSuite.ApplySharedToastLayout, f, { tintIcon = false })
+        if ok and type(sharedSt) == "table" then st = sharedSt end
+    end
+    if not st then
+        st = GetMageFoodSharedToastStyle()
+        local ar, ag, ab = st.ar, st.ag, st.ab
+        local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
+        f:SetFrameStrata("TOOLTIP")
+        f:SetFrameLevel(20)
+        f:SetToplevel(false)
+        f:SetScale(st.scale or 1.0)
+        f:SetBackdropColor(st.bgR or 0.035, st.bgG or 0.039, st.bgB or 0.051, st.opacity or 0.96)
+        if bStyle == "NONE" or bStyle == "BORDERLESS" then
+            f:SetBackdropBorderColor(0, 0, 0, 0)
+        elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+            f:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+        else
+            f:SetBackdropBorderColor(ar, ag, ab, 0.92)
+        end
+        if f.iconBorder then f.iconBorder:SetBackdropBorderColor(ar, ag, ab, 0.85) end
+        if f:IsShown() and _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+            pcall(_G.DynamicSuite.RestackAllToasts)
+        end
+    end
+    if f.actionBtn then
+        StyleMageFoodToastActionBtn(f.actionBtn, st, f.actionBtn.IsMouseOver and f.actionBtn:IsMouseOver())
+    end
+end
+
+function DynamicPrep:HideMageFoodToast()
+    if not mageFoodToastFrame then return end
+    if _G.DynamicSuite and type(_G.DynamicSuite.HideSharedToast) == "function" then
+        pcall(_G.DynamicSuite.HideSharedToast, mageFoodToastFrame)
+    elseif not (InCombatLockdown and InCombatLockdown()) then
+        if mageFoodToastFrame.animGroup then mageFoodToastFrame.animGroup:Stop() end
+        mageFoodToastFrame:Hide()
+        mageFoodToastFrame:SetAlpha(1)
+    end
+end
+
+function DynamicPrep:ResetMageFoodSessionState()
+    mageFoodRestockSilenced = false
+    mageFoodLeaveAlertedThisRun = false
+end
+
+function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
+    if InCombatLockdown and InCombatLockdown() then return end
+    if not mageFoodToastFrame then
+        local f = nil
+        if _G.DynamicSuite and type(_G.DynamicSuite.EnsureSharedToastFrame) == "function" then
+            local ok, sharedFrame = pcall(_G.DynamicSuite.EnsureSharedToastFrame, "DynamicPrepMageFoodToast", {
+                clickButtons = { "LeftButtonUp", "RightButtonUp" },
+                iconMode = "FULL",
+                iconTexture = 134029, -- Conjured Mana Bun icon
+                rightActionWidth = 112,
+                rightActionGap = 10,
+                autoFade = true,
+                onRightClickDismiss = function()
+                    if mageFoodToastFrame and mageFoodToastFrame._stage == "RESTOCK" and not mageFoodToastFrame._isPreview then
+                        mageFoodRestockSilenced = true
+                    end
+                    DynamicPrep:HideMageFoodToast()
+                end,
+            })
+            if ok and sharedFrame then f = sharedFrame end
+        end
+
+        if not f then
+            local stInit = GetMageFoodSharedToastStyle()
+            f = CreateFrame("Button", "DynamicPrepMageFoodToast", UIParent, "BackdropTemplate")
+            f:SetSize(410, 74)
+            f:SetFrameStrata("TOOLTIP")
+            f:SetFrameLevel(20)
+            f:SetToplevel(false)
+            f:SetClampedToScreen(true)
+            f:EnableMouse(true)
+            f:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            f:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                tile = false, tileSize = 0, edgeSize = 1.5,
+                insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            })
+            local iconBorder = CreateFrame("Frame", nil, f, "BackdropTemplate")
+            iconBorder:SetSize(44, 44)
+            iconBorder:SetPoint("LEFT", f, "LEFT", 14, 0)
+            iconBorder:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                tile = false, tileSize = 0, edgeSize = 1,
+                insets = { left = 1, right = 1, top = 1, bottom = 1 },
+            })
+            iconBorder:SetBackdropColor(0.04, 0.05, 0.07, 1)
+            local ic = iconBorder:CreateTexture(nil, "ARTWORK")
+            ic:SetSize(40, 40)
+            ic:SetPoint("CENTER", iconBorder, "CENTER", 0, 0)
+            ic:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+            ic:SetTexture(134029)
+            f.iconBorder = iconBorder
+            f.iconTex = ic
+
+            f.title = CreateText(f, "OVERLAY", "GameFontHighlight")
+            f.badge = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+            f.subtext = CreateText(f, "OVERLAY", "GameFontHighlightSmall")
+
+            local ag = f:CreateAnimationGroup()
+            local hold = ag:CreateAnimation("Animation")
+            hold:SetDuration(stInit.duration or 8)
+            hold:SetOrder(1)
+            local fade = ag:CreateAnimation("Alpha")
+            fade:SetFromAlpha(1)
+            fade:SetToAlpha(0)
+            fade:SetDuration(1.2)
+            fade:SetOrder(2)
+            ag:SetScript("OnFinished", function()
+                if not (InCombatLockdown and InCombatLockdown()) then
+                    f:Hide()
+                    f:SetAlpha(1)
+                end
+            end)
+            f.animGroup = ag
+            f.holdAnim = hold
+
+            f:SetScript("OnClick", function(_, button)
+                if button == "RightButton" then
+                    if f._stage == "RESTOCK" and not f._isPreview then
+                        mageFoodRestockSilenced = true
+                    end
+                    DynamicPrep:HideMageFoodToast()
+                end
+            end)
+            f:SetScript("OnEnter", function()
+                if f.animGroup then f.animGroup:Pause() end
+                f:SetAlpha(1)
+            end)
+            f:SetScript("OnLeave", function()
+                if f.actionBtn and f.actionBtn.IsMouseOver and f.actionBtn:IsMouseOver() then return end
+                local curSt = GetMageFoodSharedToastStyle()
+                if f.animGroup and (curSt.duration or 8) > 0 then f.animGroup:Play() end
+            end)
+        end
+
+        if not f.actionBtn then
+            local actionBtn = CreateFrame("Button", nil, f, "BackdropTemplate")
+            actionBtn:SetSize(112, 28)
+            actionBtn:SetPoint("RIGHT", f, "RIGHT", -12, 0)
+            actionBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            actionBtn.txt = CreateText(actionBtn, "OVERLAY", "GameFontHighlightSmall")
+            actionBtn.txt:SetPoint("CENTER")
+            actionBtn.txt:SetWordWrap(false)
+            actionBtn.txt:SetText("Queue Follower")
+            f.actionBtn = actionBtn
+        end
+
+        if f.SetRightTextAnchor then
+            f.SetRightTextAnchor(f.actionBtn, 10)
+        elseif f.title and f.badge and f.subtext then
+            f.title:ClearAllPoints()
+            f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -11)
+            f.title:SetPoint("RIGHT", f.actionBtn, "LEFT", -10, 0)
+            f.badge:ClearAllPoints()
+            f.badge:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -5)
+            f.badge:SetPoint("RIGHT", f.actionBtn, "LEFT", -10, 0)
+            f.subtext:ClearAllPoints()
+            f.subtext:SetPoint("TOPLEFT", f.badge, "BOTTOMLEFT", 0, -5)
+            f.subtext:SetPoint("RIGHT", f.actionBtn, "LEFT", -10, 0)
+        end
+
+        mageFoodToastFrame = f
+    end
+
+    local f = mageFoodToastFrame
+    f._stage = stage
+    f._isPreview = (isPreview == true)
+    local st = GetMageFoodSharedToastStyle()
+    local dur = tonumber(st.duration) or 8
+
+    local isLeave = (stage == "LEAVE")
+    f.actionBtn.txt:SetText(isLeave and "Leave Dungeon" or "Queue Follower")
+    f.actionBtn:SetScript("OnEnter", function(s)
+        local curSt = GetMageFoodSharedToastStyle()
+        if f.animGroup then f.animGroup:Pause() end
+        f:SetAlpha(1)
+        StyleMageFoodToastActionBtn(s, curSt, true)
+    end)
+    f.actionBtn:SetScript("OnLeave", function(s)
+        local curSt = GetMageFoodSharedToastStyle()
+        StyleMageFoodToastActionBtn(s, curSt, false)
+        if not (f.IsMouseOver and f:IsMouseOver()) and f.animGroup and (curSt.duration or 8) > 0 then
+            f.animGroup:Play()
+        end
+    end)
+    f.actionBtn:SetScript("OnClick", function(_, button)
+        if button == "RightButton" then
+            if f._stage == "RESTOCK" and not f._isPreview then
+                mageFoodRestockSilenced = true
+            end
+            DynamicPrep:HideMageFoodToast()
+            return
+        end
+        if f._isPreview then
+            DynamicPrep:HideMageFoodToast()
+            return
+        end
+        if isLeave then
+            DynamicPrep:LeaveFollowerDungeon()
+        else
+            DynamicPrep:QueueFirstFollowerDungeon()
+        end
+    end)
+
+    local titleText = isLeave
+        and "|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFF34D399Mage Food Restocked|r"
+        or  "|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFFBBF24Low Conjured Mana Buns|r"
+    local badgeText = isLeave
+        and string.format("|cFF94A3B8In Bags:|r |cFFFFFFFF%d|r |cFF64748B(Target: %d)|r", tonumber(bunCount) or 0, tonumber(targetCount) or 20)
+        or  string.format("|cFF94A3B8In Bags:|r |cFFF87171%d|r |cFF64748B(Alert below %d)|r", tonumber(bunCount) or 0, tonumber(targetCount) or 20)
+    local subtextText = isLeave
+        and "|cFF34D399Click Leave Dungeon|r |cFF94A3B8to exit|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r"
+        or  "|cFF34D399Click Queue Follower|r |cFF94A3B8for buns|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
+
+    if _G.DynamicSuite and type(_G.DynamicSuite.ShowSharedToast) == "function" then
+        local okShown, resShown = pcall(_G.DynamicSuite.ShowSharedToast, f, {
+            title = titleText,
+            badge = badgeText,
+            subtext = subtextText,
+            tintIcon = false,
+            autoFade = true,
+            playSound = true,
+        })
+        if okShown and resShown then
+            StyleMageFoodToastActionBtn(f.actionBtn, GetMageFoodSharedToastStyle(), false)
+            return
+        end
+    end
+
+    self:ApplyMageFoodToastVisuals()
+    f.title:SetText(titleText)
+    f.badge:SetText(badgeText)
+    f.subtext:SetText(subtextText)
+    if f.animGroup then f.animGroup:Stop() end
+    f:SetAlpha(1)
+    f:Show()
+    if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+        pcall(_G.DynamicSuite.RestackAllToasts)
+    else
+        f:ClearAllPoints()
+        if type(st.pos) == "table" and st.pos.point then
+            f:SetPoint(st.pos.point, UIParent, st.pos.relPoint or st.pos.point, st.pos.x or 0, st.pos.y or -140)
+        else
+            f:SetPoint("TOP", UIParent, "TOP", 0, -140)
+        end
+    end
+    if _G.DynamicSuite and type(_G.DynamicSuite.PlaySharedToastSound) == "function" then
+        pcall(_G.DynamicSuite.PlaySharedToastSound)
+    end
+    if dur > 0 and f.animGroup and f.holdAnim then
+        f.holdAnim:SetDuration(dur)
+        f.animGroup:Play()
+    end
+end
+
+function DynamicPrep:CheckMageFoodRestock(triggerReason)
+    if not self.db or self.db.mageFoodRestockEnabled == false then
+        self:HideMageFoodToast()
+        return
+    end
+    if IsModuleDisabledInSuite("DynamicPrep") then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+
+    local bunCount = self:GetConjuredMageFoodCount()
+    local minThreshold = tonumber(self.db.mageFoodMinThreshold) or 20
+    local leaveTarget = tonumber(self.db.mageFoodLeaveTarget) or 20
+
+    if bunCount >= minThreshold then
+        mageFoodRestockSilenced = false
+    end
+
+    -- Stage 2: Inside a Follower Dungeon -> prompt to leave once target is reached
+    if self:IsInFollowerDungeon() then
+        if bunCount >= leaveTarget and not mageFoodLeaveAlertedThisRun then
+            mageFoodLeaveAlertedThisRun = true
+            self:ShowMageFoodToast("LEAVE", bunCount, leaveTarget, false)
+        end
+        return
+    else
+        mageFoodLeaveAlertedThisRun = false
+    end
+
+    -- Stage 1: Solo & out of combat, not in group/instance, not queued in LFD
+    if not self:MatchesMageFoodScope() then
+        if mageFoodToastFrame and mageFoodToastFrame:IsShown() and mageFoodToastFrame._stage == "RESTOCK" and not mageFoodToastFrame._isPreview then
+            self:HideMageFoodToast()
+        end
+        return
+    end
+
+    local inGroup = (type(IsInGroup) == "function" and IsInGroup() == true)
+    local inInstance = false
+    if type(IsInInstance) == "function" then
+        local okI, inInst = pcall(IsInInstance)
+        if okI and not IsSecretValue(inInst) and inInst == true then inInstance = true end
+    end
+
+    if inGroup or inInstance or self:IsQueuedInLFD() then
+        if mageFoodToastFrame and mageFoodToastFrame:IsShown() and mageFoodToastFrame._stage == "RESTOCK" and not mageFoodToastFrame._isPreview then
+            self:HideMageFoodToast()
+        end
+        return
+    end
+
+    if bunCount < minThreshold and not mageFoodRestockSilenced then
+        self:ShowMageFoodToast("RESTOCK", bunCount, minThreshold, false)
+    elseif bunCount >= minThreshold and mageFoodToastFrame and mageFoodToastFrame:IsShown() and mageFoodToastFrame._stage == "RESTOCK" and not mageFoodToastFrame._isPreview then
+        self:HideMageFoodToast()
+    end
+end
+
+function DynamicPrep:RequestMageFoodCheck(triggerReason, delaySec)
+    if delaySec and delaySec > 0 and C_Timer and C_Timer.After then
+        if mageFoodCheckPending then return end
+        mageFoodCheckPending = true
+        C_Timer.After(delaySec, function()
+            mageFoodCheckPending = false
+            DynamicPrep:CheckMageFoodRestock(triggerReason or "DEBOUNCED")
+        end)
+    else
+        self:CheckMageFoodRestock(triggerReason or "IMMEDIATE")
+    end
+end
+
+function DynamicPrep:TriggerMageFoodToastPreview()
+    mageFoodPreviewToggle = not mageFoodPreviewToggle
+    local bunCount = self:GetConjuredMageFoodCount()
+    if mageFoodPreviewToggle then
+        local minT = (self.db and tonumber(self.db.mageFoodMinThreshold)) or 20
+        self:ShowMageFoodToast("RESTOCK", bunCount, minT, true)
+    else
+        local leaveT = (self.db and tonumber(self.db.mageFoodLeaveTarget)) or 20
+        self:ShowMageFoodToast("LEAVE", math.max(bunCount, leaveT), leaveT, true)
+    end
+end
+end)() end
+
+-- ============================================================================
 -- Conflict Scanner & 1-Click Resolution Engine
 -- ============================================================================
 local ADDON_DISPLAY_NAMES = {
@@ -8598,11 +9631,250 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         dHealMacro:BindRightControl(btnPickupHeal)
         table.insert(self.refreshWidgets, btnPickupHeal)
 
+        local function BuildRecoveryQoLRows()
+            -- 6. Automated Drink & Recovery Macro ([DynamicDrink]) + 3-Row Sub-Drawer
+            ws.drinkDrawerOpen = true
+            local rDrinkMacro = CreateSpaciousRow(
+                cQoL, -294,
+                "Automated Drink & Recovery Macro ([DynamicDrink])",
+                "Out-of-combat [nocombat] drink and food macro. Excludes Well Fed buff food by default.",
+                416
+            )
+            local pillsDrinkMacro = CreateSegmentedPills(
+                rDrinkMacro, 416,
+                {
+                    { value = "ROLE_SMART",   label = "Role-Smart" },
+                    { value = "MANA_FIRST",   label = "Mana First" },
+                    { value = "HEALTH_RECUP", label = "Health / Recup" },
+                    { value = "OFF",          label = "Off" },
+                },
+                function() return self.db.drinkMacroMode or "ROLE_SMART" end,
+                function(v)
+                    self.db.drinkMacroMode = v
+                    if v ~= "OFF" then
+                        ws.drinkDrawerOpen = true
+                        self:UpdateDrinkMacro(false)
+                    end
+                    self:RefreshWorkspaceView()
+                end
+            )
+            rDrinkMacro:BindRightControl(pillsDrinkMacro)
+            table.insert(self.refreshWidgets, pillsDrinkMacro)
+
+            local tuneDrinkMacro = CreateSubDrawerToggleBar(
+                cQoL, 3,
+                function()
+                    return self.db and (self.db.drinkMacroMode or "ROLE_SMART") ~= "OFF"
+                end,
+                function() return ws.drinkDrawerOpen ~= false end,
+                function()
+                    ws.drinkDrawerOpen = (ws.drinkDrawerOpen == false)
+                    self:RefreshWorkspaceView()
+                end
+            )
+            rDrinkMacro.tuneBtn = tuneDrinkMacro
+            table.insert(self.refreshWidgets, tuneDrinkMacro)
+
+            local dDrinkMacro = CreateInlineSubDrawer(cQoL, "Macro [DynamicDrink]: Drag to Action Bar")
+            local btnPickupDrink = CreateFrame("Button", nil, dDrinkMacro, "BackdropTemplate")
+            btnPickupDrink:SetSize(184, 26)
+            btnPickupDrink.txt = CreateText(btnPickupDrink, "OVERLAY", "GameFontHighlightSmall")
+            btnPickupDrink.txt:SetPoint("CENTER")
+            btnPickupDrink.txt:SetWordWrap(false)
+            btnPickupDrink.txt:SetText("Create & Pickup Macro")
+            function btnPickupDrink:RefreshValue()
+                local ar, ag, ab = GetActiveAccentRGB()
+                local stateKey, statusBadge, btnLabel = DynamicPrep:GetDrinkMacroActionBarStatus()
+                if stateKey == "ON_BAR" then
+                    SetPixelBackdrop(self, { 0.063 * 0.45, 0.725 * 0.45, 0.506 * 0.45, 0.98 }, { 0.204, 0.827, 0.600, 0.95 }, 1)
+                else
+                    SetPixelBackdrop(self, COLORS.BgElevated, { ar, ag, ab, 0.90 }, 1)
+                end
+                self.txt:SetText(btnLabel)
+                local scan = DynamicPrep:ScanRecoveryConsumables()
+                local target = DynamicPrep:ResolveDrinkMacroTarget(scan)
+                local targetName = (target and target.name) or "None"
+                dDrinkMacro.title:SetText(string.format(
+                    "|cFFCBD5E1[DynamicDrink]|r %s  |cFF34D399%d Buns|r, |cFF38BDF8%d Drink|r, |cFFFBBF24%d Food|r |cFF64748B(%s)|r",
+                    statusBadge, scan.mageFoodCount or 0, scan.manaDrinkCount or 0, scan.vendorFoodCount or 0, targetName
+                ))
+            end
+            btnPickupDrink:SetScript("OnEnter", function(selfBtn)
+                local ar, ag, ab = GetActiveAccentRGB()
+                SetPixelBackdrop(selfBtn, COLORS.BgHover, { ar, ag, ab, 1.0 }, 1)
+            end)
+            btnPickupDrink:SetScript("OnLeave", function(selfBtn)
+                selfBtn:RefreshValue()
+            end)
+            btnPickupDrink:SetScript("OnClick", function()
+                DynamicPrep:UpdateDrinkMacro(true)
+                DynamicPrep:RefreshWorkspaceView()
+            end)
+            dDrinkMacro:BindRightControl(btnPickupDrink)
+            table.insert(self.refreshWidgets, btnPickupDrink)
+
+            local dDrinkRecup = CreateInlineSubDrawer(cQoL, "Fallback to Recuperate (when out of drinks/food)")
+            local pDrinkRecup = CreateSegmentedPills(
+                dDrinkRecup, 156,
+                {
+                    { value = false, label = "Off" },
+                    { value = true,  label = "Enabled" },
+                },
+                function() return self.db.drinkMacroRecupFallback ~= false end,
+                function(v)
+                    self.db.drinkMacroRecupFallback = (v == true)
+                    self:UpdateDrinkMacro(false)
+                    self:RefreshWorkspaceView()
+                end
+            )
+            dDrinkRecup:BindRightControl(pDrinkRecup)
+            table.insert(self.refreshWidgets, pDrinkRecup)
+
+            local dDrinkBuffFood = CreateInlineSubDrawer(cQoL, "Allow Buff Food as Last Resort (Warning: consumes Well Fed food)")
+            local pDrinkBuffFood = CreateSegmentedPills(
+                dDrinkBuffFood, 156,
+                {
+                    { value = false, label = "Off" },
+                    { value = true,  label = "Enabled" },
+                },
+                function() return self.db.drinkMacroAllowBuffFood == true end,
+                function(v)
+                    self.db.drinkMacroAllowBuffFood = (v == true)
+                    self:UpdateDrinkMacro(false)
+                    self:RefreshWorkspaceView()
+                end
+            )
+            dDrinkBuffFood:BindRightControl(pDrinkBuffFood)
+            table.insert(self.refreshWidgets, pDrinkBuffFood)
+
+            -- 7. Healer Mage Food Restock (Follower Dungeon) + 4-Row Sub-Drawer
+            ws.mageFoodDrawerOpen = true
+            local rMageFood = CreateSpaciousRow(
+                cQoL, -294,
+                "Healer Mage Food Restock (Follower Dungeon)",
+                "Prompts solo players to queue a Follower Dungeon when low on Conjured Mana Buns, and prompts to leave once restocked.",
+                156
+            )
+            local pillsMageFood = CreateSegmentedPills(
+                rMageFood, 156,
+                {
+                    { value = false, label = "Off" },
+                    { value = true,  label = "Enabled" },
+                },
+                function() return self.db.mageFoodRestockEnabled ~= false end,
+                function(v)
+                    self.db.mageFoodRestockEnabled = (v == true)
+                    if v == true then
+                        ws.mageFoodDrawerOpen = true
+                        self:RequestMageFoodCheck("TOGGLE", 0.1)
+                    else
+                        self:HideMageFoodToast()
+                    end
+                    self:RefreshWorkspaceView()
+                end
+            )
+            rMageFood:BindRightControl(pillsMageFood)
+            table.insert(self.refreshWidgets, pillsMageFood)
+
+            local tuneMageFood = CreateSubDrawerToggleBar(
+                cQoL, 4,
+                function() return self.db and self.db.mageFoodRestockEnabled ~= false end,
+                function() return ws.mageFoodDrawerOpen ~= false end,
+                function()
+                    ws.mageFoodDrawerOpen = (ws.mageFoodDrawerOpen == false)
+                    self:RefreshWorkspaceView()
+                end
+            )
+            rMageFood.tuneBtn = tuneMageFood
+            table.insert(self.refreshWidgets, tuneMageFood)
+
+            local dMageScope = CreateInlineSubDrawer(cQoL, "Role Scope (Solo Restock Prompt)")
+            local pMageScope = CreateSegmentedPills(
+                dMageScope, 240,
+                {
+                    { value = "HEALER_ONLY", label = "Healer Only" },
+                    { value = "ANY_MANA",    label = "Any Mana Spec" },
+                },
+                function() return self.db.mageFoodRestockScope or "HEALER_ONLY" end,
+                function(v)
+                    self.db.mageFoodRestockScope = v
+                    self:RequestMageFoodCheck("SCOPE_CHANGE", 0.1)
+                end
+            )
+            dMageScope:BindRightControl(pMageScope)
+            table.insert(self.refreshWidgets, pMageScope)
+
+            local dMageMin = CreateInlineSubDrawer(cQoL, "Low Food Alert Threshold (Alert when below)")
+            local sMageMin = CreateObsidianSlider(
+                dMageMin, 256, 5, 60, 5,
+                function(val) return string.format("%d", val) end,
+                function() return self.db.mageFoodMinThreshold or 20 end,
+                function(val)
+                    self.db.mageFoodMinThreshold = val
+                    self:RequestMageFoodCheck("THRESHOLD_CHANGE", 0.1)
+                end
+            )
+            dMageMin:BindRightControl(sMageMin)
+            table.insert(self.refreshWidgets, sMageMin)
+
+            local dMageLeave = CreateInlineSubDrawer(cQoL, "Auto-Leave Target (Prompt to leave inside Follower Dungeon)")
+            local sMageLeave = CreateObsidianSlider(
+                dMageLeave, 256, 20, 80, 20,
+                function(val) return string.format("%d", val) end,
+                function() return self.db.mageFoodLeaveTarget or 20 end,
+                function(val)
+                    self.db.mageFoodLeaveTarget = val
+                end
+            )
+            dMageLeave:BindRightControl(sMageLeave)
+            table.insert(self.refreshWidgets, sMageLeave)
+
+            local dMageTest = CreateInlineSubDrawer(cQoL, "Conjured Mana Buns in Bags: 0")
+            local btnTestMageToast = CreateFrame("Button", nil, dMageTest, "BackdropTemplate")
+            btnTestMageToast:SetSize(156, 26)
+            btnTestMageToast.txt = CreateText(btnTestMageToast, "OVERLAY", "GameFontHighlightSmall")
+            btnTestMageToast.txt:SetPoint("CENTER")
+            btnTestMageToast.txt:SetWordWrap(false)
+            btnTestMageToast.txt:SetText("Test Toast")
+            function btnTestMageToast:RefreshValue()
+                local ar, ag, ab = GetActiveAccentRGB()
+                SetPixelBackdrop(self, COLORS.BgElevated, { ar, ag, ab, 0.90 }, 1)
+                local buns = DynamicPrep:GetConjuredMageFoodCount()
+                dMageTest.title:SetText(string.format("|cFFCBD5E1Conjured Mana Buns in Bags:|r |cFF34D399%d|r", buns))
+            end
+            btnTestMageToast:SetScript("OnEnter", function(selfBtn)
+                local ar, ag, ab = GetActiveAccentRGB()
+                SetPixelBackdrop(selfBtn, COLORS.BgHover, { ar, ag, ab, 1.0 }, 1)
+            end)
+            btnTestMageToast:SetScript("OnLeave", function(selfBtn)
+                selfBtn:RefreshValue()
+            end)
+            btnTestMageToast:SetScript("OnClick", function()
+                DynamicPrep:TriggerMageFoodToastPreview()
+            end)
+            dMageTest:BindRightControl(btnTestMageToast)
+            table.insert(self.refreshWidgets, btnTestMageToast)
+
+            return {
+                rDrinkMacro = rDrinkMacro, tuneDrinkMacro = tuneDrinkMacro,
+                dDrinkDrawers = { dDrinkMacro, dDrinkRecup, dDrinkBuffFood },
+                rMageFood = rMageFood, tuneMageFood = tuneMageFood,
+                dMageDrawers = { dMageScope, dMageMin, dMageLeave, dMageTest },
+            }
+        end
+        local recRows = BuildRecoveryQoLRows()
+
         ws.qolRows = {
-            rHealMacro    = rHealMacro,
-            tuneHealMacro = tuneHealMacro,
-            dHealMacro    = dHealMacro,
-            others        = { rQuestGossip, rAutoConfirmInstanceGossip, rAutoChoice, rCatalyst, rAutoSummon, rCine, rRez, rRelease },
+            rHealMacro     = rHealMacro,
+            tuneHealMacro  = tuneHealMacro,
+            dHealMacro     = dHealMacro,
+            rDrinkMacro    = recRows.rDrinkMacro,
+            tuneDrinkMacro = recRows.tuneDrinkMacro,
+            dDrinkDrawers  = recRows.dDrinkDrawers,
+            rMageFood      = recRows.rMageFood,
+            tuneMageFood   = recRows.tuneMageFood,
+            dMageDrawers   = recRows.dMageDrawers,
+            others         = { rQuestGossip, rAutoConfirmInstanceGossip, rAutoChoice, rCatalyst, rAutoSummon, rCine, rRez, rRelease },
         }
     end
 
@@ -8746,6 +10018,74 @@ function DynamicPrep:LayoutQoLCardRows()
         else
             if tuneHeal then tuneHeal:Hide() end
             if qr.dHealMacro then qr.dHealMacro:Hide() end
+        end
+    end
+
+    if qr.rDrinkMacro then
+        qr.rDrinkMacro:ClearAllPoints()
+        qr.rDrinkMacro:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y)
+        qr.rDrinkMacro:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y)
+        y = y - 60
+
+        local drinkEnabled = self.db and (self.db.drinkMacroMode or "ROLE_SMART") ~= "OFF"
+        local tuneDrink = qr.tuneDrinkMacro or (qr.rDrinkMacro and qr.rDrinkMacro.tuneBtn)
+        if tuneDrink then tuneDrink:RefreshValue() end
+        if drinkEnabled and tuneDrink then
+            tuneDrink:ClearAllPoints()
+            tuneDrink:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
+            tuneDrink:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+            tuneDrink:Show()
+            y = y - 28
+
+            for _, dr in ipairs(qr.dDrinkDrawers or {}) do
+                if ws.drinkDrawerOpen ~= false then
+                    dr:ClearAllPoints()
+                    dr:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
+                    dr:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+                    dr:RefreshBranchAccent()
+                    dr:Show()
+                    y = y - 46
+                else
+                    dr:Hide()
+                end
+            end
+        else
+            if tuneDrink then tuneDrink:Hide() end
+            for _, dr in ipairs(qr.dDrinkDrawers or {}) do dr:Hide() end
+        end
+    end
+
+    if qr.rMageFood then
+        qr.rMageFood:ClearAllPoints()
+        qr.rMageFood:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y)
+        qr.rMageFood:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y)
+        y = y - 60
+
+        local mageEnabled = self.db and self.db.mageFoodRestockEnabled ~= false
+        local tuneMage = qr.tuneMageFood or (qr.rMageFood and qr.rMageFood.tuneBtn)
+        if tuneMage then tuneMage:RefreshValue() end
+        if mageEnabled and tuneMage then
+            tuneMage:ClearAllPoints()
+            tuneMage:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
+            tuneMage:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+            tuneMage:Show()
+            y = y - 28
+
+            for _, dr in ipairs(qr.dMageDrawers or {}) do
+                if ws.mageFoodDrawerOpen ~= false then
+                    dr:ClearAllPoints()
+                    dr:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
+                    dr:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+                    dr:RefreshBranchAccent()
+                    dr:Show()
+                    y = y - 46
+                else
+                    dr:Hide()
+                end
+            end
+        else
+            if tuneMage then tuneMage:Hide() end
+            for _, dr in ipairs(qr.dMageDrawers or {}) do dr:Hide() end
         end
     end
 
@@ -9881,6 +11221,7 @@ function DynamicPrep:RegisterWithSuite()
         OpenOptions = function() OpenPrepWorkspace() end,
         OnDisableInSuite = function()
             CloseAllDynamicPrepPopups()
+            if DynamicPrep.HideMageFoodToast then DynamicPrep:HideMageFoodToast() end
             if DynamicPrep.barFrame then DynamicPrep.barFrame:Hide() end
             if DynamicPrep.crbBar and not (InCombatLockdown and InCombatLockdown()) then DynamicPrep.crbBar:Hide() end
         end,
@@ -9897,6 +11238,8 @@ function DynamicPrep:RegisterWithSuite()
                 ws.statSortDrawerOpen = true
                 ws.pingDrawerOpen = true
                 ws.healDrawerOpen = true
+                ws.drinkDrawerOpen = true
+                ws.mageFoodDrawerOpen = true
             end
             if DynamicPrep.RefreshWorkspaceView then
                 DynamicPrep:RefreshWorkspaceView()
@@ -9935,6 +11278,13 @@ SlashCmdList["DYNAMICPREP"] = function(msg)
         DynamicPrep:ResetModuleDefaults()
     elseif cmd == "testaudit" then
         DynamicPrep:TogglePaperdollAuditPreview()
+    elseif cmd == "drink" then
+        DynamicPrep:OpenWorkspace(3)
+        DynamicPrep:SelectSubTab(3, true)
+        local scan = DynamicPrep:ScanRecoveryConsumables()
+        local _, badge = DynamicPrep:GetDrinkMacroActionBarStatus()
+        print(string.format("|cFF%sDynamicPrep:|r [DynamicDrink] %s | Buns: %d, Mana Drink: %d, Plain Food: %d, Buff Food: %d.",
+            GetAccentHex(), badge, scan.mageFoodCount or 0, scan.manaDrinkCount or 0, scan.vendorFoodCount or 0, scan.buffFoodCount or 0))
     elseif cmd == "qol" or cmd == "3" then
         DynamicPrep:OpenWorkspace(3)
     elseif cmd == "buffs" or cmd == "2" then
@@ -10025,6 +11375,8 @@ SafeRegisterEvent(eventFrame, "ACTIONBAR_SLOT_CHANGED")
 SafeRegisterEvent(eventFrame, "UPDATE_MACROS")
 SafeRegisterEvent(eventFrame, "SPELL_UPDATE_COOLDOWN")
 SafeRegisterEvent(eventFrame, "BAG_UPDATE_COOLDOWN")
+SafeRegisterEvent(eventFrame, "LFG_UPDATE")
+SafeRegisterEvent(eventFrame, "PLAYER_LEVEL_UP")
 
 -- ============================================================================
 -- TALENT LOADOUT FORWARDING STUBS (Extracted to DynamicTalent) & AUTO-ACCEPT SUMMON
@@ -10166,14 +11518,20 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:EnsurePaperdollHighlightHooks()
         DynamicPrep:InitBlizzardWindowQoL()
         DynamicPrep:UpdateTalkingHeadSuppression()
+        DynamicPrep:UpdateDrinkMacro(false)
+        DynamicPrep:RequestMageFoodCheck("PLAYER_LOGIN", 0.5)
         DynamicPrep:RefreshBar()
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
         DynamicPrep:ResetStableCapsuleWidths()
         DynamicPrep:UpdateTalkingHeadSuppression()
         if event == "PLAYER_ENTERING_WORLD" then
             DynamicPrep:UpdateHealMacro(false, true)
+            DynamicPrep:UpdateDrinkMacro(false)
             DynamicPrep:ScanEquippedGearEnchantsAndGems()
+        else
+            DynamicPrep:UpdateDrinkMacro(false)
         end
+        DynamicPrep:RequestMageFoodCheck(event, 0.8)
         DynamicPrep:RefreshBar()
     elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "SOCKET_INFO_UPDATE" then
         DynamicPrep:ScanEquippedGearEnchantsAndGems()
@@ -10181,6 +11539,9 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             DynamicPrep:RefreshBar()
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
+        if DynamicPrep.HideMageFoodToast then
+            DynamicPrep:HideMageFoodToast()
+        end
         if DynamicPrep.inEditMode then
             DynamicPrep:SetEditMode(false)
         end
@@ -10217,6 +11578,9 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:RefreshBar()
         DynamicPrep.pendingHealMacroUpdate = nil
         DynamicPrep:UpdateHealMacro(false, true)
+        DynamicPrep.pendingDrinkMacroUpdate = nil
+        DynamicPrep:UpdateDrinkMacro(false)
+        DynamicPrep:RequestMageFoodCheck("PLAYER_REGEN_ENABLED", 0.3)
         if UnitIsDeadOrGhost and UnitIsDeadOrGhost("player") and not (UnitIsGhost and UnitIsGhost("player")) then
             local inInst, instType = IsInInstance()
             if inInst and (instType == "raid" or instType == "party") then
@@ -10273,17 +11637,28 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
                 DynamicPrep:ApplyWowheadPresetForCurrentSpec(true)
             end
             DynamicPrep:UpdateHealMacro(false)
+            DynamicPrep:UpdateDrinkMacro(false)
+            DynamicPrep:RequestMageFoodCheck("PLAYER_SPECIALIZATION_CHANGED", 0.3)
             DynamicPrep:RefreshBar()
             DynamicPrep:RefreshWorkspaceView()
         end
+    elseif event == "PLAYER_LEVEL_UP" then
+        DynamicPrep:UpdateDrinkMacro(false)
+        DynamicPrep:RequestMageFoodCheck("PLAYER_LEVEL_UP", 0.3)
+    elseif event == "LFG_UPDATE" then
+        DynamicPrep:RequestMageFoodCheck("LFG_UPDATE", 0.3)
     elseif event == "PLAYER_LOOT_SPEC_UPDATED" or event == "UPDATE_INVENTORY_DURABILITY" or event == "BAG_UPDATE_DELAYED" or event == "CHALLENGE_MODE_MAPS_UPDATE" or event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED" then
         if event == "PLAYER_LOOT_SPEC_UPDATED" then
             DynamicPrep:ResetStableCapsuleWidths()
         elseif event == "BAG_UPDATE_DELAYED" then
             DynamicPrep:UpdateHealMacro(false)
+            DynamicPrep:UpdateDrinkMacro(false)
+            DynamicPrep:RequestMageFoodCheck("BAG_UPDATE_DELAYED", 0.35)
             if DynamicPrep.workspaceFrame and DynamicPrep.workspaceFrame:IsShown() then
                 DynamicPrep:RefreshWorkspaceView()
             end
+        elseif event == "GROUP_ROSTER_UPDATE" then
+            DynamicPrep:RequestMageFoodCheck("GROUP_ROSTER_UPDATE", 0.4)
         end
         if not InCombatLockdown() or event == "GROUP_ROSTER_UPDATE" or event == "PARTY_LEADER_CHANGED" then
             DynamicPrep:RefreshBar()

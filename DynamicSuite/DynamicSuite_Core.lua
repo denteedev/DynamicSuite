@@ -937,6 +937,7 @@ function DynamicSuite.RestackAllToasts()
             "DynamicLoadToastFrame",
             "DynamicGroupTeleportToast",
             "DynamicTalentReminderToast",
+            "DynamicPrepMageFoodToast",
             "DynamicChatMentionToast",
         }
         local prev = nil
@@ -5268,6 +5269,14 @@ local BUILTIN_SEARCH_SEED = {
       title = "Automated Healing Macro ([DynamicHeal])",
       desc = "Maintain a 1-button [DynamicHeal] macro that prioritises Recuperate out of combat and Warlock Healthstones > Healing Potions in combat.",
       keywords = "automated healing macro dynamicheal healthstone potion silvermoon recuperate survival" },
+    { moduleKey = "prep", category = "BAGS_QOL", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Automated Drink & Recovery Macro ([DynamicDrink])",
+      desc = "Out-of-combat [nocombat] drink and food macro with Role-Smart priority, Recuperate fallback, and strict Well Fed exclusion.",
+      keywords = "automated drink macro dynamicdrink water mana food recuperate nocombat well fed healer" },
+    { moduleKey = "prep", category = "BAGS_QOL", tabIndex = 3, tabLabel = "World & Survival QoL",
+      title = "Healer Mage Food Restock (Follower Dungeon)",
+      desc = "Prompts solo players to queue a Follower Dungeon when low on Conjured Mana Buns, and prompts to leave once restocked.",
+      keywords = "healer mage food restock conjured mana bun follower dungeon queue leave toast" },
 
     -- ========================================================================
     -- DYNAMICTALENT ("talent") - Talent Loadouts, Raid/M+/PvP/Zone Binds & Group Order
