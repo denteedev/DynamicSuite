@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.8.0"
+    local fb = fallback or "2.8.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicGroup", VERSION, _G.DynamicGroup) then
     return
 end
@@ -8189,8 +8189,9 @@ local function RegisterWithDynamicSuite()
 
     DynamicGroup.CHANGELOG = {
         version = DynamicGroup.version or VERSION,
-        date = "21/11/2026",
+        date = "22/11/2026",
         entries = {
+            { type = "FEATURE", text = "Release v2.8.1 - Opt-In Auto-Accept Role Check & Conflict Auto-Yield (22/11/2026): Added opt-in Auto-Accept Role Check (Off by default) in Tab 2 with a 0.45s out-of-combat safety delay, Shift-to-skip bypass, Retail 12.1.5 secret-value guards, clean chat confirmation, and automatic feature-level yielding to EnhanceQoL or Leatrix Plus (overridable in /ds conflicts). Never auto-accepts queue pops." },
             { type = "UI",      text = "Release v2.7.0 - Shared Teleport Toast Inheritance & Live Suite Accent Portal Borders (21/11/2026): Removed the stray Edit HUD button from the Teleport Toast settings card (leaving a clean Off/Enabled toggle plus Test Join and Test Full preview buttons), connected DynamicGroupTeleportToast to DynamicSuite's shared Alert Toast appearance, sound, Right-Click dismissal, and vertical toast stack, and replaced remaining Blaze Orange portal tile/keystone borders and tooltip prefixes with the live Suite Accent." },
             { type = "FIX",     text = "LFG Application Status Overlays, Obsidian CancelButton & /dg testapply Cycle (16/11/2026): reskinned entry.CancelButton out of combat into a 16x16 Dark-Obsidian (#0B0D12) / Crimson-Bordered (#F87171) 'x' pill anchored to TOPRIGHT (-6, -3) with ov.topPill anchored cleanly to its left (-4, 0) so the entire 5-role-icon Enumerate row stays 100% untouched; preserved Blizzard's dual-anchor Enumerate layout via _dgOrigPoints; suppressed Blizzard's inline PendingLabel and ResultLabel overlays and routed live pending timers (Warm Amber-Gold) and terminal statuses (Crimson Canceled/Declined/Expired/Timed Out + 0.35 row dim) into the top-right pill; updated /dg testapply to cycle Pending -> Canceled -> Off." },
             { type = "FEATURE", text = "Declined Premade LFG Group Dimming, Crimson Badge & Search Freshness Tooltip (16/11/2026): records declined and invite-declined searchResultIDs for the current session (cleared on new search or category change), dims declined Premade Group rows to 0.35 alpha with a compact crimson 'Declined' tag inside the top-right pill so you never accidentally re-apply, and tracks LFGListSearchPanel_DoSearch timestamps to show 'Last Refreshed: Xs ago' inside the LFG Mini-Bar filter and region tooltips." },

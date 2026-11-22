@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.8.0"
+    local fb = fallback or "2.8.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -663,11 +663,12 @@ Suite.CONFLICT_REGISTRY.DynamicPrep = {
 -- ============================================================================
 DynamicPrep.CHANGELOG = {
     version = VERSION,
-    date = "21/11/2026",
+    date = "22/11/2026",
     entries = {
-        { type = "FEATURE", text = "[Unreleased] Low Durability Shared Alert Toast (22/11/2026): Added an enabled-by-default Low Durability Alert Toast (DynamicPrepDurabilityToast, default 20% threshold, 10%-40% slider + Test Toast in Tab 3) with 1-click Repair Mount summoning outdoors (Grand Expedition Yak, Grizzly Hills Packmaster, Traveler's Tundra Mammoth) or Open Gear indoors, Right-Click silence until gear drops another 10% or is repaired, and automatic suppression in combat and active Mythic+ keystones." },
-        { type = "FEATURE", text = "[Unreleased] Healer Mage Food Restock Toasts & Role-Smart [DynamicDrink] Macro (22/11/2026): Added a decoupled Follower Dungeon Conjured Mana Bun restock/leave Shared Alert Toast workflow (independent of Clickable Raid Buffs scope, with Healer Only / Any Mana Spec scope, 5-60 alert threshold, 20-80 auto-leave target, 1-click Queue Follower / Leave Dungeon buttons, Stage 3 'Ask for Table' group Mage prompt with 5-minute cooldown and encounter/chat lockdown safety, and Right-Click session silence) alongside a separate [nocombat]-guarded [DynamicDrink] macro with dynamic level 1-90 bag scanning, Role-Smart / Mana First / Health & Recup / Off priority, Recuperate fallback, and strict Well Fed buff-food exclusion." },
-        { type = "REFACTOR", text = "[Unreleased] Extracted Talent Loadouts & Talent Binds to DynamicTalent (/dt) (21/11/2026): Moved the unlimited per-spec Talent Loadouts library, PlayerSpellsFrame dock, 880x580 Talent Loadouts Manager, and Shared Alert Toast reminders into the dedicated DynamicTalent module while keeping the Top Info Bar 'Talents' capsule hooked cleanly to DynamicTalent and preserving backward-compatible forwarding stubs." },
+        { type = "FEATURE", text = "Release v2.8.1 - Red Error Text & Sound Filter (22/11/2026): Added an opt-in Red Error Text & Sound Filter in Tab 3 (Off by default) with Hide Combat & Cooldown Spam, Hide Movement & Mount Errors, and Mute Error Voice Lines (restoring your original Sound_EnableErrorSpeech setting when turned off or disabled), using taint-free Retail 12.1.5 secret-value guards and automatic yielding to EnhanceQoL, Leatrix Plus, ErrorFilter, or ErrorMonster." },
+        { type = "FEATURE", text = "Release v2.8.1 - Low Durability Shared Alert Toast (22/11/2026): Added an enabled-by-default Low Durability Alert Toast (DynamicPrepDurabilityToast, default 20% threshold, 10%-40% slider + Test Toast in Tab 3) with 1-click Repair Mount summoning outdoors (Grand Expedition Yak, Grizzly Hills Packmaster, Traveler's Tundra Mammoth) or Open Gear indoors, Right-Click silence until gear drops another 10% or is repaired, and automatic suppression in combat and active Mythic+ keystones." },
+        { type = "FEATURE", text = "Release v2.8.1 - Healer Mage Food Restock Toasts & Role-Smart [DynamicDrink] Macro (22/11/2026): Added a decoupled Follower Dungeon Conjured Mana Bun restock/leave Shared Alert Toast workflow (independent of Clickable Raid Buffs scope, with Healer Only / Any Mana Spec scope, 5-60 alert threshold, 20-80 auto-leave target, 1-click Queue Follower / Leave Dungeon buttons, Stage 3 'Ask for Table' group Mage prompt with 5-minute cooldown and encounter/chat lockdown safety, and Right-Click session silence) alongside a separate [nocombat]-guarded [DynamicDrink] macro with dynamic level 1-90 bag scanning, Role-Smart / Mana First / Health & Recup / Off priority, Recuperate fallback, and strict Well Fed buff-food exclusion." },
+        { type = "REFACTOR", text = "Release v2.8.0 - Extracted Talent Loadouts & Talent Binds to DynamicTalent (/dt) (21/11/2026): Moved the unlimited per-spec Talent Loadouts library, PlayerSpellsFrame dock, 880x580 Talent Loadouts Manager, and Shared Alert Toast reminders into the dedicated DynamicTalent module while keeping the Top Info Bar 'Talents' capsule hooked cleanly to DynamicTalent and preserving backward-compatible forwarding stubs." },
         { type = "FEATURE", text = "Opt-In Auto-Confirm Free Dungeon & Raid Prompts (21/11/2026): Added an off-by-default 'Auto-Confirm Free Dungeon & Raid Prompts' toggle in Tab 3 under World & Survival Automation to automatically confirm free (0 copper) single-option NPC prompts inside Dungeons, Raids, and Delves (hold Shift to pause), while keeping paid, open-world, hearthstone, and exit/teleport prompts manual." },
         { type = "FEATURE", text = "Release v2.7.1 - Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Binds, LFR/Normal Merge, 'Talent Binds' Rename & 4px Scrollbars (21/11/2026): Standardised Left-Click (Switch Active Specialisation out of combat) and Right-Click (Loot Specialisation) across both the Top Info Bar and Left-Hand Talent Loadouts Dock with 1:1 plain Australian English tooltips; upgraded Tab 2's Pre-Keystone M+ Binder with an 'All' toggle pill alongside multi-select dungeon tiles (saving a single 'All M+ Dungeons' rule when All is selected, or batch-binding specific dungeons which take priority over All M+); merged LFR (difficulty 17) and Normal (difficulty 14) into one 'LFR / Normal' difficulty pill; renamed 'Boss Binds' to 'Talent Binds' across the dock, menus, settings, and headings; and added a 4px interactive 3-way Obsidian scrollbar to Talent Loadouts Manager dropdowns." },
         { type = "UI",      text = "Release v2.7.0 - Unified Talent Reminder Toast, Shared HUD Headers & Uniform Switches (21/11/2026): Updated the Talent Loadout Reminder Toast to inherit DynamicSuite's shared Toast Scale, Opacity, Border Style, Auto-Fade Duration, Alert Sound, and vertical toast stacking with a clean Off/Enabled toggle + [Test Toast] preview button; standardised binary toggle switches to 156x26px (68px Off / 84px Enabled); clamped section header titles and subtitles beside Edit HUD and Reset Order buttons; and replaced legacy Blaze Orange chat alerts with live Suite Accent." },

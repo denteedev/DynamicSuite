@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.8.0"
+    local fb = fallback or "2.8.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.0")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.1")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,10 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "22/11/2026",
     entries = {
+        { type = "FEATURE", text = "Release v2.8.1 - Auto-Accept Role Check, Red Error Text & Sound Filter, and Granular Conflict Auto-Yield (22/11/2026): Added opt-in Auto-Accept Role Check in DynamicGroup (Off by default, 0.45s out-of-combat delay, Shift to skip, never auto-accepts queue pops), opt-in Red Error Text & Sound Filter in DynamicPrep Tab 3 (Combat & Cooldown Spam, Movement & Mount Errors, and Mute Error Voice Lines with original CVar restore), and feature-level auto-yielding to EnhanceQoL, Leatrix Plus, ErrorFilter, and ErrorMonster (overridable in /ds conflicts)." },
+        { type = "FEATURE", text = "Release v2.8.1 - Low Durability Alert Toast, Healer Mage Food Restock & Role-Smart [DynamicDrink] (22/11/2026): Added DynamicPrep's Low Durability Alert Toast (1-click Repair Mount outdoors or Open Gear indoors), Follower Dungeon Mage Food restock/leave and group Ask for Table toasts, and the [nocombat] Role-Smart [DynamicDrink] recovery macro." },
+        { type = "FEATURE", text = "Release v2.8.1 - DynamicTalent Raid Boss Binder, Multi-Source Boss Detection & Right-Click Toast Silence (22/11/2026): Promoted All Raids to Row 1 with a full-width boss grid and Clear button, added multi-source raid boss detection (target, softenemy, mouseover, focus, boss1-5, nameplates, raid targets) with sticky boss caching and /dt why diagnostics, added Prep Bar and quick-switcher bind badges, and enabled Right-Click silencing on Talent Reminder Toasts." },
+        { type = "FIX",     text = "Release v2.8.1 - DynamicChat Focus Error Fix (22/11/2026): Fixed a Retail 12.1.5 secret-value focus error when action bars shifted or Blizzard refreshed the chat layout by tracking focus via ChatFrame focus events and guarding focus/visibility checks cleanly." },
         { type = "UI",      text = "Release v2.8.0 - DynamicTalent Header Subtitles & Truncation Hover Safety Net (22/11/2026): Shortened Talent Loadouts Manager subtitles to fit on one line at 800px and added a hover tooltip that shows the full text only when a subtitle, status strip line, or Active Reminders row is actually cut off." },
         { type = "FIXED",   text = "Release v2.8.0 - DynamicTalent Delve Zone Priority & Backdrop Studio Option 1 Redesign (22/11/2026): Fixed GetActiveTalentMismatch() and GetActiveContentGroup() reading difficultyID == 208 alongside C_DelvesUI.HasActiveDelve(), C_PartyInfo.IsDelveInProgress(), and C_PartyInfo.IsDelveComplete() so Delves never misclassify as Mythic+ and always prioritise [Zone: Delves] (keeping [Zone: Outdoor] outside resting cities and refreshing dock/Prep Bar after zoning); and redesigned Talent Tree Backdrop Studio into independent Base Background ('Blizzard Spec Art' | 'Solid Obsidian') and Ambient Mist ('Off' | 'Hero-Synced' | 'Class Glow') controls with context-aware muting on Background Dimmer (0%-85%) and new Mist Intensity slider (15%-100%, default 60%) plus seamless migration." },
         { type = "FIXED",   text = "Release v2.8.0 - DynamicTalent Backdrop Studio Layering, Dimmer Order & Mist Opacity (22/11/2026): Moved DynamicTalentTreeBackdrop onto positive BACKGROUND sublevels (1-6) with taint-free TalentsFrame.Background alpha suppression in non-Blizzard modes and UpdateSpecBackground post-hooking (restoring alpha 1 cleanly in Blizzard Default or when disabled), positioned dimmerWash strictly behind the mist and vignette layers so up to 85% Background Dimmer never smothers Hero-Synced Mist or Class Glow, and fixed animation double-alpha multiplication so mist glows cleanly at 0.28-0.48 / 0.20-0.36 / 0.24-0.40 animated (or 0.38 / 0.28 / 0.32 static)." },

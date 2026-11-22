@@ -8801,7 +8801,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.8.0"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.8.1"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -8814,6 +8814,10 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "NEW",      title = "v2.8.1 Release (22/11/2026): Auto-Accept Role Check, Red Error Text & Sound Filter, and Granular Conflict Auto-Yield", desc = "Added opt-in Auto-Accept Role Check in DynamicGroup (Off by default, 0.45s out-of-combat delay, Shift to skip, never auto-accepts queue pops), opt-in Red Error Text & Sound Filter in DynamicPrep Tab 3 (Combat & Cooldown Spam, Movement & Mount Errors, and Mute Error Voice Lines with original CVar restore), and feature-level auto-yielding to EnhanceQoL, Leatrix Plus, ErrorFilter, and ErrorMonster (overridable in /ds conflicts)." },
+                { badge = "NEW",      title = "v2.8.1 Release (22/11/2026): Low Durability Alert Toast, Mage Food Restock & Role-Smart [DynamicDrink] (DynamicPrep)", desc = "Added Low Durability Alert Toasts with 1-click Repair Mount summoning outdoors or Open Gear indoors, Follower Dungeon Mage Food restock/leave and group Ask for Table toasts, and the [nocombat] Role-Smart [DynamicDrink] recovery macro." },
+                { badge = "NEW",      title = "v2.8.1 Release (22/11/2026): Raid Boss Binder Redesign, Multi-Source Boss Detection & Toast Silence (DynamicTalent)", desc = "Promoted All Raids to Row 1 with a full-width boss grid and Clear button, added multi-source boss detection (target, Action Target, mouseover, focus, boss1-5, nameplates, raid targets) with sticky boss caching and /dt why diagnostics, added Prep Bar and quick-switcher bind badges, and enabled Right-Click toast silencing." },
+                { badge = "FIXED",    title = "v2.8.1 Release (22/11/2026): Chat Input Box Focus Error Fix (DynamicChat)", desc = "Fixed a Retail 12.1.5 secret-value focus error when action bars shifted or Blizzard refreshed the chat layout across both DynamicSuite and standalone DynamicChat." },
                 { badge = "UI",       title = "v2.8.0 Release (22/11/2026): DynamicTalent Header Subtitles & Truncation Hover Safety Net", desc = "Shortened Talent Loadouts Manager subtitles to fit on one line at 800px and added a hover tooltip that shows the full text only when a subtitle, status strip line, or Active Reminders row is actually cut off." },
                 { badge = "FIXED",    title = "v2.8.0 Release (22/11/2026): DynamicTalent Delve Zone Priority & Backdrop Studio Option 1 Redesign", desc = "Fixed Delve vs Mythic+ classification by reading GetInstanceInfo() difficultyID (208) and all C_DelvesUI/C_PartyInfo Delve flags so Delves always win [Zone: Delves] and Outdoor zones never lose to M+, and split Backdrop Studio into independent Base Background ('Blizzard Spec Art' | 'Solid Obsidian') + Ambient Mist ('Off' | 'Hero-Synced' | 'Class Glow') pills with context-muted Background Dimmer and a new Mist Intensity (15%-100%) slider." },
                 { badge = "FIXED",    title = "v2.8.0 Release (22/11/2026): DynamicTalent Backdrop Studio Layering, Dimmer Order & Mist Opacity", desc = "Moved DynamicTalentTreeBackdrop onto positive BACKGROUND sublevels (1-6) with taint-free TalentsFrame.Background suppression and UpdateSpecBackground post-hooking (restored cleanly in Blizzard Default or when disabled), placed dimmerWash strictly behind mist and vignettes, and fixed mist double-alpha multiplication so Hero-Synced Mist and Class Glow remain vivid and readable up to 85% dimmer." },
@@ -8973,6 +8977,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
             openModule = "DynamicPrep",
             items = {
+                { badge = "NEW",      title = "v2.8.1 Release (22/11/2026): Red Error Text & Sound Filter, Low Durability Toast, Mage Food Restock & [DynamicDrink]", desc = "Added an opt-in Red Error Text & Sound Filter in Tab 3 (Combat & Cooldown Spam, Movement & Mount Errors, and Mute Error Voice Lines with original Sound_EnableErrorSpeech CVar restore and automatic yielding to EnhanceQoL, Leatrix Plus, ErrorFilter, or ErrorMonster); added the Low Durability Alert Toast with 1-click Repair Mount outdoors or Open Gear indoors; and added Follower Dungeon Mage Food restock/leave and group Ask for Table toasts plus the [nocombat] Role-Smart [DynamicDrink] recovery macro." },
                 { badge = "REFACTOR", title = "v2.8.0 Release (21/11/2026): Extracted Talent Loadouts & Talent Binds to DynamicTalent (/dt)", desc = "Moved the unlimited per-spec Talent Loadouts library, PlayerSpellsFrame dock, 880x580 Talent Loadouts Manager, and Shared Alert Toast reminders into the dedicated DynamicTalent module while keeping the Top Info Bar 'Talents' capsule hooked cleanly to DynamicTalent and preserving backward-compatible forwarding stubs." },
                 { badge = "NEW",      title = "v2.7.1 Release (21/11/2026): Standardised Spec/Loot Clicks, Multi-Select M+ & 'All M+' Binds, LFR/Normal Merge, 'Talent Binds' & 4px Scrollbars", desc = "Aligned Left-Click (Switch Active Specialisation out of combat) and Right-Click (Loot Specialisation) across Prep Bar and Talent Dock with matching plain Australian English tooltips; added 'All' + multi-select M+ dungeon tiles with specific-over-All reminder precedence; merged LFR and Normal into 'LFR / Normal'; renamed 'Boss Binds' to 'Talent Binds'; and added a 4px 3-way Obsidian scrollbar to Talent Loadouts Manager dropdowns." },
                 { badge = "UI",       title = "v2.3.0 Release: Relocated Blizzard Desktop Window Manager to Suite Studio (/ds windows) & 3-Way Scrollbar Upgrade", desc = "Relocated the Blizzard Desktop Window Manager from DynamicPrep Tab 3 into DynamicSuite Core ('Suite Studio -> Desktop Windows & Menus', /ds windows) with automatic SavedVariables migration and backward-compatible bridge stubs so Tab 3 focuses purely on World, Instance & Survival Automation; upgraded StyleObsidianScrollBar to full 3-way interaction; and registered DynamicPrep's dropdown and bar popover closers with UI.RegisterPopupCloser." },
@@ -9011,6 +9016,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_talent.tga",
             openModule = "DynamicTalent",
             items = {
+                { badge = "NEW",      title = "v2.8.1 Release (22/11/2026): Raid Boss Binder Redesign, Multi-Source Detection, Bind Badges & Toast Silence", desc = "Promoted All Raids to Row 1 with a full-width boss grid and quick Clear button, removed forced Boss #1 pre-selection, protected boss-specific builds over All Raids, added multi-source boss detection (target, Action Target, mouseover, focus, boss1-5, nameplates, raid targets) with sticky boss preservation and /dt why diagnostics, added Prep Bar and quick-switcher bind badges, and enabled Right-Click silencing on Talent Reminder Toasts." },
                 { badge = "UI",       title = "v2.8.0 Release (22/11/2026): Tighter Header Subtitles & Truncation Hover Safety Net", desc = "Shortened the Raid Bosses, M+ Dungeons, PvP, Zone Defaults, and Active Reminders subtitles to fit on one line at the minimum 800px width, and added a reusable hover helper showing the full plain text only when a subtitle, the status strip, or an Active Reminders row is actually truncated." },
                 { badge = "FIXED",    title = "v2.8.0 Release (22/11/2026): Delve vs Mythic+ Zone Priority & Backdrop Studio Option 1 Redesign", desc = "Read difficultyID == 208 and C_DelvesUI/C_PartyInfo Delve completion/progress flags across GetActiveTalentMismatch() and GetActiveContentGroup() so Delves never misclassify as M+ and always select [Zone: Delves]; and split Backdrop Studio into Base Background ('Blizzard Spec Art' | 'Solid Obsidian') + Ambient Mist ('Off' | 'Hero-Synced' | 'Class Glow') with a context-muted Background Dimmer, live Mist Intensity slider (15%-100%, default 60%), and automatic legacy mode migration." },
                 { badge = "FIXED",    title = "v2.8.0 Release (22/11/2026): Talent Tree Backdrop Layering, Dimmer Order & Mist Opacity", desc = "Moved DynamicTalentTreeBackdrop onto positive BACKGROUND sublevels (1-6) with taint-free TalentsFrame.Background alpha suppression and UpdateSpecBackground post-hooking (restoring alpha 1 cleanly in Blizzard Default or when disabled), placed dimmerWash strictly behind mist and vignette layers, and fixed animation double-alpha multiplication for clear, balanced atmospheric glows." },
@@ -9023,12 +9029,13 @@ function addonTable.CreateMainConfigUI()
             key = "group",
             tabLabel = "DynamicGroup",
             ver = DS_LIVE_VER_TAG,
-            date = "16/11/2026 (Retail 12.1.5)",
+            date = "22/11/2026 (Retail 12.1.5)",
             title = "DynamicGroup " .. DS_LIVE_VER_TAG,
             subtitle = "Premade LFG Datacenter Region Filter, Live Roster & Auto-Invite Engine (/dgroup)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga",
             openModule = "DynamicGroup",
             items = {
+                { badge = "NEW",      title = "v2.8.1 Release (22/11/2026): Opt-In Auto-Accept Role Check & Conflict Auto-Yield", desc = "Added opt-in Auto-Accept Role Check (Off by default) in Tab 2 with a 0.45s out-of-combat delay, Shift-to-skip bypass, Retail 12.1.5 secret-value guards, clean chat confirmation, and automatic feature-level yielding to EnhanceQoL or Leatrix Plus (overridable in /ds conflicts). Never auto-accepts dungeon or raid queue pops." },
                 { badge = "UI",       title = "v2.3.0 Release: 3-Way Interactive Obsidian Scrollbar & Central Popover Auto-Close", desc = "Upgraded CreateObsidianScrollArea with track click-to-jump and Suite Accent thumb hover/drag highlights, hooked OnHide across LFG Mini-Bar pills and workspace dropdowns, and registered CloseActiveDropdown with UI.RegisterPopupCloser." },
                 { badge = "UI",       title = "Option 3 'Off' Pill Styling (Section 2.9)", desc = "Updated AttachSegmentedSwitchToCard across all 3 tabs so selected 'Off' pills use Option 3 styling (#1E2430 Slate-Charcoal fill, #64748B Slate-Silver border, #E2E8F0 Silver-White text, and 1.5px #F87171 bottom OffBar)." },
                 { badge = "UI",       title = "Consolidated Single-Home M+ Keystone Auto-Slotting", desc = "Consolidated Auto-Insert Mythic+ Keystone exclusively inside DynamicGroup Tab 3 (Party & Keystone Automation) with automatic SavedVariables migration from DynamicPrepDB.autoSlotKeystone." },
@@ -9075,12 +9082,13 @@ function addonTable.CreateMainConfigUI()
             key = "chat",
             tabLabel = "DynamicChat",
             ver = DS_LIVE_VER_TAG,
-            date = "16/11/2026 (Retail 12.1.5)",
+            date = "22/11/2026 (Retail 12.1.5)",
             title = "DynamicChat " .. DS_LIVE_VER_TAG,
             subtitle = "Target Whisper (/ww), Sound Alerts, Smoked-Glass Chat Skin & History Retention (/dchat)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
             openModule = "DynamicChat",
             items = {
+                { badge = "FIXED",    title = "v2.8.1 Release (22/11/2026): Chat Input Box Focus Error Fix", desc = "Fixed a Retail 12.1.5 Lua error when action bars shifted or Blizzard refreshed the chat layout while the chat input box had a protected focus state. DynamicChat now tracks focus via ChatFrame focus events and guards visibility checks safely across both DynamicSuite and standalone DynamicChat." },
                 { badge = "FIXED",    title = "v2.3.0 Release: Font Dropdown Popover & 3-Way Scrollbar Upgrade, PrintMsg Fixes & Custom Reload Modal", desc = "Fixed OpenFontDropdownMenu activeDropdownMenu tracking, click-catcher activation, owner button OnHide auto-close, and chevron sync; upgraded DynamicChatFontDropdownMenu, DynamicChatSoundDropdownPopover, CreateObsidianScrollArea, and DynamicChatHistoryModal to full 3-way interactive 4px Obsidian scrollbars; replaced undefined PrintChat calls with PrintMsg across keyword saving, custom sound testing/adding, and /dc mute; replaced StaticPopupDialogs['DYNAMICCHAT_RELOAD_PROMPT'] with DynamicChatReloadPromptModal (#0B0D12 dark-obsidian + #F97316 Blaze Orange modal); and registered CloseActiveDropdown with UI.RegisterPopupCloser." },
                 { badge = "NEW",      title = "External Sound Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Default Sounds & Self-Whisper Alerts", desc = "Removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; configured clean Blizzard defaults across Tab 3's CHAT NOTIFICATION SOUNDS section (Whisper & Battle.net Whisper, Guild & Officer Chat, Party & Instance Chat, Raid & Raid Warning, and Say & Yell off by default) with automatic legacy ds_*/ex_* key migration, dropdown preview on selection, compact [Play] buttons, and 1.5s anti-spam cooldowns; added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI sound scanning with safe fallback to Blizzard Raid Warning and searchable grouped dropdowns; and restored self-whisper alert playback on incoming WHISPER / BN_WHISPER events while keeping self-message suppression active for group and public channels." },
                 { badge = "FIXED",    title = "v1.9.8 Flush (0, 0) Bottom-Left Clamping & Persistence", desc = "Disabled C++ SetClampedToScreen(true) on ChatFrame1 whenever DynamicChat manages layout, restricted composite clamping solely to visible container extents (GetVisibleContainerExtents), and canonicalised CHAT to BOTTOMLEFT outer-container coordinates so (0, 0) sits flush at the bottom-left screen corner." },
@@ -16902,7 +16910,7 @@ function addonTable.CreateMainConfigUI()
             f.UpdateRailScrollBar()
         end
         if f.verPill and f.verPill.label then
-            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.8.0"))
+            f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.8.1"))
         end
         if f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
@@ -17764,7 +17772,7 @@ function addonTable.HookGameMenu()
 
         local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         title:SetPoint("LEFT", emblem, "RIGHT", 10, 0)
-        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.8.0") .. "|r")
+        title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.8.1") .. "|r")
 
         local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         desc:SetPoint("TOPLEFT", emblem, "BOTTOMLEFT", 0, -14)
@@ -17825,7 +17833,7 @@ function addonTable.HookGameMenu()
             cardBg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
             if card.dsBorder then card.dsBorder:SetColor(cr, cg, cb, 0.75) end
             if emblem and emblem.SetAccentColor then emblem:SetAccentColor(cr, cg, cb, 1) end
-            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.8.0") .. "|r")
+            title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cff94a3b8v" .. (addonTable.ADDON_VERSION or "2.8.1") .. "|r")
             openBg:SetColorTexture(cr * 0.28, cg * 0.28, cb * 0.28, 0.98)
             if openBtn.dsBorder then openBtn.dsBorder:SetColor(cr, cg, cb, 0.95) end
         end)
@@ -17933,7 +17941,7 @@ do
 
     local dlModuleDescriptor = {
         name = "DynamicLoad",
-        version = addonTable.ADDON_VERSION or "2.8.0",
+        version = addonTable.ADDON_VERSION or "2.8.1",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         Open = addonTable.ShowConfigUI,
         Show = addonTable.ShowConfigUI,

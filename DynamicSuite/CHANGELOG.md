@@ -1,9 +1,13 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.8.0 (22/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.8.1 (22/11/2026 - Retail 12.1.5 / Interface 120105)*
 
 ---
 
 ## [Unreleased]
+
+---
+
+## DynamicSuite & All 12 Modules v2.8.1 (22/11/2026)
 
 ### Auto-Accept Role Check, Red Error Text & Sound Filter & Granular Conflict Auto-Yield (`DynamicGroup`, `DynamicPrep`, `DynamicSuite`, 22/11/2026)
 - **Auto-Accept Role Check (`DynamicGroup`):** Added an opt-in **Auto-Accept Role Check** toggle (`Off` by default) in Tab 2 (`Whisper Auto-Invite & Roles`) and Global Smart Search. Listens for `LFG_ROLE_CHECK_SHOW` out of combat with a `0.45s` safety delay, Shift-to-skip bypass, Retail 12.1.5 secret-value guards, and a clean chat confirmation (`Auto-accepted Role Check (<Role>). Hold Shift to skip.`), while never auto-accepting queue pops (`LFG_PROPOSAL_SHOW`).

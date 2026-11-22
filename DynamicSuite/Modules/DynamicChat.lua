@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.8.0"
+    local fb = fallback or "2.8.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicChat", VERSION, _G.DynamicChat) then
     return
 end
@@ -12370,7 +12370,7 @@ function DynamicChat._RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "22/11/2026",
         entries = {
-            { type = "FIX",      text = "Chat Input Box Focus Error Fix (22/11/2026): Fixed a Retail 12.1.5 Lua error that could appear when action bars shifted or Blizzard refreshed the layout while the chat input box had a protected focus state. DynamicChat now tracks chat focus through Blizzard's focus events and checks input box visibility safely across both DynamicSuite and standalone DynamicChat." },
+            { type = "FIX",      text = "Release v2.8.1 - Chat Input Box Focus Error Fix (22/11/2026): Fixed a Retail 12.1.5 Lua error that could appear when action bars shifted or Blizzard refreshed the layout while the chat input box had a protected focus state. DynamicChat now tracks chat focus through Blizzard's focus events and checks input box visibility safely across both DynamicSuite and standalone DynamicChat." },
             { type = "UI",       text = "Release v2.7.0 - Unified Mention Alert Toast & Live Suite Accent Polish (21/11/2026): Upgraded DynamicChatMentionToast to the shared 410x74 Obsidian alert toast style (live Suite Accent, Scale, Opacity, Border Style, Auto-Fade Duration, Sound, Right-Click dismissal, and clean vertical stacking under suite toasts), clamped Chat Skin section header titles beside the Edit HUD button at 800x520, and replaced Blaze Orange focus borders, action buttons, font menu borders, and Restore Blizzard Defaults modal chrome with the live Suite Accent." },
             { type = "FIX",      text = "Font Dropdown Popover, 3-Way Interactive Scrollbars, Custom Reload Prompt & Chat Feedback (16/11/2026): Fixed the Chat Font Family dropdown menu so clicking outside the menu, pressing Escape, or switching tabs closes it cleanly and updates its arrow icon; upgraded the font picker, sound picker, and settings scrollbars to support mousewheel scrolling, dragging the scrollbar handle (with Suite Accent colour highlight), and clicking anywhere on the track to jump; fixed chat confirmation messages when saving mention keywords, testing or adding custom sounds, and using '/dc mute'; and replaced the default Blizzard reload popup when restoring chat defaults with a custom dark-obsidian and Blaze Orange confirmation window." },
             { type = "FIX",      text = "Embedded ChatFrame1 EditBox Dock & Zero Position Shift (16/11/2026): Embedded ebBar and ChatFrame1EditBox directly inside ChatFrame1's own 26px bottom (or top) bounds and padded ChatFrame1.FontStringContainer by 28px so the newest chat line never overlaps the EditBox; locked GetCompositeChatInsets() / GetVisibleContainerExtents() to constant (-leftExt, 8, 28, -6) insets regardless of 'Always Shaded' vs 'Only When Typing' so toggling EditBox shading never shifts ChatFrame1's screen position." },

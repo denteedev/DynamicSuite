@@ -1,6 +1,6 @@
 # DynamicSuite -- 12-Module QoL, Utility & Performance Hub
 
-**Version:** v2.8.0 (22/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Version:** v2.8.1 (22/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for World of Warcraft Retail. All 12 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
@@ -10,7 +10,7 @@
 
 * **Automatic Standalone Handoff:** If you have both **DynamicSuite** and standalone **DynamicMarker** installed, DynamicSuite automatically disables the standalone copy and shows a clean reload prompt so you never get duplicate bars, overlapping commands, or conflicting settings.
 * **Instant Load Protection:** Even before you reload your UI, standalone DynamicMarker steps aside whenever DynamicSuite is active so you never see duplicate HUD Edit Mode windows.
-* **Third-Party Conflict Scanner:** Built-in detection checks for overlapping bag, chat, quest, mail, and camera addons (such as ElvUI, Leatrix Plus, BetterBags, Baganator, Prat-3.0, Postal, and DialogueUI) and lets you choose which addon handles each feature in one click.
+* **Third-Party Conflict Scanner:** Built-in detection checks for overlapping bag, chat, quest, mail, camera, error-filter, and QoL addons (such as ElvUI, EnhanceQoL, Leatrix Plus, BetterBags, Baganator, Prat-3.0, Postal, ErrorFilter, and DialogueUI) and lets you choose which addon handles each feature in one click.
 
 ---
 
@@ -30,12 +30,12 @@
 | Module | Slash | What It Does |
 | :--- | :--- | :--- |
 | **DynamicLoad** | `/dl` | Automatically switches addon profiles for Outdoor, Delves, Dungeons, Raid, and PvP with Always and Never load locks |
-| **DynamicPrep** | `/dprep`, `/dp` | Top stat/durability/FPS bar, Midnight Omni Folio tracker, clickable Raid Buff & Consumable reminders, survival healing macro, and quest/gossip QoL |
+| **DynamicPrep** | `/dprep`, `/dp` | Top stat/durability/FPS bar, Midnight Omni Folio tracker, clickable Raid Buff & Consumable reminders, `[DynamicHeal]` & Role-Smart `[DynamicDrink]` macros, Mage Food restock & Low Durability alert toasts, Red Error Text & Sound Filter, and quest/gossip QoL |
 | **DynamicTalent** | `/dt`, `/dynamictalent` | Unlimited per-spec talent loadout library, PlayerSpellsFrame dock, Raid/M+/PvP/Zone talent binds, custom group order, Prep Bar capsule hook, and Swap Reminder Toasts |
 | **DynamicMarker** | `/dm`, `/fm` | Instant focus & raid target marking, optional world flare cycling & clear hotkeys (unbound by default), floating Focus & Flare bars, and smart interrupt macro |
 | **DynamicZoom** | `/dz` | Unlocks 39-yard max camera zoom, speeds up scroll zooming, and fades trees/pillars instead of snapping your camera |
 | **DynamicFPS** | `/dfps` | Switches graphics settings automatically per zone, protects combat FPS, and tunes SpellQueueWindow from live ping + haste |
-| **DynamicGroup** | `/dgroup`, `/dg` | Adds region tags, M+ scores, and Lust/B-Res icons to Premade Groups, Season 2 portal deck, Dungeon Teleport Toasts, party audit, and auto-keystone |
+| **DynamicGroup** | `/dgroup`, `/dg` | Adds region tags, M+ scores, and Lust/B-Res icons to Premade Groups, Season 2 portal deck, Dungeon Teleport Toasts, party audit, opt-in Auto-Accept Role Check, and auto-keystone |
 | **DynamicBags** | `/dbag` | Fast category-sorted bags, unified Personal/Warband/Guild Bank viewer with header `Ctrl+Scroll` scaling (70%-140%), Alt Inventory Vault, auto-repair, and auto-sell junk |
 | **DynamicMail** | `/dmail`, `/dynamicmail` | 1-click Inbox Open All, AH Gold, Items Only, and empty-letter cleanup with bag-reserve safety, Alt Vault recipient picker, and `Alt+Left-Click` bag attach |
 | **DynamicChat** | `/dchat`, `/dc`, `/dynamicchat` | Smoked-glass chat frame, `/ww` target whispers, `/rl` reload, `/lg` group leave, 10 DynamicSuite chimes + 7 Blizzard alert sounds, Mention Alert Toasts, clickable URLs, and reload history |
