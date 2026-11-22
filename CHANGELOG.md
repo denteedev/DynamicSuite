@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Sticky Raid Boss Preservation Across Swaps, `focus`/`boss1`-`boss5` Scanning & Full-Tier `/dt why` (`DynamicTalent`, 22/11/2026)
+- **Preserve Sticky Boss on Swap & Resolve Real Library Entry (`DynamicTalent`):** Updated `SyncTalentBindsUI(clearStickyBoss)` so talent swaps (`ApplyTalentLibraryEntry()` / `TRAIT_CONFIG_UPDATED`) preserve `stickyRaidBoss` instead of falling back to `All Raids`, while bind edits/deletes still clear it cleanly; and resolved transient rule payloads back to their real saved library entry in `ApplyTalentLibraryEntry()` so `liveHash` and `lastAppliedTalentID` persist onto the actual loadout.
+- **`focus` / `boss1`-`boss5` Scanning & Full-Tier `/dt why` (`DynamicTalent`):** Added `focus` and `boss1`-`boss5` to `ResolveBoundBossFromSources()` (out of combat, alive, `pcall` + secret-safe) and upgraded `/dt why` (`self._lastDiag`) to report the winning rule and status across all 3 tiers alongside live `target`, `softenemy`, `focus`, `boss1`, and sticky boss state.
+
 ### Prep Bar Capsule, Tooltip & Quick-Switcher Popover Bind-Badge Parity (`DynamicTalent`, 22/11/2026)
 - **Prep Bar Capsule & Tooltip Parity (`DynamicTalent`):** Updated `GetTalentLoadoutBarData()` and `PopulatePrepBarTooltip()` to show `[Group-Hero]` prefixes and amber bind tags (`(Various)`, `(All M+)`, `(#8 Ula'tek)`), plus Hero Tree and `Bound:` detail lines (or `Unbound`) in the hover tooltip, and reset `DynamicPrep` capsule widths in `SyncTalentBindsUI()` when binds change.
 - **Quick-Switcher Popover Parity (`DynamicTalent`):** Widened `DynamicTalentPopover` to `276px`, added right-aligned amber bind tags with dynamic text anchoring, and added hover highlighting + full Talent Dock tooltips (`[Group-Hero] Name`, `(Active)`, Hero Tree, and `Bound:` lines).

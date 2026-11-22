@@ -914,6 +914,17 @@ local function ResolveBoundBossFromSources(selfObj, bossMap, diffKey, zc)
     mEntry, bKey, rawName = TryUnit("mouseover", false)
     if mEntry then return mEntry, bKey, rawName, "mouseover" end
 
+    -- 4) Focus unit
+    mEntry, bKey, rawName = TryUnit("focus", false)
+    if mEntry then return mEntry, bKey, rawName, "focus" end
+
+    -- 5) Boss frames (boss1..boss5)
+    for i = 1, 5 do
+        local bUnit = "boss" .. i
+        mEntry, bKey, rawName = TryUnit(bUnit, false)
+        if mEntry then return mEntry, bKey, rawName, bUnit end
+    end
+
     -- 4) Visible enemy nameplates
     if C_NamePlate and type(C_NamePlate.GetNamePlates) == "function" then
         local okP, plates = pcall(C_NamePlate.GetNamePlates)
@@ -1081,9 +1092,11 @@ function DynamicTalent:GetActiveTalentMismatch()
         subZone = subZone,
         diffKey = diffKey,
         diffLbl = diffLbl,
-        source = matchSource or (isRaid and "All Raids" or self:GetActiveContentGroup()),
+        source = matchSource or "None",
         bossName = matchEntry and tostring(matchEntry.bossName or tName or "") or nil,
         ruleName = matchEntry and tostring(matchEntry.loadoutName or "Boss Loadout") or nil,
+        ruleDesc = matchEntry and (tostring(matchEntry.bossName or tName or "") .. " -> " .. tostring(matchEntry.loadoutName or "Boss Loadout")) or "No matching rule",
+        status = "No matching rule",
     }
 
     if matchEntry then
@@ -1139,11 +1152,15 @@ function DynamicTalent:GetActiveTalentMismatch()
         local dMatch = specExact or specAny
         if dMatch and dMatch.importString and dMatch.importString ~= "" then
             local mKey = "mplus:" .. lowInst .. ":" .. tostring(dMatch.keyTier or "ANY")
+            local tLabel = (dMatch.keyTier == "HIGH" and " (+10+)") or (dMatch.keyTier == "LOW" and " (+2-9)") or ""
+            self._lastDiag.source = "M+ Dungeon"
+            self._lastDiag.ruleDesc = "M+: " .. instName .. tLabel .. " -> " .. tostring(dMatch.loadoutName or "M+ Loadout")
             if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, dMatch, dMatch.importString, liveStr) then
-                local tLabel = (dMatch.keyTier == "HIGH" and " (+10+)") or (dMatch.keyTier == "LOW" and " (+2-9)") or ""
+                self._lastDiag.status = "Swap recommended"
                 return { id = dMatch.loadoutID, name = dMatch.loadoutName or "M+ Loadout", importString = dMatch.importString, group = dMatch.group or "M+", heroAcronym = dMatch.heroAcronym },
                     dMatch.loadoutName or "M+ Loadout", "M+: " .. instName .. tLabel, mKey
             end
+            self._lastDiag.status = silencedTalentMismatches[mKey] and "Silenced for session" or "Already active"
             return nil
         end
     end
@@ -1160,10 +1177,14 @@ function DynamicTalent:GetActiveTalentMismatch()
         end
         local pRule = pvpKey and pvpMap[pvpKey]
         if type(pRule) == "table" and type(pRule.importString) == "string" and pRule.importString ~= "" then
+            self._lastDiag.source = pvpLbl
+            self._lastDiag.ruleDesc = pvpLbl .. " -> " .. tostring(pRule.loadoutName or pvpLbl)
             if not silencedTalentMismatches[pvpMKey] and not IsEntryAlreadyActive(self, specID, pRule, pRule.importString, liveStr) then
+                self._lastDiag.status = "Swap recommended"
                 return { id = pRule.loadoutID, name = pRule.loadoutName or pvpLbl, importString = pRule.importString, group = pRule.group or "PvP", heroAcronym = pRule.heroAcronym },
                     pRule.loadoutName or pvpLbl, pvpLbl, pvpMKey
             end
+            self._lastDiag.status = silencedTalentMismatches[pvpMKey] and "Silenced for session" or "Already active"
             return nil
         end
     end
@@ -1185,10 +1206,14 @@ function DynamicTalent:GetActiveTalentMismatch()
         end
         if allRaidBest and allRaidBest.importString and allRaidBest.importString ~= "" then
             local mKey = "allraid:" .. tostring(diffKey or "any")
+            self._lastDiag.source = "All Raids"
+            self._lastDiag.ruleDesc = "All Raids" .. diffTag .. " -> " .. tostring(allRaidBest.loadoutName or "Raid Loadout")
             if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allRaidBest, allRaidBest.importString, liveStr) then
+                self._lastDiag.status = "Swap recommended"
                 return { id = allRaidBest.loadoutID, name = allRaidBest.loadoutName or "Raid Loadout", importString = allRaidBest.importString, group = allRaidBest.group or "Raid", heroAcronym = allRaidBest.heroAcronym },
                     allRaidBest.loadoutName or "Raid Loadout", "All Raids" .. diffTag, mKey
             end
+            self._lastDiag.status = silencedTalentMismatches[mKey] and "Silenced for session" or "Already active"
             return nil
         end
     end
@@ -1211,11 +1236,15 @@ function DynamicTalent:GetActiveTalentMismatch()
         local allM = allExact or allAny
         if allM and allM.importString and allM.importString ~= "" then
             local mKey = "mplus:all:" .. tostring(allM.keyTier or "ANY")
+            local tLabel = (allM.keyTier == "HIGH" and " (+10+)") or (allM.keyTier == "LOW" and " (+2-9)") or ""
+            self._lastDiag.source = "All M+"
+            self._lastDiag.ruleDesc = "All M+" .. tLabel .. " -> " .. tostring(allM.loadoutName or "M+ Loadout")
             if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allM, allM.importString, liveStr) then
-                local tLabel = (allM.keyTier == "HIGH" and " (+10+)") or (allM.keyTier == "LOW" and " (+2-9)") or ""
+                self._lastDiag.status = "Swap recommended"
                 return { id = allM.loadoutID, name = allM.loadoutName or "M+ Loadout", importString = allM.importString, group = allM.group or "M+", heroAcronym = allM.heroAcronym },
                     allM.loadoutName or "M+ Loadout", "All M+" .. tLabel, mKey
             end
+            self._lastDiag.status = silencedTalentMismatches[mKey] and "Silenced for session" or "Already active"
             return nil
         end
     end
@@ -1237,6 +1266,8 @@ function DynamicTalent:GetActiveTalentMismatch()
 
     -- Suppress Outdoor / All Content reminders while resting in a city
     if isOutdoor and isResting then
+        self._lastDiag.source = "Resting City"
+        self._lastDiag.status = "Suppressed while resting"
         return nil
     end
 
@@ -1248,10 +1279,14 @@ function DynamicTalent:GetActiveTalentMismatch()
             zRule, zLbl, zMKey = zoneMap.outdoor, "Outdoor", "zone:outdoor"
         end
         if zRule and zRule.importString and zRule.importString ~= "" then
+            self._lastDiag.source = "Zone (" .. zLbl .. ")"
+            self._lastDiag.ruleDesc = zLbl .. " -> " .. tostring(zRule.loadoutName or (zLbl .. " Loadout"))
             if not silencedTalentMismatches[zMKey] and not IsEntryAlreadyActive(self, specID, zRule, zRule.importString, liveStr) then
+                self._lastDiag.status = "Swap recommended"
                 return { id = zRule.loadoutID, name = zRule.loadoutName or (zLbl .. " Loadout"), importString = zRule.importString, group = zRule.group or "Custom", heroAcronym = zRule.heroAcronym },
                     zRule.loadoutName or (zLbl .. " Loadout"), zLbl, zMKey
             end
+            self._lastDiag.status = silencedTalentMismatches[zMKey] and "Silenced for session" or "Already active"
             return nil
         end
 
@@ -1268,10 +1303,14 @@ function DynamicTalent:GetActiveTalentMismatch()
                 or nil
             if ctxLbl then
                 local mKey = "zone:all"
+                self._lastDiag.source = "All Content"
+                self._lastDiag.ruleDesc = ctxLbl .. " (All Content) -> " .. tostring(allRule.loadoutName or "Default Loadout")
                 if not silencedTalentMismatches[mKey] and not IsEntryAlreadyActive(self, specID, allRule, allRule.importString, liveStr) then
+                    self._lastDiag.status = "Swap recommended"
                     return { id = allRule.loadoutID, name = allRule.loadoutName or "Default Loadout", importString = allRule.importString, group = allRule.group or "Custom", heroAcronym = allRule.heroAcronym },
                         allRule.loadoutName or "Default Loadout", ctxLbl .. " (All Content)", mKey
                 end
+                self._lastDiag.status = silencedTalentMismatches[mKey] and "Silenced for session" or "Already active"
                 return nil
             end
         end
@@ -1858,8 +1897,10 @@ function DynamicTalent:GetActiveTalentLibraryEntry(specID)
     return nil
 end
 
-function DynamicTalent:SyncTalentBindsUI()
-    stickyRaidBoss = nil
+function DynamicTalent:SyncTalentBindsUI(clearStickyBoss)
+    if clearStickyBoss == true then
+        stickyRaidBoss = nil
+    end
     if _G.DynamicPrep then
         if type(_G.DynamicPrep.ResetStableCapsuleWidths) == "function" then
             pcall(_G.DynamicPrep.ResetStableCapsuleWidths, _G.DynamicPrep)
@@ -1941,7 +1982,7 @@ function DynamicTalent:UpdateTalentLibraryEntry(targetEntry, newName, newGroup, 
     UpdateMapRows(self.db.talentZoneMap and self.db.talentZoneMap[specID])
 
     Print(string.format("Updated loadout %s |cFFFFFFFF%s|r.", self:FormatTalentBadge(targetEntry), cleanName))
-    self:SyncTalentBindsUI()
+    self:SyncTalentBindsUI(true)
     return true, "Saved changes to '" .. cleanName .. "'."
 end
 
@@ -1989,7 +2030,7 @@ function DynamicTalent:SaveCurrentTreeOverEntry(targetEntry)
     UpdateTreeRows(self.db.talentZoneMap and self.db.talentZoneMap[specID])
 
     Print(string.format("Saved current talents over %s |cFFFFFFFF%s|r.", self:FormatTalentBadge(targetEntry), tostring(targetEntry.name or "Loadout")))
-    self:SyncTalentBindsUI()
+    self:SyncTalentBindsUI(true)
     return true
 end
 
@@ -2034,7 +2075,7 @@ function DynamicTalent:DeleteTalentLibraryEntry(targetEntry)
             talentMgrModal:LoadEditorEntry(nil, true)
         end
     end
-    self:SyncTalentBindsUI()
+    self:SyncTalentBindsUI(true)
 end
 
 function DynamicTalent:SetAllRaidDefault(entry, diffs, silent)
@@ -2088,7 +2129,7 @@ function DynamicTalent:SetAllRaidDefault(entry, diffs, silent)
         if useM then table.insert(dLabels, "M") end
         Print(string.format("Set |cFFFBBF24All Raids|r [%s] -> %s |cFFFFFFFF%s|r (specific boss binds take priority).", table.concat(dLabels, "/"), self:FormatTalentBadge(entry), tostring(entry.name)))
     end
-    self:SyncTalentBindsUI()
+    self:SyncTalentBindsUI(true)
     return true
 end
 
@@ -2123,7 +2164,7 @@ function DynamicTalent:SetAllMPlusDefault(entry, keyTier, silent)
         local tLbl = (kt == "HIGH" and "+10+") or (kt == "LOW" and "+2-9") or "Any Key"
         Print(string.format("Set |cFF38BDF8All M+ Dungeons|r [%s] -> %s |cFFFFFFFF%s|r (specific dungeons take priority).", tLbl, self:FormatTalentBadge(entry), tostring(entry.name)))
     end
-    self:SyncTalentBindsUI()
+    self:SyncTalentBindsUI(true)
     return true
 end
 
@@ -2163,7 +2204,7 @@ function DynamicTalent:SetPvPDefaults(entry, pvpSet, silent)
     if not silent then
         Print(string.format("Bound PvP (%s) -> %s |cFFFFFFFF%s|r.", table.concat(boundNames, ", "), self:FormatTalentBadge(entry), tostring(entry.name)))
     end
-    self:SyncTalentBindsUI()
+    self:SyncTalentBindsUI(true)
     return true
 end
 
@@ -2194,7 +2235,7 @@ function DynamicTalent:ClearPvPDefaults(pvpSet, silent)
         if not silent then
             Print(string.format("Cleared PvP bind(s): %s.", table.concat(cleared, ", ")))
         end
-        self:SyncTalentBindsUI()
+        self:SyncTalentBindsUI(true)
         return true
     end
     return false
@@ -2237,7 +2278,7 @@ function DynamicTalent:SetAllContentDefault(entry)
         pMap.all = nil
     end
     Print(string.format("Set |cFF10B981All Content Default|r -> %s |cFFFFFFFF%s|r (specific boss, dungeon, and PvP mode binds take priority).", self:FormatTalentBadge(entry), tostring(entry.name)))
-    self:SyncTalentBindsUI()
+    self:SyncTalentBindsUI(true)
     return true
 end
 
@@ -2277,7 +2318,7 @@ function DynamicTalent:SetZoneDefaults(entry, zoneSet, isAll)
     end
     if #names == 0 then return false end
     Print(string.format("Bound zones (%s) -> %s |cFFFFFFFF%s|r.", table.concat(names, ", "), self:FormatTalentBadge(entry), tostring(entry.name)))
-    self:SyncTalentBindsUI()
+    self:SyncTalentBindsUI(true)
     return true
 end
 
@@ -2308,7 +2349,7 @@ function DynamicTalent:ClearZoneDefaults(zoneSet, isAll)
             pMap.all = nil
         end
         Print("Cleared all Zone & Content defaults (specific boss, dungeon, and PvP mode binds kept).")
-        self:SyncTalentBindsUI()
+        self:SyncTalentBindsUI(true)
         return true
     end
 
@@ -2351,7 +2392,7 @@ function DynamicTalent:ClearZoneDefaults(zoneSet, isAll)
     end
     if #cleared > 0 then
         Print(string.format("Cleared zone default(s): %s.", table.concat(cleared, ", ")))
-        self:SyncTalentBindsUI()
+        self:SyncTalentBindsUI(true)
         return true
     end
     return false
@@ -3417,15 +3458,28 @@ function DynamicTalent:ApplyTalentLibraryEntry(entry)
         return
     end
     local specID = self:GetActiveSpecID()
+    local targetEntry = nil
+    if specID then
+        if type(entry.id) == "string" and entry.id ~= "" then
+            targetEntry = self:FindLibraryEntryByID(entry.id, specID)
+        end
+        if not targetEntry then
+            targetEntry = self:FindLibraryEntryForRule(entry, specID)
+        end
+    end
+    targetEntry = targetEntry or entry
+
     local api = _G.TalentLoadoutManagerAPI
     if type(api) == "table" and type(api.GlobalAPI) == "table" and type(api.CharacterAPI) == "table" and specID then
         local okL, list = pcall(api.GlobalAPI.GetLoadouts, api.GlobalAPI, specID)
         if okL and type(list) == "table" then
             for _, lo in ipairs(list) do
-                if type(lo) == "table" and lo.id and lo.name == entry.name then
+                if type(lo) == "table" and lo.id and lo.name == targetEntry.name then
                     pcall(api.CharacterAPI.LoadLoadout, api.CharacterAPI, lo.id, true)
+                    self.db.lastAppliedTalentID = self.db.lastAppliedTalentID or {}
+                    self.db.lastAppliedTalentID[specID] = EnsureEntryID(targetEntry, self.db)
                     self.db.lastAppliedTalentName = self.db.lastAppliedTalentName or {}
-                    self.db.lastAppliedTalentName[specID] = entry.name
+                    self.db.lastAppliedTalentName[specID] = targetEntry.name
                     self:SyncTalentBindsUI()
                     return
                 end
@@ -3505,15 +3559,15 @@ function DynamicTalent:ApplyTalentLibraryEntry(entry)
     local okCommit = pcall(C_ClassTalents.CommitConfig, configID)
     if okCommit then
         self._pendingSaveConfigID = configID
-        self._pendingAppliedEntry = entry
+        self._pendingAppliedEntry = targetEntry
         self._pendingAppliedSpecID = specID
         if specID then
             self.db.lastAppliedTalentID = self.db.lastAppliedTalentID or {}
-            self.db.lastAppliedTalentID[specID] = EnsureEntryID(entry, self.db)
+            self.db.lastAppliedTalentID[specID] = EnsureEntryID(targetEntry, self.db)
             self.db.lastAppliedTalentName = self.db.lastAppliedTalentName or {}
-            self.db.lastAppliedTalentName[specID] = entry.name
+            self.db.lastAppliedTalentName[specID] = targetEntry.name
         end
-        Print(string.format("Switching to %s |cFFFFFFFF%s|r...", self:FormatTalentBadge(entry), tostring(entry.name or "Loadout")))
+        Print(string.format("Switching to %s |cFFFFFFFF%s|r...", self:FormatTalentBadge(targetEntry), tostring(targetEntry.name or "Loadout")))
         self:SyncTalentBindsUI()
     end
 end
@@ -8499,7 +8553,7 @@ local function PopulateTalentManagerCore(host, isModal)
             else
                 Print(string.format("Bound %d bosses (%s) -> %s |cFFFFFFFF%s|r.", #boundNames, table.concat(boundNames, ", "), DynamicTalent:FormatTalentBadge(sel), sel.name))
             end
-            DynamicTalent:SyncTalentBindsUI()
+            DynamicTalent:SyncTalentBindsUI(true)
         end
 
         local fullSpecs = {}
@@ -8597,7 +8651,7 @@ local function PopulateTalentManagerCore(host, isModal)
             else
                 Print(string.format("Bound %d M+ dungeons (%s) [%s] -> %s |cFFFFFFFF%s|r.", #listToBind, table.concat(shortList, ", "), tLbl, DynamicTalent:FormatTalentBadge(sel), sel.name))
             end
-            DynamicTalent:SyncTalentBindsUI()
+            DynamicTalent:SyncTalentBindsUI(true)
         end
 
         local conflicts = DynamicTalent:DetectBindConflicts("MPLUS_LIST", { dungeons = chosen, keyTier = kt }, sel, specID)
@@ -11014,6 +11068,7 @@ DynamicTalent.CHANGELOG = {
         version = VERSION,
         date = "22/11/2026",
         entries = {
+            { type = "FIXED", text = "[Unreleased] Sticky Raid Boss Preservation Across Swaps, Real Library Entry Resolution, Focus/Boss1-5 Scanning & Full-Tier /dt why (22/11/2026): Updated SyncTalentBindsUI(clearStickyBoss) so talent swaps (ApplyTalentLibraryEntry / TRAIT_CONFIG_UPDATED) never wipe the sticky raid boss cache while bind edits/deletes still clear it cleanly; resolved transient Prep Bar / Alert Toast rule payloads back to their real saved library entry in ApplyTalentLibraryEntry() so liveHash and lastAppliedTalentID persist onto the actual loadout; added focus and boss1..boss5 scanning to ResolveBoundBossFromSources(); and upgraded /dt why to report winning rules across all 3 tiers plus live unit names (target, softenemy, focus, boss1) and sticky boss state." },
             { type = "UI",    text = "[Unreleased] Prep Bar Capsule, Tooltip & Quick-Switcher Popover Bind-Badge Parity (22/11/2026): Added right-aligned amber-gold bind tags ((Various), (All M+), (#8 Ula'tek)) via GetLoadoutBindBadgeText() and dynamic text anchoring to DynamicTalentPopover (widened to 276px) with hover highlights and full Talent Dock tooltips (Hero Tree + Bound lines); added bind tags and FormatTalentBadge() prefixes to GetTalentLoadoutBarData() and PopulatePrepBarTooltip() (including Hero Tree and Bound/Unbound lines); and reset DynamicPrep capsule widths on bind changes in SyncTalentBindsUI()." },
             { type = "FIXED", text = "[Unreleased] Raid Boss Matching Accuracy, Sticky Boss Cache & /dt why (22/11/2026): Removed inverted substring checks in MatchBossTargetName() and MatchBoundBossByName() and added 'ula'tek'/'ulatek' aliases to #8 Ula'tek so standing at #8 never matches #2 Entombed Sentinels; removed the UnitIsFriend exclusion on nameplates and raid/party targets so pre-pull friendly bosses are detected cleanly while still skipping player units; added a subzone-scoped sticky raid boss cache (cleared on ENCOUNTER_END victory, subzone/zone change, spec change, or bind edits) to prevent All Raids fallback flicker when looking away or targeting an ally; and added /dt why (/dt debug) for plain-English diagnostics." },
             { type = "UI",    text = "Tighter Header Subtitles & Truncation Hover Safety Net (22/11/2026): Shortened the Raid Bosses, M+ Dungeons, PvP, Zone Defaults, and Active Reminders subtitles so they fit cleanly on one line at the minimum 800px Talent Loadouts Manager width, and added a reusable hover helper that shows the full plain text in a tooltip only when a single-line section subtitle, the Action & Status strip subtitle, or an Active Reminders row is actually cut off (existing button and tile tooltips are never replaced)." },
@@ -11321,12 +11376,21 @@ function DynamicTalent:DiagnoseActiveRecommendation()
         zoneDesc = zoneDesc .. " - " .. d.subZone
     end
     local src = d.source or self:GetActiveContentGroup()
-    local ruleDesc = d.ruleName and (d.bossName and (d.bossName .. " -> " .. d.ruleName) or d.ruleName)
+    local ruleDesc = d.ruleDesc or (d.ruleName and (d.bossName and (d.bossName .. " -> " .. d.ruleName) or d.ruleName))
         or (mName and (tostring(mLabel or "Zone") .. " -> " .. tostring(mName)) or "No matching rule")
     local status = d.status or (mID and "Swap recommended" or "Already active / No swap needed")
 
+    local tgtN = ResolveLiveUnitName("target", false) or "none"
+    local softN = ResolveLiveUnitName("softenemy", false) or "none"
+    local focN = ResolveLiveUnitName("focus", false) or "none"
+    local b1N = ResolveLiveUnitName("boss1", false) or "none"
+    local stickyDesc = (stickyRaidBoss and stickyRaidBoss.bossName)
+        and string.format("%s (%s)", tostring(stickyRaidBoss.bossName), tostring(stickyRaidBoss.subZone ~= "" and stickyRaidBoss.subZone or "raid"))
+        or "none"
+
     Print(string.format("Zone: |cFFFFFFFF%s|r | Active: %s", zoneDesc, activeLabel))
     Print(string.format("Source: |cFF38BDF8%s|r | Winning Rule: |cFFFBBF24%s|r | Status: |cFF34D399%s|r", tostring(src), tostring(ruleDesc), tostring(status)))
+    Print(string.format("Units: target=|cFFFFFFFF%s|r, soft=|cFFFFFFFF%s|r, focus=|cFFFFFFFF%s|r, boss1=|cFFFFFFFF%s|r | Sticky: |cFFFBBF24%s|r", tgtN, softN, focN, b1N, stickyDesc))
 end
 
 _G.SLASH_DYNAMICTALENT1 = "/dt"
