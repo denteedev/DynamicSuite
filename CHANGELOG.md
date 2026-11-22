@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Chat Input Box Focus Error Fix (`DynamicChat`, 22/11/2026)
+- **Secret-Safe Focus Tracking & Layout Guards (`DynamicChat`):** Fixed a Retail 12.1.5 Lua error when action bars shifted or Blizzard refreshed the chat layout while the chat input box focus state was protected. `DynamicChat` now tracks focus cleanly via `ChatFrame.OnEditBoxFocusGained` / `ChatFrame.OnEditBoxFocusLost`, routes focus and visibility checks through `SafeEditBoxHasFocus()` and `SafeFrameIsShown()` with `pcall` and secret-value guards, and protects `OnExternalChatGeometryChange()` and Blizzard layout hooks across both `DynamicSuite` and standalone `DynamicChat`.
+
 ### Raid Bosses Binder Redesign (`DynamicTalent`, 22/11/2026)
 - **Row 1 `All Raids` & Full-Width Boss Grid (`DynamicTalent`):** Promoted **All Raids** to Row 1 alongside the Season 2 raid pills with an Obsidian Core explanation banner, and expanded the boss grid to use the full card width underneath.
 - **Quick `Clear` Button & Multi-Select Fix (`DynamicTalent`):** Added a red-hover **Clear** button beside **+ Bind Raid** (backed by `ClearRaidBinds()`) to remove `All Raids` or selected boss binds for the toggled difficulties, and fixed `bp:OnClick` so multi-selecting and unselecting bosses works cleanly.
