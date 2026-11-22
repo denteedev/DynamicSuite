@@ -668,6 +668,7 @@ local talentReminderToast = nil
 local talentPopoverFrame = nil
 local silencedTalentMismatches = {}
 local lastAlertedBossMismatchKey = nil
+local stickyRaidBoss = nil
 local talentMgrModal = nil
 local groupDragGhost = nil
 
@@ -838,7 +839,7 @@ local function HasActiveSpecSpecificBossBinds(selfObj)
     return HasSpecificBossBinds(bossMap)
 end
 
-local function ResolveLiveUnitName(unit, skipFriendlyAndPlayers)
+local function ResolveLiveUnitName(unit, skipPlayers)
     if type(unit) ~= "string" or unit == "" then return nil end
     if type(UnitExists) ~= "function" or type(UnitName) ~= "function" then return nil end
     local okE, ex = pcall(UnitExists, unit)
@@ -847,14 +848,10 @@ local function ResolveLiveUnitName(unit, skipFriendlyAndPlayers)
         local okD, dead = pcall(UnitIsDeadOrGhost, unit)
         if not okD or _IsSecret(dead) or dead then return nil end
     end
-    if skipFriendlyAndPlayers then
+    if skipPlayers then
         if type(UnitIsPlayer) == "function" then
             local okP, isPl = pcall(UnitIsPlayer, unit)
             if okP and not _IsSecret(isPl) and isPl then return nil end
-        end
-        if type(UnitIsFriend) == "function" then
-            local okF, isFr = pcall(UnitIsFriend, "player", unit)
-            if okF and not _IsSecret(isFr) and isFr then return nil end
         end
     end
     local okN, name = pcall(UnitName, unit)
@@ -877,7 +874,7 @@ local function MatchBoundBossByName(selfObj, bossMap, diffKey, unitName)
             if canonicalLow then
                 matchedName = (bLow == canonicalLow)
             else
-                matchedName = (bLow == lowTarget or lowTarget:find(bLow, 1, true) or bLow:find(lowTarget, 1, true)) and true or false
+                matchedName = (bLow == lowTarget or (#bLow >= 4 and lowTarget:find(bLow, 1, true))) and true or false
             end
             if matchedName and DoesRuleMatchDifficulty(entry, diffKey) then
                 matchEntry = entry
@@ -974,6 +971,19 @@ local function ResolveBoundBossFromSources(selfObj, bossMap, diffKey, zc)
     return nil
 end
 
+local function SafeGetSubZoneText()
+    if type(GetSubZoneText) ~= "function" then return "" end
+    local ok, sz = pcall(GetSubZoneText)
+    if ok and type(sz) == "string" and not _IsSecret(sz) then
+        return SafeTrim(sz)
+    end
+    return ""
+end
+
+function DynamicTalent:ClearStickyRaidBoss()
+    stickyRaidBoss = nil
+end
+
 function DynamicTalent:ResetBossAlertDedupe()
     lastAlertedBossMismatchKey = nil
 end
@@ -1011,19 +1021,91 @@ function DynamicTalent:GetActiveTalentMismatch()
     -- PRIORITY 1 (Tier 1): Specific Raid Boss, Specific M+ Dungeon, or Specific PvP Mode
     -- =========================================================================
     local bossMap = self.db.talentBossMap and self.db.talentBossMap[specID]
-    local matchEntry, bossKey, tName = ResolveBoundBossFromSources(self, bossMap, diffKey, zc)
+    local subZone = isRaid and SafeGetSubZoneText() or ""
+    local matchEntry, bossKey, tName, matchSource = ResolveBoundBossFromSources(self, bossMap, diffKey, zc)
+    if matchEntry then
+        if isRaid then
+            stickyRaidBoss = {
+                specID   = specID,
+                instName = instName,
+                subZone  = subZone,
+                diffKey  = diffKey,
+                bossKey  = bossKey,
+                bossName = tostring(matchEntry.bossName or tName),
+                entry    = matchEntry,
+                source   = matchSource,
+            }
+        end
+    elseif isRaid and stickyRaidBoss then
+        local validSticky = (stickyRaidBoss.specID == specID)
+            and (stickyRaidBoss.instName == instName)
+            and (stickyRaidBoss.subZone == subZone)
+            and (stickyRaidBoss.diffKey == diffKey)
+            and type(bossMap) == "table"
+        if validSticky then
+            local stillBound = nil
+            for _, entry in pairs(bossMap) do
+                if entry == stickyRaidBoss.entry and DoesRuleMatchDifficulty(entry, diffKey) then
+                    stillBound = entry
+                    break
+                end
+            end
+            if not stillBound then
+                for _, entry in pairs(bossMap) do
+                    if type(entry) == "table" and entry.isAllRaid ~= true
+                       and tostring(entry.bossName or ""):lower() == tostring(stickyRaidBoss.bossName or ""):lower()
+                       and DoesRuleMatchDifficulty(entry, diffKey) then
+                        stillBound = entry
+                        break
+                    end
+                end
+            end
+            if stillBound then
+                matchEntry = stillBound
+                bossKey = stickyRaidBoss.bossKey
+                tName = stickyRaidBoss.bossName
+                matchSource = "sticky boss"
+            else
+                stickyRaidBoss = nil
+            end
+        else
+            stickyRaidBoss = nil
+        end
+    elseif not isRaid then
+        stickyRaidBoss = nil
+    end
+
+    self._lastDiag = {
+        specID = specID,
+        zc = zc,
+        subZone = subZone,
+        diffKey = diffKey,
+        diffLbl = diffLbl,
+        source = matchSource or (isRaid and "All Raids" or self:GetActiveContentGroup()),
+        bossName = matchEntry and tostring(matchEntry.bossName or tName or "") or nil,
+        ruleName = matchEntry and tostring(matchEntry.loadoutName or "Boss Loadout") or nil,
+    }
+
     if matchEntry then
         local mKey = "boss:" .. bossKey .. ":" .. tostring(diffKey or "any")
+        self._lastDiag.mKey = mKey
         if not silencedTalentMismatches[mKey] then
             if matchEntry.importString and matchEntry.importString ~= "" then
                 if not IsEntryAlreadyActive(self, specID, matchEntry, matchEntry.importString, liveStr) then
                     local dispBoss = tostring(matchEntry.bossName or tName)
+                    self._lastDiag.status = "Swap recommended"
                     return { id = matchEntry.loadoutID, name = matchEntry.loadoutName or "Boss Loadout", importString = matchEntry.importString, group = matchEntry.group or "Raid", heroAcronym = matchEntry.heroAcronym },
                         matchEntry.loadoutName or "Boss Loadout", "Boss: " .. dispBoss .. diffTag, mKey
                 end
+                self._lastDiag.status = "Already active"
             elseif matchEntry.configID and curID ~= matchEntry.configID then
+                self._lastDiag.status = "Swap recommended"
                 return matchEntry.configID, matchEntry.loadoutName or "Boss Loadout", "Boss: " .. tostring(tName or matchEntry.bossName or "Boss"), mKey
+            else
+                self._lastDiag.status = "Already active"
             end
+        else
+            self._lastDiag.status = "Silenced for session"
         end
         return nil
     end
@@ -1777,6 +1859,7 @@ function DynamicTalent:GetActiveTalentLibraryEntry(specID)
 end
 
 function DynamicTalent:SyncTalentBindsUI()
+    stickyRaidBoss = nil
     if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
         pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
     end
@@ -5727,7 +5810,7 @@ do
                 { order = 5, id = -105, name = "Sszorak",                 short = "5. Sszorak",     aliases = { "sszorak" } },
                 { order = 6, id = -106, name = "The Twin Fangs",          short = "6. Twin Fangs",  aliases = { "vexhul", "ithraz", "twin fang" } },
                 { order = 7, id = -107, name = "The Coiled Altar",        short = "7. Coiled Altar",aliases = { "coiled altar" } },
-                { order = 8, id = -108, name = "Ula'tek",                 short = "8. Ula'tek",     aliases = {} },
+                { order = 8, id = -108, name = "Ula'tek",                 short = "8. Ula'tek",     aliases = { "ula'tek", "ulatek" } },
             },
         },
         {
@@ -5902,7 +5985,7 @@ do
         for rIdx, rObj in ipairs(raids) do
             for bIdx, bObj in ipairs(rObj.bosses or {}) do
                 for _, alias in ipairs(bObj.aliases or {}) do
-                    if #alias >= 3 and (lowT:find(alias, 1, true) or alias:find(lowT, 1, true)) then
+                    if #alias >= 4 and lowT:find(alias, 1, true) then
                         return rIdx, bIdx, rObj, bObj
                     end
                 end
@@ -5911,7 +5994,7 @@ do
         for rIdx, rObj in ipairs(raids) do
             for bIdx, bObj in ipairs(rObj.bosses or {}) do
                 local bLow = tostring(bObj.name or ""):lower()
-                if #bLow >= 4 and (lowT:find(bLow, 1, true) or bLow:find(lowT, 1, true)) then
+                if #bLow >= 4 and lowT:find(bLow, 1, true) then
                     return rIdx, bIdx, rObj, bObj
                 end
             end
@@ -10832,6 +10915,7 @@ DynamicTalent.CHANGELOG = {
         version = VERSION,
         date = "22/11/2026",
         entries = {
+            { type = "FIXED", text = "[Unreleased] Raid Boss Matching Accuracy, Sticky Boss Cache & /dt why (22/11/2026): Removed inverted substring checks in MatchBossTargetName() and MatchBoundBossByName() and added 'ula'tek'/'ulatek' aliases to #8 Ula'tek so standing at #8 never matches #2 Entombed Sentinels; removed the UnitIsFriend exclusion on nameplates and raid/party targets so pre-pull friendly bosses are detected cleanly while still skipping player units; added a subzone-scoped sticky raid boss cache (cleared on ENCOUNTER_END victory, subzone/zone change, spec change, or bind edits) to prevent All Raids fallback flicker when looking away or targeting an ally; and added /dt why (/dt debug) for plain-English diagnostics." },
             { type = "UI",    text = "Tighter Header Subtitles & Truncation Hover Safety Net (22/11/2026): Shortened the Raid Bosses, M+ Dungeons, PvP, Zone Defaults, and Active Reminders subtitles so they fit cleanly on one line at the minimum 800px Talent Loadouts Manager width, and added a reusable hover helper that shows the full plain text in a tooltip only when a single-line section subtitle, the Action & Status strip subtitle, or an Active Reminders row is actually cut off (existing button and tile tooltips are never replaced)." },
             { type = "FIXED", text = "Delve vs Mythic+ Zone Priority Detection (22/11/2026): Updated GetInstanceInfo() parsing across GetActiveTalentMismatch() and GetActiveContentGroup() to read difficultyID alongside instanceType and check difficultyID == 208, C_DelvesUI.HasActiveDelve(), C_PartyInfo.IsDelveInProgress(), and C_PartyInfo.IsDelveComplete(). Delves and non-dungeon scenarios never misclassify as Mythic+; [Zone: Delves] always takes priority inside Delves, [Zone: Outdoor] wins in open world zones outside resting cities, and Talent Dock / Prep Bar refresh cleanly after zoning." },
             { type = "UI",    text = "Option 1 Talent Tree Backdrop Studio Redesign (22/11/2026): Split Backdrop Studio into independent Base Background ('Blizzard Spec Art' | 'Solid Obsidian') and Ambient Mist ('Off' | 'Hero-Synced' | 'Class Glow') controls with a muted-when-inactive Background Dimmer (0%-85% for Blizzard Spec Art) and a live Mist Intensity slider (15%-100%, default 60%) so Hero-Synced and Class Glow mist can layer cleanly over either base, migrating legacy talentBackdropMode settings automatically." },
@@ -10950,6 +11034,8 @@ SafeRegisterEvent(evt, "ADDON_LOADED")
 SafeRegisterEvent(evt, "PLAYER_LOGIN")
 SafeRegisterEvent(evt, "PLAYER_ENTERING_WORLD")
 SafeRegisterEvent(evt, "ZONE_CHANGED_NEW_AREA")
+SafeRegisterEvent(evt, "ZONE_CHANGED")
+SafeRegisterEvent(evt, "ENCOUNTER_END")
 SafeRegisterEvent(evt, "PLAYER_REGEN_DISABLED")
 SafeRegisterEvent(evt, "PLAYER_REGEN_ENABLED")
 SafeRegisterEvent(evt, "PLAYER_SPECIALIZATION_CHANGED")
@@ -10964,7 +11050,7 @@ SafeRegisterEvent(evt, "PLAYER_UPDATE_RESTING")
 SafeRegisterEvent(evt, "TRAIT_CONFIG_UPDATED")
 
 local isInitialized = false
-evt:SetScript("OnEvent", function(_, event, arg1)
+evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     if event == "ADDON_LOADED" then
         if (arg1 == ADDON_FOLDER or arg1 == "DynamicSuite" or arg1 == "DynamicTalent") and not isInitialized then
             isInitialized = true
@@ -10995,6 +11081,7 @@ evt:SetScript("OnEvent", function(_, event, arg1)
         end
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
         lastAlertedBossMismatchKey = nil
+        stickyRaidBoss = nil
         local function RefreshZoneContextUI()
             DynamicTalent:CheckZoneTalentLoadout()
             DynamicTalent:RefreshTalentDock()
@@ -11006,6 +11093,21 @@ evt:SetScript("OnEvent", function(_, event, arg1)
             C_Timer.After(1.2, RefreshZoneContextUI)
         else
             RefreshZoneContextUI()
+        end
+    elseif event == "ZONE_CHANGED" then
+        if stickyRaidBoss and SafeGetSubZoneText() ~= stickyRaidBoss.subZone then
+            stickyRaidBoss = nil
+            if not IsPlayerInCombat() then
+                DynamicTalent:CheckZoneTalentLoadout()
+                if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
+                    pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+                end
+            end
+        end
+    elseif event == "ENCOUNTER_END" then
+        if not _IsSecret(arg5) and arg5 == 1 then
+            stickyRaidBoss = nil
+            lastAlertedBossMismatchKey = nil
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
         DynamicTalent:HideTalentReminderToast()
@@ -11021,6 +11123,7 @@ evt:SetScript("OnEvent", function(_, event, arg1)
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         if not arg1 or arg1 == "player" then
             lastAlertedBossMismatchKey = nil
+            stickyRaidBoss = nil
             DynamicTalent._heroTreeCache = nil
             DynamicTalent:RefreshTalentDock()
             DynamicTalent:EnsureHeroMedallionHooks()
@@ -11103,12 +11206,37 @@ _G.DynamicTalent_OnAddonCompartmentClick = function(_, buttonName)
     end
 end
 
+function DynamicTalent:DiagnoseActiveRecommendation()
+    local mID, mName, mLabel = self:GetActiveTalentMismatch()
+    local d = self._lastDiag or {}
+    local zc = d.zc or DetectCurrentZoneContext()
+    local specID = d.specID or self:GetActiveSpecID()
+    local activeEntry = specID and self:GetActiveTalentLibraryEntry(specID) or nil
+    local activeLabel = activeEntry and (self:FormatTalentBadge(activeEntry) .. " " .. tostring(activeEntry.name)) or "Blizzard / Unsaved Build"
+    local zoneDesc = (zc.instName ~= "" and zc.instName or "Open World")
+    if zc.isRaid and d.diffLbl then
+        zoneDesc = zoneDesc .. " (" .. d.diffLbl .. ")"
+    end
+    if d.subZone and d.subZone ~= "" then
+        zoneDesc = zoneDesc .. " - " .. d.subZone
+    end
+    local src = d.source or self:GetActiveContentGroup()
+    local ruleDesc = d.ruleName and (d.bossName and (d.bossName .. " -> " .. d.ruleName) or d.ruleName)
+        or (mName and (tostring(mLabel or "Zone") .. " -> " .. tostring(mName)) or "No matching rule")
+    local status = d.status or (mID and "Swap recommended" or "Already active / No swap needed")
+
+    Print(string.format("Zone: |cFFFFFFFF%s|r | Active: %s", zoneDesc, activeLabel))
+    Print(string.format("Source: |cFF38BDF8%s|r | Winning Rule: |cFFFBBF24%s|r | Status: |cFF34D399%s|r", tostring(src), tostring(ruleDesc), tostring(status)))
+end
+
 _G.SLASH_DYNAMICTALENT1 = "/dt"
 _G.SLASH_DYNAMICTALENT2 = "/dynamictalent"
 _G.SlashCmdList["DYNAMICTALENT"] = function(msg)
     local cmd = SafeTrim(msg or ""):lower()
     if cmd == "binds" or cmd == "mgr" or cmd == "manager" then
         DynamicTalent:OpenTalentManagerModal(2)
+    elseif cmd == "why" or cmd == "debug" then
+        DynamicTalent:DiagnoseActiveRecommendation()
     elseif cmd == "reset" then
         DynamicTalent:ResetModuleDefaults()
     elseif cmd == "edit" or cmd == "hud" then
