@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Improved
+* **EllesmereUI Quickdraw Conflict Parity:** Added `EllesmereUIQuickdraw` / `EllesmereUI_Quickdraw` to standalone DynamicMarker's conflict scanner for 100% parity.
+
 ---
 
 ## DynamicMarker v2.8.1 (22/11/2026)

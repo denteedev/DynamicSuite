@@ -318,8 +318,10 @@ local CLASS_INTERRUPTS = {
 }
 
 local CONFLICT_ADDONS = {
-    { name = "FocusMarker",  label = "FocusMarker",  isLegacy = true },
-    { name = "TargetCharms", label = "TargetCharms", isLegacy = false },
+    { name = "FocusMarker",           label = "FocusMarker",           isLegacy = true },
+    { name = "EllesmereUIQuickdraw",  label = "EllesmereUI Quickdraw", isLegacy = false },
+    { name = "EllesmereUI_Quickdraw", label = "EllesmereUI Quickdraw", isLegacy = false },
+    { name = "TargetCharms",          label = "TargetCharms",          isLegacy = false },
     { name = "DejaMark",     label = "DejaMark",     isLegacy = false },
     { name = "EasyMarker",   label = "EasyMarker",   isLegacy = false },
     { name = "DecorVendor",  label = "Decor Vendor", isLegacy = false },
@@ -11119,8 +11121,9 @@ end
 
 DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
-    date    = "22/11/2026",
+    date    = "23/11/2026",
     entries = {
+        { type = "IMPROVED", text = "[Unreleased] EllesmereUI Quickdraw Standalone Conflict Parity (23/11/2026): Added EllesmereUIQuickdraw / EllesmereUI_Quickdraw to standalone DynamicMarker's conflict scanner for 100% Suite <-> Standalone parity." },
         { type = "IMPROVED", text = "Release v2.8.1 - Version & Coexistence Lockstep Parity (22/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.8.1 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "IMPROVED", text = "Release v2.8.0 - Version & Coexistence Lockstep Parity (22/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.8.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "UI",       text = "Release v2.8.0 - True-4px Sleek Precision Sliders & Footer Thumb Parity (22/11/2026): Moved the 1px track hairline strictly outside the 4px #090A0D track across settings sliders so fill bars render at a true 4px height, and added matching 1px hairlines plus live Suite Accent hover/drag blade thumb highlights to the standalone footer Scale and Opacity sliders." },

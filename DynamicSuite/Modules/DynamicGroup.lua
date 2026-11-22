@@ -8289,6 +8289,21 @@ function DynamicGroup:GetRoleCheckYieldAddon()
         end)
         if active then return "Leatrix_Plus", "Leatrix Plus" end
     end
+    for _, euiAddon in ipairs({ "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "EllesmereUI" }) do
+        local okQ, loadedQ = pcall(isLoaded, euiAddon)
+        if okQ and loadedQ then
+            local active = false
+            pcall(function()
+                local edb = _G.EllesmereUIDB
+                if type(edb) == "table" and (edb.quickSignup == true or edb.autoAcceptRoleCheck == true) then
+                    active = true
+                end
+            end)
+            if active then
+                return euiAddon, "EllesmereUI Quality of Life"
+            end
+        end
+    end
     return nil, nil
 end
 

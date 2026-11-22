@@ -403,39 +403,39 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
     },
     DynamicZoom = {
         "DynamicCam", "MaxCam", "ActionCamPlus", "FasterCamera", "AdvancedInterfaceOptions",
-        addons = { "DynamicCam", "MaxCam", "ActionCamPlus", "FasterCamera", "AdvancedInterfaceOptions", "EnhanceQoL", "Leatrix_Plus" },
+        addons = { "DynamicCam", "MaxCam", "ActionCamPlus", "FasterCamera", "AdvancedInterfaceOptions", "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL" },
         conflicts = { "DynamicCam", "MaxCam", "ActionCamPlus", "FasterCamera", "AdvancedInterfaceOptions" },
         hardConflicts = { "DynamicCam", "MaxCam", "ActionCamPlus", "FasterCamera", "AdvancedInterfaceOptions" },
-        partialConflicts = { "EnhanceQoL", "Leatrix_Plus" },
-        softConflicts = { "EnhanceQoL", "Leatrix_Plus" },
+        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL" },
+        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL" },
         category = "Camera Zoom & Optics",
     },
     DynamicFPS = {
         "Hyperframe", "AutoCombatLogger", "LoggerHead", "RaiderIO_AutoCombatLog", "!ArchonLogger", "ArchonLogger",
-        addons = { "Hyperframe", "AutoCombatLogger", "LoggerHead", "RaiderIO_AutoCombatLog", "EnhanceQoL", "Leatrix_Plus", "!ArchonLogger", "ArchonLogger" },
+        addons = { "Hyperframe", "AutoCombatLogger", "LoggerHead", "RaiderIO_AutoCombatLog", "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "!ArchonLogger", "ArchonLogger" },
         conflicts = { "Hyperframe", "AutoCombatLogger", "LoggerHead", "RaiderIO_AutoCombatLog" },
         hardConflicts = { "Hyperframe", "AutoCombatLogger", "LoggerHead", "RaiderIO_AutoCombatLog" },
-        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "!ArchonLogger", "ArchonLogger" },
-        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "!ArchonLogger", "ArchonLogger" },
+        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "!ArchonLogger", "ArchonLogger" },
+        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "!ArchonLogger", "ArchonLogger" },
         category = "Graphics & Combat Logging",
     },
     DynamicPrep = {
         "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs",
-        "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
+        "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIBlizzardSkin", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
         "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
         "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
         "ErrorFilter", "ErrorMonster",
         addons = {
             "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs",
-            "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
+            "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIBlizzardSkin", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus",
             "NoAutoClose", "BlizzMove", "DeModal", "MoveAny",
             "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools",
             "ErrorFilter", "ErrorMonster",
         },
         conflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
         hardConflicts = { "EllesmereUIAuraBuffReminders", "EllesmereUI_AuraBuffReminders", "ClickableRaidBuffs" },
-        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools", "ErrorFilter", "ErrorMonster" },
-        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools", "ErrorFilter", "ErrorMonster" },
+        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIBlizzardSkin", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools", "ErrorFilter", "ErrorMonster" },
+        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIBlizzardSkin", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus", "NoAutoClose", "BlizzMove", "DeModal", "MoveAny", "DialogUI", "DialogueUI", "Plumber", "Immersion", "Storyline", "AutoTurnIn", "BeQuiet", "TalkLess", "ElvUI", "WindTools", "ErrorFilter", "ErrorMonster" },
         category = "Readiness & Automation",
     },
     DynamicTalent = {
@@ -449,11 +449,11 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
     },
     DynamicGroup = {
         "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "PremadeGroupsFilter", "PremadeRegionFilter", "LFGListFilter", "PremadeGroupFinder", "WorldQuestGroupFinder",
-        addons = { "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "PremadeGroupsFilter", "PremadeRegionFilter", "LFGListFilter", "PremadeGroupFinder", "WorldQuestGroupFinder", "EnhanceQoL", "Leatrix_Plus" },
+        addons = { "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "PremadeGroupsFilter", "PremadeRegionFilter", "LFGListFilter", "PremadeGroupFinder", "WorldQuestGroupFinder", "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus" },
         conflicts = { "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "PremadeGroupsFilter", "PremadeRegionFilter", "LFGListFilter", "PremadeGroupFinder", "WorldQuestGroupFinder" },
         hardConflicts = { "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "PremadeGroupsFilter", "PremadeRegionFilter", "LFGListFilter", "PremadeGroupFinder", "WorldQuestGroupFinder" },
-        partialConflicts = { "EnhanceQoL", "Leatrix_Plus" },
-        softConflicts = { "EnhanceQoL", "Leatrix_Plus" },
+        partialConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus" },
+        softConflicts = { "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIMythicTimer", "EllesmereUI_MythicPlus" },
         category = "LFG & Premade Search",
     },
     DynamicBags = {
@@ -570,6 +570,7 @@ local FRIENDLY_CONFLICT_NAMES = addonTable.FRIENDLY_CONFLICT_NAMES or {
     ["EllesmereUI_Quickdraw"]    = "EllesmereUI Quickdraw",
     ["EllesmereUIQoL"]           = "EllesmereUI Quality of Life",
     ["EllesmereUI_QoL"]          = "EllesmereUI Quality of Life",
+    ["EllesmereUIBlizzardSkin"]  = "EllesmereUI Blizzard Skins+",
     ["EllesmereUIMythicTimer"]   = "EllesmereUI Mythic+ Tools",
     ["EllesmereUI_MythicPlus"]   = "EllesmereUI Mythic+ Tools",
     ["MRT"]                      = "Method Raid Tools (MRT)",
@@ -647,6 +648,11 @@ local CONFLICT_YIELD_FEATURES = {
     ["EllesmereUIChat"]          = "chat/editbox skinning",
     ["EllesmereUI_Chat"]         = "chat/editbox skinning",
     ["EllesmereUIGroupFinder"]   = "shared Group Finder features",
+    ["EllesmereUIQoL"]           = "overlapping QoL features",
+    ["EllesmereUI_QoL"]          = "overlapping QoL features",
+    ["EllesmereUIBlizzardSkin"]  = "Blizzard Window Mover (Shifter)",
+    ["EllesmereUIMythicTimer"]   = "Mythic+ Keystone & Timer tools",
+    ["EllesmereUI_MythicPlus"]   = "Mythic+ Keystone & Timer tools",
     ["NoAutoClose"]              = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
     ["BlizzMove"]                = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
     ["DeModal"]                  = "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)",
@@ -2549,6 +2555,57 @@ end
 addonTable.IsExternalAddonFrozen = IsExternalAddonFrozen
 DynamicSuite.IsExternalAddonFrozen = IsExternalAddonFrozen
 
+function addonTable.IsEllesmereSubAddonInstalled(folderA, folderB)
+    if C_AddOns and type(C_AddOns.GetAddOnInfo) == "function" then
+        for _, f in ipairs({ folderA, folderB }) do
+            if type(f) == "string" and f ~= "" then
+                local ok, name, title, _, _, reason = pcall(C_AddOns.GetAddOnInfo, f)
+                if ok and (name or title) and reason ~= "MISSING" then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+function addonTable.ResolveEllesmereProfile(subFolder)
+    local edb = _G.EllesmereUIDB
+    if type(edb) ~= "table" then
+        local legacy = (type(subFolder) == "string" and type(_G[subFolder .. "DB"]) == "table") and _G[subFolder .. "DB"] or nil
+        local legProf = (legacy and type(legacy.profile) == "table") and legacy.profile or legacy
+        return nil, legProf, nil, "Default"
+    end
+    local profileName = edb.activeProfile
+    if type(profileName) ~= "string" or profileName == "" then
+        if type(edb.profileKeys) == "table" then
+            local pName = GetPlayer()
+            local realm = (type(GetRealmName) == "function" and GetRealmName()) or ""
+            profileName = edb.profileKeys[pName .. " - " .. realm] or edb.profileKeys[pName .. "-" .. realm]
+        end
+    end
+    if type(profileName) ~= "string" or profileName == "" then
+        profileName = "Default"
+    end
+    local rootProf = nil
+    if type(edb.profiles) == "table" and type(edb.profiles[profileName]) == "table" then
+        rootProf = edb.profiles[profileName]
+    elseif type(edb.profile) == "table" then
+        rootProf = edb.profile
+    end
+    local subProf = nil
+    if type(subFolder) == "string" and subFolder ~= "" then
+        if type(rootProf) == "table" and type(rootProf.addons) == "table" and type(rootProf.addons[subFolder]) == "table" then
+            subProf = rootProf.addons[subFolder]
+        elseif type(_G[subFolder .. "DB"]) == "table" then
+            local sdb = _G[subFolder .. "DB"]
+            subProf = (type(sdb.profile) == "table") and sdb.profile or sdb
+        end
+    end
+    return edb, subProf, rootProf, profileName
+end
+DynamicSuite.ResolveEllesmereProfile = addonTable.ResolveEllesmereProfile
+
 -- Smart Sub-Module Detection for ElvUI, Leatrix_Plus, and EllesmereUI (wrapped in pcall for zero Lua errors)
 local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
     if IsExternalAddonFrozen(otherAddon) then
@@ -2643,56 +2700,44 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
             return false, nil, nil
         end
         local ok, isSubActive, subTier, subFeature = pcall(function()
+            local edb, _, rootProf = ResolveEllesmereProfile(nil)
+            if type(edb) ~= "table" then return false end
             if shortKey == "prep" or dynamicModule == "DynamicPrep" or shortKey == "suite" or dynamicModule == "DynamicSuite" then
-                local edb = _G.EllesmereUIDB
-                if type(edb) == "table" then
-                    if edb.shifterEnabled == true or edb.moveBlizzardFrames == true or edb.blizzFrameMover == true or edb.noAutoClose == true then
-                        return true, "SOFT", "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)"
-                    end
-                    if type(edb.profile) == "table" then
-                        local p = edb.profile
-                        if p.shifterEnabled == true or p.moveBlizzardFrames == true or p.blizzFrameMover == true or p.noAutoClose == true then
-                            return true, "SOFT", "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)"
-                        end
-                    end
+                if IsEllesmereSubAddonInstalled("EllesmereUIQoL", "EllesmereUI_QoL") then
+                    return false
+                end
+                local hasShifter = (edb.shifterEnabled == true or edb.moveBlizzardFrames == true or edb.blizzFrameMover == true or edb.noAutoClose == true)
+                if not hasShifter and type(rootProf) == "table" then
+                    hasShifter = (rootProf.shifterEnabled == true or rootProf.moveBlizzardFrames == true or rootProf.blizzFrameMover == true or rootProf.noAutoClose == true)
+                end
+                if hasShifter then
+                    return true, "SOFT", "Blizzard Window Mover (Shifter)"
                 end
                 return false
             elseif shortKey == "chat" or dynamicModule == "DynamicChat" then
-                -- If EllesmereUIChat is installed as a separate sub-addon on disk, conflict detection
-                -- belongs strictly to the EllesmereUIChat sub-addon entry.
-                if C_AddOns and C_AddOns.GetAddOnInfo then
-                    if C_AddOns.GetAddOnInfo("EllesmereUIChat") ~= nil or C_AddOns.GetAddOnInfo("EllesmereUI_Chat") ~= nil then
-                        return false
-                    end
+                if IsEllesmereSubAddonInstalled("EllesmereUIChat", "EllesmereUI_Chat") then
+                    return false
                 end
                 if IsExternalAddonFrozen("EllesmereUIChat") or IsExternalAddonFrozen("EllesmereUI_Chat") then
                     return false
                 end
-                local edb = _G.EllesmereUIDB
-                if type(edb) == "table" then
-                    if (type(edb.chat) == "table" and edb.chat.enable == true)
-                        or (type(edb.modules) == "table" and edb.modules.chat == true) then
-                        return true, "HARD", "chat/editbox skinning"
-                    end
+                if (type(edb.chat) == "table" and edb.chat.enable == true)
+                    or (type(edb.modules) == "table" and edb.modules.chat == true)
+                    or (type(rootProf) == "table" and type(rootProf.chat) == "table" and rootProf.chat.enable == true) then
+                    return true, "HARD", "chat/editbox skinning"
                 end
                 return false
             elseif shortKey == "bags" or dynamicModule == "DynamicBags" then
-                -- If EllesmereUIBags is installed as a separate sub-addon on disk, conflict detection
-                -- belongs strictly to the EllesmereUIBags sub-addon entry.
-                if C_AddOns and C_AddOns.GetAddOnInfo then
-                    if C_AddOns.GetAddOnInfo("EllesmereUIBags") ~= nil or C_AddOns.GetAddOnInfo("EllesmereUI_Bags") ~= nil then
-                        return false
-                    end
+                if IsEllesmereSubAddonInstalled("EllesmereUIBags", "EllesmereUI_Bags") then
+                    return false
                 end
                 if IsExternalAddonFrozen("EllesmereUIBags") or IsExternalAddonFrozen("EllesmereUI_Bags") then
                     return false
                 end
-                local edb = _G.EllesmereUIDB
-                if type(edb) == "table" then
-                    if (type(edb.bags) == "table" and edb.bags.enable == true)
-                        or (type(edb.modules) == "table" and edb.modules.bags == true) then
-                        return true, "HARD", "bag/bank frame replacement"
-                    end
+                if (type(edb.bags) == "table" and edb.bags.enable == true)
+                    or (type(edb.modules) == "table" and edb.modules.bags == true)
+                    or (type(rootProf) == "table" and type(rootProf.bags) == "table" and rootProf.bags.enable == true) then
+                    return true, "HARD", "bag/bank frame replacement"
                 end
                 return false
             end
@@ -2708,25 +2753,107 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
             return false, nil, nil
         end
         local ok, isSubActive, subTier, subFeature = pcall(function()
-            local qdb = _G.EllesmereUIQoLDB or (_G.EllesmereUIDB and _G.EllesmereUIDB.qol)
-            if type(qdb) ~= "table" then
-                return false
+            local edb, subProf, rootProf = ResolveEllesmereProfile("EllesmereUIQoL")
+            local qdb = _G.EllesmereUIQoLDB
+            local function GetFlag(key, defaultOn)
+                local v
+                if type(edb) == "table" and edb[key] ~= nil then v = edb[key]
+                elseif type(subProf) == "table" and subProf[key] ~= nil then v = subProf[key]
+                elseif type(rootProf) == "table" and rootProf[key] ~= nil then v = rootProf[key]
+                elseif type(qdb) == "table" and qdb[key] ~= nil then v = qdb[key] end
+                if defaultOn then return v ~= false end
+                return v == true
             end
+            local features = {}
             if shortKey == "dialogue" or dynamicModule == "DynamicDialogue" then
-                if qdb.dialogueUI == true or qdb.dialogUI == true or qdb.questDialogue == true or qdb.gossipReplacement == true then
-                    return true, "SOFT", "dialogue/quest reader replacement"
+                if GetFlag("dialogKeys", false) then table.insert(features, "Dialog Keys (1-9 Hotkeys)") end
+                if GetFlag("autoGossip", false) then table.insert(features, "Auto-Select Single Gossip") end
+                if GetFlag("dialogueUI", false) or GetFlag("dialogUI", false) or GetFlag("questDialogue", false) then
+                    table.insert(features, "Quest & Gossip Reader")
                 end
-                return false
             elseif shortKey == "bags" or dynamicModule == "DynamicBags" then
-                if qdb.autoSellJunk == true or qdb.autoSell == true or qdb.fastLoot == true or qdb.autoRepair == true then
-                    return true, "SOFT", "vendor/loot automation"
+                if GetFlag("autoSellJunk", true) or GetFlag("autoSell", false) then table.insert(features, "Auto-Sell Grey Junk") end
+                if GetFlag("autoRepair", true) then table.insert(features, "Auto-Repair Gear") end
+                if GetFlag("quickLoot", false) or GetFlag("fastLoot", false) then table.insert(features, "Faster Auto-Loot") end
+            elseif shortKey == "prep" or dynamicModule == "DynamicPrep" or shortKey == "suite" or dynamicModule == "DynamicSuite" then
+                if GetFlag("shifterEnabled", false) or GetFlag("moveBlizzardFrames", false) or GetFlag("blizzFrameMover", false) or GetFlag("noAutoClose", false) then
+                    table.insert(features, "Blizzard Window Mover (Shifter)")
                 end
-                return false
-            elseif shortKey == "prep" or dynamicModule == "DynamicPrep" then
-                if qdb.autoQuest == true or qdb.autoAcceptQuest == true or qdb.autoGossip == true or qdb.skipCinematics == true then
-                    return true, "SOFT", "quest/gossip automation"
+                if GetFlag("hideErrorMessages", false) or GetFlag("hideErrorText", false) then
+                    table.insert(features, "Red Error Text Filter")
                 end
-                return false
+                if GetFlag("autoGossip", false) then table.insert(features, "Auto-Select Single Gossip") end
+                if GetFlag("hideTalkingHead", false) or GetFlag("muteTalkingHead", false) then table.insert(features, "Hide/Mute Talking Head") end
+                if GetFlag("skipCinematics", false) then table.insert(features, "Skip Cutscenes") end
+                if GetFlag("autoAcceptRes", false) then table.insert(features, "Auto-Accept Resurrection") end
+            elseif shortKey == "group" or dynamicModule == "DynamicGroup" then
+                if GetFlag("quickSignup", false) or GetFlag("autoAcceptRoleCheck", false) then
+                    table.insert(features, "Auto-Accept Role Check & Quick Sign-Up")
+                end
+                if GetFlag("persistSignupNote", false) then table.insert(features, "Persistent Sign-Up Note") end
+                if GetFlag("autoInsertKeystone", false) then table.insert(features, "Auto-Insert Mythic+ Keystone") end
+                if type(edb) == "table" and type(edb.teleportPrompt) == "table" and edb.teleportPrompt.enabled ~= false then
+                    table.insert(features, "Dungeon Teleport Prompt")
+                end
+                if type(edb) == "table" and type(edb.keystonePopup) == "table" and edb.keystonePopup.enabled == true then
+                    table.insert(features, "!keys Responder")
+                end
+            elseif shortKey == "fps" or dynamicModule == "DynamicFPS" then
+                if type(edb) == "table" and type(edb.autoLogging) == "table" and edb.autoLogging.enabled == true then
+                    table.insert(features, "Auto Combat Logging")
+                end
+            elseif shortKey == "zoom" or dynamicModule == "DynamicZoom" then
+                if GetFlag("maxCameraZoom", false) or GetFlag("cameraZoom", false) then
+                    table.insert(features, "Max Camera Zoom")
+                end
+            end
+            if #features > 0 then
+                return true, "SOFT", table.concat(features, ", ")
+            end
+            return false
+        end)
+        if ok and isSubActive == true then
+            return true, subTier or "SOFT", subFeature
+        end
+        return false, nil, nil
+
+    elseif otherAddon == "EllesmereUIBlizzardSkin" then
+        if not SafeIsAddOnLoaded("EllesmereUIBlizzardSkin") then
+            return false, nil, nil
+        end
+        if IsEllesmereSubAddonInstalled("EllesmereUIQoL", "EllesmereUI_QoL") then
+            return false, nil, nil
+        end
+        local ok, isSubActive, subTier, subFeature = pcall(function()
+            if shortKey == "prep" or dynamicModule == "DynamicPrep" or shortKey == "suite" or dynamicModule == "DynamicSuite" then
+                local edb, subProf, rootProf = ResolveEllesmereProfile("EllesmereUIBlizzardSkin")
+                if (type(edb) == "table" and edb.shifterEnabled == true)
+                    or (type(subProf) == "table" and subProf.shifterEnabled == true)
+                    or (type(rootProf) == "table" and rootProf.shifterEnabled == true) then
+                    return true, "SOFT", "Blizzard Window Mover (Shifter)"
+                end
+            end
+            return false
+        end)
+        if ok and isSubActive == true then
+            return true, subTier or "SOFT", subFeature
+        end
+        return false, nil, nil
+
+    elseif otherAddon == "EllesmereUIMythicTimer" or otherAddon == "EllesmereUI_MythicPlus" then
+        if not SafeIsAddOnLoaded(otherAddon) then
+            return false, nil, nil
+        end
+        local ok, isSubActive, subTier, subFeature = pcall(function()
+            if shortKey == "group" or dynamicModule == "DynamicGroup" or shortKey == "prep" or dynamicModule == "DynamicPrep" then
+                local edb, subProf = ResolveEllesmereProfile("EllesmereUIMythicTimer")
+                local hasKey = (type(edb) == "table" and edb.autoInsertKeystone == true)
+                    or (type(subProf) == "table" and (subProf.autoInsertKeystone == true or subProf.autoSlotKeystone == true))
+                if hasKey then
+                    return true, "SOFT", "Auto-Insert Mythic+ Keystone"
+                elseif shortKey == "group" or dynamicModule == "DynamicGroup" then
+                    return true, "SOFT", "Mythic+ Timer & Keystone Tools"
+                end
             end
             return false
         end)
@@ -3038,7 +3165,8 @@ DynamicSuite.SetAddonOutdoorOnlyInDynamicLoad = SetAddonOutdoorOnlyInDynamicLoad
 
 local function IsThirdPartyConflictActive(dynamicModule, otherAddon, pName)
     if otherAddon == "ElvUI" or otherAddon == "Leatrix_Plus" or otherAddon == "EllesmereUI"
-        or otherAddon == "EllesmereUIQoL" or otherAddon == "EllesmereUI_QoL" or otherAddon == "EnhanceQoL"
+        or otherAddon == "EllesmereUIQoL" or otherAddon == "EllesmereUI_QoL" or otherAddon == "EllesmereUIBlizzardSkin"
+        or otherAddon == "EllesmereUIMythicTimer" or otherAddon == "EllesmereUI_MythicPlus" or otherAddon == "EnhanceQoL"
         or otherAddon == "ErrorFilter" or otherAddon == "ErrorMonster" then
         if IsExternalAddonFrozen(otherAddon) then
             return false, nil, nil
@@ -3171,7 +3299,7 @@ local function BuildConflictItem(modInfo, reg, otherAddon, isGranular, smartFeat
             isBlizzWinAutoYield = true
         end
         smartFeature = smartFeature or "Suite Studio -> Desktop Windows & Menus (Side-by-Side Panels, Drag & Scroll Scale)"
-    elseif tier == 2 and ((addonNameKey == "DynamicGroup" and smartFeature == "Auto-Accept Role Check") or (addonNameKey == "DynamicPrep" and (smartFeature == "Red Error Text & Sound Filter" or otherAddon == "ErrorFilter" or otherAddon == "ErrorMonster"))) then
+    elseif tier == 2 and ((addonNameKey == "DynamicGroup" and (smartFeature == "Auto-Accept Role Check" or (type(smartFeature) == "string" and smartFeature:find("Auto-Accept Role Check", 1, true) ~= nil))) or (addonNameKey == "DynamicPrep" and ((type(smartFeature) == "string" and smartFeature:find("Red Error Text", 1, true) ~= nil) or otherAddon == "ErrorFilter" or otherAddon == "ErrorMonster"))) then
         if ackAction == nil then
             ackAction = "YIELD_TO_EXTERNAL"
             isBlizzWinAutoYield = true
@@ -3464,7 +3592,7 @@ function DynamicSuite:GetFeatureAutoYield(moduleName, featureKey)
     end
 
     if fKey == "ROLE_CHECK" and canonMod == "DynamicGroup" then
-        for _, other in ipairs({ "EnhanceQoL", "Leatrix_Plus" }) do
+        for _, other in ipairs({ "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUIGroupFinder", "EllesmereUI_GroupFinder", "EllesmereUI" }) do
             if not IsExternalAddonFrozen(other) and SafeIsAddOnLoaded(other) and not IsOverridden(other) then
                 local active = false
                 pcall(function()
@@ -3483,6 +3611,13 @@ function DynamicSuite:GetFeatureAutoYield(moduleName, featureKey)
                         if type(ldb) == "table" and (ldb["AcceptRoleCheck"] == "On" or ldb["AutoAcceptRoleCheck"] == "On" or ldb["AutomateRoleCheck"] == "On" or ldb["AutoConfirmRole"] == "On") then
                             active = true
                         end
+                    else
+                        local edb, subProf, rootProf = ResolveEllesmereProfile(other)
+                        if (type(edb) == "table" and (edb.quickSignup == true or edb.autoAcceptRoleCheck == true))
+                            or (type(subProf) == "table" and (subProf.quickSignup == true or subProf.autoAcceptRoleCheck == true))
+                            or (type(rootProf) == "table" and (rootProf.quickSignup == true or rootProf.autoAcceptRoleCheck == true)) then
+                            active = true
+                        end
                     end
                 end)
                 if active then
@@ -3491,7 +3626,7 @@ function DynamicSuite:GetFeatureAutoYield(moduleName, featureKey)
             end
         end
     elseif fKey == "ERROR_FILTER" and canonMod == "DynamicPrep" then
-        for _, other in ipairs({ "ErrorFilter", "ErrorMonster", "EnhanceQoL", "Leatrix_Plus" }) do
+        for _, other in ipairs({ "ErrorFilter", "ErrorMonster", "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUI" }) do
             if not IsExternalAddonFrozen(other) and SafeIsAddOnLoaded(other) and not IsOverridden(other) then
                 local active = false
                 pcall(function()
@@ -3513,6 +3648,13 @@ function DynamicSuite:GetFeatureAutoYield(moduleName, featureKey)
                     elseif other == "Leatrix_Plus" then
                         local ldb = _G.LeaPlusDB
                         if type(ldb) == "table" and (ldb["HideErrorMessages"] == "On" or ldb["NoErrorFrame"] == "On" or ldb["MuteErrorSpeech"] == "On") then
+                            active = true
+                        end
+                    else
+                        local edb, subProf, rootProf = ResolveEllesmereProfile(other)
+                        if (type(edb) == "table" and (edb.hideErrorMessages == true or edb.hideErrorText == true))
+                            or (type(subProf) == "table" and (subProf.hideErrorMessages == true or subProf.hideErrorText == true))
+                            or (type(rootProf) == "table" and (rootProf.hideErrorMessages == true or rootProf.hideErrorText == true)) then
                             active = true
                         end
                     end
@@ -3602,15 +3744,64 @@ local function PrintConflictSummary()
 
     print(string.format("%s |cFFF5B82E[Conflict Diagnostic Summary]|r: %d Tier-1 HARD conflict(s), %d Tier-2 QoL overlap(s) active:", ADDON_TITLE, #hardList, #softList))
     for _, item in ipairs(hardList) do
-        print(string.format("  |cFFEF4444[HARD]|r |cFFFFFFFF%s|r <-> |cFFFFFFFF%s|r: %s", item.dynamicModule, item.conflictAddon, item.bannerText))
+        local st = (item.resolvedAction == "USE_DYNAMIC") and "Prioritising DynamicSuite" or ((item.resolvedAction == "KEEP_OTHER") and "Keeping External" or "Active")
+        local feat = (type(item.yieldFeature) == "string" and item.yieldFeature ~= "") and (" |cFF94A3B8[" .. item.yieldFeature .. "]|r") or ""
+        print(string.format("  |cFFEF4444[HARD - %s]|r |cFFFFFFFF%s|r <-> |cFFFFFFFF%s|r%s", st, item.dynamicModule, item.friendlyName or item.conflictAddon, feat))
     end
     for _, item in ipairs(softList) do
-        print(string.format("  |cFF38BDF8[QoL]|r |cFFFFFFFF%s|r <-> |cFFFFFFFF%s|r: %s", item.dynamicModule, item.conflictAddon, item.bannerText))
+        local st = (item.resolvedAction == "PRIORITISE_DYNAMIC") and "Prioritising DynamicSuite" or ((item.resolvedAction == "YIELD_TO_EXTERNAL") and (item.isAutoYielded and "Auto-Yielded" or "Yielding") or "Active")
+        local feat = (type(item.yieldFeature) == "string" and item.yieldFeature ~= "") and (" |cFF94A3B8[" .. item.yieldFeature .. "]|r") or ""
+        print(string.format("  |cFF38BDF8[QoL - %s]|r |cFFFFFFFF%s|r <-> |cFFFFFFFF%s|r%s", st, item.dynamicModule, item.friendlyName or item.conflictAddon, feat))
     end
     return all
 end
 addonTable.PrintConflictSummary = PrintConflictSummary
 DynamicSuite.PrintConflictSummary = PrintConflictSummary
+
+function addonTable.PrintEllesmereConflictBreakdown()
+    local subAddons = {
+        { folder = "EllesmereUI",                mods = { "DynamicPrep", "DynamicChat", "DynamicBags" } },
+        { folder = "EllesmereUIChat",            mods = { "DynamicChat" } },
+        { folder = "EllesmereUIBags",            mods = { "DynamicBags" } },
+        { folder = "EllesmereUIGroupFinder",     mods = { "DynamicGroup" } },
+        { folder = "EllesmereUIQuickdraw",       mods = { "DynamicMarker" } },
+        { folder = "EllesmereUIAuraBuffReminders", mods = { "DynamicPrep" } },
+        { folder = "EllesmereUIMythicTimer",     mods = { "DynamicGroup", "DynamicPrep" } },
+        { folder = "EllesmereUIQoL",             mods = { "DynamicBags", "DynamicPrep", "DynamicGroup", "DynamicDialogue", "DynamicFPS", "DynamicZoom" } },
+        { folder = "EllesmereUIBlizzardSkin",    mods = { "DynamicPrep" } },
+    }
+    local pName = GetPlayer()
+    local _, _, _, profName = ResolveEllesmereProfile(nil)
+    print(string.format("%s |cFF38BDF8[EllesmereUI Sub-Module Diagnostic]|r (Active Profile: |cFFFFFFFF%s|r):", ADDON_TITLE, tostring(profName or "Default")))
+    local foundAny = false
+    for _, entry in ipairs(subAddons) do
+        local fName = entry.folder
+        if IsEllesmereSubAddonInstalled(fName) then
+            foundAny = true
+            local stateLabel = "|cFF94A3B8Disabled|r"
+            if IsExternalAddonFrozen(fName) then
+                stateLabel = "|cFF38BDF8Frozen [Never]|r"
+            elseif SafeIsAddOnLoaded(fName) then
+                stateLabel = "|cFF22C55ELoaded|r"
+            elseif SafeIsAddOnEnabledInClient(fName, pName) then
+                stateLabel = "|cFFF5B82EEnabled (Pending Reload)|r"
+            end
+            local overlaps = {}
+            for _, modName in ipairs(entry.mods) do
+                local isAct, _, feat = InspectSmartSubModuleConflict(modName, fName)
+                if isAct and type(feat) == "string" and feat ~= "" then
+                    table.insert(overlaps, modName .. ": " .. feat)
+                end
+            end
+            local overlapText = (#overlaps > 0) and table.concat(overlaps, " | ") or "No overlapping features active"
+            print(string.format("  |cFFFFFFFF%s|r [%s] -> %s", fName, stateLabel, overlapText))
+        end
+    end
+    if not foundAny then
+        print("  |cFF94A3B8No EllesmereUI sub-addons are installed.|r")
+    end
+end
+DynamicSuite.PrintEllesmereConflictBreakdown = addonTable.PrintEllesmereConflictBreakdown
 
 local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated)
     local pName = GetPlayer()
@@ -3790,10 +3981,18 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
                 elseif shortKey == "zoom" then
                     _G.LeaPlusDB["MaxCameraZoom"] = "Off"
                 end
-            elseif (conflictAddon == "EllesmereUIQoL" or conflictAddon == "EllesmereUI_QoL") and type(_G.EllesmereUIDB) == "table" and type(_G.EllesmereUIDB.qol) == "table" then
-                if shortKey == "prep" or shortKey == "bags" then
-                    _G.EllesmereUIDB.qol.autoRepair = false
-                    _G.EllesmereUIDB.qol.autoSellJunk = false
+            elseif (conflictAddon == "EllesmereUIQoL" or conflictAddon == "EllesmereUI_QoL") and type(_G.EllesmereUIDB) == "table" then
+                if shortKey == "bags" then
+                    _G.EllesmereUIDB.autoRepair = false
+                    _G.EllesmereUIDB.autoSellJunk = false
+                elseif shortKey == "prep" or shortKey == "suite" then
+                    _G.EllesmereUIDB.hideErrorMessages = false
+                    _G.EllesmereUIDB.autoGossip = false
+                elseif shortKey == "group" then
+                    _G.EllesmereUIDB.quickSignup = false
+                    _G.EllesmereUIDB.autoInsertKeystone = false
+                elseif shortKey == "dialogue" then
+                    _G.EllesmereUIDB.dialogKeys = false
                 end
             end
         end)
@@ -3854,8 +4053,8 @@ local function ResolveConflict(dynamicModule, conflictAddon, action, isSimulated
                     _G.DynamicPrepDB.autoKeystone = false
                 elseif conflictAddon == "BeQuiet" or conflictAddon == "TalkLess" then
                     _G.DynamicPrepDB.hideTalkingHead = false
-                elseif conflictAddon == "ErrorFilter" or conflictAddon == "ErrorMonster" then
-                    -- Feature-level auto-yield handles ErrorFilter/ErrorMonster without touching unrelated toggles
+                elseif conflictAddon == "ErrorFilter" or conflictAddon == "ErrorMonster" or conflictAddon == "EllesmereUIQoL" or conflictAddon == "EllesmereUI_QoL" then
+                    -- Feature-level auto-yield handles error filter / QoL overlaps without touching unrelated toggles
                 else
                     _G.DynamicPrepDB.autoRepair = false
                     _G.DynamicPrepDB.autoSellJunk = false
@@ -9980,23 +10179,15 @@ do
         local euiQoLLoaded = isAddonLoaded("EllesmereUIQoL") or isAddonLoaded("EllesmereUI_QoL")
         local euiActive = isAddonLoaded("EllesmereUI") and (not hasSeparateQoLAddon() or euiQoLLoaded)
         if euiActive and not isOverriddenToDynamic("EllesmereUI", "EllesmereUIQoL", "EllesmereUI_QoL") then
-            local edb = _G.EllesmereUIDB
-            if type(edb) == "table" then
-                if edb.shifterEnabled == true
-                   or edb.moveBlizzardFrames == true
-                   or edb.blizzFrameMover == true
-                   or edb.noAutoClose == true then
-                    return "EllesmereUI", "EllesmereUI"
+            local edb, subProf, rootProf = ResolveEllesmereProfile("EllesmereUIQoL")
+            local function HasShifter(tbl)
+                return type(tbl) == "table" and (tbl.shifterEnabled == true or tbl.moveBlizzardFrames == true or tbl.blizzFrameMover == true or tbl.noAutoClose == true)
+            end
+            if HasShifter(edb) or HasShifter(subProf) or HasShifter(rootProf) then
+                if euiQoLLoaded then
+                    return "EllesmereUIQoL", "EllesmereUI Quality of Life (Shifter)"
                 end
-                if type(edb.profile) == "table" then
-                    local p = edb.profile
-                    if p.shifterEnabled == true
-                       or p.moveBlizzardFrames == true
-                       or p.blizzFrameMover == true
-                       or p.noAutoClose == true then
-                        return "EllesmereUI", "EllesmereUI"
-                    end
-                end
+                return "EllesmereUI", "EllesmereUI"
             end
         end
 
@@ -10294,6 +10485,12 @@ local function HandleSuiteSlashCommandInner(msg)
     cmd = (cmd or ""):lower()
 
     if cmd == "conflicts" or cmd == "conflict" then
+        if (rest or ""):lower():match("^(%S*)") == "ellesmere" or (rest or ""):lower():match("^(%S*)") == "eui" then
+            if addonTable.PrintEllesmereConflictBreakdown then
+                addonTable.PrintEllesmereConflictBreakdown()
+            end
+            return
+        end
         if addonTable.PrintConflictSummary then
             addonTable.PrintConflictSummary()
         end

@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### Granular EllesmereUI Sub-Module Conflict Detection & `/ds conflicts eui` (`DynamicSuite_Core`, `DynamicSuite_UI`, `DynamicMarker`, `DynamicGroup`, `DynamicPrep`, 23/11/2026)
+- **Profile-Aware EllesmereUI Sub-Module Inspector (`DynamicSuite_Core`):** Added `ResolveEllesmereProfile()` to inspect `EllesmereUIDB.activeProfile` / `profileKeys` / `profiles[name].addons[subFolder]` and root-level QoL toggles (`EllesmereUIQoL`, `EllesmereUIBlizzardSkin`, `EllesmereUIMythicTimer`, `EllesmereUIChat`, `EllesmereUIBags`, `EllesmereUIGroupFinder`, `EllesmereUIQuickdraw`, `EllesmereUIAuraBuffReminders`), returning exact active overlapping features in plain Australian English and never falsely flagging core `EllesmereUI` when only unrelated modules (UnitFrames, ActionBars, Nameplates) or dedicated sub-addons are enabled.
+- **Feature-Level Auto-Yield & `/ds conflicts ellesmere` (`DynamicGroup`, `DynamicPrep`, `DynamicSuite_Core`):** Extended `GetFeatureAutoYield` so `DynamicGroup` (Auto-Accept Role Check) and `DynamicPrep` (Red Error Text & Sound Filter) also auto-yield cleanly to active `EllesmereUIQoL` / `EllesmereUIGroupFinder` toggles (overridable in `/ds conflicts`), upgraded `/ds conflicts` output to show tier, resolution state, and exact overlapping features, and added `/ds conflicts ellesmere` (`/ds conflicts eui`) for a per-sub-addon diagnostic breakdown.
+- **Standalone `DynamicMarker` Parity (`DynamicMarker`):** Added `EllesmereUIQuickdraw` / `EllesmereUI_Quickdraw` to standalone `DynamicMarker`'s conflict scanner.
+
 ---
 
 ## DynamicSuite & All 12 Modules v2.8.1 (22/11/2026)

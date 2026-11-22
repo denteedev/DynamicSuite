@@ -7138,7 +7138,7 @@ do
         end
         local isLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
         if type(isLoaded) ~= "function" then return nil, nil end
-        for _, other in ipairs({ "ErrorFilter", "ErrorMonster", "EnhanceQoL", "Leatrix_Plus" }) do
+        for _, other in ipairs({ "ErrorFilter", "ErrorMonster", "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL", "EllesmereUI" }) do
             local okL, loaded = pcall(isLoaded, other)
             if okL and loaded then
                 local active = false
@@ -7163,10 +7163,16 @@ do
                         if type(ldb) == "table" and (ldb["HideErrorMessages"] == "On" or ldb["NoErrorFrame"] == "On" or ldb["MuteErrorSpeech"] == "On") then
                             active = true
                         end
+                    else
+                        local edb = _G.EllesmereUIDB
+                        if type(edb) == "table" and (edb.hideErrorMessages == true or edb.hideErrorText == true) then
+                            active = true
+                        end
                     end
                 end)
                 if active then
-                    return other, (other == "Leatrix_Plus" and "Leatrix Plus" or other)
+                    local friendly = (other == "Leatrix_Plus" and "Leatrix Plus") or (other:find("^Ellesmere") and "EllesmereUI Quality of Life") or other
+                    return other, friendly
                 end
             end
         end
