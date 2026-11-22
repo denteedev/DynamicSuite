@@ -1860,8 +1860,13 @@ end
 
 function DynamicTalent:SyncTalentBindsUI()
     stickyRaidBoss = nil
-    if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
-        pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+    if _G.DynamicPrep then
+        if type(_G.DynamicPrep.ResetStableCapsuleWidths) == "function" then
+            pcall(_G.DynamicPrep.ResetStableCapsuleWidths, _G.DynamicPrep)
+        end
+        if type(_G.DynamicPrep.RefreshBar) == "function" then
+            pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+        end
     end
     if self.RefreshTalentDock then self:RefreshTalentDock() end
     if talentMgrModal and talentMgrModal:IsShown() and talentMgrModal.RefreshBossList then
@@ -3602,6 +3607,11 @@ function DynamicTalent:GetTalentLoadoutBarData()
         local shortTgt = mName
         if #shortTgt > 16 then shortTgt = shortTgt:sub(1, 15) .. "." end
         if type(mID) == "table" and mID.group then
+            local mEntry = self:FindLibraryEntryForRule(mID, specID) or mID
+            local mBindTag = self:GetLoadoutBindBadgeText(mEntry, specID)
+            if mBindTag and #mBindTag <= 14 then
+                return string.format("|cFFFBBF24Swap ->|r %s |cFFFFFFFF%s|r |cFFFBBF24%s|r", self:FormatTalentBadge(mID), shortTgt, mBindTag), activeName, activeID, true
+            end
             return string.format("|cFFFBBF24Swap ->|r %s |cFFFFFFFF%s|r", self:FormatTalentBadge(mID), shortTgt), activeName, activeID, true
         end
         return string.format("|cFFFBBF24Swap -> %s|r", shortTgt), activeName, activeID, true
@@ -3609,6 +3619,10 @@ function DynamicTalent:GetTalentLoadoutBarData()
     local display = activeName
     if #display > 16 then display = display:sub(1, 15) .. "." end
     if activeLibEntry and activeGrp then
+        local bindTag = self:GetLoadoutBindBadgeText(activeLibEntry, specID)
+        if bindTag then
+            return string.format("%s |cFFFFFFFF%s|r |cFFFBBF24%s|r", self:FormatTalentBadge(activeLibEntry), display, bindTag), activeName, activeID, false
+        end
         return string.format("%s |cFFFFFFFF%s|r", self:FormatTalentBadge(activeLibEntry), display), activeName, activeID, false
     end
     local liveAcr = self:GetLiveHeroTreeInfo()
@@ -3630,12 +3644,35 @@ end
 function DynamicTalent:PopulatePrepBarTooltip(tooltip)
     if not tooltip then return end
     local ar, ag, ab, accentHex = GetActiveAccentRGB()
+    local specID = self:GetActiveSpecID()
+    local activeLibEntry = self:GetActiveTalentLibraryEntry(specID)
     local _, activeName = self:GetTalentLoadoutBarData()
     local mID, mName, mLabel = self:GetActiveTalentMismatch()
+    local activeDisplay = activeLibEntry
+        and string.format("%s %s", self:FormatTalentBadge(activeLibEntry), tostring(activeLibEntry.name or activeName or "Default"))
+        or tostring(activeName or "Default")
+
     tooltip:AddLine("Talent Loadout Quick-Switcher", ar, ag, ab)
-    tooltip:AddDoubleLine("Active Loadout:", activeName or "Default", 0.8, 0.84, 0.88, 1, 1, 1)
+    tooltip:AddDoubleLine("Active Loadout:", activeDisplay, 0.8, 0.84, 0.88, 1, 1, 1)
+    if activeLibEntry then
+        local heroAcr, heroName = self:GetLoadoutHeroAcronym(activeLibEntry)
+        if heroName and heroAcr then
+            tooltip:AddLine(string.format("|cFF94A3B8Hero Tree:|r |cFFE2E8F0%s (%s)|r", tostring(heroName), tostring(heroAcr)), 1, 1, 1)
+        end
+        local bInfo = self:GetLoadoutBindings(activeLibEntry, specID)
+        if bInfo and bInfo.detailLines and #bInfo.detailLines > 0 then
+            for _, bl in ipairs(bInfo.detailLines) do
+                tooltip:AddLine("|cFFFBBF24Bound:|r |cFFE2E8F0" .. bl .. "|r", 1, 1, 1)
+            end
+        else
+            tooltip:AddLine("|cFF94A3B8Bound:|r |cFF64748BUnbound|r", 1, 1, 1)
+        end
+    end
     if mID then
-        tooltip:AddDoubleLine("Recommended (" .. tostring(mLabel or "Zone") .. "):", tostring(mName or "Loadout"), 0.984, 0.749, 0.141, 0.984, 0.749, 0.141)
+        local recDisplay = (type(mID) == "table" and mID.group)
+            and string.format("%s %s", self:FormatTalentBadge(mID), tostring(mName or "Loadout"))
+            or tostring(mName or "Loadout")
+        tooltip:AddDoubleLine("Recommended (" .. tostring(mLabel or "Zone") .. "):", recDisplay, 0.984, 0.749, 0.141, 0.984, 0.749, 0.141)
         tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Swap Immediately to " .. tostring(mName or "Loadout") .. "|r", 1, 1, 1)
         tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Silence This Reminder for Session|r", 1, 1, 1)
     else
@@ -3718,7 +3755,7 @@ function DynamicTalent:ToggleTalentPopover(anchor)
     local ar, ag, ab = GetActiveAccentRGB()
     if not talentPopoverFrame then
         local p = CreateFrame("Frame", "DynamicTalentPopover", UIParent, "BackdropTemplate")
-        p:SetWidth(248)
+        p:SetWidth(276)
         p:SetFrameStrata("TOOLTIP")
         p:SetFrameLevel(220)
         p:EnableMouse(true)
@@ -3738,7 +3775,7 @@ function DynamicTalent:ToggleTalentPopover(anchor)
         p.scroll:EnableMouseWheel(true)
 
         p.content = CreateFrame("Frame", nil, p.scroll)
-        p.content:SetWidth(226)
+        p.content:SetWidth(254)
         p.scroll:SetScrollChild(p.content)
 
         p.track = CreateFrame("Frame", nil, p, "BackdropTemplate")
@@ -3802,10 +3839,15 @@ function DynamicTalent:ToggleTalentPopover(anchor)
         local btn = p.rows[rowIdx]
         if not btn then
             btn = CreateFrame("Button", nil, p.content, "BackdropTemplate")
-            btn:SetSize(222, 23)
+            btn:SetSize(250, 23)
             btn.dot = btn:CreateTexture(nil, "OVERLAY")
             btn.dot:SetSize(6, 6)
             btn.dot:SetPoint("LEFT", btn, "LEFT", 7, 0)
+            btn.bindTag = CreateText(btn, "OVERLAY", "GameFontHighlightSmall")
+            btn.bindTag:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
+            btn.bindTag:SetJustifyH("RIGHT")
+            btn.bindTag:SetWordWrap(false)
+            btn.bindTag:Hide()
             btn.txt = CreateText(btn, "OVERLAY", "GameFontHighlightSmall")
             btn.txt:SetPoint("LEFT", btn.dot, "RIGHT", 6, 0)
             btn.txt:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
@@ -3813,6 +3855,12 @@ function DynamicTalent:ToggleTalentPopover(anchor)
             btn.txt:SetWordWrap(false)
             p.rows[rowIdx] = btn
         end
+        btn.bindTag:Hide()
+        btn.txt:ClearAllPoints()
+        btn.txt:SetPoint("LEFT", btn.dot, "RIGHT", 6, 0)
+        btn.txt:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
+        btn:SetScript("OnEnter", nil)
+        btn:SetScript("OnLeave", nil)
         btn:ClearAllPoints()
         btn:SetPoint("TOPLEFT", p.content, "TOPLEFT", 0, -((rowIdx - 1) * 25))
         return btn
@@ -3821,10 +3869,45 @@ function DynamicTalent:ToggleTalentPopover(anchor)
     for _, entry in ipairs(sortedLib) do
         local btn = EnsureRow()
         local isAct = (activeLibEntry and activeLibEntry == entry) or (not activeLibEntry and activeBarName and activeBarName == entry.name)
+        local tagText, bInfo = self:GetLoadoutBindBadgeText(entry, specID)
+        local heroAcr, heroName = self:GetLoadoutHeroAcronym(entry)
+        local badgePrefix = self:FormatTalentBadge(entry, heroAcr)
+
         btn.dot:SetColorTexture(isAct and 0.063 or 0.40, isAct and 0.725 or 0.46, isAct and 0.506 or 0.56, 1)
-        btn.txt:SetText(string.format("%s %s", self:FormatTalentBadge(entry), tostring(entry.name)))
+        if tagText then
+            btn.bindTag:SetText("|cFFFBBF24" .. tagText .. "|r")
+            btn.bindTag:Show()
+            btn.txt:SetPoint("RIGHT", btn.bindTag, "LEFT", -4, 0)
+        end
+        btn.txt:SetText(string.format("%s %s", badgePrefix, tostring(entry.name)))
         btn.txt:SetTextColor(isAct and 1 or 0.88, isAct and 1 or 0.92, isAct and 1 or 0.96, 1)
-        SetPixelBackdrop(btn, isAct and { 0.063 * 0.35, 0.725 * 0.35, 0.506 * 0.35, 0.96 } or COLORS.BgElevated, isAct and { 0.063, 0.725, 0.506, 0.95 } or COLORS.BorderSubtle, 1)
+
+        local idleBg = isAct and { 0.063 * 0.35, 0.725 * 0.35, 0.506 * 0.35, 0.96 } or COLORS.BgElevated
+        local idleBdr = isAct and { 0.063, 0.725, 0.506, 0.95 } or COLORS.BorderSubtle
+        SetPixelBackdrop(btn, idleBg, idleBdr, 1)
+
+        btn:SetScript("OnEnter", function(s)
+            SetPixelBackdrop(s, { ar * 0.24, ag * 0.24, ab * 0.24, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+            if GameTooltip then
+                GameTooltip:SetOwner(s, "ANCHOR_RIGHT")
+                GameTooltip:AddLine(string.format("%s %s", badgePrefix, tostring(entry.name or "Loadout")) .. (isAct and "  |cFF34D399(Active)|r" or ""), 1, 1, 1)
+                if heroName and heroAcr then
+                    GameTooltip:AddLine(string.format("|cFF94A3B8Hero Tree:|r |cFFE2E8F0%s (%s)|r", tostring(heroName), tostring(heroAcr)), 1, 1, 1)
+                end
+                if bInfo and bInfo.detailLines and #bInfo.detailLines > 0 then
+                    for _, bl in ipairs(bInfo.detailLines) do
+                        GameTooltip:AddLine("|cFFFBBF24Bound:|r |cFFE2E8F0" .. bl .. "|r", 1, 1, 1)
+                    end
+                end
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Switch to this Talent Loadout|r", 1, 1, 1)
+                GameTooltip:Show()
+            end
+        end)
+        btn:SetScript("OnLeave", function(s)
+            SetPixelBackdrop(s, idleBg, idleBdr, 1)
+            if GameTooltip then GameTooltip:Hide() end
+        end)
         btn:SetScript("OnClick", function()
             p:Hide()
             DynamicTalent:ApplyTalentLibraryEntry(entry)
@@ -3841,7 +3924,15 @@ function DynamicTalent:ToggleTalentPopover(anchor)
             btn.dot:SetColorTexture(isAct and 0.063 or 0.35, isAct and 0.725 or 0.42, isAct and 0.506 or 0.52, 1)
             btn.txt:SetText(item.name)
             btn.txt:SetTextColor(isAct and 1 or 0.85, isAct and 1 or 0.89, isAct and 1 or 0.95, 1)
-            SetPixelBackdrop(btn, isAct and { ar * 0.32, ag * 0.32, ab * 0.32, 0.96 } or COLORS.BgElevated, isAct and { ar, ag, ab, 0.90 } or COLORS.BorderSubtle, 1)
+            local idleBg = isAct and { ar * 0.32, ag * 0.32, ab * 0.32, 0.96 } or COLORS.BgElevated
+            local idleBdr = isAct and { ar, ag, ab, 0.90 } or COLORS.BorderSubtle
+            SetPixelBackdrop(btn, idleBg, idleBdr, 1)
+            btn:SetScript("OnEnter", function(s)
+                SetPixelBackdrop(s, { ar * 0.24, ag * 0.24, ab * 0.24, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+            end)
+            btn:SetScript("OnLeave", function(s)
+                SetPixelBackdrop(s, idleBg, idleBdr, 1)
+            end)
             btn:SetScript("OnClick", function()
                 p:Hide()
                 if not IsPlayerInCombat() and C_ClassTalents and C_ClassTalents.LoadConfig then
@@ -3857,7 +3948,15 @@ function DynamicTalent:ToggleTalentPopover(anchor)
         tlmRow.dot:SetColorTexture(0.063, 0.725, 0.506, 1)
         tlmRow.txt:SetText("Import All from TalentLoadoutManager")
         tlmRow.txt:SetTextColor(0.55, 0.98, 0.78, 1)
-        SetPixelBackdrop(tlmRow, { 0.063 * 0.25, 0.725 * 0.25, 0.506 * 0.25, 0.96 }, { 0.063, 0.725, 0.506, 0.85 }, 1)
+        local tlmBg = { 0.063 * 0.25, 0.725 * 0.25, 0.506 * 0.25, 0.96 }
+        local tlmBdr = { 0.063, 0.725, 0.506, 0.85 }
+        SetPixelBackdrop(tlmRow, tlmBg, tlmBdr, 1)
+        tlmRow:SetScript("OnEnter", function(s)
+            SetPixelBackdrop(s, { 0.063 * 0.40, 0.725 * 0.40, 0.506 * 0.40, 0.98 }, { 0.063, 0.725, 0.506, 1.0 }, 1)
+        end)
+        tlmRow:SetScript("OnLeave", function(s)
+            SetPixelBackdrop(s, tlmBg, tlmBdr, 1)
+        end)
         tlmRow:SetScript("OnClick", function()
             p:Hide()
             DynamicTalent:ImportFromTalentLoadoutManager()
@@ -10915,6 +11014,7 @@ DynamicTalent.CHANGELOG = {
         version = VERSION,
         date = "22/11/2026",
         entries = {
+            { type = "UI",    text = "[Unreleased] Prep Bar Capsule, Tooltip & Quick-Switcher Popover Bind-Badge Parity (22/11/2026): Added right-aligned amber-gold bind tags ((Various), (All M+), (#8 Ula'tek)) via GetLoadoutBindBadgeText() and dynamic text anchoring to DynamicTalentPopover (widened to 276px) with hover highlights and full Talent Dock tooltips (Hero Tree + Bound lines); added bind tags and FormatTalentBadge() prefixes to GetTalentLoadoutBarData() and PopulatePrepBarTooltip() (including Hero Tree and Bound/Unbound lines); and reset DynamicPrep capsule widths on bind changes in SyncTalentBindsUI()." },
             { type = "FIXED", text = "[Unreleased] Raid Boss Matching Accuracy, Sticky Boss Cache & /dt why (22/11/2026): Removed inverted substring checks in MatchBossTargetName() and MatchBoundBossByName() and added 'ula'tek'/'ulatek' aliases to #8 Ula'tek so standing at #8 never matches #2 Entombed Sentinels; removed the UnitIsFriend exclusion on nameplates and raid/party targets so pre-pull friendly bosses are detected cleanly while still skipping player units; added a subzone-scoped sticky raid boss cache (cleared on ENCOUNTER_END victory, subzone/zone change, spec change, or bind edits) to prevent All Raids fallback flicker when looking away or targeting an ally; and added /dt why (/dt debug) for plain-English diagnostics." },
             { type = "UI",    text = "Tighter Header Subtitles & Truncation Hover Safety Net (22/11/2026): Shortened the Raid Bosses, M+ Dungeons, PvP, Zone Defaults, and Active Reminders subtitles so they fit cleanly on one line at the minimum 800px Talent Loadouts Manager width, and added a reusable hover helper that shows the full plain text in a tooltip only when a single-line section subtitle, the Action & Status strip subtitle, or an Active Reminders row is actually cut off (existing button and tile tooltips are never replaced)." },
             { type = "FIXED", text = "Delve vs Mythic+ Zone Priority Detection (22/11/2026): Updated GetInstanceInfo() parsing across GetActiveTalentMismatch() and GetActiveContentGroup() to read difficultyID alongside instanceType and check difficultyID == 208, C_DelvesUI.HasActiveDelve(), C_PartyInfo.IsDelveInProgress(), and C_PartyInfo.IsDelveComplete(). Delves and non-dungeon scenarios never misclassify as Mythic+; [Zone: Delves] always takes priority inside Delves, [Zone: Outdoor] wins in open world zones outside resting cities, and Talent Dock / Prep Bar refresh cleanly after zoning." },

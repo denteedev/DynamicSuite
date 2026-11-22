@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Prep Bar Capsule, Tooltip & Quick-Switcher Popover Bind-Badge Parity (`DynamicTalent`, 22/11/2026)
+- **Prep Bar Capsule & Tooltip Parity (`DynamicTalent`):** Updated `GetTalentLoadoutBarData()` and `PopulatePrepBarTooltip()` to show `[Group-Hero]` prefixes and amber bind tags (`(Various)`, `(All M+)`, `(#8 Ula'tek)`), plus Hero Tree and `Bound:` detail lines (or `Unbound`) in the hover tooltip, and reset `DynamicPrep` capsule widths in `SyncTalentBindsUI()` when binds change.
+- **Quick-Switcher Popover Parity (`DynamicTalent`):** Widened `DynamicTalentPopover` to `276px`, added right-aligned amber bind tags with dynamic text anchoring, and added hover highlighting + full Talent Dock tooltips (`[Group-Hero] Name`, `(Active)`, Hero Tree, and `Bound:` lines).
+
 ### Raid Boss Matching Accuracy, Sticky Boss Cache & `/dt why` (`DynamicTalent`, 22/11/2026)
 - **Strict Forward Boss Matching (`DynamicTalent`):** Removed inverted substring checks in `MatchBossTargetName()` and `MatchBoundBossByName()` and added `"ula'tek"` / `"ulatek"` aliases to `#8 Ula'tek` so standing at `#8 Ula'tek` never matches `#2 Entombed Sentinels` (`"Blood of Ula'tek"` / `"Breath of Ula'tek"`).
 - **Pre-Pull Friendly Bosses & Sticky Boss Cache (`DynamicTalent`):** Removed the `UnitIsFriend` exclusion on nameplates and raid/party targets (while still skipping player units) so pre-pull friendly bosses are detected cleanly, and added a subzone-scoped sticky raid boss cache (cleared on `ENCOUNTER_END` victory, subzone/zone change, spec change, or bind edits) so looking away or targeting an ally never flickers back to `All Raids`.
