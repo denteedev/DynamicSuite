@@ -1845,7 +1845,11 @@ function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
     dd.Chevron:SetSize(12, 12)
     dd.Chevron:SetPoint("RIGHT", dd, "RIGHT", -8, 0)
     dd.Chevron:SetTexture(ICON_CHEVRON_DOWN)
-    dd.Chevron:SetVertexColor(COLORS.TextSilver.r, COLORS.TextSilver.g, COLORS.TextSilver.b, 0.95)
+    DisableTexturePixelSnap(dd.Chevron)
+    do
+        local ar0, ag0, ab0 = DM:GetAccentColor()
+        dd.Chevron:SetVertexColor(ar0, ag0, ab0, 0.90)
+    end
 
     function dd:SetOptions(newOpts)
         options = newOpts or {}
@@ -1862,10 +1866,13 @@ function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
             end
         end
         self.Text:SetText(foundLabel)
+        local ar, ag, ab = DM:GetAccentColor()
         if activeDropdownMenu and activeDropdownMenu:IsShown() and activeDropdownMenu.owner == self then
             self.Chevron:SetTexture(ICON_CHEVRON_UP)
+            self.Chevron:SetVertexColor(ar, ag, ab, 1.0)
         else
             self.Chevron:SetTexture(ICON_CHEVRON_DOWN)
+            self.Chevron:SetVertexColor(ar, ag, ab, self:IsMouseOver() and 1.0 or 0.90)
         end
     end
 
@@ -1875,8 +1882,12 @@ function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
         s.Chevron:SetVertexColor(ar, ag, ab, 1.0)
     end)
     dd:SetScript("OnLeave", function(s)
-        DM:ApplyBackdrop(s, COLORS.BgElevated, COLORS.BorderStrong)
-        s.Chevron:SetVertexColor(COLORS.TextSilver.r, COLORS.TextSilver.g, COLORS.TextSilver.b, 0.95)
+        local isOpen = (activeDropdownMenu and activeDropdownMenu:IsShown() and activeDropdownMenu.owner == s)
+        local ar, ag, ab = DM:GetAccentColor()
+        if not isOpen then
+            DM:ApplyBackdrop(s, COLORS.BgElevated, COLORS.BorderStrong)
+            s.Chevron:SetVertexColor(ar, ag, ab, 0.90)
+        end
     end)
 
     if not dd._dmOnHideHooked then
@@ -2092,6 +2103,8 @@ function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
                 if menu.searchBox then menu.searchBox:ClearFocus() end
                 if menu.owner and menu.owner.Chevron then
                     menu.owner.Chevron:SetTexture(ICON_CHEVRON_DOWN)
+                    local ar0, ag0, ab0 = DM:GetAccentColor()
+                    menu.owner.Chevron:SetVertexColor(ar0, ag0, ab0, 0.90)
                 end
                 menu.owner = nil
             end)
@@ -2113,6 +2126,7 @@ function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
         end
         activeDropdownMenu.owner = s
         s.Chevron:SetTexture(ICON_CHEVRON_UP)
+        s.Chevron:SetVertexColor(ar, ag, ab, 1.0)
 
         local rawOpts = options or {}
         local showSearch = (#rawOpts > 12)
@@ -6421,13 +6435,14 @@ function DM:EnsureEditModeInspector()
         selectorBtn.visDot:SetPoint("LEFT", selectorBtn, "LEFT", 7, 0)
         selectorBtn.visDot:SetColorTexture(0.133, 0.773, 0.369, 1.0)
         selectorBtn.chevron = selectorBtn:CreateTexture(nil, "OVERLAY", nil, 3)
-        selectorBtn.chevron:SetSize(10, 10)
+        selectorBtn.chevron:SetSize(12, 12)
         selectorBtn.chevron:SetPoint("RIGHT", selectorBtn, "RIGHT", -6, 0)
         selectorBtn.chevron:SetTexture(ICON_CHEVRON_DOWN)
-        if selectorBtn.chevron.SetSnapToPixelGrid then
-            selectorBtn.chevron:SetSnapToPixelGrid(false)
-            selectorBtn.chevron:SetTexelSnappingBias(0)
+        do
+            local ar0, ag0, ab0 = DM:GetAccentColor()
+            selectorBtn.chevron:SetVertexColor(ar0, ag0, ab0, 0.90)
         end
+        DisableTexturePixelSnap(selectorBtn.chevron)
         if selectorBtn.Text then
             selectorBtn.Text:ClearAllPoints()
             selectorBtn.Text:SetPoint("LEFT", selectorBtn.visDot, "RIGHT", 5, 0)
@@ -6463,6 +6478,8 @@ function DM:EnsureEditModeInspector()
             pop:SetScript("OnHide", function()
                 if selectorBtn and selectorBtn.chevron then
                     selectorBtn.chevron:SetTexture(ICON_CHEVRON_DOWN)
+                    local ar0, ag0, ab0 = DM:GetAccentColor()
+                    selectorBtn.chevron:SetVertexColor(ar0, ag0, ab0, 0.90)
                 end
             end)
             pop:Hide()

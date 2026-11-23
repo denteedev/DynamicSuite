@@ -1719,10 +1719,12 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
     dropText:SetTextColor(0.94, 0.97, 1.0, 1.0)
 
     local chevron = dropBtn:CreateTexture(nil, "ARTWORK")
-    chevron:SetSize(11, 11)
-    chevron:SetPoint("RIGHT", dropBtn, "RIGHT", -9, 0)
+    chevron:SetSize(12, 12)
+    chevron:SetPoint("RIGHT", dropBtn, "RIGHT", -8, 0)
     chevron:SetTexture(ICON_CHEVRON_DOWN)
-    chevron:SetVertexColor(acc.r, acc.g, acc.b, 1.0)
+    if chevron.SetSnapToPixelGrid then chevron:SetSnapToPixelGrid(false) end
+    if chevron.SetTexelSnappingBias then chevron:SetTexelSnappingBias(0) end
+    chevron:SetVertexColor(acc.r, acc.g, acc.b, 0.90)
 
     local function RefreshLabel()
         local curKey = tostring(getter() or "OFF")
@@ -1778,6 +1780,8 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
             menu:SetScript("OnHide", function(m)
                 if m.chevronTex then
                     m.chevronTex:SetTexture(ICON_CHEVRON_DOWN)
+                    local a = GetSuiteAccent()
+                    m.chevronTex:SetVertexColor(a.r, a.g, a.b, 0.90)
                 end
                 m.ownerBtn = nil
                 m.chevronTex = nil
@@ -1807,6 +1811,10 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
         menu.ownerBtn = self
         menu.chevronTex = chevron
         chevron:SetTexture(ICON_CHEVRON_UP)
+        do
+            local a = GetSuiteAccent()
+            chevron:SetVertexColor(a.r, a.g, a.b, 1.0)
+        end
         openDropdownMenu = menu
 
         -- Measure max option width so zero text is ever truncated (Item #28)

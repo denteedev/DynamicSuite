@@ -1831,14 +1831,14 @@ function U.StyleButtonState(b)
         b:SetBackdropBorderColor(COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], COL.cellEdge[4])
         b.label:SetTextColor(COL.cellText[1], COL.cellText[2], COL.cellText[3], 1)
         if b.iconTex then b.iconTex:SetVertexColor(0.72, 0.78, 0.86, 0.95) end
-        if b.chevronTex then b.chevronTex:SetVertexColor(0.68, 0.74, 0.82, 0.95) end
+        if b.chevronTex then b.chevronTex:SetVertexColor(ar, ag, ab, 0.90) end
     end
 end
 
 function U.AttachDropdownChevron(b)
     local ch = b:CreateTexture(nil, "ARTWORK")
-    ch:SetSize(10, 10)
-    ch:SetPoint("RIGHT", b, "RIGHT", -7, 0)
+    ch:SetSize(12, 12)
+    ch:SetPoint("RIGHT", b, "RIGHT", -8, 0)
     ch:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
     if ch.SetSnapToPixelGrid then ch:SetSnapToPixelGrid(false); ch:SetTexelSnappingBias(0) end
     b.chevronTex = ch

@@ -4240,14 +4240,24 @@ function UI.CreateChevronDown(parent, point, relTo, relPoint, xOff, yOff, r, g, 
     holder:SetSize(12, 12)
     holder:SetPoint(point or "RIGHT", relTo or parent, relPoint or "RIGHT", xOff or -8, yOff or 0)
 
-    local cr, cg, cb, ca = r or 1, g or 1, b or 1, a or 0.72
+    local useAccent = (r == nil)
+    local cr, cg, cb, ca
+    if useAccent then
+        cr, cg, cb = UI.GetActiveAccentColor()
+        ca = a or 0.90
+    else
+        cr, cg, cb, ca = r, g or 1, b or 1, a or 0.90
+    end
 
     local tex = holder:CreateTexture(nil, "OVERLAY", nil, 3)
     tex:SetAllPoints()
     tex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
     tex:SetVertexColor(cr, cg, cb, ca)
+    if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
+    if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
 
     holder.tex = tex
+    holder.isOpen = false
     if parent then
         parent.chevronTex = tex
     end
@@ -4255,13 +4265,19 @@ function UI.CreateChevronDown(parent, point, relTo, relPoint, xOff, yOff, r, g, 
         tex:SetVertexColor(nr, ng, nb, na or 1)
     end
     holder.SetOpen = function(_, isOpen)
-        if isOpen then
+        holder.isOpen = isOpen and true or false
+        if holder.isOpen then
             local ar, ag, ab = UI.GetActiveAccentColor()
             tex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_up.tga")
             tex:SetVertexColor(ar, ag, ab, 1.0)
         else
             tex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
-            tex:SetVertexColor(cr, cg, cb, ca)
+            if useAccent then
+                local ar, ag, ab = UI.GetActiveAccentColor()
+                tex:SetVertexColor(ar, ag, ab, a or 0.90)
+            else
+                tex:SetVertexColor(cr, cg, cb, ca)
+            end
         end
     end
     return holder
@@ -4272,13 +4288,13 @@ function UI.SetChevronState(btn, isOpen)
     if btn.chevron and btn.chevron.SetOpen then
         btn.chevron:SetOpen(isOpen)
     elseif btn.chevronTex then
+        local ar, ag, ab = UI.GetActiveAccentColor()
         if isOpen then
-            local ar, ag, ab = UI.GetActiveAccentColor()
             btn.chevronTex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_up.tga")
             btn.chevronTex:SetVertexColor(ar, ag, ab, 1.0)
         else
             btn.chevronTex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
-            btn.chevronTex:SetVertexColor(0.75, 0.80, 0.88, 0.85)
+            btn.chevronTex:SetVertexColor(ar, ag, ab, 0.90)
         end
     end
 end

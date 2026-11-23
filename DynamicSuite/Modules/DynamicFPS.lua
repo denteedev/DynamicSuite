@@ -2372,6 +2372,8 @@ local function CreateObsidianDropdown(parent, width, options, getValueFn, setVal
     chevronTex:SetSize(12, 12)
     chevronTex:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
     chevronTex:SetTexture(ICON_CHEVRON_DOWN)
+    if chevronTex.SetSnapToPixelGrid then chevronTex:SetSnapToPixelGrid(false) end
+    if chevronTex.SetTexelSnappingBias then chevronTex:SetTexelSnappingBias(0) end
     btn.chevronTex = chevronTex
 
     function btn:RefreshValue()
@@ -2385,7 +2387,8 @@ local function CreateObsidianDropdown(parent, width, options, getValueFn, setVal
         end
         text:SetText(foundLabel)
         local ar, ag, ab = GetSuiteAccentColor()
-        chevronTex:SetVertexColor(ar, ag, ab, 0.95)
+        local isOpen = (activeDropdownPopup and activeDropdownPopup.ownerBtn == self and activeDropdownPopup:IsShown())
+        chevronTex:SetVertexColor(ar, ag, ab, (isOpen or self:IsMouseOver()) and 1.0 or 0.90)
     end
 
     -- Item #24: Auto-close popup if dropdown button hides (zero ghost menus)
@@ -2401,9 +2404,15 @@ local function CreateObsidianDropdown(parent, width, options, getValueFn, setVal
     btn:SetScript("OnEnter", function(self)
         local ar, ag, ab = GetSuiteAccentColor()
         self:SetBorderColor(ar, ag, ab, 0.9)
+        if self.chevronTex then self.chevronTex:SetVertexColor(ar, ag, ab, 1.0) end
     end)
     btn:SetScript("OnLeave", function(self)
-        self:SetBorderColor(PALETTE.BORDER_CELL.r, PALETTE.BORDER_CELL.g, PALETTE.BORDER_CELL.b, 1.0)
+        local isOpen = (activeDropdownPopup and activeDropdownPopup.ownerBtn == self and activeDropdownPopup:IsShown())
+        if not isOpen then
+            self:SetBorderColor(PALETTE.BORDER_CELL.r, PALETTE.BORDER_CELL.g, PALETTE.BORDER_CELL.b, 1.0)
+            local ar, ag, ab = GetSuiteAccentColor()
+            if self.chevronTex then self.chevronTex:SetVertexColor(ar, ag, ab, 0.90) end
+        end
     end)
 
     btn:SetScript("OnClick", function(self)

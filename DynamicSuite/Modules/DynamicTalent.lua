@@ -6732,10 +6732,15 @@ local function PopulateTalentManagerCore(host, isModal)
     local function StyleDropdownTrigger(btn)
         SetPixelBackdrop(btn, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
         local chev = btn:CreateTexture(nil, "OVERLAY")
-        chev:SetSize(10, 10)
+        chev:SetSize(12, 12)
         chev:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
         chev:SetTexture(ICON_CHEVRON_DOWN)
-        chev:SetVertexColor(0.68, 0.74, 0.84, 0.95)
+        if chev.SetSnapToPixelGrid then chev:SetSnapToPixelGrid(false) end
+        if chev.SetTexelSnappingBias then chev:SetTexelSnappingBias(0) end
+        do
+            local r0, g0, b0 = GetActiveAccentRGB()
+            chev:SetVertexColor(r0, g0, b0, 0.90)
+        end
         btn.chev = chev
         btn.txt = CreateText(btn, "OVERLAY", "GameFontHighlightSmall")
         btn.txt:SetPoint("LEFT", btn, "LEFT", 8, 0)
@@ -6749,8 +6754,9 @@ local function PopulateTalentManagerCore(host, isModal)
         end)
         btn:SetScript("OnLeave", function(s)
             if not s._dropOpen then
+                local r, g, b = GetActiveAccentRGB()
                 SetPixelBackdrop(s, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
-                if s.chev then s.chev:SetVertexColor(0.68, 0.74, 0.84, 0.95) end
+                if s.chev then s.chev:SetVertexColor(r, g, b, 0.90) end
             end
         end)
     end
@@ -8075,7 +8081,8 @@ local function PopulateTalentManagerCore(host, isModal)
             SetPixelBackdrop(prev, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
             if prev.chev then
                 prev.chev:SetTexture(ICON_CHEVRON_DOWN)
-                prev.chev:SetVertexColor(0.68, 0.74, 0.84, 0.95)
+                local r0, g0, b0 = GetActiveAccentRGB()
+                prev.chev:SetVertexColor(r0, g0, b0, 0.90)
             end
             tmDrop._owner = nil
         end

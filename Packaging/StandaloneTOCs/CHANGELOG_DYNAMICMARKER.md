@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 ### Improved
+* **Standardised Dropdown Chevrons:** Updated dropdown trigger chevrons (and the standalone HUD Edit selector) to `12x12` px with pixel-snap disabled, live Suite Accent tinting (`0.90` closed, `1.0` hover/open), and 4x-supersampled anti-aliased chevron icons.
 * **EllesmereUI Quickdraw Conflict Parity:** Added `EllesmereUIQuickdraw` / `EllesmereUI_Quickdraw` to standalone DynamicMarker's conflict scanner for 100% parity.
 
 ---

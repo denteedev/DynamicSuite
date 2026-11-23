@@ -6323,11 +6323,13 @@ local function AttachDropdownToCard(card, width, options, getValue, onSelect)
     btn.chevron:SetSize(12, 12)
     btn.chevron:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
     btn.chevron:SetTexture(ICON_CHEVRON_DOWN)
+    if btn.chevron.SetSnapToPixelGrid then btn.chevron:SetSnapToPixelGrid(false) end
+    if btn.chevron.SetTexelSnappingBias then btn.chevron:SetTexelSnappingBias(0) end
 
     function btn:SetChevronOpen(isOpen)
         local ar, ag, ab = GetSuiteAccent()
         self.chevron:SetTexture(isOpen and ICON_CHEVRON_UP or ICON_CHEVRON_DOWN)
-        self.chevron:SetVertexColor(ar, ag, ab, 1)
+        self.chevron:SetVertexColor(ar, ag, ab, (isOpen or self:IsMouseOver()) and 1.0 or 0.90)
         if isOpen then
             self:SetBackdropBorderColor(ar, ag, ab, 0.95)
         else
@@ -6993,12 +6995,14 @@ local function RenderGroupEmbedded(arg1, arg2)
     roleFilterBtn.chevron:SetSize(12, 12)
     roleFilterBtn.chevron:SetPoint("RIGHT", roleFilterBtn, "RIGHT", -8, 0)
     roleFilterBtn.chevron:SetTexture(ICON_CHEVRON_DOWN)
+    if roleFilterBtn.chevron.SetSnapToPixelGrid then roleFilterBtn.chevron:SetSnapToPixelGrid(false) end
+    if roleFilterBtn.chevron.SetTexelSnappingBias then roleFilterBtn.chevron:SetTexelSnappingBias(0) end
 
     function roleFilterBtn:SetChevronOpen(isOpen)
         self.isOpen = isOpen and true or false
         local ar, ag, ab = GetSuiteAccent()
         self.chevron:SetTexture(isOpen and ICON_CHEVRON_UP or ICON_CHEVRON_DOWN)
-        self.chevron:SetVertexColor(ar, ag, ab, 1)
+        self.chevron:SetVertexColor(ar, ag, ab, (isOpen or self:IsMouseOver()) and 1.0 or 0.90)
         if isOpen then
             self:SetBackdropBorderColor(ar, ag, ab, 0.95)
         else

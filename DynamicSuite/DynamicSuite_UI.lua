@@ -934,14 +934,23 @@ function UI.CreateChevronDown(parent, point, relTo, relPoint, xOff, yOff, r, g, 
     holder:SetSize(12, 12)
     holder:SetPoint(point or "RIGHT", relTo or parent, relPoint or "RIGHT", xOff or -8, yOff or 0)
 
-    local cr, cg, cb, ca = r or 1, g or 1, b or 1, a or 0.72
+    local useAccent = (r == nil)
+    local cr, cg, cb, ca
+    if useAccent then
+        cr, cg, cb = UI.GetActiveAccentColor()
+        ca = a or 0.90
+    else
+        cr, cg, cb, ca = r, g or 1, b or 1, a or 0.90
+    end
 
     local tex = holder:CreateTexture(nil, "OVERLAY", nil, 3)
     tex:SetAllPoints()
     tex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
     tex:SetVertexColor(cr, cg, cb, ca)
+    UI.DisablePixelSnap(tex)
 
     holder.tex = tex
+    holder.isOpen = false
     if parent then
         parent.chevronTex = tex
     end
@@ -949,13 +958,24 @@ function UI.CreateChevronDown(parent, point, relTo, relPoint, xOff, yOff, r, g, 
         tex:SetVertexColor(nr, ng, nb, na or 1)
     end
     holder.SetOpen = function(_, isOpen)
-        if isOpen then
+        holder.isOpen = isOpen and true or false
+        if holder.isOpen then
             local ar, ag, ab = UI.GetActiveAccentColor()
             tex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_up.tga")
             tex:SetVertexColor(ar, ag, ab, 1.0)
         else
             tex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
-            tex:SetVertexColor(cr, cg, cb, ca)
+            if useAccent then
+                local ar, ag, ab = UI.GetActiveAccentColor()
+                tex:SetVertexColor(ar, ag, ab, a or 0.90)
+            else
+                tex:SetVertexColor(cr, cg, cb, ca)
+            end
+        end
+    end
+    holder.RefreshAccent = function()
+        if useAccent or holder.isOpen then
+            holder:SetOpen(holder.isOpen)
         end
     end
     return holder
@@ -966,13 +986,13 @@ function UI.SetChevronState(btn, isOpen)
     if btn.chevron and btn.chevron.SetOpen then
         btn.chevron:SetOpen(isOpen)
     elseif btn.chevronTex then
+        local ar, ag, ab = UI.GetActiveAccentColor()
         if isOpen then
-            local ar, ag, ab = UI.GetActiveAccentColor()
             btn.chevronTex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_up.tga")
             btn.chevronTex:SetVertexColor(ar, ag, ab, 1.0)
         else
             btn.chevronTex:SetTexture("Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
-            btn.chevronTex:SetVertexColor(0.75, 0.80, 0.88, 0.85)
+            btn.chevronTex:SetVertexColor(ar, ag, ab, 0.90)
         end
     end
 end
@@ -2998,7 +3018,7 @@ function addonTable.CreateMainConfigUI()
     altPillBtn:SetPoint("RIGHT", hdrHudBtn, "LEFT", -6, 0)
     altPillBtn.label:ClearAllPoints()
     altPillBtn.label:SetPoint("LEFT", altPillBtn, "LEFT", 10, 0)
-    altPillBtn.chevron = UI.CreateChevronDown(altPillBtn, "RIGHT", altPillBtn, "RIGHT", -8, 0, 1, 1, 1, 0.65)
+    altPillBtn.chevron = UI.CreateChevronDown(altPillBtn, "RIGHT", altPillBtn, "RIGHT", -8, 0, nil, nil, nil, 0.90)
     altPillBtn:SetScript("OnClick", function(self)
         OpenAltDropdown(self, f)
     end)
@@ -6635,7 +6655,7 @@ function addonTable.CreateMainConfigUI()
         btn.label:SetPoint("RIGHT", btn, "RIGHT", -24, 0)
         btn.label:SetJustifyH("LEFT")
         btn.label:SetWordWrap(false)
-        btn.chevron = UI.CreateChevronDown(btn, "RIGHT", btn, "RIGHT", -8, 0, 1, 1, 1, 0.75)
+        btn.chevron = UI.CreateChevronDown(btn, "RIGHT", btn, "RIGHT", -8, 0, nil, nil, nil, 0.90)
 
         function btn:SetOptions(newOpts)
             optionsList = newOpts or {}
@@ -6643,6 +6663,8 @@ function addonTable.CreateMainConfigUI()
         end
 
         function btn:RefreshValue()
+            local isOpen = (dsDropdownPopup and dsDropdownPopup:IsShown() and dsDropdownPopup.ownerBtn == self) and true or false
+            UI.SetChevronState(self, isOpen)
             local curVal = getValFn and getValFn()
             local displayTxt = tostring(curVal or "")
             local activeFontKey = nil
@@ -9040,6 +9062,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga",
             openModule = "DynamicCursor",
             items = {
+                { badge = "UI",       title = "[Unreleased] Collapsible Sub-Settings Drawers, Grouped Features, New Customisations & Standard Accent Chevrons (23/11/2026)", desc = "Restored canonical collapsible Sub-Settings (N) drawers across all 4 DynamicCursor tabs (24px chevron toggle bar and nested sub-cards with 2px Suite Accent left rail + 5x5px square pip), added Centre Dot Colour Mode, Mouse-Look Ghost Opacity, Click-Pulse Scale & Colour Mode, Interrupt Flash Colour, Mouse-Look Ping Duration, and Locator Highlight Scale, and standardised 12x12 live Suite Accent dropdown chevrons across all modules." },
                 { badge = "UI",       title = "[Unreleased] Ring Gap Defaults, Extra Ring Contrast, 3-Way Scrollbar & Smooth Chevrons (23/11/2026)", desc = "Set default Inner GCD Ring Gap to 6 px and Outer Cast Arc Gap to 4 px across defaults and Quick Presets; added Extra Ring Contrast in Tab 1 (dark outline behind the main ring, inner GCD ring, outer cast arc, and Character Crosshair circle); upgraded the scrollbar to the 4px 3-way Obsidian standard; and rebuilt dropdown chevron icons with 4x supersampled anti-aliasing matched 1:1 to DynamicSuite." },
                 { badge = "NEW",      title = "New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor)", desc = "Added a customisable Cursor Ring (5 clean-room procedural ring styles, radius, OOC/combat opacity, colour modes, Mouse-Look ghost ring, and click-pulse ripple), secret-safe native C++ Radial GCD and Cast/Channel/Empower arcs, Character Crosshair (5 styles with X/Y offset and Combat/Instance visibility), Find My Cursor (Shake-to-Find + Modifier Key Locator), pre-allocated 48-node Pooled Cursor Trail (0.00 ms idle CPU), Smart Cursor Tooltips, and 4 one-click presets (Clean Raid, High-Visibility, Minimalist, Full Telemetry)." },
             },
@@ -14940,7 +14963,7 @@ function addonTable.CreateMainConfigUI()
         hudSelectorBtn.visDot = UI.SolidTex(hudSelectorBtn, "OVERLAY", 3, 0.133, 0.773, 0.369, 1.0)
         hudSelectorBtn.visDot:SetSize(6, 6)
         hudSelectorBtn.visDot:SetPoint("LEFT", hudSelectorBtn, "LEFT", 7, 0)
-        hudSelectorBtn.chevron = UI.CreateChevronDown(hudSelectorBtn, "RIGHT", hudSelectorBtn, "RIGHT", -6, 0, 1, 1, 1, 0.78)
+        hudSelectorBtn.chevron = UI.CreateChevronDown(hudSelectorBtn, "RIGHT", hudSelectorBtn, "RIGHT", -6, 0, nil, nil, nil, 0.90)
         if hudSelectorBtn.label then
             hudSelectorBtn.label:ClearAllPoints()
             hudSelectorBtn.label:SetPoint("LEFT", hudSelectorBtn.visDot, "RIGHT", 5, 0)

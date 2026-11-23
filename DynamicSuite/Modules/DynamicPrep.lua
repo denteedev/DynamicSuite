@@ -7952,7 +7952,7 @@ local function CreateObsidianDropdown(parent, width, optionsProvider, getValue, 
     btn.label:SetWordWrap(false)
 
     btn.chevron = btn:CreateTexture(nil, "OVERLAY")
-    btn.chevron:SetSize(11, 11)
+    btn.chevron:SetSize(12, 12)
     btn.chevron:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
     btn.chevron:SetTexture(ICON_CHEVRON_DOWN)
     btn.chevron:SetTexCoord(0, 1, 0, 1)
@@ -7965,7 +7965,7 @@ local function CreateObsidianDropdown(parent, width, optionsProvider, getValue, 
         local ar, ag, ab = GetActiveAccentRGB()
         local isOpen = (activeDropdownMenu and activeDropdownMenu:IsShown() and activeDropdownMenu.owner == btn)
         btn.chevron:SetTexture(isOpen and ICON_CHEVRON_UP or ICON_CHEVRON_DOWN)
-        btn.chevron:SetVertexColor(isOpen and 1.0 or ar, isOpen and 1.0 or ag, isOpen and 1.0 or ab, isOpen and 1.0 or 0.95)
+        btn.chevron:SetVertexColor(ar, ag, ab, (isOpen or btn:IsMouseOver()) and 1.0 or 0.90)
         local cur = getValue()
         local opts = type(optionsProvider) == "function" and optionsProvider() or optionsProvider
         for _, opt in ipairs(opts) do
@@ -7980,9 +7980,10 @@ local function CreateObsidianDropdown(parent, width, optionsProvider, getValue, 
     end
 
     btn:SetScript("OnEnter", function(selfBtn)
+        local ar, ag, ab = GetActiveAccentRGB()
         SetPixelBackdrop(selfBtn, COLORS.BgHover, GetAccentColorTable(1.0), 1)
         if selfBtn.chevron then
-            selfBtn.chevron:SetVertexColor(1.0, 1.0, 1.0, 1.0)
+            selfBtn.chevron:SetVertexColor(ar, ag, ab, 1.0)
         end
     end)
     btn:SetScript("OnLeave", function(selfBtn)
@@ -7990,7 +7991,7 @@ local function CreateObsidianDropdown(parent, width, optionsProvider, getValue, 
         SetPixelBackdrop(selfBtn, COLORS.BgElevated, isOpen and GetAccentColorTable(1.0) or COLORS.BorderStrong, 1)
         if selfBtn.chevron then
             local ar, ag, ab = GetActiveAccentRGB()
-            selfBtn.chevron:SetVertexColor(isOpen and 1.0 or ar, isOpen and 1.0 or ag, isOpen and 1.0 or ab, isOpen and 1.0 or 0.95)
+            selfBtn.chevron:SetVertexColor(ar, ag, ab, isOpen and 1.0 or 0.90)
         end
     end)
     if not btn._dpDropdownOnHideHooked then

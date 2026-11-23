@@ -9225,7 +9225,7 @@ local function AttachSoundDropdownToCard(card, channelKey)
     btn.label = lbl
 
     local chev = btn:CreateTexture(nil, "ARTWORK")
-    chev:SetSize(10, 10)
+    chev:SetSize(12, 12)
     chev:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
     chev:SetTexture(ICON_CHEVRON_DOWN)
     DisableTexPixelSnap(chev)
@@ -9967,7 +9967,7 @@ do
         btn.label = lbl
 
         local chev = btn:CreateTexture(nil, "ARTWORK")
-        chev:SetSize(10, 10)
+        chev:SetSize(12, 12)
         chev:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
         chev:SetTexture(ICON_CHEVRON_DOWN)
         DisableTexPixelSnap(chev)
@@ -9990,7 +9990,7 @@ do
             self:SetBackdropBorderColor(isOpen and ar or 0.24, isOpen and ag or 0.28, isOpen and ab or 0.36, 0.95)
             self.label:SetTextColor(0.95, 0.97, 1, 1)
             self.chevron:SetTexture(isOpen and ICON_CHEVRON_UP or ICON_CHEVRON_DOWN)
-            self.chevron:SetVertexColor(ar, ag, ab, 0.95)
+            self.chevron:SetVertexColor(ar, ag, ab, isOpen and 1.0 or 0.90)
             self.tierBar:SetColorTexture(ar, ag, ab, 0.85)
         end
 
