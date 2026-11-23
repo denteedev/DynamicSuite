@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### DynamicCursor 2-Level Section Container & Individual Obsidian Card Parity (`DynamicCursor`, 24/11/2026)
+- **Enclosing Section Containers & Individual Setting Cards (`DynamicCursor`):** Refactored all 4 tabs (`Ring & Trail`, `GCD & Cast Arc`, `Crosshair & Locator`, `Visibility & Tooltips`) so every section sits inside its own enclosing bordered Section Container with a 2-line L-bracket header, holding individually bordered `CARD_BG` setting cards and collapsible `Sub-Settings (N)` drawers (`8px` vertical gaps, dynamic section height resizing, and immediate 3-way scrollbar updates).
+- **Plain Australian English Copy Polish (`DynamicCursor`):** Replaced remaining technical wording across section subtitles and control descriptions (such as native pointer size, tooltip anchoring, and trail particles) with clear, plain Australian English.
+
 ### DynamicCursor Collapsible Sub-Settings Drawers, New Customisations & Suite-Wide Standard Dropdown Chevrons (`DynamicCursor`, All Modules, 23/11/2026)
 - **Canonical Collapsible `Sub-Settings (N)` Drawers (`DynamicCursor`):** Restored the Suite-standard collapsible `Sub-Settings (N)` drawers across all 4 tabs with a `24px` full-width chevron toggle bar and nested `#090A0D` sub-cards featuring the `2px` vertical Suite Accent left rail and `5x5px` Suite Accent square pip (persisting manual expand/collapse state while auto-expanding on enable and collapsing when off).
 - **Grouped Features & New Customisations (`DynamicCursor`):** Organised related toggles and options cleanly into dedicated drawers and added **Centre Dot Colour Mode**, **Mouse-Look Ghost Opacity** (`10%-100%`, default `35%`), **Click-Pulse Scale** (`125%-250%`, default `175%`) & **Click-Pulse Colour Mode**, **Interrupt Flash Colour** (`Crimson Red` / `Bright Gold` / `Custom`), **Mouse-Look Ping Duration** (`0.30s-1.50s`, default `0.65s`), and **Locator Highlight Scale** (`60%-160%`).
