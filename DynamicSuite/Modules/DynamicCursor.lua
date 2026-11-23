@@ -294,7 +294,7 @@ local DEFAULTS = {
     -- Tab 1: Cursor Ring, GCD & Cast Arc (Off by default)
     ringEnabled = false,
     ringStyle = "CRISP",            -- "CRISP" | "THIN" | "THICK" | "GLOW" | "DUAL"
-    ringRadius = 40,                -- 16..96
+    ringRadius = 24,                -- 16..96 (compact modern default)
     ringOffsetX = 0,                -- -16..16
     ringOffsetY = 0,                -- -16..16
     ringCenterDot = false,
@@ -312,14 +312,22 @@ local DEFAULTS = {
     groundTargetCustomHex = "22EB5E",
 
     gcdEnabled = true,
+    gcdGap = 4,                     -- 0..20 px inward
+    gcdStyle = "THIN",              -- "THIN" | "CRISP" | "THICK"
     gcdColorMode = "MATCH_RING",    -- "MATCH_RING" | "ACCENT" | "CLASS" | "CUSTOM"
     gcdCustomHex = "38BDF8",
     gcdOpacity = 0.85,              -- 0.10..1.00
     castArcEnabled = true,
+    castGap = 6,                    -- 0..24 px outward
+    castStyle = "THIN",             -- "THIN" | "CRISP" | "THICK"
     castColorMode = "MATCH_RING",   -- "MATCH_RING" | "ACCENT" | "CLASS" | "CUSTOM"
     castCustomHex = "F59E0B",
     castOpacity = 0.92,             -- 0.10..1.00
     castShowIcon = false,
+    castIconSize = 20,              -- 14..32 px
+    castIconPos = "TOP",            -- "TOP" | "BOTTOM" | "LEFT" | "RIGHT" | "CENTER"
+    castIconGap = 6,                -- 2..24 px
+    castInstantFlash = false,
 
     showOpenWorld = true,
     showDelves = true,
@@ -406,7 +414,7 @@ local SyncAllEngines
 do
     local GCD_SPELL_ID = 61304
     local ringRoot, ringTex, ghostTex, pulseTex, ringDotBg, ringDotTex
-    local gcdCooldown, castCooldown, castIconTex
+    local gcdCooldown, castCooldown, castIconFrame, castIconTex
     local locatorRoot, locatorPingTex, locatorSpotTex, locatorCrossH, locatorCrossV
     local crosshairRoot
     local chLines = {}
@@ -429,6 +437,7 @@ do
     local shakeBurstEnd = 0
     local pulseRemaining = 0
     local castFlashEnd = 0
+    local instantFlashEnd = 0
     local isCastingNow = false
     local isChannelingNow = false
 
@@ -535,8 +544,8 @@ do
         gcdCooldown:Hide()
 
         castCooldown = CreateFrame("Cooldown", nil, ringRoot, "CooldownFrameTemplate")
-        castCooldown:SetPoint("TOPLEFT", ringRoot, "TOPLEFT", -8, 8)
-        castCooldown:SetPoint("BOTTOMRIGHT", ringRoot, "BOTTOMRIGHT", 8, -8)
+        castCooldown:SetPoint("TOPLEFT", ringRoot, "TOPLEFT", -6, 6)
+        castCooldown:SetPoint("BOTTOMRIGHT", ringRoot, "BOTTOMRIGHT", 6, -6)
         castCooldown:EnableMouse(false)
         castCooldown:SetDrawEdge(false)
         castCooldown:SetDrawBling(false)
@@ -546,11 +555,24 @@ do
         castCooldown.noCooldownCount = true
         castCooldown:Hide()
 
-        castIconTex = ringRoot:CreateTexture(nil, "OVERLAY")
-        castIconTex:SetSize(18, 18)
-        castIconTex:SetPoint("BOTTOM", ringRoot, "TOP", 0, 6)
+        castIconFrame = CreateFrame("Frame", nil, ringRoot, "BackdropTemplate")
+        castIconFrame:SetSize(20, 20)
+        castIconFrame:EnableMouse(false)
+        castIconFrame:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+            insets = { left = 1, right = 1, top = 1, bottom = 1 },
+        })
+        castIconFrame:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+        castIconFrame:SetBackdropBorderColor(0.220, 0.741, 0.973, 0.95)
+        castIconFrame:SetPoint("BOTTOM", castCooldown, "TOP", 0, 6)
+        castIconFrame:Hide()
+
+        castIconTex = castIconFrame:CreateTexture(nil, "ARTWORK")
+        castIconTex:SetPoint("TOPLEFT", castIconFrame, "TOPLEFT", 1, -1)
+        castIconTex:SetPoint("BOTTOMRIGHT", castIconFrame, "BOTTOMRIGHT", -1, 1)
         castIconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-        castIconTex:Hide()
     end
 
     local function EnsureLocatorFrames()
@@ -777,21 +799,56 @@ do
         if gcdCooldown then
             local gr, gg, gb = ResolveColorMode(db.gcdColorMode or "MATCH_RING", db.gcdCustomHex, false, baseR, baseG, baseB)
             local gcdAlpha = math.max(0.10, math.min(1.00, tonumber(db.gcdOpacity) or 0.85))
-            gcdCooldown:SetSwipeTexture(RING_TEXTURES.THIN)
+            local gcdTex = RING_TEXTURES[db.gcdStyle or "THIN"] or RING_TEXTURES.THIN
+            gcdCooldown:SetSwipeTexture(gcdTex)
             gcdCooldown:SetSwipeColor(gr, gg, gb, gcdAlpha)
-            local inset = math.max(4, math.floor(radius * 0.22))
+            local reqGap = math.max(0, math.min(20, tonumber(db.gcdGap) or 4))
+            local maxInset = math.max(0, math.floor((diam - 10) * 0.5))
+            local inset = math.min(reqGap, maxInset)
             gcdCooldown:ClearAllPoints()
             gcdCooldown:SetPoint("TOPLEFT", ringRoot, "TOPLEFT", inset, -inset)
             gcdCooldown:SetPoint("BOTTOMRIGHT", ringRoot, "BOTTOMRIGHT", -inset, inset)
         end
+
+        local castR, castG, castB = ResolveColorMode(db.castColorMode or "MATCH_RING", db.castCustomHex, false, baseR, baseG, baseB)
+        local isFlashingInt = (castFlashEnd > (GetTime and GetTime() or 0))
         if castCooldown then
-            local cr, cg, cb = ResolveColorMode(db.castColorMode or "MATCH_RING", db.castCustomHex, false, baseR, baseG, baseB)
             local castAlpha = math.max(0.10, math.min(1.00, tonumber(db.castOpacity) or 0.92))
-            castCooldown:SetSwipeTexture(RING_TEXTURES.THIN)
-            if castFlashEnd > (GetTime and GetTime() or 0) then
+            local castTex = RING_TEXTURES[db.castStyle or "THIN"] or RING_TEXTURES.THIN
+            local castGap = math.max(0, math.min(24, tonumber(db.castGap) or 6))
+            castCooldown:SetSwipeTexture(castTex)
+            castCooldown:ClearAllPoints()
+            castCooldown:SetPoint("TOPLEFT", ringRoot, "TOPLEFT", -castGap, castGap)
+            castCooldown:SetPoint("BOTTOMRIGHT", ringRoot, "BOTTOMRIGHT", castGap, -castGap)
+            if isFlashingInt then
                 castCooldown:SetSwipeColor(0.95, 0.22, 0.22, 0.95)
             else
-                castCooldown:SetSwipeColor(cr, cg, cb, castAlpha)
+                castCooldown:SetSwipeColor(castR, castG, castB, castAlpha)
+            end
+        end
+
+        if castIconFrame then
+            local iconSz = math.max(14, math.min(32, tonumber(db.castIconSize) or 20))
+            local iconGap = math.max(2, math.min(24, tonumber(db.castIconGap) or 6))
+            local pos = db.castIconPos or "TOP"
+            local anchorTarget = (db.castArcEnabled ~= false and castCooldown) or ringRoot
+            castIconFrame:SetSize(iconSz, iconSz)
+            castIconFrame:ClearAllPoints()
+            if pos == "BOTTOM" then
+                castIconFrame:SetPoint("TOP", anchorTarget, "BOTTOM", 0, -iconGap)
+            elseif pos == "LEFT" then
+                castIconFrame:SetPoint("RIGHT", anchorTarget, "LEFT", -iconGap, 0)
+            elseif pos == "RIGHT" then
+                castIconFrame:SetPoint("LEFT", anchorTarget, "RIGHT", iconGap, 0)
+            elseif pos == "CENTER" then
+                castIconFrame:SetPoint("CENTER", ringRoot, "CENTER", 0, 0)
+            else
+                castIconFrame:SetPoint("BOTTOM", anchorTarget, "TOP", 0, iconGap)
+            end
+            if isFlashingInt then
+                castIconFrame:SetBackdropBorderColor(0.95, 0.22, 0.22, 0.98)
+            else
+                castIconFrame:SetBackdropBorderColor(castR, castG, castB, 0.95)
             end
         end
     end
@@ -829,7 +886,7 @@ do
         local db = EnsureDB()
         if not db.ringEnabled or not db.castArcEnabled or IsModuleDisabledInSuite("DynamicCursor") then
             if castCooldown then castCooldown:Hide() end
-            if castIconTex then castIconTex:Hide() end
+            if castIconFrame and instantFlashEnd <= 0 then castIconFrame:Hide() end
             return
         end
         if not ringRoot or not castCooldown then return end
@@ -840,7 +897,7 @@ do
             C_Timer.After(0.36, function()
                 if not isCastingNow and not isChannelingNow and castCooldown then
                     castCooldown:Hide()
-                    if castIconTex then castIconTex:Hide() end
+                    if castIconFrame and instantFlashEnd <= 0 then castIconFrame:Hide() end
                 end
             end)
             return
@@ -854,17 +911,19 @@ do
                 if okSet then
                     castCooldown:SetReverse(isChannel and true or false)
                     castCooldown:Show()
-                    if db.castShowIcon and castIconTex then
+                    if db.castShowIcon and castIconFrame and castIconTex then
                         local infoFn = isChannel and _G.UnitChannelInfo or _G.UnitCastingInfo
                         if type(infoFn) == "function" then
                             local okI, _, _, texID = pcall(infoFn, "player")
                             if okI and not _IsSecret(texID) and texID then
+                                instantFlashEnd = 0
+                                castIconFrame:SetAlpha(1)
                                 castIconTex:SetTexture(texID)
-                                castIconTex:Show()
+                                castIconFrame:Show()
                             end
                         end
-                    elseif castIconTex then
-                        castIconTex:Hide()
+                    elseif castIconFrame and instantFlashEnd <= 0 then
+                        castIconFrame:Hide()
                     end
                     return
                 end
@@ -880,18 +939,20 @@ do
                     pcall(castCooldown.SetCooldown, castCooldown, startMS / 1000, durSec)
                     castCooldown:SetReverse(isChannel and true or false)
                     castCooldown:Show()
-                    if db.castShowIcon and castIconTex and not _IsSecret(texID) and texID then
+                    if db.castShowIcon and castIconFrame and castIconTex and not _IsSecret(texID) and texID then
+                        instantFlashEnd = 0
+                        castIconFrame:SetAlpha(1)
                         castIconTex:SetTexture(texID)
-                        castIconTex:Show()
-                    elseif castIconTex then
-                        castIconTex:Hide()
+                        castIconFrame:Show()
+                    elseif castIconFrame and instantFlashEnd <= 0 then
+                        castIconFrame:Hide()
                     end
                     return
                 end
             end
         end
         castCooldown:Hide()
-        if castIconTex then castIconTex:Hide() end
+        if castIconFrame and instantFlashEnd <= 0 then castIconFrame:Hide() end
     end
 
     local function SpawnTrailNode(db, x, y, now)
@@ -1000,10 +1061,24 @@ do
                     pulseTex:Hide()
                 else
                     local pProg = 1.0 - (pulseRemaining / 0.25)
-                    local rad = (tonumber(db.ringRadius) or 40) * (1.0 + pProg * 0.75)
+                    local rad = (tonumber(db.ringRadius) or 24) * (1.0 + pProg * 0.75)
                     pulseTex:SetSize(rad * 2, rad * 2)
                     pulseTex:SetAlpha((1.0 - pProg) * 0.85)
                     pulseTex:Show()
+                end
+            end
+
+            if instantFlashEnd > 0 and castIconFrame then
+                if isCastingNow or isChannelingNow then
+                    instantFlashEnd = 0
+                    castIconFrame:SetAlpha(1)
+                elseif now >= instantFlashEnd then
+                    instantFlashEnd = 0
+                    castIconFrame:SetAlpha(1)
+                    castIconFrame:Hide()
+                else
+                    local rem = (instantFlashEnd - now) / 0.55
+                    castIconFrame:SetAlpha(math.max(0, math.min(1, rem)))
                 end
             end
         elseif ringRoot then
@@ -1142,7 +1217,10 @@ do
             if not db.gcdEnabled and gcdCooldown then gcdCooldown:Hide() end
             if not db.castArcEnabled and castCooldown then
                 castCooldown:Hide()
-                if castIconTex then castIconTex:Hide() end
+            end
+            if not db.castShowIcon and castIconFrame then
+                instantFlashEnd = 0
+                castIconFrame:Hide()
             end
         elseif ringRoot then
             ringRoot:Hide()
@@ -1196,7 +1274,7 @@ do
     SafeRegisterEvent(evFrame, "UNIT_SPELLCAST_EMPOWER_STOP")
     SafeRegisterEvent(evFrame, "CURRENT_SPELL_CAST_CHANGED")
 
-    evFrame:SetScript("OnEvent", function(_, event, arg1)
+    evFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
         if event == "PLAYER_LOGIN" then
             EnsureDB()
             if type(_G.hooksecurefunc) == "function" then
@@ -1222,7 +1300,27 @@ do
                 pulseRemaining = 0.25
             end
         elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
-            if arg1 == "player" then TriggerGCDCooldown() end
+            if arg1 == "player" then
+                TriggerGCDCooldown()
+                if db.ringEnabled and db.castShowIcon and db.castInstantFlash and not isCastingNow and not isChannelingNow and castIconFrame and castIconTex then
+                    if not _IsSecret(arg3) and type(arg3) == "number" and arg3 > 0 then
+                        local texID = nil
+                        if _G.C_Spell and type(_G.C_Spell.GetSpellTexture) == "function" then
+                            local okT, t = pcall(_G.C_Spell.GetSpellTexture, arg3)
+                            if okT and not _IsSecret(t) and t then texID = t end
+                        elseif type(_G.GetSpellTexture) == "function" then
+                            local okT, t = pcall(_G.GetSpellTexture, arg3)
+                            if okT and not _IsSecret(t) and t then texID = t end
+                        end
+                        if texID then
+                            castIconTex:SetTexture(texID)
+                            castIconFrame:SetAlpha(1)
+                            castIconFrame:Show()
+                            instantFlashEnd = ((GetTime and GetTime()) or 0) + 0.55
+                        end
+                    end
+                end
+            end
         elseif event == "UNIT_SPELLCAST_START" then
             if arg1 == "player" then
                 isCastingNow = true; isChannelingNow = false
@@ -1251,7 +1349,7 @@ do
             if arg1 == "player" then
                 isCastingNow = false; isChannelingNow = false
                 if castCooldown then castCooldown:Hide() end
-                if castIconTex then castIconTex:Hide() end
+                if castIconFrame and instantFlashEnd <= 0 then castIconFrame:Hide() end
             end
         elseif event == "CURRENT_SPELL_CAST_CHANGED" then
             if db.ringEnabled and db.groundTargetHighlight ~= false and type(_G.SpellIsTargeting) == "function" then
@@ -1281,58 +1379,72 @@ function DynamicCursor:ApplyPreset(presetKey)
     if presetKey == "CLEAN_RAID" then
         db.ringEnabled = true
         db.ringStyle = "CRISP"
-        db.ringRadius = 38
+        db.ringRadius = 24
         db.ringOpacityOOC = 0.45
         db.ringOpacityCombat = 0.90
         db.ringColorMode = "ACCENT"
         db.ringCombatShift = false
         db.gcdEnabled = true
+        db.gcdGap = 4
         db.castArcEnabled = true
+        db.castGap = 6
         db.castShowIcon = false
+        db.castInstantFlash = false
         db.crosshairEnabled = false
         db.trailEnabled = false
         PrintMsg("Applied preset: Clean Raid.")
     elseif presetKey == "HIGH_VIS" then
         db.ringEnabled = true
         db.ringStyle = "DUAL"
-        db.ringRadius = 52
+        db.ringRadius = 24
         db.ringOpacityOOC = 0.75
         db.ringOpacityCombat = 1.00
         db.ringColorMode = "HIGH_VIS_GREEN"
         db.ringCombatShift = true
         db.gcdEnabled = true
+        db.gcdGap = 4
         db.castArcEnabled = true
+        db.castGap = 6
         db.castShowIcon = true
         db.crosshairEnabled = true
         db.crosshairStyle = "CROSS_DOT"
         db.crosshairSize = 26
         db.crosshairOutline = true
         db.shakeToFind = true
-        db.trailEnabled = false
+        db.trailEnabled = true
+        db.trailStyle = "SMOOTH_DOTS"
+        db.trailSize = 10
+        db.trailDensity = 4
         PrintMsg("Applied preset: High-Visibility.")
     elseif presetKey == "MINIMALIST" then
         db.ringEnabled = true
         db.ringStyle = "THIN"
-        db.ringRadius = 30
+        db.ringRadius = 20
         db.ringOpacityOOC = 0.35
         db.ringOpacityCombat = 0.75
         db.ringColorMode = "CLASS"
         db.gcdEnabled = true
+        db.gcdGap = 3
         db.castArcEnabled = false
+        db.castShowIcon = false
+        db.castInstantFlash = false
         db.crosshairEnabled = false
         db.trailEnabled = false
         PrintMsg("Applied preset: Minimalist.")
     elseif presetKey == "FULL_TELEMETRY" then
         db.ringEnabled = true
         db.ringStyle = "GLOW"
-        db.ringRadius = 46
+        db.ringRadius = 26
         db.ringOpacityOOC = 0.65
         db.ringOpacityCombat = 0.95
         db.ringColorMode = "ACCENT"
         db.ringClickPulse = true
         db.gcdEnabled = true
+        db.gcdGap = 4
         db.castArcEnabled = true
+        db.castGap = 6
         db.castShowIcon = true
+        db.castInstantFlash = true
         db.crosshairEnabled = true
         db.crosshairStyle = "BRACKETS"
         db.crosshairSize = 28
@@ -1617,38 +1729,74 @@ do
         return btn
     end
 
-    local function CreateSettingCard(parent, titleTxt, descTxt, rightW)
-        local card = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-        card:SetHeight(62)
-        SetBackdropSolid(card, { 0.055, 0.063, 0.082, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+    local function CreateSettingRow(parent, titleTxt, descTxt, rightW, isSubRow)
+        local row = CreateFrame("Frame", nil, parent)
+        row:SetHeight(56)
+        row.isSubRow = isSubRow and true or false
 
-        local title = card:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local div = row:CreateTexture(nil, "ARTWORK")
+        div:SetHeight(1)
+        div:SetPoint("TOPLEFT", row, "TOPLEFT", 12, 0)
+        div:SetPoint("TOPRIGHT", row, "TOPRIGHT", -12, 0)
+        div:SetColorTexture(1, 1, 1, 0.06)
+        row.div = div
+
+        local padL = 14
+        if row.isSubRow then
+            local subBg = row:CreateTexture(nil, "BACKGROUND")
+            subBg:SetPoint("TOPLEFT", row, "TOPLEFT", 12, -2)
+            subBg:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -12, 2)
+            subBg:SetColorTexture(0.035, 0.039, 0.051, 0.72)
+            row.subBg = subBg
+
+            local subBar = row:CreateTexture(nil, "ARTWORK")
+            subBar:SetSize(2, 46)
+            subBar:SetPoint("LEFT", row, "LEFT", 16, 0)
+            row.subBar = subBar
+
+            local pip = row:CreateTexture(nil, "OVERLAY")
+            pip:SetSize(5, 5)
+            pip:SetPoint("LEFT", subBar, "RIGHT", 6, 8)
+            row.pip = pip
+            padL = 32
+        end
+
+        local title = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         SetSafeFont(title, 12, "")
-        title:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -10)
-        title:SetPoint("RIGHT", card, "RIGHT", -(rightW + 28), 0)
+        title:SetPoint("TOPLEFT", row, "TOPLEFT", padL, -9)
+        title:SetPoint("RIGHT", row, "RIGHT", -(rightW + 26), 0)
         title:SetJustifyH("LEFT")
         title:SetWordWrap(false)
         title:SetTextColor(0.96, 0.98, 1.0, 1)
         title:SetText(titleTxt)
-        card.title = title
+        row.title = title
 
-        local desc = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        local desc = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         SetSafeFont(desc, 10, "")
-        desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -4)
-        desc:SetPoint("RIGHT", card, "RIGHT", -(rightW + 28), 0)
+        desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -3)
+        desc:SetPoint("RIGHT", row, "RIGHT", -(rightW + 26), 0)
         desc:SetJustifyH("LEFT")
         desc:SetWordWrap(true)
         desc:SetMaxLines(2)
         desc:SetTextColor(0.64, 0.70, 0.78, 1)
         desc:SetText(descTxt)
-        card.desc = desc
+        row.desc = desc
 
-        function card:BindRight(ctrl)
+        function row:RefreshAccent()
+            if self.subBar and self.pip then
+                local ar, ag, ab = GetSuiteAccent()
+                self.subBar:SetColorTexture(ar, ag, ab, 0.55)
+                self.pip:SetColorTexture(ar, ag, ab, 0.90)
+            end
+        end
+        row:RefreshAccent()
+
+        function row:BindRight(ctrl)
             ctrl:ClearAllPoints()
             ctrl:SetPoint("RIGHT", self, "RIGHT", -14, 0)
             self.ctrl = ctrl
         end
-        return card
+        return row
     end
 
     local function CreateSectionHeader(parent, titleTxt, subTxt)
@@ -1686,13 +1834,56 @@ do
         return hdr
     end
 
+    local function CreateSectionContainer(parent, titleTxt, subTxt)
+        local sec = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+        SetBackdropSolid(sec, { 0.055, 0.063, 0.082, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+        sec.rows = {}
+
+        local hdr = CreateSectionHeader(sec, titleTxt, subTxt)
+        hdr:SetPoint("TOPLEFT", sec, "TOPLEFT", 12, -10)
+        hdr:SetPoint("TOPRIGHT", sec, "TOPRIGHT", -12, -10)
+        sec.hdr = hdr
+
+        function sec:RefreshAccent()
+            self.hdr:RefreshAccent()
+            for _, r in ipairs(self.rows) do
+                if r.RefreshAccent then r:RefreshAccent() end
+            end
+        end
+
+        function sec:LayoutRows()
+            local y = -52
+            local firstVisible = true
+            for _, r in ipairs(self.rows) do
+                local show = (not r.visibleFn) or (r.visibleFn() == true)
+                if show then
+                    r:ClearAllPoints()
+                    r:SetPoint("TOPLEFT", self, "TOPLEFT", 0, y)
+                    r:SetPoint("TOPRIGHT", self, "TOPRIGHT", 0, y)
+                    if r.div then
+                        if firstVisible then r.div:Hide() else r.div:Show() end
+                    end
+                    r:Show()
+                    y = y - (r:GetHeight() or 56)
+                    firstVisible = false
+                else
+                    r:Hide()
+                end
+            end
+            self:SetHeight(math.max(64, math.abs(y) + 8))
+        end
+
+        return sec
+    end
+
     local function LayoutPage(page)
         local y = -4
         for _, item in ipairs(page.items or {}) do
+            if item.LayoutRows then item:LayoutRows() end
             item:ClearAllPoints()
             item:SetPoint("TOPLEFT", page, "TOPLEFT", 0, y)
             item:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, y)
-            y = y - (item:GetHeight() + 8)
+            y = y - (item:GetHeight() + 10)
         end
         page:SetHeight(math.max(100, math.abs(y) + 12))
     end
@@ -1719,7 +1910,7 @@ do
         parent.DynamicCursorContainer = root
         DynamicCursor.embeddedRoot = root
 
-        -- 3-Tab Segmented Bar (anchored at top of workspace for 1:1 DynamicSuite parity)
+        -- 4-Tab Segmented Bar (anchored at top of workspace for 1:1 DynamicSuite parity)
         local tabBar = CreateFrame("Frame", nil, root, "BackdropTemplate")
         tabBar:SetHeight(34)
         tabBar:SetPoint("TOPLEFT", root, "TOPLEFT", 14, -10)
@@ -1727,9 +1918,10 @@ do
         SetBackdropSolid(tabBar, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 }, 1)
 
         local tabDefs = {
-            { id = 1, label = "Cursor Ring & Cast Arc" },
-            { id = 2, label = "Crosshair & Locator" },
-            { id = 3, label = "Trail & Tooltips" },
+            { id = 1, label = "Ring & Trail" },
+            { id = 2, label = "GCD & Cast Arc" },
+            { id = 3, label = "Crosshair & Locator" },
+            { id = 4, label = "Visibility & Tooltips" },
         }
         local tabBtns = {}
         for i, td in ipairs(tabDefs) do
@@ -1738,6 +1930,7 @@ do
             tb.lbl = tb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             SetSafeFont(tb.lbl, 11, "")
             tb.lbl:SetPoint("CENTER")
+            tb.lbl:SetWordWrap(false)
             tb.lbl:SetText(td.label)
             tb:SetScript("OnClick", function()
                 local db = EnsureDB()
@@ -1753,12 +1946,14 @@ do
             if rawW < 100 then
                 rawW = ((parent and parent.GetWidth and parent:GetWidth()) or 760) - 30
             end
-            local w = math.max(300, rawW - 8)
-            local bw = math.floor((w - 8) / 3)
+            local n = #tabBtns
+            local w = math.max(320, rawW - 8)
+            local gap = 4
+            local bw = math.floor((w - gap * (n - 1)) / n)
             for i, tb in ipairs(tabBtns) do
                 tb:ClearAllPoints()
-                tb:SetWidth(i == 3 and (w - (bw + 4) * 2) or bw)
-                tb:SetPoint("LEFT", tabBar, "LEFT", 4 + (i - 1) * (bw + 4), 0)
+                tb:SetWidth(i == n and (w - (bw + gap) * (n - 1)) or bw)
+                tb:SetPoint("LEFT", tabBar, "LEFT", 4 + (i - 1) * (bw + gap), 0)
             end
         end
         tabBar:SetScript("OnSizeChanged", ReflowTabBar)
@@ -1836,62 +2031,70 @@ do
             UpdateThumb()
         end)
 
-        local pages = { CreateFrame("Frame", nil, content), CreateFrame("Frame", nil, content), CreateFrame("Frame", nil, content) }
-        for _, pg in ipairs(pages) do
+        local pages = {}
+        for i = 1, 4 do
+            local pg = CreateFrame("Frame", nil, content)
             pg:SetPoint("TOPLEFT", content, "TOPLEFT", 0, 0)
             pg:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, 0)
             pg.items = {}
             pg:Hide()
+            pages[i] = pg
         end
 
         local refreshables = {}
-        local headers = {}
+        local sections = {}
 
-        local function AddHeader(pgIdx, t, s)
-            local h = CreateSectionHeader(pages[pgIdx], t, s)
-            pages[pgIdx].items[#pages[pgIdx].items + 1] = h
-            headers[#headers + 1] = h
+        local function AddSection(pgIdx, t, s)
+            local sec = CreateSectionContainer(pages[pgIdx], t, s)
+            pages[pgIdx].items[#pages[pgIdx].items + 1] = sec
+            sections[#sections + 1] = sec
+            return sec
         end
-        local function AddToggle(pgIdx, title, desc, getFn, setFn)
-            local c = CreateSettingCard(pages[pgIdx], title, desc, 156)
-            local p = CreateSegmentedPills(c, 156, { { value = false, label = "Off" }, { value = true, label = "Enabled" } }, getFn, function(v)
+        local function AddToggle(sec, title, desc, getFn, setFn, visibleFn)
+            local r = CreateSettingRow(sec, title, desc, 156, visibleFn ~= nil)
+            r.visibleFn = visibleFn
+            local p = CreateSegmentedPills(r, 156, { { value = false, label = "Off" }, { value = true, label = "Enabled" } }, getFn, function(v)
                 setFn(v); SyncAllEngines(); DynamicCursor:RefreshWorkspaceUI()
             end)
-            c:BindRight(p)
-            pages[pgIdx].items[#pages[pgIdx].items + 1] = c
+            r:BindRight(p)
+            sec.rows[#sec.rows + 1] = r
             refreshables[#refreshables + 1] = p
         end
-        local function AddSlider(pgIdx, title, desc, minV, maxV, stepV, fmtFn, getFn, setFn)
-            local c = CreateSettingCard(pages[pgIdx], title, desc, 256)
-            local s = CreateTrue4pxSlider(c, 256, minV, maxV, stepV, fmtFn, getFn, function(v)
+        local function AddSlider(sec, title, desc, minV, maxV, stepV, fmtFn, getFn, setFn, visibleFn)
+            local r = CreateSettingRow(sec, title, desc, 256, visibleFn ~= nil)
+            r.visibleFn = visibleFn
+            local s = CreateTrue4pxSlider(r, 256, minV, maxV, stepV, fmtFn, getFn, function(v)
                 setFn(v); SyncAllEngines()
             end)
-            c:BindRight(s)
-            pages[pgIdx].items[#pages[pgIdx].items + 1] = c
+            r:BindRight(s)
+            sec.rows[#sec.rows + 1] = r
             refreshables[#refreshables + 1] = s
         end
-        local function AddPills(pgIdx, title, desc, w, opts, getFn, setFn)
-            local c = CreateSettingCard(pages[pgIdx], title, desc, w)
-            local p = CreateSegmentedPills(c, w, opts, getFn, function(v)
+        local function AddPills(sec, title, desc, w, opts, getFn, setFn, visibleFn)
+            local r = CreateSettingRow(sec, title, desc, w, visibleFn ~= nil)
+            r.visibleFn = visibleFn
+            local p = CreateSegmentedPills(r, w, opts, getFn, function(v)
                 setFn(v); SyncAllEngines(); DynamicCursor:RefreshWorkspaceUI()
             end)
-            c:BindRight(p)
-            pages[pgIdx].items[#pages[pgIdx].items + 1] = c
+            r:BindRight(p)
+            sec.rows[#sec.rows + 1] = r
             refreshables[#refreshables + 1] = p
         end
-        local function AddDropdown(pgIdx, title, desc, w, opts, getFn, setFn)
-            local c = CreateSettingCard(pages[pgIdx], title, desc, w)
-            local d = CreateDropdownControl(c, w, opts, getFn, function(v)
+        local function AddDropdown(sec, title, desc, w, opts, getFn, setFn, visibleFn)
+            local r = CreateSettingRow(sec, title, desc, w, visibleFn ~= nil)
+            r.visibleFn = visibleFn
+            local d = CreateDropdownControl(r, w, opts, getFn, function(v)
                 setFn(v); SyncAllEngines(); DynamicCursor:RefreshWorkspaceUI()
             end)
-            c:BindRight(d)
-            pages[pgIdx].items[#pages[pgIdx].items + 1] = c
+            r:BindRight(d)
+            sec.rows[#sec.rows + 1] = r
             refreshables[#refreshables + 1] = d
         end
-        local function AddColorModeDropdown(pgIdx, title, desc, w, opts, getModeFn, setModeFn, getHexFn, setHexFn, pickerTitle, matchRgbFn)
+        local function AddColorModeDropdown(sec, title, desc, w, opts, getModeFn, setModeFn, getHexFn, setHexFn, pickerTitle, matchRgbFn, visibleFn)
             local totalW = w + 34
-            local c = CreateSettingCard(pages[pgIdx], title, desc, totalW)
-            local wrap = CreateFrame("Frame", nil, c)
+            local r = CreateSettingRow(sec, title, desc, totalW, visibleFn ~= nil)
+            r.visibleFn = visibleFn
+            local wrap = CreateFrame("Frame", nil, r)
             wrap:SetSize(totalW, 24)
 
             local d = CreateDropdownControl(wrap, w, opts, getModeFn, function(v)
@@ -1921,8 +2124,8 @@ do
                 local curMode = getModeFn()
                 local initHex = getHexFn()
                 if curMode ~= "CUSTOM" then
-                    local r, g, b = GetResolvedRGB()
-                    initHex = RGBToHex(r, g, b)
+                    local cr, cg, cb = GetResolvedRGB()
+                    initHex = RGBToHex(cr, cg, cb)
                     setModeFn("CUSTOM")
                     setHexFn(initHex)
                     SyncAllEngines()
@@ -1949,8 +2152,8 @@ do
 
             function wrap:RefreshValue()
                 d:RefreshValue()
-                local r, g, b = GetResolvedRGB()
-                swTex:SetColorTexture(r, g, b, 1)
+                local cr, cg, cb = GetResolvedRGB()
+                swTex:SetColorTexture(cr, cg, cb, 1)
                 if getModeFn() == "CUSTOM" then
                     local ar, ag, ab = GetSuiteAccent()
                     swatch:SetBackdropBorderColor(ar, ag, ab, 0.95)
@@ -1959,12 +2162,28 @@ do
                 end
             end
 
-            c:BindRight(wrap)
-            pages[pgIdx].items[#pages[pgIdx].items + 1] = c
+            r:BindRight(wrap)
+            sec.rows[#sec.rows + 1] = r
             refreshables[#refreshables + 1] = wrap
         end
 
-        -- TAB 1: Quick Presets Strip + Cursor Ring, GCD & Cast Arc
+        local function GetBaseRingRGB()
+            local db = EnsureDB()
+            return ResolveColorMode(db.ringColorMode or "ACCENT", db.ringCustomHex, false)
+        end
+        local function IsRingOn() return EnsureDB().ringEnabled == true end
+        local function IsRingDotOn() local db = EnsureDB(); return db.ringEnabled == true and db.ringCenterDot == true end
+        local function IsGroundTargetOn() local db = EnsureDB(); return db.ringEnabled == true and db.groundTargetHighlight ~= false end
+        local function IsTrailOn() return EnsureDB().trailEnabled == true end
+        local function IsGcdOn() return EnsureDB().gcdEnabled ~= false end
+        local function IsCastArcOn() return EnsureDB().castArcEnabled ~= false end
+        local function IsCastIconOn() return EnsureDB().castShowIcon == true end
+        local function IsCrosshairOn() return EnsureDB().crosshairEnabled == true end
+        local function IsTooltipOn() return EnsureDB().tooltipEnabled == true end
+
+        -- ====================================================================
+        -- TAB 1: Ring & Trail
+        -- ====================================================================
         local presetCard = CreateFrame("Frame", nil, pages[1], "BackdropTemplate")
         presetCard:SetHeight(42)
         SetBackdropSolid(presetCard, { 0.055, 0.063, 0.082, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
@@ -1997,56 +2216,314 @@ do
         end
         pages[1].items[#pages[1].items + 1] = presetCard
 
-        AddHeader(1, "MAIN CURSOR RING", "Keep track of your pointer with a clean, click-through ring around your cursor.")
-        AddToggle(1, "Enable Cursor Ring", "Displays a customisable ring around your mouse cursor (Off by default).",
+        local secRing = AddSection(1, "MAIN CURSOR RING", "Keep track of your pointer with a clean, click-through ring around your cursor.")
+        AddToggle(secRing, "Enable Cursor Ring", "Displays a customisable ring around your mouse cursor (Off by default).",
             function() return EnsureDB().ringEnabled == true end, function(v) EnsureDB().ringEnabled = v end)
-        AddDropdown(1, "Ring Style", "Choose between 5 crisp procedural ring styles.", 220, {
+        AddDropdown(secRing, "Ring Style", "Choose between 5 crisp procedural ring styles.", 220, {
             { value = "CRISP", label = "Crisp Ring" },
             { value = "THIN",  label = "Thin Ring" },
             { value = "THICK", label = "Thick Ring" },
             { value = "GLOW",  label = "Soft Glow" },
             { value = "DUAL",  label = "High-Contrast Black/White Dual" },
-        }, function() return EnsureDB().ringStyle or "CRISP" end, function(v) EnsureDB().ringStyle = v end)
-        AddSlider(1, "Ring Radius", "Adjust the cursor ring radius in pixels (16 to 96 px).", 16, 96, 2,
+        }, function() return EnsureDB().ringStyle or "CRISP" end, function(v) EnsureDB().ringStyle = v end, IsRingOn)
+        AddSlider(secRing, "Ring Radius", "Adjust the cursor ring radius in pixels (16 to 96 px).", 16, 96, 2,
             function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().ringRadius or 40 end, function(v) EnsureDB().ringRadius = v end)
-        AddSlider(1, "Ring Offset (X)", "Fine-tune horizontal ring alignment around your pointer tip (-16 to +16 px).", -16, 16, 1,
+            function() return EnsureDB().ringRadius or 24 end, function(v) EnsureDB().ringRadius = v end, IsRingOn)
+        AddSlider(secRing, "Ring Offset (X)", "Fine-tune horizontal ring alignment around your pointer tip (-16 to +16 px).", -16, 16, 1,
             function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().ringOffsetX or 0 end, function(v) EnsureDB().ringOffsetX = v end)
-        AddSlider(1, "Ring Offset (Y)", "Fine-tune vertical ring alignment around your pointer tip (-16 to +16 px).", -16, 16, 1,
+            function() return EnsureDB().ringOffsetX or 0 end, function(v) EnsureDB().ringOffsetX = v end, IsRingOn)
+        AddSlider(secRing, "Ring Offset (Y)", "Fine-tune vertical ring alignment around your pointer tip (-16 to +16 px).", -16, 16, 1,
             function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().ringOffsetY or 0 end, function(v) EnsureDB().ringOffsetY = v end)
-        AddToggle(1, "Cursor Centre Dot", "Renders a crisp dot with a 1px dark outline right at the pointer tip inside the ring (Off by default).",
-            function() return EnsureDB().ringCenterDot == true end, function(v) EnsureDB().ringCenterDot = v end)
-        AddSlider(1, "Centre Dot Size", "Adjust the cursor centre dot size in pixels (2 to 8 px).", 2, 8, 1,
+            function() return EnsureDB().ringOffsetY or 0 end, function(v) EnsureDB().ringOffsetY = v end, IsRingOn)
+        AddToggle(secRing, "Cursor Centre Dot", "Renders a crisp dot with a 1px dark outline right at the pointer tip inside the ring (Off by default).",
+            function() return EnsureDB().ringCenterDot == true end, function(v) EnsureDB().ringCenterDot = v end, IsRingOn)
+        AddSlider(secRing, "Centre Dot Size", "Adjust the cursor centre dot size in pixels (2 to 8 px).", 2, 8, 1,
             function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().ringCenterDotSize or 4 end, function(v) EnsureDB().ringCenterDotSize = v end)
-        AddSlider(1, "Out-of-Combat Opacity", "Ring transparency while out of combat.", 0.05, 1.00, 0.05,
+            function() return EnsureDB().ringCenterDotSize or 4 end, function(v) EnsureDB().ringCenterDotSize = v end, IsRingDotOn)
+        AddSlider(secRing, "Out-of-Combat Opacity", "Ring transparency while out of combat.", 0.05, 1.00, 0.05,
             function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
-            function() return EnsureDB().ringOpacityOOC or 0.55 end, function(v) EnsureDB().ringOpacityOOC = v end)
-        AddSlider(1, "In-Combat Opacity", "Ring transparency during combat.", 0.05, 1.00, 0.05,
+            function() return EnsureDB().ringOpacityOOC or 0.55 end, function(v) EnsureDB().ringOpacityOOC = v end, IsRingOn)
+        AddSlider(secRing, "In-Combat Opacity", "Ring transparency during combat.", 0.05, 1.00, 0.05,
             function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
-            function() return EnsureDB().ringOpacityCombat or 0.95 end, function(v) EnsureDB().ringOpacityCombat = v end)
-        AddColorModeDropdown(1, "Ring Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or click the swatch for a custom colour.", 210, {
+            function() return EnsureDB().ringOpacityCombat or 0.95 end, function(v) EnsureDB().ringOpacityCombat = v end, IsRingOn)
+        AddColorModeDropdown(secRing, "Ring Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or click the swatch for a custom colour.", 210, {
             { value = "ACCENT",         label = "Suite Accent" },
             { value = "CLASS",          label = "Class Colour" },
             { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
             { value = "CUSTOM",         label = "Custom Colour" },
         }, function() return EnsureDB().ringColorMode or "ACCENT" end, function(v) EnsureDB().ringColorMode = v end,
            function() return EnsureDB().ringCustomHex or "38BDF8" end, function(h) EnsureDB().ringCustomHex = h end,
-           "Cursor Ring Custom Colour")
-        AddToggle(1, "Combat Colour Shift", "Tints the cursor ring warm amber-orange while you are in combat.",
-            function() return EnsureDB().ringCombatShift == true end, function(v) EnsureDB().ringCombatShift = v end)
-        AddToggle(1, "Ground-Target AoE Highlight", "Boosts the cursor ring to 100% opacity and a highlight colour while aiming ground-targeted spells.",
-            function() return EnsureDB().groundTargetHighlight ~= false end, function(v) EnsureDB().groundTargetHighlight = v end)
-        AddColorModeDropdown(1, "Ground-Target Highlight Colour", "Highlight colour used while aiming ground-targeted AoE spells.", 210, {
+           "Cursor Ring Custom Colour", nil, IsRingOn)
+        AddToggle(secRing, "Combat Colour Shift", "Tints the cursor ring warm amber-orange while you are in combat.",
+            function() return EnsureDB().ringCombatShift == true end, function(v) EnsureDB().ringCombatShift = v end, IsRingOn)
+        AddToggle(secRing, "Ground-Target AoE Highlight", "Boosts the cursor ring to 100% opacity and a highlight colour while aiming ground-targeted spells.",
+            function() return EnsureDB().groundTargetHighlight ~= false end, function(v) EnsureDB().groundTargetHighlight = v end, IsRingOn)
+        AddColorModeDropdown(secRing, "Ground-Target Highlight Colour", "Highlight colour used while aiming ground-targeted AoE spells.", 210, {
             { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
             { value = "BRIGHT_GOLD",    label = "Bright Gold" },
             { value = "CUSTOM",         label = "Custom Colour" },
         }, function() return EnsureDB().groundTargetColorMode or "HIGH_VIS_GREEN" end, function(v) EnsureDB().groundTargetColorMode = v end,
            function() return EnsureDB().groundTargetCustomHex or "22EB5E" end, function(h) EnsureDB().groundTargetCustomHex = h end,
-           "Ground-Target Highlight Colour")
-        AddDropdown(1, "Hardware Cursor Size", "Adjusts Blizzard's native cursorSizePreferred CVar out of combat.", 220, {
+           "Ground-Target Highlight Colour", nil, IsGroundTargetOn)
+        AddToggle(secRing, "Keep Visible During Mouse-Look", "Shows a subtle ghost ring while Right-Click turning your camera.",
+            function() return EnsureDB().ringKeepMouseLook ~= false end, function(v) EnsureDB().ringKeepMouseLook = v end, IsRingOn)
+        AddToggle(secRing, "Click-Pulse Ripple", "Plays a quick expanding ripple when you click.",
+            function() return EnsureDB().ringClickPulse == true end, function(v) EnsureDB().ringClickPulse = v end, IsRingOn)
+
+        local secTrail = AddSection(1, "POOLED CURSOR TRAIL", "Pre-allocated 48-node trail with zero garbage collection and 0.00 ms idle CPU.")
+        AddToggle(secTrail, "Enable Cursor Trail", "Draws a smooth fading trail behind mouse movement (Off by default).",
+            function() return EnsureDB().trailEnabled == true end, function(v) EnsureDB().trailEnabled = v end)
+        AddDropdown(secTrail, "Trail Style", "Choose between 4 trail particle styles.", 220, {
+            { value = "SMOOTH_DOTS",  label = "Smooth Dots" },
+            { value = "SOFT_MIST",    label = "Soft Mist" },
+            { value = "CLASS_SPARKS", label = "Class Sparks" },
+            { value = "ARCANE_MOTES", label = "Arcane Motes" },
+        }, function() return EnsureDB().trailStyle or "SMOOTH_DOTS" end, function(v) EnsureDB().trailStyle = v end, IsTrailOn)
+        AddSlider(secTrail, "Trail Fade Duration", "How long each trail node takes to fade out (0.15s to 1.20s).", 0.15, 1.20, 0.05,
+            function(v) return string.format("%.2fs", v) end,
+            function() return EnsureDB().trailDuration or 0.45 end, function(v) EnsureDB().trailDuration = v end, IsTrailOn)
+        AddSlider(secTrail, "Trail Particle Size", "Base size of each trail node (6 to 32 px).", 6, 32, 2,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().trailSize or 14 end, function(v) EnsureDB().trailSize = v end, IsTrailOn)
+        AddSlider(secTrail, "Trail Density", "How closely trail nodes spawn along your path (1 to 5).", 1, 5, 1,
+            function(v) return string.format("%d", v) end,
+            function() return EnsureDB().trailDensity or 3 end, function(v) EnsureDB().trailDensity = v end, IsTrailOn)
+        AddSlider(secTrail, "Trail Opacity", "Maximum trail opacity.", 0.10, 1.00, 0.05,
+            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
+            function() return EnsureDB().trailOpacity or 0.75 end, function(v) EnsureDB().trailOpacity = v end, IsTrailOn)
+        AddColorModeDropdown(secTrail, "Trail Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or click the swatch for a custom colour.", 210, {
+            { value = "ACCENT",         label = "Suite Accent" },
+            { value = "CLASS",          label = "Class Colour" },
+            { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
+            { value = "CUSTOM",         label = "Custom Colour" },
+        }, function() return EnsureDB().trailColorMode or "ACCENT" end, function(v) EnsureDB().trailColorMode = v end,
+           function() return EnsureDB().trailCustomHex or "38BDF8" end, function(h) EnsureDB().trailCustomHex = h end,
+           "Cursor Trail Custom Colour", nil, IsTrailOn)
+        AddToggle(secTrail, "Show Trail in Combat Only", "Only spawns trail particles while you are in combat.",
+            function() return EnsureDB().trailCombatOnly == true end, function(v) EnsureDB().trailCombatOnly = v end, IsTrailOn)
+        AddToggle(secTrail, "Keep Trail During Mouse-Look", "Continues drawing trail nodes while Right-Click turning.",
+            function() return EnsureDB().trailShowMouseLook == true end, function(v) EnsureDB().trailShowMouseLook = v end, IsTrailOn)
+
+        -- ====================================================================
+        -- TAB 2: GCD & Cast Arc
+        -- ====================================================================
+        local secGcd = AddSection(2, "INNER GCD RING", "Secret-value safe C++ Global Cooldown swipe nested cleanly inside your cursor ring.")
+        AddToggle(secGcd, "Inner GCD Ring", "Shows your Global Cooldown swipe inside the cursor ring.",
+            function() return EnsureDB().gcdEnabled ~= false end, function(v) EnsureDB().gcdEnabled = v end)
+        AddSlider(secGcd, "Inner GCD Ring Gap", "Inward spacing from the main cursor ring (0 to 20 px; auto-clamped to stay legible).", 0, 20, 1,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().gcdGap or 4 end, function(v) EnsureDB().gcdGap = v end, IsGcdOn)
+        AddPills(secGcd, "Inner GCD Ring Style", "Choose the swipe thickness for the inner GCD ring.", 210, {
+            { value = "THIN", label = "Thin" }, { value = "CRISP", label = "Crisp" }, { value = "THICK", label = "Thick" },
+        }, function() return EnsureDB().gcdStyle or "THIN" end, function(v) EnsureDB().gcdStyle = v end, IsGcdOn)
+        AddColorModeDropdown(secGcd, "Inner GCD Colour Mode", "Match the cursor ring or pick an independent colour for the inner GCD swipe.", 210, {
+            { value = "MATCH_RING", label = "Match Ring" },
+            { value = "ACCENT",     label = "Suite Accent" },
+            { value = "CLASS",      label = "Class Colour" },
+            { value = "CUSTOM",     label = "Custom Colour" },
+        }, function() return EnsureDB().gcdColorMode or "MATCH_RING" end, function(v) EnsureDB().gcdColorMode = v end,
+           function() return EnsureDB().gcdCustomHex or "38BDF8" end, function(h) EnsureDB().gcdCustomHex = h end,
+           "Inner GCD Ring Colour", GetBaseRingRGB, IsGcdOn)
+        AddSlider(secGcd, "Inner GCD Opacity", "Transparency of the inner Global Cooldown swipe.", 0.10, 1.00, 0.05,
+            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
+            function() return EnsureDB().gcdOpacity or 0.85 end, function(v) EnsureDB().gcdOpacity = v end, IsGcdOn)
+
+        local secCast = AddSection(2, "OUTER CAST / CHANNEL / EMPOWER ARC", "Outer C++ swipe arc tracking spell casts, channels, and empowers with interrupt flash.")
+        AddToggle(secCast, "Outer Cast / Channel / Empower Arc", "Shows your spell cast, channel, or empower progress around the ring with an interrupt flash.",
+            function() return EnsureDB().castArcEnabled ~= false end, function(v) EnsureDB().castArcEnabled = v end)
+        AddSlider(secCast, "Outer Cast Arc Gap", "Outward spacing beyond the main cursor ring (0 to 24 px).", 0, 24, 1,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().castGap or 6 end, function(v) EnsureDB().castGap = v end, IsCastArcOn)
+        AddPills(secCast, "Outer Cast Arc Style", "Choose the swipe thickness for the outer cast arc.", 210, {
+            { value = "THIN", label = "Thin" }, { value = "CRISP", label = "Crisp" }, { value = "THICK", label = "Thick" },
+        }, function() return EnsureDB().castStyle or "THIN" end, function(v) EnsureDB().castStyle = v end, IsCastArcOn)
+        AddColorModeDropdown(secCast, "Outer Cast Arc Colour Mode", "Match the cursor ring or pick an independent colour for the outer cast arc.", 210, {
+            { value = "MATCH_RING", label = "Match Ring" },
+            { value = "ACCENT",     label = "Suite Accent" },
+            { value = "CLASS",      label = "Class Colour" },
+            { value = "CUSTOM",     label = "Custom Colour" },
+        }, function() return EnsureDB().castColorMode or "MATCH_RING" end, function(v) EnsureDB().castColorMode = v end,
+           function() return EnsureDB().castCustomHex or "F59E0B" end, function(h) EnsureDB().castCustomHex = h end,
+           "Outer Cast Arc Colour", GetBaseRingRGB, IsCastArcOn)
+        AddSlider(secCast, "Outer Cast Arc Opacity", "Transparency of the outer cast, channel, or empower arc.", 0.10, 1.00, 0.05,
+            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
+            function() return EnsureDB().castOpacity or 0.92 end, function(v) EnsureDB().castOpacity = v end, IsCastArcOn)
+
+        local secIcon = AddSection(2, "MINI SPELL ICON", "Crisp 1px Obsidian-bordered spell icon anchored cleanly to your outer cast arc or ring.")
+        AddToggle(secIcon, "Show Mini Spell Icon on Cast", "Displays the active spell icon beside your cursor ring while casting.",
+            function() return EnsureDB().castShowIcon == true end, function(v) EnsureDB().castShowIcon = v end)
+        AddSlider(secIcon, "Mini Spell Icon Size", "Adjust the mini spell icon size in pixels (14 to 32 px).", 14, 32, 1,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().castIconSize or 20 end, function(v) EnsureDB().castIconSize = v end, IsCastIconOn)
+        AddDropdown(secIcon, "Mini Spell Icon Position", "Choose where the mini spell icon anchors relative to the outer cast arc.", 220, {
+            { value = "TOP",    label = "Top" },
+            { value = "BOTTOM", label = "Bottom" },
+            { value = "LEFT",   label = "Left" },
+            { value = "RIGHT",  label = "Right" },
+            { value = "CENTER", label = "Inside Centre" },
+        }, function() return EnsureDB().castIconPos or "TOP" end, function(v) EnsureDB().castIconPos = v end, IsCastIconOn)
+        AddSlider(secIcon, "Mini Spell Icon Gap", "Distance between the outer arc edge and the spell icon (2 to 24 px).", 2, 24, 1,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().castIconGap or 6 end, function(v) EnsureDB().castIconGap = v end, IsCastIconOn)
+        AddToggle(secIcon, "Flash Icon on Instant Casts", "Briefly flashes and fades the spell icon (0.55s) when you trigger an instant cast (secret-value safe).",
+            function() return EnsureDB().castInstantFlash == true end, function(v) EnsureDB().castInstantFlash = v end, IsCastIconOn)
+
+        -- ====================================================================
+        -- TAB 3: Crosshair & Locator
+        -- ====================================================================
+        local secCross = AddSection(3, "CHARACTER CROSSHAIR", "Screen-centre reference crosshair for melee range and positioning.")
+        AddToggle(secCross, "Enable Character Crosshair", "Displays a screen-centre crosshair around your character (Off by default).",
+            function() return EnsureDB().crosshairEnabled == true end, function(v) EnsureDB().crosshairEnabled = v end)
+        AddDropdown(secCross, "Crosshair Style", "Choose between 5 crosshair layouts.", 220, {
+            { value = "CLASSIC",    label = "Classic Crosshair" },
+            { value = "DOT",        label = "Precision Dot" },
+            { value = "CROSS_DOT",  label = "Crosshair + Dot" },
+            { value = "BRACKETS",   label = "Tactical Brackets" },
+            { value = "CIRCLE_DOT", label = "Circle + Dot" },
+        }, function() return EnsureDB().crosshairStyle or "CLASSIC" end, function(v) EnsureDB().crosshairStyle = v end, IsCrosshairOn)
+        AddSlider(secCross, "Crosshair Size", "Overall crosshair span in pixels (8 to 64 px).", 8, 64, 2,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().crosshairSize or 24 end, function(v) EnsureDB().crosshairSize = v end, IsCrosshairOn)
+        AddSlider(secCross, "Line Thickness", "Crosshair line stroke thickness (1 to 6 px).", 1, 6, 1,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().crosshairThickness or 2 end, function(v) EnsureDB().crosshairThickness = v end, IsCrosshairOn)
+        AddSlider(secCross, "Centre Gap", "Inner gap around the centre point (0 to 20 px).", 0, 20, 1,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().crosshairGap or 6 end, function(v) EnsureDB().crosshairGap = v end, IsCrosshairOn)
+        AddToggle(secCross, "High-Contrast Outline", "Adds a crisp dark 1px outline behind crosshair lines.",
+            function() return EnsureDB().crosshairOutline ~= false end, function(v) EnsureDB().crosshairOutline = v end, IsCrosshairOn)
+        AddSlider(secCross, "Horizontal Offset (X)", "Nudge crosshair left or right from screen centre (-100 to +100 px).", -100, 100, 2,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().crosshairOffsetX or 0 end, function(v) EnsureDB().crosshairOffsetX = v end, IsCrosshairOn)
+        AddSlider(secCross, "Vertical Offset (Y)", "Nudge crosshair up or down from screen centre (-100 to +100 px).", -100, 100, 2,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().crosshairOffsetY or 0 end, function(v) EnsureDB().crosshairOffsetY = v end, IsCrosshairOn)
+        AddDropdown(secCross, "Crosshair Visibility", "Choose when the character crosshair appears.", 220, {
+            { value = "ALWAYS",              label = "Always" },
+            { value = "COMBAT_ONLY",         label = "In Combat Only" },
+            { value = "INSTANCES_ONLY",      label = "Instances Only" },
+            { value = "COMBAT_IN_INSTANCES", label = "Combat in Instances" },
+        }, function() return EnsureDB().crosshairVisibility or "ALWAYS" end, function(v) EnsureDB().crosshairVisibility = v end, IsCrosshairOn)
+        AddSlider(secCross, "Crosshair Out-of-Combat Opacity", "Crosshair transparency out of combat.", 0.05, 1.00, 0.05,
+            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
+            function() return EnsureDB().crosshairOpacityOOC or 0.45 end, function(v) EnsureDB().crosshairOpacityOOC = v end, IsCrosshairOn)
+        AddSlider(secCross, "Crosshair In-Combat Opacity", "Crosshair transparency during combat.", 0.05, 1.00, 0.05,
+            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
+            function() return EnsureDB().crosshairOpacityCombat or 0.90 end, function(v) EnsureDB().crosshairOpacityCombat = v end, IsCrosshairOn)
+        AddColorModeDropdown(secCross, "Crosshair Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or click the swatch for a custom colour.", 210, {
+            { value = "ACCENT",         label = "Suite Accent" },
+            { value = "CLASS",          label = "Class Colour" },
+            { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
+            { value = "CUSTOM",         label = "Custom Colour" },
+        }, function() return EnsureDB().crosshairColorMode or "ACCENT" end, function(v) EnsureDB().crosshairColorMode = v end,
+           function() return EnsureDB().crosshairCustomHex or "38BDF8" end, function(h) EnsureDB().crosshairCustomHex = h end,
+           "Crosshair Custom Colour", nil, IsCrosshairOn)
+        AddToggle(secCross, "Crosshair Combat Tint", "Shifts the crosshair colour to warm amber-orange during combat.",
+            function() return EnsureDB().crosshairCombatTint == true end, function(v) EnsureDB().crosshairCombatTint = v end, IsCrosshairOn)
+
+        local secLoc = AddSection(3, "FIND MY CURSOR", "Quickly locate your mouse pointer during hectic raid or Mythic+ pulls.")
+        AddToggle(secLoc, "Shake-to-Find", "Rapidly wiggle your mouse back and forth to trigger a brief cursor ping burst.",
+            function() return EnsureDB().shakeToFind == true end, function(v) EnsureDB().shakeToFind = v end)
+        AddPills(secLoc, "Modifier Key Locator", "Hold a modifier key to highlight your cursor.", 260, {
+            { value = "OFF", label = "Off" }, { value = "SHIFT", label = "Shift" }, { value = "CTRL", label = "Ctrl" }, { value = "ALT", label = "Alt" },
+        }, function() return EnsureDB().locatorModifier or "OFF" end, function(v) EnsureDB().locatorModifier = v end)
+        AddPills(secLoc, "Locator Highlight Style", "Visual cue shown while Shake-to-Find or Modifier Locator is active.", 260, {
+            { value = "PING", label = "Ping Ring" }, { value = "SPOTLIGHT", label = "Spotlight" }, { value = "CROSSHAIR", label = "Screen Cross" },
+        }, function() return EnsureDB().locatorStyle or "PING" end, function(v) EnsureDB().locatorStyle = v end)
+
+        -- ====================================================================
+        -- TAB 4: Visibility & Tooltips
+        -- ====================================================================
+        local secVis = AddSection(4, "ACTIVITY VISIBILITY", "Choose which content types show the cursor ring and auto-hide during special modes.")
+        do
+            local zoneRow = CreateFrame("Frame", nil, secVis)
+            zoneRow:SetHeight(76)
+            local zDiv = zoneRow:CreateTexture(nil, "ARTWORK")
+            zDiv:SetHeight(1)
+            zDiv:SetPoint("TOPLEFT", zoneRow, "TOPLEFT", 12, 0)
+            zDiv:SetPoint("TOPRIGHT", zoneRow, "TOPRIGHT", -12, 0)
+            zDiv:SetColorTexture(1, 1, 1, 0.06)
+            zoneRow.div = zDiv
+
+            local zTitle = zoneRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            SetSafeFont(zTitle, 12, "")
+            zTitle:SetPoint("TOPLEFT", zoneRow, "TOPLEFT", 14, -9)
+            zTitle:SetTextColor(0.96, 0.98, 1.0, 1)
+            zTitle:SetText("Active Zones")
+
+            local zDesc = zoneRow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            SetSafeFont(zDesc, 10, "")
+            zDesc:SetPoint("LEFT", zTitle, "RIGHT", 10, 0)
+            zDesc:SetPoint("RIGHT", zoneRow, "RIGHT", -14, 0)
+            zDesc:SetJustifyH("LEFT")
+            zDesc:SetWordWrap(false)
+            zDesc:SetTextColor(0.64, 0.70, 0.78, 1)
+            zDesc:SetText("Toggle individual content types or click All Zones to enable all five.")
+
+            local zoneDefs = {
+                { key = "ALL",           label = "All Zones",  w = 82 },
+                { key = "showOpenWorld", label = "Open World", w = 92 },
+                { key = "showDelves",    label = "Delves",     w = 68 },
+                { key = "showDungeons",  label = "Dungeons",   w = 82 },
+                { key = "showRaids",     label = "Raids",      w = 64 },
+                { key = "showPvP",       label = "PvP",        w = 54 },
+            }
+            local zBtns = {}
+            local zx = 14
+            for i, zd in ipairs(zoneDefs) do
+                local zb = CreateFrame("Button", nil, zoneRow, "BackdropTemplate")
+                zb:SetSize(zd.w, 26)
+                zb:SetPoint("TOPLEFT", zoneRow, "TOPLEFT", zx, -36)
+                zb.lbl = zb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                SetSafeFont(zb.lbl, 11, "")
+                zb.lbl:SetPoint("CENTER")
+                zb.lbl:SetWordWrap(false)
+                zb.lbl:SetText(zd.label)
+                zb.zd = zd
+                zb:SetScript("OnClick", function()
+                    local db = EnsureDB()
+                    if zd.key == "ALL" then
+                        db.showOpenWorld = true
+                        db.showDelves = true
+                        db.showDungeons = true
+                        db.showRaids = true
+                        db.showPvP = true
+                    else
+                        db[zd.key] = not (db[zd.key] ~= false)
+                    end
+                    SyncAllEngines()
+                    DynamicCursor:RefreshWorkspaceUI()
+                end)
+                zBtns[i] = zb
+                zx = zx + zd.w + (i == 1 and 12 or 6)
+            end
+
+            function zoneRow:RefreshValue()
+                local db = EnsureDB()
+                local ar, ag, ab = GetSuiteAccent()
+                local alphaPill = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
+                local allOn = (db.showOpenWorld ~= false) and (db.showDelves ~= false)
+                    and (db.showDungeons ~= false) and (db.showRaids ~= false) and (db.showPvP ~= false)
+                for _, zb in ipairs(zBtns) do
+                    local active = (zb.zd.key == "ALL") and allOn or (db[zb.zd.key] ~= false)
+                    if active then
+                        SetBackdropSolid(zb, { ar * alphaPill, ag * alphaPill, ab * alphaPill, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+                        zb.lbl:SetTextColor(1, 1, 1, 1)
+                    else
+                        SetBackdropSolid(zb, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+                        zb.lbl:SetTextColor(0.68, 0.74, 0.82, 1)
+                    end
+                end
+            end
+
+            secVis.rows[#secVis.rows + 1] = zoneRow
+            refreshables[#refreshables + 1] = zoneRow
+        end
+        AddToggle(secVis, "Auto-Hide in Pet Battles, Vehicles & Cutscenes", "Temporarily hides cursor overlays during pet battles, vehicles, and movies.",
+            function() return EnsureDB().autoHideSpecial ~= false end, function(v) EnsureDB().autoHideSpecial = v end)
+
+        local secSys = AddSection(4, "CURSOR & LAYER SYSTEM", "Adjust Blizzard's native hardware cursor size and overlay layer priority.")
+        AddDropdown(secSys, "Hardware Cursor Size", "Adjusts Blizzard's native cursorSizePreferred CVar out of combat.", 220, {
             { value = "-1", label = "Auto / System DPI" },
             { value = "0",  label = "32 x 32" },
             { value = "1",  label = "48 x 48" },
@@ -2054,175 +2531,26 @@ do
             { value = "3",  label = "96 x 96" },
             { value = "4",  label = "128 x 128" },
         }, GetNativeCursorSize, SetNativeCursorSize)
-        AddPills(1, "Frame Strata", "Layer order above UI panels.", 210, {
+        AddPills(secSys, "Frame Strata", "Layer order above UI panels.", 210, {
             { value = "HIGH", label = "HIGH" }, { value = "DIALOG", label = "DIALOG" }, { value = "TOOLTIP", label = "TOOLTIP" },
         }, function() return EnsureDB().ringStrata or "TOOLTIP" end, function(v) EnsureDB().ringStrata = v end)
-        AddToggle(1, "Keep Visible During Mouse-Look", "Shows a subtle ghost ring while Right-Click turning your camera.",
-            function() return EnsureDB().ringKeepMouseLook ~= false end, function(v) EnsureDB().ringKeepMouseLook = v end)
-        AddToggle(1, "Click-Pulse Ripple", "Plays a quick expanding ripple when you click.",
-            function() return EnsureDB().ringClickPulse == true end, function(v) EnsureDB().ringClickPulse = v end)
 
-        local function GetBaseRingRGB()
-            local db = EnsureDB()
-            return ResolveColorMode(db.ringColorMode or "ACCENT", db.ringCustomHex, false)
-        end
-
-        AddHeader(1, "RADIAL GCD & CAST / EMPOWER ARCS", "Secret-value safe C++ swipe arcs attached cleanly to your cursor ring.")
-        AddToggle(1, "Inner GCD Ring", "Shows your Global Cooldown swipe inside the cursor ring.",
-            function() return EnsureDB().gcdEnabled ~= false end, function(v) EnsureDB().gcdEnabled = v end)
-        AddColorModeDropdown(1, "Inner GCD Colour Mode", "Match the cursor ring or pick an independent colour for the inner GCD swipe.", 210, {
-            { value = "MATCH_RING", label = "Match Ring" },
-            { value = "ACCENT",     label = "Suite Accent" },
-            { value = "CLASS",      label = "Class Colour" },
-            { value = "CUSTOM",     label = "Custom Colour" },
-        }, function() return EnsureDB().gcdColorMode or "MATCH_RING" end, function(v) EnsureDB().gcdColorMode = v end,
-           function() return EnsureDB().gcdCustomHex or "38BDF8" end, function(h) EnsureDB().gcdCustomHex = h end,
-           "Inner GCD Ring Colour", GetBaseRingRGB)
-        AddSlider(1, "Inner GCD Opacity", "Transparency of the inner Global Cooldown swipe.", 0.10, 1.00, 0.05,
-            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
-            function() return EnsureDB().gcdOpacity or 0.85 end, function(v) EnsureDB().gcdOpacity = v end)
-        AddToggle(1, "Outer Cast / Channel / Empower Arc", "Shows your spell cast, channel, or empower progress around the ring with an interrupt flash.",
-            function() return EnsureDB().castArcEnabled ~= false end, function(v) EnsureDB().castArcEnabled = v end)
-        AddColorModeDropdown(1, "Outer Cast Arc Colour Mode", "Match the cursor ring or pick an independent colour for the outer cast arc.", 210, {
-            { value = "MATCH_RING", label = "Match Ring" },
-            { value = "ACCENT",     label = "Suite Accent" },
-            { value = "CLASS",      label = "Class Colour" },
-            { value = "CUSTOM",     label = "Custom Colour" },
-        }, function() return EnsureDB().castColorMode or "MATCH_RING" end, function(v) EnsureDB().castColorMode = v end,
-           function() return EnsureDB().castCustomHex or "F59E0B" end, function(h) EnsureDB().castCustomHex = h end,
-           "Outer Cast Arc Colour", GetBaseRingRGB)
-        AddSlider(1, "Outer Cast Arc Opacity", "Transparency of the outer cast, channel, or empower arc.", 0.10, 1.00, 0.05,
-            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
-            function() return EnsureDB().castOpacity or 0.92 end, function(v) EnsureDB().castOpacity = v end)
-        AddToggle(1, "Show Mini Spell Icon on Cast", "Displays the active spell icon just above the cursor ring while casting.",
-            function() return EnsureDB().castShowIcon == true end, function(v) EnsureDB().castShowIcon = v end)
-
-        AddHeader(1, "ACTIVITY VISIBILITY (SHOW IN)", "Choose which content types show the cursor ring and auto-hide during special modes.")
-        AddToggle(1, "Show in Open World", "Keep the cursor ring active outdoors.",
-            function() return EnsureDB().showOpenWorld ~= false end, function(v) EnsureDB().showOpenWorld = v end)
-        AddToggle(1, "Show in Delves", "Keep the cursor ring active inside Delves.",
-            function() return EnsureDB().showDelves ~= false end, function(v) EnsureDB().showDelves = v end)
-        AddToggle(1, "Show in Dungeons", "Keep the cursor ring active inside 5-player and Mythic+ dungeons.",
-            function() return EnsureDB().showDungeons ~= false end, function(v) EnsureDB().showDungeons = v end)
-        AddToggle(1, "Show in Raids", "Keep the cursor ring active inside raids.",
-            function() return EnsureDB().showRaids ~= false end, function(v) EnsureDB().showRaids = v end)
-        AddToggle(1, "Show in PvP", "Keep the cursor ring active in Arenas and Battlegrounds.",
-            function() return EnsureDB().showPvP ~= false end, function(v) EnsureDB().showPvP = v end)
-        AddToggle(1, "Auto-Hide in Pet Battles, Vehicles & Cutscenes", "Temporarily hides cursor overlays during pet battles, vehicles, and movies.",
-            function() return EnsureDB().autoHideSpecial ~= false end, function(v) EnsureDB().autoHideSpecial = v end)
-
-        -- TAB 2: Character Crosshair & Cursor Locator
-        AddHeader(2, "CHARACTER CROSSHAIR", "Screen-centre reference crosshair for melee range and positioning.")
-        AddToggle(2, "Enable Character Crosshair", "Displays a screen-centre crosshair around your character (Off by default).",
-            function() return EnsureDB().crosshairEnabled == true end, function(v) EnsureDB().crosshairEnabled = v end)
-        AddDropdown(2, "Crosshair Style", "Choose between 5 crosshair layouts.", 220, {
-            { value = "CLASSIC",    label = "Classic Crosshair" },
-            { value = "DOT",        label = "Precision Dot" },
-            { value = "CROSS_DOT",  label = "Crosshair + Dot" },
-            { value = "BRACKETS",   label = "Tactical Brackets" },
-            { value = "CIRCLE_DOT", label = "Circle + Dot" },
-        }, function() return EnsureDB().crosshairStyle or "CLASSIC" end, function(v) EnsureDB().crosshairStyle = v end)
-        AddSlider(2, "Crosshair Size", "Overall crosshair span in pixels (8 to 64 px).", 8, 64, 2,
-            function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().crosshairSize or 24 end, function(v) EnsureDB().crosshairSize = v end)
-        AddSlider(2, "Line Thickness", "Crosshair line stroke thickness (1 to 6 px).", 1, 6, 1,
-            function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().crosshairThickness or 2 end, function(v) EnsureDB().crosshairThickness = v end)
-        AddSlider(2, "Centre Gap", "Inner gap around the centre point (0 to 20 px).", 0, 20, 1,
-            function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().crosshairGap or 6 end, function(v) EnsureDB().crosshairGap = v end)
-        AddToggle(2, "High-Contrast Outline", "Adds a crisp dark 1px outline behind crosshair lines.",
-            function() return EnsureDB().crosshairOutline ~= false end, function(v) EnsureDB().crosshairOutline = v end)
-        AddSlider(2, "Horizontal Offset (X)", "Nudge crosshair left or right from screen centre (-100 to +100 px).", -100, 100, 2,
-            function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().crosshairOffsetX or 0 end, function(v) EnsureDB().crosshairOffsetX = v end)
-        AddSlider(2, "Vertical Offset (Y)", "Nudge crosshair up or down from screen centre (-100 to +100 px).", -100, 100, 2,
-            function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().crosshairOffsetY or 0 end, function(v) EnsureDB().crosshairOffsetY = v end)
-        AddDropdown(2, "Crosshair Visibility", "Choose when the character crosshair appears.", 220, {
-            { value = "ALWAYS",              label = "Always" },
-            { value = "COMBAT_ONLY",         label = "In Combat Only" },
-            { value = "INSTANCES_ONLY",      label = "Instances Only" },
-            { value = "COMBAT_IN_INSTANCES", label = "Combat in Instances" },
-        }, function() return EnsureDB().crosshairVisibility or "ALWAYS" end, function(v) EnsureDB().crosshairVisibility = v end)
-        AddSlider(2, "Crosshair Out-of-Combat Opacity", "Crosshair transparency out of combat.", 0.05, 1.00, 0.05,
-            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
-            function() return EnsureDB().crosshairOpacityOOC or 0.45 end, function(v) EnsureDB().crosshairOpacityOOC = v end)
-        AddSlider(2, "Crosshair In-Combat Opacity", "Crosshair transparency during combat.", 0.05, 1.00, 0.05,
-            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
-            function() return EnsureDB().crosshairOpacityCombat or 0.90 end, function(v) EnsureDB().crosshairOpacityCombat = v end)
-        AddColorModeDropdown(2, "Crosshair Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or click the swatch for a custom colour.", 210, {
-            { value = "ACCENT",         label = "Suite Accent" },
-            { value = "CLASS",          label = "Class Colour" },
-            { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
-            { value = "CUSTOM",         label = "Custom Colour" },
-        }, function() return EnsureDB().crosshairColorMode or "ACCENT" end, function(v) EnsureDB().crosshairColorMode = v end,
-           function() return EnsureDB().crosshairCustomHex or "38BDF8" end, function(h) EnsureDB().crosshairCustomHex = h end,
-           "Crosshair Custom Colour")
-        AddToggle(2, "Crosshair Combat Tint", "Shifts the crosshair colour to warm amber-orange during combat.",
-            function() return EnsureDB().crosshairCombatTint == true end, function(v) EnsureDB().crosshairCombatTint = v end)
-
-        AddHeader(2, "FIND MY CURSOR", "Quickly locate your mouse pointer during hectic raid or Mythic+ pulls.")
-        AddToggle(2, "Shake-to-Find", "Rapidly wiggle your mouse back and forth to trigger a brief cursor ping burst.",
-            function() return EnsureDB().shakeToFind == true end, function(v) EnsureDB().shakeToFind = v end)
-        AddPills(2, "Modifier Key Locator", "Hold a modifier key to highlight your cursor.", 260, {
-            { value = "OFF", label = "Off" }, { value = "SHIFT", label = "Shift" }, { value = "CTRL", label = "Ctrl" }, { value = "ALT", label = "Alt" },
-        }, function() return EnsureDB().locatorModifier or "OFF" end, function(v) EnsureDB().locatorModifier = v end)
-        AddPills(2, "Locator Highlight Style", "Visual cue shown while Shake-to-Find or Modifier Locator is active.", 260, {
-            { value = "PING", label = "Ping Ring" }, { value = "SPOTLIGHT", label = "Spotlight" }, { value = "CROSSHAIR", label = "Screen Cross" },
-        }, function() return EnsureDB().locatorStyle or "PING" end, function(v) EnsureDB().locatorStyle = v end)
-
-        -- TAB 3: Cursor Trail & Smart Cursor Tooltips
-        AddHeader(3, "POOLED CURSOR TRAIL", "Pre-allocated 48-node trail with zero garbage collection and 0.00 ms idle CPU.")
-        AddToggle(3, "Enable Cursor Trail", "Draws a smooth fading trail behind mouse movement (Off by default).",
-            function() return EnsureDB().trailEnabled == true end, function(v) EnsureDB().trailEnabled = v end)
-        AddDropdown(3, "Trail Style", "Choose between 4 trail particle styles.", 220, {
-            { value = "SMOOTH_DOTS",  label = "Smooth Dots" },
-            { value = "SOFT_MIST",    label = "Soft Mist" },
-            { value = "CLASS_SPARKS", label = "Class Sparks" },
-            { value = "ARCANE_MOTES", label = "Arcane Motes" },
-        }, function() return EnsureDB().trailStyle or "SMOOTH_DOTS" end, function(v) EnsureDB().trailStyle = v end)
-        AddSlider(3, "Trail Fade Duration", "How long each trail node takes to fade out (0.15s to 1.20s).", 0.15, 1.20, 0.05,
-            function(v) return string.format("%.2fs", v) end,
-            function() return EnsureDB().trailDuration or 0.45 end, function(v) EnsureDB().trailDuration = v end)
-        AddSlider(3, "Trail Particle Size", "Base size of each trail node (6 to 32 px).", 6, 32, 2,
-            function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().trailSize or 14 end, function(v) EnsureDB().trailSize = v end)
-        AddSlider(3, "Trail Density", "How closely trail nodes spawn along your path (1 to 5).", 1, 5, 1,
-            function(v) return string.format("%d", v) end,
-            function() return EnsureDB().trailDensity or 3 end, function(v) EnsureDB().trailDensity = v end)
-        AddSlider(3, "Trail Opacity", "Maximum trail opacity.", 0.10, 1.00, 0.05,
-            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
-            function() return EnsureDB().trailOpacity or 0.75 end, function(v) EnsureDB().trailOpacity = v end)
-        AddColorModeDropdown(3, "Trail Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or click the swatch for a custom colour.", 210, {
-            { value = "ACCENT",         label = "Suite Accent" },
-            { value = "CLASS",          label = "Class Colour" },
-            { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
-            { value = "CUSTOM",         label = "Custom Colour" },
-        }, function() return EnsureDB().trailColorMode or "ACCENT" end, function(v) EnsureDB().trailColorMode = v end,
-           function() return EnsureDB().trailCustomHex or "38BDF8" end, function(h) EnsureDB().trailCustomHex = h end,
-           "Cursor Trail Custom Colour")
-        AddToggle(3, "Show Trail in Combat Only", "Only spawns trail particles while you are in combat.",
-            function() return EnsureDB().trailCombatOnly == true end, function(v) EnsureDB().trailCombatOnly = v end)
-        AddToggle(3, "Keep Trail During Mouse-Look", "Continues drawing trail nodes while Right-Click turning.",
-            function() return EnsureDB().trailShowMouseLook == true end, function(v) EnsureDB().trailShowMouseLook = v end)
-
-        AddHeader(3, "SMART CURSOR TOOLTIPS", "Optionally anchor GameTooltip near your cursor with automatic screen-edge flipping.")
-        AddToggle(3, "Anchor Tooltips to Cursor", "Moves mouseover tooltips beside your pointer (Off by default).",
+        local secTip = AddSection(4, "SMART CURSOR TOOLTIPS", "Optionally anchor GameTooltip near your cursor with automatic screen-edge flipping.")
+        AddToggle(secTip, "Anchor Tooltips to Cursor", "Moves mouseover tooltips beside your pointer (Off by default).",
             function() return EnsureDB().tooltipEnabled == true end, function(v) EnsureDB().tooltipEnabled = v end)
-        AddSlider(3, "Tooltip Horizontal Offset (X)", "Horizontal gap from your cursor (-60 to +60 px).", -60, 60, 2,
+        AddSlider(secTip, "Tooltip Horizontal Offset (X)", "Horizontal gap from your cursor (-60 to +60 px).", -60, 60, 2,
             function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().tooltipOffsetX or 18 end, function(v) EnsureDB().tooltipOffsetX = v end)
-        AddSlider(3, "Tooltip Vertical Offset (Y)", "Vertical gap from your cursor (-60 to +60 px).", -60, 60, 2,
+            function() return EnsureDB().tooltipOffsetX or 18 end, function(v) EnsureDB().tooltipOffsetX = v end, IsTooltipOn)
+        AddSlider(secTip, "Tooltip Vertical Offset (Y)", "Vertical gap from your cursor (-60 to +60 px).", -60, 60, 2,
             function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().tooltipOffsetY or -18 end, function(v) EnsureDB().tooltipOffsetY = v end)
-        AddToggle(3, "Automatic Screen-Edge Flip", "Flips tooltip anchor inward when your cursor is near a screen edge.",
-            function() return EnsureDB().tooltipEdgeFlip ~= false end, function(v) EnsureDB().tooltipEdgeFlip = v end)
-        AddDropdown(3, "Tooltip Combat Behaviour", "Choose how cursor tooltips behave during combat.", 240, {
+            function() return EnsureDB().tooltipOffsetY or -18 end, function(v) EnsureDB().tooltipOffsetY = v end, IsTooltipOn)
+        AddToggle(secTip, "Automatic Screen-Edge Flip", "Flips tooltip anchor inward when your cursor is near a screen edge.",
+            function() return EnsureDB().tooltipEdgeFlip ~= false end, function(v) EnsureDB().tooltipEdgeFlip = v end, IsTooltipOn)
+        AddDropdown(secTip, "Tooltip Combat Behaviour", "Choose how cursor tooltips behave during combat.", 240, {
             { value = "KEEP",       label = "Keep at Cursor" },
             { value = "CORNER",     label = "Snap to Default Corner" },
             { value = "HIDE_SHIFT", label = "Hide in Combat (Hold Shift)" },
-        }, function() return EnsureDB().tooltipCombatMode or "KEEP" end, function(v) EnsureDB().tooltipCombatMode = v end)
+        }, function() return EnsureDB().tooltipCombatMode or "KEEP" end, function(v) EnsureDB().tooltipCombatMode = v end, IsTooltipOn)
 
         for _, pg in ipairs(pages) do LayoutPage(pg) end
 
@@ -2243,7 +2571,7 @@ do
             end
 
             local activeTab = tonumber(db.activeSubTab) or 1
-            if activeTab < 1 or activeTab > 3 then activeTab = 1 end
+            if activeTab < 1 or activeTab > 4 then activeTab = 1 end
             for i, tb in ipairs(tabBtns) do
                 if i == activeTab then
                     SetBackdropSolid(tb, { ar * alphaPill, ag * alphaPill, ab * alphaPill, 0.98 }, { ar, ag, ab, 0.95 }, 1)
@@ -2253,12 +2581,13 @@ do
                     tb.lbl:SetTextColor(0.68, 0.74, 0.82, 1)
                 end
             end
-            for _, h in ipairs(headers) do h:RefreshAccent() end
+            for _, sec in ipairs(sections) do sec:RefreshAccent() end
             for _, rCtrl in ipairs(refreshables) do
                 if rCtrl.RefreshValue then rCtrl:RefreshValue() end
             end
             for i, pg in ipairs(pages) do
                 if i == activeTab then
+                    LayoutPage(pg)
                     pg:Show()
                     content:SetHeight(math.max(100, pg:GetHeight() or 100))
                 else
