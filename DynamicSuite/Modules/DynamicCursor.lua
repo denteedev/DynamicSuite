@@ -301,6 +301,7 @@ local DEFAULTS = {
     ringCenterDotSize = 4,          -- 2..8
     ringOpacityOOC = 0.55,          -- 0.05..1.00
     ringOpacityCombat = 0.95,       -- 0.05..1.00
+    ringIdleFade = "OFF",           -- "OFF" | "2" | "5"
     ringColorMode = "ACCENT",       -- "ACCENT" | "CLASS" | "HIGH_VIS_GREEN" | "CUSTOM"
     ringCustomHex = "38BDF8",
     ringCombatShift = false,
@@ -310,6 +311,7 @@ local DEFAULTS = {
     groundTargetHighlight = true,
     groundTargetColorMode = "HIGH_VIS_GREEN", -- "HIGH_VIS_GREEN" | "BRIGHT_GOLD" | "CUSTOM"
     groundTargetCustomHex = "22EB5E",
+    groundTargetSizeBoost = true,
 
     gcdEnabled = true,
     gcdGap = 4,                     -- 0..20 px inward
@@ -353,8 +355,12 @@ local DEFAULTS = {
     crosshairCombatTint = false,
 
     shakeToFind = false,
+    shakeSensitivity = "MEDIUM",    -- "LOW" | "MEDIUM" | "HIGH"
+    pingAfterMouseLook = false,
     locatorModifier = "OFF",        -- "OFF" | "SHIFT" | "CTRL" | "ALT"
     locatorStyle = "PING",          -- "PING" | "SPOTLIGHT" | "CROSSHAIR"
+    locatorColorMode = "MATCH_RING", -- "MATCH_RING" | "ACCENT" | "CLASS" | "HIGH_VIS_GREEN" | "BRIGHT_GOLD" | "CUSTOM"
+    locatorCustomHex = "38BDF8",
 
     -- Tab 3: Pooled Cursor Trail & Smart Cursor Tooltips (Off by default)
     trailEnabled = false,
@@ -434,7 +440,13 @@ do
     local lastVX, lastVY = 0, 0
     local shakeReversals = 0
     local shakeWindowEnd = 0
+    local shakeLastRevTime = 0
     local shakeBurstEnd = 0
+    local mouseLookPingEnd = 0
+    local lastMoveTime = 0
+    local idleFadeMult = 1.0
+    local baseRingAlpha = 0.55
+    local ringSizeScale = 1.0
     local pulseRemaining = 0
     local castFlashEnd = 0
     local instantFlashEnd = 0
@@ -757,7 +769,12 @@ do
 
     local function UpdateRingAppearance(db)
         if not ringRoot then return end
-        local radius = tonumber(db.ringRadius) or 40
+        local aoeActive = (db.groundTargetHighlight ~= false) and isGroundTargeting
+        if not aoeActive or db.groundTargetSizeBoost == false then
+            ringSizeScale = 1.0
+        end
+        local baseRad = tonumber(db.ringRadius) or 24
+        local radius = baseRad * ringSizeScale
         local diam = radius * 2
         ringRoot:SetSize(diam, diam)
         ringRoot:SetFrameStrata(db.ringStrata or "TOOLTIP")
@@ -772,15 +789,19 @@ do
         local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
         local alpha = inCombat and (tonumber(db.ringOpacityCombat) or 0.95) or (tonumber(db.ringOpacityOOC) or 0.55)
 
-        if db.groundTargetHighlight ~= false and isGroundTargeting then
+        if aoeActive then
             r, g, b = ResolveColorMode(db.groundTargetColorMode or "HIGH_VIS_GREEN", db.groundTargetCustomHex, false)
             alpha = 1.0
+            idleFadeMult = 1.0
+        elseif inCombat or (tonumber(db.ringIdleFade) or 0) <= 0 then
+            idleFadeMult = 1.0
         end
 
+        baseRingAlpha = alpha
         ringTex:SetVertexColor(r, g, b, 1)
         ghostTex:SetVertexColor(r, g, b, 0.35)
         pulseTex:SetVertexColor(r, g, b, 0.90)
-        ringRoot:SetAlpha(alpha)
+        ringRoot:SetAlpha(baseRingAlpha * idleFadeMult)
 
         if ringDotTex and ringDotBg then
             if db.ringCenterDot == true then
@@ -994,6 +1015,7 @@ do
     local function OnCursorUpdate(_, elapsed)
         local db = EnsureDB()
         local now = (GetTime and GetTime()) or 0
+        local dt = math.max(0.004, math.min(0.10, tonumber(elapsed) or 0.016))
         local effScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
         if effScale <= 0 then effScale = 1 end
         local rawX, rawY = 0, 0
@@ -1003,22 +1025,50 @@ do
         local cx, cy = rawX / effScale, rawY / effScale
         local dx, dy = cx - lastCX, cy - lastCY
         local moved = (dx ~= 0 or dy ~= 0)
+        if moved then
+            lastMoveTime = now
+            if idleFadeMult < 1.0 then
+                idleFadeMult = 1.0
+                if ringRoot then ringRoot:SetAlpha(baseRingAlpha) end
+            end
+        end
 
-        -- Shake-to-Find detection
+        -- FPS-Normalised Shake-to-Find detection
         if db.shakeToFind == true and not isMouseLooking and moved then
-            if (dx * lastVX < -180) or (dy * lastVY < -180) then
+            local vx, vy = dx / dt, dy / dt
+            local sens = db.shakeSensitivity or "MEDIUM"
+            local minSpeed, reqRevs, winSec = 1100, 4, 0.55
+            if sens == "LOW" then
+                minSpeed, reqRevs, winSec = 1600, 4, 0.50
+            elseif sens == "HIGH" then
+                minSpeed, reqRevs, winSec = 700, 3, 0.60
+            end
+            local halfSpd = minSpeed * 0.5
+            local revX = (math.abs(vx) >= halfSpd and math.abs(lastVX) >= halfSpd and vx * lastVX < 0)
+            local revY = (math.abs(vy) >= halfSpd and math.abs(lastVY) >= halfSpd and vy * lastVY < 0)
+            if (revX or revY) and (now - shakeLastRevTime) >= 0.045 then
+                shakeLastRevTime = now
                 if now > shakeWindowEnd then
                     shakeReversals = 1
-                    shakeWindowEnd = now + 0.55
+                    shakeWindowEnd = now + winSec
                 else
                     shakeReversals = shakeReversals + 1
                 end
-                if shakeReversals >= 4 then
+                if shakeReversals >= reqRevs then
                     shakeBurstEnd = now + 1.15
                     shakeReversals = 0
                 end
             end
-            lastVX, lastVY = dx, dy
+            if math.abs(vx) >= halfSpd then
+                lastVX = vx
+            elseif now > shakeWindowEnd and (now - shakeLastRevTime) > 0.25 then
+                lastVX = 0
+            end
+            if math.abs(vy) >= halfSpd then
+                lastVY = vy
+            elseif now > shakeWindowEnd and (now - shakeLastRevTime) > 0.25 then
+                lastVY = 0
+            end
         end
         lastCX, lastCY = cx, cy
 
@@ -1030,11 +1080,48 @@ do
                 local targeting = (okT and nowT == true) and true or false
                 if targeting ~= isGroundTargeting then
                     isGroundTargeting = targeting
+                    if not targeting then
+                        ringSizeScale = 1.0
+                    else
+                        lastMoveTime = now
+                        idleFadeMult = 1.0
+                    end
                     UpdateRingAppearance(db)
                 end
             elseif isGroundTargeting then
                 isGroundTargeting = false
+                ringSizeScale = 1.0
                 UpdateRingAppearance(db)
+            end
+
+            local aoeActive = (db.groundTargetHighlight ~= false) and isGroundTargeting
+            if aoeActive and db.groundTargetSizeBoost ~= false then
+                if ringSizeScale < 1.20 then
+                    ringSizeScale = math.min(1.20, ringSizeScale + dt * 1.8)
+                    local diam = (tonumber(db.ringRadius) or 24) * ringSizeScale * 2
+                    ringRoot:SetSize(diam, diam)
+                end
+            elseif ringSizeScale ~= 1.0 then
+                ringSizeScale = 1.0
+                UpdateRingAppearance(db)
+            end
+
+            local fadeDelay = tonumber(db.ringIdleFade) or 0
+            local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+            if fadeDelay > 0 and not inCombat and not aoeActive and not isMouseLooking then
+                if lastMoveTime <= 0 then lastMoveTime = now end
+                local idleFor = now - lastMoveTime
+                if idleFor > fadeDelay then
+                    local fadeProg = math.min(1.0, (idleFor - fadeDelay) / 0.35)
+                    local targetMult = 1.0 - fadeProg
+                    if math.abs(targetMult - idleFadeMult) > 0.005 or (targetMult == 0 and idleFadeMult ~= 0) then
+                        idleFadeMult = targetMult
+                        ringRoot:SetAlpha(baseRingAlpha * idleFadeMult)
+                    end
+                end
+            elseif idleFadeMult < 1.0 then
+                idleFadeMult = 1.0
+                ringRoot:SetAlpha(baseRingAlpha)
             end
 
             if isMouseLooking then
@@ -1085,14 +1172,15 @@ do
             ringRoot:Hide()
         end
 
-        -- Find My Cursor / Modifier Locator
-        local showLocator = (now < shakeBurstEnd) or IsLocatorModifierHeld(db)
+        -- Find My Cursor / Modifier Locator / Ping After Mouse-Look
+        local showLocator = (now < shakeBurstEnd) or (now < mouseLookPingEnd) or IsLocatorModifierHeld(db)
         if showLocator and allowed and not isMouseLooking then
             EnsureLocatorFrames()
             locatorRoot:ClearAllPoints()
             locatorRoot:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx, cy)
-            local r, g, b = ResolveColorMode(db.ringColorMode or "ACCENT", db.ringCustomHex, false)
-            local lStyle = (now < shakeBurstEnd and db.locatorModifier == "OFF") and "PING" or (db.locatorStyle or "PING")
+            local baseR, baseG, baseB = ResolveColorMode(db.ringColorMode or "ACCENT", db.ringCustomHex, false)
+            local r, g, b = ResolveColorMode(db.locatorColorMode or "MATCH_RING", db.locatorCustomHex, false, baseR, baseG, baseB)
+            local lStyle = db.locatorStyle or "PING"
             locatorPingTex:Hide(); locatorSpotTex:Hide(); locatorCrossH:Hide(); locatorCrossV:Hide()
             if lStyle == "PING" then
                 local phase = (now * 2.2) % 1.0
@@ -1115,6 +1203,7 @@ do
         end
 
         -- Pooled Cursor Trail
+        local anyTrailAlive = false
         if db.trailEnabled and allowed then
             local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
             local canSpawn = (not db.trailCombatOnly or inCombat) and (not isMouseLooking or db.trailShowMouseLook)
@@ -1127,7 +1216,6 @@ do
                     SpawnTrailNode(db, cx, cy, now)
                 end
             end
-            local anyAlive = false
             for i = 1, TRAIL_POOL_SIZE do
                 local n = trailPool[i]
                 if n and n.active then
@@ -1136,7 +1224,7 @@ do
                         n.active = false
                         n.tex:Hide()
                     else
-                        anyAlive = true
+                        anyTrailAlive = true
                         local t = 1.0 - (age / n.life)
                         n.tex:SetAlpha(n.a * t)
                         local s = math.max(2, n.size * (0.35 + 0.65 * t))
@@ -1144,11 +1232,13 @@ do
                     end
                 end
             end
-            if not anyAlive and not db.ringEnabled and not db.shakeToFind and db.locatorModifier == "OFF" then
-                activeUpdateFrame:SetScript("OnUpdate", nil)
-            end
         elseif trailRoot then
             ClearTrailNodes()
+        end
+
+        if not anyTrailAlive and not db.ringEnabled and not db.trailEnabled and not db.shakeToFind
+            and (db.locatorModifier or "OFF") == "OFF" and now >= shakeBurstEnd and now >= mouseLookPingEnd then
+            activeUpdateFrame:SetScript("OnUpdate", nil)
         end
     end
 
@@ -1237,7 +1327,9 @@ do
             EnsureSmartTooltipHook()
         end
 
-        local needsUpdate = (db.ringEnabled == true) or (db.trailEnabled == true) or (db.shakeToFind == true) or ((db.locatorModifier or "OFF") ~= "OFF")
+        local now = (GetTime and GetTime()) or 0
+        local needsUpdate = (db.ringEnabled == true) or (db.trailEnabled == true) or (db.shakeToFind == true)
+            or ((db.locatorModifier or "OFF") ~= "OFF") or (now < mouseLookPingEnd) or (now < shakeBurstEnd)
         if needsUpdate and IsActivityAllowed(db) then
             activeUpdateFrame:SetScript("OnUpdate", OnCursorUpdate)
         else
@@ -1248,6 +1340,23 @@ do
         end
     end
     DynamicCursor.SyncAllEngines = SyncAllEngines
+
+    local function HandleMouseLookStop()
+        local wasLooking = isMouseLooking
+        isMouseLooking = false
+        local now = (GetTime and GetTime()) or 0
+        lastMoveTime = now
+        if idleFadeMult < 1.0 and ringRoot then
+            idleFadeMult = 1.0
+            ringRoot:SetAlpha(baseRingAlpha)
+        end
+        if IsModuleDisabledInSuite("DynamicCursor") then return end
+        local db = EnsureDB()
+        if db.pingAfterMouseLook == true and (wasLooking or now > mouseLookPingEnd - 0.55) and IsActivityAllowed(db) then
+            mouseLookPingEnd = now + 0.65
+            activeUpdateFrame:SetScript("OnUpdate", OnCursorUpdate)
+        end
+    end
 
     local evFrame = CreateFrame("Frame")
     SafeRegisterEvent(evFrame, "PLAYER_LOGIN")
@@ -1282,7 +1391,7 @@ do
                     _G.hooksecurefunc("MouselookStart", function() isMouseLooking = true end)
                 end
                 if _G.MouselookStop then
-                    _G.hooksecurefunc("MouselookStop", function() isMouseLooking = false end)
+                    _G.hooksecurefunc("MouselookStop", HandleMouseLookStop)
                 end
             end
             SyncAllEngines()
@@ -1294,7 +1403,7 @@ do
         if event == "PLAYER_STARTED_LOOKING" then
             isMouseLooking = true
         elseif event == "PLAYER_STOPPED_LOOKING" then
-            isMouseLooking = false
+            HandleMouseLookStop()
         elseif event == "GLOBAL_MOUSE_DOWN" then
             if db.ringEnabled and db.ringClickPulse and not isMouseLooking then
                 pulseRemaining = 0.25
@@ -1361,6 +1470,10 @@ do
                 if ringRoot then UpdateRingAppearance(db) end
             end
         elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
+            if event == "PLAYER_REGEN_DISABLED" then
+                lastMoveTime = (GetTime and GetTime()) or 0
+                idleFadeMult = 1.0
+            end
             if ringRoot then UpdateRingAppearance(db) end
             UpdateCrosshairVisuals(db)
         elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA"
@@ -2149,6 +2262,7 @@ do
         local function IsCastArcOn() return EnsureDB().castArcEnabled ~= false end
         local function IsCastIconOn() return EnsureDB().castShowIcon == true end
         local function IsCrosshairOn() return EnsureDB().crosshairEnabled == true end
+        local function IsShakeOn() return EnsureDB().shakeToFind == true end
         local function IsTooltipOn() return EnsureDB().tooltipEnabled == true end
 
         -- ====================================================================
@@ -2216,6 +2330,9 @@ do
         AddSlider(secRing, "In-Combat Opacity", "Ring transparency during combat.", 0.05, 1.00, 0.05,
             function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             function() return EnsureDB().ringOpacityCombat or 0.95 end, function(v) EnsureDB().ringOpacityCombat = v end, IsRingOn)
+        AddPills(secRing, "Out-of-Combat Idle Fade", "Smoothly fades the cursor ring and centre dot to 0% out of combat after your mouse stops moving.", 190, {
+            { value = "OFF", label = "Off" }, { value = "2", label = "2s" }, { value = "5", label = "5s" },
+        }, function() return EnsureDB().ringIdleFade or "OFF" end, function(v) EnsureDB().ringIdleFade = v end, IsRingOn)
         AddColorModeDropdown(secRing, "Ring Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or click the swatch for a custom colour.", 210, {
             { value = "ACCENT",         label = "Suite Accent" },
             { value = "CLASS",          label = "Class Colour" },
@@ -2235,6 +2352,8 @@ do
         }, function() return EnsureDB().groundTargetColorMode or "HIGH_VIS_GREEN" end, function(v) EnsureDB().groundTargetColorMode = v end,
            function() return EnsureDB().groundTargetCustomHex or "22EB5E" end, function(h) EnsureDB().groundTargetCustomHex = h end,
            "Ground-Target Highlight Colour", nil, IsGroundTargetOn)
+        AddToggle(secRing, "Ground-Target Size Boost", "Smoothly increases the cursor ring size by 20% while aiming a ground-targeted spell.",
+            function() return EnsureDB().groundTargetSizeBoost ~= false end, function(v) EnsureDB().groundTargetSizeBoost = v end, IsGroundTargetOn)
         AddToggle(secRing, "Keep Visible During Mouse-Look", "Shows a subtle ghost ring while Right-Click turning your camera.",
             function() return EnsureDB().ringKeepMouseLook ~= false end, function(v) EnsureDB().ringKeepMouseLook = v end, IsRingOn)
         AddToggle(secRing, "Click-Pulse Ripple", "Plays a quick expanding ripple when you click.",
@@ -2394,12 +2513,27 @@ do
         local secLoc = AddSection(3, "FIND MY CURSOR", "Quickly locate your mouse pointer during hectic raid or Mythic+ pulls.")
         AddToggle(secLoc, "Shake-to-Find", "Rapidly wiggle your mouse back and forth to trigger a brief cursor ping burst.",
             function() return EnsureDB().shakeToFind == true end, function(v) EnsureDB().shakeToFind = v end)
+        AddPills(secLoc, "Shake Sensitivity", "Adjusts how briskly you need to wiggle the mouse to trigger Shake-to-Find (framerate-independent).", 210, {
+            { value = "LOW", label = "Low" }, { value = "MEDIUM", label = "Medium" }, { value = "HIGH", label = "High" },
+        }, function() return EnsureDB().shakeSensitivity or "MEDIUM" end, function(v) EnsureDB().shakeSensitivity = v end, IsShakeOn)
+        AddToggle(secLoc, "Ping After Mouse-Look", "Briefly pulses your cursor locator (~0.65s) when you finish Right-Click camera turning.",
+            function() return EnsureDB().pingAfterMouseLook == true end, function(v) EnsureDB().pingAfterMouseLook = v end)
         AddPills(secLoc, "Modifier Key Locator", "Hold a modifier key to highlight your cursor.", 260, {
             { value = "OFF", label = "Off" }, { value = "SHIFT", label = "Shift" }, { value = "CTRL", label = "Ctrl" }, { value = "ALT", label = "Alt" },
         }, function() return EnsureDB().locatorModifier or "OFF" end, function(v) EnsureDB().locatorModifier = v end)
-        AddPills(secLoc, "Locator Highlight Style", "Visual cue shown while Shake-to-Find or Modifier Locator is active.", 260, {
+        AddPills(secLoc, "Locator Highlight Style", "Visual cue shown for Shake-to-Find, Ping After Mouse-Look, and Modifier Locator.", 260, {
             { value = "PING", label = "Ping Ring" }, { value = "SPOTLIGHT", label = "Spotlight" }, { value = "CROSSHAIR", label = "Screen Cross" },
         }, function() return EnsureDB().locatorStyle or "PING" end, function(v) EnsureDB().locatorStyle = v end)
+        AddColorModeDropdown(secLoc, "Locator Colour Mode", "Choose an independent colour for Find My Cursor or match your main cursor ring.", 210, {
+            { value = "MATCH_RING",     label = "Match Ring" },
+            { value = "ACCENT",         label = "Suite Accent" },
+            { value = "CLASS",          label = "Class Colour" },
+            { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
+            { value = "BRIGHT_GOLD",    label = "Bright Gold" },
+            { value = "CUSTOM",         label = "Custom Colour" },
+        }, function() return EnsureDB().locatorColorMode or "MATCH_RING" end, function(v) EnsureDB().locatorColorMode = v end,
+           function() return EnsureDB().locatorCustomHex or "38BDF8" end, function(h) EnsureDB().locatorCustomHex = h end,
+           "Locator Custom Colour", GetBaseRingRGB)
 
         -- ====================================================================
         -- TAB 4: Visibility & Tooltips
@@ -2657,7 +2791,7 @@ DynamicCursor.CHANGELOG = {
     version = VERSION,
     date = "23/11/2026",
     entries = {
-        { type = "FEATURE", text = "[Unreleased] New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (23/11/2026): Added a customisable Cursor Ring (5 procedural ring styles, radius, OOC/combat opacity, colour modes, Mouse-Look ghost ring, and click-pulse ripple), secret-safe native C++ Radial GCD and Cast/Channel/Empower arcs, Character Crosshair (5 styles with X/Y offset and Combat/Instance visibility), Find My Cursor (Shake-to-Find + Modifier Key Locator), pre-allocated 48-node Pooled Cursor Trail (0.00 ms idle CPU), Smart Cursor Tooltips, and 4 one-click presets (Clean Raid, High-Visibility, Minimalist, Full Telemetry)." },
+        { type = "FEATURE", text = "[Unreleased] New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (23/11/2026): Added a 4-tab Obsidian workspace with compact modern presets, customisable Cursor Ring (5 procedural ring styles, fine X/Y offset, Centre Dot, OOC Idle Fade, Ground-Target AoE Highlight & +20% Size Boost, Obsidian Colour Picker), concentric Inner GCD Ring and Outer Cast/Channel/Empower Arc with gap/thickness controls and upgraded Mini Spell Icon (including Instant-Cast Flash), Character Crosshair, Find My Cursor (FPS-normalised Shake-to-Find with 3-tier Sensitivity, Ping After Mouse-Look, independent Locator Colour, Modifier Key Locator), 48-node Pooled Cursor Trail (0.00 ms idle CPU), Active Zones pills, Hardware Cursor Size CVar, and Smart Cursor Tooltips." },
     },
 }
 
