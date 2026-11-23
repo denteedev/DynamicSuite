@@ -155,10 +155,27 @@ local function PrintMsg(msg)
 end
 
 local function GetClassColorRGB()
-    local _, cls = UnitClass and UnitClass("player") or nil
-    if cls and RAID_CLASS_COLORS and RAID_CLASS_COLORS[cls] then
-        local c = RAID_CLASS_COLORS[cls]
-        return c.r or 1, c.g or 1, c.b or 1
+    local cls = nil
+    if type(UnitClass) == "function" then
+        local _, c = UnitClass("player")
+        if not _IsSecret(c) and type(c) == "string" and c ~= "" then
+            cls = c
+        end
+    end
+    if cls then
+        if _G.C_ClassColor and type(_G.C_ClassColor.GetClassColor) == "function" then
+            local ok, col = pcall(_G.C_ClassColor.GetClassColor, cls)
+            if ok and type(col) == "table" and type(col.GetRGB) == "function" then
+                local r, g, b = col:GetRGB()
+                if type(r) == "number" and type(g) == "number" and type(b) == "number" then
+                    return r, g, b
+                end
+            end
+        end
+        if RAID_CLASS_COLORS and RAID_CLASS_COLORS[cls] then
+            local c = RAID_CLASS_COLORS[cls]
+            return c.r or 1, c.g or 1, c.b or 1
+        end
     end
     return GetSuiteAccent()
 end
@@ -625,11 +642,7 @@ do
         pulseTex:SetTexture(RING_TEXTURES.THIN)
 
         local r, g, b = ResolveColorMode(db.ringColorMode or "ACCENT", db.ringCustomHex, db.ringCombatShift)
-        if db.ringStyle == "DUAL" then
-            ringTex:SetVertexColor(1, 1, 1, 1)
-        else
-            ringTex:SetVertexColor(r, g, b, 1)
-        end
+        ringTex:SetVertexColor(r, g, b, 1)
         ghostTex:SetVertexColor(r, g, b, 0.35)
         pulseTex:SetVertexColor(r, g, b, 0.90)
 
@@ -760,7 +773,7 @@ do
         local style = db.trailStyle or "SMOOTH_DOTS"
         local texPath = (style == "CLASS_SPARKS") and SPARK_TEX or ((style == "SOFT_MIST" or style == "ARCANE_MOTES") and RING_TEXTURES.GLOW or DOT_TEX)
         local r, g, b = ResolveColorMode(db.trailColorMode or "ACCENT", db.trailCustomHex, false)
-        if style == "ARCANE_MOTES" then
+        if style == "ARCANE_MOTES" and (db.trailColorMode or "ACCENT") == "ACCENT" then
             r, g, b = 0.65, 0.45, 0.98
         end
         node.tex:SetTexture(texPath)
@@ -1185,7 +1198,7 @@ end
 local function ResetCursorModuleDefaults()
     _G.DynamicCursorDB = CopyDefaults(DEFAULTS, {})
     SyncAllEngines()
-    if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI() end
+    if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI(true) end
     PrintMsg("Restored all DynamicCursor settings to defaults.")
 end
 DynamicCursor.ResetModuleDefaults = ResetCursorModuleDefaults
@@ -1554,56 +1567,11 @@ do
         parent.DynamicCursorContainer = root
         DynamicCursor.embeddedRoot = root
 
-        -- Top Action & Status Strip + 4 Presets + Reset Defaults
-        local strip = CreateFrame("Frame", nil, root, "BackdropTemplate")
-        strip:SetHeight(56)
-        strip:SetPoint("TOPLEFT", root, "TOPLEFT", 14, -10)
-        strip:SetPoint("TOPRIGHT", root, "TOPRIGHT", -16, -10)
-        SetBackdropSolid(strip, { 0.055, 0.063, 0.082, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
-
-        local statusFs = strip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        SetSafeFont(statusFs, 11, "")
-        statusFs:SetPoint("TOPLEFT", strip, "TOPLEFT", 12, -8)
-        statusFs:SetPoint("RIGHT", strip, "RIGHT", -12, 0)
-        statusFs:SetJustifyH("LEFT")
-        statusFs:SetWordWrap(false)
-        strip.statusFs = statusFs
-
-        local presetDefs = {
-            { key = "CLEAN_RAID",     label = "Clean Raid",      w = 88 },
-            { key = "HIGH_VIS",       label = "High-Visibility", w = 104 },
-            { key = "MINIMALIST",     label = "Minimalist",      w = 84 },
-            { key = "FULL_TELEMETRY", label = "Full Telemetry",  w = 104 },
-        }
-        local px = 12
-        local presetBtns = {}
-        for _, p in ipairs(presetDefs) do
-            local pb = CreateFrame("Button", nil, strip, "BackdropTemplate")
-            pb:SetSize(p.w, 22)
-            pb:SetPoint("BOTTOMLEFT", strip, "BOTTOMLEFT", px, 7)
-            pb.lbl = pb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            SetSafeFont(pb.lbl, 10, "")
-            pb.lbl:SetPoint("CENTER")
-            pb.lbl:SetText(p.label)
-            pb:SetScript("OnClick", function() DynamicCursor:ApplyPreset(p.key) end)
-            presetBtns[#presetBtns + 1] = pb
-            px = px + p.w + 6
-        end
-
-        local resetBtn = CreateFrame("Button", nil, strip, "BackdropTemplate")
-        resetBtn:SetSize(102, 22)
-        resetBtn:SetPoint("BOTTOMRIGHT", strip, "BOTTOMRIGHT", -12, 7)
-        resetBtn.lbl = resetBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        SetSafeFont(resetBtn.lbl, 10, "")
-        resetBtn.lbl:SetPoint("CENTER")
-        resetBtn.lbl:SetText("Reset Defaults")
-        resetBtn:SetScript("OnClick", ResetCursorModuleDefaults)
-
-        -- 3-Tab Segmented Bar
+        -- 3-Tab Segmented Bar (anchored at top of workspace for 1:1 DynamicSuite parity)
         local tabBar = CreateFrame("Frame", nil, root, "BackdropTemplate")
         tabBar:SetHeight(34)
-        tabBar:SetPoint("TOPLEFT", strip, "BOTTOMLEFT", 0, -8)
-        tabBar:SetPoint("TOPRIGHT", strip, "BOTTOMRIGHT", 0, -8)
+        tabBar:SetPoint("TOPLEFT", root, "TOPLEFT", 14, -10)
+        tabBar:SetPoint("TOPRIGHT", root, "TOPRIGHT", -16, -10)
         SetBackdropSolid(tabBar, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 }, 1)
 
         local tabDefs = {
@@ -1620,9 +1588,11 @@ do
             tb.lbl:SetPoint("CENTER")
             tb.lbl:SetText(td.label)
             tb:SetScript("OnClick", function()
-                EnsureDB().activeSubTab = td.id
+                local db = EnsureDB()
+                local changed = (db.activeSubTab ~= td.id)
+                db.activeSubTab = td.id
                 CloseCursorPopups()
-                DynamicCursor:RefreshWorkspaceUI()
+                DynamicCursor:RefreshWorkspaceUI(changed)
             end)
             tabBtns[i] = tb
         end
@@ -1767,7 +1737,39 @@ do
             refreshables[#refreshables + 1] = d
         end
 
-        -- TAB 1: Cursor Ring, GCD & Cast Arc
+        -- TAB 1: Quick Presets Strip + Cursor Ring, GCD & Cast Arc
+        local presetCard = CreateFrame("Frame", nil, pages[1], "BackdropTemplate")
+        presetCard:SetHeight(42)
+        SetBackdropSolid(presetCard, { 0.055, 0.063, 0.082, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+
+        local presetLbl = presetCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        SetSafeFont(presetLbl, 10, "")
+        presetLbl:SetPoint("LEFT", presetCard, "LEFT", 12, 0)
+        presetLbl:SetText("QUICK PRESETS")
+        presetLbl:SetTextColor(0.58, 0.64, 0.72, 1)
+
+        local presetDefs = {
+            { key = "CLEAN_RAID",     label = "Clean Raid",      w = 88 },
+            { key = "HIGH_VIS",       label = "High-Visibility", w = 104 },
+            { key = "MINIMALIST",     label = "Minimalist",      w = 84 },
+            { key = "FULL_TELEMETRY", label = "Full Telemetry",  w = 104 },
+        }
+        local px = 114
+        local presetBtns = {}
+        for _, p in ipairs(presetDefs) do
+            local pb = CreateFrame("Button", nil, presetCard, "BackdropTemplate")
+            pb:SetSize(p.w, 24)
+            pb:SetPoint("LEFT", presetCard, "LEFT", px, 0)
+            pb.lbl = pb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            SetSafeFont(pb.lbl, 10, "")
+            pb.lbl:SetPoint("CENTER")
+            pb.lbl:SetText(p.label)
+            pb:SetScript("OnClick", function() DynamicCursor:ApplyPreset(p.key) end)
+            presetBtns[#presetBtns + 1] = pb
+            px = px + p.w + 6
+        end
+        pages[1].items[#pages[1].items + 1] = presetCard
+
         AddHeader(1, "MAIN CURSOR RING", "Keep track of your pointer with a clean, click-through ring around your cursor.")
         AddToggle(1, "Enable Cursor Ring", "Displays a customisable ring around your mouse cursor (Off by default).",
             function() return EnsureDB().ringEnabled == true end, function(v) EnsureDB().ringEnabled = v end)
@@ -1865,6 +1867,12 @@ do
         AddSlider(2, "Crosshair In-Combat Opacity", "Crosshair transparency during combat.", 0.05, 1.00, 0.05,
             function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             function() return EnsureDB().crosshairOpacityCombat or 0.90 end, function(v) EnsureDB().crosshairOpacityCombat = v end)
+        AddDropdown(2, "Crosshair Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or a custom hex colour.", 220, {
+            { value = "ACCENT",         label = "Suite Accent" },
+            { value = "CLASS",          label = "Class Colour" },
+            { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
+            { value = "CUSTOM",         label = "Custom Hex (Edit)" },
+        }, function() return EnsureDB().crosshairColorMode or "ACCENT" end, function(v) EnsureDB().crosshairColorMode = v end)
         AddToggle(2, "Crosshair Combat Tint", "Shifts the crosshair colour to warm amber-orange during combat.",
             function() return EnsureDB().crosshairCombatTint == true end, function(v) EnsureDB().crosshairCombatTint = v end)
 
@@ -1900,6 +1908,12 @@ do
         AddSlider(3, "Trail Opacity", "Maximum trail opacity.", 0.10, 1.00, 0.05,
             function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             function() return EnsureDB().trailOpacity or 0.75 end, function(v) EnsureDB().trailOpacity = v end)
+        AddDropdown(3, "Trail Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or a custom hex colour.", 220, {
+            { value = "ACCENT",         label = "Suite Accent" },
+            { value = "CLASS",          label = "Class Colour" },
+            { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
+            { value = "CUSTOM",         label = "Custom Hex (Edit)" },
+        }, function() return EnsureDB().trailColorMode or "ACCENT" end, function(v) EnsureDB().trailColorMode = v end)
         AddToggle(3, "Show Trail in Combat Only", "Only spawns trail particles while you are in combat.",
             function() return EnsureDB().trailCombatOnly == true end, function(v) EnsureDB().trailCombatOnly = v end)
         AddToggle(3, "Keep Trail During Mouse-Look", "Continues drawing trail nodes while Right-Click turning.",
@@ -1924,7 +1938,7 @@ do
 
         for _, pg in ipairs(pages) do LayoutPage(pg) end
 
-        function DynamicCursor:RefreshWorkspaceUI()
+        function DynamicCursor:RefreshWorkspaceUI(resetScroll)
             local db = EnsureDB()
             local ar, ag, ab = GetSuiteAccent()
             local alphaPill = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
@@ -1935,13 +1949,10 @@ do
                 content:SetWidth(sfW)
             end
 
-            statusFs:SetText(string.format("|cFF%sDynamicCursor|r  |cFF94A3B8%s|r", GetAccentHex(), GetStatusText()))
             for _, pb in ipairs(presetBtns) do
                 SetBackdropSolid(pb, { 0.078, 0.090, 0.122, 0.96 }, { ar, ag, ab, 0.70 }, 1)
                 pb.lbl:SetTextColor(0.92, 0.95, 0.99, 1)
             end
-            SetBackdropSolid(resetBtn, { 0.078, 0.090, 0.122, 0.96 }, { 0.937, 0.267, 0.267, 0.65 }, 1)
-            resetBtn.lbl:SetTextColor(0.98, 0.65, 0.65, 1)
 
             local activeTab = tonumber(db.activeSubTab) or 1
             if activeTab < 1 or activeTab > 3 then activeTab = 1 end
@@ -1966,8 +1977,21 @@ do
                     pg:Hide()
                 end
             end
-            sf:SetVerticalScroll(0)
+            if resetScroll == true then
+                sf:SetVerticalScroll(0)
+            else
+                local maxS = math.max(0, (content:GetHeight() or 0) - (sf:GetHeight() or 0))
+                local curS = (sf.GetVerticalScroll and sf:GetVerticalScroll()) or 0
+                if curS > maxS then
+                    sf:SetVerticalScroll(maxS)
+                elseif curS < 0 then
+                    sf:SetVerticalScroll(0)
+                end
+            end
             UpdateThumb()
+            if _G.DynamicSuite and type(_G.DynamicSuite.UpdateHeaderTelemetry) == "function" then
+                pcall(_G.DynamicSuite.UpdateHeaderTelemetry)
+            end
         end
 
         root:SetScript("OnShow", function()
@@ -1975,7 +1999,7 @@ do
             DynamicCursor:RefreshWorkspaceUI()
         end)
 
-        DynamicCursor:RefreshWorkspaceUI()
+        DynamicCursor:RefreshWorkspaceUI(true)
         return root
     end
     DynamicCursor.RenderEmbedded = RenderCursorEmbedded
@@ -2082,8 +2106,10 @@ if _G.DynamicSuite then
         GetChangelog = function() return DynamicCursor.CHANGELOG end,
         SelectSubTab = function(a1, a2)
             local idx = (type(a1) == "number") and a1 or a2 or 1
-            EnsureDB().activeSubTab = idx
-            if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI() end
+            local db = EnsureDB()
+            local changed = (db.activeSubTab ~= idx)
+            db.activeSubTab = idx
+            if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI(changed) end
         end,
     }
     desc.SelectTab = desc.SelectSubTab
