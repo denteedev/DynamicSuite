@@ -70,6 +70,8 @@ DynamicCursor.folderName = ADDON_FOLDER
 
 local MEDIA_BASE = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\"
 local ICON_MODULE = MEDIA_BASE .. "Icons\\icon_mod_cursor.tga"
+local ICON_CHEVRON_DOWN = MEDIA_BASE .. "Icons\\icon_chevron_down.tga"
+local ICON_CHEVRON_UP = MEDIA_BASE .. "Icons\\icon_chevron_up.tga"
 
 local function _IsSecret(v)
     if type(issecretvalue) == "function" and issecretvalue(v) then
@@ -293,7 +295,8 @@ local DEFAULTS = {
 
     -- Tab 1: Cursor Ring, GCD & Cast Arc (Off by default)
     ringEnabled = false,
-    ringStyle = "CRISP",            -- "CRISP" | "THIN" | "THICK" | "GLOW" | "DUAL"
+    ringStyle = "SOLID",            -- "SOLID" | "GLOW" | "DUAL"
+    ringThickness = 3,              -- 1..5
     ringRadius = 24,                -- 16..96 (compact modern default)
     ringOffsetX = 0,                -- -16..16
     ringOffsetY = 0,                -- -16..16
@@ -338,12 +341,19 @@ local DEFAULTS = {
     showPvP = true,
     autoHideSpecial = true,
 
-    -- Tab 2: Character Crosshair & Cursor Locator (Off by default)
+    -- Tab 3: Character Crosshair & Cursor Locator (Off by default)
     crosshairEnabled = false,
-    crosshairStyle = "CLASSIC",     -- "CLASSIC" | "DOT" | "CROSS_DOT" | "BRACKETS" | "CIRCLE_DOT"
+    crosshairShowCross = true,
+    crosshairShowBrackets = false,
+    crosshairShowCircle = false,
+    crosshairShowDot = false,
+    crosshairElementsMigrated = true,
     crosshairSize = 24,             -- 8..64
     crosshairThickness = 2,         -- 1..6
     crosshairGap = 6,               -- 0..20
+    crosshairCircleRadius = 24,     -- 8..64
+    crosshairCircleThickness = 2,   -- 1..5
+    crosshairDotSize = 4,           -- 2..8
     crosshairOutline = true,
     crosshairOffsetX = 0,           -- -100..100
     crosshairOffsetY = 0,           -- -100..100
@@ -397,8 +407,66 @@ local function EnsureDB()
     if type(_G.DynamicCursorDB) ~= "table" then
         _G.DynamicCursorDB = {}
     end
-    CopyDefaults(DEFAULTS, _G.DynamicCursorDB)
-    return _G.DynamicCursorDB
+    local db = _G.DynamicCursorDB
+    -- Migrate legacy ringStyle values ("THIN"/"CRISP"/"THICK") to Solid Ring + thickness
+    if db.ringStyle == "THIN" then
+        db.ringStyle = "SOLID"
+        if db.ringThickness == nil then db.ringThickness = 2 end
+    elseif db.ringStyle == "CRISP" then
+        db.ringStyle = "SOLID"
+        if db.ringThickness == nil then db.ringThickness = 3 end
+    elseif db.ringStyle == "THICK" then
+        db.ringStyle = "SOLID"
+        if db.ringThickness == nil then db.ringThickness = 4 end
+    end
+    -- Migrate legacy crosshairStyle values to modular Crosshair Elements toggles
+    if db.crosshairElementsMigrated ~= true and type(db.crosshairStyle) == "string" then
+        local st = db.crosshairStyle
+        if st == "DOT" then
+            db.crosshairShowCross = false; db.crosshairShowBrackets = false; db.crosshairShowCircle = false; db.crosshairShowDot = true
+        elseif st == "CROSS_DOT" then
+            db.crosshairShowCross = true; db.crosshairShowBrackets = false; db.crosshairShowCircle = false; db.crosshairShowDot = true
+        elseif st == "BRACKETS" then
+            db.crosshairShowCross = false; db.crosshairShowBrackets = true; db.crosshairShowCircle = false; db.crosshairShowDot = false
+        elseif st == "CIRCLE_DOT" then
+            db.crosshairShowCross = false; db.crosshairShowBrackets = false; db.crosshairShowCircle = true; db.crosshairShowDot = true
+        else
+            db.crosshairShowCross = true; db.crosshairShowBrackets = false; db.crosshairShowCircle = false; db.crosshairShowDot = false
+        end
+        db.crosshairElementsMigrated = true
+    end
+    CopyDefaults(DEFAULTS, db)
+    return db
+end
+
+local RING_STYLE_TEXTURES = {
+    SOLID = {
+        MEDIA_BASE .. "Textures\\cursor_ring_solid_1.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_solid_2.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_solid_3.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_solid_4.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_solid_5.tga",
+    },
+    GLOW = {
+        MEDIA_BASE .. "Textures\\cursor_ring_glow_1.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_glow_2.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_glow_3.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_glow_4.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_glow_5.tga",
+    },
+    DUAL = {
+        MEDIA_BASE .. "Textures\\cursor_ring_dual_1.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_dual_2.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_dual_3.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_dual_4.tga",
+        MEDIA_BASE .. "Textures\\cursor_ring_dual_5.tga",
+    },
+}
+
+local function GetRingTexture(style, thickness)
+    local t = math.max(1, math.min(5, math.floor((tonumber(thickness) or 3) + 0.5)))
+    local bucket = RING_STYLE_TEXTURES[style or "SOLID"] or RING_STYLE_TEXTURES.SOLID
+    return bucket[t] or RING_STYLE_TEXTURES.SOLID[3]
 end
 
 local RING_TEXTURES = {
@@ -633,7 +701,7 @@ do
         crosshairRoot:SetFrameLevel(20)
         crosshairRoot:Hide()
 
-        for i = 1, 8 do
+        for i = 1, 10 do
             local ol = crosshairRoot:CreateTexture(nil, "BACKGROUND")
             ol:SetColorTexture(0, 0, 0, 0.90)
             ol:Hide()
@@ -705,12 +773,11 @@ do
         local th = tonumber(db.crosshairThickness) or 2
         local gap = tonumber(db.crosshairGap) or 6
         local outline = (db.crosshairOutline ~= false)
-        local style = db.crosshairStyle or "CLASSIC"
         local r, g, bCol = ResolveColorMode(db.crosshairColorMode or "ACCENT", db.crosshairCustomHex, db.crosshairCombatTint)
         local alpha = inCombat and (tonumber(db.crosshairOpacityCombat) or 0.90) or (tonumber(db.crosshairOpacityOOC) or 0.45)
 
         crosshairRoot:SetAlpha(alpha)
-        for i = 1, 8 do
+        for i = 1, 10 do
             chLines[i]:Hide()
             chOutlines[i]:Hide()
         end
@@ -732,36 +799,43 @@ do
             end
         end
 
-        if style == "DOT" or style == "CROSS_DOT" or style == "CIRCLE_DOT" then
-            local dSz = math.max(4, th * 2 + 2)
+        if db.crosshairShowCross == true then
+            local arm = math.max(3, math.floor((sz - gap * 2) * 0.5))
+            PlaceBar(1, arm, th, "RIGHT",  "CENTER", -gap, 0)
+            PlaceBar(2, arm, th, "LEFT",   "CENTER",  gap, 0)
+            PlaceBar(3, th, arm, "BOTTOM", "CENTER", 0,  gap)
+            PlaceBar(4, th, arm, "TOP",    "CENTER", 0, -gap)
+        end
+
+        if db.crosshairShowBrackets == true then
+            local half = math.max(6, math.floor(sz * 0.5))
+            local leg = math.max(4, math.floor(sz * 0.30))
+            PlaceBar(5,  th, sz * 0.65, "RIGHT",       "CENTER", -half,  0)
+            PlaceBar(6,  th, sz * 0.65, "LEFT",        "CENTER",  half,  0)
+            PlaceBar(7,  leg, th,       "TOPLEFT",     "CENTER", -half,  sz * 0.325)
+            PlaceBar(8,  leg, th,       "BOTTOMLEFT",  "CENTER", -half, -sz * 0.325)
+            PlaceBar(9,  leg, th,       "TOPRIGHT",    "CENTER",  half,  sz * 0.325)
+            PlaceBar(10, leg, th,       "BOTTOMRIGHT", "CENTER",  half, -sz * 0.325)
+        end
+
+        if db.crosshairShowCircle == true then
+            local cRad = math.max(8, math.min(64, tonumber(db.crosshairCircleRadius) or 24))
+            local cDiam = cRad * 2
+            chCircle:SetTexture(GetRingTexture("SOLID", db.crosshairCircleThickness or 2))
+            chCircle:SetSize(cDiam, cDiam)
+            chCircle:SetVertexColor(r, g, bCol, 1)
+            chCircle:Show()
+        end
+
+        if db.crosshairShowDot == true then
+            local dSz = math.max(2, math.min(8, tonumber(db.crosshairDotSize) or 4))
             chDot:SetSize(dSz, dSz)
             chDot:SetVertexColor(r, g, bCol, 1)
             chDot:Show()
             if outline then
-                chDotBg:SetSize(dSz + 3, dSz + 3)
+                chDotBg:SetSize(dSz + 2, dSz + 2)
                 chDotBg:Show()
             end
-        end
-
-        if style == "CIRCLE_DOT" then
-            chCircle:SetSize(sz, sz)
-            chCircle:SetVertexColor(r, g, bCol, 1)
-            chCircle:Show()
-        elseif style == "CLASSIC" or style == "CROSS_DOT" then
-            local arm = math.max(3, math.floor((sz - gap * 2) * 0.5))
-            PlaceBar(1, arm, th, "RIGHT", "CENTER", -gap, 0)
-            PlaceBar(2, arm, th, "LEFT",  "CENTER",  gap, 0)
-            PlaceBar(3, th, arm, "BOTTOM", "CENTER", 0,  gap)
-            PlaceBar(4, th, arm, "TOP",    "CENTER", 0, -gap)
-        elseif style == "BRACKETS" then
-            local half = math.max(6, math.floor(sz * 0.5))
-            local leg = math.max(4, math.floor(sz * 0.30))
-            PlaceBar(1, th, sz * 0.65, "RIGHT", "CENTER", -half, 0)
-            PlaceBar(2, th, sz * 0.65, "LEFT",  "CENTER",  half, 0)
-            PlaceBar(3, leg, th, "TOPLEFT",     "CENTER", -half,  sz * 0.325)
-            PlaceBar(4, leg, th, "BOTTOMLEFT",  "CENTER", -half, -sz * 0.325)
-            PlaceBar(5, leg, th, "TOPRIGHT",    "CENTER",  half,  sz * 0.325)
-            PlaceBar(6, leg, th, "BOTTOMRIGHT", "CENTER",  half, -sz * 0.325)
         end
 
         crosshairRoot:Show()
@@ -779,7 +853,7 @@ do
         ringRoot:SetSize(diam, diam)
         ringRoot:SetFrameStrata(db.ringStrata or "TOOLTIP")
 
-        local texPath = RING_TEXTURES[db.ringStyle or "CRISP"] or RING_TEXTURES.CRISP
+        local texPath = GetRingTexture(db.ringStyle or "SOLID", db.ringThickness or 3)
         ringTex:SetTexture(texPath)
         ghostTex:SetTexture(texPath)
         pulseTex:SetTexture(RING_TEXTURES.THIN)
@@ -1491,7 +1565,8 @@ function DynamicCursor:ApplyPreset(presetKey)
     local db = EnsureDB()
     if presetKey == "CLEAN_RAID" then
         db.ringEnabled = true
-        db.ringStyle = "CRISP"
+        db.ringStyle = "SOLID"
+        db.ringThickness = 3
         db.ringRadius = 24
         db.ringOpacityOOC = 0.45
         db.ringOpacityCombat = 0.90
@@ -1509,6 +1584,7 @@ function DynamicCursor:ApplyPreset(presetKey)
     elseif presetKey == "HIGH_VIS" then
         db.ringEnabled = true
         db.ringStyle = "DUAL"
+        db.ringThickness = 3
         db.ringRadius = 24
         db.ringOpacityOOC = 0.75
         db.ringOpacityCombat = 1.00
@@ -1520,8 +1596,13 @@ function DynamicCursor:ApplyPreset(presetKey)
         db.castGap = 6
         db.castShowIcon = true
         db.crosshairEnabled = true
-        db.crosshairStyle = "CROSS_DOT"
+        db.crosshairShowCross = true
+        db.crosshairShowBrackets = false
+        db.crosshairShowCircle = false
+        db.crosshairShowDot = true
+        db.crosshairElementsMigrated = true
         db.crosshairSize = 26
+        db.crosshairDotSize = 4
         db.crosshairOutline = true
         db.shakeToFind = true
         db.trailEnabled = true
@@ -1531,7 +1612,8 @@ function DynamicCursor:ApplyPreset(presetKey)
         PrintMsg("Applied preset: High-Visibility.")
     elseif presetKey == "MINIMALIST" then
         db.ringEnabled = true
-        db.ringStyle = "THIN"
+        db.ringStyle = "SOLID"
+        db.ringThickness = 2
         db.ringRadius = 20
         db.ringOpacityOOC = 0.35
         db.ringOpacityCombat = 0.75
@@ -1547,6 +1629,7 @@ function DynamicCursor:ApplyPreset(presetKey)
     elseif presetKey == "FULL_TELEMETRY" then
         db.ringEnabled = true
         db.ringStyle = "GLOW"
+        db.ringThickness = 3
         db.ringRadius = 26
         db.ringOpacityOOC = 0.65
         db.ringOpacityCombat = 0.95
@@ -1559,7 +1642,11 @@ function DynamicCursor:ApplyPreset(presetKey)
         db.castShowIcon = true
         db.castInstantFlash = true
         db.crosshairEnabled = true
-        db.crosshairStyle = "BRACKETS"
+        db.crosshairShowCross = false
+        db.crosshairShowBrackets = true
+        db.crosshairShowCircle = false
+        db.crosshairShowDot = false
+        db.crosshairElementsMigrated = true
         db.crosshairSize = 28
         db.shakeToFind = true
         db.locatorModifier = "SHIFT"
@@ -1593,10 +1680,16 @@ end
 
 do
     local activeDropPopup = nil
+    local sharedDropPopup = nil
     local function CloseCursorPopups()
         if activeDropPopup then
+            local prevOwner = activeDropPopup.owner
+            activeDropPopup.owner = nil
             activeDropPopup:Hide()
             activeDropPopup = nil
+            if prevOwner and type(prevOwner.SetOpenState) == "function" then
+                prevOwner:SetOpenState(false)
+            end
         end
     end
     if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.RegisterPopupCloser) == "function" then
@@ -1778,21 +1871,37 @@ do
     local function CreateDropdownControl(parent, width, options, getFn, setFn)
         local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
         btn:SetSize(width, 26)
+        btn.isOpen = false
         btn.lbl = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         SetSafeFont(btn.lbl, 11, "")
         btn.lbl:SetPoint("LEFT", btn, "LEFT", 10, 0)
-        btn.lbl:SetPoint("RIGHT", btn, "RIGHT", -22, 0)
+        btn.lbl:SetPoint("RIGHT", btn, "RIGHT", -24, 0)
         btn.lbl:SetJustifyH("LEFT")
         btn.lbl:SetWordWrap(false)
-        btn.arrow = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        SetSafeFont(btn.arrow, 10, "")
-        btn.arrow:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
-        btn.arrow:SetText("v")
+
+        btn.chevron = btn:CreateTexture(nil, "OVERLAY")
+        btn.chevron:SetSize(10, 10)
+        btn.chevron:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+        btn.chevron:SetTexture(ICON_CHEVRON_DOWN)
+
+        function btn:SetOpenState(open)
+            self.isOpen = open and true or false
+            self.chevron:SetTexture(self.isOpen and ICON_CHEVRON_UP or ICON_CHEVRON_DOWN)
+            local ar, ag, ab = GetSuiteAccent()
+            if self.isOpen then
+                self.chevron:SetVertexColor(ar, ag, ab, 1.0)
+                self:SetBackdropBorderColor(ar, ag, ab, 0.95)
+            else
+                self.chevron:SetVertexColor(ar, ag, ab, 0.92)
+                self:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+            end
+        end
 
         function btn:RefreshValue()
             local ar, ag, ab = GetSuiteAccent()
-            SetBackdropSolid(self, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
-            self.arrow:SetTextColor(ar, ag, ab, 1)
+            SetBackdropSolid(self, { 0.078, 0.090, 0.122, 0.96 }, self.isOpen and { ar, ag, ab, 0.95 } or { 0.145, 0.165, 0.212, 0.95 }, 1)
+            self.chevron:SetTexture(self.isOpen and ICON_CHEVRON_UP or ICON_CHEVRON_DOWN)
+            self.chevron:SetVertexColor(ar, ag, ab, self.isOpen and 1.0 or 0.92)
             local cur = getFn()
             for _, opt in ipairs(options) do
                 if opt.value == cur then
@@ -1810,34 +1919,81 @@ do
                 return
             end
             CloseCursorPopups()
-            local pop = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-            pop:SetFrameStrata("TOOLTIP")
-            pop:SetFrameLevel(120)
+            if not sharedDropPopup then
+                local p = CreateFrame("Frame", "DynamicCursorDropdownPopup", UIParent, "BackdropTemplate")
+                p:SetFrameStrata("TOOLTIP")
+                p:SetFrameLevel(120)
+                p:SetClampedToScreen(true)
+                p:EnableMouse(true)
+                p.rows = {}
+                p:SetScript("OnHide", function(selfPop)
+                    local prevOwner = selfPop.owner
+                    selfPop.owner = nil
+                    if activeDropPopup == selfPop then activeDropPopup = nil end
+                    if prevOwner and type(prevOwner.SetOpenState) == "function" then
+                        prevOwner:SetOpenState(false)
+                    end
+                end)
+                if type(UISpecialFrames) == "table" then
+                    local exists = false
+                    for _, n in ipairs(UISpecialFrames) do
+                        if n == "DynamicCursorDropdownPopup" then exists = true; break end
+                    end
+                    if not exists then table.insert(UISpecialFrames, "DynamicCursorDropdownPopup") end
+                end
+                sharedDropPopup = p
+            end
+
+            local pop = sharedDropPopup
+            local popH = #options * 24 + 8
             pop:SetWidth(width)
-            pop:SetHeight(#options * 24 + 8)
+            pop:SetHeight(popH)
             pop.owner = selfBtn
             local ar, ag, ab = GetSuiteAccent()
             SetBackdropSolid(pop, { 0.043, 0.051, 0.071, 0.99 }, { ar, ag, ab, 0.95 }, 1)
-            pop:SetPoint("TOPLEFT", selfBtn, "BOTTOMLEFT", 0, -2)
+
+            -- Screen-bottom flip when opening near the bottom edge
+            pop:ClearAllPoints()
+            local btnBot = selfBtn.GetBottom and selfBtn:GetBottom() or 300
+            if btnBot - popH - 6 < 20 then
+                pop:SetPoint("BOTTOMLEFT", selfBtn, "TOPLEFT", 0, 2)
+            else
+                pop:SetPoint("TOPLEFT", selfBtn, "BOTTOMLEFT", 0, -2)
+            end
+
+            for _, oldR in ipairs(pop.rows) do oldR:Hide() end
+            local curVal = getFn()
             for i, opt in ipairs(options) do
-                local row = CreateFrame("Button", nil, pop)
+                local row = pop.rows[i]
+                if not row then
+                    row = CreateFrame("Button", nil, pop)
+                    row.hl = row:CreateTexture(nil, "HIGHLIGHT")
+                    row.hl:SetAllPoints()
+                    row.rl = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    SetSafeFont(row.rl, 11, "")
+                    row.rl:SetPoint("LEFT", row, "LEFT", 8, 0)
+                    row.rl:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+                    row.rl:SetJustifyH("LEFT")
+                    row.rl:SetWordWrap(false)
+                    pop.rows[i] = row
+                end
                 row:SetSize(width - 8, 22)
+                row:ClearAllPoints()
                 row:SetPoint("TOPLEFT", pop, "TOPLEFT", 4, -4 - (i - 1) * 24)
-                local hl = row:CreateTexture(nil, "HIGHLIGHT")
-                hl:SetAllPoints()
-                hl:SetColorTexture(ar, ag, ab, 0.22)
-                local rl = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                SetSafeFont(rl, 11, "")
-                rl:SetPoint("LEFT", row, "LEFT", 8, 0)
-                rl:SetText(opt.label)
-                rl:SetTextColor(opt.value == getFn() and ar or 0.90, opt.value == getFn() and ag or 0.93, opt.value == getFn() and ab or 0.96, 1)
+                row.hl:SetColorTexture(ar, ag, ab, 0.22)
+                row.rl:SetText(opt.label)
+                local isSel = (opt.value == curVal)
+                row.rl:SetTextColor(isSel and ar or 0.90, isSel and ag or 0.93, isSel and ab or 0.96, 1)
                 row:SetScript("OnClick", function()
                     setFn(opt.value)
                     selfBtn:RefreshValue()
                     CloseCursorPopups()
                 end)
+                row:Show()
             end
             activeDropPopup = pop
+            selfBtn:SetOpenState(true)
+            pop:Show()
         end)
         return btn
     end
@@ -2262,6 +2418,10 @@ do
         local function IsCastArcOn() return EnsureDB().castArcEnabled ~= false end
         local function IsCastIconOn() return EnsureDB().castShowIcon == true end
         local function IsCrosshairOn() return EnsureDB().crosshairEnabled == true end
+        local function IsCrosshairLinesOn() local db = EnsureDB(); return db.crosshairEnabled == true and (db.crosshairShowCross == true or db.crosshairShowBrackets == true) end
+        local function IsCrosshairCrossOn() local db = EnsureDB(); return db.crosshairEnabled == true and db.crosshairShowCross == true end
+        local function IsCrosshairCircleOn() local db = EnsureDB(); return db.crosshairEnabled == true and db.crosshairShowCircle == true end
+        local function IsCrosshairDotOn() local db = EnsureDB(); return db.crosshairEnabled == true and db.crosshairShowDot == true end
         local function IsShakeOn() return EnsureDB().shakeToFind == true end
         local function IsTooltipOn() return EnsureDB().tooltipEnabled == true end
 
@@ -2303,13 +2463,14 @@ do
         local secRing = AddSection(1, "MAIN CURSOR RING", "Keep track of your pointer with a clean, click-through ring around your cursor.")
         AddToggle(secRing, "Enable Cursor Ring", "Displays a customisable ring around your mouse cursor (Off by default).",
             function() return EnsureDB().ringEnabled == true end, function(v) EnsureDB().ringEnabled = v end)
-        AddDropdown(secRing, "Ring Style", "Choose between 5 crisp procedural ring styles.", 220, {
-            { value = "CRISP", label = "Crisp Ring" },
-            { value = "THIN",  label = "Thin Ring" },
-            { value = "THICK", label = "Thick Ring" },
+        AddDropdown(secRing, "Ring Style", "Choose between Solid Ring, Soft Glow, or High-Contrast Dual.", 220, {
+            { value = "SOLID", label = "Solid Ring" },
             { value = "GLOW",  label = "Soft Glow" },
-            { value = "DUAL",  label = "High-Contrast Black/White Dual" },
-        }, function() return EnsureDB().ringStyle or "CRISP" end, function(v) EnsureDB().ringStyle = v end, IsRingOn)
+            { value = "DUAL",  label = "High-Contrast Dual" },
+        }, function() return EnsureDB().ringStyle or "SOLID" end, function(v) EnsureDB().ringStyle = v end, IsRingOn)
+        AddSlider(secRing, "Ring Thickness", "Adjust the cursor ring stroke thickness from 1 (finest) to 5 (boldest).", 1, 5, 1,
+            function(v) return string.format("%d / 5", v) end,
+            function() return EnsureDB().ringThickness or 3 end, function(v) EnsureDB().ringThickness = v end, IsRingOn)
         AddSlider(secRing, "Ring Radius", "Adjust the cursor ring radius in pixels (16 to 96 px).", 16, 96, 2,
             function(v) return string.format("%d px", v) end,
             function() return EnsureDB().ringRadius or 24 end, function(v) EnsureDB().ringRadius = v end, IsRingOn)
@@ -2463,23 +2624,98 @@ do
         local secCross = AddSection(3, "CHARACTER CROSSHAIR", "Screen-centre reference crosshair for melee range and positioning.")
         AddToggle(secCross, "Enable Character Crosshair", "Displays a screen-centre crosshair around your character (Off by default).",
             function() return EnsureDB().crosshairEnabled == true end, function(v) EnsureDB().crosshairEnabled = v end)
-        AddDropdown(secCross, "Crosshair Style", "Choose between 5 crosshair layouts.", 220, {
-            { value = "CLASSIC",    label = "Classic Crosshair" },
-            { value = "DOT",        label = "Precision Dot" },
-            { value = "CROSS_DOT",  label = "Crosshair + Dot" },
-            { value = "BRACKETS",   label = "Tactical Brackets" },
-            { value = "CIRCLE_DOT", label = "Circle + Dot" },
-        }, function() return EnsureDB().crosshairStyle or "CLASSIC" end, function(v) EnsureDB().crosshairStyle = v end, IsCrosshairOn)
-        AddSlider(secCross, "Crosshair Size", "Overall crosshair span in pixels (8 to 64 px).", 8, 64, 2,
+        do
+            local elemRow = CreateFrame("Frame", nil, secCross)
+            elemRow:SetHeight(76)
+            elemRow.visibleFn = IsCrosshairOn
+            local eDiv = elemRow:CreateTexture(nil, "ARTWORK")
+            eDiv:SetHeight(1)
+            eDiv:SetPoint("TOPLEFT", elemRow, "TOPLEFT", 12, 0)
+            eDiv:SetPoint("TOPRIGHT", elemRow, "TOPRIGHT", -12, 0)
+            eDiv:SetColorTexture(1, 1, 1, 0.06)
+            elemRow.div = eDiv
+
+            local eTitle = elemRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            SetSafeFont(eTitle, 12, "")
+            eTitle:SetPoint("TOPLEFT", elemRow, "TOPLEFT", 14, -9)
+            eTitle:SetTextColor(0.96, 0.98, 1.0, 1)
+            eTitle:SetText("Crosshair Elements")
+
+            local eDesc = elemRow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            SetSafeFont(eDesc, 10, "")
+            eDesc:SetPoint("LEFT", eTitle, "RIGHT", 10, 0)
+            eDesc:SetPoint("RIGHT", elemRow, "RIGHT", -14, 0)
+            eDesc:SetJustifyH("LEFT")
+            eDesc:SetWordWrap(false)
+            eDesc:SetTextColor(0.64, 0.70, 0.78, 1)
+            eDesc:SetText("Mix and match any combination of elements.")
+
+            local elemDefs = {
+                { key = "crosshairShowCross",    label = "Crosshair",  w = 92 },
+                { key = "crosshairShowBrackets", label = "Brackets",   w = 88 },
+                { key = "crosshairShowCircle",   label = "Circle",     w = 76 },
+                { key = "crosshairShowDot",      label = "Centre Dot", w = 96 },
+            }
+            local eBtns = {}
+            local ex = 14
+            for i, ed in ipairs(elemDefs) do
+                local eb = CreateFrame("Button", nil, elemRow, "BackdropTemplate")
+                eb:SetSize(ed.w, 26)
+                eb:SetPoint("TOPLEFT", elemRow, "TOPLEFT", ex, -36)
+                eb.lbl = eb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                SetSafeFont(eb.lbl, 11, "")
+                eb.lbl:SetPoint("CENTER")
+                eb.lbl:SetWordWrap(false)
+                eb.lbl:SetText(ed.label)
+                eb.ed = ed
+                eb:SetScript("OnClick", function()
+                    local db = EnsureDB()
+                    db[ed.key] = not (db[ed.key] == true)
+                    SyncAllEngines()
+                    DynamicCursor:RefreshWorkspaceUI()
+                end)
+                eBtns[i] = eb
+                ex = ex + ed.w + 6
+            end
+
+            function elemRow:RefreshValue()
+                local db = EnsureDB()
+                local ar, ag, ab = GetSuiteAccent()
+                local alphaPill = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
+                for _, eb in ipairs(eBtns) do
+                    local active = (db[eb.ed.key] == true)
+                    if active then
+                        SetBackdropSolid(eb, { ar * alphaPill, ag * alphaPill, ab * alphaPill, 0.98 }, { ar, ag, ab, 0.95 }, 1)
+                        eb.lbl:SetTextColor(1, 1, 1, 1)
+                    else
+                        SetBackdropSolid(eb, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+                        eb.lbl:SetTextColor(0.68, 0.74, 0.82, 1)
+                    end
+                end
+            end
+
+            secCross.rows[#secCross.rows + 1] = elemRow
+            refreshables[#refreshables + 1] = elemRow
+        end
+        AddSlider(secCross, "Crosshair / Bracket Span", "Overall crosshair or bracket span in pixels (8 to 64 px).", 8, 64, 2,
             function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().crosshairSize or 24 end, function(v) EnsureDB().crosshairSize = v end, IsCrosshairOn)
-        AddSlider(secCross, "Line Thickness", "Crosshair line stroke thickness (1 to 6 px).", 1, 6, 1,
+            function() return EnsureDB().crosshairSize or 24 end, function(v) EnsureDB().crosshairSize = v end, IsCrosshairLinesOn)
+        AddSlider(secCross, "Line Thickness", "Crosshair and bracket stroke thickness (1 to 6 px).", 1, 6, 1,
             function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().crosshairThickness or 2 end, function(v) EnsureDB().crosshairThickness = v end, IsCrosshairOn)
-        AddSlider(secCross, "Centre Gap", "Inner gap around the centre point (0 to 20 px).", 0, 20, 1,
+            function() return EnsureDB().crosshairThickness or 2 end, function(v) EnsureDB().crosshairThickness = v end, IsCrosshairLinesOn)
+        AddSlider(secCross, "Centre Gap", "Inner gap around the centre point for the 4-arm crosshair (0 to 20 px).", 0, 20, 1,
             function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().crosshairGap or 6 end, function(v) EnsureDB().crosshairGap = v end, IsCrosshairOn)
-        AddToggle(secCross, "High-Contrast Outline", "Adds a crisp dark 1px outline behind crosshair lines.",
+            function() return EnsureDB().crosshairGap or 6 end, function(v) EnsureDB().crosshairGap = v end, IsCrosshairCrossOn)
+        AddSlider(secCross, "Circle Radius", "Radius of the character crosshair circle in pixels (8 to 64 px).", 8, 64, 2,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().crosshairCircleRadius or 24 end, function(v) EnsureDB().crosshairCircleRadius = v end, IsCrosshairCircleOn)
+        AddSlider(secCross, "Circle Thickness", "Stroke thickness for the character crosshair circle (1 to 5).", 1, 5, 1,
+            function(v) return string.format("%d / 5", v) end,
+            function() return EnsureDB().crosshairCircleThickness or 2 end, function(v) EnsureDB().crosshairCircleThickness = v end, IsCrosshairCircleOn)
+        AddSlider(secCross, "Centre Dot Size", "Size of the character crosshair centre dot in pixels (2 to 8 px).", 2, 8, 1,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().crosshairDotSize or 4 end, function(v) EnsureDB().crosshairDotSize = v end, IsCrosshairDotOn)
+        AddToggle(secCross, "High-Contrast Outline", "Adds a crisp dark 1px outline behind active lines, brackets, and centre dot.",
             function() return EnsureDB().crosshairOutline ~= false end, function(v) EnsureDB().crosshairOutline = v end, IsCrosshairOn)
         AddSlider(secCross, "Horizontal Offset (X)", "Nudge crosshair left or right from screen centre (-100 to +100 px).", -100, 100, 2,
             function(v) return string.format("%d px", v) end,
@@ -2791,7 +3027,7 @@ DynamicCursor.CHANGELOG = {
     version = VERSION,
     date = "23/11/2026",
     entries = {
-        { type = "FEATURE", text = "[Unreleased] New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (23/11/2026): Added a 4-tab Obsidian workspace with compact modern presets, customisable Cursor Ring (5 procedural ring styles, fine X/Y offset, Centre Dot, OOC Idle Fade, Ground-Target AoE Highlight & +20% Size Boost, Obsidian Colour Picker), concentric Inner GCD Ring and Outer Cast/Channel/Empower Arc with gap/thickness controls and upgraded Mini Spell Icon (including Instant-Cast Flash), Character Crosshair, Find My Cursor (FPS-normalised Shake-to-Find with 3-tier Sensitivity, Ping After Mouse-Look, independent Locator Colour, Modifier Key Locator), 48-node Pooled Cursor Trail (0.00 ms idle CPU), Active Zones pills, Hardware Cursor Size CVar, and Smart Cursor Tooltips." },
+        { type = "FEATURE", text = "[Unreleased] New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (23/11/2026): Added a 4-tab Obsidian workspace with Suite-matched chevron dropdowns (screen-bottom flip & Escape dismissal), compact modern presets, customisable Cursor Ring (Solid Ring, Soft Glow, High-Contrast Dual across 5 procedural thickness levels, zero-artifact Soft Glow feathering, fine X/Y offset, Centre Dot, OOC Idle Fade, Ground-Target AoE Highlight & +20% Size Boost, Obsidian Colour Picker), concentric Inner GCD Ring and Outer Cast/Channel/Empower Arc with gap/thickness controls and upgraded Mini Spell Icon (including Instant-Cast Flash), modular Character Crosshair (mix-and-match Crosshair, Brackets, Circle & Centre Dot pills with per-element sizing), Find My Cursor (FPS-normalised Shake-to-Find with 3-tier Sensitivity, Ping After Mouse-Look, independent Locator Colour, Modifier Key Locator), 48-node Pooled Cursor Trail (0.00 ms idle CPU), Active Zones pills, Hardware Cursor Size CVar, and Smart Cursor Tooltips." },
     },
 }
 
