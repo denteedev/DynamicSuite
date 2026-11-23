@@ -1,4 +1,4 @@
--- DynamicCursor v2.8.1 (/dcur, /dynamiccursor)
+-- DynamicCursor v2.8.2 (/dcur, /dynamiccursor)
 -- Cursor Ring, Radial GCD & Cast/Channel/Empower Arc, Character Crosshair, Find My Cursor, Pooled Trail & Smart Tooltips.
 -- Retail 12.1.5+ (Interface 120105) | Zero-Taint, Secret-Value Safe, 0.00 ms Idle CPU.
 
@@ -7,7 +7,7 @@ local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addon
 local STANDALONE_NAME = "DynamicCursor"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.8.1"
+    local fb = fallback or "2.8.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -35,12 +35,12 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.2")
 
 local function ShouldYieldToOtherInstall(thisFolder, standaloneName, thisVersion, globalTbl)
     if thisFolder == standaloneName then
         if type(globalTbl) == "table" and globalTbl._loadedFromSuite == true then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or "2.8.1"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or "2.8.2"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -3605,10 +3605,7 @@ DynamicCursor.CHANGELOG = {
     version = VERSION,
     date = "24/11/2026",
     entries = {
-        { type = "UI",      text = "[Unreleased] 2-Level Section Containers, Individual Obsidian Cards & Plain-English Polish (24/11/2026): Enclosed every section across all 4 tabs inside its own bordered Section Container with a 2-line L-bracket header and individually bordered setting cards (matching DynamicMarker's Obsidian layout pixel-for-pixel with dynamic section resizing and instant scrollbar updates), and simplified remaining technical wording into plain Australian English." },
-        { type = "UI",      text = "[Unreleased] Collapsible Sub-Settings Drawers, Grouped Features, New Customisations & Standard Accent Chevrons (23/11/2026): Restored canonical collapsible Sub-Settings (N) drawers across all 4 tabs (24px full-width chevron toggle bar and nested sub-cards with 2px Suite Accent vertical left rail and 5x5px Suite Accent square pip); grouped related controls cleanly and added Centre Dot Colour Mode, Mouse-Look Ghost Opacity, Click-Pulse Scale & Colour Mode, Cast Interrupt Flash Colour, Mouse-Look Ping Duration, and Locator Highlight Scale; and standardised all dropdown trigger chevrons to 12x12 live Suite Accent." },
-        { type = "UI",      text = "[Unreleased] Ring Gap Defaults, Extra Ring Contrast, 3-Way Scrollbar & Smooth Chevrons (23/11/2026): Set default Inner GCD Ring Gap to 6 px and Outer Cast Arc Gap to 4 px (aligned across all 4 Quick Presets); added an Extra Ring Contrast toggle in Tab 1 that adds a crisp dark outline behind the main cursor ring, inner GCD ring, outer cast arc, and Character Crosshair circle for clear visibility over bright spell effects; upgraded the workspace scrollbar to the 4px 3-way Obsidian standard (mousewheel, draggable accent-highlighted thumb, and clickable track); and rebuilt the dropdown chevron icons with 4x supersampled anti-aliasing matched 1:1 to DynamicSuite." },
-        { type = "FEATURE", text = "[Unreleased] New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (23/11/2026): Added a 4-tab Obsidian workspace with Suite-matched chevron dropdowns (screen-bottom flip & Escape dismissal), compact modern presets, customisable Cursor Ring (Solid Ring, Soft Glow, High-Contrast Dual across 5 procedural thickness levels, zero-artifact Soft Glow feathering, fine X/Y offset, Centre Dot, OOC Idle Fade, Ground-Target AoE Highlight & +20% Size Boost, Obsidian Colour Picker), concentric Inner GCD Ring and Outer Cast/Channel/Empower Arc with gap/thickness controls and upgraded Mini Spell Icon (including Instant-Cast Flash), modular Character Crosshair (mix-and-match Crosshair, Brackets, Circle & Centre Dot pills with per-element sizing), Find My Cursor (FPS-normalised Shake-to-Find with 3-tier Sensitivity, Ping After Mouse-Look, independent Locator Colour, Modifier Key Locator), 48-node Pooled Cursor Trail (0.00 ms idle CPU), Active Zones pills, Hardware Cursor Size CVar, and Smart Cursor Tooltips." },
+        { type = "FEATURE", text = "Release v2.8.2 - New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (24/11/2026): Launched DynamicCursor with 4 Obsidian tabs built on enclosing Section Containers, individual setting cards, collapsible Sub-Settings (N) drawers (2px Suite Accent rail + 5x5px square pip), a 4px 3-way scrollbar, smooth 12x12 live Suite Accent dropdown chevrons, and 4 Quick Presets (Clean Raid, High-Visibility, Minimalist, Full Telemetry). Includes Main Cursor Ring (Solid Ring, Soft Glow, High-Contrast Dual across 5 thickness levels, Extra Ring Contrast dark outline behind all rings and crosshair circle, Centre Dot size & colour, Ground-Target AoE Highlight & +20% Size Boost, Mouse-Look ghost opacity, Click-Pulse scale & colour), Inner GCD Ring (6 px default gap), Outer Cast/Channel/Empower Arc (4 px default gap, Interrupt Flash Colour, Mini Spell Icon & Instant-Cast Flash), modular Character Crosshair, Find My Cursor (Shake-to-Find sensitivity, Ping After Mouse-Look duration, Modifier Key Locator, Locator Highlight Scale & colour), Pooled Cursor Trail, Active Zones, built-in mouse pointer size, and Smart Cursor Tooltips." },
     },
 }
 

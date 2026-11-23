@@ -8828,19 +8828,21 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.8.1"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.8.2"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
             key = "suite",
             tabLabel = "DynamicLoad",
             ver = DS_LIVE_VER_TAG,
-            date = "22/11/2026 (Retail 12.1.5)",
+            date = "24/11/2026 (Retail 12.1.5)",
             title = "DynamicSuite Hub & DynamicLoad " .. DS_LIVE_VER_TAG,
             subtitle = "Context-Aware Addon Manager, Suite Studio, Desktop Window Manager & Auto-Yield Engine (/dl, /ds)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "NEW",      title = "v2.8.2 Release (24/11/2026): New 13th Dual-Mode Module -- DynamicCursor (/dcur, /dynamiccursor)", desc = "Launched DynamicCursor with a 4-tab Obsidian workspace (enclosing Section Containers, individual setting cards, collapsible Sub-Settings drawers, 4px 3-way scrollbar, and 4 Quick Presets), customisable Main Cursor Ring with Extra Ring Contrast, concentric Inner GCD Ring (6 px) & Outer Cast/Channel/Empower Arc (4 px) with Mini Spell Icon, modular Character Crosshair, Find My Cursor locator, Pooled Cursor Trail, Active Zones, and Smart Cursor Tooltips." },
+                { badge = "UI",       title = "v2.8.2 Release (24/11/2026): Suite-Wide Standard 12x12 Accent Dropdown Chevrons, DynamicBags Auto-Unwrap & Granular EllesmereUI Conflict Detection", desc = "Regenerated crisp 4x-supersampled chevron icons and standardised all dropdown trigger chevrons across all 13 modules to 12x12 live Suite Accent; added opt-in Auto-Unwrap & Open Wrapped Items in DynamicBags Tab 3; and added profile-aware EllesmereUI sub-module conflict detection with /ds conflicts eui." },
                 { badge = "NEW",      title = "v2.8.1 Release (22/11/2026): Auto-Accept Role Check, Red Error Text & Sound Filter, and Granular Conflict Auto-Yield", desc = "Added opt-in Auto-Accept Role Check in DynamicGroup (Off by default, 0.45s out-of-combat delay, Shift to skip, never auto-accepts queue pops), opt-in Red Error Text & Sound Filter in DynamicPrep Tab 3 (Combat & Cooldown Spam, Movement & Mount Errors, and Mute Error Voice Lines with original CVar restore), and feature-level auto-yielding to EnhanceQoL, Leatrix Plus, ErrorFilter, and ErrorMonster (overridable in /ds conflicts)." },
                 { badge = "NEW",      title = "v2.8.1 Release (22/11/2026): Low Durability Alert Toast, Mage Food Restock & Role-Smart [DynamicDrink] (DynamicPrep)", desc = "Added Low Durability Alert Toasts with 1-click Repair Mount summoning outdoors or Open Gear indoors, Follower Dungeon Mage Food restock/leave and group Ask for Table toasts, and the [nocombat] Role-Smart [DynamicDrink] recovery macro." },
                 { badge = "NEW",      title = "v2.8.1 Release (22/11/2026): Raid Boss Binder Redesign, Multi-Source Boss Detection & Toast Silence (DynamicTalent)", desc = "Promoted All Raids to Row 1 with a full-width boss grid and Clear button, added multi-source boss detection (target, Action Target, mouseover, focus, boss1-5, nameplates, raid targets) with sticky boss caching and /dt why diagnostics, added Prep Bar and quick-switcher bind badges, and enabled Right-Click toast silencing." },
@@ -9056,16 +9058,13 @@ function addonTable.CreateMainConfigUI()
             key = "cursor",
             tabLabel = "DynamicCursor",
             ver = DS_LIVE_VER_TAG,
-            date = "23/11/2026 (Retail 12.1.5)",
+            date = "24/11/2026 (Retail 12.1.5)",
             title = "DynamicCursor " .. DS_LIVE_VER_TAG,
             subtitle = "Cursor Ring, Radial GCD & Cast Arc, Character Crosshair, Find My Cursor & Trail (/dcur)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga",
             openModule = "DynamicCursor",
             items = {
-                { badge = "UI",       title = "[Unreleased] 2-Level Section Containers, Individual Obsidian Cards & Plain-English Polish (24/11/2026)", desc = "Refactored all 4 DynamicCursor tabs into enclosing bordered Section Containers with individually bordered setting cards and collapsible Sub-Settings (N) drawers (matching DynamicMarker's Obsidian card hierarchy with dynamic resizing and instant scrollbar updates), and polished remaining technical descriptions into plain Australian English." },
-                { badge = "UI",       title = "[Unreleased] Collapsible Sub-Settings Drawers, Grouped Features, New Customisations & Standard Accent Chevrons (23/11/2026)", desc = "Restored canonical collapsible Sub-Settings (N) drawers across all 4 DynamicCursor tabs (24px chevron toggle bar and nested sub-cards with 2px Suite Accent left rail + 5x5px square pip), added Centre Dot Colour Mode, Mouse-Look Ghost Opacity, Click-Pulse Scale & Colour Mode, Interrupt Flash Colour, Mouse-Look Ping Duration, and Locator Highlight Scale, and standardised 12x12 live Suite Accent dropdown chevrons across all modules." },
-                { badge = "UI",       title = "[Unreleased] Ring Gap Defaults, Extra Ring Contrast, 3-Way Scrollbar & Smooth Chevrons (23/11/2026)", desc = "Set default Inner GCD Ring Gap to 6 px and Outer Cast Arc Gap to 4 px across defaults and Quick Presets; added Extra Ring Contrast in Tab 1 (dark outline behind the main ring, inner GCD ring, outer cast arc, and Character Crosshair circle); upgraded the scrollbar to the 4px 3-way Obsidian standard; and rebuilt dropdown chevron icons with 4x supersampled anti-aliasing matched 1:1 to DynamicSuite." },
-                { badge = "NEW",      title = "New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor)", desc = "Added a customisable Cursor Ring (5 clean-room procedural ring styles, radius, OOC/combat opacity, colour modes, Mouse-Look ghost ring, and click-pulse ripple), secret-safe native C++ Radial GCD and Cast/Channel/Empower arcs, Character Crosshair (5 styles with X/Y offset and Combat/Instance visibility), Find My Cursor (Shake-to-Find + Modifier Key Locator), pre-allocated 48-node Pooled Cursor Trail (0.00 ms idle CPU), Smart Cursor Tooltips, and 4 one-click presets (Clean Raid, High-Visibility, Minimalist, Full Telemetry)." },
+                { badge = "NEW",      title = "v2.8.2 Release (24/11/2026): DynamicCursor Launch, Extra Ring Contrast & 2-Level Obsidian Drawers", desc = "Launched DynamicSuite's 13th dual-mode module (/dcur, /dynamiccursor) across 4 tabs with enclosing Section Containers, individual Obsidian setting cards, collapsible Sub-Settings (N) drawers (2px Suite Accent rail + 5x5px square pip), 4px 3-way scrollbar, 12x12 live Suite Accent dropdown chevrons, and 4 Quick Presets. Includes Main Cursor Ring (Solid Ring, Soft Glow, High-Contrast Dual across 5 thickness levels, Extra Ring Contrast, Centre Dot size & colour, Ground-Target AoE Highlight & +20% Size Boost, Mouse-Look ghost opacity, Click-Pulse scale & colour), Inner GCD Ring (6 px default gap), Outer Cast/Channel/Empower Arc (4 px default gap, Interrupt Flash Colour, Mini Spell Icon & Instant-Cast Flash), modular Character Crosshair, Find My Cursor (Shake-to-Find, Ping After Mouse-Look duration, Modifier Locator, Locator Scale & Colour), Pooled Cursor Trail, Active Zones, built-in pointer size, and Smart Cursor Tooltips." },
             },
         },
         {

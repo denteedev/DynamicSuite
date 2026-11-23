@@ -1,6 +1,6 @@
 # DynamicSuite -- 13-Module QoL, Utility & Performance Hub
 
-**Version:** v2.8.1 (22/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Version:** v2.8.2 (24/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, cursor overlays, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for World of Warcraft Retail. All 13 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
@@ -20,7 +20,7 @@
 * **Shared Alert Toast HUD:** Centralised Toast Scale, Opacity, Border Style, Auto-Fade Duration, and Alert Sound inside Suite Studio and DynamicLoad, shared cleanly across Zone Load Alerts, DynamicTalent Reminders, DynamicGroup Teleport Toasts, and DynamicChat Mention Alerts with clean vertical stacking and Right-Click dismissal.
 * **Global Smart Search (`/ds search <query>`):** Type what you are looking for in plain English (like "auto repair", "flare", "mail", "quest", or "whisper") and jump straight to the exact setting with a visual highlight.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, resize (60%-150%), and align all 6 suite HUDs (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
-* **12-Step Guided Setup (`/ds setup`, `/ds conflicts`):** Walks you through resolving addon conflicts and configuring each module in minutes.
+* **13-Step Guided Setup (`/ds setup`, `/ds conflicts`):** Walks you through resolving addon conflicts and configuring each module in minutes.
 * **Theme & Font Studio (`/ds theme`, `/ds studio`, `/ds windows`):** Customise your UI with 17 accent colours (including all 13 WoW Class Colours and a custom colour picker), 4 dark surface themes, 21+ built-in fonts, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI with searchable grouped dropdowns, Shared Alert Toast controls, Blizzard Desktop Window Manager (`Desktop Windows & Menus`), and adjustable text scaling.
 
 ---
@@ -33,7 +33,7 @@
 | **DynamicPrep** | `/dprep`, `/dp` | Top stat/durability/FPS bar, Midnight Omni Folio tracker, clickable Raid Buff & Consumable reminders, `[DynamicHeal]` & Role-Smart `[DynamicDrink]` macros, Mage Food restock & Low Durability alert toasts, Red Error Text & Sound Filter, and quest/gossip QoL |
 | **DynamicTalent** | `/dt`, `/dynamictalent` | Unlimited per-spec talent loadout library, PlayerSpellsFrame dock, Raid/M+/PvP/Zone talent binds, custom group order, Prep Bar capsule hook, and Swap Reminder Toasts |
 | **DynamicMarker** | `/dm`, `/fm` | Instant focus & raid target marking, optional world flare cycling & clear hotkeys (unbound by default), floating Focus & Flare bars, and smart interrupt macro |
-| **DynamicCursor** | `/dcur`, `/dynamiccursor` | Customisable Cursor Ring (5 styles + Mouse-Look ghost), secret-safe Radial GCD & Cast/Channel/Empower arcs, Character Crosshair, Find My Cursor locator, zero-idle-CPU Pooled Trail, and Smart Cursor Tooltips |
+| **DynamicCursor** | `/dcur`, `/dynamiccursor` | Customisable Cursor Ring (3 styles across 5 thickness levels, Extra Ring Contrast, Centre Dot, Ground-Target AoE Highlight, Mouse-Look ghost & Click-Pulse), concentric Inner GCD Ring & Outer Cast/Channel/Empower Arc with Mini Spell Icon, modular Character Crosshair, Find My Cursor locator, Pooled Cursor Trail, and Smart Cursor Tooltips |
 | **DynamicZoom** | `/dz` | Unlocks 39-yard max camera zoom, speeds up scroll zooming, and fades trees/pillars instead of snapping your camera |
 | **DynamicFPS** | `/dfps` | Switches graphics settings automatically per zone, protects combat FPS, and tunes SpellQueueWindow from live ping + haste |
 | **DynamicGroup** | `/dgroup`, `/dg` | Adds region tags, M+ scores, and Lust/B-Res icons to Premade Groups, Season 2 portal deck, Dungeon Teleport Toasts, party audit, opt-in Auto-Accept Role Check, and auto-keystone |
@@ -53,7 +53,7 @@
 | `/ds hud`, `/ds edit`, `/ds move` | Toggle HUD Edit Mode across all movable suite bars |
 | `/ds resethud` | Reset all suite HUD bars to safe screen-clamped default positions |
 | `/ds search <query>` | Open Global Smart Search with your query pre-filled |
-| `/ds setup` or `/ds guided` | Open the 12-Step Guided Setup Wizard |
+| `/ds setup` or `/ds guided` | Open the 13-Step Guided Setup Wizard |
 | `/ds conflicts` | Check for conflicting addons and print a summary in chat |
 | `/ds theme` or `/ds studio` | Open Suite Studio (`Theme & Typography` and `Desktop Windows & Menus`) |
 | `/ds windows` or `/ds win` | Open Suite Studio directly to the Blizzard Desktop Window Manager |
@@ -89,4 +89,4 @@
 
 ## License & Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for v2.0.0+ releases and [docs/CHANGELOG_ARCHIVE.md](docs/CHANGELOG_ARCHIVE.md) for pre-v2.0.0 history across all 12 modules.
+See [CHANGELOG.md](CHANGELOG.md) for v2.0.0+ releases and [docs/CHANGELOG_ARCHIVE.md](docs/CHANGELOG_ARCHIVE.md) for pre-v2.0.0 history across all 13 modules.

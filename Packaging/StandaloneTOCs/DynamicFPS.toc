@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFFPS|r
 ## Notes: Zero-Reload Zone Graphics Guard, Combat FPS Governor, SpellQueue Tuner & UI Declutter.
 ## Author: Dentee-Frostmourne
-## Version: 2.8.1
+## Version: 2.8.2
 ## SavedVariables: DynamicFPSDB
 ## OptionalDeps: DynamicSuite
 ## IconTexture: Interface\AddOns\DynamicFPS\icon.tga

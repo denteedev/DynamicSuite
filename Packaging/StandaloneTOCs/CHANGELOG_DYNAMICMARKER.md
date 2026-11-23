@@ -1,13 +1,17 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.8.1 (22/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.8.2 (24/11/2026 - Retail 12.1.5 / Interface 120105)*
 
 ---
 
 ## [Unreleased]
 
+---
+
+## DynamicMarker v2.8.2 (24/11/2026)
+
 ### Improved
-* **Standardised Dropdown Chevrons:** Updated dropdown trigger chevrons (and the standalone HUD Edit selector) to `12x12` px with pixel-snap disabled, live Suite Accent tinting (`0.90` closed, `1.0` hover/open), and 4x-supersampled anti-aliased chevron icons.
-* **EllesmereUI Quickdraw Conflict Parity:** Added `EllesmereUIQuickdraw` / `EllesmereUI_Quickdraw` to standalone DynamicMarker's conflict scanner for 100% parity.
+* **Standardised `12x12` Live Accent Dropdown Chevrons:** Updated dropdown trigger chevrons (and the standalone HUD Edit selector) to `12x12` px with pixel-snap disabled, live Suite Accent tinting (`0.90` closed, `1.0` hover & open), and 4x-supersampled anti-aliased chevron icons.
+* **EllesmereUI Quickdraw Conflict Parity:** Added `EllesmereUIQuickdraw` / `EllesmereUI_Quickdraw` to standalone DynamicMarker's conflict scanner.
 
 ---
 
