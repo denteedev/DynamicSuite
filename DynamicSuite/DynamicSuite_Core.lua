@@ -683,7 +683,7 @@ local CONTEXT_LABELS = {
 addonTable.CONTEXT_LABELS = CONTEXT_LABELS
 
 -- Default Account-Wide Suite Settings (DynamicSuiteDB.global)
-local DEFAULT_DESKTOP_WINDOWS = {
+addonTable.DEFAULT_DESKTOP_WINDOWS = {
     masterEnabled    = true,
     enabled          = true,
     sideBySide       = true,
@@ -694,7 +694,6 @@ local DEFAULT_DESKTOP_WINDOWS = {
     scales           = {},
     migratedFromPrep = false,
 }
-addonTable.DEFAULT_DESKTOP_WINDOWS = DEFAULT_DESKTOP_WINDOWS
 
 local DEFAULT_SUITE_GLOBAL = {
     windowWidth      = 1040,
@@ -730,7 +729,7 @@ local DEFAULT_SUITE_GLOBAL = {
     showGameMenuSuiteBtn     = true,
     showGameMenuHudBtn       = true,
     replaceBlizzardAddonList = true,
-    desktopWindows           = CopyTable(DEFAULT_DESKTOP_WINDOWS),
+    desktopWindows           = CopyTable(addonTable.DEFAULT_DESKTOP_WINDOWS),
     v120_windowWidth1040 = false,
 }
 addonTable.DEFAULT_SUITE_GLOBAL = DEFAULT_SUITE_GLOBAL
@@ -1413,7 +1412,7 @@ local function GetDesktopWindowsDB()
         rootGlobal = EnsureSuiteGlobal()
     end
     if type(rootGlobal.desktopWindows) ~= "table" then
-        rootGlobal.desktopWindows = CopyTable(DEFAULT_DESKTOP_WINDOWS)
+        rootGlobal.desktopWindows = CopyTable(addonTable.DEFAULT_DESKTOP_WINDOWS)
     end
     local db = rootGlobal.desktopWindows
     MigrateDesktopWindowsFromPrep(db, false)
@@ -1571,19 +1570,11 @@ end
 addonTable.SetSuiteModuleEnabled = SetSuiteModuleEnabled
 DynamicSuite.SetSuiteModuleEnabled = SetSuiteModuleEnabled
 
-local ELLESMERE_PROTECTED_LIST = {
-    "EllesmereUI",
-    "EllesmereUIChat",
-    "EllesmereUI_Chat",
-    "EllesmereUIGroupFinder",
-}
-
-local function RecoverEllesmereUIState()
+addonTable.RecoverEllesmereUIState = function()
     -- Intentionally no-op in v1.6.1+: Never/FROZEN user choices are strictly respected
     -- across all addon families (including EllesmereUI and its sub-addons).
 end
-addonTable.RecoverEllesmereUIState = RecoverEllesmereUIState
-DynamicSuite.RecoverEllesmereUIState = RecoverEllesmereUIState
+DynamicSuite.RecoverEllesmereUIState = addonTable.RecoverEllesmereUIState
 
 local standaloneMarkerWasEnabledAtBoot = (_G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot == true)
 local shownMarkerConflictModalThisSession = false
@@ -2441,7 +2432,7 @@ local function RestoreBlizzardDefaults(disableSuiteAddons)
     if addonTable.DesktopWindows and type(addonTable.DesktopWindows.ResetAllWindows) == "function" then
         pcall(addonTable.DesktopWindows.ResetAllWindows, addonTable.DesktopWindows, true)
     end
-    g.desktopWindows = CopyTable(DEFAULT_DESKTOP_WINDOWS)
+    g.desktopWindows = CopyTable(addonTable.DEFAULT_DESKTOP_WINDOWS)
     g.desktopWindows.migratedFromPrep = true
     if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" then
         _G.DynamicSuiteDB.global.desktopWindows = g.desktopWindows
@@ -2555,7 +2546,7 @@ end
 addonTable.IsExternalAddonFrozen = IsExternalAddonFrozen
 DynamicSuite.IsExternalAddonFrozen = IsExternalAddonFrozen
 
-function addonTable.IsEllesmereSubAddonInstalled(folderA, folderB)
+local function IsEllesmereSubAddonInstalled(folderA, folderB)
     if C_AddOns and type(C_AddOns.GetAddOnInfo) == "function" then
         for _, f in ipairs({ folderA, folderB }) do
             if type(f) == "string" and f ~= "" then
@@ -2568,8 +2559,10 @@ function addonTable.IsEllesmereSubAddonInstalled(folderA, folderB)
     end
     return false
 end
+addonTable.IsEllesmereSubAddonInstalled = IsEllesmereSubAddonInstalled
+DynamicSuite.IsEllesmereSubAddonInstalled = IsEllesmereSubAddonInstalled
 
-function addonTable.ResolveEllesmereProfile(subFolder)
+local function ResolveEllesmereProfile(subFolder)
     local edb = _G.EllesmereUIDB
     if type(edb) ~= "table" then
         local legacy = (type(subFolder) == "string" and type(_G[subFolder .. "DB"]) == "table") and _G[subFolder .. "DB"] or nil
@@ -2604,7 +2597,8 @@ function addonTable.ResolveEllesmereProfile(subFolder)
     end
     return edb, subProf, rootProf, profileName
 end
-DynamicSuite.ResolveEllesmereProfile = addonTable.ResolveEllesmereProfile
+addonTable.ResolveEllesmereProfile = ResolveEllesmereProfile
+DynamicSuite.ResolveEllesmereProfile = ResolveEllesmereProfile
 
 -- Smart Sub-Module Detection for ElvUI, Leatrix_Plus, and EllesmereUI (wrapped in pcall for zero Lua errors)
 local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
@@ -4612,7 +4606,7 @@ function addonTable.ResetDynamicSuite()
     _G.DynamicSuiteDB = {
         global = CopyTable(DEFAULT_SUITE_GLOBAL)
     }
-    _G.DynamicSuiteDB.global.desktopWindows = CopyTable(DEFAULT_DESKTOP_WINDOWS)
+    _G.DynamicSuiteDB.global.desktopWindows = CopyTable(addonTable.DEFAULT_DESKTOP_WINDOWS)
     _G.DynamicSuiteDB.global.desktopWindows.migratedFromPrep = true
     if type(_G.DynamicPrepDB) == "table" then
         _G.DynamicPrepDB.windowPositions = {}
@@ -10485,7 +10479,8 @@ local function HandleSuiteSlashCommandInner(msg)
     cmd = (cmd or ""):lower()
 
     if cmd == "conflicts" or cmd == "conflict" then
-        if (rest or ""):lower():match("^(%S*)") == "ellesmere" or (rest or ""):lower():match("^(%S*)") == "eui" then
+        local sub = (arg or ""):lower():match("^(%S*)") or ""
+        if sub == "ellesmere" or sub == "eui" then
             if addonTable.PrintEllesmereConflictBreakdown then
                 addonTable.PrintEllesmereConflictBreakdown()
             end

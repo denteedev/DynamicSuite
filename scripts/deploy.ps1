@@ -81,12 +81,32 @@ foreach ($f in $luaFiles) {
 }
 Write-Host "[LUAC OK] Validated $($luaFiles.Count) Lua file(s)" -ForegroundColor Green
 
-# 2b. Bytecode GETGLOBAL undefined-helper guard (catches nil-global calls to module-local helpers)
+# 2b. Bytecode GETGLOBAL undefined-helper guard (catches nil-global calls to module-local & addonTable/DynamicSuite helpers)
 $forbiddenGlobalHelpers = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
     "ApplyFont", "IsDisabledInSuite", "IsModuleDisabledInSuite", "SetSafeFont",
     "CreateText", "GetAccentHex", "GetActiveAccentRGB", "PrintMsg", "EnsureDB",
-    "SafeRegisterEvent", "LayoutPageCards", "_IsSecret", "IsSecretValue"
+    "SafeRegisterEvent", "LayoutPageCards", "_IsSecret", "IsSecretValue",
+    "ResolveEllesmereProfile", "IsEllesmereSubAddonInstalled", "PrintEllesmereConflictBreakdown", "rest"
 ))
+$wowGlobalAllow = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
+    "GetTime", "CreateFrame", "ReloadUI", "CopyTable", "GetRealmName", "UnitName",
+    "UnitClass", "InCombatLockdown", "IsShiftKeyDown", "PlaySound", "PlaySoundFile"
+))
+foreach ($f in $luaFiles) {
+    $src = [System.IO.File]::ReadAllText($f.FullName)
+    foreach ($m in [regex]::Matches($src, '(?m)^\s*function\s+(?:addonTable|DynamicSuite)[.:]([A-Za-z_][A-Za-z0-9_]*)\s*\(')) {
+        $hName = $m.Groups[1].Value
+        if ($hName.Length -ge 4 -and -not $wowGlobalAllow.Contains($hName)) {
+            [void]$forbiddenGlobalHelpers.Add($hName)
+        }
+    }
+    foreach ($m in [regex]::Matches($src, '(?m)^\s*(?:addonTable|DynamicSuite)\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*function\b')) {
+        $hName = $m.Groups[1].Value
+        if ($hName.Length -ge 4 -and -not $wowGlobalAllow.Contains($hName)) {
+            [void]$forbiddenGlobalHelpers.Add($hName)
+        }
+    }
+}
 $nilGlobalHits = @()
 foreach ($f in $luaFiles) {
     $listing = & $luacExe -l -p $f.FullName
@@ -99,9 +119,9 @@ foreach ($f in $luaFiles) {
     }
 }
 if ($nilGlobalHits.Count -gt 0) {
-    throw ("Undefined local helper GETGLOBAL check failed:`n - " + ($nilGlobalHits -join "`n - "))
+    throw ("Undefined local/suite helper GETGLOBAL check failed:`n - " + ($nilGlobalHits -join "`n - "))
 }
-Write-Host "[GLOBALS OK] Verified 0 undefined module-local helper calls across $($luaFiles.Count) Lua file(s)" -ForegroundColor Green
+Write-Host "[GLOBALS OK] Verified 0 undefined helper calls across $($luaFiles.Count) Lua file(s) ($($forbiddenGlobalHelpers.Count) guarded symbols)" -ForegroundColor Green
 
 # 3. Mirror CHANGELOG.md and verify Pure ASCII & No-BOM
 $changelogPath = Join-Path $RepoRoot "CHANGELOG.md"
