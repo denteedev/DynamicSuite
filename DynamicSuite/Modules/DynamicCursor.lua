@@ -1532,9 +1532,16 @@ do
         page:SetHeight(math.max(100, math.abs(y) + 12))
     end
 
-    local function RenderCursorEmbedded(parent)
+    local function RenderCursorEmbedded(a1, a2)
+        local parent = nil
+        if type(a2) == "table" and type(a2.GetObjectType) == "function" then
+            parent = a2
+        elseif type(a1) == "table" and type(a1.GetObjectType) == "function" then
+            parent = a1
+        end
         if not parent then return nil end
         if parent.DynamicCursorContainer then
+            parent.DynamicCursorContainer:Show()
             DynamicCursor.embeddedRoot = parent.DynamicCursorContainer
             DynamicCursor:RefreshWorkspaceUI()
             return parent.DynamicCursorContainer
@@ -1542,6 +1549,7 @@ do
 
         local root = CreateFrame("Frame", nil, parent)
         root:SetAllPoints(parent)
+        root:Show()
         root:SetScript("OnHide", CloseCursorPopups)
         parent.DynamicCursorContainer = root
         DynamicCursor.embeddedRoot = root
@@ -1618,15 +1626,21 @@ do
             end)
             tabBtns[i] = tb
         end
-        tabBar:SetScript("OnSizeChanged", function(selfBar)
-            local w = math.max(300, (selfBar:GetWidth() or 600) - 8)
+        local function ReflowTabBar()
+            local rawW = (tabBar and tabBar.GetWidth and tabBar:GetWidth()) or 0
+            if rawW < 100 then
+                rawW = ((parent and parent.GetWidth and parent:GetWidth()) or 760) - 30
+            end
+            local w = math.max(300, rawW - 8)
             local bw = math.floor((w - 8) / 3)
             for i, tb in ipairs(tabBtns) do
                 tb:ClearAllPoints()
                 tb:SetWidth(i == 3 and (w - (bw + 4) * 2) or bw)
-                tb:SetPoint("LEFT", selfBar, "LEFT", 4 + (i - 1) * (bw + 4), 0)
+                tb:SetPoint("LEFT", tabBar, "LEFT", 4 + (i - 1) * (bw + 4), 0)
             end
-        end)
+        end
+        tabBar:SetScript("OnSizeChanged", ReflowTabBar)
+        ReflowTabBar()
 
         -- Scrollable Content + 4px 3-Way Scrollbar
         local sf = CreateFrame("ScrollFrame", nil, root)
@@ -1915,6 +1929,12 @@ do
             local ar, ag, ab = GetSuiteAccent()
             local alphaPill = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
 
+            ReflowTabBar()
+            local sfW = (sf and sf.GetWidth and sf:GetWidth()) or 0
+            if sfW > 40 then
+                content:SetWidth(sfW)
+            end
+
             statusFs:SetText(string.format("|cFF%sDynamicCursor|r  |cFF94A3B8%s|r", GetAccentHex(), GetStatusText()))
             for _, pb in ipairs(presetBtns) do
                 SetBackdropSolid(pb, { 0.078, 0.090, 0.122, 0.96 }, { ar, ag, ab, 0.70 }, 1)
@@ -1950,6 +1970,11 @@ do
             UpdateThumb()
         end
 
+        root:SetScript("OnShow", function()
+            ReflowTabBar()
+            DynamicCursor:RefreshWorkspaceUI()
+        end)
+
         DynamicCursor:RefreshWorkspaceUI()
         return root
     end
@@ -1960,8 +1985,8 @@ do
             PrintMsg("Cannot open the settings window during combat.")
             return
         end
-        if _G.DynamicSuite and _G.DynamicSuite._isHubLoaded and type(_G.DynamicSuite.OpenModule) == "function" then
-            _G.DynamicSuite:OpenModule("DynamicCursor")
+        if _G.DynamicSuite and type(_G.DynamicSuite.OpenModule) == "function" and not IsModuleDisabledInSuite("DynamicCursor") then
+            _G.DynamicSuite:OpenModule("cursor")
             return
         end
         if not DynamicCursor.standaloneFrame then
@@ -2042,9 +2067,9 @@ if _G.DynamicSuite then
         icon = ICON_MODULE,
         subtitle = "Cursor Ring, Crosshair & Trail",
         desc = "Customisable cursor ring with radial GCD and cast/channel/empower arcs, character crosshair, Find My Cursor locator, pooled cursor trail, and smart cursor tooltips.",
-        Render = function(a1, a2) return DynamicCursor.RenderEmbedded(a2 or a1) end,
-        RenderEmbedded = function(a1, a2) return DynamicCursor.RenderEmbedded(a2 or a1) end,
-        BuildWorkspace = function(a1, a2) return DynamicCursor.RenderEmbedded(a2 or a1) end,
+        Render = function(a1, a2) return DynamicCursor.RenderEmbedded(a1, a2) end,
+        RenderEmbedded = function(a1, a2) return DynamicCursor.RenderEmbedded(a1, a2) end,
+        BuildWorkspace = function(a1, a2) return DynamicCursor.RenderEmbedded(a1, a2) end,
         ApplyTheme = function() if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI() end end,
         ApplyThemeToUI = function() if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI() end end,
         ResetModuleDefaults = ResetCursorModuleDefaults,
@@ -2062,14 +2087,26 @@ if _G.DynamicSuite then
         end,
     }
     desc.SelectTab = desc.SelectSubTab
+
+    -- Mirror self-safe wrapper methods onto DynamicCursor directly so both direct and descriptor calls work identically
+    DynamicCursor.Render = desc.Render
+    DynamicCursor.BuildWorkspace = desc.BuildWorkspace
+    DynamicCursor.ApplyTheme = desc.ApplyTheme
+    DynamicCursor.ApplyThemeToUI = desc.ApplyThemeToUI
+    DynamicCursor.GetStatusText = desc.GetStatusText
+    DynamicCursor.OnEnableInSuite = desc.OnEnableInSuite
+    DynamicCursor.OnDisableInSuite = desc.OnDisableInSuite
+    DynamicCursor.Reset = desc.Reset
+    DynamicCursor.ResetDefaults = desc.ResetDefaults
+    DynamicCursor.ResetModuleDefaults = desc.ResetModuleDefaults
     DynamicCursor.SelectSubTab = desc.SelectSubTab
     DynamicCursor.SelectTab = desc.SelectSubTab
 
+    if type(_G.DynamicSuite.RegisterModule) == "function" then
+        pcall(_G.DynamicSuite.RegisterModule, _G.DynamicSuite, "cursor", desc, "/dcur", desc.desc)
+    end
     _G.DynamicSuite.modules["cursor"] = desc
     _G.DynamicSuite.modules["DynamicCursor"] = desc
-    if type(_G.DynamicSuite.RegisterModule) == "function" then
-        pcall(_G.DynamicSuite.RegisterModule, _G.DynamicSuite, "cursor", DynamicCursor, "/dcur", desc.desc)
-    end
 end
 
 SLASH_DYNAMICCURSOR1 = "/dcur"
