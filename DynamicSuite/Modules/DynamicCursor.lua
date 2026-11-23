@@ -192,18 +192,97 @@ local function ParseHexRGB(hexStr)
     return r, g, b
 end
 
-local function ResolveColorMode(mode, customHex, combatShift)
+local function RGBToHex(r, g, b)
+    local cr = math.max(0, math.min(255, math.floor((tonumber(r) or 0) * 255 + 0.5)))
+    local cg = math.max(0, math.min(255, math.floor((tonumber(g) or 0) * 255 + 0.5)))
+    local cb = math.max(0, math.min(255, math.floor((tonumber(b) or 0) * 255 + 0.5)))
+    return string.format("%02X%02X%02X", cr, cg, cb)
+end
+
+local function ResolveColorMode(mode, customHex, combatShift, matchR, matchG, matchB)
     if combatShift and InCombatLockdown and InCombatLockdown() then
         return 0.980, 0.450, 0.220
     end
-    if mode == "CLASS" then
+    if mode == "MATCH_RING" and type(matchR) == "number" then
+        return matchR, matchG, matchB
+    elseif mode == "CLASS" then
         return GetClassColorRGB()
     elseif mode == "HIGH_VIS_GREEN" then
         return 0.133, 0.920, 0.369
+    elseif mode == "BRIGHT_GOLD" then
+        return 1.000, 0.820, 0.160
     elseif mode == "CUSTOM" then
         return ParseHexRGB(customHex)
     end
     return GetSuiteAccent()
+end
+
+local function OpenCursorColorPicker(anchorFrame, titleText, initialHex, onLiveChange)
+    local r, g, b = ParseHexRGB(initialHex)
+    local openObsidian = nil
+    if _G.DynamicSuite then
+        if type(_G.DynamicSuite.OpenColorPicker) == "function" then
+            openObsidian = _G.DynamicSuite.OpenColorPicker
+        elseif _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.OpenColorPicker) == "function" then
+            openObsidian = _G.DynamicSuite.UI.OpenColorPicker
+        elseif _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.OpenDSColorPicker) == "function" then
+            openObsidian = _G.DynamicSuite.UI.OpenDSColorPicker
+        end
+    end
+    if openObsidian then
+        openObsidian(anchorFrame, titleText or "Custom Colour", { r = r, g = g, b = b, a = 1 }, false, function(nr, ng, nb)
+            if type(onLiveChange) == "function" then
+                onLiveChange(RGBToHex(nr, ng, nb))
+            end
+        end)
+        return
+    end
+    if _G.ColorPickerFrame and type(_G.ColorPickerFrame.SetupColorPickerAndShow) == "function" then
+        _G.ColorPickerFrame:SetupColorPickerAndShow({
+            r = r, g = g, b = b,
+            hasOpacity = false,
+            swatchFunc = function()
+                local nr, ng, nb = _G.ColorPickerFrame:GetColorRGB()
+                if type(onLiveChange) == "function" then
+                    onLiveChange(RGBToHex(nr, ng, nb))
+                end
+            end,
+            cancelFunc = function()
+                if type(onLiveChange) == "function" then
+                    onLiveChange(RGBToHex(r, g, b))
+                end
+            end,
+        })
+    end
+end
+
+local function GetNativeCursorSize()
+    local raw = nil
+    if _G.C_CVar and type(_G.C_CVar.GetCVar) == "function" then
+        local ok, v = pcall(_G.C_CVar.GetCVar, "cursorSizePreferred")
+        if ok and not _IsSecret(v) then raw = v end
+    elseif type(_G.GetCVar) == "function" then
+        local ok, v = pcall(_G.GetCVar, "cursorSizePreferred")
+        if ok and not _IsSecret(v) then raw = v end
+    end
+    local n = tonumber(raw)
+    if n == 0 or n == 1 or n == 2 or n == 3 or n == 4 then
+        return tostring(n)
+    end
+    return "-1"
+end
+
+local function SetNativeCursorSize(val)
+    if InCombatLockdown and InCombatLockdown() then
+        PrintMsg("Cannot change Hardware Cursor Size during combat.")
+        return
+    end
+    local sVal = tostring(val or "-1")
+    if _G.C_CVar and type(_G.C_CVar.SetCVar) == "function" then
+        pcall(_G.C_CVar.SetCVar, "cursorSizePreferred", sVal)
+    elseif type(_G.SetCVar) == "function" then
+        pcall(_G.SetCVar, "cursorSizePreferred", sVal)
+    end
 end
 
 -- ============================================================================
@@ -216,6 +295,10 @@ local DEFAULTS = {
     ringEnabled = false,
     ringStyle = "CRISP",            -- "CRISP" | "THIN" | "THICK" | "GLOW" | "DUAL"
     ringRadius = 40,                -- 16..96
+    ringOffsetX = 0,                -- -16..16
+    ringOffsetY = 0,                -- -16..16
+    ringCenterDot = false,
+    ringCenterDotSize = 4,          -- 2..8
     ringOpacityOOC = 0.55,          -- 0.05..1.00
     ringOpacityCombat = 0.95,       -- 0.05..1.00
     ringColorMode = "ACCENT",       -- "ACCENT" | "CLASS" | "HIGH_VIS_GREEN" | "CUSTOM"
@@ -224,9 +307,18 @@ local DEFAULTS = {
     ringStrata = "TOOLTIP",         -- "HIGH" | "DIALOG" | "TOOLTIP"
     ringKeepMouseLook = true,
     ringClickPulse = false,
+    groundTargetHighlight = true,
+    groundTargetColorMode = "HIGH_VIS_GREEN", -- "HIGH_VIS_GREEN" | "BRIGHT_GOLD" | "CUSTOM"
+    groundTargetCustomHex = "22EB5E",
 
     gcdEnabled = true,
+    gcdColorMode = "MATCH_RING",    -- "MATCH_RING" | "ACCENT" | "CLASS" | "CUSTOM"
+    gcdCustomHex = "38BDF8",
+    gcdOpacity = 0.85,              -- 0.10..1.00
     castArcEnabled = true,
+    castColorMode = "MATCH_RING",   -- "MATCH_RING" | "ACCENT" | "CLASS" | "CUSTOM"
+    castCustomHex = "F59E0B",
+    castOpacity = 0.92,             -- 0.10..1.00
     castShowIcon = false,
 
     showOpenWorld = true,
@@ -313,7 +405,7 @@ local SyncAllEngines
 
 do
     local GCD_SPELL_ID = 61304
-    local ringRoot, ringTex, ghostTex, pulseTex
+    local ringRoot, ringTex, ghostTex, pulseTex, ringDotBg, ringDotTex
     local gcdCooldown, castCooldown, castIconTex
     local locatorRoot, locatorPingTex, locatorSpotTex, locatorCrossH, locatorCrossV
     local crosshairRoot
@@ -329,6 +421,7 @@ do
 
     local activeUpdateFrame = CreateFrame("Frame")
     local isMouseLooking = false
+    local isGroundTargeting = false
     local lastCX, lastCY = 0, 0
     local lastVX, lastVY = 0, 0
     local shakeReversals = 0
@@ -418,6 +511,17 @@ do
         pulseTex = ringRoot:CreateTexture(nil, "OVERLAY")
         pulseTex:SetPoint("CENTER")
         pulseTex:Hide()
+
+        ringDotBg = ringRoot:CreateTexture(nil, "ARTWORK", nil, 6)
+        ringDotBg:SetTexture(DOT_TEX)
+        ringDotBg:SetVertexColor(0, 0, 0, 0.95)
+        ringDotBg:SetPoint("CENTER")
+        ringDotBg:Hide()
+
+        ringDotTex = ringRoot:CreateTexture(nil, "OVERLAY", nil, 1)
+        ringDotTex:SetTexture(DOT_TEX)
+        ringDotTex:SetPoint("CENTER")
+        ringDotTex:Hide()
 
         gcdCooldown = CreateFrame("Cooldown", nil, ringRoot, "CooldownFrameTemplate")
         gcdCooldown:SetAllPoints()
@@ -641,29 +745,53 @@ do
         ghostTex:SetTexture(texPath)
         pulseTex:SetTexture(RING_TEXTURES.THIN)
 
-        local r, g, b = ResolveColorMode(db.ringColorMode or "ACCENT", db.ringCustomHex, db.ringCombatShift)
+        local baseR, baseG, baseB = ResolveColorMode(db.ringColorMode or "ACCENT", db.ringCustomHex, db.ringCombatShift)
+        local r, g, b = baseR, baseG, baseB
+        local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+        local alpha = inCombat and (tonumber(db.ringOpacityCombat) or 0.95) or (tonumber(db.ringOpacityOOC) or 0.55)
+
+        if db.groundTargetHighlight ~= false and isGroundTargeting then
+            r, g, b = ResolveColorMode(db.groundTargetColorMode or "HIGH_VIS_GREEN", db.groundTargetCustomHex, false)
+            alpha = 1.0
+        end
+
         ringTex:SetVertexColor(r, g, b, 1)
         ghostTex:SetVertexColor(r, g, b, 0.35)
         pulseTex:SetVertexColor(r, g, b, 0.90)
-
-        local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
-        local alpha = inCombat and (tonumber(db.ringOpacityCombat) or 0.95) or (tonumber(db.ringOpacityOOC) or 0.55)
         ringRoot:SetAlpha(alpha)
 
+        if ringDotTex and ringDotBg then
+            if db.ringCenterDot == true then
+                local dotSz = math.max(2, math.min(8, tonumber(db.ringCenterDotSize) or 4))
+                ringDotTex:SetSize(dotSz, dotSz)
+                ringDotTex:SetVertexColor(r, g, b, 1)
+                ringDotTex:Show()
+                ringDotBg:SetSize(dotSz + 2, dotSz + 2)
+                ringDotBg:Show()
+            else
+                ringDotTex:Hide()
+                ringDotBg:Hide()
+            end
+        end
+
         if gcdCooldown then
+            local gr, gg, gb = ResolveColorMode(db.gcdColorMode or "MATCH_RING", db.gcdCustomHex, false, baseR, baseG, baseB)
+            local gcdAlpha = math.max(0.10, math.min(1.00, tonumber(db.gcdOpacity) or 0.85))
             gcdCooldown:SetSwipeTexture(RING_TEXTURES.THIN)
-            gcdCooldown:SetSwipeColor(r, g, b, 0.85)
+            gcdCooldown:SetSwipeColor(gr, gg, gb, gcdAlpha)
             local inset = math.max(4, math.floor(radius * 0.22))
             gcdCooldown:ClearAllPoints()
             gcdCooldown:SetPoint("TOPLEFT", ringRoot, "TOPLEFT", inset, -inset)
             gcdCooldown:SetPoint("BOTTOMRIGHT", ringRoot, "BOTTOMRIGHT", -inset, inset)
         end
         if castCooldown then
+            local cr, cg, cb = ResolveColorMode(db.castColorMode or "MATCH_RING", db.castCustomHex, false, baseR, baseG, baseB)
+            local castAlpha = math.max(0.10, math.min(1.00, tonumber(db.castOpacity) or 0.92))
             castCooldown:SetSwipeTexture(RING_TEXTURES.THIN)
             if castFlashEnd > (GetTime and GetTime() or 0) then
                 castCooldown:SetSwipeColor(0.95, 0.22, 0.22, 0.95)
             else
-                castCooldown:SetSwipeColor(r, g, b, 0.92)
+                castCooldown:SetSwipeColor(cr, cg, cb, castAlpha)
             end
         end
     end
@@ -836,6 +964,18 @@ do
         -- Main Cursor Ring
         local allowed = IsActivityAllowed(db)
         if db.ringEnabled and allowed and ringRoot then
+            if db.groundTargetHighlight ~= false and type(_G.SpellIsTargeting) == "function" then
+                local okT, nowT = pcall(_G.SpellIsTargeting)
+                local targeting = (okT and nowT == true) and true or false
+                if targeting ~= isGroundTargeting then
+                    isGroundTargeting = targeting
+                    UpdateRingAppearance(db)
+                end
+            elseif isGroundTargeting then
+                isGroundTargeting = false
+                UpdateRingAppearance(db)
+            end
+
             if isMouseLooking then
                 if db.ringKeepMouseLook then
                     ringTex:Hide()
@@ -847,8 +987,10 @@ do
             else
                 ringTex:Show()
                 ghostTex:Hide()
+                local rox = tonumber(db.ringOffsetX) or 0
+                local roy = tonumber(db.ringOffsetY) or 0
                 ringRoot:ClearAllPoints()
-                ringRoot:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx, cy)
+                ringRoot:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx + rox, cy + roy)
                 ringRoot:Show()
             end
 
@@ -1052,6 +1194,7 @@ do
     SafeRegisterEvent(evFrame, "UNIT_SPELLCAST_CHANNEL_STOP")
     SafeRegisterEvent(evFrame, "UNIT_SPELLCAST_EMPOWER_START")
     SafeRegisterEvent(evFrame, "UNIT_SPELLCAST_EMPOWER_STOP")
+    SafeRegisterEvent(evFrame, "CURRENT_SPELL_CAST_CHANGED")
 
     evFrame:SetScript("OnEvent", function(_, event, arg1)
         if event == "PLAYER_LOGIN" then
@@ -1109,6 +1252,15 @@ do
                 isCastingNow = false; isChannelingNow = false
                 if castCooldown then castCooldown:Hide() end
                 if castIconTex then castIconTex:Hide() end
+            end
+        elseif event == "CURRENT_SPELL_CAST_CHANGED" then
+            if db.ringEnabled and db.groundTargetHighlight ~= false and type(_G.SpellIsTargeting) == "function" then
+                local okT, nowT = pcall(_G.SpellIsTargeting)
+                isGroundTargeting = (okT and nowT == true) and true or false
+                if ringRoot then UpdateRingAppearance(db) end
+            elseif isGroundTargeting then
+                isGroundTargeting = false
+                if ringRoot then UpdateRingAppearance(db) end
             end
         elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
             if ringRoot then UpdateRingAppearance(db) end
@@ -1736,6 +1888,81 @@ do
             pages[pgIdx].items[#pages[pgIdx].items + 1] = c
             refreshables[#refreshables + 1] = d
         end
+        local function AddColorModeDropdown(pgIdx, title, desc, w, opts, getModeFn, setModeFn, getHexFn, setHexFn, pickerTitle, matchRgbFn)
+            local totalW = w + 34
+            local c = CreateSettingCard(pages[pgIdx], title, desc, totalW)
+            local wrap = CreateFrame("Frame", nil, c)
+            wrap:SetSize(totalW, 24)
+
+            local d = CreateDropdownControl(wrap, w, opts, getModeFn, function(v)
+                setModeFn(v); SyncAllEngines(); DynamicCursor:RefreshWorkspaceUI()
+            end)
+            d:SetPoint("LEFT", wrap, "LEFT", 0, 0)
+
+            local swatch = CreateFrame("Button", nil, wrap, "BackdropTemplate")
+            swatch:SetSize(28, 24)
+            swatch:SetPoint("RIGHT", wrap, "RIGHT", 0, 0)
+            SetBackdropSolid(swatch, { 0.04, 0.05, 0.07, 1.0 }, { 0.25, 0.30, 0.38, 0.95 }, 1)
+
+            local swTex = swatch:CreateTexture(nil, "ARTWORK")
+            swTex:SetPoint("TOPLEFT", swatch, "TOPLEFT", 2, -2)
+            swTex:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", -2, 2)
+            swatch.tex = swTex
+
+            local function GetResolvedRGB()
+                local mr, mg, mb = nil, nil, nil
+                if type(matchRgbFn) == "function" then
+                    mr, mg, mb = matchRgbFn()
+                end
+                return ResolveColorMode(getModeFn(), getHexFn(), false, mr, mg, mb)
+            end
+
+            swatch:SetScript("OnClick", function(selfBtn)
+                local curMode = getModeFn()
+                local initHex = getHexFn()
+                if curMode ~= "CUSTOM" then
+                    local r, g, b = GetResolvedRGB()
+                    initHex = RGBToHex(r, g, b)
+                    setModeFn("CUSTOM")
+                    setHexFn(initHex)
+                    SyncAllEngines()
+                    DynamicCursor:RefreshWorkspaceUI()
+                end
+                OpenCursorColorPicker(selfBtn, pickerTitle or title, initHex, function(newHex)
+                    setModeFn("CUSTOM")
+                    setHexFn(newHex)
+                    SyncAllEngines()
+                    DynamicCursor:RefreshWorkspaceUI()
+                end)
+            end)
+            swatch:SetScript("OnEnter", function(selfBtn)
+                if _G.GameTooltip then
+                    _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
+                    _G.GameTooltip:SetText(pickerTitle or title, 1, 1, 1)
+                    _G.GameTooltip:AddLine("Click to open the Custom Colour Picker.", 0.72, 0.78, 0.86, true)
+                    _G.GameTooltip:Show()
+                end
+            end)
+            swatch:SetScript("OnLeave", function()
+                if _G.GameTooltip then _G.GameTooltip:Hide() end
+            end)
+
+            function wrap:RefreshValue()
+                d:RefreshValue()
+                local r, g, b = GetResolvedRGB()
+                swTex:SetColorTexture(r, g, b, 1)
+                if getModeFn() == "CUSTOM" then
+                    local ar, ag, ab = GetSuiteAccent()
+                    swatch:SetBackdropBorderColor(ar, ag, ab, 0.95)
+                else
+                    swatch:SetBackdropBorderColor(0.25, 0.30, 0.38, 0.95)
+                end
+            end
+
+            c:BindRight(wrap)
+            pages[pgIdx].items[#pages[pgIdx].items + 1] = c
+            refreshables[#refreshables + 1] = wrap
+        end
 
         -- TAB 1: Quick Presets Strip + Cursor Ring, GCD & Cast Arc
         local presetCard = CreateFrame("Frame", nil, pages[1], "BackdropTemplate")
@@ -1783,20 +2010,50 @@ do
         AddSlider(1, "Ring Radius", "Adjust the cursor ring radius in pixels (16 to 96 px).", 16, 96, 2,
             function(v) return string.format("%d px", v) end,
             function() return EnsureDB().ringRadius or 40 end, function(v) EnsureDB().ringRadius = v end)
+        AddSlider(1, "Ring Offset (X)", "Fine-tune horizontal ring alignment around your pointer tip (-16 to +16 px).", -16, 16, 1,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().ringOffsetX or 0 end, function(v) EnsureDB().ringOffsetX = v end)
+        AddSlider(1, "Ring Offset (Y)", "Fine-tune vertical ring alignment around your pointer tip (-16 to +16 px).", -16, 16, 1,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().ringOffsetY or 0 end, function(v) EnsureDB().ringOffsetY = v end)
+        AddToggle(1, "Cursor Centre Dot", "Renders a crisp dot with a 1px dark outline right at the pointer tip inside the ring (Off by default).",
+            function() return EnsureDB().ringCenterDot == true end, function(v) EnsureDB().ringCenterDot = v end)
+        AddSlider(1, "Centre Dot Size", "Adjust the cursor centre dot size in pixels (2 to 8 px).", 2, 8, 1,
+            function(v) return string.format("%d px", v) end,
+            function() return EnsureDB().ringCenterDotSize or 4 end, function(v) EnsureDB().ringCenterDotSize = v end)
         AddSlider(1, "Out-of-Combat Opacity", "Ring transparency while out of combat.", 0.05, 1.00, 0.05,
             function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             function() return EnsureDB().ringOpacityOOC or 0.55 end, function(v) EnsureDB().ringOpacityOOC = v end)
         AddSlider(1, "In-Combat Opacity", "Ring transparency during combat.", 0.05, 1.00, 0.05,
             function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             function() return EnsureDB().ringOpacityCombat or 0.95 end, function(v) EnsureDB().ringOpacityCombat = v end)
-        AddDropdown(1, "Ring Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or a custom hex colour.", 220, {
+        AddColorModeDropdown(1, "Ring Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or click the swatch for a custom colour.", 210, {
             { value = "ACCENT",         label = "Suite Accent" },
             { value = "CLASS",          label = "Class Colour" },
             { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
-            { value = "CUSTOM",         label = "Custom Hex (Edit)" },
-        }, function() return EnsureDB().ringColorMode or "ACCENT" end, function(v) EnsureDB().ringColorMode = v end)
+            { value = "CUSTOM",         label = "Custom Colour" },
+        }, function() return EnsureDB().ringColorMode or "ACCENT" end, function(v) EnsureDB().ringColorMode = v end,
+           function() return EnsureDB().ringCustomHex or "38BDF8" end, function(h) EnsureDB().ringCustomHex = h end,
+           "Cursor Ring Custom Colour")
         AddToggle(1, "Combat Colour Shift", "Tints the cursor ring warm amber-orange while you are in combat.",
             function() return EnsureDB().ringCombatShift == true end, function(v) EnsureDB().ringCombatShift = v end)
+        AddToggle(1, "Ground-Target AoE Highlight", "Boosts the cursor ring to 100% opacity and a highlight colour while aiming ground-targeted spells.",
+            function() return EnsureDB().groundTargetHighlight ~= false end, function(v) EnsureDB().groundTargetHighlight = v end)
+        AddColorModeDropdown(1, "Ground-Target Highlight Colour", "Highlight colour used while aiming ground-targeted AoE spells.", 210, {
+            { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
+            { value = "BRIGHT_GOLD",    label = "Bright Gold" },
+            { value = "CUSTOM",         label = "Custom Colour" },
+        }, function() return EnsureDB().groundTargetColorMode or "HIGH_VIS_GREEN" end, function(v) EnsureDB().groundTargetColorMode = v end,
+           function() return EnsureDB().groundTargetCustomHex or "22EB5E" end, function(h) EnsureDB().groundTargetCustomHex = h end,
+           "Ground-Target Highlight Colour")
+        AddDropdown(1, "Hardware Cursor Size", "Adjusts Blizzard's native cursorSizePreferred CVar out of combat.", 220, {
+            { value = "-1", label = "Auto / System DPI" },
+            { value = "0",  label = "32 x 32" },
+            { value = "1",  label = "48 x 48" },
+            { value = "2",  label = "64 x 64" },
+            { value = "3",  label = "96 x 96" },
+            { value = "4",  label = "128 x 128" },
+        }, GetNativeCursorSize, SetNativeCursorSize)
         AddPills(1, "Frame Strata", "Layer order above UI panels.", 210, {
             { value = "HIGH", label = "HIGH" }, { value = "DIALOG", label = "DIALOG" }, { value = "TOOLTIP", label = "TOOLTIP" },
         }, function() return EnsureDB().ringStrata or "TOOLTIP" end, function(v) EnsureDB().ringStrata = v end)
@@ -1805,11 +2062,38 @@ do
         AddToggle(1, "Click-Pulse Ripple", "Plays a quick expanding ripple when you click.",
             function() return EnsureDB().ringClickPulse == true end, function(v) EnsureDB().ringClickPulse = v end)
 
+        local function GetBaseRingRGB()
+            local db = EnsureDB()
+            return ResolveColorMode(db.ringColorMode or "ACCENT", db.ringCustomHex, false)
+        end
+
         AddHeader(1, "RADIAL GCD & CAST / EMPOWER ARCS", "Secret-value safe C++ swipe arcs attached cleanly to your cursor ring.")
         AddToggle(1, "Inner GCD Ring", "Shows your Global Cooldown swipe inside the cursor ring.",
             function() return EnsureDB().gcdEnabled ~= false end, function(v) EnsureDB().gcdEnabled = v end)
+        AddColorModeDropdown(1, "Inner GCD Colour Mode", "Match the cursor ring or pick an independent colour for the inner GCD swipe.", 210, {
+            { value = "MATCH_RING", label = "Match Ring" },
+            { value = "ACCENT",     label = "Suite Accent" },
+            { value = "CLASS",      label = "Class Colour" },
+            { value = "CUSTOM",     label = "Custom Colour" },
+        }, function() return EnsureDB().gcdColorMode or "MATCH_RING" end, function(v) EnsureDB().gcdColorMode = v end,
+           function() return EnsureDB().gcdCustomHex or "38BDF8" end, function(h) EnsureDB().gcdCustomHex = h end,
+           "Inner GCD Ring Colour", GetBaseRingRGB)
+        AddSlider(1, "Inner GCD Opacity", "Transparency of the inner Global Cooldown swipe.", 0.10, 1.00, 0.05,
+            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
+            function() return EnsureDB().gcdOpacity or 0.85 end, function(v) EnsureDB().gcdOpacity = v end)
         AddToggle(1, "Outer Cast / Channel / Empower Arc", "Shows your spell cast, channel, or empower progress around the ring with an interrupt flash.",
             function() return EnsureDB().castArcEnabled ~= false end, function(v) EnsureDB().castArcEnabled = v end)
+        AddColorModeDropdown(1, "Outer Cast Arc Colour Mode", "Match the cursor ring or pick an independent colour for the outer cast arc.", 210, {
+            { value = "MATCH_RING", label = "Match Ring" },
+            { value = "ACCENT",     label = "Suite Accent" },
+            { value = "CLASS",      label = "Class Colour" },
+            { value = "CUSTOM",     label = "Custom Colour" },
+        }, function() return EnsureDB().castColorMode or "MATCH_RING" end, function(v) EnsureDB().castColorMode = v end,
+           function() return EnsureDB().castCustomHex or "F59E0B" end, function(h) EnsureDB().castCustomHex = h end,
+           "Outer Cast Arc Colour", GetBaseRingRGB)
+        AddSlider(1, "Outer Cast Arc Opacity", "Transparency of the outer cast, channel, or empower arc.", 0.10, 1.00, 0.05,
+            function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
+            function() return EnsureDB().castOpacity or 0.92 end, function(v) EnsureDB().castOpacity = v end)
         AddToggle(1, "Show Mini Spell Icon on Cast", "Displays the active spell icon just above the cursor ring while casting.",
             function() return EnsureDB().castShowIcon == true end, function(v) EnsureDB().castShowIcon = v end)
 
@@ -1867,12 +2151,14 @@ do
         AddSlider(2, "Crosshair In-Combat Opacity", "Crosshair transparency during combat.", 0.05, 1.00, 0.05,
             function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             function() return EnsureDB().crosshairOpacityCombat or 0.90 end, function(v) EnsureDB().crosshairOpacityCombat = v end)
-        AddDropdown(2, "Crosshair Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or a custom hex colour.", 220, {
+        AddColorModeDropdown(2, "Crosshair Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or click the swatch for a custom colour.", 210, {
             { value = "ACCENT",         label = "Suite Accent" },
             { value = "CLASS",          label = "Class Colour" },
             { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
-            { value = "CUSTOM",         label = "Custom Hex (Edit)" },
-        }, function() return EnsureDB().crosshairColorMode or "ACCENT" end, function(v) EnsureDB().crosshairColorMode = v end)
+            { value = "CUSTOM",         label = "Custom Colour" },
+        }, function() return EnsureDB().crosshairColorMode or "ACCENT" end, function(v) EnsureDB().crosshairColorMode = v end,
+           function() return EnsureDB().crosshairCustomHex or "38BDF8" end, function(h) EnsureDB().crosshairCustomHex = h end,
+           "Crosshair Custom Colour")
         AddToggle(2, "Crosshair Combat Tint", "Shifts the crosshair colour to warm amber-orange during combat.",
             function() return EnsureDB().crosshairCombatTint == true end, function(v) EnsureDB().crosshairCombatTint = v end)
 
@@ -1908,12 +2194,14 @@ do
         AddSlider(3, "Trail Opacity", "Maximum trail opacity.", 0.10, 1.00, 0.05,
             function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             function() return EnsureDB().trailOpacity or 0.75 end, function(v) EnsureDB().trailOpacity = v end)
-        AddDropdown(3, "Trail Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or a custom hex colour.", 220, {
+        AddColorModeDropdown(3, "Trail Colour Mode", "Follow your Suite Accent, Class Colour, High-Vis Green, or click the swatch for a custom colour.", 210, {
             { value = "ACCENT",         label = "Suite Accent" },
             { value = "CLASS",          label = "Class Colour" },
             { value = "HIGH_VIS_GREEN", label = "High-Vis Green" },
-            { value = "CUSTOM",         label = "Custom Hex (Edit)" },
-        }, function() return EnsureDB().trailColorMode or "ACCENT" end, function(v) EnsureDB().trailColorMode = v end)
+            { value = "CUSTOM",         label = "Custom Colour" },
+        }, function() return EnsureDB().trailColorMode or "ACCENT" end, function(v) EnsureDB().trailColorMode = v end,
+           function() return EnsureDB().trailCustomHex or "38BDF8" end, function(h) EnsureDB().trailCustomHex = h end,
+           "Cursor Trail Custom Colour")
         AddToggle(3, "Show Trail in Combat Only", "Only spawns trail particles while you are in combat.",
             function() return EnsureDB().trailCombatOnly == true end, function(v) EnsureDB().trailCombatOnly = v end)
         AddToggle(3, "Keep Trail During Mouse-Look", "Continues drawing trail nodes while Right-Click turning.",

@@ -2474,6 +2474,9 @@ _G.DynamicSuite.UI.CreateSliderControl = CreateDSOptionSlider
 UI.CreateSpaciousOptionRow = CreateSpaciousOptionRow
 UI.CreateDSOptionSlider = CreateDSOptionSlider
 UI.OpenDSColorPicker = OpenDSColorPicker
+UI.OpenColorPicker = OpenDSColorPicker
+_G.DynamicSuite = _G.DynamicSuite or {}
+_G.DynamicSuite.OpenColorPicker = OpenDSColorPicker
 
 --------------------------------------------------------------------------------
 -- Main Interface (/dl & /ds) - 980x680 Resizable Window, 3-Zone Header & Left Suite Rail
