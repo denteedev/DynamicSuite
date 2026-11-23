@@ -11354,31 +11354,28 @@ function addonTable.CreateMainConfigUI()
             wizHdrTitle:SetPoint("RIGHT", resolveAllBtn, "LEFT", -10, 0)
 
             if #conflicts > 0 then
+                local function IsCardUsingDynamic(item)
+                    if item.tier == 2 or item.isGranular then
+                        return item.resolvedAction == "PRIORITISE_DYNAMIC"
+                    end
+                    return item.resolvedAction == "USE_DYNAMIC"
+                end
+                local notUsingDynamicCount = 0
+                for _, item in ipairs(conflicts) do
+                    if not IsCardUsingDynamic(item) then
+                        notUsingDynamicCount = notUsingDynamicCount + 1
+                    end
+                end
+
                 if unacknowledgedCount > 0 then
                     wizHdrTitle:SetText(string.format("STEP %d OF %d - CONFLICT SCANNER (%d ACTIVE)", currentGuidedIdx, #steps, unacknowledgedCount))
-                    resolveAllBtn:SetWidth(124)
-                    resolveAllBtn.label:SetText("Use All Dynamic")
-                    resolveAllBtn:Enable()
-                    resolveAllBtn:SetAlpha(1.0)
-                    resolveAllBtn:SetSelected(true, UI.COLORS.GOLD)
-                    resolveAllBtn:SetScript("OnClick", function()
-                        for _, item in ipairs(conflicts) do
-                            if not item.isAcknowledged then
-                                local act
-                                if item.tier == 2 or item.isGranular then
-                                    act = "PRIORITISE_DYNAMIC"
-                                else
-                                    act = "USE_DYNAMIC"
-                                end
-                                addonTable.ResolveConflict(item.dynamicModule, item.conflictAddon, act, item.isSimulated)
-                            end
-                        end
-                        setupView.Refresh()
-                        if f.scrollChild then RefreshAddonTree(f.scrollChild) end
-                        UpdateStatusBar()
-                    end)
                 elseif addonTable._conflictPendingReload then
                     wizHdrTitle:SetText(string.format("STEP %d OF %d - CONFLICT SCANNER (RELOAD REQUIRED)", currentGuidedIdx, #steps))
+                else
+                    wizHdrTitle:SetText(string.format("STEP %d OF %d - CONFLICT SCANNER (ALL RESOLVED)", currentGuidedIdx, #steps))
+                end
+
+                if addonTable._conflictPendingReload and unacknowledgedCount == 0 then
                     resolveAllBtn:SetWidth(118)
                     resolveAllBtn.label:SetText("Reload UI Now")
                     resolveAllBtn:Enable()
@@ -11389,8 +11386,24 @@ function addonTable.CreateMainConfigUI()
                             _G.ReloadUI()
                         end
                     end)
+                elseif notUsingDynamicCount > 0 then
+                    resolveAllBtn:SetWidth(124)
+                    resolveAllBtn.label:SetText("Use All Dynamic")
+                    resolveAllBtn:Enable()
+                    resolveAllBtn:SetAlpha(1.0)
+                    resolveAllBtn:SetSelected(true, UI.COLORS.GOLD)
+                    resolveAllBtn:SetScript("OnClick", function()
+                        for _, item in ipairs(conflicts) do
+                            if not IsCardUsingDynamic(item) then
+                                local act = (item.tier == 2 or item.isGranular) and "PRIORITISE_DYNAMIC" or "USE_DYNAMIC"
+                                addonTable.ResolveConflict(item.dynamicModule, item.conflictAddon, act, item.isSimulated)
+                            end
+                        end
+                        setupView.Refresh()
+                        if f.scrollChild then RefreshAddonTree(f.scrollChild) end
+                        UpdateStatusBar()
+                    end)
                 else
-                    wizHdrTitle:SetText(string.format("STEP %d OF %d - CONFLICT SCANNER (ALL RESOLVED)", currentGuidedIdx, #steps))
                     resolveAllBtn:SetWidth(124)
                     resolveAllBtn.label:SetText("Use All Dynamic")
                     resolveAllBtn:SetSelected(false)
