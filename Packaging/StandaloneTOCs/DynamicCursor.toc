@@ -1,0 +1,13 @@
+## Interface: 120105
+## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFCursor|r
+## Notes: Cursor Ring, Radial GCD & Cast Arc, Character Crosshair, Find My Cursor, Trail & Smart Tooltips (/dcur, /dynamiccursor).
+## Author: Dentee-Frostmourne
+## Version: 2.8.1
+## SavedVariables: DynamicCursorDB
+## OptionalDeps: DynamicSuite
+## IconTexture: Interface\AddOns\DynamicCursor\icon.tga
+## AddonCompartmentFunc: DynamicCursor_OnAddonCompartmentClick
+## Category: DynamicSuite
+## Category-enUS: DynamicSuite
+
+DynamicCursor.lua

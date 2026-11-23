@@ -22,7 +22,7 @@ local CONTEXT_TABS = {
     { key = "raid",    label = "Raid" },
     { key = "pvp",     label = "PvP" },
 }
-local STANDALONE_FRAME_NAMES = { "DynamicFPSMainFrame", "DynamicFPSStandaloneFrame", "DynamicFrameMainFrame", "DynamicZoomStandaloneFrame", "DynamicMarkerMainFrame", "DynamicPrepMainFrame", "DynamicTalentStandaloneFrame", "DynamicGroupMainFrame", "DynamicBagsStandaloneFrame", "DynamicChatStandaloneFrame", "DynamicMailStandaloneWindow", "DynamicVaultStandaloneFrame", "DynamicDialogueStandaloneFrame" }
+local STANDALONE_FRAME_NAMES = { "DynamicFPSMainFrame", "DynamicFPSStandaloneFrame", "DynamicFrameMainFrame", "DynamicZoomStandaloneFrame", "DynamicMarkerMainFrame", "DynamicCursorStandaloneFrame", "DynamicPrepMainFrame", "DynamicTalentStandaloneFrame", "DynamicGroupMainFrame", "DynamicBagsStandaloneFrame", "DynamicChatStandaloneFrame", "DynamicMailStandaloneWindow", "DynamicVaultStandaloneFrame", "DynamicDialogueStandaloneFrame" }
 
 local selectedTabKey = "outdoor"
 local selectedAltKey = nil
@@ -996,6 +996,8 @@ local MODULE_ICON_PATHS = {
     ["load"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
     ["DynamicMarker"] = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
     ["marker"]        = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
+    ["DynamicCursor"] = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga",
+    ["cursor"]        = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga",
     ["DynamicZoom"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_zoom.tga",
     ["zoom"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_zoom.tga",
     ["DynamicFPS"]    = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_fps.tga",
@@ -4061,7 +4063,7 @@ function addonTable.CreateMainConfigUI()
     leftRail.divider:SetWidth(1)
 
     do
-    local DEFAULT_MODULE_KEYS = { "marker", "group", "prep", "talent", "vault", "dialogue", "bags", "mail", "chat", "load", "fps", "zoom" }
+    local DEFAULT_MODULE_KEYS = { "marker", "group", "prep", "talent", "cursor", "vault", "dialogue", "bags", "mail", "chat", "load", "fps", "zoom" }
     UI.DEFAULT_MODULE_KEYS = DEFAULT_MODULE_KEYS
 
     function UI.IsUsingCustomRailOrder()
@@ -5492,7 +5494,7 @@ function addonTable.CreateMainConfigUI()
         local parts = { tostring(addonTable.ADDON_VERSION or "1.3.0") }
         local clReg = _G.DynamicSuite and _G.DynamicSuite.Changelogs
         if type(clReg) == "table" then
-            for _, k in ipairs({ "DynamicLoad", "DynamicMarker", "DynamicZoom", "DynamicFPS", "DynamicPrep", "DynamicTalent", "DynamicGroup", "DynamicBags", "DynamicChat", "DynamicMail", "DynamicVault", "DynamicDialogue" }) do
+            for _, k in ipairs({ "DynamicLoad", "DynamicMarker", "DynamicCursor", "DynamicZoom", "DynamicFPS", "DynamicPrep", "DynamicTalent", "DynamicGroup", "DynamicBags", "DynamicMail", "DynamicChat", "DynamicVault", "DynamicDialogue" }) do
                 local c = clReg[k]
                 if type(c) == "table" then
                     local latest = (type(c.entries) == "table" and c) or (type(c[1]) == "table" and c[1]) or c
@@ -9026,6 +9028,19 @@ function addonTable.CreateMainConfigUI()
             },
         },
         {
+            key = "cursor",
+            tabLabel = "DynamicCursor",
+            ver = DS_LIVE_VER_TAG,
+            date = "23/11/2026 (Retail 12.1.5)",
+            title = "DynamicCursor " .. DS_LIVE_VER_TAG,
+            subtitle = "Cursor Ring, Radial GCD & Cast Arc, Character Crosshair, Find My Cursor & Trail (/dcur)",
+            icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga",
+            openModule = "DynamicCursor",
+            items = {
+                { badge = "NEW",      title = "New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor)", desc = "Added a customisable Cursor Ring (5 clean-room procedural ring styles, radius, OOC/combat opacity, colour modes, Mouse-Look ghost ring, and click-pulse ripple), secret-safe native C++ Radial GCD and Cast/Channel/Empower arcs, Character Crosshair (5 styles with X/Y offset and Combat/Instance visibility), Find My Cursor (Shake-to-Find + Modifier Key Locator), pre-allocated 48-node Pooled Cursor Trail (0.00 ms idle CPU), Smart Cursor Tooltips, and 4 one-click presets (Clean Raid, High-Visibility, Minimalist, Full Telemetry)." },
+            },
+        },
+        {
             key = "group",
             tabLabel = "DynamicGroup",
             ver = DS_LIVE_VER_TAG,
@@ -10564,7 +10579,7 @@ function addonTable.CreateMainConfigUI()
                 actionLabel = "Open DynamicLoad (/dl)",
                 onAction = function() addonTable.OpenWorkspaceView("DYNAMICLOAD") end,
                 summaryText = "|cFF38BDF8Smart Addon Scan Summary:|r\n" ..
-                    "- |cFFFACC15Suite Core Modules Active Across All 5 Zones:|r DynamicLoad, DynamicMarker, DynamicZoom, DynamicFPS, DynamicPrep, DynamicTalent, DynamicGroup, DynamicBags, DynamicChat, DynamicMail, DynamicVault, DynamicDialogue\n" ..
+                    "- |cFFFACC15Suite Core Modules Active Across All 5 Zones:|r DynamicLoad, DynamicMarker, DynamicCursor, DynamicZoom, DynamicFPS, DynamicPrep, DynamicTalent, DynamicGroup, DynamicBags, DynamicChat, DynamicMail, DynamicVault, DynamicDialogue\n" ..
                     "- |cFF22C55ERoutes Economy & Collection Addons to Outdoor Safe Harbor:|r TSM, Auctionator, AllTheThings, RareScanner, HandyNotes, TomTom\n" ..
                     "- |cFFCBD5E1New Addon Protection:|r Any future addon you install defaults safely to Outdoor Only until you approve it.",
                 choices = {
@@ -10863,6 +10878,59 @@ function addonTable.CreateMainConfigUI()
                         isSelected = function() return selectedTier == "ULTRA" end,
                         desc = "High visual quality across all zones while keeping your spell queue smooth and boss ground effects visible.",
                         onClick = function(card) ApplyTierToAllCombatZones("ULTRA", card) end,
+                    },
+                },
+            })
+        end
+
+        if IsModActive("DynamicCursor") then
+            table.insert(steps, {
+                key = "cursor",
+                pill = (#steps + 1) .. ". Cursor",
+                title = "DYNAMICCURSOR - CURSOR RING, CROSSHAIR & TRAIL",
+                desc = "Keep track of your mouse cursor in raids and Mythic+ with a customisable Cursor Ring, radial GCD and Cast arcs, Character Crosshair, Find My Cursor locator, and zero-idle-CPU trail (/dcur).",
+                actionLabel = "Open DynamicCursor (/dcur)",
+                onAction = function() addonTable.OpenPeerModule("DynamicCursor") end,
+                summaryText = "|cFF38BDF8DynamicCursor Engine:|r\n" ..
+                    "- |cFF22C55ECursor Ring, GCD & Cast Arc:|r 5 crisp procedural ring styles with Midnight 12.1.5+ secret-safe radial GCD and Cast/Channel/Empower swipes.\n" ..
+                    "- |cFFF5B82ECrosshair, Locator & Trail:|r Optional Character Crosshair, Shake-to-Find / Modifier Key Locator, Pooled Trail, and Smart Cursor Tooltips.",
+                choices = {
+                    {
+                        title = "Apply Clean Raid Preset",
+                        badge = "Recommended",
+                        isSelected = function()
+                            return _G.DynamicCursorDB and _G.DynamicCursorDB.ringEnabled == true
+                        end,
+                        desc = "Enables the Crisp Cursor Ring with inner GCD swipe and outer Cast Arc tuned for raid and Mythic+ visibility.",
+                        onClick = function(card)
+                            if _G.DynamicCursor and type(_G.DynamicCursor.ApplyPreset) == "function" then
+                                pcall(_G.DynamicCursor.ApplyPreset, _G.DynamicCursor, "CLEAN_RAID")
+                            elseif _G.DynamicCursorDB then
+                                _G.DynamicCursorDB.ringEnabled = true
+                            end
+                            card.badge:SetText("Clean Raid Active!")
+                            StyleChoiceCard(card, true)
+                        end,
+                    },
+                    {
+                        title = "Keep Off (Configure Later)",
+                        badge = "Optional",
+                        isSelected = function()
+                            return (not _G.DynamicCursorDB) or _G.DynamicCursorDB.ringEnabled ~= true
+                        end,
+                        desc = "Leaves all cursor overlays off until you enable them or pick a preset in /dcur.",
+                        onClick = function(card)
+                            if _G.DynamicCursorDB then
+                                _G.DynamicCursorDB.ringEnabled = false
+                                _G.DynamicCursorDB.crosshairEnabled = false
+                                _G.DynamicCursorDB.trailEnabled = false
+                            end
+                            if _G.DynamicCursor and type(_G.DynamicCursor.SyncAllEngines) == "function" then
+                                pcall(_G.DynamicCursor.SyncAllEngines, _G.DynamicCursor)
+                            end
+                            card.badge:SetText("Kept Off")
+                            StyleChoiceCard(card, true)
+                        end,
                     },
                 },
             })

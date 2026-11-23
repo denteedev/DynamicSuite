@@ -323,6 +323,7 @@ local DEFAULTS = {
     autoOpenContainers = true,
     autoOpenHousingDecor = true,
     autoOpenKnowledgeItems = true,
+    autoUnwrapItems = false,
     quickOpenEnabled = true,
     queueHousingDecor = true,
     queueKnowledgeItems = true,
@@ -7975,6 +7976,18 @@ function U.BuildPage3(page)
         end,
     })
     U.AddCard(page, {
+        title = "Auto-Unwrap & Open Wrapped Items", kind = "toggle",
+        desc = "Automatically unwraps wrapped gifts and parcels out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Vendor-locked or non-refundable items stay queued in Open (N) only.",
+        get = function() return db.autoUnwrapItems == true end,
+        set = function(v)
+            db.autoUnwrapItems = v and true or false
+            if db.autoUnwrapItems and U.ScheduleAutoOpenContainers then
+                U.ScheduleAutoOpenContainers()
+            end
+            if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
+        end,
+    })
+    U.AddCard(page, {
         title = "Show Open (N) Quick-Open Button for Housing Decor, Knowledge & Use: Caches", kind = "toggle",
         desc = "Displays a 1-click button in the DynamicBags header to rapidly open or learn queued Housing Decor, Profession Knowledge, and Use: caches.",
         get = function() return db.quickOpenEnabled ~= false end,
@@ -9615,6 +9628,8 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
     local sawUseLine = false
     local sawDecorLine = isDecorAPI
     local sawKnowledgeLine = false
+    local sawWrappedLine = false
+    local isVendorRefundLocked = false
     local sawUseCacheLine = false
     local hasRedText = false
     local hasDisqualifyingLine = false
@@ -9643,7 +9658,6 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
                     if (LOCKED and t == LOCKED) or tl == "locked" or tl:find("^locked ")
                         or tl:find("requires lockpicking", 1, true)
                         or tl:find("requires .* key")
-                        or tl:find("you may sell this item to a vendor within", 1, true)
                         or tl:find("combine %d+")
                         or tl:find("turn %d+ ")
                         or tl:find("consume %d+ ")
@@ -9654,6 +9668,19 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
                         or tl:find("well fed", 1, true)
                         or tl:find("splintered spark", 1, true) then
                         hasDisqualifyingLine = true
+                    end
+
+                    if tl:find("you may sell this item to a vendor within", 1, true)
+                        or tl:find("make this item non-refundable", 1, true) then
+                        isVendorRefundLocked = true
+                    end
+
+                    if (ITEM_WRAPPED and t == ITEM_WRAPPED)
+                        or tl:find("right click to unwrap", 1, true)
+                        or tl:find("^use: unwrap")
+                        or tl:find("wrapped gift", 1, true)
+                        or tl:find("gift-wrapped", 1, true) then
+                        sawWrappedLine = true
                     end
 
                     if t == ITEM_SOULBOUND or t == ITEM_BIND_ON_PICKUP
@@ -9754,7 +9781,10 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
     local kind = nil
     local categoryLabel = nil
 
-    if sawDecorLine and (sawUseLine or info.hasLoot == true or isDecorAPI) then
+    if sawWrappedLine then
+        kind = "WRAPPED"
+        categoryLabel = "Wrapped Item"
+    elseif sawDecorLine and (sawUseLine or info.hasLoot == true or isDecorAPI) then
         kind = "DECOR"
         categoryLabel = "Housing Decor"
     elseif sawKnowledgeLine and sawUseLine then
@@ -9788,6 +9818,10 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
         return nil
     end
 
+    if isVendorRefundLocked and kind ~= "WRAPPED" then
+        return nil
+    end
+
     local db = DB()
     local requireBound = (db.openablesSoulboundOnly ~= false)
     if requireBound and not (isStrictlyBound or isSafeAccountBound) then
@@ -9811,6 +9845,7 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
         isBound = isStrictlyBound,
         isAccountBound = isSafeAccountBound,
         isUnboundBoE = not (isStrictlyBound or isSafeAccountBound),
+        isVendorRefundLocked = isVendorRefundLocked and true or false,
         kind = kind,
         categoryLabel = categoryLabel,
     }
@@ -9837,6 +9872,7 @@ function U.ScanOpenables()
                     local canAutoByCategory = (cand.kind == "CONTAINER" and db.autoOpenContainers ~= false)
                         or (cand.kind == "DECOR" and db.autoOpenHousingDecor ~= false)
                         or (cand.kind == "KNOWLEDGE" and db.autoOpenKnowledgeItems ~= false)
+                        or (cand.kind == "WRAPPED" and db.autoUnwrapItems == true and not cand.isVendorRefundLocked)
 
                     if isBoundSafe and canAutoByCategory and not cand.hasProtectedSpell and not isBlacklisted and not onRetryCooldown then
                         autoList[#autoList + 1] = cand
@@ -9848,7 +9884,7 @@ function U.ScanOpenables()
                             includeInQueue = true
                         elseif cand.kind == "KNOWLEDGE" and db.queueKnowledgeItems ~= false then
                             includeInQueue = true
-                        elseif cand.kind == "CACHE" or cand.kind == "CONTAINER" then
+                        elseif cand.kind == "CACHE" or cand.kind == "CONTAINER" or cand.kind == "WRAPPED" then
                             includeInQueue = true
                         end
                     end
@@ -9875,7 +9911,7 @@ U.ScanOpenableItems = U.ScanOpenables
 function U.CanRunAutoOpenContainers()
     if IsModuleDisabledInSuite("DynamicBags") then return false end
     local db = DB()
-    if db.autoOpenContainers == false and db.autoOpenHousingDecor == false and db.autoOpenKnowledgeItems == false then
+    if db.autoOpenContainers == false and db.autoOpenHousingDecor == false and db.autoOpenKnowledgeItems == false and db.autoUnwrapItems ~= true then
         return false
     end
     if InCombatLockdown() or (UnitAffectingCombat and UnitAffectingCombat("player")) then

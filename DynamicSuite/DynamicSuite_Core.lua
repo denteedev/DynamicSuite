@@ -153,6 +153,7 @@ local CORE_SUITE_ADDONS = addonTable.CORE_SUITE_ADDONS or {
     ["DynamicSuite"]    = true,
     ["DynamicLoad"]     = true,
     ["DynamicMarker"]   = true,
+    ["DynamicCursor"]   = true,
     ["DynamicZoom"]     = true,
     ["DynamicFPS"]      = true,
     ["DynamicTalent"]   = true,
@@ -170,6 +171,7 @@ local SUITE_MODULES = addonTable.SUITE_MODULES or {
     "DynamicGroup",
     "DynamicPrep",
     "DynamicTalent",
+    "DynamicCursor",
     "DynamicVault",
     "DynamicDialogue",
     "DynamicBags",
@@ -194,7 +196,7 @@ addonTable.RETIRED_IGNORED_ADDONS = RETIRED_IGNORED_ADDONS
 
 -- Canonical 4-Category Left-Rail Grouping (v2.6.6+)
 local SUITE_RAIL_CATEGORIES = {
-    { key = "COMBAT_GROUP",       label = "COMBAT & GROUP",       modules = { "marker", "group", "prep", "talent" } },
+    { key = "COMBAT_GROUP",       label = "COMBAT & GROUP",       modules = { "marker", "group", "prep", "talent", "cursor" } },
     { key = "PROGRESSION_QUESTS", label = "PROGRESSION & QUESTS", modules = { "vault", "dialogue" } },
     { key = "INVENTORY_SOCIAL",   label = "INVENTORY & SOCIAL",   modules = { "bags", "mail", "chat" } },
     { key = "PERFORMANCE_SYSTEM", label = "PERFORMANCE & SYSTEM", modules = { "load", "fps", "zoom" } },
@@ -260,6 +262,20 @@ local SUITE_MODULE_LIST = addonTable.SUITE_MODULE_LIST or {
         subtitle = "Talent Loadouts & Binds",
         category = "Combat & Group -- Talent Loadouts, Zone/Boss/PvP Binds & Swap Alerts",
         desc = "Unlimited per-spec talent loadout library, WCL/Northern Sky/Blizzard importer, PlayerSpellsFrame dock, Raid/M+/PvP/Zone talent binds, custom group ordering, and 1-click swap reminder toasts.",
+    },
+    {
+        key = "cursor",
+        id = "cursor",
+        order = 38,
+        railGroup = "COMBAT_GROUP",
+        name = "DynamicCursor",
+        title = "DynamicCursor",
+        addonName = "DynamicCursor",
+        slash = "/dcur",
+        icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga",
+        subtitle = "Cursor Ring, Crosshair & Trail",
+        category = "Combat & Group -- Cursor Ring, GCD/Cast Arc, Crosshair & Trail",
+        desc = "Customisable cursor ring with radial GCD and cast/channel/empower arcs, character crosshair, Find My Cursor locator, pooled cursor trail, and smart cursor tooltips.",
     },
     -- PROGRESSION & QUESTS
     {
@@ -401,6 +417,15 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
         category = "Target & Ground Markers",
         hasLegacyMigration = { FocusMarker = true },
     },
+    DynamicCursor = {
+        "CursorTrail", "UltimateMouseCursor", "CursorRing", "SparkPoint", "Crosshairs", "EllesmereUICursor", "EllesmereUI_Cursor",
+        addons = { "CursorTrail", "UltimateMouseCursor", "CursorRing", "SparkPoint", "Crosshairs", "EllesmereUICursor", "EllesmereUI_Cursor", "EllesmereUIQoL", "EllesmereUI_QoL" },
+        conflicts = { "CursorTrail", "UltimateMouseCursor", "CursorRing", "SparkPoint", "Crosshairs", "EllesmereUICursor", "EllesmereUI_Cursor" },
+        hardConflicts = { "CursorTrail", "UltimateMouseCursor", "CursorRing", "SparkPoint", "Crosshairs", "EllesmereUICursor", "EllesmereUI_Cursor" },
+        partialConflicts = { "EllesmereUIQoL", "EllesmereUI_QoL" },
+        softConflicts = { "EllesmereUIQoL", "EllesmereUI_QoL" },
+        category = "Cursor Ring, Crosshair & Trail",
+    },
     DynamicZoom = {
         "DynamicCam", "MaxCam", "ActionCamPlus", "FasterCamera", "AdvancedInterfaceOptions",
         addons = { "DynamicCam", "MaxCam", "ActionCamPlus", "FasterCamera", "AdvancedInterfaceOptions", "EnhanceQoL", "Leatrix_Plus", "EllesmereUIQoL", "EllesmereUI_QoL" },
@@ -503,6 +528,7 @@ local CONFLICT_REGISTRY = addonTable.CONFLICT_REGISTRY or {
 }
 CONFLICT_REGISTRY.load     = CONFLICT_REGISTRY.DynamicLoad
 CONFLICT_REGISTRY.marker   = CONFLICT_REGISTRY.DynamicMarker
+CONFLICT_REGISTRY.cursor   = CONFLICT_REGISTRY.DynamicCursor
 CONFLICT_REGISTRY.zoom     = CONFLICT_REGISTRY.DynamicZoom
 CONFLICT_REGISTRY.fps      = CONFLICT_REGISTRY.DynamicFPS
 CONFLICT_REGISTRY.prep     = CONFLICT_REGISTRY.DynamicPrep
@@ -616,6 +642,13 @@ local FRIENDLY_CONFLICT_NAMES = addonTable.FRIENDLY_CONFLICT_NAMES or {
     ["ImprovedTalentLoadouts"]   = "Improved Talent Loadouts",
     ["ErrorFilter"]              = "ErrorFilter",
     ["ErrorMonster"]             = "ErrorMonster",
+    ["CursorTrail"]              = "CursorTrail",
+    ["UltimateMouseCursor"]      = "UltimateMouseCursor",
+    ["CursorRing"]               = "CursorRing",
+    ["SparkPoint"]               = "SparkPoint",
+    ["Crosshairs"]               = "Crosshairs",
+    ["EllesmereUICursor"]        = "EllesmereUI Cursor",
+    ["EllesmereUI_Cursor"]       = "EllesmereUI Cursor",
 }
 addonTable.FRIENDLY_CONFLICT_NAMES = FRIENDLY_CONFLICT_NAMES
 DynamicSuite.FRIENDLY_CONFLICT_NAMES = FRIENDLY_CONFLICT_NAMES
@@ -662,6 +695,13 @@ local CONFLICT_YIELD_FEATURES = {
     ["EnhanceQoL"]               = "overlapping QoL features",
     ["ErrorFilter"]              = "red error text filtering",
     ["ErrorMonster"]             = "red error text filtering",
+    ["CursorTrail"]              = "cursor ring / trail overlay",
+    ["UltimateMouseCursor"]      = "cursor ring / trail overlay",
+    ["CursorRing"]               = "cursor ring / GCD arc",
+    ["SparkPoint"]               = "cursor ring / trail overlay",
+    ["Crosshairs"]               = "character crosshair overlay",
+    ["EllesmereUICursor"]        = "cursor ring, GCD arc & trail",
+    ["EllesmereUI_Cursor"]       = "cursor ring, GCD arc & trail",
 }
 addonTable.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
 DynamicSuite.CONFLICT_YIELD_FEATURES = CONFLICT_YIELD_FEATURES
@@ -1447,6 +1487,7 @@ local function NormalizeSuiteModuleId(modKeyOrName)
     local low = s:lower():gsub("^dynamic", "")
     if low == "load" then return "DynamicLoad", "load"
     elseif low == "marker" then return "DynamicMarker", "marker"
+    elseif low == "cursor" then return "DynamicCursor", "cursor"
     elseif low == "zoom" then return "DynamicZoom", "zoom"
     elseif low == "fps" then return "DynamicFPS", "fps"
     elseif low == "prep" then return "DynamicPrep", "prep"
@@ -2800,6 +2841,22 @@ local function InspectSmartSubModuleConflict(dynamicModule, otherAddon)
                 if GetFlag("maxCameraZoom", false) or GetFlag("cameraZoom", false) then
                     table.insert(features, "Max Camera Zoom")
                 end
+            elseif shortKey == "cursor" or dynamicModule == "DynamicCursor" then
+                if GetFlag("cursorCircle", false) or GetFlag("cursorEnabled", false) or (type(edb.cursor) == "table" and edb.cursor.enabled == true) then
+                    table.insert(features, "Cursor Ring")
+                end
+                if GetFlag("crosshair", false) or GetFlag("crosshairEnabled", false) or (type(edb.crosshair) == "table" and edb.crosshair.enabled == true) then
+                    table.insert(features, "Character Crosshair")
+                end
+                if GetFlag("trail", false) or GetFlag("cursorTrail", false) then
+                    table.insert(features, "Cursor Trail")
+                end
+                if type(edb.gcd) == "table" and edb.gcd.enabled == true then
+                    table.insert(features, "Cursor GCD Ring")
+                end
+                if type(edb.castCircle) == "table" and edb.castCircle.enabled == true then
+                    table.insert(features, "Cursor Cast Ring")
+                end
             end
             if #features > 0 then
                 return true, "SOFT", table.concat(features, ", ")
@@ -3184,6 +3241,7 @@ local function NormalizeSuiteModuleName(modKeyOrName)
     local low = s:lower():gsub("^dynamic", "")
     if low == "load" then return "DynamicLoad", "load"
     elseif low == "marker" then return "DynamicMarker", "marker"
+    elseif low == "cursor" then return "DynamicCursor", "cursor"
     elseif low == "zoom" then return "DynamicZoom", "zoom"
     elseif low == "fps" then return "DynamicFPS", "fps"
     elseif low == "prep" then return "DynamicPrep", "prep"
@@ -3761,7 +3819,7 @@ function addonTable.PrintEllesmereConflictBreakdown()
         { folder = "EllesmereUIQuickdraw",       mods = { "DynamicMarker" } },
         { folder = "EllesmereUIAuraBuffReminders", mods = { "DynamicPrep" } },
         { folder = "EllesmereUIMythicTimer",     mods = { "DynamicGroup", "DynamicPrep" } },
-        { folder = "EllesmereUIQoL",             mods = { "DynamicBags", "DynamicPrep", "DynamicGroup", "DynamicDialogue", "DynamicFPS", "DynamicZoom" } },
+        { folder = "EllesmereUIQoL",             mods = { "DynamicBags", "DynamicPrep", "DynamicGroup", "DynamicDialogue", "DynamicFPS", "DynamicZoom", "DynamicCursor" } },
         { folder = "EllesmereUIBlizzardSkin",    mods = { "DynamicPrep" } },
     }
     local pName = GetPlayer()
@@ -4829,6 +4887,8 @@ local MODULE_ADDON_MAP = {
     DynamicLoad   = "DynamicLoad",
     marker        = "DynamicMarker",
     DynamicMarker = "DynamicMarker",
+    cursor        = "DynamicCursor",
+    DynamicCursor = "DynamicCursor",
     zoom          = "DynamicZoom",
     DynamicZoom   = "DynamicZoom",
     fps           = "DynamicFPS",
@@ -4860,6 +4920,7 @@ DynamicSuite.MODULE_ADDON_MAP = MODULE_ADDON_MAP
 local MODULE_META_BY_KEY = {
     load   = { addonName = "DynamicLoad",   moduleTitle = "DynamicLoad",   slash = "/dl",     icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga" },
     marker = { addonName = "DynamicMarker", moduleTitle = "DynamicMarker", slash = "/dm",     icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga" },
+    cursor = { addonName = "DynamicCursor", moduleTitle = "DynamicCursor", slash = "/dcur",   icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga" },
     zoom   = { addonName = "DynamicZoom",   moduleTitle = "DynamicZoom",   slash = "/dz",     icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_zoom.tga" },
     fps    = { addonName = "DynamicFPS",    moduleTitle = "DynamicFPS",    slash = "/dfps",   icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_fps.tga" },
     prep   = { addonName = "DynamicPrep",   moduleTitle = "DynamicPrep",   slash = "/dprep",  icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga" },
@@ -5880,6 +5941,50 @@ local BUILTIN_SEARCH_SEED = {
       title = "Auto-Open Pouches & Quick-Open Queue",
       desc = "Automatically open Soulbound loot pouches and queue Housing Decor, Profession Knowledge, and Use: caches in the 1-spot Open (N) header button.",
       keywords = "auto-open containers pouches quick-open queue housing decor knowledge gold bags" },
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
+      title = "Auto-Unwrap & Open Wrapped Items",
+      desc = "Automatically unwraps wrapped gifts and parcels out of combat; vendor-locked or non-refundable items stay queued in Open (N) only.",
+      keywords = "auto-unwrap wrapped items gift parcel package open bags" },
+
+    -- ========================================================================
+    -- 13. DYNAMICCURSOR ("cursor") - Cursor Ring, GCD/Cast Arc, Crosshair & Trail
+    -- ========================================================================
+    { moduleKey = "cursor", category = "COMBAT", tabIndex = 1, tabLabel = "Cursor Ring & Cast Arc",
+      title = "Main Cursor Ring",
+      desc = "Show a customisable ring around your mouse cursor with 5 ring styles, radius, opacity, colour modes, and Mouse-Look ghost ring.",
+      keywords = "cursor ring mouse circle radius opacity colour strata mouselook click pulse /dcur" },
+    { moduleKey = "cursor", category = "COMBAT", tabIndex = 1, tabLabel = "Cursor Ring & Cast Arc",
+      title = "Cursor Presets (Clean Raid / High-Vis / Minimalist / Full Telemetry)",
+      desc = "Apply one-click DynamicCursor presets or reset defaults from the top Action & Status strip.",
+      keywords = "cursor preset clean raid high visibility minimalist full telemetry reset /dcur" },
+    { moduleKey = "cursor", category = "COMBAT", tabIndex = 1, tabLabel = "Cursor Ring & Cast Arc",
+      title = "Radial GCD Ring",
+      desc = "Show a secret-safe inner Global Cooldown swipe ring around your cursor.",
+      keywords = "gcd global cooldown ring swipe cursor arc radial" },
+    { moduleKey = "cursor", category = "COMBAT", tabIndex = 1, tabLabel = "Cursor Ring & Cast Arc",
+      title = "Radial Cast, Channel & Empower Arc",
+      desc = "Show an outer cast, channel, and empower progress ring around your cursor with interrupt flash and optional spell icon.",
+      keywords = "cast bar channel empower arc ring interrupt flash spell icon cursor" },
+    { moduleKey = "cursor", category = "COMBAT", tabIndex = 1, tabLabel = "Cursor Ring & Cast Arc",
+      title = "Activity Visibility (Open World, Delves, Dungeons, Raids, PvP)",
+      desc = "Control which content types show the cursor ring and auto-hide in Pet Battles, Vehicles, and Cutscenes.",
+      keywords = "cursor visibility open world delves dungeons raids pvp pet battle vehicle cutscene" },
+    { moduleKey = "cursor", category = "COMBAT", tabIndex = 2, tabLabel = "Crosshair & Locator",
+      title = "Character Crosshair",
+      desc = "Show a screen-centre character crosshair with 5 styles, size, thickness, centre gap, outline, and X/Y offset.",
+      keywords = "character crosshair dot brackets centre gap outline offset x y" },
+    { moduleKey = "cursor", category = "COMBAT", tabIndex = 2, tabLabel = "Crosshair & Locator",
+      title = "Find My Cursor (Shake-to-Find & Modifier Locator)",
+      desc = "Locate your cursor instantly by shaking your mouse or holding Shift, Ctrl, or Alt for a Ping Ring, Spotlight, or Screen-Wide Crosshair.",
+      keywords = "find my cursor shake to find modifier key shift ctrl alt ping ring spotlight locator" },
+    { moduleKey = "cursor", category = "HUD_LOOK", tabIndex = 3, tabLabel = "Trail & Tooltips",
+      title = "Pooled Cursor Trail",
+      desc = "Add a zero-idle-CPU cursor trail in 4 styles (Smooth Dots, Soft Mist, Class Sparks, Arcane Motes) with length, size, density, and opacity.",
+      keywords = "cursor trail smooth dots soft mist class sparks arcane motes length fade density" },
+    { moduleKey = "cursor", category = "HUD_LOOK", tabIndex = 3, tabLabel = "Trail & Tooltips",
+      title = "Smart Cursor Tooltips",
+      desc = "Anchor mouseover tooltips neatly near your cursor with X/Y offset, edge flipping, and combat corner or Shift-to-show modes.",
+      keywords = "smart cursor tooltips anchor offset edge flip combat hide shift" },
 
     -- ========================================================================
     -- 8. DYNAMICCHAT ("chat") - Target Whisper (/ww), Look, Sounds & History
@@ -10627,6 +10732,7 @@ function addonTable.ReassertSuiteSlashRouting()
         ["DYNAMICZOOM"]   = "DynamicZoom",
         ["DYNAMICFPS"]    = "DynamicFPS",
         ["DYNAMICMARKER"] = "DynamicMarker",
+        ["DYNAMICCURSOR"] = "DynamicCursor",
         ["DYNAMICPREP"]   = "DynamicPrep",
         ["DYNAMICTALENT"] = "DynamicTalent",
         ["DYNAMICGROUP"]  = "DynamicGroup",

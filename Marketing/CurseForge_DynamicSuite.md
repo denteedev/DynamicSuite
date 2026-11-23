@@ -10,11 +10,11 @@
 ## CurseForge Project Description (Copy & Paste Markdown)
 
 ```markdown
-# DynamicSuite -- 12-Module QoL, Utility & Performance Hub
+# DynamicSuite -- 13-Module QoL, Utility & Performance Hub
 
 **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
-**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5**. It brings **12 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, a unified Alert Toast system, plain-English Smart Search, a unified HUD Edit Mode, and a 12-step Guided Setup.
+**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, cursor overlays, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5**. It brings **13 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, a unified Alert Toast system, plain-English Smart Search, a unified HUD Edit Mode, and a 13-step Guided Setup.
 
 Only want target marking, world flares, and smart interrupt macros? Check out standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
@@ -22,7 +22,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ## Core Suite Features
 
-* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 12-module sidebar, individual On/Off switches, reorderable module cards, Game Menu shortcuts, and bottom-right Window Opacity (50%-100%), Scale (80%-120%), and Reload UI controls.
+* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 13-module sidebar, individual On/Off switches, reorderable module cards, Game Menu shortcuts, and bottom-right Window Opacity (50%-100%), Scale (80%-120%), and Reload UI controls.
 * **Global Smart Search (`/ds search <query>`):** Search any setting in plain English (like "auto repair", "flare", "mail", "quest", or "whisper") and jump straight to the exact option with a visual highlight.
 * **Shared Alert Toast HUD:** Manage Toast Scale (60%-150%), Opacity (20%-100%), Border Style, Auto-Fade Duration (2s-8s), and Alert Sound in one place inside Suite Studio and DynamicLoad. Zone Alerts, Talent Loadout Reminders (`DynamicTalent`), Group Teleport Alerts (`DynamicGroup`), and Chat Mention Alerts (`DynamicChat`) all share the same look, obey your Suite Accent, dismiss on Right-Click, and stack neatly without overlapping.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, scale (60%-150%), and align all 6 movable suite HUDs (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
@@ -32,7 +32,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ---
 
-## All 12 Integrated Modules
+## All 13 Integrated Modules
 
 ### 1. DynamicLoad (`/dl`) -- Zone Addon Profile Manager
 * **5 Zone Profiles:** Automatically prepares tailored addon sets for Outdoor, Delves, Dungeons, Raid, and PvP, with a clean reload prompt after loading screens (never mid-fight).
@@ -53,7 +53,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ### 5. DynamicBags (`/dbag`, `/dbags`) -- Category Bags & Bank Viewer
 * **Fast Category Bags:** Sorts your items into clean categories (Keystones, Consumables, Gear Sets, BoE/WuE, Reagents, Junk) with A-Z sorting, collapsible headers, live search, and upgrade/binding badges without server-sort lag.
-* **Unified Bank, Scaling & Alt Vault:** View your Personal, Reagent, Warband, and Guild Bank in one window, scale Bags and Unified Bank smoothly (70%-140%) with header `Ctrl+Scroll`, track items across all your alts, split/merge stacks (`/dbag merge`), and automate repairs, grey junk selling, and fast looting.
+* **Unified Bank, Scaling & Alt Vault:** View your Personal, Reagent, Warband, and Guild Bank in one window, scale Bags and Unified Bank smoothly (70%-140%) with header `Ctrl+Scroll`, track items across all your alts, split/merge stacks (`/dbag merge`), and automate repairs, grey junk selling, fast looting, and opt-in wrapped item unwrapping.
 
 ### 6. DynamicChat (`/dchat`, `/dc`, `/dynamicchat`) -- Whispers, Chat Skin & History
 * **Quick Chat Shortcuts:** Type `/ww` to whisper your friendly target (even in combat), `/rl` to reload your UI, and `/lg` to leave your party or raid quickly.
@@ -84,6 +84,10 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 * **Clean Obsidian Quest & Gossip Reader:** Replaces cluttered NPC gossip and quest turn-in windows with a readable Obsidian frame (`/dd preview`), `1-9` number hotkeys for instant gossip and option choices, Spacebar quest accept/complete, and hold-`Shift` bypass whenever you want Blizzard's default frame.
 * **Customisable Typography & Coexistence:** Tune Reader Scale, Backdrop Opacity, body text size, and completion chime settings, with automatic auto-yielding to external quest dialogue addons such as DialogueUI, Immersion, Storyline, or Narcissus.
 
+### 13. DynamicCursor (`/dcur`, `/dynamiccursor`) -- Cursor Ring, Crosshair & Trail
+* **Cursor Ring, Radial GCD & Cast Arc:** Customisable click-through Cursor Ring (5 procedural styles, radius, OOC/combat opacity, colour modes, Mouse-Look ghost ring, and click-pulse ripple) paired with secret-safe native C++ Radial GCD and Cast/Channel/Empower arcs, plus 4 one-click presets (`Clean Raid`, `High-Visibility`, `Minimalist`, `Full Telemetry`).
+* **Character Crosshair, Find My Cursor & Trail:** Screen-centre Character Crosshair (5 styles, X/Y offset, Combat/Instance visibility), Shake-to-Find + Modifier Key Locator (`Shift`/`Ctrl`/`Alt`), zero-idle-CPU 48-node Pooled Cursor Trail, and opt-in Smart Cursor Tooltips.
+
 ---
 
 ## Slash Commands
@@ -105,6 +109,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 | `/dprep` or `/dp` | Open DynamicPrep (supports edit, buffs, qol, testaudit, reset) |
 | `/dt` or `/dynamictalent` | Open DynamicTalent (supports binds, edit, hud, reset) |
 | `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, import, reset) |
+| `/dcur` or `/dynamiccursor` | Open DynamicCursor (supports raid, highvis, minimal, full, reset) |
 | `/dbag` or `/dbags` | Open DynamicBags (supports bag, bank, warband, guild, merge, clear, vault clear, reset) |
 | `/dmail` or `/dynamicmail` | Open DynamicMail (supports all, gold, items, mats, boe, warband, same, stop, reset) |
 | `/dv` or `/dynamicvault` | Open DynamicVault (supports open, scan, reset) |

@@ -1,8 +1,8 @@
-# DynamicSuite -- 12-Module QoL, Utility & Performance Hub
+# DynamicSuite -- 13-Module QoL, Utility & Performance Hub
 
 **Version:** v2.8.1 (22/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
 
-**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for World of Warcraft Retail. All 12 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
+**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, cursor overlays, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for World of Warcraft Retail. All 13 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
 ---
 
@@ -16,7 +16,7 @@
 
 ## Core Suite Features
 
-* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 12-module sidebar, individual On/Off switches, reorderable module cards, Window Opacity (50%-100%), Window Scale (80%-120%), and a quick Reload UI button.
+* **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 13-module sidebar, individual On/Off switches, reorderable module cards, Window Opacity (50%-100%), Window Scale (80%-120%), and a quick Reload UI button.
 * **Shared Alert Toast HUD:** Centralised Toast Scale, Opacity, Border Style, Auto-Fade Duration, and Alert Sound inside Suite Studio and DynamicLoad, shared cleanly across Zone Load Alerts, DynamicTalent Reminders, DynamicGroup Teleport Toasts, and DynamicChat Mention Alerts with clean vertical stacking and Right-Click dismissal.
 * **Global Smart Search (`/ds search <query>`):** Type what you are looking for in plain English (like "auto repair", "flare", "mail", "quest", or "whisper") and jump straight to the exact setting with a visual highlight.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, resize (60%-150%), and align all 6 suite HUDs (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
@@ -33,10 +33,11 @@
 | **DynamicPrep** | `/dprep`, `/dp` | Top stat/durability/FPS bar, Midnight Omni Folio tracker, clickable Raid Buff & Consumable reminders, `[DynamicHeal]` & Role-Smart `[DynamicDrink]` macros, Mage Food restock & Low Durability alert toasts, Red Error Text & Sound Filter, and quest/gossip QoL |
 | **DynamicTalent** | `/dt`, `/dynamictalent` | Unlimited per-spec talent loadout library, PlayerSpellsFrame dock, Raid/M+/PvP/Zone talent binds, custom group order, Prep Bar capsule hook, and Swap Reminder Toasts |
 | **DynamicMarker** | `/dm`, `/fm` | Instant focus & raid target marking, optional world flare cycling & clear hotkeys (unbound by default), floating Focus & Flare bars, and smart interrupt macro |
+| **DynamicCursor** | `/dcur`, `/dynamiccursor` | Customisable Cursor Ring (5 styles + Mouse-Look ghost), secret-safe Radial GCD & Cast/Channel/Empower arcs, Character Crosshair, Find My Cursor locator, zero-idle-CPU Pooled Trail, and Smart Cursor Tooltips |
 | **DynamicZoom** | `/dz` | Unlocks 39-yard max camera zoom, speeds up scroll zooming, and fades trees/pillars instead of snapping your camera |
 | **DynamicFPS** | `/dfps` | Switches graphics settings automatically per zone, protects combat FPS, and tunes SpellQueueWindow from live ping + haste |
 | **DynamicGroup** | `/dgroup`, `/dg` | Adds region tags, M+ scores, and Lust/B-Res icons to Premade Groups, Season 2 portal deck, Dungeon Teleport Toasts, party audit, opt-in Auto-Accept Role Check, and auto-keystone |
-| **DynamicBags** | `/dbag` | Fast category-sorted bags, unified Personal/Warband/Guild Bank viewer with header `Ctrl+Scroll` scaling (70%-140%), Alt Inventory Vault, auto-repair, and auto-sell junk |
+| **DynamicBags** | `/dbag` | Fast category-sorted bags, unified Personal/Warband/Guild Bank viewer with header `Ctrl+Scroll` scaling (70%-140%), Alt Inventory Vault, auto-repair, auto-sell junk, and opt-in Auto-Unwrap |
 | **DynamicMail** | `/dmail`, `/dynamicmail` | 1-click Inbox Open All, AH Gold, Items Only, and empty-letter cleanup with bag-reserve safety, Alt Vault recipient picker, and `Alt+Left-Click` bag attach |
 | **DynamicChat** | `/dchat`, `/dc`, `/dynamicchat` | Smoked-glass chat frame, `/ww` target whispers, `/rl` reload, `/lg` group leave, 10 DynamicSuite chimes + 7 Blizzard alert sounds, Mention Alert Toasts, clickable URLs, and reload history |
 | **DynamicVault** | `/dv`, `/dynamicvault` | Flush Great Vault top dock, account-wide Great Vault matrix (Raid, Mythic+, Delves), Restored Coffer Keys, Catalyst, Crests, owned Keystones, Weekly Reset timer, Bountiful Delves, and Weekly Checklists |
@@ -63,6 +64,7 @@
 | `/dprep` or `/dp` | Open DynamicPrep (supports edit, buffs, qol, reset) |
 | `/dt` or `/dynamictalent` | Open DynamicTalent (supports binds, edit, hud, reset) |
 | `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, import, reset) |
+| `/dcur` or `/dynamiccursor` | Open DynamicCursor (supports raid, highvis, minimal, full, reset) |
 | `/dz` or `/dynamiczoom` | Open DynamicZoom (supports max, 39, reset) |
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |
 | `/dgroup` or `/dg` | Open DynamicGroup (supports rc, pull, testtoast, reset) |
