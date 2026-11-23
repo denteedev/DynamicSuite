@@ -1729,10 +1729,9 @@ do
         return btn
     end
 
-    local function CreateSettingRow(parent, titleTxt, descTxt, rightW, isSubRow)
+    local function CreateSettingRow(parent, titleTxt, descTxt, rightW)
         local row = CreateFrame("Frame", nil, parent)
         row:SetHeight(56)
-        row.isSubRow = isSubRow and true or false
 
         local div = row:CreateTexture(nil, "ARTWORK")
         div:SetHeight(1)
@@ -1741,29 +1740,9 @@ do
         div:SetColorTexture(1, 1, 1, 0.06)
         row.div = div
 
-        local padL = 14
-        if row.isSubRow then
-            local subBg = row:CreateTexture(nil, "BACKGROUND")
-            subBg:SetPoint("TOPLEFT", row, "TOPLEFT", 12, -2)
-            subBg:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -12, 2)
-            subBg:SetColorTexture(0.035, 0.039, 0.051, 0.72)
-            row.subBg = subBg
-
-            local subBar = row:CreateTexture(nil, "ARTWORK")
-            subBar:SetSize(2, 46)
-            subBar:SetPoint("LEFT", row, "LEFT", 16, 0)
-            row.subBar = subBar
-
-            local pip = row:CreateTexture(nil, "OVERLAY")
-            pip:SetSize(5, 5)
-            pip:SetPoint("LEFT", subBar, "RIGHT", 6, 8)
-            row.pip = pip
-            padL = 32
-        end
-
         local title = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         SetSafeFont(title, 12, "")
-        title:SetPoint("TOPLEFT", row, "TOPLEFT", padL, -9)
+        title:SetPoint("TOPLEFT", row, "TOPLEFT", 14, -9)
         title:SetPoint("RIGHT", row, "RIGHT", -(rightW + 26), 0)
         title:SetJustifyH("LEFT")
         title:SetWordWrap(false)
@@ -1781,15 +1760,6 @@ do
         desc:SetTextColor(0.64, 0.70, 0.78, 1)
         desc:SetText(descTxt)
         row.desc = desc
-
-        function row:RefreshAccent()
-            if self.subBar and self.pip then
-                local ar, ag, ab = GetSuiteAccent()
-                self.subBar:SetColorTexture(ar, ag, ab, 0.55)
-                self.pip:SetColorTexture(ar, ag, ab, 0.90)
-            end
-        end
-        row:RefreshAccent()
 
         function row:BindRight(ctrl)
             ctrl:ClearAllPoints()
