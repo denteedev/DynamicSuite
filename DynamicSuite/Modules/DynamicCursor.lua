@@ -297,6 +297,7 @@ local DEFAULTS = {
     ringEnabled = false,
     ringStyle = "SOLID",            -- "SOLID" | "GLOW" | "DUAL"
     ringThickness = 3,              -- 1..5
+    ringExtraContrast = false,      -- dark outline behind main ring, GCD ring & cast arc
     ringRadius = 24,                -- 16..96 (compact modern default)
     ringOffsetX = 0,                -- -16..16
     ringOffsetY = 0,                -- -16..16
@@ -317,13 +318,13 @@ local DEFAULTS = {
     groundTargetSizeBoost = true,
 
     gcdEnabled = true,
-    gcdGap = 4,                     -- 0..20 px inward
+    gcdGap = 6,                     -- 0..20 px inward
     gcdStyle = "THIN",              -- "THIN" | "CRISP" | "THICK"
     gcdColorMode = "MATCH_RING",    -- "MATCH_RING" | "ACCENT" | "CLASS" | "CUSTOM"
     gcdCustomHex = "38BDF8",
     gcdOpacity = 0.85,              -- 0.10..1.00
     castArcEnabled = true,
-    castGap = 6,                    -- 0..24 px outward
+    castGap = 4,                    -- 0..24 px outward
     castStyle = "THIN",             -- "THIN" | "CRISP" | "THICK"
     castColorMode = "MATCH_RING",   -- "MATCH_RING" | "ACCENT" | "CLASS" | "CUSTOM"
     castCustomHex = "F59E0B",
@@ -489,6 +490,8 @@ do
     local GCD_SPELL_ID = 61304
     local ringRoot, ringTex, ghostTex, pulseTex, ringDotBg, ringDotTex
     local gcdCooldown, castCooldown, castIconFrame, castIconTex
+    local gcdContrastFrame, castContrastFrame
+    local ringContrastActive = false
     local locatorRoot, locatorPingTex, locatorSpotTex, locatorCrossH, locatorCrossV
     local crosshairRoot
     local chLines = {}
@@ -590,6 +593,14 @@ do
         ringRoot:SetFrameLevel(90)
         ringRoot:Hide()
 
+        ringRoot.contrastOuter = ringRoot:CreateTexture(nil, "BACKGROUND", nil, 1)
+        ringRoot.contrastOuter:SetVertexColor(0.01, 0.01, 0.02, 0.92)
+        ringRoot.contrastOuter:Hide()
+
+        ringRoot.contrastInner = ringRoot:CreateTexture(nil, "BACKGROUND", nil, 1)
+        ringRoot.contrastInner:SetVertexColor(0.01, 0.01, 0.02, 0.92)
+        ringRoot.contrastInner:Hide()
+
         ringTex = ringRoot:CreateTexture(nil, "ARTWORK")
         ringTex:SetAllPoints()
 
@@ -614,6 +625,7 @@ do
 
         gcdCooldown = CreateFrame("Cooldown", nil, ringRoot, "CooldownFrameTemplate")
         gcdCooldown:SetAllPoints()
+        gcdCooldown:SetFrameLevel(92)
         gcdCooldown:EnableMouse(false)
         gcdCooldown:SetDrawEdge(false)
         gcdCooldown:SetDrawBling(false)
@@ -623,9 +635,30 @@ do
         gcdCooldown.noCooldownCount = true
         gcdCooldown:Hide()
 
+        gcdContrastFrame = CreateFrame("Frame", nil, ringRoot)
+        gcdContrastFrame:SetFrameLevel(91)
+        gcdContrastFrame:EnableMouse(false)
+        gcdContrastFrame:SetAllPoints(gcdCooldown)
+        gcdContrastFrame:Hide()
+        gcdContrastFrame.outerTex = gcdContrastFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+        gcdContrastFrame.outerTex:SetVertexColor(0.01, 0.01, 0.02, 0.88)
+        gcdContrastFrame.innerTex = gcdContrastFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+        gcdContrastFrame.innerTex:SetVertexColor(0.01, 0.01, 0.02, 0.88)
+
+        gcdCooldown:HookScript("OnShow", function()
+            if gcdContrastFrame then gcdContrastFrame:SetShown(ringContrastActive) end
+        end)
+        gcdCooldown:HookScript("OnHide", function()
+            if gcdContrastFrame then gcdContrastFrame:Hide() end
+        end)
+        if gcdCooldown.HasScript and gcdCooldown:HasScript("OnCooldownDone") then
+            gcdCooldown:HookScript("OnCooldownDone", function(self) self:Hide() end)
+        end
+
         castCooldown = CreateFrame("Cooldown", nil, ringRoot, "CooldownFrameTemplate")
-        castCooldown:SetPoint("TOPLEFT", ringRoot, "TOPLEFT", -6, 6)
-        castCooldown:SetPoint("BOTTOMRIGHT", ringRoot, "BOTTOMRIGHT", 6, -6)
+        castCooldown:SetPoint("TOPLEFT", ringRoot, "TOPLEFT", -4, 4)
+        castCooldown:SetPoint("BOTTOMRIGHT", ringRoot, "BOTTOMRIGHT", 4, -4)
+        castCooldown:SetFrameLevel(92)
         castCooldown:EnableMouse(false)
         castCooldown:SetDrawEdge(false)
         castCooldown:SetDrawBling(false)
@@ -635,8 +668,33 @@ do
         castCooldown.noCooldownCount = true
         castCooldown:Hide()
 
+        castContrastFrame = CreateFrame("Frame", nil, ringRoot)
+        castContrastFrame:SetFrameLevel(91)
+        castContrastFrame:EnableMouse(false)
+        castContrastFrame:SetAllPoints(castCooldown)
+        castContrastFrame:Hide()
+        castContrastFrame.outerTex = castContrastFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+        castContrastFrame.outerTex:SetVertexColor(0.01, 0.01, 0.02, 0.88)
+        castContrastFrame.innerTex = castContrastFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+        castContrastFrame.innerTex:SetVertexColor(0.01, 0.01, 0.02, 0.88)
+
+        castCooldown:HookScript("OnShow", function()
+            if castContrastFrame then castContrastFrame:SetShown(ringContrastActive) end
+        end)
+        castCooldown:HookScript("OnHide", function()
+            if castContrastFrame then castContrastFrame:Hide() end
+        end)
+        if castCooldown.HasScript and castCooldown:HasScript("OnCooldownDone") then
+            castCooldown:HookScript("OnCooldownDone", function(self)
+                if not isCastingNow and not isChannelingNow and castFlashEnd <= ((GetTime and GetTime()) or 0) then
+                    self:Hide()
+                end
+            end)
+        end
+
         castIconFrame = CreateFrame("Frame", nil, ringRoot, "BackdropTemplate")
         castIconFrame:SetSize(20, 20)
+        castIconFrame:SetFrameLevel(95)
         castIconFrame:EnableMouse(false)
         castIconFrame:SetBackdrop({
             bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -728,6 +786,16 @@ do
         chCircle:SetTexture(RING_TEXTURES.THIN)
         chCircle:SetPoint("CENTER")
         chCircle:Hide()
+
+        crosshairRoot.circleBgOuter = crosshairRoot:CreateTexture(nil, "BACKGROUND", nil, 1)
+        crosshairRoot.circleBgOuter:SetVertexColor(0.01, 0.01, 0.02, 0.90)
+        crosshairRoot.circleBgOuter:SetPoint("CENTER")
+        crosshairRoot.circleBgOuter:Hide()
+
+        crosshairRoot.circleBgInner = crosshairRoot:CreateTexture(nil, "BACKGROUND", nil, 1)
+        crosshairRoot.circleBgInner:SetVertexColor(0.01, 0.01, 0.02, 0.90)
+        crosshairRoot.circleBgInner:SetPoint("CENTER")
+        crosshairRoot.circleBgInner:Hide()
     end
 
     local function EnsureTrailPool()
@@ -782,6 +850,8 @@ do
             chOutlines[i]:Hide()
         end
         chDot:Hide(); chDotBg:Hide(); chCircle:Hide()
+        if crosshairRoot.circleBgOuter then crosshairRoot.circleBgOuter:Hide() end
+        if crosshairRoot.circleBgInner then crosshairRoot.circleBgInner:Hide() end
 
         local function PlaceBar(idx, w, h, pt, relPt, ox, oy)
             local ln = chLines[idx]
@@ -821,10 +891,23 @@ do
         if db.crosshairShowCircle == true then
             local cRad = math.max(8, math.min(64, tonumber(db.crosshairCircleRadius) or 24))
             local cDiam = cRad * 2
-            chCircle:SetTexture(GetRingTexture("SOLID", db.crosshairCircleThickness or 2))
+            local cTex = GetRingTexture("SOLID", db.crosshairCircleThickness or 2)
+            chCircle:SetTexture(cTex)
             chCircle:SetSize(cDiam, cDiam)
             chCircle:SetVertexColor(r, g, bCol, 1)
             chCircle:Show()
+            if outline and crosshairRoot.circleBgOuter and crosshairRoot.circleBgInner then
+                local cPad = ((db.crosshairCircleThickness or 2) <= 1 and cDiam < 44) and 1.2 or 1.8
+                crosshairRoot.circleBgOuter:SetTexture(cTex)
+                crosshairRoot.circleBgOuter:SetSize(cDiam + cPad * 2, cDiam + cPad * 2)
+                crosshairRoot.circleBgOuter:SetVertexColor(0.01, 0.01, 0.02, 0.90)
+                crosshairRoot.circleBgOuter:Show()
+                crosshairRoot.circleBgInner:SetTexture(cTex)
+                local innerDiam = math.max(8, cDiam - cPad * 2)
+                crosshairRoot.circleBgInner:SetSize(innerDiam, innerDiam)
+                crosshairRoot.circleBgInner:SetVertexColor(0.01, 0.01, 0.02, 0.90)
+                crosshairRoot.circleBgInner:Show()
+            end
         end
 
         if db.crosshairShowDot == true then
@@ -857,6 +940,31 @@ do
         ringTex:SetTexture(texPath)
         ghostTex:SetTexture(texPath)
         pulseTex:SetTexture(RING_TEXTURES.THIN)
+
+        ringContrastActive = (db.ringExtraContrast == true)
+        if ringRoot.contrastOuter and ringRoot.contrastInner then
+            if ringContrastActive and not isMouseLooking then
+                local th = tonumber(db.ringThickness) or 3
+                local pad = (th <= 1 and diam < 44) and 1.2 or 2
+                local cAlpha = ((db.ringStyle or "SOLID") == "GLOW") and 0.72 or 0.92
+                ringRoot.contrastOuter:SetTexture(texPath)
+                ringRoot.contrastOuter:SetVertexColor(0.01, 0.01, 0.02, cAlpha)
+                ringRoot.contrastOuter:ClearAllPoints()
+                ringRoot.contrastOuter:SetPoint("TOPLEFT", ringRoot, "TOPLEFT", -pad, pad)
+                ringRoot.contrastOuter:SetPoint("BOTTOMRIGHT", ringRoot, "BOTTOMRIGHT", pad, -pad)
+                ringRoot.contrastOuter:Show()
+
+                ringRoot.contrastInner:SetTexture(texPath)
+                ringRoot.contrastInner:SetVertexColor(0.01, 0.01, 0.02, cAlpha)
+                ringRoot.contrastInner:ClearAllPoints()
+                ringRoot.contrastInner:SetPoint("TOPLEFT", ringRoot, "TOPLEFT", pad, -pad)
+                ringRoot.contrastInner:SetPoint("BOTTOMRIGHT", ringRoot, "BOTTOMRIGHT", -pad, pad)
+                ringRoot.contrastInner:Show()
+            else
+                ringRoot.contrastOuter:Hide()
+                ringRoot.contrastInner:Hide()
+            end
+        end
 
         local baseR, baseG, baseB = ResolveColorMode(db.ringColorMode or "ACCENT", db.ringCustomHex, db.ringCombatShift)
         local r, g, b = baseR, baseG, baseB
@@ -897,12 +1005,27 @@ do
             local gcdTex = RING_TEXTURES[db.gcdStyle or "THIN"] or RING_TEXTURES.THIN
             gcdCooldown:SetSwipeTexture(gcdTex)
             gcdCooldown:SetSwipeColor(gr, gg, gb, gcdAlpha)
-            local reqGap = math.max(0, math.min(20, tonumber(db.gcdGap) or 4))
+            local reqGap = math.max(0, math.min(20, tonumber(db.gcdGap) or 6))
             local maxInset = math.max(0, math.floor((diam - 10) * 0.5))
             local inset = math.min(reqGap, maxInset)
             gcdCooldown:ClearAllPoints()
             gcdCooldown:SetPoint("TOPLEFT", ringRoot, "TOPLEFT", inset, -inset)
             gcdCooldown:SetPoint("BOTTOMRIGHT", ringRoot, "BOTTOMRIGHT", -inset, inset)
+            if gcdContrastFrame then
+                local gPad = ((db.gcdStyle or "THIN") == "THIN") and 1.5 or 2
+                gcdContrastFrame.outerTex:SetTexture(gcdTex)
+                gcdContrastFrame.outerTex:SetVertexColor(0.01, 0.01, 0.02, 0.88)
+                gcdContrastFrame.outerTex:ClearAllPoints()
+                gcdContrastFrame.outerTex:SetPoint("TOPLEFT", gcdContrastFrame, "TOPLEFT", -gPad, gPad)
+                gcdContrastFrame.outerTex:SetPoint("BOTTOMRIGHT", gcdContrastFrame, "BOTTOMRIGHT", gPad, -gPad)
+
+                gcdContrastFrame.innerTex:SetTexture(gcdTex)
+                gcdContrastFrame.innerTex:SetVertexColor(0.01, 0.01, 0.02, 0.88)
+                gcdContrastFrame.innerTex:ClearAllPoints()
+                gcdContrastFrame.innerTex:SetPoint("TOPLEFT", gcdContrastFrame, "TOPLEFT", gPad, -gPad)
+                gcdContrastFrame.innerTex:SetPoint("BOTTOMRIGHT", gcdContrastFrame, "BOTTOMRIGHT", -gPad, gPad)
+                gcdContrastFrame:SetShown(ringContrastActive and gcdCooldown:IsShown())
+            end
         end
 
         local castR, castG, castB = ResolveColorMode(db.castColorMode or "MATCH_RING", db.castCustomHex, false, baseR, baseG, baseB)
@@ -910,7 +1033,7 @@ do
         if castCooldown then
             local castAlpha = math.max(0.10, math.min(1.00, tonumber(db.castOpacity) or 0.92))
             local castTex = RING_TEXTURES[db.castStyle or "THIN"] or RING_TEXTURES.THIN
-            local castGap = math.max(0, math.min(24, tonumber(db.castGap) or 6))
+            local castGap = math.max(0, math.min(24, tonumber(db.castGap) or 4))
             castCooldown:SetSwipeTexture(castTex)
             castCooldown:ClearAllPoints()
             castCooldown:SetPoint("TOPLEFT", ringRoot, "TOPLEFT", -castGap, castGap)
@@ -919,6 +1042,21 @@ do
                 castCooldown:SetSwipeColor(0.95, 0.22, 0.22, 0.95)
             else
                 castCooldown:SetSwipeColor(castR, castG, castB, castAlpha)
+            end
+            if castContrastFrame then
+                local cPad = ((db.castStyle or "THIN") == "THIN") and 1.5 or 2
+                castContrastFrame.outerTex:SetTexture(castTex)
+                castContrastFrame.outerTex:SetVertexColor(0.01, 0.01, 0.02, 0.88)
+                castContrastFrame.outerTex:ClearAllPoints()
+                castContrastFrame.outerTex:SetPoint("TOPLEFT", castContrastFrame, "TOPLEFT", -cPad, cPad)
+                castContrastFrame.outerTex:SetPoint("BOTTOMRIGHT", castContrastFrame, "BOTTOMRIGHT", cPad, -cPad)
+
+                castContrastFrame.innerTex:SetTexture(castTex)
+                castContrastFrame.innerTex:SetVertexColor(0.01, 0.01, 0.02, 0.88)
+                castContrastFrame.innerTex:ClearAllPoints()
+                castContrastFrame.innerTex:SetPoint("TOPLEFT", castContrastFrame, "TOPLEFT", cPad, -cPad)
+                castContrastFrame.innerTex:SetPoint("BOTTOMRIGHT", castContrastFrame, "BOTTOMRIGHT", -cPad, cPad)
+                castContrastFrame:SetShown(ringContrastActive and castCooldown:IsShown())
             end
         end
 
@@ -955,6 +1093,13 @@ do
         if _G.C_Spell and type(_G.C_Spell.GetSpellCooldownDuration) == "function" and type(gcdCooldown.SetCooldownFromDurationObject) == "function" then
             local okD, durObj = pcall(_G.C_Spell.GetSpellCooldownDuration, GCD_SPELL_ID)
             if okD and durObj then
+                if type(durObj.IsZero) == "function" then
+                    local okZ, isZ = pcall(durObj.IsZero, durObj)
+                    if okZ and not _IsSecret(isZ) and isZ == true then
+                        gcdCooldown:Hide()
+                        return
+                    end
+                end
                 local okSet = pcall(gcdCooldown.SetCooldownFromDurationObject, gcdCooldown, durObj)
                 if okSet then
                     gcdCooldown:Show()
@@ -1201,6 +1346,8 @@ do
             if isMouseLooking then
                 if db.ringKeepMouseLook then
                     ringTex:Hide()
+                    if ringRoot.contrastOuter then ringRoot.contrastOuter:Hide() end
+                    if ringRoot.contrastInner then ringRoot.contrastInner:Hide() end
                     ghostTex:Show()
                     ringRoot:Show()
                 else
@@ -1208,6 +1355,8 @@ do
                 end
             else
                 ringTex:Show()
+                if ringRoot.contrastOuter then ringRoot.contrastOuter:SetShown(ringContrastActive) end
+                if ringRoot.contrastInner then ringRoot.contrastInner:SetShown(ringContrastActive) end
                 ghostTex:Hide()
                 local rox = tonumber(db.ringOffsetX) or 0
                 local roy = tonumber(db.ringOffsetY) or 0
@@ -1567,15 +1716,16 @@ function DynamicCursor:ApplyPreset(presetKey)
         db.ringEnabled = true
         db.ringStyle = "SOLID"
         db.ringThickness = 3
+        db.ringExtraContrast = false
         db.ringRadius = 24
         db.ringOpacityOOC = 0.45
         db.ringOpacityCombat = 0.90
         db.ringColorMode = "ACCENT"
         db.ringCombatShift = false
         db.gcdEnabled = true
-        db.gcdGap = 4
+        db.gcdGap = 6
         db.castArcEnabled = true
-        db.castGap = 6
+        db.castGap = 4
         db.castShowIcon = false
         db.castInstantFlash = false
         db.crosshairEnabled = false
@@ -1585,15 +1735,16 @@ function DynamicCursor:ApplyPreset(presetKey)
         db.ringEnabled = true
         db.ringStyle = "DUAL"
         db.ringThickness = 3
+        db.ringExtraContrast = true
         db.ringRadius = 24
         db.ringOpacityOOC = 0.75
         db.ringOpacityCombat = 1.00
         db.ringColorMode = "HIGH_VIS_GREEN"
         db.ringCombatShift = true
         db.gcdEnabled = true
-        db.gcdGap = 4
+        db.gcdGap = 6
         db.castArcEnabled = true
-        db.castGap = 6
+        db.castGap = 4
         db.castShowIcon = true
         db.crosshairEnabled = true
         db.crosshairShowCross = true
@@ -1614,13 +1765,15 @@ function DynamicCursor:ApplyPreset(presetKey)
         db.ringEnabled = true
         db.ringStyle = "SOLID"
         db.ringThickness = 2
+        db.ringExtraContrast = false
         db.ringRadius = 20
         db.ringOpacityOOC = 0.35
         db.ringOpacityCombat = 0.75
         db.ringColorMode = "CLASS"
         db.gcdEnabled = true
-        db.gcdGap = 3
+        db.gcdGap = 6
         db.castArcEnabled = false
+        db.castGap = 4
         db.castShowIcon = false
         db.castInstantFlash = false
         db.crosshairEnabled = false
@@ -1630,15 +1783,16 @@ function DynamicCursor:ApplyPreset(presetKey)
         db.ringEnabled = true
         db.ringStyle = "GLOW"
         db.ringThickness = 3
+        db.ringExtraContrast = false
         db.ringRadius = 26
         db.ringOpacityOOC = 0.65
         db.ringOpacityCombat = 0.95
         db.ringColorMode = "ACCENT"
         db.ringClickPulse = true
         db.gcdEnabled = true
-        db.gcdGap = 4
+        db.gcdGap = 6
         db.castArcEnabled = true
-        db.castGap = 6
+        db.castGap = 4
         db.castShowIcon = true
         db.castInstantFlash = true
         db.crosshairEnabled = true
@@ -1868,6 +2022,12 @@ do
         return holder
     end
 
+    local function DisablePixelSnap(tex)
+        if not tex then return end
+        if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
+        if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+    end
+
     local function CreateDropdownControl(parent, width, options, getFn, setFn)
         local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
         btn:SetSize(width, 26)
@@ -1879,10 +2039,17 @@ do
         btn.lbl:SetJustifyH("LEFT")
         btn.lbl:SetWordWrap(false)
 
-        btn.chevron = btn:CreateTexture(nil, "OVERLAY")
-        btn.chevron:SetSize(10, 10)
-        btn.chevron:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+        local chevronHolder = CreateFrame("Frame", nil, btn)
+        chevronHolder:SetSize(12, 12)
+        chevronHolder:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+        btn.chevronHolder = chevronHolder
+
+        btn.chevron = chevronHolder:CreateTexture(nil, "OVERLAY", nil, 3)
+        btn.chevron:SetAllPoints()
+        btn.chevron:SetTexCoord(0, 1, 0, 1)
         btn.chevron:SetTexture(ICON_CHEVRON_DOWN)
+        btn.chevron:SetVertexColor(1, 1, 1, 0.75)
+        DisablePixelSnap(btn.chevron)
 
         function btn:SetOpenState(open)
             self.isOpen = open and true or false
@@ -1891,17 +2058,27 @@ do
             if self.isOpen then
                 self.chevron:SetVertexColor(ar, ag, ab, 1.0)
                 self:SetBackdropBorderColor(ar, ag, ab, 0.95)
+            elseif self:IsMouseOver() then
+                self.chevron:SetVertexColor(1, 1, 1, 0.95)
+                self:SetBackdropBorderColor(ar, ag, ab, 0.70)
             else
-                self.chevron:SetVertexColor(ar, ag, ab, 0.92)
+                self.chevron:SetVertexColor(1, 1, 1, 0.75)
                 self:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
             end
         end
 
         function btn:RefreshValue()
             local ar, ag, ab = GetSuiteAccent()
-            SetBackdropSolid(self, { 0.078, 0.090, 0.122, 0.96 }, self.isOpen and { ar, ag, ab, 0.95 } or { 0.145, 0.165, 0.212, 0.95 }, 1)
+            local borderCol = (self.isOpen and { ar, ag, ab, 0.95 }) or (self:IsMouseOver() and { ar, ag, ab, 0.70 }) or { 0.145, 0.165, 0.212, 0.95 }
+            SetBackdropSolid(self, { 0.078, 0.090, 0.122, 0.96 }, borderCol, 1)
             self.chevron:SetTexture(self.isOpen and ICON_CHEVRON_UP or ICON_CHEVRON_DOWN)
-            self.chevron:SetVertexColor(ar, ag, ab, self.isOpen and 1.0 or 0.92)
+            if self.isOpen then
+                self.chevron:SetVertexColor(ar, ag, ab, 1.0)
+            elseif self:IsMouseOver() then
+                self.chevron:SetVertexColor(1, 1, 1, 0.95)
+            else
+                self.chevron:SetVertexColor(1, 1, 1, 0.75)
+            end
             local cur = getFn()
             for _, opt in ipairs(options) do
                 if opt.value == cur then
@@ -1912,6 +2089,19 @@ do
             self.lbl:SetText(tostring(cur or ""))
         end
 
+        btn:SetScript("OnEnter", function(selfBtn)
+            if not selfBtn.isOpen then
+                local ar, ag, ab = GetSuiteAccent()
+                selfBtn:SetBackdropBorderColor(ar, ag, ab, 0.70)
+                selfBtn.chevron:SetVertexColor(1, 1, 1, 0.95)
+            end
+        end)
+        btn:SetScript("OnLeave", function(selfBtn)
+            if not selfBtn.isOpen then
+                selfBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+                selfBtn.chevron:SetVertexColor(1, 1, 1, 0.75)
+            end
+        end)
         btn:SetScript("OnHide", CloseCursorPopups)
         btn:SetScript("OnClick", function(selfBtn)
             if activeDropPopup and activeDropPopup.owner == selfBtn and activeDropPopup:IsShown() then
@@ -2217,57 +2407,160 @@ do
 
         local track = CreateFrame("Frame", nil, root)
         track:SetWidth(4)
-        track:SetPoint("TOPRIGHT", tabBar, "BOTTOMRIGHT", -2, -8)
-        track:SetPoint("BOTTOMRIGHT", root, "BOTTOMRIGHT", -18, 10)
+        track:SetPoint("TOPRIGHT", sf, "TOPRIGHT", 8, -2)
+        track:SetPoint("BOTTOMRIGHT", sf, "BOTTOMRIGHT", 8, 2)
+        track:EnableMouse(true)
+        track:EnableMouseWheel(true)
+        track:SetHitRectInsets(-5, -5, 0, 0)
         local trackBg = track:CreateTexture(nil, "BACKGROUND")
         trackBg:SetAllPoints()
-        trackBg:SetColorTexture(0.035, 0.039, 0.051, 0.95)
+        trackBg:SetColorTexture(0.035, 0.039, 0.051, 0.90)
+        DisablePixelSnap(trackBg)
 
         local thumb = CreateFrame("Button", nil, track)
         thumb:SetWidth(4)
         thumb:SetHeight(40)
         thumb:SetPoint("TOP", track, "TOP", 0, 0)
+        thumb:EnableMouse(true)
+        thumb:EnableMouseWheel(true)
+        thumb:SetHitRectInsets(-5, -5, 0, 0)
         local thumbTex = thumb:CreateTexture(nil, "OVERLAY")
         thumbTex:SetAllPoints()
         thumbTex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+        DisablePixelSnap(thumbTex)
+        thumb.tex = thumbTex
 
-        local function UpdateThumb()
-            local maxS = math.max(0, (content:GetHeight() or 0) - (sf:GetHeight() or 0))
+        local function SyncThumbColor()
+            if thumb.isDragging then
+                local ar, ag, ab = GetSuiteAccent()
+                thumbTex:SetColorTexture(ar, ag, ab, 1.0)
+            elseif thumb.isHovered then
+                local ar, ag, ab = GetSuiteAccent()
+                thumbTex:SetColorTexture(ar, ag, ab, 0.92)
+            else
+                thumbTex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+            end
+        end
+
+        local function UpdateScrollBar()
+            if sf.UpdateScrollChildRect then pcall(sf.UpdateScrollChildRect, sf) end
+            local viewH = sf:GetHeight() or 0
+            local totalH = content:GetHeight() or 0
+            local trackH = track:GetHeight() or 0
+            if viewH <= 1 or trackH <= 1 then return end
+            local maxS = math.max(0, totalH - viewH)
             if maxS <= 1 then
                 track:Hide()
+                thumb:Hide()
+                sf:SetVerticalScroll(0)
                 return
             end
             track:Show()
-            local th = track:GetHeight() or 200
-            local thumbH = math.max(24, th * ((sf:GetHeight() or 200) / math.max(1, content:GetHeight() or 200)))
+            thumb:Show()
+            local ratio = math.max(0.12, math.min(1, viewH / math.max(1, totalH)))
+            local thumbH = math.min(trackH, math.max(24, math.floor(trackH * ratio + 0.5)))
             thumb:SetHeight(thumbH)
-            local cur = sf:GetVerticalScroll() or 0
-            local pct = math.max(0, math.min(1, cur / maxS))
+            local cur = math.max(0, math.min(maxS, sf:GetVerticalScroll() or 0))
+            local usableH = math.max(1, trackH - thumbH)
             thumb:ClearAllPoints()
-            thumb:SetPoint("TOP", track, "TOP", 0, -pct * (th - thumbH))
+            thumb:SetPoint("TOP", track, "TOP", 0, -(cur / maxS) * usableH)
+            SyncThumbColor()
         end
 
-        sf:SetScript("OnMouseWheel", function(_, delta)
-            local maxS = math.max(0, (content:GetHeight() or 0) - (sf:GetHeight() or 0))
-            local nextS = math.max(0, math.min(maxS, (sf:GetVerticalScroll() or 0) - delta * 36))
-            sf:SetVerticalScroll(nextS)
-            UpdateThumb()
-        end)
-        local thumbDrag = false
-        thumb:SetScript("OnMouseDown", function(_, b) if b == "LeftButton" then thumbDrag = true end end)
-        thumb:SetScript("OnMouseUp", function() thumbDrag = false end)
-        thumb:SetScript("OnHide", function() thumbDrag = false end)
-        thumb:SetScript("OnUpdate", function()
-            if not thumbDrag then return end
-            if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then thumbDrag = false; return end
-            local top = track:GetTop(); local bot = track:GetBottom()
-            if not top or not bot or top <= bot then return end
+        local function ScrollFromCursor()
+            if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+                thumb.isDragging = false
+                thumb:SetScript("OnUpdate", nil)
+                track:SetScript("OnUpdate", nil)
+                SyncThumbColor()
+                return
+            end
+            local viewH = sf:GetHeight() or 0
+            local totalH = content:GetHeight() or 0
+            local maxS = math.max(0, totalH - viewH)
+            if maxS <= 0 then return end
+            local eff = track:GetEffectiveScale() or 1
+            if eff <= 0 then eff = 1 end
             local _, cy = GetCursorPosition()
-            cy = cy / (track:GetEffectiveScale() or 1)
-            local pct = math.max(0, math.min(1, (top - cy) / (top - bot)))
+            cy = (cy or 0) / eff
+            local top = track:GetTop()
+            local bot = track:GetBottom()
+            if top and bot and top > bot then
+                local trackH = top - bot
+                local thumbH = thumb:GetHeight() or 24
+                local usableH = math.max(1, trackH - thumbH)
+                local offsetFromTop = (top - cy) - (thumbH * 0.5)
+                local pct = math.max(0, math.min(1, offsetFromTop / usableH))
+                sf:SetVerticalScroll(pct * maxS)
+                UpdateScrollBar()
+            end
+        end
+
+        local function ScrollByDelta(delta)
             local maxS = math.max(0, (content:GetHeight() or 0) - (sf:GetHeight() or 0))
-            sf:SetVerticalScroll(pct * maxS)
-            UpdateThumb()
+            local nextS = math.max(0, math.min(maxS, (sf:GetVerticalScroll() or 0) - delta * 38))
+            sf:SetVerticalScroll(nextS)
+            UpdateScrollBar()
+        end
+
+        sf:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
+        track:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
+        thumb:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
+        sf:SetScript("OnVerticalScroll", UpdateScrollBar)
+        sf:SetScript("OnScrollRangeChanged", UpdateScrollBar)
+        sf:SetScript("OnShow", UpdateScrollBar)
+
+        thumb:SetScript("OnEnter", function(selfBtn)
+            selfBtn.isHovered = true
+            SyncThumbColor()
+        end)
+        thumb:SetScript("OnLeave", function(selfBtn)
+            selfBtn.isHovered = false
+            SyncThumbColor()
+        end)
+        thumb:SetScript("OnMouseDown", function(selfBtn, b)
+            if b == "LeftButton" then
+                CloseCursorPopups()
+                selfBtn.isDragging = true
+                SyncThumbColor()
+                ScrollFromCursor()
+                selfBtn:SetScript("OnUpdate", ScrollFromCursor)
+            end
+        end)
+        thumb:SetScript("OnMouseUp", function(selfBtn, b)
+            if b == "LeftButton" then
+                selfBtn.isDragging = false
+                selfBtn:SetScript("OnUpdate", nil)
+                SyncThumbColor()
+            end
+        end)
+        thumb:SetScript("OnHide", function(selfBtn)
+            selfBtn.isDragging = false
+            selfBtn.isHovered = false
+            selfBtn:SetScript("OnUpdate", nil)
+            SyncThumbColor()
+        end)
+
+        track:SetScript("OnMouseDown", function(selfTr, b)
+            if b == "LeftButton" then
+                CloseCursorPopups()
+                thumb.isDragging = true
+                SyncThumbColor()
+                ScrollFromCursor()
+                selfTr:SetScript("OnUpdate", ScrollFromCursor)
+            end
+        end)
+        track:SetScript("OnMouseUp", function(selfTr, b)
+            if b == "LeftButton" then
+                thumb.isDragging = false
+                selfTr:SetScript("OnUpdate", nil)
+                SyncThumbColor()
+            end
+        end)
+        track:SetScript("OnHide", function(selfTr)
+            thumb.isDragging = false
+            selfTr:SetScript("OnUpdate", nil)
+            SyncThumbColor()
         end)
 
         local pages = {}
@@ -2471,6 +2764,8 @@ do
         AddSlider(secRing, "Ring Thickness", "Adjust the cursor ring stroke thickness from 1 (finest) to 5 (boldest).", 1, 5, 1,
             function(v) return string.format("%d / 5", v) end,
             function() return EnsureDB().ringThickness or 3 end, function(v) EnsureDB().ringThickness = v end, IsRingOn)
+        AddToggle(secRing, "Extra Ring Contrast", "Adds a crisp dark outline behind the main cursor ring, inner GCD ring, and outer cast arc so they stand out over bright spell effects.",
+            function() return EnsureDB().ringExtraContrast == true end, function(v) EnsureDB().ringExtraContrast = v end, IsRingOn)
         AddSlider(secRing, "Ring Radius", "Adjust the cursor ring radius in pixels (16 to 96 px).", 16, 96, 2,
             function(v) return string.format("%d px", v) end,
             function() return EnsureDB().ringRadius or 24 end, function(v) EnsureDB().ringRadius = v end, IsRingOn)
@@ -2520,7 +2815,7 @@ do
         AddToggle(secRing, "Click-Pulse Ripple", "Plays a quick expanding ripple when you click.",
             function() return EnsureDB().ringClickPulse == true end, function(v) EnsureDB().ringClickPulse = v end, IsRingOn)
 
-        local secTrail = AddSection(1, "POOLED CURSOR TRAIL", "Pre-allocated 48-node trail with zero garbage collection and 0.00 ms idle CPU.")
+        local secTrail = AddSection(1, "POOLED CURSOR TRAIL", "Smooth, lightweight trail behind mouse movement with zero idle CPU cost.")
         AddToggle(secTrail, "Enable Cursor Trail", "Draws a smooth fading trail behind mouse movement (Off by default).",
             function() return EnsureDB().trailEnabled == true end, function(v) EnsureDB().trailEnabled = v end)
         AddDropdown(secTrail, "Trail Style", "Choose between 4 trail particle styles.", 220, {
@@ -2557,12 +2852,12 @@ do
         -- ====================================================================
         -- TAB 2: GCD & Cast Arc
         -- ====================================================================
-        local secGcd = AddSection(2, "INNER GCD RING", "Secret-value safe C++ Global Cooldown swipe nested cleanly inside your cursor ring.")
+        local secGcd = AddSection(2, "INNER GCD RING", "Global Cooldown ring nested cleanly inside your main cursor ring.")
         AddToggle(secGcd, "Inner GCD Ring", "Shows your Global Cooldown swipe inside the cursor ring.",
             function() return EnsureDB().gcdEnabled ~= false end, function(v) EnsureDB().gcdEnabled = v end)
         AddSlider(secGcd, "Inner GCD Ring Gap", "Inward spacing from the main cursor ring (0 to 20 px; auto-clamped to stay legible).", 0, 20, 1,
             function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().gcdGap or 4 end, function(v) EnsureDB().gcdGap = v end, IsGcdOn)
+            function() return EnsureDB().gcdGap or 6 end, function(v) EnsureDB().gcdGap = v end, IsGcdOn)
         AddPills(secGcd, "Inner GCD Ring Style", "Choose the swipe thickness for the inner GCD ring.", 210, {
             { value = "THIN", label = "Thin" }, { value = "CRISP", label = "Crisp" }, { value = "THICK", label = "Thick" },
         }, function() return EnsureDB().gcdStyle or "THIN" end, function(v) EnsureDB().gcdStyle = v end, IsGcdOn)
@@ -2578,12 +2873,12 @@ do
             function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             function() return EnsureDB().gcdOpacity or 0.85 end, function(v) EnsureDB().gcdOpacity = v end, IsGcdOn)
 
-        local secCast = AddSection(2, "OUTER CAST / CHANNEL / EMPOWER ARC", "Outer C++ swipe arc tracking spell casts, channels, and empowers with interrupt flash.")
+        local secCast = AddSection(2, "OUTER CAST / CHANNEL / EMPOWER ARC", "Outer progress ring tracking spell casts, channels, and empowered spells with an interrupt flash.")
         AddToggle(secCast, "Outer Cast / Channel / Empower Arc", "Shows your spell cast, channel, or empower progress around the ring with an interrupt flash.",
             function() return EnsureDB().castArcEnabled ~= false end, function(v) EnsureDB().castArcEnabled = v end)
         AddSlider(secCast, "Outer Cast Arc Gap", "Outward spacing beyond the main cursor ring (0 to 24 px).", 0, 24, 1,
             function(v) return string.format("%d px", v) end,
-            function() return EnsureDB().castGap or 6 end, function(v) EnsureDB().castGap = v end, IsCastArcOn)
+            function() return EnsureDB().castGap or 4 end, function(v) EnsureDB().castGap = v end, IsCastArcOn)
         AddPills(secCast, "Outer Cast Arc Style", "Choose the swipe thickness for the outer cast arc.", 210, {
             { value = "THIN", label = "Thin" }, { value = "CRISP", label = "Crisp" }, { value = "THICK", label = "Thick" },
         }, function() return EnsureDB().castStyle or "THIN" end, function(v) EnsureDB().castStyle = v end, IsCastArcOn)
@@ -2615,7 +2910,7 @@ do
         AddSlider(secIcon, "Mini Spell Icon Gap", "Distance between the outer arc edge and the spell icon (2 to 24 px).", 2, 24, 1,
             function(v) return string.format("%d px", v) end,
             function() return EnsureDB().castIconGap or 6 end, function(v) EnsureDB().castIconGap = v end, IsCastIconOn)
-        AddToggle(secIcon, "Flash Icon on Instant Casts", "Briefly flashes and fades the spell icon (0.55s) when you trigger an instant cast (secret-value safe).",
+        AddToggle(secIcon, "Flash Icon on Instant Casts", "Briefly flashes and fades the spell icon (0.55s) when you cast an instant spell.",
             function() return EnsureDB().castInstantFlash == true end, function(v) EnsureDB().castInstantFlash = v end, IsCastIconOn)
 
         -- ====================================================================
@@ -2715,7 +3010,7 @@ do
         AddSlider(secCross, "Centre Dot Size", "Size of the character crosshair centre dot in pixels (2 to 8 px).", 2, 8, 1,
             function(v) return string.format("%d px", v) end,
             function() return EnsureDB().crosshairDotSize or 4 end, function(v) EnsureDB().crosshairDotSize = v end, IsCrosshairDotOn)
-        AddToggle(secCross, "High-Contrast Outline", "Adds a crisp dark 1px outline behind active lines, brackets, and centre dot.",
+        AddToggle(secCross, "High-Contrast Outline", "Adds a crisp dark outline behind active crosshair lines, brackets, circle, and centre dot.",
             function() return EnsureDB().crosshairOutline ~= false end, function(v) EnsureDB().crosshairOutline = v end, IsCrosshairOn)
         AddSlider(secCross, "Horizontal Offset (X)", "Nudge crosshair left or right from screen centre (-100 to +100 px).", -100, 100, 2,
             function(v) return string.format("%d px", v) end,
@@ -2945,7 +3240,10 @@ do
                     sf:SetVerticalScroll(0)
                 end
             end
-            UpdateThumb()
+            UpdateScrollBar()
+            if (sf:GetHeight() or 0) <= 1 and _G.C_Timer and type(_G.C_Timer.After) == "function" then
+                _G.C_Timer.After(0, UpdateScrollBar)
+            end
             if _G.DynamicSuite and type(_G.DynamicSuite.UpdateHeaderTelemetry) == "function" then
                 pcall(_G.DynamicSuite.UpdateHeaderTelemetry)
             end
@@ -3027,6 +3325,7 @@ DynamicCursor.CHANGELOG = {
     version = VERSION,
     date = "23/11/2026",
     entries = {
+        { type = "UI",      text = "[Unreleased] Ring Gap Defaults, Extra Ring Contrast, 3-Way Scrollbar & Smooth Chevrons (23/11/2026): Set default Inner GCD Ring Gap to 6 px and Outer Cast Arc Gap to 4 px (aligned across all 4 Quick Presets); added an Extra Ring Contrast toggle in Tab 1 that adds a crisp dark outline behind the main cursor ring, inner GCD ring, outer cast arc, and Character Crosshair circle for clear visibility over bright spell effects; upgraded the workspace scrollbar to the 4px 3-way Obsidian standard (mousewheel, draggable accent-highlighted thumb, and clickable track); and rebuilt the dropdown chevron icons with 4x supersampled anti-aliasing matched 1:1 to DynamicSuite." },
         { type = "FEATURE", text = "[Unreleased] New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (23/11/2026): Added a 4-tab Obsidian workspace with Suite-matched chevron dropdowns (screen-bottom flip & Escape dismissal), compact modern presets, customisable Cursor Ring (Solid Ring, Soft Glow, High-Contrast Dual across 5 procedural thickness levels, zero-artifact Soft Glow feathering, fine X/Y offset, Centre Dot, OOC Idle Fade, Ground-Target AoE Highlight & +20% Size Boost, Obsidian Colour Picker), concentric Inner GCD Ring and Outer Cast/Channel/Empower Arc with gap/thickness controls and upgraded Mini Spell Icon (including Instant-Cast Flash), modular Character Crosshair (mix-and-match Crosshair, Brackets, Circle & Centre Dot pills with per-element sizing), Find My Cursor (FPS-normalised Shake-to-Find with 3-tier Sensitivity, Ping After Mouse-Look, independent Locator Colour, Modifier Key Locator), 48-node Pooled Cursor Trail (0.00 ms idle CPU), Active Zones pills, Hardware Cursor Size CVar, and Smart Cursor Tooltips." },
     },
 }

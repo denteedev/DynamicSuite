@@ -9040,6 +9040,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga",
             openModule = "DynamicCursor",
             items = {
+                { badge = "UI",       title = "[Unreleased] Ring Gap Defaults, Extra Ring Contrast, 3-Way Scrollbar & Smooth Chevrons (23/11/2026)", desc = "Set default Inner GCD Ring Gap to 6 px and Outer Cast Arc Gap to 4 px across defaults and Quick Presets; added Extra Ring Contrast in Tab 1 (dark outline behind the main ring, inner GCD ring, outer cast arc, and Character Crosshair circle); upgraded the scrollbar to the 4px 3-way Obsidian standard; and rebuilt dropdown chevron icons with 4x supersampled anti-aliasing matched 1:1 to DynamicSuite." },
                 { badge = "NEW",      title = "New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor)", desc = "Added a customisable Cursor Ring (5 clean-room procedural ring styles, radius, OOC/combat opacity, colour modes, Mouse-Look ghost ring, and click-pulse ripple), secret-safe native C++ Radial GCD and Cast/Channel/Empower arcs, Character Crosshair (5 styles with X/Y offset and Combat/Instance visibility), Find My Cursor (Shake-to-Find + Modifier Key Locator), pre-allocated 48-node Pooled Cursor Trail (0.00 ms idle CPU), Smart Cursor Tooltips, and 4 one-click presets (Clean Raid, High-Visibility, Minimalist, Full Telemetry)." },
             },
         },
