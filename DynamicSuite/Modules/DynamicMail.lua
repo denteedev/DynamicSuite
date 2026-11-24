@@ -403,6 +403,8 @@ local function GetTheme()
     return surf, acc
 end
 
+local RefreshInboxToolbarUI -- forward decl
+local RefreshSendPickerUI   -- forward decl
 local ellesmereFacade = nil
 local ellesmereHooked = false
 
@@ -853,8 +855,7 @@ local batchState = {
     waitCheckMail  = false,
 }
 
-local RefreshInboxToolbarUI -- forward decl
-local RefreshSendPickerUI   -- forward decl
+-- RefreshInboxToolbarUI and RefreshSendPickerUI are forward-declared above EnsureEllesmereSkinRegistered.
 
 local function StopBatchCollection(reasonMsg, isPaused)
     if not batchState.active then return end

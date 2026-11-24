@@ -11187,7 +11187,8 @@ local function RenderIntoContainer(firstArg, secondArg)
     return DM:BuildWorkspace(container)
 end
 
-local MarkerModuleDescriptor = {
+local MarkerModuleDescriptor
+MarkerModuleDescriptor = {
     id            = "marker",
     key           = "marker",
     name          = "DynamicMarker",

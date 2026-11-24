@@ -183,6 +183,7 @@ local addonTable = DL_NS
 addonTable.IsDynamicLoadModuleLoaded = true
 
 local ADDON_TITLE = "|cFFCBD5E1DynamicLoad|r"
+addonTable.ADDON_TITLE = ADDON_TITLE
 local ADDON_VERSION = RESOLVED_ADDON_VERSION
 addonTable.ADDON_VERSION = ADDON_VERSION
 DynamicSuite.version = DynamicSuite.version or ADDON_VERSION
@@ -3528,6 +3529,8 @@ do
 ]]
 
 local addonTable = DL_NS
+local ADDON_TITLE = addonTable.ADDON_TITLE or "|cFFCBD5E1DynamicLoad|r"
+local SUITE_MODULES = addonTable.SUITE_MODULES
 
 local CONTEXT_TABS = {
     { key = "outdoor", label = "Outdoor" },
@@ -6523,7 +6526,9 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
         else
             SetParentCollapsed(name, not IsParentCollapsed(name))
         end
-        if f and f.UpdateCollapseAllButton then f.UpdateCollapseAllButton() end
+        if addonTable.mainFrame and addonTable.mainFrame.UpdateCollapseAllButton then
+            addonTable.mainFrame.UpdateCollapseAllButton()
+        end
         if scrollChild.Refresh then scrollChild:Refresh() end
     end
 

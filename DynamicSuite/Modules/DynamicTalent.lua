@@ -1149,6 +1149,7 @@ function DynamicTalent:GetActiveTalentMismatch()
     local isBG          = zc.isBG
     local isOutdoor     = zc.isOutdoor
     local isResting     = zc.isResting
+    local isWarMode     = zc.isWarMode
     local isAnyPvP      = zc.isAnyPvP
 
     local diffKey = isRaid and GetActiveRaidDifficultyKey() or nil
@@ -2052,6 +2053,8 @@ function DynamicTalent:GetActiveTalentLibraryEntry(specID)
 
     return nil
 end
+
+local activeEmbeddedRoot = nil
 
 function DynamicTalent:SyncTalentBindsUI(clearStickyBoss)
     if clearStickyBoss == true then
@@ -9986,7 +9989,7 @@ end
 -- ============================================================================
 -- 11. EMBEDDED SUITE WORKSPACE (/ds -> DynamicTalent, Tab 1 & Tab 2)
 -- ============================================================================
-local activeEmbeddedRoot = nil
+-- activeEmbeddedRoot is hoisted above SyncTalentBindsUI.
 local standaloneWin = nil
 
 local function CreateSectionBox(parent, yOffset)

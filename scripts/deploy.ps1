@@ -81,7 +81,7 @@ foreach ($f in $luaFiles) {
 }
 Write-Host "[LUAC OK] Validated $($luaFiles.Count) Lua file(s)" -ForegroundColor Green
 
-# 2b. Bytecode GETGLOBAL undefined-helper guard (catches nil-global calls to module-local & addonTable/DynamicSuite helpers)
+# 2b. Bytecode GETGLOBAL undefined-helper & same-file local forward-reference guard
 $forbiddenGlobalHelpers = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
     "ApplyFont", "IsDisabledInSuite", "IsModuleDisabledInSuite", "SetSafeFont",
     "CreateText", "GetAccentHex", "GetActiveAccentRGB", "PrintMsg", "EnsureDB",
@@ -89,9 +89,15 @@ $forbiddenGlobalHelpers = [System.Collections.Generic.HashSet[string]]::new([str
     "ResolveEllesmereProfile", "IsEllesmereSubAddonInstalled", "PrintEllesmereConflictBreakdown", "rest"
 ))
 $wowGlobalAllow = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
+    "type", "next", "select", "print", "date", "time", "pairs", "ipairs",
+    "tostring", "tonumber", "pcall", "xpcall", "unpack", "error", "assert",
+    "math", "string", "table", "bit", "wipe", "tinsert", "tremove",
     "GetTime", "CreateFrame", "ReloadUI", "CopyTable", "GetRealmName", "UnitName",
-    "UnitClass", "InCombatLockdown", "IsShiftKeyDown", "PlaySound", "PlaySoundFile"
+    "UnitClass", "InCombatLockdown", "IsShiftKeyDown", "PlaySound", "PlaySoundFile",
+    "UIParent", "GameTooltip", "C_Timer", "C_AddOns", "C_CVar", "C_Map",
+    "SettingsPanel", "GameMenuFrame", "RAID_CLASS_COLORS", "SOUNDKIT"
 ))
+$fileLocalsByPath = @{}
 foreach ($f in $luaFiles) {
     $src = [System.IO.File]::ReadAllText($f.FullName)
     foreach ($m in [regex]::Matches($src, '(?m)^\s*function\s+(?:addonTable|DynamicSuite)[.:]([A-Za-z_][A-Za-z0-9_]*)\s*\(')) {
@@ -106,14 +112,47 @@ foreach ($f in $luaFiles) {
             [void]$forbiddenGlobalHelpers.Add($hName)
         }
     }
+    $fileLocals = [System.Collections.Generic.HashSet[string]]::new()
+    $inLongComment = $false
+    foreach ($rawLine in ($src -split "`r?`n")) {
+        if ($inLongComment) {
+            if ($rawLine -match '\]\]') { $inLongComment = $false }
+            continue
+        }
+        if ($rawLine -match '^\s*--\[\[') {
+            if ($rawLine -notmatch '\]\]') { $inLongComment = $true }
+            continue
+        }
+        $codeLine = $rawLine -replace '--.*$', ''
+        foreach ($lm in [regex]::Matches($codeLine, '\blocal\s+function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(')) {
+            $id = $lm.Groups[1].Value
+            if ($id -ne "_" -and -not $wowGlobalAllow.Contains($id)) {
+                [void]$fileLocals.Add($id)
+            }
+        }
+        foreach ($lm in [regex]::Matches($codeLine, '\blocal\s+(?!function\b)([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)')) {
+            foreach ($part in ($lm.Groups[1].Value -split ',')) {
+                $id = $part.Trim()
+                if ($id -match '^[A-Za-z_][A-Za-z0-9_]*$' -and $id -ne "_" -and -not $wowGlobalAllow.Contains($id)) {
+                    [void]$fileLocals.Add($id)
+                }
+            }
+        }
+    }
+    $fileLocalsByPath[$f.FullName] = $fileLocals
 }
 $nilGlobalHits = @()
 foreach ($f in $luaFiles) {
+    $fileLocals = $fileLocalsByPath[$f.FullName]
     $listing = & $luacExe -l -p $f.FullName
     foreach ($line in $listing) {
         if ($line -match '\[(\d+)\]\s+GETGLOBAL\s+\d+\s+-\d+\s+;\s+(\S+)') {
-            if ($forbiddenGlobalHelpers.Contains($matches[2])) {
-                $nilGlobalHits += "$($f.Name):$($matches[1]) -> undefined global '$($matches[2])'"
+            $ln = $matches[1]
+            $sym = $matches[2]
+            if ($forbiddenGlobalHelpers.Contains($sym)) {
+                $nilGlobalHits += "$($f.Name):$ln -> undefined global '$sym' (guarded helper)"
+            } elseif ($fileLocals -and $fileLocals.Contains($sym)) {
+                $nilGlobalHits += "$($f.Name):$ln -> forward-referenced or out-of-scope local '$sym' resolved as global"
             }
         }
     }
@@ -121,7 +160,7 @@ foreach ($f in $luaFiles) {
 if ($nilGlobalHits.Count -gt 0) {
     throw ("Undefined local/suite helper GETGLOBAL check failed:`n - " + ($nilGlobalHits -join "`n - "))
 }
-Write-Host "[GLOBALS OK] Verified 0 undefined helper calls across $($luaFiles.Count) Lua file(s) ($($forbiddenGlobalHelpers.Count) guarded symbols)" -ForegroundColor Green
+Write-Host "[GLOBALS OK] Verified 0 undefined helper or forward-referenced local calls across $($luaFiles.Count) Lua file(s) ($($forbiddenGlobalHelpers.Count) guarded helpers + same-file local scan)" -ForegroundColor Green
 
 # 3. Mirror CHANGELOG.md and verify Pure ASCII & No-BOM
 $changelogPath = Join-Path $RepoRoot "CHANGELOG.md"

@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+### Quick Guide Header Crash Fix & Suite-Wide Forward-Reference Hardening (24/11/2026)
+- **Quick Guide Header Button Nil Crash Fixed (`DynamicSuite_UI`):** Hoisted `hdrQuickGuideBtn` and `statusCapsule` above `UpdateQuickGuideHeaderButton` with explicit nil guards and `mainFrame` fallbacks so opening or switching workspace views never throws a nil global error, and restored live Suite Accent tinting on left-rail category header ticks inside `OpenWorkspaceView`.
+- **Suite-Wide Forward-Reference Fixes (`DynamicLoad`, `DynamicMail`, `DynamicMarker`, `DynamicTalent`):** Upgraded the build pipeline's bytecode validation across all 15 Lua files to automatically detect any same-file local variable or helper resolved as a global before declaration, uncovering and fixing 4 additional hidden scoping bugs:
+  - `DynamicLoad`: Bound `ADDON_TITLE` and `SUITE_MODULES` inside the UI chunk and wired parent-row collapse clicks to `addonTable.mainFrame.UpdateCollapseAllButton`.
+  - `DynamicMail`: Hoisted `RefreshInboxToolbarUI` and `RefreshSendPickerUI` forward declarations above EllesmereUI skin registration so external look-change callbacks refresh both mail panels cleanly.
+  - `DynamicMarker`: Split `local MarkerModuleDescriptor` before table assignment so `SetEditMode` resolves the descriptor locally instead of global `nil`.
+  - `DynamicTalent`: Bound `isWarMode` from the live zone context so War Mode PvP talent swapping works properly, and hoisted `activeEmbeddedRoot` above `SyncTalentBindsUI` so binding changes refresh the open embedded action strip.
+
 ### DynamicChat Tab 3 Fix, Quick Presets Highlight & Copy Chat / URL Overhaul (24/11/2026)
 - **Blank Tab 3 (`Sound Alerts`) & Tab Reflow Fix (`DynamicChat`):** Fixed a nil table reference typo on the Tab 2 **Line Spacing** card that aborted workspace construction before Tab 3 (`Sound Alerts`) and Tab 4 (`Links & History`) were built, and reset vertical scroll cleanly on tab switch and `800x520` resize so all 4 tabs render and reflow cleanly in both embedded `/ds` and standalone `/dc` windows.
 - **Quick Presets Active Highlight, High-Readability Tuning & Top Typing Box Clearance (`DynamicChat`):** Tracked and highlighted the active Quick Preset pill with the live Suite Accent fill and border (clearing automatically when any preset-controlled option is edited manually); tuned **High-Readability** to crisp `14 px` contrast (`50%` backdrop opacity, thin outline, drop shadow On, `2 px` line spacing) while having **Clean Smoked-Glass** and **Minimalist Raid** explicitly restore `13 px` font size and `2 px` line spacing; and scaled the embedded typing box height and message viewport clearance dynamically across docked chat tabs whenever font size changes so chat lines never collide with the top typing box.

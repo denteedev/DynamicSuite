@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Fixed
+* **Descriptor Self-Reference Scoping Fix:** Declared `local MarkerModuleDescriptor` before assigning its table so `SetEditMode` resolves the local descriptor cleanly instead of a nil global.
+
 ---
 
 ## DynamicMarker v2.9.0 (24/11/2026)

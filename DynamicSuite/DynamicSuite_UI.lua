@@ -3716,25 +3716,31 @@ function addonTable.CreateMainConfigUI()
     f.RefreshScopePillLabel = RefreshScopePillLabel
     RefreshScopePillLabel()
 
+    local hdrQuickGuideBtn = nil
+    local statusCapsule = nil
+
     function f.UpdateQuickGuideHeaderButton()
+        local qgBtn = hdrQuickGuideBtn or f.hdrQuickGuideBtn
+        local cap = statusCapsule or f.statusCapsule
+        if not qgBtn or not cap then return end
         local isModView = (activeWorkspaceView == "DYNAMICLOAD")
             or (activeWorkspaceView == "PEER_MODULE")
             or (activeWorkspaceView == "PEER_HOST")
         local modKey = (activeWorkspaceView == "DYNAMICLOAD") and "load" or selectedPeerModuleKey
         local guide = (isModView and modKey and addonTable.GetModuleQuickGuide) and addonTable.GetModuleQuickGuide(modKey) or nil
         if guide then
-            hdrQuickGuideBtn:Show()
-            statusCapsule:ClearAllPoints()
-            statusCapsule:SetPoint("LEFT", title, "RIGHT", 14, 0)
-            statusCapsule:SetPoint("RIGHT", hdrQuickGuideBtn, "LEFT", -8, 0)
+            qgBtn:Show()
+            cap:ClearAllPoints()
+            if title then cap:SetPoint("LEFT", title, "RIGHT", 14, 0) end
+            cap:SetPoint("RIGHT", qgBtn, "LEFT", -8, 0)
         else
-            hdrQuickGuideBtn:Hide()
+            qgBtn:Hide()
             if addonTable.HideModuleQuickGuide then
                 addonTable.HideModuleQuickGuide()
             end
-            statusCapsule:ClearAllPoints()
-            statusCapsule:SetPoint("LEFT", title, "RIGHT", 14, 0)
-            statusCapsule:SetPoint("RIGHT", altPillBtn, "LEFT", -12, 0)
+            cap:ClearAllPoints()
+            if title then cap:SetPoint("LEFT", title, "RIGHT", 14, 0) end
+            if altPillBtn then cap:SetPoint("RIGHT", altPillBtn, "LEFT", -12, 0) end
         end
     end
     f:HookScript("OnHide", function()
@@ -3743,7 +3749,7 @@ function addonTable.CreateMainConfigUI()
         end
     end)
 
-    local hdrQuickGuideBtn = CreateFlatButton(header, 26, 26, "?", false)
+    hdrQuickGuideBtn = CreateFlatButton(header, 26, 26, "?", false)
     hdrQuickGuideBtn:SetPoint("RIGHT", altPillBtn, "LEFT", -6, 0)
     UI.SetFont(hdrQuickGuideBtn.label, 12.5, "", 0.86, 0.90, 0.96, 0.96)
     hdrQuickGuideBtn:SetScript("OnClick", function()
@@ -3772,7 +3778,7 @@ function addonTable.CreateMainConfigUI()
     f.hdrQuickGuideBtn = hdrQuickGuideBtn
 
     -- Zone 2 (Center): Spacious 1-Line Live Context Status Capsule (Anchored 14px right of title!)
-    local statusCapsule = CreateFrame("Button", nil, header)
+    statusCapsule = CreateFrame("Button", nil, header)
     statusCapsule:ClearAllPoints()
     statusCapsule:SetPoint("LEFT", title, "RIGHT", 14, 0)
     statusCapsule:SetPoint("RIGHT", altPillBtn, "LEFT", -12, 0)
@@ -6377,6 +6383,7 @@ function addonTable.CreateMainConfigUI()
         end
 
         if f.railCategoryHeaders then
+            local ar, ag, ab = UI.GetActiveAccentColor()
             for _, hdr in pairs(f.railCategoryHeaders) do
                 if hdr and hdr.tick then
                     hdr.tick:SetColorTexture(ar, ag, ab, 0.85)
@@ -17320,6 +17327,7 @@ function addonTable.CreateMainConfigUI()
         end
 
         if f.railCategoryHeaders then
+            local ar, ag, ab = UI.GetActiveAccentColor()
             for _, hdr in pairs(f.railCategoryHeaders) do
                 if hdr and hdr.tick then
                     hdr.tick:SetColorTexture(ar, ag, ab, 0.85)
@@ -17519,6 +17527,7 @@ function addonTable.CreateMainConfigUI()
         end
 
         if f.railCategoryHeaders then
+            local ar, ag, ab = UI.GetActiveAccentColor()
             for _, hdr in pairs(f.railCategoryHeaders) do
                 if hdr and hdr.tick then
                     hdr.tick:SetColorTexture(ar, ag, ab, 0.85)
