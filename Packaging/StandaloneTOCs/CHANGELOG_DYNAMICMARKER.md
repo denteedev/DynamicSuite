@@ -1,12 +1,19 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.9.0 (24/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
+*Author: Dentee-Frostmourne  |  Release: v2.9.1 (24/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
 
+---
+
+## DynamicMarker v2.9.1 (24/11/2026)
+
 ### Fixed
-* **Descriptor Self-Reference Scoping Fix:** Declared `local MarkerModuleDescriptor` before assigning its table so `SetEditMode` resolves the local descriptor cleanly instead of a nil global.
+* **HUD Edit Mode Toggle Fix:** Fixed an internal reference issue so toggling HUD Edit Mode resolves cleanly every time.
+
+### Improved
+* **Version & Coexistence Lockstep Parity:** Synchronised standalone DynamicMarker metadata and coexistence checks to `v2.9.1` for Retail 12.1.5 / 12.1.7 (`Interface 120105, 120107`).
 
 ---
 

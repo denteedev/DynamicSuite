@@ -1,6 +1,6 @@
 # DynamicSuite -- 13-Module QoL, Utility & Performance Hub
 
-**Version:** v2.9.0 (24/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107) | **Author:** Dentee-Frostmourne
+**Version:** v2.9.1 (24/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, cursor overlays, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for World of Warcraft Retail. All 13 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
@@ -17,7 +17,7 @@
 ## Core Suite Features
 
 * **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 13-module sidebar, individual On/Off switches, reorderable module cards, Window Opacity (50%-100%), Window Scale (80%-120%), and a quick Reload UI button.
-* **Shared Alert Toast HUD:** Centralised Toast Scale, Opacity, Border Style, Auto-Fade Duration, and Alert Sound inside Suite Studio and DynamicLoad, shared cleanly across Zone Load Alerts, DynamicTalent Reminders, DynamicGroup Teleport Toasts, and DynamicChat Mention Alerts with clean vertical stacking and Right-Click dismissal.
+* **Shared Alert Toast HUD:** Centralised Toast Scale, Opacity, Border Style, two-tier Auto-Fade Durations (Actionable & Info/Mention), and Alert Sound inside Suite Studio, DynamicLoad, and HUD Edit Mode, shared cleanly across Zone Load Alerts, DynamicPrep Reminders, DynamicTalent Swaps, DynamicGroup Teleport Toasts, and DynamicChat Mention Alerts with universal hover-to-pause, clean vertical stacking, and Right-Click dismissal.
 * **Global Smart Search (`/ds search <query>`):** Type what you are looking for in plain English (like "auto repair", "flare", "mail", "quest", or "whisper") and jump straight to the exact setting with a visual highlight.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, resize (60%-150%), and align all 6 suite HUDs (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
 * **3-Step Quick Start & `?` Module Quick Guides (`/ds setup`, `/ds conflicts`):** Pick your Theme, Accent & Font in Step 1, resolve addon conflicts in Step 2, and choose starter presets or toggle individual modules in Step 3 -- plus a compact `?` Quick Guide button in the top header of every module.

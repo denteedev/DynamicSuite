@@ -55,7 +55,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.9.0"
+    local fb = fallback or "2.9.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -111,7 +111,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.9.0"
+            or "2.9.1"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -138,7 +138,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.9.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.9.1")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -11276,6 +11276,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "24/11/2026",
     entries = {
+        { type = "FIX",      text = "Release v2.9.1 - HUD Edit Mode Toggle Fix & Lockstep Parity (24/11/2026): Fixed an internal reference issue so toggling HUD Edit Mode resolves cleanly every time, and updated standalone DynamicMarker metadata and coexistence checks to v2.9.1." },
         { type = "FIX",      text = "Release v2.9.0 - First-Open Blank Workspace & Conflict Banner Overlap Fix (24/11/2026): Hoisted forward-referenced DisableTexturePixelSnap and SafeReadableString local helpers, hid the inline conflict banner on creation, and ensured Tab 1 (Focus Icons) opens highlighted with all cards visible alongside UpdateScrollChildRect and deferred reflow on OnShow / OnSizeChanged." },
         { type = "IMPROVED", text = "Release v2.9.0 - Patch 12.1.7 Dual-Interface & Secret-Safe Hardening (24/11/2026): Added dual-interface 120105, 120107 support in DynamicMarker.toc, wrapped UnitGUID, UnitName, UnitClass, and specialisation reads in pcall + secret-value guards, and updated standalone coexistence lockstep metadata to v2.9.0." },
         { type = "IMPROVED", text = "Release v2.8.2 - Standardised 12x12 Accent Chevrons & EllesmereUI Quickdraw Parity (24/11/2026): Standardised dropdown trigger chevrons to 12x12 live accent icons and added EllesmereUIQuickdraw / EllesmereUI_Quickdraw to standalone DynamicMarker's conflict scanner." },
