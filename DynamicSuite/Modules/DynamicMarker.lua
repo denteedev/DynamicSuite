@@ -55,7 +55,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.8.2"
+    local fb = fallback or "2.9.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -111,7 +111,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.8.2"
+            or "2.9.0"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -138,7 +138,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.2")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.9.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -11273,9 +11273,11 @@ end
 
 DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
-    date    = "23/11/2026",
+    date    = "24/11/2026",
     entries = {
-        { type = "IMPROVED", text = "[Unreleased] EllesmereUI Quickdraw Standalone Conflict Parity (23/11/2026): Added EllesmereUIQuickdraw / EllesmereUI_Quickdraw to standalone DynamicMarker's conflict scanner for 100% Suite <-> Standalone parity." },
+        { type = "FIX",      text = "Release v2.9.0 - First-Open Blank Workspace & Conflict Banner Overlap Fix (24/11/2026): Hoisted forward-referenced DisableTexturePixelSnap and SafeReadableString local helpers, hid the inline conflict banner on creation, and ensured Tab 1 (Focus Icons) opens highlighted with all cards visible alongside UpdateScrollChildRect and deferred reflow on OnShow / OnSizeChanged." },
+        { type = "IMPROVED", text = "Release v2.9.0 - Patch 12.1.7 Dual-Interface & Secret-Safe Hardening (24/11/2026): Added dual-interface 120105, 120107 support in DynamicMarker.toc, wrapped UnitGUID, UnitName, UnitClass, and specialisation reads in pcall + secret-value guards, and updated standalone coexistence lockstep metadata to v2.9.0." },
+        { type = "IMPROVED", text = "Release v2.8.2 - Standardised 12x12 Accent Chevrons & EllesmereUI Quickdraw Parity (24/11/2026): Standardised dropdown trigger chevrons to 12x12 live accent icons and added EllesmereUIQuickdraw / EllesmereUI_Quickdraw to standalone DynamicMarker's conflict scanner." },
         { type = "IMPROVED", text = "Release v2.8.1 - Version & Coexistence Lockstep Parity (22/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.8.1 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "IMPROVED", text = "Release v2.8.0 - Version & Coexistence Lockstep Parity (22/11/2026): Synchronised standalone DynamicMarker metadata and version-aware coexistence checks to v2.8.0 for Retail 12.1.5 (Interface 120105, Midnight Season 2)." },
         { type = "UI",       text = "Release v2.8.0 - True-4px Sleek Precision Sliders & Footer Thumb Parity (22/11/2026): Moved the 1px track hairline strictly outside the 4px #090A0D track across settings sliders so fill bars render at a true 4px height, and added matching 1px hairlines plus live Suite Accent hover/drag blade thumb highlights to the standalone footer Scale and Opacity sliders." },

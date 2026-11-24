@@ -1,12 +1,16 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.8.2 (24/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.9.0 (24/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
 
+---
+
+## DynamicMarker v2.9.0 (24/11/2026)
+
 ### Changed
-* **Patch 12.1.7 Dual-Interface & Secret-Safe Hardening:** Added dual-interface `120105, 120107` support in `DynamicMarker.toc`, wrapped `UnitGUID`, `UnitName`, `UnitClass`, and specialisation reads in `pcall` + secret-value guards for unspecialised or story-mode characters, and updated the standalone coexistence version fallback to `2.8.2`.
+* **Patch 12.1.7 Dual-Interface & Secret-Safe Hardening:** Added dual-interface `120105, 120107` support in `DynamicMarker.toc`, wrapped `UnitGUID`, `UnitName`, `UnitClass`, and specialisation reads in `pcall` + secret-value guards for unspecialised or story-mode characters, and updated the standalone coexistence version fallback to `2.9.0`.
 
 ### Fixed
 * **First-Open Blank Workspace & Conflict Banner Overlap:** Hoisted forward-referenced `DisableTexturePixelSnap` and `SafeReadableString` local helpers so workspace construction never hits a nil global error on first load, hid the inline conflict banner on creation so it never overlaps the 3-tab bar, and ensured Tab 1 (`Focus Icons`) opens with its active tab highlight and all cards visible alongside `UpdateScrollChildRect` and deferred reflow on `OnShow` / `OnSizeChanged`.

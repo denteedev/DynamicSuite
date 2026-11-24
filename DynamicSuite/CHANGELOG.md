@@ -1,9 +1,13 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.8.2 (24/11/2026 - Retail 12.1.5 / Interface 120105)*
+*Author: Dentee-Frostmourne  |  Release: v2.9.0 (24/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
+
+---
+
+## DynamicSuite & All 13 Modules v2.9.0 (24/11/2026)
 
 ### Feature Spotlight Modal, 3-Step Quick Start & Shared Quick Guides (`DynamicSuite_Core`, `DynamicSuite_UI`)
 - **Auto-Clear `Sync Font & Palette with Installed UI` on Manual Colour or Font Pick (`DynamicSuite_UI`):** Manually choosing any of the 17 accent swatches, **Auto-Match Class**, a **Recent Custom Colour**, a **Custom Colour**, or a **Suite Font Family** in either Suite Studio Tab 1 or 3-Step Quick Start Step 1 now automatically switches **Sync Font & Palette with Installed UI** to **Off** while keeping your newly chosen colour or font (cancelling the colour picker restores your previous sync state cleanly, changing **Window Surface Theme** leaves sync active, and clicking **Off** directly still restores your pre-sync palette and font).

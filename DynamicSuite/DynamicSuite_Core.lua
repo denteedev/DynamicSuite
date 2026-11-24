@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.8.2"
+    local fb = fallback or "2.9.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.2")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.9.0")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,8 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "24/11/2026",
     entries = {
+        { type = "FEATURE", text = "Release v2.9.0 - Patch 12.1.7 Dual-Interface Support, 3-Step Quick Start, Shared '?' Quick Guides & Feature Spotlight Modal (24/11/2026): Added dual-interface Retail 12.1.5 / 12.1.7 (120105, 120107) support across all 13 modules and standalone DynamicMarker; refactored Guided Setup into a fast 3-Step Quick Start (1. Style, 2. Conflicts, 3. Modules with 3 starter presets and 13-module grid); added the shared '?' Quick Guide header button and Obsidian modal across all 13 modules; and added the hybrid Feature Spotlight modal (/ds spotlight) plus quiet auto-clearing NEW left-rail badges with zero-nag combat/instance/Mythic+/cinematic guards." },
+        { type = "FIX",     text = "Release v2.9.0 - DynamicMarker First-Open Fix, Omnium Folio Controls & Movable GenericTraitFrame, Sync-with-UI Auto-Clear & 12.1.7 Safety Guards (24/11/2026): Fixed DynamicMarker's first-open blank Tab 1 and conflict banner overlap (hoisted DisableTexturePixelSnap and SafeReadableString and expanded deploy.ps1 GETGLOBAL checks to all 15 Lua files); wired DynamicPrep's Omnium Folio capsule to Left-Click (Target Stat dropdown with Open Omnium Folio shortcut) and Right-Click (open/toggle GenericTraitFrame with ExpansionLandingPage fallback); added GenericTraitFrame and ExpansionLandingPage to Desktop Windows (now 33 managed panels); auto-cleared Sync Font & Palette with Installed UI on manual accent or font picks; and hardened Lorewalking/destructive confirmation and secret-value guards." },
         { type = "FEATURE", text = "Release v2.8.2 - New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (24/11/2026): Launched DynamicCursor with a 4-tab Obsidian workspace (enclosing Section Containers, individual setting cards, collapsible Sub-Settings drawers with 2px Suite Accent rail and 5x5px pip, 4px 3-way scrollbar, and 4 Quick Presets), Main Cursor Ring with Extra Ring Contrast, Inner GCD Ring (6 px default gap), Outer Cast/Channel/Empower Arc (4 px default gap) with Mini Spell Icon & Interrupt Flash Colour, modular Character Crosshair, Find My Cursor locator, Pooled Cursor Trail, Active Zones, built-in pointer size, and Smart Cursor Tooltips." },
         { type = "UI",      text = "Release v2.8.2 - Suite-Wide Standard 12x12 Accent Dropdown Chevrons, DynamicBags Auto-Unwrap & Granular EllesmereUI Conflict Detection (24/11/2026): Standardised every dropdown chevron across all 13 modules to crisp 4x-supersampled 12x12 live Suite Accent icons; added opt-in Auto-Unwrap & Open Wrapped Items in DynamicBags Tab 3; and added profile-aware EllesmereUI sub-module conflict detection with /ds conflicts eui and feature-level auto-yielding." },
         { type = "FEATURE", text = "Release v2.8.1 - Auto-Accept Role Check, Red Error Text & Sound Filter, and Granular Conflict Auto-Yield (22/11/2026): Added opt-in Auto-Accept Role Check in DynamicGroup (Off by default, 0.45s out-of-combat delay, Shift to skip, never auto-accepts queue pops), opt-in Red Error Text & Sound Filter in DynamicPrep Tab 3 (Combat & Cooldown Spam, Movement & Mount Errors, and Mute Error Voice Lines with original CVar restore), and feature-level auto-yielding to EnhanceQoL, Leatrix Plus, ErrorFilter, and ErrorMonster (overridable in /ds conflicts)." },

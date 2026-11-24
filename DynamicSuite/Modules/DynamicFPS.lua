@@ -10,7 +10,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.8.2"
+    local fb = fallback or "2.9.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -91,7 +91,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.8.2")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.9.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicFPS", ADDON_VERSION, _G.DynamicFPS) then
     return
 end
