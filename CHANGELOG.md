@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### DynamicZoom Pass 1 UI Refinement & Dropdown Fix (24/11/2026)
+- **Live Dropdown Nil Crash Fixed (`DynamicZoom`):** Replaced the undefined `GetSuiteAccent()` calls inside `CreateDropdownCard` with `GetTheme()` and added Suite Accent hover/open border feedback so the Tab 2 **Indoors & Tunnel Entrance Behaviour** and **Capital Cities & Rested Areas Behaviour** dropdowns open and close cleanly with zero Lua errors.
+- **Deduplicated Glide Speed & Decluttered Tab 2 Drawers (`DynamicZoom`, `DynamicSuite_Core`):** Removed the duplicate **Base Zoom Glide Speed** slider from Tab 1 (`Fast Scroll Wheel Boost` now stays lean with `Sub-Settings (1)` for **Flick Boost Multiplier** while **Base Mousewheel Zoom Glide Speed** lives solely in Tab 3), removed the redundant 5-button Tab 2 zone preview strip, and folded all 5 zone target distance sliders into a persisted `Sub-Settings (5)` drawer under **Automatic Zone Zoom** (collapsed by default on fresh profiles and persisted across `/reload`).
+- **Configurable NPC Dialogue Distance (`DynamicZoom`, `DynamicSuite_Core`):** Added a persisted `Sub-Settings (1)` drawer under **Opt-In NPC Dialogue & Quest Framing** with a **NPC Dialogue Distance** slider (`15`-`25` yds, default `15` yds, with Right-Click **Test Glide**), and aligned Global Smart Search entries for all updated drawers.
+- **Suite Studio Surface Sync, `800x520` Clamping & Obsidian Reload Prompt (`DynamicZoom`):** Synced `DynamicZoom` surface palettes to Suite Studio's canonical `MIDNIGHT_BLACK`, `OBSIDIAN_DARK`, `SLATE_STEEL`, and `SMOKED_GLASS` themes (including deferred repaint when hidden and full standalone `/dz` window refresh), right-clamped all section, card, tab, live-bar, and conflict-banner titles for `800x520` minimum windows, upgraded the scrollbar to full 3-way mousewheel + live Suite Accent hover parity, and replaced the legacy Blizzard popup in **Restore Blizzard Defaults** with a themed Obsidian reload prompt modal (`DynamicZoomReloadPromptModal`).
+
 ---
 
 ## DynamicSuite & All 13 Modules v2.9.0 (24/11/2026)

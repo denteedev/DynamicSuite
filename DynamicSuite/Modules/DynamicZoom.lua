@@ -188,17 +188,18 @@ local DEFAULTS = {
     -- Engine 1: Max-Zoom, Reactive Scroll Accelerator & Collision Occlusion Shield
     maxZoomYards = 39,                  -- 15 to 39 yards (maps to 1.0 - 2.6 factor)
     reactiveScrollEnabled = true,       -- DynamicCam-style reactive scroll flick acceleration
-    scrollDrawerOpen = true,            -- [ Tune (2) ] inline sub-drawer state
+    scrollDrawerOpen = true,            -- Sub-Settings (1) inline sub-drawer state
     flickBoost = 3.0,                   -- 1.0x to 5.0x quadratic flick multiplier
     scrollSpeed = 35,                   -- Base zoom glide speed (15 to 50)
     indirectVisibility = true,          -- Foliage & Pillar Alpha Raycast Shield
-    pillarDrawerOpen = true,            -- [ Tune (1) ] inline sub-drawer state
+    pillarDrawerOpen = true,            -- Sub-Settings (1) inline sub-drawer state
     indirectOffset = 1.5,               -- Pillar Pre-Zoom Sensitivity (1.0 to 10.0, step 0.5)
     waterCollisionShield = true,        -- Prevents camera snapping over lakes during Skyriding
     reduceUnexpectedMovement = true,    -- Dampens sudden ramp/stairs camera jerks
 
     -- Engine 2: Event-Driven Situational Auto-Zoom State Machine (All Combat/World default 39 yds)
     autoZoomEnabled = true,
+    autoZoomDrawerOpen = false,         -- Sub-Settings (5) collapsed by default on fresh profiles
     zoomRaidCombat = 39,                -- Raid & Boss Combat target distance (15-39 yds, default 39)
     zoomDungeon = 39,                   -- Mythic+ & 5-Player Dungeon target distance (15-39 yds, default 39)
     zoomDelve = 39,                     -- Delves & Scenarios target distance (15-39 yds, default 39)
@@ -207,7 +208,9 @@ local DEFAULTS = {
     indoorRule = "OFF",                 -- "OFF" (Do Not Change) or "39", "35", "30", "25", "20"
     cityRule = "OFF",                   -- "OFF" (Do Not Change) or "39", "35", "30", "25", "20"
     skyridingDiveTracking = true,       -- Aerial Dive Pitch Tracking while mounted/gliding
-    npcDialogZoom = false,              -- Opt-In NPC Gossip/Quest gentle framing (15 yds)
+    npcDialogZoom = false,              -- Opt-In NPC Gossip/Quest gentle framing
+    npcDialogDrawerOpen = false,        -- Sub-Settings (1) collapsed by default on fresh profiles
+    npcDialogYards = 15,                -- Target distance for NPC dialogue framing (15-25 yds, default 15)
 
     -- Engine 3: Live Pitch, Shoulder Framing & Anti-Motion-Sickness
     pitchTiltPct = 0,                   -- Live Slider: 0% (Off) to 80%, step 5% (default 0% Off)
@@ -224,10 +227,53 @@ local ZONE_RULE_OPTIONS = {
 }
 
 local SURFACE_PALETTES = {
-    Obsidian  = { bg = {0.055, 0.063, 0.082, 0.97}, card = {0.086, 0.098, 0.125, 0.95}, header = {0.039, 0.047, 0.063, 0.98}, border = {0.18, 0.21, 0.27, 0.85} },
-    Midnight  = { bg = {0.043, 0.055, 0.102, 0.97}, card = {0.071, 0.090, 0.157, 0.95}, header = {0.031, 0.039, 0.078, 0.98}, border = {0.16, 0.22, 0.36, 0.85} },
-    Charcoal  = { bg = {0.075, 0.075, 0.082, 0.97}, card = {0.110, 0.110, 0.122, 0.95}, header = {0.055, 0.055, 0.063, 0.98}, border = {0.22, 0.22, 0.25, 0.85} },
-    Slate     = { bg = {0.078, 0.094, 0.118, 0.97}, card = {0.114, 0.137, 0.169, 0.95}, header = {0.059, 0.071, 0.090, 0.98}, border = {0.22, 0.26, 0.32, 0.85} },
+    MIDNIGHT_BLACK = {
+        bg        = { 0.035, 0.039, 0.051, 0.99 },
+        panel     = { 0.035, 0.039, 0.051, 0.99 },
+        section   = { 0.043, 0.050, 0.066, 0.98 },
+        card      = { 0.055, 0.063, 0.082, 0.96 },
+        subCard   = { 0.035, 0.039, 0.051, 0.98 },
+        header    = { 0.015, 0.018, 0.024, 1.00 },
+        border    = { 0.145, 0.165, 0.212, 0.95 },
+        secBorder = { 1.0,   1.0,   1.0,   0.14 },
+    },
+    OBSIDIAN_DARK = {
+        bg        = { 0.067, 0.075, 0.094, 0.98 },
+        panel     = { 0.067, 0.075, 0.094, 0.98 },
+        section   = { 0.055, 0.063, 0.082, 0.98 },
+        card      = { 0.090, 0.102, 0.129, 0.95 },
+        subCard   = { 0.047, 0.055, 0.071, 0.98 },
+        header    = { 0.035, 0.039, 0.051, 1.00 },
+        border    = { 0.165, 0.188, 0.239, 0.95 },
+        secBorder = { 1.0,   1.0,   1.0,   0.14 },
+    },
+    SLATE_STEEL = {
+        bg        = { 0.090, 0.106, 0.141, 0.98 },
+        panel     = { 0.090, 0.106, 0.141, 0.98 },
+        section   = { 0.075, 0.090, 0.122, 0.98 },
+        card      = { 0.118, 0.137, 0.180, 0.96 },
+        subCard   = { 0.071, 0.086, 0.114, 0.98 },
+        header    = { 0.055, 0.067, 0.090, 1.00 },
+        border    = { 0.200, 0.235, 0.305, 0.95 },
+        secBorder = { 1.0,   1.0,   1.0,   0.15 },
+    },
+    SMOKED_GLASS = {
+        bg        = { 0.075, 0.090, 0.118, 0.86 },
+        panel     = { 0.075, 0.090, 0.118, 0.86 },
+        section   = { 0.060, 0.074, 0.098, 0.88 },
+        card      = { 0.102, 0.122, 0.157, 0.84 },
+        subCard   = { 0.055, 0.067, 0.090, 0.88 },
+        header    = { 0.045, 0.055, 0.075, 0.92 },
+        border    = { 0.190, 0.220, 0.285, 0.90 },
+        secBorder = { 1.0,   1.0,   1.0,   0.14 },
+    },
+}
+
+local LEGACY_SURFACE_MAP = {
+    Obsidian = "OBSIDIAN_DARK",
+    Midnight = "MIDNIGHT_BLACK",
+    Charcoal = "OBSIDIAN_DARK",
+    Slate    = "SLATE_STEEL",
 }
 
 local ACCENT_PALETTES = {
@@ -309,6 +355,7 @@ local function EnsureDB()
     db.scrollSpeed    = math.max(15, math.min(50, tonumber(db.scrollSpeed) or 35))
     db.pitchTiltPct   = math.max(0, math.min(80, tonumber(db.pitchTiltPct) or 0))
     db.shoulderOffsetVal = math.max(-1.5, math.min(1.5, tonumber(db.shoulderOffsetVal) or 0.0))
+    db.npcDialogYards = math.max(15, math.min(25, math.floor((tonumber(db.npcDialogYards) or 15) + 0.5)))
 
     if type(db.savedBaselineCVars) ~= "table" then
         db.savedBaselineCVars = nil
@@ -339,7 +386,20 @@ end
 local function GetTheme()
     EnsureDB()
     local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global or {}
-    local surf = SURFACE_PALETTES[g.surfaceTheme or "Obsidian"] or SURFACE_PALETTES.Obsidian
+    local surfKey = nil
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.GetActiveSurfaceKey) == "function" then
+        local okS, k = pcall(_G.DynamicSuite.UI.GetActiveSurfaceKey)
+        if okS and type(k) == "string" and k ~= "" then
+            surfKey = k
+        end
+    end
+    if not surfKey then
+        surfKey = g.surfaceTheme
+    end
+    if type(surfKey) == "string" and LEGACY_SURFACE_MAP[surfKey] then
+        surfKey = LEGACY_SURFACE_MAP[surfKey]
+    end
+    local surf = SURFACE_PALETTES[surfKey or "MIDNIGHT_BLACK"] or SURFACE_PALETTES.MIDNIGHT_BLACK
     local acc = ACCENT_PALETTES[g.accentTheme or "Cyan"] or ACCENT_PALETTES.Cyan
     acc = { r = acc.r, g = acc.g, b = acc.b, hex = SanitizeHex6(acc.hex, acc.r, acc.g, acc.b) }
 
@@ -962,11 +1022,12 @@ function DynamicZoom:OnNPCDialogOpen()
     if not db.enabled or not db.npcDialogZoom or IsYieldingConflictHooks() or IsNarrativeCameraAddonLoaded() then return end
     if InCombatLockdown and InCombatLockdown() then return end
 
+    local targetYards = math.max(15, math.min(25, math.floor((tonumber(db.npcDialogYards) or MIN_ZOOM_YARDS) + 0.5)))
     if not preDialogZoomYards then
         local cur = SafeGetCameraZoom()
-        if cur and cur > 18 then
+        if cur and cur > (targetYards + 1.5) then
             preDialogZoomYards = cur
-            self:SmoothZoomTo(MIN_ZOOM_YARDS, 0.45)
+            self:SmoothZoomTo(targetYards, 0.45)
         end
     end
 end
@@ -1104,8 +1165,13 @@ local dropdownCatcher = nil
 
 local function CloseAnyDropdown()
     if openDropdownMenu then
+        local s, a = GetTheme()
+        if openDropdownMenu.ownerBtn then
+            ApplyBackdrop(openDropdownMenu.ownerBtn, s.header, s.border)
+        end
         if openDropdownMenu.chevronTex then
             openDropdownMenu.chevronTex:SetTexture(ICON_CHEVRON_DOWN)
+            openDropdownMenu.chevronTex:SetVertexColor(a.r, a.g, a.b, 0.90)
         end
         local m = openDropdownMenu
         openDropdownMenu = nil
@@ -1183,7 +1249,7 @@ local function CreateSectionBox(parent, yTop)
     box.innerPadX = 14
     box:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, yTop)
     box:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, yTop)
-    ApplyBackdrop(box, surf.panel or { 0.043, 0.051, 0.071, 0.96 }, surf.border)
+    ApplyBackdrop(box, surf.section or surf.panel or { 0.043, 0.050, 0.066, 0.98 }, surf.secBorder or surf.border)
     return box
 end
 
@@ -1231,6 +1297,7 @@ local function CreateSectionHeader(parent, arg2, arg3, arg4, arg5)
     else
         txt:SetPoint("LEFT", leftBar, "RIGHT", 8, 0)
     end
+    txt:SetPoint("RIGHT", hdr, "RIGHT", -4, 0)
     txt:SetJustifyH("LEFT")
     txt:SetWordWrap(false)
     txt:SetTextColor(acc.r, acc.g, acc.b, 1.0)
@@ -1283,7 +1350,7 @@ local function CreateCard(parent, height, yOffset, isSubDrawer)
     if isSubDrawer then
         card:SetPoint("TOPLEFT", parent, "TOPLEFT", padX + 10, yOffset)
         card:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -(padX + 10), yOffset)
-        ApplyBackdrop(card, { 0.035, 0.039, 0.051, 0.98 }, { 0.145, 0.165, 0.212, 0.95 })
+        ApplyBackdrop(card, surf.subCard or surf.panel, surf.border)
         local leftBar = card:CreateTexture(nil, "OVERLAY")
         leftBar:SetWidth(2)
         card.leftBar = leftBar
@@ -1351,6 +1418,9 @@ local function CreateSegmentedSwitchCard(parent, yOffset, titleText, descText, g
     onBtn:SetSize(onW, 22)
 
     pillGroup:SetSize(offW + onW + 6, 26)
+    title:SetPoint("RIGHT", pillGroup, "LEFT", -16, 0)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
 
     local tuneBar, tuneLabel, tuneChevron
     local subCount = (tuneSpec and tonumber(tuneSpec.count)) or 1
@@ -1512,6 +1582,9 @@ local function CreateSliderCard(parent, yOffset, titleText, descText, minVal, ma
     local holder = CreateFrame("Frame", nil, card)
     holder:SetSize(256, 26)
     holder:SetPoint("RIGHT", card, "RIGHT", -14, 0)
+    title:SetPoint("RIGHT", holder, "LEFT", -16, 0)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
 
     local valBadge = holder:CreateFontString(nil, "OVERLAY")
     SetFontSafe(valBadge, 11, "")
@@ -1740,9 +1813,12 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
     card.title = title
 
     local dropBtn = CreateFrame("Button", nil, card, "BackdropTemplate")
-    dropBtn:SetSize(272, 26)
+    dropBtn:SetSize(256, 26)
     dropBtn:SetPoint("RIGHT", card, "RIGHT", -14, 0)
     ApplyBackdrop(dropBtn, surf.header, surf.border)
+    title:SetPoint("RIGHT", dropBtn, "LEFT", -16, 0)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
 
     local desc = card:CreateFontString(nil, "OVERLAY")
     SetFontSafe(desc, 10.5, "")
@@ -1797,6 +1873,22 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
         end)
     end
 
+    dropBtn:SetScript("OnEnter", function(self)
+        local _, a = GetTheme()
+        ApplyBackdrop(self, { surf.header[1], surf.header[2], surf.header[3], surf.header[4] or 1.0 }, { a.r, a.g, a.b, 0.95 })
+        chevron:SetVertexColor(a.r, a.g, a.b, 1.0)
+    end)
+    dropBtn:SetScript("OnLeave", function(self)
+        local s, a = GetTheme()
+        if openDropdownMenu and openDropdownMenu:IsShown() and openDropdownMenu.ownerBtn == self then
+            ApplyBackdrop(self, { s.header[1], s.header[2], s.header[3], s.header[4] or 1.0 }, { a.r, a.g, a.b, 0.95 })
+            chevron:SetVertexColor(a.r, a.g, a.b, 1.0)
+        else
+            ApplyBackdrop(self, s.header, s.border)
+            chevron:SetVertexColor(a.r, a.g, a.b, 0.90)
+        end
+    end)
+
     dropBtn:SetScript("OnClick", function(self)
         RegisterZoomPopupCloser()
         if openDropdownMenu and openDropdownMenu:IsShown() and openDropdownMenu.ownerBtn == self then
@@ -1820,10 +1912,13 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
             menu.measureFS:Hide()
             menu.rows = {}
             menu:SetScript("OnHide", function(m)
+                local sHide, aHide = GetTheme()
+                if m.ownerBtn then
+                    ApplyBackdrop(m.ownerBtn, sHide.header, sHide.border)
+                end
                 if m.chevronTex then
                     m.chevronTex:SetTexture(ICON_CHEVRON_DOWN)
-                    local a = GetSuiteAccent()
-                    m.chevronTex:SetVertexColor(a.r, a.g, a.b, 0.90)
+                    m.chevronTex:SetVertexColor(aHide.r, aHide.g, aHide.b, 0.90)
                 end
                 m.ownerBtn = nil
                 m.chevronTex = nil
@@ -1853,14 +1948,11 @@ local function CreateDropdownCard(parent, yOffset, titleText, descText, optionsL
         menu.ownerBtn = self
         menu.chevronTex = chevron
         chevron:SetTexture(ICON_CHEVRON_UP)
-        do
-            local a = GetSuiteAccent()
-            chevron:SetVertexColor(a.r, a.g, a.b, 1.0)
-        end
+        chevron:SetVertexColor(a.r, a.g, a.b, 1.0)
         openDropdownMenu = menu
 
         -- Measure max option width so zero text is ever truncated (Item #28)
-        local maxW = 272
+        local maxW = 256
         local measureFS = menu.measureFS
         SetFontSafe(measureFS, 11, "")
         for _, opt in ipairs(optionsList) do
@@ -1964,6 +2056,16 @@ local function RenderZoomEmbedded(parent)
     parent.dzRoot = root
     activeEmbeddedRoot = root
 
+    root:SetScript("OnShow", function(self)
+        if self._needsThemeRebuild then
+            self._needsThemeRebuild = nil
+            local p = self:GetParent()
+            if p then
+                RenderZoomEmbedded(p)
+            end
+        end
+    end)
+
     root:SetScript("OnHide", function()
         CloseAnyDropdown()
     end)
@@ -1971,28 +2073,39 @@ local function RenderZoomEmbedded(parent)
     -- Live Camera Distance Readout Bar (Positioned directly below the Top 3-Tab Strip)
     local liveBar = CreateFrame("Frame", nil, root, "BackdropTemplate")
     liveBar:SetHeight(28)
-    ApplyBackdrop(liveBar, { 0.065, 0.075, 0.100, 0.96 }, surf.border)
-
-    local liveText = liveBar:CreateFontString(nil, "OVERLAY")
-    SetFontSafe(liveText, 11, "")
-    liveText:SetPoint("LEFT", liveBar, "LEFT", 12, 0)
-    liveText:SetTextColor(0.88, 0.93, 1.0, 1.0)
+    ApplyBackdrop(liveBar, surf.card, surf.border)
 
     local contextBadge = liveBar:CreateFontString(nil, "OVERLAY")
     SetFontSafe(contextBadge, 11, "")
     contextBadge:SetPoint("RIGHT", liveBar, "RIGHT", -12, 0)
+    contextBadge:SetJustifyH("RIGHT")
+    contextBadge:SetWordWrap(false)
     contextBadge:SetTextColor(0.68, 0.75, 0.84, 1.0)
+
+    local liveText = liveBar:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(liveText, 11, "")
+    liveText:SetPoint("LEFT", liveBar, "LEFT", 12, 0)
+    liveText:SetPoint("RIGHT", contextBadge, "LEFT", -10, 0)
+    liveText:SetJustifyH("LEFT")
+    liveText:SetWordWrap(false)
+    liveText:SetTextColor(0.88, 0.93, 1.0, 1.0)
 
     local readoutElapsed = 0
     local cachedAccentHex = acc.hex
-    liveBar:SetScript("OnUpdate", function(_, elapsed)
-        readoutElapsed = readoutElapsed + (elapsed or 0)
-        if readoutElapsed < 0.15 then return end
-        readoutElapsed = 0
+    local function UpdateLiveBarText()
+        local _, liveAcc = GetTheme()
+        cachedAccentHex = (liveAcc and liveAcc.hex) or cachedAccentHex
         local curZ = SafeGetCameraZoom() or 0
         local maxZ = tonumber(db.maxZoomYards) or 39
         liveText:SetText(string.format("Current Camera Distance: |cFF%s%.1f|r / %.1f yds", cachedAccentHex, curZ, maxZ))
         contextBadge:SetText("Active Profile: |cFF" .. cachedAccentHex .. (activeContextLabel or "Outdoor (39 yds)") .. "|r")
+    end
+    UpdateLiveBarText()
+    liveBar:SetScript("OnUpdate", function(_, elapsed)
+        readoutElapsed = readoutElapsed + (elapsed or 0)
+        if readoutElapsed < 0.15 then return end
+        readoutElapsed = 0
+        UpdateLiveBarText()
     end)
 
     -- Top Segmented 3-Tab Bar (Recessed #0B0D12 Track + 1px Outer Border matching Suite Standard)
@@ -2068,7 +2181,7 @@ local function RenderZoomEmbedded(parent)
                     if page.ReflowTab1 then page.ReflowTab1() end
                 end,
                 {
-                    count = 2,
+                    count = 1,
                     isOpen = function() return db.scrollDrawerOpen ~= false end,
                     onToggle = function()
                         db.scrollDrawerOpen = not (db.scrollDrawerOpen ~= false)
@@ -2087,22 +2200,7 @@ local function RenderZoomEmbedded(parent)
                 function(v) db.flickBoost = v end,
                 nil, nil, true, true
             )
-            local sub2Card, dySub2 = CreateSliderCard(
-                scrollCard, -82 + dySub1,
-                "Base Zoom Glide Speed",
-                "Standard camera glide speed between scroll steps (Default: 35).",
-                15, 50, 1,
-                function(v) return string.format("%d Speed", v) end,
-                function() return db.scrollSpeed end,
-                function(v) db.scrollSpeed = v end,
-                nil, nil, true, true,
-                function(v)
-                    if db.enabled and not IsYieldingConflictHooks() then
-                        SafeSetCVar("cameraZoomSpeed", math.max(15, math.min(50, tonumber(v) or 35)))
-                    end
-                end
-            )
-            local scrollExpandedH = math.abs(-82 + dySub1 + dySub2) + 4
+            local scrollExpandedH = math.abs(-82 + dySub1) + 4
 
             local _, dHdr1b = CreateDzSectionHeader(
                 sec1b, -10,
@@ -2169,7 +2267,6 @@ local function RenderZoomEmbedded(parent)
                 if scrollCard.RefreshTuneVisual then scrollCard.RefreshTuneVisual() end
                 local showScrollSubs = db.reactiveScrollEnabled and (db.scrollDrawerOpen ~= false)
                 sub1Card:SetShown(showScrollSubs)
-                sub2Card:SetShown(showScrollSubs)
                 local scrollH = db.reactiveScrollEnabled and (showScrollSubs and scrollExpandedH or 84) or 56
                 scrollCard:SetHeight(scrollH)
                 local sy1End = syScrollTop - (scrollH + 6)
@@ -2212,213 +2309,95 @@ local function RenderZoomEmbedded(parent)
             page.ReflowTab1(true)
 
         elseif tabId == 2 then
-            local y = 0
-            local sec2a = CreateSectionBox(page, y)
-            local sy = -10
+            local sec2a = CreateSectionBox(page, 0)
+            local sec2b = CreateSectionBox(page, 0)
+
             local _, dHdr2 = CreateDzSectionHeader(
-                sec2a, sy,
+                sec2a, -10,
                 "AUTOMATIC ZONE ZOOM & PROFILES",
                 "Automatically glide to your preferred camera distance when entering Raids, Dungeons, Delves, or PvP."
-            ); sy = sy + dHdr2
-            local autoZoomCard, dy1 = CreateSegmentedSwitchCard(
-                sec2a, sy,
+            )
+            local syAutoTop = -10 + dHdr2
+            local autoZoomCard = CreateSegmentedSwitchCard(
+                sec2a, syAutoTop,
                 "Automatic Zone Zoom",
                 "Automatically maintains your target camera distance across Raids, Dungeons, Delves, and Open World.",
                 function() return db.autoZoomEnabled end,
                 function(v)
                     db.autoZoomEnabled = v
                     if v then
+                        db.autoZoomDrawerOpen = true
                         DynamicZoom:EvaluateSituationalZoom("TOGGLE")
                     else
                         CancelZoomGlide()
                         activeContextLabel = "Manual"
                     end
-                    if page.RefreshProfileBar then page.RefreshProfileBar() end
-                end
+                    if page.ReflowTab2 then page.ReflowTab2() end
+                end,
+                {
+                    count = 5,
+                    isOpen = function() return db.autoZoomDrawerOpen == true end,
+                    onToggle = function()
+                        db.autoZoomDrawerOpen = not (db.autoZoomDrawerOpen == true)
+                        if page.ReflowTab2 then page.ReflowTab2() end
+                    end,
+                }
             )
-            sy = sy + dy1
 
-            local CONTEXT_PROFILES = {
-                { key = "OUTDOOR", label = "Outdoor",  getVal = function() return db.zoomOutdoor end,    setVal = function(v) db.zoomOutdoor = v end },
-                { key = "DUNGEON", label = "Dungeons", getVal = function() return db.zoomDungeon end,    setVal = function(v) db.zoomDungeon = v end },
-                { key = "RAID",    label = "Raid",     getVal = function() return db.zoomRaidCombat end, setVal = function(v) db.zoomRaidCombat = v end },
-                { key = "DELVE",   label = "Delves",   getVal = function() return db.zoomDelve end,      setVal = function(v) db.zoomDelve = v end },
-                { key = "PVP",     label = "PvP",      getVal = function() return db.zoomPvP end,        setVal = function(v) db.zoomPvP = v end },
+            local zoneSubSpecs = {
+                {
+                    title = "Raid & Boss Combat Target Distance",
+                    desc = "Target zoom distance inside Raid instances or during Boss encounters.",
+                    get = function() return db.zoomRaidCombat end,
+                    set = function(v) db.zoomRaidCombat = v end,
+                },
+                {
+                    title = "Mythic+ & 5-Player Dungeon Target Distance",
+                    desc = "Target zoom distance inside 5-player Mythic+ and normal Dungeons.",
+                    get = function() return db.zoomDungeon end,
+                    set = function(v) db.zoomDungeon = v end,
+                },
+                {
+                    title = "Delves & Scenarios Target Distance",
+                    desc = "Target zoom distance inside Delves and Scenarios.",
+                    get = function() return db.zoomDelve end,
+                    set = function(v) db.zoomDelve = v end,
+                },
+                {
+                    title = "PvP Arenas & Battlegrounds Target Distance",
+                    desc = "Target zoom distance inside Arenas and Battlegrounds.",
+                    get = function() return db.zoomPvP end,
+                    set = function(v) db.zoomPvP = v end,
+                },
+                {
+                    title = "Open World Target Distance",
+                    desc = "Default camera distance when questing, flying, or in the Open World.",
+                    get = function() return db.zoomOutdoor end,
+                    set = function(v) db.zoomOutdoor = v end,
+                },
             }
 
-            local profileBar = CreateFrame("Frame", nil, sec2a, "BackdropTemplate")
-            profileBar:SetPoint("TOPLEFT", sec2a, "TOPLEFT", 14, sy)
-            profileBar:SetPoint("TOPRIGHT", sec2a, "TOPRIGHT", -14, sy)
-            profileBar:SetHeight(34)
-            ApplyBackdrop(profileBar, { 0.043, 0.051, 0.071, 0.98 }, { 1, 1, 1, 0.08 })
-
-            local profileBtns = {}
-            local selectedProfileKey = db.selectedProfileKey or GetActiveProfileKey() or "OUTDOOR"
-
-            local function RefreshContextProfileTabs()
-                local _, a = GetTheme()
-                local activeKey = GetActiveProfileKey() or currentProfileKey
-                local fillAlpha = ((_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42)
-                for _, btn in ipairs(profileBtns) do
-                    local btnKey = btn.profileKey
-                    local isZoneActive = (btnKey == activeKey)
-                    btn.activeDot:SetShown(isZoneActive)
-                    btn.label:ClearAllPoints()
-                    btn.label:SetPoint("CENTER", btn, "CENTER", 0, 0)
-                    btn.label:SetJustifyH("CENTER")
-                    btn.label:SetWordWrap(false)
-                    if btnKey == selectedProfileKey then
-                        ApplyBackdrop(btn, { a.r * fillAlpha, a.g * fillAlpha, a.b * fillAlpha, 0.98 }, { a.r, a.g, a.b, 0.95 })
-                        btn.label:SetTextColor(1, 1, 1, 1)
-                    else
-                        ApplyBackdrop(btn, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 })
-                        btn.label:SetTextColor(0.68, 0.74, 0.82, 1)
-                    end
-                end
+            local zoneSubCards = {}
+            local subY = -82
+            for _, spec in ipairs(zoneSubSpecs) do
+                local zCard, dyZ = CreateSliderCard(
+                    autoZoomCard, subY,
+                    spec.title,
+                    spec.desc,
+                    15, 39, 1,
+                    function(v) return string.format("%d yds", v) end,
+                    spec.get,
+                    spec.set,
+                    "Test Glide",
+                    function() DynamicZoom:SmoothZoomTo(spec.get() or 39, 0.50) end,
+                    true,
+                    true
+                )
+                zoneSubCards[#zoneSubCards + 1] = zCard
+                subY = subY + dyZ
             end
-            page.RefreshProfileBar = function()
-                if autoZoomCard.RefreshTuneVisual then autoZoomCard.RefreshTuneVisual() end
-                RefreshContextProfileTabs()
-            end
+            local autoZoomExpandedH = math.abs(subY) + 4
 
-            for _, pDef in ipairs(CONTEXT_PROFILES) do
-                local btn = CreateFrame("Button", nil, profileBar, "BackdropTemplate")
-                btn:SetHeight(26)
-                btn.profileKey = pDef.key
-
-                local lbl = btn:CreateFontString(nil, "OVERLAY")
-                SetFontSafe(lbl, 11, "")
-                lbl:SetPoint("CENTER", btn, "CENTER", 0, 0)
-                lbl:SetJustifyH("CENTER")
-                lbl:SetWordWrap(false)
-                lbl:SetText(pDef.label)
-                btn.label = lbl
-
-                local liveDot = CreateSolidTex(btn, "OVERLAY", 4, 0.133, 0.773, 0.369, 1.0)
-                liveDot:SetSize(6, 6)
-                liveDot:SetPoint("LEFT", btn.label, "RIGHT", 5, 0)
-                liveDot:Hide()
-                btn.activeDot = liveDot
-
-                btn:SetScript("OnClick", function()
-                    CloseAnyDropdown()
-                    selectedProfileKey = pDef.key
-                    db.selectedProfileKey = pDef.key
-                    RefreshContextProfileTabs()
-                    DynamicZoom:SmoothZoomTo(pDef.getVal() or 39, 0.50)
-                end)
-
-                table.insert(profileBtns, btn)
-            end
-
-            local function ReflowProfileBar()
-                local w = profileBar:GetWidth()
-                if not w or w <= 60 then
-                    local baseW = (scrollFrame and scrollFrame:GetWidth() and scrollFrame:GetWidth() > 60) and scrollFrame:GetWidth() or 760
-                    w = baseW - 28
-                end
-                local avail = math.max(300, w - 8)
-                local gap = 5
-                local n = #profileBtns
-                local eachW = math.floor((avail - (gap * (n - 1))) / n)
-                for i, btn in ipairs(profileBtns) do
-                    local lOff = 4 + (i - 1) * (eachW + gap)
-                    btn:ClearAllPoints()
-                    btn:SetHeight(26)
-                    btn:SetPoint("LEFT", profileBar, "LEFT", lOff, 0)
-                    if i == n then
-                        btn:SetPoint("RIGHT", profileBar, "RIGHT", -4, 0)
-                    else
-                        btn:SetPoint("RIGHT", profileBar, "LEFT", lOff + eachW, 0)
-                    end
-                end
-            end
-
-            profileBar:SetScript("OnSizeChanged", ReflowProfileBar)
-            RefreshContextProfileTabs()
-            ReflowProfileBar()
-            C_Timer.After(0, ReflowProfileBar)
-            sy = sy - 40
-
-            local _, dy2 = CreateSliderCard(
-                sec2a, sy,
-                "Raid & Boss Combat Target Distance",
-                "Target zoom distance inside Raid instances or during Boss encounters.",
-                15, 39, 1,
-                function(v) return string.format("%d yds", v) end,
-                function() return db.zoomRaidCombat end,
-                function(v) db.zoomRaidCombat = v end,
-                "Test Glide",
-                function() DynamicZoom:SmoothZoomTo(db.zoomRaidCombat or 39, 0.50) end,
-                false,
-                true
-            )
-            sy = sy + dy2
-
-            local _, dy3 = CreateSliderCard(
-                sec2a, sy,
-                "Mythic+ & 5-Player Dungeon Target Distance",
-                "Target zoom distance inside 5-player Mythic+ and normal Dungeons.",
-                15, 39, 1,
-                function(v) return string.format("%d yds", v) end,
-                function() return db.zoomDungeon end,
-                function(v) db.zoomDungeon = v end,
-                "Test Glide",
-                function() DynamicZoom:SmoothZoomTo(db.zoomDungeon or 39, 0.50) end,
-                false,
-                true
-            )
-            sy = sy + dy3
-
-            local _, dyDelve = CreateSliderCard(
-                sec2a, sy,
-                "Delves & Scenarios Target Distance",
-                "Target zoom distance inside Delves and Scenarios.",
-                15, 39, 1,
-                function(v) return string.format("%d yds", v) end,
-                function() return db.zoomDelve end,
-                function(v) db.zoomDelve = v end,
-                "Test Glide",
-                function() DynamicZoom:SmoothZoomTo(db.zoomDelve or 39, 0.50) end,
-                false,
-                true
-            )
-            sy = sy + dyDelve
-
-            local _, dyPvP = CreateSliderCard(
-                sec2a, sy,
-                "PvP Arenas & Battlegrounds Target Distance",
-                "Target zoom distance inside Arenas and Battlegrounds.",
-                15, 39, 1,
-                function(v) return string.format("%d yds", v) end,
-                function() return db.zoomPvP end,
-                function(v) db.zoomPvP = v end,
-                "Test Glide",
-                function() DynamicZoom:SmoothZoomTo(db.zoomPvP or 39, 0.50) end,
-                false,
-                true
-            )
-            sy = sy + dyPvP
-
-            local _, dy4 = CreateSliderCard(
-                sec2a, sy,
-                "Open World Target Distance",
-                "Default camera distance when questing, flying, or in the Open World.",
-                15, 39, 1,
-                function(v) return string.format("%d yds", v) end,
-                function() return db.zoomOutdoor end,
-                function(v) db.zoomOutdoor = v end,
-                "Test Glide",
-                function() DynamicZoom:SmoothZoomTo(db.zoomOutdoor or 39, 0.50) end,
-                false,
-                true
-            )
-            sy = sy + dy4
-            local sec2aH = (math.abs(sy) - 6) + 12
-            sec2a:SetHeight(sec2aH)
-            y = y - sec2aH - 14
-
-            local sec2b = CreateSectionBox(page, y)
             local sy2 = -10
             local _, dHdr2b = CreateDzSectionHeader(
                 sec2b, sy2,
@@ -2445,20 +2424,79 @@ local function RenderZoomEmbedded(parent)
             )
             sy2 = sy2 + dyCity
 
-            local _, dy6 = CreateSegmentedSwitchCard(
-                sec2b, sy2,
+            local syNpcTop = sy2
+            local npcDialogCard = CreateSegmentedSwitchCard(
+                sec2b, syNpcTop,
                 "Opt-In NPC Dialogue & Quest Framing",
-                "Gently glides to 15 yards when speaking with quest/gossip NPCs out of combat and restores prior zoom on close.",
+                "Gently glides closer when speaking with quest or gossip NPCs out of combat and restores your prior zoom on close.",
                 function() return db.npcDialogZoom end,
-                function(v) db.npcDialogZoom = v end
+                function(v)
+                    db.npcDialogZoom = v
+                    if v then
+                        db.npcDialogDrawerOpen = true
+                    end
+                    if page.ReflowTab2 then page.ReflowTab2() end
+                end,
+                {
+                    count = 1,
+                    isOpen = function() return db.npcDialogDrawerOpen == true end,
+                    onToggle = function()
+                        db.npcDialogDrawerOpen = not (db.npcDialogDrawerOpen == true)
+                        if page.ReflowTab2 then page.ReflowTab2() end
+                    end,
+                }
             )
-            sy2 = sy2 + dy6
-            local sec2bH = (math.abs(sy2) - 6) + 12
-            sec2b:SetHeight(sec2bH)
-            y = y - sec2bH - 14
-            local totalH = math.abs(y)
-            page:SetHeight(totalH)
-            tabHeights[2] = totalH
+
+            local npcDialogSubCard, dyNpcSub = CreateSliderCard(
+                npcDialogCard, -82,
+                "NPC Dialogue Distance",
+                "Target camera distance when speaking with quest or gossip NPCs out of combat (15 to 25 yards).",
+                15, 25, 1,
+                function(v) return string.format("%d yds", v) end,
+                function() return db.npcDialogYards or 15 end,
+                function(v) db.npcDialogYards = v end,
+                "Test Glide",
+                function() DynamicZoom:SmoothZoomTo(db.npcDialogYards or 15, 0.45) end,
+                true,
+                true
+            )
+            local npcDialogExpandedH = math.abs(-82 + dyNpcSub) + 4
+
+            page.ReflowTab2 = function(isInitialBuild)
+                if autoZoomCard.RefreshTuneVisual then autoZoomCard.RefreshTuneVisual() end
+                local showAutoSubs = db.autoZoomEnabled and (db.autoZoomDrawerOpen == true)
+                for _, zCard in ipairs(zoneSubCards) do
+                    zCard:SetShown(showAutoSubs)
+                end
+                local autoZoomH = db.autoZoomEnabled and (showAutoSubs and autoZoomExpandedH or 84) or 56
+                autoZoomCard:SetHeight(autoZoomH)
+                local sy2aEnd = syAutoTop - (autoZoomH + 6)
+                local sec2aH = (math.abs(sy2aEnd) - 6) + 12
+                sec2a:SetHeight(sec2aH)
+
+                local sec2bY = -sec2aH - 14
+                sec2b:ClearAllPoints()
+                sec2b:SetPoint("TOPLEFT", page, "TOPLEFT", 0, sec2bY)
+                sec2b:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, sec2bY)
+
+                if npcDialogCard.RefreshTuneVisual then npcDialogCard.RefreshTuneVisual() end
+                local showNpcSub = db.npcDialogZoom and (db.npcDialogDrawerOpen == true)
+                npcDialogSubCard:SetShown(showNpcSub)
+                local npcH = db.npcDialogZoom and (showNpcSub and npcDialogExpandedH or 84) or 56
+                npcDialogCard:SetHeight(npcH)
+                local sy2bEnd = syNpcTop - (npcH + 6)
+                local sec2bH = (math.abs(sy2bEnd) - 6) + 12
+                sec2b:SetHeight(sec2bH)
+
+                local totalH = sec2aH + 14 + sec2bH + 14
+                page:SetHeight(totalH)
+                tabHeights[2] = totalH
+                if not isInitialBuild and PopulateActiveTab and (db.activeSubTab or 1) == 2 then
+                    PopulateActiveTab(true)
+                end
+            end
+
+            page.ReflowTab2(true)
 
         else
             local y = 0
@@ -2574,13 +2612,16 @@ local function RenderZoomEmbedded(parent)
             rTitle:SetText("Anti-Motion-Sickness Guard & Factory Camera Recovery")
             rTitle:SetTextColor(0.97, 0.98, 1.0, 1.0)
 
-            local resetBtn = CreateStyledButton(resetCard, "Reset Camera Defaults", 205, 26, false, function()
+            local resetBtn = CreateStyledButton(resetCard, "Reset Camera Defaults", 184, 26, false, function()
                 DynamicZoom:ResetCameraToBlizzardDefaults()
                 if speedCard and speedCard.SetSliderValue then speedCard:SetSliderValue(db.scrollSpeed or 35) end
                 if pitchCard and pitchCard.SetSliderValue then pitchCard:SetSliderValue(0) end
                 if shoulderCard and shoulderCard.SetSliderValue then shoulderCard:SetSliderValue(0.0) end
             end)
             resetBtn:SetPoint("RIGHT", resetCard, "RIGHT", -14, 0)
+            rTitle:SetPoint("RIGHT", resetBtn, "LEFT", -16, 0)
+            rTitle:SetJustifyH("LEFT")
+            rTitle:SetWordWrap(false)
 
             local rDesc = resetCard:CreateFontString(nil, "OVERLAY")
             SetFontSafe(rDesc, 10.5, "")
@@ -2638,6 +2679,13 @@ local function RenderZoomEmbedded(parent)
                         end
                     end)
                     resolveBtn:SetPoint("RIGHT", banner, "RIGHT", -14, 0)
+                    bTitle:SetPoint("RIGHT", resolveBtn, "LEFT", -12, 0)
+                    bTitle:SetJustifyH("LEFT")
+                    bTitle:SetWordWrap(false)
+                    bDesc:SetPoint("RIGHT", resolveBtn, "LEFT", -12, 0)
+                    bDesc:SetJustifyH("LEFT")
+                    bDesc:SetWordWrap(true)
+                    if bDesc.SetMaxLines then bDesc:SetMaxLines(2) end
                     banner.resolveBtn = resolveBtn
                     conflictBannerPool[idx] = banner
                 end
@@ -2668,9 +2716,9 @@ local function RenderZoomEmbedded(parent)
                     tabPages[id]:Show()
                     if not skipPageReflow then
                         if id == 1 and tabPages[1].ReflowTab1 then
-                            tabPages[1].ReflowTab1()
-                        elseif id == 2 and tabPages[2].RefreshProfileBar then
-                            tabPages[2].RefreshProfileBar()
+                            tabPages[1].ReflowTab1(true)
+                        elseif id == 2 and tabPages[2].ReflowTab2 then
+                            tabPages[2].ReflowTab2(true)
                         end
                     end
                 else
@@ -2714,8 +2762,11 @@ local function RenderZoomEmbedded(parent)
             PopulateActiveTab()
         end)
         local txt = b:CreateFontString(nil, "OVERLAY")
-        SetFontSafe(txt, 12, "")
-        txt:SetPoint("CENTER", 0, 0)
+        SetFontSafe(txt, 11, "")
+        txt:SetPoint("LEFT", b, "LEFT", 6, 0)
+        txt:SetPoint("RIGHT", b, "RIGHT", -6, 0)
+        txt:SetJustifyH("CENTER")
+        txt:SetWordWrap(false)
         txt:SetText(tInfo.label)
         b.label = txt
 
@@ -2767,21 +2818,26 @@ local function RenderZoomEmbedded(parent)
     track:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", 10, 0)
     track:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", 10, 0)
     track:EnableMouse(true)
-    ApplyBackdrop(track, { 0.04, 0.05, 0.07, 0.65 }, { 1, 1, 1, 0.04 })
+    track:EnableMouseWheel(true)
+    track:SetHitRectInsets(-5, -5, 0, 0)
+    ApplyBackdrop(track, { 0.035, 0.039, 0.051, 0.90 }, { 1, 1, 1, 0.04 })
 
     local thumb = CreateFrame("Button", nil, track, "BackdropTemplate")
     thumb:SetWidth(4)
     thumb:SetHeight(48)
     thumb:SetPoint("TOP", track, "TOP", 0, 0)
     thumb:EnableMouse(true)
+    thumb:EnableMouseWheel(true)
+    thumb:SetHitRectInsets(-5, -5, 0, 0)
     ApplyBackdrop(thumb, { 0.38, 0.45, 0.56, 0.85 }, { 0, 0, 0, 0 })
 
     local function RefreshThumbColor()
         if thumb.isDragging then
             local _, a = GetTheme()
-            ApplyBackdrop(thumb, { a.r, a.g, a.b, 0.95 }, { 0, 0, 0, 0 })
+            ApplyBackdrop(thumb, { a.r, a.g, a.b, 1.0 }, { 0, 0, 0, 0 })
         elseif thumb:IsMouseOver() then
-            ApplyBackdrop(thumb, { 0.52, 0.60, 0.72, 0.95 }, { 0, 0, 0, 0 })
+            local _, a = GetTheme()
+            ApplyBackdrop(thumb, { a.r, a.g, a.b, 0.92 }, { 0, 0, 0, 0 })
         else
             ApplyBackdrop(thumb, { 0.38, 0.45, 0.56, 0.85 }, { 0, 0, 0, 0 })
         end
@@ -2809,12 +2865,22 @@ local function RenderZoomEmbedded(parent)
         RefreshThumbColor()
     end
 
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+    local function ScrollByDelta(delta)
         CloseAnyDropdown()
-        local maxScroll = math.max(0, (scrollContent:GetHeight() or 1) - (self:GetHeight() or 1))
-        local nextScroll = math.max(0, math.min(maxScroll, self:GetVerticalScroll() - (delta * 38)))
-        self:SetVerticalScroll(nextScroll)
+        local maxScroll = math.max(0, (scrollContent:GetHeight() or 1) - (scrollFrame:GetHeight() or 1))
+        local nextScroll = math.max(0, math.min(maxScroll, (scrollFrame:GetVerticalScroll() or 0) - (delta * 38)))
+        scrollFrame:SetVerticalScroll(nextScroll)
         UpdateScrollbar()
+    end
+
+    scrollFrame:SetScript("OnMouseWheel", function(_, delta)
+        ScrollByDelta(delta)
+    end)
+    track:SetScript("OnMouseWheel", function(_, delta)
+        ScrollByDelta(delta)
+    end)
+    thumb:SetScript("OnMouseWheel", function(_, delta)
+        ScrollByDelta(delta)
     end)
 
     scrollFrame:SetScript("OnSizeChanged", function(self, w)
@@ -2895,8 +2961,13 @@ local function RenderZoomEmbedded(parent)
         local expandDrawers = (type(selfOrIdx) == "number") and maybeIdx or maybeExpand
         db.activeSubTab = idx
         if expandDrawers then
-            db.scrollDrawerOpen = true
-            db.pillarDrawerOpen = true
+            if idx == 1 then
+                db.scrollDrawerOpen = true
+                db.pillarDrawerOpen = true
+            elseif idx == 2 then
+                db.autoZoomDrawerOpen = true
+                db.npcDialogDrawerOpen = true
+            end
         end
         RefreshTabBarVisuals()
         PopulateActiveTab()
@@ -2934,7 +3005,7 @@ local function EnsureStandaloneWindow()
     win:SetMovable(true)
     win:SetResizable(true)
     if win.SetResizeBounds then
-        win:SetResizeBounds(760, 480, 1280, 860)
+        win:SetResizeBounds(800, 520, 1280, 860)
     end
     win:EnableMouse(true)
     win:RegisterForDrag("LeftButton")
@@ -2960,6 +3031,7 @@ local function EnsureStandaloneWindow()
     header:SetPoint("TOPRIGHT", win, "TOPRIGHT", -1, -1)
     header:SetHeight(44)
     ApplyBackdrop(header, surf.header, surf.border)
+    win.header = header
 
     local logo = header:CreateTexture(nil, "ARTWORK")
     logo:SetSize(26, 26)
@@ -2969,26 +3041,32 @@ local function EnsureStandaloneWindow()
     local brandTitle = header:CreateFontString(nil, "OVERLAY")
     SetFontSafe(brandTitle, 15, "")
     brandTitle:SetPoint("LEFT", logo, "RIGHT", 10, 0)
+    brandTitle:SetWordWrap(false)
     brandTitle:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFZoom|r  |cFF64748Bv" .. DynamicZoom.VERSION .. "|r")
-
-    local statusText = header:CreateFontString(nil, "OVERLAY")
-    SetFontSafe(statusText, 11, "")
-    statusText:SetPoint("CENTER", header, "CENTER", 20, 0)
-    statusText:SetTextColor(0.75, 0.82, 0.90, 1.0)
-    statusText:SetText(DynamicZoom:GetStatusText())
-    win.statusText = statusText
 
     local closeBtn = CreateStyledButton(header, "X", 28, 24, false, function()
         CloseAnyDropdown()
         win:Hide()
     end)
     closeBtn:SetPoint("RIGHT", header, "RIGHT", -10, 0)
+    win.closeBtn = closeBtn
+
+    local statusText = header:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(statusText, 11, "")
+    statusText:SetPoint("LEFT", brandTitle, "RIGHT", 12, 0)
+    statusText:SetPoint("RIGHT", closeBtn, "LEFT", -12, 0)
+    statusText:SetJustifyH("CENTER")
+    statusText:SetWordWrap(false)
+    statusText:SetTextColor(0.75, 0.82, 0.90, 1.0)
+    statusText:SetText(DynamicZoom:GetStatusText())
+    win.statusText = statusText
 
     local footer = CreateFrame("Frame", nil, win, "BackdropTemplate")
     footer:SetHeight(36)
     footer:SetPoint("BOTTOMLEFT", win, "BOTTOMLEFT", 1, 1)
     footer:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -1, 1)
     ApplyBackdrop(footer, surf.header, surf.border)
+    win.footer = footer
 
     local resetModBtn = CreateStyledButton(footer, "Reset DynamicZoom", 142, 24, false, function()
         if DynamicZoom.ResetModuleDefaults then
@@ -2996,11 +3074,13 @@ local function EnsureStandaloneWindow()
         end
     end)
     resetModBtn:SetPoint("LEFT", footer, "LEFT", 14, 0)
+    win.resetModBtn = resetModBtn
 
     local blizzResetBtn = CreateStyledButton(footer, "Restore Blizzard Defaults", 174, 24, false, function()
         DynamicZoom:RestoreBlizzardDefaults()
     end)
     blizzResetBtn:SetPoint("LEFT", resetModBtn, "RIGHT", 8, 0)
+    win.blizzResetBtn = blizzResetBtn
 
     local body = CreateFrame("Frame", nil, win)
     body:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 6, -6)
@@ -3042,12 +3122,136 @@ local function EnsureStandaloneWindow()
     return win
 end
 
-local function ApplyZoomThemeToUI()
-    if activeEmbeddedRoot and activeEmbeddedRoot:GetParent() and activeEmbeddedRoot:IsShown() then
-        RenderZoomEmbedded(activeEmbeddedRoot:GetParent())
+local reloadPromptModal = nil
+
+local function ShowDynamicZoomReloadPromptModal()
+    if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+        return
     end
-    if standaloneWindow and standaloneWindow.statusText then
-        standaloneWindow.statusText:SetText(DynamicZoom:GetStatusText())
+    CloseAnyDropdown()
+    local surf, acc = GetTheme()
+    if not reloadPromptModal then
+        local modal = CreateFrame("Frame", "DynamicZoomReloadPromptModal", UIParent, "BackdropTemplate")
+        modal:SetSize(432, 180)
+        modal:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
+        modal:SetFrameStrata("DIALOG")
+        modal:SetFrameLevel(260)
+        modal:SetToplevel(true)
+        modal:SetClampedToScreen(true)
+        modal:SetMovable(true)
+        modal:EnableMouse(true)
+        modal:RegisterForDrag("LeftButton")
+        modal:SetScript("OnDragStart", modal.StartMoving)
+        modal:SetScript("OnDragStop", modal.StopMovingOrSizing)
+        ApplyBackdrop(modal, surf.panel or { 0.035, 0.039, 0.051, 0.99 }, { acc.r, acc.g, acc.b, 0.95 })
+
+        if type(_G.UISpecialFrames) == "table" then
+            local found = false
+            for i = 1, #_G.UISpecialFrames do
+                if _G.UISpecialFrames[i] == "DynamicZoomReloadPromptModal" then
+                    found = true
+                    break
+                end
+            end
+            if not found then
+                tinsert(_G.UISpecialFrames, "DynamicZoomReloadPromptModal")
+            end
+        end
+
+        local topAccent = modal:CreateTexture(nil, "OVERLAY")
+        topAccent:SetHeight(2)
+        topAccent:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
+        topAccent:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
+        topAccent:SetColorTexture(acc.r, acc.g, acc.b, 1.0)
+        modal.topAccent = topAccent
+
+        local closeBtn = CreateStyledButton(modal, "X", 22, 20, false, function()
+            modal:Hide()
+        end)
+        closeBtn:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -10, -10)
+        modal.closeBtn = closeBtn
+
+        local title = modal:CreateFontString(nil, "OVERLAY")
+        SetFontSafe(title, 12, "")
+        title:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -14)
+        title:SetPoint("RIGHT", closeBtn, "LEFT", -8, 0)
+        title:SetJustifyH("LEFT")
+        title:SetWordWrap(false)
+        modal.title = title
+
+        local headerSep = modal:CreateTexture(nil, "ARTWORK")
+        headerSep:SetHeight(1)
+        headerSep:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -38)
+        headerSep:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -18, -38)
+        headerSep:SetColorTexture(0.200, 0.240, 0.310, 0.65)
+
+        local body = modal:CreateFontString(nil, "OVERLAY")
+        SetFontSafe(body, 10.5, "")
+        body:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -50)
+        body:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -18, -50)
+        body:SetJustifyH("LEFT")
+        body:SetJustifyV("TOP")
+        body:SetSpacing(3)
+        body:SetTextColor(0.886, 0.910, 0.941, 1.0)
+        body:SetText("DynamicZoom has restored Blizzard default camera settings.\n\nReload UI now to complete cleanup?")
+        modal.body = body
+
+        local reloadBtn = CreateStyledButton(modal, "Reload UI", 138, 28, true, function()
+            modal:Hide()
+            if type(_G.ReloadUI) == "function" then
+                _G.ReloadUI()
+            end
+        end)
+        reloadBtn:SetPoint("BOTTOMRIGHT", modal, "BOTTOM", -6, 16)
+        modal.reloadBtn = reloadBtn
+
+        local laterBtn = CreateStyledButton(modal, "Later", 138, 28, false, function()
+            modal:Hide()
+        end)
+        laterBtn:SetPoint("BOTTOMLEFT", modal, "BOTTOM", 6, 16)
+        modal.laterBtn = laterBtn
+
+        modal:Hide()
+        reloadPromptModal = modal
+    end
+
+    ApplyBackdrop(reloadPromptModal, surf.panel or { 0.035, 0.039, 0.051, 0.99 }, { acc.r, acc.g, acc.b, 0.95 })
+    if reloadPromptModal.topAccent then reloadPromptModal.topAccent:SetColorTexture(acc.r, acc.g, acc.b, 1.0) end
+    if reloadPromptModal.title then
+        reloadPromptModal.title:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFZoom|r  |cFF94A3B8-- Restore Blizzard Defaults|r", acc.hex))
+    end
+    if reloadPromptModal.closeBtn and reloadPromptModal.closeBtn.RefreshTheme then reloadPromptModal.closeBtn.RefreshTheme() end
+    if reloadPromptModal.reloadBtn and reloadPromptModal.reloadBtn.RefreshTheme then reloadPromptModal.reloadBtn.RefreshTheme() end
+    if reloadPromptModal.laterBtn and reloadPromptModal.laterBtn.RefreshTheme then reloadPromptModal.laterBtn.RefreshTheme() end
+    reloadPromptModal:Show()
+    reloadPromptModal:Raise()
+end
+
+local function ApplyZoomThemeToUI()
+    local surf, acc = GetTheme()
+    if activeEmbeddedRoot and activeEmbeddedRoot:GetParent() then
+        if activeEmbeddedRoot:IsShown() then
+            RenderZoomEmbedded(activeEmbeddedRoot:GetParent())
+        else
+            activeEmbeddedRoot._needsThemeRebuild = true
+        end
+    end
+    if standaloneWindow then
+        ApplyBackdrop(standaloneWindow, surf.bg, surf.border)
+        if standaloneWindow.header then ApplyBackdrop(standaloneWindow.header, surf.header, surf.border) end
+        if standaloneWindow.footer then ApplyBackdrop(standaloneWindow.footer, surf.header, surf.border) end
+        if standaloneWindow.closeBtn and standaloneWindow.closeBtn.RefreshTheme then standaloneWindow.closeBtn.RefreshTheme() end
+        if standaloneWindow.resetModBtn and standaloneWindow.resetModBtn.RefreshTheme then standaloneWindow.resetModBtn.RefreshTheme() end
+        if standaloneWindow.blizzResetBtn and standaloneWindow.blizzResetBtn.RefreshTheme then standaloneWindow.blizzResetBtn.RefreshTheme() end
+        if standaloneWindow.statusText then
+            standaloneWindow.statusText:SetText(DynamicZoom:GetStatusText())
+        end
+    end
+    if reloadPromptModal and reloadPromptModal:IsShown() then
+        ApplyBackdrop(reloadPromptModal, surf.panel or { 0.035, 0.039, 0.051, 0.99 }, { acc.r, acc.g, acc.b, 0.95 })
+        if reloadPromptModal.topAccent then reloadPromptModal.topAccent:SetColorTexture(acc.r, acc.g, acc.b, 1.0) end
+        if reloadPromptModal.reloadBtn and reloadPromptModal.reloadBtn.RefreshTheme then reloadPromptModal.reloadBtn.RefreshTheme() end
+        if reloadPromptModal.laterBtn and reloadPromptModal.laterBtn.RefreshTheme then reloadPromptModal.laterBtn.RefreshTheme() end
     end
 end
 
@@ -3080,20 +3284,7 @@ function DynamicZoom:RestoreBlizzardDefaults()
         end
     end
     DEFAULT_CHAT_FRAME:AddMessage("|cFF06B6D4[DynamicZoom]|r Restored Blizzard default camera settings. Reload UI to complete cleanup.")
-    if type(_G.StaticPopupDialogs) == "table" and type(_G.StaticPopup_Show) == "function" then
-        _G.StaticPopupDialogs["DYNAMICZOOM_RELOAD_PROMPT"] = _G.StaticPopupDialogs["DYNAMICZOOM_RELOAD_PROMPT"] or {
-            text = "DynamicZoom has restored Blizzard default camera settings. Reload UI now?",
-            button1 = "Reload UI",
-            button2 = "Later",
-            OnAccept = function()
-                if type(_G.ReloadUI) == "function" then _G.ReloadUI() end
-            end,
-            timeout = 0,
-            whileDead = true,
-            hideOnEscape = true,
-        }
-        _G.StaticPopup_Show("DYNAMICZOOM_RELOAD_PROMPT")
-    end
+    ShowDynamicZoomReloadPromptModal()
     return true
 end
 
@@ -3191,8 +3382,10 @@ local function RegisterWithDynamicSuite()
 
     DynamicZoom.CHANGELOG = {
         version = DynamicZoom.VERSION or VERSION,
-        date = "21/11/2026",
+        date = "24/11/2026",
         entries = {
+            { type = "FIX",     text = "Fixed the Tab 2 dropdown nil error on Indoors & Capital Cities menus so opening and closing dropdowns updates live Suite Accent chevron tinting cleanly." },
+            { type = "UI",      text = "Decluttered Tab 2 by folding the 5 zone target distance sliders into a persisted Sub-Settings (5) drawer under Automatic Zone Zoom (default collapsed on fresh profiles), added a persisted Sub-Settings (1) NPC Dialogue Distance slider (15-25 yds) under Opt-In NPC Dialogue & Quest Framing, kept Base Mousewheel Zoom Glide Speed solely in Tab 3, synced Suite Studio surface themes, added an Obsidian reload prompt modal, and clamped all card and section titles for 800x520 windows." },
             { type = "UI",      text = "Release v2.7.0 (21/11/2026): Updated the standalone window corner resize grip hover highlight to track the active Suite Accent colour instead of hardcoded Blaze Orange." },
             { type = "FEATURE", text = "External Addon Conflict Detector & Auto-Yield Engine (12/11/2026): Added DynamicCam, MaxCam, and ActionCamPlus to the curated HARD conflict registry and automatically yielded NPC dialogue camera framing when DialogueUI, Immersion, or Storyline is active." },
             { type = "FIX",     text = "Eliminated StaticPopupDialogs and UIParent experimental CVar event taint by gating popup suppression to a hooksecurefunc post-hook during active CVar writes." },
