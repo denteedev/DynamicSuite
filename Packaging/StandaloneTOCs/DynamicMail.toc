@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 120105, 120107
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFMail|r
 ## Notes: Smart Inbox Collection, Alt Vault Recipient Picker & Alt+Left-Click Express Attach (/dmail).
 ## Author: Dentee-Frostmourne

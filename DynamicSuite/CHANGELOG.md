@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### Patch 12.1.7 (Echoes of the Worldcore) Compatibility & Safety Prep
+- **Dual-Interface TOC Support (`120105, 120107`):** Updated `DynamicSuite.toc` and all 13 standalone TOC templates in `Packaging/StandaloneTOCs/` to support both live Retail 12.1.5 (`120105`) and Patch 12.1.7 (`120107`), updated `deploy.ps1` interface and 13-module changelog validation, and normalised file header comments across all 15 Lua files.
+- **Data-Driven Midnight Omnium Folio Tracker (`DynamicPrep`):** Expanded `DynamicPrep`'s Omnium Folio tracker with data-driven rune matching (`Rune of Empowerment`, `Rune of Critical Mass`, and dynamic fallback for future Omnium/Folio runes) and uncapped bag scanning for `Motes of Omnial Inquiry`, surfaced in the Top Info Bar popover, Tab 2 target dropdowns, and Folio tooltip.
+- **Lorewalking & Destructive Confirmation Protection (`DynamicPrep`, `DynamicDialogue`):** Hardened `DynamicPrep` gossip/confirm automation to never auto-select or auto-confirm Lorewalking story-reset warnings or destructive confirmation prompts, and updated `DynamicDialogue` to flag destructive `GOSSIP_CONFIRM` prompts with a `CAUTION` badge and require an explicit mouse click (`1` and `Space` confirmation disabled while `Esc` cancels cleanly).
+- **GUID, Secret-Value, Class/Spec & Story-Scenario Hardening (`DynamicSuite_Core`, `DynamicGroup`, `DynamicLoad`, `DynamicMarker`, `DynamicTalent`, `DynamicPrep`, `DynamicCursor`, `DynamicFPS`, `DynamicZoom`):** Wrapped remaining `UnitGUID`, `UnitName`, `UnitClass`, `GetSpecialization`, and roster/instance reads in `pcall` + secret-value guards; and updated scenario/spec detection so non-Delve story scenarios (such as Lorewalking or Talebound characters) degrade gracefully with zero Lua errors or bogus mismatch alerts.
+
 ---
 
 ## [2.8.2] - 24/11/2026

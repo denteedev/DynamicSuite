@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 120105, 120107
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFCursor|r
 ## Notes: Cursor Ring, Radial GCD & Cast Arc, Character Crosshair, Find My Cursor, Trail & Smart Tooltips (/dcur, /dynamiccursor).
 ## Author: Dentee-Frostmourne

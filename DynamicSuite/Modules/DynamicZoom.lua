@@ -1,6 +1,6 @@
 -- ============================================================================
--- DynamicZoom v1.4.0 - Max 39-Yard Camera Unlock, Collision Shield & Situational Auto-Zoom
--- World of Warcraft Retail (12.1.5, Interface 120105)
+-- DynamicZoom - Max 39-Yard Camera Unlock, Collision Shield & Situational Auto-Zoom
+-- World of Warcraft Retail (12.1.5 / 12.1.7, Interface 120105, 120107)
 -- Pure ASCII Only (NonASCII: 0, HasBOM: False) | Zero Raw CVar Names in UI
 -- ============================================================================
 
@@ -805,8 +805,39 @@ end
 -- ============================================================================
 local currentProfileKey = "OUTDOOR"
 
+local function IsActiveDelve()
+    if type(_G.GetInstanceInfo) == "function" then
+        local okI, _, _, diffID = pcall(_G.GetInstanceInfo)
+        if okI and not IsSecretValue(diffID) and type(diffID) == "number" and diffID == 208 then
+            return true
+        end
+    end
+    if _G.C_DelvesUI and type(_G.C_DelvesUI.HasActiveDelve) == "function" then
+        local okD, hasD = pcall(_G.C_DelvesUI.HasActiveDelve)
+        if okD and not IsSecretValue(hasD) and hasD == true then return true end
+    end
+    if _G.C_PartyInfo and type(_G.C_PartyInfo.IsDelveInProgress) == "function" then
+        local okP, inP = pcall(_G.C_PartyInfo.IsDelveInProgress)
+        if okP and not IsSecretValue(inP) and inP == true then return true end
+    end
+    if _G.C_PartyInfo and type(_G.C_PartyInfo.IsDelveComplete) == "function" then
+        local okC, isC = pcall(_G.C_PartyInfo.IsDelveComplete)
+        if okC and not IsSecretValue(isC) and isC == true then return true end
+    end
+    return false
+end
+
 local function GetActiveProfileKey()
-    local inInstance, instanceType = IsInInstance()
+    local inInstance, instanceType = false, "none"
+    if type(IsInInstance) == "function" then
+        local ok, rIn, rType = pcall(IsInInstance)
+        if ok then
+            inInstance = (not IsSecretValue(rIn) and rIn == true) and true or false
+            if not IsSecretValue(rType) and type(rType) == "string" then
+                instanceType = rType
+            end
+        end
+    end
     local inCombat = InCombatLockdown and InCombatLockdown() or false
     if inInstance and instanceType == "raid" then
         currentProfileKey = "RAID"
@@ -816,7 +847,9 @@ local function GetActiveProfileKey()
         currentProfileKey = "PVP"
     elseif inInstance and instanceType == "party" then
         currentProfileKey = "DUNGEON"
-    elseif inInstance and instanceType == "scenario" then
+    elseif inInstance and instanceType == "scenario" and IsActiveDelve() then
+        currentProfileKey = "DELVE"
+    elseif IsActiveDelve() then
         currentProfileKey = "DELVE"
     else
         currentProfileKey = "OUTDOOR"
@@ -835,7 +868,16 @@ function DynamicZoom:EvaluateSituationalZoom(reason)
         return
     end
 
-    local inInstance, instanceType = IsInInstance()
+    local inInstance, instanceType = false, "none"
+    if type(IsInInstance) == "function" then
+        local ok, rIn, rType = pcall(IsInInstance)
+        if ok then
+            inInstance = (not IsSecretValue(rIn) and rIn == true) and true or false
+            if not IsSecretValue(rType) and type(rType) == "string" then
+                instanceType = rType
+            end
+        end
+    end
     local isIndoors = IsIndoors and IsIndoors() or false
     local isResting = IsResting and IsResting() or false
     local inCombat = InCombatLockdown and InCombatLockdown() or false
@@ -859,7 +901,7 @@ function DynamicZoom:EvaluateSituationalZoom(reason)
         targetYards = SanitizeZoomYards(db.zoomDungeon, 39)
         activeContextLabel = "Dungeon (" .. tostring(targetYards) .. " yds)"
         resolvedContextKey = "DUNGEON"
-    elseif inInstance and instanceType == "scenario" then
+    elseif (inInstance and instanceType == "scenario" and IsActiveDelve()) or IsActiveDelve() then
         targetYards = SanitizeZoomYards(db.zoomDelve, 39)
         activeContextLabel = "Delve (" .. tostring(targetYards) .. " yds)"
         resolvedContextKey = "DELVE"

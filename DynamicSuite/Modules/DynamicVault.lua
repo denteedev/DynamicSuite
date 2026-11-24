@@ -1,6 +1,6 @@
 -- ============================================================================
--- DynamicVault v2.5.0 - Account-Wide Great Vault, Crests, Delve Keys & Weeklies
--- World of Warcraft Retail (12.1.5, Interface 120105)
+-- DynamicVault - Account-Wide Great Vault, Crests, Delve Keys & Weeklies
+-- World of Warcraft Retail (12.1.5 / 12.1.7, Interface 120105, 120107)
 -- Pure ASCII Only (NonASCII: 0, HasBOM: False) | Zero-Taint Midnight Engine
 -- ============================================================================
 

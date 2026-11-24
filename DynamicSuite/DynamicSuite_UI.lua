@@ -1,10 +1,10 @@
 --[[
     DynamicSuite - DynamicSuite_UI.lua
-    Obsidian Core Design System for DynamicSuite (v1.4.0)
+    Obsidian Core Design System for DynamicSuite
     980x680 Resizable Window, C++ Two-Point Anchor Stretching (Zero OnUpdate Resize Lag),
     Clean 3-Zone Top Header, Left Suite Rail (DYNAMIC MODULES + SUITE STUDIO & TOOLS),
     Theme & Font Studio, External Addon Conflict Detector & Auto-Yield Engine, Guided Setup, and HUD Edit Mode.
-    Zero external dependencies. Pure Blizzard Retail API 12.1.5+ precision.
+    Zero external dependencies. Pure Blizzard Retail API 12.1.5 / 12.1.7 (Interface 120105, 120107) precision.
 ]]
 
 local addonName, rawAddonTable = ...
@@ -8835,7 +8835,7 @@ function addonTable.CreateMainConfigUI()
             key = "suite",
             tabLabel = "DynamicLoad",
             ver = DS_LIVE_VER_TAG,
-            date = "24/11/2026 (Retail 12.1.5)",
+            date = "24/11/2026 (Retail 12.1.5 / 12.1.7)",
             title = "DynamicSuite Hub & DynamicLoad " .. DS_LIVE_VER_TAG,
             subtitle = "Context-Aware Addon Manager, Suite Studio, Desktop Window Manager & Auto-Yield Engine (/dl, /ds)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
@@ -9058,7 +9058,7 @@ function addonTable.CreateMainConfigUI()
             key = "cursor",
             tabLabel = "DynamicCursor",
             ver = DS_LIVE_VER_TAG,
-            date = "24/11/2026 (Retail 12.1.5)",
+            date = "24/11/2026 (Retail 12.1.5 / 12.1.7)",
             title = "DynamicCursor " .. DS_LIVE_VER_TAG,
             subtitle = "Cursor Ring, Radial GCD & Cast Arc, Character Crosshair, Find My Cursor & Trail (/dcur)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga",

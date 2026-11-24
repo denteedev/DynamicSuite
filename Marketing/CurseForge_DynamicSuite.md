@@ -1,6 +1,6 @@
 # DynamicSuite -- CurseForge Storefront Copy
 
-> **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105)  
+> **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107)  
 > **CurseForge Project ID:** 1804382  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicsuite
@@ -12,9 +12,9 @@
 ```markdown
 # DynamicSuite -- 13-Module QoL, Utility & Performance Hub
 
-**Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Target Client:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107) | **Author:** Dentee-Frostmourne
 
-**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, cursor overlays, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5**. It brings **13 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, a unified Alert Toast system, plain-English Smart Search, a unified HUD Edit Mode, and a 13-step Guided Setup.
+**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, cursor overlays, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5 / 12.1.7**. It brings **13 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, a unified Alert Toast system, plain-English Smart Search, a unified HUD Edit Mode, and a 13-step Guided Setup.
 
 Only want target marking, world flares, and smart interrupt macros? Check out standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 

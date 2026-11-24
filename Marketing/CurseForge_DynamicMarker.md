@@ -1,6 +1,6 @@
 # DynamicMarker -- CurseForge Storefront Copy
 
-> **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105)  
+> **Target Game Version:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107)  
 > **Author:** Dentee-Frostmourne  
 > **CurseForge Project Page:** https://www.curseforge.com/wow/addons/dynamicmarker
 
@@ -11,7 +11,7 @@
 ```markdown
 # DynamicMarker -- Raid Target Icons, World Flares & Smart Interrupt Macros
 
-**Target Client:** World of Warcraft Retail Midnight 12.1.5 (Interface 120105) | **Author:** Dentee-Frostmourne
+**Target Client:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107) | **Author:** Dentee-Frostmourne
 
 **DynamicMarker** (`/dm`, `/fm`) is a fast Mythic+ and Raid utility addon for instant target marking, cursor-placed world flares, floating icon and flare bars, and smart focus/interrupt macros across all 13 classes. Use it standalone or as part of the full 13-module **[DynamicSuite](https://www.curseforge.com/wow/addons/dynamicsuite)** bundle.
 
@@ -19,7 +19,7 @@
 
 ## Upgrading from FocusMarker?
 
-**DynamicMarker is the official Midnight 12.1.5 successor to FocusMarker.**
+**DynamicMarker is the official Midnight 12.1.5 / 12.1.7 successor to FocusMarker.**
 
 * **Automatic Settings Import:** On first login, DynamicMarker safely imports your saved FocusMarker bar positions, scale, opacity, visibility rules (Always, Group, or Off), orientation, and custom icon/flare orders without touching your original backup.
 * **Automatic Macro Upgrade:** Any existing [FocusMarker] or [FocusMark] macro on your action bars is upgraded in-place to [DynamicMark].

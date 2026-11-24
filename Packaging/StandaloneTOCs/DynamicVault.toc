@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 120105, 120107
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFVault|r
 ## Notes: Account-Wide Great Vault Matrix, Crests, Delve Keys & Weekly Checklist (/dv).
 ## Author: Dentee-Frostmourne

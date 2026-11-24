@@ -150,7 +150,7 @@ local function SafeTableConcat(tbl, sep, i, j)
     return (ok2 and res2) or ""
 end
 -- ============================================================================
--- DynamicPrep v1.4.4 (/dprep)
+-- DynamicPrep (/dprep)
 -- Real-Time Character Readiness Bar, Midnight Omni Folio Tracker,
 -- and Lightweight Everyday Convenience Automation for DynamicSuite.
 -- ============================================================================
@@ -276,7 +276,7 @@ DynamicPrep._loadedVersion = VERSION
 DynamicPrep.version = VERSION
 DynamicPrep.addonName = "DynamicPrep"
 -- ============================================================================
--- Safe WoW Retail 12.1.5 API Wrappers
+-- Safe WoW Retail 12.1.5 / 12.1.7 API Wrappers
 -- ============================================================================
 local AddOns = C_AddOns or {
     GetNumAddOns        = _G.GetNumAddOns,
@@ -526,19 +526,43 @@ local COLORS = {
 -- All 40 Retail Specializations: Recommended Stat Priority & Omni Folio Matrix
 -- ============================================================================
 local STAT_LABELS = {
-    HASTE   = "Haste",
-    MASTERY = "Mastery",
-    CRIT    = "Critical Strike",
-    VERS    = "Versatility",
-    OFF     = "Off",
+    HASTE       = "Haste",
+    MASTERY     = "Mastery",
+    CRIT        = "Critical Strike",
+    VERS        = "Versatility",
+    EMPOWERMENT = "Rune of Empowerment",
+    CRIT_MASS   = "Rune of Critical Mass",
+    OFF         = "Off",
 }
 
 local STAT_SHORT = {
-    HASTE   = "Haste",
-    MASTERY = "Mast",
-    CRIT    = "Crit",
-    VERS    = "Vers",
-    OFF     = "Off",
+    HASTE       = "Haste",
+    MASTERY     = "Mast",
+    CRIT        = "Crit",
+    VERS        = "Vers",
+    EMPOWERMENT = "Empower",
+    CRIT_MASS   = "Crit Mass",
+    OFF         = "Off",
+}
+
+local FOLIO_ITEM_PATTERNS = { "omnium folio", "omni folio", "folio" }
+local FOLIO_MOTE_PATTERNS = { "mote of omnial inquiry", "omnial inquiry" }
+local FOLIO_BUFF_ANCHORS  = { "omnium", "folio", "omnidirectional", "thalassian", "attunement" }
+local FOLIO_RUNE_CATALOG  = {
+    { key = "CRIT_MASS",   label = "Rune of Critical Mass", short = "Crit Mass", patterns = { "rune of critical mass", "critical mass" }, requiresAnchor = false },
+    { key = "EMPOWERMENT", label = "Rune of Empowerment",   short = "Empower",   patterns = { "rune of empowerment", "omnium empowerment" }, requiresAnchor = false },
+    { key = "HASTE",       label = "Haste",                 short = "Haste",     patterns = { "haste" }, requiresAnchor = true },
+    { key = "MASTERY",     label = "Mastery",               short = "Mast",      patterns = { "mastery" }, requiresAnchor = true },
+    { key = "CRIT",        label = "Critical Strike",       short = "Crit",      patterns = { "crit" }, requiresAnchor = true },
+    { key = "VERS",        label = "Versatility",           short = "Vers",      patterns = { "vers" }, requiresAnchor = true },
+}
+local NEUTRAL_SPEC_META = {
+    name    = "Unknown",
+    mplus   = "HASTE",
+    raid    = "HASTE",
+    delve   = "HASTE",
+    pvp     = "VERS",
+    weights = { "HASTE", "CRIT", "MASTERY", "VERS" },
 }
 
 local SPEC_DATA = {
@@ -1126,14 +1150,37 @@ end
 -- Character Telemetry & Stat Resolution Engine
 -- ============================================================================
 local ZONE_TAGS = {
-    outdoor = "Outdoor",
-    city    = "Outdoor",
-    delve   = "Delve",
-    dungeon = "M+",
-    mplus   = "M+",
-    raid    = "Raid",
-    pvp     = "PvP",
+    outdoor  = "Outdoor",
+    city     = "Outdoor",
+    delve    = "Delve",
+    dungeon  = "M+",
+    mplus    = "M+",
+    raid     = "Raid",
+    pvp      = "PvP",
+    scenario = "Story",
 }
+
+local function IsActiveDelveInstance()
+    if type(_G.GetInstanceInfo) == "function" then
+        local okI, _, _, diffID = pcall(_G.GetInstanceInfo)
+        if okI and not _IsSecret(diffID) and type(diffID) == "number" and diffID == 208 then
+            return true
+        end
+    end
+    if C_DelvesUI and type(C_DelvesUI.HasActiveDelve) == "function" then
+        local okD, hasD = pcall(C_DelvesUI.HasActiveDelve)
+        if okD and not _IsSecret(hasD) and hasD == true then return true end
+    end
+    if C_PartyInfo and type(C_PartyInfo.IsDelveInProgress) == "function" then
+        local okP, inP = pcall(C_PartyInfo.IsDelveInProgress)
+        if okP and not _IsSecret(inP) and inP == true then return true end
+    end
+    if C_PartyInfo and type(C_PartyInfo.IsDelveComplete) == "function" then
+        local okC, isC = pcall(C_PartyInfo.IsDelveComplete)
+        if okC and not _IsSecret(isC) and isC == true then return true end
+    end
+    return false
+end
 
 local function SafeGetNumSpecializations()
     if C_SpecializationInfo and C_SpecializationInfo.GetNumSpecializations then
@@ -1143,20 +1190,28 @@ local function SafeGetNumSpecializations()
 end
 
 local function SafeGetSpecialization()
-    if C_SpecializationInfo and C_SpecializationInfo.GetSpecialization then
-        return C_SpecializationInfo.GetSpecialization()
+    local fn = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or _G.GetSpecialization
+    if type(fn) ~= "function" then return nil end
+    local ok, idx = pcall(fn)
+    if not ok or _IsSecret(idx) or type(idx) ~= "number" or idx < 1 or idx > 4 then
+        return nil
     end
-    return GetSpecialization and GetSpecialization() or nil
+    return idx
 end
 
 local function SafeGetSpecializationInfo(specIndex)
-    if C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo then
-        return C_SpecializationInfo.GetSpecializationInfo(specIndex)
+    if not specIndex or type(specIndex) ~= "number" or specIndex < 1 or specIndex > 4 then
+        return nil
     end
-    if GetSpecializationInfo then
-        return GetSpecializationInfo(specIndex)
+    local fn = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or _G.GetSpecializationInfo
+    if type(fn) ~= "function" then return nil end
+    local ok, specID, specName, desc, icon, role, primaryStatIndex = pcall(fn, specIndex)
+    if not ok or _IsSecret(specID) or type(specID) ~= "number" or specID <= 0 then
+        return nil
     end
-    return nil
+    if _IsSecret(specName) or type(specName) ~= "string" then specName = nil end
+    if _IsSecret(primaryStatIndex) or type(primaryStatIndex) ~= "number" then primaryStatIndex = 1 end
+    return specID, specName, desc, icon, role, primaryStatIndex
 end
 
 function DynamicPrep:GetActiveSpecInfo()
@@ -1167,12 +1222,12 @@ function DynamicPrep:GetActiveSpecInfo()
             return specID, specName or "Current", primaryStatIndex or 1
         end
     end
-    return 62, "Arcane", 4
+    return nil, "Unassigned", 1
 end
 
 function DynamicPrep:GetSpecMetadata(specID)
     specID = specID or select(1, self:GetActiveSpecInfo())
-    return SPEC_DATA[specID] or SPEC_DATA[62]
+    return (specID and SPEC_DATA[specID]) or NEUTRAL_SPEC_META
 end
 
 function DynamicPrep:GetTopPriorityStatLabel()
@@ -1203,7 +1258,16 @@ function DynamicPrep:GetCurrentContentCategory()
         local zoneTag = ZONE_TAGS[zk] or "Outdoor"
         return zk, "[" .. zoneTag .. "]"
     end
-    local inInstance, instanceType = IsInInstance()
+    local inInstance, instanceType = false, "none"
+    if type(IsInInstance) == "function" then
+        local okI, rIn, rType = pcall(IsInInstance)
+        if okI then
+            inInstance = (not _IsSecret(rIn) and rIn == true) and true or false
+            if not _IsSecret(rType) and type(rType) == "string" then
+                instanceType = rType
+            end
+        end
+    end
     if inInstance then
         if instanceType == "pvp" or instanceType == "arena" then
             return "pvp", "[PvP]"
@@ -1212,13 +1276,16 @@ function DynamicPrep:GetCurrentContentCategory()
         elseif instanceType == "party" then
             return "mplus", "[M+]"
         elseif instanceType == "scenario" then
-            return "delve", "[Delve]"
+            if IsActiveDelveInstance() then
+                return "delve", "[Delve]"
+            end
+            return "scenario", "[Story]"
         end
     end
     if C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive() then
         return "mplus", "[M+]"
     end
-    if C_PartyInfo and C_PartyInfo.IsDelveInProgress and C_PartyInfo.IsDelveInProgress() then
+    if IsActiveDelveInstance() then
         return "delve", "[Delve]"
     end
     -- Open World or Capital City (IsResting()):
@@ -1235,7 +1302,7 @@ function DynamicPrep:GetTargetFolioStatForZone(zoneKey)
     if not self.db or not self.db.omniFolio then return "HASTE" end
     local zk = tostring(zoneKey or select(1, self:GetCurrentContentCategory()) or "outdoor"):lower()
     local lookupKey = zk
-    if zk == "outdoor" or zk == "city" then
+    if zk == "outdoor" or zk == "city" or zk == "scenario" then
         lookupKey = "delve"
     elseif zk == "dungeon" then
         lookupKey = "mplus"
@@ -1250,16 +1317,53 @@ end
 
 function DynamicPrep:FindOmniFolioItemInBags()
     if not C_Container or not C_Container.GetContainerNumSlots then return nil, nil, nil end
-    for bag = 0, 4 do
+    local maxBag = (type(_G.NUM_BAG_SLOTS) == "number" and _G.NUM_BAG_SLOTS) or 4
+    for bag = 0, maxBag do
         local slots = C_Container.GetContainerNumSlots(bag) or 0
         for slot = 1, slots do
             local link = C_Container.GetContainerItemLink and C_Container.GetContainerItemLink(bag, slot)
-            if link and not _IsSecret(link) and type(link) == "string" and (link:find("Omni Folio") or link:find("Folio")) then
-                return bag, slot, link
+            if link and not _IsSecret(link) and type(link) == "string" then
+                local low = link:lower()
+                for _, pat in ipairs(FOLIO_ITEM_PATTERNS) do
+                    if low:find(pat, 1, true) then
+                        return bag, slot, link
+                    end
+                end
             end
         end
     end
     return nil, nil, nil
+end
+
+function DynamicPrep:ScanOmnialInquiryMotes()
+    if not C_Container or not C_Container.GetContainerNumSlots then return 0 end
+    local maxBag = ((type(_G.NUM_BAG_SLOTS) == "number" and _G.NUM_BAG_SLOTS) or 4) + 1
+    local total = 0
+    for bag = 0, maxBag do
+        local slots = C_Container.GetContainerNumSlots(bag) or 0
+        for slot = 1, slots do
+            local info = C_Container.GetContainerItemInfo and C_Container.GetContainerItemInfo(bag, slot)
+            if info and not _IsSecret(info) then
+                local link = (not _IsSecret(info.hyperlink) and type(info.hyperlink) == "string") and info.hyperlink or nil
+                local itemName = (not _IsSecret(info.itemName) and type(info.itemName) == "string") and info.itemName or nil
+                local checkText = (link or itemName or ""):lower()
+                if checkText ~= "" then
+                    local matched = false
+                    for _, pat in ipairs(FOLIO_MOTE_PATTERNS) do
+                        if checkText:find(pat, 1, true) then
+                            matched = true
+                            break
+                        end
+                    end
+                    if matched then
+                        local cnt = (not _IsSecret(info.stackCount) and tonumber(info.stackCount)) or 1
+                        total = total + math.max(1, cnt)
+                    end
+                end
+            end
+        end
+    end
+    return total
 end
 
 function DynamicPrep:DetectActiveFolioBuffStat(forceScan)
@@ -1269,7 +1373,19 @@ function DynamicPrep:DetectActiveFolioBuffStat(forceScan)
     end
     self._lastFolioScanTime = now
     self._cachedFolioBuffStat, self._cachedFolioBuffName = nil, nil
-    -- Scan player buffs for Omni Folio / Seasonal Stat attunement keywords (out of combat and non-secret only)
+    self._cachedFolioRunes = {}
+    local seenKeys = {}
+
+    local function HasFolioAnchor(lowerName)
+        for _, anc in ipairs(FOLIO_BUFF_ANCHORS) do
+            if lowerName:find(anc, 1, true) then
+                return true
+            end
+        end
+        return false
+    end
+
+    -- Scan all player buffs dynamically for Omnium Folio / Stat attunement & Rune buffs (zero hardcoded cap)
     if C_UnitAuras and C_UnitAuras.GetBuffDataByIndex and not _AreAurasSecret("player") then
         for i = 1, 40 do
             if _AreAurasSecret("player") then break end
@@ -1278,35 +1394,53 @@ function DynamicPrep:DetectActiveFolioBuffStat(forceScan)
                 if not okAura or not aura then break end
                 if not _IsSecret(aura) then
                     local name = aura.name
-                    local isSecretName = _IsSecret(name)
-                    if not isSecretName and type(name) == "string" then
-                        local okFind, matched = pcall(function()
-                            return name:find("Folio") or name:find("Omnidirectional") or name:find("Thalassian") or name:find("Attunement")
-                        end)
-                        if okFind and matched then
-                            local upper = name:upper()
-                            if upper:find("HASTE") then
-                                self._cachedFolioBuffStat, self._cachedFolioBuffName = "HASTE", name
-                                if self.db then self.db.activeFolioStat = "HASTE" end
-                                return "HASTE", name
-                            elseif upper:find("MASTERY") then
-                                self._cachedFolioBuffStat, self._cachedFolioBuffName = "MASTERY", name
-                                if self.db then self.db.activeFolioStat = "MASTERY" end
-                                return "MASTERY", name
-                            elseif upper:find("CRIT") then
-                                self._cachedFolioBuffStat, self._cachedFolioBuffName = "CRIT", name
-                                if self.db then self.db.activeFolioStat = "CRIT" end
-                                return "CRIT", name
-                            elseif upper:find("VERS") then
-                                self._cachedFolioBuffStat, self._cachedFolioBuffName = "VERS", name
-                                if self.db then self.db.activeFolioStat = "VERS" end
-                                return "VERS", name
+                    if not _IsSecret(name) and type(name) == "string" and name ~= "" then
+                        local low = name:lower()
+                        local hasAnchor = HasFolioAnchor(low)
+                        local matchedEntry = nil
+                        for _, entry in ipairs(FOLIO_RUNE_CATALOG) do
+                            if (not entry.requiresAnchor) or hasAnchor then
+                                for _, pat in ipairs(entry.patterns) do
+                                    if low:find(pat, 1, true) then
+                                        matchedEntry = entry
+                                        break
+                                    end
+                                end
+                            end
+                            if matchedEntry then break end
+                        end
+                        if matchedEntry then
+                            if not seenKeys[matchedEntry.key] then
+                                seenKeys[matchedEntry.key] = true
+                                table.insert(self._cachedFolioRunes, {
+                                    key   = matchedEntry.key,
+                                    label = matchedEntry.label,
+                                    name  = name,
+                                })
+                            end
+                            if not self._cachedFolioBuffStat then
+                                self._cachedFolioBuffStat = matchedEntry.key
+                                self._cachedFolioBuffName = name
+                            end
+                        elseif low:find("omnium", 1, true) or low:find("folio", 1, true) then
+                            table.insert(self._cachedFolioRunes, {
+                                key   = "RUNE_OTHER",
+                                label = name,
+                                name  = name,
+                            })
+                            if not self._cachedFolioBuffStat then
+                                self._cachedFolioBuffStat = "RUNE_OTHER"
+                                self._cachedFolioBuffName = name
                             end
                         end
                     end
                 end
             end
         end
+    end
+    if self._cachedFolioBuffStat then
+        if self.db then self.db.activeFolioStat = self._cachedFolioBuffStat end
+        return self._cachedFolioBuffStat, self._cachedFolioBuffName
     end
     return self.db and self.db.activeFolioStat or nil, nil
 end
@@ -2034,11 +2168,26 @@ function DynamicPrep:GetOmniFolioData()
         return string.format("|cFF94A3B8Folio %s|r |cFF64748BOff|r", bracketTag), false, targetStat, nil, bracketTag
     end
     local activeStat = self:DetectActiveFolioBuffStat()
+    local matchedByList = false
+    if activeStat and self._cachedFolioRunes then
+        for _, r in ipairs(self._cachedFolioRunes) do
+            if r.key == targetStat then
+                matchedByList = true
+                activeStat = r.key
+                break
+            end
+        end
+    end
     local targetShort = tostring(STAT_SHORT[targetStat] or targetStat or "Haste")
-    local isMismatch = (activeStat ~= nil and activeStat ~= targetStat)
+    local isMismatch = (activeStat ~= nil and activeStat ~= targetStat and not matchedByList)
     if activeStat == nil then
-        local inInst = IsInInstance()
-        if inInst or self.previewFolioMismatch then
+        local inInst = false
+        if type(IsInInstance) == "function" then
+            local okI, rIn = pcall(IsInInstance)
+            if okI and not _IsSecret(rIn) and rIn == true then inInst = true end
+        end
+        local activeSpecID = self:GetActiveSpecInfo()
+        if ((inInst and zk ~= "scenario" and activeSpecID ~= nil) or self.previewFolioMismatch) then
             isMismatch = true
         end
     end
@@ -2719,11 +2868,13 @@ function DynamicPrep:ToggleFolioPopover(anchorBtn)
     pop.title:SetText(string.format("|cFF%sOmni Folio %s Target: %s|r", accentHex, tostring(zoneTag or "[Outdoor]"), STAT_SHORT[targetStat] or targetStat))
 
     local folioChoices = {
-        { key = "CRIT",    label = "Crit (Critical Strike)" },
-        { key = "HASTE",   label = "Haste" },
-        { key = "MASTERY", label = "Mastery" },
-        { key = "VERS",    label = "Versatility" },
-        { key = "CYCLE",   label = "Cycle Content Zone Preview" },
+        { key = "CRIT",        label = "Crit (Critical Strike)" },
+        { key = "HASTE",       label = "Haste" },
+        { key = "MASTERY",     label = "Mastery" },
+        { key = "VERS",        label = "Versatility" },
+        { key = "EMPOWERMENT", label = "Rune of Empowerment" },
+        { key = "CRIT_MASS",   label = "Rune of Critical Mass" },
+        { key = "CYCLE",       label = "Cycle Content Zone Preview" },
     }
 
     local maxTextW = pop.title:GetStringWidth() or 190
@@ -3819,9 +3970,20 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
     elseif segKey == "folio" then
         local _, isMismatch, targetStat, activeStat, zoneTag = self:GetOmniFolioData()
         local targetLabel = STAT_LABELS[targetStat] or targetStat or "Haste"
-        tooltip:AddLine("Midnight Omni Folio " .. tostring(zoneTag or "[Outdoor]"), 0.984, 0.749, 0.141)
-        tooltip:AddDoubleLine("Zone Target Stat:", targetLabel, 0.8, 0.84, 0.88, 1, 1, 1)
-        tooltip:AddDoubleLine("Active Folio Buff:", activeStat and (STAT_LABELS[activeStat] or activeStat) or "None Detected", 0.8, 0.84, 0.88, isMismatch and 0.984 or 0.204, isMismatch and 0.749 or 0.827, isMismatch and 0.141 or 0.600)
+        tooltip:AddLine("Midnight Omnium Folio " .. tostring(zoneTag or "[Outdoor]"), 0.984, 0.749, 0.141)
+        tooltip:AddDoubleLine("Zone Target Stat / Rune:", targetLabel, 0.8, 0.84, 0.88, 1, 1, 1)
+        tooltip:AddDoubleLine("Active Folio Buff:", activeStat and (STAT_LABELS[activeStat] or self._cachedFolioBuffName or activeStat) or "None Detected", 0.8, 0.84, 0.88, isMismatch and 0.984 or 0.204, isMismatch and 0.749 or 0.827, isMismatch and 0.141 or 0.600)
+        if self._cachedFolioRunes and #self._cachedFolioRunes > 0 then
+            local runeNames = {}
+            for _, r in ipairs(self._cachedFolioRunes) do
+                table.insert(runeNames, tostring(r.label or r.name))
+            end
+            tooltip:AddDoubleLine("Active Folio Runes:", table.concat(runeNames, ", "), 0.8, 0.84, 0.88, 0.204, 0.827, 0.600)
+        end
+        local moteCount = self.ScanOmnialInquiryMotes and self:ScanOmnialInquiryMotes() or 0
+        if moteCount > 0 then
+            tooltip:AddDoubleLine("Motes of Omnial Inquiry:", tostring(moteCount) .. " in bags", 0.8, 0.84, 0.88, 0.220, 0.741, 0.973)
+        end
         if self.GetActiveFoodBuffBenefit then
             local hasFood, foodShort, foodFullLine = self:GetActiveFoodBuffBenefit()
             tooltip:AddDoubleLine("Active Food Buff:", (hasFood and DynamicPrep:FormatColoredFoodBenefit(foodShort)) or "Missing", 0.8, 0.84, 0.88, hasFood and 0.204 or 0.973, hasFood and 0.827 or 0.443, hasFood and 0.600 or 0.443)
@@ -4346,7 +4508,50 @@ local DESTRUCTIVE_GOSSIP_KEYWORDS = {
     "resurrect",
     "cut my hair",
     "check my mail",
+    "lorewalk",
+    "reset",
+    "restart",
+    "abandon",
+    "progress",
+    "overwrite",
+    "forfeit",
+    "delete",
+    "destroy",
+    "irreversible",
+    "permanently",
+    "lose ",
+    "lost",
+    "wipe",
+    "story",
+    "chapter",
 }
+
+local function IsLorewalkingActive()
+    if _G.LorewalkingFrame and _G.LorewalkingFrame.IsShown then
+        local okS, shown = pcall(_G.LorewalkingFrame.IsShown, _G.LorewalkingFrame)
+        if okS and not _IsSecret(shown) and shown == true then
+            return true
+        end
+    end
+    if _G.C_Lorewalking then
+        for _, fnName in ipairs({ "IsLorewalkingActive", "HasActiveLorewalking", "IsInLorewalking" }) do
+            local fn = _G.C_Lorewalking[fnName]
+            if type(fn) == "function" then
+                local okL, res = pcall(fn)
+                if okL and not _IsSecret(res) and res == true then
+                    return true
+                end
+            end
+        end
+    end
+    if C_GossipInfo and type(C_GossipInfo.GetText) == "function" then
+        local okT, txt = pcall(C_GossipInfo.GetText)
+        if okT and not _IsSecret(txt) and type(txt) == "string" and txt:lower():find("lorewalk", 1, true) then
+            return true
+        end
+    end
+    return false
+end
 
 local function DetectBankerGossipKind(opt)
     if not opt or _IsSecret(opt) then return nil end
@@ -4583,6 +4788,14 @@ end
 
 local function IsQuestOrSkipGossipOption(opt)
     if not opt or _IsSecret(opt) then return false end
+    local confirm = (not _IsSecret(opt.confirm)) and opt.confirm or nil
+    if type(confirm) == "string" and confirm ~= "" then
+        return false
+    end
+    local rawName = (not _IsSecret(opt.name) and type(opt.name) == "string") and opt.name or nil
+    if rawName and HasUnsafeGossipText(rawName) then
+        return false
+    end
     local flags = (not _IsSecret(opt.flags) and type(opt.flags) == "number") and opt.flags or 0
     if flags ~= 0 then
         local questFlag = (Enum and Enum.GossipOptionRecFlags and Enum.GossipOptionRecFlags.QuestLabelPrepend) or 1
@@ -4594,7 +4807,6 @@ local function IsQuestOrSkipGossipOption(opt)
     if icon == 132048 or icon == 132049 then
         return true
     end
-    local rawName = (not _IsSecret(opt.name) and type(opt.name) == "string") and opt.name or nil
     if rawName and (rawName:find("%(Quest%)") or rawName:find("<Skip")) then
         return true
     end
@@ -4667,9 +4879,13 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
         end
         if type(arg1) == "string" and arg1 ~= "" then
             local lowKit = arg1:lower()
-            if lowKit:find("delve", 1, true) and lowKit:find("picker", 1, true) then
+            if (lowKit:find("delve", 1, true) and lowKit:find("picker", 1, true))
+                or lowKit:find("lorewalk", 1, true) then
                 return
             end
+        end
+        if IsLorewalkingActive() then
+            return
         end
         local getGranular = _G.DynamicSuite and _G.DynamicSuite.GetGranularConflictMode
         if type(getGranular) == "function" then
@@ -4922,7 +5138,7 @@ function DynamicPrep:HandleGossipConfirm(gossipID, text, cost)
     if numCost ~= 0 then
         return
     end
-    if HasUnsafeGossipText(text) then
+    if IsLorewalkingActive() or HasUnsafeGossipText(text) then
         return
     end
 
@@ -9988,17 +10204,19 @@ function DynamicPrep:RenderWorkspace(parentFrame)
 
         local c2Hdr = CreateSectionHeader(
             card2, -10,
-            "MIDNIGHT OMNI FOLIO CONFIGURATION",
-            "Assign your target Omni Folio secondary stat for each content type or use built-in 39-spec presets.",
+            "MIDNIGHT OMNIUM FOLIO CONFIGURATION",
+            "Assign your target Omnium Folio secondary stat or rune for each content type or use built-in 40-spec presets.",
             14
         )
 
         local folioStatOptions = {
-            { value = "HASTE",   label = "Haste" },
-            { value = "MASTERY", label = "Mastery" },
-            { value = "CRIT",    label = "Critical Strike" },
-            { value = "VERS",    label = "Versatility" },
-            { value = "OFF",     label = "Off" },
+            { value = "HASTE",       label = "Haste" },
+            { value = "MASTERY",     label = "Mastery" },
+            { value = "CRIT",        label = "Critical Strike" },
+            { value = "VERS",        label = "Versatility" },
+            { value = "EMPOWERMENT", label = "Rune of Empowerment" },
+            { value = "CRIT_MASS",   label = "Rune of Critical Mass" },
+            { value = "OFF",         label = "Off" },
         }
 
         local rFolioEnable = CreateSpaciousRow(
@@ -10025,7 +10243,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         local rFolioPreset = CreateSpaciousRow(
             card2, -114,
             "Specialisation Preset",
-            "Populate all 4 content targets from the built-in 39-spec Recommended Stat Priority matrix.",
+            "Populate all 4 content targets from the built-in 40-spec Recommended Stat Priority matrix.",
             240
         )
         local pillsFolioPreset = CreateSegmentedPills(
@@ -15100,8 +15318,17 @@ function DynamicPrep:ShouldShowRaidBuffsForZone()
     if scope == "ALWAYS" then
         return true
     end
-    local inInst, instType = IsInInstance()
-    local isPvEOrPvPInst = inInst and (instType == "party" or instType == "raid" or instType == "scenario" or instType == "pvp" or instType == "arena")
+    local inInst, instType = false, "none"
+    if type(IsInInstance) == "function" then
+        local okI, rIn, rType = pcall(IsInInstance)
+        if okI then
+            inInst = (not _IsSecret(rIn) and rIn == true) and true or false
+            if not _IsSecret(rType) and type(rType) == "string" then
+                instType = rType
+            end
+        end
+    end
+    local isPvEOrPvPInst = inInst and (instType == "party" or instType == "raid" or instType == "pvp" or instType == "arena" or (instType == "scenario" and IsActiveDelveInstance()))
     if scope == "INST_ONLY" then
         return isPvEOrPvPInst and true or false
     end

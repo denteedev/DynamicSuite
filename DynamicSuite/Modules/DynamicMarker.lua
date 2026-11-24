@@ -8,32 +8,42 @@ if ADDON_FOLDER ~= "DynamicSuite" then
     local isSuiteLoaded = (C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DynamicSuite"))
         or (type(_G.IsAddOnLoaded) == "function" and _G.IsAddOnLoaded("DynamicSuite"))
         or (_G.DynamicSuite and _G.DynamicSuite._isHubLoaded == true)
+    local function isSafeStr(v)
+        if type(_G.issecretvalue) == "function" then
+            local okS, s = pcall(_G.issecretvalue, v)
+            if okS and s then return false end
+        end
+        if type(_G.canaccessvalue) == "function" then
+            local okA, a = pcall(_G.canaccessvalue, v)
+            if okA and not a then return false end
+        end
+        return type(v) == "string" and v ~= ""
+    end
+    local okPN, rawPName = (type(_G.UnitName) == "function") and pcall(_G.UnitName, "player") or false, nil
+    local safePName = (okPN and isSafeStr(rawPName)) and rawPName or nil
+    local okPG, rawPGuid = (type(_G.UnitGUID) == "function") and pcall(_G.UnitGUID, "player") or false, nil
+    local safePGuid = (okPG and isSafeStr(rawPGuid)) and rawPGuid or nil
     local isSuiteEnabled = false
     if C_AddOns and type(C_AddOns.GetAddOnEnableState) == "function" then
-        local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
-        if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
-            local ok, st = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", pName)
+        if safePName and safePName ~= "Unknown" and safePName ~= _G.UNKNOWNOBJECT then
+            local ok, st = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", safePName)
             if ok and type(st) == "number" and st > 0 then isSuiteEnabled = true end
         end
         if not isSuiteEnabled then
             local ok2, st2 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite")
             if ok2 and type(st2) == "number" and st2 > 0 then isSuiteEnabled = true end
         end
-        if not isSuiteEnabled then
-            local pGuid = type(_G.UnitGUID) == "function" and _G.UnitGUID("player") or nil
-            if type(pGuid) == "string" and pGuid ~= "" then
-                local ok3, st3 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", pGuid)
-                if ok3 and type(st3) == "number" and st3 > 0 then isSuiteEnabled = true end
-            end
+        if not isSuiteEnabled and safePGuid then
+            local ok3, st3 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", safePGuid)
+            if ok3 and type(st3) == "number" and st3 > 0 then isSuiteEnabled = true end
         end
     end
     if isSuiteLoaded or isSuiteEnabled then
         _G.DynamicSuite = _G.DynamicSuite or {}
         _G.DynamicSuite.standaloneMarkerWasEnabledAtBoot = true
         if C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
-            local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
-            if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
-                pcall(C_AddOns.DisableAddOn, "DynamicMarker", pName)
+            if safePName and safePName ~= "Unknown" and safePName ~= _G.UNKNOWNOBJECT then
+                pcall(C_AddOns.DisableAddOn, "DynamicMarker", safePName)
             end
             pcall(C_AddOns.DisableAddOn, "DynamicMarker")
         end
@@ -81,15 +91,17 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
             return true
         end
         if type(getAddOnEnableState) == "function" then
-            local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
-            if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
+            local okPN, rawPName = (type(_G.UnitName) == "function") and pcall(_G.UnitName, "player") or false, nil
+            local pName = (okPN and type(rawPName) == "string" and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(rawPName))) and rawPName or nil
+            if pName and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
                 local ok, st = pcall(getAddOnEnableState, name, pName)
                 if ok and type(st) == "number" and st > 0 then return true end
             end
             local ok2, st2 = pcall(getAddOnEnableState, name)
             if ok2 and type(st2) == "number" and st2 > 0 then return true end
-            local pGuid = type(_G.UnitGUID) == "function" and _G.UnitGUID("player") or nil
-            if type(pGuid) == "string" and pGuid ~= "" then
+            local okPG, rawPGuid = (type(_G.UnitGUID) == "function") and pcall(_G.UnitGUID, "player") or false, nil
+            local pGuid = (okPG and type(rawPGuid) == "string" and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(rawPGuid))) and rawPGuid or nil
+            if pGuid and pGuid ~= "" then
                 local ok3, st3 = pcall(getAddOnEnableState, name, pGuid)
                 if ok3 and type(st3) == "number" and st3 > 0 then return true end
             end
@@ -99,7 +111,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.6.6"
+            or "2.8.2"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -3912,19 +3924,35 @@ function DM:BuildFocusMarkerMacroBody()
 end
 
 function DM:ResolveActiveInterruptSpell()
-    local _, classToken = UnitClass("player")
+    local classToken = nil
+    if type(_G.UnitClass) == "function" then
+        local okC, _, cTok = pcall(_G.UnitClass, "player")
+        if okC and type(cTok) == "string" and cTok ~= "" and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(cTok)) then
+            classToken = cTok
+        end
+    end
     local entry = classToken and CLASS_INTERRUPTS[classToken]
     if not entry then
         return "Kick", { "Kick" }, true, nil, "Kick"
     end
 
-    local specIndex = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization and C_SpecializationInfo.GetSpecialization()) or (GetSpecialization and GetSpecialization())
+    local getSpecFn = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or _G.GetSpecialization
+    local getSpecInfoFn = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or _G.GetSpecializationInfo
+    local specIndex = nil
+    if type(getSpecFn) == "function" then
+        local okS, sIdx = pcall(getSpecFn)
+        if okS and type(sIdx) == "number" and sIdx >= 1 and sIdx <= 4 then
+            specIndex = sIdx
+        end
+    end
     local specID, specName = nil, nil
-    if specIndex then
-        if C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo then
-            specID, specName = C_SpecializationInfo.GetSpecializationInfo(specIndex)
-        elseif GetSpecializationInfo then
-            specID, specName = GetSpecializationInfo(specIndex)
+    if specIndex and type(getSpecInfoFn) == "function" then
+        local okI, sID, sName = pcall(getSpecInfoFn, specIndex)
+        if okI and type(sID) == "number" and sID > 0 then
+            specID = sID
+            if type(sName) == "string" and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(sName)) then
+                specName = sName
+            end
         end
     end
 

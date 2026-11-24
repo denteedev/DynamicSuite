@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 120105, 120107
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFChat|r
 ## Notes: Zero-Taint Target Whisper (/ww & /qq), Combat Whisper Protection, Compact Channel Tags & GPU Buffer Optimiser for DynamicSuite.
 ## Author: Dentee-Frostmourne

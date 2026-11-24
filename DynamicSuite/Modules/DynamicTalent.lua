@@ -1,7 +1,7 @@
 -- ============================================================================
 -- DynamicTalent v2.8.2 (/dt, /dynamictalent)
 -- Talent Loadouts, Zone/Boss/M+/PvP Binds & Swap Alerts
--- World of Warcraft Retail (12.1.5, Interface 120105)
+-- World of Warcraft Retail (12.1.5 / 12.1.7, Interface 120105, 120107)
 -- Pure ASCII Only (NonASCII: 0, HasBOM: False) | Zero-Taint Midnight Engine
 -- ============================================================================
 
@@ -688,10 +688,13 @@ local function GetWarModeFlags()
 end
 
 function DynamicTalent:GetActiveSpecID()
-    if type(GetSpecialization) ~= "function" or type(GetSpecializationInfo) ~= "function" then return nil end
-    local idx = GetSpecialization()
-    if not idx then return nil end
-    local specID = GetSpecializationInfo(idx)
+    local getSpecFn = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or _G.GetSpecialization
+    local getSpecInfoFn = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or _G.GetSpecializationInfo
+    if type(getSpecFn) ~= "function" or type(getSpecInfoFn) ~= "function" then return nil end
+    local okIdx, idx = pcall(getSpecFn)
+    if not okIdx or _IsSecret(idx) or type(idx) ~= "number" or idx < 1 or idx > 4 then return nil end
+    local okID, specID = pcall(getSpecInfoFn, idx)
+    if not okID or _IsSecret(specID) then return nil end
     return (type(specID) == "number" and specID > 0) and specID or nil
 end
 
@@ -742,6 +745,8 @@ local function DetectCurrentZoneContext()
     local isParty = (instType == "party" and not isDelveActive and diffID ~= 208)
     local isArena = (instType == "arena")
     local isBG = (instType == "pvp")
+    local isNonDelveScenario = (instType == "scenario" and not isDelveActive)
+    local isUnknownInstance = (inInst and not isRaid and not isParty and not isArena and not isBG and not isDelveActive)
     local isOutdoor = (not inInst and not isDelveActive)
     local isResting = (type(IsResting) == "function" and IsResting() == true)
     local wmDesired, wmActive = GetWarModeFlags()
@@ -749,19 +754,21 @@ local function DetectCurrentZoneContext()
     local isAnyPvP = (isArena or isBG or isWarMode)
 
     return {
-        instName      = instName,
-        instType      = instType,
-        diffID        = diffID,
-        inInst        = inInst,
-        isDelveActive = isDelveActive,
-        isRaid        = isRaid,
-        isParty       = isParty,
-        isArena       = isArena,
-        isBG          = isBG,
-        isOutdoor     = isOutdoor,
-        isResting     = isResting,
-        isWarMode     = isWarMode,
-        isAnyPvP      = isAnyPvP,
+        instName           = instName,
+        instType           = instType,
+        diffID             = diffID,
+        inInst             = inInst,
+        isDelveActive      = isDelveActive,
+        isRaid             = isRaid,
+        isParty            = isParty,
+        isArena            = isArena,
+        isBG               = isBG,
+        isNonDelveScenario = isNonDelveScenario,
+        isUnknownInstance  = isUnknownInstance,
+        isOutdoor          = isOutdoor,
+        isResting          = isResting,
+        isWarMode          = isWarMode,
+        isAnyPvP           = isAnyPvP,
     }
 end
 
@@ -1109,6 +1116,12 @@ function DynamicTalent:GetActiveTalentMismatch()
     end
     local specID = self:GetActiveSpecID()
     if not specID or not (C_ClassTalents and C_ClassTalents.GetLastSelectedSavedConfigID) then return nil end
+    if type(C_ClassTalents.GetActiveConfigID) == "function" then
+        local okAct, activeCfgID = pcall(C_ClassTalents.GetActiveConfigID)
+        if not okAct or _IsSecret(activeCfgID) or type(activeCfgID) ~= "number" or activeCfgID <= 0 then
+            return nil
+        end
+    end
     local okCur, curID = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
     if not okCur then return nil end
 
@@ -1118,6 +1131,16 @@ function DynamicTalent:GetActiveTalentMismatch()
 
     local liveStr = self:GetActiveTalentString()
     local zc = DetectCurrentZoneContext()
+    if zc.isNonDelveScenario or zc.isUnknownInstance then
+        self._lastDiag = {
+            specID = specID,
+            zc = zc,
+            source = "Scenario / Story",
+            ruleDesc = "Suppressed in story or non-standard scenario",
+            status = "Suppressed in story scenario",
+        }
+        return nil
+    end
     local isDelveActive = zc.isDelveActive
     local instName      = zc.instName
     local isRaid        = zc.isRaid

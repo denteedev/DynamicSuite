@@ -1,6 +1,6 @@
 -- DynamicCursor v2.8.2 (/dcur, /dynamiccursor)
 -- Cursor Ring, Radial GCD & Cast/Channel/Empower Arc, Character Crosshair, Find My Cursor, Pooled Trail & Smart Tooltips.
--- Retail 12.1.5+ (Interface 120105) | Zero-Taint, Secret-Value Safe, 0.00 ms Idle CPU.
+-- Retail 12.1.5 / 12.1.7 (Interface 120105, 120107) | Zero-Taint, Secret-Value Safe, 0.00 ms Idle CPU.
 
 local addonName, addonTable = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicCursor"
@@ -159,8 +159,8 @@ end
 local function GetClassColorRGB()
     local cls = nil
     if type(UnitClass) == "function" then
-        local _, c = UnitClass("player")
-        if not _IsSecret(c) and type(c) == "string" and c ~= "" then
+        local okUC, _, c = pcall(UnitClass, "player")
+        if okUC and not _IsSecret(c) and type(c) == "string" and c ~= "" then
             cls = c
         end
     end
@@ -563,18 +563,31 @@ do
             end
         end
         if _G.IsInInstance then
-            local okI, isIn = pcall(_G.IsInInstance)
-            if okI and not _IsSecret(isIn) then inInst = (isIn == true) end
+            local okI, isIn, it2 = pcall(_G.IsInInstance)
+            if okI and not _IsSecret(isIn) then
+                inInst = (isIn == true)
+                if (instType == "none" or instType == "") and not _IsSecret(it2) and type(it2) == "string" then
+                    instType = it2
+                end
+            end
         end
         if diffID == 208 then return "DELVE" end
         if _G.C_DelvesUI and type(_G.C_DelvesUI.HasActiveDelve) == "function" then
             local okD, hasD = pcall(_G.C_DelvesUI.HasActiveDelve)
-            if okD and hasD == true then return "DELVE" end
+            if okD and not _IsSecret(hasD) and hasD == true then return "DELVE" end
+        end
+        if _G.C_PartyInfo and type(_G.C_PartyInfo.IsDelveInProgress) == "function" then
+            local okP, inP = pcall(_G.C_PartyInfo.IsDelveInProgress)
+            if okP and not _IsSecret(inP) and inP == true then return "DELVE" end
+        end
+        if _G.C_PartyInfo and type(_G.C_PartyInfo.IsDelveComplete) == "function" then
+            local okC, isC = pcall(_G.C_PartyInfo.IsDelveComplete)
+            if okC and not _IsSecret(isC) and isC == true then return "DELVE" end
         end
         if instType == "pvp" or instType == "arena" then return "PVP" end
         if instType == "raid" then return "RAID" end
         if instType == "party" then return "DUNGEON" end
-        if inInst then return "DUNGEON" end
+        if instType == "scenario" then return "WORLD" end
         return "WORLD"
     end
 

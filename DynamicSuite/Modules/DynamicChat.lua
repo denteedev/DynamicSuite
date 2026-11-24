@@ -1,7 +1,7 @@
 -- ============================================================================
--- DynamicChat v1.4.0
+-- DynamicChat
 -- Zero-Taint Target Whisper (/ww), Combat Whisper Protection, Compact Channel Tags & GPU Buffer Optimizer
--- Retail 12.1.5 (Interface 120105) | Strict ASCII (NonASCII: 0, HasBOM: False)
+-- Retail 12.1.5 / 12.1.7 (Interface 120105, 120107) | Strict ASCII (NonASCII: 0, HasBOM: False)
 -- ============================================================================
 
 local addonName = ...
@@ -9381,7 +9381,7 @@ local function AttachReadOnlyStatusBadgeToCard(card, badgeText, tooltipDetail)
     SetSafeFont(lbl, 10, "")
     lbl:SetPoint("LEFT", dot, "RIGHT", 6, 0)
     lbl:SetTextColor(0.20, 0.90, 0.50, 1.0)
-    lbl:SetText(badgeText or "Always Protected (12.1.5)")
+    lbl:SetText(badgeText or "Always Protected (12.1.5+)")
     local lw = (lbl.GetStringWidth and lbl:GetStringWidth()) or 128
     badge:SetWidth(math.max(148, math.ceil(lw + 30)))
 
@@ -9391,7 +9391,7 @@ local function AttachReadOnlyStatusBadgeToCard(card, badgeText, tooltipDetail)
         if not _G.GameTooltip then return end
         _G.GameTooltip:SetOwner(selfBadge, "ANCHOR_TOP")
         _G.GameTooltip:ClearLines()
-        _G.GameTooltip:AddLine((card.title and card.title:GetText()) or "Midnight 12.1.5 Protection", 1, 1, 1)
+        _G.GameTooltip:AddLine((card.title and card.title:GetText()) or "Midnight Protection", 1, 1, 1)
         _G.GameTooltip:AddLine(tooltipDetail or "Permanently enabled to keep whisper and Battle.net messages error-free in combat.", 0.82, 0.86, 0.92, true)
         _G.GameTooltip:Show()
     end)
@@ -11416,7 +11416,7 @@ local function RenderChatEmbedded(arg1, arg2)
     local sec3_custom = CreateSectionBox(
         page3,
         "CUSTOM SOUND FILES",
-        "Register your own .ogg or .mp3 files (relative to Interface\\AddOns\\...) to use in any channel or mention dropdown. .wav files are blocked for Retail 12.1.5 compatibility.",
+        "Register your own .ogg or .mp3 files (relative to Interface\\AddOns\\...) to use in any channel or mention dropdown. .wav files are blocked for Retail 12.1.5+ compatibility.",
         root
     )
 

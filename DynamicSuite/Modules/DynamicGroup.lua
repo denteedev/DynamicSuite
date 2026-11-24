@@ -1,7 +1,7 @@
 -- ============================================================================
--- DynamicGroup v1.4.0
+-- DynamicGroup
 -- Premade LFG Region & Composition Filter, 1-Click Sign-Up & Guild/Friend Auto-Invite Engine
--- Retail 12.1.5 (Interface 120105) | Strict ASCII (NonASCII: 0, HasBOM: False)
+-- Retail 12.1.5 / 12.1.7 (Interface 120105, 120107) | Strict ASCII (NonASCII: 0, HasBOM: False)
 -- ============================================================================
 
 local addonName = ...
@@ -970,13 +970,39 @@ local function HandleAutoPromoteRosterImmediate()
     local num = GetNumGroupMembers and GetNumGroupMembers() or 0
     for i = 1, num do
         local unit = "raid" .. i
-        if UnitExists(unit) and not UnitIsUnit(unit, "player") and not UnitIsGroupAssistant(unit) and not UnitIsGroupLeader(unit) then
-            local role = UnitGroupRolesAssigned and UnitGroupRolesAssigned(unit) or "NONE"
-            local guid = UnitGUID and UnitGUID(unit) or nil
-            local name = GetUnitName and GetUnitName(unit, true) or nil
-            local isTrusted = (role == "TANK") or IsSenderFriendOrBNet(name, guid) or IsSenderGuildMember(name, guid)
-            if isTrusted and type(PromoteToAssistant) == "function" then
-                pcall(PromoteToAssistant, unit)
+        local okEx, ex = pcall(UnitExists, unit)
+        if okEx and not IsSecretValue(ex) and ex then
+            local okSelf, isSelf = pcall(UnitIsUnit, unit, "player")
+            local okAsst, isAsst = pcall(UnitIsGroupAssistant, unit)
+            local okLead, isLead = pcall(UnitIsGroupLeader, unit)
+            if (not okSelf or IsSecretValue(isSelf) or not isSelf)
+                and (not okAsst or IsSecretValue(isAsst) or not isAsst)
+                and (not okLead or IsSecretValue(isLead) or not isLead) then
+                local role = "NONE"
+                if UnitGroupRolesAssigned then
+                    local okR, r = pcall(UnitGroupRolesAssigned, unit)
+                    if okR and not IsSecretValue(r) and type(r) == "string" then
+                        role = r
+                    end
+                end
+                local guid = nil
+                if UnitGUID then
+                    local okG, g = pcall(UnitGUID, unit)
+                    if okG and not IsSecretValue(g) and type(g) == "string" and g ~= "" then
+                        guid = g
+                    end
+                end
+                local name = nil
+                if GetUnitName then
+                    local okN, n = pcall(GetUnitName, unit, true)
+                    if okN and not IsSecretValue(n) and type(n) == "string" and n ~= "" then
+                        name = n
+                    end
+                end
+                local isTrusted = (role == "TANK") or IsSenderFriendOrBNet(name, guid) or IsSenderGuildMember(name, guid)
+                if isTrusted and type(PromoteToAssistant) == "function" then
+                    pcall(PromoteToAssistant, unit)
+                end
             end
         end
     end

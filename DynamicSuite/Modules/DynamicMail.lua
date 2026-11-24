@@ -1,6 +1,6 @@
 -- ============================================================================
--- DynamicMail v2.4.0 - Smart Inbox Collection, Alt Vault Picker & Express Attach
--- World of Warcraft Retail (12.1.5, Interface 120105)
+-- DynamicMail - Smart Inbox Collection, Alt Vault Picker & Express Attach
+-- World of Warcraft Retail (12.1.5 / 12.1.7, Interface 120105, 120107)
 -- Pure ASCII Only (NonASCII: 0, HasBOM: False) | Zero-Taint Midnight Engine
 -- ============================================================================
 

@@ -1,7 +1,7 @@
 -- ============================================================================
--- DynamicFPS v1.4.2 (/dfps)
+-- DynamicFPS (/dfps)
 -- Zero-Reload Zone Graphics Guard, Combat FPS Governor, SpellQueue Tuner & UI Declutter
--- World of Warcraft Retail (12.1.5, Interface 120105)
+-- World of Warcraft Retail (12.1.5 / 12.1.7, Interface 120105, 120107)
 -- Author: Dentee | Category: DynamicSuite
 -- Strict Pure ASCII (NonASCII: 0, HasBOM: False)
 -- ============================================================================
@@ -922,10 +922,38 @@ end
 local currentZoneContext = "OUTDOOR"
 local pendingOutOfCombatGraphics = false
 
+local function IsActiveDelve()
+    if type(_G.GetInstanceInfo) == "function" then
+        local okI, _, _, diffID = pcall(_G.GetInstanceInfo)
+        if okI and not _IsSecret(diffID) and type(diffID) == "number" and diffID == 208 then
+            return true
+        end
+    end
+    if C_DelvesUI and type(C_DelvesUI.HasActiveDelve) == "function" then
+        local okD, hasD = pcall(C_DelvesUI.HasActiveDelve)
+        if okD and not _IsSecret(hasD) and hasD == true then return true end
+    end
+    if C_PartyInfo and type(C_PartyInfo.IsDelveInProgress) == "function" then
+        local okP, inP = pcall(C_PartyInfo.IsDelveInProgress)
+        if okP and not _IsSecret(inP) and inP == true then return true end
+    end
+    if C_PartyInfo and type(C_PartyInfo.IsDelveComplete) == "function" then
+        local okC, isC = pcall(C_PartyInfo.IsDelveComplete)
+        if okC and not _IsSecret(isC) and isC == true then return true end
+    end
+    return false
+end
+
 local function GetCurrentZoneContext()
     local inInstance, instanceType = false, "none"
     if IsInInstance then
-        inInstance, instanceType = IsInInstance()
+        local ok, rIn, rType = pcall(IsInInstance)
+        if ok then
+            inInstance = (not _IsSecret(rIn) and rIn == true) and true or false
+            if not _IsSecret(rType) and type(rType) == "string" then
+                instanceType = rType
+            end
+        end
     end
 
     if inInstance then
@@ -936,7 +964,10 @@ local function GetCurrentZoneContext()
         elseif instanceType == "pvp" or instanceType == "arena" then
             return "PVP"
         elseif instanceType == "scenario" then
-            return "DELVES"
+            if IsActiveDelve() then
+                return "DELVES"
+            end
+            return "OUTDOOR"
         end
     end
 
@@ -944,7 +975,7 @@ local function GetCurrentZoneContext()
         return "DUNGEONS"
     end
 
-    if C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve() then
+    if IsActiveDelve() then
         return "DELVES"
     end
 

@@ -1,6 +1,6 @@
 -- ============================================================================
--- DynamicDialogue v2.6.0 - Obsidian Quest & Gossip Reader
--- World of Warcraft Retail (12.1.5, Interface 120105)
+-- DynamicDialogue - Obsidian Quest & Gossip Reader
+-- World of Warcraft Retail (12.1.5 / 12.1.7, Interface 120105, 120107)
 -- Pure ASCII Only (NonASCII: 0, HasBOM: False) | Zero-Taint Midnight Engine
 -- ============================================================================
 
@@ -415,6 +415,7 @@ local readerFrame = nil
 local currentMode = nil       -- "GOSSIP", "GREETING", "DETAIL", "PROGRESS", "COMPLETE", "CONFIRM", "PREVIEW"
 local activeSessionKind = nil -- "GOSSIP", "QUEST", "CONFIRM", "PREVIEW"
 local activeConfirmKind = nil -- "GOSSIP", "QUEST_ACCEPT", "BINDER"
+local activeConfirmDestructive = false
 local confirmEnteredAt = 0
 local currentOptions = {}     -- { { label, tag, tagColor, icon, iconDesaturated, onClick } }
 local selectedChoiceIndex = nil
@@ -431,6 +432,9 @@ local function IsCustomGossipTextureKit(eventTextureKit)
     end
     if _G.DelvesCompanionConfigurationFrame and _G.DelvesCompanionConfigurationFrame.IsShown and _G.DelvesCompanionConfigurationFrame:IsShown() then
         return true, "delves-companion"
+    end
+    if _G.LorewalkingFrame and _G.LorewalkingFrame.IsShown and _G.LorewalkingFrame:IsShown() then
+        return true, "lorewalking"
     end
     if type(eventTextureKit) == "string" and not SafeIsSecret(eventTextureKit) and eventTextureKit ~= "" then
         if eventTextureKit:lower() ~= "default" then
@@ -654,10 +658,41 @@ local function WasGossipConfirmAutoHandledByPrep(gossipID)
     return true
 end
 
+local DESTRUCTIVE_CONFIRM_KEYWORDS = {
+    "lorewalk",
+    "reset",
+    "restart",
+    "abandon",
+    "progress",
+    "overwrite",
+    "forfeit",
+    "delete",
+    "destroy",
+    "irreversible",
+    "permanently",
+    "lose ",
+    "lost",
+    "wipe",
+}
+
+local function IsDestructiveConfirmText(rawText)
+    if SafeIsSecret(rawText) or type(rawText) ~= "string" or rawText == "" then
+        return false
+    end
+    local lower = rawText:lower()
+    for i = 1, #DESTRUCTIVE_CONFIRM_KEYWORDS do
+        if lower:find(DESTRUCTIVE_CONFIRM_KEYWORDS[i], 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
 local function CloseConfirmInteraction()
     currentMode = nil
     activeSessionKind = nil
     activeConfirmKind = nil
+    activeConfirmDestructive = false
     selectedChoiceIndex = nil
     wipe(currentOptions)
     if readerFrame and readerFrame:IsShown() and not InCombatLockdown() then
@@ -672,6 +707,7 @@ local function CloseActiveInteraction()
     currentMode = nil
     activeSessionKind = nil
     activeConfirmKind = nil
+    activeConfirmDestructive = false
     selectedChoiceIndex = nil
     wipe(currentOptions)
     if readerFrame then
@@ -1001,6 +1037,9 @@ local function EnsureReaderFrame()
             local wantOne = (d.enableNumberHotkeys ~= false and key == "1")
             if wantSpace or wantOne then
                 self:SetPropagateKeyboardInput(false)
+                if activeConfirmDestructive then
+                    return
+                end
                 local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
                 if (now - (confirmEnteredAt or 0)) < 0.15 then
                     return
@@ -1565,11 +1604,15 @@ local function RenderReaderState(opts)
 
     local hints = {}
     if currentMode == "CONFIRM" then
-        local cKeys = {}
-        if db.enableNumberHotkeys ~= false then table.insert(cKeys, "[1]") end
-        if db.enableSpaceConfirm ~= false then table.insert(cKeys, "[Space]") end
-        if #cKeys > 0 then
-            table.insert(hints, table.concat(cKeys, " / ") .. " Confirm")
+        if activeConfirmDestructive then
+            table.insert(hints, "Click Confirm")
+        else
+            local cKeys = {}
+            if db.enableNumberHotkeys ~= false then table.insert(cKeys, "[1]") end
+            if db.enableSpaceConfirm ~= false then table.insert(cKeys, "[Space]") end
+            if #cKeys > 0 then
+                table.insert(hints, table.concat(cKeys, " / ") .. " Confirm")
+            end
         end
         if showSec then
             table.insert(hints, "[Esc] Cancel")
@@ -1810,6 +1853,7 @@ function DynamicDialogue:ShowConfirmPrompt(opts)
     activeSessionKind = "CONFIRM"
     currentMode = "CONFIRM"
     activeConfirmKind = opts.kind or "GOSSIP"
+    activeConfirmDestructive = (opts.isDestructive == true)
     selectedChoiceIndex = nil
     confirmEnteredAt = (type(_G.GetTime) == "function") and _G.GetTime() or 0
     RenderReaderState({
@@ -1832,6 +1876,7 @@ function DynamicDialogue:ShowQuestDetail()
     activeSessionKind = "QUEST"
     currentMode = "DETAIL"
     activeConfirmKind = nil
+    activeConfirmDestructive = false
     selectedChoiceIndex = nil
     RestoreBlizzardFrame(_G.GossipFrame)
     SuppressBlizzardFrame(_G.QuestFrame)
@@ -2916,6 +2961,7 @@ local function HideNonPreviewReader()
     currentMode = nil
     activeSessionKind = nil
     activeConfirmKind = nil
+    activeConfirmDestructive = false
     selectedChoiceIndex = nil
     wipe(currentOptions)
     if readerFrame and readerFrame:IsShown() then
@@ -3046,13 +3092,15 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
                 body = body .. "\n\n|cFFFBBF24Cost:|r " .. FormatGoldText(cost)
             end
             local npcName = ResolveNpcName("NPC")
+            local isDestructive = IsDestructiveConfirmText(confirmText)
             DynamicDialogue:ShowConfirmPrompt({
                 kind = "GOSSIP",
-                badge = "CONFIRM",
+                isDestructive = isDestructive,
+                badge = isDestructive and "CAUTION" or "CONFIRM",
                 title = npcName,
-                subtitle = "Confirmation Required",
+                subtitle = isDestructive and "Destructive Action - Click to Confirm" or "Confirmation Required",
                 body = body,
-                primaryLabel = "Accept [Space]",
+                primaryLabel = isDestructive and "Confirm (Click)" or "Accept [Space]",
                 onPrimary = function()
                     HideStaticPopupSafe("GOSSIP_CONFIRM")
                     CloseConfirmInteraction()

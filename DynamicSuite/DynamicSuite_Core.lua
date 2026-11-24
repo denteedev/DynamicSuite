@@ -1,6 +1,6 @@
 --[[
     DynamicSuite - DynamicSuite_Core.lua
-    Central Obsidian Hub, Theme & Font Studio, Conflict Scanner & Module Registry for World of Warcraft (Retail 12.1.5+)
+    Central Obsidian Hub, Theme & Font Studio, Conflict Scanner & Module Registry for World of Warcraft (Retail 12.1.5 / 12.1.7, Interface 120105, 120107)
     Zero external dependencies. High-performance, GC-lean event orchestration.
 ]]
 
@@ -2220,12 +2220,26 @@ local function EnforceStandaloneDynamicMarkerExclusion(showPopupIfLoaded)
     local okInfo, infoName = pcall(C_AddOns.GetAddOnInfo, "DynamicMarker")
     if not okInfo or not infoName then return false end
 
+    local function isSafeStr(v)
+        if type(_G.issecretvalue) == "function" then
+            local okS, s = pcall(_G.issecretvalue, v)
+            if okS and s then return false end
+        end
+        if type(_G.canaccessvalue) == "function" then
+            local okA, a = pcall(_G.canaccessvalue, v)
+            if okA and not a then return false end
+        end
+        return type(v) == "string" and v ~= ""
+    end
+
     local pName = GetPlayer()
-    local uName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
-    local uGuid = type(_G.UnitGUID) == "function" and _G.UnitGUID("player") or nil
+    local okUN, rawUName = (type(_G.UnitName) == "function") and pcall(_G.UnitName, "player") or false, nil
+    local uName = (okUN and isSafeStr(rawUName)) and rawUName or nil
+    local okUG, rawUGuid = (type(_G.UnitGUID) == "function") and pcall(_G.UnitGUID, "player") or false, nil
+    local uGuid = (okUG and isSafeStr(rawUGuid)) and rawUGuid or nil
     local isEnabled = false
     if C_AddOns.GetAddOnEnableState then
-        if type(uName) == "string" and uName ~= "" and uName ~= "Unknown" and uName ~= _G.UNKNOWNOBJECT then
+        if uName and uName ~= "Unknown" and uName ~= _G.UNKNOWNOBJECT then
             local okSt, st = pcall(C_AddOns.GetAddOnEnableState, "DynamicMarker", uName)
             if okSt and type(st) == "number" and st > 0 then
                 isEnabled = true
@@ -2237,7 +2251,7 @@ local function EnforceStandaloneDynamicMarkerExclusion(showPopupIfLoaded)
                 isEnabled = true
             end
         end
-        if not isEnabled and type(uGuid) == "string" and uGuid ~= "" then
+        if not isEnabled and uGuid then
             local okSt3, st3 = pcall(C_AddOns.GetAddOnEnableState, "DynamicMarker", uGuid)
             if okSt3 and type(st3) == "number" and st3 > 0 then
                 isEnabled = true

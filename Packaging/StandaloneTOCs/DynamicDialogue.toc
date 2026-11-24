@@ -1,4 +1,4 @@
-## Interface: 120105
+## Interface: 120105, 120107
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFDialogue|r
 ## Notes: Obsidian Quest & Gossip Reader with 1-9 Hotkeys, Space Accept/Complete & Reward Cards (/dd).
 ## Author: Dentee-Frostmourne

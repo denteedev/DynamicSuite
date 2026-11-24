@@ -1,6 +1,6 @@
 --[[
-    DynamicBags v1.4.0 - Zero-Lag Virtual Category Bags, Remote Bank & Alt Inventory Vault
-    DynamicSuite module #7  (/dbag, /dbags)       Retail 12.1.5 (Interface 120105)
+    DynamicBags - Zero-Lag Virtual Category Bags, Remote Bank & Alt Inventory Vault
+    DynamicSuite module #7  (/dbag, /dbags)       Retail 12.1.5 / 12.1.7 (Interface 120105, 120107)
     Author: Dentee-Frostmourne
 
     100% original, clean-room implementation built on native Blizzard APIs only

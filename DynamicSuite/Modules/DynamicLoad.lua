@@ -1,6 +1,6 @@
 --[[
     DynamicSuite / DynamicLoad - DynamicLoad.lua
-    Context-Aware Addon Profile Management Engine & Workspace for World of Warcraft (Retail 12.1.5+)
+    Context-Aware Addon Profile Management Engine & Workspace for World of Warcraft (Retail 12.1.5 / 12.1.7, Interface 120105, 120107)
     Single-file dual-mode architecture: runs inside DynamicSuite\Modules\ or standalone DynamicLoad.
 ]]
 
@@ -138,15 +138,28 @@ local function IsStandaloneMarkerExcludedBySuite(addonKey)
     if _G.DynamicSuite and _G.DynamicSuite._isHubLoaded then return true end
     if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DynamicSuite") then return true end
     if C_AddOns and type(C_AddOns.GetAddOnEnableState) == "function" then
-        local uName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
-        if type(uName) == "string" and uName ~= "" and uName ~= "Unknown" and uName ~= _G.UNKNOWNOBJECT then
+        local function isSafeStr(v)
+            if type(_G.issecretvalue) == "function" then
+                local okS, s = pcall(_G.issecretvalue, v)
+                if okS and s then return false end
+            end
+            if type(_G.canaccessvalue) == "function" then
+                local okA, a = pcall(_G.canaccessvalue, v)
+                if okA and not a then return false end
+            end
+            return type(v) == "string" and v ~= ""
+        end
+        local okUN, rawUName = (type(_G.UnitName) == "function") and pcall(_G.UnitName, "player") or false, nil
+        local uName = (okUN and isSafeStr(rawUName)) and rawUName or nil
+        if uName and uName ~= "Unknown" and uName ~= _G.UNKNOWNOBJECT then
             local okSt, st = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", uName)
             if okSt and type(st) == "number" and st > 0 then return true end
         end
         local okSt2, st2 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite")
         if okSt2 and type(st2) == "number" and st2 > 0 then return true end
-        local uGuid = type(_G.UnitGUID) == "function" and _G.UnitGUID("player") or nil
-        if type(uGuid) == "string" and uGuid ~= "" then
+        local okUG, rawUGuid = (type(_G.UnitGUID) == "function") and pcall(_G.UnitGUID, "player") or false, nil
+        local uGuid = (okUG and isSafeStr(rawUGuid)) and rawUGuid or nil
+        if uGuid then
             local okSt3, st3 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", uGuid)
             if okSt3 and type(st3) == "number" and st3 > 0 then return true end
         end
@@ -162,7 +175,7 @@ DynamicSuite.IsStandaloneMarkerExcludedBySuite = IsStandaloneMarkerExcludedBySui
 do
 --[[
     DynamicLoad - DynamicLoad_Core.lua
-    Context-Aware Addon Profile Management Engine for World of Warcraft (Retail 12.1.5+)
+    Context-Aware Addon Profile Management Engine for World of Warcraft (Retail 12.1.5 / 12.1.7, Interface 120105, 120107)
     Works 100% standalone or docked inside DynamicSuite Hub.
 ]]
 
@@ -2315,7 +2328,13 @@ local function RecordCurrentCharacter()
     local realm = GetRealmName() or "Unknown"
     if not pName or pName == "" then return end
     local charKey = pName .. "-" .. realm
-    local _, classFile = UnitClass("player")
+    local _, classFile = nil, nil
+    if type(_G.UnitClass) == "function" then
+        local okC, _, cf = pcall(_G.UnitClass, "player")
+        if okC and type(cf) == "string" and cf ~= "" then
+            classFile = cf
+        end
+    end
 
     local addons = {}
     local num = C_AddOns.GetNumAddOns()
@@ -2729,8 +2748,39 @@ end
 --------------------------------------------------------------------------------
 -- Environment Detection Logic
 --------------------------------------------------------------------------------
+local function IsActiveDelve()
+    if type(_G.GetInstanceInfo) == "function" then
+        local okI, _, _, diffID = pcall(_G.GetInstanceInfo)
+        if okI and type(diffID) == "number" and diffID == 208 then
+            return true
+        end
+    end
+    if _G.C_DelvesUI and type(_G.C_DelvesUI.HasActiveDelve) == "function" then
+        local okD, hasD = pcall(_G.C_DelvesUI.HasActiveDelve)
+        if okD and hasD == true then return true end
+    end
+    if _G.C_PartyInfo and type(_G.C_PartyInfo.IsDelveInProgress) == "function" then
+        local okP, inP = pcall(_G.C_PartyInfo.IsDelveInProgress)
+        if okP and inP == true then return true end
+    end
+    if _G.C_PartyInfo and type(_G.C_PartyInfo.IsDelveComplete) == "function" then
+        local okC, isC = pcall(_G.C_PartyInfo.IsDelveComplete)
+        if okC and isC == true then return true end
+    end
+    return false
+end
+
 local function EvaluateCurrentEnvironment()
-    local inInstance, instanceType = IsInInstance()
+    local inInstance, instanceType = false, "none"
+    if type(_G.IsInInstance) == "function" then
+        local ok, rIn, rType = pcall(_G.IsInInstance)
+        if ok then
+            inInstance = (rIn == true)
+            if type(rType) == "string" then
+                instanceType = rType
+            end
+        end
+    end
 
     if inInstance then
         if instanceType == "arena" or instanceType == "pvp" then
@@ -2740,11 +2790,14 @@ local function EvaluateCurrentEnvironment()
         elseif instanceType == "party" then
             return CONTEXT_DUNGEON
         elseif instanceType == "scenario" then
-            return CONTEXT_DELVE
+            if IsActiveDelve() then
+                return CONTEXT_DELVE
+            end
+            return CONTEXT_OUTDOOR
         end
     end
 
-    if C_DelvesUI and C_DelvesUI.HasActiveDelve and C_DelvesUI.HasActiveDelve() then
+    if IsActiveDelve() then
         return CONTEXT_DELVE
     end
 
@@ -3830,7 +3883,13 @@ function UI.GetActiveAccentColor()
         local hex = string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(gCol * 255 + 0.5), math.floor(b * 255 + 0.5))
         return r, gCol, b, hex
     elseif key == "AUTO_CLASS" then
-        local _, classFile = UnitClass("player")
+        local _, classFile = nil, nil
+    if type(_G.UnitClass) == "function" then
+        local okC, _, cf = pcall(_G.UnitClass, "player")
+        if okC and type(cf) == "string" and cf ~= "" then
+            classFile = cf
+        end
+    end
         local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
         if cc then
             local hex = cc.colorStr or string.format("%02X%02X%02X", math.floor(cc.r * 255 + 0.5), math.floor(cc.g * 255 + 0.5), math.floor(cc.b * 255 + 0.5))
@@ -3844,7 +3903,13 @@ function UI.GetActiveAccentColor()
             return p.r, p.g, p.b, p.hex
         end
     end
-    local _, classFile = UnitClass("player")
+    local _, classFile = nil, nil
+    if type(_G.UnitClass) == "function" then
+        local okC, _, cf = pcall(_G.UnitClass, "player")
+        if okC and type(cf) == "string" and cf ~= "" then
+            classFile = cf
+        end
+    end
     local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
     if cc then
         local hex = cc.colorStr or string.format("%02X%02X%02X", math.floor(cc.r * 255 + 0.5), math.floor(cc.g * 255 + 0.5), math.floor(cc.b * 255 + 0.5))
@@ -7145,7 +7210,13 @@ local function OpenAltDropdown(anchorFrame, f)
     local curScope = (addonTable.GetCharScopeMode and addonTable.GetCharScopeMode()) or "GLOBAL"
     local curCharKey = (addonTable.GetCurrentCharKey and addonTable.GetCurrentCharKey()) or ""
     local pName = (addonTable.GetPlayer and addonTable.GetPlayer()) or (UnitName("player") or "Character")
-    local _, pClass = UnitClass("player")
+    local _, pClass = nil, nil
+    if type(_G.UnitClass) == "function" then
+        local okC, _, cf = pcall(_G.UnitClass, "player")
+        if okC and type(cf) == "string" and cf ~= "" then
+            pClass = cf
+        end
+    end
     local pColor = (RAID_CLASS_COLORS and pClass and RAID_CLASS_COLORS[pClass]) or UI.COLORS.ACCENT
 
     local yOffset = 8

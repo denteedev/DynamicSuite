@@ -200,6 +200,9 @@ if (-not ($suiteVerLine -match '^##\s*Version:\s*(.+?)\s*$')) { throw "Missing #
 $suiteVer = $Matches[1].Trim()
 if (-not ($suiteIfaceLine -match '^##\s*Interface:\s*(.+?)\s*$')) { throw "Missing ## Interface in DynamicSuite.toc" }
 $suiteIface = $Matches[1].Trim()
+if ($suiteIface -notmatch '^\d{6}(?:,\s*\d{6})*$') {
+    throw "Invalid ## Interface format in DynamicSuite.toc: '$suiteIface'"
+}
 
 $standaloneTocs = Get-ChildItem -LiteralPath (Join-Path $RepoRoot "Packaging\StandaloneTOCs") -Filter "*.toc" -File
 foreach ($toc in $standaloneTocs) {
@@ -227,7 +230,7 @@ if ($markerChangelogHead -notmatch [regex]::Escape("Release: v$suiteVer")) {
     throw "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md header does not match lockstep version v$suiteVer"
 }
 $markerChangelogRaw = [System.IO.File]::ReadAllText($markerChangelogPath)
-$forbiddenMarkerChangelogTerms = @("DynamicGroup", "DynamicPrep", "DynamicBags", "DynamicLoad", "DynamicChat", "DynamicFPS", "DynamicZoom", "DynamicMail", "DynamicVault", "DynamicDialogue", "DynamicTalent", "All 8 Modules", "All 9 Modules", "All 10 Modules", "All 11 Modules", "All 12 Modules")
+$forbiddenMarkerChangelogTerms = @("DynamicGroup", "DynamicPrep", "DynamicBags", "DynamicLoad", "DynamicChat", "DynamicFPS", "DynamicZoom", "DynamicMail", "DynamicVault", "DynamicDialogue", "DynamicTalent", "DynamicCursor", "All 8 Modules", "All 9 Modules", "All 10 Modules", "All 11 Modules", "All 12 Modules", "All 13 Modules")
 $foundBleed = @()
 foreach ($term in $forbiddenMarkerChangelogTerms) {
     if ($markerChangelogRaw -match [regex]::Escape($term)) {
