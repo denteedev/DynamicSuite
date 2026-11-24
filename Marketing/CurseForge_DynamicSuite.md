@@ -14,7 +14,7 @@
 
 **Target Client:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107) | **Author:** Dentee-Frostmourne
 
-**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, cursor overlays, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5 / 12.1.7**. It brings **13 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, a unified Alert Toast system, plain-English Smart Search, a unified HUD Edit Mode, and a 13-step Guided Setup.
+**DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, cursor overlays, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for **World of Warcraft Retail Midnight 12.1.5 / 12.1.7**. It brings **13 integrated modules** together inside one clean dark-obsidian control panel (`/ds`) with shared themes, a unified Alert Toast system, plain-English Smart Search, a unified HUD Edit Mode, a **3-Step Quick Start**, and a built-in **`?` Quick Guide** on every module.
 
 Only want target marking, world flares, and smart interrupt macros? Check out standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
@@ -26,7 +26,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 * **Global Smart Search (`/ds search <query>`):** Search any setting in plain English (like "auto repair", "flare", "mail", "quest", or "whisper") and jump straight to the exact option with a visual highlight.
 * **Shared Alert Toast HUD:** Manage Toast Scale (60%-150%), Opacity (20%-100%), Border Style, Auto-Fade Duration (2s-8s), and Alert Sound in one place inside Suite Studio and DynamicLoad. Zone Alerts, Talent Loadout Reminders (`DynamicTalent`), Group Teleport Alerts (`DynamicGroup`), and Chat Mention Alerts (`DynamicChat`) all share the same look, obey your Suite Accent, dismiss on Right-Click, and stack neatly without overlapping.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, scale (60%-150%), and align all 6 movable suite HUDs (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
-* **13-Step Guided Setup & Conflict Scanner (`/ds setup`, `/ds conflicts`):** Detects overlapping addons (such as ElvUI, EnhanceQoL, Leatrix Plus, BetterBags, Baganator, Postal, Prat-3.0, ErrorFilter, ErrorMonster, DialogueUI, FocusMarker, TalentLoadoutManager, and slash-command taint risks like DecorVendor) with granular feature-level auto-yielding so you can pick which addon handles each feature -- or route DecorVendor to Outdoor Housing only -- in one click.
+* **3-Step Quick Start, Conflict Scanner & `?` Quick Guides (`/ds setup`, `/ds conflicts`):** Set up your Surface Theme, Accent Colour, and Font in Step 1 (`1. Style`), scan and resolve overlapping addons in Step 2 (`2. Conflicts` -- covering ElvUI, EnhanceQoL, Leatrix Plus, BetterBags, Baganator, Postal, Prat-3.0, ErrorFilter, ErrorMonster, DialogueUI, FocusMarker, TalentLoadoutManager, and DecorVendor), and pick a starter preset (`Full Suite (All 13)`, `Mythic+ & Raid Focus`, or `Lightweight QoL`) or toggle individual modules in Step 3 (`3. Modules`). Every module header also includes a compact **`?` Quick Guide** button showing its slash command, 1-sentence summary, and 3 starter tips.
 * **Suite Studio -- Theme, Typography & Blizzard Desktop Window Manager (`/ds studio`, `/ds theme`, `/ds windows`):** Customise your UI in Tab 1 (`Theme & Typography`) with 17 accent colours (including all 13 WoW Class Colours and a custom picker), 4 dark surface themes, 21+ built-in fonts, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI with searchable grouped dropdowns, Shared Alert Toast controls, and adjustable text scaling. In Tab 2 (`Desktop Windows & Menus`, `/ds windows`), keep 33 Blizzard panels (including Character, Talents & Spellbook, Professions, Collections, Omnium Folio, and the windowed Quest Log `L`) open side-by-side, drag any Blizzard window from its title bar or empty background space (clamped cleanly on-screen and saved across reloads), click any window to bring it to the front, scale panels with `Ctrl+Scroll` / `Ctrl+Shift+Scroll`, and access quick Game Menu shortcuts.
 * **Automatic Standalone Coexistence:** If standalone DynamicMarker is also installed, DynamicSuite disables the standalone copy automatically and prompts a clean UI reload so you never get duplicate bars or conflicting HUD Edit windows.
 
@@ -49,7 +49,7 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 
 ### 4. DynamicMarker (`/dm`, `/fm`) -- Target Marking, World Flares & Macros
 * **Smart Macros:** One-click `[DynamicMark]` focus/raid marker macro and `[DynamicKick]` interrupt macro that automatically updates your interrupt spell when you swap specs across all 13 classes.
-* **World Flares & Floating HUD Bars:** Optionally bind keys (Unbound by default; click to bind, Right-click to unbind in Guided Setup and `/dm flares`) to cycle ground flares at your cursor and clear all flares, with customisable horizontal or vertical Focus Icon and World Flare bars and automatic FocusMarker settings import (`/dm import`).
+* **World Flares & Floating HUD Bars:** Optionally bind keys (Unbound by default; click to bind, Right-click to unbind in `/dm flares`) to cycle ground flares at your cursor and clear all flares, with customisable horizontal or vertical Focus Icon and World Flare bars and automatic FocusMarker settings import (`/dm import`).
 
 ### 5. DynamicBags (`/dbag`, `/dbags`) -- Category Bags & Bank Viewer
 * **Fast Category Bags:** Sorts your items into clean categories (Keystones, Consumables, Gear Sets, BoE/WuE, Reagents, Junk) with A-Z sorting, collapsible headers, live search, and upgrade/binding badges without server-sort lag.
@@ -98,8 +98,9 @@ Only want target marking, world flares, and smart interrupt macros? Check out st
 | `/ds hud`, `/ds edit`, `/ds move` | Toggle HUD Edit Mode across all movable suite bars |
 | `/ds resethud` | Reset all suite HUD bars to safe screen-clamped default positions |
 | `/ds search <query>` | Open Global Smart Search with your query pre-filled |
-| `/ds setup` or `/ds guided` | Open the 13-Step Guided Setup Wizard |
-| `/ds conflicts` | Check for conflicting addons and print a summary in chat |
+| `/ds setup` or `/ds guided` | Open the 3-Step Quick Start (`1. Style`, `2. Conflicts`, `3. Modules`) |
+| `/ds conflicts` | Open the Conflict Scanner directly at Step 2 and print a summary in chat |
+| `/ds spotlight` | Preview the latest Feature Spotlight modal (`/ds spotlight reset` clears seen flags) |
 | `/ds studio` or `/ds theme` | Open Suite Studio (`Theme & Typography` and `Desktop Windows & Menus`) |
 | `/ds windows` or `/ds win` | Open Suite Studio directly to the Blizzard Desktop Window Manager |
 | `/ds changelog` | View the DynamicSuite release notes |

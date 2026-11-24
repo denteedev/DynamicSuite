@@ -20,7 +20,7 @@
 * **Shared Alert Toast HUD:** Centralised Toast Scale, Opacity, Border Style, Auto-Fade Duration, and Alert Sound inside Suite Studio and DynamicLoad, shared cleanly across Zone Load Alerts, DynamicTalent Reminders, DynamicGroup Teleport Toasts, and DynamicChat Mention Alerts with clean vertical stacking and Right-Click dismissal.
 * **Global Smart Search (`/ds search <query>`):** Type what you are looking for in plain English (like "auto repair", "flare", "mail", "quest", or "whisper") and jump straight to the exact setting with a visual highlight.
 * **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, resize (60%-150%), and align all 6 suite HUDs (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
-* **13-Step Guided Setup (`/ds setup`, `/ds conflicts`):** Walks you through resolving addon conflicts and configuring each module in minutes.
+* **3-Step Quick Start & `?` Module Quick Guides (`/ds setup`, `/ds conflicts`):** Pick your Theme, Accent & Font in Step 1, resolve addon conflicts in Step 2, and choose starter presets or toggle individual modules in Step 3 -- plus a compact `?` Quick Guide button in the top header of every module.
 * **Theme & Font Studio (`/ds theme`, `/ds studio`, `/ds windows`):** Customise your UI with 17 accent colours (including all 13 WoW Class Colours and a custom colour picker), 4 dark surface themes, 21+ built-in fonts, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI with searchable grouped dropdowns, Shared Alert Toast controls, Blizzard Desktop Window Manager (`Desktop Windows & Menus`), and adjustable text scaling.
 
 ---
@@ -53,8 +53,9 @@
 | `/ds hud`, `/ds edit`, `/ds move` | Toggle HUD Edit Mode across all movable suite bars |
 | `/ds resethud` | Reset all suite HUD bars to safe screen-clamped default positions |
 | `/ds search <query>` | Open Global Smart Search with your query pre-filled |
-| `/ds setup` or `/ds guided` | Open the 13-Step Guided Setup Wizard |
-| `/ds conflicts` | Check for conflicting addons and print a summary in chat |
+| `/ds setup` or `/ds guided` | Open the 3-Step Quick Start (`1. Style`, `2. Conflicts`, `3. Modules`) |
+| `/ds conflicts` | Open the Conflict Scanner directly at Step 2 and print a summary in chat |
+| `/ds spotlight` | Preview the latest Feature Spotlight modal (`/ds spotlight reset` clears seen flags) |
 | `/ds theme` or `/ds studio` | Open Suite Studio (`Theme & Typography` and `Desktop Windows & Menus`) |
 | `/ds windows` or `/ds win` | Open Suite Studio directly to the Blizzard Desktop Window Manager |
 | `/ds changelog` | View the DynamicSuite release notes |

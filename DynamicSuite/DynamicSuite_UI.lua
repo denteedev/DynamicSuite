@@ -2098,6 +2098,300 @@ if _G.DynamicSuite then
     _G.DynamicSuite.ShowFeatureSpotlight = addonTable.ShowFeatureSpotlight
 end
 
+--------------------------------------------------------------------------------
+-- Shared Obsidian Module Quick Guide Modal (? Header Button)
+--------------------------------------------------------------------------------
+do
+local quickGuideModal = nil
+local quickGuideCatcher = nil
+
+local function RegisterQuickGuideSpecialFrameOnce(frameName)
+    if type(_G.UISpecialFrames) ~= "table" or not frameName then return end
+    for i = 1, #_G.UISpecialFrames do
+        if _G.UISpecialFrames[i] == frameName then
+            return
+        end
+    end
+    table.insert(_G.UISpecialFrames, frameName)
+end
+
+local function HideQuickGuideNow()
+    if quickGuideModal then
+        quickGuideModal:Hide()
+    end
+    if quickGuideCatcher then
+        quickGuideCatcher:Hide()
+    end
+end
+
+local function EnsureQuickGuideModal()
+    if quickGuideModal then
+        return quickGuideModal
+    end
+
+    local MODAL_W = 432
+    local catcher = CreateFrame("Frame", "DynamicSuiteQuickGuideCatcher", UIParent)
+    catcher:SetAllPoints(UIParent)
+    catcher:SetFrameStrata("DIALOG")
+    catcher:SetFrameLevel(185)
+    catcher:EnableMouse(true)
+    catcher:SetScript("OnMouseDown", function()
+        HideQuickGuideNow()
+    end)
+    catcher:Hide()
+    quickGuideCatcher = catcher
+
+    local modal = CreateFrame("Frame", "DynamicSuiteQuickGuideModal", UIParent)
+    modal:SetSize(MODAL_W, 300)
+    modal:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
+    modal:SetFrameStrata("DIALOG")
+    modal:SetFrameLevel(192)
+    modal:SetClampedToScreen(true)
+    modal:EnableMouse(true)
+
+    local shadow = UI.SolidTex(modal, "BACKGROUND", -2, 0, 0, 0, 0.56)
+    shadow:SetPoint("TOPLEFT", modal, "TOPLEFT", -8, 8)
+    shadow:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", 8, -10)
+
+    modal.bg = UI.SolidTex(modal, "BACKGROUND", 0, 0.016, 0.020, 0.024, 0.985)
+    modal.bg:SetAllPoints()
+    UI.CreatePixelBorder(modal, 0.220, 0.741, 0.973, 0.55, 2)
+
+    modal.topLine = UI.SolidTex(modal, "OVERLAY", 5, 0.220, 0.741, 0.973, 0.95)
+    modal.topLine:SetPoint("TOPLEFT", modal, "TOPLEFT", 1, -1)
+    modal.topLine:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -1, -1)
+    modal.topLine:SetHeight(2)
+
+    local closeBtn = CreateFrame("Button", nil, modal)
+    closeBtn:SetSize(22, 22)
+    closeBtn:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -10, -10)
+    closeBtn:SetFrameLevel(200)
+    closeBtn.bg = UI.SolidTex(closeBtn, "BACKGROUND", 1, 0.08, 0.09, 0.12, 0.0)
+    closeBtn.bg:SetAllPoints()
+    closeBtn.txt = closeBtn:CreateFontString(nil, "OVERLAY")
+    closeBtn.txt:SetPoint("CENTER", closeBtn, "CENTER", 0, 0)
+    UI.SetFont(closeBtn.txt, 11, "", 0.72, 0.77, 0.85, 0.92)
+    closeBtn.txt:SetText("X")
+    closeBtn:SetScript("OnEnter", function(b)
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        b.bg:SetColorTexture(ar, ag, ab, 0.16)
+        b.txt:SetTextColor(1, 1, 1, 1)
+    end)
+    closeBtn:SetScript("OnLeave", function(b)
+        b.bg:SetColorTexture(0.08, 0.09, 0.12, 0.0)
+        b.txt:SetTextColor(0.72, 0.77, 0.85, 0.92)
+    end)
+    closeBtn:SetScript("OnClick", HideQuickGuideNow)
+
+    local medallion = CreateFrame("Frame", nil, modal)
+    medallion:SetSize(34, 34)
+    medallion:SetPoint("TOPLEFT", modal, "TOPLEFT", 16, -15)
+    medallion.bg = UI.SolidTex(medallion, "BACKGROUND", 1, 0.031, 0.039, 0.055, 0.98)
+    medallion.bg:SetAllPoints()
+    UI.CreatePixelBorder(medallion, 0.220, 0.741, 0.973, 0.50, 2)
+    medallion.icon = medallion:CreateTexture(nil, "OVERLAY")
+    medallion.icon:SetSize(22, 22)
+    medallion.icon:SetPoint("CENTER", medallion, "CENTER", 0, 0)
+    UI.DisablePixelSnap(medallion.icon)
+    modal.medallion = medallion
+
+    local slashPill = CreateFrame("Frame", nil, modal)
+    slashPill:SetSize(90, 20)
+    slashPill:SetPoint("RIGHT", closeBtn, "LEFT", -8, 0)
+    slashPill.bg = UI.SolidTex(slashPill, "BACKGROUND", 1, 0.06, 0.10, 0.14, 0.90)
+    slashPill.bg:SetAllPoints()
+    UI.CreatePixelBorder(slashPill, 0.220, 0.741, 0.973, 0.65, 2)
+    slashPill.text = slashPill:CreateFontString(nil, "OVERLAY")
+    slashPill.text:SetPoint("CENTER", slashPill, "CENTER", 0, 0)
+    UI.SetFont(slashPill.text, 9.5, "", 1, 1, 1, 0.96)
+    modal.slashPill = slashPill
+
+    local titleFS = modal:CreateFontString(nil, "OVERLAY")
+    titleFS:SetPoint("LEFT", medallion, "RIGHT", 10, 0)
+    titleFS:SetPoint("RIGHT", slashPill, "LEFT", -8, 0)
+    titleFS:SetJustifyH("LEFT")
+    titleFS:SetWordWrap(false)
+    UI.SetFont(titleFS, 15, "", 1, 1, 1, 1.0)
+    modal.titleFS = titleFS
+
+    local hdrDiv = UI.SolidTex(modal, "OVERLAY", 2, 1, 1, 1, 0.08)
+    hdrDiv:SetPoint("TOPLEFT", modal, "TOPLEFT", 16, -58)
+    hdrDiv:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -16, -58)
+    hdrDiv:SetHeight(1)
+
+    local summaryFS = modal:CreateFontString(nil, "OVERLAY")
+    summaryFS:SetPoint("TOPLEFT", hdrDiv, "BOTTOMLEFT", 0, -10)
+    summaryFS:SetPoint("TOPRIGHT", hdrDiv, "BOTTOMRIGHT", 0, -10)
+    summaryFS:SetJustifyH("LEFT")
+    summaryFS:SetWordWrap(true)
+    UI.SetFont(summaryFS, 11.5, "", 0.84, 0.88, 0.94, 0.98)
+    modal.summaryFS = summaryFS
+
+    local tipsKicker = modal:CreateFontString(nil, "OVERLAY")
+    tipsKicker:SetPoint("TOPLEFT", summaryFS, "BOTTOMLEFT", 0, -12)
+    tipsKicker:SetJustifyH("LEFT")
+    UI.SetFont(tipsKicker, 9.5, "", 0.220, 0.741, 0.973, 1.0)
+    tipsKicker:SetText("TRY THIS FIRST")
+    modal.tipsKicker = tipsKicker
+
+    local tipBox = CreateFrame("Frame", nil, modal)
+    tipBox:SetPoint("TOPLEFT", tipsKicker, "BOTTOMLEFT", 0, -6)
+    tipBox:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -16, -120)
+    tipBox:SetHeight(110)
+    tipBox.bg = UI.SolidTex(tipBox, "BACKGROUND", 1, 0.031, 0.039, 0.055, 0.82)
+    tipBox.bg:SetAllPoints()
+    UI.CreatePixelBorder(tipBox, 1, 1, 1, 0.08, 2)
+    modal.tipBox = tipBox
+    modal.tipRows = {}
+    for i = 1, 4 do
+        local row = CreateFrame("Frame", nil, tipBox)
+        row:SetHeight(24)
+        row.pip = UI.SolidTex(row, "OVERLAY", 4, 0.220, 0.741, 0.973, 0.95)
+        row.pip:SetSize(5, 5)
+        row.pip:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -5)
+        row.text = row:CreateFontString(nil, "OVERLAY")
+        row.text:SetPoint("TOPLEFT", row, "TOPLEFT", 13, 0)
+        row.text:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+        row.text:SetJustifyH("LEFT")
+        row.text:SetWordWrap(true)
+        UI.SetFont(row.text, 11, "", 0.88, 0.91, 0.96, 0.98)
+        row:Hide()
+        modal.tipRows[i] = row
+    end
+
+    local gotItBtn = CreateFlatButton(modal, 112, 28, "Got It", true)
+    gotItBtn:SetPoint("BOTTOM", modal, "BOTTOM", 0, 14)
+    gotItBtn:SetScript("OnClick", HideQuickGuideNow)
+    modal.gotItBtn = gotItBtn
+
+    function modal:ApplyThemeAndLayout()
+        UI.RefreshPaletteCache()
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        local surf = UI.GetActiveSurfaceColors()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        local fa = gTbl.pillFillAlpha or 0.42
+
+        self.bg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.985)
+        self.dsBorder:SetColor(ar, ag, ab, 0.55)
+        self.topLine:SetColorTexture(ar, ag, ab, 0.95)
+        self.medallion.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, 0.98)
+        self.medallion.dsBorder:SetColor(ar, ag, ab, 0.50)
+        self.medallion.icon:SetVertexColor(ar, ag, ab, 1.0)
+        self.slashPill.bg:SetColorTexture(ar, ag, ab, 0.14)
+        self.slashPill.dsBorder:SetColor(ar, ag, ab, 0.70)
+        UI.SetFont(self.slashPill.text, 9.5, "", 1, 1, 1, 0.96)
+        local pw = self.slashPill.text:GetStringWidth() or 40
+        self.slashPill:SetWidth(math.max(54, math.ceil(pw + 16)))
+
+        UI.SetFont(self.titleFS, 15, "", 1, 1, 1, 1.0)
+        UI.SetFont(self.summaryFS, 11.5, "", 0.84, 0.88, 0.94, 0.98)
+        UI.SetFont(self.tipsKicker, 9.5, "", ar, ag, ab, 1.0)
+        self.tipBox.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, 0.82)
+        self.tipBox.dsBorder:SetColor(1, 1, 1, 0.08)
+
+        self.gotItBtn.bg:SetColorTexture(ar * fa, ag * fa, ab * fa, 0.96)
+        self.gotItBtn.dsBorder:SetColor(ar, ag, ab, 0.95)
+        UI.SetFont(self.gotItBtn.label, 11.5, "", 1, 1, 1, 1)
+
+        local totalTipH = 12
+        local hasAnyTip = false
+        for i = 1, #self.tipRows do
+            local row = self.tipRows[i]
+            if row:IsShown() then
+                hasAnyTip = true
+                row.pip:SetColorTexture(ar, ag, ab, 0.95)
+                UI.SetFont(row.text, 11, "", 0.88, 0.91, 0.96, 0.98)
+                row.text:SetWidth(MODAL_W - 72)
+                local th = math.max(16, math.ceil(row.text:GetStringHeight() or 16))
+                row:SetHeight(th)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", self.tipBox, "TOPLEFT", 12, -totalTipH)
+                row:SetPoint("TOPRIGHT", self.tipBox, "TOPRIGHT", -12, -totalTipH)
+                totalTipH = totalTipH + th + 9
+            end
+        end
+        if hasAnyTip then
+            totalTipH = totalTipH + 3
+        end
+        self.tipBox:SetHeight(math.max(40, totalTipH))
+        self.tipBox:ClearAllPoints()
+        self.tipBox:SetPoint("TOPLEFT", self.tipsKicker, "BOTTOMLEFT", 0, -6)
+        self.tipBox:SetPoint("TOPRIGHT", self, "TOPRIGHT", -16, 0)
+
+        self.summaryFS:SetWidth(MODAL_W - 32)
+        local sumH = math.max(16, math.ceil(self.summaryFS:GetStringHeight() or 18))
+        local kickH = math.max(12, math.ceil(self.tipsKicker:GetStringHeight() or 12))
+        local totalH = 59 + 10 + sumH + 12 + kickH + 6 + self.tipBox:GetHeight() + 14 + 28 + 14
+        self:SetHeight(math.ceil(totalH))
+    end
+
+    modal:SetScript("OnHide", function()
+        if quickGuideCatcher then
+            quickGuideCatcher:Hide()
+        end
+    end)
+
+    RegisterQuickGuideSpecialFrameOnce("DynamicSuiteQuickGuideModal")
+    modal:Hide()
+    quickGuideModal = modal
+    return quickGuideModal
+end
+
+function addonTable.HideModuleQuickGuide()
+    HideQuickGuideNow()
+end
+
+function addonTable.RefreshQuickGuideModalTheme()
+    if quickGuideModal and quickGuideModal.ApplyThemeAndLayout then
+        quickGuideModal:ApplyThemeAndLayout()
+    end
+end
+
+function addonTable.ShowModuleQuickGuide(moduleKeyOrAddon)
+    local guide = addonTable.GetModuleQuickGuide and addonTable.GetModuleQuickGuide(moduleKeyOrAddon)
+    if not guide then return false end
+    local modal = EnsureQuickGuideModal()
+    if modal:IsShown() and modal._activeGuideKey == guide.key then
+        HideQuickGuideNow()
+        return true
+    end
+    modal._activeGuideKey = guide.key
+    modal.medallion.icon:SetTexture(guide.icon or UI.GetModuleIconPath(guide.addonName or guide.key))
+    modal.titleFS:SetText(guide.title or "Module Quick Guide")
+    modal.slashPill.text:SetText(guide.slash or "/ds")
+    modal.summaryFS:SetText(guide.summary or "")
+
+    local tips = guide.tips or {}
+    for i = 1, #modal.tipRows do
+        local row = modal.tipRows[i]
+        local tText = tips[i]
+        if type(tText) == "string" and tText ~= "" then
+            row.text:SetText(tText)
+            row:Show()
+        else
+            row:Hide()
+        end
+    end
+
+    modal:ApplyThemeAndLayout()
+    modal:ClearAllPoints()
+    if mainFrame and mainFrame:IsShown() then
+        modal:SetPoint("CENTER", mainFrame, "CENTER", 0, 10)
+    else
+        modal:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
+    end
+    if quickGuideCatcher then
+        quickGuideCatcher:Show()
+    end
+    modal:Show()
+    modal:Raise()
+    return true
+end
+if _G.DynamicSuite then
+    _G.DynamicSuite.ShowModuleQuickGuide = addonTable.ShowModuleQuickGuide
+end
+end
+
 local function CreateChangelogModal(parent)
     if changelogDialog then return changelogDialog end
 
@@ -3411,6 +3705,61 @@ function addonTable.CreateMainConfigUI()
     end
     f.RefreshScopePillLabel = RefreshScopePillLabel
     RefreshScopePillLabel()
+
+    function f.UpdateQuickGuideHeaderButton()
+        local isModView = (activeWorkspaceView == "DYNAMICLOAD")
+            or (activeWorkspaceView == "PEER_MODULE")
+            or (activeWorkspaceView == "PEER_HOST")
+        local modKey = (activeWorkspaceView == "DYNAMICLOAD") and "load" or selectedPeerModuleKey
+        local guide = (isModView and modKey and addonTable.GetModuleQuickGuide) and addonTable.GetModuleQuickGuide(modKey) or nil
+        if guide then
+            hdrQuickGuideBtn:Show()
+            statusCapsule:ClearAllPoints()
+            statusCapsule:SetPoint("LEFT", title, "RIGHT", 14, 0)
+            statusCapsule:SetPoint("RIGHT", hdrQuickGuideBtn, "LEFT", -8, 0)
+        else
+            hdrQuickGuideBtn:Hide()
+            if addonTable.HideModuleQuickGuide then
+                addonTable.HideModuleQuickGuide()
+            end
+            statusCapsule:ClearAllPoints()
+            statusCapsule:SetPoint("LEFT", title, "RIGHT", 14, 0)
+            statusCapsule:SetPoint("RIGHT", altPillBtn, "LEFT", -12, 0)
+        end
+    end
+    f:HookScript("OnHide", function()
+        if addonTable.HideModuleQuickGuide then
+            addonTable.HideModuleQuickGuide()
+        end
+    end)
+
+    local hdrQuickGuideBtn = CreateFlatButton(header, 26, 26, "?", false)
+    hdrQuickGuideBtn:SetPoint("RIGHT", altPillBtn, "LEFT", -6, 0)
+    UI.SetFont(hdrQuickGuideBtn.label, 12.5, "", 0.86, 0.90, 0.96, 0.96)
+    hdrQuickGuideBtn:SetScript("OnClick", function()
+        local targetKey = (activeWorkspaceView == "DYNAMICLOAD") and "load" or selectedPeerModuleKey
+        if targetKey and addonTable.ShowModuleQuickGuide then
+            addonTable.ShowModuleQuickGuide(targetKey)
+        end
+    end)
+    hdrQuickGuideBtn.OnCustomEnter = function(self)
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        self.dsBorder:SetColor(ar, ag, ab, 0.85)
+        self.bg:SetColorTexture(ar, ag, ab, 0.16)
+        self.label:SetTextColor(1, 1, 1, 1)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Quick Guide", 1, 1, 1)
+        GameTooltip:AddLine("Short tips for this module", 0.82, 0.86, 0.92, true)
+        GameTooltip:Show()
+    end
+    hdrQuickGuideBtn.OnCustomLeave = function(self)
+        self.bg:SetColorTexture(UI.COLORS.BTN_BG.r, UI.COLORS.BTN_BG.g, UI.COLORS.BTN_BG.b, 0.94)
+        self.dsBorder:SetColor(UI.COLORS.BTN_BORDER.r, UI.COLORS.BTN_BORDER.g, UI.COLORS.BTN_BORDER.b, UI.COLORS.BTN_BORDER.a)
+        self.label:SetTextColor(0.86, 0.90, 0.96, 0.96)
+        GameTooltip:Hide()
+    end
+    hdrQuickGuideBtn:Hide()
+    f.hdrQuickGuideBtn = hdrQuickGuideBtn
 
     -- Zone 2 (Center): Spacious 1-Line Live Context Status Capsule (Anchored 14px right of title!)
     local statusCapsule = CreateFrame("Button", nil, header)
@@ -5623,6 +5972,7 @@ function addonTable.CreateMainConfigUI()
                             UI.NormalizeEmbeddedSubDrawers(modHost)
                         end
                         if f.RefreshLeftRailVisuals then f.RefreshLeftRailVisuals() end
+                        if f.UpdateQuickGuideHeaderButton then f.UpdateQuickGuideHeaderButton() end
                     else
                         selectedPeerModuleKey = addonKey
                         f.lastModuleView = "PEER_MODULE"
@@ -5819,7 +6169,7 @@ function addonTable.CreateMainConfigUI()
         {
             key = "GUIDED_SETUP",
             label = "Guided Setup",
-            sub = "60s Setup & Conflict Check",
+            sub = "3-Step Quick Start & Conflicts",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_spark.tga",
             yBottom = 34,
             hasConflictBadge = true,
@@ -6464,6 +6814,7 @@ function addonTable.CreateMainConfigUI()
                             end)
                         end
                         if f.RefreshLeftRailVisuals then f.RefreshLeftRailVisuals() end
+                        if f.UpdateQuickGuideHeaderButton then f.UpdateQuickGuideHeaderButton() end
                         if f.scrollChild and RefreshAddonTree then RefreshAddonTree(f.scrollChild) end
                     end)
                 end
@@ -8716,7 +9067,7 @@ function addonTable.CreateMainConfigUI()
         yieldSetupBtn:SetPoint("RIGHT", yieldStatusBanner, "RIGHT", -12, 0)
         yieldSetupBtn:SetSelected(true, { r = 0.220, g = 0.741, b = 0.973 })
         yieldSetupBtn:SetScript("OnClick", function()
-            addonTable.OpenWorkspaceView("GUIDED_SETUP")
+            addonTable.OpenWorkspaceView("GUIDED_SETUP", 2)
         end)
         yieldStatusBanner.setupBtn = yieldSetupBtn
 
@@ -10250,7 +10601,7 @@ function addonTable.CreateMainConfigUI()
         stepPillBtns[idx] = spBtn
         return spBtn
     end
-    for i = 1, 14 do
+    for i = 1, 3 do
         EnsureStepPillBtn(i)
     end
 
@@ -10349,9 +10700,10 @@ function addonTable.CreateMainConfigUI()
     wizFooterInfo:SetWordWrap(false)
     UI.SetFont(wizFooterInfo, 10, "", UI.COLORS.TEXT_DIM.r, UI.COLORS.TEXT_DIM.g, UI.COLORS.TEXT_DIM.b, 0.90)
 
-    -- Step 1 Sub-Pane: Conflict Cards + 3 Theme Choice Cards
+    -- Step 2 Sub-Pane: Full-Height Conflict Scanner
     local step1Pane = CreateFrame("Frame", nil, wizBody)
     step1Pane:SetAllPoints()
+    step1Pane:Hide()
 
     local zeroConflictBanner = CreateFrame("Frame", nil, step1Pane)
     zeroConflictBanner:SetPoint("TOPLEFT", step1Pane, "TOPLEFT", 0, 0)
@@ -10363,19 +10715,15 @@ function addonTable.CreateMainConfigUI()
 
     local zcText = zeroConflictBanner:CreateFontString(nil, "OVERLAY")
     zcText:SetPoint("LEFT", zeroConflictBanner, "LEFT", 14, 0)
+    zcText:SetPoint("RIGHT", zeroConflictBanner, "RIGHT", -14, 0)
+    zcText:SetJustifyH("LEFT")
     UI.SetFont(zcText, 11, "", UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1)
-    zcText:SetText("OK - Zero Active Addon Conflicts Detected! (Click 'Demo Conflicts' above to preview conflict cards)")
+    zcText:SetText("OK - Zero Active Addon Conflicts Detected! (Click 'Demo' above to preview conflict cards)")
 
-    -- 3 Interactive Theme Choice Cards at Bottom of Step 1 (Obsidian Slate, Auto-Match Class, Custom Accent & Font)
-    local themeChoiceRow = CreateFrame("Frame", nil, step1Pane)
-    themeChoiceRow:SetPoint("BOTTOMLEFT", step1Pane, "BOTTOMLEFT", 0, 0)
-    themeChoiceRow:SetPoint("BOTTOMRIGHT", step1Pane, "BOTTOMRIGHT", 0, 0)
-    themeChoiceRow:SetHeight(104)
-
-    -- Scrollable Conflict List Container (fills available height above themeChoiceRow; scrollbar shows only when cards overflow)
+    -- Scrollable Conflict List Container (fills Step 2 pane; scrollbar shows only when cards overflow)
     local conflictScrollFrame = CreateFrame("ScrollFrame", nil, step1Pane)
     conflictScrollFrame:SetPoint("TOPLEFT", step1Pane, "TOPLEFT", 0, 0)
-    conflictScrollFrame:SetPoint("BOTTOMRIGHT", themeChoiceRow, "TOPRIGHT", 0, 12)
+    conflictScrollFrame:SetPoint("BOTTOMRIGHT", step1Pane, "BOTTOMRIGHT", 0, 0)
     conflictScrollFrame:EnableMouseWheel(true)
     conflictScrollFrame:SetClipsChildren(true)
 
@@ -10411,7 +10759,7 @@ function addonTable.CreateMainConfigUI()
         if paneH < 140 then paneH = 340 end
         local viewH = conflictScrollFrame:GetHeight()
         if not viewH or viewH < 80 then
-            viewH = math.max(120, paneH - 104 - 12)
+            viewH = math.max(120, paneH)
         end
 
         local ch = conflictScrollChild:GetHeight() or 1
@@ -10424,7 +10772,7 @@ function addonTable.CreateMainConfigUI()
 
         conflictScrollFrame:ClearAllPoints()
         conflictScrollFrame:SetPoint("TOPLEFT", step1Pane, "TOPLEFT", 0, 0)
-        conflictScrollFrame:SetPoint("BOTTOMRIGHT", themeChoiceRow, "TOPRIGHT", needsScroll and -18 or 0, 12)
+        conflictScrollFrame:SetPoint("BOTTOMRIGHT", step1Pane, "BOTTOMRIGHT", needsScroll and -18 or 0, 0)
         conflictScrollChild:SetWidth(targetW)
 
         for _, cCard in ipairs(conflictCards) do
@@ -10681,1106 +11029,630 @@ function addonTable.CreateMainConfigUI()
         return cCard
     end
 
-    local themeChoiceHdr = themeChoiceRow:CreateFontString(nil, "OVERLAY")
-    themeChoiceHdr:SetPoint("TOPLEFT", themeChoiceRow, "TOPLEFT", 0, 0)
-    UI.SetFont(themeChoiceHdr, 10, "", UI.COLORS.TEXT_DIM.r, UI.COLORS.TEXT_DIM.g, UI.COLORS.TEXT_DIM.b, 0.95)
-    themeChoiceHdr:SetText("QUICK VISUAL THEME & ALT SYNC:")
+    -- Step 1 Sub-Pane: Style (Surface Theme + 17 Accent Swatches + Custom/Auto-Class + Font Family)
+    local stepStylePane = CreateFrame("Frame", nil, wizBody)
+    stepStylePane:SetAllPoints()
+    stepStylePane:Hide()
+    do
+        local qsStyleScroll = CreateFrame("ScrollFrame", nil, stepStylePane)
+        qsStyleScroll:SetPoint("TOPLEFT", stepStylePane, "TOPLEFT", 0, 0)
+        qsStyleScroll:SetPoint("BOTTOMRIGHT", stepStylePane, "BOTTOMRIGHT", -10, 0)
+        qsStyleScroll:EnableMouseWheel(true)
+        qsStyleScroll:SetClipsChildren(true)
 
-    local themeChoiceCards = {}
-    for i = 1, 3 do
-        local tc = CreateFrame("Button", nil, themeChoiceRow)
-        tc:SetHeight(82)
-        tc.bg = UI.SolidTex(tc, "BACKGROUND", 1, 0.078, 0.090, 0.122, 0.96)
-        tc.bg:SetAllPoints()
-        UI.CreatePixelBorder(tc, 0.145, 0.165, 0.212, 0.95, 3)
+        local qsStyleChild = CreateFrame("Frame", nil, qsStyleScroll)
+        qsStyleChild:SetWidth(720)
+        qsStyleChild:SetHeight(252)
+        qsStyleScroll:SetScrollChild(qsStyleChild)
 
-        tc.badge = tc:CreateFontString(nil, "OVERLAY")
-        tc.badge:SetPoint("TOPRIGHT", tc, "TOPRIGHT", -10, -8)
-        UI.SetFont(tc.badge, 9, "", UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1)
+        local qsStyleTrack = CreateFrame("Frame", nil, stepStylePane)
+        qsStyleTrack:SetPoint("TOPLEFT", qsStyleScroll, "TOPRIGHT", 4, 0)
+        qsStyleTrack:SetPoint("BOTTOMLEFT", qsStyleScroll, "BOTTOMRIGHT", 4, 0)
+        qsStyleTrack:SetWidth(4)
+        qsStyleTrack.bg = UI.SolidTex(qsStyleTrack, "BACKGROUND", 1, 0.035, 0.042, 0.058, 0.90)
+        qsStyleTrack.bg:SetAllPoints()
+        local qsStyleThumb = UI.SolidTex(qsStyleTrack, "OVERLAY", 2, 0.45, 0.52, 0.64, 0.90)
+        qsStyleThumb:SetPoint("TOP", qsStyleTrack, "TOP", 0, 0)
+        qsStyleThumb:SetSize(4, 36)
 
-        tc.title = tc:CreateFontString(nil, "OVERLAY")
-        tc.title:SetPoint("TOPLEFT", tc, "TOPLEFT", 12, -8)
-        tc.title:SetPoint("RIGHT", tc.badge, "LEFT", -6, 0)
-        tc.title:SetJustifyH("LEFT")
-        tc.title:SetWordWrap(false)
-        UI.SetFont(tc.title, 11, "", 1, 1, 1, 1)
-
-        tc.desc = tc:CreateFontString(nil, "OVERLAY")
-        tc.desc:SetPoint("TOPLEFT", tc.title, "BOTTOMLEFT", 0, -5)
-        tc.desc:SetPoint("BOTTOMRIGHT", tc, "BOTTOMRIGHT", -10, 6)
-        tc.desc:SetJustifyH("LEFT")
-        tc.desc:SetJustifyV("TOP")
-        tc.desc:SetWordWrap(true)
-        UI.SetFont(tc.desc, 10, "", 0.62, 0.68, 0.76, 0.95)
-
-        themeChoiceCards[i] = tc
-    end
-
-    themeChoiceRow:SetScript("OnSizeChanged", function(self, w)
-        if not w or w < 100 then return end
-        local gap = 10
-        local cw = math.floor((w - (gap * 2)) / 3)
-        for i = 1, 3 do
-            local tc = themeChoiceCards[i]
-            tc:ClearAllPoints()
-            if i == 1 then
-                tc:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 0, 0)
-                tc:SetWidth(cw)
-            elseif i == 2 then
-                tc:SetPoint("LEFT", themeChoiceCards[1], "RIGHT", gap, 0)
-                tc:SetWidth(cw)
-            else
-                tc:SetPoint("LEFT", themeChoiceCards[2], "RIGHT", gap, 0)
-                tc:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 0, 0)
+        local function UpdateStyleScrollbar()
+            local cw = qsStyleScroll:GetWidth()
+            if cw and cw > 100 then
+                qsStyleChild:SetWidth(cw)
             end
-        end
-    end)
-
-    -- Steps 2..7 Sub-Pane: Info Banner + Up to 4 Interactive Choice Cards (2x2 Grid)
-    local stepModPane = CreateFrame("Frame", nil, wizBody)
-    stepModPane:SetAllPoints()
-    stepModPane:Hide()
-
-    local modSummaryBox = CreateFrame("Frame", nil, stepModPane)
-    modSummaryBox:SetPoint("TOPLEFT", stepModPane, "TOPLEFT", 0, 0)
-    modSummaryBox:SetPoint("TOPRIGHT", stepModPane, "TOPRIGHT", 0, 0)
-    modSummaryBox:SetHeight(86)
-    modSummaryBox.bg = UI.SolidTex(modSummaryBox, "BACKGROUND", 1, 0.035, 0.042, 0.058, 0.98)
-    modSummaryBox.bg:SetAllPoints()
-    UI.CreatePixelBorder(modSummaryBox, UI.COLORS.ACCENT.r, UI.COLORS.ACCENT.g, UI.COLORS.ACCENT.b, 0.45, 2)
-
-    local modSummaryText = modSummaryBox:CreateFontString(nil, "OVERLAY")
-    modSummaryText:SetPoint("TOPLEFT", modSummaryBox, "TOPLEFT", 14, -10)
-    modSummaryText:SetPoint("BOTTOMRIGHT", modSummaryBox, "BOTTOMRIGHT", -14, 10)
-    modSummaryText:SetJustifyH("LEFT")
-    modSummaryText:SetJustifyV("TOP")
-    modSummaryText:SetSpacing(3)
-    modSummaryText:SetWordWrap(true)
-    UI.SetFont(modSummaryText, 11, "", 0.85, 0.89, 0.95, 1)
-
-    local modChoiceGrid = CreateFrame("Frame", nil, stepModPane)
-    modChoiceGrid:SetPoint("TOPLEFT", modSummaryBox, "BOTTOMLEFT", 0, -12)
-    modChoiceGrid:SetPoint("BOTTOMRIGHT", stepModPane, "BOTTOMRIGHT", 0, 0)
-
-    local modChoiceCards = {}
-    for i = 1, 4 do
-        local mc = CreateFrame("Button", nil, modChoiceGrid)
-        mc:SetHeight(104)
-        mc.bg = UI.SolidTex(mc, "BACKGROUND", 1, 0.078, 0.090, 0.122, 0.96)
-        mc.bg:SetAllPoints()
-        UI.CreatePixelBorder(mc, 0.145, 0.165, 0.212, 0.95, 3)
-
-        mc.badge = mc:CreateFontString(nil, "OVERLAY")
-        mc.badge:SetPoint("TOPRIGHT", mc, "TOPRIGHT", -12, -10)
-        UI.SetFont(mc.badge, 10, "", UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1)
-
-        mc.title = mc:CreateFontString(nil, "OVERLAY")
-        mc.title:SetPoint("TOPLEFT", mc, "TOPLEFT", 14, -10)
-        mc.title:SetPoint("RIGHT", mc.badge, "LEFT", -8, 0)
-        mc.title:SetJustifyH("LEFT")
-        mc.title:SetWordWrap(false)
-        UI.SetFont(mc.title, 12, "", 1, 1, 1, 1)
-
-        mc.desc = mc:CreateFontString(nil, "OVERLAY")
-        mc.desc:SetPoint("TOPLEFT", mc.title, "BOTTOMLEFT", 0, -6)
-        mc.desc:SetPoint("BOTTOMRIGHT", mc, "BOTTOMRIGHT", -14, 10)
-        mc.desc:SetJustifyH("LEFT")
-        mc.desc:SetJustifyV("TOP")
-        mc.desc:SetSpacing(2)
-        mc.desc:SetWordWrap(true)
-        UI.SetFont(mc.desc, 10.5, "", 0.64, 0.70, 0.78, 0.95)
-
-        mc:Hide()
-        modChoiceCards[i] = mc
-    end
-
-    local markerFlareKeybindBox = CreateFrame("Frame", nil, stepModPane)
-    markerFlareKeybindBox:SetPoint("TOPLEFT", modChoiceCards[1], "BOTTOMLEFT", 0, -10)
-    markerFlareKeybindBox:SetPoint("TOPRIGHT", modChoiceCards[2], "BOTTOMRIGHT", 0, -10)
-    markerFlareKeybindBox:SetPoint("BOTTOM", stepModPane, "BOTTOM", 0, 0)
-    markerFlareKeybindBox.bg = UI.SolidTex(markerFlareKeybindBox, "BACKGROUND", 1, 0.045, 0.052, 0.072, 0.98)
-    markerFlareKeybindBox.bg:SetAllPoints()
-    UI.CreatePixelBorder(markerFlareKeybindBox, 0.145, 0.165, 0.212, 0.95, 2)
-    markerFlareKeybindBox:Hide()
-
-    local mfNote = markerFlareKeybindBox:CreateFontString(nil, "OVERLAY")
-    mfNote:SetPoint("TOPLEFT", markerFlareKeybindBox, "TOPLEFT", 14, -10)
-    mfNote:SetPoint("TOPRIGHT", markerFlareKeybindBox, "TOPRIGHT", -14, -10)
-    mfNote:SetJustifyH("LEFT")
-    mfNote:SetWordWrap(true)
-    UI.SetFont(mfNote, 10.5, "", 0.80, 0.85, 0.93, 0.96)
-    mfNote:SetText("|cFFF5B82EWorld Flare Hotkeys (Optional):|r Start Unbound so they never overwrite F4/F5. Click to bind, Right-click to unbind.")
-
-    local markerKeybindRefreshers = {}
-    local function CreateSetupFlareKeyRow(yOff, rowTitle, rowSub, dbKey)
-        local row = CreateFrame("Frame", nil, markerFlareKeybindBox)
-        row:SetPoint("TOPLEFT", markerFlareKeybindBox, "TOPLEFT", 12, yOff)
-        row:SetPoint("TOPRIGHT", markerFlareKeybindBox, "TOPRIGHT", -12, yOff)
-        row:SetHeight(34)
-        row.bg = UI.SolidTex(row, "BACKGROUND", 1, 0.072, 0.084, 0.114, 0.96)
-        row.bg:SetAllPoints()
-        UI.CreatePixelBorder(row, 1, 1, 1, 0.08, 2)
-
-        local capBtn = CreateFlatButton(row, 204, 24, "Unbound (Click to Bind)", false)
-        capBtn:SetPoint("RIGHT", row, "RIGHT", -10, 0)
-        capBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-
-        local titleFs = row:CreateFontString(nil, "OVERLAY")
-        titleFs:SetPoint("TOPLEFT", row, "TOPLEFT", 12, -5)
-        titleFs:SetPoint("RIGHT", capBtn, "LEFT", -10, 0)
-        titleFs:SetJustifyH("LEFT")
-        titleFs:SetWordWrap(false)
-        UI.SetFont(titleFs, 11, "", 1, 1, 1, 0.96)
-        titleFs:SetText(rowTitle)
-
-        local subFs = row:CreateFontString(nil, "OVERLAY")
-        subFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -2)
-        subFs:SetPoint("RIGHT", capBtn, "LEFT", -10, 0)
-        subFs:SetJustifyH("LEFT")
-        subFs:SetWordWrap(false)
-        UI.SetFont(subFs, 9.5, "", 0.62, 0.68, 0.78, 0.92)
-        subFs:SetText(rowSub)
-
-        local function ReadBoundKey()
-            local db = _G.DynamicMarkerDB or (_G.DynamicMarker and _G.DynamicMarker.db)
-            local k = db and db[dbKey]
-            return (type(k) == "string") and k or ""
-        end
-
-        local function CommitBoundKey(newKey)
-            if type(_G.DynamicMarkerDB) ~= "table" then
-                _G.DynamicMarkerDB = {}
-            end
-            _G.DynamicMarkerDB[dbKey] = newKey
-            local dm = _G.DynamicMarker
-            if type(dm) == "table" then
-                if type(dm.db) == "table" then
-                    dm.db[dbKey] = newKey
-                end
-                if type(dm.ApplyFlareKeybinds) == "function" then pcall(dm.ApplyFlareKeybinds, dm) end
-                if type(dm.RefreshKeybindTelemetryAndTabTitle) == "function" then pcall(dm.RefreshKeybindTelemetryAndTabTitle, dm) end
-                if type(dm.RefreshAll) == "function" then pcall(dm.RefreshAll, dm) end
-            end
-        end
-
-        function capBtn:RefreshKey()
-            local k = ReadBoundKey()
-            local isBound = (k ~= "" and k ~= "NONE")
-            local _, _, _, hex = UI.GetActiveAccentColor()
-            if not isBound then
-                self.label:SetText("|cFF94A3B8Unbound (Click to Bind)|r")
-            else
-                self.label:SetText(string.format("|cFF%s[%s]|r  |cFF94A3B8(Click Rebind)|r", hex or "F5B82E", k))
-            end
-        end
-
-        function capBtn:StopCapture(commitKey)
-            self.isCapturing = false
-            self:EnableKeyboard(false)
-            self:SetScript("OnKeyDown", nil)
-            self:SetScript("OnMouseDown", nil)
-            self.dsBorder:SetColor(UI.COLORS.BTN_BORDER.r, UI.COLORS.BTN_BORDER.g, UI.COLORS.BTN_BORDER.b, UI.COLORS.BTN_BORDER.a)
-            if commitKey ~= nil then
-                CommitBoundKey(commitKey)
-            end
-            self:RefreshKey()
-        end
-
-        capBtn:SetScript("OnClick", function(s, mouseBtn)
-            if mouseBtn == "RightButton" then
-                s:StopCapture("")
+            local vh = qsStyleScroll:GetHeight() or 260
+            local ch = qsStyleChild:GetHeight() or 252
+            local maxS = math.max(0, ch - vh)
+            if maxS <= 2 then
+                qsStyleTrack:Hide()
+                qsStyleScroll:SetVerticalScroll(0)
                 return
             end
-            if s.isCapturing then
-                s:StopCapture(nil)
-                return
-            end
-            s.isCapturing = true
-            s.label:SetText("|cFFF59E0BPress key (Esc cancel, Del unbind)|r")
-            s.dsBorder:SetColor(0.96, 0.62, 0.04, 0.95)
-            s:EnableKeyboard(true)
-            if s.SetPropagateKeyboardInput then
-                s:SetPropagateKeyboardInput(false)
-            end
-            s:SetScript("OnKeyDown", function(btnSelf, key)
-                if key == "ESCAPE" then
-                    btnSelf:StopCapture(nil)
-                    return
-                end
-                if key == "BACKSPACE" or key == "DELETE" then
-                    btnSelf:StopCapture("")
-                    return
-                end
-                if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL" or key == "LALT" or key == "RALT" then
-                    return
-                end
-                local prefix = ""
-                if IsAltKeyDown() then prefix = prefix .. "ALT-" end
-                if IsControlKeyDown() then prefix = prefix .. "CTRL-" end
-                if IsShiftKeyDown() then prefix = prefix .. "SHIFT-" end
-                btnSelf:StopCapture(prefix .. key)
+            qsStyleTrack:Show()
+            local th = math.max(24, math.floor((vh / ch) * vh + 0.5))
+            qsStyleThumb:SetHeight(th)
+            local cur = math.min(maxS, qsStyleScroll:GetVerticalScroll() or 0)
+            local yOff = -math.floor((cur / maxS) * math.max(1, vh - th))
+            qsStyleThumb:ClearAllPoints()
+            qsStyleThumb:SetPoint("TOP", qsStyleTrack, "TOP", 0, yOff)
+        end
+        qsStyleScroll:SetScript("OnMouseWheel", function(_, delta)
+            local vh = qsStyleScroll:GetHeight() or 260
+            local maxS = math.max(0, (qsStyleChild:GetHeight() or 252) - vh)
+            if maxS <= 2 then return end
+            local cur = qsStyleScroll:GetVerticalScroll() or 0
+            qsStyleScroll:SetVerticalScroll(math.max(0, math.min(maxS, cur - (delta * 32))))
+            UpdateStyleScrollbar()
+        end)
+
+        -- Section A: Surface Theme (4 cards)
+        local surfLbl = qsStyleChild:CreateFontString(nil, "OVERLAY")
+        surfLbl:SetPoint("TOPLEFT", qsStyleChild, "TOPLEFT", 0, -2)
+        UI.SetFont(surfLbl, 10, "", 0.68, 0.74, 0.82, 0.95)
+        surfLbl:SetText("1. SURFACE THEME")
+
+        local surfRowBox = CreateFrame("Frame", nil, qsStyleChild)
+        surfRowBox:SetPoint("TOPLEFT", surfLbl, "BOTTOMLEFT", 0, -6)
+        surfRowBox:SetPoint("TOPRIGHT", qsStyleChild, "TOPRIGHT", 0, -18)
+        surfRowBox:SetHeight(56)
+
+        local surfDefs = {
+            { key = "MIDNIGHT_BLACK", label = "Midnight Pitch", desc = "Pitch Black #040506", col = { 0.016, 0.020, 0.024 } },
+            { key = "OBSIDIAN_DARK",  label = "Obsidian Dark",  desc = "Deep Obsidian",       col = { 0.031, 0.039, 0.051 } },
+            { key = "SLATE_STEEL",    label = "Slate Steel",    desc = "Cool Slate",          col = { 0.055, 0.068, 0.090 } },
+            { key = "SMOKED_GLASS",   label = "Smoked Glass",   desc = "Translucent Dark",    col = { 0.024, 0.028, 0.038 } },
+        }
+        local surfBtns = {}
+        for i, sDef in ipairs(surfDefs) do
+            local sb = CreateFrame("Button", nil, surfRowBox)
+            sb:SetHeight(52)
+            sb.bg = UI.SolidTex(sb, "BACKGROUND", 1, 0.078, 0.090, 0.122, 0.96)
+            sb.bg:SetAllPoints()
+            UI.CreatePixelBorder(sb, 0.145, 0.165, 0.212, 0.95, 2)
+            local swatch = UI.SolidTex(sb, "ARTWORK", 2, sDef.col[1], sDef.col[2], sDef.col[3], 1)
+            swatch:SetSize(18, 18)
+            swatch:SetPoint("LEFT", sb, "LEFT", 10, 0)
+            local swB = UI.SolidTex(sb, "ARTWORK", 1, 1, 1, 1, 0.25)
+            swB:SetPoint("TOPLEFT", swatch, "TOPLEFT", -1, 1)
+            swB:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", 1, -1)
+            local tFS = sb:CreateFontString(nil, "OVERLAY")
+            tFS:SetPoint("TOPLEFT", swatch, "TOPRIGHT", 8, 2)
+            tFS:SetPoint("RIGHT", sb, "RIGHT", -6, 0)
+            tFS:SetJustifyH("LEFT")
+            tFS:SetWordWrap(false)
+            UI.SetFont(tFS, 11, "", 1, 1, 1, 0.96)
+            tFS:SetText(sDef.label)
+            local dFS = sb:CreateFontString(nil, "OVERLAY")
+            dFS:SetPoint("TOPLEFT", tFS, "BOTTOMLEFT", 0, -2)
+            dFS:SetPoint("RIGHT", sb, "RIGHT", -6, 0)
+            dFS:SetJustifyH("LEFT")
+            dFS:SetWordWrap(false)
+            UI.SetFont(dFS, 9.5, "", 0.58, 0.64, 0.74, 0.92)
+            dFS:SetText(sDef.desc)
+            sb.sDef = sDef
+            sb:SetScript("OnClick", function()
+                local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+                if gTbl then gTbl.surfaceTheme = sDef.key end
+                if DynamicLoadDB then DynamicLoadDB.surfaceTheme = sDef.key end
+                if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
+                if setupView.Refresh then setupView.Refresh() end
             end)
-            s:SetScript("OnMouseDown", function(btnSelf, mBtn)
-                local hasMod = IsAltKeyDown() or IsControlKeyDown() or IsShiftKeyDown()
-                if (mBtn == "LeftButton" or mBtn == "RightButton") and not hasMod then return end
-                local prefix = ""
-                if IsAltKeyDown() then prefix = prefix .. "ALT-" end
-                if IsControlKeyDown() then prefix = prefix .. "CTRL-" end
-                if IsShiftKeyDown() then prefix = prefix .. "SHIFT-" end
-                local mapped = mBtn
-                if mBtn == "LeftButton" then mapped = "BUTTON1"
-                elseif mBtn == "RightButton" then mapped = "BUTTON2"
-                elseif mBtn == "MiddleButton" then mapped = "BUTTON3"
-                elseif type(mBtn) == "string" then mapped = string.upper(mBtn)
+            surfBtns[i] = sb
+        end
+
+        -- Section B: Suite Accent (17 Swatches + Auto-Match Class + Custom Colour)
+        local accPanel = CreateFrame("Frame", nil, qsStyleChild)
+        accPanel:SetPoint("TOPLEFT", surfRowBox, "BOTTOMLEFT", 0, -10)
+        accPanel:SetPoint("TOPRIGHT", surfRowBox, "BOTTOMRIGHT", 0, -10)
+        accPanel:SetHeight(98)
+        accPanel.bg = UI.SolidTex(accPanel, "BACKGROUND", 0, 0.031, 0.039, 0.055, 0.72)
+        accPanel.bg:SetAllPoints()
+        UI.CreatePixelBorder(accPanel, 1, 1, 1, 0.08, 2)
+
+        local accLbl = accPanel:CreateFontString(nil, "OVERLAY")
+        accLbl:SetPoint("TOPLEFT", accPanel, "TOPLEFT", 12, -8)
+        UI.SetFont(accLbl, 10, "", 0.68, 0.74, 0.82, 0.95)
+        accLbl:SetText("2. SUITE ACCENT COLOUR (17 SWATCHES, AUTO-CLASS OR CUSTOM)")
+
+        local qsSwatchBtns = {}
+        for idx, pDef in ipairs(ACCENT_PRESETS) do
+            local sBtn = CreateFrame("Button", nil, accPanel)
+            sBtn:SetSize(24, 22)
+            local colIdx = (idx - 1) % 9
+            local rowIdx = math.floor((idx - 1) / 9)
+            sBtn:SetPoint("TOPLEFT", accPanel, "TOPLEFT", 12 + (colIdx * 28), -28 - (rowIdx * 28))
+            sBtn.pDef = pDef
+            sBtn.tex = UI.SolidTex(sBtn, "ARTWORK", 1, pDef.r, pDef.g, pDef.b, 1)
+            sBtn.tex:SetPoint("TOPLEFT", sBtn, "TOPLEFT", 1, -1)
+            sBtn.tex:SetPoint("BOTTOMRIGHT", sBtn, "BOTTOMRIGHT", -1, 1)
+            UI.CreatePixelBorder(sBtn, 1, 1, 1, 0.25, 3)
+            sBtn:SetScript("OnEnter", function(self)
+                self.dsBorder:SetColor(1, 1, 1, 1.0)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:SetText(pDef.name, 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            sBtn:SetScript("OnLeave", function(self)
+                self.dsBorder:SetColor(1, 1, 1, self.isSelected and 1.0 or 0.22)
+                GameTooltip:Hide()
+            end)
+            sBtn:SetScript("OnClick", function()
+                local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+                if gTbl then
+                    gTbl.accentKey = pDef.key
+                    gTbl.customAccent = nil
                 end
-                btnSelf:StopCapture(prefix .. mapped)
+                if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
+                if setupView.Refresh then setupView.Refresh() end
+            end)
+            table.insert(qsSwatchBtns, sBtn)
+        end
+
+        local qsAutoClassBtn = CreateFlatButton(accPanel, 134, 26, "Auto-Match Class", false)
+        qsAutoClassBtn:SetPoint("TOPRIGHT", accPanel, "TOPRIGHT", -12, -28)
+        qsAutoClassBtn:SetScript("OnClick", function()
+            local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+            if gTbl then
+                gTbl.accentKey = "AUTO_CLASS"
+                gTbl.customAccent = nil
+            end
+            if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
+            if setupView.Refresh then setupView.Refresh() end
+        end)
+
+        local qsCustomPickBtn = CreateFlatButton(accPanel, 134, 26, "Custom Colour...", false)
+        qsCustomPickBtn:SetPoint("TOP", qsAutoClassBtn, "BOTTOM", 0, -6)
+        qsCustomPickBtn:SetPoint("RIGHT", accPanel, "RIGHT", -12, 0)
+        qsCustomPickBtn:SetScript("OnClick", function(self)
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            OpenDSColorPicker(self, "Custom Suite Accent Colour", { r = ar, g = ag, b = ab, a = 1 }, false, function(nr, ng, nb)
+                local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+                if gTbl then
+                    gTbl.accentKey = "CUSTOM"
+                    gTbl.customAccent = { r = nr, g = ng, b = nb }
+                end
+                if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
+                if setupView.Refresh then setupView.Refresh() end
             end)
         end)
 
-        capBtn.OnCustomEnter = function(s)
-            GameTooltip:SetOwner(s, "ANCHOR_TOP")
-            GameTooltip:SetText("Interactive Keybind Capture", 1, 1, 1)
-            GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Press any key, modifier combo, or mouse button (MB3/MB4/MB5). Press Esc to cancel, or Backspace/Delete to unbind.|r", 1, 1, 1, true)
-            GameTooltip:AddLine("|cFFF87171Right-Click:|r |cFFE2E8F0Clear Keybind (Unbind)|r", 1, 1, 1, true)
-            GameTooltip:Show()
-        end
-        capBtn.OnCustomLeave = function(s)
-            if GameTooltip:IsOwned(s) then GameTooltip:Hide() end
-        end
+        -- Section C: Suite Font Family
+        local fontPanel = CreateFrame("Frame", nil, qsStyleChild)
+        fontPanel:SetPoint("TOPLEFT", accPanel, "BOTTOMLEFT", 0, -10)
+        fontPanel:SetPoint("TOPRIGHT", accPanel, "BOTTOMRIGHT", 0, -10)
+        fontPanel:SetHeight(52)
+        fontPanel.bg = UI.SolidTex(fontPanel, "BACKGROUND", 0, 0.031, 0.039, 0.055, 0.72)
+        fontPanel.bg:SetAllPoints()
+        UI.CreatePixelBorder(fontPanel, 1, 1, 1, 0.08, 2)
 
-        table.insert(markerKeybindRefreshers, function()
-            capBtn:RefreshKey()
-        end)
-    end
+        local qsFontLbl = fontPanel:CreateFontString(nil, "OVERLAY")
+        qsFontLbl:SetPoint("TOPLEFT", fontPanel, "TOPLEFT", 12, -10)
+        UI.SetFont(qsFontLbl, 11, "", 1, 1, 1, 0.96)
+        qsFontLbl:SetText("3. Suite Font Family")
 
-    CreateSetupFlareKeyRow(-38, "Cycle World Flare Keybind (Optional)", "Places enabled ground markers at [@cursor] in sequence. Click to bind, Right-click to unbind.", "flareCycleKey")
-    CreateSetupFlareKeyRow(-78, "Clear All Flares Keybind (Optional)", "Clears all active ground flares (/cwm all). Click to bind, Right-click to unbind.", "flareClearKey")
+        local qsFontSub = fontPanel:CreateFontString(nil, "OVERLAY")
+        qsFontSub:SetPoint("TOPLEFT", qsFontLbl, "BOTTOMLEFT", 0, -3)
+        UI.SetFont(qsFontSub, 9.5, "", 0.62, 0.68, 0.76, 0.92)
+        qsFontSub:SetText("Updates headers, module options, tooltips, and HUD readouts immediately.")
 
-    local function RefreshMarkerFlareKeybinds()
-        for _, fn in ipairs(markerKeybindRefreshers) do
-            fn()
+        local qsFontDD = UI.CreateDropdown(fontPanel, 232, UI.BuildFontDropdownOptions(),
+            function() return UI.GetActiveFontKey() end,
+            function(val)
+                local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+                if gTbl then
+                    gTbl.fontKey = val
+                    gTbl.fontFamily = val
+                end
+                if DynamicLoadDB then
+                    DynamicLoadDB.fontKey = val
+                    DynamicLoadDB.fontFamily = val
+                end
+                if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
+                if setupView.Refresh then setupView.Refresh() end
+            end
+        )
+        qsFontDD._onBeforeOpen = function(self)
+            ResolveAllFontFamilyPaths(true)
+            self:SetOptions(UI.BuildFontDropdownOptions(true))
         end
-    end
-    if type(_G.DynamicMarker) == "table" then
-        _G.DynamicMarker._refreshSuiteSetupKeys = function()
-            RefreshMarkerFlareKeybinds()
-        end
-    end
+        qsFontDD:SetPoint("RIGHT", fontPanel, "RIGHT", -12, 0)
 
-    local function LayoutModChoiceGrid(numCards, stepKey)
-        local w = modChoiceGrid:GetWidth() or 760
-        if w < 100 then w = 760 end
-        local gap = 10
-        local halfW = math.floor((w - gap) / 2)
-        local cardH = (stepKey == "marker" and 90) or (numCards > 2 and 96 or 116)
-        for i = 1, 4 do
-            local mc = modChoiceCards[i]
-            if i <= numCards then
-                local row = math.floor((i - 1) / 2)
-                local col = (i - 1) % 2
-                mc:ClearAllPoints()
-                mc:SetHeight(cardH)
-                if col == 0 then
-                    mc:SetPoint("TOPLEFT", modChoiceGrid, "TOPLEFT", 0, -(row * 106))
-                    mc:SetWidth(halfW)
+        local function LayoutStepStyleRow(w)
+            local useW = (w and w > 120) and w or (qsStyleChild:GetWidth() or 720)
+            local gap = 8
+            local cw = math.max(96, math.floor((useW - (gap * 3)) / 4))
+            for i = 1, 4 do
+                local sb = surfBtns[i]
+                sb:ClearAllPoints()
+                if i == 1 then
+                    sb:SetPoint("TOPLEFT", surfRowBox, "TOPLEFT", 0, 0)
+                    sb:SetWidth(cw)
+                elseif i == 4 then
+                    sb:SetPoint("LEFT", surfBtns[3], "RIGHT", gap, 0)
+                    sb:SetPoint("TOPRIGHT", surfRowBox, "TOPRIGHT", 0, 0)
                 else
-                    mc:SetPoint("TOPLEFT", modChoiceCards[i - 1], "TOPRIGHT", gap, 0)
-                    mc:SetPoint("TOPRIGHT", modChoiceGrid, "TOPRIGHT", 0, -(row * 106))
+                    sb:SetPoint("LEFT", surfBtns[i - 1], "RIGHT", gap, 0)
+                    sb:SetWidth(cw)
                 end
-                mc:Show()
-            else
-                mc:Hide()
+            end
+        end
+
+        stepStylePane:SetScript("OnSizeChanged", function()
+            if stepStylePane:IsShown() then
+                UpdateStyleScrollbar()
+                LayoutStepStyleRow(qsStyleChild:GetWidth())
+            end
+        end)
+
+        function stepStylePane.Refresh()
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            local accentCol = { r = ar, g = ag, b = ab }
+            local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+            local curSurf = UI.GetActiveSurfaceKey()
+            local curAccent = gTbl.accentKey or "AUTO_CLASS"
+
+            UpdateStyleScrollbar()
+            LayoutStepStyleRow(qsStyleChild:GetWidth())
+
+            for _, sb in ipairs(surfBtns) do
+                local isSel = (sb.sDef.key == curSurf)
+                if isSel then
+                    sb.bg:SetColorTexture(ar * 0.24, ag * 0.24, ab * 0.24, 0.96)
+                    sb.dsBorder:SetColor(ar, ag, ab, 0.95)
+                else
+                    sb.bg:SetColorTexture(0.078, 0.090, 0.122, 0.96)
+                    sb.dsBorder:SetColor(0.145, 0.165, 0.212, 0.95)
+                end
+            end
+            for _, sBtn in ipairs(qsSwatchBtns) do
+                local isSel = (curAccent == sBtn.pDef.key)
+                sBtn.isSelected = isSel
+                sBtn.dsBorder:SetColor(1, 1, 1, isSel and 1.0 or 0.22)
+            end
+            qsAutoClassBtn:SetSelected(curAccent == "AUTO_CLASS", accentCol)
+            qsCustomPickBtn:SetSelected(curAccent == "CUSTOM", accentCol)
+            if qsFontDD and qsFontDD.RefreshValue then
+                qsFontDD:RefreshValue()
             end
         end
     end
-    modChoiceGrid:SetScript("OnSizeChanged", function()
-        if stepModPane:IsShown() and stepModPane.activeNumCards then
-            LayoutModChoiceGrid(stepModPane.activeNumCards, stepModPane.activeStepKey)
-        end
-    end)
 
-    local function StyleChoiceCard(card, isSelected)
-        local ar, ag, ab = UI.GetActiveAccentColor()
-        if isSelected then
-            card.bg:SetColorTexture(0.063, 0.220, 0.155, 0.45)
-            card.dsBorder:SetColor(0.063, 0.725, 0.506, 0.95)
-            card.badge:SetTextColor(0.204, 0.827, 0.600, 1)
-        else
-            card.bg:SetColorTexture(0.078, 0.090, 0.122, 0.96)
-            card.dsBorder:SetColor(0.145, 0.165, 0.212, 0.95)
-            card.badge:SetTextColor(ar, ag, ab, 0.95)
-        end
-    end
+    -- Step 3 Sub-Pane: Starter Presets + Scrollable 2-Column All-13 Module Grid
+    local stepModulesPane = CreateFrame("Frame", nil, wizBody)
+    stepModulesPane:SetAllPoints()
+    stepModulesPane:Hide()
+    do
+        local presetBar = CreateFrame("Frame", nil, stepModulesPane)
+        presetBar:SetPoint("TOPLEFT", stepModulesPane, "TOPLEFT", 0, 0)
+        presetBar:SetPoint("TOPRIGHT", stepModulesPane, "TOPRIGHT", 0, 0)
+        presetBar:SetHeight(30)
 
-    local function BuildActiveGuidedSteps()
-        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
-        local steps = {
+        local modGridScroll = CreateFrame("ScrollFrame", nil, stepModulesPane)
+        modGridScroll:SetPoint("TOPLEFT", presetBar, "BOTTOMLEFT", 0, -8)
+        modGridScroll:SetPoint("BOTTOMRIGHT", stepModulesPane, "BOTTOMRIGHT", -10, 0)
+        modGridScroll:EnableMouseWheel(true)
+        modGridScroll:SetClipsChildren(true)
+
+        local modGridChild = CreateFrame("Frame", nil, modGridScroll)
+        modGridChild:SetWidth(720)
+        modGridChild:SetHeight(1)
+        modGridScroll:SetScrollChild(modGridChild)
+
+        local modGridTrack = CreateFrame("Frame", nil, stepModulesPane)
+        modGridTrack:SetPoint("TOPLEFT", modGridScroll, "TOPRIGHT", 4, 0)
+        modGridTrack:SetPoint("BOTTOMLEFT", modGridScroll, "BOTTOMRIGHT", 4, 0)
+        modGridTrack:SetWidth(4)
+        modGridTrack.bg = UI.SolidTex(modGridTrack, "BACKGROUND", 1, 0.035, 0.042, 0.058, 0.90)
+        modGridTrack.bg:SetAllPoints()
+        local modGridThumb = UI.SolidTex(modGridTrack, "OVERLAY", 2, 0.45, 0.52, 0.64, 0.90)
+        modGridThumb:SetPoint("TOP", modGridTrack, "TOP", 0, 0)
+        modGridThumb:SetSize(4, 36)
+
+        local STARTER_PRESETS = {
             {
-                key = "theme",
-                pill = "1. Conflicts",
-                title = "STEP 1: CONFLICT SCANNER, VISUAL THEME & ACCOUNT-WIDE ALT SYNC",
-                desc = "DynamicSuite checks for overlapping addons (auto-freezing disabled addons in DynamicLoad so zone switches never re-enable them) and syncs your layout across all alts.",
-                actionLabel = "Open Suite Studio",
-                onAction = function() addonTable.OpenWorkspaceView("THEME_STUDIO") end,
+                key = "FULL",
+                label = "Full Suite (All 13)",
+                enabled = {
+                    DynamicLoad = true, DynamicPrep = true, DynamicTalent = true, DynamicMarker = true,
+                    DynamicCursor = true, DynamicZoom = true, DynamicFPS = true, DynamicGroup = true,
+                    DynamicBags = true, DynamicMail = true, DynamicChat = true, DynamicVault = true, DynamicDialogue = true,
+                },
+            },
+            {
+                key = "MPLUS_RAID",
+                label = "Mythic+ & Raid Focus",
+                enabled = {
+                    DynamicLoad = true, DynamicPrep = true, DynamicTalent = true, DynamicMarker = true,
+                    DynamicCursor = true, DynamicZoom = true, DynamicFPS = true, DynamicGroup = true,
+                    DynamicVault = true,
+                    DynamicBags = false, DynamicMail = false, DynamicChat = false, DynamicDialogue = false,
+                },
+            },
+            {
+                key = "LIGHTWEIGHT_QOL",
+                label = "Lightweight QoL",
+                enabled = {
+                    DynamicLoad = true, DynamicPrep = true, DynamicZoom = true, DynamicFPS = true,
+                    DynamicBags = true, DynamicMail = true, DynamicVault = true, DynamicDialogue = true,
+                    DynamicMarker = false, DynamicCursor = false, DynamicTalent = false, DynamicGroup = false, DynamicChat = false,
+                },
             },
         }
 
-        local function IsModActive(addonKey)
+        local function IsModuleEnabledNow(mInfo)
+            local addonKey = mInfo.addonName or mInfo.name or mInfo.key
             if addonKey == "DynamicLoad" then return true end
-            local isDis = (addonTable.IsSuiteModuleExplicitlyDisabled and addonTable.IsSuiteModuleExplicitlyDisabled(addonKey))
-                or (gTbl.disabledModules and gTbl.disabledModules[addonKey])
-                or (_G.DynamicSuiteDB and _G.DynamicSuiteDB.disabledModules and _G.DynamicSuiteDB.disabledModules[addonKey])
-            local shortKey = tostring(addonKey):lower():gsub("^dynamic", "")
-            local regMod = (DynamicSuite and DynamicSuite.modules and (DynamicSuite.modules[addonKey] or DynamicSuite.modules[shortKey])) or _G[addonKey]
-            local isLoaded = C_AddOns.IsAddOnLoaded(addonKey) or (regMod ~= nil)
-            local st = C_AddOns.GetAddOnInfo(addonKey) and (C_AddOns.GetAddOnEnableState(addonKey, pName) or 0) or 0
-            return (not isDis) and (isLoaded or st > 0)
+            local isDis = addonTable.IsSuiteModuleCurrentlyDisabled and addonTable.IsSuiteModuleCurrentlyDisabled(addonKey)
+            return not isDis
         end
 
-        if IsModActive("DynamicLoad") then
-            table.insert(steps, {
-                key = "load",
-                pill = (#steps + 1) .. ". Load",
-                title = "DYNAMICLOAD - SMART ADDON SCANNER & OUTDOOR SAFE HARBOR",
-                desc = "DynamicLoad scans your installed addons and prepares a safe combat profile so non-combat economy/collection addons never slow down Dungeons or Raids.",
-                actionLabel = "Open DynamicLoad (/dl)",
-                onAction = function() addonTable.OpenWorkspaceView("DYNAMICLOAD") end,
-                summaryText = "|cFF38BDF8Smart Addon Scan Summary:|r\n" ..
-                    "- |cFFFACC15Suite Core Modules Active Across All 5 Zones:|r DynamicLoad, DynamicMarker, DynamicCursor, DynamicZoom, DynamicFPS, DynamicPrep, DynamicTalent, DynamicGroup, DynamicBags, DynamicChat, DynamicMail, DynamicVault, DynamicDialogue\n" ..
-                    "- |cFF22C55ERoutes Economy & Collection Addons to Outdoor Safe Harbor:|r TSM, Auctionator, AllTheThings, RareScanner, HandyNotes, TomTom\n" ..
-                    "- |cFFCBD5E1New Addon Protection:|r Any future addon you install defaults safely to Outdoor Only until you approve it.",
-                choices = {
-                    {
-                        title = "Apply Smart Addon Scan",
-                        badge = "Recommended",
-                        isSelected = function() return gTbl.guidedSetupDone == true end,
-                        desc = "Keeps your Suite Core modules active across all 5 zone profiles and routes heavy non-combat utility addons to Outdoor Only (By Zone).",
-                        onClick = function(card)
-                            local res = addonTable.ApplySmartAddonScan()
-                            card.badge:SetText(string.format("Applied (%d Routed)!", res.outdoorCount or 0))
-                            StyleChoiceCard(card, true)
-                            if f.scrollChild then RefreshAddonTree(f.scrollChild) end
-                            UpdateStatusBar()
-                        end,
-                    },
-                    {
-                        title = "Review Addon List Manually",
-                        badge = "Open Checklist ->",
-                        isSelected = function() return false end,
-                        desc = "Open the full DynamicLoad checklist to configure addons as By Zone, Always, or Never.",
-                        onClick = function()
-                            addonTable.OpenWorkspaceView("DYNAMICLOAD")
-                        end,
-                    },
-                },
-            })
+        local function ApplyModuleStarterPreset(presetDef)
+            local list = addonTable.SUITE_MODULE_LIST or {}
+            for _, mInfo in ipairs(list) do
+                local addonKey = mInfo.addonName or mInfo.name or mInfo.key
+                if addonKey ~= "DynamicLoad" and addonTable.SetSuiteModuleEnabled then
+                    local wantOn = (presetDef.enabled[addonKey] == true)
+                    addonTable.SetSuiteModuleEnabled(addonKey, wantOn, true)
+                end
+            end
+            if setupView.Refresh then setupView.Refresh() end
+            if RefreshLeftRailVisuals then RefreshLeftRailVisuals() end
+            if f.scrollChild then RefreshAddonTree(f.scrollChild) end
+            UpdateStatusBar()
         end
 
-        if IsModActive("DynamicPrep") then
-            table.insert(steps, {
-                key = "prep",
-                pill = (#steps + 1) .. ". Prep",
-                title = "DYNAMICPREP - WOWHEAD SPEC FOLIO & EVERYDAY QOL ESSENTIALS",
-                desc = "Auto-loads your specialisation's Recommended Stat Priority for Midnight Omni Folio and enables lightweight everyday convenience automation.",
-                actionLabel = "Open DynamicPrep (/dprep)",
-                onAction = function() addonTable.OpenPeerModule("DynamicPrep") end,
-                summaryText = "|cFF38BDF8DynamicPrep Readiness Bar & Quick QoL:|r\n" ..
-                    "- |cFF22C55ELive Readiness Bar:|r Displays Primary Stat, Secondary Stats, Spec/Loot, Great Vault, Keystone, Durability, and FPS/Ping.\n" ..
-                    "- |cFFF5B82ELead/Assist Smart Visibility:|r Ready Check (+ RC) and Pull Timer (> Pull) automatically appear when you are Party/Raid Lead or Assist.",
-                choices = {
-                    {
-                        title = "Auto-Load Wowhead Spec Folio Presets",
-                        badge = "Enabled for All 39 Specs",
-                        isSelected = function()
-                            return (not _G.DynamicPrepDB) or (not _G.DynamicPrepDB.omniFolio) or (_G.DynamicPrepDB.omniFolio.presetMode ~= "CUSTOM")
-                        end,
-                        desc = "Automatically sets your Mythic+, Raid, Delve, and PvP Omni Folio target stats based on your active specialisation's stat priority.",
-                        onClick = function(card)
-                            if _G.DynamicPrep and _G.DynamicPrep.ApplyWowheadPresetForCurrentSpec then
-                                pcall(_G.DynamicPrep.ApplyWowheadPresetForCurrentSpec, _G.DynamicPrep, false)
-                            end
-                            card.badge:SetText("Wowhead Preset Loaded!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                    {
-                        title = "Enable All World & Survival QoL Features",
-                        badge = "Replaces EnhanceQoL",
-                        isSelected = function()
-                            return (not _G.DynamicPrepDB) or (_G.DynamicPrepDB.autoQuestGossip ~= false and _G.DynamicPrepDB.autoHealMacroEnabled ~= false)
-                        end,
-                        desc = "Enables Smart Quest & Gossip Automation, Auto-Skip Seen Cinematics, Auto-Accept Resurrection, Smart Auto-Release Spirit, and [DynamicHeal] macro.",
-                        onClick = function(card)
-                            if _G.DynamicPrepDB then
-                                _G.DynamicPrepDB.autoQuestGossip = true
-                                _G.DynamicPrepDB.cinematicMode = "BOTH"
-                                _G.DynamicPrepDB.autoRezMode = "OUT_OF_COMBAT"
-                                _G.DynamicPrepDB.autoReleaseMode = "WIPE_AND_CTRL"
-                                _G.DynamicPrepDB.autoHealMacroEnabled = true
-                            end
-                            if _G.DynamicBagsDB then
-                                _G.DynamicBagsDB.autoRepairEnabled = true
-                                _G.DynamicBagsDB.autoSellGrey = true
-                                _G.DynamicBagsDB.autoSellJunk = true
-                                _G.DynamicBagsDB.fastAutoLoot = true
-                                _G.DynamicBagsDB.autoFillDelete = true
-                            end
-                            if _G.DynamicGroupDB then
-                                _G.DynamicGroupDB.autoInsertKeystone = true
-                            end
-                            if _G.DynamicPrep and _G.DynamicPrep.UpdateHealMacro then
-                                pcall(_G.DynamicPrep.UpdateHealMacro, _G.DynamicPrep, false)
-                            end
-                            if _G.DynamicPrep and _G.DynamicPrep.UpdateTalkingHeadSuppression then
-                                pcall(_G.DynamicPrep.UpdateTalkingHeadSuppression, _G.DynamicPrep)
-                            end
-                            card.badge:SetText("All QoL Enabled!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                },
-            })
+        local presetBtns = {}
+        for i, pDef in ipairs(STARTER_PRESETS) do
+            local pb = CreateFlatButton(presetBar, 160, 28, pDef.label, false)
+            pb.pDef = pDef
+            pb:SetScript("OnClick", function()
+                ApplyModuleStarterPreset(pDef)
+            end)
+            presetBtns[i] = pb
         end
 
-        if IsModActive("DynamicTalent") then
-            table.insert(steps, {
-                key = "talent",
-                pill = (#steps + 1) .. ". Talent",
-                title = "DYNAMICTALENT - TALENT LOADOUT LIBRARY & ZONE/PVP BINDS",
-                desc = "Store unlimited per-spec talent strings, auto-prompt smart swap alerts per Raid boss, M+ dungeon, PvP mode, or Delve, and attach a quick dock to your Talents frame (/dt).",
-                actionLabel = "Open DynamicTalent (/dt)",
-                onAction = function() addonTable.OpenPeerModule("DynamicTalent") end,
-                summaryText = "|cFF38BDF8DynamicTalent Engine:|r\n" ..
-                    "- |cFF22C55EUnlimited Spec Library & Importer:|r Paste WCL, Northern Sky, or Blizzard strings with automatic Hero Talent acronym badges and 1-click dock switching.\n" ..
-                    "- |cFFF5B82E4-Tab Smart Binds:|r Bind loadouts to Raid Bosses, M+ Dungeons, PvP (Arena / BGs / War Mode), and Zone Defaults with custom group ordering.",
-                choices = {
-                    {
-                        title = "Enable Zone-Aware Swap Reminders & Capsule",
-                        badge = "Recommended",
-                        isSelected = function()
-                            return (not _G.DynamicTalentDB) or (_G.DynamicTalentDB.talentReminderEnabled ~= false and _G.DynamicTalentDB.talentReminderToastEnabled ~= false)
-                        end,
-                        desc = "Shows a 1-click Shared Alert Toast when entering Raid, Mythic+, Delves, or PvP with a different bound build, and enables the Prep Bar Talent capsule.",
-                        onClick = function(card)
-                            if _G.DynamicTalentDB then
-                                _G.DynamicTalentDB.enabled = true
-                                _G.DynamicTalentDB.talentReminderEnabled = true
-                                _G.DynamicTalentDB.talentReminderToastEnabled = true
-                            end
-                            if _G.DynamicPrepDB and type(_G.DynamicPrepDB.segments) == "table" then
-                                _G.DynamicPrepDB.segments.talents = true
-                            end
-                            if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
-                                pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
-                            end
-                            card.badge:SetText("Reminders Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                    {
-                        title = "Prioritise Current Zone Builds First",
-                        badge = "Smart Sort",
-                        isSelected = function()
-                            return _G.DynamicTalentDB and _G.DynamicTalentDB.prioritiseCurrentZone == true
-                        end,
-                        desc = "Automatically floats loadouts matching your active content category (Raid, M+, Delves, PvP) to the top of quick-switchers and the Talent Dock.",
-                        onClick = function(card)
-                            if _G.DynamicTalentDB then
-                                _G.DynamicTalentDB.prioritiseCurrentZone = true
-                            end
-                            if _G.DynamicTalent and type(_G.DynamicTalent.RefreshTalentDock) == "function" then
-                                pcall(_G.DynamicTalent.RefreshTalentDock, _G.DynamicTalent)
-                            end
-                            card.badge:SetText("Zone Priority On!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                },
-            })
-        end
+        local modCards = {}
+        local modList = addonTable.SUITE_MODULE_LIST or {}
+        for idx, mInfo in ipairs(modList) do
+            local addonKey = mInfo.addonName or mInfo.name or mInfo.key
+            local mc = CreateFrame("Button", nil, modGridChild)
+            mc:SetHeight(46)
+            mc.bg = UI.SolidTex(mc, "BACKGROUND", 1, 0.060, 0.070, 0.096, 0.94)
+            mc.bg:SetAllPoints()
+            UI.CreatePixelBorder(mc, 0.145, 0.165, 0.212, 0.95, 2)
+            mc.mInfo = mInfo
+            mc.addonKey = addonKey
 
-        if IsModActive("DynamicMarker") then
-            table.insert(steps, {
-                key = "marker",
-                pill = (#steps + 1) .. ". Marker",
-                title = "DYNAMICMARKER - 1-CLICK MACROS, FOCUS ICON & WORLD FLARES",
-                desc = "Set up your modifier-free [DynamicMark] macro and multi-spec [DynamicKick] interrupt macro (Mouseover > Focus > Target) in a single click.",
-                actionLabel = "Open DynamicMarker (/dm)",
-                onAction = function() addonTable.OpenPeerModule("DynamicMarker") end,
-                summaryText = "|cFF38BDF8DynamicMarker Automation:|r\n" ..
-                    "- |cFF22C55E[DynamicMark] & [DynamicKick] Macros:|r Focuses and marks your target cleanly, plus auto-swaps class interrupts on spec change.\n" ..
-                    "- |cFFF5B82EWorld Flare Hotkeys (Unbound by Default):|r Start Unbound so your F4/F5 bindings stay untouched unless assigned below or in /dm flares.",
-                choices = {
-                    {
-                        title = "1-Click Create Both Macros + Alt Auto-Sync",
-                        badge = "Click to Create",
-                        isSelected = function()
-                            return _G.DynamicMarker and _G.DynamicMarker.FindFocusMacroIndex and ((_G.DynamicMarker:FindFocusMacroIndex() or 0) > 0)
-                        end,
-                        desc = "Creates [DynamicMark] in General Macros AND creates [DynamicKick] per character with automatic spec-swap interrupt detection.",
-                        onClick = function(card)
-                            if _G.DynamicMarker then
-                                if _G.DynamicMarker.CreateOrUpdateFocusMarkerMacro then pcall(_G.DynamicMarker.CreateOrUpdateFocusMarkerMacro, _G.DynamicMarker, true) end
-                                if _G.DynamicMarker.CreateOrUpdateDynamicKickMacro then pcall(_G.DynamicMarker.CreateOrUpdateDynamicKickMacro, _G.DynamicMarker, true) end
-                            end
-                            card.badge:SetText("Both Macros Created!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                    {
-                        title = "Open World Flare Keys Tab (/dm flares)",
-                        badge = "Optional Hotkeys",
-                        isSelected = function()
-                            local db = _G.DynamicMarkerDB or (_G.DynamicMarker and _G.DynamicMarker.db)
-                            local c1 = db and db.flareCycleKey
-                            local c2 = db and db.flareClearKey
-                            return (type(c1) == "string" and c1 ~= "" and c1 ~= "NONE")
-                                or (type(c2) == "string" and c2 ~= "" and c2 ~= "NONE")
-                        end,
-                        desc = "World Flare hotkeys start Unbound by default. Assign or unbind them right below, or open /dm flares to reorder the 8 markers.",
-                        onClick = function()
-                            addonTable.OpenPeerModule("DynamicMarker")
-                        end,
-                    },
-                },
-            })
-        end
+            local ico = mc:CreateTexture(nil, "ARTWORK")
+            ico:SetSize(20, 20)
+            ico:SetPoint("LEFT", mc, "LEFT", 10, 0)
+            ico:SetTexture(UI.GetModuleIconPath(addonKey, mInfo.icon))
+            UI.DisablePixelSnap(ico)
+            mc.ico = ico
 
-        if IsModActive("DynamicZoom") then
-            table.insert(steps, {
-                key = "zoom",
-                pill = (#steps + 1) .. ". Zoom",
-                title = "DYNAMICZOOM - 39-YARD MAX CAMERA & SEE-THROUGH FOLIAGE",
-                desc = "Unlock the maximum 39-yard tactical overview and stop tree branches, doorways, or dungeon pillars from snapping your camera inward.",
-                actionLabel = "Open DynamicZoom (/dz)",
-                onAction = function() addonTable.OpenPeerModule("DynamicZoom") end,
-                summaryText = "|cFF38BDF8How DynamicZoom Smooths Your Camera:|r\n" ..
-                    "- |cFF22C55EFast Scroll Wheel Boost:|r One fast mousewheel flick glides smoothly to 39 yards while slow ticks step precisely.\n" ..
-                    "- |cFFF5B82ESee-Through Trees & Dungeon Pillars:|r Fades intersecting trees and pillars to translucent instead of jerking your camera forward.",
-                choices = {
-                    {
-                        title = "39-Yard Max Distance + Ignore Trees & Pillars",
-                        badge = "Recommended",
-                        isSelected = function()
-                            return (not _G.DynamicZoomDB) or ((_G.DynamicZoomDB.maxZoomYards or 39) >= 39 and _G.DynamicZoomDB.indirectVisibility ~= false)
-                        end,
-                        desc = "Keeps your camera at the full 39-yard distance and glides smoothly past trees, banners, water surfaces, and dungeon pillars.",
-                        onClick = function(card)
-                            if _G.DynamicZoomDB then
-                                _G.DynamicZoomDB.maxZoomYards = 39
-                                _G.DynamicZoomDB.indirectVisibility = true
-                                _G.DynamicZoomDB.reactiveScrollEnabled = true
-                            end
-                            if _G.DynamicZoom then
-                                if _G.DynamicZoom.ApplyEngineSettings then pcall(_G.DynamicZoom.ApplyEngineSettings, _G.DynamicZoom) end
-                                if _G.DynamicZoom.SmoothZoomTo then pcall(_G.DynamicZoom.SmoothZoomTo, _G.DynamicZoom, 39, 0.50) end
-                            end
-                            card.badge:SetText("39 yd Max Applied!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                    {
-                        title = "Customise Automatic Zone Zoom",
-                        badge = "Open Modes ->",
-                        isSelected = function() return false end,
-                        desc = "Fine-tune per-zone target distances across Raids, Mythic+, Delves, Open World, and optional NPC dialogue framing.",
-                        onClick = function()
-                            addonTable.OpenPeerModule("DynamicZoom")
-                        end,
-                    },
-                },
-            })
-        end
+            local pill = CreateFrame("Frame", nil, mc)
+            pill:SetSize(26, 14)
+            pill:SetPoint("RIGHT", mc, "RIGHT", -10, 0)
+            pill.bg = UI.SolidTex(pill, "BACKGROUND", 3, 0.078, 0.090, 0.118, 1.0)
+            pill.bg:SetAllPoints()
+            UI.CreatePixelBorder(pill, 1, 1, 1, 0.16, 4)
+            pill.thumb = UI.SolidTex(pill, "OVERLAY", 5, 1, 1, 1, 0.96)
+            pill.thumb:SetSize(10, 10)
+            pill.thumb:SetPoint("RIGHT", pill, "RIGHT", -2, 0)
+            mc.pill = pill
 
-        if IsModActive("DynamicFPS") then
-            local selectedTier = ( _G.DynamicFPSDB and _G.DynamicFPSDB.activePresets and _G.DynamicFPSDB.activePresets.RAID ) or "COMPETITIVE"
-            local function ApplyTierToAllCombatZones(tierKey, card)
-                if _G.DynamicFPS and _G.DynamicFPS.ApplyStarterPresetToZone then
-                    for _, zk in ipairs({ "CITIES", "DELVES", "DUNGEONS", "RAID", "PVP" }) do
-                        pcall(_G.DynamicFPS.ApplyStarterPresetToZone, zk, tierKey)
+            local coreBadge = mc:CreateFontString(nil, "OVERLAY")
+            coreBadge:SetPoint("RIGHT", mc, "RIGHT", -10, 0)
+            UI.SetFont(coreBadge, 9.5, "", UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1)
+            coreBadge:SetText("Core")
+            coreBadge:Hide()
+            mc.coreBadge = coreBadge
+
+            local rightAnchor = (addonKey == "DynamicLoad") and coreBadge or pill
+            local tFS = mc:CreateFontString(nil, "OVERLAY")
+            tFS:SetPoint("TOPLEFT", ico, "TOPRIGHT", 8, 5)
+            tFS:SetPoint("RIGHT", rightAnchor, "LEFT", -8, 0)
+            tFS:SetJustifyH("LEFT")
+            tFS:SetWordWrap(false)
+            UI.SetFont(tFS, 11, "", 1, 1, 1, 0.98)
+            tFS:SetText(UI.FormatTwoToneBrand(mInfo.title or addonKey))
+            mc.tFS = tFS
+
+            local sFS = mc:CreateFontString(nil, "OVERLAY")
+            sFS:SetPoint("TOPLEFT", tFS, "BOTTOMLEFT", 0, -2)
+            sFS:SetPoint("RIGHT", rightAnchor, "LEFT", -8, 0)
+            sFS:SetJustifyH("LEFT")
+            sFS:SetWordWrap(false)
+            UI.SetFont(sFS, 9.5, "", 0.62, 0.68, 0.76, 0.94)
+            sFS:SetText(mInfo.subtitle or "")
+            mc.sFS = sFS
+
+            if addonKey == "DynamicLoad" then
+                pill:Hide()
+                coreBadge:Show()
+            else
+                mc:SetScript("OnClick", function()
+                    if addonTable.SetSuiteModuleEnabled then
+                        local curOn = IsModuleEnabledNow(mInfo)
+                        addonTable.SetSuiteModuleEnabled(addonKey, not curOn, true)
+                        if setupView.Refresh then setupView.Refresh() end
+                        if RefreshLeftRailVisuals then RefreshLeftRailVisuals() end
+                        if f.scrollChild then RefreshAddonTree(f.scrollChild) end
+                        UpdateStatusBar()
                     end
-                    if tierKey == "LOW" then
-                        pcall(_G.DynamicFPS.ApplyStarterPresetToZone, "OUTDOOR", "LOW")
-                    elseif tierKey == "BALANCED" then
-                        pcall(_G.DynamicFPS.ApplyStarterPresetToZone, "OUTDOOR", "BALANCED")
-                    else
-                        pcall(_G.DynamicFPS.ApplyStarterPresetToZone, "OUTDOOR", "ULTRA")
+                end)
+            end
+            modCards[idx] = mc
+        end
+
+        local function LayoutStepModules()
+            local w = stepModulesPane:GetWidth() or 720
+            if w < 120 then w = 720 end
+            local pGap = 8
+            local pbW = math.max(100, math.floor((w - (pGap * 2)) / 3))
+            for i = 1, 3 do
+                local pb = presetBtns[i]
+                pb:ClearAllPoints()
+                if i == 1 then
+                    pb:SetPoint("TOPLEFT", presetBar, "TOPLEFT", 0, 0)
+                    pb:SetWidth(pbW)
+                elseif i == 3 then
+                    pb:SetPoint("LEFT", presetBtns[2], "RIGHT", pGap, 0)
+                    pb:SetPoint("TOPRIGHT", presetBar, "TOPRIGHT", 0, 0)
+                else
+                    pb:SetPoint("LEFT", presetBtns[1], "RIGHT", pGap, 0)
+                    pb:SetWidth(pbW)
+                end
+            end
+
+            local gw = modGridScroll:GetWidth() or (w - 10)
+            if gw < 120 then gw = w - 10 end
+            modGridChild:SetWidth(gw)
+            local colGap = 8
+            local halfW = math.max(180, math.floor((gw - colGap) / 2))
+            local rowStep = 52
+            for idx, mc in ipairs(modCards) do
+                local r = math.floor((idx - 1) / 2)
+                local c = (idx - 1) % 2
+                mc:ClearAllPoints()
+                mc:SetHeight(46)
+                if c == 0 then
+                    mc:SetPoint("TOPLEFT", modGridChild, "TOPLEFT", 0, -(r * rowStep))
+                    mc:SetWidth(halfW)
+                else
+                    mc:SetPoint("TOPLEFT", modCards[idx - 1], "TOPRIGHT", colGap, 0)
+                    mc:SetPoint("TOPRIGHT", modGridChild, "TOPRIGHT", 0, -(r * rowStep))
+                end
+            end
+            local totalRows = math.ceil(#modCards / 2)
+            local totalH = math.max(46, (totalRows * rowStep) - 6)
+            modGridChild:SetHeight(totalH)
+
+            local vh = modGridScroll:GetHeight() or 250
+            local maxS = math.max(0, totalH - vh)
+            if maxS <= 2 then
+                modGridTrack:Hide()
+                modGridScroll:SetVerticalScroll(0)
+            else
+                modGridTrack:Show()
+                local th = math.max(24, math.floor((vh / totalH) * vh + 0.5))
+                modGridThumb:SetHeight(th)
+                local cur = math.min(maxS, modGridScroll:GetVerticalScroll() or 0)
+                local yOff = -math.floor((cur / maxS) * math.max(1, vh - th))
+                modGridThumb:ClearAllPoints()
+                modGridThumb:SetPoint("TOP", modGridTrack, "TOP", 0, yOff)
+            end
+        end
+
+        modGridScroll:SetScript("OnMouseWheel", function(_, delta)
+            local vh = modGridScroll:GetHeight() or 250
+            local maxS = math.max(0, (modGridChild:GetHeight() or 1) - vh)
+            if maxS <= 2 then return end
+            local cur = modGridScroll:GetVerticalScroll() or 0
+            modGridScroll:SetVerticalScroll(math.max(0, math.min(maxS, cur - (delta * 38))))
+            LayoutStepModules()
+        end)
+
+        stepModulesPane:SetScript("OnSizeChanged", function()
+            if stepModulesPane:IsShown() then
+                LayoutStepModules()
+            end
+        end)
+
+        function stepModulesPane.Refresh()
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            local accentCol = { r = ar, g = ag, b = ab }
+            LayoutStepModules()
+
+            for _, pb in ipairs(presetBtns) do
+                local matches = true
+                for _, mInfo in ipairs(modList) do
+                    local addonKey = mInfo.addonName or mInfo.name or mInfo.key
+                    if addonKey ~= "DynamicLoad" then
+                        local wantOn = (pb.pDef.enabled[addonKey] == true)
+                        if IsModuleEnabledNow(mInfo) ~= wantOn then
+                            matches = false
+                            break
+                        end
                     end
                 end
-                selectedTier = tierKey
-                setupView.Refresh()
+                pb:SetSelected(matches, accentCol)
             end
-            table.insert(steps, {
-                key = "fps",
-                pill = (#steps + 1) .. ". FPS",
-                title = "DYNAMICFPS - PICK YOUR PC HARDWARE TIER (INSTANT GRAPHICS SWITCHING)",
-                desc = "Click your PC tier below to pre-configure all 6 Zone Graphics tabs. Boss ground swirlies and projected textures are 100% hard-locked ON.",
-                actionLabel = "Open DynamicFPS (/dfps)",
-                onAction = function() addonTable.OpenPeerModule("DynamicFPS") end,
-                choices = {
-                    {
-                        title = "Competitive Raid & Mythic+ FPS",
-                        badge = (selectedTier == "COMPETITIVE") and "Active Tier" or "Most Popular",
-                        isSelected = function() return selectedTier == "COMPETITIVE" end,
-                        desc = "Maximizes combat frame rates in Dungeons, Cities & Raids (Low Shadows, Essential Spell Visuals, Zero Compute) while keeping Outdoor Ultra.",
-                        onClick = function(card) ApplyTierToAllCombatZones("COMPETITIVE", card) end,
-                    },
-                    {
-                        title = "Low-End PC / Laptop Saver",
-                        badge = (selectedTier == "LOW") and "Active Tier" or "Click to Apply",
-                        isSelected = function() return selectedTier == "LOW" end,
-                        desc = "Protects Outdoor, Capital Cities & Raids from lag spikes by lowering view distance, ground clutter, and shadows everywhere.",
-                        onClick = function(card) ApplyTierToAllCombatZones("LOW", card) end,
-                    },
-                    {
-                        title = "Balanced Visuals & Smooth FPS",
-                        badge = (selectedTier == "BALANCED") and "Active Tier" or "Click to Apply",
-                        isSelected = function() return selectedTier == "BALANCED" end,
-                        desc = "Rich outdoor visuals with instant automatic graphics reductions when entering Raids, Mythic+, or busy cities.",
-                        onClick = function(card) ApplyTierToAllCombatZones("BALANCED", card) end,
-                    },
-                    {
-                        title = "High-End PC Ultra",
-                        badge = (selectedTier == "ULTRA") and "Active Tier" or "Click to Apply",
-                        isSelected = function() return selectedTier == "ULTRA" end,
-                        desc = "High visual quality across all zones while keeping your spell queue smooth and boss ground effects visible.",
-                        onClick = function(card) ApplyTierToAllCombatZones("ULTRA", card) end,
-                    },
-                },
-            })
-        end
 
-        if IsModActive("DynamicCursor") then
-            table.insert(steps, {
-                key = "cursor",
-                pill = (#steps + 1) .. ". Cursor",
-                title = "DYNAMICCURSOR - CURSOR RING, CROSSHAIR & TRAIL",
-                desc = "Keep track of your mouse cursor in raids and Mythic+ with a customisable Cursor Ring, radial GCD and Cast arcs, Character Crosshair, Find My Cursor locator, and zero-idle-CPU trail (/dcur).",
-                actionLabel = "Open DynamicCursor (/dcur)",
-                onAction = function() addonTable.OpenPeerModule("DynamicCursor") end,
-                summaryText = "|cFF38BDF8DynamicCursor Engine:|r\n" ..
-                    "- |cFF22C55ECursor Ring, GCD & Cast Arc:|r 5 crisp procedural ring styles with Midnight 12.1.5+ secret-safe radial GCD and Cast/Channel/Empower swipes.\n" ..
-                    "- |cFFF5B82ECrosshair, Locator & Trail:|r Optional Character Crosshair, Shake-to-Find / Modifier Key Locator, Pooled Trail, and Smart Cursor Tooltips.",
-                choices = {
-                    {
-                        title = "Apply Clean Raid Preset",
-                        badge = "Recommended",
-                        isSelected = function()
-                            return _G.DynamicCursorDB and _G.DynamicCursorDB.ringEnabled == true
-                        end,
-                        desc = "Enables the Crisp Cursor Ring with inner GCD swipe and outer Cast Arc tuned for raid and Mythic+ visibility.",
-                        onClick = function(card)
-                            if _G.DynamicCursor and type(_G.DynamicCursor.ApplyPreset) == "function" then
-                                pcall(_G.DynamicCursor.ApplyPreset, _G.DynamicCursor, "CLEAN_RAID")
-                            elseif _G.DynamicCursorDB then
-                                _G.DynamicCursorDB.ringEnabled = true
-                            end
-                            card.badge:SetText("Clean Raid Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                    {
-                        title = "Keep Off (Configure Later)",
-                        badge = "Optional",
-                        isSelected = function()
-                            return (not _G.DynamicCursorDB) or _G.DynamicCursorDB.ringEnabled ~= true
-                        end,
-                        desc = "Leaves all cursor overlays off until you enable them or pick a preset in /dcur.",
-                        onClick = function(card)
-                            if _G.DynamicCursorDB then
-                                _G.DynamicCursorDB.ringEnabled = false
-                                _G.DynamicCursorDB.crosshairEnabled = false
-                                _G.DynamicCursorDB.trailEnabled = false
-                            end
-                            if _G.DynamicCursor and type(_G.DynamicCursor.SyncAllEngines) == "function" then
-                                pcall(_G.DynamicCursor.SyncAllEngines, _G.DynamicCursor)
-                            end
-                            card.badge:SetText("Kept Off")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                },
-            })
+            for _, mc in ipairs(modCards) do
+                local isOn = IsModuleEnabledNow(mc.mInfo)
+                mc:SetAlpha(isOn and 1.0 or 0.52)
+                if isOn then
+                    mc.bg:SetColorTexture(0.065, 0.078, 0.106, 0.94)
+                    mc.dsBorder:SetColor(ar, ag, ab, 0.40)
+                    mc.ico:SetVertexColor(ar, ag, ab, 1.0)
+                    mc.pill.bg:SetColorTexture(ar, ag, ab, 0.68)
+                    mc.pill.dsBorder:SetColor(ar, ag, ab, 0.95)
+                    mc.pill.thumb:ClearAllPoints()
+                    mc.pill.thumb:SetPoint("RIGHT", mc.pill, "RIGHT", -2, 0)
+                    mc.pill.thumb:SetColorTexture(1, 1, 1, 0.98)
+                else
+                    mc.bg:SetColorTexture(0.045, 0.052, 0.070, 0.90)
+                    mc.dsBorder:SetColor(0.145, 0.165, 0.212, 0.85)
+                    mc.ico:SetVertexColor(0.55, 0.60, 0.68, 0.85)
+                    mc.pill.bg:SetColorTexture(0.078, 0.090, 0.118, 1.0)
+                    mc.pill.dsBorder:SetColor(1, 1, 1, 0.14)
+                    mc.pill.thumb:ClearAllPoints()
+                    mc.pill.thumb:SetPoint("LEFT", mc.pill, "LEFT", 2, 0)
+                    mc.pill.thumb:SetColorTexture(0.45, 0.50, 0.58, 0.85)
+                end
+            end
         end
-
-        if IsModActive("DynamicGroup") then
-            table.insert(steps, {
-                key = "group",
-                pill = (#steps + 1) .. ". Group",
-                title = "DYNAMICGROUP - LFG REGION FILTER, LIVE ROSTER & 1-CLICK SIGN-UP",
-                desc = "Upgrades Blizzard's Premade Groups window in-place with Datacentre Region badges, Leader M+ Score, 5-slot class role dots, and 1-Click Sign-Up.",
-                actionLabel = "Open DynamicGroup (/dgroup)",
-                onAction = function() addonTable.OpenPeerModule("DynamicGroup") end,
-                summaryText = "|cFF38BDF8DynamicGroup Premade LFG & Party Engine:|r\n" ..
-                    "- |cFF22C55EDatacentre Region Filtering:|r Filter Premade LFG groups by OCE, US-West, US-Central, US-East, Latin America, and Brazil.\n" ..
-                    "- |cFFF5B82EWhisper Keyword & Friend/Guild Auto-Invite:|r Instant party invites via custom whisper keywords plus Queue Protection Shield.",
-                choices = {
-                    {
-                        title = "Upgrade Blizzard Premade Groups In-Place",
-                        badge = "Active",
-                        isSelected = function() return (not _G.DynamicGroupDB) or (_G.DynamicGroupDB.lfgFilterEnabled ~= false) end,
-                        desc = "Adds Region tags ([OCE], [US-W], [US-C], [US-E], [LATAM], [BR]), Leader IO, Lust/CR badges, and 5-slot role pills inside LFG.",
-                        onClick = function(card)
-                            if _G.DynamicGroupDB then
-                                _G.DynamicGroupDB.lfgFilterEnabled = true
-                                _G.DynamicGroupDB.overlayMode = "FULL"
-                            end
-                            card.badge:SetText("LFG Upgrade Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                    {
-                        title = "Enable 1-Click Sign-Up & Auto-Role",
-                        badge = "Active",
-                        isSelected = function() return (not _G.DynamicGroupDB) or (_G.DynamicGroupDB.oneClickSignUp ~= false) end,
-                        desc = "Automatically selects your active specialisation role, pre-fills your note, and signs up in 1 click (hold Shift/Alt to customise).",
-                        onClick = function(card)
-                            if _G.DynamicGroupDB then
-                                _G.DynamicGroupDB.oneClickSignUp = true
-                                _G.DynamicGroupDB.autoSelectRole = true
-                            end
-                            card.badge:SetText("1-Click Sign-Up Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                },
-            })
-        end
-
-        if IsModActive("DynamicBags") then
-            table.insert(steps, {
-                key = "bags",
-                pill = (#steps + 1) .. ". Bags",
-                title = "DYNAMICBAGS - VIRTUAL CATEGORIES & ALT VAULT",
-                desc = "Zero-lag virtual category sorting, alt vault remote viewing, and native Blizzard bag replacement (/dbag).",
-                actionLabel = "Open DynamicBags (/dbag)",
-                onAction = function() addonTable.OpenPeerModule("DynamicBags") end,
-                summaryText = "|cFF38BDF8DynamicBags Zero-Lag Virtual Sorting Engine:|r\n" ..
-                    "- |cFF22C55EVirtual Category Sorting:|r Pre-computes layout in memory so opening bags never triggers a server sort.\n" ..
-                    "- |cFFF5B82EBuilt-In Alt Vault:|r Remote read-only viewing of alts & Warband Bank + aggregated tooltip item counts.",
-                choices = {
-                    {
-                        title = "Mythic+ & Raid Ready Preset",
-                        badge = "Recommended",
-                        isSelected = function()
-                            return _G.DynamicBagsDB and (_G.DynamicBagsDB.preset == "MYTHIC" or _G.DynamicBagsDB.replaceBlizzardBags ~= false)
-                        end,
-                        desc = "Enables virtual categories (Keystones, Consumables, Gear Sets, BoE/WUE, Junk) and replaces default Blizzard bags on 'B'.",
-                        onClick = function(card)
-                            if _G.DynamicBags and _G.DynamicBags.U and _G.DynamicBags.U.ApplyPreset then
-                                pcall(_G.DynamicBags.U.ApplyPreset, "MYTHIC")
-                            end
-                            card.badge:SetText("Preset Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                    {
-                        title = "Enable All Auto-Open Triggers",
-                        badge = "Active",
-                        isSelected = function()
-                            return _G.DynamicBagsDB and _G.DynamicBagsDB.autoOpen and _G.DynamicBagsDB.autoOpen.bank == true
-                        end,
-                        desc = "Opens DynamicBags automatically when visiting Bankers, Vendors, Mailboxes, Item Upgrade, and Catalysts.",
-                        onClick = function(card)
-                            if _G.DynamicBagsDB and _G.DynamicBagsDB.autoOpen then
-                                for k in pairs(_G.DynamicBagsDB.autoOpen) do
-                                    _G.DynamicBagsDB.autoOpen[k] = true
-                                end
-                            end
-                            card.badge:SetText("Triggers Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                },
-            })
-        end
-
-        if IsModActive("DynamicChat") then
-            table.insert(steps, {
-                key = "chat",
-                pill = (#steps + 1) .. ". Chat",
-                title = "DYNAMICCHAT - TARGET WHISPER (/WW), CHANNEL TAGS & GPU BUFFER",
-                desc = "Instant target whisper (/ww), combat whisper protection, compact [P]/[R]/[G] channel tags, and chat history cap (/dchat).",
-                actionLabel = "Open DynamicChat (/dchat)",
-                onAction = function() addonTable.OpenPeerModule("DynamicChat") end,
-                summaryText = "|cFF38BDF8DynamicChat Engine:|r\n" ..
-                    "- |cFF22C55ESignature /ww Target Whisper:|r Converts '/ww ' in the chat box into a direct whisper to your friendly player target.\n" ..
-                    "- |cFFF5B82ECombat Whisper Rescue & Memory Cap:|r Rescues dropped combat whispers, shortens [P]/[R]/[G]/[I] tags, and caps chat history at 250 lines.",
-                choices = {
-                    {
-                        title = "Enable All Chat QoL & GPU Buffer Optimizations",
-                        badge = "Recommended",
-                        isSelected = function()
-                            return not _G.DynamicChatDB or (_G.DynamicChatDB.enableTargetWhisper ~= false and _G.DynamicChatDB.shortChannelNames ~= false)
-                        end,
-                        desc = "Enables /ww Target Whisper, Combat Whisper Protection, [P]/[R]/[G] compact channel tags, and the 250-line GPU buffer cap.",
-                        onClick = function(card)
-                            if _G.DynamicChat and _G.DynamicChat.ApplyAllEngineSettings then
-                                if _G.DynamicChatDB then
-                                    _G.DynamicChatDB.enableTargetWhisper = true
-                                    _G.DynamicChatDB.protectCombatWhispers = true
-                                    _G.DynamicChatDB.enableGPUBufferCap = true
-                                    _G.DynamicChatDB.maxChatLines = 250
-                                    _G.DynamicChatDB.shortChannelNames = true
-                                    _G.DynamicChatDB.arrowHistoryNoAlt = true
-                                    _G.DynamicChatDB.fastChatScroll = true
-                                    _G.DynamicChatDB.clickableURLs = true
-                                end
-                                pcall(_G.DynamicChat.ApplyAllEngineSettings, _G.DynamicChat)
-                            end
-                            card.badge:SetText("Chat QoL Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                    {
-                        title = "Reset Whisper After Sending (Non-Sticky)",
-                        badge = "Active",
-                        isSelected = function()
-                            return not _G.DynamicChatDB or _G.DynamicChatDB.stickyWhisper == false
-                        end,
-                        desc = "Returns your typing box to Party, Raid, or Guild after sending a whisper so you never accidentally whisper callouts.",
-                        onClick = function(card)
-                            if _G.DynamicChatDB then _G.DynamicChatDB.stickyWhisper = false end
-                            if _G.DynamicChat and _G.DynamicChat.ApplyStickyChannels then
-                                pcall(_G.DynamicChat.ApplyStickyChannels, _G.DynamicChat)
-                            end
-                            card.badge:SetText("Non-Sticky Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                },
-            })
-        end
-
-        if IsModActive("DynamicMail") then
-            table.insert(steps, {
-                key = "mail",
-                pill = (#steps + 1) .. ". Mail",
-                title = "DYNAMICMAIL - INBOX AUTOMATION, ALT PICKER & EXPRESS ATTACH",
-                desc = "1-click Open All, AH Gold, and Items Only collection with bag-reserve protection plus an Obsidian Alt Vault recipient picker (/dmail).",
-                actionLabel = "Open DynamicMail (/dmail)",
-                onAction = function() addonTable.OpenPeerModule("DynamicMail") end,
-                summaryText = "|cFF38BDF8DynamicMail Automation:|r\n" ..
-                    "- |cFF22C55ESmart Inbox Bar:|r Open All, AH Gold, and Items Only buttons below MailFrame with strict COD & free bag-slot reserve guards.\n" ..
-                    "- |cFFF5B82EAlt Vault Picker & Express Attach:|r Syncs alts & gold from DynamicBags Vault and lets you Alt + Left-Click bag items into Send Mail.",
-                choices = {
-                    {
-                        title = "Enable Inbox Bar, Alt Picker & Express Attach",
-                        badge = "Recommended",
-                        isSelected = function()
-                            return (not _G.DynamicMailDB) or (_G.DynamicMailDB.mailboxBarEnabled ~= false and _G.DynamicMailDB.recipientPanelEnabled ~= false and _G.DynamicMailDB.altClickAttach ~= false)
-                        end,
-                        desc = "Enables Open All / AH Gold / Items Only mailbox buttons, the 4-tab Recipient Picker, DynamicBags Vault sync, and Alt + Left-Click attach.",
-                        onClick = function(card)
-                            if _G.DynamicMailDB then
-                                _G.DynamicMailDB.enabled = true
-                                _G.DynamicMailDB.mailboxBarEnabled = true
-                                _G.DynamicMailDB.recipientPanelEnabled = true
-                                _G.DynamicMailDB.syncDynamicBagsVault = true
-                                _G.DynamicMailDB.altClickAttach = true
-                            end
-                            card.badge:SetText("Mail Tools Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                    {
-                        title = "Reserve 2 Free Bag Slots During Open All",
-                        badge = "Safe Mode",
-                        isSelected = function()
-                            return _G.DynamicMailDB and (_G.DynamicMailDB.keepFreeBagSlots or 1) >= 2
-                        end,
-                        desc = "Pauses item looting once 2 bag slots remain free while continuing to collect pure Auction House gold payouts.",
-                        onClick = function(card)
-                            if _G.DynamicMailDB then
-                                _G.DynamicMailDB.keepFreeBagSlots = 2
-                                _G.DynamicMailDB.collectGoldWhenBagsFull = true
-                            end
-                            card.badge:SetText("2-Slot Reserve Set!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                },
-            })
-        end
-
-        if IsModActive("DynamicVault") then
-            table.insert(steps, {
-                key = "vault",
-                pill = (#steps + 1) .. ". Vault",
-                title = "DYNAMICVAULT - GREAT VAULT MATRIX, CRESTS & WEEKLIES",
-                desc = "Track Raid, Mythic+, and Delve Great Vault slots, Restored Coffer Keys, Catalyst charges, Seasonal Crests, and Weekly Checklists across all alts (/dv).",
-                actionLabel = "Open DynamicVault (/dv)",
-                onAction = function() addonTable.OpenPeerModule("DynamicVault") end,
-                summaryText = "|cFF38BDF8DynamicVault Account Tracker:|r\n" ..
-                    "- |cFF22C55EGreat Vault Top Dock & Matrix:|r Attaches flush above Blizzard's Great Vault window and tracks 3-slot Vault progress, Raid lockouts, and owned Keystones.\n" ..
-                    "- |cFFF5B82EBountiful Delves & Checklists:|r Scans today's active Bountiful Delves, weekly currency caps, and auto-resetting character or account chores.",
-                choices = {
-                    {
-                        title = "Enable Great Vault Dock & Login Reward Alerts",
-                        badge = "Recommended",
-                        isSelected = function()
-                            return (not _G.DynamicVaultDB) or (_G.DynamicVaultDB.dockOnGreatVault ~= false and _G.DynamicVaultDB.loginVaultReminder ~= false)
-                        end,
-                        desc = "Automatically docks your Account Vault bar onto Blizzard's Great Vault, syncs alt snapshots, and reminds you when an unclaimed Vault reward is ready.",
-                        onClick = function(card)
-                            if _G.DynamicVaultDB then
-                                _G.DynamicVaultDB.enabled = true
-                                _G.DynamicVaultDB.dockOnGreatVault = true
-                                _G.DynamicVaultDB.loginVaultReminder = true
-                                _G.DynamicVaultDB.syncDynamicBags = true
-                            end
-                            if _G.DynamicVault and type(_G.DynamicVault.RefreshOverlays) == "function" then
-                                pcall(_G.DynamicVault.RefreshOverlays, _G.DynamicVault)
-                            end
-                            card.badge:SetText("Vault Dock Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                    {
-                        title = "Show Vault Capsule on Prep Bar & Bountiful Delves",
-                        badge = "Live Tracker",
-                        isSelected = function()
-                            local segOk = (not _G.DynamicPrepDB) or (not _G.DynamicPrepDB.segments) or (_G.DynamicPrepDB.segments.vault ~= false)
-                            local delveOk = (not _G.DynamicVaultDB) or (_G.DynamicVaultDB.showBountifulDelves ~= false and _G.DynamicVaultDB.showCurrencies ~= false)
-                            return segOk and delveOk
-                        end,
-                        desc = "Displays live Great Vault slot progress on DynamicPrep's Top Info Bar alongside today's Bountiful Delves, Coffer Keys, and Keystone details.",
-                        onClick = function(card)
-                            if _G.DynamicVaultDB then
-                                _G.DynamicVaultDB.showBountifulDelves = true
-                                _G.DynamicVaultDB.showCurrencies = true
-                                _G.DynamicVaultDB.showKeystones = true
-                            end
-                            if _G.DynamicPrepDB and type(_G.DynamicPrepDB.segments) == "table" then
-                                _G.DynamicPrepDB.segments.vault = true
-                            end
-                            if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
-                                pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
-                            end
-                            if _G.DynamicVault and type(_G.DynamicVault.RefreshOverlays) == "function" then
-                                pcall(_G.DynamicVault.RefreshOverlays, _G.DynamicVault)
-                            end
-                            card.badge:SetText("Vault Telemetry On!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                },
-            })
-        end
-
-        if IsModActive("DynamicDialogue") then
-            table.insert(steps, {
-                key = "dialogue",
-                pill = (#steps + 1) .. ". Dialogue",
-                title = "DYNAMICDIALOGUE - OBSIDIAN QUEST & GOSSIP READER",
-                desc = "Present Quest and NPC Gossip frames in a clean Obsidian reader with 1-9 option hotkeys, Spacebar turn-ins, and clear reward cards (/dd).",
-                actionLabel = "Open DynamicDialogue (/dd)",
-                onAction = function() addonTable.OpenPeerModule("DynamicDialogue") end,
-                summaryText = "|cFF38BDF8DynamicDialogue Reader:|r\n" ..
-                    "- |cFF22C55EClean Quest & Gossip Cards:|r Displays quest text, reward tooltips, and shared confirmation prompts in high-contrast Obsidian typography.\n" ..
-                    "- |cFFF5B82EFast Keyboard Flow:|r Pick gossip options with keys 1-9, accept or turn in quests with Space, or hold Shift to view Blizzard's native frame.",
-                choices = {
-                    {
-                        title = "Enable Obsidian Quest & Gossip Reader",
-                        badge = "Recommended",
-                        isSelected = function()
-                            return (not _G.DynamicDialogueDB) or (_G.DynamicDialogueDB.replaceQuests ~= false and _G.DynamicDialogueDB.replaceGossip ~= false)
-                        end,
-                        desc = "Replaces standard Blizzard Quest and NPC Gossip panels with DynamicDialogue's readable Obsidian reader while respecting other dialogue addons.",
-                        onClick = function(card)
-                            if _G.DynamicDialogueDB then
-                                _G.DynamicDialogueDB.enabled = true
-                                _G.DynamicDialogueDB.replaceQuests = true
-                                _G.DynamicDialogueDB.replaceGossip = true
-                            end
-                            if _G.DynamicDialogue and type(_G.DynamicDialogue.ApplyTheme) == "function" then
-                                pcall(_G.DynamicDialogue.ApplyTheme, _G.DynamicDialogue)
-                            end
-                            card.badge:SetText("Reader Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                    {
-                        title = "Enable 1-9 Option Hotkeys & Spacebar Turn-In",
-                        badge = "Fast Turn-In",
-                        isSelected = function()
-                            return (not _G.DynamicDialogueDB) or (_G.DynamicDialogueDB.enableNumberHotkeys ~= false and _G.DynamicDialogueDB.enableSpaceConfirm ~= false)
-                        end,
-                        desc = "Lets you press keys 1-9 to select NPC options and Spacebar to accept, continue, or complete quests out of combat (Shift bypasses).",
-                        onClick = function(card)
-                            if _G.DynamicDialogueDB then
-                                _G.DynamicDialogueDB.enableNumberHotkeys = true
-                                _G.DynamicDialogueDB.enableSpaceConfirm = true
-                                _G.DynamicDialogueDB.shiftBypassNative = true
-                            end
-                            if _G.DynamicDialogue and type(_G.DynamicDialogue.ApplyTheme) == "function" then
-                                pcall(_G.DynamicDialogue.ApplyTheme, _G.DynamicDialogue)
-                            end
-                            card.badge:SetText("Hotkeys Active!")
-                            StyleChoiceCard(card, true)
-                        end,
-                    },
-                },
-            })
-        end
-
-        return steps
     end
+
+    local QUICK_START_STEPS = {
+        {
+            key = "style",
+            pill = "1. Style",
+            title = "CHOOSE YOUR OBSIDIAN THEME, ACCENT & FONT",
+            desc = "Pick a dark surface palette, accent colour, and font family below. Changes apply across the entire suite straight away.",
+        },
+        {
+            key = "conflicts",
+            pill = "2. Conflicts",
+            title = "CONFLICT SCANNER & AUTO-YIELD DIAGNOSTIC",
+            desc = "DynamicSuite scans for overlapping addons and automatically yields QoL sub-features or resolves full overlaps in 1 click.",
+        },
+        {
+            key = "modules",
+            pill = "3. Modules",
+            title = "PICK A STARTER PRESET OR TOGGLE INDIVIDUAL MODULES",
+            desc = "Start with all 13 modules, pick a focused preset, or flip individual switches below. You can change these anytime in the left rail.",
+        },
+    }
 
     local function LayoutStepPills(steps)
         local w = stepNavBar:GetWidth() or 744
         if w < 100 then w = 744 end
         local count = #steps
         if count <= 0 then return end
-        local outerPad = (count >= 12) and 3 or 4
-        local gap = (count >= 12) and 3 or 4
-        local availW = math.max(100, w - (outerPad * 2) - ((count - 1) * gap))
-        local fontSz = (count >= 11) and 9.5 or 10
+        local outerPad = 4
+        local gap = 6
+        local availW = math.max(120, w - (outerPad * 2) - ((count - 1) * gap))
+        local eachW = math.max(60, math.floor(availW / count))
         local ar, ag, ab = UI.GetActiveAccentColor()
         local accentCol = { r = ar, g = ag, b = ab }
 
-        local reqWidths = {}
-        local totalReq = 0
         for i = 1, count do
             local btn = EnsureStepPillBtn(i)
             local sDef = steps[i]
-            UI.SetFont(btn.label, fontSz, "", 1, 1, 1, 0.94)
+            UI.SetFont(btn.label, 11, "", 1, 1, 1, 0.96)
             btn.label:SetText(sDef.pill)
-            local ok, uw = pcall(function()
-                return (btn.label.GetUnboundedStringWidth and btn.label:GetUnboundedStringWidth()) or btn.label:GetStringWidth() or 0
-            end)
-            local textW = (ok and type(uw) == "number" and uw > 0) and uw or (#tostring(sDef.pill) * 5.2)
-            local minW = math.max(36, math.ceil(textW + 8))
-            reqWidths[i] = minW
-            totalReq = totalReq + minW
-        end
-
-        local extra = availW - totalReq
-        local widths = {}
-        if extra >= 0 then
-            local bonusEach = math.floor(extra / count)
-            for i = 1, count do
-                widths[i] = reqWidths[i] + bonusEach
-            end
-        else
-            local scale = availW / math.max(1, totalReq)
-            for i = 1, count do
-                widths[i] = math.max(32, math.floor(reqWidths[i] * scale))
-            end
-        end
-
-        for i = 1, count do
-            local btn = EnsureStepPillBtn(i)
             btn:ClearAllPoints()
             if i == 1 then
                 btn:SetPoint("LEFT", stepNavBar, "LEFT", outerPad, 0)
-                btn:SetWidth(widths[i])
+                btn:SetWidth(eachW)
             elseif i == count then
                 btn:SetPoint("LEFT", stepPillBtns[i - 1], "RIGHT", gap, 0)
                 btn:SetPoint("RIGHT", stepNavBar, "RIGHT", -outerPad, 0)
             else
                 btn:SetPoint("LEFT", stepPillBtns[i - 1], "RIGHT", gap, 0)
-                btn:SetWidth(widths[i])
+                btn:SetWidth(eachW)
             end
             btn:SetSelected(i == currentGuidedIdx, accentCol)
             btn:SetScript("OnClick", function()
@@ -11800,7 +11672,7 @@ function addonTable.CreateMainConfigUI()
     end)
 
     setupView.Refresh = function()
-        local steps = BuildActiveGuidedSteps()
+        local steps = QUICK_START_STEPS
         if currentGuidedIdx > #steps then currentGuidedIdx = 1 end
         if currentGuidedIdx < 1 then currentGuidedIdx = 1 end
         local step = steps[currentGuidedIdx]
@@ -11813,18 +11685,21 @@ function addonTable.CreateMainConfigUI()
         wizHdrTitle:SetTextColor(ar, ag, ab, 1)
         wizHdrTitle:SetText(string.format("STEP %d OF %d - %s", currentGuidedIdx, #steps, step.title))
         wizDesc:SetText(step.desc or "")
+        wizOpenModBtn:Hide()
 
-        wizOpenModBtn.label:SetText(step.actionLabel or "Open Module")
-        local lw = wizOpenModBtn.label:GetStringWidth() or 120
-        wizOpenModBtn:SetWidth(math.max(148, math.ceil(lw + 24)))
-        wizOpenModBtn:SetScript("OnClick", function()
-            if step.onAction then step.onAction() end
-        end)
-
-        local enabledCount = math.max(1, #steps - 1)
-        wizFooterInfo:SetText(string.format("Tailored to your %d active module%s  *  Synced across alts", enabledCount, enabledCount == 1 and "" or "s"))
+        local activeModCount = 0
+        for _, mInfo in ipairs(addonTable.SUITE_MODULE_LIST or {}) do
+            local aKey = mInfo.addonName or mInfo.name or mInfo.key
+            if aKey == "DynamicLoad" or not (addonTable.IsSuiteModuleCurrentlyDisabled and addonTable.IsSuiteModuleCurrentlyDisabled(aKey)) then
+                activeModCount = activeModCount + 1
+            end
+        end
+        wizFooterInfo:SetText(string.format("%d of %d modules active  *  Synced across alts", activeModCount, #(addonTable.SUITE_MODULE_LIST or {})))
 
         if currentGuidedIdx > 1 then
+            local prevStep = steps[currentGuidedIdx - 1]
+            wizPrevBtn.label:SetText(string.format("< Back: %s", prevStep.pill:gsub("^%d+%.%s*", "")))
+            wizPrevBtn:SetWidth(136)
             wizPrevBtn:Show()
             wizPrevBtn:SetScript("OnClick", function()
                 currentGuidedIdx = currentGuidedIdx - 1
@@ -11836,32 +11711,63 @@ function addonTable.CreateMainConfigUI()
 
         if currentGuidedIdx < #steps then
             local nextStep = steps[currentGuidedIdx + 1]
-            wizNextBtn.label:SetText(string.format("Next Step (%s) >", nextStep.pill:gsub("^%d+%.%s*", "")))
-            local nw = wizNextBtn.label:GetStringWidth() or 150
-            wizNextBtn:SetWidth(math.max(180, math.ceil(nw + 28)))
+            wizNextBtn.label:SetText(string.format("Next: %s >", nextStep.pill:gsub("^%d+%.%s*", "")))
+            local nw = wizNextBtn.label:GetStringWidth() or 140
+            wizNextBtn:SetWidth(math.max(168, math.ceil(nw + 28)))
             wizNextBtn:SetSelected(true, { r = 0.063, g = 0.725, b = 0.506 })
             wizNextBtn:SetScript("OnClick", function()
                 currentGuidedIdx = currentGuidedIdx + 1
                 setupView.Refresh()
             end)
         else
-            wizNextBtn.label:SetText("Finish Guided Setup (Save)")
+            wizNextBtn.label:SetText("Finish Quick Start (Save)")
             wizNextBtn:SetWidth(204)
             wizNextBtn:SetSelected(true, { r = 0.063, g = 0.725, b = 0.506 })
             wizNextBtn:SetScript("OnClick", function()
                 gTbl.guidedSetupDone = true
+                if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+                    _G.DynamicSuiteDB.global.guidedSetupDone = true
+                end
                 addonTable.OpenWorkspaceView("DYNAMICLOAD")
             end)
         end
 
-        if step.key == "theme" then
-            if lastGuidedStepKey ~= "theme" then
+        if step.key == "style" then
+            lastGuidedStepKey = "style"
+            stepStylePane:Show()
+            step1Pane:Hide()
+            stepModulesPane:Hide()
+            conflictScrollFrame:SetVerticalScroll(0)
+            conflictScrollFrame:Hide()
+            conflictScrollTrack:Hide()
+            simToggleBtn:Hide()
+            resolveAllBtn:Hide()
+            wizHdrTitle:ClearAllPoints()
+            wizHdrTitle:SetPoint("TOPLEFT", wizCard, "TOPLEFT", 16, -14)
+            wizHdrTitle:SetPoint("RIGHT", wizCard, "RIGHT", -16, 0)
+            if stepStylePane.Refresh then stepStylePane.Refresh() end
+        elseif step.key == "modules" then
+            lastGuidedStepKey = "modules"
+            stepStylePane:Hide()
+            step1Pane:Hide()
+            stepModulesPane:Show()
+            conflictScrollFrame:SetVerticalScroll(0)
+            conflictScrollFrame:Hide()
+            conflictScrollTrack:Hide()
+            simToggleBtn:Hide()
+            resolveAllBtn:Hide()
+            wizHdrTitle:ClearAllPoints()
+            wizHdrTitle:SetPoint("TOPLEFT", wizCard, "TOPLEFT", 16, -14)
+            wizHdrTitle:SetPoint("RIGHT", wizCard, "RIGHT", -16, 0)
+            if stepModulesPane.Refresh then stepModulesPane.Refresh() end
+        else
+            if lastGuidedStepKey ~= "conflicts" then
                 conflictScrollFrame:SetVerticalScroll(0)
             end
-            lastGuidedStepKey = "theme"
+            lastGuidedStepKey = "conflicts"
+            stepStylePane:Hide()
             step1Pane:Show()
-            stepModPane:Hide()
-            wizOpenModBtn:Hide()
+            stepModulesPane:Hide()
             simToggleBtn:ClearAllPoints()
             simToggleBtn:SetPoint("TOPRIGHT", wizCard, "TOPRIGHT", -16, -11)
             simToggleBtn:Show()
@@ -11886,6 +11792,8 @@ function addonTable.CreateMainConfigUI()
             resolveAllBtn:ClearAllPoints()
             resolveAllBtn:SetPoint("RIGHT", simToggleBtn, "LEFT", -6, 0)
             resolveAllBtn:Show()
+            wizHdrTitle:ClearAllPoints()
+            wizHdrTitle:SetPoint("TOPLEFT", wizCard, "TOPLEFT", 16, -14)
             wizHdrTitle:SetPoint("RIGHT", resolveAllBtn, "LEFT", -10, 0)
 
             if #conflicts > 0 then
@@ -11996,6 +11904,7 @@ function addonTable.CreateMainConfigUI()
                         elseif cleanModName == "group" then cleanModName = "DynamicGroup"
                         elseif cleanModName == "vault" then cleanModName = "DynamicVault"
                         elseif cleanModName == "dialogue" then cleanModName = "DynamicDialogue"
+                        elseif cleanModName == "cursor" then cleanModName = "DynamicCursor"
                         elseif cleanModName == "studio" or cleanModName == "STUDIO" or cleanModName == "DynamicSuite" or cleanModName == "DesktopWindows" then cleanModName = "DynamicSuite (Suite Studio)" end
 
                         local activeChoice = item.resolvedAction
@@ -12167,117 +12076,6 @@ function addonTable.CreateMainConfigUI()
                 end
                 conflictScrollChild:SetHeight(math.max(1, (#conflicts * 74) - 6))
                 UpdateConflictScrollbar()
-            end
-
-            -- Populate 3 Theme Choice Cards at bottom of Step 1 (AUTO_CLASS is default per DESIGN_SYSTEM.md)
-            local curAccent = gTbl.accentKey or "AUTO_CLASS"
-            local tDefs = {
-                {
-                    title = "Auto-Match Class",
-                    badge = (curAccent == "AUTO_CLASS") and "Selected (Default)" or "Click to Equip",
-                    isSel = (curAccent == "AUTO_CLASS"),
-                    desc = "Automatically tints borders, active tabs, and HUD accents to match whichever class you log into.",
-                    onClick = function()
-                        gTbl.accentKey = "AUTO_CLASS"
-                        gTbl.customAccent = nil
-                        addonTable.ApplySuiteThemeAndGeometry()
-                        setupView.Refresh()
-                    end,
-                },
-                {
-                    title = "Obsidian Slate",
-                    badge = (curAccent == "OBSIDIAN_SLATE") and "Selected (Slate)" or "Click to Equip",
-                    isSel = (curAccent == "OBSIDIAN_SLATE"),
-                    desc = "Signature dark tactical slate (#CBD5E1) with crisp silver highlights across all windows and HUD bars.",
-                    onClick = function()
-                        gTbl.accentKey = "OBSIDIAN_SLATE"
-                        gTbl.customAccent = nil
-                        addonTable.ApplySuiteThemeAndGeometry()
-                        setupView.Refresh()
-                    end,
-                },
-                {
-                    title = "Suite Studio (Theme, Fonts & Windows)",
-                    badge = (curAccent ~= "OBSIDIAN_SLATE" and curAccent ~= "AUTO_CLASS") and "Custom Active" or "Open Studio ->",
-                    isSel = (curAccent ~= "OBSIDIAN_SLATE" and curAccent ~= "AUTO_CLASS"),
-                    desc = "Open Suite Studio to pick from 17 swatches, custom hex colours, 26 font families, and Blizzard Desktop Window settings.",
-                    onClick = function()
-                        addonTable.OpenWorkspaceView("THEME_STUDIO")
-                    end,
-                },
-            }
-            for i = 1, 3 do
-                local tc = themeChoiceCards[i]
-                local td = tDefs[i]
-                tc.title:SetText(td.title)
-                tc.badge:SetText(td.badge)
-                tc.desc:SetText(td.desc)
-                StyleChoiceCard(tc, td.isSel)
-                tc:SetScript("OnClick", td.onClick)
-            end
-            if themeChoiceRow:GetWidth() and themeChoiceRow:GetWidth() > 100 then
-                themeChoiceRow:GetScript("OnSizeChanged")(themeChoiceRow, themeChoiceRow:GetWidth())
-            end
-        else
-            lastGuidedStepKey = step.key
-            conflictScrollFrame:SetVerticalScroll(0)
-            conflictScrollFrame:Hide()
-            conflictScrollTrack:Hide()
-            step1Pane:Hide()
-            stepModPane:Show()
-            simToggleBtn:Hide()
-            resolveAllBtn:Hide()
-            wizOpenModBtn:ClearAllPoints()
-            wizOpenModBtn:SetPoint("TOPRIGHT", wizCard, "TOPRIGHT", -16, -11)
-            wizOpenModBtn:Show()
-            wizHdrTitle:SetPoint("RIGHT", wizOpenModBtn, "LEFT", -10, 0)
-
-            if step.summaryText and step.summaryText ~= "" then
-                modSummaryBox:Show()
-                modSummaryBox.dsBorder:SetColor(ar, ag, ab, 0.45)
-                modSummaryText:SetText(step.summaryText)
-                modChoiceGrid:ClearAllPoints()
-                modChoiceGrid:SetPoint("TOPLEFT", modSummaryBox, "BOTTOMLEFT", 0, -12)
-                modChoiceGrid:SetPoint("BOTTOMRIGHT", stepModPane, "BOTTOMRIGHT", 0, 0)
-            else
-                modSummaryBox:Hide()
-                modChoiceGrid:ClearAllPoints()
-                modChoiceGrid:SetPoint("TOPLEFT", stepModPane, "TOPLEFT", 0, 0)
-                modChoiceGrid:SetPoint("BOTTOMRIGHT", stepModPane, "BOTTOMRIGHT", 0, 0)
-            end
-
-            local choices = step.choices or {}
-            stepModPane.activeNumCards = #choices
-            stepModPane.activeStepKey = step.key
-            LayoutModChoiceGrid(#choices, step.key)
-            for i, cDef in ipairs(choices) do
-                local mc = modChoiceCards[i]
-                if mc then
-                    local isSel = cDef.isSelected and cDef.isSelected() or false
-                    mc.title:SetText(cDef.title or "")
-                    mc.badge:SetText(cDef.badge or "")
-                    mc.desc:SetText(cDef.desc or "")
-                    StyleChoiceCard(mc, isSel)
-                    mc:SetScript("OnClick", function(self)
-                        if cDef.onClick then cDef.onClick(self) end
-                    end)
-                end
-            end
-            if step.key == "marker" then
-                if type(_G.DynamicMarker) == "table" then
-                    _G.DynamicMarker._refreshSuiteSetupKeys = function()
-                        RefreshMarkerFlareKeybinds()
-                        local c2 = modChoiceCards[2]
-                        local d2 = choices[2]
-                        if c2 and d2 and d2.isSelected then
-                            StyleChoiceCard(c2, d2.isSelected())
-                        end
-                    end
-                end
-                RefreshMarkerFlareKeybinds()
-                markerFlareKeybindBox:Show()
-            else
-                markerFlareKeybindBox:Hide()
             end
         end
     end
@@ -16977,12 +16775,18 @@ function addonTable.CreateMainConfigUI()
         -- 2. DynamicSuite Studio Views (Suite Studio, Changelog, Support, Guided Setup)
         if mKey == "STUDIO" or mKey == "studio" or mKey == "SETUP" or entry.viewKey == "THEME_STUDIO" or entry.viewKey == "DESKTOP_WINDOWS" or entry.viewKey == "SUITE_STUDIO_WINDOWS" then
             local vKey = entry.viewKey or (type(entry.tabIndex) == "string" and entry.tabIndex) or (mKey == "SETUP" and "GUIDED_SETUP" or "THEME_STUDIO")
-            addonTable.OpenWorkspaceView(vKey)
-            if f.SetSuiteStudioTab then
-                if tonumber(entry.tabIndex) == 2 or vKey == "DESKTOP_WINDOWS" or vKey == "SUITE_STUDIO_WINDOWS" then
-                    f.SetSuiteStudioTab(2)
-                elseif tonumber(entry.tabIndex) == 1 or vKey == "SUITE_STUDIO_THEME" then
-                    f.SetSuiteStudioTab(1)
+            if vKey == "GUIDED_SETUP" then
+                addonTable.OpenWorkspaceView("GUIDED_SETUP", tonumber(entry.tabIndex) or 1)
+            elseif vKey == "DYNAMICLOAD" then
+                addonTable.OpenWorkspaceView("DYNAMICLOAD")
+            else
+                addonTable.OpenWorkspaceView(vKey)
+                if f.SetSuiteStudioTab then
+                    if tonumber(entry.tabIndex) == 2 or vKey == "DESKTOP_WINDOWS" or vKey == "SUITE_STUDIO_WINDOWS" then
+                        f.SetSuiteStudioTab(2)
+                    elseif tonumber(entry.tabIndex) == 1 or vKey == "SUITE_STUDIO_THEME" then
+                        f.SetSuiteStudioTab(1)
+                    end
                 end
             end
             C_Timer.After(0.06, function()
@@ -17403,8 +17207,19 @@ function addonTable.CreateMainConfigUI()
         end
         UI.CloseAllPopups()
         local requestedStudioTab = nil
-        if tonumber(optionalTabIndex) == 1 or tonumber(optionalTabIndex) == 2 then
-            requestedStudioTab = tonumber(optionalTabIndex)
+        local requestedGuidedStep = nil
+        local optNum = tonumber(optionalTabIndex)
+        if optNum == 1 or optNum == 2 or optNum == 3 then
+            requestedGuidedStep = optNum
+            if optNum == 1 or optNum == 2 then
+                requestedStudioTab = optNum
+            end
+        elseif type(optionalTabIndex) == "string" then
+            local lowOpt = optionalTabIndex:lower()
+            if lowOpt == "style" then requestedGuidedStep = 1
+            elseif lowOpt == "conflicts" or lowOpt == "conflict" then requestedGuidedStep = 2
+            elseif lowOpt == "modules" or lowOpt == "presets" then requestedGuidedStep = 3
+            end
         end
         if viewKey == "DESKTOP_WINDOWS" or viewKey == "SUITE_STUDIO_WINDOWS" or viewKey == "WINDOWS" then
             viewKey = "THEME_STUDIO"
@@ -17531,8 +17346,12 @@ function addonTable.CreateMainConfigUI()
             if themeView.Refresh then
                 themeView.Refresh()
             end
-        elseif activeWorkspaceView == "GUIDED_SETUP" and setupView.Refresh then
-            setupView.Refresh()
+        elseif activeWorkspaceView == "GUIDED_SETUP" then
+            if requestedGuidedStep and addonTable.SelectGuidedSetupStep then
+                addonTable.SelectGuidedSetupStep(requestedGuidedStep)
+            elseif setupView.Refresh then
+                setupView.Refresh()
+            end
         elseif activeWorkspaceView == "CHANGELOG_VIEW" and changelogView.Refresh then
             changelogView.Refresh()
         elseif activeWorkspaceView == "SUPPORT_VIEW" and supportView.Refresh then
@@ -17545,6 +17364,7 @@ function addonTable.CreateMainConfigUI()
         end
 
         if f.UpdateResetButtonLabel then f.UpdateResetButtonLabel() end
+        if f.UpdateQuickGuideHeaderButton then f.UpdateQuickGuideHeaderButton() end
         if f.RefreshLeftRailLayout then
             f.RefreshLeftRailLayout()
         elseif RefreshLeftRailVisuals then
@@ -17700,6 +17520,9 @@ function addonTable.CreateMainConfigUI()
 
         if addonTable.RefreshFeatureSpotlightModalTheme then
             addonTable.RefreshFeatureSpotlightModalTheme()
+        end
+        if addonTable.RefreshQuickGuideModalTheme then
+            addonTable.RefreshQuickGuideModalTheme()
         end
 
         if f.activateReloadBtn then

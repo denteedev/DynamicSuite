@@ -2464,6 +2464,196 @@ function addonTable.ScheduleFeatureSpotlightCheck(delaySec)
 end
 end
 
+--------------------------------------------------------------------------------
+-- Shared Data-Driven Quick Guide Registry (? Modal Across All 13 Modules)
+--------------------------------------------------------------------------------
+do
+local ICON_DIR = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\"
+local MODULE_QUICK_GUIDES = {
+    load = {
+        key       = "load",
+        addonName = "DynamicLoad",
+        title     = "DynamicLoad",
+        icon      = ICON_DIR .. "icon_mod_load.tga",
+        slash     = "/dl, /dynamicload",
+        summary   = "Automatically switches addon profiles between Outdoor, Delves, Dungeons, Raid, and PvP.",
+        tips      = {
+            "Pin essential addons to Always and economy/collection addons to By Zone or Never.",
+            "Right-click the zone tabs or use /dl status to check which addons are staged for next reload.",
+            "New addons default safely to By Zone (Outdoor) so dungeons and raids stay lean.",
+        },
+    },
+    prep = {
+        key       = "prep",
+        addonName = "DynamicPrep",
+        title     = "DynamicPrep",
+        icon      = ICON_DIR .. "icon_mod_prep.tga",
+        slash     = "/dprep, /dp",
+        summary   = "Displays a live Top Info Bar for stats, Omni Folio, consumables, and clickable Raid Buffs.",
+        tips      = {
+            "Left-click the Folio capsule to open the Omnium Folio, or Right-click to pick your zone stat.",
+            "Click /ds hud in the header to move or scale the Top Info Bar and Raid Buffs bar.",
+            "Create the [DynamicHeal] and [DynamicDrink] macros in Tab 3 for smart recovery buttons.",
+        },
+    },
+    talent = {
+        key       = "talent",
+        addonName = "DynamicTalent",
+        title     = "DynamicTalent",
+        icon      = ICON_DIR .. "icon_mod_talent.tga",
+        slash     = "/dt, /dynamictalent",
+        summary   = "Stores unlimited per-spec talent builds and reminds you to swap for Raid, M+, Delves, or PvP.",
+        tips      = {
+            "Bind saved loadouts to specific raids, M+ dungeons, PvP, or zones in Tab 2.",
+            "Use the Left-Hand Talent Dock next to Blizzard's Talents & Spellbook window to swap fast.",
+            "Right-click your Hero Talent medallion (out of combat) to flip directly to the other Hero tree.",
+        },
+    },
+    marker = {
+        key       = "marker",
+        addonName = "DynamicMarker",
+        title     = "DynamicMarker",
+        icon      = ICON_DIR .. "icon_mod_marker.tga",
+        slash     = "/dm, /fm",
+        summary   = "Provides floating Focus Icon and World Flare bars alongside [DynamicMark] and [DynamicKick] macros.",
+        tips      = {
+            "Generate [DynamicMark] and [DynamicKick] in Tab 3 so your interrupt swaps automatically by spec.",
+            "Right-click a marker button or use /ds hud to drag and resize your Focus and Flare bars.",
+            "Bind optional World Flare keys in Tab 2 (World Flares) to place or clear ground markers at cursor.",
+        },
+    },
+    cursor = {
+        key       = "cursor",
+        addonName = "DynamicCursor",
+        title     = "DynamicCursor",
+        icon      = ICON_DIR .. "icon_mod_cursor.tga",
+        slash     = "/dcur, /dynamiccursor",
+        summary   = "Adds a customisable Cursor Ring with inner GCD/cast arcs, Crosshair, Find My Cursor locator, and Trail.",
+        tips      = {
+            "Pick one of the 4 Quick Presets (Clean Raid, High-Visibility, Minimalist, Full Telemetry) first.",
+            "Turn on Shake-to-Find or Hold Modifier Key in Tab 3 so you never lose your pointer in raid clutter.",
+            "Set Active Zones in Tab 4 if you only want cursor rings or trails inside combat instances.",
+        },
+    },
+    zoom = {
+        key       = "zoom",
+        addonName = "DynamicZoom",
+        title     = "DynamicZoom",
+        icon      = ICON_DIR .. "icon_mod_zoom.tga",
+        slash     = "/dz, /dynamiczoom",
+        summary   = "Unlocks full 39-yard camera distance with smooth scroll acceleration and foliage occlusion fade.",
+        tips      = {
+            "Type /dz max anytime (or enable Auto Max Zoom) to snap straight out to 39 yards.",
+            "Enable See-Through Obstructions to fade trees and dungeon pillars instead of snapping forward.",
+            "Set optional Indoors, Combat, or Mounted target distances for automatic camera framing.",
+        },
+    },
+    fps = {
+        key       = "fps",
+        addonName = "DynamicFPS",
+        title     = "DynamicFPS",
+        icon      = ICON_DIR .. "icon_mod_fps.tga",
+        slash     = "/dfps, /dynamicfps",
+        summary   = "Adjusts graphics settings per zone without reloading, protects combat FPS, and tunes SpellQueueWindow.",
+        tips      = {
+            "Start with a Recommended Zone Preset while keeping boss floor mechanics at maximum clarity.",
+            "Enable Dynamic SpellQueueWindow so your queue timing automatically follows live ping and haste.",
+            "Click Apply Now or use /dfps status to compare live Outdoor, Dungeon, and Raid CVars.",
+        },
+    },
+    group = {
+        key       = "group",
+        addonName = "DynamicGroup",
+        title     = "DynamicGroup",
+        icon      = ICON_DIR .. "icon_mod_group.tga",
+        slash     = "/dgroup, /dg",
+        summary   = "Upgrades Premade Groups with region tags, M+ ratings, Season 2 portal deck, and party readiness.",
+        tips      = {
+            "Right-click any dungeon tile in the Portal Deck above Premade Groups (out of combat) to teleport.",
+            "Left-click a tile or your Owned Keystone pill to filter Group Finder to that exact dungeon.",
+            "Turn on whisper auto-invite keywords and !keys chat replies in Tabs 2 and 3.",
+        },
+    },
+    bags = {
+        key       = "bags",
+        addonName = "DynamicBags",
+        title     = "DynamicBags",
+        icon      = ICON_DIR .. "icon_mod_bags.tga",
+        slash     = "/dbag, /dbags",
+        summary   = "Replaces Blizzard bags and bank with fast category-sorted bags, Alt Vault search, and vendor automation.",
+        tips      = {
+            "Hold Ctrl + Mousewheel over the Bag or Unified Bank header to scale cleanly from 70% to 140%.",
+            "Use the Alt Vault tab to check items, currencies, and gold across every character on your account.",
+            "Turn on Auto Repair, Sell Grey Junk, and Alt + Right-Click bulk stack buying in Tab 2.",
+        },
+    },
+    mail = {
+        key       = "mail",
+        addonName = "DynamicMail",
+        title     = "DynamicMail",
+        icon      = ICON_DIR .. "icon_mod_mail.tga",
+        slash     = "/dmail, /dynamicmail",
+        summary   = "Docks 1-click Open All, AH Gold, Alt recipient picker, and bulk item attach controls onto your Mailbox.",
+        tips      = {
+            "Click Open All, AH Gold, or Items Only above Blizzard's Mailbox header to clear mail fast.",
+            "Use + Mats, + BoE, or + Warband pills in Send Mail (or Alt + Left-Click items) to attach quickly.",
+            "Keep at least 1-2 Free Bag Slots reserved so gold collection keeps going when bags fill up.",
+        },
+    },
+    chat = {
+        key       = "chat",
+        addonName = "DynamicChat",
+        title     = "DynamicChat",
+        icon      = ICON_DIR .. "icon_mod_chat.tga",
+        slash     = "/dchat, /dc",
+        summary   = "Styles your chat window with a compact shortcut rail, clickable links, /ww whispers, and mention alerts.",
+        tips      = {
+            "Type /ww to whisper your friendly target quickly, /rl to reload UI, or /lg to leave group.",
+            "Drag or resize your Chat Frame smoothly using /ds hud to align it alongside your HUD bars.",
+            "Add your character names or keywords to Mention Alert Toasts with your choice of chime.",
+        },
+    },
+    vault = {
+        key       = "vault",
+        addonName = "DynamicVault",
+        title     = "DynamicVault",
+        icon      = ICON_DIR .. "icon_mod_vault.tga",
+        slash     = "/dv, /dynamicvault",
+        summary   = "Tracks Great Vault slots, Raid lockouts, Crests, Bountiful Delves, and weekly checklists across alts.",
+        tips      = {
+            "Click Open Great Vault (/dv open) or Left-click the Prep Bar Vault capsule to check rewards anytime.",
+            "Use the Bountiful Delves and Weekly Checklist tabs to track reset tasks per character or account.",
+            "Switch alt chips at the top of Blizzard's Great Vault window to compare reward tiers at a glance.",
+        },
+    },
+    dialogue = {
+        key       = "dialogue",
+        addonName = "DynamicDialogue",
+        title     = "DynamicDialogue",
+        icon      = ICON_DIR .. "icon_mod_dialogue.tga",
+        slash     = "/dd, /ddlg",
+        summary   = "Presents Quest and NPC Gossip frames in a readable Obsidian layout with 1-9 and Spacebar controls.",
+        tips      = {
+            "Press keys 1-9 to choose gossip options and Spacebar to accept, continue, or turn in quests.",
+            "Hold Shift when talking to an NPC if you temporarily want Blizzard's default quest window.",
+            "Use /dd preview anytime to tune text size, reader scale, and backdrop opacity live.",
+        },
+    },
+}
+addonTable.MODULE_QUICK_GUIDES = MODULE_QUICK_GUIDES
+DynamicSuite.MODULE_QUICK_GUIDES = MODULE_QUICK_GUIDES
+
+function addonTable.GetModuleQuickGuide(moduleKeyOrAddon)
+    if not moduleKeyOrAddon or moduleKeyOrAddon == "" then
+        return nil
+    end
+    local _, shortKey = NormalizeSuiteModuleId(moduleKeyOrAddon)
+    local lookup = (shortKey and shortKey ~= "" and shortKey) or tostring(moduleKeyOrAddon):lower():gsub("^dynamic", "")
+    return MODULE_QUICK_GUIDES[lookup]
+end
+DynamicSuite.GetModuleQuickGuide = addonTable.GetModuleQuickGuide
+end
+
 local function ScrubStandaloneDynamicMarkerFromLoadDB(tbl)
     if type(tbl) ~= "table" then return end
     if type(tbl.lockedAddons) == "table" then tbl.lockedAddons["DynamicMarker"] = nil end
@@ -5513,16 +5703,19 @@ local BUILTIN_SEARCH_SEED = {
       desc = "Show a one-time summary modal after login when DynamicSuite adds a major new module or feature.",
       keywords = "show major feature spotlights new module modal login preview reset /ds spotlight" },
 
-    -- Guided Setup & Conflict Scanner
-    { moduleKey = "SETUP", category = "BAGS_QOL", tabIndex = "GUIDED_SETUP", tabLabel = "Guided Setup & Conflicts",
-      title = "STEP 1: CONFLICT SCANNER, VISUAL THEME & ACCOUNT-WIDE ALT SYNC",
-      desc = "Scan for overlapping third-party addons (Baganator, Prat-3.0, DialogueUI, SimpleAddonManager, ElvUI, Leatrix Plus) and resolve HARD conflicts or inspect SOFT Auto-Yield overlaps in 1 click.",
-      keywords = "conflict conflicts scanner compatibility error taint guided setup wizard duplicate overlapping addons /ds conflicts baganator betterbags adibags arkinventory bagnon sorted litebag prat-3.0 chattynator ls_glass basicchatmods chatter wim dialogueui immersion storyline autoturnin premadegroupsfilter premaderegionfilter focusmarker targetcharms dynamiccam maxcam actioncamplus acp simpleaddonmanager betteraddonlist leatrix elvui auto yield" },
-    { moduleKey = "SETUP", category = "BAGS_QOL", tabIndex = "GUIDED_SETUP", tabLabel = "Conflict Diagnostic (/ds conflicts)",
+    -- Guided Setup & Conflict Scanner + Quick Guide
+    { moduleKey = "SETUP", category = "BAGS_QOL", viewKey = "GUIDED_SETUP", tabIndex = 1, tabName = "1. Style", tabLabel = "3-Step Quick Start (/ds setup)",
+      title = "3-Step Quick Start: Theme, Conflicts & Active Modules",
+      desc = "Customise your Surface Theme, Accent Colour, and Font in Step 1, scan and resolve overlapping addons in Step 2, and choose starter presets or individual modules in Step 3.",
+      keywords = "quick start guided setup 3 step style theme conflicts modules presets full suite mythic+ raid lightweight qol /ds setup" },
+    { moduleKey = "SETUP", category = "BAGS_QOL", viewKey = "GUIDED_SETUP", tabIndex = 2, tabName = "2. Conflicts", tabLabel = "Conflict Diagnostic (/ds conflicts)",
       title = "External Addon Conflict Detector & Auto-Yield Diagnostic (/ds conflicts)",
-      highlightTitle = "STEP 1: CONFLICT SCANNER, VISUAL THEME & ACCOUNT-WIDE ALT SYNC",
-      desc = "Run /ds conflicts to print and display a clean diagnostic summary of active HARD addon collisions and SOFT Auto-Yield overlaps across all 12 DynamicSuite modules.",
-      keywords = "conflict conflicts compatibility error taint diagnostic /ds conflicts auto-yield yield third-party overlap baganator dialogueui elvui leatrix prat chattynator" },
+      desc = "Scan for overlapping third-party addons (Baganator, Prat-3.0, DialogueUI, SimpleAddonManager, ElvUI, Leatrix Plus, DecorVendor) and resolve HARD conflicts or SOFT Auto-Yield overlaps in 1 click.",
+      keywords = "conflict conflicts scanner compatibility error taint diagnostic /ds conflicts auto-yield yield third-party overlap baganator betterbags adibags arkinventory bagnon sorted litebag prat-3.0 chattynator ls_glass basicchatmods chatter wim dialogueui immersion storyline autoturnin premadegroupsfilter premaderegionfilter focusmarker targetcharms dynamiccam maxcam actioncamplus acp simpleaddonmanager betteraddonlist leatrix elvui decorvendor" },
+    { moduleKey = "STUDIO", category = "BAGS_QOL", viewKey = "DYNAMICLOAD", tabIndex = 1, tabLabel = "Module Quick Guide (?)",
+      title = "Module Quick Guide (? Header Button)",
+      desc = "Click the compact ? button in the top-right header while viewing any of the 13 modules to see its slash commands, 1-sentence summary, and 3 starter tips.",
+      keywords = "quick guide help tips ? header button overview tutorial shortcut how to use module" },
 
     -- HUD Edit Mode Positioning Targets
     { moduleKey = "HUD", category = "HUD_LOOK", tabIndex = "PREP", hudTarget = "PREP", ownerAddon = "DynamicPrep", tabLabel = "HUD Positioning (/ds hud)",
@@ -10905,14 +11098,14 @@ local function HandleSuiteSlashCommandInner(msg)
             addonTable.PrintConflictSummary()
         end
         if addonTable.OpenWorkspaceView then
-            addonTable.OpenWorkspaceView("GUIDED_SETUP")
+            addonTable.OpenWorkspaceView("GUIDED_SETUP", 2)
         else
             OpenMainSuiteWindowFallback()
         end
 
     elseif cmd == "setup" or cmd == "guided" then
         if addonTable.OpenWorkspaceView then
-            addonTable.OpenWorkspaceView("GUIDED_SETUP")
+            addonTable.OpenWorkspaceView("GUIDED_SETUP", 1)
         else
             OpenMainSuiteWindowFallback()
         end
