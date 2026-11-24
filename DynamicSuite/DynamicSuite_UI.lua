@@ -434,6 +434,16 @@ function UI.RefreshPaletteCache()
     UI.COLORS.CARD_BG   = surf.card
 end
 
+function UI.ClearExternalUISync()
+    local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+    if gTbl and gTbl.syncExternalUI then
+        gTbl.syncExternalUI = false
+    end
+    if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" and _G.DynamicSuiteDB.global.syncExternalUI then
+        _G.DynamicSuiteDB.global.syncExternalUI = false
+    end
+end
+
 local fontProbeFS = nil
 local resolvedFontPaths = {}
 
@@ -2854,7 +2864,7 @@ local function OpenDSColorPicker(anchorFrame, titleText, initialColor, hasOpacit
     end)
 
     local function CancelColorPick()
-        if callback then callback(origR, origG, origB, origA) end
+        if callback then callback(origR, origG, origB, origA, true) end
         cp:Hide()
     end
     cp.cancelBtn:SetScript("OnClick", CancelColorPick)
@@ -7301,6 +7311,7 @@ function addonTable.CreateMainConfigUI()
             GameTooltip:Hide()
         end)
         sBtn:SetScript("OnClick", function()
+            UI.ClearExternalUISync()
             local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
             if gTbl then
                 gTbl.accentKey = pDef.key
@@ -7316,12 +7327,29 @@ function addonTable.CreateMainConfigUI()
     customPickBtn = CreateFlatButton(swatchCard, 148, 26, "Custom Colour Picker", false)
     customPickBtn:SetPoint("TOPRIGHT", swatchCard, "TOPRIGHT", -16, -52)
     customPickBtn:SetScript("OnClick", function(self)
+        local gSnap = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        local prevSync = gSnap and (gSnap.syncExternalUI == true) or false
+        local prevAccentKey = gSnap and gSnap.accentKey
+        local prevCustomAccent = (gSnap and type(gSnap.customAccent) == "table")
+            and { r = gSnap.customAccent.r, g = gSnap.customAccent.g, b = gSnap.customAccent.b } or nil
         local ar, ag, ab = UI.GetActiveAccentColor()
-        OpenDSColorPicker(self, "Custom Suite Accent Colour", { r = ar, g = ag, b = ab, a = 1 }, false, function(nr, ng, nb)
+        OpenDSColorPicker(self, "Custom Suite Accent Colour", { r = ar, g = ag, b = ab, a = 1 }, false, function(nr, ng, nb, _, isCancel)
             local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
-            if gTbl then
-                gTbl.accentKey = "CUSTOM"
-                gTbl.customAccent = { r = nr, g = ng, b = nb }
+            if isCancel then
+                if gTbl then
+                    gTbl.syncExternalUI = prevSync
+                    gTbl.accentKey = prevAccentKey
+                    gTbl.customAccent = prevCustomAccent
+                end
+                if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" then
+                    _G.DynamicSuiteDB.global.syncExternalUI = prevSync
+                end
+            else
+                UI.ClearExternalUISync()
+                if gTbl then
+                    gTbl.accentKey = "CUSTOM"
+                    gTbl.customAccent = { r = nr, g = ng, b = nb }
+                end
             end
             if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
             if themeView.Refresh then themeView.Refresh() end
@@ -7331,6 +7359,7 @@ function addonTable.CreateMainConfigUI()
     autoClassBtn = CreateFlatButton(swatchCard, 134, 26, "Auto-Match Class", false)
     autoClassBtn:SetPoint("RIGHT", customPickBtn, "LEFT", -8, 0)
     autoClassBtn:SetScript("OnClick", function()
+        UI.ClearExternalUISync()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
         if gTbl then
             gTbl.accentKey = "AUTO_CLASS"
@@ -8414,6 +8443,7 @@ function addonTable.CreateMainConfigUI()
     local fontDropdown = UI.CreateDropdown(fontRow, 240, fontDropdownOpts,
         function() return UI.GetActiveFontKey() end,
         function(val)
+            UI.ClearExternalUISync()
             local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
             if gTbl then
                 gTbl.fontKey = val
@@ -9567,6 +9597,7 @@ function addonTable.CreateMainConfigUI()
                 btn.dsBorder:SetColor(1, 1, 1, 0.30)
                 btn:Enable()
                 btn:SetScript("OnClick", function()
+                    UI.ClearExternalUISync()
                     gTbl.accentKey = "CUSTOM"
                     gTbl.customAccent = { r = c.r, g = c.g, b = c.b }
                     if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
@@ -11177,6 +11208,7 @@ function addonTable.CreateMainConfigUI()
                 GameTooltip:Hide()
             end)
             sBtn:SetScript("OnClick", function()
+                UI.ClearExternalUISync()
                 local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
                 if gTbl then
                     gTbl.accentKey = pDef.key
@@ -11184,6 +11216,7 @@ function addonTable.CreateMainConfigUI()
                 end
                 if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
                 if setupView.Refresh then setupView.Refresh() end
+                if themeView and themeView.Refresh then themeView.Refresh() end
             end)
             table.insert(qsSwatchBtns, sBtn)
         end
@@ -11191,6 +11224,7 @@ function addonTable.CreateMainConfigUI()
         local qsAutoClassBtn = CreateFlatButton(accPanel, 134, 26, "Auto-Match Class", false)
         qsAutoClassBtn:SetPoint("TOPRIGHT", accPanel, "TOPRIGHT", -12, -28)
         qsAutoClassBtn:SetScript("OnClick", function()
+            UI.ClearExternalUISync()
             local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
             if gTbl then
                 gTbl.accentKey = "AUTO_CLASS"
@@ -11198,21 +11232,40 @@ function addonTable.CreateMainConfigUI()
             end
             if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
             if setupView.Refresh then setupView.Refresh() end
+            if themeView and themeView.Refresh then themeView.Refresh() end
         end)
 
         local qsCustomPickBtn = CreateFlatButton(accPanel, 134, 26, "Custom Colour...", false)
         qsCustomPickBtn:SetPoint("TOP", qsAutoClassBtn, "BOTTOM", 0, -6)
         qsCustomPickBtn:SetPoint("RIGHT", accPanel, "RIGHT", -12, 0)
         qsCustomPickBtn:SetScript("OnClick", function(self)
+            local gSnap = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+            local prevSync = gSnap and (gSnap.syncExternalUI == true) or false
+            local prevAccentKey = gSnap and gSnap.accentKey
+            local prevCustomAccent = (gSnap and type(gSnap.customAccent) == "table")
+                and { r = gSnap.customAccent.r, g = gSnap.customAccent.g, b = gSnap.customAccent.b } or nil
             local ar, ag, ab = UI.GetActiveAccentColor()
-            OpenDSColorPicker(self, "Custom Suite Accent Colour", { r = ar, g = ag, b = ab, a = 1 }, false, function(nr, ng, nb)
+            OpenDSColorPicker(self, "Custom Suite Accent Colour", { r = ar, g = ag, b = ab, a = 1 }, false, function(nr, ng, nb, _, isCancel)
                 local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
-                if gTbl then
-                    gTbl.accentKey = "CUSTOM"
-                    gTbl.customAccent = { r = nr, g = ng, b = nb }
+                if isCancel then
+                    if gTbl then
+                        gTbl.syncExternalUI = prevSync
+                        gTbl.accentKey = prevAccentKey
+                        gTbl.customAccent = prevCustomAccent
+                    end
+                    if _G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table" then
+                        _G.DynamicSuiteDB.global.syncExternalUI = prevSync
+                    end
+                else
+                    UI.ClearExternalUISync()
+                    if gTbl then
+                        gTbl.accentKey = "CUSTOM"
+                        gTbl.customAccent = { r = nr, g = ng, b = nb }
+                    end
                 end
                 if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
                 if setupView.Refresh then setupView.Refresh() end
+                if themeView and themeView.Refresh then themeView.Refresh() end
             end)
         end)
 
@@ -11238,6 +11291,7 @@ function addonTable.CreateMainConfigUI()
         local qsFontDD = UI.CreateDropdown(fontPanel, 232, UI.BuildFontDropdownOptions(),
             function() return UI.GetActiveFontKey() end,
             function(val)
+                UI.ClearExternalUISync()
                 local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
                 if gTbl then
                     gTbl.fontKey = val
@@ -11249,6 +11303,7 @@ function addonTable.CreateMainConfigUI()
                 end
                 if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
                 if setupView.Refresh then setupView.Refresh() end
+                if themeView and themeView.Refresh then themeView.Refresh() end
             end
         )
         qsFontDD._onBeforeOpen = function(self)
