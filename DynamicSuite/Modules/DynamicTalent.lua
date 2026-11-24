@@ -5761,17 +5761,30 @@ end
 -- ============================================================================
 local function GetTalentSharedToastStyle()
     if _G.DynamicSuite and type(_G.DynamicSuite.GetSharedToastStyle) == "function" then
-        local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle)
+        local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle, "ACTION")
         if ok and type(st) == "table" then return st end
     end
     local ar, ag, ab = GetActiveAccentRGB()
     local g = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global) or {}
+    local dur = tonumber(g.toastActionDuration)
+    if dur == nil then
+        local leg = tonumber(g.toastDuration)
+        if leg == 0 then
+            dur = 0
+        elseif leg ~= nil then
+            dur = math.max(12, (leg <= 6 and 5 or (leg <= 10 and 8 or (leg <= 16 and 12 or 20))))
+        else
+            dur = 12
+        end
+    end
     return {
-        scale       = math.max(0.60, math.min(1.50, tonumber(g.toastScale) or 1.0)),
-        opacity     = math.max(0.20, math.min(1.00, tonumber(g.toastOpacity or g.toastAlpha) or 0.96)),
-        borderStyle = tostring(g.toastBorderStyle or "ACCENT"):upper(),
-        duration    = tonumber(g.toastDuration) or 8,
-        pos         = g.toastPos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 },
+        scale          = math.max(0.60, math.min(1.50, tonumber(g.toastScale) or 1.0)),
+        opacity        = math.max(0.20, math.min(1.00, tonumber(g.toastOpacity or g.toastAlpha) or 0.96)),
+        borderStyle    = tostring(g.toastBorderStyle or "ACCENT"):upper(),
+        duration       = dur,
+        actionDuration = dur,
+        toastKind      = "ACTION",
+        pos            = g.toastPos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 },
         bgR = 0.035, bgG = 0.039, bgB = 0.051,
         ar = ar, ag = ag, ab = ab,
     }
@@ -5793,7 +5806,7 @@ function DynamicTalent:ApplyTalentReminderToastVisuals()
     if IsPlayerInCombat() then return end
     local st = nil
     if _G.DynamicSuite and type(_G.DynamicSuite.ApplySharedToastLayout) == "function" then
-        local ok, sharedSt = pcall(_G.DynamicSuite.ApplySharedToastLayout, f, { tintIcon = true })
+        local ok, sharedSt = pcall(_G.DynamicSuite.ApplySharedToastLayout, f, { toastKind = "ACTION", tintIcon = true })
         if ok and type(sharedSt) == "table" then
             st = sharedSt
         end
@@ -5855,6 +5868,7 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
         local f = nil
         if _G.DynamicSuite and type(_G.DynamicSuite.EnsureSharedToastFrame) == "function" then
             local ok, sharedFrame = pcall(_G.DynamicSuite.EnsureSharedToastFrame, "DynamicTalentReminderToast", {
+                toastKind = "ACTION",
                 clickButtons = { "LeftButtonUp", "RightButtonUp" },
                 iconMode = "TINTED",
                 iconTexture = ICON_COLOR,
@@ -5926,7 +5940,7 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
 
             local animGroup = f:CreateAnimationGroup()
             local holdAnim = animGroup:CreateAnimation("Animation")
-            holdAnim:SetDuration(8)
+            holdAnim:SetDuration(12)
             holdAnim:SetOrder(1)
             local fadeAnim = animGroup:CreateAnimation("Alpha")
             fadeAnim:SetFromAlpha(1)
@@ -5952,7 +5966,9 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
             f:SetScript("OnLeave", function(selfT)
                 if selfT.swapBtn and selfT.swapBtn.IsMouseOver and selfT.swapBtn:IsMouseOver() then return end
                 local stLeave = GetTalentSharedToastStyle()
-                if (stLeave.duration or 8) > 0 then
+                local leaveDur = tonumber(stLeave.duration)
+                if leaveDur == nil then leaveDur = 12 end
+                if leaveDur > 0 then
                     selfT.animGroup:Play()
                 end
             end)
@@ -5995,7 +6011,8 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
     f._zoneLabel = zoneLabel
     f._isPreview = (isPreview == true)
     local st = GetTalentSharedToastStyle()
-    local dur = tonumber(st.duration) or 8
+    local dur = tonumber(st.duration)
+    if dur == nil then dur = 12 end
 
     f.swapBtn:SetScript("OnEnter", function(s)
         local curSt = GetTalentSharedToastStyle()
@@ -6006,7 +6023,9 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
     f.swapBtn:SetScript("OnLeave", function(s)
         local curSt = GetTalentSharedToastStyle()
         StyleToastSwapButton(s, curSt, false)
-        if not (f.IsMouseOver and f:IsMouseOver()) and f.animGroup and (curSt.duration or 8) > 0 then
+        local leaveDur = tonumber(curSt.duration)
+        if leaveDur == nil then leaveDur = 12 end
+        if not (f.IsMouseOver and f:IsMouseOver()) and f.animGroup and leaveDur > 0 then
             f.animGroup:Play()
         end
     end)
@@ -6041,6 +6060,7 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
 
     if _G.DynamicSuite and type(_G.DynamicSuite.ShowSharedToast) == "function" then
         local okShown, resShown = pcall(_G.DynamicSuite.ShowSharedToast, f, {
+            toastKind = "ACTION",
             title = titleText,
             badge = badgeText,
             subtext = subtextText,

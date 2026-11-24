@@ -757,11 +757,13 @@ local DEFAULT_SUITE_GLOBAL = {
     toastMode        = "ON",
     toastBorderStyle = "ACCENT",
     toastDisplayMode = "DETAILED", -- "DETAILED", "COMPACT", "EXCEPTIONS_ONLY"
-    toastScale       = 1.0,
-    toastAlpha       = 0.96,
-    toastOpacity     = 0.96,
-    toastDuration    = 8,
-    toastSoundEnabled = false,
+    toastScale          = 1.0,
+    toastAlpha          = 0.96,
+    toastOpacity        = 0.96,
+    toastDuration       = 12,
+    toastActionDuration = 12,
+    toastInfoDuration   = 5,
+    toastSoundEnabled   = false,
     hudSnapMode      = "MAGNET",
     minimizedBarPos  = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0 },
     editModeModalPos = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0 },
@@ -814,6 +816,61 @@ local function GetCharScopeMode()
 end
 addonTable.GetCharScopeMode = addonTable.GetCharScopeMode or GetCharScopeMode
 
+function DynamicSuite.ClampToastActionDuration(v)
+    v = tonumber(v)
+    if v == 0 then return 0 end
+    if not v or v < 0 then return 12 end
+    if v <= 6 then return 5
+    elseif v <= 10 then return 8
+    elseif v <= 16 then return 12
+    else return 20 end
+end
+addonTable.ClampToastActionDuration = DynamicSuite.ClampToastActionDuration
+
+function DynamicSuite.ClampToastInfoDuration(v)
+    v = tonumber(v)
+    if v == 0 then return 0 end
+    if not v or v < 0 then return 5 end
+    if v <= 4 then return 3
+    elseif v <= 6 then return 5
+    elseif v <= 10 then return 8
+    else return 12 end
+end
+addonTable.ClampToastInfoDuration = DynamicSuite.ClampToastInfoDuration
+
+function DynamicSuite._MigrateTwoTierToastDurations(targetTbl, legacyFallbackTbl)
+    if type(targetTbl) ~= "table" then return end
+    if targetTbl.toastActionDuration == nil and targetTbl.toastInfoDuration == nil then
+        local legacyDur = tonumber(targetTbl.toastDuration)
+        if legacyDur == nil and type(legacyFallbackTbl) == "table" then
+            legacyDur = tonumber(legacyFallbackTbl.toastDuration)
+        end
+        if legacyDur ~= nil then
+            if legacyDur == 0 then
+                targetTbl.toastActionDuration = 0
+                targetTbl.toastInfoDuration = 0
+            else
+                targetTbl.toastInfoDuration = DynamicSuite.ClampToastInfoDuration(legacyDur)
+                targetTbl.toastActionDuration = math.max(12, DynamicSuite.ClampToastActionDuration(legacyDur))
+            end
+        else
+            targetTbl.toastActionDuration = 12
+            targetTbl.toastInfoDuration = 5
+        end
+    else
+        if targetTbl.toastActionDuration ~= nil then
+            targetTbl.toastActionDuration = DynamicSuite.ClampToastActionDuration(targetTbl.toastActionDuration)
+        else
+            targetTbl.toastActionDuration = 12
+        end
+        if targetTbl.toastInfoDuration ~= nil then
+            targetTbl.toastInfoDuration = DynamicSuite.ClampToastInfoDuration(targetTbl.toastInfoDuration)
+        else
+            targetTbl.toastInfoDuration = 5
+        end
+    end
+end
+
 local function EnsureSuiteGlobal()
     if addonTable._isFreshBrandNewInstall == nil then
         addonTable._isFreshBrandNewInstall = (_G.DynamicSuiteDB == nil and _G.DynamicLoadDB == nil)
@@ -825,7 +882,7 @@ local function EnsureSuiteGlobal()
         _G.DynamicSuiteDB.global = CopyTable(DEFAULT_SUITE_GLOBAL)
         -- Seamless migration from legacy DynamicLoadDB theme/window keys if present
         if type(_G.DynamicLoadDB) == "table" then
-            for _, k in ipairs({ "windowWidth", "windowHeight", "windowScale", "windowAlpha", "surfaceTheme", "accentKey", "customAccent", "fontKey", "fontFamily", "pillFillAlpha", "recentColors", "toastPos", "toastDisplayMode", "toastScale", "toastAlpha", "toastDuration", "toastSoundEnabled", "moduleOrder" }) do
+            for _, k in ipairs({ "windowWidth", "windowHeight", "windowScale", "windowAlpha", "surfaceTheme", "accentKey", "customAccent", "fontKey", "fontFamily", "pillFillAlpha", "recentColors", "toastPos", "toastDisplayMode", "toastScale", "toastAlpha", "toastDuration", "toastActionDuration", "toastInfoDuration", "toastSoundEnabled", "moduleOrder" }) do
                 if _G.DynamicLoadDB[k] ~= nil then
                     if type(_G.DynamicLoadDB[k]) == "table" then
                         _G.DynamicSuiteDB.global[k] = CopyTable(_G.DynamicLoadDB[k])
@@ -834,8 +891,14 @@ local function EnsureSuiteGlobal()
                     end
                 end
             end
+            if _G.DynamicLoadDB.toastActionDuration == nil and _G.DynamicLoadDB.toastInfoDuration == nil and _G.DynamicLoadDB.toastDuration ~= nil then
+                _G.DynamicSuiteDB.global.toastActionDuration = nil
+                _G.DynamicSuiteDB.global.toastInfoDuration = nil
+                DynamicSuite._MigrateTwoTierToastDurations(_G.DynamicSuiteDB.global, _G.DynamicLoadDB)
+            end
         end
     else
+        DynamicSuite._MigrateTwoTierToastDurations(_G.DynamicSuiteDB.global, _G.DynamicLoadDB)
         for k, v in pairs(DEFAULT_SUITE_GLOBAL) do
             if _G.DynamicSuiteDB.global[k] == nil then
                 if type(v) == "table" then
@@ -846,10 +909,19 @@ local function EnsureSuiteGlobal()
             end
         end
     end
+    if type(_G.DynamicLoadDB) == "table" then
+        if _G.DynamicLoadDB.toastActionDuration == nil then
+            _G.DynamicLoadDB.toastActionDuration = _G.DynamicSuiteDB.global.toastActionDuration
+        end
+        if _G.DynamicLoadDB.toastInfoDuration == nil then
+            _G.DynamicLoadDB.toastInfoDuration = _G.DynamicSuiteDB.global.toastInfoDuration
+        end
+    end
     if GetCharScopeMode() == "CHARACTER" and _G.DynamicLoadDB and _G.DynamicLoadDB.charData then
         local charKey = GetCurrentCharKey()
         local cd = _G.DynamicLoadDB.charData[charKey]
         if cd and cd.theme then
+            DynamicSuite._MigrateTwoTierToastDurations(cd.theme, _G.DynamicSuiteDB.global)
             for k, v in pairs(DEFAULT_SUITE_GLOBAL) do
                 if cd.theme[k] == nil then
                     if type(v) == "table" then
@@ -913,9 +985,10 @@ local function ApplySharedToastFont(fs, size)
     end
 end
 
-function DynamicSuite.GetSharedToastStyle()
+function DynamicSuite.GetSharedToastStyle(toastKind)
     local g = EnsureSuiteGlobal()
     local dl = (type(_G.DynamicLoadDB) == "table") and _G.DynamicLoadDB or nil
+    local kind = (type(toastKind) == "string" and toastKind:upper() == "INFO") and "INFO" or "ACTION"
 
     local ar, ag, ab = 0.220, 0.741, 0.973
     local bgR, bgG, bgB = 0.035, 0.039, 0.051
@@ -952,8 +1025,37 @@ function DynamicSuite.GetSharedToastStyle()
     local bStyle = tostring((g and g.toastBorderStyle) or (dl and dl.toastBorderStyle) or "ACCENT"):upper()
     if bStyle == "DARK" then bStyle = "SUBTLE" end
 
-    local duration = tonumber((g and g.toastDuration) or (dl and dl.toastDuration))
-    if duration == nil then duration = 8 end
+    local actionDur = tonumber(g and g.toastActionDuration)
+    if actionDur == nil and dl then actionDur = tonumber(dl.toastActionDuration) end
+    if actionDur == nil then
+        local leg = tonumber((g and g.toastDuration) or (dl and dl.toastDuration))
+        if leg == 0 then
+            actionDur = 0
+        elseif leg ~= nil then
+            actionDur = math.max(12, DynamicSuite.ClampToastActionDuration(leg))
+        else
+            actionDur = 12
+        end
+    else
+        actionDur = DynamicSuite.ClampToastActionDuration(actionDur)
+    end
+
+    local infoDur = tonumber(g and g.toastInfoDuration)
+    if infoDur == nil and dl then infoDur = tonumber(dl.toastInfoDuration) end
+    if infoDur == nil then
+        local leg = tonumber((g and g.toastDuration) or (dl and dl.toastDuration))
+        if leg == 0 then
+            infoDur = 0
+        elseif leg ~= nil then
+            infoDur = DynamicSuite.ClampToastInfoDuration(leg)
+        else
+            infoDur = 5
+        end
+    else
+        infoDur = DynamicSuite.ClampToastInfoDuration(infoDur)
+    end
+
+    local duration = (kind == "INFO") and infoDur or actionDur
 
     local soundEnabled = (g and g.toastSoundEnabled == true) or (dl and dl.toastSoundEnabled == true) or false
     local pos = (g and type(g.toastPos) == "table" and g.toastPos)
@@ -961,19 +1063,22 @@ function DynamicSuite.GetSharedToastStyle()
         or { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
 
     return {
-        enabled      = enabled,
-        scale        = scale,
-        opacity      = opacity,
-        borderStyle  = bStyle,
-        duration     = duration,
-        soundEnabled = soundEnabled,
-        pos          = pos,
-        bgR          = bgR,
-        bgG          = bgG,
-        bgB          = bgB,
-        ar           = ar,
-        ag           = ag,
-        ab           = ab,
+        enabled        = enabled,
+        scale          = scale,
+        opacity        = opacity,
+        borderStyle    = bStyle,
+        duration       = duration,
+        actionDuration = actionDur,
+        infoDuration   = infoDur,
+        toastKind      = kind,
+        soundEnabled   = soundEnabled,
+        pos            = pos,
+        bgR            = bgR,
+        bgG            = bgG,
+        bgB            = bgB,
+        ar             = ar,
+        ag             = ag,
+        ab             = ab,
     }
 end
 addonTable.GetSharedToastStyle = DynamicSuite.GetSharedToastStyle
@@ -1001,6 +1106,7 @@ function DynamicSuite.RestackAllToasts()
         local pos = st.pos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
         local candidateNames = {
             "DynamicLoadToastFrame",
+            "DynamicSuitePreviewToast",
             "DynamicGroupTeleportToast",
             "DynamicTalentReminderToast",
             "DynamicPrepMageFoodToast",
@@ -1047,6 +1153,12 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
 
     local existing = _G[frameName]
     if existing and existing._dsSharedToast then
+        if opts.toastKind ~= nil then
+            existing._dsToastKind = (type(opts.toastKind) == "string" and opts.toastKind:upper() == "INFO") and "INFO" or "ACTION"
+        end
+        if opts.autoFade ~= nil then
+            existing._dsAutoFade = (opts.autoFade == true)
+        end
         if opts.onRightClickDismiss ~= nil then
             existing._dsOnRightClickDismiss = opts.onRightClickDismiss
         end
@@ -1062,9 +1174,11 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
     local f = existing or _G.CreateFrame("Button", frameName, _G.UIParent, "BackdropTemplate")
     f._dsSharedToast = true
     f._dsAutoFade = (opts.autoFade ~= false)
+    f._dsToastKind = (type(opts.toastKind) == "string" and opts.toastKind:upper() == "INFO") and "INFO" or "ACTION"
     f._dsIconMode = (opts.iconMode == "FULL") and "FULL" or "TINTED"
     f._dsOnRightClickDismiss = opts.onRightClickDismiss
     f._dsOnHide = opts.onHide
+    f._dsHoverButtons = {}
 
     f:SetSize(opts.width or 410, opts.height or 74)
     f:SetFrameStrata(SHARED_TOAST_STRATA)
@@ -1140,8 +1254,52 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
     subtext:SetTextColor(0.58, 0.64, 0.72, 1)
     f.subtext = subtext
 
+    local function IsAnyToastHoverActive(selfT)
+        if not selfT then return false end
+        if selfT.IsMouseOver and selfT:IsMouseOver() then
+            return true
+        end
+        if selfT._dsActionBtn and selfT._dsActionBtn.IsShown and selfT._dsActionBtn:IsShown()
+            and selfT._dsActionBtn.IsMouseOver and selfT._dsActionBtn:IsMouseOver() then
+            return true
+        end
+        for _, hb in ipairs(selfT._dsHoverButtons or {}) do
+            if hb and hb.IsShown and hb:IsShown() and hb.IsMouseOver and hb:IsMouseOver() then
+                return true
+            end
+        end
+        return false
+    end
+
+    function f.BindHoverPauseButton(btn)
+        if not btn or btn._dsHoverPauseBound then return end
+        btn._dsHoverPauseBound = true
+        f._dsHoverButtons[#f._dsHoverButtons + 1] = btn
+        if btn.HookScript then
+            btn:HookScript("OnEnter", function()
+                if f._dsAutoFade and f.animGroup then
+                    f.animGroup:Pause()
+                    f:SetAlpha(1)
+                end
+            end)
+            btn:HookScript("OnLeave", function()
+                if IsAnyToastHoverActive(f) then return end
+                if f._dsAutoFade and f.animGroup then
+                    local stLeave = DynamicSuite.GetSharedToastStyle(f._dsToastKind)
+                    local leaveDur = tonumber(stLeave and stLeave.duration) or 0
+                    if leaveDur > 0 and f:IsShown() then
+                        f.animGroup:Play()
+                    end
+                end
+            end)
+        end
+    end
+
     function f.SetRightTextAnchor(anchorFrame, gap)
         f._dsActionBtn = anchorFrame
+        if anchorFrame then
+            f.BindHoverPauseButton(anchorFrame)
+        end
         local gVal = -(tonumber(gap) or 10)
         local function AnchorFS(fs, anchorTo)
             if not fs then return end
@@ -1164,7 +1322,7 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
 
     local animGroup = f:CreateAnimationGroup()
     local holdAnim = animGroup:CreateAnimation("Animation")
-    holdAnim:SetDuration(8)
+    holdAnim:SetDuration((f._dsToastKind == "INFO") and 5 or 12)
     holdAnim:SetOrder(1)
     local fadeAnim = animGroup:CreateAnimation("Alpha")
     fadeAnim:SetFromAlpha(1)
@@ -1198,12 +1356,13 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
         end
     end)
     f:SetScript("OnLeave", function(selfT)
-        if selfT._dsActionBtn and selfT._dsActionBtn.IsMouseOver and selfT._dsActionBtn:IsMouseOver() then
+        if IsAnyToastHoverActive(selfT) then
             return
         end
         if selfT._dsAutoFade and selfT.animGroup then
-            local stLeave = DynamicSuite.GetSharedToastStyle()
-            if (stLeave.duration or 8) > 0 then
+            local stLeave = DynamicSuite.GetSharedToastStyle(selfT._dsToastKind)
+            local leaveDur = tonumber(stLeave and stLeave.duration) or 0
+            if leaveDur > 0 and selfT:IsShown() then
                 selfT.animGroup:Play()
             end
         end
@@ -1225,7 +1384,10 @@ function DynamicSuite.ApplySharedToastLayout(frame, styleOpts)
     if _G.InCombatLockdown and _G.InCombatLockdown() then return false, nil end
 
     styleOpts = type(styleOpts) == "table" and styleOpts or {}
-    local st = DynamicSuite.GetSharedToastStyle()
+    local toastKind = styleOpts.toastKind or frame._dsToastKind or "ACTION"
+    toastKind = (type(toastKind) == "string" and toastKind:upper() == "INFO") and "INFO" or "ACTION"
+    frame._dsToastKind = toastKind
+    local st = DynamicSuite.GetSharedToastStyle(toastKind)
     local ar, ag, ab = st.ar, st.ag, st.ab
     local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
 
@@ -1303,6 +1465,7 @@ function DynamicSuite.ShowSharedToast(frame, showOpts)
     end
 
     local _, st = DynamicSuite.ApplySharedToastLayout(frame, {
+        toastKind = showOpts.toastKind or frame._dsToastKind,
         borderOverrideRGB = showOpts.borderOverrideRGB,
         iconBorderOverrideRGB = showOpts.iconBorderOverrideRGB,
         tintIcon = showOpts.tintIcon,
@@ -1327,7 +1490,10 @@ function DynamicSuite.ShowSharedToast(frame, showOpts)
     if useFade and frame.animGroup then
         local dur = tonumber(showOpts.duration)
         if dur == nil then
-            dur = (st and tonumber(st.duration)) or 8
+            dur = st and tonumber(st.duration)
+        end
+        if dur == nil then
+            dur = (frame._dsToastKind == "INFO") and 5 or 12
         end
         if dur > 0 and frame.holdAnim then
             frame.holdAnim:SetDuration(dur)
@@ -5765,9 +5931,13 @@ local BUILTIN_SEARCH_SEED = {
       desc = "Control the backdrop transparency of the Alert Toast banner (50% to 100%).",
       keywords = "toast opacity alpha transparency background alert banner" },
     { moduleKey = "load", category = "HUD_LOOK", tabIndex = "toast_ui", tabLabel = "Alert Toast Style",
-      title = "Auto-Fade Duration",
-      desc = "Choose how long the Alert Toast remains on screen before smoothly fading out (5s, 8s, 12s, or Stay Until Clicked).",
-      keywords = "toast duration timer fade hide stay until clicked seconds" },
+      title = "Actionable Toast Duration",
+      desc = "Choose how long actionable alert toasts (Reload, Mage Food, Durability, Talent Swap, Group Teleport) stay on screen before fading out (5s, 8s, 12s, 20s, or Stay Until Clicked).",
+      keywords = "actionable toast duration timer fade hide stay until clicked seconds follower dungeon reload swap teleport durability" },
+    { moduleKey = "load", category = "HUD_LOOK", tabIndex = "toast_ui", tabLabel = "Alert Toast Style",
+      title = "Info & Mention Toast Duration",
+      desc = "Choose how long info and chat mention alert toasts stay on screen before fading out (3s, 5s, 8s, 12s, or Stay Until Clicked).",
+      keywords = "info mention toast duration timer fade hide stay until clicked seconds chat notification" },
     { moduleKey = "load", category = "HUD_LOOK", tabIndex = "toast_ui", tabLabel = "Alert Toast Style",
       title = "Factory Toast Recovery",
       desc = "Restore Alert Toast display mode, scale, opacity, and screen coordinates to factory defaults.",

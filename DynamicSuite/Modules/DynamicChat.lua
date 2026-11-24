@@ -462,7 +462,7 @@ local DEFAULTS = {
     hideChatButtons             = true,
     applySuiteChatFont          = true,
     chatFontKey                 = "SUITE",
-    chatFontSize                = 13,
+    chatFontSize                = 12,
     chatFontOutline             = "OUTLINE", -- "NONE" | "OUTLINE" | "THICKOUTLINE"
     chatFontShadow              = true,
     chatLineSpacing             = 2,
@@ -741,7 +741,7 @@ local function EnsureDB()
     if type(_G.DynamicChatDB.chatFontKey) ~= "string" or _G.DynamicChatDB.chatFontKey == "" then
         _G.DynamicChatDB.chatFontKey = "SUITE"
     end
-    local fSize = tonumber(_G.DynamicChatDB.chatFontSize) or 13
+    local fSize = tonumber(_G.DynamicChatDB.chatFontSize) or 12
     fSize = math.floor(fSize + 0.5)
     if fSize < 10 then fSize = 10 elseif fSize > 22 then fSize = 22 end
     _G.DynamicChatDB.chatFontSize = fSize
@@ -5679,7 +5679,7 @@ function DynamicChat:ApplyChatFrameTypography()
 
     local db = EnsureDB()
     local fontPath = TypographyMgr.ResolveFontPath(db.chatFontKey)
-    local size = tonumber(db.chatFontSize) or 13
+    local size = tonumber(db.chatFontSize) or 12
     if size < 10 then size = 10 elseif size > 22 then size = 22 end
     local out = db.chatFontOutline
     local flags = ""
@@ -5714,7 +5714,7 @@ end
 DC_NS.paddedFontStringContainers = {}
 
 function DC_NS.GetEmbeddedEditBoxHeight(db)
-    local fSize = tonumber(db and db.chatFontSize) or 13
+    local fSize = tonumber(db and db.chatFontSize) or 12
     if fSize < 10 then fSize = 10 elseif fSize > 22 then fSize = 22 end
     local ebSize = math.max(11, math.min(fSize, 18))
     return math.max(26, math.floor(ebSize + 14))
@@ -7918,16 +7918,23 @@ do
 
     local function GetChatSharedToastStyle()
         if _G.DynamicSuite and type(_G.DynamicSuite.GetSharedToastStyle) == "function" then
-            local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle)
+            local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle, "INFO")
             if ok and type(st) == "table" then return st end
         end
         local ar, ag, ab = GetSuiteAccent()
         local g = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global) or {}
+        local dur = tonumber(g.toastInfoDuration)
+        if dur == nil then
+            local leg = tonumber(g.toastDuration)
+            dur = (leg ~= nil) and leg or 5
+        end
         return {
             scale = math.max(0.60, math.min(1.50, tonumber(g.toastScale) or 1.0)),
             opacity = math.max(0.20, math.min(1.00, tonumber(g.toastOpacity or g.toastAlpha) or 0.96)),
             borderStyle = tostring(g.toastBorderStyle or "ACCENT"):upper(),
-            duration = tonumber(g.toastDuration) or 8,
+            duration = dur,
+            infoDuration = dur,
+            toastKind = "INFO",
             pos = g.toastPos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 },
             bgR = 0.035, bgG = 0.039, bgB = 0.051,
             ar = ar, ag = ag, ab = ab,
@@ -8020,7 +8027,7 @@ do
 
             local animGroup = f:CreateAnimationGroup()
             local holdAnim = animGroup:CreateAnimation("Animation")
-            holdAnim:SetDuration(8)
+            holdAnim:SetDuration(5)
             holdAnim:SetOrder(1)
             local fadeAnim = animGroup:CreateAnimation("Alpha")
             fadeAnim:SetFromAlpha(1)
@@ -8047,7 +8054,9 @@ do
             end)
             f:SetScript("OnLeave", function(selfT)
                 local curSt = GetChatSharedToastStyle()
-                if (curSt.duration or 8) > 0 then
+                local leaveDur = tonumber(curSt.duration)
+                if leaveDur == nil then leaveDur = 5 end
+                if leaveDur > 0 then
                     selfT.animGroup:Play()
                 end
             end)
@@ -8082,7 +8091,8 @@ do
         if _G.DynamicSuite and type(_G.DynamicSuite.PlaySharedToastSound) == "function" then
             pcall(_G.DynamicSuite.PlaySharedToastSound)
         end
-        local dur = tonumber(GetChatSharedToastStyle().duration) or 8
+        local dur = tonumber(GetChatSharedToastStyle().duration)
+        if dur == nil then dur = 5 end
         if dur > 0 then
             mentionToastFrame.holdAnim:SetDuration(dur)
             mentionToastFrame.animGroup:Play()
@@ -10835,7 +10845,7 @@ function DynamicChat:ApplyPreset(presetKey)
         db.timestampFormat = "%H:%M "
         db.classColorNames = true
         db.editBoxBackgroundMode = "ALWAYS"
-        db.chatFontSize = 13
+        db.chatFontSize = 12
         db.chatFontOutline = "OUTLINE"
         db.chatFontShadow = true
         db.chatLineSpacing = 2
@@ -10853,7 +10863,7 @@ function DynamicChat:ApplyPreset(presetKey)
         db.leftRailMode = "COMBAT_HIDE"
         db.shortChannelNames = true
         db.soundMuteInCombat = true
-        db.chatFontSize = 13
+        db.chatFontSize = 12
         db.chatLineSpacing = 2
         self:ApplySavedChatFramePosition()
         self:ApplySleekChatSkin()
@@ -10864,7 +10874,7 @@ function DynamicChat:ApplyPreset(presetKey)
         db.activePreset = "HIGH_READABILITY"
         db.enableSleekChatSkin = true
         db.chatBgAlpha = 0.50
-        db.chatFontSize = 14
+        db.chatFontSize = 13
         db.chatFontOutline = "OUTLINE"
         db.chatFontShadow = true
         db.chatLineSpacing = 2
@@ -11376,17 +11386,17 @@ local function RenderChatEmbedded(arg1, arg2)
             {
                 key = "CLEAN_SMOKED",
                 label = "Clean Smoked-Glass",
-                desc = "Sleek skin On, 25% backdrop opacity, 13 px font, 2 px line spacing, Left Shortcut Bar Always visible, timestamps & class colours On.",
+                desc = "Sleek skin On, 25% backdrop opacity, 12 px font, 2 px line spacing, Left Shortcut Bar Always visible, timestamps & class colours On.",
             },
             {
                 key = "MINIMALIST_RAID",
                 label = "Minimalist Raid",
-                desc = "Sleek skin On, 15% backdrop opacity, 13 px font, 2 px line spacing, Left Shortcut Bar hidden in combat, compact tags, mute sounds in combat.",
+                desc = "Sleek skin On, 15% backdrop opacity, 12 px font, 2 px line spacing, Left Shortcut Bar hidden in combat, compact tags, mute sounds in combat.",
             },
             {
                 key = "HIGH_READABILITY",
                 label = "High-Readability",
-                desc = "Sleek skin On, 50% backdrop opacity, crisp 14 px font with thin outline, drop shadow On, and 2 px line spacing.",
+                desc = "Sleek skin On, 50% backdrop opacity, crisp 13 px font with thin outline, drop shadow On, and 2 px line spacing.",
             },
             {
                 key = "QUIET_ALERTS",
@@ -11899,7 +11909,7 @@ local function RenderChatEmbedded(arg1, arg2)
                 "Drag to set chat message font size (10 px to 22 px)."
             )
             TypographyMgr.AttachSliderToCard(c2_typoSize, 10, 22, 1, " px",
-                function() return tonumber(EnsureDB().chatFontSize) or 13 end,
+                function() return tonumber(EnsureDB().chatFontSize) or 12 end,
                 function(val)
                     EnsureDB().chatFontSize = val
                     DynamicChat:ClearActivePreset()
@@ -13355,6 +13365,7 @@ function DynamicChat._RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "24/11/2026",
         entries = {
+            { type = "UI",       text = "12 px Default Chat Font & Info Toast Timer Sync (24/11/2026): Set the default chat message font size to 12 px and updated Clean Smoked-Glass and Minimalist Raid presets to use 12 px / 2 px line spacing while tuning High-Readability to a balanced +1 px step at 13 px (50% smoked-glass backdrop, thin outline, drop shadow, 2 px line spacing); and connected Mention Alert Toasts to Suite Studio's dedicated Info & Mention Toast Duration timer (5s default: 3s, 5s, 8s, 12s, or Stay Until Clicked) with hover-to-pause and Right-Click dismissal." },
             { type = "FIX",      text = "Tab 3 Blank Screen Fix, Quick Presets Active Highlight & Copy Chat / URL Overhaul (24/11/2026): Fixed a nil typo on the Tab 2 Line Spacing card that aborted workspace construction before Tabs 3 and 4 built, and reset vertical scroll cleanly when switching tabs or resizing to 800x520; added live Suite Accent active highlighting for Quick Presets (clearing automatically when any preset setting is manually edited), tuned High-Readability to crisp 14 px contrast (50% backdrop, thin outline, drop shadow, 2 px line spacing) while having Clean Smoked-Glass and Minimalist Raid restore 13 px / 2 px text, and dynamically scaled chat typing box height and message clearance across docked tabs so chat lines never collide with the top typing box; and overhauled Copy Chat and Copy Link with a rolling out-of-combat plain-text session buffer fallback, case-insensitive URL capture (including bare www. links without duplicate sub-matches), hardened escape-code stripping, a [Select All] confirmation button and up to 4 Recent Links pills in the Copy Chat window, an elevated Copy Link dialog with deferred focus and full selection, and a plain-English Midnight footer notice whenever Blizzard restricts reading protected combat or instance lines." },
             { type = "UI",       text = "Pass 2 Quick Presets, 6 Persisted Sub-Settings Drawers & 800x520 Clamping (24/11/2026): Added a 4-option Quick Presets card at the top of Tab 2 (Clean Smoked-Glass, Minimalist Raid, High-Readability, Quiet Alerts); converted Smoked-Glass Skin (now with a 0%-95% background opacity precision slider, border style, and 30s/60s/2m/5m auto-fade duration), Left Shortcut Bar, Notification Sounds, Mention & Keyword Alerts (with a new [Test] preview button on Mention Alert Toast), Custom Sound Files, and Chat History (with [Copy Chat] and [Clear History] buttons) into persisted 24px Sub-Settings (N) drawers (collapsed by default on fresh profiles); removed the orphaned single-card Compact Channel Tags section and duplicate font sync toggle; shortened and right-clamped 4-tab labels and card titles for 800x520 minimum windows; and stripped outline flags from font picker group headers." },
             { type = "FIX",      text = "Release v2.8.1 - Chat Input Box Focus Error Fix (22/11/2026): Fixed a Retail 12.1.5 Lua error that could appear when action bars shifted or Blizzard refreshed the layout while the chat input box had a protected focus state. DynamicChat now tracks chat focus through Blizzard's focus events and checks input box visibility safely across both DynamicSuite and standalone DynamicChat." },

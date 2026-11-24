@@ -285,10 +285,12 @@ local DEFAULT_SUITE_GLOBAL = addonTable.DEFAULT_SUITE_GLOBAL or {
     recentColors     = {},
     toastPos         = { point = "TOP", relPoint = "TOP", x = 0, y = -50 },
     toastDisplayMode = "DETAILED",
-    toastScale       = 1.0,
-    toastAlpha       = 0.96,
-    toastDuration    = 8,
-    hudSnapMode      = "MAGNET",
+    toastScale          = 1.0,
+    toastAlpha          = 0.96,
+    toastDuration       = 12,
+    toastActionDuration = 12,
+    toastInfoDuration   = 5,
+    hudSnapMode         = "MAGNET",
     minimizedBarPos  = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0 },
     editModeModalPos = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0 },
     disabledModules  = {},
@@ -312,7 +314,9 @@ local DEFAULT_DB = {
     activeProfile = CONTEXT_OUTDOOR,
     autoSwitch = true,
     silentOnMatch = true,
-    toastDuration = 8,
+    toastDuration = 12,
+    toastActionDuration = 12,
+    toastInfoDuration = 5,
     toastScale = 1.0,
     toastAlpha = 0.96,
     toastDisplayMode = "DETAILED",
@@ -1586,6 +1590,39 @@ addonTable.ClampToastPosition = function()
     end
 end
 
+local function GetDynamicLoadActionToastDuration()
+    if _G.DynamicSuite and type(_G.DynamicSuite.GetSharedToastStyle) == "function" then
+        local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle, "ACTION")
+        if ok and type(st) == "table" and tonumber(st.duration) ~= nil then
+            return tonumber(st.duration)
+        end
+    end
+    local g = EnsureSuiteGlobal()
+    local d = tonumber(g and g.toastActionDuration)
+    if d == nil and DynamicLoadDB then d = tonumber(DynamicLoadDB.toastActionDuration) end
+    if d == nil then
+        local leg = tonumber((g and g.toastDuration) or (DynamicLoadDB and DynamicLoadDB.toastDuration))
+        if leg == 0 then
+            return 0
+        elseif leg ~= nil then
+            return math.max(12, (leg <= 6 and 5 or (leg <= 10 and 8 or (leg <= 16 and 12 or 20))))
+        end
+        return 12
+    end
+    return d
+end
+
+local function IsToastOrChildHovered(f)
+    if not f then return false end
+    if f.IsMouseOver and f:IsMouseOver() then return true end
+    for _, child in ipairs({ f.reloadBtn, f.closeBtn, f.viewConflictsBtn }) do
+        if child and child.IsShown and child:IsShown() and child.IsMouseOver and child:IsMouseOver() then
+            return true
+        end
+    end
+    return false
+end
+
 local function CreateToastFrame()
     if toastFrame then return toastFrame end
 
@@ -1639,8 +1676,29 @@ local function CreateToastFrame()
     reloadLbl:SetText("Reload")
     reloadLbl:SetTextColor(1, 1, 1, 0.95)
     reloadBtn.label = reloadLbl
-    reloadBtn:SetScript("OnClick", function()
+    reloadBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    reloadBtn:SetScript("OnEnter", function()
+        if not f.isDraggingMode and not f.isEditingMode and f.animGroup then
+            f.animGroup:Pause()
+            f:SetAlpha(1)
+        end
+    end)
+    reloadBtn:SetScript("OnLeave", function()
+        if not f.isDraggingMode and not f.isEditingMode and not IsToastOrChildHovered(f) and GetDynamicLoadActionToastDuration() > 0 then
+            if f.animGroup then f.animGroup:Play() end
+        end
+    end)
+    reloadBtn:SetScript("OnClick", function(_, button)
         if f.isEditingMode or f.isDraggingMode then return end
+        if button == "RightButton" then
+            hasShownToastThisLoadSession = true
+            pendingToastAfterCombat = false
+            pendingPostLoadToast = false
+            if f.animGroup then f.animGroup:Stop() end
+            f:Hide()
+            f:SetAlpha(1)
+            return
+        end
         if f.toastType == "CONFLICT_ALERT" then
             f.animGroup:Stop()
             f:Hide()
@@ -1688,10 +1746,17 @@ local function CreateToastFrame()
     closeBtn:SetScript("OnEnter", function(self)
         self:SetBackdropBorderColor(0.961, 0.722, 0.180, 0.95)
         self.label:SetTextColor(1, 1, 1, 1)
+        if not f.isDraggingMode and not f.isEditingMode and f.animGroup then
+            f.animGroup:Pause()
+            f:SetAlpha(1)
+        end
     end)
     closeBtn:SetScript("OnLeave", function(self)
         self:SetBackdropBorderColor(0.35, 0.40, 0.48, 0.75)
         self.label:SetTextColor(0.75, 0.80, 0.88, 0.95)
+        if not f.isDraggingMode and not f.isEditingMode and not IsToastOrChildHovered(f) and GetDynamicLoadActionToastDuration() > 0 then
+            if f.animGroup then f.animGroup:Play() end
+        end
     end)
     closeBtn:SetScript("OnClick", function()
         if f.isEditingMode or f.isDraggingMode then return end
@@ -1723,8 +1788,29 @@ local function CreateToastFrame()
     viewConflictsLbl:SetText("View Conflicts")
     viewConflictsLbl:SetTextColor(0.961, 0.722, 0.180, 1)
     viewConflictsBtn.label = viewConflictsLbl
-    viewConflictsBtn:SetScript("OnClick", function()
+    viewConflictsBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    viewConflictsBtn:SetScript("OnEnter", function()
+        if not f.isDraggingMode and not f.isEditingMode and f.animGroup then
+            f.animGroup:Pause()
+            f:SetAlpha(1)
+        end
+    end)
+    viewConflictsBtn:SetScript("OnLeave", function()
+        if not f.isDraggingMode and not f.isEditingMode and not IsToastOrChildHovered(f) and GetDynamicLoadActionToastDuration() > 0 then
+            if f.animGroup then f.animGroup:Play() end
+        end
+    end)
+    viewConflictsBtn:SetScript("OnClick", function(_, button)
         if f.isEditingMode or f.isDraggingMode then return end
+        if button == "RightButton" then
+            hasShownToastThisLoadSession = true
+            pendingToastAfterCombat = false
+            pendingPostLoadToast = false
+            if f.animGroup then f.animGroup:Stop() end
+            f:Hide()
+            f:SetAlpha(1)
+            return
+        end
         f.animGroup:Stop()
         f:Hide()
         if addonTable.OpenWorkspaceViewSafe then
@@ -1917,8 +2003,8 @@ local function CreateToastFrame()
     end)
 
     f:SetScript("OnLeave", function(self)
-        local g = EnsureSuiteGlobal()
-        local dur = g.toastDuration or (DynamicLoadDB and DynamicLoadDB.toastDuration) or 8
+        if IsToastOrChildHovered(self) then return end
+        local dur = GetDynamicLoadActionToastDuration()
         if not self.isDraggingMode and not self.isEditingMode and dur > 0 then
             self.animGroup:Play()
         end
@@ -2055,10 +2141,7 @@ local function ShowToast(profileKey, deltaCount, isTestPreview)
     ApplyToastPosition(f)
     RefreshToastContent(f)
 
-    local duration = g.toastDuration
-    if duration == nil then
-        duration = (DynamicLoadDB and DynamicLoadDB.toastDuration) or 8
-    end
+    local duration = GetDynamicLoadActionToastDuration()
 
     f:Show()
     if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
@@ -2108,9 +2191,12 @@ local function ShowNewAddonsToast(newAddons)
     end
     f.subtext:SetText(string.format("|cFF%sClick [Open] to Configure|r    |cFF888888Right-Click: Dismiss|r", bdgHex))
 
-    f.holdAnim:SetDuration(10)
+    local dur = GetDynamicLoadActionToastDuration()
     f:Show()
-    f.animGroup:Play()
+    if dur and dur > 0 then
+        f.holdAnim:SetDuration(dur)
+        f.animGroup:Play()
+    end
 end
 addonTable.ShowNewAddonsToast = ShowNewAddonsToast
 
@@ -2184,9 +2270,12 @@ local function ShowConflictToast(conflicts)
     f.subtext:Show()
     f:SetSize(486, 74)
 
-    f.holdAnim:SetDuration(12)
+    local dur = GetDynamicLoadActionToastDuration()
     f:Show()
-    f.animGroup:Play()
+    if dur and dur > 0 then
+        f.holdAnim:SetDuration(dur)
+        f.animGroup:Play()
+    end
 end
 addonTable.ShowConflictToast = ShowConflictToast
 
@@ -2270,22 +2359,37 @@ end
 
 function addonTable.ResetToastSettings()
     local g = EnsureSuiteGlobal()
-    g.toastPos         = { point = "TOP", relPoint = "TOP", x = 0, y = -50 }
-    g.toastScale       = 1.0
-    g.toastAlpha       = 0.96
-    g.toastDuration    = 8
-    g.toastDisplayMode = "DETAILED"
+    g.toastPos            = { point = "TOP", relPoint = "TOP", x = 0, y = -50 }
+    g.toastScale          = 1.0
+    g.toastAlpha          = 0.96
+    g.toastDuration       = 12
+    g.toastActionDuration = 12
+    g.toastInfoDuration   = 5
+    g.toastDisplayMode    = "DETAILED"
+    if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+        _G.DynamicSuiteDB.global.toastActionDuration = 12
+        _G.DynamicSuiteDB.global.toastInfoDuration = 5
+        _G.DynamicSuiteDB.global.toastDuration = 12
+    end
     if DynamicLoadDB then
-        DynamicLoadDB.toastPos         = CopyTable(g.toastPos)
-        DynamicLoadDB.toastScale       = 1.0
-        DynamicLoadDB.toastAlpha       = 0.96
-        DynamicLoadDB.toastDuration    = 8
-        DynamicLoadDB.toastDisplayMode = "DETAILED"
-        DynamicLoadDB.toastHeaderText  = "DynamicLoad"
+        DynamicLoadDB.toastPos            = CopyTable(g.toastPos)
+        DynamicLoadDB.toastScale          = 1.0
+        DynamicLoadDB.toastAlpha          = 0.96
+        DynamicLoadDB.toastDuration       = 12
+        DynamicLoadDB.toastActionDuration = 12
+        DynamicLoadDB.toastInfoDuration   = 5
+        DynamicLoadDB.toastDisplayMode    = "DETAILED"
+        DynamicLoadDB.toastHeaderText     = "DynamicLoad"
         addonTable.ApplyToastPreset("OBSIDIAN_SLATE")
     end
     local f = CreateToastFrame()
     ApplyToastPosition(f)
+    if addonTable.RefreshHudEditInspector then
+        pcall(addonTable.RefreshHudEditInspector)
+    end
+    if addonTable.mainFrame and addonTable.mainFrame.themeView and addonTable.mainFrame.themeView.Refresh then
+        pcall(addonTable.mainFrame.themeView.Refresh)
+    end
     print(string.format("%s: Alert Toast settings reset to defaults.", ADDON_TITLE))
 end
 
@@ -8846,7 +8950,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
 
     local toastScrollChild = CreateFrame("Frame", nil, toastScroll)
     toastScrollChild:SetWidth(760)
-    toastScrollChild:SetHeight(8 * 58)
+    toastScrollChild:SetHeight(9 * 58)
     toastScroll:SetScrollChild(toastScrollChild)
 
     local toastSbTrack = CreateFrame("Frame", nil, toastPanel)
@@ -9091,30 +9195,92 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     toastAlphaSlider:SetPoint("RIGHT", rowToastAlpha, "RIGHT", -14, 0)
     rowToastAlpha:BindRightControl(toastAlphaSlider)
 
-    -- Row 6: Auto-Fade Duration
-    local rowToastDur = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 6, "Auto-Fade Duration", "How long shared alert toasts remain on screen before smoothly fading out."), 6)
-    local durSegPills
-    durSegPills = UI.CreateSegmentedPills(rowToastDur, {
-        { value = 5,  label = "5s",           width = 50 },
-        { value = 8,  label = "8s (Default)", width = 94 },
-        { value = 12, label = "12s",          width = 52 },
-        { value = 0,  label = "Stay",         width = 56 },
+    -- Row 6: Actionable Toast Duration
+    local rowToastActionDur = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 6, "Actionable Toast Duration", "How long toasts with clickable buttons stay on screen before fading out (hovering pauses the timer)."), 6)
+    local actionDurSegPills
+    actionDurSegPills = UI.CreateSegmentedPills(rowToastActionDur, {
+        { value = 5,  label = "5s",   width = 46 },
+        { value = 8,  label = "8s",   width = 46 },
+        { value = 12, label = "12s",  width = 50 },
+        { value = 20, label = "20s",  width = 50 },
+        { value = 0,  label = "Stay", width = 54 },
     }, function()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
-        local d = gTbl.toastDuration
-        if d == nil then d = (DynamicLoadDB and DynamicLoadDB.toastDuration) or 8 end
+        local d = tonumber(gTbl.toastActionDuration)
+        if d == nil and DynamicLoadDB then d = tonumber(DynamicLoadDB.toastActionDuration) end
+        if d == nil then
+            local leg = tonumber(gTbl.toastDuration) or (DynamicLoadDB and tonumber(DynamicLoadDB.toastDuration))
+            if leg == 0 then
+                d = 0
+            elseif leg ~= nil then
+                d = math.max(12, (leg <= 6 and 5 or (leg <= 10 and 8 or (leg <= 16 and 12 or 20))))
+            else
+                d = 12
+            end
+        end
         return d
     end, function(val)
+        local d = tonumber(val)
+        if d == nil then d = 12 end
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
-        if gTbl then gTbl.toastDuration = val end
-        if DynamicLoadDB then DynamicLoadDB.toastDuration = val end
+        if gTbl then gTbl.toastActionDuration = d end
+        if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+            _G.DynamicSuiteDB.global.toastActionDuration = d
+        end
+        if DynamicLoadDB then DynamicLoadDB.toastActionDuration = d end
         if toastPanel.RefreshControls then toastPanel.RefreshControls() end
+        if addonTable.mainFrame and addonTable.mainFrame.themeView and addonTable.mainFrame.themeView.Refresh then
+            pcall(addonTable.mainFrame.themeView.Refresh)
+        end
+        if addonTable.RefreshHudEditInspector then pcall(addonTable.RefreshHudEditInspector) end
     end)
-    durSegPills:SetPoint("RIGHT", rowToastDur, "RIGHT", -14, 0)
-    rowToastDur:BindRightControl(durSegPills)
+    actionDurSegPills:SetPoint("RIGHT", rowToastActionDur, "RIGHT", -14, 0)
+    rowToastActionDur:BindRightControl(actionDurSegPills)
 
-    -- Row 7: Toast Alert Sound
-    local rowToastSound = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 7, "Toast Alert Sound", "Play a crisp Battle.net notification chime when a shared suite alert toast appears."), 7)
+    -- Row 7: Info & Mention Toast Duration
+    local rowToastInfoDur = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 7, "Info & Mention Toast Duration", "How long info and chat mention toasts stay on screen before fading out (hovering pauses the timer)."), 7)
+    local infoDurSegPills
+    infoDurSegPills = UI.CreateSegmentedPills(rowToastInfoDur, {
+        { value = 3,  label = "3s",   width = 46 },
+        { value = 5,  label = "5s",   width = 46 },
+        { value = 8,  label = "8s",   width = 46 },
+        { value = 12, label = "12s",  width = 50 },
+        { value = 0,  label = "Stay", width = 54 },
+    }, function()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        local d = tonumber(gTbl.toastInfoDuration)
+        if d == nil and DynamicLoadDB then d = tonumber(DynamicLoadDB.toastInfoDuration) end
+        if d == nil then
+            local leg = tonumber(gTbl.toastDuration) or (DynamicLoadDB and tonumber(DynamicLoadDB.toastDuration))
+            if leg == 0 then
+                d = 0
+            elseif leg ~= nil then
+                d = (leg <= 4 and 3 or (leg <= 6 and 5 or (leg <= 10 and 8 or 12)))
+            else
+                d = 5
+            end
+        end
+        return d
+    end, function(val)
+        local d = tonumber(val)
+        if d == nil then d = 5 end
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        if gTbl then gTbl.toastInfoDuration = d end
+        if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+            _G.DynamicSuiteDB.global.toastInfoDuration = d
+        end
+        if DynamicLoadDB then DynamicLoadDB.toastInfoDuration = d end
+        if toastPanel.RefreshControls then toastPanel.RefreshControls() end
+        if addonTable.mainFrame and addonTable.mainFrame.themeView and addonTable.mainFrame.themeView.Refresh then
+            pcall(addonTable.mainFrame.themeView.Refresh)
+        end
+        if addonTable.RefreshHudEditInspector then pcall(addonTable.RefreshHudEditInspector) end
+    end)
+    infoDurSegPills:SetPoint("RIGHT", rowToastInfoDur, "RIGHT", -14, 0)
+    rowToastInfoDur:BindRightControl(infoDurSegPills)
+
+    -- Row 8: Toast Alert Sound
+    local rowToastSound = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 8, "Toast Alert Sound", "Play a crisp Battle.net notification chime when a shared suite alert toast appears."), 8)
     local soundSegPills = UI.CreateSegmentedPills(rowToastSound, {
         { value = false, label = "Off",     width = 68 },
         { value = true,  label = "Enabled", width = 84 },
@@ -9131,8 +9297,8 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     soundSegPills:SetPoint("RIGHT", rowToastSound, "RIGHT", -14, 0)
     rowToastSound:BindRightControl(soundSegPills)
 
-    -- Row 8: Factory Toast Recovery
-    local rowToastActions = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 8, "Factory Toast Recovery", "Restore Alert Toast visibility, border style, scale, opacity, and coordinates to defaults."), 8)
+    -- Row 9: Factory Toast Recovery
+    local rowToastActions = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 9, "Factory Toast Recovery", "Restore Alert Toast visibility, border style, scale, opacity, and coordinates to defaults."), 9)
     local resetToastAllBtn = CreateFlatButton(rowToastActions, 168, 26, "Reset Toast Defaults", false)
     resetToastAllBtn:SetPoint("RIGHT", rowToastActions, "RIGHT", -14, 0)
     resetToastAllBtn:SetScript("OnClick", function()
@@ -9148,7 +9314,8 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         if visSegPills and visSegPills.RefreshValue then visSegPills:RefreshValue() end
         if borderSegPills and borderSegPills.RefreshValue then borderSegPills:RefreshValue() end
         if modeSegPills and modeSegPills.RefreshValue then modeSegPills:RefreshValue() end
-        if durSegPills and durSegPills.RefreshValue then durSegPills:RefreshValue() end
+        if actionDurSegPills and actionDurSegPills.RefreshValue then actionDurSegPills:RefreshValue() end
+        if infoDurSegPills and infoDurSegPills.RefreshValue then infoDurSegPills:RefreshValue() end
         if soundSegPills and soundSegPills.RefreshValue then soundSegPills:RefreshValue() end
 
         if openHudEditBtn and openHudEditBtn.iconTex then

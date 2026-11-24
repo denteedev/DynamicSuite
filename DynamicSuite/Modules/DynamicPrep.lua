@@ -6721,17 +6721,30 @@ end
 
 local function GetMageFoodSharedToastStyle()
     if _G.DynamicSuite and type(_G.DynamicSuite.GetSharedToastStyle) == "function" then
-        local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle)
+        local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle, "ACTION")
         if ok and type(st) == "table" then return st end
     end
     local ar, ag, ab = GetActiveAccentRGB()
     local g = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global) or {}
+    local dur = tonumber(g.toastActionDuration)
+    if dur == nil then
+        local leg = tonumber(g.toastDuration)
+        if leg == 0 then
+            dur = 0
+        elseif leg ~= nil then
+            dur = math.max(12, (leg <= 6 and 5 or (leg <= 10 and 8 or (leg <= 16 and 12 or 20))))
+        else
+            dur = 12
+        end
+    end
     return {
-        scale       = math.max(0.60, math.min(1.50, tonumber(g.toastScale) or 1.0)),
-        opacity     = math.max(0.20, math.min(1.00, tonumber(g.toastOpacity or g.toastAlpha) or 0.96)),
-        borderStyle = tostring(g.toastBorderStyle or "ACCENT"):upper(),
-        duration    = tonumber(g.toastDuration) or 8,
-        pos         = g.toastPos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 },
+        scale          = math.max(0.60, math.min(1.50, tonumber(g.toastScale) or 1.0)),
+        opacity        = math.max(0.20, math.min(1.00, tonumber(g.toastOpacity or g.toastAlpha) or 0.96)),
+        borderStyle    = tostring(g.toastBorderStyle or "ACCENT"):upper(),
+        duration       = dur,
+        actionDuration = dur,
+        toastKind      = "ACTION",
+        pos            = g.toastPos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 },
         bgR = 0.035, bgG = 0.039, bgB = 0.051,
         ar = ar, ag = ag, ab = ab,
     }
@@ -6753,7 +6766,7 @@ function DynamicPrep:ApplyMageFoodToastVisuals()
     if InCombatLockdown and InCombatLockdown() then return end
     local st = nil
     if _G.DynamicSuite and type(_G.DynamicSuite.ApplySharedToastLayout) == "function" then
-        local ok, sharedSt = pcall(_G.DynamicSuite.ApplySharedToastLayout, f, { tintIcon = false })
+        local ok, sharedSt = pcall(_G.DynamicSuite.ApplySharedToastLayout, f, { toastKind = "ACTION", tintIcon = false })
         if ok and type(sharedSt) == "table" then st = sharedSt end
     end
     if not st then
@@ -6910,6 +6923,7 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
         local f = nil
         if _G.DynamicSuite and type(_G.DynamicSuite.EnsureSharedToastFrame) == "function" then
             local ok, sharedFrame = pcall(_G.DynamicSuite.EnsureSharedToastFrame, "DynamicPrepMageFoodToast", {
+                toastKind = "ACTION",
                 clickButtons = { "LeftButtonUp", "RightButtonUp" },
                 iconMode = "FULL",
                 iconTexture = 134029, -- Conjured Mana Bun icon
@@ -6970,7 +6984,9 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
 
             local ag = f:CreateAnimationGroup()
             local hold = ag:CreateAnimation("Animation")
-            hold:SetDuration(stInit.duration or 8)
+            local initDur = tonumber(stInit.duration)
+            if initDur == nil then initDur = 12 end
+            hold:SetDuration((initDur > 0) and initDur or 12)
             hold:SetOrder(1)
             local fade = ag:CreateAnimation("Alpha")
             fade:SetFromAlpha(1)
@@ -7005,7 +7021,9 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
             f:SetScript("OnLeave", function()
                 if f.actionBtn and f.actionBtn.IsMouseOver and f.actionBtn:IsMouseOver() then return end
                 local curSt = GetMageFoodSharedToastStyle()
-                if f.animGroup and (curSt.duration or 8) > 0 then f.animGroup:Play() end
+                local leaveDur = tonumber(curSt.duration)
+                if leaveDur == nil then leaveDur = 12 end
+                if f.animGroup and leaveDur > 0 then f.animGroup:Play() end
             end)
         end
 
@@ -7042,7 +7060,8 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
     f._stage = stage
     f._isPreview = (isPreview == true)
     local st = GetMageFoodSharedToastStyle()
-    local dur = tonumber(st.duration) or 8
+    local dur = tonumber(st.duration)
+    if dur == nil then dur = 12 end
 
     local isLeave = (stage == "LEAVE")
     local isAskMage = (stage == "ASK_MAGE")
@@ -7056,7 +7075,9 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
     f.actionBtn:SetScript("OnLeave", function(s)
         local curSt = GetMageFoodSharedToastStyle()
         StyleMageFoodToastActionBtn(s, curSt, false)
-        if not (f.IsMouseOver and f:IsMouseOver()) and f.animGroup and (curSt.duration or 8) > 0 then
+        local leaveDur = tonumber(curSt.duration)
+        if leaveDur == nil then leaveDur = 12 end
+        if not (f.IsMouseOver and f:IsMouseOver()) and f.animGroup and leaveDur > 0 then
             f.animGroup:Play()
         end
     end)
@@ -7101,6 +7122,7 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
 
     if _G.DynamicSuite and type(_G.DynamicSuite.ShowSharedToast) == "function" then
         local okShown, resShown = pcall(_G.DynamicSuite.ShowSharedToast, f, {
+            toastKind = "ACTION",
             title = titleText,
             badge = badgeText,
             subtext = subtextText,
@@ -7315,7 +7337,7 @@ function DynamicPrep:ApplyDurabilityToastVisuals()
     if InCombatLockdown and InCombatLockdown() then return end
     local st = nil
     if _G.DynamicSuite and type(_G.DynamicSuite.ApplySharedToastLayout) == "function" then
-        local ok, sharedSt = pcall(_G.DynamicSuite.ApplySharedToastLayout, f, { tintIcon = false })
+        local ok, sharedSt = pcall(_G.DynamicSuite.ApplySharedToastLayout, f, { toastKind = "ACTION", tintIcon = false })
         if ok and type(sharedSt) == "table" then st = sharedSt end
     end
     if not st then
@@ -7607,6 +7629,7 @@ function DynamicPrep:ShowDurabilityToast(lowestPct, avgPct, isPreview)
         local f = nil
         if _G.DynamicSuite and type(_G.DynamicSuite.EnsureSharedToastFrame) == "function" then
             local ok, sharedFrame = pcall(_G.DynamicSuite.EnsureSharedToastFrame, "DynamicPrepDurabilityToast", {
+                toastKind = "ACTION",
                 clickButtons = { "LeftButtonUp", "RightButtonUp" },
                 iconMode = "FULL",
                 iconTexture = 136241, -- Repair anvil icon
@@ -7660,7 +7683,9 @@ function DynamicPrep:ShowDurabilityToast(lowestPct, avgPct, isPreview)
 
             local ag = f:CreateAnimationGroup()
             local hold = ag:CreateAnimation("Animation")
-            hold:SetDuration(stInit.duration or 8)
+            local initDur = tonumber(stInit.duration)
+            if initDur == nil then initDur = 12 end
+            hold:SetDuration((initDur > 0) and initDur or 12)
             hold:SetOrder(1)
             local fade = ag:CreateAnimation("Alpha")
             fade:SetFromAlpha(1)
@@ -7688,7 +7713,9 @@ function DynamicPrep:ShowDurabilityToast(lowestPct, avgPct, isPreview)
             f:SetScript("OnLeave", function()
                 if f.actionBtn and f.actionBtn.IsMouseOver and f.actionBtn:IsMouseOver() then return end
                 local curSt = GetMageFoodSharedToastStyle()
-                if f.animGroup and (curSt.duration or 8) > 0 then f.animGroup:Play() end
+                local leaveDur = tonumber(curSt.duration)
+                if leaveDur == nil then leaveDur = 12 end
+                if f.animGroup and leaveDur > 0 then f.animGroup:Play() end
             end)
         end
 
@@ -7725,7 +7752,8 @@ function DynamicPrep:ShowDurabilityToast(lowestPct, avgPct, isPreview)
     f._lowestPct = tonumber(lowestPct) or 0
     f._isPreview = (isPreview == true)
     local st = GetMageFoodSharedToastStyle()
-    local dur = tonumber(st.duration) or 8
+    local dur = tonumber(st.duration)
+    if dur == nil then dur = 12 end
 
     local mountID = self:GetUsableRepairMount()
     f.actionBtn.txt:SetText(mountID and "Repair Mount" or "Open Gear")
@@ -7738,7 +7766,9 @@ function DynamicPrep:ShowDurabilityToast(lowestPct, avgPct, isPreview)
     f.actionBtn:SetScript("OnLeave", function(s)
         local curSt = GetMageFoodSharedToastStyle()
         StyleMageFoodToastActionBtn(s, curSt, false)
-        if not (f.IsMouseOver and f:IsMouseOver()) and f.animGroup and (curSt.duration or 8) > 0 then
+        local leaveDur = tonumber(curSt.duration)
+        if leaveDur == nil then leaveDur = 12 end
+        if not (f.IsMouseOver and f:IsMouseOver()) and f.animGroup and leaveDur > 0 then
             f.animGroup:Play()
         end
     end)
@@ -7762,6 +7792,7 @@ function DynamicPrep:ShowDurabilityToast(lowestPct, avgPct, isPreview)
 
     if _G.DynamicSuite and type(_G.DynamicSuite.ShowSharedToast) == "function" then
         local okShown, resShown = pcall(_G.DynamicSuite.ShowSharedToast, f, {
+            toastKind = "ACTION",
             title = titleText,
             badge = badgeText,
             subtext = subtextText,

@@ -4816,19 +4816,33 @@ end
 
 local function GetResolvedSharedToastStyle()
     if _G.DynamicSuite and type(_G.DynamicSuite.GetSharedToastStyle) == "function" then
-        local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle)
+        local ok, st = pcall(_G.DynamicSuite.GetSharedToastStyle, "ACTION")
         if ok and type(st) == "table" then return st end
     end
     local pos, scale = GetSharedAlertToastPosAndScale()
     local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
     local dl = type(_G.DynamicLoadDB) == "table" and _G.DynamicLoadDB or nil
     local ar, ag, ab = GetSuiteAccent()
+    local dur = tonumber(g and g.toastActionDuration)
+    if dur == nil and dl then dur = tonumber(dl.toastActionDuration) end
+    if dur == nil then
+        local leg = tonumber((g and g.toastDuration) or (dl and dl.toastDuration))
+        if leg == 0 then
+            dur = 0
+        elseif leg ~= nil then
+            dur = math.max(12, (leg <= 6 and 5 or (leg <= 10 and 8 or (leg <= 16 and 12 or 20))))
+        else
+            dur = 12
+        end
+    end
     return {
-        scale = scale,
-        opacity = (g and (g.toastOpacity or g.toastAlpha)) or (dl and (dl.toastOpacity or dl.toastAlpha)) or 0.96,
-        borderStyle = tostring((g and g.toastBorderStyle) or (dl and dl.toastBorderStyle) or "ACCENT"):upper(),
-        duration = tonumber((g and g.toastDuration) or (dl and dl.toastDuration)) or 8,
-        pos = pos,
+        scale          = scale,
+        opacity        = (g and (g.toastOpacity or g.toastAlpha)) or (dl and (dl.toastOpacity or dl.toastAlpha)) or 0.96,
+        borderStyle    = tostring((g and g.toastBorderStyle) or (dl and dl.toastBorderStyle) or "ACCENT"):upper(),
+        duration       = dur,
+        actionDuration = dur,
+        toastKind      = "ACTION",
+        pos            = pos,
         bgR = 0.035, bgG = 0.039, bgB = 0.051,
         ar = ar, ag = ag, ab = ab,
     }
@@ -4846,6 +4860,7 @@ function DynamicGroup:ApplyTeleportToastPosition()
 
     if _G.DynamicSuite and type(_G.DynamicSuite.ApplySharedToastLayout) == "function" then
         local okLayout = pcall(_G.DynamicSuite.ApplySharedToastLayout, toast, {
+            toastKind = "ACTION",
             borderOverrideRGB = emeraldRGB,
             iconBorderOverrideRGB = emeraldRGB,
             tintIcon = false,
@@ -4933,11 +4948,12 @@ function DynamicGroup:EnsureTeleportToast()
     local toast = nil
     if _G.DynamicSuite and type(_G.DynamicSuite.EnsureSharedToastFrame) == "function" then
         local ok, sharedFrame = pcall(_G.DynamicSuite.EnsureSharedToastFrame, "DynamicGroupTeleportToast", {
+            toastKind = "ACTION",
             clickButtons = { "RightButtonUp" },
             iconMode = "FULL",
             rightActionWidth = 76,
             rightActionGap = 8,
-            autoFade = false,
+            autoFade = true,
             onRightClickDismiss = function()
                 DynamicGroup:HideTeleportToast(true)
             end,
@@ -4969,9 +4985,44 @@ function DynamicGroup:EnsureTeleportToast()
         local ar, ag, ab = GetSuiteAccent()
         toast:SetBackdropBorderColor(ar, ag, ab, 0.85)
 
+        local animGroup = toast:CreateAnimationGroup()
+        local holdAnim = animGroup:CreateAnimation("Animation")
+        holdAnim:SetDuration(12)
+        holdAnim:SetOrder(1)
+        local fadeAnim = animGroup:CreateAnimation("Alpha")
+        fadeAnim:SetFromAlpha(1)
+        fadeAnim:SetToAlpha(0)
+        fadeAnim:SetDuration(1.2)
+        fadeAnim:SetOrder(2)
+        animGroup:SetScript("OnFinished", function()
+            if not (InCombatLockdown and InCombatLockdown()) then
+                toast:Hide()
+                toast:SetAlpha(1)
+            end
+        end)
+        toast.animGroup = animGroup
+        toast.holdAnim = holdAnim
+
         toast:SetScript("OnClick", function(_, button)
             if button == "RightButton" then
+                if toast.animGroup then toast.animGroup:Stop() end
+                toast:SetAlpha(1)
                 DynamicGroup:HideTeleportToast(true)
+            end
+        end)
+        toast:SetScript("OnEnter", function(selfT)
+            if selfT.animGroup then selfT.animGroup:Pause() end
+            selfT:SetAlpha(1)
+        end)
+        toast:SetScript("OnLeave", function(selfT)
+            if selfT.teleportBtn and selfT.teleportBtn.IsMouseOver and selfT.teleportBtn:IsMouseOver() then
+                return
+            end
+            local stLeave = GetResolvedSharedToastStyle()
+            local leaveDur = tonumber(stLeave.duration)
+            if leaveDur == nil then leaveDur = 12 end
+            if leaveDur > 0 and selfT.animGroup and selfT:IsShown() then
+                selfT.animGroup:Play()
             end
         end)
 
@@ -5064,6 +5115,8 @@ function DynamicGroup:EnsureTeleportToast()
         end
         tpBtn.label:SetText("Teleport")
         tpBtn:SetScript("OnEnter", function(s)
+            if toast.animGroup then toast.animGroup:Pause() end
+            toast:SetAlpha(1)
             if _G.GameTooltip then
                 _G.GameTooltip:SetOwner(s, "ANCHOR_TOP")
                 _G.GameTooltip:ClearLines()
@@ -5079,6 +5132,14 @@ function DynamicGroup:EnsureTeleportToast()
         end)
         tpBtn:SetScript("OnLeave", function()
             if _G.GameTooltip then _G.GameTooltip:Hide() end
+            if not (toast.IsMouseOver and toast:IsMouseOver()) and toast.animGroup then
+                local stLeave = GetResolvedSharedToastStyle()
+                local leaveDur = tonumber(stLeave.duration)
+                if leaveDur == nil then leaveDur = 12 end
+                if leaveDur > 0 and toast:IsShown() then
+                    toast.animGroup:Play()
+                end
+            end
         end)
         tpBtn:SetScript("PostClick", function(_, button, down)
             local useKeyDown = (type(_G.GetCVarBool) == "function" and _G.GetCVarBool("ActionButtonUseKeyDown")) and true or false
@@ -5221,6 +5282,7 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
     local shownViaCore = false
     if _G.DynamicSuite and type(_G.DynamicSuite.ShowSharedToast) == "function" then
         local okShown, resShown = pcall(_G.DynamicSuite.ShowSharedToast, toast, {
+            toastKind = "ACTION",
             title = titleDisplay,
             badge = rosterLine,
             subtext = statusLine,
@@ -5228,7 +5290,7 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
             borderOverrideRGB = emeraldRGB,
             iconBorderOverrideRGB = emeraldRGB,
             tintIcon = false,
-            autoFade = false,
+            autoFade = true,
             playSound = false,
         })
         if okShown and resShown then
@@ -5244,11 +5306,20 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
         toast.rosterText:SetText(rosterLine)
         SetSafeFont(toast.statusText, 10, "")
         toast.statusText:SetText(statusLine)
+        if toast.animGroup then toast.animGroup:Stop() end
+        toast:SetAlpha(1)
         self:ApplyTeleportToastPosition()
         if not toast:IsShown() then
             toast:Show()
         end
         self:ApplyTeleportToastPosition()
+        local st = GetResolvedSharedToastStyle()
+        local dur = tonumber(st.duration)
+        if dur == nil then dur = 12 end
+        if dur > 0 and toast.animGroup and toast.holdAnim then
+            toast.holdAnim:SetDuration(dur)
+            toast.animGroup:Play()
+        end
     end
 
     self.pendingTeleportToastUpdate = false

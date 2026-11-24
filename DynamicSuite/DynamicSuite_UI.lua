@@ -8720,11 +8720,11 @@ function addonTable.CreateMainConfigUI()
     spotlightPills:SetPoint("RIGHT", spotlightRow, "RIGHT", -14, 0)
     spotlightRow:BindRightControl(spotlightPills)
 
-    -- Tab 1 Card 3: Shared Alert Toast HUD Configuration Card (Visibility, Border Style, Scale, Opacity, Duration, Sound, Test Toast, Edit HUD)
+    -- Tab 1 Card 3: Shared Alert Toast HUD Configuration Card (Visibility, Border Style, Scale, Opacity, Action & Info Durations, Sound, Test Toast, Edit HUD)
     local toastSectionCard = CreateFrame("Frame", nil, tvChild)
     toastSectionCard:SetPoint("TOPLEFT", surfaceSectionCard, "BOTTOMLEFT", 0, -10)
     toastSectionCard:SetPoint("TOPRIGHT", surfaceSectionCard, "BOTTOMRIGHT", 0, -10)
-    toastSectionCard:SetHeight(386)
+    toastSectionCard:SetHeight(442)
     toastSectionCard.bg = UI.SolidTex(toastSectionCard, "BACKGROUND", 0, 0.031, 0.039, 0.055, 0.72)
     toastSectionCard.bg:SetAllPoints()
     UI.CreatePixelBorder(toastSectionCard, 1, 1, 1, 0.08, 2)
@@ -8777,6 +8777,9 @@ function addonTable.CreateMainConfigUI()
         end
         if f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
             pcall(f.toastConfigPanel.RefreshControls)
+        end
+        if addonTable.RefreshHudEditInspector then
+            pcall(addonTable.RefreshHudEditInspector)
         end
         if themeView.Refresh then themeView.Refresh() end
     end
@@ -8949,39 +8952,93 @@ function addonTable.CreateMainConfigUI()
     toastOpacitySlider:SetPoint("RIGHT", toastOpacityRow, "RIGHT", -14, 0)
     toastOpacityRow:BindRightControl(toastOpacitySlider)
 
-    local toastDurRow = CreateThemeStudioRow(
+    local toastActionDurRow = CreateThemeStudioRow(
         toastSectionCard,
-        "Auto-Fade Duration",
-        "How long alert toasts stay on screen before smoothly fading out (hovering pauses the timer).",
+        "Actionable Toast Duration",
+        "How long toasts with clickable buttons stay on screen before fading out (hovering pauses the timer).",
         toastOpacityRow, -5
     )
-    local toastDurPills = UI.CreateSegmentedPills(toastDurRow, {
-        { value = 5,  label = "5s",           width = 50 },
-        { value = 8,  label = "8s (Default)", width = 94 },
-        { value = 12, label = "12s",          width = 52 },
-        { value = 0,  label = "Stay",         width = 56 },
+    local toastActionDurPills = UI.CreateSegmentedPills(toastActionDurRow, {
+        { value = 5,  label = "5s",   width = 46 },
+        { value = 8,  label = "8s",   width = 46 },
+        { value = 12, label = "12s",  width = 50 },
+        { value = 20, label = "20s",  width = 50 },
+        { value = 0,  label = "Stay", width = 54 },
     }, function()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
-        local d = gTbl.toastDuration
-        if d == nil then d = (DynamicLoadDB and DynamicLoadDB.toastDuration) or 8 end
+        local d = tonumber(gTbl.toastActionDuration)
+        if d == nil and DynamicLoadDB then d = tonumber(DynamicLoadDB.toastActionDuration) end
+        if d == nil then
+            local leg = tonumber(gTbl.toastDuration) or (DynamicLoadDB and tonumber(DynamicLoadDB.toastDuration))
+            if leg == 0 then
+                d = 0
+            elseif leg ~= nil then
+                d = addonTable.ClampToastActionDuration and math.max(12, addonTable.ClampToastActionDuration(leg)) or 12
+            else
+                d = 12
+            end
+        end
         return d
     end, function(val)
+        local d = tonumber(val)
+        if d == nil then d = 12 end
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
-        if gTbl then gTbl.toastDuration = val end
+        if gTbl then gTbl.toastActionDuration = d end
         if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
-            _G.DynamicSuiteDB.global.toastDuration = val
+            _G.DynamicSuiteDB.global.toastActionDuration = d
         end
-        if DynamicLoadDB then DynamicLoadDB.toastDuration = val end
+        if DynamicLoadDB then DynamicLoadDB.toastActionDuration = d end
         SyncSharedToastHudVisuals()
     end)
-    toastDurPills:SetPoint("RIGHT", toastDurRow, "RIGHT", -14, 0)
-    toastDurRow:BindRightControl(toastDurPills)
+    toastActionDurPills:SetPoint("RIGHT", toastActionDurRow, "RIGHT", -14, 0)
+    toastActionDurRow:BindRightControl(toastActionDurPills)
+
+    local toastInfoDurRow = CreateThemeStudioRow(
+        toastSectionCard,
+        "Info & Mention Toast Duration",
+        "How long info and chat mention toasts stay on screen before fading out (hovering pauses the timer).",
+        toastActionDurRow, -5
+    )
+    local toastInfoDurPills = UI.CreateSegmentedPills(toastInfoDurRow, {
+        { value = 3,  label = "3s",   width = 46 },
+        { value = 5,  label = "5s",   width = 46 },
+        { value = 8,  label = "8s",   width = 46 },
+        { value = 12, label = "12s",  width = 50 },
+        { value = 0,  label = "Stay", width = 54 },
+    }, function()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        local d = tonumber(gTbl.toastInfoDuration)
+        if d == nil and DynamicLoadDB then d = tonumber(DynamicLoadDB.toastInfoDuration) end
+        if d == nil then
+            local leg = tonumber(gTbl.toastDuration) or (DynamicLoadDB and tonumber(DynamicLoadDB.toastDuration))
+            if leg == 0 then
+                d = 0
+            elseif leg ~= nil then
+                d = addonTable.ClampToastInfoDuration and addonTable.ClampToastInfoDuration(leg) or 5
+            else
+                d = 5
+            end
+        end
+        return d
+    end, function(val)
+        local d = tonumber(val)
+        if d == nil then d = 5 end
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        if gTbl then gTbl.toastInfoDuration = d end
+        if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+            _G.DynamicSuiteDB.global.toastInfoDuration = d
+        end
+        if DynamicLoadDB then DynamicLoadDB.toastInfoDuration = d end
+        SyncSharedToastHudVisuals()
+    end)
+    toastInfoDurPills:SetPoint("RIGHT", toastInfoDurRow, "RIGHT", -14, 0)
+    toastInfoDurRow:BindRightControl(toastInfoDurPills)
 
     local toastSoundRow = CreateThemeStudioRow(
         toastSectionCard,
         "Toast Alert Sound",
         "Play a crisp Battle.net notification chime when a shared suite alert toast appears.",
-        toastDurRow, -5
+        toastInfoDurRow, -5
     )
     local toastSoundPills = UI.CreateSegmentedPills(toastSoundRow, {
         { value = false, label = "Off",     width = 68 },
@@ -9509,7 +9566,7 @@ function addonTable.CreateMainConfigUI()
         surfDropdown, extSyncPills, syncPills, altSyncPills, fillPills,
         winMasterPills, winSideBySidePills, winDragPills, winScalePills,
         gmSuitePills, gmHudPills, replaceAddonListPills, spotlightPills,
-        toastVisPills, toastBorderPills, toastScaleSlider, toastOpacitySlider, toastDurPills, toastSoundPills,
+        toastVisPills, toastBorderPills, toastScaleSlider, toastOpacitySlider, toastActionDurPills, toastInfoDurPills, toastSoundPills,
     }
 
     themeView.Refresh = function()
@@ -9572,7 +9629,7 @@ function addonTable.CreateMainConfigUI()
             end
         else
             yieldStatusBanner:Hide()
-            tvChild:SetHeight(162 + 10 + 379 + 10 + 386 + 12)
+            tvChild:SetHeight(162 + 10 + 379 + 10 + 442 + 12)
         end
 
         for _, hdr in ipairs(studioSectionHeaders) do
@@ -9634,7 +9691,7 @@ function addonTable.CreateMainConfigUI()
     themeView:SetScript("OnShow", function()
         if themeView.Refresh then themeView.Refresh() end
     end)
-    for _, tc in ipairs({ swatchCard, surfRow, fontRow, extSyncRow, syncRow, altSyncRow, fillRow, desktopWinSectionCard, winSideBySideRow, winDragRow, winScaleRow, winResetRow, shortcutSectionCard, gmSuiteRow, gmHudRow, replaceAddonListRow, spotlightRow, toastSectionCard, toastVisRow, toastBorderRow, toastScaleRow, toastOpacityRow, toastDurRow, toastSoundRow }) do
+    for _, tc in ipairs({ swatchCard, surfRow, fontRow, extSyncRow, syncRow, altSyncRow, fillRow, desktopWinSectionCard, winSideBySideRow, winDragRow, winScaleRow, winResetRow, shortcutSectionCard, gmSuiteRow, gmHudRow, replaceAddonListRow, spotlightRow, toastSectionCard, toastVisRow, toastBorderRow, toastScaleRow, toastOpacityRow, toastActionDurRow, toastInfoDurRow, toastSoundRow }) do
         table.insert(f.themeCards, tc)
     end
     end
@@ -15468,8 +15525,30 @@ function addonTable.CreateMainConfigUI()
                 SetHudScale("TOAST", 1.0)
                 SetHudOpacity("TOAST", GetDefaultHudOpacity("TOAST"))
                 SetHudBorderStyle("TOAST", "ACCENT")
+                local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+                if gTbl then
+                    gTbl.toastActionDuration = 12
+                    gTbl.toastInfoDuration = 5
+                    gTbl.toastDuration = 12
+                end
+                if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+                    _G.DynamicSuiteDB.global.toastActionDuration = 12
+                    _G.DynamicSuiteDB.global.toastInfoDuration = 5
+                    _G.DynamicSuiteDB.global.toastDuration = 12
+                end
+                if DynamicLoadDB then
+                    DynamicLoadDB.toastActionDuration = 12
+                    DynamicLoadDB.toastInfoDuration = 5
+                    DynamicLoadDB.toastDuration = 12
+                end
                 if addonTable.SetToastPresetPosition then
                     addonTable.SetToastPresetPosition(pt, relPt, meta.defX, meta.defY)
+                end
+                if f and f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
+                    pcall(f.toastConfigPanel.RefreshControls)
+                end
+                if f and f.themeView and f.themeView.Refresh then
+                    pcall(f.themeView.Refresh)
                 end
             elseif k == "CHAT" then
                 SetHudScale("CHAT", 1.0)
@@ -16039,6 +16118,188 @@ function addonTable.CreateMainConfigUI()
         m.orientVertBtn = orientVertBtn
 
         ------------------------------------------------------------------------
+        -- Row 4 (Contextual - Alert Toast Only): Actionable & Info Timers + Test Toast
+        ------------------------------------------------------------------------
+        local inspRow4Toast = CreateFrame("Frame", nil, m)
+        inspRow4Toast:SetPoint("TOPLEFT", inspRow3, "BOTTOMLEFT", 0, -4)
+        inspRow4Toast:SetPoint("TOPRIGHT", inspRow3, "BOTTOMRIGHT", 0, -4)
+        inspRow4Toast:SetHeight(30)
+        inspRow4Toast.bg = UI.SolidTex(inspRow4Toast, "BACKGROUND", 1, 0.075, 0.086, 0.110, 0.96)
+        inspRow4Toast.bg:SetAllPoints()
+        UI.CreatePixelBorder(inspRow4Toast, 1, 1, 1, 0.10, 2)
+        inspRow4Toast:EnableMouse(true)
+        inspRow4Toast:RegisterForDrag("LeftButton")
+        inspRow4Toast:SetScript("OnDragStart", function()
+            if m.hudSelectorPopup and m.hudSelectorPopup:IsShown() then m.hudSelectorPopup:Hide() end
+            m:StartMoving()
+        end)
+        inspRow4Toast:SetScript("OnDragStop", SaveEditModalPosition)
+        m.inspRow4Toast = inspRow4Toast
+
+        local function SyncToastDurationFromInspector(isAction, val)
+            local d = tonumber(val)
+            if d == nil then d = isAction and 12 or 5 end
+            local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+            if isAction then
+                if gTbl then gTbl.toastActionDuration = d end
+                if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+                    _G.DynamicSuiteDB.global.toastActionDuration = d
+                end
+                if DynamicLoadDB then DynamicLoadDB.toastActionDuration = d end
+            else
+                if gTbl then gTbl.toastInfoDuration = d end
+                if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+                    _G.DynamicSuiteDB.global.toastInfoDuration = d
+                end
+                if DynamicLoadDB then DynamicLoadDB.toastInfoDuration = d end
+            end
+            if f and f.toastConfigPanel and f.toastConfigPanel.RefreshControls then
+                pcall(f.toastConfigPanel.RefreshControls)
+            end
+            if f and f.themeView and f.themeView.Refresh then
+                pcall(f.themeView.Refresh)
+            end
+            m.RefreshState()
+        end
+
+        local actDurLbl = inspRow4Toast:CreateFontString(nil, "OVERLAY")
+        actDurLbl:SetPoint("LEFT", inspRow4Toast, "LEFT", 6, 0)
+        UI.SetFont(actDurLbl, 10, "", 0.78, 0.82, 0.90, 1)
+        actDurLbl:SetText("Action:")
+
+        local actionDurBtns = {}
+        local actionDurAnchor = actDurLbl
+        for idx, opt in ipairs({
+            { val = 5,  lbl = "5s",   w = 28 },
+            { val = 8,  lbl = "8s",   w = 28 },
+            { val = 12, lbl = "12s",  w = 32 },
+            { val = 20, lbl = "20s",  w = 32 },
+            { val = 0,  lbl = "Stay", w = 38 },
+        }) do
+            local tBtn = CreateFlatButton(inspRow4Toast, opt.w, 22, opt.lbl, false)
+            TightenCompactButtonLabel(tBtn, 2)
+            if tBtn.label then UI.SetFont(tBtn.label, 10, "", 1, 1, 1, 0.94) end
+            tBtn:SetPoint("LEFT", actionDurAnchor, "RIGHT", idx == 1 and 3 or 2, 0)
+            tBtn.durVal = opt.val
+            tBtn:SetScript("OnClick", function()
+                SyncToastDurationFromInspector(true, opt.val)
+            end)
+            tBtn.OnCustomEnter = function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+                GameTooltip:SetText("Actionable Toast Timer", 1, 1, 1)
+                GameTooltip:AddLine("How long toasts with clickable buttons (Reload, Mage Food, Durability, Talent Swap, Group Teleport) stay on screen before fading out (hovering pauses the timer).", 0.82, 0.86, 0.92, true)
+                GameTooltip:Show()
+            end
+            tBtn.OnCustomLeave = function()
+                if GameTooltip then GameTooltip:Hide() end
+            end
+            actionDurBtns[#actionDurBtns + 1] = tBtn
+            actionDurAnchor = tBtn
+        end
+
+        local infoDurLbl = inspRow4Toast:CreateFontString(nil, "OVERLAY")
+        infoDurLbl:SetPoint("LEFT", actionDurAnchor, "RIGHT", 10, 0)
+        UI.SetFont(infoDurLbl, 10, "", 0.78, 0.82, 0.90, 1)
+        infoDurLbl:SetText("Info:")
+
+        local infoDurBtns = {}
+        local infoDurAnchor = infoDurLbl
+        for idx, opt in ipairs({
+            { val = 3,  lbl = "3s",   w = 28 },
+            { val = 5,  lbl = "5s",   w = 28 },
+            { val = 8,  lbl = "8s",   w = 28 },
+            { val = 12, lbl = "12s",  w = 32 },
+            { val = 0,  lbl = "Stay", w = 38 },
+        }) do
+            local tBtn = CreateFlatButton(inspRow4Toast, opt.w, 22, opt.lbl, false)
+            TightenCompactButtonLabel(tBtn, 2)
+            if tBtn.label then UI.SetFont(tBtn.label, 10, "", 1, 1, 1, 0.94) end
+            tBtn:SetPoint("LEFT", infoDurAnchor, "RIGHT", idx == 1 and 3 or 2, 0)
+            tBtn.durVal = opt.val
+            tBtn:SetScript("OnClick", function()
+                SyncToastDurationFromInspector(false, opt.val)
+            end)
+            tBtn.OnCustomEnter = function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+                GameTooltip:SetText("Info & Mention Toast Timer", 1, 1, 1)
+                GameTooltip:AddLine("How long glanceable info and chat mention toasts stay on screen before fading out (hovering pauses the timer).", 0.82, 0.86, 0.92, true)
+                GameTooltip:Show()
+            end
+            tBtn.OnCustomLeave = function()
+                if GameTooltip then GameTooltip:Hide() end
+            end
+            infoDurBtns[#infoDurBtns + 1] = tBtn
+            infoDurAnchor = tBtn
+        end
+
+        local inspTestToastBtn = CreateFlatButton(inspRow4Toast, 76, 22, "Test Toast", false)
+        TightenCompactButtonLabel(inspTestToastBtn, 3)
+        if inspTestToastBtn.label then UI.SetFont(inspTestToastBtn.label, 10, "", 1, 1, 1, 0.96) end
+        inspTestToastBtn:SetPoint("RIGHT", inspRow4Toast, "RIGHT", -6, 0)
+        inspTestToastBtn:SetScript("OnClick", function()
+            if InCombatLockdown and InCombatLockdown() then
+                print(string.format("|cFF%sDynamicSuite:|r Cannot preview Alert Toast during combat.", UI.GetActiveAccentHex()))
+                return
+            end
+            if DynamicSuite.EnsureSharedToastFrame and DynamicSuite.ShowSharedToast then
+                local pt = DynamicSuite.EnsureSharedToastFrame("DynamicSuitePreviewToast", {
+                    toastKind = "ACTION",
+                    clickButtons = { "LeftButtonUp", "RightButtonUp" },
+                    iconMode = "TINTED",
+                    iconTexture = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
+                    rightActionWidth = 72,
+                    rightActionGap = 10,
+                    autoFade = true,
+                })
+                if pt then
+                    if not pt.actionBtn then
+                        local abtn = CreateFlatButton(pt, 72, 24, "Got It", true)
+                        abtn:SetPoint("RIGHT", pt, "RIGHT", -12, 0)
+                        abtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+                        abtn:SetScript("OnClick", function()
+                            DynamicSuite.HideSharedToast(pt)
+                        end)
+                        pt.actionBtn = abtn
+                        if pt.SetRightTextAnchor then pt.SetRightTextAnchor(abtn, 10) end
+                    end
+                    local stAct = DynamicSuite.GetSharedToastStyle("ACTION")
+                    local stInf = DynamicSuite.GetSharedToastStyle("INFO")
+                    local actStr = (stAct.duration == 0) and "Stay" or (tostring(stAct.duration) .. "s")
+                    local infStr = (stInf.duration == 0) and "Stay" or (tostring(stInf.duration) .. "s")
+                    if pt.actionBtn then
+                        local r2, g2, b2 = UI.GetActiveAccentColor()
+                        pt.actionBtn:SetSelected(true, { r = r2, g = g2, b = b2 })
+                    end
+                    DynamicSuite.ShowSharedToast(pt, {
+                        toastKind = "ACTION",
+                        title = UI.FormatTwoToneBrand("Suite") .. "  |cFF475569|||r  |cFF34D399Alert Toast Preview|r",
+                        badge = string.format("|cFF94A3B8Action Timer:|r |cFFFFFFFF%s|r  |cFF475569|||r  |cFF94A3B8Info Timer:|r |cFFFFFFFF%s|r", actStr, infStr),
+                        subtext = "|cFF34D399Hover to pause timer|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r",
+                        tintIcon = true,
+                        autoFade = true,
+                        playSound = true,
+                    })
+                    return
+                end
+            end
+            if addonTable.ShowToast then
+                addonTable.ShowToast(selectedTabKey or "outdoor", 4, true)
+            end
+        end)
+        inspTestToastBtn.OnCustomEnter = function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            GameTooltip:SetText("Preview Alert Toast", 1, 1, 1)
+            GameTooltip:AddLine("Shows a live sample Alert Toast using your current Actionable & Info timers, scale, opacity, and border style.", 0.82, 0.86, 0.92, true)
+            GameTooltip:Show()
+        end
+        inspTestToastBtn.OnCustomLeave = function()
+            if GameTooltip then GameTooltip:Hide() end
+        end
+
+        m.inspRow4Toast = inspRow4Toast
+        m.inspTestToastBtn = inspTestToastBtn
+
+        ------------------------------------------------------------------------
         -- Modal State Refresh & External Coordination
         ------------------------------------------------------------------------
         m.UpdateLiveCoordReadout = function(lx, ly)
@@ -16134,6 +16395,40 @@ function addonTable.CreateMainConfigUI()
                 rowResetBtn.label:SetText("Reset")
                 rowResetBtn:SetSelected(false)
             end
+
+            local isToastSelected = (selectedHudTarget == "TOAST")
+            if m._isCollapsed then
+                if inspRow4Toast then inspRow4Toast:Hide() end
+                m:SetSize(560, 36)
+            elseif isToastSelected then
+                m:SetSize(560, 144)
+                if inspRow4Toast then
+                    if inspRow4Toast.bg then
+                        inspRow4Toast.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, 0.96)
+                    end
+                    local stAct = DynamicSuite.GetSharedToastStyle and DynamicSuite.GetSharedToastStyle("ACTION") or {}
+                    local stInf = DynamicSuite.GetSharedToastStyle and DynamicSuite.GetSharedToastStyle("INFO") or {}
+                    local curActDur = tonumber(stAct.actionDuration)
+                    if curActDur == nil then curActDur = 12 end
+                    local curInfDur = tonumber(stInf.infoDuration)
+                    if curInfDur == nil then curInfDur = 5 end
+                    for _, b in ipairs(actionDurBtns) do
+                        b:SetSelected(b.durVal == curActDur, accentCol)
+                    end
+                    for _, b in ipairs(infoDurBtns) do
+                        b:SetSelected(b.durVal == curInfDur, accentCol)
+                    end
+                    if inspTestToastBtn then
+                        inspTestToastBtn.idleBorderColor = { r = accentCol.r, g = accentCol.g, b = accentCol.b, a = 0.72 }
+                        inspTestToastBtn.idleTextColor = { r = accentCol.r, g = accentCol.g, b = accentCol.b, a = 1.0 }
+                        ApplyFlatButtonVisual(inspTestToastBtn, inspTestToastBtn:IsMouseOver())
+                    end
+                    inspRow4Toast:Show()
+                end
+            else
+                if inspRow4Toast then inspRow4Toast:Hide() end
+                m:SetSize(560, 110)
+            end
         end
 
         m.targetDropdown = {
@@ -16167,6 +16462,12 @@ function addonTable.CreateMainConfigUI()
             if editModeInspectorModal and editModeInspectorModal.RefreshState then
                 editModeInspectorModal.RefreshState()
             end
+        end
+    end
+
+    addonTable.RefreshHudEditInspector = function()
+        if editModeInspectorModal and editModeInspectorModal:IsShown() and editModeInspectorModal.RefreshState then
+            editModeInspectorModal.RefreshState()
         end
     end
 
@@ -16218,10 +16519,11 @@ function addonTable.CreateMainConfigUI()
         modal:SetFrameStrata("DIALOG")
         modal:SetFrameLevel(200)
         modal._isCollapsed = false
-        modal:SetSize(560, 110)
+        modal:SetSize(560, (selectedHudTarget == "TOAST") and 144 or 110)
         if modal.hudSelectorPopup then modal.hudSelectorPopup:Hide() end
         if modal.inspCard then modal.inspCard:Show() end
         if modal.inspRow3 then modal.inspRow3:Show() end
+        if modal.inspRow4Toast then modal.inspRow4Toast:SetShown(selectedHudTarget == "TOAST") end
         if modal.RestoreSavedPosition then modal:RestoreSavedPosition() end
         IngestLiveHudPositions()
         SyncAllEditModeHuds(true)
@@ -16239,6 +16541,9 @@ function addonTable.CreateMainConfigUI()
         f._minimizedForHudDrag = false
         if _G.DynamicMarker then
             _G.DynamicMarker._previewHiddenMoverKey = nil
+        end
+        if _G.DynamicSuitePreviewToast and DynamicSuite.HideSharedToast then
+            pcall(DynamicSuite.HideSharedToast, _G.DynamicSuitePreviewToast)
         end
         if editModeInspectorModal then
             if editModeInspectorModal.hudSelectorPopup and editModeInspectorModal.hudSelectorPopup:IsShown() then
