@@ -1736,6 +1736,368 @@ function addonTable.ShowSupportDialog()
     if dlg:IsShown() then dlg:Hide() else dlg:Show() end
 end
 
+--------------------------------------------------------------------------------
+-- Feature Spotlight Modal (Obsidian Core Hybrid Discovery)
+--------------------------------------------------------------------------------
+local featureSpotlightModal = nil
+
+local function RegisterSpotlightSpecialFrameOnce(frameName)
+    if type(_G.UISpecialFrames) ~= "table" or not frameName then return end
+    for i = 1, #_G.UISpecialFrames do
+        if _G.UISpecialFrames[i] == frameName then
+            return
+        end
+    end
+    table.insert(_G.UISpecialFrames, frameName)
+end
+
+local function ResolveSpotlightEntry(entryOrId)
+    if type(entryOrId) == "table" then
+        return entryOrId
+    end
+    local list = addonTable.FEATURE_SPOTLIGHTS
+    if type(list) == "table" then
+        if type(entryOrId) == "string" and entryOrId ~= "" then
+            for i = 1, #list do
+                if list[i].id == entryOrId or list[i].moduleKey == entryOrId or list[i].addonName == entryOrId then
+                    return list[i]
+                end
+            end
+        end
+        return list[#list]
+    end
+    return nil
+end
+
+local function EnsureFeatureSpotlightModal()
+    if featureSpotlightModal then
+        return featureSpotlightModal
+    end
+
+    local MODAL_W = 468
+    local modal = CreateFrame("Frame", "DynamicSuiteFeatureSpotlightModal", UIParent)
+    modal:SetSize(MODAL_W, 380)
+    modal:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
+    modal:SetFrameStrata("DIALOG")
+    modal:SetFrameLevel(180)
+    modal:SetClampedToScreen(true)
+    modal:EnableMouse(true)
+
+    local shadow = UI.SolidTex(modal, "BACKGROUND", -2, 0, 0, 0, 0.58)
+    shadow:SetPoint("TOPLEFT", modal, "TOPLEFT", -8, 8)
+    shadow:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", 8, -10)
+    modal.shadow = shadow
+
+    local bg = UI.SolidTex(modal, "BACKGROUND", 0, 0.016, 0.020, 0.024, 0.985)
+    bg:SetAllPoints()
+    modal.bg = bg
+    UI.CreatePixelBorder(modal, 0.220, 0.741, 0.973, 0.55, 2)
+
+    local closeBtn = CreateFrame("Button", nil, modal)
+    closeBtn:SetSize(22, 22)
+    closeBtn:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -8, -8)
+    closeBtn:SetFrameLevel(195)
+    closeBtn.bg = UI.SolidTex(closeBtn, "BACKGROUND", 1, 0.08, 0.09, 0.12, 0.0)
+    closeBtn.bg:SetAllPoints()
+    local closeTxt = closeBtn:CreateFontString(nil, "OVERLAY")
+    closeTxt:SetPoint("CENTER", closeBtn, "CENTER", 0, 0)
+    UI.SetFont(closeTxt, 12, "", 0.72, 0.77, 0.85, 0.92)
+    closeTxt:SetText("X")
+    closeBtn.txt = closeTxt
+    closeBtn:SetScript("OnEnter", function(b)
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        b.bg:SetColorTexture(ar, ag, ab, 0.16)
+        b.txt:SetTextColor(1, 1, 1, 1)
+    end)
+    closeBtn:SetScript("OnLeave", function(b)
+        b.bg:SetColorTexture(0.08, 0.09, 0.12, 0.0)
+        b.txt:SetTextColor(0.72, 0.77, 0.85, 0.92)
+    end)
+    closeBtn:SetScript("OnClick", function()
+        modal:Hide()
+    end)
+
+    -- Top Header Inset Card with 2px top Suite Accent rule & crisp .tga medallion
+    local insetCard = CreateFrame("Frame", nil, modal)
+    insetCard:SetPoint("TOPLEFT", modal, "TOPLEFT", 16, -16)
+    insetCard:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -16, -16)
+    insetCard:SetHeight(76)
+    insetCard.bg = UI.SolidTex(insetCard, "BACKGROUND", 1, 0.031, 0.039, 0.055, 0.96)
+    insetCard.bg:SetAllPoints()
+    UI.CreatePixelBorder(insetCard, 1, 1, 1, 0.08, 2)
+    insetCard.topLine = UI.SolidTex(insetCard, "OVERLAY", 5, 0.220, 0.741, 0.973, 0.95)
+    insetCard.topLine:SetPoint("TOPLEFT", insetCard, "TOPLEFT", 1, -1)
+    insetCard.topLine:SetPoint("TOPRIGHT", insetCard, "TOPRIGHT", -1, -1)
+    insetCard.topLine:SetHeight(2)
+
+    local medallion = CreateFrame("Frame", nil, insetCard)
+    medallion:SetSize(48, 48)
+    medallion:SetPoint("CENTER", insetCard, "CENTER", 0, -1)
+    medallion.bg = UI.SolidTex(medallion, "BACKGROUND", 2, 0.020, 0.025, 0.035, 0.98)
+    medallion.bg:SetAllPoints()
+    UI.CreatePixelBorder(medallion, 0.220, 0.741, 0.973, 0.45, 3)
+    local iconTex = medallion:CreateTexture(nil, "OVERLAY")
+    iconTex:SetSize(34, 34)
+    iconTex:SetPoint("CENTER", medallion, "CENTER", 0, 0)
+    UI.DisablePixelSnap(iconTex)
+    medallion.icon = iconTex
+    modal.insetCard = insetCard
+    modal.medallion = medallion
+
+    local kickerFS = modal:CreateFontString(nil, "OVERLAY")
+    kickerFS:SetPoint("TOPLEFT", insetCard, "BOTTOMLEFT", 6, -14)
+    kickerFS:SetPoint("TOPRIGHT", insetCard, "BOTTOMRIGHT", -6, -14)
+    kickerFS:SetJustifyH("CENTER")
+    UI.SetFont(kickerFS, 10, "", 0.220, 0.741, 0.973, 1.0)
+    modal.kickerFS = kickerFS
+
+    local titleFS = modal:CreateFontString(nil, "OVERLAY")
+    titleFS:SetPoint("TOPLEFT", kickerFS, "BOTTOMLEFT", 0, -4)
+    titleFS:SetPoint("TOPRIGHT", kickerFS, "BOTTOMRIGHT", 0, -4)
+    titleFS:SetJustifyH("CENTER")
+    UI.SetFont(titleFS, 20, "", 1, 1, 1, 1.0)
+    modal.titleFS = titleFS
+
+    local subtitleFS = modal:CreateFontString(nil, "OVERLAY")
+    subtitleFS:SetPoint("TOPLEFT", titleFS, "BOTTOMLEFT", 2, -6)
+    subtitleFS:SetPoint("TOPRIGHT", titleFS, "BOTTOMRIGHT", -2, -6)
+    subtitleFS:SetJustifyH("CENTER")
+    subtitleFS:SetWordWrap(true)
+    UI.SetFont(subtitleFS, 11.5, "", 0.72, 0.77, 0.85, 0.96)
+    modal.subtitleFS = subtitleFS
+
+    -- Bullet Inset Container
+    local bulletBox = CreateFrame("Frame", nil, modal)
+    bulletBox:SetPoint("TOPLEFT", subtitleFS, "BOTTOMLEFT", -8, -14)
+    bulletBox:SetPoint("TOPRIGHT", subtitleFS, "BOTTOMRIGHT", 8, -14)
+    bulletBox:SetHeight(110)
+    bulletBox.bg = UI.SolidTex(bulletBox, "BACKGROUND", 1, 0.031, 0.039, 0.055, 0.78)
+    bulletBox.bg:SetAllPoints()
+    UI.CreatePixelBorder(bulletBox, 1, 1, 1, 0.07, 2)
+    modal.bulletBox = bulletBox
+    modal.bulletRows = {}
+    for i = 1, 6 do
+        local row = CreateFrame("Frame", nil, bulletBox)
+        row:SetHeight(24)
+        row.pip = UI.SolidTex(row, "OVERLAY", 4, 0.220, 0.741, 0.973, 0.95)
+        row.pip:SetSize(5, 5)
+        row.pip:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -5)
+        row.text = row:CreateFontString(nil, "OVERLAY")
+        row.text:SetPoint("TOPLEFT", row, "TOPLEFT", 13, 0)
+        row.text:SetPoint("TOPRIGHT", row, "TOPRIGHT", 0, 0)
+        row.text:SetJustifyH("LEFT")
+        row.text:SetWordWrap(true)
+        UI.SetFont(row.text, 11.5, "", 0.88, 0.91, 0.96, 0.98)
+        row:Hide()
+        modal.bulletRows[i] = row
+    end
+
+    local btnRowW = MODAL_W - 32
+    local btnGap = 10
+    local halfW = math.floor((btnRowW - btnGap) / 2)
+
+    local primaryBtn = CreateFlatButton(modal, halfW, 32, "Open", true)
+    primaryBtn:SetPoint("TOPLEFT", bulletBox, "BOTTOMLEFT", 0, -16)
+    UI.SetFont(primaryBtn.label, 12, "", 1, 1, 1, 1)
+    modal.primaryBtn = primaryBtn
+
+    local secondaryBtn = CreateFlatButton(modal, halfW, 32, "Maybe Later", false)
+    secondaryBtn:SetPoint("TOPRIGHT", bulletBox, "BOTTOMRIGHT", 0, -16)
+    UI.SetFont(secondaryBtn.label, 12, "", 0.84, 0.88, 0.94, 0.95)
+    modal.secondaryBtn = secondaryBtn
+
+    local footerFS = modal:CreateFontString(nil, "OVERLAY")
+    footerFS:SetPoint("TOPLEFT", primaryBtn, "BOTTOMLEFT", 4, -10)
+    footerFS:SetPoint("TOPRIGHT", secondaryBtn, "BOTTOMRIGHT", -4, -10)
+    footerFS:SetJustifyH("CENTER")
+    footerFS:SetWordWrap(true)
+    UI.SetFont(footerFS, 10, "", 0.56, 0.62, 0.71, 0.92)
+    modal.footerFS = footerFS
+
+    function modal:ApplyThemeAndLayout()
+        UI.RefreshPaletteCache()
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        local surf = UI.GetActiveSurfaceColors()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        local fa = gTbl.pillFillAlpha or 0.42
+
+        self.bg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.985)
+        self.dsBorder:SetColor(ar, ag, ab, 0.55)
+        self.insetCard.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, 0.96)
+        self.insetCard.dsBorder:SetColor(1, 1, 1, 0.08)
+        self.insetCard.topLine:SetColorTexture(ar, ag, ab, 0.95)
+        self.medallion.bg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.98)
+        self.medallion.dsBorder:SetColor(ar, ag, ab, 0.45)
+        self.medallion.icon:SetVertexColor(ar, ag, ab, 1.0)
+        self.bulletBox.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, 0.78)
+        self.bulletBox.dsBorder:SetColor(1, 1, 1, 0.07)
+
+        UI.SetFont(self.kickerFS, 10, "", ar, ag, ab, 1.0)
+        UI.SetFont(self.titleFS, 20, "", 1, 1, 1, 1.0)
+        UI.SetFont(self.subtitleFS, 11.5, "", 0.72, 0.77, 0.85, 0.96)
+        UI.SetFont(self.footerFS, 10, "", 0.56, 0.62, 0.71, 0.92)
+        UI.SetFont(self.primaryBtn.label, 12, "", 1, 1, 1, 1.0)
+        UI.SetFont(self.secondaryBtn.label, 12, "", 0.84, 0.88, 0.94, 0.95)
+
+        self.primaryBtn.bg:SetColorTexture(ar * fa, ag * fa, ab * fa, 0.96)
+        self.primaryBtn.dsBorder:SetColor(ar, ag, ab, 0.95)
+        self.secondaryBtn.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, 0.94)
+        self.secondaryBtn.dsBorder:SetColor(1, 1, 1, 0.16)
+
+        local totalBulletH = 14
+        local firstBullet = true
+        for i = 1, #self.bulletRows do
+            local row = self.bulletRows[i]
+            if row:IsShown() then
+                row.pip:SetColorTexture(ar, ag, ab, 0.95)
+                UI.SetFont(row.text, 11.5, "", 0.88, 0.91, 0.96, 0.98)
+                row.text:SetWidth(MODAL_W - 76)
+                local th = math.max(16, math.ceil(row.text:GetStringHeight() or 16))
+                row:SetHeight(th)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", self.bulletBox, "TOPLEFT", 14, -totalBulletH)
+                row:SetPoint("TOPRIGHT", self.bulletBox, "TOPRIGHT", -14, -totalBulletH)
+                totalBulletH = totalBulletH + th + (firstBullet and 9 or 9)
+                firstBullet = false
+            end
+        end
+        if not firstBullet then
+            totalBulletH = totalBulletH + 5
+        end
+        self.bulletBox:SetHeight(math.max(44, totalBulletH))
+
+        self.subtitleFS:SetWidth(MODAL_W - 44)
+        self.footerFS:SetWidth(MODAL_W - 40)
+        local subH = math.max(16, math.ceil(self.subtitleFS:GetStringHeight() or 18))
+        local titleH = math.max(22, math.ceil(self.titleFS:GetStringHeight() or 22))
+        local kickH = math.max(12, math.ceil(self.kickerFS:GetStringHeight() or 12))
+        local footH = math.max(14, math.ceil(self.footerFS:GetStringHeight() or 14))
+        local totalH = 16 + 76 + 14 + kickH + 4 + titleH + 6 + subH + 14 + self.bulletBox:GetHeight() + 16 + 32 + 10 + footH + 14
+        self:SetHeight(math.ceil(totalH))
+    end
+
+    primaryBtn:SetScript("OnEnter", function(b)
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        local fa = math.min(0.62, (gTbl.pillFillAlpha or 0.42) + 0.14)
+        b.bg:SetColorTexture(ar * fa, ag * fa, ab * fa, 1.0)
+        b.dsBorder:SetColor(ar, ag, ab, 1.0)
+    end)
+    primaryBtn:SetScript("OnLeave", function(b)
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+        local fa = gTbl.pillFillAlpha or 0.42
+        b.bg:SetColorTexture(ar * fa, ag * fa, ab * fa, 0.96)
+        b.dsBorder:SetColor(ar, ag, ab, 0.95)
+    end)
+    primaryBtn:SetScript("OnClick", function()
+        local entry = modal._activeEntry
+        local sid = modal._activeSpotlightId
+        if sid and addonTable.MarkFeatureSpotlightSeen then
+            addonTable.MarkFeatureSpotlightSeen(sid)
+        end
+        local targetKey = entry and (entry.addonName or entry.moduleKey)
+        if targetKey then
+            if addonTable.IsSuiteModuleCurrentlyDisabled and addonTable.IsSuiteModuleCurrentlyDisabled(targetKey) and addonTable.EnableSuiteModuleImmediate then
+                addonTable.EnableSuiteModuleImmediate(targetKey)
+            end
+            if addonTable.MarkModuleNewBadgeSeen then
+                addonTable.MarkModuleNewBadgeSeen(targetKey)
+            end
+        end
+        modal._activeSpotlightId = nil
+        modal:Hide()
+        if targetKey then
+            if addonTable.OpenPeerModuleSafe then
+                addonTable.OpenPeerModuleSafe(targetKey)
+            elseif _G.DynamicSuite and type(_G.DynamicSuite.OpenModule) == "function" then
+                _G.DynamicSuite.OpenModule(targetKey)
+            end
+        end
+    end)
+
+    secondaryBtn:SetScript("OnEnter", function(b)
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        b.bg:SetColorTexture(0.08, 0.10, 0.14, 0.96)
+        b.dsBorder:SetColor(ar, ag, ab, 0.60)
+        b.label:SetTextColor(1, 1, 1, 1)
+    end)
+    secondaryBtn:SetScript("OnLeave", function(b)
+        local surf = UI.GetActiveSurfaceColors()
+        b.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, 0.94)
+        b.dsBorder:SetColor(1, 1, 1, 0.16)
+        b.label:SetTextColor(0.84, 0.88, 0.94, 0.95)
+    end)
+    secondaryBtn:SetScript("OnClick", function()
+        modal:Hide()
+    end)
+
+    modal:SetScript("OnHide", function(self)
+        if self._activeSpotlightId and addonTable.MarkFeatureSpotlightSeen then
+            addonTable.MarkFeatureSpotlightSeen(self._activeSpotlightId)
+        end
+        self._activeSpotlightId = nil
+    end)
+
+    RegisterSpotlightSpecialFrameOnce("DynamicSuiteFeatureSpotlightModal")
+    modal:Hide()
+    featureSpotlightModal = modal
+    return featureSpotlightModal
+end
+
+function addonTable.RefreshFeatureSpotlightModalTheme()
+    if featureSpotlightModal and featureSpotlightModal.ApplyThemeAndLayout then
+        featureSpotlightModal:ApplyThemeAndLayout()
+    end
+end
+
+function addonTable.ShowFeatureSpotlight(entryOrId, isPreview)
+    local entry = ResolveSpotlightEntry(entryOrId)
+    if not entry then return false end
+    if InCombatLockdown and InCombatLockdown() then
+        return false
+    end
+    local modal = EnsureFeatureSpotlightModal()
+    modal._activeEntry = entry
+    modal._activeSpotlightId = entry.id
+    modal._isPreview = (isPreview == true)
+
+    local iconPath = entry.icon or UI.GetModuleIconPath(entry.addonName or entry.moduleKey)
+    modal.medallion.icon:SetTexture(iconPath)
+    modal.kickerFS:SetText(entry.kicker or "NEW IN DYNAMICSUITE")
+    modal.titleFS:SetText(entry.title or "Feature Spotlight")
+    modal.subtitleFS:SetText(entry.subtitle or "")
+    modal.footerFS:SetText(entry.footerNote or "")
+
+    local bullets = entry.bullets or {}
+    for i = 1, #modal.bulletRows do
+        local row = modal.bulletRows[i]
+        local bText = bullets[i]
+        if type(bText) == "string" and bText ~= "" then
+            row.text:SetText(bText)
+            row:Show()
+        else
+            row:Hide()
+        end
+    end
+
+    local targetKey = entry.addonName or entry.moduleKey
+    local isDisabled = (targetKey and addonTable.IsSuiteModuleCurrentlyDisabled and addonTable.IsSuiteModuleCurrentlyDisabled(targetKey)) and true or false
+    local pLabel = isDisabled and (entry.primaryLabelWhenDisabled or "Turn It On & Open") or (entry.primaryLabelWhenEnabled or ("Open " .. tostring(entry.title or "Module")))
+    modal.primaryBtn.label:SetText(pLabel)
+    modal.secondaryBtn.label:SetText(entry.secondaryLabel or "Maybe Later")
+
+    modal:ApplyThemeAndLayout()
+    modal:ClearAllPoints()
+    modal:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
+    modal:Show()
+    modal:Raise()
+    return true
+end
+if _G.DynamicSuite then
+    _G.DynamicSuite.ShowFeatureSpotlight = addonTable.ShowFeatureSpotlight
+end
+
 local function CreateChangelogModal(parent)
     if changelogDialog then return changelogDialog end
 
@@ -4713,6 +5075,19 @@ function addonTable.CreateMainConfigUI()
         conflictPip:Hide()
         card.conflictPip = conflictPip
 
+        local newPill = CreateFrame("Frame", nil, card)
+        newPill:SetSize(28, 13)
+        newPill:SetPoint("RIGHT", pillSwitch, "LEFT", -5, 0)
+        newPill.bg = UI.SolidTex(newPill, "BACKGROUND", 4, UI.COLORS.ACCENT.r, UI.COLORS.ACCENT.g, UI.COLORS.ACCENT.b, 0.22)
+        newPill.bg:SetAllPoints()
+        UI.CreatePixelBorder(newPill, UI.COLORS.ACCENT.r, UI.COLORS.ACCENT.g, UI.COLORS.ACCENT.b, 0.85, 5)
+        newPill.label = newPill:CreateFontString(nil, "OVERLAY")
+        newPill.label:SetPoint("CENTER", newPill, "CENTER", 0, 0)
+        UI.SetFont(newPill.label, 8, "", 1, 1, 1, 0.98)
+        newPill.label:SetText("NEW")
+        newPill:Hide()
+        card.newPill = newPill
+
         mTitle:SetPoint("RIGHT", pillSwitch, "LEFT", -6, 0)
 
         local pillThumb = UI.SolidTex(pillSwitch, "OVERLAY", 5, 1, 1, 1, 0.96)
@@ -4793,14 +5168,40 @@ function addonTable.CreateMainConfigUI()
             card.upBtn = upBtn
             card.downBtn = downBtn
 
+            local function UpdateTopLineRightAnchor(leftControl, gapX)
+                mTitle:ClearAllPoints()
+                mTitle:SetPoint("TOPLEFT", card, "TOPLEFT", 28, -5)
+                if leftControl then
+                    mTitle:SetPoint("RIGHT", leftControl, "LEFT", gapX or -4, 0)
+                    return
+                end
+                if card.newPill and card._hasUnseenNewBadge and not card._isArmedSwap then
+                    card.newPill:ClearAllPoints()
+                    if card.conflictPip and card.conflictPip:IsShown() then
+                        card.newPill:SetPoint("RIGHT", card.conflictPip, "LEFT", -4, 0)
+                    else
+                        card.newPill:SetPoint("RIGHT", pillSwitch, "LEFT", -5, 0)
+                    end
+                    card.newPill:Show()
+                    mTitle:SetPoint("RIGHT", card.newPill, "LEFT", -4, 0)
+                else
+                    if card.newPill then card.newPill:Hide() end
+                    if card.conflictPip and card.conflictPip:IsShown() then
+                        mTitle:SetPoint("RIGHT", card.conflictPip, "LEFT", -4, 0)
+                    else
+                        mTitle:SetPoint("RIGHT", pillSwitch, "LEFT", -6, 0)
+                    end
+                end
+            end
+            card.UpdateTopLineRightAnchor = UpdateTopLineRightAnchor
+
             local function UpdateNudgeVisibility()
                 if card._isDragging or (not card:IsMouseOver() and not (card.upBtn and card.upBtn:IsMouseOver()) and not (card.downBtn and card.downBtn:IsMouseOver())) then
                     if card.upBtn then card.upBtn:Hide() end
                     if card.downBtn then card.downBtn:Hide() end
-                    mTitle:ClearAllPoints()
-                    mTitle:SetPoint("TOPLEFT", card, "TOPLEFT", 28, -5)
-                    mTitle:SetPoint("RIGHT", pillSwitch, "LEFT", -6, 0)
+                    UpdateTopLineRightAnchor(nil)
                 else
+                    if card.newPill then card.newPill:Hide() end
                     local totalCount = #railModuleCards > 0 and #railModuleCards or 12
                     local rIdx = card.railIndex or 1
                     local showUp = (rIdx > 1)
@@ -4813,31 +5214,23 @@ function addonTable.CreateMainConfigUI()
                         upBtn:ClearAllPoints()
                         upBtn:SetPoint("RIGHT", downBtn, "LEFT", -2, 0)
                         upBtn:Show()
-                        mTitle:ClearAllPoints()
-                        mTitle:SetPoint("TOPLEFT", card, "TOPLEFT", 28, -5)
-                        mTitle:SetPoint("RIGHT", upBtn, "LEFT", -4, 0)
+                        UpdateTopLineRightAnchor(upBtn, -4)
                     elseif showDown then
                         upBtn:Hide()
                         downBtn:ClearAllPoints()
                         downBtn:SetPoint("RIGHT", pillSwitch, "LEFT", -4, 0)
                         downBtn:Show()
-                        mTitle:ClearAllPoints()
-                        mTitle:SetPoint("TOPLEFT", card, "TOPLEFT", 28, -5)
-                        mTitle:SetPoint("RIGHT", downBtn, "LEFT", -4, 0)
+                        UpdateTopLineRightAnchor(downBtn, -4)
                     elseif showUp then
                         downBtn:Hide()
                         upBtn:ClearAllPoints()
                         upBtn:SetPoint("RIGHT", pillSwitch, "LEFT", -4, 0)
                         upBtn:Show()
-                        mTitle:ClearAllPoints()
-                        mTitle:SetPoint("TOPLEFT", card, "TOPLEFT", 28, -5)
-                        mTitle:SetPoint("RIGHT", upBtn, "LEFT", -4, 0)
+                        UpdateTopLineRightAnchor(upBtn, -4)
                     else
                         upBtn:Hide()
                         downBtn:Hide()
-                        mTitle:ClearAllPoints()
-                        mTitle:SetPoint("TOPLEFT", card, "TOPLEFT", 28, -5)
-                        mTitle:SetPoint("RIGHT", pillSwitch, "LEFT", -6, 0)
+                        UpdateTopLineRightAnchor(nil)
                     end
                 end
             end
@@ -5100,6 +5493,9 @@ function addonTable.CreateMainConfigUI()
             end
 
             if UI.CloseAllPopups then UI.CloseAllPopups() end
+            if addonTable.MarkModuleNewBadgeSeen then
+                addonTable.MarkModuleNewBadgeSeen(shortKey)
+            end
             for _, stName in ipairs(STANDALONE_FRAME_NAMES or {}) do
                 local stFrame = _G[stName]
                 if stFrame and stFrame.IsShown and stFrame:IsShown() and stFrame.Hide then
@@ -5722,6 +6118,20 @@ function addonTable.CreateMainConfigUI()
                 else
                     card.conflictPip:Hide()
                 end
+            end
+
+            card._isArmedSwap = isArmed
+            local hasUnseenNew = (not isArmed) and addonTable.HasUnseenModuleNewBadge and addonTable.HasUnseenModuleNewBadge(shortKey)
+            card._hasUnseenNewBadge = (hasUnseenNew == true)
+            if card.newPill then
+                card.newPill.bg:SetColorTexture(ar, ag, ab, 0.22)
+                card.newPill.dsBorder:SetColor(ar, ag, ab, 0.85)
+                UI.SetFont(card.newPill.label, 8, "", 1, 1, 1, 0.98)
+            end
+            if card.UpdateNudgeVisibility then
+                card.UpdateNudgeVisibility()
+            elseif card.UpdateTopLineRightAnchor then
+                card.UpdateTopLineRightAnchor(nil)
             end
         end
 
@@ -7800,11 +8210,11 @@ function addonTable.CreateMainConfigUI()
     fillPills:SetPoint("RIGHT", fillRow, "RIGHT", -14, 0)
     fillRow:BindRightControl(fillPills)
 
-    -- Card 3: Bordered Section Container for Game Menu & Options Shortcuts (3 Compact 48px Rows)
+    -- Card 3: Bordered Section Container for Game Menu, Options Shortcuts & Feature Spotlights (4 Compact 48px Rows)
     local shortcutSectionCard = CreateFrame("Frame", nil, tvChild)
     shortcutSectionCard:SetPoint("TOPLEFT", surfaceSectionCard, "BOTTOMLEFT", 0, -10)
     shortcutSectionCard:SetPoint("TOPRIGHT", surfaceSectionCard, "BOTTOMRIGHT", 0, -10)
-    shortcutSectionCard:SetHeight(220)
+    shortcutSectionCard:SetHeight(273)
     shortcutSectionCard.bg = UI.SolidTex(shortcutSectionCard, "BACKGROUND", 0, 0.031, 0.039, 0.055, 0.72)
     shortcutSectionCard.bg:SetAllPoints()
     UI.CreatePixelBorder(shortcutSectionCard, 1, 1, 1, 0.08, 2)
@@ -7812,8 +8222,8 @@ function addonTable.CreateMainConfigUI()
     local shortSecHdr = UI.CreateSectionHeader(
         shortcutSectionCard,
         -10,
-        "GAME MENU & OPTIONS SHORTCUTS",
-        "Choose which DynamicSuite shortcuts appear in the Esc Game Menu and Blizzard Options.",
+        "GAME MENU, OPTIONS & SPOTLIGHTS",
+        "Choose which DynamicSuite shortcuts appear in the Esc Game Menu and whether major new feature spotlights appear after login.",
         14
     )
 
@@ -7893,6 +8303,34 @@ function addonTable.CreateMainConfigUI()
     end)
     replaceAddonListPills:SetPoint("RIGHT", replaceAddonListRow, "RIGHT", -14, 0)
     replaceAddonListRow:BindRightControl(replaceAddonListPills)
+
+    -- Shortcut Row 4: Show Major Feature Spotlights ([ Off | Enabled ])
+    local spotlightRow = CreateThemeStudioRow(
+        shortcutSectionCard,
+        "Show Major Feature Spotlights",
+        "Show a one-time summary modal after login when DynamicSuite adds a major new module or feature.",
+        replaceAddonListRow, -5
+    )
+    local spotlightPills = UI.CreateSegmentedPills(spotlightRow, {
+        { value = false, label = "Off",     width = 68 },
+        { value = true,  label = "Enabled", width = 84 },
+    }, function()
+        if addonTable.IsFeatureSpotlightsEnabled then
+            return addonTable.IsFeatureSpotlightsEnabled()
+        end
+        local gTbl = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global) or {}
+        return gTbl.showFeatureSpotlights ~= false
+    end, function(val)
+        local isEnabled = (val == true)
+        local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal()
+        if gTbl then gTbl.showFeatureSpotlights = isEnabled end
+        if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
+            _G.DynamicSuiteDB.global.showFeatureSpotlights = isEnabled
+        end
+        if themeView.Refresh then themeView.Refresh() end
+    end)
+    spotlightPills:SetPoint("RIGHT", spotlightRow, "RIGHT", -14, 0)
+    spotlightRow:BindRightControl(spotlightPills)
 
     -- Tab 1 Card 3: Shared Alert Toast HUD Configuration Card (Visibility, Border Style, Scale, Opacity, Duration, Sound, Test Toast, Edit HUD)
     local toastSectionCard = CreateFrame("Frame", nil, tvChild)
@@ -8636,11 +9074,13 @@ function addonTable.CreateMainConfigUI()
                 gTbl.showGameMenuSuiteBtn     = true
                 gTbl.showGameMenuHudBtn       = true
                 gTbl.replaceBlizzardAddonList = true
+                gTbl.showFeatureSpotlights    = true
             end
             if _G.DynamicSuiteDB and _G.DynamicSuiteDB.global then
                 _G.DynamicSuiteDB.global.showGameMenuSuiteBtn     = true
                 _G.DynamicSuiteDB.global.showGameMenuHudBtn       = true
                 _G.DynamicSuiteDB.global.replaceBlizzardAddonList = true
+                _G.DynamicSuiteDB.global.showFeatureSpotlights    = true
             end
             if addonTable.RefreshGameMenuButtons then addonTable.RefreshGameMenuButtons() end
             if themeView.Refresh then themeView.Refresh() end
@@ -8680,7 +9120,7 @@ function addonTable.CreateMainConfigUI()
     local studioValueControls = {
         surfDropdown, extSyncPills, syncPills, altSyncPills, fillPills,
         winMasterPills, winSideBySidePills, winDragPills, winScalePills,
-        gmSuitePills, gmHudPills, replaceAddonListPills,
+        gmSuitePills, gmHudPills, replaceAddonListPills, spotlightPills,
         toastVisPills, toastBorderPills, toastScaleSlider, toastOpacitySlider, toastDurPills, toastSoundPills,
     }
 
@@ -8734,13 +9174,13 @@ function addonTable.CreateMainConfigUI()
                 desktopWinSectionCard:ClearAllPoints()
                 desktopWinSectionCard:SetPoint("TOPLEFT", yieldStatusBanner, "BOTTOMLEFT", 0, -10)
                 desktopWinSectionCard:SetPoint("TOPRIGHT", yieldStatusBanner, "BOTTOMRIGHT", 0, -10)
-                tvChild:SetHeight(54 + 10 + 366 + 10 + 220 + 12)
+                tvChild:SetHeight(54 + 10 + 366 + 10 + 273 + 12)
             else
                 yieldStatusBanner:Hide()
                 desktopWinSectionCard:ClearAllPoints()
                 desktopWinSectionCard:SetPoint("TOPLEFT", tvChild, "TOPLEFT", 0, 0)
                 desktopWinSectionCard:SetPoint("TOPRIGHT", tvChild, "TOPRIGHT", 0, 0)
-                tvChild:SetHeight(366 + 10 + 220 + 12)
+                tvChild:SetHeight(366 + 10 + 273 + 12)
             end
         else
             yieldStatusBanner:Hide()
@@ -8805,7 +9245,7 @@ function addonTable.CreateMainConfigUI()
     themeView:SetScript("OnShow", function()
         if themeView.Refresh then themeView.Refresh() end
     end)
-    for _, tc in ipairs({ swatchCard, surfRow, fontRow, extSyncRow, syncRow, altSyncRow, fillRow, desktopWinSectionCard, winSideBySideRow, winDragRow, winScaleRow, winResetRow, shortcutSectionCard, gmSuiteRow, gmHudRow, replaceAddonListRow, toastSectionCard, toastVisRow, toastBorderRow, toastScaleRow, toastOpacityRow, toastDurRow, toastSoundRow }) do
+    for _, tc in ipairs({ swatchCard, surfRow, fontRow, extSyncRow, syncRow, altSyncRow, fillRow, desktopWinSectionCard, winSideBySideRow, winDragRow, winScaleRow, winResetRow, shortcutSectionCard, gmSuiteRow, gmHudRow, replaceAddonListRow, spotlightRow, toastSectionCard, toastVisRow, toastBorderRow, toastScaleRow, toastOpacityRow, toastDurRow, toastSoundRow }) do
         table.insert(f.themeCards, tc)
     end
     end
@@ -17131,6 +17571,9 @@ function addonTable.CreateMainConfigUI()
             addonTable.CreateMainConfigUI()
         end
         UI.CloseAllPopups()
+        if targetKey and addonTable.MarkModuleNewBadgeSeen then
+            addonTable.MarkModuleNewBadgeSeen(targetKey)
+        end
         f.pendingOpenModule = targetKey
         if addonTable.combatRestorePill and addonTable.combatRestorePill:IsShown() then
             addonTable.combatRestorePill:Hide()
@@ -17253,6 +17696,10 @@ function addonTable.CreateMainConfigUI()
 
         if f.suiteHubRowEmblem and f.suiteHubRowEmblem.SetAccentColor then
             f.suiteHubRowEmblem:SetAccentColor(ar, ag, ab, 1)
+        end
+
+        if addonTable.RefreshFeatureSpotlightModalTheme then
+            addonTable.RefreshFeatureSpotlightModalTheme()
         end
 
         if f.activateReloadBtn then
@@ -18091,6 +18538,9 @@ do
         local modKey = (type(selfOrKey) == "table") and maybeKey or selfOrKey
         if not mainFrame then
             addonTable.CreateMainConfigUI()
+        end
+        if modKey and addonTable.MarkModuleNewBadgeSeen then
+            addonTable.MarkModuleNewBadgeSeen(modKey)
         end
         if not modKey then
             addonTable.ShowConfigUI()

@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Feature Spotlight Modal & Quiet NEW Rail Badges (`DynamicSuite_Core`, `DynamicSuite_UI`)
+- **Hybrid Feature Spotlight Modal & Quiet `NEW` Left-Rail Badge (`DynamicSuite_Core`, `DynamicSuite_UI`):** Added data-driven `FEATURE_SPOTLIGHTS` and `NEW_MODULE_BADGES` registries seeded for `DynamicCursor`, account-wide `seenSpotlights` and `seenNewBadges` persistence under `DynamicSuiteDB.global`, zero-nag login trigger guards (2.5s settle delay; defers cleanly during combat, Mythic+ keystones, encounters, instances, scenarios, Lorewalking, cinematics, or Guided Setup/conflict modals), an Obsidian Core spotlight modal styled dynamically with your live surface theme, accent, and font (`Turn It On & Open` / `Open DynamicCursor` and `Maybe Later`), a compact `NEW` pill in the `/ds` left rail that clears automatically once visited, a `Show Major Feature Spotlights` toggle in Suite Studio Tab 2, and `/ds spotlight` + `/ds spotlight reset` slash commands.
+
 ### Patch 12.1.7 (Echoes of the Worldcore) Compatibility & Safety Prep
 - **Dual-Interface TOC Support (`120105, 120107`):** Updated `DynamicSuite.toc` and all 13 standalone TOC templates in `Packaging/StandaloneTOCs/` to support both live Retail 12.1.5 (`120105`) and Patch 12.1.7 (`120107`), updated `deploy.ps1` interface and 13-module changelog validation, and normalised file header comments across all 15 Lua files.
 - **Data-Driven Midnight Omnium Folio Tracker (`DynamicPrep`):** Kept `DynamicPrep`'s Omnium Folio target picker focused strictly on the 4 secondary stat choice nodes (`Crit`, `Haste`, `Mastery`, `Versatility`) with automatic SavedVariables migration for legacy non-choice-node values (`Rune of Empowerment`, `Rune of Critical Mass`) and uncapped bag scanning for `Motes of Omnial Inquiry` in the Folio tooltip.

@@ -767,7 +767,10 @@ local DEFAULT_SUITE_GLOBAL = {
     yieldHooks       = {},
     acknowledgedConflicts = {},
     seenHardConflicts = {},
-    guidedSetupDone  = false,
+    guidedSetupDone          = false,
+    showFeatureSpotlights    = true,
+    seenSpotlights           = {},
+    seenNewBadges            = {},
     showGameMenuSuiteBtn     = true,
     showGameMenuHudBtn       = true,
     replaceBlizzardAddonList = true,
@@ -810,6 +813,9 @@ end
 addonTable.GetCharScopeMode = addonTable.GetCharScopeMode or GetCharScopeMode
 
 local function EnsureSuiteGlobal()
+    if addonTable._isFreshBrandNewInstall == nil then
+        addonTable._isFreshBrandNewInstall = (_G.DynamicSuiteDB == nil and _G.DynamicLoadDB == nil)
+    end
     if not _G.DynamicSuiteDB then
         _G.DynamicSuiteDB = {}
     end
@@ -2197,6 +2203,266 @@ local function ShowRaidMarkerTaintModal(selfOrAddon, maybeAddon, maybeReason)
 end
 addonTable.ShowRaidMarkerTaintModal = ShowRaidMarkerTaintModal
 DynamicSuite.ShowRaidMarkerTaintModal = ShowRaidMarkerTaintModal
+
+--------------------------------------------------------------------------------
+-- Feature Spotlights & Quiet NEW Left-Rail Badge Registry
+--------------------------------------------------------------------------------
+do
+local FEATURE_SPOTLIGHTS = {
+    {
+        id                       = "cursor_v282",
+        moduleKey                = "cursor",
+        addonName                = "DynamicCursor",
+        icon                     = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga",
+        kicker                   = "NEW IN DYNAMICSUITE",
+        title                    = "DynamicCursor",
+        subtitle                 = "A lightweight cursor ring, GCD and cast arc, crosshair, and pointer locator built right into DynamicSuite (/dcur).",
+        bullets                  = {
+            "Customisable cursor ring with inner GCD ring and outer cast, channel, and empower arc.",
+            "Optional character crosshair and Find My Cursor locator when you lose track of your pointer.",
+            "Pooled cursor trail, zone visibility rules, and smart cursor tooltips.",
+        },
+        primaryLabelWhenDisabled = "Turn It On & Open",
+        primaryLabelWhenEnabled  = "Open DynamicCursor",
+        secondaryLabel           = "Maybe Later",
+        footerNote               = "Takes effect right away. You can adjust it anytime under DynamicCursor in /ds.",
+    },
+}
+addonTable.FEATURE_SPOTLIGHTS = FEATURE_SPOTLIGHTS
+DynamicSuite.FEATURE_SPOTLIGHTS = FEATURE_SPOTLIGHTS
+
+local NEW_MODULE_BADGES = {
+    cursor = "cursor_v282",
+}
+addonTable.NEW_MODULE_BADGES = NEW_MODULE_BADGES
+DynamicSuite.NEW_MODULE_BADGES = NEW_MODULE_BADGES
+
+local function GetAccountSuiteGlobal()
+    EnsureSuiteGlobal()
+    local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
+    if type(g) ~= "table" then
+        g = {}
+        if _G.DynamicSuiteDB then
+            _G.DynamicSuiteDB.global = g
+        end
+    end
+    if g.showFeatureSpotlights == nil then g.showFeatureSpotlights = true end
+    if type(g.seenSpotlights) ~= "table" then g.seenSpotlights = {} end
+    if type(g.seenNewBadges) ~= "table" then g.seenNewBadges = {} end
+    return g
+end
+
+local function NormalizeSpotlightModuleKey(moduleKeyOrAddon)
+    local canonMod, shortKey = NormalizeSuiteModuleId(moduleKeyOrAddon)
+    if shortKey and shortKey ~= "" then
+        return shortKey, canonMod
+    end
+    local s = tostring(moduleKeyOrAddon or ""):lower():gsub("^dynamic", "")
+    return s, canonMod or tostring(moduleKeyOrAddon or "")
+end
+
+function addonTable.IsFeatureSpotlightsEnabled()
+    local g = GetAccountSuiteGlobal()
+    return g.showFeatureSpotlights ~= false
+end
+DynamicSuite.IsFeatureSpotlightsEnabled = addonTable.IsFeatureSpotlightsEnabled
+
+function addonTable.GetLatestFeatureSpotlight()
+    return FEATURE_SPOTLIGHTS[#FEATURE_SPOTLIGHTS]
+end
+DynamicSuite.GetLatestFeatureSpotlight = addonTable.GetLatestFeatureSpotlight
+
+function addonTable.GetFirstUnseenFeatureSpotlight()
+    local g = GetAccountSuiteGlobal()
+    local seen = g.seenSpotlights
+    for i = #FEATURE_SPOTLIGHTS, 1, -1 do
+        local entry = FEATURE_SPOTLIGHTS[i]
+        if entry and entry.id and seen[entry.id] ~= true then
+            return entry
+        end
+    end
+    return nil
+end
+DynamicSuite.GetFirstUnseenFeatureSpotlight = addonTable.GetFirstUnseenFeatureSpotlight
+
+function addonTable.MarkFeatureSpotlightSeen(spotlightId)
+    if not spotlightId or spotlightId == "" then return end
+    local g = GetAccountSuiteGlobal()
+    g.seenSpotlights[spotlightId] = true
+end
+DynamicSuite.MarkFeatureSpotlightSeen = addonTable.MarkFeatureSpotlightSeen
+
+function addonTable.HasUnseenModuleNewBadge(moduleKeyOrAddon)
+    local shortKey = NormalizeSpotlightModuleKey(moduleKeyOrAddon)
+    local badgeId = NEW_MODULE_BADGES[shortKey]
+    if not badgeId then return false end
+    local g = GetAccountSuiteGlobal()
+    return g.seenNewBadges[badgeId] ~= true
+end
+DynamicSuite.HasUnseenModuleNewBadge = addonTable.HasUnseenModuleNewBadge
+
+function addonTable.MarkModuleNewBadgeSeen(moduleKeyOrAddon)
+    local shortKey = NormalizeSpotlightModuleKey(moduleKeyOrAddon)
+    local badgeId = NEW_MODULE_BADGES[shortKey]
+    if not badgeId then return end
+    local g = GetAccountSuiteGlobal()
+    if g.seenNewBadges[badgeId] == true then return end
+    g.seenNewBadges[badgeId] = true
+    if addonTable.mainFrame and addonTable.mainFrame.RefreshLeftRailVisuals then
+        pcall(addonTable.mainFrame.RefreshLeftRailVisuals)
+    end
+end
+DynamicSuite.MarkModuleNewBadgeSeen = addonTable.MarkModuleNewBadgeSeen
+
+function addonTable.IsSuiteModuleCurrentlyDisabled(moduleKeyOrAddon)
+    local shortKey, canonMod = NormalizeSpotlightModuleKey(moduleKeyOrAddon)
+    if IsSuiteModuleExplicitlyDisabled(canonMod) or IsSuiteModuleExplicitlyDisabled(shortKey) then
+        return true
+    end
+    local g = EnsureSuiteGlobal()
+    if type(g.disabledModules) == "table" and (g.disabledModules[canonMod] == true or g.disabledModules[shortKey] == true) then
+        return true
+    end
+    return false
+end
+DynamicSuite.IsSuiteModuleCurrentlyDisabled = addonTable.IsSuiteModuleCurrentlyDisabled
+
+function addonTable.EnableSuiteModuleImmediate(moduleKeyOrAddon)
+    local shortKey, canonMod = NormalizeSpotlightModuleKey(moduleKeyOrAddon)
+    local target = canonMod ~= "" and canonMod or moduleKeyOrAddon
+    SetSuiteModuleEnabled(target, true, false)
+    local regMod = (DynamicSuite and DynamicSuite.modules and (DynamicSuite.modules[target] or DynamicSuite.modules[shortKey])) or _G[target]
+    if regMod and regMod._disabledAtStartup and DynamicSuite and type(DynamicSuite.Print) == "function" then
+        DynamicSuite.Print(string.format("%s enabled. Type /reload to finish activating it.", target))
+    end
+end
+DynamicSuite.EnableSuiteModuleImmediate = addonTable.EnableSuiteModuleImmediate
+
+function addonTable.ResetFeatureSpotlightsAndBadges()
+    local g = GetAccountSuiteGlobal()
+    wipe(g.seenSpotlights)
+    wipe(g.seenNewBadges)
+    local activeScope = EnsureSuiteGlobal()
+    if type(activeScope) == "table" then
+        if type(activeScope.seenSpotlights) == "table" then wipe(activeScope.seenSpotlights) end
+        if type(activeScope.seenNewBadges) == "table" then wipe(activeScope.seenNewBadges) end
+    end
+    if addonTable._spotlightTimer and addonTable._spotlightTimer.Cancel then
+        addonTable._spotlightTimer:Cancel()
+    end
+    addonTable._spotlightTimer = nil
+    addonTable._spotlightShownThisSession = false
+    addonTable._deferredFeatureSpotlight = false
+    if addonTable.mainFrame and addonTable.mainFrame.RefreshLeftRailVisuals then
+        pcall(addonTable.mainFrame.RefreshLeftRailVisuals)
+    end
+    print(string.format("|cFF%sDynamicSuite:|r Cleared seen feature spotlights and NEW rail badges. Use /ds spotlight to preview now or /reload to test login auto-trigger.", addonTable.GetCoreAccentHex()))
+end
+DynamicSuite.ResetFeatureSpotlightsAndBadges = addonTable.ResetFeatureSpotlightsAndBadges
+
+function addonTable.IsSafeToShowFeatureSpotlight()
+    if not addonTable.IsFeatureSpotlightsEnabled() then
+        return false
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        return false
+    end
+    if UnitAffectingCombat and UnitAffectingCombat("player") then
+        return false
+    end
+    if _G.C_ChallengeMode and type(_G.C_ChallengeMode.IsChallengeModeActive) == "function" then
+        local okCm, activeCm = pcall(_G.C_ChallengeMode.IsChallengeModeActive)
+        if okCm and activeCm == true then
+            return false
+        end
+    end
+    if type(_G.IsEncounterInProgress) == "function" then
+        local okEnc, inEnc = pcall(_G.IsEncounterInProgress)
+        if okEnc and inEnc == true then
+            return false
+        end
+    end
+    if type(_G.IsInInstance) == "function" then
+        local okInst, inInst, instType = pcall(_G.IsInInstance)
+        if okInst and inInst and instType and instType ~= "none" then
+            return false
+        end
+    end
+    if _G.C_Scenario and type(_G.C_Scenario.IsInScenario) == "function" then
+        local okScen, inScen = pcall(_G.C_Scenario.IsInScenario)
+        if okScen and inScen == true then
+            return false
+        end
+    end
+    if _G.C_Lorewalking and type(_G.C_Lorewalking.IsInLorewalking) == "function" then
+        local okLore, inLore = pcall(_G.C_Lorewalking.IsInLorewalking)
+        if okLore and inLore == true then
+            return false
+        end
+    end
+    if (type(_G.InCinematic) == "function" and _G.InCinematic())
+        or (type(_G.IsInCinematicScene) == "function" and _G.IsInCinematicScene())
+        or (_G.CinematicFrame and _G.CinematicFrame.IsShown and _G.CinematicFrame:IsShown())
+        or (_G.MovieFrame and _G.MovieFrame.IsShown and _G.MovieFrame:IsShown()) then
+        return false
+    end
+    if addonTable.mainFrame and addonTable.mainFrame:IsShown() and addonTable.mainFrame.setupView and addonTable.mainFrame.setupView:IsShown() then
+        return false
+    end
+    local g = GetAccountSuiteGlobal()
+    if addonTable._isFreshBrandNewInstall and g.guidedSetupDone ~= true then
+        return false
+    end
+    if standaloneMarkerWasEnabledAtBoot or addonTable.standaloneMarkerWasEnabledAtBoot or (DynamicSuite and DynamicSuite.standaloneMarkerWasEnabledAtBoot) or (_G.DynamicSuite_StandaloneMarkerWasEnabledAtBoot == true) then
+        return false
+    end
+    if addonTable._pendingMarkerConflictModal or (_G.DynamicSuiteMarkerConflictModal and _G.DynamicSuiteMarkerConflictModal.IsShown and _G.DynamicSuiteMarkerConflictModal:IsShown()) then
+        return false
+    end
+    if addonTable._pendingRaidTaintModal or (_G.DynamicSuiteRaidTaintModal and _G.DynamicSuiteRaidTaintModal.IsShown and _G.DynamicSuiteRaidTaintModal:IsShown()) then
+        return false
+    end
+    return true
+end
+DynamicSuite.IsSafeToShowFeatureSpotlight = addonTable.IsSafeToShowFeatureSpotlight
+
+function addonTable.ScheduleFeatureSpotlightCheck(delaySec)
+    if addonTable._spotlightTimer and addonTable._spotlightTimer.Cancel then
+        addonTable._spotlightTimer:Cancel()
+    end
+    addonTable._spotlightTimer = nil
+    if addonTable._spotlightShownThisSession then
+        return
+    end
+    if not addonTable.IsFeatureSpotlightsEnabled() then
+        return
+    end
+    if not addonTable.GetFirstUnseenFeatureSpotlight() then
+        return
+    end
+    local waitSec = tonumber(delaySec) or 2.5
+    addonTable._spotlightTimer = C_Timer.NewTimer(waitSec, function()
+        addonTable._spotlightTimer = nil
+        if addonTable._spotlightShownThisSession then
+            return
+        end
+        local entry = addonTable.GetFirstUnseenFeatureSpotlight()
+        if not entry then
+            addonTable._deferredFeatureSpotlight = false
+            return
+        end
+        if not addonTable.IsSafeToShowFeatureSpotlight() then
+            addonTable._deferredFeatureSpotlight = true
+            return
+        end
+        if addonTable.ShowFeatureSpotlight then
+            addonTable._deferredFeatureSpotlight = false
+            addonTable._spotlightShownThisSession = true
+            pcall(addonTable.ShowFeatureSpotlight, entry, false)
+        end
+    end)
+end
+end
 
 local function ScrubStandaloneDynamicMarkerFromLoadDB(tbl)
     if type(tbl) ~= "table" then return end
@@ -5242,6 +5508,10 @@ local BUILTIN_SEARCH_SEED = {
       title = "Replace Blizzard AddOns Button",
       desc = "Open DynamicSuite instead of Blizzard's default AddOn list when clicking 'AddOns' in the Esc menu.",
       keywords = "replace blizzard addons list esc menu button intercept default addon list" },
+    { moduleKey = "STUDIO", category = "BAGS_QOL", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds spotlight",
+      title = "Show Major Feature Spotlights",
+      desc = "Show a one-time summary modal after login when DynamicSuite adds a major new module or feature.",
+      keywords = "show major feature spotlights new module modal login preview reset /ds spotlight" },
 
     -- Guided Setup & Conflict Scanner
     { moduleKey = "SETUP", category = "BAGS_QOL", tabIndex = "GUIDED_SETUP", tabLabel = "Guided Setup & Conflicts",
@@ -10694,6 +10964,21 @@ local function HandleSuiteSlashCommandInner(msg)
             OpenMainSuiteWindowFallback()
         end
 
+    elseif cmd == "spotlight" or cmd == "spotlights" then
+        local sub = (arg or ""):lower():match("^(%S*)") or ""
+        if sub == "reset" or sub == "clear" then
+            if addonTable.ResetFeatureSpotlightsAndBadges then
+                addonTable.ResetFeatureSpotlightsAndBadges()
+            end
+        else
+            local entry = addonTable.GetLatestFeatureSpotlight and addonTable.GetLatestFeatureSpotlight()
+            if entry and addonTable.ShowFeatureSpotlight then
+                addonTable.ShowFeatureSpotlight(entry, true)
+            else
+                print(string.format("|cFF%sDynamicSuite:|r No feature spotlights are registered right now.", addonTable.GetCoreAccentHex()))
+            end
+        end
+
     elseif cmd == "changelog" then
         if addonTable.ToggleChangelogModal then
             addonTable.ToggleChangelogModal()
@@ -10841,6 +11126,7 @@ SafeRegisterSuiteEvent(suiteEventFrame, "PLAYER_REGEN_ENABLED")
 SafeRegisterSuiteEvent(suiteEventFrame, "UI_SCALE_CHANGED")
 SafeRegisterSuiteEvent(suiteEventFrame, "DISPLAY_SIZE_CHANGED")
 SafeRegisterSuiteEvent(suiteEventFrame, "ADDON_ACTION_FORBIDDEN")
+SafeRegisterSuiteEvent(suiteEventFrame, "CINEMATIC_STOP")
 suiteEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if event == "ADDON_ACTION_FORBIDDEN" then
         if IsDynamicMarkerDisabledInSuiteCore() then return end
@@ -10885,6 +11171,14 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         elseif addonTable._pendingHudClamp and addonTable.ClampAllSuiteHudsToScreen then
             addonTable._pendingHudClamp = false
             addonTable.ClampAllSuiteHudsToScreen()
+        end
+        if addonTable._deferredFeatureSpotlight and addonTable.ScheduleFeatureSpotlightCheck then
+            addonTable.ScheduleFeatureSpotlightCheck(2.5)
+        end
+        return
+    elseif event == "CINEMATIC_STOP" then
+        if addonTable._deferredFeatureSpotlight and addonTable.ScheduleFeatureSpotlightCheck then
+            addonTable.ScheduleFeatureSpotlightCheck(2.5)
         end
         return
     elseif event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
@@ -10961,6 +11255,9 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         end
         if IsDecorVendorActiveForQuarantine() then
             ShowRaidMarkerTaintModal("DecorVendor", "PROACTIVE")
+        end
+        if (isLoginOrReload or addonTable._deferredFeatureSpotlight) and addonTable.ScheduleFeatureSpotlightCheck then
+            addonTable.ScheduleFeatureSpotlightCheck(2.5)
         end
     elseif event == "PLAYER_LOGIN" then
         InvalidateConflictCache()
