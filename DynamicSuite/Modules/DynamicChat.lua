@@ -467,6 +467,8 @@ local DEFAULTS = {
     chatFontShadow              = true,
     chatLineSpacing             = 2,
     chatMessageFade             = true,
+    chatMessageFadeDuration     = 120,
+    drawerExpanded              = {},
     chatFramePos                = { point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT", relPoint = "BOTTOMLEFT", x = 0, y = 0, width = 430, height = 200 },
     chatFrameScale              = 1.0,
     leftRailMode                = "ALWAYS", -- "ALWAYS" | "HOVER" | "COMBAT_HIDE" | "OFF"
@@ -752,6 +754,18 @@ local function EnsureDB()
     if lSpace < 0 then lSpace = 0 elseif lSpace > 8 then lSpace = 8 end
     _G.DynamicChatDB.chatLineSpacing = lSpace
     _G.DynamicChatDB.chatMessageFade = (_G.DynamicChatDB.chatMessageFade ~= false)
+    local fadeDur = tonumber(_G.DynamicChatDB.chatMessageFadeDuration) or 120
+    if fadeDur ~= 30 and fadeDur ~= 60 and fadeDur ~= 120 and fadeDur ~= 300 then
+        fadeDur = 120
+    end
+    _G.DynamicChatDB.chatMessageFadeDuration = fadeDur
+    local bgAlpha = tonumber(_G.DynamicChatDB.chatBgAlpha)
+    if bgAlpha == nil then bgAlpha = 0.25 end
+    _G.DynamicChatDB.chatBgAlpha = math.max(0.0, math.min(0.95, bgAlpha))
+    _G.DynamicChatDB.applySuiteChatFont = (_G.DynamicChatDB.chatFontKey == "SUITE")
+    if type(_G.DynamicChatDB.drawerExpanded) ~= "table" then
+        _G.DynamicChatDB.drawerExpanded = {}
+    end
     return _G.DynamicChatDB
 end
 
@@ -5331,7 +5345,7 @@ do
         end
     end
 
-    function TypographyMgr.ApplyToSingleFrame(cf, cfName, fontPath, size, flags, hasShadow, spacing, fading)
+    function TypographyMgr.ApplyToSingleFrame(cf, cfName, fontPath, size, flags, hasShadow, spacing, fading, fadeDuration)
         if not cf then return end
         if cf.SetFont then
             local ok, setOk = pcall(cf.SetFont, cf, fontPath, size, flags)
@@ -5352,7 +5366,7 @@ do
             pcall(cf.SetFading, cf, fading)
         end
         if fading and cf.SetTimeVisible then
-            pcall(cf.SetTimeVisible, cf, 120)
+            pcall(cf.SetTimeVisible, cf, tonumber(fadeDuration) or 120)
         end
         local eb = cfName and _G[cfName .. "EditBox"]
         if eb then
@@ -5408,12 +5422,13 @@ function DynamicChat:ApplyChatFrameTypography()
     local spacing = tonumber(db.chatLineSpacing) or 2
     if spacing < 0 then spacing = 0 elseif spacing > 8 then spacing = 8 end
     local fading = (db.chatMessageFade ~= false)
+    local fadeDuration = tonumber(db.chatMessageFadeDuration) or 120
 
     TypographyMgr.applying = true
     local allFrames = CollectAllChatFrames()
     local seenEditBox = {}
     for _, item in ipairs(allFrames) do
-        TypographyMgr.ApplyToSingleFrame(item.cf, item.name, fontPath, size, flags, hasShadow, spacing, fading)
+        TypographyMgr.ApplyToSingleFrame(item.cf, item.name, fontPath, size, flags, hasShadow, spacing, fading, fadeDuration)
         local eb = item.name and _G[item.name .. "EditBox"]
         if eb then seenEditBox[eb] = true end
     end
@@ -8261,6 +8276,7 @@ local function CreateSectionHeader(parent, arg2, arg3, arg4, arg5)
     else
         title:SetPoint("LEFT", leftBar, "RIGHT", 8, 0)
     end
+    title:SetPoint("RIGHT", hdr, "RIGHT", -4, 0)
     title:SetJustifyH("LEFT")
     title:SetWordWrap(false)
     title:SetTextColor(ar, ag, ab, 1.0)
@@ -8304,8 +8320,8 @@ local function CreateSectionBox(page, titleText, subtitleText, root)
         edgeFile = "Interface\\Buttons\\WHITE8x8",
         edgeSize = 1,
     })
-    box:SetBackdropColor(0.055, 0.063, 0.082, 0.96) -- #0E1015 CARD_BG
-    box:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95) -- #252A36 CELL_BORDER
+    box:SetBackdropColor(0.043, 0.050, 0.066, 0.98) -- #0B0D11 Enclosing Section Container
+    box:SetBackdropBorderColor(1.0, 1.0, 1.0, 0.14)
     box.hdr = CreateSectionHeader(box, -10, titleText, subtitleText, 14)
     box.orderedCards = {}
     page.sections = page.sections or {}
@@ -8328,8 +8344,8 @@ local function CreateCardRow(parent, height, titleText, descText, tooltipTitle, 
         edgeFile = "Interface\\Buttons\\WHITE8x8",
         edgeSize = 1,
     })
-    card:SetBackdropColor(0.078, 0.090, 0.122, 0.95) -- #14171F CELL_BG
-    card:SetBackdropBorderColor(0.145, 0.165, 0.212, 1.00) -- #252A36 CELL_BORDER
+    card:SetBackdropColor(0.055, 0.063, 0.082, 0.96) -- #0E1015 CARD_BG
+    card:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95) -- #252A36 CELL_BORDER
 
     card.title = card:CreateFontString(nil, "OVERLAY")
     SetSafeFont(card.title, 11, "")
@@ -8377,9 +8393,11 @@ end
 
 local function AnchorCardTextToRightWidget(card, rightWidget)
     if not card or not rightWidget then return end
+    local leftX = card.isSubCard and 24 or 14
+    local topY = card.isSubCard and -9 or -10
     if card.title then
         card.title:ClearAllPoints()
-        card.title:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -10)
+        card.title:SetPoint("TOPLEFT", card, "TOPLEFT", leftX, topY)
         card.title:SetPoint("RIGHT", rightWidget, "LEFT", -16, 0)
     end
     if card.desc then
@@ -8387,6 +8405,180 @@ local function AnchorCardTextToRightWidget(card, rightWidget)
         card.desc:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -4)
         card.desc:SetPoint("RIGHT", rightWidget, "LEFT", -16, 0)
     end
+end
+
+local function CreateGroupDrawerCard(parent, drawerKey, titleText, descText, isParentEnabledFn, tooltipTitle, tooltipCmdText)
+    local card = CreateCardRow(parent, 60, titleText, descText, tooltipTitle, tooltipCmdText)
+    card.isGroupDrawer = true
+    card.drawerKey = drawerKey
+    card.subCards = {}
+    card.isParentEnabledFn = isParentEnabledFn
+
+    local chevBar = CreateFrame("Button", nil, card, "BackdropTemplate")
+    chevBar:SetHeight(24)
+    chevBar:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -56)
+    chevBar:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -56)
+    chevBar:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+
+    local lbl = chevBar:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(lbl, 11, "")
+    lbl:SetPoint("CENTER", chevBar, "CENTER", 8, 0)
+    lbl:SetJustifyH("CENTER")
+    lbl:SetWordWrap(false)
+    lbl:SetText("Sub-Settings (0)")
+    chevBar.label = lbl
+
+    local chev = chevBar:CreateTexture(nil, "ARTWORK")
+    chev:SetSize(11, 11)
+    chev:SetPoint("RIGHT", lbl, "LEFT", -6, 0)
+    chev:SetTexture(ICON_CHEVRON_DOWN)
+    DisableTexPixelSnap(chev)
+    chevBar.chevron = chev
+    card.chevBar = chevBar
+
+    local function RefreshBarVisual(isHover)
+        local db = EnsureDB()
+        local isOpen = (type(db.drawerExpanded) == "table" and db.drawerExpanded[drawerKey] == true)
+        local ar, ag, ab = GetSuiteAccent()
+        local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
+        SetSafeFont(lbl, 11, "")
+        chev:SetTexture(isOpen and ICON_CHEVRON_UP or ICON_CHEVRON_DOWN)
+        if isHover then
+            chevBar:SetBackdropColor(ar * (fillAlpha + 0.10), ag * (fillAlpha + 0.10), ab * (fillAlpha + 0.10), 0.98)
+            chevBar:SetBackdropBorderColor(ar, ag, ab, 1.0)
+            lbl:SetTextColor(1, 1, 1, 1)
+            chev:SetVertexColor(1, 1, 1, 1)
+        elseif isOpen then
+            chevBar:SetBackdropColor(ar * (fillAlpha * 0.60), ag * (fillAlpha * 0.60), ab * (fillAlpha * 0.60), 0.96)
+            chevBar:SetBackdropBorderColor(ar, ag, ab, 0.95)
+            lbl:SetTextColor(1, 1, 1, 1)
+            chev:SetVertexColor(1, 1, 1, 1)
+        else
+            chevBar:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+            chevBar:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+            lbl:SetTextColor(0.84, 0.89, 0.96, 1)
+            chev:SetVertexColor(ar, ag, ab, 0.95)
+        end
+    end
+
+    chevBar:SetScript("OnEnter", function(selfBtn)
+        RefreshBarVisual(true)
+        if _G.GameTooltip and #(card.subCards or {}) > 0 then
+            _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
+            _G.GameTooltip:ClearLines()
+            _G.GameTooltip:AddLine(titleText or "Sub-Settings", 1, 1, 1)
+            _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Expand or Collapse Group.", "34D399"), 0.886, 0.910, 0.941)
+            _G.GameTooltip:Show()
+        end
+    end)
+    chevBar:SetScript("OnLeave", function()
+        RefreshBarVisual(false)
+        if _G.GameTooltip then _G.GameTooltip:Hide() end
+    end)
+    chevBar:SetScript("OnClick", function()
+        CloseActiveDropdown()
+        local db = EnsureDB()
+        db.drawerExpanded = db.drawerExpanded or {}
+        db.drawerExpanded[drawerKey] = not (db.drawerExpanded[drawerKey] == true)
+        DynamicChat:RefreshConfigUI()
+    end)
+
+    function card:LayoutDrawer()
+        local db = EnsureDB()
+        db.drawerExpanded = db.drawerExpanded or {}
+        local parentOn = (not self.isParentEnabledFn) or (self.isParentEnabledFn() == true)
+        local ar, ag, ab = GetSuiteAccent()
+        local visibleSubs = {}
+        for _, sub in ipairs(self.subCards or {}) do
+            local showSub = (not sub.visibleFn) or (sub.visibleFn() == true)
+            if showSub then
+                visibleSubs[#visibleSubs + 1] = sub
+            else
+                sub:Hide()
+            end
+        end
+
+        if not parentOn or #visibleSubs == 0 then
+            chevBar:Hide()
+            for _, sub in ipairs(self.subCards or {}) do
+                sub:Hide()
+            end
+            self:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+            self:SetHeight(self.baseHeight or 60)
+            return
+        end
+
+        chevBar:Show()
+        lbl:SetText(string.format("Sub-Settings (%d)", #visibleSubs))
+        local isOpen = (db.drawerExpanded[drawerKey] == true)
+        RefreshBarVisual(chevBar:IsMouseOver())
+
+        if not isOpen then
+            for _, sub in ipairs(visibleSubs) do
+                sub:Hide()
+            end
+            self:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+            self:SetHeight(88)
+            return
+        end
+
+        self:SetBackdropBorderColor(ar, ag, ab, 0.85)
+        local subY = -86
+        for _, sub in ipairs(visibleSubs) do
+            sub:Show()
+            sub:ClearAllPoints()
+            sub:SetPoint("TOPLEFT", self, "TOPLEFT", 10, subY)
+            sub:SetPoint("TOPRIGHT", self, "TOPRIGHT", -10, subY)
+            if sub.leftBar then sub.leftBar:SetColorTexture(ar, ag, ab, 0.95) end
+            if sub.pip then sub.pip:SetColorTexture(ar, ag, ab, 0.95) end
+            if sub.ReflowCustomLayout then sub:ReflowCustomLayout() end
+            subY = subY - (sub:GetHeight() or sub.baseHeight or 56) - 6
+        end
+        self:SetHeight(math.abs(subY) + 6)
+    end
+
+    return card
+end
+
+local function CreateSubCardRow(groupCard, height, titleText, descText, tooltipTitle, tooltipCmdText, visibleFn)
+    local sub = CreateCardRow(groupCard, height or 56, titleText, descText, tooltipTitle, tooltipCmdText)
+    sub.isSubCard = true
+    sub.visibleFn = visibleFn
+    sub:SetBackdropColor(0.035, 0.039, 0.051, 0.98) -- #090A0D PANEL_BG
+    sub:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+
+    local ar, ag, ab = GetSuiteAccent()
+    local leftBar = sub:CreateTexture(nil, "OVERLAY")
+    leftBar:SetWidth(2)
+    leftBar:SetPoint("TOPLEFT", sub, "TOPLEFT", 0, -1)
+    leftBar:SetPoint("BOTTOMLEFT", sub, "BOTTOMLEFT", 0, 1)
+    leftBar:SetColorTexture(ar, ag, ab, 0.95)
+    sub.leftBar = leftBar
+
+    local pip = sub:CreateTexture(nil, "OVERLAY")
+    pip:SetSize(5, 5)
+    pip:SetPoint("TOPLEFT", sub, "TOPLEFT", 13, -13)
+    pip:SetColorTexture(ar, ag, ab, 0.95)
+    sub.pip = pip
+
+    if sub.title then
+        sub.title:ClearAllPoints()
+        sub.title:SetPoint("TOPLEFT", sub, "TOPLEFT", 24, -9)
+        sub.title:SetPoint("RIGHT", sub, "RIGHT", -16, 0)
+    end
+    if sub.desc then
+        sub.desc:ClearAllPoints()
+        sub.desc:SetPoint("TOPLEFT", sub.title, "BOTTOMLEFT", 0, -4)
+        sub.desc:SetPoint("RIGHT", sub, "RIGHT", -16, 0)
+    end
+
+    sub:Hide()
+    groupCard.subCards[#groupCard.subCards + 1] = sub
+    return sub
 end
 
 -- Direction A: 2-Pill Segmented Switch ([ Off | Enabled ]) with Unbounded String Width Contract & Option 3 Negative Pill Styling + 6-Tier Semantic Underline
@@ -9851,7 +10043,7 @@ do
                     row:EnableMouse(false)
                     row:SetBackdropColor(0, 0, 0, 0)
                     row:SetBackdropBorderColor(0, 0, 0, 0)
-                    SetSafeFont(row.label, 9, "OUTLINE")
+                    SetSafeFont(row.label, 9, "")
                     row.label:SetText(entry.label)
                     row.label:SetTextColor(ar, ag, ab, 0.95)
                     row:SetScript("OnEnter", nil)
@@ -9887,7 +10079,10 @@ do
                     row:SetScript("OnEnter", function() StyleFontRow(true) end)
                     row:SetScript("OnLeave", function() StyleFontRow(false) end)
                     row:SetScript("OnClick", function()
-                        EnsureDB().chatFontKey = opt.value
+                        local db = EnsureDB()
+                        db.chatFontKey = opt.value
+                        db.applySuiteChatFont = (opt.value == "SUITE")
+                        DynamicChat:ApplySleekChatSkin()
                         DynamicChat:ApplyChatFrameTypography()
                         if ownerBtn and ownerBtn.RefreshValue then ownerBtn:RefreshValue() end
                         CloseActiveDropdown()
@@ -10225,6 +10420,9 @@ local function LayoutPageCards(page)
                 sec:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, pageY)
                 local cardY = -54
                 for _, card in ipairs(sec.orderedCards or {}) do
+                    if card.LayoutDrawer then
+                        card:LayoutDrawer()
+                    end
                     if card:IsShown() then
                         card:ClearAllPoints()
                         card:SetPoint("TOPLEFT", sec, "TOPLEFT", 14, cardY)
@@ -10240,6 +10438,60 @@ local function LayoutPageCards(page)
         local totalH = math.abs(pageY)
         if totalH > 14 then totalH = totalH - 14 + 12 end
         page:SetHeight(math.max(1, totalH))
+    end
+end
+
+function DynamicChat:ApplyPreset(presetKey)
+    local db = EnsureDB()
+    if presetKey == "CLEAN_SMOKED" then
+        db.enableSleekChatSkin = true
+        db.chatBgAlpha = 0.25
+        db.chatBorderStyle = "ACCENT"
+        db.leftRailMode = "ALWAYS"
+        db.showTimestamps = true
+        db.timestampFormat = "%H:%M "
+        db.classColorNames = true
+        db.editBoxBackgroundMode = "ALWAYS"
+        self:ApplySavedChatFramePosition()
+        self:ApplySleekChatSkin()
+        self:ApplyChatFrameTypography()
+        self:ApplyClassColorNames()
+        self:ApplyTimestampSettings()
+        self:RefreshConfigUI()
+        PrintMsg("Applied preset: Clean Smoked-Glass.")
+    elseif presetKey == "MINIMALIST_RAID" then
+        db.enableSleekChatSkin = true
+        db.chatBgAlpha = 0.15
+        db.leftRailMode = "COMBAT_HIDE"
+        db.shortChannelNames = true
+        db.soundMuteInCombat = true
+        self:ApplySavedChatFramePosition()
+        self:ApplySleekChatSkin()
+        self:RefreshConfigUI()
+        PrintMsg("Applied preset: Minimalist Raid.")
+    elseif presetKey == "HIGH_READABILITY" then
+        db.enableSleekChatSkin = true
+        db.chatBgAlpha = 0.55
+        db.chatFontSize = 15
+        db.chatFontShadow = true
+        db.chatLineSpacing = 3
+        self:ApplySleekChatSkin()
+        self:ApplyChatFrameTypography()
+        self:RefreshConfigUI()
+        PrintMsg("Applied preset: High-Readability.")
+    elseif presetKey == "QUIET_ALERTS" then
+        db.enableChatSounds = true
+        db.enableSoundAlerts = true
+        db.enableMentionAlerts = true
+        db.mentionAlertToast = true
+        db.channelSounds = db.channelSounds or {}
+        db.channelSounds.GUILD = "NONE"
+        db.channelSounds.PARTY = "NONE"
+        db.channelSounds.RAID = "NONE"
+        db.channelSounds.SAY = "NONE"
+        self:ApplyWhisperDefaultSoundMuteState()
+        self:RefreshConfigUI()
+        PrintMsg("Applied preset: Quiet Alerts.")
     end
 end
 
@@ -10273,7 +10525,7 @@ local function RenderChatEmbedded(arg1, arg2)
     parent.DynamicChatContainer = root
     DynamicChat.embeddedRoot = root
 
-    -- Top 3-Tab Segmented Bevel Bar (34px height at 14, -10 / -16, -10)
+    -- Top 4-Tab Segmented Bevel Bar (34px height at 14, -10 / -16, -10)
     local tabBar = CreateFrame("Frame", nil, root, "BackdropTemplate")
     tabBar:SetHeight(34)
     tabBar:SetPoint("TOPLEFT", root, "TOPLEFT", 14, -10)
@@ -10287,15 +10539,16 @@ local function RenderChatEmbedded(arg1, arg2)
     tabBar:SetBackdropBorderColor(1, 1, 1, 0.08)
 
     local tabDefs = {
-        { id = 1, label = "Target Whisper & Input" },
-        { id = 2, label = "Chat Look & Sidebar" },
+        { id = 1, label = "Whisper & Input" },
+        { id = 2, label = "Chat Skin & Layout" },
         { id = 3, label = "Sound Alerts" },
-        { id = 4, label = "Links, Scroll & History" },
+        { id = 4, label = "Links & History" },
     }
 
     root.tabButtons = {}
     root.tabPages = {}
     root.allControls = {}
+    root.extraRefreshers = {}
 
     -- 2-Tier Inline Conflict Resolution Card (Shown at the top of DynamicChat when conflicts are detected; hidden when #conflicts == 0)
     local cScan = CreateFrame("Frame", nil, root, "BackdropTemplate")
@@ -10389,6 +10642,7 @@ local function RenderChatEmbedded(arg1, arg2)
         crow.title = crow:CreateFontString(nil, "OVERLAY")
         SetSafeFont(crow.title, 11, "")
         crow.title:SetPoint("TOPLEFT", crow, "TOPLEFT", 12, -9)
+        crow.title:SetPoint("RIGHT", crow.secondaryBtn or crow.actionBtn, "LEFT", -12, 0)
         crow.title:SetJustifyH("LEFT")
         crow.title:SetWordWrap(false)
 
@@ -10429,7 +10683,10 @@ local function RenderChatEmbedded(arg1, arg2)
         tBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
         tBtn.text = tBtn:CreateFontString(nil, "OVERLAY")
         SetSafeFont(tBtn.text, 11, "")
-        tBtn.text:SetPoint("CENTER", 0, 0)
+        tBtn.text:SetPoint("LEFT", tBtn, "LEFT", 6, 0)
+        tBtn.text:SetPoint("RIGHT", tBtn, "RIGHT", -6, 0)
+        tBtn.text:SetJustifyH("CENTER")
+        tBtn.text:SetWordWrap(false)
         tBtn.text:SetText(tDef.label)
 
         local page = CreateFrame("Frame", nil, scrollHolder.content)
@@ -10482,741 +10739,6 @@ local function RenderChatEmbedded(arg1, arg2)
     tabBar:HookScript("OnShow", function() C_Timer.After(0, ReflowChatTabBar) end)
     root.ReflowChatTabBar = ReflowChatTabBar
     C_Timer.After(0, ReflowChatTabBar)
-
-    -- ========================================================================
-    -- TAB 1: Target Whisper (/ww) & Input
-    -- ========================================================================
-    local page1 = root.tabPages[1]
-    local sec1a = CreateSectionBox(
-        page1,
-        "INSTANT TARGET WHISPER (/WW) & BOSS FIGHT PROTECTION",
-        "Quickly whisper your current friendly target by typing /ww, and keep whispers visible during boss fights.",
-        root
-    )
-    local sec1b = CreateSectionBox(
-        page1,
-        "MESSAGE HISTORY ARROWS & CHANNEL MEMORY",
-        "Use the Up and Down arrow keys to repeat messages and choose which chat channels stay selected.",
-        root
-    )
-
-    local c1_tt = CreateCardRow(sec1a, 60,
-        "Instant Target Whisper (/ww)",
-        "Type '/ww ' in chat to immediately whisper the friendly player you are targeting, or use '/ww <message>' in macros.",
-        "Instant Target Whisper (/ww)",
-        "Turn on instant '/ww' target whispers in the chat box and macros."
-    )
-    AttachSegmentedSwitchToCard(c1_tt,
-        function() return EnsureDB().enableTargetWhisper end,
-        function(val)
-            EnsureDB().enableTargetWhisper = val
-            DynamicChat:ReassertTargetWhisperSlashCommands()
-            RefreshSleekEditBoxBarColor(_G.ChatFrame1EditBox)
-        end,
-        "Off", "Enabled",
-        "Toggle Instant Target Whisper (/ww)."
-    )
-    sec1a.orderedCards[#sec1a.orderedCards + 1] = c1_tt
-    root.allControls[#root.allControls + 1] = c1_tt
-
-    local c1_clear = CreateCardRow(sec1a, 60,
-        "Clear '/ww' If You Have No Friendly Target",
-        "Automatically clears '/ww ' from your chat box and shows a helpful reminder if you aren't targeting a friendly player.",
-        "Clear '/ww' Without Friendly Target",
-        "Clear '/ww ' automatically when you do not have a friendly player targeted."
-    )
-    AttachSegmentedSwitchToCard(c1_clear,
-        function() return EnsureDB().targetWhisperClearOnInvalid ~= false end,
-        function(val)
-            EnsureDB().targetWhisperClearOnInvalid = val
-        end,
-        "Off", "Enabled",
-        "Toggle clearing '/ww ' when no friendly player is targeted."
-    )
-    sec1a.orderedCards[#sec1a.orderedCards + 1] = c1_clear
-    root.allControls[#root.allControls + 1] = c1_clear
-
-    local c1_protect = CreateCardRow(sec1a, 62,
-        "Protect Whispers During Boss Fights & Mythic+",
-        "Permanently isolates Whisper and Battle.net channels from message filters so secret combat strings never block incoming whispers.",
-        "Protect Whispers in Boss Fights & M+",
-        "Keep incoming whispers and Battle.net messages reliable during boss fights and Mythic+ keys."
-    )
-    AttachReadOnlyStatusBadgeToCard(c1_protect,
-        "Always Protected",
-        "Always active: DynamicChat leaves Whisper and Battle.net messages untouched so combat messages never cause errors."
-    )
-    sec1a.orderedCards[#sec1a.orderedCards + 1] = c1_protect
-    root.allControls[#root.allControls + 1] = c1_protect
-
-    local c1_arrow = CreateCardRow(sec1b, 60,
-        "Use Up & Down Arrows to Repeat Sent Messages",
-        "Press the Up and Down arrow keys while typing in chat to cycle through your recently sent messages without holding Alt.",
-        "Up & Down Arrow Message History",
-        "Cycle through your previously sent chat messages using the Up and Down arrow keys."
-    )
-    AttachSegmentedSwitchToCard(c1_arrow,
-        function() return EnsureDB().arrowHistoryNoAlt end,
-        function(val)
-            EnsureDB().arrowHistoryNoAlt = val
-            DynamicChat:ApplyEditBoxSettings()
-        end,
-        "Off", "Enabled",
-        "Toggle Up and Down arrow history in the chat input box."
-    )
-    sec1b.orderedCards[#sec1b.orderedCards + 1] = c1_arrow
-    root.allControls[#root.allControls + 1] = c1_arrow
-
-    local c1_stickyW = CreateCardRow(sec1b, 60,
-        "Remember Whisper Channel After Sending",
-        "When set to 'Reset to Previous' (Recommended), pressing Enter after sending a whisper returns your chat box to Party, Raid, or Guild chat.",
-        "Remember Whisper Channel",
-        "Choose whether your chat box stays locked on Whisper or returns to your previous group channel after sending."
-    )
-    AttachSegmentedSwitchToCard(c1_stickyW,
-        function() return EnsureDB().stickyWhisper == true end,
-        function(val)
-            EnsureDB().stickyWhisper = val
-            DynamicChat:ApplyStickyChannelSettings()
-        end,
-        "Reset to Previous", "Keep Sticky",
-        "Choose whether Whisper resets to your previous channel or stays sticky."
-    )
-    sec1b.orderedCards[#sec1b.orderedCards + 1] = c1_stickyW
-    root.allControls[#root.allControls + 1] = c1_stickyW
-
-    local c1_stickyG = CreateCardRow(sec1b, 60,
-        "Remember Party, Raid, Instance & Guild Channels",
-        "Keeps your chat box on your current group or guild channel after you send a message.",
-        "Remember Group & Guild Channels",
-        "Keep Party, Raid, Instance, Guild, and Officer channels selected between messages."
-    )
-    AttachSegmentedSwitchToCard(c1_stickyG,
-        function() return EnsureDB().stickyGroupChannels ~= false end,
-        function(val)
-            EnsureDB().stickyGroupChannels = val
-            DynamicChat:ApplyStickyChannelSettings()
-        end,
-        "Off", "Enabled",
-        "Toggle keeping Party, Raid, Instance, and Guild channels selected."
-    )
-    sec1b.orderedCards[#sec1b.orderedCards + 1] = c1_stickyG
-    root.allControls[#root.allControls + 1] = c1_stickyG
-
-    -- ========================================================================
-    -- TAB 2: Chat Look, Sidebar & Formatting
-    -- ========================================================================
-    local page2 = root.tabPages[2]
-    local sec2_skin = CreateSectionBox(
-        page2,
-        "SMOKED-GLASS CHAT WINDOW & LEFT SHORTCUT BAR",
-        "Customise the smoked-glass chat frame, top tab bar, font, and left-hand shortcut buttons.",
-        root
-    )
-    local chatEditHudBtn
-    if _G.DynamicSuite and type(_G.DynamicSuite.CreateEditHudButton) == "function" then
-        chatEditHudBtn = _G.DynamicSuite.CreateEditHudButton(sec2_skin, "CHAT")
-    else
-        chatEditHudBtn = CreateFrame("Button", nil, sec2_skin, "BackdropTemplate")
-        chatEditHudBtn:SetSize(86, 22)
-        chatEditHudBtn:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Buttons\\WHITE8x8",
-            edgeSize = 1,
-        })
-        local ar0, ag0, ab0 = GetSuiteAccent()
-        chatEditHudBtn:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
-        chatEditHudBtn:SetBackdropBorderColor(ar0, ag0, ab0, 0.85)
-        chatEditHudBtn.label = chatEditHudBtn:CreateFontString(nil, "OVERLAY")
-        SetSafeFont(chatEditHudBtn.label, 11, "")
-        chatEditHudBtn.label:SetPoint("CENTER", 0, 0)
-        chatEditHudBtn.label:SetText("Edit HUD")
-        chatEditHudBtn.label:SetTextColor(0.976, 0.984, 1.00, 1)
-        chatEditHudBtn:SetScript("OnEnter", function(s)
-            local ar, ag, ab = GetSuiteAccent()
-            s:SetBackdropColor(ar * 0.22, ag * 0.22, ab * 0.22, 0.98)
-            s:SetBackdropBorderColor(ar, ag, ab, 1.0)
-        end)
-        chatEditHudBtn:SetScript("OnLeave", function(s)
-            local ar, ag, ab = GetSuiteAccent()
-            s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
-            s:SetBackdropBorderColor(ar, ag, ab, 0.85)
-        end)
-        chatEditHudBtn:SetScript("OnClick", function()
-            if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
-                _G.DynamicSuite.EnterHudEditMode("CHAT")
-            end
-        end)
-    end
-    chatEditHudBtn:SetPoint("TOPRIGHT", sec2_skin, "TOPRIGHT", -14, -7)
-    if sec2_skin.hdr then
-        if sec2_skin.hdr.title then
-            sec2_skin.hdr.title:SetPoint("RIGHT", chatEditHudBtn, "LEFT", -10, 0)
-            sec2_skin.hdr.title:SetWordWrap(false)
-        end
-        if sec2_skin.hdr.subtitle then
-            sec2_skin.hdr.subtitle:SetPoint("RIGHT", chatEditHudBtn, "LEFT", -10, 0)
-        end
-    end
-    local sec2_typo = CreateSectionBox(
-        page2,
-        "CHAT TYPOGRAPHY & READABILITY",
-        "Customise the font family, text size, outline, drop shadow, line spacing, and message fading across all chat windows.",
-        root
-    )
-    local sec2a = CreateSectionBox(
-        page2,
-        "COMPACT CHANNEL TAGS",
-        "Keep channel names clean and readable across Party, Raid, Instance, and Guild chat.",
-        root
-    )
-    local sec2b = CreateSectionBox(
-        page2,
-        "CLASS COLOURS & MESSAGE TIMESTAMPS",
-        "Colour player names by their class and show the time each message was received.",
-        root
-    )
-
-    local c2_skin = CreateCardRow(sec2_skin, 62,
-        "Smoked-Glass Chat Window & Top Tab Bar",
-        "Gives your chat window a clean smoked-glass background, sleek top tabs, and a left shortcut bar.",
-        "Smoked-Glass Chat Window & Top Tab Bar",
-        "Toggle DynamicChat's smoked-glass chat window, Top Tab Bar, Left Shortcut Bar, and input box style."
-    )
-    AttachSegmentedSwitchToCard(c2_skin,
-        function() return EnsureDB().enableSleekChatSkin ~= false end,
-        function(val)
-            EnsureDB().enableSleekChatSkin = val
-            DynamicChat:ApplySavedChatFramePosition()
-            DynamicChat:ApplySleekChatSkin()
-        end,
-        "Off", "Enabled",
-        "Toggle Smoked-Glass Chat Window & Top Tab Bar."
-    )
-    sec2_skin.orderedCards[#sec2_skin.orderedCards + 1] = c2_skin
-    root.allControls[#root.allControls + 1] = c2_skin
-
-    local c2_alpha = CreateCardRow(sec2_skin, 62,
-        "Chat Window Background Opacity",
-        "Choose how transparent or solid the chat window background looks (Smoked 25% is default).",
-        "Chat Window Background Opacity",
-        "Select the background opacity of your chat window."
-    )
-    AttachMultiPillSelectorToCard(c2_alpha,
-        {
-            { value = 0.00, label = "Clear 0%" },
-            { value = 0.25, label = "Smoked 25%" },
-            { value = 0.72, label = "Obsidian 72%" },
-            { value = 0.92, label = "Solid 92%" },
-        },
-        function()
-            local a = tonumber(EnsureDB().chatBgAlpha) or 0.25
-            if a <= 0.10 then return 0.00 end
-            if a <= 0.55 then return 0.25 end
-            if a <= 0.82 then return 0.72 end
-            return 0.92
-        end,
-        function(val)
-            EnsureDB().chatBgAlpha = tonumber(val) or 0.25
-            EnsureDB().enableSleekChatSkin = true
-            DynamicChat:ApplySleekChatSkin()
-            if c2_skin.toggleBtn and c2_skin.toggleBtn.RefreshValue then
-                c2_skin.toggleBtn:RefreshValue()
-            end
-        end,
-        "Select chat window background opacity."
-    )
-    sec2_skin.orderedCards[#sec2_skin.orderedCards + 1] = c2_alpha
-    root.allControls[#root.allControls + 1] = c2_alpha
-
-    local c2_ebPos = CreateCardRow(sec2_skin, 62,
-        "Chat Typing Box Position",
-        "Dock the chat typing box flush along the bottom of your chat window or above the top tab bar.",
-        "Chat Typing Box Position",
-        "Choose whether the chat typing box is docked below the chat window or above the top tab bar."
-    )
-    AttachMultiPillSelectorToCard(c2_ebPos,
-        {
-            { value = "BOTTOM", label = "Bottom (Below Chat)" },
-            { value = "TOP",    label = "Top (Above Tabs)" },
-        },
-        function() return (EnsureDB().editBoxPosition == "TOP") and "TOP" or "BOTTOM" end,
-        function(val)
-            local chosen = (val == "TOP") and "TOP" or "BOTTOM"
-            EnsureDB().editBoxPosition = chosen
-            if type(_G.DynamicSuiteDB) == "table" then
-                _G.DynamicSuiteDB.chatEditBoxPosition = chosen
-            end
-            DynamicChat:ApplySavedChatFramePosition()
-            DynamicChat:ApplySleekChatSkin()
-        end,
-        "Select chat typing box position (Bottom or Top)."
-    )
-    sec2_skin.orderedCards[#sec2_skin.orderedCards + 1] = c2_ebPos
-    root.allControls[#root.allControls + 1] = c2_ebPos
-
-    local c2_ebBgMode = CreateCardRow(sec2_skin, 62,
-        "Chat Typing Box Shading",
-        "Keep the typing box shaded to match your smoked-glass chat window so the frame never looks like it is floating, or only show it while typing.",
-        "Chat Typing Box Shading",
-        "Choose whether the typing box dock stays shaded at all times or only appears while typing."
-    )
-    AttachMultiPillSelectorToCard(c2_ebBgMode,
-        {
-            { value = "FOCUS_ONLY", label = "When Typing Only" },
-            { value = "ALWAYS",     label = "Always Shaded" },
-        },
-        function() return (EnsureDB().editBoxBackgroundMode == "FOCUS_ONLY") and "FOCUS_ONLY" or "ALWAYS" end,
-        function(val)
-            EnsureDB().editBoxBackgroundMode = (val == "FOCUS_ONLY") and "FOCUS_ONLY" or "ALWAYS"
-            DynamicChat:ApplySavedChatFramePosition()
-            DynamicChat:ApplySleekChatSkin()
-        end,
-        "Select chat typing box shading mode."
-    )
-    sec2_skin.orderedCards[#sec2_skin.orderedCards + 1] = c2_ebBgMode
-    root.allControls[#root.allControls + 1] = c2_ebBgMode
-
-    local c2_btns = CreateCardRow(sec2_skin, 60,
-        "Hide Default Blizzard Side Buttons",
-        "Hides Blizzard's bulky default Voice, Channel, and Social buttons next to the chat frame so they never block your Left Shortcut Bar.",
-        "Hide Default Blizzard Side Buttons",
-        "Hide default Blizzard side buttons so they never overlap the Left Shortcut Bar."
-    )
-    AttachSegmentedSwitchToCard(c2_btns,
-        function() return EnsureDB().hideChatButtons ~= false end,
-        function(val)
-            EnsureDB().hideChatButtons = val
-            DynamicChat:ApplySavedChatFramePosition()
-            DynamicChat:ApplySleekChatSkin()
-        end,
-        "Off", "Enabled",
-        "Toggle hiding default Blizzard side buttons."
-    )
-    sec2_skin.orderedCards[#sec2_skin.orderedCards + 1] = c2_btns
-    root.allControls[#root.allControls + 1] = c2_btns
-
-    local c2_font = CreateCardRow(sec2_skin, 60,
-        "Match Chat Font with DynamicSuite",
-        "Uses your chosen DynamicSuite font for chat tabs and the typing box while keeping your current chat text size.",
-        "Match Chat Font with DynamicSuite",
-        "Sync chat tabs and input text with your selected DynamicSuite font."
-    )
-    AttachSegmentedSwitchToCard(c2_font,
-        function() return EnsureDB().applySuiteChatFont ~= false end,
-        function(val)
-            EnsureDB().applySuiteChatFont = val
-            DynamicChat:ApplySleekChatSkin()
-        end,
-        "Off", "Enabled",
-        "Toggle matching chat font with DynamicSuite."
-    )
-    sec2_skin.orderedCards[#sec2_skin.orderedCards + 1] = c2_font
-    root.allControls[#root.allControls + 1] = c2_font
-
-    local c2_railMode = CreateCardRow(sec2_skin, 62,
-        "Left Shortcut Bar Visibility",
-        "Choose when the left-hand shortcut bar is visible next to your chat window (or Right-Click the Cog icon on the chat bar).",
-        "Left Shortcut Bar Visibility",
-        "Select whether the Left Shortcut Bar is Always shown, shown on Mouseover, hidden in Combat, or Off."
-    )
-    AttachMultiPillSelectorToCard(c2_railMode,
-        {
-            { value = "OFF",         label = "Off" },
-            { value = "COMBAT_HIDE", label = "Combat Hide" },
-            { value = "HOVER",       label = "Mouseover" },
-            { value = "ALWAYS",      label = "Always" },
-        },
-        function() return EnsureDB().leftRailMode or "ALWAYS" end,
-        function(val)
-            EnsureDB().leftRailMode = val
-            DynamicChat:ApplySavedChatFramePosition()
-            DynamicChat:ApplySleekChatSkin()
-        end,
-        "Select Left Shortcut Bar visibility mode."
-    )
-    sec2_skin.orderedCards[#sec2_skin.orderedCards + 1] = c2_railMode
-    root.allControls[#root.allControls + 1] = c2_railMode
-
-    local c2_railChips = CreateCardRow(sec2_skin, 86,
-        "Left Shortcut Bar Buttons",
-        "Click any button below to show or hide it on the left side of your chat window.",
-        "Left Shortcut Bar Buttons",
-        "Choose which shortcut icons appear on the Left Shortcut Bar."
-    )
-    do
-        local chipHolder = CreateFrame("Frame", nil, c2_railChips)
-        chipHolder:SetSize(386, 52)
-        chipHolder:SetPoint("RIGHT", c2_railChips, "RIGHT", -14, 0)
-        AnchorCardTextToRightWidget(c2_railChips, chipHolder)
-
-        chipHolder.chips = {}
-        for idx, def in ipairs(RAIL_WIDGET_DEFS) do
-            local colIdx = (idx - 1) % 4
-            local rowIdx = math.floor((idx - 1) / 4)
-            local cb = CreateFrame("Button", nil, chipHolder, "BackdropTemplate")
-            cb:SetSize(93, 24)
-            cb:SetPoint("TOPLEFT", chipHolder, "TOPLEFT", colIdx * 97, -rowIdx * 28)
-            cb:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-            cb.widgetKey = def.key
-
-            local ic = cb:CreateTexture(nil, "ARTWORK")
-            ic:SetSize(11, 11)
-            ic:SetPoint("LEFT", cb, "LEFT", 6, 0)
-            ic:SetTexture(def.icon)
-            DisableTexPixelSnap(ic)
-            cb.icon = ic
-
-            local lbl = cb:CreateFontString(nil, "OVERLAY")
-            SetSafeFont(lbl, 9.5, "")
-            lbl:SetPoint("LEFT", ic, "RIGHT", 5, 0)
-            lbl:SetPoint("RIGHT", cb, "RIGHT", -4, 0)
-            lbl:SetJustifyH("LEFT")
-            lbl:SetWordWrap(false)
-            lbl:SetText(def.shortLabel)
-            cb.label = lbl
-
-            cb:SetScript("OnEnter", function(selfBtn)
-                if not _G.GameTooltip then return end
-                _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
-                _G.GameTooltip:ClearLines()
-                _G.GameTooltip:AddLine(def.label, 1, 1, 1)
-                _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Show or hide " .. def.label .. " on the Left Shortcut Bar.", "34D399"), 0.886, 0.910, 0.941)
-                _G.GameTooltip:Show()
-            end)
-            cb:SetScript("OnLeave", function()
-                if _G.GameTooltip then _G.GameTooltip:Hide() end
-            end)
-            cb:SetScript("OnClick", function()
-                local db = EnsureDB()
-                db.railButtons = db.railButtons or {}
-                db.railButtons[def.key] = (db.railButtons[def.key] == false) and true or false
-                DynamicChat:RefreshLeftRailTelemetry()
-                chipHolder:RefreshValue()
-            end)
-            chipHolder.chips[idx] = cb
-        end
-
-        function chipHolder:RefreshValue()
-            local db = EnsureDB()
-            local rb = db.railButtons or DEFAULTS.railButtons
-            local ar, ag, ab = GetSuiteAccent()
-            local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
-            for _, cb in ipairs(self.chips) do
-                SetSafeFont(cb.label, 9.5, "")
-                local on = (rb[cb.widgetKey] ~= false)
-                if on then
-                    cb:SetBackdropColor(ar * fillAlpha, ag * fillAlpha, ab * fillAlpha, 0.96)
-                    cb:SetBackdropBorderColor(ar, ag, ab, 0.95)
-                    cb.icon:SetVertexColor(1, 1, 1, 1.0)
-                    cb.label:SetTextColor(0.98, 0.99, 1.00, 1.0)
-                else
-                    cb:SetBackdropColor(0.065, 0.075, 0.098, 0.92)
-                    cb:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.85)
-                    cb.icon:SetVertexColor(0.45, 0.50, 0.58, 0.75)
-                    cb.label:SetTextColor(0.55, 0.60, 0.68, 0.90)
-                end
-            end
-        end
-
-        chipHolder:RefreshValue()
-        c2_railChips.toggleBtn = chipHolder
-        DynamicChat.railChipGrid = chipHolder
-    end
-    sec2_skin.orderedCards[#sec2_skin.orderedCards + 1] = c2_railChips
-    root.allControls[#root.allControls + 1] = c2_railChips
-
-    do
-        local c2_typoFont = CreateCardRow(sec2_typo, 62,
-            "Chat Font Family",
-            "Choose your chat message font or follow your active DynamicSuite Theme & Font Studio selection.",
-            "Chat Font Family",
-            "Select the font family used across ChatFrame1..10 and the typing box."
-        )
-        TypographyMgr.AttachFontDropdownToCard(c2_typoFont)
-        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoFont
-        root.allControls[#root.allControls + 1] = c2_typoFont
-
-        local c2_typoSize = CreateCardRow(sec2_typo, 60,
-            "Chat Font Size",
-            "Adjust chat message text size from 10 px to 22 px across all chat windows.",
-            "Chat Font Size",
-            "Drag to set chat message font size (10 px to 22 px)."
-        )
-        TypographyMgr.AttachSliderToCard(c2_typoSize, 10, 22, 1, " px",
-            function() return tonumber(EnsureDB().chatFontSize) or 13 end,
-            function(val)
-                EnsureDB().chatFontSize = val
-                DynamicChat:ApplyChatFrameTypography()
-            end,
-            "Adjust chat font size between 10 px and 22 px."
-        )
-        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoSize
-        root.allControls[#root.allControls + 1] = c2_typoSize
-
-        local c2_typoOutline = CreateCardRow(sec2_typo, 62,
-            "Font Outline",
-            "Add a crisp dark outline around chat text so messages stay readable over bright spell effects.",
-            "Font Outline",
-            "Choose None, Thin Outline, or Thick Outline for chat text."
-        )
-        AttachMultiPillSelectorToCard(c2_typoOutline,
-            {
-                { value = "NONE",         label = "None" },
-                { value = "OUTLINE",      label = "Thin Outline" },
-                { value = "THICKOUTLINE", label = "Thick Outline" },
-            },
-            function() return EnsureDB().chatFontOutline or "OUTLINE" end,
-            function(val)
-                EnsureDB().chatFontOutline = val
-                DynamicChat:ApplyChatFrameTypography()
-            end,
-            "Select chat text outline thickness."
-        )
-        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoOutline
-        root.allControls[#root.allControls + 1] = c2_typoOutline
-
-        local c2_typoShadow = CreateCardRow(sec2_typo, 60,
-            "Text Drop Shadow",
-            "Render a subtle (1, -1) dark drop shadow behind chat letters for extra contrast.",
-            "Text Drop Shadow",
-            "Toggle crisp drop shadows behind chat text."
-        )
-        AttachSegmentedSwitchToCard(c2_typoShadow,
-            function() return EnsureDB().chatFontShadow ~= false end,
-            function(val)
-                EnsureDB().chatFontShadow = val
-                DynamicChat:ApplyChatFrameTypography()
-            end,
-            "Off", "Enabled",
-            "Toggle chat text drop shadow."
-        )
-        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoShadow
-        root.allControls[#root.allControls + 1] = c2_typoShadow
-
-        local c2_typoSpacing = CreateCardRow(sec2_typo, 60,
-            "Line Spacing",
-            "Add vertical breathing room between chat lines (0 px compact to 8 px airy).",
-            "Line Spacing",
-            "Drag to adjust vertical spacing between chat lines (0 px to 8 px)."
-        )
-        TypographyMgr.AttachSliderToCard(c2_typoSpacing, 0, 8, 1, " px",
-            function() return tonumber(EnsureDB().chatLineSpacing) or 2 end,
-            function(val)
-                EnsureDB().chatLineSpacing = val
-                DynamicChat:ApplyChatFrameTypography()
-            end,
-            "Adjust line spacing between 0 px and 8 px."
-        )
-        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoSpacing
-        root.allControls[#root.allControls + 1] = c2_typoSpacing
-
-        local c2_typoFade = CreateCardRow(sec2_typo, 60,
-            "Auto-Fade Old Messages",
-            "Smoothly fade out older chat messages after 2 minutes, or keep them visible permanently.",
-            "Auto-Fade Old Messages",
-            "Toggle whether older chat lines fade out after 2 minutes."
-        )
-        AttachSegmentedSwitchToCard(c2_typoFade,
-            function() return EnsureDB().chatMessageFade ~= false end,
-            function(val)
-                EnsureDB().chatMessageFade = val
-                DynamicChat:ApplyChatFrameTypography()
-            end,
-            "Off", "Enabled",
-            "Toggle automatic fading of old chat messages."
-        )
-        sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoFade
-        root.allControls[#root.allControls + 1] = c2_typoFade
-    end
-
-    local c2_short = CreateCardRow(sec2a, 64,
-        "Safe Channel Names in Raids & Mythic+",
-        "Keeps Blizzard's built-in channel labels intact so Raid and Mythic+ chat messages never cause UI errors.",
-        "Safe Channel Names in Raids & Mythic+",
-        "Keep channel names protected against combat chat errors in Raids and Mythic+ dungeons."
-    )
-    AttachReadOnlyStatusBadgeToCard(c2_short,
-        "Always Protected",
-        "Always active: DynamicChat preserves Blizzard's default channel labels so protected raid messages stay error-free."
-    )
-    sec2a.orderedCards[#sec2a.orderedCards + 1] = c2_short
-    root.allControls[#root.allControls + 1] = c2_short
-
-    local c2_class = CreateCardRow(sec2b, 60,
-        "Show Player Class Colours in Chat",
-        "Automatically colours player names in chat to match their class (Druid orange, Mage blue, Paladin pink, etc.).",
-        "Show Player Class Colours",
-        "Automatically colour player names by their class in all chat channels."
-    )
-    AttachSegmentedSwitchToCard(c2_class,
-        function() return EnsureDB().classColorNames ~= false end,
-        function(val)
-            EnsureDB().classColorNames = val
-            DynamicChat:ApplyClassColorNames()
-        end,
-        "Off", "Enabled",
-        "Toggle class-coloured player names in chat."
-    )
-    sec2b.orderedCards[#sec2b.orderedCards + 1] = c2_class
-    root.allControls[#root.allControls + 1] = c2_class
-
-    local c2_ts = CreateCardRow(sec2b, 62,
-        "Chat Message Timestamps",
-        "Adds the time each message was received (such as 01:32) to the start of every chat line.",
-        "Chat Message Timestamps",
-        "Choose the time format shown in front of chat messages."
-    )
-    AttachMultiPillSelectorToCard(c2_ts,
-        {
-            { value = "none",      label = "Off" },
-            { value = "%H:%M ",    label = "24h (01:32)" },
-            { value = "%I:%M %p ", label = "12h (01:32 PM)" },
-            { value = "%H:%M:%S ", label = "HH:MM:SS" },
-        },
-        function()
-            local db = EnsureDB()
-            if db.showTimestamps == false or db.timestampFormat == "none" then
-                return "none"
-            end
-            return db.timestampFormat or "%H:%M "
-        end,
-        function(val)
-            local db = EnsureDB()
-            if val == "none" then
-                db.showTimestamps = false
-                db.timestampFormat = "none"
-            else
-                db.showTimestamps = true
-                db.timestampFormat = val
-            end
-            DynamicChat:ApplyTimestampSettings()
-        end,
-        "Select chat message timestamp format."
-    )
-    sec2b.orderedCards[#sec2b.orderedCards + 1] = c2_ts
-    root.allControls[#root.allControls + 1] = c2_ts
-
-    -- ========================================================================
-    -- TAB 3: Sound Alerts (Chat Notification Sounds + Per-Channel Config)
-    -- ========================================================================
-    local page3 = root.tabPages[3]
-    local sec3_sounds = CreateSectionBox(
-        page3,
-        "CHAT NOTIFICATION SOUNDS",
-        "Per-channel chat notification alerts with Blizzard built-in sounds, SharedMedia/DBM/EXBOSS/BigWigs/WeakAuras support, and anti-spam cooldowns. Selecting a sound previews it automatically, or click [Play].",
-        root
-    )
-    local sec3_rules = CreateSectionBox(
-        page3,
-        "AUDIO OUTPUT & ANTI-SPAM",
-        "Choose which World of Warcraft audio volume slider controls chat chimes and set the per-channel anti-spam cooldown.",
-        root
-    )
-
-    local c3_sndMaster = CreateCardRow(sec3_sounds, 60,
-        "Chat Notification Sounds",
-        "Master switch for per-channel incoming chat sound effects (automatically ignores outgoing messages sent by you).",
-        "Chat Notification Sounds",
-        "Turn custom per-channel chat notification sounds On or Off."
-    )
-    AttachSegmentedSwitchToCard(c3_sndMaster,
-        function() return EnsureDB().enableChatSounds ~= false end,
-        function(val)
-            local db = EnsureDB()
-            db.enableChatSounds = val
-            db.enableSoundAlerts = val
-            DynamicChat:ApplyWhisperDefaultSoundMuteState()
-            DynamicChat:RefreshConfigUI()
-        end,
-        "Off", "Enabled",
-        "Toggle Custom Chat Notification Sounds."
-    )
-    sec3_sounds.orderedCards[#sec3_sounds.orderedCards + 1] = c3_sndMaster
-    root.allControls[#root.allControls + 1] = c3_sndMaster
-
-    local c3_sndCombatMute = CreateCardRow(sec3_sounds, 60,
-        "Mute Sounds in Combat",
-        "Silence incoming chat notification sounds during combat lockdown and active raid or dungeon boss encounters.",
-        "Mute Sounds in Combat",
-        "Silence incoming chat notification chimes while in combat or a boss encounter."
-    )
-    AttachSegmentedSwitchToCard(c3_sndCombatMute,
-        function() return EnsureDB().soundMuteInCombat == true end,
-        function(val)
-            EnsureDB().soundMuteInCombat = (val == true)
-        end,
-        "Off", "Enabled",
-        "Toggle muting chat notification sounds during combat."
-    )
-    sec3_sounds.orderedCards[#sec3_sounds.orderedCards + 1] = c3_sndCombatMute
-    root.allControls[#root.allControls + 1] = c3_sndCombatMute
-
-    for _, chDef in ipairs(SOUND_CHANNEL_DEFS) do
-        local cRow = CreateCardRow(sec3_sounds, 60,
-            chDef.title,
-            chDef.desc,
-            chDef.title,
-            "Select a sound effect for " .. chDef.title .. " (auto-previews on selection, or click [Play] beside the dropdown)."
-        )
-        AttachSoundDropdownToCard(cRow, chDef.key)
-        sec3_sounds.orderedCards[#sec3_sounds.orderedCards + 1] = cRow
-        root.allControls[#root.allControls + 1] = cRow
-    end
-
-    local c3_sndOut = CreateCardRow(sec3_rules, 62,
-        "Audio Output Channel",
-        "Choose which World of Warcraft volume slider controls your chat notification chimes (Master plays even if sound effects are lowered).",
-        "Audio Output Channel",
-        "Select the audio output channel for chat notification sounds."
-    )
-    AttachMultiPillSelectorToCard(c3_sndOut,
-        {
-            { value = "Master", label = "Master" },
-            { value = "SFX",    label = "SFX" },
-            { value = "Dialog", label = "Dialogue" },
-        },
-        function()
-            local ch = EnsureDB().soundOutputChannel or "Master"
-            if ch ~= "Master" and ch ~= "SFX" and ch ~= "Dialog" then return "Master" end
-            return ch
-        end,
-        function(val)
-            EnsureDB().soundOutputChannel = val
-        end,
-        "Select audio output channel (Master, SFX, or Dialogue)."
-    )
-    sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_sndOut
-    root.allControls[#root.allControls + 1] = c3_sndOut
-
-    local c3_sndCooldown = CreateCardRow(sec3_rules, 62,
-        "Anti-Spam Cooldown",
-        "Prevents rapid-fire messages in the same chat channel from playing chimes repeatedly within a short window.",
-        "Anti-Spam Cooldown",
-        "Select the minimum cooldown between notification chimes on the same chat channel."
-    )
-    AttachMultiPillSelectorToCard(c3_sndCooldown,
-        {
-            { value = 0,   label = "Off" },
-            { value = 1.5, label = "1.5s" },
-            { value = 3,   label = "3s" },
-            { value = 5,   label = "5s" },
-        },
-        function()
-            local t = tonumber(EnsureDB().soundThrottleSec)
-            if t == nil then return 1.5 end
-            if t <= 0.1 then return 0 end
-            if t <= 2.0 then return 1.5 end
-            if t <= 4.0 then return 3 end
-            return 5
-        end,
-        function(val)
-            EnsureDB().soundThrottleSec = tonumber(val) or 0
-        end,
-        "Select per-channel anti-spam cooldown."
-    )
-    sec3_rules.orderedCards[#sec3_rules.orderedCards + 1] = c3_sndCooldown
-    root.allControls[#root.allControls + 1] = c3_sndCooldown
 
     local function CreateObsidianEditBox(parent, width, height, placeholder)
         local boxWrap = CreateFrame("Frame", nil, parent, "BackdropTemplate")
@@ -11284,6 +10806,7 @@ local function RenderChatEmbedded(arg1, arg2)
         btn.label:SetTextColor(0.976, 0.984, 1.00, 1)
         function btn:RefreshAccent()
             local ar, ag, ab = GetSuiteAccent()
+            SetSafeFont(self.label, 10, "")
             if self:IsMouseOver() then
                 self:SetBackdropColor(ar * 0.24, ag * 0.24, ab * 0.24, 0.98)
                 self:SetBackdropBorderColor(ar, ag, ab, 1.0)
@@ -11306,397 +10829,1405 @@ local function RenderChatEmbedded(arg1, arg2)
         return btn
     end
 
-    -- Section 3C: Name & Keyword Mention Alerts
-    local sec3_mentions = CreateSectionBox(
-        page3,
-        "NAME & KEYWORD MENTION ALERTS",
-        "Get notified with a distinct chime, chat highlight, or alert banner when someone mentions your character name or a custom keyword.",
-        root
-    )
+    -- ========================================================================
+    -- TAB 1: Whisper & Input
+    -- ========================================================================
+    local page1 = root.tabPages[1]
+    do
+        local sec1a = CreateSectionBox(
+            page1,
+            "INSTANT TARGET WHISPER (/WW) & BOSS FIGHT PROTECTION",
+            "Quickly whisper your current friendly target by typing /ww, and keep whispers visible during boss fights.",
+            root
+        )
+        local sec1b = CreateSectionBox(
+            page1,
+            "MESSAGE HISTORY ARROWS & CHANNEL MEMORY",
+            "Use the Up and Down arrow keys to repeat messages and choose which chat channels stay selected.",
+            root
+        )
 
-    local c3_mEnable = CreateCardRow(sec3_mentions, 60,
-        "Enable Mention & Keyword Alerts",
-        "Automatically detects your active character name and custom keywords in incoming chat (always ignores messages sent by you).",
-        "Enable Mention & Keyword Alerts",
-        "Turn Name and Keyword Mention Alerts On or Off."
-    )
-    AttachSegmentedSwitchToCard(c3_mEnable,
-        function() return EnsureDB().enableMentionAlerts ~= false end,
-        function(val)
-            EnsureDB().enableMentionAlerts = (val == true)
-            DynamicChat:RefreshConfigUI()
-        end,
-        "Off", "Enabled",
-        "Toggle Name & Keyword Mention Alerts."
-    )
-    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mEnable
-    root.allControls[#root.allControls + 1] = c3_mEnable
+        local c1_tt = CreateCardRow(sec1a, 60,
+            "Instant Target Whisper (/ww)",
+            "Type '/ww ' in chat to immediately whisper the friendly player you are targeting, or use '/ww <message>' in macros.",
+            "Instant Target Whisper (/ww)",
+            "Turn on instant '/ww' target whispers in the chat box and macros."
+        )
+        AttachSegmentedSwitchToCard(c1_tt,
+            function() return EnsureDB().enableTargetWhisper end,
+            function(val)
+                EnsureDB().enableTargetWhisper = val
+                DynamicChat:ReassertTargetWhisperSlashCommands()
+                RefreshSleekEditBoxBarColor(_G.ChatFrame1EditBox)
+            end,
+            "Off", "Enabled",
+            "Toggle Instant Target Whisper (/ww)."
+        )
+        sec1a.orderedCards[#sec1a.orderedCards + 1] = c1_tt
+        root.allControls[#root.allControls + 1] = c1_tt
 
-    local c3_mKeywords = CreateCardRow(sec3_mentions, 64,
-        "Custom Keywords",
-        "Comma-separated words to watch for (e.g. dentee, lust, brez, innervate). Whole-word, case-insensitive.",
-        "Custom Keywords",
-        "Type comma-separated keywords and click Save."
-    )
-    local kwSaveBtn = CreateAccentActionButton(c3_mKeywords, 58, 24, "Save", nil)
-    kwSaveBtn:SetPoint("RIGHT", c3_mKeywords, "RIGHT", -14, 0)
-    local kwBox = CreateObsidianEditBox(c3_mKeywords, 210, 24, "e.g. dentee, lust, brez, innervate")
-    kwBox:SetPoint("RIGHT", kwSaveBtn, "LEFT", -6, 0)
-    kwBox.editBox:SetText(EnsureDB().mentionKeywords or "")
-    local function SaveKeywords()
-        local raw = kwBox.editBox:GetText() or ""
-        local trimmed = raw:gsub("^%s+", ""):gsub("%s+$", "")
-        EnsureDB().mentionKeywords = trimmed
-        kwBox.editBox:ClearFocus()
-        PrintMsg("Saved mention keywords.")
-    end
-    kwSaveBtn:SetScript("OnClick", SaveKeywords)
-    kwBox.editBox:SetScript("OnEnterPressed", SaveKeywords)
-    function kwBox:RefreshValue()
-        if not self.editBox:HasFocus() then
-            self.editBox:SetText(EnsureDB().mentionKeywords or "")
-        end
-    end
-    c3_mKeywords.toggleBtn = kwBox
-    AnchorCardTextToRightWidget(c3_mKeywords, kwBox)
-    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mKeywords
-    root.allControls[#root.allControls + 1] = c3_mKeywords
+        local c1_clear = CreateCardRow(sec1a, 60,
+            "Clear '/ww' If You Have No Friendly Target",
+            "Automatically clears '/ww ' from your chat box and shows a helpful reminder if you aren't targeting a friendly player.",
+            "Clear '/ww' Without Friendly Target",
+            "Clear '/ww ' automatically when you do not have a friendly player targeted."
+        )
+        AttachSegmentedSwitchToCard(c1_clear,
+            function() return EnsureDB().targetWhisperClearOnInvalid ~= false end,
+            function(val)
+                EnsureDB().targetWhisperClearOnInvalid = val
+            end,
+            "Off", "Enabled",
+            "Toggle clearing '/ww ' when no friendly player is targeted."
+        )
+        sec1a.orderedCards[#sec1a.orderedCards + 1] = c1_clear
+        root.allControls[#root.allControls + 1] = c1_clear
 
-    local c3_mNameSnd = CreateCardRow(sec3_mentions, 60,
-        "Name Mention Sound",
-        "Chime played when another player mentions your active character name in chat.",
-        "Name Mention Sound",
-        "Choose a sound effect for direct character name mentions."
-    )
-    AttachSoundDropdownToCard(c3_mNameSnd, "MENTION_NAME")
-    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mNameSnd
-    root.allControls[#root.allControls + 1] = c3_mNameSnd
+        local c1_protect = CreateCardRow(sec1a, 62,
+            "Protect Whispers During Boss Fights & Mythic+",
+            "Permanently isolates Whisper and Battle.net channels from message filters so secret combat strings never block incoming whispers.",
+            "Protect Whispers in Boss Fights & M+",
+            "Keep incoming whispers and Battle.net messages reliable during boss fights and Mythic+ keys."
+        )
+        AttachReadOnlyStatusBadgeToCard(c1_protect,
+            "Always Protected",
+            "Always active: DynamicChat leaves Whisper and Battle.net messages untouched so combat messages never cause errors."
+        )
+        sec1a.orderedCards[#sec1a.orderedCards + 1] = c1_protect
+        root.allControls[#root.allControls + 1] = c1_protect
 
-    local c3_mKwSnd = CreateCardRow(sec3_mentions, 60,
-        "Keyword Trigger Sound",
-        "Chime played when an incoming message matches one of your saved custom keywords.",
-        "Keyword Trigger Sound",
-        "Choose a sound effect for custom keyword matches."
-    )
-    AttachSoundDropdownToCard(c3_mKwSnd, "MENTION_KEYWORD")
-    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mKwSnd
-    root.allControls[#root.allControls + 1] = c3_mKwSnd
+        local c1_arrow = CreateCardRow(sec1b, 60,
+            "Use Up & Down Arrows to Repeat Sent Messages",
+            "Press the Up and Down arrow keys while typing in chat to cycle through your recently sent messages without holding Alt.",
+            "Up & Down Arrow Message History",
+            "Cycle through your previously sent chat messages using the Up and Down arrow keys."
+        )
+        AttachSegmentedSwitchToCard(c1_arrow,
+            function() return EnsureDB().arrowHistoryNoAlt end,
+            function(val)
+                EnsureDB().arrowHistoryNoAlt = val
+                DynamicChat:ApplyEditBoxSettings()
+            end,
+            "Off", "Enabled",
+            "Toggle Up and Down arrow history in the chat input box."
+        )
+        sec1b.orderedCards[#sec1b.orderedCards + 1] = c1_arrow
+        root.allControls[#root.allControls + 1] = c1_arrow
 
-    local c3_mHighlight = CreateCardRow(sec3_mentions, 60,
-        "Highlight Mention in Chat",
-        "Prints a highlighted alert in your chat window whenever your name or a keyword is mentioned.",
-        "Highlight Mention in Chat",
-        "Toggle accent-highlighted chat callouts for mentions and keywords."
-    )
-    AttachSegmentedSwitchToCard(c3_mHighlight,
-        function() return EnsureDB().mentionHighlightInChat ~= false end,
-        function(val) EnsureDB().mentionHighlightInChat = (val == true) end,
-        "Off", "Enabled",
-        "Toggle chat highlight callouts for mentions."
-    )
-    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mHighlight
-    root.allControls[#root.allControls + 1] = c3_mHighlight
+        local c1_stickyW = CreateCardRow(sec1b, 60,
+            "Remember Whisper Channel After Sending",
+            "When set to 'Reset to Previous' (Recommended), pressing Enter after sending a whisper returns your chat box to Party, Raid, or Guild chat.",
+            "Remember Whisper Channel",
+            "Choose whether your chat box stays locked on Whisper or returns to your previous group channel after sending."
+        )
+        AttachSegmentedSwitchToCard(c1_stickyW,
+            function() return EnsureDB().stickyWhisper == true end,
+            function(val)
+                EnsureDB().stickyWhisper = val
+                DynamicChat:ApplyStickyChannelSettings()
+            end,
+            "Reset to Previous", "Keep Sticky",
+            "Choose whether Whisper resets to your previous channel or stays sticky."
+        )
+        sec1b.orderedCards[#sec1b.orderedCards + 1] = c1_stickyW
+        root.allControls[#root.allControls + 1] = c1_stickyW
 
-    local c3_mToast = CreateCardRow(sec3_mentions, 60,
-        "Mention Alert Toast",
-        "Shows a shared alert banner when your name or a keyword matches. Style and position follow Suite Studio's Shared Alert Toast settings.",
-        "Mention Alert Toast",
-        "Toggle shared floating alert toast banners for chat mentions and keywords."
-    )
-    AttachSegmentedSwitchToCard(c3_mToast,
-        function() return EnsureDB().mentionAlertToast ~= false end,
-        function(val) EnsureDB().mentionAlertToast = (val == true) end,
-        "Off", "Enabled",
-        "Toggle floating alert toast banners."
-    )
-    sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mToast
-    root.allControls[#root.allControls + 1] = c3_mToast
-
-    -- Section 3D: Custom Sound File Manager (.ogg / .mp3)
-    local sec3_custom = CreateSectionBox(
-        page3,
-        "CUSTOM SOUND FILES",
-        "Register your own .ogg or .mp3 files (relative to Interface\\AddOns\\...) to use in any channel or mention dropdown. .wav files are blocked for Retail 12.1.5+ compatibility.",
-        root
-    )
-
-    local c3_addCustom = CreateCardRow(sec3_custom, 72,
-        "Add Custom Sound",
-        "Enter a display name and file path (e.g. Interface\\AddOns\\MySounds\\bell.ogg).",
-        "Add Custom Sound",
-        "Add a custom .ogg or .mp3 sound file to all DynamicChat sound dropdowns."
-    )
-    local csTestBtn = CreateAccentActionButton(c3_addCustom, 68, 24, "Test Play", nil)
-    csTestBtn:SetPoint("RIGHT", c3_addCustom, "RIGHT", -14, 0)
-    local csAddBtn = CreateAccentActionButton(c3_addCustom, 48, 24, "Add", nil)
-    csAddBtn:SetPoint("RIGHT", csTestBtn, "LEFT", -6, 0)
-    local csPathBox = CreateObsidianEditBox(c3_addCustom, 178, 24, "Interface\\AddOns\\...\\file.ogg")
-    csPathBox:SetPoint("RIGHT", csAddBtn, "LEFT", -6, 0)
-    local csNameBox = CreateObsidianEditBox(c3_addCustom, 96, 24, "Label")
-    csNameBox:SetPoint("RIGHT", csPathBox, "LEFT", -6, 0)
-    AnchorCardTextToRightWidget(c3_addCustom, csNameBox)
-
-    csTestBtn:SetScript("OnClick", function()
-        local p = (csPathBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        if not SoundMgr.IsValidCustomAudioPath(p) then
-            PrintMsg("Please enter a valid .ogg or .mp3 path (.wav is not supported).")
-            return
-        end
-        local outChan = EnsureDB().soundOutputChannel or "Master"
-        if type(_G.PlaySoundFile) == "function" then
-            local okF, willPlay = pcall(_G.PlaySoundFile, p, outChan)
-            if not (okF and willPlay ~= false) then
-                PrintMsg("Could not play file. Ensure the path is valid and restart WoW if the file was just added.")
-            end
-        end
-    end)
-
-    local MAX_CUSTOM_SOUND_ROWS = 6
-    local customSoundRows = {}
-
-    local function RefreshCustomSoundRows()
-        local list = EnsureDB().customSounds or {}
-        for i = 1, MAX_CUSTOM_SOUND_ROWS do
-            local rowCard = customSoundRows[i]
-            local entry = list[i]
-            if rowCard then
-                if entry then
-                    rowCard._customEntry = entry
-                    rowCard.title:SetText(entry.label or entry.id)
-                    rowCard.desc:SetText(entry.path or "")
-                    rowCard:Show()
-                else
-                    rowCard._customEntry = nil
-                    rowCard:Hide()
-                end
-            end
-        end
-        if root and root.RefreshLayout then
-            root:RefreshLayout()
-        end
+        local c1_stickyG = CreateCardRow(sec1b, 60,
+            "Remember Party, Raid, Instance & Guild Channels",
+            "Keeps your chat box on your current group or guild channel after you send a message.",
+            "Remember Group & Guild Channels",
+            "Keep Party, Raid, Instance, Guild, and Officer channels selected between messages."
+        )
+        AttachSegmentedSwitchToCard(c1_stickyG,
+            function() return EnsureDB().stickyGroupChannels ~= false end,
+            function(val)
+                EnsureDB().stickyGroupChannels = val
+                DynamicChat:ApplyStickyChannelSettings()
+            end,
+            "Off", "Enabled",
+            "Toggle keeping Party, Raid, Instance, and Guild channels selected."
+        )
+        sec1b.orderedCards[#sec1b.orderedCards + 1] = c1_stickyG
+        root.allControls[#root.allControls + 1] = c1_stickyG
     end
 
-    csAddBtn:SetScript("OnClick", function()
-        local lbl = (csNameBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        local p   = (csPathBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        if not SoundMgr.IsValidCustomAudioPath(p) then
-            PrintMsg("Only .ogg and .mp3 sound files are supported (.wav files are blocked).")
-            return
-        end
-        if lbl == "" then
-            lbl = p:match("([^\\/]+)%.[^%.]+$") or "Custom Sound"
-        end
-        local db = EnsureDB()
-        db.customSounds = db.customSounds or {}
-        if #db.customSounds >= MAX_CUSTOM_SOUND_ROWS then
-            PrintMsg("Maximum of " .. MAX_CUSTOM_SOUND_ROWS .. " custom sounds reached. Delete one to add another.")
-            return
-        end
-        local slug = lbl:lower():gsub("[^%w]+", "_"):gsub("^_+", ""):gsub("_+$", "")
-        if slug == "" then slug = "sound" end
-        local id = "CUSTOM:" .. slug .. "_" .. tostring(#db.customSounds + 1)
-        for _, existing in ipairs(db.customSounds) do
-            if existing.id == id then
-                id = id .. "_" .. tostring(math.floor((_G.GetTime and _G.GetTime() or 1) * 100))
-                break
-            end
-        end
-        db.customSounds[#db.customSounds + 1] = {
-            id    = id,
-            label = lbl,
-            path  = p,
+    -- ========================================================================
+    -- TAB 2: Chat Skin & Layout
+    -- ========================================================================
+    local page2 = root.tabPages[2]
+    do
+        local sec2_presets = CreateSectionBox(
+            page2,
+            "QUICK PRESETS",
+            "Apply a ready-made setup in one click, or fine-tune every option below.",
+            root
+        )
+        local presetCard = CreateCardRow(sec2_presets, 46, "", "", nil, nil)
+        if presetCard.title then presetCard.title:Hide() end
+        if presetCard.desc then presetCard.desc:Hide() end
+
+        local presetLbl = presetCard:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(presetLbl, 10, "")
+        presetLbl:SetPoint("LEFT", presetCard, "LEFT", 14, 0)
+        presetLbl:SetText("PRESETS")
+        presetLbl:SetTextColor(0.58, 0.64, 0.72, 1)
+
+        local presetDefs = {
+            {
+                key = "CLEAN_SMOKED",
+                label = "Clean Smoked-Glass",
+                desc = "Sleek skin On, 25% backdrop opacity, Left Shortcut Bar Always visible, timestamps & class colours On.",
+            },
+            {
+                key = "MINIMALIST_RAID",
+                label = "Minimalist Raid",
+                desc = "Sleek skin On, 15% backdrop opacity, Left Shortcut Bar hidden in combat, compact channel tags, mute sounds in combat.",
+            },
+            {
+                key = "HIGH_READABILITY",
+                label = "High-Readability",
+                desc = "Sleek skin On, 55% backdrop opacity, 15 px font size, drop shadow On, and 3 px line spacing.",
+            },
+            {
+                key = "QUIET_ALERTS",
+                label = "Quiet Alerts",
+                desc = "Keeps your visual chat layout unchanged while muting non-essential channel chimes and keeping Mention Alert Toast active.",
+            },
         }
-        csNameBox.editBox:SetText("")
-        csPathBox.editBox:SetText("")
-        csNameBox.editBox:ClearFocus()
-        csPathBox.editBox:ClearFocus()
-        RefreshCustomSoundRows()
-        DynamicChat:RefreshConfigUI()
-        PrintMsg("Added custom sound: " .. lbl)
-    end)
+        local presetBtns = {}
+        for _, p in ipairs(presetDefs) do
+            local pb = CreateFrame("Button", nil, presetCard, "BackdropTemplate")
+            pb:SetHeight(26)
+            pb:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 1,
+            })
+            pb.lbl = pb:CreateFontString(nil, "OVERLAY")
+            SetSafeFont(pb.lbl, 10, "")
+            pb.lbl:SetPoint("LEFT", pb, "LEFT", 6, 0)
+            pb.lbl:SetPoint("RIGHT", pb, "RIGHT", -6, 0)
+            pb.lbl:SetJustifyH("CENTER")
+            pb.lbl:SetWordWrap(false)
+            pb.lbl:SetText(p.label)
+            pb:SetScript("OnEnter", function(selfBtn)
+                local ar, ag, ab = GetSuiteAccent()
+                local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
+                selfBtn:SetBackdropColor(ar * fillAlpha, ag * fillAlpha, ab * fillAlpha, 0.98)
+                selfBtn:SetBackdropBorderColor(ar, ag, ab, 1.0)
+                selfBtn.lbl:SetTextColor(1, 1, 1, 1)
+                if _G.GameTooltip then
+                    _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
+                    _G.GameTooltip:ClearLines()
+                    _G.GameTooltip:AddLine(p.label, 1, 1, 1)
+                    _G.GameTooltip:AddLine(p.desc, 0.72, 0.78, 0.86, true)
+                    _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Apply " .. p.label .. " preset now.", "34D399"), 0.886, 0.910, 0.941)
+                    _G.GameTooltip:Show()
+                end
+            end)
+            pb:SetScript("OnLeave", function(selfBtn)
+                local ar, ag, ab = GetSuiteAccent()
+                selfBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+                selfBtn:SetBackdropBorderColor(ar, ag, ab, 0.70)
+                selfBtn.lbl:SetTextColor(0.92, 0.95, 0.99, 1)
+                if _G.GameTooltip then _G.GameTooltip:Hide() end
+            end)
+            pb:SetScript("OnClick", function()
+                CloseActiveDropdown()
+                DynamicChat:ApplyPreset(p.key)
+            end)
+            presetBtns[#presetBtns + 1] = pb
+        end
 
-    sec3_custom.orderedCards[#sec3_custom.orderedCards + 1] = c3_addCustom
-    root.allControls[#root.allControls + 1] = c3_addCustom
+        local function ReflowPresetButtons()
+            local w = presetCard:GetWidth() or 0
+            if w < 100 then w = 520 end
+            local startX = 78
+            local avail = math.max(240, w - startX - 14)
+            local gap = 6
+            local n = #presetBtns
+            local bw = math.floor((avail - gap * (n - 1)) / n)
+            for i, pb in ipairs(presetBtns) do
+                pb:ClearAllPoints()
+                pb:SetHeight(26)
+                pb:SetWidth(i == n and (avail - (bw + gap) * (n - 1)) or bw)
+                pb:SetPoint("LEFT", presetCard, "LEFT", startX + (i - 1) * (bw + gap), 0)
+            end
+        end
+        presetCard:SetScript("OnSizeChanged", ReflowPresetButtons)
+        ReflowPresetButtons()
 
-    for i = 1, MAX_CUSTOM_SOUND_ROWS do
-        local rowCard = CreateCardRow(sec3_custom, 54, "Custom Sound", "", nil, nil)
-        local delBtn = CreateAccentActionButton(rowCard, 56, 22, "Delete", function()
-            if not rowCard._customEntry then return end
-            local targetId = rowCard._customEntry.id
-            local db = EnsureDB()
-            local newList = {}
-            for _, item in ipairs(db.customSounds or {}) do
-                if item.id ~= targetId then
-                    newList[#newList + 1] = item
+        root.extraRefreshers[#root.extraRefreshers + 1] = function()
+            local ar, ag, ab = GetSuiteAccent()
+            SetSafeFont(presetLbl, 10, "")
+            for _, pb in ipairs(presetBtns) do
+                SetSafeFont(pb.lbl, 10, "")
+                if pb:IsMouseOver() then
+                    local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
+                    pb:SetBackdropColor(ar * fillAlpha, ag * fillAlpha, ab * fillAlpha, 0.98)
+                    pb:SetBackdropBorderColor(ar, ag, ab, 1.0)
+                    pb.lbl:SetTextColor(1, 1, 1, 1)
+                else
+                    pb:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+                    pb:SetBackdropBorderColor(ar, ag, ab, 0.70)
+                    pb.lbl:SetTextColor(0.92, 0.95, 0.99, 1)
                 end
             end
-            db.customSounds = newList
-            EnsureDB()
+            ReflowPresetButtons()
+        end
+        sec2_presets.orderedCards[#sec2_presets.orderedCards + 1] = presetCard
+
+        local sec2_skin = CreateSectionBox(
+            page2,
+            "SMOKED-GLASS CHAT WINDOW & LEFT SHORTCUT BAR",
+            "Customise the smoked-glass chat frame, top tab bar, typing box, and left-hand shortcut buttons.",
+            root
+        )
+        local chatEditHudBtn
+        if _G.DynamicSuite and type(_G.DynamicSuite.CreateEditHudButton) == "function" then
+            chatEditHudBtn = _G.DynamicSuite.CreateEditHudButton(sec2_skin, "CHAT")
+        else
+            chatEditHudBtn = CreateFrame("Button", nil, sec2_skin, "BackdropTemplate")
+            chatEditHudBtn:SetSize(86, 22)
+            chatEditHudBtn:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 1,
+            })
+            local ar0, ag0, ab0 = GetSuiteAccent()
+            chatEditHudBtn:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+            chatEditHudBtn:SetBackdropBorderColor(ar0, ag0, ab0, 0.85)
+            chatEditHudBtn.label = chatEditHudBtn:CreateFontString(nil, "OVERLAY")
+            SetSafeFont(chatEditHudBtn.label, 11, "")
+            chatEditHudBtn.label:SetPoint("CENTER", 0, 0)
+            chatEditHudBtn.label:SetText("Edit HUD")
+            chatEditHudBtn.label:SetTextColor(0.976, 0.984, 1.00, 1)
+            chatEditHudBtn:SetScript("OnEnter", function(s)
+                local ar, ag, ab = GetSuiteAccent()
+                s:SetBackdropColor(ar * 0.22, ag * 0.22, ab * 0.22, 0.98)
+                s:SetBackdropBorderColor(ar, ag, ab, 1.0)
+            end)
+            chatEditHudBtn:SetScript("OnLeave", function(s)
+                local ar, ag, ab = GetSuiteAccent()
+                s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+                s:SetBackdropBorderColor(ar, ag, ab, 0.85)
+            end)
+            chatEditHudBtn:SetScript("OnClick", function()
+                if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
+                    _G.DynamicSuite.EnterHudEditMode("CHAT")
+                end
+            end)
+        end
+        chatEditHudBtn:SetPoint("TOPRIGHT", sec2_skin, "TOPRIGHT", -14, -7)
+        if sec2_skin.hdr then
+            if sec2_skin.hdr.title then
+                sec2_skin.hdr.title:SetPoint("RIGHT", chatEditHudBtn, "LEFT", -10, 0)
+                sec2_skin.hdr.title:SetWordWrap(false)
+            end
+            if sec2_skin.hdr.subtitle then
+                sec2_skin.hdr.subtitle:SetPoint("RIGHT", chatEditHudBtn, "LEFT", -10, 0)
+            end
+        end
+
+        local sec2_typo = CreateSectionBox(
+            page2,
+            "CHAT TYPOGRAPHY & READABILITY",
+            "Customise the font family, text size, outline, drop shadow, and line spacing across all chat windows.",
+            root
+        )
+        local sec2b = CreateSectionBox(
+            page2,
+            "FORMATTING, CLASS COLOURS & TIMESTAMPS",
+            "Protect raid channel labels, colour player names by class, and show message timestamps.",
+            root
+        )
+
+        local c2_skin = CreateGroupDrawerCard(sec2_skin, "skinCore",
+            "Smoked-Glass Chat Window & Top Tab Bar",
+            "Gives your chat window a clean smoked-glass background, sleek top tabs, and a left shortcut bar.",
+            function() return EnsureDB().enableSleekChatSkin ~= false end,
+            "Smoked-Glass Chat Window & Top Tab Bar",
+            "Toggle DynamicChat's smoked-glass chat window, Top Tab Bar, Left Shortcut Bar, and input box style."
+        )
+        AttachSegmentedSwitchToCard(c2_skin,
+            function() return EnsureDB().enableSleekChatSkin ~= false end,
+            function(val)
+                local db = EnsureDB()
+                db.enableSleekChatSkin = val
+                if val then
+                    db.drawerExpanded = db.drawerExpanded or {}
+                    db.drawerExpanded.skinCore = true
+                end
+                DynamicChat:ApplySavedChatFramePosition()
+                DynamicChat:ApplySleekChatSkin()
+                DynamicChat:RefreshConfigUI()
+            end,
+            "Off", "Enabled",
+            "Toggle Smoked-Glass Chat Window & Top Tab Bar."
+        )
+        sec2_skin.orderedCards[#sec2_skin.orderedCards + 1] = c2_skin
+        root.allControls[#root.allControls + 1] = c2_skin
+
+        local c2_alpha = CreateSubCardRow(c2_skin, 56,
+            "Chat Window Background Opacity",
+            "Adjust how transparent or solid the smoked-glass chat backdrop appears (0% clear to 95% dark).",
+            "Chat Window Background Opacity",
+            "Drag to adjust chat window backdrop opacity (0% to 95%)."
+        )
+        TypographyMgr.AttachSliderToCard(c2_alpha, 0, 95, 5, "%",
+            function()
+                return math.floor(((tonumber(EnsureDB().chatBgAlpha) or 0.25) * 100) + 0.5)
+            end,
+            function(val)
+                local db = EnsureDB()
+                db.chatBgAlpha = math.max(0.0, math.min(0.95, (tonumber(val) or 25) / 100))
+                db.enableSleekChatSkin = true
+                DynamicChat:ApplySleekChatSkin()
+                if c2_skin.toggleBtn and c2_skin.toggleBtn.RefreshValue then
+                    c2_skin.toggleBtn:RefreshValue()
+                end
+            end,
+            "Adjust chat window background opacity between 0% and 95%."
+        )
+        root.allControls[#root.allControls + 1] = c2_alpha
+
+        local c2_border = CreateSubCardRow(c2_skin, 58,
+            "Chat Window Border Style",
+            "Choose a live Suite Accent border, a subtle dark border, or borderless smoked-glass framing.",
+            "Chat Window Border Style",
+            "Select the border style around your smoked-glass chat window."
+        )
+        AttachMultiPillSelectorToCard(c2_border,
+            {
+                { value = "ACCENT", label = "Suite Accent" },
+                { value = "DARK",   label = "Subtle Dark" },
+                { value = "NONE",   label = "Borderless" },
+            },
+            function()
+                local s = EnsureDB().chatBorderStyle or "ACCENT"
+                if s ~= "ACCENT" and s ~= "DARK" and s ~= "NONE" then return "ACCENT" end
+                return s
+            end,
+            function(val)
+                EnsureDB().chatBorderStyle = val
+                DynamicChat:ApplySleekChatSkin()
+            end,
+            "Select chat window border style."
+        )
+        root.allControls[#root.allControls + 1] = c2_border
+
+        local c2_ebPos = CreateSubCardRow(c2_skin, 58,
+            "Chat Typing Box Position",
+            "Dock the chat typing box flush along the bottom of your chat window or above the top tab bar.",
+            "Chat Typing Box Position",
+            "Choose whether the chat typing box is docked below the chat window or above the top tab bar."
+        )
+        AttachMultiPillSelectorToCard(c2_ebPos,
+            {
+                { value = "BOTTOM", label = "Bottom" },
+                { value = "TOP",    label = "Top" },
+            },
+            function() return (EnsureDB().editBoxPosition == "TOP") and "TOP" or "BOTTOM" end,
+            function(val)
+                local chosen = (val == "TOP") and "TOP" or "BOTTOM"
+                EnsureDB().editBoxPosition = chosen
+                if type(_G.DynamicSuiteDB) == "table" then
+                    _G.DynamicSuiteDB.chatEditBoxPosition = chosen
+                end
+                DynamicChat:ApplySavedChatFramePosition()
+                DynamicChat:ApplySleekChatSkin()
+            end,
+            "Select chat typing box position (Bottom or Top)."
+        )
+        root.allControls[#root.allControls + 1] = c2_ebPos
+
+        local c2_ebBgMode = CreateSubCardRow(c2_skin, 58,
+            "Chat Typing Box Shading",
+            "Keep the typing box shaded to match your smoked-glass chat window, or only show shading while typing.",
+            "Chat Typing Box Shading",
+            "Choose whether the typing box dock stays shaded at all times or only appears while typing."
+        )
+        AttachMultiPillSelectorToCard(c2_ebBgMode,
+            {
+                { value = "FOCUS_ONLY", label = "Typing Only" },
+                { value = "ALWAYS",     label = "Always" },
+            },
+            function() return (EnsureDB().editBoxBackgroundMode == "FOCUS_ONLY") and "FOCUS_ONLY" or "ALWAYS" end,
+            function(val)
+                EnsureDB().editBoxBackgroundMode = (val == "FOCUS_ONLY") and "FOCUS_ONLY" or "ALWAYS"
+                DynamicChat:ApplySavedChatFramePosition()
+                DynamicChat:ApplySleekChatSkin()
+            end,
+            "Select chat typing box shading mode."
+        )
+        root.allControls[#root.allControls + 1] = c2_ebBgMode
+
+        local c2_btns = CreateSubCardRow(c2_skin, 56,
+            "Hide Default Blizzard Side Buttons",
+            "Hides Blizzard's default Voice, Channel, and Social buttons next to chat so they never block the Left Shortcut Bar.",
+            "Hide Default Blizzard Side Buttons",
+            "Hide default Blizzard side buttons so they never overlap the Left Shortcut Bar."
+        )
+        AttachSegmentedSwitchToCard(c2_btns,
+            function() return EnsureDB().hideChatButtons ~= false end,
+            function(val)
+                EnsureDB().hideChatButtons = val
+                DynamicChat:ApplySavedChatFramePosition()
+                DynamicChat:ApplySleekChatSkin()
+            end,
+            "Off", "Enabled",
+            "Toggle hiding default Blizzard side buttons."
+        )
+        root.allControls[#root.allControls + 1] = c2_btns
+
+        local c2_typoFade = CreateSubCardRow(c2_skin, 56,
+            "Auto-Fade Old Messages",
+            "Smoothly fade out older chat messages after the chosen delay, or keep them visible permanently.",
+            "Auto-Fade Old Messages",
+            "Toggle whether older chat lines fade out automatically."
+        )
+        AttachSegmentedSwitchToCard(c2_typoFade,
+            function() return EnsureDB().chatMessageFade ~= false end,
+            function(val)
+                EnsureDB().chatMessageFade = val
+                DynamicChat:ApplyChatFrameTypography()
+                DynamicChat:RefreshConfigUI()
+            end,
+            "Off", "Enabled",
+            "Toggle automatic fading of old chat messages."
+        )
+        root.allControls[#root.allControls + 1] = c2_typoFade
+
+        local c2_fadeDur = CreateSubCardRow(c2_skin, 58,
+            "Message Auto-Fade Duration",
+            "Choose how long new chat messages stay visible before smoothly fading out.",
+            "Message Auto-Fade Duration",
+            "Select how long chat messages stay visible before fading (30s, 60s, 2m, or 5m).",
+            function() return EnsureDB().chatMessageFade ~= false end
+        )
+        AttachMultiPillSelectorToCard(c2_fadeDur,
+            {
+                { value = 30,  label = "30s" },
+                { value = 60,  label = "60s" },
+                { value = 120, label = "2m" },
+                { value = 300, label = "5m" },
+            },
+            function()
+                local d = tonumber(EnsureDB().chatMessageFadeDuration) or 120
+                if d ~= 30 and d ~= 60 and d ~= 120 and d ~= 300 then return 120 end
+                return d
+            end,
+            function(val)
+                EnsureDB().chatMessageFadeDuration = tonumber(val) or 120
+                DynamicChat:ApplyChatFrameTypography()
+            end,
+            "Select chat message auto-fade duration."
+        )
+        root.allControls[#root.allControls + 1] = c2_fadeDur
+
+        local c2_railMode = CreateGroupDrawerCard(sec2_skin, "leftRail",
+            "Left Shortcut Bar Visibility",
+            "Choose when the left-hand shortcut bar appears next to your chat window (or Right-Click its Cog icon).",
+            function() return (EnsureDB().leftRailMode or "ALWAYS") ~= "OFF" end,
+            "Left Shortcut Bar Visibility",
+            "Select whether the Left Shortcut Bar is Off, Combat Hide, Mouseover, or Always visible."
+        )
+        AttachMultiPillSelectorToCard(c2_railMode,
+            {
+                { value = "OFF",         label = "Off" },
+                { value = "COMBAT_HIDE", label = "Combat" },
+                { value = "HOVER",       label = "Hover" },
+                { value = "ALWAYS",      label = "Always" },
+            },
+            function() return EnsureDB().leftRailMode or "ALWAYS" end,
+            function(val)
+                local db = EnsureDB()
+                local prev = db.leftRailMode or "ALWAYS"
+                db.leftRailMode = val
+                if prev == "OFF" and val ~= "OFF" then
+                    db.drawerExpanded = db.drawerExpanded or {}
+                    db.drawerExpanded.leftRail = true
+                end
+                DynamicChat:ApplySavedChatFramePosition()
+                DynamicChat:ApplySleekChatSkin()
+                DynamicChat:RefreshConfigUI()
+            end,
+            "Select Left Shortcut Bar visibility mode."
+        )
+        sec2_skin.orderedCards[#sec2_skin.orderedCards + 1] = c2_railMode
+        root.allControls[#root.allControls + 1] = c2_railMode
+
+        local c2_railChips = CreateSubCardRow(c2_railMode, 102,
+            "Left Shortcut Bar Buttons",
+            "Click any shortcut below to show or hide it on the Left Shortcut Bar.",
+            "Left Shortcut Bar Buttons",
+            "Choose which shortcut icons appear on the Left Shortcut Bar."
+        )
+        do
+            if c2_railChips.desc then
+                c2_railChips.desc:SetWordWrap(false)
+                if c2_railChips.desc.SetMaxLines then c2_railChips.desc:SetMaxLines(1) end
+            end
+
+            local chipHolder = CreateFrame("Frame", nil, c2_railChips)
+            chipHolder:SetHeight(52)
+            chipHolder:SetPoint("TOPLEFT", c2_railChips, "TOPLEFT", 20, -40)
+            chipHolder:SetPoint("TOPRIGHT", c2_railChips, "TOPRIGHT", -14, -40)
+
+            chipHolder.chips = {}
+            for idx, def in ipairs(RAIL_WIDGET_DEFS) do
+                local cb = CreateFrame("Button", nil, chipHolder, "BackdropTemplate")
+                cb:SetHeight(23)
+                cb:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
+                cb.widgetKey = def.key
+
+                local ic = cb:CreateTexture(nil, "ARTWORK")
+                ic:SetSize(11, 11)
+                ic:SetPoint("LEFT", cb, "LEFT", 6, 0)
+                ic:SetTexture(def.icon)
+                DisableTexPixelSnap(ic)
+                cb.icon = ic
+
+                local lbl = cb:CreateFontString(nil, "OVERLAY")
+                SetSafeFont(lbl, 9.5, "")
+                lbl:SetPoint("LEFT", ic, "RIGHT", 5, 0)
+                lbl:SetPoint("RIGHT", cb, "RIGHT", -4, 0)
+                lbl:SetJustifyH("LEFT")
+                lbl:SetWordWrap(false)
+                lbl:SetText(def.shortLabel)
+                cb.label = lbl
+
+                cb:SetScript("OnEnter", function(selfBtn)
+                    if not _G.GameTooltip then return end
+                    _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
+                    _G.GameTooltip:ClearLines()
+                    _G.GameTooltip:AddLine(def.label, 1, 1, 1)
+                    _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Show or hide " .. def.label .. " on the Left Shortcut Bar.", "34D399"), 0.886, 0.910, 0.941)
+                    _G.GameTooltip:Show()
+                end)
+                cb:SetScript("OnLeave", function()
+                    if _G.GameTooltip then _G.GameTooltip:Hide() end
+                end)
+                cb:SetScript("OnClick", function()
+                    local db = EnsureDB()
+                    db.railButtons = db.railButtons or {}
+                    db.railButtons[def.key] = (db.railButtons[def.key] == false) and true or false
+                    DynamicChat:RefreshLeftRailTelemetry()
+                    chipHolder:RefreshValue()
+                end)
+                chipHolder.chips[idx] = cb
+            end
+
+            local function ReflowChipGrid()
+                local w = chipHolder:GetWidth() or 0
+                if w < 120 then w = 440 end
+                local gap = 6
+                local cols = 4
+                local cw = math.floor((w - gap * (cols - 1)) / cols)
+                for idx, cb in ipairs(chipHolder.chips) do
+                    local colIdx = (idx - 1) % cols
+                    local rowIdx = math.floor((idx - 1) / cols)
+                    cb:ClearAllPoints()
+                    cb:SetHeight(23)
+                    cb:SetWidth(colIdx == (cols - 1) and (w - (cw + gap) * (cols - 1)) or cw)
+                    cb:SetPoint("TOPLEFT", chipHolder, "TOPLEFT", colIdx * (cw + gap), -rowIdx * 27)
+                end
+            end
+            chipHolder:SetScript("OnSizeChanged", ReflowChipGrid)
+            c2_railChips.ReflowCustomLayout = ReflowChipGrid
+
+            function chipHolder:RefreshValue()
+                local db = EnsureDB()
+                local rb = db.railButtons or DEFAULTS.railButtons
+                local ar, ag, ab = GetSuiteAccent()
+                local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
+                for _, cb in ipairs(self.chips) do
+                    SetSafeFont(cb.label, 9.5, "")
+                    local on = (rb[cb.widgetKey] ~= false)
+                    if on then
+                        cb:SetBackdropColor(ar * fillAlpha, ag * fillAlpha, ab * fillAlpha, 0.96)
+                        cb:SetBackdropBorderColor(ar, ag, ab, 0.95)
+                        cb.icon:SetVertexColor(1, 1, 1, 1.0)
+                        cb.label:SetTextColor(0.98, 0.99, 1.00, 1.0)
+                    else
+                        cb:SetBackdropColor(0.065, 0.075, 0.098, 0.92)
+                        cb:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.85)
+                        cb.icon:SetVertexColor(0.45, 0.50, 0.58, 0.75)
+                        cb.label:SetTextColor(0.55, 0.60, 0.68, 0.90)
+                    end
+                end
+                ReflowChipGrid()
+            end
+
+            chipHolder:RefreshValue()
+            c2_railChips.toggleBtn = chipHolder
+            DynamicChat.railChipGrid = chipHolder
+        end
+        root.allControls[#root.allControls + 1] = c2_railChips
+
+        do
+            local c2_typoFont = CreateCardRow(sec2_typo, 62,
+                "Chat Font Family",
+                "Choose your chat message font or follow your active DynamicSuite Theme & Font Studio selection.",
+                "Chat Font Family",
+                "Select the font family used across all chat windows, tabs, and the typing box."
+            )
+            TypographyMgr.AttachFontDropdownToCard(c2_typoFont)
+            sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoFont
+            root.allControls[#root.allControls + 1] = c2_typoFont
+
+            local c2_typoSize = CreateCardRow(sec2_typo, 60,
+                "Chat Font Size",
+                "Adjust chat message text size from 10 px to 22 px across all chat windows.",
+                "Chat Font Size",
+                "Drag to set chat message font size (10 px to 22 px)."
+            )
+            TypographyMgr.AttachSliderToCard(c2_typoSize, 10, 22, 1, " px",
+                function() return tonumber(EnsureDB().chatFontSize) or 13 end,
+                function(val)
+                    EnsureDB().chatFontSize = val
+                    DynamicChat:ApplyChatFrameTypography()
+                end,
+                "Adjust chat font size between 10 px and 22 px."
+            )
+            sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoSize
+            root.allControls[#root.allControls + 1] = c2_typoSize
+
+            local c2_typoOutline = CreateCardRow(sec2_typo, 62,
+                "Font Outline",
+                "Add a crisp dark outline around chat text so messages stay readable over bright spell effects.",
+                "Font Outline",
+                "Choose None, Thin Outline, or Thick Outline for chat text."
+            )
+            AttachMultiPillSelectorToCard(c2_typoOutline,
+                {
+                    { value = "NONE",         label = "None" },
+                    { value = "OUTLINE",      label = "Thin Outline" },
+                    { value = "THICKOUTLINE", label = "Thick Outline" },
+                },
+                function() return EnsureDB().chatFontOutline or "OUTLINE" end,
+                function(val)
+                    EnsureDB().chatFontOutline = val
+                    DynamicChat:ApplyChatFrameTypography()
+                end,
+                "Select chat text outline thickness."
+            )
+            sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoOutline
+            root.allControls[#root.allControls + 1] = c2_typoOutline
+
+            local c2_typoShadow = CreateCardRow(sec2_typo, 60,
+                "Text Drop Shadow",
+                "Render a subtle (1, -1) dark drop shadow behind chat letters for extra contrast.",
+                "Text Drop Shadow",
+                "Toggle crisp drop shadows behind chat text."
+            )
+            AttachSegmentedSwitchToCard(c2_typoShadow,
+                function() return EnsureDB().chatFontShadow ~= false end,
+                function(val)
+                    EnsureDB().chatFontShadow = val
+                    DynamicChat:ApplyChatFrameTypography()
+                end,
+                "Off", "Enabled",
+                "Toggle chat text drop shadow."
+            )
+            sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoShadow
+            root.allControls[#root.allControls + 1] = c2_typoShadow
+
+            local c2_typoSpacing = CreateCardRow(sec2_typo, 60,
+                "Line Spacing",
+                "Add vertical breathing room between chat lines (0 px compact to 8 px airy).",
+                "Line Spacing",
+                "Drag to adjust vertical spacing between chat lines (0 px to 8 px)."
+            )
+            TypographyMgr.AttachSliderToCard(c2_typoSpacing, 0, 8, 1, " px",
+                function() return tonumber(EnsureDB().chatLineSpacing) or 2 end,
+                function(val)
+                    EnsureDB().chatLineSpacing = val
+                    DynamicChat:ApplyChatFrameTypography()
+                end,
+                "Adjust line spacing between 0 px and 8 px."
+            )
+            sec2_typo.orderedCards[#sec2_typoSpacing.orderedCards + 1] = c2_typoSpacing
+            root.allControls[#root.allControls + 1] = c2_typoSpacing
+        end
+
+        local c2_short = CreateCardRow(sec2b, 62,
+            "Safe Channel Names in Raids & Mythic+",
+            "Keeps Blizzard's built-in channel labels intact so Raid and Mythic+ chat messages never cause UI errors.",
+            "Safe Channel Names in Raids & Mythic+",
+            "Keep channel names protected against combat chat errors in Raids and Mythic+ dungeons."
+        )
+        AttachReadOnlyStatusBadgeToCard(c2_short,
+            "Always Protected",
+            "Always active: DynamicChat preserves Blizzard's default channel labels so protected raid messages stay error-free."
+        )
+        sec2b.orderedCards[#sec2b.orderedCards + 1] = c2_short
+        root.allControls[#root.allControls + 1] = c2_short
+
+        local c2_class = CreateCardRow(sec2b, 60,
+            "Show Player Class Colours in Chat",
+            "Automatically colours player names in chat to match their class (Druid orange, Mage blue, Paladin pink, etc.).",
+            "Show Player Class Colours",
+            "Automatically colour player names by their class in all chat channels."
+        )
+        AttachSegmentedSwitchToCard(c2_class,
+            function() return EnsureDB().classColorNames ~= false end,
+            function(val)
+                EnsureDB().classColorNames = val
+                DynamicChat:ApplyClassColorNames()
+            end,
+            "Off", "Enabled",
+            "Toggle class-coloured player names in chat."
+        )
+        sec2b.orderedCards[#sec2b.orderedCards + 1] = c2_class
+        root.allControls[#root.allControls + 1] = c2_class
+
+        local c2_ts = CreateCardRow(sec2b, 62,
+            "Chat Message Timestamps",
+            "Adds the time each message was received (such as 01:32) to the start of every chat line.",
+            "Chat Message Timestamps",
+            "Choose the time format shown in front of chat messages."
+        )
+        AttachMultiPillSelectorToCard(c2_ts,
+            {
+                { value = "none",      label = "Off" },
+                { value = "%H:%M ",    label = "24h" },
+                { value = "%I:%M %p ", label = "12h" },
+                { value = "%H:%M:%S ", label = "HH:MM:SS" },
+            },
+            function()
+                local db = EnsureDB()
+                if db.showTimestamps == false or db.timestampFormat == "none" then
+                    return "none"
+                end
+                return db.timestampFormat or "%H:%M "
+            end,
+            function(val)
+                local db = EnsureDB()
+                if val == "none" then
+                    db.showTimestamps = false
+                    db.timestampFormat = "none"
+                else
+                    db.showTimestamps = true
+                    db.timestampFormat = val
+                end
+                DynamicChat:ApplyTimestampSettings()
+            end,
+            "Select chat message timestamp format."
+        )
+        sec2b.orderedCards[#sec2b.orderedCards + 1] = c2_ts
+        root.allControls[#root.allControls + 1] = c2_ts
+    end
+
+    -- ========================================================================
+    -- TAB 3: Sound Alerts
+    -- ========================================================================
+    local page3 = root.tabPages[3]
+    do
+        local sec3_sounds = CreateSectionBox(
+            page3,
+            "CHAT NOTIFICATION SOUNDS",
+            "Configure per-channel chat chimes, combat muting, audio output, and anti-spam cooldowns.",
+            root
+        )
+
+        local c3_sndMaster = CreateGroupDrawerCard(sec3_sounds, "notifSounds",
+            "Chat Notification Sounds",
+            "Master switch for per-channel incoming chat sound effects (automatically ignores outgoing messages sent by you).",
+            function() return EnsureDB().enableChatSounds ~= false end,
+            "Chat Notification Sounds",
+            "Turn custom per-channel chat notification sounds On or Off."
+        )
+        AttachSegmentedSwitchToCard(c3_sndMaster,
+            function() return EnsureDB().enableChatSounds ~= false end,
+            function(val)
+                local db = EnsureDB()
+                db.enableChatSounds = val
+                db.enableSoundAlerts = val
+                if val then
+                    db.drawerExpanded = db.drawerExpanded or {}
+                    db.drawerExpanded.notifSounds = true
+                end
+                DynamicChat:ApplyWhisperDefaultSoundMuteState()
+                DynamicChat:RefreshConfigUI()
+            end,
+            "Off", "Enabled",
+            "Toggle Custom Chat Notification Sounds."
+        )
+        sec3_sounds.orderedCards[#sec3_sounds.orderedCards + 1] = c3_sndMaster
+        root.allControls[#root.allControls + 1] = c3_sndMaster
+
+        local c3_sndCombatMute = CreateSubCardRow(c3_sndMaster, 56,
+            "Mute Sounds in Combat",
+            "Silence incoming chat notification sounds during combat lockdown and active raid or dungeon boss encounters.",
+            "Mute Sounds in Combat",
+            "Silence incoming chat notification chimes while in combat or a boss encounter."
+        )
+        AttachSegmentedSwitchToCard(c3_sndCombatMute,
+            function() return EnsureDB().soundMuteInCombat == true end,
+            function(val)
+                EnsureDB().soundMuteInCombat = (val == true)
+            end,
+            "Off", "Enabled",
+            "Toggle muting chat notification sounds during combat."
+        )
+        root.allControls[#root.allControls + 1] = c3_sndCombatMute
+
+        for _, chDef in ipairs(SOUND_CHANNEL_DEFS) do
+            local cRow = CreateSubCardRow(c3_sndMaster, 56,
+                chDef.title,
+                chDef.desc,
+                chDef.title,
+                "Select a sound effect for " .. chDef.title .. " (auto-previews on selection, or click [Play] beside the dropdown)."
+            )
+            AttachSoundDropdownToCard(cRow, chDef.key)
+            root.allControls[#root.allControls + 1] = cRow
+        end
+
+        local c3_sndOut = CreateSubCardRow(c3_sndMaster, 58,
+            "Audio Output Channel",
+            "Choose which World of Warcraft volume slider controls chat chimes (Master plays even if effects are lowered).",
+            "Audio Output Channel",
+            "Select the audio output channel for chat notification sounds."
+        )
+        AttachMultiPillSelectorToCard(c3_sndOut,
+            {
+                { value = "Master", label = "Master" },
+                { value = "SFX",    label = "SFX" },
+                { value = "Dialog", label = "Dialogue" },
+            },
+            function()
+                local ch = EnsureDB().soundOutputChannel or "Master"
+                if ch ~= "Master" and ch ~= "SFX" and ch ~= "Dialog" then return "Master" end
+                return ch
+            end,
+            function(val)
+                EnsureDB().soundOutputChannel = val
+            end,
+            "Select audio output channel (Master, SFX, or Dialogue)."
+        )
+        root.allControls[#root.allControls + 1] = c3_sndOut
+
+        local c3_sndCooldown = CreateSubCardRow(c3_sndMaster, 58,
+            "Anti-Spam Cooldown",
+            "Prevents rapid-fire messages in the same chat channel from playing chimes repeatedly within a short window.",
+            "Anti-Spam Cooldown",
+            "Select the minimum cooldown between notification chimes on the same chat channel."
+        )
+        AttachMultiPillSelectorToCard(c3_sndCooldown,
+            {
+                { value = 0,   label = "Off" },
+                { value = 1.5, label = "1.5s" },
+                { value = 3,   label = "3s" },
+                { value = 5,   label = "5s" },
+            },
+            function()
+                local t = tonumber(EnsureDB().soundThrottleSec)
+                if t == nil then return 1.5 end
+                if t <= 0.1 then return 0 end
+                if t <= 2.0 then return 1.5 end
+                if t <= 4.0 then return 3 end
+                return 5
+            end,
+            function(val)
+                EnsureDB().soundThrottleSec = tonumber(val) or 0
+            end,
+            "Select per-channel anti-spam cooldown."
+        )
+        root.allControls[#root.allControls + 1] = c3_sndCooldown
+
+        -- Section 3C: Name & Keyword Mention Alerts
+        local sec3_mentions = CreateSectionBox(
+            page3,
+            "NAME & KEYWORD MENTION ALERTS",
+            "Get notified with a distinct chime, chat highlight, or alert toast when your name or a keyword appears.",
+            root
+        )
+
+        local c3_mEnable = CreateGroupDrawerCard(sec3_mentions, "mentions",
+            "Enable Mention & Keyword Alerts",
+            "Automatically detects your active character name and custom keywords in incoming chat (ignores your own messages).",
+            function() return EnsureDB().enableMentionAlerts ~= false end,
+            "Enable Mention & Keyword Alerts",
+            "Turn Name and Keyword Mention Alerts On or Off."
+        )
+        AttachSegmentedSwitchToCard(c3_mEnable,
+            function() return EnsureDB().enableMentionAlerts ~= false end,
+            function(val)
+                local db = EnsureDB()
+                db.enableMentionAlerts = (val == true)
+                if val then
+                    db.drawerExpanded = db.drawerExpanded or {}
+                    db.drawerExpanded.mentions = true
+                end
+                DynamicChat:RefreshConfigUI()
+            end,
+            "Off", "Enabled",
+            "Toggle Name & Keyword Mention Alerts."
+        )
+        sec3_mentions.orderedCards[#sec3_mentions.orderedCards + 1] = c3_mEnable
+        root.allControls[#root.allControls + 1] = c3_mEnable
+
+        local c3_mKeywords = CreateSubCardRow(c3_mEnable, 58,
+            "Custom Keywords",
+            "Comma-separated words to watch for (e.g. dentee, lust, brez, innervate). Whole-word, case-insensitive.",
+            "Custom Keywords",
+            "Type comma-separated keywords and click Save."
+        )
+        local kwSaveBtn = CreateAccentActionButton(c3_mKeywords, 54, 24, "Save", nil)
+        kwSaveBtn:SetPoint("RIGHT", c3_mKeywords, "RIGHT", -14, 0)
+        local kwBox = CreateObsidianEditBox(c3_mKeywords, 180, 24, "e.g. dentee, lust, brez, innervate")
+        kwBox:SetPoint("RIGHT", kwSaveBtn, "LEFT", -6, 0)
+        kwBox.editBox:SetText(EnsureDB().mentionKeywords or "")
+        local function SaveKeywords()
+            local raw = kwBox.editBox:GetText() or ""
+            local trimmed = raw:gsub("^%s+", ""):gsub("%s+$", "")
+            EnsureDB().mentionKeywords = trimmed
+            kwBox.editBox:ClearFocus()
+            PrintMsg("Saved mention keywords.")
+        end
+        kwSaveBtn:SetScript("OnClick", SaveKeywords)
+        kwBox.editBox:SetScript("OnEnterPressed", SaveKeywords)
+        function kwBox:RefreshValue()
+            if not self.editBox:HasFocus() then
+                self.editBox:SetText(EnsureDB().mentionKeywords or "")
+            end
+            kwSaveBtn:RefreshAccent()
+        end
+        c3_mKeywords.toggleBtn = kwBox
+        AnchorCardTextToRightWidget(c3_mKeywords, kwBox)
+        root.allControls[#root.allControls + 1] = c3_mKeywords
+
+        local c3_mNameSnd = CreateSubCardRow(c3_mEnable, 56,
+            "Name Mention Sound",
+            "Chime played when another player mentions your active character name in chat.",
+            "Name Mention Sound",
+            "Choose a sound effect for direct character name mentions."
+        )
+        AttachSoundDropdownToCard(c3_mNameSnd, "MENTION_NAME")
+        root.allControls[#root.allControls + 1] = c3_mNameSnd
+
+        local c3_mKwSnd = CreateSubCardRow(c3_mEnable, 56,
+            "Keyword Trigger Sound",
+            "Chime played when an incoming message matches one of your saved custom keywords.",
+            "Keyword Trigger Sound",
+            "Choose a sound effect for custom keyword matches."
+        )
+        AttachSoundDropdownToCard(c3_mKwSnd, "MENTION_KEYWORD")
+        root.allControls[#root.allControls + 1] = c3_mKwSnd
+
+        local c3_mHighlight = CreateSubCardRow(c3_mEnable, 56,
+            "Highlight Mention in Chat",
+            "Prints a highlighted alert in your chat window whenever your name or a keyword is mentioned.",
+            "Highlight Mention in Chat",
+            "Toggle accent-highlighted chat callouts for mentions and keywords."
+        )
+        AttachSegmentedSwitchToCard(c3_mHighlight,
+            function() return EnsureDB().mentionHighlightInChat ~= false end,
+            function(val) EnsureDB().mentionHighlightInChat = (val == true) end,
+            "Off", "Enabled",
+            "Toggle chat highlight callouts for mentions."
+        )
+        root.allControls[#root.allControls + 1] = c3_mHighlight
+
+        local c3_mToast = CreateSubCardRow(c3_mEnable, 58,
+            "Mention Alert Toast",
+            "Shows a shared alert banner when your name or a keyword matches (follows Suite Studio's Shared Alert Toast).",
+            "Mention Alert Toast",
+            "Toggle floating alert toast banners or click Test to preview."
+        )
+        AttachSegmentedSwitchToCard(c3_mToast,
+            function() return EnsureDB().mentionAlertToast ~= false end,
+            function(val) EnsureDB().mentionAlertToast = (val == true) end,
+            "Off", "Enabled",
+            "Toggle floating alert toast banners."
+        )
+        local testToastBtn = CreateAccentActionButton(c3_mToast, 56, 26, "Test", function()
+            if InCombatLockdown and InCombatLockdown() then
+                PrintMsg("Cannot preview the Mention Alert Toast during combat.")
+                return
+            end
+            local playerName = (UnitName and UnitName("player")) or "Player"
+            SoundMgr.ShowMentionAlertToast("Mention Preview", playerName, "Sample mention alert preview -- Right-Click to dismiss.")
+        end)
+        testToastBtn:SetPoint("RIGHT", c3_mToast.toggleBtn, "LEFT", -8, 0)
+        testToastBtn:SetScript("OnEnter", function(s)
+            local ar, ag, ab = GetSuiteAccent()
+            s:SetBackdropColor(ar * 0.24, ag * 0.24, ab * 0.24, 0.98)
+            s:SetBackdropBorderColor(ar, ag, ab, 1.0)
+            if _G.GameTooltip then
+                _G.GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                _G.GameTooltip:ClearLines()
+                _G.GameTooltip:AddLine("Preview Mention Alert Toast", 1, 1, 1)
+                _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Show a sample Mention Alert Toast banner now.", "34D399"), 0.886, 0.910, 0.941)
+                _G.GameTooltip:Show()
+            end
+        end)
+        testToastBtn:SetScript("OnLeave", function(s)
+            local ar, ag, ab = GetSuiteAccent()
+            s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
+            s:SetBackdropBorderColor(ar, ag, ab, 0.85)
+            if _G.GameTooltip then _G.GameTooltip:Hide() end
+        end)
+        AnchorCardTextToRightWidget(c3_mToast, testToastBtn)
+        root.extraRefreshers[#root.extraRefreshers + 1] = function()
+            testToastBtn:RefreshAccent()
+        end
+        root.allControls[#root.allControls + 1] = c3_mToast
+
+        -- Section 3D: Custom Sound File Manager (.ogg / .mp3)
+        local sec3_custom = CreateSectionBox(
+            page3,
+            "CUSTOM SOUND FILES",
+            "Register your own .ogg or .mp3 audio files for use in any chat or mention sound dropdown.",
+            root
+        )
+
+        local c3_customGroup = CreateGroupDrawerCard(sec3_custom, "customSounds",
+            "Manage Custom Sound Files (.ogg / .mp3)",
+            "Add and manage up to 6 custom .ogg or .mp3 audio files stored under Interface\\AddOns\\...",
+            function() return true end,
+            "Manage Custom Sound Files",
+            "Expand or collapse custom sound file management."
+        )
+        local customBadge = CreateFrame("Frame", nil, c3_customGroup, "BackdropTemplate")
+        customBadge:SetSize(108, 24)
+        customBadge:SetPoint("TOPRIGHT", c3_customGroup, "TOPRIGHT", -14, -18)
+        customBadge:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        customBadge:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+        customBadge:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+        local customBadgeTxt = customBadge:CreateFontString(nil, "OVERLAY")
+        SetSafeFont(customBadgeTxt, 10, "")
+        customBadgeTxt:SetPoint("CENTER", 0, 0)
+        customBadgeTxt:SetTextColor(0.84, 0.89, 0.96, 1)
+        customBadgeTxt:SetText("0 / 6 Saved")
+        AnchorCardTextToRightWidget(c3_customGroup, customBadge)
+        sec3_custom.orderedCards[#sec3_custom.orderedCards + 1] = c3_customGroup
+        root.allControls[#root.allControls + 1] = c3_customGroup
+
+        local c3_addCustom = CreateSubCardRow(c3_customGroup, 88,
+            "Add Custom Sound",
+            "Enter a label and .ogg/.mp3 path relative to Interface\\AddOns\\...",
+            "Add Custom Sound",
+            "Add a custom .ogg or .mp3 sound file to all DynamicChat sound dropdowns."
+        )
+        if c3_addCustom.desc then
+            c3_addCustom.desc:SetWordWrap(false)
+            if c3_addCustom.desc.SetMaxLines then c3_addCustom.desc:SetMaxLines(1) end
+        end
+        local csNameBox = CreateObsidianEditBox(c3_addCustom, 104, 24, "Label")
+        csNameBox:SetPoint("TOPLEFT", c3_addCustom, "TOPLEFT", 20, -48)
+        local csTestBtn = CreateAccentActionButton(c3_addCustom, 68, 24, "Test Play", nil)
+        csTestBtn:SetPoint("TOPRIGHT", c3_addCustom, "TOPRIGHT", -14, -48)
+        local csAddBtn = CreateAccentActionButton(c3_addCustom, 50, 24, "Add", nil)
+        csAddBtn:SetPoint("RIGHT", csTestBtn, "LEFT", -6, 0)
+        local csPathBox = CreateObsidianEditBox(c3_addCustom, 180, 24, "Interface\\AddOns\\...\\file.ogg")
+        csPathBox:ClearAllPoints()
+        csPathBox:SetHeight(24)
+        csPathBox:SetPoint("LEFT", csNameBox, "RIGHT", 6, 0)
+        csPathBox:SetPoint("RIGHT", csAddBtn, "LEFT", -6, 0)
+
+        csTestBtn:SetScript("OnClick", function()
+            local p = (csPathBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if not SoundMgr.IsValidCustomAudioPath(p) then
+                PrintMsg("Please enter a valid .ogg or .mp3 path (.wav is not supported).")
+                return
+            end
+            local outChan = EnsureDB().soundOutputChannel or "Master"
+            if type(_G.PlaySoundFile) == "function" then
+                local okF, willPlay = pcall(_G.PlaySoundFile, p, outChan)
+                if not (okF and willPlay ~= false) then
+                    PrintMsg("Could not play file. Ensure the path is valid and restart WoW if the file was just added.")
+                end
+            end
+        end)
+
+        local MAX_CUSTOM_SOUND_ROWS = 6
+        local customSoundRows = {}
+
+        local function RefreshCustomSoundRows()
+            local list = EnsureDB().customSounds or {}
+            SetSafeFont(customBadgeTxt, 10, "")
+            customBadgeTxt:SetText(string.format("%d / %d Saved", #list, MAX_CUSTOM_SOUND_ROWS))
+            for i = 1, MAX_CUSTOM_SOUND_ROWS do
+                local rowCard = customSoundRows[i]
+                local entry = list[i]
+                if rowCard then
+                    if entry then
+                        rowCard._customEntry = entry
+                        rowCard.title:SetText(entry.label or entry.id)
+                        rowCard.desc:SetText(entry.path or "")
+                    else
+                        rowCard._customEntry = nil
+                    end
+                end
+            end
+            csTestBtn:RefreshAccent()
+            csAddBtn:RefreshAccent()
+            for _, rowCard in ipairs(customSoundRows) do
+                if rowCard.RefreshButtons then rowCard.RefreshButtons() end
+            end
+        end
+        root.extraRefreshers[#root.extraRefreshers + 1] = RefreshCustomSoundRows
+
+        csAddBtn:SetScript("OnClick", function()
+            local lbl = (csNameBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            local p   = (csPathBox.editBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", "")
+            if not SoundMgr.IsValidCustomAudioPath(p) then
+                PrintMsg("Only .ogg and .mp3 sound files are supported (.wav files are blocked).")
+                return
+            end
+            if lbl == "" then
+                lbl = p:match("([^\\/]+)%.[^%.]+$") or "Custom Sound"
+            end
+            local db = EnsureDB()
+            db.customSounds = db.customSounds or {}
+            if #db.customSounds >= MAX_CUSTOM_SOUND_ROWS then
+                PrintMsg("Maximum of " .. MAX_CUSTOM_SOUND_ROWS .. " custom sounds reached. Delete one to add another.")
+                return
+            end
+            local slug = lbl:lower():gsub("[^%w]+", "_"):gsub("^_+", ""):gsub("_+$", "")
+            if slug == "" then slug = "sound" end
+            local id = "CUSTOM:" .. slug .. "_" .. tostring(#db.customSounds + 1)
+            for _, existing in ipairs(db.customSounds) do
+                if existing.id == id then
+                    id = id .. "_" .. tostring(math.floor((_G.GetTime and _G.GetTime() or 1) * 100))
+                    break
+                end
+            end
+            db.customSounds[#db.customSounds + 1] = {
+                id    = id,
+                label = lbl,
+                path  = p,
+            }
+            csNameBox.editBox:SetText("")
+            csPathBox.editBox:SetText("")
+            csNameBox.editBox:ClearFocus()
+            csPathBox.editBox:ClearFocus()
             RefreshCustomSoundRows()
             DynamicChat:RefreshConfigUI()
+            PrintMsg("Added custom sound: " .. lbl)
         end)
-        delBtn:SetPoint("RIGHT", rowCard, "RIGHT", -14, 0)
-        local playBtn = CreateAccentActionButton(rowCard, 50, 22, "Play", function()
-            if not rowCard._customEntry then return end
-            DynamicChat:PlaySoundOptionKey(rowCard._customEntry.id, nil, true)
-        end)
-        playBtn:SetPoint("RIGHT", delBtn, "LEFT", -6, 0)
-        AnchorCardTextToRightWidget(rowCard, playBtn)
-        rowCard:Hide()
-        customSoundRows[i] = rowCard
-        sec3_custom.orderedCards[#sec3_custom.orderedCards + 1] = rowCard
+
+        root.allControls[#root.allControls + 1] = c3_addCustom
+
+        for i = 1, MAX_CUSTOM_SOUND_ROWS do
+            local rowCard = CreateSubCardRow(c3_customGroup, 54, "Custom Sound", "", nil, nil, function(selfCard)
+                return selfCard._customEntry ~= nil
+            end)
+            rowCard.visibleFn = function() return rowCard._customEntry ~= nil end
+            local delBtn = CreateAccentActionButton(rowCard, 56, 22, "Delete", function()
+                if not rowCard._customEntry then return end
+                local targetId = rowCard._customEntry.id
+                local db = EnsureDB()
+                local newList = {}
+                for _, item in ipairs(db.customSounds or {}) do
+                    if item.id ~= targetId then
+                        newList[#newList + 1] = item
+                    end
+                end
+                db.customSounds = newList
+                EnsureDB()
+                RefreshCustomSoundRows()
+                DynamicChat:RefreshConfigUI()
+            end)
+            delBtn:SetPoint("RIGHT", rowCard, "RIGHT", -14, 0)
+            local playBtn = CreateAccentActionButton(rowCard, 50, 22, "Play", function()
+                if not rowCard._customEntry then return end
+                DynamicChat:PlaySoundOptionKey(rowCard._customEntry.id, nil, true)
+            end)
+            playBtn:SetPoint("RIGHT", delBtn, "LEFT", -6, 0)
+            rowCard.RefreshButtons = function()
+                delBtn:RefreshAccent()
+                playBtn:RefreshAccent()
+            end
+            AnchorCardTextToRightWidget(rowCard, playBtn)
+            customSoundRows[i] = rowCard
+            root.allControls[#root.allControls + 1] = rowCard
+        end
+        RefreshCustomSoundRows()
     end
-    RefreshCustomSoundRows()
 
     -- ========================================================================
-    -- TAB 4: Links, Scroll & History
+    -- TAB 4: Links & History
     -- ========================================================================
     local page4 = root.tabPages[4]
-    local sec3a = CreateSectionBox(
-        page4,
-        "CLICKABLE WEB LINKS & FAST SCROLLING",
-        "Click web links in chat to copy them and use Shift or Ctrl with your mousewheel to scroll faster.",
-        root
-    )
-    local sec3b = CreateSectionBox(
-        page4,
-        "CHAT HISTORY, RELOAD RETENTION & COMBAT LOG SPEED",
-        "Keep your recent chat messages after reloading and stop the Combat Log tab from freezing.",
-        root
-    )
-    local sec3c = CreateSectionBox(
-        page4,
-        "QUICK SLASH COMMANDS & ADDON COMPATIBILITY",
-        "Handy everyday chat commands (/rl, /lg) and automatic compatibility with other UI suites.",
-        root
-    )
+    do
+        local sec3a = CreateSectionBox(
+            page4,
+            "LINKS, SCROLLING & SLASH COMMANDS",
+            "Click web links in chat, scroll quickly with Shift or Ctrl, and enable /rl and /lg shortcuts.",
+            root
+        )
+        local sec3b = CreateSectionBox(
+            page4,
+            "CHAT HISTORY & COMBAT LOG SPEED",
+            "Keep your recent chat messages after reloading and stop the Combat Log tab from freezing.",
+            root
+        )
 
-    local c3_urls = CreateCardRow(sec3a, 62,
-        "Clickable Web Links (Discord, Wago, CurseForge)",
-        "Turns web addresses in chat into clickable links that open a quick Ctrl+C copy box.",
-        "Clickable Web Links",
-        "Click web links in chat to open a pre-highlighted Ctrl+C copy box."
-    )
-    AttachSegmentedSwitchToCard(c3_urls,
-        function() return EnsureDB().clickableURLs end,
-        function(val)
-            EnsureDB().clickableURLs = val
-        end,
-        "Off", "Enabled",
-        "Toggle clickable web links in chat."
-    )
-    sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_urls
-    root.allControls[#root.allControls + 1] = c3_urls
+        local c3_urls = CreateCardRow(sec3a, 62,
+            "Clickable Web Links (Discord, Wago, CurseForge)",
+            "Turns web addresses in chat into clickable links that open a quick Ctrl+C copy box.",
+            "Clickable Web Links",
+            "Click web links in chat to open a pre-highlighted Ctrl+C copy box."
+        )
+        AttachSegmentedSwitchToCard(c3_urls,
+            function() return EnsureDB().clickableURLs end,
+            function(val)
+                EnsureDB().clickableURLs = val
+            end,
+            "Off", "Enabled",
+            "Toggle clickable web links in chat."
+        )
+        sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_urls
+        root.allControls[#root.allControls + 1] = c3_urls
 
-    local c3_scroll = CreateCardRow(sec3a, 62,
-        "Fast Mousewheel Scrolling (Shift & Ctrl)",
-        "Hold Shift while scrolling the mousewheel to scroll 5 lines at a time, or hold Ctrl to jump straight to the top or bottom of chat.",
-        "Fast Mousewheel Scrolling (Shift & Ctrl)",
-        "Hold Shift (5 lines) or Ctrl (top/bottom) while scrolling the mousewheel in chat."
-    )
-    AttachSegmentedSwitchToCard(c3_scroll,
-        function() return EnsureDB().fastChatScroll end,
-        function(val)
-            EnsureDB().fastChatScroll = val
-            EnsureDB().ctrlJumpScroll = val
-        end,
-        "Off", "Enabled",
-        "Toggle Shift (5 lines) and Ctrl (top/bottom) mousewheel chat scrolling."
-    )
-    sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_scroll
-    root.allControls[#root.allControls + 1] = c3_scroll
+        local c3_scroll = CreateCardRow(sec3a, 62,
+            "Fast Mousewheel Scrolling (Shift & Ctrl)",
+            "Hold Shift while scrolling the mousewheel to scroll 5 lines at a time, or hold Ctrl to jump straight to the top or bottom of chat.",
+            "Fast Mousewheel Scrolling (Shift & Ctrl)",
+            "Hold Shift (5 lines) or Ctrl (top/bottom) while scrolling the mousewheel in chat."
+        )
+        AttachSegmentedSwitchToCard(c3_scroll,
+            function() return EnsureDB().fastChatScroll end,
+            function(val)
+                EnsureDB().fastChatScroll = val
+                EnsureDB().ctrlJumpScroll = val
+            end,
+            "Off", "Enabled",
+            "Toggle Shift (5 lines) and Ctrl (top/bottom) mousewheel chat scrolling."
+        )
+        sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_scroll
+        root.allControls[#root.allControls + 1] = c3_scroll
 
-    local c3_gpuCap = CreateCardRow(sec3b, 62,
-        "Save Chat History Across Reloads & Logins",
-        "Remembers your recent chat messages so your chat window isn't wiped blank when you type /reload or switch characters.",
-        "Save Chat History Across Reloads",
-        "Save and restore your recent chat messages across UI reloads and logins."
-    )
-    AttachSegmentedSwitchToCard(c3_gpuCap,
-        function() return EnsureDB().preserveChatHistory ~= false and EnsureDB().enableGPUBufferCap ~= false end,
-        function(val)
-            EnsureDB().preserveChatHistory = val
-            EnsureDB().enableGPUBufferCap = val
-            if not val then
-                EnsureDB().savedChatHistory = {}
+        local c3_slash = CreateCardRow(sec3a, 60,
+            "Enable '/rl' (Reload UI) & '/lg' (Leave Group)",
+            "Lets you type '/rl' in chat to quickly reload your interface and '/lg' to immediately leave your current party or instance group.",
+            "Enable '/rl' & '/lg' Shortcuts",
+            "Enable '/rl' (Reload UI) and '/lg' (Leave Group) chat shortcuts."
+        )
+        AttachSegmentedSwitchToCard(c3_slash,
+            function() return EnsureDB().enableQuickSlash ~= false end,
+            function(val)
+                EnsureDB().enableQuickSlash = val
+                DynamicChat:RegisterQuickSlashCommands()
+            end,
+            "Off", "Enabled",
+            "Toggle '/rl' and '/lg' chat shortcuts."
+        )
+        sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_slash
+        root.allControls[#root.allControls + 1] = c3_slash
+
+        local c3_gpuCap = CreateGroupDrawerCard(sec3b, "chatHistory",
+            "Save Chat History Across Reloads & Logins",
+            "Remembers your recent chat messages so your chat window isn't wiped blank when you type /reload or switch characters.",
+            function() return EnsureDB().preserveChatHistory ~= false and EnsureDB().enableGPUBufferCap ~= false end,
+            "Save Chat History Across Reloads",
+            "Save and restore your recent chat messages across UI reloads and logins."
+        )
+        AttachSegmentedSwitchToCard(c3_gpuCap,
+            function() return EnsureDB().preserveChatHistory ~= false and EnsureDB().enableGPUBufferCap ~= false end,
+            function(val)
+                local db = EnsureDB()
+                db.preserveChatHistory = val
+                db.enableGPUBufferCap = val
+                if val then
+                    db.drawerExpanded = db.drawerExpanded or {}
+                    db.drawerExpanded.chatHistory = true
+                else
+                    db.savedChatHistory = {}
+                end
+                DynamicChat:ApplyGPUBufferSettings()
+                DynamicChat:RefreshConfigUI()
+            end,
+            "Off", "Enabled",
+            "Toggle saving chat history across /reload and logins."
+        )
+        sec3b.orderedCards[#sec3b.orderedCards + 1] = c3_gpuCap
+        root.allControls[#root.allControls + 1] = c3_gpuCap
+
+        local c3_gpuLines = CreateSubCardRow(c3_gpuCap, 58,
+            "Saved Chat History Limit",
+            "Choose how many recent chat lines are saved across reloads (250 recommended).",
+            "Saved Chat History Limit",
+            "Select how many recent chat messages to save across reloads."
+        )
+        AttachMultiPillSelectorToCard(c3_gpuLines,
+            {
+                { value = 50,  label = "50" },
+                { value = 100, label = "100" },
+                { value = 250, label = "250" },
+                { value = 500, label = "500" },
+            },
+            function()
+                local n = tonumber(EnsureDB().maxChatLines) or 250
+                if n <= 60 then return 50 end
+                if n <= 150 then return 100 end
+                if n <= 350 then return 250 end
+                return 500
+            end,
+            function(val)
+                EnsureDB().maxChatLines = tonumber(val) or 250
+                EnsureDB().preserveChatHistory = true
+                EnsureDB().enableGPUBufferCap = true
+                DynamicChat:ApplyGPUBufferSettings()
+                if c3_gpuCap.toggleBtn and c3_gpuCap.toggleBtn.RefreshValue then
+                    c3_gpuCap.toggleBtn:RefreshValue()
+                end
+            end,
+            "Select how many recent chat messages are saved."
+        )
+        root.allControls[#root.allControls + 1] = c3_gpuLines
+
+        local c3_historyActions = CreateSubCardRow(c3_gpuCap, 56,
+            "Copy & Clear Chat History",
+            "Open the Copy Chat window for your active chat tab, or clear the active tab and saved reload history.",
+            "Copy & Clear Chat History",
+            "Copy recent lines or clear active chat and saved history."
+        )
+        local clearHistBtn = CreateAccentActionButton(c3_historyActions, 102, 24, "Clear History", function()
+            local targetCF = ResolveActiveChatFrame()
+            if targetCF and type(targetCF.Clear) == "function" then
+                pcall(targetCF.Clear, targetCF)
             end
-            DynamicChat:ApplyGPUBufferSettings()
-        end,
-        "Off", "Enabled",
-        "Toggle saving chat history across /reload and logins."
-    )
-    sec3b.orderedCards[#sec3b.orderedCards + 1] = c3_gpuCap
-    root.allControls[#root.allControls + 1] = c3_gpuCap
+            EnsureDB().savedChatHistory = {}
+            PrintMsg("Cleared active chat window and saved reload history.")
+        end)
+        clearHistBtn:SetPoint("RIGHT", c3_historyActions, "RIGHT", -14, 0)
+        local copyHistBtn = CreateAccentActionButton(c3_historyActions, 90, 24, "Copy Chat", function()
+            DynamicChat:ShowFullChatHistoryModal(ResolveActiveChatFrame())
+        end)
+        copyHistBtn:SetPoint("RIGHT", clearHistBtn, "LEFT", -8, 0)
+        AnchorCardTextToRightWidget(c3_historyActions, copyHistBtn)
+        root.extraRefreshers[#root.extraRefreshers + 1] = function()
+            copyHistBtn:RefreshAccent()
+            clearHistBtn:RefreshAccent()
+        end
+        root.allControls[#root.allControls + 1] = c3_historyActions
 
-    local c3_gpuLines = CreateCardRow(sec3b, 62,
-        "Saved Chat History Limit",
-        "Choose how many recent chat messages are saved and restored when you reload your UI (250 Lines recommended).",
-        "Saved Chat History Limit",
-        "Select how many recent chat messages to save across reloads."
-    )
-    AttachMultiPillSelectorToCard(c3_gpuLines,
-        {
-            { value = 50,  label = "50 Lines" },
-            { value = 100, label = "100 Lines" },
-            { value = 250, label = "250 Lines" },
-            { value = 500, label = "500 Lines" },
-        },
-        function()
-            local n = tonumber(EnsureDB().maxChatLines) or 250
-            if n <= 60 then return 50 end
-            if n <= 150 then return 100 end
-            if n <= 350 then return 250 end
-            return 500
-        end,
-        function(val)
-            EnsureDB().maxChatLines = tonumber(val) or 250
-            EnsureDB().preserveChatHistory = true
-            EnsureDB().enableGPUBufferCap = true
-            DynamicChat:ApplyGPUBufferSettings()
-            if c3_gpuCap.toggleBtn and c3_gpuCap.toggleBtn.RefreshValue then
-                c3_gpuCap.toggleBtn:RefreshValue()
-            end
-        end,
-        "Select how many recent chat messages are saved."
-    )
-    sec3b.orderedCards[#sec3b.orderedCards + 1] = c3_gpuLines
-    root.allControls[#root.allControls + 1] = c3_gpuLines
-
-    local c3_combatLogOpt = CreateCardRow(sec3b, 62,
-        "Instant Combat Log Tab (Prevent Freeze)",
-        "Caps the background Combat Log tab buffer and hides its redundant filter bar so clicking 'Combat Log' never lags or freezes your game.",
-        "Instant Combat Log Tab",
-        "Keep the Combat Log tab lightweight so switching tabs is always instant."
-    )
-    AttachSegmentedSwitchToCard(c3_combatLogOpt,
-        function() return EnsureDB().optimizeCombatLogTab ~= false end,
-        function(val)
-            EnsureDB().optimizeCombatLogTab = val
-            DynamicChat:OptimizeCombatLogTab()
-        end,
-        "Off", "Enabled",
-        "Toggle Instant Combat Log Tab lag prevention."
-    )
-    sec3b.orderedCards[#sec3b.orderedCards + 1] = c3_combatLogOpt
-    root.allControls[#root.allControls + 1] = c3_combatLogOpt
-
-    local c3_slash = CreateCardRow(sec3c, 60,
-        "Enable '/rl' (Reload UI) & '/lg' (Leave Group)",
-        "Lets you type '/rl' in chat to quickly reload your interface and '/lg' to immediately leave your current party or instance group.",
-        "Enable '/rl' & '/lg' Shortcuts",
-        "Enable '/rl' (Reload UI) and '/lg' (Leave Group) chat shortcuts."
-    )
-    AttachSegmentedSwitchToCard(c3_slash,
-        function() return EnsureDB().enableQuickSlash ~= false end,
-        function(val)
-            EnsureDB().enableQuickSlash = val
-            DynamicChat:RegisterQuickSlashCommands()
-        end,
-        "Off", "Enabled",
-        "Toggle '/rl' and '/lg' chat shortcuts."
-    )
-    sec3c.orderedCards[#sec3c.orderedCards + 1] = c3_slash
-    root.allControls[#root.allControls + 1] = c3_slash
+        local c3_combatLogOpt = CreateCardRow(sec3b, 62,
+            "Instant Combat Log Tab (Prevent Freeze)",
+            "Caps the background Combat Log tab buffer and hides its redundant filter bar so clicking 'Combat Log' never lags or freezes your game.",
+            "Instant Combat Log Tab",
+            "Keep the Combat Log tab lightweight so switching tabs is always instant."
+        )
+        AttachSegmentedSwitchToCard(c3_combatLogOpt,
+            function() return EnsureDB().optimizeCombatLogTab ~= false end,
+            function(val)
+                EnsureDB().optimizeCombatLogTab = val
+                DynamicChat:OptimizeCombatLogTab()
+            end,
+            "Off", "Enabled",
+            "Toggle Instant Combat Log Tab lag prevention."
+        )
+        sec3b.orderedCards[#sec3b.orderedCards + 1] = c3_combatLogOpt
+        root.allControls[#root.allControls + 1] = c3_combatLogOpt
+    end
 
     LayoutPageCards(page1)
     LayoutPageCards(page2)
@@ -11815,6 +12346,10 @@ function DynamicChat:RefreshConfigUI()
         if c.title then c.title:SetTextColor(0.97, 0.98, 1.0, 1.0) end
     end
 
+    for _, fn in ipairs(root.extraRefreshers or {}) do
+        if type(fn) == "function" then fn() end
+    end
+
     for idx, page in ipairs(root.tabPages or {}) do
         LayoutPageCards(page)
         if idx == activeTab then
@@ -11887,7 +12422,7 @@ function DynamicChat._EnsureStandaloneWindow()
     f:SetMovable(true)
     f:SetResizable(true)
     if f.SetResizeBounds then
-        f:SetResizeBounds(760, 500, 1280, 860)
+        f:SetResizeBounds(800, 520, 1280, 860)
     end
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
@@ -11923,13 +12458,6 @@ function DynamicChat._EnsureStandaloneWindow()
     title:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFChat|r " .. ColorWithAccent("v" .. DynamicChat.version))
     f.titleText = title
 
-    local status = header:CreateFontString(nil, "OVERLAY")
-    SetSafeFont(status, 11, "")
-    status:SetPoint("CENTER", header, "CENTER", 20, 0)
-    status:SetTextColor(0.58, 0.66, 0.78)
-    status:SetText(GetChatStatusText())
-    f.statusText = status
-
     local closeBtn = CreateFrame("Button", nil, header, "BackdropTemplate")
     closeBtn:SetSize(26, 24)
     closeBtn:SetPoint("RIGHT", header, "RIGHT", -10, 0)
@@ -11945,6 +12473,16 @@ function DynamicChat._EnsureStandaloneWindow()
     closeBtn.txt:SetPoint("CENTER", 0, 0)
     closeBtn.txt:SetText("X")
     closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+    local status = header:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(status, 11, "")
+    status:SetPoint("LEFT", title, "RIGHT", 12, 0)
+    status:SetPoint("RIGHT", closeBtn, "LEFT", -12, 0)
+    status:SetJustifyH("CENTER")
+    status:SetWordWrap(false)
+    status:SetTextColor(0.58, 0.66, 0.78)
+    status:SetText(GetChatStatusText())
+    f.statusText = status
 
     local footer = CreateFrame("Frame", nil, f, "BackdropTemplate")
     footer:SetHeight(36)
@@ -12347,9 +12885,27 @@ function DynamicChat._RegisterWithDynamicSuite()
                 DynamicChat:RefreshConfigUI()
             end
         end,
-        SelectSubTab       = function(a1, a2)
+        SelectSubTab       = function(a1, a2, a3, a4)
             local idx = (type(a1) == "number") and a1 or a2 or 1
-            EnsureDB().activeSubTab = idx
+            local expandFlag = (type(a1) == "number") and a2 or a3
+            local entry = (type(a1) == "number") and a3 or a4
+            local db = EnsureDB()
+            db.activeSubTab = idx
+            db.drawerExpanded = db.drawerExpanded or {}
+            if type(entry) == "table" and type(entry.drawerKey) == "string" and entry.drawerKey ~= "" then
+                db.drawerExpanded[entry.drawerKey] = true
+            elseif expandFlag == true and type(entry) == "table" and entry.isSubDrawer == true then
+                if idx == 2 then
+                    db.drawerExpanded.skinCore = true
+                    db.drawerExpanded.leftRail = true
+                elseif idx == 3 then
+                    db.drawerExpanded.notifSounds = true
+                    db.drawerExpanded.mentions = true
+                    db.drawerExpanded.customSounds = true
+                elseif idx == 4 then
+                    db.drawerExpanded.chatHistory = true
+                end
+            end
             if DynamicChat.RefreshConfigUI then
                 DynamicChat:RefreshConfigUI()
             end
@@ -12368,8 +12924,9 @@ function DynamicChat._RegisterWithDynamicSuite()
 
     DynamicChat.CHANGELOG = {
         version = DynamicChat.version or VERSION,
-        date = "22/11/2026",
+        date = "24/11/2026",
         entries = {
+            { type = "UI",       text = "Pass 2 Quick Presets, 6 Persisted Sub-Settings Drawers & 800x520 Clamping (24/11/2026): Added a 4-option Quick Presets card at the top of Tab 2 (Clean Smoked-Glass, Minimalist Raid, High-Readability, Quiet Alerts); converted Smoked-Glass Skin (now with a 0%-95% background opacity precision slider, border style, and 30s/60s/2m/5m auto-fade duration), Left Shortcut Bar, Notification Sounds, Mention & Keyword Alerts (with a new [Test] preview button on Mention Alert Toast), Custom Sound Files, and Chat History (with [Copy Chat] and [Clear History] buttons) into persisted 24px Sub-Settings (N) drawers (collapsed by default on fresh profiles); removed the orphaned single-card Compact Channel Tags section and duplicate font sync toggle; shortened and right-clamped 4-tab labels and card titles for 800x520 minimum windows; and stripped outline flags from font picker group headers." },
             { type = "FIX",      text = "Release v2.8.1 - Chat Input Box Focus Error Fix (22/11/2026): Fixed a Retail 12.1.5 Lua error that could appear when action bars shifted or Blizzard refreshed the layout while the chat input box had a protected focus state. DynamicChat now tracks chat focus through Blizzard's focus events and checks input box visibility safely across both DynamicSuite and standalone DynamicChat." },
             { type = "UI",       text = "Release v2.7.0 - Unified Mention Alert Toast & Live Suite Accent Polish (21/11/2026): Upgraded DynamicChatMentionToast to the shared 410x74 Obsidian alert toast style (live Suite Accent, Scale, Opacity, Border Style, Auto-Fade Duration, Sound, Right-Click dismissal, and clean vertical stacking under suite toasts), clamped Chat Skin section header titles beside the Edit HUD button at 800x520, and replaced Blaze Orange focus borders, action buttons, font menu borders, and Restore Blizzard Defaults modal chrome with the live Suite Accent." },
             { type = "FIX",      text = "Font Dropdown Popover, 3-Way Interactive Scrollbars, Custom Reload Prompt & Chat Feedback (16/11/2026): Fixed the Chat Font Family dropdown menu so clicking outside the menu, pressing Escape, or switching tabs closes it cleanly and updates its arrow icon; upgraded the font picker, sound picker, and settings scrollbars to support mousewheel scrolling, dragging the scrollbar handle (with Suite Accent colour highlight), and clicking anywhere on the track to jump; fixed chat confirmation messages when saving mention keywords, testing or adding custom sounds, and using '/dc mute'; and replaced the default Blizzard reload popup when restoring chat defaults with a custom dark-obsidian and Blaze Orange confirmation window." },
@@ -12384,12 +12941,12 @@ function DynamicChat._RegisterWithDynamicSuite()
             { type = "FIX",      text = "In-Combat /ww (Whisper Target) & /lg (Leave Group) Shortcuts (12/11/2026): Wired /lg for fast group exit and /ww ('/ww ' space-trigger and '/ww <msg>' Enter trigger) with pcall + issecretvalue guards on UnitExists('target'), UnitIsPlayer('target'), and GetUnitName('target', true); and hooked OnTextChanged + OnSpacePressed with early bailout restricted strictly to BN_WHISPER or secret text/tellTarget values." },
             { type = "FIX",      text = "ChatFrameEditBox BN_WHISPER Secret-Number Taint Fix & EllesmereUI Conflict Detection (12/11/2026): Eliminated direct EditBox widget script hooks (OnChar / OnSpacePressed) on ChatFrame1EditBox so /ww relies strictly on SlashCmdList['DYNAMICCHATWW'] and hooksecurefunc post-hooks; added IsEditBoxSecretOrBNWhisper and explicit issecretvalue(editBox:GetAttribute('tellTarget')) / issecretvalue(editBox.header:GetStringWidth()) guards across TryConvertTargetWhisperEditBox, HandleTargetWhisperSlashCommand, ApplyPassiveEditBoxSkinOnInit, RefreshSleekEditBoxBarColor, ChatEdit_UpdateHeader, and ChatEdit_ActivateChat; restricted ChatFrame1EditBox font, texture, and anchor styling to passive init skinning (never inside OnEditBoxFocusGained or before UpdateHeader); and registered EllesmereUI (plus EllesmereUIChat / EllesmereUI_Chat) in the Core Conflict Registry under DynamicChat." },
             { type = "FEATURE",  text = "External Addon Conflict Detector & Smart Sub-Module Inspection (12/11/2026): Added pcall-guarded ElvUI[1].private.chat.enable and Leatrix_Plus sub-module inspection so ElvUI and Leatrix_Plus are only flagged when their chat sub-modules are active, alongside HARD conflict detection for Prat-3.0, Chattynator, ls_Glass, BasicChatMods, and Chatter and SOFT Auto-Yield for WIM." },
-            { type = "FIX",      text = "0x Secret-String Taint Architecture (Zero ChatFrame_AddMessageEventFilter, Zero Startup CVar Writes & Zero ChatFrame1/2 Mixin Mutations): Eliminated 100% of 'attempt to perform string conversion on a secret string value (execution tainted by DynamicChat)' in Retail 12.1.5 by removing all ChatFrame_AddMessageEventFilter registrations (keeping _urlCaptureFrame as the sole, 100% isolated URL capture listener across all chat channels with IsSecretValue(msg) guarded first before any type/string check), removing startup/zone/combat C_CVar.SetCVar('showTimestamps') and C_CVar.SetCVar('chatClassColorOverride') calls so _G.CHAT_TIMESTAMP_FORMAT is never tainted on login or reload, prepending saved previous-session history inside DynamicChatHistoryModal instead of calling cf1:AddMessage / cf1:ScrollToBottom, turning RefreshChatFrameTextLayout and ApplyStickyChannelSettings into safe no-ops, removing cf2:SetMaxLines(300) and _G.DEFAULT_CHATFRAME_ALPHA / _G.CHAT_FRAME_TAB_*_ALPHA writes, and moving _dsEditModeActive / _dsDragging / _dsDragShield off ChatFrame1 onto DynamicChat." },
+            { type = "FIX",      text = "0x Secret-String Taint Architecture (Zero ChatFrame_AddMessageEventFilter, Zero Startup CVar Writes & Zero ChatFrame1/2 Mixin Mutations): Eliminated 100% of 'attempt to perform string conversion on a secret string value (execution tainted by DynamicChat)' in Retail 12.1.5 by removing all ChatFrame_AddMessageEventFilter registrations (keeping _urlCaptureFrame as the sole, 100% isolated URL capture listener across all chat channels with IsSecretValue(msg) guarded first before any type/string check), removing startup/zone/combat native timestamp and class colour CVar writes so _G.CHAT_TIMESTAMP_FORMAT is never tainted on login or reload, prepending saved previous-session history inside DynamicChatHistoryModal instead of calling cf1:AddMessage / cf1:ScrollToBottom, turning RefreshChatFrameTextLayout and ApplyStickyChannelSettings into safe no-ops, removing cf2:SetMaxLines(300) and _G.DEFAULT_CHATFRAME_ALPHA / _G.CHAT_FRAME_TAB_*_ALPHA writes, and moving _dsEditModeActive / _dsDragging / _dsDragShield off ChatFrame1 onto DynamicChat." },
             { type = "FIX",      text = "Zero-Taint Secret-String Hotfix (Strict 3-Channel URL_FILTER_EVENTS), Private URL Capture Listener & 1-Click Left Rail Link Copy: Eliminated 'attempt to perform string conversion on a secret string value (execution tainted by DynamicChat)' in Retail 12.1.5 by restricting ChatFrame_AddMessageEventFilter strictly to CHAT_MSG_GUILD, CHAT_MSG_OFFICER, and CHAT_MSG_CHANNEL (never tainting ChatFrameUtil.ProcessMessageEventFilters / ChatFrameMixin:MessageEventHandler on Whispers, BNet, Party, Raid, Instance, or Say/Yell); added an isolated private event listener (_urlCaptureFrame) with string.find pcall probing to capture links across Whispers, BNet, Party, Raid, and Say/Yell into a 15-entry in-memory ring buffer merged into DynamicChatHistoryModal's 'Recent Links:' pill bar; added a Suite-Accent unread link indicator dot and Shift-Click / Middle-Click 1-click link copy shortcut on the Left Rail Copy button; and fixed DynamicChatHistoryModal active-tab extraction, ScrollChild EditBox rendering, and header text layout." },
             { type = "FIX",      text = "Synchronised DynamicChat.version to 1.2.0, guarded HandleTargetWhisperSlashCommand (/ww) against C_ChatInfo.InChatMessagingLockdown() and IsEncounterInProgress() by falling back to native EditBox population, guarded LayoutDockedChatTabs and UISpecialFrames registrations against InCombatLockdown() (pre-registering modal frame names at login and flushing deferred tab layouts on PLAYER_REGEN_ENABLED), and throttled scrollbar thumb OnUpdate scripts with OnMouseUp and OnHide cleanup." },
             { type = "FIX",      text = "Overflow Whisper Tab Clipping, Self-Whisper Testing, 'Blizzard Default' & LSM FileDataID Playback, and Tab Mousewheel Nil Fix: Stopped GeneralDockManager 38px left of the < / > navigation buttons (TOPRIGHT -30) with hardware child clipping (dock:SetClipsChildren(true)) and GeneralDockManagerScrollFrame suppression; hard-locked hiddenByScroll tabs with ClearAllPoints(), Hide(), and an OnShow guard hook (plus FCF_SetWindowName / FCF_CopyChatSettings / BN_FRIEND_INFO_CHANGED hooks) so overflow whisper/BNet tabs never stick out over the tab arrows; enabled self-whisper sound testing on CHAT_MSG_WHISPER / CHAT_MSG_BN_WHISPER; added numeric FileDataID support for LibSharedMedia-3.0 sound packs and BUILTIN_SOUND_LIBRARY; added a 2.0s unmute window + next-tick PlaySoundFile(567482/567421, outChan) playback so 'Blizzard Default' and built-in whisper chimes play reliably in dropdown previews and in-game without double-chiming or 300s tellTimer lockouts; kept sound alerts active alongside shared-hook addons; and hoisted RefreshTabNavButtonsVisuals above OnTabBarMouseWheel." },
             { type = "NEW",      text = "Per-Channel Sound Alert Engine & 4th 'Sound Alerts' Sub-Tab (Built-In + LibSharedMedia-3.0): Added a dedicated 4th 'Sound Alerts' tab supporting custom incoming alert sounds across 11 chat channels (Whisper, Battle.net Whisper, Party, Party Leader, Raid, Raid Leader & Warning, Instance, Guild, Officer, Say & Yell, and Custom Channels) with 12 built-in WoW SoundKits, automatic LibSharedMedia-3.0 sound discovery, inline [>] menu preview buttons, Right-Click closed-dropdown replay, native Blizzard whisper double-chime prevention (MuteSoundFile 567482/567421), secret-value safe self-message suppression, combat filter modes, and per-channel anti-spam cooldowns." },
-            { type = "FIX",      text = "Fixed RestoreChatHistorySnapshot Nil Crash, Persistent Tab Arrows & Left Rail Across Docked Tabs, Whisper Tab Vertical Centering, and /ww First-Space Conversion: Hoisted IsInCombatOrActiveKeystone() above RefreshChatFrameTextLayout, added IsPrimaryChatDockVisible() so the < / > tab scroll arrows and Left Shortcut Rail remain visible when viewing Combat Log, Loot, Trade, or Whisper tabs, hooked FCF_SetTemporaryWindowType + vertically centred whisper tab labels, and hardened /ww EditBox conversion on the first Spacebar press (including cross-faction party/raid targets and PLAYER_LOGIN slash re-assertion)." },
+            { type = "FIX",      text = "Fixed RestoreChatHistorySnapshot Nil Crash, Persistent Tab Arrows & Left Rail Across Docked Tabs, Whisper Tab Vertical Centring, and /ww First-Space Conversion: Hoisted IsInCombatOrActiveKeystone() above RefreshChatFrameTextLayout, added IsPrimaryChatDockVisible() so the < / > tab scroll arrows and Left Shortcut Rail remain visible when viewing Combat Log, Loot, Trade, or Whisper tabs, hooked FCF_SetTemporaryWindowType + vertically centred whisper tab labels, and hardened /ww EditBox conversion on the first Spacebar press (including cross-faction party/raid targets and PLAYER_LOGIN slash re-assertion)." },
             { type = "NEW",      text = "Scrollable Top Chat Tab Bar with Mousewheel + Left (<) & Right (>) Buttons (LayoutDockedChatTabs & EnsureTabNavButtons): Replaced tab-shrinking compression with a readable scrollable tab viewport so tabs never shrink into unreadable slivers even with 20+ whisper tabs open. Added Mousewheel Up (Scroll Left) and Mousewheel Down (Scroll Right) across all tabs, docked sleek Left (<) and Right (>) assist buttons on the right end of the Top Tab Header Bar (with Suite Accent / Whisper Pink / BNet Cyan unread indicators, Shift-Click jump to first/last tab, and Right-Click active chat screen cycling), stripped '-RealmName' suffixes on character whisper tab labels (preserving the full name in tooltips), suppressed Blizzard's rounded middle tab Glow/Flash texture, and added Middle-Click whisper tab closing." },
             { type = "FIX",      text = "Zero-Gap 0px Screen-Edge Persistence Across /reload & Blizzard Side Button Docking: Disabled C++ SetClampedToScreen (SetClampRectInsets(0,0,0,0) + SetClampedToScreen(false)) whenever DynamicChatDB.chatFramePos is active so Blizzard's FloatingChatFrame_UpdateBackgroundAnchors (-35/-50 C++ ClampRectInsets) can never push ChatFrame1 ~18px off the bottom/left screen edge after /reload; removed FCF_SavePositionAndDimensions from SaveChatFramePosition, preserved raw pos.x/pos.y in ApplySavedChatFramePosition, hooked SetSize/SetWidth/SetHeight/ApplySystemAnchor with next-frame re-assertion, and expanded GetCompositeChatInsets + external left/top docking for ChatFrame1ButtonFrame, ChatFrameMenuButton, and QuickJoinToastButton when 'Hide Default Blizzard Side Buttons' is turned Off." },
             { type = "NEW",      text = "Fused Unbroken Smoked-Glass EditBox Dock, Top-Line Text Fix & 0px Bottom Screen Clamp: Fused ChatFrame1's Smoked-Glass frame into one seamless piece of glass enclosing the Top Tab Bar (y = +5..+29), Left Utility Rail, Chat Text, and Bottom EditBox Dock (y = -6..-32 or Top y = +29..+55) with an interior 1px p.footerDiv hairline, idle 0% transparent editBox bar (zero double-darkening or seam), tightened p.headerDiv to y = +5 with deferred history restoration and RefreshChatFrameTextLayout to fix top-line text slicing, and synced GetCompositeChatInsets (-36, 8, 29/55, -32/-6) with FCF_RestorePositionAndDimensions hooks to permanently eliminate bottom gaps and post-reload drift." },
@@ -12404,9 +12961,9 @@ function DynamicChat._RegisterWithDynamicSuite()
             { type = "IMPROVED", text = "True In-Place Blizzard ChatFrame, Tab & 3px Auto-Fade ScrollBar Reskin: Eliminated the double-box background and 24px top gap by permanently stripping ChatFrame1..10Background, NineSlice, and all 8 border textures (guarded via FCF_SetWindowAlpha, FCF_SetWindowColor, and FloatingChatFrame_UpdateBackgroundAnchors hooks), tightening the 24px Top Tab Header Bar, stripping Blizzard's rounded tab textures across FCFTab_UpdateColors/FCFTab_UpdateAlpha with a full-width 2px Suite Accent active bottom bar, hiding ScrollToBottomButton, and reskinning ChatFrame.ScrollBar into a 3px auto-fading track over a borderless Smoked 25% glass backdrop." },
             { type = "FIX",     text = "Temporary Whisper Tab Skinning (ChatFrame11+) & High-Contrast Chat Tab Typography: Expanded ApplySleekChatSkin (via CollectAllChatFrames and StyleSingleChatTab) to skin all temporary Whisper and Battle.net Whisper tabs in _G.CHAT_FRAMES (ChatFrame11+) and hooked FCF_OpenTemporaryWindow, FCFDock_UpdateTabs, FCFTab_UpdateAlpha, FCFTab_UpdateColors, and FCF_Close. Eliminated dim/washed-out tab labels by locking CHAT_FRAME_TAB_*_ALPHA to 1.0, upgrading tab text to 11.5pt OUTLINE + drop shadow in Crisp White (#FFFFFF active/hover), Bright Silver-White (#E2E8F0 unselected), and Whisper Lavender-Pink (#F8D0FF) / BNet Cyan (#8FE0FF) with a semantic bottom whisper bar." },
             { type = "FIX",     text = "Raid & Mythic+ Secret-String Zero-Taint Fix: Eliminated the Retail 12.1.5 Raid taint error ('attempt to perform string conversion on a secret string value (execution tainted by DynamicChat)') by never overwriting global _G.CHAT_*_GET format strings (which ChatFrameMixin:MessageEventHandler concatenates with <secret string> raid messages and playerLinks), never calling ScrollingMessageFrameMixin Lua mutators (cf:SetFont, cf:SetMaxLines, or ChatFrame1.AddMessage hooks) that taint cf.fontStringPool / cf.historyBuffer, and isolating URL message filters from Raid, Party, Instance, Say, Yell, and Whisper channels with full HasAnySecretArg(...) + IsEncounterInProgress() bailouts." },
-            { type = "NEW",     text = "Sleek Monochrome Icon Left Utility Rail, 1-Click Great Vault & Customizer Menu: Upgraded the 36px Left Vertical Utility Rail with crisp monochrome .tga icons (icon_social, icon_shield, icon_vault, icon_copy, icon_log, icon_lock, icon_cog, icon_chevron_down) + numeric badges, replacing text labels ('SOC', 'DUR', 'CPY/TXT', 'LOG/CLR'). Added 8 customizable rail widgets (Social & Guild, Durability %, 1-Click Great Vault & M+, Copy & Clear Chat, Combat Log Toggle, Chat Lock/Fade & Zone Profiles, Settings + Right-Click Rail Customizer Popover, and Scroll to Bottom) plus Tab 2 visibility modes (Always, Mouseover, Combat Hide, Off) and an 8-chip toggle grid." },
+            { type = "NEW",     text = "Sleek Monochrome Icon Left Utility Rail, 1-Click Great Vault & Customiser Menu: Upgraded the 36px Left Vertical Utility Rail with crisp monochrome .tga icons (icon_social, icon_shield, icon_vault, icon_copy, icon_log, icon_lock, icon_cog, icon_chevron_down) + numeric badges, replacing text labels ('SOC', 'DUR', 'CPY/TXT', 'LOG/CLR'). Added 8 customisable rail widgets (Social & Guild, Durability %, 1-Click Great Vault & M+, Copy & Clear Chat, Combat Log Toggle, Chat Lock/Fade & Zone Profiles, Settings + Right-Click Rail Customiser Popover, and Scroll to Bottom) plus Tab 2 visibility modes (Always, Mouseover, Combat Hide, Off) and an 8-chip toggle grid." },
             { type = "NEW",     text = "Smoked-Glass Chat Container, 26px Top Tab Header Bar & 36px Left Utility Rail: Upgraded DynamicChat's UIParent-hosted chat skin to a unified Smoked-Glass container (#090A0D at 35% default alpha) enclosing a 26px Top Tab Header Bar (with smoked tab cells and a 2px Suite Accent active underline) and a 36px Left Vertical Utility Rail." },
-            { type = "NEW",     text = "Zero-Taint Native C++ Chat Timestamps (showTimestamps): Added a 4-pill Timestamp selector on Tab 2 ([ Off | 24h (01:32) | 12h (01:32 PM) | HH:MM:SS ]) backed by Blizzard's native C++ 'showTimestamps' CVar with 0.00% AddMessage taint." },
+            { type = "NEW",     text = "Zero-Taint Native Chat Timestamps: Added a 4-pill Timestamp selector on Tab 2 ([ Off | 24h | 12h | HH:MM:SS ]) backed by Blizzard's native timestamp setting with 0.00% AddMessage taint." },
             { type = "NEW",     text = "EllesmereUIChat & EnhanceQoL Conflict / Auto-Yield Protection: Detects EllesmereUIChat and automatically yields all overlapping skin, channel, EditBox, URL, scroll, and SetMaxLines hooks (plus uses OnChar/OnSpacePressed and private hook tables with 0 properties written to ChatFrame tables) so EllesmereUIChat runs with 0.00% interference, or lets you 1-click [Use DynamicChat] to replace it." },
             { type = "NEW",     text = "Signature /ww Target Whisper Engine: Live EditBox conversion transforms '/ww ' into Blizzard's native C++ WHISPER state so pressing Enter executes Blizzard's native ChatEdit_SendText with zero combat or Mythic+ taint." },
             { type = "NEW",     text = "Combat & Mythic+ Whisper Protection + Zero-Bloat Buffer Guard: Never registers ChatFrame_AddMessageEventFilter on whisper or raid/instance events, skips regex URL scanning during combat/encounters/active M+ keys, and stores zero chat message logs in SavedVariables." },
