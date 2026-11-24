@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### DynamicPrep Pass 3 UI Refinement, Quick Presets, Sub-Settings Drawers & Tab 3 Section Split (24/11/2026)
+- **Persisted Drawer States (`DynamicPrep`, `DynamicSuite`):** Saved all existing and new `DynamicPrep` sub-drawer open/closed states across `/reload` (collapsed by default on fresh profiles), and preserved exact drawer targeting in Global Smart Search (`/ds search`) so clicking any nested setting opens and expands its drawer cleanly.
+- **Tab 1 `QUICK PRESETS`, Compact Density, Mouseover Fade & `800x520` Clamping (`DynamicPrep`):** Added a full-width 4-option **QUICK PRESETS** card at the top of Tab 1 (**Raider / M+ Full**, **Minimalist Stats**, **Keystone Focus**, and **System Only**) with live Suite Accent active highlighting that clears whenever a preset-controlled setting is manually edited; added **Bar Density** (`Standard` 30 px / `Compact` 24 px) and **Bar Mouseover Fade** (`Off` / `Fade Until Hover` / `Combat Fade`) options; and right-clamped wide segmented pill rows so all titles and controls stay legible at `800x520`.
+- **Tab 2 Persisted `Sub-Settings (N)` Drawers & New Controls (`DynamicPrep`, `DynamicSuite`):** Wrapped the Clickable Raid Buffs child rows into a persisted `Sub-Settings (12)` drawer (splitting **Partner Buffs** into its own independent toggle alongside **Class Raid Buffs**, and adding **Clickable Icon Spacing** `2-24 px` and **Hide "MISSING" Text Label**), wrapped the 5 Omnium Folio target rows into a persisted `Sub-Settings (5)` drawer, and added a dedicated **PAPERDOLL GEAR AUDIT** section with an **Off / Enabled** toggle and a **Preview on Gear** button.
+- **Tab 3 3-Section Split, Standalone `Edit HUD` Label Fix & Copy Hygiene (`DynamicPrep`, `DynamicSuite`):** Split Tab 3 into 3 calm Obsidian sections (**QUEST, DIALOGUE & CUTSCENES**, **COMBAT, ERROR & SURVIVAL GUARDS**, and **HEALER RECOVERY & DURABILITY**) with compact pill widths and persisted drawers; fixed the blank-label standalone **Edit HUD** fallback button in `/dprep`; removed raw setting names from the error voice lines tooltip and Global Smart Search; replaced `"Center X=0"` with `"Centre X=0"`; and cleaned remaining US spellings across `DynamicPrep` UI copy and changelog entries.
+
 ---
 
 ## DynamicSuite & All 13 Modules v2.9.1 (24/11/2026)

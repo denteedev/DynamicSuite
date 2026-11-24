@@ -683,9 +683,10 @@ Suite.CONFLICT_REGISTRY.DynamicPrep = {
 -- ============================================================================
 DynamicPrep.CHANGELOG = {
     version = VERSION,
-    date = "22/11/2026",
+    date = "24/11/2026",
     entries = {
-        { type = "FEATURE", text = "Release v2.8.1 - Red Error Text & Sound Filter (22/11/2026): Added an opt-in Red Error Text & Sound Filter in Tab 3 (Off by default) with Hide Combat & Cooldown Spam, Hide Movement & Mount Errors, and Mute Error Voice Lines (restoring your original Sound_EnableErrorSpeech setting when turned off or disabled), using taint-free Retail 12.1.5 secret-value guards and automatic yielding to EnhanceQoL, Leatrix Plus, ErrorFilter, or ErrorMonster." },
+        { type = "UI",      text = "Pass 3 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 3 Section Split (24/11/2026): Added a 4-option QUICK PRESETS card at the top of Tab 1 (Raider / M+ Full, Minimalist Stats, Keystone Focus, System Only) with live Suite Accent active highlighting; added Bar Density (Standard / Compact) and Bar Mouseover Fade (Off / Fade Until Hover / Combat Fade) options; clamped all wide pill rows cleanly for 800x520 minimum windows; wrapped Tab 2's Clickable Raid Buffs (12 controls, including split-out Partner Buffs, Clickable Icon Spacing, and Hide 'MISSING' Text Label) and Omni Folio (5 controls) into persisted Sub-Settings drawers collapsed by default on fresh profiles alongside a new Paperdoll Gear Audit section with toggle and Preview on Gear button; split Tab 3 into 3 calm Obsidian sections (Quest, Dialogue & Cutscenes; Combat, Error & Survival Guards; Healer Recovery & Durability) with persisted drawer states across reloads; fixed the blank-label standalone Edit HUD fallback button; and cleaned US spellings and raw setting names from tooltips and changelogs." },
+        { type = "FEATURE", text = "Release v2.8.1 - Red Error Text & Sound Filter (22/11/2026): Added an opt-in Red Error Text & Sound Filter in Tab 3 (Off by default) with Hide Combat & Cooldown Spam, Hide Movement & Mount Errors, and Mute Error Voice Lines (restoring your original sound setting when turned off or disabled), using taint-free Retail 12.1.5 secret-value guards and automatic yielding to EnhanceQoL, Leatrix Plus, ErrorFilter, or ErrorMonster." },
         { type = "FEATURE", text = "Release v2.8.1 - Low Durability Shared Alert Toast (22/11/2026): Added an enabled-by-default Low Durability Alert Toast (DynamicPrepDurabilityToast, default 20% threshold, 10%-40% slider + Test Toast in Tab 3) with 1-click Repair Mount summoning outdoors (Grand Expedition Yak, Grizzly Hills Packmaster, Traveler's Tundra Mammoth) or Open Gear indoors, Right-Click silence until gear drops another 10% or is repaired, and automatic suppression in combat and active Mythic+ keystones." },
         { type = "FEATURE", text = "Release v2.8.1 - Healer Mage Food Restock Toasts & Role-Smart [DynamicDrink] Macro (22/11/2026): Added a decoupled Follower Dungeon Conjured Mana Bun restock/leave Shared Alert Toast workflow (independent of Clickable Raid Buffs scope, with Healer Only / Any Mana Spec scope, 5-60 alert threshold, 20-80 auto-leave target, 1-click Queue Follower / Leave Dungeon buttons, Stage 3 'Ask for Table' group Mage prompt with 5-minute cooldown and encounter/chat lockdown safety, and Right-Click session silence) alongside a separate [nocombat]-guarded [DynamicDrink] macro with dynamic level 1-90 bag scanning, Role-Smart / Mana First / Health & Recup / Off priority, Recuperate fallback, and strict Well Fed buff-food exclusion." },
         { type = "REFACTOR", text = "Release v2.8.0 - Extracted Talent Loadouts & Talent Binds to DynamicTalent (/dt) (21/11/2026): Moved the unlimited per-spec Talent Loadouts library, PlayerSpellsFrame dock, 880x580 Talent Loadouts Manager, and Shared Alert Toast reminders into the dedicated DynamicTalent module while keeping the Top Info Bar 'Talents' capsule hooked cleanly to DynamicTalent and preserving backward-compatible forwarding stubs." },
@@ -694,7 +695,7 @@ DynamicPrep.CHANGELOG = {
         { type = "UI",      text = "Release v2.7.0 - Unified Talent Reminder Toast, Shared HUD Headers & Uniform Switches (21/11/2026): Updated the Talent Loadout Reminder Toast to inherit DynamicSuite's shared Toast Scale, Opacity, Border Style, Auto-Fade Duration, Alert Sound, and vertical toast stacking with a clean Off/Enabled toggle + [Test Toast] preview button; standardised binary toggle switches to 156x26px (68px Off / 84px Enabled); clamped section header titles and subtitles beside Edit HUD and Reset Order buttons; and replaced legacy Blaze Orange chat alerts with live Suite Accent." },
         { type = "UI",      text = "Blizzard Desktop Window Manager Relocated to Suite Studio (16/11/2026): moved the Blizzard Window Quality of Life controls out of DynamicPrep Tab 3 into their dedicated home in Suite Studio -> Desktop Windows & Menus (/ds windows) powered by the Core MS-Windows-style 32-panel Desktop Window Manager, keeping DynamicPrep Tab 3 focused purely on World, Instance & Survival Automation while preserving backward-compatible bridge stubs and automatic position/scale migration." },
         { type = "UI",      text = "3-Way Interactive Obsidian Scrollbar & Central Popover Auto-Close (16/11/2026): upgraded DynamicPrep's workspace and dropdown scrollbars to full 3-way interaction (Mousewheel, Left-Click & Drag on the thumb with Suite Accent hover/drag highlight and release guard, and Left-Click on the track to jump to the cursor position), added OnHide drag cleanup to Sleek Precision Track Sliders, and registered DynamicPrep's dropdown and top-bar popovers with DynamicSuite's central popover auto-close registry." },
-        { type = "FIX",     text = "Smooth Cursor-Anchored Blizzard Window Header Dragging (16/11/2026): updated BeginBlizzFrameDrag() to set state.isDragging = true before Raise()/StopMovingOrSizing() and track exact cursor-to-window-center grab offsets (grabOffsetX, grabOffsetY) via overlay OnUpdate, neutralised Blizzard's native TitleContainer drag scripts out of combat, and prevented AttachFrameHooks() OnDragStart from calling StopMovingOrSizing() during an active header drag so Left-Drag on any window header moves as smoothly as Alt + Left-Drag with zero cursor jump." },
+        { type = "FIX",     text = "Smooth Cursor-Anchored Blizzard Window Header Dragging (16/11/2026): updated BeginBlizzFrameDrag() to set state.isDragging = true before Raise()/StopMovingOrSizing() and track exact cursor-to-window-centre grab offsets (grabOffsetX, grabOffsetY) via overlay OnUpdate, neutralised Blizzard's native TitleContainer drag scripts out of combat, and prevented AttachFrameHooks() OnDragStart from calling StopMovingOrSizing() during an active header drag so Left-Drag on any window header moves as smoothly as Alt + Left-Drag with zero cursor jump." },
         { type = "FEATURE", text = "Paperdoll Missing-Enchant & Empty-Socket Slot Highlights + /dprep testaudit (16/11/2026): extended ScanEquippedGearEnchantsAndGems() to store flagged slot IDs missing Midnight Season 2 enchants or containing empty gem sockets, hooked CharacterFrame / PaperDollFrame OnShow, PLAYER_EQUIPMENT_CHANGED, and SOCKET_INFO_UPDATE out of combat to draw crisp 1px Warm Amber-Gold (#FBBF24) border overlays on the matching Blizzard paperdoll gear slots, and added /dprep testaudit (/dp testaudit) to preview the highlight borders on Head and Ring 1." },
         { type = "FEATURE", text = "Colour-Coded Food Stat Benefits on Clickable Raid Buffs HUD & Readiness Strip (15/11/2026): added FormatColoredFoodBenefit to colour-code parsed food stats (Mint Teal Primary/Int/Agi/Str, Sky Cyan Haste, Royal Amethyst Mastery, Warm Amber-Gold Crit, Emerald Green Versatility, Blaze Orange Highest Secondary Stat, and Slate-Silver Stamina) across Clickable Raid Buffs food tooltip titles, 'Food Benefit:' summary lines, expiring 'Current Buff:' lines, Readiness Strip Slot 3, and capsule tooltips." },
         { type = "FIX",     text = "Food Item Stat Benefit Tooltips on Clickable Raid Buffs HUD (15/11/2026): expanded ParseFoodBenefitFromTooltipText for Midnight food wording ('gain', 'gaining', 'well fed', 'become well fed'), comma-formatted numbers (e.g. '+1,250 Haste'), and 'Highest Secondary Stat' ('+445 Highest Sec'); cached statShort and statFullLine from C_TooltipInfo.GetBagItem (with GetItemByID / GetSpellByID fallback) in InspectFoodTooltip / ScanOwnedFoods; and added the food's stat benefit to both the HUD button tooltip title (e.g. 'Royal Roast (+445 Highest Sec)') and body above 'Click to eat...'." },
@@ -717,18 +718,18 @@ DynamicPrep.CHANGELOG = {
         { type = "FEATURE", text = "Added Single-Target Friendly Partner Buff tracking and 1-Click Role-Smart Target Resolution to the Clickable Raid Buffs HUD for Symbiotic Relationship (Druid), Source of Magic & Blistering Scales (Evoker), Earth Shield (Shaman), and Beacon of Light & Beacon of Faith (Paladin) with [@mouseover,help,nodead][@target,help,nodead] override." },
         { type = "FIX",     text = "Unified ApplyPrepEditMode(state) so exiting HUD Edit Mode via Esc or Lock & Exit immediately clears movers and drag shields across both DynamicPrepBarFrame and DynamicPrepClickableBuffBar." },
         { type = "FIX",     text = "Fixed Augment Rune ('RUNE') active-buff detection in SafeHasAura and ScanAndPopulateRaidBuffQueue: scans owned Augment Runes first to dynamically match C_Item.GetItemSpell(runeID) spellID/name and runeIcon fileID against active player buffs, and removed premature loop break when a single aura index is inaccessible." },
-        { type = "UI",      text = "Standardized Equipment Durability capsule and header status label from 'Gear 100%' to 'Dur 100%' so Durability naming is 100% consistent across DynamicPrep and DynamicChat." },
+        { type = "UI",      text = "Standardised Equipment Durability capsule and header status label from 'Gear 100%' to 'Dur 100%' so Durability naming is 100% consistent across DynamicPrep and DynamicChat." },
         { type = "UI",      text = "Added live action-bar status badge ([On Action Bar], [Created - Drag to Bar], [Not Created]) and reactive button styling to the [DynamicHeal] Combat Healing Macro card on Tab 3." },
-        { type = "UI",      text = "Standardized all sliders to the Sleek Precision Track (4px track, Suite Accent fill bar, 6x14px blade thumb) and applied Option 3 semantic styling for negative/disabled pill states." },
+        { type = "UI",      text = "Standardised all sliders to the Sleek Precision Track (4px track, Suite Accent fill bar, 6x14px blade thumb) and applied Option 3 semantic styling for negative/disabled pill states." },
         { type = "UI",      text = "Rebalanced DynamicPrep across 3 dedicated tabs: Tab 1 (Bar Layout & Style), Tab 2 (Raid Buffs & Omni Folio - grouping Clickable Raid Buffs and Midnight Omni Folio together), and Tab 3 (World & Survival QoL)." },
         { type = "UI",      text = "Migrated Merchant, Loot & Delete Chores (Auto-Repair Equipment + Funding Priority, Auto-Sell Grey Junk, Faster Auto-Loot, and Auto-Fill DELETE) into DynamicBags (Tab 3), and consolidated Auto-Insert Mythic+ Keystone into DynamicGroup (Tab 3)." },
-        { type = "UI",      text = "Standardized all mouseover command tooltips on Top Info Bar capsules (Spec/Loot, Folio, Keystone, Ready Check, Pull Timer, FPS, Ping) and Clickable Raid Buffs to highlight only the input command prefix while keeping action descriptions Silver-White (#E2E8F0)." },
+        { type = "UI",      text = "Standardised all mouseover command tooltips on Top Info Bar capsules (Spec/Loot, Folio, Keystone, Ready Check, Pull Timer, FPS, Ping) and Clickable Raid Buffs to highlight only the input command prefix while keeping action descriptions Silver-White (#E2E8F0)." },
         { type = "FIX",     text = "Fixed Auto-Gossip on world objects, Delve interactables, and quest items by removing restrictive opt.flags bitmask blocking in ShouldAutoSelectSingleGossip, detecting active Delves (C_DelvesUI.HasActiveDelve / C_PartyInfo.IsDelveInProgress), safely defaulting nil quest/option tables in GOSSIP_SHOW, and handling ITEM_TEXT_READY." },
         { type = "FEATURE", text = "Enabled Clickable Raid Buffs & Consumable HUD mid-combat, mid-encounter, and inside active Mythic+ keys with SafeHasAura / _unitAuraStateCache fallback and 'active/total' (e.g. '4/5' or '19/20') missing group buff badge formatting." },
         { type = "FIX",     text = "Fixed Quest Auto-Accept, Auto-Turn-In & Gossip automation: isolated HandleQuestAndGossip from IsYieldingSharedHooks(), added Enum.GossipOptionRecFlags.QuestLabelPrepend (flags == 1) & quest icon detection, registered QUEST_ACCEPT_CONFIRM & QUEST_AUTOCOMPLETE, added CanAutoProgressQuest() gold protection, and added 0.05s deferred QuestFrame retries (hold Shift to bypass)." },
         { type = "FIX",     text = "Upgraded Secondary Stat Order, Clickable Raid Buffs & Consumable HUD, Auto-Repair Gear, and Auto-Sell Poor (Grey) Junk sub-drawers to full-width 24px horizontal chevron toggle bars (Sub-Settings (N)) with unified outer group borders per DESIGN_SYSTEM.md Section 2.6." },
         { type = "FIX",     text = "Resolved 'GetBuffDataByIndex(): Auras cannot be accessed when secret' error by adding _AreAurasSecret and _IsAuraIndexSecret guards, pcall wrappers, and deferred post-combat aura refresh." },
-        { type = "FIX",     text = "Fixed Top Info Bar text corruption (e.g. '0a48%' and '0a+19 BV') by sanitizing 8-digit ARGB hex codes from GetSuiteAccent down to clean 6-digit RRGGBB strings before formatting into |cFF color sequences." },
+        { type = "FIX",     text = "Fixed Top Info Bar text corruption (e.g. '0a48%' and '0a+19 BV') by sanitising 8-digit ARGB hex codes from GetSuiteAccent down to clean 6-digit RRGGBB strings before formatting into |cFF colour sequences." },
         { type = "UI",      text = "Added connected L-bracket section headers (3x34px Suite Accent vertical bar + 1px horizontal underline) across all main section containers." },
         { type = "FEATURE", text = "Auto-Skip Gossip & Quest Accept / Turn-In automation in Tab 3: auto-triggers single-option dungeon/Delve/raid interactables even in combat, blocks open-world NPC service icons & destructive/hearth/exit prompts, and pauses when choosing between multiple item rewards (hold Shift to bypass)." },
         { type = "FEATURE", text = "Upgraded Clickable Raid Buffs & Consumable HUD for Midnight: 2-tier quality badges (Rank 2 Gold / Rank 1 Silver) grouped side-by-side by flask name, deep Well Fed stat-food tooltip & spell detection (including Impossibly Royal Roast 255847), Hearty [H] vs Normal food badges, 1-click Weapon Oil auto-apply (/use 16, Right-Click for off-hand), and Augment Runes." },
@@ -756,6 +757,11 @@ local DEFAULTS = {
     combatRefreshRate = 0.2,
     barScale = 1.0,
     barOpacity = 0.95,
+    barCompactMode = false,
+    barFadeMode = "NONE", -- "NONE", "MOUSEOVER", "COMBAT_FADE"
+    activeBarPreset = nil,
+    paperdollAuditEnabled = true,
+    drawerExpanded = {},
     segmentOrder = { "primary", "stats", "loot", "talents", "vault", "folio", "dur", "bags", "key", "rc", "pull", "fps", "ping" },
     segments = {
         primary = true,
@@ -818,6 +824,8 @@ local DEFAULTS = {
         enabled = true,
         scope = "ALWAYS", -- "ALWAYS", "GROUP_OR_INST", "INST_ONLY"
         iconSize = 44,
+        iconSpacing = 10,
+        hideMissingLabel = false,
         expireThresholdMin = 5,
         trackClassBuffs = true,
         trackPartnerBuffs = true,
@@ -898,6 +906,19 @@ function DynamicPrep:InitDB()
             self.db.raidBuffs.trackRunes = true
             self.db.raidBuffs._runeDefaultMigrated = true
         end
+        local sp = tonumber(self.db.raidBuffs.iconSpacing) or 10
+        self.db.raidBuffs.iconSpacing = math.max(2, math.min(24, math.floor(sp + 0.5)))
+        self.db.raidBuffs.hideMissingLabel = (self.db.raidBuffs.hideMissingLabel == true)
+    end
+    if type(self.db.drawerExpanded) ~= "table" then
+        self.db.drawerExpanded = {}
+    end
+    if self.db.paperdollAuditEnabled == nil then
+        self.db.paperdollAuditEnabled = true
+    end
+    self.db.barCompactMode = (self.db.barCompactMode == true)
+    if self.db.barFadeMode ~= "NONE" and self.db.barFadeMode ~= "MOUSEOVER" and self.db.barFadeMode ~= "COMBAT_FADE" then
+        self.db.barFadeMode = "NONE"
     end
 
     -- Smooth DB migration & deduplication for all 12 segment keys
@@ -1958,7 +1979,9 @@ function DynamicPrep:UpdatePaperdollSlotHighlights()
         return
     end
     self:EnsurePaperdollHighlightHooks()
-    if not _G.CharacterFrame or not _G.CharacterFrame:IsShown() then
+    local simAudit = (self._simPaperdollAudit == true)
+    local auditEnabled = (not self.db) or (self.db.paperdollAuditEnabled ~= false)
+    if not _G.CharacterFrame or not _G.CharacterFrame:IsShown() or (not auditEnabled and not simAudit) then
         for _, ov in pairs(paperdollSlotOverlays) do
             if ov and ov.Hide then
                 ov:Hide()
@@ -1969,11 +1992,10 @@ function DynamicPrep:UpdatePaperdollSlotHighlights()
 
     local audit = self._gearAuditCache or self:ScanEquippedGearEnchantsAndGems()
     local flagged = audit and audit.flaggedSlotIDs
-    local simAudit = (self._simPaperdollAudit == true)
 
     for slotID, frameName in pairs(PAPERDOLL_SLOT_FRAMES) do
         local slotBtn = _G[frameName]
-        local isFlagged = (flagged and flagged[slotID] == true) or (simAudit and (slotID == 1 or slotID == 11))
+        local isFlagged = (auditEnabled and flagged and flagged[slotID] == true) or (simAudit and (slotID == 1 or slotID == 11))
         if isFlagged and slotBtn then
             local ov = paperdollSlotOverlays[slotID]
             if not ov then
@@ -3408,6 +3430,18 @@ function DynamicPrep:CreatePrepBar()
     bar:HookScript("OnHide", function()
         DynamicPrep:HideBarPopovers()
     end)
+    bar:HookScript("OnEnter", function()
+        DynamicPrep:ApplyBarFadeState(true)
+    end)
+    bar:HookScript("OnLeave", function()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.12, function()
+                DynamicPrep:ApplyBarFadeState()
+            end)
+        else
+            DynamicPrep:ApplyBarFadeState()
+        end
+    end)
 
     -- Top Suite/Class Accent hairline
     local topAccent = bar:CreateTexture(nil, "OVERLAY")
@@ -3455,6 +3489,7 @@ function DynamicPrep:CreatePrepBar()
         end
 
         seg:SetScript("OnEnter", function(selfSeg)
+            DynamicPrep:ApplyBarFadeState(true)
             if DynamicPrep.inEditMode then return end
             selfSeg.lootPopover = DynamicPrep.lootPopover
             selfSeg.folioPopover = DynamicPrep.folioPopover
@@ -3471,6 +3506,13 @@ function DynamicPrep:CreatePrepBar()
         seg:SetScript("OnLeave", function(selfSeg)
             GameTooltip:Hide()
             ApplyDefaultCapsuleStyle(selfSeg)
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0.12, function()
+                    DynamicPrep:ApplyBarFadeState()
+                end)
+            else
+                DynamicPrep:ApplyBarFadeState()
+            end
         end)
         seg:SetScript("OnMouseDown", function()
             GameTooltip:Hide()
@@ -4219,16 +4261,64 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
     end
 end
 
+function DynamicPrep:IsDrawerExpanded(drawerKey)
+    if not self.db or type(self.db.drawerExpanded) ~= "table" then
+        return false
+    end
+    return self.db.drawerExpanded[drawerKey] == true
+end
+
+function DynamicPrep:SetDrawerExpanded(drawerKey, isOpen)
+    if not self.db then return end
+    if type(self.db.drawerExpanded) ~= "table" then
+        self.db.drawerExpanded = {}
+    end
+    self.db.drawerExpanded[drawerKey] = (isOpen == true)
+end
+
+function DynamicPrep:ToggleDrawerExpanded(drawerKey)
+    self:SetDrawerExpanded(drawerKey, not self:IsDrawerExpanded(drawerKey))
+end
+
+function DynamicPrep:ApplyBarFadeState(forceHover)
+    if not self.prepBarFrame or not self.db then return end
+    local baseAlpha = math.max(0.20, math.min(1.00, tonumber(self.db.barOpacity) or 0.95))
+    local fadeMode = self.db.barFadeMode or "NONE"
+    local inEdit = (self.inEditMode or self.inBarEditMode or self.prepBarFrame._dsEditModeActive) and true or false
+    local wsOpen = (self.workspaceFrame and self.workspaceFrame:IsShown()) and true or false
+    local popOpen = (self.AreAnyBarPopoversShown and self:AreAnyBarPopoversShown()) and true or false
+    if fadeMode == "NONE" or inEdit or wsOpen or popOpen then
+        self.prepBarFrame:SetAlpha(baseAlpha)
+        return
+    end
+    local isHovered = (forceHover == true)
+    if not isHovered and self.prepBarFrame.IsMouseOver and self.prepBarFrame:IsMouseOver() then
+        isHovered = true
+    end
+    if fadeMode == "MOUSEOVER" then
+        self.prepBarFrame:SetAlpha(isHovered and baseAlpha or math.min(baseAlpha, 0.25))
+    elseif fadeMode == "COMBAT_FADE" then
+        local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+        if inCombat and not isHovered then
+            self.prepBarFrame:SetAlpha(math.min(baseAlpha, 0.25))
+        else
+            self.prepBarFrame:SetAlpha(baseAlpha)
+        end
+    else
+        self.prepBarFrame:SetAlpha(baseAlpha)
+    end
+end
+
 function DynamicPrep:ApplyBarGeometry()
     if not self.prepBarFrame or not self.db then return end
     if InCombatLockdown and InCombatLockdown() then
         self.pendingBarRefreshAfterCombat = true
+        self:ApplyBarFadeState()
         return
     end
     local scale = math.max(0.60, math.min(1.50, tonumber(self.db.barScale) or 1.0))
-    local alpha = math.max(0.20, math.min(1.00, tonumber(self.db.barOpacity) or 0.95))
     self.prepBarFrame:SetScale(scale)
-    self.prepBarFrame:SetAlpha(alpha)
+    self:ApplyBarFadeState()
     local pt, rp, x, y = self:GetSavedBarPosition()
     local cx, cy, didClamp = ClampPrepFrameToScreen(self.prepBarFrame, pt or "TOP", rp or "TOP", x or 0, y or -8, 320, 32)
     if didClamp then
@@ -4389,15 +4479,23 @@ function DynamicPrep:RefreshBar()
         end
     end
 
+    local isCompact = (self.db and self.db.barCompactMode == true)
+    local barHeight = isCompact and 24 or 30
+    local segHeight = isCompact and 18 or 22
+    local segPadX   = isCompact and 12 or 18
+    local segGap    = isCompact and 3 or 4
+    bar:SetHeight(barHeight)
+
     local fixedFpsW = self:GetFixedFpsCapsuleWidth()
     local fixedPingW = self:GetFixedPingCapsuleWidth()
     local fixedRcW = self:GetFixedRcCapsuleWidth()
     local fixedPullW = self:GetFixedPullCapsuleWidth()
-    local xCursor = 6
+    local xCursor = isCompact and 4 or 6
     for _, item in ipairs(activeSegments) do
         local segKey = item.key
         local seg = item.frame
         local segWidth = 90
+        seg:SetHeight(segHeight)
 
         local displayStr, isMismatch = self:GetSegmentTelemetryText(segKey)
         seg.isFolioMismatch = (segKey == "folio" or segKey == "talents") and isMismatch or false
@@ -4405,22 +4503,26 @@ function DynamicPrep:RefreshBar()
         seg.text:SetText(displayStr or "")
 
         if segKey == "fps" or segKey == "fps_ms" then
-            segWidth = fixedFpsW
+            segWidth = isCompact and math.max(48, fixedFpsW - 6) or fixedFpsW
         elseif segKey == "ping" then
-            segWidth = fixedPingW
+            segWidth = isCompact and math.max(54, fixedPingW - 6) or fixedPingW
         elseif segKey == "rc" then
-            segWidth = fixedRcW
+            segWidth = isCompact and math.max(46, fixedRcW - 6) or fixedRcW
         elseif segKey == "pull" then
-            segWidth = fixedPullW
+            segWidth = isCompact and math.max(46, fixedPullW - 6) or fixedPullW
         elseif segKey == "key" then
             local textW = SafeGetStringWidth(seg.text, 78)
-            segWidth = math.max(52, textW + 18)
+            segWidth = math.max(isCompact and 46 or 52, textW + segPadX)
         else
             local defW = (segKey == "stats") and 176 or (segKey == "primary") and 96 or 80
             local textW = SafeGetStringWidth(seg.text, defW)
-            local rawW = math.max(52, textW + 18)
-            seg._stableWidth = math.max(seg._stableWidth or 0, rawW)
-            segWidth = seg._stableWidth
+            local rawW = math.max(isCompact and 46 or 52, textW + segPadX)
+            if not isCompact then
+                seg._stableWidth = math.max(seg._stableWidth or 0, rawW)
+                segWidth = seg._stableWidth
+            else
+                segWidth = rawW
+            end
         end
 
         seg:ClearAllPoints()
@@ -4430,10 +4532,11 @@ function DynamicPrep:RefreshBar()
         local inBarEdit = (self.inBarEditMode or (self.inEditMode and self.inBarEditMode ~= false) or bar._dsEditModeActive) and true or false
         seg:EnableMouse(not inBarEdit)
         seg:Show()
-        xCursor = xCursor + segWidth + 4
+        xCursor = xCursor + segWidth + segGap
     end
 
-    bar:SetWidth(math.max(220, xCursor + 2))
+    bar:SetWidth(math.max(isCompact and 180 or 220, xCursor + (isCompact and 1 or 2)))
+    self:ApplyBarFadeState()
     if bar.mover and bar._dsEditModeActive then
         bar.mover:Hide()
     end
@@ -9489,8 +9592,9 @@ function DynamicPrep:CreateEditHudButton(parent, targetKey, fallbackFn)
     btn:SetSize(86, 22)
     local ar0, ag0, ab0 = GetActiveAccentRGB()
     SetPixelBackdrop(btn, { 0.043, 0.051, 0.071, 0.96 }, { ar0, ag0, ab0, 0.85 }, 1)
-    btn.txt = CreateText(btn, "OVERLAY", "GameFontHighlightSmall", 11, "Edit HUD")
+    btn.txt = CreateText(btn, "OVERLAY", "GameFontHighlightSmall", 11)
     btn.txt:SetPoint("CENTER")
+    btn.txt:SetText("Edit HUD")
     btn.txt:SetTextColor(0.976, 0.984, 1.0, 1.0)
     btn:SetScript("OnEnter", function(s)
         local ar, ag, ab = GetActiveAccentRGB()
@@ -9628,41 +9732,70 @@ local function BuildRaidBuffsTab(self, ws)
     readinessStrip:SetScript("OnSizeChanged", ReflowReadinessSlots)
     ReflowReadinessSlots()
 
-    -- Row 1: Enable Clickable Raid Buffs HUD
+    -- Helper to attach clean plain-English hover tooltip to Tab 2 inline sub-drawer rows
+    local function AttachSubRowTooltip(rowFrame, ttTitle, ttBody)
+        rowFrame:EnableMouse(true)
+        rowFrame:HookScript("OnEnter", function(s)
+            if not GameTooltip then return end
+            local ar, ag, ab = GetActiveAccentRGB()
+            GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine(ttTitle, ar, ag, ab)
+            GameTooltip:AddLine(ttBody, 0.86, 0.90, 0.96, true)
+            GameTooltip:Show()
+        end)
+        rowFrame:HookScript("OnLeave", function()
+            if GameTooltip then GameTooltip:Hide() end
+        end)
+    end
+
+    -- Parent Row: Enable Clickable Raid Buffs HUD
     local rEnable = CreateSpaciousRow(
         cBuffs, -112,
         "Enable Clickable Raid Buffs HUD",
-        "Displays clickable 1-click reminder icons on screen when your Class Raid Buff, Weapon Oil, Flask, or Food is missing.",
-        200
+        "Displays 1-click reminder icons on screen when your Class Raid Buff, Partner Buff, Weapon Oil, Flask, or Food is missing.",
+        156
     )
     local pEnable = CreateSegmentedPills(
-        rEnable, 200,
+        rEnable, 156,
         {
             { value = false, label = "Off" },
             { value = true,  label = "Enabled" },
         },
         function() return self.db.raidBuffs.enabled and true or false end,
         function(v)
-            self.db.raidBuffs.enabled = v
+            self.db.raidBuffs.enabled = (v == true)
+            if v == true then
+                self:SetDrawerExpanded("raidBuffs", true)
+            end
             self:RefreshClickableBuffs(true)
+            self:RefreshWorkspaceView()
         end
     )
     rEnable:BindRightControl(pEnable)
     table.insert(self.refreshWidgets, pEnable)
 
-    -- Row 2: Active Content Scope
-    local rScope = CreateSpaciousRow(
-        cBuffs, -172,
-        "Active Content Scope",
-        "Choose where Clickable Raid Buffs actively scans and prompts for missing buffs and consumables.",
-        336
+    local tuneRaidBuffs = CreateSubDrawerToggleBar(
+        cBuffs, 12,
+        function() return self.db and self.db.raidBuffs and self.db.raidBuffs.enabled == true end,
+        function() return self:IsDrawerExpanded("raidBuffs") end,
+        function()
+            self:ToggleDrawerExpanded("raidBuffs")
+            self:RefreshWorkspaceView()
+        end
     )
+    rEnable.tuneBtn = tuneRaidBuffs
+    table.insert(self.refreshWidgets, tuneRaidBuffs)
+
+    -- 1. Active Content Scope
+    local dScope = CreateInlineSubDrawer(cBuffs, "Active Content Scope")
+    AttachSubRowTooltip(dScope, "Active Content Scope", "Choose where Clickable Raid Buffs scans and prompts for missing buffs and consumables.")
     local pScope = CreateSegmentedPills(
-        rScope, 336,
+        dScope, 276,
         {
             { value = "ALWAYS",        label = "Always" },
-            { value = "GROUP_OR_INST", label = "Groups & Instances" },
-            { value = "INST_ONLY",     label = "Instances Only" },
+            { value = "GROUP_OR_INST", label = "Group / Inst" },
+            { value = "INST_ONLY",     label = "Instances" },
         },
         function() return self.db.raidBuffs.scope or "ALWAYS" end,
         function(v)
@@ -9670,153 +9803,143 @@ local function BuildRaidBuffsTab(self, ws)
             self:RefreshClickableBuffs(true)
         end
     )
-    rScope:BindRightControl(pScope)
+    dScope:BindRightControl(pScope)
     table.insert(self.refreshWidgets, pScope)
 
-    -- Row 3: Track Class & Partner Raid Buffs
-    local rClass = CreateSpaciousRow(
-        cBuffs, -232,
-        "Class & Partner Raid Buffs (Smart Role Target)",
-        "Scans group members for Raid Buffs (Mark of the Wild, etc.) and Partner Buffs (Symbiotic Relationship, Source of Magic, Earth Shield, Beacons).",
-        200
-    )
+    -- 2. Class Raid Buffs
+    local dClass = CreateInlineSubDrawer(cBuffs, "Class Raid Buffs")
+    AttachSubRowTooltip(dClass, "Class Raid Buffs", "Scans group members for missing Class Raid Buffs (Mark of the Wild, Arcane Intellect, Power Word: Fortitude, Battle Shout, Skyfury, Blessing of the Bronze).")
     local pClass = CreateSegmentedPills(
-        rClass, 200,
+        dClass, 156,
         {
             { value = false, label = "Off" },
             { value = true,  label = "Enabled" },
         },
         function() return self.db.raidBuffs.trackClassBuffs ~= false end,
         function(v)
-            self.db.raidBuffs.trackClassBuffs = v
+            self.db.raidBuffs.trackClassBuffs = (v == true)
             self:RefreshClickableBuffs(true)
         end
     )
-    rClass:BindRightControl(pClass)
+    dClass:BindRightControl(pClass)
     table.insert(self.refreshWidgets, pClass)
 
-    -- Row 4: In-Combat Battle-Rez & Missing Raid Buff Readiness Strip Override
-    local rBrez = CreateSpaciousRow(
-        cBuffs, -292,
-        "In-Combat Brez & Missing Raid Buff Tracker",
-        "Shows your missing Class Raid Buff icon (e.g. 16/17 + MISSING) on the Readiness Tracker Strip during combat while keeping consumables suppressed.",
-        200
+    -- 3. Partner Buffs (Dedicated split-out toggle)
+    local dPartner = CreateInlineSubDrawer(cBuffs, "Partner Buffs (Symbiotic, Source of Magic, Earth Shield, Beacons)")
+    AttachSubRowTooltip(dPartner, "Partner Buffs", "Scans your group for missing single-target partner buffs (Symbiotic Relationship, Source of Magic, Blistering Scales, Earth Shield, and Paladin Beacons) with smart role targeting.")
+    local pPartner = CreateSegmentedPills(
+        dPartner, 156,
+        {
+            { value = false, label = "Off" },
+            { value = true,  label = "Enabled" },
+        },
+        function() return self.db.raidBuffs.trackPartnerBuffs ~= false end,
+        function(v)
+            self.db.raidBuffs.trackPartnerBuffs = (v == true)
+            self:RefreshClickableBuffs(true)
+        end
     )
+    dPartner:BindRightControl(pPartner)
+    table.insert(self.refreshWidgets, pPartner)
+
+    -- 4. In-Combat Brez & Missing Raid Buff Tracker
+    local dBrez = CreateInlineSubDrawer(cBuffs, "In-Combat Brez & Missing Raid Buff Tracker")
+    AttachSubRowTooltip(dBrez, "In-Combat Brez & Missing Raid Buff Tracker", "Shows your missing Class Raid Buff icon (e.g. 16/17) during combat after a battle-rez while keeping personal consumables hidden.")
     local pBrez = CreateSegmentedPills(
-        rBrez, 200,
+        dBrez, 156,
         {
             { value = false, label = "Off" },
             { value = true,  label = "Enabled" },
         },
         function() return self.db.raidBuffs.trackCombatBrez ~= false end,
         function(v)
-            self.db.raidBuffs.trackCombatBrez = v
+            self.db.raidBuffs.trackCombatBrez = (v == true)
             self:RefreshCombatBuffAlert()
             if self.RefreshReadinessTrackerStrip then
                 pcall(self.RefreshReadinessTrackerStrip, self)
             end
         end
     )
-    rBrez:BindRightControl(pBrez)
+    dBrez:BindRightControl(pBrez)
     table.insert(self.refreshWidgets, pBrez)
 
-    -- Row 5: Track Weapon Oils & Stones
-    local rOil = CreateSpaciousRow(
-        cBuffs, -352,
-        "Weapon Oils & Stones (1-Click Auto-Apply)",
-        "1-Click auto-applies your best owned Weapon Oil or Whetstone directly to your Main-Hand weapon (Right-Click for Off-Hand).",
-        200
-    )
+    -- 5. Weapon Oils & Stones
+    local dOil = CreateInlineSubDrawer(cBuffs, "Weapon Oils & Stones (1-Click Auto-Apply)")
+    AttachSubRowTooltip(dOil, "Weapon Oils & Stones", "1-Click auto-applies your best owned Weapon Oil or Whetstone to your Main-Hand weapon (Right-Click for Off-Hand).")
     local pOil = CreateSegmentedPills(
-        rOil, 200,
+        dOil, 156,
         {
             { value = false, label = "Off" },
             { value = true,  label = "Enabled" },
         },
         function() return self.db.raidBuffs.trackWeaponEnchants ~= false end,
         function(v)
-            self.db.raidBuffs.trackWeaponEnchants = v
+            self.db.raidBuffs.trackWeaponEnchants = (v == true)
             self:RefreshClickableBuffs(true)
         end
     )
-    rOil:BindRightControl(pOil)
+    dOil:BindRightControl(pOil)
     table.insert(self.refreshWidgets, pOil)
 
-    -- Row 6: Track Flasks & Phials
-    local rFlask = CreateSpaciousRow(
-        cBuffs, -412,
-        "Flasks & Phials (Fleeting & Quality Badges)",
-        "Tracks owned Flasks (prioritising Fleeting flasks from cauldrons) and shows Midnight Rank 1 Silver vs Rank 2 Gold quality badges.",
-        200
-    )
+    -- 6. Flasks & Phials
+    local dFlask = CreateInlineSubDrawer(cBuffs, "Flasks & Phials (Fleeting & Quality Badges)")
+    AttachSubRowTooltip(dFlask, "Flasks & Phials", "Tracks owned Flasks (prioritising Fleeting flasks from cauldrons) and shows Midnight Rank 1 Silver vs Rank 2 Gold quality badges.")
     local pFlask = CreateSegmentedPills(
-        rFlask, 200,
+        dFlask, 156,
         {
             { value = false, label = "Off" },
             { value = true,  label = "Enabled" },
         },
         function() return self.db.raidBuffs.trackFlasks ~= false end,
         function(v)
-            self.db.raidBuffs.trackFlasks = v
+            self.db.raidBuffs.trackFlasks = (v == true)
             self:RefreshClickableBuffs(true)
         end
     )
-    rFlask:BindRightControl(pFlask)
+    dFlask:BindRightControl(pFlask)
     table.insert(self.refreshWidgets, pFlask)
 
-    -- Row 7: Track Well Fed / Hearty Food
-    local rFood = CreateSpaciousRow(
-        cBuffs, -472,
-        "Well Fed & Hearty Food Reminder (Exact Stat Parser)",
-        "Prompts to eat when missing Well Fed and parses exact stat benefits (e.g. +445 Intellect, +615 Mastery) directly from your buff tooltip.",
-        200
-    )
+    -- 7. Well Fed & Hearty Food Reminder
+    local dFood = CreateInlineSubDrawer(cBuffs, "Well Fed & Hearty Food Reminder")
+    AttachSubRowTooltip(dFood, "Well Fed & Hearty Food Reminder", "Prompts to eat when missing Well Fed and parses exact stat benefits directly from your buff tooltip.")
     local pFood = CreateSegmentedPills(
-        rFood, 200,
+        dFood, 156,
         {
             { value = false, label = "Off" },
             { value = true,  label = "Enabled" },
         },
         function() return self.db.raidBuffs.trackFood ~= false end,
         function(v)
-            self.db.raidBuffs.trackFood = v
+            self.db.raidBuffs.trackFood = (v == true)
             self:RefreshClickableBuffs(true)
         end
     )
-    rFood:BindRightControl(pFood)
+    dFood:BindRightControl(pFood)
     table.insert(self.refreshWidgets, pFood)
 
-    -- Row 8: Track Augment Runes
-    local rRune = CreateSpaciousRow(
-        cBuffs, -532,
-        "Augment Rune Reminder",
-        "Optional reminder for Crystallized / Dreambound Augment Runes in your bags.",
-        200
-    )
+    -- 8. Augment Rune Reminder
+    local dRune = CreateInlineSubDrawer(cBuffs, "Augment Rune Reminder")
+    AttachSubRowTooltip(dRune, "Augment Rune Reminder", "Optional reminder for Augment Runes in your bags.")
     local pRune = CreateSegmentedPills(
-        rRune, 200,
+        dRune, 156,
         {
             { value = false, label = "Off" },
             { value = true,  label = "Enabled" },
         },
         function() return self.db.raidBuffs.trackRunes and true or false end,
         function(v)
-            self.db.raidBuffs.trackRunes = v
+            self.db.raidBuffs.trackRunes = (v == true)
             self:RefreshClickableBuffs(true)
         end
     )
-    rRune:BindRightControl(pRune)
+    dRune:BindRightControl(pRune)
     table.insert(self.refreshWidgets, pRune)
 
-    -- Row 9: Expiring Warning Threshold (Minutes)
-    local rExp = CreateSpaciousRow(
-        cBuffs, -592,
-        "Expiring Warning Threshold",
-        "Highlights buffs/consumables in gold when their remaining duration drops below this threshold before a pull.",
-        245
-    )
+    -- 9. Expiring Warning Threshold
+    local dExp = CreateInlineSubDrawer(cBuffs, "Expiring Warning Threshold")
+    AttachSubRowTooltip(dExp, "Expiring Warning Threshold", "Highlights buffs and consumables in gold when their remaining duration drops below this threshold before a pull.")
     local slExp = CreateObsidianSlider(
-        rExp, 245, 1, 15, 1,
+        dExp, 245, 1, 15, 1,
         function(v) return string.format("%d min", math.floor(v + 0.5)) end,
         function() return self.db.raidBuffs.expireThresholdMin or 5 end,
         function(v)
@@ -9824,18 +9947,14 @@ local function BuildRaidBuffsTab(self, ws)
             self:RefreshClickableBuffs(true)
         end
     )
-    rExp:BindRightControl(slExp)
+    dExp:BindRightControl(slExp)
     table.insert(self.refreshWidgets, slExp)
 
-    -- Row 10: Clickable Icon Size
-    local rSize = CreateSpaciousRow(
-        cBuffs, -652,
-        "Clickable Icon Size",
-        "Adjust the pixel size of each clickable raid buff icon (32px to 64px).",
-        245
-    )
+    -- 10. Clickable Icon Size
+    local dSize = CreateInlineSubDrawer(cBuffs, "Clickable Icon Size")
+    AttachSubRowTooltip(dSize, "Clickable Icon Size", "Adjust the pixel size of each clickable raid buff icon (32 px to 64 px).")
     local slSize = CreateObsidianSlider(
-        rSize, 245, 32, 64, 2,
+        dSize, 245, 32, 64, 2,
         function(v) return string.format("%d px", math.floor(v + 0.5)) end,
         function() return self.db.raidBuffs.iconSize or 44 end,
         function(v)
@@ -9843,8 +9962,47 @@ local function BuildRaidBuffsTab(self, ws)
             self:RefreshClickableBuffs(true)
         end
     )
-    rSize:BindRightControl(slSize)
+    dSize:BindRightControl(slSize)
     table.insert(self.refreshWidgets, slSize)
+
+    -- 11. Clickable Icon Spacing
+    local dSpacing = CreateInlineSubDrawer(cBuffs, "Clickable Icon Spacing")
+    AttachSubRowTooltip(dSpacing, "Clickable Icon Spacing", "Adjust the gap between clickable raid buff icons (2 px to 24 px).")
+    local slSpacing = CreateObsidianSlider(
+        dSpacing, 245, 2, 24, 1,
+        function(v) return string.format("%d px", math.floor(v + 0.5)) end,
+        function() return self.db.raidBuffs.iconSpacing or 10 end,
+        function(v)
+            self.db.raidBuffs.iconSpacing = v
+            self:RefreshClickableBuffs(true)
+        end
+    )
+    dSpacing:BindRightControl(slSpacing)
+    table.insert(self.refreshWidgets, slSpacing)
+
+    -- 12. Hide "MISSING" Text Label
+    local dHideMissing = CreateInlineSubDrawer(cBuffs, "Hide \"MISSING\" Text Label")
+    AttachSubRowTooltip(dHideMissing, "Hide \"MISSING\" Text Label", "Hides the red MISSING text beneath clickable raid buff icons for a cleaner icon-only bar (expiring timers still show).")
+    local pHideMissing = CreateSegmentedPills(
+        dHideMissing, 156,
+        {
+            { value = false, label = "Off" },
+            { value = true,  label = "Enabled" },
+        },
+        function() return self.db.raidBuffs.hideMissingLabel == true end,
+        function(v)
+            self.db.raidBuffs.hideMissingLabel = (v == true)
+            self:RefreshClickableBuffs(true)
+        end
+    )
+    dHideMissing:BindRightControl(pHideMissing)
+    table.insert(self.refreshWidgets, pHideMissing)
+
+    ws.raidBuffsDrawer = {
+        rEnable = rEnable,
+        tuneBtn = tuneRaidBuffs,
+        rows    = { dScope, dClass, dPartner, dBrez, dOil, dFlask, dFood, dRune, dExp, dSize, dSpacing, dHideMissing },
+    }
 
     if self.RefreshReadinessTrackerStrip then
         pcall(self.RefreshReadinessTrackerStrip, self)
@@ -9898,6 +10056,9 @@ function DynamicPrep:RenderWorkspace(parentFrame)
                 CloseActiveDropdown()
                 self.db.activeSubTab = def.id
                 self:RefreshWorkspaceView()
+                if ws.scrollFrame then
+                    ws.scrollFrame:SetVerticalScroll(0)
+                end
             end)
             ws.tabButtons[i] = tBtn
         end
@@ -9944,6 +10105,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         scrollFrame:SetScript("OnSizeChanged", function(_, w)
             if w and w > 100 then
                 scrollChild:SetWidth(w)
+                if ws.ReflowPresetBtns then ws.ReflowPresetBtns() end
                 self:LayoutPillGrid()
                 self:RefreshLiveStagePreview()
                 if scrollFrame.UpdateScrollThumb then
@@ -9954,19 +10116,171 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         ws.scrollChild = scrollChild
 
         -- ====================================================================
-        -- TAB 1: Bar Layout & Style + Omni Folio
+        -- TAB 1: Bar Layout & Style (Quick Presets + Layout Builder)
         -- ====================================================================
         local tab1 = CreateFrame("Frame", nil, scrollChild)
         tab1:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, 0)
         tab1:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", 0, 0)
-        tab1:SetHeight(1146)
+        tab1:SetHeight(1280)
         ws.tab1 = tab1
 
-        -- Card 1: Top Info Bar Layout Builder & Embedded Live HUD Stage
+        -- Card 0: Quick Presets (4-option bar with live Suite Accent active highlight)
+        do
+            local presetCard = CreateFrame("Frame", nil, tab1, "BackdropTemplate")
+            presetCard:SetPoint("TOPLEFT", tab1, "TOPLEFT", 0, 0)
+            presetCard:SetPoint("TOPRIGHT", tab1, "TOPRIGHT", 0, 0)
+            presetCard:SetHeight(112)
+            SetPixelBackdrop(presetCard, COLORS.BgCanvas, COLORS.BorderStrong, 1)
+            ws.presetCard = presetCard
+
+            CreateSectionHeader(
+                presetCard, -10,
+                "QUICK PRESETS",
+                "Apply a ready-made Top Info Bar layout in one click, or fine-tune every capsule and style below.",
+                14
+            )
+
+            local presetStrip = CreateFrame("Frame", nil, presetCard, "BackdropTemplate")
+            presetStrip:SetPoint("TOPLEFT", presetCard, "TOPLEFT", 14, -54)
+            presetStrip:SetPoint("TOPRIGHT", presetCard, "TOPRIGHT", -14, -54)
+            presetStrip:SetHeight(46)
+            SetPixelBackdrop(presetStrip, COLORS.BgSurface, COLORS.BorderSubtle, 1)
+            ws.presetStrip = presetStrip
+
+            local presetDefs = {
+                {
+                    key = "RAIDER_FULL",
+                    label = "Raider / M+ Full",
+                    desc = "Shows all 13 capsules (Stats, Spec/Loot, Talents, Vault, Folio, Durability, Bags, Keystone, Ready/Pull, FPS, Ping) at Standard density with Suite Accent border and Priority Glow.",
+                    segments = { primary = true, stats = true, loot = true, talents = true, vault = true, folio = true, dur = true, bags = true, key = true, rc = true, pull = true, fps = true, ping = true },
+                    displayMode = "ALWAYS", barCompactMode = false, barFadeMode = "NONE", hudBorderStyle = "ACCENT", barColorTheme = "PRIORITY_GLOW",
+                },
+                {
+                    key = "MINIMALIST_STATS",
+                    label = "Minimalist Stats",
+                    desc = "Shows Primary Stat, Secondary Stats, Spec/Loot, Durability, FPS, and Ping in Compact density with Fade Until Hover, Subtle Dark border, and Class Accent.",
+                    segments = { primary = true, stats = true, loot = true, talents = false, vault = false, folio = false, dur = true, bags = false, key = false, rc = false, pull = false, fps = true, ping = true },
+                    displayMode = "ALWAYS", barCompactMode = true, barFadeMode = "MOUSEOVER", hudBorderStyle = "DARK", barColorTheme = "CLASS_ACCENT",
+                },
+                {
+                    key = "KEYSTONE_FOCUS",
+                    label = "Keystone Focus",
+                    desc = "Focused Mythic+ and Raid setup: Primary, Secondary Stats, Spec/Loot, Talents, Vault, Folio, Durability, Keystone, Ready Check, and Pull Timer with Priority Glow.",
+                    segments = { primary = true, stats = true, loot = true, talents = true, vault = true, folio = true, dur = true, bags = false, key = true, rc = true, pull = true, fps = false, ping = false },
+                    displayMode = "ALWAYS", barCompactMode = false, barFadeMode = "NONE", hudBorderStyle = "ACCENT", barColorTheme = "PRIORITY_GLOW",
+                },
+                {
+                    key = "SYSTEM_ONLY",
+                    label = "System Only",
+                    desc = "Ultra-lean system telemetry bar: Durability, Bag Slots, FPS, and Ping only in Compact borderless Monochrome with Fade Until Hover.",
+                    segments = { primary = false, stats = false, loot = false, talents = false, vault = false, folio = false, dur = true, bags = true, key = false, rc = false, pull = false, fps = true, ping = true },
+                    displayMode = "ALWAYS", barCompactMode = true, barFadeMode = "MOUSEOVER", hudBorderStyle = "NONE", barColorTheme = "MONOCHROME",
+                },
+            }
+
+            ws.presetBtns = {}
+            local function ApplyPresetBtnVisual(pb, isHover)
+                local ar, ag, ab = GetActiveAccentRGB()
+                local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
+                local isActive = (self.db and self.db.activeBarPreset == pb.presetKey)
+                if isActive then
+                    SetPixelBackdrop(pb, { ar * fillAlpha, ag * fillAlpha, ab * fillAlpha, 0.98 }, { ar, ag, ab, 1.0 }, 1)
+                    pb.txt:SetTextColor(1, 1, 1, 1)
+                elseif isHover then
+                    SetPixelBackdrop(pb, { ar * (fillAlpha * 0.55), ag * (fillAlpha * 0.55), ab * (fillAlpha * 0.55), 0.98 }, { ar, ag, ab, 0.90 }, 1)
+                    pb.txt:SetTextColor(1, 1, 1, 1)
+                else
+                    SetPixelBackdrop(pb, COLORS.BgElevated, COLORS.BorderStrong, 1)
+                    pb.txt:SetTextColor(0.76, 0.82, 0.90, 1)
+                end
+            end
+
+            for idx, pDef in ipairs(presetDefs) do
+                local pb = CreateFrame("Button", nil, presetStrip, "BackdropTemplate")
+                pb:SetHeight(28)
+                pb.presetKey = pDef.key
+                pb.txt = CreateText(pb, "OVERLAY", "GameFontHighlightSmall", 11)
+                pb.txt:SetPoint("LEFT", pb, "LEFT", 6, 0)
+                pb.txt:SetPoint("RIGHT", pb, "RIGHT", -6, 0)
+                pb.txt:SetJustifyH("CENTER")
+                pb.txt:SetWordWrap(false)
+                pb.txt:SetText(pDef.label)
+                pb.RefreshValue = function(s) ApplyPresetBtnVisual(s, false) end
+                pb:SetScript("OnEnter", function(s)
+                    ApplyPresetBtnVisual(s, true)
+                    if GameTooltip then
+                        local ar, ag, ab = GetActiveAccentRGB()
+                        GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                        GameTooltip:ClearLines()
+                        GameTooltip:AddLine(pDef.label, ar, ag, ab)
+                        GameTooltip:AddLine(pDef.desc, 0.84, 0.88, 0.94, true)
+                        if self.db and self.db.activeBarPreset == pDef.key then
+                            GameTooltip:AddLine("Currently active preset.", 0.20, 0.90, 0.50)
+                        else
+                            GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Apply " .. pDef.label .. " preset now.|r")
+                        end
+                        GameTooltip:Show()
+                    end
+                end)
+                pb:SetScript("OnLeave", function(s)
+                    ApplyPresetBtnVisual(s, false)
+                    if GameTooltip then GameTooltip:Hide() end
+                end)
+                pb:SetScript("OnClick", function()
+                    if not self.db then return end
+                    self.db.segments = self.db.segments or {}
+                    for k, v in pairs(pDef.segments) do
+                        self.db.segments[k] = v
+                    end
+                    self.db.displayMode = pDef.displayMode
+                    self.db.barCompactMode = pDef.barCompactMode
+                    self.db.barFadeMode = pDef.barFadeMode
+                    self.db.hudBorderStyle = pDef.hudBorderStyle
+                    self.db.barColorTheme = pDef.barColorTheme
+                    self.db.activeBarPreset = pDef.key
+                    self:ResetStableCapsuleWidths()
+                    self:RefreshBar()
+                    self:ApplyBarGeometry()
+                    self:RefreshWorkspaceView()
+                end)
+                ws.presetBtns[idx] = pb
+                table.insert(self.refreshWidgets, pb)
+            end
+
+            local function ReflowPresetBtns()
+                local w = presetStrip:GetWidth()
+                if not w or w < 160 then
+                    w = (presetCard:GetWidth() or 680) - 28
+                end
+                local padX = 10
+                local gap = 6
+                local usable = math.max(120, w - (padX * 2) - (gap * 3))
+                local bw = math.floor(usable / 4)
+                for i, pb in ipairs(ws.presetBtns) do
+                    pb:ClearAllPoints()
+                    pb:SetHeight(28)
+                    if i == 1 then
+                        pb:SetPoint("LEFT", presetStrip, "LEFT", padX, 0)
+                        pb:SetWidth(bw)
+                    elseif i == 4 then
+                        pb:SetPoint("LEFT", ws.presetBtns[3], "RIGHT", gap, 0)
+                        pb:SetPoint("RIGHT", presetStrip, "RIGHT", -padX, 0)
+                    else
+                        pb:SetPoint("LEFT", ws.presetBtns[i - 1], "RIGHT", gap, 0)
+                        pb:SetWidth(bw)
+                    end
+                end
+            end
+            presetStrip:SetScript("OnSizeChanged", ReflowPresetBtns)
+            ws.ReflowPresetBtns = ReflowPresetBtns
+            ReflowPresetBtns()
+        end
+
+        -- Card 1: Top Info Bar Layout Builder & Style Options
         local card1 = CreateFrame("Frame", nil, tab1, "BackdropTemplate")
-        card1:SetPoint("TOPLEFT", tab1, "TOPLEFT", 0, 0)
-        card1:SetPoint("TOPRIGHT", tab1, "TOPRIGHT", 0, 0)
-        card1:SetHeight(712)
+        card1:SetPoint("TOPLEFT", ws.presetCard, "BOTTOMLEFT", 0, -14)
+        card1:SetPoint("TOPRIGHT", ws.presetCard, "BOTTOMRIGHT", 0, -14)
+        card1:SetHeight(820)
         SetPixelBackdrop(card1, COLORS.BgCanvas, COLORS.BorderStrong, 1)
         ws.card1 = card1
 
@@ -9993,6 +10307,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         resetSegOrderBtn:SetScript("OnClick", function()
             self.db.segmentOrder = DeepCopyDefaults(DEFAULT_SEGMENT_ORDER, {})
             for k, v in pairs(DEFAULTS.segments) do self.db.segments[k] = v end
+            self.db.activeBarPreset = nil
             self:ResetStableCapsuleWidths()
             self:RefreshBar()
             self:RefreshWorkspaceView()
@@ -10071,24 +10386,26 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             ws.pillCards[i] = pCard
         end
 
-        -- 7 Spacious Rows inside Card 1 (HUD Border, Bar Color Theme, Stat Sort + Custom Sub-Drawer, Display Mode, Sliders)
+        -- Spacious Rows inside Card 1 (clamped cleanly for 800x520 minimum windows)
         local rBorder = CreateSpaciousRow(
             card1, -304,
             "HUD Border Style",
             "Choose the outer frame styling for the Top Info Bar.",
-            336
+            264
         )
         local pillsBorder = CreateSegmentedPills(
-            rBorder, 336,
+            rBorder, 264,
             {
-                { value = "ACCENT", label = "Class / Suite Accent" },
-                { value = "DARK",   label = "Subtle Dark" },
+                { value = "ACCENT", label = "Suite Accent" },
+                { value = "DARK",   label = "Dark" },
                 { value = "NONE",   label = "Borderless" },
             },
             function() return self.db.hudBorderStyle or "ACCENT" end,
             function(v)
                 self.db.hudBorderStyle = v
+                self.db.activeBarPreset = nil
                 self:RefreshBar()
+                self:RefreshWorkspaceView()
             end
         )
         rBorder:BindRightControl(pillsBorder)
@@ -10098,35 +10415,36 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             card1, -364,
             "Bar Colour Theme",
             "Priority Glow highlights Primary in Mint Teal and ranks your #1 Secondary Stat in Accent/Gold.",
-            348
+            296
         )
         local pillsColorTheme = CreateSegmentedPills(
-            rColorTheme, 348,
+            rColorTheme, 296,
             {
                 { value = "PRIORITY_GLOW", label = "Priority Glow" },
                 { value = "CLASS_ACCENT",  label = "Class Accent" },
-                { value = "MONOCHROME",    label = "Crisp Monochrome" },
+                { value = "MONOCHROME",    label = "Monochrome" },
             },
             function() return self.db.barColorTheme or "PRIORITY_GLOW" end,
             function(v)
                 self.db.barColorTheme = v
+                self.db.activeBarPreset = nil
                 self:RefreshBar()
+                self:RefreshWorkspaceView()
             end
         )
         rColorTheme:BindRightControl(pillsColorTheme)
         table.insert(self.refreshWidgets, pillsColorTheme)
 
-        ws.statSortDrawerOpen = true
         local rStatSort = CreateSpaciousRow(
             card1, -424,
             "Secondary Stat Order",
-            "Dynamically rank your highest secondary stat first or customise your exact Crit / Haste / Mastery / Vers sequence.",
-            376
+            "Rank your highest secondary stat first or customise your Crit / Haste / Mastery / Vers sequence.",
+            232
         )
         local pillsStatSort = CreateSegmentedPills(
-            rStatSort, 292,
+            rStatSort, 232,
             {
-                { value = "RANK",   label = "Rank Highest First" },
+                { value = "RANK",   label = "Highest First" },
                 { value = "CUSTOM", label = "Custom Order" },
             },
             function() return self.db.secondaryStatOrderMode or self.db.statSortMode or "RANK" end,
@@ -10134,7 +10452,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
                 self.db.secondaryStatOrderMode = v
                 self.db.statSortMode = v
                 if v == "CUSTOM" then
-                    ws.statSortDrawerOpen = true
+                    self:SetDrawerExpanded("statSort", true)
                 end
                 self:RefreshBar()
                 self:RefreshWorkspaceView()
@@ -10149,18 +10467,18 @@ function DynamicPrep:RenderWorkspace(parentFrame)
                 local m = (self.db and (self.db.secondaryStatOrderMode or self.db.statSortMode)) or "RANK"
                 return m == "CUSTOM" or m == "FIXED"
             end,
-            function() return ws.statSortDrawerOpen ~= false end,
+            function() return self:IsDrawerExpanded("statSort") end,
             function()
-                ws.statSortDrawerOpen = (ws.statSortDrawerOpen == false)
+                self:ToggleDrawerExpanded("statSort")
                 self:RefreshWorkspaceView()
             end
         )
         rStatSort.tuneBtn = tuneStatSort
         table.insert(self.refreshWidgets, tuneStatSort)
 
-        local dCustomStatOrder = CreateInlineSubDrawer(card1, "Custom Stat Order - Drag or Click to Reorder:")
+        local dCustomStatOrder = CreateInlineSubDrawer(card1, "Custom Stat Order (Drag or Click):")
         local statOrderStrip = CreateFrame("Frame", nil, dCustomStatOrder)
-        statOrderStrip:SetSize(356, 26)
+        statOrderStrip:SetSize(284, 26)
         statOrderStrip:SetScript("OnHide", function(selfStrip)
             selfStrip:SetScript("OnUpdate", nil)
             ws.statDragState = nil
@@ -10173,8 +10491,8 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         ws.statOrderPills = {}
         for i = 1, 4 do
             local sp = CreateFrame("Button", nil, statOrderStrip, "BackdropTemplate")
-            sp:SetSize(86, 26)
-            sp:SetPoint("LEFT", statOrderStrip, "LEFT", (i - 1) * 90, 0)
+            sp:SetSize(68, 26)
+            sp:SetPoint("LEFT", statOrderStrip, "LEFT", (i - 1) * 72, 0)
             sp:EnableMouse(true)
             sp:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             sp.label = CreateText(sp, "OVERLAY", "GameFontHighlightSmall")
@@ -10183,15 +10501,14 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             ws.statOrderPills[i] = sp
         end
 
-        ws.pingDrawerOpen = true
         local rPingFormat = CreateSpaciousRow(
             card1, -484,
             "Ping Display Format",
             "Choose whether the Ping capsule shows Both (Home & World), Local Only, or World Only latency.",
-            316
+            216
         )
         local pillsPingFormat = CreateSegmentedPills(
-            rPingFormat, 276,
+            rPingFormat, 216,
             {
                 { value = "BOTH",       label = "Both" },
                 { value = "LOCAL_ONLY", label = "Local" },
@@ -10201,7 +10518,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             function(v)
                 self.db.pingDisplayMode = v
                 if v == "BOTH" then
-                    ws.pingDrawerOpen = true
+                    self:SetDrawerExpanded("pingOrder", true)
                 end
                 self:RefreshBar()
                 self:RefreshWorkspaceView()
@@ -10215,9 +10532,9 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             function()
                 return (self.db and (self.db.pingDisplayMode or "BOTH")) == "BOTH"
             end,
-            function() return ws.pingDrawerOpen ~= false end,
+            function() return self:IsDrawerExpanded("pingOrder") end,
             function()
-                ws.pingDrawerOpen = (ws.pingDrawerOpen == false)
+                self:ToggleDrawerExpanded("pingOrder")
                 self:RefreshWorkspaceView()
             end
         )
@@ -10226,7 +10543,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
 
         local dPingOrder = CreateInlineSubDrawer(card1, "Ping Latency Order (When Showing Both):")
         local pillsPingOrder = CreateSegmentedPills(
-            dPingOrder, 260,
+            dPingOrder, 224,
             {
                 { value = "LOCAL_FIRST", label = "Local / World" },
                 { value = "WORLD_FIRST", label = "World / Local" },
@@ -10245,27 +10562,77 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             card1, -544,
             "Top Info Bar Display Mode",
             "Choose when the top bar is shown. When hidden, the Alert Toast displays your readiness summary.",
-            348
+            296
         )
         local pillsDisplay = CreateSegmentedPills(
-            rDisplay, 348,
+            rDisplay, 296,
             {
                 { value = "ALWAYS",   label = "Always" },
-                { value = "OOC",      label = "Out of Combat" },
+                { value = "OOC",      label = "OOC Only" },
                 { value = "INSTANCE", label = "Instance" },
                 { value = "HIDDEN",   label = "Hidden" },
             },
             function() return self.db.displayMode or "ALWAYS" end,
             function(v)
                 self.db.displayMode = v
+                self.db.activeBarPreset = nil
                 self:RefreshBar()
+                self:RefreshWorkspaceView()
             end
         )
         rDisplay:BindRightControl(pillsDisplay)
         table.insert(self.refreshWidgets, pillsDisplay)
 
-        local rThrottle = CreateSpaciousRow(
+        local rBarDensity = CreateSpaciousRow(
             card1, -604,
+            "Bar Density",
+            "Switch between Standard height (30 px) and a sleek Compact profile (24 px) with tighter capsule padding.",
+            196
+        )
+        local pillsBarDensity = CreateSegmentedPills(
+            rBarDensity, 196,
+            {
+                { value = false, label = "Standard" },
+                { value = true,  label = "Compact" },
+            },
+            function() return self.db.barCompactMode == true end,
+            function(v)
+                self.db.barCompactMode = (v == true)
+                self.db.activeBarPreset = nil
+                self:ResetStableCapsuleWidths()
+                self:RefreshBar()
+                self:RefreshWorkspaceView()
+            end
+        )
+        rBarDensity:BindRightControl(pillsBarDensity)
+        table.insert(self.refreshWidgets, pillsBarDensity)
+
+        local rBarFade = CreateSpaciousRow(
+            card1, -664,
+            "Bar Mouseover Fade",
+            "Keep the Top Info Bar at full brightness or dim it to 25% until hovered (or strictly during combat).",
+            296
+        )
+        local pillsBarFade = CreateSegmentedPills(
+            rBarFade, 296,
+            {
+                { value = "NONE",        label = "Off" },
+                { value = "MOUSEOVER",   label = "Fade Until Hover" },
+                { value = "COMBAT_FADE", label = "Combat Fade" },
+            },
+            function() return self.db.barFadeMode or "NONE" end,
+            function(v)
+                self.db.barFadeMode = v
+                self.db.activeBarPreset = nil
+                self:ApplyBarFadeState()
+                self:RefreshWorkspaceView()
+            end
+        )
+        rBarFade:BindRightControl(pillsBarFade)
+        table.insert(self.refreshWidgets, pillsBarFade)
+
+        local rThrottle = CreateSpaciousRow(
+            card1, -724,
             "Combat Stat Refresh Rate",
             "Controls how frequently primary and secondary stat procs refresh during active combat.",
             245
@@ -10280,7 +10647,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         table.insert(self.refreshWidgets, slThrottle)
 
         local rScale = CreateSpaciousRow(
-            card1, -664,
+            card1, -784,
             "Bar Scale",
             "Independently scale the Top Info Bar size (60% to 150%), decoupled from Opacity.",
             245
@@ -10298,7 +10665,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         table.insert(self.refreshWidgets, slScale)
 
         local rOpacity = CreateSpaciousRow(
-            card1, -724,
+            card1, -844,
             "Bar Opacity",
             "Independently adjust the Top Info Bar transparency (20% to 100%), decoupled from Scale.",
             245
@@ -10324,7 +10691,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             rPingFormat      = rPingFormat,
             tunePingFormat   = tunePingFormat,
             dPingOrder       = dPingOrder,
-            others           = { rDisplay, rThrottle, rScale, rOpacity },
+            others           = { rDisplay, rBarDensity, rBarFade, rThrottle, rScale, rOpacity },
         }
 
         -- ====================================================================
@@ -10333,100 +10700,226 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         local tab2 = BuildRaidBuffsTab(self, ws)
         ws.tab2 = tab2
 
-        -- Card 2 (inside Tab 2 below Clickable Raid Buffs): Midnight Omni Folio Configuration
-        local card2 = CreateFrame("Frame", nil, tab2, "BackdropTemplate")
-        card2:SetPoint("TOPLEFT", ws.raidBuffsCard, "BOTTOMLEFT", 0, -14)
-        card2:SetPoint("TOPRIGHT", ws.raidBuffsCard, "BOTTOMRIGHT", 0, -14)
-        card2:SetHeight(422)
-        SetPixelBackdrop(card2, COLORS.BgCanvas, COLORS.BorderStrong, 1)
-        ws.card2 = card2
+        -- Card 2 (inside Tab 2 below Clickable Raid Buffs): Midnight Omnium Folio Configuration
+        do
+            local card2 = CreateFrame("Frame", nil, tab2, "BackdropTemplate")
+            card2:SetPoint("TOPLEFT", ws.raidBuffsCard, "BOTTOMLEFT", 0, -14)
+            card2:SetPoint("TOPRIGHT", ws.raidBuffsCard, "BOTTOMRIGHT", 0, -14)
+            card2:SetHeight(140)
+            SetPixelBackdrop(card2, COLORS.BgCanvas, COLORS.BorderStrong, 1)
+            ws.card2 = card2
 
-        local c2Hdr = CreateSectionHeader(
-            card2, -10,
-            "MIDNIGHT OMNIUM FOLIO CONFIGURATION",
-            "Assign your target Omnium Folio secondary stat for each content type or use built-in 40-spec presets.",
-            14
-        )
+            CreateSectionHeader(
+                card2, -10,
+                "MIDNIGHT OMNIUM FOLIO CONFIGURATION",
+                "Assign your target Omnium Folio secondary stat for each content type or use built-in 40-spec presets.",
+                14
+            )
 
-        local folioStatOptions = {
-            { value = "HASTE",   label = "Haste" },
-            { value = "MASTERY", label = "Mastery" },
-            { value = "CRIT",    label = "Critical Strike" },
-            { value = "VERS",    label = "Versatility" },
-            { value = "OFF",     label = "Off" },
-        }
+            local folioStatOptions = {
+                { value = "HASTE",   label = "Haste" },
+                { value = "MASTERY", label = "Mastery" },
+                { value = "CRIT",    label = "Critical Strike" },
+                { value = "VERS",    label = "Versatility" },
+                { value = "OFF",     label = "Off" },
+            }
 
-        local rFolioEnable = CreateSpaciousRow(
-            card2, -54,
-            "Omni Folio Tracking",
-            "Show the Omni Folio target stat on the Top Info Bar and highlight in gold when your buff mismatches.",
-            220
-        )
-        local pillsFolioEnable = CreateSegmentedPills(
-            rFolioEnable, 220,
-            {
-                { value = false, label = "Off" },
-                { value = true,  label = "Enabled" },
-            },
-            function() return self.db.omniFolio.enabled and true or false end,
-            function(v)
-                self.db.omniFolio.enabled = v
-                self:RefreshBar()
-            end
-        )
-        rFolioEnable:BindRightControl(pillsFolioEnable)
-        table.insert(self.refreshWidgets, pillsFolioEnable)
-
-        local rFolioPreset = CreateSpaciousRow(
-            card2, -114,
-            "Specialisation Preset",
-            "Populate all 4 content targets from the built-in 40-spec Recommended Stat Priority matrix.",
-            240
-        )
-        local pillsFolioPreset = CreateSegmentedPills(
-            rFolioPreset, 240,
-            {
-                { value = "WOWHEAD", label = "Wowhead Preset" },
-                { value = "CUSTOM",  label = "Custom" },
-            },
-            function() return self.db.omniFolio.presetMode or "WOWHEAD" end,
-            function(v)
-                self.db.omniFolio.presetMode = v
-                if v == "WOWHEAD" then
-                    self:ApplyWowheadPresetForCurrentSpec(false)
-                else
-                    self:RefreshBar()
-                    self:RefreshWorkspaceView()
-                end
-            end
-        )
-        rFolioPreset:BindRightControl(pillsFolioPreset)
-        table.insert(self.refreshWidgets, pillsFolioPreset)
-
-        local contentRows = {
-            { key = "mplus", offset = -174, title = "Mythic+ Dungeons Target Stat",    desc = "Recommended Omni Folio secondary stat for Mythic+ Keystone dungeons." },
-            { key = "raid",  offset = -234, title = "Raid Encounters Target Stat",     desc = "Recommended Omni Folio secondary stat inside Raid instances." },
-            { key = "delve", offset = -294, title = "Delves & Open World Target Stat", desc = "Recommended Omni Folio secondary stat for Delves and Open World." },
-            { key = "pvp",   offset = -354, title = "Rated & Casual PvP Target Stat",  desc = "Recommended Omni Folio secondary stat for Arenas and Battlegrounds." },
-        }
-
-        for _, cr in ipairs(contentRows) do
-            local row = CreateSpaciousRow(card2, cr.offset, cr.title, cr.desc, 240)
-            local dd = CreateObsidianDropdown(
-                row, 240,
-                folioStatOptions,
-                function() return self:GetTargetFolioStatForZone(cr.key) end,
+            local rFolioEnable = CreateSpaciousRow(
+                card2, -54,
+                "Omni Folio Tracking",
+                "Show the Omni Folio target stat on the Top Info Bar and highlight in gold when your buff mismatches.",
+                156
+            )
+            local pillsFolioEnable = CreateSegmentedPills(
+                rFolioEnable, 156,
+                {
+                    { value = false, label = "Off" },
+                    { value = true,  label = "Enabled" },
+                },
+                function() return self.db.omniFolio.enabled and true or false end,
                 function(v)
-                    self.db.omniFolio.presetMode = "CUSTOM"
-                    self.db.omniFolio[cr.key] = v
+                    self.db.omniFolio.enabled = (v == true)
+                    if v == true then
+                        self:SetDrawerExpanded("omniFolio", true)
+                    end
                     self:RefreshBar()
                     self:RefreshWorkspaceView()
                 end
             )
-            row:BindRightControl(dd)
-            table.insert(self.refreshWidgets, dd)
+            rFolioEnable:BindRightControl(pillsFolioEnable)
+            table.insert(self.refreshWidgets, pillsFolioEnable)
+
+            local tuneFolio = CreateSubDrawerToggleBar(
+                card2, 5,
+                function() return self.db and self.db.omniFolio and self.db.omniFolio.enabled == true end,
+                function() return self:IsDrawerExpanded("omniFolio") end,
+                function()
+                    self:ToggleDrawerExpanded("omniFolio")
+                    self:RefreshWorkspaceView()
+                end
+            )
+            rFolioEnable.tuneBtn = tuneFolio
+            table.insert(self.refreshWidgets, tuneFolio)
+
+            local folioRows = {}
+
+            local dFolioPreset = CreateInlineSubDrawer(card2, "Specialisation Preset")
+            dFolioPreset:EnableMouse(true)
+            dFolioPreset:HookScript("OnEnter", function(s)
+                if not GameTooltip then return end
+                local ar, ag, ab = GetActiveAccentRGB()
+                GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                GameTooltip:AddLine("Specialisation Preset", ar, ag, ab)
+                GameTooltip:AddLine("Populate all 4 content targets from the built-in 40-spec Recommended Stat Priority matrix, or pick Custom targets below.", 0.86, 0.90, 0.96, true)
+                GameTooltip:Show()
+            end)
+            dFolioPreset:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+            local pillsFolioPreset = CreateSegmentedPills(
+                dFolioPreset, 230,
+                {
+                    { value = "WOWHEAD", label = "Wowhead Preset" },
+                    { value = "CUSTOM",  label = "Custom" },
+                },
+                function() return self.db.omniFolio.presetMode or "WOWHEAD" end,
+                function(v)
+                    self.db.omniFolio.presetMode = v
+                    if v == "WOWHEAD" then
+                        self:ApplyWowheadPresetForCurrentSpec(false)
+                    else
+                        self:RefreshBar()
+                        self:RefreshWorkspaceView()
+                    end
+                end
+            )
+            dFolioPreset:BindRightControl(pillsFolioPreset)
+            table.insert(self.refreshWidgets, pillsFolioPreset)
+            table.insert(folioRows, dFolioPreset)
+
+            local contentRows = {
+                { key = "mplus", title = "Mythic+ Dungeons Target Stat",    desc = "Recommended Omni Folio secondary stat for Mythic+ Keystone dungeons." },
+                { key = "raid",  title = "Raid Encounters Target Stat",     desc = "Recommended Omni Folio secondary stat inside Raid instances." },
+                { key = "delve", title = "Delves & Open World Target Stat", desc = "Recommended Omni Folio secondary stat for Delves and Open World." },
+                { key = "pvp",   title = "Rated & Casual PvP Target Stat",  desc = "Recommended Omni Folio secondary stat for Arenas and Battlegrounds." },
+            }
+
+            for _, cr in ipairs(contentRows) do
+                local dRow = CreateInlineSubDrawer(card2, cr.title)
+                dRow:EnableMouse(true)
+                dRow:HookScript("OnEnter", function(s)
+                    if not GameTooltip then return end
+                    local ar, ag, ab = GetActiveAccentRGB()
+                    GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                    GameTooltip:AddLine(cr.title, ar, ag, ab)
+                    GameTooltip:AddLine(cr.desc, 0.86, 0.90, 0.96, true)
+                    GameTooltip:Show()
+                end)
+                dRow:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+                local dd = CreateObsidianDropdown(
+                    dRow, 220,
+                    folioStatOptions,
+                    function() return self:GetTargetFolioStatForZone(cr.key) end,
+                    function(v)
+                        self.db.omniFolio.presetMode = "CUSTOM"
+                        self.db.omniFolio[cr.key] = v
+                        self:RefreshBar()
+                        self:RefreshWorkspaceView()
+                    end
+                )
+                dRow:BindRightControl(dd)
+                table.insert(self.refreshWidgets, dd)
+                table.insert(folioRows, dRow)
+            end
+
+            ws.omniFolioDrawer = {
+                rEnable = rFolioEnable,
+                tuneBtn = tuneFolio,
+                rows    = folioRows,
+            }
         end
-        tab2:SetHeight(728 + 14 + 422 + 14)
+
+        -- Card 3 (inside Tab 2 below Omni Folio): Paperdoll Gear Audit
+        do
+            local card3 = CreateFrame("Frame", nil, tab2, "BackdropTemplate")
+            card3:SetPoint("TOPLEFT", ws.card2, "BOTTOMLEFT", 0, -14)
+            card3:SetPoint("TOPRIGHT", ws.card2, "BOTTOMRIGHT", 0, -14)
+            card3:SetHeight(124)
+            SetPixelBackdrop(card3, COLORS.BgCanvas, COLORS.BorderStrong, 1)
+            ws.paperdollCard = card3
+
+            local pdHdr = CreateSectionHeader(
+                card3, -10,
+                "PAPERDOLL GEAR AUDIT",
+                "Highlight equipped gear slots missing Midnight enchants or containing empty gem sockets on your Character panel.",
+                14
+            )
+
+            local previewAuditBtn = CreateFrame("Button", nil, card3, "BackdropTemplate")
+            previewAuditBtn:SetSize(118, 22)
+            previewAuditBtn:SetPoint("TOPRIGHT", card3, "TOPRIGHT", -14, -7)
+            SetPixelBackdrop(previewAuditBtn, COLORS.BgElevated, COLORS.BorderStrong, 1)
+            previewAuditBtn.txt = CreateText(previewAuditBtn, "OVERLAY", "GameFontHighlightSmall", 11)
+            previewAuditBtn.txt:SetPoint("CENTER")
+            previewAuditBtn.txt:SetWordWrap(false)
+            previewAuditBtn.txt:SetText("Preview on Gear")
+            previewAuditBtn.RefreshValue = function(s)
+                local ar, ag, ab = GetActiveAccentRGB()
+                if self._simPaperdollAudit then
+                    SetPixelBackdrop(s, { ar * 0.35, ag * 0.35, ab * 0.35, 0.98 }, { ar, ag, ab, 1.0 }, 1)
+                    s.txt:SetText("Clear Preview")
+                    s.txt:SetTextColor(1, 1, 1, 1)
+                else
+                    SetPixelBackdrop(s, COLORS.BgElevated, { ar, ag, ab, 0.85 }, 1)
+                    s.txt:SetText("Preview on Gear")
+                    s.txt:SetTextColor(0.95, 0.97, 1.0, 1)
+                end
+            end
+            previewAuditBtn:SetScript("OnEnter", function(s)
+                local ar, ag, ab = GetActiveAccentRGB()
+                SetPixelBackdrop(s, COLORS.BgHover, { ar, ag, ab, 1.0 }, 1)
+                if GameTooltip then
+                    GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                    GameTooltip:AddLine("Preview Paperdoll Gear Audit", ar, ag, ab)
+                    GameTooltip:AddLine("Opens your Character panel and highlights Head and Ring 1 in gold so you can preview missing-enchant borders.", 0.86, 0.90, 0.96, true)
+                    GameTooltip:Show()
+                end
+            end)
+            previewAuditBtn:SetScript("OnLeave", function(s)
+                s:RefreshValue()
+                if GameTooltip then GameTooltip:Hide() end
+            end)
+            previewAuditBtn:SetScript("OnClick", function()
+                self:TogglePaperdollAuditPreview()
+                previewAuditBtn:RefreshValue()
+            end)
+            table.insert(self.refreshWidgets, previewAuditBtn)
+
+            pdHdr.title:SetPoint("RIGHT", previewAuditBtn, "LEFT", -10, 0)
+            pdHdr.title:SetWordWrap(false)
+            if pdHdr.subtitle then
+                pdHdr.subtitle:SetPoint("RIGHT", previewAuditBtn, "LEFT", -10, 0)
+            end
+
+            local rPaperdoll = CreateSpaciousRow(
+                card3, -54,
+                "Highlight Missing Enchants & Empty Sockets",
+                "Draws crisp gold borders around equipped Character panel slots that are missing an enchant or have an empty gem socket.",
+                156
+            )
+            local pPaperdoll = CreateSegmentedPills(
+                rPaperdoll, 156,
+                {
+                    { value = false, label = "Off" },
+                    { value = true,  label = "Enabled" },
+                },
+                function() return self.db.paperdollAuditEnabled ~= false end,
+                function(v)
+                    self.db.paperdollAuditEnabled = (v == true)
+                    self:UpdatePaperdollSlotHighlights()
+                end
+            )
+            rPaperdoll:BindRightControl(pPaperdoll)
+            table.insert(self.refreshWidgets, pPaperdoll)
+        end
 
         -- ====================================================================
         -- TAB 3: World, Instance & Survival Automation + Conflict Scanner
@@ -10514,30 +11007,31 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             cScan.rows[i] = crow
         end
 
-        -- Card 2: World, Instance & Survival Automation
-        local cQoL = CreateFrame("Frame", nil, tab3, "BackdropTemplate")
-        cQoL:SetPoint("TOPLEFT", tab3, "TOPLEFT", 0, 0)
-        cQoL:SetPoint("TOPRIGHT", tab3, "TOPRIGHT", 0, 0)
-        cQoL:SetHeight(440)
-        SetPixelBackdrop(cQoL, COLORS.BgCanvas, COLORS.BorderStrong, 1)
-        ws.qolCard = cQoL
+        -- Card 2a: Quest, Dialogue & Cutscenes
+        local cQuest = CreateFrame("Frame", nil, tab3, "BackdropTemplate")
+        cQuest:SetPoint("TOPLEFT", tab3, "TOPLEFT", 0, 0)
+        cQuest:SetPoint("TOPRIGHT", tab3, "TOPRIGHT", 0, 0)
+        cQuest:SetHeight(360)
+        SetPixelBackdrop(cQuest, COLORS.BgCanvas, COLORS.BorderStrong, 1)
+        ws.qolQuestCard = cQuest
+        ws.qolCard = cQuest
 
-        local qHdr = CreateSectionHeader(
-            cQoL, -10,
-            "WORLD, INSTANCE & SURVIVAL AUTOMATION",
-            "Automate quest turn-ins, Catalyst conversions, instance cutscenes, post-wipe resurrection/release, and survival macros.",
+        CreateSectionHeader(
+            cQuest, -10,
+            "QUEST, DIALOGUE & CUTSCENES",
+            "Automate quest turn-ins, single-option dungeon prompts, Revival Catalyst conversions, and cutscenes.",
             14
         )
 
         -- 1. Auto-Skip Gossip & Quest Accept / Turn-In
         local rQuestGossip = CreateSpaciousRow(
-            cQoL, -54,
+            cQuest, -54,
             "Auto-Skip Gossip & Quest Turn-In",
             "Automatically accepts quests, turns in completed quests (pauses if choosing between rewards), and skips quest gossip (hold Shift to bypass).",
-            200
+            156
         )
         local pillsQuestGossip = CreateSegmentedPills(
-            rQuestGossip, 200,
+            rQuestGossip, 156,
             {
                 { value = false, label = "Off" },
                 { value = true,  label = "Enabled" },
@@ -10548,9 +11042,9 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         rQuestGossip:BindRightControl(pillsQuestGossip)
         table.insert(self.refreshWidgets, pillsQuestGossip)
 
-        -- 1a-i. Opt-In Auto-Confirm Free Dungeon & Raid Prompts (Off by default)
+        -- 2. Opt-In Auto-Confirm Free Dungeon & Raid Prompts (Off by default)
         local rAutoConfirmInstanceGossip = CreateSpaciousRow(
-            cQoL, -114,
+            cQuest, -114,
             "Auto-Confirm Free Dungeon & Raid Prompts",
             "Automatically confirms free single-option NPC prompts (such as boss starts) inside Dungeons, Raids, and Delves. Open-world and paid prompts always ask first (hold Shift to pause).",
             156
@@ -10567,15 +11061,15 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         rAutoConfirmInstanceGossip:BindRightControl(pillsAutoConfirmInstanceGossip)
         table.insert(self.refreshWidgets, pillsAutoConfirmInstanceGossip)
 
-        -- 1a-ii. Auto-Confirm Single-Option Chamber Doors & Player Choices (Labyrinth / Delve / World PlayerChoiceFrame)
+        -- 3. Auto-Confirm Single-Option Chamber Doors & Player Choices
         local rAutoChoice = CreateSpaciousRow(
-            cQoL, -114,
+            cQuest, -174,
             "Auto-Confirm Single-Option Doors & Choices",
             "Automatically confirms single-option choice popups across Delves, Labyrinth doors, dungeons, and world events on Right-Click or Interact keybind (hold Shift to open manually).",
-            200
+            156
         )
         local pillsAutoChoice = CreateSegmentedPills(
-            rAutoChoice, 200,
+            rAutoChoice, 156,
             {
                 { value = false, label = "Off" },
                 { value = true,  label = "Enabled" },
@@ -10586,15 +11080,15 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         rAutoChoice:BindRightControl(pillsAutoChoice)
         table.insert(self.refreshWidgets, pillsAutoChoice)
 
-        -- 1b. One-Click Catalyst (Revival Catalyst instant item conversion without confirmation popup)
+        -- 4. One-Click Catalyst
         local rCatalyst = CreateSpaciousRow(
-            cQoL, -114,
+            cQuest, -234,
             "One-Click Catalyst",
             "Completes Revival Catalyst tier conversions in a single click on Transform without a second confirmation popup or 5-second wait (hold Shift to show popup).",
-            200
+            156
         )
         local pillsCatalyst = CreateSegmentedPills(
-            rCatalyst, 200,
+            rCatalyst, 156,
             {
                 { value = false, label = "Off" },
                 { value = true,  label = "Enabled" },
@@ -10605,28 +11099,9 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         rCatalyst:BindRightControl(pillsCatalyst)
         table.insert(self.refreshWidgets, pillsCatalyst)
 
-        -- 1c. Auto-Accept Group Summons (CONFIRM_SUMMON, 1.5s out-of-combat safety delay)
-        local rAutoSummon = CreateSpaciousRow(
-            cQoL, -114,
-            "Auto-Accept Group Summons",
-            "Automatically accepts Warlock and Meeting Stone summons after a 1.5s out-of-combat safety delay (skipped while dead or in combat; hold Shift to cancel).",
-            200
-        )
-        local pillsAutoSummon = CreateSegmentedPills(
-            rAutoSummon, 200,
-            {
-                { value = false, label = "Off" },
-                { value = true,  label = "Enabled" },
-            },
-            function() return self.db.autoAcceptSummon == true end,
-            function(v) self.db.autoAcceptSummon = v end
-        )
-        rAutoSummon:BindRightControl(pillsAutoSummon)
-        table.insert(self.refreshWidgets, pillsAutoSummon)
-
-        -- 2. Hide Talking Head & Skip Cutscenes
+        -- 5. Hide Talking Head & Skip Cutscenes
         local rCine = CreateSpaciousRow(
-            cQoL, -114,
+            cQuest, -294,
             "Hide Talking Head & Skip Cutscenes",
             "Hides Talking Head popups and skips cutscenes and movies automatically. Hold Shift to watch a cutscene without skipping.",
             280
@@ -10647,15 +11122,49 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         rCine:BindRightControl(pillsCine)
         table.insert(self.refreshWidgets, pillsCine)
 
-        -- 3. Smart Auto-Accept Resurrection (Long descriptive rules -> Fixed-Width 240px Obsidian Dropdown)
+        -- Card 2b: Combat, Error & Survival Guards
+        local cCombat = CreateFrame("Frame", nil, tab3, "BackdropTemplate")
+        cCombat:SetPoint("TOPLEFT", cQuest, "BOTTOMLEFT", 0, -14)
+        cCombat:SetPoint("TOPRIGHT", cQuest, "BOTTOMRIGHT", 0, -14)
+        cCombat:SetHeight(420)
+        SetPixelBackdrop(cCombat, COLORS.BgCanvas, COLORS.BorderStrong, 1)
+        ws.qolCombatCard = cCombat
+
+        CreateSectionHeader(
+            cCombat, -10,
+            "COMBAT, ERROR & SURVIVAL GUARDS",
+            "Group summons, post-wipe resurrection and spirit release safety, [DynamicHeal] macro, and red error filtering.",
+            14
+        )
+
+        -- 1. Auto-Accept Group Summons
+        local rAutoSummon = CreateSpaciousRow(
+            cCombat, -54,
+            "Auto-Accept Group Summons",
+            "Automatically accepts Warlock and Meeting Stone summons after a 1.5s out-of-combat safety delay (skipped while dead or in combat; hold Shift to cancel).",
+            156
+        )
+        local pillsAutoSummon = CreateSegmentedPills(
+            rAutoSummon, 156,
+            {
+                { value = false, label = "Off" },
+                { value = true,  label = "Enabled" },
+            },
+            function() return self.db.autoAcceptSummon == true end,
+            function(v) self.db.autoAcceptSummon = v end
+        )
+        rAutoSummon:BindRightControl(pillsAutoSummon)
+        table.insert(self.refreshWidgets, pillsAutoSummon)
+
+        -- 2. Smart Auto-Accept Resurrection
         local rRez = CreateSpaciousRow(
-            cQoL, -174,
+            cCombat, -114,
             "Smart Auto-Accept Resurrection",
             "Auto-accepts mass/normal rez after a wipe when the group is out of combat; never auto-takes a combat Battle Rez.",
-            240
+            260
         )
         local ddRez = CreateObsidianDropdown(
-            rRez, 290,
+            rRez, 260,
             {
                 { value = "OUT_OF_COMBAT", label = "Safe Out-of-Combat Only (Post-Wipe)" },
                 { value = "ALWAYS",        label = "Always (Include Combat Battle Rez)" },
@@ -10667,15 +11176,15 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         rRez:BindRightControl(ddRez)
         table.insert(self.refreshWidgets, ddRez)
 
-        -- 4. Smart Auto-Release Spirit (Long descriptive rules -> Fixed-Width 240px Obsidian Dropdown)
+        -- 3. Smart Auto-Release Spirit
         local rRelease = CreateSpaciousRow(
-            cQoL, -234,
+            cCombat, -174,
             "Smart Auto-Release Spirit",
             "Auto-releases spirit upon raid/dungeon wipes. Keeps the Release button greyed out until Ctrl is held to prevent accidental releases.",
-            240
+            260
         )
         local ddRelease = CreateObsidianDropdown(
-            rRelease, 290,
+            rRelease, 260,
             {
                 { value = "WIPE_AND_CTRL",     label = "Auto-Release on Wipe + Hold Ctrl Safety" },
                 { value = "HOLD_CTRL",         label = "Hold Ctrl to Release (Never Auto-Release)" },
@@ -10692,20 +11201,19 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         rRelease:BindRightControl(ddRelease)
         table.insert(self.refreshWidgets, ddRelease)
 
-        -- 5. Automated Healing Macro ([DynamicHeal]) + Action Sub-Drawer
-        ws.healDrawerOpen = true
+        -- 4. Automated Healing Macro ([DynamicHeal]) + Action Sub-Drawer
         local rHealMacro = CreateSpaciousRow(
-            cQoL, -294,
+            cCombat, -234,
             "Automated Healing Macro ([DynamicHeal])",
             "Scans bags on zone entry and Soulwell loot. Updates out of combat.",
-            416
+            288
         )
         local pillsHealMacro = CreateSegmentedPills(
-            rHealMacro, 376,
+            rHealMacro, 288,
             {
                 { value = "STONE_FIRST", label = "Stone -> Pot" },
                 { value = "POT_FIRST",   label = "Pot -> Stone" },
-                { value = "BOTH",        label = "Both (Panic)" },
+                { value = "BOTH",        label = "Both" },
                 { value = "OFF",         label = "Off" },
             },
             function()
@@ -10716,7 +11224,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
                 self.db.healMacroOrder = v
                 self.db.autoHealMacroEnabled = (v ~= "OFF")
                 if v ~= "OFF" then
-                    ws.healDrawerOpen = true
+                    self:SetDrawerExpanded("healMacro", true)
                     self:UpdateHealMacro(false)
                 end
                 self:RefreshWorkspaceView()
@@ -10726,20 +11234,20 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         table.insert(self.refreshWidgets, pillsHealMacro)
 
         local tuneHealMacro = CreateSubDrawerToggleBar(
-            cQoL, 1,
+            cCombat, 1,
             function()
                 return self.db and self.db.autoHealMacroEnabled ~= false and (self.db.healMacroOrder or "STONE_FIRST") ~= "OFF"
             end,
-            function() return ws.healDrawerOpen ~= false end,
+            function() return self:IsDrawerExpanded("healMacro") end,
             function()
-                ws.healDrawerOpen = (ws.healDrawerOpen == false)
+                self:ToggleDrawerExpanded("healMacro")
                 self:RefreshWorkspaceView()
             end
         )
         rHealMacro.tuneBtn = tuneHealMacro
         table.insert(self.refreshWidgets, tuneHealMacro)
 
-        local dHealMacro = CreateInlineSubDrawer(cQoL, "Macro [DynamicHeal]: Drag to Action Bar")
+        local dHealMacro = CreateInlineSubDrawer(cCombat, "Macro [DynamicHeal]: Drag to Action Bar")
         local btnPickupHeal = CreateFrame("Button", nil, dHealMacro, "BackdropTemplate")
         btnPickupHeal:SetSize(184, 26)
         btnPickupHeal.txt = CreateText(btnPickupHeal, "OVERLAY", "GameFontHighlightSmall")
@@ -10776,28 +11284,42 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         dHealMacro:BindRightControl(btnPickupHeal)
         table.insert(self.refreshWidgets, btnPickupHeal)
 
+        -- Card 2c: Healer Recovery & Durability
+        local cRecovery = CreateFrame("Frame", nil, tab3, "BackdropTemplate")
+        cRecovery:SetPoint("TOPLEFT", cCombat, "BOTTOMLEFT", 0, -14)
+        cRecovery:SetPoint("TOPRIGHT", cCombat, "BOTTOMRIGHT", 0, -14)
+        cRecovery:SetHeight(280)
+        SetPixelBackdrop(cRecovery, COLORS.BgCanvas, COLORS.BorderStrong, 1)
+        ws.qolRecoveryCard = cRecovery
+
+        CreateSectionHeader(
+            cRecovery, -10,
+            "HEALER RECOVERY & DURABILITY",
+            "Out-of-combat drink macros, Follower Dungeon Mage Food restock prompts, and low durability alerts.",
+            14
+        )
+
         local function BuildRecoveryQoLRows()
-            -- 6. Automated Drink & Recovery Macro ([DynamicDrink]) + 3-Row Sub-Drawer
-            ws.drinkDrawerOpen = true
+            -- 1. Automated Drink & Recovery Macro ([DynamicDrink]) + 3-Row Sub-Drawer (in cRecovery)
             local rDrinkMacro = CreateSpaciousRow(
-                cQoL, -294,
+                cRecovery, -54,
                 "Automated Drink & Recovery Macro ([DynamicDrink])",
-                "Out-of-combat [nocombat] drink and food macro. Excludes Well Fed buff food by default.",
-                416
+                "Out-of-combat drink and food macro. Excludes Well Fed buff food by default.",
+                288
             )
             local pillsDrinkMacro = CreateSegmentedPills(
-                rDrinkMacro, 416,
+                rDrinkMacro, 288,
                 {
                     { value = "ROLE_SMART",   label = "Role-Smart" },
                     { value = "MANA_FIRST",   label = "Mana First" },
-                    { value = "HEALTH_RECUP", label = "Health / Recup" },
+                    { value = "HEALTH_RECUP", label = "Health" },
                     { value = "OFF",          label = "Off" },
                 },
                 function() return self.db.drinkMacroMode or "ROLE_SMART" end,
                 function(v)
                     self.db.drinkMacroMode = v
                     if v ~= "OFF" then
-                        ws.drinkDrawerOpen = true
+                        self:SetDrawerExpanded("drinkMacro", true)
                         self:UpdateDrinkMacro(false)
                     end
                     self:RefreshWorkspaceView()
@@ -10807,20 +11329,20 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             table.insert(self.refreshWidgets, pillsDrinkMacro)
 
             local tuneDrinkMacro = CreateSubDrawerToggleBar(
-                cQoL, 3,
+                cRecovery, 3,
                 function()
                     return self.db and (self.db.drinkMacroMode or "ROLE_SMART") ~= "OFF"
                 end,
-                function() return ws.drinkDrawerOpen ~= false end,
+                function() return self:IsDrawerExpanded("drinkMacro") end,
                 function()
-                    ws.drinkDrawerOpen = (ws.drinkDrawerOpen == false)
+                    self:ToggleDrawerExpanded("drinkMacro")
                     self:RefreshWorkspaceView()
                 end
             )
             rDrinkMacro.tuneBtn = tuneDrinkMacro
             table.insert(self.refreshWidgets, tuneDrinkMacro)
 
-            local dDrinkMacro = CreateInlineSubDrawer(cQoL, "Macro [DynamicDrink]: Drag to Action Bar")
+            local dDrinkMacro = CreateInlineSubDrawer(cRecovery, "Macro [DynamicDrink]: Drag to Action Bar")
             local btnPickupDrink = CreateFrame("Button", nil, dDrinkMacro, "BackdropTemplate")
             btnPickupDrink:SetSize(184, 26)
             btnPickupDrink.txt = CreateText(btnPickupDrink, "OVERLAY", "GameFontHighlightSmall")
@@ -10858,7 +11380,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dDrinkMacro:BindRightControl(btnPickupDrink)
             table.insert(self.refreshWidgets, btnPickupDrink)
 
-            local dDrinkRecup = CreateInlineSubDrawer(cQoL, "Fallback to Recuperate (when out of drinks/food)")
+            local dDrinkRecup = CreateInlineSubDrawer(cRecovery, "Fallback to Recuperate (when out of drinks/food)")
             local pDrinkRecup = CreateSegmentedPills(
                 dDrinkRecup, 156,
                 {
@@ -10875,7 +11397,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dDrinkRecup:BindRightControl(pDrinkRecup)
             table.insert(self.refreshWidgets, pDrinkRecup)
 
-            local dDrinkBuffFood = CreateInlineSubDrawer(cQoL, "Allow Buff Food as Last Resort (Warning: consumes Well Fed food)")
+            local dDrinkBuffFood = CreateInlineSubDrawer(cRecovery, "Allow Buff Food as Last Resort (Warning: consumes Well Fed food)")
             local pDrinkBuffFood = CreateSegmentedPills(
                 dDrinkBuffFood, 156,
                 {
@@ -10892,10 +11414,9 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dDrinkBuffFood:BindRightControl(pDrinkBuffFood)
             table.insert(self.refreshWidgets, pDrinkBuffFood)
 
-            -- 7. Healer Mage Food Restock (Follower Dungeon) + 4-Row Sub-Drawer
-            ws.mageFoodDrawerOpen = true
+            -- 2. Healer Mage Food Restock (Follower Dungeon) + 4-Row Sub-Drawer (in cRecovery)
             local rMageFood = CreateSpaciousRow(
-                cQoL, -294,
+                cRecovery, -114,
                 "Healer Mage Food Restock (Follower Dungeon)",
                 "Prompts solo players to queue a Follower Dungeon when low on Conjured Mana Buns, prompts to leave once restocked, and offers a 1-click Ask for Table toast in groups with a Mage.",
                 156
@@ -10924,7 +11445,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
                 function(v)
                     self.db.mageFoodRestockEnabled = (v == true)
                     if v == true then
-                        ws.mageFoodDrawerOpen = true
+                        self:SetDrawerExpanded("mageFood", true)
                         self:RequestMageFoodCheck("TOGGLE", 0.1)
                     else
                         self:HideMageFoodToast()
@@ -10936,18 +11457,18 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             table.insert(self.refreshWidgets, pillsMageFood)
 
             local tuneMageFood = CreateSubDrawerToggleBar(
-                cQoL, 4,
+                cRecovery, 4,
                 function() return self.db and self.db.mageFoodRestockEnabled ~= false end,
-                function() return ws.mageFoodDrawerOpen ~= false end,
+                function() return self:IsDrawerExpanded("mageFood") end,
                 function()
-                    ws.mageFoodDrawerOpen = (ws.mageFoodDrawerOpen == false)
+                    self:ToggleDrawerExpanded("mageFood")
                     self:RefreshWorkspaceView()
                 end
             )
             rMageFood.tuneBtn = tuneMageFood
             table.insert(self.refreshWidgets, tuneMageFood)
 
-            local dMageScope = CreateInlineSubDrawer(cQoL, "Role Scope (Restock & Mage Table Prompts)")
+            local dMageScope = CreateInlineSubDrawer(cRecovery, "Role Scope (Restock & Mage Table Prompts)")
             local pMageScope = CreateSegmentedPills(
                 dMageScope, 240,
                 {
@@ -10963,7 +11484,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dMageScope:BindRightControl(pMageScope)
             table.insert(self.refreshWidgets, pMageScope)
 
-            local dMageMin = CreateInlineSubDrawer(cQoL, "Low Food Alert Threshold (Alert when below)")
+            local dMageMin = CreateInlineSubDrawer(cRecovery, "Low Food Alert Threshold (Alert when below)")
             local sMageMin = CreateObsidianSlider(
                 dMageMin, 256, 5, 60, 5,
                 function(val) return string.format("%d", val) end,
@@ -10976,7 +11497,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dMageMin:BindRightControl(sMageMin)
             table.insert(self.refreshWidgets, sMageMin)
 
-            local dMageLeave = CreateInlineSubDrawer(cQoL, "Auto-Leave Target (Prompt to leave inside Follower Dungeon)")
+            local dMageLeave = CreateInlineSubDrawer(cRecovery, "Auto-Leave Target (Prompt to leave inside Follower Dungeon)")
             local sMageLeave = CreateObsidianSlider(
                 dMageLeave, 256, 20, 80, 20,
                 function(val) return string.format("%d", val) end,
@@ -10988,7 +11509,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dMageLeave:BindRightControl(sMageLeave)
             table.insert(self.refreshWidgets, sMageLeave)
 
-            local dMageTest = CreateInlineSubDrawer(cQoL, "Conjured Mana Buns in Bags: 0")
+            local dMageTest = CreateInlineSubDrawer(cRecovery, "Conjured Mana Buns in Bags: 0")
             local btnTestMageToast = CreateFrame("Button", nil, dMageTest, "BackdropTemplate")
             btnTestMageToast:SetSize(156, 26)
             btnTestMageToast.txt = CreateText(btnTestMageToast, "OVERLAY", "GameFontHighlightSmall")
@@ -11014,10 +11535,9 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dMageTest:BindRightControl(btnTestMageToast)
             table.insert(self.refreshWidgets, btnTestMageToast)
 
-            -- 8. Low Durability Alert Toast + 2-Row Sub-Drawer
-            ws.durabilityDrawerOpen = true
+            -- 3. Low Durability Alert Toast + 2-Row Sub-Drawer (in cRecovery)
             local rDurabilityAlert = CreateSpaciousRow(
-                cQoL, -294,
+                cRecovery, -174,
                 "Low Durability Alert Toast",
                 "Shows a 1-click alert toast when any equipped gear slot drops to or below your durability threshold (summons a repair mount outdoors or opens your gear).",
                 156
@@ -11032,7 +11552,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
                 function(v)
                     self.db.durabilityAlertEnabled = (v == true)
                     if v == true then
-                        ws.durabilityDrawerOpen = true
+                        self:SetDrawerExpanded("durability", true)
                         self:RequestDurabilityCheck("TOGGLE", 0.1)
                     else
                         self:HideDurabilityToast()
@@ -11044,18 +11564,18 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             table.insert(self.refreshWidgets, pillsDurability)
 
             local tuneDurability = CreateSubDrawerToggleBar(
-                cQoL, 2,
+                cRecovery, 2,
                 function() return self.db and self.db.durabilityAlertEnabled ~= false end,
-                function() return ws.durabilityDrawerOpen ~= false end,
+                function() return self:IsDrawerExpanded("durability") end,
                 function()
-                    ws.durabilityDrawerOpen = (ws.durabilityDrawerOpen == false)
+                    self:ToggleDrawerExpanded("durability")
                     self:RefreshWorkspaceView()
                 end
             )
             rDurabilityAlert.tuneBtn = tuneDurability
             table.insert(self.refreshWidgets, tuneDurability)
 
-            local dDurThresh = CreateInlineSubDrawer(cQoL, "Alert Threshold (Lowest Equipped Slot)")
+            local dDurThresh = CreateInlineSubDrawer(cRecovery, "Alert Threshold (Lowest Equipped Slot)")
             local sDurThresh = CreateObsidianSlider(
                 dDurThresh, 256, 10, 40, 5,
                 function(val) return string.format("%d%%", val) end,
@@ -11068,7 +11588,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dDurThresh:BindRightControl(sDurThresh)
             table.insert(self.refreshWidgets, sDurThresh)
 
-            local dDurTest = CreateInlineSubDrawer(cQoL, "Current Lowest Slot: 100% (Average: 100%)")
+            local dDurTest = CreateInlineSubDrawer(cRecovery, "Current Lowest Slot: 100% (Average: 100%)")
             local btnTestDurToast = CreateFrame("Button", nil, dDurTest, "BackdropTemplate")
             btnTestDurToast:SetSize(156, 26)
             btnTestDurToast.txt = CreateText(btnTestDurToast, "OVERLAY", "GameFontHighlightSmall")
@@ -11094,10 +11614,9 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dDurTest:BindRightControl(btnTestDurToast)
             table.insert(self.refreshWidgets, btnTestDurToast)
 
-            -- 9. Red Error Text & Sound Filter + 3-Row Sub-Drawer
-            ws.errorFilterDrawerOpen = true
+            -- 4. Red Error Text & Sound Filter + 3-Row Sub-Drawer (in cCombat)
             local rErrorFilter = CreateSpaciousRow(
-                cQoL, -294,
+                cCombat, -294,
                 "Red Error Text & Sound Filter",
                 "Hides repetitive red combat and movement errors and optionally mutes error voice lines. Quest, encounter, and system messages are never hidden.",
                 156
@@ -11112,7 +11631,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
                 function(v)
                     self.db.errorFilterEnabled = (v == true)
                     if v == true then
-                        ws.errorFilterDrawerOpen = true
+                        self:SetDrawerExpanded("errorFilter", true)
                     end
                     self:SyncErrorFilterState(false)
                     self:RefreshWorkspaceView()
@@ -11121,7 +11640,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             rErrorFilter:BindRightControl(pillsErrorFilter)
             table.insert(self.refreshWidgets, pillsErrorFilter)
 
-            local dErrorYieldNote = CreateInlineSubDrawer(cQoL, "Auto-yielding to external addon.")
+            local dErrorYieldNote = CreateInlineSubDrawer(cCombat, "Auto-yielding to external addon.")
             dErrorYieldNote.title:SetTextColor(0.220, 0.741, 0.973, 1.0)
             function dErrorYieldNote:RefreshValue()
                 local yieldAddon, friendlyName = DynamicPrep:GetErrorFilterYieldAddon()
@@ -11135,18 +11654,18 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             table.insert(self.refreshWidgets, dErrorYieldNote)
 
             local tuneErrorFilter = CreateSubDrawerToggleBar(
-                cQoL, 3,
+                cCombat, 3,
                 function() return self.db and self.db.errorFilterEnabled == true end,
-                function() return ws.errorFilterDrawerOpen ~= false end,
+                function() return self:IsDrawerExpanded("errorFilter") end,
                 function()
-                    ws.errorFilterDrawerOpen = (ws.errorFilterDrawerOpen == false)
+                    self:ToggleDrawerExpanded("errorFilter")
                     self:RefreshWorkspaceView()
                 end
             )
             rErrorFilter.tuneBtn = tuneErrorFilter
             table.insert(self.refreshWidgets, tuneErrorFilter)
 
-            local dErrCombat = CreateInlineSubDrawer(cQoL, "Hide Combat & Cooldown Spam")
+            local dErrCombat = CreateInlineSubDrawer(cCombat, "Hide Combat & Cooldown Spam")
             dErrCombat:HookScript("OnEnter", function(selfRow)
                 if GameTooltip then
                     local ar, ag, ab = GetActiveAccentRGB()
@@ -11173,7 +11692,7 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dErrCombat:BindRightControl(pErrCombat)
             table.insert(self.refreshWidgets, pErrCombat)
 
-            local dErrMove = CreateInlineSubDrawer(cQoL, "Hide Movement & Mount Errors")
+            local dErrMove = CreateInlineSubDrawer(cCombat, "Hide Movement & Mount Errors")
             dErrMove:HookScript("OnEnter", function(selfRow)
                 if GameTooltip then
                     local ar, ag, ab = GetActiveAccentRGB()
@@ -11200,13 +11719,13 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             dErrMove:BindRightControl(pErrMove)
             table.insert(self.refreshWidgets, pErrMove)
 
-            local dErrSpeech = CreateInlineSubDrawer(cQoL, "Mute Error Voice Lines")
+            local dErrSpeech = CreateInlineSubDrawer(cCombat, "Mute Error Voice Lines")
             dErrSpeech:HookScript("OnEnter", function(selfRow)
                 if GameTooltip then
                     local ar, ag, ab = GetActiveAccentRGB()
                     GameTooltip:SetOwner(selfRow, "ANCHOR_TOP")
                     GameTooltip:AddLine("Mute Error Voice Lines", ar, ag, ab)
-                    GameTooltip:AddLine("Toggles Sound_EnableErrorSpeech to silence 'I can't cast that yet' voice lines, and restores your original setting when turned off or if DynamicPrep is disabled.", 0.88, 0.91, 0.96, true)
+                    GameTooltip:AddLine("Silences character error voice lines (such as 'I can't cast that yet'), and restores your original sound setting when turned off or if DynamicPrep is disabled.", 0.88, 0.91, 0.96, true)
                     GameTooltip:Show()
                 end
             end)
@@ -11242,9 +11761,15 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         local recRows = BuildRecoveryQoLRows()
 
         ws.qolRows = {
+            questRows        = { rQuestGossip, rAutoConfirmInstanceGossip, rAutoChoice, rCatalyst, rCine },
+            combatRows       = { rAutoSummon, rRez, rRelease },
             rHealMacro       = rHealMacro,
             tuneHealMacro    = tuneHealMacro,
             dHealMacro       = dHealMacro,
+            rErrorFilter     = recRows.rErrorFilter,
+            tuneErrorFilter  = recRows.tuneErrorFilter,
+            dErrorYieldNote  = recRows.dErrorYieldNote,
+            dErrorDrawers    = recRows.dErrorDrawers,
             rDrinkMacro      = recRows.rDrinkMacro,
             tuneDrinkMacro   = recRows.tuneDrinkMacro,
             dDrinkDrawers    = recRows.dDrinkDrawers,
@@ -11254,11 +11779,6 @@ function DynamicPrep:RenderWorkspace(parentFrame)
             rDurabilityAlert = recRows.rDurabilityAlert,
             tuneDurability   = recRows.tuneDurability,
             dDurDrawers      = recRows.dDurDrawers,
-            rErrorFilter     = recRows.rErrorFilter,
-            tuneErrorFilter  = recRows.tuneErrorFilter,
-            dErrorYieldNote  = recRows.dErrorYieldNote,
-            dErrorDrawers    = recRows.dErrorDrawers,
-            others           = { rQuestGossip, rAutoConfirmInstanceGossip, rAutoChoice, rCatalyst, rAutoSummon, rCine, rRez, rRelease },
         }
     end
 
@@ -11295,7 +11815,7 @@ function DynamicPrep:LayoutTab1CardRows()
         tuneStat:Show()
         y = y - 28
 
-        if ws.statSortDrawerOpen ~= false then
+        if self:IsDrawerExpanded("statSort") then
             tr.dCustomStatOrder:ClearAllPoints()
             tr.dCustomStatOrder:SetPoint("TOPLEFT", card1, "TOPLEFT", 14, y + 2)
             tr.dCustomStatOrder:SetPoint("TOPRIGHT", card1, "TOPRIGHT", -14, y + 2)
@@ -11329,7 +11849,7 @@ function DynamicPrep:LayoutTab1CardRows()
             tunePing:Show()
             y = y - 28
 
-            if ws.pingDrawerOpen ~= false then
+            if self:IsDrawerExpanded("pingOrder") then
                 tr.dPingOrder:ClearAllPoints()
                 tr.dPingOrder:SetPoint("TOPLEFT", card1, "TOPLEFT", 14, y + 2)
                 tr.dPingOrder:SetPoint("TOPRIGHT", card1, "TOPRIGHT", -14, y + 2)
@@ -11357,45 +11877,147 @@ function DynamicPrep:LayoutTab1CardRows()
     return totalH
 end
 
+function DynamicPrep:LayoutTab2Cards()
+    local ws = self.workspaceFrame
+    if not ws or not ws.tab2 then return 600 end
+
+    -- 1. Clickable Raid Buffs Card (Readiness Strip + Enable Row + Persisted Sub-Settings (12))
+    local cBuffs = ws.raidBuffsCard
+    local rbH = 186
+    if cBuffs and ws.raidBuffsDrawer then
+        local rd = ws.raidBuffsDrawer
+        local y = -112
+        rd.rEnable:ClearAllPoints()
+        rd.rEnable:SetPoint("TOPLEFT", cBuffs, "TOPLEFT", 14, y)
+        rd.rEnable:SetPoint("TOPRIGHT", cBuffs, "TOPRIGHT", -14, y)
+        y = y - 60
+
+        local rbEnabled = self.db and self.db.raidBuffs and self.db.raidBuffs.enabled == true
+        if rd.tuneBtn then rd.tuneBtn:RefreshValue() end
+        if rbEnabled and rd.tuneBtn then
+            rd.tuneBtn:ClearAllPoints()
+            rd.tuneBtn:SetPoint("TOPLEFT", cBuffs, "TOPLEFT", 14, y + 2)
+            rd.tuneBtn:SetPoint("TOPRIGHT", cBuffs, "TOPRIGHT", -14, y + 2)
+            rd.tuneBtn:Show()
+            y = y - 28
+
+            local open = self:IsDrawerExpanded("raidBuffs")
+            for _, dr in ipairs(rd.rows or {}) do
+                if open then
+                    dr:ClearAllPoints()
+                    dr:SetPoint("TOPLEFT", cBuffs, "TOPLEFT", 14, y + 2)
+                    dr:SetPoint("TOPRIGHT", cBuffs, "TOPRIGHT", -14, y + 2)
+                    dr:RefreshBranchAccent()
+                    dr:Show()
+                    y = y - 46
+                else
+                    dr:Hide()
+                end
+            end
+        else
+            if rd.tuneBtn then rd.tuneBtn:Hide() end
+            for _, dr in ipairs(rd.rows or {}) do dr:Hide() end
+        end
+        rbH = math.abs(y) + 12
+        cBuffs:SetHeight(rbH)
+    end
+
+    -- 2. Midnight Omnium Folio Card (Enable Row + Persisted Sub-Settings (5))
+    local card2 = ws.card2
+    local folioH = 126
+    if card2 and ws.omniFolioDrawer then
+        local fd = ws.omniFolioDrawer
+        local y = -54
+        fd.rEnable:ClearAllPoints()
+        fd.rEnable:SetPoint("TOPLEFT", card2, "TOPLEFT", 14, y)
+        fd.rEnable:SetPoint("TOPRIGHT", card2, "TOPRIGHT", -14, y)
+        y = y - 60
+
+        local fEnabled = self.db and self.db.omniFolio and self.db.omniFolio.enabled == true
+        if fd.tuneBtn then fd.tuneBtn:RefreshValue() end
+        if fEnabled and fd.tuneBtn then
+            fd.tuneBtn:ClearAllPoints()
+            fd.tuneBtn:SetPoint("TOPLEFT", card2, "TOPLEFT", 14, y + 2)
+            fd.tuneBtn:SetPoint("TOPRIGHT", card2, "TOPRIGHT", -14, y + 2)
+            fd.tuneBtn:Show()
+            y = y - 28
+
+            local open = self:IsDrawerExpanded("omniFolio")
+            for _, dr in ipairs(fd.rows or {}) do
+                if open then
+                    dr:ClearAllPoints()
+                    dr:SetPoint("TOPLEFT", card2, "TOPLEFT", 14, y + 2)
+                    dr:SetPoint("TOPRIGHT", card2, "TOPRIGHT", -14, y + 2)
+                    dr:RefreshBranchAccent()
+                    dr:Show()
+                    y = y - 46
+                else
+                    dr:Hide()
+                end
+            end
+        else
+            if fd.tuneBtn then fd.tuneBtn:Hide() end
+            for _, dr in ipairs(fd.rows or {}) do dr:Hide() end
+        end
+        folioH = math.abs(y) + 12
+        card2:SetHeight(folioH)
+    end
+
+    -- 3. Paperdoll Gear Audit Card
+    local pdH = (ws.paperdollCard and ws.paperdollCard:GetHeight()) or 124
+    return rbH + 14 + folioH + 14 + pdH + 14
+end
+
 function DynamicPrep:LayoutQoLCardRows()
     local ws = self.workspaceFrame
-    if not ws or not ws.qolCard or not ws.qolRows then return 440 end
-    local cQoL = ws.qolCard
+    if not ws or not ws.qolQuestCard or not ws.qolRows then return 600 end
     local qr = ws.qolRows
-    local y = -54
 
-    for _, row in ipairs(qr.others) do
+    -- Section 1: Quest, Dialogue & Cutscenes
+    local cQuest = ws.qolQuestCard
+    local yQ = -54
+    for _, row in ipairs(qr.questRows or {}) do
         row:ClearAllPoints()
-        row:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y)
-        row:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y)
-        y = y - 60
+        row:SetPoint("TOPLEFT", cQuest, "TOPLEFT", 14, yQ)
+        row:SetPoint("TOPRIGHT", cQuest, "TOPRIGHT", -14, yQ)
+        yQ = yQ - 60
+    end
+    local questH = math.abs(yQ) + 12
+    cQuest:SetHeight(questH)
+
+    -- Section 2: Combat, Error & Survival Guards
+    local cCombat = ws.qolCombatCard
+    local yC = -54
+    for _, row in ipairs(qr.combatRows or {}) do
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", cCombat, "TOPLEFT", 14, yC)
+        row:SetPoint("TOPRIGHT", cCombat, "TOPRIGHT", -14, yC)
+        yC = yC - 60
     end
 
     if qr.rHealMacro then
         qr.rHealMacro:ClearAllPoints()
-        qr.rHealMacro:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y)
-        qr.rHealMacro:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y)
-        y = y - 60
+        qr.rHealMacro:SetPoint("TOPLEFT", cCombat, "TOPLEFT", 14, yC)
+        qr.rHealMacro:SetPoint("TOPRIGHT", cCombat, "TOPRIGHT", -14, yC)
+        yC = yC - 60
 
         local healEnabled = self.db and self.db.autoHealMacroEnabled ~= false and (self.db.healMacroOrder or "STONE_FIRST") ~= "OFF"
         local tuneHeal = qr.tuneHealMacro or (qr.rHealMacro and qr.rHealMacro.tuneBtn)
-        if tuneHeal then
-            tuneHeal:RefreshValue()
-        end
+        if tuneHeal then tuneHeal:RefreshValue() end
         if healEnabled and tuneHeal then
             tuneHeal:ClearAllPoints()
-            tuneHeal:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
-            tuneHeal:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+            tuneHeal:SetPoint("TOPLEFT", cCombat, "TOPLEFT", 14, yC + 2)
+            tuneHeal:SetPoint("TOPRIGHT", cCombat, "TOPRIGHT", -14, yC + 2)
             tuneHeal:Show()
-            y = y - 28
+            yC = yC - 28
 
-            if ws.healDrawerOpen ~= false then
+            if self:IsDrawerExpanded("healMacro") then
                 qr.dHealMacro:ClearAllPoints()
-                qr.dHealMacro:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
-                qr.dHealMacro:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+                qr.dHealMacro:SetPoint("TOPLEFT", cCombat, "TOPLEFT", 14, yC + 2)
+                qr.dHealMacro:SetPoint("TOPRIGHT", cCombat, "TOPRIGHT", -14, yC + 2)
                 qr.dHealMacro:RefreshBranchAccent()
                 qr.dHealMacro:Show()
-                y = y - 46
+                yC = yC - 46
             else
                 qr.dHealMacro:Hide()
             end
@@ -11405,30 +12027,86 @@ function DynamicPrep:LayoutQoLCardRows()
         end
     end
 
+    if qr.rErrorFilter then
+        qr.rErrorFilter:ClearAllPoints()
+        qr.rErrorFilter:SetPoint("TOPLEFT", cCombat, "TOPLEFT", 14, yC)
+        qr.rErrorFilter:SetPoint("TOPRIGHT", cCombat, "TOPRIGHT", -14, yC)
+        yC = yC - 60
+
+        local isYieldingErr = (self:GetErrorFilterYieldAddon() ~= nil)
+        if qr.dErrorYieldNote then
+            if isYieldingErr then
+                qr.dErrorYieldNote:ClearAllPoints()
+                qr.dErrorYieldNote:SetPoint("TOPLEFT", cCombat, "TOPLEFT", 14, yC + 2)
+                qr.dErrorYieldNote:SetPoint("TOPRIGHT", cCombat, "TOPRIGHT", -14, yC + 2)
+                qr.dErrorYieldNote:RefreshValue()
+                qr.dErrorYieldNote:Show()
+                yC = yC - 46
+            else
+                qr.dErrorYieldNote:Hide()
+            end
+        end
+
+        local errEnabled = self.db and self.db.errorFilterEnabled == true
+        local tuneErr = qr.tuneErrorFilter or (qr.rErrorFilter and qr.rErrorFilter.tuneBtn)
+        if tuneErr then tuneErr:RefreshValue() end
+        if errEnabled and tuneErr then
+            tuneErr:ClearAllPoints()
+            tuneErr:SetPoint("TOPLEFT", cCombat, "TOPLEFT", 14, yC + 2)
+            tuneErr:SetPoint("TOPRIGHT", cCombat, "TOPRIGHT", -14, yC + 2)
+            tuneErr:Show()
+            yC = yC - 28
+
+            local openErr = self:IsDrawerExpanded("errorFilter")
+            for _, dr in ipairs(qr.dErrorDrawers or {}) do
+                if openErr then
+                    dr:ClearAllPoints()
+                    dr:SetPoint("TOPLEFT", cCombat, "TOPLEFT", 14, yC + 2)
+                    dr:SetPoint("TOPRIGHT", cCombat, "TOPRIGHT", -14, yC + 2)
+                    dr:RefreshBranchAccent()
+                    dr:Show()
+                    yC = yC - 46
+                else
+                    dr:Hide()
+                end
+            end
+        else
+            if tuneErr then tuneErr:Hide() end
+            for _, dr in ipairs(qr.dErrorDrawers or {}) do dr:Hide() end
+        end
+    end
+    local combatH = math.abs(yC) + 12
+    cCombat:SetHeight(combatH)
+
+    -- Section 3: Healer Recovery & Durability
+    local cRecovery = ws.qolRecoveryCard
+    local yR = -54
+
     if qr.rDrinkMacro then
         qr.rDrinkMacro:ClearAllPoints()
-        qr.rDrinkMacro:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y)
-        qr.rDrinkMacro:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y)
-        y = y - 60
+        qr.rDrinkMacro:SetPoint("TOPLEFT", cRecovery, "TOPLEFT", 14, yR)
+        qr.rDrinkMacro:SetPoint("TOPRIGHT", cRecovery, "TOPRIGHT", -14, yR)
+        yR = yR - 60
 
         local drinkEnabled = self.db and (self.db.drinkMacroMode or "ROLE_SMART") ~= "OFF"
         local tuneDrink = qr.tuneDrinkMacro or (qr.rDrinkMacro and qr.rDrinkMacro.tuneBtn)
         if tuneDrink then tuneDrink:RefreshValue() end
         if drinkEnabled and tuneDrink then
             tuneDrink:ClearAllPoints()
-            tuneDrink:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
-            tuneDrink:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+            tuneDrink:SetPoint("TOPLEFT", cRecovery, "TOPLEFT", 14, yR + 2)
+            tuneDrink:SetPoint("TOPRIGHT", cRecovery, "TOPRIGHT", -14, yR + 2)
             tuneDrink:Show()
-            y = y - 28
+            yR = yR - 28
 
+            local openDrink = self:IsDrawerExpanded("drinkMacro")
             for _, dr in ipairs(qr.dDrinkDrawers or {}) do
-                if ws.drinkDrawerOpen ~= false then
+                if openDrink then
                     dr:ClearAllPoints()
-                    dr:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
-                    dr:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+                    dr:SetPoint("TOPLEFT", cRecovery, "TOPLEFT", 14, yR + 2)
+                    dr:SetPoint("TOPRIGHT", cRecovery, "TOPRIGHT", -14, yR + 2)
                     dr:RefreshBranchAccent()
                     dr:Show()
-                    y = y - 46
+                    yR = yR - 46
                 else
                     dr:Hide()
                 end
@@ -11441,28 +12119,29 @@ function DynamicPrep:LayoutQoLCardRows()
 
     if qr.rMageFood then
         qr.rMageFood:ClearAllPoints()
-        qr.rMageFood:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y)
-        qr.rMageFood:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y)
-        y = y - 60
+        qr.rMageFood:SetPoint("TOPLEFT", cRecovery, "TOPLEFT", 14, yR)
+        qr.rMageFood:SetPoint("TOPRIGHT", cRecovery, "TOPRIGHT", -14, yR)
+        yR = yR - 60
 
         local mageEnabled = self.db and self.db.mageFoodRestockEnabled ~= false
         local tuneMage = qr.tuneMageFood or (qr.rMageFood and qr.rMageFood.tuneBtn)
         if tuneMage then tuneMage:RefreshValue() end
         if mageEnabled and tuneMage then
             tuneMage:ClearAllPoints()
-            tuneMage:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
-            tuneMage:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+            tuneMage:SetPoint("TOPLEFT", cRecovery, "TOPLEFT", 14, yR + 2)
+            tuneMage:SetPoint("TOPRIGHT", cRecovery, "TOPRIGHT", -14, yR + 2)
             tuneMage:Show()
-            y = y - 28
+            yR = yR - 28
 
+            local openMage = self:IsDrawerExpanded("mageFood")
             for _, dr in ipairs(qr.dMageDrawers or {}) do
-                if ws.mageFoodDrawerOpen ~= false then
+                if openMage then
                     dr:ClearAllPoints()
-                    dr:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
-                    dr:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+                    dr:SetPoint("TOPLEFT", cRecovery, "TOPLEFT", 14, yR + 2)
+                    dr:SetPoint("TOPRIGHT", cRecovery, "TOPRIGHT", -14, yR + 2)
                     dr:RefreshBranchAccent()
                     dr:Show()
-                    y = y - 46
+                    yR = yR - 46
                 else
                     dr:Hide()
                 end
@@ -11475,28 +12154,29 @@ function DynamicPrep:LayoutQoLCardRows()
 
     if qr.rDurabilityAlert then
         qr.rDurabilityAlert:ClearAllPoints()
-        qr.rDurabilityAlert:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y)
-        qr.rDurabilityAlert:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y)
-        y = y - 60
+        qr.rDurabilityAlert:SetPoint("TOPLEFT", cRecovery, "TOPLEFT", 14, yR)
+        qr.rDurabilityAlert:SetPoint("TOPRIGHT", cRecovery, "TOPRIGHT", -14, yR)
+        yR = yR - 60
 
         local durEnabled = self.db and self.db.durabilityAlertEnabled ~= false
         local tuneDur = qr.tuneDurability or (qr.rDurabilityAlert and qr.rDurabilityAlert.tuneBtn)
         if tuneDur then tuneDur:RefreshValue() end
         if durEnabled and tuneDur then
             tuneDur:ClearAllPoints()
-            tuneDur:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
-            tuneDur:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+            tuneDur:SetPoint("TOPLEFT", cRecovery, "TOPLEFT", 14, yR + 2)
+            tuneDur:SetPoint("TOPRIGHT", cRecovery, "TOPRIGHT", -14, yR + 2)
             tuneDur:Show()
-            y = y - 28
+            yR = yR - 28
 
+            local openDur = self:IsDrawerExpanded("durability")
             for _, dr in ipairs(qr.dDurDrawers or {}) do
-                if ws.durabilityDrawerOpen ~= false then
+                if openDur then
                     dr:ClearAllPoints()
-                    dr:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
-                    dr:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
+                    dr:SetPoint("TOPLEFT", cRecovery, "TOPLEFT", 14, yR + 2)
+                    dr:SetPoint("TOPRIGHT", cRecovery, "TOPRIGHT", -14, yR + 2)
                     dr:RefreshBranchAccent()
                     dr:Show()
-                    y = y - 46
+                    yR = yR - 46
                 else
                     dr:Hide()
                 end
@@ -11507,57 +12187,10 @@ function DynamicPrep:LayoutQoLCardRows()
         end
     end
 
-    if qr.rErrorFilter then
-        qr.rErrorFilter:ClearAllPoints()
-        qr.rErrorFilter:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y)
-        qr.rErrorFilter:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y)
-        y = y - 60
+    local recoveryH = math.abs(yR) + 12
+    cRecovery:SetHeight(recoveryH)
 
-        local isYieldingErr = (self:GetErrorFilterYieldAddon() ~= nil)
-        if qr.dErrorYieldNote then
-            if isYieldingErr then
-                qr.dErrorYieldNote:ClearAllPoints()
-                qr.dErrorYieldNote:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
-                qr.dErrorYieldNote:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
-                qr.dErrorYieldNote:RefreshValue()
-                qr.dErrorYieldNote:Show()
-                y = y - 46
-            else
-                qr.dErrorYieldNote:Hide()
-            end
-        end
-
-        local errEnabled = self.db and self.db.errorFilterEnabled == true
-        local tuneErr = qr.tuneErrorFilter or (qr.rErrorFilter and qr.rErrorFilter.tuneBtn)
-        if tuneErr then tuneErr:RefreshValue() end
-        if errEnabled and tuneErr then
-            tuneErr:ClearAllPoints()
-            tuneErr:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
-            tuneErr:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
-            tuneErr:Show()
-            y = y - 28
-
-            for _, dr in ipairs(qr.dErrorDrawers or {}) do
-                if ws.errorFilterDrawerOpen ~= false then
-                    dr:ClearAllPoints()
-                    dr:SetPoint("TOPLEFT", cQoL, "TOPLEFT", 14, y + 2)
-                    dr:SetPoint("TOPRIGHT", cQoL, "TOPRIGHT", -14, y + 2)
-                    dr:RefreshBranchAccent()
-                    dr:Show()
-                    y = y - 46
-                else
-                    dr:Hide()
-                end
-            end
-        else
-            if tuneErr then tuneErr:Hide() end
-            for _, dr in ipairs(qr.dErrorDrawers or {}) do dr:Hide() end
-        end
-    end
-
-    local totalH = math.abs(y) + 12
-    cQoL:SetHeight(totalH)
-    return totalH
+    return questH + 14 + combatH + 14 + recoveryH + 14
 end
 
 function DynamicPrep:RefreshWorkspaceView()
@@ -11618,11 +12251,13 @@ function DynamicPrep:RefreshWorkspaceView()
     if ws.tab2 then ws.tab2:SetShown(activeTab == 2) end
     if ws.tab3 then ws.tab3:SetShown(activeTab == 3) end
 
+    local presetH = (ws.presetCard and ws.presetCard:GetHeight()) or 112
     local card1H = self:LayoutTab1CardRows()
-    local tab1TotalH = card1H + 14
-    local tab2TotalH = (ws.raidBuffsCard and ws.raidBuffsCard:GetHeight() or 728) + 14 + (ws.card2 and ws.card2:GetHeight() or 422) + 14
+    local tab1TotalH = presetH + 14 + card1H + 14
+    local tab2TotalH = self:LayoutTab2Cards()
     if ws.tab1 then ws.tab1:SetHeight(tab1TotalH) end
     if ws.tab2 then ws.tab2:SetHeight(tab2TotalH) end
+    if ws.ReflowPresetBtns then ws.ReflowPresetBtns() end
     if self.RefreshReadinessTrackerStrip then
         pcall(self.RefreshReadinessTrackerStrip, self)
     end
@@ -11740,6 +12375,7 @@ function DynamicPrep:RefreshWorkspaceView()
                     ws.dragState = nil
                     if st and not st.isDragging and st.segKey then
                         self.db.segments[st.segKey] = not self.db.segments[st.segKey]
+                        self.db.activeBarPreset = nil
                         self:RefreshBar()
                     end
                     self:RefreshWorkspaceView()
@@ -12712,23 +13348,33 @@ function DynamicPrep:RegisterWithSuite()
             if DynamicPrep.SyncErrorFilterState then DynamicPrep:SyncErrorFilterState(false) end
         end,
         GetChangelog = function() return DynamicPrep.CHANGELOG end,
-        SelectSubTab = function(a1, a2, a3)
+        SelectSubTab = function(a1, a2, a3, a4)
             CloseAllDynamicPrepPopups()
             local idx = (type(a1) == "number") and a1 or a2 or 1
             local expandDrawers = (type(a1) == "number") and a2 or a3
+            local entry = (type(a1) == "number") and a3 or a4
             if DynamicPrep.db then
                 DynamicPrep.db.activeSubTab = idx
+                DynamicPrep.db.drawerExpanded = DynamicPrep.db.drawerExpanded or {}
+                if type(entry) == "table" and type(entry.drawerKey) == "string" and entry.drawerKey ~= "" then
+                    DynamicPrep.db.drawerExpanded[entry.drawerKey] = true
+                elseif expandDrawers == true and (type(entry) ~= "table" or entry.isSubDrawer == true) then
+                    if idx == 1 then
+                        DynamicPrep.db.drawerExpanded.statSort = true
+                        DynamicPrep.db.drawerExpanded.pingOrder = true
+                    elseif idx == 2 then
+                        DynamicPrep.db.drawerExpanded.raidBuffs = true
+                        DynamicPrep.db.drawerExpanded.omniFolio = true
+                    elseif idx == 3 then
+                        DynamicPrep.db.drawerExpanded.healMacro = true
+                        DynamicPrep.db.drawerExpanded.drinkMacro = true
+                        DynamicPrep.db.drawerExpanded.mageFood = true
+                        DynamicPrep.db.drawerExpanded.durability = true
+                        DynamicPrep.db.drawerExpanded.errorFilter = true
+                    end
+                end
             end
             local ws = DynamicPrep.workspaceFrame
-            if ws and expandDrawers then
-                ws.statSortDrawerOpen = true
-                ws.pingDrawerOpen = true
-                ws.healDrawerOpen = true
-                ws.drinkDrawerOpen = true
-                ws.mageFoodDrawerOpen = true
-                ws.durabilityDrawerOpen = true
-                ws.errorFilterDrawerOpen = true
-            end
             if DynamicPrep.SyncErrorFilterState then
                 DynamicPrep:SyncErrorFilterState(false)
             end
@@ -13047,6 +13693,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:HandleBlizzardWindowCombatChange(true)
         DynamicPrep.pendingBarRefreshAfterCombat = true
         DynamicPrep:RefreshStatsCapsulesFast()
+        DynamicPrep:ApplyBarFadeState()
     elseif event == "PLAYER_REGEN_ENABLED" then
         if DynamicPrep._pendingFolioSecureUpdate then
             DynamicPrep:UpdateFolioSecureButton()
@@ -13054,6 +13701,8 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         if DynamicPrep.pendingBarRefreshAfterCombat then
             DynamicPrep.pendingBarRefreshAfterCombat = nil
             DynamicPrep:ApplyBarGeometry()
+        else
+            DynamicPrep:ApplyBarFadeState()
         end
         DynamicPrep:HandleBlizzardWindowCombatChange(false)
         -- Re-evaluate any single-option PlayerChoice / Gossip window that opened during combat
@@ -15437,7 +16086,7 @@ function DynamicPrep:RefreshCombatBuffAlert()
         SetPixelBackdrop(slot.bgFrame, COLORS.BgVoid, { ar, ag, ab, 0.90 }, 1)
         slot.icon:SetTexture(sum.cDef.icon or 136078)
         slot.topBadge:SetText(string.format("|cFFF87171%d/%d|r", sum.activeCount or 0, math.max(1, sum.totalEligible or 1)))
-        slot.statusLabel:SetText("|cFFF87171MISSING|r")
+        slot.statusLabel:SetText((rb.hideMissingLabel == true) and "" or "|cFFF87171MISSING|r")
         strip:Show()
     else
         strip:Hide()
@@ -15672,7 +16321,7 @@ function DynamicPrep:CreateClickableBuffBar()
     mover.label = CreateText(mover, "OVERLAY", "GameFontHighlightSmall")
     mover.label:SetPoint("CENTER")
     mover.label:SetJustifyH("CENTER")
-    mover.label:SetText(string.format("|cFF%sClickable Raid Buffs HUD|r\n|cFFFFFFFF(X: %d, Y: %d)  [Right-Click: Center X=0]|r", hex, math.floor((initX or 0) + 0.5), math.floor((initY or 140) + 0.5)))
+    mover.label:SetText(string.format("|cFF%sClickable Raid Buffs HUD|r\n|cFFFFFFFF(X: %d, Y: %d)  [Right-Click: Centre X=0]|r", hex, math.floor((initX or 0) + 0.5), math.floor((initY or 140) + 0.5)))
     mover:EnableMouse(true)
     mover:RegisterForClicks("AnyUp")
     mover:RegisterForDrag("LeftButton")
@@ -15698,7 +16347,7 @@ function DynamicPrep:CreateClickableBuffBar()
             local relX = (cx and ux) and (((cx * relScale) - ux) / relScale) or 0
             local relY = (cy and uy) and (((cy * relScale) - uy) / relScale) or 140
             local _, _, _, h = GetActiveAccentRGB()
-            selfMover.label:SetText(string.format("|cFF%sClickable Raid Buffs HUD|r\n|cFFFFFFFF(X: %d, Y: %d)  [Right-Click: Center X=0]|r", h, math.floor(relX + 0.5), math.floor(relY + 0.5)))
+            selfMover.label:SetText(string.format("|cFF%sClickable Raid Buffs HUD|r\n|cFFFFFFFF(X: %d, Y: %d)  [Right-Click: Centre X=0]|r", h, math.floor(relX + 0.5), math.floor(relY + 0.5)))
         end)
     end)
     mover:SetScript("OnDragStop", function(selfMover)
@@ -15726,7 +16375,7 @@ function DynamicPrep:CreateClickableBuffBar()
         end
         bar:SaveEditPosition("CENTER", "CENTER", x, y)
         local _, _, _, h = GetActiveAccentRGB()
-        selfMover.label:SetText(string.format("|cFF%sClickable Raid Buffs HUD|r\n|cFFFFFFFF(X: %d, Y: %d)  [Right-Click: Center X=0]|r", h, x, y))
+        selfMover.label:SetText(string.format("|cFF%sClickable Raid Buffs HUD|r\n|cFFFFFFFF(X: %d, Y: %d)  [Right-Click: Centre X=0]|r", h, x, y))
         DynamicPrep:RefreshWorkspaceView()
     end)
     mover:Hide()
@@ -15868,9 +16517,9 @@ function DynamicPrep:ScanAndPopulateRaidBuffQueue()
 
     -- 1. Class Raid Buff Check (Mark of the Wild, Fortitude, Intellect, Battle Shout, Bronze, Skyfury)
     local inCombatNow = IsPlayerInCombat()
+    local _, playerClassFile = UnitClass("player")
     if rb.trackClassBuffs ~= false then
-        local _, classFile = UnitClass("player")
-        local cDef = classFile and CLASS_RAID_BUFFS[classFile]
+        local cDef = playerClassFile and CLASS_RAID_BUFFS[playerClassFile]
         if cDef and IsClassRaidBuffKnown(cDef) then
             local combatSum = self:ScanCombatRaidBuffStatus(expThresholdSec)
             local missingCount = (combatSum and combatSum.missingCount) or 0
@@ -15898,15 +16547,17 @@ function DynamicPrep:ScanAndPopulateRaidBuffQueue()
                 PushEntry("spell", cDef.name, "player", cDef.icon, string.format("|cFFFBBF24%dm|r", mins), "|cFFFBBF24EXPIRING|r", "", true, cDef.name, string.format("%s expires in %d min.", cDef.name, mins))
             end
         end
+    end
 
-        -- Non-combat-castable or personal prep items (Partner Buffs, Weapon Oils, Flasks, Food, Augment Runes)
-        -- MUST remain suppressed/hidden during combat so they never clutter the screen mid-pull.
-        if inCombatNow then
-            return qCount
-        end
+    -- Non-combat-castable or personal prep items (Partner Buffs, Weapon Oils, Flasks, Food, Augment Runes)
+    -- MUST remain suppressed/hidden during combat so they never clutter the screen mid-pull.
+    if inCombatNow then
+        return qCount
+    end
 
-        -- 1b. Single-Target Friendly Partner Buffs (Symbiotic Relationship, Source of Magic, Blistering Scales, Earth Shield, Beacons)
-        local pList = classFile and PARTNER_RAID_BUFFS[classFile]
+    -- 1b. Single-Target Friendly Partner Buffs (Symbiotic Relationship, Source of Magic, Blistering Scales, Earth Shield, Beacons)
+    do
+        local pList = playerClassFile and PARTNER_RAID_BUFFS[playerClassFile]
         if pList and rb.trackPartnerBuffs ~= false then
             local IsKnownPartnerSpell = SafeIsPlayerSpellKnown
 
@@ -16427,7 +17078,8 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
 
     local rb = (self.db and self.db.raidBuffs) or DEFAULTS.raidBuffs
     local iconSize = math.max(32, math.min(64, tonumber(rb.iconSize) or 44))
-    local gap = 10
+    local gap = math.max(2, math.min(24, tonumber(rb.iconSpacing) or 10))
+    local hideMissingLbl = (rb.hideMissingLabel == true)
     local ar, ag, ab, hex = GetActiveAccentRGB()
 
     local count = self:ScanAndPopulateRaidBuffQueue()
@@ -16533,7 +17185,11 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
             btn.icon:SetTexture(entry.icon or 134400)
             btn.topBadge:SetText(entry.topText or "")
             btn.stackBadge:SetText(entry.stackText or "")
-            btn.statusLabel:SetText(entry.bottomText or "")
+            local botTxt = entry.bottomText or ""
+            if hideMissingLbl and botTxt:find("MISSING", 1, true) then
+                botTxt = ""
+            end
+            btn.statusLabel:SetText(botTxt)
             btn._isExpiring = entry.isExpiring
             btn._tooltipTitle = entry.tooltipTitle
             btn._tooltipSub = entry.tooltipSub
@@ -16606,7 +17262,7 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
     if bar.mover then
         SetPixelBackdrop(bar.mover, { 0.05, 0.06, 0.09, 0.86 }, { ar, ag, ab, 1.0 }, 1)
         if bar.mover.dimBg then bar.mover.dimBg:SetColorTexture(0.05, 0.06, 0.09, 0.86) end
-        bar.mover.label:SetText(string.format("|cFF%sClickable Raid Buffs HUD|r\n|cFFFFFFFF(X: %d, Y: %d)  [Right-Click: Center X=0]|r", hex, math.floor((curX or 0) + 0.5), math.floor((curY or 140) + 0.5)))
+        bar.mover.label:SetText(string.format("|cFF%sClickable Raid Buffs HUD|r\n|cFFFFFFFF(X: %d, Y: %d)  [Right-Click: Centre X=0]|r", hex, math.floor((curX or 0) + 0.5), math.floor((curY or 140) + 0.5)))
         bar.mover:SetShown(inBuffEdit and not bar._dsEditModeActive and true or false)
     end
 end
