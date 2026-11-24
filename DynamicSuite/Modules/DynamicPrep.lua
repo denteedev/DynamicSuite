@@ -3513,10 +3513,10 @@ function DynamicPrep:CreatePrepBar()
                 end
             elseif segKey == "folio" then
                 if button == "RightButton" then
-                    DynamicPrep:ToggleFolioPopover(selfSeg)
-                else
                     DynamicPrep:HideBarPopovers()
                     DynamicPrep:ToggleOmniumFolioFrame()
+                else
+                    DynamicPrep:ToggleFolioPopover(selfSeg)
                 end
             elseif segKey == "key" then
                 DynamicPrep:HideBarPopovers()
@@ -4099,8 +4099,8 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
                 tooltip:AddLine(foodFullLine, 0.68, 0.74, 0.82, true)
             end
         end
-        tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open Omnium Folio|r", 1, 1, 1)
-        tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Choose Zone Target Stat|r", 1, 1, 1)
+        tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Choose Zone Target Stat|r", 1, 1, 1)
+        tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Open Omnium Folio|r", 1, 1, 1)
     elseif segKey == "dur" then
         local _, lowest, avg = self:GetDurabilityData()
         tooltip:AddLine("Equipment Durability", ar, ag, ab)
