@@ -1735,6 +1735,19 @@ function U.InstallTooltipHook()
                 and ("|cFF" .. accHex .. "Pinned:|r |cFFE2E8F0" .. (CAT_LABEL[pinned] or pinned) .. "|r  (|cFF" .. accHex .. "Alt + Right-Click:|r |cFFE2E8F0Change Category|r)")
                 or ("|cFF" .. accHex .. "Alt + Right-Click:|r |cFFE2E8F0Pin to Category|r")
             pcall(tooltip.AddLine, tooltip, pinTxt, 0.886, 0.910, 0.941)
+        elseif okOwn and owner and not IsSecret(owner) and type(id) == "number" and not IsSecret(id)
+            and DB().autoRestockEnabled == true and _G.MerchantFrame and _G.MerchantFrame.IsShown and _G.MerchantFrame:IsShown() then
+            local okName, ownName = pcall(owner.GetName, owner)
+            if okName and type(ownName) == "string" and ownName:match("^MerchantItem%d+ItemButton$") then
+                local ar, ag, ab = GetAccent()
+                local accHex = sformat("%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
+                local list = DB().autoRestockList
+                local curQty = type(list) == "table" and tonumber(list[id]) or nil
+                local hintTxt = curQty
+                    and sformat("|cFF%sAuto-Restock:|r |cFFE2E8F0Target %d (Ctrl + Alt + Right-Click for +20)|r", accHex, curQty)
+                    or  sformat("|cFF%sCtrl + Alt + Right-Click:|r |cFFE2E8F0Add to Auto-Restock|r", accHex)
+                pcall(tooltip.AddLine, tooltip, hintTxt, 0.886, 0.910, 0.941)
+            end
         end
     end)
 end
@@ -1811,6 +1824,53 @@ end
 
 function U.StyleButtonState(b)
     local ar, ag, ab = GetAccent()
+    if b.isCategoryTile then
+        if b.offBar then b.offBar:Hide() end
+        if b.isSwapSrc then
+            b:SetBackdropColor(0.22, 0.16, 0.04, 0.98)
+            b:SetBackdropBorderColor(1.0, 0.82, 0.20, 1.0)
+            if b.label then b.label:SetTextColor(1.0, 0.88, 0.30, 1.0) end
+        elseif b.selected then
+            if b.hover then
+                b:SetBackdropColor(0.075, 0.086, 0.114, 0.98)
+                b:SetBackdropBorderColor(ar, ag, ab, 1.0)
+            else
+                b:SetBackdropColor(0.055, 0.063, 0.082, 0.96)
+                b:SetBackdropBorderColor(ar, ag, ab, 0.85)
+            end
+            if b.label then b.label:SetTextColor(1.0, 1.0, 1.0, 1.0) end
+        else
+            if b.hover then
+                b:SetBackdropColor(0.055, 0.063, 0.082, 0.96)
+                b:SetBackdropBorderColor(ar, ag, ab, 0.65)
+                if b.label then b.label:SetTextColor(0.76, 0.82, 0.90, 1.0) end
+            else
+                b:SetBackdropColor(0.035, 0.039, 0.051, 0.92)
+                b:SetBackdropBorderColor(COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1.0)
+                if b.label then b.label:SetTextColor(0.39, 0.45, 0.55, 1.0) end
+            end
+        end
+        for _, nud in ipairs({ b.nudL, b.nudR }) do
+            if nud and nud.SetBackdropColor then
+                if nud._hover then
+                    nud:SetBackdropColor(ar * 0.22, ag * 0.22, ab * 0.22, 0.98)
+                    nud:SetBackdropBorderColor(ar, ag, ab, 1.0)
+                    if nud.txt then nud.txt:SetTextColor(1.0, 1.0, 1.0, 1.0) end
+                else
+                    nud:SetBackdropColor(0.055, 0.063, 0.082, 0.96)
+                    nud:SetBackdropBorderColor(0.15, 0.18, 0.24, 1.0)
+                    if nud.txt then
+                        if b.selected or b.isSwapSrc then
+                            nud.txt:SetTextColor(0.796, 0.835, 0.882, 0.95)
+                        else
+                            nud.txt:SetTextColor(0.45, 0.51, 0.60, 0.80)
+                        end
+                    end
+                end
+            end
+        end
+        return
+    end
     if b.selected then
         local tr, tg, tb, ta, isNeg = nil, nil, nil, nil, false
         if b.isPillOption then
@@ -4802,13 +4862,13 @@ function U.StepBagOrBankScale(targetKind, delta, savePermanent)
             U.SaveTopAlignedPos(frame, "vaultPos")
         end
         frame:SetScale(nextScale)
-        if U.ApplyCompanionAnchor then U.ApplyCompanionAnchor() end
+        if U.ApplyCompanionAnchor then U.ApplyCompanionAnchor(true) end
     else
         U.SaveTopAlignedPos(frame, "windowPos")
         frame:SetScale(nextScale)
         ApplySavedTopAlignedPos(frame, "windowPos")
         if S.bankWindow and S.bankWindow:IsShown() and DB().vaultDocked ~= false and U.ApplyCompanionAnchor then
-            U.ApplyCompanionAnchor()
+            U.ApplyCompanionAnchor(true)
         end
     end
     local pct = floor(nextScale * 100 + 0.5)
@@ -4827,7 +4887,7 @@ function U.ResetBagOrBankScale(targetKind)
             U.SaveTopAlignedPos(frame, "vaultPos")
         end
         frame:SetScale(1.0)
-        if U.ApplyCompanionAnchor then U.ApplyCompanionAnchor() end
+        if U.ApplyCompanionAnchor then U.ApplyCompanionAnchor(true) end
     else
         DB().bagScale = 1.0
         S.sessionBagScale = nil
@@ -4835,7 +4895,7 @@ function U.ResetBagOrBankScale(targetKind)
         frame:SetScale(1.0)
         ApplySavedTopAlignedPos(frame, "windowPos")
         if S.bankWindow and S.bankWindow:IsShown() and DB().vaultDocked ~= false and U.ApplyCompanionAnchor then
-            U.ApplyCompanionAnchor()
+            U.ApplyCompanionAnchor(true)
         end
     end
     ShowBagScaleToast(frame, "Scale Reset: 100%")
@@ -4845,26 +4905,40 @@ function U.ApplySavedWindowScale(targetKind, newScale)
     if InCombatLockdown and InCombatLockdown() then return end
     local nextScale = ClampWindowScale(newScale)
     local isBank = (targetKind == "bank")
-    local frame = isBank and S.bankWindow or S.window
     if isBank then
         DB().bankScale = nextScale
         S.sessionBankScale = nil
-        if frame then
-            if DB().vaultDocked == false then
-                U.SaveTopAlignedPos(frame, "vaultPos")
+        local bw = S.bankWindow
+        if bw then
+            if bw:IsShown() and DB().vaultDocked == false then
+                U.SaveTopAlignedPos(bw, "vaultPos")
             end
-            frame:SetScale(nextScale)
-            if U.ApplyCompanionAnchor then U.ApplyCompanionAnchor() end
+            bw:SetScale(nextScale)
+            if bw:IsShown() then
+                if DB().vaultDocked == false then
+                    ApplySavedTopAlignedPos(bw, "vaultPos")
+                elseif U.ApplyCompanionAnchor then
+                    U.ApplyCompanionAnchor(true)
+                end
+            end
         end
     else
         DB().bagScale = nextScale
         S.sessionBagScale = nil
-        if frame then
-            U.SaveTopAlignedPos(frame, "windowPos")
-            frame:SetScale(nextScale)
-            ApplySavedTopAlignedPos(frame, "windowPos")
-            if S.bankWindow and S.bankWindow:IsShown() and DB().vaultDocked ~= false and U.ApplyCompanionAnchor then
-                U.ApplyCompanionAnchor()
+        local win = S.window
+        if win then
+            if win:IsShown() then
+                U.SaveTopAlignedPos(win, "windowPos")
+            end
+            win:SetScale(nextScale)
+            if S.quickOpenBtn and S.quickOpenBtn.SetScale then
+                S.quickOpenBtn:SetScale(nextScale)
+            end
+            if win:IsShown() then
+                ApplySavedTopAlignedPos(win, "windowPos")
+                if S.bankWindow and S.bankWindow:IsShown() and DB().vaultDocked ~= false and U.ApplyCompanionAnchor then
+                    U.ApplyCompanionAnchor(true)
+                end
             end
         end
     end
@@ -6255,7 +6329,7 @@ function U.RenderCompanionBank(forceRender)
     end
 end
 
-function U.ApplyCompanionAnchor()
+function U.ApplyCompanionAnchor(skipSaveBagPos)
     local bw = S.bankWindow
     if not bw or InCombatLockdown() then return end
     local db = DB()
@@ -6279,7 +6353,9 @@ function U.ApplyCompanionAnchor()
         end
     end
     if db.vaultDocked ~= false and S.window then
-        U.SaveTopAlignedPos(S.window, "windowPos")
+        if skipSaveBagPos ~= true and S.window:IsShown() then
+            U.SaveTopAlignedPos(S.window, "windowPos")
+        end
         AnchorFlushLeftOfBags()
     else
         local vp = db.vaultPos
@@ -7042,9 +7118,489 @@ function U.AddSection(page, titleText, subtitleText, isVisibleFn)
     return sec
 end
 
+local function GetRestockItemDisplay(itemID)
+    local id = tonumber(itemID)
+    if not id then return "Unknown Item", 134400, 1, nil end
+    local name, link, quality, icon = nil, nil, 1, nil
+    if C_Item and type(C_Item.GetItemInfo) == "function" then
+        local ok, n, l, q, _, _, _, _, _, _, tex = pcall(C_Item.GetItemInfo, id)
+        if ok then
+            name, link, quality, icon = n, l, q or 1, tex
+        end
+    end
+    if not icon and C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+        local okI, _, _, _, _, tex = pcall(C_Item.GetItemInfoInstant, id)
+        if okI and tex then icon = tex end
+    end
+    if not name and C_Item and type(C_Item.RequestLoadItemDataByID) == "function" then
+        pcall(C_Item.RequestLoadItemDataByID, id)
+    end
+    return name or ("Item #" .. tostring(id)), icon or 134400, quality or 1, link
+end
+
+local function ResolveRestockItemInput(rawText)
+    if type(rawText) ~= "string" then return nil end
+    local trimmed = rawText:match("^%s*(.-)%s*$") or ""
+    if trimmed == "" then return nil end
+    local id = tonumber(trimmed:match("item:(%d+)")) or tonumber(trimmed:match("^(%d+)$"))
+    if id and id > 0 then
+        local nm, ic = GetRestockItemDisplay(id)
+        return id, nm, ic
+    end
+    if C_Item and type(C_Item.GetItemInfoInstant) == "function" then
+        local okI, instID, _, _, _, tex = pcall(C_Item.GetItemInfoInstant, trimmed)
+        if okI and type(instID) == "number" and instID > 0 then
+            local nm, ic = GetRestockItemDisplay(instID)
+            return instID, nm, tex or ic
+        end
+    end
+    if C_Item and type(C_Item.GetItemInfo) == "function" then
+        local okN, n, l, _, _, _, _, _, _, _, tex = pcall(C_Item.GetItemInfo, trimmed)
+        if okN and type(l) == "string" then
+            local lid = tonumber(l:match("item:(%d+)"))
+            if lid and lid > 0 then
+                return lid, n or ("Item #" .. tostring(lid)), tex or 134400
+            end
+        end
+    end
+    local lowerQuery = trimmed:lower()
+    if type(S.slotCache) == "table" then
+        for _, bc in pairs(S.slotCache) do
+            if type(bc) == "table" then
+                for _, entry in pairs(bc) do
+                    if type(entry) == "table" and entry.itemID and type(entry.name) == "string" and entry.name:lower() == lowerQuery then
+                        return entry.itemID, entry.name, entry.icon or 134400
+                    end
+                end
+            end
+        end
+    end
+    if _G.MerchantFrame and _G.MerchantFrame.IsShown and _G.MerchantFrame:IsShown() and type(_G.GetMerchantNumItems) == "function" then
+        local numM = tonumber(_G.GetMerchantNumItems()) or 0
+        for i = 1, numM do
+            local mInfo = (C_MerchantFrame and C_MerchantFrame.GetItemInfo) and C_MerchantFrame.GetItemInfo(i) or nil
+            if type(mInfo) == "table" and type(mInfo.name) == "string" and mInfo.name:lower() == lowerQuery then
+                local mID = (type(_G.GetMerchantItemID) == "function") and _G.GetMerchantItemID(i) or nil
+                if mID and mID > 0 then
+                    return mID, mInfo.name, mInfo.texture or 134400
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local restockChatLinkHooked = false
+local function HookChatEditInsertLinkForRestock()
+    if restockChatLinkHooked then return end
+    if type(_G.ChatEdit_InsertLink) == "function" and type(_G.hooksecurefunc) == "function" then
+        restockChatLinkHooked = true
+        _G.hooksecurefunc("ChatEdit_InsertLink", function(linkText)
+            local box = S.restockItemBox
+            if not box or not box:IsShown() or not box:HasFocus() then return end
+            if type(linkText) ~= "string" then return end
+            local id = tonumber(linkText:match("item:(%d+)"))
+            if id and id > 0 and S.SetRestockPendingItem then
+                S.SetRestockPendingItem(id)
+            end
+        end)
+    end
+end
+
+local function EnsureRestockRow(panel, idx)
+    panel.itemRows = panel.itemRows or {}
+    local row = panel.itemRows[idx]
+    if row then return row end
+
+    row = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+    row:SetHeight(34)
+    Backdrop(row, 0.045, 0.052, 0.068, 0.96, COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
+
+    local iconBtn = CreateFrame("Button", nil, row, "BackdropTemplate")
+    iconBtn:SetSize(22, 22)
+    iconBtn:SetPoint("LEFT", row, "LEFT", 10, 0)
+    Backdrop(iconBtn, 0.03, 0.035, 0.05, 1, 0.18, 0.22, 0.28, 1)
+    iconBtn.tex = iconBtn:CreateTexture(nil, "ARTWORK")
+    iconBtn.tex:SetPoint("TOPLEFT", iconBtn, "TOPLEFT", 1, -1)
+    iconBtn.tex:SetPoint("BOTTOMRIGHT", iconBtn, "BOTTOMRIGHT", -1, 1)
+    iconBtn.tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    iconBtn:SetScript("OnEnter", function(self)
+        if GameTooltip and row.itemID then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            pcall(GameTooltip.SetItemByID, GameTooltip, row.itemID)
+            GameTooltip:Show()
+        end
+    end)
+    iconBtn:SetScript("OnLeave", function()
+        if GameTooltip then GameTooltip:Hide() end
+    end)
+    row.iconBtn = iconBtn
+
+    local removeBtn = U.NewButton(row, 64, 22, "Remove")
+    removeBtn:SetPoint("RIGHT", row, "RIGHT", -10, 0)
+    removeBtn:SetScript("OnClick", function()
+        if row.itemID and type(DB().autoRestockList) == "table" then
+            DB().autoRestockList[row.itemID] = nil
+            U.RefreshWorkspace()
+        end
+    end)
+    row.removeBtn = removeBtn
+
+    local plusBtn = U.NewButton(row, 22, 22, "+")
+    plusBtn:SetPoint("RIGHT", removeBtn, "LEFT", -6, 0)
+    plusBtn:SetScript("OnClick", function()
+        if not row.itemID then return end
+        local list = DB().autoRestockList or {}
+        DB().autoRestockList = list
+        local step = (IsShiftKeyDown and IsShiftKeyDown()) and 10 or 1
+        local nextQ = min(9999, max(1, (tonumber(list[row.itemID]) or 20) + step))
+        list[row.itemID] = nextQ
+        if row.qtyBox then row.qtyBox:SetText(tostring(nextQ)) end
+    end)
+    row.plusBtn = plusBtn
+
+    local qtyBox = CreateFrame("EditBox", nil, row, "BackdropTemplate")
+    qtyBox:SetSize(44, 22)
+    qtyBox:SetPoint("RIGHT", plusBtn, "LEFT", -4, 0)
+    qtyBox:SetAutoFocus(false)
+    qtyBox:SetNumeric(true)
+    qtyBox:SetMaxLetters(4)
+    qtyBox:SetJustifyH("CENTER")
+    SetFont(qtyBox, 11, "")
+    qtyBox:SetTextColor(1, 1, 1, 1)
+    Backdrop(qtyBox, 0.035, 0.039, 0.051, 0.98, COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
+    local function CommitRowQty(selfBox)
+        if not row.itemID then return end
+        local q = floor(tonumber(selfBox:GetText()) or 0)
+        if q < 1 then q = 1 elseif q > 9999 then q = 9999 end
+        DB().autoRestockList = DB().autoRestockList or {}
+        DB().autoRestockList[row.itemID] = q
+        selfBox:SetText(tostring(q))
+    end
+    qtyBox:SetScript("OnEnterPressed", function(selfBox) CommitRowQty(selfBox); selfBox:ClearFocus() end)
+    qtyBox:SetScript("OnEscapePressed", function(selfBox)
+        local cur = row.itemID and DB().autoRestockList and DB().autoRestockList[row.itemID] or 20
+        selfBox:SetText(tostring(cur))
+        selfBox:ClearFocus()
+    end)
+    qtyBox:SetScript("OnEditFocusLost", CommitRowQty)
+    row.qtyBox = qtyBox
+
+    local minusBtn = U.NewButton(row, 22, 22, "-")
+    minusBtn:SetPoint("RIGHT", qtyBox, "LEFT", -4, 0)
+    minusBtn:SetScript("OnClick", function()
+        if not row.itemID then return end
+        local list = DB().autoRestockList or {}
+        DB().autoRestockList = list
+        local step = (IsShiftKeyDown and IsShiftKeyDown()) and 10 or 1
+        local nextQ = max(1, (tonumber(list[row.itemID]) or 20) - step)
+        list[row.itemID] = nextQ
+        if row.qtyBox then row.qtyBox:SetText(tostring(nextQ)) end
+    end)
+    row.minusBtn = minusBtn
+
+    local nameLbl = row:CreateFontString(nil, "OVERLAY")
+    SetFont(nameLbl, 11, "")
+    nameLbl:SetPoint("LEFT", iconBtn, "RIGHT", 8, 0)
+    nameLbl:SetPoint("RIGHT", minusBtn, "LEFT", -10, 0)
+    nameLbl:SetJustifyH("LEFT")
+    nameLbl:SetWordWrap(false)
+    row.nameLbl = nameLbl
+
+    row:Hide()
+    panel.itemRows[idx] = row
+    return row
+end
+
+local function BuildRestockSubDrawer(card, ar, ag, ab)
+    HookChatEditInsertLinkForRestock()
+
+    local panel = CreateFrame("Frame", nil, card)
+    panel:Hide()
+    card.restockPanel = panel
+
+    -- Row 1: Add Item bar (drag-and-drop, Shift-Click link, or type ID/name + target qty)
+    local addBar = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+    addBar:SetHeight(44)
+    addBar:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
+    addBar:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, 0)
+    Backdrop(addBar, COL.panel[1], COL.panel[2], COL.panel[3], COL.panel[4], COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
+
+    local leftBar = addBar:CreateTexture(nil, "OVERLAY")
+    leftBar:SetWidth(2)
+    leftBar:SetPoint("TOPLEFT", addBar, "TOPLEFT", 0, -1)
+    leftBar:SetPoint("BOTTOMLEFT", addBar, "BOTTOMLEFT", 0, 1)
+    leftBar:SetColorTexture(ar, ag, ab, 1.0)
+    addBar.leftBar = leftBar
+
+    local dropSlot = CreateFrame("Button", nil, addBar, "BackdropTemplate")
+    dropSlot:SetSize(26, 26)
+    dropSlot:SetPoint("LEFT", addBar, "LEFT", 10, 0)
+    Backdrop(dropSlot, 0.035, 0.039, 0.051, 0.98, ar, ag, ab, 0.65)
+    dropSlot.icon = dropSlot:CreateTexture(nil, "ARTWORK")
+    dropSlot.icon:SetPoint("TOPLEFT", dropSlot, "TOPLEFT", 2, -2)
+    dropSlot.icon:SetPoint("BOTTOMRIGHT", dropSlot, "BOTTOMRIGHT", -2, 2)
+    dropSlot.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    dropSlot.icon:SetTexture(134400)
+    dropSlot.icon:SetAlpha(0.55)
+    addBar.dropSlot = dropSlot
+
+    local addBtn = U.NewButton(addBar, 58, 24, "Add")
+    addBtn:SetPoint("RIGHT", addBar, "RIGHT", -10, 0)
+    addBtn:SetSelected(true)
+    addBar.addBtn = addBtn
+
+    local qtyBox = CreateFrame("EditBox", nil, addBar, "BackdropTemplate")
+    qtyBox:SetSize(46, 24)
+    qtyBox:SetPoint("RIGHT", addBtn, "LEFT", -6, 0)
+    qtyBox:SetAutoFocus(false)
+    qtyBox:SetNumeric(true)
+    qtyBox:SetMaxLetters(4)
+    qtyBox:SetJustifyH("CENTER")
+    SetFont(qtyBox, 11, "")
+    qtyBox:SetTextColor(1, 1, 1, 1)
+    qtyBox:SetText("20")
+    Backdrop(qtyBox, 0.035, 0.039, 0.051, 0.98, COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
+    qtyBox:SetScript("OnEscapePressed", function(selfBox) selfBox:ClearFocus() end)
+    addBar.qtyBox = qtyBox
+
+    local qtyLbl = addBar:CreateFontString(nil, "OVERLAY")
+    SetFont(qtyLbl, 10, "")
+    qtyLbl:SetPoint("RIGHT", qtyBox, "LEFT", -6, 0)
+    qtyLbl:SetText("Qty")
+    qtyLbl:SetTextColor(0.64, 0.70, 0.78, 1)
+
+    local itemBox = CreateFrame("EditBox", nil, addBar, "BackdropTemplate")
+    itemBox:SetHeight(24)
+    itemBox:SetPoint("LEFT", dropSlot, "RIGHT", 8, 0)
+    itemBox:SetPoint("RIGHT", qtyLbl, "LEFT", -10, 0)
+    itemBox:SetAutoFocus(false)
+    itemBox:SetTextInsets(8, 8, 0, 0)
+    SetFont(itemBox, 11, "")
+    itemBox:SetTextColor(0.96, 0.98, 1.0, 1)
+    Backdrop(itemBox, 0.035, 0.039, 0.051, 0.98, COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
+
+    local placeholder = itemBox:CreateFontString(nil, "OVERLAY")
+    SetFont(placeholder, 10, "")
+    placeholder:SetPoint("LEFT", itemBox, "LEFT", 8, 0)
+    placeholder:SetPoint("RIGHT", itemBox, "RIGHT", -8, 0)
+    placeholder:SetJustifyH("LEFT")
+    placeholder:SetWordWrap(false)
+    placeholder:SetTextColor(0.45, 0.52, 0.62, 1)
+    placeholder:SetText("Drop item, Shift-Click, or enter ID / name...")
+    itemBox.placeholder = placeholder
+    S.restockItemBox = itemBox
+    addBar.itemBox = itemBox
+
+    local pendingItemID = nil
+    local function SetPendingItem(itemID)
+        local id = tonumber(itemID)
+        if not id or id <= 0 then
+            pendingItemID = nil
+            dropSlot.icon:SetTexture(134400)
+            dropSlot.icon:SetAlpha(0.55)
+            itemBox:SetText("")
+            placeholder:Show()
+            return
+        end
+        local nm, ic = GetRestockItemDisplay(id)
+        pendingItemID = id
+        dropSlot.icon:SetTexture(ic or 134400)
+        dropSlot.icon:SetAlpha(1.0)
+        itemBox:SetText(nm or tostring(id))
+        placeholder:Hide()
+    end
+    S.SetRestockPendingItem = SetPendingItem
+
+    local function TryAcceptCursorItem()
+        if not GetCursorInfo then return false end
+        local infoType, itemID = GetCursorInfo()
+        if infoType == "item" and itemID then
+            SetPendingItem(itemID)
+            if ClearCursor then pcall(ClearCursor) end
+            return true
+        end
+        return false
+    end
+
+    dropSlot:SetScript("OnReceiveDrag", TryAcceptCursorItem)
+    dropSlot:SetScript("OnClick", function()
+        if not TryAcceptCursorItem() and pendingItemID then
+            SetPendingItem(nil)
+        end
+    end)
+    dropSlot:SetScript("OnEnter", function(selfSlot)
+        if GameTooltip then
+            local r, g, b = GetAccent()
+            GameTooltip:SetOwner(selfSlot, "ANCHOR_TOP")
+            GameTooltip:ClearLines()
+            if pendingItemID then
+                pcall(GameTooltip.SetItemByID, GameTooltip, pendingItemID)
+                GameTooltip:AddLine("Click to clear selection.", 0.64, 0.70, 0.78)
+            else
+                GameTooltip:AddLine("Add Restock Item", r, g, b)
+                GameTooltip:AddLine("Drag and drop an item from your bags here, Shift-Click an item while the box is focused, or type an item ID or name.", 0.85, 0.90, 0.96, true)
+            end
+            GameTooltip:Show()
+        end
+    end)
+    dropSlot:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+
+    itemBox:SetScript("OnReceiveDrag", TryAcceptCursorItem)
+    itemBox:HookScript("OnMouseUp", function() TryAcceptCursorItem() end)
+    itemBox:SetScript("OnTextChanged", function(selfBox, userInput)
+        local txt = selfBox:GetText() or ""
+        placeholder:SetShown(txt == "")
+        if userInput then
+            pendingItemID = nil
+            local resolvedID, _, resolvedIcon = ResolveRestockItemInput(txt)
+            if resolvedID then
+                dropSlot.icon:SetTexture(resolvedIcon or 134400)
+                dropSlot.icon:SetAlpha(1.0)
+            else
+                dropSlot.icon:SetTexture(134400)
+                dropSlot.icon:SetAlpha(0.55)
+            end
+        end
+    end)
+    itemBox:SetScript("OnEscapePressed", function(selfBox) selfBox:ClearFocus() end)
+
+    local function CommitAddItem()
+        local id = pendingItemID
+        local nm = nil
+        if not id then
+            id, nm = ResolveRestockItemInput(itemBox:GetText() or "")
+        else
+            nm = GetRestockItemDisplay(id)
+        end
+        if not id then
+            Print("Could not find that item. Drop an item from your bags, Shift-Click an item link, or enter a valid item ID.")
+            return
+        end
+        local q = floor(tonumber(qtyBox:GetText()) or 20)
+        if q < 1 then q = 1 elseif q > 9999 then q = 9999 end
+        local db = DB()
+        db.autoRestockList = db.autoRestockList or {}
+        db.autoRestockList[id] = q
+        SetPendingItem(nil)
+        itemBox:ClearFocus()
+        qtyBox:ClearFocus()
+        Print(sformat("Added %s to Auto-Restock (target: %d).", tostring(nm or ("Item #" .. tostring(id))), q))
+        U.RefreshWorkspace()
+    end
+    itemBox:SetScript("OnEnterPressed", CommitAddItem)
+    qtyBox:SetScript("OnEnterPressed", CommitAddItem)
+    addBtn:SetScript("OnClick", CommitAddItem)
+
+    local emptyRow = CreateFrame("Frame", nil, panel, "BackdropTemplate")
+    emptyRow:SetHeight(34)
+    Backdrop(emptyRow, 0.040, 0.046, 0.060, 0.90, COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 0.85)
+    local emptyLbl = emptyRow:CreateFontString(nil, "OVERLAY")
+    SetFont(emptyLbl, 10, "")
+    emptyLbl:SetPoint("LEFT", emptyRow, "LEFT", 12, 0)
+    emptyLbl:SetPoint("RIGHT", emptyRow, "RIGHT", -12, 0)
+    emptyLbl:SetJustifyH("LEFT")
+    emptyLbl:SetWordWrap(false)
+    emptyLbl:SetTextColor(0.58, 0.64, 0.72, 1)
+    emptyLbl:SetText("No restock items tracked yet. Drop an item above, or Ctrl + Alt + Right-Click an item at any vendor.")
+    emptyRow:Hide()
+    panel.emptyRow = emptyRow
+
+    local footerRow = CreateFrame("Frame", nil, panel)
+    footerRow:SetHeight(28)
+    local tipLbl = footerRow:CreateFontString(nil, "OVERLAY")
+    SetFont(tipLbl, 10, "")
+    tipLbl:SetPoint("LEFT", footerRow, "LEFT", 4, 0)
+    tipLbl:SetJustifyH("LEFT")
+    tipLbl:SetWordWrap(false)
+    tipLbl:SetTextColor(0.56, 0.63, 0.72, 1)
+    tipLbl:SetText("Tip: Ctrl + Alt + Right-Click any vendor item to add or top it up (+20).")
+    local clearAllBtn = U.NewButton(footerRow, 84, 22, "Clear All")
+    clearAllBtn:SetPoint("RIGHT", footerRow, "RIGHT", 0, 0)
+    clearAllBtn:SetScript("OnClick", function()
+        if type(DB().autoRestockList) == "table" then
+            wipe(DB().autoRestockList)
+        end
+        Print("Cleared all items from Smart Vendor Auto-Restock.")
+        U.RefreshWorkspace()
+    end)
+    tipLbl:SetPoint("RIGHT", clearAllBtn, "LEFT", -10, 0)
+    footerRow:Hide()
+    panel.footerRow = footerRow
+    panel.addBar = addBar
+    panel.itemRows = {}
+
+    function panel:LayoutAndRefresh()
+        local r, g, b = GetAccent()
+        if addBar.leftBar then addBar.leftBar:SetColorTexture(r, g, b, 1.0) end
+        if addBar.dropSlot then addBar.dropSlot:SetBackdropBorderColor(r, g, b, 0.65) end
+        local list = DB().autoRestockList
+        local entries = {}
+        if type(list) == "table" then
+            for id, qty in pairs(list) do
+                local nid = tonumber(id)
+                local nq = tonumber(qty)
+                if nid and nq and nq > 0 then
+                    local nm, ic, qual = GetRestockItemDisplay(nid)
+                    entries[#entries + 1] = { id = nid, qty = nq, name = nm, icon = ic, quality = qual }
+                end
+            end
+        end
+        table.sort(entries, function(a, b2)
+            local na, nb = (a.name or ""):lower(), (b2.name or ""):lower()
+            if na ~= nb then return na < nb end
+            return a.id < b2.id
+        end)
+
+        local y = 48
+        if #entries == 0 then
+            for _, row in ipairs(self.itemRows) do row:Hide() end
+            footerRow:Hide()
+            emptyRow:ClearAllPoints()
+            emptyRow:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -y)
+            emptyRow:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, -y)
+            emptyRow:Show()
+            y = y + 36
+        else
+            emptyRow:Hide()
+            for i, e in ipairs(entries) do
+                local row = EnsureRestockRow(self, i)
+                row.itemID = e.id
+                row.iconBtn.tex:SetTexture(e.icon or 134400)
+                local qc = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[e.quality or 1]
+                if qc then
+                    row.nameLbl:SetTextColor(qc.r, qc.g, qc.b, 1.0)
+                else
+                    row.nameLbl:SetTextColor(0.95, 0.96, 0.99, 1.0)
+                end
+                row.nameLbl:SetText(e.name or ("Item #" .. tostring(e.id)))
+                if not row.qtyBox:HasFocus() then
+                    row.qtyBox:SetText(tostring(e.qty))
+                end
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -y)
+                row:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, -y)
+                row:Show()
+                y = y + 38
+            end
+            for i = #entries + 1, #self.itemRows do
+                self.itemRows[i]:Hide()
+            end
+            footerRow:ClearAllPoints()
+            footerRow:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -y)
+            footerRow:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, -y)
+            footerRow:Show()
+            y = y + 30
+        end
+        panel:SetHeight(y)
+        return y
+    end
+end
+
 local function BuildCardSubDrawer(card, sd, ar, ag, ab, IsNegativePillOption)
+    local isRestockDrawer = (sd.customKind == "restock")
     local rowsSpec = sd.rows
-    if type(rowsSpec) ~= "table" or #rowsSpec == 0 then
+    if not isRestockDrawer and (type(rowsSpec) ~= "table" or #rowsSpec == 0) then
         rowsSpec = { {
             kind = "pills",
             title = sd.title or "Funding Priority",
@@ -7057,8 +7613,8 @@ local function BuildCardSubDrawer(card, sd, ar, ag, ab, IsNegativePillOption)
     end
 
     local chevBar = CreateFrame("Button", nil, card, "BackdropTemplate")
-    chevBar:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -52)
-    chevBar:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -52)
+    chevBar:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -58)
+    chevBar:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -58)
     chevBar:SetHeight(24)
     Backdrop(chevBar, 0.055, 0.065, 0.090, 0.96, COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
 
@@ -7070,103 +7626,121 @@ local function BuildCardSubDrawer(card, sd, ar, ag, ab, IsNegativePillOption)
     end
     local chevLabel = chevBar:CreateFontString(nil, "OVERLAY")
     SetFont(chevLabel, 10, "")
-    local labelText = sd.buttonLabel or sformat("Sub-Settings (%d)", #rowsSpec)
+    local labelText = (sd.buttonLabelFn and sd.buttonLabelFn()) or sd.buttonLabel or sformat("Sub-Settings (%d)", #(rowsSpec or {}))
     chevLabel:SetText(labelText)
 
-    local totalW = 11 + 6 + 96
-    chevIcon:SetPoint("LEFT", chevBar, "CENTER", -floor(totalW * 0.5), 0)
-    chevLabel:SetPoint("LEFT", chevIcon, "RIGHT", 6, 0)
+    local function CenterChevLabel()
+        local tw = (chevLabel.GetStringWidth and chevLabel:GetStringWidth()) or 96
+        if not tw or tw < 20 then tw = 96 end
+        local totalW = 11 + 6 + tw
+        chevIcon:ClearAllPoints()
+        chevIcon:SetPoint("LEFT", chevBar, "CENTER", -floor(totalW * 0.5), 0)
+        chevLabel:ClearAllPoints()
+        chevLabel:SetPoint("LEFT", chevIcon, "RIGHT", 6, 0)
+    end
+    CenterChevLabel()
     chevBar.chevIcon = chevIcon
     chevBar.chevLabel = chevLabel
     card.chevBar = chevBar
 
     card.subCards = {}
-    for rIdx, rSpec in ipairs(rowsSpec) do
-        local subCard = CreateFrame("Frame", nil, card, "BackdropTemplate")
-        subCard:SetHeight(44)
-        Backdrop(subCard, COL.panel[1], COL.panel[2], COL.panel[3], COL.panel[4], COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
-        subCard.rowSpec = rSpec
+    if isRestockDrawer then
+        BuildRestockSubDrawer(card, ar, ag, ab)
+    else
+        for rIdx, rSpec in ipairs(rowsSpec) do
+            local subCard = CreateFrame("Frame", nil, card, "BackdropTemplate")
+            subCard:SetHeight(44)
+            Backdrop(subCard, COL.panel[1], COL.panel[2], COL.panel[3], COL.panel[4], COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
+            subCard.rowSpec = rSpec
 
-        local leftBar = subCard:CreateTexture(nil, "OVERLAY")
-        leftBar:SetWidth(2)
-        leftBar:SetPoint("TOPLEFT", subCard, "TOPLEFT", 0, -1)
-        leftBar:SetPoint("BOTTOMLEFT", subCard, "BOTTOMLEFT", 0, 1)
-        leftBar:SetColorTexture(ar, ag, ab, 1.0)
-        subCard.leftBar = leftBar
+            local leftBar = subCard:CreateTexture(nil, "OVERLAY")
+            leftBar:SetWidth(2)
+            leftBar:SetPoint("TOPLEFT", subCard, "TOPLEFT", 0, -1)
+            leftBar:SetPoint("BOTTOMLEFT", subCard, "BOTTOMLEFT", 0, 1)
+            leftBar:SetColorTexture(ar, ag, ab, 1.0)
+            subCard.leftBar = leftBar
 
-        local pip = subCard:CreateTexture(nil, "OVERLAY")
-        pip:SetSize(5, 5)
-        pip:SetPoint("LEFT", subCard, "LEFT", 14, 0)
-        pip:SetColorTexture(ar, ag, ab, 1.0)
-        subCard.pip = pip
+            local pip = subCard:CreateTexture(nil, "OVERLAY")
+            pip:SetSize(5, 5)
+            pip:SetPoint("LEFT", subCard, "LEFT", 14, 0)
+            pip:SetColorTexture(ar, ag, ab, 1.0)
+            subCard.pip = pip
 
-        local sTitle = subCard:CreateFontString(nil, "OVERLAY")
-        SetFont(sTitle, 11, "")
-        sTitle:SetPoint("LEFT", pip, "RIGHT", 8, 0)
-        sTitle:SetJustifyH("LEFT")
-        sTitle:SetWordWrap(false)
-        sTitle:SetTextColor(0.95, 0.96, 0.99, 1.0)
-        sTitle:SetText(rSpec.title or "")
-        subCard.title = sTitle
+            local sTitle = subCard:CreateFontString(nil, "OVERLAY")
+            SetFont(sTitle, 11, "")
+            sTitle:SetPoint("LEFT", pip, "RIGHT", 8, 0)
+            sTitle:SetJustifyH("LEFT")
+            sTitle:SetWordWrap(false)
+            sTitle:SetTextColor(0.95, 0.96, 0.99, 1.0)
+            sTitle:SetText(rSpec.title or "")
+            subCard.title = sTitle
 
-        local sOpts = rSpec.options
-        if rSpec.kind == "toggle" or not sOpts then
-            sOpts = {
-                { value = false, label = "Off", width = 68 },
-                { value = true,  label = "Enabled", width = 84 },
-            }
+            local sOpts = rSpec.options
+            if rSpec.kind == "toggle" or not sOpts then
+                sOpts = {
+                    { value = false, label = "Off", width = 68 },
+                    { value = true,  label = "Enabled", width = 84 },
+                }
+            end
+            local sTotalW = 0
+            for i, sOpt in ipairs(sOpts) do
+                local bw = sOpt.width or rSpec.pillWidth or 138
+                sTotalW = sTotalW + bw + ((i > 1) and 4 or 0)
+            end
+            local sHolder = CreateFrame("Frame", nil, subCard)
+            sHolder:SetSize(sTotalW, 24)
+            sHolder:SetPoint("RIGHT", subCard, "RIGHT", -12, 0)
+            sTitle:SetPoint("RIGHT", sHolder, "LEFT", -14, 0)
+
+            subCard.btns = {}
+            local sx = 0
+            for i, sOpt in ipairs(sOpts) do
+                local bw = sOpt.width or rSpec.pillWidth or 138
+                local sb = U.NewButton(sHolder, bw, 24, sOpt.label)
+                sb.isPillOption = true
+                sb.optValue = sOpt.value
+                sb.optLabel = sOpt.label
+                sb.isNegativeOpt = IsNegativePillOption(sOpt.value, sOpt.label)
+                sb:SetPoint("LEFT", sHolder, "LEFT", sx, 0)
+                sx = sx + bw + 4
+                sb:SetScript("OnClick", function()
+                    if rSpec.set then rSpec.set(sOpt.value) end
+                    card:Refresh()
+                end)
+                subCard.btns[i] = sb
+            end
+
+            if rSpec.tooltip and rSpec.tooltip ~= "" then
+                subCard:EnableMouse(true)
+                subCard:HookScript("OnEnter", function(selfSub)
+                    if GameTooltip then
+                        local r, g, b = GetAccent()
+                        GameTooltip:SetOwner(selfSub, "ANCHOR_TOP")
+                        GameTooltip:ClearLines()
+                        GameTooltip:AddLine(rSpec.title or "", r, g, b)
+                        GameTooltip:AddLine(rSpec.tooltip, 0.85, 0.90, 0.96, true)
+                        GameTooltip:Show()
+                    end
+                end)
+                subCard:HookScript("OnLeave", function()
+                    if GameTooltip then GameTooltip:Hide() end
+                end)
+            end
+
+            subCard:Hide()
+            card.subCards[rIdx] = subCard
         end
-        local sTotalW = 0
-        for i, sOpt in ipairs(sOpts) do
-            local bw = sOpt.width or rSpec.pillWidth or 138
-            sTotalW = sTotalW + bw + ((i > 1) and 4 or 0)
-        end
-        local sHolder = CreateFrame("Frame", nil, subCard)
-        sHolder:SetSize(sTotalW, 24)
-        sHolder:SetPoint("RIGHT", subCard, "RIGHT", -12, 0)
-        sTitle:SetPoint("RIGHT", sHolder, "LEFT", -14, 0)
-
-        subCard.btns = {}
-        local sx = 0
-        for i, sOpt in ipairs(sOpts) do
-            local bw = sOpt.width or rSpec.pillWidth or 138
-            local sb = U.NewButton(sHolder, bw, 24, sOpt.label)
-            sb.isPillOption = true
-            sb.optValue = sOpt.value
-            sb.optLabel = sOpt.label
-            sb.isNegativeOpt = IsNegativePillOption(sOpt.value, sOpt.label)
-            sb:SetPoint("LEFT", sHolder, "LEFT", sx, 0)
-            sx = sx + bw + 4
-            sb:SetScript("OnClick", function()
-                if rSpec.set then rSpec.set(sOpt.value) end
-                card:Refresh()
-            end)
-            subCard.btns[i] = sb
-        end
-
-        if rSpec.tooltip and rSpec.tooltip ~= "" then
-            subCard:EnableMouse(true)
-            subCard:HookScript("OnEnter", function(selfSub)
-                if GameTooltip then
-                    local r, g, b = GetAccent()
-                    GameTooltip:SetOwner(selfSub, "ANCHOR_TOP")
-                    GameTooltip:ClearLines()
-                    GameTooltip:AddLine(rSpec.title or "", r, g, b)
-                    GameTooltip:AddLine(rSpec.tooltip, 0.85, 0.90, 0.96, true)
-                    GameTooltip:Show()
-                end
-            end)
-            subCard:HookScript("OnLeave", function()
-                if GameTooltip then GameTooltip:Hide() end
-            end)
-        end
-
-        card.subCards[rIdx] = subCard
     end
     card.subCard = card.subCards[1]
 
     local function StyleChevBar()
         local r, g, b = GetAccent()
+        if sd.buttonLabelFn then
+            chevLabel:SetText(sd.buttonLabelFn())
+        elseif not isRestockDrawer then
+            chevLabel:SetText(sd.buttonLabel or sformat("Sub-Settings (%d)", #(rowsSpec or {})))
+        end
+        CenterChevLabel()
         local isExp = (sd.drawerKey and U.IsDrawerExpanded(sd.drawerKey))
             or (sd.isExpanded and sd.isExpanded()) or false
         chevIcon:SetTexture(isExp
@@ -7355,6 +7929,7 @@ function U.AddCard(page, spec)
             v = max(minVal, min(maxVal, v or minVal))
             if stepVal and stepVal > 0 then
                 v = floor(((v - minVal) / stepVal) + 0.5) * stepVal + minVal
+                v = floor(v * 1000 + 0.5) / 1000
             end
             return max(minVal, min(maxVal, v))
         end
@@ -7486,21 +8061,30 @@ function U.AddCard(page, spec)
             card.control = holder
         end
         for i, item in ipairs(spec.items) do
-            local chip = U.NewButton(card, 150, 24, item.label)
+            local chip = U.NewButton(card, 160, spec.reorderable and 32 or 24, item.label)
             chip:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             if spec.reorderable then
-                -- Inline [<] and [>] nudge buttons on the left and right edges when hovered
-                local nudL = CreateFrame("Button", nil, chip)
+                chip.isCategoryTile = true
+                -- Always-visible bordered [<] and [>] reorder buttons matching DynamicPrep's Layout Builder
+                local nudL = CreateFrame("Button", nil, chip, "BackdropTemplate")
                 nudL:SetSize(18, 22)
-                nudL:SetPoint("LEFT", chip, "LEFT", 1, 0)
+                nudL:SetPoint("LEFT", chip, "LEFT", 4, 0)
+                Backdrop(nudL, 0.055, 0.063, 0.082, 0.96, 0.15, 0.18, 0.24, 1.0)
                 nudL.txt = nudL:CreateFontString(nil, "OVERLAY")
                 SetFont(nudL.txt, 11, "")
                 nudL.txt:SetPoint("CENTER", nudL, "CENTER", 0, 0)
                 nudL.txt:SetText("<")
-                nudL.txt:SetTextColor(0.85, 0.92, 1.0, 1)
-                nudL:Hide()
-                nudL:SetScript("OnEnter", function(self) chip.hover = true; U.StyleButtonState(chip); self.txt:SetTextColor(1, 0.82, 0.2, 1) end)
-                nudL:SetScript("OnLeave", function(self) self.txt:SetTextColor(0.85, 0.92, 1.0, 1); if not chip:IsMouseOver() then chip.hover = false; nudL:Hide(); chip.nudR:Hide(); U.StyleButtonState(chip) end end)
+                nudL.txt:SetTextColor(0.796, 0.835, 0.882, 0.95)
+                nudL:SetScript("OnEnter", function(self)
+                    self._hover = true
+                    chip.hover = true
+                    U.StyleButtonState(chip)
+                end)
+                nudL:SetScript("OnLeave", function(self)
+                    self._hover = false
+                    if not chip:IsMouseOver() then chip.hover = false end
+                    U.StyleButtonState(chip)
+                end)
                 nudL:SetScript("OnClick", function()
                     S.swapSourceKey = nil
                     if spec.moveKey and chip.itemKey then
@@ -7510,17 +8094,25 @@ function U.AddCard(page, spec)
                 end)
                 chip.nudL = nudL
 
-                local nudR = CreateFrame("Button", nil, chip)
+                local nudR = CreateFrame("Button", nil, chip, "BackdropTemplate")
                 nudR:SetSize(18, 22)
-                nudR:SetPoint("RIGHT", chip, "RIGHT", -1, 0)
+                nudR:SetPoint("RIGHT", chip, "RIGHT", -4, 0)
+                Backdrop(nudR, 0.055, 0.063, 0.082, 0.96, 0.15, 0.18, 0.24, 1.0)
                 nudR.txt = nudR:CreateFontString(nil, "OVERLAY")
                 SetFont(nudR.txt, 11, "")
                 nudR.txt:SetPoint("CENTER", nudR, "CENTER", 0, 0)
                 nudR.txt:SetText(">")
-                nudR.txt:SetTextColor(0.85, 0.92, 1.0, 1)
-                nudR:Hide()
-                nudR:SetScript("OnEnter", function(self) chip.hover = true; U.StyleButtonState(chip); self.txt:SetTextColor(1, 0.82, 0.2, 1) end)
-                nudR:SetScript("OnLeave", function(self) self.txt:SetTextColor(0.85, 0.92, 1.0, 1); if not chip:IsMouseOver() then chip.hover = false; chip.nudL:Hide(); nudR:Hide(); U.StyleButtonState(chip) end end)
+                nudR.txt:SetTextColor(0.796, 0.835, 0.882, 0.95)
+                nudR:SetScript("OnEnter", function(self)
+                    self._hover = true
+                    chip.hover = true
+                    U.StyleButtonState(chip)
+                end)
+                nudR:SetScript("OnLeave", function(self)
+                    self._hover = false
+                    if not chip:IsMouseOver() then chip.hover = false end
+                    U.StyleButtonState(chip)
+                end)
                 nudR:SetScript("OnClick", function()
                     S.swapSourceKey = nil
                     if spec.moveKey and chip.itemKey then
@@ -7529,6 +8121,12 @@ function U.AddCard(page, spec)
                     end
                 end)
                 chip.nudR = nudR
+
+                chip.label:ClearAllPoints()
+                chip.label:SetPoint("LEFT", nudL, "RIGHT", 4, 0)
+                chip.label:SetPoint("RIGHT", nudR, "LEFT", -4, 0)
+                chip.label:SetJustifyH("CENTER")
+                chip.label:SetWordWrap(false)
             end
             chip:SetScript("OnClick", function(self, button)
                 local curKey = self.itemKey or item.key
@@ -7562,8 +8160,6 @@ function U.AddCard(page, spec)
             end)
             chip:HookScript("OnEnter", function(self)
                 if spec.reorderable then
-                    if self.nudL then self.nudL:Show() end
-                    if self.nudR then self.nudR:Show() end
                     local ar, ag, ab = GetAccent()
                     local accHex = sformat("%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
                     GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -7583,11 +8179,7 @@ function U.AddCard(page, spec)
                     GameTooltip:Show()
                 end
             end)
-            chip:HookScript("OnLeave", function(self)
-                if self.nudL and not self.nudL:IsMouseOver() and not self.nudR:IsMouseOver() then
-                    self.nudL:Hide()
-                    self.nudR:Hide()
-                end
+            chip:HookScript("OnLeave", function()
                 GameTooltip:Hide()
             end)
             card.chips[i] = chip
@@ -7597,7 +8189,6 @@ function U.AddCard(page, spec)
                 self.hb2:SetLabel(spec.headerButton2LabelFn())
             end
             local list = (spec.getOrderedItems and spec.getOrderedItems()) or spec.items
-            local activeRank = 0
             for i, item in ipairs(list) do
                 local ch = self.chips[i]
                 if ch then
@@ -7606,20 +8197,18 @@ function U.AddCard(page, spec)
                     ch.fullLabel = item.fullLabel or CAT_FULL_LABEL[item.key] or item.label
                     if spec.reorderable then
                         local isSwapSrc = (S.swapSourceKey == item.key)
+                        ch.isSwapSrc = isSwapSrc
                         if isSwapSrc then
-                            ch:SetLabel(sformat(">> Swap: %s <<", item.label))
+                            ch:SetLabel(sformat("Swap: %s", item.label))
                             ch:SetAlpha(1.0)
-                            ch:SetBackdropColor(0.35, 0.26, 0.04, 0.98)
-                            ch:SetBackdropBorderColor(1.0, 0.82, 0.20, 1.0)
-                            ch.label:SetTextColor(1.0, 0.88, 0.30, 1)
+                            ch:SetSelected(isOn)
                         elseif isOn then
-                            activeRank = activeRank + 1
-                            ch:SetLabel(sformat("[%d]  %s", activeRank, item.label))
+                            ch:SetLabel(sformat("%d. %s", i, item.label))
                             ch:SetAlpha(1.0)
                             ch:SetSelected(true)
                         else
-                            ch:SetLabel(sformat("[-]  %s", item.label))
-                            ch:SetAlpha(0.58)
+                            ch:SetLabel(sformat("%d. %s", i, item.label))
+                            ch:SetAlpha(1.0)
                             ch:SetSelected(false)
                         end
                     else
@@ -7765,22 +8354,25 @@ function U.LayoutPage(page)
                             end
                         end
                     elseif card.spec.kind == "chips" then
-                        local gap = 6
+                        local gap = card.spec.reorderable and 8 or 6
+                        local chipH = card.spec.reorderable and 32 or 24
+                        local rowPitch = chipH + 6
                         local per = card.spec.chipsPerRow or min(4, max(1, #card.chips))
                         local availW = max(360, cardW - 28)
                         local chipW = floor((availW - (per - 1) * gap) / per)
                         local rows = ceil(#card.chips / per)
-                        h = 58 + rows * 30 + 6
+                        h = 56 + rows * rowPitch + 8
                         for i, chip in ipairs(card.chips) do
                             local idx = i - 1
                             local col = idx % per
                             local row = floor(idx / per)
                             chip:ClearAllPoints()
+                            chip:SetHeight(chipH)
                             if col == (per - 1) then
-                                chip:SetPoint("TOPLEFT", card, "TOPLEFT", 14 + col * (chipW + gap), -54 - row * 30)
-                                chip:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -54 - row * 30)
+                                chip:SetPoint("TOPLEFT", card, "TOPLEFT", 14 + col * (chipW + gap), -54 - row * rowPitch)
+                                chip:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -54 - row * rowPitch)
                             else
-                                chip:SetPoint("TOPLEFT", card, "TOPLEFT", 14 + col * (chipW + gap), -54 - row * 30)
+                                chip:SetPoint("TOPLEFT", card, "TOPLEFT", 14 + col * (chipW + gap), -54 - row * rowPitch)
                                 chip:SetWidth(chipW)
                             end
                         end
@@ -7792,23 +8384,35 @@ function U.LayoutPage(page)
                         if not isParentOn then
                             card.chevBar:Hide()
                             for _, sc in ipairs(card.subCards or {}) do sc:Hide() end
-                            h = 62
+                            if card.restockPanel then card.restockPanel:Hide() end
+                            h = 66
                         elseif isExpanded then
                             card.chevBar:Show()
-                            local subY = -82
-                            local subList = card.subCards or {}
-                            for _, sc in ipairs(subList) do
-                                sc:ClearAllPoints()
-                                sc:SetPoint("TOPLEFT", card, "TOPLEFT", 10, subY)
-                                sc:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, subY)
-                                sc:Show()
-                                subY = subY - 48
+                            if card.restockPanel then
+                                for _, sc in ipairs(card.subCards or {}) do sc:Hide() end
+                                card.restockPanel:ClearAllPoints()
+                                card.restockPanel:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -88)
+                                card.restockPanel:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -88)
+                                local rh = card.restockPanel:LayoutAndRefresh() or 84
+                                card.restockPanel:Show()
+                                h = 88 + rh + 8
+                            else
+                                local subY = -88
+                                local subList = card.subCards or {}
+                                for _, sc in ipairs(subList) do
+                                    sc:ClearAllPoints()
+                                    sc:SetPoint("TOPLEFT", card, "TOPLEFT", 10, subY)
+                                    sc:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, subY)
+                                    sc:Show()
+                                    subY = subY - 48
+                                end
+                                h = 88 + (#subList * 48) + 8
                             end
-                            h = 82 + (#subList * 48) + 6
                         else
                             card.chevBar:Show()
                             for _, sc in ipairs(card.subCards or {}) do sc:Hide() end
-                            h = 84
+                            if card.restockPanel then card.restockPanel:Hide() end
+                            h = 90
                         end
                         if card.chevBar.StyleChevBar then card.chevBar.StyleChevBar() end
                     end
@@ -7954,6 +8558,7 @@ function U.BuildPage1(page)
     U.AddCard(page, {
         title = "Category Order & Visibility", kind = "chips",
         reorderable = true,
+        chipsPerRow = 3,
         headerButtonLabel = "Reset Order",
         headerButtonWidth = 96,
         onHeaderButton = function()
@@ -7977,7 +8582,7 @@ function U.BuildPage1(page)
             MarkCustom()
             U.OnSettingChanged("reclass")
         end,
-        desc = "Left-Click to toggle On/Off. Use the < > hover arrows or Right-Click two categories to swap their positions.",
+        desc = "Left-Click to toggle On/Off. Use the < > arrow buttons or Right-Click two categories to swap their positions.",
         items = CATEGORY_TOGGLES,
         getOrderedItems = function()
             NormalizeActiveCategoryOrder()
@@ -8073,14 +8678,14 @@ function U.BuildPage2(page)
         title = "Bag Window Scale", kind = "slider", min = 0.70, max = 1.40, step = 0.05,
         fmtFn = function(v) return sformat("%d%%", floor(v * 100 + 0.5)) end,
         desc = "Scale your main DynamicBags window from 70% to 140% (saved across reloads).",
-        get = function() return db.bagScale or 1.0 end,
+        get = function() return DB().bagScale or 1.0 end,
         set = function(v) U.ApplySavedWindowScale("bag", v) end,
     })
     U.AddCard(page, {
         title = "Bank Window Scale", kind = "slider", min = 0.70, max = 1.40, step = 0.05,
         fmtFn = function(v) return sformat("%d%%", floor(v * 100 + 0.5)) end,
         desc = "Scale your Personal, Warband, and Guild Bank window from 70% to 140%.",
-        get = function() return db.bankScale or 1.0 end,
+        get = function() return DB().bankScale or 1.0 end,
         set = function(v) U.ApplySavedWindowScale("bank", v) end,
     })
     U.AddCard(page, {
@@ -8135,35 +8740,34 @@ end
 
 local AUTO_OPEN_ITEMS = {
     { key = "bank", label = "Bank" }, { key = "auction", label = "Auction House" },
-    { key = "vendor", label = "Vendor" }, { key = "mail", label = "Mail" },
+    { key = "vendor", label = "Vendor" }, { key = "mail", label = "Mailbox" },
     { key = "trade", label = "Trade" }, { key = "character", label = "Character Panel" },
     { key = "upgrade", label = "Item Upgrade" }, { key = "catalyst", label = "Catalyst" },
     { key = "guildbank", label = "Guild Bank" }, { key = "crafting", label = "Crafting Orders" },
 }
 
 function U.BuildPage3(page)
-    local db = DB()
-    U.AddSection(page, "WINDOW AUTO-OPEN & CLOSE TRIGGERS", "Choose which game interactions (Bank, Merchant, Mail, Trade, Auction House) auto-open DynamicBags.")
+    U.AddSection(page, "WINDOW AUTO-OPEN & CLOSE TRIGGERS", "Choose which game interactions (Bank, Auction House, Vendor, Mailbox, Trade) auto-open DynamicBags.")
     U.AddCard(page, {
         title = "Auto-Open Triggers", kind = "chips",
         desc = "Open DynamicBags automatically when these windows open, and close it again when they close.",
         items = AUTO_OPEN_ITEMS,
-        get = function(key) return db.autoOpen[key] end,
-        set = function(key, v) db.autoOpen[key] = v and true or false end,
+        get = function(key) return DB().autoOpen and DB().autoOpen[key] == true end,
+        set = function(key, v) DB().autoOpen = DB().autoOpen or {}; DB().autoOpen[key] = v and true or false end,
     })
     U.AddCard(page, {
         title = "Remember Last Opened Bank & Sub-Tab (Personal / Warband)", kind = "toggle",
         desc = "Reopen DynamicBank into whichever Bank Mode (Personal Bank vs Warband Bank) and sub-tab (All vs T1..TN) you used last.",
-        get = function() return db.rememberLastBankTab ~= false end,
-        set = function(v) db.rememberLastBankTab = v and true or false end,
+        get = function() return DB().rememberLastBankTab ~= false end,
+        set = function(v) DB().rememberLastBankTab = v and true or false end,
     })
 
     U.AddSection(page, "CROSS-CHARACTER ALT & WARBAND VAULT", "Inspect cached bags, Character Bank, and Warband Bank across all characters on your account.")
     U.AddCard(page, {
         title = "Alt & Warband Counts in Item Tooltips", kind = "toggle",
         desc = "Adds a short line showing how many of an item your other characters and Warband Bank hold.",
-        get = function() return db.tooltipCounts end,
-        set = function(v) db.tooltipCounts = v and true or false end,
+        get = function() return DB().tooltipCounts == true end,
+        set = function(v) DB().tooltipCounts = v and true or false end,
     })
     local function CacheDesc()
         local list = U.GetCharList()
@@ -8182,16 +8786,17 @@ function U.BuildPage3(page)
         onClick = function() U.ClearAltCache() end,
     })
 
-    U.AddSection(page, "MERCHANT, LOOT & INVENTORY AUTOMATION", "Automate equipment repairs, grey junk selling, single-frame fast looting, and item deletion prompts.")
+    U.AddSection(page, "MERCHANT, LOOT & INVENTORY AUTOMATION", "Automate equipment repairs, grey junk selling, vendor restocking, fast looting, and item deletion prompts.")
     U.AddCard(page, {
         title = "Auto-Repair Equipment", kind = "toggle",
         desc = "Automatically repairs all damaged gear when opening a repair-capable vendor (Hold Shift to bypass).",
-        get = function() return db.autoRepairEnabled ~= false end,
+        get = function() return DB().autoRepairEnabled ~= false end,
         set = function(v)
-            local wasOff = (db.autoRepairEnabled == false)
-            db.autoRepairEnabled = v and true or false
-            db.autoRepair = db.autoRepairEnabled
-            if wasOff and db.autoRepairEnabled then
+            local d = DB()
+            local wasOff = (d.autoRepairEnabled == false)
+            d.autoRepairEnabled = v and true or false
+            d.autoRepair = d.autoRepairEnabled
+            if wasOff and d.autoRepairEnabled then
                 U.SetDrawerExpanded("autoRepair", true)
             end
             U.RefreshWorkspace()
@@ -8208,8 +8813,8 @@ function U.BuildPage3(page)
                         { value = "GUILD_FIRST", label = "Guild Bank First" },
                         { value = "OWN_ONLY",    label = "Personal Gold Only" },
                     },
-                    get = function() return db.repairFunding or "GUILD_FIRST" end,
-                    set = function(v) db.repairFunding = v end,
+                    get = function() return DB().repairFunding or "GUILD_FIRST" end,
+                    set = function(v) DB().repairFunding = v end,
                 },
             },
         },
@@ -8217,49 +8822,74 @@ function U.BuildPage3(page)
     U.AddCard(page, {
         title = "Auto-Sell Grey Junk", kind = "toggle",
         desc = "Automatically sells poor-quality (grey) items in your bags when visiting any merchant.",
-        get = function() return db.autoSellGrey ~= false end,
+        get = function() return DB().autoSellGrey ~= false end,
         set = function(v)
-            db.autoSellGrey = v and true or false
-            db.autoSellJunk = db.autoSellGrey
+            local d = DB()
+            d.autoSellGrey = v and true or false
+            d.autoSellJunk = d.autoSellGrey
         end,
     })
     U.AddCard(page, {
         title = "Merchant Quick-Stack Bulk Buy (Alt + Right-Click)", kind = "toggle",
         desc = "Hold Alt and Right-Click any stackable vendor item to purchase a full stack immediately without opening the split-stack popup.",
-        get = function() return db.merchantBulkBuy ~= false end,
-        set = function(v) db.merchantBulkBuy = v and true or false end,
+        get = function() return DB().merchantBulkBuy ~= false end,
+        set = function(v) DB().merchantBulkBuy = v and true or false end,
     })
     U.AddCard(page, {
         title = "Smart Vendor Auto-Restock", kind = "toggle",
-        desc = "Automatically tops up items in your restock list when visiting any merchant selling them. Configure via '/dbag restock <itemID or link> <qty>', '/dbag restock list', or '/dbag restock clear'.",
-        get = function() return db.autoRestockEnabled == true end,
-        set = function(v) db.autoRestockEnabled = v and true or false end,
+        desc = "Automatically tops up tracked vendor items to your target stock whenever you visit a merchant selling them.",
+        get = function() return DB().autoRestockEnabled == true end,
+        set = function(v)
+            local d = DB()
+            local wasOff = (d.autoRestockEnabled ~= true)
+            d.autoRestockEnabled = v and true or false
+            if wasOff and d.autoRestockEnabled then
+                U.SetDrawerExpanded("autoRestock", true)
+            end
+            U.RefreshWorkspace()
+        end,
+        subDrawer = {
+            drawerKey = "autoRestock",
+            customKind = "restock",
+            buttonLabelFn = function()
+                local n = 0
+                local list = DB().autoRestockList
+                if type(list) == "table" then
+                    for _, q in pairs(list) do
+                        if tonumber(q) and tonumber(q) > 0 then n = n + 1 end
+                    end
+                end
+                if n == 0 then return "Sub-Settings (Add Items)" end
+                return sformat("Sub-Settings (%d %s)", n, (n == 1) and "item" or "items")
+            end,
+        },
     })
     U.AddCard(page, {
         title = "Faster Auto-Loot", kind = "toggle",
         desc = "Accelerates looting by collecting all items in a single step as soon as the loot window opens.",
-        get = function() return db.fastAutoLoot ~= false end,
-        set = function(v) db.fastAutoLoot = v and true or false end,
+        get = function() return DB().fastAutoLoot ~= false end,
+        set = function(v) DB().fastAutoLoot = v and true or false end,
     })
     U.AddCard(page, {
         title = 'Auto-Fill "DELETE" Item Confirmation', kind = "toggle",
         desc = 'Automatically fills "DELETE" into the confirmation prompt when destroying Rare or Epic items.',
-        get = function() return db.autoFillDelete ~= false end,
-        set = function(v) db.autoFillDelete = v and true or false end,
+        get = function() return DB().autoFillDelete ~= false end,
+        set = function(v) DB().autoFillDelete = v and true or false end,
     })
 
     U.AddSection(page, "AUTO-OPEN & QUICK-OPEN QUEUE", "Automatically open Soulbound or Warband-bound gold pouches, Housing Decor, and Profession Knowledge, or queue protected items into the 1-click Open (N) header button.")
     U.AddCard(page, {
         title = "Auto-Open Soulbound Loot & Gold Pouches", kind = "toggle",
         desc = "Automatically opens Soulbound and Warband-bound gold pouches, coin satchels, and loot containers out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed.",
-        get = function() return db.autoOpenContainers ~= false end,
+        get = function() return DB().autoOpenContainers ~= false end,
         set = function(v)
-            local wasOff = (db.autoOpenContainers == false)
-            db.autoOpenContainers = v and true or false
-            if wasOff and db.autoOpenContainers then
+            local d = DB()
+            local wasOff = (d.autoOpenContainers == false)
+            d.autoOpenContainers = v and true or false
+            if wasOff and d.autoOpenContainers then
                 U.SetDrawerExpanded("autoOpenItems", true)
             end
-            if db.autoOpenContainers and U.ScheduleAutoOpenContainers then
+            if d.autoOpenContainers and U.ScheduleAutoOpenContainers then
                 U.ScheduleAutoOpenContainers()
             end
             if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
@@ -8273,10 +8903,10 @@ function U.BuildPage3(page)
                     kind = "toggle",
                     title = "Auto-Open Soulbound Housing Decor",
                     tooltip = "Automatically opens or learns Soulbound and Warband-bound Housing Decor items out of combat when interaction windows are closed. Protected spell casts stay queued in Open (N).",
-                    get = function() return db.autoOpenHousingDecor ~= false end,
+                    get = function() return DB().autoOpenHousingDecor ~= false end,
                     set = function(v)
-                        db.autoOpenHousingDecor = v and true or false
-                        if db.autoOpenHousingDecor and U.ScheduleAutoOpenContainers then
+                        DB().autoOpenHousingDecor = v and true or false
+                        if DB().autoOpenHousingDecor and U.ScheduleAutoOpenContainers then
                             U.ScheduleAutoOpenContainers()
                         end
                         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
@@ -8286,10 +8916,10 @@ function U.BuildPage3(page)
                     kind = "toggle",
                     title = "Auto-Open Soulbound Profession Knowledge",
                     tooltip = "Automatically uses or learns Soulbound and Warband-bound Profession Knowledge items when your character knows that profession. Protected spell casts stay queued in Open (N).",
-                    get = function() return db.autoOpenKnowledgeItems ~= false end,
+                    get = function() return DB().autoOpenKnowledgeItems ~= false end,
                     set = function(v)
-                        db.autoOpenKnowledgeItems = v and true or false
-                        if db.autoOpenKnowledgeItems and U.ScheduleAutoOpenContainers then
+                        DB().autoOpenKnowledgeItems = v and true or false
+                        if DB().autoOpenKnowledgeItems and U.ScheduleAutoOpenContainers then
                             U.ScheduleAutoOpenContainers()
                         end
                         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
@@ -8299,10 +8929,10 @@ function U.BuildPage3(page)
                     kind = "toggle",
                     title = "Auto-Unwrap & Open Wrapped Items",
                     tooltip = "Automatically unwraps wrapped gifts and parcels out of combat when interaction windows are closed. Vendor-locked or non-refundable items stay queued in Open (N) only.",
-                    get = function() return db.autoUnwrapItems == true end,
+                    get = function() return DB().autoUnwrapItems == true end,
                     set = function(v)
-                        db.autoUnwrapItems = v and true or false
-                        if db.autoUnwrapItems and U.ScheduleAutoOpenContainers then
+                        DB().autoUnwrapItems = v and true or false
+                        if DB().autoUnwrapItems and U.ScheduleAutoOpenContainers then
                             U.ScheduleAutoOpenContainers()
                         end
                         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
@@ -8314,11 +8944,12 @@ function U.BuildPage3(page)
     U.AddCard(page, {
         title = "Show Open (N) Quick-Open Button", kind = "toggle",
         desc = "Displays a 1-click button in the DynamicBags header to rapidly open or learn queued Housing Decor, Profession Knowledge, and Use: caches.",
-        get = function() return db.quickOpenEnabled ~= false end,
+        get = function() return DB().quickOpenEnabled ~= false end,
         set = function(v)
-            local wasOff = (db.quickOpenEnabled == false)
-            db.quickOpenEnabled = v and true or false
-            if wasOff and db.quickOpenEnabled then
+            local d = DB()
+            local wasOff = (d.quickOpenEnabled == false)
+            d.quickOpenEnabled = v and true or false
+            if wasOff and d.quickOpenEnabled then
                 U.SetDrawerExpanded("quickOpenQueue", true)
             end
             if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
@@ -8332,11 +8963,11 @@ function U.BuildPage3(page)
                     kind = "toggle",
                     title = "Include Housing Decor in Open (N)",
                     tooltip = "Queues Housing Decor, Room Decor, and House Chest items into the 1-spot Open (N) button.",
-                    get = function() return db.queueHousingDecor ~= false end,
+                    get = function() return DB().queueHousingDecor ~= false end,
                     set = function(v)
-                        db.queueHousingDecor = v and true or false
+                        DB().queueHousingDecor = v and true or false
                         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
-                        if db.autoOpenContainers ~= false and U.ScheduleAutoOpenContainers then
+                        if DB().autoOpenContainers ~= false and U.ScheduleAutoOpenContainers then
                             U.ScheduleAutoOpenContainers()
                         end
                     end,
@@ -8345,11 +8976,11 @@ function U.BuildPage3(page)
                     kind = "toggle",
                     title = "Include Profession Knowledge in Open (N)",
                     tooltip = "Queues Profession Knowledge items (Treatises, Shards, Notes) only when your character knows that profession.",
-                    get = function() return db.queueKnowledgeItems ~= false end,
+                    get = function() return DB().queueKnowledgeItems ~= false end,
                     set = function(v)
-                        db.queueKnowledgeItems = v and true or false
+                        DB().queueKnowledgeItems = v and true or false
                         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
-                        if db.autoOpenContainers ~= false and U.ScheduleAutoOpenContainers then
+                        if DB().autoOpenContainers ~= false and U.ScheduleAutoOpenContainers then
                             U.ScheduleAutoOpenContainers()
                         end
                     end,
@@ -8358,11 +8989,11 @@ function U.BuildPage3(page)
                     kind = "toggle",
                     title = "Soulbound Items Only (Protect BoE Items)",
                     tooltip = "Requires items to be Soulbound or Account-Bound so tradeable BoE / Auction House items are never consumed accidentally.",
-                    get = function() return db.openablesSoulboundOnly ~= false end,
+                    get = function() return DB().openablesSoulboundOnly ~= false end,
                     set = function(v)
-                        db.openablesSoulboundOnly = v and true or false
+                        DB().openablesSoulboundOnly = v and true or false
                         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
-                        if db.autoOpenContainers ~= false and U.ScheduleAutoOpenContainers then
+                        if DB().autoOpenContainers ~= false and U.ScheduleAutoOpenContainers then
                             U.ScheduleAutoOpenContainers()
                         end
                     end,
@@ -8507,6 +9138,9 @@ function U.RefreshWorkspace()
     local page = ws.pages[db.activeSubTab] or ws.pages[1]
     local h = U.LayoutPage(page)
     ws.scrollHolder.content:SetHeight(max(h, 1))
+    if ws.scrollHolder.scroll and ws.scrollHolder.scroll.UpdateScrollChildRect then
+        ws.scrollHolder.scroll:UpdateScrollChildRect()
+    end
     ws.scrollHolder.UpdateThumb()
     U.RefreshStyledButtons()
 end
@@ -8645,6 +9279,9 @@ function U.RenderWorkspace(arg1, arg2)
         local page = ws.pages[DB().activeSubTab] or ws.pages[1]
         local h = U.LayoutPage(page)
         holder.content:SetHeight(max(h, 1))
+        if holder.scroll and holder.scroll.UpdateScrollChildRect then
+            holder.scroll:UpdateScrollChildRect()
+        end
         holder.UpdateThumb()
     end
     root:SetScript("OnShow", function()
@@ -9347,12 +9984,44 @@ function U.EnsureMerchantBulkBuyHook()
     if type(_G.MerchantItemButton_OnModifiedClick) == "function" and type(_G.hooksecurefunc) == "function" then
         merchantBulkBuyHooked = true
         _G.hooksecurefunc("MerchantItemButton_OnModifiedClick", function(self, button)
-            local db = DB()
-            if db.merchantBulkBuy == false or IsModuleDisabledInSuite("DynamicBags") then return end
-            if button ~= "RightButton" or not (IsAltKeyDown and IsAltKeyDown()) then return end
+            if IsModuleDisabledInSuite("DynamicBags") then return end
+            if button ~= "RightButton" then return end
             if InCombatLockdown and InCombatLockdown() then return end
+            local isAlt = IsAltKeyDown and IsAltKeyDown()
+            local isCtrl = IsControlKeyDown and IsControlKeyDown()
+            if not isAlt then return end
             local idx = self and self.GetID and self:GetID()
             if not idx or idx <= 0 then return end
+            local db = DB()
+            if isCtrl then
+                -- Ctrl + Alt + Right-Click: add or top up (+20) this vendor item in Smart Vendor Auto-Restock
+                local itemID = (type(_G.GetMerchantItemID) == "function") and _G.GetMerchantItemID(idx) or nil
+                if not itemID and type(_G.GetMerchantItemLink) == "function" then
+                    local link = _G.GetMerchantItemLink(idx)
+                    if type(link) == "string" then
+                        itemID = tonumber(link:match("item:(%d+)"))
+                    end
+                end
+                if itemID and itemID > 0 then
+                    db.autoRestockList = db.autoRestockList or {}
+                    local info = (C_MerchantFrame and C_MerchantFrame.GetItemInfo) and C_MerchantFrame.GetItemInfo(idx) or nil
+                    local stackCount = (type(info) == "table" and tonumber(info.stackCount)) or 1
+                    local step = (stackCount > 20) and stackCount or 20
+                    local existing = tonumber(db.autoRestockList[itemID]) or 0
+                    local nextQty = min(9999, existing + step)
+                    db.autoRestockList[itemID] = nextQty
+                    db.autoRestockEnabled = true
+                    local dispName = (type(info) == "table" and type(info.name) == "string" and info.name ~= "") and info.name or ("Item #" .. tostring(itemID))
+                    if existing > 0 then
+                        Print(sformat("Updated %s Auto-Restock target to %d.", dispName, nextQty))
+                    else
+                        Print(sformat("Added %s to Smart Vendor Auto-Restock (target: %d).", dispName, nextQty))
+                    end
+                    if U.RefreshWorkspace then U.RefreshWorkspace() end
+                end
+                return
+            end
+            if db.merchantBulkBuy == false then return end
             if type(_G.GetMerchantItemMaxStack) == "function" and type(_G.BuyMerchantItem) == "function" then
                 local maxStack = tonumber(_G.GetMerchantItemMaxStack(idx)) or 1
                 if maxStack > 1 then
@@ -10864,6 +11533,7 @@ local function RegisterWithDynamicSuite()
             elseif expandDrawers == true and (type(entry) ~= "table" or entry.isSubDrawer == true) then
                 if idx == 3 then
                     db.drawerExpanded.autoRepair = true
+                    db.drawerExpanded.autoRestock = true
                     db.drawerExpanded.autoOpenItems = true
                     db.drawerExpanded.quickOpenQueue = true
                 end
@@ -10927,6 +11597,7 @@ SlashCmdList["DYNAMICBAGS"] = function(msg)
         elseif sub == "clear" then
             wipe(db.autoRestockList)
             Print("Cleared Auto-Restock list.")
+            if U.RefreshWorkspace then U.RefreshWorkspace() end
         else
             local itemID = tonumber(rest:match("item:(%d+)")) or tonumber(rest:match("^(%d+)"))
             local qty = tonumber(rest:match("(%d+)%s*$"))
@@ -10934,9 +11605,11 @@ SlashCmdList["DYNAMICBAGS"] = function(msg)
                 db.autoRestockList[itemID] = qty
                 db.autoRestockEnabled = true
                 Print(string.format("Added Item #%d to Auto-Restock (target: %d) and enabled Auto-Restock.", itemID, qty))
+                if U.RefreshWorkspace then U.RefreshWorkspace() end
             elseif itemID and (qty == 0) then
                 db.autoRestockList[itemID] = nil
                 Print(string.format("Removed Item #%d from Auto-Restock.", itemID))
+                if U.RefreshWorkspace then U.RefreshWorkspace() end
             else
                 Print("Usage: /dbag restock <itemID or item link> <targetQty>  (use 0 to remove, or 'list' / 'clear')")
             end
@@ -11219,6 +11892,10 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         U.HideBlizzardBags()
         U.ScheduleAutoOpenContainers()
     elseif event == "ITEM_DATA_LOAD_RESULT" then
+        if arg1 and type(DB().autoRestockList) == "table" and DB().autoRestockList[arg1]
+            and S.workspace and S.workspace.root and S.workspace.root:IsShown() and DB().activeSubTab == 3 then
+            U.RefreshWorkspace()
+        end
         if not S.itemDataTimer and C_Timer and C_Timer.NewTimer then
             local needsIlvlRefresh = false
             for _, bc in pairs(S.slotCache or {}) do
@@ -11440,6 +12117,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "24/11/2026",
     entries = {
+        { type = "UI",      text = "Category Grid Parity, Isolated Bank Scale, Tab 3 Drawer Spacing & In-Panel Auto-Restock UI (24/11/2026): Restyled Tab 1's 12 Category Order & Visibility tiles to match DynamicPrep's dark Obsidian layout builder (#0E1015 fill, crisp 1px live Suite Accent border when enabled, dimmed slate when disabled, '1. Category' numbering, and always-visible bordered < and > reorder buttons); isolated Tab 2's Bank Window Scale slider so scaling Bank/Warband never moves or touches the Bag window; tightened Tab 3 Sub-Settings drawer spacing and ScrollFrame height updates so every child row renders cleanly without clipping; and added an in-panel Smart Vendor Auto-Restock drawer supporting bag drag-and-drop, Shift-Click links, item ID/name lookup, per-item quantity controls, Clear All, and Ctrl + Alt + Right-Click vendor adding with tooltip hints." },
         { type = "UI",      text = "Pass 4 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 2 Rebalance (24/11/2026): Moved Category Layout Preset into a full-width QUICK PRESETS card at the top of Tab 1 (Mythic+ & Raid, Collector, Minimalist, Custom) with live Suite Accent active highlighting that clears on manual tweaks; exposed 3-mode Item Sorting (Quality, Alphabetical, Manual) and Auto-Merge Stacks on Close in Tab 1 while hiding Category-only controls cleanly in Single Grid mode and stripping outline flags from category arrows; rebalanced Tab 2 (Appearance, Badges & Glow) with Bag Window Scale, Bank Window Scale, Window Background Opacity, and Reset Window Positions; upgraded Tab 3 Auto-Repair, Auto-Open Containers, and Quick-Open Queue into persisted multi-row Sub-Settings drawers collapsed by default on fresh profiles; and unified live Suite Accent repainting across Bags, Bank, and Standalone frames." },
         { type = "UI",      text = "Release v2.7.0 - 156x26px Binary Switch Alignment & Live Accent Tooltips (21/11/2026): Standardised binary Off/Enabled option switches across all tabs to 68px Off + 84px Enabled (156x26px total) and updated Alt + Left-Click category tooltips to track the live Suite Accent colour." },
         { type = "FIX",     text = "v2.4.0 DynamicMail Alt+Left-Click Attach & Stuck Lock Release on Mail Close (18/11/2026): Removed the ActionButtonUseKeyDown edge filter blocking Alt + Left-Click mail attachments on ContainerFrameItemButton slot buttons, and updated ITEM_LOCK_CHANGED / ITEM_UNLOCKED plus MAIL_CLOSED and U.ShowWindow() lock refreshes so bag icons never stay desaturated after closing Mailbox with attached or dragged items." },

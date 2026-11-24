@@ -4977,7 +4977,7 @@ function DynamicGroup:EnsureTeleportToast()
     if not toast then
         -- Standalone fallback when DynamicSuite_Core is not loaded
         toast = CreateFrame("Button", "DynamicGroupTeleportToast", UIParent, "BackdropTemplate")
-        toast:SetSize(410, 74)
+        toast:SetSize(460, 74)
         toast:SetFrameStrata("TOOLTIP")
         toast:SetFrameLevel(20)
         toast:SetToplevel(false)
@@ -5248,8 +5248,8 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
         or string.format("Members: %d/5", numMembers)
 
     local statusLine = data.spellKnown
-        and "|cFF94A3B8Click [Teleport] to Cast   Right-Click: Dismiss|r"
-        or "|cFF94A3B8No Portal Unlocked   Right-Click: Dismiss|r"
+        and "|cFF34D399Click Teleport|r |cFF94A3B8to cast|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r"
+        or "|cFF94A3B8No Portal Unlocked|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r"
 
     local tpBtn = toast.teleportBtn
     if tpBtn then

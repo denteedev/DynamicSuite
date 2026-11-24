@@ -5892,7 +5892,7 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
 
         if not f then
             f = CreateFrame("Button", "DynamicTalentReminderToast", UIParent, "BackdropTemplate")
-            f:SetSize(410, 74)
+            f:SetSize(460, 74)
             f:SetFrameStrata("TOOLTIP")
             f:SetFrameLevel(20)
             f:SetToplevel(false)
@@ -6044,7 +6044,7 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
     end
     local titleText = string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFTalent|r  |cFF475569|||r  |cFFFBBF24%s Talent Alert|r", zoneLabel or "Zone")
     local badgeText = "|cFF94A3B8Recommended:|r " .. dispTarget
-    local subtextText = "|cFF34D399Click Swap|r |cFF94A3B8to switch|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
+    local subtextText = "|cFF34D399Click Swap|r |cFF94A3B8to switch|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
 
     f.swapBtn:SetScript("OnClick", function(_, button)
         if button == "RightButton" then

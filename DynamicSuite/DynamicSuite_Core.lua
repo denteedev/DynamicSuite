@@ -1182,7 +1182,15 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
     f._dsOnHide = opts.onHide
     f._dsHoverButtons = {}
 
-    f:SetSize(opts.width or 410, opts.height or 74)
+    local actionW = tonumber(opts.rightActionWidth) or 0
+    local actionGap = tonumber(opts.rightActionGap) or 10
+    local defaultW = (actionW > 0 or f._dsToastKind == "ACTION") and 460 or 410
+    f._dsBaseWidth = tonumber(opts.width) or defaultW
+    f._dsBaseHeight = tonumber(opts.height) or 74
+    f._dsRightActionWidth = actionW
+    f._dsRightActionGap = actionGap
+
+    f:SetSize(f._dsBaseWidth, f._dsBaseHeight)
     f:SetFrameStrata(SHARED_TOAST_STRATA)
     f:SetFrameLevel(SHARED_TOAST_LEVEL)
     f:SetToplevel(false)
@@ -1224,8 +1232,6 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
     f.iconTex = ic
     f.icon = ic
 
-    local actionW = tonumber(opts.rightActionWidth) or 0
-    local actionGap = tonumber(opts.rightActionGap) or 10
     local rightPad = (actionW > 0) and (12 + actionW + actionGap) or 14
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -1299,10 +1305,15 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
 
     function f.SetRightTextAnchor(anchorFrame, gap)
         f._dsActionBtn = anchorFrame
+        f._dsRightActionGap = tonumber(gap) or f._dsRightActionGap or 10
         if anchorFrame then
             f.BindHoverPauseButton(anchorFrame)
+            if anchorFrame.GetWidth then
+                local aw = tonumber(anchorFrame:GetWidth()) or 0
+                if aw > 0 then f._dsRightActionWidth = aw end
+            end
         end
-        local gVal = -(tonumber(gap) or 10)
+        local gVal = -f._dsRightActionGap
         local function AnchorFS(fs, anchorTo)
             if not fs then return end
             fs:ClearAllPoints()
@@ -1320,6 +1331,39 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
         AnchorFS(f.title, nil)
         AnchorFS(f.badge, f.title)
         AnchorFS(f.subtext, f.badge)
+    end
+
+    function f.AutoFitWidth()
+        if _G.InCombatLockdown and _G.InCombatLockdown() then return end
+        local baseW = tonumber(f._dsBaseWidth) or ((f._dsToastKind == "ACTION") and 460 or 410)
+        local baseH = tonumber(f._dsBaseHeight) or 74
+        local maxTextW = 0
+        for _, fs in ipairs({ f.title, f.badge, f.subtext }) do
+            if fs and (not fs.IsShown or fs:IsShown()) then
+                local w = 0
+                if fs.GetUnboundedStringWidth then
+                    local okW, uw = pcall(fs.GetUnboundedStringWidth, fs)
+                    if okW and type(uw) == "number" then w = uw end
+                elseif fs.GetStringWidth then
+                    local okW, sw = pcall(fs.GetStringWidth, fs)
+                    if okW and type(sw) == "number" then w = sw end
+                end
+                if w > maxTextW then maxTextW = w end
+            end
+        end
+        local btnW = 0
+        if f._dsActionBtn and (not f._dsActionBtn.IsShown or f._dsActionBtn:IsShown()) then
+            btnW = (f._dsActionBtn.GetWidth and tonumber(f._dsActionBtn:GetWidth())) or tonumber(f._dsRightActionWidth) or 0
+        elseif (tonumber(f._dsRightActionWidth) or 0) > 0 then
+            btnW = tonumber(f._dsRightActionWidth) or 0
+        end
+        local gap = tonumber(f._dsRightActionGap) or 10
+        local rightReserve = (btnW > 0) and (12 + btnW + gap) or 14
+        local neededW = math.ceil(70 + maxTextW + rightReserve + 12)
+        local targetW = math.max(baseW, math.min(540, neededW))
+        if f.GetWidth and math.abs((f:GetWidth() or baseW) - targetW) > 0.5 then
+            f:SetSize(targetW, baseH)
+        end
     end
 
     local animGroup = f:CreateAnimationGroup()
@@ -1439,6 +1483,10 @@ function DynamicSuite.ApplySharedToastLayout(frame, styleOpts)
     ApplySharedToastFont(frame.title, 13)
     ApplySharedToastFont(frame.badge, 11)
     ApplySharedToastFont(frame.subtext, 10)
+
+    if frame.AutoFitWidth then
+        frame.AutoFitWidth()
+    end
 
     if styleOpts.restack ~= false and frame.IsShown and frame:IsShown() then
         DynamicSuite.RestackAllToasts()
@@ -6645,6 +6693,18 @@ local BUILTIN_SEARCH_SEED = {
       title = "Auto-Sell Grey Junk",
       desc = "Automatically sell all poor-quality (grey) junk items when opening any merchant window.",
       keywords = "auto-sell grey junk vendor merchant poor items gold scrap" },
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
+      title = "Merchant Quick-Stack Bulk Buy (Alt + Right-Click)",
+      desc = "Hold Alt and Right-Click any stackable vendor item to purchase a full stack immediately without opening the split-stack popup.",
+      keywords = "merchant quick-stack bulk buy alt right-click vendor full stack" },
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
+      title = "Smart Vendor Auto-Restock",
+      desc = "Automatically top up tracked vendor items to your target stock whenever you visit a merchant selling them.",
+      keywords = "smart vendor auto-restock merchant buy restock reagents consumables list" },
+    { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault", isSubDrawer = true, drawerKey = "autoRestock",
+      title = "Auto-Restock Item List",
+      desc = "Drag-and-drop items from your bags, Shift-Click links, or Ctrl + Alt + Right-Click vendor items to manage restock targets.",
+      keywords = "auto-restock item list add remove clear all target quantity vendor drag drop" },
     { moduleKey = "bags", category = "BAGS_QOL", tabIndex = 3, tabLabel = "Automation & Alt Vault",
       title = "Faster Auto-Loot",
       desc = "Instantly collect all loot items on corpse open without waiting for the default loot window animation.",

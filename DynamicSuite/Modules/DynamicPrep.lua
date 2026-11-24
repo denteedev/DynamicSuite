@@ -694,6 +694,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "24/11/2026",
     entries = {
+        { type = "FIX",     text = "Zero-Truncation Actionable Alert Toasts (24/11/2026): Widened actionable Mage Food and Low Durability Alert Toasts (with automatic width fit in DynamicSuite) and tightened titles and action hints so no line cuts off against the right-hand button." },
         { type = "UI",      text = "Pass 3 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 3 Section Split (24/11/2026): Added a 4-option QUICK PRESETS card at the top of Tab 1 (Raider / M+ Full, Minimalist Stats, Keystone Focus, System Only) with live Suite Accent active highlighting; added Bar Density (Standard / Compact) and Bar Mouseover Fade (Off / Fade Until Hover / Combat Fade) options; clamped all wide pill rows cleanly for 800x520 minimum windows; wrapped Tab 2's Clickable Raid Buffs (12 controls, including split-out Partner Buffs, Clickable Icon Spacing, and Hide 'MISSING' Text Label) and Omni Folio (5 controls) into persisted Sub-Settings drawers collapsed by default on fresh profiles alongside a new Paperdoll Gear Audit section with toggle and Preview on Gear button; split Tab 3 into 3 calm Obsidian sections (Quest, Dialogue & Cutscenes; Combat, Error & Survival Guards; Healer Recovery & Durability) with persisted drawer states across reloads; fixed the blank-label standalone Edit HUD fallback button; and cleaned US spellings and raw setting names from tooltips and changelogs." },
         { type = "FEATURE", text = "Release v2.8.1 - Red Error Text & Sound Filter (22/11/2026): Added an opt-in Red Error Text & Sound Filter in Tab 3 (Off by default) with Hide Combat & Cooldown Spam, Hide Movement & Mount Errors, and Mute Error Voice Lines (restoring your original sound setting when turned off or disabled), using taint-free Retail 12.1.5 secret-value guards and automatic yielding to EnhanceQoL, Leatrix Plus, ErrorFilter, or ErrorMonster." },
         { type = "FEATURE", text = "Release v2.8.1 - Low Durability Shared Alert Toast (22/11/2026): Added an enabled-by-default Low Durability Alert Toast (DynamicPrepDurabilityToast, default 20% threshold, 10%-40% slider + Test Toast in Tab 3) with 1-click Repair Mount summoning outdoors (Grand Expedition Yak, Grizzly Hills Packmaster, Traveler's Tundra Mammoth) or Open Gear indoors, Right-Click silence until gear drops another 10% or is repaired, and automatic suppression in combat and active Mythic+ keystones." },
@@ -7059,7 +7060,7 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
         if not f then
             local stInit = GetMageFoodSharedToastStyle()
             f = CreateFrame("Button", "DynamicPrepMageFoodToast", UIParent, "BackdropTemplate")
-            f:SetSize(410, 74)
+            f:SetSize(460, 74)
             f:SetFrameStrata("TOOLTIP")
             f:SetFrameLevel(20)
             f:SetToplevel(false)
@@ -7219,18 +7220,18 @@ function DynamicPrep:ShowMageFoodToast(stage, bunCount, targetCount, isPreview)
     end)
 
     local titleText = isLeave
-        and "|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFF34D399Mage Food Restocked|r"
-        or  "|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFFBBF24Low Conjured Mana Buns|r"
+        and "|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFF34D399Mana Buns Restocked|r"
+        or  "|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFFBBF24Low Mana Buns|r"
     local badgeText = isLeave
         and string.format("|cFF94A3B8In Bags:|r |cFFFFFFFF%d|r |cFF64748B(Target: %d)|r", tonumber(bunCount) or 0, tonumber(targetCount) or 20)
         or (isAskMage
-            and string.format("|cFF94A3B8In Bags:|r |cFFF87171%d|r |cFF64748B(Below %d)  |  |cFF38BDF8Mage in group|r", tonumber(bunCount) or 0, tonumber(targetCount) or 20)
+            and string.format("|cFF94A3B8In Bags:|r |cFFF87171%d|r |cFF64748B(< %d)  |  |cFF38BDF8Mage in group|r", tonumber(bunCount) or 0, tonumber(targetCount) or 20)
             or  string.format("|cFF94A3B8In Bags:|r |cFFF87171%d|r |cFF64748B(Alert below %d)|r", tonumber(bunCount) or 0, tonumber(targetCount) or 20))
     local subtextText = isLeave
-        and "|cFF34D399Click Leave Dungeon|r |cFF94A3B8to exit|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r"
+        and "|cFF34D399Leave Dungeon|r |cFF94A3B8to exit|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r"
         or (isAskMage
-            and "|cFF34D399Click Ask for Table|r |cFF94A3B8to request|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
-            or  "|cFF34D399Click Queue Follower|r |cFF94A3B8for buns|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r")
+            and "|cFF34D399Ask for Table|r |cFF94A3B8in chat|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
+            or  "|cFF34D399Queue Follower|r |cFF94A3B8to restock|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r")
 
     if _G.DynamicSuite and type(_G.DynamicSuite.ShowSharedToast) == "function" then
         local okShown, resShown = pcall(_G.DynamicSuite.ShowSharedToast, f, {
@@ -7758,7 +7759,7 @@ function DynamicPrep:ShowDurabilityToast(lowestPct, avgPct, isPreview)
         if not f then
             local stInit = GetMageFoodSharedToastStyle()
             f = CreateFrame("Button", "DynamicPrepDurabilityToast", UIParent, "BackdropTemplate")
-            f:SetSize(410, 74)
+            f:SetSize(460, 74)
             f:SetFrameStrata("TOOLTIP")
             f:SetFrameLevel(20)
             f:SetToplevel(false)
@@ -7896,11 +7897,11 @@ function DynamicPrep:ShowDurabilityToast(lowestPct, avgPct, isPreview)
         DynamicPrep:HandleDurabilityToastAction(mountID)
     end)
 
-    local titleText = "|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFF87171Low Gear Durability|r"
+    local titleText = "|cFFCBD5E1Dynamic|r|cFFFFFFFFPrep|r  |cFF475569|||r  |cFFF87171Low Durability|r"
     local badgeText = string.format("|cFF94A3B8Lowest Slot:|r |cFFF87171%d%%|r |cFF64748B(Average: %d%%)|r", tonumber(lowestPct) or 0, tonumber(avgPct) or 0)
     local subtextText = mountID
-        and "|cFF34D399Click Repair Mount|r |cFF94A3B8to summon|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
-        or  "|cFF34D399Click Open Gear|r |cFF94A3B8to inspect|r   |cFF475569|||r   |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
+        and "|cFF34D399Repair Mount|r |cFF94A3B8to summon|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
+        or  "|cFF34D399Open Gear|r |cFF94A3B8to inspect|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to silence|r"
 
     if _G.DynamicSuite and type(_G.DynamicSuite.ShowSharedToast) == "function" then
         local okShown, resShown = pcall(_G.DynamicSuite.ShowSharedToast, f, {

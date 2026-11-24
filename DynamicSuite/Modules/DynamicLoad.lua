@@ -1296,19 +1296,19 @@ local function RefreshToastContent(f)
         f.badge:Hide()
         f.subtext:Hide()
     else
-        f:SetSize(410, 74)
+        f:SetSize(460, 74)
         f.iconBorder:SetSize(44, 44)
         f.iconBorder:ClearAllPoints()
         f.iconBorder:SetPoint("LEFT", f, "LEFT", 14, 0)
         f.title:ClearAllPoints()
         f.title:SetPoint("TOPLEFT", f, "TOPLEFT", 70, -11)
-        f.title:SetPoint("RIGHT", f.reloadBtn, "LEFT", -8, 0)
+        f.title:SetPoint("RIGHT", f.reloadBtn, "LEFT", -10, 0)
         f.badge:Show()
         f.subtext:Show()
 
         f.title:SetText(string.format("%s: |cFFFFFFFF%s|r", GetToastTitlePrefix(), profileName))
         f.badge:SetText(string.format("|cFF%s[ %d addons staged for reload ]|r", bdgHex, deltaCount))
-        f.subtext:SetText("|cFFFFFFFFClick [Reload] to Apply|r    |cFF888888Right-Click: Dismiss|r")
+        f.subtext:SetText("|cFF34D399Click Reload|r |cFF94A3B8to apply|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r")
     end
 end
 
@@ -1627,7 +1627,7 @@ local function CreateToastFrame()
     if toastFrame then return toastFrame end
 
     local f = CreateFrame("Button", "DynamicLoadToastFrame", UIParent, "BackdropTemplate")
-    f:SetSize(410, 74)
+    f:SetSize(460, 74)
     f:SetFrameStrata("HIGH")
     f:SetToplevel(true)
     f:SetClampedToScreen(true)
