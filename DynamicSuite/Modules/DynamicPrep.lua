@@ -2750,6 +2750,106 @@ function DynamicPrep:CycleLootSpec()
     SetLootSpecialization(0)
 end
 
+function DynamicPrep:ResolveOmniumFolioTraitIDs()
+    if not (_G.C_Traits and type(_G.C_Traits.GetConfigInfo) == "function") then
+        return nil, nil
+    end
+    local genericType = _G.Enum and _G.Enum.TraitConfigType and _G.Enum.TraitConfigType.Generic
+    if genericType and type(_G.C_Traits.GetConfigIDsByType) == "function" then
+        local okIds, cfgIds = pcall(_G.C_Traits.GetConfigIDsByType, genericType)
+        if okIds and type(cfgIds) == "table" then
+            for _, cfgID in ipairs(cfgIds) do
+                if type(cfgID) == "number" and cfgID > 0 then
+                    local okInfo, info = pcall(_G.C_Traits.GetConfigInfo, cfgID)
+                    if okInfo and type(info) == "table" then
+                        local rawName = info.name
+                        local isSec = (issecretvalue and issecretvalue(rawName)) or false
+                        if not isSec and type(rawName) == "string" then
+                            local low = string.lower(rawName)
+                            if string.find(low, "omnium", 1, true) or string.find(low, "folio", 1, true) then
+                                local treeID = (type(info.treeIDs) == "table" and type(info.treeIDs[1]) == "number") and info.treeIDs[1] or nil
+                                if type(_G.C_Traits.GetConfigIDBySystemID) == "function" then
+                                    local okDef, defCfg = pcall(_G.C_Traits.GetConfigIDBySystemID, 48)
+                                    if okDef and defCfg == cfgID then
+                                        return 48, treeID
+                                    end
+                                    for sysID = 1, 80 do
+                                        local okSys, sysCfg = pcall(_G.C_Traits.GetConfigIDBySystemID, sysID)
+                                        if okSys and sysCfg == cfgID then
+                                            return sysID, treeID
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if type(_G.C_Traits.GetConfigIDBySystemID) == "function" then
+        local okDef, cfgID = pcall(_G.C_Traits.GetConfigIDBySystemID, 48)
+        if okDef and type(cfgID) == "number" and cfgID > 0 then
+            local okInfo, info = pcall(_G.C_Traits.GetConfigInfo, cfgID)
+            local treeID = (okInfo and type(info) == "table" and type(info.treeIDs) == "table" and type(info.treeIDs[1]) == "number") and info.treeIDs[1] or 1186
+            return 48, treeID
+        end
+    end
+    return nil, nil
+end
+
+function DynamicPrep:ToggleOmniumFolioFrame()
+    if InCombatLockdown and InCombatLockdown() then
+        print(string.format("|cFF%sDynamicPrep:|r Cannot open the Omnium Folio while in combat.", GetAccentHex()))
+        return false
+    end
+    if _G.GenericTraitFrame and _G.GenericTraitFrame.IsShown and _G.GenericTraitFrame:IsShown() and self._lastOpenedFolioSystemID then
+        if type(_G.HideUIPanel) == "function" then
+            pcall(_G.HideUIPanel, _G.GenericTraitFrame)
+        else
+            pcall(_G.GenericTraitFrame.Hide, _G.GenericTraitFrame)
+        end
+        return true
+    end
+    local systemID, treeID = self:ResolveOmniumFolioTraitIDs()
+    if systemID then
+        if type(_G.GenericTraitUI_LoadUI) == "function" then
+            pcall(_G.GenericTraitUI_LoadUI)
+        elseif _G.C_AddOns and type(_G.C_AddOns.LoadAddOn) == "function" then
+            pcall(_G.C_AddOns.LoadAddOn, "Blizzard_GenericTraitUI")
+        end
+        if _G.GenericTraitFrame then
+            if type(_G.GenericTraitFrame.SetSystemID) == "function" then
+                pcall(_G.GenericTraitFrame.SetSystemID, _G.GenericTraitFrame, systemID)
+            end
+            if treeID and type(_G.GenericTraitFrame.SetTreeID) == "function" then
+                pcall(_G.GenericTraitFrame.SetTreeID, _G.GenericTraitFrame, treeID)
+            end
+            if _G.DynamicSuite and _G.DynamicSuite.DesktopWindows and type(_G.DynamicSuite.DesktopWindows.Init) == "function" then
+                pcall(_G.DynamicSuite.DesktopWindows.Init, _G.DynamicSuite.DesktopWindows, "Blizzard_GenericTraitUI")
+            end
+            if type(_G.ShowUIPanel) == "function" then
+                pcall(_G.ShowUIPanel, _G.GenericTraitFrame)
+            elseif type(_G.ToggleFrame) == "function" then
+                pcall(_G.ToggleFrame, _G.GenericTraitFrame)
+            else
+                pcall(_G.GenericTraitFrame.Show, _G.GenericTraitFrame)
+            end
+            self._lastOpenedFolioSystemID = systemID
+            return true
+        end
+    end
+    if type(_G.ToggleExpansionLandingPage) == "function" then
+        pcall(_G.ToggleExpansionLandingPage)
+        return true
+    elseif _G.ExpansionLandingPageMinimapButton and type(_G.ExpansionLandingPageMinimapButton.Click) == "function" then
+        pcall(_G.ExpansionLandingPageMinimapButton.Click, _G.ExpansionLandingPageMinimapButton)
+        return true
+    end
+    print(string.format("|cFF%sDynamicPrep:|r Omnium Folio is not available on this character right now.", GetAccentHex()))
+    return false
+end
+
 function DynamicPrep:UpdateFolioSecureButton()
     if InCombatLockdown and InCombatLockdown() then
         self._pendingFolioSecureUpdate = true
@@ -2759,20 +2859,9 @@ function DynamicPrep:UpdateFolioSecureButton()
     local bar = self.prepBarFrame
     local seg = bar and bar.segmentFrames and bar.segmentFrames["folio"]
     if not seg or not seg.secureBtn then return end
-    local bag, slot = self:FindOmniFolioItemInBags()
-    if bag and slot then
-        seg.secureBtn:SetAttribute("type1", "item")
-        seg.secureBtn:SetAttribute("item1", string.format("%d %d", bag, slot))
-        if not self.inEditMode then
-            seg.secureBtn:Show()
-        else
-            seg.secureBtn:Hide()
-        end
-    else
-        seg.secureBtn:SetAttribute("type1", nil)
-        seg.secureBtn:SetAttribute("item1", nil)
-        seg.secureBtn:Hide()
-    end
+    seg.secureBtn:SetAttribute("type1", nil)
+    seg.secureBtn:SetAttribute("item1", nil)
+    seg.secureBtn:Hide()
 end
 
 function DynamicPrep:ApplySuggestedFolioBuff(fromSecureBtn)
@@ -2886,11 +2975,12 @@ function DynamicPrep:ToggleFolioPopover(anchorBtn)
     pop.title:SetText(string.format("|cFF%sOmni Folio %s Target: %s|r", accentHex, tostring(zoneTag or "[Outdoor]"), STAT_SHORT[targetStat] or targetStat))
 
     local folioChoices = {
-        { key = "CRIT",    label = "Crit (Critical Strike)" },
-        { key = "HASTE",   label = "Haste" },
-        { key = "MASTERY", label = "Mastery" },
-        { key = "VERS",    label = "Versatility" },
-        { key = "CYCLE",   label = "Cycle Content Zone Preview" },
+        { key = "CRIT",       label = "Crit (Critical Strike)" },
+        { key = "HASTE",      label = "Haste" },
+        { key = "MASTERY",    label = "Mastery" },
+        { key = "VERS",       label = "Versatility" },
+        { key = "OPEN_FOLIO", label = "Open Omnium Folio" },
+        { key = "CYCLE",      label = "Cycle Content Zone Preview" },
     }
 
     local maxTextW = pop.title:GetStringWidth() or 190
@@ -2914,6 +3004,7 @@ function DynamicPrep:ToggleFolioPopover(anchorBtn)
         btn:SetPoint("TOPLEFT", pop, "TOPLEFT", 8, yOffset)
         btn:SetPoint("TOPRIGHT", pop, "TOPRIGHT", -8, yOffset)
 
+        local isAction = (item.key == "CYCLE" or item.key == "OPEN_FOLIO")
         local isTarget = (item.key == targetStat)
         local isActive = (self.db.activeFolioStat == item.key)
         local isSelected = isTarget or isActive
@@ -2924,10 +3015,10 @@ function DynamicPrep:ToggleFolioPopover(anchorBtn)
             1
         )
         btn.checkTex:SetVertexColor(ar, ag, ab, 1.0)
-        btn.checkTex:SetShown(isSelected and item.key ~= "CYCLE")
+        btn.checkTex:SetShown(isSelected and not isAction)
 
         local suffix = isTarget and " |cFFFBBF24(Target)|r" or ""
-        if item.key == "CYCLE" then
+        if isAction then
             btn.text:SetPoint("LEFT", btn, "LEFT", 10, 0)
             btn.text:SetText(string.format("|cFF%s%s|r", accentHex, item.label))
         else
@@ -2950,7 +3041,10 @@ function DynamicPrep:ToggleFolioPopover(anchorBtn)
             )
         end)
         btn:SetScript("OnClick", function()
-            if item.key == "CYCLE" then
+            if item.key == "OPEN_FOLIO" then
+                pop:Hide()
+                self:ToggleOmniumFolioFrame()
+            elseif item.key == "CYCLE" then
                 local order = { "outdoor", "mplus", "raid", "delve", "pvp" }
                 local cur = tostring(self.previewZoneKey or select(1, self:GetCurrentContentCategory()) or "outdoor"):lower()
                 local nextIdx = 1
@@ -3422,7 +3516,7 @@ function DynamicPrep:CreatePrepBar()
                     DynamicPrep:ToggleFolioPopover(selfSeg)
                 else
                     DynamicPrep:HideBarPopovers()
-                    DynamicPrep:ApplySuggestedFolioBuff()
+                    DynamicPrep:ToggleOmniumFolioFrame()
                 end
             elseif segKey == "key" then
                 DynamicPrep:HideBarPopovers()
@@ -4005,7 +4099,7 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
                 tooltip:AddLine(foodFullLine, 0.68, 0.74, 0.82, true)
             end
         end
-        tooltip:AddLine(string.format("|cFF34D399Left-Click:|r |cFFE2E8F0Apply Suggested Folio Buff (%s)|r", targetLabel), 1, 1, 1)
+        tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open Omnium Folio|r", 1, 1, 1)
         tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Choose Zone Target Stat|r", 1, 1, 1)
     elseif segKey == "dur" then
         local _, lowest, avg = self:GetDurabilityData()

@@ -1841,6 +1841,15 @@ local function EnsureDMUISpecialFrame(frameName)
     table.insert(UISpecialFrames, frameName)
 end
 
+local function DisableTexturePixelSnap(tex)
+    if not tex then return end
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.DisablePixelSnap) == "function" then
+        pcall(_G.DynamicSuite.UI.DisablePixelSnap, tex)
+    end
+    if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
+    if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+end
+
 function DM:CreateDropdown(parent, width, options, getter, setter, onBeforeOpen)
     local dd = CreateFrame("Button", nil, parent, "BackdropTemplate")
     dd:SetSize(width or 240, 26)
@@ -2702,15 +2711,6 @@ function DM:CreateSpaciousRow(parent, yOffset, height, titleText, descText, isSu
     end)
 
     return row
-end
-
-local function DisableTexturePixelSnap(tex)
-    if not tex then return end
-    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.DisablePixelSnap) == "function" then
-        pcall(_G.DynamicSuite.UI.DisablePixelSnap, tex)
-    end
-    if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
-    if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
 end
 
 function DM:AttachHorizontalChevronBar(groupRow, subCount, isEnabledGetter, isExpandedGetter, onToggle)
@@ -7878,6 +7878,9 @@ end
 -- ============================================================================
 
 function DM:BuildWorkspace(parentContainer)
+    if not self.db then
+        self:InitDB()
+    end
     RegisterMarkerPopupCloser()
     if self.workspaceFrame then
         self.workspaceFrame:SetParent(parentContainer)
@@ -7901,6 +7904,9 @@ function DM:BuildWorkspace(parentContainer)
     ws:SetScript("OnShow", function()
         self:RefreshTargetBar()
         self:RefreshFlareBar()
+        if self.UpdateConflictBanner then
+            self:UpdateConflictBanner()
+        end
         if self.SelectSubTab then
             self:SelectSubTab((self.db and self.db.activeSubTab) or 1)
         end
@@ -7922,6 +7928,7 @@ function DM:BuildWorkspace(parentContainer)
     banner:SetPoint("TOPLEFT", ws, "TOPLEFT", 14, -10)
     banner:SetPoint("TOPRIGHT", ws, "TOPRIGHT", -16, -10)
     self:ApplyBackdrop(banner, { r = 0.20, g = 0.14, b = 0.05, a = 0.96 }, COLORS.Amber, 1)
+    banner:Hide()
 
     banner.BtnKeepOther = self:CreateButton(banner, "Keep FocusMarker", 145, 26, function()
         if banner._mode == "ADVISORY" then
@@ -11641,6 +11648,18 @@ local function IsDecorVendorActiveForStandaloneModal()
     return DM:IsAddonEnabled("DecorVendor")
 end
 
+local function SafeReadableString(v)
+    if v == nil then return nil end
+    if issecretvalue and issecretvalue(v) then return nil end
+    if type(canaccessvalue) == "function" then
+        local okAcc, canAcc = pcall(canaccessvalue, v)
+        if okAcc and not canAcc then return nil end
+    end
+    local okStr, s = pcall(tostring, v)
+    if not okStr then return nil end
+    return s
+end
+
 function DM:ShowRaidMarkerTaintModal(offendingAddon, reason)
     if IsModuleDisabledInSuite("DynamicMarker") or MarkerModuleDescriptor._disabledAtStartup then
         return
@@ -11943,18 +11962,6 @@ local function EnforceSuiteDuplicateExclusion(showPopupIfLoaded)
 end
 
 local taintAlertCooldowns = {}
-
-local function SafeReadableString(v)
-    if v == nil then return nil end
-    if issecretvalue and issecretvalue(v) then return nil end
-    if type(canaccessvalue) == "function" then
-        local okAcc, canAcc = pcall(canaccessvalue, v)
-        if okAcc and not canAcc then return nil end
-    end
-    local okStr, s = pcall(tostring, v)
-    if not okStr then return nil end
-    return s
-end
 
 local evtFrame = CreateFrame("Frame")
 evtFrame:RegisterEvent("ADDON_LOADED")

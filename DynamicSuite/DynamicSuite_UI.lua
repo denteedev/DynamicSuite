@@ -8469,7 +8469,7 @@ function addonTable.CreateMainConfigUI()
         -- Row 4: Reset Blizzard Window Layout
         winResetRow = CreateDesktopWinRow(
             "Reset Blizzard Window Layout",
-            "Restores all 31 managed Blizzard windows to default 100% scale and centred positions.",
+            "Restores all 33 managed Blizzard windows to default 100% scale and centred positions.",
             winScaleRow, -6
         )
         winResetAllBtn = CreateFlatButton(winResetRow, 156, 26, "Reset All Windows", false)

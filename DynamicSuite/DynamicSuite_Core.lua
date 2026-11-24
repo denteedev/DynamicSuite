@@ -5216,19 +5216,19 @@ local BUILTIN_SEARCH_SEED = {
       keywords = "fill intensity alpha pill button brightness subtle balanced bold contrast" },
     { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
       title = "Keep Blizzard Windows Open Side-by-Side", highlightTitle = "Keep Blizzard Windows Open Side-by-Side",
-      desc = "Keep all 32 standard Blizzard panels (including Character, Talents & Spells, Professions, Collections, Auction House, and windowed Quest Log / World Map 'L') open side-by-side without auto-closing, with click-to-raise z-order and top-most Escape dismissal.",
-      keywords = "blizzard desktop window manager multi panel no auto close side by side quest log worldmapframe world map l talents playerspellsframe character pve merchant mail auction escape click to raise z-order /ds windows /ds win" },
+      desc = "Keep all 33 standard Blizzard panels (including Character, Talents & Spells, Professions, Collections, Omnium Folio, Auction House, and windowed Quest Log / World Map 'L') open side-by-side without auto-closing, with click-to-raise z-order and top-most Escape dismissal.",
+      keywords = "blizzard desktop window manager multi panel no auto close side by side quest log worldmapframe world map l talents playerspellsframe character pve merchant mail auction omnium folio generictraitframe expansionlandingpage escape click to raise z-order /ds windows /ds win" },
     { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
       title = "Drag Blizzard Windows Anywhere (Save Position)", highlightTitle = "Drag Blizzard Windows Anywhere (Save Position)",
       desc = "Left-Click and drag any managed Blizzard window from its title bar or any empty background space (no Alt key needed), automatically clamped on-screen and saved across sessions (Right-Click title bar to reset).",
-      keywords = "drag blizzard windows anywhere move save position empty space no alt left drag clamped on screen clamp right click header reset /ds windows /ds win" },
+      keywords = "drag blizzard windows anywhere move save position empty space no alt left drag clamped on screen clamp right click header reset omnium folio generictraitframe expansionlandingpage /ds windows /ds win" },
     { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
       title = "Window Ctrl+Scroll Scaling", highlightTitle = "Window Ctrl+Scroll Scaling",
       desc = "Hold Ctrl + Mousewheel on a Blizzard window header for temporary session scaling (70% to 140% in 5% steps), or Ctrl + Shift + Mousewheel anywhere on a window to save permanent scale.",
       keywords = "window ctrl scroll scaling wheel resize zoom 70% 140% session permanent scale blizzard panel /ds windows /ds win" },
     { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
       title = "Reset Blizzard Window Layout", highlightTitle = "Reset Blizzard Window Layout",
-      desc = "Restore all 32 managed Blizzard windows (including windowed Quest Log / World Map) to their default 100% scale and centred positions, with automatic silent yield when BlizzMove, NoAutoClose, DeModal, MoveAny, or EllesmereUI is active.",
+      desc = "Restore all 33 managed Blizzard windows (including Omnium Folio and windowed Quest Log / World Map) to their default 100% scale and centred positions, with automatic silent yield when BlizzMove, NoAutoClose, DeModal, MoveAny, or EllesmereUI is active.",
       keywords = "reset blizzard window layout reset all windows default 100% scale position blizzmove noautoclose demodal moveany ellesmereui shifter leatrix elvui coexistence /ds windows /ds win" },
     { moduleKey = "STUDIO", category = "BAGS_QOL", viewKey = "DESKTOP_WINDOWS", tabIndex = 2, tabName = "Desktop Windows & Menus", tabLabel = "Desktop Windows & Menus", slash = "/ds windows",
       title = "Game Menu: DynamicSuite Button",
@@ -6442,7 +6442,7 @@ function addonTable.RestoreHubAfterCombat()
 end
 
 --------------------------------------------------------------------------------
--- Core Blizzard Desktop Window Manager (32 Managed Panels, True MS-Windows Behaviour)
+-- Core Blizzard Desktop Window Manager (33 Managed Panels, True MS-Windows Behaviour)
 --------------------------------------------------------------------------------
 local function SafeRegisterSuiteEvent(frame, eventName)
     if not frame or not eventName then return end
@@ -6484,7 +6484,9 @@ do
         { name = "ItemInteractionFrame",           label = "Revival Catalyst",   addon = "Blizzard_ItemInteractionUI" },
         { name = "WardrobeFrame",                  label = "Transmogrify",       addon = "Blizzard_Collections" },
         { name = "ProfessionsCustomerOrdersFrame", label = "Crafting Orders",    addon = "Blizzard_ProfessionsCustomerOrders", protected = true },
-        { name = "MajorFactionRenownFrame",        label = "Renown",             addon = "Blizzard_MajorFactions" },
+        { name = "MajorFactionRenownFrame",        label = "Renown",                    addon = "Blizzard_MajorFactions" },
+        { name = "GenericTraitFrame",              label = "Omnium Folio / Trait Tree", addon = "Blizzard_GenericTraitUI" },
+        { name = "ExpansionLandingPage",           label = "Expansion Summary",         addon = "Blizzard_ExpansionLandingPage" },
         { name = "ClassTrainerFrame",              label = "Trainer",            addon = "Blizzard_TrainerUI" },
         { name = "GossipFrame",                    label = "NPC Gossip" },
         { name = "QuestFrame",                     label = "Quest" },
@@ -10527,7 +10529,7 @@ if InCombat() then return end
         end
         W.SyncAllUISpecialFrames()
         if not silent then
-            print(string.format("|cFF%sDynamicSuite:|r Reset all 32 Blizzard window positions and scales to defaults.", GetSuiteAccentHex()))
+            print(string.format("|cFF%sDynamicSuite:|r Reset all %d Blizzard window positions and scales to defaults.", GetSuiteAccentHex(), #SUPPORTED_BLIZZ_FRAMES))
         end
     end
     DesktopWindows.ResetAllBlizzardWindows = DesktopWindows.ResetAllWindows
