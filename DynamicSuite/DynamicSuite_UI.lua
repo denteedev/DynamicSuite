@@ -9761,19 +9761,21 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.9.1"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.10.0"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
             key = "suite",
             tabLabel = "DynamicLoad",
             ver = DS_LIVE_VER_TAG,
-            date = "24/11/2026 (Retail 12.1.5 / 12.1.7)",
+            date = "25/11/2026 (Retail 12.1.5 / 12.1.7)",
             title = "DynamicSuite Hub & DynamicLoad " .. DS_LIVE_VER_TAG,
             subtitle = "Context-Aware Addon Manager, Suite Studio, Desktop Window Manager & Auto-Yield Engine (/dl, /ds)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "UI",       title = "v2.10.0 Release (25/11/2026): Pass 3-5 UI Refinement Across DynamicPrep, DynamicBags & DynamicFPS", desc = "Added Quick Presets and persisted Sub-Settings drawers across DynamicPrep and DynamicBags; restyled DynamicBags Tab 1's Category Order & Visibility grid with live Suite Accent < and > reorder arrows, isolated Bank Window Scale, and an in-panel Smart Vendor Auto-Restock drawer (plus Ctrl + Alt + Right-Click at vendors); and swept DynamicFPS for 800x520 with a responsive Zone Profile toolbar, proportional 6-zone tab clamping, a 14x14 standalone resize grip, and plain Australian English Spell Queue Timing copy." },
+                { badge = "NEW",      title = "v2.10.0 Release (25/11/2026): Suite-Wide HUD Accent Single Source of Truth & Zero-Truncation Alert Toasts", desc = "Enforced your active Suite Accent across all 13 modules' in-world HUDs and overlays whenever external UI sync is off (with instant live repainting including DynamicCursor, Raid Buffs, Mailbox bar, Teleport Toast, and DynamicBank), and widened actionable Alert Toasts to 460-540 px so titles, status lines, and Right-Click hints fit cleanly with zero ellipsis truncation." },
                 { badge = "NEW",      title = "v2.9.1 Release (24/11/2026): Two-Tier Alert Toast Timers, Contextual HUD Edit Mode Timers & Universal Hover-to-Pause", desc = "Split the shared Alert Toast fade timer into Actionable Toast Duration (12s default) for clickable prompt toasts and Info & Mention Toast Duration (5s default) for glanceable alerts, with seamless migration, contextual Action/Info/Test controls inside HUD Edit Mode when Alert Toast is selected, universal hover-to-pause across toast banners and buttons, and Right-Click dismissal everywhere." },
                 { badge = "UI",       title = "v2.9.1 Release (24/11/2026): DynamicChat & DynamicZoom UI Refinement, Quick Presets, 12 px Chat Default & Copy Chat Overhaul", desc = "Added 4 Quick Presets with live Suite Accent highlighting, 6 persisted Sub-Settings drawers, a 12 px default chat font (13 px High-Readability), dynamic top typing box clearance, and an overhauled Copy Chat & Copy Link window in DynamicChat; fixed Tab 2 dropdowns and Tab 3 rendering, folded DynamicZoom's 5 zone distance sliders into a persisted Sub-Settings drawer with a configurable NPC Dialogue Distance slider (15-25 yds), synced Suite Studio surfaces, and hardened Quick Guide header and module scoping across the suite." },
                 { badge = "NEW",      title = "v2.9.0 Release (24/11/2026): Patch 12.1.7 Dual-Interface Support, 3-Step Quick Start, Shared '?' Quick Guides & Feature Spotlight Modal", desc = "Added dual-interface Retail 12.1.5 / 12.1.7 (120105, 120107) support across all 13 modules; refactored Guided Setup into 3 fast steps (1. Style, 2. Conflicts, 3. Modules with 3 starter presets and 13-module toggle grid); added the shared '?' Quick Guide header button and modal across all 13 modules; and introduced the Obsidian Feature Spotlight modal (/ds spotlight) with quiet auto-clearing NEW rail badges." },

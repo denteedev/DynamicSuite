@@ -1,6 +1,6 @@
 # DynamicSuite -- 13-Module QoL, Utility & Performance Hub
 
-**Version:** v2.9.1 (24/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107) | **Author:** Dentee-Frostmourne
+**Version:** v2.10.0 (25/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, cursor overlays, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for World of Warcraft Retail. All 13 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
@@ -35,7 +35,7 @@
 | **DynamicMarker** | `/dm`, `/fm` | Instant focus & raid target marking, optional world flare cycling & clear hotkeys (unbound by default), floating Focus & Flare bars, and smart interrupt macro |
 | **DynamicCursor** | `/dcur`, `/dynamiccursor` | Customisable Cursor Ring (3 styles across 5 thickness levels, Extra Ring Contrast, Centre Dot, Ground-Target AoE Highlight, Mouse-Look ghost & Click-Pulse), concentric Inner GCD Ring & Outer Cast/Channel/Empower Arc with Mini Spell Icon, modular Character Crosshair, Find My Cursor locator, Pooled Cursor Trail, and Smart Cursor Tooltips |
 | **DynamicZoom** | `/dz` | Unlocks 39-yard max camera zoom, speeds up scroll zooming, and fades trees/pillars instead of snapping your camera |
-| **DynamicFPS** | `/dfps` | Switches graphics settings automatically per zone, protects combat FPS, and tunes SpellQueueWindow from live ping + haste |
+| **DynamicFPS** | `/dfps` | Switches graphics settings automatically per zone, protects combat FPS, and tunes Spell Queue Timing from live ping + haste |
 | **DynamicGroup** | `/dgroup`, `/dg` | Adds region tags, M+ scores, and Lust/B-Res icons to Premade Groups, Season 2 portal deck, Dungeon Teleport Toasts, party audit, opt-in Auto-Accept Role Check, and auto-keystone |
 | **DynamicBags** | `/dbag` | Fast category-sorted bags, unified Personal/Warband/Guild Bank viewer with header `Ctrl+Scroll` scaling (70%-140%), Alt Inventory Vault, auto-repair, auto-sell junk, and opt-in Auto-Unwrap |
 | **DynamicMail** | `/dmail`, `/dynamicmail` | 1-click Inbox Open All, AH Gold, Items Only, and empty-letter cleanup with bag-reserve safety, Alt Vault recipient picker, and `Alt+Left-Click` bag attach |

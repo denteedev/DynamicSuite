@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.9.1"
+    local fb = fallback or "2.10.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.9.1")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.0")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -57,8 +57,10 @@ DynamicSuite.Changelogs = DynamicSuite.Changelogs or {}
 
 DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
-    date = "24/11/2026",
+    date = "25/11/2026",
     entries = {
+        { type = "UI",      text = "Release v2.10.0 - Pass 3-5 UI Refinement Across DynamicPrep, DynamicBags & DynamicFPS (25/11/2026): Added full-width Quick Presets and persisted Sub-Settings drawers across DynamicPrep and DynamicBags; restyled DynamicBags Tab 1's Category Order & Visibility grid with live Suite Accent < and > reorder arrows, isolated Bank Window Scale, and added an in-panel Smart Vendor Auto-Restock drawer with Ctrl + Alt + Right-Click vendor shortcuts; and completed DynamicFPS's 800x520 layout sweep with a responsive Zone Profile toolbar, proportional 6-zone tab clamping, a 14x14 standalone corner resize grip, and plain Australian English Spell Queue Timing copy." },
+        { type = "FEATURE", text = "Release v2.10.0 - Suite-Wide HUD Accent Single Source of Truth & Zero-Truncation Actionable Toasts (25/11/2026): Enforced live Suite Accent across all 13 modules' in-world HUDs and overlays whenever external UI sync is off (with immediate live repainting including DynamicCursor, Clickable Raid Buffs, Mailbox bar, Teleport Toast, and DynamicBank); and widened actionable Alert Toasts to 460-540 px with tightened copy across DynamicPrep, DynamicLoad, DynamicTalent, and DynamicGroup so titles, status lines, and hints fit with zero truncation." },
         { type = "FEATURE", text = "Release v2.9.1 - Two-Tier Alert Toast Timers, Contextual HUD Edit Mode Timers & Universal Hover-to-Pause (24/11/2026): Split the shared Alert Toast fade timer into Actionable Toast Duration (12s default: 5s, 8s, 12s, 20s, Stay) for clickable prompt toasts and Info & Mention Toast Duration (5s default: 3s, 5s, 8s, 12s, Stay) for glanceable alerts with automatic one-time migration; added contextual Action, Info, and [Test Toast] controls inside HUD Edit Mode (/ds hud) whenever Alert Toast is selected; and enabled universal hover-to-pause across toast banners and their buttons alongside Right-Click dismissal everywhere." },
         { type = "UI",      text = "Release v2.9.1 - DynamicChat & DynamicZoom UI Refinement, 12 px Chat Default, Copy Chat Overhaul & Suite-Wide Stability Fixes (24/11/2026): Added 4 Quick Presets with live Suite Accent highlighting, 6 persisted Sub-Settings drawers, a 12 px default chat font (13 px High-Readability), dynamic top typing box clearance, and an overhauled Copy Chat & Copy Link window in DynamicChat; fixed Tab 2 dropdowns and Tab 3 rendering, folded DynamicZoom's 5 zone distance sliders into a persisted Sub-Settings drawer with a configurable NPC Dialogue Distance slider (15-25 yds), synced Suite Studio surfaces, and fixed Quick Guide header and internal module scoping across the suite." },
         { type = "FEATURE", text = "Release v2.9.0 - Patch 12.1.7 Dual-Interface Support, 3-Step Quick Start, Shared '?' Quick Guides & Feature Spotlight Modal (24/11/2026): Added dual-interface Retail 12.1.5 / 12.1.7 (120105, 120107) support across all 13 modules and standalone DynamicMarker; refactored Guided Setup into a fast 3-Step Quick Start (1. Style, 2. Conflicts, 3. Modules with 3 starter presets and 13-module grid); added the shared '?' Quick Guide header button and Obsidian modal across all 13 modules; and added the hybrid Feature Spotlight modal (/ds spotlight) plus quiet auto-clearing NEW left-rail badges with zero-nag combat/instance/Mythic+/cinematic guards." },

@@ -1,12 +1,19 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.9.1 (24/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
+*Author: Dentee-Frostmourne  |  Release: v2.10.0 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
 
+---
+
+## DynamicMarker v2.10.0 (25/11/2026)
+
 ### Fixed
 * **Live Suite Accent Sync Fallback:** Updated the shared accent lookup path so standalone and integrated overlays always resolve the live Suite Accent cleanly before falling back to local profile presets.
+
+### Improved
+* **Version & Coexistence Lockstep Parity:** Synchronised standalone DynamicMarker metadata and coexistence checks to `v2.10.0` for Retail 12.1.5 / 12.1.7 (`Interface 120105, 120107`).
 
 ---
 

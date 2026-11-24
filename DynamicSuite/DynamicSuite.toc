@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFSuite|r
 ## Notes: Master Hub, Theme & Font Studio, 13-Module Guided Setup & HUD Edit Mode (/ds)
 ## Author: Dentee-Frostmourne
-## Version: 2.9.1
+## Version: 2.10.0
 ## Category: DynamicSuite
 ## Category-enUS: DynamicSuite
 ## SavedVariables: DynamicSuiteDB, DynamicLoadDB, DynamicTalentDB, DynamicPrepDB, DynamicMarkerDB, DynamicCursorDB, DynamicZoomDB, DynamicFPSDB, DynamicGroupDB, DynamicBagsDB, DynamicChatDB, DynamicMailDB, DynamicVaultDB, DynamicDialogueDB, FocusMarkerDB
