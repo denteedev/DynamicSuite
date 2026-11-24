@@ -406,6 +406,14 @@ local function GetSuiteAccent()
             end
         end
     end
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.GetActiveAccentColor) == "function" then
+        local ok, r, g, b, hx = pcall(_G.DynamicSuite.UI.GetActiveAccentColor)
+        if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            local hex = (type(hx) == "string" and hx ~= "") and hx or FormatColorHex(r, g, b)
+            if #hex == 6 then hex = "FF" .. hex end
+            return r, g, b, hex
+        end
+    end
     if _G.DynamicLoadUI and type(_G.DynamicLoadUI.GetActiveThemeColors) == "function" then
         local ok, cols = pcall(_G.DynamicLoadUI.GetActiveThemeColors)
         if ok and type(cols) == "table" and type(cols.accent) == "table" then
@@ -8080,6 +8088,9 @@ end
 
 local function ApplyGroupThemeToUI()
     DynamicGroup:UpdateLFGMiniBar()
+    if DynamicGroup.ApplyTeleportToastPosition then
+        DynamicGroup:ApplyTeleportToastPosition()
+    end
     DynamicGroup:RefreshConfigUI()
 end
 

@@ -350,7 +350,7 @@ local function RGBToHex(r, g, b)
     return string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
 end
 
-if type(Suite.GetSuiteAccent) ~= "function" then
+if type(Suite.GetSuiteAccent) ~= "function" and not Suite._isHubLoaded then
     function Suite:GetSuiteAccent()
         if _G.DynamicLoadUI and type(_G.DynamicLoadUI.GetActiveAccentRGB) == "function" then
             local ok, r, g, b = pcall(_G.DynamicLoadUI.GetActiveAccentRGB)
@@ -398,6 +398,12 @@ local function GetActiveAccentRGB()
             local tg = r[2] or r.g or 0.741
             local tb = r[3] or r.b or 0.973
             return tr, tg, tb, SanitizeHex6(r.hex, tr, tg, tb)
+        end
+    end
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.GetActiveAccentColor) == "function" then
+        local ok, r, g, b, hex = pcall(_G.DynamicSuite.UI.GetActiveAccentColor)
+        if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            return r, g, b, SanitizeHex6(hex, r, g, b)
         end
     end
     return 0.220, 0.741, 0.973, "38BDF8"
@@ -480,6 +486,9 @@ local function ApplyPrepThemeToUI()
     end
     if DynamicPrep.prepBarFrame then
         DynamicPrep:RefreshBar()
+    end
+    if DynamicPrep.RefreshClickableBuffs and not (InCombatLockdown and InCombatLockdown()) then
+        DynamicPrep:RefreshClickableBuffs(true)
     end
     if DynamicPrep.RefreshCombatBuffAlert then
         DynamicPrep:RefreshCombatBuffAlert()

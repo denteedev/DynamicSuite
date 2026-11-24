@@ -359,18 +359,18 @@ local function GetTheme()
     }
     local acc = { r = 0.220, g = 0.741, b = 0.973, hex = "38BDF8" }
 
-    if _G.DynamicSuite and _G.DynamicSuite.UI then
-        local ui = _G.DynamicSuite.UI
-        if type(ui.GetActiveSurfaceColors) == "function" then
-            local okS, s = pcall(ui.GetActiveSurfaceColors)
-            if okS and type(s) == "table" then
-                surf.bg     = s.bg or s.frameBg or surf.bg
-                surf.header = s.header or s.topBar or surf.header
-                surf.card   = s.card or s.cardBg or surf.card
-                surf.panel  = s.panel or s.bg or surf.panel
-                surf.border = s.border or surf.border
+    if _G.DynamicSuite and type(_G.DynamicSuite.GetSuiteAccent) == "function" then
+        local okA, r, g, b, hex = pcall(_G.DynamicSuite.GetSuiteAccent, _G.DynamicSuite)
+        if okA and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            acc.r, acc.g, acc.b = r, g, b
+            if type(hex) == "string" and #hex == 6 then
+                acc.hex = hex
+            else
+                acc.hex = string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
             end
         end
+    elseif _G.DynamicSuite and _G.DynamicSuite.UI then
+        local ui = _G.DynamicSuite.UI
         if type(ui.GetActiveAccentColor) == "function" then
             local okA, r, g, b, hex = pcall(ui.GetActiveAccentColor)
             if okA and type(r) == "number" and type(g) == "number" and type(b) == "number" then
@@ -382,7 +382,17 @@ local function GetTheme()
                 end
             end
         end
-    elseif _G.DynamicSuite and type(_G.DynamicSuite.GetActiveAccentHex) == "function" then
+    end
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.GetActiveSurfaceColors) == "function" then
+        local okS, s = pcall(_G.DynamicSuite.UI.GetActiveSurfaceColors)
+        if okS and type(s) == "table" then
+            surf.bg     = s.bg or s.frameBg or surf.bg
+            surf.header = s.header or s.topBar or surf.header
+            surf.card   = s.card or s.cardBg or surf.card
+            surf.panel  = s.panel or s.bg or surf.panel
+            surf.border = s.border or surf.border
+        end
+    elseif _G.DynamicSuite and type(_G.DynamicSuite.GetActiveAccentHex) == "function" and acc.hex == "38BDF8" then
         local okH, hex = pcall(_G.DynamicSuite.GetActiveAccentHex)
         if okH and type(hex) == "string" and #hex == 6 then
             acc.hex = hex
@@ -416,6 +426,10 @@ local function EnsureEllesmereSkinRegistered()
             ellesmereFacade = S
             if type(S) == "table" and type(S.OnLooksChanged) == "function" then
                 S.OnLooksChanged(function()
+                    if _G.DynamicSuite and _G.DynamicSuite._isHubLoaded then
+                        local syncExt = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global and (_G.DynamicSuiteDB.global.syncExternalUI == true)
+                        if not syncExt then return end
+                    end
                     if RefreshInboxToolbarUI then RefreshInboxToolbarUI() end
                     if RefreshSendPickerUI then RefreshSendPickerUI() end
                 end)
@@ -3538,11 +3552,14 @@ end
 
 DynamicMail.RenderEmbedded      = function(self, parent) return RenderMailEmbedded(parent or self) end
 DynamicMail.ApplyTheme          = function()
+    if RefreshInboxToolbarUI then RefreshInboxToolbarUI() end
+    if RefreshSendPickerUI then RefreshSendPickerUI() end
     if activeEmbeddedRoot and activeEmbeddedRoot:GetParent() and activeEmbeddedRoot:IsShown() then
         RenderMailEmbedded(activeEmbeddedRoot:GetParent())
     end
     RefreshHostTelemetry()
 end
+DynamicMail.ApplyThemeToUI      = DynamicMail.ApplyTheme
 DynamicMail.ResetDefaults       = function() return DynamicMail:ResetModuleDefaults() end
 DynamicMail.ResetModule         = function() return DynamicMail:ResetModuleDefaults() end
 DynamicMail.Reset               = function() return DynamicMail:ResetModuleDefaults() end

@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Fixed
+* **Live Suite Accent Sync Fallback:** Updated the shared accent lookup path so standalone and integrated overlays always resolve the live Suite Accent cleanly before falling back to local profile presets.
+
 ---
 
 ## DynamicMarker v2.9.1 (24/11/2026)

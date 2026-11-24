@@ -373,8 +373,69 @@ if _G.DynamicSuite then
     _G.DynamicSuite.UI.COLORS = UI.COLORS
 end
 
+function UI.ResolveExternalUIAccent()
+    local r, g, b
+    if _G.EllesmereUI and type(_G.EllesmereUI.ResolveProfileAccent) == "function" then
+        local okP, pData = pcall(function()
+            return _G.EllesmereUI.GetActiveProfileData and _G.EllesmereUI.GetActiveProfileData()
+        end)
+        if okP then
+            local okA, _, ar, ag, ab = pcall(_G.EllesmereUI.ResolveProfileAccent, pData)
+            if okA and type(ar) == "number" and type(ag) == "number" and type(ab) == "number" then
+                r, g, b = ar, ag, ab
+            end
+        end
+    end
+    if (not r) and _G.EllesmereUI and type(_G.EllesmereUI.GetAccentColor) == "function" then
+        local okA, ar, ag, ab = pcall(_G.EllesmereUI.GetAccentColor)
+        if okA and type(ar) == "number" and type(ag) == "number" and type(ab) == "number" then
+            r, g, b = ar, ag, ab
+        end
+    end
+    if (not r) and _G.EllesmereUI and type(_G.EllesmereUI.ResolveThemeColor) == "function" then
+        local okT, theme = pcall(function()
+            return (_G.EllesmereUI.GetActiveTheme and _G.EllesmereUI.GetActiveTheme()) or "Class Colored"
+        end)
+        if okT then
+            local okC, ar, ag, ab = pcall(_G.EllesmereUI.ResolveThemeColor, theme)
+            if okC and type(ar) == "number" and type(ag) == "number" and type(ab) == "number" then
+                r, g, b = ar, ag, ab
+            end
+        end
+    end
+    if (not r) and type(_G.EllesmereUIDB) == "table" and type(_G.EllesmereUIDB.accentColor) == "table" then
+        local c = _G.EllesmereUIDB.accentColor
+        if type(c.r) == "number" and type(c.g) == "number" and type(c.b) == "number" then
+            r, g, b = c.r, c.g, c.b
+        end
+    end
+    if (not r) and type(_G.ELLESMERE_GREEN) == "table" and type(_G.ELLESMERE_GREEN.r) == "number" then
+        r, g, b = _G.ELLESMERE_GREEN.r, _G.ELLESMERE_GREEN.g, _G.ELLESMERE_GREEN.b
+    end
+    if (not r) and type(_G.ElvUI) == "table" and type(_G.ElvUI[1]) == "table" then
+        local E = _G.ElvUI[1]
+        if E.media and type(E.media.rgbvaluecolor) == "table" then
+            local c = E.media.rgbvaluecolor
+            if type(c.r) == "number" and type(c.g) == "number" and type(c.b) == "number" then
+                r, g, b = c.r, c.g, c.b
+            end
+        end
+    end
+    if r and g and b then
+        local hex = string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+        return r, g, b, hex
+    end
+    return nil
+end
+
 function UI.GetActiveAccentColor()
     local g = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
+    if g.syncExternalUI == true then
+        local er, eg, eb, ehex = UI.ResolveExternalUIAccent()
+        if er and eg and eb then
+            return er, eg, eb, ehex
+        end
+    end
     local key = g.accentKey or "AUTO_CLASS"
     if key == "CUSTOM" and g.customAccent then
         local r = g.customAccent.r or 0.796
@@ -878,6 +939,20 @@ function UI.SetFont(fs, size, flags, r, g, b, a)
     if r and fs.SetTextColor then
         fs:SetTextColor(r, g or 1, b or 1, a or 1)
     end
+end
+
+if _G.DynamicSuite then
+    _G.DynamicSuite.UI = UI
+    _G.DynamicSuite.GetSuiteAccent = function()
+        return UI.GetActiveAccentColor()
+    end
+    _G.DynamicSuite.GetActiveAccentColor = UI.GetActiveAccentColor
+    _G.DynamicSuite.GetActiveAccentHex = function()
+        local _, _, _, hex = UI.GetActiveAccentColor()
+        return hex
+    end
+    _G.DynamicSuite.GetFont = UI.GetFont
+    _G.DynamicSuite.GetFontPath = UI.GetFont
 end
 
 function UI.ApplyFontRecursively(frame)
@@ -8272,35 +8347,7 @@ function addonTable.CreateMainConfigUI()
             gTbl._preSyncFontKey = gTbl.fontFamily or "EXPRESSWAY"
         end
 
-        local r, g, b
-        if _G.EllesmereUI and type(_G.EllesmereUI.ResolveProfileAccent) == "function" then
-            local pData = (_G.EllesmereUI.GetActiveProfileData and _G.EllesmereUI.GetActiveProfileData())
-            local _, ar, ag, ab = _G.EllesmereUI.ResolveProfileAccent(pData)
-            r, g, b = ar, ag, ab
-        end
-        if (not r) and _G.EllesmereUI and type(_G.EllesmereUI.GetAccentColor) == "function" then
-            r, g, b = _G.EllesmereUI.GetAccentColor()
-        end
-        if (not r) and _G.EllesmereUI and type(_G.EllesmereUI.ResolveThemeColor) == "function" then
-            local theme = (_G.EllesmereUI.GetActiveTheme and _G.EllesmereUI.GetActiveTheme()) or "Class Colored"
-            r, g, b = _G.EllesmereUI.ResolveThemeColor(theme)
-        end
-        if (not r) and type(_G.EllesmereUIDB) == "table" and _G.EllesmereUIDB.accentColor then
-            local c = _G.EllesmereUIDB.accentColor
-            r, g, b = c.r, c.g, c.b
-        end
-        if (not r) and _G.ELLESMERE_GREEN then
-            r, g, b = _G.ELLESMERE_GREEN.r, _G.ELLESMERE_GREEN.g, _G.ELLESMERE_GREEN.b
-        end
-        if (not r) and _G.ElvUI and type(_G.ElvUI) == "table" and _G.ElvUI[1] then
-            local E = _G.ElvUI[1]
-            if E.media and E.media.rgbvaluecolor then
-                local c = E.media.rgbvaluecolor
-                if c.r and c.g and c.b then
-                    r, g, b = c.r, c.g, c.b
-                end
-            end
-        end
+        local r, g, b = UI.ResolveExternalUIAccent()
         if r and g and b then
             gTbl.accentKey = "CUSTOM"
             gTbl.customAccent = { r = r, g = g, b = b }
@@ -18000,6 +18047,7 @@ function addonTable.CreateMainConfigUI()
             { key = "DynamicMarker", obj = _G.DynamicMarker },
             { key = "DynamicPrep", obj = _G.DynamicPrep },
             { key = "DynamicTalent", obj = _G.DynamicTalent },
+            { key = "DynamicCursor", obj = _G.DynamicCursor },
             { key = "DynamicFPS", obj = _G.DynamicFPS },
             { key = "DynamicZoom", obj = _G.DynamicZoom },
             { key = "DynamicGroup", obj = _G.DynamicGroup },

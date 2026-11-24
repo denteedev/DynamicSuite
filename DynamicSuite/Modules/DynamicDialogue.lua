@@ -212,6 +212,14 @@ local function GetSuiteUI()
 end
 
 local function GetAccentColor()
+    if _G.DynamicSuite and type(_G.DynamicSuite.GetSuiteAccent) == "function" then
+        local ok, r, g, b = pcall(_G.DynamicSuite.GetSuiteAccent, _G.DynamicSuite)
+        if ok and type(r) == "table" and r.r then
+            return r.r, r.g, r.b
+        elseif ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            return r, g, b
+        end
+    end
     local ui = GetSuiteUI()
     if ui and type(ui.GetActiveAccentColor) == "function" then
         local ok, r, g, b = pcall(ui.GetActiveAccentColor)

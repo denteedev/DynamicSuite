@@ -1333,6 +1333,12 @@ function DM:GetAccentColor()
             return tr, tg, tb, SanitizeHex6(r.hex, tr, tg, tb)
         end
     end
+    if Suite and Suite.UI and type(Suite.UI.GetActiveAccentColor) == "function" then
+        local ok, r, g, b, hex = pcall(Suite.UI.GetActiveAccentColor)
+        if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            return r, g, b, SanitizeHex6(hex, r, g, b)
+        end
+    end
     local gTbl = self.suiteGlobal or (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global)
     local accentKey = gTbl and gTbl.accentKey
     if accentKey == "CUSTOM" and type(gTbl.customAccent) == "table" then

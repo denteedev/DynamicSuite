@@ -189,6 +189,12 @@ local function GetActiveAccentRGB()
             return tr, tg, tb, SanitizeHex6(r.hex, tr, tg, tb)
         end
     end
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.GetActiveAccentColor) == "function" then
+        local ok, r, g, b, hex = pcall(_G.DynamicSuite.UI.GetActiveAccentColor)
+        if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            return r, g, b, SanitizeHex6(hex, r, g, b)
+        end
+    end
     return 0.220, 0.741, 0.973, "38BDF8"
 end
 

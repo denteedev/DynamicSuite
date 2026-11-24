@@ -584,6 +584,13 @@ local function GetSuiteAccent()
             end
         end
     end
+    if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.GetActiveAccentColor) == "function" then
+        local ok, r, g, bl, hex = pcall(_G.DynamicSuite.UI.GetActiveAccentColor)
+        if ok and type(r) == "number" and type(g) == "number" and type(bl) == "number" then
+            local hex6 = SanitizeHex6(hex, r, g, bl)
+            return r, g, bl, hex6, "FF" .. hex6
+        end
+    end
     local _, classFile = UnitClass and UnitClass("player") or nil, nil
     local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
     if cc then

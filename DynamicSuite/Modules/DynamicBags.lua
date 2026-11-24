@@ -298,6 +298,7 @@ local DEFAULTS = {
     bankColumns = 14,
     bagScale = 1.0,
     bankScale = 1.0,
+    bgOpacity = 0.98,
     iconSize = 36,
     categorySpacing = 12,
     badges = { ilvl = true, upgrade = true, keystone = true, eqset = true, binding = true, junk = true, quality = true },
@@ -328,7 +329,7 @@ local DEFAULTS = {
     queueHousingDecor = true,
     queueKnowledgeItems = true,
     openablesSoulboundOnly = true,
-    repairDrawerOpen = true,
+    drawerExpanded = {},
     yieldHooks = false,
     tooltipCounts = true,
     pinnedCategories = {},
@@ -384,6 +385,15 @@ local function EnsureDB()
     if _G.DynamicBagsDB.autoSellGrey ~= nil then
         _G.DynamicBagsDB.autoSellJunk = (_G.DynamicBagsDB.autoSellGrey and true or false)
     end
+    if type(_G.DynamicBagsDB.drawerExpanded) ~= "table" then
+        _G.DynamicBagsDB.drawerExpanded = {}
+    end
+    if _G.DynamicBagsDB.bgOpacity == nil then
+        _G.DynamicBagsDB.bgOpacity = 0.98
+    else
+        local op = tonumber(_G.DynamicBagsDB.bgOpacity) or 0.98
+        _G.DynamicBagsDB.bgOpacity = math.max(0.50, math.min(1.00, op))
+    end
     S.db = _G.DynamicBagsDB
     return S.db
 end
@@ -405,9 +415,42 @@ local function IsSecret(v)
     return false
 end
 
+local function GetAccent()
+    local suite = _G.DynamicSuite
+    if suite and type(suite.GetSuiteAccent) == "function" then
+        local ok, a, b, c = pcall(suite.GetSuiteAccent, suite)
+        if ok then
+            if type(a) == "table" then
+                return tonumber(a.r or a[1]) or 0.376, tonumber(a.g or a[2]) or 0.647, tonumber(a.b or a[3]) or 0.980
+            elseif type(a) == "number" and type(b) == "number" and type(c) == "number" then
+                return a, b, c
+            end
+        end
+    end
+    if suite and suite.UI and type(suite.UI.GetActiveAccentColor) == "function" then
+        local ok, r, g, b = pcall(suite.UI.GetActiveAccentColor)
+        if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            return r, g, b
+        end
+    end
+    local ui = _G.DynamicLoadUI
+    if ui and type(ui.GetActiveAccentColor) == "function" then
+        local ok, r, g, b = pcall(ui.GetActiveAccentColor)
+        if ok and type(r) == "number" then return r, g, b end
+    end
+    local _, classFile = UnitClass and UnitClass("player") or nil, nil
+    local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
+    if cc then
+        return cc.r, cc.g, cc.b
+    end
+    return 0.376, 0.647, 0.980
+end
+
 local function Print(msg)
     if DEFAULT_CHAT_FRAME then
-        DEFAULT_CHAT_FRAME:AddMessage("|cFFFF7C0ADynamic|r|cFFFFFFFFBags|r: " .. tostring(msg))
+        local ar, ag, ab = GetAccent()
+        local hex = sformat("|cFF%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
+        DEFAULT_CHAT_FRAME:AddMessage(hex .. "Dynamic|r|cFFFFFFFFBags|r: " .. tostring(msg))
     end
 end
 
@@ -420,26 +463,6 @@ local function CharKey()
 end
 
 -- ---- Suite theme helpers (accent / fonts / surfaces) -----------------------
-
-local function GetAccent()
-    local suite = _G.DynamicSuite
-    if suite and type(suite.GetSuiteAccent) == "function" then
-        local ok, a, b, c = pcall(suite.GetSuiteAccent, suite)
-        if ok then
-            if type(a) == "table" then
-                return tonumber(a.r or a[1]) or 1, tonumber(a.g or a[2]) or 0.486, tonumber(a.b or a[3]) or 0.039
-            elseif type(a) == "number" and type(b) == "number" and type(c) == "number" then
-                return a, b, c
-            end
-        end
-    end
-    local ui = _G.DynamicLoadUI
-    if ui and type(ui.GetActiveAccentColor) == "function" then
-        local ok, r, g, b = pcall(ui.GetActiveAccentColor)
-        if ok and type(r) == "number" then return r, g, b end
-    end
-    return 1.0, 0.486, 0.039
-end
 
 local function GetFontPath()
     local suite = _G.DynamicSuite
@@ -4818,6 +4841,71 @@ function U.ResetBagOrBankScale(targetKind)
     ShowBagScaleToast(frame, "Scale Reset: 100%")
 end
 
+function U.ApplySavedWindowScale(targetKind, newScale)
+    if InCombatLockdown and InCombatLockdown() then return end
+    local nextScale = ClampWindowScale(newScale)
+    local isBank = (targetKind == "bank")
+    local frame = isBank and S.bankWindow or S.window
+    if isBank then
+        DB().bankScale = nextScale
+        S.sessionBankScale = nil
+        if frame then
+            if DB().vaultDocked == false then
+                U.SaveTopAlignedPos(frame, "vaultPos")
+            end
+            frame:SetScale(nextScale)
+            if U.ApplyCompanionAnchor then U.ApplyCompanionAnchor() end
+        end
+    else
+        DB().bagScale = nextScale
+        S.sessionBagScale = nil
+        if frame then
+            U.SaveTopAlignedPos(frame, "windowPos")
+            frame:SetScale(nextScale)
+            ApplySavedTopAlignedPos(frame, "windowPos")
+            if S.bankWindow and S.bankWindow:IsShown() and DB().vaultDocked ~= false and U.ApplyCompanionAnchor then
+                U.ApplyCompanionAnchor()
+            end
+        end
+    end
+end
+
+function U.ResetWindowPositions()
+    if InCombatLockdown and InCombatLockdown() then
+        Print("Cannot reset window positions while in combat.")
+        return
+    end
+    local db = DB()
+    db.windowPos = nil
+    db.vaultPos = nil
+    db.vaultDocked = true
+    if S.window then
+        local initScale = U.GetActiveWindowScale("bag")
+        S.window:ClearAllPoints()
+        S.window:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMRIGHT", -80 / initScale, 100 / initScale)
+    end
+    if S.bankWindow and U.ApplyCompanionAnchor then
+        U.ApplyCompanionAnchor()
+    end
+    Print("Reset DynamicBags and DynamicBank window positions to defaults.")
+end
+
+function U.IsDrawerExpanded(drawerKey)
+    local db = DB()
+    if type(db.drawerExpanded) ~= "table" then return false end
+    return db.drawerExpanded[drawerKey] == true
+end
+
+function U.SetDrawerExpanded(drawerKey, isOpen)
+    local db = DB()
+    if type(db.drawerExpanded) ~= "table" then db.drawerExpanded = {} end
+    db.drawerExpanded[drawerKey] = (isOpen == true)
+end
+
+function U.ToggleDrawerExpanded(drawerKey)
+    U.SetDrawerExpanded(drawerKey, not U.IsDrawerExpanded(drawerKey))
+end
+
 function U.AttachWindowScaleHandlers(targetKind, headFrame, fullFrames)
     if headFrame and headFrame.HookScript then
         if headFrame.EnableMouse then headFrame:EnableMouse(true) end
@@ -5292,7 +5380,8 @@ function U.EnsureCompanionBankWindow()
     if not InCombatLockdown() then
         bw:SetScale(U.GetActiveWindowScale("bank"))
     end
-    Backdrop(bw, COL.panel[1], COL.panel[2], COL.panel[3], COL.panel[4], ar, ag, ab, 0.90)
+    local bgA = max(0.50, min(1.00, tonumber(DB().bgOpacity) or COL.panel[4]))
+    Backdrop(bw, COL.panel[1], COL.panel[2], COL.panel[3], bgA, ar, ag, ab, 0.90)
     if S.window then
         bw:SetPoint("TOPRIGHT", S.window, "TOPLEFT", -10, 0)
     else
@@ -6275,7 +6364,8 @@ function U.EnsureWindow()
     if not InCombatLockdown() then
         win:SetScale(initScale)
     end
-    Backdrop(win, COL.panel[1], COL.panel[2], COL.panel[3], COL.panel[4], ar, ag, ab, 0.90)
+    local bgA = max(0.50, min(1.00, tonumber(db.bgOpacity) or COL.panel[4]))
+    Backdrop(win, COL.panel[1], COL.panel[2], COL.panel[3], bgA, ar, ag, ab, 0.90)
     local pos = db.windowPos
     if type(pos) == "table" and pos[1] then
         local activeS = (win.GetScale and win:GetScale()) or 1
@@ -6687,12 +6777,29 @@ function U.EnsureWindow()
 end
 
 function U.ApplyWindowTheme()
-    local win = S.window
-    if not win then return end
     local ar, ag, ab = GetAccent()
     local hex = sformat("|cFF%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
-    win:SetBackdropBorderColor(ar, ag, ab, 0.90)
-    win.title:SetText("|cFFF3F5F8Dynamic|r" .. hex .. "Bags|r")
+    local bgA = max(0.50, min(1.00, tonumber(DB().bgOpacity) or COL.panel[4]))
+    if S.window then
+        S.window:SetBackdropColor(COL.panel[1], COL.panel[2], COL.panel[3], bgA)
+        S.window:SetBackdropBorderColor(ar, ag, ab, 0.90)
+        if S.window.title then
+            S.window.title:SetText("|cFFF3F5F8Dynamic|r" .. hex .. "Bags|r")
+        end
+    end
+    if S.bankWindow then
+        S.bankWindow:SetBackdropColor(COL.panel[1], COL.panel[2], COL.panel[3], bgA)
+        S.bankWindow:SetBackdropBorderColor(ar, ag, ab, 0.90)
+        if S.bankWindow.title then
+            S.bankWindow.title:SetText("|cFFF3F5F8Dynamic|r" .. hex .. "Bank|r")
+        end
+    end
+    if S.standalone then
+        S.standalone:SetBackdropBorderColor(ar, ag, ab, 0.90)
+        if S.standalone.titleText then
+            S.standalone.titleText:SetText("|cFFF3F5F8Dynamic|r" .. hex .. "Bags|r  settings")
+        end
+    end
     if S.quickOpenBtn and S.quickOpenBtn.ApplyAccentStyle then
         S.quickOpenBtn:ApplyAccentStyle()
     end
@@ -6825,7 +6932,7 @@ end
 
 local TAB_DEFS = {
     { id = 1, label = "Layout & Categories" },
-    { id = 2, label = "Item Badges & Glow" },
+    { id = 2, label = "Appearance, Badges & Glow" },
     { id = 3, label = "Automation & Alt Vault" },
 }
 
@@ -6926,12 +7033,173 @@ end
 U.AddSectionHeader = U.CreateSectionHeader
 DynamicBags.CreateSectionHeader = U.CreateSectionHeader
 
-function U.AddSection(page, titleText, subtitleText)
+function U.AddSection(page, titleText, subtitleText, isVisibleFn)
     page.sections = page.sections or {}
     local sec = U.CreateSectionBox(page, titleText, subtitleText)
+    sec.isVisible = isVisibleFn
     page.sections[#page.sections + 1] = sec
     page.currentSection = sec
     return sec
+end
+
+local function BuildCardSubDrawer(card, sd, ar, ag, ab, IsNegativePillOption)
+    local rowsSpec = sd.rows
+    if type(rowsSpec) ~= "table" or #rowsSpec == 0 then
+        rowsSpec = { {
+            kind = "pills",
+            title = sd.title or "Funding Priority",
+            pillWidth = sd.pillWidth or 138,
+            options = sd.options or {},
+            get = sd.get,
+            set = sd.set,
+            tooltip = sd.tooltip,
+        } }
+    end
+
+    local chevBar = CreateFrame("Button", nil, card, "BackdropTemplate")
+    chevBar:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -52)
+    chevBar:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -52)
+    chevBar:SetHeight(24)
+    Backdrop(chevBar, 0.055, 0.065, 0.090, 0.96, COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
+
+    local chevIcon = chevBar:CreateTexture(nil, "ARTWORK")
+    chevIcon:SetSize(11, 11)
+    if chevIcon.SetSnapToPixelGrid then
+        chevIcon:SetSnapToPixelGrid(false)
+        chevIcon:SetTexelSnappingBias(0)
+    end
+    local chevLabel = chevBar:CreateFontString(nil, "OVERLAY")
+    SetFont(chevLabel, 10, "")
+    local labelText = sd.buttonLabel or sformat("Sub-Settings (%d)", #rowsSpec)
+    chevLabel:SetText(labelText)
+
+    local totalW = 11 + 6 + 96
+    chevIcon:SetPoint("LEFT", chevBar, "CENTER", -floor(totalW * 0.5), 0)
+    chevLabel:SetPoint("LEFT", chevIcon, "RIGHT", 6, 0)
+    chevBar.chevIcon = chevIcon
+    chevBar.chevLabel = chevLabel
+    card.chevBar = chevBar
+
+    card.subCards = {}
+    for rIdx, rSpec in ipairs(rowsSpec) do
+        local subCard = CreateFrame("Frame", nil, card, "BackdropTemplate")
+        subCard:SetHeight(44)
+        Backdrop(subCard, COL.panel[1], COL.panel[2], COL.panel[3], COL.panel[4], COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
+        subCard.rowSpec = rSpec
+
+        local leftBar = subCard:CreateTexture(nil, "OVERLAY")
+        leftBar:SetWidth(2)
+        leftBar:SetPoint("TOPLEFT", subCard, "TOPLEFT", 0, -1)
+        leftBar:SetPoint("BOTTOMLEFT", subCard, "BOTTOMLEFT", 0, 1)
+        leftBar:SetColorTexture(ar, ag, ab, 1.0)
+        subCard.leftBar = leftBar
+
+        local pip = subCard:CreateTexture(nil, "OVERLAY")
+        pip:SetSize(5, 5)
+        pip:SetPoint("LEFT", subCard, "LEFT", 14, 0)
+        pip:SetColorTexture(ar, ag, ab, 1.0)
+        subCard.pip = pip
+
+        local sTitle = subCard:CreateFontString(nil, "OVERLAY")
+        SetFont(sTitle, 11, "")
+        sTitle:SetPoint("LEFT", pip, "RIGHT", 8, 0)
+        sTitle:SetJustifyH("LEFT")
+        sTitle:SetWordWrap(false)
+        sTitle:SetTextColor(0.95, 0.96, 0.99, 1.0)
+        sTitle:SetText(rSpec.title or "")
+        subCard.title = sTitle
+
+        local sOpts = rSpec.options
+        if rSpec.kind == "toggle" or not sOpts then
+            sOpts = {
+                { value = false, label = "Off", width = 68 },
+                { value = true,  label = "Enabled", width = 84 },
+            }
+        end
+        local sTotalW = 0
+        for i, sOpt in ipairs(sOpts) do
+            local bw = sOpt.width or rSpec.pillWidth or 138
+            sTotalW = sTotalW + bw + ((i > 1) and 4 or 0)
+        end
+        local sHolder = CreateFrame("Frame", nil, subCard)
+        sHolder:SetSize(sTotalW, 24)
+        sHolder:SetPoint("RIGHT", subCard, "RIGHT", -12, 0)
+        sTitle:SetPoint("RIGHT", sHolder, "LEFT", -14, 0)
+
+        subCard.btns = {}
+        local sx = 0
+        for i, sOpt in ipairs(sOpts) do
+            local bw = sOpt.width or rSpec.pillWidth or 138
+            local sb = U.NewButton(sHolder, bw, 24, sOpt.label)
+            sb.isPillOption = true
+            sb.optValue = sOpt.value
+            sb.optLabel = sOpt.label
+            sb.isNegativeOpt = IsNegativePillOption(sOpt.value, sOpt.label)
+            sb:SetPoint("LEFT", sHolder, "LEFT", sx, 0)
+            sx = sx + bw + 4
+            sb:SetScript("OnClick", function()
+                if rSpec.set then rSpec.set(sOpt.value) end
+                card:Refresh()
+            end)
+            subCard.btns[i] = sb
+        end
+
+        if rSpec.tooltip and rSpec.tooltip ~= "" then
+            subCard:EnableMouse(true)
+            subCard:HookScript("OnEnter", function(selfSub)
+                if GameTooltip then
+                    local r, g, b = GetAccent()
+                    GameTooltip:SetOwner(selfSub, "ANCHOR_TOP")
+                    GameTooltip:ClearLines()
+                    GameTooltip:AddLine(rSpec.title or "", r, g, b)
+                    GameTooltip:AddLine(rSpec.tooltip, 0.85, 0.90, 0.96, true)
+                    GameTooltip:Show()
+                end
+            end)
+            subCard:HookScript("OnLeave", function()
+                if GameTooltip then GameTooltip:Hide() end
+            end)
+        end
+
+        card.subCards[rIdx] = subCard
+    end
+    card.subCard = card.subCards[1]
+
+    local function StyleChevBar()
+        local r, g, b = GetAccent()
+        local isExp = (sd.drawerKey and U.IsDrawerExpanded(sd.drawerKey))
+            or (sd.isExpanded and sd.isExpanded()) or false
+        chevIcon:SetTexture(isExp
+            and "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_up.tga"
+            or "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
+        if chevBar.hover then
+            chevBar:SetBackdropColor(r * 0.22, g * 0.22, b * 0.22, 0.98)
+            chevBar:SetBackdropBorderColor(r, g, b, 1.0)
+            chevIcon:SetVertexColor(1, 1, 1, 1)
+            chevLabel:SetTextColor(1, 1, 1, 1)
+        elseif isExp then
+            chevBar:SetBackdropColor(r * 0.14, g * 0.14, b * 0.14, 0.96)
+            chevBar:SetBackdropBorderColor(r, g, b, 0.95)
+            chevIcon:SetVertexColor(r, g, b, 1)
+            chevLabel:SetTextColor(0.95, 0.97, 1.0, 1)
+        else
+            chevBar:SetBackdropColor(0.055, 0.065, 0.090, 0.96)
+            chevBar:SetBackdropBorderColor(COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
+            chevIcon:SetVertexColor(0.68, 0.74, 0.82, 1)
+            chevLabel:SetTextColor(0.68, 0.74, 0.82, 1)
+        end
+    end
+    chevBar.StyleChevBar = StyleChevBar
+    chevBar:SetScript("OnEnter", function(self) self.hover = true; StyleChevBar() end)
+    chevBar:SetScript("OnLeave", function(self) self.hover = false; StyleChevBar() end)
+    chevBar:SetScript("OnClick", function()
+        if sd.drawerKey then
+            U.ToggleDrawerExpanded(sd.drawerKey)
+        elseif sd.toggleExpanded then
+            sd.toggleExpanded()
+        end
+        U.RefreshWorkspace()
+    end)
 end
 
 function U.AddCard(page, spec)
@@ -7000,118 +7268,25 @@ function U.AddCard(page, spec)
         end
         card.control = holder
         if spec.subDrawer then
-            local sd = spec.subDrawer
-            local chevBar = CreateFrame("Button", nil, card, "BackdropTemplate")
-            chevBar:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -52)
-            chevBar:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -52)
-            chevBar:SetHeight(24)
-            Backdrop(chevBar, 0.055, 0.065, 0.090, 0.96, COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
-
-            local chevIcon = chevBar:CreateTexture(nil, "ARTWORK")
-            chevIcon:SetSize(11, 11)
-            local chevLabel = chevBar:CreateFontString(nil, "OVERLAY")
-            SetFont(chevLabel, 10, "")
-            chevLabel:SetText(sd.buttonLabel or "Sub-Settings (1)")
-
-            local totalW = 11 + 6 + 96
-            chevIcon:SetPoint("LEFT", chevBar, "CENTER", -floor(totalW * 0.5), 0)
-            chevLabel:SetPoint("LEFT", chevIcon, "RIGHT", 6, 0)
-            chevBar.chevIcon = chevIcon
-            chevBar.chevLabel = chevLabel
-            card.chevBar = chevBar
-
-            local subCard = CreateFrame("Frame", nil, card, "BackdropTemplate")
-            subCard:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -82)
-            subCard:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -82)
-            subCard:SetHeight(48)
-            Backdrop(subCard, COL.panel[1], COL.panel[2], COL.panel[3], COL.panel[4], COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
-
-            local leftBar = subCard:CreateTexture(nil, "OVERLAY")
-            leftBar:SetWidth(2)
-            leftBar:SetPoint("TOPLEFT", subCard, "TOPLEFT", 0, -1)
-            leftBar:SetPoint("BOTTOMLEFT", subCard, "BOTTOMLEFT", 0, 1)
-            leftBar:SetColorTexture(ar, ag, ab, 1.0)
-            subCard.leftBar = leftBar
-
-            local pip = subCard:CreateTexture(nil, "OVERLAY")
-            pip:SetSize(5, 5)
-            pip:SetPoint("LEFT", subCard, "LEFT", 14, 0)
-            pip:SetColorTexture(ar, ag, ab, 1.0)
-            subCard.pip = pip
-
-            local sTitle = subCard:CreateFontString(nil, "OVERLAY")
-            SetFont(sTitle, 11, "")
-            sTitle:SetPoint("LEFT", pip, "RIGHT", 8, 0)
-            sTitle:SetTextColor(0.95, 0.96, 0.99, 1.0)
-            sTitle:SetText(sd.title or "Funding Priority")
-            subCard.title = sTitle
-
-            local sOpts = sd.options or {}
-            local sw = sd.pillWidth or 138
-            local sHolder = CreateFrame("Frame", nil, subCard)
-            sHolder:SetSize(#sOpts * sw + (#sOpts - 1) * 4, 24)
-            sHolder:SetPoint("RIGHT", subCard, "RIGHT", -12, 0)
-            subCard.btns = {}
-            for i, sOpt in ipairs(sOpts) do
-                local sb = U.NewButton(sHolder, sw, 24, sOpt.label)
-                sb.isPillOption = true
-                sb.optValue = sOpt.value
-                sb.optLabel = sOpt.label
-                sb.isNegativeOpt = IsNegativePillOption(sOpt.value, sOpt.label)
-                sb:SetPoint("LEFT", sHolder, "LEFT", (i - 1) * (sw + 4), 0)
-                sb:SetScript("OnClick", function()
-                    sd.set(sOpt.value)
-                    card:Refresh()
-                end)
-                subCard.btns[i] = sb
-            end
-            card.subCard = subCard
-
-            local function StyleChevBar()
-                local r, g, b = GetAccent()
-                local isExp = sd.isExpanded and sd.isExpanded() or false
-                chevIcon:SetTexture(isExp
-                    and "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_up.tga"
-                    or "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_chevron_down.tga")
-                if chevBar.hover then
-                    chevBar:SetBackdropColor(r * 0.22, g * 0.22, b * 0.22, 0.98)
-                    chevBar:SetBackdropBorderColor(r, g, b, 1.0)
-                    chevIcon:SetVertexColor(1, 1, 1, 1)
-                    chevLabel:SetTextColor(1, 1, 1, 1)
-                elseif isExp then
-                    chevBar:SetBackdropColor(r * 0.14, g * 0.14, b * 0.14, 0.96)
-                    chevBar:SetBackdropBorderColor(r, g, b, 0.95)
-                    chevIcon:SetVertexColor(r, g, b, 1)
-                    chevLabel:SetTextColor(0.95, 0.97, 1.0, 1)
-                else
-                    chevBar:SetBackdropColor(0.055, 0.065, 0.090, 0.96)
-                    chevBar:SetBackdropBorderColor(COL.cellEdge[1], COL.cellEdge[2], COL.cellEdge[3], 1)
-                    chevIcon:SetVertexColor(0.68, 0.74, 0.82, 1)
-                    chevLabel:SetTextColor(0.68, 0.74, 0.82, 1)
-                end
-            end
-            chevBar.StyleChevBar = StyleChevBar
-            chevBar:SetScript("OnEnter", function(self) self.hover = true; StyleChevBar() end)
-            chevBar:SetScript("OnLeave", function(self) self.hover = false; StyleChevBar() end)
-            chevBar:SetScript("OnClick", function()
-                if sd.toggleExpanded then sd.toggleExpanded() end
-                U.RefreshWorkspace()
-            end)
+            BuildCardSubDrawer(card, spec.subDrawer, ar, ag, ab, IsNegativePillOption)
         end
         function card:Refresh()
             local cur = spec.get()
             if kind == "toggle" then cur = cur and true or false end
             for i, opt in ipairs(options) do self.btns[i]:SetSelected(cur == opt.value) end
             if self.chevBar and spec.subDrawer then
-                local sd = spec.subDrawer
                 local r, g, b = GetAccent()
-                if self.subCard then
-                    if self.subCard.leftBar then self.subCard.leftBar:SetColorTexture(r, g, b, 1.0) end
-                    if self.subCard.pip then self.subCard.pip:SetColorTexture(r, g, b, 1.0) end
-                    local sCur = sd.get and sd.get()
-                    for i, sOpt in ipairs(sd.options or {}) do
-                        if self.subCard.btns[i] then
-                            self.subCard.btns[i]:SetSelected(sCur == sOpt.value)
+                for _, sc in ipairs(self.subCards or {}) do
+                    if sc.leftBar then sc.leftBar:SetColorTexture(r, g, b, 1.0) end
+                    if sc.pip then sc.pip:SetColorTexture(r, g, b, 1.0) end
+                    local rs = sc.rowSpec
+                    if rs then
+                        local sCur = rs.get and rs.get()
+                        if rs.kind == "toggle" or not rs.options then
+                            sCur = sCur and true or false
+                        end
+                        for i, sb in ipairs(sc.btns or {}) do
+                            sb:SetSelected(sCur == sb.optValue)
                         end
                     end
                 end
@@ -7204,7 +7379,7 @@ function U.AddCard(page, spec)
         slider:SetScript("OnValueChanged", function(_, value)
             if updating then return end
             local stepped = SnapValue(value)
-            card.valueText:SetText(spec.fmt and sformat(spec.fmt, stepped) or tostring(stepped))
+            card.valueText:SetText((spec.fmtFn and spec.fmtFn(stepped)) or (spec.fmt and sformat(spec.fmt, stepped)) or tostring(stepped))
             UpdateFillAndThumb(value)
             if stepped ~= lastCommittedValue then
                 lastCommittedValue = stepped
@@ -7277,7 +7452,7 @@ function U.AddCard(page, spec)
             local v = SnapValue(spec.get() or minVal)
             lastCommittedValue = v
             slider:SetValue(v)
-            self.valueText:SetText(spec.fmt and sformat(spec.fmt, v) or tostring(v))
+            self.valueText:SetText((spec.fmtFn and spec.fmtFn(v)) or (spec.fmt and sformat(spec.fmt, v)) or tostring(v))
             UpdateFillAndThumb(v)
             updating = false
         end
@@ -7319,7 +7494,7 @@ function U.AddCard(page, spec)
                 nudL:SetSize(18, 22)
                 nudL:SetPoint("LEFT", chip, "LEFT", 1, 0)
                 nudL.txt = nudL:CreateFontString(nil, "OVERLAY")
-                SetFont(nudL.txt, 11, "OUTLINE")
+                SetFont(nudL.txt, 11, "")
                 nudL.txt:SetPoint("CENTER", nudL, "CENTER", 0, 0)
                 nudL.txt:SetText("<")
                 nudL.txt:SetTextColor(0.85, 0.92, 1.0, 1)
@@ -7339,7 +7514,7 @@ function U.AddCard(page, spec)
                 nudR:SetSize(18, 22)
                 nudR:SetPoint("RIGHT", chip, "RIGHT", -1, 0)
                 nudR.txt = nudR:CreateFontString(nil, "OVERLAY")
-                SetFont(nudR.txt, 11, "OUTLINE")
+                SetFont(nudR.txt, 11, "")
                 nudR.txt:SetPoint("CENTER", nudR, "CENTER", 0, 0)
                 nudR.txt:SetText(">")
                 nudR.txt:SetTextColor(0.85, 0.92, 1.0, 1)
@@ -7454,7 +7629,57 @@ function U.AddCard(page, spec)
                     end
                 end
             end
-        end    elseif kind == "button" then
+        end    elseif kind == "presets" then
+        if card.title then card.title:Hide() end
+        if card.desc then card.desc:Hide() end
+        local lbl = card:CreateFontString(nil, "OVERLAY")
+        SetFont(lbl, 10, "")
+        lbl:SetPoint("LEFT", card, "LEFT", 14, 0)
+        lbl:SetText("PRESETS")
+        lbl:SetTextColor(0.58, 0.64, 0.72, 1)
+        card.presetLbl = lbl
+        card.presetBtns = {}
+        for i, opt in ipairs(spec.options or {}) do
+            local pb = U.NewButton(card, 120, 26, opt.label)
+            pb:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+            pb.optKey = opt.value
+            pb.isPillOption = true
+            pb.optValue = opt.value
+            pb.optLabel = opt.label
+            pb:SetScript("OnClick", function(_, button)
+                if button == "RightButton" and spec.onRightClick then
+                    spec.onRightClick(opt.value)
+                elseif spec.set then
+                    spec.set(opt.value)
+                end
+                card:Refresh()
+            end)
+            if opt.tooltipTitle or opt.tooltipBody then
+                pb:HookScript("OnEnter", function(selfBtn)
+                    if GameTooltip then
+                        local r, g, b = GetAccent()
+                        GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
+                        GameTooltip:ClearLines()
+                        GameTooltip:AddLine(opt.tooltipTitle or opt.label, r, g, b)
+                        if opt.tooltipBody then
+                            GameTooltip:AddLine(opt.tooltipBody, 0.85, 0.90, 0.96, true)
+                        end
+                        GameTooltip:Show()
+                    end
+                end)
+                pb:HookScript("OnLeave", function()
+                    if GameTooltip then GameTooltip:Hide() end
+                end)
+            end
+            card.presetBtns[i] = pb
+        end
+        function card:Refresh()
+            local cur = spec.get and spec.get()
+            for _, pb in ipairs(self.presetBtns or {}) do
+                pb:SetSelected(cur ~= nil and cur == pb.optKey)
+            end
+        end
+    elseif kind == "button" then
         local b = U.NewButton(card, spec.buttonWidth or 150, 26, spec.buttonLabel or "Run")
         b:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -17)
         b:SetScript("OnClick", function()
@@ -7498,63 +7723,109 @@ function U.LayoutPage(page)
     end
     local y = 0
     for _, sec in ipairs(page.sections or {}) do
-        local padX = sec.innerPadX or 14
-        local cardW = max(400, w - (padX * 2))
-        local sy = (sec.hdr and sec.hdr.hasSub) and 54 or 38
-        if sec.hdr and sec.hdr.RefreshAccent then sec.hdr:RefreshAccent() end
-        for _, card in ipairs(sec.cards or {}) do
-            local h = 62
-            if card.spec.kind == "chips" then
-                local gap = 6
-                local per = card.spec.chipsPerRow or min(4, max(1, #card.chips))
-                local availW = max(360, cardW - 28)
-                local chipW = floor((availW - (per - 1) * gap) / per)
-                local rows = ceil(#card.chips / per)
-                h = 58 + rows * 30 + 6
-                for i, chip in ipairs(card.chips) do
-                    local idx = i - 1
-                    local col = idx % per
-                    local row = floor(idx / per)
-                    chip:ClearAllPoints()
-                    if col == (per - 1) then
-                        chip:SetPoint("TOPLEFT", card, "TOPLEFT", 14 + col * (chipW + gap), -54 - row * 30)
-                        chip:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -54 - row * 30)
-                    else
-                        chip:SetPoint("TOPLEFT", card, "TOPLEFT", 14 + col * (chipW + gap), -54 - row * 30)
-                        chip:SetWidth(chipW)
-                    end
-                end
-            elseif card.chevBar and card.spec.subDrawer then
-                local sd = card.spec.subDrawer
-                local isParentOn = card.spec.get and card.spec.get() and true or false
-                local isExpanded = sd.isExpanded and sd.isExpanded() and true or false
-                if not isParentOn then
-                    card.chevBar:Hide()
-                    if card.subCard then card.subCard:Hide() end
-                    h = 62
-                elseif isExpanded then
-                    card.chevBar:Show()
-                    if card.subCard then card.subCard:Show() end
-                    h = 140
+        local secVisible = (type(sec.isVisible) ~= "function") or (sec.isVisible() == true)
+        if not secVisible then
+            sec:Hide()
+        else
+            sec:Show()
+            local padX = sec.innerPadX or 14
+            local cardW = max(400, w - (padX * 2))
+            local sy = (sec.hdr and sec.hdr.hasSub) and 54 or 38
+            if sec.hdr and sec.hdr.RefreshAccent then sec.hdr:RefreshAccent() end
+            for _, card in ipairs(sec.cards or {}) do
+                local cardVisible = (type(card.spec.isVisible) ~= "function") or (card.spec.isVisible() == true)
+                if not cardVisible then
+                    card:Hide()
                 else
-                    card.chevBar:Show()
-                    if card.subCard then card.subCard:Hide() end
-                    h = 84
+                    card:Show()
+                    local h = 62
+                    if card.spec.kind == "presets" then
+                        h = 46
+                        local pBtns = card.presetBtns or {}
+                        local n = #pBtns
+                        if n > 0 then
+                            local leftX = 76
+                            local rightPad = 14
+                            local gap = 6
+                            local availW = max(240, cardW - leftX - rightPad - ((n - 1) * gap))
+                            local bw = floor(availW / n)
+                            for i, pb in ipairs(pBtns) do
+                                pb:ClearAllPoints()
+                                pb:SetHeight(26)
+                                if i == 1 then
+                                    pb:SetPoint("LEFT", card, "LEFT", leftX, 0)
+                                    pb:SetWidth(bw)
+                                elseif i == n then
+                                    pb:SetPoint("LEFT", pBtns[i - 1], "RIGHT", gap, 0)
+                                    pb:SetPoint("RIGHT", card, "RIGHT", -rightPad, 0)
+                                else
+                                    pb:SetPoint("LEFT", pBtns[i - 1], "RIGHT", gap, 0)
+                                    pb:SetWidth(bw)
+                                end
+                            end
+                        end
+                    elseif card.spec.kind == "chips" then
+                        local gap = 6
+                        local per = card.spec.chipsPerRow or min(4, max(1, #card.chips))
+                        local availW = max(360, cardW - 28)
+                        local chipW = floor((availW - (per - 1) * gap) / per)
+                        local rows = ceil(#card.chips / per)
+                        h = 58 + rows * 30 + 6
+                        for i, chip in ipairs(card.chips) do
+                            local idx = i - 1
+                            local col = idx % per
+                            local row = floor(idx / per)
+                            chip:ClearAllPoints()
+                            if col == (per - 1) then
+                                chip:SetPoint("TOPLEFT", card, "TOPLEFT", 14 + col * (chipW + gap), -54 - row * 30)
+                                chip:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -54 - row * 30)
+                            else
+                                chip:SetPoint("TOPLEFT", card, "TOPLEFT", 14 + col * (chipW + gap), -54 - row * 30)
+                                chip:SetWidth(chipW)
+                            end
+                        end
+                    elseif card.chevBar and card.spec.subDrawer then
+                        local sd = card.spec.subDrawer
+                        local isParentOn = card.spec.get and card.spec.get() and true or false
+                        local isExpanded = (sd.drawerKey and U.IsDrawerExpanded(sd.drawerKey))
+                            or (sd.isExpanded and sd.isExpanded()) or false
+                        if not isParentOn then
+                            card.chevBar:Hide()
+                            for _, sc in ipairs(card.subCards or {}) do sc:Hide() end
+                            h = 62
+                        elseif isExpanded then
+                            card.chevBar:Show()
+                            local subY = -82
+                            local subList = card.subCards or {}
+                            for _, sc in ipairs(subList) do
+                                sc:ClearAllPoints()
+                                sc:SetPoint("TOPLEFT", card, "TOPLEFT", 10, subY)
+                                sc:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, subY)
+                                sc:Show()
+                                subY = subY - 48
+                            end
+                            h = 82 + (#subList * 48) + 6
+                        else
+                            card.chevBar:Show()
+                            for _, sc in ipairs(card.subCards or {}) do sc:Hide() end
+                            h = 84
+                        end
+                        if card.chevBar.StyleChevBar then card.chevBar.StyleChevBar() end
+                    end
+                    card:ClearAllPoints()
+                    card:SetPoint("TOPLEFT", sec, "TOPLEFT", padX, -sy)
+                    card:SetPoint("TOPRIGHT", sec, "TOPRIGHT", -padX, -sy)
+                    card:SetHeight(h)
+                    sy = sy + h + 8
                 end
-                if card.chevBar.StyleChevBar then card.chevBar.StyleChevBar() end
             end
-            card:ClearAllPoints()
-            card:SetPoint("TOPLEFT", sec, "TOPLEFT", padX, -sy)
-            card:SetPoint("TOPRIGHT", sec, "TOPRIGHT", -padX, -sy)
-            card:SetHeight(h)
-            sy = sy + h + 8
+            local secH = (sy - 8) + 12
+            sec:ClearAllPoints()
+            sec:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -y)
+            sec:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, -y)
+            sec:SetHeight(secH)
+            y = y + secH + 14
         end
-        local secH = (sy - 8) + 12
-        sec:ClearAllPoints()
-        sec:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -y)
-        sec:SetPoint("TOPRIGHT", page, "TOPRIGHT", 0, -y)
-        sec:SetHeight(secH)
-        y = y + secH + 14
     end
     if y > 14 then y = y - 14 end
     page:SetHeight(max(1, y))
@@ -7562,7 +7833,7 @@ function U.LayoutPage(page)
 end
 
 local function MarkCustom()
-    DB().preset = "CUSTOM"
+    DB().preset = nil
 end
 
 function U.EnsureCatOrder()
@@ -7586,68 +7857,72 @@ function U.MoveMasterCategory(catKey, delta)
     local item = table.remove(order, idx)
     table.insert(order, newIdx, item)
     DB().secPriority = {}
+    MarkCustom()
     U.OnSettingChanged("layout")
 end
 
 function U.BuildPage1(page)
     local db = DB()
     db.replaceBlizzardBags = true
-    U.AddSection(page, "VIEW MODE, SORTING & PRESETS", "Configure bag view mode, automatic sorting rules, and 1-click layout presets.")
+    U.AddSection(page, "QUICK PRESETS", "Apply a ready-made category layout in one click (Right-Click any preset to save your current setup).")
     U.AddCard(page, {
-        title = "Bag Layout Style", kind = "pills", pillWidth = 138,
+        kind = "presets",
+        options = {
+            {
+                value = "MYTHIC", label = "Mythic+ & Raid",
+                tooltipTitle = "Mythic+ & Raid",
+                tooltipBody = "Priority order: New Items -> Consumables -> Keystones -> Equipment Sets -> BoE -> Gear -> Gems & Enchants -> Warbound -> Quest -> Reagents -> Misc -> Junk.\n\n|cFF34D399Left-Click:|r |cFFE2E8F0Apply Mythic+ & Raid preset layout.|r\n|cFF38BDF8Right-Click:|r |cFFE2E8F0Save current layout to Mythic+ & Raid.|r",
+            },
+            {
+                value = "COLLECTOR", label = "Collector",
+                tooltipTitle = "Collector & Open World",
+                tooltipBody = "Prioritises New Items, Warbound, Bind on Equip, Quest Items, Toys/Mounts, and Reagents at the top.\n\n|cFF34D399Left-Click:|r |cFFE2E8F0Apply Collector preset layout.|r\n|cFF38BDF8Right-Click:|r |cFFE2E8F0Save current layout to Collector.|r",
+            },
+            {
+                value = "MINIMAL", label = "Minimalist",
+                tooltipTitle = "Minimalist Compact",
+                tooltipBody = "Groups items into broad main categories with sub-category splitting turned off for a compact view.\n\n|cFF34D399Left-Click:|r |cFFE2E8F0Apply Minimalist preset layout.|r\n|cFF38BDF8Right-Click:|r |cFFE2E8F0Save current layout to Minimalist.|r",
+            },
+            {
+                value = "CUSTOM", label = "Custom",
+                tooltipTitle = "Custom",
+                tooltipBody = "Your personalised category order and active sub-categories.\n\n|cFF34D399Left-Click:|r |cFFE2E8F0Apply Custom layout.|r\n|cFF38BDF8Right-Click:|r |cFFE2E8F0Save current layout to Custom.|r",
+            },
+        },
+        get = function() return db.preset end,
+        set = function(v) U.ApplyPreset(v); U.RefreshWorkspace() end,
+        onRightClick = function(v) U.SaveCurrentToPreset(v); U.RefreshWorkspace() end,
+    })
+
+    U.AddSection(page, "VIEW MODE & SORTING", "Choose bag view mode, automatic item sorting, and stack merging on close.")
+    U.AddCard(page, {
+        title = "Bag Layout Style", kind = "pills", pillWidth = 128,
         desc = "Organise items into automatic category groups, or display one combined grid.",
         options = { { value = "CATEGORY", label = "Category Groups" }, { value = "GRID", label = "Single Grid" } },
         get = function() return db.viewMode end,
-        set = function(v) db.viewMode = v; MarkCustom(); U.OnSettingChanged("layout") end,
+        set = function(v) db.viewMode = v; MarkCustom(); U.OnSettingChanged("layout"); U.RefreshWorkspace() end,
     })
     U.AddCard(page, {
-        title = "Auto-Sort Items by Quality & Level", kind = "toggle",
-        desc = "Automatically orders items inside each category by rarity and item level (Off keeps physical bag slot order).",
-        get = function() return db.autoSort ~= false end,
-        set = function(v) db.autoSort = (v and true or false); U.OnSettingChanged("layout") end,
-    })
-    local presetCard = U.AddCard(page, {
-        title = "Category Layout Preset", kind = "pills", pillWidth = 104,
-        desc = "Left-Click to apply a layout preset. Right-Click any preset to save your current category setup.",
+        title = "Item Sorting", kind = "pills", pillWidth = 96,
+        desc = "Order items by Rarity & Level, Alphabetical (A-Z), or keep physical bag slot positions (Manual).",
         options = {
-            { value = "MYTHIC", label = "Mythic+ & Raid" }, { value = "COLLECTOR", label = "Collector" },
-            { value = "MINIMAL", label = "Minimalist" }, { value = "CUSTOM", label = "Custom" },
+            { value = "QUALITY", label = "Quality" },
+            { value = "NAME",    label = "Alphabetical" },
+            { value = "SLOT",    label = "Manual" },
         },
-        get = function() return db.preset end,
-        set = function(v) U.ApplyPreset(v) end,
+        get = function() local m = U.GetSortMode(); return m end,
+        set = function(v) U.SetSortMode(v) end,
     })
-    if presetCard and presetCard.btns then
-        local pKeys = { "MYTHIC", "COLLECTOR", "MINIMAL", "CUSTOM" }
-        local pTips = {
-            { title = "Mythic+ & Raid Ready", body = "Priority order: New Items -> Consumables -> Keystones -> Equipment Sets -> BoE -> Gear -> Gems & Enchants -> Warbound -> Quest -> Reagents -> Misc -> Junk.\n\n|cFF34D399Left-Click:|r |cFFE2E8F0Apply Mythic+ & Raid preset layout.|r\n|cFF38BDF8Right-Click:|r |cFFE2E8F0Save current layout to Mythic+ & Raid.|r" },
-            { title = "Collector & Open World", body = "Prioritises New Items, Warbound (WUE), Bind on Equip, Quest Items, Toys/Mounts & Reagents at the top.\n\n|cFF34D399Left-Click:|r |cFFE2E8F0Apply Collector preset layout.|r\n|cFF38BDF8Right-Click:|r |cFFE2E8F0Save current layout to Collector.|r" },
-            { title = "Minimalist Compact", body = "Groups items into broad main categories with sub-category splitting turned off for a compact view.\n\n|cFF34D399Left-Click:|r |cFFE2E8F0Apply Minimalist preset layout.|r\n|cFF38BDF8Right-Click:|r |cFFE2E8F0Save current layout to Minimalist.|r" },
-            { title = "Custom", body = "Your personalised category order and active sub-categories.\n\n|cFF34D399Left-Click:|r |cFFE2E8F0Apply Custom layout.|r\n|cFF38BDF8Right-Click:|r |cFFE2E8F0Save current layout to Custom.|r" },
-        }
-        for i, b in ipairs(presetCard.btns) do
-            b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-            local tip = pTips[i]
-            local pKey = pKeys[i]
-            if tip then
-                b:HookScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_TOP")
-                    GameTooltip:SetText(tip.title, 1, 1, 1)
-                    GameTooltip:AddLine(tip.body, 0.80, 0.85, 0.92, true)
-                    GameTooltip:Show()
-                end)
-                b:HookScript("OnLeave", function() GameTooltip:Hide() end)
-            end
-            b:SetScript("OnClick", function(_, button)
-                if button == "RightButton" then
-                    U.SaveCurrentToPreset(pKey)
-                    presetCard:Refresh()
-                else
-                    U.ApplyPreset(pKey)
-                    presetCard:Refresh()
-                end
-            end)
-        end
-    end
+    U.AddCard(page, {
+        title = "Auto-Merge Stacks on Close", kind = "toggle",
+        desc = "Automatically combines partial item stacks (such as 8x + 5x) whenever you close your Bags or Bank.",
+        get = function() return db.autoMergeOnClose == true end,
+        set = function(v)
+            db.autoMergeOnClose = (v == true)
+            if S.window and S.window.restackBtn then S.window.restackBtn:SetSelected(db.autoMergeOnClose) end
+            if S.bankWindow and S.bankWindow.restackBtn then S.bankWindow.restackBtn:SetSelected(db.autoMergeOnClose) end
+        end,
+    })
 
     local function NormalizeActiveCategoryOrder()
         local order = U.EnsureCatOrder()
@@ -7673,7 +7948,9 @@ function U.BuildPage1(page)
         return true
     end
 
-    U.AddSection(page, "CATEGORY PRIORITY & SUB-SPLITTING", "Reorder virtual categories, toggle custom groups, and split consumables or gear by slot.")
+    U.AddSection(page, "CATEGORY PRIORITY & SUB-SPLITTING", "Reorder virtual categories, toggle custom groups, and split consumables or gear by slot.", function()
+        return DB().viewMode ~= "GRID"
+    end)
     U.AddCard(page, {
         title = "Category Order & Visibility", kind = "chips",
         reorderable = true,
@@ -7748,7 +8025,7 @@ function U.BuildPage1(page)
             { key = "splitConsumables",  label = "Consumables by Type",    tooltip = "Splits Consumables into Potions, Flasks & Phials, Food & Drink, and Runes & Vantus." },
             { key = "splitGearSlots",    label = "Gear by Slot",           tooltip = "Splits non-set Gear into Weapons & Off-Hand, Trinkets, Rings/Neck/Cloak, and Armour." },
             { key = "splitUpgrades",     label = "Gear Upgrades First",    tooltip = "Pulls higher item-level gear upgrades into a dedicated 'Gear Upgrades' section." },
-            { key = "splitBindSlots",    label = "BoE & Warbound by Slot", tooltip = "Splits Bind on Equip and Warbound gear into Weapons, Trinkets, Jewelry, and Armour." },
+            { key = "splitBindSlots",    label = "BoE & Warbound by Slot", tooltip = "Splits Bind on Equip and Warbound gear into Weapons, Trinkets, Jewellery, and Armour." },
             { key = "splitGemsEnchants", label = "Gems vs. Enchants",      tooltip = "Splits Gems & Enchants into Socketable Gems and Item Enchants / Enhancements." },
             { key = "splitReagents",     label = "Reagents by Expansion",  tooltip = "Splits Trade & Reagents by Expansion (Midnight, War Within, Legacy) and Profession (Herbs, Ore, Enchanting, Cooking)." },
             { key = "splitCollectibles", label = "Toys & Mounts",          tooltip = "Separates Toys, Mounts, and Companions from general Miscellaneous items." },
@@ -7759,10 +8036,10 @@ function U.BuildPage1(page)
             end
             return db[key] ~= false
         end,
-        set = function(key, v) db[key] = v and true or false; U.OnSettingChanged("layout") end,
+        set = function(key, v) db[key] = v and true or false; MarkCustom(); U.OnSettingChanged("layout") end,
     })
 
-    U.AddSection(page, "GRID GEOMETRY & SLOT DIMENSIONS", "Adjust column count, icon size, slot spacing, and window scale for backpack and bank views.")
+    U.AddSection(page, "GRID GEOMETRY & SLOT DIMENSIONS", "Adjust column count, icon size, and slot spacing for backpack and bank views.")
     U.AddCard(page, {
         title = "Bag Columns", kind = "slider", min = 8, max = 20, step = 1,
         desc = "Slots per row in the inventory window (8-20).",
@@ -7784,12 +8061,41 @@ function U.BuildPage1(page)
     U.AddCard(page, {
         title = "Category Spacing", kind = "slider", min = 8, max = 24, step = 2, fmt = "%d px",
         desc = "Vertical gap between category rows (8-24 px).",
+        isVisible = function() return DB().viewMode ~= "GRID" end,
         get = function() return db.categorySpacing end,
         set = function(v) db.categorySpacing = v; U.OnSettingChanged("layout") end,
     })
 end
 function U.BuildPage2(page)
     local db = DB()
+    U.AddSection(page, "WINDOW APPEARANCE & SCALING", "Adjust Bag and Bank window scale, background opacity, or reset saved positions.")
+    U.AddCard(page, {
+        title = "Bag Window Scale", kind = "slider", min = 0.70, max = 1.40, step = 0.05,
+        fmtFn = function(v) return sformat("%d%%", floor(v * 100 + 0.5)) end,
+        desc = "Scale your main DynamicBags window from 70% to 140% (saved across reloads).",
+        get = function() return db.bagScale or 1.0 end,
+        set = function(v) U.ApplySavedWindowScale("bag", v) end,
+    })
+    U.AddCard(page, {
+        title = "Bank Window Scale", kind = "slider", min = 0.70, max = 1.40, step = 0.05,
+        fmtFn = function(v) return sformat("%d%%", floor(v * 100 + 0.5)) end,
+        desc = "Scale your Personal, Warband, and Guild Bank window from 70% to 140%.",
+        get = function() return db.bankScale or 1.0 end,
+        set = function(v) U.ApplySavedWindowScale("bank", v) end,
+    })
+    U.AddCard(page, {
+        title = "Window Background Opacity", kind = "slider", min = 0.50, max = 1.00, step = 0.05,
+        fmtFn = function(v) return sformat("%d%%", floor(v * 100 + 0.5)) end,
+        desc = "Adjust the backdrop opacity of your DynamicBags and DynamicBank windows (50% to 100%).",
+        get = function() return db.bgOpacity or 0.98 end,
+        set = function(v) db.bgOpacity = v; U.ApplyWindowTheme() end,
+    })
+    U.AddCard(page, {
+        title = "Reset Window Positions", kind = "button", buttonLabel = "Reset Positions", buttonWidth = 150,
+        desc = "Restore DynamicBags and DynamicBank to their default screen corner and dock alignment.",
+        onClick = function() U.ResetWindowPositions() end,
+    })
+
     U.AddSection(page, "ITEM SLOT BADGES & TAGS", "Choose which info badges appear on the corners of your item icons. Alt + Right-Click any item in bags to pin it.")
     U.AddCard(page, {
         title = "Item Slot Badges", kind = "chips",
@@ -7886,22 +8192,26 @@ function U.BuildPage3(page)
             db.autoRepairEnabled = v and true or false
             db.autoRepair = db.autoRepairEnabled
             if wasOff and db.autoRepairEnabled then
-                db.repairDrawerOpen = true
+                U.SetDrawerExpanded("autoRepair", true)
             end
             U.RefreshWorkspace()
         end,
         subDrawer = {
+            drawerKey = "autoRepair",
             buttonLabel = "Sub-Settings (1)",
-            title = "Funding Priority",
-            pillWidth = 138,
-            options = {
-                { value = "GUILD_FIRST", label = "Guild Bank First" },
-                { value = "OWN_ONLY",    label = "Personal Gold Only" },
+            rows = {
+                {
+                    kind = "pills",
+                    title = "Funding Priority",
+                    pillWidth = 138,
+                    options = {
+                        { value = "GUILD_FIRST", label = "Guild Bank First" },
+                        { value = "OWN_ONLY",    label = "Personal Gold Only" },
+                    },
+                    get = function() return db.repairFunding or "GUILD_FIRST" end,
+                    set = function(v) db.repairFunding = v end,
+                },
             },
-            get = function() return db.repairFunding or "GUILD_FIRST" end,
-            set = function(v) db.repairFunding = v end,
-            isExpanded = function() return db.repairDrawerOpen ~= false end,
-            toggleExpanded = function() db.repairDrawerOpen = (db.repairDrawerOpen == false) end,
         },
     })
     U.AddCard(page, {
@@ -7944,74 +8254,121 @@ function U.BuildPage3(page)
         desc = "Automatically opens Soulbound and Warband-bound gold pouches, coin satchels, and loot containers out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed.",
         get = function() return db.autoOpenContainers ~= false end,
         set = function(v)
+            local wasOff = (db.autoOpenContainers == false)
             db.autoOpenContainers = v and true or false
+            if wasOff and db.autoOpenContainers then
+                U.SetDrawerExpanded("autoOpenItems", true)
+            end
             if db.autoOpenContainers and U.ScheduleAutoOpenContainers then
                 U.ScheduleAutoOpenContainers()
             end
             if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
+            U.RefreshWorkspace()
         end,
+        subDrawer = {
+            drawerKey = "autoOpenItems",
+            buttonLabel = "Sub-Settings (3)",
+            rows = {
+                {
+                    kind = "toggle",
+                    title = "Auto-Open Soulbound Housing Decor",
+                    tooltip = "Automatically opens or learns Soulbound and Warband-bound Housing Decor items out of combat when interaction windows are closed. Protected spell casts stay queued in Open (N).",
+                    get = function() return db.autoOpenHousingDecor ~= false end,
+                    set = function(v)
+                        db.autoOpenHousingDecor = v and true or false
+                        if db.autoOpenHousingDecor and U.ScheduleAutoOpenContainers then
+                            U.ScheduleAutoOpenContainers()
+                        end
+                        if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
+                    end,
+                },
+                {
+                    kind = "toggle",
+                    title = "Auto-Open Soulbound Profession Knowledge",
+                    tooltip = "Automatically uses or learns Soulbound and Warband-bound Profession Knowledge items when your character knows that profession. Protected spell casts stay queued in Open (N).",
+                    get = function() return db.autoOpenKnowledgeItems ~= false end,
+                    set = function(v)
+                        db.autoOpenKnowledgeItems = v and true or false
+                        if db.autoOpenKnowledgeItems and U.ScheduleAutoOpenContainers then
+                            U.ScheduleAutoOpenContainers()
+                        end
+                        if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
+                    end,
+                },
+                {
+                    kind = "toggle",
+                    title = "Auto-Unwrap & Open Wrapped Items",
+                    tooltip = "Automatically unwraps wrapped gifts and parcels out of combat when interaction windows are closed. Vendor-locked or non-refundable items stay queued in Open (N) only.",
+                    get = function() return db.autoUnwrapItems == true end,
+                    set = function(v)
+                        db.autoUnwrapItems = v and true or false
+                        if db.autoUnwrapItems and U.ScheduleAutoOpenContainers then
+                            U.ScheduleAutoOpenContainers()
+                        end
+                        if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
+                    end,
+                },
+            },
+        },
     })
     U.AddCard(page, {
-        title = "Auto-Open Soulbound Housing Decor", kind = "toggle",
-        desc = "Automatically opens or learns Soulbound and Warband-bound Housing Decor items out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Items that trigger a protected spell cast stay queued in the Open (N) button.",
-        get = function() return db.autoOpenHousingDecor ~= false end,
-        set = function(v)
-            db.autoOpenHousingDecor = v and true or false
-            if db.autoOpenHousingDecor and U.ScheduleAutoOpenContainers then
-                U.ScheduleAutoOpenContainers()
-            end
-            if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
-        end,
-    })
-    U.AddCard(page, {
-        title = "Auto-Open Soulbound Profession Knowledge", kind = "toggle",
-        desc = "Automatically uses or learns Soulbound and Warband-bound Profession Knowledge items (Treatises, Shards, Notes, Curios) when your character knows that profession and bank, vendor, mail, trade, guild bank, and auction house windows are closed. Protected spell casts stay queued in the Open (N) button.",
-        get = function() return db.autoOpenKnowledgeItems ~= false end,
-        set = function(v)
-            db.autoOpenKnowledgeItems = v and true or false
-            if db.autoOpenKnowledgeItems and U.ScheduleAutoOpenContainers then
-                U.ScheduleAutoOpenContainers()
-            end
-            if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
-        end,
-    })
-    U.AddCard(page, {
-        title = "Auto-Unwrap & Open Wrapped Items", kind = "toggle",
-        desc = "Automatically unwraps wrapped gifts and parcels out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Vendor-locked or non-refundable items stay queued in Open (N) only.",
-        get = function() return db.autoUnwrapItems == true end,
-        set = function(v)
-            db.autoUnwrapItems = v and true or false
-            if db.autoUnwrapItems and U.ScheduleAutoOpenContainers then
-                U.ScheduleAutoOpenContainers()
-            end
-            if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
-        end,
-    })
-    U.AddCard(page, {
-        title = "Show Open (N) Quick-Open Button for Housing Decor, Knowledge & Use: Caches", kind = "toggle",
+        title = "Show Open (N) Quick-Open Button", kind = "toggle",
         desc = "Displays a 1-click button in the DynamicBags header to rapidly open or learn queued Housing Decor, Profession Knowledge, and Use: caches.",
         get = function() return db.quickOpenEnabled ~= false end,
         set = function(v)
+            local wasOff = (db.quickOpenEnabled == false)
             db.quickOpenEnabled = v and true or false
-            if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
-        end,
-    })
-    U.AddCard(page, {
-        title = "Quick-Open Queue Filters & Safety Rules", kind = "chips",
-        desc = "Choose which item categories are queued into the Open (N) button and enforce strict Soulbound protection against consuming tradeable items.",
-        items = {
-            { key = "queueHousingDecor",      label = "Include Housing Decor",        tooltip = "Queues Housing Decor, Room Decor, and House Chest items into the 1-spot Open (N) button." },
-            { key = "queueKnowledgeItems",    label = "Include Profession Knowledge", tooltip = "Queues Profession Knowledge items (Treatises, Shards, Notes) only when your character knows that profession." },
-            { key = "openablesSoulboundOnly", label = "Soulbound Items Only",         tooltip = "Requires items to be Soulbound or Account-Bound so tradeable BoE / Auction House items are never consumed accidentally." },
-        },
-        get = function(key) return db[key] ~= false end,
-        set = function(key, v)
-            db[key] = v and true or false
-            if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
-            if db.autoOpenContainers ~= false and U.ScheduleAutoOpenContainers then
-                U.ScheduleAutoOpenContainers()
+            if wasOff and db.quickOpenEnabled then
+                U.SetDrawerExpanded("quickOpenQueue", true)
             end
+            if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
+            U.RefreshWorkspace()
         end,
+        subDrawer = {
+            drawerKey = "quickOpenQueue",
+            buttonLabel = "Sub-Settings (3)",
+            rows = {
+                {
+                    kind = "toggle",
+                    title = "Include Housing Decor in Open (N)",
+                    tooltip = "Queues Housing Decor, Room Decor, and House Chest items into the 1-spot Open (N) button.",
+                    get = function() return db.queueHousingDecor ~= false end,
+                    set = function(v)
+                        db.queueHousingDecor = v and true or false
+                        if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
+                        if db.autoOpenContainers ~= false and U.ScheduleAutoOpenContainers then
+                            U.ScheduleAutoOpenContainers()
+                        end
+                    end,
+                },
+                {
+                    kind = "toggle",
+                    title = "Include Profession Knowledge in Open (N)",
+                    tooltip = "Queues Profession Knowledge items (Treatises, Shards, Notes) only when your character knows that profession.",
+                    get = function() return db.queueKnowledgeItems ~= false end,
+                    set = function(v)
+                        db.queueKnowledgeItems = v and true or false
+                        if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
+                        if db.autoOpenContainers ~= false and U.ScheduleAutoOpenContainers then
+                            U.ScheduleAutoOpenContainers()
+                        end
+                    end,
+                },
+                {
+                    kind = "toggle",
+                    title = "Soulbound Items Only (Protect BoE Items)",
+                    tooltip = "Requires items to be Soulbound or Account-Bound so tradeable BoE / Auction House items are never consumed accidentally.",
+                    get = function() return db.openablesSoulboundOnly ~= false end,
+                    set = function(v)
+                        db.openablesSoulboundOnly = v and true or false
+                        if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
+                        if db.autoOpenContainers ~= false and U.ScheduleAutoOpenContainers then
+                            U.ScheduleAutoOpenContainers()
+                        end
+                    end,
+                },
+            },
+        },
     })
 end
 
@@ -8414,6 +8771,7 @@ local function EnsureStandalone()
     t:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -9)
     local hex = sformat("|cFF%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
     t:SetText("|cFFF3F5F8Dynamic|r" .. hex .. "Bags|r  settings")
+    f.titleText = t
     local x = U.NewButton(f, 24, 22, "x")
     x:SetPoint("TOPRIGHT", f, "TOPRIGHT", -6, -4)
     x:SetScript("OnClick", function() f:Hide() end)
@@ -10494,12 +10852,21 @@ local function RegisterWithDynamicSuite()
             if S.quickOpenBtn and not (InCombatLockdown and InCombatLockdown()) then S.quickOpenBtn:Hide() end
             DynamicBags:UnregisterAllEvents()
         end,
-        SelectSubTab = function(a1, a2, a3)
+        SelectSubTab = function(a1, a2, a3, a4)
             local idx = (type(a1) == "number") and a1 or a2 or 1
             local expandDrawers = (type(a1) == "number") and a2 or a3
-            DB().activeSubTab = idx
-            if expandDrawers then
-                DB().repairDrawerOpen = true
+            local entry = (type(a1) == "number") and a3 or a4
+            local db = DB()
+            db.activeSubTab = idx
+            db.drawerExpanded = db.drawerExpanded or {}
+            if type(entry) == "table" and type(entry.drawerKey) == "string" and entry.drawerKey ~= "" then
+                db.drawerExpanded[entry.drawerKey] = true
+            elseif expandDrawers == true and (type(entry) ~= "table" or entry.isSubDrawer == true) then
+                if idx == 3 then
+                    db.drawerExpanded.autoRepair = true
+                    db.drawerExpanded.autoOpenItems = true
+                    db.drawerExpanded.quickOpenQueue = true
+                end
             end
             if U and U.RefreshWorkspace then
                 U.RefreshWorkspace()
@@ -11071,8 +11438,9 @@ end
 
 DynamicBags.CHANGELOG = {
     version = VERSION,
-    date = "21/11/2026",
+    date = "24/11/2026",
     entries = {
+        { type = "UI",      text = "Pass 4 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 2 Rebalance (24/11/2026): Moved Category Layout Preset into a full-width QUICK PRESETS card at the top of Tab 1 (Mythic+ & Raid, Collector, Minimalist, Custom) with live Suite Accent active highlighting that clears on manual tweaks; exposed 3-mode Item Sorting (Quality, Alphabetical, Manual) and Auto-Merge Stacks on Close in Tab 1 while hiding Category-only controls cleanly in Single Grid mode and stripping outline flags from category arrows; rebalanced Tab 2 (Appearance, Badges & Glow) with Bag Window Scale, Bank Window Scale, Window Background Opacity, and Reset Window Positions; upgraded Tab 3 Auto-Repair, Auto-Open Containers, and Quick-Open Queue into persisted multi-row Sub-Settings drawers collapsed by default on fresh profiles; and unified live Suite Accent repainting across Bags, Bank, and Standalone frames." },
         { type = "UI",      text = "Release v2.7.0 - 156x26px Binary Switch Alignment & Live Accent Tooltips (21/11/2026): Standardised binary Off/Enabled option switches across all tabs to 68px Off + 84px Enabled (156x26px total) and updated Alt + Left-Click category tooltips to track the live Suite Accent colour." },
         { type = "FIX",     text = "v2.4.0 DynamicMail Alt+Left-Click Attach & Stuck Lock Release on Mail Close (18/11/2026): Removed the ActionButtonUseKeyDown edge filter blocking Alt + Left-Click mail attachments on ContainerFrameItemButton slot buttons, and updated ITEM_LOCK_CHANGED / ITEM_UNLOCKED plus MAIL_CLOSED and U.ShowWindow() lock refreshes so bag icons never stay desaturated after closing Mailbox with attached or dragged items." },
         { type = "FIX",     text = "Release v2.3.2 - 1-Click Housing Decor Non-Tradeable Confirmation & Smooth Mousewheel Scrolling (18/11/2026): Clicking Open (N) or scrolling Alt+MouseWheel now uses and confirms refundable/trade-timer Housing Decor items in one click out of combat (supporting Retail 12.1.5 pooled StaticPopup dialogs, END_BOUND_TRADEABLE, and USE_NO_REFUND_CONFIRM while keeping Open (N) ready whenever a background auto-open requires a hardware click and strictly ignoring manual bag clicks, dungeon/raid loot rolls, and non-Decor items); and restored smooth mousewheel scrolling across DynamicBags, DynamicBank (Personal, Warband, and Guild Bank), and settings scroll areas whenever Ctrl+Shift is not held." },
@@ -11080,7 +11448,7 @@ DynamicBags.CHANGELOG = {
         { type = "FIX",     text = "ESC & B Keybind Window Closing, CloseAllBags & Unfocused Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) and OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so pressing B or ESC always reaches Blizzard's keybind and UISpecialFrames handlers without swallowing input; preserved Escape-first search clearing via OnEscapePressed when the search box is focused and a combat-guarded CloseSpecialWindows post-hook when search text is active while unfocused (restoring the open window once, clearing both search boxes, and letting the second ESC close cleanly); and updated ToggleWindow() and hooked CloseAllBags() so pressing B or CloseAllBags toggles DynamicBagsFrame (alongside DynamicBagsBankFrame when open) reliably out of combat." },
         { type = "FEATURE", text = "Shift+Click Collapse/Expand All Categories & Footer Bag Space / Junk Breakdown Tooltip (16/11/2026): Shift + Left-Click on any category header collapses all expanded categories or expands all categories at once out of combat (replacing the old single-step shift reorder action while keeping Alt + Left-Click for the reorder menu); made the bottom-left footer slot readout interactive with a hover tooltip showing per-bag free/total slots (Backpack, Bag 1-4, Reagent Bag) plus the total vendor sell value of grey/poor-quality items currently in your bags." },
         { type = "FEATURE", text = "Search Clear Button, Escape-First Clearing & Collapsible Category Headers (16/11/2026): added an inline 'x' clear button to both the DynamicBags and Unified DynamicBank search boxes, Escape-first clearing when search text is active (pressing Escape a second time closes the window cleanly), and Left-Click collapsing on virtual category headers with chevron indicators and collapsed item-count summaries saved in DynamicBagsDB (Alt+Left-Click opens the category reorder menu)." },
-        { type = "FEATURE", text = "Dual-Mode Ctrl+Scroll Window Scaling, Header Controls Tooltip & Scale-Aware Docked Bank Alignment (15/11/2026): added 70%-140% (5% steps, out of combat) scaling across DynamicBagsFrame and DynamicBagsBankFrame (Personal Bank, Warband Bank, and Guild Bank). Ctrl + Scroll across the full header scales temporarily for the open session (resetting on hide); Ctrl + Shift + Scroll anywhere on the window (header, item grid ScrollFrame, or footer) saves bagScale / bankScale permanently without affecting normal wheel scrolling or Ctrl+Click item previews; Right-Click anywhere on the empty header (or Reset DynamicBags) resets scale to 100%; added DynamicBags / DynamicBank Window Controls header tooltips (auto-hiding on OnLeave/OnDragStart) and an auto-fading Dark-Obsidian (#0B0D12) / Blaze-Orange (#F97316) readout toast; and keeps docked DynamicBank flush beside DynamicBags at any scale." },
+        { type = "FEATURE", text = "Dual-Mode Ctrl+Scroll Window Scaling, Header Controls Tooltip & Scale-Aware Docked Bank Alignment (15/11/2026): added 70%-140% (5% steps, out of combat) scaling across DynamicBags and DynamicBank (Personal Bank, Warband Bank, and Guild Bank). Ctrl + Scroll across the full header scales temporarily for the open session (resetting on hide); Ctrl + Shift + Scroll anywhere on the window saves bag and bank scales permanently without affecting normal wheel scrolling or Ctrl+Click item previews; Right-Click anywhere on the empty header (or Reset DynamicBags) resets scale to 100%; added DynamicBags / DynamicBank Window Controls header tooltips and a live Suite Accent scale readout toast; and keeps docked DynamicBank flush beside DynamicBags at any scale." },
         { type = "FEATURE", text = "Unified Auto-Open for Gold Pouches, Housing Decor & Profession Knowledge (15/11/2026): expanded the automatic container opener to use/open Soulbound and Warband-bound gold pouches, coin/loot satchels, Housing Decor, and Profession Knowledge items (Treatises, Shards, Notes, Curios matching your character's known professions) out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Added default-enabled 'Auto-Open Soulbound Housing Decor' and 'Auto-Open Soulbound Profession Knowledge' toggles in Tab 3, while keeping protected-spell items (via C_Item.GetItemSpell or ADDON_ACTION_BLOCKED) safely queued in the 1-click Open (N) header button with a per-item retry cooldown and session blacklist." },
         { type = "FIX",     text = "Hardened zero-flash Bank/Guild Bank opening after /reload (14/11/2026): added Scale+Alpha suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, enforced strict weak ordering in Sort: A-Z when uncached items appear, verified compatible slot placement in Drop-Anywhere Split-Stack Placement, fixed Guild Bank T1-Tn badge overlap and view-only slot dimming, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, and expanded /dbag slash subcommands." },
         { type = "FEATURE", text = "Guild Bank Daily Withdrawal Counter (13/11/2026): each Guild Bank tab button (T1, T2...) now shows a small counter of how many item withdrawals you have left today - white when plenty remain, amber at 1-2, red at 0, and a red x for tabs you cannot view. Unlimited tabs show no counter. Counters only appear while you are at the Guild Bank." },
@@ -11096,11 +11464,11 @@ DynamicBags.CHANGELOG = {
         { type = "FIX",     text = "Eliminated the 100ms Blizzard GuildBankFrame flash on the first Guild Bank interaction after /reload by hooking Blizzard_GuildBankUI and Blizzard_BankUI on ADDON_LOADED/OnShow and opening DynamicBank synchronously (0.00s) before the 0.10s tab snapshot refresh." },
         { type = "FEATURE", text = "Added Drop-Anywhere Split-Stack Placement (U.PlaceCursorItemInFreeSlot): clicking or dropping a split stack anywhere on empty bag canvas or category headers automatically places it into the first free slot (preferring Reagent Bag for crafting reagents) without auto-merging." },
         { type = "UI",      text = "Separated Visual Category Sort Order (Sort: Quality / Sort: A-Z / Sort: Manual dropdown & right-click cycle) from Server-Side Stack Merging (Merge button with Left-Click Merge Now and Right-Click Auto-Merge on Bag Close) in the DynamicBagsFrame top-right header." },
-        { type = "UI",      text = "Polished all 3 configuration tabs with plain-English titles, zero-truncation status header, standardized [ Off | Enabled ] binary toggles, smart Disable All / Enable All category toggle, and 104px preset pills." },
+        { type = "UI",      text = "Polished all 3 configuration tabs with plain-English titles, zero-truncation status header, standardised [ Off | Enabled ] binary toggles, smart Disable All / Enable All category toggle, and 104px preset pills." },
         { type = "UI",      text = "Converted all 5 numeric range controls (Bag Columns, Bank Columns, Slot Icon Size, Category Spacing, and Icon Font Size) to the unified Sleek Precision Track Slider with smooth drag and mousewheel support." },
         { type = "UI",      text = "Replaced literal ' v' dropdown text and '^' item upgrade text with crisp vector chevron textures (icon_chevron_down.tga and icon_chevron_up.tga) and added an Inline Conflict Resolution Banner to the workspace." },
         { type = "FEATURE", text = "Migrated Merchant, Loot & Inventory Automation (Auto-Repair Equipment with Guild/Personal Funding Priority drawer, Auto-Sell Grey Junk, Faster Auto-Loot, and Auto-Fill DELETE Confirmation) from DynamicPrep into DynamicBags Tab 3 with automatic SavedVariables migration." },
-        { type = "UI",      text = "Standardized all item pinning, category header, bank transfer, currency tracker, category priority chip, and preset button tooltips to use Command-Prefix-Only Highlighting (colored command prefix + Silver-White action description)." },
+        { type = "UI",      text = "Standardised all item pinning, category header, bank transfer, currency tracker, category priority chip, and preset button tooltips to use Command-Prefix-Only Highlighting (coloured command prefix + Silver-White action description)." },
         { type = "UI",      text = "Upgraded all 7 section headers across Tabs 1-3 to 36px 2-Line Tall L-Brackets with enclosed Slate-Silver subtitles (DESIGN_SYSTEM.md Section 2.4)." },
         { type = "UI",      text = "Grouped all settings across all 3 configuration tabs into bordered section containers with connected L-bracket section headers (DESIGN_SYSTEM.md Section 2.4)." },
         { type = "FEATURE", text = "Updated consumable crafting quality badges for Midnight's 2-tier system (Gold Tier 2 & Silver Tier 1 pips) alongside gear ilvl badges." },

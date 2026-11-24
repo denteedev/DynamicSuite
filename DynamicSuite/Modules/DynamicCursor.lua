@@ -111,6 +111,12 @@ local function SafeRegisterEvent(frame, eventName)
 end
 
 local function GetSuiteAccent()
+    if _G.DynamicSuite and type(_G.DynamicSuite.GetSuiteAccent) == "function" then
+        local ok, r, g, b = pcall(_G.DynamicSuite.GetSuiteAccent, _G.DynamicSuite)
+        if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            return r, g, b
+        end
+    end
     if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.GetActiveAccentColor) == "function" then
         local ok, r, g, b = pcall(_G.DynamicSuite.UI.GetActiveAccentColor)
         if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
@@ -3642,8 +3648,14 @@ if _G.DynamicSuite then
         Render = function(a1, a2) return DynamicCursor.RenderEmbedded(a1, a2) end,
         RenderEmbedded = function(a1, a2) return DynamicCursor.RenderEmbedded(a1, a2) end,
         BuildWorkspace = function(a1, a2) return DynamicCursor.RenderEmbedded(a1, a2) end,
-        ApplyTheme = function() if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI() end end,
-        ApplyThemeToUI = function() if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI() end end,
+        ApplyTheme = function()
+            if SyncAllEngines then SyncAllEngines() end
+            if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI() end
+        end,
+        ApplyThemeToUI = function()
+            if SyncAllEngines then SyncAllEngines() end
+            if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI() end
+        end,
         ResetModuleDefaults = ResetCursorModuleDefaults,
         ResetDefaults = ResetCursorModuleDefaults,
         Reset = ResetCursorModuleDefaults,

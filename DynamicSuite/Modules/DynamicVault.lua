@@ -278,10 +278,14 @@ end
 -- 3. THEME & FONT INTEGRATION (1:1 DESIGN_SYSTEM.md)
 -- ============================================================================
 local function GetTheme()
-    local UI = _G.DynamicSuite and _G.DynamicSuite.UI
     local ar, ag, ab = 0.220, 0.741, 0.973
-    if UI and type(UI.GetActiveAccentColor) == "function" then
-        local ok, r, g, b = pcall(UI.GetActiveAccentColor)
+    if _G.DynamicSuite and type(_G.DynamicSuite.GetSuiteAccent) == "function" then
+        local ok, r, g, b = pcall(_G.DynamicSuite.GetSuiteAccent, _G.DynamicSuite)
+        if ok and type(r) == "number" and type(g) == "number" and type(b) == "number" then
+            ar, ag, ab = r, g, b
+        end
+    elseif _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.GetActiveAccentColor) == "function" then
+        local ok, r, g, b = pcall(_G.DynamicSuite.UI.GetActiveAccentColor)
         if ok and type(r) == "number" then ar, ag, ab = r, g, b end
     end
     local surf = {
@@ -307,6 +311,10 @@ local function EnsureEllesmereSkinRegistered()
             ellesmereSkinHandle = handle
             if type(handle.OnLooksChanged) == "function" then
                 pcall(handle.OnLooksChanged, function()
+                    if _G.DynamicSuite and _G.DynamicSuite._isHubLoaded then
+                        local syncExt = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global and (_G.DynamicSuiteDB.global.syncExternalUI == true)
+                        if not syncExt then return end
+                    end
                     if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end
                 end)
             end
