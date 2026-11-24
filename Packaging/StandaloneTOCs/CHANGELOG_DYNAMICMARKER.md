@@ -8,6 +8,9 @@
 ### Changed
 * **Patch 12.1.7 Dual-Interface & Secret-Safe Hardening:** Added dual-interface `120105, 120107` support in `DynamicMarker.toc`, wrapped `UnitGUID`, `UnitName`, `UnitClass`, and specialisation reads in `pcall` + secret-value guards for unspecialised or story-mode characters, and updated the standalone coexistence version fallback to `2.8.2`.
 
+### Fixed
+* **Tab 1 (`Focus Icons`) First-Open Rendering:** Fixed Tab 1 rendering blank on initial open in both standalone and embedded modes by updating `ScrollFrame` child bounds (`UpdateScrollChildRect`), preventing `0px` initial child width collapse, and running a deduplicated deferred layout pass on `OnShow` and `OnSizeChanged`.
+
 ---
 
 ## DynamicMarker v2.8.2 (24/11/2026)

@@ -526,35 +526,31 @@ local COLORS = {
 -- All 40 Retail Specializations: Recommended Stat Priority & Omni Folio Matrix
 -- ============================================================================
 local STAT_LABELS = {
-    HASTE       = "Haste",
-    MASTERY     = "Mastery",
-    CRIT        = "Critical Strike",
-    VERS        = "Versatility",
-    EMPOWERMENT = "Rune of Empowerment",
-    CRIT_MASS   = "Rune of Critical Mass",
-    OFF         = "Off",
+    HASTE   = "Haste",
+    MASTERY = "Mastery",
+    CRIT    = "Critical Strike",
+    VERS    = "Versatility",
+    OFF     = "Off",
 }
 
 local STAT_SHORT = {
-    HASTE       = "Haste",
-    MASTERY     = "Mast",
-    CRIT        = "Crit",
-    VERS        = "Vers",
-    EMPOWERMENT = "Empower",
-    CRIT_MASS   = "Crit Mass",
-    OFF         = "Off",
+    HASTE   = "Haste",
+    MASTERY = "Mast",
+    CRIT    = "Crit",
+    VERS    = "Vers",
+    OFF     = "Off",
 }
 
+local VALID_FOLIO_TARGET_STATS = { HASTE = true, MASTERY = true, CRIT = true, VERS = true, OFF = true }
+local VALID_FOLIO_ACTIVE_STATS = { HASTE = true, MASTERY = true, CRIT = true, VERS = true }
 local FOLIO_ITEM_PATTERNS = { "omnium folio", "omni folio", "folio" }
 local FOLIO_MOTE_PATTERNS = { "mote of omnial inquiry", "omnial inquiry" }
 local FOLIO_BUFF_ANCHORS  = { "omnium", "folio", "omnidirectional", "thalassian", "attunement" }
 local FOLIO_RUNE_CATALOG  = {
-    { key = "CRIT_MASS",   label = "Rune of Critical Mass", short = "Crit Mass", patterns = { "rune of critical mass", "critical mass" }, requiresAnchor = false },
-    { key = "EMPOWERMENT", label = "Rune of Empowerment",   short = "Empower",   patterns = { "rune of empowerment", "omnium empowerment" }, requiresAnchor = false },
-    { key = "HASTE",       label = "Haste",                 short = "Haste",     patterns = { "haste" }, requiresAnchor = true },
-    { key = "MASTERY",     label = "Mastery",               short = "Mast",      patterns = { "mastery" }, requiresAnchor = true },
-    { key = "CRIT",        label = "Critical Strike",       short = "Crit",      patterns = { "crit" }, requiresAnchor = true },
-    { key = "VERS",        label = "Versatility",           short = "Vers",      patterns = { "vers" }, requiresAnchor = true },
+    { key = "HASTE",   label = "Haste",           short = "Haste", patterns = { "haste" },   requiresAnchor = true },
+    { key = "MASTERY", label = "Mastery",         short = "Mast",  patterns = { "mastery" }, requiresAnchor = true },
+    { key = "CRIT",    label = "Critical Strike", short = "Crit",  patterns = { "crit" },    requiresAnchor = true },
+    { key = "VERS",    label = "Versatility",     short = "Vers",  patterns = { "vers" },    requiresAnchor = true },
 }
 local NEUTRAL_SPEC_META = {
     name    = "Unknown",
@@ -1012,6 +1008,20 @@ function DynamicPrep:InitDB()
     self.db.barX = defaultPos.x
     self.db.barY = defaultPos.y
 
+    if type(self.db.omniFolio) == "table" then
+        local specID = self:GetActiveSpecInfo()
+        local meta = self:GetSpecMetadata(specID)
+        for _, k in ipairs({ "mplus", "raid", "delve", "pvp" }) do
+            local v = self.db.omniFolio[k]
+            if v ~= nil and not VALID_FOLIO_TARGET_STATS[v] then
+                self.db.omniFolio[k] = meta[k] or "HASTE"
+            end
+        end
+    end
+    if self.db.activeFolioStat ~= nil and not VALID_FOLIO_ACTIVE_STATS[self.db.activeFolioStat] then
+        self.db.activeFolioStat = nil
+    end
+
     if self.db.omniFolio.presetMode == "WOWHEAD" then
         self:ApplyWowheadPresetForCurrentSpec(true)
     end
@@ -1312,7 +1322,14 @@ function DynamicPrep:GetTargetFolioStatForZone(zoneKey)
         local meta = self:GetSpecMetadata(specID)
         return meta[lookupKey] or "HASTE"
     end
-    return self.db.omniFolio[lookupKey] or "HASTE"
+    local val = self.db.omniFolio[lookupKey]
+    if not VALID_FOLIO_TARGET_STATS[val] then
+        local specID = self:GetActiveSpecInfo()
+        local meta = self:GetSpecMetadata(specID)
+        val = meta[lookupKey] or "HASTE"
+        self.db.omniFolio[lookupKey] = val
+    end
+    return val
 end
 
 function DynamicPrep:FindOmniFolioItemInBags()
@@ -1369,7 +1386,11 @@ end
 function DynamicPrep:DetectActiveFolioBuffStat(forceScan)
     local now = GetTime and GetTime() or 0
     if _AreAurasSecret("player") or _IsInActiveKeyOrCombat() or (InCombatLockdown and InCombatLockdown()) or (not forceScan and self._lastFolioScanTime and (now - self._lastFolioScanTime) < 2.0) then
-        return self._cachedFolioBuffStat or (self.db and self.db.activeFolioStat) or nil, self._cachedFolioBuffName
+        local cached = self._cachedFolioBuffStat
+        if not VALID_FOLIO_ACTIVE_STATS[cached] then
+            cached = (self.db and VALID_FOLIO_ACTIVE_STATS[self.db.activeFolioStat]) and self.db.activeFolioStat or nil
+        end
+        return cached, self._cachedFolioBuffName
     end
     self._lastFolioScanTime = now
     self._cachedFolioBuffStat, self._cachedFolioBuffName = nil, nil
@@ -1385,7 +1406,7 @@ function DynamicPrep:DetectActiveFolioBuffStat(forceScan)
         return false
     end
 
-    -- Scan all player buffs dynamically for Omnium Folio / Stat attunement & Rune buffs (zero hardcoded cap)
+    -- Scan player buffs for Omnium Folio secondary stat choice-node buffs (ignoring passive nodes like Critical Mass)
     if C_UnitAuras and C_UnitAuras.GetBuffDataByIndex and not _AreAurasSecret("player") then
         for i = 1, 40 do
             if _AreAurasSecret("player") then break end
@@ -1396,41 +1417,31 @@ function DynamicPrep:DetectActiveFolioBuffStat(forceScan)
                     local name = aura.name
                     if not _IsSecret(name) and type(name) == "string" and name ~= "" then
                         local low = name:lower()
-                        local hasAnchor = HasFolioAnchor(low)
-                        local matchedEntry = nil
-                        for _, entry in ipairs(FOLIO_RUNE_CATALOG) do
-                            if (not entry.requiresAnchor) or hasAnchor then
+                        local isPassiveRune = low:find("critical mass", 1, true) or low:find("empowerment", 1, true)
+                        if not isPassiveRune and HasFolioAnchor(low) then
+                            local matchedEntry = nil
+                            for _, entry in ipairs(FOLIO_RUNE_CATALOG) do
                                 for _, pat in ipairs(entry.patterns) do
                                     if low:find(pat, 1, true) then
                                         matchedEntry = entry
                                         break
                                     end
                                 end
+                                if matchedEntry then break end
                             end
-                            if matchedEntry then break end
-                        end
-                        if matchedEntry then
-                            if not seenKeys[matchedEntry.key] then
-                                seenKeys[matchedEntry.key] = true
-                                table.insert(self._cachedFolioRunes, {
-                                    key   = matchedEntry.key,
-                                    label = matchedEntry.label,
-                                    name  = name,
-                                })
-                            end
-                            if not self._cachedFolioBuffStat then
-                                self._cachedFolioBuffStat = matchedEntry.key
-                                self._cachedFolioBuffName = name
-                            end
-                        elseif low:find("omnium", 1, true) or low:find("folio", 1, true) then
-                            table.insert(self._cachedFolioRunes, {
-                                key   = "RUNE_OTHER",
-                                label = name,
-                                name  = name,
-                            })
-                            if not self._cachedFolioBuffStat then
-                                self._cachedFolioBuffStat = "RUNE_OTHER"
-                                self._cachedFolioBuffName = name
+                            if matchedEntry then
+                                if not seenKeys[matchedEntry.key] then
+                                    seenKeys[matchedEntry.key] = true
+                                    table.insert(self._cachedFolioRunes, {
+                                        key   = matchedEntry.key,
+                                        label = matchedEntry.label,
+                                        name  = name,
+                                    })
+                                end
+                                if not self._cachedFolioBuffStat then
+                                    self._cachedFolioBuffStat = matchedEntry.key
+                                    self._cachedFolioBuffName = name
+                                end
                             end
                         end
                     end
@@ -1442,7 +1453,14 @@ function DynamicPrep:DetectActiveFolioBuffStat(forceScan)
         if self.db then self.db.activeFolioStat = self._cachedFolioBuffStat end
         return self._cachedFolioBuffStat, self._cachedFolioBuffName
     end
-    return self.db and self.db.activeFolioStat or nil, nil
+    local saved = self.db and self.db.activeFolioStat
+    if VALID_FOLIO_ACTIVE_STATS[saved] then
+        return saved, nil
+    end
+    if self.db and self.db.activeFolioStat ~= nil then
+        self.db.activeFolioStat = nil
+    end
+    return nil, nil
 end
 
 local function IsSecretValue(val)
@@ -2863,18 +2881,16 @@ function DynamicPrep:ToggleFolioPopover(anchorBtn)
 
     local zoneKey, zoneTag = self:GetCurrentContentCategory()
     local zk = tostring(zoneKey or "outdoor"):lower()
-    local lookupKey = (zk == "outdoor" or zk == "city") and "delve" or (zk == "dungeon" and "mplus" or zk)
+    local lookupKey = (zk == "outdoor" or zk == "city" or zk == "scenario") and "delve" or (zk == "dungeon" and "mplus" or zk)
     local targetStat = self:GetTargetFolioStatForZone(zk)
     pop.title:SetText(string.format("|cFF%sOmni Folio %s Target: %s|r", accentHex, tostring(zoneTag or "[Outdoor]"), STAT_SHORT[targetStat] or targetStat))
 
     local folioChoices = {
-        { key = "CRIT",        label = "Crit (Critical Strike)" },
-        { key = "HASTE",       label = "Haste" },
-        { key = "MASTERY",     label = "Mastery" },
-        { key = "VERS",        label = "Versatility" },
-        { key = "EMPOWERMENT", label = "Rune of Empowerment" },
-        { key = "CRIT_MASS",   label = "Rune of Critical Mass" },
-        { key = "CYCLE",       label = "Cycle Content Zone Preview" },
+        { key = "CRIT",    label = "Crit (Critical Strike)" },
+        { key = "HASTE",   label = "Haste" },
+        { key = "MASTERY", label = "Mastery" },
+        { key = "VERS",    label = "Versatility" },
+        { key = "CYCLE",   label = "Cycle Content Zone Preview" },
     }
 
     local maxTextW = pop.title:GetStringWidth() or 190
@@ -2962,6 +2978,11 @@ function DynamicPrep:ToggleFolioPopover(anchorBtn)
         end)
         btn:Show()
         yOffset = yOffset - 30
+    end
+    for idx = #folioChoices + 1, #pop.buttons do
+        if pop.buttons[idx] then
+            pop.buttons[idx]:Hide()
+        end
     end
 
     local catcher = self:EnsurePopoverClickCatcher()
@@ -3971,15 +3992,8 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
         local _, isMismatch, targetStat, activeStat, zoneTag = self:GetOmniFolioData()
         local targetLabel = STAT_LABELS[targetStat] or targetStat or "Haste"
         tooltip:AddLine("Midnight Omnium Folio " .. tostring(zoneTag or "[Outdoor]"), 0.984, 0.749, 0.141)
-        tooltip:AddDoubleLine("Zone Target Stat / Rune:", targetLabel, 0.8, 0.84, 0.88, 1, 1, 1)
+        tooltip:AddDoubleLine("Zone Target Stat:", targetLabel, 0.8, 0.84, 0.88, 1, 1, 1)
         tooltip:AddDoubleLine("Active Folio Buff:", activeStat and (STAT_LABELS[activeStat] or self._cachedFolioBuffName or activeStat) or "None Detected", 0.8, 0.84, 0.88, isMismatch and 0.984 or 0.204, isMismatch and 0.749 or 0.827, isMismatch and 0.141 or 0.600)
-        if self._cachedFolioRunes and #self._cachedFolioRunes > 0 then
-            local runeNames = {}
-            for _, r in ipairs(self._cachedFolioRunes) do
-                table.insert(runeNames, tostring(r.label or r.name))
-            end
-            tooltip:AddDoubleLine("Active Folio Runes:", table.concat(runeNames, ", "), 0.8, 0.84, 0.88, 0.204, 0.827, 0.600)
-        end
         local moteCount = self.ScanOmnialInquiryMotes and self:ScanOmnialInquiryMotes() or 0
         if moteCount > 0 then
             tooltip:AddDoubleLine("Motes of Omnial Inquiry:", tostring(moteCount) .. " in bags", 0.8, 0.84, 0.88, 0.220, 0.741, 0.973)
@@ -10205,18 +10219,16 @@ function DynamicPrep:RenderWorkspace(parentFrame)
         local c2Hdr = CreateSectionHeader(
             card2, -10,
             "MIDNIGHT OMNIUM FOLIO CONFIGURATION",
-            "Assign your target Omnium Folio secondary stat or rune for each content type or use built-in 40-spec presets.",
+            "Assign your target Omnium Folio secondary stat for each content type or use built-in 40-spec presets.",
             14
         )
 
         local folioStatOptions = {
-            { value = "HASTE",       label = "Haste" },
-            { value = "MASTERY",     label = "Mastery" },
-            { value = "CRIT",        label = "Critical Strike" },
-            { value = "VERS",        label = "Versatility" },
-            { value = "EMPOWERMENT", label = "Rune of Empowerment" },
-            { value = "CRIT_MASS",   label = "Rune of Critical Mass" },
-            { value = "OFF",         label = "Off" },
+            { value = "HASTE",   label = "Haste" },
+            { value = "MASTERY", label = "Mastery" },
+            { value = "CRIT",    label = "Critical Strike" },
+            { value = "VERS",    label = "Versatility" },
+            { value = "OFF",     label = "Off" },
         }
 
         local rFolioEnable = CreateSpaciousRow(

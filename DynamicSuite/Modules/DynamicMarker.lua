@@ -3094,11 +3094,31 @@ function DM:CreateObsidianScrollPage(parent, topAnchor, contentHeight)
 
     local function UpdateScrollLayout()
         local viewH = page:GetHeight() or 0
-        local viewW = page:GetWidth() or 0
-        local maxScroll = math.max(0, (contentHeight or 460) - viewH)
+        local sfW = sf:GetWidth() or 0
+        local pageW = page:GetWidth() or 0
+        local parentW = (parent and parent.GetWidth and parent:GetWidth()) or 0
+        local viewW = (sfW > 10 and sfW) or (pageW > 10 and pageW) or ((parentW > 40) and (parentW - 30) or 0)
+        local targetW = (viewW > 10) and math.max(200, viewW) or math.max(520, child:GetWidth() or 700)
+        local totalH = contentHeight or 460
+        local maxScroll = math.max(0, totalH - viewH)
 
         sf:SetPoint("BOTTOMRIGHT", page, "BOTTOMRIGHT", 0, 0)
-        child:SetWidth(math.max(200, viewW))
+        child:SetWidth(targetW)
+        child:SetHeight(totalH)
+        child:Show()
+        if sf.UpdateScrollChildRect then
+            pcall(sf.UpdateScrollChildRect, sf)
+        end
+
+        if page:IsShown() and (pageW <= 10 or viewH <= 10) and not page._layoutRetryPending and C_Timer and C_Timer.After then
+            page._layoutRetryPending = true
+            C_Timer.After(0, function()
+                page._layoutRetryPending = nil
+                if page:IsShown() then
+                    UpdateScrollLayout()
+                end
+            end)
+        end
 
         if maxScroll > 2 and viewH > 40 then
             track:Show()
@@ -3106,7 +3126,7 @@ function DM:CreateObsidianScrollPage(parent, topAnchor, contentHeight)
             sf:SetVerticalScroll(cur)
 
             local trackH = track:GetHeight() or viewH
-            local thumbH = math.max(28, math.floor(trackH * (viewH / (contentHeight or 460))))
+            local thumbH = math.max(28, math.floor(trackH * (viewH / totalH)))
             thumb:SetHeight(thumbH)
             local travel = math.max(1, trackH - thumbH)
             local offset = -(cur / maxScroll) * travel
@@ -3200,8 +3220,20 @@ function DM:CreateObsidianScrollPage(parent, topAnchor, contentHeight)
         UpdateScrollLayout()
     end
 
+    sf:SetScript("OnSizeChanged", UpdateScrollLayout)
     page:SetScript("OnSizeChanged", UpdateScrollLayout)
-    page:SetScript("OnShow", UpdateScrollLayout)
+    page:SetScript("OnShow", function()
+        UpdateScrollLayout()
+        if not page._onShowReflowPending and C_Timer and C_Timer.After then
+            page._onShowReflowPending = true
+            C_Timer.After(0, function()
+                page._onShowReflowPending = nil
+                if page:IsShown() then
+                    UpdateScrollLayout()
+                end
+            end)
+        end
+    end)
     page.content = child
     page.scrollFrame = sf
     page.scrollTrack = track
@@ -7853,14 +7885,29 @@ function DM:BuildWorkspace(parentContainer)
         self.workspaceFrame:SetPoint("TOPLEFT", parentContainer, "TOPLEFT", 0, 0)
         self.workspaceFrame:SetPoint("BOTTOMRIGHT", parentContainer, "BOTTOMRIGHT", 0, 0)
         self.workspaceFrame:Show()
+        if self.SelectSubTab then
+            self:SelectSubTab((self.db and self.db.activeSubTab) or 1)
+        end
         self:RefreshAll()
+        if self.workspaceFrame.ScheduleActivePageReflow then
+            self.workspaceFrame.ScheduleActivePageReflow()
+        end
         return self.workspaceFrame
     end
 
     local ws = CreateFrame("Frame", "DynamicMarkerWorkspaceFrame", parentContainer)
     ws:SetPoint("TOPLEFT", parentContainer, "TOPLEFT", 0, 0)
     ws:SetPoint("BOTTOMRIGHT", parentContainer, "BOTTOMRIGHT", 0, 0)
-    ws:SetScript("OnShow", function() self:RefreshTargetBar(); self:RefreshFlareBar() end)
+    ws:SetScript("OnShow", function()
+        self:RefreshTargetBar()
+        self:RefreshFlareBar()
+        if self.SelectSubTab then
+            self:SelectSubTab((self.db and self.db.activeSubTab) or 1)
+        end
+        if ws.ScheduleActivePageReflow then
+            ws.ScheduleActivePageReflow()
+        end
+    end)
     ws:SetScript("OnHide", function() self:CloseDropdownMenu(); self:RefreshTargetBar(); self:RefreshFlareBar() end)
     self.workspaceFrame = ws
     self.refreshables = {}
@@ -7932,7 +7979,28 @@ function DM:BuildWorkspace(parentContainer)
     ws.subTabBtns = {}
     ws.subTabPages = {}
 
+    local function ScheduleActivePageReflow()
+        if ws._reflowPending or not (C_Timer and C_Timer.After) then return end
+        ws._reflowPending = true
+        C_Timer.After(0, function()
+            ws._reflowPending = nil
+            if not ws:IsShown() then return end
+            if ws.ReflowSubTabBar then ws.ReflowSubTabBar() end
+            local activeIdx = (self.db and self.db.activeSubTab) or 1
+            if activeIdx ~= 1 and activeIdx ~= 2 and activeIdx ~= 3 then activeIdx = 1 end
+            local activePage = ws.subTabPages[activeIdx]
+            if activePage then
+                activePage:Show()
+                if activePage.UpdateScrollLayout then
+                    activePage.UpdateScrollLayout()
+                end
+            end
+        end)
+    end
+    ws.ScheduleActivePageReflow = ScheduleActivePageReflow
+
     local function SelectSubTab(idx)
+        idx = (idx == 2 or idx == 3) and idx or 1
         self:CloseDropdownMenu()
         self.db.activeSubTab = idx
         local ar, ag, ab = self:GetAccentColor()
@@ -7959,6 +8027,7 @@ function DM:BuildWorkspace(parentContainer)
                 page.UpdateScrollLayout()
             end
         end
+        ScheduleActivePageReflow()
     end
     self.SelectSubTab = function(_, idx, expandDrawers)
         if expandDrawers and self.db then
@@ -8042,6 +8111,14 @@ function DM:BuildWorkspace(parentContainer)
     ws.ReflowSubTabBar = ReflowSubTabBar
     tabBar:SetScript("OnSizeChanged", ReflowSubTabBar)
     tabBar:HookScript("OnShow", function() C_Timer.After(0, ReflowSubTabBar) end)
+    ws:SetScript("OnSizeChanged", function()
+        ReflowSubTabBar()
+        local activeIdx = (self.db and self.db.activeSubTab) or 1
+        local p = ws.subTabPages[activeIdx]
+        if p and p.UpdateScrollLayout then
+            p.UpdateScrollLayout()
+        end
+    end)
     C_Timer.After(0, ReflowSubTabBar)
 
     -- ========================================================================
@@ -9112,8 +9189,9 @@ function DM:BuildWorkspace(parentContainer)
         UpdateMacroStatusPill(kickStatusPill, KICK_MACRO_NAME, false, btnStep1Kick, btnStep2Kick)
     end)
 
-    SelectSubTab(self.db.activeSubTab or 1)
     self:RefreshAll()
+    SelectSubTab(self.db.activeSubTab or 1)
+    ScheduleActivePageReflow()
     return ws
 end
 
@@ -9924,6 +10002,11 @@ function DM:EnsureStandaloneShell()
                 if not s:IsShown() then return end
                 if self.ApplyThemeToUI then self:ApplyThemeToUI() end
                 if self.RefreshAll then self:RefreshAll() end
+                if self.SelectSubTab then
+                    self:SelectSubTab((self.db and self.db.activeSubTab) or 1)
+                elseif self.workspaceFrame and self.workspaceFrame.ScheduleActivePageReflow then
+                    self.workspaceFrame.ScheduleActivePageReflow()
+                end
                 if s.Raise then s:Raise() end
             end)
         end
@@ -10889,14 +10972,20 @@ function DM:RefreshAll()
                 ws.conflictBanner.BtnKeepOther:Show()
                 ws.conflictBanner.BtnReload:Hide()
             end
-            ws.tabBar:ClearAllPoints()
-            ws.tabBar:SetPoint("TOPLEFT", ws.conflictBanner, "BOTTOMLEFT", 0, -8)
-            ws.tabBar:SetPoint("TOPRIGHT", ws.conflictBanner, "BOTTOMRIGHT", 0, -8)
+            if ws._tabBarBannerDocked ~= true then
+                ws._tabBarBannerDocked = true
+                ws.tabBar:ClearAllPoints()
+                ws.tabBar:SetPoint("TOPLEFT", ws.conflictBanner, "BOTTOMLEFT", 0, -8)
+                ws.tabBar:SetPoint("TOPRIGHT", ws.conflictBanner, "BOTTOMRIGHT", 0, -8)
+            end
         elseif ws.conflictBanner then
             ws.conflictBanner:Hide()
-            ws.tabBar:ClearAllPoints()
-            ws.tabBar:SetPoint("TOPLEFT", ws, "TOPLEFT", 14, -10)
-            ws.tabBar:SetPoint("TOPRIGHT", ws, "TOPRIGHT", -16, -10)
+            if ws._tabBarBannerDocked ~= false then
+                ws._tabBarBannerDocked = false
+                ws.tabBar:ClearAllPoints()
+                ws.tabBar:SetPoint("TOPLEFT", ws, "TOPLEFT", 14, -10)
+                ws.tabBar:SetPoint("TOPRIGHT", ws, "TOPRIGHT", -16, -10)
+            end
         end
 
         if self.sectionHeaders then
@@ -10909,6 +10998,17 @@ function DM:RefreshAll()
         if self.refreshables then
             for _, fn in ipairs(self.refreshables) do
                 pcall(fn)
+            end
+        end
+
+        local curTab = (activeTab == 2 or activeTab == 3) and activeTab or 1
+        local activePage = ws.subTabPages and ws.subTabPages[curTab]
+        if activePage then
+            if ws:IsShown() then
+                activePage:Show()
+            end
+            if activePage.UpdateScrollLayout then
+                activePage.UpdateScrollLayout()
             end
         end
     end
