@@ -527,6 +527,7 @@ local DEFAULTS = {
 
     -- UI State
     activeSubTab                = 1,
+    activePreset                = nil,
 }
 
 local function CaptureOriginalChatStrings()
@@ -1809,7 +1810,7 @@ local function CreateDynamicChatScrollbar(parent, opts)
     return bar
 end
 
--- Scrollable Full Chat History Copy Modal (DynamicChatHistoryModal, 620x440px)
+-- Scrollable Full Chat History Copy Modal (DynamicChatHistoryModal, 640x456px)
 local chatHistoryModal = nil
 
 local HISTORY_URL_PATTERNS = {
@@ -1827,6 +1828,26 @@ local HISTORY_URL_PATTERNS = {
     "(youtube%.com/[%w%._%-/%?&#=~%%:%+@!%$,;*%(%)]+)",
 }
 
+DC_NS.CHAT_EVENT_COPY_META = {
+    CHAT_MSG_WHISPER              = { tag = "Whisper",       msgType = "WHISPER",       groupType = "WHISPER" },
+    CHAT_MSG_WHISPER_INFORM       = { tag = "To",            msgType = "WHISPER_INFORM", groupType = "WHISPER" },
+    CHAT_MSG_BN_WHISPER           = { tag = "BNet",          msgType = "BN_WHISPER",    groupType = "BN_WHISPER" },
+    CHAT_MSG_BN_WHISPER_INFORM    = { tag = "BNet To",       msgType = "BN_WHISPER_INFORM", groupType = "BN_WHISPER" },
+    CHAT_MSG_PARTY                = { tag = "Party",         msgType = "PARTY",         groupType = "PARTY" },
+    CHAT_MSG_PARTY_LEADER         = { tag = "Party Lead",    msgType = "PARTY_LEADER",  groupType = "PARTY" },
+    CHAT_MSG_RAID                 = { tag = "Raid",          msgType = "RAID",          groupType = "RAID" },
+    CHAT_MSG_RAID_LEADER          = { tag = "Raid Lead",     msgType = "RAID_LEADER",   groupType = "RAID" },
+    CHAT_MSG_RAID_WARNING         = { tag = "Raid Warning",  msgType = "RAID_WARNING",  groupType = "RAID_WARNING" },
+    CHAT_MSG_INSTANCE_CHAT        = { tag = "Instance",      msgType = "INSTANCE_CHAT", groupType = "INSTANCE_CHAT" },
+    CHAT_MSG_INSTANCE_CHAT_LEADER = { tag = "Instance Lead", msgType = "INSTANCE_CHAT_LEADER", groupType = "INSTANCE_CHAT" },
+    CHAT_MSG_GUILD                = { tag = "Guild",         msgType = "GUILD",         groupType = "GUILD" },
+    CHAT_MSG_OFFICER              = { tag = "Officer",       msgType = "OFFICER",       groupType = "OFFICER" },
+    CHAT_MSG_SAY                  = { tag = "Say",           msgType = "SAY",           groupType = "SAY" },
+    CHAT_MSG_YELL                 = { tag = "Yell",          msgType = "YELL",          groupType = "YELL" },
+    CHAT_MSG_CHANNEL              = { tag = "Channel",       msgType = "CHANNEL",       groupType = "CHANNEL" },
+    CHAT_MSG_COMMUNITIES_CHANNEL  = { tag = "Community",     msgType = "COMMUNITIES_CHANNEL", groupType = "CHANNEL" },
+}
+
 local function DecodeDynamicChatLinkPayload(payload)
     if type(payload) ~= "string" then return payload end
     return (payload:gsub("%%%%3[aA]", ":"):gsub("%%3[aA]", ":"):gsub("%%7[cC]", "|"))
@@ -1837,13 +1858,32 @@ local function ExtractURLsFromText(text, outList, seenMap)
     local okProbe = pcall(string.find, text, "", 1, true)
     if not okProbe then return end
     pcall(function()
+        local low = text:lower()
+        local claimedRanges = {}
+        local function IsSpanClaimed(sPos, ePos)
+            for _, rng in ipairs(claimedRanges) do
+                if sPos >= rng[1] and ePos <= rng[2] then
+                    return true
+                end
+            end
+            return false
+        end
         for _, pat in ipairs(HISTORY_URL_PATTERNS) do
-            for rawUrl in text:gmatch(pat) do
-                local cleanUrl = rawUrl:gsub("[%,%.%;%:%)%]%!%?]+$", "")
-                cleanUrl = DecodeDynamicChatLinkPayload(cleanUrl)
-                if cleanUrl ~= "" and not seenMap[cleanUrl] then
-                    seenMap[cleanUrl] = true
-                    outList[#outList + 1] = cleanUrl
+            local searchPos = 1
+            while searchPos <= #low do
+                local sIdx, eIdx = low:find(pat, searchPos)
+                if not sIdx then break end
+                searchPos = eIdx + 1
+                if not IsSpanClaimed(sIdx, eIdx) then
+                    local rawUrl = text:sub(sIdx, eIdx)
+                    local cleanUrl = rawUrl:gsub("[%,%.%;%:%)%]%!%?%>]+$", "")
+                    cleanUrl = DecodeDynamicChatLinkPayload(cleanUrl)
+                    local normKey = cleanUrl:lower()
+                    if cleanUrl ~= "" and not seenMap[normKey] then
+                        seenMap[normKey] = true
+                        outList[#outList + 1] = cleanUrl
+                        claimedRanges[#claimedRanges + 1] = { sIdx, eIdx }
+                    end
                 end
             end
         end
@@ -1854,13 +1894,14 @@ local function RecordCapturedSessionURL(cleanUrl, sourceEvent)
     if not cleanUrl or IsSecretValue(cleanUrl) or type(cleanUrl) ~= "string" or cleanUrl == "" then return end
     cleanUrl = DecodeDynamicChatLinkPayload(cleanUrl)
     if cleanUrl == "" then return end
+    local normKey = cleanUrl:lower()
     local buf = DynamicChat._recentCapturedURLs
     if type(buf) ~= "table" then
         buf = {}
         DynamicChat._recentCapturedURLs = buf
     end
     for i = #buf, 1, -1 do
-        if buf[i] and buf[i].url == cleanUrl then
+        if buf[i] and type(buf[i].url) == "string" and buf[i].url:lower() == normKey then
             table.remove(buf, i)
         end
     end
@@ -1895,7 +1936,16 @@ local function SanitizeChatHistoryString(text)
         end)
         s = s:gsub("|Hurl:([^|]+)|h%[(.-)%]|h", "%1")
         s = s:gsub("|Hdcurl:([^|]+)|h%[(.-)%]|h", "%1")
-        s = s:gsub("|H.-|h(.-)|h", "%1")
+        s = s:gsub("|c%x%x%x%x%x%x%x%x", "")
+        s = s:gsub("|cn[^:]+:", "")
+        s = s:gsub("|r", "")
+        for _ = 1, 4 do
+            local nextS, n = s:gsub("|H[^|]*|h(.-)|h", "%1")
+            s = nextS
+            if n == 0 then break end
+        end
+        s = s:gsub("|H[^|]*", "")
+        s = s:gsub("|h", "")
         s = s:gsub("|c%x%x%x%x%x%x%x%x", "")
         s = s:gsub("|cn[^:]+:", "")
         s = s:gsub("|r", "")
@@ -1911,13 +1961,106 @@ local function SanitizeChatHistoryString(text)
     return cleaned
 end
 
-local function StripSecretOrExtractLine(cf, idx)
-    if not cf or type(cf.GetMessageInfo) ~= "function" then return nil end
-    local ok, text = pcall(cf.GetMessageInfo, cf, idx)
-    if not ok or IsSecretValue(text) or type(text) ~= "string" or text == "" then
-        return nil
+function DC_NS.RecordCapturedSessionMessage(event, rawMsg, rawAuthor, rawChannelName)
+    if not rawMsg or IsSecretValue(rawMsg) or type(rawMsg) ~= "string" or rawMsg == "" then return end
+    local cleanMsg = SanitizeChatHistoryString(rawMsg)
+    if not cleanMsg then return end
+    local meta = DC_NS.CHAT_EVENT_COPY_META[event]
+    if not meta then return end
+
+    local cleanAuthor = ""
+    if rawAuthor and not IsSecretValue(rawAuthor) and type(rawAuthor) == "string" and rawAuthor ~= "" then
+        cleanAuthor = SanitizeChatHistoryString(rawAuthor) or ""
     end
-    return SanitizeChatHistoryString(text)
+
+    local chanTag = meta.tag
+    if event == "CHAT_MSG_CHANNEL" and rawChannelName and not IsSecretValue(rawChannelName) and type(rawChannelName) == "string" and rawChannelName ~= "" then
+        local cleanChan = SanitizeChatHistoryString(rawChannelName)
+        if cleanChan and cleanChan ~= "" then
+            chanTag = cleanChan
+        end
+    end
+
+    local ts = (type(_G.date) == "function" and _G.date("%H:%M")) or ""
+    local prefix = (ts ~= "" and ("[" .. ts .. "] ") or "") .. "[" .. chanTag .. "] "
+    local formattedLine
+    if cleanAuthor ~= "" then
+        formattedLine = prefix .. cleanAuthor .. ": " .. cleanMsg
+    else
+        formattedLine = prefix .. cleanMsg
+    end
+
+    local buf = DynamicChat._sessionPlainLog
+    if type(buf) ~= "table" then
+        buf = {}
+        DynamicChat._sessionPlainLog = buf
+    end
+    buf[#buf + 1] = {
+        line      = formattedLine,
+        msg       = cleanMsg,
+        author    = cleanAuthor,
+        event     = event,
+        msgType   = meta.msgType,
+        groupType = meta.groupType,
+        time      = (type(_G.GetTime) == "function" and _G.GetTime()) or 0,
+    }
+    while #buf > 300 do
+        table.remove(buf, 1)
+    end
+end
+
+function DC_NS.DoesSessionEntryMatchChatFrame(entry, cf)
+    if type(entry) ~= "table" or not cf then return false end
+    if cf == _G.ChatFrame2 then return false end
+
+    if cf.isTemporary == true then
+        local cfType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
+        if cfType == "WHISPER" then
+            if entry.groupType ~= "WHISPER" then return false end
+        elseif cfType == "BN_WHISPER" or cfType == "BN_CONVERSATION" then
+            if entry.groupType ~= "BN_WHISPER" then return false end
+        end
+        if not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" and entry.author ~= "" then
+            local targetShort = cf.chatTarget:gsub("%-[^%-]+$", ""):lower()
+            local authorShort = entry.author:gsub("%-[^%-]+$", ""):lower()
+            if targetShort ~= "" and authorShort ~= "" and targetShort ~= authorShort then
+                return false
+            end
+        end
+        return true
+    end
+
+    local msgTypes = cf.messageTypeList
+    if type(msgTypes) == "table" and #msgTypes > 0 then
+        for _, mType in ipairs(msgTypes) do
+            if not IsSecretValue(mType) and type(mType) == "string" then
+                if mType == entry.msgType or mType == entry.groupType then
+                    return true
+                end
+            end
+        end
+        if entry.groupType == "CHANNEL" and type(cf.channelList) == "table" and #cf.channelList > 0 then
+            return true
+        end
+        return false
+    end
+
+    return (cf == _G.ChatFrame1)
+end
+
+local function StripSecretOrExtractLine(cf, idx)
+    if not cf or type(cf.GetMessageInfo) ~= "function" then return nil, false end
+    local ok, text = pcall(cf.GetMessageInfo, cf, idx)
+    if not ok then
+        return nil, true
+    end
+    if IsSecretValue(text) then
+        return nil, true
+    end
+    if type(text) ~= "string" or text == "" then
+        return nil, false
+    end
+    return SanitizeChatHistoryString(text), false
 end
 
 local function ResolveActiveChatFrame(targetChatFrame)
@@ -2057,7 +2200,7 @@ local function EnsureChatHistoryModal()
     if chatHistoryModal then return chatHistoryModal end
 
     local modal = CreateFrame("Frame", "DynamicChatHistoryModal", UIParent, "BackdropTemplate")
-    modal:SetSize(620, 440)
+    modal:SetSize(640, 456)
     modal:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
     modal:SetFrameStrata("DIALOG")
     modal:SetToplevel(true)
@@ -2099,11 +2242,20 @@ local function EnsureChatHistoryModal()
     closeTxt:SetPoint("CENTER", 0, 0)
     closeTxt:SetTextColor(0.92, 0.95, 0.99, 1.0)
     closeTxt:SetText("X")
+    closeBtn:SetScript("OnEnter", function(selfBtn)
+        local rA, gA, bA = GetSuiteAccent()
+        selfBtn:SetBackdropColor(rA * 0.24, gA * 0.24, bA * 0.24, 0.98)
+        selfBtn:SetBackdropBorderColor(rA, gA, bA, 1.0)
+    end)
+    closeBtn:SetScript("OnLeave", function(selfBtn)
+        selfBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+        selfBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+    end)
     closeBtn:SetScript("OnClick", function() modal:Hide() end)
     modal.closeBtn = closeBtn
 
     local selBtn = CreateFrame("Button", nil, modal, "BackdropTemplate")
-    selBtn:SetSize(72, 20)
+    selBtn:SetSize(78, 20)
     selBtn:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -34, -6)
     selBtn:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -2111,16 +2263,40 @@ local function EnsureChatHistoryModal()
         edgeSize = 1,
     })
     selBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
-    selBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+    selBtn:SetBackdropBorderColor(ar, ag, ab, 0.78)
     local selTxt = selBtn:CreateFontString(nil, "OVERLAY")
     SetSafeFont(selTxt, 9.5, "")
     selTxt:SetPoint("CENTER", 0, 0)
     selTxt:SetTextColor(0.92, 0.95, 0.99, 1.0)
     selTxt:SetText("Select All")
+    selBtn.txt = selTxt
+    selBtn:SetScript("OnEnter", function(selfBtn)
+        local rA, gA, bA = GetSuiteAccent()
+        selfBtn:SetBackdropColor(rA * 0.24, gA * 0.24, bA * 0.24, 0.98)
+        selfBtn:SetBackdropBorderColor(rA, gA, bA, 1.0)
+        selTxt:SetTextColor(1, 1, 1, 1)
+    end)
+    selBtn:SetScript("OnLeave", function(selfBtn)
+        local rA, gA, bA = GetSuiteAccent()
+        selfBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+        selfBtn:SetBackdropBorderColor(rA, gA, bA, 0.78)
+        selTxt:SetTextColor(0.92, 0.95, 0.99, 1.0)
+    end)
     selBtn:SetScript("OnClick", function()
         if modal.editBox then
             modal.editBox:SetFocus()
             modal.editBox:HighlightText()
+            if modal.editBox.SetCursorPosition then
+                modal.editBox:SetCursorPosition(0)
+            end
+            selTxt:SetText("Selected!")
+            if _G.C_Timer and type(_G.C_Timer.After) == "function" then
+                _G.C_Timer.After(1.1, function()
+                    if selTxt then selTxt:SetText("Select All") end
+                end)
+            else
+                selTxt:SetText("Select All")
+            end
         end
     end)
     modal.selBtn = selBtn
@@ -2139,7 +2315,7 @@ local function EnsureChatHistoryModal()
     local linkBar = CreateFrame("Frame", nil, modal, "BackdropTemplate")
     linkBar:SetPoint("TOPLEFT", modal, "TOPLEFT", 14, -32)
     linkBar:SetPoint("TOPRIGHT", modal, "TOPRIGHT", -14, -32)
-    linkBar:SetHeight(26)
+    linkBar:SetHeight(28)
     linkBar:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -2160,7 +2336,7 @@ local function EnsureChatHistoryModal()
 
     local boxWrap = CreateFrame("Frame", nil, modal, "BackdropTemplate")
     boxWrap:SetPoint("TOPLEFT", modal, "TOPLEFT", 14, -32)
-    boxWrap:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 28)
+    boxWrap:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 30)
     boxWrap:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -2172,13 +2348,22 @@ local function EnsureChatHistoryModal()
 
     local hint = modal:CreateFontString(nil, "OVERLAY")
     SetSafeFont(hint, 9.5, "")
-    hint:SetPoint("BOTTOMLEFT", modal, "BOTTOMLEFT", 14, 8)
-    hint:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 8)
+    hint:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 9)
     hint:SetJustifyH("RIGHT")
     hint:SetWordWrap(false)
     hint:SetTextColor(0.58, 0.64, 0.72, 1.0)
     hint:SetText("Press Ctrl+C to copy  |  Esc to close")
     modal.hint = hint
+
+    local statusNote = modal:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(statusNote, 9.5, "")
+    statusNote:SetPoint("BOTTOMLEFT", modal, "BOTTOMLEFT", 14, 9)
+    statusNote:SetPoint("RIGHT", hint, "LEFT", -12, 0)
+    statusNote:SetJustifyH("LEFT")
+    statusNote:SetWordWrap(false)
+    statusNote:SetTextColor(0.58, 0.64, 0.72, 1.0)
+    statusNote:SetText("")
+    modal.statusNote = statusNote
 
     local sf = CreateFrame("ScrollFrame", "DynamicChatHistoryModalScrollFrame", boxWrap)
     sf:SetPoint("TOPLEFT", boxWrap, "TOPLEFT", 8, -8)
@@ -2232,7 +2417,7 @@ local function EnsureChatHistoryModal()
     if eb.SetMaxLetters then eb:SetMaxLetters(0) end
     if eb.SetCountInvisibleLetters then pcall(eb.SetCountInvisibleLetters, eb, false) end
     if eb.SetTextInsets then eb:SetTextInsets(4, 10, 4, 4) end
-    eb:SetWidth(556)
+    eb:SetWidth(576)
     eb:SetHeight(360)
     eb:SetTextColor(0.92, 0.95, 0.99, 1.0)
     eb:SetScript("OnEscapePressed", function() modal:Hide() end)
@@ -2241,8 +2426,11 @@ local function EnsureChatHistoryModal()
             pcall(_G.ScrollingEdit_OnTextChanged, self, sf)
         end
         if userInput and modal.currentText and self:GetText() ~= modal.currentText then
+            local pos = (self.GetCursorPosition and self:GetCursorPosition()) or 0
             self:SetText(modal.currentText)
-            self:HighlightText()
+            if self.SetCursorPosition then
+                self:SetCursorPosition(math.min(pos, #modal.currentText))
+            end
         end
         SyncHistoryScrollBar()
     end)
@@ -2282,6 +2470,10 @@ function DynamicChat:ShowFullChatHistoryModal(targetChatFrame)
     local ar, ag, ab = GetSuiteAccent()
     modal:SetBackdropBorderColor(ar, ag, ab, 0.95)
     if modal.topBar then modal.topBar:SetColorTexture(ar, ag, ab, 1.0) end
+    if modal.selBtn then
+        modal.selBtn:SetBackdropBorderColor(ar, ag, ab, 0.78)
+        if modal.selBtn.txt then modal.selBtn.txt:SetText("Select All") end
+    end
     local activeTabName = GetChatFrameTabTitle(cf)
     if modal.title then
         SetSafeFont(modal.title, 11, "")
@@ -2316,50 +2508,116 @@ function DynamicChat:ShowFullChatHistoryModal(targetChatFrame)
             lines[#lines + 1] = "--- Saved From Previous Session ---"
         end
     end
+
+    local liveLines = {}
+    local secretSkippedCount = 0
     local total = (type(cf.GetNumMessages) == "function" and cf:GetNumMessages()) or 0
     local startIdx = math.max(1, total - maxLines + 1)
     for idx = startIdx, total do
-        local line = StripSecretOrExtractLine(cf, idx)
-        if line then
+        local line, wasSecret = StripSecretOrExtractLine(cf, idx)
+        if wasSecret then
+            secretSkippedCount = secretSkippedCount + 1
+        elseif line then
+            liveLines[#liveLines + 1] = line
             lines[#lines + 1] = line
             ExtractURLsFromText(line, recentURLs, seenURLs)
         end
     end
+
+    -- Merge out-of-combat rolling plain-text session buffer for this tab as a reliable fallback
+    local fallbackAdded = 0
+    if type(DynamicChat._sessionPlainLog) == "table" and #DynamicChat._sessionPlainLog > 0 then
+        local liveBlob = (#liveLines > 0) and table.concat(liveLines, "\n"):lower() or ""
+        local extraLines = {}
+        for _, entry in ipairs(DynamicChat._sessionPlainLog) do
+            if DC_NS.DoesSessionEntryMatchChatFrame(entry, cf) then
+                local needle = (entry.msg or ""):lower()
+                local alreadyInLive = (needle ~= "" and liveBlob ~= "" and liveBlob:find(needle, 1, true) ~= nil)
+                if not alreadyInLive and entry.line and entry.line ~= "" then
+                    extraLines[#extraLines + 1] = entry.line
+                    ExtractURLsFromText(entry.line, recentURLs, seenURLs)
+                end
+            end
+        end
+        if #extraLines > 0 then
+            if #lines > 0 then
+                lines[#lines + 1] = "--- Captured Out-of-Combat Messages ---"
+            end
+            for _, ln in ipairs(extraLines) do
+                lines[#lines + 1] = ln
+                fallbackAdded = fallbackAdded + 1
+            end
+        end
+    end
+
     if type(DynamicChat._recentCapturedURLs) == "table" then
         for _, item in ipairs(DynamicChat._recentCapturedURLs) do
             local u = item and item.url
-            if u and not IsSecretValue(u) and type(u) == "string" and u ~= "" and not seenURLs[u] then
-                seenURLs[u] = true
-                recentURLs[#recentURLs + 1] = u
+            if u and not IsSecretValue(u) and type(u) == "string" and u ~= "" then
+                local normU = u:lower()
+                if not seenURLs[normU] then
+                    seenURLs[normU] = true
+                    recentURLs[#recentURLs + 1] = u
+                end
             end
         end
     end
     if #recentURLs > 0 then
         DynamicChat._latestCapturedURL = recentURLs[#recentURLs]
     end
-    local lineCount = #lines
-    if lineCount == 0 then
-        lines[1] = "No copyable messages in this chat tab."
-        lineCount = 1
+
+    local copyableCount = #lines
+    local lineCount = copyableCount
+    if copyableCount == 0 then
+        if secretSkippedCount > 0 then
+            lines[1] = "No readable messages could be extracted from this chat tab."
+            lines[2] = ""
+            lines[3] = "Blizzard restricts addons from reading protected combat, raid, and instance chat lines in Midnight."
+            lines[4] = "Out-of-combat messages and recent web links captured during your session will appear here automatically."
+            lineCount = 4
+        else
+            lines[1] = "No copyable messages in this chat tab yet."
+            lineCount = 1
+        end
     end
 
-    -- Populate Recent Links Quick-Copy Strip (most recent up to 3 links)
+    if modal.statusNote then
+        SetSafeFont(modal.statusNote, 9.5, "")
+        if secretSkippedCount > 0 then
+            modal.statusNote:SetTextColor(0.96, 0.78, 0.36, 1.0)
+            modal.statusNote:SetText(string.format("Blizzard restricted %d protected combat/instance %s.", secretSkippedCount, secretSkippedCount == 1 and "line" or "lines"))
+        elseif copyableCount > 0 then
+            modal.statusNote:SetTextColor(0.58, 0.64, 0.72, 1.0)
+            local suffix = (fallbackAdded > 0) and " (includes session buffer)" or ""
+            modal.statusNote:SetText(string.format("%d %s ready to copy%s", copyableCount, copyableCount == 1 and "line" or "lines", suffix))
+        else
+            modal.statusNote:SetTextColor(0.58, 0.64, 0.72, 1.0)
+            modal.statusNote:SetText("Waiting for readable chat messages")
+        end
+    end
+
+    -- Populate Recent Links Quick-Copy Strip (most recent up to 4 links, responsive width clamp)
     local linkBar = modal.linkBar
     if linkBar then
         for _, p in ipairs(linkBar.pills) do p:Hide() end
         if #recentURLs > 0 then
             linkBar:Show()
             modal.boxWrap:ClearAllPoints()
-            modal.boxWrap:SetPoint("TOPLEFT", modal, "TOPLEFT", 14, -62)
-            modal.boxWrap:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 28)
-            local maxPills = math.min(3, #recentURLs)
-            local xOff = 84
+            modal.boxWrap:SetPoint("TOPLEFT", modal, "TOPLEFT", 14, -64)
+            modal.boxWrap:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 30)
+            local maxPills = math.min(4, #recentURLs)
+            local barW = (linkBar:GetWidth() and linkBar:GetWidth() > 200) and linkBar:GetWidth() or 612
+            local startX = 84
+            local rightPad = 8
+            local gap = 6
+            local availW = math.max(120, barW - startX - rightPad)
+            local xOff = startX
             for i = 1, maxPills do
                 local url = recentURLs[#recentURLs - i + 1]
                 local pill = linkBar.pills[i]
                 if not pill then
                     pill = CreateFrame("Button", nil, linkBar, "BackdropTemplate")
-                    pill:SetHeight(18)
+                    pill:SetHeight(20)
                     pill:SetBackdrop({
                         bgFile = "Interface\\Buttons\\WHITE8x8",
                         edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -2373,42 +2631,54 @@ function DynamicChat:ShowFullChatHistoryModal(targetChatFrame)
                     pill.txt:SetWordWrap(false)
                     linkBar.pills[i] = pill
                 end
-                local shortLabel = url:gsub("^https?://", ""):gsub("^www%.", "")
-                if #shortLabel > 24 then
-                    shortLabel = shortLabel:sub(1, 22) .. ".."
+                local shortLabel = url:gsub("^[hH][tT][tT][pP][sS]?://", ""):gsub("^[wW][wW][wW]%.", "")
+                if #shortLabel > 22 then
+                    shortLabel = shortLabel:sub(1, 20) .. ".."
                 end
-                local pillW = math.min(168, math.max(84, (#shortLabel * 6) + 18))
-                pill:SetWidth(pillW)
-                pill:ClearAllPoints()
-                pill:SetPoint("LEFT", linkBar, "LEFT", xOff, 0)
-                xOff = xOff + pillW + 6
-                pill:SetBackdropColor(0.08, 0.10, 0.14, 0.96)
-                pill:SetBackdropBorderColor(ar, ag, ab, 0.75)
-                pill.txt:SetTextColor(0.95, 0.97, 1.0, 1.0)
-                pill.txt:SetText(i == 1 and ("Copy: " .. shortLabel) or shortLabel)
-                pill:SetScript("OnEnter", function(selfBtn)
-                    selfBtn:SetBackdropBorderColor(ar, ag, ab, 1.0)
-                    if _G.GameTooltip then
-                        _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
-                        _G.GameTooltip:SetText("Click to Copy Link", ar, ag, ab)
-                        _G.GameTooltip:AddLine(url, 0.92, 0.95, 0.99, true)
-                        _G.GameTooltip:Show()
-                    end
-                end)
-                pill:SetScript("OnLeave", function(selfBtn)
-                    selfBtn:SetBackdropBorderColor(ar, ag, ab, 0.75)
-                    if _G.GameTooltip then _G.GameTooltip:Hide() end
-                end)
-                pill:SetScript("OnClick", function()
-                    DynamicChat:ShowURLCopyPopup(url)
-                end)
-                pill:Show()
+                local displayTxt = (i == 1) and ("Copy: " .. shortLabel) or shortLabel
+                local maxPillW = math.floor((availW - gap * (maxPills - 1)) / maxPills)
+                local pillW = math.min(math.max(96, maxPillW), math.max(76, (#displayTxt * 6) + 16))
+                if (xOff + pillW) > (barW - rightPad) then
+                    pillW = math.floor((barW - rightPad) - xOff)
+                end
+                if pillW >= 60 then
+                    pill:SetWidth(pillW)
+                    pill:ClearAllPoints()
+                    pill:SetPoint("LEFT", linkBar, "LEFT", xOff, 0)
+                    xOff = xOff + pillW + gap
+                    pill:SetBackdropColor(0.08, 0.10, 0.14, 0.96)
+                    pill:SetBackdropBorderColor(ar, ag, ab, 0.78)
+                    pill.txt:SetTextColor(0.95, 0.97, 1.0, 1.0)
+                    pill.txt:SetText(displayTxt)
+                    pill:SetScript("OnEnter", function(selfBtn)
+                        local rA, gA, bA = GetSuiteAccent()
+                        local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
+                        selfBtn:SetBackdropColor(rA * fillAlpha, gA * fillAlpha, bA * fillAlpha, 0.98)
+                        selfBtn:SetBackdropBorderColor(rA, gA, bA, 1.0)
+                        if _G.GameTooltip then
+                            _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
+                            _G.GameTooltip:SetText("Click to Copy Link", rA, gA, bA)
+                            _G.GameTooltip:AddLine(url, 0.92, 0.95, 0.99, true)
+                            _G.GameTooltip:Show()
+                        end
+                    end)
+                    pill:SetScript("OnLeave", function(selfBtn)
+                        local rA, gA, bA = GetSuiteAccent()
+                        selfBtn:SetBackdropColor(0.08, 0.10, 0.14, 0.96)
+                        selfBtn:SetBackdropBorderColor(rA, gA, bA, 0.78)
+                        if _G.GameTooltip then _G.GameTooltip:Hide() end
+                    end)
+                    pill:SetScript("OnClick", function()
+                        DynamicChat:ShowURLCopyPopup(url)
+                    end)
+                    pill:Show()
+                end
             end
         else
             linkBar:Hide()
             modal.boxWrap:ClearAllPoints()
             modal.boxWrap:SetPoint("TOPLEFT", modal, "TOPLEFT", 14, -32)
-            modal.boxWrap:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 28)
+            modal.boxWrap:SetPoint("BOTTOMRIGHT", modal, "BOTTOMRIGHT", -14, 30)
         end
     end
 
@@ -2419,8 +2689,8 @@ function DynamicChat:ShowFullChatHistoryModal(targetChatFrame)
 
     local sf = modal.scrollFrame
     local eb = modal.editBox
-    local sfW = (sf and sf:GetWidth()) or 556
-    if sfW <= 24 then sfW = 556 end
+    local sfW = (sf and sf:GetWidth()) or 576
+    if sfW <= 24 then sfW = 576 end
     local sfH = (sf and sf:GetHeight()) or 340
     if sfH <= 24 then sfH = 340 end
     eb:SetWidth(sfW - 12)
@@ -5436,6 +5706,18 @@ function DynamicChat:ApplyChatFrameTypography()
         TypographyMgr.ApplyToEditBox(_G.ChatFrame1EditBox, fontPath, size, flags, hasShadow)
     end
     TypographyMgr.applying = false
+    if db.enableSleekChatSkin ~= false and not self._inApplySleekChatSkin then
+        self:ApplySleekChatSkin()
+    end
+end
+
+DC_NS.paddedFontStringContainers = {}
+
+function DC_NS.GetEmbeddedEditBoxHeight(db)
+    local fSize = tonumber(db and db.chatFontSize) or 13
+    if fSize < 10 then fSize = 10 elseif fSize > 22 then fSize = 22 end
+    local ebSize = math.max(11, math.min(fSize, 18))
+    return math.max(26, math.floor(ebSize + 14))
 end
 
 function DynamicChat:ApplySleekChatSkin()
@@ -5445,6 +5727,8 @@ function DynamicChat:ApplySleekChatSkin()
         self:HideHudEditMover()
         return
     end
+    if self._inApplySleekChatSkin then return end
+    self._inApplySleekChatSkin = true
 
     local db = EnsureDB()
     local skinEnabled = (db.enableSleekChatSkin ~= false)
@@ -5640,16 +5924,18 @@ function DynamicChat:ApplySleekChatSkin()
                     p.headerDiv:Show()
                 end
 
+                local ebH = DC_NS.GetEmbeddedEditBoxHeight(db)
+                local fscPad = ebH + 4
                 if p.footerDiv then
                     if alwaysShadedEB then
                         p.footerDiv:ClearAllPoints()
                         p.footerDiv:SetColorTexture(1, 1, 1, 0.08)
                         if isTopEB then
-                            p.footerDiv:SetPoint("TOPLEFT", cf, "TOPLEFT", 0, -26)
-                            p.footerDiv:SetPoint("TOPRIGHT", cf, "TOPRIGHT", 0, -26)
+                            p.footerDiv:SetPoint("TOPLEFT", cf, "TOPLEFT", 0, -ebH)
+                            p.footerDiv:SetPoint("TOPRIGHT", cf, "TOPRIGHT", 0, -ebH)
                         else
-                            p.footerDiv:SetPoint("BOTTOMLEFT", cf, "BOTTOMLEFT", 0, 26)
-                            p.footerDiv:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 0, 26)
+                            p.footerDiv:SetPoint("BOTTOMLEFT", cf, "BOTTOMLEFT", 0, ebH)
+                            p.footerDiv:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 0, ebH)
                         end
                         p.footerDiv:Show()
                     else
@@ -5662,13 +5948,13 @@ function DynamicChat:ApplySleekChatSkin()
                         local fsc = cf.FontStringContainer
                         fsc:ClearAllPoints()
                         if isTopEB then
-                            fsc:SetPoint("TOPLEFT", cf, "TOPLEFT", 0, -28)
+                            fsc:SetPoint("TOPLEFT", cf, "TOPLEFT", 0, -fscPad)
                             fsc:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 0, 0)
                         else
                             fsc:SetPoint("TOPLEFT", cf, "TOPLEFT", 0, 0)
-                            fsc:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 0, 28)
+                            fsc:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 0, fscPad)
                         end
-                        fsc._dgEmbeddedPad = true
+                        DC_NS.paddedFontStringContainers[fsc] = true
                     end)
                 end
 
@@ -5762,6 +6048,27 @@ function DynamicChat:ApplySleekChatSkin()
             if tab then
                 StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPath, ar, ag, ab)
             end
+
+            -- 5a. Ensure docked sibling chat tabs (Guild, Whisper, Loot, etc.) also clear the embedded EditBox
+            if skinEnabled and i ~= 1 and cf ~= _G.ChatFrame2 and cf.isDocked
+                and cf.FontStringContainer and cf.FontStringContainer.ClearAllPoints and cf.FontStringContainer.SetPoint
+                and not (InCombatLockdown and InCombatLockdown()) then
+                local ebH = DC_NS.GetEmbeddedEditBoxHeight(db)
+                local fscPad = ebH + 4
+                local isTopEB = (db.editBoxPosition == "TOP")
+                pcall(function()
+                    local fsc = cf.FontStringContainer
+                    fsc:ClearAllPoints()
+                    if isTopEB then
+                        fsc:SetPoint("TOPLEFT", cf, "TOPLEFT", 0, -fscPad)
+                        fsc:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 0, 0)
+                    else
+                        fsc:SetPoint("TOPLEFT", cf, "TOPLEFT", 0, 0)
+                        fsc:SetPoint("BOTTOMRIGHT", cf, "BOTTOMRIGHT", 0, fscPad)
+                    end
+                    DC_NS.paddedFontStringContainers[fsc] = true
+                end)
+            end
         end
     end
 
@@ -5780,11 +6087,11 @@ function DynamicChat:ApplySleekChatSkin()
         if not activeFrameSet[cf] or (not isPrimaryCF and (not DynamicChat.SafeFrameIsShown(cf, false) or (cf ~= _G.ChatFrame1 and cf.isDocked))) or not skinEnabled then
             if entry.panel then entry.panel:Hide() end
             if entry.leftRail then entry.leftRail:Hide() end
-            if cf == _G.ChatFrame1 and not skinEnabled and cf.FontStringContainer and cf.FontStringContainer._dgEmbeddedPad and not (InCombatLockdown and InCombatLockdown()) then
+            if not skinEnabled and cf.FontStringContainer and DC_NS.paddedFontStringContainers[cf.FontStringContainer] and not (InCombatLockdown and InCombatLockdown()) then
                 pcall(function()
                     cf.FontStringContainer:ClearAllPoints()
                     cf.FontStringContainer:SetAllPoints(cf)
-                    cf.FontStringContainer._dgEmbeddedPad = nil
+                    DC_NS.paddedFontStringContainers[cf.FontStringContainer] = nil
                 end)
             end
         end
@@ -5795,7 +6102,7 @@ function DynamicChat:ApplySleekChatSkin()
 
     self:RefreshLeftRailTelemetry()
 
-    -- 6. UIParent-Hosted Sleek Obsidian EditBox Bar (embedded inside ChatFrame1 bounds, 26px tall)
+    -- 6. UIParent-Hosted Sleek Obsidian EditBox Bar (embedded inside ChatFrame1 bounds, scaled to font size)
     -- Passively yield EditBox anchoring and bar skinning when EllesmereUI is loaded so both addons coexist with zero BN_WHISPER taint.
     local ebBar = EnsureSleekEditBoxBar()
     if skinEnabled and _G.ChatFrame1EditBox and not IsEllesmereUILoaded() then
@@ -5803,6 +6110,7 @@ function DynamicChat:ApplySleekChatSkin()
         local cf1 = _G.ChatFrame1
         local isTopEB = (db.editBoxPosition == "TOP")
         local alwaysShadedEB = (db.editBoxBackgroundMode ~= "FOCUS_ONLY")
+        local ebH = DC_NS.GetEmbeddedEditBoxHeight(db)
         local ebSecret = IsEditBoxSecretOrBNWhisper(eb1)
         if cf1 and not ebSecret and not (InCombatLockdown and InCombatLockdown()) then
             local state = passiveSkinnedEditBoxes[eb1]
@@ -5817,6 +6125,7 @@ function DynamicChat:ApplySleekChatSkin()
                 if not curEB or IsEditBoxSecretOrBNWhisper(curEB) then return end
                 local curDB = EnsureDB()
                 local curTop = (curDB.editBoxPosition == "TOP")
+                local curH = DC_NS.GetEmbeddedEditBoxHeight(curDB)
                 DynamicChat._applyingEditBoxPos = true
                 pcall(function()
                     if curEB.SetClampRectInsets then curEB:SetClampRectInsets(0, 0, 0, 0) end
@@ -5824,10 +6133,10 @@ function DynamicChat:ApplySleekChatSkin()
                     curEB:ClearAllPoints()
                     if curTop then
                         curEB:SetPoint("TOPLEFT", cf1, "TOPLEFT", 0, 0)
-                        curEB:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -26)
+                        curEB:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -curH)
                     else
                         curEB:SetPoint("BOTTOMLEFT", cf1, "BOTTOMLEFT", 0, 0)
-                        curEB:SetPoint("TOPRIGHT", cf1, "BOTTOMRIGHT", 0, 26)
+                        curEB:SetPoint("TOPRIGHT", cf1, "BOTTOMRIGHT", 0, curH)
                     end
                 end)
                 DynamicChat._applyingEditBoxPos = false
@@ -5850,7 +6159,7 @@ function DynamicChat:ApplySleekChatSkin()
                     end
                 end)
             end
-            local anchorKey = tostring(cf1) .. ":" .. (isTopEB and "TOP" or "BOT")
+            local anchorKey = tostring(cf1) .. ":" .. (isTopEB and "TOP" or "BOT") .. ":" .. tostring(ebH)
             local okPt, _, relTo = pcall(eb1.GetPoint, eb1, 1)
             if state.anchorKey ~= anchorKey or not okPt or relTo ~= cf1 then
                 state.anchorKey = anchorKey
@@ -5863,10 +6172,10 @@ function DynamicChat:ApplySleekChatSkin()
         if cf1 then
             if isTopEB then
                 ebBar:SetPoint("TOPLEFT", cf1, "TOPLEFT", 0, 0)
-                ebBar:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -26)
+                ebBar:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -ebH)
             else
                 ebBar:SetPoint("BOTTOMLEFT", cf1, "BOTTOMLEFT", 0, 0)
-                ebBar:SetPoint("TOPRIGHT", cf1, "BOTTOMRIGHT", 0, 26)
+                ebBar:SetPoint("TOPRIGHT", cf1, "BOTTOMRIGHT", 0, ebH)
             end
         else
             ebBar:SetPoint("TOPLEFT", _G.ChatFrame1EditBox, "TOPLEFT", 2, -2)
@@ -5890,6 +6199,7 @@ function DynamicChat:ApplySleekChatSkin()
                 end
                 local curDB = EnsureDB()
                 local isTopEB = (curDB.editBoxPosition == "TOP")
+                local curH = DC_NS.GetEmbeddedEditBoxHeight(curDB)
                 local bar = EnsureSleekEditBoxBar()
                 local targetBox = editBox or _G.ChatFrame1EditBox
                 if targetBox then
@@ -5900,10 +6210,10 @@ function DynamicChat:ApplySleekChatSkin()
                     if cf1 and targetBox == _G.ChatFrame1EditBox then
                         if isTopEB then
                             bar:SetPoint("TOPLEFT", cf1, "TOPLEFT", 0, 0)
-                            bar:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -26)
+                            bar:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -curH)
                         else
                             bar:SetPoint("BOTTOMLEFT", cf1, "BOTTOMLEFT", 0, 0)
-                            bar:SetPoint("TOPRIGHT", cf1, "BOTTOMRIGHT", 0, 26)
+                            bar:SetPoint("TOPRIGHT", cf1, "BOTTOMRIGHT", 0, curH)
                         end
                     else
                         bar:SetPoint("TOPLEFT", targetBox, "TOPLEFT", 2, -2)
@@ -6150,6 +6460,7 @@ function DynamicChat:ApplySleekChatSkin()
             end)
         end
     end
+    self._inApplySleekChatSkin = false
 end
 
 local function RefreshChatFrameTextLayout()
@@ -6497,9 +6808,10 @@ local function EnsureURLCopyPopup()
     if urlCopyPopup then return urlCopyPopup end
 
     local pop = CreateFrame("Frame", "DynamicChatCopyPopup", UIParent, "BackdropTemplate")
-    pop:SetSize(500, 96)
+    pop:SetSize(520, 102)
     pop:SetPoint("CENTER", UIParent, "CENTER", 0, 140)
-    pop:SetFrameStrata("DIALOG")
+    pop:SetFrameStrata("FULLSCREEN_DIALOG")
+    pop:SetFrameLevel(200)
     pop:SetToplevel(true)
     pop:SetClampedToScreen(true)
     pop:SetMovable(true)
@@ -6539,13 +6851,56 @@ local function EnsureURLCopyPopup()
     closeTxt:SetPoint("CENTER", 0, 0)
     closeTxt:SetTextColor(0.92, 0.95, 0.99, 1.0)
     closeTxt:SetText("X")
+    closeBtn:SetScript("OnEnter", function(selfBtn)
+        local rA, gA, bA = GetSuiteAccent()
+        selfBtn:SetBackdropColor(rA * 0.24, gA * 0.24, bA * 0.24, 0.98)
+        selfBtn:SetBackdropBorderColor(rA, gA, bA, 1.0)
+    end)
+    closeBtn:SetScript("OnLeave", function(selfBtn)
+        selfBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+        selfBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+    end)
     closeBtn:SetScript("OnClick", function() pop:Hide() end)
     pop.closeBtn = closeBtn
+
+    local selBtn = CreateFrame("Button", nil, pop, "BackdropTemplate")
+    selBtn:SetSize(72, 20)
+    selBtn:SetPoint("TOPRIGHT", pop, "TOPRIGHT", -34, -6)
+    selBtn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    selBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+    selBtn:SetBackdropBorderColor(ar, ag, ab, 0.78)
+    local selTxt = selBtn:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(selTxt, 9.5, "")
+    selTxt:SetPoint("CENTER", 0, 0)
+    selTxt:SetTextColor(0.92, 0.95, 0.99, 1.0)
+    selTxt:SetText("Select All")
+    selBtn:SetScript("OnEnter", function(selfBtn)
+        local rA, gA, bA = GetSuiteAccent()
+        selfBtn:SetBackdropColor(rA * 0.24, gA * 0.24, bA * 0.24, 0.98)
+        selfBtn:SetBackdropBorderColor(rA, gA, bA, 1.0)
+    end)
+    selBtn:SetScript("OnLeave", function(selfBtn)
+        local rA, gA, bA = GetSuiteAccent()
+        selfBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+        selfBtn:SetBackdropBorderColor(rA, gA, bA, 0.78)
+    end)
+    selBtn:SetScript("OnClick", function()
+        if pop.editBox then
+            pop.editBox:SetFocus()
+            pop.editBox:HighlightText()
+            if pop.editBox.SetCursorPosition then pop.editBox:SetCursorPosition(0) end
+        end
+    end)
+    pop.selBtn = selBtn
 
     local title = pop:CreateFontString(nil, "OVERLAY")
     SetSafeFont(title, 11, "")
     title:SetPoint("TOPLEFT", pop, "TOPLEFT", 14, -10)
-    title:SetPoint("RIGHT", closeBtn, "LEFT", -12, 0)
+    title:SetPoint("RIGHT", selBtn, "LEFT", -12, 0)
     title:SetJustifyH("LEFT")
     title:SetWordWrap(false)
     title:SetTextColor(ar, ag, ab, 1.0)
@@ -6553,8 +6908,8 @@ local function EnsureURLCopyPopup()
     pop.title = title
 
     local boxWrap = CreateFrame("Frame", nil, pop, "BackdropTemplate")
-    boxWrap:SetPoint("TOPLEFT", pop, "TOPLEFT", 14, -30)
-    boxWrap:SetPoint("BOTTOMRIGHT", pop, "BOTTOMRIGHT", -14, 26)
+    boxWrap:SetPoint("TOPLEFT", pop, "TOPLEFT", 14, -32)
+    boxWrap:SetPoint("BOTTOMRIGHT", pop, "BOTTOMRIGHT", -14, 28)
     boxWrap:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -6566,12 +6921,12 @@ local function EnsureURLCopyPopup()
 
     local hint = pop:CreateFontString(nil, "OVERLAY")
     SetSafeFont(hint, 9.5, "")
-    hint:SetPoint("BOTTOMLEFT", pop, "BOTTOMLEFT", 14, 8)
-    hint:SetPoint("BOTTOMRIGHT", pop, "BOTTOMRIGHT", -14, 8)
+    hint:SetPoint("BOTTOMLEFT", pop, "BOTTOMLEFT", 14, 9)
+    hint:SetPoint("BOTTOMRIGHT", pop, "BOTTOMRIGHT", -14, 9)
     hint:SetJustifyH("RIGHT")
     hint:SetWordWrap(false)
     hint:SetTextColor(0.58, 0.64, 0.72, 1.0)
-    hint:SetText("Press Ctrl+C to copy  |  Esc to close")
+    hint:SetText("Press Ctrl+C to copy  |  Enter or Esc to close")
     pop.hint = hint
 
     local eb = CreateFrame("EditBox", "DynamicChatCopyPopupEditBox", boxWrap)
@@ -6592,8 +6947,8 @@ local function EnsureURLCopyPopup()
     eb:SetScript("OnMouseUp", function(self)
         self:HighlightText()
     end)
-    eb:SetScript("OnChar", function(self)
-        if pop.currentURL then
+    eb:SetScript("OnTextChanged", function(self, userInput)
+        if userInput and pop.currentURL and self:GetText() ~= pop.currentURL then
             self:SetText(pop.currentURL)
             self:HighlightText()
         end
@@ -6622,6 +6977,7 @@ function DynamicChat:ShowURLCopyPopup(url)
     local ar, ag, ab = GetSuiteAccent()
     pop:SetBackdropBorderColor(ar, ag, ab, 0.95)
     if pop.topBar then pop.topBar:SetColorTexture(ar, ag, ab, 1.0) end
+    if pop.selBtn then pop.selBtn:SetBackdropBorderColor(ar, ag, ab, 0.78) end
     if pop.title then
         SetSafeFont(pop.title, 11, "")
         pop.title:SetTextColor(ar, ag, ab, 1.0)
@@ -6634,11 +6990,24 @@ function DynamicChat:ShowURLCopyPopup(url)
         SetSafeFont(pop.editBox, 11, "")
     end
     pop.currentURL = url
+    pop:SetFrameStrata("FULLSCREEN_DIALOG")
+    pop:SetFrameLevel(200)
     pop:Show()
     pop:Raise()
     pop.editBox:SetText(url)
+    if pop.editBox.SetCursorPosition then pop.editBox:SetCursorPosition(0) end
     pop.editBox:SetFocus()
     pop.editBox:HighlightText()
+    if _G.C_Timer and type(_G.C_Timer.After) == "function" then
+        _G.C_Timer.After(0, function()
+            if pop:IsShown() and pop.editBox then
+                pop:Raise()
+                pop.editBox:SetFocus()
+                pop.editBox:HighlightText()
+                if pop.editBox.SetCursorPosition then pop.editBox:SetCursorPosition(0) end
+            end
+        end)
+    end
 end
 
 local URL_MATCH_PATTERNS = {
@@ -6666,19 +7035,20 @@ local function HasCandidateURL(msg)
         return false
     end
     local ok, found = pcall(function()
-        if msg:find("https://", 1, true)
-            or msg:find("http://", 1, true)
-            or msg:find("discord.gg/", 1, true)
-            or msg:find("wago.io/", 1, true)
-            or msg:find("curseforge.com/", 1, true)
-            or msg:find("raider.io/", 1, true)
-            or msg:find("wowhead.com/", 1, true)
-            or msg:find("mythictrap.com/", 1, true)
-            or msg:find("archon.gg/", 1, true)
-            or msg:find("warcraftlogs.com/", 1, true)
-            or msg:find("youtu.be/", 1, true)
-            or msg:find("youtube.com/", 1, true)
-            or msg:find("www.", 1, true) then
+        local low = msg:lower()
+        if low:find("https://", 1, true)
+            or low:find("http://", 1, true)
+            or low:find("www.", 1, true)
+            or low:find("discord.gg/", 1, true)
+            or low:find("wago.io/", 1, true)
+            or low:find("curseforge.com/", 1, true)
+            or low:find("raider.io/", 1, true)
+            or low:find("wowhead.com/", 1, true)
+            or low:find("mythictrap.com/", 1, true)
+            or low:find("archon.gg/", 1, true)
+            or low:find("warcraftlogs.com/", 1, true)
+            or low:find("youtu.be/", 1, true)
+            or low:find("youtube.com/", 1, true) then
             return true
         end
         return false
@@ -6961,7 +7331,7 @@ function DynamicChat:InstallChatHooks()
         end
         local reusableFoundList = {}
         local reusableSeenMap = {}
-        capFrame:SetScript("OnEvent", function(_, event, msg)
+        capFrame:SetScript("OnEvent", function(_, event, msg, author, _, channelName)
             if IsModuleDisabledInSuite("DynamicChat") then return end
             if IsSecretValue(msg) then
                 return
@@ -6972,6 +7342,7 @@ function DynamicChat:InstallChatHooks()
             if type(msg) ~= "string" or msg == "" then
                 return
             end
+            DC_NS.RecordCapturedSessionMessage(event, msg, author, channelName)
             if not HasCandidateURL(msg) then return end
             if type(reusableFoundList) == "table" then wipe(reusableFoundList) else reusableFoundList = {} end
             if type(reusableSeenMap) == "table" then wipe(reusableSeenMap) else reusableSeenMap = {} end
@@ -9304,6 +9675,7 @@ local function OpenSoundDropdownMenu(ownerBtn, channelKey)
                     end)
                     row.selBtn:SetScript("OnClick", function()
                         SetSoundSlotValue(channelKey, opt.value)
+                        DynamicChat:ClearActivePreset()
                         if opt.value ~= "NONE" then
                             DynamicChat:PlaySoundOptionKey(opt.value, channelKey, true)
                         end
@@ -10441,9 +10813,20 @@ local function LayoutPageCards(page)
     end
 end
 
+function DynamicChat:ClearActivePreset()
+    local db = EnsureDB()
+    if db.activePreset ~= nil then
+        db.activePreset = nil
+        if self.RefreshPresetButtons then
+            self:RefreshPresetButtons()
+        end
+    end
+end
+
 function DynamicChat:ApplyPreset(presetKey)
     local db = EnsureDB()
     if presetKey == "CLEAN_SMOKED" then
+        db.activePreset = "CLEAN_SMOKED"
         db.enableSleekChatSkin = true
         db.chatBgAlpha = 0.25
         db.chatBorderStyle = "ACCENT"
@@ -10452,6 +10835,10 @@ function DynamicChat:ApplyPreset(presetKey)
         db.timestampFormat = "%H:%M "
         db.classColorNames = true
         db.editBoxBackgroundMode = "ALWAYS"
+        db.chatFontSize = 13
+        db.chatFontOutline = "OUTLINE"
+        db.chatFontShadow = true
+        db.chatLineSpacing = 2
         self:ApplySavedChatFramePosition()
         self:ApplySleekChatSkin()
         self:ApplyChatFrameTypography()
@@ -10460,26 +10847,33 @@ function DynamicChat:ApplyPreset(presetKey)
         self:RefreshConfigUI()
         PrintMsg("Applied preset: Clean Smoked-Glass.")
     elseif presetKey == "MINIMALIST_RAID" then
+        db.activePreset = "MINIMALIST_RAID"
         db.enableSleekChatSkin = true
         db.chatBgAlpha = 0.15
         db.leftRailMode = "COMBAT_HIDE"
         db.shortChannelNames = true
         db.soundMuteInCombat = true
+        db.chatFontSize = 13
+        db.chatLineSpacing = 2
         self:ApplySavedChatFramePosition()
         self:ApplySleekChatSkin()
+        self:ApplyChatFrameTypography()
         self:RefreshConfigUI()
         PrintMsg("Applied preset: Minimalist Raid.")
     elseif presetKey == "HIGH_READABILITY" then
+        db.activePreset = "HIGH_READABILITY"
         db.enableSleekChatSkin = true
-        db.chatBgAlpha = 0.55
-        db.chatFontSize = 15
+        db.chatBgAlpha = 0.50
+        db.chatFontSize = 14
+        db.chatFontOutline = "OUTLINE"
         db.chatFontShadow = true
-        db.chatLineSpacing = 3
+        db.chatLineSpacing = 2
         self:ApplySleekChatSkin()
         self:ApplyChatFrameTypography()
         self:RefreshConfigUI()
         PrintMsg("Applied preset: High-Readability.")
     elseif presetKey == "QUIET_ALERTS" then
+        db.activePreset = "QUIET_ALERTS"
         db.enableChatSounds = true
         db.enableSoundAlerts = true
         db.enableMentionAlerts = true
@@ -10700,6 +11094,9 @@ local function RenderChatEmbedded(arg1, arg2)
         tBtn:SetScript("OnClick", function()
             CloseActiveDropdown()
             EnsureDB().activeSubTab = idx
+            if scrollHolder and scrollHolder.scrollFrame and scrollHolder.scrollFrame.SetVerticalScroll then
+                scrollHolder.scrollFrame:SetVerticalScroll(0)
+            end
             DynamicChat:RefreshConfigUI()
         end)
 
@@ -10733,6 +11130,9 @@ local function RenderChatEmbedded(arg1, arg2)
                 b:SetPoint("LEFT", root.tabButtons[i - 1], "RIGHT", 4, 0)
                 b:SetPoint("RIGHT", tabBar, "RIGHT", -4, 0)
             end
+        end
+        if scrollHolder and scrollHolder.UpdateThumb then
+            scrollHolder.UpdateThumb()
         end
     end
     tabBar:SetScript("OnSizeChanged", ReflowChatTabBar)
@@ -10976,17 +11376,17 @@ local function RenderChatEmbedded(arg1, arg2)
             {
                 key = "CLEAN_SMOKED",
                 label = "Clean Smoked-Glass",
-                desc = "Sleek skin On, 25% backdrop opacity, Left Shortcut Bar Always visible, timestamps & class colours On.",
+                desc = "Sleek skin On, 25% backdrop opacity, 13 px font, 2 px line spacing, Left Shortcut Bar Always visible, timestamps & class colours On.",
             },
             {
                 key = "MINIMALIST_RAID",
                 label = "Minimalist Raid",
-                desc = "Sleek skin On, 15% backdrop opacity, Left Shortcut Bar hidden in combat, compact channel tags, mute sounds in combat.",
+                desc = "Sleek skin On, 15% backdrop opacity, 13 px font, 2 px line spacing, Left Shortcut Bar hidden in combat, compact tags, mute sounds in combat.",
             },
             {
                 key = "HIGH_READABILITY",
                 label = "High-Readability",
-                desc = "Sleek skin On, 55% backdrop opacity, 15 px font size, drop shadow On, and 3 px line spacing.",
+                desc = "Sleek skin On, 50% backdrop opacity, crisp 14 px font with thin outline, drop shadow On, and 2 px line spacing.",
             },
             {
                 key = "QUIET_ALERTS",
@@ -10995,9 +11395,30 @@ local function RenderChatEmbedded(arg1, arg2)
             },
         }
         local presetBtns = {}
+        local function ApplyPresetPillVisual(pb, isHover)
+            local ar, ag, ab = GetSuiteAccent()
+            local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
+            local isActive = (EnsureDB().activePreset == pb.presetKey)
+            SetSafeFont(pb.lbl, 10, "")
+            if isActive then
+                pb:SetBackdropColor(ar * fillAlpha, ag * fillAlpha, ab * fillAlpha, 0.98)
+                pb:SetBackdropBorderColor(ar, ag, ab, 1.0)
+                pb.lbl:SetTextColor(1, 1, 1, 1)
+            elseif isHover then
+                pb:SetBackdropColor(ar * (fillAlpha * 0.60), ag * (fillAlpha * 0.60), ab * (fillAlpha * 0.60), 0.98)
+                pb:SetBackdropBorderColor(ar, ag, ab, 0.90)
+                pb.lbl:SetTextColor(1, 1, 1, 1)
+            else
+                pb:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+                pb:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+                pb.lbl:SetTextColor(0.76, 0.82, 0.90, 1)
+            end
+        end
+
         for _, p in ipairs(presetDefs) do
             local pb = CreateFrame("Button", nil, presetCard, "BackdropTemplate")
             pb:SetHeight(26)
+            pb.presetKey = p.key
             pb:SetBackdrop({
                 bgFile = "Interface\\Buttons\\WHITE8x8",
                 edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -11011,25 +11432,22 @@ local function RenderChatEmbedded(arg1, arg2)
             pb.lbl:SetWordWrap(false)
             pb.lbl:SetText(p.label)
             pb:SetScript("OnEnter", function(selfBtn)
-                local ar, ag, ab = GetSuiteAccent()
-                local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
-                selfBtn:SetBackdropColor(ar * fillAlpha, ag * fillAlpha, ab * fillAlpha, 0.98)
-                selfBtn:SetBackdropBorderColor(ar, ag, ab, 1.0)
-                selfBtn.lbl:SetTextColor(1, 1, 1, 1)
+                ApplyPresetPillVisual(selfBtn, true)
                 if _G.GameTooltip then
                     _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
                     _G.GameTooltip:ClearLines()
                     _G.GameTooltip:AddLine(p.label, 1, 1, 1)
                     _G.GameTooltip:AddLine(p.desc, 0.72, 0.78, 0.86, true)
-                    _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Apply " .. p.label .. " preset now.", "34D399"), 0.886, 0.910, 0.941)
+                    if EnsureDB().activePreset == p.key then
+                        _G.GameTooltip:AddLine("Currently active preset.", 0.20, 0.90, 0.50)
+                    else
+                        _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Apply " .. p.label .. " preset now.", "34D399"), 0.886, 0.910, 0.941)
+                    end
                     _G.GameTooltip:Show()
                 end
             end)
             pb:SetScript("OnLeave", function(selfBtn)
-                local ar, ag, ab = GetSuiteAccent()
-                selfBtn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
-                selfBtn:SetBackdropBorderColor(ar, ag, ab, 0.70)
-                selfBtn.lbl:SetTextColor(0.92, 0.95, 0.99, 1)
+                ApplyPresetPillVisual(selfBtn, false)
                 if _G.GameTooltip then _G.GameTooltip:Hide() end
             end)
             pb:SetScript("OnClick", function()
@@ -11057,24 +11475,17 @@ local function RenderChatEmbedded(arg1, arg2)
         presetCard:SetScript("OnSizeChanged", ReflowPresetButtons)
         ReflowPresetButtons()
 
-        root.extraRefreshers[#root.extraRefreshers + 1] = function()
-            local ar, ag, ab = GetSuiteAccent()
+        local function RefreshPresetButtonsNow()
             SetSafeFont(presetLbl, 10, "")
             for _, pb in ipairs(presetBtns) do
-                SetSafeFont(pb.lbl, 10, "")
-                if pb:IsMouseOver() then
-                    local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
-                    pb:SetBackdropColor(ar * fillAlpha, ag * fillAlpha, ab * fillAlpha, 0.98)
-                    pb:SetBackdropBorderColor(ar, ag, ab, 1.0)
-                    pb.lbl:SetTextColor(1, 1, 1, 1)
-                else
-                    pb:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
-                    pb:SetBackdropBorderColor(ar, ag, ab, 0.70)
-                    pb.lbl:SetTextColor(0.92, 0.95, 0.99, 1)
-                end
+                ApplyPresetPillVisual(pb, pb:IsMouseOver())
             end
             ReflowPresetButtons()
         end
+        DynamicChat.RefreshPresetButtons = function()
+            RefreshPresetButtonsNow()
+        end
+        root.extraRefreshers[#root.extraRefreshers + 1] = RefreshPresetButtonsNow
         sec2_presets.orderedCards[#sec2_presets.orderedCards + 1] = presetCard
 
         local sec2_skin = CreateSectionBox(
@@ -11154,6 +11565,7 @@ local function RenderChatEmbedded(arg1, arg2)
             function(val)
                 local db = EnsureDB()
                 db.enableSleekChatSkin = val
+                DynamicChat:ClearActivePreset()
                 if val then
                     db.drawerExpanded = db.drawerExpanded or {}
                     db.drawerExpanded.skinCore = true
@@ -11182,6 +11594,7 @@ local function RenderChatEmbedded(arg1, arg2)
                 local db = EnsureDB()
                 db.chatBgAlpha = math.max(0.0, math.min(0.95, (tonumber(val) or 25) / 100))
                 db.enableSleekChatSkin = true
+                DynamicChat:ClearActivePreset()
                 DynamicChat:ApplySleekChatSkin()
                 if c2_skin.toggleBtn and c2_skin.toggleBtn.RefreshValue then
                     c2_skin.toggleBtn:RefreshValue()
@@ -11210,6 +11623,7 @@ local function RenderChatEmbedded(arg1, arg2)
             end,
             function(val)
                 EnsureDB().chatBorderStyle = val
+                DynamicChat:ClearActivePreset()
                 DynamicChat:ApplySleekChatSkin()
             end,
             "Select chat window border style."
@@ -11255,6 +11669,7 @@ local function RenderChatEmbedded(arg1, arg2)
             function() return (EnsureDB().editBoxBackgroundMode == "FOCUS_ONLY") and "FOCUS_ONLY" or "ALWAYS" end,
             function(val)
                 EnsureDB().editBoxBackgroundMode = (val == "FOCUS_ONLY") and "FOCUS_ONLY" or "ALWAYS"
+                DynamicChat:ClearActivePreset()
                 DynamicChat:ApplySavedChatFramePosition()
                 DynamicChat:ApplySleekChatSkin()
             end,
@@ -11344,6 +11759,7 @@ local function RenderChatEmbedded(arg1, arg2)
                 local db = EnsureDB()
                 local prev = db.leftRailMode or "ALWAYS"
                 db.leftRailMode = val
+                DynamicChat:ClearActivePreset()
                 if prev == "OFF" and val ~= "OFF" then
                     db.drawerExpanded = db.drawerExpanded or {}
                     db.drawerExpanded.leftRail = true
@@ -11486,6 +11902,7 @@ local function RenderChatEmbedded(arg1, arg2)
                 function() return tonumber(EnsureDB().chatFontSize) or 13 end,
                 function(val)
                     EnsureDB().chatFontSize = val
+                    DynamicChat:ClearActivePreset()
                     DynamicChat:ApplyChatFrameTypography()
                 end,
                 "Adjust chat font size between 10 px and 22 px."
@@ -11508,6 +11925,7 @@ local function RenderChatEmbedded(arg1, arg2)
                 function() return EnsureDB().chatFontOutline or "OUTLINE" end,
                 function(val)
                     EnsureDB().chatFontOutline = val
+                    DynamicChat:ClearActivePreset()
                     DynamicChat:ApplyChatFrameTypography()
                 end,
                 "Select chat text outline thickness."
@@ -11525,6 +11943,7 @@ local function RenderChatEmbedded(arg1, arg2)
                 function() return EnsureDB().chatFontShadow ~= false end,
                 function(val)
                     EnsureDB().chatFontShadow = val
+                    DynamicChat:ClearActivePreset()
                     DynamicChat:ApplyChatFrameTypography()
                 end,
                 "Off", "Enabled",
@@ -11543,11 +11962,12 @@ local function RenderChatEmbedded(arg1, arg2)
                 function() return tonumber(EnsureDB().chatLineSpacing) or 2 end,
                 function(val)
                     EnsureDB().chatLineSpacing = val
+                    DynamicChat:ClearActivePreset()
                     DynamicChat:ApplyChatFrameTypography()
                 end,
                 "Adjust line spacing between 0 px and 8 px."
             )
-            sec2_typo.orderedCards[#sec2_typoSpacing.orderedCards + 1] = c2_typoSpacing
+            sec2_typo.orderedCards[#sec2_typo.orderedCards + 1] = c2_typoSpacing
             root.allControls[#root.allControls + 1] = c2_typoSpacing
         end
 
@@ -11574,6 +11994,7 @@ local function RenderChatEmbedded(arg1, arg2)
             function() return EnsureDB().classColorNames ~= false end,
             function(val)
                 EnsureDB().classColorNames = val
+                DynamicChat:ClearActivePreset()
                 DynamicChat:ApplyClassColorNames()
             end,
             "Off", "Enabled",
@@ -11611,6 +12032,7 @@ local function RenderChatEmbedded(arg1, arg2)
                     db.showTimestamps = true
                     db.timestampFormat = val
                 end
+                DynamicChat:ClearActivePreset()
                 DynamicChat:ApplyTimestampSettings()
             end,
             "Select chat message timestamp format."
@@ -11644,6 +12066,7 @@ local function RenderChatEmbedded(arg1, arg2)
                 local db = EnsureDB()
                 db.enableChatSounds = val
                 db.enableSoundAlerts = val
+                DynamicChat:ClearActivePreset()
                 if val then
                     db.drawerExpanded = db.drawerExpanded or {}
                     db.drawerExpanded.notifSounds = true
@@ -11667,6 +12090,7 @@ local function RenderChatEmbedded(arg1, arg2)
             function() return EnsureDB().soundMuteInCombat == true end,
             function(val)
                 EnsureDB().soundMuteInCombat = (val == true)
+                DynamicChat:ClearActivePreset()
             end,
             "Off", "Enabled",
             "Toggle muting chat notification sounds during combat."
@@ -11756,6 +12180,7 @@ local function RenderChatEmbedded(arg1, arg2)
             function(val)
                 local db = EnsureDB()
                 db.enableMentionAlerts = (val == true)
+                DynamicChat:ClearActivePreset()
                 if val then
                     db.drawerExpanded = db.drawerExpanded or {}
                     db.drawerExpanded.mentions = true
@@ -11838,7 +12263,10 @@ local function RenderChatEmbedded(arg1, arg2)
         )
         AttachSegmentedSwitchToCard(c3_mToast,
             function() return EnsureDB().mentionAlertToast ~= false end,
-            function(val) EnsureDB().mentionAlertToast = (val == true) end,
+            function(val)
+                EnsureDB().mentionAlertToast = (val == true)
+                DynamicChat:ClearActivePreset()
+            end,
             "Off", "Enabled",
             "Toggle floating alert toast banners."
         )
@@ -12196,6 +12624,7 @@ local function RenderChatEmbedded(arg1, arg2)
                 pcall(targetCF.Clear, targetCF)
             end
             EnsureDB().savedChatHistory = {}
+            DynamicChat._sessionPlainLog = {}
             PrintMsg("Cleared active chat window and saved reload history.")
         end)
         clearHistBtn:SetPoint("RIGHT", c3_historyActions, "RIGHT", -14, 0)
@@ -12926,6 +13355,7 @@ function DynamicChat._RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "24/11/2026",
         entries = {
+            { type = "FIX",      text = "Tab 3 Blank Screen Fix, Quick Presets Active Highlight & Copy Chat / URL Overhaul (24/11/2026): Fixed a nil typo on the Tab 2 Line Spacing card that aborted workspace construction before Tabs 3 and 4 built, and reset vertical scroll cleanly when switching tabs or resizing to 800x520; added live Suite Accent active highlighting for Quick Presets (clearing automatically when any preset setting is manually edited), tuned High-Readability to crisp 14 px contrast (50% backdrop, thin outline, drop shadow, 2 px line spacing) while having Clean Smoked-Glass and Minimalist Raid restore 13 px / 2 px text, and dynamically scaled chat typing box height and message clearance across docked tabs so chat lines never collide with the top typing box; and overhauled Copy Chat and Copy Link with a rolling out-of-combat plain-text session buffer fallback, case-insensitive URL capture (including bare www. links without duplicate sub-matches), hardened escape-code stripping, a [Select All] confirmation button and up to 4 Recent Links pills in the Copy Chat window, an elevated Copy Link dialog with deferred focus and full selection, and a plain-English Midnight footer notice whenever Blizzard restricts reading protected combat or instance lines." },
             { type = "UI",       text = "Pass 2 Quick Presets, 6 Persisted Sub-Settings Drawers & 800x520 Clamping (24/11/2026): Added a 4-option Quick Presets card at the top of Tab 2 (Clean Smoked-Glass, Minimalist Raid, High-Readability, Quiet Alerts); converted Smoked-Glass Skin (now with a 0%-95% background opacity precision slider, border style, and 30s/60s/2m/5m auto-fade duration), Left Shortcut Bar, Notification Sounds, Mention & Keyword Alerts (with a new [Test] preview button on Mention Alert Toast), Custom Sound Files, and Chat History (with [Copy Chat] and [Clear History] buttons) into persisted 24px Sub-Settings (N) drawers (collapsed by default on fresh profiles); removed the orphaned single-card Compact Channel Tags section and duplicate font sync toggle; shortened and right-clamped 4-tab labels and card titles for 800x520 minimum windows; and stripped outline flags from font picker group headers." },
             { type = "FIX",      text = "Release v2.8.1 - Chat Input Box Focus Error Fix (22/11/2026): Fixed a Retail 12.1.5 Lua error that could appear when action bars shifted or Blizzard refreshed the layout while the chat input box had a protected focus state. DynamicChat now tracks chat focus through Blizzard's focus events and checks input box visibility safely across both DynamicSuite and standalone DynamicChat." },
             { type = "UI",       text = "Release v2.7.0 - Unified Mention Alert Toast & Live Suite Accent Polish (21/11/2026): Upgraded DynamicChatMentionToast to the shared 410x74 Obsidian alert toast style (live Suite Accent, Scale, Opacity, Border Style, Auto-Fade Duration, Sound, Right-Click dismissal, and clean vertical stacking under suite toasts), clamped Chat Skin section header titles beside the Edit HUD button at 800x520, and replaced Blaze Orange focus borders, action buttons, font menu borders, and Restore Blizzard Defaults modal chrome with the live Suite Accent." },
@@ -12990,7 +13420,7 @@ SlashCmdList["DYNAMICCHAT"] = function(msg)
     elseif cmd == "history" then
         DynamicChat:ShowFullChatHistoryModal(ResolveActiveChatFrame())
     elseif cmd == "copy" or cmd == "url" then
-        DynamicChat:ShowURLCopyPopup("https://www.curseforge.com/wow/addons")
+        DynamicChat:ShowURLCopyPopup(DynamicChat._latestCapturedURL or "https://www.curseforge.com/wow/addons/dynamicsuite")
     elseif cmd == "testaudio" then
         DynamicChat:PreviewSuiteChimePack()
     elseif cmd == "mute" then
