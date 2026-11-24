@@ -1854,14 +1854,16 @@ function U.StyleButtonState(b)
             if nud and nud.SetBackdropColor then
                 if nud._hover then
                     nud:SetBackdropColor(ar * 0.22, ag * 0.22, ab * 0.22, 0.98)
-                    nud:SetBackdropBorderColor(ar, ag, ab, 1.0)
+                    nud:SetBackdropBorderColor(ar, ag, ab, 0.95)
                     if nud.txt then nud.txt:SetTextColor(1.0, 1.0, 1.0, 1.0) end
                 else
                     nud:SetBackdropColor(0.055, 0.063, 0.082, 0.96)
                     nud:SetBackdropBorderColor(0.15, 0.18, 0.24, 1.0)
                     if nud.txt then
-                        if b.selected or b.isSwapSrc then
-                            nud.txt:SetTextColor(0.796, 0.835, 0.882, 0.95)
+                        if b.isSwapSrc then
+                            nud.txt:SetTextColor(1.0, 0.88, 0.30, 1.0)
+                        elseif b.selected then
+                            nud.txt:SetTextColor(ar, ag, ab, 0.95)
                         else
                             nud.txt:SetTextColor(0.45, 0.51, 0.60, 0.80)
                         end
@@ -12115,8 +12117,9 @@ end
 
 DynamicBags.CHANGELOG = {
     version = VERSION,
-    date = "24/11/2026",
+    date = "25/11/2026",
     entries = {
+        { type = "UI",      text = "Pass 5 Category Reorder Arrow Tint Parity (25/11/2026): Tinted the < and > reorder arrows on enabled Category Order & Visibility tiles in Tab 1 with the live Suite Accent colour at rest (switching to crisp white with accent border on hover, while keeping disabled tiles muted slate) to match DynamicPrep's Top Info Bar Layout Builder." },
         { type = "UI",      text = "Category Grid Parity, Isolated Bank Scale, Tab 3 Drawer Spacing & In-Panel Auto-Restock UI (24/11/2026): Restyled Tab 1's 12 Category Order & Visibility tiles to match DynamicPrep's dark Obsidian layout builder (#0E1015 fill, crisp 1px live Suite Accent border when enabled, dimmed slate when disabled, '1. Category' numbering, and always-visible bordered < and > reorder buttons); isolated Tab 2's Bank Window Scale slider so scaling Bank/Warband never moves or touches the Bag window; tightened Tab 3 Sub-Settings drawer spacing and ScrollFrame height updates so every child row renders cleanly without clipping; and added an in-panel Smart Vendor Auto-Restock drawer supporting bag drag-and-drop, Shift-Click links, item ID/name lookup, per-item quantity controls, Clear All, and Ctrl + Alt + Right-Click vendor adding with tooltip hints." },
         { type = "UI",      text = "Pass 4 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 2 Rebalance (24/11/2026): Moved Category Layout Preset into a full-width QUICK PRESETS card at the top of Tab 1 (Mythic+ & Raid, Collector, Minimalist, Custom) with live Suite Accent active highlighting that clears on manual tweaks; exposed 3-mode Item Sorting (Quality, Alphabetical, Manual) and Auto-Merge Stacks on Close in Tab 1 while hiding Category-only controls cleanly in Single Grid mode and stripping outline flags from category arrows; rebalanced Tab 2 (Appearance, Badges & Glow) with Bag Window Scale, Bank Window Scale, Window Background Opacity, and Reset Window Positions; upgraded Tab 3 Auto-Repair, Auto-Open Containers, and Quick-Open Queue into persisted multi-row Sub-Settings drawers collapsed by default on fresh profiles; and unified live Suite Accent repainting across Bags, Bank, and Standalone frames." },
         { type = "UI",      text = "Release v2.7.0 - 156x26px Binary Switch Alignment & Live Accent Tooltips (21/11/2026): Standardised binary Off/Enabled option switches across all tabs to 68px Off + 84px Enabled (156x26px total) and updated Alt + Left-Click category tooltips to track the live Suite Accent colour." },

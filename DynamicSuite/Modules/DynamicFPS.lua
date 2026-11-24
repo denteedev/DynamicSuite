@@ -574,8 +574,8 @@ local QUEST_TRACKER_DROPDOWN = {
 
 local DECLUTTER_AUDIO_PILLS = {
     { value = "DEFAULT",          label = "Off" },
-    { value = "MUTE_SPEECH_ONLY", label = "Mute Error Speech" },
-    { value = "MUTE_ALL",         label = "Speech & Loot Banner" },
+    { value = "MUTE_SPEECH_ONLY", label = "Error Speech" },
+    { value = "MUTE_ALL",         label = "Speech & Loot" },
 }
 
 -- 36-CVar Baseline Snapshot Keys
@@ -1834,7 +1834,7 @@ local function GetStatusText()
     local pName = (pKey == "SAVED_BASE" and "Saved Base") or (STARTER_PRESETS[pKey] and STARTER_PRESETS[pKey].label) or "Custom"
     local sqMS, _, _, _, profileLabel, _, sqMode = CalculateTargetSpellQueueMS()
     local sqTag = (sqMode == "SMART_AUTO" and ("Auto-" .. (profileLabel or "Spec"))) or (sqMode == "CUSTOM_MANUAL" and "Manual") or "Default"
-    return string.format("* %s: %s | SpellQueue: %dms (%s) | Telegraph Lock: ON", zLabel, pName, sqMS, sqTag)
+    return string.format("* %s: %s | Spell Queue: %dms (%s) | Telegraph Lock: ON", zLabel, pName, sqMS, sqTag)
 end
 DynamicFPS.GetStatusText = GetStatusText
 
@@ -2813,6 +2813,9 @@ local function CreateSectionHeader(parent, arg2, arg3, subtitleText, padOverride
     else
         txt:SetPoint("LEFT", leftBar, "RIGHT", 8, 0)
     end
+    txt:SetPoint("RIGHT", hdr, "RIGHT", -8, 0)
+    txt:SetJustifyH("LEFT")
+    txt:SetWordWrap(false)
     SetStyledFont(txt, 11, "", ar, ag, ab, 1.0)
     txt:SetText(string.upper(titleText or ""))
     hdr.txt = txt
@@ -2875,6 +2878,7 @@ local function CreateCardRow(parent, yTop, rowHeight, titleText, descText, isRec
     local leftPad = isRecessedSubDrawer and 22 or 14
     local title = row:CreateFontString(nil, "OVERLAY")
     title:SetPoint("TOPLEFT", row, "TOPLEFT", leftPad, -8)
+    title:SetPoint("RIGHT", row, "RIGHT", -14, 0)
     title:SetJustifyH("LEFT")
     title:SetWordWrap(false)
     if isRecessedSubDrawer then
@@ -2904,7 +2908,7 @@ local function CreateCardRow(parent, yTop, rowHeight, titleText, descText, isRec
     function row:ClampDescToControl(ctrl)
         if not ctrl then return end
         title:ClearAllPoints()
-        title:SetPoint("TOPLEFT", row, "TOPLEFT", 14, -10)
+        title:SetPoint("TOPLEFT", row, "TOPLEFT", leftPad, -10)
         title:SetPoint("RIGHT", ctrl, "LEFT", -16, 0)
         desc:ClearAllPoints()
         desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -3)
@@ -2919,17 +2923,18 @@ end
 -- ============================================================================
 local standaloneWindow = nil
 
-local function BuildZonePageView(scrollChild, RegisterRefresh, GetSelectedZoneKey, GetSelectedZoneTable, MarkZonePresetCustom, setPresetHighlightFn)
+local function BuildZonePageView(scrollChild, RegisterRefresh, GetSelectedZoneKey, GetSelectedZoneTable, MarkZonePresetCustom, setPresetHighlightFn, onZoneHeightChanged)
     local zonePage = CreateFrame("Frame", nil, scrollChild)
     zonePage:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, 0)
     zonePage:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", 0, 0)
     zonePage:SetHeight(1038)
 
+    local zoneToolbar = CreateFrame("Frame", nil, zonePage)
     local zoneTitleLbl
     local RefreshStarterPresetHighlight
     do
-        -- 1. Unified 66px Zone Profile & 1-Click Copy Toolbar Card (2 Rows separated by 1px divider)
-        local zoneToolbar = CreateFrame("Frame", nil, zonePage)
+        -- 1. Unified Responsive Zone Profile & 1-Click Copy Toolbar Card
+        -- Wide (>= 740px): 66px 2-row bar | Compact (< 740px, e.g. 800x520 / 566px): 96px 3-row bar with zero overlap
         zoneToolbar:SetPoint("TOPLEFT", zonePage, "TOPLEFT", 0, 0)
         zoneToolbar:SetPoint("TOPRIGHT", zonePage, "TOPRIGHT", 0, 0)
         zoneToolbar:SetHeight(66)
@@ -2937,13 +2942,13 @@ local function BuildZonePageView(scrollChild, RegisterRefresh, GetSelectedZoneKe
         zoneToolbar.bg:SetAllPoints()
         Create1PxBorder(zoneToolbar, PALETTE.BORDER_CELL.r, PALETTE.BORDER_CELL.g, PALETTE.BORDER_CELL.b, 0.95)
 
-        -- 1px horizontal divider separating Row 1 and Row 2
+        -- 1px horizontal divider separating presets from Row 2
         local toolbarDivider = CreateSolidTex(zoneToolbar, "ARTWORK", 2, 1, 1, 1, 0.06)
         toolbarDivider:SetHeight(1)
         toolbarDivider:SetPoint("TOPLEFT", zoneToolbar, "TOPLEFT", 1, -33)
         toolbarDivider:SetPoint("TOPRIGHT", zoneToolbar, "TOPRIGHT", -1, -33)
 
-        -- Row 1 (Top half: Zone Status & Hardware Presets)
+        -- Row 1 (Zone Status & Hardware Presets)
         zoneTitleLbl = zoneToolbar:CreateFontString(nil, "OVERLAY")
         zoneTitleLbl:SetPoint("TOPLEFT", zoneToolbar, "TOPLEFT", 12, -11)
         SetStyledFont(zoneTitleLbl, 11.5, "", PALETTE.TEXT_PRI.r, PALETTE.TEXT_PRI.g, PALETTE.TEXT_PRI.b, 1.0)
@@ -2963,7 +2968,9 @@ local function BuildZonePageView(scrollChild, RegisterRefresh, GetSelectedZoneKe
         btnRestoreBase.bg:SetAllPoints()
         Create1PxBorder(btnRestoreBase, PALETTE.BORDER_CELL.r, PALETTE.BORDER_CELL.g, PALETTE.BORDER_CELL.b, 1.0)
         btnRestoreBase.lbl = btnRestoreBase:CreateFontString(nil, "OVERLAY")
-        btnRestoreBase.lbl:SetPoint("CENTER", btnRestoreBase, "CENTER", 0, 0)
+        btnRestoreBase.lbl:SetPoint("LEFT", btnRestoreBase, "LEFT", 4, 0)
+        btnRestoreBase.lbl:SetPoint("RIGHT", btnRestoreBase, "RIGHT", -4, 0)
+        btnRestoreBase.lbl:SetJustifyH("CENTER")
         btnRestoreBase.lbl:SetWordWrap(false)
         SetStyledFont(btnRestoreBase.lbl, 10.5, "", PALETTE.TEXT_SEC.r, PALETTE.TEXT_SEC.g, PALETTE.TEXT_SEC.b, 0.95)
         btnRestoreBase.lbl:SetText("Revert to Base")
@@ -3002,7 +3009,9 @@ local function BuildZonePageView(scrollChild, RegisterRefresh, GetSelectedZoneKe
             Create1PxBorder(b, PALETTE.BORDER_CELL.r, PALETTE.BORDER_CELL.g, PALETTE.BORDER_CELL.b, 1.0)
 
             b.lbl = b:CreateFontString(nil, "OVERLAY")
-            b.lbl:SetPoint("CENTER", b, "CENTER", 0, 0)
+            b.lbl:SetPoint("LEFT", b, "LEFT", 4, 0)
+            b.lbl:SetPoint("RIGHT", b, "RIGHT", -4, 0)
+            b.lbl:SetJustifyH("CENTER")
             b.lbl:SetWordWrap(false)
             SetStyledFont(b.lbl, 10.5, "", PALETTE.TEXT_SEC.r, PALETTE.TEXT_SEC.g, PALETTE.TEXT_SEC.b, 0.92)
             b.lbl:SetText(pInfo.label)
@@ -3047,20 +3056,28 @@ local function BuildZonePageView(scrollChild, RegisterRefresh, GetSelectedZoneKe
         btnApplyAllZones.bg:SetAllPoints()
         Create1PxBorder(btnApplyAllZones, PALETTE.BORDER_CELL.r, PALETTE.BORDER_CELL.g, PALETTE.BORDER_CELL.b, 1.0)
         btnApplyAllZones.lbl = btnApplyAllZones:CreateFontString(nil, "OVERLAY")
-        btnApplyAllZones.lbl:SetPoint("CENTER", btnApplyAllZones, "CENTER", 0, 0)
+        btnApplyAllZones.lbl:SetPoint("LEFT", btnApplyAllZones, "LEFT", 4, 0)
+        btnApplyAllZones.lbl:SetPoint("RIGHT", btnApplyAllZones, "RIGHT", -4, 0)
+        btnApplyAllZones.lbl:SetJustifyH("CENTER")
         btnApplyAllZones.lbl:SetWordWrap(false)
         SetStyledFont(btnApplyAllZones.lbl, 10.5, "", PALETTE.TEXT_PRI.r, PALETTE.TEXT_PRI.g, PALETTE.TEXT_PRI.b, 0.95)
+
+        local function IsToolbarCompact()
+            local w = zoneToolbar:GetWidth() or 0
+            return (w > 40 and w < 740)
+        end
 
         local function UpdateApplyAllButtonVisual(isHover)
             local _, zKey = GetSelectedZoneTable()
             local zName = ZONE_NAMES[zKey] or zKey
+            local isCompact = IsToolbarCompact()
             if confirmApplyAllZoneKey and confirmApplyAllZoneKey ~= zKey then
                 confirmApplyAllZoneKey = nil
             end
             if confirmApplyAllZoneKey == zKey then
                 btnApplyAllZones.bg:SetColorTexture(0.28, 0.08, 0.10, 0.96)
                 btnApplyAllZones:SetBorderColor(1.0, 0.27, 0.27, 0.95)
-                btnApplyAllZones.lbl:SetText("|cFFFF4444Click to Confirm All|r")
+                btnApplyAllZones.lbl:SetText(isCompact and "|cFFFF4444Confirm All?|r" or "|cFFFF4444Click to Confirm All|r")
             else
                 btnApplyAllZones.bg:SetColorTexture(PALETTE.CELL_NEUTRAL.r, PALETTE.CELL_NEUTRAL.g, PALETTE.CELL_NEUTRAL.b, 1.0)
                 if isHover then
@@ -3069,7 +3086,7 @@ local function BuildZonePageView(scrollChild, RegisterRefresh, GetSelectedZoneKe
                 else
                     btnApplyAllZones:SetBorderColor(PALETTE.BORDER_CELL.r, PALETTE.BORDER_CELL.g, PALETTE.BORDER_CELL.b, 1.0)
                 end
-                btnApplyAllZones.lbl:SetText(string.format("Apply %s to All", zName))
+                btnApplyAllZones.lbl:SetText(isCompact and "Apply to All" or string.format("Apply %s to All", zName))
             end
         end
 
@@ -3130,7 +3147,9 @@ local function BuildZonePageView(scrollChild, RegisterRefresh, GetSelectedZoneKe
             Create1PxBorder(pill, PALETTE.BORDER_CELL.r, PALETTE.BORDER_CELL.g, PALETTE.BORDER_CELL.b, 1.0)
 
             pill.lbl = pill:CreateFontString(nil, "OVERLAY")
-            pill.lbl:SetPoint("CENTER", pill, "CENTER", 0, 0)
+            pill.lbl:SetPoint("LEFT", pill, "LEFT", 3, 0)
+            pill.lbl:SetPoint("RIGHT", pill, "RIGHT", -3, 0)
+            pill.lbl:SetJustifyH("CENTER")
             pill.lbl:SetWordWrap(false)
             SetStyledFont(pill.lbl, 10.5, "", PALETTE.TEXT_SEC.r, PALETTE.TEXT_SEC.g, PALETTE.TEXT_SEC.b, 0.94)
 
@@ -3188,21 +3207,92 @@ local function BuildZonePageView(scrollChild, RegisterRefresh, GetSelectedZoneKe
             local curAr, curAg, curAb = GetSuiteAccentColor()
             local fillAlpha = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
 
+            local toolbarW = zoneToolbar:GetWidth() or 760
+            local isCompact = (toolbarW > 40 and toolbarW < 740)
+            local toolbarH = isCompact and 96 or 66
+            zoneToolbar:SetHeight(toolbarH)
+
+            toolbarDivider:ClearAllPoints()
+            toolbarDivider:SetPoint("TOPLEFT", zoneToolbar, "TOPLEFT", 1, isCompact and -60 or -33)
+            toolbarDivider:SetPoint("TOPRIGHT", zoneToolbar, "TOPRIGHT", -1, isCompact and -60 or -33)
+
+            if isCompact then
+                zoneTitleLbl:ClearAllPoints()
+                zoneTitleLbl:SetPoint("LEFT", zoneToolbar, "TOPLEFT", 10, -14)
+                zoneTitleLbl:SetPoint("RIGHT", zoneToolbar, "TOPRIGHT", -10, -14)
+
+                local allPresets = {
+                    { btn = presetButtons["LOW"],         w = 80 },
+                    { btn = presetButtons["BALANCED"],    w = 70 },
+                    { btn = presetButtons["COMPETITIVE"], w = 104 },
+                    { btn = presetButtons["ULTRA"],       w = 94 },
+                    { btn = btnRestoreBase,               w = 98 },
+                }
+                local gap = 4
+                local innerW = math.max(320, toolbarW - 20)
+                local usableW = innerW - (gap * (#allPresets - 1))
+                local baseSum = 446
+                local xPos = 10
+                for idx, entry in ipairs(allPresets) do
+                    local b = entry.btn
+                    b:ClearAllPoints()
+                    b:SetHeight(24)
+                    if idx == #allPresets then
+                        b:SetPoint("TOPLEFT", zoneToolbar, "TOPLEFT", xPos, -30)
+                        b:SetPoint("TOPRIGHT", zoneToolbar, "TOPRIGHT", -10, -30)
+                    else
+                        local bw = math.floor((usableW * entry.w) / baseSum)
+                        b:SetPoint("TOPLEFT", zoneToolbar, "TOPLEFT", xPos, -30)
+                        b:SetWidth(bw)
+                        xPos = xPos + bw + gap
+                    end
+                end
+            else
+                btnRestoreBase:ClearAllPoints()
+                btnRestoreBase:SetSize(98, 24)
+                btnRestoreBase:SetPoint("TOPRIGHT", zoneToolbar, "TOPRIGHT", -8, -5)
+                local pAnchor = btnRestoreBase
+                for i = #PRESET_BTN_ORDER, 1, -1 do
+                    local pInfo = PRESET_BTN_ORDER[i]
+                    local b = presetButtons[pInfo.key]
+                    b:ClearAllPoints()
+                    b:SetSize(pInfo.width, 24)
+                    b:SetPoint("RIGHT", pAnchor, "LEFT", -4, 0)
+                    pAnchor = b
+                end
+                zoneTitleLbl:ClearAllPoints()
+                zoneTitleLbl:SetPoint("LEFT", zoneToolbar, "TOPLEFT", 12, -17)
+                zoneTitleLbl:SetPoint("RIGHT", pAnchor, "LEFT", -10, 0)
+            end
+
             for pKey, btn in pairs(presetButtons) do
                 if pKey == activePresetKey then
                     btn.bg:SetColorTexture(curAr * fillAlpha, curAg * fillAlpha, curAb * fillAlpha, 1.0)
                     btn:SetBorderColor(curAr, curAg, curAb, 0.95)
-                    SetStyledFont(btn.lbl, 10.5, "", PALETTE.TEXT_PRI.r, PALETTE.TEXT_PRI.g, PALETTE.TEXT_PRI.b, 1.0)
+                    SetStyledFont(btn.lbl, isCompact and 10 or 10.5, "", PALETTE.TEXT_PRI.r, PALETTE.TEXT_PRI.g, PALETTE.TEXT_PRI.b, 1.0)
                 else
                     btn.bg:SetColorTexture(PALETTE.CELL_NEUTRAL.r, PALETTE.CELL_NEUTRAL.g, PALETTE.CELL_NEUTRAL.b, 1.0)
                     btn:SetBorderColor(PALETTE.BORDER_CELL.r, PALETTE.BORDER_CELL.g, PALETTE.BORDER_CELL.b, 1.0)
-                    SetStyledFont(btn.lbl, 10.5, "", PALETTE.TEXT_SEC.r, PALETTE.TEXT_SEC.g, PALETTE.TEXT_SEC.b, 0.90)
+                    SetStyledFont(btn.lbl, isCompact and 10 or 10.5, "", PALETTE.TEXT_SEC.r, PALETTE.TEXT_SEC.g, PALETTE.TEXT_SEC.b, 0.90)
                 end
             end
 
-            copyHintLbl:SetText(string.format("Copy Into |cFFFFFFFF%s|r From:", zName))
-            local hintW = (copyHintLbl.GetUnboundedStringWidth and copyHintLbl:GetUnboundedStringWidth()) or copyHintLbl:GetStringWidth() or 140
-            local xCursor = 12 + math.max(134, math.ceil(hintW + 10))
+            local applyW = isCompact and 104 or 148
+            btnApplyAllZones:SetSize(applyW, 22)
+            copyHintLbl:ClearAllPoints()
+            copyHintLbl:SetPoint("LEFT", zoneToolbar, "BOTTOMLEFT", isCompact and 10 or 12, 17)
+            copyHintLbl:SetText(isCompact and "Copy From:" or string.format("Copy Into |cFFFFFFFF%s|r From:", zName))
+            local hintW = (copyHintLbl.GetUnboundedStringWidth and copyHintLbl:GetUnboundedStringWidth()) or copyHintLbl:GetStringWidth() or (isCompact and 66 or 140)
+            local xStart = (isCompact and 10 or 12) + math.ceil(hintW + (isCompact and 6 or 10))
+            if not isCompact then
+                xStart = 12 + math.max(134, math.ceil(hintW + 10))
+            end
+
+            local pillGap = isCompact and 3 or 4
+            local maxRight = math.max(xStart + 120, toolbarW - 8 - applyW - 8)
+            local availForPills = math.max(120, maxRight - xStart)
+            local pillData = {}
+            local naturalSum = 0
 
             local pillIdx = 0
             for _, tInfo in ipairs(LEFT_ZONE_TABS) do
@@ -3212,38 +3302,72 @@ local function BuildZonePageView(scrollChild, RegisterRefresh, GetSelectedZoneKe
                     if pill then
                         pill.srcZoneKey = tInfo.id
                         local isFlashed = (flashedSourceKey == tInfo.id)
-                        local labelText = isFlashed and string.format("|cFF34D399Copied %s!|r", tInfo.label) or tInfo.label
+                        local labelText
+                        if isFlashed then
+                            labelText = isCompact and "|cFF34D399Copied!|r" or string.format("|cFF34D399Copied %s!|r", tInfo.label)
+                        else
+                            labelText = tInfo.label
+                        end
                         pill.lbl:SetText(labelText)
-                        local rawW = (pill.lbl.GetUnboundedStringWidth and pill.lbl:GetUnboundedStringWidth()) or pill.lbl:GetStringWidth() or 48
-                        local pillW = math.max(58, math.ceil(rawW + 18))
-                        pill:SetSize(pillW, 22)
-                        pill:ClearAllPoints()
-                        pill:SetPoint("BOTTOMLEFT", zoneToolbar, "BOTTOMLEFT", xCursor, 6)
-                        xCursor = xCursor + pillW + 4
-
                         if isFlashed then
                             pill.bg:SetColorTexture(0.06, 0.32, 0.22, 0.96)
                             pill:SetBorderColor(0.20, 0.83, 0.60, 0.98)
-                            SetStyledFont(pill.lbl, 10.5, "", 0.20, 0.83, 0.60, 1.0)
+                            SetStyledFont(pill.lbl, isCompact and 10 or 10.5, "", 0.20, 0.83, 0.60, 1.0)
                         else
                             pill.bg:SetColorTexture(PALETTE.CELL_NEUTRAL.r, PALETTE.CELL_NEUTRAL.g, PALETTE.CELL_NEUTRAL.b, 1.0)
                             pill:SetBorderColor(PALETTE.BORDER_CELL.r, PALETTE.BORDER_CELL.g, PALETTE.BORDER_CELL.b, 1.0)
-                            SetStyledFont(pill.lbl, 10.5, "", PALETTE.TEXT_SEC.r, PALETTE.TEXT_SEC.g, PALETTE.TEXT_SEC.b, 0.94)
+                            SetStyledFont(pill.lbl, isCompact and 10 or 10.5, "", PALETTE.TEXT_SEC.r, PALETTE.TEXT_SEC.g, PALETTE.TEXT_SEC.b, 0.94)
                         end
-                        pill:Show()
+                        local rawW = (pill.lbl.GetUnboundedStringWidth and pill.lbl:GetUnboundedStringWidth()) or pill.lbl:GetStringWidth() or 42
+                        local pillW = isCompact and math.max(38, math.ceil(rawW + 12)) or math.max(58, math.ceil(rawW + 18))
+                        table.insert(pillData, { pill = pill, w = pillW })
+                        naturalSum = naturalSum + pillW
                     end
                 end
             end
 
+            local totalGap = pillGap * math.max(0, #pillData - 1)
+            local scaleFactor = 1.0
+            if (naturalSum + totalGap) > availForPills and naturalSum > 0 then
+                scaleFactor = math.max(0.5, (availForPills - totalGap) / naturalSum)
+            end
+
+            local xCursor = xStart
+            for _, entry in ipairs(pillData) do
+                local pw = math.max(30, math.floor(entry.w * scaleFactor))
+                entry.pill:SetSize(pw, 22)
+                entry.pill:ClearAllPoints()
+                entry.pill:SetPoint("BOTTOMLEFT", zoneToolbar, "BOTTOMLEFT", xCursor, 6)
+                entry.pill:Show()
+                xCursor = xCursor + pw + pillGap
+            end
+
             UpdateApplyAllButtonVisual(btnApplyAllZones:IsMouseOver())
+
+            local totalZoneH = toolbarH + 10 + 616 + 12 + 320 + 14
+            if math.abs((zonePage:GetHeight() or 0) - totalZoneH) > 0.5 then
+                zonePage:SetHeight(totalZoneH)
+                if onZoneHeightChanged then
+                    onZoneHeightChanged(totalZoneH)
+                end
+            end
         end
+
+        zoneToolbar:SetScript("OnSizeChanged", function()
+            if RefreshStarterPresetHighlight then
+                RefreshStarterPresetHighlight()
+            end
+        end)
+
         if setPresetHighlightFn then
             setPresetHighlightFn(RefreshStarterPresetHighlight)
         end
     end
 
     -- 2. Section 1 - CORE SHADER, SHADOW & SPELL QUALITY (Mirrors Blizzard's Base Game Quality Menu 1:1)
-    local zSec1 = CreateSectionBox(zonePage, -76, 616)
+    local zSec1 = CreateSectionBox(zonePage, nil, 616)
+    zSec1:SetPoint("TOPLEFT", zoneToolbar, "BOTTOMLEFT", 0, -10)
+    zSec1:SetPoint("TOPRIGHT", zoneToolbar, "BOTTOMRIGHT", 0, -10)
     local zHdr1 = CreateSectionHeader(zSec1, -10, "CORE SHADER, SHADOW & SPELL QUALITY", "Mirrors WoW's in-game graphics menu. Lowering SSAO, Depth, and Compute Effects saves GPU power with zero gameplay loss.")
 
     local pillsShadow, pillsLiquid, pillsParticle, pillsSSAO, pillsDepth, pillsCompute, pillsOutline, pillsTexRes, pillsSpellDensity
@@ -3373,7 +3497,9 @@ local function BuildZonePageView(scrollChild, RegisterRefresh, GetSelectedZoneKe
     end
 
     -- 3. Section 2 - VIEW DISTANCE & ENVIRONMENT CLUTTER (CPU SLIDERS 1-10)
-    local zSec2 = CreateSectionBox(zonePage, -704, 320)
+    local zSec2 = CreateSectionBox(zonePage, nil, 320)
+    zSec2:SetPoint("TOPLEFT", zSec1, "BOTTOMLEFT", 0, -12)
+    zSec2:SetPoint("TOPRIGHT", zSec1, "BOTTOMRIGHT", 0, -12)
     local zHdr2 = CreateSectionHeader(zSec2, -10, "VIEW DISTANCE & ENVIRONMENT CLUTTER (CPU SLIDERS 1-10)", "The #1 CPU bottleneck in Capital Cities and Raids. Lowering these sliders in Cities/Raids boosts CPU-bound FPS by up to 35%.")
 
     local slViewDist, slEnvDetail, slGroundClutter, swFriendlyNP, swSilhouette
@@ -3559,16 +3685,18 @@ local function RenderFPSEmbedded(parent)
 
     -- Far-Right Standalone Utility Pill: [ FPS Guard & Queue ] (26px height at RIGHT -4, 0)
     local guardPillBtn = CreateFrame("Button", nil, topNavRow)
-    guardPillBtn:SetSize(156, 26)
+    guardPillBtn:SetSize(138, 26)
     guardPillBtn:SetPoint("RIGHT", topNavRow, "RIGHT", -4, 0)
     guardPillBtn.bg = CreateSolidTex(guardPillBtn, "BACKGROUND", 1, 0.078, 0.090, 0.122, 0.85)
     guardPillBtn.bg:SetAllPoints()
     Create1PxBorder(guardPillBtn, 1, 1, 1, 0.07)
 
     guardPillBtn.label = guardPillBtn:CreateFontString(nil, "OVERLAY")
-    guardPillBtn.label:SetPoint("CENTER", guardPillBtn, "CENTER", 0, 0)
+    guardPillBtn.label:SetPoint("LEFT", guardPillBtn, "LEFT", 6, 0)
+    guardPillBtn.label:SetPoint("RIGHT", guardPillBtn, "RIGHT", -6, 0)
+    guardPillBtn.label:SetJustifyH("CENTER")
     guardPillBtn.label:SetWordWrap(false)
-    SetStyledFont(guardPillBtn.label, 11, "", PALETTE.TEXT_PRI.r, PALETTE.TEXT_PRI.g, PALETTE.TEXT_PRI.b, 0.95)
+    SetStyledFont(guardPillBtn.label, 10.5, "", PALETTE.TEXT_PRI.r, PALETTE.TEXT_PRI.g, PALETTE.TEXT_PRI.b, 0.95)
     guardPillBtn.label:SetText("FPS Guard & Queue")
     tabButtons["GUARD_QUEUE"] = guardPillBtn
 
@@ -3585,16 +3713,18 @@ local function RenderFPSEmbedded(parent)
         btn.bg:SetAllPoints()
         Create1PxBorder(btn, 1, 1, 1, 0.07)
 
-        btn.label = btn:CreateFontString(nil, "OVERLAY")
-        btn.label:SetPoint("CENTER", btn, "CENTER", 0, 0)
-        btn.label:SetWordWrap(false)
-        SetStyledFont(btn.label, 11, "", PALETTE.TEXT_SEC.r, PALETTE.TEXT_SEC.g, PALETTE.TEXT_SEC.b, 0.92)
-        btn.label:SetText(tInfo.label)
-
         btn.activeDot = CreateSolidTex(btn, "OVERLAY", 5, 0.133, 0.773, 0.369, 1.0)
         btn.activeDot:SetSize(6, 6)
-        btn.activeDot:SetPoint("LEFT", btn.label, "RIGHT", 5, 0)
+        btn.activeDot:SetPoint("LEFT", btn, "LEFT", 5, 0)
         btn.activeDot:Hide()
+
+        btn.label = btn:CreateFontString(nil, "OVERLAY")
+        btn.label:SetPoint("LEFT", btn, "LEFT", 4, 0)
+        btn.label:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
+        btn.label:SetJustifyH("CENTER")
+        btn.label:SetWordWrap(false)
+        SetStyledFont(btn.label, 10.5, "", PALETTE.TEXT_SEC.r, PALETTE.TEXT_SEC.g, PALETTE.TEXT_SEC.b, 0.92)
+        btn.label:SetText(tInfo.label)
 
         tabButtons[tInfo.id] = btn
     end
@@ -3602,12 +3732,29 @@ local function RenderFPSEmbedded(parent)
     local function LayoutLeftZoneTrack()
         local trackW = leftZoneTrack:GetWidth() or 540
         if trackW <= 0 then return end
-        local gap = 4
         local count = #LEFT_ZONE_TABS
-        local cellW = math.floor((trackW - ((count - 1) * gap)) / count)
+        local gap = (trackW < 460) and 3 or 4
+        local usableW = math.max(120, trackW - ((count - 1) * gap))
+        local minWidths = {}
+        local minSum = 0
+        for idx, tInfo in ipairs(LEFT_ZONE_TABS) do
+            local b = tabButtons[tInfo.id]
+            local hasDot = (b and b.activeDot and b.activeDot:IsShown()) and true or false
+            local rawW = (b and b.label and ((b.label.GetUnboundedStringWidth and b.label:GetUnboundedStringWidth()) or b.label:GetStringWidth())) or 44
+            local needW = math.ceil(rawW + (hasDot and 22 or 14))
+            minWidths[idx] = needW
+            minSum = minSum + needW
+        end
+        local extraPerTab = (usableW > minSum) and ((usableW - minSum) / count) or 0
+        local xCursor = 0
         for idx, tInfo in ipairs(LEFT_ZONE_TABS) do
             local b = tabButtons[tInfo.id]
             if b then
+                local hasDot = (b.activeDot and b.activeDot:IsShown()) and true or false
+                b.label:ClearAllPoints()
+                b.label:SetPoint("LEFT", b, "LEFT", hasDot and 13 or 4, 0)
+                b.label:SetPoint("RIGHT", b, "RIGHT", -4, 0)
+
                 b:ClearAllPoints()
                 b:SetHeight(26)
                 if idx == count then
@@ -3615,8 +3762,12 @@ local function RenderFPSEmbedded(parent)
                     b:SetPoint("LEFT", prevB, "RIGHT", gap, 0)
                     b:SetPoint("RIGHT", leftZoneTrack, "RIGHT", 0, 0)
                 else
-                    b:SetPoint("LEFT", leftZoneTrack, "LEFT", (idx - 1) * (cellW + gap), 0)
-                    b:SetWidth(cellW)
+                    local w = (usableW >= minSum)
+                        and math.floor(minWidths[idx] + extraPerTab)
+                        or math.max(28, math.floor((usableW * minWidths[idx]) / math.max(1, minSum)))
+                    b:SetPoint("LEFT", leftZoneTrack, "LEFT", xCursor, 0)
+                    b:SetWidth(w)
+                    xCursor = xCursor + w + gap
                 end
             end
         end
@@ -3799,7 +3950,13 @@ local function RenderFPSEmbedded(parent)
         GetSelectedZoneKey,
         GetSelectedZoneTable,
         MarkZonePresetCustom,
-        function(fn) RefreshStarterPresetHighlight = fn end
+        function(fn) RefreshStarterPresetHighlight = fn end,
+        function(newZoneH)
+            if DynamicFPSDB and DynamicFPSDB.activeTab ~= "GUARD_QUEUE" then
+                scrollChild:SetHeight((newZoneH or 1038) + 14)
+                UpdateScrollbarVisual()
+            end
+        end
     )
 
     -- ========================================================================
@@ -3810,9 +3967,9 @@ local function RenderFPSEmbedded(parent)
     guardPage:SetPoint("TOPRIGHT", scrollChild, "TOPRIGHT", 0, 0)
     guardPage:SetHeight(600)
 
-    -- Section 1 - DYNAMIC FPS GUARD, SPELLQUEUE & ENGINE AUTOMATION (Individual Setting Cards)
+    -- Section 1 - DYNAMIC FPS GUARD, SPELL QUEUE & ENGINE AUTOMATION (Individual Setting Cards)
     local gSec1 = CreateSectionBox(guardPage, 0, 356)
-    local gHdr1 = CreateSectionHeader(gSec1, -10, "DYNAMIC FPS GUARD, SPELLQUEUE & ENGINE AUTOMATION", "Real-time combat framerate protection and automatic World Ping spell queue tuning.")
+    local gHdr1 = CreateSectionHeader(gSec1, -10, "DYNAMIC FPS GUARD, SPELL QUEUE & ENGINE AUTOMATION", "Real-time combat framerate protection and automatic World Ping spell queue tuning.")
 
     local g1RowZoneEngine = CreateCardRow(gSec1, -54, 56, "Automatic Zone Graphics Switching", "Automatically switches graphics profiles on zone entry without requiring a UI reload.")
     local swZoneEngine = CreateBinarySegmentedSwitch(g1RowZoneEngine, function()
@@ -3840,9 +3997,7 @@ local function RenderFPSEmbedded(parent)
         end
     end)
     pillsFPSFloor:SetPoint("RIGHT", g1SubFPSFloor, "RIGHT", -14, 0)
-    g1SubFPSFloor.desc:ClearAllPoints()
-    g1SubFPSFloor.desc:SetPoint("TOPLEFT", g1SubFPSFloor.title, "BOTTOMLEFT", 0, -3)
-    g1SubFPSFloor.desc:SetPoint("RIGHT", pillsFPSFloor, "LEFT", -12, 0)
+    g1SubFPSFloor:ClampDescToControl(pillsFPSFloor)
 
     local g1SubFPSTelemetry = CreateFrame("Frame", nil, g1RowFPSGuard, "BackdropTemplate")
     g1SubFPSTelemetry:SetHeight(28)
@@ -3860,7 +4015,7 @@ local function RenderFPSEmbedded(parent)
     g1SubFPSTelemetry.txt:SetWordWrap(false)
     SetStyledFont(g1SubFPSTelemetry.txt, 10.5, "", PALETTE.TEXT_PRI.r, PALETTE.TEXT_PRI.g, PALETTE.TEXT_PRI.b, 0.98)
 
-    local g1RowAutoSQ = CreateCardRow(gSec1, -228, 56, "Automatic Spell Queue Tuning (Ping & Spec)", "Synchronises your spell queue delay to your live World/Home Ping and active Spec / Haste GCD profile.")
+    local g1RowAutoSQ = CreateCardRow(gSec1, -228, 56, "Automatic Spell Queue Tuning", "Synchronises your spell queue delay to your live World/Home Ping and active Spec / Haste GCD profile.")
 
     local g1SubSQTelemetry = CreateFrame("Frame", nil, g1RowAutoSQ, "BackdropTemplate")
     g1SubSQTelemetry:SetHeight(28)
@@ -3878,7 +4033,7 @@ local function RenderFPSEmbedded(parent)
     g1SubSQTelemetry.txt:SetWordWrap(false)
     SetStyledFont(g1SubSQTelemetry.txt, 10.5, "", PALETTE.TEXT_PRI.r, PALETTE.TEXT_PRI.g, PALETTE.TEXT_PRI.b, 0.98)
 
-    local g1SubSQPadding = CreateCardRow(g1RowAutoSQ, -114, 52, "Custom Manual Spell Queue Delay (ms)", "Manually set how early WoW queues your next spell press before the global cooldown finishes (50 ms to 400 ms).", true)
+    local g1SubSQPadding = CreateCardRow(g1RowAutoSQ, -114, 52, "Custom Spell Queue Delay (ms)", "Manually set how early WoW queues your next spell press before the global cooldown finishes (50 ms to 400 ms).", true)
     local slSQPadding = CreateInlineSliderControl(g1SubSQPadding, 248, 50, 400, 5, function()
         return _SafeNum(DynamicFPSDB.spellQueueManualMS, 180)
     end, function(val)
@@ -3917,7 +4072,7 @@ local function RenderFPSEmbedded(parent)
         elseif sqMode == "BLIZZARD_DEFAULT" then
             profileSummary = "Blizzard Default (400 ms)"
         end
-        g1SubSQTelemetry.txt:SetText(string.format("Ping: |cFFFFFFFF%dms|r (World) / |cFFFFFFFF%dms|r (Home)   |cFF475569|||r   Spec Profile: |cFFFFFFFF%s|r   |cFF475569|||r   Live Queue Delay: |cFF10B981%dms|r %s", _SafeNum(wMS, _dfpsCachedPing), _SafeNum(hMS, _dfpsCachedPing), profileSummary, liveCVar, syncBadge))
+        g1SubSQTelemetry.txt:SetText(string.format("Ping: |cFFFFFFFF%dms|r W / |cFFFFFFFF%dms|r H  |cFF475569|||r  Profile: |cFFFFFFFF%s|r  |cFF475569|||r  Queue: |cFF10B981%dms|r %s", _SafeNum(wMS, _dfpsCachedPing), _SafeNum(hMS, _dfpsCachedPing), profileSummary, liveCVar, syncBadge))
     end
     DynamicFPS.RefreshGuardTelemetry = RefreshGuardTelemetry
 
@@ -3968,7 +4123,7 @@ local function RenderFPSEmbedded(parent)
     g2r4:ClampDescToControl(ddQuestTracker)
 
     local g2r5 = CreateCardRow(gSec2, -302, 56, "Error Speech & Boss Loot Banner", "Silences repetitive 'not ready yet' vocal and red error spam in combat, and optionally hides boss loot banners.")
-    local ddDeclutterAudio = CreateSegmentedPills(g2r5, 326, DECLUTTER_AUDIO_PILLS, function()
+    local ddDeclutterAudio = CreateSegmentedPills(g2r5, 278, DECLUTTER_AUDIO_PILLS, function()
         return DynamicFPSDB.declutterAudioMode or "MUTE_SPEECH_ONLY"
     end, function(val)
         DynamicFPSDB.declutterAudioMode = val
@@ -4133,7 +4288,7 @@ local function RenderFPSEmbedded(parent)
         return DynamicFPSDB.fpsGuardEnabled and true or false
     end)
 
-    swAutoSQ = CreateSegmentedPills(g1RowAutoSQ, 290, SPELL_QUEUE_MODE_PILLS, function()
+    swAutoSQ = CreateSegmentedPills(g1RowAutoSQ, 272, SPELL_QUEUE_MODE_PILLS, function()
         return GetSpellQueueMode()
     end, function(val)
         DynamicFPSDB.spellQueueMode = val
@@ -4208,13 +4363,14 @@ local function RenderFPSEmbedded(parent)
             if id == tabId then
                 btn.bg:SetColorTexture(curAr * ((_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42), curAg * ((_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42), curAb * ((_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42), 0.95)
                 btn:SetBorderColor(curAr, curAg, curAb, 0.90)
-                SetStyledFont(btn.label, 11, "", 1.0, 1.0, 1.0, 1.0)
+                SetStyledFont(btn.label, 10.5, "", 1.0, 1.0, 1.0, 1.0)
             else
                 btn.bg:SetColorTexture(0.078, 0.090, 0.122, 0.85)
                 btn:SetBorderColor(1, 1, 1, 0.07)
-                SetStyledFont(btn.label, 11, "", PALETTE.TEXT_SEC.r, PALETTE.TEXT_SEC.g, PALETTE.TEXT_SEC.b, 0.92)
+                SetStyledFont(btn.label, 10.5, "", PALETTE.TEXT_SEC.r, PALETTE.TEXT_SEC.g, PALETTE.TEXT_SEC.b, 0.92)
             end
         end
+        LayoutLeftZoneTrack()
 
         for _, fn in ipairs(refreshCallbacks) do
             pcall(fn)
@@ -4483,6 +4639,9 @@ local function OpenFPSWorkspace()
 
         local titleTxt = header:CreateFontString(nil, "OVERLAY")
         titleTxt:SetPoint("LEFT", header, "LEFT", 16, 0)
+        titleTxt:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
+        titleTxt:SetJustifyH("LEFT")
+        titleTxt:SetWordWrap(false)
         SetStyledFont(titleTxt, 14, "", PALETTE.TEXT_PRI.r, PALETTE.TEXT_PRI.g, PALETTE.TEXT_PRI.b, 1.0)
         titleTxt:SetText(ADDON_TITLE_COLORED .. "  |cFF94A3B8v" .. ADDON_VERSION .. "|r")
 
@@ -4517,6 +4676,58 @@ local function OpenFPSWorkspace()
         blizzResetBtn.lbl:SetText("Restore Blizzard Defaults")
         blizzResetBtn:SetScript("OnClick", function() RestoreFPSBlizzardDefaults() end)
 
+        -- Standard 14x14 Bottom-Right Corner Resize Grip (Slate at rest -> Live Suite Accent on hover)
+        local resizeGrip = CreateFrame("Button", nil, bottomDock)
+        resizeGrip:SetSize(14, 14)
+        resizeGrip:SetPoint("BOTTOMRIGHT", bottomDock, "BOTTOMRIGHT", -4, 4)
+        resizeGrip:SetFrameLevel(bottomDock:GetFrameLevel() + 10)
+        resizeGrip:EnableMouse(true)
+
+        local gripTex = resizeGrip:CreateTexture(nil, "OVERLAY", nil, 5)
+        gripTex:SetAllPoints()
+        gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        gripTex:SetDesaturated(true)
+        gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+
+        resizeGrip:SetScript("OnEnter", function()
+            local curAr, curAg, curAb = GetSuiteAccentColor()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+            gripTex:SetDesaturated(false)
+            gripTex:SetVertexColor(curAr, curAg, curAb, 0.95)
+        end)
+        resizeGrip:SetScript("OnLeave", function()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+            gripTex:SetDesaturated(true)
+            gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+        end)
+        resizeGrip:SetScript("OnMouseDown", function(_, button)
+            if button == "LeftButton" then
+                CloseActiveDropdownMenu()
+                f:StartSizing("BOTTOMRIGHT")
+            elseif button == "RightButton" then
+                f:SetSize(980, 680)
+                local gTbl = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
+                if gTbl then gTbl.width = 980; gTbl.height = 680 end
+            end
+        end)
+        resizeGrip:SetScript("OnMouseUp", function()
+            f:StopMovingOrSizing()
+            local w = math.floor((f:GetWidth() or 980) + 0.5)
+            local h = math.floor((f:GetHeight() or 680) + 0.5)
+            local gTbl = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
+            if gTbl then gTbl.width = w; gTbl.height = h end
+        end)
+
+        function f:RefreshTheme()
+            local curAr, curAg, curAb = GetSuiteAccentColor()
+            if header.topLine then
+                header.topLine:SetColorTexture(curAr, curAg, curAb, 1.0)
+            end
+            if resizeGrip:IsMouseOver() then
+                gripTex:SetVertexColor(curAr, curAg, curAb, 0.95)
+            end
+        end
+
         local contentHost = CreateFrame("Frame", nil, f)
         contentHost:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
         contentHost:SetPoint("BOTTOMRIGHT", bottomDock, "TOPRIGHT", 0, 0)
@@ -4547,7 +4758,7 @@ DynamicFPS.CONFLICT_REGISTRY = {
     partialConflicts = { "AutoCombatLogger", "LoggerHead", "RaiderIO_AutoCombatLog", "!ArchonLogger", "ArchonLogger" },
     softConflicts = { "AutoCombatLogger", "LoggerHead", "RaiderIO_AutoCombatLog", "!ArchonLogger", "ArchonLogger" },
     yieldFeature = "combat log management",
-    category = "Graphics & FPS Optimization",
+    category = "Graphics & FPS Optimisation",
 }
 
 local moduleEntry = {
@@ -4599,9 +4810,10 @@ _G.DynamicSuite.modules["fps"] = moduleEntry
 _G.DynamicSuite.modules["DynamicFPS"] = moduleEntry
 
 DynamicFPS.CHANGELOG = {
-    version = ADDON_VERSION or "2.7.0",
-    date = "21/11/2026",
+    version = ADDON_VERSION or "2.9.1",
+    date = "25/11/2026",
     entries = {
+        { type = "UI",      text = "Pass 5 800x520 Layout Sweep, Standalone Resize Grip & Copy Hygiene (25/11/2026): Made the Zone Profile & 1-Click Copy toolbar dynamically reflow below 740px so all 5 presets, source copy pills, and Apply to All fit cleanly at 800x520 with zero overlap; added proportional 6-zone tab sizing and clamping in the top navigation bar; right-clamped all section headers, card titles, and recessed sub-drawer labels; added the standard 14x14 bottom-right corner resize grip (slate at rest, live Suite Accent on hover) to the standalone /dfps window; and cleaned up Australian English spelling and plain-English Spell Queue Timing wording." },
         { type = "UI",      text = "v2.7.0 Layout & Contrast Polish (21/11/2026): Anchored row titles directly to the left of right-hand switches and sliders in ClampDescToControl so labels never clip at the 800x520 minimum window width." },
         { type = "FIX",     text = "1:1 Blizzard Graphics CVar & SettingsPanel Synchronisation (13/11/2026): Fixed 0-based index offsets for Texture Resolution (0..2), View Distance / Environment Detail / Ground Clutter (0..9 CVars mapped to 1..10 UI sliders), and Particle Density; added runtime Settings.GetSetting label resolution + Settings.SetValue synchronisation alongside C_CVar.SetCVar; disabled RAIDsettingsEnabled split override and graphicsQuality cascade so every setting matches Blizzard's Graphics menu 1:1; and added CVAR_UPDATE two-way sync." },
         { type = "FEATURE", text = "External Addon Conflict Detector & Auto-Yield Engine (12/11/2026): Registered Hyperframe as a HARD graphics CVar conflict and AutoCombatLogger, LoggerHead, RaiderIO_AutoCombatLog, and !ArchonLogger as SOFT auto-yield overlaps in DynamicSuite." },
@@ -4610,12 +4822,12 @@ DynamicFPS.CHANGELOG = {
         { type = "FIX",     text = "Combat Log Auto-Purge now automatically detects and yields to !ArchonLogger, LoggerHead, AutoCombatLogger, and RaiderIO_AutoCombatLog so external loggers never fight over LoggingCombat() state." },
         { type = "UI",      text = "Redesigned the top zone header into a unified 66px 2-Row Zone Profile & 1-Click Copy Toolbar Card: Row 1 shows Editing Profile + Live Zone status alongside 5 hardware preset pills (including active preset detection for 'Revert to Base'); Row 2 replaces the 2-click dropdown with 1-click source zone pills ('Copy Into <Zone> From:') with emerald flash feedback and a 2-tap 'Apply <Zone> to All' button." },
         { type = "FEATURE", text = "Aligned all Zone Graphics settings 1:1 with Blizzard's Retail 12.1.5 Base Game Quality menu: converted 'Essential Spell Visuals' (5-option dropdown) to 'Spell Density' 3-pill control (Essential, Reduced, Everything), added zero-gameplay GPU savers ('SSAO' and 'Depth Effects'), added 1-10 CPU bottleneck sliders ('View Distance', 'Environment Detail', 'Ground Clutter'), and aligned all tier labels (Low, Fair, Good, High, Ultra, Disabled)." },
-        { type = "UI",      text = "Standardized action button and 1-click zone copy tooltips ('Revert to Base', 'Copy From <Zone>', and 'Apply <Zone> to All') to use Command-Prefix-Only Highlighting (Emerald Left-Click: prefix paired with Silver-White action description)." },
+        { type = "UI",      text = "Standardised action button and 1-click zone copy tooltips ('Revert to Base', 'Copy From <Zone>', and 'Apply <Zone> to All') to use Command-Prefix-Only Highlighting (Emerald Left-Click: prefix paired with Silver-White action description)." },
         { type = "FIX",     text = "Completed full secret-value sweep across DynamicFPS (_IsSecret, _SafeNum, _SafeNumber) to prevent numeric conversion errors on secret values (GetHaste, GetNetStats, GetFramerate, C_CVar) and guarded combat-protected CVars during active Mythic+ keys and boss encounters." },
-        { type = "FEATURE", text = "Upgraded Dynamic SpellQueueWindow Engine to factor in both live World/Home latency and active Specialization + Haste GCD profile (Fast-GCD +95ms vs Caster +130ms) with a 3-mode selector and live CVar verification telemetry bar." },
+        { type = "FEATURE", text = "Upgraded Dynamic Spell Queue Timing to factor in both live World/Home latency and active Specialisation + Haste GCD profile (Fast-GCD +95ms vs Caster +130ms) with a 3-mode selector and live sync telemetry bar." },
         { type = "UI",      text = "Renamed 'Restore Baseline' to 'Revert to Base' with an explanatory tooltip, and simplified 'Minimum Combat FPS' with a concise 1-sentence description and live FPS vs Floor telemetry readout." },
         { type = "FIX",     text = "Resolved GetAuraDataByIndex secret aura taint by replacing ObjectiveTrackerFrame:SetCollapsed() with C-level ObjectiveTrackerFrame:SetAlpha() in SetQuestTrackerCollapsed." },
-        { type = "FIX",     text = "Upgraded Dynamic Emergency FPS Guard and Dynamic SpellQueueWindow sub-drawers to full-width 24px horizontal chevron toggle bars inside unified outer bordered group cards per DESIGN_SYSTEM.md Section 2.6." },
+        { type = "FIX",     text = "Upgraded Dynamic Emergency FPS Guard and Spell Queue Timing sub-drawers to full-width 24px horizontal chevron toggle bars inside unified outer bordered group cards per DESIGN_SYSTEM.md Section 2.6." },
         { type = "FIX",     text = "Fixed tab scroll jumping by preserving vertical scroll offset in SelectTab and updating controls in-place without full-tab resets." },
         { type = "UI",      text = "Enclosed all L-bracket section headers and subsection setting cards across Zone Graphics and FPS Guard tabs inside outer backdrop border frames with dynamic sub-drawer reflow." },
         { type = "FEATURE", text = "Unified 7-Tab Recessed Top Bevel Track enclosing all 6 Zone tabs (Outdoor, Cities, Delves, Dungeons, Raid, PvP) plus [FPS Guard & Queue]." },
@@ -4856,7 +5068,7 @@ SlashCmdList["DYNAMICFPS"] = function(msg)
     elseif cmd == "apply" or cmd == "tune" then
         ApplyZoneGraphicsConfig(GetCurrentZoneContext(), true)
         local sqMS, wMS = ApplySpellQueueWindow()
-        print(string.format("%s: Applied zone graphics and tuned SpellQueueWindow to %d ms (World Ping: %d ms).", ADDON_TITLE_COLORED, sqMS, wMS))
+        print(string.format("%s: Applied zone graphics and tuned Spell Queue Timing to %d ms (World Ping: %d ms).", ADDON_TITLE_COLORED, sqMS, wMS))
     else
         if _G.DynamicSuite and type(_G.DynamicSuite.OpenModule) == "function" then
             _G.DynamicSuite:OpenModule("DynamicFPS")
