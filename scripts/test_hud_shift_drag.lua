@@ -35,6 +35,8 @@ local function CreateEnv()
     local state = {
         inCombat = false,
         shiftDown = false,
+        ctrlDown = false,
+        altDown = false,
         lmbDown = true,
         now = 100.0,
         cursorX = 500,
@@ -42,6 +44,7 @@ local function CreateEnv()
         enterHudCalls = {},
         printLog = {},
         eventFrames = {},
+        hooks = {},
         tooltipLines = {},
         tooltipOwner = nil,
         tooltipAnchor = nil,
@@ -71,7 +74,8 @@ local function CreateEnv()
     env.UnitIsGroupAssistant = function() return false end
     env.InCombatLockdown = function() return state.inCombat end
     env.IsShiftKeyDown = function() return state.shiftDown end
-    env.IsControlKeyDown = function() return false end
+    env.IsControlKeyDown = function() return state.ctrlDown end
+    env.IsAltKeyDown = function() return state.altDown end
     env.IsMouseButtonDown = function(btn)
         if btn == "LeftButton" then return state.lmbDown end
         return false
@@ -193,8 +197,11 @@ local function CreateEnv()
                 local rfx, rfy = Frac(rp)
                 local ox = tonumber(x) or 0
                 local oy = tonumber(y) or 0
-                self._cx = (rfx * uiW) + ox + (0.5 - pfx) * (self._w or 100)
-                self._cy = (rfy * uiH) + oy + (0.5 - pfy) * (self._h or 30)
+                local uScale = (env.UIParent and env.UIParent._scale) or 1.0
+                local relScale = (self._scale or 1.0) / uScale
+                if relScale <= 0 then relScale = 1.0 end
+                self._cx = ((rfx * uiW) / relScale) + ox + (0.5 - pfx) * (self._w or 100)
+                self._cy = ((rfy * uiH) / relScale) + oy + (0.5 - pfy) * (self._h or 30)
             end
         end
         function f:SetAllPoints() end
@@ -326,6 +333,7 @@ local function CreateEnv()
             function tex:SetTexelSnappingBias() end
             function tex:Show() self._shown = true end
             function tex:Hide() self._shown = false end
+            function tex:IsShown() return self._shown == true end
             return tex
         end
         function f:CreateFontString()
@@ -398,7 +406,27 @@ local function CreateEnv()
         end
         return fr
     end
-    env.hooksecurefunc = function() end
+    env.ToggleGameMenu = function()
+        if state.hooks["ToggleGameMenu"] then
+            for _, fn in ipairs(state.hooks["ToggleGameMenu"]) do
+                fn()
+            end
+        end
+    end
+    env.hooksecurefunc = function(tblOrName, nameOrFn, maybeFn)
+        if type(tblOrName) == "string" and type(nameOrFn) == "function" then
+            state.hooks[tblOrName] = state.hooks[tblOrName] or {}
+            state.hooks[tblOrName][#state.hooks[tblOrName] + 1] = nameOrFn
+        elseif type(tblOrName) == "table" and type(nameOrFn) == "string" and type(maybeFn) == "function" then
+            local prev = tblOrName[nameOrFn]
+            tblOrName[nameOrFn] = function(...)
+                local res = nil
+                if type(prev) == "function" then res = prev(...) end
+                maybeFn(...)
+                return res
+            end
+        end
+    end
 
     function state.FireEvent(ev, ...)
         for _, ef in ipairs(state.eventFrames) do
@@ -601,11 +629,14 @@ RunTest("4. Shared Alert Toast Shift-Drag, Shift+Right-Click & dismiss", functio
     assertEqual(state.enterHudCalls[#state.enterHudCalls], "TOAST", "Action button Shift + Right-Click opens TOAST")
     assertEqual(actionClicked, 0, "Action button unmodified click handler not run on Shift+Right-Click")
 
-    -- Shift + Left-Drag off-screen clamps strictly 0px inside UIParent and saves to both DBs
+    -- Shift + Left-Drag off-screen clamps strictly 0px inside UIParent mid-drag and saves to both DBs
     state.shiftDown = true
+    state.lmbDown = true
+    state.cursorX, state.cursorY = 960, 940
     toast:FireScript("OnDragStart")
-    toast._cx = 4000 -- extreme off right edge
-    toast._cy = 2000 -- extreme off top edge
+    assertTrue(not toast._moving, "Toast Shift-Drag uses cursor loop instead of StartMoving()")
+    state.cursorX, state.cursorY = 4000, 2000 -- extreme off right & top edges
+    toast:FireScript("OnUpdate", 0.016)
     toast:FireScript("OnDragStop")
     local gPos = env.DynamicSuiteDB.global.toastPos
     assertTrue(gPos ~= nil, "toastPos saved in DynamicSuiteDB.global")
@@ -648,12 +679,15 @@ RunTest("5. Standalone DynamicMarker Shift-Drag, tip, and Quick Guide parity", f
     dm.targetBar.buttons[3]:FireScript("PostClick", "LeftButton", false)
     assertEqual(dm.db.focusIcon, 3, "Unmodified Left-Click updates focusIcon")
 
-    -- Shift + Left-Drag on TargetBar button moves & clamps strictly inside UIParent
+    -- Shift + Left-Drag on TargetBar button moves & clamps strictly inside UIParent via cursor loop
     state.shiftDown = true
+    state.lmbDown = true
+    state.cursorX, state.cursorY = 960, 540
     dm.targetBar.buttons[3]:FireScript("OnDragStart")
     assertTrue(dm.targetBar._dmDirectDragActive == true, "TargetBar direct Shift-Drag activated via button")
-    dm.targetBar._cx = 5000
-    dm.targetBar._cy = -5000
+    assertTrue(not dm.targetBar._moving, "TargetBar direct Shift-Drag does not use StartMoving()")
+    state.cursorX, state.cursorY = 5000, -5000
+    dm.targetBar:FireScript("OnUpdate", 0.016)
     dm.targetBar.buttons[3]:FireScript("OnDragStop")
     assertTrue(not dm.targetBar._dmDirectDragActive, "TargetBar direct drag ended")
     assertTrue(dm.db.targetBarX <= 960, "TargetBar X clamped inside UIParent")
@@ -758,6 +792,324 @@ RunTest("7. Quick Guides & Global Smart Search cover Shift-Drag & all 6 HUDs", f
             assertTrue(foundTargets[req] == true, string.format("Search '%s' matches HUD target '%s'", q, req))
         end
     end
+end)
+
+-- ----------------------------------------------------------------------------
+-- Test 8: Live mid-drag 0px clamping across all 4 edges at 60%, 100%, 150% scales
+-- ----------------------------------------------------------------------------
+RunTest("8. Live mid-drag 0px clamping at 60%, 100%, 150% scales & Chat insets", function()
+    local function CheckVisualBoundsWithinUIParent(fr, extraIns, label)
+        local relScale = fr:GetScale() / 1.0
+        local fCx, fCy = fr:GetCenter()
+        local visCx = fCx * relScale
+        local visCy = fCy * relScale
+        local halfW = fr:GetWidth() * relScale * 0.5
+        local halfH = fr:GetHeight() * relScale * 0.5
+        local ins = extraIns or {}
+        local leftEdge = visCx - halfW - ((ins.left or 0) * relScale)
+        local rightEdge = visCx + halfW + ((ins.right or 0) * relScale)
+        local bottomEdge = visCy - halfH - ((ins.bottom or 0) * relScale)
+        local topEdge = visCy + halfH + ((ins.top or 0) * relScale)
+        assertTrue(leftEdge >= -1.0, label .. " leftEdge >= 0 (" .. tostring(leftEdge) .. ")")
+        assertTrue(rightEdge <= 1921.0, label .. " rightEdge <= 1920 (" .. tostring(rightEdge) .. ")")
+        assertTrue(bottomEdge >= -1.0, label .. " bottomEdge >= 0 (" .. tostring(bottomEdge) .. ")")
+        assertTrue(topEdge <= 1081.0, label .. " topEdge <= 1080 (" .. tostring(topEdge) .. ")")
+    end
+
+    for _, sc in ipairs({ 0.60, 1.00, 1.50 }) do
+        local env, state = BootFullSuiteEnv()
+        local bar = env.CreateFrame("Frame", "TestScaledHud_" .. tostring(sc), env.UIParent)
+        bar:SetSize(300, 44)
+        bar:SetScale(sc)
+        bar:ClearAllPoints()
+        bar:SetPoint("CENTER", env.UIParent, "CENTER", 0, 0)
+        bar:Show()
+
+        env.DynamicSuite.AttachDirectHudShiftDrag({
+            frame = bar,
+            targetKey = "PREP",
+            enableSnap = false,
+        })
+
+        state.shiftDown = true
+        state.lmbDown = true
+        state.cursorX, state.cursorY = 960, 540
+        bar:FireScript("OnDragStart")
+        assertTrue(not bar._moving, "Scaled drag must not call StartMoving() at scale " .. tostring(sc))
+
+        -- Push hard past Left+Bottom and Right+Top mid-drag on OnUpdate
+        state.cursorX, state.cursorY = -2000, -2000
+        bar:FireScript("OnUpdate", 0.016)
+        CheckVisualBoundsWithinUIParent(bar, nil, "Scale " .. tostring(sc) .. " min-edge")
+
+        state.cursorX, state.cursorY = 4000, 3000
+        bar:FireScript("OnUpdate", 0.016)
+        CheckVisualBoundsWithinUIParent(bar, nil, "Scale " .. tostring(sc) .. " max-edge")
+
+        state.lmbDown = false
+        bar:FireScript("OnUpdate", 0.016)
+        assertTrue(not bar._dsDragging, "Drag stops when LMB released")
+    end
+
+    -- Chat Frame BOTTOMLEFT with extra insets { left=36, right=8, top=28, bottom=6 } at 120% scale
+    local envC, stateC = BootFullSuiteEnv()
+    local chatFr = envC.CreateFrame("Frame", "TestChatInsetsHud", envC.UIParent)
+    chatFr:SetSize(430, 200)
+    chatFr:SetScale(1.20)
+    chatFr:ClearAllPoints()
+    chatFr:SetPoint("BOTTOMLEFT", envC.UIParent, "BOTTOMLEFT", 100, 100)
+    chatFr:Show()
+    local chatInsets = { left = 36, right = 8, top = 28, bottom = 6 }
+    envC.DynamicSuite.AttachDirectHudShiftDrag({
+        frame = chatFr,
+        targetKey = "CHAT",
+        point = "BOTTOMLEFT",
+        relPoint = "BOTTOMLEFT",
+        extraInsets = chatInsets,
+        enableSnap = false,
+    })
+    stateC.shiftDown = true
+    stateC.lmbDown = true
+    stateC.cursorX, stateC.cursorY = 300, 300
+    chatFr:FireScript("OnDragStart")
+    stateC.cursorX, stateC.cursorY = -900, -900
+    chatFr:FireScript("OnUpdate", 0.016)
+    CheckVisualBoundsWithinUIParent(chatFr, chatInsets, "Chat extraInsets min-edge")
+    stateC.cursorX, stateC.cursorY = 4000, 4000
+    chatFr:FireScript("OnUpdate", 0.016)
+    CheckVisualBoundsWithinUIParent(chatFr, chatInsets, "Chat extraInsets max-edge")
+    chatFr:FireScript("OnDragStop")
+end)
+
+-- ----------------------------------------------------------------------------
+-- Test 9: Magnetic snapping & live guide overlay with Shift held + Alt bypass
+-- ----------------------------------------------------------------------------
+RunTest("9. Magnetic snapping & live guides while Shift held, plus Alt bypass", function()
+    local env, state = BootFullSuiteEnv()
+    local bar = env.CreateFrame("Frame", "TestSnapHud", env.UIParent)
+    bar:SetSize(200, 40)
+    bar:ClearAllPoints()
+    bar:SetPoint("CENTER", env.UIParent, "CENTER", 200, 200)
+    bar:Show()
+
+    local peer = env.CreateFrame("Frame", "TestPeerHud", env.UIParent)
+    peer:SetSize(200, 40)
+    peer:ClearAllPoints()
+    peer:SetPoint("CENTER", env.UIParent, "CENTER", -300, -200)
+    peer:Show()
+    env.DynamicSuite.hudFrames = env.DynamicSuite.hudFrames or {}
+    env.DynamicSuite.hudFrames["TEST_PEER"] = peer
+
+    env.DynamicSuite.AttachDirectHudShiftDrag({
+        frame = bar,
+        targetKey = "PREP",
+    })
+
+    state.shiftDown = true
+    state.altDown = false
+    state.lmbDown = true
+    state.cursorX, state.cursorY = 960 + 200, 540 + 200
+    bar:FireScript("OnDragStart")
+
+    -- Move within 7px of screen centre X (0) & Y (0) while Shift is held -> MUST snap to (0, 0) & show guides
+    state.cursorX, state.cursorY = 960 + 7, 540 - 6
+    bar:FireScript("OnUpdate", 0.016)
+    local bCx, bCy = bar:GetCenter()
+    assertEqual(bCx, 960, "Snaps exact to screen centre X even with Shift held")
+    assertEqual(bCy, 540, "Snaps exact to screen centre Y even with Shift held")
+    local ov = env.DynamicSuiteSnapGuideOverlay
+    assertTrue(ov ~= nil and ov.vLine:IsShown() and ov.hLine:IsShown(), "Vertical & horizontal guide lines shown on centre snap")
+
+    -- Move within 6px of peer's right edge (peer cx = 660, right = 760 -> dragged left=760 => cx=860) and peer's bottom (320 -> top=320 => cy=300)
+    state.cursorX, state.cursorY = 860 + 5, 300 - 4
+    bar:FireScript("OnUpdate", 0.016)
+    bCx, bCy = bar:GetCenter()
+    assertEqual(bCx, 860, "Snaps flush to peer HUD right edge (BAR_SNAP_THRESHOLD = 9)")
+    assertEqual(bCy, 300, "Snaps flush below peer HUD bottom edge")
+    assertTrue(ov.vLine:IsShown() and ov.hLine:IsShown(), "Guides shown for peer HUD snap")
+
+    -- Move within 8px of left screen edge (left = 8 -> cx = 108) -> snaps to 0px left edge (cx = 100)
+    state.cursorX, state.cursorY = 108, 700
+    bar:FireScript("OnUpdate", 0.016)
+    bCx, bCy = bar:GetCenter()
+    assertEqual(bCx, 100, "Snaps flush to left screen edge (EDGE_SNAP_THRESHOLD = 11)")
+    assertEqual(bCy, 700, "Free Y when outside edge threshold")
+    assertTrue(ov.vLine:IsShown() and not ov.hLine:IsShown(), "Only vertical guide shown for left edge snap")
+
+    -- Holding Alt disables magnetic snapping for fine-tuning and hides guides
+    state.altDown = true
+    state.cursorX, state.cursorY = 966, 545
+    bar:FireScript("OnUpdate", 0.016)
+    bCx, bCy = bar:GetCenter()
+    assertEqual(bCx, 966, "Alt bypass disables magnetic X snap")
+    assertEqual(bCy, 545, "Alt bypass disables magnetic Y snap")
+    assertTrue(not ov.vLine:IsShown() and not ov.hLine:IsShown(), "Alt bypass hides alignment guide lines")
+
+    state.altDown = false
+    bar:FireScript("OnDragStop")
+    assertTrue(not ov.vLine:IsShown() and not ov.hLine:IsShown(), "Mouse release hides alignment guide lines")
+end)
+
+-- ----------------------------------------------------------------------------
+-- Test 10: Post-snap 0px clamping never lets a peer snap exceed UIParent bounds
+-- ----------------------------------------------------------------------------
+RunTest("10. Post-snap 0px clamping beats out-of-bounds peer snap", function()
+    local env = BootFullSuiteEnv()
+    -- Peer sits slightly off right edge / flush near right edge so peer.left + barWidth overshoots?
+    -- Example: peer has right = 1916 (peer at [1716, 1916]); candidate dragged width=200 sits at candL = 1910 (candR = 2110!).
+    -- Without post-snap clamp, snapping candL to peer.right (1916) would place candR = 2116 (off-screen!).
+    -- With mandatory post-snap clamp, candCx clamps back to 1820 (candR = 1920) and clears non-edge guideX!
+    local ox, oy, _, gx, gy = env.DynamicSuite.SnapAndClampPointOffsetToUIParent(
+        200, 40, 1.0, 1920, 1080, 1.0,
+        "CENTER", "CENTER", 945, 0,
+        {
+            enableSnap = true,
+            directShiftDrag = true,
+            peers = {
+                { left = 1716, right = 1916, bottom = 520, top = 560, cx = 1816, cy = 540 },
+            },
+        }
+    )
+    assertEqual(ox, 860, "Right edge clamped strictly to 1920 (cx = 960 + 860 = 1820, right = 1920)")
+    assertTrue(gx == nil or gx == 1920, "Non-edge peer guide suppressed when hard clamp overrides")
+    assertEqual(oy, 0, "Centre Y snapped cleanly inside bounds")
+    assertEqual(gy, 540, "Centre Y guide preserved")
+end)
+
+-- ----------------------------------------------------------------------------
+-- Test 11: Standalone DynamicMarker live cursor-loop parity & Alt bypass
+-- ----------------------------------------------------------------------------
+RunTest("11. Standalone DynamicMarker cursor-loop drag, Shift snap, Alt bypass & /dm hud mode", function()
+    local env, state = BootStandaloneMarkerEnv()
+    local dm = env.DynamicMarker
+    dm:InitTargetBar()
+    dm:InitFlareBar()
+
+    -- Place FlareBar at (X=-200, Y=-150) as a visible peer
+    dm.flareBar:Show()
+    dm:SaveHUDPosition(dm.flareBar, "FlareBar", true, "CENTER", "CENTER", -200, -150)
+    dm.targetBar:Show()
+
+    for _, sc in ipairs({ 0.60, 1.00, 1.50 }) do
+        dm.db.targetBarScale = sc
+        dm:ApplyHUDPosition(dm.targetBar, "TargetBar", 0)
+        dm.targetBar:ClearAllPoints()
+        dm.targetBar:SetPoint("CENTER", env.UIParent, "CENTER", 0, 0)
+
+        state.shiftDown = true
+        state.altDown = false
+        state.lmbDown = true
+        local tCx, tCy = dm.targetBar:GetCenter()
+        local relScale = dm.targetBar:GetScale() / 1.0
+        state.cursorX, state.cursorY = tCx * relScale, tCy * relScale
+        dm.targetBar:FireScript("OnDragStart")
+        assertTrue(not dm.targetBar._moving, "Standalone TargetBar does not call StartMoving at scale " .. tostring(sc))
+
+        -- Clamp mid-drag past all 4 edges
+        state.cursorX, state.cursorY = -3000, 3000
+        dm.targetBar:FireScript("OnUpdate", 0.016)
+        local lCx, lCy = dm.targetBar:GetCenter()
+        local visHalfW = dm.targetBar:GetWidth() * relScale * 0.5
+        local visHalfH = dm.targetBar:GetHeight() * relScale * 0.5
+        assertTrue((lCx * relScale) - visHalfW >= -1.0, "Standalone left >= 0 at scale " .. tostring(sc))
+        assertTrue((lCy * relScale) + visHalfH <= 1081.0, "Standalone top <= 1080 at scale " .. tostring(sc))
+
+        dm.targetBar:FireScript("OnDragStop")
+    end
+
+    -- Verify Shift held keeps snapping enabled & Alt bypass disables it in Standalone DynamicMarker
+    dm.db.targetBarScale = 1.0
+    dm:SaveHUDPosition(dm.targetBar, "TargetBar", true, "CENTER", "CENTER", 0, 0)
+    state.shiftDown = true
+    state.altDown = false
+    state.lmbDown = true
+    state.cursorX, state.cursorY = 960, 540
+    dm.targetBar:FireScript("OnDragStart")
+    state.cursorX, state.cursorY = 960 - 6, 540 + 7 -- within 11px of screen center
+    dm.targetBar:FireScript("OnUpdate", 0.016)
+    local mCx, mCy = dm.targetBar:GetCenter()
+    assertEqual(mCx, 960, "Standalone Shift-Drag snaps to screen centre X while Shift is held")
+    assertEqual(mCy, 540, "Standalone Shift-Drag snaps to screen centre Y while Shift is held")
+    local ov = env.DynamicSuiteSnapGuideOverlay
+    assertTrue(ov ~= nil and ov.vLine:IsShown() and ov.hLine:IsShown(), "Standalone shows snap guide lines")
+
+    -- Alt bypass disables snapping during direct Shift-Drag
+    state.altDown = true
+    state.cursorX, state.cursorY = 966, 545
+    dm.targetBar:FireScript("OnUpdate", 0.016)
+    mCx, mCy = dm.targetBar:GetCenter()
+    assertEqual(mCx, 966, "Standalone Alt bypass frees X")
+    assertEqual(mCy, 545, "Standalone Alt bypass frees Y")
+    assertTrue(not ov.vLine:IsShown() and not ov.hLine:IsShown(), "Standalone Alt bypass hides guide lines")
+    dm.targetBar:FireScript("OnDragStop")
+
+    -- Verify /dm hud Edit Mode ClampHUDPositionToScreen (without directShiftDrag) still uses Shift to bypass
+    state.shiftDown = true
+    state.altDown = false
+    local editX, editY = dm:ClampHUDPositionToScreen(dm.targetBar, "TargetBar", "CENTER", "CENTER", 6, 6, { enableSnap = true })
+    assertEqual(editX, 6, "/dm hud Edit Mode still allows Shift to bypass X snap")
+    assertEqual(editY, 6, "/dm hud Edit Mode still allows Shift to bypass Y snap")
+end)
+
+-- ----------------------------------------------------------------------------
+-- Test 12: Guide & drag cleanup on Hide, Esc (ToggleGameMenu), and Combat
+-- ----------------------------------------------------------------------------
+RunTest("12. Guide and drag cleanup on Hide, Esc, and combat entry", function()
+    -- Core controller: Hide, Esc, and Combat
+    local env, state = BootFullSuiteEnv()
+    local fr = env.CreateFrame("Button", "TestCleanupFrame", env.UIParent)
+    fr:SetSize(200, 40)
+    fr:SetPoint("CENTER", env.UIParent, "CENTER", 0, 0)
+    fr:Show()
+    local ctrl = env.DynamicSuite.AttachDirectHudShiftDrag({
+        frame = fr,
+        targetKey = "PREP",
+    })
+    local ov = env.DynamicSuite.EnsureSnapGuideOverlay()
+
+    -- Start drag & snap to centre so guides show, then Hide -> must abort & hide guides
+    state.shiftDown = true
+    state.altDown = false
+    state.lmbDown = true
+    state.cursorX, state.cursorY = 960, 540
+    ctrl.BeginDrag()
+    state.cursorX, state.cursorY = 963, 543
+    fr:FireScript("OnUpdate", 0.016)
+    assertTrue(ov.vLine:IsShown() and ov.hLine:IsShown(), "Guides shown mid-drag before Hide")
+    fr:Hide()
+    assertTrue(not ctrl.IsDragging(), "Hide() aborts drag")
+    assertTrue(not ov.vLine:IsShown() and not ov.hLine:IsShown(), "Hide() dismisses alignment guides")
+
+    -- Re-show, start drag -> Esc (ToggleGameMenu) must abort & hide guides
+    fr:Show()
+    state.cursorX, state.cursorY = 960, 540
+    ctrl.BeginDrag()
+    state.cursorX, state.cursorY = 962, 542
+    fr:FireScript("OnUpdate", 0.016)
+    assertTrue(ov.vLine:IsShown(), "Guide shown before Esc")
+    env.ToggleGameMenu()
+    assertTrue(not ctrl.IsDragging(), "Esc (ToggleGameMenu) aborts drag")
+    assertTrue(not ov.vLine:IsShown() and not ov.hLine:IsShown(), "Esc dismisses alignment guides")
+
+    -- Standalone DynamicMarker: Combat entry aborts drag & hides guides
+    local envM, stateM = BootStandaloneMarkerEnv()
+    local dm = envM.DynamicMarker
+    dm:InitTargetBar()
+    dm.targetBar:Show()
+    dm.targetBar:SetPoint("CENTER", envM.UIParent, "CENTER", 0, 0)
+    stateM.shiftDown = true
+    stateM.altDown = false
+    stateM.lmbDown = true
+    stateM.cursorX, stateM.cursorY = 960, 540
+    dm.targetBar:FireScript("OnDragStart")
+    stateM.cursorX, stateM.cursorY = 963, 543
+    dm.targetBar:FireScript("OnUpdate", 0.016)
+    local ovM = envM.DynamicSuiteSnapGuideOverlay
+    assertTrue(ovM ~= nil and ovM.vLine:IsShown(), "Standalone guide shown before combat")
+    stateM.inCombat = true
+    stateM.FireEvent("PLAYER_REGEN_DISABLED")
+    assertTrue(not dm.targetBar._dmDirectDragActive, "Combat entry aborts standalone drag")
+    assertTrue(not ovM.vLine:IsShown() and not ovM.hLine:IsShown(), "Combat entry dismisses standalone guides")
 end)
 
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))

@@ -1153,6 +1153,25 @@ local function ClampPrepFrameToScreen(frame, point, relPoint, rawX, rawY, fallba
     return outX, outY, didClamp
 end
 
+local function SnapAndClampPrepCoords(frame, point, relPoint, rawX, rawY, fallbackW, fallbackH, allowSnap)
+    if _G.DynamicSuite and type(_G.DynamicSuite.SnapAndClampPointOffsetToUIParent) == "function" then
+        local fW = (frame and frame.GetWidth and frame:GetWidth()) or fallbackW or 200
+        local fH = (frame and frame.GetHeight and frame:GetHeight()) or fallbackH or 36
+        if fW <= 1 then fW = fallbackW or 200 end
+        if fH <= 1 then fH = fallbackH or 36 end
+        local fScale = (frame and frame.GetEffectiveScale and frame:GetEffectiveScale()) or 1
+        local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        local uiW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+        local uiH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+        return _G.DynamicSuite.SnapAndClampPointOffsetToUIParent(
+            fW, fH, fScale, uiW, uiH, uScale, point or "TOP", relPoint or point or "TOP", rawX, rawY,
+            { enableSnap = (allowSnap == true), directShiftDrag = true, excludeFrame = frame }
+        )
+    end
+    local cx, cy, didClamp = ClampPrepFrameToScreen(frame, point, relPoint, rawX, rawY, fallbackW, fallbackH)
+    return cx, cy, didClamp, nil, nil
+end
+
 function DynamicPrep:GetSavedBarPosition()
     local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
     local pos = g and g.hudPositions and (g.hudPositions["prep"] or g.hudPositions.prepBar)
@@ -1219,7 +1238,7 @@ local function AppendPrepHudHints(tooltip, moveLabel, editTrigger, addSpacer)
     if wantSpacer then
         tooltip:AddLine(" ")
     end
-    tooltip:AddLine(FormatPrepTooltipCmd("Shift + Left-Drag:", moveLabel or "Move bar", "34D399"), 1, 1, 1)
+    tooltip:AddLine(FormatPrepTooltipCmd("Shift + Left-Drag:", (moveLabel or "Move bar") .. " (snaps; Alt: free)", "34D399"), 1, 1, 1)
     tooltip:AddLine(FormatPrepTooltipCmd(editTrigger or "Shift + Right-Click:", "Open HUD Edit Mode (/ds hud)", "38BDF8"), 1, 1, 1)
 end
 
@@ -3513,7 +3532,11 @@ function DynamicPrep:CreatePrepBar()
         bar._dpDirectDragActive = false
         bar._dsDragging = false
         bar:SetScript("OnUpdate", nil)
-        bar:StopMovingOrSizing()
+        if _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+            _G.DynamicSuite.HideSnapGuides()
+        end
+        local st = bar._dpDirectDragState
+        bar._dpDirectDragState = nil
         bar._dpSuppressClickUntil = (GetTime and GetTime() or 0) + 0.15
         if abortedByCombat or (InCombatLockdown and InCombatLockdown()) then
             DynamicPrep.pendingBarRefreshAfterCombat = true
@@ -3521,10 +3544,11 @@ function DynamicPrep:CreatePrepBar()
             DynamicPrep:ApplyBarFadeState()
             return true
         end
-        local point, _, relativePoint, x, y = bar:GetPoint(1)
-        local usePt = point or "TOP"
-        local useRp = relativePoint or usePt
-        local px, py = ClampPrepFrameToScreen(bar, usePt, useRp, x or 0, y or -8, 320, 32)
+        local usePt = (st and st.pt) or "TOP"
+        local useRp = (st and st.rp) or usePt
+        local px = (st and st.lastX) or 0
+        local py = (st and st.lastY) or -8
+        px, py = SnapAndClampPrepCoords(bar, usePt, useRp, px, py, 320, 32, false)
         bar:ClearAllPoints()
         bar:SetPoint(usePt, UIParent, useRp, px, py)
         DynamicPrep:SaveBarEditPosition(usePt, useRp, px, py)
@@ -3539,15 +3563,52 @@ function DynamicPrep:CreatePrepBar()
     bar._dpEndDirectDrag = EndDirectBarDrag
 
     local function BeginDirectBarDrag()
-        if DynamicPrep.inEditMode or DynamicPrep.inBarEditMode or bar._dsEditModeActive then return false end
+        if DynamicPrep.inEditMode or DynamicPrep.inBarEditMode or bar._dsEditModeActive or bar._dpDirectDragActive then return false end
         if InCombatLockdown and InCombatLockdown() then return false end
         if not (IsShiftKeyDown and IsShiftKeyDown()) then return false end
         if GameTooltip then GameTooltip:Hide() end
         DynamicPrep:HideBarPopovers()
+        bar:SetClampedToScreen(false)
+
+        local usePt, useRp = DynamicPrep:GetSavedBarPosition()
+        usePt = usePt or "TOP"
+        useRp = useRp or usePt
+        local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        local fScale = (bar.GetEffectiveScale and bar:GetEffectiveScale()) or uScale
+        if uScale <= 0 then uScale = 1 end
+        if fScale <= 0 then fScale = uScale end
+        local relScale = fScale / uScale
+        local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+        local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+        local bW = (bar.GetWidth and bar:GetWidth()) or 740
+        local bH = (bar.GetHeight and bar:GetHeight()) or 30
+        local visW = bW * relScale
+        local visH = bH * relScale
+        local pfx, pfy = GetPrepAnchorFraction(usePt)
+        local rfx, rfy = GetPrepAnchorFraction(useRp)
+        local refX = rfx * screenW
+        local refY = rfy * screenH
+        local fCx, fCy = bar:GetCenter()
+        local startVisCx = fCx and (fCx * relScale) or (screenW * 0.5)
+        local startVisCy = fCy and (fCy * relScale) or (screenH * 0.5)
+        local rawCurX, rawCurY = GetCursorPosition()
+        local startCurX = (tonumber(rawCurX) or 0) / uScale
+        local startCurY = (tonumber(rawCurY) or 0) / uScale
+        local initRawX = ((startVisCx - (0.5 - pfx) * visW) - refX) / relScale
+        local initRawY = ((startVisCy - (0.5 - pfy) * visH) - refY) / relScale
+        local initX, initY = SnapAndClampPrepCoords(bar, usePt, useRp, initRawX, initRawY, 320, 32, false)
+
         bar._dsDragging = true
         bar._dpDirectDragActive = true
+        bar._dpDirectDragState = {
+            pt = usePt,
+            rp = useRp,
+            grabVisX = startVisCx - startCurX,
+            grabVisY = startVisCy - startCurY,
+            lastX = initX,
+            lastY = initY,
+        }
         DynamicPrep:ApplyBarHoverVisual(true)
-        bar:StartMoving()
         bar:SetScript("OnUpdate", function()
             if not bar._dpDirectDragActive then
                 bar:SetScript("OnUpdate", nil)
@@ -3557,9 +3618,46 @@ function DynamicPrep:CreatePrepBar()
             local lmbDown = (type(IsMouseButtonDown) ~= "function") or IsMouseButtonDown("LeftButton")
             if inCombat or not lmbDown then
                 EndDirectBarDrag(inCombat)
+                return
+            end
+            local st = bar._dpDirectDragState
+            if not st then return end
+            local curUScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+            local curFScale = (bar.GetEffectiveScale and bar:GetEffectiveScale()) or curUScale
+            if curUScale <= 0 then curUScale = 1 end
+            if curFScale <= 0 then curFScale = curUScale end
+            local curRelScale = curFScale / curUScale
+            local curW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+            local curH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+            local fW = (bar.GetWidth and bar:GetWidth()) or 740
+            local fH = (bar.GetHeight and bar:GetHeight()) or 30
+            local apfx, apfy = GetPrepAnchorFraction(st.pt)
+            local arfx, arfy = GetPrepAnchorFraction(st.rp)
+            local cxRaw, cyRaw = GetCursorPosition()
+            local candVisCx = ((tonumber(cxRaw) or 0) / curUScale) + st.grabVisX
+            local candVisCy = ((tonumber(cyRaw) or 0) / curUScale) + st.grabVisY
+            local rawX = ((candVisCx - (0.5 - apfx) * (fW * curRelScale)) - (arfx * curW)) / curRelScale
+            local rawY = ((candVisCy - (0.5 - apfy) * (fH * curRelScale)) - (arfy * curH)) / curRelScale
+            local lx, ly, _, gx, gy = SnapAndClampPrepCoords(bar, st.pt, st.rp, rawX, rawY, 320, 32, true)
+            if _G.DynamicSuite and type(_G.DynamicSuite.ShowSnapGuides) == "function" then
+                _G.DynamicSuite.ShowSnapGuides(gx, gy)
+            end
+            if lx ~= st.lastX or ly ~= st.lastY then
+                st.lastX = lx
+                st.lastY = ly
+                bar:ClearAllPoints()
+                bar:SetPoint(st.pt, UIParent, st.rp, lx, ly)
             end
         end)
         return true
+    end
+    if not bar._dpEscDragHooked and type(hooksecurefunc) == "function" then
+        bar._dpEscDragHooked = true
+        pcall(hooksecurefunc, "ToggleGameMenu", function()
+            if bar._dpDirectDragActive then
+                EndDirectBarDrag(false)
+            end
+        end)
     end
 
     bar:SetScript("OnDragStart", function()
@@ -14063,6 +14161,8 @@ SafeRegisterEvent(eventFrame, "PLAYER_DEAD")
 SafeRegisterEvent(eventFrame, "PLAYER_ALIVE")
 SafeRegisterEvent(eventFrame, "PLAYER_UNGHOST")
 SafeRegisterEvent(eventFrame, "MODIFIER_STATE_CHANGED")
+SafeRegisterEvent(eventFrame, "UI_SCALE_CHANGED")
+SafeRegisterEvent(eventFrame, "DISPLAY_SIZE_CHANGED")
 SafeRegisterEvent(eventFrame, "ENCOUNTER_END")
 SafeRegisterEvent(eventFrame, "ACTIONBAR_SLOT_CHANGED")
 SafeRegisterEvent(eventFrame, "UPDATE_MACROS")
@@ -14237,6 +14337,15 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             DynamicPrep:RefreshBar()
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
+        if _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+            _G.DynamicSuite.HideSnapGuides()
+        end
+        if DynamicPrep.prepBarFrame and DynamicPrep.prepBarFrame._dpDirectDragActive and DynamicPrep.prepBarFrame._dpEndDirectDrag then
+            DynamicPrep.prepBarFrame._dpEndDirectDrag(true)
+        end
+        if DynamicPrep.clickableBuffBar and DynamicPrep.clickableBuffBar._dpBuffDirectDragActive and DynamicPrep.clickableBuffBar._dpEndDirectDrag then
+            DynamicPrep.clickableBuffBar._dpEndDirectDrag(true)
+        end
         if DynamicPrep.HideMageFoodToast then
             DynamicPrep:HideMageFoodToast()
         end
@@ -14250,6 +14359,16 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep.pendingBarRefreshAfterCombat = true
         DynamicPrep:RefreshStatsCapsulesFast()
         DynamicPrep:ApplyBarFadeState()
+    elseif event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
+        if InCombatLockdown and InCombatLockdown() then
+            DynamicPrep.pendingBarRefreshAfterCombat = true
+            DynamicPrep._pendingCrbAfterCombat = true
+        else
+            DynamicPrep:ApplyBarGeometry()
+            if DynamicPrep.clickableBuffBar then
+                DynamicPrep:RefreshClickableBuffs(true)
+            end
+        end
     elseif event == "PLAYER_REGEN_ENABLED" then
         if DynamicPrep._pendingFolioSecureUpdate then
             DynamicPrep:UpdateFolioSecureButton()
@@ -16825,23 +16944,20 @@ function DynamicPrep:CreateClickableBuffBar()
         bar._dpBuffDirectDragActive = false
         bar._dsDragging = false
         bar:SetScript("OnUpdate", nil)
-        bar:StopMovingOrSizing()
+        if _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+            _G.DynamicSuite.HideSnapGuides()
+        end
+        local st = bar._dpBuffDragState
+        bar._dpBuffDragState = nil
         bar._dpSuppressClickUntil = (GetTime and GetTime() or 0) + 0.15
         if abortedByCombat or (InCombatLockdown and InCombatLockdown()) then
             DynamicPrep._pendingCrbAfterCombat = true
             DynamicPrep:ApplyBuffBarHoverVisual(false)
             return true
         end
-        local fScale = (bar.GetEffectiveScale and bar:GetEffectiveScale()) or 1
-        local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-        local relScale = (fScale > 0 and uScale > 0) and (fScale / uScale) or 1
-        local cx, cy = bar:GetCenter()
-        local ux, uy = UIParent:GetCenter()
-        local x = (cx and ux) and (((cx * relScale) - ux) / relScale) or 0
-        local y = (cy and uy) and (((cy * relScale) - uy) / relScale) or 140
-        x = math.floor(x + 0.5)
-        y = math.floor(y + 0.5)
-        x, y = ClampPrepFrameToScreen(bar, "CENTER", "CENTER", x, y, bar:GetWidth() or 200, bar:GetHeight() or 56)
+        local x = (st and st.lastX) or 0
+        local y = (st and st.lastY) or 140
+        x, y = SnapAndClampPrepCoords(bar, "CENTER", "CENTER", x, y, bar:GetWidth() or 200, bar:GetHeight() or 56, false)
         bar:ClearAllPoints()
         bar:SetPoint("CENTER", UIParent, "CENTER", x, y)
         DynamicPrep:SaveBuffBarEditPosition("CENTER", "CENTER", x, y)
@@ -16859,10 +16975,34 @@ function DynamicPrep:CreateClickableBuffBar()
         if InCombatLockdown and InCombatLockdown() then return false end
         if not (IsShiftKeyDown and IsShiftKeyDown()) then return false end
         if GameTooltip then GameTooltip:Hide() end
+        bar:SetClampedToScreen(false)
+
+        local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        local fScale = (bar.GetEffectiveScale and bar:GetEffectiveScale()) or uScale
+        if uScale <= 0 then uScale = 1 end
+        if fScale <= 0 then fScale = uScale end
+        local relScale = fScale / uScale
+        local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+        local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+        local fCx, fCy = bar:GetCenter()
+        local startVisCx = fCx and (fCx * relScale) or (screenW * 0.5)
+        local startVisCy = fCy and (fCy * relScale) or (screenH * 0.5)
+        local rawCurX, rawCurY = GetCursorPosition()
+        local startCurX = (tonumber(rawCurX) or 0) / uScale
+        local startCurY = (tonumber(rawCurY) or 0) / uScale
+        local initRawX = (startVisCx - (screenW * 0.5)) / relScale
+        local initRawY = (startVisCy - (screenH * 0.5)) / relScale
+        local initX, initY = SnapAndClampPrepCoords(bar, "CENTER", "CENTER", initRawX, initRawY, bar:GetWidth() or 200, bar:GetHeight() or 56, false)
+
         bar._dsDragging = true
         bar._dpBuffDirectDragActive = true
+        bar._dpBuffDragState = {
+            grabVisX = startVisCx - startCurX,
+            grabVisY = startVisCy - startCurY,
+            lastX = initX,
+            lastY = initY,
+        }
         DynamicPrep:ApplyBuffBarHoverVisual(true)
-        bar:StartMoving()
         bar:SetScript("OnUpdate", function()
             if not bar._dpBuffDirectDragActive then
                 bar:SetScript("OnUpdate", nil)
@@ -16872,9 +17012,42 @@ function DynamicPrep:CreateClickableBuffBar()
             local lmbDown = (type(IsMouseButtonDown) ~= "function") or IsMouseButtonDown("LeftButton")
             if inCombat or not lmbDown then
                 EndDirectBuffDrag(inCombat)
+                return
+            end
+            local st = bar._dpBuffDragState
+            if not st then return end
+            local curUScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+            local curFScale = (bar.GetEffectiveScale and bar:GetEffectiveScale()) or curUScale
+            if curUScale <= 0 then curUScale = 1 end
+            if curFScale <= 0 then curFScale = curUScale end
+            local curRelScale = curFScale / curUScale
+            local curW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+            local curH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+            local cxRaw, cyRaw = GetCursorPosition()
+            local candVisCx = ((tonumber(cxRaw) or 0) / curUScale) + st.grabVisX
+            local candVisCy = ((tonumber(cyRaw) or 0) / curUScale) + st.grabVisY
+            local rawX = (candVisCx - (curW * 0.5)) / curRelScale
+            local rawY = (candVisCy - (curH * 0.5)) / curRelScale
+            local lx, ly, _, gx, gy = SnapAndClampPrepCoords(bar, "CENTER", "CENTER", rawX, rawY, bar:GetWidth() or 200, bar:GetHeight() or 56, true)
+            if _G.DynamicSuite and type(_G.DynamicSuite.ShowSnapGuides) == "function" then
+                _G.DynamicSuite.ShowSnapGuides(gx, gy)
+            end
+            if lx ~= st.lastX or ly ~= st.lastY then
+                st.lastX = lx
+                st.lastY = ly
+                bar:ClearAllPoints()
+                bar:SetPoint("CENTER", UIParent, "CENTER", lx, ly)
             end
         end)
         return true
+    end
+    if not bar._dpBuffEscDragHooked and type(hooksecurefunc) == "function" then
+        bar._dpBuffEscDragHooked = true
+        pcall(hooksecurefunc, "ToggleGameMenu", function()
+            if bar._dpBuffDirectDragActive then
+                EndDirectBuffDrag(false)
+            end
+        end)
     end
 
     bar:SetScript("OnDragStart", function()

@@ -1862,7 +1862,7 @@ local function ShowDynamicLoadToastTooltip(f, owner)
         })
     else
         GameTooltip:AddLine("|cFF94A3B8Right-Click:|r |cFFE2E8F0Dismiss alert|r", 1, 1, 1)
-        GameTooltip:AddLine("|cFF34D399Shift + Left-Drag:|r |cFFE2E8F0Move Alert Toast|r", 1, 1, 1)
+        GameTooltip:AddLine("|cFF34D399Shift + Left-Drag:|r |cFFE2E8F0Move Alert Toast (snaps; Alt: free)|r", 1, 1, 1)
         GameTooltip:AddLine("|cFF38BDF8Shift + Right-Click:|r |cFFE2E8F0Open HUD Edit Mode (/ds hud)|r", 1, 1, 1)
     end
     GameTooltip:Show()
@@ -2222,38 +2222,48 @@ local function CreateToastFrame()
         end
     end)
 
+    local function SnapAndClampDirectToastCoords(frameT, pt, rp, rawX, rawY, allowSnap)
+        if _G.DynamicSuite and type(_G.DynamicSuite.SnapAndClampPointOffsetToUIParent) == "function" then
+            local fW = (frameT and frameT.GetWidth and frameT:GetWidth()) or 460
+            local fH = (frameT and frameT.GetHeight and frameT:GetHeight()) or 74
+            local fScale = (frameT and frameT.GetEffectiveScale and frameT:GetEffectiveScale()) or 1
+            local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+            local uiW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+            local uiH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+            return _G.DynamicSuite.SnapAndClampPointOffsetToUIParent(
+                fW, fH, fScale, uiW, uiH, uScale, pt, rp, rawX, rawY,
+                { enableSnap = (allowSnap == true), directShiftDrag = true, excludeFrame = frameT }
+            )
+        end
+        local cx, cy, didClamp = ClampToastCoordsToScreen(frameT, pt, rp, rawX, rawY)
+        return cx, cy, didClamp, nil, nil
+    end
+
     local function CommitDirectToastDrag(self, abortedByCombat)
         if not self._dsDirectDragActive then return false end
         self._dsDirectDragActive = false
         self._dsDragging = false
         self:SetScript("OnUpdate", nil)
-        self:StopMovingOrSizing()
+        if _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+            _G.DynamicSuite.HideSnapGuides()
+        end
+        local st = self._dsDirectDragState
+        self._dsDirectDragState = nil
         self._dsSuppressClickUntil = (GetTime and GetTime() or 0) + 0.15
 
         if not abortedByCombat and not (InCombatLockdown and InCombatLockdown()) then
             local g = EnsureSuiteGlobal()
             local prevPos = g.toastPos or (DynamicLoadDB and DynamicLoadDB.toastPos) or { point = "TOP", relPoint = "TOP", x = 0, y = -50 }
-            local usePt = (prevPos.point == "CENTER") and "CENTER" or "TOP"
-            local fScale = (self.GetEffectiveScale and self:GetEffectiveScale()) or 1
-            local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-            local ratio = (uScale > 0 and fScale > 0) and (fScale / uScale) or 1
-            local fCx, fCy = self:GetCenter()
-            local fTop = self:GetTop()
-            local uCx, uCy = UIParent:GetCenter()
-            local uTop = UIParent:GetTop()
-            local rx, ry = 0, -50
-            if fCx and uCx then
-                rx = math.floor((((fCx * ratio) - uCx) / ratio) + 0.5)
-                local dyCenter = math.floor((((fCy * ratio) - uCy) / ratio) + 0.5)
-                local dyTop = math.floor(((((fTop or fCy) * ratio) - (uTop or (uCy * 2))) / ratio) + 0.5)
-                ry = (usePt == "CENTER") and dyCenter or dyTop
-            else
-                local pt, _, _, x, y = self:GetPoint()
+            local usePt = (st and st.usePt) or ((prevPos.point == "CENTER") and "CENTER" or "TOP")
+            local rx = st and st.lastX or 0
+            local ry = st and st.lastY or -50
+            if not st then
+                local pt, _, _, gx, gy = self:GetPoint()
                 usePt = (pt == "CENTER") and "CENTER" or "TOP"
-                rx = math.floor((x or 0) + 0.5)
-                ry = math.floor((y or -50) + 0.5)
+                rx = math.floor((gx or 0) + 0.5)
+                ry = math.floor((gy or -50) + 0.5)
             end
-            rx, ry = ClampToastCoordsToScreen(self, usePt, usePt, rx, ry)
+            rx, ry = SnapAndClampDirectToastCoords(self, usePt, usePt, rx, ry, false)
             self:ClearAllPoints()
             self:SetPoint(usePt, UIParent, usePt, rx, ry)
             local newPos = { point = usePt, relPoint = usePt, x = rx, y = ry }
@@ -2288,10 +2298,45 @@ local function CreateToastFrame()
         if GameTooltip then GameTooltip:Hide() end
         if f.animGroup then f.animGroup:Pause() end
         f:SetAlpha(1)
+        if f.SetClampedToScreen then f:SetClampedToScreen(false) end
+
+        local g = EnsureSuiteGlobal()
+        local prevPos = g.toastPos or (DynamicLoadDB and DynamicLoadDB.toastPos) or { point = "TOP", relPoint = "TOP", x = 0, y = -50 }
+        local usePt = (prevPos.point == "CENTER") and "CENTER" or "TOP"
+        local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        local fScale = (f.GetEffectiveScale and f:GetEffectiveScale()) or uScale
+        if uScale <= 0 then uScale = 1 end
+        if fScale <= 0 then fScale = uScale end
+        local relScale = fScale / uScale
+        local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+        local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+        local fW = (f.GetWidth and f:GetWidth()) or 460
+        local fH = (f.GetHeight and f:GetHeight()) or 74
+        local visW = fW * relScale
+        local visH = fH * relScale
+        local pfx, pfy = GetToastAnchorFraction(usePt)
+        local refX = pfx * screenW
+        local refY = pfy * screenH
+        local fCx, fCy = f:GetCenter()
+        local startVisCx = fCx and (fCx * relScale) or (screenW * 0.5)
+        local startVisCy = fCy and (fCy * relScale) or (screenH * 0.5)
+        local rawCurX, rawCurY = GetCursorPosition()
+        local startCurX = (tonumber(rawCurX) or 0) / uScale
+        local startCurY = (tonumber(rawCurY) or 0) / uScale
+        local initRawX = ((startVisCx - (0.5 - pfx) * visW) - refX) / relScale
+        local initRawY = ((startVisCy - (0.5 - pfy) * visH) - refY) / relScale
+        local initX, initY = SnapAndClampDirectToastCoords(f, usePt, usePt, initRawX, initRawY, false)
+
         f._dsDirectDragActive = true
         f._dsDragging = true
+        f._dsDirectDragState = {
+            usePt = usePt,
+            grabVisX = startVisCx - startCurX,
+            grabVisY = startVisCy - startCurY,
+            lastX = initX,
+            lastY = initY,
+        }
         ApplyDynamicLoadToastHoverBorder(f)
-        f:StartMoving()
         f:SetScript("OnUpdate", function(selfT)
             if not selfT._dsDirectDragActive then
                 selfT:SetScript("OnUpdate", nil)
@@ -2301,12 +2346,59 @@ local function CreateToastFrame()
             local lmbDown = (type(IsMouseButtonDown) ~= "function") or IsMouseButtonDown("LeftButton")
             if inCombat or not lmbDown then
                 CommitDirectToastDrag(selfT, inCombat)
+                return
+            end
+            local st = selfT._dsDirectDragState
+            if not st then return end
+            local curUScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+            local curFScale = (selfT.GetEffectiveScale and selfT:GetEffectiveScale()) or curUScale
+            if curUScale <= 0 then curUScale = 1 end
+            if curFScale <= 0 then curFScale = curUScale end
+            local curRelScale = curFScale / curUScale
+            local curW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+            local curH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+            local tW = (selfT.GetWidth and selfT:GetWidth()) or 460
+            local tH = (selfT.GetHeight and selfT:GetHeight()) or 74
+            local curVisW = tW * curRelScale
+            local curVisH = tH * curRelScale
+            local apfx, apfy = GetToastAnchorFraction(st.usePt)
+            local aRefX = apfx * curW
+            local aRefY = apfy * curH
+            local cxRaw, cyRaw = GetCursorPosition()
+            local candVisCx = ((tonumber(cxRaw) or 0) / curUScale) + st.grabVisX
+            local candVisCy = ((tonumber(cyRaw) or 0) / curUScale) + st.grabVisY
+            local rawX = ((candVisCx - (0.5 - apfx) * curVisW) - aRefX) / curRelScale
+            local rawY = ((candVisCy - (0.5 - apfy) * curVisH) - aRefY) / curRelScale
+            local lx, ly, _, gx, gy = SnapAndClampDirectToastCoords(selfT, st.usePt, st.usePt, rawX, rawY, true)
+            if _G.DynamicSuite and type(_G.DynamicSuite.ShowSnapGuides) == "function" then
+                _G.DynamicSuite.ShowSnapGuides(gx, gy)
+            end
+            if lx ~= st.lastX or ly ~= st.lastY then
+                st.lastX = lx
+                st.lastY = ly
+                selfT:ClearAllPoints()
+                selfT:SetPoint(st.usePt, UIParent, st.usePt, lx, ly)
             end
         end)
         return true
     end
     f._dsBeginDirectDrag = BeginDirectToastDrag
     f._dsEndDirectDrag = function(aborted) return CommitDirectToastDrag(f, aborted) end
+    f:HookScript("OnHide", function(selfT)
+        if selfT._dsDirectDragActive then
+            CommitDirectToastDrag(selfT, true)
+        elseif _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+            _G.DynamicSuite.HideSnapGuides()
+        end
+    end)
+    if not f._dsEscDragHooked and type(hooksecurefunc) == "function" then
+        f._dsEscDragHooked = true
+        pcall(hooksecurefunc, "ToggleGameMenu", function()
+            if f._dsDirectDragActive then
+                CommitDirectToastDrag(f, false)
+            end
+        end)
+    end
 
     f:SetScript("OnDragStart", function(self)
         if self.isDraggingMode or self.isEditingMode then
@@ -3635,6 +3727,8 @@ eventFrame:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 eventFrame:RegisterEvent("ZONE_CHANGED")
 eventFrame:RegisterEvent("ZONE_CHANGED_INDOORS")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+eventFrame:RegisterEvent("UI_SCALE_CHANGED")
+eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
 
 local function PurgeRetiredAddons()
     local pName = GetPlayer()
@@ -3904,15 +3998,28 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             loadingScreenSafetyTimer:Cancel()
             loadingScreenSafetyTimer = nil
         end
-        if toastFrame and (toastFrame.isDraggingMode or toastFrame.isEditingMode) then
-            toastFrame:StopMovingOrSizing()
-            toastFrame.isDraggingMode = false
-            toastFrame.isEditingMode = false
-            if toastFrame.SetClampedToScreen then
-                toastFrame:SetClampedToScreen(true)
+        if _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+            _G.DynamicSuite.HideSnapGuides()
+        end
+        if toastFrame then
+            if toastFrame._dsDirectDragActive and toastFrame._dsEndDirectDrag then
+                toastFrame._dsEndDirectDrag(true)
             end
-            toastFrame:Hide()
-            toastFrame:SetAlpha(1)
+            if toastFrame.isDraggingMode or toastFrame.isEditingMode then
+                toastFrame:StopMovingOrSizing()
+                toastFrame.isDraggingMode = false
+                toastFrame.isEditingMode = false
+                if toastFrame.SetClampedToScreen then
+                    toastFrame:SetClampedToScreen(true)
+                end
+                toastFrame:Hide()
+                toastFrame:SetAlpha(1)
+            end
+        end
+
+    elseif event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
+        if toastFrame and not (InCombatLockdown and InCombatLockdown()) then
+            ApplyToastPosition(toastFrame)
         end
 
     elseif event == "PLAYER_REGEN_ENABLED" then

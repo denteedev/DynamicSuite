@@ -17346,7 +17346,7 @@ function addonTable.CreateMainConfigUI()
         inspTipText:SetJustifyH("LEFT")
         inspTipText:SetWordWrap(false)
         UI.SetFont(inspTipText, 9.5, "", 0.62, 0.68, 0.78, 1)
-        inspTipText:SetText("Tip: Out of combat, Shift + Left-Drag any HUD in the world to move it directly.")
+        inspTipText:SetText("Tip: Out of combat, Shift + Left-Drag any HUD to snap-move it directly (hold Alt to fine-tune).")
         inspTipBar.text = inspTipText
         m.inspTipBar = inspTipBar
 

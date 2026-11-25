@@ -632,7 +632,7 @@ function DC_NS.AppendChatHudHints(tooltip, editTrigger, addSpacer)
     if wantSpacer then
         tooltip:AddLine(" ")
     end
-    tooltip:AddLine(FormatTooltipCmd("Shift + Left-Drag:", "Move chat window", "34D399"), 1, 1, 1)
+    tooltip:AddLine(FormatTooltipCmd("Shift + Left-Drag:", "Move chat window (snaps; Alt: free)", "34D399"), 1, 1, 1)
     tooltip:AddLine(FormatTooltipCmd(editTrigger or "Shift + Right-Click:", "Open HUD Edit Mode (/ds hud)", "38BDF8"), 1, 1, 1)
 end
 
@@ -3417,6 +3417,9 @@ function DynamicChat:EndDirectChatDrag(abortedByCombat)
     if self._directChatDragDriver and self._directChatDragDriver.SetScript then
         self._directChatDragDriver:SetScript("OnUpdate", nil)
     end
+    if _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+        _G.DynamicSuite.HideSnapGuides()
+    end
     self._dcSuppressClickUntil = (GetTime and GetTime() or 0) + 0.15
     local st = self._dcDragState
     self._dcDragState = nil
@@ -3425,6 +3428,8 @@ function DynamicChat:EndDirectChatDrag(abortedByCombat)
     local entry = cf1 and chatSkinStore[cf1]
     if not abortedByCombat and not (InCombatLockdown and InCombatLockdown()) and st and self:IsChatFrameLayoutOwned() then
         self:SaveChatFramePosition("BOTTOMLEFT", "BOTTOMLEFT", st.lastOuterX, st.lastOuterY, st.w, st.h)
+    elseif abortedByCombat then
+        self._pendingChatPosAfterCombat = true
     end
     if entry and entry.panel then
         local isHover = (entry.headerDragStrip and entry.headerDragStrip.IsMouseOver and entry.headerDragStrip:IsMouseOver())
@@ -3442,6 +3447,16 @@ function DynamicChat:BeginDirectChatDrag()
     local cf1 = _G.ChatFrame1
     if not cf1 then return false end
     if _G.GameTooltip and _G.GameTooltip.Hide then _G.GameTooltip:Hide() end
+    if cf1.SetClampedToScreen then pcall(cf1.SetClampedToScreen, cf1, false) end
+
+    if not self._dcEscDragHooked and type(hooksecurefunc) == "function" then
+        self._dcEscDragHooked = true
+        pcall(hooksecurefunc, "ToggleGameMenu", function()
+            if DynamicChat._dcDirectDragActive then
+                DynamicChat:EndDirectChatDrag(false)
+            end
+        end)
+    end
 
     local _, _, startX, startY, curW, curH = self:GetLiveOuterBottomLeft()
     local fScale = (cf1.GetEffectiveScale and cf1:GetEffectiveScale()) or 1
@@ -3489,16 +3504,38 @@ function DynamicChat:BeginDirectChatDrag()
         if curFScale <= 0 then curFScale = 1 end
         if curUScale <= 0 then curUScale = 1 end
         local curRelScale = curFScale / curUScale
+        local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+        local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
         local cxRaw, cyRaw = GetCursorPosition()
         local rawVisX = ((cxRaw or 0) / curUScale) + (st.grabVisX or 0)
         local rawVisY = ((cyRaw or 0) / curUScale) + (st.grabVisY or 0)
-        local cx, cy = DynamicChat:ClampChatFrameCoords(rawVisX / curRelScale, rawVisY / curRelScale, st.w, st.h, "BOTTOMLEFT")
+        local candOuterX = rawVisX / curRelScale
+        local candOuterY = rawVisY / curRelScale
+        local leftExt, rightExt, topExt, bottomExt = DynamicChat:GetVisibleContainerExtents()
+        local cx, cy, gx, gy
+        if _G.DynamicSuite and type(_G.DynamicSuite.SnapAndClampPointOffsetToUIParent) == "function" then
+            local outerW = st.w + leftExt + rightExt
+            local outerH = st.h + topExt + bottomExt
+            local sx, sy, _, guideX, guideY = _G.DynamicSuite.SnapAndClampPointOffsetToUIParent(
+                outerW, outerH, curFScale, screenW, screenH, curUScale,
+                "BOTTOMLEFT", "BOTTOMLEFT", candOuterX, candOuterY,
+                { enableSnap = true, directShiftDrag = true, excludeFrame = cf1 }
+            )
+            cx, cy = DynamicChat:ClampChatFrameCoords(sx, sy, st.w, st.h, "BOTTOMLEFT")
+            gx, gy = guideX, guideY
+            if cx ~= sx and gx ~= nil and math.abs(gx) > 0.5 and math.abs(gx - screenW) > 0.5 then gx = nil end
+            if cy ~= sy and gy ~= nil and math.abs(gy) > 0.5 and math.abs(gy - screenH) > 0.5 then gy = nil end
+            if type(_G.DynamicSuite.ShowSnapGuides) == "function" then
+                _G.DynamicSuite.ShowSnapGuides(gx, gy)
+            end
+        else
+            cx, cy = DynamicChat:ClampChatFrameCoords(candOuterX, candOuterY, st.w, st.h, "BOTTOMLEFT")
+        end
         if cx == st.lastOuterX and cy == st.lastOuterY then
             return
         end
         st.lastOuterX = cx
         st.lastOuterY = cy
-        local leftExt, _, _, bottomExt = DynamicChat:GetVisibleContainerExtents()
         pcall(function()
             cf1:ClearAllPoints()
             cf1:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", leftExt + cx, bottomExt + cy)
@@ -13913,6 +13950,8 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
     elseif event == "PLAYER_REGEN_DISABLED" then
         if self._dcDirectDragActive then
             self:EndDirectChatDrag(true)
+        elseif _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+            _G.DynamicSuite.HideSnapGuides()
         end
         self:RefreshLeftRailTelemetry()
     elseif event == "PLAYER_REGEN_ENABLED" then

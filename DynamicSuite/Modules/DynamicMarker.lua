@@ -5153,7 +5153,7 @@ local function AppendMarkerHudHints(tooltip, isInSuite, moveLabel, editTrigger, 
     if wantSpacer then
         tooltip:AddLine(" ")
     end
-    tooltip:AddLine(FormatMarkerTooltipCmd("Shift + Left-Drag:", moveLabel or "Move bar", "34D399"), 1, 1, 1)
+    tooltip:AddLine(FormatMarkerTooltipCmd("Shift + Left-Drag:", (moveLabel or "Move bar") .. " (snaps; Alt: free)", "34D399"), 1, 1, 1)
     tooltip:AddLine(FormatMarkerTooltipCmd(editTrigger or "Shift + Right-Click:", "Open HUD Edit Mode (" .. hudCmd .. ")", "38BDF8"), 1, 1, 1)
 end
 
@@ -5190,12 +5190,18 @@ function DM:AttachBarDirectShiftDrag(bar, hudKey, barTitle)
         bar._dsDragging = false
         self.isDraggingHUD = false
         bar:SetScript("OnUpdate", nil)
-        pcall(bar.StopMovingOrSizing, bar)
+        self:HideSnapGuides()
+        local st = bar._dmDirectDragState
+        bar._dmDirectDragState = nil
         bar._dmSuppressClickUntil = (GetTime and GetTime() or 0) + 0.15
         local inCombat = (abortedByCombat == true) or IsInCombat()
         if not inCombat then
             bar:SetClampedToScreen(false)
-            self:SaveHUDPosition(bar, primaryKey, true)
+            if st and st.lastX ~= nil and st.lastY ~= nil then
+                self:SaveHUDPosition(bar, primaryKey, true, "CENTER", "CENTER", st.lastX, st.lastY)
+            else
+                self:SaveHUDPosition(bar, primaryKey, true)
+            end
         elseif primaryKey == "FlareBar" then
             self.pendingFlareBarSync = true
         else
@@ -5211,18 +5217,42 @@ function DM:AttachBarDirectShiftDrag(bar, hudKey, barTitle)
 
     local function BeginDirectDrag()
         if self.isEditMode or IsInCombat() then return false end
-        if bar._dsDragging or bar._dsEditModeActive or self.isDraggingHUD then return false end
+        if bar._dmDirectDragActive or bar._dsDragging or bar._dsEditModeActive or self.isDraggingHUD then return false end
         if bar._dsDragShield and bar._dsDragShield:IsShown() then return false end
         if not (IsShiftKeyDown and IsShiftKeyDown()) then return false end
         if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
         self:CloseDropdownMenu()
+        self:SyncBarScaleAndSizeToDB(bar, primaryKey)
+
+        local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        local fScale = (bar.GetEffectiveScale and bar:GetEffectiveScale()) or uScale
+        if not IsFiniteNum(uScale) or uScale <= 0 then uScale = 1 end
+        if not IsFiniteNum(fScale) or fScale <= 0 then fScale = uScale end
+        local relScale = fScale / uScale
+        local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+        local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+        local fCx, fCy = bar.GetCenter and bar:GetCenter()
+        local startVisCx = (fCx and IsFiniteNum(fCx)) and (fCx * relScale) or (screenW * 0.5)
+        local startVisCy = (fCy and IsFiniteNum(fCy)) and (fCy * relScale) or (screenH * 0.5)
+        local rawCurX, rawCurY = GetCursorPosition()
+        local startCurX = (tonumber(rawCurX) or 0) / uScale
+        local startCurY = (tonumber(rawCurY) or 0) / uScale
+        local initRawX = startVisCx - (screenW * 0.5)
+        local initRawY = startVisCy - (screenH * 0.5)
+        local initX, initY = self:ClampHUDPositionToScreen(bar, primaryKey, "CENTER", "CENTER", initRawX, initRawY, { enableSnap = false })
+
         bar._dmDirectDragActive = true
         bar._dmDragging = true
         bar._dsDragging = true
         self.isDraggingHUD = true
+        bar._dmDirectDragState = {
+            grabVisX = startVisCx - startCurX,
+            grabVisY = startVisCy - startCurY,
+            lastX = initX,
+            lastY = initY,
+        }
         self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetAccentColorTable(1.0))
         bar:SetClampedToScreen(false)
-        bar:StartMoving()
         bar:SetScript("OnUpdate", function()
             if not bar._dmDirectDragActive then
                 bar:SetScript("OnUpdate", nil)
@@ -5232,6 +5262,28 @@ function DM:AttachBarDirectShiftDrag(bar, hudKey, barTitle)
             local lmbDown = (type(IsMouseButtonDown) ~= "function") or IsMouseButtonDown("LeftButton")
             if inCombat or not lmbDown then
                 EndDirectDrag(inCombat)
+                return
+            end
+            local st = bar._dmDirectDragState
+            if not st then return end
+            local curUScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+            if not IsFiniteNum(curUScale) or curUScale <= 0 then curUScale = 1 end
+            local curW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
+            local curH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+            local cxRaw, cyRaw = GetCursorPosition()
+            local candVisCx = ((tonumber(cxRaw) or 0) / curUScale) + st.grabVisX
+            local candVisCy = ((tonumber(cyRaw) or 0) / curUScale) + st.grabVisY
+            local rawX = candVisCx - (curW * 0.5)
+            local rawY = candVisCy - (curH * 0.5)
+            local lx, ly, _, gx, gy = self:ClampHUDPositionToScreen(bar, primaryKey, "CENTER", "CENTER", rawX, rawY, {
+                enableSnap = true,
+                directShiftDrag = true,
+            })
+            self:UpdateSnapGuides(gx, gy)
+            if lx ~= st.lastX or ly ~= st.lastY then
+                st.lastX = lx
+                st.lastY = ly
+                self:SetBarCenterPoint(bar, lx, ly, primaryKey)
             end
         end)
         return true
@@ -5239,6 +5291,14 @@ function DM:AttachBarDirectShiftDrag(bar, hudKey, barTitle)
 
     bar._dmBeginDirectDrag = BeginDirectDrag
     bar._dmEndDirectDrag = EndDirectDrag
+    if not bar._dmEscDragHooked and type(hooksecurefunc) == "function" then
+        bar._dmEscDragHooked = true
+        pcall(hooksecurefunc, "ToggleGameMenu", function()
+            if bar._dmDirectDragActive then
+                EndDirectDrag(false)
+            end
+        end)
+    end
 
     bar:EnableMouse(true)
     bar:RegisterForDrag("LeftButton")
@@ -6003,6 +6063,14 @@ local function UpdateSnapGuides(gx, gy)
     ov.ShowGuides(gx, gy, ar, ag, ab)
 end
 
+function DM:HideSnapGuides()
+    HideSnapGuides()
+end
+
+function DM:UpdateSnapGuides(gx, gy)
+    UpdateSnapGuides(gx, gy)
+end
+
 local function CollectPeerHudBoundsUIParent(excludeFrame, uScale)
     local bounds = {}
     local seen = {}
@@ -6035,6 +6103,10 @@ local function CollectPeerHudBoundsUIParent(excludeFrame, uScale)
 
     AddFrame(DM.targetBar)
     AddFrame(DM.flareBar)
+    AddFrame(_G.DynamicPrepBarFrame)
+    AddFrame(_G.DynamicPrepClickableBuffBar)
+    AddFrame(_G.DynamicLoadToastFrame)
+    AddFrame(_G.DynamicSuitePreviewToast)
     if type(Suite.hudElements) == "table" then
         for _, entry in pairs(Suite.hudElements) do
             if type(entry) == "table" and entry.frame then
@@ -6163,8 +6235,13 @@ function DM:ClampHUDPositionToScreen(frame, hudKey, point, relPoint, rawX, rawY,
     local candCy = anchorVisY + (0.5 - pfy) * visH
 
     local guideX, guideY = nil, nil
-    local snapMode = ResolveActiveHudSnapMode()
-    local bypassSnap = (IsShiftKeyDown and IsShiftKeyDown()) or (IsControlKeyDown and IsControlKeyDown())
+    local snapMode = opts.directShiftDrag and "MAGNET" or ResolveActiveHudSnapMode()
+    local bypassSnap
+    if opts.directShiftDrag then
+        bypassSnap = (IsAltKeyDown and IsAltKeyDown()) and true or false
+    else
+        bypassSnap = ((IsShiftKeyDown and IsShiftKeyDown()) or (IsControlKeyDown and IsControlKeyDown())) and true or false
+    end
     if opts.enableSnap and not bypassSnap then
         if snapMode == "MAGNET" or snapMode == nil then
             local candL = candCx - halfW
@@ -6202,7 +6279,7 @@ function DM:ClampHUDPositionToScreen(frame, hudKey, point, relPoint, rawX, rawY,
             ConsiderY(screenCy - candCy, screenCy, EDGE_SNAP_THRESHOLD)
 
             -- Bar-to-bar flush stacking & flush alignment across all visible HUDs (~9px)
-            local peers = CollectPeerHudBoundsUIParent(frame, uScale)
+            local peers = (type(opts.peers) == "table") and opts.peers or CollectPeerHudBoundsUIParent(frame, uScale)
             for _, peer in ipairs(peers) do
                 ConsiderX(peer.right - candL, peer.right, BAR_SNAP_THRESHOLD)
                 ConsiderX(peer.left - candR, peer.left, BAR_SNAP_THRESHOLD)
@@ -6250,25 +6327,27 @@ function DM:ClampHUDPositionToScreen(frame, hudKey, point, relPoint, rawX, rawY,
 
     if minCx > maxCx then
         candCx = screenCx
+        guideX = nil
     else
         if candCx < minCx then
             candCx = minCx
-            if guideX ~= nil and guideX ~= 0 then guideX = nil end
+            if guideX ~= nil and math.abs(guideX) > 0.5 then guideX = nil end
         elseif candCx > maxCx then
             candCx = maxCx
-            if guideX ~= nil and guideX ~= screenW then guideX = nil end
+            if guideX ~= nil and math.abs(guideX - screenW) > 0.5 then guideX = nil end
         end
     end
 
     if minCy > maxCy then
         candCy = screenCy
+        guideY = nil
     else
         if candCy < minCy then
             candCy = minCy
-            if guideY ~= nil and guideY ~= 0 then guideY = nil end
+            if guideY ~= nil and math.abs(guideY) > 0.5 then guideY = nil end
         elseif candCy > maxCy then
             candCy = maxCy
-            if guideY ~= nil and guideY ~= screenH then guideY = nil end
+            if guideY ~= nil and math.abs(guideY - screenH) > 0.5 then guideY = nil end
         end
     end
 
@@ -7678,7 +7757,7 @@ function DM:EnsureEditModeInspector()
         tipText:SetJustifyH("LEFT")
         tipText:SetWordWrap(false)
         DM:StyleFont(tipText, 9.5, "", COLORS.TextMuted)
-        tipText:SetText("Tip: Out of combat, Shift + Left-Drag either bar in the world to move it directly.")
+        tipText:SetText("Tip: Out of combat, Shift + Left-Drag either bar to snap-move it directly (hold Alt to fine-tune).")
         tipBar.text = tipText
         insp.tipBar = tipBar
     end
@@ -11000,7 +11079,7 @@ function DM:ShowStudioModal(mode)
 
         local tips = {
             "Generate [DynamicMark] and [DynamicKick] in Tab 3 so your interrupt swaps automatically by spec.",
-            "Out of combat, Shift + Left-Drag the Focus Icons or World Flare bar directly; Right-Click empty bar space or Shift + Right-Click an icon for " .. hudCmd .. ".",
+            "Out of combat, Shift + Left-Drag the Focus Icons or World Flare bar to snap-move them (hold Alt to fine-tune); Right-Click empty bar space or Shift + Right-Click an icon for " .. hudCmd .. ".",
             "Bind optional World Flare keys in Tab 2 (World Flares) to place or clear ground markers at cursor.",
         }
         for idx, tipStr in ipairs(tips) do

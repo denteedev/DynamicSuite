@@ -1128,6 +1128,9 @@ function DynamicSuite.AppendHudTooltipHints(tooltip, opts)
         tooltip:AddLine(DynamicSuite.FormatTooltipCommand("Right-Click:", "Dismiss alert", "94A3B8"), 1, 1, 1)
     end
     local moveLabel = opts.moveLabel or "Move bar"
+    if opts.skipSnapHint ~= true and not moveLabel:find("Alt", 1, true) then
+        moveLabel = moveLabel .. " (snaps; Alt: free)"
+    end
     local editTrigger = opts.editModeTrigger or "Shift + Right-Click:"
     local hudCmd = opts.hudCmd or "/ds hud"
     tooltip:AddLine(DynamicSuite.FormatTooltipCommand("Shift + Left-Drag:", moveLabel, "34D399"), 1, 1, 1)
@@ -1150,6 +1153,201 @@ local function GetHudAnchorFraction(pt)
     end
     return fx, fy
 end
+
+local DIRECT_EDGE_SNAP_THRESHOLD = 11
+local DIRECT_BAR_SNAP_THRESHOLD  = 9
+
+local function GetDirectHudChatInsetsLocal()
+    if _G.DynamicChat and type(_G.DynamicChat.GetVisibleContainerExtents) == "function" then
+        local ok, lIn, rIn, tIn, bIn = pcall(_G.DynamicChat.GetVisibleContainerExtents, _G.DynamicChat)
+        if ok and lIn then
+            return math.max(0, tonumber(lIn) or 36),
+                   math.max(0, tonumber(rIn) or 8),
+                   math.max(0, tonumber(tIn) or 28),
+                   math.max(0, tonumber(bIn) or 6)
+        end
+    end
+    return 36, 8, 28, 6
+end
+
+function DynamicSuite.EnsureSnapGuideOverlay()
+    local ov = _G.DynamicSuiteSnapGuideOverlay
+    if not ov and type(_G.CreateFrame) == "function" and _G.UIParent then
+        ov = _G.CreateFrame("Frame", "DynamicSuiteSnapGuideOverlay", _G.UIParent)
+        if ov.SetAllPoints then ov:SetAllPoints(_G.UIParent) end
+        if ov.SetFrameStrata then ov:SetFrameStrata("FULLSCREEN_DIALOG") end
+        if ov.SetFrameLevel then ov:SetFrameLevel(200) end
+        if ov.EnableMouse then ov:EnableMouse(false) end
+
+        local vLine = ov:CreateTexture(nil, "OVERLAY")
+        if vLine.SetSnapToPixelGrid then vLine:SetSnapToPixelGrid(false) end
+        if vLine.SetTexelSnappingBias then vLine:SetTexelSnappingBias(0) end
+        vLine:Hide()
+        ov.vLine = vLine
+
+        local hLine = ov:CreateTexture(nil, "OVERLAY")
+        if hLine.SetSnapToPixelGrid then hLine:SetSnapToPixelGrid(false) end
+        if hLine.SetTexelSnappingBias then hLine:SetTexelSnappingBias(0) end
+        hLine:Hide()
+        ov.hLine = hLine
+
+        ov.HideGuides = function()
+            if ov.vLine then ov.vLine:Hide() end
+            if ov.hLine then ov.hLine:Hide() end
+        end
+
+        ov.ShowGuides = function(gx, gy, r, g, b)
+            local screenW = (_G.UIParent and _G.UIParent.GetWidth and _G.UIParent:GetWidth()) or 1920
+            local screenH = (_G.UIParent and _G.UIParent.GetHeight and _G.UIParent:GetHeight()) or 1080
+            local cr, cg, cb = r or 0.22, g or 0.74, b or 0.97
+            if gx ~= nil and ov.vLine then
+                ov.vLine:ClearAllPoints()
+                ov.vLine:SetColorTexture(cr, cg, cb, 0.85)
+                if gx <= 1 then
+                    ov.vLine:SetWidth(2)
+                    ov.vLine:SetPoint("TOPLEFT", _G.UIParent, "TOPLEFT", 0, 0)
+                    ov.vLine:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", 0, 0)
+                elseif gx >= screenW - 1 then
+                    ov.vLine:SetWidth(2)
+                    ov.vLine:SetPoint("TOPRIGHT", _G.UIParent, "TOPRIGHT", 0, 0)
+                    ov.vLine:SetPoint("BOTTOMRIGHT", _G.UIParent, "BOTTOMRIGHT", 0, 0)
+                else
+                    ov.vLine:SetWidth(1.5)
+                    ov.vLine:SetPoint("TOP", _G.UIParent, "BOTTOMLEFT", gx, screenH)
+                    ov.vLine:SetPoint("BOTTOM", _G.UIParent, "BOTTOMLEFT", gx, 0)
+                end
+                ov.vLine:Show()
+            elseif ov.vLine then
+                ov.vLine:Hide()
+            end
+
+            if gy ~= nil and ov.hLine then
+                ov.hLine:ClearAllPoints()
+                ov.hLine:SetColorTexture(cr, cg, cb, 0.85)
+                if gy <= 1 then
+                    ov.hLine:SetHeight(2)
+                    ov.hLine:SetPoint("BOTTOMLEFT", _G.UIParent, "BOTTOMLEFT", 0, 0)
+                    ov.hLine:SetPoint("BOTTOMRIGHT", _G.UIParent, "BOTTOMRIGHT", 0, 0)
+                elseif gy >= screenH - 1 then
+                    ov.hLine:SetHeight(2)
+                    ov.hLine:SetPoint("TOPLEFT", _G.UIParent, "TOPLEFT", 0, 0)
+                    ov.hLine:SetPoint("TOPRIGHT", _G.UIParent, "TOPRIGHT", 0, 0)
+                else
+                    ov.hLine:SetHeight(1.5)
+                    ov.hLine:SetPoint("LEFT", _G.UIParent, "BOTTOMLEFT", 0, gy)
+                    ov.hLine:SetPoint("RIGHT", _G.UIParent, "BOTTOMLEFT", screenW, gy)
+                end
+                ov.hLine:Show()
+            elseif ov.hLine then
+                ov.hLine:Hide()
+            end
+        end
+    end
+    return ov
+end
+addonTable.EnsureSnapGuideOverlay = DynamicSuite.EnsureSnapGuideOverlay
+
+function DynamicSuite.HideSnapGuides()
+    local ov = _G.DynamicSuiteSnapGuideOverlay
+    if ov and type(ov.HideGuides) == "function" then
+        ov.HideGuides()
+    end
+end
+addonTable.HideSnapGuides = DynamicSuite.HideSnapGuides
+
+function DynamicSuite.ShowSnapGuides(gx, gy)
+    if gx == nil and gy == nil then
+        DynamicSuite.HideSnapGuides()
+        return
+    end
+    local ov = DynamicSuite.EnsureSnapGuideOverlay()
+    if ov and type(ov.ShowGuides) == "function" then
+        local ar, ag, ab = addonTable.GetCoreAccentRGB()
+        ov.ShowGuides(gx, gy, ar, ag, ab)
+    end
+end
+addonTable.ShowSnapGuides = DynamicSuite.ShowSnapGuides
+
+function DynamicSuite.CollectPeerHudBoundsUIParent(excludeFrame, uScale)
+    local bounds = {}
+    local seen = {}
+    if excludeFrame then seen[excludeFrame] = true end
+    local uiScale = tonumber(uScale) or (_G.UIParent and _G.UIParent.GetEffectiveScale and _G.UIParent:GetEffectiveScale()) or 1
+    if uiScale <= 0 then uiScale = 1 end
+
+    local function AddFrame(f, isChat)
+        if not f or seen[f] then return end
+        seen[f] = true
+        if not (f.IsShown and f:IsShown()) then return end
+        if not (f.GetCenter and f.GetWidth and f.GetHeight) then return end
+        local oFScale = (f.GetEffectiveScale and f:GetEffectiveScale()) or uiScale
+        if oFScale <= 0 then oFScale = uiScale end
+        local oRelScale = oFScale / uiScale
+        local oW = (f:GetWidth() or 0) * oRelScale
+        local oH = (f:GetHeight() or 0) * oRelScale
+        if oW <= 1 or oH <= 1 then return end
+        local oCxLocal, oCyLocal = f:GetCenter()
+        if not oCxLocal or not oCyLocal then return end
+        local oCx = oCxLocal * oRelScale
+        local oCy = oCyLocal * oRelScale
+        local lEx, rEx, tEx, bEx = 0, 0, 0, 0
+        if isChat or f == _G.ChatFrame1 then
+            lEx, rEx, tEx, bEx = GetDirectHudChatInsetsLocal()
+        end
+        bounds[#bounds + 1] = {
+            left   = oCx - (oW * 0.5) - (lEx * oRelScale),
+            right  = oCx + (oW * 0.5) + (rEx * oRelScale),
+            bottom = oCy - (oH * 0.5) - (bEx * oRelScale),
+            top    = oCy + (oH * 0.5) + (tEx * oRelScale),
+            cx     = oCx,
+            cy     = oCy,
+        }
+    end
+
+    local namedFrames = {
+        { _G.DynamicPrepBarFrame, false },
+        { _G.DynamicPrepClickableBuffBar, false },
+        { _G.DynamicMarkerTargetBar, false },
+        { _G.DynamicMarkerFlareBar, false },
+        { _G.DynamicLoadToastFrame, false },
+        { _G.DynamicSuitePreviewToast, false },
+        { _G.DynamicGroupTeleportToast, false },
+        { _G.DynamicTalentReminderToast, false },
+        { _G.DynamicPrepMageFoodToast, false },
+        { _G.DynamicPrepDurabilityToast, false },
+        { _G.DynamicChatMentionToast, false },
+        { _G.DynamicVaultScreenOverlay, false },
+    }
+    for _, item in ipairs(namedFrames) do
+        AddFrame(item[1], item[2])
+    end
+
+    if _G.ChatFrame1 then
+        local chatOwned = true
+        if _G.DynamicChat and type(_G.DynamicChat.IsChatFrameLayoutOwned) == "function" then
+            local okOwn, resOwn = pcall(_G.DynamicChat.IsChatFrameLayoutOwned, _G.DynamicChat)
+            if okOwn then chatOwned = (resOwn == true) end
+        end
+        if chatOwned then
+            AddFrame(_G.ChatFrame1, true)
+        end
+    end
+
+    if type(DynamicSuite.hudElements) == "table" then
+        for _, entry in pairs(DynamicSuite.hudElements) do
+            if type(entry) == "table" and entry.frame then
+                AddFrame(entry.frame, entry.frame == _G.ChatFrame1)
+            end
+        end
+    end
+    if type(DynamicSuite.hudFrames) == "table" then
+        for _, f in pairs(DynamicSuite.hudFrames) do
+            AddFrame(f, f == _G.ChatFrame1)
+        end
+    end
+    return bounds
+end
+addonTable.CollectPeerHudBoundsUIParent = DynamicSuite.CollectPeerHudBoundsUIParent
 
 function DynamicSuite.ClampPointOffsetToUIParent(frameW, frameH, frameScale, uiW, uiH, uiScale, point, relPoint, rawX, rawY, opts)
     opts = type(opts) == "table" and opts or {}
@@ -1243,6 +1441,228 @@ function DynamicSuite.ClampPointOffsetToUIParent(frameW, frameH, frameScale, uiW
 end
 addonTable.ClampPointOffsetToUIParent = DynamicSuite.ClampPointOffsetToUIParent
 
+function DynamicSuite.SnapAndClampPointOffsetToUIParent(frameW, frameH, frameScale, uiW, uiH, uiScale, point, relPoint, rawX, rawY, opts)
+    opts = type(opts) == "table" and opts or {}
+    local fScale = tonumber(frameScale) or 1
+    local uScale = tonumber(uiScale) or 1
+    if fScale <= 0 then fScale = 1 end
+    if uScale <= 0 then uScale = 1 end
+    local relScale = fScale / uScale
+    if relScale <= 0 then relScale = 1 end
+
+    local screenW = tonumber(uiW) or 1920
+    local screenH = tonumber(uiH) or 1080
+    if screenW <= 0 then screenW = 1920 end
+    if screenH <= 0 then screenH = 1080 end
+    local screenCx = screenW * 0.5
+    local screenCy = screenH * 0.5
+
+    local w = math.max(1, tonumber(frameW) or 100)
+    local h = math.max(1, tonumber(frameH) or 28)
+    local visW = w * relScale
+    local visH = h * relScale
+    local halfW = visW * 0.5
+    local halfH = visH * 0.5
+
+    local ins = type(opts.extraInsets) == "table" and opts.extraInsets or nil
+    local leftExtraVis   = (tonumber(ins and ins.left) or 0) * relScale
+    local rightExtraVis  = (tonumber(ins and ins.right) or 0) * relScale
+    local topExtraVis    = (tonumber(ins and ins.top) or 0) * relScale
+    local bottomExtraVis = (tonumber(ins and ins.bottom) or 0) * relScale
+
+    local coordScale = (opts.coordSpace == "UIPARENT") and 1.0 or relScale
+    local pt = point or "CENTER"
+    local rp = relPoint or pt
+    local pfx, pfy = GetHudAnchorFraction(pt)
+    local rfx, rfy = GetHudAnchorFraction(rp)
+    local refX = rfx * screenW
+    local refY = rfy * screenH
+
+    local inX = tonumber(rawX) or 0
+    local inY = tonumber(rawY) or 0
+    local anchorVisX = refX + (inX * coordScale)
+    local anchorVisY = refY + (inY * coordScale)
+    local candCx = anchorVisX + (0.5 - pfx) * visW
+    local candCy = anchorVisY + (0.5 - pfy) * visH
+
+    local guideX, guideY = nil, nil
+    local enableSnap = (opts.enableSnap ~= false)
+    local bypassSnap
+    if opts.directShiftDrag then
+        bypassSnap = (_G.IsAltKeyDown and _G.IsAltKeyDown()) and true or false
+    else
+        bypassSnap = ((_G.IsShiftKeyDown and _G.IsShiftKeyDown()) or (_G.IsControlKeyDown and _G.IsControlKeyDown())) and true or false
+    end
+
+    if enableSnap and not bypassSnap then
+        local snapMode = opts.snapMode
+        if snapMode == nil and not opts.directShiftDrag then
+            local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
+            snapMode = (type(g) == "table" and g.hudSnapMode) or "MAGNET"
+        end
+        if opts.directShiftDrag or snapMode == "MAGNET" or snapMode == nil then
+            local candL = candCx - halfW - leftExtraVis
+            local candR = candCx + halfW + rightExtraVis
+            local candB = candCy - halfH - bottomExtraVis
+            local candT = candCy + halfH + topExtraVis
+
+            local bestDeltaX, bestGX = nil, nil
+            local bestDeltaY, bestGY = nil, nil
+
+            local function ConsiderX(delta, gLine, limit)
+                if math.abs(delta) <= limit then
+                    if bestDeltaX == nil or math.abs(delta) < math.abs(bestDeltaX) then
+                        bestDeltaX = delta
+                        bestGX = gLine
+                    end
+                end
+            end
+            local function ConsiderY(delta, gLine, limit)
+                if math.abs(delta) <= limit then
+                    if bestDeltaY == nil or math.abs(delta) < math.abs(bestDeltaY) then
+                        bestDeltaY = delta
+                        bestGY = gLine
+                    end
+                end
+            end
+
+            ConsiderX(0 - candL, 0, DIRECT_EDGE_SNAP_THRESHOLD)
+            ConsiderX(screenW - candR, screenW, DIRECT_EDGE_SNAP_THRESHOLD)
+            ConsiderX(screenCx - candCx, screenCx, DIRECT_EDGE_SNAP_THRESHOLD)
+
+            ConsiderY(0 - candB, 0, DIRECT_EDGE_SNAP_THRESHOLD)
+            ConsiderY(screenH - candT, screenH, DIRECT_EDGE_SNAP_THRESHOLD)
+            ConsiderY(screenCy - candCy, screenCy, DIRECT_EDGE_SNAP_THRESHOLD)
+
+            local peers = (type(opts.peers) == "table") and opts.peers or DynamicSuite.CollectPeerHudBoundsUIParent(opts.excludeFrame, uScale)
+            for _, peer in ipairs(peers) do
+                if type(peer) == "table" and peer.left and peer.right and peer.bottom and peer.top and peer.cx and peer.cy then
+                    ConsiderX(peer.right - candL, peer.right, DIRECT_BAR_SNAP_THRESHOLD)
+                    ConsiderX(peer.left - candR, peer.left, DIRECT_BAR_SNAP_THRESHOLD)
+                    ConsiderX(peer.left - candL, peer.left, DIRECT_BAR_SNAP_THRESHOLD)
+                    ConsiderX(peer.right - candR, peer.right, DIRECT_BAR_SNAP_THRESHOLD)
+                    ConsiderX(peer.cx - candCx, peer.cx, DIRECT_BAR_SNAP_THRESHOLD)
+
+                    ConsiderY(peer.bottom - candT, peer.bottom, DIRECT_BAR_SNAP_THRESHOLD)
+                    ConsiderY(peer.top - candB, peer.top, DIRECT_BAR_SNAP_THRESHOLD)
+                    ConsiderY(peer.top - candT, peer.top, DIRECT_BAR_SNAP_THRESHOLD)
+                    ConsiderY(peer.bottom - candB, peer.bottom, DIRECT_BAR_SNAP_THRESHOLD)
+                    ConsiderY(peer.cy - candCy, peer.cy, DIRECT_BAR_SNAP_THRESHOLD)
+                end
+            end
+
+            if bestDeltaX ~= nil then
+                candCx = candCx + bestDeltaX
+                guideX = bestGX
+            end
+            if bestDeltaY ~= nil then
+                candCy = candCy + bestDeltaY
+                guideY = bestGY
+            end
+        elseif snapMode == 16 or snapMode == 32 then
+            local step = snapMode * relScale
+            if math.abs(candCx - screenCx) <= DIRECT_EDGE_SNAP_THRESHOLD then
+                candCx = screenCx
+                guideX = screenCx
+            elseif step > 0 then
+                candCx = screenCx + math.floor(((candCx - screenCx) / step) + 0.5) * step
+            end
+            if math.abs(candCy - screenCy) <= DIRECT_EDGE_SNAP_THRESHOLD then
+                candCy = screenCy
+                guideY = screenCy
+            elseif step > 0 then
+                candCy = screenCy + math.floor(((candCy - screenCy) / step) + 0.5) * step
+            end
+        end
+    end
+
+    -- Mandatory hard 0 px UIParent screen clamping AFTER snapping
+    local minCx = halfW + leftExtraVis
+    local maxCx = screenW - halfW - rightExtraVis
+    local minCy = halfH + bottomExtraVis
+    local maxCy = screenH - halfH - topExtraVis
+
+    local clampedXEdge = nil
+    if minCx > maxCx then
+        candCx = screenCx
+        guideX = nil
+    else
+        if candCx < minCx then
+            candCx = minCx
+            clampedXEdge = "MIN"
+            if guideX ~= nil and math.abs(guideX) > 0.5 then guideX = nil end
+        elseif candCx > maxCx then
+            candCx = maxCx
+            clampedXEdge = "MAX"
+            if guideX ~= nil and math.abs(guideX - screenW) > 0.5 then guideX = nil end
+        end
+    end
+
+    local clampedYEdge = nil
+    if minCy > maxCy then
+        candCy = screenCy
+        guideY = nil
+    else
+        if candCy < minCy then
+            candCy = minCy
+            clampedYEdge = "MIN"
+            if guideY ~= nil and math.abs(guideY) > 0.5 then guideY = nil end
+        elseif candCy > maxCy then
+            candCy = maxCy
+            clampedYEdge = "MAX"
+            if guideY ~= nil and math.abs(guideY - screenH) > 0.5 then guideY = nil end
+        end
+    end
+
+    local rawOutX = ((candCx - (0.5 - pfx) * visW) - refX) / coordScale
+    local rawOutY = ((candCy - (0.5 - pfy) * visH) - refY) / coordScale
+    local outX = math.floor(rawOutX + 0.5)
+    local outY = math.floor(rawOutY + 0.5)
+
+    local minLocalX = ((minCx - (0.5 - pfx) * visW) - refX) / coordScale
+    local maxLocalX = ((maxCx - (0.5 - pfx) * visW) - refX) / coordScale
+    local minLocalY = ((minCy - (0.5 - pfy) * visH) - refY) / coordScale
+    local maxLocalY = ((maxCy - (0.5 - pfy) * visH) - refY) / coordScale
+
+    if minLocalX <= maxLocalX then
+        local loX = math.ceil(minLocalX - 1e-6)
+        local hiX = math.floor(maxLocalX + 1e-6)
+        if loX <= hiX then
+            local prevOutX = outX
+            outX = math.max(loX, math.min(hiX, outX))
+            if outX ~= prevOutX and not clampedXEdge then
+                if guideX ~= nil and math.abs(guideX) > 0.5 and math.abs(guideX - screenW) > 0.5 then
+                    guideX = nil
+                end
+            end
+        end
+    else
+        outX = math.floor((((screenCx - (0.5 - pfx) * visW) - refX) / coordScale) + 0.5)
+        guideX = nil
+    end
+
+    if minLocalY <= maxLocalY then
+        local loY = math.ceil(minLocalY - 1e-6)
+        local hiY = math.floor(maxLocalY + 1e-6)
+        if loY <= hiY then
+            local prevOutY = outY
+            outY = math.max(loY, math.min(hiY, outY))
+            if outY ~= prevOutY and not clampedYEdge then
+                if guideY ~= nil and math.abs(guideY) > 0.5 and math.abs(guideY - screenH) > 0.5 then
+                    guideY = nil
+                end
+            end
+        end
+    else
+        outY = math.floor((((screenCy - (0.5 - pfy) * visH) - refY) / coordScale) + 0.5)
+        guideY = nil
+    end
+
+    local didAdjust = (outX ~= math.floor(inX + 0.5)) or (outY ~= math.floor(inY + 0.5))
+    return outX, outY, didAdjust, guideX, guideY
+end
+addonTable.SnapAndClampPointOffsetToUIParent = DynamicSuite.SnapAndClampPointOffsetToUIParent
+
 function DynamicSuite.OpenHudEditForTarget(targetKey, standaloneFallbackFn, addonLabel)
     if _G.InCombatLockdown and _G.InCombatLockdown() then
         local hex = addonTable.GetCoreAccentHex and addonTable.GetCoreAccentHex() or "38BDF8"
@@ -1312,21 +1732,35 @@ addonTable.SaveSharedToastPosition = DynamicSuite.SaveSharedToastPosition
 
 local activeDirectHudDrags = {}
 local directHudCombatFrame = nil
+local directHudEscHooked = false
+local function AbortAllActiveDirectHudDrags(abortedByCombat)
+    local snapshot = {}
+    for ctrl in pairs(activeDirectHudDrags) do
+        snapshot[#snapshot + 1] = ctrl
+    end
+    for _, ctrl in ipairs(snapshot) do
+        if ctrl and type(ctrl.EndDrag) == "function" then
+            pcall(ctrl.EndDrag, abortedByCombat == true)
+        end
+    end
+    if type(DynamicSuite.HideSnapGuides) == "function" then
+        DynamicSuite.HideSnapGuides()
+    end
+end
+
 local function EnsureDirectHudCombatAbortFrame()
+    if not directHudEscHooked and type(_G.hooksecurefunc) == "function" then
+        directHudEscHooked = true
+        pcall(_G.hooksecurefunc, "ToggleGameMenu", function()
+            AbortAllActiveDirectHudDrags(false)
+        end)
+    end
     if directHudCombatFrame or type(_G.CreateFrame) ~= "function" then return end
     local okF, cf = pcall(_G.CreateFrame, "Frame")
     if not okF or not cf or type(cf.RegisterEvent) ~= "function" then return end
     cf:RegisterEvent("PLAYER_REGEN_DISABLED")
     cf:SetScript("OnEvent", function()
-        local snapshot = {}
-        for ctrl in pairs(activeDirectHudDrags) do
-            snapshot[#snapshot + 1] = ctrl
-        end
-        for _, ctrl in ipairs(snapshot) do
-            if ctrl and type(ctrl.EndDrag) == "function" then
-                pcall(ctrl.EndDrag, true)
-            end
-        end
+        AbortAllActiveDirectHudDrags(true)
     end)
     directHudCombatFrame = cf
 end
@@ -1340,6 +1774,7 @@ function DynamicSuite.AttachDirectHudShiftDrag(opts)
     local controller = {}
     local isDragging = false
     local suppressClickUntil = 0
+    local dragState = nil
 
     local function IsEditModeActive()
         if frame._dsEditModeActive then return true end
@@ -1356,6 +1791,26 @@ function DynamicSuite.AttachDirectHudShiftDrag(opts)
             if not ok or res == false then return false end
         end
         return true
+    end
+
+    local function ResolveAnchorPair()
+        if type(opts.getAnchorFn) == "function" then
+            local ok, pt, rp = pcall(opts.getAnchorFn, frame)
+            if ok and pt then
+                return pt, rp or pt
+            end
+        end
+        return opts.point or "CENTER", opts.relPoint or opts.point or "CENTER"
+    end
+
+    local function ApplyDragFramePos(pt, rp, x, y)
+        if _G.InCombatLockdown and _G.InCombatLockdown() then return end
+        if type(opts.applyPositionFn) == "function" then
+            pcall(opts.applyPositionFn, frame, pt, rp, x, y)
+        elseif frame.ClearAllPoints and frame.SetPoint and _G.UIParent then
+            frame:ClearAllPoints()
+            frame:SetPoint(pt, _G.UIParent, rp, x, y)
+        end
     end
 
     function controller.IsDragging()
@@ -1382,13 +1837,43 @@ function DynamicSuite.AttachDirectHudShiftDrag(opts)
         if frame.SetScript then
             frame:SetScript("OnUpdate", nil)
         end
-        if not opts.customDragUpdate and frame.StopMovingOrSizing then
+        if type(DynamicSuite.HideSnapGuides) == "function" then
+            DynamicSuite.HideSnapGuides()
+        end
+        local st = dragState
+        dragState = nil
+        if opts.customDragUpdate and frame.StopMovingOrSizing then
             pcall(frame.StopMovingOrSizing, frame)
         end
         suppressClickUntil = ((type(_G.GetTime) == "function") and _G.GetTime() or 0) + suppressClickSec
         local combatAborted = (abortedByCombat == true) or (_G.InCombatLockdown and _G.InCombatLockdown() and true or false)
+        local finalPt = (st and st.pt) or opts.point or "CENTER"
+        local finalRp = (st and st.rp) or opts.relPoint or finalPt
+        local finalX = st and st.lastX or 0
+        local finalY = st and st.lastY or 0
+        if st and not combatAborted then
+            local fW = (frame.GetWidth and frame:GetWidth()) or 100
+            local fH = (frame.GetHeight and frame:GetHeight()) or 30
+            local fScale = (frame.GetEffectiveScale and frame:GetEffectiveScale()) or 1
+            local uScale = (_G.UIParent and _G.UIParent.GetEffectiveScale and _G.UIParent:GetEffectiveScale()) or 1
+            local screenW = (_G.UIParent and _G.UIParent.GetWidth and _G.UIParent:GetWidth()) or 1920
+            local screenH = (_G.UIParent and _G.UIParent.GetHeight and _G.UIParent:GetHeight()) or 1080
+            local extraIns = (type(opts.getExtraInsetsFn) == "function") and opts.getExtraInsetsFn(frame) or opts.extraInsets
+            finalX, finalY = DynamicSuite.SnapAndClampPointOffsetToUIParent(
+                fW, fH, fScale, screenW, screenH, uScale,
+                finalPt, finalRp, finalX, finalY,
+                {
+                    enableSnap = false,
+                    coordSpace = opts.coordSpace or "LOCAL",
+                    extraInsets = extraIns,
+                }
+            )
+            ApplyDragFramePos(finalPt, finalRp, finalX, finalY)
+        elseif combatAborted then
+            addonTable._pendingHudClamp = true
+        end
         if type(opts.onDragEnd) == "function" then
-            pcall(opts.onDragEnd, combatAborted)
+            pcall(opts.onDragEnd, combatAborted, finalPt, finalRp, finalX, finalY)
         end
         return true
     end
@@ -1405,11 +1890,80 @@ function DynamicSuite.AttachDirectHudShiftDrag(opts)
         isDragging = true
         frame._dsDragging = true
         activeDirectHudDrags[controller] = true
+        if frame.SetClampedToScreen then
+            pcall(frame.SetClampedToScreen, frame, false)
+        end
         if type(opts.onDragStart) == "function" then
             pcall(opts.onDragStart)
         end
-        if not opts.customDragUpdate and frame.StartMoving then
-            pcall(frame.StartMoving, frame)
+        if type(opts.customDragUpdate) == "function" then
+            dragState = nil
+        else
+            local usePt, useRp = ResolveAnchorPair()
+            local coordSpace = opts.coordSpace or "LOCAL"
+            local uScale = (_G.UIParent and _G.UIParent.GetEffectiveScale and _G.UIParent:GetEffectiveScale()) or 1
+            local fScale = (frame.GetEffectiveScale and frame:GetEffectiveScale()) or uScale
+            if uScale <= 0 then uScale = 1 end
+            if fScale <= 0 then fScale = uScale end
+            local relScale = fScale / uScale
+            local coordScale = (coordSpace == "UIPARENT") and 1.0 or relScale
+            local screenW = (_G.UIParent and _G.UIParent.GetWidth and _G.UIParent:GetWidth()) or 1920
+            local screenH = (_G.UIParent and _G.UIParent.GetHeight and _G.UIParent:GetHeight()) or 1080
+            local fW = (frame.GetWidth and frame:GetWidth()) or 100
+            local fH = (frame.GetHeight and frame:GetHeight()) or 30
+            local visW = fW * relScale
+            local visH = fH * relScale
+            local pfx, pfy = GetHudAnchorFraction(usePt)
+            local rfx, rfy = GetHudAnchorFraction(useRp)
+            local refX = rfx * screenW
+            local refY = rfy * screenH
+
+            local fCx, fCy = nil, nil
+            if frame.GetCenter then
+                fCx, fCy = frame:GetCenter()
+            end
+            local startVisCx, startVisCy
+            if fCx and fCy then
+                startVisCx = fCx * relScale
+                startVisCy = fCy * relScale
+            else
+                local gpPt, _, gpRp, gpX, gpY = nil, nil, nil, 0, 0
+                if frame.GetPoint then
+                    gpPt, _, gpRp, gpX, gpY = frame:GetPoint(1)
+                end
+                local gPfx, gPfy = GetHudAnchorFraction(gpPt or usePt)
+                local gRfx, gRfy = GetHudAnchorFraction(gpRp or gpPt or useRp)
+                startVisCx = (gRfx * screenW) + ((tonumber(gpX) or 0) * coordScale) + (0.5 - gPfx) * visW
+                startVisCy = (gRfy * screenH) + ((tonumber(gpY) or 0) * coordScale) + (0.5 - gPfy) * visH
+            end
+
+            local rawCurX, rawCurY = 0, 0
+            if type(_G.GetCursorPosition) == "function" then
+                rawCurX, rawCurY = _G.GetCursorPosition()
+            end
+            local startCurX = (tonumber(rawCurX) or 0) / uScale
+            local startCurY = (tonumber(rawCurY) or 0) / uScale
+            local initRawX = ((startVisCx - (0.5 - pfx) * visW) - refX) / coordScale
+            local initRawY = ((startVisCy - (0.5 - pfy) * visH) - refY) / coordScale
+            local extraIns = (type(opts.getExtraInsetsFn) == "function") and opts.getExtraInsetsFn(frame) or opts.extraInsets
+            local initX, initY = DynamicSuite.SnapAndClampPointOffsetToUIParent(
+                fW, fH, fScale, screenW, screenH, uScale,
+                usePt, useRp, initRawX, initRawY,
+                {
+                    enableSnap = false,
+                    coordSpace = coordSpace,
+                    extraInsets = extraIns,
+                }
+            )
+            dragState = {
+                pt = usePt,
+                rp = useRp,
+                coordSpace = coordSpace,
+                grabVisX = startVisCx - startCurX,
+                grabVisY = startVisCy - startCurY,
+                lastX = initX,
+                lastY = initY,
+            }
         end
         if frame.SetScript then
             frame:SetScript("OnUpdate", function()
@@ -1423,6 +1977,52 @@ function DynamicSuite.AttachDirectHudShiftDrag(opts)
                     controller.EndDrag(inCombat)
                 elseif type(opts.customDragUpdate) == "function" then
                     pcall(opts.customDragUpdate)
+                elseif dragState then
+                    local st = dragState
+                    local curUScale = (_G.UIParent and _G.UIParent.GetEffectiveScale and _G.UIParent:GetEffectiveScale()) or 1
+                    local curFScale = (frame.GetEffectiveScale and frame:GetEffectiveScale()) or curUScale
+                    if curUScale <= 0 then curUScale = 1 end
+                    if curFScale <= 0 then curFScale = curUScale end
+                    local curRelScale = curFScale / curUScale
+                    local curCoordScale = (st.coordSpace == "UIPARENT") and 1.0 or curRelScale
+                    local curScreenW = (_G.UIParent and _G.UIParent.GetWidth and _G.UIParent:GetWidth()) or 1920
+                    local curScreenH = (_G.UIParent and _G.UIParent.GetHeight and _G.UIParent:GetHeight()) or 1080
+                    local curW = (frame.GetWidth and frame:GetWidth()) or 100
+                    local curH = (frame.GetHeight and frame:GetHeight()) or 30
+                    local visW = curW * curRelScale
+                    local visH = curH * curRelScale
+                    local pfx, pfy = GetHudAnchorFraction(st.pt)
+                    local rfx, rfy = GetHudAnchorFraction(st.rp)
+                    local refX = rfx * curScreenW
+                    local refY = rfy * curScreenH
+
+                    local cxRaw, cyRaw = 0, 0
+                    if type(_G.GetCursorPosition) == "function" then
+                        cxRaw, cyRaw = _G.GetCursorPosition()
+                    end
+                    local candVisCx = ((tonumber(cxRaw) or 0) / curUScale) + st.grabVisX
+                    local candVisCy = ((tonumber(cyRaw) or 0) / curUScale) + st.grabVisY
+                    local rawX = ((candVisCx - (0.5 - pfx) * visW) - refX) / curCoordScale
+                    local rawY = ((candVisCy - (0.5 - pfy) * visH) - refY) / curCoordScale
+                    local extraIns = (type(opts.getExtraInsetsFn) == "function") and opts.getExtraInsetsFn(frame) or opts.extraInsets
+                    local lx, ly, _, gx, gy = DynamicSuite.SnapAndClampPointOffsetToUIParent(
+                        curW, curH, curFScale, curScreenW, curScreenH, curUScale,
+                        st.pt, st.rp, rawX, rawY,
+                        {
+                            enableSnap = (opts.enableSnap ~= false),
+                            directShiftDrag = true,
+                            excludeFrame = frame,
+                            coordSpace = st.coordSpace,
+                            extraInsets = extraIns,
+                            peers = opts.peers,
+                        }
+                    )
+                    DynamicSuite.ShowSnapGuides(gx, gy)
+                    if lx ~= st.lastX or ly ~= st.lastY then
+                        st.lastX = lx
+                        st.lastY = ly
+                        ApplyDragFramePos(st.pt, st.rp, lx, ly)
+                    end
                 end
             end)
         end
@@ -1747,6 +2347,12 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
         frame = f,
         targetKey = "TOAST",
         addonLabel = "DynamicSuite",
+        getAnchorFn = function(selfT)
+            local st = DynamicSuite.GetSharedToastStyle(selfT._dsToastKind)
+            local prevPos = st and st.pos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
+            local usePt = (prevPos.point == "CENTER") and "CENTER" or "TOP"
+            return usePt, usePt
+        end,
         isEditModeFn = function()
             return f._dsEditModeActive or f.isEditingMode or f.isDraggingMode
         end,
@@ -1755,10 +2361,13 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
             f:SetAlpha(1)
             ApplySharedToastHoverBorder(f)
         end,
-        onDragEnd = function(abortedByCombat)
+        onDragEnd = function(abortedByCombat, pt, rp, finalX, finalY)
             if not abortedByCombat and not (_G.InCombatLockdown and _G.InCombatLockdown()) then
-                local pt, rp, rx, ry = ComputeToastDropCoords(f)
-                DynamicSuite.SaveSharedToastPosition(pt, rp, rx, ry, f)
+                local usePt, useRp, rx, ry = pt, rp, finalX, finalY
+                if not usePt or rx == nil or ry == nil then
+                    usePt, useRp, rx, ry = ComputeToastDropCoords(f)
+                end
+                DynamicSuite.SaveSharedToastPosition(usePt, useRp, rx, ry, f)
             end
             if IsAnyToastHoverActive(f) then
                 ApplySharedToastHoverBorder(f)
@@ -3264,7 +3873,7 @@ local MODULE_QUICK_GUIDES = {
         slash     = "/ds, /ds hud, /ds search",
         summary   = "Unified Obsidian suite hub for Theme Studio, Desktop Windows, HUD Edit Mode, Profile Sharing, and 13 modules.",
         tips      = {
-            "Out of combat, Shift + Left-Drag any HUD bar, Chat Frame, or Alert Toast directly in the world to move it.",
+            "Out of combat, Shift + Left-Drag any HUD bar, Chat Frame, or Alert Toast to snap-move it directly (hold Alt to fine-tune freely).",
             "Right-Click empty bar space (or Shift + Right-Click HUD buttons/toasts) to open HUD Edit Mode (/ds hud).",
             "Press Global Search (/ds search) to jump straight to any setting, or share !DS1! strings in Suite Studio Tab 3.",
         },
@@ -3279,7 +3888,7 @@ local MODULE_QUICK_GUIDES = {
         tips      = {
             "Pin essential addons to Always and economy/collection addons to By Zone or Never.",
             "Right-click the zone tabs or use /dl status to check which addons are staged for next reload.",
-            "Shift + Left-Drag any Alert Toast in the world to reposition it, or Shift + Right-Click it to open /ds hud.",
+            "Shift + Left-Drag any Alert Toast to snap-move it in the world (hold Alt to fine-tune), or Shift + Right-Click it for /ds hud.",
         },
     },
     prep = {
@@ -3291,7 +3900,7 @@ local MODULE_QUICK_GUIDES = {
         summary   = "Displays a live Top Info Bar for stats, Omni Folio, consumables, and clickable Raid Buffs.",
         tips      = {
             "Left-click the Folio capsule to pick your zone target stat, or Right-click to open the Omnium Folio.",
-            "Out of combat, Shift + Left-Drag the Top Info Bar or Clickable Raid Buffs directly; Right-Click empty space or Shift + Right-Click buttons for /ds hud.",
+            "Out of combat, Shift + Left-Drag the Top Info Bar or Clickable Raid Buffs to snap-move them (hold Alt to fine-tune); Right-Click empty space or Shift + Right-Click buttons for /ds hud.",
             "Create the [DynamicHeal] and [DynamicDrink] macros in Tab 3 for smart recovery buttons.",
         },
     },
@@ -3317,7 +3926,7 @@ local MODULE_QUICK_GUIDES = {
         summary   = "Provides floating Focus Icon and World Flare bars alongside [DynamicMark] and [DynamicKick] macros.",
         tips      = {
             "Generate [DynamicMark] and [DynamicKick] in Tab 3 so your interrupt swaps automatically by spec.",
-            "Out of combat, Shift + Left-Drag the Focus Icons or World Flare bar directly; Right-Click empty bar space or Shift + Right-Click an icon for HUD Edit Mode.",
+            "Out of combat, Shift + Left-Drag the Focus Icons or World Flare bar to snap-move them (hold Alt to fine-tune); Right-Click empty bar space or Shift + Right-Click an icon for HUD Edit Mode.",
             "Bind optional World Flare keys in Tab 2 (World Flares) to place or clear ground markers at cursor.",
         },
     },
@@ -3408,7 +4017,7 @@ local MODULE_QUICK_GUIDES = {
         summary   = "Styles your chat window with a compact shortcut rail, clickable links, /ww whispers, and mention alerts.",
         tips      = {
             "Type /ww to whisper your friendly target quickly, /rl to reload UI, or /lg to leave group.",
-            "Out of combat, Shift + Left-Drag the Chat header strip or left rail to move it; Right-Click empty rail/header space or Shift + Right-Click rail buttons for /ds hud.",
+            "Out of combat, Shift + Left-Drag the Chat header strip or left rail to snap-move it (hold Alt to fine-tune); Right-Click empty space or Shift + Right-Click rail buttons for /ds hud.",
             "Add your character names or keywords to Mention Alert Toasts with your choice of chime.",
         },
     },
