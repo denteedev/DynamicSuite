@@ -443,15 +443,73 @@ local prepAutoHandledSeq = 0
 local prepAutoHandledPhase = nil
 local lastConsumedPrepActionSeq = 0
 
+local function IsLorewalkingActive()
+    if _G.LorewalkingFrame and type(_G.LorewalkingFrame.IsShown) == "function" then
+        local okS, shown = pcall(_G.LorewalkingFrame.IsShown, _G.LorewalkingFrame)
+        if okS and not SafeIsSecret(shown) and shown == true then
+            return true
+        end
+    end
+    if type(_G.C_Lorewalking) == "table" then
+        for _, fnName in ipairs({ "IsLorewalkingActive", "HasActiveLorewalking", "IsInLorewalking" }) do
+            local fn = _G.C_Lorewalking[fnName]
+            if type(fn) == "function" then
+                local okL, res = pcall(fn)
+                if okL and not SafeIsSecret(res) and res == true then
+                    return true
+                end
+            end
+        end
+    end
+    if type(_G.C_GossipInfo) == "table" and type(_G.C_GossipInfo.GetText) == "function" then
+        local okT, txt = pcall(_G.C_GossipInfo.GetText)
+        if okT and not SafeIsSecret(txt) and type(txt) == "string" and txt:lower():find("lorewalk", 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsNonStandardGameMode()
+    local gr = _G.C_GameRules
+    if type(gr) ~= "table" or type(gr.GetActiveGameMode) ~= "function" then
+        return false, nil
+    end
+    local ok, mode = pcall(gr.GetActiveGameMode)
+    if not ok or mode == nil or SafeIsSecret(mode) then
+        return false, nil
+    end
+    local gmEnum = _G.Enum and _G.Enum.GameMode
+    if type(gmEnum) == "table" then
+        if gmEnum.Standard ~= nil then
+            return (mode ~= gmEnum.Standard), mode
+        end
+        if gmEnum.Talebound ~= nil and mode == gmEnum.Talebound then
+            return true, mode
+        end
+    end
+    return false, nil
+end
+
 local function IsCustomGossipTextureKit(eventTextureKit)
-    if _G.DelvesDifficultyPickerFrame and _G.DelvesDifficultyPickerFrame.IsShown and _G.DelvesDifficultyPickerFrame:IsShown() then
-        return true, "delves-difficulty-picker"
+    if _G.DelvesDifficultyPickerFrame and type(_G.DelvesDifficultyPickerFrame.IsShown) == "function" then
+        local okD, shownD = pcall(_G.DelvesDifficultyPickerFrame.IsShown, _G.DelvesDifficultyPickerFrame)
+        if okD and not SafeIsSecret(shownD) and shownD == true then
+            return true, "delves-difficulty-picker"
+        end
     end
-    if _G.DelvesCompanionConfigurationFrame and _G.DelvesCompanionConfigurationFrame.IsShown and _G.DelvesCompanionConfigurationFrame:IsShown() then
-        return true, "delves-companion"
+    if _G.DelvesCompanionConfigurationFrame and type(_G.DelvesCompanionConfigurationFrame.IsShown) == "function" then
+        local okC, shownC = pcall(_G.DelvesCompanionConfigurationFrame.IsShown, _G.DelvesCompanionConfigurationFrame)
+        if okC and not SafeIsSecret(shownC) and shownC == true then
+            return true, "delves-companion"
+        end
     end
-    if _G.LorewalkingFrame and _G.LorewalkingFrame.IsShown and _G.LorewalkingFrame:IsShown() then
+    if IsLorewalkingActive() then
         return true, "lorewalking"
+    end
+    local nonStdMode, activeMode = IsNonStandardGameMode()
+    if nonStdMode then
+        return true, "gamemode-" .. SafeStr(activeMode, "custom")
     end
     if type(eventTextureKit) == "string" and not SafeIsSecret(eventTextureKit) and eventTextureKit ~= "" then
         if eventTextureKit:lower() ~= "default" then
@@ -1036,6 +1094,18 @@ local function ApplyReaderPosition()
     readerFrame:SetPoint(pos.point or "CENTER", _G.UIParent, pos.relPoint or "CENTER", SafeNum(pos.x, 0), SafeNum(pos.y, -90))
 end
 
+local function SyncReaderKeyboardState(frame)
+    if not frame then return end
+    if InCombatLockdown() then
+        pcall(frame.SetPropagateKeyboardInput, frame, true)
+        pcall(frame.EnableKeyboard, frame, false)
+        return
+    end
+    local shouldEnable = (type(frame.IsShown) == "function" and frame:IsShown()) and true or false
+    pcall(frame.EnableKeyboard, frame, shouldEnable)
+    pcall(frame.SetPropagateKeyboardInput, frame, true)
+end
+
 local function EnsureReaderFrame()
     if readerFrame then return readerFrame end
     local db = EnsureDB()
@@ -1303,69 +1373,106 @@ local function EnsureReaderFrame()
     f.priBtn = priBtn
 
     -- Keyboard handler (1-9 hotkeys, Space accept/confirm, 1/Space double-tap confirm, Escape close)
-    f:EnableKeyboard(true)
+    pcall(f.EnableKeyboard, f, false)
+    if not InCombatLockdown() then
+        pcall(f.SetPropagateKeyboardInput, f, true)
+    end
+    f:SetScript("OnShow", function(self)
+        SyncReaderKeyboardState(self)
+    end)
     f:SetScript("OnKeyDown", function(self, key)
-        if InCombatLockdown() then return end
+        if InCombatLockdown() then
+            pcall(self.EnableKeyboard, self, false)
+            return
+        end
+        if SafeIsSecret(key) then
+            pcall(self.SetPropagateKeyboardInput, self, true)
+            return
+        end
+        local function ConsumeKey(actionFn)
+            pcall(self.SetPropagateKeyboardInput, self, false)
+            if actionFn then
+                actionFn()
+            end
+            if _G.C_Timer and type(_G.C_Timer.After) == "function" then
+                _G.C_Timer.After(0, function()
+                    if self and not InCombatLockdown() then
+                        pcall(self.SetPropagateKeyboardInput, self, true)
+                    end
+                end)
+            elseif not InCombatLockdown() then
+                pcall(self.SetPropagateKeyboardInput, self, true)
+            end
+        end
         local d = EnsureDB()
         if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
-            if currentMode == "CONFIRM" and f.secBtn:IsShown() then
-                local fn = f.secBtn:GetScript("OnClick")
-                if fn then
-                    fn(f.secBtn)
+            ConsumeKey(function()
+                if currentMode == "CONFIRM" and f.secBtn:IsShown() then
+                    local fn = f.secBtn:GetScript("OnClick")
+                    if fn then
+                        fn(f.secBtn)
+                    else
+                        CloseConfirmInteraction()
+                    end
                 else
-                    CloseConfirmInteraction()
+                    CloseActiveInteraction()
                 end
-            else
-                CloseActiveInteraction()
-            end
+            end)
             return
         end
         if currentMode == "CONFIRM" then
             local wantSpace = (d.enableSpaceConfirm ~= false and key == "SPACE")
             local wantOne = (d.enableNumberHotkeys ~= false and key == "1")
             if wantSpace or wantOne then
-                self:SetPropagateKeyboardInput(false)
-                if activeConfirmDestructive then
-                    return
-                end
-                local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
-                if (now - (confirmEnteredAt or 0)) < 0.15 then
-                    return
-                end
-                if f.priBtn:IsShown() and f.priBtn:IsEnabled() then
-                    local fn = f.priBtn:GetScript("OnClick")
-                    if fn then fn(f.priBtn) end
-                end
+                ConsumeKey(function()
+                    if activeConfirmDestructive then
+                        return
+                    end
+                    local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+                    if (now - (confirmEnteredAt or 0)) < 0.15 then
+                        return
+                    end
+                    if f.priBtn:IsShown() and f.priBtn:IsEnabled() then
+                        local fn = f.priBtn:GetScript("OnClick")
+                        if fn then fn(f.priBtn) end
+                    end
+                end)
                 return
             end
-            self:SetPropagateKeyboardInput(true)
+            pcall(self.SetPropagateKeyboardInput, self, true)
             return
         end
         if d.enableNumberHotkeys ~= false then
             local num = tonumber(key)
             if num and num >= 1 and num <= 9 and currentOptions[num] and type(currentOptions[num].onClick) == "function" then
-                self:SetPropagateKeyboardInput(false)
-                currentOptions[num].onClick()
+                ConsumeKey(function()
+                    currentOptions[num].onClick()
+                end)
                 return
             end
         end
         if d.enableSpaceConfirm ~= false and key == "SPACE" then
             if f.priBtn:IsShown() and f.priBtn:IsEnabled() then
-                self:SetPropagateKeyboardInput(false)
-                local fn = f.priBtn:GetScript("OnClick")
-                if fn then fn(f.priBtn) end
+                ConsumeKey(function()
+                    local fn = f.priBtn:GetScript("OnClick")
+                    if fn then fn(f.priBtn) end
+                end)
                 return
             elseif #currentOptions == 1 and type(currentOptions[1].onClick) == "function" then
-                self:SetPropagateKeyboardInput(false)
-                currentOptions[1].onClick()
+                ConsumeKey(function()
+                    currentOptions[1].onClick()
+                end)
                 return
             end
         end
-        self:SetPropagateKeyboardInput(true)
+        pcall(self.SetPropagateKeyboardInput, self, true)
     end)
 
-    f:SetScript("OnHide", function()
+    f:SetScript("OnHide", function(self)
+        pcall(self.EnableKeyboard, self, false)
+        if not InCombatLockdown() then
+            pcall(self.SetPropagateKeyboardInput, self, true)
+        end
         if _G.GameTooltip then _G.GameTooltip:Hide() end
         local dw = _G.DynamicSuite and _G.DynamicSuite.DesktopWindows
         if dw and type(dw.SyncAllUISpecialFrames) == "function" and not InCombatLockdown() then
@@ -1546,19 +1653,29 @@ local function PopulateRewardsSection(yCursor, isChoiceMode, includeRequired)
     local cardIdx = 0
     local rewardsList = {}
 
+    local function SafeGetQuestItemInfo(kind, idx)
+        if type(_G.GetQuestItemInfo) ~= "function" then return nil end
+        local ok, name, tex, count, quality = pcall(_G.GetQuestItemInfo, kind, idx)
+        if not ok or name == nil or SafeIsSecret(name) then return nil end
+        local safeName = SafeStr(name, "")
+        if safeName == "" then return nil end
+        local safeTex = (tex ~= nil and not SafeIsSecret(tex)) and tex or nil
+        return safeName, safeTex, SafeNum(count, 1), SafeNum(quality, 1)
+    end
+
     if includeRequired then
         local numReq = (type(_G.GetNumQuestItems) == "function") and SafeNum(_G.GetNumQuestItems(), 0) or 0
-        if numReq > 0 and type(_G.GetQuestItemInfo) == "function" then
+        if numReq > 0 then
             for i = 1, numReq do
-                local name, tex, count, quality = _G.GetQuestItemInfo("required", i)
-                if name and not SafeIsSecret(name) then
+                local name, tex, count, quality = SafeGetQuestItemInfo("required", i)
+                if name then
                     table.insert(rewardsList, {
                         kind = "required",
                         index = i,
-                        name = SafeStr(name),
+                        name = name,
                         icon = tex,
-                        count = SafeNum(count, 1),
-                        quality = SafeNum(quality, 1),
+                        count = count,
+                        quality = quality,
                         sub = "Required Item",
                     })
                 end
@@ -1570,34 +1687,34 @@ local function PopulateRewardsSection(yCursor, isChoiceMode, includeRequired)
         local money = (type(_G.GetRewardMoney) == "function") and SafeNum(_G.GetRewardMoney(), 0) or 0
         local xp = (type(_G.GetRewardXP) == "function") and SafeNum(_G.GetRewardXP(), 0) or 0
 
-        if numChoices > 0 and type(_G.GetQuestItemInfo) == "function" then
+        if numChoices > 0 then
             for i = 1, numChoices do
-                local name, tex, count, quality = _G.GetQuestItemInfo("choice", i)
-                if name and not SafeIsSecret(name) then
+                local name, tex, count, quality = SafeGetQuestItemInfo("choice", i)
+                if name then
                     table.insert(rewardsList, {
                         kind = "choice",
                         index = i,
-                        name = SafeStr(name),
+                        name = name,
                         icon = tex,
-                        count = SafeNum(count, 1),
-                        quality = SafeNum(quality, 1),
+                        count = count,
+                        quality = quality,
                         sub = isChoiceMode and "Click to Choose" or "Choice Reward",
                     })
                 end
             end
         end
 
-        if numRewards > 0 and type(_G.GetQuestItemInfo) == "function" then
+        if numRewards > 0 then
             for i = 1, numRewards do
-                local name, tex, count, quality = _G.GetQuestItemInfo("reward", i)
-                if name and not SafeIsSecret(name) then
+                local name, tex, count, quality = SafeGetQuestItemInfo("reward", i)
+                if name then
                     table.insert(rewardsList, {
                         kind = "reward",
                         index = i,
-                        name = SafeStr(name),
+                        name = name,
                         icon = tex,
-                        count = SafeNum(count, 1),
-                        quality = SafeNum(quality, 1),
+                        count = count,
+                        quality = quality,
                         sub = "Guaranteed Reward",
                     })
                 end
@@ -1918,6 +2035,7 @@ local function RenderReaderState(opts)
     f.footerHint:SetText(table.concat(hints, "  |  "))
 
     f:Show()
+    SyncReaderKeyboardState(f)
     if type(f.Raise) == "function" then
         pcall(f.Raise, f)
     end
@@ -1936,6 +2054,7 @@ function DynamicDialogue:ShouldIntercept(kind)
     if IsModuleDisabledInSuite() then return false end
     local db = EnsureDB()
     if not db.enabled then return false end
+    if IsNonStandardGameMode() then return false end
     if kind == "GOSSIP" and db.replaceGossip == false then return false end
     if kind == "QUEST" and db.replaceQuests == false then return false end
     if db.hideInCombat ~= false and InCombatLockdown() then return false end
@@ -2200,7 +2319,14 @@ function DynamicDialogue:ShowQuestGreeting()
 
     local numActive = (type(_G.GetNumActiveQuests) == "function") and SafeNum(_G.GetNumActiveQuests(), 0) or 0
     for i = 1, numActive do
-        local title, isComplete = _G.GetActiveTitle(i)
+        local title, isComplete = nil, false
+        if type(_G.GetActiveTitle) == "function" then
+            local okT, resT, resComp = pcall(_G.GetActiveTitle, i)
+            if okT then
+                title = resT
+                isComplete = resComp
+            end
+        end
         local qID = nil
         if type(_G.GetActiveQuestID) == "function" then
             local okID, resID = pcall(_G.GetActiveQuestID, i)
@@ -2238,7 +2364,13 @@ function DynamicDialogue:ShowQuestGreeting()
 
     local numAvail = (type(_G.GetNumAvailableQuests) == "function") and SafeNum(_G.GetNumAvailableQuests(), 0) or 0
     for i = 1, numAvail do
-        local title = _G.GetAvailableTitle(i)
+        local title = nil
+        if type(_G.GetAvailableTitle) == "function" then
+            local okT, resT = pcall(_G.GetAvailableTitle, i)
+            if okT then
+                title = resT
+            end
+        end
         local safeTitle = SafeStr(title, "")
         local qID, isRepeatable, isLegendary = nil, false, false
         if type(_G.GetAvailableQuestInfo) == "function" then
@@ -2414,7 +2546,13 @@ function DynamicDialogue:ShowQuestProgress()
     local npcName = ResolveNpcName("Quest")
     local qTitle  = (type(_G.GetTitleText) == "function") and SafeStr(_G.GetTitleText(), "Quest") or "Quest"
     local qProg   = (type(_G.GetProgressText) == "function") and SafeStr(_G.GetProgressText(), "") or ""
-    local canComplete = (type(_G.IsQuestCompletable) == "function") and (_G.IsQuestCompletable() == true)
+    local canComplete = false
+    if type(_G.IsQuestCompletable) == "function" then
+        local okC, resC = pcall(_G.IsQuestCompletable)
+        if okC and not SafeIsSecret(resC) and resC == true then
+            canComplete = true
+        end
+    end
 
     RenderReaderState({
         badge = "PROGRESS",
@@ -3889,7 +4027,7 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
         HandleQuestEnded()
     elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
         local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
-        if not iEnum then return end
+        if not iEnum or arg1 == nil or SafeIsSecret(arg1) then return end
         if arg1 == iEnum.Gossip then
             HandleGossipEnded()
         elseif arg1 == iEnum.Binder then
@@ -3900,6 +4038,10 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
             HandleQuestEnded()
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
+        if readerFrame then
+            pcall(readerFrame.SetPropagateKeyboardInput, readerFrame, true)
+            pcall(readerFrame.EnableKeyboard, readerFrame, false)
+        end
         local db = EnsureDB()
         if db.hideInCombat ~= false then
             interactionSeq = interactionSeq + 1
@@ -3920,6 +4062,9 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
         end
     elseif event == "PLAYER_REGEN_ENABLED" then
         FlushPendingCombatRestores()
+        if readerFrame then
+            SyncReaderKeyboardState(readerFrame)
+        end
     end
 end)
 

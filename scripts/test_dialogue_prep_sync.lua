@@ -50,6 +50,7 @@ local function CreateHarness(opts)
         CloseGossip = 0,
         CloseQuest = 0,
         ClearInteraction = {},
+        RepopMe = 0,
     }
 
     local state = {
@@ -77,10 +78,24 @@ local function CreateHarness(opts)
         questPVP = false,
         questCompletable = false,
         questChoices = 0,
+        questItems = { required = {}, choice = {}, reward = {} },
         onQuest = {},
         completedQuest = {},
         readyForTurnIn = {},
         staticPopups = {},
+        inInstance = false,
+        instanceType = "none",
+        dead = false,
+        ghost = false,
+        unitCombat = {},
+        encounterInProgress = false,
+        instanceEncounterInProgress = false,
+        chatLockdown = false,
+        selfRezOpts = {},
+        lorewalking = false,
+        gameMode = 1,
+        throwSecretApi = false,
+        throwAccessApi = false,
     }
 
     -- Utility functions expected by WoW addons
@@ -114,8 +129,14 @@ local function CreateHarness(opts)
     env.IsAltKeyDown = function() return false end
     env.IsMouseButtonDown = function() return false end
     env.GetCursorPosition = function() return 0, 0 end
-    env.issecretvalue = function() return false end
-    env.canaccessvalue = function() return true end
+    env.issecretvalue = function(v)
+        if state.throwSecretApi then error("secret check err") end
+        return type(v) == "table" and v.__testSecret == true
+    end
+    env.canaccessvalue = function(v)
+        if state.throwAccessApi then error("access check err") end
+        return not (type(v) == "table" and v.__testSecret == true)
+    end
     env.hooksecurefunc = function(tbl, fnName, hookFn)
         if type(tbl) == "string" then
             hookFn = fnName
@@ -187,8 +208,8 @@ local function CreateHarness(opts)
         function w:EnableMouse(v) self._mouse = v and true or false end
         function w:IsMouseEnabled() return self._mouse end
         function w:EnableMouseWheel() end
-        function w:EnableKeyboard() end
-        function w:SetPropagateKeyboardInput() end
+        function w:EnableKeyboard(v) self._keyboardEnabled = v and true or false end
+        function w:SetPropagateKeyboardInput(v) self._propagateKeyboard = v and true or false end
         function w:SetClampedToScreen(v) self._clamped = v and true or false end
         function w:IsClampedToScreen() return self._clamped end
         function w:SetMovable() end
@@ -253,6 +274,11 @@ local function CreateHarness(opts)
             if self._scripts.OnClick then self._scripts.OnClick(self, "LeftButton") end
         end
         function w:RegisterEvent(ev)
+            self._events[ev] = true
+        end
+        function w:RegisterUnitEvent(ev, u1, u2)
+            self._unitEvents = self._unitEvents or {}
+            self._unitEvents[ev] = u1 or true
             self._events[ev] = true
         end
         function w:UnregisterEvent(ev)
@@ -361,7 +387,32 @@ local function CreateHarness(opts)
         GossipOptionRecFlags = {
             QuestLabelPrepend = 1,
         },
+        GameMode = {
+            Standard = 1,
+            Talebound = 4,
+        },
     }
+    env.C_Lorewalking = {
+        IsLorewalkingActive = function() return state.lorewalking == true end,
+    }
+    env.C_GameRules = {
+        GetActiveGameMode = function() return state.gameMode end,
+    }
+    env.C_InstanceEncounter = {
+        IsEncounterInProgress = function() return state.instanceEncounterInProgress == true end,
+    }
+    env.IsEncounterInProgress = function()
+        return state.encounterInProgress == true
+    end
+    env.C_ChatInfo = {
+        InChatMessagingLockdown = function() return state.chatLockdown == true end,
+    }
+    env.C_DeathInfo = {
+        GetSelfResurrectOptions = function() return state.selfRezOpts or {} end,
+    }
+    env.RepopMe = function()
+        calls.RepopMe = (calls.RepopMe or 0) + 1
+    end
 
     env.C_PlayerInteractionManager = {
         IsInteractingNpcOfType = function(iType)
@@ -426,7 +477,7 @@ local function CreateHarness(opts)
     end
     env.UnitClass = function() return "Mage", "MAGE", 8 end
     env.GetRealmName = function() return "Frostmourne" end
-    env.IsInInstance = function() return false, "none" end
+    env.IsInInstance = function() return state.inInstance == true, state.instanceType or "none" end
     env.GetGreetingText = function() return state.greetingText end
     env.GetNumActiveQuests = function() return #state.greetingActive end
     env.GetActiveTitle = function(i)
@@ -471,7 +522,21 @@ local function CreateHarness(opts)
     env.IsQuestCompletable = function() return state.questCompletable end
     env.GetNumQuestChoices = function() return state.questChoices end
     env.GetNumQuestRewards = function() return 0 end
-    env.GetNumQuestItems = function() return 0 end
+    env.GetNumQuestItems = function()
+        if state.questItems and state.questItems.required then
+            return #state.questItems.required
+        end
+        return 0
+    end
+    env.GetQuestItemInfo = function(kind, idx)
+        if state.onGetQuestItemInfo then
+            return state.onGetQuestItemInfo(kind, idx)
+        end
+        local tbl = state.questItems and state.questItems[kind]
+        local item = tbl and tbl[idx]
+        if not item then return nil end
+        return item.name, item.texture, item.count, item.quality
+    end
     env.GetRewardMoney = function() return 0 end
     env.GetRewardXP = function() return 0 end
     env.GetQuestMoneyToGet = function() return 0 end
@@ -517,8 +582,9 @@ local function CreateHarness(opts)
     env.GetNumGroupMembers = function() return 0 end
     env.IsInGroup = function() return false end
     env.IsInRaid = function() return false end
-    env.UnitIsDeadOrGhost = function() return false end
-    env.UnitIsGhost = function() return false end
+    env.UnitIsDeadOrGhost = function() return state.dead == true end
+    env.UnitIsGhost = function() return state.ghost == true end
+    env.UnitAffectingCombat = function(u) return (state.unitCombat and state.unitCombat[u]) == true end
     env.UnitLevel = function() return 80 end
     env.UnitGUID = function() return "Player-3725-00000001" end
     env.C_Container = {
@@ -609,10 +675,21 @@ local function CreateHarness(opts)
         return out
     end
 
+    local function MakeSecret(tag)
+        return setmetatable({ __testSecret = true, tag = tag or "secret" }, {
+            __lt = function() error("Attempt to compare secret value") end,
+            __le = function() error("Attempt to compare secret value") end,
+            __concat = function() error("Attempt to concat secret value") end,
+            __len = function() error("Attempt to measure secret value") end,
+        })
+    end
+
     return {
         env = env,
         state = state,
         calls = calls,
+        eventFrames = eventFrames,
+        MakeSecret = MakeSecret,
         LoadModule = LoadModule,
         FireEvent = FireEvent,
         AdvanceTime = AdvanceTime,
@@ -1463,6 +1540,276 @@ RunTest("T17: Delayed 0.05s Prep Retry Hides Reader, Nil-ID Greeting Fallback & 
     h.AdvanceTime(0)
     assertEqual(h.calls.AcceptQuest, 0, "Soft-disabled DynamicPrep must NOT auto-accept quests")
     assertEqual(rf:IsShown(), true, "DynamicDialogue must render QUEST_DETAIL immediately when Prep is soft-disabled")
+end)
+
+-- ============================================================================
+-- TEST 18: DynamicDialogue OnKeyDown Combat-Lockdown Keyboard Propagation Safety
+-- ============================================================================
+RunTest("T18: DynamicDialogue Keyboard Propagation Never Traps Combat Keys", function()
+    local h = CreateHarness({ withSuite = true })
+    h.LoadModule(DIALOGUE_PATH, "DynamicSuite")
+    h.FireEvent("ADDON_LOADED", "DynamicSuite")
+
+    h.state.interactingGossip = true
+    h.env.GossipFrame._shown = true
+    h.state.gossipOpts = {
+        { gossipOptionID = 88001, name = "Tell me more", flags = 0, status = 0, orderIndex = 0 },
+        { gossipOptionID = 88002, name = "Carry on", flags = 0, status = 0, orderIndex = 1 },
+    }
+    h.FireEvent("GOSSIP_SHOW")
+    h.AdvanceTime(0)
+
+    local rf = h.env.DynamicDialogueReaderFrame
+    assertTrue(rf and rf:IsShown(), "Reader should open for multi-option gossip")
+    assertEqual(rf._keyboardEnabled, true, "Keyboard should be enabled while reader is open out of combat")
+    assertEqual(rf._propagateKeyboard, true, "Keyboard propagation must default to true on open")
+
+    local onKeyDown = rf:GetScript("OnKeyDown")
+    assertTrue(type(onKeyDown) == "function", "OnKeyDown script must exist")
+
+    -- Pressing hotkey "1" sets propagation false only for the current key event, then restores on frame tick 0
+    onKeyDown(rf, "1")
+    assertEqual(h.calls.SelectOptionGossip[1], 88001, "Hotkey 1 selects first gossip option")
+    h.AdvanceTime(0)
+    assertEqual(rf._propagateKeyboard, true, "Keyboard propagation must reset to true immediately after hotkey")
+
+    -- Disable hideInCombat, trigger combat while reader stays visible, and confirm keyboard capture is disabled
+    h.env.DynamicDialogueDB.hideInCombat = false
+    h.state.inCombat = true
+    h.FireEvent("PLAYER_REGEN_DISABLED")
+    assertEqual(rf:IsShown(), true, "Reader stays shown when hideInCombat is false")
+    assertEqual(rf._keyboardEnabled, false, "Entering combat must disable reader keyboard capture even if hideInCombat is false")
+    assertEqual(rf._propagateKeyboard, true, "Entering combat must leave keyboard propagation enabled")
+
+    local prevCalls = #h.calls.SelectOptionGossip
+    onKeyDown(rf, "2")
+    assertEqual(#h.calls.SelectOptionGossip, prevCalls, "OnKeyDown must ignore hotkeys during combat")
+
+    -- Exiting combat restores keyboard capture and propagation cleanly
+    h.state.inCombat = false
+    h.FireEvent("PLAYER_REGEN_ENABLED")
+    assertEqual(rf._keyboardEnabled, true, "Exiting combat re-enables keyboard when reader remains shown")
+    assertEqual(rf._propagateKeyboard, true, "Exiting combat preserves keyboard propagation = true")
+
+    -- Opening reader directly in combat (with hideInCombat = false) keeps keyboard capture off
+    rf:Hide()
+    h.state.inCombat = true
+    h.FireEvent("GOSSIP_SHOW")
+    h.AdvanceTime(0)
+    assertEqual(rf:IsShown(), true, "Reader opens in combat when hideInCombat is false")
+    assertEqual(rf._keyboardEnabled, false, "Reader opened in combat must keep keyboard disabled")
+end)
+
+-- ============================================================================
+-- TEST 19: Lorewalking, Talebound Non-Standard Mode & Quest/Interaction Secret Guards
+-- ============================================================================
+RunTest("T19: Lorewalking, Talebound Bypass & Quest/Interaction Secret Guards", function()
+    local h = CreateHarness({ withSuite = true })
+    h.LoadModule(PREP_PATH, "DynamicSuite")
+    h.LoadModule(DIALOGUE_PATH, "DynamicSuite")
+    h.FireEvent("ADDON_LOADED", "DynamicSuite")
+    h.FireEvent("PLAYER_LOGIN")
+    h.env.DynamicPrep.db.autoQuestGossip = true
+
+    local rf = h.env.DynamicDialogueReaderFrame
+
+    -- Scenario A: C_Lorewalking API active bypasses DynamicDialogue gossip interception
+    h.state.interactingGossip = true
+    h.env.GossipFrame._shown = true
+    h.state.gossipOpts = {
+        { gossipOptionID = 89001, name = "Begin lorewalk", flags = 0, status = 0, orderIndex = 0 },
+    }
+    h.state.lorewalking = true
+    h.FireEvent("GOSSIP_SHOW")
+    h.AdvanceTime(0.06)
+    assertEqual(rf and rf:IsShown() or false, false, "DynamicDialogue must bypass when C_Lorewalking.IsLorewalkingActive() is true")
+    assertEqual(#h.calls.SelectOptionGossip, 0, "DynamicPrep must bypass when C_Lorewalking.IsLorewalkingActive() is true")
+    h.state.lorewalking = false
+
+    -- Scenario B: Gossip text containing "lorewalk" bypasses DynamicDialogue even without LorewalkingFrame
+    h.state.gossipText = "Ask Cho to begin a Lorewalking memory."
+    h.FireEvent("GOSSIP_SHOW")
+    h.AdvanceTime(0.06)
+    assertEqual(rf and rf:IsShown() or false, false, "DynamicDialogue must bypass on 'lorewalk' gossip text")
+    h.state.gossipText = "Greetings, champion."
+
+    -- Scenario C: Non-standard Talebound GameMode cleanly bypasses both DynamicDialogue and DynamicPrep
+    h.state.gameMode = h.env.Enum.GameMode.Talebound
+    h.FireEvent("GOSSIP_SHOW")
+    h.AdvanceTime(0.06)
+    assertEqual(rf and rf:IsShown() or false, false, "DynamicDialogue must bypass gossip in Talebound game mode")
+    assertEqual(#h.calls.SelectOptionGossip, 0, "DynamicPrep must bypass gossip in Talebound game mode")
+
+    h.state.interactingGossip = false
+    h.state.interactingQuest = true
+    h.env.GossipFrame._shown = false
+    h.env.QuestFrame._shown = true
+    h.state.questID = 89002
+    h.state.questTitle = "Talebound Trial"
+    h.FireEvent("QUEST_DETAIL")
+    h.AdvanceTime(0.06)
+    assertEqual(rf and rf:IsShown() or false, false, "DynamicDialogue must bypass quests in Talebound game mode")
+    assertEqual(h.calls.AcceptQuest, 0, "DynamicPrep must bypass auto-accept in Talebound game mode")
+    h.state.gameMode = h.env.Enum.GameMode.Standard
+
+    -- Scenario D: DynamicDialogue survives secret/throwing quest & interaction APIs
+    h.env.DynamicPrep.db.autoQuestGossip = false
+    local sec = h.MakeSecret("quest")
+    h.env.IsQuestCompletable = function() return sec end
+    h.state.interactingQuest = true
+    h.env.QuestFrame._shown = true
+    h.state.questItems.required = {
+        { name = sec, texture = sec, count = sec, quality = sec },
+        { name = "Valid Token", texture = 134400, count = 2, quality = 3 },
+    }
+    h.FireEvent("QUEST_PROGRESS")
+    h.AdvanceTime(0)
+    rf = h.env.DynamicDialogueReaderFrame
+    assertEqual(rf and rf:IsShown(), true, "QUEST_PROGRESS renders cleanly even when IsQuestCompletable and item fields are secret")
+    assertEqual(rf.priBtn:IsEnabled(), false, "Secret IsQuestCompletable must treat quest as non-completable rather than crashing")
+
+    h.state.greetingActive = { { questID = 89003, title = sec, isComplete = sec } }
+    h.state.greetingAvail = { { questID = 89004, title = sec } }
+    h.FireEvent("QUEST_GREETING")
+    h.AdvanceTime(0)
+    assertEqual(#h.VisibleOptions(), 2, "QUEST_GREETING renders fallback labels when GetActiveTitle/GetAvailableTitle return secrets")
+
+    h.FireEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", sec)
+    assertEqual(rf:IsShown(), true, "Secret arg1 on PLAYER_INTERACTION_MANAGER_FRAME_HIDE is ignored safely")
+end)
+
+-- ============================================================================
+-- TEST 20: DynamicPrep Unified Secret Guards, RegisterUnitEvent & Lockdown Safety
+-- ============================================================================
+RunTest("T20: DynamicPrep Secret Event Guards, RegisterUnitEvent & Combat/Lockdown Safety", function()
+    local h = CreateHarness({ withSuite = true })
+    h.env.UpdateAddOnMemoryUsage = function() end
+    h.env.GetAddOnMemoryUsage = function() return 100 end
+    h.env.debugprofilestop = function() return 10 end
+    local chatLines = {}
+    h.env.DEFAULT_CHAT_FRAME = { AddMessage = function(_, msg) table.insert(chatLines, tostring(msg)) end }
+
+    h.LoadModule(PREP_PATH, "DynamicSuite")
+    h.FireEvent("ADDON_LOADED", "DynamicSuite")
+    h.FireEvent("PLAYER_LOGIN")
+
+    -- Verify crbEventFrame registered UNIT_SPELLCAST_SENT/SUCCEEDED and UNIT_INVENTORY_CHANGED with "player" filter
+    local foundCastSent, foundCastSucc, foundInv = false, false, false
+    for _, f in ipairs(h.eventFrames) do
+        if f._unitEvents then
+            if f._unitEvents.UNIT_SPELLCAST_SENT == "player" then foundCastSent = true end
+            if f._unitEvents.UNIT_SPELLCAST_SUCCEEDED == "player" then foundCastSucc = true end
+            if f._unitEvents.UNIT_INVENTORY_CHANGED == "player" then foundInv = true end
+        end
+    end
+    assertTrue(foundCastSent and foundCastSucc and foundInv,
+        "crbEventFrame must prefer RegisterUnitEvent(..., 'player') for spellcast and inventory events")
+
+    -- Verify direct event secret args cause zero errors across all hardened handlers
+    local sec = h.MakeSecret("evt")
+    h.FireEvent("UNIT_SPELLCAST_SENT", sec, sec, sec, sec)
+    h.FireEvent("UNIT_SPELLCAST_SUCCEEDED", sec, sec, sec)
+    h.FireEvent("UNIT_INVENTORY_CHANGED", sec)
+    h.FireEvent("PLAYER_SPECIALIZATION_CHANGED", sec)
+    h.FireEvent("ENCOUNTER_END", 1, "Boss", 15, 20, sec)
+    h.FireEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", sec)
+    h.FireEvent("PLAYER_INTERACTION_MANAGER_FRAME_HIDE", sec)
+    h.FireEvent("GOSSIP_SHOW", sec)
+
+    -- Verify secret-check pcall resilience when issecretvalue / canaccessvalue throw errors
+    h.state.throwSecretApi = true
+    h.state.throwAccessApi = true
+    assertEqual(h.env.DynamicPrep:FormatCompactNumber(1500), "1.5k", "FormatCompactNumber works even if secret probes throw")
+    h.state.throwSecretApi = false
+    h.state.throwAccessApi = false
+
+    -- Verify IsGroupOrEncounterInCombat checks C_InstanceEncounter and handles secret UnitAffectingCombat
+    h.state.unitCombat.party1 = sec
+    h.env.IsInGroup = function() return true end
+    h.env.GetNumSubgroupMembers = function() return 1 end
+    assertEqual(h.env.DynamicPrep:IsGroupOrEncounterInCombat(sec), false,
+        "IsGroupOrEncounterInCombat survives secret inviter and party combat values")
+    h.state.instanceEncounterInProgress = true
+    assertEqual(h.env.DynamicPrep:IsGroupOrEncounterInCombat(), true,
+        "IsGroupOrEncounterInCombat honours C_InstanceEncounter.IsEncounterInProgress()")
+    h.state.instanceEncounterInProgress = false
+    h.env.IsInGroup = function() return false end
+
+    -- Verify LinkKeystoneToPartyChat handles throwing C_ChatInfo.InChatMessagingLockdown and C_InstanceEncounter
+    h.env.DynamicPrep.GetKeystoneData = function() return 2660, 12, "AK" end
+    h.env.C_ChatInfo.InChatMessagingLockdown = function() error("lockdown err") end
+    h.state.instanceEncounterInProgress = true
+    local sentChat = 0
+    h.env.SendChatMessage = function() sentChat = sentChat + 1 end
+    h.env.DynamicPrep:LinkKeystoneToPartyChat()
+    assertEqual(sentChat, 0, "Encounter lockdown via C_InstanceEncounter blocks keystone SendChatMessage safely")
+    h.state.instanceEncounterInProgress = false
+
+    -- Verify GetPlayerRole prefers C_SpecializationInfo and degrades gracefully to DAMAGER
+    h.env.C_SpecializationInfo.GetSpecializationRole = function() return "HEALER" end
+    assertEqual(h.env.DynamicPrep:GetPlayerRole(), "HEALER", "GetPlayerRole prefers C_SpecializationInfo.GetSpecializationRole")
+    h.env.C_SpecializationInfo.GetSpecialization = function() error("unspecialised mode") end
+    h.env.GetSpecialization = function() return nil end
+    assertEqual(h.env.DynamicPrep:GetPlayerRole(), "DAMAGER", "GetPlayerRole degrades gracefully to DAMAGER when spec API fails")
+
+    -- Verify secret quest APIs produce zero errors under autoQuestGossip
+    h.env.DynamicPrep.db.autoQuestGossip = true
+    h.env.IsQuestCompletable = function() return sec end
+    h.env.GetQuestMoneyToGet = function() return sec end
+    h.env.GetNumQuestChoices = function() return sec end
+    h.env.QuestFlagsPVP = function() return sec end
+    h.env.QuestGetAutoAccept = function() return sec end
+    h.env.C_QuestLog.IsComplete = function() error("secret quest log") end
+    h.env.C_QuestLog.ReadyForTurnIn = function() return sec end
+    h.state.interactingQuest = true
+    h.FireEvent("QUEST_DETAIL")
+    h.FireEvent("QUEST_PROGRESS")
+    h.FireEvent("QUEST_COMPLETE")
+    h.AdvanceTime(0.1)
+
+    -- Run /dprep simkey simulation end-to-end
+    h.env.SlashCmdList.DYNAMICPREP("simkey")
+    assertTrue(#chatLines >= 1 and chatLines[#chatLines]:find("0 errors", 1, true) ~= nil,
+        "/dprep simkey benchmark completes with 0 errors")
+end)
+
+-- ============================================================================
+-- TEST 21: DynamicPrep Wipe Auto-Release Respects Soulstone/Reincarnation Self-Rez
+-- ============================================================================
+RunTest("T21: Wipe Auto-Release Timers Respect CanSafelyAutoRelease Self-Rez Options", function()
+    local h = CreateHarness({ withSuite = true })
+    h.LoadModule(PREP_PATH, "DynamicSuite")
+    h.FireEvent("ADDON_LOADED", "DynamicSuite")
+    h.FireEvent("PLAYER_LOGIN")
+
+    h.env.DynamicPrep.db.autoReleaseMode = "WIPE_AND_CTRL"
+    h.state.inInstance = true
+    h.state.instanceType = "raid"
+    h.state.dead = true
+    h.state.ghost = false
+
+    -- Scenario A: Soulstone/Reincarnation self-rez option present blocks both ENCOUNTER_END and PLAYER_REGEN_ENABLED timers
+    h.state.selfRezOpts = { { name = "Soulstone", canUse = true } }
+    h.FireEvent("ENCOUNTER_END", 101, "Boss", 15, 20, 0)
+    h.FireEvent("PLAYER_REGEN_ENABLED")
+    h.AdvanceTime(0.75)
+    assertEqual(h.calls.RepopMe, 0, "Auto-release must NOT release spirit when Soulstone/self-rez option is available")
+
+    -- Scenario B: Secret ENCOUNTER_END arg5 must NOT trigger auto-release even when no self-rez exists
+    h.state.selfRezOpts = {}
+    local sec = h.MakeSecret("success")
+    h.FireEvent("ENCOUNTER_END", 101, "Boss", 15, 20, sec)
+    h.AdvanceTime(0.75)
+    assertEqual(h.calls.RepopMe, 0, "Secret ENCOUNTER_END outcome must never trigger RepopMe")
+
+    -- Scenario C: Genuine wipe without self-rez releases cleanly on ENCOUNTER_END (arg5 = 0) and PLAYER_REGEN_ENABLED
+    h.FireEvent("ENCOUNTER_END", 101, "Boss", 15, 20, 0)
+    h.AdvanceTime(0.75)
+    assertEqual(h.calls.RepopMe, 1, "ENCOUNTER_END wipe releases spirit once no self-rez option exists")
+
+    h.FireEvent("PLAYER_REGEN_ENABLED")
+    h.AdvanceTime(0.75)
+    assertEqual(h.calls.RepopMe, 2, "PLAYER_REGEN_ENABLED wipe releases spirit once no self-rez option exists")
 end)
 
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))

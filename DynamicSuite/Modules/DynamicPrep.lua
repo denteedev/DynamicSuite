@@ -4,11 +4,13 @@ local _dpStatCache = {}
 local _dpSimSecretMode = false
 
 local function _IsSecret(v)
-    if type(issecretvalue) == "function" and issecretvalue(v) then
-        return true
+    if type(issecretvalue) == "function" then
+        local ok, res = pcall(issecretvalue, v)
+        if ok and res then return true end
     end
-    if type(canaccessvalue) == "function" and not canaccessvalue(v) then
-        return true
+    if type(canaccessvalue) == "function" then
+        local ok, can = pcall(canaccessvalue, v)
+        if ok and can == false then return true end
     end
     if v == nil then return false end
     if _dpSimSecretMode and type(v) == "table" and v.__dpSecret then return true end
@@ -36,6 +38,27 @@ local function IsInPetBattle()
     end
     local ok, res = pcall(pb.IsInBattle)
     return ok and not _IsSecret(res) and res == true
+end
+
+local function IsNonStandardGameMode()
+    local gr = _G.C_GameRules
+    if type(gr) ~= "table" or type(gr.GetActiveGameMode) ~= "function" then
+        return false, nil
+    end
+    local ok, mode = pcall(gr.GetActiveGameMode)
+    if not ok or mode == nil or _IsSecret(mode) then
+        return false, nil
+    end
+    local gmEnum = _G.Enum and _G.Enum.GameMode
+    if type(gmEnum) == "table" then
+        if gmEnum.Standard ~= nil then
+            return (mode ~= gmEnum.Standard), mode
+        end
+        if gmEnum.Talebound ~= nil and mode == gmEnum.Talebound then
+            return true, mode
+        end
+    end
+    return false, nil
 end
 
 
@@ -1292,10 +1315,13 @@ local function IsActiveDelveInstance()
 end
 
 local function SafeGetNumSpecializations()
-    if C_SpecializationInfo and C_SpecializationInfo.GetNumSpecializations then
-        return C_SpecializationInfo.GetNumSpecializations() or 0
+    local fn = (C_SpecializationInfo and C_SpecializationInfo.GetNumSpecializations) or _G.GetNumSpecializations
+    if type(fn) ~= "function" then return 0 end
+    local ok, count = pcall(fn)
+    if not ok or _IsSecret(count) or type(count) ~= "number" or count < 0 then
+        return 0
     end
-    return GetNumSpecializations and GetNumSpecializations() or 0
+    return count
 end
 
 local function SafeGetSpecialization()
@@ -1319,6 +1345,7 @@ local function SafeGetSpecializationInfo(specIndex)
         return nil
     end
     if _IsSecret(specName) or type(specName) ~= "string" then specName = nil end
+    if _IsSecret(role) or type(role) ~= "string" then role = nil end
     if _IsSecret(primaryStatIndex) or type(primaryStatIndex) ~= "number" then primaryStatIndex = 1 end
     return specID, specName, desc, icon, role, primaryStatIndex
 end
@@ -1563,15 +1590,12 @@ function DynamicPrep:DetectActiveFolioBuffStat(forceScan)
 end
 
 local function IsSecretValue(val)
-    if canaccessvalue and not canaccessvalue(val) then return true end
-    if issecretvalue and issecretvalue(val) then return true end
-    return false
+    return _IsSecret(val)
 end
 
 
 local function SafeCompare(val1, op, val2)
-    if canaccessvalue and (not canaccessvalue(val1) or not canaccessvalue(val2)) then return false end
-    if issecretvalue and (issecretvalue(val1) or issecretvalue(val2)) then return false end
+    if _IsSecret(val1) or _IsSecret(val2) then return false end
     local ok, res = pcall(function()
         if op == ">" then return val1 > val2
         elseif op == ">=" then return val1 >= val2
@@ -1588,8 +1612,7 @@ local function SafeGetStringWidth(fs, defaultW)
     if not fs or not fs.GetStringWidth then return defaultW or 60 end
     local ok, w = pcall(function()
         local rawW = fs:GetStringWidth()
-        if IsSecretValue and IsSecretValue(rawW) then return nil end
-        if canaccessvalue and not canaccessvalue(rawW) then return nil end
+        if _IsSecret(rawW) then return nil end
         local n = tonumber(rawW)
         if n and n > 0 then return math.ceil(n) end
         return nil
@@ -1599,8 +1622,7 @@ local function SafeGetStringWidth(fs, defaultW)
 end
 
 function DynamicPrep:FormatCompactNumber(num)
-    if canaccessvalue and not canaccessvalue(num) then return tostring(num or 0) end
-    if issecretvalue and issecretvalue(num) then return tostring(num or 0) end
+    if _IsSecret(num) then return tostring(num or 0) end
     local ok, res = pcall(function()
         local n = tonumber(num) or 0
         if n >= 1000000 then
@@ -1814,15 +1836,22 @@ end
 
 function DynamicPrep:GetSpecAndLootData()
     local activeSpecID, activeSpecName = self:GetActiveSpecInfo()
-    local lootSpecID = GetLootSpecialization and GetLootSpecialization() or 0
+    local lootSpecID = 0
+    if type(GetLootSpecialization) == "function" then
+        local okL, lid = pcall(GetLootSpecialization)
+        if okL and not _IsSecret(lid) and type(lid) == "number" then
+            lootSpecID = lid
+        end
+    end
     local lootSpecName = activeSpecName
     local isOffSpecLoot = false
 
     if lootSpecID and lootSpecID ~= 0 and lootSpecID ~= activeSpecID then
         isOffSpecLoot = true
-        if GetSpecializationInfoByID then
-            local _, name = GetSpecializationInfoByID(lootSpecID)
-            if name and name ~= "" then
+        local specByIDFn = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfoByID) or _G.GetSpecializationInfoByID
+        if type(specByIDFn) == "function" then
+            local okS, _, name = pcall(specByIDFn, lootSpecID)
+            if okS and not _IsSecret(name) and type(name) == "string" and name ~= "" then
                 lootSpecName = name
             end
         end
@@ -2819,20 +2848,26 @@ function DynamicPrep:CycleActiveSpec()
     if numSpecs <= 1 then return end
     local curIndex = SafeGetSpecialization() or 1
     local nextIndex = (curIndex % numSpecs) + 1
-    if C_SpecializationInfo and C_SpecializationInfo.SetSpecialization then
-        C_SpecializationInfo.SetSpecialization(nextIndex)
-    elseif SetSpecialization then
-        SetSpecialization(nextIndex)
+    if C_SpecializationInfo and type(C_SpecializationInfo.SetSpecialization) == "function" then
+        pcall(C_SpecializationInfo.SetSpecialization, nextIndex)
+    elseif type(SetSpecialization) == "function" then
+        pcall(SetSpecialization, nextIndex)
     end
 end
 
 function DynamicPrep:CycleLootSpec()
     local numSpecs = SafeGetNumSpecializations()
-    if numSpecs <= 0 or not SetLootSpecialization then return end
-    local currentLoot = GetLootSpecialization() or 0
+    if numSpecs <= 0 or type(SetLootSpecialization) ~= "function" then return end
+    local currentLoot = 0
+    if type(GetLootSpecialization) == "function" then
+        local okL, lid = pcall(GetLootSpecialization)
+        if okL and not _IsSecret(lid) and type(lid) == "number" then
+            currentLoot = lid
+        end
+    end
     if currentLoot == 0 then
         local firstID = SafeGetSpecializationInfo(1)
-        if firstID then SetLootSpecialization(firstID) end
+        if firstID then pcall(SetLootSpecialization, firstID) end
         return
     end
     for i = 1, numSpecs do
@@ -2840,14 +2875,14 @@ function DynamicPrep:CycleLootSpec()
         if specID == currentLoot then
             if i < numSpecs then
                 local nextID = SafeGetSpecializationInfo(i + 1)
-                SetLootSpecialization(nextID or 0)
+                pcall(SetLootSpecialization, nextID or 0)
             else
-                SetLootSpecialization(0)
+                pcall(SetLootSpecialization, 0)
             end
             return
         end
     end
-    SetLootSpecialization(0)
+    pcall(SetLootSpecialization, 0)
 end
 
 function DynamicPrep:ResolveOmniumFolioTraitIDs()
@@ -2863,7 +2898,7 @@ function DynamicPrep:ResolveOmniumFolioTraitIDs()
                     local okInfo, info = pcall(_G.C_Traits.GetConfigInfo, cfgID)
                     if okInfo and type(info) == "table" then
                         local rawName = info.name
-                        local isSec = (issecretvalue and issecretvalue(rawName)) or false
+                        local isSec = _IsSecret(rawName)
                         if not isSec and type(rawName) == "string" then
                             local low = string.lower(rawName)
                             if string.find(low, "omnium", 1, true) or string.find(low, "folio", 1, true) then
@@ -3407,11 +3442,23 @@ local function SafeSendPrepChatMessage(msg, chatType)
 end
 
 local function IsInEncounterOrChatLockdown()
-    if C_ChatInfo and C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown() then
-        return true
+    if C_ChatInfo and type(C_ChatInfo.InChatMessagingLockdown) == "function" then
+        local okC, resC = pcall(C_ChatInfo.InChatMessagingLockdown)
+        if okC and not _IsSecret(resC) and resC == true then
+            return true
+        end
     end
-    if IsEncounterInProgress and IsEncounterInProgress() then
-        return true
+    if type(IsEncounterInProgress) == "function" then
+        local okE, resE = pcall(IsEncounterInProgress)
+        if okE and not _IsSecret(resE) and resE == true then
+            return true
+        end
+    end
+    if C_InstanceEncounter and type(C_InstanceEncounter.IsEncounterInProgress) == "function" then
+        local okIE, resIE = pcall(C_InstanceEncounter.IsEncounterInProgress)
+        if okIE and not _IsSecret(resIE) and resIE == true then
+            return true
+        end
     end
     return false
 end
@@ -5316,14 +5363,73 @@ local function ShouldAutoSelectSingleGossip(opt, inInstance, instType)
     return true
 end
 
+local function SafeIsQuestCompletable()
+    if type(IsQuestCompletable) ~= "function" then return false end
+    local ok, res = pcall(IsQuestCompletable)
+    return ok and not _IsSecret(res) and res == true
+end
+
+local function SafeGetQuestMoneyToGet()
+    if type(GetQuestMoneyToGet) ~= "function" then return 0 end
+    local ok, money = pcall(GetQuestMoneyToGet)
+    if ok and not _IsSecret(money) and type(money) == "number" then
+        return money
+    end
+    return 0
+end
+
+local function SafeGetNumQuestChoices()
+    if type(GetNumQuestChoices) ~= "function" then return 0 end
+    local ok, n = pcall(GetNumQuestChoices)
+    if ok and not _IsSecret(n) and type(n) == "number" then
+        return n
+    end
+    return 0
+end
+
+local function SafeQuestFlagsPVP()
+    if type(QuestFlagsPVP) ~= "function" then return false end
+    local ok, res = pcall(QuestFlagsPVP)
+    return ok and not _IsSecret(res) and res == true
+end
+
+local function SafeQuestGetAutoAccept()
+    if type(QuestGetAutoAccept) ~= "function" then return false end
+    local ok, res = pcall(QuestGetAutoAccept)
+    return ok and not _IsSecret(res) and res == true
+end
+
+local function SafeIsQuestCompleteOrReady(qID)
+    if not qID or _IsSecret(qID) or not C_QuestLog then return false end
+    if type(C_QuestLog.IsComplete) == "function" then
+        local okC, resC = pcall(C_QuestLog.IsComplete, qID)
+        if okC and not _IsSecret(resC) and resC == true then
+            return true
+        end
+    end
+    if type(C_QuestLog.ReadyForTurnIn) == "function" then
+        local okR, resR = pcall(C_QuestLog.ReadyForTurnIn, qID)
+        if okR and not _IsSecret(resR) and resR == true then
+            return true
+        end
+    end
+    return false
+end
+
 local function CanAutoProgressQuest()
-    if not (IsQuestCompletable and IsQuestCompletable()) then
+    if not SafeIsQuestCompletable() then
         return false
     end
-    if GetQuestMoneyToGet and (GetQuestMoneyToGet() or 0) > 0 then
+    if SafeGetQuestMoneyToGet() > 0 then
         return false
     end
-    local numItems = (GetNumQuestItems and GetNumQuestItems()) or 0
+    local numItems = 0
+    if type(GetNumQuestItems) == "function" then
+        local okN, rawN = pcall(GetNumQuestItems)
+        if okN and not _IsSecret(rawN) and type(rawN) == "number" and rawN > 0 then
+            numItems = rawN
+        end
+    end
     for i = 1, numItems do
         if GetQuestItemLink then
             pcall(GetQuestItemLink, "required", i)
@@ -5540,7 +5646,7 @@ end
 local function TryAcceptCurrentQuest()
     if InCombatLockdown and InCombatLockdown() then return false end
     if IsShiftKeyDown and IsShiftKeyDown() then return false end
-    if QuestFlagsPVP and QuestFlagsPVP() then return false end
+    if SafeQuestFlagsPVP() then return false end
 
     local curQID = nil
     if GetQuestID then
@@ -5549,7 +5655,7 @@ local function TryAcceptCurrentQuest()
             curQID = qid
         end
     end
-    local isAuto = (QuestGetAutoAccept and QuestGetAutoAccept() == true) or false
+    local isAuto = SafeQuestGetAutoAccept()
     if curQID and not isAuto and DynamicPrep:IsQuestAlreadyAccepted(curQID) then
         return false
     end
@@ -5603,8 +5709,8 @@ end
 local function TryCompleteCurrentQuest()
     if InCombatLockdown and InCombatLockdown() then return false end
     if IsShiftKeyDown and IsShiftKeyDown() then return false end
-    if GetQuestMoneyToGet and (GetQuestMoneyToGet() or 0) > 0 then return false end
-    local numChoices = (GetNumQuestChoices and GetNumQuestChoices()) or 0
+    if SafeGetQuestMoneyToGet() > 0 then return false end
+    local numChoices = SafeGetNumQuestChoices()
     if numChoices <= 1 and GetQuestReward then
         local curQID = nil
         if GetQuestID then
@@ -5658,14 +5764,26 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
     if self:GetActiveGossipCameraConflict() then
         return
     end
+    if IsNonStandardGameMode() then
+        return
+    end
 
     if event == "GOSSIP_SHOW" and C_GossipInfo then
         -- Never intercept Delve difficulty/companion picker frames (allow Midnight dungeon/world object custom textureKits)
-        if (_G.DelvesDifficultyPickerFrame and _G.DelvesDifficultyPickerFrame.IsShown and _G.DelvesDifficultyPickerFrame:IsShown())
-            or (_G.DelvesCompanionConfigurationFrame and _G.DelvesCompanionConfigurationFrame.IsShown and _G.DelvesCompanionConfigurationFrame:IsShown()) then
+        local delvesPickerShown = false
+        if _G.DelvesDifficultyPickerFrame and type(_G.DelvesDifficultyPickerFrame.IsShown) == "function" then
+            local okD, visD = pcall(_G.DelvesDifficultyPickerFrame.IsShown, _G.DelvesDifficultyPickerFrame)
+            delvesPickerShown = okD and not _IsSecret(visD) and visD == true
+        end
+        local delvesCompShown = false
+        if _G.DelvesCompanionConfigurationFrame and type(_G.DelvesCompanionConfigurationFrame.IsShown) == "function" then
+            local okC, visC = pcall(_G.DelvesCompanionConfigurationFrame.IsShown, _G.DelvesCompanionConfigurationFrame)
+            delvesCompShown = okC and not _IsSecret(visC) and visC == true
+        end
+        if delvesPickerShown or delvesCompShown then
             return
         end
-        if type(arg1) == "string" and arg1 ~= "" then
+        if not _IsSecret(arg1) and type(arg1) == "string" and arg1 ~= "" then
             local lowKit = arg1:lower()
             if (lowKit:find("delve", 1, true) and lowKit:find("picker", 1, true))
                 or lowKit:find("lorewalk", 1, true) then
@@ -5726,8 +5844,7 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                     if qID and not staleTurnedIn then
                         liveActiveCount = liveActiveCount + 1
                         local isComp = (not _IsSecret(q.isComplete) and q.isComplete == true)
-                            or (C_QuestLog and C_QuestLog.IsComplete and C_QuestLog.IsComplete(qID))
-                            or (C_QuestLog and C_QuestLog.ReadyForTurnIn and C_QuestLog.ReadyForTurnIn(qID))
+                            or SafeIsQuestCompleteOrReady(qID)
                         if isComp then
                             self:MarkAutoDialogueAction("GOSSIP_SELECT_ACTIVE", qID)
                             C_GossipInfo.SelectActiveQuest(qID)
@@ -5844,16 +5961,31 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
     if InCombatLockdown and InCombatLockdown() then return end
 
     if event == "QUEST_GREETING" then
-        local numActive = GetNumActiveQuests and GetNumActiveQuests() or 0
+        local numActive = 0
+        if type(GetNumActiveQuests) == "function" then
+            local okNA, resNA = pcall(GetNumActiveQuests)
+            if okNA and not _IsSecret(resNA) and type(resNA) == "number" and resNA > 0 then
+                numActive = resNA
+            end
+        end
         for i = 1, numActive do
-            local _, isComplete = GetActiveTitle(i)
-            local qID = (type(_G.GetActiveQuestID) == "function") and _G.GetActiveQuestID(i) or nil
-            if _IsSecret(qID) then qID = nil end
+            local isComplete = false
+            if type(GetActiveTitle) == "function" then
+                local okAT, _, resComp = pcall(GetActiveTitle, i)
+                if okAT and not _IsSecret(resComp) and resComp == true then
+                    isComplete = true
+                end
+            end
+            local qID = nil
+            if type(_G.GetActiveQuestID) == "function" then
+                local okID, resID = pcall(_G.GetActiveQuestID, i)
+                if okID and not _IsSecret(resID) and type(resID) == "number" and resID > 0 then
+                    qID = resID
+                end
+            end
             local staleTurnedIn = qID and (self:IsQuestAlreadyCompleted(qID) or self:IsQuestRecentlyTurnedIn(qID)) and not self:IsQuestAlreadyAccepted(qID)
             if not staleTurnedIn then
-                local isComp = isComplete
-                    or (qID and C_QuestLog and C_QuestLog.IsComplete and C_QuestLog.IsComplete(qID))
-                    or (qID and C_QuestLog and C_QuestLog.ReadyForTurnIn and C_QuestLog.ReadyForTurnIn(qID))
+                local isComp = isComplete or SafeIsQuestCompleteOrReady(qID)
                 if isComp then
                     self:MarkAutoDialogueAction("GREETING_SELECT_ACTIVE", qID or i)
                     SelectActiveQuest(i)
@@ -5861,11 +5993,25 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                 end
             end
         end
-        local numAvail = GetNumAvailableQuests and GetNumAvailableQuests() or 0
+        local numAvail = 0
+        if type(GetNumAvailableQuests) == "function" then
+            local okNV, resNV = pcall(GetNumAvailableQuests)
+            if okNV and not _IsSecret(resNV) and type(resNV) == "number" and resNV > 0 then
+                numAvail = resNV
+            end
+        end
         local firstValidAvailIdx = nil
         local firstValidAvailQID = nil
         for i = 1, numAvail do
-            local isTrivial = IsAvailableQuestTrivial and IsAvailableQuestTrivial(i)
+            local isTrivial = false
+            if type(IsAvailableQuestTrivial) == "function" then
+                local okTr, resTr = pcall(IsAvailableQuestTrivial, i)
+                if okTr and not _IsSecret(resTr) then
+                    isTrivial = resTr and true or false
+                end
+            else
+                isTrivial = nil
+            end
             local isRepeatable = false
             local qID = nil
             if type(_G.GetAvailableQuestInfo) == "function" then
@@ -5915,7 +6061,7 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                 if mySeq ~= (DynamicPrep._questDialogueSeq or 0) then return end
                 if IsModuleDisabledInSuite("DynamicPrep") or not DynamicPrep.db or DynamicPrep.db.autoQuestGossip == false then return end
                 if not DynamicPrep:IsQuestInteractionActive() then return end
-                local isAuto = (QuestGetAutoAccept and QuestGetAutoAccept() == true) or false
+                local isAuto = SafeQuestGetAutoAccept()
                 if curQID and not isAuto and DynamicPrep:IsQuestAlreadyAccepted(curQID) then return end
                 local panelVis = (_G.QuestFrameDetailPanel and _G.QuestFrameDetailPanel.IsVisible and _G.QuestFrameDetailPanel:IsVisible()) or false
                 local ddHandled = (_G.DynamicDialogue and type(_G.DynamicDialogue.IsHandlingBlizzardFrame) == "function"
@@ -6197,21 +6343,36 @@ function DynamicPrep:HandleCinematicOrMovie(event, arg1)
     end
 end
 
+local function SafeUnitInCombat(unit)
+    if not unit or _IsSecret(unit) or type(UnitAffectingCombat) ~= "function" then
+        return false
+    end
+    local ok, res = pcall(UnitAffectingCombat, unit)
+    return ok and not _IsSecret(res) and res == true
+end
+
 function DynamicPrep:IsGroupOrEncounterInCombat(inviter)
-    if InCombatLockdown() then return true end
-    if IsEncounterInProgress and IsEncounterInProgress() then return true end
-    if inviter and UnitAffectingCombat and UnitAffectingCombat(inviter) then return true end
+    if InCombatLockdown and InCombatLockdown() then return true end
+    if type(IsEncounterInProgress) == "function" then
+        local okE, resE = pcall(IsEncounterInProgress)
+        if okE and not _IsSecret(resE) and resE == true then return true end
+    end
+    if C_InstanceEncounter and type(C_InstanceEncounter.IsEncounterInProgress) == "function" then
+        local okIE, resIE = pcall(C_InstanceEncounter.IsEncounterInProgress)
+        if okIE and not _IsSecret(resIE) and resIE == true then return true end
+    end
+    if SafeUnitInCombat(inviter) then return true end
     if IsInRaid and IsInRaid() then
         local n = GetNumGroupMembers and GetNumGroupMembers() or 0
         for i = 1, n do
-            if UnitAffectingCombat and UnitAffectingCombat("raid" .. i) then
+            if SafeUnitInCombat("raid" .. i) then
                 return true
             end
         end
     elseif IsInGroup and IsInGroup() then
         local n = GetNumSubgroupMembers and GetNumSubgroupMembers() or 0
         for i = 1, n do
-            if UnitAffectingCombat and UnitAffectingCombat("party" .. i) then
+            if SafeUnitInCombat("party" .. i) then
                 return true
             end
         end
@@ -6298,7 +6459,7 @@ function DynamicPrep:CanSafelyAutoRelease(ignoreSelfRez)
     end
     if not ignoreSelfRez and C_DeathInfo and C_DeathInfo.GetSelfResurrectOptions then
         local ok, opts = pcall(C_DeathInfo.GetSelfResurrectOptions)
-        if ok and opts and #opts > 0 then
+        if ok and opts and not _IsSecret(opts) and type(opts) == "table" and #opts > 0 then
             return false
         end
     end
@@ -7168,17 +7329,30 @@ function DynamicPrep:GetConjuredMageFoodCount()
     return (scan and scan.mageFoodCount) or 0
 end
 
+function DynamicPrep:IsNonStandardGameMode()
+    return IsNonStandardGameMode()
+end
+
 function DynamicPrep:GetPlayerRole()
-    if type(GetSpecialization) ~= "function" or type(GetSpecializationRole) ~= "function" then
+    local idx = SafeGetSpecialization()
+    if not idx then
         return "DAMAGER"
     end
-    local okIdx, idx = pcall(GetSpecialization)
-    if not okIdx or type(idx) ~= "number" or IsSecretValue(idx) or idx <= 0 then
-        return "DAMAGER"
+    if C_SpecializationInfo and type(C_SpecializationInfo.GetSpecializationRole) == "function" then
+        local okR, role = pcall(C_SpecializationInfo.GetSpecializationRole, idx)
+        if okR and type(role) == "string" and not _IsSecret(role) and role ~= "" then
+            return role
+        end
     end
-    local okRole, role = pcall(GetSpecializationRole, idx)
-    if okRole and type(role) == "string" and not IsSecretValue(role) and role ~= "" then
-        return role
+    local _, _, _, _, infoRole = SafeGetSpecializationInfo(idx)
+    if type(infoRole) == "string" and not _IsSecret(infoRole) and infoRole ~= "" then
+        return infoRole
+    end
+    if type(GetSpecializationRole) == "function" then
+        local okR, role = pcall(GetSpecializationRole, idx)
+        if okR and type(role) == "string" and not _IsSecret(role) and role ~= "" then
+            return role
+        end
     end
     return "DAMAGER"
 end
@@ -14119,11 +14293,27 @@ end)() end
 local function SafeRegisterEvent(frame, eventName)
     if not frame or not eventName then return end
     if _G.C_EventUtils and type(_G.C_EventUtils.IsEventValid) == "function" then
-        if not _G.C_EventUtils.IsEventValid(eventName) then
+        local okV, valid = pcall(_G.C_EventUtils.IsEventValid, eventName)
+        if okV and not valid then
             return
         end
     end
-    frame:RegisterEvent(eventName)
+    pcall(frame.RegisterEvent, frame, eventName)
+end
+
+local function SafeRegisterUnitEvent(frame, eventName, unit1, unit2)
+    if not frame or not eventName then return end
+    if _G.C_EventUtils and type(_G.C_EventUtils.IsEventValid) == "function" then
+        local okV, valid = pcall(_G.C_EventUtils.IsEventValid, eventName)
+        if okV and not valid then
+            return
+        end
+    end
+    if type(frame.RegisterUnitEvent) == "function" then
+        local okU = pcall(frame.RegisterUnitEvent, frame, eventName, unit1, unit2)
+        if okU then return end
+    end
+    pcall(frame.RegisterEvent, frame, eventName)
 end
 
 local eventFrame = CreateFrame("Frame")
@@ -14133,13 +14323,8 @@ SafeRegisterEvent(eventFrame, "PLAYER_ENTERING_WORLD")
 SafeRegisterEvent(eventFrame, "ZONE_CHANGED_NEW_AREA")
 SafeRegisterEvent(eventFrame, "PLAYER_REGEN_DISABLED")
 SafeRegisterEvent(eventFrame, "PLAYER_REGEN_ENABLED")
-if eventFrame.RegisterUnitEvent then
-    eventFrame:RegisterUnitEvent("UNIT_STATS", "player")
-    eventFrame:RegisterUnitEvent("UNIT_AURA", "player")
-else
-    SafeRegisterEvent(eventFrame, "UNIT_STATS")
-    SafeRegisterEvent(eventFrame, "UNIT_AURA")
-end
+SafeRegisterUnitEvent(eventFrame, "UNIT_STATS", "player")
+SafeRegisterUnitEvent(eventFrame, "UNIT_AURA", "player")
 SafeRegisterEvent(eventFrame, "COMBAT_RATING_UPDATE")
 SafeRegisterEvent(eventFrame, "MASTERY_UPDATE")
 SafeRegisterEvent(eventFrame, "PLAYER_SPECIALIZATION_CHANGED")
@@ -14475,13 +14660,22 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:UpdateDrinkMacro(false)
         DynamicPrep:RequestMageFoodCheck("PLAYER_REGEN_ENABLED", 0.3)
         DynamicPrep:RequestDurabilityCheck("PLAYER_REGEN_ENABLED", 0.4)
-        if UnitIsDeadOrGhost and UnitIsDeadOrGhost("player") and not (UnitIsGhost and UnitIsGhost("player")) then
-            local inInst, instType = IsInInstance()
+        if DynamicPrep:CanSafelyAutoRelease(false) then
+            local inInst, instType = false, nil
+            if type(IsInInstance) == "function" then
+                local okI, rIn, rType = pcall(IsInInstance)
+                if okI then
+                    inInst = (not _IsSecret(rIn) and rIn == true)
+                    if not _IsSecret(rType) and type(rType) == "string" then
+                        instType = rType
+                    end
+                end
+            end
             if inInst and (instType == "raid" or instType == "party") then
                 local mode = (DynamicPrep.db and DynamicPrep.db.autoReleaseMode) or "WIPE_AND_CTRL"
                 if mode == "WIPE_AND_CTRL" or mode == "PVP_AUTO_WIPE_PVE" then
                     C_Timer.After(0.5, function()
-                        if UnitIsDeadOrGhost and UnitIsDeadOrGhost("player") and not (UnitIsGhost and UnitIsGhost("player")) then
+                        if DynamicPrep:CanSafelyAutoRelease(false) then
                             DynamicPrep:ExecuteReleaseSpirit()
                         end
                     end)
@@ -14494,11 +14688,11 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         end
     elseif event == "ENCOUNTER_END" then
         local success = arg5
-        if success == 0 and UnitIsDeadOrGhost and UnitIsDeadOrGhost("player") and not (UnitIsGhost and UnitIsGhost("player")) then
+        if not _IsSecret(success) and success == 0 and DynamicPrep:CanSafelyAutoRelease(false) then
             local mode = (DynamicPrep.db and DynamicPrep.db.autoReleaseMode) or "WIPE_AND_CTRL"
             if mode == "WIPE_AND_CTRL" or mode == "PVP_AUTO_WIPE_PVE" then
                 C_Timer.After(0.5, function()
-                    if UnitIsDeadOrGhost and UnitIsDeadOrGhost("player") and not (UnitIsGhost and UnitIsGhost("player")) then
+                    if DynamicPrep:CanSafelyAutoRelease(false) then
                         DynamicPrep:ExecuteReleaseSpirit()
                     end
                 end)
@@ -14525,7 +14719,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     elseif event == "COMBAT_RATING_UPDATE" or event == "MASTERY_UPDATE" then
         DynamicPrep:RequestStatRefresh()
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
-        if not arg1 or arg1 == "player" then
+        if arg1 == nil or (not _IsSecret(arg1) and arg1 == "player") then
             DynamicPrep:ResetStableCapsuleWidths()
             if DynamicPrep.db and DynamicPrep.db.omniFolio and DynamicPrep.db.omniFolio.presetMode == "WOWHEAD" then
                 DynamicPrep:ApplyWowheadPresetForCurrentSpec(true)
@@ -14593,7 +14787,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     elseif event == "PLAYER_CHOICE_UPDATE" then
         DynamicPrep:HandlePlayerChoiceUpdate()
     elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
-        if Enum and Enum.PlayerInteractionType then
+        if not _IsSecret(arg1) and Enum and Enum.PlayerInteractionType then
             local PIT = Enum.PlayerInteractionType
             if arg1 == PIT.Gossip then
                 DynamicPrep:NoteDialogueInteractionEnded("GOSSIP")
@@ -14605,7 +14799,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     elseif event == "GOSSIP_CLOSED" or event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" or event == "BANKFRAME_OPENED" then
         local keepHidden = (event == "BANKFRAME_OPENED")
         if event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" then
-            if Enum and Enum.PlayerInteractionType then
+            if not _IsSecret(arg1) and Enum and Enum.PlayerInteractionType then
                 local PIT = Enum.PlayerInteractionType
                 if arg1 == PIT.Banker or arg1 == PIT.AccountBanker or arg1 == PIT.GuildBanker then
                     keepHidden = true
@@ -18351,9 +18545,9 @@ SafeRegisterEvent(crbEventFrame, "UNIT_AURA")
 SafeRegisterEvent(crbEventFrame, "UNIT_HEALTH")
 SafeRegisterEvent(crbEventFrame, "UNIT_FLAGS")
 SafeRegisterEvent(crbEventFrame, "INCOMING_RESURRECT_CHANGED")
-SafeRegisterEvent(crbEventFrame, "UNIT_SPELLCAST_SENT")
-SafeRegisterEvent(crbEventFrame, "UNIT_SPELLCAST_SUCCEEDED")
-SafeRegisterEvent(crbEventFrame, "UNIT_INVENTORY_CHANGED")
+SafeRegisterUnitEvent(crbEventFrame, "UNIT_SPELLCAST_SENT", "player")
+SafeRegisterUnitEvent(crbEventFrame, "UNIT_SPELLCAST_SUCCEEDED", "player")
+SafeRegisterUnitEvent(crbEventFrame, "UNIT_INVENTORY_CHANGED", "player")
 SafeRegisterEvent(crbEventFrame, "BAG_UPDATE_DELAYED")
 SafeRegisterEvent(crbEventFrame, "GROUP_ROSTER_UPDATE")
 SafeRegisterEvent(crbEventFrame, "READY_CHECK")
@@ -18364,11 +18558,13 @@ SafeRegisterEvent(crbEventFrame, "ENCOUNTER_END")
 crbEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
     if IsModuleDisabledInSuite("DynamicPrep") then crbEventFrame:UnregisterAllEvents(); return end
     if event == "PLAYER_ENTERING_WORLD" or event == "GROUP_ROSTER_UPDATE" or event == "CHALLENGE_MODE_RESET" or event == "PLAYER_SPECIALIZATION_CHANGED" then
-        wipe(_unitAuraStateCache)
-        DynamicPrep:UpdateGroupLifeStates(event)
+        if event ~= "PLAYER_SPECIALIZATION_CHANGED" or arg1 == nil or (not _IsSecret(arg1) and arg1 == "player") then
+            wipe(_unitAuraStateCache)
+            DynamicPrep:UpdateGroupLifeStates(event)
+        end
     end
     if event == "UNIT_SPELLCAST_SENT" then
-        if arg1 == "player" then
+        if not _IsSecret(arg1) and arg1 == "player" then
             local spellID = (not _IsSecret(arg4) and type(arg4) == "number") and arg4 or nil
             if spellID and SYMBIOTIC_SPELL_IDS[spellID] then
                 DynamicPrep._pendingSymbioticSentTarget = (not _IsSecret(arg2) and type(arg2) == "string") and arg2 or nil
@@ -18377,7 +18573,7 @@ crbEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
         return
     end
     if event == "UNIT_SPELLCAST_SUCCEEDED" then
-        if arg1 == "player" then
+        if not _IsSecret(arg1) and arg1 == "player" then
             local spellID = (not _IsSecret(arg3) and type(arg3) == "number") and arg3 or nil
             if spellID then
                 if SYMBIOTIC_SPELL_IDS[spellID] then
@@ -18431,7 +18627,7 @@ crbEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
         return
     end
     if event == "UNIT_INVENTORY_CHANGED" then
-        if arg1 ~= "player" or IsPlayerInCombat() then return end
+        if _IsSecret(arg1) or arg1 ~= "player" or IsPlayerInCombat() then return end
     elseif event == "UNIT_AURA" then
         local u = (not _IsSecret(arg1) and type(arg1) == "string") and arg1 or nil
         if not u or not VALID_GROUP_UNITS[u] then return end
