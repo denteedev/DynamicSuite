@@ -2027,9 +2027,11 @@ function DynamicTalent:HasLegacyTLMSlot()
     local ok, ids = pcall(C_ClassTalents.GetConfigIDsBySpecID, specID)
     if not ok or type(ids) ~= "table" then return false end
     for _, cid in ipairs(ids) do
-        local okI, info = pcall(C_Traits.GetConfigInfo, cid)
-        if okI and type(info) == "table" and not _IsSecret(info.name) and info.name == "TalentLoadoutManager" then
-            return true
+        if not _IsSecret(cid) and type(cid) == "number" and cid > 0 then
+            local okI, info = pcall(C_Traits.GetConfigInfo, cid)
+            if okI and not _IsSecret(info) and type(info) == "table" and not _IsSecret(info.name) and info.name == "TalentLoadoutManager" then
+                return true
+            end
         end
     end
     return false
@@ -3943,7 +3945,7 @@ function DynamicTalent:GetTalentLoadoutBarData()
     local api = _G.TalentLoadoutManagerAPI
     if type(api) == "table" and type(api.CharacterAPI) == "table" and type(api.CharacterAPI.GetActiveLoadoutInfo) == "function" then
         local okT, info = pcall(api.CharacterAPI.GetActiveLoadoutInfo, api.CharacterAPI)
-        if okT and type(info) == "table" and type(info.name) == "string" and info.name ~= "" then
+        if okT and not _IsSecret(info) and type(info) == "table" and not _IsSecret(info.name) and type(info.name) == "string" and info.name ~= "" then
             activeName = info.name
         end
     end
@@ -4371,6 +4373,7 @@ end
 local talentDockFrame = nil
 local talentDockHooked = false
 local pendingDockRefresh = false
+local pendingBackdropRefresh = false
 local talentRowMenuFrame = nil
 local talentRowMenuCatcher = nil
 
@@ -5216,22 +5219,31 @@ do
         end
         if specID and heroSelectionNodeCache[specID] and C_Traits and type(C_Traits.GetNodeInfo) == "function" then
             local okI, cInfo = pcall(C_Traits.GetNodeInfo, configID, heroSelectionNodeCache[specID])
-            if okI and type(cInfo) == "table" and cInfo.type == subTreeEnum and type(cInfo.entryIDs) == "table" and #cInfo.entryIDs >= 2 then
+            if okI and not _IsSecret(cInfo) and type(cInfo) == "table"
+                and not _IsSecret(cInfo.type) and cInfo.type == subTreeEnum
+                and not _IsSecret(cInfo.entryIDs) and type(cInfo.entryIDs) == "table" and #cInfo.entryIDs >= 2 then
                 return heroSelectionNodeCache[specID]
             end
         end
         if C_Traits and type(C_Traits.GetConfigInfo) == "function" and type(C_Traits.GetTreeNodes) == "function" and type(C_Traits.GetNodeInfo) == "function" then
             local okCfg, cfgInfo = pcall(C_Traits.GetConfigInfo, configID)
-            if okCfg and type(cfgInfo) == "table" and type(cfgInfo.treeIDs) == "table" then
+            if okCfg and not _IsSecret(cfgInfo) and type(cfgInfo) == "table"
+                and not _IsSecret(cfgInfo.treeIDs) and type(cfgInfo.treeIDs) == "table" then
                 for _, treeID in ipairs(cfgInfo.treeIDs) do
-                    local okT, nodes = pcall(C_Traits.GetTreeNodes, treeID)
-                    if okT and type(nodes) == "table" then
-                        for _, nid in ipairs(nodes) do
-                            local okN, nInfo = pcall(C_Traits.GetNodeInfo, configID, nid)
-                            if okN and type(nInfo) == "table" and nInfo.type == subTreeEnum and type(nInfo.entryIDs) == "table" and #nInfo.entryIDs >= 2 then
-                                if nInfo.isVisible ~= false then
-                                    if specID then heroSelectionNodeCache[specID] = nid end
-                                    return nid
+                    if not _IsSecret(treeID) and type(treeID) == "number" and treeID > 0 then
+                        local okT, nodes = pcall(C_Traits.GetTreeNodes, treeID)
+                        if okT and not _IsSecret(nodes) and type(nodes) == "table" then
+                            for _, nid in ipairs(nodes) do
+                                if not _IsSecret(nid) and type(nid) == "number" and nid > 0 then
+                                    local okN, nInfo = pcall(C_Traits.GetNodeInfo, configID, nid)
+                                    if okN and not _IsSecret(nInfo) and type(nInfo) == "table"
+                                        and not _IsSecret(nInfo.type) and nInfo.type == subTreeEnum
+                                        and not _IsSecret(nInfo.entryIDs) and type(nInfo.entryIDs) == "table" and #nInfo.entryIDs >= 2 then
+                                        if not _IsSecret(nInfo.isVisible) and nInfo.isVisible ~= false then
+                                            if specID then heroSelectionNodeCache[specID] = nid end
+                                            return nid
+                                        end
+                                    end
                                 end
                             end
                         end
@@ -5275,35 +5287,38 @@ do
         if not nodeID then return nil, "LOCKED" end
 
         local okN, nodeInfo = pcall(C_Traits.GetNodeInfo, configID, nodeID)
-        if not okN or type(nodeInfo) ~= "table"
-            or nodeInfo.isVisible == false
-            or nodeInfo.isAvailable == false
-            or nodeInfo.meetsEdgeRequirements == false
-            or type(nodeInfo.entryIDs) ~= "table" or #nodeInfo.entryIDs < 2 then
+        if not okN or _IsSecret(nodeInfo) or type(nodeInfo) ~= "table"
+            or _IsSecret(nodeInfo.isVisible) or nodeInfo.isVisible == false
+            or _IsSecret(nodeInfo.isAvailable) or nodeInfo.isAvailable == false
+            or _IsSecret(nodeInfo.meetsEdgeRequirements) or nodeInfo.meetsEdgeRequirements == false
+            or _IsSecret(nodeInfo.entryIDs) or type(nodeInfo.entryIDs) ~= "table" or #nodeInfo.entryIDs < 2 then
             return nil, "LOCKED"
         end
 
         local candidates = {}
         for _, eID in ipairs(nodeInfo.entryIDs) do
-            local okE, eInfo = pcall(C_Traits.GetEntryInfo, configID, eID)
-            if okE and type(eInfo) == "table" and not _IsSecret(eInfo.subTreeID) and type(eInfo.subTreeID) == "number" and eInfo.subTreeID > 0 and type(C_Traits.GetSubTreeInfo) == "function" then
-                local okS, sInfo = pcall(C_Traits.GetSubTreeInfo, configID, eInfo.subTreeID)
-                if okS and type(sInfo) == "table" and not _IsSecret(sInfo.name) and type(sInfo.name) == "string" then
-                    local sName = SafeTrim(sInfo.name)
-                    if sName ~= "" then
-                        table.insert(candidates, {
-                            entryID         = eID,
-                            subTreeID       = eInfo.subTreeID,
-                            name            = sName,
-                            isSubTreeActive = (sInfo.isActive == true),
-                        })
+            if not _IsSecret(eID) and type(eID) == "number" and eID > 0 then
+                local okE, eInfo = pcall(C_Traits.GetEntryInfo, configID, eID)
+                if okE and not _IsSecret(eInfo) and type(eInfo) == "table" and not _IsSecret(eInfo.subTreeID) and type(eInfo.subTreeID) == "number" and eInfo.subTreeID > 0 and type(C_Traits.GetSubTreeInfo) == "function" then
+                    local okS, sInfo = pcall(C_Traits.GetSubTreeInfo, configID, eInfo.subTreeID)
+                    if okS and not _IsSecret(sInfo) and type(sInfo) == "table" and not _IsSecret(sInfo.name) and type(sInfo.name) == "string" then
+                        local sName = SafeTrim(sInfo.name)
+                        if sName ~= "" then
+                            table.insert(candidates, {
+                                entryID         = eID,
+                                subTreeID       = eInfo.subTreeID,
+                                name            = sName,
+                                isSubTreeActive = (not _IsSecret(sInfo.isActive) and sInfo.isActive == true),
+                            })
+                        end
                     end
                 end
             end
         end
         if #candidates < 2 then return nil, "LOCKED" end
 
-        local stagedEntryID = (type(nodeInfo.activeEntry) == "table" and not _IsSecret(nodeInfo.activeEntry.entryID) and type(nodeInfo.activeEntry.entryID) == "number")
+        local stagedEntryID = (not _IsSecret(nodeInfo.activeEntry) and type(nodeInfo.activeEntry) == "table"
+            and not _IsSecret(nodeInfo.activeEntry.entryID) and type(nodeInfo.activeEntry.entryID) == "number")
             and nodeInfo.activeEntry.entryID or nil
         local activeSubTreeID = nil
         if type(C_ClassTalents.GetActiveHeroTalentSpec) == "function" then
@@ -5376,11 +5391,18 @@ do
         local info = DynamicTalent:GetHeroSwapInfo()
         if not info or type(info.targetName) ~= "string" or info.targetName == "" then return end
 
-        local numLines = (type(tt.NumLines) == "function" and tt:NumLines()) or 0
+        local numLines = 0
+        if type(tt.NumLines) == "function" then
+            local okNL, rawNL = pcall(tt.NumLines, tt)
+            if okNL and not _IsSecret(rawNL) and type(rawNL) == "number" and rawNL > 0 then
+                numLines = rawNL
+            end
+        end
         for i = 1, numLines do
             local fs = _G["GameTooltipTextLeft" .. i]
             if fs and type(fs.GetText) == "function" then
-                local txt = SafeStr(fs:GetText(), "")
+                local okT, rawTxt = pcall(fs.GetText, fs)
+                local txt = okT and SafeStr(rawTxt, "") or ""
                 if txt:find("Right-Click: Switch to", 1, true) or txt:find("Switch to " .. info.targetName, 1, true) then
                     return
                 end
@@ -5412,7 +5434,7 @@ do
         if not ok then
             ok, res = pcall(C_Traits.SetSelection, info.configID, info.nodeID, info.targetEntryID)
         end
-        if not ok or res == false then
+        if not ok or (not _IsSecret(res) and res == false) then
             return false, "FAILED"
         end
 
@@ -5551,6 +5573,11 @@ do
 
     local function LayoutBackdropLayers()
         if not talentBackdropFrame then return end
+        if IsPlayerInCombat() then
+            pendingBackdropRefresh = true
+            DynamicTalent._pendingBackdropRefresh = true
+            return
+        end
         local tf = _G.PlayerSpellsFrame and _G.PlayerSpellsFrame.TalentsFrame
         local w = (talentBackdropFrame.GetWidth and talentBackdropFrame:GetWidth()) or 0
         local h = (talentBackdropFrame.GetHeight and talentBackdropFrame:GetHeight()) or 0
@@ -5679,6 +5706,11 @@ do
 
     function DynamicTalent:HideTalentTreeBackdrop()
         self:PauseTalentTreeBackdropAnims()
+        if IsPlayerInCombat() then
+            pendingBackdropRefresh = true
+            self._pendingBackdropRefresh = true
+            return
+        end
         if talentBackdropFrame then
             talentBackdropFrame:Hide()
         end
@@ -5687,6 +5719,13 @@ do
     end
 
     function DynamicTalent:UpdateTalentTreeBackdrop()
+        if IsPlayerInCombat() then
+            pendingBackdropRefresh = true
+            self._pendingBackdropRefresh = true
+            return
+        end
+        pendingBackdropRefresh = false
+        self._pendingBackdropRefresh = false
         local db = EnsureDB()
         if IsModuleDisabledInSuite("DynamicTalent") or db.enabled == false then
             self:HideTalentTreeBackdrop()
@@ -5827,11 +5866,13 @@ function DynamicTalent:GetSavedTalentLoadouts()
         return list
     end
     local ok, ids = pcall(C_ClassTalents.GetConfigIDsBySpecID, specID)
-    if not ok or type(ids) ~= "table" then return list end
+    if not ok or _IsSecret(ids) or type(ids) ~= "table" then return list end
     for _, cid in ipairs(ids) do
-        local okI, info = pcall(C_Traits.GetConfigInfo, cid)
-        if okI and type(info) == "table" and not _IsSecret(info.name) and type(info.name) == "string" and info.name ~= "" then
-            table.insert(list, { id = cid, name = info.name })
+        if not _IsSecret(cid) and type(cid) == "number" and cid > 0 then
+            local okI, info = pcall(C_Traits.GetConfigInfo, cid)
+            if okI and not _IsSecret(info) and type(info) == "table" and not _IsSecret(info.name) and type(info.name) == "string" and info.name ~= "" then
+                table.insert(list, { id = cid, name = info.name })
+            end
         end
     end
     table.sort(list, function(a, b)
@@ -6597,9 +6638,15 @@ function DynamicTalent.AttachTruncationTooltip(fs, owner)
     end
     if type(host.HookScript) ~= "function" then return end
     host:HookScript("OnEnter", function(s)
-        if not (fs.IsTruncated and fs:IsTruncated()) then return end
+        local isTrunc = false
+        if type(fs.IsTruncated) == "function" then
+            local okTr, tr = pcall(fs.IsTruncated, fs)
+            isTrunc = okTr and not _IsSecret(tr) and tr == true
+        end
+        if not isTrunc then return end
         if not GameTooltip then return end
-        local raw = tostring(fs:GetText() or "")
+        local okT, rawTxt = pcall(fs.GetText, fs)
+        local raw = okT and SafeStr(rawTxt, "") or ""
         local clean = raw:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
         if clean == "" then return end
         GameTooltip:SetOwner(s, "ANCHOR_TOP")
@@ -11566,7 +11613,13 @@ function DynamicTalent:OnDisableInSuite()
     CloseAllDynamicTalentPopups()
     self:HideTalentReminderToast()
     self:HideTalentTreeBackdrop()
-    if talentDockFrame then talentDockFrame:Hide() end
+    if talentDockFrame then
+        if IsPlayerInCombat() then
+            pendingDockRefresh = true
+        else
+            talentDockFrame:Hide()
+        end
+    end
     if talentMgrModal then talentMgrModal:Hide() end
     if standaloneWin then standaloneWin:Hide() end
     if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
@@ -11965,17 +12018,33 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             lastAlertedBossMismatchKey = nil
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
+        CloseAllDynamicTalentPopups()
         DynamicTalent:HideTalentReminderToast()
         DynamicTalent:HideTalentPopover()
     elseif event == "PLAYER_REGEN_ENABLED" then
+        if DynamicTalent._pendingSaveConfigID and C_ClassTalents and type(C_ClassTalents.SaveConfig) == "function" then
+            local saveID = DynamicTalent._pendingSaveConfigID
+            DynamicTalent._pendingSaveConfigID = nil
+            pcall(C_ClassTalents.SaveConfig, saveID)
+        end
         if pendingDockRefresh then
             pendingDockRefresh = false
             DynamicTalent:RefreshTalentDock()
         end
         local psf = _G.PlayerSpellsFrame
         local tf = psf and psf.TalentsFrame
-        if psf and psf.IsShown and psf:IsShown() and tf and tf.IsShown and tf:IsShown()
-            and not IsModuleDisabledInSuite("DynamicTalent") and EnsureDB().enabled ~= false then
+        local tfVisible = psf and psf.IsShown and psf:IsShown() and tf and tf.IsShown and tf:IsShown()
+        local isEnabled = not IsModuleDisabledInSuite("DynamicTalent") and EnsureDB().enabled ~= false
+        if pendingBackdropRefresh or DynamicTalent._pendingBackdropRefresh then
+            pendingBackdropRefresh = false
+            DynamicTalent._pendingBackdropRefresh = false
+            if not isEnabled then
+                DynamicTalent:HideTalentTreeBackdrop()
+            elseif tfVisible then
+                DynamicTalent:EnsureHeroMedallionHooks()
+                DynamicTalent:UpdateTalentTreeBackdrop()
+            end
+        elseif tfVisible and isEnabled then
             DynamicTalent:EnsureHeroMedallionHooks()
             DynamicTalent:UpdateTalentTreeBackdrop()
         end
@@ -12024,12 +12093,10 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     elseif event == "TRAIT_CONFIG_UPDATED" then
         lastAlertedBossMismatchKey = nil
         DynamicTalent._heroTreeCache = nil
-        if DynamicTalent._pendingSaveConfigID and C_ClassTalents and type(C_ClassTalents.SaveConfig) == "function" then
+        if DynamicTalent._pendingSaveConfigID and not IsPlayerInCombat() and C_ClassTalents and type(C_ClassTalents.SaveConfig) == "function" then
             local saveID = DynamicTalent._pendingSaveConfigID
             DynamicTalent._pendingSaveConfigID = nil
-            if not IsPlayerInCombat() then
-                pcall(C_ClassTalents.SaveConfig, saveID)
-            end
+            pcall(C_ClassTalents.SaveConfig, saveID)
         end
         if DynamicTalent._pendingAppliedEntry then
             local appliedEntry = DynamicTalent._pendingAppliedEntry

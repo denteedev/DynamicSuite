@@ -4446,13 +4446,44 @@ function DM:AnnounceFocusIcon(isReadyCheck)
         return
     end
 
+    local function SafeChatLockdown()
+        if _G.C_ChatInfo and type(_G.C_ChatInfo.InChatMessagingLockdown) == "function" then
+            local ok, locked = pcall(_G.C_ChatInfo.InChatMessagingLockdown)
+            if ok and IsSafeValue(locked) and locked == true then return true end
+        end
+        if type(_G.IsEncounterInProgress) == "function" then
+            local okE, enc = pcall(_G.IsEncounterInProgress)
+            if okE and IsSafeValue(enc) and enc == true then return true end
+        end
+        if _G.C_InstanceEncounter and type(_G.C_InstanceEncounter.IsEncounterInProgress) == "function" then
+            local okIE, encIE = pcall(_G.C_InstanceEncounter.IsEncounterInProgress)
+            if okIE and IsSafeValue(encIE) and encIE == true then return true end
+        end
+        return false
+    end
+    local function SafeInInstance()
+        if type(_G.IsInInstance) ~= "function" then return false end
+        local ok, res = pcall(_G.IsInInstance)
+        return ok and IsSafeValue(res) and res == true
+    end
+    local function SafeInGroup(cat)
+        if type(_G.IsInGroup) ~= "function" then return false end
+        local ok, res = pcall(_G.IsInGroup, cat)
+        return ok and IsSafeValue(res) and res == true
+    end
+    local function SafeInRaid()
+        if type(_G.IsInRaid) ~= "function" then return false end
+        local ok, res = pcall(_G.IsInRaid)
+        return ok and IsSafeValue(res) and res == true
+    end
+
     local iconIndex = self.db.focusIcon or 8
     local iconInfo = RAID_ICONS[iconIndex] or RAID_ICONS[8]
     local msg = (isReadyCheck and "[Ready Check] " or "") .. "My Focus Icon is {rt" .. iconIndex .. "} (" .. iconInfo.name .. ")"
     local chanPref = self.db.chatChannel or "PARTY_INSTANCE"
     local SendMsg = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
 
-    if (C_ChatInfo and C_ChatInfo.InChatMessagingLockdown and C_ChatInfo.InChatMessagingLockdown()) or (IsEncounterInProgress and IsEncounterInProgress()) then
+    if SafeChatLockdown() then
         if not isReadyCheck then
             print(string.format("|cFF38BDF8DynamicMarker|r: Focus Icon set to %s (Encounter chat lockdown).", iconInfo.label))
         end
@@ -4460,33 +4491,33 @@ function DM:AnnounceFocusIcon(isReadyCheck)
     end
 
     if chanPref == "SAY" then
-        if IsInInstance() then
+        if SafeInInstance() then
             pcall(SendMsg, msg, "SAY")
-        elseif IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        elseif SafeInGroup(LE_PARTY_CATEGORY_INSTANCE) then
             pcall(SendMsg, msg, "INSTANCE_CHAT")
-        elseif IsInGroup(LE_PARTY_CATEGORY_HOME) or IsInGroup() then
-            pcall(SendMsg, msg, IsInRaid() and "RAID" or "PARTY")
+        elseif SafeInGroup(LE_PARTY_CATEGORY_HOME) or SafeInGroup() then
+            pcall(SendMsg, msg, SafeInRaid() and "RAID" or "PARTY")
         elseif not isReadyCheck then
             print(string.format("|cFF38BDF8DynamicMarker|r: Focus Icon set to %s.", iconInfo.label))
         end
     elseif chanPref == "PARTY" then
-        if IsInRaid() then
+        if SafeInRaid() then
             if not isReadyCheck then
                 print(string.format("|cFF38BDF8DynamicMarker|r: Focus Icon set to %s (Silent in Raid).", iconInfo.label))
             end
-        elseif IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        elseif SafeInGroup(LE_PARTY_CATEGORY_INSTANCE) then
             pcall(SendMsg, msg, "INSTANCE_CHAT")
-        elseif IsInGroup(LE_PARTY_CATEGORY_HOME) or IsInGroup() then
+        elseif SafeInGroup(LE_PARTY_CATEGORY_HOME) or SafeInGroup() then
             pcall(SendMsg, msg, "PARTY")
         elseif not isReadyCheck then
             print(string.format("|cFF38BDF8DynamicMarker|r: Focus Icon set to %s.", iconInfo.label))
         end
     else
-        if IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        if SafeInGroup(LE_PARTY_CATEGORY_INSTANCE) then
             pcall(SendMsg, msg, "INSTANCE_CHAT")
-        elseif IsInRaid() then
+        elseif SafeInRaid() then
             pcall(SendMsg, msg, "RAID")
-        elseif IsInGroup(LE_PARTY_CATEGORY_HOME) or IsInGroup() then
+        elseif SafeInGroup(LE_PARTY_CATEGORY_HOME) or SafeInGroup() then
             pcall(SendMsg, msg, "PARTY")
         elseif not isReadyCheck then
             print(string.format("|cFF38BDF8DynamicMarker|r: Focus Icon set to %s.", iconInfo.label))
@@ -5380,7 +5411,7 @@ function DM:AttachBarDirectShiftDrag(bar, hudKey, barTitle)
             return
         end
         if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
-        b:StopMovingOrSizing()
+        if b.StopMovingOrSizing then pcall(b.StopMovingOrSizing, b) end
         if not IsInCombat() then
             b:SetClampedToScreen(false)
         elseif primaryKey == "FlareBar" then
@@ -8304,6 +8335,24 @@ end
 -- 13. INTERACTIVE KEYBIND CAPTURE BUTTON WIDGET
 -- ============================================================================
 
+DM._activeKeybindCaptureBtns = DM._activeKeybindCaptureBtns or {}
+DM._pendingKeybindKeyboardResetBtns = DM._pendingKeybindKeyboardResetBtns or {}
+
+function DM:AbortActiveKeybindCaptures()
+    if type(self._activeKeybindCaptureBtns) ~= "table" then return end
+    local pending = {}
+    for capBtn in pairs(self._activeKeybindCaptureBtns) do
+        table.insert(pending, capBtn)
+    end
+    for _, capBtn in ipairs(pending) do
+        if capBtn and capBtn.isCapturing and type(capBtn.StopCapture) == "function" then
+            capBtn:StopCapture(nil)
+        else
+            self._activeKeybindCaptureBtns[capBtn] = nil
+        end
+    end
+end
+
 function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
     local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
     btn:SetSize(width or 204, 26)
@@ -8337,21 +8386,41 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
 
     function btn:StopCapture(commitKey)
         self.isCapturing = false
-        if not IsInCombat() and self.EnableKeyboard then
-            pcall(self.EnableKeyboard, self, false)
+        DM._activeKeybindCaptureBtns[self] = nil
+        if IsInCombat() then
+            DM._pendingKeybindKeyboardResetBtns[self] = true
+        else
+            DM._pendingKeybindKeyboardResetBtns[self] = nil
+            if self.SetPropagateKeyboardInput then
+                pcall(self.SetPropagateKeyboardInput, self, true)
+            end
+            if self.EnableKeyboard then
+                pcall(self.EnableKeyboard, self, false)
+            end
         end
         self:SetScript("OnKeyDown", nil)
         self:SetScript("OnMouseDown", nil)
         DM:ApplyBackdrop(self, COLORS.BgElevated, COLORS.BorderStrong)
-        if commitKey ~= nil then
+        if commitKey ~= nil and not IsInCombat() then
             setter(commitKey)
         end
         self:RefreshValue()
         DM:RefreshKeybindTelemetryAndTabTitle()
     end
 
+    btn:SetScript("OnHide", function(s)
+        if s.isCapturing then
+            s:StopCapture(nil)
+        end
+    end)
+
     btn:SetScript("OnClick", function(s, mouseBtn)
         if mouseBtn == "RightButton" then
+            if IsInCombat() then
+                if s.isCapturing then s:StopCapture(nil) end
+                print("|cFF38BDF8DynamicMarker|r: Cannot change keybinds during combat.")
+                return
+            end
             s:StopCapture("")
             return
         end
@@ -8365,6 +8434,8 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
         end
 
         s.isCapturing = true
+        DM._activeKeybindCaptureBtns[s] = true
+        DM._pendingKeybindKeyboardResetBtns[s] = nil
         s.Text:SetText("|cFFF59E0BPress key (Esc cancel, Del unbind)|r")
         DM:ApplyBackdrop(s, COLORS.BgHover, COLORS.Amber)
         if s.EnableKeyboard then
@@ -10256,8 +10327,13 @@ end
 function DM:CloseStudioModal()
     self:CloseDropdownMenu()
     if self.modalFrame then
-        if not (InCombatLockdown and InCombatLockdown()) and self.modalFrame.EnableKeyboard then
-            pcall(self.modalFrame.EnableKeyboard, self.modalFrame, false)
+        if IsInCombat() then
+            self.pendingModalKeyboardReset = true
+        else
+            self.pendingModalKeyboardReset = false
+            if self.modalFrame.EnableKeyboard then
+                pcall(self.modalFrame.EnableKeyboard, self.modalFrame, false)
+            end
         end
         if self.modalFrame:IsShown() then
             self.modalFrame:Hide()
@@ -10268,8 +10344,19 @@ function DM:CloseStudioModal()
     end
 end
 
+function DM:RefreshOpenProfilesModal()
+    if self.modalFrame and self.modalFrame:IsShown() and self.modalFrame._activeMode == "PROFILES"
+        and type(self.modalFrame._refreshStandaloneProfilesUI) == "function" then
+        pcall(self.modalFrame._refreshStandaloneProfilesUI)
+    end
+end
+
 function DM:ShowStudioModal(mode)
     self:CloseDropdownMenu()
+    if self.modalFrame then
+        self.modalFrame._activeMode = mode
+        self.modalFrame._refreshStandaloneProfilesUI = nil
+    end
     local anchorTarget = (self.shellFrame and self.shellFrame:IsShown() and self.shellFrame) or UIParent
     local surf, surfKey = GetStandaloneSurfaceColors(self)
     local solidPanel = { r = surf.panel.r, g = surf.panel.g, b = surf.panel.b, a = 1.00 }
@@ -10346,7 +10433,9 @@ function DM:ShowStudioModal(mode)
             end
         end)
         m:SetScript("OnHide", function()
-            if not (InCombatLockdown and InCombatLockdown()) and m.EnableKeyboard then
+            if IsInCombat() then
+                self.pendingModalKeyboardReset = true
+            elseif m.EnableKeyboard then
                 pcall(m.EnableKeyboard, m, false)
             end
             if self.modalBackdrop and self.modalBackdrop:IsShown() then
@@ -10790,6 +10879,8 @@ function DM:ShowStudioModal(mode)
             RefreshStandaloneProfilesUI()
         end)
 
+        m._activeMode = "PROFILES"
+        m._refreshStandaloneProfilesUI = RefreshStandaloneProfilesUI
         RefreshStandaloneProfilesUI()
 
     elseif mode == "SETUP" then
@@ -11348,7 +11439,11 @@ function DM:ResetDefaults()
     self:RefreshTargetBar()
     self:RefreshFlareBar()
     self:RefreshAll()
-    print("|cFF22C55EDynamicMarker|r: Restored DynamicMarker defaults and HUD positions.")
+    if IsInCombat() then
+        print("|cFF22C55EDynamicMarker|r: Restored DynamicMarker defaults. HUD bar and keybind updates are queued until combat ends.")
+    else
+        print("|cFF22C55EDynamicMarker|r: Restored DynamicMarker defaults and HUD positions.")
+    end
 end
 
 function DM:EnsureStandaloneShell()
@@ -13192,9 +13287,12 @@ end
 
 local function SafeReadableString(v)
     if v == nil then return nil end
-    if issecretvalue and issecretvalue(v) then return nil end
-    if type(canaccessvalue) == "function" then
-        local okAcc, canAcc = pcall(canaccessvalue, v)
+    if type(_G.issecretvalue) == "function" then
+        local okSec, isSec = pcall(_G.issecretvalue, v)
+        if okSec and isSec then return nil end
+    end
+    if type(_G.canaccessvalue) == "function" then
+        local okAcc, canAcc = pcall(_G.canaccessvalue, v)
         if okAcc and not canAcc then return nil end
     end
     local okStr, s = pcall(tostring, v)
@@ -13754,6 +13852,8 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         DM:AnnounceFocusIcon(true)
 
     elseif event == "PLAYER_REGEN_DISABLED" then
+        DM:AbortActiveKeybindCaptures()
+        DM:RefreshOpenProfilesModal()
         DM:CloseDropdownMenu()
         HideSnapGuides()
         if DM.targetBar then
@@ -13811,6 +13911,29 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
             DM.pendingHUDPositionSync = false
             DM:ApplyHUDPosition(DM.targetBar, "TargetBar", -140)
             DM:ApplyHUDPosition(DM.flareBar, "FlareBar", -182)
+        end
+        if DM.pendingModalKeyboardReset then
+            DM.pendingModalKeyboardReset = false
+            if DM.modalFrame and not DM.modalFrame:IsShown() and DM.modalFrame.EnableKeyboard then
+                pcall(DM.modalFrame.EnableKeyboard, DM.modalFrame, false)
+            end
+        end
+        if type(DM._pendingKeybindKeyboardResetBtns) == "table" then
+            for capBtn in pairs(DM._pendingKeybindKeyboardResetBtns) do
+                if capBtn and not capBtn.isCapturing then
+                    if capBtn.SetPropagateKeyboardInput then
+                        pcall(capBtn.SetPropagateKeyboardInput, capBtn, true)
+                    end
+                    if capBtn.EnableKeyboard then
+                        pcall(capBtn.EnableKeyboard, capBtn, false)
+                    end
+                end
+            end
+            wipe(DM._pendingKeybindKeyboardResetBtns)
+        end
+        DM:RefreshOpenProfilesModal()
+        if (DM.pendingFlareEngineSync or DM.pendingKeybindSync) and (not DM.flareCycleBtn or not DM.flareClearBtn) then
+            DM:InitSecureFlareButtons()
         end
         if DM.pendingFlareEngineSync then
             DM:SyncSecureFlareEngine()
