@@ -1106,6 +1106,375 @@ function DynamicSuite.PlaySharedToastSound()
 end
 addonTable.PlaySharedToastSound = DynamicSuite.PlaySharedToastSound
 
+function DynamicSuite.FormatTooltipCommand(cmdText, actionText, cmdHex)
+    local hex = (type(cmdHex) == "string" and cmdHex:gsub("^|cFF", ""):gsub("^|c", ""):gsub("^#", "")) or "34D399"
+    if #hex == 8 then hex = hex:sub(3, 8) end
+    if #hex ~= 6 then hex = "34D399" end
+    local cmd = tostring(cmdText or "")
+    if cmd ~= "" and not cmd:match(":$") then
+        cmd = cmd .. ":"
+    end
+    return string.format("|cFF%s%s|r |cFFE2E8F0%s|r", hex:upper(), cmd, tostring(actionText or ""))
+end
+addonTable.FormatTooltipCommand = DynamicSuite.FormatTooltipCommand
+
+function DynamicSuite.AppendHudTooltipHints(tooltip, opts)
+    if not tooltip or type(tooltip.AddLine) ~= "function" then return end
+    opts = type(opts) == "table" and opts or {}
+    if opts.addSpacer ~= false then
+        tooltip:AddLine(" ")
+    end
+    if opts.includeDismiss == true then
+        tooltip:AddLine(DynamicSuite.FormatTooltipCommand("Right-Click:", "Dismiss alert", "94A3B8"), 1, 1, 1)
+    end
+    local moveLabel = opts.moveLabel or "Move bar"
+    local editTrigger = opts.editModeTrigger or "Shift + Right-Click:"
+    local hudCmd = opts.hudCmd or "/ds hud"
+    tooltip:AddLine(DynamicSuite.FormatTooltipCommand("Shift + Left-Drag:", moveLabel, "34D399"), 1, 1, 1)
+    tooltip:AddLine(DynamicSuite.FormatTooltipCommand(editTrigger, "Open HUD Edit Mode (" .. hudCmd .. ")", "38BDF8"), 1, 1, 1)
+end
+addonTable.AppendHudTooltipHints = DynamicSuite.AppendHudTooltipHints
+
+local function GetHudAnchorFraction(pt)
+    local p = tostring(pt or "CENTER"):upper()
+    local fx, fy = 0.5, 0.5
+    if p:find("LEFT", 1, true) then
+        fx = 0.0
+    elseif p:find("RIGHT", 1, true) then
+        fx = 1.0
+    end
+    if p:find("BOTTOM", 1, true) then
+        fy = 0.0
+    elseif p:find("TOP", 1, true) then
+        fy = 1.0
+    end
+    return fx, fy
+end
+
+function DynamicSuite.ClampPointOffsetToUIParent(frameW, frameH, frameScale, uiW, uiH, uiScale, point, relPoint, rawX, rawY, opts)
+    opts = type(opts) == "table" and opts or {}
+    local fScale = tonumber(frameScale) or 1
+    local uScale = tonumber(uiScale) or 1
+    if fScale <= 0 then fScale = 1 end
+    if uScale <= 0 then uScale = 1 end
+    local relScale = fScale / uScale
+    if relScale <= 0 then relScale = 1 end
+
+    local screenW = tonumber(uiW) or 1920
+    local screenH = tonumber(uiH) or 1080
+    if screenW <= 0 then screenW = 1920 end
+    if screenH <= 0 then screenH = 1080 end
+    local screenCx = screenW * 0.5
+    local screenCy = screenH * 0.5
+
+    local w = math.max(1, tonumber(frameW) or 100)
+    local h = math.max(1, tonumber(frameH) or 28)
+    local visW = w * relScale
+    local visH = h * relScale
+    local halfW = visW * 0.5
+    local halfH = visH * 0.5
+
+    local ins = type(opts.extraInsets) == "table" and opts.extraInsets or nil
+    local leftExtraVis   = (tonumber(ins and ins.left) or 0) * relScale
+    local rightExtraVis  = (tonumber(ins and ins.right) or 0) * relScale
+    local topExtraVis    = (tonumber(ins and ins.top) or 0) * relScale
+    local bottomExtraVis = (tonumber(ins and ins.bottom) or 0) * relScale
+
+    local coordScale = (opts.coordSpace == "UIPARENT") and 1.0 or relScale
+    local pt = point or "CENTER"
+    local rp = relPoint or pt
+    local pfx, pfy = GetHudAnchorFraction(pt)
+    local rfx, rfy = GetHudAnchorFraction(rp)
+    local refX = rfx * screenW
+    local refY = rfy * screenH
+
+    local inX = tonumber(rawX) or 0
+    local inY = tonumber(rawY) or 0
+    local anchorVisX = refX + (inX * coordScale)
+    local anchorVisY = refY + (inY * coordScale)
+    local candCx = anchorVisX + (0.5 - pfx) * visW
+    local candCy = anchorVisY + (0.5 - pfy) * visH
+
+    local minCx = halfW + leftExtraVis
+    local maxCx = screenW - halfW - rightExtraVis
+    local minCy = halfH + bottomExtraVis
+    local maxCy = screenH - halfH - topExtraVis
+
+    if minCx > maxCx then
+        candCx = screenCx
+    else
+        candCx = math.max(minCx, math.min(maxCx, candCx))
+    end
+    if minCy > maxCy then
+        candCy = screenCy
+    else
+        candCy = math.max(minCy, math.min(maxCy, candCy))
+    end
+
+    local outX = math.floor((((candCx - (0.5 - pfx) * visW) - refX) / coordScale) + 0.5)
+    local outY = math.floor((((candCy - (0.5 - pfy) * visH) - refY) / coordScale) + 0.5)
+
+    local minLocalX = ((minCx - (0.5 - pfx) * visW) - refX) / coordScale
+    local maxLocalX = ((maxCx - (0.5 - pfx) * visW) - refX) / coordScale
+    local minLocalY = ((minCy - (0.5 - pfy) * visH) - refY) / coordScale
+    local maxLocalY = ((maxCy - (0.5 - pfy) * visH) - refY) / coordScale
+
+    if minLocalX <= maxLocalX then
+        local loX = math.ceil(minLocalX - 1e-6)
+        local hiX = math.floor(maxLocalX + 1e-6)
+        if loX <= hiX then
+            outX = math.max(loX, math.min(hiX, outX))
+        end
+    else
+        outX = math.floor((((screenCx - (0.5 - pfx) * visW) - refX) / coordScale) + 0.5)
+    end
+    if minLocalY <= maxLocalY then
+        local loY = math.ceil(minLocalY - 1e-6)
+        local hiY = math.floor(maxLocalY + 1e-6)
+        if loY <= hiY then
+            outY = math.max(loY, math.min(hiY, outY))
+        end
+    else
+        outY = math.floor((((screenCy - (0.5 - pfy) * visH) - refY) / coordScale) + 0.5)
+    end
+
+    local didClamp = (outX ~= math.floor(inX + 0.5)) or (outY ~= math.floor(inY + 0.5))
+    return outX, outY, didClamp
+end
+addonTable.ClampPointOffsetToUIParent = DynamicSuite.ClampPointOffsetToUIParent
+
+function DynamicSuite.OpenHudEditForTarget(targetKey, standaloneFallbackFn, addonLabel)
+    if _G.InCombatLockdown and _G.InCombatLockdown() then
+        local hex = addonTable.GetCoreAccentHex and addonTable.GetCoreAccentHex() or "38BDF8"
+        print(string.format("|cFF%s%s:|r Cannot open HUD Edit Mode while in combat.", hex, tostring(addonLabel or "DynamicSuite")))
+        return false
+    end
+    if _G.GameTooltip and _G.GameTooltip.Hide then
+        _G.GameTooltip:Hide()
+    end
+    if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
+        pcall(_G.DynamicSuite.EnterHudEditMode, targetKey)
+        return true
+    elseif type(standaloneFallbackFn) == "function" then
+        pcall(standaloneFallbackFn, targetKey)
+        return true
+    end
+    return false
+end
+addonTable.OpenHudEditForTarget = DynamicSuite.OpenHudEditForTarget
+
+function DynamicSuite.SaveSharedToastPosition(pt, relPt, x, y, draggedFrame)
+    local usePt = (pt == "CENTER") and "CENTER" or (pt or "TOP")
+    local useRp = (relPt == "CENTER") and "CENTER" or (usePt)
+    local uiW = (_G.UIParent and _G.UIParent.GetWidth and _G.UIParent:GetWidth()) or 1920
+    local uiH = (_G.UIParent and _G.UIParent.GetHeight and _G.UIParent:GetHeight()) or 1080
+    local uiScale = (_G.UIParent and _G.UIParent.GetEffectiveScale and _G.UIParent:GetEffectiveScale()) or 1
+    local refFrame = draggedFrame or _G.DynamicLoadToastFrame or _G.DynamicSuitePreviewToast
+    local fW = (refFrame and refFrame.GetWidth and refFrame:GetWidth()) or 460
+    local fH = (refFrame and refFrame.GetHeight and refFrame:GetHeight()) or 74
+    local fScale = (refFrame and refFrame.GetEffectiveScale and refFrame:GetEffectiveScale()) or uiScale
+    local cx, cy = DynamicSuite.ClampPointOffsetToUIParent(fW, fH, fScale, uiW, uiH, uiScale, usePt, useRp, x or 0, y or -140)
+    local newPos = { point = usePt, relPoint = useRp, x = cx, y = cy }
+
+    local g = EnsureSuiteGlobal()
+    if type(g) == "table" then
+        g.toastPos = { point = usePt, relPoint = useRp, x = cx, y = cy }
+    end
+    if type(_G.DynamicSuiteDB) == "table" and type(_G.DynamicSuiteDB.global) == "table" and _G.DynamicSuiteDB.global ~= g then
+        _G.DynamicSuiteDB.global.toastPos = { point = usePt, relPoint = useRp, x = cx, y = cy }
+    end
+    if type(_G.DynamicLoadDB) == "table" then
+        _G.DynamicLoadDB.toastPos = { point = usePt, relPoint = useRp, x = cx, y = cy }
+    end
+
+    if not (_G.InCombatLockdown and _G.InCombatLockdown()) then
+        if draggedFrame and draggedFrame.ClearAllPoints and draggedFrame.SetPoint and _G.UIParent then
+            draggedFrame:ClearAllPoints()
+            draggedFrame:SetPoint(usePt, _G.UIParent, useRp, cx, cy)
+        end
+        local dlToast = _G.DynamicLoadToastFrame
+        if dlToast and dlToast ~= draggedFrame and not dlToast._dsDragging and not dlToast.isDraggingMode and not dlToast.isEditingMode then
+            if dlToast.ClearAllPoints and dlToast.SetPoint and _G.UIParent then
+                dlToast:ClearAllPoints()
+                dlToast:SetPoint(usePt, _G.UIParent, useRp, cx, cy)
+            end
+        end
+        if type(DynamicSuite.RestackAllToasts) == "function" then
+            DynamicSuite.RestackAllToasts()
+        end
+    end
+    if type(addonTable.OnToastPositionChanged) == "function" then
+        pcall(addonTable.OnToastPositionChanged, newPos)
+    end
+    return newPos
+end
+addonTable.SaveSharedToastPosition = DynamicSuite.SaveSharedToastPosition
+
+local activeDirectHudDrags = {}
+local directHudCombatFrame = nil
+local function EnsureDirectHudCombatAbortFrame()
+    if directHudCombatFrame or type(_G.CreateFrame) ~= "function" then return end
+    local okF, cf = pcall(_G.CreateFrame, "Frame")
+    if not okF or not cf or type(cf.RegisterEvent) ~= "function" then return end
+    cf:RegisterEvent("PLAYER_REGEN_DISABLED")
+    cf:SetScript("OnEvent", function()
+        local snapshot = {}
+        for ctrl in pairs(activeDirectHudDrags) do
+            snapshot[#snapshot + 1] = ctrl
+        end
+        for _, ctrl in ipairs(snapshot) do
+            if ctrl and type(ctrl.EndDrag) == "function" then
+                pcall(ctrl.EndDrag, true)
+            end
+        end
+    end)
+    directHudCombatFrame = cf
+end
+
+function DynamicSuite.AttachDirectHudShiftDrag(opts)
+    if type(opts) ~= "table" or not opts.frame then return nil end
+    EnsureDirectHudCombatAbortFrame()
+
+    local frame = opts.frame
+    local suppressClickSec = tonumber(opts.suppressClickSec) or 0.15
+    local controller = {}
+    local isDragging = false
+    local suppressClickUntil = 0
+
+    local function IsEditModeActive()
+        if frame._dsEditModeActive then return true end
+        if type(opts.isEditModeFn) == "function" then
+            local ok, res = pcall(opts.isEditModeFn)
+            if ok and res then return true end
+        end
+        return false
+    end
+
+    local function IsAllowedNow()
+        if type(opts.isAllowedFn) == "function" then
+            local ok, res = pcall(opts.isAllowedFn)
+            if not ok or res == false then return false end
+        end
+        return true
+    end
+
+    function controller.IsDragging()
+        return isDragging == true
+    end
+
+    function controller.WasRecentlyDragged()
+        local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+        return suppressClickUntil > 0 and now <= suppressClickUntil
+    end
+
+    function controller.OpenEditMode()
+        if type(opts.onBeforeOpenEdit) == "function" then
+            pcall(opts.onBeforeOpenEdit)
+        end
+        return DynamicSuite.OpenHudEditForTarget(opts.targetKey, opts.standaloneEditFallback, opts.addonLabel)
+    end
+
+    function controller.EndDrag(abortedByCombat)
+        if not isDragging then return false end
+        isDragging = false
+        activeDirectHudDrags[controller] = nil
+        frame._dsDragging = false
+        if frame.SetScript then
+            frame:SetScript("OnUpdate", nil)
+        end
+        if not opts.customDragUpdate and frame.StopMovingOrSizing then
+            pcall(frame.StopMovingOrSizing, frame)
+        end
+        suppressClickUntil = ((type(_G.GetTime) == "function") and _G.GetTime() or 0) + suppressClickSec
+        local combatAborted = (abortedByCombat == true) or (_G.InCombatLockdown and _G.InCombatLockdown() and true or false)
+        if type(opts.onDragEnd) == "function" then
+            pcall(opts.onDragEnd, combatAborted)
+        end
+        return true
+    end
+
+    function controller.BeginDrag()
+        if isDragging then return false end
+        if IsEditModeActive() then return false end
+        if not IsAllowedNow() then return false end
+        if _G.InCombatLockdown and _G.InCombatLockdown() then return false end
+        if not (_G.IsShiftKeyDown and _G.IsShiftKeyDown()) then return false end
+        if _G.GameTooltip and _G.GameTooltip.Hide then
+            _G.GameTooltip:Hide()
+        end
+        isDragging = true
+        frame._dsDragging = true
+        activeDirectHudDrags[controller] = true
+        if type(opts.onDragStart) == "function" then
+            pcall(opts.onDragStart)
+        end
+        if not opts.customDragUpdate and frame.StartMoving then
+            pcall(frame.StartMoving, frame)
+        end
+        if frame.SetScript then
+            frame:SetScript("OnUpdate", function()
+                if not isDragging then
+                    frame:SetScript("OnUpdate", nil)
+                    return
+                end
+                local inCombat = (_G.InCombatLockdown and _G.InCombatLockdown()) and true or false
+                local lmbDown = (type(_G.IsMouseButtonDown) ~= "function") or _G.IsMouseButtonDown("LeftButton")
+                if inCombat or not lmbDown then
+                    controller.EndDrag(inCombat)
+                elseif type(opts.customDragUpdate) == "function" then
+                    pcall(opts.customDragUpdate)
+                end
+            end)
+        end
+        return true
+    end
+
+    function controller.BindHandle(handle)
+        if not handle or handle._dsDirectShiftHandleBound then return end
+        handle._dsDirectShiftHandleBound = true
+        if handle.RegisterForDrag then
+            pcall(handle.RegisterForDrag, handle, "LeftButton")
+        end
+        if handle.HookScript then
+            handle:HookScript("OnDragStart", function()
+                controller.BeginDrag()
+            end)
+            handle:HookScript("OnDragStop", function()
+                controller.EndDrag(false)
+            end)
+        end
+    end
+
+    if not (_G.InCombatLockdown and _G.InCombatLockdown()) then
+        if frame.SetMovable then pcall(frame.SetMovable, frame, true) end
+        if frame.EnableMouse then pcall(frame.EnableMouse, frame, true) end
+        if frame.RegisterForDrag then pcall(frame.RegisterForDrag, frame, "LeftButton") end
+    end
+
+    if frame.HookScript then
+        frame:HookScript("OnDragStart", function()
+            controller.BeginDrag()
+        end)
+        frame:HookScript("OnDragStop", function()
+            controller.EndDrag(false)
+        end)
+        frame:HookScript("OnHide", function()
+            if isDragging then
+                controller.EndDrag(true)
+            end
+        end)
+    end
+
+    if type(opts.handles) == "table" then
+        for _, h in ipairs(opts.handles) do
+            controller.BindHandle(h)
+        end
+    end
+
+    return controller
+end
+addonTable.AttachDirectHudShiftDrag = DynamicSuite.AttachDirectHudShiftDrag
+
 function DynamicSuite.RestackAllToasts()
     if isRestackingToasts then return end
     if _G.InCombatLockdown and _G.InCombatLockdown() then return end
@@ -1203,8 +1572,24 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
     f:SetToplevel(false)
     f:SetClampedToScreen(true)
     f:EnableMouse(true)
-    local clickBtns = opts.clickButtons or { "RightButtonUp" }
+    local clickBtns = opts.clickButtons
+    if type(clickBtns) == "table" then
+        local hasLeft, hasRight = false, false
+        local merged = {}
+        for _, b in ipairs(clickBtns) do
+            merged[#merged + 1] = b
+            if b == "LeftButtonUp" then hasLeft = true end
+            if b == "RightButtonUp" then hasRight = true end
+        end
+        if not hasLeft then merged[#merged + 1] = "LeftButtonUp" end
+        if not hasRight then merged[#merged + 1] = "RightButtonUp" end
+        clickBtns = merged
+    else
+        clickBtns = { "LeftButtonUp", "RightButtonUp" }
+    end
     f:RegisterForClicks(unpack(clickBtns))
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
     f:SetBackdrop({
         bgFile   = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -1286,19 +1671,142 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
         return false
     end
 
+    local function RestoreSharedToastBorder(selfT)
+        if not selfT or not selfT.SetBackdropBorderColor then return end
+        local st = DynamicSuite.GetSharedToastStyle(selfT._dsToastKind)
+        local ar, ag, ab = st.ar, st.ag, st.ab
+        local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
+        local ov = selfT._dsBorderOverrideRGB
+        if bStyle == "NONE" or bStyle == "BORDERLESS" then
+            selfT:SetBackdropBorderColor(0, 0, 0, 0)
+        elseif type(ov) == "table" then
+            local br, bg2, bb, ba = unpack(ov)
+            selfT:SetBackdropBorderColor(br or ar, bg2 or ag, bb or ab, ba or 0.95)
+        elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+            selfT:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+        else
+            selfT:SetBackdropBorderColor(ar, ag, ab, 0.92)
+        end
+    end
+
+    local function ApplySharedToastHoverBorder(selfT)
+        if not selfT or not selfT.SetBackdropBorderColor then return end
+        local ar, ag, ab = addonTable.GetCoreAccentRGB()
+        selfT:SetBackdropBorderColor(ar, ag, ab, 1.0)
+    end
+
+    local function ShowSharedToastTooltip(owner)
+        if not _G.GameTooltip or not owner then return end
+        if f._dsDragging or f._dsEditModeActive or (_G.InCombatLockdown and _G.InCombatLockdown()) then
+            return
+        end
+        local uiH = (_G.UIParent and _G.UIParent.GetHeight and _G.UIParent:GetHeight()) or 1080
+        local fTop = (f.GetTop and f:GetTop()) or (uiH * 0.8)
+        local anchor = (fTop > (uiH * 0.5)) and "ANCHOR_BOTTOM" or "ANCHOR_TOP"
+        local ar, ag, ab = addonTable.GetCoreAccentRGB()
+        _G.GameTooltip:SetOwner(owner, anchor)
+        _G.GameTooltip:ClearLines()
+        _G.GameTooltip:AddLine("Alert Toast", ar, ag, ab)
+        DynamicSuite.AppendHudTooltipHints(_G.GameTooltip, {
+            moveLabel = "Move Alert Toast",
+            editModeTrigger = "Shift + Right-Click:",
+            hudCmd = "/ds hud",
+            addSpacer = false,
+            includeDismiss = true,
+        })
+        _G.GameTooltip:Show()
+    end
+
+    local function ComputeToastDropCoords(selfT)
+        local st = DynamicSuite.GetSharedToastStyle(selfT._dsToastKind)
+        local prevPos = st and st.pos or { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
+        local usePt = (prevPos.point == "CENTER") and "CENTER" or "TOP"
+        local fScale = (selfT.GetEffectiveScale and selfT:GetEffectiveScale()) or 1
+        local uScale = (_G.UIParent and _G.UIParent.GetEffectiveScale and _G.UIParent:GetEffectiveScale()) or 1
+        local ratio = (uScale > 0 and fScale > 0) and (fScale / uScale) or 1
+        local fCx, fCy = selfT.GetCenter and selfT:GetCenter()
+        local fTop = selfT.GetTop and selfT:GetTop()
+        local uCx, uCy = _G.UIParent.GetCenter and _G.UIParent:GetCenter()
+        local uTop = _G.UIParent.GetTop and _G.UIParent:GetTop()
+        local rx, ry = 0, -140
+        if fCx and uCx then
+            rx = math.floor((((fCx * ratio) - uCx) / ratio) + 0.5)
+            local dyCenter = math.floor((((fCy * ratio) - uCy) / ratio) + 0.5)
+            local dyTop = math.floor(((((fTop or fCy) * ratio) - (uTop or (uCy * 2))) / ratio) + 0.5)
+            ry = (usePt == "CENTER") and dyCenter or dyTop
+        elseif selfT.GetPoint then
+            local pt, _, _, gx, gy = selfT:GetPoint(1)
+            usePt = (pt == "CENTER") and "CENTER" or "TOP"
+            rx = math.floor((gx or 0) + 0.5)
+            ry = math.floor((gy or -140) + 0.5)
+        end
+        return usePt, usePt, rx, ry
+    end
+
+    local dragCtrl = DynamicSuite.AttachDirectHudShiftDrag({
+        frame = f,
+        targetKey = "TOAST",
+        addonLabel = "DynamicSuite",
+        isEditModeFn = function()
+            return f._dsEditModeActive or f.isEditingMode or f.isDraggingMode
+        end,
+        onDragStart = function()
+            if f.animGroup then f.animGroup:Pause() end
+            f:SetAlpha(1)
+            ApplySharedToastHoverBorder(f)
+        end,
+        onDragEnd = function(abortedByCombat)
+            if not abortedByCombat and not (_G.InCombatLockdown and _G.InCombatLockdown()) then
+                local pt, rp, rx, ry = ComputeToastDropCoords(f)
+                DynamicSuite.SaveSharedToastPosition(pt, rp, rx, ry, f)
+            end
+            if IsAnyToastHoverActive(f) then
+                ApplySharedToastHoverBorder(f)
+            else
+                RestoreSharedToastBorder(f)
+                if f._dsAutoFade and f.animGroup and f:IsShown() then
+                    local stLeave = DynamicSuite.GetSharedToastStyle(f._dsToastKind)
+                    local leaveDur = tonumber(stLeave and stLeave.duration) or 0
+                    if leaveDur > 0 then
+                        f.animGroup:Play()
+                    end
+                end
+            end
+        end,
+    })
+    f._dsDirectDragCtrl = dragCtrl
+
     function f.BindHoverPauseButton(btn)
         if not btn or btn._dsHoverPauseBound then return end
         btn._dsHoverPauseBound = true
         f._dsHoverButtons[#f._dsHoverButtons + 1] = btn
+        if dragCtrl then
+            dragCtrl.BindHandle(btn)
+        end
+        if btn.RegisterForClicks then
+            pcall(btn.RegisterForClicks, btn, "LeftButtonUp", "RightButtonUp")
+        end
         if btn.HookScript then
             btn:HookScript("OnEnter", function()
                 if f._dsAutoFade and f.animGroup then
                     f.animGroup:Pause()
                     f:SetAlpha(1)
                 end
+                if not f._dsDragging and not f._dsEditModeActive then
+                    ApplySharedToastHoverBorder(f)
+                    if not btn._dsHasOwnTooltip then
+                        ShowSharedToastTooltip(f)
+                    end
+                end
             end)
             btn:HookScript("OnLeave", function()
+                if _G.GameTooltip and _G.GameTooltip.IsOwned and (_G.GameTooltip:IsOwned(f) or _G.GameTooltip:IsOwned(btn)) then
+                    _G.GameTooltip:Hide()
+                end
                 if IsAnyToastHoverActive(f) then return end
+                if not f._dsDragging then
+                    RestoreSharedToastBorder(f)
+                end
                 if f._dsAutoFade and f.animGroup then
                     local stLeave = DynamicSuite.GetSharedToastStyle(f._dsToastKind)
                     local leaveDur = tonumber(stLeave and stLeave.duration) or 0
@@ -1307,6 +1815,27 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
                     end
                 end
             end)
+            local origOnClick = btn.GetScript and btn:GetScript("OnClick")
+            if origOnClick then
+                btn:SetScript("OnClick", function(selfBtn, button, down)
+                    if dragCtrl and dragCtrl.IsDragging() then
+                        dragCtrl.EndDrag(false)
+                        return
+                    end
+                    if dragCtrl and dragCtrl.WasRecentlyDragged() then
+                        return
+                    end
+                    if button == "RightButton" and _G.IsShiftKeyDown and _G.IsShiftKeyDown() then
+                        if dragCtrl then
+                            dragCtrl.OpenEditMode()
+                        else
+                            DynamicSuite.OpenHudEditForTarget("TOAST")
+                        end
+                        return
+                    end
+                    return origOnClick(selfBtn, button, down)
+                end)
+            end
         end
     end
 
@@ -1392,7 +1921,22 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
     f.holdAnim = holdAnim
 
     f:SetScript("OnClick", function(selfT, button)
+        if dragCtrl and dragCtrl.IsDragging() then
+            dragCtrl.EndDrag(false)
+            return
+        end
+        if dragCtrl and dragCtrl.WasRecentlyDragged() then
+            return
+        end
         if button == "RightButton" then
+            if _G.IsShiftKeyDown and _G.IsShiftKeyDown() then
+                if dragCtrl then
+                    dragCtrl.OpenEditMode()
+                else
+                    DynamicSuite.OpenHudEditForTarget("TOAST")
+                end
+                return
+            end
             if selfT.animGroup then selfT.animGroup:Stop() end
             selfT:SetAlpha(1)
             if type(selfT._dsOnRightClickDismiss) == "function" then
@@ -1407,10 +1951,20 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
             selfT.animGroup:Pause()
             selfT:SetAlpha(1)
         end
+        if not selfT._dsDragging and not selfT._dsEditModeActive then
+            ApplySharedToastHoverBorder(selfT)
+            ShowSharedToastTooltip(selfT)
+        end
     end)
     f:SetScript("OnLeave", function(selfT)
+        if _G.GameTooltip and _G.GameTooltip.IsOwned and _G.GameTooltip:IsOwned(selfT) then
+            _G.GameTooltip:Hide()
+        end
         if IsAnyToastHoverActive(selfT) then
             return
+        end
+        if not selfT._dsDragging then
+            RestoreSharedToastBorder(selfT)
         end
         if selfT._dsAutoFade and selfT.animGroup then
             local stLeave = DynamicSuite.GetSharedToastStyle(selfT._dsToastKind)
@@ -1421,6 +1975,12 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
         end
     end)
     f:HookScript("OnHide", function(selfT)
+        if _G.GameTooltip and _G.GameTooltip.IsOwned and _G.GameTooltip:IsOwned(selfT) then
+            _G.GameTooltip:Hide()
+        end
+        if dragCtrl and dragCtrl.IsDragging() then
+            dragCtrl.EndDrag(true)
+        end
         DynamicSuite.RestackAllToasts()
         if type(selfT._dsOnHide) == "function" then
             pcall(selfT._dsOnHide, selfT)
@@ -1440,6 +2000,7 @@ function DynamicSuite.ApplySharedToastLayout(frame, styleOpts)
     local toastKind = styleOpts.toastKind or frame._dsToastKind or "ACTION"
     toastKind = (type(toastKind) == "string" and toastKind:upper() == "INFO") and "INFO" or "ACTION"
     frame._dsToastKind = toastKind
+    frame._dsBorderOverrideRGB = (type(styleOpts.borderOverrideRGB) == "table") and styleOpts.borderOverrideRGB or nil
     local st = DynamicSuite.GetSharedToastStyle(toastKind)
     local ar, ag, ab = st.ar, st.ag, st.ab
     local bStyle = tostring(st.borderStyle or "ACCENT"):upper()
@@ -2695,6 +3256,19 @@ end
 do
 local ICON_DIR = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\"
 local MODULE_QUICK_GUIDES = {
+    suite = {
+        key       = "suite",
+        addonName = "DynamicSuite",
+        title     = "DynamicSuite",
+        icon      = ICON_DIR .. "icon_accent.tga",
+        slash     = "/ds, /ds hud, /ds search",
+        summary   = "Unified Obsidian suite hub for Theme Studio, Desktop Windows, HUD Edit Mode, Profile Sharing, and 13 modules.",
+        tips      = {
+            "Out of combat, Shift + Left-Drag any HUD bar, Chat Frame, or Alert Toast directly in the world to move it.",
+            "Right-Click empty bar space (or Shift + Right-Click HUD buttons/toasts) to open HUD Edit Mode (/ds hud).",
+            "Press Global Search (/ds search) to jump straight to any setting, or share !DS1! strings in Suite Studio Tab 3.",
+        },
+    },
     load = {
         key       = "load",
         addonName = "DynamicLoad",
@@ -2705,7 +3279,7 @@ local MODULE_QUICK_GUIDES = {
         tips      = {
             "Pin essential addons to Always and economy/collection addons to By Zone or Never.",
             "Right-click the zone tabs or use /dl status to check which addons are staged for next reload.",
-            "New addons default safely to By Zone (Outdoor) so dungeons and raids stay lean.",
+            "Shift + Left-Drag any Alert Toast in the world to reposition it, or Shift + Right-Click it to open /ds hud.",
         },
     },
     prep = {
@@ -2717,7 +3291,7 @@ local MODULE_QUICK_GUIDES = {
         summary   = "Displays a live Top Info Bar for stats, Omni Folio, consumables, and clickable Raid Buffs.",
         tips      = {
             "Left-click the Folio capsule to pick your zone target stat, or Right-click to open the Omnium Folio.",
-            "Shift + Left-Drag the Top Info Bar to move it directly, or Right-Click empty bar space / use /ds hud for grid & scale.",
+            "Out of combat, Shift + Left-Drag the Top Info Bar or Clickable Raid Buffs directly; Right-Click empty space or Shift + Right-Click buttons for /ds hud.",
             "Create the [DynamicHeal] and [DynamicDrink] macros in Tab 3 for smart recovery buttons.",
         },
     },
@@ -2743,7 +3317,7 @@ local MODULE_QUICK_GUIDES = {
         summary   = "Provides floating Focus Icon and World Flare bars alongside [DynamicMark] and [DynamicKick] macros.",
         tips      = {
             "Generate [DynamicMark] and [DynamicKick] in Tab 3 so your interrupt swaps automatically by spec.",
-            "Right-click a marker button or use /ds hud to drag and resize your Focus and Flare bars.",
+            "Out of combat, Shift + Left-Drag the Focus Icons or World Flare bar directly; Right-Click empty bar space or Shift + Right-Click an icon for HUD Edit Mode.",
             "Bind optional World Flare keys in Tab 2 (World Flares) to place or clear ground markers at cursor.",
         },
     },
@@ -2834,7 +3408,7 @@ local MODULE_QUICK_GUIDES = {
         summary   = "Styles your chat window with a compact shortcut rail, clickable links, /ww whispers, and mention alerts.",
         tips      = {
             "Type /ww to whisper your friendly target quickly, /rl to reload UI, or /lg to leave group.",
-            "Drag or resize your Chat Frame smoothly using /ds hud to align it alongside your HUD bars.",
+            "Out of combat, Shift + Left-Drag the Chat header strip or left rail to move it; Right-Click empty rail/header space or Shift + Right-Click rail buttons for /ds hud.",
             "Add your character names or keywords to Mention Alert Toasts with your choice of chime.",
         },
     },
@@ -5958,28 +6532,28 @@ local BUILTIN_SEARCH_SEED = {
     -- HUD Edit Mode Positioning Targets
     { moduleKey = "HUD", category = "HUD_LOOK", tabIndex = "PREP", hudTarget = "PREP", ownerAddon = "DynamicPrep", tabLabel = "HUD Positioning (/ds hud)",
       title = "Position Top Info Bar (Readiness Omni-Bar)",
-      desc = "Unlock the screen alignment grid to drag, nudge, centre, or scale the DynamicPrep Top Info Bar.",
-      keywords = "move drag position hud edit mode grid top info bar prep bar readiness omnibar coordinates x y" },
+      desc = "Shift + Left-Drag directly in the world out of combat, Right-Click empty space, Shift + Right-Click a capsule, or open /ds hud to align, centre, or scale the Top Info Bar.",
+      keywords = "move drag position hud edit mode grid top info bar prep bar readiness omnibar coordinates x y shift drag shift-drag shift left drag move bar unlock hud reposition drag bar right click hud" },
     { moduleKey = "HUD", category = "HUD_LOOK", tabIndex = "prepBuffs", hudTarget = "prepBuffs", ownerAddon = "DynamicPrep", tabLabel = "HUD Positioning (/ds hud)",
       title = "Position Clickable Raid Buffs HUD",
-      desc = "Unlock the screen alignment grid to drag, nudge, or scale the Clickable Raid Buffs & Consumables HUD.",
-      keywords = "move drag position hud edit mode grid clickable raid buffs consumables bar flask food oil" },
+      desc = "Shift + Left-Drag directly in the world out of combat, Right-Click empty space, Shift + Right-Click a buff icon, or open /ds hud to move or scale Clickable Raid Buffs.",
+      keywords = "move drag position hud edit mode grid clickable raid buffs consumables bar flask food oil shift drag shift-drag shift left drag move bar unlock hud reposition drag bar right click hud" },
     { moduleKey = "HUD", category = "HUD_LOOK", tabIndex = "TARGET", hudTarget = "TARGET", ownerAddon = "DynamicMarker", tabLabel = "HUD Positioning (/ds hud)",
       title = "Position On-Screen Focus Icons Bar",
-      desc = "Unlock the screen alignment grid to drag, nudge, or scale the 8-icon Raid Target Focus Bar.",
-      keywords = "move drag position hud edit mode grid focus icons bar target marker skull bar" },
+      desc = "Shift + Left-Drag directly in the world out of combat, Right-Click empty bar space, Shift + Right-Click any icon, or open /ds hud to move, rotate, or scale the Focus Icons Bar.",
+      keywords = "move drag position hud edit mode grid focus icons bar target marker skull bar shift drag shift-drag shift left drag move bar unlock hud reposition drag bar right click hud" },
     { moduleKey = "HUD", category = "HUD_LOOK", tabIndex = "FLARE", hudTarget = "FLARE", ownerAddon = "DynamicMarker", tabLabel = "HUD Positioning (/ds hud)",
       title = "Position On-Screen World Flare Bar",
-      desc = "Unlock the screen alignment grid to drag, nudge, or scale the 9-button World Ground Flare Bar.",
-      keywords = "move drag position hud edit mode grid world flare bar ground markers" },
+      desc = "Shift + Left-Drag directly in the world out of combat, Right-Click empty bar space, Shift + Right-Click any flare, or open /ds hud to move, rotate, or scale the World Flare Bar.",
+      keywords = "move drag position hud edit mode grid world flare bar ground markers shift drag shift-drag shift left drag move bar unlock hud reposition drag bar right click hud" },
     { moduleKey = "HUD", category = "HUD_LOOK", tabIndex = "CHAT", hudTarget = "CHAT", ownerAddon = "DynamicChat", tabLabel = "HUD Positioning (/ds hud)",
       title = "Position & Resize Chat Frame",
-      desc = "Unlock the screen alignment grid to position and resize the primary Chat Window with composite margin clamping.",
-      keywords = "move drag resize position hud edit mode grid chat frame window box" },
+      desc = "Shift + Left-Drag the Chat header strip or left rail out of combat, Right-Click empty space, Shift + Right-Click rail buttons, or open /ds hud to move and resize the Chat Window.",
+      keywords = "move drag resize position hud edit mode grid chat frame window box shift drag shift-drag shift left drag move bar unlock hud reposition drag bar right click hud" },
     { moduleKey = "HUD", category = "HUD_LOOK", tabIndex = "TOAST", hudTarget = "TOAST", ownerAddon = "DynamicLoad", tabLabel = "HUD Positioning (/ds hud)",
-      title = "Position DynamicLoad Alert Toast",
-      desc = "Unlock the screen alignment grid to drag, nudge, or scale the Zone Profile Reload Alert Toast.",
-      keywords = "move drag position hud edit mode grid alert toast banner reload notification" },
+      title = "Position Shared Alert Toast",
+      desc = "Shift + Left-Drag any Alert Toast directly in the world out of combat, Shift + Right-Click it, or open /ds hud to position, scale, and tune Alert Toast timers.",
+      keywords = "move drag position hud edit mode grid alert toast banner reload notification dynamicload shift drag shift-drag shift left drag move bar unlock hud reposition drag bar right click hud" },
 
     -- ========================================================================
     -- 1. DYNAMICLOAD ("load") - Zone Addon Profiles & Alert Toast

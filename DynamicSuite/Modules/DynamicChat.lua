@@ -617,6 +617,25 @@ local function FormatTooltipCmd(cmdText, actionText, cmdHex)
     return string.format("|cFF%s%s|r |cFFE2E8F0%s|r", hex6, cmd, tostring(actionText or ""))
 end
 
+function DC_NS.AppendChatHudHints(tooltip, editTrigger, addSpacer)
+    if not tooltip or type(tooltip.AddLine) ~= "function" then return end
+    local wantSpacer = (addSpacer ~= false)
+    if _G.DynamicSuite and type(_G.DynamicSuite.AppendHudTooltipHints) == "function" then
+        _G.DynamicSuite.AppendHudTooltipHints(tooltip, {
+            moveLabel = "Move chat window",
+            editModeTrigger = editTrigger or "Shift + Right-Click:",
+            hudCmd = "/ds hud",
+            addSpacer = wantSpacer,
+        })
+        return
+    end
+    if wantSpacer then
+        tooltip:AddLine(" ")
+    end
+    tooltip:AddLine(FormatTooltipCmd("Shift + Left-Drag:", "Move chat window", "34D399"), 1, 1, 1)
+    tooltip:AddLine(FormatTooltipCmd(editTrigger or "Shift + Right-Click:", "Open HUD Edit Mode (/ds hud)", "38BDF8"), 1, 1, 1)
+end
+
 local function PrintMsg(msg)
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
         DEFAULT_CHAT_FRAME:AddMessage(ColorWithAccent("Dynamic") .. "|cFFFFFFFFChat|r: " .. tostring(msg))
@@ -3086,6 +3105,14 @@ local function CreateRailButton(rail, isTelemetry, iconTexture, subLabel, isBott
     dot:Hide()
     btn.dot = dot
 
+    btn:RegisterForDrag("LeftButton")
+    btn:SetScript("OnDragStart", function()
+        DynamicChat:BeginDirectChatDrag()
+    end)
+    btn:SetScript("OnDragStop", function()
+        DynamicChat:EndDirectChatDrag(false)
+    end)
+
     btn:SetScript("OnEnter", function(self)
         local ar, ag, ab = GetSuiteAccent()
         self:SetBackdropColor(1, 1, 1, 0.06)
@@ -3096,8 +3123,17 @@ local function CreateRailButton(rail, isTelemetry, iconTexture, subLabel, isBott
             self.subText:SetTextColor(1, 1, 1, 1.0)
         end
         DynamicChat:RefreshLeftRailTelemetry()
+        local cf1 = _G.ChatFrame1
+        local cf1Entry = cf1 and chatSkinStore[cf1]
+        if cf1Entry and cf1Entry.panel and DynamicChat:IsChatFrameLayoutOwned() and not DynamicChat._dsEditModeActive then
+            DynamicChat:ApplyPanelHoverBorder(cf1Entry.panel, true)
+        end
         if self.tooltipFunc then
             self.tooltipFunc(self)
+            if DynamicChat:IsChatFrameLayoutOwned() and _G.GameTooltip and _G.GameTooltip.IsOwned and _G.GameTooltip:IsOwned(self) then
+                DC_NS.AppendChatHudHints(_G.GameTooltip, "Shift + Right-Click:", true)
+                _G.GameTooltip:Show()
+            end
         end
     end)
 
@@ -3107,10 +3143,36 @@ local function CreateRailButton(rail, isTelemetry, iconTexture, subLabel, isBott
             self.icon:SetVertexColor(0.62, 0.68, 0.76, 0.88)
         end
         if _G.GameTooltip then _G.GameTooltip:Hide() end
+        local cf1 = _G.ChatFrame1
+        local cf1Entry = cf1 and chatSkinStore[cf1]
+        if cf1Entry and cf1Entry.panel and not DynamicChat._dcDirectDragActive then
+            DynamicChat:ApplyPanelHoverBorder(cf1Entry.panel, false)
+        end
         DynamicChat:RefreshLeftRailTelemetry()
     end)
 
     return btn
+end
+
+function DC_NS.WrapRailButtonShiftActions(btn)
+    if not btn or btn._dcShiftWrapped or not btn.GetScript then return end
+    local origOnClick = btn:GetScript("OnClick")
+    if type(origOnClick) ~= "function" then return end
+    btn._dcShiftWrapped = true
+    btn:SetScript("OnClick", function(selfBtn, button, down)
+        if DynamicChat._dcDirectDragActive then
+            DynamicChat:EndDirectChatDrag(false)
+            return
+        end
+        if DynamicChat._dcSuppressClickUntil and GetTime and GetTime() <= DynamicChat._dcSuppressClickUntil then
+            return
+        end
+        if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() and DynamicChat:IsChatFrameLayoutOwned() and not DynamicChat._dsEditModeActive then
+            DynamicChat:OpenChatHudEdit()
+            return
+        end
+        return origOnClick(selfBtn, button, down)
+    end)
 end
 
 local function EnsureRailPopoverClickCatcher()
@@ -3308,6 +3370,143 @@ local function ShowLeftRailCustomizerMenu(anchorBtn)
     railPopoverFrame:Raise()
 end
 
+function DynamicChat:OpenChatHudEdit()
+    if _G.DynamicSuite and type(_G.DynamicSuite.OpenHudEditForTarget) == "function" then
+        return _G.DynamicSuite.OpenHudEditForTarget("CHAT", function()
+            PrintMsg("Open HUD Edit Mode via DynamicSuite (/ds hud) to align and resize Chat.")
+        end, "DynamicChat")
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        PrintMsg("Cannot open HUD Edit Mode while in combat.")
+        return false
+    end
+    if _G.GameTooltip and _G.GameTooltip.Hide then _G.GameTooltip:Hide() end
+    PrintMsg("Open DynamicSuite HUD Edit Mode (/ds hud) to align and resize Chat.")
+    return false
+end
+
+function DynamicChat:ApplyPanelHoverBorder(panel, isHighlighted)
+    if not panel or not panel.SetBackdropBorderColor then return end
+    local db = EnsureDB()
+    local ar, ag, ab = GetSuiteAccent()
+    if isHighlighted and self:IsChatFrameLayoutOwned() and not self._dsEditModeActive and not (InCombatLockdown and InCombatLockdown()) then
+        panel:SetBackdropBorderColor(ar, ag, ab, 1.0)
+        if panel.hoverAccentTop then
+            panel.hoverAccentTop:SetColorTexture(ar, ag, ab, 0.95)
+            panel.hoverAccentTop:Show()
+        end
+        return
+    end
+    if panel.hoverAccentTop then
+        panel.hoverAccentTop:Hide()
+    end
+    local bStyle = db.chatBorderStyle or "ACCENT"
+    if bStyle == "NONE" then
+        panel:SetBackdropBorderColor(0, 0, 0, 0)
+    elseif bStyle == "DARK" or bStyle == "SUBTLE" then
+        panel:SetBackdropBorderColor(0.18, 0.22, 0.28, 0.85)
+    else
+        panel:SetBackdropBorderColor(ar, ag, ab, 0.85)
+    end
+end
+
+function DynamicChat:EndDirectChatDrag(abortedByCombat)
+    if not self._dcDirectDragActive then return false end
+    self._dcDirectDragActive = false
+    self._dsDragging = false
+    if self._directChatDragDriver and self._directChatDragDriver.SetScript then
+        self._directChatDragDriver:SetScript("OnUpdate", nil)
+    end
+    self._dcSuppressClickUntil = (GetTime and GetTime() or 0) + 0.15
+    local st = self._dcDragState
+    self._dcDragState = nil
+
+    local cf1 = _G.ChatFrame1
+    local entry = cf1 and chatSkinStore[cf1]
+    if not abortedByCombat and not (InCombatLockdown and InCombatLockdown()) and st and self:IsChatFrameLayoutOwned() then
+        self:SaveChatFramePosition("BOTTOMLEFT", "BOTTOMLEFT", st.lastOuterX, st.lastOuterY, st.w, st.h)
+    end
+    if entry and entry.panel then
+        local isHover = (entry.headerDragStrip and entry.headerDragStrip.IsMouseOver and entry.headerDragStrip:IsMouseOver())
+            or (entry.leftRail and entry.leftRail.IsMouseOver and entry.leftRail:IsMouseOver())
+        self:ApplyPanelHoverBorder(entry.panel, isHover and not abortedByCombat)
+    end
+    return true
+end
+
+function DynamicChat:BeginDirectChatDrag()
+    if self._dcDirectDragActive or self._dsDragging or self._dsEditModeActive then return false end
+    if InCombatLockdown and InCombatLockdown() then return false end
+    if not self:IsChatFrameLayoutOwned() then return false end
+    if not (IsShiftKeyDown and IsShiftKeyDown()) then return false end
+    local cf1 = _G.ChatFrame1
+    if not cf1 then return false end
+    if _G.GameTooltip and _G.GameTooltip.Hide then _G.GameTooltip:Hide() end
+
+    local _, _, startX, startY, curW, curH = self:GetLiveOuterBottomLeft()
+    local fScale = (cf1.GetEffectiveScale and cf1:GetEffectiveScale()) or 1
+    local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+    if fScale <= 0 then fScale = 1 end
+    if uScale <= 0 then uScale = 1 end
+    local relScale = fScale / uScale
+    local rawCurX, rawCurY = GetCursorPosition()
+    local startCurX = (rawCurX or 0) / uScale
+    local startCurY = (rawCurY or 0) / uScale
+
+    self._dcDirectDragActive = true
+    self._dsDragging = true
+    self._dcDragState = {
+        grabVisX = (startX * relScale) - startCurX,
+        grabVisY = (startY * relScale) - startCurY,
+        lastOuterX = startX,
+        lastOuterY = startY,
+        w = curW,
+        h = curH,
+    }
+    local entry = chatSkinStore[cf1]
+    if entry and entry.panel then
+        self:ApplyPanelHoverBorder(entry.panel, true)
+    end
+    if not self._directChatDragDriver then
+        self._directChatDragDriver = CreateFrame("Frame", nil, UIParent)
+    end
+    local drv = self._directChatDragDriver
+    drv:SetScript("OnUpdate", function()
+        if not DynamicChat._dcDirectDragActive then
+            drv:SetScript("OnUpdate", nil)
+            return
+        end
+        local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+        local lmbDown = (type(IsMouseButtonDown) ~= "function") or IsMouseButtonDown("LeftButton")
+        if inCombat or not lmbDown then
+            DynamicChat:EndDirectChatDrag(inCombat)
+            return
+        end
+        local st = DynamicChat._dcDragState
+        if not st then return end
+        local curFScale = (cf1.GetEffectiveScale and cf1:GetEffectiveScale()) or 1
+        local curUScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        if curFScale <= 0 then curFScale = 1 end
+        if curUScale <= 0 then curUScale = 1 end
+        local curRelScale = curFScale / curUScale
+        local cxRaw, cyRaw = GetCursorPosition()
+        local rawVisX = ((cxRaw or 0) / curUScale) + (st.grabVisX or 0)
+        local rawVisY = ((cyRaw or 0) / curUScale) + (st.grabVisY or 0)
+        local cx, cy = DynamicChat:ClampChatFrameCoords(rawVisX / curRelScale, rawVisY / curRelScale, st.w, st.h, "BOTTOMLEFT")
+        if cx == st.lastOuterX and cy == st.lastOuterY then
+            return
+        end
+        st.lastOuterX = cx
+        st.lastOuterY = cy
+        local leftExt, _, _, bottomExt = DynamicChat:GetVisibleContainerExtents()
+        pcall(function()
+            cf1:ClearAllPoints()
+            cf1:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", leftExt + cx, bottomExt + cy)
+        end)
+    end)
+    return true
+end
+
 local function EnsureChatLeftRail(entry, panel)
     if entry.leftRail then return entry.leftRail end
 
@@ -3317,6 +3516,45 @@ local function EnsureChatLeftRail(entry, panel)
     rail:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
     rail:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT", 0, 0)
     rail:SetWidth(34)
+    rail:EnableMouse(true)
+    rail:RegisterForDrag("LeftButton")
+    rail:SetScript("OnDragStart", function()
+        DynamicChat:BeginDirectChatDrag()
+    end)
+    rail:SetScript("OnDragStop", function()
+        DynamicChat:EndDirectChatDrag(false)
+    end)
+    rail:SetScript("OnMouseUp", function(_, button)
+        if DynamicChat._dcDirectDragActive then
+            DynamicChat:EndDirectChatDrag(false)
+            return
+        end
+        if button == "RightButton" and DynamicChat:IsChatFrameLayoutOwned() and not DynamicChat._dsEditModeActive then
+            DynamicChat:OpenChatHudEdit()
+        end
+    end)
+    rail:SetScript("OnEnter", function(selfRail)
+        if not DynamicChat:IsChatFrameLayoutOwned() or DynamicChat._dsEditModeActive or DynamicChat._dcDirectDragActive or (InCombatLockdown and InCombatLockdown()) then
+            return
+        end
+        DynamicChat:ApplyPanelHoverBorder(panel, true)
+        if _G.GameTooltip then
+            local ar, ag, ab = GetSuiteAccent()
+            _G.GameTooltip:SetOwner(selfRail, "ANCHOR_RIGHT")
+            _G.GameTooltip:ClearLines()
+            _G.GameTooltip:AddLine("Chat Frame", ar, ag, ab)
+            DC_NS.AppendChatHudHints(_G.GameTooltip, "Right-Click:", false)
+            _G.GameTooltip:Show()
+        end
+    end)
+    rail:SetScript("OnLeave", function(selfRail)
+        if _G.GameTooltip and _G.GameTooltip.IsOwned and _G.GameTooltip:IsOwned(selfRail) then
+            _G.GameTooltip:Hide()
+        end
+        if not DynamicChat._dcDirectDragActive then
+            DynamicChat:ApplyPanelHoverBorder(panel, false)
+        end
+    end)
     rail.buttonsByKey = {}
 
     -- 1. social - Social / Guild Online Button (icon_social.tga + numeric badge)
@@ -3602,6 +3840,11 @@ local function EnsureChatLeftRail(entry, panel)
     rail.buttonsByKey["scrollbottom"] = bottomBtn
 
     LayoutChatLeftRail(rail)
+    if rail.buttonsByKey then
+        for _, rBtn in pairs(rail.buttonsByKey) do
+            DC_NS.WrapRailButtonShiftActions(rBtn)
+        end
+    end
     entry.leftRail = rail
     return rail
 end
@@ -5856,9 +6099,63 @@ function DynamicChat:ApplySleekChatSkin()
                     DisableTexPixelSnap(railDiv)
                     p.railDiv = railDiv
 
+                    local hoverAccentTop = p:CreateTexture(nil, "OVERLAY")
+                    hoverAccentTop:SetHeight(1)
+                    hoverAccentTop:SetPoint("TOPLEFT", p, "TOPLEFT", 1, -1)
+                    hoverAccentTop:SetPoint("TOPRIGHT", p, "TOPRIGHT", -1, -1)
+                    hoverAccentTop:Hide()
+                    p.hoverAccentTop = hoverAccentTop
+
                     entry.panel = p
                 end
                 local p = entry.panel
+                if i == 1 and not entry.headerDragStrip and p.headerBg then
+                    local hs = CreateFrame("Frame", nil, UIParent)
+                    hs:SetFrameStrata("LOW")
+                    hs:SetFrameLevel(2)
+                    hs:EnableMouse(true)
+                    hs:EnableMouseWheel(true)
+                    hs:RegisterForDrag("LeftButton")
+                    hs:SetScript("OnMouseWheel", OnTabBarMouseWheel)
+                    hs:SetScript("OnDragStart", function()
+                        DynamicChat:BeginDirectChatDrag()
+                    end)
+                    hs:SetScript("OnDragStop", function()
+                        DynamicChat:EndDirectChatDrag(false)
+                    end)
+                    hs:SetScript("OnMouseUp", function(_, button)
+                        if DynamicChat._dcDirectDragActive then
+                            DynamicChat:EndDirectChatDrag(false)
+                            return
+                        end
+                        if button == "RightButton" and DynamicChat:IsChatFrameLayoutOwned() and not DynamicChat._dsEditModeActive then
+                            DynamicChat:OpenChatHudEdit()
+                        end
+                    end)
+                    hs:SetScript("OnEnter", function(selfStrip)
+                        if not DynamicChat:IsChatFrameLayoutOwned() or DynamicChat._dsEditModeActive or DynamicChat._dcDirectDragActive or (InCombatLockdown and InCombatLockdown()) then
+                            return
+                        end
+                        DynamicChat:ApplyPanelHoverBorder(p, true)
+                        if _G.GameTooltip then
+                            local ar2, ag2, ab2 = GetSuiteAccent()
+                            _G.GameTooltip:SetOwner(selfStrip, "ANCHOR_TOP")
+                            _G.GameTooltip:ClearLines()
+                            _G.GameTooltip:AddLine("Chat Frame", ar2, ag2, ab2)
+                            DC_NS.AppendChatHudHints(_G.GameTooltip, "Right-Click:", false)
+                            _G.GameTooltip:Show()
+                        end
+                    end)
+                    hs:SetScript("OnLeave", function(selfStrip)
+                        if _G.GameTooltip and _G.GameTooltip.IsOwned and _G.GameTooltip:IsOwned(selfStrip) then
+                            _G.GameTooltip:Hide()
+                        end
+                        if not DynamicChat._dcDirectDragActive then
+                            DynamicChat:ApplyPanelHoverBorder(p, false)
+                        end
+                    end)
+                    entry.headerDragStrip = hs
+                end
                 local hasLeftRail = (i == 1 and db.leftRailMode ~= "OFF")
                 local leftPad = hasLeftRail and -36 or -8
                 local divLeftX = hasLeftRail and 34 or 0
@@ -5972,6 +6269,18 @@ function DynamicChat:ApplySleekChatSkin()
                     p.headerBg:Show()
                 end
 
+                if i == 1 and entry.headerDragStrip and p.headerBg then
+                    if self:IsChatFrameLayoutOwned() and not self._dsEditModeActive then
+                        if entry.headerDragStrip.SetScale then pcall(entry.headerDragStrip.SetScale, entry.headerDragStrip, cfScale) end
+                        entry.headerDragStrip:ClearAllPoints()
+                        entry.headerDragStrip:SetPoint("TOPLEFT", p.headerBg, "TOPLEFT", 0, 0)
+                        entry.headerDragStrip:SetPoint("BOTTOMRIGHT", p.headerBg, "BOTTOMRIGHT", 0, 0)
+                        entry.headerDragStrip:Show()
+                    else
+                        entry.headerDragStrip:Hide()
+                    end
+                end
+
                 if p.railDiv then
                     if hasLeftRail then
                         p.railDiv:ClearAllPoints()
@@ -6041,6 +6350,7 @@ function DynamicChat:ApplySleekChatSkin()
             else
                 if entry.panel then entry.panel:Hide() end
                 if entry.leftRail then entry.leftRail:Hide() end
+                if entry.headerDragStrip then entry.headerDragStrip:Hide() end
                 if i == 1 and not skinEnabled and not (InCombatLockdown and InCombatLockdown()) then
                     RestoreOriginalButtonAnchors(_G.ChatFrame1ButtonFrame or cf.buttonFrame)
                     RestoreOriginalButtonAnchors(_G.ChatFrameMenuButton)
@@ -6094,6 +6404,7 @@ function DynamicChat:ApplySleekChatSkin()
         if not activeFrameSet[cf] or (not isPrimaryCF and (not DynamicChat.SafeFrameIsShown(cf, false) or (cf ~= _G.ChatFrame1 and cf.isDocked))) or not skinEnabled then
             if entry.panel then entry.panel:Hide() end
             if entry.leftRail then entry.leftRail:Hide() end
+            if entry.headerDragStrip then entry.headerDragStrip:Hide() end
             if not skinEnabled and cf.FontStringContainer and DC_NS.paddedFontStringContainers[cf.FontStringContainer] and not (InCombatLockdown and InCombatLockdown()) then
                 pcall(function()
                     cf.FontStringContainer:ClearAllPoints()
@@ -6720,6 +7031,20 @@ function DynamicChat:SaveChatFramePosition(pt, relPt, x, y, w, h)
         width         = clampedW,
         height        = clampedH,
     }
+    if type(_G.DynamicSuiteDB) == "table" and type(_G.DynamicSuiteDB.global) == "table" then
+        _G.DynamicSuiteDB.global.hudPositions = _G.DynamicSuiteDB.global.hudPositions or {}
+        local hudEntry = {
+            point         = "BOTTOMLEFT",
+            relativePoint = "BOTTOMLEFT",
+            relPoint      = "BOTTOMLEFT",
+            x             = clampedX,
+            y             = clampedY,
+        }
+        _G.DynamicSuiteDB.global.hudPositions["CHAT"]       = hudEntry
+        _G.DynamicSuiteDB.global.hudPositions["ChatFrame"]  = hudEntry
+        _G.DynamicSuiteDB.global.hudPositions["chat"]       = hudEntry
+        _G.DynamicSuiteDB.global.hudPositions["ChatFrame1"] = hudEntry
+    end
     self:ApplySavedChatFramePosition()
 end
 
@@ -13586,6 +13911,9 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
             self:RestoreChatHistorySnapshot()
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
+        if self._dcDirectDragActive then
+            self:EndDirectChatDrag(true)
+        end
         self:RefreshLeftRailTelemetry()
     elseif event == "PLAYER_REGEN_ENABLED" then
         self:ApplyGPUBufferSettings()

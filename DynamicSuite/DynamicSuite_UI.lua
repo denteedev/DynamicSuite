@@ -4644,15 +4644,27 @@ function addonTable.CreateMainConfigUI()
     local hdrQuickGuideBtn = nil
     local statusCapsule = nil
 
+    local function ResolveActiveQuickGuideKey()
+        if activeWorkspaceView == "DYNAMICLOAD" then
+            return "load"
+        elseif activeWorkspaceView == "PEER_MODULE" or activeWorkspaceView == "PEER_HOST" then
+            return selectedPeerModuleKey
+        elseif activeWorkspaceView == "THEME_STUDIO" or activeWorkspaceView == "DESKTOP_WINDOWS"
+            or activeWorkspaceView == "SUITE_STUDIO_THEME" or activeWorkspaceView == "SUITE_STUDIO_WINDOWS"
+            or activeWorkspaceView == "SUITE_STUDIO_PROFILES" or activeWorkspaceView == "GUIDED_SETUP"
+            or activeWorkspaceView == "SEARCH" or activeWorkspaceView == "SEARCH_VIEW"
+            or activeWorkspaceView == "CHANGELOG_VIEW" or activeWorkspaceView == "SUPPORT_VIEW" then
+            return "suite"
+        end
+        return nil
+    end
+
     function f.UpdateQuickGuideHeaderButton()
         local qgBtn = hdrQuickGuideBtn or f.hdrQuickGuideBtn
         local cap = statusCapsule or f.statusCapsule
         if not qgBtn or not cap then return end
-        local isModView = (activeWorkspaceView == "DYNAMICLOAD")
-            or (activeWorkspaceView == "PEER_MODULE")
-            or (activeWorkspaceView == "PEER_HOST")
-        local modKey = (activeWorkspaceView == "DYNAMICLOAD") and "load" or selectedPeerModuleKey
-        local guide = (isModView and modKey and addonTable.GetModuleQuickGuide) and addonTable.GetModuleQuickGuide(modKey) or nil
+        local modKey = ResolveActiveQuickGuideKey()
+        local guide = (modKey and addonTable.GetModuleQuickGuide) and addonTable.GetModuleQuickGuide(modKey) or nil
         if guide then
             qgBtn:Show()
             cap:ClearAllPoints()
@@ -4678,7 +4690,7 @@ function addonTable.CreateMainConfigUI()
     hdrQuickGuideBtn:SetPoint("RIGHT", altPillBtn, "LEFT", -6, 0)
     UI.SetFont(hdrQuickGuideBtn.label, 12.5, "", 0.86, 0.90, 0.96, 0.96)
     hdrQuickGuideBtn:SetScript("OnClick", function()
-        local targetKey = (activeWorkspaceView == "DYNAMICLOAD") and "load" or selectedPeerModuleKey
+        local targetKey = ResolveActiveQuickGuideKey()
         if targetKey and addonTable.ShowModuleQuickGuide then
             addonTable.ShowModuleQuickGuide(targetKey)
         end
@@ -4688,9 +4700,10 @@ function addonTable.CreateMainConfigUI()
         self.dsBorder:SetColor(ar, ag, ab, 0.85)
         self.bg:SetColorTexture(ar, ag, ab, 0.16)
         self.label:SetTextColor(1, 1, 1, 1)
+        local targetKey = ResolveActiveQuickGuideKey()
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         GameTooltip:SetText("Quick Guide", 1, 1, 1)
-        GameTooltip:AddLine("Short tips for this module", 0.82, 0.86, 0.92, true)
+        GameTooltip:AddLine(targetKey == "suite" and "Short tips for DynamicSuite" or "Short tips for this module", 0.82, 0.86, 0.92, true)
         GameTooltip:Show()
     end
     hdrQuickGuideBtn.OnCustomLeave = function(self)
@@ -16210,13 +16223,13 @@ function addonTable.CreateMainConfigUI()
 
         local ar, ag, ab = UI.GetActiveAccentColor()
         local m = CreateFrame("Frame", "DynamicSuiteEditModeModal", UIParent)
-        m:SetSize(560, 110)
+        m:SetSize(560, 130)
 
         local function ApplyEditModalClampInsets(modal)
             local target = modal or m
             if not target then return end
             local w = (target.GetWidth and target:GetWidth()) or 560
-            local h = (target.GetHeight and target:GetHeight()) or 110
+            local h = (target.GetHeight and target:GetHeight()) or 130
             local keepVisible = 60
             local allowOffX = math.max(0, w - keepVisible)
             local allowOffY = math.max(0, h - keepVisible)
@@ -16233,7 +16246,7 @@ function addonTable.CreateMainConfigUI()
             self:ClearAllPoints()
             if type(pos) == "table" and pos.x ~= nil and pos.y ~= nil then
                 local w = (self.GetWidth and self:GetWidth()) or 560
-                local h = (self.GetHeight and self:GetHeight()) or 110
+                local h = (self.GetHeight and self:GetHeight()) or 130
                 local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
                 local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
                 local allowOffX = math.max(0, w - 60)
@@ -17323,6 +17336,20 @@ function addonTable.CreateMainConfigUI()
         m.inspRow4Toast = inspRow4Toast
         m.inspTestToastBtn = inspTestToastBtn
 
+        local inspTipBar = CreateFrame("Frame", nil, m)
+        inspTipBar:SetPoint("TOPLEFT", inspRow3, "BOTTOMLEFT", 0, -2)
+        inspTipBar:SetPoint("TOPRIGHT", inspRow3, "BOTTOMRIGHT", 0, -2)
+        inspTipBar:SetHeight(18)
+        local inspTipText = inspTipBar:CreateFontString(nil, "OVERLAY")
+        inspTipText:SetPoint("LEFT", inspTipBar, "LEFT", 6, 0)
+        inspTipText:SetPoint("RIGHT", inspTipBar, "RIGHT", -6, 0)
+        inspTipText:SetJustifyH("LEFT")
+        inspTipText:SetWordWrap(false)
+        UI.SetFont(inspTipText, 9.5, "", 0.62, 0.68, 0.78, 1)
+        inspTipText:SetText("Tip: Out of combat, Shift + Left-Drag any HUD in the world to move it directly.")
+        inspTipBar.text = inspTipText
+        m.inspTipBar = inspTipBar
+
         ------------------------------------------------------------------------
         -- Modal State Refresh & External Coordination
         ------------------------------------------------------------------------
@@ -17423,9 +17450,10 @@ function addonTable.CreateMainConfigUI()
             local isToastSelected = (selectedHudTarget == "TOAST")
             if m._isCollapsed then
                 if inspRow4Toast then inspRow4Toast:Hide() end
+                if m.inspTipBar then m.inspTipBar:Hide() end
                 m:SetSize(560, 36)
             elseif isToastSelected then
-                m:SetSize(560, 144)
+                m:SetSize(560, 164)
                 if inspRow4Toast then
                     if inspRow4Toast.bg then
                         inspRow4Toast.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, 0.96)
@@ -17449,9 +17477,21 @@ function addonTable.CreateMainConfigUI()
                     end
                     inspRow4Toast:Show()
                 end
+                if m.inspTipBar and inspRow4Toast then
+                    m.inspTipBar:ClearAllPoints()
+                    m.inspTipBar:SetPoint("TOPLEFT", inspRow4Toast, "BOTTOMLEFT", 0, -2)
+                    m.inspTipBar:SetPoint("TOPRIGHT", inspRow4Toast, "BOTTOMRIGHT", 0, -2)
+                    m.inspTipBar:Show()
+                end
             else
                 if inspRow4Toast then inspRow4Toast:Hide() end
-                m:SetSize(560, 110)
+                if m.inspTipBar then
+                    m.inspTipBar:ClearAllPoints()
+                    m.inspTipBar:SetPoint("TOPLEFT", inspRow3, "BOTTOMLEFT", 0, -2)
+                    m.inspTipBar:SetPoint("TOPRIGHT", inspRow3, "BOTTOMRIGHT", 0, -2)
+                    m.inspTipBar:Show()
+                end
+                m:SetSize(560, 130)
             end
         end
 
@@ -17543,7 +17583,7 @@ function addonTable.CreateMainConfigUI()
         modal:SetFrameStrata("DIALOG")
         modal:SetFrameLevel(200)
         modal._isCollapsed = false
-        modal:SetSize(560, (selectedHudTarget == "TOAST") and 144 or 110)
+        modal:SetSize(560, (selectedHudTarget == "TOAST") and 164 or 130)
         if modal.hudSelectorPopup then modal.hudSelectorPopup:Hide() end
         if modal.inspCard then modal.inspCard:Show() end
         if modal.inspRow3 then modal.inspRow3:Show() end

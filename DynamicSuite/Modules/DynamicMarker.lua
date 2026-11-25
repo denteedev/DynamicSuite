@@ -5123,6 +5123,190 @@ function DM:SetBarChildButtonsMouseEnabled(bar, enabled)
     end
 end
 
+local function FormatMarkerTooltipCmd(cmdText, actionText, cmdHex)
+    if _G.DynamicSuite and type(_G.DynamicSuite.FormatTooltipCommand) == "function" then
+        return _G.DynamicSuite.FormatTooltipCommand(cmdText, actionText, cmdHex)
+    end
+    local hex = (type(cmdHex) == "string" and cmdHex:gsub("^|cFF", ""):gsub("^|c", ""):gsub("^#", "")) or "34D399"
+    if #hex == 8 then hex = hex:sub(3, 8) end
+    if #hex ~= 6 then hex = "34D399" end
+    local cmd = tostring(cmdText or "")
+    if cmd ~= "" and not cmd:match(":$") then
+        cmd = cmd .. ":"
+    end
+    return string.format("|cFF%s%s|r |cFFE2E8F0%s|r", hex:upper(), cmd, tostring(actionText or ""))
+end
+
+local function AppendMarkerHudHints(tooltip, isInSuite, moveLabel, editTrigger, addSpacer)
+    if not tooltip or type(tooltip.AddLine) ~= "function" then return end
+    local hudCmd = isInSuite and "/ds hud" or "/dm hud"
+    local wantSpacer = (addSpacer ~= false)
+    if _G.DynamicSuite and type(_G.DynamicSuite.AppendHudTooltipHints) == "function" then
+        _G.DynamicSuite.AppendHudTooltipHints(tooltip, {
+            moveLabel = moveLabel or "Move bar",
+            editModeTrigger = editTrigger or "Shift + Right-Click:",
+            hudCmd = hudCmd,
+            addSpacer = wantSpacer,
+        })
+        return
+    end
+    if wantSpacer then
+        tooltip:AddLine(" ")
+    end
+    tooltip:AddLine(FormatMarkerTooltipCmd("Shift + Left-Drag:", moveLabel or "Move bar", "34D399"), 1, 1, 1)
+    tooltip:AddLine(FormatMarkerTooltipCmd(editTrigger or "Shift + Right-Click:", "Open HUD Edit Mode (" .. hudCmd .. ")", "38BDF8"), 1, 1, 1)
+end
+
+function DM:OpenHudEditForTarget(hudKey)
+    local primaryKey = ResolveHUDKeyAliases(hudKey or "TargetBar")
+    if IsInCombat() then
+        local _, _, _, hex = self:GetAccentColor()
+        print(string.format("|cFF%sDynamicMarker:|r Cannot open HUD Edit Mode while in combat.", hex or "38BDF8"))
+        return false
+    end
+    if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+    self.selectedHUDKey = primaryKey
+    self:CloseDropdownMenu()
+    if self:IsRunningInSuite() and _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
+        local suiteTarget = (primaryKey == "FlareBar") and "FLARE" or "TARGET"
+        pcall(_G.DynamicSuite.EnterHudEditMode, suiteTarget)
+        return true
+    end
+    self:SetEditMode(true, {
+        selectedHUDKey = primaryKey,
+        explicitFromCard = true,
+    })
+    return true
+end
+
+function DM:AttachBarDirectShiftDrag(bar, hudKey, barTitle)
+    if not bar then return end
+    local primaryKey = ResolveHUDKeyAliases(hudKey)
+
+    local function EndDirectDrag(abortedByCombat)
+        if not bar._dmDirectDragActive then return false end
+        bar._dmDirectDragActive = false
+        bar._dmDragging = false
+        bar._dsDragging = false
+        self.isDraggingHUD = false
+        bar:SetScript("OnUpdate", nil)
+        pcall(bar.StopMovingOrSizing, bar)
+        bar._dmSuppressClickUntil = (GetTime and GetTime() or 0) + 0.15
+        local inCombat = (abortedByCombat == true) or IsInCombat()
+        if not inCombat then
+            bar:SetClampedToScreen(false)
+            self:SaveHUDPosition(bar, primaryKey, true)
+        elseif primaryKey == "FlareBar" then
+            self.pendingFlareBarSync = true
+        else
+            self.pendingTargetBarSync = true
+        end
+        if bar.IsMouseOver and bar:IsMouseOver() and not self.isEditMode and not inCombat then
+            self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetAccentColorTable(1.0))
+        else
+            self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetHUDBorderColor(primaryKey))
+        end
+        return true
+    end
+
+    local function BeginDirectDrag()
+        if self.isEditMode or IsInCombat() then return false end
+        if bar._dsDragging or bar._dsEditModeActive or self.isDraggingHUD then return false end
+        if bar._dsDragShield and bar._dsDragShield:IsShown() then return false end
+        if not (IsShiftKeyDown and IsShiftKeyDown()) then return false end
+        if GameTooltip and GameTooltip.Hide then GameTooltip:Hide() end
+        self:CloseDropdownMenu()
+        bar._dmDirectDragActive = true
+        bar._dmDragging = true
+        bar._dsDragging = true
+        self.isDraggingHUD = true
+        self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetAccentColorTable(1.0))
+        bar:SetClampedToScreen(false)
+        bar:StartMoving()
+        bar:SetScript("OnUpdate", function()
+            if not bar._dmDirectDragActive then
+                bar:SetScript("OnUpdate", nil)
+                return
+            end
+            local inCombat = IsInCombat()
+            local lmbDown = (type(IsMouseButtonDown) ~= "function") or IsMouseButtonDown("LeftButton")
+            if inCombat or not lmbDown then
+                EndDirectDrag(inCombat)
+            end
+        end)
+        return true
+    end
+
+    bar._dmBeginDirectDrag = BeginDirectDrag
+    bar._dmEndDirectDrag = EndDirectDrag
+
+    bar:EnableMouse(true)
+    bar:RegisterForDrag("LeftButton")
+    bar:SetScript("OnDragStart", function(b)
+        if self.isEditMode then
+            if IsInCombat() then return end
+            if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
+            self.selectedHUDKey = primaryKey
+            b:SetClampedToScreen(false)
+            b:StartMoving()
+            self:RefreshEditModeInspector()
+            return
+        end
+        BeginDirectDrag()
+    end)
+    bar:SetScript("OnDragStop", function(b)
+        if b._dmDirectDragActive then
+            EndDirectDrag(false)
+            return
+        end
+        if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
+        b:StopMovingOrSizing()
+        if not IsInCombat() then
+            b:SetClampedToScreen(false)
+        elseif primaryKey == "FlareBar" then
+            self.pendingFlareBarSync = true
+        else
+            self.pendingTargetBarSync = true
+        end
+        self:SaveHUDPosition(b, primaryKey)
+    end)
+    bar:SetScript("OnMouseUp", function(_, button)
+        if bar._dmDirectDragActive then
+            EndDirectDrag(false)
+            return
+        end
+        if button == "RightButton" and not self.isEditMode and not bar._dsEditModeActive then
+            self:OpenHudEditForTarget(primaryKey)
+        end
+    end)
+    bar:HookScript("OnHide", function()
+        if bar._dmDirectDragActive then
+            EndDirectDrag(true)
+        end
+        self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetHUDBorderColor(primaryKey))
+    end)
+    bar:HookScript("OnEnter", function(selfBar)
+        if self.isEditMode or bar._dsEditModeActive or bar._dmDirectDragActive or IsInCombat() then return end
+        self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetAccentColorTable(1.0))
+        if GameTooltip then
+            local ar, ag, ab = self:GetAccentColor()
+            GameTooltip:SetOwner(selfBar, "ANCHOR_TOP")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine(barTitle or "DynamicMarker Bar", ar, ag, ab)
+            AppendMarkerHudHints(GameTooltip, self:IsRunningInSuite(), "Move bar", "Right-Click:", false)
+            GameTooltip:Show()
+        end
+    end)
+    bar:HookScript("OnLeave", function(selfBar)
+        if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(selfBar) then
+            GameTooltip:Hide()
+        end
+        if not bar._dmDirectDragActive then
+            self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetHUDBorderColor(primaryKey))
+        end
+    end)
+end
+
 function DM:ApplyTargetBarSecureAttributes()
     if not self.targetBar or not self.targetBar.buttons then return end
     if IsInCombat() then
@@ -5135,6 +5319,8 @@ function DM:ApplyTargetBarSecureAttributes()
         if btn then
             local markCmd = "/tm [@target,exists][@focus,exists][@mouseover,exists] " .. i
             local clearCmd = "/tm [@target,exists][@focus,exists][@mouseover,exists] 0"
+            btn:SetAttribute("shift-type1", "none")
+            btn:SetAttribute("shift-type2", "none")
             btn:SetAttribute("type", "macro")
             btn:SetAttribute("type1", "macro")
             btn:SetAttribute("macrotext", markCmd)
@@ -5181,24 +5367,7 @@ function DM:InitTargetBar()
         end
         self:SaveHUDPosition(bar, "TargetBar", true, pt, rp, sx, sy)
     end
-    bar:SetScript("OnDragStart", function(b)
-        if not self.isEditMode or IsInCombat() then return end
-        if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
-        self.selectedHUDKey = "TargetBar"
-        b:SetClampedToScreen(false)
-        b:StartMoving()
-        self:RefreshEditModeInspector()
-    end)
-    bar:SetScript("OnDragStop", function(b)
-        if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
-        b:StopMovingOrSizing()
-        if not IsInCombat() then
-            b:SetClampedToScreen(false)
-        else
-            self.pendingTargetBarSync = true
-        end
-        self:SaveHUDPosition(b, "TargetBar")
-    end)
+    self:AttachBarDirectShiftDrag(bar, "TargetBar", "Focus Icons")
 
     bar.cells = {}
     bar.buttons = {}
@@ -5228,8 +5397,28 @@ function DM:InitTargetBar()
         local btn = CreateFrame("Button", "DynamicMarkerTargetBarBtn" .. i, bar, "SecureActionButtonTemplate")
         btn:SetAllPoints(cell)
         self:ConfigureSecureButtonClicks(btn)
+        btn:RegisterForDrag("LeftButton")
+        btn:SetScript("OnDragStart", function()
+            if bar._dmBeginDirectDrag then bar._dmBeginDirectDrag() end
+        end)
+        btn:SetScript("OnDragStop", function()
+            if bar._dmEndDirectDrag then bar._dmEndDirectDrag(false) end
+        end)
 
-        btn:SetScript("PostClick", function(_, mouseBtn)
+        btn:SetScript("PostClick", function(_, mouseBtn, down)
+            if bar._dmDirectDragActive then
+                if bar._dmEndDirectDrag then bar._dmEndDirectDrag(false) end
+                return
+            end
+            if bar._dmSuppressClickUntil and GetTime and GetTime() <= bar._dmSuppressClickUntil then
+                return
+            end
+            if IsShiftKeyDown and IsShiftKeyDown() then
+                if not down and mouseBtn == "RightButton" and not self.isEditMode and not bar._dsEditModeActive then
+                    self:OpenHudEditForTarget("TargetBar")
+                end
+                return
+            end
             if mouseBtn == "LeftButton" then
                 local changed = (self.db and self.db.focusIcon ~= i)
                 self:SetFocusIcon(i, changed)
@@ -5239,11 +5428,14 @@ function DM:InitTargetBar()
         btn:SetScript("OnEnter", function(s)
             local ar, ag, ab = self:GetAccentColor()
             self:ApplyBackdrop(cell, COLORS.BgHover, { r = ar, g = ag, b = ab, a = 0.9 })
+            if not self.isEditMode and not bar._dsEditModeActive and not IsInCombat() then
+                self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetAccentColorTable(1.0))
+            end
             GameTooltip:SetOwner(s, "ANCHOR_TOP")
             GameTooltip:SetText(info.label, 1, 1, 1)
             GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Set " .. info.name .. " as Focus Marker & Mark Target|r", 1, 1, 1, true)
             GameTooltip:AddLine("|cFFF87171Right-Click:|r |cFFE2E8F0Clear Raid Target Icon|r", 1, 1, 1, true)
-            GameTooltip:AddLine("|cFF94A3B8Move or Resize:|r |cFFE2E8F0Use /dm hud or /ds hud (HUD Edit Mode)|r", 1, 1, 1, true)
+            AppendMarkerHudHints(GameTooltip, self:IsRunningInSuite(), "Move bar", "Shift + Right-Click:")
             GameTooltip:Show()
         end)
         btn:SetScript("OnLeave", function(s)
@@ -5375,6 +5567,8 @@ function DM:ApplyFlareBarSecureAttributes()
         if btn then
             local placeFlareCmd = "/wm " .. i
             local clearFlaresCmd = "/cwm 0\n/cwm all"
+            btn:SetAttribute("shift-type1", "none")
+            btn:SetAttribute("shift-type2", "none")
             btn:SetAttribute("type", "macro")
             btn:SetAttribute("type1", "macro")
             btn:SetAttribute("macrotext", placeFlareCmd)
@@ -5421,24 +5615,7 @@ function DM:InitFlareBar()
         end
         self:SaveHUDPosition(bar, "FlareBar", true, pt, rp, sx, sy)
     end
-    bar:SetScript("OnDragStart", function(b)
-        if not self.isEditMode or IsInCombat() then return end
-        if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
-        self.selectedHUDKey = "FlareBar"
-        b:SetClampedToScreen(false)
-        b:StartMoving()
-        self:RefreshEditModeInspector()
-    end)
-    bar:SetScript("OnDragStop", function(b)
-        if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
-        b:StopMovingOrSizing()
-        if not IsInCombat() then
-            b:SetClampedToScreen(false)
-        else
-            self.pendingFlareBarSync = true
-        end
-        self:SaveHUDPosition(b, "FlareBar")
-    end)
+    self:AttachBarDirectShiftDrag(bar, "FlareBar", "World Flare Bar")
 
     bar.cells = {}
     bar.buttons = {}
@@ -5466,18 +5643,43 @@ function DM:InitFlareBar()
         local btn = CreateFrame("Button", "DynamicMarkerFlareBarBtn" .. i, bar, "SecureActionButtonTemplate")
         btn:SetAllPoints(cell)
         self:ConfigureSecureButtonClicks(btn)
+        btn:RegisterForDrag("LeftButton")
+        btn:SetScript("OnDragStart", function()
+            if bar._dmBeginDirectDrag then bar._dmBeginDirectDrag() end
+        end)
+        btn:SetScript("OnDragStop", function()
+            if bar._dmEndDirectDrag then bar._dmEndDirectDrag(false) end
+        end)
+        btn:SetScript("PostClick", function(_, mouseBtn, down)
+            if bar._dmDirectDragActive then
+                if bar._dmEndDirectDrag then bar._dmEndDirectDrag(false) end
+                return
+            end
+            if bar._dmSuppressClickUntil and GetTime and GetTime() <= bar._dmSuppressClickUntil then
+                return
+            end
+            if not down and mouseBtn == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() and not self.isEditMode and not bar._dsEditModeActive then
+                self:OpenHudEditForTarget("FlareBar")
+            end
+        end)
 
         btn:SetScript("OnEnter", function(s)
             self:ApplyBackdrop(cell, COLORS.BgHover, { r = fInfo.color.r, g = fInfo.color.g, b = fInfo.color.b, a = 1.0 })
+            if not self.isEditMode and not bar._dsEditModeActive and not IsInCombat() then
+                self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetAccentColorTable(1.0))
+            end
             GameTooltip:SetOwner(s, "ANCHOR_TOP")
             GameTooltip:SetText(fInfo.short .. " World Flare", 1, 1, 1)
             GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Place " .. fInfo.short .. " World Marker|r", 1, 1, 1, true)
             GameTooltip:AddLine("|cFFF87171Right-Click:|r |cFFE2E8F0Clear All World Markers|r", 1, 1, 1, true)
-            GameTooltip:AddLine("|cFF94A3B8Move or Resize:|r |cFFE2E8F0Use /dm hud or /ds hud (HUD Edit Mode)|r", 1, 1, 1, true)
+            AppendMarkerHudHints(GameTooltip, self:IsRunningInSuite(), "Move bar", "Shift + Right-Click:")
             GameTooltip:Show()
         end)
         btn:SetScript("OnLeave", function(s)
             self:ApplyBackdrop(cell, COLORS.BgElevated, { r = fInfo.color.r, g = fInfo.color.g, b = fInfo.color.b, a = 0.55 })
+            if not bar._dmDirectDragActive then
+                self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetHUDBorderColor("FlareBar"))
+            end
             if GameTooltip:IsOwned(s) then GameTooltip:Hide() end
         end)
 
@@ -6459,7 +6661,7 @@ function DM:EnsureEditModeInspector()
     if self.editInspector then return self.editInspector end
 
     local insp = CreateFrame("Frame", "DynamicMarkerEditModeInspector", UIParent, "BackdropTemplate")
-    insp:SetSize(560, 110)
+    insp:SetSize(560, 130)
     insp:SetFrameStrata("DIALOG")
     insp:SetFrameLevel(200)
     insp:SetToplevel(true)
@@ -6468,7 +6670,7 @@ function DM:EnsureEditModeInspector()
         local target = modal or insp
         if not target then return end
         local w = (target.GetWidth and target:GetWidth()) or 560
-        local h = (target.GetHeight and target:GetHeight()) or 110
+        local h = (target.GetHeight and target:GetHeight()) or 130
         local keepVisible = 60
         local allowOffX = math.max(0, w - keepVisible)
         local allowOffY = math.max(0, h - keepVisible)
@@ -6484,7 +6686,7 @@ function DM:EnsureEditModeInspector()
         self:ClearAllPoints()
         if type(pos) == "table" and pos.x ~= nil and pos.y ~= nil then
             local w = (self.GetWidth and self:GetWidth()) or 560
-            local h = (self.GetHeight and self:GetHeight()) or 110
+            local h = (self.GetHeight and self:GetHeight()) or 130
             local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
             local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
             local allowOffX = math.max(0, w - 60)
@@ -7461,6 +7663,24 @@ function DM:EnsureEditModeInspector()
             VERTICAL   = orientVertBtn,
         }
         insp.GetSelectedHudOrientation = GetSelectedHudOrientation
+        insp.inspRow3 = inspRow3
+    end
+
+    -- Row 4: Single-line plain Australian English Shift-Drag tip strip (20px tall)
+    do
+        local tipBar = CreateFrame("Frame", nil, insp)
+        tipBar:SetPoint("TOPLEFT", insp.inspRow3, "BOTTOMLEFT", 0, -2)
+        tipBar:SetPoint("TOPRIGHT", insp.inspRow3, "BOTTOMRIGHT", 0, -2)
+        tipBar:SetHeight(18)
+        local tipText = tipBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        tipText:SetPoint("LEFT", tipBar, "LEFT", 6, 0)
+        tipText:SetPoint("RIGHT", tipBar, "RIGHT", -6, 0)
+        tipText:SetJustifyH("LEFT")
+        tipText:SetWordWrap(false)
+        DM:StyleFont(tipText, 9.5, "", COLORS.TextMuted)
+        tipText:SetText("Tip: Out of combat, Shift + Left-Drag either bar in the world to move it directly.")
+        tipBar.text = tipText
+        insp.tipBar = tipBar
     end
 
     local foundSpecial = false
@@ -10738,6 +10958,72 @@ function DM:ShowStudioModal(mode)
         end)
         table.insert(m.Body._modeWidgets, clBox)
 
+    elseif mode == "QUICK_GUIDE" then
+        m:SetSize(520, 320)
+        m.Title:SetText("DynamicMarker Quick Guide")
+        self:StyleFont(m.Title, 14, "", COLORS.TextPrimary)
+        local hudCmd = self:IsRunningInSuite() and "/ds hud" or "/dm hud"
+        local iconPath = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga"
+
+        local hdrRow = CreateFrame("Frame", nil, m.Body)
+        hdrRow:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, -4)
+        hdrRow:SetPoint("TOPRIGHT", m.Body, "TOPRIGHT", 0, -4)
+        hdrRow:SetHeight(36)
+        table.insert(m.Body._modeWidgets, hdrRow)
+
+        local med = CreateFrame("Frame", nil, hdrRow, "BackdropTemplate")
+        med:SetSize(32, 32)
+        med:SetPoint("LEFT", hdrRow, "LEFT", 0, 0)
+        self:ApplyBackdrop(med, COLORS.BgElevated, self:GetAccentColorTable(0.85), 1)
+        local medIcon = med:CreateTexture(nil, "ARTWORK")
+        medIcon:SetSize(22, 22)
+        medIcon:SetPoint("CENTER", med, "CENTER", 0, 0)
+        medIcon:SetTexture(iconPath)
+        local ar, ag, ab = self:GetAccentColor()
+        medIcon:SetVertexColor(ar, ag, ab, 1.0)
+
+        local slashPill = CreateFrame("Frame", nil, hdrRow, "BackdropTemplate")
+        slashPill:SetSize(130, 22)
+        slashPill:SetPoint("RIGHT", hdrRow, "RIGHT", 0, 0)
+        self:ApplyBackdrop(slashPill, { r = ar * 0.14, g = ag * 0.14, b = ab * 0.14, a = 0.96 }, { r = ar, g = ag, b = ab, a = 0.65 }, 1)
+        local slashTxt = slashPill:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        slashTxt:SetPoint("CENTER", slashPill, "CENTER", 0, 0)
+        self:StyleFont(slashTxt, 10, "", COLORS.TextPrimary)
+        slashTxt:SetText("/dm, /fm, " .. hudCmd)
+
+        local sumFS = hdrRow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        sumFS:SetPoint("LEFT", med, "RIGHT", 10, 0)
+        sumFS:SetPoint("RIGHT", slashPill, "LEFT", -10, 0)
+        sumFS:SetJustifyH("LEFT")
+        self:StyleFont(sumFS, 11, "", COLORS.TextSilver)
+        sumFS:SetText("Floating Focus Icon and World Flare bars alongside [DynamicMark] and [DynamicKick] macros.")
+
+        local tips = {
+            "Generate [DynamicMark] and [DynamicKick] in Tab 3 so your interrupt swaps automatically by spec.",
+            "Out of combat, Shift + Left-Drag the Focus Icons or World Flare bar directly; Right-Click empty bar space or Shift + Right-Click an icon for " .. hudCmd .. ".",
+            "Bind optional World Flare keys in Tab 2 (World Flares) to place or clear ground markers at cursor.",
+        }
+        for idx, tipStr in ipairs(tips) do
+            local card = CreateFrame("Frame", nil, m.Body, "BackdropTemplate")
+            card:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, -48 - (idx - 1) * 58)
+            card:SetPoint("TOPRIGHT", m.Body, "TOPRIGHT", 0, -48 - (idx - 1) * 58)
+            card:SetHeight(50)
+            self:ApplyBackdrop(card, COLORS.BgElevated, COLORS.BorderDim, 1)
+            table.insert(m.Body._modeWidgets, card)
+
+            local numLbl = card:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            numLbl:SetPoint("LEFT", card, "LEFT", 12, 0)
+            self:StyleFont(numLbl, 12, "", { r = ar, g = ag, b = ab, a = 1.0 })
+            numLbl:SetText(tostring(idx) .. ".")
+
+            local tFS = card:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            tFS:SetPoint("LEFT", numLbl, "RIGHT", 10, 0)
+            tFS:SetPoint("RIGHT", card, "RIGHT", -12, 0)
+            tFS:SetJustifyH("LEFT")
+            self:StyleFont(tFS, 11, "", COLORS.TextSilver)
+            tFS:SetText(tipStr)
+        end
+
     elseif mode == "SUPPORT" then
         m.Title:SetText("Support DynamicMarker & Dentee")
         local txt = m.Body.textBlock or m.Body:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -11063,7 +11349,7 @@ function DM:EnsureStandaloneShell()
     end)
     header.VerBtn:SetPoint("LEFT", header.ModTitle, "RIGHT", 10, 0)
 
-    -- Zone 3 (Right): [All Characters] + [X]
+    -- Zone 3 (Right): [?] + [All Characters] + [X]
     local closeBtn = self:CreateButton(header, "X", 28, 24, function() f:Hide() end)
     closeBtn:SetPoint("RIGHT", header, "RIGHT", -12, 0)
 
@@ -11072,11 +11358,33 @@ function DM:EnsureStandaloneShell()
     end)
     scopePill:SetPoint("RIGHT", closeBtn, "LEFT", -8, 0)
 
+    local quickGuideBtn = self:CreateButton(header, "?", 26, 24, function()
+        self:ShowStudioModal("QUICK_GUIDE")
+    end)
+    quickGuideBtn:SetPoint("RIGHT", scopePill, "LEFT", -6, 0)
+    quickGuideBtn:HookScript("OnEnter", function(s)
+        local ar, ag, ab = self:GetAccentColor()
+        self:ApplyBackdrop(s, { r = ar * 0.16, g = ag * 0.16, b = ab * 0.16, a = 0.98 }, { r = ar, g = ag, b = ab, a = 0.85 }, 1)
+        if GameTooltip then
+            GameTooltip:SetOwner(s, "ANCHOR_BOTTOM")
+            GameTooltip:SetText("Quick Guide", 1, 1, 1)
+            GameTooltip:AddLine("Short tips for DynamicMarker", 0.82, 0.86, 0.92, true)
+            GameTooltip:Show()
+        end
+    end)
+    quickGuideBtn:HookScript("OnLeave", function(s)
+        self:ApplyBackdrop(s, COLORS.BgElevated, COLORS.BorderStrong, 1)
+        if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(s) then
+            GameTooltip:Hide()
+        end
+    end)
+    header.QuickGuideBtn = quickGuideBtn
+
     -- Zone 2 (Center): Spacious 1-Line Status Capsule
     local statusBox = CreateFrame("Frame", nil, header, "BackdropTemplate")
     statusBox:SetHeight(26)
     statusBox:SetPoint("LEFT", header.VerBtn, "RIGHT", 14, 0)
-    statusBox:SetPoint("RIGHT", scopePill, "LEFT", -14, 0)
+    statusBox:SetPoint("RIGHT", quickGuideBtn, "LEFT", -8, 0)
     self:ApplyBackdrop(statusBox, cardBg, cardBd)
 
     statusBox.Text = statusBox:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -13279,16 +13587,24 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         DM:CloseDropdownMenu()
         HideSnapGuides()
         if DM.targetBar then
+            if DM.targetBar._dmDirectDragActive and DM.targetBar._dmEndDirectDrag then
+                DM.targetBar._dmEndDirectDrag(true)
+            end
             if DM.targetBar.editMover then
                 DM.targetBar.editMover:SetScript("OnUpdate", nil)
             end
+            DM.targetBar:SetScript("OnUpdate", nil)
             DM.targetBar._dmDragging = false
             pcall(DM.targetBar.StopMovingOrSizing, DM.targetBar)
         end
         if DM.flareBar then
+            if DM.flareBar._dmDirectDragActive and DM.flareBar._dmEndDirectDrag then
+                DM.flareBar._dmEndDirectDrag(true)
+            end
             if DM.flareBar.editMover then
                 DM.flareBar.editMover:SetScript("OnUpdate", nil)
             end
+            DM.flareBar:SetScript("OnUpdate", nil)
             DM.flareBar._dmDragging = false
             pcall(DM.flareBar.StopMovingOrSizing, DM.flareBar)
         end

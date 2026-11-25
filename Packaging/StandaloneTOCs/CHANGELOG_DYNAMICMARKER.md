@@ -6,6 +6,7 @@
 ## [Unreleased]
 
 ### Added
+* **Direct In-World Shift-Drag, Quick-Jump HUD Edit Mode & `?` Quick Guide (`25/11/2026`):** Added out-of-combat **Shift + Left-Drag** repositioning directly across both the **Focus Icons** and **World Flare Bar** (with strict `0 px` screen clamping, live Suite Accent hover and drag borders, `shift-type1/2 = "none"` secure button protection, and automatic combat-entry abort), **Right-Click** on empty bar space or **Shift + Right-Click** on any icon/flare to open HUD Edit Mode (`/dm hud` standalone or `/ds hud` in Suite) pre-targeted to that bar, uniform tooltip hints, a single-line Shift-Drag tip inside the standalone HUD Edit Mode inspector, and a `?` Quick Guide header button and modal in standalone **DynamicMarker**.
 * **Profile Import & Export (`!DS1!`) & Cross-Mode Sharing (`25/11/2026`):** Added a standalone Profile Import & Export modal (`Import & Export` in the Left Rail and Theme & Font Studio, plus `/dm export`, `/dm import`, and `/dm profiles`, while preserving `/dm migrate` and `/dm import focusmarker` for legacy migration) powered by native `C_EncodingUtil` (`!DS1!` CBOR, Zlib, and Base64), with optional HUD Bar Positions and Theme & Font toggles, live Import Preview, `Replace Selected` (default) vs `Merge` modes, persistent 1-slot `Undo Last Import` rollback across `/reload`, combat-lockdown blocking, strict secret-value and schema validation, and bidirectional compatibility with full `DynamicSuite` profile strings.
 
 ---

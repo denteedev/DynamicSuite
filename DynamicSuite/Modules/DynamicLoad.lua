@@ -1802,6 +1802,88 @@ local function IsToastOrChildHovered(f)
     return false
 end
 
+local function RestoreDynamicLoadToastBorder(f)
+    if not f or not f.SetBackdropBorderColor then return end
+    if f.toastType == "CONFLICT_ALERT" then
+        f:SetBackdropBorderColor(0.961, 0.722, 0.180, 0.95)
+        return
+    end
+    local g = EnsureSuiteGlobal()
+    local bdr = GetToastColors()
+    local bStyle = g.toastBorderStyle or (DynamicLoadDB and DynamicLoadDB.toastBorderStyle) or "ACCENT"
+    if bStyle == "NONE" then
+        f:SetBackdropBorderColor(0, 0, 0, 0)
+    elseif bStyle == "SUBTLE" or bStyle == "DARK" then
+        f:SetBackdropBorderColor(0.20, 0.24, 0.32, 0.95)
+    else
+        f:SetBackdropBorderColor(bdr.r, bdr.g, bdr.b, bdr.a or 0.95)
+    end
+end
+
+local function ApplyDynamicLoadToastHoverBorder(f)
+    if not f or not f.SetBackdropBorderColor then return end
+    local r, g, b = 0.220, 0.741, 0.973
+    if _G.DynamicSuite and type(_G.DynamicSuite.GetCoreAccentRGB) == "function" then
+        local ok, ar, ag, ab = pcall(_G.DynamicSuite.GetCoreAccentRGB)
+        if ok and type(ar) == "number" then r, g, b = ar, ag, ab end
+    elseif addonTable.GetCoreAccentRGB then
+        local ok, ar, ag, ab = pcall(addonTable.GetCoreAccentRGB)
+        if ok and type(ar) == "number" then r, g, b = ar, ag, ab end
+    else
+        local bdr = GetToastColors()
+        if bdr then r, g, b = bdr.r, bdr.g, bdr.b end
+    end
+    f:SetBackdropBorderColor(r, g, b, 1.0)
+end
+
+local function ShowDynamicLoadToastTooltip(f, owner)
+    if not GameTooltip or not f or not owner then return end
+    if f.isDraggingMode or f.isEditingMode or f._dsDragging or (InCombatLockdown and InCombatLockdown()) then
+        return
+    end
+    local uiH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+    local fTop = (f.GetTop and f:GetTop()) or (uiH * 0.8)
+    local anchor = (fTop > (uiH * 0.5)) and "ANCHOR_BOTTOM" or "ANCHOR_TOP"
+    local r, g, b = 0.220, 0.741, 0.973
+    if addonTable.GetCoreAccentRGB then
+        local ok, ar, ag, ab = pcall(addonTable.GetCoreAccentRGB)
+        if ok and type(ar) == "number" then r, g, b = ar, ag, ab end
+    end
+    GameTooltip:SetOwner(owner, anchor)
+    GameTooltip:ClearLines()
+    GameTooltip:AddLine("Alert Toast", r, g, b)
+    if _G.DynamicSuite and type(_G.DynamicSuite.AppendHudTooltipHints) == "function" then
+        _G.DynamicSuite.AppendHudTooltipHints(GameTooltip, {
+            moveLabel = "Move Alert Toast",
+            editModeTrigger = "Shift + Right-Click:",
+            hudCmd = "/ds hud",
+            addSpacer = false,
+            includeDismiss = true,
+        })
+    else
+        GameTooltip:AddLine("|cFF94A3B8Right-Click:|r |cFFE2E8F0Dismiss alert|r", 1, 1, 1)
+        GameTooltip:AddLine("|cFF34D399Shift + Left-Drag:|r |cFFE2E8F0Move Alert Toast|r", 1, 1, 1)
+        GameTooltip:AddLine("|cFF38BDF8Shift + Right-Click:|r |cFFE2E8F0Open HUD Edit Mode (/ds hud)|r", 1, 1, 1)
+    end
+    GameTooltip:Show()
+end
+
+local function OpenToastHudEditMode()
+    if _G.DynamicSuite and type(_G.DynamicSuite.OpenHudEditForTarget) == "function" then
+        return _G.DynamicSuite.OpenHudEditForTarget("TOAST", nil, "DynamicLoad")
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        print("|cFF38BDF8DynamicLoad:|r Cannot open HUD Edit Mode while in combat.")
+        return false
+    end
+    if GameTooltip then GameTooltip:Hide() end
+    if addonTable.EnterHudEditMode then
+        addonTable.EnterHudEditMode("TOAST")
+        return true
+    end
+    return false
+end
+
 local function CreateToastFrame()
     if toastFrame then return toastFrame end
 
@@ -1856,20 +1938,48 @@ local function CreateToastFrame()
     reloadLbl:SetTextColor(1, 1, 1, 0.95)
     reloadBtn.label = reloadLbl
     reloadBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    reloadBtn:SetScript("OnEnter", function()
+    reloadBtn:RegisterForDrag("LeftButton")
+    reloadBtn:SetScript("OnDragStart", function()
+        if f._dsBeginDirectDrag then f._dsBeginDirectDrag() end
+    end)
+    reloadBtn:SetScript("OnDragStop", function()
+        if f._dsEndDirectDrag then f._dsEndDirectDrag(false) end
+    end)
+    reloadBtn:SetScript("OnEnter", function(selfBtn)
         if not f.isDraggingMode and not f.isEditingMode and f.animGroup then
             f.animGroup:Pause()
             f:SetAlpha(1)
         end
+        if not f.isDraggingMode and not f.isEditingMode and not f._dsDragging then
+            ApplyDynamicLoadToastHoverBorder(f)
+            ShowDynamicLoadToastTooltip(f, selfBtn)
+        end
     end)
-    reloadBtn:SetScript("OnLeave", function()
+    reloadBtn:SetScript("OnLeave", function(selfBtn)
+        if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(selfBtn) then
+            GameTooltip:Hide()
+        end
+        if not f._dsDragging and not IsToastOrChildHovered(f) then
+            RestoreDynamicLoadToastBorder(f)
+        end
         if not f.isDraggingMode and not f.isEditingMode and not IsToastOrChildHovered(f) and GetDynamicLoadActionToastDuration() > 0 then
             if f.animGroup then f.animGroup:Play() end
         end
     end)
     reloadBtn:SetScript("OnClick", function(_, button)
+        if f._dsDirectDragActive then
+            if f._dsEndDirectDrag then f._dsEndDirectDrag(false) end
+            return
+        end
+        if f._dsSuppressClickUntil and GetTime and GetTime() <= f._dsSuppressClickUntil then
+            return
+        end
         if f.isEditingMode or f.isDraggingMode then return end
         if button == "RightButton" then
+            if IsShiftKeyDown and IsShiftKeyDown() then
+                OpenToastHudEditMode()
+                return
+            end
             hasShownToastThisLoadSession = true
             pendingToastAfterCombat = false
             pendingPostLoadToast = false
@@ -1922,6 +2032,14 @@ local function CreateToastFrame()
     closeLbl:SetText("X")
     closeLbl:SetTextColor(0.75, 0.80, 0.88, 0.95)
     closeBtn.label = closeLbl
+    closeBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    closeBtn:RegisterForDrag("LeftButton")
+    closeBtn:SetScript("OnDragStart", function()
+        if f._dsBeginDirectDrag then f._dsBeginDirectDrag() end
+    end)
+    closeBtn:SetScript("OnDragStop", function()
+        if f._dsEndDirectDrag then f._dsEndDirectDrag(false) end
+    end)
     closeBtn:SetScript("OnEnter", function(self)
         self:SetBackdropBorderColor(0.961, 0.722, 0.180, 0.95)
         self.label:SetTextColor(1, 1, 1, 1)
@@ -1929,16 +2047,37 @@ local function CreateToastFrame()
             f.animGroup:Pause()
             f:SetAlpha(1)
         end
+        if not f.isDraggingMode and not f.isEditingMode and not f._dsDragging then
+            ApplyDynamicLoadToastHoverBorder(f)
+            ShowDynamicLoadToastTooltip(f, self)
+        end
     end)
     closeBtn:SetScript("OnLeave", function(self)
         self:SetBackdropBorderColor(0.35, 0.40, 0.48, 0.75)
         self.label:SetTextColor(0.75, 0.80, 0.88, 0.95)
+        if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(self) then
+            GameTooltip:Hide()
+        end
+        if not f._dsDragging and not IsToastOrChildHovered(f) then
+            RestoreDynamicLoadToastBorder(f)
+        end
         if not f.isDraggingMode and not f.isEditingMode and not IsToastOrChildHovered(f) and GetDynamicLoadActionToastDuration() > 0 then
             if f.animGroup then f.animGroup:Play() end
         end
     end)
-    closeBtn:SetScript("OnClick", function()
+    closeBtn:SetScript("OnClick", function(_, button)
+        if f._dsDirectDragActive then
+            if f._dsEndDirectDrag then f._dsEndDirectDrag(false) end
+            return
+        end
+        if f._dsSuppressClickUntil and GetTime and GetTime() <= f._dsSuppressClickUntil then
+            return
+        end
         if f.isEditingMode or f.isDraggingMode then return end
+        if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
+            OpenToastHudEditMode()
+            return
+        end
         hasShownToastThisLoadSession = true
         pendingToastAfterCombat = false
         pendingPostLoadToast = false
@@ -1968,20 +2107,48 @@ local function CreateToastFrame()
     viewConflictsLbl:SetTextColor(0.961, 0.722, 0.180, 1)
     viewConflictsBtn.label = viewConflictsLbl
     viewConflictsBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    viewConflictsBtn:SetScript("OnEnter", function()
+    viewConflictsBtn:RegisterForDrag("LeftButton")
+    viewConflictsBtn:SetScript("OnDragStart", function()
+        if f._dsBeginDirectDrag then f._dsBeginDirectDrag() end
+    end)
+    viewConflictsBtn:SetScript("OnDragStop", function()
+        if f._dsEndDirectDrag then f._dsEndDirectDrag(false) end
+    end)
+    viewConflictsBtn:SetScript("OnEnter", function(selfBtn)
         if not f.isDraggingMode and not f.isEditingMode and f.animGroup then
             f.animGroup:Pause()
             f:SetAlpha(1)
         end
+        if not f.isDraggingMode and not f.isEditingMode and not f._dsDragging then
+            ApplyDynamicLoadToastHoverBorder(f)
+            ShowDynamicLoadToastTooltip(f, selfBtn)
+        end
     end)
-    viewConflictsBtn:SetScript("OnLeave", function()
+    viewConflictsBtn:SetScript("OnLeave", function(selfBtn)
+        if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(selfBtn) then
+            GameTooltip:Hide()
+        end
+        if not f._dsDragging and not IsToastOrChildHovered(f) then
+            RestoreDynamicLoadToastBorder(f)
+        end
         if not f.isDraggingMode and not f.isEditingMode and not IsToastOrChildHovered(f) and GetDynamicLoadActionToastDuration() > 0 then
             if f.animGroup then f.animGroup:Play() end
         end
     end)
     viewConflictsBtn:SetScript("OnClick", function(_, button)
+        if f._dsDirectDragActive then
+            if f._dsEndDirectDrag then f._dsEndDirectDrag(false) end
+            return
+        end
+        if f._dsSuppressClickUntil and GetTime and GetTime() <= f._dsSuppressClickUntil then
+            return
+        end
         if f.isEditingMode or f.isDraggingMode then return end
         if button == "RightButton" then
+            if IsShiftKeyDown and IsShiftKeyDown() then
+                OpenToastHudEditMode()
+                return
+            end
             hasShownToastThisLoadSession = true
             pendingToastAfterCombat = false
             pendingPostLoadToast = false
@@ -2055,16 +2222,108 @@ local function CreateToastFrame()
         end
     end)
 
+    local function CommitDirectToastDrag(self, abortedByCombat)
+        if not self._dsDirectDragActive then return false end
+        self._dsDirectDragActive = false
+        self._dsDragging = false
+        self:SetScript("OnUpdate", nil)
+        self:StopMovingOrSizing()
+        self._dsSuppressClickUntil = (GetTime and GetTime() or 0) + 0.15
+
+        if not abortedByCombat and not (InCombatLockdown and InCombatLockdown()) then
+            local g = EnsureSuiteGlobal()
+            local prevPos = g.toastPos or (DynamicLoadDB and DynamicLoadDB.toastPos) or { point = "TOP", relPoint = "TOP", x = 0, y = -50 }
+            local usePt = (prevPos.point == "CENTER") and "CENTER" or "TOP"
+            local fScale = (self.GetEffectiveScale and self:GetEffectiveScale()) or 1
+            local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+            local ratio = (uScale > 0 and fScale > 0) and (fScale / uScale) or 1
+            local fCx, fCy = self:GetCenter()
+            local fTop = self:GetTop()
+            local uCx, uCy = UIParent:GetCenter()
+            local uTop = UIParent:GetTop()
+            local rx, ry = 0, -50
+            if fCx and uCx then
+                rx = math.floor((((fCx * ratio) - uCx) / ratio) + 0.5)
+                local dyCenter = math.floor((((fCy * ratio) - uCy) / ratio) + 0.5)
+                local dyTop = math.floor(((((fTop or fCy) * ratio) - (uTop or (uCy * 2))) / ratio) + 0.5)
+                ry = (usePt == "CENTER") and dyCenter or dyTop
+            else
+                local pt, _, _, x, y = self:GetPoint()
+                usePt = (pt == "CENTER") and "CENTER" or "TOP"
+                rx = math.floor((x or 0) + 0.5)
+                ry = math.floor((y or -50) + 0.5)
+            end
+            rx, ry = ClampToastCoordsToScreen(self, usePt, usePt, rx, ry)
+            self:ClearAllPoints()
+            self:SetPoint(usePt, UIParent, usePt, rx, ry)
+            local newPos = { point = usePt, relPoint = usePt, x = rx, y = ry }
+            g.toastPos = CopyTable(newPos)
+            if DynamicLoadDB then
+                DynamicLoadDB.toastPos = CopyTable(newPos)
+            end
+            if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
+                pcall(_G.DynamicSuite.RestackAllToasts)
+            end
+            if addonTable.OnToastPositionChanged then
+                addonTable.OnToastPositionChanged(newPos)
+            end
+        end
+
+        if IsToastOrChildHovered(self) then
+            ApplyDynamicLoadToastHoverBorder(self)
+        else
+            RestoreDynamicLoadToastBorder(self)
+            local dur = GetDynamicLoadActionToastDuration()
+            if not self.isDraggingMode and not self.isEditingMode and dur > 0 and self:IsShown() then
+                self.animGroup:Play()
+            end
+        end
+        return true
+    end
+
+    local function BeginDirectToastDrag()
+        if f.isDraggingMode or f.isEditingMode or f._dsEditModeActive or f._dsDirectDragActive then return false end
+        if InCombatLockdown and InCombatLockdown() then return false end
+        if not (IsShiftKeyDown and IsShiftKeyDown()) then return false end
+        if GameTooltip then GameTooltip:Hide() end
+        if f.animGroup then f.animGroup:Pause() end
+        f:SetAlpha(1)
+        f._dsDirectDragActive = true
+        f._dsDragging = true
+        ApplyDynamicLoadToastHoverBorder(f)
+        f:StartMoving()
+        f:SetScript("OnUpdate", function(selfT)
+            if not selfT._dsDirectDragActive then
+                selfT:SetScript("OnUpdate", nil)
+                return
+            end
+            local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+            local lmbDown = (type(IsMouseButtonDown) ~= "function") or IsMouseButtonDown("LeftButton")
+            if inCombat or not lmbDown then
+                CommitDirectToastDrag(selfT, inCombat)
+            end
+        end)
+        return true
+    end
+    f._dsBeginDirectDrag = BeginDirectToastDrag
+    f._dsEndDirectDrag = function(aborted) return CommitDirectToastDrag(f, aborted) end
+
     f:SetScript("OnDragStart", function(self)
         if self.isDraggingMode or self.isEditingMode then
             if addonTable.OnHudTargetSelected then
                 addonTable.OnHudTargetSelected("TOAST")
             end
             self:StartMoving()
+            return
         end
+        BeginDirectToastDrag()
     end)
 
     f:SetScript("OnDragStop", function(self)
+        if self._dsDirectDragActive then
+            CommitDirectToastDrag(self, false)
+            return
+        end
         if self.isDraggingMode or self.isEditingMode then
             self:StopMovingOrSizing()
             local g = EnsureSuiteGlobal()
@@ -2135,6 +2394,13 @@ local function CreateToastFrame()
     end)
 
     f:SetScript("OnClick", function(self, button)
+        if self._dsDirectDragActive then
+            CommitDirectToastDrag(self, false)
+            return
+        end
+        if self._dsSuppressClickUntil and GetTime and GetTime() <= self._dsSuppressClickUntil then
+            return
+        end
         if self.isEditingMode then
             if addonTable.OnHudTargetSelected then
                 addonTable.OnHudTargetSelected("TOAST")
@@ -2147,6 +2413,10 @@ local function CreateToastFrame()
         end
 
         if button == "RightButton" then
+            if IsShiftKeyDown and IsShiftKeyDown() then
+                OpenToastHudEditMode()
+                return
+            end
             hasShownToastThisLoadSession = true
             pendingToastAfterCombat = false
             pendingPostLoadToast = false
@@ -2178,11 +2448,21 @@ local function CreateToastFrame()
         if not self.isDraggingMode and not self.isEditingMode then
             self.animGroup:Pause()
             self:SetAlpha(1)
+            if not self._dsDragging then
+                ApplyDynamicLoadToastHoverBorder(self)
+                ShowDynamicLoadToastTooltip(self, self)
+            end
         end
     end)
 
     f:SetScript("OnLeave", function(self)
+        if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(self) then
+            GameTooltip:Hide()
+        end
         if IsToastOrChildHovered(self) then return end
+        if not self._dsDragging then
+            RestoreDynamicLoadToastBorder(self)
+        end
         local dur = GetDynamicLoadActionToastDuration()
         if not self.isDraggingMode and not self.isEditingMode and dur > 0 then
             self.animGroup:Play()
@@ -2192,6 +2472,12 @@ local function CreateToastFrame()
     ApplyToastPosition(f)
     toastFrame = f
     f:HookScript("OnHide", function(selfToast)
+        if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(selfToast) then
+            GameTooltip:Hide()
+        end
+        if selfToast._dsDirectDragActive then
+            CommitDirectToastDrag(selfToast, true)
+        end
         selfToast._dsStackedUnderGroup = false
         if _G.DynamicGroup and type(_G.DynamicGroup.OnAlertToastHidden) == "function" then
             pcall(_G.DynamicGroup.OnAlertToastHidden, _G.DynamicGroup)

@@ -1186,7 +1186,41 @@ function DynamicPrep:SaveBarEditPosition(point, relPoint, x, y)
         y = py,
     }
     _G.DynamicSuiteDB.global.hudPositions["prep"] = saved
+    _G.DynamicSuiteDB.global.hudPositions["PREP"] = saved
     _G.DynamicSuiteDB.global.hudPositions.prepBar = saved
+end
+
+local function FormatPrepTooltipCmd(cmdText, actionText, cmdHex)
+    if _G.DynamicSuite and type(_G.DynamicSuite.FormatTooltipCommand) == "function" then
+        return _G.DynamicSuite.FormatTooltipCommand(cmdText, actionText, cmdHex)
+    end
+    local hex = (type(cmdHex) == "string" and cmdHex:gsub("^|cFF", ""):gsub("^|c", ""):gsub("^#", "")) or "34D399"
+    if #hex == 8 then hex = hex:sub(3, 8) end
+    if #hex ~= 6 then hex = "34D399" end
+    local cmd = tostring(cmdText or "")
+    if cmd ~= "" and not cmd:match(":$") then
+        cmd = cmd .. ":"
+    end
+    return string.format("|cFF%s%s|r |cFFE2E8F0%s|r", hex:upper(), cmd, tostring(actionText or ""))
+end
+
+local function AppendPrepHudHints(tooltip, moveLabel, editTrigger, addSpacer)
+    if not tooltip or type(tooltip.AddLine) ~= "function" then return end
+    local wantSpacer = (addSpacer ~= false)
+    if _G.DynamicSuite and type(_G.DynamicSuite.AppendHudTooltipHints) == "function" then
+        _G.DynamicSuite.AppendHudTooltipHints(tooltip, {
+            moveLabel = moveLabel or "Move bar",
+            editModeTrigger = editTrigger or "Shift + Right-Click:",
+            hudCmd = "/ds hud",
+            addSpacer = wantSpacer,
+        })
+        return
+    end
+    if wantSpacer then
+        tooltip:AddLine(" ")
+    end
+    tooltip:AddLine(FormatPrepTooltipCmd("Shift + Left-Drag:", moveLabel or "Move bar", "34D399"), 1, 1, 1)
+    tooltip:AddLine(FormatPrepTooltipCmd(editTrigger or "Shift + Right-Click:", "Open HUD Edit Mode (/ds hud)", "38BDF8"), 1, 1, 1)
 end
 
 -- ============================================================================
@@ -3431,14 +3465,35 @@ function DynamicPrep:ApplyBarBorderStyle(targetBar)
 end
 
 function DynamicPrep:OpenTopBarHudEdit()
+    if _G.DynamicSuite and type(_G.DynamicSuite.OpenHudEditForTarget) == "function" then
+        return _G.DynamicSuite.OpenHudEditForTarget("PREP", function()
+            self:SetEditMode(true)
+        end, "DynamicPrep")
+    end
     if InCombatLockdown and InCombatLockdown() then
         print(string.format("|cFF%sDynamicPrep:|r Cannot open HUD Edit Mode while in combat.", GetAccentHex()))
-        return
+        return false
     end
-    if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
-        _G.DynamicSuite.EnterHudEditMode("PREP")
+    if GameTooltip then GameTooltip:Hide() end
+    self:SetEditMode(true)
+    return true
+end
+
+function DynamicPrep:ApplyBarHoverVisual(isHighlighted)
+    local bar = self.prepBarFrame
+    if not bar then return end
+    if isHighlighted then
+        local ar, ag, ab = GetActiveAccentRGB()
+        if (self.db and self.db.barColorTheme) == "CLASS_ACCENT" then
+            ar, ag, ab = GetPlayerClassColor()
+        end
+        SetPixelBackdrop(bar, COLORS.BgBarSurface, { ar, ag, ab, 1.0 }, 1)
+        if bar.topAccent then
+            bar.topAccent:SetColorTexture(ar, ag, ab, 1.0)
+            bar.topAccent:Show()
+        end
     else
-        self:SetEditMode(true)
+        self:ApplyBarBorderStyle(bar)
     end
 end
 
@@ -3453,15 +3508,17 @@ function DynamicPrep:CreatePrepBar()
     bar:EnableMouse(true)
     bar:RegisterForDrag("LeftButton")
 
-    local function EndDirectBarDrag()
+    local function EndDirectBarDrag(abortedByCombat)
         if not bar._dpDirectDragActive then return false end
         bar._dpDirectDragActive = false
         bar._dsDragging = false
         bar:SetScript("OnUpdate", nil)
         bar:StopMovingOrSizing()
         bar._dpSuppressClickUntil = (GetTime and GetTime() or 0) + 0.15
-        if InCombatLockdown and InCombatLockdown() then
+        if abortedByCombat or (InCombatLockdown and InCombatLockdown()) then
             DynamicPrep.pendingBarRefreshAfterCombat = true
+            DynamicPrep:ApplyBarHoverVisual(false)
+            DynamicPrep:ApplyBarFadeState()
             return true
         end
         local point, _, relativePoint, x, y = bar:GetPoint(1)
@@ -3475,9 +3532,11 @@ function DynamicPrep:CreatePrepBar()
             local _, _, _, hex = GetActiveAccentRGB()
             bar.mover.label:SetText(string.format("|cFF%sDynamicPrep Bar|r  |cFFFFFFFF(X: %d, Y: %d)|r", hex, math.floor((px or 0) + 0.5), math.floor((py or -8) + 0.5)))
         end
+        DynamicPrep:ApplyBarHoverVisual(bar.IsMouseOver and bar:IsMouseOver())
         DynamicPrep:ApplyBarFadeState()
         return true
     end
+    bar._dpEndDirectDrag = EndDirectBarDrag
 
     local function BeginDirectBarDrag()
         if DynamicPrep.inEditMode or DynamicPrep.inBarEditMode or bar._dsEditModeActive then return false end
@@ -3487,14 +3546,17 @@ function DynamicPrep:CreatePrepBar()
         DynamicPrep:HideBarPopovers()
         bar._dsDragging = true
         bar._dpDirectDragActive = true
+        DynamicPrep:ApplyBarHoverVisual(true)
         bar:StartMoving()
         bar:SetScript("OnUpdate", function()
             if not bar._dpDirectDragActive then
                 bar:SetScript("OnUpdate", nil)
                 return
             end
-            if (InCombatLockdown and InCombatLockdown()) or (IsMouseButtonDown and not IsMouseButtonDown("LeftButton")) then
-                EndDirectBarDrag()
+            local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+            local lmbDown = (type(IsMouseButtonDown) ~= "function") or IsMouseButtonDown("LeftButton")
+            if inCombat or not lmbDown then
+                EndDirectBarDrag(inCombat)
             end
         end)
         return true
@@ -3504,11 +3566,11 @@ function DynamicPrep:CreatePrepBar()
         BeginDirectBarDrag()
     end)
     bar:SetScript("OnDragStop", function()
-        EndDirectBarDrag()
+        EndDirectBarDrag(false)
     end)
     bar:SetScript("OnMouseUp", function(_, button)
         if bar._dpDirectDragActive then
-            EndDirectBarDrag()
+            EndDirectBarDrag(false)
             return
         end
         if button == "RightButton" and not DynamicPrep.inEditMode and not DynamicPrep.inBarEditMode and not bar._dsEditModeActive then
@@ -3519,27 +3581,31 @@ function DynamicPrep:CreatePrepBar()
     end)
     bar:HookScript("OnHide", function()
         if bar._dpDirectDragActive then
-            EndDirectBarDrag()
+            EndDirectBarDrag(true)
         end
+        DynamicPrep:ApplyBarHoverVisual(false)
         DynamicPrep:HideBarPopovers()
     end)
     bar:HookScript("OnEnter", function(selfBar)
         DynamicPrep:ApplyBarFadeState(true)
         if DynamicPrep.inEditMode or DynamicPrep.inBarEditMode or bar._dsEditModeActive or bar._dpDirectDragActive then return end
         if DynamicPrep:AreAnyBarPopoversShown() then return end
+        DynamicPrep:ApplyBarHoverVisual(true)
         if GameTooltip then
             local ar, ag, ab = GetActiveAccentRGB()
             GameTooltip:SetOwner(selfBar, "ANCHOR_BOTTOM")
             GameTooltip:ClearLines()
-            GameTooltip:AddLine("DynamicPrep Top Info Bar", ar, ag, ab)
-            GameTooltip:AddLine("|cFF34D399Shift + Left-Drag:|r |cFFE2E8F0Move bar anywhere on screen|r", 1, 1, 1)
-            GameTooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Open HUD Edit Mode (/ds hud)|r", 1, 1, 1)
+            GameTooltip:AddLine("Top Info Bar", ar, ag, ab)
+            AppendPrepHudHints(GameTooltip, "Move bar", "Right-Click:", false)
             GameTooltip:Show()
         end
     end)
     bar:HookScript("OnLeave", function(selfBar)
         if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(selfBar) then
             GameTooltip:Hide()
+        end
+        if not bar._dpDirectDragActive then
+            DynamicPrep:ApplyBarHoverVisual(false)
         end
         if C_Timer and C_Timer.After then
             C_Timer.After(0.12, function()
@@ -3635,7 +3701,7 @@ function DynamicPrep:CreatePrepBar()
         seg:SetScript("OnClick", function(selfSeg, button)
             GameTooltip:Hide()
             if bar._dpDirectDragActive then
-                EndDirectBarDrag()
+                EndDirectBarDrag(false)
                 return
             end
             if bar._dpSuppressClickUntil and GetTime and GetTime() <= bar._dpSuppressClickUntil then
@@ -3643,6 +3709,11 @@ function DynamicPrep:CreatePrepBar()
             end
             if DynamicPrep.inEditMode then
                 DynamicPrep:HideBarPopovers()
+                return
+            end
+            if button == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
+                DynamicPrep:HideBarPopovers()
+                DynamicPrep:OpenTopBarHudEdit()
                 return
             end
             if segKey == "loot" then
@@ -3751,11 +3822,15 @@ function DynamicPrep:CreatePrepBar()
             secBtn:SetAllPoints(seg)
             secBtn:RegisterForClicks("AnyUp", "AnyDown")
             secBtn:RegisterForDrag("LeftButton")
+            if not (InCombatLockdown and InCombatLockdown()) then
+                secBtn:SetAttribute("shift-type1", "none")
+                secBtn:SetAttribute("shift-type2", "none")
+            end
             secBtn:SetScript("OnDragStart", function()
                 BeginDirectBarDrag()
             end)
             secBtn:SetScript("OnDragStop", function()
-                EndDirectBarDrag()
+                EndDirectBarDrag(false)
             end)
             secBtn:SetScript("OnEnter", function()
                 local onEnter = seg:GetScript("OnEnter")
@@ -3768,7 +3843,7 @@ function DynamicPrep:CreatePrepBar()
             secBtn:SetScript("PostClick", function(_, button, down)
                 GameTooltip:Hide()
                 if bar._dpDirectDragActive then
-                    EndDirectBarDrag()
+                    EndDirectBarDrag(false)
                     return
                 end
                 if bar._dpSuppressClickUntil and GetTime and GetTime() <= bar._dpSuppressClickUntil then
@@ -3782,9 +3857,17 @@ function DynamicPrep:CreatePrepBar()
                 end
                 if button == "RightButton" then
                     if not down then
+                        if IsShiftKeyDown and IsShiftKeyDown() then
+                            DynamicPrep:HideBarPopovers()
+                            DynamicPrep:OpenTopBarHudEdit()
+                            return
+                        end
                         DynamicPrep:ToggleFolioPopover(seg)
                     end
                 else
+                    if IsShiftKeyDown and IsShiftKeyDown() then
+                        return
+                    end
                     local useKeyDown = false
                     if C_CVar and C_CVar.GetCVarBool then
                         local ok, res = pcall(C_CVar.GetCVarBool, "ActionButtonUseKeyDown")
@@ -4394,8 +4477,7 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
         tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Cycle Display Mode (Both / Home / World)|r", 1, 1, 1)
         tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Swap Home / World Order|r", 1, 1, 1)
     end
-    tooltip:AddLine(" ")
-    tooltip:AddLine("Shift-Drag to move  |  /ds hud for grid & scale", 0.580, 0.639, 0.722)
+    AppendPrepHudHints(tooltip, "Move bar", "Shift + Right-Click:")
 end
 
 function DynamicPrep:IsDrawerExpanded(drawerKey)
@@ -16674,6 +16756,45 @@ function DynamicPrep:NudgeBuffBarHUD(dx, dy)
     self:RefreshClickableBuffs(true)
 end
 
+function DynamicPrep:OpenBuffBarHudEdit()
+    if _G.DynamicSuite and type(_G.DynamicSuite.OpenHudEditForTarget) == "function" then
+        return _G.DynamicSuite.OpenHudEditForTarget("prepBuffs", function()
+            self:SetBuffsEditMode(true)
+        end, "DynamicPrep")
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        print(string.format("|cFF%sDynamicPrep:|r Cannot open HUD Edit Mode while in combat.", GetAccentHex()))
+        return false
+    end
+    if GameTooltip then GameTooltip:Hide() end
+    self:SetBuffsEditMode(true)
+    return true
+end
+
+function DynamicPrep:ApplyBuffBarHoverVisual(isHoverOrDrag)
+    local bar = self.clickableBuffBar
+    if not bar or not bar.hudBg then return end
+    local rb = (self.db and self.db.raidBuffs) or DEFAULTS.raidBuffs
+    local inBuffEdit = (self.inBuffsEditMode or (self.inEditMode and self.inBuffsEditMode ~= false) or bar._dsEditModeActive) and true or false
+    local borderStyle = (rb and rb.hudBorderStyle) or (self.db and self.db.hudBorderStyle) or "ACCENT"
+    local ar, ag, ab = GetActiveAccentRGB()
+    if isHoverOrDrag and not inBuffEdit then
+        SetPixelBackdrop(bar.hudBg, { 0.035, 0.043, 0.059, 0.82 }, { ar, ag, ab, 1.0 }, 1)
+        bar.hudBg:Show()
+    else
+        local showHudCapsule = ((rb and rb.showHudCapsule == true) or inBuffEdit) and true or false
+        if showHudCapsule then
+            local capsuleBorder = (borderStyle == "NONE") and { 0, 0, 0, 0 }
+                or ((borderStyle == "DARK" or borderStyle == "SUBTLE") and COLORS.BorderStrong)
+                or { ar, ag, ab, 0.45 }
+            SetPixelBackdrop(bar.hudBg, { 0.035, 0.043, 0.059, 0.78 }, capsuleBorder, 1)
+            bar.hudBg:Show()
+        else
+            bar.hudBg:Hide()
+        end
+    end
+end
+
 function DynamicPrep:CreateClickableBuffBar()
     if self.clickableBuffBar then return self.clickableBuffBar end
 
@@ -16682,6 +16803,8 @@ function DynamicPrep:CreateClickableBuffBar()
     bar:SetFrameStrata("MEDIUM")
     bar:SetClampedToScreen(true)
     bar:SetMovable(true)
+    bar:EnableMouse(true)
+    bar:RegisterForDrag("LeftButton")
 
     local pt, rp, initX, initY = self:GetSavedBuffBarPosition()
     self:SaveBuffBarEditPosition(pt, rp, initX, initY)
@@ -16693,6 +16816,110 @@ function DynamicPrep:CreateClickableBuffBar()
     bar.hudBg:SetFrameLevel(math.max(1, bar:GetFrameLevel() - 1))
     SetPixelBackdrop(bar.hudBg, { 0.035, 0.043, 0.059, 0.0 }, { 0, 0, 0, 0 }, 1)
 
+    local function IsBuffBarInEditMode()
+        return (DynamicPrep.inEditMode or DynamicPrep.inBuffsEditMode or bar._dsEditModeActive) and true or false
+    end
+
+    local function EndDirectBuffDrag(abortedByCombat)
+        if not bar._dpBuffDirectDragActive then return false end
+        bar._dpBuffDirectDragActive = false
+        bar._dsDragging = false
+        bar:SetScript("OnUpdate", nil)
+        bar:StopMovingOrSizing()
+        bar._dpSuppressClickUntil = (GetTime and GetTime() or 0) + 0.15
+        if abortedByCombat or (InCombatLockdown and InCombatLockdown()) then
+            DynamicPrep._pendingCrbAfterCombat = true
+            DynamicPrep:ApplyBuffBarHoverVisual(false)
+            return true
+        end
+        local fScale = (bar.GetEffectiveScale and bar:GetEffectiveScale()) or 1
+        local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        local relScale = (fScale > 0 and uScale > 0) and (fScale / uScale) or 1
+        local cx, cy = bar:GetCenter()
+        local ux, uy = UIParent:GetCenter()
+        local x = (cx and ux) and (((cx * relScale) - ux) / relScale) or 0
+        local y = (cy and uy) and (((cy * relScale) - uy) / relScale) or 140
+        x = math.floor(x + 0.5)
+        y = math.floor(y + 0.5)
+        x, y = ClampPrepFrameToScreen(bar, "CENTER", "CENTER", x, y, bar:GetWidth() or 200, bar:GetHeight() or 56)
+        bar:ClearAllPoints()
+        bar:SetPoint("CENTER", UIParent, "CENTER", x, y)
+        DynamicPrep:SaveBuffBarEditPosition("CENTER", "CENTER", x, y)
+        if bar.mover and bar.mover.label then
+            local _, _, _, h = GetActiveAccentRGB()
+            bar.mover.label:SetText(string.format("|cFF%sClickable Raid Buffs HUD|r\n|cFFFFFFFF(X: %d, Y: %d)  [Right-Click: Centre X=0]|r", h, x, y))
+        end
+        DynamicPrep:ApplyBuffBarHoverVisual(bar.IsMouseOver and bar:IsMouseOver())
+        return true
+    end
+    bar._dpEndDirectDrag = EndDirectBuffDrag
+
+    local function BeginDirectBuffDrag()
+        if IsBuffBarInEditMode() or bar._dpBuffDirectDragActive then return false end
+        if InCombatLockdown and InCombatLockdown() then return false end
+        if not (IsShiftKeyDown and IsShiftKeyDown()) then return false end
+        if GameTooltip then GameTooltip:Hide() end
+        bar._dsDragging = true
+        bar._dpBuffDirectDragActive = true
+        DynamicPrep:ApplyBuffBarHoverVisual(true)
+        bar:StartMoving()
+        bar:SetScript("OnUpdate", function()
+            if not bar._dpBuffDirectDragActive then
+                bar:SetScript("OnUpdate", nil)
+                return
+            end
+            local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+            local lmbDown = (type(IsMouseButtonDown) ~= "function") or IsMouseButtonDown("LeftButton")
+            if inCombat or not lmbDown then
+                EndDirectBuffDrag(inCombat)
+            end
+        end)
+        return true
+    end
+
+    bar:SetScript("OnDragStart", function()
+        BeginDirectBuffDrag()
+    end)
+    bar:SetScript("OnDragStop", function()
+        EndDirectBuffDrag(false)
+    end)
+    bar:SetScript("OnMouseUp", function(_, button)
+        if bar._dpBuffDirectDragActive then
+            EndDirectBuffDrag(false)
+            return
+        end
+        if button == "RightButton" and not IsBuffBarInEditMode() then
+            if GameTooltip then GameTooltip:Hide() end
+            DynamicPrep:OpenBuffBarHudEdit()
+        end
+    end)
+    bar:HookScript("OnHide", function()
+        if bar._dpBuffDirectDragActive then
+            EndDirectBuffDrag(true)
+        end
+        DynamicPrep:ApplyBuffBarHoverVisual(false)
+    end)
+    bar:HookScript("OnEnter", function(selfBar)
+        if IsBuffBarInEditMode() or bar._dpBuffDirectDragActive or (InCombatLockdown and InCombatLockdown()) then return end
+        DynamicPrep:ApplyBuffBarHoverVisual(true)
+        if GameTooltip then
+            local ar, ag, ab = GetActiveAccentRGB()
+            GameTooltip:SetOwner(selfBar, "ANCHOR_TOP")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine("Clickable Raid Buffs", ar, ag, ab)
+            AppendPrepHudHints(GameTooltip, "Move bar", "Right-Click:", false)
+            GameTooltip:Show()
+        end
+    end)
+    bar:HookScript("OnLeave", function(selfBar)
+        if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(selfBar) then
+            GameTooltip:Hide()
+        end
+        if not bar._dpBuffDirectDragActive then
+            DynamicPrep:ApplyBuffBarHoverVisual(false)
+        end
+    end)
+
     -- C++ Macro Visibility Driver: Hides in combat, Pet Battles, or Vehicle UI so satisfied buttons never swallow center-screen clicks mid-combat
     if RegisterStateDriver then
         pcall(RegisterStateDriver, bar, "visibility", "[petbattle][vehicleui][combat] hide; show")
@@ -16703,6 +16930,29 @@ function DynamicPrep:CreateClickableBuffBar()
         local btn = CreateFrame("Button", "DynamicPrepBuffBtn" .. i, bar, "SecureActionButtonTemplate")
         btn:SetSize(44, 44)
         btn:RegisterForClicks("AnyUp", "AnyDown")
+        btn:RegisterForDrag("LeftButton")
+        if not (InCombatLockdown and InCombatLockdown()) then
+            btn:SetAttribute("shift-type1", "none")
+            btn:SetAttribute("shift-type2", "none")
+        end
+        btn:SetScript("OnDragStart", function()
+            BeginDirectBuffDrag()
+        end)
+        btn:SetScript("OnDragStop", function()
+            EndDirectBuffDrag(false)
+        end)
+        btn:SetScript("PostClick", function(_, mouseBtn, down)
+            if bar._dpBuffDirectDragActive then
+                EndDirectBuffDrag(false)
+                return
+            end
+            if bar._dpSuppressClickUntil and GetTime and GetTime() <= bar._dpSuppressClickUntil then
+                return
+            end
+            if not down and mouseBtn == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() and not IsBuffBarInEditMode() then
+                DynamicPrep:OpenBuffBarHudEdit()
+            end
+        end)
 
         btn.bgFrame = CreateFrame("Frame", nil, btn, "BackdropTemplate")
         btn.bgFrame:SetAllPoints(btn)
@@ -16756,6 +17006,7 @@ function DynamicPrep:CreateClickableBuffBar()
             if DynamicPrep.inEditMode or (selfBtn:GetAlpha() or 1) <= 0.01 then return end
             local ar, ag, ab = GetActiveAccentRGB()
             SetPixelBackdrop(selfBtn.bgFrame or selfBtn, COLORS.BgElevated, { ar, ag, ab, 1.0 }, 1)
+            DynamicPrep:ApplyBuffBarHoverVisual(true)
             if GameTooltip and selfBtn._tooltipTitle and selfBtn._tooltipTitle ~= "" then
                 GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
                 GameTooltip:AddLine(selfBtn._tooltipTitle, ar, ag, ab)
@@ -16773,11 +17024,15 @@ function DynamicPrep:CreateClickableBuffBar()
                 else
                     GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Cast / Use Now|r", 1, 1, 1)
                 end
+                AppendPrepHudHints(GameTooltip, "Move bar", "Shift + Right-Click:")
                 GameTooltip:Show()
             end
         end)
         btn:SetScript("OnLeave", function(selfBtn)
             if GameTooltip then GameTooltip:Hide() end
+            if not bar._dpBuffDirectDragActive then
+                DynamicPrep:ApplyBuffBarHoverVisual(false)
+            end
             local ar, ag, ab = GetActiveAccentRGB()
             local rbCfg = DynamicPrep.db and DynamicPrep.db.raidBuffs
             local bStyle = (rbCfg and rbCfg.hudBorderStyle) or (DynamicPrep.db and DynamicPrep.db.hudBorderStyle) or "ACCENT"
@@ -17656,6 +17911,8 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
                 btn:SetPoint("CENTER", bar, "CENTER", offsetX, 4)
             end
 
+            btn:SetAttribute("shift-type1", "none")
+            btn:SetAttribute("shift-type2", "none")
             btn:SetAttribute("type", entry.actionType)
             if entry.actionType == "spell" then
                 btn:SetAttribute("spell", entry.actionTarget)
@@ -17956,6 +18213,12 @@ crbEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
     end
     if event == "PLAYER_REGEN_DISABLED" then
         DynamicPrep._inCombatState = true
+        if DynamicPrep.prepBarFrame and DynamicPrep.prepBarFrame._dpDirectDragActive and DynamicPrep.prepBarFrame._dpEndDirectDrag then
+            DynamicPrep.prepBarFrame._dpEndDirectDrag(true)
+        end
+        if DynamicPrep.clickableBuffBar and DynamicPrep.clickableBuffBar._dpBuffDirectDragActive and DynamicPrep.clickableBuffBar._dpEndDirectDrag then
+            DynamicPrep.clickableBuffBar._dpEndDirectDrag(true)
+        end
         DynamicPrep:UpdateGroupLifeStates(event)
         DynamicPrep:ScheduleCombatAuraEvaluation(true)
         return
