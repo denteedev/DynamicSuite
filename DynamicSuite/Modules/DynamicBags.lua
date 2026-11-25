@@ -173,6 +173,7 @@ local S = {
     activeGuildInteractionType = nil,
     closingBankInteraction = false,
     pendingCombatHideBlizzBank = false,
+    origBankPanelLayout = {},
     queriedGuildTabs = {},
     autoOpened = {},
     skippedOpenables = {},
@@ -2247,6 +2248,9 @@ function U.ShowMenu(anchor, entries, minWidth)
             RefreshMenuThumbColor()
         end)
 
+        m:SetScript("OnShow", function()
+            if U.EnsureBagSpecialFrames then U.EnsureBagSpecialFrames() end
+        end)
         m:SetScript("OnHide", function(self)
             if self.searchBox then self.searchBox:ClearFocus() end
             if S.menuAnchor and S.menuAnchor.chevronTex then
@@ -2256,16 +2260,10 @@ function U.ShowMenu(anchor, entries, minWidth)
             if S.menuCatcher and S.menuCatcher:IsShown() then
                 S.menuCatcher:Hide()
             end
+            if U.OnSpecialBagFrameHidden then U.OnSpecialBagFrameHidden() end
         end)
+        m:Hide()
         S.menu = m
-    end
-    if not InCombatLockdown() and type(UISpecialFrames) == "table" and not S.menu._specialRegistered then
-        S.menu._specialRegistered = true
-        local found = false
-        for i = 1, #UISpecialFrames do
-            if UISpecialFrames[i] == "DynamicBagsDropdownMenu" then found = true; break end
-        end
-        if not found then tinsert(UISpecialFrames, "DynamicBagsDropdownMenu") end
     end
     local m = S.menu
     local ar, ag, ab = GetAccent()
@@ -2961,18 +2959,38 @@ local function AddSpecialFrameEntry(t, frameName)
     tinsert(t, frameName)
 end
 
+function U.MarkEscClosedBagOnThisPass()
+    S.escClosedBagOnThisPass = true
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            S.escClosedBagOnThisPass = nil
+        end)
+    end
+end
+
+function U.OnSpecialBagFrameHidden()
+    if IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+        U.MarkEscClosedBagOnThisPass()
+    elseif not InCombatLockdown() then
+        U.EnsureBagSpecialFrames()
+    end
+end
+
 function U.GetTopMostShownBagFrameName()
+    if S.menu and S.menu:IsShown() then
+        return "DynamicBagsDropdownMenu"
+    end
     if S.goldTransferModal and S.goldTransferModal:IsShown() then
         return "DynamicBagsGoldTransferModal"
+    end
+    if S.standalone and S.standalone:IsShown() then
+        return "DynamicBagsStandaloneFrame"
     end
     if S.bankWindow and S.bankWindow:IsShown() then
         return "DynamicBagsBankFrame"
     end
     if S.window and S.window:IsShown() then
         return "DynamicBagsFrame"
-    end
-    if S.standalone and S.standalone:IsShown() then
-        return "DynamicBagsStandaloneFrame"
     end
     return nil
 end
@@ -2981,7 +2999,7 @@ function U.EnsureBagSpecialFrames()
     if InCombatLockdown() or type(UISpecialFrames) ~= "table" then return end
     CompactUISpecialFramesList()
     local topName = U.GetTopMostShownBagFrameName()
-    local allBagFrames = { "DynamicBagsGoldTransferModal", "DynamicBagsBankFrame", "DynamicBagsFrame", "DynamicBagsStandaloneFrame" }
+    local allBagFrames = { "DynamicBagsDropdownMenu", "DynamicBagsGoldTransferModal", "DynamicBagsStandaloneFrame", "DynamicBagsBankFrame", "DynamicBagsFrame" }
     if topName then
         for _, fName in ipairs(allBagFrames) do
             if fName ~= topName then
@@ -2990,6 +3008,8 @@ function U.EnsureBagSpecialFrames()
         end
         AddSpecialFrameEntry(UISpecialFrames, topName)
     else
+        RemoveSpecialFrameEntry(UISpecialFrames, "DynamicBagsDropdownMenu")
+        RemoveSpecialFrameEntry(UISpecialFrames, "DynamicBagsGoldTransferModal")
         for _, fName in ipairs({ "DynamicBagsFrame", "DynamicBagsBankFrame", "DynamicBagsStandaloneFrame" }) do
             AddSpecialFrameEntry(UISpecialFrames, fName)
         end
@@ -5900,11 +5920,7 @@ function U.EnsureGoldTransferModal()
         goldBox:ClearFocus()
         silverBox:ClearFocus()
         copperBox:ClearFocus()
-        if IsStackMatching("CloseSpecialWindows", "CloseWindows") then
-            S.escClosedBagOnThisPass = true
-        else
-            U.EnsureBagSpecialFrames()
-        end
+        U.OnSpecialBagFrameHidden()
     end)
 
     m:Hide()
@@ -6632,18 +6648,21 @@ function U.EnsureCompanionBankWindow()
         end
         PlayBagWindowSound(false)
         U.CloseMenu()
+        if _G.StackSplitFrame and _G.StackSplitFrame.IsShown and _G.StackSplitFrame:IsShown() then
+            pcall(_G.StackSplitFrame.Hide, _G.StackSplitFrame)
+        end
+        if type(_G.StaticPopup_Hide) == "function" then
+            pcall(_G.StaticPopup_Hide, "CONFIRM_BUY_BANK_SLOT")
+            pcall(_G.StaticPopup_Hide, "CONFIRM_BUY_GUILDBANK_TAB")
+        end
         S.sessionBankScale = nil
         if not InCombatLockdown() then
             local savedScale = ClampWindowScale(DB().bankScale or 1.0)
             if math.abs((bw.GetScale and bw:GetScale() or 1) - savedScale) > 0.001 then
                 bw:SetScale(savedScale)
             end
-            if IsStackMatching("CloseSpecialWindows", "CloseWindows") then
-                S.escClosedBagOnThisPass = true
-            else
-                U.EnsureBagSpecialFrames()
-            end
         end
+        U.OnSpecialBagFrameHidden()
         local skipAutoMerge = S._closingGuildBank or S.atGuildBank
             or (S._justClosedGuildBank and GetTime and (GetTime() - S._justClosedGuildBank) < 1.0)
         if not skipAutoMerge and DB().autoMergeOnClose == true and not InCombatLockdown()
@@ -7731,12 +7750,8 @@ function U.EnsureWindow()
                 win:SetScale(savedScale)
             end
             ApplySavedTopAlignedPos(win, "windowPos")
-            if IsStackMatching("CloseSpecialWindows", "CloseWindows") then
-                S.escClosedBagOnThisPass = true
-            else
-                U.EnsureBagSpecialFrames()
-            end
         end
+        U.OnSpecialBagFrameHidden()
         S.autoOpened = {}
         if U.UpdateQuickOpenButton then U.UpdateQuickOpenButton() end
         if DB().autoMergeOnClose == true and not InCombatLockdown() then
@@ -10314,9 +10329,7 @@ local function EnsureStandalone()
         U.EnsureBagSpecialFrames()
     end)
     f:SetScript("OnHide", function()
-        if not InCombatLockdown() and not IsStackMatching("CloseSpecialWindows", "CloseWindows") then
-            U.EnsureBagSpecialFrames()
-        end
+        U.OnSpecialBagFrameHidden()
     end)
     f:Hide()
     S.standalone = f
@@ -10524,7 +10537,9 @@ end
 function U.OnInteractionHide(interactionType)
     local isBankType = (S.bankTypes and S.bankTypes[interactionType]) and true or false
     if isBankType then
-        pcall(U.SnapshotBank)
+        if S.atBank then
+            pcall(U.SnapshotBank)
+        end
         S.atBank = false
         S.activeBankInteractionType = nil
     end
@@ -10655,7 +10670,7 @@ function U.CloseActiveBankInteraction()
                 if pit and pit.Banker ~= nil and activeType ~= pit.Banker then
                     pcall(pim.ClearInteraction, pit.Banker)
                 end
-                if pit and pit.AccountBanker ~= nil and activeType ~= pit.AccountBanker and (interactingAccountBanker or activeType == nil) then
+                if pit and pit.AccountBanker ~= nil and activeType ~= pit.AccountBanker then
                     pcall(pim.ClearInteraction, pit.AccountBanker)
                 end
             end
@@ -10770,15 +10785,95 @@ function U.HideBlizzardBags()
         local replace = DB().replaceBlizzardBags
         local frames = { ContainerFrameCombinedBags }
         for i = 1, 13 do frames[#frames + 1] = _G["ContainerFrame" .. i] end
-        local function SuppressBankPanel(panel)
+        local function SafeRemoveUIPanelKey(tbl, key)
+            if type(tbl) ~= "table" or key == nil or tbl[key] == nil then return end
+            if _G.TextureLoadingGroupMixin and type(_G.TextureLoadingGroupMixin.RemoveTexture) == "function" then
+                pcall(_G.TextureLoadingGroupMixin.RemoveTexture, { textures = tbl }, key)
+            end
+            if tbl[key] ~= nil then
+                tbl[key] = nil
+            end
+        end
+        local PANEL_LAYOUT_ATTRS = {
+            "UIPanelLayout-defined",
+            "UIPanelLayout-enabled",
+            "UIPanelLayout-area",
+            "UIPanelLayout-pushable",
+            "UIPanelLayout-whileDead",
+            "UIPanelLayout-checkFit",
+        }
+        local function DetachBankPanelLayout(panel, panelName)
+            if not panel or not panelName or InCombatLockdown() then return end
+            S.origBankPanelLayout = S.origBankPanelLayout or {}
+            if not S.origBankPanelLayout[panelName] then
+                local snap = {
+                    uipEntry = (type(_G.UIPanelWindows) == "table") and _G.UIPanelWindows[panelName] or nil,
+                    attrs = {},
+                }
+                if type(panel.GetAttribute) == "function" then
+                    for _, attrKey in ipairs(PANEL_LAYOUT_ATTRS) do
+                        snap.attrs[attrKey] = panel:GetAttribute(attrKey)
+                    end
+                end
+                S.origBankPanelLayout[panelName] = snap
+            end
+            SafeRemoveUIPanelKey(_G.UIPanelWindows, panelName)
+            if type(panel.SetAttribute) == "function" then
+                for _, attrKey in ipairs(PANEL_LAYOUT_ATTRS) do
+                    if panel.GetAttribute == nil or panel:GetAttribute(attrKey) ~= nil then
+                        pcall(panel.SetAttribute, panel, attrKey, nil)
+                    end
+                end
+            end
+            if type(_G.GetUIPanel) == "function" and not (panel.IsShown and panel:IsShown()) then
+                local inSlot = false
+                for _, slotName in ipairs({ "left", "center", "right", "doublewide", "fullscreen" }) do
+                    local okS, slotFrame = pcall(_G.GetUIPanel, slotName)
+                    if okS and slotFrame == panel then
+                        inSlot = true
+                        break
+                    end
+                end
+                if inSlot and type(_G.HideUIPanel) == "function" then
+                    pcall(_G.HideUIPanel, panel)
+                    SafeRemoveUIPanelKey(_G.UIPanelWindows, panelName)
+                    if type(panel.SetAttribute) == "function" then
+                        for _, attrKey in ipairs(PANEL_LAYOUT_ATTRS) do
+                            if panel.GetAttribute == nil or panel:GetAttribute(attrKey) ~= nil then
+                                pcall(panel.SetAttribute, panel, attrKey, nil)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        local function RestoreBankPanelLayout(panel, panelName)
+            if not panel or not panelName or InCombatLockdown() then return end
+            local snap = S.origBankPanelLayout and S.origBankPanelLayout[panelName]
+            if not snap then return end
+            if snap.uipEntry ~= nil and type(_G.UIPanelWindows) == "table" and _G.UIPanelWindows[panelName] == nil then
+                _G.UIPanelWindows[panelName] = snap.uipEntry
+            end
+            if type(panel.SetAttribute) == "function" and type(snap.attrs) == "table" then
+                for _, attrKey in ipairs(PANEL_LAYOUT_ATTRS) do
+                    if snap.attrs[attrKey] ~= nil then
+                        pcall(panel.SetAttribute, panel, attrKey, snap.attrs[attrKey])
+                    end
+                end
+            end
+            S.origBankPanelLayout[panelName] = nil
+        end
+        local function SuppressBankPanel(panel, panelName)
             if not panel then return end
             if replace then
+                DetachBankPanelLayout(panel, panelName)
                 panel:SetAlpha(0)
                 if panel.SetScale then pcall(panel.SetScale, panel, 0.0001) end
                 panel:EnableMouse(false)
                 panel:ClearAllPoints()
                 panel:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
             else
+                RestoreBankPanelLayout(panel, panelName)
                 panel:SetAlpha(1)
                 if panel.SetScale then pcall(panel.SetScale, panel, 1) end
                 panel:EnableMouse(true)
@@ -10787,6 +10882,9 @@ function U.HideBlizzardBags()
                 panel.dbShowHooked = true
                 panel:HookScript("OnShow", function(self)
                     if DB().replaceBlizzardBags then
+                        if not InCombatLockdown() then
+                            DetachBankPanelLayout(self, panelName)
+                        end
                         self:SetAlpha(0)
                         if self.SetScale then pcall(self.SetScale, self, 0.0001) end
                         self:EnableMouse(false)
@@ -10796,8 +10894,8 @@ function U.HideBlizzardBags()
                 end)
             end
         end
-        SuppressBankPanel(BankFrame)
-        SuppressBankPanel(GuildBankFrame)
+        SuppressBankPanel(BankFrame, "BankFrame")
+        SuppressBankPanel(GuildBankFrame, "GuildBankFrame")
         if not S.uiPanelPosHooked then
             S.uiPanelPosHooked = true
             local function SuppressOpenBankPanelsSafe()
@@ -10919,13 +11017,22 @@ function U.InstallBagHooks()
             S.escRestoreBag = nil
             S.escRestoreBank = nil
             if not closedOnThisPass
-                and (IsStackMatching("CloseWindows", "ToggleGameMenu") or IsStackMatching("ToggleGameMenu", nil))
-                and U.GetTopMostShownBagFrameName() ~= nil then
-                if (S.search or "") ~= "" then
-                    U.ClearAllSearchBoxes()
-                    S.escClosedBagOnThisToggle = true
-                elseif U.CloseTopMostBagOnEscape() then
-                    S.escClosedBagOnThisToggle = true
+                and (IsStackMatching("CloseWindows", "ToggleGameMenu") or IsStackMatching("ToggleGameMenu", nil)) then
+                local topName = U.GetTopMostShownBagFrameName()
+                if topName ~= nil then
+                    if (S.search or "") ~= "" and (topName == "DynamicBagsBankFrame" or topName == "DynamicBagsFrame") then
+                        U.ClearAllSearchBoxes()
+                        S.escClosedBagOnThisToggle = true
+                    elseif U.CloseTopMostBagOnEscape() then
+                        S.escClosedBagOnThisToggle = true
+                    end
+                elseif DB().replaceBlizzardBags ~= false and not (S.bankWindow and S.bankWindow:IsShown())
+                    and (S.atBank or S.atGuildBank
+                        or (_G.BankFrame and _G.BankFrame.IsShown and _G.BankFrame:IsShown())
+                        or (_G.GuildBankFrame and _G.GuildBankFrame.IsShown and _G.GuildBankFrame:IsShown())) then
+                    if U.CloseActiveBankInteraction() then
+                        S.escClosedBagOnThisToggle = true
+                    end
                 end
                 if S.escClosedBagOnThisToggle and C_Timer and C_Timer.After then
                     C_Timer.After(0, function() S.escClosedBagOnThisToggle = nil end)
@@ -13039,7 +13146,9 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         U.ScheduleSnapshot()
     elseif event == "BANKFRAME_CLOSED" then
         U.HideGoldTransferModal()
-        pcall(U.SnapshotBank)
+        if S.atBank then
+            pcall(U.SnapshotBank)
+        end
         S.atBank = false
         S.activeBankInteractionType = nil
         if S.bankWindow and S.bankWindow:IsShown() then
@@ -13215,7 +13324,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "25/11/2026",
     entries = {
-        { type = "FIX",     text = "Clean Single-Action Bank & Guild Bank Closing (25/11/2026): Fixed a lingering invisible Blizzard bank interaction left behind whenever DynamicBank closed via its Close button, Escape key, or bag toggle while at a Personal Bank, Warband Bank, or Guild Bank (previously requiring an extra Escape press before interacting with the banker again); closing DynamicBank now cleanly terminates active C_Bank / CloseGuildBankFrame and C_PlayerInteractionManager banker interactions, hides suppressed Blizzard BankFrame/GuildBankFrame panels out of combat with re-entrancy guards, closes child modals cleanly without stranding the session, keeps Personal/Warband/Guild tab switching uninterrupted, and leaves remote cached snapshot viewing (/dbag bank) untouched." },
+        { type = "FIX",     text = "Clean Single-Action Bank & Guild Bank Closing (25/11/2026): Fixed a lingering invisible Blizzard bank interaction left behind whenever DynamicBank closed via its Close button, Escape key, or bag toggle while at a Personal Bank, Warband Bank, or Guild Bank (previously requiring an extra Escape press before interacting with the banker again); closing DynamicBank now cleanly terminates active C_Bank / CloseGuildBankFrame and C_PlayerInteractionManager banker interactions, detaches and hides suppressed Blizzard BankFrame/GuildBankFrame panels out of combat with re-entrancy guards, closes child modals and popovers (dropdowns, Gold Transfer modal, StackSplitFrame, and buy-tab popups) one at a time on Escape without killing the live banker session, keeps Personal/Warband/Guild tab switching uninterrupted, and leaves remote cached snapshot viewing (/dbag bank) untouched." },
         { type = "FEATURE", text = "DynamicBank Gold Controls & Obsidian Gold Transfer Modal (25/11/2026): Added live bank gold balances and transfer controls to the DynamicBank footer for Warband Bank (Deposit/Withdraw), Guild Bank (Deposit/Withdraw with live daily rank limit), and Personal Bank (live character gold display + [Deposit to Warband] shortcut with plain-English tooltip explaining that character gold stays in your bags); added a shared Obsidian Core Gold Transfer modal with Gold/Silver/Copper numeric inputs, 1k/10k/50k/100k/Max quick-fill pills, inline validation, and Escape/Enter handling; and subscribed to ACCOUNT_MONEY, PLAYER_MONEY, GUILDBANK_UPDATE_MONEY, and GUILDBANK_UPDATE_WITHDRAWMONEY for instant balance refreshes." },
         { type = "UI",      text = "Pass 5 Category Reorder Arrow Tint Parity (25/11/2026): Tinted the < and > reorder arrows on enabled Category Order & Visibility tiles in Tab 1 with the live Suite Accent colour at rest (switching to crisp white with accent border on hover, while keeping disabled tiles muted slate) to match DynamicPrep's Top Info Bar Layout Builder." },
         { type = "UI",      text = "Category Grid Parity, Isolated Bank Scale, Tab 3 Drawer Spacing & In-Panel Auto-Restock UI (24/11/2026): Restyled Tab 1's 12 Category Order & Visibility tiles to match DynamicPrep's dark Obsidian layout builder (#0E1015 fill, crisp 1px live Suite Accent border when enabled, dimmed slate when disabled, '1. Category' numbering, and always-visible bordered < and > reorder buttons); isolated Tab 2's Bank Window Scale slider so scaling Bank/Warband never moves or touches the Bag window; tightened Tab 3 Sub-Settings drawer spacing and ScrollFrame height updates so every child row renders cleanly without clipping; and added an in-panel Smart Vendor Auto-Restock drawer supporting bag drag-and-drop, Shift-Click links, item ID/name lookup, per-item quantity controls, Clear All, and Ctrl + Alt + Right-Click vendor adding with tooltip hints." },

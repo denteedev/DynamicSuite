@@ -7350,6 +7350,8 @@ do
             QuestFrame           = true,
             ItemUpgradeFrame     = true,
             ItemInteractionFrame = true,
+            BankFrame            = true,
+            GuildBankFrame       = true,
         },
         HEADER_OVERLAY_OFFSET         = 25,
         blizzWinState                 = setmetatable({}, { __mode = "k" }),
@@ -8320,8 +8322,46 @@ do
         return GetDefaultFrameScale(frameName, frame or (frameName and _G[frameName]))
     end
 
+    local function IsDynamicBagsModalBlockingEscape()
+        for _, name in ipairs({ "DynamicBagsDropdownMenu", "DynamicBagsGoldTransferModal", "DynamicBagsStandaloneFrame", "DynamicBagsBankFrame", "DynamicBagsFrame" }) do
+            local bf = _G[name]
+            if bf and bf.IsShown and bf:IsShown() then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function IsHandledBySuiteReplacement(frameName)
+        if frameName == "GossipFrame" or frameName == "QuestFrame" then
+            local dd = _G.DynamicDialogue
+            if type(dd) == "table" and type(dd.IsHandlingBlizzardFrame) == "function" then
+                local ok, handled = pcall(dd.IsHandlingBlizzardFrame, dd, frameName)
+                if ok and handled == true then
+                    return true
+                end
+            end
+            return false
+        elseif frameName == "BankFrame" or frameName == "GuildBankFrame" then
+            local dbag = _G.DynamicBags
+            if type(dbag) == "table" and type(dbag.IsHandlingBlizzardFrame) == "function" then
+                local ok, handled = pcall(dbag.IsHandlingBlizzardFrame, dbag, frameName)
+                if ok and handled == true then
+                    return true
+                end
+            end
+            return false
+        end
+        return false
+    end
+
     function W.SyncPanelLayoutDetachment(frame, frameName)
         if InCombat() or not frame or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] then return end
+        if IsHandledBySuiteReplacement(frameName) then
+            W.detachedPanels[frameName] = nil
+            W.pendingSlotEviction[frameName] = nil
+            return
+        end
         local orig = SnapshotOrigUIPanelInfo(frame, frameName)
         local db = GetDesktopWindowsDB()
         local yielding = DesktopWindows:IsYielding() or DesktopWindows:IsMasterDisabled()
@@ -8420,39 +8460,6 @@ do
                 end
             end
         end
-    end
-
-    local function IsDynamicBagsModalBlockingEscape()
-        for _, name in ipairs({ "DynamicBagsGoldTransferModal", "DynamicBagsBankFrame", "DynamicBagsFrame", "DynamicBagsStandaloneFrame" }) do
-            local bf = _G[name]
-            if bf and bf.IsShown and bf:IsShown() then
-                return true
-            end
-        end
-        return false
-    end
-
-    local function IsHandledBySuiteReplacement(frameName)
-        if frameName == "GossipFrame" or frameName == "QuestFrame" then
-            local dd = _G.DynamicDialogue
-            if type(dd) == "table" and type(dd.IsHandlingBlizzardFrame) == "function" then
-                local ok, handled = pcall(dd.IsHandlingBlizzardFrame, dd, frameName)
-                if ok and handled == true then
-                    return true
-                end
-            end
-            return false
-        elseif frameName == "BankFrame" or frameName == "GuildBankFrame" then
-            local dbag = _G.DynamicBags
-            if type(dbag) == "table" and type(dbag.IsHandlingBlizzardFrame) == "function" then
-                local ok, handled = pcall(dbag.IsHandlingBlizzardFrame, dbag, frameName)
-                if ok and handled == true then
-                    return true
-                end
-            end
-            return false
-        end
-        return false
     end
 
     local function IsDynamicDialogueModalBlockingEscape()
@@ -8892,7 +8899,7 @@ do
         end
         local targetSeq = W.lastShownAt[targetName] or 0
         for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
-            if spec.name ~= targetName then
+            if spec.name ~= targetName and not IsHandledBySuiteReplacement(spec.name) then
                 local bf = _G[spec.name]
                 if bf and bf.IsShown and bf:IsShown() and not IsWorldMapMaximized(bf, spec.name) and (W.lastShownAt[spec.name] or 0) > targetSeq then
                     return true
@@ -9732,7 +9739,7 @@ do
         W.restoringPanels = true
         for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
             local otherName = spec.name
-            if otherName ~= newlyShownName then
+            if otherName ~= newlyShownName and not IsHandledBySuiteReplacement(otherName) then
                 local autoHiddenRecent = (W.lastAutoHiddenAt[otherName] ~= nil and (now - W.lastAutoHiddenAt[otherName]) < 0.30)
                 local explicitRecent = (W.lastExplicitCloseAt[otherName] ~= nil and (now - W.lastExplicitCloseAt[otherName]) <= 0.25)
                 if (W.openPanelsSnapshot[otherName] or autoHiddenRecent) and not explicitRecent then
@@ -10338,6 +10345,14 @@ do
                 if fState and fState.detachingFromUIPanel then
                     return
                 end
+                if IsHandledBySuiteReplacement(frameName) then
+                    W.openPanelsSnapshot[frameName] = nil
+                    W.escapeProtectedReShow[frameName] = nil
+                    W.lastAutoHiddenAt[frameName] = nil
+                    W.RemoveFromZOrderStack(frameName)
+                    W.RemoveFromUISpecialFrames(frameName)
+                    return
+                end
                 local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
                 if frameName == "PlayerSpellsFrame" and fState and fState.userSelectedTabID == nil then
                     SnapshotPlayerSpellsState(hiddenFrame, false)
@@ -10451,7 +10466,7 @@ do
             end)
         end
 
-        if frame.IsShown and frame:IsShown() and not IsWorldMapMaximized(frame, frameName) then
+        if frame.IsShown and frame:IsShown() and not IsWorldMapMaximized(frame, frameName) and not IsHandledBySuiteReplacement(frameName) then
             W.openPanelsSnapshot[frameName] = true
             if not W.lastShownAt[frameName] then
                 W.showSeqCounter = W.showSeqCounter + 1
@@ -10794,7 +10809,7 @@ do
             W.escapeClosedFrame = nil
             for fName, fObj in pairs(W.escapeProtectedReShow) do
                 W.escapeProtectedReShow[fName] = nil
-                if fObj and not IsNonRestorablePanel(fName) and not IsWorldMapMaximized(fObj, fName) then
+                if fObj and not IsNonRestorablePanel(fName) and not IsHandledBySuiteReplacement(fName) and not IsWorldMapMaximized(fObj, fName) then
                     W.openPanelsSnapshot[fName] = true
                     local st = GetFrameState(fObj)
                     if not (fObj.IsShown and fObj:IsShown()) then
@@ -10822,6 +10837,14 @@ do
                 if DesktopWindows:IsYielding() then return end
                 local fName = frame.GetName and frame:GetName()
                 if not fName or EXCLUDED_BLIZZ_FRAMES[fName] or not SUPPORTED_BY_NAME[fName] or IsWorldMapMaximized(frame, fName) then return end
+                if IsHandledBySuiteReplacement(fName) then
+                    W.openPanelsSnapshot[fName] = nil
+                    W.escapeProtectedReShow[fName] = nil
+                    W.lastAutoHiddenAt[fName] = nil
+                    W.RemoveFromZOrderStack(fName)
+                    W.RemoveFromUISpecialFrames(fName)
+                    return
+                end
                 local st = W.blizzWinState[frame]
                 if st and st.detachingFromUIPanel then return end
                 if fName == "PlayerSpellsFrame" and st and st.userSelectedTabID == nil then
@@ -11236,11 +11259,12 @@ do
                 W.SyncPanelLayoutDetachment(frame, spec.name)
                 if frame.IsProtected and frame:IsProtected() then
                     local escBtn = W.combatEscHandlers[frame]
-                    if not escBtn and W.detachedPanels[spec.name] then
+                    local handledByReplacement = IsHandledBySuiteReplacement(spec.name)
+                    if not escBtn and W.detachedPanels[spec.name] and not handledByReplacement then
                         escBtn = W.EnsureCombatEscapeButton(frame, spec.name)
                     end
                     if escBtn and type(escBtn.SetAttribute) == "function" then
-                        pcall(escBtn.SetAttribute, escBtn, "dsCombatEscReady", (sideBySide and W.detachedPanels[spec.name]) and true or false)
+                        pcall(escBtn.SetAttribute, escBtn, "dsCombatEscReady", (sideBySide and W.detachedPanels[spec.name] and not handledByReplacement) and true or false)
                     end
                 end
                 if yielding or IsWorldMapMaximized(frame, spec.name) then
