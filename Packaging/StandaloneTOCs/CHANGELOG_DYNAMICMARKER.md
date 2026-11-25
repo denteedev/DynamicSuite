@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Added
+* **Profile Import & Export (`!DS1!`) & Cross-Mode Sharing (`25/11/2026`):** Added a standalone Profile Import & Export modal (`Import & Export` in the Left Rail and Theme & Font Studio, plus `/dm export`, `/dm import`, and `/dm profiles`, while preserving `/dm migrate` and `/dm import focusmarker` for legacy migration) powered by native `C_EncodingUtil` (`!DS1!` CBOR, Zlib, and Base64), with optional HUD Bar Positions and Theme & Font toggles, live Import Preview, `Replace Selected` (default) vs `Merge` modes, persistent 1-slot `Undo Last Import` rollback across `/reload`, combat-lockdown blocking, strict secret-value and schema validation, and bidirectional compatibility with full `DynamicSuite` profile strings.
+
 ---
 
 ## DynamicMarker v2.10.3 (25/11/2026)

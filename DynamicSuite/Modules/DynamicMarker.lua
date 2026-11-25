@@ -9406,8 +9406,490 @@ function DM:BuildWorkspace(parentContainer)
 end
 
 -- ============================================================================
--- 15. SUITE STUDIO & TOOLS MODALS (THEME, GUIDED SETUP, CHANGELOG, SUPPORT)
+-- 15. SUITE STUDIO & TOOLS MODALS (THEME, PROFILES, GUIDED SETUP, CHANGELOG, SUPPORT)
 -- ============================================================================
+
+do
+    local DM_PROFILE_PREFIX = "!DS1!"
+    local DM_SCHEMA_VERSION = 1
+    local DM_MAX_BYTES = 262144
+    local DM_MAX_DEPTH = 8
+    local DM_INT_PREFIX = "__i:"
+
+    local MARKER_ALLOW_KEYS = {
+        "focusIcon", "iconOrder", "groupScope", "chatAnnounce", "chatChannel",
+        "targetBarVisibility", "targetBarOrientation", "targetBarScale", "targetBarOpacity",
+        "flareCycleKey", "flareClearKey", "flareOrder", "flareEnabled",
+        "flareBarVisibility", "flareBarOrientation", "flareBarScale", "flareBarOpacity",
+        "hudBorderStyle", "focusClearModifier", "focusTargetMode",
+        "kickPriority", "kickSpecMode", "hudShowGrid",
+    }
+    local MARKER_HUD_KEYS = {
+        "targetBarPoint", "targetBarRelPoint", "targetBarX", "targetBarY", "targetBarPos",
+        "flareBarPoint", "flareBarRelPoint", "flareBarX", "flareBarY", "flareBarPos",
+    }
+    local MARKER_ALLOW_SET = {}
+    for _, k in ipairs(MARKER_ALLOW_KEYS) do MARKER_ALLOW_SET[k] = true end
+    local MARKER_HUD_SET = {}
+    for _, k in ipairs(MARKER_HUD_KEYS) do MARKER_HUD_SET[k] = true end
+
+    local THEME_KEYS = { "surfaceTheme", "accentKey", "customAccent", "theme", "fontKey", "fontFamily", "fontScale" }
+
+    local function IsSafeVal(v)
+        local isSec = _G.issecretvalue
+        if type(isSec) == "function" then
+            local okS, sec = pcall(isSec, v)
+            if okS and sec == true then return false end
+        end
+        local canAcc = _G.canaccessvalue
+        if type(canAcc) == "function" then
+            local okA, acc = pcall(canAcc, v)
+            if okA and acc == false then return false end
+        end
+        local tv = type(v)
+        if tv == "string" or tv == "boolean" then
+            return true
+        elseif tv == "number" then
+            return (v == v) and (v > -1e308) and (v < 1e308)
+        end
+        return false
+    end
+
+    local function CleanCopy(v, depth, seen)
+        depth = depth or 0
+        if depth > DM_MAX_DEPTH then return nil end
+        if type(v) ~= "table" then
+            if IsSafeVal(v) then return v end
+            return nil
+        end
+        seen = seen or {}
+        if seen[v] then return nil end
+        seen[v] = true
+        local out = {}
+        for k, sub in pairs(v) do
+            local tk = type(k)
+            if (tk == "string" or tk == "number") and IsSafeVal(k) then
+                local cv = CleanCopy(sub, depth + 1, seen)
+                if cv ~= nil then out[k] = cv end
+            end
+        end
+        seen[v] = nil
+        return out
+    end
+
+    local function CleanMerge(dst, src, depth)
+        depth = depth or 0
+        if depth > DM_MAX_DEPTH or type(src) ~= "table" then return dst end
+        if type(dst) ~= "table" then dst = {} end
+        for k, v in pairs(src) do
+            if type(v) == "table" then
+                if #v > 0 and v[1] ~= nil then
+                    dst[k] = CleanCopy(v, depth + 1)
+                else
+                    dst[k] = CleanMerge(type(dst[k]) == "table" and dst[k] or {}, v, depth + 1)
+                end
+            elseif IsSafeVal(v) then
+                dst[k] = v
+            end
+        end
+        return dst
+    end
+
+    local function IsArray(tbl)
+        local n = #tbl
+        if n == 0 then return next(tbl) == nil end
+        local cnt = 0
+        for k in pairs(tbl) do
+            if type(k) ~= "number" or k < 1 or k > n or math.floor(k) ~= k then return false end
+            cnt = cnt + 1
+        end
+        return cnt == n
+    end
+
+    local function PrepCBOR(v, depth, seen)
+        depth = depth or 0
+        if depth > DM_MAX_DEPTH then return nil end
+        if type(v) ~= "table" then
+            if IsSafeVal(v) then return v end
+            return nil
+        end
+        seen = seen or {}
+        if seen[v] then return nil end
+        seen[v] = true
+        local out = {}
+        if IsArray(v) then
+            for i = 1, #v do
+                local cv = PrepCBOR(v[i], depth + 1, seen)
+                if cv ~= nil then out[#out + 1] = cv end
+            end
+        else
+            for k, sub in pairs(v) do
+                if IsSafeVal(k) then
+                    local ck = (type(k) == "number" and math.floor(k) == k) and (DM_INT_PREFIX .. tostring(k)) or tostring(k)
+                    if type(k) == "string" then ck = k end
+                    local cv = PrepCBOR(sub, depth + 1, seen)
+                    if cv ~= nil then out[ck] = cv end
+                end
+            end
+        end
+        seen[v] = nil
+        return out
+    end
+
+    local function UnprepCBOR(v, depth)
+        depth = depth or 0
+        if depth > DM_MAX_DEPTH then return nil, "Nested table depth exceeds safety limit." end
+        if type(v) ~= "table" then
+            if not IsSafeVal(v) then return nil, "Profile contains an unsafe value." end
+            return v, nil
+        end
+        local out = {}
+        for k, sub in pairs(v) do
+            if not IsSafeVal(k) then return nil, "Profile contains an invalid key." end
+            local dk = k
+            if type(k) == "string" and k:sub(1, #DM_INT_PREFIX) == DM_INT_PREFIX then
+                local n = tonumber(k:sub(#DM_INT_PREFIX + 1))
+                if n and IsSafeVal(n) then dk = n end
+            end
+            local dv, err = UnprepCBOR(sub, depth + 1)
+            if err then return nil, err end
+            if dv ~= nil then out[dk] = dv end
+        end
+        return out, nil
+    end
+
+    local function MapSuiteAccentToStandaloneTheme(accentKey)
+        if accentKey == "AUTO_CLASS" then return "CLASS"
+        elseif accentKey == "ALERT_GOLD" then return "GOLD"
+        elseif accentKey == "OBSIDIAN_SLATE" then return "OBSIDIAN"
+        elseif accentKey == "ASTRAL_COBALT" then return "CYAN"
+        end
+        return nil
+    end
+
+    local function MapStandaloneThemeToSuiteAccent(themeKey)
+        if themeKey == "CLASS" then return "AUTO_CLASS"
+        elseif themeKey == "GOLD" then return "ALERT_GOLD"
+        elseif themeKey == "OBSIDIAN" then return "OBSIDIAN_SLATE"
+        elseif themeKey == "CYAN" then return "ASTRAL_COBALT"
+        end
+        return nil
+    end
+
+    local function ExtractMarkerSnapshot(dm, includeHud)
+        if not dm.db then dm:InitDB() end
+        local db = dm.db or {}
+        local out = {}
+        for _, k in ipairs(MARKER_ALLOW_KEYS) do
+            if db[k] ~= nil then out[k] = CleanCopy(db[k]) end
+        end
+        if includeHud then
+            for _, k in ipairs(MARKER_HUD_KEYS) do
+                if db[k] ~= nil then out[k] = CleanCopy(db[k]) end
+            end
+        end
+        return out
+    end
+
+    local function ExtractThemeSnapshot(dm)
+        if not dm.suiteGlobal then dm:InitDB() end
+        local g = dm.suiteGlobal or {}
+        local out = {}
+        for _, k in ipairs(THEME_KEYS) do
+            if g[k] ~= nil then out[k] = CleanCopy(g[k]) end
+        end
+        if out.accentKey == nil and out.theme then
+            out.accentKey = MapStandaloneThemeToSuiteAccent(out.theme)
+        end
+        return (next(out) ~= nil) and out or nil
+    end
+
+    function DM:ExportProfile(opts)
+        local _encUtil = _G.C_EncodingUtil
+        local _enumNS = _G.Enum
+        if type(_encUtil) ~= "table" or type(_encUtil.SerializeCBOR) ~= "function"
+            or type(_encUtil.CompressString) ~= "function" or type(_encUtil.EncodeBase64) ~= "function" then
+            return false, "This game client does not support C_EncodingUtil profile encoding."
+        end
+        opts = type(opts) == "table" and opts or {}
+        local includeHud = (opts.includeHud ~= false)
+        local includeTheme = (opts.includeTheme ~= false)
+        local modules = {
+            marker = ExtractMarkerSnapshot(self, includeHud),
+        }
+        if includeTheme then
+            local th = ExtractThemeSnapshot(self)
+            if th then modules.suite = th end
+        end
+        local exportDate = (type(_G.date) == "function") and _G.date("%d/%m/%Y") or "25/11/2026"
+        local payload = {
+            v = DM_SCHEMA_VERSION,
+            app = "DynamicMarker",
+            ver = tostring(self.version or VERSION),
+            date = exportDate,
+            opts = { hud = includeHud },
+            modules = modules,
+        }
+        local okSer, cborBin = pcall(_encUtil.SerializeCBOR, PrepCBOR(payload, 0))
+        if not okSer or type(cborBin) ~= "string" or cborBin == "" then
+            return false, "Could not serialise profile data."
+        end
+        local zlibMethod = (_enumNS and _enumNS.CompressionMethod and _enumNS.CompressionMethod.Zlib) or 0
+        local okComp, compBin = pcall(_encUtil.CompressString, cborBin, zlibMethod)
+        if not okComp or type(compBin) ~= "string" or compBin == "" then
+            return false, "Could not compress profile data."
+        end
+        local okB64, b64 = pcall(_encUtil.EncodeBase64, compBin)
+        if not okB64 or type(b64) ~= "string" or b64 == "" then
+            return false, "Could not encode profile string."
+        end
+        local encoded = DM_PROFILE_PREFIX .. b64
+        if #encoded > DM_MAX_BYTES then
+            return false, "Exported profile exceeds the 256 KB safety limit."
+        end
+        return true, {
+            encoded = encoded,
+            charCount = #encoded,
+            date = exportDate,
+            ver = payload.ver,
+        }
+    end
+
+    function DM:DecodeProfile(rawStr)
+        if not IsSafeVal(rawStr) or type(rawStr) ~= "string" then
+            return false, "Paste a valid !DS1! profile string first."
+        end
+        local trimmed = rawStr:gsub("^%s+", ""):gsub("%s+$", "")
+        if trimmed == "" then
+            return false, "Paste a valid !DS1! profile string first."
+        end
+        if #trimmed > DM_MAX_BYTES then
+            return false, "Profile string is too large (over 256 KB) and was rejected for safety."
+        end
+        local futureVer = trimmed:match("^!DS(%d+)!")
+        if futureVer and tonumber(futureVer) and tonumber(futureVer) > DM_SCHEMA_VERSION then
+            return false, "This profile was exported from a newer version of DynamicSuite. Please update before importing."
+        end
+        if trimmed:sub(1, #DM_PROFILE_PREFIX) ~= DM_PROFILE_PREFIX then
+            return false, "Unrecognised profile format. Expected a string starting with !DS1!."
+        end
+        local _encUtil = _G.C_EncodingUtil
+        local _enumNS = _G.Enum
+        if type(_encUtil) ~= "table" or type(_encUtil.DecodeBase64) ~= "function"
+            or type(_encUtil.DecompressString) ~= "function" or type(_encUtil.DeserializeCBOR) ~= "function" then
+            return false, "This game client does not support C_EncodingUtil profile decoding."
+        end
+        local b64Body = trimmed:sub(#DM_PROFILE_PREFIX + 1)
+        if b64Body == "" then
+            return false, "Profile string is empty after the !DS1! header."
+        end
+        local okDec, compBin = pcall(_encUtil.DecodeBase64, b64Body)
+        if not okDec or type(compBin) ~= "string" or compBin == "" then
+            return false, "Could not read Base64 data. Make sure the entire !DS1! string was copied."
+        end
+        local zlibMethod = (_enumNS and _enumNS.CompressionMethod and _enumNS.CompressionMethod.Zlib) or 0
+        local okDecomp, cborBin = pcall(_encUtil.DecompressString, compBin, zlibMethod)
+        if not okDecomp or type(cborBin) ~= "string" or cborBin == "" then
+            return false, "Could not decompress profile data. The string may be truncated or damaged."
+        end
+        local okDeser, rawRoot = pcall(_encUtil.DeserializeCBOR, cborBin)
+        if not okDeser or type(rawRoot) ~= "table" then
+            return false, "Could not read profile data. The string may be damaged."
+        end
+        local root, cleanErr = UnprepCBOR(rawRoot, 0)
+        if cleanErr or type(root) ~= "table" then
+            return false, cleanErr or "Profile data failed safety validation."
+        end
+        local verNum = tonumber(root.v)
+        if not verNum or math.floor(verNum) ~= verNum or verNum < 1 then
+            return false, "Invalid profile schema version."
+        end
+        if verNum > DM_SCHEMA_VERSION then
+            return false, "This profile was exported from a newer version of DynamicSuite. Please update before importing."
+        end
+        if type(root.modules) ~= "table" or type(root.modules.marker) ~= "table" then
+            return false, "This profile string does not contain DynamicMarker settings."
+        end
+        local cleanMarker = {}
+        local hasHud = false
+        for k, v in pairs(root.modules.marker) do
+            if MARKER_ALLOW_SET[k] then
+                cleanMarker[k] = CleanCopy(v)
+            elseif MARKER_HUD_SET[k] then
+                cleanMarker[k] = CleanCopy(v)
+                hasHud = true
+            end
+        end
+        if next(cleanMarker) == nil then
+            return false, "No valid DynamicMarker settings were found in this profile string."
+        end
+        local cleanTheme = nil
+        if type(root.modules.suite) == "table" then
+            cleanTheme = {}
+            for _, tk in ipairs(THEME_KEYS) do
+                if root.modules.suite[tk] ~= nil then
+                    cleanTheme[tk] = CleanCopy(root.modules.suite[tk])
+                end
+            end
+            if next(cleanTheme) == nil then cleanTheme = nil end
+        end
+        local ignoredCount = 0
+        for mk in pairs(root.modules) do
+            if mk ~= "marker" and mk ~= "suite" then
+                ignoredCount = ignoredCount + 1
+            end
+        end
+        return true, {
+            ok = true,
+            v = verNum,
+            app = (type(root.app) == "string" and root.app ~= "") and root.app or "DynamicMarker",
+            ver = (type(root.ver) == "string" and root.ver ~= "") and root.ver or "Unknown",
+            date = (type(root.date) == "string" and root.date ~= "") and root.date or "Unknown",
+            hasHud = hasHud,
+            hasTheme = (cleanTheme ~= nil),
+            ignoredCount = ignoredCount,
+            modules = {
+                marker = cleanMarker,
+                suite = cleanTheme,
+            },
+        }
+    end
+
+    local function ApplyMarkerAndThemeSnapshot(dm, markerData, themeData, mode, includeHud, applyTheme)
+        if not dm.db then dm:InitDB() end
+        local db = dm.db
+        local isReplace = (mode ~= "MERGE")
+        if isReplace then
+            for _, k in ipairs(MARKER_ALLOW_KEYS) do
+                db[k] = CleanCopy(DB_DEFAULTS[k])
+            end
+            if includeHud then
+                for _, k in ipairs(MARKER_HUD_KEYS) do
+                    db[k] = CleanCopy(DB_DEFAULTS[k])
+                end
+            end
+        end
+        for _, k in ipairs(MARKER_ALLOW_KEYS) do
+            if markerData[k] ~= nil then
+                if type(markerData[k]) == "table" and not isReplace and not IsArray(markerData[k]) then
+                    db[k] = CleanMerge(type(db[k]) == "table" and db[k] or {}, markerData[k])
+                else
+                    db[k] = CleanCopy(markerData[k])
+                end
+            end
+        end
+        if includeHud then
+            for _, k in ipairs(MARKER_HUD_KEYS) do
+                if markerData[k] ~= nil then
+                    db[k] = CleanCopy(markerData[k])
+                end
+            end
+        end
+        db.iconOrder = SanitizePermutation1To8(db.iconOrder)
+        db.flareOrder = SanitizePermutation1To8(db.flareOrder)
+        local _, tCanon = NormalizeBarVisibilityValue(db.targetBarVisibility)
+        db.targetBarVisibility = tCanon
+        local _, fCanon = NormalizeBarVisibilityValue(db.flareBarVisibility)
+        db.flareBarVisibility = fCanon
+        local _, gCanon = NormalizeGroupScopeValue(db.groupScope)
+        db.groupScope = gCanon
+
+        if applyTheme and type(themeData) == "table" and type(dm.suiteGlobal) == "table" then
+            for _, tk in ipairs(THEME_KEYS) do
+                if themeData[tk] ~= nil then
+                    dm.suiteGlobal[tk] = CleanCopy(themeData[tk])
+                end
+            end
+            if themeData.theme == nil and themeData.accentKey then
+                local mapped = MapSuiteAccentToStandaloneTheme(themeData.accentKey)
+                if mapped then dm.suiteGlobal.theme = mapped end
+            end
+        end
+
+        if dm.suiteGlobal and type(dm.suiteGlobal.hudPositions) == "table" and includeHud then
+            if type(db.targetBarPos) == "table" then
+                dm.suiteGlobal.hudPositions.TARGET = CleanCopy(db.targetBarPos)
+                dm.suiteGlobal.hudPositions.TargetBar = CleanCopy(db.targetBarPos)
+                dm.suiteGlobal.hudPositions.target = CleanCopy(db.targetBarPos)
+            end
+            if type(db.flareBarPos) == "table" then
+                dm.suiteGlobal.hudPositions.FLARE = CleanCopy(db.flareBarPos)
+                dm.suiteGlobal.hudPositions.FlareBar = CleanCopy(db.flareBarPos)
+                dm.suiteGlobal.hudPositions.flare = CleanCopy(db.flareBarPos)
+            end
+        end
+
+        if dm.targetBar and dm.ApplyHUDPosition then pcall(dm.ApplyHUDPosition, dm, dm.targetBar, "TargetBar", -140) end
+        if dm.flareBar and dm.ApplyHUDPosition then pcall(dm.ApplyHUDPosition, dm, dm.flareBar, "FlareBar", -182) end
+        if dm.RefreshTargetBar then pcall(dm.RefreshTargetBar, dm) end
+        if dm.RefreshFlareBar then pcall(dm.RefreshFlareBar, dm) end
+        if dm.SyncSecureFlareEngine then pcall(dm.SyncSecureFlareEngine, dm) end
+        if dm.ApplyFlareKeybinds then pcall(dm.ApplyFlareKeybinds, dm) end
+        if dm.ApplyAllStandaloneFonts then pcall(dm.ApplyAllStandaloneFonts, dm) end
+        if dm.ApplyThemeToUI then pcall(dm.ApplyThemeToUI, dm) end
+        if dm.RefreshAll then pcall(dm.RefreshAll, dm) end
+    end
+
+    function DM:ApplyProfileImport(decodedOrRaw, applyOpts)
+        if _G.InCombatLockdown and _G.InCombatLockdown() then
+            return false, "Import is disabled during combat. Try again once combat ends."
+        end
+        local decoded = decodedOrRaw
+        if type(decodedOrRaw) == "string" then
+            local okD, resOrErr = self:DecodeProfile(decodedOrRaw)
+            if not okD then return false, resOrErr end
+            decoded = resOrErr
+        end
+        if type(decoded) ~= "table" or type(decoded.modules) ~= "table" or type(decoded.modules.marker) ~= "table" then
+            return false, "Invalid profile preview data."
+        end
+        applyOpts = type(applyOpts) == "table" and applyOpts or {}
+        local mode = (applyOpts.mode == "MERGE") and "MERGE" or "REPLACE"
+        local includeHud = (applyOpts.includeHud ~= false)
+        local applyTheme = (applyOpts.applyTheme ~= false)
+
+        if not self.db then self:InitDB() end
+        self.db._lastImportBackup = {
+            date = (type(_G.date) == "function") and _G.date("%d/%m/%Y") or "25/11/2026",
+            mode = mode,
+            marker = ExtractMarkerSnapshot(self, true),
+            suite = ExtractThemeSnapshot(self),
+        }
+
+        ApplyMarkerAndThemeSnapshot(self, decoded.modules.marker, decoded.modules.suite, mode, includeHud, applyTheme)
+        return true, {
+            mode = mode,
+            needsReload = false,
+            reloadReasons = {},
+        }
+    end
+
+    function DM:GetLastImportBackupInfo()
+        if not self.db then self:InitDB() end
+        local bk = self.db and self.db._lastImportBackup
+        if type(bk) ~= "table" or type(bk.marker) ~= "table" then
+            return nil
+        end
+        return {
+            date = tostring(bk.date or "Unknown"),
+            mode = tostring(bk.mode or "REPLACE"),
+        }
+    end
+
+    function DM:RollbackLastImport()
+        if _G.InCombatLockdown and _G.InCombatLockdown() then
+            return false, "Undo Last Import is disabled during combat. Try again once combat ends."
+        end
+        if not self.db then self:InitDB() end
+        local bk = self.db and self.db._lastImportBackup
+        if type(bk) ~= "table" or type(bk.marker) ~= "table" then
+            return false, "No previous import backup was found."
+        end
+        ApplyMarkerAndThemeSnapshot(self, bk.marker, bk.suite, "REPLACE", true, bk.suite ~= nil)
+        self.db._lastImportBackup = nil
+        return true, { needsReload = false, reloadReasons = {} }
+    end
+end
 
 function DM:CloseStudioModal()
     self:CloseDropdownMenu()
@@ -9509,6 +9991,14 @@ function DM:ShowStudioModal(mode)
                 self.modalBackdrop:Hide()
             end
         end)
+
+        if type(_G.UISpecialFrames) == "table" then
+            local hasSpecial = false
+            for _, fn in ipairs(_G.UISpecialFrames) do
+                if fn == "DynamicMarkerStudioModal" then hasSpecial = true break end
+            end
+            if not hasSpecial then table.insert(_G.UISpecialFrames, "DynamicMarkerStudioModal") end
+        end
 
         self.modalFrame = m
     end
@@ -9657,6 +10147,288 @@ function DM:ShowStudioModal(mode)
         fontDd:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 250, -278)
         fontDd:SetFrameLevel(303)
         table.insert(m.Body._modeWidgets, fontDd)
+
+        local profBtn = self:CreateButton(m.Body, "Import & Export Profiles...", 220, 28, function()
+            self:ShowStudioModal("PROFILES")
+        end, false)
+        profBtn:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, -196)
+        profBtn:SetFrameLevel(303)
+        table.insert(m.Body._modeWidgets, profBtn)
+
+    elseif mode == "PROFILES" then
+        m:SetSize(560, 444)
+        m.Title:SetText("Profile Import & Export (!DS1!)")
+        self:StyleFont(m.Title, 14, "", COLORS.TextPrimary)
+
+        local pScroll = CreateFrame("ScrollFrame", nil, m.Body)
+        pScroll:SetPoint("TOPLEFT", m.Body, "TOPLEFT", 0, 0)
+        pScroll:SetPoint("BOTTOMRIGHT", m.Body, "BOTTOMRIGHT", -10, 0)
+        if pScroll.SetClipsChildren then pScroll:SetClipsChildren(true) end
+        pScroll:EnableMouseWheel(true)
+        table.insert(m.Body._modeWidgets, pScroll)
+
+        local pChild = CreateFrame("Frame", nil, pScroll)
+        pChild:SetSize(512, 620)
+        pScroll:SetScrollChild(pChild)
+        pScroll:SetScript("OnMouseWheel", function(s, delta)
+            local maxS = math.max(0, (pChild:GetHeight() or 620) - (s:GetHeight() or 380))
+            local cur = s:GetVerticalScroll() or 0
+            s:SetVerticalScroll(math.max(0, math.min(maxS, cur - (delta * 36))))
+        end)
+
+        local expHud = true
+        local expTheme = true
+        local importMode = "REPLACE"
+        local decodedPreview = nil
+
+        local function MakeSubBox(parent, height)
+            local wrap = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+            wrap:SetHeight(height)
+            self:ApplyBackdrop(wrap, { r = 0.015, g = 0.018, b = 0.024, a = 0.99 }, { r = 0.165, g = 0.192, b = 0.259, a = 0.95 }, 1)
+
+            local sf = CreateFrame("ScrollFrame", nil, wrap)
+            sf:SetPoint("TOPLEFT", wrap, "TOPLEFT", 8, -6)
+            sf:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -8, 6)
+            if sf.SetClipsChildren then sf:SetClipsChildren(true) end
+            sf:EnableMouseWheel(true)
+
+            local eb = CreateFrame("EditBox", nil, sf)
+            eb:SetMultiLine(true)
+            eb:SetAutoFocus(false)
+            eb:SetMaxLetters(262144)
+            eb:SetWidth(490)
+            eb:SetHeight(height - 12)
+            self:StyleFont(eb, 10, "", COLORS.TextPrimary)
+            eb:SetText("")
+            sf:SetScrollChild(eb)
+            sf:SetScript("OnMouseDown", function() eb:SetFocus() end)
+            eb:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
+            wrap.editBox = eb
+            return wrap
+        end
+
+        local expTitle = pChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        expTitle:SetPoint("TOPLEFT", pChild, "TOPLEFT", 0, -4)
+        self:StyleFont(expTitle, 12, "", self:GetAccentColorTable(1.0))
+        expTitle:SetText("1. EXPORT DYNAMICMARKER PROFILE")
+
+        local chkHudBtn = self:CreateButton(pChild, "HUD Positions: Included", 184, 24, nil, expHud)
+        chkHudBtn:SetPoint("TOPLEFT", expTitle, "BOTTOMLEFT", 0, -8)
+        chkHudBtn:SetScript("OnClick", function()
+            expHud = not expHud
+            chkHudBtn.isAccent = expHud
+            if chkHudBtn.Text then chkHudBtn.Text:SetText(expHud and "HUD Positions: Included" or "HUD Positions: Excluded") end
+            if chkHudBtn.RefreshStyle then chkHudBtn.RefreshStyle(false) end
+        end)
+
+        local chkThemeBtn = self:CreateButton(pChild, "Theme & Font: Included", 184, 24, nil, expTheme)
+        chkThemeBtn:SetPoint("LEFT", chkHudBtn, "RIGHT", 8, 0)
+        chkThemeBtn:SetScript("OnClick", function()
+            expTheme = not expTheme
+            chkThemeBtn.isAccent = expTheme
+            if chkThemeBtn.Text then chkThemeBtn.Text:SetText(expTheme and "Theme & Font: Included" or "Theme & Font: Excluded") end
+            if chkThemeBtn.RefreshStyle then chkThemeBtn.RefreshStyle(false) end
+        end)
+
+        local btnGen = self:CreateButton(pChild, "Generate String", 132, 24, nil, true)
+        btnGen:SetPoint("LEFT", chkThemeBtn, "RIGHT", 8, 0)
+
+        local expStatus = pChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        expStatus:SetPoint("TOPLEFT", chkHudBtn, "BOTTOMLEFT", 0, -6)
+        expStatus:SetPoint("RIGHT", pChild, "RIGHT", 0, 0)
+        expStatus:SetJustifyH("LEFT")
+        self:StyleFont(expStatus, 10, "", COLORS.TextSilver)
+        expStatus:SetText("Click Generate String, then press Ctrl+C to copy.")
+
+        local expBox = MakeSubBox(pChild, 68)
+        expBox:SetPoint("TOPLEFT", expStatus, "BOTTOMLEFT", 0, -6)
+        expBox:SetPoint("RIGHT", pChild, "RIGHT", 0, 0)
+        expBox.editBox:SetScript("OnEditFocusGained", function(s)
+            if (s:GetText() or "") ~= "" then s:HighlightText() end
+        end)
+
+        btnGen:SetScript("OnClick", function()
+            local ok, res = self:ExportProfile({ includeHud = expHud, includeTheme = expTheme })
+            if not ok then
+                expStatus:SetText("|cFFEF4444" .. tostring(res or "Could not generate export string.") .. "|r")
+                return
+            end
+            expBox.editBox:SetText(res.encoded)
+            expBox.editBox:SetFocus()
+            expBox.editBox:HighlightText()
+            expStatus:SetText(string.format("|cFF34D399Ready: %d characters - press Ctrl+C to copy.|r", res.charCount or 0))
+        end)
+
+        local impTitle = pChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        impTitle:SetPoint("TOPLEFT", expBox, "BOTTOMLEFT", 0, -14)
+        self:StyleFont(impTitle, 12, "", self:GetAccentColorTable(1.0))
+        impTitle:SetText("2. IMPORT PROFILE (!DS1!)")
+
+        local impSub = pChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        impSub:SetPoint("TOPLEFT", impTitle, "BOTTOMLEFT", 0, -4)
+        impSub:SetPoint("RIGHT", pChild, "RIGHT", 0, 0)
+        impSub:SetJustifyH("LEFT")
+        self:StyleFont(impSub, 10, "", COLORS.TextSilver)
+        impSub:SetText("Accepts strings from standalone DynamicMarker or full DynamicSuite.")
+
+        local impBox = MakeSubBox(pChild, 68)
+        impBox:SetPoint("TOPLEFT", impSub, "BOTTOMLEFT", 0, -6)
+        impBox:SetPoint("RIGHT", pChild, "RIGHT", 0, 0)
+
+        local btnPreview = self:CreateButton(pChild, "Preview Profile", 136, 24, nil, true)
+        btnPreview:SetPoint("TOPLEFT", impBox, "BOTTOMLEFT", 0, -8)
+
+        local btnClear = self:CreateButton(pChild, "Clear", 76, 24, nil, false)
+        btnClear:SetPoint("LEFT", btnPreview, "RIGHT", 8, 0)
+
+        local impMeta = pChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        impMeta:SetPoint("TOPLEFT", btnPreview, "BOTTOMLEFT", 0, -8)
+        impMeta:SetPoint("RIGHT", pChild, "RIGHT", 0, 0)
+        impMeta:SetJustifyH("LEFT")
+        impMeta:SetWordWrap(true)
+        self:StyleFont(impMeta, 10.5, "", COLORS.TextPrimary)
+        impMeta:SetText("")
+
+        local modeReplaceBtn = self:CreateButton(pChild, "Mode: Replace Selected", 174, 24, nil, true)
+        modeReplaceBtn:SetPoint("TOPLEFT", impMeta, "BOTTOMLEFT", 0, -8)
+        modeReplaceBtn:Hide()
+
+        local modeMergeBtn = self:CreateButton(pChild, "Mode: Merge", 116, 24, nil, false)
+        modeMergeBtn:SetPoint("LEFT", modeReplaceBtn, "RIGHT", 8, 0)
+        modeMergeBtn:Hide()
+
+        local applyThemeChk = self:CreateButton(pChild, "Apply Theme: Yes", 140, 24, nil, true)
+        applyThemeChk:SetPoint("LEFT", modeMergeBtn, "RIGHT", 8, 0)
+        applyThemeChk:Hide()
+        local doApplyTheme = true
+
+        local safetyLbl = pChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        safetyLbl:SetPoint("TOPLEFT", modeReplaceBtn, "BOTTOMLEFT", 0, -6)
+        safetyLbl:SetPoint("RIGHT", pChild, "RIGHT", 0, 0)
+        safetyLbl:SetJustifyH("LEFT")
+        safetyLbl:SetWordWrap(true)
+        self:StyleFont(safetyLbl, 10, "", { r = 0.204, g = 0.827, b = 0.600, a = 0.95 })
+        safetyLbl:SetText("Your conflict dismissals, legacy migration flags, and default game settings are never overwritten.")
+        safetyLbl:Hide()
+
+        local btnApply = self:CreateButton(pChild, "Apply Import", 140, 26, nil, true)
+        btnApply:SetPoint("TOPLEFT", safetyLbl, "BOTTOMLEFT", 0, -8)
+        btnApply:Hide()
+
+        local rbTitle = pChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        rbTitle:SetPoint("TOPLEFT", btnApply, "BOTTOMLEFT", 0, -16)
+        self:StyleFont(rbTitle, 12, "", self:GetAccentColorTable(1.0))
+        rbTitle:SetText("3. UNDO LAST IMPORT")
+
+        local rbDesc = pChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        rbDesc:SetPoint("TOPLEFT", rbTitle, "BOTTOMLEFT", 0, -4)
+        rbDesc:SetPoint("RIGHT", pChild, "RIGHT", 0, 0)
+        rbDesc:SetJustifyH("LEFT")
+        rbDesc:SetWordWrap(true)
+        self:StyleFont(rbDesc, 10.5, "", COLORS.TextSilver)
+
+        local btnUndo = self:CreateButton(pChild, "Undo Last Import", 160, 26, nil, false)
+        btnUndo:SetPoint("TOPLEFT", rbDesc, "BOTTOMLEFT", 0, -8)
+
+        local function RefreshStandaloneProfilesUI()
+            local inCombat = (InCombatLockdown and InCombatLockdown()) == true
+            local bk = self:GetLastImportBackupInfo()
+            if bk then
+                rbDesc:SetText(string.format("Backup ready: saved %s before %s import. Restores settings even after /reload.", tostring(bk.date), (bk.mode == "MERGE") and "Merge" or "Replace"))
+                btnUndo:SetEnabled(not inCombat)
+                btnUndo:SetAlpha(inCombat and 0.45 or 1.0)
+            else
+                rbDesc:SetText("No import backup saved yet. A backup is saved automatically before each import.")
+                btnUndo:SetEnabled(false)
+                btnUndo:SetAlpha(0.45)
+            end
+
+            local showPrev = (decodedPreview ~= nil)
+            modeReplaceBtn:SetShown(showPrev)
+            modeMergeBtn:SetShown(showPrev)
+            applyThemeChk:SetShown(showPrev and decodedPreview.hasTheme == true)
+            safetyLbl:SetShown(showPrev)
+            btnApply:SetShown(showPrev)
+            if showPrev then
+                modeReplaceBtn.isAccent = (importMode == "REPLACE")
+                modeMergeBtn.isAccent = (importMode == "MERGE")
+                applyThemeChk.isAccent = doApplyTheme
+                if modeReplaceBtn.RefreshStyle then modeReplaceBtn.RefreshStyle(false) end
+                if modeMergeBtn.RefreshStyle then modeMergeBtn.RefreshStyle(false) end
+                if applyThemeChk.RefreshStyle then applyThemeChk.RefreshStyle(false) end
+                btnApply:SetEnabled(not inCombat)
+                btnApply:SetAlpha(inCombat and 0.45 or 1.0)
+                pChild:SetHeight(630)
+            else
+                pChild:SetHeight(470)
+            end
+        end
+
+        modeReplaceBtn:SetScript("OnClick", function()
+            importMode = "REPLACE"
+            RefreshStandaloneProfilesUI()
+        end)
+        modeMergeBtn:SetScript("OnClick", function()
+            importMode = "MERGE"
+            RefreshStandaloneProfilesUI()
+        end)
+        applyThemeChk:SetScript("OnClick", function()
+            doApplyTheme = not doApplyTheme
+            if applyThemeChk.Text then applyThemeChk.Text:SetText(doApplyTheme and "Apply Theme: Yes" or "Apply Theme: No") end
+            RefreshStandaloneProfilesUI()
+        end)
+
+        btnPreview:SetScript("OnClick", function()
+            local ok, res = self:DecodeProfile(impBox.editBox:GetText() or "")
+            if not ok then
+                decodedPreview = nil
+                impMeta:SetText("|cFFEF4444" .. tostring(res or "Invalid profile string.") .. "|r")
+                RefreshStandaloneProfilesUI()
+                return
+            end
+            decodedPreview = res
+            local extra = ""
+            if res.ignoredCount and res.ignoredCount > 0 then
+                extra = string.format(" (%d non-DynamicMarker sections skipped in standalone mode)", res.ignoredCount)
+            end
+            impMeta:SetText(string.format("|cFF34D399Ready:|r Source %s v%s, exported %s.%s", tostring(res.app), tostring(res.ver), tostring(res.date), extra))
+            RefreshStandaloneProfilesUI()
+        end)
+
+        btnClear:SetScript("OnClick", function()
+            impBox.editBox:SetText("")
+            impBox.editBox:ClearFocus()
+            decodedPreview = nil
+            impMeta:SetText("")
+            RefreshStandaloneProfilesUI()
+        end)
+
+        btnApply:SetScript("OnClick", function()
+            if not decodedPreview then return end
+            local ok, res = self:ApplyProfileImport(decodedPreview, {
+                mode = importMode,
+                includeHud = true,
+                applyTheme = doApplyTheme,
+            })
+            if not ok then
+                impMeta:SetText("|cFFEF4444" .. tostring(res or "Import failed.") .. "|r")
+                return
+            end
+            impMeta:SetText(string.format("|cFF34D399Applied DynamicMarker profile (%s). Live bars updated without reload.|r", (res.mode == "MERGE") and "Merge" or "Replace"))
+            RefreshStandaloneProfilesUI()
+        end)
+
+        btnUndo:SetScript("OnClick", function()
+            local ok, res = self:RollbackLastImport()
+            if not ok then
+                impMeta:SetText("|cFFEF4444" .. tostring(res or "Could not undo last import.") .. "|r")
+                return
+            end
+            impMeta:SetText("|cFF34D399Restored pre-import DynamicMarker settings.|r")
+            RefreshStandaloneProfilesUI()
+        end)
+
+        RefreshStandaloneProfilesUI()
 
     elseif mode == "SETUP" then
         local conflicts = self:ScanConflicts()
@@ -10021,7 +10793,7 @@ function DM:ShowStudioModal(mode)
         CreateSupportCopyRow(-230, "Direct Contact & Feedback (Email):", "denteedev@gmail.com")
     end
 
-    if mode ~= "THEME" then
+    if mode ~= "THEME" and mode ~= "PROFILES" then
         m:SetHeight((mode == "SUPPORT" and 428) or (mode == "SETUP" and 466) or 368)
     end
     m:Show()
@@ -10452,10 +11224,13 @@ function DM:EnsureStandaloneShell()
     -- Subtle standalone status pill above SUITE STUDIO & TOOLS (never clips inside 204px rail)
     local standaloneBadge = CreateFrame("Frame", nil, rail, "BackdropTemplate")
     standaloneBadge:SetHeight(20)
-    standaloneBadge:SetPoint("BOTTOMLEFT", rail, "BOTTOMLEFT", 10, 158)
-    standaloneBadge:SetPoint("BOTTOMRIGHT", rail, "BOTTOMRIGHT", -10, 158)
+    standaloneBadge:SetPoint("BOTTOMLEFT", rail, "BOTTOMLEFT", 10, 186)
+    standaloneBadge:SetPoint("BOTTOMRIGHT", rail, "BOTTOMRIGHT", -10, 186)
     self:ApplyBackdrop(standaloneBadge, cardBg, cardBd, 1)
     rail.StandaloneBadge = standaloneBadge
+    if #loadedModules > 3 then
+        standaloneBadge:Hide()
+    end
 
     local sbDot = standaloneBadge:CreateTexture(nil, "OVERLAY")
     sbDot:SetSize(6, 6)
@@ -10478,7 +11253,7 @@ function DM:EnsureStandaloneShell()
 
     -- Bottom Section of Left Suite Rail: SUITE STUDIO & TOOLS (1:1 DynamicSuite_UI Compact Cards)
     local toolsHeader = rail:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    toolsHeader:SetPoint("BOTTOMLEFT", rail, "BOTTOMLEFT", 14, 138)
+    toolsHeader:SetPoint("BOTTOMLEFT", rail, "BOTTOMLEFT", 14, 168)
     self:StyleFont(toolsHeader, 10, "", { r = 0.62, g = 0.68, b = 0.76, a = 0.92 })
     toolsHeader:SetText("SUITE STUDIO & TOOLS")
 
@@ -10489,7 +11264,7 @@ function DM:EnsureStandaloneShell()
             sub = "Colours, Surface & Fonts",
             slash = "/dm",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_palette.tga",
-            yBottom = 102,
+            yBottom = 132,
             fn = function()
                 local openFn = (_G.DynamicSuite and _G.DynamicSuite.OpenWorkspaceView) or (_G.DynamicLoad and _G.DynamicLoad.OpenWorkspaceView)
                 if openFn then
@@ -10500,11 +11275,26 @@ function DM:EnsureStandaloneShell()
             end,
         },
         {
+            key = "PROFILES",
+            label = "Import & Export",
+            sub = "Share or Restore Profiles",
+            slash = "/dm export",
+            icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_copy.tga",
+            yBottom = 100,
+            fn = function()
+                if _G.DynamicSuite and _G.DynamicSuite.OpenSuiteStudioTab then
+                    _G.DynamicSuite.OpenSuiteStudioTab(3)
+                else
+                    self:ShowStudioModal("PROFILES")
+                end
+            end,
+        },
+        {
             key = "GUIDED_SETUP",
             label = "Guided Setup",
             sub = "60s Setup & Conflict Check",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_spark.tga",
-            yBottom = 68,
+            yBottom = 67,
             hasConflictBadge = true,
             fn = function() self:ShowStudioModal("SETUP") end,
         },
@@ -11629,7 +12419,8 @@ local function PrintSlashUsage()
     print("  |cFFF5B82E/dm show|r | |cFFF5B82E/dm hide|r - Show or hide the on-screen icon bar")
     print("  |cFFF5B82E/dm mute|r | |cFFF5B82E/dm silent|r - Toggle silent announcement mode")
     print("  |cFFF5B82E/dm flare|r | |cFFF5B82E/dm macro|r - Open Flares or Macro Setup tab")
-    print("  |cFFF5B82E/dm import [status]|r - Import legacy FocusMarker settings")
+    print("  |cFFF5B82E/dm export|r | |cFFF5B82E/dm import|r - Open Profile Import & Export (!DS1!)")
+    print("  |cFFF5B82E/dm migrate [status]|r - Import legacy FocusMarker settings")
     print("  |cFFF5B82E/dm resethud|r - Reset HUD bar positions to screen-safe defaults")
     print("  |cFFF5B82E/dm reset|r - Reset defaults, positions, size, and mute state")
 end
@@ -11669,9 +12460,23 @@ local function HandleSlashCommand(msg)
         DM:OpenWindow(3)
     elseif cmd == "flare" or cmd == "flares" then
         DM:OpenWindow(2)
+    elseif cmd == "export" or cmd == "profiles" then
+        if Suite and type(Suite.OpenSuiteStudioTab) == "function" and Suite._isHubLoaded then
+            pcall(Suite.OpenSuiteStudioTab, 3)
+        else
+            DM:OpenWindow()
+            DM:ShowStudioModal("PROFILES")
+        end
     elseif cmd == "import" or cmd == "migrate" then
         local sub = (trimmed:match("^%S+%s+(%S+)") or ""):lower()
-        if sub == "status" then
+        if cmd == "import" and sub ~= "focusmarker" and sub ~= "fm" and sub ~= "status" then
+            if Suite and type(Suite.OpenSuiteStudioTab) == "function" and Suite._isHubLoaded then
+                pcall(Suite.OpenSuiteStudioTab, 3)
+            else
+                DM:OpenWindow()
+                DM:ShowStudioModal("PROFILES")
+            end
+        elseif sub == "status" then
             DM:PrintFocusMarkerImportStatus()
         elseif InCombatLockdown and InCombatLockdown() then
             print("|cFF38BDF8DynamicMarker|r: Import is unavailable in combat. Try again after combat ends.")

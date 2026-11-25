@@ -5942,6 +5942,18 @@ local BUILTIN_SEARCH_SEED = {
       title = "Module Quick Guide (? Header Button)",
       desc = "Click the compact ? button in the top-right header while viewing any of the 13 modules to see its slash commands, 1-sentence summary, and 3 starter tips.",
       keywords = "quick guide help tips ? header button overview tutorial shortcut how to use module" },
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "THEME_STUDIO", tabIndex = 3, tabName = "Import & Export", tabLabel = "Import & Export", slash = "/ds export",
+      title = "Export Profile String", highlightTitle = "EXPORT YOUR PROFILE",
+      desc = "Generate a compact !DS1! string to share your DynamicSuite layout or copy it to another PC while leaving alt banks, chat history, and personal caches behind.",
+      keywords = "export profile string share backup copy pc transfer !ds1! suite studio /ds export /ds profiles" },
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "THEME_STUDIO", tabIndex = 3, tabName = "Import & Export", tabLabel = "Import & Export", slash = "/ds import",
+      title = "Import Profile String", highlightTitle = "IMPORT A PROFILE",
+      desc = "Paste a !DS1! string from DynamicSuite or standalone DynamicMarker to preview included modules, choose Replace Selected or Merge, and apply safely out of combat.",
+      keywords = "import profile string paste preview merge replace !ds1! suite studio /ds import /ds profiles" },
+    { moduleKey = "STUDIO", category = "HUD_LOOK", viewKey = "THEME_STUDIO", tabIndex = 3, tabName = "Import & Export", tabLabel = "Import & Export", slash = "/ds import",
+      title = "Undo Last Import (Rollback)", highlightTitle = "UNDO LAST IMPORT",
+      desc = "Restore the exact settings you had before your most recent profile import, preserved across UI reloads.",
+      keywords = "undo rollback restore backup last import revert /ds import /ds profiles" },
 
     -- HUD Edit Mode Positioning Targets
     { moduleKey = "HUD", category = "HUD_LOOK", tabIndex = "PREP", hudTarget = "PREP", ownerAddon = "DynamicPrep", tabLabel = "HUD Positioning (/ds hud)",
@@ -11463,6 +11475,1852 @@ if InCombat() then return end
     DynamicSuite.IsYieldingBlizzardWindowsToEllesmereUI = addonTable.IsYieldingBlizzardWindowsToEllesmereUI
 end
 
+--------------------------------------------------------------------------------
+-- Suite-Wide Profile Import & Export Codec (!DS1! Native CBOR + Zlib + Base64)
+--------------------------------------------------------------------------------
+do
+    local PROFILE_PREFIX = "!DS1!"
+    local SCHEMA_VERSION = 1
+    local MAX_STRING_BYTES = 262144
+    local MAX_TABLE_DEPTH = 8
+    local INT_KEY_PREFIX = "__i:"
+
+    local function IsSafeScalar(v)
+        local isSec = _G.issecretvalue
+        if type(isSec) == "function" then
+            local okS, sec = pcall(isSec, v)
+            if okS and sec == true then return false end
+        end
+        local canAcc = _G.canaccessvalue
+        if type(canAcc) == "function" then
+            local okA, acc = pcall(canAcc, v)
+            if okA and acc == false then return false end
+        end
+        local tv = type(v)
+        if tv == "string" or tv == "boolean" then
+            return true
+        elseif tv == "number" then
+            return (v == v) and (v > -1e308) and (v < 1e308)
+        end
+        return false
+    end
+
+    local function DeepCopyClean(v, depth, seen)
+        depth = depth or 0
+        if depth > MAX_TABLE_DEPTH then return nil end
+        if type(v) ~= "table" then
+            if IsSafeScalar(v) then return v end
+            return nil
+        end
+        seen = seen or {}
+        if seen[v] then return nil end
+        seen[v] = true
+        local out = {}
+        for k, sub in pairs(v) do
+            local tk = type(k)
+            if (tk == "string" or tk == "number") and IsSafeScalar(k) then
+                local cv = DeepCopyClean(sub, depth + 1, seen)
+                if cv ~= nil then
+                    out[k] = cv
+                end
+            end
+        end
+        seen[v] = nil
+        return out
+    end
+
+    local function DeepEquals(a, b, depth)
+        depth = depth or 0
+        if depth > MAX_TABLE_DEPTH then return false end
+        if a == b then return true end
+        if type(a) ~= type(b) then return false end
+        if type(a) ~= "table" then return false end
+        for k, v in pairs(a) do
+            if not DeepEquals(v, b[k], depth + 1) then return false end
+        end
+        for k, v in pairs(b) do
+            if a[k] == nil and v ~= nil then return false end
+        end
+        return true
+    end
+
+    local function DeepMerge(dst, src, depth)
+        depth = depth or 0
+        if depth > MAX_TABLE_DEPTH or type(src) ~= "table" then return dst end
+        if type(dst) ~= "table" then dst = {} end
+        for k, v in pairs(src) do
+            if type(v) == "table" then
+                if #v > 0 and v[1] ~= nil then
+                    dst[k] = DeepCopyClean(v, depth + 1)
+                else
+                    dst[k] = DeepMerge(type(dst[k]) == "table" and dst[k] or {}, v, depth + 1)
+                end
+            elseif IsSafeScalar(v) then
+                dst[k] = v
+            end
+        end
+        return dst
+    end
+
+    local function IsContiguousArray(tbl)
+        local n = #tbl
+        if n == 0 then
+            return next(tbl) == nil
+        end
+        local count = 0
+        for k in pairs(tbl) do
+            if type(k) ~= "number" or k < 1 or k > n or math.floor(k) ~= k then
+                return false
+            end
+            count = count + 1
+        end
+        return count == n
+    end
+
+    local function PrepareForCBOR(v, depth, seen)
+        depth = depth or 0
+        if depth > MAX_TABLE_DEPTH then return nil end
+        if type(v) ~= "table" then
+            if IsSafeScalar(v) then return v end
+            return nil
+        end
+        seen = seen or {}
+        if seen[v] then return nil end
+        seen[v] = true
+        local out = {}
+        if IsContiguousArray(v) then
+            for i = 1, #v do
+                local cv = PrepareForCBOR(v[i], depth + 1, seen)
+                if cv ~= nil then
+                    out[#out + 1] = cv
+                end
+            end
+        else
+            for k, sub in pairs(v) do
+                if IsSafeScalar(k) then
+                    local tk = type(k)
+                    local ck = nil
+                    if tk == "number" then
+                        if math.floor(k) == k then
+                            ck = INT_KEY_PREFIX .. tostring(k)
+                        else
+                            ck = tostring(k)
+                        end
+                    elseif tk == "string" then
+                        ck = k
+                    end
+                    if ck ~= nil then
+                        local cv = PrepareForCBOR(sub, depth + 1, seen)
+                        if cv ~= nil then
+                            out[ck] = cv
+                        end
+                    end
+                end
+            end
+        end
+        seen[v] = nil
+        return out
+    end
+
+    local function RestoreFromCBOR(v, depth)
+        depth = depth or 0
+        if depth > MAX_TABLE_DEPTH then return nil, "Nested table depth exceeds safety limit." end
+        if type(v) ~= "table" then
+            if not IsSafeScalar(v) then
+                return nil, "Profile contains an unsupported or unsafe value."
+            end
+            return v, nil
+        end
+        local out = {}
+        for k, sub in pairs(v) do
+            if not IsSafeScalar(k) then
+                return nil, "Profile contains an invalid key."
+            end
+            local dk = k
+            if type(k) == "string" and k:sub(1, #INT_KEY_PREFIX) == INT_KEY_PREFIX then
+                local num = tonumber(k:sub(#INT_KEY_PREFIX + 1))
+                if num and IsSafeScalar(num) then
+                    dk = num
+                end
+            end
+            local dv, err = RestoreFromCBOR(sub, depth + 1)
+            if err then return nil, err end
+            if dv ~= nil then
+                out[dk] = dv
+            end
+        end
+        return out, nil
+    end
+
+    local function MakeKeySet(list)
+        local s = {}
+        for _, k in ipairs(list or {}) do s[k] = true end
+        return s
+    end
+
+    local PROFILE_SCHEMAS = {
+        {
+            key = "suite",
+            title = "Suite Studio & Theme",
+            shortTitle = "Suite Studio",
+            dbVar = "__SUITE_GLOBAL__",
+            allowKeys = {
+                "accentKey", "customAccent", "surfaceTheme", "fontKey", "fontFamily",
+                "pillFillAlpha", "recentColors", "syncThemeToToast", "syncExternalUI",
+                "syncThemeToHuds", "layoutSyncScope", "toastEnabled", "toastMode",
+                "toastBorderStyle", "toastDisplayMode", "toastScale", "toastAlpha",
+                "toastOpacity", "toastActionDuration", "toastInfoDuration",
+                "toastSoundEnabled", "hudSnapMode", "moduleOrder", "disabledModules",
+                "showGameMenuSuiteBtn", "showGameMenuHudBtn", "replaceBlizzardAddonList",
+                "showFeatureSpotlights", "desktopWindows",
+            },
+            hudKeys = {
+                "toastPos", "windowWidth", "windowHeight", "windowScale", "windowAlpha",
+                "hudPositions", "hudScales",
+            },
+            reloadKeys = { "disabledModules", "replaceBlizzardAddonList" },
+            defaults = {
+                accentKey = "AUTO_CLASS",
+                surfaceTheme = "MIDNIGHT_BLACK",
+                fontKey = "EXPRESSWAY",
+                fontFamily = "EXPRESSWAY",
+                pillFillAlpha = 0.42,
+                recentColors = {},
+                syncThemeToToast = true,
+                syncExternalUI = false,
+                syncThemeToHuds = "all",
+                layoutSyncScope = "account",
+                toastEnabled = true,
+                toastMode = "ON",
+                toastBorderStyle = "ACCENT",
+                toastDisplayMode = "DETAILED",
+                toastScale = 1.0,
+                toastAlpha = 0.96,
+                toastOpacity = 0.96,
+                toastActionDuration = 12,
+                toastInfoDuration = 5,
+                toastSoundEnabled = false,
+                hudSnapMode = "MAGNET",
+                disabledModules = {},
+                showGameMenuSuiteBtn = true,
+                showGameMenuHudBtn = true,
+                replaceBlizzardAddonList = true,
+                showFeatureSpotlights = true,
+                desktopWindows = {
+                    masterEnabled = true,
+                    enabled = true,
+                    sideBySide = true,
+                    dragAnywhere = true,
+                    draggable = true,
+                    scrollScale = true,
+                    positions = {},
+                    scales = {},
+                },
+                toastPos = { point = "TOP", relPoint = "TOP", x = 0, y = -50 },
+                windowWidth = 1040,
+                windowHeight = 680,
+                windowScale = 1.0,
+                windowAlpha = 0.98,
+                hudPositions = {},
+                hudScales = {},
+            },
+        },
+        {
+            key = "marker",
+            title = "DynamicMarker",
+            shortTitle = "Marker",
+            dbVar = "DynamicMarkerDB",
+            allowKeys = {
+                "focusIcon", "iconOrder", "groupScope", "chatAnnounce", "chatChannel",
+                "targetBarVisibility", "targetBarOrientation", "targetBarScale", "targetBarOpacity",
+                "flareCycleKey", "flareClearKey", "flareOrder", "flareEnabled",
+                "flareBarVisibility", "flareBarOrientation", "flareBarScale", "flareBarOpacity",
+                "hudBorderStyle", "focusClearModifier", "focusTargetMode",
+                "kickPriority", "kickSpecMode", "hudShowGrid",
+            },
+            hudKeys = {
+                "targetBarPoint", "targetBarRelPoint", "targetBarX", "targetBarY", "targetBarPos",
+                "flareBarPoint", "flareBarRelPoint", "flareBarX", "flareBarY", "flareBarPos",
+            },
+            reloadKeys = {},
+            defaults = {
+                focusIcon = 8,
+                iconOrder = { 1, 2, 3, 4, 5, 6, 7, 8 },
+                groupScope = "BOTH",
+                chatAnnounce = "ACTIVE",
+                chatChannel = "PARTY",
+                targetBarVisibility = "GROUP",
+                targetBarOrientation = "HORIZONTAL",
+                targetBarScale = 1.00,
+                targetBarOpacity = 0.95,
+                targetBarPoint = "CENTER",
+                targetBarRelPoint = "CENTER",
+                targetBarX = 0,
+                targetBarY = -140,
+                targetBarPos = { point = "CENTER", relPoint = "CENTER", x = 0, y = -140 },
+                flareCycleKey = "",
+                flareClearKey = "",
+                flareOrder = { 1, 2, 3, 4, 5, 6, 7, 8 },
+                flareEnabled = { [1] = true, [2] = true, [3] = true, [4] = true, [5] = true, [6] = true, [7] = true, [8] = true },
+                flareBarVisibility = "GROUP",
+                flareBarOrientation = "HORIZONTAL",
+                flareBarScale = 1.00,
+                flareBarOpacity = 0.95,
+                flareBarPoint = "CENTER",
+                flareBarRelPoint = "CENTER",
+                flareBarX = 0,
+                flareBarY = -182,
+                flareBarPos = { point = "CENTER", relPoint = "CENTER", x = 0, y = -182 },
+                hudBorderStyle = "ACCENT",
+                focusClearModifier = "NONE",
+                focusTargetMode = "MOUSEOVER_TARGET",
+                kickPriority = "SMART_AUTOTARGET",
+                kickSpecMode = "SMART_SWAP",
+                hudShowGrid = true,
+            },
+        },
+        {
+            key = "group",
+            title = "DynamicGroup",
+            shortTitle = "Group",
+            dbVar = "DynamicGroupDB",
+            allowKeys = {
+                "lfgFilterEnabled", "showPortalBar", "enabledRegions", "overlayMode",
+                "showEntryOverlay", "minLeaderScore", "partyFitFilter", "needsTank",
+                "needsHealer", "needsDamage", "noDuplicateClass", "hasTank", "hasHealer",
+                "hasLust", "hasCR", "filteredDungeons", "sortMode", "hideFullGroups",
+                "smartSort", "rememberSearchText", "doubleClickSignUp",
+                "enableWhisperInvite", "whisperInviteScope", "whisperInviteMode",
+                "whisperKeywords", "autoConvertToRaid", "autoPromoteFriendsTanks",
+                "autoAcceptRoleCheck", "incomingInviteMode", "protectActiveQueues",
+                "announceInvites", "autoInsertKeystone", "autoRespondKeys",
+                "autoRespondKeysGuild", "showGroupTeleportToast", "oneClickSignUp",
+                "autoSelectRole", "autoFillNote", "appendIlvlToNote", "autoRefreshInterval",
+            },
+            hudKeys = {},
+            reloadKeys = {},
+            defaults = {
+                lfgFilterEnabled = true,
+                showPortalBar = true,
+                enabledRegions = { OCE = true, USW = true, USC = true, USE = true, LATAM = true, BR = true },
+                overlayMode = "COMPACT",
+                showEntryOverlay = true,
+                minLeaderScore = 0,
+                partyFitFilter = "ALL",
+                needsTank = false,
+                needsHealer = false,
+                needsDamage = false,
+                noDuplicateClass = false,
+                hasTank = false,
+                hasHealer = false,
+                hasLust = false,
+                hasCR = false,
+                filteredDungeons = {},
+                sortMode = "SMART_HIDE_FULL",
+                hideFullGroups = true,
+                smartSort = true,
+                rememberSearchText = true,
+                doubleClickSignUp = true,
+                enableWhisperInvite = true,
+                whisperInviteScope = "GUILD_AND_FRIENDS",
+                whisperInviteMode = "FRIENDS_AND_GUILD",
+                whisperKeywords = "inv, invite, 123",
+                autoConvertToRaid = true,
+                autoPromoteFriendsTanks = false,
+                autoAcceptRoleCheck = false,
+                incomingInviteMode = "FRIENDS_AND_GUILD",
+                protectActiveQueues = true,
+                announceInvites = true,
+                autoInsertKeystone = true,
+                autoRespondKeys = true,
+                autoRespondKeysGuild = true,
+                showGroupTeleportToast = true,
+                oneClickSignUp = true,
+                autoSelectRole = true,
+                autoFillNote = true,
+                appendIlvlToNote = true,
+                autoRefreshInterval = 0,
+            },
+        },
+        {
+            key = "prep",
+            title = "DynamicPrep",
+            shortTitle = "Prep",
+            dbVar = "DynamicPrepDB",
+            allowKeys = {
+                "displayMode", "hudBorderStyle", "barColorTheme", "statSortMode",
+                "secondaryStatOrderMode", "customSecondaryOrder", "pingDisplayMode",
+                "pingOrder", "pullTimer", "combatRefreshRate", "barScale", "barOpacity",
+                "barCompactMode", "barFadeMode", "activeBarPreset", "paperdollAuditEnabled",
+                "segmentOrder", "segments", "omniFolio", "autoQuestGossip",
+                "autoConfirmInstanceGossip", "autoSinglePlayerChoice", "oneClickCatalyst",
+                "autoAcceptSummon", "cinematicMode", "autoRezMode", "autoReleaseMode",
+                "healMacroOrder", "autoHealMacroEnabled", "mageFoodRestockEnabled",
+                "mageFoodRestockScope", "mageFoodMinThreshold", "mageFoodLeaveTarget",
+                "drinkMacroMode", "drinkMacroAllowBuffFood", "drinkMacroRecupFallback",
+                "durabilityAlertEnabled", "durabilityAlertThreshold", "errorFilterEnabled",
+                "errorFilterHideCombatSpam", "errorFilterHideMovement", "errorFilterMuteSpeech",
+                "raidBuffs",
+            },
+            hudKeys = { "barPoint", "barRelativePoint", "barX", "barY" },
+            reloadKeys = {},
+            defaults = {
+                displayMode = "ALWAYS",
+                hudBorderStyle = "ACCENT",
+                barColorTheme = "PRIORITY_GLOW",
+                statSortMode = "RANK",
+                secondaryStatOrderMode = "RANK",
+                customSecondaryOrder = { "HASTE", "MASTERY", "CRIT", "VERS" },
+                pingDisplayMode = "BOTH",
+                pingOrder = "LOCAL_FIRST",
+                pullTimer = 10,
+                combatRefreshRate = 0.2,
+                barScale = 1.0,
+                barOpacity = 0.95,
+                barCompactMode = false,
+                barFadeMode = "NONE",
+                paperdollAuditEnabled = true,
+                segmentOrder = { "primary", "stats", "loot", "talents", "vault", "folio", "dur", "bags", "key", "rc", "pull", "fps", "ping" },
+                segments = {
+                    primary = true, stats = true, weights = false, loot = true,
+                    talents = true, vault = true, folio = true, dur = true,
+                    bags = true, key = true, rc = true, pull = true, fps = true, ping = true,
+                },
+                omniFolio = { enabled = true, presetMode = "WOWHEAD", mplus = "HASTE", raid = "HASTE", delve = "HASTE", pvp = "VERS", customBySpec = {} },
+                autoQuestGossip = true,
+                autoConfirmInstanceGossip = false,
+                autoSinglePlayerChoice = true,
+                oneClickCatalyst = true,
+                autoAcceptSummon = false,
+                cinematicMode = "BOTH",
+                autoRezMode = "OUT_OF_COMBAT",
+                autoReleaseMode = "WIPE_AND_CTRL",
+                healMacroOrder = "STONE_FIRST",
+                autoHealMacroEnabled = true,
+                mageFoodRestockEnabled = true,
+                mageFoodRestockScope = "HEALER_ONLY",
+                mageFoodMinThreshold = 20,
+                mageFoodLeaveTarget = 20,
+                drinkMacroMode = "ROLE_SMART",
+                drinkMacroAllowBuffFood = false,
+                drinkMacroRecupFallback = true,
+                durabilityAlertEnabled = true,
+                durabilityAlertThreshold = 20,
+                errorFilterEnabled = false,
+                errorFilterHideCombatSpam = true,
+                errorFilterHideMovement = true,
+                errorFilterMuteSpeech = false,
+                barPoint = "TOP",
+                barRelativePoint = "TOP",
+                barX = 0,
+                barY = -8,
+                raidBuffs = {
+                    enabled = true, scope = "ALWAYS", iconSize = 44, iconSpacing = 10,
+                    hideMissingLabel = false, expireThresholdMin = 5,
+                    trackClassBuffs = true, trackPartnerBuffs = true, trackWeaponEnchants = true,
+                    trackFlasks = true, trackFood = true, trackRunes = true, trackCombatBrez = true,
+                    point = "CENTER", relPoint = "CENTER", x = 0, y = 140,
+                    hudScale = 1.0, hudOpacity = 0.95, hudBorderStyle = "ACCENT", orientation = "HORIZONTAL",
+                },
+            },
+        },
+        {
+            key = "talent",
+            title = "DynamicTalent",
+            shortTitle = "Talent",
+            dbVar = "DynamicTalentDB",
+            allowKeys = {
+                "enabled", "showTalentDock", "talentReminderToast", "rightClickHeroSwap",
+                "talentBackdropBase", "talentBackdropMist", "talentBackdropDimmer",
+                "talentBackdropMistIntensity", "talentBackdropAnimate", "talentGroupOrder",
+            },
+            hudKeys = { "talentMgrModalSize" },
+            optInGroup = "talents",
+            optInKeys = {
+                "talentStringLibrary", "talentBossMap", "talentDungeonMap",
+                "talentPvPMap", "talentZoneMap", "talentPreferredBySpec",
+            },
+            reloadKeys = {},
+            defaults = {
+                enabled = true,
+                showTalentDock = true,
+                talentReminderToast = true,
+                rightClickHeroSwap = true,
+                talentBackdropBase = "OBSIDIAN",
+                talentBackdropMist = "HERO_MIST",
+                talentBackdropDimmer = 35,
+                talentBackdropMistIntensity = 60,
+                talentBackdropAnimate = true,
+                talentGroupOrder = { "Raid", "M+", "Delves", "PvP", "Custom" },
+                talentMgrModalSize = { w = 880, h = 580 },
+                talentStringLibrary = {},
+                talentBossMap = {},
+                talentDungeonMap = {},
+                talentPvPMap = {},
+                talentZoneMap = {},
+                talentPreferredBySpec = {},
+            },
+        },
+        {
+            key = "cursor",
+            title = "DynamicCursor",
+            shortTitle = "Cursor",
+            dbVar = "DynamicCursorDB",
+            allowKeys = {
+                "ringEnabled", "ringStyle", "ringThickness", "ringExtraContrast", "ringRadius",
+                "ringOffsetX", "ringOffsetY", "ringCenterDot", "ringCenterDotSize",
+                "ringCenterDotColorMode", "ringCenterDotCustomHex", "ringOpacityOOC",
+                "ringOpacityCombat", "ringIdleFade", "ringColorMode", "ringCustomHex",
+                "ringCombatShift", "ringStrata", "ringKeepMouseLook", "ringMouseLookOpacity",
+                "ringClickPulse", "ringClickPulseScale", "ringClickPulseColorMode",
+                "ringClickPulseCustomHex", "groundTargetHighlight", "groundTargetColorMode",
+                "groundTargetCustomHex", "groundTargetSizeBoost", "gcdEnabled", "gcdGap",
+                "gcdStyle", "gcdColorMode", "gcdCustomHex", "gcdOpacity", "castArcEnabled",
+                "castGap", "castStyle", "castColorMode", "castCustomHex", "castOpacity",
+                "castInterruptColorMode", "castInterruptCustomHex", "castShowIcon",
+                "castIconSize", "castIconPos", "castIconGap", "castInstantFlash",
+                "showOpenWorld", "showDelves", "showDungeons", "showRaids", "showPvP",
+                "autoHideSpecial", "crosshairEnabled", "crosshairShowCross",
+                "crosshairShowBrackets", "crosshairShowCircle", "crosshairShowDot",
+                "crosshairSize", "crosshairThickness", "crosshairGap",
+                "crosshairCircleRadius", "crosshairCircleThickness", "crosshairDotSize",
+                "crosshairOutline", "crosshairOffsetX", "crosshairOffsetY",
+                "crosshairVisibility", "crosshairOpacityOOC", "crosshairOpacityCombat",
+                "crosshairColorMode", "crosshairCustomHex", "crosshairCombatTint",
+                "shakeToFind", "shakeSensitivity", "pingAfterMouseLook",
+                "mouseLookPingDuration", "locatorModifier", "locatorStyle", "locatorScale",
+                "locatorColorMode", "locatorCustomHex", "trailEnabled", "trailStyle",
+                "trailDuration", "trailSize", "trailDensity", "trailOpacity",
+                "trailColorMode", "trailCustomHex", "trailCombatOnly", "trailShowMouseLook",
+                "tooltipEnabled", "tooltipOffsetX", "tooltipOffsetY", "tooltipEdgeFlip",
+                "tooltipCombatMode",
+            },
+            hudKeys = {},
+            reloadKeys = {},
+            defaults = {
+                ringEnabled = false, ringStyle = "SOLID", ringThickness = 3, ringExtraContrast = false,
+                ringRadius = 24, ringOffsetX = 0, ringOffsetY = 0, ringCenterDot = false,
+                ringCenterDotSize = 4, ringCenterDotColorMode = "MATCH_RING", ringCenterDotCustomHex = "FFFFFF",
+                ringOpacityOOC = 0.55, ringOpacityCombat = 0.95, ringIdleFade = "OFF",
+                ringColorMode = "ACCENT", ringCustomHex = "38BDF8", ringCombatShift = false,
+                ringStrata = "TOOLTIP", ringKeepMouseLook = true, ringMouseLookOpacity = 0.35,
+                ringClickPulse = false, ringClickPulseScale = 1.75, ringClickPulseColorMode = "MATCH_RING",
+                ringClickPulseCustomHex = "38BDF8", groundTargetHighlight = true,
+                groundTargetColorMode = "HIGH_VIS_GREEN", groundTargetCustomHex = "22EB5E",
+                groundTargetSizeBoost = true, gcdEnabled = true, gcdGap = 6, gcdStyle = "THIN",
+                gcdColorMode = "MATCH_RING", gcdCustomHex = "38BDF8", gcdOpacity = 0.85,
+                castArcEnabled = true, castGap = 4, castStyle = "THIN", castColorMode = "MATCH_RING",
+                castCustomHex = "F59E0B", castOpacity = 0.92, castInterruptColorMode = "CRIMSON",
+                castInterruptCustomHex = "F23838", castShowIcon = false, castIconSize = 20,
+                castIconPos = "TOP", castIconGap = 6, castInstantFlash = false,
+                showOpenWorld = true, showDelves = true, showDungeons = true, showRaids = true,
+                showPvP = true, autoHideSpecial = true, crosshairEnabled = false,
+                crosshairShowCross = true, crosshairShowBrackets = false, crosshairShowCircle = false,
+                crosshairShowDot = false, crosshairSize = 24, crosshairThickness = 2, crosshairGap = 6,
+                crosshairCircleRadius = 24, crosshairCircleThickness = 2, crosshairDotSize = 4,
+                crosshairOutline = true, crosshairOffsetX = 0, crosshairOffsetY = 0,
+                crosshairVisibility = "ALWAYS", crosshairOpacityOOC = 0.45, crosshairOpacityCombat = 0.90,
+                crosshairColorMode = "ACCENT", crosshairCustomHex = "38BDF8", crosshairCombatTint = false,
+                shakeToFind = false, shakeSensitivity = "MEDIUM", pingAfterMouseLook = false,
+                mouseLookPingDuration = 0.65, locatorModifier = "OFF", locatorStyle = "PING",
+                locatorScale = 1.00, locatorColorMode = "MATCH_RING", locatorCustomHex = "38BDF8",
+                trailEnabled = false, trailStyle = "SMOOTH_DOTS", trailDuration = 0.45, trailSize = 14,
+                trailDensity = 3, trailOpacity = 0.75, trailColorMode = "ACCENT",
+                trailCustomHex = "38BDF8", trailCombatOnly = false, trailShowMouseLook = false,
+                tooltipEnabled = false, tooltipOffsetX = 18, tooltipOffsetY = -18,
+                tooltipEdgeFlip = true, tooltipCombatMode = "KEEP",
+            },
+        },
+        {
+            key = "vault",
+            title = "DynamicVault",
+            shortTitle = "Vault",
+            dbVar = "DynamicVaultDB",
+            allowKeys = {
+                "enabled", "dockOnGreatVault", "vaultSkinMode", "loginVaultReminder",
+                "syncDynamicBags", "filterMaxLevelOnly", "minLevelFilter", "showCurrencies",
+                "showKeystones", "showRaidLockouts", "showBountifulDelves", "sortMode",
+                "customTasks",
+            },
+            hudKeys = {},
+            reloadKeys = {},
+            defaults = {
+                enabled = true,
+                dockOnGreatVault = true,
+                vaultSkinMode = "OBSIDIAN",
+                loginVaultReminder = true,
+                syncDynamicBags = true,
+                filterMaxLevelOnly = false,
+                minLevelFilter = 80,
+                showCurrencies = true,
+                showKeystones = true,
+                showRaidLockouts = true,
+                showBountifulDelves = true,
+                sortMode = "VAULT",
+                customTasks = {},
+            },
+        },
+        {
+            key = "dialogue",
+            title = "DynamicDialogue",
+            shortTitle = "Dialogue",
+            dbVar = "DynamicDialogueDB",
+            allowKeys = {
+                "enabled", "replaceQuests", "replaceGossip", "enableNumberHotkeys",
+                "enableSpaceConfirm", "shiftBypassNative", "hideInCombat", "frameScale",
+                "backdropAlpha", "fontSize", "borderStyle", "showTypeBadge",
+                "showRewardTooltips", "playCompleteChime",
+            },
+            hudKeys = { "pos" },
+            reloadKeys = {},
+            defaults = {
+                enabled = true,
+                replaceQuests = true,
+                replaceGossip = true,
+                enableNumberHotkeys = true,
+                enableSpaceConfirm = true,
+                shiftBypassNative = true,
+                hideInCombat = true,
+                frameScale = 1.0,
+                backdropAlpha = 0.96,
+                fontSize = 13,
+                borderStyle = "ACCENT",
+                showTypeBadge = true,
+                showRewardTooltips = true,
+                playCompleteChime = true,
+                pos = { point = "CENTER", relPoint = "CENTER", x = 0, y = -90 },
+            },
+        },
+        {
+            key = "bags",
+            title = "DynamicBags",
+            shortTitle = "Bags",
+            dbVar = "DynamicBagsDB",
+            allowKeys = {
+                "replaceBlizzardBags", "viewMode", "preset", "autoSort", "sortBy",
+                "autoMergeOnClose", "categories", "categoryOrder", "bagColumns",
+                "bankColumns", "bagScale", "bankScale", "bgOpacity", "iconSize",
+                "categorySpacing", "badges", "visual", "fontSize", "autoOpen",
+                "rememberLastBankTab", "autoRepair", "autoRepairEnabled", "repairFunding",
+                "autoSellGrey", "autoSellJunk", "merchantBulkBuy", "autoRestockEnabled",
+                "autoRestockList", "fastAutoLoot", "autoFillDelete", "autoOpenContainers",
+                "autoOpenHousingDecor", "autoOpenKnowledgeItems", "autoUnwrapItems",
+                "quickOpenEnabled", "queueHousingDecor", "queueKnowledgeItems",
+                "openablesSoulboundOnly", "tooltipCounts", "pinnedCategories",
+            },
+            hudKeys = { "windowPos", "vaultPos", "vaultDocked" },
+            reloadKeys = { "replaceBlizzardBags" },
+            defaults = {
+                replaceBlizzardBags = true,
+                viewMode = "CATEGORY",
+                preset = "MYTHIC",
+                autoSort = true,
+                sortBy = "QUALITY",
+                autoMergeOnClose = false,
+                categories = {
+                    new = true, keystone = true, consumable = true, eqset = true,
+                    gear = true, wue = true, boe = true, craft = true,
+                    gems = true, quest = true, misc = true, junk = true,
+                },
+                bagColumns = 14,
+                bankColumns = 14,
+                bagScale = 1.0,
+                bankScale = 1.0,
+                bgOpacity = 0.98,
+                iconSize = 36,
+                categorySpacing = 12,
+                badges = { ilvl = true, upgrade = true, keystone = true, eqset = true, binding = true, junk = true, quality = true },
+                visual = { qualityGlow = true, dimJunk = true, unusableRed = true, flashNew = true },
+                fontSize = 11,
+                autoOpen = {
+                    bank = true, auction = true, vendor = true, mail = true, trade = true,
+                    character = false, upgrade = true, catalyst = true, guildbank = true, crafting = true,
+                },
+                rememberLastBankTab = true,
+                autoRepair = true,
+                autoRepairEnabled = true,
+                repairFunding = "GUILD_FIRST",
+                autoSellGrey = true,
+                autoSellJunk = true,
+                merchantBulkBuy = true,
+                autoRestockEnabled = false,
+                autoRestockList = {},
+                fastAutoLoot = true,
+                autoFillDelete = true,
+                autoOpenContainers = true,
+                autoOpenHousingDecor = true,
+                autoOpenKnowledgeItems = true,
+                autoUnwrapItems = false,
+                quickOpenEnabled = true,
+                queueHousingDecor = true,
+                queueKnowledgeItems = true,
+                openablesSoulboundOnly = true,
+                tooltipCounts = true,
+                pinnedCategories = {},
+                vaultDocked = true,
+            },
+        },
+        {
+            key = "mail",
+            title = "DynamicMail",
+            shortTitle = "Mail",
+            dbVar = "DynamicMailDB",
+            allowKeys = {
+                "enabled", "mailboxBarEnabled", "recipientPanelEnabled",
+                "syncDynamicBagsVault", "showAltGold", "sortFavouritesFirst",
+                "rememberRecent", "recentLimit", "historyLimit", "openInterval",
+                "keepFreeBagSlots", "protectUnreadText", "collectGoldWhenBagsFull",
+                "ahIncludeAllNonCodGold", "deleteEmptyLetters", "deleteEmptySystemMail",
+                "printBatchSummary", "playFinishSound", "altClickAttach",
+                "autoFillSubject", "clearAfterSend", "autoOpenBagsAtMail",
+                "showQuickAttachBar", "showQuickGoldBar", "showPendingAltBadge",
+                "restoreLastRecipient", "shiftClickInboxLoot", "warnExpiringMail",
+                "mailSkinMode",
+            },
+            hudKeys = {},
+            reloadKeys = {},
+            defaults = {
+                enabled = true,
+                mailboxBarEnabled = true,
+                recipientPanelEnabled = true,
+                syncDynamicBagsVault = true,
+                showAltGold = true,
+                sortFavouritesFirst = true,
+                rememberRecent = true,
+                recentLimit = 25,
+                historyLimit = 30,
+                openInterval = 0.14,
+                keepFreeBagSlots = 1,
+                protectUnreadText = true,
+                collectGoldWhenBagsFull = true,
+                ahIncludeAllNonCodGold = false,
+                deleteEmptyLetters = true,
+                deleteEmptySystemMail = false,
+                printBatchSummary = true,
+                playFinishSound = true,
+                altClickAttach = true,
+                autoFillSubject = true,
+                clearAfterSend = true,
+                autoOpenBagsAtMail = false,
+                showQuickAttachBar = true,
+                showQuickGoldBar = true,
+                showPendingAltBadge = true,
+                restoreLastRecipient = false,
+                shiftClickInboxLoot = true,
+                warnExpiringMail = true,
+                mailSkinMode = "OBSIDIAN",
+            },
+        },
+        {
+            key = "chat",
+            title = "DynamicChat",
+            shortTitle = "Chat",
+            dbVar = "DynamicChatDB",
+            allowKeys = {
+                "enableTargetWhisper", "whisperTriggerMode", "targetWhisperClearOnInvalid",
+                "protectCombatWhispers", "arrowHistoryNoAlt", "stickyWhisper",
+                "stickyGroupChannels", "enableSleekChatSkin", "chatBgAlpha",
+                "chatBorderStyle", "editBoxPosition", "editBoxBackgroundMode",
+                "hideChatButtons", "applySuiteChatFont", "chatFontKey", "chatFontSize",
+                "chatFontOutline", "chatFontShadow", "chatLineSpacing", "chatMessageFade",
+                "chatMessageFadeDuration", "chatFrameScale", "leftRailMode",
+                "railOrder", "railButtons", "shortChannelNames", "classColorNames",
+                "showTimestamps", "timestampFormat", "enableChatSounds",
+                "enableSoundAlerts", "soundMuteInCombat", "soundOutputChannel",
+                "soundThrottleSec", "channelSounds", "enableMentionAlerts",
+                "mentionKeywords", "mentionNameSound", "mentionKeywordSound",
+                "mentionHighlightInChat", "mentionAlertToast", "clickableURLs",
+                "fastChatScroll", "shiftScrollLines", "ctrlJumpScroll", "enableQuickSlash",
+                "preserveChatHistory", "enableGPUBufferCap", "maxChatLines",
+                "optimizeCombatLogTab",
+            },
+            hudKeys = { "chatFramePos" },
+            reloadKeys = { "enableSleekChatSkin", "hideChatButtons", "showTimestamps" },
+            defaults = {
+                enableTargetWhisper = true,
+                whisperTriggerMode = "WW",
+                targetWhisperClearOnInvalid = true,
+                protectCombatWhispers = true,
+                arrowHistoryNoAlt = true,
+                stickyWhisper = false,
+                stickyGroupChannels = true,
+                enableSleekChatSkin = true,
+                chatBgAlpha = 0.25,
+                chatBorderStyle = "ACCENT",
+                editBoxPosition = "BOTTOM",
+                editBoxBackgroundMode = "ALWAYS",
+                hideChatButtons = true,
+                applySuiteChatFont = true,
+                chatFontKey = "SUITE",
+                chatFontSize = 12,
+                chatFontOutline = "OUTLINE",
+                chatFontShadow = true,
+                chatLineSpacing = 2,
+                chatMessageFade = true,
+                chatMessageFadeDuration = 120,
+                chatFramePos = { point = "BOTTOMLEFT", relativePoint = "BOTTOMLEFT", relPoint = "BOTTOMLEFT", x = 0, y = 0, width = 430, height = 200 },
+                chatFrameScale = 1.0,
+                leftRailMode = "ALWAYS",
+                railOrder = { "social", "durability", "vault", "copy", "combatlog", "lock", "settings", "scrollbottom" },
+                railButtons = {
+                    social = true, durability = true, vault = true, copy = true,
+                    combatlog = true, lock = false, settings = true, scrollbottom = true,
+                },
+                shortChannelNames = false,
+                classColorNames = true,
+                showTimestamps = true,
+                timestampFormat = "%H:%M ",
+                enableChatSounds = true,
+                enableSoundAlerts = true,
+                soundMuteInCombat = false,
+                soundOutputChannel = "Master",
+                soundThrottleSec = 1.5,
+                channelSounds = {
+                    WHISPER = "BLIZZ_WHISPER",
+                    GUILD = "BLIZZ_BNET_TOAST",
+                    PARTY = "BLIZZ_MAP_PING",
+                    RAID = "BLIZZ_RAID_WARNING",
+                    SAY = "NONE",
+                },
+                enableMentionAlerts = true,
+                mentionKeywords = "",
+                mentionNameSound = "DC_CHIME_CASCADE",
+                mentionKeywordSound = "DC_KEYWORD_PULSE",
+                mentionHighlightInChat = true,
+                mentionAlertToast = true,
+                clickableURLs = true,
+                fastChatScroll = true,
+                shiftScrollLines = 5,
+                ctrlJumpScroll = true,
+                enableQuickSlash = true,
+                preserveChatHistory = true,
+                enableGPUBufferCap = true,
+                maxChatLines = 250,
+                optimizeCombatLogTab = true,
+            },
+        },
+        {
+            key = "load",
+            title = "DynamicLoad",
+            shortTitle = "Load",
+            dbVar = "DynamicLoadDB",
+            allowKeys = { "autoSwitch", "silentOnMatch", "rules" },
+            hudKeys = {},
+            optInGroup = "loadLists",
+            optInKeys = { "profiles", "lockedAddons", "frozenAddons", "addonStates" },
+            reloadKeys = { "profiles", "lockedAddons", "frozenAddons", "addonStates" },
+            defaults = {
+                autoSwitch = true,
+                silentOnMatch = true,
+                rules = {
+                    ["outdoor"]  = CONTEXT_OUTDOOR,
+                    ["party"]    = CONTEXT_DUNGEON,
+                    ["raid"]     = CONTEXT_RAID,
+                    ["delve"]    = CONTEXT_DELVE,
+                    ["scenario"] = CONTEXT_DELVE,
+                    ["arena"]    = CONTEXT_PVP,
+                    ["pvp"]      = CONTEXT_PVP,
+                },
+                profiles = {
+                    [CONTEXT_OUTDOOR] = { name = "Outdoor",  addons = {} },
+                    [CONTEXT_DELVE]   = { name = "Delves",   addons = {} },
+                    [CONTEXT_DUNGEON] = { name = "Dungeons", addons = {} },
+                    [CONTEXT_RAID]    = { name = "Raid",     addons = {} },
+                    [CONTEXT_PVP]     = { name = "PvP",      addons = {} },
+                },
+                lockedAddons = {},
+                frozenAddons = {},
+                addonStates = {},
+            },
+        },
+        {
+            key = "fps",
+            title = "DynamicFPS",
+            shortTitle = "FPS",
+            dbVar = "DynamicFPSDB",
+            allowKeys = {
+                "enabled", "activePresets", "zones", "autoZoneSwitch", "fpsGuardEnabled",
+                "targetFPSFloor", "autoTuneSpellQueue", "spellQueueMode", "spellQueueManualMS",
+                "spellQueueOffset", "maxForegroundFPS", "maxBackgroundFPS",
+                "combatLogAutoPurge", "questTrackerMode", "declutterAudioMode",
+            },
+            hudKeys = {},
+            reloadKeys = {},
+            defaults = {
+                enabled = true,
+                activePresets = {
+                    OUTDOOR = "ULTRA", CITIES = "COMPETITIVE", DELVES = "BALANCED",
+                    DUNGEONS = "COMPETITIVE", RAID = "COMPETITIVE", PVP = "COMPETITIVE",
+                },
+                autoZoneSwitch = true,
+                fpsGuardEnabled = true,
+                targetFPSFloor = 60,
+                autoTuneSpellQueue = true,
+                spellQueueMode = "SMART_AUTO",
+                spellQueueManualMS = 180,
+                spellQueueOffset = 100,
+                maxForegroundFPS = 0,
+                maxBackgroundFPS = 30,
+                combatLogAutoPurge = "RAID_AND_MPLUS",
+                questTrackerMode = "COLLAPSE_MPLUS_RAID",
+                declutterAudioMode = "MUTE_SPEECH_ONLY",
+            },
+        },
+        {
+            key = "zoom",
+            title = "DynamicZoom",
+            shortTitle = "Zoom",
+            dbVar = "DynamicZoomDB",
+            allowKeys = {
+                "enabled", "maxZoomYards", "reactiveScrollEnabled", "flickBoost",
+                "scrollSpeed", "indirectVisibility", "indirectOffset",
+                "waterCollisionShield", "reduceUnexpectedMovement", "autoZoomEnabled",
+                "zoomRaidCombat", "zoomDungeon", "zoomDelve", "zoomPvP", "zoomOutdoor",
+                "indoorRule", "cityRule", "skyridingDiveTracking", "npcDialogZoom",
+                "npcDialogYards", "pitchTiltPct", "shoulderOffsetVal",
+            },
+            hudKeys = {},
+            reloadKeys = {},
+            defaults = {
+                enabled = true,
+                maxZoomYards = 39,
+                reactiveScrollEnabled = true,
+                flickBoost = 3.0,
+                scrollSpeed = 35,
+                indirectVisibility = true,
+                indirectOffset = 1.5,
+                waterCollisionShield = true,
+                reduceUnexpectedMovement = true,
+                autoZoomEnabled = true,
+                zoomRaidCombat = 39,
+                zoomDungeon = 39,
+                zoomDelve = 39,
+                zoomPvP = 39,
+                zoomOutdoor = 39,
+                indoorRule = "OFF",
+                cityRule = "OFF",
+                skyridingDiveTracking = true,
+                npcDialogZoom = false,
+                npcDialogYards = 15,
+                pitchTiltPct = 0,
+                shoulderOffsetVal = 0.0,
+            },
+        },
+    }
+
+    local SCHEMA_BY_KEY = {}
+    for _, sc in ipairs(PROFILE_SCHEMAS) do
+        sc._allowSet = MakeKeySet(sc.allowKeys)
+        sc._hudSet = MakeKeySet(sc.hudKeys)
+        sc._optInSet = MakeKeySet(sc.optInKeys)
+        sc._reloadSet = MakeKeySet(sc.reloadKeys)
+        SCHEMA_BY_KEY[sc.key] = sc
+    end
+
+    local function GetSchemaDB(sc, createIfMissing)
+        if not sc then return nil end
+        if sc.dbVar == "__SUITE_GLOBAL__" then
+            return EnsureSuiteGlobal()
+        end
+        local tbl = _G[sc.dbVar]
+        if type(tbl) ~= "table" then
+            if not createIfMissing then return nil end
+            tbl = {}
+            _G[sc.dbVar] = tbl
+        end
+        return tbl
+    end
+
+    local function SanitizeSuiteDesktopWindowsExport(dw, includeHud)
+        if type(dw) ~= "table" then return nil end
+        local out = {}
+        for _, k in ipairs({ "masterEnabled", "enabled", "sideBySide", "dragAnywhere", "draggable", "scrollScale" }) do
+            if dw[k] ~= nil and IsSafeScalar(dw[k]) then
+                out[k] = dw[k]
+            end
+        end
+        if includeHud then
+            if type(dw.positions) == "table" then out.positions = DeepCopyClean(dw.positions) end
+            if type(dw.scales) == "table" then out.scales = DeepCopyClean(dw.scales) end
+        end
+        return out
+    end
+
+    local function SanitizePrepRaidBuffsExport(rb, includeHud)
+        if type(rb) ~= "table" then return nil end
+        local out = DeepCopyClean(rb)
+        if type(out) ~= "table" then return nil end
+        if not includeHud then
+            out.point = nil
+            out.relPoint = nil
+            out.x = nil
+            out.y = nil
+        end
+        return out
+    end
+
+    local function SanitizeVaultCustomTasks(tasks)
+        if type(tasks) ~= "table" then return {} end
+        local out = {}
+        for _, t in ipairs(tasks) do
+            if type(t) == "table" and type(t.title) == "string" and t.title ~= "" then
+                out[#out + 1] = {
+                    id = IsSafeScalar(t.id) and t.id or ("task_" .. tostring(#out + 1)),
+                    title = t.title,
+                    scope = (t.scope == "ACCT" or t.scope == "CHAR") and t.scope or "CHAR",
+                    doneAcct = false,
+                    doneChars = {},
+                    resetEpoch = 0,
+                }
+            end
+        end
+        return out
+    end
+
+    local function ExtractSchemaSnapshot(sc, includeHud, includeTalents, includeLoadLists, forceIncludeAllOptIns)
+        local db = GetSchemaDB(sc, false)
+        if type(db) ~= "table" then return nil end
+        local out = {}
+        local count = 0
+        for _, k in ipairs(sc.allowKeys) do
+            if db[k] ~= nil then
+                if sc.key == "suite" and k == "desktopWindows" then
+                    local dw = SanitizeSuiteDesktopWindowsExport(db[k], includeHud)
+                    if dw ~= nil then
+                        out[k] = dw
+                        count = count + 1
+                    end
+                elseif sc.key == "prep" and k == "raidBuffs" then
+                    local rb = SanitizePrepRaidBuffsExport(db[k], includeHud)
+                    if rb ~= nil then
+                        out[k] = rb
+                        count = count + 1
+                    end
+                elseif sc.key == "vault" and k == "customTasks" then
+                    out[k] = SanitizeVaultCustomTasks(db[k])
+                    count = count + 1
+                else
+                    local cv = DeepCopyClean(db[k])
+                    if cv ~= nil then
+                        out[k] = cv
+                        count = count + 1
+                    end
+                end
+            end
+        end
+        if includeHud and type(sc.hudKeys) == "table" then
+            for _, k in ipairs(sc.hudKeys) do
+                if db[k] ~= nil then
+                    local cv = DeepCopyClean(db[k])
+                    if cv ~= nil then
+                        out[k] = cv
+                        count = count + 1
+                    end
+                end
+            end
+        end
+        local wantOptIn = forceIncludeAllOptIns
+            or (sc.optInGroup == "talents" and includeTalents)
+            or (sc.optInGroup == "loadLists" and includeLoadLists)
+        if wantOptIn and type(sc.optInKeys) == "table" then
+            for _, k in ipairs(sc.optInKeys) do
+                if db[k] ~= nil then
+                    local cv = DeepCopyClean(db[k])
+                    if cv ~= nil then
+                        out[k] = cv
+                        count = count + 1
+                    end
+                end
+            end
+        end
+        if count == 0 then return nil end
+        return out
+    end
+
+    local function SanitizeImportedModuleTable(sc, rawMod)
+        if type(rawMod) ~= "table" then return nil, false, false end
+        local clean = {}
+        local hasHud = false
+        local hasOptIn = false
+        for k, v in pairs(rawMod) do
+            if sc._allowSet[k] then
+                if sc.key == "suite" and k == "desktopWindows" and type(v) == "table" then
+                    local dwClean = SanitizeSuiteDesktopWindowsExport(v, true)
+                    if dwClean then
+                        if dwClean.positions ~= nil or dwClean.scales ~= nil then hasHud = true end
+                        clean[k] = dwClean
+                    end
+                elseif sc.key == "prep" and k == "raidBuffs" and type(v) == "table" then
+                    local rbClean = DeepCopyClean(v)
+                    if rbClean then
+                        if rbClean.point ~= nil or rbClean.relPoint ~= nil or rbClean.x ~= nil or rbClean.y ~= nil then
+                            hasHud = true
+                        end
+                        clean[k] = rbClean
+                    end
+                elseif sc.key == "vault" and k == "customTasks" and type(v) == "table" then
+                    clean[k] = SanitizeVaultCustomTasks(v)
+                else
+                    local cv = DeepCopyClean(v)
+                    if cv ~= nil then
+                        clean[k] = cv
+                    end
+                end
+            elseif sc._hudSet[k] then
+                local cv = DeepCopyClean(v)
+                if cv ~= nil then
+                    clean[k] = cv
+                    hasHud = true
+                end
+            elseif sc._optInSet[k] then
+                local cv = DeepCopyClean(v)
+                if cv ~= nil then
+                    clean[k] = cv
+                    hasOptIn = true
+                end
+            end
+        end
+        return clean, hasHud, hasOptIn
+    end
+
+    local function CaptureReloadSnapshot(sc, db)
+        local snap = {}
+        if type(db) ~= "table" then return snap end
+        for _, rk in ipairs(sc.reloadKeys or {}) do
+            snap[rk] = DeepCopyClean(db[rk])
+        end
+        if sc.key == "suite" and type(db.desktopWindows) == "table" then
+            snap["__dw_enabled"] = db.desktopWindows.enabled
+            snap["__dw_master"] = db.desktopWindows.masterEnabled
+        end
+        return snap
+    end
+
+    local function CollectReloadReasons(sc, beforeSnap, afterDB, reasonsOut)
+        if type(afterDB) ~= "table" then return end
+        local anyChanged = false
+        for _, rk in ipairs(sc.reloadKeys or {}) do
+            if not DeepEquals(beforeSnap[rk], afterDB[rk]) then
+                anyChanged = true
+                break
+            end
+        end
+        if not anyChanged and sc.key == "suite" and type(afterDB.desktopWindows) == "table" then
+            if beforeSnap["__dw_enabled"] ~= afterDB.desktopWindows.enabled
+                or beforeSnap["__dw_master"] ~= afterDB.desktopWindows.masterEnabled then
+                anyChanged = true
+            end
+        end
+        if not anyChanged then return end
+        if sc.key == "suite" then
+            reasonsOut[#reasonsOut + 1] = "Suite module enable states, AddOns menu hook, or Desktop Windows changed"
+        elseif sc.key == "bags" then
+            reasonsOut[#reasonsOut + 1] = "DynamicBags bag replacement setting changed"
+        elseif sc.key == "chat" then
+            reasonsOut[#reasonsOut + 1] = "DynamicChat skin, buttons, or timestamp layout changed"
+        elseif sc.key == "load" then
+            reasonsOut[#reasonsOut + 1] = "DynamicLoad zone addon lists changed"
+        else
+            reasonsOut[#reasonsOut + 1] = tostring(sc.title) .. " requires a UI reload"
+        end
+    end
+
+    local function ApplySchemaKeysToDB(sc, db, srcTbl, mode, applyHud)
+        if type(db) ~= "table" or type(srcTbl) ~= "table" then return false end
+        local isReplace = (mode ~= "MERGE")
+        local appliedHud = false
+
+        local function ResetKeyToDefault(k)
+            if sc.defaults and sc.defaults[k] ~= nil then
+                db[k] = DeepCopyClean(sc.defaults[k])
+            else
+                db[k] = nil
+            end
+        end
+
+        if isReplace then
+            for _, k in ipairs(sc.allowKeys) do
+                if sc.key == "suite" and k == "desktopWindows" then
+                    if type(db.desktopWindows) ~= "table" then
+                        db.desktopWindows = DeepCopyClean(sc.defaults.desktopWindows)
+                    else
+                        local preservedPos = (not applyHud) and DeepCopyClean(db.desktopWindows.positions) or nil
+                        local preservedScale = (not applyHud) and DeepCopyClean(db.desktopWindows.scales) or nil
+                        local migFlag = db.desktopWindows.migratedFromPrep
+                        local defDW = sc.defaults.desktopWindows or {}
+                        for dwK, dwV in pairs(defDW) do
+                            db.desktopWindows[dwK] = DeepCopyClean(dwV)
+                        end
+                        if migFlag ~= nil then db.desktopWindows.migratedFromPrep = migFlag end
+                        if preservedPos ~= nil then db.desktopWindows.positions = preservedPos end
+                        if preservedScale ~= nil then db.desktopWindows.scales = preservedScale end
+                    end
+                elseif sc.key == "prep" and k == "raidBuffs" then
+                    if type(db.raidBuffs) ~= "table" then
+                        db.raidBuffs = DeepCopyClean(sc.defaults.raidBuffs)
+                    else
+                        local pPt = db.raidBuffs.point
+                        local pRp = db.raidBuffs.relPoint
+                        local pX = db.raidBuffs.x
+                        local pY = db.raidBuffs.y
+                        for rbK, rbV in pairs(sc.defaults.raidBuffs or {}) do
+                            db.raidBuffs[rbK] = DeepCopyClean(rbV)
+                        end
+                        if not applyHud then
+                            db.raidBuffs.point = pPt
+                            db.raidBuffs.relPoint = pRp
+                            db.raidBuffs.x = pX
+                            db.raidBuffs.y = pY
+                        end
+                    end
+                else
+                    ResetKeyToDefault(k)
+                end
+            end
+            if applyHud then
+                for _, k in ipairs(sc.hudKeys or {}) do
+                    ResetKeyToDefault(k)
+                end
+            end
+            local hasOptInPayload = false
+            for _, k in ipairs(sc.optInKeys or {}) do
+                if srcTbl[k] ~= nil then
+                    hasOptInPayload = true
+                    break
+                end
+            end
+            if hasOptInPayload then
+                for _, k in ipairs(sc.optInKeys or {}) do
+                    ResetKeyToDefault(k)
+                end
+            end
+        end
+
+        for _, k in ipairs(sc.allowKeys) do
+            local val = srcTbl[k]
+            if val ~= nil then
+                if sc.key == "suite" and k == "desktopWindows" and type(val) == "table" then
+                    db.desktopWindows = type(db.desktopWindows) == "table" and db.desktopWindows or {}
+                    for _, dwk in ipairs({ "masterEnabled", "enabled", "sideBySide", "dragAnywhere", "draggable", "scrollScale" }) do
+                        if val[dwk] ~= nil then db.desktopWindows[dwk] = val[dwk] end
+                    end
+                    if applyHud then
+                        if type(val.positions) == "table" then
+                            db.desktopWindows.positions = isReplace and DeepCopyClean(val.positions) or DeepMerge(db.desktopWindows.positions, val.positions)
+                            appliedHud = true
+                        end
+                        if type(val.scales) == "table" then
+                            db.desktopWindows.scales = isReplace and DeepCopyClean(val.scales) or DeepMerge(db.desktopWindows.scales, val.scales)
+                            appliedHud = true
+                        end
+                    end
+                elseif sc.key == "prep" and k == "raidBuffs" and type(val) == "table" then
+                    db.raidBuffs = type(db.raidBuffs) == "table" and db.raidBuffs or {}
+                    for rbK, rbV in pairs(val) do
+                        local isPosKey = (rbK == "point" or rbK == "relPoint" or rbK == "x" or rbK == "y")
+                        if (not isPosKey) or applyHud then
+                            db.raidBuffs[rbK] = DeepCopyClean(rbV)
+                            if isPosKey then appliedHud = true end
+                        end
+                    end
+                elseif type(val) == "table" and not isReplace and not IsContiguousArray(val) then
+                    db[k] = DeepMerge(type(db[k]) == "table" and db[k] or {}, val)
+                else
+                    db[k] = DeepCopyClean(val)
+                end
+            end
+        end
+
+        if applyHud then
+            for _, k in ipairs(sc.hudKeys or {}) do
+                if srcTbl[k] ~= nil then
+                    if type(srcTbl[k]) == "table" and not isReplace and not IsContiguousArray(srcTbl[k]) then
+                        db[k] = DeepMerge(type(db[k]) == "table" and db[k] or {}, srcTbl[k])
+                    else
+                        db[k] = DeepCopyClean(srcTbl[k])
+                    end
+                    appliedHud = true
+                end
+            end
+        end
+
+        for _, k in ipairs(sc.optInKeys or {}) do
+            if srcTbl[k] ~= nil then
+                if type(srcTbl[k]) == "table" and not isReplace and not IsContiguousArray(srcTbl[k]) then
+                    db[k] = DeepMerge(type(db[k]) == "table" and db[k] or {}, srcTbl[k])
+                else
+                    db[k] = DeepCopyClean(srcTbl[k])
+                end
+            end
+        end
+
+        return appliedHud
+    end
+
+    local function SyncSuiteMirrorsAfterApply(appliedSet, appliedHud)
+        if appliedSet.suite then
+            local g = EnsureSuiteGlobal()
+            if type(_G.DynamicLoadDB) == "table" then
+                for _, k in ipairs({ "surfaceTheme", "accentKey", "customAccent", "fontKey", "fontFamily", "pillFillAlpha", "recentColors", "moduleOrder", "layoutSyncScope", "toastScale", "toastAlpha", "toastOpacity", "toastActionDuration", "toastInfoDuration", "toastSoundEnabled", "toastDisplayMode" }) do
+                    if g[k] ~= nil then
+                        _G.DynamicLoadDB[k] = DeepCopyClean(g[k])
+                    end
+                end
+                if appliedHud and type(g.toastPos) == "table" then
+                    _G.DynamicLoadDB.toastPos = DeepCopyClean(g.toastPos)
+                end
+            end
+            if type(_G.DynamicPrepDB) == "table" and type(g.desktopWindows) == "table" then
+                _G.DynamicPrepDB.blizzWinNoAutoClose = (g.desktopWindows.sideBySide ~= false)
+                _G.DynamicPrepDB.blizzWinDraggable = (g.desktopWindows.dragAnywhere ~= false)
+                _G.DynamicPrepDB.blizzWinScrollScale = (g.desktopWindows.scrollScale ~= false)
+            end
+            if _G.DynamicSuiteDB and type(g.disabledModules) == "table" then
+                _G.DynamicSuiteDB.disabledModules = DeepCopyClean(g.disabledModules)
+            end
+        end
+        if appliedSet.marker and appliedHud and type(_G.DynamicMarkerDB) == "table" then
+            local dm = _G.DynamicMarkerDB
+            local g = EnsureSuiteGlobal()
+            g.hudPositions = type(g.hudPositions) == "table" and g.hudPositions or {}
+            if type(dm.targetBarPos) == "table" then
+                local tp = DeepCopyClean(dm.targetBarPos)
+                g.hudPositions.TARGET = tp
+                g.hudPositions.TargetBar = DeepCopyClean(tp)
+                g.hudPositions.target = DeepCopyClean(tp)
+                g.hudPositions.DynamicMarkerTargetBar = DeepCopyClean(tp)
+            end
+            if type(dm.flareBarPos) == "table" then
+                local fp = DeepCopyClean(dm.flareBarPos)
+                g.hudPositions.FLARE = fp
+                g.hudPositions.FlareBar = DeepCopyClean(fp)
+                g.hudPositions.flare = DeepCopyClean(fp)
+                g.hudPositions.DynamicMarkerFlareBar = DeepCopyClean(fp)
+            end
+        end
+    end
+
+    local function RefreshAppliedModules(appliedSet, appliedHud)
+        if appliedSet.load then
+            EnforceProtectedSuiteModules()
+        end
+        if appliedSet.suite then
+            if addonTable.ApplySuiteThemeAndGeometry then pcall(addonTable.ApplySuiteThemeAndGeometry) end
+            if addonTable.ApplyToastVisuals then pcall(addonTable.ApplyToastVisuals) end
+            if addonTable.RefreshGameMenuButtons then pcall(addonTable.RefreshGameMenuButtons) end
+            if addonTable.ApplyAllBlizzardWindowStates then pcall(addonTable.ApplyAllBlizzardWindowStates) end
+        end
+        local mods = DynamicSuite.modules or {}
+        if appliedSet.marker then
+            local dm = _G.DynamicMarker or mods.marker or mods.DynamicMarker
+            if type(dm) == "table" then
+                if type(dm.ApplyHUDPosition) == "function" and dm.targetBar then pcall(dm.ApplyHUDPosition, dm, dm.targetBar, "TargetBar", -140) end
+                if type(dm.ApplyHUDPosition) == "function" and dm.flareBar then pcall(dm.ApplyHUDPosition, dm, dm.flareBar, "FlareBar", -182) end
+                if type(dm.RefreshTargetBar) == "function" then pcall(dm.RefreshTargetBar, dm) end
+                if type(dm.RefreshFlareBar) == "function" then pcall(dm.RefreshFlareBar, dm) end
+                if type(dm.SyncSecureFlareEngine) == "function" then pcall(dm.SyncSecureFlareEngine, dm) end
+                if type(dm.ApplyFlareKeybinds) == "function" then pcall(dm.ApplyFlareKeybinds, dm) end
+                if type(dm.RefreshAll) == "function" then pcall(dm.RefreshAll, dm) end
+            end
+        end
+        if appliedSet.prep then
+            local dp = _G.DynamicPrep or mods.prep or mods.DynamicPrep
+            if type(dp) == "table" then
+                if type(dp.ApplyBarGeometry) == "function" then pcall(dp.ApplyBarGeometry, dp) end
+                if type(dp.RefreshBar) == "function" then pcall(dp.RefreshBar, dp) end
+                if type(dp.RefreshRaidBuffs) == "function" then pcall(dp.RefreshRaidBuffs, dp) end
+            end
+        end
+        if appliedSet.talent then
+            local dt = _G.DynamicTalent or mods.talent or mods.DynamicTalent
+            if type(dt) == "table" then
+                if type(dt.RefreshTalentDock) == "function" then pcall(dt.RefreshTalentDock, dt) end
+                if type(dt.UpdateTalentTreeBackdrop) == "function" then pcall(dt.UpdateTalentTreeBackdrop, dt) end
+                if type(dt.ApplyTalentReminderToastVisuals) == "function" then pcall(dt.ApplyTalentReminderToastVisuals, dt) end
+            end
+        end
+        if appliedSet.cursor then
+            local dc = _G.DynamicCursor or mods.cursor or mods.DynamicCursor
+            if type(dc) == "table" then
+                if type(dc.RefreshAll) == "function" then pcall(dc.RefreshAll, dc) end
+                if type(dc.RefreshWorkspaceUI) == "function" then pcall(dc.RefreshWorkspaceUI, dc) end
+            end
+        end
+        if appliedSet.zoom then
+            local dz = _G.DynamicZoom or mods.zoom or mods.DynamicZoom
+            if type(dz) == "table" and type(dz.ApplyEngineSettings) == "function" then
+                pcall(dz.ApplyEngineSettings, dz, false)
+            end
+        end
+        if appliedSet.fps then
+            local df = _G.DynamicFPS or mods.fps or mods.DynamicFPS
+            if type(df) == "table" and type(df.RefreshWorkspaceUI) == "function" then
+                pcall(df.RefreshWorkspaceUI)
+            end
+        end
+        if appliedSet.group then
+            local dg = _G.DynamicGroup or mods.group or mods.DynamicGroup
+            if type(dg) == "table" then
+                if type(dg.UpdatePortalBarVisuals) == "function" then pcall(dg.UpdatePortalBarVisuals, dg) end
+                if type(dg.UpdateLFGMiniBar) == "function" then pcall(dg.UpdateLFGMiniBar, dg) end
+            end
+        end
+        if appliedSet.bags then
+            local dbag = _G.DynamicBags or mods.bags or mods.DynamicBags
+            if type(dbag) == "table" and type(dbag.ApplyThemeToUI) == "function" then
+                pcall(dbag.ApplyThemeToUI, dbag)
+            end
+        end
+        if appliedSet.mail then
+            local dmail = _G.DynamicMail or mods.mail or mods.DynamicMail
+            if type(dmail) == "table" and type(dmail.ApplyTheme) == "function" then
+                pcall(dmail.ApplyTheme, dmail)
+            end
+        end
+        if appliedSet.chat then
+            local dchat = _G.DynamicChat or mods.chat or mods.DynamicChat
+            if type(dchat) == "table" then
+                if type(dchat.ApplyChatFrameTypography) == "function" then pcall(dchat.ApplyChatFrameTypography, dchat) end
+                if type(dchat.ApplyEditBoxSettings) == "function" then pcall(dchat.ApplyEditBoxSettings, dchat) end
+                if type(dchat.ApplySavedChatFramePosition) == "function" then pcall(dchat.ApplySavedChatFramePosition, dchat) end
+                if type(dchat.ApplyThemeToUI) == "function" then pcall(dchat.ApplyThemeToUI, dchat) end
+            end
+        end
+        if appliedSet.vault then
+            local dv = _G.DynamicVault or mods.vault or mods.DynamicVault
+            if type(dv) == "table" then
+                if type(dv.RefreshOverlays) == "function" then pcall(dv.RefreshOverlays, dv) end
+                if type(dv.ApplyTheme) == "function" then pcall(dv.ApplyTheme, dv) end
+            end
+        end
+        if appliedSet.dialogue then
+            local dd = _G.DynamicDialogue or mods.dialogue or mods.DynamicDialogue
+            if type(dd) == "table" and type(dd.ApplyReaderTheme) == "function" then
+                pcall(dd.ApplyReaderTheme, dd)
+            end
+        end
+        if appliedHud and addonTable.ClampAllSuiteHudsToScreen then
+            pcall(addonTable.ClampAllSuiteHudsToScreen)
+        end
+        if addonTable.mainFrame and addonTable.mainFrame.RefreshLeftRailLayout then
+            pcall(addonTable.mainFrame.RefreshLeftRailLayout)
+        end
+    end
+
+    local function GetBackupStorageRoot()
+        EnsureSuiteGlobal()
+        _G.DynamicSuiteDB.global = _G.DynamicSuiteDB.global or {}
+        return _G.DynamicSuiteDB.global
+    end
+
+    local ProfileCodec = {}
+
+    function ProfileCodec.GetSchemas()
+        local out = {}
+        for _, sc in ipairs(PROFILE_SCHEMAS) do
+            out[#out + 1] = {
+                key = sc.key,
+                title = sc.title,
+                shortTitle = sc.shortTitle,
+                hasHud = (#(sc.hudKeys or {}) > 0) or sc.key == "suite" or sc.key == "prep",
+                optInGroup = sc.optInGroup,
+                hasReloadKeys = (#(sc.reloadKeys or {}) > 0),
+            }
+        end
+        return out
+    end
+
+    function ProfileCodec.ExportProfile(opts)
+        local _encUtil = _G.C_EncodingUtil
+        local _enumNS = _G.Enum
+        if type(_encUtil) ~= "table" or type(_encUtil.SerializeCBOR) ~= "function"
+            or type(_encUtil.CompressString) ~= "function" or type(_encUtil.EncodeBase64) ~= "function" then
+            return false, "This game client does not support C_EncodingUtil profile encoding."
+        end
+        opts = type(opts) == "table" and opts or {}
+        local includeHud = (opts.includeHud ~= false)
+        local includeTalents = (opts.includeTalents == true)
+        local includeLoadLists = (opts.includeLoadLists == true)
+
+        local wantedSet = nil
+        if type(opts.modules) == "table" then
+            wantedSet = {}
+            local anyListed = false
+            for k, v in pairs(opts.modules) do
+                if type(k) == "number" and type(v) == "string" then
+                    wantedSet[v] = true
+                    anyListed = true
+                elseif type(k) == "string" and v == true then
+                    wantedSet[k] = true
+                    anyListed = true
+                end
+            end
+            if not anyListed then
+                return false, "Select at least one module to export."
+            end
+        end
+
+        local exportedModules = {}
+        local exportedOrder = {}
+        for _, sc in ipairs(PROFILE_SCHEMAS) do
+            if (not wantedSet) or wantedSet[sc.key] then
+                local snap = ExtractSchemaSnapshot(sc, includeHud, includeTalents, includeLoadLists, false)
+                if snap then
+                    exportedModules[sc.key] = snap
+                    exportedOrder[#exportedOrder + 1] = sc.key
+                end
+            end
+        end
+
+        if #exportedOrder == 0 then
+            return false, "None of the selected modules have saved settings to export yet."
+        end
+
+        local exportDate = (type(_G.date) == "function") and _G.date("%d/%m/%Y") or "25/11/2026"
+        local payload = {
+            v = SCHEMA_VERSION,
+            app = "DynamicSuite",
+            ver = tostring(ADDON_VERSION or "2.10.3"),
+            date = exportDate,
+            opts = {
+                hud = includeHud,
+                talents = includeTalents,
+                loadLists = includeLoadLists,
+            },
+            modules = exportedModules,
+        }
+
+        local cborReady = PrepareForCBOR(payload, 0)
+        local okSer, cborBin = pcall(_encUtil.SerializeCBOR, cborReady)
+        if not okSer or type(cborBin) ~= "string" or cborBin == "" then
+            return false, "Could not serialise profile data."
+        end
+        local zlibMethod = (_enumNS and _enumNS.CompressionMethod and _enumNS.CompressionMethod.Zlib) or 0
+        local okComp, compBin = pcall(_encUtil.CompressString, cborBin, zlibMethod)
+        if not okComp or type(compBin) ~= "string" or compBin == "" then
+            return false, "Could not compress profile data."
+        end
+        local okB64, b64 = pcall(_encUtil.EncodeBase64, compBin)
+        if not okB64 or type(b64) ~= "string" or b64 == "" then
+            return false, "Could not encode profile string."
+        end
+
+        local finalStr = PROFILE_PREFIX .. b64
+        if #finalStr > MAX_STRING_BYTES then
+            return false, "Exported profile exceeds the 256 KB safety limit. Try turning off Talent Loadouts or Addon Zone Lists."
+        end
+
+        return true, {
+            encoded = finalStr,
+            charCount = #finalStr,
+            moduleCount = #exportedOrder,
+            moduleKeys = exportedOrder,
+            date = exportDate,
+            ver = payload.ver,
+            opts = payload.opts,
+        }
+    end
+
+    function ProfileCodec.DecodeProfile(rawStr)
+        if not IsSafeScalar(rawStr) or type(rawStr) ~= "string" then
+            return false, "Paste a valid !DS1! profile string first."
+        end
+        local trimmed = rawStr:gsub("^%s+", ""):gsub("%s+$", "")
+        if trimmed == "" then
+            return false, "Paste a valid !DS1! profile string first."
+        end
+        if #trimmed > MAX_STRING_BYTES then
+            return false, "Profile string is too large (over 256 KB) and was rejected for safety."
+        end
+        local futurePrefixVer = trimmed:match("^!DS(%d+)!")
+        if futurePrefixVer and tonumber(futurePrefixVer) and tonumber(futurePrefixVer) > SCHEMA_VERSION then
+            return false, "This profile was exported from a newer version of DynamicSuite. Please update DynamicSuite before importing."
+        end
+        if trimmed:sub(1, #PROFILE_PREFIX) ~= PROFILE_PREFIX then
+            return false, "Unrecognised profile format. Expected a string starting with !DS1!."
+        end
+
+        local _encUtil = _G.C_EncodingUtil
+        local _enumNS = _G.Enum
+        if type(_encUtil) ~= "table" or type(_encUtil.DecodeBase64) ~= "function"
+            or type(_encUtil.DecompressString) ~= "function" or type(_encUtil.DeserializeCBOR) ~= "function" then
+            return false, "This game client does not support C_EncodingUtil profile decoding."
+        end
+
+        local b64Body = trimmed:sub(#PROFILE_PREFIX + 1)
+        if b64Body == "" then
+            return false, "Profile string is empty after the !DS1! header."
+        end
+
+        local okDec, compBin = pcall(_encUtil.DecodeBase64, b64Body)
+        if not okDec or type(compBin) ~= "string" or compBin == "" then
+            return false, "Could not read Base64 data. Make sure the entire !DS1! string was copied."
+        end
+
+        local zlibMethod = (_enumNS and _enumNS.CompressionMethod and _enumNS.CompressionMethod.Zlib) or 0
+        local okDecomp, cborBin = pcall(_encUtil.DecompressString, compBin, zlibMethod)
+        if not okDecomp or type(cborBin) ~= "string" or cborBin == "" then
+            return false, "Could not decompress profile data. The string may be truncated or damaged."
+        end
+
+        local okDeser, rawRoot = pcall(_encUtil.DeserializeCBOR, cborBin)
+        if not okDeser or type(rawRoot) ~= "table" then
+            return false, "Could not read profile data. The string may be damaged."
+        end
+
+        local root, cleanErr = RestoreFromCBOR(rawRoot, 0)
+        if cleanErr or type(root) ~= "table" then
+            return false, cleanErr or "Profile data failed safety validation."
+        end
+
+        local verNum = tonumber(root.v)
+        if not verNum or math.floor(verNum) ~= verNum or verNum < 1 then
+            return false, "Invalid profile schema version."
+        end
+        if verNum > SCHEMA_VERSION then
+            return false, "This profile was exported from a newer version of DynamicSuite. Please update DynamicSuite before importing."
+        end
+        if type(root.modules) ~= "table" then
+            return false, "Profile string does not contain any module settings."
+        end
+
+        local cleanModules = {}
+        local moduleKeys = {}
+        local unknownModules = {}
+        local hudIncluded = false
+        local talentsIncluded = false
+        local loadListsIncluded = false
+        local warnings = {}
+
+        for _, sc in ipairs(PROFILE_SCHEMAS) do
+            local rawMod = root.modules[sc.key]
+            if rawMod ~= nil then
+                local cleanMod, modHasHud, modHasOptIn = SanitizeImportedModuleTable(sc, rawMod)
+                if cleanMod and next(cleanMod) ~= nil then
+                    cleanModules[sc.key] = cleanMod
+                    moduleKeys[#moduleKeys + 1] = sc.key
+                    if modHasHud then hudIncluded = true end
+                    if modHasOptIn and sc.optInGroup == "talents" then talentsIncluded = true end
+                    if modHasOptIn and sc.optInGroup == "loadLists" then loadListsIncluded = true end
+                end
+            end
+        end
+
+        for mk in pairs(root.modules) do
+            if type(mk) == "string" and not SCHEMA_BY_KEY[mk] then
+                unknownModules[#unknownModules + 1] = mk
+            end
+        end
+        table.sort(unknownModules)
+
+        if #moduleKeys == 0 then
+            return false, "No compatible DynamicSuite settings were found in this profile string."
+        end
+
+        for _, mk in ipairs(moduleKeys) do
+            if mk ~= "suite" and addonTable.IsSuiteModuleCurrentlyDisabled and addonTable.IsSuiteModuleCurrentlyDisabled(mk) then
+                local sc = SCHEMA_BY_KEY[mk]
+                warnings[#warnings + 1] = string.format("%s is currently disabled in the suite.", sc and sc.title or mk)
+            end
+        end
+        if talentsIncluded then
+            warnings[#warnings + 1] = "Includes DynamicTalent loadouts and boss/zone bind rules."
+        end
+        if loadListsIncluded then
+            warnings[#warnings + 1] = "Includes DynamicLoad zone addon lists (protected suite modules remain locked ON)."
+        end
+        if #unknownModules > 0 then
+            warnings[#warnings + 1] = "Ignored unknown module entries: " .. table.concat(unknownModules, ", ") .. "."
+        end
+
+        local rawOpts = type(root.opts) == "table" and root.opts or {}
+        return true, {
+            ok = true,
+            v = verNum,
+            app = (type(root.app) == "string" and root.app ~= "") and root.app or "DynamicSuite",
+            ver = (type(root.ver) == "string" and root.ver ~= "") and root.ver or "Unknown",
+            date = (type(root.date) == "string" and root.date ~= "") and root.date or "Unknown",
+            opts = {
+                hud = (rawOpts.hud == true) or hudIncluded,
+                talents = (rawOpts.talents == true) or talentsIncluded,
+                loadLists = (rawOpts.loadLists == true) or loadListsIncluded,
+            },
+            modules = cleanModules,
+            moduleKeys = moduleKeys,
+            unknownModules = unknownModules,
+            warnings = warnings,
+        }
+    end
+
+    function ProfileCodec.ApplyImport(decodedOrRaw, applyOpts)
+        if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+            return false, "Import is disabled during combat. Try again once combat ends."
+        end
+        local decoded = decodedOrRaw
+        if type(decodedOrRaw) == "string" then
+            local okD, resOrErr = ProfileCodec.DecodeProfile(decodedOrRaw)
+            if not okD then return false, resOrErr end
+            decoded = resOrErr
+        end
+        if type(decoded) ~= "table" or type(decoded.modules) ~= "table" then
+            return false, "Invalid profile preview data."
+        end
+
+        applyOpts = type(applyOpts) == "table" and applyOpts or {}
+        local mode = (applyOpts.mode == "MERGE") and "MERGE" or "REPLACE"
+        local includeHud = (applyOpts.includeHud ~= false)
+
+        local selectedOrder = {}
+        local selectedSet = {}
+        if type(applyOpts.selectedModules) == "table" then
+            for _, sc in ipairs(PROFILE_SCHEMAS) do
+                if applyOpts.selectedModules[sc.key] == true and decoded.modules[sc.key] then
+                    selectedOrder[#selectedOrder + 1] = sc.key
+                    selectedSet[sc.key] = true
+                end
+            end
+        else
+            for _, mk in ipairs(decoded.moduleKeys or {}) do
+                if SCHEMA_BY_KEY[mk] and decoded.modules[mk] then
+                    selectedOrder[#selectedOrder + 1] = mk
+                    selectedSet[mk] = true
+                end
+            end
+        end
+
+        if #selectedOrder == 0 then
+            return false, "Select at least one module to import."
+        end
+
+        local backupModules = {}
+        local reloadBefore = {}
+        for _, mk in ipairs(selectedOrder) do
+            local sc = SCHEMA_BY_KEY[mk]
+            local snap = ExtractSchemaSnapshot(sc, true, true, true, true)
+            if snap then
+                backupModules[mk] = snap
+            end
+            local curDB = GetSchemaDB(sc, true)
+            reloadBefore[mk] = CaptureReloadSnapshot(sc, curDB)
+        end
+
+        local backupRoot = GetBackupStorageRoot()
+        backupRoot._lastImportBackup = {
+            date = (type(_G.date) == "function") and _G.date("%d/%m/%Y") or "25/11/2026",
+            timestamp = (type(_G.time) == "function") and _G.time() or 0,
+            mode = mode,
+            moduleKeys = DeepCopyClean(selectedOrder),
+            modules = backupModules,
+        }
+
+        local anyHudApplied = false
+        local reloadReasons = {}
+        for _, mk in ipairs(selectedOrder) do
+            local sc = SCHEMA_BY_KEY[mk]
+            local db = GetSchemaDB(sc, true)
+            local hudApplied = ApplySchemaKeysToDB(sc, db, decoded.modules[mk], mode, includeHud)
+            if hudApplied then
+                anyHudApplied = true
+            end
+            CollectReloadReasons(sc, reloadBefore[mk], db, reloadReasons)
+        end
+
+        SyncSuiteMirrorsAfterApply(selectedSet, anyHudApplied)
+        RefreshAppliedModules(selectedSet, anyHudApplied)
+
+        return true, {
+            appliedModules = selectedOrder,
+            appliedCount = #selectedOrder,
+            mode = mode,
+            appliedHud = anyHudApplied,
+            needsReload = (#reloadReasons > 0),
+            reloadReasons = reloadReasons,
+        }
+    end
+
+    function ProfileCodec.GetLastBackupInfo()
+        local g = (_G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table") and _G.DynamicSuiteDB.global or nil
+        local bk = g and g._lastImportBackup
+        if type(bk) ~= "table" or type(bk.modules) ~= "table" then
+            return nil
+        end
+        local keys = type(bk.moduleKeys) == "table" and bk.moduleKeys or {}
+        if #keys == 0 then
+            for k in pairs(bk.modules) do keys[#keys + 1] = k end
+        end
+        if #keys == 0 then return nil end
+        return {
+            date = tostring(bk.date or "Unknown"),
+            mode = tostring(bk.mode or "REPLACE"),
+            moduleCount = #keys,
+            moduleKeys = keys,
+        }
+    end
+
+    function ProfileCodec.RollbackLastImport()
+        if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+            return false, "Undo Last Import is disabled during combat. Try again once combat ends."
+        end
+        local g = (_G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table") and _G.DynamicSuiteDB.global or nil
+        local bk = g and g._lastImportBackup
+        if type(bk) ~= "table" or type(bk.modules) ~= "table" then
+            return false, "No previous import backup was found."
+        end
+
+        local keys = {}
+        local restoredSet = {}
+        for _, sc in ipairs(PROFILE_SCHEMAS) do
+            if bk.modules[sc.key] then
+                keys[#keys + 1] = sc.key
+                restoredSet[sc.key] = true
+            end
+        end
+        if #keys == 0 then
+            return false, "Saved import backup contains no module data."
+        end
+
+        local reloadBefore = {}
+        for _, mk in ipairs(keys) do
+            local sc = SCHEMA_BY_KEY[mk]
+            local curDB = GetSchemaDB(sc, true)
+            reloadBefore[mk] = CaptureReloadSnapshot(sc, curDB)
+        end
+
+        local anyHudApplied = false
+        local reloadReasons = {}
+        for _, mk in ipairs(keys) do
+            local sc = SCHEMA_BY_KEY[mk]
+            local db = GetSchemaDB(sc, true)
+            local hudApplied = ApplySchemaKeysToDB(sc, db, bk.modules[mk], "REPLACE", true)
+            if hudApplied then
+                anyHudApplied = true
+            end
+            CollectReloadReasons(sc, reloadBefore[mk], db, reloadReasons)
+        end
+
+        g._lastImportBackup = nil
+        SyncSuiteMirrorsAfterApply(restoredSet, anyHudApplied)
+        RefreshAppliedModules(restoredSet, anyHudApplied)
+
+        return true, {
+            restoredModules = keys,
+            restoredCount = #keys,
+            appliedHud = anyHudApplied,
+            needsReload = (#reloadReasons > 0),
+            reloadReasons = reloadReasons,
+        }
+    end
+
+    addonTable.ProfileCodec = ProfileCodec
+    DynamicSuite.ProfileCodec = ProfileCodec
+    DynamicSuite.ExportProfile = ProfileCodec.ExportProfile
+    DynamicSuite.DecodeProfile = ProfileCodec.DecodeProfile
+    DynamicSuite.ApplyProfileImport = ProfileCodec.ApplyImport
+    DynamicSuite.RollbackLastImport = ProfileCodec.RollbackLastImport
+    DynamicSuite.GetLastImportBackupInfo = ProfileCodec.GetLastBackupInfo
+    DynamicSuite.GetProfileSchemaList = ProfileCodec.GetSchemas
+end
+
 -- Commands that only print / reload / defer in combat; everything else opens the config window.
 local COMBAT_SAFE_SUITE_COMMANDS = {
     reload = true, auto = true, status = true, lock = true, unlock = true, freeze = true, profile = true,
@@ -11512,6 +13370,18 @@ local function HandleSuiteSlashCommandInner(msg)
     elseif cmd == "studio" then
         if addonTable.OpenWorkspaceView then
             addonTable.OpenWorkspaceView("THEME_STUDIO")
+        else
+            OpenMainSuiteWindowFallback()
+        end
+
+    elseif cmd == "export" or cmd == "import" or cmd == "profiles" then
+        if addonTable.OpenWorkspaceView then
+            addonTable.OpenWorkspaceView("THEME_STUDIO", 3)
+            if addonTable.OpenSuiteStudioTab then
+                pcall(addonTable.OpenSuiteStudioTab, 3)
+            end
+        elseif addonTable.OpenSuiteStudioTab then
+            addonTable.OpenSuiteStudioTab(3)
         else
             OpenMainSuiteWindowFallback()
         end

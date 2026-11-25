@@ -3296,6 +3296,795 @@ _G.DynamicSuite = _G.DynamicSuite or {}
 _G.DynamicSuite.OpenColorPicker = OpenDSColorPicker
 
 --------------------------------------------------------------------------------
+-- Suite Studio Tab 3: Profile Import & Export + Obsidian Reload Modal
+--------------------------------------------------------------------------------
+local profileReloadModal = nil
+local function ShowProfileReloadModal(reloadReasons)
+    if profileReloadModal and profileReloadModal:IsShown() then
+        profileReloadModal:Hide()
+    end
+    local ar, ag, ab = UI.GetActiveAccentColor()
+    local surf = UI.GetActiveSurfaceColors()
+    if not profileReloadModal then
+        local m = _G.CreateFrame("Frame", "DynamicSuiteProfileReloadModal", _G.UIParent)
+        m:SetSize(460, 232)
+        m:SetPoint("CENTER", _G.UIParent, "CENTER", 0, 20)
+        m:SetFrameStrata("FULLSCREEN_DIALOG")
+        m:SetFrameLevel(310)
+        m:EnableMouse(true)
+        m:SetClampedToScreen(true)
+        m.bg = UI.SolidTex(m, "BACKGROUND", 0, surf.panel.r, surf.panel.g, surf.panel.b, 0.99)
+        m.bg:SetAllPoints()
+        UI.CreatePixelBorder(m, ar, ag, ab, 0.95, 3)
+
+        m.topBar = UI.SolidTex(m, "OVERLAY", 4, ar, ag, ab, 1.0)
+        m.topBar:SetHeight(2)
+        m.topBar:SetPoint("TOPLEFT", m, "TOPLEFT", 1, -1)
+        m.topBar:SetPoint("TOPRIGHT", m, "TOPRIGHT", -1, -1)
+
+        m.title = m:CreateFontString(nil, "OVERLAY")
+        m.title:SetPoint("TOPLEFT", m, "TOPLEFT", 18, -16)
+        m.title:SetPoint("RIGHT", m, "RIGHT", -18, 0)
+        m.title:SetJustifyH("LEFT")
+        UI.SetFont(m.title, 13, "", ar, ag, ab, 1.0)
+        m.title:SetText("Profile Imported - UI Reload Recommended")
+
+        m.desc = m:CreateFontString(nil, "OVERLAY")
+        m.desc:SetPoint("TOPLEFT", m.title, "BOTTOMLEFT", 0, -10)
+        m.desc:SetPoint("RIGHT", m, "RIGHT", -18, 0)
+        m.desc:SetJustifyH("LEFT")
+        m.desc:SetWordWrap(true)
+        UI.SetFont(m.desc, 11, "", 0.88, 0.91, 0.96, 0.98)
+
+        m.btnLater = CreateFlatButton(m, 110, 26, "Later", false)
+        m.btnLater:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", -16, 14)
+        m.btnLater:SetScript("OnClick", function() m:Hide() end)
+
+        m.btnReload = CreateFlatButton(m, 146, 26, "Reload UI Now", true)
+        m.btnReload:SetPoint("RIGHT", m.btnLater, "LEFT", -8, 0)
+        m.btnReload:SetScript("OnClick", function()
+            if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+                print("|cFF38BDF8DynamicSuite:|r Cannot reload UI while in combat. Try again after combat ends.")
+                return
+            end
+            m:Hide()
+            if type(_G.ReloadUI) == "function" then
+                _G.ReloadUI()
+            end
+        end)
+
+        if type(_G.UISpecialFrames) == "table" then
+            local exists = false
+            for _, fn in ipairs(_G.UISpecialFrames) do
+                if fn == "DynamicSuiteProfileReloadModal" then exists = true break end
+            end
+            if not exists then table.insert(_G.UISpecialFrames, "DynamicSuiteProfileReloadModal") end
+        end
+        profileReloadModal = m
+    end
+
+    local m = profileReloadModal
+    m.bg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.99)
+    m.dsBorder:SetColor(ar, ag, ab, 0.95)
+    m.topBar:SetColorTexture(ar, ag, ab, 1.0)
+    m.title:SetTextColor(ar, ag, ab, 1.0)
+    m.btnReload:SetSelected(true, { r = ar, g = ag, b = ab })
+
+    local lines = {
+        "Live settings have been applied. Reload your UI to finish updating:",
+        "",
+    }
+    for _, reason in ipairs(reloadReasons or {}) do
+        lines[#lines + 1] = "  - " .. tostring(reason)
+    end
+    m.desc:SetText(table.concat(lines, "\n"))
+    local textH = (m.desc.GetStringHeight and m.desc:GetStringHeight()) or 80
+    m:SetHeight(math.max(198, math.min(360, math.ceil(118 + textH))))
+    m:Show()
+    if m.Raise then m:Raise() end
+end
+
+local function BuildSuiteStudioProfilesTab(tvChild, updateScrollFn, mainWin)
+    local panel = _G.CreateFrame("Frame", nil, tvChild)
+    panel:SetPoint("TOPLEFT", tvChild, "TOPLEFT", 0, 0)
+    panel:SetPoint("TOPRIGHT", tvChild, "TOPRIGHT", 0, 0)
+    panel:SetHeight(980)
+    panel:Hide()
+
+    local codec = _G.DynamicSuite and _G.DynamicSuite.ProfileCodec or addonTable.ProfileCodec
+    local schemas = (codec and codec.GetSchemas and codec.GetSchemas()) or {}
+
+    local selectedExport = {}
+    for _, sc in ipairs(schemas) do
+        selectedExport[sc.key] = true
+    end
+    local optIncludeHud = true
+    local optIncludeTalents = false
+    local optIncludeLoadLists = false
+
+    local decodedPreview = nil
+    local selectedImport = {}
+    local importMode = "REPLACE"
+    local lastTotalHeight = 960
+
+    local function StyleObsidianCard(card)
+        local surf = UI.GetActiveSurfaceColors()
+        card.bg = UI.SolidTex(card, "BACKGROUND", 0, surf.card.r, surf.card.g, surf.card.b, 0.94)
+        card.bg:SetAllPoints()
+        UI.CreatePixelBorder(card, 1, 1, 1, 0.08, 2)
+        if mainWin and mainWin.themeCards then
+            table.insert(mainWin.themeCards, card)
+        end
+    end
+
+    local function CreateScrollableCodeBox(parent, height, placeholderText, readOnly)
+        local wrap = _G.CreateFrame("Frame", nil, parent)
+        wrap:SetHeight(height)
+        wrap.bg = UI.SolidTex(wrap, "BACKGROUND", 0, 0.015, 0.018, 0.024, 0.99)
+        wrap.bg:SetAllPoints()
+        UI.CreatePixelBorder(wrap, 0.165, 0.192, 0.259, 0.95, 2)
+
+        local sf = _G.CreateFrame("ScrollFrame", nil, wrap)
+        sf:SetPoint("TOPLEFT", wrap, "TOPLEFT", 8, -7)
+        sf:SetPoint("BOTTOMRIGHT", wrap, "BOTTOMRIGHT", -8, 7)
+        sf:SetClipsChildren(true)
+        sf:EnableMouseWheel(true)
+
+        local eb = _G.CreateFrame("EditBox", nil, sf)
+        eb:SetMultiLine(true)
+        eb:SetAutoFocus(false)
+        eb:SetMaxLetters(262144)
+        eb:SetWidth(600)
+        eb:SetHeight(height - 14)
+        UI.SetFont(eb, 10.5, "", 0.90, 0.94, 0.98, 1.0)
+        eb:SetText("")
+        sf:SetScrollChild(eb)
+
+        local ph = wrap:CreateFontString(nil, "OVERLAY")
+        ph:SetPoint("TOPLEFT", wrap, "TOPLEFT", 10, -9)
+        ph:SetPoint("RIGHT", wrap, "RIGHT", -10, 0)
+        ph:SetJustifyH("LEFT")
+        ph:SetWordWrap(true)
+        UI.SetFont(ph, 10.5, "", 0.44, 0.50, 0.58, 0.95)
+        ph:SetText(placeholderText or "")
+
+        local function SyncPlaceholder()
+            local txt = eb:GetText() or ""
+            ph:SetShown(txt == "" and not eb:HasFocus())
+        end
+
+        sf:SetScript("OnSizeChanged", function(self, w)
+            if w and w > 40 then
+                eb:SetWidth(w - 4)
+            end
+        end)
+        sf:SetScript("OnMouseDown", function()
+            eb:SetFocus()
+        end)
+        sf:SetScript("OnMouseWheel", function(self, delta)
+            local maxS = math.max(0, (eb:GetHeight() or 0) - (self:GetHeight() or 0))
+            local cur = self:GetVerticalScroll() or 0
+            local nxt = math.max(0, math.min(maxS, cur - (delta * 26)))
+            self:SetVerticalScroll(nxt)
+        end)
+        eb:SetScript("OnEditFocusGained", function(self)
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            wrap.dsBorder:SetColor(ar, ag, ab, 0.95)
+            if readOnly and (self:GetText() or "") ~= "" then
+                self:HighlightText()
+            end
+            SyncPlaceholder()
+        end)
+        eb:SetScript("OnEditFocusLost", function(self)
+            wrap.dsBorder:SetColor(0.165, 0.192, 0.259, 0.95)
+            if readOnly then self:HighlightText(0, 0) end
+            SyncPlaceholder()
+        end)
+        eb:SetScript("OnEscapePressed", function(self)
+            self:ClearFocus()
+        end)
+        eb:SetScript("OnTextChanged", function(self)
+            if readOnly and self._lockedText ~= nil and self:GetText() ~= self._lockedText then
+                self:SetText(self._lockedText)
+                self:HighlightText()
+            end
+            SyncPlaceholder()
+        end)
+
+        wrap.editBox = eb
+        wrap.scroll = sf
+        wrap.SyncPlaceholder = SyncPlaceholder
+        return wrap
+    end
+
+    local function CreateLabeledCheck(parent, labelText, initialChecked, onChange)
+        local row = _G.CreateFrame("Button", nil, parent)
+        row:SetHeight(22)
+        local cb = UI.CreateSquareCheckbox(row, 14)
+        cb:SetPoint("LEFT", row, "LEFT", 0, 0)
+        cb:SetVisualState(initialChecked and "CHECKED" or "UNCHECKED")
+
+        local lbl = row:CreateFontString(nil, "OVERLAY")
+        lbl:SetPoint("LEFT", cb, "RIGHT", 8, 0)
+        lbl:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        lbl:SetJustifyH("LEFT")
+        lbl:SetWordWrap(false)
+        UI.SetFont(lbl, 11, "", 0.90, 0.94, 0.98, 1.0)
+        lbl:SetText(labelText)
+
+        row.checked = (initialChecked == true)
+        row.cb = cb
+        row.label = lbl
+
+        local function Toggle()
+            row.checked = not row.checked
+            cb:SetVisualState(row.checked and "CHECKED" or "UNCHECKED")
+            if onChange then onChange(row.checked) end
+        end
+        cb:SetScript("OnClick", Toggle)
+        row:SetScript("OnClick", Toggle)
+        function row:SetChecked(val)
+            self.checked = (val == true)
+            cb:SetVisualState(self.checked and "CHECKED" or "UNCHECKED")
+        end
+        function row:RefreshTheme()
+            cb:SetVisualState(self.checked and "CHECKED" or "UNCHECKED")
+        end
+        return row
+    end
+
+    -- ========================================================================
+    -- CARD 1: EXPORT YOUR PROFILE
+    -- ========================================================================
+    local exportCard = _G.CreateFrame("Frame", nil, panel)
+    exportCard:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, 0)
+    exportCard:SetPoint("TOPRIGHT", panel, "TOPRIGHT", 0, 0)
+    exportCard:SetHeight(374)
+    StyleObsidianCard(exportCard)
+
+    local expHdr = UI.CreateSectionHeader(
+        exportCard, -10,
+        "EXPORT YOUR PROFILE",
+        "Share your DynamicSuite setup or move it to another PC. Alt banks, chat history, and personal caches are never included.",
+        14
+    )
+
+    local expActionBar = _G.CreateFrame("Frame", nil, exportCard)
+    expActionBar:SetPoint("TOPLEFT", expHdr, "BOTTOMLEFT", 0, -8)
+    expActionBar:SetPoint("TOPRIGHT", expHdr, "BOTTOMRIGHT", 0, -8)
+    expActionBar:SetHeight(24)
+
+    local expSelAllBtn = CreateFlatButton(expActionBar, 88, 22, "Select All", false)
+    expSelAllBtn:SetPoint("LEFT", expActionBar, "LEFT", 0, 0)
+
+    local expSelNoneBtn = CreateFlatButton(expActionBar, 94, 22, "Select None", false)
+    expSelNoneBtn:SetPoint("LEFT", expSelAllBtn, "RIGHT", 6, 0)
+
+    local expCountFS = expActionBar:CreateFontString(nil, "OVERLAY")
+    expCountFS:SetPoint("LEFT", expSelNoneBtn, "RIGHT", 12, 0)
+    expCountFS:SetPoint("RIGHT", expActionBar, "RIGHT", 0, 0)
+    expCountFS:SetJustifyH("LEFT")
+    expCountFS:SetWordWrap(false)
+    UI.SetFont(expCountFS, 10.5, "", 0.64, 0.70, 0.78, 1.0)
+
+    local expGrid = _G.CreateFrame("Frame", nil, exportCard)
+    expGrid:SetPoint("TOPLEFT", expActionBar, "BOTTOMLEFT", 0, -8)
+    expGrid:SetPoint("TOPRIGHT", expActionBar, "BOTTOMRIGHT", 0, -8)
+    expGrid:SetHeight(114)
+
+    local expChecks = {}
+    local function UpdateExportCountLabel()
+        local n = 0
+        for _, sc in ipairs(schemas) do
+            if selectedExport[sc.key] then n = n + 1 end
+        end
+        expCountFS:SetText(string.format("Selected: %d of %d sections", n, #schemas))
+    end
+
+    for _, sc in ipairs(schemas) do
+        local chk = CreateLabeledCheck(expGrid, sc.title, true, function(isOn)
+            selectedExport[sc.key] = isOn
+            UpdateExportCountLabel()
+        end)
+        chk.modKey = sc.key
+        expChecks[#expChecks + 1] = chk
+    end
+    UpdateExportCountLabel()
+
+    local optBar = _G.CreateFrame("Frame", nil, exportCard)
+    optBar:SetPoint("TOPLEFT", expGrid, "BOTTOMLEFT", 0, -6)
+    optBar:SetPoint("TOPRIGHT", expGrid, "BOTTOMRIGHT", 0, -6)
+    optBar:SetHeight(48)
+
+    local optHudChk = CreateLabeledCheck(optBar, "Include HUD & Window Positions", true, function(v)
+        optIncludeHud = v
+    end)
+    local optTalentChk = CreateLabeledCheck(optBar, "Include Talent Loadouts & Bind Rules", false, function(v)
+        optIncludeTalents = v
+    end)
+    local optLoadChk = CreateLabeledCheck(optBar, "Include Addon Zone Lists", false, function(v)
+        optIncludeLoadLists = v
+    end)
+
+    local expGenRow = _G.CreateFrame("Frame", nil, exportCard)
+    expGenRow:SetPoint("TOPLEFT", optBar, "BOTTOMLEFT", 0, -6)
+    expGenRow:SetPoint("TOPRIGHT", optBar, "BOTTOMRIGHT", 0, -6)
+    expGenRow:SetHeight(26)
+
+    local expGenBtn = CreateFlatButton(expGenRow, 184, 24, "Generate Export String", true)
+    expGenBtn:SetPoint("LEFT", expGenRow, "LEFT", 0, 0)
+
+    local expStatusFS = expGenRow:CreateFontString(nil, "OVERLAY")
+    expStatusFS:SetPoint("LEFT", expGenBtn, "RIGHT", 12, 0)
+    expStatusFS:SetPoint("RIGHT", expGenRow, "RIGHT", 0, 0)
+    expStatusFS:SetJustifyH("LEFT")
+    expStatusFS:SetWordWrap(false)
+    UI.SetFont(expStatusFS, 10.5, "", 0.64, 0.70, 0.78, 1.0)
+    expStatusFS:SetText("Click Generate, then press Ctrl+C inside the box below to copy.")
+
+    local expCodeWrap = CreateScrollableCodeBox(exportCard, 86, "Your !DS1! export string will appear here...", true)
+    expCodeWrap:SetPoint("TOPLEFT", expGenRow, "BOTTOMLEFT", 0, -8)
+    expCodeWrap:SetPoint("TOPRIGHT", expGenRow, "BOTTOMRIGHT", 0, -8)
+
+    expSelAllBtn:SetScript("OnClick", function()
+        for _, chk in ipairs(expChecks) do
+            selectedExport[chk.modKey] = true
+            chk:SetChecked(true)
+        end
+        UpdateExportCountLabel()
+    end)
+    expSelNoneBtn:SetScript("OnClick", function()
+        for _, chk in ipairs(expChecks) do
+            selectedExport[chk.modKey] = false
+            chk:SetChecked(false)
+        end
+        UpdateExportCountLabel()
+    end)
+    expGenBtn:SetScript("OnClick", function()
+        if not codec or not codec.ExportProfile then
+            expStatusFS:SetText("|cFFEF4444Profile codec is unavailable.|r")
+            return
+        end
+        local ok, res = codec.ExportProfile({
+            modules = selectedExport,
+            includeHud = optIncludeHud,
+            includeTalents = optIncludeTalents,
+            includeLoadLists = optIncludeLoadLists,
+        })
+        if not ok then
+            expStatusFS:SetText("|cFFEF4444" .. tostring(res or "Could not generate export string.") .. "|r")
+            return
+        end
+        expCodeWrap.editBox._lockedText = res.encoded
+        expCodeWrap.editBox:SetText(res.encoded)
+        expCodeWrap.editBox:SetFocus()
+        expCodeWrap.editBox:HighlightText()
+        expStatusFS:SetText(string.format("|cFF34D399Ready: %d sections (%d characters) - press Ctrl+C to copy.|r", res.moduleCount, res.charCount))
+    end)
+
+    -- ========================================================================
+    -- CARD 2: IMPORT A PROFILE
+    -- ========================================================================
+    local importCard = _G.CreateFrame("Frame", nil, panel)
+    importCard:SetPoint("TOPLEFT", exportCard, "BOTTOMLEFT", 0, -10)
+    importCard:SetPoint("TOPRIGHT", exportCard, "BOTTOMRIGHT", 0, -10)
+    importCard:SetHeight(230)
+    StyleObsidianCard(importCard)
+
+    local impHdr = UI.CreateSectionHeader(
+        importCard, -10,
+        "IMPORT A PROFILE",
+        "Paste a !DS1! string from DynamicSuite or standalone DynamicMarker to preview changes before applying.",
+        14
+    )
+
+    local impCodeWrap = CreateScrollableCodeBox(importCard, 82, "Paste a !DS1! profile string here, then click Preview Profile...", false)
+    impCodeWrap:SetPoint("TOPLEFT", impHdr, "BOTTOMLEFT", 0, -8)
+    impCodeWrap:SetPoint("TOPRIGHT", impHdr, "BOTTOMRIGHT", 0, -8)
+
+    local impBtnRow = _G.CreateFrame("Frame", nil, importCard)
+    impBtnRow:SetPoint("TOPLEFT", impCodeWrap, "BOTTOMLEFT", 0, -8)
+    impBtnRow:SetPoint("TOPRIGHT", impCodeWrap, "BOTTOMRIGHT", 0, -8)
+    impBtnRow:SetHeight(26)
+
+    local impPreviewBtn = CreateFlatButton(impBtnRow, 140, 24, "Preview Profile", true)
+    impPreviewBtn:SetPoint("LEFT", impBtnRow, "LEFT", 0, 0)
+
+    local impClearBtn = CreateFlatButton(impBtnRow, 76, 24, "Clear", false)
+    impClearBtn:SetPoint("LEFT", impPreviewBtn, "RIGHT", 8, 0)
+
+    local impFeedbackFS = impBtnRow:CreateFontString(nil, "OVERLAY")
+    impFeedbackFS:SetPoint("LEFT", impClearBtn, "RIGHT", 12, 0)
+    impFeedbackFS:SetPoint("RIGHT", impBtnRow, "RIGHT", 0, 0)
+    impFeedbackFS:SetJustifyH("LEFT")
+    impFeedbackFS:SetWordWrap(true)
+    if impFeedbackFS.SetMaxLines then impFeedbackFS:SetMaxLines(2) end
+    UI.SetFont(impFeedbackFS, 10.5, "", 0.64, 0.70, 0.78, 1.0)
+    impFeedbackFS:SetText("")
+
+    -- Preview Sub-Card (shown only after valid decode)
+    local previewBox = _G.CreateFrame("Frame", nil, importCard)
+    previewBox:SetPoint("TOPLEFT", impBtnRow, "BOTTOMLEFT", 0, -8)
+    previewBox:SetPoint("TOPRIGHT", impBtnRow, "BOTTOMRIGHT", 0, -8)
+    previewBox:SetHeight(230)
+    previewBox.bg = UI.SolidTex(previewBox, "BACKGROUND", 0, 0.024, 0.027, 0.035, 0.98)
+    previewBox.bg:SetAllPoints()
+    UI.CreatePixelBorder(previewBox, 0.145, 0.165, 0.212, 0.95, 2)
+    previewBox:Hide()
+
+    local pvMetaFS = previewBox:CreateFontString(nil, "OVERLAY")
+    pvMetaFS:SetPoint("TOPLEFT", previewBox, "TOPLEFT", 12, -10)
+    pvMetaFS:SetPoint("RIGHT", previewBox, "RIGHT", -12, 0)
+    pvMetaFS:SetJustifyH("LEFT")
+    pvMetaFS:SetWordWrap(false)
+    UI.SetFont(pvMetaFS, 11, "", 0.95, 0.97, 1.0, 1.0)
+
+    local pvWarnFS = previewBox:CreateFontString(nil, "OVERLAY")
+    pvWarnFS:SetPoint("TOPLEFT", pvMetaFS, "BOTTOMLEFT", 0, -4)
+    pvWarnFS:SetPoint("RIGHT", previewBox, "RIGHT", -12, 0)
+    pvWarnFS:SetJustifyH("LEFT")
+    pvWarnFS:SetWordWrap(true)
+    if pvWarnFS.SetMaxLines then pvWarnFS:SetMaxLines(2) end
+    UI.SetFont(pvWarnFS, 10, "", 0.961, 0.722, 0.180, 0.95)
+
+    local pvModGrid = _G.CreateFrame("Frame", nil, previewBox)
+    pvModGrid:SetPoint("TOPLEFT", pvWarnFS, "BOTTOMLEFT", 0, -8)
+    pvModGrid:SetPoint("TOPRIGHT", previewBox, "TOPRIGHT", -12, 0)
+    pvModGrid:SetHeight(90)
+
+    local pvChecks = {}
+    for _, sc in ipairs(schemas) do
+        local chk = CreateLabeledCheck(pvModGrid, sc.title, true, function(v)
+            selectedImport[sc.key] = v
+        end)
+        chk.modKey = sc.key
+        chk:Hide()
+        pvChecks[#pvChecks + 1] = chk
+    end
+
+    local pvModeRow = _G.CreateFrame("Frame", nil, previewBox)
+    pvModeRow:SetPoint("TOPLEFT", pvModGrid, "BOTTOMLEFT", 0, -8)
+    pvModeRow:SetPoint("TOPRIGHT", previewBox, "TOPRIGHT", -12, 0)
+    pvModeRow:SetHeight(26)
+
+    local pvModeLbl = pvModeRow:CreateFontString(nil, "OVERLAY")
+    pvModeLbl:SetPoint("LEFT", pvModeRow, "LEFT", 0, 0)
+    UI.SetFont(pvModeLbl, 10.5, "", 0.86, 0.90, 0.96, 1.0)
+    pvModeLbl:SetText("Import Mode:")
+
+    local pvModePills = UI.CreateSegmentedPills(pvModeRow, {
+        { value = "REPLACE", label = "Replace Selected", width = 128 },
+        { value = "MERGE",   label = "Merge",            width = 76 },
+    }, function()
+        return importMode
+    end, function(val)
+        importMode = (val == "MERGE") and "MERGE" or "REPLACE"
+    end)
+    pvModePills:SetPoint("LEFT", pvModeLbl, "RIGHT", 10, 0)
+
+    local pvModeHintFS = pvModeRow:CreateFontString(nil, "OVERLAY")
+    pvModeHintFS:SetPoint("LEFT", pvModePills, "RIGHT", 10, 0)
+    pvModeHintFS:SetPoint("RIGHT", pvModeRow, "RIGHT", 0, 0)
+    pvModeHintFS:SetJustifyH("LEFT")
+    pvModeHintFS:SetWordWrap(true)
+    if pvModeHintFS.SetMaxLines then pvModeHintFS:SetMaxLines(2) end
+    UI.SetFont(pvModeHintFS, 10, "", 0.64, 0.70, 0.78, 1.0)
+    pvModeHintFS:SetText("Replace resets chosen sections cleanly; Merge keeps untouched custom items.")
+
+    local pvSafetyFS = previewBox:CreateFontString(nil, "OVERLAY")
+    pvSafetyFS:SetPoint("TOPLEFT", pvModeRow, "BOTTOMLEFT", 0, -6)
+    pvSafetyFS:SetPoint("RIGHT", previewBox, "RIGHT", -12, 0)
+    pvSafetyFS:SetJustifyH("LEFT")
+    pvSafetyFS:SetWordWrap(true)
+    if pvSafetyFS.SetMaxLines then pvSafetyFS:SetMaxLines(2) end
+    UI.SetFont(pvSafetyFS, 10, "", 0.204, 0.827, 0.600, 0.95)
+    pvSafetyFS:SetText("Your alt banks, Great Vault snapshots, chat history, and default game settings are never overwritten.")
+
+    local pvApplyRow = _G.CreateFrame("Frame", nil, previewBox)
+    pvApplyRow:SetPoint("TOPLEFT", pvSafetyFS, "BOTTOMLEFT", 0, -8)
+    pvApplyRow:SetPoint("TOPRIGHT", previewBox, "TOPRIGHT", -12, 0)
+    pvApplyRow:SetHeight(26)
+
+    local pvApplyBtn = CreateFlatButton(pvApplyRow, 182, 24, "Apply Selected Modules", true)
+    pvApplyBtn:SetPoint("LEFT", pvApplyRow, "LEFT", 0, 0)
+
+    local pvCombatNote = pvApplyRow:CreateFontString(nil, "OVERLAY")
+    pvCombatNote:SetPoint("LEFT", pvApplyBtn, "RIGHT", 12, 0)
+    pvCombatNote:SetPoint("RIGHT", pvApplyRow, "RIGHT", 0, 0)
+    pvCombatNote:SetJustifyH("LEFT")
+    pvCombatNote:SetWordWrap(false)
+    UI.SetFont(pvCombatNote, 10, "", 0.961, 0.722, 0.180, 1.0)
+    pvCombatNote:SetText("")
+
+    -- ========================================================================
+    -- CARD 3: UNDO LAST IMPORT (ROLLBACK)
+    -- ========================================================================
+    local rollbackCard = _G.CreateFrame("Frame", nil, panel)
+    rollbackCard:SetPoint("TOPLEFT", importCard, "BOTTOMLEFT", 0, -10)
+    rollbackCard:SetPoint("TOPRIGHT", importCard, "BOTTOMRIGHT", 0, -10)
+    rollbackCard:SetHeight(112)
+    StyleObsidianCard(rollbackCard)
+
+    local rbHdr = UI.CreateSectionHeader(
+        rollbackCard, -10,
+        "UNDO LAST IMPORT",
+        "Restore the exact settings you had before your most recent import, even after reloading your UI.",
+        14
+    )
+
+    local rbRow = _G.CreateFrame("Frame", nil, rollbackCard)
+    rbRow:SetPoint("TOPLEFT", rbHdr, "BOTTOMLEFT", 0, -10)
+    rbRow:SetPoint("TOPRIGHT", rbHdr, "BOTTOMRIGHT", 0, -10)
+    rbRow:SetHeight(34)
+
+    local rbConfirming = false
+    local rbConfirmTimer = nil
+    local rbBtn = CreateFlatButton(rbRow, 162, 26, "Undo Last Import", false)
+    rbBtn:SetPoint("RIGHT", rbRow, "RIGHT", 0, 0)
+
+    local rbStatusFS = rbRow:CreateFontString(nil, "OVERLAY")
+    rbStatusFS:SetPoint("LEFT", rbRow, "LEFT", 0, 0)
+    rbStatusFS:SetPoint("RIGHT", rbBtn, "LEFT", -12, 0)
+    rbStatusFS:SetJustifyH("LEFT")
+    rbStatusFS:SetWordWrap(true)
+    if rbStatusFS.SetMaxLines then rbStatusFS:SetMaxLines(2) end
+    UI.SetFont(rbStatusFS, 10.5, "", 0.76, 0.80, 0.88, 1.0)
+
+    local function ReflowProfilesLayout()
+        local w = panel:GetWidth() or tvChild:GetWidth() or 740
+        if w < 300 then w = 740 end
+        local innerW = math.max(360, w - 28)
+
+        local expCols = (innerW >= 620) and 3 or 2
+        local expColW = math.floor(innerW / expCols)
+        local expRows = math.ceil(#expChecks / expCols)
+        for i, chk in ipairs(expChecks) do
+            local idx0 = i - 1
+            local r = math.floor(idx0 / expCols)
+            local c = idx0 % expCols
+            chk:ClearAllPoints()
+            chk:SetPoint("TOPLEFT", expGrid, "TOPLEFT", c * expColW, -(r * 22))
+            chk:SetWidth(expColW - 8)
+        end
+        local expGridH = math.max(44, expRows * 22 + 2)
+        expGrid:SetHeight(expGridH)
+
+        optHudChk:ClearAllPoints()
+        optTalentChk:ClearAllPoints()
+        optLoadChk:ClearAllPoints()
+        local optH = 46
+        if innerW >= 680 then
+            local thirdW = math.floor(innerW / 3)
+            optHudChk:SetPoint("TOPLEFT", optBar, "TOPLEFT", 0, 0)
+            optHudChk:SetWidth(thirdW - 6)
+            optTalentChk:SetPoint("TOPLEFT", optBar, "TOPLEFT", thirdW, 0)
+            optTalentChk:SetWidth(thirdW - 6)
+            optLoadChk:SetPoint("TOPLEFT", optBar, "TOPLEFT", thirdW * 2, 0)
+            optLoadChk:SetWidth(thirdW - 6)
+            optH = 24
+        else
+            local halfW = math.floor(innerW / 2)
+            optHudChk:SetPoint("TOPLEFT", optBar, "TOPLEFT", 0, 0)
+            optHudChk:SetWidth(halfW - 6)
+            optTalentChk:SetPoint("TOPLEFT", optBar, "TOPLEFT", halfW, 0)
+            optTalentChk:SetWidth(halfW - 6)
+            optLoadChk:SetPoint("TOPLEFT", optBar, "TOPLEFT", 0, -24)
+            optLoadChk:SetWidth(innerW)
+            optH = 48
+        end
+        optBar:SetHeight(optH)
+
+        local expCardH = 10 + 36 + 8 + 24 + 8 + expGridH + 6 + optH + 6 + 26 + 8 + 86 + 14
+        exportCard:SetHeight(expCardH)
+
+        local impCardH = 10 + 36 + 8 + 82 + 8 + 26 + 14
+        if decodedPreview and previewBox:IsShown() then
+            local visibleChks = {}
+            for _, chk in ipairs(pvChecks) do
+                if decodedPreview.modules[chk.modKey] then
+                    chk:Show()
+                    visibleChks[#visibleChks + 1] = chk
+                else
+                    chk:Hide()
+                end
+            end
+            local pvCols = (innerW >= 620) and 3 or 2
+            local pvColW = math.floor((innerW - 24) / pvCols)
+            local pvRows = math.max(1, math.ceil(#visibleChks / pvCols))
+            for i, chk in ipairs(visibleChks) do
+                local idx0 = i - 1
+                local r = math.floor(idx0 / pvCols)
+                local c = idx0 % pvCols
+                chk:ClearAllPoints()
+                chk:SetPoint("TOPLEFT", pvModGrid, "TOPLEFT", c * pvColW, -(r * 22))
+                chk:SetWidth(pvColW - 8)
+            end
+            local pvGridH = pvRows * 22 + 2
+            pvModGrid:SetHeight(pvGridH)
+
+            local warnH = (pvWarnFS:GetText() and pvWarnFS:GetText() ~= "") and 28 or 0
+            pvWarnFS:SetShown(warnH > 0)
+            pvModGrid:ClearAllPoints()
+            if warnH > 0 then
+                pvModGrid:SetPoint("TOPLEFT", pvWarnFS, "BOTTOMLEFT", 0, -6)
+            else
+                pvModGrid:SetPoint("TOPLEFT", pvMetaFS, "BOTTOMLEFT", 0, -8)
+            end
+            pvModGrid:SetPoint("TOPRIGHT", previewBox, "TOPRIGHT", -12, 0)
+
+            local pvH = 10 + 18 + (warnH > 0 and (4 + warnH + 6) or 8) + pvGridH + 8 + 26 + 6 + 26 + 8 + 26 + 12
+            previewBox:SetHeight(pvH)
+            impCardH = impCardH + 8 + pvH
+        end
+        importCard:SetHeight(impCardH)
+
+        lastTotalHeight = expCardH + 10 + impCardH + 10 + 112 + 16
+        panel:SetHeight(lastTotalHeight)
+    end
+
+    local function RefreshRollbackState()
+        if rbConfirmTimer then
+            rbConfirmTimer:Cancel()
+            rbConfirmTimer = nil
+        end
+        rbConfirming = false
+        local inCombat = (type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()) == true
+        local info = codec and codec.GetLastBackupInfo and codec.GetLastBackupInfo() or nil
+        if info then
+            rbStatusFS:SetText(string.format("Backup ready: saved %s before %s import (%d sections).",
+                tostring(info.date), tostring(info.mode == "MERGE" and "Merge" or "Replace"), tonumber(info.moduleCount) or 0))
+            rbStatusFS:SetTextColor(0.86, 0.90, 0.96, 1.0)
+            rbBtn.label:SetText("Undo Last Import")
+            rbBtn:SetEnabled(not inCombat)
+            rbBtn:SetAlpha(inCombat and 0.45 or 1.0)
+        else
+            rbStatusFS:SetText("No import backup saved yet. A backup is saved automatically before each import.")
+            rbStatusFS:SetTextColor(0.58, 0.64, 0.72, 1.0)
+            rbBtn.label:SetText("Undo Last Import")
+            rbBtn:SetEnabled(false)
+            rbBtn:SetAlpha(0.45)
+        end
+    end
+
+    local function RefreshPreviewCard()
+        local inCombat = (type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown()) == true
+        if not decodedPreview then
+            previewBox:Hide()
+            ReflowProfilesLayout()
+            if updateScrollFn then updateScrollFn() end
+            return
+        end
+        pvMetaFS:SetText(string.format("Source: |cFFFFFFFF%s v%s|r   |cFF475569|||r   Exported: |cFFFFFFFF%s|r   |cFF475569|||r   Sections: |cFFFFFFFF%d|r",
+            tostring(decodedPreview.app), tostring(decodedPreview.ver), tostring(decodedPreview.date), #(decodedPreview.moduleKeys or {})))
+        if decodedPreview.warnings and #decodedPreview.warnings > 0 then
+            pvWarnFS:SetText("Note: " .. table.concat(decodedPreview.warnings, " "))
+        else
+            pvWarnFS:SetText("")
+        end
+        if pvModePills and pvModePills.RefreshValue then
+            pvModePills:RefreshValue()
+        end
+        pvApplyBtn:SetEnabled(not inCombat)
+        pvApplyBtn:SetAlpha(inCombat and 0.45 or 1.0)
+        pvCombatNote:SetText(inCombat and "Unavailable in combat - finish combat to apply." or "")
+        previewBox:Show()
+        ReflowProfilesLayout()
+        if updateScrollFn then updateScrollFn() end
+    end
+
+    impPreviewBtn:SetScript("OnClick", function()
+        if not codec or not codec.DecodeProfile then return end
+        local raw = impCodeWrap.editBox:GetText() or ""
+        local ok, res = codec.DecodeProfile(raw)
+        if not ok then
+            decodedPreview = nil
+            impFeedbackFS:SetText("|cFFEF4444" .. tostring(res or "Invalid profile string.") .. "|r")
+            RefreshPreviewCard()
+            return
+        end
+        decodedPreview = res
+        wipe(selectedImport)
+        for _, mk in ipairs(res.moduleKeys or {}) do
+            selectedImport[mk] = true
+        end
+        for _, chk in ipairs(pvChecks) do
+            chk:SetChecked(selectedImport[chk.modKey] == true)
+        end
+        impFeedbackFS:SetText(string.format("|cFF34D399Preview ready (%d sections). Choose sections below and click Apply.|r", #(res.moduleKeys or {})))
+        RefreshPreviewCard()
+    end)
+
+    impClearBtn:SetScript("OnClick", function()
+        impCodeWrap.editBox:SetText("")
+        impCodeWrap.editBox:ClearFocus()
+        decodedPreview = nil
+        impFeedbackFS:SetText("")
+        RefreshPreviewCard()
+    end)
+
+    pvApplyBtn:SetScript("OnClick", function()
+        if not codec or not codec.ApplyImport or not decodedPreview then return end
+        local ok, res = codec.ApplyImport(decodedPreview, {
+            selectedModules = selectedImport,
+            mode = importMode,
+            includeHud = true,
+        })
+        if not ok then
+            impFeedbackFS:SetText("|cFFEF4444" .. tostring(res or "Could not apply profile.") .. "|r")
+            return
+        end
+        impFeedbackFS:SetText(string.format("|cFF34D399Applied %d sections (%s). Pre-import backup saved below.|r",
+            res.appliedCount or 0, (res.mode == "MERGE") and "Merge" or "Replace"))
+        RefreshRollbackState()
+        RefreshPreviewCard()
+        if res.needsReload then
+            ShowProfileReloadModal(res.reloadReasons)
+        end
+    end)
+
+    rbBtn:SetScript("OnClick", function()
+        if not codec or not codec.RollbackLastImport then return end
+        if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+            impFeedbackFS:SetText("|cFFEF4444Undo Last Import is disabled during combat.|r")
+            return
+        end
+        if not rbConfirming then
+            rbConfirming = true
+            rbBtn.label:SetText("Confirm Undo?")
+            local gold = UI.COLORS.GOLD
+            rbBtn.label:SetTextColor(gold.r, gold.g, gold.b, 1)
+            rbBtn.dsBorder:SetColor(gold.r, gold.g, gold.b, 0.95)
+            rbConfirmTimer = _G.C_Timer.NewTimer(3.5, function()
+                RefreshRollbackState()
+            end)
+            return
+        end
+        local ok, res = codec.RollbackLastImport()
+        if not ok then
+            impFeedbackFS:SetText("|cFFEF4444" .. tostring(res or "Could not undo last import.") .. "|r")
+            RefreshRollbackState()
+            return
+        end
+        impFeedbackFS:SetText(string.format("|cFF34D399Restored %d sections to your pre-import settings.|r", res.restoredCount or 0))
+        RefreshRollbackState()
+        if res.needsReload then
+            ShowProfileReloadModal(res.reloadReasons)
+        end
+    end)
+
+    panel:SetScript("OnSizeChanged", function()
+        if panel:IsShown() then
+            ReflowProfilesLayout()
+            if updateScrollFn then updateScrollFn() end
+        end
+    end)
+
+    function panel:Refresh()
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        for _, hdr in ipairs({ expHdr, impHdr, rbHdr }) do
+            if hdr and hdr.RefreshAccent then hdr:RefreshAccent() end
+        end
+        for _, chk in ipairs(expChecks) do chk:RefreshTheme() end
+        for _, chk in ipairs(pvChecks) do chk:RefreshTheme() end
+        optHudChk:RefreshTheme()
+        optTalentChk:RefreshTheme()
+        optLoadChk:RefreshTheme()
+        expGenBtn:SetSelected(true, { r = ar, g = ag, b = ab })
+        impPreviewBtn:SetSelected(true, { r = ar, g = ag, b = ab })
+        pvApplyBtn:SetSelected(true, { r = ar, g = ag, b = ab })
+        RefreshRollbackState()
+        RefreshPreviewCard()
+        return lastTotalHeight
+    end
+
+    function panel:GetContentHeight()
+        return lastTotalHeight
+    end
+
+    return panel
+end
+
+--------------------------------------------------------------------------------
 -- Main Interface (/dl & /ds) - 980x680 Resizable Window, 3-Zone Header & Left Suite Rail
 --------------------------------------------------------------------------------
 function addonTable.CreateMainConfigUI()
@@ -6368,7 +7157,7 @@ function addonTable.CreateMainConfigUI()
         {
             key = "THEME_STUDIO",
             label = "Suite Studio",
-            sub = "Theme, Fonts & Windows",
+            sub = "Theme, Windows & Profiles",
             slash = "/ds studio",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_palette.tga",
             yBottom = 68,
@@ -7261,6 +8050,7 @@ function addonTable.CreateMainConfigUI()
     local studioTabDefs = {
         { id = 1, label = "Theme & Typography",      icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_palette.tga" },
         { id = 2, label = "Desktop Windows & Menus", icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_grid.tga" },
+        { id = 3, label = "Import & Export",         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_copy.tga" },
     }
     local studioTabBtns = {}
 
@@ -9587,8 +10377,16 @@ function addonTable.CreateMainConfigUI()
         end
     end
 
+    local profilesTabPanel = BuildSuiteStudioProfilesTab(tvChild, UpdateThemeScrollbar, f)
+
     local function SetSuiteStudioTab(tabIdx, skipRefresh)
-        local targetTab = (tonumber(tabIdx) == 2 or tabIdx == "DESKTOP_WINDOWS" or tabIdx == "WINDOWS") and 2 or 1
+        local targetTab = 1
+        local nTab = tonumber(tabIdx)
+        if nTab == 3 or tabIdx == "PROFILES" or tabIdx == "IMPORT_EXPORT" then
+            targetTab = 3
+        elseif nTab == 2 or tabIdx == "DESKTOP_WINDOWS" or tabIdx == "WINDOWS" then
+            targetTab = 2
+        end
         if activeStudioTab ~= targetTab then
             if UI.CloseAllPopups then UI.CloseAllPopups() end
             CancelThemeResetConfirmation(false)
@@ -9659,6 +10457,9 @@ function addonTable.CreateMainConfigUI()
             b:SetHeight(26)
             if i == 1 then
                 b:SetPoint("LEFT", studioTabBar, "LEFT", 4, 0)
+                b:SetWidth(eachW)
+            elseif i < count then
+                b:SetPoint("LEFT", studioTabBtns[i - 1], "RIGHT", gap, 0)
                 b:SetWidth(eachW)
             else
                 b:SetPoint("LEFT", studioTabBtns[i - 1], "RIGHT", gap, 0)
@@ -9781,10 +10582,15 @@ function addonTable.CreateMainConfigUI()
             end
         end
 
-        if activeStudioTab == 2 then
+        if activeStudioTab == 3 then
+            tvTitle:SetText("SUITE STUDIO  |cFF64748B-|r  |cFFCBD5E1IMPORT & EXPORT|r")
+            tvResetBtn:Hide()
+        elseif activeStudioTab == 2 then
             tvTitle:SetText("SUITE STUDIO  |cFF64748B-|r  |cFFCBD5E1DESKTOP WINDOWS & MENUS|r")
+            tvResetBtn:Show()
         else
             tvTitle:SetText("SUITE STUDIO  |cFF64748B-|r  |cFFCBD5E1THEME & TYPOGRAPHY|r")
+            tvResetBtn:Show()
         end
         if not tvResetBtn.isConfirming then
             tvResetBtn.label:SetText(GetDefaultStudioResetLabel())
@@ -9792,14 +10598,25 @@ function addonTable.CreateMainConfigUI()
 
         local isTab1 = (activeStudioTab == 1)
         local isTab2 = (activeStudioTab == 2)
+        local isTab3 = (activeStudioTab == 3)
         swatchCard:SetShown(isTab1)
         surfaceSectionCard:SetShown(isTab1)
         toastSectionCard:SetShown(isTab1)
 
         desktopWinSectionCard:SetShown(isTab2)
         shortcutSectionCard:SetShown(isTab2)
+        profilesTabPanel:SetShown(isTab3)
 
-        if isTab2 then
+        if isTab3 then
+            yieldStatusBanner:Hide()
+            local scrollW = tvScroll:GetWidth()
+            if scrollW and scrollW > 40 then
+                tvChild:SetWidth(scrollW)
+                profilesTabPanel:SetWidth(scrollW)
+            end
+            local tab3H = (profilesTabPanel.Refresh and profilesTabPanel:Refresh()) or 960
+            tvChild:SetHeight(tab3H)
+        elseif isTab2 then
             local yieldAddon = GetActiveDesktopWindowYieldAddon()
             if yieldAddon and yieldAddon ~= "" then
                 yieldStatusBanner.title:SetText(string.format("Auto-Yield Active: %s Currently Manages Blizzard Windows", yieldAddon))
@@ -17358,7 +18175,9 @@ function addonTable.CreateMainConfigUI()
             else
                 addonTable.OpenWorkspaceView(vKey)
                 if f.SetSuiteStudioTab then
-                    if tonumber(entry.tabIndex) == 2 or vKey == "DESKTOP_WINDOWS" or vKey == "SUITE_STUDIO_WINDOWS" then
+                    if tonumber(entry.tabIndex) == 3 or vKey == "SUITE_STUDIO_PROFILES" then
+                        f.SetSuiteStudioTab(3)
+                    elseif tonumber(entry.tabIndex) == 2 or vKey == "DESKTOP_WINDOWS" or vKey == "SUITE_STUDIO_WINDOWS" then
                         f.SetSuiteStudioTab(2)
                     elseif tonumber(entry.tabIndex) == 1 or vKey == "SUITE_STUDIO_THEME" then
                         f.SetSuiteStudioTab(1)
@@ -17787,9 +18606,7 @@ function addonTable.CreateMainConfigUI()
         local optNum = tonumber(optionalTabIndex)
         if optNum == 1 or optNum == 2 or optNum == 3 then
             requestedGuidedStep = optNum
-            if optNum == 1 or optNum == 2 then
-                requestedStudioTab = optNum
-            end
+            requestedStudioTab = optNum
         elseif type(optionalTabIndex) == "string" then
             local lowOpt = optionalTabIndex:lower()
             if lowOpt == "style" then requestedGuidedStep = 1
@@ -17797,7 +18614,10 @@ function addonTable.CreateMainConfigUI()
             elseif lowOpt == "modules" or lowOpt == "presets" then requestedGuidedStep = 3
             end
         end
-        if viewKey == "DESKTOP_WINDOWS" or viewKey == "SUITE_STUDIO_WINDOWS" or viewKey == "WINDOWS" then
+        if viewKey == "SUITE_STUDIO_PROFILES" or viewKey == "PROFILES" or viewKey == "IMPORT_EXPORT" then
+            viewKey = "THEME_STUDIO"
+            requestedStudioTab = requestedStudioTab or 3
+        elseif viewKey == "DESKTOP_WINDOWS" or viewKey == "SUITE_STUDIO_WINDOWS" or viewKey == "WINDOWS" then
             viewKey = "THEME_STUDIO"
             requestedStudioTab = requestedStudioTab or 2
         elseif viewKey == "SUITE_STUDIO_THEME" then
@@ -17976,8 +18796,10 @@ function addonTable.CreateMainConfigUI()
         if not mainFrame then
             addonTable.CreateMainConfigUI()
         end
-        local t = (tonumber(tabIdx) == 2) and 2 or 1
-        addonTable.OpenWorkspaceView(t == 2 and "SUITE_STUDIO_WINDOWS" or "SUITE_STUDIO_THEME")
+        local n = tonumber(tabIdx)
+        local t = (n == 3 and 3) or (n == 2 and 2) or 1
+        local vk = (t == 3 and "SUITE_STUDIO_PROFILES") or (t == 2 and "SUITE_STUDIO_WINDOWS") or "SUITE_STUDIO_THEME"
+        addonTable.OpenWorkspaceView(vk, t)
         if f and f.SetSuiteStudioTab then
             f.SetSuiteStudioTab(t)
         end
@@ -18463,6 +19285,9 @@ function addonTable.UpdateCombatLockState()
     end
     if mainFrame.UpdateStatusBar then
         mainFrame.UpdateStatusBar()
+    end
+    if activeWorkspaceView == "THEME_STUDIO" and mainFrame.themeView and mainFrame.themeView:IsShown() and mainFrame.themeView.Refresh then
+        mainFrame.themeView.Refresh()
     end
 end
 

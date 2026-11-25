@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### Suite-Wide Profile Import & Export (`!DS1!`) & DynamicMarker Parity (25/11/2026)
+- **Native `!DS1!` Profile Codec & 14-Section Hygiene (`DynamicSuite_Core.lua`):** Added a zero-dependency profile encoder/decoder using Blizzard's native `C_EncodingUtil` (`SerializeCBOR`, Zlib `CompressString`, `EncodeBase64`) with strict schema, depth, finite-number, and secret-value validation covering Suite Studio & Theme plus all 13 modules. Automatically strips local caches and private state (alt banks, Great Vault alt snapshots, chat history, mail history/stats, default game settings, conflict dismissals, and spotlight flags) on export and preserves them untouched on import, while supporting opt-out HUD & Window Positions, opt-in Talent Loadouts & Bind Rules, opt-in Addon Zone Lists, post-import screen clamping (`ClampAllSuiteHudsToScreen`), and core module protection (`EnforceProtectedSuiteModules`).
+- **Suite Studio Tab 3 `Import & Export` (`DynamicSuite_UI.lua`):** Added Tab 3 inside Suite Studio (`/ds export`, `/ds import`, `/ds profiles`, and Global Smart Search, keeping `/ds profile` on `DynamicLoad`) featuring an `800x520`-responsive module-picker grid, live `!DS1!` export generator, Import Preview card with per-module selection, `Replace Selected` (default) vs `Merge` modes, persistent 1-slot `Undo Last Import` rollback across `/reload`, combat-lockdown blocking, and a custom Obsidian reload prompt shown only when reload-sensitive settings actually change.
+- **Standalone `DynamicMarker` Bidirectional Parity (`DynamicMarker.lua`):** Added matching `!DS1!` export, preview, `Replace Selected` / `Merge` import, persistent 1-slot rollback, combat-lockdown blocking, Left Rail / Theme Studio access, and `/dm export`, `/dm import`, `/dm profiles` commands (preserving `/dm migrate` and `/dm import focusmarker`), allowing seamless sharing between standalone `DynamicMarker` and full `DynamicSuite`.
+- **Automated Regression Verification:** Added a headless Lua 5.1 regression suite verifying 14-section CBOR/Zlib/Base64 round-trips, sparse integer-key fidelity, strict cache stripping/preservation, opt-in/opt-out filters, `Replace` vs `Merge`, `/reload` rollback persistence, Suite <-> standalone `DynamicMarker` cross-mode compatibility, combat lockdown, malformed/future/secret input rejection, smart reload detection, and slash routing.
+
 ---
 
 ## [2.10.3] - 25/11/2026
