@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+### Improved
+* **Standalone Shell, Resize Grip & `800x520` Layout Clamping (`25/11/2026`):** Expanded standalone resize bounds to `760x480` through `1280x860`, added live Suite Accent outer border and corner resize grip hover highlighting with Right-Click size reset, added footer Scale and Opacity tooltips, compacted narrow header status readouts, reflowed section headers, descriptions, flare cycle controls, macro cards, and conflict banners cleanly for `800x520`, and added `Move or Resize` tips (`Use /dm hud or /ds hud`) to Focus Icon and World Flare bar tooltips in plain Australian English.
+* **Patch 12.1.7 Combat & Secret-Value Hardening (`25/11/2026`):** Deferred Focus Icon Bar and World Flare Bar secure setup safely out of combat, guarded keybind capture during combat lockdown, protected macro, spell, specialisation, and character lookups with secret-value and error-safe checks, and standardised plain Australian English labels across UI modals and banners.
+
 ---
 
 ## DynamicMarker v2.10.2 (25/11/2026)

@@ -130,6 +130,40 @@ local function IsSecretValue(val)
     return false
 end
 
+local function IsPlayerInCombat()
+    return type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() == true
+end
+
+local function IsChatMessagingLocked()
+    if C_ChatInfo and type(C_ChatInfo.InChatMessagingLockdown) == "function" then
+        local ok, locked = pcall(C_ChatInfo.InChatMessagingLockdown)
+        if ok and not IsSecretValue(locked) and locked == true then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsEncounterActive()
+    if type(_G.IsEncounterInProgress) == "function" then
+        local ok, active = pcall(_G.IsEncounterInProgress)
+        if ok and not IsSecretValue(active) and active == true then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsKeystoneActive()
+    if C_ChallengeMode and type(C_ChallengeMode.IsChallengeModeActive) == "function" then
+        local ok, active = pcall(C_ChallengeMode.IsChallengeModeActive)
+        if ok and not IsSecretValue(active) and active == true then
+            return true
+        end
+    end
+    return false
+end
+
 -- ============================================================================
 -- 1. DEFAULTS, CONFLICT REGISTRY & REALM-TO-REGION LOOKUP TABLE
 -- ============================================================================
@@ -654,10 +688,11 @@ local function IsPlayerInActiveQueue()
     end
 
     if type(GetMaxBattlefieldID) == "function" and type(GetBattlefieldStatus) == "function" then
-        local maxBG = GetMaxBattlefieldID() or 0
+        local okMax, maxBG = pcall(GetMaxBattlefieldID)
+        maxBG = (okMax and type(maxBG) == "number" and not IsSecretValue(maxBG)) and maxBG or 0
         for i = 1, maxBG do
-            local status = GetBattlefieldStatus(i)
-            if status == "queued" or status == "confirm" then
+            local okSt, status = pcall(GetBattlefieldStatus, i)
+            if okSt and not IsSecretValue(status) and (status == "queued" or status == "confirm") then
                 return true, "PvP Queue"
             end
         end
@@ -692,11 +727,12 @@ local function RebuildTrustedContactCaches()
     wipe(_trustedGuildCache)
     wipe(_trustedFriendCache)
 
-    if C_FriendList and type(C_FriendList.GetNumFriends) == "function" then
-        local numFriends = C_FriendList.GetNumFriends() or 0
+    if C_FriendList and type(C_FriendList.GetNumFriends) == "function" and type(C_FriendList.GetFriendInfoByIndex) == "function" then
+        local okNF, numFriends = pcall(C_FriendList.GetNumFriends)
+        numFriends = (okNF and type(numFriends) == "number" and not IsSecretValue(numFriends)) and numFriends or 0
         for i = 1, numFriends do
-            local info = C_FriendList.GetFriendInfoByIndex(i)
-            if info and info.name and not IsSecretValue(info.name) then
+            local okInfo, info = pcall(C_FriendList.GetFriendInfoByIndex, i)
+            if okInfo and type(info) == "table" and not IsSecretValue(info) and info.name and not IsSecretValue(info.name) then
                 local q = NormalizeQualifiedName(info.name)
                 if q ~= "" then _trustedFriendCache[q] = true end
             end
@@ -704,17 +740,23 @@ local function RebuildTrustedContactCaches()
     end
 
     if type(BNGetNumFriends) == "function" and C_BattleNet and type(C_BattleNet.GetFriendAccountInfo) == "function" then
-        local numBNet = BNGetNumFriends() or 0
+        local okBN, numBNet = pcall(BNGetNumFriends)
+        numBNet = (okBN and type(numBNet) == "number" and not IsSecretValue(numBNet)) and numBNet or 0
         local reqClient = BNET_CLIENT_WOW or "WoW"
         local reqProj = WOW_PROJECT_MAINLINE or 1
         for i = 1, numBNet do
-            local acct = C_BattleNet.GetFriendAccountInfo(i)
-            local gameInfo = acct and acct.gameAccountInfo
-            if gameInfo and gameInfo.characterName and not IsSecretValue(gameInfo.characterName) then
-                if (not gameInfo.clientProgram or gameInfo.clientProgram == reqClient) and (not gameInfo.wowProjectID or gameInfo.wowProjectID == reqProj) then
+            local okAcct, acct = pcall(C_BattleNet.GetFriendAccountInfo, i)
+            local gameInfo = okAcct and type(acct) == "table" and not IsSecretValue(acct) and acct.gameAccountInfo
+            if type(gameInfo) == "table" and not IsSecretValue(gameInfo) and gameInfo.characterName and not IsSecretValue(gameInfo.characterName) and type(gameInfo.characterName) == "string" then
+                local clientOk = (gameInfo.clientProgram == nil) or (not IsSecretValue(gameInfo.clientProgram) and gameInfo.clientProgram == reqClient)
+                local projOk = (gameInfo.wowProjectID == nil) or (not IsSecretValue(gameInfo.wowProjectID) and gameInfo.wowProjectID == reqProj)
+                if clientOk and projOk then
                     local full = gameInfo.characterName
-                    if gameInfo.realmName and not IsSecretValue(gameInfo.realmName) and gameInfo.realmName ~= "" then
-                        full = full .. "-" .. gameInfo.realmName:gsub("%s+", "")
+                    if gameInfo.realmName and not IsSecretValue(gameInfo.realmName) and type(gameInfo.realmName) == "string" and gameInfo.realmName ~= "" then
+                        local okGsub, realmClean = pcall(string.gsub, gameInfo.realmName, "%s+", "")
+                        if okGsub and realmClean and realmClean ~= "" then
+                            full = full .. "-" .. realmClean
+                        end
                     end
                     local q = NormalizeQualifiedName(full)
                     if q ~= "" then _trustedFriendCache[q] = true end
@@ -723,11 +765,17 @@ local function RebuildTrustedContactCaches()
         end
     end
 
-    if IsInGuild and IsInGuild() and type(GetNumGuildMembers) == "function" and type(GetGuildRosterInfo) == "function" then
-        local numGuild = GetNumGuildMembers() or 0
+    local inGuild = false
+    if type(IsInGuild) == "function" then
+        local okG, resG = pcall(IsInGuild)
+        inGuild = (okG and not IsSecretValue(resG) and resG == true)
+    end
+    if inGuild and type(GetNumGuildMembers) == "function" and type(GetGuildRosterInfo) == "function" then
+        local okNG, numGuild = pcall(GetNumGuildMembers)
+        numGuild = (okNG and type(numGuild) == "number" and not IsSecretValue(numGuild)) and numGuild or 0
         for i = 1, numGuild do
-            local name = GetGuildRosterInfo(i)
-            if name and not IsSecretValue(name) then
+            local okName, name = pcall(GetGuildRosterInfo, i)
+            if okName and name and not IsSecretValue(name) then
                 local q = NormalizeQualifiedName(name)
                 if q ~= "" then _trustedGuildCache[q] = true end
             end
@@ -803,6 +851,7 @@ local function ShouldAllowContact(mode, senderName, senderGUID, forceBNet)
 end
 
 local function HandlePartyInviteRequest(senderName, isTank, isHealer, isDamage, isNativeRealm, allowMultipleRoles, inviterGUID)
+    if IsPlayerInCombat() or IsEncounterActive() or IsKeystoneActive() then return end
     if IsSecretValue(senderName) then senderName = nil end
     if IsSecretValue(inviterGUID) then inviterGUID = nil end
     local db = EnsureDB()
@@ -824,14 +873,16 @@ local function HandlePartyInviteRequest(senderName, isTank, isHealer, isDamage, 
     if not allowed then return end
 
     if type(AcceptGroup) == "function" then
-        AcceptGroup()
+        local okAcc = pcall(AcceptGroup)
+        if not okAcc then return end
         C_Timer.After(0.05, function()
+            if IsPlayerInCombat() or IsEncounterActive() or IsKeystoneActive() then return end
             if type(StaticPopup_Hide) == "function" then
-                StaticPopup_Hide("PARTY_INVITE")
-                StaticPopup_Hide("PARTY_INVITE_XREALM")
+                pcall(StaticPopup_Hide, "PARTY_INVITE")
+                pcall(StaticPopup_Hide, "PARTY_INVITE_XREALM")
             end
             if _G.LFGInvitePopup and _G.LFGInvitePopup.Hide then
-                _G.LFGInvitePopup:Hide()
+                pcall(_G.LFGInvitePopup.Hide, _G.LFGInvitePopup)
             end
         end)
         if db.announceInvites then
@@ -861,18 +912,19 @@ local _pendingRaidConversionInvites = {}
 
 local function FlushPendingRaidConversionInvites()
     if #_pendingRaidConversionInvites == 0 then return end
+    if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then return end
     if not IsInRaid or not IsInRaid() then return end
     local db = EnsureDB()
     for i = 1, #_pendingRaidConversionInvites do
         local req = _pendingRaidConversionInvites[i]
         if req.bnetGameAccountID and type(BNInviteFriend) == "function" then
-            BNInviteFriend(req.bnetGameAccountID)
-            if db.announceInvites then
+            local okBN = pcall(BNInviteFriend, req.bnetGameAccountID)
+            if okBN and db.announceInvites then
                 PrintMsg("Auto-invited Battle.net friend " .. tostring(req.display or "BNet") .. " after Raid conversion.")
             end
         elseif req.target and C_PartyInfo and type(C_PartyInfo.InviteUnit) == "function" then
-            C_PartyInfo.InviteUnit(req.target)
-            if db.announceInvites then
+            local okInv = pcall(C_PartyInfo.InviteUnit, req.target)
+            if okInv and db.announceInvites then
                 PrintMsg("Auto-invited " .. tostring(req.target) .. " after Raid conversion (" .. tostring(req.sourceLabel or "Whisper") .. ").")
             end
         end
@@ -881,6 +933,9 @@ local function FlushPendingRaidConversionInvites()
 end
 
 local function PrepareGroupForOutgoingInvite(pendingReq)
+    if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then
+        return false, false
+    end
     local db = EnsureDB()
     if IsInGroup() and not UnitIsGroupLeader("player") and not UnitIsGroupAssistant("player") then
         return false, false
@@ -892,8 +947,8 @@ local function PrepareGroupForOutgoingInvite(pendingReq)
                 _pendingRaidConversionInvites[#_pendingRaidConversionInvites + 1] = pendingReq
             end
             if C_PartyInfo and type(C_PartyInfo.ConvertToRaid) == "function" then
-                C_PartyInfo.ConvertToRaid()
-                if db.announceInvites then
+                local okConv = pcall(C_PartyInfo.ConvertToRaid)
+                if okConv and db.announceInvites then
                     PrintMsg("Auto-converted party to Raid; queued 6th+ member invite until conversion completes.")
                 end
             end
@@ -904,6 +959,7 @@ local function PrepareGroupForOutgoingInvite(pendingReq)
 end
 
 local function HandleWhisperAutoInvite(text, senderName, senderGUID)
+    if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then return end
     if IsSecretValue(text) or IsSecretValue(senderName) then return end
     if IsSecretValue(senderGUID) then senderGUID = nil end
     local db = EnsureDB()
@@ -917,14 +973,15 @@ local function HandleWhisperAutoInvite(text, senderName, senderGUID)
     if not canInvite or queuedForRaid then return end
 
     if C_PartyInfo and type(C_PartyInfo.InviteUnit) == "function" then
-        C_PartyInfo.InviteUnit(senderName)
-        if db.announceInvites then
+        local okInv = pcall(C_PartyInfo.InviteUnit, senderName)
+        if okInv and db.announceInvites then
             PrintMsg("Auto-invited " .. tostring(senderName) .. " via keyword (" .. tostring(sourceLabel or "Whisper") .. ").")
         end
     end
 end
 
 local function HandleBNetWhisperAutoInvite(text, senderDisplayName, bnetIDAccount)
+    if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then return end
     if IsSecretValue(text) or IsSecretValue(senderDisplayName) or IsSecretValue(bnetIDAccount) then return end
     local db = EnsureDB()
     if not db.enableWhisperInvite then return end
@@ -932,32 +989,37 @@ local function HandleBNetWhisperAutoInvite(text, senderDisplayName, bnetIDAccoun
 
     if C_BattleNet and type(C_BattleNet.GetAccountInfoByID) == "function" and bnetIDAccount then
         local ok, acct = pcall(C_BattleNet.GetAccountInfoByID, bnetIDAccount)
-        if ok and acct and acct.gameAccountInfo then
+        if ok and type(acct) == "table" and not IsSecretValue(acct) and type(acct.gameAccountInfo) == "table" and not IsSecretValue(acct.gameAccountInfo) then
             local gameInfo = acct.gameAccountInfo
             local reqClient = BNET_CLIENT_WOW or "WoW"
             local reqProj = WOW_PROJECT_MAINLINE or 1
-            if (gameInfo.clientProgram and gameInfo.clientProgram ~= reqClient) or (gameInfo.wowProjectID and gameInfo.wowProjectID ~= reqProj) then
+            local clientMismatch = gameInfo.clientProgram ~= nil and (IsSecretValue(gameInfo.clientProgram) or gameInfo.clientProgram ~= reqClient)
+            local projMismatch = gameInfo.wowProjectID ~= nil and (IsSecretValue(gameInfo.wowProjectID) or gameInfo.wowProjectID ~= reqProj)
+            if clientMismatch or projMismatch then
                 return
             end
             if gameInfo.gameAccountID and not IsSecretValue(gameInfo.gameAccountID) and type(BNInviteFriend) == "function" then
                 local disp = (not IsSecretValue(gameInfo.characterName) and gameInfo.characterName) or senderDisplayName or "BNet"
                 local canInvite, queuedForRaid = PrepareGroupForOutgoingInvite({ bnetGameAccountID = gameInfo.gameAccountID, display = disp })
                 if not canInvite or queuedForRaid then return end
-                BNInviteFriend(gameInfo.gameAccountID)
-                if db.announceInvites then
+                local okBN = pcall(BNInviteFriend, gameInfo.gameAccountID)
+                if okBN and db.announceInvites then
                     PrintMsg("Auto-invited Battle.net friend " .. tostring(disp) .. " via keyword.")
                 end
                 return
-            elseif gameInfo.characterName and not IsSecretValue(gameInfo.characterName) and gameInfo.characterName ~= "" then
+            elseif gameInfo.characterName and not IsSecretValue(gameInfo.characterName) and type(gameInfo.characterName) == "string" and gameInfo.characterName ~= "" then
                 local target = gameInfo.characterName
-                if gameInfo.realmName and not IsSecretValue(gameInfo.realmName) and gameInfo.realmName ~= "" then
-                    target = target .. "-" .. gameInfo.realmName:gsub("%s+", "")
+                if gameInfo.realmName and not IsSecretValue(gameInfo.realmName) and type(gameInfo.realmName) == "string" and gameInfo.realmName ~= "" then
+                    local okGsub, realmClean = pcall(string.gsub, gameInfo.realmName, "%s+", "")
+                    if okGsub and realmClean and realmClean ~= "" then
+                        target = target .. "-" .. realmClean
+                    end
                 end
                 local canInvite, queuedForRaid = PrepareGroupForOutgoingInvite({ target = target, sourceLabel = "Battle.net" })
                 if not canInvite or queuedForRaid then return end
                 if C_PartyInfo and type(C_PartyInfo.InviteUnit) == "function" then
-                    C_PartyInfo.InviteUnit(target)
-                    if db.announceInvites then
+                    local okInv = pcall(C_PartyInfo.InviteUnit, target)
+                    if okInv and db.announceInvites then
                         PrintMsg("Auto-invited Battle.net friend " .. tostring(target) .. " via keyword.")
                     end
                 end
@@ -971,7 +1033,7 @@ local _autoPromotePending = false
 local function HandleAutoPromoteRosterImmediate()
     local db = EnsureDB()
     if not db.autoPromoteFriendsTanks then return end
-    if InCombatLockdown and InCombatLockdown() then return end
+    if IsPlayerInCombat() or IsEncounterActive() then return end
     if not IsInRaid or not IsInRaid() or not UnitIsGroupLeader("player") then return end
 
     RebuildTrustedContactCaches()
@@ -1032,42 +1094,45 @@ local function TryAutoInsertKeystone()
     if _keystoneSlotLock then return end
     local db = EnsureDB()
     if not db.autoInsertKeystone then return end
-    if InCombatLockdown and InCombatLockdown() then return end
+    if IsPlayerInCombat() or IsEncounterActive() or IsKeystoneActive() then return end
     if not C_ChallengeMode or type(C_ChallengeMode.HasSlottedKeystone) ~= "function" then return end
-    if C_ChallengeMode.HasSlottedKeystone() then return end
+    local okSlotted, hasSlotted = pcall(C_ChallengeMode.HasSlottedKeystone)
+    if okSlotted and not IsSecretValue(hasSlotted) and hasSlotted then return end
     if not C_Container or type(C_Container.GetContainerNumSlots) ~= "function" then return end
 
     _keystoneSlotLock = true
     C_Timer.After(0.25, function() _keystoneSlotLock = false end)
 
     for bag = 0, (NUM_BAG_SLOTS or 4) do
-        local slots = C_Container.GetContainerNumSlots(bag) or 0
+        local okSlots, slots = pcall(C_Container.GetContainerNumSlots, bag)
+        slots = (okSlots and type(slots) == "number" and not IsSecretValue(slots)) and slots or 0
         for slot = 1, slots do
-            local itemID = C_Container.GetContainerItemID(bag, slot)
-            if itemID then
+            local okID, itemID = (type(C_Container.GetContainerItemID) == "function") and pcall(C_Container.GetContainerItemID, bag, slot) or false, nil
+            if okID and itemID and not IsSecretValue(itemID) then
                 local isKey = false
                 if C_Item and type(C_Item.IsItemKeystoneByID) == "function" then
                     local ok, res = pcall(C_Item.IsItemKeystoneByID, itemID)
-                    if ok and res then isKey = true end
+                    if ok and not IsSecretValue(res) and res then isKey = true end
                 end
-                if not isKey then
-                    local info = C_Container.GetContainerItemInfo(bag, slot)
-                    if info and info.hyperlink and not IsSecretValue(info.hyperlink) and info.hyperlink:find("|Hkeystone:") then
+                if not isKey and type(C_Container.GetContainerItemInfo) == "function" then
+                    local okInf, info = pcall(C_Container.GetContainerItemInfo, bag, slot)
+                    if okInf and type(info) == "table" and not IsSecretValue(info) and info.hyperlink and not IsSecretValue(info.hyperlink) and type(info.hyperlink) == "string" and info.hyperlink:find("|Hkeystone:") then
                         isKey = true
                     end
                 end
-                if isKey then
-                    C_Container.PickupContainerItem(bag, slot)
-                    if CursorHasItem and CursorHasItem() and type(C_ChallengeMode.SlotKeystone) == "function" then
+                if isKey and type(C_Container.PickupContainerItem) == "function" then
+                    local okPick = pcall(C_Container.PickupContainerItem, bag, slot)
+                    if okPick and CursorHasItem and CursorHasItem() and type(C_ChallengeMode.SlotKeystone) == "function" then
                         local okSlot = pcall(C_ChallengeMode.SlotKeystone)
-                        if okSlot and C_ChallengeMode.HasSlottedKeystone() then
+                        local okAfter, nowSlotted = pcall(C_ChallengeMode.HasSlottedKeystone)
+                        if okSlot and okAfter and not IsSecretValue(nowSlotted) and nowSlotted then
                             PrintMsg("Auto-slotted Mythic+ Keystone.")
                         elseif ClearCursor then
-                            ClearCursor()
+                            pcall(ClearCursor)
                         end
                         return
                     elseif ClearCursor then
-                        ClearCursor()
+                        pcall(ClearCursor)
                     end
                 end
             end
@@ -1139,12 +1204,12 @@ local function IsValidSearchResultID(resultID)
     end
     if type(C_LFGList.HasSearchResultInfo) == "function" then
         local okH, hasInfo = pcall(C_LFGList.HasSearchResultInfo, resultID)
-        if okH and not hasInfo then
+        if okH and not IsSecretValue(hasInfo) and not hasInfo then
             return false
         end
     end
     local ok, info = pcall(C_LFGList.GetSearchResultInfo, resultID)
-    if not ok or type(info) ~= "table" then
+    if not ok or type(info) ~= "table" or IsSecretValue(info) then
         return false
     end
     return true
@@ -1876,7 +1941,7 @@ local function InspectSearchResult(resultID)
         return nil
     end
     local ok, searchInfo = pcall(C_LFGList.GetSearchResultInfo, resultID)
-    if not ok or type(searchInfo) ~= "table" then
+    if not ok or type(searchInfo) ~= "table" or IsSecretValue(searchInfo) then
         return nil
     end
 
@@ -1887,7 +1952,8 @@ local function InspectSearchResult(resultID)
     local maxMembers = (not IsSecretValue(searchInfo.maxMembers) and tonumber(searchInfo.maxMembers)) or 5
     if maxMembers <= 0 then maxMembers = 5 end
 
-    local _, playerClassFile = UnitClass("player")
+    local okCls, _, playerClassFile = pcall(UnitClass, "player")
+    if not okCls or IsSecretValue(playerClassFile) then playerClassFile = nil end
     local tanks, healers, dps = 0, 0, 0
     local tankClass, healerClass = nil, nil
     local dpsClasses = {}
@@ -1904,7 +1970,7 @@ local function InspectSearchResult(resultID)
                 if pOk and type(pInfo) == "table" and not IsSecretValue(pInfo) then
                     role = (not IsSecretValue(pInfo.assignedRole) and pInfo.assignedRole) or nil
                     classFile = (not IsSecretValue(pInfo.classFilename) and pInfo.classFilename) or nil
-                    if not hasLeader and pInfo.isLeader and pInfo.name and not IsSecretValue(pInfo.name) and type(pInfo.name) == "string" and pInfo.name ~= "" then
+                    if not hasLeader and not IsSecretValue(pInfo.isLeader) and pInfo.isLeader and pInfo.name and not IsSecretValue(pInfo.name) and type(pInfo.name) == "string" and pInfo.name ~= "" then
                         leaderName = pInfo.name
                         hasLeader = true
                     end
@@ -2045,11 +2111,15 @@ end
 
 local function GetPlayerActiveRoleAndLust()
     local role = "DAMAGER"
-    local spec = SafeGetSpecialization()
-    if spec then
-        role = SafeGetSpecializationRole(spec) or "DAMAGER"
+    local okSp, spec = pcall(SafeGetSpecialization)
+    if okSp and spec and not IsSecretValue(spec) then
+        local okR, r = pcall(SafeGetSpecializationRole, spec)
+        if okR and type(r) == "string" and not IsSecretValue(r) and r ~= "" then
+            role = r
+        end
     end
-    local _, classFile = UnitClass("player")
+    local okCls, _, classFile = pcall(UnitClass, "player")
+    if not okCls or IsSecretValue(classFile) then classFile = nil end
     local playerHasLust = (classFile and LUST_CLASSES[classFile]) and true or false
     return role, playerHasLust
 end
@@ -2243,16 +2313,18 @@ end
 
 local function ResolveLiveResultID(entry)
     if not entry then return nil end
-    local elementData = entry.GetElementData and entry:GetElementData()
-    if elementData then
-        if type(elementData) == "table" then
-            local rID = elementData.resultID or elementData.id or elementData.searchResultID
-            if rID and type(rID) == "number" then return rID end
-        elseif type(elementData) == "number" then
-            return elementData
+    if type(entry.GetElementData) == "function" then
+        local okEd, elementData = pcall(entry.GetElementData, entry)
+        if okEd and elementData and not IsSecretValue(elementData) then
+            if type(elementData) == "table" then
+                local rID = elementData.resultID or elementData.id or elementData.searchResultID
+                if rID and not IsSecretValue(rID) and type(rID) == "number" then return rID end
+            elseif type(elementData) == "number" then
+                return elementData
+            end
         end
     end
-    if entry.resultID and type(entry.resultID) == "number" then
+    if entry.resultID and not IsSecretValue(entry.resultID) and type(entry.resultID) == "number" then
         return entry.resultID
     end
     return nil
@@ -2354,6 +2426,13 @@ local ScheduleAsyncResultRefilter
 local _dgEntryState = setmetatable({}, { __mode = "k" })
 local _dgPanelState = setmetatable({}, { __mode = "k" })
 local _dgDialogState = setmetatable({}, { __mode = "k" })
+local _dgWeak = {
+    cancelBtn = setmetatable({}, { __mode = "k" }),
+    owned = setmetatable({}, { __mode = "k" }),
+    enumPoints = setmetatable({}, { __mode = "k" }),
+    iconPoint = setmetatable({}, { __mode = "k" }),
+    hookedOwner = setmetatable({}, { __mode = "k" }),
+}
 
 local function GetEntryState(entry)
     local st = _dgEntryState[entry]
@@ -2375,7 +2454,7 @@ end
 
 local function StyleEntryCancelButton(btn, entry)
     if not btn or not entry then return end
-    if InCombatLockdown and InCombatLockdown() then return end
+    if IsPlayerInCombat() then return end
 
     btn:SetSize(16, 16)
     btn:ClearAllPoints()
@@ -2397,20 +2476,22 @@ local function StyleEntryCancelButton(btn, entry)
     HideBlizzTex(btn.Icon)
     if btn.GetRegions then
         for _, reg in ipairs({ btn:GetRegions() }) do
-            if reg and not reg._dgOwned then
+            if reg and not _dgWeak.owned[reg] then
                 HideBlizzTex(reg)
             end
         end
     end
 
-    if btn._dgReskinned then return end
-    btn._dgReskinned = true
+    local cState = _dgWeak.cancelBtn[btn]
+    if cState and cState.reskinned then return end
+    cState = { reskinned = true }
+    _dgWeak.cancelBtn[btn] = cState
 
     local bg = btn:CreateTexture(nil, "BACKGROUND")
-    bg._dgOwned = true
+    _dgWeak.owned[bg] = true
     bg:SetAllPoints(btn)
     bg:SetColorTexture(0.043, 0.051, 0.071, 0.92) -- #0B0D12 Dark Obsidian
-    btn._dgBg = bg
+    cState.bg = bg
 
     local borders = {}
     local edgeSpecs = {
@@ -2421,7 +2502,7 @@ local function StyleEntryCancelButton(btn, entry)
     }
     for _, spec in ipairs(edgeSpecs) do
         local edge = btn:CreateTexture(nil, "BORDER")
-        edge._dgOwned = true
+        _dgWeak.owned[edge] = true
         edge:SetPoint(spec[1], btn, spec[1], 0, 0)
         edge:SetPoint(spec[2], btn, spec[2], 0, 0)
         if spec[4] then
@@ -2432,47 +2513,52 @@ local function StyleEntryCancelButton(btn, entry)
         edge:SetColorTexture(0.973, 0.443, 0.443, 0.85) -- #F87171 Crimson
         borders[#borders + 1] = edge
     end
-    btn._dgBorders = borders
+    cState.borders = borders
 
     local label = btn:CreateFontString(nil, "OVERLAY")
-    label._dgOwned = true
+    _dgWeak.owned[label] = true
     SetSafeFont(label, 11, "OUTLINE")
     label:SetPoint("CENTER", btn, "CENTER", 0, 1)
     label:SetJustifyH("CENTER")
     label:SetText("|cFFF87171x|r")
-    btn._dgLabel = label
+    cState.label = label
 
     if btn.HookScript then
         btn:HookScript("OnEnter", function(selfBtn)
-            if selfBtn._dgBg then
-                selfBtn._dgBg:SetColorTexture(0.140, 0.055, 0.065, 0.96)
+            local st = _dgWeak.cancelBtn[selfBtn]
+            if not st then return end
+            if st.bg then
+                st.bg:SetColorTexture(0.140, 0.055, 0.065, 0.96)
             end
-            if selfBtn._dgBorders then
-                for _, edge in ipairs(selfBtn._dgBorders) do
+            if st.borders then
+                for _, edge in ipairs(st.borders) do
                     edge:SetColorTexture(0.973, 0.443, 0.443, 1.0)
                 end
             end
-            if selfBtn._dgLabel then
-                selfBtn._dgLabel:SetText("|cFFFFFFFFx|r")
+            if st.label then
+                st.label:SetText("|cFFFFFFFFx|r")
             end
         end)
         btn:HookScript("OnLeave", function(selfBtn)
-            if selfBtn._dgBg then
-                selfBtn._dgBg:SetColorTexture(0.043, 0.051, 0.071, 0.92)
+            local st = _dgWeak.cancelBtn[selfBtn]
+            if not st then return end
+            if st.bg then
+                st.bg:SetColorTexture(0.043, 0.051, 0.071, 0.92)
             end
-            if selfBtn._dgBorders then
-                for _, edge in ipairs(selfBtn._dgBorders) do
+            if st.borders then
+                for _, edge in ipairs(st.borders) do
                     edge:SetColorTexture(0.973, 0.443, 0.443, 0.85)
                 end
             end
-            if selfBtn._dgLabel then
-                selfBtn._dgLabel:SetText("|cFFF87171x|r")
+            if st.label then
+                st.label:SetText("|cFFF87171x|r")
             end
         end)
     end
 end
 
 local function ReadAndSuppressEntryStatus(entry, resultID, isSimPending, isSimCanceled)
+    if IsPlayerInCombat() then return nil, nil end
     local pendingTimer = nil
     local terminalStatus = nil
 
@@ -2493,7 +2579,7 @@ local function ReadAndSuppressEntryStatus(entry, resultID, isSimPending, isSimCa
                             declinedResultIDs[resultID] = true
                         end
                     elseif lower:find("cancel") then
-                        terminalStatus = "Canceled"
+                        terminalStatus = "Cancelled"
                     elseif lower:find("expir") then
                         terminalStatus = "Expired"
                     elseif lower:find("time") then
@@ -2522,7 +2608,7 @@ local function ReadAndSuppressEntryStatus(entry, resultID, isSimPending, isSimCa
                 declinedResultIDs[resultID] = true
                 terminalStatus = terminalStatus or "Declined"
             elseif appStatus == "cancelled" or appStatus == "canceled" then
-                terminalStatus = terminalStatus or "Canceled"
+                terminalStatus = terminalStatus or "Cancelled"
             elseif appStatus == "timedout" then
                 terminalStatus = terminalStatus or "Timed Out"
             elseif (appStatus == "applied" or appStatus == "invited") and not terminalStatus and not pendingTimer then
@@ -2543,7 +2629,7 @@ local function ReadAndSuppressEntryStatus(entry, resultID, isSimPending, isSimCa
         pendingTimer = "4:59"
         terminalStatus = nil
     elseif isSimCanceled then
-        terminalStatus = "Canceled"
+        terminalStatus = "Cancelled"
         pendingTimer = nil
     end
 
@@ -2597,11 +2683,11 @@ local function RestoreEnumerateIcons(entry, enumSlots)
 end
 
 local function OnLFGListSearchEntryUpdate(entry)
-    if not entry then return end
+    if not entry or IsPlayerInCombat() then return end
     local db = EnsureDB()
     local eState = GetEntryState(entry)
     if IsYieldingSharedHooks() then
-        if eState.dimmedDeclined and not (InCombatLockdown and InCombatLockdown()) and entry.SetAlpha then
+        if eState.dimmedDeclined and not IsPlayerInCombat() and entry.SetAlpha then
             eState.dimmedDeclined = nil
             entry:SetAlpha(1.0)
         end
@@ -2614,31 +2700,27 @@ local function OnLFGListSearchEntryUpdate(entry)
         return
     end
 
-    if not eState.enterHooked and entry.GetScript and entry.SetScript then
-        local origOnEnter = entry:GetScript("OnEnter")
-        if type(origOnEnter) == "function" then
-            eState.enterHooked = true
-            entry:SetScript("OnEnter", function(selfEntry, ...)
-                local rID = selfEntry.resultID or ResolveLiveResultID(selfEntry)
-                if not IsValidSearchResultID(rID) then
-                    if _G.GameTooltip and _G.GameTooltip:IsOwned(selfEntry) then
-                        _G.GameTooltip:Hide()
-                    end
-                    if ScheduleAsyncResultRefilter then
-                        ScheduleAsyncResultRefilter()
-                    end
-                    return
+    if not eState.enterHooked and entry.HookScript then
+        eState.enterHooked = true
+        entry:HookScript("OnEnter", function(selfEntry)
+            if IsPlayerInCombat() then return end
+            local rID = (not IsSecretValue(selfEntry.resultID) and type(selfEntry.resultID) == "number" and selfEntry.resultID) or ResolveLiveResultID(selfEntry)
+            if not IsValidSearchResultID(rID) then
+                if _G.GameTooltip and _G.GameTooltip:IsOwned(selfEntry) then
+                    _G.GameTooltip:Hide()
                 end
-                return origOnEnter(selfEntry, ...)
-            end)
-        end
+                if ScheduleAsyncResultRefilter then
+                    ScheduleAsyncResultRefilter()
+                end
+            end
+        end)
     end
 
     if not eState.clickHooked and entry.HookScript then
         eState.clickHooked = true
         entry:HookScript("OnMouseDown", function(selfEntry, button)
             if button == "LeftButton" then
-                GetEntryState(selfEntry).pressedResultID = (type(selfEntry.resultID) == "number" and selfEntry.resultID) or ResolveLiveResultID(selfEntry)
+                GetEntryState(selfEntry).pressedResultID = (not IsSecretValue(selfEntry.resultID) and type(selfEntry.resultID) == "number" and selfEntry.resultID) or ResolveLiveResultID(selfEntry)
             end
         end)
     end
@@ -2713,7 +2795,7 @@ local function OnLFGListSearchEntryUpdate(entry)
         end
     end
 
-    local resultID = entry.resultID or ResolveLiveResultID(entry)
+    local resultID = (not IsSecretValue(entry.resultID) and type(entry.resultID) == "number" and entry.resultID) or ResolveLiveResultID(entry)
     local meta = InspectSearchResult(resultID)
     if not meta then
         if eState.dimmedDeclined and not (InCombatLockdown and InCombatLockdown()) and entry.SetAlpha then
@@ -2864,31 +2946,33 @@ local function OnLFGListSearchEntryUpdate(entry)
             local iconGap = 3
 
             -- Preserve Blizzard's dual-anchor Enumerate layout (never call ClearAllPoints on enumFrame)
-            if not enumFrame._dgOrigPoints and enumFrame.GetNumPoints then
-                enumFrame._dgOrigPoints = {}
+            local enumOrigPoints = _dgWeak.enumPoints[enumFrame]
+            if not enumOrigPoints and enumFrame.GetNumPoints then
+                enumOrigPoints = {}
                 for pIdx = 1, enumFrame:GetNumPoints() do
                     local pt, relTo, relPt, x, y = enumFrame:GetPoint(pIdx)
                     if pt then
-                        enumFrame._dgOrigPoints[#enumFrame._dgOrigPoints + 1] = { pt, relTo, relPt, x or 0, y or 0 }
+                        enumOrigPoints[#enumOrigPoints + 1] = { pt, relTo, relPt, x or 0, y or 0 }
                     end
                 end
+                _dgWeak.enumPoints[enumFrame] = enumOrigPoints
             end
-            if not (InCombatLockdown and InCombatLockdown()) and enumFrame._dgOrigPoints and enumFrame.SetPoint then
-                for _, p in ipairs(enumFrame._dgOrigPoints) do
+            if not IsPlayerInCombat() and enumOrigPoints and enumFrame.SetPoint then
+                for _, p in ipairs(enumOrigPoints) do
                     enumFrame:SetPoint(p[1], p[2], p[3], p[4], p[5] - 4)
                 end
             end
 
             -- Idempotent horizontal gap between sibling Enumerate icons in Blizzard's native chain
             for _, ic in ipairs(slotAnchors) do
-                if ic and not ic._dgOrigPoint and ic.GetPoint then
+                if ic and not _dgWeak.iconPoint[ic] and ic.GetPoint then
                     local pt, relTo, relPt, x, y = ic:GetPoint(1)
                     if pt then
-                        ic._dgOrigPoint = { pt, relTo, relPt, x or 0, y or 0 }
+                        _dgWeak.iconPoint[ic] = { pt, relTo, relPt, x or 0, y or 0 }
                     end
                 end
-                if not (InCombatLockdown and InCombatLockdown()) and ic and ic._dgOrigPoint and ic.SetPoint then
-                    local op = ic._dgOrigPoint
+                local op = ic and _dgWeak.iconPoint[ic]
+                if not IsPlayerInCombat() and op and ic.SetPoint then
                     if op[2] and op[2] ~= enumFrame then
                         local nx = (op[1]:find("LEFT") and (op[4] + iconGap) or (op[4] - iconGap))
                         ic:SetPoint(op[1], op[2], op[3], nx, op[5])
@@ -3000,6 +3084,7 @@ function DynamicGroup:DoesResultPassFilters(resultID)
 end
 
 local function SuppressEUIGroupFinderIfNeeded()
+    if IsPlayerInCombat() then return end
     -- Do not silently mutate external addon SavedVariables (_G.EllesmereUIDB); conflicts are handled via Suite Conflict Detection.
     local sp = _G.LFGListFrame and _G.LFGListFrame.SearchPanel
     if sp then
@@ -3106,7 +3191,7 @@ local function FilterAndSortSearchPanelResults(panel, allowSort)
     local sourceList = nil
     if C_LFGList and type(C_LFGList.GetSearchResults) == "function" then
         local ok, _, apiResults = pcall(C_LFGList.GetSearchResults)
-        if ok and type(apiResults) == "table" then
+        if ok and type(apiResults) == "table" and not IsSecretValue(apiResults) then
             sourceList = apiResults
             pState.rawResults = apiResults
         end
@@ -3242,8 +3327,7 @@ local function FilterAndSortSearchPanelResults(panel, allowSort)
 end
 
 local function OnLFGListSearchPanelUpdateResultList(panel)
-    if not panel or type(panel.results) ~= "table" then return end
-    if InCombatLockdown and InCombatLockdown() then return end
+    if not panel or IsPlayerInCombat() or IsSecretValue(panel.results) or type(panel.results) ~= "table" then return end
 
     SuppressEUIGroupFinderIfNeeded()
     local pState = GetPanelState(panel)
@@ -3251,7 +3335,7 @@ local function OnLFGListSearchPanelUpdateResultList(panel)
 
     if C_LFGList and type(C_LFGList.GetSearchResults) == "function" then
         local ok, _, apiResults = pcall(C_LFGList.GetSearchResults)
-        if ok and type(apiResults) == "table" then
+        if ok and type(apiResults) == "table" and not IsSecretValue(apiResults) then
             pState.rawResults = apiResults
         end
     end
@@ -3339,8 +3423,8 @@ local function EnsureUISpecialFrameRegistered(frameName)
 end
 
 local function HookOwnerButtonOnHide(anchorBtn)
-    if not anchorBtn or not anchorBtn.HookScript or anchorBtn._dgOnHideHooked then return end
-    anchorBtn._dgOnHideHooked = true
+    if not anchorBtn or not anchorBtn.HookScript or _dgWeak.hookedOwner[anchorBtn] then return end
+    _dgWeak.hookedOwner[anchorBtn] = true
     anchorBtn:HookScript("OnHide", function(self)
         if (activeDropdownMenu and activeDropdownMenu.anchorBtn == self)
             or (activeRegionPopover and activeRegionPopover.anchorBtn == self)
@@ -4062,7 +4146,7 @@ function DynamicGroup:EnsureLFGMiniBar()
                 )
             end
             _G.GameTooltip:AddLine(" ")
-            _G.GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open datacentre region filter popover.|r", 0.886, 0.910, 0.941)
+            _G.GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open datacentre region filter menu.|r", 0.886, 0.910, 0.941)
             AddSearchFreshnessTooltipLine(_G.GameTooltip)
             _G.GameTooltip:Show()
         end
@@ -4072,21 +4156,21 @@ function DynamicGroup:EnsureLFGMiniBar()
         ShowRegionPopover(s)
     end)
 
-    -- 2. Minimum M+ Score On-the-Fly Dropdown Button
+    -- 2. Minimum M+ Rating On-the-Fly Dropdown Button
     bar.scoreBtn = CreateMiniPill(bar, 64, "LEFT", bar.regionBtn, "RIGHT", 3, true)
     local scoreMenuOptions = {
-        { value = 0,    label = "Any Score (0+)" },
-        { value = 1500, label = "1500+ M+ Score" },
-        { value = 2000, label = "2000+ M+ Score" },
-        { value = 2500, label = "2500+ M+ Score" },
-        { value = 2800, label = "2800+ M+ Score" },
-        { value = 3000, label = "3000+ M+ Score" },
+        { value = 0,    label = "Any Rating (0+)" },
+        { value = 1500, label = "1500+ M+ Rating" },
+        { value = 2000, label = "2000+ M+ Rating" },
+        { value = 2500, label = "2500+ M+ Rating" },
+        { value = 2800, label = "2800+ M+ Rating" },
+        { value = 3000, label = "3000+ M+ Rating" },
     }
     bar.scoreBtn:HookScript("OnEnter", function(s)
         if _G.GameTooltip then
             _G.GameTooltip:SetOwner(s, "ANCHOR_TOP")
             _G.GameTooltip:ClearLines()
-            _G.GameTooltip:AddLine("Minimum Leader M+ Score", 1, 1, 1)
+            _G.GameTooltip:AddLine("Minimum Leader M+ Rating", 1, 1, 1)
             _G.GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Select a minimum Mythic+ rating threshold.|r", 0.886, 0.910, 0.941, true)
             AddSearchFreshnessTooltipLine(_G.GameTooltip)
             _G.GameTooltip:Show()
@@ -4207,7 +4291,7 @@ function DynamicGroup:EnsureLFGMiniBar()
             _G.GameTooltip:SetOwner(s, "ANCHOR_TOP")
             _G.GameTooltip:ClearLines()
             _G.GameTooltip:AddLine("DynamicGroup Settings (/dgroup)", 1, 1, 1)
-            _G.GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open the DynamicGroup configuration workspace.|r", 0.886, 0.910, 0.941, true)
+            _G.GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open DynamicGroup settings.|r", 0.886, 0.910, 0.941, true)
             _G.GameTooltip:Show()
         end
     end)
@@ -4281,7 +4365,7 @@ local function PopulateDungeonTileTooltip(tile)
             _G.GameTooltip:AddLine("Dungeon Teleport: |cFF22C55EReady|r", 0.886, 0.910, 0.941)
         end
     else
-        _G.GameTooltip:AddLine("Dungeon Teleport: |cFF94A3B8Not learned yet (complete +10 in time)|r", 0.886, 0.910, 0.941)
+        _G.GameTooltip:AddLine("Dungeon Teleport: |cFF94A3B8Not unlocked yet (complete +10 in time)|r", 0.886, 0.910, 0.941)
     end
 
     _G.GameTooltip:AddDoubleLine(
@@ -4297,7 +4381,7 @@ local function PopulateDungeonTileTooltip(tile)
     if slot.spellKnown then
         _G.GameTooltip:AddLine("|c" .. accHex .. "Right-Click:|r |cFFE2E8F0Cast Dungeon Teleport.|r", 0.886, 0.910, 0.941)
     else
-        _G.GameTooltip:AddLine("|cFF64748BRight-Click:|r |cFF94A3B8Not learned yet (complete +10 in time).|r", 0.886, 0.910, 0.941)
+        _G.GameTooltip:AddLine("|cFF64748BRight-Click:|r |cFF94A3B8Not unlocked yet (complete +10 in time).|r", 0.886, 0.910, 0.941)
     end
     _G.GameTooltip:Show()
 end
@@ -4391,7 +4475,7 @@ function DynamicGroup:EnsurePortalBar()
                         _G.GameTooltip:AddLine("Dungeon Teleport: |cFF22C55EReady|r", 0.886, 0.910, 0.941)
                     end
                 else
-                    _G.GameTooltip:AddLine("Dungeon Teleport: |cFF94A3B8Not learned yet (complete +10 in time)|r", 0.886, 0.910, 0.941)
+                    _G.GameTooltip:AddLine("Dungeon Teleport: |cFF94A3B8Not unlocked yet (complete +10 in time)|r", 0.886, 0.910, 0.941)
                 end
 
                 _G.GameTooltip:AddLine(" ")
@@ -4400,7 +4484,7 @@ function DynamicGroup:EnsurePortalBar()
                 if kSpellKnown and kSpellID then
                     _G.GameTooltip:AddLine("|c" .. accHex .. "Right-Click:|r |cFFE2E8F0Cast Dungeon Teleport.|r", 0.886, 0.910, 0.941, true)
                 else
-                    _G.GameTooltip:AddLine("|cFF64748BRight-Click:|r |cFF94A3B8Cast Dungeon Teleport (not learned yet).|r", 0.886, 0.910, 0.941, true)
+                    _G.GameTooltip:AddLine("|cFF64748BRight-Click:|r |cFF94A3B8Cast Dungeon Teleport (not unlocked yet).|r", 0.886, 0.910, 0.941, true)
                 end
             else
                 _G.GameTooltip:AddLine("No Mythic+ keystone found in your bags.", 0.58, 0.64, 0.72)
@@ -4516,7 +4600,7 @@ function DynamicGroup:EnsurePortalBar()
         SetSafeFont(tile.bestText, 8, "OUTLINE")
         tile.bestText:SetPoint("BOTTOM", tile, "BOTTOM", 0, 2)
 
-        -- 2px Blaze Orange Active Filter Border Edges
+        -- 2px Suite Accent Active Filter Border Edges
         local edges = {}
         local topE = tile:CreateTexture(nil, "OVERLAY")
         topE:SetHeight(2); topE:SetPoint("TOPLEFT", tile, "TOPLEFT", 0, 0); topE:SetPoint("TOPRIGHT", tile, "TOPRIGHT", 0, 0); topE:Hide()
@@ -5003,9 +5087,12 @@ function DynamicGroup:EnsureTeleportToast()
         fadeAnim:SetDuration(1.2)
         fadeAnim:SetOrder(2)
         animGroup:SetScript("OnFinished", function()
-            if not (InCombatLockdown and InCombatLockdown()) then
+            if not IsPlayerInCombat() then
                 toast:Hide()
                 toast:SetAlpha(1)
+                DynamicGroup.pendingTeleportToastHide = false
+            else
+                DynamicGroup.pendingTeleportToastHide = true
             end
         end)
         toast.animGroup = animGroup
@@ -5247,9 +5334,10 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
         and "|cFF22C55EGroup Full (5/5) - Ready to Teleport!|r"
         or string.format("Members: %d/5", numMembers)
 
+    local tr, tg, tb, accHex = GetSuiteAccent()
     local statusLine = data.spellKnown
-        and "|cFF34D399Click Teleport|r |cFF94A3B8to cast|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r"
-        or "|cFF94A3B8No Portal Unlocked|r  |cFF475569|||r  |cFF38BDF8Right-Click|r |cFF94A3B8to dismiss|r"
+        and ("|cFF34D399Click Teleport|r |cFF94A3B8to cast|r  |cFF475569|||r  |c" .. accHex .. "Right-Click|r |cFF94A3B8to dismiss|r")
+        or ("|cFF94A3B8No Portal Unlocked|r  |cFF475569|||r  |c" .. accHex .. "Right-Click|r |cFF94A3B8to dismiss|r")
 
     local tpBtn = toast.teleportBtn
     if tpBtn then
@@ -5269,7 +5357,6 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
                 tpBtn:SetBackdropBorderColor(0.133, 0.773, 0.369, 0.95)
                 tpBtn.label:SetTextColor(0.204, 0.827, 0.600, 1)
             else
-                local tr, tg, tb = GetSuiteAccent()
                 tpBtn:SetBackdropColor(tr * 0.28, tg * 0.28, tb * 0.28, 0.96)
                 tpBtn:SetBackdropBorderColor(tr, tg, tb, 0.95)
                 tpBtn.label:SetTextColor(1.0, 1.0, 1.0, 1)
@@ -5530,7 +5617,7 @@ function DynamicGroup:HandleApplicationStatusUpdated(searchResultID, newStatus, 
     local listingName = (type(groupName) == "string" and not IsSecretValue(groupName) and groupName ~= "") and groupName or nil
     if C_LFGList and type(C_LFGList.GetSearchResultInfo) == "function" then
         local okR, rInfo = pcall(C_LFGList.GetSearchResultInfo, searchResultID)
-        if okR and type(rInfo) == "table" then
+        if okR and type(rInfo) == "table" and not IsSecretValue(rInfo) then
             if not IsSecretValue(rInfo.activityID) and tonumber(rInfo.activityID) then
                 activityID = tonumber(rInfo.activityID)
             elseif type(rInfo.activityIDs) == "table" and not IsSecretValue(rInfo.activityIDs) then
@@ -5558,9 +5645,19 @@ function DynamicGroup:HandleApplicationStatusUpdated(searchResultID, newStatus, 
     local meta = self:ResolveDungeonTeleportMetadata(activityID, listingName, false)
     if not meta then return end
 
-    local inGroup = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
-    local curMembers = inGroup and ((type(_G.GetNumGroupMembers) == "function" and _G.GetNumGroupMembers()) or 1) or 1
-    curMembers = math.max(1, math.min(5, tonumber(curMembers) or 1))
+    local inGroup = false
+    if type(_G.IsInGroup) == "function" then
+        local okIG, resIG = pcall(_G.IsInGroup)
+        inGroup = (okIG and not IsSecretValue(resIG) and resIG == true)
+    end
+    local curMembers = 1
+    if inGroup and type(_G.GetNumGroupMembers) == "function" then
+        local okGM, resGM = pcall(_G.GetNumGroupMembers)
+        if okGM and not IsSecretValue(resGM) and tonumber(resGM) then
+            curMembers = tonumber(resGM)
+        end
+    end
+    curMembers = math.max(1, math.min(5, curMembers))
 
     self.teleportToastDismissedForGroup = false
     self.activeTeleportToastData = {
@@ -5683,12 +5780,12 @@ function DynamicGroup:ToggleTestApplyPreview()
         self._testApplyMode = "PENDING"
         self._testApplyResultID = firstResultID
         pcall(sp.ScrollBox.ForEachFrame, sp.ScrollBox, OnLFGListSearchEntryUpdate)
-        PrintMsg("Simulated Pending preview ON (18x18 'x' button + 4:59 badge) for the first visible Premade Group row (/dg testapply again for Canceled preview).")
+        PrintMsg("Simulated Pending preview ON (close button + 4:59 badge) on the first visible group (/dg testapply again for Cancelled preview).")
     elseif self._testApplyMode == "PENDING" then
         self._testApplyActive = true
         self._testApplyMode = "CANCELED"
         pcall(sp.ScrollBox.ForEachFrame, sp.ScrollBox, OnLFGListSearchEntryUpdate)
-        PrintMsg("Simulated Canceled preview ON (Canceled badge + 0.35 row dim) for the first visible Premade Group row (/dg testapply again to clear).")
+        PrintMsg("Simulated Cancelled preview ON (Cancelled badge + dimmed row) on the first visible group (/dg testapply again to clear).")
     else
         self._testApplyActive = false
         self._testApplyMode = nil
@@ -5703,11 +5800,21 @@ function DynamicGroup:UpdateLFGMiniBar()
     if not bar then return end
     if IsYieldingSharedHooks() then
         CloseActiveDropdown()
-        bar:Hide()
+        if not IsPlayerInCombat() then
+            bar:Hide()
+            self.pendingMiniBarUpdate = false
+        else
+            self.pendingMiniBarUpdate = true
+        end
         self:UpdatePortalBar()
         return
     elseif not bar:IsShown() then
-        bar:Show()
+        if not IsPlayerInCombat() then
+            bar:Show()
+            self.pendingMiniBarUpdate = false
+        else
+            self.pendingMiniBarUpdate = true
+        end
     end
     local db = EnsureDB()
     local ar, ag, ab = GetSuiteAccent()
@@ -5759,20 +5866,23 @@ end
 -- ============================================================================
 
 local function OnLFGListApplicationDialogUpdateRoles(dialog)
-    if not dialog or IsYieldingSharedHooks() then return end
+    if not dialog or IsYieldingSharedHooks() or IsPlayerInCombat() then return end
     local db = EnsureDB()
     if not db.autoSelectRole then return end
-    local spec = SafeGetSpecialization()
-    if not spec then return end
-    local role = SafeGetSpecializationRole(spec)
-    if not role then return end
+    local okSp, spec = pcall(SafeGetSpecialization)
+    if not okSp or not spec or IsSecretValue(spec) then return end
+    local okR, role = pcall(SafeGetSpecializationRole, spec)
+    if not okR or type(role) ~= "string" or IsSecretValue(role) or role == "" then return end
 
-    if role == "TANK" and dialog.TankButton and dialog.TankButton:IsShown() and dialog.TankButton.CheckButton then
-        dialog.TankButton.CheckButton:SetChecked(true)
-    elseif role == "HEALER" and dialog.HealerButton and dialog.HealerButton:IsShown() and dialog.HealerButton.CheckButton then
-        dialog.HealerButton.CheckButton:SetChecked(true)
-    elseif role == "DAMAGER" and dialog.DamagerButton and dialog.DamagerButton:IsShown() and dialog.DamagerButton.CheckButton then
-        dialog.DamagerButton.CheckButton:SetChecked(true)
+    local roleBtn = (role == "TANK" and dialog.TankButton)
+        or (role == "HEALER" and dialog.HealerButton)
+        or (role == "DAMAGER" and dialog.DamagerButton)
+        or nil
+    if roleBtn and roleBtn.CheckButton then
+        local okShown, shown = pcall(roleBtn.IsShown, roleBtn)
+        if okShown and not IsSecretValue(shown) and shown then
+            pcall(roleBtn.CheckButton.SetChecked, roleBtn.CheckButton, true)
+        end
     end
 end
 
@@ -5783,22 +5893,32 @@ local function BuildSignUpNoteString()
     if db.appendIlvlToNote then
         local eqIlvl = 0
         if type(GetAverageItemLevel) == "function" then
-            local _, equipped = GetAverageItemLevel()
-            eqIlvl = math.floor(tonumber(equipped) or 0)
+            local okIlvl, _, equipped = pcall(GetAverageItemLevel)
+            if okIlvl and not IsSecretValue(equipped) and tonumber(equipped) then
+                eqIlvl = math.floor(tonumber(equipped) or 0)
+            end
         end
         local specName = ""
-        local spec = SafeGetSpecialization()
-        if spec then
-            local _, sName = SafeGetSpecializationInfo(spec)
-            specName = sName or ""
+        local okSp, spec = pcall(SafeGetSpecialization)
+        if okSp and spec and not IsSecretValue(spec) then
+            local okSI, _, sName = pcall(SafeGetSpecializationInfo, spec)
+            if okSI and type(sName) == "string" and not IsSecretValue(sName) then
+                specName = sName
+            end
         end
-        local classLoc = UnitClass("player") or ""
+        local classLoc = ""
+        if type(UnitClass) == "function" then
+            local okCls, cLoc = pcall(UnitClass, "player")
+            if okCls and type(cLoc) == "string" and not IsSecretValue(cLoc) then
+                classLoc = cLoc
+            end
+        end
         if eqIlvl > 0 then
             parts[#parts + 1] = string.format("[%d %s %s]", eqIlvl, specName, classLoc):gsub("%s+", " ")
         end
     end
 
-    if db.persistentNote and db.persistentNote ~= "" then
+    if type(db.persistentNote) == "string" and not IsSecretValue(db.persistentNote) and db.persistentNote ~= "" then
         parts[#parts + 1] = db.persistentNote
     end
 
@@ -6281,6 +6401,7 @@ local function CreateSectionHeader(parent, arg2, arg3, arg4, arg5)
     else
         title:SetPoint("LEFT", leftBar, "RIGHT", 8, 0)
     end
+    title:SetPoint("RIGHT", hdr, "RIGHT", -12, 0)
     title:SetJustifyH("LEFT")
     title:SetWordWrap(false)
     title:SetTextColor(ar, ag, ab, 1.0)
@@ -6393,12 +6514,12 @@ local function AnchorCardTextToRightWidget(card, rightWidget)
     if card.title then
         card.title:ClearAllPoints()
         card.title:SetPoint("TOPLEFT", card, "TOPLEFT", 14, -10)
-        card.title:SetPoint("RIGHT", rightWidget, "LEFT", -16, 0)
+        card.title:SetPoint("RIGHT", rightWidget, "LEFT", -12, 0)
     end
     if card.desc then
         card.desc:ClearAllPoints()
         card.desc:SetPoint("TOPLEFT", card.title, "BOTTOMLEFT", 0, -4)
-        card.desc:SetPoint("RIGHT", rightWidget, "LEFT", -16, 0)
+        card.desc:SetPoint("RIGHT", rightWidget, "LEFT", -12, 0)
     end
 end
 
@@ -6615,8 +6736,8 @@ end
 local function CreateSubDrawerToggleBar(card, subCount, getExpanded, setExpanded, onToggleLayout)
     local bar = CreateFrame("Button", nil, card, "BackdropTemplate")
     bar:SetSize(400, 24)
-    bar:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -52)
-    bar:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -52)
+    bar:SetPoint("TOPLEFT", card, "TOPLEFT", 10, -58)
+    bar:SetPoint("TOPRIGHT", card, "TOPRIGHT", -10, -58)
     bar:EnableMouse(true)
     bar:RegisterForClicks("AnyUp")
     bar:SetBackdrop({
@@ -6780,14 +6901,15 @@ local function RenderGroupEmbedded(arg1, arg2)
     tabBar:SetBackdropBorderColor(1, 1, 1, 0.08)
 
     local tabDefs = {
-        { id = 1, label = "LFG Premade Filter & Regions" },
-        { id = 2, label = "Whisper Auto-Invite & Roles" },
-        { id = 3, label = "Party & Keystone Automation" },
+        { id = 1, label = "LFG Filter & Regions" },
+        { id = 2, label = "Auto-Invite & Roles" },
+        { id = 3, label = "Party & Keystones" },
     }
 
     root.tabButtons = {}
     root.tabPages = {}
     root.allControls = {}
+    root.actionButtons = {}
 
     local scrollHolder = CreateObsidianScrollArea(root)
     scrollHolder:ClearAllPoints()
@@ -6815,7 +6937,10 @@ local function RenderGroupEmbedded(arg1, arg2)
         tBtn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
         tBtn.text = tBtn:CreateFontString(nil, "OVERLAY")
         SetSafeFont(tBtn.text, 11, "")
-        tBtn.text:SetPoint("CENTER", 0, 0)
+        tBtn.text:SetPoint("LEFT", tBtn, "LEFT", 6, 0)
+        tBtn.text:SetPoint("RIGHT", tBtn, "RIGHT", -6, 0)
+        tBtn.text:SetJustifyH("CENTER")
+        tBtn.text:SetWordWrap(false)
         tBtn.text:SetText(tDef.label)
 
         local page = CreateFrame("Frame", nil, scrollHolder.content)
@@ -6874,20 +6999,20 @@ local function RenderGroupEmbedded(arg1, arg2)
     local sec1a = CreateSectionBox(
         page1,
         "PREMADE REGION & GROUP FILTERING",
-        "Filter Premade LFG search results by datacentre region, leader M+ rating, and party utility.",
+        "Filter Premade LFG groups by datacentre region, M+ rating, and party utility.",
         root
     )
     local sec1b = CreateSectionBox(
         page1,
         "SEARCH SORTING, OVERLAYS & QUICK SIGN-UP",
-        "Customise result sorting, in-place entry badges, persistent search text, and double-click sign-up.",
+        "Customise result sorting, entry badges, search memory, and double-click sign-up.",
         root
     )
 
     -- Card 1.1: Enable LFG Premade Filter (2-Pill Segmented Switch)
     local c1_enable = CreateCardRow(sec1a, 62,
         "Enable LFG Premade Filter",
-        "Enables region filtering, M+ rating filtering, role-fit sorting, and passive composition badges."
+        "Enables region filtering, M+ rating filtering, role-fit sorting, and party role badges."
     )
     AttachSegmentedSwitchToCard(c1_enable,
         function() return EnsureDB().lfgFilterEnabled end,
@@ -6900,10 +7025,10 @@ local function RenderGroupEmbedded(arg1, arg2)
     page1.orderedCards[#page1.orderedCards + 1] = c1_enable
     root.allControls[#root.allControls + 1] = c1_enable
 
-    -- Card 1.1b: Show Season Dungeon Portals & Quick-Filter Bar
+    -- Card 1.1b: Season Dungeon Portals & Filter Bar
     local c1_portalBar = CreateCardRow(sec1a, 62,
-        "Show Season Dungeon Portals & Quick-Filter Bar",
-        "Displays the 8 season Mythic+ dungeon teleports, your current keystone, and one-click dungeon filters above Group Finder."
+        "Season Dungeon Portals & Filter Bar",
+        "Shows the 8 season dungeon portals, your keystone, and 1-click dungeon filters above Group Finder."
     )
     AttachSegmentedSwitchToCard(c1_portalBar,
         function() return EnsureDB().showPortalBar ~= false end,
@@ -6918,7 +7043,7 @@ local function RenderGroupEmbedded(arg1, arg2)
 
     -- Card 1.2: Multi-Select Region Filter Pills ([check OCE] [check US-West] ...)
     local c1_regions = CreateCardRow(sec1a, 102,
-        "Datacentre Region Filter Pills",
+        "Datacentre Region Filters",
         "Click to toggle datacentre regions shown in Premade LFG search results."
     )
     root.regionPills = {}
@@ -6950,6 +7075,8 @@ local function RenderGroupEmbedded(arg1, arg2)
 
         pill.label = pill:CreateFontString(nil, "OVERLAY")
         SetSafeFont(pill.label, 11, "")
+        pill.label:SetJustifyH("LEFT")
+        pill.label:SetWordWrap(false)
         pill.label:SetText(meta.pillLabel)
 
         function pill:RefreshPill()
@@ -6966,6 +7093,7 @@ local function RenderGroupEmbedded(arg1, arg2)
                 self.check:Show()
                 self.label:ClearAllPoints()
                 self.label:SetPoint("LEFT", self.check, "RIGHT", 6, 0)
+                self.label:SetPoint("RIGHT", self, "RIGHT", -6, 0)
                 self.label:SetTextColor(rc.r, rc.g, rc.b, 1.0)
             else
                 self:SetBackdropColor(0.059, 0.071, 0.094, 0.92)
@@ -6977,6 +7105,7 @@ local function RenderGroupEmbedded(arg1, arg2)
                 self.dot:Show()
                 self.label:ClearAllPoints()
                 self.label:SetPoint("LEFT", self.dot, "RIGHT", 7, 0)
+                self.label:SetPoint("RIGHT", self, "RIGHT", -6, 0)
                 self.label:SetTextColor(0.62, 0.68, 0.76, 1.0)
             end
         end
@@ -7016,24 +7145,71 @@ local function RenderGroupEmbedded(arg1, arg2)
         root.regionPills[i] = pill
     end
 
-    pillContainer:SetScript("OnSizeChanged", function(self, w)
-        if not w or w < 120 then return end
+    local function ReflowRegionPills()
+        local w = pillContainer:GetWidth() or 0
+        if w < 120 then return end
         local gap = 6
-        local equalW = math.floor((w - (gap * 5)) / 6)
-        local xCursor = 0
-        for i, pill in ipairs(root.regionPills) do
-            SetSafeFont(pill.label, 11, "")
-            local minW = math.ceil((pill.label:GetStringWidth() or 40) + 32)
-            local pillW = math.max(equalW, minW)
-            pill:ClearAllPoints()
-            pill:SetWidth(pillW)
-            pill:SetPoint("LEFT", self, "LEFT", xCursor, 0)
-            xCursor = xCursor + pillW + gap
+        local targetH
+        if w < 540 then
+            targetH = 130
+            local colW = math.floor((w - (gap * 2)) / 3)
+            local rowH = 26
+            local gapY = 6
+            for i, pill in ipairs(root.regionPills) do
+                SetSafeFont(pill.label, 11, "")
+                local col = (i - 1) % 3
+                local row = math.floor((i - 1) / 3)
+                pill:ClearAllPoints()
+                pill:SetSize(colW, rowH)
+                pill:SetPoint("TOPLEFT", pillContainer, "TOPLEFT", col * (colW + gap), -(row * (rowH + gapY)))
+            end
+        else
+            targetH = 102
+            local mins = {}
+            local sumMin = 0
+            for i, pill in ipairs(root.regionPills) do
+                SetSafeFont(pill.label, 11, "")
+                local mw = math.ceil((pill.label:GetStringWidth() or 40) + 30)
+                mins[i] = mw
+                sumMin = sumMin + mw
+            end
+            local avail = w - (gap * 5)
+            local extraEach = math.max(0, math.floor((avail - sumMin) / 6))
+            local xCursor = 0
+            for i, pill in ipairs(root.regionPills) do
+                local pillW = (sumMin <= avail) and (mins[i] + extraEach) or math.max(40, math.floor(avail * (mins[i] / sumMin)))
+                pill:ClearAllPoints()
+                pill:SetSize(pillW, 26)
+                pill:SetPoint("LEFT", pillContainer, "LEFT", xCursor, 0)
+                xCursor = xCursor + pillW + gap
+            end
         end
+        if math.abs((c1_regions:GetHeight() or 0) - targetH) > 0.5 then
+            c1_regions.baseHeight = targetH
+            c1_regions:SetHeight(targetH)
+            LayoutPageCards(page1)
+            if root.scrollHolder and root.scrollHolder.content then
+                if (EnsureDB().activeSubTab or 1) == 1 then
+                    root.scrollHolder.content:SetHeight(math.max(1, page1:GetHeight() or 1))
+                end
+                if root.scrollHolder.UpdateThumb then
+                    root.scrollHolder.UpdateThumb()
+                end
+            end
+        end
+    end
+    pillContainer:SetScript("OnSizeChanged", function(_, w)
+        if w and w >= 120 then
+            ReflowRegionPills()
+        end
+    end)
+    pillContainer:HookScript("OnShow", function()
+        C_Timer.After(0, ReflowRegionPills)
     end)
 
     sec1a.orderedCards[#sec1a.orderedCards + 1] = c1_regions
     page1.orderedCards[#page1.orderedCards + 1] = c1_regions
+    root.allControls[#root.allControls + 1] = c1_regions
 
     -- Card 1.3: Hide Full 5/5 Groups (2-Pill Segmented Switch)
     local c1_hideFull = CreateCardRow(sec1a, 62,
@@ -7054,9 +7230,9 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 1.5: Minimum M+ Rating Filter (EUI-Style Dropdown)
     local c1_score = CreateCardRow(sec1a, 62,
         "Minimum M+ Rating Filter",
-        "Hides Premade LFG groups whose leader falls below your target Mythic+ rating threshold."
+        "Hides groups whose leader is below your Mythic+ rating threshold."
     )
-    AttachDropdownToCard(c1_score, 270, {
+    AttachDropdownToCard(c1_score, 205, {
         { value = 0,    label = "No Minimum (0+)" },
         { value = 1500, label = "1500+ Mythic+ Rating" },
         { value = 2000, label = "2000+ Mythic+ Rating" },
@@ -7071,13 +7247,13 @@ local function RenderGroupEmbedded(arg1, arg2)
     page1.orderedCards[#page1.orderedCards + 1] = c1_score
     root.allControls[#root.allControls + 1] = c1_score
 
-    -- Card 1.6: Premade Group Filters (Role, Class & Utility) (Multi-Toggle Popover Button)
+    -- Card 1.6: Premade Role & Utility Filters (Multi-Toggle Menu Button)
     local c1_roleFit = CreateCardRow(sec1a, 62,
-        "Premade Group Filters (Role, Class & Utility)",
-        "Choose Tank/Healer/DPS role openings, duplicate-class checks, Tank/Healer presence, and Lust/CR utility."
+        "Premade Role & Utility Filters",
+        "Filter by open Tank/Healer/DPS slots, no duplicate class, or Lust/CR."
     )
     local roleFilterBtn = CreateFrame("Button", nil, c1_roleFit, "BackdropTemplate")
-    roleFilterBtn:SetSize(270, 26)
+    roleFilterBtn:SetSize(210, 26)
     roleFilterBtn:SetPoint("TOPRIGHT", c1_roleFit, "TOPRIGHT", -14, -17)
     roleFilterBtn:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
@@ -7149,10 +7325,10 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 1.4: Sort LFG Results By (EUI-Style Dropdown)
     local c1_sort = CreateCardRow(sec1b, 62,
         "Sort LFG Results By",
-        "Prioritises open groups needing your active specialisation role, Lust/CR utility, and Leader M+ score."
+        "Prioritise groups by role fit and utility, M+ rating, or open slots."
     )
-    AttachDropdownToCard(c1_sort, 300, {
-        { value = "SMART_HIDE_FULL", label = "Smart Sort (Role Fit > Lust/CR > Leader IO)" },
+    AttachDropdownToCard(c1_sort, 220, {
+        { value = "SMART_HIDE_FULL", label = "Smart Sort (Role Fit > Lust/CR > M+ Rating)" },
         { value = "SCORE_DESC",      label = "Leader Mythic+ Rating (High to Low)" },
         { value = "OPEN_SLOTS",      label = "Group Size (Most Open Slots First)" },
         { value = "BLIZZARD",        label = "Standard Blizzard Order" },
@@ -7166,10 +7342,10 @@ local function RenderGroupEmbedded(arg1, arg2)
     page1.orderedCards[#page1.orderedCards + 1] = c1_sort
     root.allControls[#root.allControls + 1] = c1_sort
 
-    -- Card 1.7: Show Region & Leader IO Badge (2-Pill Segmented Switch)
+    -- Card 1.7: Show Region & M+ Rating Badge (2-Pill Segmented Switch)
     local c1_badges = CreateCardRow(sec1b, 62,
-        "Show Region & Leader IO Badge",
-        "Displays the leader's datacentre region (OCE, USE, USW, USC, LA, BR) and Mythic+ rating in the top-right corner of each Premade Group listing."
+        "Show Region & M+ Rating Badge",
+        "Shows the leader's datacentre region and Mythic+ rating in the top-right corner of each listing."
     )
     AttachSegmentedSwitchToCard(c1_badges,
         function()
@@ -7190,7 +7366,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 1.8: Remember Last Search Text (2-Pill Segmented Switch)
     local c1_remember = CreateCardRow(sec1b, 62,
         "Remember Last Search Text",
-        "Automatically restores your last Premade LFG search filter text when reopening the Group Finder."
+        "Restores your last Premade LFG search filter text when reopening Group Finder."
     )
     AttachSegmentedSwitchToCard(c1_remember,
         function() return EnsureDB().rememberSearchText end,
@@ -7203,7 +7379,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 1.9: One-Click Double-Click Sign Up (2-Pill Segmented Switch)
     local c1_dblClick = CreateCardRow(sec1b, 62,
         "One-Click Double-Click Sign Up",
-        "Double-click any Premade LFG search result entry to open the Sign-Up dialog immediately."
+        "Double-click any Premade LFG search result entry to open the Sign-Up window immediately."
     )
     AttachSegmentedSwitchToCard(c1_dblClick,
         function() return EnsureDB().doubleClickSignUp end,
@@ -7220,13 +7396,13 @@ local function RenderGroupEmbedded(arg1, arg2)
     local sec2a = CreateSectionBox(
         page2,
         "WHISPER KEYWORD AUTO-INVITE ENGINE",
-        "Automatically invite players who whisper your trigger keywords and scale 5-player parties into raids.",
+        "Auto-invite whisper keywords and convert 5-player parties to raids.",
         root
     )
     local sec2b = CreateSectionBox(
         page2,
         "RAID & PARTY COORDINATION TOOLS",
-        "Automatic party invites, trusted assistant promotions, and instant role check confirmations.",
+        "Trusted raid assistant promotions and quick role check confirmations.",
         root
     )
 
@@ -7268,8 +7444,8 @@ local function RenderGroupEmbedded(arg1, arg2)
 
     -- Recessed Sub-Drawer Container holding 2 Nested Sub-Setting Cards (PANEL_BG #090A0D, 1px CELL_BORDER, 2px Suite Accent left bar, 5x5 pip)
     local whisperDrawer = CreateFrame("Frame", nil, c2_whisper)
-    whisperDrawer:SetPoint("TOPLEFT", c2_whisper, "TOPLEFT", 10, -82)
-    whisperDrawer:SetPoint("TOPRIGHT", c2_whisper, "TOPRIGHT", -10, -82)
+    whisperDrawer:SetPoint("TOPLEFT", c2_whisper, "TOPLEFT", 10, -88)
+    whisperDrawer:SetPoint("TOPRIGHT", c2_whisper, "TOPRIGHT", -10, -88)
     whisperDrawer:SetHeight(88)
 
     local kwCard = CreateFrame("Frame", nil, whisperDrawer, "BackdropTemplate")
@@ -7334,6 +7510,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     kwLabel:SetPoint("LEFT", kwPip, "RIGHT", 8, 0)
     kwLabel:SetPoint("RIGHT", kwBox, "LEFT", -12, 0)
     kwLabel:SetJustifyH("LEFT")
+    kwLabel:SetWordWrap(false)
     kwLabel:SetTextColor(0.84, 0.89, 0.95)
     kwLabel:SetText("Trigger Keywords")
 
@@ -7386,6 +7563,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     scopeLabel:SetPoint("LEFT", scopePip, "RIGHT", 8, 0)
     scopeLabel:SetPoint("RIGHT", scopeWrap, "LEFT", -12, 0)
     scopeLabel:SetJustifyH("LEFT")
+    scopeLabel:SetWordWrap(false)
     scopeLabel:SetTextColor(0.84, 0.89, 0.95)
     scopeLabel:SetText("Accept Whispers From")
 
@@ -7513,11 +7691,11 @@ local function RenderGroupEmbedded(arg1, arg2)
             whisperBar:RefreshValue()
             if isExp then
                 whisperDrawer:Show()
-                c2_whisper:SetHeight(178)
+                c2_whisper:SetHeight(184)
                 c2_whisper:SetBackdropBorderColor(ar, ag, ab, 0.85)
             else
                 whisperDrawer:Hide()
-                c2_whisper:SetHeight(84)
+                c2_whisper:SetHeight(90)
                 c2_whisper:SetBackdropBorderColor(0.145, 0.165, 0.212, 1.00)
             end
         else
@@ -7537,7 +7715,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 2.2: Auto-Convert Party to Raid Above 5 Players
     local c2_convert = CreateCardRow(sec2a, 62,
         "Auto-Convert Party to Raid Above 5 Players",
-        "Automatically converts your 5-player party into a raid when a 6th player whispers your invite keyword."
+        "Converts your 5-player party into a raid when a 6th player whispers your invite keyword."
     )
     AttachSegmentedSwitchToCard(c2_convert,
         function() return EnsureDB().autoConvertToRaid end,
@@ -7550,7 +7728,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 2.3: Auto-Promote Friends/Tanks
     local c2_promote = CreateCardRow(sec2b, 62,
         "Auto-Promote Friends/Tanks",
-        "Automatically grants Raid Assistant (A) to Battle.net Friends, Guild members, and Tanks when you are Leader."
+        "Grants Raid Assistant (A) to Battle.net Friends, Guildmates, and Tanks when you are Leader."
     )
     AttachSegmentedSwitchToCard(c2_promote,
         function() return EnsureDB().autoPromoteFriendsTanks end,
@@ -7566,7 +7744,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 2.4: Auto-Accept Role Check
     local c2_roleCheck = CreateCardRow(sec2b, 62,
         "Auto-Accept Role Check",
-        "Automatically confirms your current specialisation role out of combat after a short delay (hold Shift to skip; never auto-accepts queue pops)."
+        "Confirms your active specialisation role out of combat after a brief delay (hold Shift to skip)."
     )
     local rcSwitch = AttachSegmentedSwitchToCard(c2_roleCheck,
         function() return EnsureDB().autoAcceptRoleCheck == true end,
@@ -7575,23 +7753,26 @@ local function RenderGroupEmbedded(arg1, arg2)
     local rcYieldNote = c2_roleCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     SetSafeFont(rcYieldNote, 10, "")
     rcYieldNote:SetPoint("TOPLEFT", c2_roleCheck.desc, "BOTTOMLEFT", 0, -4)
-    rcYieldNote:SetPoint("RIGHT", rcSwitch, "LEFT", -14, 0)
+    rcYieldNote:SetPoint("RIGHT", rcSwitch, "LEFT", -12, 0)
     rcYieldNote:SetJustifyH("LEFT")
     rcYieldNote:SetWordWrap(true)
     rcYieldNote:SetMaxLines(2)
-    rcYieldNote:SetTextColor(0.220, 0.741, 0.973, 1.0)
+    local yr, yg, yb = GetSuiteAccent()
+    rcYieldNote:SetTextColor(yr, yg, yb, 1.0)
     rcYieldNote:Hide()
     c2_roleCheck.yieldNote = rcYieldNote
     function c2_roleCheck:RefreshValue()
         local yieldAddon, friendlyName = DynamicGroup:GetRoleCheckYieldAddon()
         if yieldAddon then
+            local arR, arG, arB = GetSuiteAccent()
+            self.yieldNote:SetTextColor(arR, arG, arB, 1.0)
             local hint = (_G.DynamicSuite and _G.DynamicSuite._isHubLoaded)
                 and "Override in /ds conflicts."
                 or ("Disable in " .. tostring(friendlyName) .. " to use DynamicGroup.")
             self.yieldNote:SetText("Auto-yielding to " .. tostring(friendlyName) .. " (handling Role Checks). " .. hint)
             self.yieldNote:Show()
-            self.baseHeight = 82
-            self:SetHeight(82)
+            self.baseHeight = 94
+            self:SetHeight(94)
         else
             self.yieldNote:Hide()
             self.baseHeight = 62
@@ -7609,22 +7790,22 @@ local function RenderGroupEmbedded(arg1, arg2)
     local sec3a = CreateSectionBox(
         page3,
         "INCOMING INVITES & KEYSTONE PEDESTAL",
-        "Auto-accept invites from trusted contacts while protecting active queues, and auto-slot M+ keystones.",
+        "Auto-accept trusted invites, protect active queues, and auto-slot M+ keystones.",
         root
     )
     local sec3b = CreateSectionBox(
         page3,
         "ONE-CLICK SIGN-UP, AUTO-ROLE & SEARCH REFRESH",
-        "Streamline Premade LFG applications with instant sign-up, spec role selection, and note pre-filling.",
+        "Streamline Premade LFG sign-ups with instant apply, auto-role, and note pre-fill.",
         root
     )
 
-    -- Card 3.1: Incoming Auto-Accept Party & Raid Invites (EUI-Style Dropdown)
+    -- Card 3.1: Auto-Accept Party & Raid Invites (EUI-Style Dropdown)
     local c3_incoming = CreateCardRow(sec3a, 62,
-        "Incoming Auto-Accept Party & Raid Invites",
-        "Instantly accepts group invitations from trusted Friends, Battle.net contacts, or Guild members."
+        "Auto-Accept Party & Raid Invites",
+        "Auto-accept group invites from Friends, Battle.net, or Guildmates."
     )
-    AttachDropdownToCard(c3_incoming, 305, {
+    AttachDropdownToCard(c3_incoming, 220, {
         { value = "FRIENDS_AND_GUILD", label = "Friends, Battle.net & Guild (Recommended)" },
         { value = "FRIENDS_ONLY",      label = "Friends & Battle.net Only" },
         { value = "GUILD_ONLY",        label = "Guild Members Only" },
@@ -7639,7 +7820,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 3.2: Active LFG & Delve Queue Protection Shield
     local c3_shield = CreateCardRow(sec3a, 62,
         "Active LFG & Delve Queue Protection Shield",
-        "Prevents auto-accepting party invites while queued in Dungeon Finder, Raid Finder, LFG, or PvP."
+        "Prevents auto-accepting party invites while queued in Dungeon Finder, Raid Finder, or PvP."
     )
     AttachSegmentedSwitchToCard(c3_shield,
         function() return EnsureDB().protectActiveQueues end,
@@ -7652,7 +7833,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 3.3: Auto-Insert Mythic+ Keystone
     local c3_keystone = CreateCardRow(sec3a, 62,
         "Auto-Insert Mythic+ Keystone",
-        "Automatically slots your Mythic+ Keystone from your bags when opening the Font of Power pedestal."
+        "Automatically slots your Mythic+ Keystone from your bags when opening the Font of Power."
     )
     AttachSegmentedSwitchToCard(c3_keystone,
         function() return EnsureDB().autoInsertKeystone end,
@@ -7665,7 +7846,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 3.3b: !keys Mythic+ Keystone Auto-Responder
     local c3_keysRespond = CreateCardRow(sec3a, 62,
         "Auto-Respond to '!keys' in Party & Raid",
-        "Automatically links your owned Mythic+ Keystone when someone types !keys or !key in Party, Raid, or Instance chat (10s anti-spam cooldown)."
+        "Links your owned Mythic+ Keystone when someone types !keys in Party, Raid, or Instance chat."
     )
     AttachSegmentedSwitchToCard(c3_keysRespond,
         function() return EnsureDB().autoRespondKeys ~= false end,
@@ -7690,7 +7871,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 3.3c: Dungeon Joined & Group Full Teleport Toast
     local c3_tpToast = CreateCardRow(sec3a, 94,
         "Dungeon Joined & Group Full Teleport Toast",
-        "Shows a quick-teleport alert when hosting (2+ players) or joining a Premade Group dungeon, and chimes as players join. Appearance and position follow Suite Studio's Shared Alert Toast settings."
+        "Shows a dungeon teleport alert when hosting or joining a Premade Group (follows Shared Alert Toast settings)."
     )
     local tpToastSwitch = AttachSegmentedSwitchToCard(c3_tpToast,
         function() return EnsureDB().showGroupTeleportToast ~= false end,
@@ -7717,22 +7898,24 @@ local function RenderGroupEmbedded(arg1, arg2)
             edgeSize = 1,
         })
         local ar0, ag0, ab0 = GetSuiteAccent()
-        btn:SetBackdropColor(0.043, 0.051, 0.071, 0.96) -- #0B0D12
-        btn:SetBackdropBorderColor(ar0, ag0, ab0, 0.85)
+        btn:SetBackdropColor(ar0 * 0.20, ag0 * 0.20, ab0 * 0.20, 0.96)
+        btn:SetBackdropBorderColor(ar0, ag0, ab0, 0.90)
         btn.label = btn:CreateFontString(nil, "OVERLAY")
         SetSafeFont(btn.label, 11, "")
         btn.label:SetPoint("CENTER", 0, 0)
         btn.label:SetText(btnLabel)
-        btn.label:SetTextColor(0.976, 0.984, 1.00, 1)
+        btn.label:SetTextColor(ar0, ag0, ab0, 1)
         btn:SetScript("OnEnter", function(s)
             local ar, ag, ab = GetSuiteAccent()
-            s:SetBackdropColor(ar * 0.22, ag * 0.22, ab * 0.22, 0.98)
+            s:SetBackdropColor(ar * 0.32, ag * 0.32, ab * 0.32, 0.98)
             s:SetBackdropBorderColor(ar, ag, ab, 1.0)
+            if s.label then s.label:SetTextColor(1, 1, 1, 1) end
         end)
         btn:SetScript("OnLeave", function(s)
             local ar, ag, ab = GetSuiteAccent()
-            s:SetBackdropColor(0.043, 0.051, 0.071, 0.96)
-            s:SetBackdropBorderColor(ar, ag, ab, 0.85)
+            s:SetBackdropColor(ar * 0.20, ag * 0.20, ab * 0.20, 0.96)
+            s:SetBackdropBorderColor(ar, ag, ab, 0.90)
+            if s.label then s.label:SetTextColor(ar, ag, ab, 1) end
         end)
         btn:SetScript("OnClick", onClickFn)
         return btn
@@ -7744,6 +7927,8 @@ local function RenderGroupEmbedded(arg1, arg2)
     local testFullBtn = CreateToastPreviewBtn("Test Full (5/5)", testJoinBtn, 8, function()
         DynamicGroup:TriggerTeleportToastPreview("FULL")
     end, 104)
+    root.actionButtons[#root.actionButtons + 1] = testJoinBtn
+    root.actionButtons[#root.actionButtons + 1] = testFullBtn
 
     sec3a.orderedCards[#sec3a.orderedCards + 1] = c3_tpToast
     page3.orderedCards[#page3.orderedCards + 1] = c3_tpToast
@@ -7752,7 +7937,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 3.3b: Instant One-Click Sign-Up
     local c3_oneClick = CreateCardRow(sec3b, 62,
         "Instant One-Click Sign-Up",
-        "Automatically signs up when selecting a group with your preferred role and note. Hold Shift or Alt to manually edit before submitting."
+        "Applies immediately when clicking a group using your active role and note (hold Shift/Alt to edit)."
     )
     AttachSegmentedSwitchToCard(c3_oneClick,
         function() return EnsureDB().oneClickSignUp end,
@@ -7768,10 +7953,10 @@ local function RenderGroupEmbedded(arg1, arg2)
     page3.orderedCards[#page3.orderedCards + 1] = c3_oneClick
     root.allControls[#root.allControls + 1] = c3_oneClick
 
-    -- Card 3.4: Auto-Select Active Specialisation Role on Sign-Up
+    -- Card 3.4: Auto-Select Active Role on Sign-Up
     local c3_autoRole = CreateCardRow(sec3b, 62,
-        "Auto-Select Active Specialisation Role on Sign-Up",
-        "Automatically checks Tank, Healer, or Damager matching your active spec when signing up for LFG."
+        "Auto-Select Active Role on Sign-Up",
+        "Automatically checks Tank, Healer, or Damager matching your active spec when signing up."
     )
     AttachSegmentedSwitchToCard(c3_autoRole,
         function() return EnsureDB().autoSelectRole end,
@@ -7784,7 +7969,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     -- Card 3.5: Persistent Sign-Up Note Pre-Fill + Hybrid Inline Sub-Drawer
     local c3_note = CreateCardRow(sec3b, 62,
         "Persistent Sign-Up Note Pre-Fill",
-        "Pre-fills the LFG sign-up note box with your custom message and item level when applying to groups."
+        "Pre-fills the LFG sign-up note box with your custom message and item level when applying."
     )
 
     local noteSwitch = AttachSegmentedSwitchToCard(c3_note,
@@ -7818,8 +8003,8 @@ local function RenderGroupEmbedded(arg1, arg2)
 
     -- Recessed Sub-Drawer Container holding 2 Nested Sub-Setting Cards (PANEL_BG #090A0D, 1px CELL_BORDER, 2px Suite Accent left bar, 5x5 pip)
     local noteDrawer = CreateFrame("Frame", nil, c3_note)
-    noteDrawer:SetPoint("TOPLEFT", c3_note, "TOPLEFT", 10, -82)
-    noteDrawer:SetPoint("TOPRIGHT", c3_note, "TOPRIGHT", -10, -82)
+    noteDrawer:SetPoint("TOPLEFT", c3_note, "TOPLEFT", 10, -88)
+    noteDrawer:SetPoint("TOPRIGHT", c3_note, "TOPRIGHT", -10, -88)
     noteDrawer:SetHeight(88)
 
     local noteCard = CreateFrame("Frame", nil, noteDrawer, "BackdropTemplate")
@@ -7883,6 +8068,7 @@ local function RenderGroupEmbedded(arg1, arg2)
     noteSubLabel:SetPoint("LEFT", notePip, "RIGHT", 8, 0)
     noteSubLabel:SetPoint("RIGHT", noteBox, "LEFT", -12, 0)
     noteSubLabel:SetJustifyH("LEFT")
+    noteSubLabel:SetWordWrap(false)
     noteSubLabel:SetTextColor(0.84, 0.89, 0.95)
     noteSubLabel:SetText("Custom Sign-Up Note")
 
@@ -7929,8 +8115,9 @@ local function RenderGroupEmbedded(arg1, arg2)
     ilvlSubLabel:SetPoint("LEFT", ilvlPip, "RIGHT", 8, 0)
     ilvlSubLabel:SetPoint("RIGHT", ilvlSwitch, "LEFT", -12, 0)
     ilvlSubLabel:SetJustifyH("LEFT")
+    ilvlSubLabel:SetWordWrap(false)
     ilvlSubLabel:SetTextColor(0.84, 0.89, 0.95)
-    ilvlSubLabel:SetText("Prepend Active Spec & Equipped Item Level")
+    ilvlSubLabel:SetText("Include Active Spec & Item Level")
 
     local function UpdateNoteDrawerLayout()
         local db = EnsureDB()
@@ -7951,11 +8138,11 @@ local function RenderGroupEmbedded(arg1, arg2)
             noteBar:RefreshValue()
             if isExp then
                 noteDrawer:Show()
-                c3_note:SetHeight(178)
+                c3_note:SetHeight(184)
                 c3_note:SetBackdropBorderColor(ar, ag, ab, 0.85)
             else
                 noteDrawer:Hide()
-                c3_note:SetHeight(84)
+                c3_note:SetHeight(90)
                 c3_note:SetBackdropBorderColor(0.145, 0.165, 0.212, 1.00)
             end
         else
@@ -7971,12 +8158,12 @@ local function RenderGroupEmbedded(arg1, arg2)
     page3.orderedCards[#page3.orderedCards + 1] = c3_note
     root.allControls[#root.allControls + 1] = c3_note
 
-    -- Card 3.6: Safe LFG Search Auto-Refresh Ticker (EUI-Style Dropdown)
+    -- Card 3.6: Auto-Refresh LFG Search (EUI-Style Dropdown)
     local c3_refresh = CreateCardRow(sec3b, 62,
-        "Safe LFG Search Auto-Refresh Ticker",
-        "Periodically refreshes open LFG search results; pauses automatically while typing or signing up."
+        "Auto-Refresh LFG Search",
+        "Refreshes open search results on a timer; pauses while typing."
     )
-    AttachDropdownToCard(c3_refresh, 250, {
+    AttachDropdownToCard(c3_refresh, 205, {
         { value = 0,  label = "Disabled (Manual Refresh)" },
         { value = 10, label = "Every 10 Seconds" },
         { value = 15, label = "Every 15 Seconds" },
@@ -8091,6 +8278,22 @@ local function ApplyGroupThemeToUI()
     if DynamicGroup.ApplyTeleportToastPosition then
         DynamicGroup:ApplyTeleportToastPosition()
     end
+    local sf = DynamicGroup.standaloneFrame
+    if sf then
+        local ar, ag, ab = GetSuiteAccent()
+        if sf.SetBackdropBorderColor then
+            sf:SetBackdropBorderColor(ar, ag, ab, 0.90)
+        end
+        if sf.titleText then
+            SetSafeFont(sf.titleText, 14, "")
+            sf.titleText:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFGroup|r " .. ColorWithAccent("v" .. DynamicGroup.version))
+        end
+        if sf.statusText then
+            SetSafeFont(sf.statusText, 11, "")
+            sf.statusText:SetTextColor(ar, ag, ab, 0.90)
+            sf.statusText:SetText(GetGroupStatusText())
+        end
+    end
     DynamicGroup:RefreshConfigUI()
 end
 
@@ -8106,7 +8309,7 @@ local function ResetGroupModuleDefaults()
     DynamicGroup:UpdateAutoRefreshTicker()
     DynamicGroup:RefreshLFGResults()
     DynamicGroup:RefreshConfigUI()
-    PrintMsg("Reset all DynamicGroup settings to factory defaults.")
+    PrintMsg("Reset all DynamicGroup settings to defaults.")
 end
 
 -- Standalone Shell Window (/dgroup & /dg fallback when DynamicSuite shell is not hosting)
@@ -8114,6 +8317,7 @@ local function EnsureStandaloneWindow()
     if DynamicGroup.standaloneFrame then return DynamicGroup.standaloneFrame end
 
     local f = CreateFrame("Frame", "DynamicGroupStandaloneFrame", UIParent, "BackdropTemplate")
+    _G.DynamicGroupMainFrame = f
     f:SetSize(860, 600)
     if type(UISpecialFrames) == "table" then
         local foundSpecial = false
@@ -8128,10 +8332,16 @@ local function EnsureStandaloneWindow()
         end
     end
     f:SetPoint("CENTER")
+    f:SetClampedToScreen(true)
     f:SetMovable(true)
     f:SetResizable(true)
     if f.SetResizeBounds then
-        f:SetResizeBounds(760, 500, 1280, 860)
+        f:SetResizeBounds(760, 480, 1280, 860)
+    elseif f.SetMinResize then
+        f:SetMinResize(760, 480)
+        if f.SetMaxResize then
+            f:SetMaxResize(1280, 860)
+        end
     end
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
@@ -8145,7 +8355,7 @@ local function EnsureStandaloneWindow()
     })
     f:SetBackdropColor(0.04, 0.05, 0.08, 0.98)
     local ar, ag, ab = GetSuiteAccent()
-    f:SetBackdropBorderColor(ar, ag, ab, 0.75)
+    f:SetBackdropBorderColor(ar, ag, ab, 0.90)
 
     local header = CreateFrame("Frame", nil, f, "BackdropTemplate")
     header:SetHeight(42)
@@ -8165,12 +8375,6 @@ local function EnsureStandaloneWindow()
     title:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFGroup|r " .. ColorWithAccent("v" .. DynamicGroup.version))
     f.titleText = title
 
-    local status = header:CreateFontString(nil, "OVERLAY")
-    SetSafeFont(status, 11, "")
-    status:SetPoint("CENTER", header, "CENTER", 20, 0)
-    status:SetTextColor(0.58, 0.66, 0.78)
-    f.statusText = status
-
     local closeBtn = CreateFrame("Button", nil, header, "BackdropTemplate")
     closeBtn:SetSize(26, 24)
     closeBtn:SetPoint("RIGHT", header, "RIGHT", -10, 0)
@@ -8185,11 +8389,139 @@ local function EnsureStandaloneWindow()
     SetSafeFont(closeBtn.txt, 12, "")
     closeBtn.txt:SetPoint("CENTER", 0, 0)
     closeBtn.txt:SetText("X")
+    closeBtn.txt:SetTextColor(0.84, 0.89, 0.95, 1)
+    closeBtn:SetScript("OnEnter", function(s)
+        local r, g, b = GetSuiteAccent()
+        s:SetBackdropColor(r * 0.22, g * 0.22, b * 0.22, 0.98)
+        s:SetBackdropBorderColor(r, g, b, 1.0)
+        if s.txt then s.txt:SetTextColor(1, 1, 1, 1) end
+    end)
+    closeBtn:SetScript("OnLeave", function(s)
+        s:SetBackdropColor(0.08, 0.09, 0.12, 0.92)
+        s:SetBackdropBorderColor(0.18, 0.21, 0.28, 0.95)
+        if s.txt then s.txt:SetTextColor(0.84, 0.89, 0.95, 1) end
+    end)
     closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+    local status = header:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(status, 11, "")
+    status:SetPoint("LEFT", title, "RIGHT", 12, 0)
+    status:SetPoint("RIGHT", closeBtn, "LEFT", -12, 0)
+    status:SetJustifyH("RIGHT")
+    status:SetWordWrap(false)
+    status:SetTextColor(ar, ag, ab, 0.90)
+    f.statusText = status
+
+    local footer = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    footer:SetHeight(36)
+    footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 1)
+    footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
+    footer:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+    footer:SetBackdropColor(0.055, 0.063, 0.082, 0.98)
+    do
+        local footDiv = footer:CreateTexture(nil, "ARTWORK")
+        footDiv:SetHeight(1)
+        footDiv:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, 0)
+        footDiv:SetPoint("TOPRIGHT", footer, "TOPRIGHT", 0, 0)
+        footDiv:SetColorTexture(0.145, 0.165, 0.212, 0.90)
+
+        local function StyleFooterBtn(btn, labelTxt)
+            btn:SetBackdrop({
+                bgFile = "Interface\\Buttons\\WHITE8x8",
+                edgeFile = "Interface\\Buttons\\WHITE8x8",
+                edgeSize = 1,
+            })
+            btn:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+            btn:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+            btn.label = btn:CreateFontString(nil, "OVERLAY")
+            SetSafeFont(btn.label, 11, "")
+            btn.label:SetPoint("CENTER", 0, 0)
+            btn.label:SetText(labelTxt)
+            btn.label:SetTextColor(0.92, 0.95, 0.99, 1)
+            btn:SetScript("OnEnter", function(s)
+                local r, g, b = GetSuiteAccent()
+                s:SetBackdropColor(r * 0.22, g * 0.22, b * 0.22, 0.98)
+                s:SetBackdropBorderColor(r, g, b, 1.0)
+                if s.label then s.label:SetTextColor(1, 1, 1, 1) end
+            end)
+            btn:SetScript("OnLeave", function(s)
+                s:SetBackdropColor(0.078, 0.090, 0.122, 0.96)
+                s:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+                if s.label then s.label:SetTextColor(0.92, 0.95, 0.99, 1) end
+            end)
+        end
+
+        local resetBtn = CreateFrame("Button", nil, footer, "BackdropTemplate")
+        resetBtn:SetSize(152, 24)
+        resetBtn:SetPoint("LEFT", footer, "LEFT", 14, 0)
+        StyleFooterBtn(resetBtn, "Reset DynamicGroup")
+        resetBtn:SetScript("OnClick", function()
+            ResetGroupModuleDefaults()
+        end)
+
+        local reloadBtn = CreateFrame("Button", nil, footer, "BackdropTemplate")
+        reloadBtn:SetSize(92, 24)
+        reloadBtn:SetPoint("RIGHT", footer, "RIGHT", -32, 0)
+        StyleFooterBtn(reloadBtn, "Reload UI")
+        reloadBtn:SetScript("OnClick", function()
+            if type(_G.ReloadUI) == "function" then
+                _G.ReloadUI()
+            end
+        end)
+
+        local resizeGrip = CreateFrame("Button", nil, f)
+        resizeGrip:SetSize(14, 14)
+        resizeGrip:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
+        resizeGrip:SetFrameLevel((footer:GetFrameLevel() or 1) + 4)
+        resizeGrip:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        resizeGrip:EnableMouse(true)
+        local gripTex = resizeGrip:CreateTexture(nil, "ARTWORK")
+        gripTex:SetAllPoints()
+        gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        gripTex:SetDesaturated(true)
+        gripTex:SetVertexColor(0.580, 0.639, 0.722, 0.85)
+        resizeGrip.tex = gripTex
+        resizeGrip:SetScript("OnEnter", function(s)
+            local r, g, b = GetSuiteAccent()
+            s.tex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+            s.tex:SetDesaturated(false)
+            s.tex:SetVertexColor(r, g, b, 1.0)
+            if _G.GameTooltip then
+                _G.GameTooltip:SetOwner(s, "ANCHOR_TOPLEFT")
+                _G.GameTooltip:ClearLines()
+                _G.GameTooltip:AddLine("Resize Window", 1, 1, 1)
+                _G.GameTooltip:AddLine("|cFF34D399Left-Drag:|r |cFFE2E8F0Resize DynamicGroup window.|r", 0.886, 0.910, 0.941)
+                _G.GameTooltip:AddLine("|cFF34D399Right-Click:|r |cFFE2E8F0Reset size to 860x600.|r", 0.886, 0.910, 0.941)
+                _G.GameTooltip:Show()
+            end
+        end)
+        resizeGrip:SetScript("OnLeave", function(s)
+            if _G.GameTooltip then _G.GameTooltip:Hide() end
+            s.tex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+            s.tex:SetDesaturated(true)
+            s.tex:SetVertexColor(0.580, 0.639, 0.722, 0.85)
+        end)
+        resizeGrip:SetScript("OnMouseDown", function(_, button)
+            if button == "LeftButton" then
+                f:StartSizing("BOTTOMRIGHT")
+            end
+        end)
+        resizeGrip:SetScript("OnMouseUp", function(_, button)
+            if button == "LeftButton" then
+                f:StopMovingOrSizing()
+            elseif button == "RightButton" then
+                f:SetSize(860, 600)
+                f:ClearAllPoints()
+                f:SetPoint("CENTER")
+            end
+        end)
+        f.resizeGrip = resizeGrip
+    end
+    f.footer = footer
 
     local body = CreateFrame("Frame", nil, f)
     body:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 10, -8)
-    body:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 12)
+    body:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", -9, 6)
     f.body = body
 
     RenderGroupEmbedded(body)
@@ -8209,11 +8541,14 @@ local function OpenGroupWorkspace()
     end
     local f = EnsureStandaloneWindow()
     local ar, ag, ab = GetSuiteAccent()
-    f:SetBackdropBorderColor(ar, ag, ab, 0.75)
+    f:SetBackdropBorderColor(ar, ag, ab, 0.90)
     if f.titleText then
+        SetSafeFont(f.titleText, 14, "")
         f.titleText:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFGroup|r " .. ColorWithAccent("v" .. DynamicGroup.version))
     end
     if f.statusText then
+        SetSafeFont(f.statusText, 11, "")
+        f.statusText:SetTextColor(ar, ag, ab, 0.90)
         f.statusText:SetText(GetGroupStatusText())
     end
     RenderGroupEmbedded(f.body)
@@ -8256,7 +8591,7 @@ local function RegisterWithDynamicSuite()
         name = "DynamicGroup",
         title = "DynamicGroup",
         subtitle = "LFG Filter & Invites",
-        desc = "Filters Premade Groups by datacentre region, M+ score, and Lust/CR utility, with 1-click sign-up, auto-invite, and M+ keystone slotting.",
+        desc = "Filters Premade Groups by datacentre region, M+ rating, and Lust/CR utility, with 1-click sign-up, auto-invite, and M+ keystone slotting.",
         version = DynamicGroup.version,
         order = 60,
         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga",
@@ -8271,9 +8606,17 @@ local function RegisterWithDynamicSuite()
         OpenWorkspace = function() return OpenGroupWorkspace() end,
         GetStatusText = function() return GetGroupStatusText() end,
         OnDisableInSuite = function()
-            if DynamicGroup.lfgMiniBar then DynamicGroup.lfgMiniBar:Hide() end
-            if DynamicGroup.portalBar and not (InCombatLockdown and InCombatLockdown()) then
+            if DynamicGroup.lfgMiniBar then
+                if not IsPlayerInCombat() then
+                    DynamicGroup.lfgMiniBar:Hide()
+                else
+                    DynamicGroup.pendingMiniBarHide = true
+                end
+            end
+            if DynamicGroup.portalBar and not IsPlayerInCombat() then
                 DynamicGroup.portalBar:Hide()
+            elseif DynamicGroup.portalBar then
+                DynamicGroup.pendingPortalBarUpdate = true
             end
             DynamicGroup:HideTeleportToast()
             DynamicGroup:UnregisterAllEvents()
@@ -8301,33 +8644,34 @@ local function RegisterWithDynamicSuite()
 
     DynamicGroup.CHANGELOG = {
         version = DynamicGroup.version or VERSION,
-        date = "22/11/2026",
+        date = "25/11/2026",
         entries = {
+            { type = "FEATURE", text = "Standalone Window Parity, Compact 800x520 Layout & Patch 12.1.7 Lockdown Hardening (25/11/2026): Added standalone window parity with a clamped header status readout, 36px Obsidian footer bar (Reset DynamicGroup and Reload UI buttons), bottom-right corner resize grip with 860x600 Right-Click reset, and live Suite Accent repainting; refined tabs, section subtitles, dropdown widths, sub-drawer spacing, 2-line card descriptions, and responsive 2x3 region filter pills for 800x520 layouts; hardened !keys responses, whisper and Battle.net auto-invites, group invite auto-accept, role check confirmation, Portal Bar, Teleport Toast, and Premade Group Finder hooks against Patch 12.1.7 combat lockdown, chat messaging lockdown, and secret values using non-intrusive hooks and weak frame state tables; standardised Australian English and plain-English wording." },
             { type = "FEATURE", text = "Release v2.8.1 - Opt-In Auto-Accept Role Check & Conflict Auto-Yield (22/11/2026): Added opt-in Auto-Accept Role Check (Off by default) in Tab 2 with a 0.45s out-of-combat safety delay, Shift-to-skip bypass, Retail 12.1.5 secret-value guards, clean chat confirmation, and automatic feature-level yielding to EnhanceQoL or Leatrix Plus (overridable in /ds conflicts). Never auto-accepts queue pops." },
-            { type = "UI",      text = "Release v2.7.0 - Shared Teleport Toast Inheritance & Live Suite Accent Portal Borders (21/11/2026): Removed the stray Edit HUD button from the Teleport Toast settings card (leaving a clean Off/Enabled toggle plus Test Join and Test Full preview buttons), connected DynamicGroupTeleportToast to DynamicSuite's shared Alert Toast appearance, sound, Right-Click dismissal, and vertical toast stack, and replaced remaining Blaze Orange portal tile/keystone borders and tooltip prefixes with the live Suite Accent." },
-            { type = "FIX",     text = "LFG Application Status Overlays, Obsidian CancelButton & /dg testapply Cycle (16/11/2026): reskinned entry.CancelButton out of combat into a 16x16 Dark-Obsidian (#0B0D12) / Crimson-Bordered (#F87171) 'x' pill anchored to TOPRIGHT (-6, -3) with ov.topPill anchored cleanly to its left (-4, 0) so the entire 5-role-icon Enumerate row stays 100% untouched; preserved Blizzard's dual-anchor Enumerate layout via _dgOrigPoints; suppressed Blizzard's inline PendingLabel and ResultLabel overlays and routed live pending timers (Warm Amber-Gold) and terminal statuses (Crimson Canceled/Declined/Expired/Timed Out + 0.35 row dim) into the top-right pill; updated /dg testapply to cycle Pending -> Canceled -> Off." },
-            { type = "FEATURE", text = "Declined Premade LFG Group Dimming, Crimson Badge & Search Freshness Tooltip (16/11/2026): records declined and invite-declined searchResultIDs for the current session (cleared on new search or category change), dims declined Premade Group rows to 0.35 alpha with a compact crimson 'Declined' tag inside the top-right pill so you never accidentally re-apply, and tracks LFGListSearchPanel_DoSearch timestamps to show 'Last Refreshed: Xs ago' inside the LFG Mini-Bar filter and region tooltips." },
-            { type = "FEATURE", text = "Portal Deck Owned Keystone Telemetry & Right-Click Teleport (15/11/2026): Upgraded the Portal Deck's Owned Keystone pill (pbar.keyBtn) to support secure Right-Click Dungeon Teleport casting out of combat with a synced cooldown swipe overlay, plus Season Best (timed/over-time level and score) and Dungeon Teleport readiness/cooldown lines in the tooltip while preserving Left-Click exclusive dungeon filtering." },
-            { type = "FEATURE", text = "Dungeon Joined & Group Full Teleport Toast (15/11/2026): Displays a 410x74 Alert Toast-matched banner with a one-click Dungeon Teleport button and Right-Click dismissal when your Premade Group application is accepted, chimes as players join, and highlights when the group reaches 5/5. Shares DynamicSuite's Alert Toast HUD Edit slot with automatic mutual stacking, plus Test Join (3/5), Test Full (5/5), Edit HUD buttons, and /dg testtoast." },
-            { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Dynamically discovers all learned Midnight Season 2 teleport spells from the Mythic+ tab and spellbook so Left-click toggles the dungeon filter (Shift+Left-click solo filters) and Right-click casts learned dungeon teleports out of combat." },
+            { type = "UI",      text = "Release v2.7.0 - Shared Teleport Toast Inheritance & Live Suite Accent Portal Borders (21/11/2026): Removed the stray Edit HUD button from the Teleport Toast settings card (leaving a clean Off/Enabled toggle plus Test Join and Test Full preview buttons), connected DynamicGroup's teleport toast to DynamicSuite's shared Alert Toast appearance, sound, Right-Click dismissal, and vertical toast stack, and replaced remaining legacy orange portal tile/keystone borders and tooltip prefixes with the live Suite Accent." },
+            { type = "FIX",     text = "LFG Application Status Overlays, Obsidian Cancel Button & /dg testapply Cycle (16/11/2026): Restyled the Premade Group cancel button out of combat into a compact dark obsidian and crimson 'x' pill with the region/rating pill anchored cleanly to its left so the 5-role-icon row stays aligned; suppressed Blizzard's overlapping inline status labels and routed live pending timers (amber) and terminal statuses (crimson Cancelled, Declined, Expired, and Timed Out badges with dimmed rows) into the top-right pill; updated /dg testapply to cycle Pending -> Cancelled -> Off." },
+            { type = "FEATURE", text = "Declined Premade LFG Group Dimming, Crimson Badge & Search Freshness Tooltip (16/11/2026): Records declined Premade Group listings for the current session (cleared on new search or category change), dims declined Premade Group rows with a compact crimson 'Declined' tag inside the top-right pill so you never accidentally re-apply, and tracks search timestamps to show 'Last Refreshed: Xs ago' inside the LFG Mini-Bar filter and region tooltips." },
+            { type = "FEATURE", text = "Portal Deck Owned Keystone Telemetry & Right-Click Teleport (15/11/2026): Upgraded the Portal Deck's Owned Keystone pill to support secure Right-Click Dungeon Teleport casting out of combat with a synced cooldown swipe overlay, plus Season Best (timed/over-time level and rating) and Dungeon Teleport readiness/cooldown lines in the tooltip while preserving Left-Click exclusive dungeon filtering." },
+            { type = "FEATURE", text = "Dungeon Joined & Group Full Teleport Toast (15/11/2026): Displays an Alert Toast-matched banner with a one-click Dungeon Teleport button and Right-Click dismissal when your Premade Group application is accepted, chimes as players join, and highlights when the group reaches 5/5. Shares DynamicSuite's Alert Toast HUD Edit slot with automatic mutual stacking, plus Test Join (3/5), Test Full (5/5), and /dg testtoast." },
+            { type = "FEATURE", text = "Season Dungeon Portals & 1-Click Dungeon Filter Deck (15/11/2026): Docked a sleek portal bar above Premade Groups showing your current Mythic+ keystone pill and the 8 season dungeon tiles with best timed key levels. Dynamically discovers all unlocked Midnight Season 2 teleport spells from the Mythic+ tab and spellbook so Left-click toggles the dungeon filter (Shift+Left-click solo filters) and Right-click casts unlocked dungeon teleports out of combat." },
             { type = "FEATURE", text = "Integrated Multi-Toggle Premade Group Filters (15/11/2026): Upgraded the Group Finder filter menu with Tank, Healer, and DPS role availability toggles (with role icons), No Duplicate Class, Has Tank, Has Healer, Bloodlust/Heroism, and Battle Rez, kept in two-way sync with Blizzard's native Filter menu without altering difficulty checkboxes." },
-            { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / Leader IO pill (OCE, USE, USW, USC, LA, BR), desaturated greyscale Tank/Healer/DPS icons matched to Blizzard's slot size over empty group slots, a simplified Show Region & Leader IO Badge switch, and personal best key levels plus same-class warnings in group tooltips." },
+            { type = "UI",      text = "De-cluttered Premade Group rows with a sleek borderless Region / M+ Rating pill (OCE, USE, USW, USC, LA, BR), desaturated greyscale Tank/Healer/DPS icons matched to Blizzard's slot size over empty group slots, a simplified Show Region & M+ Rating Badge switch, and personal best key levels plus same-class warnings in group tooltips." },
             { type = "FIX",     text = "Fixed the dungeon tile tooltip colour code and updated the Portal Bar All button to stay unhighlighted while a dungeon filter is active." },
             { type = "FEATURE", text = "External Addon Conflict Detector & Yield Engine (12/11/2026): Added PremadeGroupsFilter and PremadeRegionFilter to the curated HARD conflict registry with unified DynamicSuite top-of-module warning banner and 1-click resolution." },
-            { type = "FIX",     text = "Eliminated direct property write onto LFGListApplicationDialog.resultID before LFGListApplicationDialog_Show, added pcall and IsSecretValue guards across C_LFGList.GetApplicationInfo, HasSearchResultInfo, GetSearchResultInfo, and sp.SearchBox:GetText(), and pre-guarded LFGListSearchEntry OnEnter against expired resultIDs." },
-            { type = "FIX",     text = "Added PLAYER_REGEN_DISABLED cleanup to close DynamicGroupDropdownCatcher and active dropdown popovers on combat entry, added OnMouseUp and OnHide OnUpdate cleanup on the workspace scrollbar thumb, and wired DynamicGroupDB.yieldHooks (AUTO_YIELD) across all LFG filter and sign-up hooks." },
-            { type = "FIX",     text = "Fixed LFGList.lua:4390 Nil searchResultInfo Tooltip Crash: Added IsValidSearchResultID(resultID) (verifying C_LFGList.HasSearchResultInfo and C_LFGList.GetSearchResultInfo), purged expired/nil resultIDs across DoesResultPassFilters, FilterAndSortSearchPanelResults, SyncScrollBoxToFilteredResults, and OnLFGListSearchPanelUpdateResultList (including empty #apiResults == 0 updates and DoSearch/SetCategory/Clear resets), and guarded LFGListSearchEntry OnEnter so hovering an expired row never crashes LFGListUtil_SetSearchEntryTooltip." },
-            { type = "UI",      text = "Consolidated Auto-Insert Mythic+ Keystone exclusively into DynamicGroup (Tab 3: Party & Keystone Automation) with automatic SavedVariables migration from DynamicPrepDB.autoSlotKeystone." },
-            { type = "UI",      text = "Standardized all LFG Mini-Bar and Datacenter Region pill tooltips to use Command-Prefix-Only Highlighting (Emerald Left-Click: / Suite Accent Hold Shift / Alt: prefixes paired with Silver-White action descriptions)." },
-            { type = "UI",      text = "Cleaned up LFG search row overlays: removed [D D D] member dots and top-right [Lust]/[CR] brackets so the top-right [Region] [Score] badge stays compact (~80px) without colliding with group titles or Blizzard's green Playstyle text; defaulted overlayMode to COMPACT (v121_cleanOverlay), anchored FULL mode borderless Lust/CR tags at BOTTOMRIGHT beneath the 5 role icons, and added an always-on 'Party Utility:' line to the LFG tooltip." },
-            { type = "FIX",     text = "Added Retail 12.1.5 C_LFGList.GetSearchResultPlayerInfo(resultID, i) support for reliable Bloodlust and Battle Rez detection, and added SyncScrollBoxToFilteredResults (LFGListSearchPanel_UpdateResults + DataProvider:RemoveByPredicate + ScrollBox:ForEachFrame) so disabled regions ([BR], [LATAM]) are immediately removed from the ScrollBox." },
-            { type = "FIX",     text = "Locked entry._dgPressedResultID on LeftButton OnMouseDown and froze panel._dgOrderedResults across background LFG_LIST_SEARCH_RESULT_UPDATED refreshes so rows never jump under the cursor during 1-Click Sign-Up." },
-            { type = "FIX",     text = "Fixed unticking a region (Reg 5/6) blanking out the LFG list by keeping groups with pending/secret leaderName (regionKey = PENDING) and fetching authoritative unfiltered results from C_LFGList.GetSearchResults(); fixed 1-Click Sign-Up targeting random groups by opening LFGListApplicationDialog_Show directly with liveResultID." },
-            { type = "FIX",     text = "Fixed LATAM / BR region filtering: removed duplicate Ragnaros (USE) and Nemesis (USC) realm entries, preserved panel._dgRawResults across refreshes, hooked LFGListSearchPanel_UpdateResults & LFG_LIST_SEARCH_RESULT_UPDATED for async leaderName resolution, and upgraded Fit: Role to Party Utility Filter (Util: All / Lust / CR / Both)." },
-            { type = "FIX",     text = "Resolved EllesmereUIGroupFinder conflict where EUI hides Blizzard's LFG ScrollBox (alpha 0) and blocks DynamicGroup filtering, badges, and 1-Click Sign-Up: auto-suppresses EUI Group Finder list override, restores ScrollBox/SignUpButton alpha, hooks ExtraPasses fallback, and prevents DynamicGroupOverlay ghosting." },
-            { type = "FIX",     text = "Hardened LFG Application Note auto-fill with securityDisableSetText, pcall, and IsSecretValue(curText) guards so protected or secret EditBox states never throw EditBox:SetText() security taint or secret-value Lua errors, plus dialog._dgSnapped cursor snap tracking." },
-            { type = "FEATURE", text = "On-The-Fly LFG Mini-Bar with Datacenter Region popover, Minimum M+ Score filter, and Party Utility filter (Lust / CR / Both) directly above Blizzard Premade panel." },
-            { type = "FEATURE", text = "In-Place Premade Group Badges displaying Datacenter Region ([OCE], [US-W], [US-C], [US-E], [LATAM], [BR]) and Leader M+ Score in the top-right corner, with optional bottom-right Lust/CR tags and tooltip utility breakdown." },
+            { type = "FIX",     text = "Hardened Sign-Up & Tooltip Handling (12/11/2026): Removed direct state writes onto Blizzard's Sign-Up window before opening, added protected call and secret-value guards across application status, search result, and search-box reads, and guarded Premade Group hover tooltips against expired listings." },
+            { type = "FIX",     text = "Added combat-entry cleanup to close active dropdown menus automatically, added mouse-release and hide cleanup on the settings scrollbar thumb, and wired automatic hook yielding across all LFG filter and sign-up features." },
+            { type = "FIX",     text = "Fixed Expired Group Hover Tooltip Error: Added search result validation, purged expired or missing group entries across filtering, sorting, and list refresh passes (including empty search updates and search/category resets), and guarded group row hover tooltips so hovering an expired listing never fails." },
+            { type = "UI",      text = "Consolidated Auto-Insert Mythic+ Keystone exclusively into DynamicGroup (Tab 3: Party & Keystone Automation) with automatic SavedVariables migration from legacy DynamicPrep keystone settings." },
+            { type = "UI",      text = "Standardised all LFG Mini-Bar and Datacentre Region pill tooltips to use Command-Prefix-Only Highlighting (Emerald Left-Click: / Suite Accent Hold Shift / Alt: prefixes paired with Silver-White action descriptions)." },
+            { type = "UI",      text = "Cleaned up LFG search row overlays: removed redundant member dots and extra bracket tags so the top-right Region / M+ Rating badge stays compact without colliding with group titles or Blizzard's green Playstyle text, and added an always-on 'Party Utility:' line to the LFG tooltip." },
+            { type = "FIX",     text = "Added Retail 12.1.5 group member inspection for reliable Bloodlust and Battle Rez detection, and synchronised list pruning so filtered regions ([BR], [LATAM]) are immediately removed from the Premade Groups list." },
+            { type = "FIX",     text = "Locked the clicked group ID on mouse press and preserved row order across background search updates so rows never jump under the cursor during 1-Click Sign-Up." },
+            { type = "FIX",     text = "Fixed unticking a region (Reg 5/6) blanking out the LFG list by keeping groups whose leader realm is still loading and reading unfiltered results directly from Blizzard's search API; fixed 1-Click Sign-Up targeting the wrong group by opening the Sign-Up window directly with the clicked listing." },
+            { type = "FIX",     text = "Fixed LATAM / BR region filtering: removed duplicate Ragnaros (USE) and Nemesis (USC) realm entries, preserved raw search results across refreshes, added background leader-name resolution, and upgraded the role filter to Party Utility Filter (All / Lust / CR / Both)." },
+            { type = "FIX",     text = "Resolved EllesmereUI Group Finder conflict where EUI hides Blizzard's LFG list and blocks DynamicGroup filtering, badges, and 1-Click Sign-Up: restores list visibility when active and prevents overlay ghosting." },
+            { type = "FIX",     text = "Hardened LFG Sign-Up Note auto-fill with protected text-box and secret-value guards so restricted note boxes never throw Lua errors, plus cleaner cursor-snap tracking." },
+            { type = "FEATURE", text = "On-The-Fly LFG Mini-Bar with Datacentre Region filter menu, Minimum M+ Rating filter, and Party Utility filter (Lust / CR / Both) directly above Blizzard Premade panel." },
+            { type = "FEATURE", text = "In-Place Premade Group Badges displaying Datacentre Region ([OCE], [US-W], [US-C], [US-E], [LATAM], [BR]) and Leader M+ Rating in the top-right corner, with tooltip utility breakdown." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}
@@ -8428,7 +8772,7 @@ end
 local function HandleAutoAcceptRoleCheck()
     if IsModuleDisabledInSuite("DynamicGroup") then return end
     if not EnsureDB().autoAcceptRoleCheck then return end
-    if InCombatLockdown and InCombatLockdown() then return end
+    if IsPlayerInCombat() or IsEncounterActive() or IsKeystoneActive() then return end
     if IsShiftKeyDown and IsShiftKeyDown() then return end
     if DynamicGroup:GetRoleCheckYieldAddon() then return end
     if DynamicGroup._roleCheckPending then return end
@@ -8438,7 +8782,7 @@ local function HandleAutoAcceptRoleCheck()
         DynamicGroup._roleCheckPending = false
         if IsModuleDisabledInSuite("DynamicGroup") then return end
         if not EnsureDB().autoAcceptRoleCheck then return end
-        if InCombatLockdown and InCombatLockdown() then return end
+        if IsPlayerInCombat() or IsEncounterActive() or IsKeystoneActive() then return end
         if IsShiftKeyDown and IsShiftKeyDown() then return end
         if DynamicGroup:GetRoleCheckYieldAddon() then return end
         if type(CompleteLFGRoleCheck) ~= "function" then return end
@@ -8452,15 +8796,13 @@ local function HandleAutoAcceptRoleCheck()
 
         local roleLabel = "Current Role"
         pcall(function()
-            if type(GetSpecialization) == "function" and type(GetSpecializationRole) == "function" then
-                local spec = GetSpecialization()
-                if spec and not IsSecretValue(spec) then
-                    local role = GetSpecializationRole(spec)
-                    if type(role) == "string" and not IsSecretValue(role) then
-                        if role == "TANK" then roleLabel = "Tank"
-                        elseif role == "HEALER" then roleLabel = "Healer"
-                        elseif role == "DAMAGER" then roleLabel = "Damage"
-                        end
+            local spec = SafeGetSpecialization()
+            if spec and not IsSecretValue(spec) then
+                local role = SafeGetSpecializationRole(spec)
+                if type(role) == "string" and not IsSecretValue(role) then
+                    if role == "TANK" then roleLabel = "Tank"
+                    elseif role == "HEALER" then roleLabel = "Healer"
+                    elseif role == "DAMAGER" then roleLabel = "Damage"
                     end
                 end
             end
@@ -8582,6 +8924,13 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
     elseif event == "PLAYER_REGEN_DISABLED" then
         CloseActiveDropdown()
     elseif event == "PLAYER_REGEN_ENABLED" then
+        if self.pendingMiniBarHide then
+            if self.lfgMiniBar then self.lfgMiniBar:Hide() end
+            self.pendingMiniBarHide = false
+        elseif self.pendingMiniBarUpdate then
+            self.pendingMiniBarUpdate = false
+            self:UpdateLFGMiniBar()
+        end
         if self.pendingPortalBarUpdate then
             self:UpdatePortalBar(false)
         end
@@ -8601,13 +8950,15 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
             self:UpdatePortalBar(true)
         end
     elseif event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
+        if IsPlayerInCombat() then return end
         local resultID = ...
+        if not resultID or IsSecretValue(resultID) then return end
         local sp = _G.LFGListFrame and _G.LFGListFrame.SearchPanel
-        if sp and sp:IsShown() and resultID then
+        if sp and sp:IsShown() then
             if not IsValidSearchResultID(resultID) then
                 if _G.GameTooltip and _G.GameTooltip.GetOwner then
                     local owner = _G.GameTooltip:GetOwner()
-                    if owner and owner.resultID == resultID then
+                    if owner and not IsSecretValue(owner.resultID) and owner.resultID == resultID then
                         _G.GameTooltip:Hide()
                     end
                 end
@@ -8618,7 +8969,7 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
                     ScheduleAsyncResultRefilter()
                 elseif sp.ScrollBox and sp.ScrollBox.ForEachFrame then
                     sp.ScrollBox:ForEachFrame(function(frame)
-                        if frame and (frame.resultID == resultID or ResolveLiveResultID(frame) == resultID) then
+                        if frame and ((not IsSecretValue(frame.resultID) and frame.resultID == resultID) or ResolveLiveResultID(frame) == resultID) then
                             OnLFGListSearchEntryUpdate(frame)
                         end
                     end)
@@ -8628,10 +8979,12 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
     elseif event == "PARTY_INVITE_REQUEST" then
         HandlePartyInviteRequest(...)
     elseif event == "CHAT_MSG_WHISPER" then
+        if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then return end
         local text, senderName, _, _, _, _, _, _, _, _, _, guid = ...
         if IsSecretValue(text) or IsSecretValue(senderName) then return end
         HandleWhisperAutoInvite(text, senderName, guid)
     elseif event == "CHAT_MSG_BN_WHISPER" then
+        if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then return end
         local text, senderDisplayName, _, _, _, _, _, _, _, _, _, _, bnetIDAccount = ...
         if IsSecretValue(text) or IsSecretValue(senderDisplayName) then return end
         HandleBNetWhisperAutoInvite(text, senderDisplayName, bnetIDAccount)
@@ -8639,9 +8992,13 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         or event == "CHAT_MSG_RAID" or event == "CHAT_MSG_RAID_LEADER"
         or event == "CHAT_MSG_INSTANCE_CHAT" or event == "CHAT_MSG_INSTANCE_CHAT_LEADER"
         or event == "CHAT_MSG_GUILD" then
+        if IsChatMessagingLocked() or IsEncounterActive() or IsKeystoneActive() or IsPlayerInCombat() then return end
         local text = ...
         if IsSecretValue(text) or type(text) ~= "string" then return end
-        local trimmed = text:match("^%s*(.-)%s*$"):lower()
+        local okTrim, trimmed = pcall(function()
+            return text:match("^%s*(.-)%s*$"):lower()
+        end)
+        if not okTrim or type(trimmed) ~= "string" then return end
         if trimmed ~= "!keys" and trimmed ~= "!key" then return end
         local db = EnsureDB()
         local isGuild = (event == "CHAT_MSG_GUILD")
@@ -8657,23 +9014,30 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         self._lastKeyReplyAt = self._lastKeyReplyAt or {}
         local now = (type(GetTime) == "function" and GetTime()) or 0
         if self._lastKeyReplyAt[chatType] and (now - self._lastKeyReplyAt[chatType]) < 10 then return end
-        local keyLink = (C_MythicPlus and type(C_MythicPlus.GetOwnedKeystoneLink) == "function") and C_MythicPlus.GetOwnedKeystoneLink() or nil
-        if (not keyLink or keyLink == "") and C_Container and C_Container.GetContainerNumSlots and C_Container.GetContainerItemLink then
+        local keyLink = nil
+        if C_MythicPlus and type(C_MythicPlus.GetOwnedKeystoneLink) == "function" then
+            local okLink, rawLink = pcall(C_MythicPlus.GetOwnedKeystoneLink)
+            if okLink and type(rawLink) == "string" and not IsSecretValue(rawLink) and rawLink ~= "" then
+                keyLink = rawLink
+            end
+        end
+        if not keyLink and C_Container and type(C_Container.GetContainerNumSlots) == "function" and type(C_Container.GetContainerItemLink) == "function" then
             for bag = 0, 4 do
-                local slots = C_Container.GetContainerNumSlots(bag) or 0
+                local okSlots, slots = pcall(C_Container.GetContainerNumSlots, bag)
+                slots = (okSlots and type(slots) == "number" and not IsSecretValue(slots)) and slots or 0
                 for sl = 1, slots do
-                    local lnk = C_Container.GetContainerItemLink(bag, sl)
-                    if type(lnk) == "string" and not IsSecretValue(lnk) and lnk:find("keystone:", 1, true) then
+                    local okItem, lnk = pcall(C_Container.GetContainerItemLink, bag, sl)
+                    if okItem and type(lnk) == "string" and not IsSecretValue(lnk) and lnk:find("keystone:", 1, true) then
                         keyLink = lnk
                         break
                     end
                 end
-                if keyLink and keyLink ~= "" then break end
+                if keyLink then break end
             end
         end
-        if type(keyLink) == "string" and keyLink ~= "" and not IsSecretValue(keyLink) then
+        if type(keyLink) == "string" and not IsSecretValue(keyLink) and keyLink ~= "" and not IsChatMessagingLocked() then
             self._lastKeyReplyAt[chatType] = now
-            local sendFn = (C_ChatInfo and C_ChatInfo.SendChatMessage) or _G.SendChatMessage
+            local sendFn = (C_ChatInfo and type(C_ChatInfo.SendChatMessage) == "function" and C_ChatInfo.SendChatMessage) or _G.SendChatMessage
             if type(sendFn) == "function" then
                 pcall(sendFn, keyLink, chatType)
             end

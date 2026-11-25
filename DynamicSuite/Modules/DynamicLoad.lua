@@ -7,19 +7,203 @@
 local addonName, rawAddonTable = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
+local function IsSafeValue(v)
+    if v == nil then return true end
+    if type(_G.issecretvalue) == "function" then
+        local okS, s = pcall(_G.issecretvalue, v)
+        if okS and s then return false end
+    end
+    if type(_G.canaccessvalue) == "function" then
+        local okA, a = pcall(_G.canaccessvalue, v)
+        if okA and not a then return false end
+    end
+    return true
+end
+
+local function IsSafeString(v)
+    return type(v) == "string" and IsSafeValue(v) and v ~= ""
+end
+
+local function SafeUnitName(unit)
+    if type(_G.UnitName) ~= "function" then return nil end
+    local ok, raw = pcall(_G.UnitName, unit or "player")
+    if not ok or not IsSafeString(raw) then return nil end
+    if raw == "Unknown" or raw == _G.UNKNOWNOBJECT then return nil end
+    return raw
+end
+
+local function SafeUnitGUID(unit)
+    if type(_G.UnitGUID) ~= "function" then return nil end
+    local ok, raw = pcall(_G.UnitGUID, unit or "player")
+    if not ok or not IsSafeString(raw) then return nil end
+    return raw
+end
+
+local function SafeUnitClass(unit)
+    if type(_G.UnitClass) ~= "function" then return nil, nil end
+    local ok, loc, classFile = pcall(_G.UnitClass, unit or "player")
+    if not ok then return nil, nil end
+    local safeLoc = IsSafeString(loc) and loc or nil
+    local safeFile = IsSafeString(classFile) and classFile or nil
+    return safeLoc, safeFile
+end
+
+local function SafeGetRealmName()
+    if type(_G.GetRealmName) ~= "function" then return nil end
+    local ok, raw = pcall(_G.GetRealmName)
+    if not ok or not IsSafeString(raw) then return nil end
+    if raw == "Unknown" or raw == _G.UNKNOWNOBJECT then return nil end
+    return raw
+end
+
+local function IsPlayerInCombat()
+    if type(_G.InCombatLockdown) ~= "function" then return false end
+    local ok, inC = pcall(_G.InCombatLockdown)
+    return (ok and IsSafeValue(inC) and inC == true) or false
+end
+
+local function SafeGetNumAddOns()
+    local fn = (_G.C_AddOns and _G.C_AddOns.GetNumAddOns) or _G.GetNumAddOns
+    if type(fn) ~= "function" then return 0 end
+    local ok, n = pcall(fn)
+    if ok and IsSafeValue(n) and type(n) == "number" and n >= 0 then
+        return n
+    end
+    return 0
+end
+
+local function SafeGetAddOnInfo(nameOrIndex)
+    if not IsSafeValue(nameOrIndex) then return nil end
+    local fn = (_G.C_AddOns and _G.C_AddOns.GetAddOnInfo) or _G.GetAddOnInfo
+    if type(fn) ~= "function" then return nil end
+    local ok, name, title, notes, loadable, reason, security = pcall(fn, nameOrIndex)
+    if not ok or not IsSafeString(name) then return nil end
+    local safeTitle = IsSafeString(title) and title or name
+    return name, safeTitle, notes, loadable, reason, security
+end
+
+local function SafeIsAddOnLoaded(nameOrIndex)
+    if not IsSafeValue(nameOrIndex) then return false end
+    local fn = (_G.C_AddOns and _G.C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+    if type(fn) ~= "function" then return false end
+    local ok, loaded = pcall(fn, nameOrIndex)
+    return (ok and IsSafeValue(loaded) and loaded == true) or false
+end
+
+local function SafeGetAddOnEnableState(nameOrIndex, charName)
+    if not IsSafeValue(nameOrIndex) then return 0 end
+    local fn = (_G.C_AddOns and _G.C_AddOns.GetAddOnEnableState) or _G.GetAddOnEnableState
+    if type(fn) ~= "function" then return 0 end
+    local ok, st
+    if IsSafeString(charName) then
+        ok, st = pcall(fn, nameOrIndex, charName)
+    else
+        ok, st = pcall(fn, nameOrIndex)
+    end
+    if ok and IsSafeValue(st) and type(st) == "number" then
+        return st
+    end
+    return 0
+end
+
+local function SafeEnableAddOn(name, charName)
+    if not IsSafeValue(name) then return false end
+    local fn = (_G.C_AddOns and _G.C_AddOns.EnableAddOn) or _G.EnableAddOn
+    if type(fn) ~= "function" then return false end
+    if IsSafeString(charName) then
+        local ok = pcall(fn, name, charName)
+        if SafeGetAddOnEnableState(name, charName) == 0 then
+            pcall(fn, name)
+        end
+        return ok
+    end
+    return pcall(fn, name)
+end
+
+local function SafeDisableAddOn(name, charName)
+    if not IsSafeValue(name) then return false end
+    local fn = (_G.C_AddOns and _G.C_AddOns.DisableAddOn) or _G.DisableAddOn
+    if type(fn) ~= "function" then return false end
+    if IsSafeString(charName) then
+        local ok = pcall(fn, name, charName)
+        if SafeGetAddOnEnableState(name, charName) > 0 then
+            pcall(fn, name)
+        end
+        return ok
+    end
+    return pcall(fn, name)
+end
+
+local function SafeGetAddOnMetadata(name, field)
+    if not IsSafeValue(name) or not IsSafeString(field) then return nil end
+    local fn = (_G.C_AddOns and _G.C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
+    if type(fn) ~= "function" then return nil end
+    local ok, val = pcall(fn, name, field)
+    if ok and IsSafeString(val) then
+        return val
+    end
+    return nil
+end
+
+local function SafeIsAddOnProfilerEnabled()
+    if _G.C_AddOnProfiler and type(_G.C_AddOnProfiler.IsEnabled) == "function" then
+        local ok, en = pcall(_G.C_AddOnProfiler.IsEnabled)
+        return (ok and IsSafeValue(en) and en == true) or false
+    end
+    return false
+end
+
+local function SafeGetAddOnProfilerMetric(name, metric)
+    if not metric or not IsSafeString(name) then return 0 end
+    if _G.C_AddOnProfiler and type(_G.C_AddOnProfiler.GetAddOnMetric) == "function" then
+        local ok, val = pcall(_G.C_AddOnProfiler.GetAddOnMetric, name, metric)
+        if ok and IsSafeValue(val) and type(val) == "number" then
+            return val
+        end
+    end
+    return 0
+end
+
+local function SafeGetOverallProfilerMetric(metric)
+    if not metric then return 0 end
+    if _G.C_AddOnProfiler and type(_G.C_AddOnProfiler.GetOverallMetric) == "function" then
+        local ok, val = pcall(_G.C_AddOnProfiler.GetOverallMetric, metric)
+        if ok and IsSafeValue(val) and type(val) == "number" then
+            return val
+        end
+    end
+    return 0
+end
+
+local function SafeGetAddOnMemoryUsage(nameOrIndex)
+    if not IsSafeValue(nameOrIndex) or type(_G.GetAddOnMemoryUsage) ~= "function" then return 0 end
+    local ok, val = pcall(_G.GetAddOnMemoryUsage, nameOrIndex)
+    if ok and IsSafeValue(val) and type(val) == "number" then
+        return val
+    end
+    return 0
+end
+
+local function SafeIsAddonVersionCheckEnabled()
+    if _G.C_AddOns and type(_G.C_AddOns.IsAddonVersionCheckEnabled) == "function" then
+        local ok, val = pcall(_G.C_AddOns.IsAddonVersionCheckEnabled)
+        if ok and IsSafeValue(val) and type(val) == "boolean" then
+            return val
+        end
+    end
+    return true
+end
+
 local function ResolveAddonVersion(folderName, fallback)
     local fb = fallback or "2.10.2"
-    local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
-    if type(getMeta) == "function" then
-        local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
-        if ok and type(ver) == "string" and ver ~= "" and not ver:find("@") then
-            return ver:gsub("^[vV]", "")
-        end
-        if folderName ~= "DynamicSuite" then
-            local ok2, ver2 = pcall(getMeta, "DynamicSuite", "Version")
-            if ok2 and type(ver2) == "string" and ver2 ~= "" and not ver2:find("@") then
-                return ver2:gsub("^[vV]", "")
-            end
+    local ver = SafeGetAddOnMetadata(folderName or ADDON_FOLDER, "Version")
+    if ver and not ver:find("@") then
+        return ver:gsub("^[vV]", "")
+    end
+    if folderName ~= "DynamicSuite" then
+        local ver2 = SafeGetAddOnMetadata("DynamicSuite", "Version")
+        if ver2 and not ver2:find("@") then
+            return ver2:gsub("^[vV]", "")
         end
     end
     return fb
@@ -37,21 +221,16 @@ local function CompareSemVer(vA, vB)
 end
 
 local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersion, globalTbl)
-    local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
-    local getAddOnEnableState = (C_AddOns and C_AddOns.GetAddOnEnableState) or _G.GetAddOnEnableState
-    local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     local function isOtherEnabled(name)
-        if type(isAddOnLoaded) == "function" and isAddOnLoaded(name) then
+        if SafeIsAddOnLoaded(name) then
             return true
         end
-        if type(getAddOnEnableState) == "function" then
-            local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
-            if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
-                local ok, st = pcall(getAddOnEnableState, name, pName)
-                if ok and type(st) == "number" and st > 0 then return true end
-            end
-            local ok2, st2 = pcall(getAddOnEnableState, name)
-            if ok2 and type(st2) == "number" and st2 > 0 then return true end
+        local pName = SafeUnitName("player")
+        if pName and SafeGetAddOnEnableState(name, pName) > 0 then
+            return true
+        end
+        if SafeGetAddOnEnableState(name) > 0 then
+            return true
         end
         return false
     end
@@ -62,9 +241,9 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
                 return true
             end
         end
-        if isOtherEnabled("DynamicSuite") and type(getMeta) == "function" then
-            local okS, sVer = pcall(getMeta, "DynamicSuite", "Version")
-            if okS and type(sVer) == "string" and sVer ~= "" and not sVer:find("@") then
+        if isOtherEnabled("DynamicSuite") then
+            local sVer = SafeGetAddOnMetadata("DynamicSuite", "Version")
+            if sVer and not sVer:find("@") then
                 if CompareSemVer(thisVersion, sVer) <= 0 then
                     return true
                 end
@@ -77,9 +256,9 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
                 return true
             end
         end
-        if isOtherEnabled(standaloneName) and type(getMeta) == "function" then
-            local okV, stVer = pcall(getMeta, standaloneName, "Version")
-            if okV and type(stVer) == "string" and stVer ~= "" and not stVer:find("@") then
+        if isOtherEnabled(standaloneName) then
+            local stVer = SafeGetAddOnMetadata(standaloneName, "Version")
+            if stVer and not stVer:find("@") then
                 if CompareSemVer(stVer, thisVersion) > 0 then
                     return true
                 end
@@ -131,43 +310,50 @@ _G.DynamicLoad._loadedVersion = RESOLVED_ADDON_VERSION
 local isInitialized = false
 
 local function IsStandaloneMarkerExcludedBySuite(addonKey)
-    if type(addonKey) ~= "string" then return false end
+    if not IsSafeString(addonKey) then return false end
     if addonKey ~= "DynamicMarker" and addonKey:lower() ~= "dynamicmarker" then return false end
     if ADDON_FOLDER == "DynamicSuite" then return true end
     if DynamicSuite and DynamicSuite._isHubLoaded then return true end
     if _G.DynamicSuite and _G.DynamicSuite._isHubLoaded then return true end
-    if C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DynamicSuite") then return true end
-    if C_AddOns and type(C_AddOns.GetAddOnEnableState) == "function" then
-        local function isSafeStr(v)
-            if type(_G.issecretvalue) == "function" then
-                local okS, s = pcall(_G.issecretvalue, v)
-                if okS and s then return false end
-            end
-            if type(_G.canaccessvalue) == "function" then
-                local okA, a = pcall(_G.canaccessvalue, v)
-                if okA and not a then return false end
-            end
-            return type(v) == "string" and v ~= ""
+    if SafeIsAddOnLoaded("DynamicSuite") then return true end
+    if _G.C_AddOns and type(_G.C_AddOns.GetAddOnEnableState) == "function" then
+        local okUN, rawUName = false, nil
+        if type(_G.UnitName) == "function" then
+            okUN, rawUName = pcall(_G.UnitName, "player")
         end
-        local okUN, rawUName = (type(_G.UnitName) == "function") and pcall(_G.UnitName, "player") or false, nil
-        local uName = (okUN and isSafeStr(rawUName)) and rawUName or nil
+        local uName = (okUN and IsSafeString(rawUName)) and rawUName or nil
         if uName and uName ~= "Unknown" and uName ~= _G.UNKNOWNOBJECT then
-            local okSt, st = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", uName)
-            if okSt and type(st) == "number" and st > 0 then return true end
+            local okSt, st = pcall(_G.C_AddOns.GetAddOnEnableState, "DynamicSuite", uName)
+            if okSt and IsSafeValue(st) and type(st) == "number" and st > 0 then return true end
         end
-        local okSt2, st2 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite")
-        if okSt2 and type(st2) == "number" and st2 > 0 then return true end
-        local okUG, rawUGuid = (type(_G.UnitGUID) == "function") and pcall(_G.UnitGUID, "player") or false, nil
-        local uGuid = (okUG and isSafeStr(rawUGuid)) and rawUGuid or nil
+        local okSt2, st2 = pcall(_G.C_AddOns.GetAddOnEnableState, "DynamicSuite")
+        if okSt2 and IsSafeValue(st2) and type(st2) == "number" and st2 > 0 then return true end
+        local okUG, rawUGuid = false, nil
+        if type(_G.UnitGUID) == "function" then
+            okUG, rawUGuid = pcall(_G.UnitGUID, "player")
+        end
+        local uGuid = (okUG and IsSafeString(rawUGuid)) and rawUGuid or nil
         if uGuid then
-            local okSt3, st3 = pcall(C_AddOns.GetAddOnEnableState, "DynamicSuite", uGuid)
-            if okSt3 and type(st3) == "number" and st3 > 0 then return true end
+            local okSt3, st3 = pcall(_G.C_AddOns.GetAddOnEnableState, "DynamicSuite", uGuid)
+            if okSt3 and IsSafeValue(st3) and type(st3) == "number" and st3 > 0 then return true end
         end
     end
     return false
 end
 DL_NS.IsStandaloneMarkerExcludedBySuite = IsStandaloneMarkerExcludedBySuite
 DynamicSuite.IsStandaloneMarkerExcludedBySuite = IsStandaloneMarkerExcludedBySuite
+
+local function SafeSetAddonVersionCheck(enabled)
+    if IsPlayerInCombat() then
+        print(string.format("%s: Cannot change version check setting during combat. Please leave combat and try again.", tostring((DL_NS and DL_NS.ADDON_TITLE) or "|cFFCBD5E1DynamicLoad|r")))
+        return false
+    end
+    if _G.C_AddOns and type(_G.C_AddOns.SetAddonVersionCheck) == "function" then
+        local ok = pcall(_G.C_AddOns.SetAddonVersionCheck, enabled == true)
+        return ok
+    end
+    return false
+end
 
 --------------------------------------------------------------------------------
 -- SECTION 1: CORE ENGINE (DynamicLoad Core)
@@ -186,18 +372,36 @@ local ADDON_TITLE = "|cFFCBD5E1DynamicLoad|r"
 addonTable.ADDON_TITLE = ADDON_TITLE
 local ADDON_VERSION = RESOLVED_ADDON_VERSION
 addonTable.ADDON_VERSION = ADDON_VERSION
+
+local function ApplyAddonDependencies(desiredMap, ok, ...)
+    if not ok then return false end
+    local changed = false
+    local count = select("#", ...)
+    for dIdx = 1, count do
+        local depName = select(dIdx, ...)
+        if IsSafeString(depName) and desiredMap[depName] == false then
+            if not (addonTable.IsAddonFrozen and addonTable.IsAddonFrozen(depName))
+                and not (addonTable.IsStandaloneMarkerExcludedBySuite and addonTable.IsStandaloneMarkerExcludedBySuite(depName)) then
+                desiredMap[depName] = true
+                changed = true
+            end
+        end
+    end
+    return changed
+end
 DynamicSuite.version = DynamicSuite.version or ADDON_VERSION
 DynamicSuite.modules = DynamicSuite.modules or {}
 DynamicSuite.Changelogs = DynamicSuite.Changelogs or {}
 
 DynamicSuite.Changelogs["DynamicLoad"] = {
     version = ADDON_VERSION,
-    date = "21/11/2026",
+    date = "25/11/2026",
     entries = {
+        { type = "UI",      text = "Pass 7 Hardening, 800x520 Clamping & Standalone Window Parity (25/11/2026): Fixed the IsStandaloneMarkerExcludedBySuite multi-return truncation bug, hoisted secret-safe player/combat/C_AddOns/profiler wrappers across DynamicLoad and DynamicSuite_UI, hardened Patch 12.1.7 Mythic+/PvP/Lorewalking zone detection, synced all 13 dual-mode modules in Core Suite registries, reflowed DynamicLoad's toolbar (2-row compact mode below 700px), telemetry strip, legend strip, alt banner, addon rows, and Alert Toast Style sub-tab for clean 800x520 display, upgraded the addon list 4px scrollbar to full 3-way Obsidian interaction, added full resizability, 14x14 live Suite Accent resize grip, footer dock parity, 2-click Reset confirmation, and theme repainting to standalone DynamicLoadStandaloneFrame, and standardised all UI copy into plain Australian English." },
         { type = "UI",      text = "Release v2.7.0 - Shared Alert Toast HUD Consolidation & Accent Tooltip Polish (21/11/2026): Wrapped DynamicLoad's Alert Toast settings card in a scrollable container with the 4px 3-way Obsidian scrollbar, added the shared Toast Alert Sound switch, standardised 68px/84px switches and compact duration pills, updated group tooltip links to use the live Suite Accent, and synchronised all Shared Alert Toast appearance and sound controls with Suite Studio." },
         { type = "FIX",     text = "Toolbar Search Box Width & HUD Edit Mode 'Apply All' Appearance Action (16/11/2026): tightened DynamicLoad toolbar button padding, gaps, and adaptive minimum widths so the 'Filter addons...' search box retains at least 125px cleanly at the default 980x680 window size without clipping; and added an 'Apply All' Opacity & Border Style button on Row 3 of the HUD Edit Mode Inspector to copy the selected HUD's opacity and border style across all 6 suite HUDs in one click." },
         { type = "FEATURE", text = "One-Click 'Copy From...' Zone Profile & Persistent Tree Collapse (16/11/2026): added a compact 'Copy From...' button on the DynamicLoad toolbar so you can copy another zone's By Zone addon selections into the active zone tab in one click (preserving Always/Never locks and Suite Core protections), and ensured collapsed parent addon groups persist reliably across /reload and logins with clear expand/collapse tooltips." },
-        { type = "FIX",     text = "Universal 'Never' ('FROZEN') Persistence Across All Addons & Sub-Addons (12/11/2026): Normalised all security and zone assignment operations to canonical folder names (ResolveCanonicalAddonName); made SetAddonFrozen(name, true) atomically persist 'FROZEN' across DynamicLoadDB/globalData/charData, wipe all 5 zone tables, and call C_AddOns.DisableAddOn; merged DynamicLoadDB root and globalData security tables in SyncScopeBindings() and used in-place wipe() in RestoreStash() so SavedVariables deserialization never reverts 'FROZEN' states on /reload; prevented ReconcileStartupProfileBaseline from overwriting knownAddons; protected individual child 'FROZEN' / 'LOCKED' states from parent cascades; and added EnforceFrozenAddonsDisabled() + a hooksecurefunc(C_AddOns, 'EnableAddOn', ...) guard so external parent suites cannot re-enable 'FROZEN' sub-addons." },
+        { type = "FIX",     text = "Universal 'Never' ('FROZEN') Persistence Across All Addons & Sub-Addons (12/11/2026): Normalised all security and zone assignment operations to canonical folder names (ResolveCanonicalAddonName); made SetAddonFrozen(name, true) atomically persist 'FROZEN' across DynamicLoadDB/globalData/charData, wipe all 5 zone tables, and call C_AddOns.DisableAddOn; merged DynamicLoadDB root and globalData security tables in SyncScopeBindings() and used in-place wipe() in RestoreStash() so SavedVariables deserialisation never reverts 'FROZEN' states on /reload; prevented ReconcileStartupProfileBaseline from overwriting knownAddons; protected individual child 'FROZEN' / 'LOCKED' states from parent cascades; and added EnforceFrozenAddonsDisabled() + a hooksecurefunc(C_AddOns, 'EnableAddOn', ...) guard so external parent suites cannot re-enable 'FROZEN' sub-addons." },
         { type = "FIX",     text = "Fixed 'attempt to call a nil value' in EvaluateAddonItemEffectiveState (DynamicLoad.lua:4724) when evaluating the DynamicSuite parent hub item and child modules across scoped do ... end chunks by declaring a local IsSuiteModuleExplicitlyDisabled helper in the UI chunk with addonTable / DynamicSuiteDB fallbacks and defensive nil guards across GetParentSuiteStats and EvaluateAddonItemEffectiveState." },
         { type = "FEATURE", text = "External Addon Conflict Detector & Yield Engine (12/11/2026): Added curated conflict detection for ACP, SimpleAddonManager, and BetterAddonList, one-time non-spam login alerts for newly detected HARD conflicts, and /ds conflicts diagnostic reporting." },
         { type = "NEW",     text = "Unified v1.3.0 Single-Source .toc Metadata & Version-Aware Duplicate-Install Guard (11/11/2026): DynamicLoad now resolves its live version directly from .toc metadata (C_AddOns.GetAddOnMetadata) and compares semantic versions (CompareSemVer) when both DynamicSuite and standalone DynamicLoad are installed so the newer version always takes priority." },
@@ -210,7 +414,7 @@ DynamicSuite.Changelogs["DynamicLoad"] = {
         { type = "FIX",     text = "Cross-TOC Namespace Bridge & Lua 5.1 AST Hardening: Fixed syntax error in DynamicLoad_Core.lua:2178, forward-declared ApplyEnvironmentContext above ResumeAutoSwitch, added DynamicSuite to SUITE_MODULES auto-enable protection, and hardened /dl standalone vs docked workspace routing." },
         { type = "FEATURE", text = "Decoupled DynamicLoad Peer Module: DynamicLoad now operates as an independent peer module (with its own DynamicLoad_Core.lua and DynamicLoad_UI.lua) that works 100% standalone via /dl or docked inside DynamicSuite (/ds)." },
         { type = "UI",      text = "Unified load-state terminology to 'By Zone', 'Always', and 'Never' across all rows, suffix tags, popovers, filter pills, legends, and tooltips (with [Suite Core] / [Suite Protected] for DynamicSuite modules)." },
-        { type = "UI",      text = "Styled Top Filter Bar pills (All, Pending, Always, Never) with clash-proof semantic text coloring on dark #14171F backgrounds when unselected, and filled semantic backgrounds with white text when selected." },
+        { type = "UI",      text = "Styled Top Filter Bar pills (All, Pending, Always, Never) with clash-proof semantic text colouring on dark #14171F backgrounds when unselected, and filled semantic backgrounds with white text when selected." },
         { type = "FIX",     text = "Disentangled physical zone location from loaded addon profile (DynamicLoadDB.loadedProfile and DynamicLoadDB.manualOverride), protecting manual profile activations across reloads." },
     },
 }
@@ -226,15 +430,20 @@ local PROTECTED_ADDONS = addonTable.PROTECTED_ADDONS or {
     ["DynamicLoad"]   = true,
 }
 local CORE_SUITE_ADDONS = addonTable.CORE_SUITE_ADDONS or {
-    ["DynamicSuite"]  = true,
-    ["DynamicLoad"]   = true,
-    ["DynamicMarker"] = true,
-    ["DynamicZoom"]   = true,
-    ["DynamicFPS"]    = true,
-    ["DynamicPrep"]   = true,
-    ["DynamicGroup"]  = true,
-    ["DynamicBags"]   = true,
-    ["DynamicChat"]   = true,
+    ["DynamicSuite"]    = true,
+    ["DynamicLoad"]     = true,
+    ["DynamicMarker"]   = true,
+    ["DynamicZoom"]     = true,
+    ["DynamicFPS"]      = true,
+    ["DynamicPrep"]     = true,
+    ["DynamicGroup"]    = true,
+    ["DynamicBags"]     = true,
+    ["DynamicChat"]     = true,
+    ["DynamicMail"]     = true,
+    ["DynamicVault"]    = true,
+    ["DynamicDialogue"] = true,
+    ["DynamicTalent"]   = true,
+    ["DynamicCursor"]   = true,
 }
 local SUITE_MODULES = addonTable.SUITE_MODULES or {
     "DynamicSuite",
@@ -246,6 +455,11 @@ local SUITE_MODULES = addonTable.SUITE_MODULES or {
     "DynamicGroup",
     "DynamicBags",
     "DynamicChat",
+    "DynamicMail",
+    "DynamicVault",
+    "DynamicDialogue",
+    "DynamicTalent",
+    "DynamicCursor",
 }
 addonTable.PROTECTED_ADDONS  = PROTECTED_ADDONS
 addonTable.CORE_SUITE_ADDONS = CORE_SUITE_ADDONS
@@ -376,12 +590,9 @@ local playerName = nil
 --------------------------------------------------------------------------------
 local function GetPlayer()
     if not playerName then
-        local raw = UnitName and UnitName("player")
-        if raw and raw ~= "" and raw ~= "Unknown" and raw ~= _G.UNKNOWNOBJECT then
-            playerName = raw
-        end
+        playerName = SafeUnitName("player")
     end
-    return playerName or "player"
+    return playerName
 end
 if not DynamicSuite._isHubLoaded or not addonTable.GetPlayer then
     addonTable.GetPlayer = GetPlayer
@@ -389,8 +600,8 @@ end
 
 local function GetCurrentCharKey()
     local pName = (addonTable.GetPlayer and addonTable.GetPlayer()) or GetPlayer()
-    local realm = GetRealmName() or "Realm"
-    return pName .. "-" .. realm
+    local realm = SafeGetRealmName() or "Realm"
+    return (IsSafeString(pName) and pName or "Character") .. "-" .. realm
 end
 if not DynamicSuite._isHubLoaded or not addonTable.GetCurrentCharKey then
     addonTable.GetCurrentCharKey = GetCurrentCharKey
@@ -750,11 +961,8 @@ local function EnforceProtectedSuiteModules()
                 end
             end
             if not IsSuiteModuleExplicitlyDisabled(modName) then
-                if C_AddOns and C_AddOns.GetAddOnInfo and C_AddOns.GetAddOnInfo(modName) then
-                    pcall(C_AddOns.EnableAddOn, modName, pName)
-                    if (C_AddOns.GetAddOnEnableState(modName, pName) or 0) == 0 then
-                        pcall(C_AddOns.EnableAddOn, modName)
-                    end
+                if SafeGetAddOnInfo(modName) then
+                    SafeEnableAddOn(modName, pName)
                 end
             end
         end
@@ -930,18 +1138,12 @@ local function SetAddonLocked(name, locked)
         ApplySecurityStateToTableSet(DynamicLoadDB.globalData, canon, name, targetMode)
     end
 
-    if locked and C_AddOns and C_AddOns.EnableAddOn then
+    if locked then
         local pName = GetPlayer()
         if IsStandaloneMarkerExcludedBySuite(canon) then
-            if C_AddOns.DisableAddOn then
-                pcall(C_AddOns.DisableAddOn, canon, pName)
-                pcall(C_AddOns.DisableAddOn, canon)
-            end
+            SafeDisableAddOn(canon, pName)
         else
-            pcall(C_AddOns.EnableAddOn, canon, pName)
-            if (C_AddOns.GetAddOnEnableState(canon, pName) or 0) == 0 then
-                pcall(C_AddOns.EnableAddOn, canon)
-            end
+            SafeEnableAddOn(canon, pName)
         end
     end
 end
@@ -977,13 +1179,10 @@ local function SetAddonFrozen(name, frozen)
         end
     end
 
-    if frozen and C_AddOns and C_AddOns.DisableAddOn then
+    if frozen then
         local pName = GetPlayer()
         isEnforcingFrozenGuard = true
-        pcall(C_AddOns.DisableAddOn, canon, pName)
-        if (C_AddOns.GetAddOnEnableState(canon, pName) or 0) > 0 then
-            pcall(C_AddOns.DisableAddOn, canon)
-        end
+        SafeDisableAddOn(canon, pName)
         isEnforcingFrozenGuard = false
     end
 end
@@ -994,20 +1193,15 @@ local function EnforceFrozenAddonsDisabled()
     if not DynamicLoadDB or isEnforcingFrozenGuard then return end
     isEnforcingFrozenGuard = true
     local pName = GetPlayer()
-    local num = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or 0
+    local num = SafeGetNumAddOns()
     for i = 1, num do
-        local name = C_AddOns.GetAddOnInfo(i)
+        local name = SafeGetAddOnInfo(i)
         if name and name ~= "DynamicFrame" and not IsAddonProtected(name) and IsAddonFrozen(name) then
             WipeAddonFromProfilesTable(DynamicLoadDB.profiles, name)
             if DynamicLoadDB.globalData and DynamicLoadDB.globalData.profiles and GetCharScopeMode() ~= "CHARACTER" then
                 WipeAddonFromProfilesTable(DynamicLoadDB.globalData.profiles, name)
             end
-            if C_AddOns.DisableAddOn then
-                pcall(C_AddOns.DisableAddOn, name, pName)
-                if (C_AddOns.GetAddOnEnableState(name, pName) or 0) > 0 then
-                    pcall(C_AddOns.DisableAddOn, name)
-                end
-            end
+            SafeDisableAddOn(name, pName)
         end
     end
     if DynamicLoadDB.frozenAddons then
@@ -1016,10 +1210,7 @@ local function EnforceFrozenAddonsDisabled()
                 local canon = ResolveCanonicalAddonName(rawName) or rawName
                 if canon and not IsAddonProtected(canon) then
                     WipeAddonFromProfilesTable(DynamicLoadDB.profiles, canon)
-                    if C_AddOns and C_AddOns.DisableAddOn then
-                        pcall(C_AddOns.DisableAddOn, canon, pName)
-                        pcall(C_AddOns.DisableAddOn, canon)
-                    end
+                    SafeDisableAddOn(canon, pName)
                 end
             end
         end
@@ -1036,12 +1227,7 @@ local function OnExternalEnableAddOnHook(addonKey)
     if IsStandaloneMarkerExcludedBySuite(canon) then
         isEnforcingFrozenGuard = true
         local pName = GetPlayer()
-        if C_AddOns and C_AddOns.DisableAddOn then
-            pcall(C_AddOns.DisableAddOn, canon, pName)
-            if (C_AddOns.GetAddOnEnableState(canon, pName) or 0) > 0 then
-                pcall(C_AddOns.DisableAddOn, canon)
-            end
-        end
+        SafeDisableAddOn(canon, pName)
         isEnforcingFrozenGuard = false
         return
     end
@@ -1050,12 +1236,7 @@ local function OnExternalEnableAddOnHook(addonKey)
         isEnforcingFrozenGuard = true
         local pName = GetPlayer()
         WipeAddonFromProfilesTable(DynamicLoadDB.profiles, canon)
-        if C_AddOns and C_AddOns.DisableAddOn then
-            pcall(C_AddOns.DisableAddOn, canon, pName)
-            if (C_AddOns.GetAddOnEnableState(canon, pName) or 0) > 0 then
-                pcall(C_AddOns.DisableAddOn, canon)
-            end
-        end
+        SafeDisableAddOn(canon, pName)
         isEnforcingFrozenGuard = false
     end
 end
@@ -1101,6 +1282,7 @@ addonTable.CycleAddonSecurityState = CycleAddonSecurityState
 --------------------------------------------------------------------------------
 local SMART_CORE_PATTERNS = {
     "^DynamicLoad$", "^DynamicMarker$", "^DynamicZoom$", "^DynamicFPS$", "^DynamicPrep$", "^DynamicGroup$", "^DynamicBags$", "^DynamicChat$",
+    "^DynamicMail$", "^DynamicVault$", "^DynamicDialogue$", "^DynamicTalent$", "^DynamicCursor$",
 }
 
 local SMART_OUTDOOR_HARBOR_PATTERNS = {
@@ -1121,7 +1303,7 @@ end
 
 function addonTable.ApplySmartAddonScan()
     if not DynamicLoadDB then return { lockedCount = 0, outdoorCount = 0 } end
-    local num = C_AddOns.GetNumAddOns()
+    local num = SafeGetNumAddOns()
     local pName = GetPlayer()
     local lockedCount = 0
     local outdoorCount = 0
@@ -1132,18 +1314,15 @@ function addonTable.ApplySmartAddonScan()
     end
 
     for i = 1, num do
-        local name = C_AddOns.GetAddOnInfo(i)
+        local name = SafeGetAddOnInfo(i)
         if name and not IsAddonProtected(name) and not IsAddonFrozen(name) then
-            local isEnabledNow = (C_AddOns.GetAddOnEnableState(name, pName) or 0) > 0
+            local isEnabledNow = SafeGetAddOnEnableState(name, pName) > 0
             if IsStandaloneMarkerExcludedBySuite(name) then
                 SetAddonLocked(name, false)
                 for _, k in ipairs({ CONTEXT_OUTDOOR, CONTEXT_DELVE, CONTEXT_DUNGEON, CONTEXT_RAID, CONTEXT_PVP }) do
                     DynamicLoadDB.profiles[k].addons[name] = false
                 end
-                if C_AddOns and C_AddOns.DisableAddOn then
-                    pcall(C_AddOns.DisableAddOn, name, pName)
-                    pcall(C_AddOns.DisableAddOn, name)
-                end
+                SafeDisableAddOn(name, pName)
             elseif MatchesAnyPattern(name, SMART_CORE_PATTERNS) and isEnabledNow then
                 SetAddonLocked(name, true)
                 lockedCount = lockedCount + 1
@@ -1181,7 +1360,7 @@ end
 -- Modern CPU Profiling Engine (Blizzard C_AddOnProfiler, Zero CVars, Zero Reloads)
 --------------------------------------------------------------------------------
 function addonTable.IsCpuProfilingEnabled()
-    return C_AddOnProfiler and C_AddOnProfiler.IsEnabled and C_AddOnProfiler.IsEnabled()
+    return SafeIsAddOnProfilerEnabled()
 end
 
 function addonTable.SanitizeLegacyCVar()
@@ -2184,10 +2363,10 @@ local function ShowNewAddonsToast(newAddons)
     local firstName = newAddons[1]
     if count == 1 then
         f.title:SetText(string.format("%s: |cFF%sNew Addon Detected|r", GetToastTitlePrefix(), bdgHex))
-        f.badge:SetText(string.format("|cFFFFFFFF%s|r assigned to |cFF%sOutdoor Safe Harbor|r", firstName, bdgHex))
+        f.badge:SetText(string.format("|cFFFFFFFF%s|r assigned to |cFF%sOutdoor Safe Harbour|r", firstName, bdgHex))
     else
         f.title:SetText(string.format("%s: |cFF%s%d New Addons Detected|r", GetToastTitlePrefix(), bdgHex, count))
-        f.badge:SetText(string.format("Assigned to |cFF%sOutdoor Safe Harbor|r to protect combat FPS", bdgHex))
+        f.badge:SetText(string.format("Assigned to |cFF%sOutdoor Safe Harbour|r to protect combat FPS", bdgHex))
     end
     f.subtext:SetText(string.format("|cFF%sClick [Open] to Configure|r    |cFF888888Right-Click: Dismiss|r", bdgHex))
 
@@ -2286,13 +2465,13 @@ local function ScanNewAddons()
     end
     DynamicLoadDB.knownAddons["DynamicFrame"] = true
 
-    local num = C_AddOns.GetNumAddOns()
+    local num = SafeGetNumAddOns()
     local newAddons = {}
 
     local hasKnown = (next(DynamicLoadDB.knownAddons) ~= nil)
     if not hasKnown or DynamicLoadDB.firstRun then
         for i = 1, num do
-            local name = C_AddOns.GetAddOnInfo(i)
+            local name = SafeGetAddOnInfo(i)
             if name then
                 DynamicLoadDB.knownAddons[name] = true
             end
@@ -2302,7 +2481,7 @@ local function ScanNewAddons()
     end
 
     for i = 1, num do
-        local name = C_AddOns.GetAddOnInfo(i)
+        local name = SafeGetAddOnInfo(i)
         if name and not RETIRED_IGNORED_ADDONS[name] and not IsAddonProtected(name) and not IsStandaloneMarkerExcludedBySuite(name) then
             if not DynamicLoadDB.knownAddons[name] then
                 DynamicLoadDB.knownAddons[name] = true
@@ -2331,7 +2510,7 @@ function addonTable.IsToastMoving()
 end
 
 function addonTable.StartToastMove()
-    if InCombatLockdown and InCombatLockdown() then return end
+    if IsPlayerInCombat() then return end
     local f = CreateToastFrame()
     f.animGroup:Stop()
     f:SetAlpha(1)
@@ -2354,7 +2533,7 @@ end
 
 function addonTable.ResetToastPosition()
     addonTable.SetToastPresetPosition("TOP", "TOP", 0, -50)
-    print(string.format("%s: Alert Toast position reset to Top Center.", ADDON_TITLE))
+    print(string.format("%s: Alert Toast position reset to Top Centre.", ADDON_TITLE))
 end
 
 function addonTable.ResetToastSettings()
@@ -2405,16 +2584,16 @@ local function SnapshotActiveAddons(targetProfileKey)
     local profile = DynamicLoadDB.profiles[target]
     profile.addons = {}
 
-    local num = C_AddOns.GetNumAddOns()
+    local num = SafeGetNumAddOns()
     local pName = GetPlayer()
 
     for i = 1, num do
-        local name = C_AddOns.GetAddOnInfo(i)
+        local name = SafeGetAddOnInfo(i)
         if name and not IsAddonProtected(name) and not IsAddonFrozen(name) then
             if IsStandaloneMarkerExcludedBySuite(name) then
                 profile.addons[name] = false
             else
-                local state = C_AddOns.GetAddOnEnableState(name, pName)
+                local state = SafeGetAddOnEnableState(name, pName)
                 profile.addons[name] = (state and state > 0) or false
             end
         end
@@ -2429,24 +2608,18 @@ local function RecordCurrentCharacter()
     if not DynamicLoadDB then return end
     if not DynamicLoadDB.characters then DynamicLoadDB.characters = {} end
 
-    local pName = UnitName("player")
-    local realm = GetRealmName() or "Unknown"
-    if not pName or pName == "" then return end
+    local pName = SafeUnitName("player")
+    local realm = SafeGetRealmName() or "Unknown"
+    if not pName then return end
     local charKey = pName .. "-" .. realm
-    local _, classFile = nil, nil
-    if type(_G.UnitClass) == "function" then
-        local okC, _, cf = pcall(_G.UnitClass, "player")
-        if okC and type(cf) == "string" and cf ~= "" then
-            classFile = cf
-        end
-    end
+    local _, classFile = SafeUnitClass("player")
 
     local addons = {}
-    local num = C_AddOns.GetNumAddOns()
+    local num = SafeGetNumAddOns()
     for i = 1, num do
-        local name = C_AddOns.GetAddOnInfo(i)
+        local name = SafeGetAddOnInfo(i)
         if name and not IsAddonProtected(name) and not IsStandaloneMarkerExcludedBySuite(name) then
-            local state = C_AddOns.GetAddOnEnableState(name, pName)
+            local state = SafeGetAddOnEnableState(name, pName)
             if state and state > 0 then
                 addons[name] = true
             end
@@ -2513,7 +2686,7 @@ function addonTable.StashCurrentState()
 
     DynamicLoadDB.stash = {
         timestamp = time(),
-        charKey = pName .. "-" .. (GetRealmName() or ""),
+        charKey = (IsSafeString(pName) and pName or "Character") .. "-" .. (SafeGetRealmName() or ""),
         activeProfile = activeProfile,
         locked = lockedCopy,
         frozen = frozenCopy,
@@ -2525,7 +2698,7 @@ function addonTable.StashCurrentState()
         }
     }
 
-    print(string.format("%s: State backed up (%d active, %d locked, %d frozen).", ADDON_TITLE, activeCount, lockedCount, frozenCount))
+    print(string.format("%s: State backed up (%d active, %d Always, %d Never).", ADDON_TITLE, activeCount, lockedCount, frozenCount))
     return DynamicLoadDB.stash
 end
 
@@ -2604,14 +2777,14 @@ local liveSessionEnabled = {}
 local function CaptureLiveSessionBaseline()
     liveSessionEnabled = {}
     local pName = GetPlayer()
-    local num = C_AddOns.GetNumAddOns()
+    local num = SafeGetNumAddOns()
     for i = 1, num do
-        local name = C_AddOns.GetAddOnInfo(i)
+        local name = SafeGetAddOnInfo(i)
         if name and name ~= "DynamicFrame" and not IsAddonProtected(name) then
             if IsStandaloneMarkerExcludedBySuite(name) then
                 liveSessionEnabled[name] = false
             else
-                local isEnabled = ((C_AddOns.GetAddOnEnableState(name, pName) or 0) > 0) or C_AddOns.IsAddOnLoaded(name)
+                local isEnabled = (SafeGetAddOnEnableState(name, pName) > 0) or SafeIsAddOnLoaded(name)
                 liveSessionEnabled[name] = (isEnabled == true)
             end
         end
@@ -2627,11 +2800,11 @@ local function CalculateAddonDelta(targetProfileKey)
     local changes = {}
     local desiredMap = {}
     local pName = GetPlayer()
-    local num = C_AddOns.GetNumAddOns()
+    local num = SafeGetNumAddOns()
 
     -- Pass 1: Evaluate individual addon intent (Frozen always wins OFF, Locked always wins ON)
     for i = 1, num do
-        local name = C_AddOns.GetAddOnInfo(i)
+        local name = SafeGetAddOnInfo(i)
         if name and name ~= "DynamicFrame" and not IsAddonProtected(name) then
             local desiredState = profile.addons[name]
             if IsStandaloneMarkerExcludedBySuite(name) then
@@ -2650,6 +2823,7 @@ local function CalculateAddonDelta(targetProfileKey)
     end
 
     -- Pass 2: Deterministic Fixed-Point Upward Auto-Core & Dependency Engine
+    local depFn = (_G.C_AddOns and _G.C_AddOns.GetAddOnDependencies) or _G.GetAddOnDependencies
     for _ = 1, 4 do
         local changed = false
         for name, isDesired in pairs(desiredMap) do
@@ -2659,13 +2833,9 @@ local function CalculateAddonDelta(targetProfileKey)
                     desiredMap[parent] = true
                     changed = true
                 end
-                if C_AddOns.GetAddOnDependencies then
-                    for dIdx = 1, select("#", C_AddOns.GetAddOnDependencies(name)) do
-                        local depName = select(dIdx, C_AddOns.GetAddOnDependencies(name))
-                        if depName and desiredMap[depName] == false and not IsAddonFrozen(depName) and not IsStandaloneMarkerExcludedBySuite(depName) then
-                            desiredMap[depName] = true
-                            changed = true
-                        end
+                if type(depFn) == "function" then
+                    if ApplyAddonDependencies(desiredMap, pcall(depFn, name)) then
+                        changed = true
                     end
                 end
             end
@@ -2680,11 +2850,11 @@ local function CalculateAddonDelta(targetProfileKey)
 
     -- Pass 3: Compute delta against current live UI session baseline
     for i = 1, num do
-        local name = C_AddOns.GetAddOnInfo(i)
+        local name = SafeGetAddOnInfo(i)
         if name and name ~= "DynamicFrame" and not IsAddonProtected(name) then
             local currentState = liveSessionEnabled[name]
             if currentState == nil then
-                currentState = ((C_AddOns.GetAddOnEnableState(name, pName) or 0) > 0)
+                currentState = (SafeGetAddOnEnableState(name, pName) > 0)
             end
             local desiredState = (desiredMap[name] == true)
             if currentState ~= desiredState then
@@ -2707,10 +2877,10 @@ local function ReconcileStartupProfileBaseline(profileKey)
 
     EnforceFrozenAddonsDisabled()
     CaptureLiveSessionBaseline()
-    local num = C_AddOns.GetNumAddOns()
+    local num = SafeGetNumAddOns()
     local known = DynamicLoadDB.knownAddons
     for i = 1, num do
-        local name = C_AddOns.GetAddOnInfo(i)
+        local name = SafeGetAddOnInfo(i)
         if name and name ~= "DynamicFrame" and not IsAddonProtected(name) then
             if IsStandaloneMarkerExcludedBySuite(name) then
                 profile.addons[name] = false
@@ -2752,25 +2922,19 @@ local function StageAddonProfile(targetProfileKey, setAsActive)
     end
 
     local pName = GetPlayer()
-    local num = C_AddOns.GetNumAddOns()
+    local num = SafeGetNumAddOns()
 
     for i = 1, num do
-        local name = C_AddOns.GetAddOnInfo(i)
+        local name = SafeGetAddOnInfo(i)
         if name and name ~= "DynamicFrame" and not IsAddonProtected(name) then
             local shouldEnable = (desiredMap[name] == true) and not IsAddonFrozen(name) and not IsStandaloneMarkerExcludedBySuite(name)
             if shouldEnable then
-                C_AddOns.EnableAddOn(name, pName)
-                if (C_AddOns.GetAddOnEnableState(name, pName) or 0) == 0 then
-                    C_AddOns.EnableAddOn(name)
-                end
+                SafeEnableAddOn(name, pName)
             else
                 if IsStandaloneMarkerExcludedBySuite(name) and DynamicLoadDB and DynamicLoadDB.profiles and DynamicLoadDB.profiles[targetProfileKey] and DynamicLoadDB.profiles[targetProfileKey].addons then
                     DynamicLoadDB.profiles[targetProfileKey].addons[name] = false
                 end
-                C_AddOns.DisableAddOn(name, pName)
-                if (C_AddOns.GetAddOnEnableState(name, pName) or 0) > 0 then
-                    C_AddOns.DisableAddOn(name)
-                end
+                SafeDisableAddOn(name, pName)
             end
         end
     end
@@ -2836,9 +3000,9 @@ function addonTable.ResetDynamicLoad()
     DynamicLoadDB.loadedProfile = CONTEXT_OUTDOOR
     DynamicLoadDB.manualOverride = false
     DynamicLoadDB.activeProfile = CONTEXT_OUTDOOR
-    local num = C_AddOns.GetNumAddOns()
+    local num = SafeGetNumAddOns()
     for i = 1, num do
-        local name = C_AddOns.GetAddOnInfo(i)
+        local name = SafeGetAddOnInfo(i)
         if name then
             DynamicLoadDB.knownAddons[name] = true
         end
@@ -2846,7 +3010,7 @@ function addonTable.ResetDynamicLoad()
     SnapshotActiveAddons(CONTEXT_OUTDOOR)
     RecordCurrentCharacter()
     addonTable.ResetToastPosition()
-    print(string.format("%s: DynamicLoad profiles, locks, and freezes reset to clean defaults.", ADDON_TITLE))
+    print(string.format("%s: DynamicLoad zone profiles and Always/Never overrides reset to defaults.", ADDON_TITLE))
 end
 
 
@@ -2856,21 +3020,41 @@ end
 local function IsActiveDelve()
     if type(_G.GetInstanceInfo) == "function" then
         local okI, _, _, diffID = pcall(_G.GetInstanceInfo)
-        if okI and type(diffID) == "number" and diffID == 208 then
+        if okI and IsSafeValue(diffID) and type(diffID) == "number" and diffID == 208 then
             return true
         end
     end
     if _G.C_DelvesUI and type(_G.C_DelvesUI.HasActiveDelve) == "function" then
         local okD, hasD = pcall(_G.C_DelvesUI.HasActiveDelve)
-        if okD and hasD == true then return true end
+        if okD and IsSafeValue(hasD) and hasD == true then return true end
     end
     if _G.C_PartyInfo and type(_G.C_PartyInfo.IsDelveInProgress) == "function" then
         local okP, inP = pcall(_G.C_PartyInfo.IsDelveInProgress)
-        if okP and inP == true then return true end
+        if okP and IsSafeValue(inP) and inP == true then return true end
     end
     if _G.C_PartyInfo and type(_G.C_PartyInfo.IsDelveComplete) == "function" then
         local okC, isC = pcall(_G.C_PartyInfo.IsDelveComplete)
-        if okC and isC == true then return true end
+        if okC and IsSafeValue(isC) and isC == true then return true end
+    end
+    if _G.C_ScenarioInfo and type(_G.C_ScenarioInfo.GetScenarioInfo) == "function" then
+        local okS, sInfo = pcall(_G.C_ScenarioInfo.GetScenarioInfo)
+        if okS and IsSafeValue(sInfo) and type(sInfo) == "table" then
+            local delveType = _G.Enum and _G.Enum.ScenarioType and _G.Enum.ScenarioType.Delve
+            if delveType ~= nil and IsSafeValue(sInfo.type) and sInfo.type == delveType then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function IsNonDelveStoryScenario()
+    if IsActiveDelve() then return false end
+    if _G.C_ScenarioInfo and type(_G.C_ScenarioInfo.GetScenarioInfo) == "function" then
+        local okS, sInfo = pcall(_G.C_ScenarioInfo.GetScenarioInfo)
+        if okS and IsSafeValue(sInfo) and type(sInfo) == "table" and IsSafeString(sInfo.name) then
+            return true
+        end
     end
     return false
 end
@@ -2880,8 +3064,8 @@ local function EvaluateCurrentEnvironment()
     if type(_G.IsInInstance) == "function" then
         local ok, rIn, rType = pcall(_G.IsInInstance)
         if ok then
-            inInstance = (rIn == true)
-            if type(rType) == "string" then
+            inInstance = (IsSafeValue(rIn) and rIn == true) or false
+            if IsSafeString(rType) then
                 instanceType = rType
             end
         end
@@ -2902,8 +3086,34 @@ local function EvaluateCurrentEnvironment()
         end
     end
 
+    if _G.C_ChallengeMode and type(_G.C_ChallengeMode.IsChallengeModeActive) == "function" then
+        local okCM, cmActive = pcall(_G.C_ChallengeMode.IsChallengeModeActive)
+        if okCM and IsSafeValue(cmActive) and cmActive == true then
+            return CONTEXT_DUNGEON
+        end
+    end
+
+    if _G.C_PvP then
+        if type(_G.C_PvP.IsBattleground) == "function" then
+            local okBG, isBG = pcall(_G.C_PvP.IsBattleground)
+            if okBG and IsSafeValue(isBG) and isBG == true then
+                return CONTEXT_PVP
+            end
+        end
+        if type(_G.C_PvP.IsArena) == "function" then
+            local okAR, isAR = pcall(_G.C_PvP.IsArena)
+            if okAR and IsSafeValue(isAR) and isAR == true then
+                return CONTEXT_PVP
+            end
+        end
+    end
+
     if IsActiveDelve() then
         return CONTEXT_DELVE
+    end
+
+    if IsNonDelveStoryScenario() then
+        return CONTEXT_OUTDOOR
     end
 
     return CONTEXT_OUTDOOR
@@ -2956,7 +3166,12 @@ local function GetEnvironmentDetail()
     local env = EvaluateCurrentEnvironment()
     local label = CONTEXT_LABELS[env] or env
     if env == CONTEXT_OUTDOOR then
-        if IsResting and IsResting() then
+        local resting = false
+        if type(_G.IsResting) == "function" then
+            local okR, rVal = pcall(_G.IsResting)
+            resting = (okR and IsSafeValue(rVal) and rVal == true) or false
+        end
+        if resting then
             return label .. " (City Hub)"
         else
             return label .. " (Wilderness)"
@@ -3022,7 +3237,7 @@ ApplyEnvironmentContext = function(allowToast)
         end
     end
 
-    if InCombatLockdown() then
+    if IsPlayerInCombat() then
         pendingProfile = targetProfile
         DynamicLoadDB.stagedProfile = targetProfile
         if isPostLoadingScreen and not hasShownToastThisLoadSession then
@@ -3084,10 +3299,9 @@ local function CommitPendingProfileBeforeReload()
         DynamicLoadDB.stagedProfile = targetKey
     end
     EnforceFrozenAddonsDisabled()
-    if addonTable._pendingDisableCoreAddon and C_AddOns and C_AddOns.DisableAddOn then
+    if addonTable._pendingDisableCoreAddon then
         local pName = GetPlayer()
-        pcall(C_AddOns.DisableAddOn, addonTable._pendingDisableCoreAddon, pName)
-        pcall(C_AddOns.DisableAddOn, addonTable._pendingDisableCoreAddon)
+        SafeDisableAddOn(addonTable._pendingDisableCoreAddon, pName)
     end
     isCommittingBeforeReload = false
 end
@@ -3138,10 +3352,7 @@ eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 
 local function PurgeRetiredAddons()
     local pName = GetPlayer()
-    if C_AddOns and C_AddOns.DisableAddOn then
-        pcall(C_AddOns.DisableAddOn, "DynamicFrame", pName)
-        pcall(C_AddOns.DisableAddOn, "DynamicFrame")
-    end
+    SafeDisableAddOn("DynamicFrame", pName)
     if DynamicLoadDB then
         if DynamicLoadDB.profiles then
             for _, prof in pairs(DynamicLoadDB.profiles) do
@@ -3210,10 +3421,12 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
                 DynamicLoadDB.windowWidth = 1040
             end
         end
-        if not g.windowWidth or g.windowWidth < 980 then g.windowWidth = 1040 end
-        if not g.windowHeight or g.windowHeight < 640 then g.windowHeight = 680 end
-        if not DynamicLoadDB.windowWidth or DynamicLoadDB.windowWidth < 980 then DynamicLoadDB.windowWidth = 1040 end
-        if not DynamicLoadDB.windowHeight or DynamicLoadDB.windowHeight < 640 then DynamicLoadDB.windowHeight = 680 end
+        local minW = DynamicSuite._isHubLoaded and 800 or 760
+        local minH = DynamicSuite._isHubLoaded and 520 or 480
+        if not g.windowWidth then g.windowWidth = 1040 elseif g.windowWidth < minW then g.windowWidth = minW end
+        if not g.windowHeight then g.windowHeight = 680 elseif g.windowHeight < minH then g.windowHeight = minH end
+        if not DynamicLoadDB.windowWidth then DynamicLoadDB.windowWidth = 1040 elseif DynamicLoadDB.windowWidth < minW then DynamicLoadDB.windowWidth = minW end
+        if not DynamicLoadDB.windowHeight then DynamicLoadDB.windowHeight = 680 elseif DynamicLoadDB.windowHeight < minH then DynamicLoadDB.windowHeight = minH end
 
         -- Approach 12A Migration: Clear auto-locked third-party addons so only DynamicSuite modules default to CORE
         if not DynamicLoadDB.v120_approach12ACleanLocks then
@@ -3254,9 +3467,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
 
         if not DynamicLoadDB.knownAddons or next(DynamicLoadDB.knownAddons) == nil then
             DynamicLoadDB.knownAddons = {}
-            local num = C_AddOns.GetNumAddOns()
+            local num = SafeGetNumAddOns()
             for i = 1, num do
-                local name = C_AddOns.GetAddOnInfo(i)
+                local name = SafeGetAddOnInfo(i)
                 if name then
                     DynamicLoadDB.knownAddons[name] = true
                 end
@@ -3458,7 +3671,7 @@ local function OpenMainSuiteWindowFallback()
     if addonTable.ToggleConfigUI then
         local ok, err = pcall(addonTable.ToggleConfigUI)
         if not ok then
-            print(string.format("%s: UI Error: %s", ADDON_TITLE, tostring(err)))
+            print(string.format("%s: Could not open DynamicLoad settings: %s", ADDON_TITLE, tostring(err)))
         end
         return
     end
@@ -3468,7 +3681,7 @@ local function OpenMainSuiteWindowFallback()
             frame:SetShown(not frame:IsShown())
             return
         elseif not ok then
-            print(string.format("%s: CreateMainConfigUI Error: %s", ADDON_TITLE, tostring(frame)))
+            print(string.format("%s: Could not open DynamicLoad settings: %s", ADDON_TITLE, tostring(frame)))
         end
     end
     if _G.DynamicLoadMainFrame then
@@ -3479,7 +3692,7 @@ local function OpenMainSuiteWindowFallback()
         pcall(_G.DynamicSuite.OpenModule, _G.DynamicSuite, "DynamicLoad")
         return
     end
-    print(string.format("%s: UI.lua did not finish loading. Check DynamicLoad.toc!", ADDON_TITLE))
+    print(string.format("%s: DynamicLoad settings window is not ready yet. Please try /reload.", ADDON_TITLE))
 end
 
 local function HandleSuiteSlashCommand(msg)
@@ -3990,13 +4203,7 @@ function UI.GetActiveAccentColor()
         local hex = string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(gCol * 255 + 0.5), math.floor(b * 255 + 0.5))
         return r, gCol, b, hex
     elseif key == "AUTO_CLASS" then
-        local _, classFile = nil, nil
-    if type(_G.UnitClass) == "function" then
-        local okC, _, cf = pcall(_G.UnitClass, "player")
-        if okC and type(cf) == "string" and cf ~= "" then
-            classFile = cf
-        end
-    end
+        local _, classFile = SafeUnitClass("player")
         local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
         if cc then
             local hex = cc.colorStr or string.format("%02X%02X%02X", math.floor(cc.r * 255 + 0.5), math.floor(cc.g * 255 + 0.5), math.floor(cc.b * 255 + 0.5))
@@ -4010,13 +4217,7 @@ function UI.GetActiveAccentColor()
             return p.r, p.g, p.b, p.hex
         end
     end
-    local _, classFile = nil, nil
-    if type(_G.UnitClass) == "function" then
-        local okC, _, cf = pcall(_G.UnitClass, "player")
-        if okC and type(cf) == "string" and cf ~= "" then
-            classFile = cf
-        end
-    end
+    local _, classFile = SafeUnitClass("player")
     local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
     if cc then
         local hex = cc.colorStr or string.format("%02X%02X%02X", math.floor(cc.r * 255 + 0.5), math.floor(cc.g * 255 + 0.5), math.floor(cc.b * 255 + 0.5))
@@ -4078,7 +4279,7 @@ end
 function UI.SyncEllesmereUIFontLibrary()
     local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
     local eui = _G.EllesmereUI
-    local hasEUI = (type(eui) == "table") or (C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("EllesmereUI"))
+    local hasEUI = (type(eui) == "table") or SafeIsAddOnLoaded("EllesmereUI")
     local euiMediaBase = (eui and type(eui.MEDIA_PATH) == "string" and eui.MEDIA_PATH ~= "" and eui.MEDIA_PATH) or "Interface\\AddOns\\EllesmereUI\\media\\"
     if not euiMediaBase:match("[\\/]$") then
         euiMediaBase = euiMediaBase .. "\\"
@@ -4486,22 +4687,32 @@ function UI.FormatTwoToneBrand(secondWord)
 end
 
 local MODULE_ICON_PATHS = {
-    ["DynamicLoad"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
-    ["load"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
-    ["DynamicMarker"] = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
-    ["marker"]        = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
-    ["DynamicZoom"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_zoom.tga",
-    ["zoom"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_zoom.tga",
-    ["DynamicFPS"]    = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_fps.tga",
-    ["fps"]           = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_fps.tga",
-    ["DynamicPrep"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
-    ["prep"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
-    ["DynamicGroup"]  = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga",
-    ["group"]         = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga",
-    ["DynamicBags"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga",
-    ["bags"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga",
-    ["DynamicChat"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
-    ["chat"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
+    ["DynamicLoad"]     = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
+    ["load"]            = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
+    ["DynamicMarker"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
+    ["marker"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
+    ["DynamicCursor"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga",
+    ["cursor"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_cursor.tga",
+    ["DynamicZoom"]     = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_zoom.tga",
+    ["zoom"]            = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_zoom.tga",
+    ["DynamicFPS"]      = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_fps.tga",
+    ["fps"]             = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_fps.tga",
+    ["DynamicPrep"]     = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
+    ["prep"]            = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_prep.tga",
+    ["DynamicTalent"]   = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_talent.tga",
+    ["talent"]          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_talent.tga",
+    ["DynamicGroup"]    = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga",
+    ["group"]           = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga",
+    ["DynamicBags"]     = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga",
+    ["bags"]            = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_bags.tga",
+    ["DynamicChat"]     = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
+    ["chat"]            = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_chat.tga",
+    ["DynamicMail"]     = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga",
+    ["mail"]            = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_mail.tga",
+    ["DynamicVault"]    = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga",
+    ["vault"]           = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_vault.tga",
+    ["DynamicDialogue"] = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_dialogue.tga",
+    ["dialogue"]        = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_dialogue.tga",
 }
 
 function UI.GetModuleIconPath(modKey)
@@ -5204,10 +5415,10 @@ local function RefreshMemoryCacheIfNeeded()
             pcall(UpdateAddOnMemoryUsage)
         end
         local totalKB = 0
-        local num = C_AddOns.GetNumAddOns()
+        local num = SafeGetNumAddOns()
         for i = 1, num do
-            if C_AddOns.IsAddOnLoaded(i) and GetAddOnMemoryUsage then
-                totalKB = totalKB + (GetAddOnMemoryUsage(i) or 0)
+            if SafeIsAddOnLoaded(i) then
+                totalKB = totalKB + SafeGetAddOnMemoryUsage(i)
             end
         end
         cachedTotalMemoryMB = totalKB / 1024
@@ -5216,7 +5427,7 @@ local function RefreshMemoryCacheIfNeeded()
 end
 
 local function GetAddonCpuRaw(name, explicitMode)
-    if not (C_AddOnProfiler and C_AddOnProfiler.IsEnabled and C_AddOnProfiler.IsEnabled()) then
+    if not SafeIsAddOnProfilerEnabled() then
         return 0
     end
     local mEnum = Enum and Enum.AddOnProfilerMetric
@@ -5228,8 +5439,8 @@ local function GetAddonCpuRaw(name, explicitMode)
     elseif mode == "CPU_PEAK" and mEnum.PeakTime then
         metric = mEnum.PeakTime
     end
-    if not metric or not C_AddOns.GetAddOnInfo(name) then return 0 end
-    return C_AddOnProfiler.GetAddOnMetric(name, metric) or 0
+    if not metric or not SafeGetAddOnInfo(name) then return 0 end
+    return SafeGetAddOnProfilerMetric(name, metric)
 end
 
 local function GetItemTotalCpu(item)
@@ -5266,14 +5477,19 @@ local function ExtractFamilyPrefix(name, cleanTitle)
 end
 
 local SUITE_HUB_ADDONS = {
-    ["DynamicLoad"]   = true,
-    ["DynamicMarker"] = true,
-    ["DynamicZoom"]   = true,
-    ["DynamicFPS"]    = true,
-    ["DynamicPrep"]   = true,
-    ["DynamicGroup"]  = true,
-    ["DynamicBags"]   = true,
-    ["DynamicChat"]   = true,
+    ["DynamicLoad"]     = true,
+    ["DynamicMarker"]   = true,
+    ["DynamicZoom"]     = true,
+    ["DynamicFPS"]      = true,
+    ["DynamicPrep"]     = true,
+    ["DynamicGroup"]    = true,
+    ["DynamicBags"]     = true,
+    ["DynamicChat"]     = true,
+    ["DynamicMail"]     = true,
+    ["DynamicVault"]    = true,
+    ["DynamicDialogue"] = true,
+    ["DynamicTalent"]   = true,
+    ["DynamicCursor"]   = true,
 }
 
 local function BuildAddonHierarchy()
@@ -5281,14 +5497,14 @@ local function BuildAddonHierarchy()
     local rawList = {}
     local byName = {}
     local dsHubItem = nil
-    local num = C_AddOns.GetNumAddOns()
+    local num = SafeGetNumAddOns()
 
     for i = 1, num do
-        local name, title = C_AddOns.GetAddOnInfo(i)
+        local name, title = SafeGetAddOnInfo(i)
         if name then
             local rawTitle = title or name
-            local iconTex = C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(name, "IconTexture") or nil
-            local iconAtlas = C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata(name, "IconAtlas") or nil
+            local iconTex = SafeGetAddOnMetadata(name, "IconTexture")
+            local iconAtlas = SafeGetAddOnMetadata(name, "IconAtlas")
             if name == "DynamicSuite" then
                 dsHubItem = {
                     name = "DynamicSuite",
@@ -5506,7 +5722,7 @@ local function ToggleAllParentsCollapsed(forceCollapse)
 end
 
 local function FormatCpuValueAsPct(msVal, forceColorHex)
-    if not (C_AddOnProfiler and C_AddOnProfiler.IsEnabled and C_AddOnProfiler.IsEnabled()) then
+    if not SafeIsAddOnProfilerEnabled() then
         return "|cFF888888--|r"
     end
     local fps = GetFramerate() or 60
@@ -5527,7 +5743,7 @@ local function FormatCpuValueAsPct(msVal, forceColorHex)
 end
 
 local function FormatCpuUsage(name)
-    if not (C_AddOnProfiler and C_AddOnProfiler.IsEnabled and C_AddOnProfiler.IsEnabled()) then
+    if not SafeIsAddOnProfilerEnabled() then
         return "|cFF888888--|r"
     end
     local val = GetAddonCpuRaw(name, sortMode)
@@ -5539,13 +5755,13 @@ local function GetOverallTelemetryStats()
     local fps = GetFramerate() or 60
     if fps <= 0 then fps = 60 end
     local frameBudgetMs = 1000 / fps
-    if C_AddOnProfiler and C_AddOnProfiler.IsEnabled and C_AddOnProfiler.IsEnabled() and C_AddOnProfiler.GetOverallMetric and Enum and Enum.AddOnProfilerMetric then
+    if SafeIsAddOnProfilerEnabled() and _G.C_AddOnProfiler and _G.C_AddOnProfiler.GetOverallMetric and Enum and Enum.AddOnProfilerMetric then
         local mEnum = Enum.AddOnProfilerMetric
-        local curMs = mEnum.RecentAverageTime and C_AddOnProfiler.GetOverallMetric(mEnum.RecentAverageTime) or 0
-        local avgMs = mEnum.SessionAverageTime and C_AddOnProfiler.GetOverallMetric(mEnum.SessionAverageTime) or 0
-        local encMs = mEnum.EncounterAverageTime and C_AddOnProfiler.GetOverallMetric(mEnum.EncounterAverageTime) or 0
-        local lastMs = mEnum.LastTime and C_AddOnProfiler.GetOverallMetric(mEnum.LastTime) or 0
-        local rawPeakMs = mEnum.PeakTime and C_AddOnProfiler.GetOverallMetric(mEnum.PeakTime) or 0
+        local curMs = mEnum.RecentAverageTime and SafeGetOverallProfilerMetric(mEnum.RecentAverageTime) or 0
+        local avgMs = mEnum.SessionAverageTime and SafeGetOverallProfilerMetric(mEnum.SessionAverageTime) or 0
+        local encMs = mEnum.EncounterAverageTime and SafeGetOverallProfilerMetric(mEnum.EncounterAverageTime) or 0
+        local lastMs = mEnum.LastTime and SafeGetOverallProfilerMetric(mEnum.LastTime) or 0
+        local rawPeakMs = mEnum.PeakTime and SafeGetOverallProfilerMetric(mEnum.PeakTime) or 0
         local sanePeakMs = (rawPeakMs > 100) and math.max(encMs, lastMs, curMs * 1.5, avgMs * 1.5) or math.max(rawPeakMs, encMs, curMs)
         curPct = (curMs / frameBudgetMs) * 100
         avgPct = (avgMs / frameBudgetMs) * 100
@@ -6222,15 +6438,17 @@ end
 -- Addon Row Frame Pool (Two-Point C++ Anchors: TOPLEFT + TOPRIGHT)
 --------------------------------------------------------------------------------
 local function GetPlayerSafe()
-    return (addonTable.GetPlayer and addonTable.GetPlayer())
-        or (type(_G.UnitName) == "function" and _G.UnitName("player"))
-        or "Character"
+    local p = (addonTable.GetPlayer and addonTable.GetPlayer()) or SafeUnitName("player")
+    if IsSafeString(p) then
+        return p
+    end
+    return nil
 end
 
 local disableCoreAddonModal = nil
 local function ShowDisableCoreAddonModal(targetAddonName)
     local addonToDisable = (targetAddonName == "DynamicLoad") and "DynamicLoad" or "DynamicSuite"
-    if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+    if IsPlayerInCombat() then
         print(string.format("%s: Cannot disable %s during combat. Please leave combat and try again.", tostring(ADDON_TITLE or "|cFFCBD5E1DynamicLoad|r"), addonToDisable))
         return
     end
@@ -6297,7 +6515,7 @@ local function ShowDisableCoreAddonModal(targetAddonName)
         addonTable.RefreshDisableCoreModalTheme = RefreshModalTheme
         btnConfirm:SetScript("OnClick", function()
             local target = m._targetAddon or "DynamicSuite"
-            if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+            if IsPlayerInCombat() then
                 print(string.format("%s: Cannot disable %s during combat. Please leave combat and try again.", tostring(ADDON_TITLE or "|cFFCBD5E1DynamicLoad|r"), target))
                 m:Hide()
                 return
@@ -6320,11 +6538,7 @@ local function ShowDisableCoreAddonModal(targetAddonName)
                     end
                 end
             end
-            if C_AddOns and C_AddOns.DisableAddOn then
-                local pName = GetPlayerSafe()
-                pcall(C_AddOns.DisableAddOn, target, pName)
-                pcall(C_AddOns.DisableAddOn, target)
-            end
+            SafeDisableAddOn(target, GetPlayerSafe())
             if type(_G.ReloadUI) == "function" then
                 _G.ReloadUI()
             end
@@ -6588,21 +6802,24 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
             GameTooltip:AddLine("|cFF" .. accentHex .. "Ctrl + Right-Click:|r |cFFE2E8F0Open Zone Assignment Menu|r", 1, 1, 1)
         end
 
-        if not isSuiteHub and C_AddOns.GetAddOnInfo(name) and C_AddOnProfiler and C_AddOnProfiler.IsEnabled and C_AddOnProfiler.IsEnabled() then
-            local recent = C_AddOnProfiler.GetAddOnMetric(name, Enum.AddOnProfilerMetric.RecentAverageTime) or 0
-            local peak = C_AddOnProfiler.GetAddOnMetric(name, Enum.AddOnProfilerMetric.PeakTime) or 0
-            local session = C_AddOnProfiler.GetAddOnMetric(name, Enum.AddOnProfilerMetric.SessionAverageTime) or 0
+        if not isSuiteHub and SafeGetAddOnInfo(name) and SafeIsAddOnProfilerEnabled() and _G.Enum and _G.Enum.AddOnProfilerMetric then
+            local mEnum = _G.Enum.AddOnProfilerMetric
+            local recent = SafeGetAddOnProfilerMetric(name, mEnum.RecentAverageTime)
+            local peak = SafeGetAddOnProfilerMetric(name, mEnum.PeakTime)
+            local session = SafeGetAddOnProfilerMetric(name, mEnum.SessionAverageTime)
             local fps = GetFramerate() or 60
             if fps <= 0 then fps = 60 end
             local budget = 1000 / fps
             local curPct = (recent / budget) * 100
             local avgPct = (session / budget) * 100
-            local enc = (Enum.AddOnProfilerMetric.EncounterAverageTime and C_AddOnProfiler.GetAddOnMetric(name, Enum.AddOnProfilerMetric.EncounterAverageTime)) or 0; local sanePeak = (peak > 100) and math.max(enc, recent * 1.5, session * 1.5) or peak; local peakPct = math.min(999.9, (sanePeak / budget) * 100)
+            local enc = mEnum.EncounterAverageTime and SafeGetAddOnProfilerMetric(name, mEnum.EncounterAverageTime) or 0
+            local sanePeak = (peak > 100) and math.max(enc, recent * 1.5, session * 1.5) or peak
+            local peakPct = math.min(999.9, (sanePeak / budget) * 100)
             GameTooltip:AddLine(" ")
             GameTooltip:AddDoubleLine("Current CPU:", string.format("%.2f%% (%.3f ms)", curPct, recent), 0.70, 0.74, 0.78, 0.95, 0.97, 1.0)
             GameTooltip:AddDoubleLine("Average / Peak CPU:", string.format("%.2f%% / %.2f%% (%.2f ms)", avgPct, peakPct, peak), 0.70, 0.74, 0.78, ar, ag, ab)
-            if GetAddOnMemoryUsage and C_AddOns.IsAddOnLoaded(name) then
-                local memKB = GetAddOnMemoryUsage(name) or 0
+            if SafeIsAddOnLoaded(name) then
+                local memKB = SafeGetAddOnMemoryUsage(name)
                 if memKB > 0 then
                     local memStr = (memKB >= 1024) and string.format("%.2f MB", memKB / 1024) or string.format("%.0f KB", memKB)
                     GameTooltip:AddDoubleLine("Memory Usage:", memStr, 0.70, 0.74, 0.78, 0.82, 0.85, 0.90)
@@ -6816,15 +7033,12 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
         row.btnNever:SetSelected(false, UI.COLORS.CYAN)
 
         row.btnAlways:SetScript("OnClick", function()
-            if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+            if IsPlayerInCombat() then
                 print(string.format("%s: Cannot change addon load states during combat. Please leave combat and try again.", tostring(ADDON_TITLE or "|cFFCBD5E1DynamicLoad|r")))
                 return
             end
             local targetAddon = isSuiteHub and "DynamicSuite" or "DynamicLoad"
-            if C_AddOns and C_AddOns.EnableAddOn then
-                pcall(C_AddOns.EnableAddOn, targetAddon, GetPlayerSafe())
-                pcall(C_AddOns.EnableAddOn, targetAddon)
-            end
+            SafeEnableAddOn(targetAddon, GetPlayerSafe())
             if scrollChild and type(scrollChild.Refresh) == "function" then scrollChild:Refresh() end
             if addonTable.mainFrame and addonTable.mainFrame.RefreshLeftRailVisuals then addonTable.mainFrame.RefreshLeftRailVisuals() end
             if addonTable.mainFrame and addonTable.mainFrame.UpdateStatusBar then addonTable.mainFrame.UpdateStatusBar() end
@@ -6832,7 +7046,7 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
 
         row.btnNever:SetScript("OnClick", function()
             local targetAddon = isSuiteHub and "DynamicSuite" or "DynamicLoad"
-            if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+            if IsPlayerInCombat() then
                 print(string.format("%s: Cannot disable %s during combat. Please leave combat and try again.", tostring(ADDON_TITLE or "|cFFCBD5E1DynamicLoad|r"), targetAddon))
                 return
             end
@@ -6852,7 +7066,7 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
         row.btnNever:SetSelected(isFrz, UI.COLORS.CYAN)
 
         row.btnZone:SetScript("OnClick", function()
-            if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+            if IsPlayerInCombat() then
                 print(string.format("%s: Cannot change addon load states during combat. Please leave combat and try again.", tostring(ADDON_TITLE or "|cFFCBD5E1DynamicLoad|r")))
                 return
             end
@@ -6875,7 +7089,7 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
         end)
 
         row.btnAlways:SetScript("OnClick", function()
-            if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+            if IsPlayerInCombat() then
                 print(string.format("%s: Cannot change addon load states during combat. Please leave combat and try again.", tostring(ADDON_TITLE or "|cFFCBD5E1DynamicLoad|r")))
                 return
             end
@@ -6901,7 +7115,7 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
         end)
 
         row.btnNever:SetScript("OnClick", function()
-            if type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() then
+            if IsPlayerInCombat() then
                 print(string.format("%s: Cannot change addon load states during combat. Please leave combat and try again.", tostring(ADDON_TITLE or "|cFFCBD5E1DynamicLoad|r")))
                 return
             end
@@ -7009,12 +7223,12 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
     local coreBadge = (isSuiteHub or isSuiteMod) and string.format("|cFF%s[Suite Core]|r", tostring(UI.GetActiveAccentHex() or "CBD5E1")) or "|cFFFACC15[Always]|r"
     local standaloneTag = ""
     if item.isStandaloneSuiteFolder and not isSuiteHub then
-        local hasBundle = (C_AddOns and C_AddOns.GetAddOnInfo and C_AddOns.GetAddOnInfo("DynamicSuite") ~= nil)
+        local hasBundle = (SafeGetAddOnInfo("DynamicSuite") ~= nil)
         if hasBundle then
-            if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded(name) then
+            if SafeIsAddOnLoaded(name) then
                 standaloneTag = "  |cFF22C55E[Standalone Active]|r"
             else
-                standaloneTag = "  |cFF94A3B8[Standalone Folder - Yielding to Suite]|r"
+                standaloneTag = "  |cFF94A3B8[Standalone - Yielding]|r"
             end
         else
             standaloneTag = "  |cFF38BDF8[Standalone Module]|r"
@@ -7023,7 +7237,12 @@ local function RenderAddonRow(scrollChild, item, desired, profile, indent, yOffs
 
     if isSuiteHub then
         UI.SetFont(row.label, 12, "", 0.953, 0.961, 0.973, 1)
-        row.label:SetText(string.format("%s  %s |cFF7A8392(%d/%d Modules Active)|r%s", tostring(decoratedTitle or ""), coreBadge, tonumber(activeChildren) or 0, tonumber(totalChildren) or 8, tostring(pendingTag or "")))
+        local rowAvailW = (scrollChild and scrollChild.GetWidth and scrollChild:GetWidth()) or 700
+        if rowAvailW < 620 then
+            row.label:SetText(string.format("%s  %s |cFF7A8392(%d/%d)|r%s", tostring(decoratedTitle or ""), coreBadge, tonumber(activeChildren) or 0, tonumber(totalChildren) or 13, tostring(pendingTag or "")))
+        else
+            row.label:SetText(string.format("%s  %s |cFF7A8392(%d/%d Modules Active)|r%s", tostring(decoratedTitle or ""), coreBadge, tonumber(activeChildren) or 0, tonumber(totalChildren) or 13, tostring(pendingTag or "")))
+        end
     elseif isEffectiveFrozen then
         UI.SetFont(row.label, 11, "", 0.322, 0.345, 0.400, 0.90)
         if isParent and totalChildren > 0 then
@@ -7318,14 +7537,8 @@ local function OpenAltDropdown(anchorFrame, f)
 
     local curScope = (addonTable.GetCharScopeMode and addonTable.GetCharScopeMode()) or "GLOBAL"
     local curCharKey = (addonTable.GetCurrentCharKey and addonTable.GetCurrentCharKey()) or ""
-    local pName = (addonTable.GetPlayer and addonTable.GetPlayer()) or (UnitName("player") or "Character")
-    local _, pClass = nil, nil
-    if type(_G.UnitClass) == "function" then
-        local okC, _, cf = pcall(_G.UnitClass, "player")
-        if okC and type(cf) == "string" and cf ~= "" then
-            pClass = cf
-        end
-    end
+    local pName = (addonTable.GetPlayer and addonTable.GetPlayer()) or SafeUnitName("player") or "Character"
+    local _, pClass = SafeUnitClass("player")
     local pColor = (RAID_CLASS_COLORS and pClass and RAID_CLASS_COLORS[pClass]) or UI.COLORS.ACCENT
 
     local yOffset = 8
@@ -7346,7 +7559,13 @@ local function OpenAltDropdown(anchorFrame, f)
         end
         if f.altBanner then
             f.altBanner:Hide()
-            f.scrollFrame:SetPoint("TOPLEFT", f.toolbar, "BOTTOMLEFT", 0, -8)
+            if f.scrollFrame and f.legendStrip then
+                f.scrollFrame:ClearAllPoints()
+                f.scrollFrame:SetPoint("TOPLEFT", f.legendStrip, "BOTTOMLEFT", 0, -4)
+                if f.dlView then
+                    f.scrollFrame:SetPoint("BOTTOMRIGHT", f.dlView, "BOTTOMRIGHT", -16, 8)
+                end
+            end
         end
         if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
         if f.themeView and f.themeView.Refresh then f.themeView.Refresh() end
@@ -7372,7 +7591,13 @@ local function OpenAltDropdown(anchorFrame, f)
         end
         if f.altBanner then
             f.altBanner:Hide()
-            f.scrollFrame:SetPoint("TOPLEFT", f.toolbar, "BOTTOMLEFT", 0, -8)
+            if f.scrollFrame and f.legendStrip then
+                f.scrollFrame:ClearAllPoints()
+                f.scrollFrame:SetPoint("TOPLEFT", f.legendStrip, "BOTTOMLEFT", 0, -4)
+                if f.dlView then
+                    f.scrollFrame:SetPoint("BOTTOMRIGHT", f.dlView, "BOTTOMRIGHT", -16, 8)
+                end
+            end
         end
         if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
         if f.themeView and f.themeView.Refresh then f.themeView.Refresh() end
@@ -7401,7 +7626,13 @@ local function OpenAltDropdown(anchorFrame, f)
                     f.altBanner.text:SetText(string.format("Inspecting loadout: |cFF%02x%02x%02x%s|r (%d active addons)", color.r * 255, color.g * 255, color.b * 255, cName, addonCount))
                     if ((not addonTable.GetActiveWorkspaceView) or addonTable.GetActiveWorkspaceView() == "DYNAMICLOAD") and not isToastSubTabActive then
                         f.altBanner:Show()
-                        f.scrollFrame:SetPoint("TOPLEFT", f.altBanner, "BOTTOMLEFT", 0, -6)
+                        if f.scrollFrame then
+                            f.scrollFrame:ClearAllPoints()
+                            f.scrollFrame:SetPoint("TOPLEFT", f.altBanner, "BOTTOMLEFT", 0, -6)
+                            if f.dlView then
+                                f.scrollFrame:SetPoint("BOTTOMRIGHT", f.dlView, "BOTTOMRIGHT", -16, 8)
+                            end
+                        end
                     end
                 end
                 CloseContextMenu()
@@ -7436,7 +7667,8 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     dlView:HookScript("OnHide", function() CloseContextMenu() end)
     if dlView.SetClipsChildren then dlView:SetClipsChildren(false) end
     if (dlView:GetWidth() or 0) <= 0 or (dlView:GetHeight() or 0) <= 0 then
-        local ww = (workspace:GetWidth() or 0) > 0 and workspace:GetWidth() or (((f:GetWidth() or 1040) - 204) - 2)
+        local railSub = (DynamicSuite._isHubLoaded or f.leftRail) and 204 or 0
+        local ww = (workspace:GetWidth() or 0) > 0 and workspace:GetWidth() or (((f:GetWidth() or 1040) - railSub) - 2)
         local wh = (workspace:GetHeight() or 0) > 0 and workspace:GetHeight() or ((f:GetHeight() or 680) - 82)
         dlView:SetSize(math.max(500, ww), math.max(300, wh))
     end
@@ -7586,9 +7818,22 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
             if f.toastConfigPanel then f.toastConfigPanel:Hide() end
             if f.toolbar then f.toolbar:Show() end
             if f.telemetryStrip then f.telemetryStrip:Show() end
+            if f.legendStrip then f.legendStrip:Show() end
             if f.scrollFrame then f.scrollFrame:Show() end
             if f.scrollTrack then f.scrollTrack:Show() end
-            if selectedAltKey and f.altBanner then f.altBanner:Show() end
+            if selectedAltKey and f.altBanner then
+                f.altBanner:Show()
+                if f.scrollFrame then
+                    f.scrollFrame:ClearAllPoints()
+                    f.scrollFrame:SetPoint("TOPLEFT", f.altBanner, "BOTTOMLEFT", 0, -6)
+                    f.scrollFrame:SetPoint("BOTTOMRIGHT", dlView, "BOTTOMRIGHT", -16, 8)
+                end
+            elseif f.scrollFrame and f.legendStrip then
+                if f.altBanner then f.altBanner:Hide() end
+                f.scrollFrame:ClearAllPoints()
+                f.scrollFrame:SetPoint("TOPLEFT", f.legendStrip, "BOTTOMLEFT", 0, -4)
+                f.scrollFrame:SetPoint("BOTTOMRIGHT", dlView, "BOTTOMRIGHT", -16, 8)
+            end
             if f.scrollChild then RefreshAddonTree(f.scrollChild) end
             if f.UpdateStatusBar then f.UpdateStatusBar() end
         end)
@@ -7638,7 +7883,8 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
                 dw = (workspace and workspace.GetWidth and workspace:GetWidth()) or 0
             end
             if dw < 200 then
-                dw = ((f and f.GetWidth and f:GetWidth()) or 1040) - 206
+                local railSub = (DynamicSuite._isHubLoaded or (f and f.leftRail)) and 206 or 0
+                dw = ((f and f.GetWidth and f:GetWidth()) or 1040) - railSub
             end
             w = math.max(500, dw - 30)
         end
@@ -7712,6 +7958,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         if addonTable.SetToastEditMode then addonTable.SetToastEditMode(false) end
         if f.toolbar then f.toolbar:Hide() end
         if f.telemetryStrip then f.telemetryStrip:Hide() end
+        if f.legendStrip then f.legendStrip:Hide() end
         if f.altBanner then f.altBanner:Hide() end
         if f.scrollFrame then f.scrollFrame:Hide() end
         if f.scrollTrack then f.scrollTrack:Hide() end
@@ -8011,6 +8258,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         end
     end
 
+    local searchBoxFrame = CreateFrame("Frame", nil, toolbar)
     local function AutoSizeToolbarButtons()
         local function FitBtn(b, minW, pad)
             local strW = (b.label and b.label.GetUnboundedStringWidth and b.label:GetUnboundedStringWidth())
@@ -8031,7 +8279,54 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         FitBtn(chipFrozen, 52, 10)
 
         local tbW = (toolbar.GetWidth and toolbar:GetWidth()) or 0
-        if tbW > 400 then
+        if tbW < 200 then
+            local railSub = (DynamicSuite._isHubLoaded or (f and f.leftRail)) and 236 or 30
+            tbW = math.max(400, ((f and f.GetWidth and f:GetWidth()) or 1040) - railSub)
+        end
+
+        if tbW < 700 then
+            if math.abs((toolbar:GetHeight() or 0) - 54) > 0.5 then
+                toolbar:SetHeight(54)
+            end
+            toolbarSep:Hide()
+            local row1Used = (stashBtn:GetWidth() or 68) + (copyFromBtn:GetWidth() or 66) + (blizzAddonsBtn:GetWidth() or 82)
+                + (sortBtn:GetWidth() or 54) + (collapseAllBtn:GetWidth() or 38) + 16
+            local searchAvail = tbW - row1Used
+            if searchAvail < 120 then
+                local deficit = 120 - searchAvail
+                for _, shrinkTarget in ipairs({
+                    { btn = sortBtn, minW = 54 },
+                    { btn = blizzAddonsBtn, minW = 78 },
+                    { btn = copyFromBtn, minW = 62 },
+                    { btn = stashBtn, minW = 62 },
+                }) do
+                    if deficit <= 0 then break end
+                    local curW = shrinkTarget.btn:GetWidth() or shrinkTarget.minW
+                    local canShrink = math.max(0, curW - shrinkTarget.minW)
+                    if canShrink > 0 then
+                        local take = math.min(deficit, canShrink)
+                        shrinkTarget.btn:SetWidth(curW - take)
+                        deficit = deficit - take
+                    end
+                end
+            end
+            stashBtn:ClearAllPoints(); stashBtn:SetPoint("TOPLEFT", toolbar, "TOPLEFT", 0, -1)
+            copyFromBtn:ClearAllPoints(); copyFromBtn:SetPoint("LEFT", stashBtn, "RIGHT", 3, 0)
+            blizzAddonsBtn:ClearAllPoints(); blizzAddonsBtn:SetPoint("LEFT", copyFromBtn, "RIGHT", 3, 0)
+            sortBtn:ClearAllPoints(); sortBtn:SetPoint("LEFT", blizzAddonsBtn, "RIGHT", 3, 0)
+            collapseAllBtn:ClearAllPoints(); collapseAllBtn:SetPoint("LEFT", sortBtn, "RIGHT", 3, 0)
+            searchBoxFrame:ClearAllPoints()
+            searchBoxFrame:SetPoint("TOPLEFT", collapseAllBtn, "TOPRIGHT", 4, 0)
+            searchBoxFrame:SetPoint("TOPRIGHT", toolbar, "TOPRIGHT", 0, -1)
+            chipAll:ClearAllPoints(); chipAll:SetPoint("BOTTOMLEFT", toolbar, "BOTTOMLEFT", 0, 2)
+            chipPending:ClearAllPoints(); chipPending:SetPoint("LEFT", chipAll, "RIGHT", 3, 0)
+            chipCore:ClearAllPoints(); chipCore:SetPoint("LEFT", chipPending, "RIGHT", 3, 0)
+            chipFrozen:ClearAllPoints(); chipFrozen:SetPoint("LEFT", chipCore, "RIGHT", 3, 0)
+        else
+            if math.abs((toolbar:GetHeight() or 0) - 24) > 0.5 then
+                toolbar:SetHeight(24)
+            end
+            toolbarSep:Show()
             local gapSum = 33
             local used = (stashBtn:GetWidth() or 72) + (copyFromBtn:GetWidth() or 68) + (blizzAddonsBtn:GetWidth() or 86)
                 + (sortBtn:GetWidth() or 56) + (collapseAllBtn:GetWidth() or 40) + 1
@@ -8055,9 +8350,23 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
                     end
                 end
             end
+            stashBtn:ClearAllPoints(); stashBtn:SetPoint("LEFT", toolbar, "LEFT", 0, 0)
+            copyFromBtn:ClearAllPoints(); copyFromBtn:SetPoint("LEFT", stashBtn, "RIGHT", 3, 0)
+            blizzAddonsBtn:ClearAllPoints(); blizzAddonsBtn:SetPoint("LEFT", copyFromBtn, "RIGHT", 3, 0)
+            sortBtn:ClearAllPoints(); sortBtn:SetPoint("LEFT", blizzAddonsBtn, "RIGHT", 3, 0)
+            collapseAllBtn:ClearAllPoints(); collapseAllBtn:SetPoint("LEFT", sortBtn, "RIGHT", 3, 0)
+            toolbarSep:ClearAllPoints(); toolbarSep:SetPoint("LEFT", collapseAllBtn, "RIGHT", 4, 0)
+            chipAll:ClearAllPoints(); chipAll:SetPoint("LEFT", toolbarSep, "RIGHT", 4, 0)
+            chipPending:ClearAllPoints(); chipPending:SetPoint("LEFT", chipAll, "RIGHT", 3, 0)
+            chipCore:ClearAllPoints(); chipCore:SetPoint("LEFT", chipPending, "RIGHT", 3, 0)
+            chipFrozen:ClearAllPoints(); chipFrozen:SetPoint("LEFT", chipCore, "RIGHT", 3, 0)
+            searchBoxFrame:ClearAllPoints()
+            searchBoxFrame:SetPoint("LEFT", chipFrozen, "RIGHT", 4, 0)
+            searchBoxFrame:SetPoint("RIGHT", toolbar, "RIGHT", 0, 0)
         end
     end
     toolbar:HookScript("OnSizeChanged", AutoSizeToolbarButtons)
+    toolbar:HookScript("OnShow", function() C_Timer.After(0, AutoSizeToolbarButtons) end)
     f.AutoSizeToolbarButtons = AutoSizeToolbarButtons
 
     local function UpdateStashButton()
@@ -8320,10 +8629,10 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     end)
 
     -- Search Box with "Filter addons..." Placeholder & [X] Clear Button
-    local searchBoxFrame = CreateFrame("Frame", nil, toolbar)
     searchBoxFrame:SetPoint("LEFT", chipFrozen, "RIGHT", 4, 0)
     searchBoxFrame:SetPoint("RIGHT", toolbar, "RIGHT", 0, 0)
     searchBoxFrame:SetHeight(22)
+    AutoSizeToolbarButtons()
     searchBoxFrame.bg = UI.SolidTex(searchBoxFrame, "BACKGROUND", 0, 0.03, 0.035, 0.045, 0.95)
     searchBoxFrame.bg:SetAllPoints()
     UI.CreatePixelBorder(searchBoxFrame, 1, 1, 1, 0.14, 2)
@@ -8428,31 +8737,46 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     outOfDateBtn.idleBgColor = { r = 0.078, g = 0.090, b = 0.122, a = 0.95 }
     outOfDateBtn.idleBorderColor = { r = 0.141, g = 0.161, b = 0.212, a = 0.90 }
 
+    telemetryText:ClearAllPoints()
+    telemetryText:SetPoint("LEFT", telemetryStrip, "LEFT", 10, 0)
+    telemetryText:SetPoint("RIGHT", outOfDateBtn, "LEFT", -8, 0)
+    telemetryText:SetJustifyH("LEFT")
+    telemetryText:SetWordWrap(false)
+
     local function RefreshTelemetryStrip()
         local curPct, avgPct, peakPct, memMB = GetOverallTelemetryStats()
         local hex = UI.GetActiveAccentHex()
-        telemetryText:SetText(string.format(
-            "|cFF94A3B8AddOn Usage:|r   Current CPU: |cFF%s%.2f%%|r   *   Average CPU: |cFFF3F5F8%.2f%%|r   *   Peak CPU: |cFFF5B82E%.2f%%|r   *   Memory: |cFFF3F5F8%.1f MB|r",
-            hex, curPct or 0, avgPct or 0, peakPct or 0, memMB or 0
-        ))
-        local checkEnabled = true
-        if C_AddOns and C_AddOns.IsAddonVersionCheckEnabled then
-            checkEnabled = C_AddOns.IsAddonVersionCheckEnabled()
-        end
+        local checkEnabled = SafeIsAddonVersionCheckEnabled()
         local loadOOD = not checkEnabled
         outOfDateBtn.label:SetText(loadOOD and "Load Out of Date: ON" or "Load Out of Date: OFF")
         local ar, ag, ab = UI.GetActiveAccentColor()
         outOfDateBtn:SetSelected(loadOOD, { r = ar, g = ag, b = ab })
         local strW = (outOfDateBtn.label and outOfDateBtn.label.GetStringWidth and outOfDateBtn.label:GetStringWidth()) or 116
         outOfDateBtn:SetWidth(math.max(128, math.ceil(strW + 16)))
+
+        local stripW = (telemetryStrip.GetWidth and telemetryStrip:GetWidth()) or 0
+        if stripW < 200 then
+            local railSub = (DynamicSuite._isHubLoaded or (f and f.leftRail)) and 236 or 30
+            stripW = math.max(400, ((f and f.GetWidth and f:GetWidth()) or 1040) - railSub)
+        end
+        if stripW < 660 then
+            telemetryText:SetText(string.format(
+                "CPU: |cFF%s%.2f%%|r | Avg: |cFFF3F5F8%.2f%%|r | Peak: |cFFF5B82E%.2f%%|r | Mem: |cFFF3F5F8%.1f MB|r",
+                hex, curPct or 0, avgPct or 0, peakPct or 0, memMB or 0
+            ))
+        else
+            telemetryText:SetText(string.format(
+                "|cFF94A3B8AddOn Usage:|r   Current CPU: |cFF%s%.2f%%|r   *   Average CPU: |cFFF3F5F8%.2f%%|r   *   Peak CPU: |cFFF5B82E%.2f%%|r   *   Memory: |cFFF3F5F8%.1f MB|r",
+                hex, curPct or 0, avgPct or 0, peakPct or 0, memMB or 0
+            ))
+        end
     end
     f.RefreshTelemetryStrip = RefreshTelemetryStrip
+    telemetryStrip:HookScript("OnSizeChanged", RefreshTelemetryStrip)
 
     outOfDateBtn:SetScript("OnClick", function()
-        if C_AddOns and C_AddOns.IsAddonVersionCheckEnabled and C_AddOns.SetAddonVersionCheck then
-            local curCheck = C_AddOns.IsAddonVersionCheckEnabled()
-            C_AddOns.SetAddonVersionCheck(not curCheck)
-        end
+        local curCheck = SafeIsAddonVersionCheckEnabled()
+        SafeSetAddonVersionCheck(not curCheck)
         RefreshTelemetryStrip()
     end)
     outOfDateBtn.OnCustomEnter = function(self)
@@ -8539,23 +8863,39 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         if not w or w < 200 then
             local dw = (dlView and dlView.GetWidth and dlView:GetWidth()) or 0
             if dw < 200 then
-                dw = ((f and f.GetWidth and f:GetWidth()) or 1040) - 206
+                local railSub = (DynamicSuite._isHubLoaded or (f and f.leftRail)) and 206 or 0
+                dw = ((f and f.GetWidth and f:GetWidth()) or 1040) - railSub
             end
             w = math.max(500, dw - 30)
         end
         local colW = math.floor(w / 3)
+        legCol1:ClearAllPoints()
         legCol1:SetPoint("TOPLEFT", legendStrip, "TOPLEFT", 0, 0)
         legCol1:SetSize(colW, 22)
+        legCol2:ClearAllPoints()
         legCol2:SetPoint("TOPLEFT", legendStrip, "TOPLEFT", colW, 0)
         legCol2:SetSize(colW, 22)
+        legCol3:ClearAllPoints()
         legCol3:SetPoint("TOPLEFT", legendStrip, "TOPLEFT", colW * 2, 0)
         legCol3:SetPoint("BOTTOMRIGHT", legendStrip, "BOTTOMRIGHT", 0, 0)
+
+        if colW < 200 then
+            legLbl1:SetText("|cFFFFFFFFBy Zone:|r Active Here")
+            legLbl2:SetText("|cFFFFFFFFAlways:|r All 5 Zones")
+            legLbl3:SetText("|cFFFFFFFFNever:|r Stay Off")
+        else
+            legLbl1:SetText("|cFFFFFFFFBy Zone (Click Box):|r Active in Zone")
+            legLbl2:SetText("|cFFFFFFFFAlways (L-Click Row):|r All 5 Zones")
+            legLbl3:SetText("|cFFFFFFFFNever (R-Click Row):|r Ignores Parent")
+        end
 
         local ar, ag, ab = UI.GetActiveAccentColor()
         legDot1:SetColorTexture(ar, ag, ab, 1.0)
         if legBox1 and legBox1.dsBorder then legBox1.dsBorder:SetColor(ar, ag, ab, 0.95) end
     end
+    f.LayoutLegendCols = LayoutLegendCols
     legendStrip:SetScript("OnSizeChanged", LayoutLegendCols)
+    legendStrip:HookScript("OnShow", LayoutLegendCols)
     LayoutLegendCols()
     end
 
@@ -8570,16 +8910,19 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     altBanner:Hide()
     f.altBanner = altBanner
 
-    local altBannerText = altBanner:CreateFontString(nil, "OVERLAY")
-    altBannerText:SetPoint("LEFT", altBanner, "LEFT", 10, 0)
-    UI.SetFont(altBannerText, 11, "", 1, 1, 1, 1)
-    altBanner.text = altBannerText
-
     local cloneBtn = CreateFlatButton(altBanner, 140, 20, "Clone into Zone", true)
     cloneBtn:SetPoint("RIGHT", altBanner, "RIGHT", -70, 0)
 
     local clearAltBtn = CreateFlatButton(altBanner, 60, 20, "Clear", false)
     clearAltBtn:SetPoint("RIGHT", altBanner, "RIGHT", -6, 0)
+
+    local altBannerText = altBanner:CreateFontString(nil, "OVERLAY")
+    altBannerText:SetPoint("LEFT", altBanner, "LEFT", 10, 0)
+    altBannerText:SetPoint("RIGHT", cloneBtn, "LEFT", -8, 0)
+    altBannerText:SetJustifyH("LEFT")
+    altBannerText:SetWordWrap(false)
+    UI.SetFont(altBannerText, 11, "", 1, 1, 1, 1)
+    altBanner.text = altBannerText
 
     local scrollFrame = CreateFrame("ScrollFrame", "DynamicLoadScrollFrame", dlView)
     scrollFrame:SetPoint("TOPLEFT", legendStrip, "BOTTOMLEFT", 0, -4)
@@ -8588,7 +8931,8 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     scrollFrame:SetClipsChildren(true)
     scrollFrame:EnableMouseWheel(true)
     if (scrollFrame:GetWidth() or 0) <= 0 or (scrollFrame:GetHeight() or 0) <= 0 then
-        local dw = (dlView:GetWidth() or 0) > 200 and dlView:GetWidth() or (((f:GetWidth() or 1040) - 206))
+        local railSub = (DynamicSuite._isHubLoaded or (f and f.leftRail)) and 206 or 0
+        local dw = (dlView:GetWidth() or 0) > 200 and dlView:GetWidth() or (((f:GetWidth() or 1040) - railSub))
         local dh = (dlView:GetHeight() or 0) > 200 and dlView:GetHeight() or (((f:GetHeight() or 680) - 82))
         scrollFrame:SetSize(math.max(500, dw - 30), math.max(300, dh - 140))
     end
@@ -8596,7 +8940,8 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     f.scrollFrame = scrollFrame
 
     local scrollChild = CreateFrame("Frame", "DynamicLoadScrollChild", scrollFrame)
-    scrollChild:SetSize(math.max(500, (f:GetWidth() or 1040) - 234), 400)
+    local initRailSub = (DynamicSuite._isHubLoaded or (f and f.leftRail)) and 234 or 30
+    scrollChild:SetSize(math.max(500, (f:GetWidth() or 1040) - initRailSub), 400)
     scrollChild:SetFrameLevel((scrollFrame:GetFrameLevel() or 10) + 1)
     scrollChild:Show()
     scrollFrame:SetScrollChild(scrollChild)
@@ -8608,6 +8953,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     scrollTrack:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", 10, 0)
     scrollTrack:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", 10, 0)
     scrollTrack:EnableMouse(true)
+    scrollTrack:SetHitRectInsets(-5, -5, 0, 0)
     scrollTrack.bg = UI.SolidTex(scrollTrack, "BACKGROUND", 1, 1, 1, 1, 0.06)
     scrollTrack.bg:SetWidth(4)
     scrollTrack.bg:SetPoint("TOP", scrollTrack, "TOP", 0, 0)
@@ -8618,11 +8964,24 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     scrollThumb:SetWidth(4)
     scrollThumb:SetPoint("TOP", scrollTrack, "TOP", 0, 0)
     scrollThumb:EnableMouse(true)
+    scrollThumb:SetHitRectInsets(-5, -5, 0, 0)
     scrollThumb.tex = UI.SolidTex(scrollThumb, "ARTWORK", 2, 0.38, 0.45, 0.56, 0.85)
     scrollThumb.tex:SetWidth(4)
     scrollThumb.tex:SetPoint("TOP", scrollThumb, "TOP", 0, 0)
     scrollThumb.tex:SetPoint("BOTTOM", scrollThumb, "BOTTOM", 0, 0)
     scrollThumb:Hide()
+
+    local function SyncScrollThumbTint()
+        if scrollThumb.isDragging then
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            scrollThumb.tex:SetColorTexture(ar, ag, ab, 1.0)
+        elseif scrollThumb.isHovered then
+            local ar, ag, ab = UI.GetActiveAccentColor()
+            scrollThumb.tex:SetColorTexture(ar, ag, ab, 0.92)
+        else
+            scrollThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+        end
+    end
 
     local function UpdateThinScrollBar()
         local contentH = scrollChild:GetHeight() or 0
@@ -8630,11 +8989,13 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         if visibleH <= 0 then visibleH = 1 end
         local maxScroll = math.max(0, contentH - visibleH)
         if maxScroll <= 1 then
+            scrollTrack:Hide()
             scrollThumb:Hide()
             return
         end
+        scrollTrack:Show()
         scrollThumb:Show()
-        scrollThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+        SyncScrollThumbTint()
         local trackH = scrollTrack:GetHeight() or visibleH
         local ratio = visibleH / contentH
         local thumbH = math.max(28, math.floor(trackH * ratio + 0.5))
@@ -8661,7 +9022,7 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
             scrollThumb.isDragging = false
             scrollThumb:SetScript("OnUpdate", nil)
             scrollTrack:SetScript("OnUpdate", nil)
-            scrollThumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+            SyncScrollThumbTint()
             return
         end
         local contentH = scrollChild:GetHeight() or 0
@@ -8688,17 +9049,17 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     end
 
     scrollThumb:SetScript("OnEnter", function(self)
-        self.tex:SetColorTexture(0.48, 0.55, 0.66, 0.95)
+        self.isHovered = true
+        SyncScrollThumbTint()
     end)
     scrollThumb:SetScript("OnLeave", function(self)
-        if not self.isDragging then
-            self.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
-        end
+        self.isHovered = false
+        SyncScrollThumbTint()
     end)
     scrollThumb:SetScript("OnMouseDown", function(self, button)
         if button == "LeftButton" then
             self.isDragging = true
-            self.tex:SetColorTexture(0.52, 0.60, 0.72, 1.0)
+            SyncScrollThumbTint()
             ScrollFromCursor()
             self:SetScript("OnUpdate", ScrollFromCursor)
         end
@@ -8707,38 +9068,48 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         if button == "LeftButton" then
             self.isDragging = false
             self:SetScript("OnUpdate", nil)
-            self.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+            SyncScrollThumbTint()
         end
     end)
     scrollThumb:SetScript("OnHide", function(self)
         self.isDragging = false
+        self.isHovered = false
         self:SetScript("OnUpdate", nil)
-        self.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+        SyncScrollThumbTint()
     end)
 
     scrollTrack:SetScript("OnMouseDown", function(self, button)
         if button == "LeftButton" then
+            scrollThumb.isDragging = true
+            SyncScrollThumbTint()
             ScrollFromCursor()
             self:SetScript("OnUpdate", ScrollFromCursor)
         end
     end)
     scrollTrack:SetScript("OnMouseUp", function(self, button)
         if button == "LeftButton" then
+            scrollThumb.isDragging = false
             self:SetScript("OnUpdate", nil)
+            SyncScrollThumbTint()
         end
     end)
     scrollTrack:SetScript("OnHide", function(self)
+        scrollThumb.isDragging = false
         self:SetScript("OnUpdate", nil)
+        SyncScrollThumbTint()
     end)
 
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+    local function StepAddonListWheel(delta)
         CloseContextMenu()
-        local maxScroll = math.max(0, (scrollChild:GetHeight() or 0) - (self:GetHeight() or 0))
-        local nextScroll = math.max(0, math.min(maxScroll, self:GetVerticalScroll() - (delta * 48)))
-        self._lastUserScroll = nextScroll
-        self:SetVerticalScroll(nextScroll)
+        local maxScroll = math.max(0, (scrollChild:GetHeight() or 0) - (scrollFrame:GetHeight() or 0))
+        local nextScroll = math.max(0, math.min(maxScroll, (scrollFrame:GetVerticalScroll() or 0) - (delta * 48)))
+        scrollFrame._lastUserScroll = nextScroll
+        scrollFrame:SetVerticalScroll(nextScroll)
         UpdateThinScrollBar()
-    end)
+    end
+    scrollFrame:SetScript("OnMouseWheel", function(_, delta) StepAddonListWheel(delta) end)
+    scrollTrack:SetScript("OnMouseWheel", function(_, delta) StepAddonListWheel(delta) end)
+    scrollThumb:SetScript("OnMouseWheel", function(_, delta) StepAddonListWheel(delta) end)
 
     cloneBtn:SetScript("OnClick", function()
         if selectedAltKey then
@@ -8753,7 +9124,9 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         selectedAltKey = nil
         if f.RefreshScopePillLabel then f.RefreshScopePillLabel() elseif f.altPillBtn and f.altPillBtn.label then f.altPillBtn.label:SetText("Global") end
         altBanner:Hide()
+        scrollFrame:ClearAllPoints()
         scrollFrame:SetPoint("TOPLEFT", legendStrip, "BOTTOMLEFT", 0, -4)
+        scrollFrame:SetPoint("BOTTOMRIGHT", dlView, "BOTTOMRIGHT", -16, 8)
     end)
     end
 
@@ -9063,7 +9436,11 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         if w and w > 100 then toastScrollChild:SetWidth(w) end
         UpdateToastScrollbar()
     end)
-    toastScroll:SetScript("OnShow", UpdateToastScrollbar)
+    toastScroll:SetScript("OnShow", function(self)
+        local w = self.GetWidth and self:GetWidth()
+        if w and w > 100 then toastScrollChild:SetWidth(w) end
+        UpdateToastScrollbar()
+    end)
     toastScroll:SetScript("OnMouseWheel", function(_, delta) ScrollToastByDelta(delta) end)
     toastSbTrack:SetScript("OnMouseWheel", function(_, delta) ScrollToastByDelta(delta) end)
     toastSbThumb:SetScript("OnMouseWheel", function(_, delta) ScrollToastByDelta(delta) end)
@@ -9135,9 +9512,9 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
     local rowToastMode = PlaceToastRow(CreateSpaciousOptionRow(toastScrollChild, 3, "Toast Display Mode", "Select 3-line detailed cards, 1-line compact pills, or exception-only alerts."), 3)
     local modeSegPills
     modeSegPills = UI.CreateSegmentedPills(rowToastMode, {
-        { value = "DETAILED",        label = "Detailed (3-Line)", width = 120 },
-        { value = "COMPACT",         label = "Compact (1-Line)",  width = 118 },
-        { value = "EXCEPTIONS_ONLY", label = "Exceptions Only",   width = 114 },
+        { value = "DETAILED",        label = "Detailed",   width = 100 },
+        { value = "COMPACT",         label = "Compact",    width = 96 },
+        { value = "EXCEPTIONS_ONLY", label = "Exceptions", width = 94 },
     }, function()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         return gTbl.toastDisplayMode or (DynamicLoadDB and DynamicLoadDB.toastDisplayMode) or "DETAILED"
@@ -9329,13 +9706,15 @@ function addonTable.MountDynamicLoadWorkspace(f, workspace)
         end
         if toastScaleSlider.RefreshVisual then toastScaleSlider.RefreshVisual() end
         if toastAlphaSlider.RefreshVisual then toastAlphaSlider.RefreshVisual() end
+        local tsw = toastScroll and toastScroll.GetWidth and toastScroll:GetWidth()
+        if tsw and tsw > 100 then toastScrollChild:SetWidth(tsw) end
         UpdateEmbeddedStageToast()
         UpdateToastScrollbar()
         if addonTable.ShowToast then
             addonTable.ShowToast(selectedTabKey, 4, true)
         end
     end
-    for _, tc in ipairs({ rowToastVis, rowToastBorder, rowToastMode, rowToastScale, rowToastAlpha, rowToastDur, rowToastSound, rowToastActions }) do
+    for _, tc in ipairs({ rowToastVis, rowToastBorder, rowToastMode, rowToastScale, rowToastAlpha, rowToastActionDur, rowToastInfoDur, rowToastSound, rowToastActions }) do
         table.insert(f.themeCards, tc)
     end
     end
@@ -9356,26 +9735,69 @@ end
 --------------------------------------------------------------------------------
 if not DynamicSuite._isHubLoaded then
     local standaloneFrame = nil
+    local function SaveStandaloneWindowState(f)
+        if not f then return end
+        local g = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or nil
+        local w = math.floor((f:GetWidth() or 1040) + 0.5)
+        local h = math.floor((f:GetHeight() or 680) + 0.5)
+        if g then
+            g.windowWidth = w
+            g.windowHeight = h
+        end
+        if DynamicLoadDB then
+            DynamicLoadDB.windowWidth = w
+            DynamicLoadDB.windowHeight = h
+        end
+        if f.GetCenter and UIParent and UIParent.GetCenter then
+            local cx, cy = f:GetCenter()
+            local ux, uy = UIParent:GetCenter()
+            if cx and cy and ux and uy then
+                local pos = { point = "CENTER", relativePoint = "CENTER", x = math.floor((cx - ux) + 0.5), y = math.floor((cy - uy) + 0.5) }
+                if g then g.windowPos = pos end
+                if DynamicLoadDB then DynamicLoadDB.windowPos = pos end
+            end
+        end
+    end
+
     function addonTable.CreateMainConfigUI()
         if standaloneFrame then return standaloneFrame end
         UI.RefreshPaletteCache()
         local g = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
-        local w = math.max(820, math.min(1440, g.windowWidth or 920))
-        local h = math.max(600, math.min(920,  g.windowHeight or 660))
+        local w = math.max(760, math.min(1280, g.windowWidth or (DynamicLoadDB and DynamicLoadDB.windowWidth) or 1040))
+        local h = math.max(480, math.min(860,  g.windowHeight or (DynamicLoadDB and DynamicLoadDB.windowHeight) or 680))
         local f = CreateFrame("Frame", "DynamicLoadStandaloneFrame", UIParent)
         _G.DynamicLoadMainFrame = _G.DynamicLoadMainFrame or f
         standaloneFrame = f
         addonTable.mainFrame = f
         f:SetSize(w, h)
-        f:SetPoint("CENTER")
+        local savedPos = g.windowPos or (DynamicLoadDB and DynamicLoadDB.windowPos)
+        f:ClearAllPoints()
+        if type(savedPos) == "table" and savedPos.x ~= nil and savedPos.y ~= nil then
+            f:SetPoint(savedPos.point or "CENTER", UIParent, savedPos.relativePoint or savedPos.point or "CENTER", tonumber(savedPos.x) or 0, tonumber(savedPos.y) or 0)
+        else
+            f:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
         f:SetFrameStrata("HIGH")
         f:SetToplevel(true)
         f:SetClampedToScreen(true)
         f:SetMovable(true)
+        f:SetResizable(true)
+        if f.SetResizeBounds then
+            f:SetResizeBounds(760, 480, 1280, 860)
+        else
+            if f.SetMinResize then f:SetMinResize(760, 480) end
+            if f.SetMaxResize then f:SetMaxResize(1280, 860) end
+        end
         f:EnableMouse(true)
         f:RegisterForDrag("LeftButton")
-        f:SetScript("OnDragStart", f.StartMoving)
-        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        f:SetScript("OnDragStart", function(self)
+            CloseContextMenu()
+            self:StartMoving()
+        end)
+        f:SetScript("OnDragStop", function(self)
+            self:StopMovingOrSizing()
+            SaveStandaloneWindowState(self)
+        end)
         f:HookScript("OnHide", function() CloseContextMenu() end)
         f.bg = UI.SolidTex(f, "BACKGROUND", 0, UI.COLORS.PANEL_BG.r, UI.COLORS.PANEL_BG.g, UI.COLORS.PANEL_BG.b, 0.99)
         f.bg:SetAllPoints()
@@ -9393,11 +9815,14 @@ if not DynamicSuite._isHubLoaded then
         header.accentTop:SetPoint("TOPLEFT", header, "TOPLEFT", 0, 0)
         header.accentTop:SetPoint("TOPRIGHT", header, "TOPRIGHT", 0, 0)
         header.accentTop:SetHeight(2)
+        f.header = header
+        f.headerAccentTop = header.accentTop
 
         local title = header:CreateFontString(nil, "OVERLAY")
         title:SetPoint("LEFT", header, "LEFT", 16, 0)
         UI.SetFont(title, 15, "", 1, 1, 1, 0.98)
         title:SetText(UI.FormatTwoToneBrand("Load"))
+        f.title = title
 
         local closeBtn = CreateFlatButton(header, 26, 26, "X", false)
         closeBtn:SetPoint("RIGHT", header, "RIGHT", -12, 0)
@@ -9409,16 +9834,96 @@ if not DynamicSuite._isHubLoaded then
         footer:SetHeight(38)
         footer.bg = UI.SolidTex(footer, "BACKGROUND", 1, UI.COLORS.HEADER_BG.r, UI.COLORS.HEADER_BG.g, UI.COLORS.HEADER_BG.b, 1.0)
         footer.bg:SetAllPoints()
+        footer.divider = UI.SolidTex(footer, "OVERLAY", 2, 1, 1, 1, UI.COLORS.BORDER.a)
+        footer.divider:SetPoint("TOPLEFT", footer, "TOPLEFT", 0, 0)
+        footer.divider:SetPoint("TOPRIGHT", footer, "TOPRIGHT", 0, 0)
+        footer.divider:SetHeight(1)
+        f.footer = footer
 
         local resetBtn = CreateFlatButton(footer, 134, 24, "Reset DynamicLoad", false)
         resetBtn:SetPoint("LEFT", footer, "LEFT", 14, 0)
-        resetBtn:SetScript("OnClick", function()
-            addonTable.ResetDynamicLoad()
-            if f.scrollChild then RefreshAddonTree(f.scrollChild) end
+        local resetConfirm = false
+        local function UpdateStandaloneResetLabel()
+            if resetConfirm then return end
+            resetBtn.label:SetText("Reset DynamicLoad")
+            local lw = resetBtn.label:GetStringWidth() or 110
+            resetBtn:SetWidth(math.max(126, math.floor(lw + 20)))
+            resetBtn.bg:SetColorTexture(UI.COLORS.BTN_BG.r, UI.COLORS.BTN_BG.g, UI.COLORS.BTN_BG.b, 0.94)
+            resetBtn.dsBorder:SetColor(UI.COLORS.BTN_BORDER.r, UI.COLORS.BTN_BORDER.g, UI.COLORS.BTN_BORDER.b, UI.COLORS.BTN_BORDER.a)
+            resetBtn.label:SetTextColor(0.86, 0.88, 0.92, 0.95)
+        end
+        resetBtn:SetScript("OnClick", function(self)
+            if not resetConfirm then
+                resetConfirm = true
+                self.label:SetText("Confirm Reset?")
+                self.bg:SetColorTexture(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 0.35)
+                self.dsBorder:SetColor(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 1.0)
+                C_Timer.After(3.0, function()
+                    if resetConfirm then
+                        resetConfirm = false
+                        self.label:SetText("Cancelled (Safe)")
+                        self.bg:SetColorTexture(0.10, 0.12, 0.16, 0.94)
+                        self.dsBorder:SetColor(0.38, 0.45, 0.56, 0.85)
+                        self.label:SetTextColor(0.68, 0.74, 0.82, 1)
+                        print(string.format("%s: DynamicLoad reset cancelled - no settings were changed.", ADDON_TITLE))
+                        C_Timer.After(1.2, function()
+                            if not resetConfirm then
+                                UpdateStandaloneResetLabel()
+                            end
+                        end)
+                    end
+                end)
+            else
+                resetConfirm = false
+                addonTable.ResetDynamicLoad()
+                UpdateStandaloneResetLabel()
+                if f.scrollChild then RefreshAddonTree(f.scrollChild) end
+                if f.UpdateStatusBar then f.UpdateStatusBar() end
+            end
         end)
 
-        local reloadBtn = CreateFlatButton(footer, 96, 24, "Reload UI", true)
-        reloadBtn:SetPoint("RIGHT", footer, "RIGHT", -14, 0)
+        local function PopulateStandalonePendingReloadTooltip(ownerFrame, anchorPt)
+            local deltaCount, pendingMap = 0, {}
+            if addonTable.CalculateAddonDelta then
+                deltaCount, pendingMap = addonTable.CalculateAddonDelta(selectedTabKey)
+            end
+            GameTooltip:SetOwner(ownerFrame, anchorPt or "ANCHOR_TOP")
+            GameTooltip:SetText("Live Profile & Pending Reload Status", 1, 1, 1)
+            if deltaCount and deltaCount > 0 and pendingMap then
+                GameTooltip:AddLine(string.format("%d Addon Change(s) Pending Reload:", deltaCount), 0.96, 0.72, 0.18)
+                local shown = 0
+                for addonKey, willLoad in pairs(pendingMap) do
+                    shown = shown + 1
+                    if shown <= 12 then
+                        if willLoad then
+                            GameTooltip:AddLine(string.format("  |cFF22C55E+ %s (Will Load)|r", tostring(addonKey)), 1, 1, 1)
+                        else
+                            GameTooltip:AddLine(string.format("  |cFFF59E0B- %s (Will Unload)|r", tostring(addonKey)), 1, 1, 1)
+                        end
+                    end
+                end
+                if shown > 12 then
+                    GameTooltip:AddLine(string.format("  ...and %d more", shown - 12), 0.70, 0.74, 0.80)
+                end
+            else
+                GameTooltip:AddLine("All addons are in sync with the current session (0 Pending Reload).", 0.133, 0.773, 0.369)
+            end
+            if addonTable.IsManualOverrideActive and addonTable.IsManualOverrideActive() then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cFFF5B82EManual Override Active:|r |cFFE2E8F0Profile locked to chosen loadout.|r", 1, 1, 1)
+            end
+            GameTooltip:Show()
+        end
+        f.PopulatePendingReloadTooltip = PopulateStandalonePendingReloadTooltip
+
+        local reloadBtn = CreateFlatButton(footer, 86, 24, "Reload UI", false)
+        reloadBtn:SetPoint("RIGHT", footer, "RIGHT", -32, 0)
+        reloadBtn.OnCustomEnter = function(self)
+            PopulateStandalonePendingReloadTooltip(self, "ANCHOR_TOP")
+        end
+        reloadBtn.OnCustomLeave = function()
+            GameTooltip:Hide()
+        end
         reloadBtn:SetScript("OnClick", function()
             if addonTable.ApplyProfile then
                 addonTable.ApplyProfile(selectedTabKey, true)
@@ -9428,13 +9933,62 @@ if not DynamicSuite._isHubLoaded then
         end)
         f.reloadUIBtn = reloadBtn
 
+        local resizeGrip = CreateFrame("Button", nil, footer)
+        resizeGrip:SetSize(14, 14)
+        resizeGrip:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", -4, 4)
+        resizeGrip:SetFrameLevel((footer:GetFrameLevel() or 1) + 4)
+        resizeGrip:EnableMouse(true)
+
+        local gripTex = resizeGrip:CreateTexture(nil, "OVERLAY", nil, 5)
+        gripTex:SetAllPoints()
+        gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        gripTex:SetDesaturated(true)
+        gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+
+        resizeGrip:SetScript("OnEnter", function(selfGrip)
+            local rar, rag, rab = UI.GetActiveAccentColor()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+            gripTex:SetDesaturated(false)
+            gripTex:SetVertexColor(rar, rag, rab, 0.95)
+            GameTooltip:SetOwner(selfGrip, "ANCHOR_TOP")
+            GameTooltip:SetText("Resize DynamicLoad", 1, 1, 1)
+            GameTooltip:AddLine("Left-Click & Drag: Resize window (min 760x480)", 0.82, 0.86, 0.92, true)
+            GameTooltip:AddLine("Right-Click: Reset to default size (1040x680)", 0.82, 0.86, 0.92, true)
+            GameTooltip:Show()
+        end)
+        resizeGrip:SetScript("OnLeave", function()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+            gripTex:SetDesaturated(true)
+            gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+            GameTooltip:Hide()
+        end)
+        resizeGrip:SetScript("OnMouseDown", function(_, button)
+            if button == "LeftButton" then
+                CloseContextMenu()
+                f:StartSizing("BOTTOMRIGHT")
+            elseif button == "RightButton" then
+                f:SetSize(1040, 680)
+                SaveStandaloneWindowState(f)
+            end
+        end)
+        resizeGrip:SetScript("OnMouseUp", function()
+            f:StopMovingOrSizing()
+            SaveStandaloneWindowState(f)
+        end)
+
         f.UpdateStatusBar = function()
             local delta = addonTable.CalculateAddonDelta and addonTable.CalculateAddonDelta(selectedTabKey) or 0
+            local rar, rag, rab = UI.GetActiveAccentColor()
             if delta > 0 then
                 reloadBtn.label:SetText(string.format("Reload (%d)", delta))
+                reloadBtn:SetSelected(true, { r = rar, g = rag, b = rab })
             else
                 reloadBtn.label:SetText("Reload UI")
+                reloadBtn:SetSelected(false)
             end
+            local strW = (reloadBtn.label and reloadBtn.label.GetUnboundedStringWidth and reloadBtn.label:GetUnboundedStringWidth())
+                or (reloadBtn.label and reloadBtn.label.GetStringWidth and reloadBtn.label:GetStringWidth()) or 60
+            reloadBtn:SetWidth(math.max(78, math.ceil(strW + 18)))
         end
 
         local workspace = CreateFrame("Frame", nil, f)
@@ -9443,12 +9997,33 @@ if not DynamicSuite._isHubLoaded then
         f.workspace = workspace
 
         addonTable.MountDynamicLoadWorkspace(f, workspace)
+
+        f:SetScript("OnSizeChanged", function(_, newW)
+            if f.scrollChild and f.scrollFrame then
+                local sw = f.scrollFrame:GetWidth()
+                if sw and sw > 50 then
+                    f.scrollChild:SetWidth(sw)
+                else
+                    f.scrollChild:SetWidth(math.max(400, (newW or 1040) - 30))
+                end
+            end
+            if f.ReflowDlTopTrack then f.ReflowDlTopTrack() end
+            if f.AutoSizeToolbarButtons then f.AutoSizeToolbarButtons() end
+            if f.RefreshTelemetryStrip then f.RefreshTelemetryStrip() end
+            if f.LayoutLegendCols then f.LayoutLegendCols() end
+            if f.UpdateThinScrollBar then f.UpdateThinScrollBar() end
+        end)
+
         f:SetScript("OnShow", function()
+            if addonTable.ApplySuiteThemeAndGeometry then addonTable.ApplySuiteThemeAndGeometry() end
             if f.UpdateAllTabVisuals then f.UpdateAllTabVisuals() end
             if f.UpdateStatusBar then f.UpdateStatusBar() end
             if f.UpdateStashButton then f.UpdateStashButton() end
             if f.UpdateFilterChips then f.UpdateFilterChips() end
+            if f.ReflowDlTopTrack then f.ReflowDlTopTrack() end
+            if f.AutoSizeToolbarButtons then f.AutoSizeToolbarButtons() end
             if f.RefreshTelemetryStrip then f.RefreshTelemetryStrip() end
+            if f.LayoutLegendCols then f.LayoutLegendCols() end
             if f.scrollChild then RefreshAddonTree(f.scrollChild) end
         end)
         table.insert(UISpecialFrames, "DynamicLoadStandaloneFrame")
@@ -9456,8 +10031,40 @@ if not DynamicSuite._isHubLoaded then
         return f
     end
 
+    function addonTable.ApplySuiteThemeAndGeometry()
+        UI.RefreshPaletteCache()
+        local ar, ag, ab = UI.GetActiveAccentColor()
+        local surf = UI.GetActiveSurfaceColors()
+        local f = standaloneFrame
+        if not f then return end
+        if f.bg then f.bg:SetColorTexture(surf.panel.r, surf.panel.g, surf.panel.b, 0.99) end
+        if f.header and f.header.bg then f.header.bg:SetColorTexture(surf.header.r, surf.header.g, surf.header.b, 1.0) end
+        if f.headerAccentTop then f.headerAccentTop:SetColorTexture(ar, ag, ab, 1) end
+        if f.footer and f.footer.bg then f.footer.bg:SetColorTexture(surf.header.r, surf.header.g, surf.header.b, 1.0) end
+        if f.title then f.title:SetText(UI.FormatTwoToneBrand("Load")) end
+        for _, cardBox in ipairs(f.themeCards or {}) do
+            if cardBox and cardBox.bg then
+                cardBox.bg:SetColorTexture(surf.card.r, surf.card.g, surf.card.b, surf.card.a or 0.92)
+            end
+        end
+        if f.altBanner and f.altBanner.dsBorder then
+            f.altBanner.dsBorder:SetColor(ar, ag, ab, 0.6)
+        end
+        if f.UpdateStatusBar then f.UpdateStatusBar() end
+        if f.UpdateAllTabVisuals then f.UpdateAllTabVisuals() end
+        if f.UpdateFilterChips then f.UpdateFilterChips() end
+        if f.RefreshTelemetryStrip then f.RefreshTelemetryStrip() end
+        if f.LayoutLegendCols then f.LayoutLegendCols() end
+        if f.UpdateThinScrollBar then f.UpdateThinScrollBar() end
+        if f.scrollChild and RefreshAddonTree then RefreshAddonTree(f.scrollChild) end
+        if f.toastConfigPanel and f.toastConfigPanel.RefreshControls and f.toastConfigPanel:IsShown() then
+            f.toastConfigPanel.RefreshControls()
+        end
+        if addonTable.ApplyToastVisuals then addonTable.ApplyToastVisuals() end
+    end
+
     function addonTable.ShowConfigUI()
-        if InCombatLockdown and InCombatLockdown() then
+        if IsPlayerInCombat() then
             print("|cFF38BDF8DynamicLoad|r: Cannot open configuration window while in combat.")
             return nil
         end
@@ -9471,7 +10078,7 @@ if not DynamicSuite._isHubLoaded then
     end
 
     function addonTable.ToggleConfigUI(forceShow)
-        if InCombatLockdown and InCombatLockdown() then
+        if IsPlayerInCombat() then
             if forceShow ~= false and standaloneFrame and standaloneFrame:IsShown() then
                 standaloneFrame:Hide()
                 return
@@ -9499,7 +10106,7 @@ do
         slash = "/dl",
         order = 10,
         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
-        version = addonTable.ADDON_VERSION or "2.6.6",
+        version = addonTable.ADDON_VERSION or "2.10.2",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         CHANGELOG = DynamicSuite.Changelogs and DynamicSuite.Changelogs["DynamicLoad"] and DynamicSuite.Changelogs["DynamicLoad"].entries or addonTable.CHANGELOG,
         Open = function(...) if addonTable.ShowConfigUI then return addonTable.ShowConfigUI(...) end end,

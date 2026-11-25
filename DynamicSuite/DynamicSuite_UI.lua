@@ -15,6 +15,62 @@ _G.DynamicSuite._sharedAddonTable = _G.DynamicSuite._sharedAddonTable or rawAddo
 local addonTable = _G.DynamicSuite._sharedAddonTable
 local DynamicSuite = _G.DynamicSuite
 
+local function IsSafeValue(v)
+    if v == nil then return true end
+    if type(_G.issecretvalue) == "function" then
+        local okS, s = pcall(_G.issecretvalue, v)
+        if okS and s then return false end
+    end
+    if type(_G.canaccessvalue) == "function" then
+        local okA, a = pcall(_G.canaccessvalue, v)
+        if okA and not a then return false end
+    end
+    return true
+end
+
+local function IsSafeString(v)
+    return type(v) == "string" and IsSafeValue(v) and v ~= ""
+end
+
+local function SafeUnitName(unit)
+    if type(_G.UnitName) ~= "function" then return nil end
+    local ok, raw = pcall(_G.UnitName, unit or "player")
+    if not ok or not IsSafeString(raw) then return nil end
+    if raw == "Unknown" or raw == _G.UNKNOWNOBJECT then return nil end
+    return raw
+end
+
+local function SafeUnitClass(unit)
+    if type(_G.UnitClass) ~= "function" then return nil, nil end
+    local ok, loc, classFile = pcall(_G.UnitClass, unit or "player")
+    if not ok then return nil, nil end
+    local safeLoc = IsSafeString(loc) and loc or nil
+    local safeFile = IsSafeString(classFile) and classFile or nil
+    return safeLoc, safeFile
+end
+
+local function IsPlayerInCombat()
+    if type(_G.InCombatLockdown) ~= "function" then return false end
+    local ok, inC = pcall(_G.InCombatLockdown)
+    return (ok and IsSafeValue(inC) and inC == true) or false
+end
+
+local function SafeGetAddOnEnableState(nameOrIndex, charName)
+    if not IsSafeValue(nameOrIndex) then return 0 end
+    local fn = (_G.C_AddOns and _G.C_AddOns.GetAddOnEnableState) or _G.GetAddOnEnableState
+    if type(fn) ~= "function" then return 0 end
+    local ok, st
+    if IsSafeString(charName) then
+        ok, st = pcall(fn, nameOrIndex, charName)
+    else
+        ok, st = pcall(fn, nameOrIndex)
+    end
+    if ok and IsSafeValue(st) and type(st) == "number" then
+        return st
+    end
+    return 0
+end
+
 local CONTEXT_TABS = {
     { key = "outdoor", label = "Outdoor" },
     { key = "delve",   label = "Delves" },
@@ -444,7 +500,7 @@ function UI.GetActiveAccentColor()
         local hex = string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(gCol * 255 + 0.5), math.floor(b * 255 + 0.5))
         return r, gCol, b, hex
     elseif key == "AUTO_CLASS" then
-        local _, classFile = UnitClass("player")
+        local _, classFile = SafeUnitClass("player")
         local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
         if cc then
             local hex = cc.colorStr or string.format("%02X%02X%02X", math.floor(cc.r * 255 + 0.5), math.floor(cc.g * 255 + 0.5), math.floor(cc.b * 255 + 0.5))
@@ -458,7 +514,7 @@ function UI.GetActiveAccentColor()
             return p.r, p.g, p.b, p.hex
         end
     end
-    local _, classFile = UnitClass("player")
+    local _, classFile = SafeUnitClass("player")
     local cc = RAID_CLASS_COLORS and classFile and RAID_CLASS_COLORS[classFile]
     if cc then
         local hex = cc.colorStr or string.format("%02X%02X%02X", math.floor(cc.r * 255 + 0.5), math.floor(cc.g * 255 + 0.5), math.floor(cc.b * 255 + 0.5))
@@ -3252,10 +3308,12 @@ function addonTable.CreateMainConfigUI()
     UI.RefreshPaletteCache()
 
     local g = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
-    if g.windowWidth and g.windowWidth < 980 then g.windowWidth = 1040 end
-    if DynamicLoadDB and DynamicLoadDB.windowWidth and DynamicLoadDB.windowWidth < 980 then DynamicLoadDB.windowWidth = 1040 end
-    local PANEL_W = math.max(980, math.min(1440, g.windowWidth or (DynamicLoadDB and DynamicLoadDB.windowWidth) or 1040))
-    local PANEL_H = math.max(640, math.min(920,  g.windowHeight or (DynamicLoadDB and DynamicLoadDB.windowHeight) or 680))
+    if g.windowWidth and g.windowWidth < 800 then g.windowWidth = 800 end
+    if g.windowHeight and g.windowHeight < 520 then g.windowHeight = 520 end
+    if DynamicLoadDB and DynamicLoadDB.windowWidth and DynamicLoadDB.windowWidth < 800 then DynamicLoadDB.windowWidth = 800 end
+    if DynamicLoadDB and DynamicLoadDB.windowHeight and DynamicLoadDB.windowHeight < 520 then DynamicLoadDB.windowHeight = 520 end
+    local PANEL_W = math.max(800, math.min(1440, g.windowWidth or (DynamicLoadDB and DynamicLoadDB.windowWidth) or 1040))
+    local PANEL_H = math.max(520, math.min(920,  g.windowHeight or (DynamicLoadDB and DynamicLoadDB.windowHeight) or 680))
     local RAIL_W  = 204
     local HDR_H   = 46
     local DOCK_H  = 38
@@ -3268,9 +3326,9 @@ function addonTable.CreateMainConfigUI()
     f:SetMovable(true)
     f:SetResizable(true)
     if f.SetResizeBounds then
-        f:SetResizeBounds(980, 640, 1440, 920)
+        f:SetResizeBounds(800, 520, 1440, 920)
     else
-        if f.SetMinResize then f:SetMinResize(980, 640) end
+        if f.SetMinResize then f:SetMinResize(800, 520) end
         if f.SetMaxResize then f:SetMaxResize(1440, 920) end
     end
     f:EnableMouse(true)
@@ -3364,7 +3422,7 @@ function addonTable.CreateMainConfigUI()
             mainFrame:ClearAllPoints()
             mainFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
         end
-        print("|cFFCBD5E1DynamicSuite:|r Window position reset to center.")
+        print("|cFFCBD5E1DynamicSuite:|r Window position reset to centre.")
     end
 
     function addonTable.ReclampMainWindowToScreen()
@@ -3396,7 +3454,7 @@ function addonTable.CreateMainConfigUI()
             if sw and sw > 50 then
                 f.scrollChild:SetWidth(sw)
             else
-                f.scrollChild:SetWidth(math.max(400, (newW or 980) - RAIL_W - 30))
+                f.scrollChild:SetWidth(math.max(400, (newW or 800) - RAIL_W - 30))
             end
         end
         if f.ReflowDlTopTrack then
@@ -3408,10 +3466,13 @@ function addonTable.CreateMainConfigUI()
         if f.UpdateRailScrollBar then
             f.UpdateRailScrollBar()
         end
+        if f.RefreshFooterResponsiveLayout then
+            f.RefreshFooterResponsiveLayout()
+        end
     end)
 
     f:HookScript("OnHide", function()
-        if InCombatLockdown() and not addonTable._suppressCombatManualClose then
+        if IsPlayerInCombat() and not addonTable._suppressCombatManualClose then
             if addonTable._combatCollapsedState then
                 addonTable._combatCollapsedState.manuallyClosedInCombat = true
                 addonTable._combatCollapsedState.wasOpen = false
@@ -3427,7 +3488,7 @@ function addonTable.CreateMainConfigUI()
     UI.CreatePixelBorder(f, 1, 1, 1, UI.COLORS.BORDER_OUTER.a, 4)
     f.themeCards = {}
 
-    local pName = addonTable.GetPlayer and addonTable.GetPlayer() or UnitName("player")
+    local pName = (addonTable.GetPlayer and addonTable.GetPlayer()) or SafeUnitName("player")
     local altPillBtn
     local PopulatePendingReloadTooltip
     local UpdateStatusBar
@@ -3561,7 +3622,7 @@ function addonTable.CreateMainConfigUI()
         self.dsBorder:SetColor(ar, ag, ab, 0.85)
         minBarLine:SetColorTexture(1, 1, 1, 1)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("Minimize DynamicSuite", 1, 1, 1)
+        GameTooltip:SetText("Minimise DynamicSuite", 1, 1, 1)
         GameTooltip:AddLine("Collapses the window into a compact floating bar so you can inspect your UI.", 0.82, 0.86, 0.92, true)
         GameTooltip:Show()
     end)
@@ -3692,7 +3753,7 @@ function addonTable.CreateMainConfigUI()
             mbTitle:SetJustifyH("LEFT")
             mbTitle:SetWordWrap(false)
             UI.SetFont(mbTitle, 12, "", 1, 1, 1, 1)
-            mbTitle:SetText(UI.FormatTwoToneBrand("Suite") .. "   |cFF94A3B8Window Minimized|r")
+            mbTitle:SetText(UI.FormatTwoToneBrand("Suite") .. "   |cFF94A3B8Window Minimised|r")
             mb.title = mbTitle
 
             function mb:ReflowBarWidth()
@@ -3711,7 +3772,7 @@ function addonTable.CreateMainConfigUI()
         if f.minimizedBar.logo and f.minimizedBar.logo.SetAccentColor then
             f.minimizedBar.logo:SetAccentColor(ar, ag, ab, 1)
         end
-        f.minimizedBar.title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cFF94A3B8(Minimized)|r")
+        f.minimizedBar.title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cFF94A3B8(Minimised)|r")
         if f.minimizedBar.restoreBtn then
             f.minimizedBar.restoreBtn:SetSelected(true, { r = ar, g = ag, b = ab })
         end
@@ -3747,7 +3808,7 @@ function addonTable.CreateMainConfigUI()
     hdrHudBtn.OnCustomEnter = function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         GameTooltip:SetText("HUD Edit Mode", 1, 1, 1)
-        GameTooltip:AddLine("Unlock, align, and scale all 4 on-screen DynamicSuite HUD bars.", 0.82, 0.86, 0.92, true)
+        GameTooltip:AddLine("Unlock, align, and scale all 6 on-screen DynamicSuite HUD bars.", 0.82, 0.86, 0.92, true)
         GameTooltip:Show()
     end
     hdrHudBtn.OnCustomLeave = function()
@@ -3780,8 +3841,8 @@ function addonTable.CreateMainConfigUI()
     local function RefreshScopePillLabel()
         local curScope = (addonTable.GetCharScopeMode and addonTable.GetCharScopeMode()) or "GLOBAL"
         if curScope == "CHARACTER" then
-            local cName = (addonTable.GetPlayer and addonTable.GetPlayer()) or (UnitName("player") or "Char")
-            local _, pClass = UnitClass("player")
+            local cName = (addonTable.GetPlayer and addonTable.GetPlayer()) or SafeUnitName("player") or "Char"
+            local _, pClass = SafeUnitClass("player")
             local pColor = (RAID_CLASS_COLORS and pClass and RAID_CLASS_COLORS[pClass]) or UI.COLORS.ACCENT
             altPillBtn.label:SetText(string.format("|cFF%02x%02x%02x%s|r", pColor.r * 255, pColor.g * 255, pColor.b * 255, cName))
         else
@@ -3858,6 +3919,7 @@ function addonTable.CreateMainConfigUI()
     statusCapsule:SetPoint("LEFT", title, "RIGHT", 14, 0)
     statusCapsule:SetPoint("RIGHT", altPillBtn, "LEFT", -12, 0)
     statusCapsule:SetHeight(26)
+    statusCapsule:SetClipsChildren(true)
     statusCapsule.bg = UI.SolidTex(statusCapsule, "BACKGROUND", 2, 1, 1, 1, 0.025)
     statusCapsule.bg:SetAllPoints()
     UI.CreatePixelBorder(statusCapsule, 1, 1, 1, 0.08, 3)
@@ -3875,7 +3937,7 @@ function addonTable.CreateMainConfigUI()
 
     local statusText = statusContentHolder:CreateFontString(nil, "OVERLAY")
     statusText:SetPoint("LEFT", statusPip, "RIGHT", 7, 0)
-    statusText:SetPoint("RIGHT", statusCapsule, "RIGHT", -14, 0)
+    statusText:SetPoint("RIGHT", statusCapsule, "RIGHT", -10, 0)
     statusText:SetJustifyH("LEFT")
     statusText:SetWordWrap(false)
     UI.SetFont(statusText, 11, "", UI.COLORS.TEXT_DIM.r, UI.COLORS.TEXT_DIM.g, UI.COLORS.TEXT_DIM.b, 1)
@@ -3885,33 +3947,43 @@ function addonTable.CreateMainConfigUI()
     local function SetStatusCapsuleDisplay(rawStr)
         lastStatusRawStr = rawStr or ""
         local clean = tostring(lastStatusRawStr):gsub("^|c%x%x%x%x%x%x%x%x%*|r%s*", ""):gsub("^%*%s*", ""):gsub("%s+|%s+", "  |  ")
-        if clean:find("Loaded:") then
-            statusPip:Hide()
-            statusText:ClearAllPoints()
-            statusText:SetPoint("LEFT", statusContentHolder, "LEFT", 0, 0)
-            statusText:SetPoint("RIGHT", statusCapsule, "RIGHT", -14, 0)
+        local boxW = statusCapsule:GetWidth() or 510
+        if boxW < 180 then boxW = 340 end
+        local isNarrowHdr = ((f:GetWidth() or 1040) < 920) or (boxW < 420)
+        if clean:find("Loaded:") or isNarrowHdr then
+            if clean:find("|T") then
+                statusPip:Hide()
+                statusText:ClearAllPoints()
+                statusText:SetPoint("LEFT", statusContentHolder, "LEFT", 0, 0)
+                statusText:SetPoint("RIGHT", statusCapsule, "RIGHT", -10, 0)
+            else
+                statusPip:Show()
+                statusText:ClearAllPoints()
+                statusText:SetPoint("LEFT", statusPip, "RIGHT", 7, 0)
+                statusText:SetPoint("RIGHT", statusCapsule, "RIGHT", -10, 0)
+            end
         else
             statusPip:Show()
             statusText:ClearAllPoints()
             statusText:SetPoint("LEFT", statusPip, "RIGHT", 7, 0)
-            statusText:SetPoint("RIGHT", statusCapsule, "RIGHT", -14, 0)
+            statusText:SetPoint("RIGHT", statusCapsule, "RIGHT", -10, 0)
         end
-        UI.SetFont(statusText, 11, "", UI.COLORS.TEXT_DIM.r, UI.COLORS.TEXT_DIM.g, UI.COLORS.TEXT_DIM.b, 1)
+        UI.SetFont(statusText, isNarrowHdr and 10 or 11, "", UI.COLORS.TEXT_DIM.r, UI.COLORS.TEXT_DIM.g, UI.COLORS.TEXT_DIM.b, 1)
         statusText:SetText(clean)
-        local boxW = statusCapsule:GetWidth() or 510
-        if boxW < 200 then boxW = 510 end
         local tw = statusText:GetStringWidth() or 220
-        if (tw + 36) > boxW then
+        if (not isNarrowHdr) and (tw + 32) > boxW then
             UI.SetFont(statusText, 10, "", UI.COLORS.TEXT_DIM.r, UI.COLORS.TEXT_DIM.g, UI.COLORS.TEXT_DIM.b, 1)
             statusText:SetText(clean)
             tw = statusText:GetStringWidth() or 200
         end
-        local maxW = math.max(120, boxW - 28)
+        local maxW = math.max(100, boxW - 20)
         local pad = statusPip:IsShown() and 14 or 0
         statusContentHolder:SetWidth(math.min(maxW, tw + pad))
     end
     statusCapsule:SetScript("OnSizeChanged", function()
-        if lastStatusRawStr ~= "" then
+        if f.UpdateStatusBar then
+            f.UpdateStatusBar(true)
+        elseif lastStatusRawStr ~= "" then
             SetStatusCapsuleDisplay(lastStatusRawStr)
         end
     end)
@@ -4183,6 +4255,9 @@ function addonTable.CreateMainConfigUI()
                 f.reloadUIBtn.label:SetText("Reload UI")
                 f.reloadUIBtn:SetSelected(false)
             end
+            local rw = (f.reloadUIBtn.label.GetUnboundedStringWidth and f.reloadUIBtn.label:GetUnboundedStringWidth())
+                or (f.reloadUIBtn.label.GetStringWidth and f.reloadUIBtn.label:GetStringWidth()) or 60
+            f.reloadUIBtn:SetWidth(math.max(78, math.ceil(rw + 18)))
         end
         if f.UpdateResetButtonLabel then
             f.UpdateResetButtonLabel()
@@ -4236,8 +4311,13 @@ function addonTable.CreateMainConfigUI()
         local envDetail = (addonTable.GetEnvironmentDetail and addonTable.GetEnvironmentDetail()) or "Outdoor"
         local profName = (DynamicLoadDB and DynamicLoadDB.profiles and DynamicLoadDB.profiles[loadedProf] and DynamicLoadDB.profiles[loadedProf].name) or loadedProf
         local stagedStr = (deltaCount > 0) and string.format("|cFFF59E0B%d Pending Reload|r", deltaCount) or "|cFF22C55EIn Sync|r"
-
-        if isOverride then
+        local isNarrowHdr = ((f:GetWidth() or 1040) < 920)
+        if isNarrowHdr then
+            local compactStaged = (deltaCount > 0) and string.format("|cFFF59E0B%d Pending|r", deltaCount) or "|cFF22C55ESynced|r"
+            local compactEnv = tostring(envDetail):gsub("%s*%b()", "")
+            local compactMode = isOverride and "|cFFF5B82E[Man]|r" or "[Auto]"
+            SetStatusCapsuleDisplay(string.format("|cFF22C55E|TInterface\\Buttons\\WHITE8X8:6:6:0:0:8:8:0:8:0:8:34:197:94|t|r |cFFFFFFFF%s|r %s  |  |cFF38BDF8|TInterface\\Buttons\\WHITE8X8:6:6:0:0:8:8:0:8:0:8:56:189:248|t|r |cFFFFFFFF%s|r  |  %s", profName, compactMode, compactEnv, compactStaged))
+        elseif isOverride then
             SetStatusCapsuleDisplay(string.format("|cFF22C55E|TInterface\\Buttons\\WHITE8X8:6:6:0:0:8:8:0:8:0:8:34:197:94|t Loaded:|r |cFFFFFFFF%s|r |cFFF5B82E[Manual]|r   |   |cFF38BDF8|TInterface\\Buttons\\WHITE8X8:6:6:0:0:8:8:0:8:0:8:56:189:248|t Location:|r |cFFFFFFFF%s|r   |   State: %s", profName, envDetail, stagedStr))
         else
             SetStatusCapsuleDisplay(string.format("|cFF22C55E|TInterface\\Buttons\\WHITE8X8:6:6:0:0:8:8:0:8:0:8:34:197:94|t Loaded:|r |cFFFFFFFF%s [Auto]|r   |   |cFF38BDF8|TInterface\\Buttons\\WHITE8X8:6:6:0:0:8:8:0:8:0:8:56:189:248|t Location:|r |cFFFFFFFF%s|r   |   State: %s", profName, envDetail, stagedStr))
@@ -4568,16 +4648,22 @@ function addonTable.CreateMainConfigUI()
     gripTex:SetDesaturated(true)
     gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
 
-    resizeGrip:SetScript("OnEnter", function()
+    resizeGrip:SetScript("OnEnter", function(selfGrip)
         local ar, ag, ab = GetActiveAccentColor()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
         gripTex:SetDesaturated(false)
         gripTex:SetVertexColor(ar, ag, ab, 0.95)
+        GameTooltip:SetOwner(selfGrip, "ANCHOR_TOP")
+        GameTooltip:SetText("Resize DynamicSuite", 1, 1, 1)
+        GameTooltip:AddLine("Left-Click & Drag: Resize window (min 800x520)", 0.82, 0.86, 0.92, true)
+        GameTooltip:AddLine("Right-Click: Reset to default size (1040x680)", 0.82, 0.86, 0.92, true)
+        GameTooltip:Show()
     end)
     resizeGrip:SetScript("OnLeave", function()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
         gripTex:SetDesaturated(true)
         gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+        GameTooltip:Hide()
     end)
     resizeGrip:SetScript("OnMouseDown", function(_, button)
         if button == "LeftButton" then
@@ -4801,8 +4887,33 @@ function addonTable.CreateMainConfigUI()
     dockHint:SetJustifyH("LEFT")
     dockHint:SetWordWrap(false)
     UI.SetFont(dockHint, 10, "", 0.431, 0.463, 0.506, 1)
-    dockHint:SetText("Active Module: DynamicLoad   |cFF475569|||r   Slash: /dl")
+    dockHint._fullText = "Active Module: DynamicLoad   |cFF475569|||r   Slash: /dl"
+    dockHint._shortText = "DynamicLoad (/dl)"
+    dockHint:SetText(dockHint._fullText)
     f.dockHint = dockHint
+
+    local function RefreshFooterResponsiveLayout()
+        local fw = (f and f.GetWidth and f:GetWidth()) or 1040
+        if f.dockHint then
+            if fw < 860 then
+                f.dockHint:Hide()
+            elseif fw < 940 then
+                f.dockHint:Show()
+                f.dockHint:SetText(f.dockHint._shortText or f.dockHint._fullText or "")
+            else
+                f.dockHint:Show()
+                f.dockHint:SetText(f.dockHint._fullText or "")
+            end
+        end
+    end
+    f.RefreshFooterResponsiveLayout = RefreshFooterResponsiveLayout
+    f.SetDockHintModule = function(fullTxt, shortTxt)
+        if not f.dockHint then return end
+        f.dockHint._fullText = fullTxt
+        f.dockHint._shortText = shortTxt or fullTxt
+        RefreshFooterResponsiveLayout()
+    end
+    RefreshFooterResponsiveLayout()
 
     local function ApplyWindowOpacity(val)
         val = math.max(OPA_MIN, math.min(OPA_MAX, val or 0.98))
@@ -6046,7 +6157,12 @@ function addonTable.CreateMainConfigUI()
                             f.verPill.label:SetText("v" .. tostring(mVer))
                         end
                         UpdateStatusBar(true)
-                        if f.dockHint then
+                        if f.SetDockHintModule then
+                            f.SetDockHintModule(
+                                string.format("Active Module: %s   |cFF475569|||r   Slash: %s", modInfo.title or addonKey, modInfo.slash or "/ds"),
+                                string.format("%s (%s)", modInfo.title or addonKey, modInfo.slash or "/ds")
+                            )
+                        elseif f.dockHint then
                             f.dockHint:SetText(string.format("Active Module: %s   |cFF475569|||r   Slash: %s", modInfo.title or addonKey, modInfo.slash or "/ds"))
                         end
                         if f.UpdateModuleConflictBanner then
@@ -6680,8 +6796,8 @@ function addonTable.CreateMainConfigUI()
         if not workspace then return end
         local fw = (f:GetWidth() or 0)
         local fh = (f:GetHeight() or 0)
-        if fw < 980 then fw = PANEL_W end
-        if fh < 640 then fh = PANEL_H end
+        if fw < 800 then fw = PANEL_W end
+        if fh < 520 then fh = PANEL_H end
         workspace:ClearAllPoints()
         workspace:SetPoint("TOPLEFT", f, "TOPLEFT", RAIL_W + 1, -HDR_H)
         workspace:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, DOCK_H)
@@ -6701,7 +6817,7 @@ function addonTable.CreateMainConfigUI()
         local mcBanner = CreateFrame("Frame", nil, workspace)
         mcBanner:SetPoint("TOPLEFT", workspace, "TOPLEFT", 14, -8)
         mcBanner:SetPoint("TOPRIGHT", workspace, "TOPRIGHT", -16, -8)
-        mcBanner:SetHeight(50)
+        mcBanner:SetHeight(60)
         mcBanner:SetFrameLevel((workspace:GetFrameLevel() or 2) + 25)
         mcBanner.bg = UI.SolidTex(mcBanner, "BACKGROUND", 1, 0.12, 0.08, 0.04, 0.96)
         mcBanner.bg:SetAllPoints()
@@ -6735,7 +6851,8 @@ function addonTable.CreateMainConfigUI()
         mcSub:SetPoint("TOPLEFT", mcTitle, "BOTTOMLEFT", 0, -3)
         mcSub:SetPoint("RIGHT", mcBtnPrimary, "LEFT", -10, 0)
         mcSub:SetJustifyH("LEFT")
-        mcSub:SetWordWrap(false)
+        mcSub:SetWordWrap(true)
+        if mcSub.SetMaxLines then mcSub:SetMaxLines(2) end
         UI.SetFont(mcSub, 9.5, "", 0.86, 0.89, 0.94, 0.95)
         mcBanner.sub = mcSub
 
@@ -6802,7 +6919,7 @@ function addonTable.CreateMainConfigUI()
                 local extraCount = #hardList - 1
                 local nameDisplay = (extraCount > 0) and string.format("%s (+%d more)", cAddon, extraCount) or cAddon
 
-                mcBanner:SetHeight(50)
+                mcBanner:SetHeight(60)
                 mcBanner.bg:SetColorTexture(0.13, 0.08, 0.04, 0.96)
                 mcBanner.dsBorder:SetColor(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 0.88)
                 mcBanner.leftBar:SetColorTexture(UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 1.0)
@@ -6812,7 +6929,7 @@ function addonTable.CreateMainConfigUI()
                 mcTitle:SetPoint("RIGHT", mcBtnPrimary, "LEFT", -10, 0)
                 UI.SetFont(mcTitle, 10.5, "", UI.COLORS.GOLD.r, UI.COLORS.GOLD.g, UI.COLORS.GOLD.b, 1.0)
                 if cAddon == "DecorVendor" then
-                    mcTitle:SetText("Raid Marker Blocked: Decor Vendor taints Blizzard's /tm command (SetRaidTarget).")
+                    mcTitle:SetText("Raid Marker Blocked: Decor Vendor interferes with Blizzard's /tm command.")
                 else
                     mcTitle:SetText(string.format("Conflict Detected: %s is currently active and may cause UI errors or blocked actions.", nameDisplay))
                 end
@@ -6850,7 +6967,7 @@ function addonTable.CreateMainConfigUI()
                         mcBanner.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.88)
                         mcBanner.leftBar:SetColorTexture(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.b and UI.COLORS.EMERALD.g or 0.725, UI.COLORS.EMERALD.b, 1.0)
                         mcTitle:SetText("Decor Vendor Disabled (Set to Never) - Exit & Restart Required.")
-                        mcSub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear SetRaidTarget taint).")
+                        mcSub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear this conflict).")
                         mcBtnPrimary:Hide()
                         mcBtnSecondary:Hide()
                     else
@@ -6890,7 +7007,7 @@ function addonTable.CreateMainConfigUI()
                             mcBanner.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.88)
                             mcBanner.leftBar:SetColorTexture(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
                             mcTitle:SetText("Decor Vendor Disabled (Set to Never) - Exit & Restart Required.")
-                            mcSub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear SetRaidTarget taint).")
+                            mcSub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear this conflict).")
                             mcBtnPrimary:Hide()
                             mcBtnSecondary:Hide()
                         else
@@ -6912,10 +7029,10 @@ function addonTable.CreateMainConfigUI()
                 end
 
                 mcBanner:Show()
-                ApplyWorkspaceHostTopOffset(56)
+                ApplyWorkspaceHostTopOffset(66)
             else
                 if mcBanner._pendingReloadFor == "DecorVendor" then
-                    mcBanner:SetHeight(50)
+                    mcBanner:SetHeight(60)
                     mcBanner.bg:SetColorTexture(0.035, 0.039, 0.051, 0.96)
                     mcBanner.dsBorder:SetColor(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 0.88)
                     mcBanner.leftBar:SetColorTexture(UI.COLORS.EMERALD.r, UI.COLORS.EMERALD.g, UI.COLORS.EMERALD.b, 1.0)
@@ -6926,11 +7043,11 @@ function addonTable.CreateMainConfigUI()
                     mcTitle:SetText("Decor Vendor Disabled (Set to Never) - Exit & Restart Required.")
                     mcSub:Show()
                     UI.SetFont(mcSub, 9.5, "", 0.84, 0.88, 0.94, 0.95)
-                    mcSub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear SetRaidTarget taint).")
+                    mcSub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear this conflict).")
                     mcBtnPrimary:Hide()
                     mcBtnSecondary:Hide()
                     mcBanner:Show()
-                    ApplyWorkspaceHostTopOffset(56)
+                    ApplyWorkspaceHostTopOffset(66)
                 else
                     mcBanner._pendingReloadFor = nil
                     mcBanner:Hide()
@@ -7476,6 +7593,31 @@ function addonTable.CreateMainConfigUI()
         UI.CreatePixelBorder(rBtn, 1, 1, 1, 0.25, 4)
         studioRecentBtns[i] = rBtn
     end
+    local function LayoutSwatchCard(cardW)
+        local cw = cardW or (swatchCard.GetWidth and swatchCard:GetWidth()) or 780
+        if cw < 100 then cw = 780 end
+        local isCompact = (cw < 650)
+        local swW = isCompact and 24 or 32
+        local swStep = isCompact and 28 or 38
+        for idx, sBtn in ipairs(presetSwatchBtns) do
+            local colIdx = (idx - 1) % 9
+            local rowIdx = math.floor((idx - 1) / 9)
+            sBtn:SetSize(swW, 24)
+            sBtn:ClearAllPoints()
+            sBtn:SetPoint("TOPLEFT", scHdr, "BOTTOMLEFT", colIdx * swStep, -8 - (rowIdx * 30))
+        end
+        if customPickBtn then
+            customPickBtn:SetWidth(isCompact and 132 or 148)
+        end
+        if autoClassBtn then
+            autoClassBtn:SetWidth(isCompact and 118 or 134)
+            autoClassBtn:ClearAllPoints()
+            autoClassBtn:SetPoint("RIGHT", customPickBtn, "LEFT", isCompact and -6 or -8, 0)
+        end
+    end
+    swatchCard:HookScript("OnSizeChanged", function(_, w) LayoutSwatchCard(w) end)
+    swatchCard:HookScript("OnShow", function(self) LayoutSwatchCard(self:GetWidth()) end)
+    LayoutSwatchCard()
     end
 
     -- Reusable Sleek Obsidian Dropdown Control + Direction A Segmented Pills + Inline Sub-Drawer
@@ -9774,6 +9916,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "UI",       title = "v2.10.2 Release (25/11/2026): Pass 7 Hardening, 800x520 Clamping & DynamicLoad Standalone Parity", desc = "Fixed the standalone DynamicMarker exclusion check, added secret-safe player, combat, addon-API, and profiler wrappers across DynamicLoad and DynamicSuite_UI, hardened Patch 12.1.7 Mythic+, PvP, and Lorewalking zone detection, synced all 13 dual-mode modules across Core Suite registries, lowered DynamicSuite's minimum size to 800x520 with responsive header status, footer dock, conflict banner, and Suite Studio reflow, added a 2-row DynamicLoad toolbar below 700px alongside compact telemetry, legend, alt banner, and Alert Toast controls, upgraded DynamicLoad's scrollbar and standalone window to full resizable parity with a 14x14 Suite Accent resize grip and 2-click Reset guard, and standardised copy into plain Australian English." },
                 { badge = "FIXED",    title = "v2.10.2 Release (25/11/2026): Multi-Quest NPC State Sync & DynamicPrep Auto-Accept Handoff", desc = "Prioritised live server interaction state over suppressed off-screen Blizzard frames across DynamicDialogue and DynamicPrep (preserving bag-item, AreaTrigger, and field QUEST_COMPLETE popups), added live QUEST_ACCEPTED / QUEST_TURNED_IN / QUEST_LOG_UPDATE list refreshes and stale-quest filtering, eliminated duplicate >50ms retries and outgoing frame flashes, added live-session click guards, and hardened event-sequence-exact handoff across Suite and Standalone builds." },
                 { badge = "UI",       title = "v2.10.2 Release (25/11/2026): Pass 6 UI Refinement Across DynamicCursor, DynamicMail, DynamicDialogue & DynamicVault", desc = "Added resizable standalone windows, 36px Reset/Reload footers, 14x14 live Suite Accent resize grips, and theme repainting across DynamicCursor, DynamicDialogue, and DynamicVault; upgraded DynamicVault's 4px scrollbar to full 3-way interaction and proportional Vault tracks; swept all 4 modules for 800x520 clamping; and standardised copy into plain Australian English." },
                 { badge = "FIXED",    title = "v2.10.1 Release (25/11/2026): DynamicBank Single-Action Bank & Guild Bank Closing", desc = "Fixed a lingering invisible Blizzard bank interaction left open when closing DynamicBank at a Personal Bank, Warband Bank, or Guild Bank; closing DynamicBank now cleanly terminates active banker interactions, detaches and hides suppressed Blizzard bank panels out of combat, yields them across Desktop Windows, isolates child modals/dropdowns/popups on Esc without ending the live session, keeps tab switching intact, and leaves remote /dbag bank viewing untouched." },
@@ -17706,7 +17849,29 @@ function addonTable.CreateMainConfigUI()
         if f.verPill and f.verPill.label then
             f.verPill.label:SetText("v" .. (addonTable.ADDON_VERSION or "2.8.1"))
         end
-        if f.dockHint then
+        if f.SetDockHintModule then
+            if activeWorkspaceView == "SEARCH_VIEW" then
+                f.SetDockHintModule("Global Feature Finder   |cFF475569|||r   Slash: /ds search <keyword>", "Search (/ds search)")
+            elseif activeWorkspaceView == "THEME_STUDIO" then
+                f.SetDockHintModule("Active Module: Suite Studio   |cFF475569|||r   Slash: /ds studio", "Suite Studio (/ds studio)")
+            elseif activeWorkspaceView == "DYNAMICLOAD" then
+                f.SetDockHintModule("Active Module: DynamicLoad   |cFF475569|||r   Slash: /dl", "DynamicLoad (/dl)")
+            elseif (activeWorkspaceView == "PEER_MODULE" or activeWorkspaceView == "PEER_HOST") and selectedPeerModuleKey then
+                local modTitle = tostring(selectedPeerModuleKey)
+                local modSlash = "/ds"
+                for _, mInfo in ipairs(addonTable.SUITE_MODULE_LIST or {}) do
+                    local aKey = mInfo.addonName or mInfo.name or mInfo.key
+                    if selectedPeerModuleKey == aKey or selectedPeerModuleKey == mInfo.key or selectedPeerModuleKey == mInfo.id then
+                        modTitle = mInfo.title or aKey
+                        modSlash = mInfo.slash or "/ds"
+                        break
+                    end
+                end
+                f.SetDockHintModule(string.format("Active Module: %s   |cFF475569|||r   Slash: %s", modTitle, modSlash), string.format("%s (%s)", modTitle, modSlash))
+            else
+                f.SetDockHintModule("Active Module: DynamicSuite   |cFF475569|||r   Slash: /ds", "DynamicSuite (/ds)")
+            end
+        elseif f.dockHint then
             if activeWorkspaceView == "SEARCH_VIEW" then
                 f.dockHint:SetText("Global Feature Finder   |cFF475569|||r   Slash: /ds search <keyword>")
             elseif activeWorkspaceView == "THEME_STUDIO" then
@@ -17930,10 +18095,10 @@ function addonTable.CreateMainConfigUI()
                 f.minimizedBar.logo:SetAccentColor(ar, ag, ab, 1)
             end
             if f.minimizedBar.title then
-                f.minimizedBar.title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cFF94A3B8(Minimized)|r")
+                f.minimizedBar.title:SetText(UI.FormatTwoToneBrand("Suite") .. "  |cFF94A3B8(Minimised)|r")
             end
             if f.minimizedBar.restoreBtn then
-                if f.minimizedBar.editBtn then f.minimizedBar.editBtn:SetSelected(true, { r = ar, g = ag, b = ab }) end
+                f.minimizedBar.restoreBtn:SetSelected(true, { r = ar, g = ag, b = ab })
             end
             if f.minimizedBar.ReflowBarWidth then
                 f.minimizedBar:ReflowBarWidth()
@@ -17962,11 +18127,16 @@ function addonTable.CreateMainConfigUI()
             f.activateReloadBtn.dsBorder:SetColor(ar, ag, ab, 0.80)
         end
 
-        if gTbl.windowWidth and gTbl.windowWidth < 980 then gTbl.windowWidth = 1040 end
-        if DynamicLoadDB and DynamicLoadDB.windowWidth and DynamicLoadDB.windowWidth < 980 then DynamicLoadDB.windowWidth = 1040 end
+        if gTbl.windowWidth and gTbl.windowWidth < 800 then gTbl.windowWidth = 800 end
+        if gTbl.windowHeight and gTbl.windowHeight < 520 then gTbl.windowHeight = 520 end
+        if DynamicLoadDB and DynamicLoadDB.windowWidth and DynamicLoadDB.windowWidth < 800 then DynamicLoadDB.windowWidth = 800 end
+        if DynamicLoadDB and DynamicLoadDB.windowHeight and DynamicLoadDB.windowHeight < 520 then DynamicLoadDB.windowHeight = 520 end
         if gTbl.windowWidth and gTbl.windowHeight then
-            f:SetSize(math.max(980, math.min(1440, gTbl.windowWidth)), math.max(640, math.min(920, gTbl.windowHeight)))
+            f:SetSize(math.max(800, math.min(1440, gTbl.windowWidth)), math.max(520, math.min(920, gTbl.windowHeight)))
         end
+        if f.LayoutLegendCols then f.LayoutLegendCols() end
+        if f.altBanner and f.altBanner.dsBorder then f.altBanner.dsBorder:SetColor(ar, ag, ab, 0.6) end
+        if f.RefreshFooterResponsiveLayout then f.RefreshFooterResponsiveLayout() end
         if f.peerModuleHostFrame and f.peerModuleHostFrame:IsShown() and UI.NormalizeEmbeddedSubDrawers then
             UI.NormalizeEmbeddedSubDrawers(f.peerModuleHostFrame)
         end
@@ -18508,13 +18678,13 @@ function addonTable.HookGameMenu()
                 if gTbl.replaceBlizzardAddonList == false then
                     return
                 end
-                local pName = UnitName and UnitName("player")
+                local pName = SafeUnitName("player")
                 if (addonTable.IsAddonFrozen and addonTable.IsAddonFrozen("DynamicSuite"))
-                    or (C_AddOns and C_AddOns.GetAddOnEnableState and pName and (C_AddOns.GetAddOnEnableState("DynamicSuite", pName) or 0) == 0) then
+                    or (pName and SafeGetAddOnEnableState("DynamicSuite", pName) == 0) then
                     return
                 end
                 self:Hide()
-                if not InCombatLockdown() and GameMenuFrame and GameMenuFrame:IsShown() then
+                if not IsPlayerInCombat() and GameMenuFrame and GameMenuFrame:IsShown() then
                     GameMenuFrame:Hide()
                 end
                 addonTable.ShowConfigUI()
@@ -18527,7 +18697,7 @@ function addonTable.HookGameMenu()
     if GameMenuFrame and GameMenuFrame.InitButtons then
         hooksecurefunc(GameMenuFrame, "InitButtons", function(self)
             TryHookBlizzardAddonList()
-            if InCombatLockdown() then return end
+            if IsPlayerInCombat() then return end
             if not self.AddButton then return end
 
             local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
@@ -18541,7 +18711,7 @@ function addonTable.HookGameMenu()
             if showSuite then
                 self:AddButton(suiteText, function()
                     PlaySound(SOUNDKIT.IG_MAINMENU_OPTION or 856)
-                    if not InCombatLockdown() and GameMenuFrame and GameMenuFrame.Hide then
+                    if not IsPlayerInCombat() and GameMenuFrame and GameMenuFrame.Hide then
                         GameMenuFrame:Hide()
                     end
                     addonTable.ShowConfigUI()
@@ -18551,7 +18721,7 @@ function addonTable.HookGameMenu()
             if showHud then
                 self:AddButton(hudText, function()
                     PlaySound(SOUNDKIT.IG_MAINMENU_OPTION or 856)
-                    if not InCombatLockdown() and GameMenuFrame and GameMenuFrame.Hide then
+                    if not IsPlayerInCombat() and GameMenuFrame and GameMenuFrame.Hide then
                         GameMenuFrame:Hide()
                     end
                     if addonTable.EnterHudEditMode then

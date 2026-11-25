@@ -1,6 +1,56 @@
 local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
+local function IsSafeValue(v)
+    if v == nil then return false end
+    if type(_G.issecretvalue) == "function" then
+        local okS, s = pcall(_G.issecretvalue, v)
+        if okS and s then return false end
+    end
+    if type(_G.canaccessvalue) == "function" then
+        local okA, a = pcall(_G.canaccessvalue, v)
+        if okA and not a then return false end
+    end
+    return true
+end
+
+local function IsSafeString(v)
+    return IsSafeValue(v) and type(v) == "string" and v ~= ""
+end
+
+local function SafeUnitName(unit)
+    if type(_G.UnitName) ~= "function" then return nil end
+    local ok, name = pcall(_G.UnitName, unit or "player")
+    if ok and IsSafeString(name) then
+        return name
+    end
+    return nil
+end
+
+local function SafeUnitGUID(unit)
+    if type(_G.UnitGUID) ~= "function" then return nil end
+    local ok, guid = pcall(_G.UnitGUID, unit or "player")
+    if ok and IsSafeString(guid) then
+        return guid
+    end
+    return nil
+end
+
+local function SafeUnitClass(unit)
+    if type(_G.UnitClass) ~= "function" then return nil, nil end
+    local ok, classLoc, classFile = pcall(_G.UnitClass, unit or "player")
+    if ok and IsSafeString(classFile) then
+        return (IsSafeString(classLoc) and classLoc or nil), classFile
+    end
+    return nil, nil
+end
+
+local function IsInCombat()
+    if type(_G.InCombatLockdown) ~= "function" then return false end
+    local ok, inCombat = pcall(_G.InCombatLockdown)
+    return ok and inCombat == true
+end
+
 -- Hard mutual exclusion: when running as the standalone DynamicMarker addon while DynamicSuite
 -- is loaded or enabled, immediately disable standalone DynamicMarker and abort execution before
 -- any frames, SavedVariables mutations, or slash commands are registered.
@@ -8,21 +58,8 @@ if ADDON_FOLDER ~= "DynamicSuite" then
     local isSuiteLoaded = (C_AddOns and type(C_AddOns.IsAddOnLoaded) == "function" and C_AddOns.IsAddOnLoaded("DynamicSuite"))
         or (type(_G.IsAddOnLoaded) == "function" and _G.IsAddOnLoaded("DynamicSuite"))
         or (_G.DynamicSuite and _G.DynamicSuite._isHubLoaded == true)
-    local function isSafeStr(v)
-        if type(_G.issecretvalue) == "function" then
-            local okS, s = pcall(_G.issecretvalue, v)
-            if okS and s then return false end
-        end
-        if type(_G.canaccessvalue) == "function" then
-            local okA, a = pcall(_G.canaccessvalue, v)
-            if okA and not a then return false end
-        end
-        return type(v) == "string" and v ~= ""
-    end
-    local okPN, rawPName = (type(_G.UnitName) == "function") and pcall(_G.UnitName, "player") or false, nil
-    local safePName = (okPN and isSafeStr(rawPName)) and rawPName or nil
-    local okPG, rawPGuid = (type(_G.UnitGUID) == "function") and pcall(_G.UnitGUID, "player") or false, nil
-    local safePGuid = (okPG and isSafeStr(rawPGuid)) and rawPGuid or nil
+    local safePName = SafeUnitName("player")
+    local safePGuid = SafeUnitGUID("player")
     local isSuiteEnabled = false
     if C_AddOns and type(C_AddOns.GetAddOnEnableState) == "function" then
         if safePName and safePName ~= "Unknown" and safePName ~= _G.UNKNOWNOBJECT then
@@ -91,17 +128,15 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
             return true
         end
         if type(getAddOnEnableState) == "function" then
-            local okPN, rawPName = (type(_G.UnitName) == "function") and pcall(_G.UnitName, "player") or false, nil
-            local pName = (okPN and type(rawPName) == "string" and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(rawPName))) and rawPName or nil
-            if pName and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
+            local pName = SafeUnitName("player")
+            if pName and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
                 local ok, st = pcall(getAddOnEnableState, name, pName)
                 if ok and type(st) == "number" and st > 0 then return true end
             end
             local ok2, st2 = pcall(getAddOnEnableState, name)
             if ok2 and type(st2) == "number" and st2 > 0 then return true end
-            local okPG, rawPGuid = (type(_G.UnitGUID) == "function") and pcall(_G.UnitGUID, "player") or false, nil
-            local pGuid = (okPG and type(rawPGuid) == "string" and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(rawPGuid))) and rawPGuid or nil
-            if pGuid and pGuid ~= "" then
+            local pGuid = SafeUnitGUID("player")
+            if pGuid then
                 local ok3, st3 = pcall(getAddOnEnableState, name, pGuid)
                 if ok3 and type(st3) == "number" and st3 > 0 then return true end
             end
@@ -125,8 +160,8 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
                 _G.DynamicSuite._standaloneMarkerConflictDetected = true
             end
             if C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
-                local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
-                if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
+                local pName = SafeUnitName("player")
+                if pName and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
                     pcall(C_AddOns.DisableAddOn, standaloneName or addonFolder, pName)
                 end
                 pcall(C_AddOns.DisableAddOn, standaloneName or addonFolder)
@@ -227,7 +262,7 @@ local WORLD_FLARES = {
 DM.WORLD_FLARES = WORLD_FLARES
 
 local GROUP_SCOPE_OPTIONS = {
-    { value = "BOTH",  label = "Party & Raid" },
+    { value = "BOTH",  label = "Party/Raid" },
     { value = "PARTY", label = "Party" },
     { value = "RAID",  label = "Raid" },
     { value = "ALL",   label = "All" },
@@ -239,7 +274,7 @@ local CHAT_ANNOUNCE_OPTIONS = {
 }
 
 local CHAT_CHANNEL_OPTIONS = {
-    { value = "PARTY_INSTANCE", label = "Group & Raid" },
+    { value = "PARTY_INSTANCE", label = "Group/Raid" },
     { value = "PARTY",          label = "Party Only" },
     { value = "SAY",            label = "Say" },
 }
@@ -269,9 +304,9 @@ local CLEAR_MODIFIER_OPTIONS = {
 }
 
 local FOCUS_TARGET_MODE_OPTIONS = {
-    { value = "MOUSEOVER_TARGET", label = "Mouseover + Target" },
+    { value = "MOUSEOVER_TARGET", label = "Mouseover+" },
     { value = "TARGET_ONLY",      label = "Target Only" },
-    { value = "MANUAL",           label = "Manual (Custom)" },
+    { value = "MANUAL",           label = "Manual" },
 }
 
 local KICK_PRIORITY_OPTIONS = {
@@ -650,14 +685,18 @@ local function FM_CollectCandidateSources(raw)
 
     if type(raw.profiles) == "table" then
         local charKey, playerName
-        if type(UnitName) == "function" then
-            local okN, name = pcall(UnitName, "player")
-            local okR, realm = pcall(GetRealmName)
-            if okN and type(name) == "string" and name ~= "" then
-                playerName = name
-                if okR and type(realm) == "string" and realm ~= "" then
-                    charKey = name .. " - " .. realm
-                end
+        local name = SafeUnitName("player")
+        local realm = nil
+        if type(_G.GetRealmName) == "function" then
+            local okR, rawRealm = pcall(_G.GetRealmName)
+            if okR and IsSafeString(rawRealm) then
+                realm = rawRealm
+            end
+        end
+        if name then
+            playerName = name
+            if realm then
+                charKey = name .. " - " .. realm
             end
         end
         local profileName
@@ -1347,7 +1386,7 @@ function DM:GetAccentColor()
         local b = tonumber(gTbl.customAccent.b) or 0.180
         return r, g, b, SanitizeHex6(nil, r, g, b)
     elseif accentKey == "AUTO_CLASS" then
-        local _, classFile = UnitClass("player")
+        local _, classFile = SafeUnitClass("player")
         local c = classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
         if c then
             return c.r, c.g, c.b, SanitizeHex6(c.colorStr, c.r, c.g, c.b)
@@ -1369,7 +1408,7 @@ function DM:GetAccentColor()
     local themeKey = (self.suiteGlobal and self.suiteGlobal.theme) or "GOLD"
     local preset = THEME_PRESETS[themeKey] or THEME_PRESETS.GOLD
     if preset.isClass then
-        local _, classFile = UnitClass("player")
+        local _, classFile = SafeUnitClass("player")
         local c = classFile and RAID_CLASS_COLORS and RAID_CLASS_COLORS[classFile]
         if c then
             return c.r, c.g, c.b, SanitizeHex6(c.colorStr or preset.hex, c.r, c.g, c.b)
@@ -2585,6 +2624,17 @@ local function CreateSectionHeader(parent, arg2, arg3, subtitleText, padOverride
         DM:StyleFont(sub, 10, "", { r = 0.64, g = 0.70, b = 0.78, a = 1.0 })
         sub:SetText(subtitleText)
         hdr.subtitle = sub
+        hdr:SetScript("OnEnter", function(s)
+            if s.subtitle and s.subtitle.IsTruncated and s.subtitle:IsTruncated() and GameTooltip then
+                GameTooltip:SetOwner(s, "ANCHOR_TOPLEFT")
+                GameTooltip:SetText(s.title and s.title:GetText() or "", 1, 1, 1)
+                GameTooltip:AddLine(s.subtitle:GetText() or "", 0.80, 0.85, 0.92, true)
+                GameTooltip:Show()
+            end
+        end)
+        hdr:SetScript("OnLeave", function(s)
+            if GameTooltip and GameTooltip:IsOwned(s) then GameTooltip:Hide() end
+        end)
     end
 
     function hdr:SetText(newText)
@@ -3254,7 +3304,11 @@ end
 
 function DM:IsAddonEnabled(addonFolder)
     if C_AddOns and C_AddOns.GetAddOnEnableState then
-        local ok, state = pcall(C_AddOns.GetAddOnEnableState, addonFolder, UnitName("player"))
+        local pName = SafeUnitName("player")
+        local ok, state = false, nil
+        if pName then
+            ok, state = pcall(C_AddOns.GetAddOnEnableState, addonFolder, pName)
+        end
         if not ok or type(state) ~= "number" then
             ok, state = pcall(C_AddOns.GetAddOnEnableState, addonFolder)
         end
@@ -3459,7 +3513,10 @@ function DM:ResolveConflictUseDynamic(conflictAddonName)
     end
 
     if C_AddOns and C_AddOns.DisableAddOn then
-        pcall(C_AddOns.DisableAddOn, conflictAddonName, UnitName("player"))
+        local pName = SafeUnitName("player")
+        if pName then
+            pcall(C_AddOns.DisableAddOn, conflictAddonName, pName)
+        end
         pcall(C_AddOns.DisableAddOn, conflictAddonName)
     end
 
@@ -3484,16 +3541,22 @@ function DM:ResolveConflictUseDynamic(conflictAddonName)
     self:RefreshAll()
     if conflictAddonName == "DecorVendor" then
         local _, _, _, accHex = DM:GetAccentColor()
-        print(string.format("|cFF%sDynamicMarker|r: Disabled |cFFFFFFFFDecorVendor|r and set it to |cFF34D399Never|r across all zone profiles. Please completely |cFF%sExit & Restart|r World of Warcraft now (/reload alone will not clear SetRaidTarget taint).", accHex, accHex))
+        print(string.format("|cFF%sDynamicMarker|r: Disabled |cFFFFFFFFDecorVendor|r and set it to |cFF34D399Never|r across all zone profiles. Please completely |cFF%sExit & Restart|r World of Warcraft now (/reload alone will not clear the raid marker block).", accHex, accHex))
     else
         print(string.format("|cFF38BDF8DynamicMarker|r: Imported settings and disabled |cFFFFFFFF%s|r. Click |cFF10B981[Reload UI]|r to complete.", conflictAddonName))
     end
 end
 
 function DM:ResolveConflictKeepOther(conflictAddonName)
-    if C_AddOns and C_AddOns.DisableAddOn and C_AddOns.GetAddOnInfo and C_AddOns.GetAddOnInfo("DynamicMarker") then
-        pcall(C_AddOns.DisableAddOn, "DynamicMarker", UnitName("player"))
-        pcall(C_AddOns.DisableAddOn, "DynamicMarker")
+    if C_AddOns and C_AddOns.DisableAddOn and C_AddOns.GetAddOnInfo then
+        local okInfo, infoName = pcall(C_AddOns.GetAddOnInfo, "DynamicMarker")
+        if okInfo and infoName then
+            local pName = SafeUnitName("player")
+            if pName then
+                pcall(C_AddOns.DisableAddOn, "DynamicMarker", pName)
+            end
+            pcall(C_AddOns.DisableAddOn, "DynamicMarker")
+        end
     end
     _G.DynamicSuiteDB = _G.DynamicSuiteDB or {}
     _G.DynamicSuiteDB.disabledModules = _G.DynamicSuiteDB.disabledModules or {}
@@ -3580,7 +3643,10 @@ end
 function DM:ResolveAdvisoryDisable(addonName)
     if not addonName or addonName == "" then return end
     if C_AddOns and C_AddOns.DisableAddOn then
-        pcall(C_AddOns.DisableAddOn, addonName, UnitName("player"))
+        local pName = SafeUnitName("player")
+        if pName then
+            pcall(C_AddOns.DisableAddOn, addonName, pName)
+        end
         pcall(C_AddOns.DisableAddOn, addonName)
     end
     if Suite and type(Suite.SetAddonFrozen) == "function" then
@@ -3830,7 +3896,7 @@ function DM:ApplyFlareKeybinds()
         end
         if not self.flareCycleBtn or not self.flareClearBtn then return end
     end
-    if InCombatLockdown() then
+    if IsInCombat() then
         self.pendingKeybindSync = true
         return
     end
@@ -3838,21 +3904,23 @@ function DM:ApplyFlareKeybinds()
 
     self.flareCycleBtn:Show()
     self.flareClearBtn:Show()
-    ClearOverrideBindings(self.flareCycleBtn)
-    ClearOverrideBindings(self.flareClearBtn)
+    if type(_G.ClearOverrideBindings) == "function" then
+        pcall(_G.ClearOverrideBindings, self.flareCycleBtn)
+        pcall(_G.ClearOverrideBindings, self.flareClearBtn)
+    end
 
     if IsModuleDisabledInSuite("DynamicMarker") then
         return
     end
 
     local cycleKey = self.db and self.db.flareCycleKey
-    if cycleKey and cycleKey ~= "" and cycleKey ~= "NONE" then
-        SetOverrideBindingClick(self.flareCycleBtn, true, cycleKey, "DynamicMarkerFlareCycleBtn", "LeftButton")
+    if cycleKey and cycleKey ~= "" and cycleKey ~= "NONE" and type(_G.SetOverrideBindingClick) == "function" then
+        pcall(_G.SetOverrideBindingClick, self.flareCycleBtn, true, cycleKey, "DynamicMarkerFlareCycleBtn", "LeftButton")
     end
 
     local clearKey = self.db and self.db.flareClearKey
-    if clearKey and clearKey ~= "" and clearKey ~= "NONE" then
-        SetOverrideBindingClick(self.flareClearBtn, true, clearKey, "DynamicMarkerFlareClearBtn", "LeftButton")
+    if clearKey and clearKey ~= "" and clearKey ~= "NONE" and type(_G.SetOverrideBindingClick) == "function" then
+        pcall(_G.SetOverrideBindingClick, self.flareClearBtn, true, clearKey, "DynamicMarkerFlareClearBtn", "LeftButton")
     end
 end
 
@@ -3863,42 +3931,110 @@ end
 local FOCUS_MACRO_NAME = "DynamicMark"
 local KICK_MACRO_NAME  = "DynamicKick"
 
+local function SafeGetMacroIndexByName(macroName)
+    if type(_G.GetMacroIndexByName) ~= "function" or not IsSafeString(macroName) then
+        return 0
+    end
+    local ok, idx = pcall(_G.GetMacroIndexByName, macroName)
+    if ok and IsSafeValue(idx) and type(idx) == "number" and idx > 0 then
+        return idx
+    end
+    return 0
+end
+
+local function SafeGetMacroInfo(idx)
+    if type(_G.GetMacroInfo) ~= "function" or type(idx) ~= "number" or idx <= 0 then
+        return nil, nil, nil
+    end
+    local ok, mName, iconTex, body = pcall(_G.GetMacroInfo, idx)
+    if not ok then return nil, nil, nil end
+    return IsSafeString(mName) and mName or nil,
+        IsSafeValue(iconTex) and iconTex or nil,
+        (IsSafeValue(body) and type(body) == "string") and body or nil
+end
+
+local function SafeGetActionInfo(slot)
+    if type(_G.GetActionInfo) ~= "function" then return nil, nil end
+    local ok, actionType, id = pcall(_G.GetActionInfo, slot)
+    if not ok then return nil, nil end
+    return IsSafeString(actionType) and actionType or nil,
+        IsSafeValue(id) and id or nil
+end
+
+local function SafeGetActionText(slot)
+    if type(_G.GetActionText) ~= "function" then return nil end
+    local ok, txt = pcall(_G.GetActionText, slot)
+    if ok and IsSafeString(txt) then return txt end
+    return nil
+end
+
+local function SafeGetNumMacros()
+    if type(_G.GetNumMacros) ~= "function" then return 0, 0 end
+    local ok, numGlobal, numChar = pcall(_G.GetNumMacros)
+    if not ok then return 0, 0 end
+    return (IsSafeValue(numGlobal) and type(numGlobal) == "number") and numGlobal or 0,
+        (IsSafeValue(numChar) and type(numChar) == "number") and numChar or 0
+end
+
+local function SafeEditMacro(idx, name, icon, body)
+    if IsInCombat() or type(_G.EditMacro) ~= "function" then return false end
+    local ok = pcall(_G.EditMacro, idx, name, icon, body)
+    return ok
+end
+
+local function SafeCreateMacro(name, icon, body, perCharacter)
+    if IsInCombat() or type(_G.CreateMacro) ~= "function" then return nil end
+    local ok, newIdx = pcall(_G.CreateMacro, name, icon, body, perCharacter)
+    if ok and IsSafeValue(newIdx) and type(newIdx) == "number" and newIdx > 0 then
+        return newIdx
+    end
+    return nil
+end
+
+local function SafePickupMacro(idx)
+    if IsInCombat() or type(_G.PickupMacro) ~= "function" or type(idx) ~= "number" or idx <= 0 then
+        return false
+    end
+    local ok = pcall(_G.PickupMacro, idx)
+    return ok
+end
+
 function DM:FindFocusMacroIndex()
-    local idx = GetMacroIndexByName(FOCUS_MACRO_NAME)
-    if idx and idx > 0 then
+    local idx = SafeGetMacroIndexByName(FOCUS_MACRO_NAME)
+    if idx > 0 then
         return idx, FOCUS_MACRO_NAME
     end
-    local legacy1 = GetMacroIndexByName("FocusMarker")
-    if legacy1 and legacy1 > 0 then
+    local legacy1 = SafeGetMacroIndexByName("FocusMarker")
+    if legacy1 > 0 then
         return legacy1, "FocusMarker"
     end
-    local legacy2 = GetMacroIndexByName("FocusMark")
-    if legacy2 and legacy2 > 0 then
+    local legacy2 = SafeGetMacroIndexByName("FocusMark")
+    if legacy2 > 0 then
         return legacy2, "FocusMark"
     end
     return 0, nil
 end
 
 function DM:FindActiveKickMacroIndex()
-    if not GetMacroIndexByName then return 0, nil end
+    if type(_G.GetMacroIndexByName) ~= "function" then return 0, nil end
     local activeSpell, classSpells = self:ResolveActiveInterruptSpell()
     local mode = (self.db and self.db.kickSpecMode) or "SMART_SWAP"
     if mode == "SEPARATE" and classSpells and #classSpells > 1 and activeSpell then
         local sepName = "DKick" .. activeSpell:gsub("%s+", ""):sub(1, 10)
-        local sepIdx = GetMacroIndexByName(sepName)
-        if sepIdx and sepIdx > 0 then
+        local sepIdx = SafeGetMacroIndexByName(sepName)
+        if sepIdx > 0 then
             return sepIdx, sepName
         end
     end
-    local idx = GetMacroIndexByName(KICK_MACRO_NAME)
-    if idx and idx > 0 then
+    local idx = SafeGetMacroIndexByName(KICK_MACRO_NAME)
+    if idx > 0 then
         return idx, KICK_MACRO_NAME
     end
     if classSpells and #classSpells > 1 then
         for _, sp in ipairs(classSpells) do
             local mName = "DKick" .. sp:gsub("%s+", ""):sub(1, 10)
-            local mIdx = GetMacroIndexByName(mName)
-            if mIdx and mIdx > 0 then
+            local mIdx = SafeGetMacroIndexByName(mName)
+            if mIdx > 0 then
                 return mIdx, mName
             end
         end
@@ -3907,7 +4043,7 @@ function DM:FindActiveKickMacroIndex()
 end
 
 function DM:IsMacroOnActionBar(macroName)
-    if not GetActionInfo then return false, nil end
+    if type(_G.GetActionInfo) ~= "function" then return false, nil end
     local altKickName = nil
     if macroName == KICK_MACRO_NAME then
         local _, foundName = self:FindActiveKickMacroIndex()
@@ -3916,10 +4052,10 @@ function DM:IsMacroOnActionBar(macroName)
         end
     end
     for slot = 1, 180 do
-        local actionType, id = GetActionInfo(slot)
+        local actionType, id = SafeGetActionInfo(slot)
         if actionType == "macro" then
-            local mText = GetActionText and GetActionText(slot)
-            local mName = (id and GetMacroInfo and (select(1, GetMacroInfo(id)))) or nil
+            local mText = SafeGetActionText(slot)
+            local mName = (type(id) == "number") and select(1, SafeGetMacroInfo(id)) or nil
             if mText == macroName or mName == macroName then
                 return true, slot
             end
@@ -3962,13 +4098,7 @@ function DM:BuildFocusMarkerMacroBody()
 end
 
 function DM:ResolveActiveInterruptSpell()
-    local classToken = nil
-    if type(_G.UnitClass) == "function" then
-        local okC, _, cTok = pcall(_G.UnitClass, "player")
-        if okC and type(cTok) == "string" and cTok ~= "" and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(cTok)) then
-            classToken = cTok
-        end
-    end
+    local _, classToken = SafeUnitClass("player")
     local entry = classToken and CLASS_INTERRUPTS[classToken]
     if not entry then
         return "Kick", { "Kick" }, true, nil, "Kick"
@@ -3979,16 +4109,16 @@ function DM:ResolveActiveInterruptSpell()
     local specIndex = nil
     if type(getSpecFn) == "function" then
         local okS, sIdx = pcall(getSpecFn)
-        if okS and type(sIdx) == "number" and sIdx >= 1 and sIdx <= 4 then
+        if okS and IsSafeValue(sIdx) and type(sIdx) == "number" and sIdx >= 1 and sIdx <= 4 then
             specIndex = sIdx
         end
     end
     local specID, specName = nil, nil
     if specIndex and type(getSpecInfoFn) == "function" then
         local okI, sID, sName = pcall(getSpecInfoFn, specIndex)
-        if okI and type(sID) == "number" and sID > 0 then
+        if okI and IsSafeValue(sID) and type(sID) == "number" and sID > 0 then
             specID = sID
-            if type(sName) == "string" and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(sName)) then
+            if IsSafeString(sName) then
                 specName = sName
             end
         end
@@ -4023,15 +4153,15 @@ function DM:ResolveActiveInterruptSpell()
             if C_SpellBook and C_SpellBook.IsSpellKnown then
                 local bank = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
                 local ok, res = pcall(C_SpellBook.IsSpellKnown, spellID, bank)
-                if ok and res then isKnown = true end
+                if ok and IsSafeValue(res) and res then isKnown = true end
             end
             if not isKnown and C_SpellBook and C_SpellBook.IsSpellInSpellBook then
                 local ok, res = pcall(C_SpellBook.IsSpellInSpellBook, spellID)
-                if ok and res then isKnown = true end
+                if ok and IsSafeValue(res) and res then isKnown = true end
             end
             if not isKnown and IsPlayerSpell then
                 local ok, res = pcall(IsPlayerSpell, spellID)
-                if ok and res then isKnown = true end
+                if ok and IsSafeValue(res) and res then isKnown = true end
             end
         end
         if not isKnown then
@@ -4140,7 +4270,7 @@ function DM:PatchFocusMarkerMacroBody(existingBody)
 end
 
 local function ResolveFocusMacroEditIcon(idx)
-    local _, iconTex = GetMacroInfo(idx)
+    local _, iconTex = SafeGetMacroInfo(idx)
     if iconTex == nil or iconTex == "" or iconTex == 134400 or iconTex == "INV_MISC_QUESTIONMARK" then
         return "INV_MISC_QUESTIONMARK"
     end
@@ -4151,7 +4281,7 @@ function DM:CreateOrUpdateFocusMarkerMacro(modeOrInitiated, customBody)
     local isExplicitUser = (modeOrInitiated == true or modeOrInitiated == "USER" or modeOrInitiated == "USER_FORCE")
     local isSettingChange = (modeOrInitiated == "SETTING")
 
-    if InCombatLockdown() then
+    if IsInCombat() then
         self.pendingFocusMacroSync = true
         if isExplicitUser then
             print("|cFF38BDF8DynamicMarker|r: Cannot modify macros in combat. Queued for combat exit.")
@@ -4169,13 +4299,13 @@ function DM:CreateOrUpdateFocusMarkerMacro(modeOrInitiated, customBody)
             return true
         end
         if isSettingChange then
-            local _, _, existingBody = GetMacroInfo(idx)
+            local _, _, existingBody = SafeGetMacroInfo(idx)
             local patchedBody, overLimit = self:PatchFocusMarkerMacroBody(existingBody)
             if overLimit then
                 print("|cFFF59E0BDynamicMarker|r: Custom [DynamicMark] macro exceeds 255 characters after patching; kept your existing macro untouched.")
                 return false
             end
-            EditMacro(idx, FOCUS_MACRO_NAME, ResolveFocusMacroEditIcon(idx), patchedBody)
+            SafeEditMacro(idx, FOCUS_MACRO_NAME, ResolveFocusMacroEditIcon(idx), patchedBody)
             return true
         end
     end
@@ -4191,7 +4321,7 @@ function DM:CreateOrUpdateFocusMarkerMacro(modeOrInitiated, customBody)
     end
 
     if idx and idx > 0 then
-        EditMacro(idx, FOCUS_MACRO_NAME, ResolveFocusMacroEditIcon(idx), body)
+        SafeEditMacro(idx, FOCUS_MACRO_NAME, ResolveFocusMacroEditIcon(idx), body)
         if isExplicitUser then
             if isCustomSave then
                 print(string.format("|cFF38BDF8DynamicMarker|r: Saved custom General Macro |cFFFFFFFF[%s]|r.", FOCUS_MACRO_NAME))
@@ -4203,12 +4333,12 @@ function DM:CreateOrUpdateFocusMarkerMacro(modeOrInitiated, customBody)
         end
         return true
     elseif isExplicitUser then
-        local numGlobal = GetNumMacros()
+        local numGlobal = SafeGetNumMacros()
         if numGlobal >= (MAX_ACCOUNT_MACROS or 120) then
             print("|cFFF87171DynamicMarker|r: General Macros are full! Please free 1 General Macro slot and try again.")
             return false
         end
-        local newIdx = CreateMacro(FOCUS_MACRO_NAME, "INV_MISC_QUESTIONMARK", body, false)
+        local newIdx = SafeCreateMacro(FOCUS_MACRO_NAME, "INV_MISC_QUESTIONMARK", body, false)
         if newIdx and newIdx > 0 then
             if isCustomSave then
                 print(string.format("|cFF22C55EDynamicMarker|r: Created custom General Macro |cFFFFFFFF[%s]|r! Click Step 2 to place it on your action bar.", FOCUS_MACRO_NAME))
@@ -4222,7 +4352,7 @@ function DM:CreateOrUpdateFocusMarkerMacro(modeOrInitiated, customBody)
 end
 
 function DM:CreateOrUpdateDynamicKickMacro(userInitiated)
-    if InCombatLockdown() then
+    if IsInCombat() then
         self.pendingKickMacroSync = true
         if userInitiated then
             print("|cFF38BDF8DynamicMarker|r: Cannot modify macros in combat. Queued for combat exit.")
@@ -4239,15 +4369,17 @@ function DM:CreateOrUpdateDynamicKickMacro(userInitiated)
         for _, sp in ipairs(classSpells) do
             local mName = (#classSpells > 1) and ("DKick" .. sp:gsub("%s+", ""):sub(1, 10)) or KICK_MACRO_NAME
             local mBody = self:BuildDynamicKickMacroBody(sp)
-            local idx = GetMacroIndexByName(mName)
-            if idx and idx > 0 then
-                EditMacro(idx, mName, "INV_MISC_QUESTIONMARK", mBody)
-                createdCount = createdCount + 1
-            else
-                local _, numChar = GetNumMacros()
-                if numChar < (MAX_CHARACTER_MACROS or 30) then
-                    CreateMacro(mName, "INV_MISC_QUESTIONMARK", mBody, true)
+            local idx = SafeGetMacroIndexByName(mName)
+            if idx > 0 then
+                if SafeEditMacro(idx, mName, "INV_MISC_QUESTIONMARK", mBody) then
                     createdCount = createdCount + 1
+                end
+            else
+                local _, numChar = SafeGetNumMacros()
+                if numChar < (MAX_CHARACTER_MACROS or 30) then
+                    if SafeCreateMacro(mName, "INV_MISC_QUESTIONMARK", mBody, true) then
+                        createdCount = createdCount + 1
+                    end
                 end
             end
         end
@@ -4256,20 +4388,20 @@ function DM:CreateOrUpdateDynamicKickMacro(userInitiated)
     end
 
     local body = self:BuildDynamicKickMacroBody(activeSpell)
-    local idx = GetMacroIndexByName(KICK_MACRO_NAME)
-    if idx and idx > 0 then
-        EditMacro(idx, KICK_MACRO_NAME, "INV_MISC_QUESTIONMARK", body)
+    local idx = SafeGetMacroIndexByName(KICK_MACRO_NAME)
+    if idx > 0 then
+        SafeEditMacro(idx, KICK_MACRO_NAME, "INV_MISC_QUESTIONMARK", body)
         if userInitiated then
             print(string.format("|cFF38BDF8DynamicMarker|r: Updated Character Macro |cFFFFFFFF[%s]|r -> |cFF38BDF8%s|r.", KICK_MACRO_NAME, activeSpell))
         end
         return true
     elseif userInitiated then
-        local _, numChar = GetNumMacros()
+        local _, numChar = SafeGetNumMacros()
         if numChar >= (MAX_CHARACTER_MACROS or 30) then
             print("|cFFF87171DynamicMarker|r: Character Macros are full! Please free 1 Character Macro slot and try again.")
             return false
         end
-        local newIdx = CreateMacro(KICK_MACRO_NAME, "INV_MISC_QUESTIONMARK", body, true)
+        local newIdx = SafeCreateMacro(KICK_MACRO_NAME, "INV_MISC_QUESTIONMARK", body, true)
         if newIdx and newIdx > 0 then
             print(string.format("|cFF22C55EDynamicMarker|r: Created Character Macro |cFFFFFFFF[%s]|r (|cFF38BDF8%s|r)! Click Step 2 to place it on your action bar.", KICK_MACRO_NAME, activeSpell))
             return true
@@ -4361,11 +4493,16 @@ function DM:FormatKeyShort(keyStr)
     return keyStr:gsub("BUTTON", "MB"):gsub("MiddleButton", "MB3")
 end
 
-function DM:GetStatusText()
+function DM:GetStatusText(isCompact)
     if not self.db then return "|cFF22C55E*|r DynamicMarker Ready" end
     local iconInfo = RAID_ICONS[self.db.focusIcon or 8] or RAID_ICONS[8]
     local cyc = self:FormatKeyShort((self.db.flareCycleKey ~= nil) and self.db.flareCycleKey or "")
     local clr = self:FormatKeyShort((self.db.flareClearKey ~= nil) and self.db.flareClearKey or "")
+    if isCompact then
+        local chatShort = (self.db.chatAnnounce == "MUTED") and "Off" or "On"
+        return string.format("|cFF22C55E*|r %s %s | Flares: %s/%s | Chat: %s",
+            iconInfo.emoji, iconInfo.name, cyc, clr, chatShort)
+    end
     local chatState = (self.db.chatAnnounce == "MUTED") and "Off" or "Enabled"
     return string.format("|cFF22C55E*|r Focus Icon: %s %s | World Flares: %s Cycle - %s Clear | Chat: %s",
         iconInfo.emoji, iconInfo.name, cyc, clr, chatState)
@@ -4397,7 +4534,8 @@ function DM:RefreshKeybindTelemetryAndTabTitle()
         end
     end
     if self.shellFrame and self.shellFrame.StatusText then
-        self.shellFrame.StatusText:SetText(statusStr)
+        local shellW = (self.shellFrame.GetWidth and self.shellFrame:GetWidth()) or 980
+        self.shellFrame.StatusText:SetText(self:GetStatusText(shellW < 900))
     end
     local ds = _G.DynamicSuite
     if type(ds) == "table" then
@@ -4985,6 +5123,28 @@ function DM:SetBarChildButtonsMouseEnabled(bar, enabled)
     end
 end
 
+function DM:ApplyTargetBarSecureAttributes()
+    if not self.targetBar or not self.targetBar.buttons then return end
+    if IsInCombat() then
+        self.pendingInitTargetBarAttrs = true
+        return
+    end
+    self.pendingInitTargetBarAttrs = false
+    for i = 1, 8 do
+        local btn = self.targetBar.buttons[i]
+        if btn then
+            local markCmd = "/tm [@target,exists][@focus,exists][@mouseover,exists] " .. i
+            local clearCmd = "/tm [@target,exists][@focus,exists][@mouseover,exists] 0"
+            btn:SetAttribute("type", "macro")
+            btn:SetAttribute("type1", "macro")
+            btn:SetAttribute("macrotext", markCmd)
+            btn:SetAttribute("macrotext1", markCmd)
+            btn:SetAttribute("type2", "macro")
+            btn:SetAttribute("macrotext2", clearCmd)
+        end
+    end
+end
+
 function DM:InitTargetBar()
     if self.targetBar then return end
 
@@ -4998,7 +5158,7 @@ function DM:InitTargetBar()
     self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetHUDBorderColor())
     bar.SetEditMode = function(_, enabled)
         self._inExternalSetEditMode = true
-        if not InCombatLockdown() then
+        if not IsInCombat() then
             bar:SetClampedToScreen(false)
         else
             self.pendingTargetBarSync = true
@@ -5022,7 +5182,7 @@ function DM:InitTargetBar()
         self:SaveHUDPosition(bar, "TargetBar", true, pt, rp, sx, sy)
     end
     bar:SetScript("OnDragStart", function(b)
-        if not self.isEditMode or InCombatLockdown() then return end
+        if not self.isEditMode or IsInCombat() then return end
         if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
         self.selectedHUDKey = "TargetBar"
         b:SetClampedToScreen(false)
@@ -5032,7 +5192,11 @@ function DM:InitTargetBar()
     bar:SetScript("OnDragStop", function(b)
         if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
         b:StopMovingOrSizing()
-        b:SetClampedToScreen(false)
+        if not IsInCombat() then
+            b:SetClampedToScreen(false)
+        else
+            self.pendingTargetBarSync = true
+        end
         self:SaveHUDPosition(b, "TargetBar")
     end)
 
@@ -5064,14 +5228,6 @@ function DM:InitTargetBar()
         local btn = CreateFrame("Button", "DynamicMarkerTargetBarBtn" .. i, bar, "SecureActionButtonTemplate")
         btn:SetAllPoints(cell)
         self:ConfigureSecureButtonClicks(btn)
-        local markCmd = "/tm [@target,exists][@focus,exists][@mouseover,exists] " .. i
-        local clearCmd = "/tm [@target,exists][@focus,exists][@mouseover,exists] 0"
-        btn:SetAttribute("type", "macro")
-        btn:SetAttribute("type1", "macro")
-        btn:SetAttribute("macrotext", markCmd)
-        btn:SetAttribute("macrotext1", markCmd)
-        btn:SetAttribute("type2", "macro")
-        btn:SetAttribute("macrotext2", clearCmd)
 
         btn:SetScript("PostClick", function(_, mouseBtn)
             if mouseBtn == "LeftButton" then
@@ -5087,6 +5243,7 @@ function DM:InitTargetBar()
             GameTooltip:SetText(info.label, 1, 1, 1)
             GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Set " .. info.name .. " as Focus Marker & Mark Target|r", 1, 1, 1, true)
             GameTooltip:AddLine("|cFFF87171Right-Click:|r |cFFE2E8F0Clear Raid Target Icon|r", 1, 1, 1, true)
+            GameTooltip:AddLine("|cFF94A3B8Move or Resize:|r |cFFE2E8F0Use /dm hud or /ds hud (HUD Edit Mode)|r", 1, 1, 1, true)
             GameTooltip:Show()
         end)
         btn:SetScript("OnLeave", function(s)
@@ -5099,6 +5256,7 @@ function DM:InitTargetBar()
     end
 
     self.targetBar = bar
+    self:ApplyTargetBarSecureAttributes()
     local targetHudEntry = {
         key = "TargetBar",
         label = "DynamicMarker: Icon Bar",
@@ -5205,6 +5363,28 @@ function DM:RefreshTargetBar()
     end
 end
 
+function DM:ApplyFlareBarSecureAttributes()
+    if not self.flareBar or not self.flareBar.buttons then return end
+    if IsInCombat() then
+        self.pendingInitFlareBarAttrs = true
+        return
+    end
+    self.pendingInitFlareBarAttrs = false
+    for i = 1, 8 do
+        local btn = self.flareBar.buttons[i]
+        if btn then
+            local placeFlareCmd = "/wm " .. i
+            local clearFlaresCmd = "/cwm 0\n/cwm all"
+            btn:SetAttribute("type", "macro")
+            btn:SetAttribute("type1", "macro")
+            btn:SetAttribute("macrotext", placeFlareCmd)
+            btn:SetAttribute("macrotext1", placeFlareCmd)
+            btn:SetAttribute("type2", "macro")
+            btn:SetAttribute("macrotext2", clearFlaresCmd)
+        end
+    end
+end
+
 function DM:InitFlareBar()
     if self.flareBar then return end
 
@@ -5218,7 +5398,7 @@ function DM:InitFlareBar()
     self:ApplyBackdrop(bar, COLORS.BgCanvas, self:GetHUDBorderColor())
     bar.SetEditMode = function(_, enabled)
         self._inExternalSetEditMode = true
-        if not InCombatLockdown() then
+        if not IsInCombat() then
             bar:SetClampedToScreen(false)
         else
             self.pendingFlareBarSync = true
@@ -5242,7 +5422,7 @@ function DM:InitFlareBar()
         self:SaveHUDPosition(bar, "FlareBar", true, pt, rp, sx, sy)
     end
     bar:SetScript("OnDragStart", function(b)
-        if not self.isEditMode or InCombatLockdown() then return end
+        if not self.isEditMode or IsInCombat() then return end
         if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
         self.selectedHUDKey = "FlareBar"
         b:SetClampedToScreen(false)
@@ -5252,7 +5432,11 @@ function DM:InitFlareBar()
     bar:SetScript("OnDragStop", function(b)
         if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
         b:StopMovingOrSizing()
-        b:SetClampedToScreen(false)
+        if not IsInCombat() then
+            b:SetClampedToScreen(false)
+        else
+            self.pendingFlareBarSync = true
+        end
         self:SaveHUDPosition(b, "FlareBar")
     end)
 
@@ -5283,21 +5467,13 @@ function DM:InitFlareBar()
         btn:SetAllPoints(cell)
         self:ConfigureSecureButtonClicks(btn)
 
-        local placeFlareCmd = "/wm " .. i
-        local clearFlaresCmd = "/cwm 0\n/cwm all"
-        btn:SetAttribute("type", "macro")
-        btn:SetAttribute("type1", "macro")
-        btn:SetAttribute("macrotext", placeFlareCmd)
-        btn:SetAttribute("macrotext1", placeFlareCmd)
-        btn:SetAttribute("type2", "macro")
-        btn:SetAttribute("macrotext2", clearFlaresCmd)
-
         btn:SetScript("OnEnter", function(s)
             self:ApplyBackdrop(cell, COLORS.BgHover, { r = fInfo.color.r, g = fInfo.color.g, b = fInfo.color.b, a = 1.0 })
             GameTooltip:SetOwner(s, "ANCHOR_TOP")
             GameTooltip:SetText(fInfo.short .. " World Flare", 1, 1, 1)
             GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Place " .. fInfo.short .. " World Marker|r", 1, 1, 1, true)
             GameTooltip:AddLine("|cFFF87171Right-Click:|r |cFFE2E8F0Clear All World Markers|r", 1, 1, 1, true)
+            GameTooltip:AddLine("|cFF94A3B8Move or Resize:|r |cFFE2E8F0Use /dm hud or /ds hud (HUD Edit Mode)|r", 1, 1, 1, true)
             GameTooltip:Show()
         end)
         btn:SetScript("OnLeave", function(s)
@@ -5310,6 +5486,7 @@ function DM:InitFlareBar()
     end
 
     self.flareBar = bar
+    self:ApplyFlareBarSecureAttributes()
     local flareHudEntry = {
         key = "FlareBar",
         label = "DynamicMarker: Flare Bar",
@@ -6847,7 +7024,7 @@ function DM:EnsureEditModeInspector()
         btnRight:SetPoint("LEFT", btnDown, "RIGHT", 2, 0)
         insp.arrowBtns = { btnLeft, btnUp, btnDown, btnRight }
 
-        local btnCenterH = DM:CreateButton(inspCard, "Center X", 58, 22, function()
+        local btnCenterH = DM:CreateButton(inspCard, "Centre X", 58, 22, function()
             if InCombatLockdown() then return end
             local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
             local entry = Suite.hudElements[primaryKey]
@@ -6860,7 +7037,7 @@ function DM:EnsureEditModeInspector()
         TightenLabel(btnCenterH, 3, 58)
         btnCenterH:SetPoint("LEFT", btnRight, "RIGHT", 6, 0)
 
-        local btnCenterV = DM:CreateButton(inspCard, "Center Y", 58, 22, function()
+        local btnCenterV = DM:CreateButton(inspCard, "Centre Y", 58, 22, function()
             if InCombatLockdown() then return end
             local primaryKey, _, _, _, defY = ResolveHUDKeyAliases(DM.selectedHUDKey or "TargetBar")
             local entry = Suite.hudElements[primaryKey]
@@ -7785,14 +7962,22 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
         if not isBound then
             self.Text:SetText("|cFF94A3B8Unbound (Click to Bind)|r")
         else
-            self.Text:SetText("|cFF" .. (hex or "CBD5E1") .. "[" .. k .. "]|r  |cFF94A3B8(Click Rebind)|r")
+            local disp = DM:FormatKeyShort(k)
+            if #disp > 10 then
+                disp = disp:gsub("ALT%-", "A-"):gsub("CTRL%-", "C-"):gsub("SHIFT%-", "S-")
+                self.Text:SetText("|cFF" .. (hex or "CBD5E1") .. "[" .. disp .. "]|r")
+            else
+                self.Text:SetText("|cFF" .. (hex or "CBD5E1") .. "[" .. disp .. "]|r  |cFF94A3B8(Rebind)|r")
+            end
         end
     end
     btn.RefreshKey = btn.RefreshValue
 
     function btn:StopCapture(commitKey)
         self.isCapturing = false
-        self:EnableKeyboard(false)
+        if not IsInCombat() and self.EnableKeyboard then
+            pcall(self.EnableKeyboard, self, false)
+        end
         self:SetScript("OnKeyDown", nil)
         self:SetScript("OnMouseDown", nil)
         DM:ApplyBackdrop(self, COLORS.BgElevated, COLORS.BorderStrong)
@@ -7812,13 +7997,19 @@ function DM:CreateKeybindButton(parent, width, getter, setter, defaultKey)
             s:StopCapture(nil)
             return
         end
+        if IsInCombat() then
+            print("|cFF38BDF8DynamicMarker|r: Cannot change keybinds during combat.")
+            return
+        end
 
         s.isCapturing = true
         s.Text:SetText("|cFFF59E0BPress key (Esc cancel, Del unbind)|r")
         DM:ApplyBackdrop(s, COLORS.BgHover, COLORS.Amber)
-        s:EnableKeyboard(true)
+        if s.EnableKeyboard then
+            pcall(s.EnableKeyboard, s, true)
+        end
         if s.SetPropagateKeyboardInput then
-            s:SetPropagateKeyboardInput(false)
+            pcall(s.SetPropagateKeyboardInput, s, false)
         end
 
         s:SetScript("OnKeyDown", function(capBtn, key)
@@ -7930,13 +8121,13 @@ function DM:BuildWorkspace(parentContainer)
     -- A. Inline Active Addon Conflict Banner (Top of Workspace)
     -- ------------------------------------------------------------------------
     local banner = CreateFrame("Frame", nil, ws, "BackdropTemplate")
-    banner:SetHeight(58)
+    banner:SetHeight(66)
     banner:SetPoint("TOPLEFT", ws, "TOPLEFT", 14, -10)
     banner:SetPoint("TOPRIGHT", ws, "TOPRIGHT", -16, -10)
     self:ApplyBackdrop(banner, { r = 0.20, g = 0.14, b = 0.05, a = 0.96 }, COLORS.Amber, 1)
     banner:Hide()
 
-    banner.BtnKeepOther = self:CreateButton(banner, "Keep FocusMarker", 145, 26, function()
+    banner.BtnKeepOther = self:CreateButton(banner, "Keep FocusMarker", 124, 26, function()
         if banner._mode == "ADVISORY" then
             self:DismissAdvisoryConflict(banner._addonName or "DecorVendor")
         else
@@ -7944,9 +8135,11 @@ function DM:BuildWorkspace(parentContainer)
             self:ResolveConflictKeepOther(c)
         end
     end)
+    banner.BtnKeepOther.minWidth = 124
+    banner.BtnKeepOther:SetWidth(124)
     banner.BtnKeepOther:SetPoint("RIGHT", banner, "RIGHT", -12, 0)
 
-    banner.BtnUseDynamic = self:CreateButton(banner, "Import & Use DynamicMarker", 195, 26, function()
+    banner.BtnUseDynamic = self:CreateButton(banner, "Use DynamicMarker", 168, 26, function()
         if banner._mode == "ADVISORY" then
             self:ResolveAdvisoryDisable(banner._addonName or "DecorVendor")
         else
@@ -7954,6 +8147,8 @@ function DM:BuildWorkspace(parentContainer)
             self:ResolveConflictUseDynamic(c)
         end
     end, true)
+    banner.BtnUseDynamic.minWidth = 168
+    banner.BtnUseDynamic:SetWidth(168)
     banner.BtnUseDynamic:SetPoint("RIGHT", banner.BtnKeepOther, "LEFT", -8, 0)
 
     banner.BtnReload = self:CreateButton(banner, "Reload UI", 120, 26, function()
@@ -7964,16 +8159,17 @@ function DM:BuildWorkspace(parentContainer)
 
     banner.Title = banner:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     banner.Title:SetPoint("TOPLEFT", banner, "TOPLEFT", 14, -10)
-    banner.Title:SetPoint("RIGHT", banner.BtnUseDynamic, "LEFT", -16, 0)
+    banner.Title:SetPoint("RIGHT", banner.BtnUseDynamic, "LEFT", -12, 0)
     banner.Title:SetJustifyH("LEFT")
     banner.Title:SetWordWrap(false)
     self:StyleFont(banner.Title, 12, "", COLORS.Amber)
 
     banner.Sub = banner:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     banner.Sub:SetPoint("TOPLEFT", banner.Title, "BOTTOMLEFT", 0, -4)
-    banner.Sub:SetPoint("RIGHT", banner.BtnUseDynamic, "LEFT", -16, 0)
+    banner.Sub:SetPoint("RIGHT", banner.BtnUseDynamic, "LEFT", -12, 0)
     banner.Sub:SetJustifyH("LEFT")
     banner.Sub:SetWordWrap(true)
+    if banner.Sub.SetMaxLines then banner.Sub:SetMaxLines(2) end
     self:StyleFont(banner.Sub, 11, "", COLORS.TextPrimary)
 
     ws.conflictBanner = banner
@@ -8139,12 +8335,12 @@ function DM:BuildWorkspace(parentContainer)
     -- ========================================================================
     local p1 = ws.subTabPages[1].content
     local p1Sec1 = self:CreateSectionBox(p1, 0, 310)
-    local p1Hdr1 = self:CreateSectionHeader(p1Sec1, -10, "FOCUS TARGET MARKING & CHAT ANNOUNCEMENTS", "Select your preferred raid target icon, active group scope, and automatic party/raid chat announcements.")
+    local p1Hdr1 = self:CreateSectionHeader(p1Sec1, -10, "FOCUS TARGET MARKING & CHAT ANNOUNCEMENTS", "Select your focus icon, group scope, and party/raid chat announcements.")
 
     local p1Sec2 = self:CreateSectionBox(p1, nil, 356)
     p1Sec2:SetPoint("TOPLEFT", p1Sec1, "BOTTOMLEFT", 0, -14)
     p1Sec2:SetPoint("TOPRIGHT", p1Sec1, "BOTTOMRIGHT", 0, -14)
-    local p1Hdr2 = self:CreateSectionHeader(p1Sec2, -10, "ON-SCREEN FOCUS BAR HUD", "Configure visibility, orientation, border style, scale, and opacity for the floating 8-icon Focus Bar.")
+    local p1Hdr2 = self:CreateSectionHeader(p1Sec2, -10, "ON-SCREEN FOCUS ICON BAR HUD", "Visibility, layout, border, scale, and opacity for the Focus Icon Bar.")
     local p1HudBtn = self:CreateEditHudButton(p1Hdr2, function()
         self:ToggleHudEditMode("TargetBar")
     end)
@@ -8162,7 +8358,7 @@ function DM:BuildWorkspace(parentContainer)
     -- Row 1: Preferred Focus Icon (FocusMarker-Style Right-Aligned 30x30 Square Icon Picker Row)
     local r1 = self:CreateSpaciousRow(p1Sec1, -54, 58,
         "Preferred Focus Icon",
-        "Select your preferred focus icon. Automatically updates your [DynamicMark] macro and On-Screen Focus Bar.")
+        "Sets your focus icon and updates [DynamicMark] and the Focus Icon Bar.")
 
     local iconBtnSize = 30
     local iconGap = 4
@@ -8220,7 +8416,7 @@ function DM:BuildWorkspace(parentContainer)
     -- Row 2: Active Group Scope (Direction A 4-Pill Segmented Control)
     local r2 = self:CreateSpaciousRow(p1Sec1, -118, 58,
         "Active Group Scope",
-        "Choose whether focus raid target marking activates in Party & Raid, Party, Raid, or All (Solo + Group).")
+        "Choose where marking is active: Party/Raid, Party, Raid, or All.")
     local pillsScope = self:CreateSegmentedPills(r2, GROUP_SCOPE_OPTIONS,
         function()
             local _, canon = self:NormalizeGroupScope(self.db.groupScope)
@@ -8235,7 +8431,7 @@ function DM:BuildWorkspace(parentContainer)
             self:RefreshTargetBar()
             self:RefreshFlareBar()
             self:RefreshAll()
-        end, 286)
+        end, 244)
     pillsScope:SetPoint("RIGHT", r2, "RIGHT", -14, 0)
     r2:BindControl(pillsScope)
 
@@ -8266,20 +8462,20 @@ function DM:BuildWorkspace(parentContainer)
 
     local r3SubChannel = self:CreateSpaciousRow(r3, -82, 54,
         "Chat Channel",
-        "Choose which chat channel receives your Focus Icon announcement when enabled.", true)
+        "Select which chat channel receives focus icon announcements.", true)
     local pillsChatChannel = self:CreateSegmentedPills(r3SubChannel, CHAT_CHANNEL_OPTIONS,
         function() return self.db.chatChannel or "PARTY_INSTANCE" end,
         function(v)
             self.db.chatChannel = v
             self:RefreshAll()
-        end, 260)
+        end, 238)
     pillsChatChannel:SetPoint("RIGHT", r3SubChannel, "RIGHT", -14, 0)
     r3SubChannel:BindControl(pillsChatChannel)
 
-    -- Row 4: Show On-Screen Target Icon Bar (Direction A 3-Pill Segmented Control + Full-Width Horizontal Chevron Toggle Bar)
+    -- Row 4: Show On-Screen Focus Icon Bar (Direction A 3-Pill Segmented Control + Full-Width Horizontal Chevron Toggle Bar)
     local r4 = self:CreateSpaciousRow(p1Sec2, -54, 58,
-        "Show On-Screen Target Icon Bar",
-        "Control when the floating 8-icon Target Icon Bar is displayed on screen.")
+        "Show On-Screen Focus Icon Bar",
+        "Control when the floating 8-icon Focus Icon Bar is shown.")
     local pillsTargetVis = self:CreateSegmentedPills(r4, BAR_VISIBILITY_OPTIONS,
         function()
             local _, canon = self:NormalizeBarVisibility(self.db.targetBarVisibility)
@@ -8310,7 +8506,7 @@ function DM:BuildWorkspace(parentContainer)
     -- Nested Sub-Setting Cards inside r4 (Collapsible Sub-Drawer Group per DESIGN_SYSTEM.md Section 2.6)
     local r4SubOrient = self:CreateSpaciousRow(r4, -82, 54,
         "Bar Orientation",
-        "Arrange the Raid Target Bar horizontally or vertically on screen.", true)
+        "Arrange the Focus Icon Bar horizontally or vertically.", true)
     local pillsTargetOrient = self:CreateSegmentedPills(r4SubOrient, BAR_ORIENTATION_OPTIONS,
         function() return self.db.targetBarOrientation end,
         function(v)
@@ -8323,7 +8519,7 @@ function DM:BuildWorkspace(parentContainer)
 
     local r4SubBorder = self:CreateSpaciousRow(r4, -140, 54,
         "HUD Border Style",
-        "Sync floating HUD bar borders to your active Suite Accent colour, Subtle Dark, or Borderless.", true)
+        "Choose Suite Accent, Subtle Dark, or Borderless bar borders.", true)
     local pillsTargetBorder = self:CreateSegmentedPills(r4SubBorder, HUD_BORDER_STYLE_OPTIONS,
         function()
             local raw = self.db.targetBarBorderStyle or self.db.hudBorderStyle or "ACCENT"
@@ -8336,13 +8532,13 @@ function DM:BuildWorkspace(parentContainer)
             self:RefreshTargetBar()
             self:RefreshFlareBar()
             self:RefreshAll()
-        end, 276)
+        end, 260)
     pillsTargetBorder:SetPoint("RIGHT", r4SubBorder, "RIGHT", -14, 0)
     r4SubBorder:BindControl(pillsTargetBorder)
 
     local r5 = self:CreateSpaciousRow(r4, -198, 54,
-        "Raid Target Bar Scale",
-        "Adjust the size of the floating On-Screen Raid Target Bar (60% to 150%, independent of Opacity).", true)
+        "Focus Icon Bar Scale",
+        "Adjust Focus Icon Bar size (60% to 150%).", true)
     local slTargetScale = self:CreateSliderControl(r5, 0.60, 1.50, 0.05,
         function() return self.db.targetBarScale end,
         function(v)
@@ -8353,8 +8549,8 @@ function DM:BuildWorkspace(parentContainer)
     r5:BindControl(slTargetScale)
 
     local r6 = self:CreateSpaciousRow(r4, -256, 54,
-        "Raid Target Bar Opacity",
-        "Adjust the transparency of the floating On-Screen Raid Target Bar (20% to 100%, independent of Scale).", true)
+        "Focus Icon Bar Opacity",
+        "Adjust Focus Icon Bar transparency (20% to 100%).", true)
     local slTargetAlpha = self:CreateSliderControl(r6, 0.20, 1.00, 0.05,
         function() return self.db.targetBarOpacity end,
         function(v)
@@ -8449,7 +8645,7 @@ function DM:BuildWorkspace(parentContainer)
 
     local rImport = self:CreateSpaciousRow(p1Sec3, -7, 58,
         "FocusMarker Settings Migration",
-        "Import keybinds, marker order, visibility, scale, and HUD position from FocusMarkerDB.")
+        "Import keybinds, marker order, visibility, scale, and HUD position from your previous FocusMarker settings.")
     local importFMBtn = self:CreateButton(rImport, "Import from FocusMarker", 178, 28, function()
         if type(_G.FocusMarkerDB) ~= "table" then return end
         local okM, applied = self:MigrateFromFocusMarker(true)
@@ -8462,6 +8658,7 @@ function DM:BuildWorkspace(parentContainer)
     end, true)
     importFMBtn:SetPoint("RIGHT", rImport, "RIGHT", -14, 0)
     rImport:BindControl(importFMBtn)
+    self.importFMBtn = importFMBtn
 
     table.insert(self.refreshables, function()
         local hasFM = (type(_G.FocusMarkerDB) == "table")
@@ -8479,12 +8676,12 @@ function DM:BuildWorkspace(parentContainer)
     -- ========================================================================
     local p2 = ws.subTabPages[2].content
     local p2Sec1 = self:CreateSectionBox(p2, 0, 252)
-    local p2Hdr1 = self:CreateSectionHeader(p2Sec1, -10, "WORLD FLARE SEQUENCE & HARDWARE KEYBINDS", "World Flare hotkeys start Unbound so they never overwrite existing F4/F5 bindings unless you assign them here or in Guided Setup.")
+    local p2Hdr1 = self:CreateSectionHeader(p2Sec1, -10, "WORLD FLARE SEQUENCE & KEYBINDS", "Flare hotkeys start Unbound so they never overwrite your existing F4/F5 bindings.")
 
     local p2Sec2 = self:CreateSectionBox(p2, nil, 356)
     p2Sec2:SetPoint("TOPLEFT", p2Sec1, "BOTTOMLEFT", 0, -14)
     p2Sec2:SetPoint("TOPRIGHT", p2Sec1, "BOTTOMRIGHT", 0, -14)
-    local p2Hdr2 = self:CreateSectionHeader(p2Sec2, -10, "ON-SCREEN WORLD FLARE BAR HUD", "Configure visibility, orientation, border style, scale, and opacity for the floating World Flare Bar.")
+    local p2Hdr2 = self:CreateSectionHeader(p2Sec2, -10, "ON-SCREEN WORLD FLARE BAR HUD", "Visibility, layout, border, scale, and opacity for the World Flare Bar.")
     local p2HudBtn = self:CreateEditHudButton(p2Hdr2, function()
         self:ToggleHudEditMode("FlareBar")
     end)
@@ -8502,7 +8699,7 @@ function DM:BuildWorkspace(parentContainer)
     -- Row 1: Cycle World Flare Keybind (Optional, Unbound by Default)
     local fRow1 = self:CreateSpaciousRow(p2Sec1, -118, 58,
         "Cycle World Flare Keybind",
-        "Press repeatedly to place active ground flares at your cursor in sequence. Click to bind, Right-click to unbind.")
+        "Cycles active ground flares at your cursor. Right-click to unbind.")
     local kbCycle = self:CreateKeybindButton(fRow1, 204,
         function() return self.db.flareCycleKey end,
         function(newKey)
@@ -8518,7 +8715,7 @@ function DM:BuildWorkspace(parentContainer)
     -- Row 2: Clear All Flares Keybind (Optional, Unbound by Default)
     local fRow2 = self:CreateSpaciousRow(p2Sec1, -182, 58,
         "Clear All Flares Keybind",
-        "Clear all active ground flares from the battlefield in one press. Click to bind, Right-click to unbind.")
+        "Clears all placed world flares in one press. Right-click to unbind.")
     local kbClear = self:CreateKeybindButton(fRow2, 204,
         function() return self.db.flareClearKey end,
         function(newKey)
@@ -8531,18 +8728,18 @@ function DM:BuildWorkspace(parentContainer)
     fRow2:BindControl(kbClear)
     table.insert(self.refreshables, function() kbClear:RefreshValue() end)
 
-    -- Row 3: World Flare Cycle Sequence (Right-Aligned 30x30 Square Icon Strip on a 58px Row)
+    -- Row 3: Flare Cycle Order (Right-Aligned 26x26 Square Icon Strip on a 58px Row)
     local fRow3 = self:CreateSpaciousRow(p2Sec1, -54, 58,
-        "World Flare Cycle Sequence",
-        "Left-Click to toggle flare on/off. Drag left/right (or Right-Click) to reorder sequence.")
+        "Flare Cycle Order",
+        "Left-Click to toggle; drag or Right-Click to reorder.")
     fRow3.SeqReadout = fRow3.Desc
 
-    local flareBtnSize = 30
-    local flareGap = 4
+    local flareBtnSize = 26
+    local flareGap = 3
     local flareContainer = CreateFrame("Frame", nil, fRow3)
     flareContainer:SetSize((8 * flareBtnSize) + (7 * flareGap), flareBtnSize)
     flareContainer:SetPoint("RIGHT", fRow3, "RIGHT", -14, 0)
-    local resetFlareSeqBtn = self:CreateButton(fRow3, "Reset", 58, 26, function()
+    local resetFlareSeqBtn = self:CreateButton(fRow3, "Reset", 50, 26, function()
         self.db.flareOrder = { 1, 2, 3, 4, 5, 6, 7, 8 }
         self.db.flareEnabled = {
             [1] = true, [2] = true, [3] = true, [4] = true,
@@ -8562,7 +8759,7 @@ function DM:BuildWorkspace(parentContainer)
     dragGhost:SetFrameLevel(260)
     dragGhost:Hide()
     dragGhost.Icon = dragGhost:CreateTexture(nil, "ARTWORK")
-    dragGhost.Icon:SetSize(20, 20)
+    dragGhost.Icon:SetSize(18, 18)
     dragGhost.Icon:SetPoint("CENTER", dragGhost, "CENTER", 0, 0)
     dragGhost.Icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
     dragGhost.NameText = dragGhost:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -8606,7 +8803,7 @@ function DM:BuildWorkspace(parentContainer)
         card:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
         card.Icon = card:CreateTexture(nil, "ARTWORK")
-        card.Icon:SetSize(20, 20)
+        card.Icon:SetSize(18, 18)
         card.Icon:SetPoint("CENTER", card, "CENTER", 0, 0)
         card.Icon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcons")
         DisableTexturePixelSnap(card.Icon)
@@ -8762,7 +8959,7 @@ function DM:BuildWorkspace(parentContainer)
 
     local fRow4SubBorder = self:CreateSpaciousRow(fRow4, -140, 54,
         "HUD Border Style",
-        "Sync floating HUD bar borders to your active Suite Accent colour, Subtle Dark, or Borderless.", true)
+        "Choose Suite Accent, Subtle Dark, or Borderless bar borders.", true)
     local pillsFlareBorder = self:CreateSegmentedPills(fRow4SubBorder, HUD_BORDER_STYLE_OPTIONS,
         function()
             local raw = self.db.flareBarBorderStyle or self.db.hudBorderStyle or "ACCENT"
@@ -8775,13 +8972,13 @@ function DM:BuildWorkspace(parentContainer)
             self:RefreshTargetBar()
             self:RefreshFlareBar()
             self:RefreshAll()
-        end, 276)
+        end, 260)
     pillsFlareBorder:SetPoint("RIGHT", fRow4SubBorder, "RIGHT", -14, 0)
     fRow4SubBorder:BindControl(pillsFlareBorder)
 
     local fRow5 = self:CreateSpaciousRow(fRow4, -198, 54,
         "World Flare Bar Scale",
-        "Adjust the size of the floating On-Screen World Flare Bar (60% to 150%, independent of Opacity).", true)
+        "Adjust World Flare Bar size (60% to 150%).", true)
     local slFlareScale = self:CreateSliderControl(fRow5, 0.60, 1.50, 0.05,
         function() return self.db.flareBarScale end,
         function(v)
@@ -8793,7 +8990,7 @@ function DM:BuildWorkspace(parentContainer)
 
     local fRow6 = self:CreateSpaciousRow(fRow4, -256, 54,
         "World Flare Bar Opacity",
-        "Adjust the transparency of the floating On-Screen World Flare Bar (20% to 100%, independent of Scale).", true)
+        "Adjust World Flare Bar transparency (20% to 100%).", true)
     local slFlareAlpha = self:CreateSliderControl(fRow6, 0.20, 1.00, 0.05,
         function() return self.db.flareBarOpacity end,
         function(v)
@@ -8804,7 +9001,7 @@ function DM:BuildWorkspace(parentContainer)
     fRow6:BindControl(slFlareAlpha)
 
     table.insert(self.refreshables, function()
-        fRow3.SeqReadout:SetText("Left-Click to toggle flare on/off. Drag left/right (or Right-Click) to reorder sequence.")
+        fRow3.SeqReadout:SetText("Left-Click to toggle; drag or Right-Click to reorder.")
         local ar, ag, ab = self:GetAccentColor()
         for slotIdx = 1, 8 do
             local card = fRow3.cards[slotIdx]
@@ -8881,13 +9078,13 @@ function DM:BuildWorkspace(parentContainer)
     -- ========================================================================
     local p3 = ws.subTabPages[3].content
     if ws.subTabPages[3].SetContentHeight then
-        ws.subTabPages[3]:SetContentHeight(752)
+        ws.subTabPages[3]:SetContentHeight(800)
     end
 
     -- Section 1: [DynamicMark] (General Macro - All Characters)
-    local p3Sec1 = self:CreateSectionBox(p3, 0, 338)
+    local p3Sec1 = self:CreateSectionBox(p3, 0, 358)
     if p3Sec1.SetClipsChildren then p3Sec1:SetClipsChildren(true) end
-    local p3Hdr1 = self:CreateSectionHeader(p3Sec1, -10, "[DYNAMICMARK] - FOCUS & RAID TARGET MARKER (GENERAL MACRO)", "One-button modifier-free macro that sets focus and applies your preferred raid target icon.")
+    local p3Hdr1 = self:CreateSectionHeader(p3Sec1, -10, "[DYNAMICMARK] - FOCUS MARKER (GENERAL)", "One-button macro that sets focus and applies your preferred raid icon.")
 
     local focusStatusPill = CreateFrame("Frame", nil, p3Hdr1, "BackdropTemplate")
     focusStatusPill:SetSize(176, 18)
@@ -8901,7 +9098,7 @@ function DM:BuildWorkspace(parentContainer)
 
     local mRowMod = self:CreateSpaciousRow(p3Sec1, -54, 58,
         "Clear Focus Modifier",
-        "Defaults to 'None' so keybinds with pre-existing modifiers (Shift+F, Alt+4) never collide.")
+        "Optional modifier to clear focus (defaults to None).")
 
     local pillsClearMod = self:CreateSegmentedPills(mRowMod, CLEAR_MODIFIER_OPTIONS,
         function() return self.db.focusClearModifier end,
@@ -8909,13 +9106,13 @@ function DM:BuildWorkspace(parentContainer)
             self.db.focusClearModifier = v
             self:CreateOrUpdateFocusMarkerMacro("SETTING")
             self:RefreshAll()
-        end, 250)
+        end, 240)
     pillsClearMod:SetPoint("RIGHT", mRowMod, "RIGHT", -14, 0)
     mRowMod:BindControl(pillsClearMod)
 
     local mRowTargetMode = self:CreateSpaciousRow(p3Sec1, -118, 58,
         "Focus Target Mode",
-        "Choose whether [DynamicMark] checks mouseover first, uses your current target only, or keeps custom macro lines.")
+        "Set focus via mouseover then target, target only, or custom macro.")
 
     local pillsTargetMode = self:CreateSegmentedPills(mRowTargetMode, FOCUS_TARGET_MODE_OPTIONS,
         function() return self.db.focusTargetMode or "MOUSEOVER_TARGET" end,
@@ -8923,12 +9120,12 @@ function DM:BuildWorkspace(parentContainer)
             self.db.focusTargetMode = v
             self:CreateOrUpdateFocusMarkerMacro("SETTING")
             self:RefreshAll()
-        end, 340)
+        end, 256)
     pillsTargetMode:SetPoint("RIGHT", mRowTargetMode, "RIGHT", -14, 0)
     mRowTargetMode:BindControl(pillsTargetMode)
 
     local mPreviewCard1 = CreateFrame("Frame", nil, p3Sec1, "BackdropTemplate")
-    mPreviewCard1:SetHeight(144)
+    mPreviewCard1:SetHeight(164)
     mPreviewCard1:SetPoint("TOPLEFT", p3Sec1, "TOPLEFT", 14, -182)
     mPreviewCard1:SetPoint("TOPRIGHT", p3Sec1, "TOPRIGHT", -14, -182)
     if mPreviewCard1.SetClipsChildren then mPreviewCard1:SetClipsChildren(true) end
@@ -8987,23 +9184,23 @@ function DM:BuildWorkspace(parentContainer)
     end)
 
     local btnStep2Focus = self:CreateButton(mPreviewCard1, "Step 2: Drag to Action Bar", 176, 26, function()
-        if InCombatLockdown() then return end
+        if IsInCombat() then return end
         local idx = self:FindFocusMacroIndex()
-        if not idx then
+        if not idx or idx == 0 then
             self:CreateOrUpdateFocusMarkerMacro(true)
             idx = self:FindFocusMacroIndex()
         end
-        if idx and idx > 0 then PickupMacro(idx) end
+        SafePickupMacro(idx)
     end)
     btnStep2Focus:RegisterForDrag("LeftButton")
     btnStep2Focus:SetScript("OnDragStart", function()
-        if InCombatLockdown() then return end
+        if IsInCombat() then return end
         local idx = self:FindFocusMacroIndex()
-        if not idx then
+        if not idx or idx == 0 then
             self:CreateOrUpdateFocusMarkerMacro(true)
             idx = self:FindFocusMacroIndex()
         end
-        if idx and idx > 0 then PickupMacro(idx) end
+        SafePickupMacro(idx)
     end)
     btnStep2Focus:SetPoint("BOTTOMRIGHT", mPreviewCard1, "BOTTOMRIGHT", -12, 10)
 
@@ -9021,19 +9218,20 @@ function DM:BuildWorkspace(parentContainer)
     btnStep1Focus:SetPoint("RIGHT", btnStep2Focus, "LEFT", -8, 0)
 
     local focusMacroNote = mPreviewCard1:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    focusMacroNote:SetPoint("LEFT", mPreviewCard1, "BOTTOMLEFT", 14, 27)
-    focusMacroNote:SetPoint("RIGHT", btnStep1Focus, "LEFT", -10, 0)
+    focusMacroNote:SetPoint("TOPLEFT", mPreview1, "BOTTOMLEFT", 2, -6)
+    focusMacroNote:SetPoint("TOPRIGHT", mPreview1, "BOTTOMRIGHT", -2, -6)
     focusMacroNote:SetJustifyH("LEFT")
     focusMacroNote:SetWordWrap(true)
+    if focusMacroNote.SetMaxLines then focusMacroNote:SetMaxLines(2) end
     self:StyleFont(focusMacroNote, 10, "", COLORS.TextMuted)
     focusMacroNote:SetText("Note: /tm requires Raid Lead or Assistant in raids. Check Guided Setup if another addon blocks raid markers.")
 
     -- Section 2: [DynamicKick] (Character Macro - Per-Character)
-    local p3Sec2 = self:CreateSectionBox(p3, nil, 388)
+    local p3Sec2 = self:CreateSectionBox(p3, nil, 416)
     if p3Sec2.SetClipsChildren then p3Sec2:SetClipsChildren(true) end
     p3Sec2:SetPoint("TOPLEFT", p3Sec1, "BOTTOMLEFT", 0, -14)
     p3Sec2:SetPoint("TOPRIGHT", p3Sec1, "BOTTOMRIGHT", 0, -14)
-    local p3Hdr2 = self:CreateSectionHeader(p3Sec2, -10, "[DYNAMICKICK] - MULTI-SPEC INTERRUPT", "Smart character macro that automatically updates to your active specialisation's interrupt spell.")
+    local p3Hdr2 = self:CreateSectionHeader(p3Sec2, -10, "[DYNAMICKICK] - INTERRUPT MACRO", "Character macro that swaps automatically to your active spec's interrupt.")
 
     local kickStatusPill = CreateFrame("Frame", nil, p3Hdr2, "BackdropTemplate")
     kickStatusPill:SetSize(176, 18)
@@ -9049,7 +9247,7 @@ function DM:BuildWorkspace(parentContainer)
         "Interrupt Target Priority",
         "Choose target evaluation order when pressing your interrupt macro.")
 
-    local ddKickPrio = self:CreateDropdown(mRowPrio, 360, KICK_PRIORITY_OPTIONS,
+    local ddKickPrio = self:CreateDropdown(mRowPrio, 220, KICK_PRIORITY_OPTIONS,
         function() return self.db.kickPriority end,
         function(v)
             self.db.kickPriority = v
@@ -9061,7 +9259,7 @@ function DM:BuildWorkspace(parentContainer)
 
     local mRowSpec = self:CreateSpaciousRow(p3Sec2, -118, 58,
         "Multi-Spec & Alt Handling",
-        "Auto-swaps interrupt spell on specialisation change out of combat (Druid Skull Bash <-> Solar Beam, Hunter Counter Shot <-> Muzzle).")
+        "Auto-swaps your interrupt spell when changing spec out of combat.")
 
     local pillsKickSpec = self:CreateSegmentedPills(mRowSpec, KICK_SPEC_MODE_OPTIONS,
         function() return self.db.kickSpecMode end,
@@ -9074,14 +9272,14 @@ function DM:BuildWorkspace(parentContainer)
     mRowSpec:BindControl(pillsKickSpec)
 
     local mPreviewCard2 = CreateFrame("Frame", nil, p3Sec2, "BackdropTemplate")
-    mPreviewCard2:SetHeight(194)
+    mPreviewCard2:SetHeight(222)
     mPreviewCard2:SetPoint("TOPLEFT", p3Sec2, "TOPLEFT", 14, -182)
     mPreviewCard2:SetPoint("TOPRIGHT", p3Sec2, "TOPRIGHT", -14, -182)
     if mPreviewCard2.SetClipsChildren then mPreviewCard2:SetClipsChildren(true) end
     self:ApplyBackdrop(mPreviewCard2, COLORS.BgSurface, COLORS.BorderDim)
 
     local mPreview2 = CreateFrame("Frame", nil, mPreviewCard2, "BackdropTemplate")
-    mPreview2:SetHeight(140)
+    mPreview2:SetHeight(168)
     mPreview2:SetPoint("TOPLEFT", mPreviewCard2, "TOPLEFT", 12, -10)
     mPreview2:SetPoint("TOPRIGHT", mPreviewCard2, "TOPRIGHT", -12, -10)
     if mPreview2.SetClipsChildren then mPreview2:SetClipsChildren(true) end
@@ -9097,17 +9295,17 @@ function DM:BuildWorkspace(parentContainer)
     self:StyleFont(mPreview2.Code, 11, "", COLORS.TextSilver)
 
     local btnStep2Kick = self:CreateButton(mPreviewCard2, "Step 2: Drag to Action Bar", 176, 26, function()
-        if InCombatLockdown() then return end
+        if IsInCombat() then return end
         self:CreateOrUpdateDynamicKickMacro(true)
         local idx = self:FindActiveKickMacroIndex()
-        if idx and idx > 0 then PickupMacro(idx) end
+        SafePickupMacro(idx)
     end)
     btnStep2Kick:RegisterForDrag("LeftButton")
     btnStep2Kick:SetScript("OnDragStart", function()
-        if InCombatLockdown() then return end
+        if IsInCombat() then return end
         self:CreateOrUpdateDynamicKickMacro(true)
         local idx = self:FindActiveKickMacroIndex()
-        if idx and idx > 0 then PickupMacro(idx) end
+        SafePickupMacro(idx)
     end)
     btnStep2Kick:SetPoint("BOTTOMRIGHT", mPreviewCard2, "BOTTOMRIGHT", -12, 10)
 
@@ -9153,7 +9351,7 @@ function DM:BuildWorkspace(parentContainer)
         if isManual then
             local idx = self:FindFocusMacroIndex()
             if idx and idx > 0 then
-                local _, _, liveBody = GetMacroInfo(idx)
+                local _, _, liveBody = SafeGetMacroInfo(idx)
                 if type(liveBody) == "string" and liveBody ~= "" then
                     previewText = liveBody
                 end
@@ -9190,10 +9388,9 @@ function DM:BuildWorkspace(parentContainer)
         if p3Hdr2 then
             p3Hdr2:RefreshAccent()
             if hasActiveKick == false then
-                local offLabel = (offSpecDisplay and offSpecDisplay:find("/")) and "Off-Specs" or "Off-Spec"
-                p3Hdr2.title:SetText(string.format("[DYNAMICKICK] - |cFFF59E0BNO KICK IN %s|r (%s: |cFF%s%s|r)", string.upper(specName or "Healer"), string.upper(offLabel), accHex, string.upper(offSpecDisplay or sp)))
+                p3Hdr2.title:SetText(string.format("[DYNAMICKICK] - |cFFF59E0BNO KICK (%s)|r - |cFF%s%s|r", string.upper(specName or "Healer"), accHex, string.upper(offSpecDisplay or sp)))
             else
-                p3Hdr2.title:SetText(string.format("[DYNAMICKICK] - MULTI-SPEC INTERRUPT (ACTIVE: |cFF%s%s|r)", accHex, string.upper(sp)))
+                p3Hdr2.title:SetText(string.format("[DYNAMICKICK] - INTERRUPT (|cFF%s%s|r)", accHex, string.upper(sp)))
             end
         end
         mPreview2.Code:SetText(self:BuildDynamicKickMacroBody(sp))
@@ -9478,12 +9675,12 @@ function DM:ShowStudioModal(mode)
         local conflictStatus
         if #conflicts > 0 then
             if conflicts[1].name == "DecorVendor" then
-                conflictStatus = "Detected Active Conflict: DecorVendor taints Blizzard's /tm command (Disable & restart game)"
+                conflictStatus = "Detected Active Conflict: DecorVendor blocks World of Warcraft's /tm raid markers (Disable & restart game)"
             else
                 conflictStatus = "Detected Active Conflict: " .. conflicts[1].name .. " (Click button below to import & disable)"
             end
         elseif #advisories > 0 then
-            conflictStatus = "Compatibility Notice: " .. advisories[1].name .. " can taint Blizzard's /tm command in dungeons & raids."
+            conflictStatus = "Compatibility Notice: " .. advisories[1].name .. " can block World of Warcraft's /tm raid markers in dungeons & raids."
         else
             conflictStatus = READY_CHECK_TEX .. " No conflicting marker addons detected."
         end
@@ -9746,9 +9943,10 @@ function DM:ShowStudioModal(mode)
         end
 
         local badgeColors = {
-            FEATURE = "|cFF22C55E[FEATURE]|r",
-            FIX     = "|cFFEAB308[FIX]|r",
-            UI      = "|cFF38BDF8[UI]|r",
+            FEATURE  = "|cFF22C55E[FEATURE]|r",
+            IMPROVED = "|cFF10B981[IMPROVED]|r",
+            FIX      = "|cFFEAB308[FIX]|r",
+            UI       = "|cFF38BDF8[UI]|r",
         }
         local lines = {}
         local clData = DynamicMarker.CHANGELOG and DynamicMarker.CHANGELOG.entries or {}
@@ -9823,7 +10021,9 @@ function DM:ShowStudioModal(mode)
         CreateSupportCopyRow(-230, "Direct Contact & Feedback (Email):", "denteedev@gmail.com")
     end
 
-    m:SetHeight((mode == "SUPPORT" and 428) or (mode == "SETUP" and 466) or 368)
+    if mode ~= "THEME" then
+        m:SetHeight((mode == "SUPPORT" and 428) or (mode == "SETUP" and 466) or 368)
+    end
     m:Show()
     if not (InCombatLockdown and InCombatLockdown()) and m.EnableKeyboard then
         pcall(m.EnableKeyboard, m, true)
@@ -9964,8 +10164,13 @@ function DM:EnsureStandaloneShell()
     local cardHoverBg = { r = 0.145, g = 0.168, b = 0.215, a = 1.00 }
     local dividerCol = { r = 1.00, g = 1.00, b = 1.00, a = 0.08 }
 
+    local initW = math.max(760, math.min(1280, tonumber(winCfg.width) or 980))
+    local initH = math.max(480, math.min(860, tonumber(winCfg.height) or 680))
+    winCfg.width = initW
+    winCfg.height = initH
+
     local f = CreateFrame("Frame", "DynamicMarkerSuiteWindow", UIParent, "BackdropTemplate")
-    f:SetSize(winCfg.width or 980, winCfg.height or 680)
+    f:SetSize(initW, initH)
     if type(UISpecialFrames) == "table" then
         local foundSpecial = false
         for i = 1, #UISpecialFrames do
@@ -9985,7 +10190,10 @@ function DM:EnsureStandaloneShell()
     f:SetMovable(true)
     f:SetResizable(true)
     if f.SetResizeBounds then
-        f:SetResizeBounds(800, 520, 1380, 900)
+        f:SetResizeBounds(760, 480, 1280, 860)
+    else
+        if f.SetMinResize then f:SetMinResize(760, 480) end
+        if f.SetMaxResize then f:SetMaxResize(1280, 860) end
     end
     f:EnableMouse(true)
     f:RegisterForDrag("LeftButton")
@@ -9995,6 +10203,11 @@ function DM:EnsureStandaloneShell()
         local pt, _, rpt, x, y = s:GetPoint(1)
         if pt then
             winCfg.point, winCfg.relPoint, winCfg.x, winCfg.y = pt, rpt, math.floor(x + 0.5), math.floor(y + 0.5)
+        end
+    end)
+    f:HookScript("OnSizeChanged", function(s)
+        if s.StatusText and self.db then
+            s.StatusText:SetText(self:GetStatusText((s:GetWidth() or 980) < 900))
         end
     end)
     f:HookScript("OnHide", function()
@@ -10025,7 +10238,8 @@ function DM:EnsureStandaloneShell()
         end
     end)
     f:Hide()
-    self:ApplyBackdrop(f, surf.panel, COLORS.BorderStrong, 1)
+    local initR, initG, initB, initHex = self:GetAccentColor()
+    self:ApplyBackdrop(f, surf.panel, { r = initR, g = initG, b = initB, a = 0.90 }, 1)
 
     -- ------------------------------------------------------------------------
     -- Clean 3-Zone Top Header (46px height + 2px top accent bar)
@@ -10039,8 +10253,6 @@ function DM:EnsureStandaloneShell()
     header:SetPoint("TOPRIGHT", f, "TOPRIGHT", -1, -1)
     self:ApplyBackdrop(header, { r = surf.header.r, g = surf.header.g, b = surf.header.b, a = 1.0 }, { r = 0, g = 0, b = 0, a = 0 }, 0)
     f.Header = header
-
-    local initR, initG, initB, initHex = self:GetAccentColor()
 
     local headerAccentTop = header:CreateTexture(nil, "OVERLAY")
     headerAccentTop:SetHeight(2)
@@ -10603,8 +10815,22 @@ function DM:EnsureStandaloneShell()
         end
     end
 
-    scaleHit:SetScript("OnEnter", SyncScaleThumbColor)
-    scaleHit:SetScript("OnLeave", SyncScaleThumbColor)
+    scaleHit:SetScript("OnEnter", function(s)
+        SyncScaleThumbColor()
+        if GameTooltip then
+            local r, g, b = self:GetAccentColor()
+            local hex = string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+            GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            GameTooltip:SetText("Window Scale", 1, 1, 1)
+            GameTooltip:AddLine(string.format("|cFF%sLeft-Drag / Wheel:|r |cFFE2E8F0Adjust window scale (80%%-120%%)|r", hex))
+            GameTooltip:AddLine(string.format("|cFF%sRight-Click:|r |cFFE2E8F0Reset to 100%%|r", hex))
+            GameTooltip:Show()
+        end
+    end)
+    scaleHit:SetScript("OnLeave", function(s)
+        SyncScaleThumbColor()
+        if GameTooltip and GameTooltip:IsOwned(s) then GameTooltip:Hide() end
+    end)
     scaleHit:SetScript("OnMouseDown", function(s, button)
         if button == "LeftButton" then
             scaleDragging = true
@@ -10709,8 +10935,22 @@ function DM:EnsureStandaloneShell()
     end
     ApplyWindowOpacity(savedAlpha)
 
-    opaHit:SetScript("OnEnter", SyncOpaThumbColor)
-    opaHit:SetScript("OnLeave", SyncOpaThumbColor)
+    opaHit:SetScript("OnEnter", function(s)
+        SyncOpaThumbColor()
+        if GameTooltip then
+            local r, g, b = self:GetAccentColor()
+            local hex = string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+            GameTooltip:SetOwner(s, "ANCHOR_TOP")
+            GameTooltip:SetText("Window Opacity", 1, 1, 1)
+            GameTooltip:AddLine(string.format("|cFF%sLeft-Drag / Wheel:|r |cFFE2E8F0Adjust window opacity (50%%-100%%)|r", hex))
+            GameTooltip:AddLine(string.format("|cFF%sRight-Click:|r |cFFE2E8F0Reset to 98%%|r", hex))
+            GameTooltip:Show()
+        end
+    end)
+    opaHit:SetScript("OnLeave", function(s)
+        SyncOpaThumbColor()
+        if GameTooltip and GameTooltip:IsOwned(s) then GameTooltip:Hide() end
+    end)
     opaHit:SetScript("OnMouseDown", function(s, button)
         if button == "LeftButton" then
             opaDragging = true
@@ -10766,31 +11006,45 @@ function DM:EnsureStandaloneShell()
     gripTex:SetDesaturated(true)
     gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
 
-    grip:SetScript("OnEnter", function()
-        local ar, ag, ab = 0.220, 0.741, 0.973
-        if _G.DynamicSuite and _G.DynamicSuite.UI and type(_G.DynamicSuite.UI.GetActiveAccentColor) == "function" then
-            local ok, r, g, b = pcall(_G.DynamicSuite.UI.GetActiveAccentColor)
-            if ok and type(r) == "number" then ar, ag, ab = r, g, b end
-        end
+    grip:SetScript("OnEnter", function(s)
+        local ar, ag, ab = self:GetAccentColor()
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
         gripTex:SetDesaturated(false)
         gripTex:SetVertexColor(ar, ag, ab, 0.95)
+        if GameTooltip then
+            GameTooltip:SetOwner(s, "ANCHOR_TOPLEFT")
+            GameTooltip:SetText("Resize Window", 1, 1, 1)
+            GameTooltip:AddLine("Left-Drag: Resize Window | Right-Click: Reset Size", 0.80, 0.85, 0.92, true)
+            GameTooltip:Show()
+        end
     end)
-    grip:SetScript("OnLeave", function()
+    grip:SetScript("OnLeave", function(s)
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
         gripTex:SetDesaturated(true)
         gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+        if GameTooltip and GameTooltip:IsOwned(s) then GameTooltip:Hide() end
     end)
 
     grip:SetScript("OnMouseDown", function(_, mBtn)
         if mBtn == "LeftButton" then
+            self:CloseDropdownMenu()
             f:StartSizing("BOTTOMRIGHT")
+        elseif mBtn == "RightButton" then
+            self:CloseDropdownMenu()
+            f:SetSize(980, 680)
+            winCfg.width = 980
+            winCfg.height = 680
+            if self.workspaceFrame and self.workspaceFrame.ScheduleActivePageReflow then
+                self.workspaceFrame.ScheduleActivePageReflow()
+            end
         end
     end)
-    grip:SetScript("OnMouseUp", function()
-        f:StopMovingOrSizing()
-        winCfg.width  = math.floor(f:GetWidth() + 0.5)
-        winCfg.height = math.floor(f:GetHeight() + 0.5)
+    grip:SetScript("OnMouseUp", function(_, mBtn)
+        if mBtn == "LeftButton" then
+            f:StopMovingOrSizing()
+            winCfg.width  = math.max(760, math.min(1280, math.floor(f:GetWidth() + 0.5)))
+            winCfg.height = math.max(480, math.min(860, math.floor(f:GetHeight() + 0.5)))
+        end
     end)
 
     -- ------------------------------------------------------------------------
@@ -10830,7 +11084,8 @@ function DM:SelectActiveModuleInShell(modKey, externalMod)
         local _, _, _, accentHex = self:GetAccentColor()
         f.Header.ModTitle:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFMarker|r", accentHex))
         f.Header.VerBtn:SetLabel("v" .. self.version)
-        f.StatusText:SetText(self:GetStatusText())
+        local shellW = (f.GetWidth and f:GetWidth()) or 980
+        f.StatusText:SetText(self:GetStatusText(shellW < 900))
         self:BuildWorkspace(f.Content)
     else
         local renderFn = externalMod.Render or externalMod.BuildUI or externalMod.Build or externalMod.CreatePanel or externalMod.Show
@@ -10906,11 +11161,12 @@ function DM:RefreshAll()
             if self.pendingConflictReload then
                 ws.conflictBanner._mode = "RELOAD"
                 ws.conflictBanner._addonName = self.pendingConflictReload
+                ws.conflictBanner:SetHeight(58)
                 self:ApplyBackdrop(ws.conflictBanner, { r = 0.035, g = 0.075, b = 0.055, a = 0.96 }, COLORS.Green, 1)
                 self:StyleFont(ws.conflictBanner.Title, 12, "", COLORS.Green)
                 if self.pendingConflictReload == "DecorVendor" then
                     ws.conflictBanner.Title:SetText(READY_CHECK_TEX .. " DecorVendor Disabled (Set to Never) - Exit & Restart Required")
-                    ws.conflictBanner.Sub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear SetRaidTarget taint).")
+                    ws.conflictBanner.Sub:SetText("Please completely Exit & Restart World of Warcraft now (/reload alone will not clear the raid marker block).")
                     ws.conflictBanner.Title:ClearAllPoints()
                     ws.conflictBanner.Title:SetPoint("TOPLEFT", ws.conflictBanner, "TOPLEFT", 14, -10)
                     ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner, "RIGHT", -14, 0)
@@ -10936,29 +11192,34 @@ function DM:RefreshAll()
             elseif #conflicts > 0 then
                 ws.conflictBanner._mode = "HARD"
                 ws.conflictBanner._addonName = cName
+                ws.conflictBanner:SetHeight(66)
                 self:ApplyBackdrop(ws.conflictBanner, { r = 0.20, g = 0.14, b = 0.05, a = 0.96 }, COLORS.Amber, 1)
                 self:StyleFont(ws.conflictBanner.Title, 12, "", COLORS.Amber)
                 local isDV = (cName == "DecorVendor")
-                ws.conflictBanner.BtnKeepOther:SetWidth(isDV and 148 or 145)
-                ws.conflictBanner.BtnUseDynamic:SetWidth(isDV and 216 or 195)
+                ws.conflictBanner.BtnKeepOther.minWidth = 124
+                ws.conflictBanner.BtnKeepOther:SetWidth(124)
+                ws.conflictBanner.BtnUseDynamic.minWidth = 168
+                ws.conflictBanner.BtnUseDynamic:SetWidth(168)
                 ws.conflictBanner.Title:ClearAllPoints()
                 ws.conflictBanner.Title:SetPoint("TOPLEFT", ws.conflictBanner, "TOPLEFT", 14, -10)
-                ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -16, 0)
+                ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -12, 0)
                 ws.conflictBanner.Sub:ClearAllPoints()
                 ws.conflictBanner.Sub:SetPoint("TOPLEFT", ws.conflictBanner.Title, "BOTTOMLEFT", 0, -4)
-                ws.conflictBanner.Sub:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -16, 0)
+                ws.conflictBanner.Sub:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -12, 0)
                 if isDV then
-                    ws.conflictBanner.Title:SetText("Raid Marker Blocked: Decor Vendor taints Blizzard's /tm command (SetRaidTarget).")
-                    ws.conflictBanner.Sub:SetText("Disable DecorVendor (Set to Never) and completely Exit & Restart World of Warcraft (/reload will not clear it).")
-                    ws.conflictBanner.BtnUseDynamic:SetLabel("Disable DecorVendor (Never)")
+                    ws.conflictBanner.Title:SetText("Raid Markers Blocked: DecorVendor interferes with /tm.")
+                    ws.conflictBanner.Sub:SetText("Disable DecorVendor (Never) and exit & restart WoW (/reload will not clear it).")
+                    ws.conflictBanner.BtnUseDynamic:SetLabel("Disable DecorVendor")
                 else
-                    ws.conflictBanner.Title:SetText("Conflict Detected: " .. cName .. " is currently active and may cause UI errors or blocked actions.")
-                    ws.conflictBanner.Sub:SetText("Running duplicate marker addons causes macro and raid icon collisions. Choose 1-click resolution:")
+                    ws.conflictBanner.Title:SetText("Addon Conflict: " .. cName .. " is Active")
+                    ws.conflictBanner.Sub:SetText("Running both marker addons causes collisions. Choose an option:")
                     ws.conflictBanner.BtnUseDynamic:SetLabel(cName == "FocusMarker"
-                        and "Import & Use DynamicMarker"
-                        or ("Use DynamicMarker"))
+                        and "Import & Switch"
+                        or "Use DynamicMarker")
                 end
+                ws.conflictBanner.BtnUseDynamic:SetWidth(168)
                 ws.conflictBanner.BtnKeepOther:SetLabel("Keep " .. cName)
+                ws.conflictBanner.BtnKeepOther:SetWidth(124)
                 ws.conflictBanner.BtnUseDynamic:Show()
                 ws.conflictBanner.BtnKeepOther:Show()
                 ws.conflictBanner.BtnReload:Hide()
@@ -10967,18 +11228,21 @@ function DM:RefreshAll()
                 local advName = adv.name
                 ws.conflictBanner._mode = "ADVISORY"
                 ws.conflictBanner._addonName = advName
+                ws.conflictBanner:SetHeight(64)
                 self:ApplyBackdrop(ws.conflictBanner, COLORS.BgVoid, COLORS.Cyan, 1)
                 self:StyleFont(ws.conflictBanner.Title, 12, "", COLORS.Cyan)
+                ws.conflictBanner.BtnKeepOther.minWidth = 94
                 ws.conflictBanner.BtnKeepOther:SetWidth(94)
+                ws.conflictBanner.BtnUseDynamic.minWidth = 168
                 ws.conflictBanner.BtnUseDynamic:SetWidth(168)
                 ws.conflictBanner.Title:ClearAllPoints()
                 ws.conflictBanner.Title:SetPoint("TOPLEFT", ws.conflictBanner, "TOPLEFT", 14, -10)
-                ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -16, 0)
+                ws.conflictBanner.Title:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -12, 0)
                 ws.conflictBanner.Sub:ClearAllPoints()
                 ws.conflictBanner.Sub:SetPoint("TOPLEFT", ws.conflictBanner.Title, "BOTTOMLEFT", 0, -4)
-                ws.conflictBanner.Sub:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -16, 0)
-                ws.conflictBanner.Title:SetText("Compatibility Notice: " .. (adv.label or advName) .. " (" .. advName .. ") is active")
-                ws.conflictBanner.Sub:SetText("DecorVendor can taint Blizzard's /tm raid marker command in dungeons and raids (not a DynamicMarker bug).")
+                ws.conflictBanner.Sub:SetPoint("RIGHT", ws.conflictBanner.BtnUseDynamic, "LEFT", -12, 0)
+                ws.conflictBanner.Title:SetText("Compatibility Notice: " .. (adv.label or advName) .. " is active")
+                ws.conflictBanner.Sub:SetText("DecorVendor can block World of Warcraft's /tm raid marker command in dungeons and raids (not a DynamicMarker bug).")
                 ws.conflictBanner.BtnUseDynamic:SetLabel("Disable " .. advName)
                 ws.conflictBanner.BtnKeepOther:SetLabel("Dismiss")
                 ws.conflictBanner.BtnUseDynamic:Show()
@@ -11027,12 +11291,13 @@ function DM:RefreshAll()
     end
 
     if self.shellFrame and self.shellFrame:IsShown() then
-        self.shellFrame.StatusText:SetText(statusStr)
+        local shellW = (self.shellFrame.GetWidth and self.shellFrame:GetWidth()) or 980
+        self.shellFrame.StatusText:SetText(self:GetStatusText(shellW < 900))
         local ar, ag, ab, accentHex = self:GetAccentColor()
         local surf = GetStandaloneSurfaceColors(self)
         local cardBg = { r = surf.card.r, g = surf.card.g, b = surf.card.b, a = 0.96 }
         local cardBd = { r = 0.175, g = 0.200, b = 0.258, a = 0.95 }
-        self:ApplyBackdrop(self.shellFrame, surf.panel, COLORS.BorderStrong, 1)
+        self:ApplyBackdrop(self.shellFrame, surf.panel, { r = ar, g = ag, b = ab, a = 0.90 }, 1)
         if self.shellFrame.Header then
             self:ApplyBackdrop(self.shellFrame.Header, { r = surf.header.r, g = surf.header.g, b = surf.header.b, a = 1.0 }, { r = 0, g = 0, b = 0, a = 0 }, 0)
             if self.shellFrame.Header.AccentTop then
@@ -11264,6 +11529,12 @@ MarkerModuleDescriptor = {
 
 function DM:ApplyThemeToUI()
     if self.RefreshAll then self:RefreshAll() end
+    if self.importFMBtn and self.importFMBtn.RefreshStyle then
+        self.importFMBtn:RefreshStyle(false)
+    end
+    if self.editInspector and self.editInspector:IsShown() and self.RefreshEditModeInspector then
+        self:RefreshEditModeInspector()
+    end
     if self.RefreshTargetBar then self:RefreshTargetBar() end
     if self.RefreshFlareBar then self:RefreshFlareBar() end
 end
@@ -11282,6 +11553,7 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "25/11/2026",
     entries = {
+        { type = "IMPROVED", text = "Pass 7 Hardening & 800x520 Layout Polish (25/11/2026): Hardened secret-value and combat-lockdown guards across unit, spec, spell, macro, action bar, and keybind APIs; aligned standalone window resize bounds (760x480 to 1280x860) and right-click resize reset; refined 800x520 layout clamping across all three tabs and macro cards; and added HUD Edit Mode discoverability hints to Focus Icon and World Flare bar tooltips." },
         { type = "IMPROVED", text = "Release v2.10.2 - Version & Coexistence Lockstep Parity (25/11/2026): Synchronised standalone DynamicMarker metadata and coexistence checks to v2.10.2 for Retail 12.1.5 / 12.1.7 (Interface 120105, 120107)." },
         { type = "IMPROVED", text = "Release v2.10.1 - Version & Coexistence Lockstep Parity (25/11/2026): Synchronised standalone DynamicMarker metadata and coexistence checks to v2.10.1 for Retail 12.1.5 / 12.1.7 (Interface 120105, 120107)." },
         { type = "FIX",      text = "Release v2.10.0 - Live Suite Accent Sync Fallback & Lockstep Parity (25/11/2026): Updated the shared accent lookup path so standalone and integrated overlays always resolve the live Suite Accent cleanly before falling back to local profile presets, and synchronised standalone DynamicMarker metadata and coexistence checks to v2.10.0." },
@@ -11306,7 +11578,7 @@ DynamicMarker.CHANGELOG = {
         { type = "FEATURE", text = "Release v2.1.1 - 3-Row HUD Edit Appearance Dock (560x110) & First-Click Mover Parity (15/11/2026): Upgraded standalone DynamicMarkerEditModeInspector into a unified 560x110 3-row draggable inspector dock adding Row 3 live Appearance controls: Opacity slider (20%-100%, step 5%, with SetIgnoreParentAlpha mover legibility), Accent | Dark | None Border Style pills synced 1:1 with Target Icon Bar and World Flare Bar sub-settings, Horiz | Vert Orientation toggle with instant screen-bounds re-clamping, and full Position/Scale/Opacity/Border/Orientation [Reset]. Ensured the HUD selector dropdown defaults to closed on entry and Target Icon / World Flare movers appear reliably on first HUD Edit activation." },
         { type = "FIX",     text = "HUD Edit Mode Mover Visibility & Drag Shield Layering (15/11/2026): Promoted the Target Icon Bar and World Flare Bar mover overlays (editMover) to HIGH frame strata (FrameLevel + 50) with SetIgnoreParentAlpha(true) and ordered SyncEditBarStates() after bar refreshes in SetEditMode, ensuring any bar set to Shown (Group or Always) immediately displays its live preview and interactive drag shield in HUD Edit Mode (even while solo), while explicitly selecting a Hidden (Off) bar from the HUD dropdown or clicking [Edit HUD] previews it with the 'HIDDEN (Click Shown to Enable)' badge." },
         { type = "FIX",     text = "Release v2.1.0 - World Flare Keybind Dispatch & Instant Telemetry Refresh (15/11/2026): Anchored secure World Flare cycle/clear buttons on-screen (1x1, alpha 0, non-mouse-blocking), removed the SecureHandlerWrapScript button-name override so LeftButton dispatches /wm [@cursor] and /cwm all reliably in and out of combat across key-down and key-up CVars, added Right-Click unbind, and wired instant status telemetry bar and proportional 'World Flare Keys (...)' sub-tab updates whenever bindings are captured, cleared, or reset." },
-        { type = "UI",      text = "Compact Draggable HUD Edit Dock & Hidden-By-Default Movers (15/11/2026): Redesigned standalone HUD Edit Mode into a compact 560x74 2-row draggable inspector with a HUD Selector Dropdown, non-truncated Hidden/Shown toggles, Grid, Reset, Back to Suite, X/Y steppers, Center X/Y, and Scale slider (60%-150%), keeping at least 60px on-screen near screen edges while clamping bars inside screen bounds, hiding disabled movers by default, temporarily previewing explicitly selected hidden bars with 'HIDDEN (Click Shown to Enable)', and standardising Obsidian/Blaze-Orange [Edit HUD] buttons." },
+        { type = "UI",      text = "Compact Draggable HUD Edit Dock & Hidden-By-Default Movers (15/11/2026): Redesigned standalone HUD Edit Mode into a compact 560x74 2-row draggable inspector with a HUD Selector Dropdown, non-truncated Hidden/Shown toggles, Grid, Reset, Back to Suite, X/Y steppers, Centre X/Y, and Scale slider (60%-150%), keeping at least 60px on-screen near screen edges while clamping bars inside screen bounds, hiding disabled movers by default, temporarily previewing explicitly selected hidden bars with 'HIDDEN (Click Shown to Enable)', and standardising Obsidian/Blaze-Orange [Edit HUD] buttons." },
         { type = "FIX", text = "World Flare Hardware Keybinds & Custom Sequence Order (15/11/2026): Fixed Cycle Ground Flare (F4) and Clear All Flares (F5) hardware keybinds so they fire reliably in and out of combat, walk your saved and enabled World Flare Cycle Sequence in exact custom order via SecureHandlerWrapScript, and update the floating World Flare Bar to match your custom sequence order and enabled flares." },
         { type = "FIX", text = "Target Only Focus Macro Clear (15/11/2026): Updated the Target Only [DynamicMark] macro template to /focus [@target,exists,nodead][] so pressing it with a target sets focus and marks it, while pressing it with no target clears your existing focus target." },
         { type = "FEATURE", text = "Inline Manual Macro Editor & Custom Icon Preservation (15/11/2026): In Manual (Custom) mode, Sub-Tab 3's [DynamicMark] preview becomes an editable dark-obsidian multi-line EditBox (255-char limit with live character counter and Escape to unfocus) so you can write or paste custom macro lines directly inside DynamicMarker and save immediately with Step 1. Updating an existing [DynamicMark] macro now preserves any custom in-game macro icon you assigned." },
@@ -11329,10 +11601,10 @@ DynamicMarker.CHANGELOG = {
         { type = "FIX",     text = "Hardened DM:SetEditMode(false), bar.SetEditMode, and PLAYER_REGEN_DISABLED against combat-lockdown calls on protected TargetBar and FlareBar frames (deferring SetMovable, SetClampedToScreen, and Show/Hide syncs to PLAYER_REGEN_ENABLED while immediately aborting active HUD drags and closing dropdown popovers on combat entry)." },
         { type = "FIX",     text = "Fixed pressing Esc in HUD Edit Mode leaving the alignment grid and HUD movers stuck on screen: registered DynamicMarkerEditModeInspector in UISpecialFrames with an OnHide cleanup hook, suppressed duplicate grid overlay display when DynamicLoad's external HUD controller is active, and wired DM:SetEditMode(false) to exit external HUD Edit Mode cleanly." },
         { type = "UI",      text = "Expanded [DynamicMark] macro preview container height (80px code box / 134px preview card / 264px section) to prevent 4-line macro code clipping, and added reactive Step 1 / Step 2 active button highlights." },
-        { type = "UI",      text = "Standardized all sliders to the Sleek Precision Track (4px track, Suite Accent fill bar, 6x14px blade thumb) and applied Option 3 semantic styling for negative/disabled pill states." },
-        { type = "UI",      text = "Standardized all mouseover command tooltips (Target Bar, World Flare Bar, Keybind Capture, and World Flare Sequence cards) to highlight only the input command prefix while keeping action descriptions Silver-White (#E2E8F0)." },
+        { type = "UI",      text = "Standardised all sliders to the Sleek Precision Track (4px track, Suite Accent fill bar, 6x14px blade thumb) and applied Option 3 semantic styling for negative/disabled pill states." },
+        { type = "UI",      text = "Standardised all mouseover command tooltips (Target Bar, World Flare Bar, Keybind Capture, and World Flare Sequence cards) to highlight only the input command prefix while keeping action descriptions Silver-White (#E2E8F0)." },
         { type = "FIX",     text = "Fixed World Flare Cycle Sequence [Reset] button and SavedVariables defaults to re-enable all 8 flares (1..8) and restore default sequence order." },
-        { type = "FIX",     text = "Fixed 8-digit ARGB hex color code corruption leaking literal '0a' text into headers and keybind button text by adding SanitizeHex6 to DM:GetAccentColor()." },
+        { type = "FIX",     text = "Fixed 8-digit ARGB hex colour code corruption leaking literal '0a' text into headers and keybind button text by adding SanitizeHex6 to DM:GetAccentColor()." },
         { type = "FIX",     text = "Replaced legacy small square chevron buttons on Announce Marks in Chat, Show On-Screen Focus Bar, and Show On-Screen World Flare Bar with full-width 24px horizontal chevron toggle bars (Sub-Settings (N)) and unified outer group borders per DESIGN_SYSTEM.md Section 2.6." },
         { type = "FIX",     text = "Parented nested sub-setting cards directly inside their outer group card (10px inset, PANEL_BG #090A0D, 1px CELL_BORDER, 2px vertical Suite Accent left bar, and 5x5px Suite Accent square pip) with automatic expand-on-enable and persistent state." },
         { type = "UI",      text = "Enclosed each L-bracket section header and its subsection setting cards inside an outer backdrop border frame with dynamic sub-drawer reflow." },
@@ -11511,7 +11783,7 @@ function DM:ShowMarkerConflictReloadModal()
 
         modal.Title = modal:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         modal.Title:SetPoint("TOPLEFT", modal, "TOPLEFT", 18, -16)
-        modal.Title:SetText(string.format("|cFF%sDynamicSuite|r  |cFF94A3B8-- Coexistence Guard|r", hex0))
+        modal.Title:SetText(string.format("|cFF%sDynamicSuite|r  |cFF94A3B8-- Duplicate Addon Notice|r", hex0))
 
         modal.HeaderSep = modal:CreateTexture(nil, "ARTWORK")
         modal.HeaderSep:SetHeight(1)
@@ -11616,7 +11888,7 @@ function DM:ShowMarkerConflictReloadModal()
 
     local arShow, agShow, abShow, hexShow = DM:GetAccentColor()
     if modal.TopAccent then modal.TopAccent:SetColorTexture(arShow, agShow, abShow, 1.0) end
-    if modal.Title then modal.Title:SetText(string.format("|cFF%sDynamicSuite|r  |cFF94A3B8-- Coexistence Guard|r", hexShow)) end
+    if modal.Title then modal.Title:SetText(string.format("|cFF%sDynamicSuite|r  |cFF94A3B8-- Duplicate Addon Notice|r", hexShow)) end
     if modal.ReloadBtn and modal.ReloadBtn.RefreshStyle then modal.ReloadBtn.RefreshStyle(false) end
     if modal.LaterBtn and modal.LaterBtn.RefreshStyle then modal.LaterBtn.RefreshStyle(false) end
 
@@ -11869,7 +12141,7 @@ function DM:ShowRaidMarkerTaintModal(offendingAddon, reason)
         modal.Title:SetText(string.format("|cFF%sRaid Marker Blocked by Addon Conflict|r", accHex))
         local displayLabel = (offendingAddon == "DecorVendor") and "Decor Vendor (DecorVendor)" or offendingAddon
         modal.Body:SetText(string.format(
-            "|cFFFFFFFF%s|r taints Blizzard's |cFFFFFFFF/tm|r raid marker command (|cFFFFFFFFSetRaidTarget()|r), causing action-bar focus markers to be blocked.\n\nBecause of how World of Warcraft's security engine works, you must disable |cFFFFFFFF%s|r and |cFF%sfully Exit & Restart the game client|r (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
+            "|cFFFFFFFF%s|r blocks World of Warcraft's |cFFFFFFFF/tm|r raid marker command, causing action-bar focus markers to fail.\n\nBecause of how World of Warcraft's security engine works, you must disable |cFFFFFFFF%s|r and |cFF%sfully Exit & Restart the game client|r (a |cFFFFFFFF/reload|r alone will not clear the lockout).",
             displayLabel, offendingAddon, accHex
         ))
 
@@ -11892,7 +12164,7 @@ function DM:ShowRaidMarkerTaintModal(offendingAddon, reason)
             modal.PrimaryBtn:ApplyVisualState(false)
             modal.PrimaryBtn:Show()
             modal.PrimaryBtn:SetScript("OnClick", function()
-                local pName = UnitName and UnitName("player") or nil
+                local pName = SafeUnitName("player")
                 if C_AddOns and C_AddOns.DisableAddOn then
                     if pName then pcall(C_AddOns.DisableAddOn, offendingAddon, pName) end
                     pcall(C_AddOns.DisableAddOn, offendingAddon)
@@ -11930,7 +12202,7 @@ function DM:ShowRaidMarkerTaintModal(offendingAddon, reason)
                     modal:Hide()
                 end)
                 print(string.format(
-                    "|cFF38BDF8DynamicMarker|r: Disabled |cFFFFFFFF%s|r and set it to |cFF34D399Never|r across all zone profiles. Please completely Exit & Restart World of Warcraft now (/reload alone will not clear SetRaidTarget taint).",
+                    "|cFF38BDF8DynamicMarker|r: Disabled |cFFFFFFFF%s|r and set it to |cFF34D399Never|r across all zone profiles. Please completely Exit & Restart World of Warcraft now (/reload alone will not clear the raid marker block).",
                     offendingAddon
                 ))
             end)
@@ -11956,8 +12228,8 @@ local function EnforceSuiteDuplicateExclusion(showPopupIfLoaded)
         _G.DynamicSuite._standaloneMarkerConflictDetected = true
     end
     if C_AddOns and type(C_AddOns.DisableAddOn) == "function" then
-        local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
-        if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
+        local pName = SafeUnitName("player")
+        if pName and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
             pcall(C_AddOns.DisableAddOn, ADDON_FOLDER, pName)
         end
         pcall(C_AddOns.DisableAddOn, ADDON_FOLDER)
@@ -12027,7 +12299,7 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
             if not lastAlert or (now - lastAlert) >= 30 then
                 taintAlertCooldowns[offender] = now
                 print(string.format(
-                    "|cFF38BDF8DynamicMarker|r: |cFFF5B82EBlocked Action:|r |cFFFFFFFF%s|r tainted Blizzard's |cFFFFFFFF/tm|r raid marker command (SetRaidTarget) -- this is caused by |cFFFFFFFF%s|r, not DynamicMarker. Disable |cFFFFFFFF%s|r (Set to Never) and completely exit and restart the game client (/reload alone will not clear Blizzard's raid-marker lockout).",
+                    "|cFF38BDF8DynamicMarker|r: |cFFF5B82EBlocked Action:|r |cFFFFFFFF%s|r blocked World of Warcraft's |cFFFFFFFF/tm|r raid marker command -- this is caused by |cFFFFFFFF%s|r, not DynamicMarker. Disable |cFFFFFFFF%s|r (Set to Never) and completely exit and restart the game client (/reload alone will not clear World of Warcraft's raid-marker lockout).",
                     offender, offender, offender
                 ))
             end
@@ -12231,6 +12503,12 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
             local pend = DM._pendingRaidTaintModal
             DM._pendingRaidTaintModal = nil
             DM:ShowRaidMarkerTaintModal(pend.addon, pend.reason)
+        end
+        if DM.pendingInitTargetBarAttrs then
+            DM:ApplyTargetBarSecureAttributes()
+        end
+        if DM.pendingInitFlareBarAttrs then
+            DM:ApplyFlareBarSecureAttributes()
         end
         if DM.pendingSecureClickSync then
             DM:RefreshAllSecureButtonClicks()

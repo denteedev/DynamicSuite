@@ -37,22 +37,41 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
+local function _IsSecret(v)
+    if type(issecretvalue) == "function" and issecretvalue(v) then
+        return true
+    end
+    if type(canaccessvalue) == "function" and not canaccessvalue(v) then
+        return true
+    end
+    return false
+end
+
 local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersion, globalTbl)
     local isAddOnLoaded = (C_AddOns and C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
     local getAddOnEnableState = (C_AddOns and C_AddOns.GetAddOnEnableState) or _G.GetAddOnEnableState
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     local function isOtherEnabled(name)
-        if type(isAddOnLoaded) == "function" and isAddOnLoaded(name) then
-            return true
+        if type(isAddOnLoaded) == "function" then
+            local okL, loaded = pcall(isAddOnLoaded, name)
+            if okL and not _IsSecret(loaded) and loaded then
+                return true
+            end
         end
         if type(getAddOnEnableState) == "function" then
-            local pName = type(_G.UnitName) == "function" and _G.UnitName("player") or nil
-            if type(pName) == "string" and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
+            local pName = nil
+            if type(_G.UnitName) == "function" then
+                local okU, uName = pcall(_G.UnitName, "player")
+                if okU and not _IsSecret(uName) and type(uName) == "string" then
+                    pName = uName
+                end
+            end
+            if pName and pName ~= "" and pName ~= "Unknown" and pName ~= _G.UNKNOWNOBJECT then
                 local ok, st = pcall(getAddOnEnableState, name, pName)
-                if ok and type(st) == "number" and st > 0 then return true end
+                if ok and not _IsSecret(st) and type(st) == "number" and st > 0 then return true end
             end
             local ok2, st2 = pcall(getAddOnEnableState, name)
-            if ok2 and type(st2) == "number" and st2 > 0 then return true end
+            if ok2 and not _IsSecret(st2) and type(st2) == "number" and st2 > 0 then return true end
         end
         return false
     end
@@ -65,7 +84,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
         end
         if isOtherEnabled("DynamicSuite") and type(getMeta) == "function" then
             local okS, sVer = pcall(getMeta, "DynamicSuite", "Version")
-            if okS and type(sVer) == "string" and sVer ~= "" and not sVer:find("@") then
+            if okS and not _IsSecret(sVer) and type(sVer) == "string" and sVer ~= "" and not sVer:find("@") then
                 if CompareSemVer(thisVersion, sVer) <= 0 then
                     return true
                 end
@@ -80,7 +99,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
         end
         if isOtherEnabled(standaloneName) and type(getMeta) == "function" then
             local okV, stVer = pcall(getMeta, standaloneName, "Version")
-            if okV and type(stVer) == "string" and stVer ~= "" and not stVer:find("@") then
+            if okV and not _IsSecret(stVer) and type(stVer) == "string" and stVer ~= "" and not stVer:find("@") then
                 if CompareSemVer(stVer, thisVersion) > 0 then
                     return true
                 end
@@ -129,21 +148,19 @@ local TEX_TALENT_MIST   = MEDIA_BASE .. "Textures\\talent_mist_cloud.tga"
 -- ============================================================================
 -- 1. SAFE RETAIL 12.1.5 HELPERS, THEME & UI PRIMITIVES
 -- ============================================================================
-local function _IsSecret(v)
-    if type(issecretvalue) == "function" and issecretvalue(v) then
-        return true
-    end
-    if type(canaccessvalue) == "function" and not canaccessvalue(v) then
-        return true
-    end
-    return false
-end
-
 local function IsPlayerInCombat()
     if type(InCombatLockdown) == "function" and InCombatLockdown() then return true end
     if type(UnitAffectingCombat) == "function" then
         local ok, ac = pcall(UnitAffectingCombat, "player")
         if ok and not _IsSecret(ac) and ac then return true end
+    end
+    return false
+end
+
+local function IsMythicPlusActive()
+    if C_ChallengeMode and type(C_ChallengeMode.IsChallengeModeActive) == "function" then
+        local ok, act = pcall(C_ChallengeMode.IsChallengeModeActive)
+        if ok and not _IsSecret(act) and act then return true end
     end
     return false
 end
@@ -707,7 +724,7 @@ end
 function DynamicTalent:GetActiveTalentString()
     if not (C_ClassTalents and C_ClassTalents.GetActiveConfigID and C_Traits and C_Traits.GenerateImportString) then return nil end
     local okA, activeID = pcall(C_ClassTalents.GetActiveConfigID)
-    if not okA or not activeID or activeID <= 0 then return nil end
+    if not okA or _IsSecret(activeID) or type(activeID) ~= "number" or activeID <= 0 then return nil end
     local okS, str = pcall(C_Traits.GenerateImportString, activeID)
     if okS and type(str) == "string" and str ~= "" and not _IsSecret(str) then
         return str
@@ -754,7 +771,13 @@ local function DetectCurrentZoneContext()
     local isNonDelveScenario = (instType == "scenario" and not isDelveActive)
     local isUnknownInstance = (inInst and not isRaid and not isParty and not isArena and not isBG and not isDelveActive)
     local isOutdoor = (not inInst and not isDelveActive)
-    local isResting = (type(IsResting) == "function" and IsResting() == true)
+    local isResting = false
+    if type(IsResting) == "function" then
+        local okR, resting = pcall(IsResting)
+        if okR and not _IsSecret(resting) and resting == true then
+            isResting = true
+        end
+    end
     local wmDesired, wmActive = GetWarModeFlags()
     local isWarMode = isOutdoor and (not isResting) and (wmDesired or wmActive)
     local isAnyPvP = (isArena or isBG or isWarMode)
@@ -800,7 +823,8 @@ end
 local function GetActiveRaidDifficultyKey()
     if type(GetInstanceInfo) ~= "function" then return nil end
     local ok, _, instType, diffID = pcall(GetInstanceInfo)
-    if not ok or instType ~= "raid" then return nil end
+    if not ok or _IsSecret(instType) or instType ~= "raid" then return nil end
+    if _IsSecret(diffID) or type(diffID) ~= "number" then return nil end
     if diffID == 14 or diffID == 17 then return "normal"
     elseif diffID == 15 then return "heroic"
     elseif diffID == 16 then return "mythic"
@@ -1129,11 +1153,10 @@ function DynamicTalent:GetActiveTalentMismatch()
         end
     end
     local okCur, curID = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
-    if not okCur then return nil end
+    if not okCur or _IsSecret(curID) then return nil end
 
     -- Never nag when an active Mythic+ keystone is running (talent swaps are locked)
-    local isKeyActive = C_ChallengeMode and C_ChallengeMode.IsChallengeModeActive and C_ChallengeMode.IsChallengeModeActive()
-    if isKeyActive then return nil end
+    if IsMythicPlusActive() then return nil end
 
     local liveStr = self:GetActiveTalentString()
     local zc = DetectCurrentZoneContext()
@@ -1279,9 +1302,9 @@ function DynamicTalent:GetActiveTalentMismatch()
 
     local dungMap = self.db.talentDungeonMap and self.db.talentDungeonMap[specID]
     local tierNow = nil
-    if isParty and C_MythicPlus and C_MythicPlus.GetOwnedKeystoneLevel then
-        local ownedLvl = C_MythicPlus.GetOwnedKeystoneLevel() or 0
-        if not _IsSecret(ownedLvl) and type(ownedLvl) == "number" then
+    if isParty and C_MythicPlus and type(C_MythicPlus.GetOwnedKeystoneLevel) == "function" then
+        local okLvl, ownedLvl = pcall(C_MythicPlus.GetOwnedKeystoneLevel)
+        if okLvl and not _IsSecret(ownedLvl) and type(ownedLvl) == "number" then
             tierNow = (ownedLvl >= 10) and "HIGH" or ((ownedLvl >= 2) and "LOW" or nil)
         end
     end
@@ -1562,7 +1585,7 @@ function DynamicTalent:GetSuggestedCurrentBuildName(specID)
     if sid and C_ClassTalents and type(C_ClassTalents.GetLastSelectedSavedConfigID) == "function"
         and C_Traits and type(C_Traits.GetConfigInfo) == "function" then
         local okC, cid = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, sid)
-        if okC and cid and cid > 0 then
+        if okC and not _IsSecret(cid) and type(cid) == "number" and cid > 0 then
             local okI, info = pcall(C_Traits.GetConfigInfo, cid)
             if okI and type(info) == "table" and not _IsSecret(info.name) and type(info.name) == "string" then
                 local nm = SafeTrim(info.name)
@@ -1573,13 +1596,17 @@ function DynamicTalent:GetSuggestedCurrentBuildName(specID)
             end
         end
     end
-    local idx = GetSpecialization and GetSpecialization()
-    if idx and GetSpecializationInfo then
-        local _, specName = GetSpecializationInfo(idx)
-        if type(specName) == "string" and not _IsSecret(specName) then
-            specName = SafeTrim(specName)
-            if specName ~= "" then
-                return specName .. " Build"
+    local getSpecFn = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or _G.GetSpecialization
+    local getSpecInfoFn = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or _G.GetSpecializationInfo
+    if type(getSpecFn) == "function" and type(getSpecInfoFn) == "function" then
+        local okIdx, idx = pcall(getSpecFn)
+        if okIdx and not _IsSecret(idx) and type(idx) == "number" and idx >= 1 and idx <= 4 then
+            local okInfo, _, specName = pcall(getSpecInfoFn, idx)
+            if okInfo and type(specName) == "string" and not _IsSecret(specName) then
+                specName = SafeTrim(specName)
+                if specName ~= "" then
+                    return specName .. " Build"
+                end
             end
         end
     end
@@ -1620,6 +1647,7 @@ function DynamicTalent:ImportBlizzardLoadouts(specID)
     local liveStr = self:GetActiveTalentString()
     local imported, skipped, firstImported = 0, 0, nil
     for _, cid in ipairs(ids) do
+        if not _IsSecret(cid) and type(cid) == "number" then
         local okI, info = pcall(C_Traits.GetConfigInfo, cid)
         if okI and type(info) == "table" and not _IsSecret(info.name) and type(info.name) == "string" then
             local cleanName = SafeTrim(info.name)
@@ -1652,6 +1680,7 @@ function DynamicTalent:ImportBlizzardLoadouts(specID)
                     end
                 end
             end
+        end
         end
     end
 
@@ -1749,8 +1778,14 @@ do
         if not okH or _IsSecret(heroSubTreeID) or type(heroSubTreeID) ~= "number" or heroSubTreeID <= 0 then
             return nil, nil
         end
-        local cfgID = (C_ClassTalents.GetActiveConfigID and C_ClassTalents.GetActiveConfigID()) or nil
-        if not cfgID or cfgID <= 0 or not (C_Traits and type(C_Traits.GetSubTreeInfo) == "function") then
+        local cfgID = nil
+        if type(C_ClassTalents.GetActiveConfigID) == "function" then
+            local okCfg, rawCfg = pcall(C_ClassTalents.GetActiveConfigID)
+            if okCfg and not _IsSecret(rawCfg) and type(rawCfg) == "number" and rawCfg > 0 then
+                cfgID = rawCfg
+            end
+        end
+        if not cfgID or not (C_Traits and type(C_Traits.GetSubTreeInfo) == "function") then
             return nil, nil
         end
         local okS, subInfo = pcall(C_Traits.GetSubTreeInfo, cfgID, heroSubTreeID)
@@ -1769,23 +1804,23 @@ do
         end
 
         local decoded = self:DecodeTalentImportString(importString)
-        if decoded and type(decoded.entries) == "table" and C_Traits then
+        if decoded and type(decoded.entries) == "table" and C_Traits and type(C_Traits.GetNodeInfo) == "function" then
             local cfgID = decoded.configID
             local subTreeEnum = (_G.Enum and _G.Enum.TraitNodeType and _G.Enum.TraitNodeType.SubTreeSelection) or 3
             local detectedSubTreeID = nil
 
             for _, ne in ipairs(decoded.entries) do
-                local info = C_Traits.GetNodeInfo and C_Traits.GetNodeInfo(cfgID, ne.nodeID) or nil
-                if info and info.type == subTreeEnum then
+                local okN, info = pcall(C_Traits.GetNodeInfo, cfgID, ne.nodeID)
+                if okN and type(info) == "table" and not _IsSecret(info.type) and info.type == subTreeEnum then
                     local eID = info.entryIDs and (info.entryIDs[ne.choiceIdx] or info.entryIDs[1]) or nil
-                    if eID and type(C_Traits.GetEntryInfo) == "function" then
+                    if eID and not _IsSecret(eID) and type(C_Traits.GetEntryInfo) == "function" then
                         local okE, eInfo = pcall(C_Traits.GetEntryInfo, cfgID, eID)
-                        if okE and type(eInfo) == "table" and type(eInfo.subTreeID) == "number" and eInfo.subTreeID > 0 then
+                        if okE and type(eInfo) == "table" and not _IsSecret(eInfo.subTreeID) and type(eInfo.subTreeID) == "number" and eInfo.subTreeID > 0 then
                             detectedSubTreeID = eInfo.subTreeID
                             break
                         end
                     end
-                    if type(info.subTreeID) == "number" and info.subTreeID > 0 then
+                    if not _IsSecret(info.subTreeID) and type(info.subTreeID) == "number" and info.subTreeID > 0 then
                         detectedSubTreeID = info.subTreeID
                         break
                     end
@@ -1794,8 +1829,8 @@ do
 
             if not detectedSubTreeID then
                 for _, ne in ipairs(decoded.entries) do
-                    local info = C_Traits.GetNodeInfo and C_Traits.GetNodeInfo(cfgID, ne.nodeID) or nil
-                    if info and type(info.subTreeID) == "number" and info.subTreeID > 0 then
+                    local okN, info = pcall(C_Traits.GetNodeInfo, cfgID, ne.nodeID)
+                    if okN and type(info) == "table" and not _IsSecret(info.subTreeID) and type(info.subTreeID) == "number" and info.subTreeID > 0 then
                         detectedSubTreeID = info.subTreeID
                         break
                     end
@@ -3581,6 +3616,10 @@ function DynamicTalent:DuplicateTalentLibraryEntry(targetEntry)
 end
 
 function DynamicTalent:RenameLegacyTLMSlot()
+    if IsPlayerInCombat() then
+        Print("Cannot rename talent slots during combat.")
+        return false
+    end
     local specID = self:GetActiveSpecID()
     if not specID or not (C_ClassTalents and C_ClassTalents.GetConfigIDsBySpecID and C_ClassTalents.RenameConfig and C_Traits and C_Traits.GetConfigInfo) then
         return false
@@ -3588,13 +3627,15 @@ function DynamicTalent:RenameLegacyTLMSlot()
     local ok, ids = pcall(C_ClassTalents.GetConfigIDsBySpecID, specID)
     if not ok or type(ids) ~= "table" then return false end
     for _, cid in ipairs(ids) do
-        local okI, info = pcall(C_Traits.GetConfigInfo, cid)
-        if okI and type(info) == "table" and not _IsSecret(info.name) and info.name == "TalentLoadoutManager" then
-            local okR = pcall(C_ClassTalents.RenameConfig, cid, "DynamicTalent")
-            if okR then
-                Print("Renamed legacy Blizzard slot |cFFFBBF24TalentLoadoutManager|r -> |cFF10B981DynamicTalent|r.")
-                self:SyncTalentBindsUI()
-                return true
+        if not _IsSecret(cid) and type(cid) == "number" then
+            local okI, info = pcall(C_Traits.GetConfigInfo, cid)
+            if okI and type(info) == "table" and not _IsSecret(info.name) and info.name == "TalentLoadoutManager" then
+                local okR = pcall(C_ClassTalents.RenameConfig, cid, "DynamicTalent")
+                if okR then
+                    Print("Renamed legacy Blizzard slot |cFFFBBF24TalentLoadoutManager|r -> |cFF10B981DynamicTalent|r.")
+                    self:SyncTalentBindsUI()
+                    return true
+                end
             end
         end
     end
@@ -3609,64 +3650,104 @@ function DynamicTalent:DecodeTalentImportString(importText)
     local clean = SafeTrim(importText)
     if clean == "" then return nil, "Empty talent string." end
     if not (_G.ExportUtil and type(_G.ExportUtil.MakeImportDataStream) == "function") then
-        return nil, "Blizzard ExportUtil unavailable."
+        return nil, "Talent export tool is currently unavailable."
     end
-    local activeCfg = (C_ClassTalents and C_ClassTalents.GetActiveConfigID) and C_ClassTalents.GetActiveConfigID() or nil
-    if not activeCfg or activeCfg <= 0 then return nil, "No active talent config." end
-    local cfgInfo = (C_Traits and C_Traits.GetConfigInfo) and C_Traits.GetConfigInfo(activeCfg) or nil
+    local activeCfg = nil
+    if C_ClassTalents and type(C_ClassTalents.GetActiveConfigID) == "function" then
+        local okCfg, rawCfg = pcall(C_ClassTalents.GetActiveConfigID)
+        if okCfg and not _IsSecret(rawCfg) and type(rawCfg) == "number" and rawCfg > 0 then
+            activeCfg = rawCfg
+        end
+    end
+    if not activeCfg then return nil, "No active talent tree found." end
+
+    local cfgInfo = nil
+    if C_Traits and type(C_Traits.GetConfigInfo) == "function" then
+        local okCI, rawInfo = pcall(C_Traits.GetConfigInfo, activeCfg)
+        if okCI and type(rawInfo) == "table" then
+            cfgInfo = rawInfo
+        end
+    end
     local treeID = cfgInfo and cfgInfo.treeIDs and cfgInfo.treeIDs[1]
-    if not treeID then return nil, "No active talent tree." end
+    if _IsSecret(treeID) or type(treeID) ~= "number" or treeID <= 0 then
+        return nil, "No active talent tree found."
+    end
 
     local okStream, stream = pcall(_G.ExportUtil.MakeImportDataStream, clean)
-    if not okStream or not stream then return nil, "Malformed export string." end
+    if not okStream or not stream or type(stream.ExtractValue) ~= "function" then
+        return nil, "Invalid talent string format."
+    end
 
-    local expectedVer = (C_Traits and C_Traits.GetLoadoutSerializationVersion) and C_Traits.GetLoadoutSerializationVersion() or 2
-    local ver = stream:ExtractValue(8)
-    local strSpecID = stream:ExtractValue(16)
-    if not ver or not strSpecID then return nil, "Invalid header." end
-    if ver ~= expectedVer then return nil, "Outdated serialization version." end
+    local function ReadBits(bits)
+        local okV, val = pcall(stream.ExtractValue, stream, bits)
+        if not okV or _IsSecret(val) or type(val) ~= "number" then return nil end
+        return val
+    end
+
+    local expectedVer = 2
+    if C_Traits and type(C_Traits.GetLoadoutSerializationVersion) == "function" then
+        local okVer, rawVer = pcall(C_Traits.GetLoadoutSerializationVersion)
+        if okVer and not _IsSecret(rawVer) and type(rawVer) == "number" then
+            expectedVer = rawVer
+        end
+    end
+    local ver = ReadBits(8)
+    local strSpecID = ReadBits(16)
+    if not ver or not strSpecID then return nil, "Invalid talent string format." end
+    if ver ~= expectedVer then return nil, "This talent string is from an older game patch." end
 
     local activeSpecID = self:GetActiveSpecID()
-    if activeSpecID and strSpecID ~= activeSpecID then
+    if not activeSpecID then
+        return nil, "No active specialisation found."
+    end
+    if strSpecID ~= activeSpecID then
         return nil, "Wrong specialisation for this character."
     end
 
     for _ = 1, 16 do
-        if stream:ExtractValue(8) == nil then
-            return nil, "Truncated tree hash."
+        if ReadBits(8) == nil then
+            return nil, "Incomplete talent string."
         end
     end
 
-    local treeNodes = (C_Traits and C_Traits.GetTreeNodes) and C_Traits.GetTreeNodes(treeID) or {}
+    local treeNodes = {}
+    if C_Traits and type(C_Traits.GetTreeNodes) == "function" then
+        local okTN, rawNodes = pcall(C_Traits.GetTreeNodes, treeID)
+        if okTN and type(rawNodes) == "table" then
+            treeNodes = rawNodes
+        end
+    end
     local entries = {}
     for _, nodeID in ipairs(treeNodes) do
-        local selVal = stream:ExtractValue(1)
-        if selVal == 1 then
-            local purVal = stream:ExtractValue(1)
-            if purVal == 1 then
-                local partialVal = stream:ExtractValue(1)
-                local partialRanks = 0
-                if partialVal == 1 then
-                    partialRanks = stream:ExtractValue(6) or 0
+        if not _IsSecret(nodeID) and type(nodeID) == "number" then
+            local selVal = ReadBits(1)
+            if selVal == 1 then
+                local purVal = ReadBits(1)
+                if purVal == 1 then
+                    local partialVal = ReadBits(1)
+                    local partialRanks = 0
+                    if partialVal == 1 then
+                        partialRanks = ReadBits(6) or 0
+                    end
+                    local choiceVal = ReadBits(1)
+                    local choiceIdx = 1
+                    if choiceVal == 1 then
+                        choiceIdx = (ReadBits(2) or 0) + 1
+                    end
+                    table.insert(entries, {
+                        nodeID       = nodeID,
+                        isPartial    = (partialVal == 1),
+                        partialRanks = partialRanks,
+                        isChoice     = (choiceVal == 1),
+                        choiceIdx    = choiceIdx,
+                    })
                 end
-                local choiceVal = stream:ExtractValue(1)
-                local choiceIdx = 1
-                if choiceVal == 1 then
-                    choiceIdx = (stream:ExtractValue(2) or 0) + 1
-                end
-                table.insert(entries, {
-                    nodeID       = nodeID,
-                    isPartial    = (partialVal == 1),
-                    partialRanks = partialRanks,
-                    isChoice     = (choiceVal == 1),
-                    choiceIdx    = choiceIdx,
-                })
             end
         end
     end
 
     if #entries == 0 then
-        return nil, "No purchased talent nodes found."
+        return nil, "No talents found in this import string."
     end
     return {
         configID = activeCfg,
@@ -3682,20 +3763,26 @@ function DynamicTalent:ApplyTalentLibraryEntry(entry)
         Print("Cannot switch Talent Loadouts during combat.")
         return
     end
+    if IsMythicPlusActive() then
+        Print("Cannot switch Talent Loadouts during an active Mythic+ run.")
+        return
+    end
     local specID = self:GetActiveSpecID()
+    if not specID then
+        Print("No active specialisation found.")
+        return
+    end
     local targetEntry = nil
-    if specID then
-        if type(entry.id) == "string" and entry.id ~= "" then
-            targetEntry = self:FindLibraryEntryByID(entry.id, specID)
-        end
-        if not targetEntry then
-            targetEntry = self:FindLibraryEntryForRule(entry, specID)
-        end
+    if type(entry.id) == "string" and entry.id ~= "" then
+        targetEntry = self:FindLibraryEntryByID(entry.id, specID)
+    end
+    if not targetEntry then
+        targetEntry = self:FindLibraryEntryForRule(entry, specID)
     end
     targetEntry = targetEntry or entry
 
     local api = _G.TalentLoadoutManagerAPI
-    if type(api) == "table" and type(api.GlobalAPI) == "table" and type(api.CharacterAPI) == "table" and specID then
+    if type(api) == "table" and type(api.GlobalAPI) == "table" and type(api.CharacterAPI) == "table" then
         local okL, list = pcall(api.GlobalAPI.GetLoadouts, api.GlobalAPI, specID)
         if okL and type(list) == "table" then
             for _, lo in ipairs(list) do
@@ -3731,10 +3818,10 @@ function DynamicTalent:ApplyTalentLibraryEntry(entry)
 
     local remaining = {}
     for _, ne in ipairs(decoded.entries) do
-        local info = C_Traits.GetNodeInfo(configID, ne.nodeID)
-        if info and info.type == subTreeEnum then
+        local okN, info = pcall(C_Traits.GetNodeInfo, configID, ne.nodeID)
+        if okN and type(info) == "table" and not _IsSecret(info.type) and info.type == subTreeEnum then
             local eID = info.entryIDs and info.entryIDs[ne.choiceIdx] or (info.entryIDs and info.entryIDs[1])
-            if eID and C_Traits.SetSelection then
+            if eID and not _IsSecret(eID) and C_Traits.SetSelection then
                 pcall(C_Traits.SetSelection, configID, ne.nodeID, eID)
             end
         else
@@ -3747,31 +3834,35 @@ function DynamicTalent:ApplyTalentLibraryEntry(entry)
         local nextRem = {}
         local progress = false
         for _, ne in ipairs(remaining) do
-            local info = C_Traits.GetNodeInfo(configID, ne.nodeID)
-            if info then
-                local targetRanks = ne.isPartial and math.max(1, ne.partialRanks) or math.max(1, info.maxRanks or 1)
-                local curRanks = info.ranksPurchased or 0
+            local okN, info = pcall(C_Traits.GetNodeInfo, configID, ne.nodeID)
+            if okN and type(info) == "table" then
+                local rawMax = (not _IsSecret(info.maxRanks) and type(info.maxRanks) == "number") and info.maxRanks or 1
+                local targetRanks = ne.isPartial and math.max(1, ne.partialRanks) or math.max(1, rawMax)
+                local curRanks = (not _IsSecret(info.ranksPurchased) and type(info.ranksPurchased) == "number") and info.ranksPurchased or 0
                 if curRanks < targetRanks then
-                    if (ne.isChoice or info.type == selEnum) and info.entryIDs then
+                    if (ne.isChoice or (not _IsSecret(info.type) and info.type == selEnum)) and info.entryIDs then
                         local eID = info.entryIDs[ne.choiceIdx] or info.entryIDs[1]
-                        if eID and C_Traits.SetSelection then
+                        if eID and not _IsSecret(eID) and C_Traits.SetSelection then
                             local okS, resS = pcall(C_Traits.SetSelection, configID, ne.nodeID, eID)
-                            if okS and resS then progress = true end
+                            if okS and not _IsSecret(resS) and resS then progress = true end
                         end
                     end
-                    local afterInfo = C_Traits.GetNodeInfo(configID, ne.nodeID)
-                    local afterRanks = (afterInfo and afterInfo.ranksPurchased) or curRanks
+                    local okA, afterInfo = pcall(C_Traits.GetNodeInfo, configID, ne.nodeID)
+                    local afterRanks = (okA and type(afterInfo) == "table" and not _IsSecret(afterInfo.ranksPurchased) and type(afterInfo.ranksPurchased) == "number")
+                        and afterInfo.ranksPurchased or curRanks
                     while afterRanks < targetRanks do
                         local okP, resP = pcall(C_Traits.PurchaseRank, configID, ne.nodeID)
-                        if okP and resP then
+                        if okP and not _IsSecret(resP) and resP then
                             afterRanks = afterRanks + 1
                             progress = true
                         else
                             break
                         end
                     end
-                    local checkInfo = C_Traits.GetNodeInfo(configID, ne.nodeID)
-                    if not checkInfo or (checkInfo.ranksPurchased or 0) < targetRanks then
+                    local okChk, checkInfo = pcall(C_Traits.GetNodeInfo, configID, ne.nodeID)
+                    local chkRanks = (okChk and type(checkInfo) == "table" and not _IsSecret(checkInfo.ranksPurchased) and type(checkInfo.ranksPurchased) == "number")
+                        and checkInfo.ranksPurchased or nil
+                    if not chkRanks or chkRanks < targetRanks then
                         table.insert(nextRem, ne)
                     end
                 end
@@ -3781,17 +3872,15 @@ function DynamicTalent:ApplyTalentLibraryEntry(entry)
         if not progress then break end
     end
 
-    local okCommit = pcall(C_ClassTalents.CommitConfig, configID)
-    if okCommit then
+    local okCommit, committed = pcall(C_ClassTalents.CommitConfig, configID)
+    if okCommit and not _IsSecret(committed) and committed then
         self._pendingSaveConfigID = configID
         self._pendingAppliedEntry = targetEntry
         self._pendingAppliedSpecID = specID
-        if specID then
-            self.db.lastAppliedTalentID = self.db.lastAppliedTalentID or {}
-            self.db.lastAppliedTalentID[specID] = EnsureEntryID(targetEntry, self.db)
-            self.db.lastAppliedTalentName = self.db.lastAppliedTalentName or {}
-            self.db.lastAppliedTalentName[specID] = targetEntry.name
-        end
+        self.db.lastAppliedTalentID = self.db.lastAppliedTalentID or {}
+        self.db.lastAppliedTalentID[specID] = EnsureEntryID(targetEntry, self.db)
+        self.db.lastAppliedTalentName = self.db.lastAppliedTalentName or {}
+        self.db.lastAppliedTalentName[specID] = targetEntry.name
         Print(string.format("Switching to %s |cFFFFFFFF%s|r...", self:FormatTalentBadge(targetEntry), tostring(targetEntry.name or "Loadout")))
         self:SyncTalentBindsUI()
     end
@@ -3868,7 +3957,7 @@ function DynamicTalent:GetTalentLoadoutBarData()
 
     if activeName == "Default" and specID and C_ClassTalents and type(C_ClassTalents.GetLastSelectedSavedConfigID) == "function" then
         local ok, cid = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
-        if ok and type(cid) == "number" and cid > 0 then
+        if ok and not _IsSecret(cid) and type(cid) == "number" and cid > 0 then
             activeID = cid
             if C_Traits and type(C_Traits.GetConfigInfo) == "function" then
                 local okI, info = pcall(C_Traits.GetConfigInfo, cid)
@@ -3974,7 +4063,7 @@ function DynamicTalent:HandlePrepBarClick(segButton, button)
             end
             if type(mTarget) == "table" then
                 self:ApplyTalentLibraryEntry(mTarget)
-            elseif not IsPlayerInCombat() and C_ClassTalents and C_ClassTalents.LoadConfig then
+            elseif not IsPlayerInCombat() and not IsMythicPlusActive() and C_ClassTalents and C_ClassTalents.LoadConfig then
                 pcall(C_ClassTalents.LoadConfig, mTarget, true)
             end
         end
@@ -4196,7 +4285,13 @@ function DynamicTalent:ToggleTalentPopover(anchor)
 
     if #sortedLib == 0 then
         local blizzList = self:GetSavedTalentLoadouts()
-        local curID = (specID and C_ClassTalents and C_ClassTalents.GetLastSelectedSavedConfigID) and C_ClassTalents.GetLastSelectedSavedConfigID(specID) or nil
+        local curID = nil
+        if specID and C_ClassTalents and type(C_ClassTalents.GetLastSelectedSavedConfigID) == "function" then
+            local okC, rawCid = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
+            if okC and not _IsSecret(rawCid) and type(rawCid) == "number" then
+                curID = rawCid
+            end
+        end
         for _, item in ipairs(blizzList) do
             local btn = EnsureRow()
             local isAct = (curID == item.id)
@@ -4214,7 +4309,7 @@ function DynamicTalent:ToggleTalentPopover(anchor)
             end)
             btn:SetScript("OnClick", function()
                 p:Hide()
-                if not IsPlayerInCombat() and C_ClassTalents and C_ClassTalents.LoadConfig then
+                if not IsPlayerInCombat() and not IsMythicPlusActive() and C_ClassTalents and C_ClassTalents.LoadConfig then
                     pcall(C_ClassTalents.LoadConfig, item.id, true)
                 end
             end)
@@ -4225,7 +4320,7 @@ function DynamicTalent:ToggleTalentPopover(anchor)
     if type(_G.TalentLoadoutManagerAPI) == "table" then
         local tlmRow = EnsureRow()
         tlmRow.dot:SetColorTexture(0.063, 0.725, 0.506, 1)
-        tlmRow.txt:SetText("Import All from TalentLoadoutManager")
+        tlmRow.txt:SetText("Import All from Talent Loadout Manager")
         tlmRow.txt:SetTextColor(0.55, 0.98, 0.78, 1)
         local tlmBg = { 0.063 * 0.25, 0.725 * 0.25, 0.506 * 0.25, 0.96 }
         local tlmBdr = { 0.063, 0.725, 0.506, 0.85 }
@@ -4275,6 +4370,7 @@ end
 -- ============================================================================
 local talentDockFrame = nil
 local talentDockHooked = false
+local pendingDockRefresh = false
 local talentRowMenuFrame = nil
 local talentRowMenuCatcher = nil
 
@@ -4491,6 +4587,11 @@ function DynamicTalent:ShowTalentRowContextMenu(anchorRow, entry)
 end
 
 function DynamicTalent:RefreshTalentDock()
+    if IsPlayerInCombat() then
+        pendingDockRefresh = true
+        return
+    end
+    pendingDockRefresh = false
     local db = EnsureDB()
     if db.enabled == false or IsModuleDisabledInSuite("DynamicTalent") then
         if talentDockFrame then talentDockFrame:Hide() end
@@ -4579,7 +4680,7 @@ function DynamicTalent:RefreshTalentDock()
 
         f.track = CreateFrame("Frame", nil, f, "BackdropTemplate")
         f.track:SetWidth(4)
-        f.track:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -58)
+        f.track:SetPoint("TOPRIGHT", f, "TOPRIGHT", -4, -92)
         f.track:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 10)
         SetPixelBackdrop(f.track, { 0.043, 0.051, 0.071, 0.90 }, { 0, 0, 0, 0 }, 0)
         f.thumb = f.track:CreateTexture(nil, "OVERLAY")
@@ -4610,7 +4711,7 @@ function DynamicTalent:RefreshTalentDock()
         f.tlmBtn:SetPoint("CENTER", f, "CENTER", 0, 0)
         f.tlmBtn.txt = CreateText(f.tlmBtn, "OVERLAY", "GameFontHighlightSmall")
         f.tlmBtn.txt:SetPoint("CENTER")
-        f.tlmBtn.txt:SetText("Import All from TLM -> DynamicTalent")
+        f.tlmBtn.txt:SetText("Import All from Talent Loadout Manager")
         f.tlmBtn:SetScript("OnClick", function() DynamicTalent:ImportFromTalentLoadoutManager() end)
 
         talentDockFrame = f
@@ -4652,14 +4753,38 @@ function DynamicTalent:RefreshTalentDock()
 
     if f.specBar then
         f.specBar:Show()
-        local numSpecs = (C_SpecializationInfo and C_SpecializationInfo.GetNumSpecializations) and C_SpecializationInfo.GetNumSpecializations() or (GetNumSpecializations and GetNumSpecializations()) or 0
-        local curSpecIdx = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) and C_SpecializationInfo.GetSpecialization() or (GetSpecialization and GetSpecialization()) or 0
-        local curLootID = (GetLootSpecialization and GetLootSpecialization()) or 0
+        local getNumSpecsFn = (C_SpecializationInfo and C_SpecializationInfo.GetNumSpecializations) or _G.GetNumSpecializations
+        local getSpecFn = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization) or _G.GetSpecialization
+        local getSpecInfoFn = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo) or _G.GetSpecializationInfo
+        local numSpecs = 0
+        if type(getNumSpecsFn) == "function" then
+            local okNS, rawNS = pcall(getNumSpecsFn)
+            if okNS and not _IsSecret(rawNS) and type(rawNS) == "number" and rawNS > 0 then
+                numSpecs = math.min(4, math.floor(rawNS))
+            end
+        end
+        local curSpecIdx = 0
+        if type(getSpecFn) == "function" then
+            local okCS, rawCS = pcall(getSpecFn)
+            if okCS and not _IsSecret(rawCS) and type(rawCS) == "number" and rawCS >= 1 and rawCS <= 4 then
+                curSpecIdx = rawCS
+            end
+        end
+        local curLootID = 0
+        if type(GetLootSpecialization) == "function" then
+            local okLS, rawLS = pcall(GetLootSpecialization)
+            if okLS and not _IsSecret(rawLS) and type(rawLS) == "number" and rawLS >= 0 then
+                curLootID = rawLS
+            end
+        end
         for _, sb in ipairs(f.specBtns) do sb:Hide() end
-        if numSpecs > 0 then
+        if numSpecs > 0 and type(getSpecInfoFn) == "function" then
             local btnW = math.floor((200 - ((numSpecs - 1) * 4)) / numSpecs)
             for sIdx = 1, numSpecs do
-                local sID, sName, _, sIcon = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo or GetSpecializationInfo)(sIdx)
+                local okSI, sID, sName, _, sIcon = pcall(getSpecInfoFn, sIdx)
+                if not okSI or _IsSecret(sID) or type(sID) ~= "number" then sID = nil end
+                if not okSI or _IsSecret(sName) or type(sName) ~= "string" then sName = nil end
+                if not okSI or _IsSecret(sIcon) then sIcon = nil end
                 local sb = f.specBtns[sIdx]
                 if not sb then
                     sb = CreateFrame("Button", nil, f.specBar, "BackdropTemplate")
@@ -4675,8 +4800,8 @@ function DynamicTalent:RefreshTalentDock()
                     sb.lootPip:SetColorTexture(0.980, 0.800, 0.082, 1.0)
                     f.specBtns[sIdx] = sb
                 end
-                local isActiveSpec = (sIdx == curSpecIdx)
-                local isLootTarget = (curLootID == sID) or (curLootID == 0 and isActiveSpec)
+                local isActiveSpec = (curSpecIdx > 0 and sIdx == curSpecIdx)
+                local isLootTarget = (sID ~= nil) and ((curLootID == sID) or (curLootID == 0 and isActiveSpec))
                 sb:SetWidth(btnW)
                 sb:ClearAllPoints()
                 sb:SetPoint("LEFT", f.specBar, "LEFT", 2 + ((sIdx - 1) * (btnW + 4)), 0)
@@ -4692,7 +4817,7 @@ function DynamicTalent:RefreshTalentDock()
                         if SetLootSpecialization and sID then
                             local nextLoot = (isActiveSpec and curLootID ~= 0) and 0 or sID
                             pcall(SetLootSpecialization, nextLoot)
-                            Print(string.format("Loot Specialisation set to |cFFFBBF24%s|r.", (nextLoot == 0) and ("Current (" .. tostring(sName) .. ")") or tostring(sName)))
+                            Print(string.format("Loot Specialisation set to |cFFFBBF24%s|r.", (nextLoot == 0) and ("Current (" .. tostring(sName or "Active") .. ")") or tostring(sName or "Specialisation")))
                             if C_Timer and C_Timer.After then
                                 C_Timer.After(0.15, function()
                                     DynamicTalent:RefreshTalentDock()
@@ -4705,6 +4830,10 @@ function DynamicTalent:RefreshTalentDock()
                     else
                         if IsPlayerInCombat() then
                             Print("Cannot switch active specialisation while in combat.")
+                            return
+                        end
+                        if IsMythicPlusActive() then
+                            Print("Cannot switch active specialisation during an active Mythic+ run.")
                             return
                         end
                         if not isActiveSpec then
@@ -5016,14 +5145,6 @@ do
         ["slayer"]                    = { primary = { 0.90, 0.28, 0.28 }, secondary = { 0.62, 0.44, 0.34 }, glow = { 0.96, 0.38, 0.34 } },
     }
 
-    local function IsMythicPlusActive()
-        if C_ChallengeMode and type(C_ChallengeMode.IsChallengeModeActive) == "function" then
-            local ok, act = pcall(C_ChallengeMode.IsChallengeModeActive)
-            if ok and not _IsSecret(act) and act then return true end
-        end
-        return false
-    end
-
     local function GetPlayerClassRGB()
         if type(UnitClass) == "function" then
             local ok, _, classFile = pcall(UnitClass, "player")
@@ -5139,7 +5260,8 @@ do
             return nil, "UNAVAILABLE"
         end
         local specID = self:GetActiveSpecID()
-        if specID and type(C_ClassTalents.GetHeroTalentSpecsForClassSpec) == "function" then
+        if not specID then return nil, "LOCKED" end
+        if type(C_ClassTalents.GetHeroTalentSpecsForClassSpec) == "function" then
             local okH, _, reqLevel = pcall(C_ClassTalents.GetHeroTalentSpecsForClassSpec, configID, specID)
             if okH and not _IsSecret(reqLevel) and type(reqLevel) == "number" and reqLevel > 0 and type(UnitLevel) == "function" then
                 local okL, pLvl = pcall(UnitLevel, "player")
@@ -5164,7 +5286,7 @@ do
         local candidates = {}
         for _, eID in ipairs(nodeInfo.entryIDs) do
             local okE, eInfo = pcall(C_Traits.GetEntryInfo, configID, eID)
-            if okE and type(eInfo) == "table" and type(eInfo.subTreeID) == "number" and eInfo.subTreeID > 0 and type(C_Traits.GetSubTreeInfo) == "function" then
+            if okE and type(eInfo) == "table" and not _IsSecret(eInfo.subTreeID) and type(eInfo.subTreeID) == "number" and eInfo.subTreeID > 0 and type(C_Traits.GetSubTreeInfo) == "function" then
                 local okS, sInfo = pcall(C_Traits.GetSubTreeInfo, configID, eInfo.subTreeID)
                 if okS and type(sInfo) == "table" and not _IsSecret(sInfo.name) and type(sInfo.name) == "string" then
                     local sName = SafeTrim(sInfo.name)
@@ -5321,6 +5443,7 @@ do
         if dlg and not hookedHeroContainers[dlg] and type(dlg.HookScript) == "function" then
             hookedHeroContainers[dlg] = true
             dlg:HookScript("OnShow", function(s)
+                if IsPlayerInCombat() then return end
                 local now = (type(GetTime) == "function" and GetTime()) or 0
                 if now <= suppressHeroDialogUntil then
                     pcall(s.Hide, s)
@@ -6055,7 +6178,7 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
             DynamicTalent:HideTalentReminderToast()
             return
         end
-        if IsPlayerInCombat() then return end
+        if IsPlayerInCombat() or IsMythicPlusActive() then return end
         if type(targetID) == "table" then
             DynamicTalent:ApplyTalentLibraryEntry(targetID)
         elseif targetID and C_ClassTalents and type(C_ClassTalents.LoadConfig) == "function" then
@@ -6282,8 +6405,16 @@ do
             or type(EJ_GetEncounterInfoByIndex) ~= "function" then
             return false
         end
-        local prevTier = (type(EJ_GetCurrentTier) == "function") and EJ_GetCurrentTier() or nil
-        local numTiers = EJ_GetNumTiers() or 0
+        local prevTier = nil
+        if type(EJ_GetCurrentTier) == "function" then
+            local okPT, pt = pcall(EJ_GetCurrentTier)
+            if okPT and not _IsSecret(pt) and type(pt) == "number" then prevTier = pt end
+        end
+        local numTiers = 0
+        if type(EJ_GetNumTiers) == "function" then
+            local okNT, nt = pcall(EJ_GetNumTiers)
+            if okNT and not _IsSecret(nt) and type(nt) == "number" then numTiers = nt end
+        end
         if numTiers <= 0 then return false end
 
         local function ScanTier(tierIdx)
@@ -6292,7 +6423,7 @@ do
             pcall(EJ_SelectTier, tierIdx)
             for i = 1, 20 do
                 local okI, instID, instName = pcall(EJ_GetInstanceByIndex, i, true)
-                if not okI or not instID then break end
+                if not okI or _IsSecret(instID) or not instID then break end
                 if type(instName) == "string" and not _IsSecret(instName) and instName ~= "" then
                     local instLow = instName:lower()
                     local targetRaid = nil
@@ -6310,8 +6441,8 @@ do
                         pcall(EJ_SelectInstance, instID)
                         for j = 1, 30 do
                             local okB, bName, _, encID = pcall(EJ_GetEncounterInfoByIndex, j, instID)
-                            if not okB or not bName then break end
-                            if type(bName) == "string" and not _IsSecret(bName) and bName ~= "" then
+                            if not okB or _IsSecret(bName) or not bName then break end
+                            if type(bName) == "string" and bName ~= "" then
                                 local bLow = bName:lower()
                                 local targetBoss = nil
                                 for _, bObj in ipairs(targetRaid.bosses) do
@@ -6324,12 +6455,13 @@ do
                                     targetBoss = targetRaid.bosses[j]
                                 end
                                 if targetBoss then
-                                    if encID then targetBoss.id = encID end
+                                    local validEncID = (not _IsSecret(encID) and type(encID) == "number" and encID > 0) and encID or nil
+                                    if validEncID then targetBoss.id = validEncID end
                                     AddAliasUnique(targetBoss, bName)
-                                    if encID and type(_G.EJ_GetCreatureInfo) == "function" then
+                                    if validEncID and type(_G.EJ_GetCreatureInfo) == "function" then
                                         for cIdx = 1, 6 do
-                                            local okC, _, cName = pcall(_G.EJ_GetCreatureInfo, cIdx, encID)
-                                            if not okC or not cName then break end
+                                            local okC, _, cName = pcall(_G.EJ_GetCreatureInfo, cIdx, validEncID)
+                                            if not okC or _IsSecret(cName) or not cName then break end
                                             AddAliasUnique(targetBoss, cName)
                                         end
                                     end
@@ -6429,15 +6561,18 @@ local function GetCurrentSeasonMythicPlusDungeons()
     if not okT or type(mapIDs) ~= "table" then return list end
     local seen = {}
     for _, mapID in ipairs(mapIDs) do
-        local okN, name, _, _, texture = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
-        if okN and type(name) == "string" and name ~= "" and not seen[name] then
-            seen[name] = true
-            local shortTag = ""
-            for w in name:gmatch("%a+") do
-                if #shortTag < 3 then shortTag = shortTag .. w:sub(1, 1):upper() end
+        if not _IsSecret(mapID) and type(mapID) == "number" then
+            local okN, name, _, _, texture = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
+            if okN and not _IsSecret(name) and type(name) == "string" and name ~= "" and not seen[name] then
+                seen[name] = true
+                local safeTex = (not _IsSecret(texture) and texture) or 525134
+                local shortTag = ""
+                for w in name:gmatch("%a+") do
+                    if #shortTag < 3 then shortTag = shortTag .. w:sub(1, 1):upper() end
+                end
+                if #shortTag < 2 then shortTag = name:sub(1, 3):upper() end
+                table.insert(list, { id = mapID, name = name, icon = safeTex, short = shortTag })
             end
-            if #shortTag < 2 then shortTag = name:sub(1, 3):upper() end
-            table.insert(list, { id = mapID, name = name, icon = texture or 525134, short = shortTag })
         end
     end
     table.sort(list, function(a, b) return a.name < b.name end)
@@ -6494,17 +6629,23 @@ local function CreateModalSectionHeader(parent, title, subtitle, yOff)
     bar:SetColorTexture(ar, ag, ab, 0.95)
     wrap.bar = bar
 
-    local titleFS = CreateText(wrap, "OVERLAY", "GameFontHighlightSmall")
-    titleFS:SetPoint("TOPLEFT", bar, "TOPRIGHT", 8, -1)
-    titleFS:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
+    local textArea = CreateFrame("Frame", nil, wrap)
+    textArea:SetPoint("TOPLEFT", wrap, "TOPLEFT", 11, -2)
+    textArea:SetPoint("BOTTOMLEFT", wrap, "BOTTOMLEFT", 11, 2)
+    textArea:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
+    wrap.textArea = textArea
+
+    local titleFS = CreateText(textArea, "OVERLAY", "GameFontHighlightSmall")
+    titleFS:SetPoint("TOPLEFT", textArea, "TOPLEFT", 0, 0)
+    titleFS:SetPoint("TOPRIGHT", textArea, "TOPRIGHT", 0, 0)
     titleFS:SetJustifyH("LEFT")
     titleFS:SetWordWrap(false)
     titleFS:SetText(title)
     wrap.titleFS = titleFS
 
-    local subFS = CreateText(wrap, "OVERLAY", "GameFontHighlightSmall")
+    local subFS = CreateText(textArea, "OVERLAY", "GameFontHighlightSmall")
     subFS:SetPoint("TOPLEFT", titleFS, "BOTTOMLEFT", 0, -2)
-    subFS:SetPoint("RIGHT", wrap, "RIGHT", -4, 0)
+    subFS:SetPoint("TOPRIGHT", titleFS, "BOTTOMRIGHT", 0, -2)
     subFS:SetJustifyH("LEFT")
     subFS:SetWordWrap(false)
     subFS:SetText("|cFF94A3B8" .. tostring(subtitle or "") .. "|r")
@@ -6996,7 +7137,7 @@ local function PopulateTalentManagerCore(host, isModal)
 
     do
         local qsCard = CreateFrame("Frame", nil, p1, "BackdropTemplate")
-        qsCard:SetHeight(90)
+        qsCard:SetHeight(80)
         qsCard:SetPoint("TOPLEFT", p1, "TOPLEFT", 0, 0)
         qsCard:SetPoint("TOPRIGHT", p1, "TOPRIGHT", 0, 0)
         SetPixelBackdrop(qsCard, CARD_BG, { ar, ag, ab, 0.55 }, 1)
@@ -7037,7 +7178,7 @@ local function PopulateTalentManagerCore(host, isModal)
         end)
 
         local qsHdrFS = CreateText(qsCard, "OVERLAY", "GameFontHighlightSmall")
-        qsHdrFS:SetPoint("TOPLEFT", qsCard, "TOPLEFT", 12, -8)
+        qsHdrFS:SetPoint("TOPLEFT", qsCard, "TOPLEFT", 12, -7)
         qsHdrFS:SetPoint("RIGHT", qsDismissBtn, "LEFT", -6, 0)
         qsHdrFS:SetJustifyH("LEFT")
         qsHdrFS:SetWordWrap(false)
@@ -7045,14 +7186,15 @@ local function PopulateTalentManagerCore(host, isModal)
 
         local qsSubFS = CreateText(qsCard, "OVERLAY", "GameFontHighlightSmall")
         qsSubFS:SetPoint("TOPLEFT", qsHdrFS, "BOTTOMLEFT", 0, -2)
-        qsSubFS:SetPoint("RIGHT", qsDismissBtn, "LEFT", -6, 0)
+        qsSubFS:SetPoint("TOPRIGHT", qsHdrFS, "BOTTOMRIGHT", 0, -2)
         qsSubFS:SetJustifyH("LEFT")
         qsSubFS:SetWordWrap(true)
-        qsSubFS:SetText("|cFF94A3B8Save your active tree or import Blizzard loadouts.|r")
+        if qsSubFS.SetMaxLines then qsSubFS:SetMaxLines(2) end
+        qsSubFS:SetText("|cFF94A3B8Save your active tree or import Blizzard builds.|r")
 
         local qsSaveBtn = CreateFrame("Button", nil, qsCard, "BackdropTemplate")
-        qsSaveBtn:SetSize(127, 24)
-        qsSaveBtn:SetPoint("BOTTOMLEFT", qsCard, "BOTTOMLEFT", 12, 10)
+        qsSaveBtn:SetSize(124, 24)
+        qsSaveBtn:SetPoint("BOTTOMLEFT", qsCard, "BOTTOMLEFT", 12, 8)
         SetPixelBackdrop(qsSaveBtn, { ar * 0.42, ag * 0.42, ab * 0.42, 1.00 }, { ar, ag, ab, 0.95 }, 1)
         qsSaveBtn.txt = CreateText(qsSaveBtn, "OVERLAY", "GameFontHighlightSmall")
         qsSaveBtn.txt:SetPoint("CENTER")
@@ -7088,17 +7230,24 @@ local function PopulateTalentManagerCore(host, isModal)
         end)
 
         local qsImportBtn = CreateFrame("Button", nil, qsCard, "BackdropTemplate")
-        qsImportBtn:SetSize(163, 24)
-        qsImportBtn:SetPoint("BOTTOMRIGHT", qsCard, "BOTTOMRIGHT", -12, 10)
+        qsImportBtn:SetSize(164, 24)
+        qsImportBtn:SetPoint("BOTTOMRIGHT", qsCard, "BOTTOMRIGHT", -12, 8)
         SetPixelBackdrop(qsImportBtn, { 0.063 * 0.30, 0.725 * 0.30, 0.506 * 0.30, 1.00 }, { 0.063, 0.725, 0.506, 0.85 }, 1)
         qsImportBtn.txt = CreateText(qsImportBtn, "OVERLAY", "GameFontHighlightSmall")
         qsImportBtn.txt:SetPoint("CENTER")
         qsImportBtn.txt:SetText("|cFF34D399Import Blizzard Loadouts|r")
         qsImportBtn:SetScript("OnEnter", function(s)
             SetPixelBackdrop(s, { 0.063 * 0.46, 0.725 * 0.46, 0.506 * 0.46, 1.00 }, { 0.20, 0.85, 0.62, 1.00 }, 1)
+            if GameTooltip then
+                GameTooltip:SetOwner(s, "ANCHOR_TOP")
+                GameTooltip:AddLine("Import Blizzard Loadouts", 1, 1, 1)
+                GameTooltip:AddLine("Imports saved Blizzard talent loadouts for your active specialisation.", 0.88, 0.91, 0.95, true)
+                GameTooltip:Show()
+            end
         end)
         qsImportBtn:SetScript("OnLeave", function(s)
             SetPixelBackdrop(s, { 0.063 * 0.30, 0.725 * 0.30, 0.506 * 0.30, 1.00 }, { 0.063, 0.725, 0.506, 0.85 }, 1)
+            if GameTooltip then GameTooltip:Hide() end
         end)
         qsImportBtn:SetScript("OnClick", function()
             local specID = DynamicTalent:GetActiveSpecID()
@@ -7128,18 +7277,18 @@ local function PopulateTalentManagerCore(host, isModal)
     end
 
     local c1 = CreateFrame("Frame", nil, p1, "BackdropTemplate")
-    c1:SetHeight(114)
+    c1:SetHeight(104)
     c1:SetPoint("TOPLEFT", p1, "TOPLEFT", 0, 0)
     c1:SetPoint("TOPRIGHT", p1, "TOPRIGHT", 0, 0)
     SetPixelBackdrop(c1, CARD_BG, CARD_BDR, 1)
     f.c1 = c1
 
-    local c1Hdr = CreateModalSectionHeader(c1, "|cFFFFFFFFLOADOUT IDENTITY|r", "Name your build & pick a category", -8)
+    local c1Hdr = CreateModalSectionHeader(c1, "|cFFFFFFFFLOADOUT IDENTITY|r", "Name your build & pick a category", -6)
 
     local nameEB = CreateFrame("EditBox", nil, c1, "BackdropTemplate")
-    nameEB:SetHeight(26)
-    nameEB:SetPoint("TOPLEFT", c1, "TOPLEFT", 12, -48)
-    nameEB:SetPoint("TOPRIGHT", c1, "TOPRIGHT", -12, -48)
+    nameEB:SetHeight(24)
+    nameEB:SetPoint("TOPLEFT", c1, "TOPLEFT", 12, -43)
+    nameEB:SetPoint("TOPRIGHT", c1, "TOPRIGHT", -12, -43)
     nameEB:SetAutoFocus(false)
     nameEB:SetFontObject("GameFontHighlightSmall")
     nameEB:SetTextInsets(8, 8, 0, 0)
@@ -7160,7 +7309,7 @@ local function PopulateTalentManagerCore(host, isModal)
     for gi, gName in ipairs(TALENT_GROUP_ORDER) do
         local gb = CreateFrame("Button", nil, c1, "BackdropTemplate")
         gb:SetSize(56, 24)
-        gb:SetPoint("TOPLEFT", c1, "TOPLEFT", 12 + ((gi - 1) * 59), -80)
+        gb:SetPoint("TOPLEFT", c1, "TOPLEFT", 12 + ((gi - 1) * 59), -73)
         gb.grp = gName
         gb.txt = CreateText(gb, "OVERLAY", "GameFontHighlightSmall")
         gb.txt:SetPoint("CENTER")
@@ -7172,17 +7321,17 @@ local function PopulateTalentManagerCore(host, isModal)
     StyleGrpBtns()
 
     local c2 = CreateFrame("Frame", nil, p1, "BackdropTemplate")
-    c2:SetHeight(182)
+    c2:SetHeight(166)
     c2:SetPoint("TOPLEFT", c1, "BOTTOMLEFT", 0, -8)
     c2:SetPoint("TOPRIGHT", c1, "BOTTOMRIGHT", 0, -8)
     SetPixelBackdrop(c2, CARD_BG, CARD_BDR, 1)
 
-    local c2Hdr = CreateModalSectionHeader(c2, "|cFFFFFFFFTALENT EXPORT STRING|r", "Paste a string or capture your active tree", -8)
+    local c2Hdr = CreateModalSectionHeader(c2, "|cFFFFFFFFTALENT EXPORT STRING|r", "Paste a string or capture your active tree", -6)
 
     local strEB = CreateFrame("EditBox", nil, c2, "BackdropTemplate")
-    strEB:SetHeight(28)
-    strEB:SetPoint("TOPLEFT", c2, "TOPLEFT", 12, -48)
-    strEB:SetPoint("TOPRIGHT", c2, "TOPRIGHT", -12, -48)
+    strEB:SetHeight(26)
+    strEB:SetPoint("TOPLEFT", c2, "TOPLEFT", 12, -43)
+    strEB:SetPoint("TOPRIGHT", c2, "TOPRIGHT", -12, -43)
     strEB:SetAutoFocus(false)
     strEB:SetFontObject("GameFontHighlightSmall")
     strEB:SetTextInsets(8, 8, 0, 0)
@@ -7190,9 +7339,9 @@ local function PopulateTalentManagerCore(host, isModal)
     f.strEB = strEB
 
     local valStatus = CreateText(c2, "OVERLAY", "GameFontHighlightSmall")
-    valStatus:SetHeight(28)
-    valStatus:SetPoint("TOPLEFT", strEB, "BOTTOMLEFT", 2, -5)
-    valStatus:SetPoint("TOPRIGHT", strEB, "BOTTOMRIGHT", -2, -5)
+    valStatus:SetHeight(26)
+    valStatus:SetPoint("TOPLEFT", strEB, "BOTTOMLEFT", 2, -4)
+    valStatus:SetPoint("TOPRIGHT", strEB, "BOTTOMRIGHT", -2, -4)
     valStatus:SetJustifyH("LEFT")
     valStatus:SetJustifyV("TOP")
     valStatus:SetWordWrap(true)
@@ -7216,7 +7365,7 @@ local function PopulateTalentManagerCore(host, isModal)
 
     local useCurBtn = CreateFrame("Button", nil, c2, "BackdropTemplate")
     useCurBtn:SetSize(152, 24)
-    useCurBtn:SetPoint("BOTTOMLEFT", c2, "BOTTOMLEFT", 12, 42)
+    useCurBtn:SetPoint("BOTTOMLEFT", c2, "BOTTOMLEFT", 12, 38)
     SetPixelBackdrop(useCurBtn, COLORS.BgElevated, COLORS.BorderSubtle, 1)
     useCurBtn.txt = CreateText(useCurBtn, "OVERLAY", "GameFontHighlightSmall")
     useCurBtn.txt:SetPoint("CENTER")
@@ -7516,12 +7665,12 @@ local function PopulateTalentManagerCore(host, isModal)
         DynamicTalent:ShowTalentReminderToast(sample, sample.name, "Preview Reminder", true)
     end)
 
-    bHdr.titleFS:ClearAllPoints()
-    bHdr.titleFS:SetPoint("TOPLEFT", bHdr.bar, "TOPRIGHT", 8, -1)
-    bHdr.titleFS:SetPoint("RIGHT", testToastBtn, "LEFT", -10, 0)
-    bHdr.subFS:ClearAllPoints()
-    bHdr.subFS:SetPoint("TOPLEFT", bHdr.titleFS, "BOTTOMLEFT", 0, -2)
-    bHdr.subFS:SetPoint("RIGHT", testToastBtn, "LEFT", -10, 0)
+    if bHdr.textArea then
+        bHdr.textArea:ClearAllPoints()
+        bHdr.textArea:SetPoint("TOPLEFT", bHdr, "TOPLEFT", 11, -2)
+        bHdr.textArea:SetPoint("BOTTOMLEFT", bHdr, "BOTTOMLEFT", 11, 2)
+        bHdr.textArea:SetPoint("RIGHT", testToastBtn, "LEFT", -10, 0)
+    end
 
     -- 1) RAID MODE CONTROLS
     local raidGrp = CreateFrame("Frame", nil, bCard)
@@ -7615,7 +7764,7 @@ local function PopulateTalentManagerCore(host, isModal)
         local db = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
         db:SetSize(dd.w, 26)
         db:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", dd.x, -114)
-        db.dKey = dd.key; db.dr = dd.r; db.dg = dd.g; db.db = dd.b
+        db.dKey = dd.key; db.dLabel = dd.label; db.dr = dd.r; db.dg = dd.g; db.db = dd.b
         db.txt = CreateText(db, "OVERLAY", "GameFontHighlightSmall")
         db.txt:SetPoint("CENTER")
         db.txt:SetText(dd.label)
@@ -7632,6 +7781,7 @@ local function PopulateTalentManagerCore(host, isModal)
         end)
         table.insert(diffBtns, db)
     end
+    raidGrp.diffBtns = diffBtns
     StyleDiffBtns()
 
     local raidClearBtn = CreateFrame("Button", nil, raidGrp, "BackdropTemplate")
@@ -7710,6 +7860,7 @@ local function PopulateTalentManagerCore(host, isModal)
     raidBindBtn.txt = CreateText(raidBindBtn, "OVERLAY", "GameFontHighlightSmall")
     raidBindBtn.txt:SetPoint("CENTER")
     raidBindBtn.txt:SetText("+ Bind Raid")
+    raidGrp.raidBindBtn = raidBindBtn
 
     local raidTip = CreateText(raidGrp, "OVERLAY", "GameFontHighlightSmall")
     raidTip:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", 2, -146)
@@ -7752,6 +7903,7 @@ local function PopulateTalentManagerCore(host, isModal)
         tb:SetScript("OnClick", function(s) f.state.selKeyTier = s.tKey; StyleTierBtns() end)
         table.insert(tierBtns, tb)
     end
+    mplusGrp.tierBtns = tierBtns
     StyleTierBtns()
 
     local mplusBindBtn = CreateFrame("Button", nil, mplusGrp, "BackdropTemplate")
@@ -7761,6 +7913,7 @@ local function PopulateTalentManagerCore(host, isModal)
     mplusBindBtn.txt = CreateText(mplusBindBtn, "OVERLAY", "GameFontHighlightSmall")
     mplusBindBtn.txt:SetPoint("CENTER")
     mplusBindBtn.txt:SetText("+ Bind M+")
+    mplusGrp.mplusBindBtn = mplusBindBtn
 
     local mplusTip = CreateText(mplusGrp, "OVERLAY", "GameFontHighlightSmall")
     mplusTip:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 2, -66)
@@ -7769,6 +7922,7 @@ local function PopulateTalentManagerCore(host, isModal)
     mplusTip:SetJustifyH("LEFT")
     mplusTip:SetWordWrap(true)
     mplusTip:SetText("|cFF64748BSelect one or more dungeons (or All) & key tier, then click + Bind M+. Specific dungeons override All M+.|r")
+    mplusGrp.mplusTip = mplusTip
 
     -- 3) PVP MODE CONTROLS (4th Binder Tab)
     local pvpGrp = CreateFrame("Frame", nil, bCard)
@@ -7780,8 +7934,8 @@ local function PopulateTalentManagerCore(host, isModal)
 
     local pvpDefs = {
         { key = "all",     label = "All PvP",       desc = "Fallback across all PvP modes (specific PvP mode binds take priority)." },
-        { key = "arena",   label = "Arena",         desc = "Arenas, Solo Shuffle, and Skirmishes (instanceType == \"arena\")." },
-        { key = "bg",      label = "Battlegrounds", desc = "Random/Rated BGs, BG Blitz, and Epic BGs (instanceType == \"pvp\")." },
+        { key = "arena",   label = "Arena",         desc = "Arenas, Solo Shuffle, and Skirmishes." },
+        { key = "bg",      label = "Battlegrounds", desc = "Random and Rated Battlegrounds, Blitz, and Epic Battlegrounds." },
         { key = "warmode", label = "War Mode",      desc = "Outdoor PvP when War Mode is active or desired (skips resting cities)." },
     }
     for pi, pd in ipairs(pvpDefs) do
@@ -8472,6 +8626,36 @@ local function PopulateTalentManagerCore(host, isModal)
         else
             raidGrp.customChip:Hide()
         end
+
+        if raidGrp.diffBtns and #raidGrp.diffBtns > 0 then
+            local clearW = (innerW < 420) and 58 or 70
+            local bindW = (innerW < 420) and 98 or 116
+            if raidGrp.raidClearBtn then raidGrp.raidClearBtn:SetWidth(clearW) end
+            if raidGrp.raidBindBtn then raidGrp.raidBindBtn:SetWidth(bindW) end
+            local diffAreaW = math.max(150, innerW - clearW - 6 - bindW - 8)
+            local diffWeights = { 88, 64, 64 }
+            local diffTotalWt = 216
+            local dx = 0
+            local diffGap = 4
+            local availDiffW = diffAreaW - ((#raidGrp.diffBtns - 1) * diffGap)
+            local usedDW = 0
+            for di, dbBtn in ipairs(raidGrp.diffBtns) do
+                local dw
+                if di == #raidGrp.diffBtns then
+                    dw = math.max(44, availDiffW - usedDW)
+                else
+                    dw = math.max(44, math.floor((availDiffW * (diffWeights[di] or 64) / diffTotalWt) + 0.5))
+                    usedDW = usedDW + dw
+                end
+                dbBtn:SetWidth(dw)
+                dbBtn:ClearAllPoints()
+                dbBtn:SetPoint("TOPLEFT", raidGrp, "TOPLEFT", dx, -114)
+                if dbBtn.txt and dbBtn.dLabel then
+                    dbBtn.txt:SetText((dbBtn.dKey == "normal" and dw < 80) and "LFR / N" or dbBtn.dLabel)
+                end
+                dx = dx + dw + diffGap
+            end
+        end
     end
 
     mplusGrp.portalGridBtns = {}
@@ -8526,11 +8710,39 @@ local function PopulateTalentManagerCore(host, isModal)
         self:StyleBoundTile(mplusGrp.allBtn, st.selAllDungeons, allMBound, r, g, b)
         mplusGrp.allBtn:Show()
 
-        if count == 0 then return end
         local rawW = mplusGrp:GetWidth()
-        local innerW = math.max(380, math.floor(((rawW and rawW > 100) and rawW or self._rightInnerW or 498) + 0.5))
+        local innerW = math.max(360, math.floor(((rawW and rawW > 100) and rawW or self._rightInnerW or 498) + 0.5))
         local dungAreaW = innerW - 48
-        local cellW = math.floor((dungAreaW - ((count - 1) * 3)) / count)
+        local isTwoRow = (count > 4) and (dungAreaW < 480)
+        mplusGrp.allBtn:SetHeight(isTwoRow and 60 or 28)
+
+        local ctrlY = isTwoRow and -66 or -34
+        local tipY = isTwoRow and -98 or -66
+        if mplusGrp.tierBtns then
+            local tx = 0
+            for _, tb in ipairs(mplusGrp.tierBtns) do
+                tb:ClearAllPoints()
+                tb:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", tx, ctrlY)
+                tx = tx + (tb:GetWidth() or 74) + 6
+            end
+        end
+        if mplusGrp.mplusBindBtn then
+            mplusGrp.mplusBindBtn:ClearAllPoints()
+            mplusGrp.mplusBindBtn:SetPoint("TOPRIGHT", mplusGrp, "TOPRIGHT", 0, ctrlY)
+        end
+        if mplusGrp.mplusTip then
+            mplusGrp.mplusTip:ClearAllPoints()
+            mplusGrp.mplusTip:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 2, tipY)
+            mplusGrp.mplusTip:SetPoint("TOPRIGHT", mplusGrp, "TOPRIGHT", -2, tipY)
+        end
+        if st.subMode == "MPLUS" and self.bCard then
+            self.bCard:SetHeight(isTwoRow and 184 or 152)
+        end
+
+        if count == 0 then return end
+        local cols = isTwoRow and 4 or count
+        local gapX = isTwoRow and 4 or 3
+        local cellW = math.floor((dungAreaW - ((cols - 1) * gapX)) / cols)
         for idx = 1, count do
             local dObj = st.mplusDungeons[idx]
             local pb = mplusGrp.portalGridBtns[idx]
@@ -8548,11 +8760,13 @@ local function PopulateTalentManagerCore(host, isModal)
                 pb.txt:SetWordWrap(false)
                 mplusGrp.portalGridBtns[idx] = pb
             end
+            local colIdx = (idx - 1) % cols
+            local rowIdx = math.floor((idx - 1) / cols)
             local isSel = (st.selDungeonSet[idx] == true)
             local isBound = (bInfo.dungeons[tostring(dObj.name or ""):lower()] ~= nil)
             pb:SetWidth(cellW)
             pb:ClearAllPoints()
-            pb:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 48 + ((idx - 1) * (cellW + 3)), 0)
+            pb:SetPoint("TOPLEFT", mplusGrp, "TOPLEFT", 48 + (colIdx * (cellW + gapX)), -(rowIdx * 32))
             pb.icon:SetTexture(dObj.icon or 525134)
             pb.txt:SetText(dObj.short or ("M" .. idx))
             pb.txt:SetTextColor((isSel or isBound) and 1 or 0.78, (isSel or isBound) and 1 or 0.84, (isSel or isBound) and 1 or 0.92, 1)
@@ -8704,6 +8918,7 @@ local function PopulateTalentManagerCore(host, isModal)
             zb:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
         end
     end
+    f:RefreshZonePills()
 
     tgtBtn:SetScript("OnClick", function()
         local st = f.state
@@ -9173,13 +9388,11 @@ local function PopulateTalentManagerCore(host, isModal)
         filterAllBtn.txt:SetPoint("CENTER")
         filterAllBtn.txt:SetText("All")
 
-        if listHdr.titleFS then
-            listHdr.titleFS:SetPoint("RIGHT", listFilterBar, "LEFT", -10, 0)
-            listHdr.titleFS:SetWordWrap(false)
-        end
-        if listHdr.subFS then
-            listHdr.subFS:SetPoint("RIGHT", listFilterBar, "LEFT", -10, 0)
-            listHdr.subFS:SetWordWrap(false)
+        if listHdr.textArea then
+            listHdr.textArea:ClearAllPoints()
+            listHdr.textArea:SetPoint("TOPLEFT", listHdr, "TOPLEFT", 11, -2)
+            listHdr.textArea:SetPoint("BOTTOMLEFT", listHdr, "BOTTOMLEFT", 11, 2)
+            listHdr.textArea:SetPoint("RIGHT", listFilterBar, "LEFT", -10, 0)
         end
 
         f.listFilterBar = listFilterBar
@@ -9330,6 +9543,12 @@ local function PopulateTalentManagerCore(host, isModal)
     scrollF:SetScript("OnMouseWheel", function(_, delta) HandleListWheel(delta) end)
     listCard.track:SetScript("OnMouseWheel", function(_, delta) HandleListWheel(delta) end)
     scrollF:SetScript("OnSizeChanged", function() listCard.UpdateScrollBar() end)
+    scrollF:HookScript("OnHide", function()
+        listCard.thumb.isDragging = false
+        listCard.thumb.isHovered = false
+        listCard.thumb:SetScript("OnUpdate", nil)
+        listCard.track:SetScript("OnUpdate", nil)
+    end)
 
     if f.filterBuildBtn then
         f.filterBuildBtn:SetScript("OnClick", function()
@@ -9364,15 +9583,13 @@ local function PopulateTalentManagerCore(host, isModal)
         end
 
         if self.listHdr and self.listFilterBar then
-            if self.listHdr.titleFS then
-                self.listHdr.titleFS:ClearAllPoints()
-                self.listHdr.titleFS:SetPoint("TOPLEFT", self.listHdr.bar, "TOPRIGHT", 8, -1)
-                self.listHdr.titleFS:SetPoint("RIGHT", self.listFilterBar, "LEFT", -10, 0)
+            if self.listHdr.textArea then
+                self.listHdr.textArea:ClearAllPoints()
+                self.listHdr.textArea:SetPoint("TOPLEFT", self.listHdr, "TOPLEFT", 11, -2)
+                self.listHdr.textArea:SetPoint("BOTTOMLEFT", self.listHdr, "BOTTOMLEFT", 11, 2)
+                self.listHdr.textArea:SetPoint("RIGHT", self.listFilterBar, "LEFT", -10, 0)
             end
             if self.listHdr.subFS then
-                self.listHdr.subFS:ClearAllPoints()
-                self.listHdr.subFS:SetPoint("TOPLEFT", self.listHdr.titleFS, "BOTTOMLEFT", 0, -2)
-                self.listHdr.subFS:SetPoint("RIGHT", self.listFilterBar, "LEFT", -10, 0)
                 if onBuild then
                     if type(curBuild) == "table" then
                         self.listHdr.subFS:SetText("|cFF94A3B8Showing reminders for |r" .. DynamicTalent:FormatTalentBadge(curBuild) .. " |cFFFFFFFF" .. tostring(curBuild.name or "Loadout") .. "|r")
@@ -9569,7 +9786,7 @@ local function PopulateTalentManagerCore(host, isModal)
         self._inLayoutUpdate = true
         local rawW = self:GetWidth() or (self._isModal and 880 or 780)
         local isStacked = (not self._isModal) and (rawW < 720)
-        local fw = self._isModal and math.max(800, math.min(1040, rawW)) or math.max(460, rawW)
+        local fw = self._isModal and math.max(800, math.min(1280, rawW)) or math.max(460, rawW)
         local cw = self._isModal and math.max(772, fw - 28) or fw
         local leftW, rightW
         if isStacked then
@@ -9586,7 +9803,9 @@ local function PopulateTalentManagerCore(host, isModal)
         self._rightW = rightW
         self._rightInnerW = rightInnerW
 
-        local leftBottomY = (self.quickStartCard and self.quickStartCard:IsShown()) and 440 or 344
+        local qsH = (self.quickStartCard and self.quickStartCard:IsShown()) and (80 + 8) or 0
+        local renH = (self.renameLegacyBtn and self.renameLegacyBtn:IsShown()) and (26 + 8) or 0
+        local leftBottomY = qsH + 104 + 8 + 166 + renH
         p1:ClearAllPoints()
         p1:SetPoint("TOPLEFT", f.topLoadoutBar, "BOTTOMLEFT", 0, -8)
         p1:SetWidth(leftW)
@@ -9609,9 +9828,13 @@ local function PopulateTalentManagerCore(host, isModal)
         end
 
         if self.qsSaveBtn and self.qsImportBtn then
-            local qsSaveW = math.floor((leftInnerW - 6) * 0.44)
+            local qsSaveW = math.max(114, math.floor((leftInnerW - 6) * 0.42))
+            local qsImpW = math.max(100, leftInnerW - 6 - qsSaveW)
             self.qsSaveBtn:SetWidth(qsSaveW)
-            self.qsImportBtn:SetWidth(math.max(100, leftInnerW - 6 - qsSaveW))
+            self.qsImportBtn:SetWidth(qsImpW)
+            if self.qsImportBtn.txt then
+                self.qsImportBtn.txt:SetText((qsImpW < 164) and "|cFF34D399Import Blizzard|r" or "|cFF34D399Import Blizzard Loadouts|r")
+            end
         end
 
         if self.grpBtns and #self.grpBtns > 0 then
@@ -9630,7 +9853,7 @@ local function PopulateTalentManagerCore(host, isModal)
                 end
                 gb:SetSize(bw, 24)
                 gb:ClearAllPoints()
-                gb:SetPoint("TOPLEFT", c1, "TOPLEFT", 12 + xOff, -80)
+                gb:SetPoint("TOPLEFT", c1, "TOPLEFT", 12 + xOff, -73)
                 xOff = xOff + bw + 3
             end
         end
@@ -9800,11 +10023,11 @@ function DynamicTalent:OpenTalentManagerModal(initialTab, targetEntry)
         local w, h
         if not rawW or rawW < 800 then
             w = 880
-            h = math.max(580, math.min(820, rawH or 580))
+            h = math.max(580, math.min(860, rawH or 580))
             if db then db.talentMgrModalSize = { w = w, h = h } end
         else
-            w = math.max(800, math.min(1040, math.floor(rawW + 0.5)))
-            h = math.max(520, math.min(820, math.floor((rawH or 580) + 0.5)))
+            w = math.max(800, math.min(1280, math.floor(rawW + 0.5)))
+            h = math.max(520, math.min(860, math.floor((rawH or 580) + 0.5)))
         end
         return w, h
     end
@@ -9818,10 +10041,10 @@ function DynamicTalent:OpenTalentManagerModal(initialTab, targetEntry)
         f:SetMovable(true)
         f:SetResizable(true)
         if f.SetResizeBounds then
-            f:SetResizeBounds(800, 520, 1040, 820)
+            f:SetResizeBounds(800, 520, 1280, 860)
         elseif f.SetMinResize then
             f:SetMinResize(800, 520)
-            if f.SetMaxResize then f:SetMaxResize(1040, 820) end
+            if f.SetMaxResize then f:SetMaxResize(1280, 860) end
         end
         f:EnableMouse(true)
         f:SetClampedToScreen(true)
@@ -9937,26 +10160,43 @@ function DynamicTalent:OpenTalentManagerModal(initialTab, targetEntry)
         gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
         gripTex:SetDesaturated(true)
         gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
-        resizeGrip:SetScript("OnEnter", function()
-            local r, g, b = GetActiveAccentRGB()
+        resizeGrip:SetScript("OnEnter", function(s)
+            local r, g, b, hex = GetActiveAccentRGB()
             gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
             gripTex:SetDesaturated(false)
             gripTex:SetVertexColor(r, g, b, 0.95)
+            if GameTooltip then
+                GameTooltip:SetOwner(s, "ANCHOR_TOPLEFT")
+                GameTooltip:ClearLines()
+                GameTooltip:AddLine("Resize Window", 1, 1, 1)
+                GameTooltip:AddLine(string.format("|cFF%sLeft-Click & Drag:|r |cFFE2E8F0Resize Talent Loadouts Manager|r", hex))
+                GameTooltip:AddLine(string.format("|cFF%sRight-Click:|r |cFFE2E8F0Reset size to 880x580|r", hex))
+                GameTooltip:Show()
+            end
         end)
         resizeGrip:SetScript("OnLeave", function()
             gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
             gripTex:SetDesaturated(true)
             gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+            if GameTooltip then GameTooltip:Hide() end
         end)
         resizeGrip:SetScript("OnMouseDown", function(_, mBtn)
-            if mBtn == "LeftButton" then f:StartSizing("BOTTOMRIGHT") end
+            if mBtn == "LeftButton" then
+                f:StartSizing("BOTTOMRIGHT")
+            elseif mBtn == "RightButton" then
+                f:SetSize(880, 580)
+                if DynamicTalent.db then
+                    DynamicTalent.db.talentMgrModalSize = { w = 880, h = 580 }
+                end
+                if f.UpdateResponsiveLayout then f:UpdateResponsiveLayout() end
+            end
         end)
         resizeGrip:SetScript("OnMouseUp", function()
             f:StopMovingOrSizing()
             if DynamicTalent.db then
                 DynamicTalent.db.talentMgrModalSize = {
-                    w = math.max(800, math.min(1040, math.floor((f:GetWidth() or 880) + 0.5))),
-                    h = math.max(520, math.min(820, math.floor((f:GetHeight() or 580) + 0.5))),
+                    w = math.max(800, math.min(1280, math.floor((f:GetWidth() or 880) + 0.5))),
+                    h = math.max(520, math.min(860, math.floor((f:GetHeight() or 580) + 0.5))),
                 }
             end
             if f.UpdateResponsiveLayout then f:UpdateResponsiveLayout() end
@@ -10043,27 +10283,28 @@ local function CreateSectionHeader(parent, yOffset, title, subtitle, rightButton
     hRule:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 0, 0)
     hRule:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", 0, 0)
 
-    local tFs = hdr:CreateFontString(nil, "OVERLAY")
-    SetFontSafe(tFs, 11, "")
-    tFs:SetPoint("TOPLEFT", hdr, "TOPLEFT", 10, -3)
+    local textWrap = CreateFrame("Frame", nil, hdr)
+    textWrap:SetPoint("TOPLEFT", hdr, "TOPLEFT", 10, -3)
+    textWrap:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 10, 3)
     if rightButton then
-        tFs:SetPoint("RIGHT", rightButton, "LEFT", -10, 0)
+        textWrap:SetPoint("RIGHT", rightButton, "LEFT", -10, 0)
     else
-        tFs:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", -4, -3)
+        textWrap:SetPoint("RIGHT", hdr, "RIGHT", -4, 0)
     end
+
+    local tFs = textWrap:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(tFs, 11, "")
+    tFs:SetPoint("TOPLEFT", textWrap, "TOPLEFT", 0, 0)
+    tFs:SetPoint("TOPRIGHT", textWrap, "TOPRIGHT", 0, 0)
     tFs:SetJustifyH("LEFT")
     tFs:SetWordWrap(false)
     tFs:SetTextColor(acc.r, acc.g, acc.b, 1.0)
     tFs:SetText(title)
 
-    local sFs = hdr:CreateFontString(nil, "OVERLAY")
+    local sFs = textWrap:CreateFontString(nil, "OVERLAY")
     SetFontSafe(sFs, 10, "")
     sFs:SetPoint("TOPLEFT", tFs, "BOTTOMLEFT", 0, -2)
-    if rightButton then
-        sFs:SetPoint("RIGHT", rightButton, "LEFT", -10, 0)
-    else
-        sFs:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", -4, -18)
-    end
+    sFs:SetPoint("TOPRIGHT", tFs, "BOTTOMRIGHT", 0, -2)
     sFs:SetJustifyH("LEFT")
     sFs:SetWordWrap(false)
     sFs:SetTextColor(0.639, 0.702, 0.780, 0.95)
@@ -10400,9 +10641,11 @@ local function CreateBackdropModeCard(parent, yOffset, title, desc, options, get
     local descFs = card:CreateFontString(nil, "OVERLAY")
     SetFontSafe(descFs, 9.5, "")
     descFs:SetPoint("TOPLEFT", titleFs, "BOTTOMLEFT", 0, -3)
-    descFs:SetPoint("TOPRIGHT", card, "TOPRIGHT", -14, -9)
+    descFs:SetPoint("TOPRIGHT", titleFs, "BOTTOMRIGHT", 0, -3)
     descFs:SetJustifyH("LEFT")
-    descFs:SetWordWrap(false)
+    descFs:SetJustifyV("TOP")
+    descFs:SetWordWrap(true)
+    if descFs.SetMaxLines then descFs:SetMaxLines(2) end
     descFs:SetTextColor(0.58, 0.65, 0.74, 0.95)
     descFs:SetText(desc or "")
 
@@ -10690,21 +10933,21 @@ local function RenderTalentEmbedded(parent)
     strip:SetPoint("TOPRIGHT", root, "TOPRIGHT", -16, -10)
     SetPixelBackdrop(strip, { 0.043, 0.051, 0.071, 0.98 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
 
-    local openMgrBtn = CreateStyledButton(strip, "Open Loadout Manager", 162, 28, true, function()
+    local openMgrBtn = CreateStyledButton(strip, "Loadouts & Binds", 144, 28, true, function()
         DynamicTalent:OpenTalentManagerModal(1)
     end)
     openMgrBtn:SetPoint("RIGHT", strip, "RIGHT", -12, 0)
     openMgrBtn:HookScript("OnEnter", function(s)
         if GameTooltip then
             GameTooltip:SetOwner(s, "ANCHOR_TOP")
-            GameTooltip:AddLine("Open Loadout Manager", 1, 1, 1)
+            GameTooltip:AddLine("Open Loadouts & Binds Manager", 1, 1, 1)
             GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Open the Pop-Out Talent Loadouts Manager alongside Blizzard's Talents window.|r", 1, 1, 1, true)
             GameTooltip:Show()
         end
     end)
     openMgrBtn:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
 
-    local openTalentsBtn = CreateStyledButton(strip, "Open Talents (N)", 132, 28, false, function()
+    local openTalentsBtn = CreateStyledButton(strip, "Talent Window", 116, 28, false, function()
         if IsPlayerInCombat() then
             Print("Cannot toggle Blizzard's Talents window during combat.")
             return
@@ -10719,7 +10962,7 @@ local function RenderTalentEmbedded(parent)
     openTalentsBtn:HookScript("OnEnter", function(s)
         if GameTooltip then
             GameTooltip:SetOwner(s, "ANCHOR_TOP")
-            GameTooltip:AddLine("Open Blizzard Talents", 1, 1, 1)
+            GameTooltip:AddLine("Open Talent Window", 1, 1, 1)
             GameTooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Toggle Blizzard's Talent Tree & Left-Hand Loadouts Dock (out of combat).|r", 1, 1, 1, true)
             GameTooltip:Show()
         end
@@ -10732,6 +10975,7 @@ local function RenderTalentEmbedded(parent)
     stripTitle:SetPoint("RIGHT", openTalentsBtn, "LEFT", -12, 0)
     stripTitle:SetJustifyH("LEFT")
     stripTitle:SetWordWrap(false)
+    DynamicTalent.AttachTruncationTooltip(stripTitle)
 
     local stripSub = strip:CreateFontString(nil, "OVERLAY")
     SetFontSafe(stripSub, 9.5, "")
@@ -10750,8 +10994,8 @@ local function RenderTalentEmbedded(parent)
         local _, activeBarName = DynamicTalent:GetTalentLoadoutBarData()
         local activeBadge = activeEntry and DynamicTalent:FormatTalentBadge(activeEntry) or string.format("|cFF%s[Live]|r", a.hex)
         local activeName = tostring((activeEntry and activeEntry.name) or activeBarName or "Default")
-        stripTitle:SetText(string.format("%s |cFFFFFFFF%s|r  |cFF64748B(Active Loadout)|r", activeBadge, activeName))
-        stripSub:SetText(string.format("%d saved %s for your active specialisation  |cFF475569-|r  Left-Hand Talent Dock attaches to Blizzard's Talents window", #lib, (#lib == 1 and "build" or "builds")))
+        stripTitle:SetText(string.format("%s |cFFFFFFFF%s|r  |cFF64748B(Active)|r", activeBadge, activeName))
+        stripSub:SetText(string.format("%d saved %s (active spec) |cFF475569-|r Docked on Talents", #lib, (#lib == 1 and "build" or "builds")))
     end
     RefreshActionStrip()
     root.RefreshActionStrip = RefreshActionStrip
@@ -10769,7 +11013,7 @@ local function RenderTalentEmbedded(parent)
     sy = sy + dy1h
 
     local _, dyEnable = CreateSegmentedSwitchCard(sec1, sy, "Enable DynamicTalent Module",
-        "Enables the PlayerSpellsFrame Talent Loadouts Dock, Top Info Bar switcher, and zone/boss/PvP reminders.",
+        "Enables the Talent Loadouts Dock beside the Talent window, Top Info Bar switcher, and swap reminders.",
         function() return db.enabled ~= false end,
         function(v)
             db.enabled = (v == true)
@@ -10790,7 +11034,7 @@ local function RenderTalentEmbedded(parent)
     sy = sy + dyEnable
 
     local _, dyPrepBar = CreateSegmentedSwitchCard(sec1, sy, "Show Talent Capsule on Prep Bar",
-        "Displays your active Talent Loadout and 1-click mismatch swap button inside DynamicPrep's Top Info Bar.",
+        "Shows your active build and 1-click swap button inside DynamicPrep's Top Info Bar.",
         function()
             return _G.DynamicPrepDB and _G.DynamicPrepDB.segments and _G.DynamicPrepDB.segments.talents == true
         end,
@@ -10804,13 +11048,13 @@ local function RenderTalentEmbedded(parent)
         end)
     sy = sy + dyPrepBar
 
-    local testToastBtn = CreateStyledButton(sec1, "Test Toast", 88, 26, false, function()
+    local testToastBtn = CreateStyledButton(sec1, "Test", 76, 26, false, function()
         local list = DynamicTalent:GetSortedTalentProfiles(nil, false)
         local sample = list[1] or { name = "Raid Build", group = "Raid", heroAcronym = "WS" }
         DynamicTalent:ShowTalentReminderToast(sample, sample.name, "Preview Reminder", true)
     end)
-    local _, dyRem = CreateSegmentedSwitchCard(sec1, sy, "Zone-Aware Talent Loadout Reminders",
-        "Shows a shared 1-click alert toast when entering a Raid, Dungeon, Delve, or PvP mode with a different bound loadout.",
+    local _, dyRem = CreateSegmentedSwitchCard(sec1, sy, "Zone Talent Reminders",
+        "Shows an alert toast when entering content with a different bound build.",
         function() return db.talentReminderEnabled ~= false and db.talentReminderToastEnabled ~= false end,
         function(v)
             db.talentReminderEnabled = (v == true)
@@ -10821,7 +11065,7 @@ local function RenderTalentEmbedded(parent)
     sy = sy + dyRem
 
     local _, dyZoneFirst = CreateSegmentedSwitchCard(sec1, sy, "Prioritise Current Zone First",
-        "Automatically floats loadouts matching your active content (Raid, M+, Delves, PvP, or Outdoor) to the top of quick-switchers.",
+        "Floats builds matching your active zone to the top of quick-switchers.",
         function() return db.prioritiseCurrentZone == true end,
         function(v)
             db.prioritiseCurrentZone = (v == true)
@@ -10830,7 +11074,7 @@ local function RenderTalentEmbedded(parent)
     sy = sy + dyZoneFirst
 
     local _, dyHeroSwap = CreateSegmentedSwitchCard(sec1, sy, "Right-Click Hero Spec Swap",
-        "Right-click the central Hero Talent medallion out of combat to switch to your other Hero tree without opening the picker popup.",
+        "Right-click the Hero Talent medallion out of combat to swap Hero trees.",
         function() return db.rightClickHeroSwap ~= false end,
         function(v)
             db.rightClickHeroSwap = (v == true)
@@ -10851,7 +11095,7 @@ local function RenderTalentEmbedded(parent)
 
     local dimmerCard, mistIntCard
     local _, dyBgBase = CreateBackdropModeCard(secBg, syBg, "Base Background",
-        "Choose between Blizzard's native spec artwork or a clean Midnight Obsidian canvas.",
+        "Choose Blizzard spec art or a solid Obsidian canvas.",
         {
             { value = "BLIZZARD", label = "Blizzard Spec Art", tip = "Keeps Blizzard's native specialisation artwork visible behind talent nodes (adjustable with Background Dimmer)." },
             { value = "OBSIDIAN", label = "Solid Obsidian",    tip = "Replaces Blizzard's spec artwork with a sleek Solid Obsidian canvas and subtle dark perimeter vignette." },
@@ -10866,7 +11110,7 @@ local function RenderTalentEmbedded(parent)
 
     local dyDimmer
     dimmerCard, dyDimmer = CreatePrecisionSliderCard(secBg, syBg, "Background Dimmer",
-        "Darkens Blizzard's spec artwork behind talent nodes so icons and links stay crisp.",
+        "Darkens Blizzard art so talent nodes stay crisp.",
         0, 85, 5,
         function() return db.talentBackdropDimmer ~= nil and db.talentBackdropDimmer or 35 end,
         function(val)
@@ -10875,11 +11119,11 @@ local function RenderTalentEmbedded(parent)
         end,
         function(v) return string.format("%d%%", v) end,
         function() return (db.talentBackdropBase == "BLIZZARD") end,
-        "Only applies when Blizzard Spec Art is selected.")
+        "Only applies to Blizzard Spec Art.")
     syBg = syBg + dyDimmer
 
     local _, dyMistMode = CreateBackdropModeCard(secBg, syBg, "Ambient Mist",
-        "Overlay soft drifting mist onto your talent background, synced to your Hero tree or Class.",
+        "Overlay soft Hero-synced or class-tinted mist.",
         {
             { value = "OFF",        label = "Off",         tip = "Turns off the drifting mist and focal glow overlay." },
             { value = "HERO_MIST",  label = "Hero-Synced", tip = "Layered Obsidian mist that shifts its colour mood automatically across all 40 Hero Talent trees." },
@@ -10895,7 +11139,7 @@ local function RenderTalentEmbedded(parent)
 
     local dyMistInt
     mistIntCard, dyMistInt = CreatePrecisionSliderCard(secBg, syBg, "Mist Intensity",
-        "Controls how strongly the ambient mist and focal glow stand out behind your talent tree.",
+        "Adjusts ambient mist and glow strength.",
         15, 100, 5,
         function() return db.talentBackdropMistIntensity ~= nil and db.talentBackdropMistIntensity or 60 end,
         function(val)
@@ -10904,7 +11148,7 @@ local function RenderTalentEmbedded(parent)
         end,
         function(v) return string.format("%d%%", v) end,
         function() return ((db.talentBackdropMist or "HERO_MIST") ~= "OFF") end,
-        "Only applies when Ambient Mist is enabled.")
+        "Only applies when Ambient Mist is on.")
     syBg = syBg + dyMistInt
 
     local _, dyAnim = CreateSegmentedSwitchCard(secBg, syBg, "Subtle Backdrop Animation",
@@ -11253,10 +11497,21 @@ function DynamicTalent:ApplyTheme()
     local surf, acc = GetTheme()
     if standaloneWin then
         SetPixelBackdrop(standaloneWin, surf.bg, { acc.r, acc.g, acc.b, 0.90 }, 1)
+        if standaloneWin.topLine then
+            standaloneWin.topLine:SetColorTexture(acc.r, acc.g, acc.b, 1.0)
+        end
+        if standaloneWin.titleText then
+            standaloneWin.titleText:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFTalent|r  |cFF94A3B8v%s|r", acc.hex, VERSION))
+        end
     end
-    if talentMgrModal and talentMgrModal:IsShown() then
+    if talentMgrModal then
         SetPixelBackdrop(talentMgrModal, { 0.035, 0.039, 0.051, 1.00 }, { acc.r, acc.g, acc.b, 0.90 }, 1)
-        if talentMgrModal.RefreshTab2View then talentMgrModal:RefreshTab2View() end
+        if talentMgrModal.hdrTitle then
+            talentMgrModal.hdrTitle:SetText(string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFTalent|r  |cFF475569|||r  |cFF%sTalent Loadouts Manager|r", acc.hex))
+        end
+        if talentMgrModal:IsShown() and talentMgrModal.RefreshTab2View then
+            talentMgrModal:RefreshTab2View()
+        end
     end
     if activeEmbeddedRoot and activeEmbeddedRoot:IsShown() and activeEmbeddedRoot:GetParent() then
         pcall(RenderTalentEmbedded, activeEmbeddedRoot:GetParent())
@@ -11356,6 +11611,13 @@ function DynamicTalent:Open(subTab)
         f:SetSize(900, 600)
         f:SetPoint("CENTER")
         f:SetMovable(true)
+        f:SetResizable(true)
+        if f.SetResizeBounds then
+            f:SetResizeBounds(760, 480, 1280, 860)
+        elseif f.SetMinResize then
+            f:SetMinResize(760, 480)
+            if f.SetMaxResize then f:SetMaxResize(1280, 860) end
+        end
         f:SetClampedToScreen(true)
         f:EnableMouse(true)
         f:RegisterForDrag("LeftButton")
@@ -11376,22 +11638,90 @@ function DynamicTalent:Open(subTab)
         hdr:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
         hdr:SetPoint("TOPRIGHT", f, "TOPRIGHT", -1, -1)
         SetPixelBackdrop(hdr, surf.header, { 0, 0, 0, 0 }, 0)
+
+        local topLine = CreateSolidTex(hdr, "OVERLAY", 4, acc.r, acc.g, acc.b, 1.0)
+        topLine:SetHeight(2)
+        topLine:SetPoint("TOPLEFT", hdr, "TOPLEFT", 0, 0)
+        topLine:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", 0, 0)
+        f.topLine = topLine
+
         local div = CreateSolidTex(hdr, "ARTWORK", 1, 1, 1, 1, 0.08)
         div:SetHeight(1)
         div:SetPoint("BOTTOMLEFT", hdr, "BOTTOMLEFT", 0, 0)
         div:SetPoint("BOTTOMRIGHT", hdr, "BOTTOMRIGHT", 0, 0)
 
-        local title = hdr:CreateFontString(nil, "OVERLAY")
-        SetFontSafe(title, 13, "")
-        title:SetPoint("LEFT", hdr, "LEFT", 16, 0)
-        title:SetText(string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFTalent|r  |cFF64748Bv%s|r", VERSION))
-
         local closeBtn = CreateStyledButton(hdr, "X", 24, 22, false, function() f:Hide() end)
         closeBtn:SetPoint("RIGHT", hdr, "RIGHT", -10, 0)
 
+        local title = hdr:CreateFontString(nil, "OVERLAY")
+        SetFontSafe(title, 13, "")
+        title:SetPoint("LEFT", hdr, "LEFT", 16, 0)
+        title:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
+        title:SetJustifyH("LEFT")
+        title:SetWordWrap(false)
+        title:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFTalent|r  |cFF94A3B8v%s|r", acc.hex, VERSION))
+        f.titleText = title
+
+        local footer = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        footer:SetHeight(36)
+        footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 1)
+        footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
+        SetPixelBackdrop(footer, surf.header, surf.border, 1)
+
+        local resetBtn = CreateStyledButton(footer, "Reset DynamicTalent", 152, 24, false, function()
+            DynamicTalent:ResetModuleDefaults()
+        end)
+        resetBtn:SetPoint("LEFT", footer, "LEFT", 14, 0)
+
+        local reloadBtn = CreateStyledButton(footer, "Reload UI", 92, 24, false, function()
+            if type(_G.ReloadUI) == "function" then _G.ReloadUI() end
+        end)
+        reloadBtn:SetPoint("RIGHT", footer, "RIGHT", -32, 0)
+
+        local grip = CreateFrame("Button", nil, footer)
+        grip:SetSize(14, 14)
+        grip:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", -4, 4)
+        grip:SetFrameLevel(footer:GetFrameLevel() + 4)
+        grip:EnableMouse(true)
+        local gripTex = grip:CreateTexture(nil, "OVERLAY", nil, 5)
+        gripTex:SetAllPoints()
+        gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        gripTex:SetDesaturated(true)
+        gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+        grip:SetScript("OnEnter", function(s)
+            local _, a = GetTheme()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+            gripTex:SetDesaturated(false)
+            gripTex:SetVertexColor(a.r, a.g, a.b, 0.95)
+            if GameTooltip then
+                GameTooltip:SetOwner(s, "ANCHOR_TOPLEFT")
+                GameTooltip:ClearLines()
+                GameTooltip:AddLine("Resize Window", 1, 1, 1)
+                GameTooltip:AddLine(string.format("|cFF%sLeft-Click & Drag:|r |cFFE2E8F0Resize DynamicTalent window|r", a.hex))
+                GameTooltip:AddLine(string.format("|cFF%sRight-Click:|r |cFFE2E8F0Reset size to 900x600|r", a.hex))
+                GameTooltip:Show()
+            end
+        end)
+        grip:SetScript("OnLeave", function()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+            gripTex:SetDesaturated(true)
+            gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+            if GameTooltip then GameTooltip:Hide() end
+        end)
+        grip:SetScript("OnMouseDown", function(_, btn)
+            if btn == "LeftButton" then
+                f:StartSizing("BOTTOMRIGHT")
+            elseif btn == "RightButton" then
+                f:SetSize(900, 600)
+            end
+        end)
+        grip:SetScript("OnMouseUp", function()
+            f:StopMovingOrSizing()
+        end)
+
         local body = CreateFrame("Frame", nil, f)
-        body:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -38)
-        body:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 6)
+        body:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, 0)
+        body:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", 0, 0)
         f.body = body
         f:SetScript("OnHide", function()
             CloseAllDynamicTalentPopups()
@@ -11400,6 +11730,12 @@ function DynamicTalent:Open(subTab)
     end
     local surf, acc = GetTheme()
     SetPixelBackdrop(standaloneWin, surf.bg, { acc.r, acc.g, acc.b, 0.90 }, 1)
+    if standaloneWin.topLine then
+        standaloneWin.topLine:SetColorTexture(acc.r, acc.g, acc.b, 1.0)
+    end
+    if standaloneWin.titleText then
+        standaloneWin.titleText:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFTalent|r  |cFF94A3B8v%s|r", acc.hex, VERSION))
+    end
     RenderTalentEmbedded(standaloneWin.body)
     standaloneWin:Show()
 end
@@ -11425,36 +11761,38 @@ DynamicTalent.Reset               = function() return DynamicTalent:ResetModuleD
 DynamicTalent.CHANGELOG = {
     {
         version = VERSION,
-        date = "22/11/2026",
+        date = "25/11/2026",
         entries = {
-            { type = "UI",    text = "Release v2.8.1 - Raid Bosses Binder Redesign (22/11/2026): Promoted All Raids to Row 1 alongside the Season 2 raid pills with an Obsidian Core explanation banner; expanded the boss grid to use the full card width underneath; added a red-hover Clear button beside + Bind Raid (backed by ClearRaidBinds) to remove All Raids or selected boss binds for the toggled difficulties; and fixed multi-select/unselect in bp:OnClick." },
-            { type = "FIXED", text = "Release v2.8.1 - Raid Boss Selection & Boss-Specific Build Priority Over All Raids (22/11/2026): Removed forced Boss #1 pre-highlighting in Raid Boss Talent Binds (and cleared pending tile selections when switching loadouts or after binding) so bosses can be freely selected and unselected; added automatic single-boss raid matching (Kith'ix, Tidebound Grotto); cleared sticky boss memory when targeting an unbound Season 2 raid boss; and protected active boss-specific raid builds from being overridden by All Raids when no unbound boss is targeted." },
-            { type = "UI",    text = "Release v2.8.1 - Right-Click Toast Silences Mismatch (22/11/2026): Right-Clicking DynamicTalentReminderToast or its Swap button now silences that specific mismatch key (mKey) for the session, refreshes DynamicPrep's Top Info Bar capsule immediately, updates the toast subtext to 'Right-Click to silence', and clears silenced mismatches on specialisation change or reload." },
-            { type = "FIXED", text = "Release v2.8.1 - Sticky Raid Boss Preservation Across Swaps, Real Library Entry Resolution, Focus/Boss1-5 Scanning & Full-Tier /dt why (22/11/2026): Updated SyncTalentBindsUI(clearStickyBoss) so talent swaps (ApplyTalentLibraryEntry / TRAIT_CONFIG_UPDATED) never wipe the sticky raid boss cache while bind edits/deletes still clear it cleanly; resolved transient Prep Bar / Alert Toast rule payloads back to their real saved library entry in ApplyTalentLibraryEntry() so liveHash and lastAppliedTalentID persist onto the actual loadout; added focus and boss1..boss5 scanning to ResolveBoundBossFromSources(); and upgraded /dt why to report winning rules across all 3 tiers plus live unit names (target, softenemy, focus, boss1) and sticky boss state." },
-            { type = "UI",    text = "Release v2.8.1 - Prep Bar Capsule, Tooltip & Quick-Switcher Popover Bind-Badge Parity (22/11/2026): Added right-aligned amber-gold bind tags ((Various), (All M+), (#8 Ula'tek)) via GetLoadoutBindBadgeText() and dynamic text anchoring to DynamicTalentPopover (widened to 276px) with hover highlights and full Talent Dock tooltips (Hero Tree + Bound lines); added bind tags and FormatTalentBadge() prefixes to GetTalentLoadoutBarData() and PopulatePrepBarTooltip() (including Hero Tree and Bound/Unbound lines); and reset DynamicPrep capsule widths on bind changes in SyncTalentBindsUI()." },
-            { type = "FIXED", text = "Release v2.8.1 - Raid Boss Matching Accuracy, Sticky Boss Cache & /dt why (22/11/2026): Removed inverted substring checks in MatchBossTargetName() and MatchBoundBossByName() and added 'ula'tek'/'ulatek' aliases to #8 Ula'tek so standing at #8 never matches #2 Entombed Sentinels; removed the UnitIsFriend exclusion on nameplates and raid/party targets so pre-pull friendly bosses are detected cleanly while still skipping player units; added a subzone-scoped sticky raid boss cache (cleared on ENCOUNTER_END victory, subzone/zone change, spec change, or bind edits) to prevent All Raids fallback flicker when looking away or targeting an ally; and added /dt why (/dt debug) for plain-English diagnostics." },
-            { type = "UI",    text = "Tighter Header Subtitles & Truncation Hover Safety Net (22/11/2026): Shortened the Raid Bosses, M+ Dungeons, PvP, Zone Defaults, and Active Reminders subtitles so they fit cleanly on one line at the minimum 800px Talent Loadouts Manager width, and added a reusable hover helper that shows the full plain text in a tooltip only when a single-line section subtitle, the Action & Status strip subtitle, or an Active Reminders row is actually cut off (existing button and tile tooltips are never replaced)." },
-            { type = "FIXED", text = "Delve vs Mythic+ Zone Priority Detection (22/11/2026): Updated GetInstanceInfo() parsing across GetActiveTalentMismatch() and GetActiveContentGroup() to read difficultyID alongside instanceType and check difficultyID == 208, C_DelvesUI.HasActiveDelve(), C_PartyInfo.IsDelveInProgress(), and C_PartyInfo.IsDelveComplete(). Delves and non-dungeon scenarios never misclassify as Mythic+; [Zone: Delves] always takes priority inside Delves, [Zone: Outdoor] wins in open world zones outside resting cities, and Talent Dock / Prep Bar refresh cleanly after zoning." },
-            { type = "UI",    text = "Option 1 Talent Tree Backdrop Studio Redesign (22/11/2026): Split Backdrop Studio into independent Base Background ('Blizzard Spec Art' | 'Solid Obsidian') and Ambient Mist ('Off' | 'Hero-Synced' | 'Class Glow') controls with a muted-when-inactive Background Dimmer (0%-85% for Blizzard Spec Art) and a live Mist Intensity slider (15%-100%, default 60%) so Hero-Synced and Class Glow mist can layer cleanly over either base, migrating legacy talentBackdropMode settings automatically." },
-            { type = "FIXED", text = "Talent Tree Backdrop Studio Layering, Dimmer Order & Mist Opacity (22/11/2026): Moved DynamicTalentTreeBackdrop textures onto strictly positive BACKGROUND sublevels (1-6) strictly above Blizzard's TalentsFrame.Background (safely hidden via alpha 0 in non-Blizzard modes and preserved across spec switches via hooksecurefunc on UpdateSpecBackground, then restored cleanly to alpha 1 in Blizzard Default or when disabled) while remaining below all nodes, edges, and buttons; placed dimmerWash strictly behind the mist and vignette layers so up to 85% Background Dimmer never smothers Hero-Synced Mist or Class Glow; and eliminated double-alpha multiplication by keeping mist base alpha at 1.0 during animations with tuned atmospheric opacity bounds (0.28-0.48 primary, 0.20-0.36 secondary, 0.24-0.40 focal, and 0.38/0.28/0.32 static fallback)." },
-            { type = "FIXED", text = "Same-Name Loadout Bind Isolation (22/11/2026): Gave every saved build a stable unique id and persisted loadoutID across Raid, M+, PvP, and Zone bind rules (with unambiguous legacy backfill), so builds sharing names (e.g. [M+-WS] Default, [M+-KG] Default, [Raid-KG] Default) never collide or overwrite each other's binds, badges, conflict prompts, or Active Reminders rows." },
-            { type = "UI",    text = "Single Pop-Out Manager, Bidirectional Links & Drag-and-Drop Group Order (22/11/2026): Removed the duplicate embedded manager from /ds -> DynamicTalent in favour of a clean Action & Status strip ('Open Talents (N)' + 'Open Loadout Manager'), added a 'Settings' header button in DynamicTalentManagerModal, upgraded the 5 Custom Loadout Group Order rows with tactile Left-Click & Drag ghost-pill reordering plus bordered Up/Down chevrons, and fixed Precision Track sliders to true 4px fill geometry." },
+            { type = "FIXED", text = "Patch 12.1.7 Combat, Secret-Value & Unspecialised Hardening (25/11/2026): Guarded talent dock refreshes on Blizzard's Talent window during combat (deferring updates until combat ends), protected import string decoding and loadout switching against secret values, active Mythic+ runs, and unspecialised or Lorewalking characters, and tightened Encounter Journal, Mythic+ dungeon list, raid difficulty, Hero medallion, and specialisation-change checks." },
+            { type = "UI",    text = "Standalone Window, Pop-Out Manager Parity & 800x520 Layout Reflow (25/11/2026): Made the standalone DynamicTalent window resizable (760x480 to 1280x860) with a live Suite Accent top bar, Reset/Reload footer, and corner resize grip with Right-Click reset; widened the Pop-Out Manager bounds to 1280x860 with resize grip tooltip and Right-Click reset; fixed the Talent Dock scrollbar overlap with the specialisation bar; fixed vertical skew on section headers and Backdrop Studio descriptions; compacted left-column cards, Action Strip buttons, and Raid difficulty rows for clean 800x520 framing; and reflowed Mythic+ dungeon tiles into a 2x4 grid on narrower layouts." },
+            { type = "UI",    text = "Release v2.8.1 - Raid Bosses Binder Redesign (22/11/2026): Promoted All Raids to Row 1 alongside the Season 2 raid pills with an Obsidian Core explanation banner; expanded the boss grid to use the full card width underneath; added a red-hover Clear button beside + Bind Raid to remove All Raids or selected boss binds for the toggled difficulties; and fixed multi-select and unselect behaviour on boss tiles." },
+            { type = "FIXED", text = "Release v2.8.1 - Raid Boss Selection & Boss-Specific Build Priority Over All Raids (22/11/2026): Removed forced Boss #1 pre-highlighting in Raid Boss Talent Binds (and cleared pending tile selections when switching loadouts or after binding) so bosses can be freely selected and unselected; added automatic single-boss raid matching (Kith'ix, Tidebound Grotto); cleared cached boss memory when targeting an unbound Season 2 raid boss; and protected active boss-specific raid builds from being overridden by All Raids when no unbound boss is targeted." },
+            { type = "UI",    text = "Release v2.8.1 - Right-Click Toast Silences Mismatch (22/11/2026): Right-clicking the talent reminder toast or its Swap button now silences that reminder for the session, refreshes DynamicPrep's Top Info Bar capsule immediately, updates the toast subtext to 'Right-Click to silence', and clears silenced reminders on specialisation change or reload." },
+            { type = "FIXED", text = "Release v2.8.1 - Sticky Raid Boss Preservation, Real Library Resolution, Focus/Boss Scanning & /dt why (22/11/2026): Preserved the cached raid boss across talent swaps while still clearing it on bind edits or deletes; resolved Prep Bar and Alert Toast payloads back to their saved library entry so live match tracking persists onto the actual loadout; added focus and boss1-5 scanning to boss matching; and upgraded /dt why to report winning rules across all 3 tiers plus live unit names and cached boss state." },
+            { type = "UI",    text = "Release v2.8.1 - Prep Bar Capsule, Tooltip & Quick-Switcher Popover Bind-Badge Parity (22/11/2026): Added right-aligned amber-gold bind tags ((Various), (All M+), (#8 Ula'tek)) and dynamic text anchoring to the quick-switcher popover (widened to 276px) with hover highlights and full Talent Dock tooltips (Hero Tree and Bound lines); added bind tags and group badge prefixes to the Prep Bar capsule and tooltip; and refreshed capsule widths automatically when binds change." },
+            { type = "FIXED", text = "Release v2.8.1 - Raid Boss Matching Accuracy, Sticky Boss Cache & /dt why (22/11/2026): Removed inverted substring checks in raid boss matching and added Ula'tek aliases so standing at boss #8 never matches boss #2 Entombed Sentinels; allowed pre-pull friendly bosses on nameplates and raid or party targets to be detected cleanly while still skipping player units; added a subzone-scoped boss cache cleared on encounter victory, zone change, spec change, or bind edits to prevent All Raids fallback flicker; and added /dt why (/dt debug) for plain-English diagnostics." },
+            { type = "UI",    text = "Tighter Header Subtitles & Truncation Hover Safety Net (22/11/2026): Shortened the Raid Bosses, M+ Dungeons, PvP, Zone Defaults, and Active Reminders subtitles so they fit cleanly on one line at the minimum 800px Talent Loadouts Manager width, and added a reusable hover helper that shows full plain text in a tooltip only when a single-line subtitle or reminder row is cut off." },
+            { type = "FIXED", text = "Delve vs Mythic+ Zone Priority Detection (22/11/2026): Updated zone and instance detection to check active Delve status alongside instance difficulty so Delves and non-dungeon scenarios never misclassify as Mythic+; Delves binds always take priority inside Delves, Outdoor binds win in open world zones outside resting cities, and the Talent Dock and Prep Bar refresh cleanly after zoning." },
+            { type = "UI",    text = "Option 1 Talent Tree Backdrop Studio Redesign (22/11/2026): Split Backdrop Studio into independent Base Background ('Blizzard Spec Art' or 'Solid Obsidian') and Ambient Mist ('Off', 'Hero-Synced', or 'Class Glow') controls with a muted-when-inactive Background Dimmer (0%-85% for Blizzard Spec Art) and a live Mist Intensity slider (15%-100%, default 60%) so mist layers cleanly over either base, migrating older backdrop settings automatically." },
+            { type = "FIXED", text = "Talent Tree Backdrop Studio Layering, Dimmer Order & Mist Opacity (22/11/2026): Layered the custom backdrop textures cleanly above Blizzard's spec background (restored automatically in Blizzard mode or when disabled) and strictly below all talent nodes, links, and buttons; placed the dimmer layer behind the mist and vignette layers so up to 85% dimming never smothers Hero-Synced Mist or Class Glow; and tuned atmospheric mist opacity bounds for crisp readability." },
+            { type = "FIXED", text = "Same-Name Loadout Bind Isolation (22/11/2026): Gave every saved build a stable unique identifier across Raid, M+, PvP, and Zone bind rules so builds sharing names never collide or overwrite each other's binds, badges, conflict prompts, or Active Reminders rows." },
+            { type = "UI",    text = "Single Pop-Out Manager, Bidirectional Links & Drag-and-Drop Group Order (22/11/2026): Replaced the duplicate embedded manager under /ds -> DynamicTalent with a clean Action & Status strip ('Talent Window' and 'Loadouts & Binds'), added a 'Settings' header button in the Pop-Out Manager, upgraded the 5 Custom Loadout Group Order rows with Left-Click & Drag reordering plus bordered Up/Down chevrons, and standardised sliders to 4px precision tracks." },
             { type = "NEW",   text = "Right-Click Hero Spec Swap (21/11/2026): Added an enabled-by-default 'Right-Click Hero Spec Swap' option (out of combat, skipped during active Mythic+ keystones and inspection) on Blizzard's central Hero Talent medallion with a clean 'Right-Click: Switch to [Other Hero Tree]' hover hint; immediately stages the alternate Hero tree without opening the picker popup." },
-            { type = "NEW", text = "Talent Tree Backdrop Studio & Background Dimmer (21/11/2026): Added a non-interactive background studio behind PlayerSpellsFrame.TalentsFrame with 4 Backdrop Modes (Blizzard Default, Obsidian Clean, Hero-Synced Mist shifting automatically across all 40 Hero trees, and Class Glow), a 0%-85% Background Dimmer precision slider (default 35%), and a Subtle Backdrop Animation toggle." },
-            { type = "NEW", text = "Extracted DynamicTalent Module (/dt, /dynamictalent) (21/11/2026): Moved the unlimited per-spec Talent Loadout library, Hero Talent acronym badges, WCL/Northern Sky/Blizzard importer, Left-Hand PlayerSpellsFrame Dock, 880x580 Talent Loadouts Manager, and Shared Alert Toast reminders out of DynamicPrep into a dedicated 12th dual-mode module with zero-loss SavedVariables migration (DynamicPrepDB -> DynamicTalentDB) and a clean Top Info Bar capsule hook." },
-            { type = "NEW", text = "Dedicated PvP Binder Tab & 3-Tier Mismatch Priority (21/11/2026): Added a 4th 'PvP' binder tab (All PvP, Arena, Battlegrounds, War Mode) alongside Raid Bosses, M+ Dungeons, and Zone Defaults; specific PvP mode binds now take priority over All PvP, while resting in cities suppresses Outdoor and War Mode alerts cleanly." },
-            { type = "NEW", text = "Custom Loadout Group Ordering & Prioritise Current Zone First (21/11/2026): Added Tab 2 controls to reorder the 5 loadout groups (Raid, M+, Delves, PvP, Custom) and optionally float loadouts matching your active content zone to the top of the Talent Dock and Prep Bar quick-switcher." },
+            { type = "NEW",   text = "Talent Tree Backdrop Studio & Background Dimmer (21/11/2026): Added a non-interactive background studio behind the Talent tree with Blizzard Spec Art and Solid Obsidian bases, Hero-Synced Mist across all 40 Hero trees, Class Glow, a 0%-85% Background Dimmer slider (default 35%), and a Subtle Backdrop Animation toggle." },
+            { type = "NEW",   text = "Extracted DynamicTalent Module (/dt, /dynamictalent) (21/11/2026): Moved the unlimited per-spec Talent Loadout library, Hero Talent acronym badges, WCL/Northern Sky/Blizzard importer, Left-Hand Talent Dock, Talent Loadouts Manager, and Shared Alert Toast reminders out of DynamicPrep into a dedicated 12th dual-mode module with zero-loss settings migration and a clean Top Info Bar capsule hook." },
+            { type = "NEW",   text = "Dedicated PvP Binder Tab & 3-Tier Mismatch Priority (21/11/2026): Added a 4th 'PvP' binder tab (All PvP, Arena, Battlegrounds, War Mode) alongside Raid Bosses, M+ Dungeons, and Zone Defaults; specific PvP mode binds now take priority over All PvP, while resting in cities suppresses Outdoor and War Mode alerts cleanly." },
+            { type = "NEW",   text = "Custom Loadout Group Ordering & Prioritise Current Zone First (21/11/2026): Added controls to reorder the 5 loadout groups (Raid, M+, Delves, PvP, Custom) and optionally float loadouts matching your active content zone to the top of the Talent Dock and Prep Bar quick-switcher." },
         },
     },
 }
 
 DynamicTalent.SEARCH_ENTRIES = {
-    { title = "Talent Loadouts & Binds",               desc = "Manage per-spec talent strings, Hero Talent badges, and Raid/M+/PvP/Zone swap rules.",             keywords = "talent loadout import wcl blizzard string hero", tabIndex = 1, openManager = true, targetTitle = "Open Loadout Manager" },
-    { title = "Talent Export String",                  desc = "Paste Warcraft Logs, Northern Sky, or Blizzard strings, or capture your active talent tree.",      keywords = "talent string export import paste copy",         tabIndex = 1, openManager = true, targetTitle = "Open Loadout Manager" },
-    { title = "PvP Talent Binds",                      desc = "Bind builds to All PvP, Arena, Battlegrounds, or War Mode.",                                       keywords = "pvp arena battlegrounds bg blitz war mode",      tabIndex = 1, subMode = "PVP", openManager = true, targetTitle = "Open Loadout Manager" },
+    { title = "Talent Loadouts & Binds",               desc = "Manage per-spec talent strings, Hero Talent badges, and Raid/M+/PvP/Zone swap rules.",             keywords = "talent loadout import wcl blizzard string hero", tabIndex = 1, openManager = true, targetTitle = "Loadouts & Binds" },
+    { title = "Talent Export String",                  desc = "Paste Warcraft Logs, Northern Sky, or Blizzard strings, or capture your active talent tree.",      keywords = "talent string export import paste copy",         tabIndex = 1, openManager = true, targetTitle = "Loadouts & Binds" },
+    { title = "PvP Talent Binds",                      desc = "Bind builds to All PvP, Arena, Battlegrounds, or War Mode.",                                       keywords = "pvp arena battlegrounds bg blitz war mode",      tabIndex = 1, subMode = "PVP", openManager = true, targetTitle = "Loadouts & Binds" },
     { title = "Enable DynamicTalent Module",           desc = "Toggle the Talent Loadouts Dock, Prep Bar switcher, and swap reminders.",                          keywords = "enable disable dynamictalent module",            tabIndex = 1, targetTitle = "Enable DynamicTalent Module" },
     { title = "Show Talent Capsule on Prep Bar",       desc = "Toggle the Talent Loadout capsule inside DynamicPrep's Top Info Bar.",                             keywords = "prep bar capsule segment talents",               tabIndex = 1, targetTitle = "Show Talent Capsule on Prep Bar" },
-    { title = "Zone-Aware Talent Loadout Reminders",   desc = "Show a 1-click alert toast when entering Raid, M+, Delve, or PvP content with a different build.", keywords = "talent reminder toast alert swap",               tabIndex = 1, targetTitle = "Zone-Aware Talent Loadout Reminders" },
+    { title = "Zone Talent Reminders",                 desc = "Show a 1-click alert toast when entering Raid, M+, Delve, or PvP content with a different build.", keywords = "talent reminder toast alert swap",               tabIndex = 1, targetTitle = "Zone Talent Reminders" },
     { title = "Prioritise Current Zone First",         desc = "Float loadouts matching your current zone to the top of quick-switchers.",                         keywords = "prioritise zone first sort quick switch",        tabIndex = 1, targetTitle = "Prioritise Current Zone First" },
     { title = "Right-Click Hero Spec Swap",            desc = "Right-click Blizzard's Hero Talent medallion out of combat to switch Hero trees cleanly.",          keywords = "hero spec swap medallion right click tree",      tabIndex = 1, targetTitle = "Right-Click Hero Spec Swap" },
     { title = "Talent Tree Backdrop Studio",           desc = "Choose Blizzard Spec Art or Solid Obsidian with optional Hero-Synced or Class Glow mist.",        keywords = "backdrop background obsidian blizzard spec art tree", tabIndex = 1, targetTitle = "Base Background" },
@@ -11478,7 +11816,7 @@ local function RegisterWithDynamicSuite()
         addonName    = "DynamicTalent",
         subtitle     = "Talent Loadouts & Binds",
         version      = VERSION,
-        date         = "21/11/2026",
+        date         = "25/11/2026",
         order        = 35,
         icon         = ICON_COLOR,
         fallbackIcon = ICON_COLOR,
@@ -11486,7 +11824,7 @@ local function RegisterWithDynamicSuite()
         iconAccent   = ICON_ACCENT,
         slash        = "/dt",
         category     = "Talent Loadouts & Binds",
-        desc         = "Unlimited per-spec talent loadout library, WCL/Northern Sky/Blizzard importer, PlayerSpellsFrame dock, Raid/M+/PvP/Zone talent binds, custom loadout group ordering, and 1-click swap reminder toasts.",
+        desc         = "Unlimited per-spec talent loadout library, WCL/Northern Sky/Blizzard importer, Talent window dock, Raid/M+/PvP/Zone talent binds, custom loadout group ordering, and 1-click swap reminder toasts.",
         conflictRegistry = {
             conflicts        = {},
             hardConflicts    = {},
@@ -11630,6 +11968,10 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicTalent:HideTalentReminderToast()
         DynamicTalent:HideTalentPopover()
     elseif event == "PLAYER_REGEN_ENABLED" then
+        if pendingDockRefresh then
+            pendingDockRefresh = false
+            DynamicTalent:RefreshTalentDock()
+        end
         local psf = _G.PlayerSpellsFrame
         local tf = psf and psf.TalentsFrame
         if psf and psf.IsShown and psf:IsShown() and tf and tf.IsShown and tf:IsShown()
@@ -11638,7 +11980,7 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             DynamicTalent:UpdateTalentTreeBackdrop()
         end
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
-        if not arg1 or arg1 == "player" then
+        if arg1 == nil or (not _IsSecret(arg1) and arg1 == "player") then
             lastAlertedBossMismatchKey = nil
             stickyRaidBoss = nil
             wipe(silencedTalentMismatches)
