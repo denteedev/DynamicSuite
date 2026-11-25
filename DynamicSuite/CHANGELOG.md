@@ -1,9 +1,13 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.10.2 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
+*Author: Dentee-Frostmourne  |  Release: v2.10.3 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
+
+---
+
+## [2.10.3] - 25/11/2026
 
 ### Pass 7 UI Refinement, 800x520 Parity & Patch 12.1.7 Hardening (25/11/2026)
 - **DynamicMarker (`DynamicMarker.lua`):** Expanded standalone resize bounds to `760x480` through `1280x860` with live Suite Accent border repainting, live Suite Accent resize grip hover with Right-Click reset, footer slider tooltips, compact narrow status text, and Modal theme/changelog polish. Reflowed `800x520` headers, descriptions, flare cycle controls, macro cards (`[DynamicMark]` note stacking, compact Interrupt Target Priority dropdown, taller `[DynamicKick]` preview box), and conflict banners; added `Move or Resize` tips (`Use /dm hud or /ds hud (HUD Edit Mode)`) to Focus Icon and World Flare tooltips; hardened secret-value, macro, spell, specialisation, keybind, and Focus/Flare Bar secure attribute deferral guards for Patch 12.1.7; and standardised plain Australian English copy.

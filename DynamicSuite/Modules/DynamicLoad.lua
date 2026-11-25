@@ -195,7 +195,7 @@ local function SafeIsAddonVersionCheckEnabled()
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.10.2"
+    local fb = fallback or "2.10.3"
     local ver = SafeGetAddOnMetadata(folderName or ADDON_FOLDER, "Version")
     if ver and not ver:find("@") then
         return ver:gsub("^[vV]", "")
@@ -268,7 +268,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.2")
+local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.3")
 
 -- Guard E: Version-aware duplicate-install guard if standalone DynamicLoad is installed alongside bundled DynamicSuite
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicLoad", RESOLVED_ADDON_VERSION, _G.DynamicLoad) then
@@ -397,7 +397,7 @@ DynamicSuite.Changelogs["DynamicLoad"] = {
     version = ADDON_VERSION,
     date = "25/11/2026",
     entries = {
-        { type = "UI",      text = "Pass 7 Hardening, 800x520 Clamping & Standalone Window Parity (25/11/2026): Fixed the IsStandaloneMarkerExcludedBySuite multi-return truncation bug, hoisted secret-safe player/combat/C_AddOns/profiler wrappers across DynamicLoad and DynamicSuite_UI, hardened Patch 12.1.7 Mythic+/PvP/Lorewalking zone detection, synced all 13 dual-mode modules in Core Suite registries, reflowed DynamicLoad's toolbar (2-row compact mode below 700px), telemetry strip, legend strip, alt banner, addon rows, and Alert Toast Style sub-tab for clean 800x520 display, upgraded the addon list 4px scrollbar to full 3-way Obsidian interaction, added full resizability, 14x14 live Suite Accent resize grip, footer dock parity, 2-click Reset confirmation, and theme repainting to standalone DynamicLoadStandaloneFrame, and standardised all UI copy into plain Australian English." },
+        { type = "UI",      text = "Release v2.10.3 - Pass 7 Hardening, 800x520 Clamping & Standalone Window Parity (25/11/2026): Fixed the standalone DynamicMarker exclusion check, added secret-safe player, combat, addon-API, and profiler wrappers across DynamicLoad and DynamicSuite_UI, hardened Patch 12.1.7 Mythic+, PvP, and Lorewalking zone detection, synced all 13 dual-mode modules in Core Suite registries, reflowed DynamicLoad's toolbar (2-row compact mode below 700px), telemetry strip, legend strip, alt banner, addon rows, and Alert Toast Style sub-tab for clean 800x520 display, upgraded the addon list 4px scrollbar to full 3-way Obsidian interaction, added full resizability, 14x14 live Suite Accent resize grip, footer dock parity, 2-click Reset confirmation, and theme repainting to standalone DynamicLoadStandaloneFrame, and standardised all UI copy into plain Australian English." },
         { type = "UI",      text = "Release v2.7.0 - Shared Alert Toast HUD Consolidation & Accent Tooltip Polish (21/11/2026): Wrapped DynamicLoad's Alert Toast settings card in a scrollable container with the 4px 3-way Obsidian scrollbar, added the shared Toast Alert Sound switch, standardised 68px/84px switches and compact duration pills, updated group tooltip links to use the live Suite Accent, and synchronised all Shared Alert Toast appearance and sound controls with Suite Studio." },
         { type = "FIX",     text = "Toolbar Search Box Width & HUD Edit Mode 'Apply All' Appearance Action (16/11/2026): tightened DynamicLoad toolbar button padding, gaps, and adaptive minimum widths so the 'Filter addons...' search box retains at least 125px cleanly at the default 980x680 window size without clipping; and added an 'Apply All' Opacity & Border Style button on Row 3 of the HUD Edit Mode Inspector to copy the selected HUD's opacity and border style across all 6 suite HUDs in one click." },
         { type = "FEATURE", text = "One-Click 'Copy From...' Zone Profile & Persistent Tree Collapse (16/11/2026): added a compact 'Copy From...' button on the DynamicLoad toolbar so you can copy another zone's By Zone addon selections into the active zone tab in one click (preserving Always/Never locks and Suite Core protections), and ensured collapsed parent addon groups persist reliably across /reload and logins with clear expand/collapse tooltips." },
@@ -10106,7 +10106,7 @@ do
         slash = "/dl",
         order = 10,
         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
-        version = addonTable.ADDON_VERSION or "2.10.2",
+        version = addonTable.ADDON_VERSION or "2.10.3",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         CHANGELOG = DynamicSuite.Changelogs and DynamicSuite.Changelogs["DynamicLoad"] and DynamicSuite.Changelogs["DynamicLoad"].entries or addonTable.CHANGELOG,
         Open = function(...) if addonTable.ShowConfigUI then return addonTable.ShowConfigUI(...) end end,

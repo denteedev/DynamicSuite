@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFCursor|r
 ## Notes: Cursor Ring, Radial GCD & Cast Arc, Character Crosshair, Find My Cursor, Trail & Smart Tooltips (/dcur, /dynamiccursor).
 ## Author: Dentee-Frostmourne
-## Version: 2.10.2
+## Version: 2.10.3
 ## SavedVariables: DynamicCursorDB
 ## OptionalDeps: DynamicSuite
 ## IconTexture: Interface\AddOns\DynamicCursor\icon.tga

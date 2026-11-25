@@ -1,5 +1,5 @@
 -- ============================================================================
--- DynamicTalent v2.10.2 (/dt, /dynamictalent)
+-- DynamicTalent v2.10.3 (/dt, /dynamictalent)
 -- Talent Loadouts, Zone/Boss/M+/PvP Binds & Swap Alerts
 -- World of Warcraft Retail (12.1.5 / 12.1.7, Interface 120105, 120107)
 -- Pure ASCII Only (NonASCII: 0, HasBOM: False) | Zero-Taint Midnight Engine
@@ -9,7 +9,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.10.2"
+    local fb = fallback or "2.10.3"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -77,7 +77,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.10.2"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.VERSION or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.10.3"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -109,7 +109,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.2")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.3")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicTalent", VERSION, _G.DynamicTalent) then
     return
 end
@@ -11763,8 +11763,8 @@ DynamicTalent.CHANGELOG = {
         version = VERSION,
         date = "25/11/2026",
         entries = {
-            { type = "FIXED", text = "Patch 12.1.7 Combat, Secret-Value & Unspecialised Hardening (25/11/2026): Guarded talent dock refreshes on Blizzard's Talent window during combat (deferring updates until combat ends), protected import string decoding and loadout switching against secret values, active Mythic+ runs, and unspecialised or Lorewalking characters, and tightened Encounter Journal, Mythic+ dungeon list, raid difficulty, Hero medallion, and specialisation-change checks." },
-            { type = "UI",    text = "Standalone Window, Pop-Out Manager Parity & 800x520 Layout Reflow (25/11/2026): Made the standalone DynamicTalent window resizable (760x480 to 1280x860) with a live Suite Accent top bar, Reset/Reload footer, and corner resize grip with Right-Click reset; widened the Pop-Out Manager bounds to 1280x860 with resize grip tooltip and Right-Click reset; fixed the Talent Dock scrollbar overlap with the specialisation bar; fixed vertical skew on section headers and Backdrop Studio descriptions; compacted left-column cards, Action Strip buttons, and Raid difficulty rows for clean 800x520 framing; and reflowed Mythic+ dungeon tiles into a 2x4 grid on narrower layouts." },
+            { type = "FIXED", text = "Release v2.10.3 - Patch 12.1.7 Combat, Secret-Value & Unspecialised Hardening (25/11/2026): Guarded talent dock refreshes on Blizzard's Talent window during combat (deferring updates until combat ends), protected import string decoding and loadout switching against secret values, active Mythic+ runs, and unspecialised or Lorewalking characters, and tightened Encounter Journal, Mythic+ dungeon list, raid difficulty, Hero medallion, and specialisation-change checks." },
+            { type = "UI",    text = "Release v2.10.3 - Standalone Window, Pop-Out Manager Parity & 800x520 Layout Reflow (25/11/2026): Made the standalone DynamicTalent window resizable (760x480 to 1280x860) with a live Suite Accent top bar, Reset/Reload footer, and corner resize grip with Right-Click reset; widened the Pop-Out Manager bounds to 1280x860 with resize grip tooltip and Right-Click reset; fixed the Talent Dock scrollbar overlap with the specialisation bar; fixed vertical skew on section headers and Backdrop Studio descriptions; compacted left-column cards, Action Strip buttons, and Raid difficulty rows for clean 800x520 framing; and reflowed Mythic+ dungeon tiles into a 2x4 grid on narrower layouts." },
             { type = "UI",    text = "Release v2.8.1 - Raid Bosses Binder Redesign (22/11/2026): Promoted All Raids to Row 1 alongside the Season 2 raid pills with an Obsidian Core explanation banner; expanded the boss grid to use the full card width underneath; added a red-hover Clear button beside + Bind Raid to remove All Raids or selected boss binds for the toggled difficulties; and fixed multi-select and unselect behaviour on boss tiles." },
             { type = "FIXED", text = "Release v2.8.1 - Raid Boss Selection & Boss-Specific Build Priority Over All Raids (22/11/2026): Removed forced Boss #1 pre-highlighting in Raid Boss Talent Binds (and cleared pending tile selections when switching loadouts or after binding) so bosses can be freely selected and unselected; added automatic single-boss raid matching (Kith'ix, Tidebound Grotto); cleared cached boss memory when targeting an unbound Season 2 raid boss; and protected active boss-specific raid builds from being overridden by All Raids when no unbound boss is targeted." },
             { type = "UI",    text = "Release v2.8.1 - Right-Click Toast Silences Mismatch (22/11/2026): Right-clicking the talent reminder toast or its Swap button now silences that reminder for the session, refreshes DynamicPrep's Top Info Bar capsule immediately, updates the toast subtext to 'Right-Click to silence', and clears silenced reminders on specialisation change or reload." },

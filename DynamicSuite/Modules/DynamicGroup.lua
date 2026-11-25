@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.10.2"
+    local fb = fallback or "2.10.3"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.2")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.3")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicGroup", VERSION, _G.DynamicGroup) then
     return
 end
@@ -8646,7 +8646,7 @@ local function RegisterWithDynamicSuite()
         version = DynamicGroup.version or VERSION,
         date = "25/11/2026",
         entries = {
-            { type = "FEATURE", text = "Standalone Window Parity, Compact 800x520 Layout & Patch 12.1.7 Lockdown Hardening (25/11/2026): Added standalone window parity with a clamped header status readout, 36px Obsidian footer bar (Reset DynamicGroup and Reload UI buttons), bottom-right corner resize grip with 860x600 Right-Click reset, and live Suite Accent repainting; refined tabs, section subtitles, dropdown widths, sub-drawer spacing, 2-line card descriptions, and responsive 2x3 region filter pills for 800x520 layouts; hardened !keys responses, whisper and Battle.net auto-invites, group invite auto-accept, role check confirmation, Portal Bar, Teleport Toast, and Premade Group Finder hooks against Patch 12.1.7 combat lockdown, chat messaging lockdown, and secret values using non-intrusive hooks and weak frame state tables; standardised Australian English and plain-English wording." },
+            { type = "FEATURE", text = "Release v2.10.3 - Standalone Window Parity, Compact 800x520 Layout & Patch 12.1.7 Lockdown Hardening (25/11/2026): Added standalone window parity with a clamped header status readout, 36px Obsidian footer bar (Reset DynamicGroup and Reload UI buttons), bottom-right corner resize grip with 860x600 Right-Click reset, and live Suite Accent repainting; refined tabs, section subtitles, dropdown widths, sub-drawer spacing, 2-line card descriptions, and responsive 2x3 region filter pills for 800x520 layouts; hardened !keys responses, whisper and Battle.net auto-invites, group invite auto-accept, role check confirmation, Portal Bar, Teleport Toast, and Premade Group Finder hooks against Patch 12.1.7 combat lockdown, chat messaging lockdown, and secret values using non-intrusive hooks and weak frame state tables; standardised Australian English and plain-English wording." },
             { type = "FEATURE", text = "Release v2.8.1 - Opt-In Auto-Accept Role Check & Conflict Auto-Yield (22/11/2026): Added opt-in Auto-Accept Role Check (Off by default) in Tab 2 with a 0.45s out-of-combat safety delay, Shift-to-skip bypass, Retail 12.1.5 secret-value guards, clean chat confirmation, and automatic feature-level yielding to EnhanceQoL or Leatrix Plus (overridable in /ds conflicts). Never auto-accepts queue pops." },
             { type = "UI",      text = "Release v2.7.0 - Shared Teleport Toast Inheritance & Live Suite Accent Portal Borders (21/11/2026): Removed the stray Edit HUD button from the Teleport Toast settings card (leaving a clean Off/Enabled toggle plus Test Join and Test Full preview buttons), connected DynamicGroup's teleport toast to DynamicSuite's shared Alert Toast appearance, sound, Right-Click dismissal, and vertical toast stack, and replaced remaining legacy orange portal tile/keystone borders and tooltip prefixes with the live Suite Accent." },
             { type = "FIX",     text = "LFG Application Status Overlays, Obsidian Cancel Button & /dg testapply Cycle (16/11/2026): Restyled the Premade Group cancel button out of combat into a compact dark obsidian and crimson 'x' pill with the region/rating pill anchored cleanly to its left so the 5-role-icon row stays aligned; suppressed Blizzard's overlapping inline status labels and routed live pending timers (amber) and terminal statuses (crimson Cancelled, Declined, Expired, and Timed Out badges with dimmed rows) into the top-right pill; updated /dg testapply to cycle Pending -> Cancelled -> Off." },

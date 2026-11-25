@@ -1,9 +1,13 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.10.2 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
+*Author: Dentee-Frostmourne  |  Release: v2.10.3 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
+
+---
+
+## DynamicMarker v2.10.3 (25/11/2026)
 
 ### Improved
 * **Standalone Shell, Resize Grip & `800x520` Layout Clamping (`25/11/2026`):** Expanded standalone resize bounds to `760x480` through `1280x860`, added live Suite Accent outer border and corner resize grip hover highlighting with Right-Click size reset, added footer Scale and Opacity tooltips, compacted narrow header status readouts, reflowed section headers, descriptions, flare cycle controls, macro cards, and conflict banners cleanly for `800x520`, and added `Move or Resize` tips (`Use /dm hud or /ds hud`) to Focus Icon and World Flare bar tooltips in plain Australian English.

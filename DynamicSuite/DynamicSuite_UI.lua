@@ -9903,7 +9903,7 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.10.2"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.10.3"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
@@ -9916,7 +9916,7 @@ function addonTable.CreateMainConfigUI()
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
-                { badge = "UI",       title = "v2.10.2 Release (25/11/2026): Pass 7 Hardening, 800x520 Clamping & DynamicLoad Standalone Parity", desc = "Fixed the standalone DynamicMarker exclusion check, added secret-safe player, combat, addon-API, and profiler wrappers across DynamicLoad and DynamicSuite_UI, hardened Patch 12.1.7 Mythic+, PvP, and Lorewalking zone detection, synced all 13 dual-mode modules across Core Suite registries, lowered DynamicSuite's minimum size to 800x520 with responsive header status, footer dock, conflict banner, and Suite Studio reflow, added a 2-row DynamicLoad toolbar below 700px alongside compact telemetry, legend, alt banner, and Alert Toast controls, upgraded DynamicLoad's scrollbar and standalone window to full resizable parity with a 14x14 Suite Accent resize grip and 2-click Reset guard, and standardised copy into plain Australian English." },
+                { badge = "UI",       title = "v2.10.3 Release (25/11/2026): Pass 7 Hardening, 800x520 Clamping & DynamicLoad Standalone Parity", desc = "Fixed the standalone DynamicMarker exclusion check, added secret-safe player, combat, addon-API, and profiler wrappers across DynamicLoad and DynamicSuite_UI, hardened Patch 12.1.7 Mythic+, PvP, and Lorewalking zone detection, synced all 13 dual-mode modules across Core Suite registries, lowered DynamicSuite's minimum size to 800x520 with responsive header status, footer dock, conflict banner, and Suite Studio reflow, added a 2-row DynamicLoad toolbar below 700px alongside compact telemetry, legend, alt banner, and Alert Toast controls, upgraded DynamicLoad's scrollbar and standalone window to full resizable parity with a 14x14 Suite Accent resize grip and 2-click Reset guard, and standardised copy into plain Australian English." },
                 { badge = "FIXED",    title = "v2.10.2 Release (25/11/2026): Multi-Quest NPC State Sync & DynamicPrep Auto-Accept Handoff", desc = "Prioritised live server interaction state over suppressed off-screen Blizzard frames across DynamicDialogue and DynamicPrep (preserving bag-item, AreaTrigger, and field QUEST_COMPLETE popups), added live QUEST_ACCEPTED / QUEST_TURNED_IN / QUEST_LOG_UPDATE list refreshes and stale-quest filtering, eliminated duplicate >50ms retries and outgoing frame flashes, added live-session click guards, and hardened event-sequence-exact handoff across Suite and Standalone builds." },
                 { badge = "UI",       title = "v2.10.2 Release (25/11/2026): Pass 6 UI Refinement Across DynamicCursor, DynamicMail, DynamicDialogue & DynamicVault", desc = "Added resizable standalone windows, 36px Reset/Reload footers, 14x14 live Suite Accent resize grips, and theme repainting across DynamicCursor, DynamicDialogue, and DynamicVault; upgraded DynamicVault's 4px scrollbar to full 3-way interaction and proportional Vault tracks; swept all 4 modules for 800x520 clamping; and standardised copy into plain Australian English." },
                 { badge = "FIXED",    title = "v2.10.1 Release (25/11/2026): DynamicBank Single-Action Bank & Guild Bank Closing", desc = "Fixed a lingering invisible Blizzard bank interaction left open when closing DynamicBank at a Personal Bank, Warband Bank, or Guild Bank; closing DynamicBank now cleanly terminates active banker interactions, detaches and hides suppressed Blizzard bank panels out of combat, yields them across Desktop Windows, isolates child modals/dropdowns/popups on Esc without ending the live session, keeps tab switching intact, and leaves remote /dbag bank viewing untouched." },
@@ -10006,12 +10006,13 @@ function addonTable.CreateMainConfigUI()
             key = "marker",
             tabLabel = "DynamicMarker",
             ver = DS_LIVE_VER_TAG,
-            date = "22/11/2026 (Retail 12.1.5)",
+            date = "25/11/2026 (Retail 12.1.5 / 12.1.7)",
             title = "DynamicMarker " .. DS_LIVE_VER_TAG,
             subtitle = "Modifier-Free Target Marking, World Flares & Multi-Spec Interrupt Macro (/dm)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
             openModule = "DynamicMarker",
             items = {
+                { badge = "IMPROVED", title = "v2.10.3 Release (25/11/2026): Pass 7 Standalone Parity, 800x520 Layout & Patch 12.1.7 Hardening", desc = "Expanded standalone resize bounds to 760x480-1280x860 with live Suite Accent border repainting, live-accent resize grip hover with Right-Click reset, and footer slider tooltips; reflowed headers, descriptions, flare cycle controls, macro cards, and conflict banners for 800x520; added Move or Resize tips (/dm hud or /ds hud) to Focus Icon and World Flare tooltips; deferred Focus/Flare Bar secure setup safely out of combat and hardened keybind, macro, spell, specialisation, and secret-value guards in plain Australian English." },
                 { badge = "UI",       title = "v2.8.0 Release (22/11/2026): True-4px Sleek Precision Sliders & Standalone Footer Thumb Parity", desc = "Moved the 1px track hairline strictly outside the 4px #090A0D track in DM:CreateSliderControl so Suite Accent fill bars render at a full 4px thickness, and added matching 1px hairlines plus live Suite Accent hover/drag blade thumb highlights to the standalone footer Scale and Opacity sliders." },
                 { badge = "FIXED",    title = "v2.3.2 Release (18/11/2026): Proactive DecorVendor /tm Quarantine Modal & Tier-1 Conflict Protection", desc = "Promoted DecorVendor ('Decor Vendor') to a Tier-1 HARD conflict across bundled DynamicSuite and standalone DynamicMarker, and added a Midnight Pitch Black (#06070A-#090A0D) Obsidian modal ('Raid Marker Blocked by Addon Conflict', safely deferred until out of combat) whenever DecorVendor is active on login/reload or whenever World of Warcraft blocks SetRaidTarget() / SetRaidTargetIcon(). Provides 1-click 'Disable <Addon> (Set to Never)', session-throttled Dismiss, updated [DynamicMark] Macro Setup guidance, and clear instructions to completely Exit & Restart World of Warcraft." },
                 { badge = "UI",       title = "v2.3.0 Release: 3-Way Interactive Obsidian Scrollbars & Central Popover Auto-Close", desc = "Upgraded DynamicMarkerDropdownPopover, embedded sub-tab pages, and the standalone Changelog modal to full 3-way interactive 4px Obsidian scrollbars (Mousewheel, Left-Click & Drag thumb with Suite Accent highlight, and Left-Click track jump), hooked OnHide on all dropdown and HUD selector owner buttons, and registered DM:CloseDropdownMenu() with UI.RegisterPopupCloser." },
@@ -10126,12 +10127,13 @@ function addonTable.CreateMainConfigUI()
             key = "talent",
             tabLabel = "DynamicTalent",
             ver = DS_LIVE_VER_TAG,
-            date = "22/11/2026 (Retail 12.1.5)",
+            date = "25/11/2026 (Retail 12.1.5 / 12.1.7)",
             title = "DynamicTalent " .. DS_LIVE_VER_TAG,
-            subtitle = "Unlimited Talent Loadouts, PlayerSpellsFrame Dock & Raid/M+/PvP/Zone Binds (/dt)",
+            subtitle = "Unlimited Talent Loadouts, Talent Window Dock & Raid/M+/PvP/Zone Binds (/dt)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_talent.tga",
             openModule = "DynamicTalent",
             items = {
+                { badge = "UI",       title = "v2.10.3 Release (25/11/2026): Pass 7 Standalone Parity, 800x520 Reflow & Patch 12.1.7 Hardening", desc = "Made DynamicTalentStandaloneFrame resizable (760x480-1280x860) with a live Suite Accent top bar, 36px Reset/Reload footer, and 14x14 live-accent resize grip with Right-Click reset; widened the Pop-Out Manager up to 1280x860; fixed the Talent Dock scrollbar overlap; reflowed 800x520 headers, Backdrop Studio cards, Raid difficulty rows, and a 2x4 M+ dungeon grid on compact widths; and hardened combat, active Mythic+, secret-value, and unspecialised/Lorewalking character safety in plain Australian English." },
                 { badge = "NEW",      title = "v2.8.1 Release (22/11/2026): Raid Boss Binder Redesign, Multi-Source Detection, Bind Badges & Toast Silence", desc = "Promoted All Raids to Row 1 with a full-width boss grid and quick Clear button, removed forced Boss #1 pre-selection, protected boss-specific builds over All Raids, added multi-source boss detection (target, Action Target, mouseover, focus, boss1-5, nameplates, raid targets) with sticky boss preservation and /dt why diagnostics, added Prep Bar and quick-switcher bind badges, and enabled Right-Click silencing on Talent Reminder Toasts." },
                 { badge = "UI",       title = "v2.8.0 Release (22/11/2026): Tighter Header Subtitles & Truncation Hover Safety Net", desc = "Shortened the Raid Bosses, M+ Dungeons, PvP, Zone Defaults, and Active Reminders subtitles to fit on one line at the minimum 800px width, and added a reusable hover helper showing the full plain text only when a subtitle, the status strip, or an Active Reminders row is actually truncated." },
                 { badge = "FIXED",    title = "v2.8.0 Release (22/11/2026): Delve vs Mythic+ Zone Priority & Backdrop Studio Option 1 Redesign", desc = "Read difficultyID == 208 and C_DelvesUI/C_PartyInfo Delve completion/progress flags across GetActiveTalentMismatch() and GetActiveContentGroup() so Delves never misclassify as M+ and always select [Zone: Delves]; and split Backdrop Studio into Base Background ('Blizzard Spec Art' | 'Solid Obsidian') + Ambient Mist ('Off' | 'Hero-Synced' | 'Class Glow') with a context-muted Background Dimmer, live Mist Intensity slider (15%-100%, default 60%), and automatic legacy mode migration." },
@@ -10159,12 +10161,13 @@ function addonTable.CreateMainConfigUI()
             key = "group",
             tabLabel = "DynamicGroup",
             ver = DS_LIVE_VER_TAG,
-            date = "22/11/2026 (Retail 12.1.5)",
+            date = "25/11/2026 (Retail 12.1.5 / 12.1.7)",
             title = "DynamicGroup " .. DS_LIVE_VER_TAG,
-            subtitle = "Premade LFG Datacenter Region Filter, Live Roster & Auto-Invite Engine (/dgroup)",
+            subtitle = "Premade LFG Datacentre Region Filter, Live Roster & Auto-Invite Engine (/dgroup)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_group.tga",
             openModule = "DynamicGroup",
             items = {
+                { badge = "UI",       title = "v2.10.3 Release (25/11/2026): Pass 7 Standalone Parity, 800x520 Reflow & Patch 12.1.7 Hardening", desc = "Upgraded DynamicGroupStandaloneFrame (760x480-1280x860) with screen clamping, clamped header status, live Suite Accent border/title/toast repainting, 36px Reset/Reload footer, and 14x14 live-accent resize grip with Right-Click reset; reflowed Datacentre Region Filters into a 2x3 grid below 540px, compacted tabs, dropdowns, and sub-drawer spacing for 800x520; and hardened !keys, whisper/BNet auto-invites, invite/role-check auto-accept, Portal Bar, Teleport Toast, and LFG hooks against combat, encounter, M+, chat messaging lockdown, and secret values in plain Australian English." },
                 { badge = "NEW",      title = "v2.8.1 Release (22/11/2026): Opt-In Auto-Accept Role Check & Conflict Auto-Yield", desc = "Added opt-in Auto-Accept Role Check (Off by default) in Tab 2 with a 0.45s out-of-combat delay, Shift-to-skip bypass, Retail 12.1.5 secret-value guards, clean chat confirmation, and automatic feature-level yielding to EnhanceQoL or Leatrix Plus (overridable in /ds conflicts). Never auto-accepts dungeon or raid queue pops." },
                 { badge = "UI",       title = "v2.3.0 Release: 3-Way Interactive Obsidian Scrollbar & Central Popover Auto-Close", desc = "Upgraded CreateObsidianScrollArea with track click-to-jump and Suite Accent thumb hover/drag highlights, hooked OnHide across LFG Mini-Bar pills and workspace dropdowns, and registered CloseActiveDropdown with UI.RegisterPopupCloser." },
                 { badge = "UI",       title = "Option 3 'Off' Pill Styling (Section 2.9)", desc = "Updated AttachSegmentedSwitchToCard across all 3 tabs so selected 'Off' pills use Option 3 styling (#1E2430 Slate-Charcoal fill, #64748B Slate-Silver border, #E2E8F0 Silver-White text, and 1.5px #F87171 bottom OffBar)." },
