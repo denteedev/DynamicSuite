@@ -692,8 +692,9 @@ Suite.CONFLICT_REGISTRY.DynamicPrep = {
 -- ============================================================================
 DynamicPrep.CHANGELOG = {
     version = VERSION,
-    date = "24/11/2026",
+    date = "25/11/2026",
     entries = {
+        { type = "UI",      text = "Top Info Bar Shift-Drag, Right-Click HUD Edit & Discoverability (25/11/2026): Added direct Shift + Left-Drag repositioning across the Top Info Bar background and segment capsules out of combat (saving directly to HUD Edit Mode coordinates without triggering accidental clicks), Right-Click on empty bar space to open HUD Edit Mode (/ds hud), a subtle bar-hover tooltip, a 'Shift-Drag to move  |  /ds hud for grid & scale' footer line on Top Info Bar segment tooltips, and an updated DynamicPrep '?' Quick Guide tip." },
         { type = "FIX",     text = "Zero-Truncation Actionable Alert Toasts (24/11/2026): Widened actionable Mage Food and Low Durability Alert Toasts (with automatic width fit in DynamicSuite) and tightened titles and action hints so no line cuts off against the right-hand button." },
         { type = "UI",      text = "Pass 3 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 3 Section Split (24/11/2026): Added a 4-option QUICK PRESETS card at the top of Tab 1 (Raider / M+ Full, Minimalist Stats, Keystone Focus, System Only) with live Suite Accent active highlighting; added Bar Density (Standard / Compact) and Bar Mouseover Fade (Off / Fade Until Hover / Combat Fade) options; clamped all wide pill rows cleanly for 800x520 minimum windows; wrapped Tab 2's Clickable Raid Buffs (12 controls, including split-out Partner Buffs, Clickable Icon Spacing, and Hide 'MISSING' Text Label) and Omni Folio (5 controls) into persisted Sub-Settings drawers collapsed by default on fresh profiles alongside a new Paperdoll Gear Audit section with toggle and Preview on Gear button; split Tab 3 into 3 calm Obsidian sections (Quest, Dialogue & Cutscenes; Combat, Error & Survival Guards; Healer Recovery & Durability) with persisted drawer states across reloads; fixed the blank-label standalone Edit HUD fallback button; and cleaned US spellings and raw setting names from tooltips and changelogs." },
         { type = "FEATURE", text = "Release v2.8.1 - Red Error Text & Sound Filter (22/11/2026): Added an opt-in Red Error Text & Sound Filter in Tab 3 (Off by default) with Hide Combat & Cooldown Spam, Hide Movement & Mount Errors, and Mute Error Voice Lines (restoring your original sound setting when turned off or disabled), using taint-free Retail 12.1.5 secret-value guards and automatic yielding to EnhanceQoL, Leatrix Plus, ErrorFilter, or ErrorMonster." },
@@ -3428,6 +3429,18 @@ function DynamicPrep:ApplyBarBorderStyle(targetBar)
     end
 end
 
+function DynamicPrep:OpenTopBarHudEdit()
+    if InCombatLockdown and InCombatLockdown() then
+        print(string.format("|cFF%sDynamicPrep:|r Cannot open HUD Edit Mode while in combat.", GetAccentHex()))
+        return
+    end
+    if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
+        _G.DynamicSuite.EnterHudEditMode("PREP")
+    else
+        self:SetEditMode(true)
+    end
+end
+
 function DynamicPrep:CreatePrepBar()
     if self.prepBarFrame then return self.prepBarFrame end
 
@@ -3437,13 +3450,96 @@ function DynamicPrep:CreatePrepBar()
     bar:SetClampedToScreen(true)
     bar:SetMovable(true)
     bar:EnableMouse(true)
+    bar:RegisterForDrag("LeftButton")
+
+    local function EndDirectBarDrag()
+        if not bar._dpDirectDragActive then return false end
+        bar._dpDirectDragActive = false
+        bar._dsDragging = false
+        bar:SetScript("OnUpdate", nil)
+        bar:StopMovingOrSizing()
+        bar._dpSuppressClickUntil = (GetTime and GetTime() or 0) + 0.15
+        if InCombatLockdown and InCombatLockdown() then
+            DynamicPrep.pendingBarRefreshAfterCombat = true
+            return true
+        end
+        local point, _, relativePoint, x, y = bar:GetPoint(1)
+        local usePt = point or "TOP"
+        local useRp = relativePoint or usePt
+        local px, py = ClampPrepFrameToScreen(bar, usePt, useRp, x or 0, y or -8, 320, 32)
+        bar:ClearAllPoints()
+        bar:SetPoint(usePt, UIParent, useRp, px, py)
+        DynamicPrep:SaveBarEditPosition(usePt, useRp, px, py)
+        if bar.mover and bar.mover.label then
+            local _, _, _, hex = GetActiveAccentRGB()
+            bar.mover.label:SetText(string.format("|cFF%sDynamicPrep Bar|r  |cFFFFFFFF(X: %d, Y: %d)|r", hex, math.floor((px or 0) + 0.5), math.floor((py or -8) + 0.5)))
+        end
+        DynamicPrep:ApplyBarFadeState()
+        return true
+    end
+
+    local function BeginDirectBarDrag()
+        if DynamicPrep.inEditMode or DynamicPrep.inBarEditMode or bar._dsEditModeActive then return false end
+        if InCombatLockdown and InCombatLockdown() then return false end
+        if not (IsShiftKeyDown and IsShiftKeyDown()) then return false end
+        if GameTooltip then GameTooltip:Hide() end
+        DynamicPrep:HideBarPopovers()
+        bar._dsDragging = true
+        bar._dpDirectDragActive = true
+        bar:StartMoving()
+        bar:SetScript("OnUpdate", function()
+            if not bar._dpDirectDragActive then
+                bar:SetScript("OnUpdate", nil)
+                return
+            end
+            if (InCombatLockdown and InCombatLockdown()) or (IsMouseButtonDown and not IsMouseButtonDown("LeftButton")) then
+                EndDirectBarDrag()
+            end
+        end)
+        return true
+    end
+
+    bar:SetScript("OnDragStart", function()
+        BeginDirectBarDrag()
+    end)
+    bar:SetScript("OnDragStop", function()
+        EndDirectBarDrag()
+    end)
+    bar:SetScript("OnMouseUp", function(_, button)
+        if bar._dpDirectDragActive then
+            EndDirectBarDrag()
+            return
+        end
+        if button == "RightButton" and not DynamicPrep.inEditMode and not DynamicPrep.inBarEditMode and not bar._dsEditModeActive then
+            if GameTooltip then GameTooltip:Hide() end
+            DynamicPrep:HideBarPopovers()
+            DynamicPrep:OpenTopBarHudEdit()
+        end
+    end)
     bar:HookScript("OnHide", function()
+        if bar._dpDirectDragActive then
+            EndDirectBarDrag()
+        end
         DynamicPrep:HideBarPopovers()
     end)
-    bar:HookScript("OnEnter", function()
+    bar:HookScript("OnEnter", function(selfBar)
         DynamicPrep:ApplyBarFadeState(true)
+        if DynamicPrep.inEditMode or DynamicPrep.inBarEditMode or bar._dsEditModeActive or bar._dpDirectDragActive then return end
+        if DynamicPrep:AreAnyBarPopoversShown() then return end
+        if GameTooltip then
+            local ar, ag, ab = GetActiveAccentRGB()
+            GameTooltip:SetOwner(selfBar, "ANCHOR_BOTTOM")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine("DynamicPrep Top Info Bar", ar, ag, ab)
+            GameTooltip:AddLine("|cFF34D399Shift + Left-Drag:|r |cFFE2E8F0Move bar anywhere on screen|r", 1, 1, 1)
+            GameTooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Open HUD Edit Mode (/ds hud)|r", 1, 1, 1)
+            GameTooltip:Show()
+        end
     end)
-    bar:HookScript("OnLeave", function()
+    bar:HookScript("OnLeave", function(selfBar)
+        if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(selfBar) then
+            GameTooltip:Hide()
+        end
         if C_Timer and C_Timer.After then
             C_Timer.After(0.12, function()
                 DynamicPrep:ApplyBarFadeState()
@@ -3469,6 +3565,13 @@ function DynamicPrep:CreatePrepBar()
         seg.segKey = segKey
         seg:SetHeight(22)
         seg:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        seg:RegisterForDrag("LeftButton")
+        seg:SetScript("OnDragStart", function()
+            BeginDirectBarDrag()
+        end)
+        seg:SetScript("OnDragStop", function()
+            EndDirectBarDrag()
+        end)
         seg.lootPopover = self.lootPopover
         seg.folioPopover = self.folioPopover
         seg.pullTimerPopover = self.pullTimerPopover
@@ -3530,6 +3633,13 @@ function DynamicPrep:CreatePrepBar()
 
         seg:SetScript("OnClick", function(selfSeg, button)
             GameTooltip:Hide()
+            if bar._dpDirectDragActive then
+                EndDirectBarDrag()
+                return
+            end
+            if bar._dpSuppressClickUntil and GetTime and GetTime() <= bar._dpSuppressClickUntil then
+                return
+            end
             if DynamicPrep.inEditMode then
                 DynamicPrep:HideBarPopovers()
                 return
@@ -3639,6 +3749,13 @@ function DynamicPrep:CreatePrepBar()
             local secBtn = CreateFrame("Button", "DynamicPrepFolioSecureBtn", seg, "SecureActionButtonTemplate")
             secBtn:SetAllPoints(seg)
             secBtn:RegisterForClicks("AnyUp", "AnyDown")
+            secBtn:RegisterForDrag("LeftButton")
+            secBtn:SetScript("OnDragStart", function()
+                BeginDirectBarDrag()
+            end)
+            secBtn:SetScript("OnDragStop", function()
+                EndDirectBarDrag()
+            end)
             secBtn:SetScript("OnEnter", function()
                 local onEnter = seg:GetScript("OnEnter")
                 if onEnter then onEnter(seg) end
@@ -3649,6 +3766,13 @@ function DynamicPrep:CreatePrepBar()
             end)
             secBtn:SetScript("PostClick", function(_, button, down)
                 GameTooltip:Hide()
+                if bar._dpDirectDragActive then
+                    EndDirectBarDrag()
+                    return
+                end
+                if bar._dpSuppressClickUntil and GetTime and GetTime() <= bar._dpSuppressClickUntil then
+                    return
+                end
                 if DynamicPrep.inEditMode then
                     if not down then
                         DynamicPrep:HideBarPopovers()
@@ -4269,6 +4393,8 @@ function DynamicPrep:PopulateSegmentTooltip(segKey, tooltip)
         tooltip:AddLine("|cFF34D399Left-Click:|r |cFFE2E8F0Cycle Display Mode (Both / Home / World)|r", 1, 1, 1)
         tooltip:AddLine("|cFF38BDF8Right-Click:|r |cFFE2E8F0Swap Home / World Order|r", 1, 1, 1)
     end
+    tooltip:AddLine(" ")
+    tooltip:AddLine("Shift-Drag to move  |  /ds hud for grid & scale", 0.580, 0.639, 0.722)
 end
 
 function DynamicPrep:IsDrawerExpanded(drawerKey)

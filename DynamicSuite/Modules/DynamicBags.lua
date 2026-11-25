@@ -1548,6 +1548,7 @@ function U.SnapshotBank(skipTooltipScan)
             DB().vault.warbandBank = {
                 items = nextItems,
                 tabs = (wTabs and #wTabs > 0 and wTabs) or (prevWb and prevWb.tabs) or nil,
+                money = (prevWb and prevWb.money) or nil,
                 updated = time and time() or 0,
             }
         end
@@ -1871,6 +1872,14 @@ function U.StyleButtonState(b)
                 end
             end
         end
+        return
+    end
+    if b.isDisabled then
+        if b.offBar then b.offBar:Hide() end
+        b:SetBackdropColor(0.043, 0.049, 0.065, 0.90)
+        b:SetBackdropBorderColor(0.125, 0.145, 0.188, 0.85)
+        if b.label then b.label:SetTextColor(0.42, 0.48, 0.56, 0.85) end
+        if b.iconTex then b.iconTex:SetVertexColor(0.42, 0.48, 0.56, 0.80) end
         return
     end
     if b.selected then
@@ -2949,6 +2958,9 @@ local function AddSpecialFrameEntry(t, frameName)
 end
 
 function U.GetTopMostShownBagFrameName()
+    if S.goldTransferModal and S.goldTransferModal:IsShown() then
+        return "DynamicBagsGoldTransferModal"
+    end
     if S.bankWindow and S.bankWindow:IsShown() then
         return "DynamicBagsBankFrame"
     end
@@ -2965,7 +2977,7 @@ function U.EnsureBagSpecialFrames()
     if InCombatLockdown() or type(UISpecialFrames) ~= "table" then return end
     CompactUISpecialFramesList()
     local topName = U.GetTopMostShownBagFrameName()
-    local allBagFrames = { "DynamicBagsBankFrame", "DynamicBagsFrame", "DynamicBagsStandaloneFrame" }
+    local allBagFrames = { "DynamicBagsGoldTransferModal", "DynamicBagsBankFrame", "DynamicBagsFrame", "DynamicBagsStandaloneFrame" }
     if topName then
         for _, fName in ipairs(allBagFrames) do
             if fName ~= topName then
@@ -5444,6 +5456,706 @@ local function PlayBagWindowSound(isOpen)
     pcall(playFn, soundId, "SFX")
 end
 
+-- ---- Live Bank Gold Helpers & Obsidian Core Gold Transfer Modal ------------
+
+function U.SafeBankMoneyNum(v)
+    if v == nil or IsSecret(v) then return 0 end
+    local n = tonumber(v)
+    if not n or n ~= n then return 0 end
+    return floor(n)
+end
+
+function U.GetPlayerGoldCopper()
+    if type(_G.GetMoney) == "function" then
+        local ok, m = pcall(_G.GetMoney)
+        if ok and m ~= nil and not IsSecret(m) then
+            local val = max(0, U.SafeBankMoneyNum(m))
+            if not S.view.char then
+                local rec = DB().vault and DB().vault.characters and DB().vault.characters[CharKey()]
+                if rec then rec.gold = val end
+            end
+            return val
+        end
+    end
+    local rec = DB().vault and DB().vault.characters and DB().vault.characters[CharKey()]
+    return max(0, U.SafeBankMoneyNum(rec and rec.gold))
+end
+
+function U.GetWarbandBankMoney()
+    local db = DB()
+    if C_Bank and type(C_Bank.FetchDepositedMoney) == "function" and Enum and Enum.BankType and Enum.BankType.Account ~= nil then
+        local ok, amt = pcall(C_Bank.FetchDepositedMoney, Enum.BankType.Account)
+        if ok and type(amt) == "number" and not IsSecret(amt) and amt >= 0 then
+            local clean = floor(amt)
+            if S.atBank or clean > 0 then
+                db.vault.warbandBank = db.vault.warbandBank or { items = {} }
+                db.vault.warbandBank.money = clean
+                return clean
+            end
+        end
+    end
+    local wb = db.vault and db.vault.warbandBank
+    if wb and wb.money ~= nil then
+        return max(0, U.SafeBankMoneyNum(wb.money))
+    end
+    return nil
+end
+
+function U.CanUseAccountBankMoney(action)
+    if not (S.atBank == true and S.view.char == nil) then return false end
+    if InCombatLockdown() then return false end
+    if not (C_Bank and Enum and Enum.BankType and Enum.BankType.Account ~= nil) then return false end
+    local fn = (action == "WITHDRAW") and C_Bank.CanWithdrawMoney or C_Bank.CanDepositMoney
+    if type(fn) ~= "function" then return false end
+    local ok, can = pcall(fn, Enum.BankType.Account)
+    return ok and not IsSecret(can) and can == true
+end
+
+function U.CanUseCharacterBankMoney(action)
+    if not (S.atBank == true and S.view.char == nil) then return false end
+    if InCombatLockdown() then return false end
+    if not (C_Bank and Enum and Enum.BankType and Enum.BankType.Character ~= nil) then return false end
+    local fn = (action == "WITHDRAW") and C_Bank.CanWithdrawMoney or C_Bank.CanDepositMoney
+    if type(fn) ~= "function" then return false end
+    local ok, can = pcall(fn, Enum.BankType.Character)
+    return ok and not IsSecret(can) and can == true
+end
+
+function U.GetCharacterBankMoney()
+    if C_Bank and type(C_Bank.FetchDepositedMoney) == "function" and Enum and Enum.BankType and Enum.BankType.Character ~= nil then
+        if U.CanUseCharacterBankMoney("DEPOSIT") or U.CanUseCharacterBankMoney("WITHDRAW") then
+            local ok, amt = pcall(C_Bank.FetchDepositedMoney, Enum.BankType.Character)
+            if ok and type(amt) == "number" and not IsSecret(amt) and amt >= 0 then
+                return floor(amt)
+            end
+        end
+    end
+    return nil
+end
+
+function U.GetGuildBankMoneyInfo()
+    local db = DB()
+    local info = {
+        money = nil,
+        canDeposit = false,
+        canWithdraw = false,
+        withdrawLimit = nil,
+        maxWithdraw = 0,
+        isLive = (S.atGuildBank == true and S.view.char == nil),
+    }
+    if info.isLive then
+        if type(_G.GetGuildBankMoney) == "function" then
+            local okM, gm = pcall(_G.GetGuildBankMoney)
+            if okM and type(gm) == "number" and not IsSecret(gm) and gm >= 0 then
+                info.money = floor(gm)
+                db.vault.guildBank = db.vault.guildBank or { items = {} }
+                db.vault.guildBank.money = info.money
+            end
+        end
+        local canW = false
+        if type(_G.CanWithdrawGuildBankMoney) == "function" then
+            local okCW, cw = pcall(_G.CanWithdrawGuildBankMoney)
+            if okCW and not IsSecret(cw) then canW = (cw == true) end
+        end
+        local lim = nil
+        if type(_G.GetGuildBankWithdrawMoney) == "function" then
+            local okL, rawL = pcall(_G.GetGuildBankWithdrawMoney)
+            if okL and type(rawL) == "number" and not IsSecret(rawL) then
+                lim = floor(rawL)
+            end
+        end
+        info.withdrawLimit = lim
+        local bankTotal = info.money or 0
+        if canW then
+            if lim == -1 then
+                info.canWithdraw = (bankTotal > 0)
+                info.maxWithdraw = bankTotal
+            elseif type(lim) == "number" and lim > 0 then
+                info.maxWithdraw = min(bankTotal, lim)
+                info.canWithdraw = (info.maxWithdraw > 0)
+            else
+                info.canWithdraw = false
+                info.maxWithdraw = 0
+            end
+        elseif lim == -1 or (type(lim) == "number" and lim > 0) then
+            -- Fallback if CanWithdrawGuildBankMoney is unavailable on a client build
+            if type(_G.CanWithdrawGuildBankMoney) ~= "function" then
+                info.maxWithdraw = (lim == -1) and bankTotal or min(bankTotal, lim)
+                info.canWithdraw = (info.maxWithdraw > 0)
+            end
+        end
+        info.canDeposit = (not InCombatLockdown()) and (type(_G.DepositGuildBankMoney) == "function")
+    else
+        local gb = db.vault and db.vault.guildBank
+        if gb and gb.money ~= nil then
+            info.money = max(0, U.SafeBankMoneyNum(gb.money))
+        end
+    end
+    return info
+end
+
+function U.HideGoldTransferModal()
+    if S.goldTransferModal and S.goldTransferModal:IsShown() then
+        S.goldTransferModal:Hide()
+    end
+end
+
+function U.EnsureGoldTransferModal()
+    if S.goldTransferModal then return S.goldTransferModal end
+    local ar, ag, ab = GetAccent()
+    local m = CreateFrame("Frame", "DynamicBagsGoldTransferModal", UIParent, "BackdropTemplate")
+    m:SetFrameStrata("DIALOG")
+    m:SetSize(388, 250)
+    m:SetPoint("CENTER", UIParent, "CENTER", 0, 40)
+    m:SetClampedToScreen(true)
+    m:SetMovable(true)
+    m:EnableMouse(true)
+    m:RegisterForDrag("LeftButton")
+    m:SetScript("OnDragStart", function(self) self:StartMoving() end)
+    m:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+    Backdrop(m, 0.035, 0.039, 0.051, 0.99, ar, ag, ab, 0.95)
+
+    local topBar = m:CreateTexture(nil, "OVERLAY")
+    topBar:SetHeight(2)
+    topBar:SetPoint("TOPLEFT", m, "TOPLEFT", 1, -1)
+    topBar:SetPoint("TOPRIGHT", m, "TOPRIGHT", -1, -1)
+    topBar:SetColorTexture(ar, ag, ab, 1.0)
+    m.topBar = topBar
+
+    local head = CreateFrame("Frame", nil, m)
+    head:SetPoint("TOPLEFT", m, "TOPLEFT", 1, -3)
+    head:SetPoint("TOPRIGHT", m, "TOPRIGHT", -1, -3)
+    head:SetHeight(34)
+    head:EnableMouse(true)
+    head:RegisterForDrag("LeftButton")
+    head:SetScript("OnDragStart", function() m:StartMoving() end)
+    head:SetScript("OnDragStop", function() m:StopMovingOrSizing() end)
+    head.bg = head:CreateTexture(nil, "BACKGROUND")
+    head.bg:SetAllPoints()
+    head.bg:SetColorTexture(0.016, 0.020, 0.027, 1.0)
+
+    local title = head:CreateFontString(nil, "OVERLAY")
+    SetFont(title, 13, "")
+    title:SetPoint("LEFT", head, "LEFT", 14, 0)
+    title:SetPoint("RIGHT", head, "RIGHT", -46, 0)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
+    title:SetTextColor(0.95, 0.97, 1.0, 1.0)
+    m.title = title
+
+    local closeBtn = U.NewButton(head, 24, 22, "x")
+    closeBtn:SetPoint("RIGHT", head, "RIGHT", -10, 0)
+    closeBtn:SetScript("OnClick", function() m:Hide() end)
+    m.closeBtn = closeBtn
+
+    -- Balance Summary Box
+    local balBox = CreateFrame("Frame", nil, m, "BackdropTemplate")
+    balBox:SetPoint("TOPLEFT", m, "TOPLEFT", 14, -44)
+    balBox:SetPoint("TOPRIGHT", m, "TOPRIGHT", -14, -44)
+    balBox:SetHeight(48)
+    Backdrop(balBox, 0.055, 0.063, 0.082, 0.96, 0.145, 0.165, 0.212, 0.95)
+    m.balBox = balBox
+
+    local balLine1 = balBox:CreateFontString(nil, "OVERLAY")
+    SetFont(balLine1, 11, "")
+    balLine1:SetPoint("TOPLEFT", balBox, "TOPLEFT", 10, -7)
+    balLine1:SetPoint("TOPRIGHT", balBox, "TOPRIGHT", -10, -7)
+    balLine1:SetJustifyH("LEFT")
+    balLine1:SetWordWrap(false)
+    m.balLine1 = balLine1
+
+    local balLine2 = balBox:CreateFontString(nil, "OVERLAY")
+    SetFont(balLine2, 11, "")
+    balLine2:SetPoint("TOPLEFT", balLine1, "BOTTOMLEFT", 0, -4)
+    balLine2:SetPoint("TOPRIGHT", balLine1, "BOTTOMRIGHT", 0, -4)
+    balLine2:SetJustifyH("LEFT")
+    balLine2:SetWordWrap(false)
+    m.balLine2 = balLine2
+
+    -- Gold / Silver / Copper Numeric Inputs
+    local amtLabel = m:CreateFontString(nil, "OVERLAY")
+    SetFont(amtLabel, 10.5, "")
+    amtLabel:SetPoint("TOPLEFT", balBox, "BOTTOMLEFT", 0, -10)
+    amtLabel:SetTextColor(0.64, 0.70, 0.78, 1.0)
+    amtLabel:SetText("Amount")
+
+    local inputRow = CreateFrame("Frame", nil, m)
+    inputRow:SetPoint("TOPLEFT", amtLabel, "BOTTOMLEFT", 0, -5)
+    inputRow:SetPoint("TOPRIGHT", balBox, "BOTTOMRIGHT", 0, -18)
+    inputRow:SetHeight(28)
+
+    local function MakeCoinInput(width, maxChars, iconPath, leftAnchor, leftOffset)
+        local box = CreateFrame("EditBox", nil, inputRow, "BackdropTemplate")
+        box:SetSize(width, 26)
+        if leftAnchor then
+            box:SetPoint("LEFT", leftAnchor, "RIGHT", leftOffset or 8, 0)
+        else
+            box:SetPoint("LEFT", inputRow, "LEFT", 0, 0)
+        end
+        box:SetAutoFocus(false)
+        box:SetNumeric(true)
+        box:SetMaxLetters(maxChars)
+        box:SetTextInsets(8, 22, 0, 0)
+        box:SetJustifyH("RIGHT")
+        SetFont(box, 12, "")
+        box:SetTextColor(0.95, 0.97, 1.0, 1.0)
+        Backdrop(box, 0.078, 0.090, 0.122, 0.98, 0.145, 0.165, 0.212, 0.95)
+        local ic = box:CreateTexture(nil, "OVERLAY")
+        ic:SetSize(13, 13)
+        ic:SetPoint("RIGHT", box, "RIGHT", -6, 0)
+        ic:SetTexture(iconPath)
+        box:SetScript("OnEditFocusGained", function(self)
+            local cr, cg, cb = GetAccent()
+            self:SetBackdropBorderColor(cr, cg, cb, 0.95)
+            self:HighlightText()
+        end)
+        box:SetScript("OnEditFocusLost", function(self)
+            self:SetBackdropBorderColor(0.145, 0.165, 0.212, 0.95)
+        end)
+        box:SetScript("OnEscapePressed", function(self)
+            self:ClearFocus()
+            m:Hide()
+        end)
+        return box
+    end
+
+    local goldBox = MakeCoinInput(168, 9, "Interface\\MoneyFrame\\UI-GoldIcon", nil, 0)
+    local silverBox = MakeCoinInput(86, 2, "Interface\\MoneyFrame\\UI-SilverIcon", goldBox, 8)
+    local copperBox = MakeCoinInput(86, 2, "Interface\\MoneyFrame\\UI-CopperIcon", silverBox, 8)
+    copperBox:ClearAllPoints()
+    copperBox:SetPoint("LEFT", silverBox, "RIGHT", 8, 0)
+    copperBox:SetPoint("RIGHT", inputRow, "RIGHT", 0, 0)
+    m.goldBox = goldBox
+    m.silverBox = silverBox
+    m.copperBox = copperBox
+
+    local function FocusNextInput(box, forward)
+        if box == goldBox then
+            (forward and silverBox or copperBox):SetFocus()
+        elseif box == silverBox then
+            (forward and copperBox or goldBox):SetFocus()
+        else
+            (forward and goldBox or silverBox):SetFocus()
+        end
+    end
+    for _, eb in ipairs({ goldBox, silverBox, copperBox }) do
+        eb:SetScript("OnTabPressed", function(self)
+            FocusNextInput(self, not (IsShiftKeyDown and IsShiftKeyDown()))
+        end)
+        eb:SetScript("OnTextChanged", function()
+            if m._suppressChange then return end
+            U.RefreshGoldTransferModalValidation()
+        end)
+        eb:SetScript("OnEnterPressed", function()
+            if m._canConfirm then
+                m:SubmitTransfer()
+            end
+        end)
+    end
+
+    -- Quick-Fill Preset Pills
+    local presetRow = CreateFrame("Frame", nil, m)
+    presetRow:SetPoint("TOPLEFT", inputRow, "BOTTOMLEFT", 0, -8)
+    presetRow:SetPoint("TOPRIGHT", inputRow, "BOTTOMRIGHT", 0, -8)
+    presetRow:SetHeight(22)
+    m.presetBtns = {}
+    local presetSpecs = {
+        { label = "1k",   gold = 1000 },
+        { label = "10k",  gold = 10000 },
+        { label = "50k",  gold = 50000 },
+        { label = "100k", gold = 100000 },
+        { label = "Max",  isMax = true },
+    }
+    local pW = 68
+    for idx, ps in ipairs(presetSpecs) do
+        local pb = U.NewButton(presetRow, pW, 22, ps.label)
+        pb:SetPoint("LEFT", presetRow, "LEFT", (idx - 1) * (pW + 5), 0)
+        if idx == #presetSpecs then
+            pb:SetPoint("RIGHT", presetRow, "RIGHT", 0, 0)
+        end
+        pb._presetSpec = ps
+        pb:SetScript("OnClick", function(self)
+            if self.isDisabled then return end
+            local cap = m:GetAvailableMaxCopper()
+            local target = ps.isMax and cap or min(cap, ps.gold * 10000)
+            m:SetInputCopper(target)
+        end)
+        m.presetBtns[idx] = pb
+    end
+
+    -- Validation Status Line
+    local statusMsg = m:CreateFontString(nil, "OVERLAY")
+    SetFont(statusMsg, 10.5, "")
+    statusMsg:SetPoint("TOPLEFT", presetRow, "BOTTOMLEFT", 0, -9)
+    statusMsg:SetPoint("TOPRIGHT", presetRow, "BOTTOMRIGHT", 0, -9)
+    statusMsg:SetJustifyH("LEFT")
+    statusMsg:SetWordWrap(true)
+    if statusMsg.SetMaxLines then statusMsg:SetMaxLines(2) end
+    m.statusMsg = statusMsg
+
+    -- Action Buttons
+    local confirmBtn = U.NewButton(m, 136, 26, "Confirm")
+    confirmBtn:SetPoint("BOTTOMRIGHT", m, "BOTTOMRIGHT", -14, 12)
+    confirmBtn:SetScript("OnClick", function()
+        if m._canConfirm then
+            m:SubmitTransfer()
+        end
+    end)
+    m.confirmBtn = confirmBtn
+
+    local cancelBtn = U.NewButton(m, 92, 26, "Cancel")
+    cancelBtn:SetPoint("RIGHT", confirmBtn, "LEFT", -8, 0)
+    cancelBtn:SetScript("OnClick", function() m:Hide() end)
+    m.cancelBtn = cancelBtn
+
+    function m:SetInputCopper(copper)
+        local c = max(0, floor(tonumber(copper) or 0))
+        local g = floor(c / 10000)
+        local s = floor((c % 10000) / 100)
+        local rem = c % 100
+        m._suppressChange = true
+        goldBox:SetText(g > 0 and tostring(g) or "")
+        silverBox:SetText(s > 0 and tostring(s) or "")
+        copperBox:SetText(rem > 0 and tostring(rem) or "")
+        m._suppressChange = false
+        U.RefreshGoldTransferModalValidation()
+    end
+
+    function m:GetInputCopper()
+        local g = floor(tonumber(goldBox:GetText()) or 0)
+        local s = floor(tonumber(silverBox:GetText()) or 0)
+        local c = floor(tonumber(copperBox:GetText()) or 0)
+        return g, s, c, (g * 10000) + (s * 100) + c
+    end
+
+    function m:GetAvailableMaxCopper()
+        local kind = m._bankKind or "WARBAND"
+        local action = m._action or "DEPOSIT"
+        if action == "DEPOSIT" then
+            return U.GetPlayerGoldCopper()
+        end
+        if kind == "WARBAND" then
+            return U.GetWarbandBankMoney() or 0
+        elseif kind == "CHARACTER" then
+            return U.GetCharacterBankMoney() or 0
+        elseif kind == "GUILD" then
+            local gbInfo = U.GetGuildBankMoneyInfo()
+            return gbInfo.maxWithdraw or 0
+        end
+        return 0
+    end
+
+    function m:SubmitTransfer()
+        local kind = m._bankKind or "WARBAND"
+        local action = m._action or "DEPOSIT"
+        local copper, errMsg = U.ValidateGoldTransfer(kind, action, m:GetInputCopper())
+        if not copper then
+            statusMsg:SetTextColor(0.97, 0.44, 0.44, 1.0)
+            statusMsg:SetText(errMsg or "Enter a valid gold amount.")
+            return
+        end
+        local okCall = false
+        if kind == "WARBAND" and C_Bank and Enum and Enum.BankType and Enum.BankType.Account ~= nil then
+            local fn = (action == "DEPOSIT") and C_Bank.DepositMoney or C_Bank.WithdrawMoney
+            if type(fn) == "function" then
+                okCall = pcall(fn, Enum.BankType.Account, copper)
+            end
+        elseif kind == "CHARACTER" and C_Bank and Enum and Enum.BankType and Enum.BankType.Character ~= nil then
+            local fn = (action == "DEPOSIT") and C_Bank.DepositMoney or C_Bank.WithdrawMoney
+            if type(fn) == "function" then
+                okCall = pcall(fn, Enum.BankType.Character, copper)
+            end
+        elseif kind == "GUILD" then
+            local fn = (action == "DEPOSIT") and _G.DepositGuildBankMoney or _G.WithdrawGuildBankMoney
+            if type(fn) == "function" then
+                okCall = pcall(fn, copper)
+            end
+        end
+        if okCall then
+            local bankLabel = (kind == "WARBAND" and "Warband Bank") or (kind == "GUILD" and "Guild Bank") or "Personal Bank"
+            local verb = (action == "DEPOSIT") and "Deposited" or "Withdrew"
+            local prep = (action == "DEPOSIT") and "to" or "from"
+            Print(sformat("%s %s %s %s.", verb, U.FormatMoneyWithIcons(copper), prep, bankLabel))
+            m:Hide()
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0.15, function()
+                    U.UpdateFooter()
+                    U.UpdateBankGoldFooter()
+                end)
+            end
+        else
+            statusMsg:SetTextColor(0.97, 0.44, 0.44, 1.0)
+            statusMsg:SetText("Transfer was blocked by Blizzard. Check you are still at the banker.")
+        end
+    end
+
+    m:SetScript("OnShow", function()
+        U.EnsureBagSpecialFrames()
+    end)
+    m:SetScript("OnHide", function()
+        goldBox:ClearFocus()
+        silverBox:ClearFocus()
+        copperBox:ClearFocus()
+        U.EnsureBagSpecialFrames()
+    end)
+
+    S.goldTransferModal = m
+    return m
+end
+
+function U.ValidateGoldTransfer(kind, action, g, s, c, totalCopper)
+    if InCombatLockdown() then
+        return nil, "Cannot transfer gold while in combat."
+    end
+    if kind == "GUILD" then
+        if not S.atGuildBank then
+            return nil, "Visit a Guild Bank NPC to transfer guild gold."
+        end
+    else
+        if not S.atBank then
+            return nil, "Visit a Banker to transfer gold."
+        end
+    end
+    if (s or 0) > 99 or (c or 0) > 99 then
+        return nil, "Silver and copper must each be 99 or less."
+    end
+    if (totalCopper or 0) <= 0 then
+        return nil, "Enter an amount greater than 0."
+    end
+    if action == "DEPOSIT" then
+        if kind == "WARBAND" and not U.CanUseAccountBankMoney("DEPOSIT") then
+            return nil, "Warband Bank deposits are currently unavailable."
+        elseif kind == "CHARACTER" and not U.CanUseCharacterBankMoney("DEPOSIT") then
+            return nil, "Personal Bank deposits are not available."
+        elseif kind == "GUILD" and type(_G.DepositGuildBankMoney) ~= "function" then
+            return nil, "Guild Bank deposits are unavailable."
+        end
+        local have = U.GetPlayerGoldCopper()
+        if totalCopper > have then
+            return nil, "Insufficient character gold (" .. U.FormatMoneyWithIcons(have) .. " available)."
+        end
+        return totalCopper, nil
+    else
+        if kind == "WARBAND" then
+            if not U.CanUseAccountBankMoney("WITHDRAW") then
+                return nil, "Warband Bank withdrawals are currently unavailable."
+            end
+            local wbHave = U.GetWarbandBankMoney() or 0
+            if totalCopper > wbHave then
+                return nil, "Exceeds Warband Bank balance (" .. U.FormatMoneyWithIcons(wbHave) .. " available)."
+            end
+            return totalCopper, nil
+        elseif kind == "CHARACTER" then
+            if not U.CanUseCharacterBankMoney("WITHDRAW") then
+                return nil, "Personal Bank withdrawals are not available."
+            end
+            local cbHave = U.GetCharacterBankMoney() or 0
+            if totalCopper > cbHave then
+                return nil, "Exceeds Personal Bank balance (" .. U.FormatMoneyWithIcons(cbHave) .. " available)."
+            end
+            return totalCopper, nil
+        elseif kind == "GUILD" then
+            local gbInfo = U.GetGuildBankMoneyInfo()
+            local bankHave = gbInfo.money or 0
+            if not gbInfo.canWithdraw and (gbInfo.withdrawLimit == nil or gbInfo.withdrawLimit == 0) then
+                return nil, "Your guild rank has no daily gold withdrawal allowance."
+            end
+            if totalCopper > bankHave then
+                return nil, "Exceeds Guild Bank balance (" .. U.FormatMoneyWithIcons(bankHave) .. " available)."
+            end
+            if gbInfo.withdrawLimit ~= nil and gbInfo.withdrawLimit >= 0 and totalCopper > gbInfo.withdrawLimit then
+                return nil, "Exceeds your daily guild withdrawal limit (" .. U.FormatMoneyWithIcons(gbInfo.withdrawLimit) .. ")."
+            end
+            return totalCopper, nil
+        end
+    end
+    return nil, "Unsupported bank transfer."
+end
+
+function U.RefreshGoldTransferModalValidation()
+    local m = S.goldTransferModal
+    if not m or not m:IsShown() then return end
+    local kind = m._bankKind or "WARBAND"
+    local action = m._action or "DEPOSIT"
+    local g, s, c, totalCopper = m:GetInputCopper()
+    local validCopper, errMsg = U.ValidateGoldTransfer(kind, action, g, s, c, totalCopper)
+    if validCopper then
+        m._canConfirm = true
+        m.confirmBtn.isDisabled = false
+        m.confirmBtn:SetSelected(true)
+        m.statusMsg:SetTextColor(0.64, 0.70, 0.78, 1.0)
+        m.statusMsg:SetText("Ready to " .. (action == "DEPOSIT" and "deposit " or "withdraw ") .. U.FormatMoneyWithIcons(validCopper) .. ".")
+    else
+        m._canConfirm = false
+        m.confirmBtn:SetSelected(false)
+        m.confirmBtn.isDisabled = (totalCopper > 0)
+        U.StyleButtonState(m.confirmBtn)
+        if totalCopper > 0 then
+            m.statusMsg:SetTextColor(0.97, 0.44, 0.44, 1.0)
+            m.statusMsg:SetText(errMsg or "Invalid amount.")
+        else
+            m.statusMsg:SetTextColor(0.58, 0.64, 0.72, 1.0)
+            m.statusMsg:SetText("Enter Gold / Silver / Copper or pick a quick-fill preset above.")
+        end
+    end
+end
+
+function U.RefreshGoldTransferModal()
+    local m = S.goldTransferModal
+    if not m or not m:IsShown() then return end
+    local kind = m._bankKind or "WARBAND"
+    local action = m._action or "DEPOSIT"
+    local ar, ag, ab = GetAccent()
+    m:SetBackdropBorderColor(ar, ag, ab, 0.95)
+    if m.topBar then m.topBar:SetColorTexture(ar, ag, ab, 1.0) end
+
+    local bankName = (kind == "WARBAND" and "Warband Bank") or (kind == "GUILD" and "Guild Bank") or "Personal Bank"
+    local verb = (action == "DEPOSIT") and "Deposit to " or "Withdraw from "
+    m.title:SetText(verb .. bankName)
+    m.confirmBtn:SetLabel((action == "DEPOSIT") and "Deposit Gold" or "Withdraw Gold")
+
+    local charGold = U.GetPlayerGoldCopper()
+    if kind == "WARBAND" then
+        local wbGold = U.GetWarbandBankMoney() or 0
+        m.balLine1:SetText("|cFF94A3B8Character Gold:|r  " .. U.FormatMoneyWithIcons(charGold))
+        m.balLine2:SetText("|cFF94A3B8Warband Bank:|r   " .. U.FormatMoneyWithIcons(wbGold))
+    elseif kind == "CHARACTER" then
+        local cbGold = U.GetCharacterBankMoney() or 0
+        m.balLine1:SetText("|cFF94A3B8Character Gold:|r  " .. U.FormatMoneyWithIcons(charGold))
+        m.balLine2:SetText("|cFF94A3B8Personal Bank:|r  " .. U.FormatMoneyWithIcons(cbGold))
+    else
+        local gbInfo = U.GetGuildBankMoneyInfo()
+        local gGold = gbInfo.money or 0
+        m.balLine1:SetText("|cFF94A3B8Character Gold:|r  " .. U.FormatMoneyWithIcons(charGold) .. "   |cFF475569|||r   |cFF94A3B8Guild:|r " .. U.FormatMoneyWithIcons(gGold))
+        if action == "WITHDRAW" then
+            local limStr
+            if gbInfo.withdrawLimit == -1 then
+                limStr = "|cFF22C55EUnlimited|r"
+            elseif type(gbInfo.withdrawLimit) == "number" and gbInfo.withdrawLimit > 0 and gbInfo.canWithdraw then
+                limStr = U.FormatMoneyWithIcons(gbInfo.withdrawLimit)
+            else
+                limStr = "|cFFF87171None (Guild Rank Restricted)|r"
+            end
+            m.balLine2:SetText("|cFF94A3B8Daily Withdrawal Limit:|r  " .. limStr)
+        else
+            m.balLine2:SetText("|cFF94A3B8Destination:|r  |cFFFFFFFFGuild Bank Treasury|r")
+        end
+    end
+
+    local maxAvail = m:GetAvailableMaxCopper()
+    for _, pb in ipairs(m.presetBtns or {}) do
+        local ps = pb._presetSpec
+        local need = ps.isMax and 1 or (ps.gold * 10000)
+        pb.isDisabled = (maxAvail < need) or (maxAvail <= 0)
+        U.StyleButtonState(pb)
+    end
+
+    U.RefreshGoldTransferModalValidation()
+end
+
+function U.OpenGoldTransferModal(bankKind, action)
+    if InCombatLockdown() then
+        Print("Cannot transfer gold while in combat.")
+        return
+    end
+    local m = U.EnsureGoldTransferModal()
+    m._bankKind = bankKind or "WARBAND"
+    m._action = action or "DEPOSIT"
+    m._suppressChange = true
+    m.goldBox:SetText("")
+    m.silverBox:SetText("")
+    m.copperBox:SetText("")
+    m._suppressChange = false
+    m:Show()
+    m:Raise()
+    U.RefreshGoldTransferModal()
+    m.goldBox:SetFocus()
+end
+
+function U.UpdateBankGoldFooter()
+    local bw = S.bankWindow
+    if not bw or not bw.footer or not bw.footer.goldText then return end
+    local foot = bw.footer
+    local mode = S.companionMode or "BANK"
+    local isLive = U.IsVaultModeLive(mode)
+    local ar, ag, ab = GetAccent()
+    local hex = sformat("|cFF%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
+
+    foot.depositBtn:Hide()
+    foot.withdrawBtn:Hide()
+    foot.warbandDepositBtn:Hide()
+
+    local leftmostBtn = nil
+    if mode == "WARBAND" then
+        local wbMoney = U.GetWarbandBankMoney()
+        local wbStr = (wbMoney ~= nil) and U.FormatMoneyWithIcons(wbMoney) or "|cFF64748B--|r"
+        foot.goldText:SetText(hex .. "Warband Gold:|r  " .. wbStr)
+        if isLive then
+            local canDep = U.CanUseAccountBankMoney("DEPOSIT") and (U.GetPlayerGoldCopper() > 0)
+            local canWdr = U.CanUseAccountBankMoney("WITHDRAW") and ((wbMoney or 0) > 0)
+            foot.depositBtn.isDisabled = not canDep
+            foot.withdrawBtn.isDisabled = not canWdr
+            U.StyleButtonState(foot.depositBtn)
+            U.StyleButtonState(foot.withdrawBtn)
+            foot.depositBtn:Show()
+            foot.withdrawBtn:Show()
+            leftmostBtn = foot.depositBtn
+        end
+    elseif mode == "GUILD" then
+        local gbInfo = U.GetGuildBankMoneyInfo()
+        local gbStr = (gbInfo.money ~= nil) and U.FormatMoneyWithIcons(gbInfo.money) or "|cFF64748B--|r"
+        local line = hex .. "Guild Gold:|r  " .. gbStr
+        if isLive then
+            if gbInfo.withdrawLimit == -1 then
+                line = line .. "  |cFF475569|||r  |cFF94A3B8Limit:|r |cFF22C55EUnlimited|r"
+            elseif type(gbInfo.withdrawLimit) == "number" and gbInfo.withdrawLimit > 0 and gbInfo.canWithdraw then
+                line = line .. "  |cFF475569|||r  |cFF94A3B8Limit:|r " .. U.FormatMoneyWithIcons(gbInfo.withdrawLimit)
+            else
+                line = line .. "  |cFF475569|||r  |cFFF87171Withdraw: None|r"
+            end
+            foot.depositBtn.isDisabled = not (gbInfo.canDeposit and U.GetPlayerGoldCopper() > 0)
+            foot.withdrawBtn.isDisabled = not gbInfo.canWithdraw
+            U.StyleButtonState(foot.depositBtn)
+            U.StyleButtonState(foot.withdrawBtn)
+            foot.depositBtn:Show()
+            foot.withdrawBtn:Show()
+            leftmostBtn = foot.depositBtn
+        end
+        foot.goldText:SetText(line)
+    else
+        local cbMoney = isLive and U.GetCharacterBankMoney() or nil
+        if isLive and cbMoney ~= nil and (U.CanUseCharacterBankMoney("DEPOSIT") or U.CanUseCharacterBankMoney("WITHDRAW")) then
+            foot.goldText:SetText(hex .. "Personal Bank Gold:|r  " .. U.FormatMoneyWithIcons(cbMoney))
+            foot.depositBtn.isDisabled = not (U.CanUseCharacterBankMoney("DEPOSIT") and U.GetPlayerGoldCopper() > 0)
+            foot.withdrawBtn.isDisabled = not (U.CanUseCharacterBankMoney("WITHDRAW") and cbMoney > 0)
+            U.StyleButtonState(foot.depositBtn)
+            U.StyleButtonState(foot.withdrawBtn)
+            foot.depositBtn:Show()
+            foot.withdrawBtn:Show()
+            leftmostBtn = foot.depositBtn
+        else
+            local key = S.view.char or CharKey()
+            local rec = DB().vault and DB().vault.characters and DB().vault.characters[key]
+            local charGold = (key == CharKey() and S.view.char == nil) and U.GetPlayerGoldCopper() or max(0, U.SafeBankMoneyNum(rec and rec.gold))
+            foot.goldText:SetText(hex .. "Character Gold:|r  " .. U.FormatMoneyWithIcons(charGold))
+            if isLive and U.CanUseAccountBankMoney("DEPOSIT") then
+                foot.warbandDepositBtn.isDisabled = (U.GetPlayerGoldCopper() <= 0)
+                U.StyleButtonState(foot.warbandDepositBtn)
+                foot.warbandDepositBtn:Show()
+                leftmostBtn = foot.warbandDepositBtn
+            end
+        end
+    end
+
+    foot.goldHit:ClearAllPoints()
+    foot.goldHit:SetPoint("TOPLEFT", foot.goldRow, "TOPLEFT", 10, 0)
+    if leftmostBtn and leftmostBtn:IsShown() then
+        foot.goldHit:SetPoint("BOTTOMRIGHT", leftmostBtn, "BOTTOMLEFT", -8, -3)
+    else
+        foot.goldHit:SetPoint("BOTTOMRIGHT", foot.goldRow, "BOTTOMRIGHT", -10, 0)
+    end
+end
+
 function U.EnsureCompanionBankWindow()
     if S.bankWindow then return S.bankWindow end
     local ar, ag, ab = GetAccent()
@@ -5668,7 +6380,7 @@ function U.EnsureCompanionBankWindow()
 
     local area = U.CreateScrollArea(bw)
     area:SetPoint("TOPLEFT", bw, "TOPLEFT", 12, -104)
-    area:SetPoint("BOTTOMRIGHT", bw, "BOTTOMRIGHT", -16, 32)
+    area:SetPoint("BOTTOMRIGHT", bw, "BOTTOMRIGHT", -16, 58)
     bw.scrollArea = area
 
     bw.content = CreateFrame("Frame", nil, area.content)
@@ -5684,16 +6396,171 @@ function U.EnsureCompanionBankWindow()
     local foot = CreateFrame("Frame", nil, bw)
     foot:SetPoint("BOTTOMLEFT", bw, "BOTTOMLEFT", 1, 1)
     foot:SetPoint("BOTTOMRIGHT", bw, "BOTTOMRIGHT", -1, 1)
-    foot:SetHeight(26)
+    foot:SetHeight(52)
     foot.bg = foot:CreateTexture(nil, "BACKGROUND")
     foot.bg:SetAllPoints()
     foot.bg:SetColorTexture(0.03, 0.035, 0.048, 1)
     foot.left = foot:CreateFontString(nil, "OVERLAY")
     SetFont(foot.left, 11, "")
-    foot.left:SetPoint("LEFT", foot, "LEFT", 12, 0)
+    foot.left:SetPoint("TOPLEFT", foot, "TOPLEFT", 12, -6)
     foot.left:SetTextColor(0.68, 0.74, 0.82, 1)
+
+    local footDiv = foot:CreateTexture(nil, "ARTWORK")
+    footDiv:SetHeight(1)
+    footDiv:SetPoint("TOPLEFT", foot, "TOPLEFT", 1, -24)
+    footDiv:SetPoint("TOPRIGHT", foot, "TOPRIGHT", -1, -24)
+    footDiv:SetColorTexture(1, 1, 1, 0.06)
+
+    local goldRow = CreateFrame("Frame", nil, foot)
+    goldRow:SetPoint("TOPLEFT", footDiv, "BOTTOMLEFT", 0, 0)
+    goldRow:SetPoint("BOTTOMRIGHT", foot, "BOTTOMRIGHT", 0, 0)
+    foot.goldRow = goldRow
+
+    local footWithdrawBtn = U.NewButton(goldRow, 78, 20, "Withdraw")
+    footWithdrawBtn:SetFrameLevel(goldRow:GetFrameLevel() + 3)
+    footWithdrawBtn:SetPoint("RIGHT", goldRow, "RIGHT", -10, 0)
+    footWithdrawBtn:SetScript("OnClick", function(self)
+        if self.isDisabled then return end
+        local kind = (S.companionMode == "GUILD" and "GUILD") or (S.companionMode == "BANK" and "CHARACTER") or "WARBAND"
+        U.OpenGoldTransferModal(kind, "WITHDRAW")
+    end)
+    footWithdrawBtn:HookScript("OnEnter", function(self)
+        if not GameTooltip then return end
+        local mode = S.companionMode or "BANK"
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        if mode == "GUILD" then
+            local gbInfo = U.GetGuildBankMoneyInfo()
+            GameTooltip:SetText("Withdraw Guild Bank Gold", 1, 1, 1)
+            if self.isDisabled then
+                if not gbInfo.canWithdraw and (gbInfo.withdrawLimit == nil or gbInfo.withdrawLimit == 0) then
+                    GameTooltip:AddLine("Your guild rank has no daily gold withdrawal allowance.", 0.97, 0.44, 0.44, true)
+                else
+                    GameTooltip:AddLine("No gold available to withdraw right now.", 0.97, 0.44, 0.44, true)
+                end
+            else
+                GameTooltip:AddLine("Withdraw gold from the Guild Bank treasury up to your daily rank limit.", 0.80, 0.84, 0.90, true)
+            end
+        else
+            GameTooltip:SetText("Withdraw Gold", 1, 1, 1)
+            if self.isDisabled then
+                GameTooltip:AddLine("No gold available to withdraw right now.", 0.97, 0.44, 0.44, true)
+            else
+                GameTooltip:AddLine("Withdraw gold from your Warband Bank to your character.", 0.80, 0.84, 0.90, true)
+            end
+        end
+        GameTooltip:Show()
+    end)
+    footWithdrawBtn:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    footWithdrawBtn:Hide()
+    foot.withdrawBtn = footWithdrawBtn
+
+    local footDepositBtn = U.NewButton(goldRow, 72, 20, "Deposit")
+    footDepositBtn:SetFrameLevel(goldRow:GetFrameLevel() + 3)
+    footDepositBtn:SetPoint("RIGHT", footWithdrawBtn, "LEFT", -4, 0)
+    footDepositBtn:SetScript("OnClick", function(self)
+        if self.isDisabled then return end
+        local kind = (S.companionMode == "GUILD" and "GUILD") or (S.companionMode == "BANK" and "CHARACTER") or "WARBAND"
+        U.OpenGoldTransferModal(kind, "DEPOSIT")
+    end)
+    footDepositBtn:HookScript("OnEnter", function(self)
+        if not GameTooltip then return end
+        local mode = S.companionMode or "BANK"
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        GameTooltip:SetText(mode == "GUILD" and "Deposit to Guild Bank" or "Deposit Gold", 1, 1, 1)
+        if self.isDisabled then
+            GameTooltip:AddLine("You have no character gold available to deposit.", 0.97, 0.44, 0.44, true)
+        elseif mode == "GUILD" then
+            GameTooltip:AddLine("Deposit character gold into your Guild Bank treasury.", 0.80, 0.84, 0.90, true)
+        else
+            GameTooltip:AddLine("Deposit character gold into your Warband Bank (shared across your Warband).", 0.80, 0.84, 0.90, true)
+        end
+        GameTooltip:Show()
+    end)
+    footDepositBtn:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    footDepositBtn:Hide()
+    foot.depositBtn = footDepositBtn
+
+    local warbandDepositBtn = U.NewButton(goldRow, 136, 20, "Deposit to Warband")
+    warbandDepositBtn:SetFrameLevel(goldRow:GetFrameLevel() + 3)
+    warbandDepositBtn:SetPoint("RIGHT", goldRow, "RIGHT", -10, 0)
+    warbandDepositBtn:SetScript("OnClick", function(self)
+        if self.isDisabled then return end
+        U.OpenGoldTransferModal("WARBAND", "DEPOSIT")
+    end)
+    warbandDepositBtn:HookScript("OnEnter", function(self)
+        if not GameTooltip then return end
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        GameTooltip:SetText("Deposit to Warband Bank", 1, 1, 1)
+        GameTooltip:AddLine("Personal Banks do not store gold directly; character gold stays in your bags and can be stored in your Warband Bank.", 0.80, 0.84, 0.90, true)
+        if self.isDisabled then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("You have no character gold available to deposit.", 0.97, 0.44, 0.44, true)
+        end
+        GameTooltip:Show()
+    end)
+    warbandDepositBtn:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    warbandDepositBtn:Hide()
+    foot.warbandDepositBtn = warbandDepositBtn
+
+    local goldHit = CreateFrame("Frame", nil, goldRow)
+    goldHit:SetPoint("TOPLEFT", goldRow, "TOPLEFT", 10, 0)
+    goldHit:SetPoint("BOTTOMRIGHT", goldRow, "BOTTOMRIGHT", -10, 0)
+    goldHit:EnableMouse(true)
+    goldHit:SetScript("OnEnter", function(self)
+        if not GameTooltip then return end
+        local mode = S.companionMode or "BANK"
+        local isLive = U.IsVaultModeLive(mode)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        if mode == "WARBAND" then
+            local wbMoney = U.GetWarbandBankMoney()
+            GameTooltip:SetText("Warband Bank Gold", 1, 1, 1)
+            GameTooltip:AddDoubleLine("Warband Balance:", wbMoney and U.FormatMoneyWithIcons(wbMoney) or "Unknown (Visit a Banker)", 0.72, 0.78, 0.86, 1, 1, 1)
+            GameTooltip:AddDoubleLine("Character Gold:", U.FormatMoneyWithIcons(U.GetPlayerGoldCopper()), 0.72, 0.78, 0.86, 1, 1, 1)
+            if not isLive then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cFFF59E0B[Snapshot]|r |cFFE2E8F0Read-only balance away from a Banker. Visit a Banker to deposit or withdraw gold.|r", 0.886, 0.910, 0.941, true)
+            end
+        elseif mode == "GUILD" then
+            local gbInfo = U.GetGuildBankMoneyInfo()
+            GameTooltip:SetText("Guild Bank Gold", 1, 1, 1)
+            GameTooltip:AddDoubleLine("Guild Balance:", gbInfo.money and U.FormatMoneyWithIcons(gbInfo.money) or "Unknown (Visit a Guild Bank)", 0.72, 0.78, 0.86, 1, 1, 1)
+            if isLive then
+                local limTxt = (gbInfo.withdrawLimit == -1 and "|cFF22C55EUnlimited|r")
+                    or (type(gbInfo.withdrawLimit) == "number" and gbInfo.withdrawLimit > 0 and gbInfo.canWithdraw and U.FormatMoneyWithIcons(gbInfo.withdrawLimit))
+                    or "|cFFF87171None (Guild Rank Restricted)|r"
+                GameTooltip:AddDoubleLine("Daily Withdrawal Limit:", limTxt, 0.72, 0.78, 0.86, 1, 1, 1)
+            else
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cFFF59E0B[Snapshot]|r |cFFE2E8F0Read-only balance away from a Guild Bank. Visit a Guild Bank to transfer gold.|r", 0.886, 0.910, 0.941, true)
+            end
+        else
+            GameTooltip:SetText("Personal Bank & Character Gold", 1, 1, 1)
+            GameTooltip:AddLine("Personal Banks do not store gold directly; character gold stays in your bags and can be stored in your Warband Bank.", 0.80, 0.84, 0.90, true)
+            if not isLive then
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("|cFFF59E0B[Snapshot]|r |cFFE2E8F0Visit a Banker to deposit gold into your Warband Bank.|r", 0.886, 0.910, 0.941, true)
+            end
+        end
+        GameTooltip:Show()
+    end)
+    goldHit:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    foot.goldHit = goldHit
+
+    foot.goldText = goldHit:CreateFontString(nil, "OVERLAY")
+    SetFont(foot.goldText, 11, "")
+    foot.goldText:SetPoint("LEFT", goldHit, "LEFT", 2, 0)
+    foot.goldText:SetPoint("RIGHT", goldHit, "RIGHT", -2, 0)
+    foot.goldText:SetJustifyH("LEFT")
+    foot.goldText:SetWordWrap(false)
+    foot.goldText:SetTextColor(0.88, 0.91, 0.96, 1)
+
     bw.footer = foot
     U.MakeFrameDraggable(foot, bw, OnVaultDragStop)
+    U.MakeFrameDraggable(goldHit, bw, OnVaultDragStop)
 
     local function AttachBankCanvasDropHandler(frame)
         if not frame then return end
@@ -5747,6 +6614,7 @@ function U.EnsureCompanionBankWindow()
         U.RenderCompanionBank()
     end)
     bw:SetScript("OnHide", function()
+        U.HideGoldTransferModal()
         if (not S.explicitClosing or S.explicitClosing == 0) and not InCombatLockdown()
             and ((S.search or "") ~= "") and IsStackMatching("CloseSpecialWindows", "CloseWindows") then
             S.escRestoreBank = true
@@ -5901,7 +6769,18 @@ function U.SnapshotGuildBank()
                 end
             end
         end
-        DB().vault.guildBank = { items = out, tabNames = tabNames, updated = time and time() or 0 }
+        local existingMoney = nil
+        if type(_G.GetGuildBankMoney) == "function" then
+            local okM, gm = pcall(_G.GetGuildBankMoney)
+            if okM and type(gm) == "number" and not IsSecret(gm) and gm >= 0 then
+                existingMoney = floor(gm)
+            end
+        end
+        local prevTbl = DB().vault.guildBank
+        if existingMoney == nil and type(prevTbl) == "table" then
+            existingMoney = prevTbl.money
+        end
+        DB().vault.guildBank = { items = out, tabNames = tabNames, money = existingMoney, updated = time and time() or 0 }
     end
     return out
 end
@@ -6263,7 +7142,7 @@ function U.RenderCompanionBank(forceRender)
     bw.scrollArea.content:SetSize(innerW, layout.height + 8)
     bw.scrollArea.UpdateThumb()
     local maxH = floor((UIParent:GetHeight() or 900) * 0.82)
-    local height = min(maxH, max(300, layout.height + 152))
+    local height = min(maxH, max(326, layout.height + 178))
     if not InCombatLockdown() then bw:SetSize(width, height); U.ApplyCompanionAnchor() end
     local totalSlots = 0
     if mode == "GUILD" then
@@ -6284,6 +7163,9 @@ function U.RenderCompanionBank(forceRender)
         local stText = bw.footer:CreateFontString(nil, "OVERLAY")
         SetFont(stText, 11, "")
         stText:SetPoint("LEFT", dot, "RIGHT", 5, 0)
+        stText:SetPoint("RIGHT", bw.footer, "RIGHT", -12, 0)
+        stText:SetJustifyH("LEFT")
+        stText:SetWordWrap(false)
         bw.footer.statusText = stText
     end
     if totalSlots > 0 then
@@ -6319,16 +7201,13 @@ function U.RenderCompanionBank(forceRender)
                 end
                 status = status .. sformat("  |cFF94A3B8-  %d/%d Tabs Withdrawable  -  Hover T1-T%d for Tab Limits|r", open, viewable, math.max(1, viewable))
             end
-            local gold = U.FormatGuildGoldLimit()
-            if gold then
-                status = status .. "  |cFF94A3B8-  Gold Today:|r " .. gold
-            end
         end
         bw.footer.statusText:SetText(status)
     else
         bw.footer.statusDot:SetColorTexture(0.937, 0.267, 0.267, 1.0) -- Crimson Red
         bw.footer.statusText:SetText("|cFFEF4444View Only|r")
     end
+    U.UpdateBankGoldFooter()
 end
 
 function U.ApplyCompanionAnchor(skipSaveBagPos)
@@ -6881,6 +7760,8 @@ function U.ApplyWindowTheme()
     if S.quickOpenBtn and S.quickOpenBtn.ApplyAccentStyle then
         S.quickOpenBtn:ApplyAccentStyle()
     end
+    U.UpdateBankGoldFooter()
+    U.RefreshGoldTransferModal()
     U.RefreshStyledButtons()
 end
 
@@ -11857,7 +12738,18 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
     elseif event == "PLAYER_MONEY" or event == "CURRENCY_DISPLAY_UPDATE" then
         if S.window and S.window:IsShown() then U.UpdateFooter() end
+        if S.bankWindow and S.bankWindow:IsShown() then U.UpdateBankGoldFooter() end
+        U.RefreshGoldTransferModal()
+    elseif event == "ACCOUNT_MONEY" then
+        U.GetWarbandBankMoney()
+        if S.bankWindow and S.bankWindow:IsShown() then U.UpdateBankGoldFooter() end
+        U.RefreshGoldTransferModal()
+    elseif event == "GUILDBANK_UPDATE_MONEY" then
+        U.GetGuildBankMoneyInfo()
+        if S.bankWindow and S.bankWindow:IsShown() then U.UpdateBankGoldFooter() end
+        U.RefreshGoldTransferModal()
     elseif event == "PLAYER_REGEN_DISABLED" then
+        U.HideGoldTransferModal()
         if U.ClearDecorUseConfirmWindow then U.ClearDecorUseConfirmWindow() end
         if S.autoOpenTimer then
             if S.autoOpenTimer.Cancel then pcall(S.autoOpenTimer.Cancel, S.autoOpenTimer) end
@@ -11956,8 +12848,12 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
         U.ScheduleSnapshot()
     elseif event == "BANKFRAME_CLOSED" then
+        U.HideGoldTransferModal()
         pcall(U.SnapshotBank)
         S.atBank = false
+        if S.bankWindow and S.bankWindow:IsShown() then
+            U.RenderCompanionBank()
+        end
         U.ScheduleAutoOpenContainers()
     elseif event == "GUILDBANKFRAME_OPENED" then
         S.atGuildBank = true
@@ -11986,12 +12882,20 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
             end)
         end
     elseif event == "GUILDBANKFRAME_CLOSED" then
+        U.HideGoldTransferModal()
         if S.atGuildBank then
             pcall(U.SnapshotGuildBank)
             U.ResetGuildBankSessionState()
         end
+        if S.bankWindow and S.bankWindow:IsShown() then
+            U.RenderCompanionBank()
+        end
         U.ScheduleAutoOpenContainers()
     elseif event == "GUILDBANKBAGSLOTS_CHANGED" or event == "GUILDBANK_UPDATE_TABS" or event == "GUILDBANK_UPDATE_WITHDRAWMONEY" then
+        if event == "GUILDBANK_UPDATE_WITHDRAWMONEY" then
+            if S.bankWindow and S.bankWindow:IsShown() then U.UpdateBankGoldFooter() end
+            U.RefreshGoldTransferModal()
+        end
         if event == "GUILDBANKBAGSLOTS_CHANGED" and S.pendingGuildMergeTab and U.ContinuePendingGuildMerge then
             pcall(U.ContinuePendingGuildMerge)
         end
@@ -12102,11 +13006,11 @@ for _, ev in ipairs({
     "ADDON_LOADED", "PLAYER_LOGIN", "PLAYER_ENTERING_WORLD", "BAG_UPDATE", "BAG_UPDATE_DELAYED",
     "BAG_NEW_ITEMS_UPDATED", "ITEM_LOCK_CHANGED", "ITEM_UNLOCKED", "CVAR_UPDATE",
     "BAG_UPDATE_COOLDOWN", "SPELL_UPDATE_COOLDOWN",
-    "SKILL_LINES_CHANGED", "EQUIPMENT_SETS_CHANGED", "PLAYER_EQUIPMENT_CHANGED", "PLAYER_MONEY",
+    "SKILL_LINES_CHANGED", "EQUIPMENT_SETS_CHANGED", "PLAYER_EQUIPMENT_CHANGED", "PLAYER_MONEY", "ACCOUNT_MONEY",
     "CURRENCY_DISPLAY_UPDATE", "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED",
     "PLAYER_INTERACTION_MANAGER_FRAME_SHOW", "PLAYER_INTERACTION_MANAGER_FRAME_HIDE",
     "GOSSIP_SHOW", "BANKFRAME_OPENED", "BANKFRAME_CLOSED", "PLAYER_BANKSLOTS_CHANGED", "BANK_TAB_SETTINGS_UPDATED",
-    "ITEM_DATA_LOAD_RESULT", "GUILDBANKBAGSLOTS_CHANGED", "GUILDBANK_UPDATE_TABS", "GUILDBANK_UPDATE_WITHDRAWMONEY", "GUILDBANKFRAME_OPENED", "GUILDBANKFRAME_CLOSED", "MERCHANT_SHOW",
+    "ITEM_DATA_LOAD_RESULT", "GUILDBANKBAGSLOTS_CHANGED", "GUILDBANK_UPDATE_TABS", "GUILDBANK_UPDATE_MONEY", "GUILDBANK_UPDATE_WITHDRAWMONEY", "GUILDBANKFRAME_OPENED", "GUILDBANKFRAME_CLOSED", "MERCHANT_SHOW",
     "MERCHANT_CLOSED", "AUCTION_HOUSE_SHOW", "AUCTION_HOUSE_CLOSED", "MAIL_SHOW", "MAIL_CLOSED",
     "TRADE_SHOW", "TRADE_CLOSED", "LOOT_READY", "LOOT_OPENED", "LOOT_CLOSED",
     "END_BOUND_TRADEABLE", "USE_NO_REFUND_CONFIRM", "ADDON_ACTION_BLOCKED",
@@ -12119,6 +13023,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "25/11/2026",
     entries = {
+        { type = "FEATURE", text = "DynamicBank Gold Controls & Obsidian Gold Transfer Modal (25/11/2026): Added live bank gold balances and transfer controls to the DynamicBank footer for Warband Bank (Deposit/Withdraw), Guild Bank (Deposit/Withdraw with live daily rank limit), and Personal Bank (live character gold display + [Deposit to Warband] shortcut with plain-English tooltip explaining that character gold stays in your bags); added a shared Obsidian Core Gold Transfer modal with Gold/Silver/Copper numeric inputs, 1k/10k/50k/100k/Max quick-fill pills, inline validation, and Escape/Enter handling; and subscribed to ACCOUNT_MONEY, PLAYER_MONEY, GUILDBANK_UPDATE_MONEY, and GUILDBANK_UPDATE_WITHDRAWMONEY for instant balance refreshes." },
         { type = "UI",      text = "Pass 5 Category Reorder Arrow Tint Parity (25/11/2026): Tinted the < and > reorder arrows on enabled Category Order & Visibility tiles in Tab 1 with the live Suite Accent colour at rest (switching to crisp white with accent border on hover, while keeping disabled tiles muted slate) to match DynamicPrep's Top Info Bar Layout Builder." },
         { type = "UI",      text = "Category Grid Parity, Isolated Bank Scale, Tab 3 Drawer Spacing & In-Panel Auto-Restock UI (24/11/2026): Restyled Tab 1's 12 Category Order & Visibility tiles to match DynamicPrep's dark Obsidian layout builder (#0E1015 fill, crisp 1px live Suite Accent border when enabled, dimmed slate when disabled, '1. Category' numbering, and always-visible bordered < and > reorder buttons); isolated Tab 2's Bank Window Scale slider so scaling Bank/Warband never moves or touches the Bag window; tightened Tab 3 Sub-Settings drawer spacing and ScrollFrame height updates so every child row renders cleanly without clipping; and added an in-panel Smart Vendor Auto-Restock drawer supporting bag drag-and-drop, Shift-Click links, item ID/name lookup, per-item quantity controls, Clear All, and Ctrl + Alt + Right-Click vendor adding with tooltip hints." },
         { type = "UI",      text = "Pass 4 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 2 Rebalance (24/11/2026): Moved Category Layout Preset into a full-width QUICK PRESETS card at the top of Tab 1 (Mythic+ & Raid, Collector, Minimalist, Custom) with live Suite Accent active highlighting that clears on manual tweaks; exposed 3-mode Item Sorting (Quality, Alphabetical, Manual) and Auto-Merge Stacks on Close in Tab 1 while hiding Category-only controls cleanly in Single Grid mode and stripping outline flags from category arrows; rebalanced Tab 2 (Appearance, Badges & Glow) with Bag Window Scale, Bank Window Scale, Window Background Opacity, and Reset Window Positions; upgraded Tab 3 Auto-Repair, Auto-Open Containers, and Quick-Open Queue into persisted multi-row Sub-Settings drawers collapsed by default on fresh profiles; and unified live Suite Accent repainting across Bags, Bank, and Standalone frames." },

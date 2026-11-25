@@ -2712,7 +2712,7 @@ local MODULE_QUICK_GUIDES = {
         summary   = "Displays a live Top Info Bar for stats, Omni Folio, consumables, and clickable Raid Buffs.",
         tips      = {
             "Left-click the Folio capsule to pick your zone target stat, or Right-click to open the Omnium Folio.",
-            "Click /ds hud in the header to move or scale the Top Info Bar and Raid Buffs bar.",
+            "Shift + Left-Drag the Top Info Bar to move it directly, or Right-Click empty bar space / use /ds hud for grid & scale.",
             "Create the [DynamicHeal] and [DynamicDrink] macros in Tab 3 for smart recovery buttons.",
         },
     },

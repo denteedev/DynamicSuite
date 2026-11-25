@@ -5,6 +5,14 @@
 
 ## [Unreleased]
 
+### DynamicPrep Top Info Bar Shift-Drag & DynamicBank Gold Transfers (25/11/2026)
+- **Direct Shift + Left-Drag & Discoverability for Top Info Bar (`DynamicPrep`, `DynamicSuite`):** Added direct **Shift + Left-Drag** moving across the **DynamicPrep** Top Info Bar background and segment capsules out of combat (saving directly to your HUD Edit Mode position without triggering capsule clicks), **Right-Click** on empty bar space to open HUD Edit Mode (`/ds hud`), a bar-hover hint tooltip, a subtle `"Shift-Drag to move  |  /ds hud for grid & scale"` footer line across all Top Info Bar segment tooltips, and an updated **DynamicPrep** `?` Quick Guide tip across integrated and standalone modes.
+- **DynamicBank Gold Controls & Obsidian Gold Transfer Modal (`DynamicBags`):** Expanded the **DynamicBank** footer into a clean 2-row dock displaying live gold balances and bank-specific actions that hide cleanly when viewing remote snapshots away from a banker:
+  - **Warband Bank:** Live Warband Bank gold balance alongside **[Deposit]** and **[Withdraw]** buttons.
+  - **Guild Bank:** Live Guild Bank treasury gold and remaining daily rank withdrawal allowance alongside **[Deposit]** and **[Withdraw]** buttons respecting guild rank permissions.
+  - **Personal Bank:** Live character gold display with a **[Deposit to Warband]** shortcut and plain-English tooltip explaining that Personal Banks do not store gold directly (character gold stays in your bags and can be stored in your Warband Bank).
+  - **Obsidian Core Gold Transfer Modal:** Built a shared Obsidian Gold Transfer window (`Gold` / `Silver` / `Copper` numeric boxes auto-focused on Gold, `Enter` to confirm, `Esc` to cancel, `1k` / `10k` / `50k` / `100k` / `Max` quick-fill pills, and inline Australian English validation with zero Blizzard `StaticPopup` dialogs) wired to live `ACCOUNT_MONEY`, `PLAYER_MONEY`, `GUILDBANK_UPDATE_MONEY`, and `GUILDBANK_UPDATE_WITHDRAWMONEY` refreshes.
+
 ---
 
 ## DynamicSuite & All 13 Modules v2.10.0 (25/11/2026)
