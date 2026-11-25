@@ -1,6 +1,6 @@
 # DynamicSuite -- 13-Module QoL, Utility & Performance Hub
 
-**Version:** v2.10.0 (25/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107) | **Author:** Dentee-Frostmourne
+**Version:** v2.10.1 (25/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, cursor overlays, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for World of Warcraft Retail. All 13 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 

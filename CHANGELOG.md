@@ -1,14 +1,18 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.10.0 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
+*Author: Dentee-Frostmourne  |  Release: v2.10.1 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
 
-### DynamicBank Single-Action Bank & Guild Bank Closing (25/11/2026)
+---
+
+## [2.10.1] - 25/11/2026
+
+### DynamicBank Single-Action Bank & Guild Bank Closing
 - **Clean Single-Action Bank & Guild Bank Shutdown (`DynamicBags`, `DynamicSuite`):** Fixed a lingering invisible Blizzard bank interaction left open whenever **DynamicBank** was closed via its Close button (`x`), `Esc` key, or bag toggle while visiting a Personal Bank, Warband Bank, or Guild Bank (which previously required pressing `Esc` a second time before talking to the banker NPC again). Closing **DynamicBank** during a live banker session now cleanly ends active `C_Bank` / `CloseGuildBankFrame` and `C_PlayerInteractionManager` interactions, detaches and hides suppressed Blizzard `BankFrame` / `GuildBankFrame` panels out of combat with re-entrancy guards (and restores their layout if bag replacement is disabled), yields `BankFrame` and `GuildBankFrame` across all **DynamicSuite** Desktop Windows hooks so suppressed panels are never re-shown, closes child modals and popovers (`DynamicBagsDropdownMenu`, Gold Transfer modal, `StackSplitFrame`, and buy-tab popups) one at a time on `Esc` without prematurely killing the banker session, keeps Personal / Warband / Guild tab switching uninterrupted, and skips bank-close API calls completely when viewing remote cached snapshots (`/dbag bank`).
 
-### DynamicPrep Top Info Bar Shift-Drag & DynamicBank Gold Transfers (25/11/2026)
+### DynamicPrep Top Info Bar Shift-Drag & DynamicBank Gold Transfers
 - **Direct Shift + Left-Drag & Discoverability for Top Info Bar (`DynamicPrep`, `DynamicSuite`):** Added direct **Shift + Left-Drag** moving across the **DynamicPrep** Top Info Bar background and segment capsules out of combat (saving directly to your HUD Edit Mode position without triggering capsule clicks), **Right-Click** on empty bar space to open HUD Edit Mode (`/ds hud`), a bar-hover hint tooltip, a subtle `"Shift-Drag to move  |  /ds hud for grid & scale"` footer line across all Top Info Bar segment tooltips, and an updated **DynamicPrep** `?` Quick Guide tip across integrated and standalone modes.
 - **DynamicBank Gold Controls & Obsidian Gold Transfer Modal (`DynamicBags`):** Expanded the **DynamicBank** footer into a clean 2-row dock displaying live gold balances and bank-specific actions that hide cleanly when viewing remote snapshots away from a banker:
   - **Warband Bank:** Live Warband Bank gold balance alongside **[Deposit]** and **[Withdraw]** buttons.
