@@ -1,9 +1,13 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.10.3 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
+*Author: Dentee-Frostmourne  |  Release: v2.11.0 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
+
+---
+
+## [2.11.0] - 25/11/2026
 
 ### Bottom-Edge Shift-Drag Vertical Jump Fix & Pet Battle Auto-Hide (25/11/2026)
 - **Zero-Jump Edge Shift-Drag Fix (`DynamicMarker.lua`, `DynamicSuite_Core.lua`, `DynamicSuite_UI.lua`):** Fixed a Lua 5.1 multi-return truncation (`frame.GetCenter and frame:GetCenter()` discarding the vertical coordinate `fCy`) across direct Shift-Drag and HUD Edit Mode start paths that caused `DynamicMarker` bars parked flush on the bottom (or any) screen edge to snap immediately to vertical centre (`Y = 0`) on mouse-down, and kept native C++ `SetClampedToScreen(false)` active throughout drag ticks so bars at `60%`, `100%`, and `150%` scale track smoothly from their exact edge position with zero jump.

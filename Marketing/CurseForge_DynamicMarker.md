@@ -23,7 +23,7 @@
 
 * **Automatic Settings Import:** On first login, DynamicMarker safely imports your saved FocusMarker bar positions, scale, opacity, visibility rules (Always, Group, or Off), orientation, and custom icon/flare orders without touching your original backup.
 * **Automatic Macro Upgrade:** Any existing [FocusMarker] or [FocusMark] macro on your action bars is upgraded in-place to [DynamicMark].
-* **One-Click Cleanup & Re-Import:** If FocusMarker is still enabled, Guided Setup lets you import and disable it in one click. You can also run `/dm import` or `/dm import status` out of combat anytime.
+* **One-Click Cleanup & Re-Import:** If FocusMarker is still enabled, Guided Setup lets you import and disable it in one click. You can also run `/dm migrate`, `/dm import focusmarker`, or `/dm import status` out of combat anytime (`/dm export`, `/dm import`, and `/dm profiles` handle `!DS1!` profile sharing).
 * **Built-In `/tm` Taint Diagnostics:** Automatically alerts you in chat if a third-party addon (such as DecorVendor) blocks Blizzard's `/tm` raid marker command, with an optional one-click disable or dismiss banner.
 
 ---
@@ -46,24 +46,26 @@ Open `/dm` and go to the **Macro Setup** tab (or click **Guided Setup** in the s
 
 * **Optional One-Key Ground Flares:** Bind custom hotkeys (Unbound by default so your existing action bar bindings stay untouched) to cycle world markers at your cursor or clear all active flares in Guided Setup or **World Flare Keys** (`/dm flares`), with Right-click to unbind.
 * **Customisable Flare Cycle:** Drag and reorder any of the 8 world markers in the **World Flare Keys** tab and toggle individual markers on or off.
-* **Floating Focus & Flare Bars:** Show each bar Always, in Group only, or Off; switch between Horizontal and Vertical layouts; and customise border styles, Scale, and Opacity.
+* **Floating Focus & Flare Bars:** Show each bar Always, in Group only, or Off; switch between Horizontal and Vertical layouts; and customise border styles, Scale, and Opacity. Both bars also auto-hide cleanly during Pet Battles (aborting any active drag safely) and restore their configured visibility when the battle ends.
 
 ---
 
-## HUD Edit Mode (`/dm hud`)
+## HUD Edit Mode & Direct Shift-Drag (`/dm hud`)
 
-Type `/dm hud` (or click **Edit Mode (HUDs)** in the sidebar) to position your floating bars anywhere on screen:
+Move either bar directly in the world or open `/dm hud` (or **Edit Mode (HUDs)** in the sidebar) for precision layout:
 
+* **Direct In-World Shift + Left-Drag:** Out of combat, hold **Shift + Left-Drag** on either bar (even directly across icon buttons) to snap-move it smoothly anywhere on screen with magnetic edge and bar snapping, live alignment guides, `Alt` to bypass snapping for fine-tuning, and strict `0 px` screen clamping. Right-Click empty bar space or **Shift + Right-Click** any icon/flare to jump straight into `/dm hud`.
 * **Smooth Scale-Aware Dragging:** Drag the Icon Bar and Flare Bar cleanly at any bar scale (60%-150%) with live X, Y, and Scale readouts.
-* **Magnetic Edge & Bar Snapping:** Bars snap cleanly to screen edges, screen centres, and neighbouring bars with alignment guides (hold Shift to fine-tune freely), and stay clamped inside your screen bounds.
+* **Magnetic Edge & Bar Snapping:** In `/dm hud` Edit Mode, bars snap cleanly to screen edges, screen centres, and neighbouring bars with alignment guides (hold Shift to fine-tune freely), and stay clamped inside your screen bounds.
 * **Mousewheel Scaling & Precision Controls:** Scroll over a bar in Edit Mode to scale it (60%-150% in 5% steps), nudge by 1px or 10px, type exact X/Y coordinates, or reset anytime with `/dm resethud`.
 
 ---
 
-## Obsidian Theme & Font Studio
+## Obsidian Theme Studio, `?` Quick Guide & `!DS1!` Profile Sharing
 
 * **Custom Colours, Surfaces & Fonts:** Pick from 5 built-in accent themes (including Player Class Colour), 4 dark surface palettes, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI, and adjustable font scaling.
-* **Quick Window Controls:** Adjust standalone window Opacity (50%-100%) and Scale (80%-120%) or trigger Reload UI from the bottom-right dock.
+* **`!DS1!` Profile Import & Export (`/dm export`, `/dm import`, `/dm profiles`):** Share or back up your DynamicMarker profile, HUD bar positions, and Theme & Font settings with full bidirectional **DynamicSuite** compatibility, `Replace Selected` vs `Merge` import modes, and persistent 1-slot `Undo Last Import` rollback across `/reload`.
+* **Quick Window Controls & `?` Quick Guide:** Adjust standalone window Opacity (50%-100%) and Scale (80%-120%), trigger Reload UI from the bottom-right dock, or click **`?`** in the header for starter tips and keybind reminders.
 
 ---
 
@@ -88,7 +90,8 @@ Want 12 more lightweight QoL and performance modules in one unified window? Chec
 | `/dm mute` or `/dm silent` | Toggle Focus Mark chat announcements On or Muted |
 | `/dm show` | Set the On-Screen Focus Bar HUD to Always Shown |
 | `/dm hide` | Hide the On-Screen Focus Bar HUD |
-| `/dm import` | Re-import settings from FocusMarker out of combat |
+| `/dm export`, `/dm import`, `/dm profiles` | Open Profile Import & Export (`!DS1!` sharing, `Replace` / `Merge`, and `Undo Last Import`) |
+| `/dm migrate` or `/dm import focusmarker` | Import legacy settings from FocusMarker out of combat |
 | `/dm import status` | Print FocusMarker import status in chat |
 | `/dm reset` | Reset DynamicMarker settings to defaults |
 | `/dm resethud` | Reset Icon Bar and Flare Bar positions to safe screen defaults |

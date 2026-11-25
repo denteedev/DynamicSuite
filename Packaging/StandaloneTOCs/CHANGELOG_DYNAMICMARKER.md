@@ -1,9 +1,13 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.10.3 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
+*Author: Dentee-Frostmourne  |  Release: v2.11.0 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
+
+---
+
+## DynamicMarker v2.11.0 (25/11/2026)
 
 ### Fixed
 * **Bottom-Edge Shift-Drag Vertical Jump Fix (`25/11/2026`):** Fixed a Lua 5.1 multi-return truncation (`bar.GetCenter and bar:GetCenter()` discarding the vertical `Y` return value) in direct Shift-Drag and Edit Mode start paths that caused Focus Icons and World Flare bars parked at the bottom (or any) screen edge to jump to the vertical middle of the screen on mouse-down, and kept native `SetClampedToScreen(false)` disabled during active drag ticks so scaled bars (`60%`, `100%`, and `150%`) track smoothly with zero initial jump.

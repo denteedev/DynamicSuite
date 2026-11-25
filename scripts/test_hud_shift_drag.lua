@@ -123,7 +123,7 @@ local function CreateEnv()
         GetCVarDefault = function() return "1" end,
     }
     env.C_AddOns = {
-        GetAddOnMetadata = function() return "2.10.3" end,
+        GetAddOnMetadata = function() return "2.11.0" end,
         IsAddOnLoaded = function(name) return name == "DynamicSuite" end,
         GetAddOnInfo = function(name) return name, name, "", true, "INSECURE", false end,
         GetAddOnEnableState = function() return 2 end,

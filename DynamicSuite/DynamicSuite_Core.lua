@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.10.3"
+    local fb = fallback or "2.11.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.3")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.0")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,8 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "25/11/2026",
     entries = {
+        { type = "FEATURE", text = "Release v2.11.0 - Suite-Wide Profile Import & Export (!DS1!) & DynamicMarker Parity (25/11/2026): Added Suite Studio Tab 3 ('Import & Export' via /ds export, /ds import, and /ds profiles) powered by Blizzard's native C_EncodingUtil (!DS1! CBOR, Zlib, and Base64) covering Theme Studio and all 13 modules with Replace Selected vs Merge modes, live preview, persistent 1-slot Undo Last Import rollback across /reload, strict private cache stripping, opt-in Talent Loadout and Addon Zone Lists sharing, combat-lockdown blocking, and full bidirectional compatibility with standalone DynamicMarker (/dm export, /dm import, /dm profiles)." },
+        { type = "FEATURE", text = "Release v2.11.0 - In-World 6-HUD Magnetic Shift-Drag, Bottom-Edge Jump Fix & Automatic Pet Battle Auto-Hide (25/11/2026): Enabled out-of-combat Shift + Left-Drag directly on all 6 canonical HUDs (Top Info Bar, Clickable Raid Buffs, Focus Icons Bar, World Flare Bar, Chat Frame, and Shared Alert Toasts) with scale-aware magnetic screen-edge/bar snapping, live alignment guides, Alt-to-fine-tune bypass, strict 0 px screen clamping, Right-Click/Shift + Right-Click quick-jump into HUD Edit Mode, uniform tooltip/inspector/'?' Quick Guide hints, and a Lua 5.1 multi-return fix preventing bottom-edge bars from jumping to vertical centre on click; plus automatic Pet Battle auto-hiding across all 5 non-chat HUDs (keeping DynamicChat visible for guild and whisper chat)." },
         { type = "UI",      text = "Release v2.10.3 - Pass 7 UI Refinement, 800x520 Parity & Patch 12.1.7 Hardening (25/11/2026): Lowered DynamicSuite's minimum size to 800x520 with responsive header status, wrapped conflict banners, and adaptive footer controls; brought standalone DynamicMarker, DynamicTalent, DynamicGroup, and DynamicLoad to full 760x480-1280x860 resizable footer and live Suite Accent resize grip parity (with Right-Click reset); reflowed narrow layouts (2-row DynamicLoad toolbar, 2x3 DynamicGroup region filters, 2x4 DynamicTalent M+ tiles, stacked DynamicMarker macro cards, and Focus/Flare bar HUD tips); hardened Patch 12.1.7 combat-lockdown, chat-lockdown, encounter/M+, unspecialised/Lorewalking, and secret-value guards across all 4 modules; and standardised copy into plain Australian English." },
         { type = "FIX",     text = "Release v2.10.2 - Multi-Quest NPC State Sync & DynamicPrep Auto-Accept Handoff (25/11/2026): Prioritised live server interaction state over suppressed off-screen Blizzard frames across DynamicDialogue and DynamicPrep (preserving bag-item, AreaTrigger, and field auto-complete QUEST_COMPLETE popups), added debounced QUEST_ACCEPTED / QUEST_REMOVED / QUEST_TURNED_IN / QUEST_LOG_UPDATE live list refreshes and C_QuestLog stale-quest filtering so accepted or turned-in quests never render stale, eliminated outgoing Blizzard frame flashes and duplicate 0.05s Accept/Complete/Reward retries on >50ms latency, added live-session click guards, and coordinated event-sequence-exact handoff across Suite and Standalone builds." },
         { type = "UI",      text = "Release v2.10.2 - Pass 6 UI Refinement, 800x520 Clamping & Standalone Window Parity (25/11/2026): Added full standalone resizability, 36px Reset/Reload footers, 14x14 live Suite Accent resize grips, and theme repainting across DynamicCursor, DynamicDialogue, and DynamicVault; upgraded DynamicVault's workspace scrollbar to full 3-way interaction and proportional Raid/M+/Delves tracks; reflowed DynamicCursor presets, stacked 2-line descriptions, and right-clamped cards across DynamicCursor, DynamicMail, DynamicDialogue, and DynamicVault for clean 800x520 display; and standardised labels into plain Australian English." },
@@ -14223,7 +14225,7 @@ do
         local payload = {
             v = SCHEMA_VERSION,
             app = "DynamicSuite",
-            ver = tostring(ADDON_VERSION or "2.10.3"),
+            ver = tostring(ADDON_VERSION or "2.11.0"),
             date = exportDate,
             opts = {
                 hud = includeHud,

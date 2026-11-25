@@ -1,6 +1,6 @@
 # DynamicSuite -- 13-Module QoL, Utility & Performance Hub
 
-**Version:** v2.10.3 (25/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107) | **Author:** Dentee-Frostmourne
+**Version:** v2.11.0 (25/11/2026) | **Target Client:** World of Warcraft Retail Midnight 12.1.5 / 12.1.7 (Interface 120105, 120107) | **Author:** Dentee-Frostmourne
 
 **DynamicSuite** (`/ds`, `/dynamicsuite`) is a lightweight all-in-one Quality-of-Life, Mythic+, Raid, talent loadouts, cursor overlays, inventory, mailbox, Great Vault, quest dialogue, chat, and performance hub for World of Warcraft Retail. All 13 modules run inside one unified control panel on https://www.curseforge.com/wow/addons/dynamicsuite, or you can grab target marking on its own with standalone **[DynamicMarker on CurseForge](https://www.curseforge.com/wow/addons/dynamicmarker)**.
 
@@ -19,9 +19,9 @@
 * **Unified Control Panel (`/ds`):** Resizable dark-obsidian window with a 13-module sidebar, individual On/Off switches, reorderable module cards, Window Opacity (50%-100%), Window Scale (80%-120%), and a quick Reload UI button.
 * **Shared Alert Toast HUD:** Centralised Toast Scale, Opacity, Border Style, two-tier Auto-Fade Durations (Actionable & Info/Mention), and Alert Sound inside Suite Studio, DynamicLoad, and HUD Edit Mode, shared cleanly across Zone Load Alerts, DynamicPrep Reminders, DynamicTalent Swaps, DynamicGroup Teleport Toasts, and DynamicChat Mention Alerts with universal hover-to-pause, clean vertical stacking, and Right-Click dismissal.
 * **Global Smart Search (`/ds search <query>`):** Type what you are looking for in plain English (like "auto repair", "flare", "mail", "quest", or "whisper") and jump straight to the exact setting with a visual highlight.
-* **Unified HUD Edit Mode (`/ds hud`, `/ds resethud`):** Drag, resize (60%-150%), and align all 6 suite HUDs (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) with magnetic screen-edge and bar-to-bar snapping, live alignment guides, and one-click reset recovery.
+* **Unified HUD Edit Mode, Direct 6-HUD Shift-Drag & Pet Battle Auto-Hide (`/ds hud`, `/ds resethud`):** Drag, resize (60%-150%), and align all 6 suite HUDs (Alert Toast, Prep Bar, Raid Buffs, Focus Icons, World Flares, and Chat Frame) in `/ds hud`, or **Shift + Left-Drag** any HUD directly in the world out of combat with scale-aware magnetic snapping, live alignment guides, `Alt` fine-tuning, strict `0 px` screen clamping, and **Right-Click** / **Shift + Right-Click** quick-jump into HUD Edit Mode. All 5 non-chat HUDs also hide automatically during Pet Battles (keeping **DynamicChat** visible for guild and whisper chat) and restore cleanly afterward.
 * **3-Step Quick Start & `?` Module Quick Guides (`/ds setup`, `/ds conflicts`):** Pick your Theme, Accent & Font in Step 1, resolve addon conflicts in Step 2, and choose starter presets or toggle individual modules in Step 3 -- plus a compact `?` Quick Guide button in the top header of every module.
-* **Theme & Font Studio (`/ds theme`, `/ds studio`, `/ds windows`):** Customise your UI with 17 accent colours (including all 13 WoW Class Colours and a custom colour picker), 4 dark surface themes, 21+ built-in fonts, automatic font discovery from LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI with searchable grouped dropdowns, Shared Alert Toast controls, Blizzard Desktop Window Manager (`Desktop Windows & Menus`), and adjustable text scaling.
+* **Theme & Font Studio, Windows & `!DS1!` Import / Export (`/ds studio`, `/ds theme`, `/ds windows`, `/ds export`, `/ds import`):** Customise your UI in Tab 1 with 17 accent colours (including all 13 WoW Class Colours and a custom colour picker), 4 dark surface themes, 21+ built-in fonts, LibSharedMedia-3.0 / DBM / EXBOSS / BigWigs / WeakAuras / ElvUI font discovery, and Shared Alert Toast controls; manage Blizzard Desktop Windows in Tab 2; and share or back up all 13 modules plus Theme Studio via **Tab 3 (`Import & Export`)** using compact `!DS1!` profile strings (with live preview, `Replace Selected` vs `Merge` modes, persistent `Undo Last Import` rollback, strict private cache safety, and full compatibility with standalone DynamicMarker).
 
 ---
 
@@ -56,15 +56,16 @@
 | `/ds setup` or `/ds guided` | Open the 3-Step Quick Start (`1. Style`, `2. Conflicts`, `3. Modules`) |
 | `/ds conflicts` | Open the Conflict Scanner directly at Step 2 and print a summary in chat |
 | `/ds spotlight` | Preview the latest Feature Spotlight modal (`/ds spotlight reset` clears seen flags) |
-| `/ds theme` or `/ds studio` | Open Suite Studio (`Theme & Typography` and `Desktop Windows & Menus`) |
+| `/ds theme` or `/ds studio` | Open Suite Studio (`Theme & Typography`, `Desktop Windows & Menus`, and `Import & Export`) |
 | `/ds windows` or `/ds win` | Open Suite Studio directly to the Blizzard Desktop Window Manager |
+| `/ds export`, `/ds import`, `/ds profiles` | Open Suite Studio Tab 3 to export, preview, import, or undo `!DS1!` profile strings |
 | `/ds changelog` | View the DynamicSuite release notes |
 | `/ds reset` | Reset the DynamicSuite window size and position |
 | `/ds reload` | Reload your user interface |
 | `/dl` or `/dynamicload` | Open DynamicLoad (supports auto, status, lock, unlock, freeze, profile, toast) |
 | `/dprep` or `/dp` | Open DynamicPrep (supports edit, buffs, qol, reset) |
 | `/dt` or `/dynamictalent` | Open DynamicTalent (supports binds, edit, hud, reset) |
-| `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, import, reset) |
+| `/dm`, `/dynamicmarker`, `/fm`, `/focusmarker` | Open DynamicMarker (supports hud, resethud, lock, unlock, flares, macros, mute, show, hide, export, import, profiles, migrate, reset) |
 | `/dcur` or `/dynamiccursor` | Open DynamicCursor (supports raid, highvis, minimal, full, reset) |
 | `/dz` or `/dynamiczoom` | Open DynamicZoom (supports max, 39, reset) |
 | `/dfps` or `/dynamicfps` | Open DynamicFPS (supports status, apply, restore, reset) |

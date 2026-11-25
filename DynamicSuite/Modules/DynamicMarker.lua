@@ -114,7 +114,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.10.3"
+    local fb = fallback or "2.11.0"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -168,7 +168,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.10.3"
+            or "2.11.0"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -195,7 +195,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.3")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.0")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -12793,6 +12793,8 @@ DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
     date    = "25/11/2026",
     entries = {
+        { type = "FIX",      text = "Release v2.11.0 - Bottom-Edge Shift-Drag Vertical Jump Fix (25/11/2026): Fixed a Lua 5.1 multi-return truncation when reading bar centre coordinates on drag start so Focus Icons and World Flares parked on the bottom or any screen edge stay anchored with zero initial vertical jump across 60%, 100%, and 150% scale." },
+        { type = "FEATURE",  text = "Release v2.11.0 - Standalone !DS1! Profile Import & Export, Magnetic Shift-Drag, '?' Quick Guide & Pet Battle Auto-Hide (25/11/2026): Added !DS1! Profile Import & Export (/dm export, /dm import, /dm profiles) with Replace Selected / Merge modes, Undo Last Import rollback, and two-way DynamicSuite sharing (preserving /dm migrate and /dm import focusmarker); upgraded out-of-combat Shift + Left-Drag with magnetic snapping, live alignment guides, Alt fine-tuning, strict 0 px clamping, and Right-Click / Shift + Right-Click quick-jump into HUD Edit Mode alongside a '?' Quick Guide modal; and added automatic Pet Battle auto-hiding with clean post-battle restoration." },
         { type = "IMPROVED", text = "Release v2.10.3 - Pass 7 Hardening & 800x520 Layout Polish (25/11/2026): Hardened secret-value and combat-lockdown guards across unit, spec, spell, macro, action bar, and keybind APIs; aligned standalone window resize bounds (760x480 to 1280x860) and right-click resize reset; refined 800x520 layout clamping across all three tabs and macro cards; and added HUD Edit Mode discoverability hints to Focus Icon and World Flare bar tooltips." },
         { type = "IMPROVED", text = "Release v2.10.2 - Version & Coexistence Lockstep Parity (25/11/2026): Synchronised standalone DynamicMarker metadata and coexistence checks to v2.10.2 for Retail 12.1.5 / 12.1.7 (Interface 120105, 120107)." },
         { type = "IMPROVED", text = "Release v2.10.1 - Version & Coexistence Lockstep Parity (25/11/2026): Synchronised standalone DynamicMarker metadata and coexistence checks to v2.10.1 for Retail 12.1.5 / 12.1.7 (Interface 120105, 120107)." },
