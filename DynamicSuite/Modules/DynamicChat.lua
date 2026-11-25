@@ -169,9 +169,15 @@ local ICON_LOCK         = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Ico
 -- ============================================================================
 
 local function IsSecretValue(val)
-    if issecretvalue and issecretvalue(val) then return true end
+    if type(_G.issecretvalue) == "function" then
+        local ok, res = pcall(_G.issecretvalue, val)
+        if ok and res then return true end
+    end
     if val == nil then return false end
-    if canaccessvalue and not canaccessvalue(val) then return true end
+    if type(_G.canaccessvalue) == "function" then
+        local ok, can = pcall(_G.canaccessvalue, val)
+        if ok and can == false then return true end
+    end
     return false
 end
 
@@ -179,9 +185,8 @@ local function HasAnySecretArg(...)
     local n = select("#", ...)
     for i = 1, n do
         local v = select(i, ...)
-        if v ~= nil then
-            if issecretvalue and issecretvalue(v) then return true end
-            if canaccessvalue and not canaccessvalue(v) then return true end
+        if v ~= nil and IsSecretValue(v) then
+            return true
         end
     end
     return false
@@ -263,19 +268,51 @@ function DynamicChat.SafeEditBoxHasFocus(editBox)
     return false
 end
 
+function DynamicChat._IsEncounterActiveSafe()
+    if type(_G.IsEncounterInProgress) == "function" then
+        local ok, active = pcall(_G.IsEncounterInProgress)
+        if ok and not IsSecretValue(active) and active == true then
+            return true
+        end
+    end
+    if _G.C_InstanceEncounter and type(_G.C_InstanceEncounter.IsEncounterInProgress) == "function" then
+        local okIE, activeIE = pcall(_G.C_InstanceEncounter.IsEncounterInProgress)
+        if okIE and not IsSecretValue(activeIE) and activeIE == true then
+            return true
+        end
+    end
+    return false
+end
+
+function DynamicChat._IsChatLockdownActiveSafe()
+    if _G.C_ChatInfo and type(_G.C_ChatInfo.InChatMessagingLockdown) == "function" then
+        local okC, locked = pcall(_G.C_ChatInfo.InChatMessagingLockdown)
+        if okC and not IsSecretValue(locked) and locked == true then
+            return true
+        end
+    end
+    if DynamicChat._IsEncounterActiveSafe() then
+        return true
+    end
+    return false
+end
+
 local function IsInCombatOrActiveKeystone()
     if InCombatLockdown and InCombatLockdown() then
         return true
     end
-    if UnitAffectingCombat and UnitAffectingCombat("player") then
-        return true
+    if type(_G.UnitAffectingCombat) == "function" then
+        local okAC, ac = pcall(_G.UnitAffectingCombat, "player")
+        if okAC and not IsSecretValue(ac) and ac == true then
+            return true
+        end
     end
-    if IsEncounterInProgress and IsEncounterInProgress() then
+    if DynamicChat._IsEncounterActiveSafe() then
         return true
     end
     if _G.C_ChallengeMode and type(_G.C_ChallengeMode.IsChallengeModeActive) == "function" then
         local ok, active = pcall(_G.C_ChallengeMode.IsChallengeModeActive)
-        if ok and active == true then
+        if ok and not IsSecretValue(active) and active == true then
             return true
         end
     end
@@ -287,10 +324,6 @@ local function IsPrimaryChatDockVisible()
     if not cf1 then return false end
     if UIParent and not DynamicChat.SafeFrameIsShown(UIParent, true) then
         return false
-    end
-    if _G.C_PetBattles and type(_G.C_PetBattles.IsInBattle) == "function" then
-        local okPB, inPB = pcall(_G.C_PetBattles.IsInBattle)
-        if okPB and inPB == true then return false end
     end
     if DynamicChat.SafeFrameIsShown(cf1, false) then return true end
     if _G.GeneralDockManager and DynamicChat.SafeFrameIsShown(_G.GeneralDockManager, false) then
@@ -1149,34 +1182,32 @@ local suppressNextLeadingSpace = {}
 -- where ChatFrame1EditBoxHeader:GetStringWidth() returns a <secret number>.
 local function IsEditBoxSecretOrBNWhisper(editBox)
     if not editBox then return false end
-    if issecretvalue or canaccessvalue then
-        if type(editBox.GetAttribute) == "function" then
-            local okT, tellTarget = pcall(editBox.GetAttribute, editBox, "tellTarget")
-            if okT and IsSecretValue(tellTarget) then
-                return true
-            end
-            local okC, chatType = pcall(editBox.GetAttribute, editBox, "chatType")
-            if okC and IsSecretValue(chatType) then
-                return true
-            end
-            local okS, stickyType = pcall(editBox.GetAttribute, editBox, "stickyType")
-            if okS and IsSecretValue(stickyType) then
-                return true
-            end
+    if type(editBox.GetAttribute) == "function" then
+        local okT, tellTarget = pcall(editBox.GetAttribute, editBox, "tellTarget")
+        if okT and IsSecretValue(tellTarget) then
+            return true
         end
-        local hdr = editBox.header or (editBox.GetName and editBox:GetName() and _G[editBox:GetName() .. "Header"])
-        if hdr and type(hdr.GetStringWidth) == "function" then
-            local okW, w = pcall(hdr.GetStringWidth, hdr)
-            if okW and IsSecretValue(w) then
-                return true
-            end
+        local okC, chatType = pcall(editBox.GetAttribute, editBox, "chatType")
+        if okC and (IsSecretValue(chatType) or chatType == "BN_WHISPER") then
+            return true
         end
-        local hdrSuffix = editBox.headerSuffix or (editBox.GetName and editBox:GetName() and _G[editBox:GetName() .. "HeaderSuffix"])
-        if hdrSuffix and type(hdrSuffix.GetStringWidth) == "function" then
-            local okSW, sw = pcall(hdrSuffix.GetStringWidth, hdrSuffix)
-            if okSW and IsSecretValue(sw) then
-                return true
-            end
+        local okS, stickyType = pcall(editBox.GetAttribute, editBox, "stickyType")
+        if okS and (IsSecretValue(stickyType) or stickyType == "BN_WHISPER") then
+            return true
+        end
+    end
+    local hdr = editBox.header or (editBox.GetName and editBox:GetName() and _G[editBox:GetName() .. "Header"])
+    if hdr and type(hdr.GetStringWidth) == "function" then
+        local okW, w = pcall(hdr.GetStringWidth, hdr)
+        if okW and IsSecretValue(w) then
+            return true
+        end
+    end
+    local hdrSuffix = editBox.headerSuffix or (editBox.GetName and editBox:GetName() and _G[editBox:GetName() .. "HeaderSuffix"])
+    if hdrSuffix and type(hdrSuffix.GetStringWidth) == "function" then
+        local okSW, sw = pcall(hdrSuffix.GetStringWidth, hdrSuffix)
+        if okSW and IsSecretValue(sw) then
+            return true
         end
     end
     return false
@@ -1249,15 +1280,15 @@ local function StripDeferredSpaceAfterWhisperConvert(editBox)
     _G.C_Timer.After(0, function()
         if not editBox or isConvertingEditBox then return end
         local okC, chatType = pcall(editBox.GetAttribute, editBox, "chatType")
-        if not okC or (issecretvalue and issecretvalue(chatType)) or chatType == "BN_WHISPER" then
+        if not okC or IsSecretValue(chatType) or chatType == "BN_WHISPER" then
             return
         end
         local okT, tellTarget = pcall(editBox.GetAttribute, editBox, "tellTarget")
-        if not okT or (issecretvalue and issecretvalue(tellTarget)) then
+        if not okT or IsSecretValue(tellTarget) then
             return
         end
         local ok, curTxt = pcall(editBox.GetText, editBox)
-        if not ok or IsSecretValue(curTxt) or (issecretvalue and issecretvalue(curTxt)) or type(curTxt) ~= "string" then
+        if not ok or IsSecretValue(curTxt) or type(curTxt) ~= "string" then
             return
         end
         if curTxt == " " then
@@ -1277,11 +1308,11 @@ end
 local function SwitchEditBoxToTargetWhisper(editBox, fullTarget, initialText)
     if not editBox or not fullTarget then return end
     local okC, chatType = pcall(editBox.GetAttribute, editBox, "chatType")
-    if not okC or (issecretvalue and issecretvalue(chatType)) or chatType == "BN_WHISPER" then
+    if not okC or IsSecretValue(chatType) or chatType == "BN_WHISPER" then
         return
     end
     local okT, tellTarget = pcall(editBox.GetAttribute, editBox, "tellTarget")
-    if not okT or (issecretvalue and issecretvalue(tellTarget)) then
+    if not okT or IsSecretValue(tellTarget) then
         return
     end
     isConvertingEditBox = true
@@ -1308,16 +1339,16 @@ local function TryConvertTargetWhisperEditBox(editBox, isSpacePress)
     -- Only bail out early if chatType is BN_WHISPER or tellTarget/text is a secret value.
     -- Never block /ww on InCombatLockdown()!
     local okC, chatType = pcall(editBox.GetAttribute, editBox, "chatType")
-    if not okC or (issecretvalue and issecretvalue(chatType)) or chatType == "BN_WHISPER" then
+    if not okC or IsSecretValue(chatType) or chatType == "BN_WHISPER" then
         return
     end
     local okT, tellTarget = pcall(editBox.GetAttribute, editBox, "tellTarget")
-    if not okT or (issecretvalue and issecretvalue(tellTarget)) then
+    if not okT or IsSecretValue(tellTarget) then
         return
     end
 
     local ok, txt = pcall(editBox.GetText, editBox)
-    if not ok or IsSecretValue(txt) or (issecretvalue and issecretvalue(txt)) or type(txt) ~= "string" then return end
+    if not ok or IsSecretValue(txt) or type(txt) ~= "string" then return end
 
     if not isSpacePress and suppressNextLeadingSpace[editBox] then
         suppressNextLeadingSpace[editBox] = nil
@@ -1392,7 +1423,7 @@ local function HandleTargetWhisperSlashCommand(msg)
     end
 
     local cleanMsg = ""
-    if msg and not IsSecretValue(msg) and not (issecretvalue and issecretvalue(msg)) and type(msg) == "string" then
+    if msg and not IsSecretValue(msg) and type(msg) == "string" then
         cleanMsg = msg:match("^%s*(.-)%s*$") or ""
     end
 
@@ -1401,8 +1432,7 @@ local function HandleTargetWhisperSlashCommand(msg)
         or _G.ChatFrame1EditBox
 
     if cleanMsg ~= "" then
-        local inChatLockdown = (_G.C_ChatInfo and type(_G.C_ChatInfo.InChatMessagingLockdown) == "function" and _G.C_ChatInfo.InChatMessagingLockdown())
-            or (type(_G.IsEncounterInProgress) == "function" and _G.IsEncounterInProgress())
+        local inChatLockdown = DynamicChat._IsChatLockdownActiveSafe()
         if inChatLockdown then
             if editBox then
                 SwitchEditBoxToTargetWhisper(editBox, fullTarget, cleanMsg)
@@ -1459,7 +1489,8 @@ function DynamicChat:ApplyEditBoxSettings()
     for i = 1, 10 do
         local eb = _G["ChatFrame" .. i .. "EditBox"]
         if eb and eb.SetAltArrowKeyMode then
-            if not (issecretvalue and (issecretvalue(eb:GetAttribute("tellTarget")) or (eb.header and issecretvalue(eb.header:GetStringWidth())))) and not IsEditBoxSecretOrBNWhisper(eb) then
+            local okSec, isSec = pcall(IsEditBoxSecretOrBNWhisper, eb)
+            if okSec and not isSec then
                 pcall(eb.SetAltArrowKeyMode, eb, useAltMode)
             end
         end
@@ -3609,6 +3640,10 @@ local function EnsureChatLeftRail(entry, panel)
         _G.GameTooltip:Show()
     end
     socialBtn:SetScript("OnClick", function(_, button)
+        if InCombatLockdown and InCombatLockdown() then
+            PrintMsg("Cannot open the Social or Guild panel while in combat.")
+            return
+        end
         if button == "RightButton" then
             if type(_G.ToggleGuildFrame) == "function" then pcall(_G.ToggleGuildFrame) end
         else
@@ -3633,6 +3668,10 @@ local function EnsureChatLeftRail(entry, panel)
         _G.GameTooltip:Show()
     end
     durBtn:SetScript("OnClick", function(_, button)
+        if InCombatLockdown and InCombatLockdown() then
+            PrintMsg("Cannot open the Character sheet or Bags from the chat rail while in combat.")
+            return
+        end
         if button == "RightButton" then
             if _G.DynamicBags and _G.DynamicBags.U and type(_G.DynamicBags.U.ToggleWindow) == "function" then
                 pcall(_G.DynamicBags.U.ToggleWindow)
@@ -3663,6 +3702,10 @@ local function EnsureChatLeftRail(entry, panel)
         _G.GameTooltip:Show()
     end
     vaultBtn:SetScript("OnClick", function(_, button)
+        if InCombatLockdown and InCombatLockdown() then
+            PrintMsg("Cannot open the Great Vault or Group Finder while in combat.")
+            return
+        end
         if button == "RightButton" then
             if type(_G.PVEFrame_ToggleFrame) == "function" then
                 pcall(_G.PVEFrame_ToggleFrame)
@@ -4082,6 +4125,10 @@ local hookedSideClutterBtns = {}
 
 local function SetSideClutterButtonSuppressed(btn, suppress)
     if not btn then return end
+    if InCombatLockdown and InCombatLockdown() then
+        DynamicChat._pendingChatPosAfterCombat = true
+        return
+    end
     if suppress then
         SetRegionAlphaSafe(btn, 0)
         if type(btn.EnableMouse) == "function" then
@@ -4095,6 +4142,10 @@ local function SetSideClutterButtonSuppressed(btn, suppress)
             btn:HookScript("OnShow", function(selfBtn)
                 local db = EnsureDB()
                 if not DynamicChat:IsExternalChatEngineLoaded() and db.enableSleekChatSkin ~= false and db.hideChatButtons ~= false then
+                    if InCombatLockdown and InCombatLockdown() then
+                        DynamicChat._pendingChatPosAfterCombat = true
+                        return
+                    end
                     SetRegionAlphaSafe(selfBtn, 0)
                     if type(selfBtn.EnableMouse) == "function" then
                         pcall(selfBtn.EnableMouse, selfBtn, false)
@@ -4121,6 +4172,10 @@ local function HookSuppressOnShow(reg, clearTex)
     hookedSuppressedRegions[reg] = true
     reg:HookScript("OnShow", function(selfReg)
         if not DynamicChat:IsExternalChatEngineLoaded() and EnsureDB().enableSleekChatSkin ~= false then
+            if InCombatLockdown and InCombatLockdown() then
+                DynamicChat._pendingChatPosAfterCombat = true
+                return
+            end
             if clearTex and type(selfReg.SetTexture) == "function" then
                 pcall(selfReg.SetTexture, selfReg, nil)
             end
@@ -4645,7 +4700,11 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
             if not ownerCF or DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
             local ownerEntry = chatSkinStore[ownerCF]
             if ownerEntry and ownerEntry.hiddenByScroll then
-                if not (InCombatLockdown and InCombatLockdown()) and type(selfTab.ClearAllPoints) == "function" then
+                if InCombatLockdown and InCombatLockdown() then
+                    DynamicChat._pendingTabLayoutAfterCombat = true
+                    return
+                end
+                if type(selfTab.ClearAllPoints) == "function" then
                     pcall(selfTab.ClearAllPoints, selfTab)
                 end
                 if type(selfTab.Hide) == "function" then
@@ -4706,7 +4765,11 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
 
     -- If this tab is currently scrolled outside the visible Top Tab Header Bar viewport, keep it and its cells hidden!
     if skinEnabled and entry.hiddenByScroll then
-        if not (InCombatLockdown and InCombatLockdown()) and type(tab.ClearAllPoints) == "function" then
+        if InCombatLockdown and InCombatLockdown() then
+            DynamicChat._pendingTabLayoutAfterCombat = true
+            return
+        end
+        if type(tab.ClearAllPoints) == "function" then
             pcall(tab.ClearAllPoints, tab)
         end
         if DynamicChat.SafeFrameIsShown(tab, false) then
@@ -5248,7 +5311,9 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
         if _G.GeneralDockManagerScrollFrame then
             SetRegionAlphaSafe(_G.GeneralDockManagerScrollFrame, 1)
         end
-        if type(dock.SetClipsChildren) == "function" then
+        if InCombatLockdown and InCombatLockdown() then
+            DynamicChat._pendingTabLayoutAfterCombat = true
+        elseif type(dock.SetClipsChildren) == "function" then
             pcall(dock.SetClipsChildren, dock, false)
         end
         if tabNavFrame then tabNavFrame:Hide() end
@@ -5269,13 +5334,17 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
         for _, dockClutter in ipairs({ _G.GeneralDockManagerOverflowButton, _G.GeneralDockManagerScrollFrame }) do
             if dockClutter then
                 SetRegionAlphaSafe(dockClutter, 0)
-                if type(dockClutter.EnableMouse) == "function" then
-                    pcall(dockClutter.EnableMouse, dockClutter, false)
+                if InCombatLockdown and InCombatLockdown() then
+                    DynamicChat._pendingTabLayoutAfterCombat = true
+                else
+                    if type(dockClutter.EnableMouse) == "function" then
+                        pcall(dockClutter.EnableMouse, dockClutter, false)
+                    end
+                    if type(dockClutter.Hide) == "function" then
+                        pcall(dockClutter.Hide, dockClutter)
+                    end
+                    HookSuppressOnShow(dockClutter, false)
                 end
-                if type(dockClutter.Hide) == "function" then
-                    pcall(dockClutter.Hide, dockClutter)
-                end
-                HookSuppressOnShow(dockClutter, false)
             end
         end
 
@@ -5309,7 +5378,9 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
         lastDockedTabsSnapshot = dockedTabs
         local numTabs = #dockedTabs
 
-        if not (InCombatLockdown and InCombatLockdown()) then
+        if InCombatLockdown and InCombatLockdown() then
+            DynamicChat._pendingTabLayoutAfterCombat = true
+        else
             local dockRightX = (numTabs > 1) and (8 - 38) or 8
             dock:ClearAllPoints()
             dock:SetPoint("BOTTOMLEFT", cf1, "TOPLEFT", headerLeftX, 4)
@@ -5503,12 +5574,16 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
 
             if idx < firstVisIdx or idx > lastVisIdx then
                 entry.hiddenByScroll = true
-                if not (InCombatLockdown and InCombatLockdown()) and type(tab.ClearAllPoints) == "function" then
-                    pcall(tab.ClearAllPoints, tab)
+                if InCombatLockdown and InCombatLockdown() then
+                    DynamicChat._pendingTabLayoutAfterCombat = true
+                else
+                    if type(tab.ClearAllPoints) == "function" then
+                        pcall(tab.ClearAllPoints, tab)
+                    end
+                    if tab.Hide then pcall(tab.Hide, tab) end
+                    if entry.tabCell then entry.tabCell:Hide() end
+                    if entry.tabLine then entry.tabLine:Hide() end
                 end
-                if tab.Hide then pcall(tab.Hide, tab) end
-                if entry.tabCell then entry.tabCell:Hide() end
-                if entry.tabLine then entry.tabLine:Hide() end
                 StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPath, ar, ag, ab)
             else
                 entry.hiddenByScroll = false
@@ -6031,8 +6106,10 @@ function DynamicChat:ApplySleekChatSkin()
 
     -- Align GeneralDockManager inside the 24px Top Tab Header Bar (y = +4 to +28 above ChatFrame1)
     -- with 4px inner clearance between the tab strip and the ScrollingMessageFrame viewport.
-    if _G.GeneralDockManager and _G.ChatFrame1 and not (InCombatLockdown and InCombatLockdown()) then
-        if skinEnabled then
+    if _G.GeneralDockManager and _G.ChatFrame1 then
+        if InCombatLockdown and InCombatLockdown() then
+            self._pendingChatPosAfterCombat = true
+        elseif skinEnabled then
             local headerLeftX = (db.leftRailMode ~= "OFF") and -2 or -8
             local dockRightX  = (#lastDockedTabsSnapshot > 1) and (8 - 38) or 8
             pcall(function()
@@ -8542,7 +8619,14 @@ function DynamicChat:HandleIncomingChatSoundEvent(event, arg2, arg12, arg1)
 
     -- 1. Optional Mute in Combat / Boss Encounters
     if db.soundMuteInCombat then
-        local inCombatOrBoss = (InCombatLockdown and InCombatLockdown()) or (IsEncounterInProgress and IsEncounterInProgress())
+        local inCombatOrBoss = (InCombatLockdown and InCombatLockdown())
+            or DynamicChat._IsEncounterActiveSafe()
+        if not inCombatOrBoss and type(_G.UnitAffectingCombat) == "function" then
+            local okAC, ac = pcall(_G.UnitAffectingCombat, "player")
+            if okAC and not IsSecretValue(ac) and ac == true then
+                inCombatOrBoss = true
+            end
+        end
         if inCombatOrBoss then
             return
         end

@@ -125,8 +125,14 @@ local ICON_COG          = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Ico
 
 local function IsSecretValue(val)
     if val == nil then return false end
-    if canaccessvalue and not canaccessvalue(val) then return true end
-    if issecretvalue and issecretvalue(val) then return true end
+    if type(_G.canaccessvalue) == "function" then
+        local ok, can = pcall(_G.canaccessvalue, val)
+        if ok and can == false then return true end
+    end
+    if type(_G.issecretvalue) == "function" then
+        local ok, sec = pcall(_G.issecretvalue, val)
+        if ok and sec == true then return true end
+    end
     return false
 end
 
@@ -151,6 +157,12 @@ local function IsEncounterActive()
             return true
         end
     end
+    if _G.C_InstanceEncounter and type(_G.C_InstanceEncounter.IsEncounterInProgress) == "function" then
+        local okIE, activeIE = pcall(_G.C_InstanceEncounter.IsEncounterInProgress)
+        if okIE and not IsSecretValue(activeIE) and activeIE == true then
+            return true
+        end
+    end
     return false
 end
 
@@ -159,6 +171,61 @@ local function IsKeystoneActive()
         local ok, active = pcall(C_ChallengeMode.IsChallengeModeActive)
         if ok and not IsSecretValue(active) and active == true then
             return true
+        end
+    end
+    return false
+end
+
+local function SafeIsInGroup()
+    if type(_G.IsInGroup) ~= "function" then return false end
+    local ok, res = pcall(_G.IsInGroup)
+    return ok and not IsSecretValue(res) and res == true
+end
+
+local function SafeIsInRaid()
+    if type(_G.IsInRaid) ~= "function" then return false end
+    local ok, res = pcall(_G.IsInRaid)
+    return ok and not IsSecretValue(res) and res == true
+end
+
+local function SafeUnitIsGroupLeader(unit)
+    if not unit or IsSecretValue(unit) or type(_G.UnitIsGroupLeader) ~= "function" then return false end
+    local ok, res = pcall(_G.UnitIsGroupLeader, unit)
+    return ok and not IsSecretValue(res) and res == true
+end
+
+local function SafeUnitIsGroupAssistant(unit)
+    if not unit or IsSecretValue(unit) or type(_G.UnitIsGroupAssistant) ~= "function" then return false end
+    local ok, res = pcall(_G.UnitIsGroupAssistant, unit)
+    return ok and not IsSecretValue(res) and res == true
+end
+
+local function SafeGetNumGroupMembers()
+    if type(_G.GetNumGroupMembers) ~= "function" then return 0 end
+    local ok, n = pcall(_G.GetNumGroupMembers)
+    if ok and not IsSecretValue(n) and type(n) == "number" then
+        return n
+    end
+    return 0
+end
+
+local function SafeIsInGuild()
+    if type(_G.IsInGuild) ~= "function" then return false end
+    local ok, res = pcall(_G.IsInGuild)
+    return ok and not IsSecretValue(res) and res == true
+end
+
+local function SafeGetActionButtonUseKeyDown()
+    if _G.C_CVar and type(_G.C_CVar.GetCVarBool) == "function" then
+        local ok, val = pcall(_G.C_CVar.GetCVarBool, "ActionButtonUseKeyDown")
+        if ok and not IsSecretValue(val) then
+            return val == true
+        end
+    end
+    if type(_G.GetCVarBool) == "function" then
+        local ok, val = pcall(_G.GetCVarBool, "ActionButtonUseKeyDown")
+        if ok and not IsSecretValue(val) then
+            return val == true
         end
     end
     return false
@@ -667,7 +734,7 @@ local function IsPlayerInActiveQueue()
         }
         for _, cat in ipairs(categories) do
             local ok, mode = pcall(GetLFGMode, cat)
-            if ok and mode and mode ~= "abandonedInDungeon" then
+            if ok and mode and not IsSecretValue(mode) and mode ~= "abandonedInDungeon" then
                 return true, "LFG Queue"
             end
         end
@@ -789,11 +856,11 @@ local function IsSenderFriendOrBNet(senderName, senderGUID)
     if senderGUID and senderGUID ~= "" then
         if C_BattleNet and type(C_BattleNet.GetAccountInfoByGUID) == "function" then
             local ok, acct = pcall(C_BattleNet.GetAccountInfoByGUID, senderGUID)
-            if ok and acct then return true, "Battle.net" end
+            if ok and acct and not IsSecretValue(acct) then return true, "Battle.net" end
         end
         if C_FriendList and type(C_FriendList.IsFriend) == "function" then
             local ok, isFr = pcall(C_FriendList.IsFriend, senderGUID)
-            if ok and isFr then return true, "Friend" end
+            if ok and not IsSecretValue(isFr) and isFr == true then return true, "Friend" end
         end
     end
 
@@ -807,16 +874,16 @@ local function IsSenderFriendOrBNet(senderName, senderGUID)
 end
 
 local function IsSenderGuildMember(senderName, senderGUID)
-    if not IsInGuild or not IsInGuild() then return false end
+    if not SafeIsInGuild() then return false end
     if IsSecretValue(senderName) then senderName = nil end
     if IsSecretValue(senderGUID) then senderGUID = nil end
     if senderGUID and senderGUID ~= "" and type(IsGuildMember) == "function" then
         local ok, isGM = pcall(IsGuildMember, senderGUID)
-        if ok and isGM then return true end
+        if ok and not IsSecretValue(isGM) and isGM == true then return true end
     end
     if senderName and type(UnitIsInMyGuild) == "function" then
         local ok, inGuild = pcall(UnitIsInMyGuild, senderName)
-        if ok and inGuild then return true end
+        if ok and not IsSecretValue(inGuild) and inGuild == true then return true end
     end
     local qualSender = NormalizeQualifiedName(senderName)
     if qualSender ~= "" then
@@ -857,7 +924,7 @@ local function HandlePartyInviteRequest(senderName, isTank, isHealer, isDamage, 
     local db = EnsureDB()
     local mode = db.incomingInviteMode or "FRIENDS_AND_GUILD"
     if mode == "OFF" then return end
-    if IsInGroup() then return end
+    if SafeIsInGroup() then return end
 
     if db.protectActiveQueues then
         local inQueue, queueType = IsPlayerInActiveQueue()
@@ -912,8 +979,8 @@ local _pendingRaidConversionInvites = {}
 
 local function FlushPendingRaidConversionInvites()
     if #_pendingRaidConversionInvites == 0 then return end
-    if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then return end
-    if not IsInRaid or not IsInRaid() then return end
+    if IsChatMessagingLocked() or IsEncounterActive() or IsKeystoneActive() or IsPlayerInCombat() then return end
+    if not SafeIsInRaid() then return end
     local db = EnsureDB()
     for i = 1, #_pendingRaidConversionInvites do
         local req = _pendingRaidConversionInvites[i]
@@ -933,16 +1000,17 @@ local function FlushPendingRaidConversionInvites()
 end
 
 local function PrepareGroupForOutgoingInvite(pendingReq)
-    if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then
+    if IsChatMessagingLocked() or IsEncounterActive() or IsKeystoneActive() or IsPlayerInCombat() then
         return false, false
     end
     local db = EnsureDB()
-    if IsInGroup() and not UnitIsGroupLeader("player") and not UnitIsGroupAssistant("player") then
+    local inGroupNow = SafeIsInGroup()
+    if inGroupNow and not SafeUnitIsGroupLeader("player") and not SafeUnitIsGroupAssistant("player") then
         return false, false
     end
-    if db.autoConvertToRaid and IsInGroup() and not IsInRaid() then
-        local count = GetNumGroupMembers and GetNumGroupMembers() or 0
-        if count >= 5 and UnitIsGroupLeader("player") then
+    if db.autoConvertToRaid and inGroupNow and not SafeIsInRaid() then
+        local count = SafeGetNumGroupMembers()
+        if count >= 5 and SafeUnitIsGroupLeader("player") then
             if pendingReq then
                 _pendingRaidConversionInvites[#_pendingRaidConversionInvites + 1] = pendingReq
             end
@@ -959,7 +1027,7 @@ local function PrepareGroupForOutgoingInvite(pendingReq)
 end
 
 local function HandleWhisperAutoInvite(text, senderName, senderGUID)
-    if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then return end
+    if IsChatMessagingLocked() or IsEncounterActive() or IsKeystoneActive() or IsPlayerInCombat() then return end
     if IsSecretValue(text) or IsSecretValue(senderName) then return end
     if IsSecretValue(senderGUID) then senderGUID = nil end
     local db = EnsureDB()
@@ -981,7 +1049,7 @@ local function HandleWhisperAutoInvite(text, senderName, senderGUID)
 end
 
 local function HandleBNetWhisperAutoInvite(text, senderDisplayName, bnetIDAccount)
-    if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then return end
+    if IsChatMessagingLocked() or IsEncounterActive() or IsKeystoneActive() or IsPlayerInCombat() then return end
     if IsSecretValue(text) or IsSecretValue(senderDisplayName) or IsSecretValue(bnetIDAccount) then return end
     local db = EnsureDB()
     if not db.enableWhisperInvite then return end
@@ -1034,10 +1102,10 @@ local function HandleAutoPromoteRosterImmediate()
     local db = EnsureDB()
     if not db.autoPromoteFriendsTanks then return end
     if IsPlayerInCombat() or IsEncounterActive() then return end
-    if not IsInRaid or not IsInRaid() or not UnitIsGroupLeader("player") then return end
+    if not SafeIsInRaid() or not SafeUnitIsGroupLeader("player") then return end
 
     RebuildTrustedContactCaches()
-    local num = GetNumGroupMembers and GetNumGroupMembers() or 0
+    local num = SafeGetNumGroupMembers()
     for i = 1, num do
         local unit = "raid" .. i
         local okEx, ex = pcall(UnitExists, unit)
@@ -1374,14 +1442,16 @@ local function SafeGetSpellCooldown(spellID)
     if type(spellID) ~= "number" or spellID <= 0 then return 0, 0, false end
     if C_Spell and type(C_Spell.GetSpellCooldown) == "function" then
         local ok, info = pcall(C_Spell.GetSpellCooldown, spellID)
-        if ok and type(info) == "table" and not IsSecretValue(info.startTime) and not IsSecretValue(info.duration) then
-            return tonumber(info.startTime) or 0, tonumber(info.duration) or 0, (info.isEnabled ~= false)
+        if ok and type(info) == "table" and not IsSecretValue(info) and not IsSecretValue(info.startTime) and not IsSecretValue(info.duration) then
+            local isEn = (not IsSecretValue(info.isEnabled)) and (info.isEnabled ~= false) or false
+            return tonumber(info.startTime) or 0, tonumber(info.duration) or 0, isEn
         end
     end
     if type(_G.GetSpellCooldown) == "function" then
         local ok, st, dur, enabled = pcall(_G.GetSpellCooldown, spellID)
         if ok and not IsSecretValue(st) and not IsSecretValue(dur) then
-            return tonumber(st) or 0, tonumber(dur) or 0, (enabled ~= 0 and enabled ~= false)
+            local isEn = (not IsSecretValue(enabled)) and (enabled ~= 0 and enabled ~= false) or false
+            return tonumber(st) or 0, tonumber(dur) or 0, isEn
         end
     end
     return 0, 0, false
@@ -4497,7 +4567,7 @@ function DynamicGroup:EnsurePortalBar()
         if DynamicGroup.UpdatePortalBarVisuals then DynamicGroup:UpdatePortalBarVisuals() end
     end)
     keyBtn:SetScript("PostClick", function(_, button, down)
-        local useKeyDown = (type(_G.GetCVarBool) == "function" and _G.GetCVarBool("ActionButtonUseKeyDown")) and true or false
+        local useKeyDown = SafeGetActionButtonUseKeyDown()
         if (down == true) ~= useKeyDown then return end
         if button ~= "LeftButton" then return end
         local kMapID, kLvl, kCode = GetOwnedKeystoneInfo()
@@ -4624,7 +4694,7 @@ function DynamicGroup:EnsurePortalBar()
         end)
 
         tile:SetScript("PostClick", function(selfTile, button, down)
-            local useKeyDown = (type(_G.GetCVarBool) == "function" and _G.GetCVarBool("ActionButtonUseKeyDown")) and true or false
+            local useKeyDown = SafeGetActionButtonUseKeyDown()
             local isDown = (down == true)
             if isDown ~= useKeyDown then return end
 
@@ -5237,7 +5307,7 @@ function DynamicGroup:EnsureTeleportToast()
             end
         end)
         tpBtn:SetScript("PostClick", function(_, button, down)
-            local useKeyDown = (type(_G.GetCVarBool) == "function" and _G.GetCVarBool("ActionButtonUseKeyDown")) and true or false
+            local useKeyDown = SafeGetActionButtonUseKeyDown()
             if (down == true) ~= useKeyDown then return end
             if button == "RightButton" then
                 DynamicGroup:HideTeleportToast(true)
@@ -5279,12 +5349,12 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
         return
     end
 
-    local inGroup = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
+    local inGroup = SafeIsInGroup()
     local numMembers
     if data.isPreview then
         numMembers = math.max(1, math.min(5, tonumber(data.previewCount) or 3))
     else
-        numMembers = inGroup and ((type(_G.GetNumGroupMembers) == "function" and _G.GetNumGroupMembers()) or 1) or 1
+        numMembers = inGroup and math.max(1, SafeGetNumGroupMembers()) or 1
         numMembers = math.max(1, math.min(5, tonumber(numMembers) or 1))
     end
 
@@ -5478,7 +5548,8 @@ function DynamicGroup:CheckHostedListingTeleportToast()
 
     if type(_G.IsInInstance) == "function" then
         local okI, inInst, instType = pcall(_G.IsInInstance)
-        if okI and inInst and (instType == "party" or instType == "raid" or instType == "scenario") then
+        if okI and not IsSecretValue(inInst) and inInst == true and not IsSecretValue(instType)
+            and (instType == "party" or instType == "raid" or instType == "scenario") then
             return
         end
     end
@@ -5512,8 +5583,8 @@ function DynamicGroup:CheckHostedListingTeleportToast()
         end
     end
 
-    local inGroup = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
-    local numMembers = inGroup and ((type(_G.GetNumGroupMembers) == "function" and _G.GetNumGroupMembers()) or 1) or 1
+    local inGroup = SafeIsInGroup()
+    local numMembers = inGroup and math.max(1, SafeGetNumGroupMembers()) or 1
     numMembers = math.max(1, math.min(5, tonumber(numMembers) or 1))
 
     if hasActive then
@@ -5951,7 +6022,7 @@ local function OnLFGListApplicationDialogOnShow(dialog)
 
     OnLFGListApplicationDialogUpdateRoles(dialog)
 
-    if db.autoFillNote and dialog.Description and not dialog.Description.securityDisableSetText then
+    if db.autoFillNote and not IsPlayerInCombat() and dialog.Description and not dialog.Description.securityDisableSetText then
         local editBox = dialog.Description.EditBox or (dialog.Description.GetEditBox and dialog.Description:GetEditBox()) or dialog.Description
         if editBox and editBox.SetText and not editBox.securityDisableSetText then
             local okText, curText = pcall(editBox.GetText, editBox)
@@ -8692,9 +8763,9 @@ SlashCmdList["DYNAMICGROUP"] = function(msg)
     if cmd == "reset" then
         ResetGroupModuleDefaults()
     elseif cmd == "rc" or cmd == "ready" then
-        if type(DoReadyCheck) == "function" then DoReadyCheck() end
+        if type(DoReadyCheck) == "function" then pcall(DoReadyCheck) end
     elseif cmd == "pull" then
-        if C_PartyInfo and type(C_PartyInfo.DoCountdown) == "function" then C_PartyInfo.DoCountdown(10) end
+        if C_PartyInfo and type(C_PartyInfo.DoCountdown) == "function" then pcall(C_PartyInfo.DoCountdown, 10) end
     elseif cmd == "testtoast" then
         DynamicGroup:CycleTeleportToastPreview()
     elseif cmd == "testapply" then
@@ -8979,12 +9050,12 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
     elseif event == "PARTY_INVITE_REQUEST" then
         HandlePartyInviteRequest(...)
     elseif event == "CHAT_MSG_WHISPER" then
-        if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then return end
+        if IsChatMessagingLocked() or IsEncounterActive() or IsKeystoneActive() or IsPlayerInCombat() then return end
         local text, senderName, _, _, _, _, _, _, _, _, _, guid = ...
         if IsSecretValue(text) or IsSecretValue(senderName) then return end
         HandleWhisperAutoInvite(text, senderName, guid)
     elseif event == "CHAT_MSG_BN_WHISPER" then
-        if IsChatMessagingLocked() or IsEncounterActive() or IsPlayerInCombat() then return end
+        if IsChatMessagingLocked() or IsEncounterActive() or IsKeystoneActive() or IsPlayerInCombat() then return end
         local text, senderDisplayName, _, _, _, _, _, _, _, _, _, _, bnetIDAccount = ...
         if IsSecretValue(text) or IsSecretValue(senderDisplayName) then return end
         HandleBNetWhisperAutoInvite(text, senderDisplayName, bnetIDAccount)
@@ -9050,7 +9121,7 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         self:CheckHostedListingTeleportToast()
     elseif event == "GROUP_ROSTER_UPDATE" then
         HandleAutoPromoteRoster()
-        local inGroupNow = (type(_G.IsInGroup) == "function" and _G.IsInGroup()) and true or false
+        local inGroupNow = SafeIsInGroup()
         if not inGroupNow then
             self.teleportToastDismissedForGroup = false
             self.lastHostedDungeonMeta = nil
@@ -9074,15 +9145,15 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         if type(_G.IsInInstance) == "function" then
             local okI, rInInst, rInstType = pcall(_G.IsInInstance)
             if okI then
-                inInst = rInInst and true or false
-                instType = rInstType
+                inInst = (not IsSecretValue(rInInst) and rInInst == true)
+                instType = (not IsSecretValue(rInstType) and type(rInstType) == "string") and rInstType or nil
             end
         end
         if inInst and (instType == "party" or instType == "raid" or instType == "scenario") then
             if self.activeTeleportToastData then
                 self:HideTeleportToast(true)
             end
-        elseif type(_G.IsInGroup) == "function" and _G.IsInGroup() and not self.activeTeleportToastData then
+        elseif SafeIsInGroup() and not self.activeTeleportToastData then
             self:CheckHostedListingTeleportToast()
         end
     elseif event == "CHALLENGE_MODE_KEYSTONE_RECEPTABLE_OPEN" then
