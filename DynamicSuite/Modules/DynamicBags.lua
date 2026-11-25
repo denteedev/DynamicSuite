@@ -169,6 +169,10 @@ local S = {
     search = "",
     sessionStartMoney = nil,
     atBank = false,
+    activeBankInteractionType = nil,
+    activeGuildInteractionType = nil,
+    closingBankInteraction = false,
+    pendingCombatHideBlizzBank = false,
     queriedGuildTabs = {},
     autoOpened = {},
     skippedOpenables = {},
@@ -5896,9 +5900,14 @@ function U.EnsureGoldTransferModal()
         goldBox:ClearFocus()
         silverBox:ClearFocus()
         copperBox:ClearFocus()
-        U.EnsureBagSpecialFrames()
+        if IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+            S.escClosedBagOnThisPass = true
+        else
+            U.EnsureBagSpecialFrames()
+        end
     end)
 
+    m:Hide()
     S.goldTransferModal = m
     return m
 end
@@ -6629,15 +6638,19 @@ function U.EnsureCompanionBankWindow()
             if math.abs((bw.GetScale and bw:GetScale() or 1) - savedScale) > 0.001 then
                 bw:SetScale(savedScale)
             end
-            if not IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+            if IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+                S.escClosedBagOnThisPass = true
+            else
                 U.EnsureBagSpecialFrames()
             end
         end
-        if S._closingGuildBank or S.atGuildBank then return end
-        if S._justClosedGuildBank and GetTime and (GetTime() - S._justClosedGuildBank) < 1.0 then return end
-        if DB().autoMergeOnClose == true and not InCombatLockdown() and S.companionMode ~= "GUILD" and U.IsVaultModeLive(S.companionMode) then
+        local skipAutoMerge = S._closingGuildBank or S.atGuildBank
+            or (S._justClosedGuildBank and GetTime and (GetTime() - S._justClosedGuildBank) < 1.0)
+        if not skipAutoMerge and DB().autoMergeOnClose == true and not InCombatLockdown()
+            and S.companionMode ~= "GUILD" and U.IsVaultModeLive(S.companionMode) then
             U.RestackBank(S.companionMode)
         end
+        U.CloseActiveBankInteraction()
     end)
     return bw
 end
@@ -7718,7 +7731,9 @@ function U.EnsureWindow()
                 win:SetScale(savedScale)
             end
             ApplySavedTopAlignedPos(win, "windowPos")
-            if not IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+            if IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+                S.escClosedBagOnThisPass = true
+            else
                 U.EnsureBagSpecialFrames()
             end
         end
@@ -10439,6 +10454,7 @@ function U.OnInteractionShow(interactionType)
     local key = S.typeToKey and S.typeToKey[interactionType]
     if S.bankTypes and S.bankTypes[interactionType] then
         S.atBank = true
+        S.activeBankInteractionType = interactionType
         S.preWarmingBank = false
         U.HideBlizzardBags()
         local db = DB()
@@ -10470,6 +10486,7 @@ function U.OnInteractionShow(interactionType)
         end
     elseif key == "guildbank" then
         S.atGuildBank = true
+        S.activeGuildInteractionType = interactionType
         S.preWarmingBank = false
         U.HideBlizzardBags()
         -- Only query the active, viewable tab on open so restricted tabs never trigger permission errors.
@@ -10505,22 +10522,33 @@ function U.OnInteractionShow(interactionType)
 end
 
 function U.OnInteractionHide(interactionType)
-    if S.bankTypes and S.bankTypes[interactionType] then
+    local isBankType = (S.bankTypes and S.bankTypes[interactionType]) and true or false
+    if isBankType then
         pcall(U.SnapshotBank)
         S.atBank = false
+        S.activeBankInteractionType = nil
     end
     local key = S.typeToKey and S.typeToKey[interactionType]
     if key == "guildbank" then
         pcall(U.SnapshotGuildBank)
+        S.activeGuildInteractionType = nil
         U.ResetGuildBankSessionState()
     end
     if not key or not S.autoOpened[key] then return end
     S.autoOpened[key] = nil
     if not next(S.autoOpened) then
+        local isBankInteraction = isBankType or (key == "guildbank")
+        local prevClosing = S.closingBankInteraction
+        if isBankInteraction then
+            S.closingBankInteraction = true
+        end
         S._closingGuildBank = (key == "guildbank")
         S.explicitClosing = (S.explicitClosing or 0) + 1
         if S.bankWindow then S.bankWindow:Hide() end
         S._closingGuildBank = nil
+        if isBankInteraction then
+            S.closingBankInteraction = prevClosing
+        end
         U.HideWindow()
         S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
     end
@@ -10548,6 +10576,147 @@ function U.ResetGuildBankSessionState()
             U.RenderCompanionBank()
         end
     end
+end
+
+function U.HideSuppressedBlizzardBankFrame(frame)
+    if InCombatLockdown() or not frame then return false end
+    if not (frame.IsShown and frame:IsShown()) then return false end
+    if type(_G.HideUIPanel) == "function" then
+        pcall(_G.HideUIPanel, frame)
+    end
+    if frame.IsShown and frame:IsShown() and type(frame.Hide) == "function" then
+        pcall(frame.Hide, frame)
+    end
+    return not (frame.IsShown and frame:IsShown())
+end
+
+function U.CloseActiveBankInteraction()
+    if S.closingBankInteraction then return false end
+    local db = DB()
+    if db and db.replaceBlizzardBags == false then return false end
+
+    local pit = Enum and Enum.PlayerInteractionType
+    local pim = C_PlayerInteractionManager
+    local isInteractingFn = (pim and type(pim.IsInteractingNpcOfType) == "function") and pim.IsInteractingNpcOfType or nil
+
+    local bankFrame = _G.BankFrame
+    local guildFrame = _G.GuildBankFrame
+    local bankFrameShown = (bankFrame and bankFrame.IsShown and bankFrame:IsShown()) and true or false
+    local guildFrameShown = (guildFrame and guildFrame.IsShown and guildFrame:IsShown()) and true or false
+
+    local interactingBanker = false
+    local interactingAccountBanker = false
+    local interactingGuildBanker = false
+    if isInteractingFn and pit then
+        if pit.Banker ~= nil then
+            local okB, resB = pcall(isInteractingFn, pit.Banker)
+            if okB and resB == true then interactingBanker = true end
+        end
+        if pit.AccountBanker ~= nil then
+            local okA, resA = pcall(isInteractingFn, pit.AccountBanker)
+            if okA and resA == true then interactingAccountBanker = true end
+        end
+        if pit.GuildBanker ~= nil then
+            local okG, resG = pcall(isInteractingFn, pit.GuildBanker)
+            if okG and resG == true then interactingGuildBanker = true end
+        end
+    end
+
+    local hasLiveBank = (S.atBank == true) or bankFrameShown or interactingBanker or interactingAccountBanker
+    local hasLiveGuildBank = (S.atGuildBank == true) or guildFrameShown or interactingGuildBanker
+    if not hasLiveBank and not hasLiveGuildBank then
+        return false
+    end
+
+    S.closingBankInteraction = true
+    local closedAny = false
+    pcall(function()
+        if hasLiveBank then
+            closedAny = true
+            if S.atBank then
+                pcall(U.SnapshotBank)
+            end
+            local activeType = S.activeBankInteractionType
+            S.atBank = false
+            S.activeBankInteractionType = nil
+            S.preWarmingBank = false
+            if S.autoOpened then S.autoOpened.bank = nil end
+
+            if C_Bank and type(C_Bank.CloseBankFrame) == "function" then
+                pcall(C_Bank.CloseBankFrame)
+            elseif type(_G.CloseBankFrame) == "function" then
+                pcall(_G.CloseBankFrame)
+            end
+
+            if pim and type(pim.ClearInteraction) == "function" then
+                if activeType ~= nil then
+                    pcall(pim.ClearInteraction, activeType)
+                end
+                if pit and pit.Banker ~= nil and activeType ~= pit.Banker then
+                    pcall(pim.ClearInteraction, pit.Banker)
+                end
+                if pit and pit.AccountBanker ~= nil and activeType ~= pit.AccountBanker and (interactingAccountBanker or activeType == nil) then
+                    pcall(pim.ClearInteraction, pit.AccountBanker)
+                end
+            end
+
+            if bankFrame and bankFrame.IsShown and bankFrame:IsShown() then
+                if InCombatLockdown() then
+                    S.pendingCombatHideBlizzBank = true
+                else
+                    U.HideSuppressedBlizzardBankFrame(bankFrame)
+                end
+            end
+        end
+
+        if hasLiveGuildBank then
+            closedAny = true
+            if S.atGuildBank then
+                pcall(U.SnapshotGuildBank)
+            end
+            local activeGuildType = S.activeGuildInteractionType
+            S.activeGuildInteractionType = nil
+            S.preWarmingBank = false
+            if S.autoOpened then S.autoOpened.guildbank = nil end
+            U.ResetGuildBankSessionState()
+
+            if type(_G.CloseGuildBankFrame) == "function" then
+                pcall(_G.CloseGuildBankFrame)
+            end
+
+            if pim and type(pim.ClearInteraction) == "function" then
+                local gType = activeGuildType or (pit and pit.GuildBanker)
+                if gType ~= nil then
+                    pcall(pim.ClearInteraction, gType)
+                end
+            end
+
+            if guildFrame and guildFrame.IsShown and guildFrame:IsShown() then
+                if InCombatLockdown() then
+                    S.pendingCombatHideBlizzBank = true
+                else
+                    U.HideSuppressedBlizzardBankFrame(guildFrame)
+                end
+            end
+        end
+    end)
+    S.closingBankInteraction = false
+
+    if closedAny and not InCombatLockdown() and not IsStackMatching("CloseSpecialWindows", "CloseWindows") then
+        U.EnsureBagSpecialFrames()
+    end
+    return closedAny
+end
+
+function DynamicBags:IsHandlingBlizzardFrame(frameName)
+    if frameName ~= "BankFrame" and frameName ~= "GuildBankFrame" then
+        return false
+    end
+    if IsModuleDisabledInSuite("DynamicBags") then
+        return false
+    end
+    local db = DB()
+    return (db and db.replaceBlizzardBags ~= false) and true or false
 end
 
 function U.HookCurrencyFrame()
@@ -10720,6 +10889,7 @@ function U.InstallBagHooks()
         S.closeSpecialHooked = true
         hooksecurefunc("CloseSpecialWindows", function()
             if InCombatLockdown() then
+                S.escClosedBagOnThisPass = nil
                 S.escRestoreBag = nil
                 S.escRestoreBank = nil
                 return
@@ -10727,6 +10897,7 @@ function U.InstallBagHooks()
             if (S.escRestoreBag or S.escRestoreBank) and ((S.search or "") ~= "") then
                 local restoreBag = S.escRestoreBag
                 local restoreBank = S.escRestoreBank
+                S.escClosedBagOnThisPass = nil
                 S.escRestoreBag = nil
                 S.escRestoreBank = nil
                 S.escRestoringFromSearch = true
@@ -10743,9 +10914,12 @@ function U.InstallBagHooks()
                 U.EnsureBagSpecialFrames()
                 return
             end
+            local closedOnThisPass = S.escClosedBagOnThisPass
+            S.escClosedBagOnThisPass = nil
             S.escRestoreBag = nil
             S.escRestoreBank = nil
-            if (IsStackMatching("CloseWindows", "ToggleGameMenu") or IsStackMatching("ToggleGameMenu", nil))
+            if not closedOnThisPass
+                and (IsStackMatching("CloseWindows", "ToggleGameMenu") or IsStackMatching("ToggleGameMenu", nil))
                 and U.GetTopMostShownBagFrameName() ~= nil then
                 if (S.search or "") ~= "" then
                     U.ClearAllSearchBoxes()
@@ -12775,6 +12949,22 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
                 end
                 U.HideWindow()
             end
+        elseif S.pendingCombatHideBank then
+            S.pendingCombatHideBank = nil
+            if S.bankWindow and S.bankWindow:IsShown() then
+                S.explicitClosing = (S.explicitClosing or 0) + 1
+                S.bankWindow:Hide()
+                S.explicitClosing = math.max(0, (S.explicitClosing or 1) - 1)
+            end
+        end
+        if S.pendingCombatHideBlizzBank then
+            S.pendingCombatHideBlizzBank = false
+            if not S.atBank and _G.BankFrame then
+                U.HideSuppressedBlizzardBankFrame(_G.BankFrame)
+            end
+            if not S.atGuildBank and _G.GuildBankFrame then
+                U.HideSuppressedBlizzardBankFrame(_G.GuildBankFrame)
+            end
         end
         if S.pendingBuild or S.pendingReflow then
             S.appliedVersion = -1
@@ -12851,6 +13041,7 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         U.HideGoldTransferModal()
         pcall(U.SnapshotBank)
         S.atBank = false
+        S.activeBankInteractionType = nil
         if S.bankWindow and S.bankWindow:IsShown() then
             U.RenderCompanionBank()
         end
@@ -12883,6 +13074,7 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
     elseif event == "GUILDBANKFRAME_CLOSED" then
         U.HideGoldTransferModal()
+        S.activeGuildInteractionType = nil
         if S.atGuildBank then
             pcall(U.SnapshotGuildBank)
             U.ResetGuildBankSessionState()
@@ -13023,6 +13215,7 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "25/11/2026",
     entries = {
+        { type = "FIX",     text = "Clean Single-Action Bank & Guild Bank Closing (25/11/2026): Fixed a lingering invisible Blizzard bank interaction left behind whenever DynamicBank closed via its Close button, Escape key, or bag toggle while at a Personal Bank, Warband Bank, or Guild Bank (previously requiring an extra Escape press before interacting with the banker again); closing DynamicBank now cleanly terminates active C_Bank / CloseGuildBankFrame and C_PlayerInteractionManager banker interactions, hides suppressed Blizzard BankFrame/GuildBankFrame panels out of combat with re-entrancy guards, closes child modals cleanly without stranding the session, keeps Personal/Warband/Guild tab switching uninterrupted, and leaves remote cached snapshot viewing (/dbag bank) untouched." },
         { type = "FEATURE", text = "DynamicBank Gold Controls & Obsidian Gold Transfer Modal (25/11/2026): Added live bank gold balances and transfer controls to the DynamicBank footer for Warband Bank (Deposit/Withdraw), Guild Bank (Deposit/Withdraw with live daily rank limit), and Personal Bank (live character gold display + [Deposit to Warband] shortcut with plain-English tooltip explaining that character gold stays in your bags); added a shared Obsidian Core Gold Transfer modal with Gold/Silver/Copper numeric inputs, 1k/10k/50k/100k/Max quick-fill pills, inline validation, and Escape/Enter handling; and subscribed to ACCOUNT_MONEY, PLAYER_MONEY, GUILDBANK_UPDATE_MONEY, and GUILDBANK_UPDATE_WITHDRAWMONEY for instant balance refreshes." },
         { type = "UI",      text = "Pass 5 Category Reorder Arrow Tint Parity (25/11/2026): Tinted the < and > reorder arrows on enabled Category Order & Visibility tiles in Tab 1 with the live Suite Accent colour at rest (switching to crisp white with accent border on hover, while keeping disabled tiles muted slate) to match DynamicPrep's Top Info Bar Layout Builder." },
         { type = "UI",      text = "Category Grid Parity, Isolated Bank Scale, Tab 3 Drawer Spacing & In-Panel Auto-Restock UI (24/11/2026): Restyled Tab 1's 12 Category Order & Visibility tiles to match DynamicPrep's dark Obsidian layout builder (#0E1015 fill, crisp 1px live Suite Accent border when enabled, dimmed slate when disabled, '1. Category' numbering, and always-visible bordered < and > reorder buttons); isolated Tab 2's Bank Window Scale slider so scaling Bank/Warband never moves or touches the Bag window; tightened Tab 3 Sub-Settings drawer spacing and ScrollFrame height updates so every child row renders cleanly without clipping; and added an in-panel Smart Vendor Auto-Restock drawer supporting bag drag-and-drop, Shift-Click links, item ID/name lookup, per-item quantity controls, Clear All, and Ctrl + Alt + Right-Click vendor adding with tooltip hints." },

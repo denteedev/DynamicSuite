@@ -8423,7 +8423,7 @@ do
     end
 
     local function IsDynamicBagsModalBlockingEscape()
-        for _, name in ipairs({ "DynamicBagsBankFrame", "DynamicBagsFrame", "DynamicBagsStandaloneFrame" }) do
+        for _, name in ipairs({ "DynamicBagsGoldTransferModal", "DynamicBagsBankFrame", "DynamicBagsFrame", "DynamicBagsStandaloneFrame" }) do
             local bf = _G[name]
             if bf and bf.IsShown and bf:IsShown() then
                 return true
@@ -8432,16 +8432,25 @@ do
         return false
     end
 
-    local function IsHandledByDynamicDialogue(frameName)
-        if frameName ~= "GossipFrame" and frameName ~= "QuestFrame" then
-            return false
-        end
-        local dd = _G.DynamicDialogue
-        if type(dd) == "table" and type(dd.IsHandlingBlizzardFrame) == "function" then
-            local ok, handled = pcall(dd.IsHandlingBlizzardFrame, dd, frameName)
-            if ok and handled == true then
-                return true
+    local function IsHandledBySuiteReplacement(frameName)
+        if frameName == "GossipFrame" or frameName == "QuestFrame" then
+            local dd = _G.DynamicDialogue
+            if type(dd) == "table" and type(dd.IsHandlingBlizzardFrame) == "function" then
+                local ok, handled = pcall(dd.IsHandlingBlizzardFrame, dd, frameName)
+                if ok and handled == true then
+                    return true
+                end
             end
+            return false
+        elseif frameName == "BankFrame" or frameName == "GuildBankFrame" then
+            local dbag = _G.DynamicBags
+            if type(dbag) == "table" and type(dbag.IsHandlingBlizzardFrame) == "function" then
+                local ok, handled = pcall(dbag.IsHandlingBlizzardFrame, dbag, frameName)
+                if ok and handled == true then
+                    return true
+                end
+            end
+            return false
         end
         return false
     end
@@ -8682,7 +8691,7 @@ do
     }
 
     function W.NormalizeDesktopWindowLayer(frame, frameName)
-        if InCombat() or not frame or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) or IsHandledByDynamicDialogue(frameName) then return end
+        if InCombat() or not frame or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) or IsHandledBySuiteReplacement(frameName) then return end
         if DesktopWindows:IsYielding() or DesktopWindows:IsMasterDisabled() then return end
         local db = GetDesktopWindowsDB()
         if not (db and db.sideBySide ~= false) then return end
@@ -8740,7 +8749,7 @@ do
         local db = GetDesktopWindowsDB()
         if not (db and db.sideBySide ~= false) then return end
         for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
-            if not IsHandledByDynamicDialogue(spec.name) then
+            if not IsHandledBySuiteReplacement(spec.name) then
                 local bf = _G[spec.name]
                 if bf and bf.IsShown and bf:IsShown() and not IsWorldMapMaximized(bf, spec.name) then
                     W.NormalizeDesktopWindowLayer(bf, spec.name)
@@ -8770,7 +8779,7 @@ do
         for i = #W.zOrderStack, 1, -1 do
             local name = W.zOrderStack[i]
             local bf = _G[name]
-            if bf and bf.IsShown and bf:IsShown() and not IsHandledByDynamicDialogue(name) and not IsWorldMapMaximized(bf, name) then
+            if bf and bf.IsShown and bf:IsShown() and not IsHandledBySuiteReplacement(name) and not IsWorldMapMaximized(bf, name) then
                 if not unprotectedOnly or not (bf.IsProtected and bf:IsProtected()) then
                     return name
                 end
@@ -8779,7 +8788,7 @@ do
         local bestName, bestSeq = nil, -1
         for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
             local bf = _G[spec.name]
-            if bf and bf.IsShown and bf:IsShown() and not IsHandledByDynamicDialogue(spec.name) and not IsWorldMapMaximized(bf, spec.name) then
+            if bf and bf.IsShown and bf:IsShown() and not IsHandledBySuiteReplacement(spec.name) and not IsWorldMapMaximized(bf, spec.name) then
                 if not unprotectedOnly or not (bf.IsProtected and bf:IsProtected()) then
                     local seq = W.lastShownAt[spec.name] or 0
                     if seq > bestSeq then
@@ -8823,7 +8832,7 @@ do
             end
         else
             for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
-                if W.detachedPanels[spec.name] and not IsHandledByDynamicDialogue(spec.name) then
+                if W.detachedPanels[spec.name] and not IsHandledBySuiteReplacement(spec.name) then
                     local bf = _G[spec.name]
                     if bf and bf.IsShown and bf:IsShown() and not IsWorldMapMaximized(bf, spec.name) then
                         W.AddToUISpecialFrames(spec.name)
@@ -8836,7 +8845,7 @@ do
     DesktopWindows.SyncAllUISpecialFrames = W.SyncAllUISpecialFrames
 
     function W.FocusAndRaiseDesktopWindow(frame, frameName)
-        if InCombat() or not frame or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) or IsHandledByDynamicDialogue(frameName) then return end
+        if InCombat() or not frame or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) or IsHandledBySuiteReplacement(frameName) then return end
         if DesktopWindows:IsYielding() then return end
         local db = GetDesktopWindowsDB()
         if not (db and db.sideBySide ~= false) then return end
@@ -9029,7 +9038,7 @@ do
     end
 
     function W.SyncFrameClamping(frame, frameName)
-        if InCombat() or not frame or IsWorldMapMaximized(frame, frameName) or IsHandledByDynamicDialogue(frameName) then return end
+        if InCombat() or not frame or IsWorldMapMaximized(frame, frameName) or IsHandledBySuiteReplacement(frameName) then return end
         if W.IsTaintSensitiveFrame(frame, frameName) then return end
         if type(frame.SetClampedToScreen) == "function" then
             pcall(frame.SetClampedToScreen, frame, true)
@@ -9040,7 +9049,7 @@ do
     end
 
     local function ClampAndReanchorFrame(frame, frameName)
-        if InCombat() or not frame or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) or IsHandledByDynamicDialogue(frameName) then return end
+        if InCombat() or not frame or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) or IsHandledBySuiteReplacement(frameName) then return end
         if DesktopWindows:IsYielding() then return end
         local st = GetFrameState(frame)
         if st and st.isDragging then return end
@@ -9243,14 +9252,14 @@ do
         for i = #W.zOrderStack, 1, -1 do
             local name = W.zOrderStack[i]
             local bf = name and _G[name]
-            if bf and IsPointOverFrame(bf) and not IsHandledByDynamicDialogue(name) and not IsWorldMapMaximized(bf, name) then
+            if bf and IsPointOverFrame(bf) and not IsHandledBySuiteReplacement(name) and not IsWorldMapMaximized(bf, name) then
                 return bf, name
             end
         end
         for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
             local name = spec.name
             local bf = _G[name]
-            if bf and IsPointOverFrame(bf) and not IsHandledByDynamicDialogue(name) and not IsWorldMapMaximized(bf, name) then
+            if bf and IsPointOverFrame(bf) and not IsHandledBySuiteReplacement(name) and not IsWorldMapMaximized(bf, name) then
                 return bf, name
             end
         end
@@ -9279,7 +9288,7 @@ do
         local anyShown = false
         for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
             local bf = _G[spec.name]
-            if bf and bf.IsShown and bf:IsShown() and not IsHandledByDynamicDialogue(spec.name) and not IsWorldMapMaximized(bf, spec.name) then
+            if bf and bf.IsShown and bf:IsShown() and not IsHandledBySuiteReplacement(spec.name) and not IsWorldMapMaximized(bf, spec.name) then
                 anyShown = true
                 break
             end
@@ -9601,7 +9610,7 @@ do
         local st = W.blizzWinState[frame]
         if not st or not st.overlay then return end
         local ov = st.overlay
-        if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(frame, frameName) or IsHandledByDynamicDialogue(frameName) then
+        if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(frame, frameName) or IsHandledBySuiteReplacement(frameName) then
             st.isDragging = false
             st.usingNativeMove = nil
             ov:SetScript("OnUpdate", nil)
@@ -9628,7 +9637,7 @@ do
 
     local function ApplyBlizzardFrameTransform(frame, frameName)
         if not frame or InCombat() then return end
-        if DesktopWindows:IsYielding() or IsHandledByDynamicDialogue(frameName) then return end
+        if DesktopWindows:IsYielding() or IsHandledBySuiteReplacement(frameName) then return end
         local st = EnsureHeaderOverlay(frame, frameName)
         AttachPassiveChromeDragHooks(frame, frameName, st)
         W.SyncOverlayMode(frame, frameName)
@@ -10224,7 +10233,7 @@ do
                     W.SyncOverlayMode(shownFrame, frameName)
                     return
                 end
-                if IsHandledByDynamicDialogue(frameName) then
+                if IsHandledBySuiteReplacement(frameName) then
                     W.openPanelsSnapshot[frameName] = nil
                     W.RemoveFromZOrderStack(frameName)
                     W.RemoveFromUISpecialFrames(frameName)
@@ -10679,7 +10688,7 @@ do
                     return
                 end
                 if not SUPPORTED_BY_NAME[fName] then return end
-                if IsHandledByDynamicDialogue(fName) then
+                if IsHandledBySuiteReplacement(fName) then
                     W.openPanelsSnapshot[fName] = nil
                     W.RemoveFromZOrderStack(fName)
                     W.RemoveFromUISpecialFrames(fName)
@@ -11247,7 +11256,7 @@ do
                     W.pendingCombatWindowSetup[spec.name] = nil
                     W.SyncFrameClamping(frame, spec.name)
                     W.SyncOverlayMode(frame, spec.name)
-                    if frame.IsShown and frame:IsShown() and not IsHandledByDynamicDialogue(spec.name) then
+                    if frame.IsShown and frame:IsShown() and not IsHandledBySuiteReplacement(spec.name) then
                         W.openPanelsSnapshot[spec.name] = true
                         local st = GetFrameState(frame)
                         ApplyBlizzardFrameTransform(frame, spec.name)
