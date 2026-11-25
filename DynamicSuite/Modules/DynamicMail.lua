@@ -1767,9 +1767,9 @@ local function EnsureInboxToolbar()
     end, "Collect Attachments Only", "Loot mails with item attachments while pausing cleanly if bags hit your free-slot reserve.")
     bar.btnItems:SetPoint("LEFT", bar.btnGold, "RIGHT", 5, 0)
 
-    bar.btnClean = CreateOverlayActionBtn(bar, 84, 22, "Open & Del", false, function()
+    bar.btnClean = CreateOverlayActionBtn(bar, 86, 22, "Clear Empty", false, function()
         DynamicMail:StartBatchOpen("CLEAN_EMPTY")
-    end, "Open & Delete Empty Letters", "Opens unread text-only letters and permanently deletes all zero-gold, zero-item notices (NPC Lost Currency, Postmaster, Auction receipts). Never deletes COD, items, gold, or GM mail.")
+    end, "Clear Empty Letters", "Opens unread text-only letters and permanently deletes all zero-gold, zero-item notices (NPC Lost Currency, Postmaster, Auction receipts). Never deletes COD, items, gold, or GM mail.")
     bar.btnClean:SetPoint("LEFT", bar.btnItems, "RIGHT", 5, 0)
 
     bar.btnCfg = CreateFrame("Button", nil, bar, "BackdropTemplate")
@@ -2089,7 +2089,7 @@ local function EnsureSendPickerPanel()
         { delta = 10000000,   reset = false, label = "+1k g",  tip = "Add 1,000g to the Send Mail gold field." },
         { delta = 100000000,  reset = false, label = "+10k g", tip = "Add 10,000g to the Send Mail gold field." },
         { delta = 1000000000, reset = false, label = "+100k",  tip = "Add 100,000g to the Send Mail gold field." },
-        { delta = 0,          reset = true,  label = "Clear G",tip = "Reset Send Mail attached gold back to 0g." },
+        { delta = 0,          reset = true,  label = "Reset",  tip = "Reset Send Mail attached gold back to 0g." },
     }
     panel.qgBtns = {}
     for idx, gd in ipairs(qgDefs) do
@@ -2540,6 +2540,7 @@ local function CreateSectionHeader(parent, yOffset, titleText, subtitleText)
     local txt = hdr:CreateFontString(nil, "OVERLAY")
     SetFontSafe(txt, 11, "")
     txt:SetPoint("TOPLEFT", leftBar, "TOPRIGHT", 8, 0)
+    txt:SetPoint("RIGHT", hdr, "RIGHT", -12, 0)
     txt:SetJustifyH("LEFT")
     txt:SetWordWrap(false)
     txt:SetTextColor(acc.r, acc.g, acc.b, 1.0)
@@ -2692,6 +2693,9 @@ local function CreateMultiPillCard(parent, yOffset, titleText, descText, options
     local pillGroup = CreateFrame("Frame", nil, card, "BackdropTemplate")
     pillGroup:SetPoint("RIGHT", card, "RIGHT", -14, 0)
     ApplyBackdrop(pillGroup, surf.header, surf.border)
+    title:SetPoint("RIGHT", pillGroup, "LEFT", -16, 0)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
 
     local btns = {}
     local totalW = 4
@@ -2766,6 +2770,9 @@ local function CreateSliderCard(parent, yOffset, titleText, descText, minVal, ma
     local holder = CreateFrame("Frame", nil, card)
     holder:SetSize(256, 26)
     holder:SetPoint("RIGHT", card, "RIGHT", -14, 0)
+    title:SetPoint("RIGHT", holder, "LEFT", -16, 0)
+    title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
 
     local valBadge = holder:CreateFontString(nil, "OVERLAY")
     SetFontSafe(valBadge, 11, "")
@@ -3132,7 +3139,7 @@ local function RenderMailEmbedded(parent)
             sy = sy + dy
 
             local _, dy1 = CreateSegmentedSwitchCard(sec1, sy, "Mailbox Quick Action Bar",
-                "Show Open All, AH Gold, and Items Only buttons cleanly above MailFrame (or below if at screen top).",
+                "Show Open All, AH Gold, and Items Only buttons cleanly above the Mailbox window (or below if at screen top).",
                 function() return db.mailboxBarEnabled end,
                 function(v) db.mailboxBarEnabled = v; RefreshHostTelemetry() end, false)
             sy = sy + dy1
@@ -3217,13 +3224,13 @@ local function RenderMailEmbedded(parent)
             sy = sy + dyh
 
             local _, dy1 = CreateSegmentedSwitchCard(sec1, sy, "Show Recipient Picker Beside Send Mail",
-                "Dock the 4-tab Recipient Picker (Alts / Recent / Guild / Friends) cleanly next to MailFrame.",
+                "Dock the 4-tab Recipient Picker (Alts / Recent / Guild / Friends) cleanly next to the Mailbox window.",
                 function() return db.recipientPanelEnabled end,
                 function(v) db.recipientPanelEnabled = v; RefreshHostTelemetry() end, false)
             sy = sy + dy1
 
             local _, dy2 = CreateSegmentedSwitchCard(sec1, sy, "Sync Account Alts from DynamicBags Vault",
-                "Automatically populate all alts already scanned in DynamicBagsDB with class colours and gold.",
+                "Automatically populate all alts already scanned in DynamicBags Alt Vault with class colours and gold.",
                 function() return db.syncDynamicBagsVault end,
                 function(v) db.syncDynamicBagsVault = v; RefreshSendPickerUI() end, false)
             sy = sy + dy2
@@ -3253,7 +3260,7 @@ local function RenderMailEmbedded(parent)
 
             local sec2 = CreateSectionBox(scrollContent, y)
             local sy2 = -10
-            local _, dy2h = CreateSectionHeader(sec2, sy2, "EXPRESS MULTI-ATTACH & SENDING QOL", "Streamline mailing reagents, Warband gear, and crafting orders to alts.")
+            local _, dy2h = CreateSectionHeader(sec2, sy2, "QUICK SENDING & ATTACHMENTS", "Streamline mailing reagents, Warband gear, and crafting orders to alts.")
             sy2 = sy2 + dy2h
 
             local _, dy6 = CreateSegmentedSwitchCard(sec2, sy2, "Alt + Left-Click Bag Item to Attach",
@@ -3274,19 +3281,19 @@ local function RenderMailEmbedded(parent)
                 function(v) db.autoOpenBagsAtMail = v end, false)
             sy2 = sy2 + dy8
 
-            local _, dy9 = CreateSegmentedSwitchCard(sec2, sy2, "Show Quick-Attach Preset Buttons (+ Mats / BoE / Warband / Same)",
-                "Display 1-click batch attachment preset buttons in the Send Mail Recipient Picker.",
+            local _, dy9 = CreateSegmentedSwitchCard(sec2, sy2, "Quick-Attach Preset Buttons",
+                "Display 1-click batch attachment preset buttons (+ Mats / BoE / Warband / Same) in the Send Mail Recipient Picker.",
                 function() return db.showQuickAttachBar end,
                 function(v) db.showQuickAttachBar = v; RefreshSendPickerUI() end, false)
             sy2 = sy2 + dy9
 
-            local _, dy10 = CreateSegmentedSwitchCard(sec2, sy2, "Show Quick-Gold Buttons (+1k / +10k / +100k / Clear G)",
-                "Display 1-click gold increment buttons in the Send Mail Recipient Picker.",
+            local _, dy10 = CreateSegmentedSwitchCard(sec2, sy2, "Quick-Gold Buttons",
+                "Display 1-click gold increment buttons (+1k / +10k / +100k / Reset) in the Send Mail Recipient Picker.",
                 function() return db.showQuickGoldBar end,
                 function(v) db.showQuickGoldBar = v; RefreshSendPickerUI() end, false)
             sy2 = sy2 + dy10
 
-            local _, dy11 = CreateSegmentedSwitchCard(sec2, sy2, "Show Pending Alt Mail Badges & Auto-Restore Recipient",
+            local _, dy11 = CreateSegmentedSwitchCard(sec2, sy2, "Pending Alt Badges & Last Recipient",
                 "Badge alts after sending them gold or items (clears when that alt opens mail) and restore last target.",
                 function() return db.showPendingAltBadge end,
                 function(v) db.showPendingAltBadge = v; db.restoreLastRecipient = v; RefreshSendPickerUI() end, false)
@@ -3302,17 +3309,20 @@ local function RenderMailEmbedded(parent)
             local _, dyh = CreateSectionHeader(sec1, sy, "MAILBOX LIFETIME STATS & ACTIVITY LOG", "Session and account-wide gold collected, items looted, and recent mail history.")
             sy = sy + dyh
 
-            local statCard = CreateCard(sec1, 56, sy, false)
+            local statCard = CreateCard(sec1, 58, sy, false)
             local statFS = statCard:CreateFontString(nil, "OVERLAY")
             SetFontSafe(statFS, 11, "")
             statFS:SetPoint("LEFT", statCard, "LEFT", 14, 0)
             statFS:SetPoint("RIGHT", statCard, "RIGHT", -14, 0)
             statFS:SetJustifyH("LEFT")
+            statFS:SetJustifyV("MIDDLE")
+            statFS:SetWordWrap(true)
+            if statFS.SetMaxLines then statFS:SetMaxLines(2) end
             statFS:SetTextColor(0.90, 0.94, 0.99, 1)
             local st = db.stats or {}
             statFS:SetText(string.format("Gold Looted: %s    |    Items Collected: |cFFFFFFFF%d|r    |    Batches: |cFFFFFFFF%d|r    |    Sent: |cFFFFFFFF%d|r",
                 FormatCopper(st.totalCopperLooted or 0), SafeNum(st.totalItemsLooted, 0), SafeNum(st.totalMailsLooted, 0), SafeNum(st.totalMailsSent, 0)))
-            sy = sy - 62
+            sy = sy - 64
 
             local logs = db.historyLog or {}
             local logCardH = math.max(64, math.min(240, 18 + (#logs * 22)))
@@ -3447,20 +3457,24 @@ local function EnsureStandaloneWindow()
     local brandTitle = header:CreateFontString(nil, "OVERLAY")
     SetFontSafe(brandTitle, 15, "")
     brandTitle:SetPoint("LEFT", logo, "RIGHT", 10, 0)
+    brandTitle:SetWordWrap(false)
     brandTitle:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFMail|r  |cFF64748Bv" .. VERSION .. "|r")
-
-    local statusText = header:CreateFontString(nil, "OVERLAY")
-    SetFontSafe(statusText, 11, "")
-    statusText:SetPoint("CENTER", header, "CENTER", 20, 0)
-    statusText:SetTextColor(0.75, 0.82, 0.90, 1.0)
-    statusText:SetText(DynamicMail:GetStatusText())
-    win.statusText = statusText
 
     local closeBtn = CreateStyledButton(header, "X", 28, 24, false, function()
         CloseAnyDropdown()
         win:Hide()
     end)
     closeBtn:SetPoint("RIGHT", header, "RIGHT", -10, 0)
+
+    local statusText = header:CreateFontString(nil, "OVERLAY")
+    SetFontSafe(statusText, 11, "")
+    statusText:SetPoint("LEFT", brandTitle, "RIGHT", 14, 0)
+    statusText:SetPoint("RIGHT", closeBtn, "LEFT", -12, 0)
+    statusText:SetJustifyH("RIGHT")
+    statusText:SetWordWrap(false)
+    statusText:SetTextColor(0.75, 0.82, 0.90, 1.0)
+    statusText:SetText(DynamicMail:GetStatusText())
+    win.statusText = statusText
 
     local footer = CreateFrame("Frame", nil, win, "BackdropTemplate")
     footer:SetHeight(36)
@@ -3587,14 +3601,14 @@ DynamicMail.SEARCH_ENTRIES = {
       keywords = "mail recipient alt picker vault guild friends warband" },
     { moduleKey = "mail", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Sending & Alt Picker",
       title = "Sync Account Alts from DynamicBags Vault",
-      desc = "Populate class-coloured alts and gold balances directly from DynamicBagsDB character snapshots.",
+      desc = "Populate class-coloured alts and gold balances directly from DynamicBags Alt Vault character snapshots.",
       keywords = "mail sync alt vault dynamicbags character gold" },
     { moduleKey = "mail", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Sending & Alt Picker",
       title = "Alt + Left-Click Bag Item to Attach",
       desc = "Quickly attach bag items directly into Send Mail slots with Alt + Left-Click.",
       keywords = "mail express attach alt left click bags send item" },
     { moduleKey = "mail", category = "BAGS_QOL", tabIndex = 2, tabLabel = "Sending & Alt Picker",
-      title = "Quick-Attach Preset Buttons (+ Mats / BoE / Warband / Same)",
+      title = "Quick-Attach Preset Buttons",
       desc = "Fill up to 12 Send Mail attachment slots with reagents, BoE gear, Warbound items, or matching stacks in 1 click.",
       keywords = "mail quick attach mats boe warbound same reagent stacks bulk" },
     { moduleKey = "mail", category = "BAGS_QOL", tabIndex = 1, tabLabel = "Inbox & Automation",
@@ -3610,8 +3624,9 @@ DynamicMail.SEARCH_ENTRIES = {
 DynamicMail.CHANGELOG = {
     {
         version = VERSION,
-        date = "21/11/2026",
+        date = "25/11/2026",
         entries = {
+            { type = "UI", text = "Pass 6 800x520 Clamping & Plain-English Copy Hygiene (25/11/2026): Clamped the standalone header status readout cleanly between brandTitle and closeBtn; right-clamped section headers, multi-pill cards, and slider titles against their controls; enabled 2-line wrapping on Tab 3's Lifetime Stats summary card; shortened long Tab 2 switch labels; and replaced raw internal names ('MailFrame', 'DynamicBagsDB', 'Sending QoL', 'Open & Del', 'Clear G') with plain Australian English ('the Mailbox window', 'DynamicBags Alt Vault', 'Quick Sending & Attachments', 'Clear Empty', and 'Reset')." },
             { type = "UI", text = "Release v2.7.0 (21/11/2026): Standardised binary Off/Enabled switches to 68px Off / 84px Enabled (156x26px) and clamped card titles directly to the left of right-hand switches for clean 800x520 framing." },
             { type = "FIX", text = "Release v2.6.9 (21/11/2026): Guarded suite window routing when DynamicMail is disabled inside DynamicSuite, aligned the standalone resize handle with the active Suite Accent, updated Quick Action Bar search copy, and standardised the module changelog structure." },
             { type = "NEW", text = "Auto-Delete Empty Letters & 1-Click Clear Empty Button (19/11/2026): Added the 'Auto-Delete Empty Letters on Open All' option (enabled by default) and a dedicated 1-click [Clear Empty] button on DynamicMailInboxBar to wipe empty NPC notices (Lost Currency, Postmaster), Auction receipts, and zero-gold/zero-item letters without opening each one manually, while always protecting COD, items, gold, and GM mail." },

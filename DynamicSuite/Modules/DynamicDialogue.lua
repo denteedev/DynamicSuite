@@ -200,10 +200,6 @@ local function EnsureDB()
     return _G.DynamicDialogueDB
 end
 
-local function Print(msg)
-    DEFAULT_CHAT_FRAME:AddMessage("|cFFFB923C[DynamicDialogue]|r " .. tostring(msg or ""))
-end
-
 -- ============================================================================
 -- 2. THEME & FONT HELPERS (LIVE SYNC WITH DYNAMICSUITE)
 -- ============================================================================
@@ -235,6 +231,10 @@ end
 local function GetAccentHex()
     local r, g, b = GetAccentColor()
     return string.format("%02X%02X%02X", math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5), math.floor(b * 255 + 0.5))
+end
+
+local function Print(msg)
+    DEFAULT_CHAT_FRAME:AddMessage("|cFF" .. GetAccentHex() .. "[DynamicDialogue]|r " .. tostring(msg or ""))
 end
 
 local function GetSurfaceColors()
@@ -2655,11 +2655,23 @@ local function RenderDialogueEmbedded(parent)
         sf:SetVerticalScroll(math.max(0, math.min(maxScroll, (sf:GetVerticalScroll() or 0) - (delta * 42))))
         UpdateScrollBar()
     end
+    local function SyncScrollWidth()
+        local w = sf:GetWidth()
+        if w and w > 100 then child:SetWidth(w) end
+        UpdateScrollBar()
+    end
     sf:SetScript("OnSizeChanged", function(_, w)
         if w and w > 100 then child:SetWidth(w) end
         UpdateScrollBar()
     end)
-    sf:SetScript("OnShow", UpdateScrollBar)
+    sf:SetScript("OnShow", function()
+        SyncScrollWidth()
+        if C_Timer and C_Timer.After then C_Timer.After(0, SyncScrollWidth) end
+    end)
+    root:HookScript("OnShow", function()
+        SyncScrollWidth()
+        if C_Timer and C_Timer.After then C_Timer.After(0, SyncScrollWidth) end
+    end)
     sf:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
     track:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
     thumb:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
@@ -2694,7 +2706,7 @@ local function RenderDialogueEmbedded(parent)
         CreateToggleRow(sec1, -326, "Space Bar Accept & Complete", "Press Space out of combat to Accept, Continue, or Complete the active quest.",
             function() return db.enableSpaceConfirm ~= false end,
             function(v) db.enableSpaceConfirm = v end),
-        CreateToggleRow(sec1, -394, "Hold Shift for Native Blizzard Frame", "Hold Shift while interacting with an NPC to bypass DynamicDialogue for that interaction.",
+        CreateToggleRow(sec1, -394, "Hold Shift for Default Blizzard Window", "Hold Shift while interacting with an NPC to bypass DynamicDialogue for that interaction.",
             function() return db.shiftBypassNative ~= false end,
             function(v) db.shiftBypassNative = v end),
     }
@@ -2721,8 +2733,8 @@ local function RenderDialogueEmbedded(parent)
             0.50, 1.00, 0.05, function(v) return string.format("%d%%", math.floor(v * 100 + 0.5)) end,
             function() return db.backdropAlpha or 0.96 end,
             function(v) db.backdropAlpha = v; DynamicDialogue:ApplyReaderTheme() end),
-        CreateSliderRow(sec2, -190, "Dialogue Font Size", "Body text size for quest descriptions and gossip lore (11pt - 18pt).",
-            11, 18, 1, function(v) return string.format("%dpt", math.floor(v + 0.5)) end,
+        CreateSliderRow(sec2, -190, "Dialogue Font Size", "Body text size for quest descriptions and gossip lore (11 to 18 px).",
+            11, 18, 1, function(v) return string.format("%d px", math.floor(v + 0.5)) end,
             function() return db.fontSize or 13 end,
             function(v) db.fontSize = v; DynamicDialogue:ApplyReaderTheme() end),
         CreateToggleRow(sec2, -258, "Quest Complete Signature Chime", "Play the DynamicSuite Bloom chime when completing a quest.",
@@ -2800,6 +2812,18 @@ end
 
 function DynamicDialogue:ApplyTheme()
     self:ApplyReaderTheme()
+    if standaloneFrame then
+        local ar, ag, ab = GetAccentColor()
+        if standaloneFrame.border and standaloneFrame.border.SetColor then
+            standaloneFrame.border:SetColor(ar, ag, ab, 0.90)
+        end
+        if standaloneFrame.topLine then
+            standaloneFrame.topLine:SetColorTexture(ar, ag, ab, 1.0)
+        end
+        if standaloneFrame.RefreshTitle then
+            standaloneFrame.RefreshTitle()
+        end
+    end
     if activeEmbeddedRoot and activeEmbeddedRoot.RefreshAll then
         activeEmbeddedRoot.RefreshAll()
     end
@@ -2829,6 +2853,8 @@ function DynamicDialogue:Open()
         sf:SetPoint("CENTER")
         sf:SetFrameStrata("DIALOG")
         sf:SetMovable(true)
+        sf:SetResizable(true)
+        if sf.SetResizeBounds then sf:SetResizeBounds(760, 480, 1280, 860) end
         sf:EnableMouse(true)
         sf:SetClampedToScreen(true)
         sf:RegisterForDrag("LeftButton")
@@ -2844,22 +2870,85 @@ function DynamicDialogue:Open()
         hdr:SetPoint("TOPRIGHT", sf, "TOPRIGHT", -1, -1)
         hdr.bg = SolidTex(hdr, "BACKGROUND", 1, surf.HEADER_BG.r, surf.HEADER_BG.g, surf.HEADER_BG.b, 1.0)
         hdr.bg:SetAllPoints()
-        local title = hdr:CreateFontString(nil, "OVERLAY")
-        title:SetPoint("LEFT", hdr, "LEFT", 14, 0)
-        ApplyFont(title, 14, "OUTLINE")
-        title:SetText("|cFFCBD5E1Dynamic|r|cFFFFFFFFDialogue|r  |cFF94A3B8v" .. VERSION .. "|r")
+
+        local topLine = SolidTex(hdr, "OVERLAY", 4, ar, ag, ab, 1.0)
+        topLine:SetHeight(2)
+        topLine:SetPoint("TOPLEFT", hdr, "TOPLEFT", 0, 0)
+        topLine:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", 0, 0)
+        sf.topLine = topLine
 
         local closeBtn = CreateActionButton(hdr, 28, 24, "X", false, function() sf:Hide() end)
         closeBtn:SetPoint("RIGHT", hdr, "RIGHT", -8, 0)
 
+        local title = hdr:CreateFontString(nil, "OVERLAY")
+        title:SetPoint("LEFT", hdr, "LEFT", 14, 0)
+        title:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
+        title:SetJustifyH("LEFT")
+        title:SetWordWrap(false)
+        ApplyFont(title, 13, "")
+        sf.RefreshTitle = function()
+            title:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFDialogue|r  |cFF94A3B8v%s|r", GetAccentHex(), VERSION))
+        end
+        sf.RefreshTitle()
+
+        local footer = CreateFrame("Frame", nil, sf)
+        footer:SetHeight(36)
+        footer:SetPoint("BOTTOMLEFT", sf, "BOTTOMLEFT", 1, 1)
+        footer:SetPoint("BOTTOMRIGHT", sf, "BOTTOMRIGHT", -1, 1)
+        footer.bg = SolidTex(footer, "BACKGROUND", 1, surf.HEADER_BG.r, surf.HEADER_BG.g, surf.HEADER_BG.b, 1.0)
+        footer.bg:SetAllPoints()
+
+        local resetBtn = CreateActionButton(footer, 158, 24, "Reset DynamicDialogue", false, function()
+            DynamicDialogue:ResetModuleDefaults()
+        end)
+        resetBtn:SetPoint("LEFT", footer, "LEFT", 14, 0)
+
+        local reloadBtn = CreateActionButton(footer, 92, 24, "Reload UI", false, function()
+            if type(_G.ReloadUI) == "function" then _G.ReloadUI() end
+        end)
+        reloadBtn:SetPoint("RIGHT", footer, "RIGHT", -32, 0)
+
+        local grip = CreateFrame("Button", nil, footer)
+        grip:SetSize(14, 14)
+        grip:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", -4, 4)
+        grip:SetFrameLevel(footer:GetFrameLevel() + 4)
+        grip:EnableMouse(true)
+        local gripTex = grip:CreateTexture(nil, "OVERLAY", nil, 5)
+        gripTex:SetAllPoints()
+        gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        gripTex:SetDesaturated(true)
+        gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+        grip:SetScript("OnEnter", function()
+            local cr, cg, cb = GetAccentColor()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+            gripTex:SetDesaturated(false)
+            gripTex:SetVertexColor(cr, cg, cb, 0.95)
+        end)
+        grip:SetScript("OnLeave", function()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+            gripTex:SetDesaturated(true)
+            gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+        end)
+        grip:SetScript("OnMouseDown", function(_, btn)
+            if btn == "LeftButton" then
+                sf:StartSizing("BOTTOMRIGHT")
+            elseif btn == "RightButton" then
+                sf:SetSize(820, 620)
+            end
+        end)
+        grip:SetScript("OnMouseUp", function()
+            sf:StopMovingOrSizing()
+        end)
+
         local body = CreateFrame("Frame", nil, sf)
         body:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, 0)
-        body:SetPoint("BOTTOMRIGHT", sf, "BOTTOMRIGHT", 0, 0)
+        body:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", 0, 0)
         RenderDialogueEmbedded(body)
 
         table.insert(UISpecialFrames, "DynamicDialogueStandaloneFrame")
         standaloneFrame = sf
     end
+    DynamicDialogue:ApplyTheme()
     standaloneFrame:Show()
 end
 
@@ -2869,8 +2958,9 @@ end
 DynamicDialogue.CHANGELOG = {
     {
         version = VERSION,
-        date = "21/11/2026",
+        date = "25/11/2026",
         entries = {
+            { type = "UI",      text = "Pass 6 Standalone Window Parity, Live Accent Print & 800x520 Width Sync (25/11/2026): Made DynamicDialogueStandaloneFrame resizable (760x480 to 1280x860) with a 36px Reset/Reload footer, 14x14 live-accent resize grip, and ApplyTheme border/header repaint; switched Print() chat prefixes from hardcoded orange to the live Suite Accent; synced scrollContent width immediately on OnShow for clean 800x520 first-open layout; and updated setting labels ('Hold Shift for Default Blizzard Window', '11 to 18 px') in plain Australian English." },
             { type = "FEATURE", text = "Unified Obsidian Confirm Screen & Auto-Accept Quest Fix (21/11/2026): Added a shared Obsidian Confirm screen for gossip confirmations, shared group quests, and Hearthstone innkeeper binding with 1 / Space double-tap confirmation (0.15s debounce) and Esc cancellation while leaving code-entry prompts native; and fixed auto-accepted quests to show Okay [Space] (no Decline) cleanly." },
             { type = "UI",      text = "Release v2.7.0 (21/11/2026): Upgraded DynamicDialogue to the universal 34px #0B0D12 equal-width 2-tab header bar, dedicated 44px Action & Status strip inside the settings canvas, crisp non-outlined card fonts, standardised 156x26px (68px Off / 84px Enabled) binary switches, and 2-line wrapped descriptions so every row fits cleanly down to 800x520." },
             { type = "FIX",     text = "Release v2.6.9 (21/11/2026): Fixed first-open FontString rendering and overlapping sub-tab cards, added the 4px Obsidian settings scrollbar, matched standalone title colours, and fixed the Retail 12.1.5 Blizzard Quest/Gossip conflict check so clean installs show Active cleanly." },

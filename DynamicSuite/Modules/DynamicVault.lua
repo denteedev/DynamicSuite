@@ -1228,17 +1228,16 @@ local function GetSortedCharacters(db)
     return list
 end
 
-local function CreateVaultTrackWidget(parent, label, trackData, xOffset)
-    local _, acc = GetTheme()
+local function CreateVaultTrackWidget(parent, label, trackData)
     local wrap = CreateFrame("Frame", nil, parent)
-    wrap:SetSize(160, 22)
-    wrap:SetPoint("TOPLEFT", parent, "TOPLEFT", xOffset, -34)
+    wrap:SetSize(148, 22)
 
     local lbl = wrap:CreateFontString(nil, "OVERLAY")
     SetFontSafe(lbl, 9.5, "")
     lbl:SetPoint("LEFT", wrap, "LEFT", 0, 0)
-    lbl:SetWidth(48)
+    lbl:SetWidth(42)
     lbl:SetJustifyH("LEFT")
+    lbl:SetWordWrap(false)
     lbl:SetTextColor(0.62, 0.69, 0.78, 1.0)
     lbl:SetText(label)
 
@@ -1250,7 +1249,7 @@ local function CreateVaultTrackWidget(parent, label, trackData, xOffset)
         local isDone = (slot and slot.unlocked) or (idx <= unlocked)
         local pip = CreateFrame("Frame", nil, wrap, "BackdropTemplate")
         pip:SetSize(32, 16)
-        pip:SetPoint("LEFT", wrap, "LEFT", 50 + ((idx - 1) * 35), 0)
+        pip:SetPoint("LEFT", wrap, "LEFT", 44 + ((idx - 1) * 35), 0)
         if isDone then
             ApplyBackdrop(pip, { 0.063, 0.725, 0.506, 0.28 }, { 0.063, 0.725, 0.506, 0.90 })
         else
@@ -1381,42 +1380,145 @@ local function RenderVaultEmbedded(parent)
     track:SetWidth(4)
     track:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", 10, -2)
     track:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", 10, 2)
+    track:EnableMouse(true)
+    track:SetHitRectInsets(-5, -5, 0, 0)
     ApplyBackdrop(track, { 0.043, 0.051, 0.071, 0.85 }, { 0, 0, 0, 0 })
 
-    local thumb = CreateSolidTex(track, "OVERLAY", 2, acc.r, acc.g, acc.b, 0.78)
+    local thumb = CreateFrame("Button", nil, track)
     thumb:SetWidth(4)
+    thumb:SetHeight(48)
     thumb:SetPoint("TOP", track, "TOP", 0, 0)
+    thumb:EnableMouse(true)
+    thumb:SetHitRectInsets(-5, -5, 0, 0)
+    thumb.tex = CreateSolidTex(thumb, "OVERLAY", 2, 0.38, 0.45, 0.56, 0.85)
+    thumb.tex:SetAllPoints()
+
+    local function SyncThumbColor()
+        local _, a = GetTheme()
+        if thumb.isDragging then
+            thumb.tex:SetColorTexture(a.r, a.g, a.b, 1.0)
+        elseif thumb.isHovered then
+            thumb.tex:SetColorTexture(a.r, a.g, a.b, 0.90)
+        else
+            thumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+        end
+    end
 
     local function UpdateScrollBar()
+        if scrollFrame.UpdateScrollChildRect then pcall(scrollFrame.UpdateScrollChildRect, scrollFrame) end
+        SyncThumbColor()
         local viewH = scrollFrame:GetHeight() or 1
         local totalH = scrollContent:GetHeight() or 1
         local maxScroll = math.max(0, totalH - viewH)
         if maxScroll <= 1 then
             track:Hide()
+            thumb:Hide()
+            scrollFrame:SetVerticalScroll(0)
             return
         end
         track:Show()
+        thumb:Show()
         local cur = math.max(0, math.min(maxScroll, scrollFrame:GetVerticalScroll() or 0))
         local trackH = track:GetHeight() or 1
-        local thumbH = math.max(24, math.floor(trackH * (viewH / totalH)))
+        local thumbH = math.max(24, math.floor(trackH * math.min(1, viewH / totalH) + 0.5))
         local travel = math.max(1, trackH - thumbH)
         thumb:SetHeight(thumbH)
         thumb:ClearAllPoints()
-        thumb:SetPoint("TOP", track, "TOP", 0, -math.floor((cur / maxScroll) * travel))
+        thumb:SetPoint("TOP", track, "TOP", 0, -math.floor((cur / maxScroll) * travel + 0.5))
     end
 
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        local viewH = self:GetHeight() or 1
+    local function ScrollVaultFromCursor()
+        if IsMouseButtonDown and not IsMouseButtonDown("LeftButton") then
+            thumb.isDragging = false
+            thumb:SetScript("OnUpdate", nil)
+            track:SetScript("OnUpdate", nil)
+            SyncThumbColor()
+            return
+        end
+        local viewH = scrollFrame:GetHeight() or 0
+        local totalH = scrollContent:GetHeight() or 0
+        local trackH = track:GetHeight() or 0
+        local maxScroll = math.max(0, totalH - viewH)
+        if maxScroll <= 1 or trackH <= 1 then return end
+        local tTop = track:GetTop()
+        local eff = track:GetEffectiveScale() or 1
+        if not tTop or eff <= 0 then return end
+        local _, cy = GetCursorPosition()
+        local relY = math.max(0, math.min(trackH, tTop - (cy / eff)))
+        local thumbH = thumb:GetHeight() or 24
+        local travel = math.max(1, trackH - thumbH)
+        local pct = math.max(0, math.min(1, (relY - (thumbH * 0.5)) / travel))
+        scrollFrame:SetVerticalScroll(pct * maxScroll)
+        UpdateScrollBar()
+    end
+
+    local function ScrollByDelta(delta)
+        local viewH = scrollFrame:GetHeight() or 1
         local totalH = scrollContent:GetHeight() or 1
         local maxScroll = math.max(0, totalH - viewH)
-        local nextPos = math.max(0, math.min(maxScroll, (self:GetVerticalScroll() or 0) - (delta * 38)))
-        self:SetVerticalScroll(nextPos)
+        local nextPos = math.max(0, math.min(maxScroll, (scrollFrame:GetVerticalScroll() or 0) - (delta * 38)))
+        scrollFrame:SetVerticalScroll(nextPos)
         UpdateScrollBar()
+    end
+
+    thumb:SetScript("OnEnter", function(self)
+        self.isHovered = true
+        SyncThumbColor()
     end)
-    scrollFrame:SetScript("OnSizeChanged", function(self, w)
+    thumb:SetScript("OnLeave", function(self)
+        self.isHovered = false
+        SyncThumbColor()
+    end)
+    thumb:SetScript("OnMouseDown", function(self, btn)
+        if btn == "LeftButton" then
+            self.isDragging = true
+            SyncThumbColor()
+            ScrollVaultFromCursor()
+            self:SetScript("OnUpdate", ScrollVaultFromCursor)
+        end
+    end)
+    thumb:SetScript("OnMouseUp", function(self, btn)
+        if btn == "LeftButton" then
+            self.isDragging = false
+            self:SetScript("OnUpdate", nil)
+            SyncThumbColor()
+        end
+    end)
+    thumb:SetScript("OnHide", function(self)
+        self.isDragging = false
+        self.isHovered = false
+        self:SetScript("OnUpdate", nil)
+        SyncThumbColor()
+    end)
+    track:SetScript("OnMouseDown", function(self, btn)
+        if btn == "LeftButton" then
+            thumb.isDragging = true
+            SyncThumbColor()
+            ScrollVaultFromCursor()
+            self:SetScript("OnUpdate", ScrollVaultFromCursor)
+        end
+    end)
+    track:SetScript("OnMouseUp", function(self, btn)
+        if btn == "LeftButton" then
+            thumb.isDragging = false
+            self:SetScript("OnUpdate", nil)
+            SyncThumbColor()
+        end
+    end)
+    track:SetScript("OnHide", function(self)
+        thumb.isDragging = false
+        self:SetScript("OnUpdate", nil)
+        SyncThumbColor()
+    end)
+
+    scrollFrame:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
+    track:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
+    thumb:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
+    scrollFrame:SetScript("OnSizeChanged", function(_, w)
         if w and w > 40 then scrollContent:SetWidth(w) end
         UpdateScrollBar()
     end)
+    scrollFrame:SetScript("OnShow", UpdateScrollBar)
 
     local y = 0
     local tabId = db.activeSubTab or 1
@@ -1433,35 +1535,6 @@ local function RenderVaultEmbedded(parent)
         local pKey = GetPlayerKey()
         local curChar = pKey and db.characters[pKey]
         local hasReward = curChar and curChar.vault and curChar.vault.hasAvailableReward
-
-        local bTitle = banner:CreateFontString(nil, "OVERLAY")
-        SetFontSafe(bTitle, 11.5, "")
-        bTitle:SetPoint("TOPLEFT", banner, "TOPLEFT", 14, -8)
-        bTitle:SetJustifyH("LEFT")
-        bTitle:SetTextColor(0.95, 0.97, 1.0, 1.0)
-        bTitle:SetText(string.format("Weekly Reset in |cFF38BDF8%s|r%s",
-            FormatTimeRemaining(secsLeft),
-            hasReward and "   |   |cFFFBBF24GREAT VAULT REWARD READY!|r" or ""))
-
-        local bSub = banner:CreateFontString(nil, "OVERLAY")
-        SetFontSafe(bSub, 9.5, "")
-        bSub:SetPoint("TOPLEFT", bTitle, "BOTTOMLEFT", 0, -2)
-        bSub:SetJustifyH("LEFT")
-        bSub:SetTextColor(0.60, 0.67, 0.76, 1.0)
-        local charCount, totalGold, totalKeys, readyCount = 0, 0, 0, 0
-        for _, cData in pairs(db.characters or {}) do
-            if type(cData) == "table" then
-                charCount = charCount + 1
-                totalGold = totalGold + SafeNum(cData.gold, 0)
-                totalKeys = totalKeys + SafeNum(cData.currencies and cData.currencies.cofferKeys, 0)
-                if cData.vault and cData.vault.hasAvailableReward then readyCount = readyCount + 1 end
-            end
-        end
-        local wbGold = (_G.DynamicBagsDB and _G.DynamicBagsDB.vault and SafeNum(_G.DynamicBagsDB.vault.warbandGold, 0)) or 0
-        totalGold = totalGold + wbGold
-        bSub:SetText(string.format("%d Alts  |  Account Gold: |cFFFCD34D%s|r  |  Total Keys: |cFFFBBF24%d|r%s",
-            charCount, FormatGoldCompact(totalGold), totalKeys,
-            readyCount > 0 and string.format("  |  |cFFFBBF24%d Vault(s) Ready|r", readyCount) or ""))
 
         local openBtn = CreateStyledButton(banner, "Open Great Vault", 128, 26, true, function()
             DynamicVault:OpenBlizzardVault()
@@ -1481,6 +1554,39 @@ local function RenderVaultEmbedded(parent)
             end
         end)
         scanBtn:HookScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+
+        local bTitle = banner:CreateFontString(nil, "OVERLAY")
+        SetFontSafe(bTitle, 11.5, "")
+        bTitle:SetPoint("TOPLEFT", banner, "TOPLEFT", 14, -8)
+        bTitle:SetPoint("RIGHT", scanBtn, "LEFT", -10, 0)
+        bTitle:SetJustifyH("LEFT")
+        bTitle:SetWordWrap(false)
+        bTitle:SetTextColor(0.95, 0.97, 1.0, 1.0)
+        bTitle:SetText(string.format("Weekly Reset in |cFF38BDF8%s|r%s",
+            FormatTimeRemaining(secsLeft),
+            hasReward and "   |   |cFFFBBF24GREAT VAULT REWARD READY!|r" or ""))
+
+        local bSub = banner:CreateFontString(nil, "OVERLAY")
+        SetFontSafe(bSub, 9.5, "")
+        bSub:SetPoint("TOPLEFT", bTitle, "BOTTOMLEFT", 0, -2)
+        bSub:SetPoint("RIGHT", scanBtn, "LEFT", -10, 0)
+        bSub:SetJustifyH("LEFT")
+        bSub:SetWordWrap(false)
+        bSub:SetTextColor(0.60, 0.67, 0.76, 1.0)
+        local charCount, totalGold, totalKeys, readyCount = 0, 0, 0, 0
+        for _, cData in pairs(db.characters or {}) do
+            if type(cData) == "table" then
+                charCount = charCount + 1
+                totalGold = totalGold + SafeNum(cData.gold, 0)
+                totalKeys = totalKeys + SafeNum(cData.currencies and cData.currencies.cofferKeys, 0)
+                if cData.vault and cData.vault.hasAvailableReward then readyCount = readyCount + 1 end
+            end
+        end
+        local wbGold = (_G.DynamicBagsDB and _G.DynamicBagsDB.vault and SafeNum(_G.DynamicBagsDB.vault.warbandGold, 0)) or 0
+        totalGold = totalGold + wbGold
+        bSub:SetText(string.format("%d Alts  |  Account Gold: |cFFFCD34D%s|r  |  Total Keys: |cFFFBBF24%d|r%s",
+            charCount, FormatGoldCompact(totalGold), totalKeys,
+            readyCount > 0 and string.format("  |  |cFFFBBF24%d Vault(s) Ready|r", readyCount) or ""))
 
         y = y - 56
 
@@ -1509,9 +1615,12 @@ local function RenderVaultEmbedded(parent)
 
         local hintFs = bar:CreateFontString(nil, "OVERLAY")
         SetFontSafe(hintFs, 9.5, "")
-        hintFs:SetPoint("RIGHT", bar, "RIGHT", -12, 0)
+        hintFs:SetPoint("LEFT", lvlBtn, "RIGHT", 10, 0)
+        hintFs:SetPoint("RIGHT", bar, "RIGHT", -10, 0)
+        hintFs:SetJustifyH("RIGHT")
+        hintFs:SetWordWrap(false)
         hintFs:SetTextColor(0.55, 0.62, 0.72, 0.95)
-        hintFs:SetText("Star (*) pins favourites  |  Log alts in once to populate Vault & Crests")
+        hintFs:SetText("Star (*) pins alts | Log in once to sync")
 
         y = y - 42
 
@@ -1547,9 +1656,12 @@ local function RenderVaultEmbedded(parent)
             emptyBox:SetHeight(64)
             local eFs = emptyBox:CreateFontString(nil, "OVERLAY")
             SetFontSafe(eFs, 11, "")
-            eFs:SetPoint("CENTER")
+            eFs:SetPoint("LEFT", emptyBox, "LEFT", 14, 0)
+            eFs:SetPoint("RIGHT", emptyBox, "RIGHT", -14, 0)
+            eFs:SetJustifyH("CENTER")
+            eFs:SetWordWrap(true)
             eFs:SetTextColor(0.65, 0.72, 0.80, 1)
-            eFs:SetText("No characters recorded yet. Click Scan to snapshot your current character.")
+            eFs:SetText("No characters recorded yet. Click Refresh to snapshot your current character.")
             y = y - 74
         else
             for _, ch in ipairs(sorted) do
@@ -1576,15 +1688,6 @@ local function RenderVaultEmbedded(parent)
                     db.favourites[ch.key] = not db.favourites[ch.key]
                     RenderVaultEmbedded(parent)
                 end)
-
-                -- Character Identity Line
-                local hex = GetClassHex(ch.classFile)
-                local nameFs = card:CreateFontString(nil, "OVERLAY")
-                SetFontSafe(nameFs, 11.5, "")
-                nameFs:SetPoint("LEFT", starBtn, "RIGHT", 4, 0)
-                nameFs:SetJustifyH("LEFT")
-                local specTxt = (ch.specName and ch.specName ~= "") and ("  |cFF64748B" .. ch.specName .. "|r") or ""
-                nameFs:SetText(string.format("|cFF%s%s|r |cFF64748B-%s|r%s", hex, SafeStr(ch.name, "?"), SafeStr(ch.realm, ""), specTxt))
 
                 -- Right Telemetry (iLvl, M+ Rating, Keystone, Reward Badge, Remove)
                 local rightX = -10
@@ -1632,13 +1735,42 @@ local function RenderVaultEmbedded(parent)
                 SetFontSafe(metaFs, 10, "")
                 metaFs:SetPoint("TOPRIGHT", card, "TOPRIGHT", rightX, -10)
                 metaFs:SetJustifyH("RIGHT")
+                metaFs:SetWordWrap(false)
                 metaFs:SetText(table.concat(metaParts, "   "))
 
-                -- 3 Great Vault Track Rows (Raid / M+ / Delves)
+                -- Character Identity Line (clamped cleanly left of right telemetry)
+                local hex = GetClassHex(ch.classFile)
+                local nameFs = card:CreateFontString(nil, "OVERLAY")
+                SetFontSafe(nameFs, 11.5, "")
+                nameFs:SetPoint("LEFT", starBtn, "RIGHT", 4, 0)
+                nameFs:SetPoint("RIGHT", metaFs, "LEFT", -8, 0)
+                nameFs:SetJustifyH("LEFT")
+                nameFs:SetWordWrap(false)
+                local specTxt = (ch.specName and ch.specName ~= "") and ("  |cFF64748B" .. ch.specName .. "|r") or ""
+                nameFs:SetText(string.format("|cFF%s%s|r |cFF64748B-%s|r%s", hex, SafeStr(ch.name, "?"), SafeStr(ch.realm, ""), specTxt))
+
+                -- 3 Great Vault Track Rows (Raid / M+ / Delves) proportioned cleanly
                 local v = ch.vault or {}
-                CreateVaultTrackWidget(card, "Raid",   v.raid,  12)
-                CreateVaultTrackWidget(card, "Myth+",  v.mplus, 184)
-                CreateVaultTrackWidget(card, "Delves", v.world, 356)
+                local trackRow = CreateFrame("Frame", nil, card)
+                trackRow:SetPoint("TOPLEFT", card, "TOPLEFT", 12, -34)
+                trackRow:SetPoint("TOPRIGHT", card, "TOPRIGHT", -12, -34)
+                trackRow:SetHeight(22)
+                local wRaid   = CreateVaultTrackWidget(trackRow, "Raid",   v.raid)
+                local wMplus  = CreateVaultTrackWidget(trackRow, "Myth+",  v.mplus)
+                local wDelves = CreateVaultTrackWidget(trackRow, "Delves", v.world)
+                local function ReflowTrackRow()
+                    local rw = trackRow:GetWidth() or 516
+                    if rw < 180 then return end
+                    local colW = math.floor((rw - 12) / 3)
+                    wRaid:ClearAllPoints()
+                    wRaid:SetPoint("LEFT", trackRow, "LEFT", 0, 0)
+                    wMplus:ClearAllPoints()
+                    wMplus:SetPoint("LEFT", trackRow, "LEFT", colW + 6, 0)
+                    wDelves:ClearAllPoints()
+                    wDelves:SetPoint("LEFT", trackRow, "LEFT", (colW + 6) * 2, 0)
+                end
+                trackRow:SetScript("OnSizeChanged", ReflowTrackRow)
+                ReflowTrackRow()
 
                 -- Currencies & Gold Bottom Strip
                 if db.showCurrencies ~= false then
@@ -1729,17 +1861,21 @@ local function RenderVaultEmbedded(parent)
             bar:SetSize(3, 20)
             bar:SetPoint("LEFT", row, "LEFT", 10, 0)
 
-            local tFs = row:CreateFontString(nil, "OVERLAY")
-            SetFontSafe(tFs, 11, "")
-            tFs:SetPoint("LEFT", bar, "RIGHT", 10, 0)
-            tFs:SetTextColor(rowDef.done and 0.78 or 0.96, rowDef.done and 0.86 or 0.98, rowDef.done and 0.92 or 1.0, 1.0)
-            tFs:SetText(rowDef.title)
-
             local pFs = row:CreateFontString(nil, "OVERLAY")
             SetFontSafe(pFs, 10, "")
             pFs:SetPoint("RIGHT", row, "RIGHT", -12, 0)
+            pFs:SetWordWrap(false)
             pFs:SetTextColor(0.75, 0.82, 0.90, 1.0)
             pFs:SetText(rowDef.pill)
+
+            local tFs = row:CreateFontString(nil, "OVERLAY")
+            SetFontSafe(tFs, 11, "")
+            tFs:SetPoint("LEFT", bar, "RIGHT", 10, 0)
+            tFs:SetPoint("RIGHT", pFs, "LEFT", -10, 0)
+            tFs:SetJustifyH("LEFT")
+            tFs:SetWordWrap(false)
+            tFs:SetTextColor(rowDef.done and 0.78 or 0.96, rowDef.done and 0.86 or 0.98, rowDef.done and 0.92 or 1.0, 1.0)
+            tFs:SetText(rowDef.title)
 
             sy = sy - 40
         end
@@ -1833,12 +1969,6 @@ local function RenderVaultEmbedded(parent)
                 RenderVaultEmbedded(parent)
             end)
 
-            local tFs = row:CreateFontString(nil, "OVERLAY")
-            SetFontSafe(tFs, 11, "")
-            tFs:SetPoint("LEFT", chk, "RIGHT", 10, 0)
-            tFs:SetTextColor(isDone and 0.55 or 0.95, isDone and 0.62 or 0.97, isDone and 0.70 or 1.0, 1.0)
-            tFs:SetText(SafeStr(task.title, "Weekly Task"))
-
             local delBtn = CreateFrame("Button", nil, row)
             delBtn:SetSize(20, 20)
             delBtn:SetPoint("RIGHT", row, "RIGHT", -8, 0)
@@ -1857,8 +1987,18 @@ local function RenderVaultEmbedded(parent)
             local scopeTag = row:CreateFontString(nil, "OVERLAY")
             SetFontSafe(scopeTag, 9.5, "")
             scopeTag:SetPoint("RIGHT", delBtn, "LEFT", -8, 0)
+            scopeTag:SetWordWrap(false)
             scopeTag:SetTextColor(isAcct and 0.98 or 0.58, isAcct and 0.75 or 0.65, isAcct and 0.14 or 0.74, 1.0)
             scopeTag:SetText(isAcct and "[ACCOUNT]" or "[CHAR]")
+
+            local tFs = row:CreateFontString(nil, "OVERLAY")
+            SetFontSafe(tFs, 11, "")
+            tFs:SetPoint("LEFT", chk, "RIGHT", 10, 0)
+            tFs:SetPoint("RIGHT", scopeTag, "LEFT", -10, 0)
+            tFs:SetJustifyH("LEFT")
+            tFs:SetWordWrap(false)
+            tFs:SetTextColor(isDone and 0.55 or 0.95, isDone and 0.62 or 0.97, isDone and 0.70 or 1.0, 1.0)
+            tFs:SetText(SafeStr(task.title, "Weekly Task"))
 
             sy2 = sy2 - 40
         end
@@ -1886,7 +2026,7 @@ local function RenderVaultEmbedded(parent)
             function(v) db.dockOnGreatVault = v; if DynamicVault.RefreshOverlays then DynamicVault:RefreshOverlays() end end)
         sy = sy + dyDock
 
-        local _, dyPrepCap = CreateSegmentedSwitchCard(sec1, sy, "Show Great Vault Capsule on Prep Bar (Recommended)",
+        local _, dyPrepCap = CreateSegmentedSwitchCard(sec1, sy, "Show Great Vault on Top Info Bar",
             "Integrates a compact Great Vault capsule directly into DynamicPrep's Top Info Bar (Left-Click /dv, Right-Click Great Vault, hover for all alts). Zero extra screen boxes.",
             function()
                 return _G.DynamicPrepDB and _G.DynamicPrepDB.segments and _G.DynamicPrepDB.segments.vault == true
@@ -1902,25 +2042,25 @@ local function RenderVaultEmbedded(parent)
             end)
         sy = sy + dyPrepCap
 
-        local _, dy2 = CreateSegmentedSwitchCard(sec1, sy, "Login Reminder When Great Vault Reward Is Ready",
+        local _, dy2 = CreateSegmentedSwitchCard(sec1, sy, "Great Vault Ready Login Reminder",
             "Print a subtle chat reminder on login when your current character has an unclaimed Great Vault reward.",
             function() return db.loginVaultReminder end,
             function(v) db.loginVaultReminder = v end)
         sy = sy + dy2
 
-        local _, dy3 = CreateSegmentedSwitchCard(sec1, sy, "Sync Known Alts & Gold from DynamicBags Vault",
+        local _, dy3 = CreateSegmentedSwitchCard(sec1, sy, "Sync Alts & Gold from DynamicBags",
             "Automatically include characters already indexed by DynamicBags Alt Vault in your Account Matrix.",
             function() return db.syncDynamicBags end,
             function(v) db.syncDynamicBags = v end)
         sy = sy + dy3
 
-        local _, dy4 = CreateSegmentedSwitchCard(sec1, sy, "Show Currencies, Delve Keys & Crests Strip",
+        local _, dy4 = CreateSegmentedSwitchCard(sec1, sy, "Show Keys, Crests & Gold Strip",
             "Display Restored Coffer Keys, Shards, Catalyst charges, seasonal Crests, and Gold on each character card.",
             function() return db.showCurrencies ~= false end,
             function(v) db.showCurrencies = v end)
         sy = sy + dy4
 
-        local _, dy5 = CreateSegmentedSwitchCard(sec1, sy, "Show Owned Mythic+ Keystone on Alt Cards",
+        local _, dy5 = CreateSegmentedSwitchCard(sec1, sy, "Show Owned Keystone on Alt Cards",
             "Display each character's current Mythic+ Keystone level and dungeon name next to their rating.",
             function() return db.showKeystones ~= false end,
             function(v) db.showKeystones = v end)
@@ -2353,16 +2493,18 @@ function DynamicVault:Open()
     if not standaloneWin then
         local surf, acc = GetTheme()
         local f = CreateFrame("Frame", "DynamicVaultStandaloneFrame", UIParent, "BackdropTemplate")
-        f:SetSize(740, 520)
+        f:SetSize(780, 560)
         f:SetPoint("CENTER")
         f:SetMovable(true)
+        f:SetResizable(true)
+        if f.SetResizeBounds then f:SetResizeBounds(740, 480, 1280, 860) end
         f:SetClampedToScreen(true)
         f:EnableMouse(true)
         f:RegisterForDrag("LeftButton")
         f:SetScript("OnDragStart", f.StartMoving)
         f:SetScript("OnDragStop", f.StopMovingOrSizing)
         f:SetFrameStrata("HIGH")
-        ApplyBackdrop(f, surf.bg, { acc.r, acc.g, acc.b, 0.85 })
+        ApplyBackdrop(f, surf.bg, { acc.r, acc.g, acc.b, 0.90 })
         if type(_G.UISpecialFrames) == "table" then
             local seen = false
             for _, n in ipairs(_G.UISpecialFrames) do
@@ -2371,17 +2513,80 @@ function DynamicVault:Open()
             if not seen then table.insert(_G.UISpecialFrames, "DynamicVaultStandaloneFrame") end
         end
 
-        local title = f:CreateFontString(nil, "OVERLAY")
+        local hdr = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        hdr:SetHeight(40)
+        hdr:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
+        hdr:SetPoint("TOPRIGHT", f, "TOPRIGHT", -1, -1)
+        ApplyBackdrop(hdr, surf.header, surf.border)
+
+        local topLine = CreateSolidTex(hdr, "OVERLAY", 4, acc.r, acc.g, acc.b, 1.0)
+        topLine:SetHeight(2)
+        topLine:SetPoint("TOPLEFT", hdr, "TOPLEFT", 0, 0)
+        topLine:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", 0, 0)
+        f.topLine = topLine
+
+        local closeBtn = CreateStyledButton(hdr, "X", 26, 24, false, function() f:Hide() end)
+        closeBtn:SetPoint("RIGHT", hdr, "RIGHT", -10, 0)
+
+        local title = hdr:CreateFontString(nil, "OVERLAY")
         SetFontSafe(title, 13, "")
-        title:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -12)
+        title:SetPoint("LEFT", hdr, "LEFT", 14, 0)
+        title:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
+        title:SetJustifyH("LEFT")
+        title:SetWordWrap(false)
         title:SetText(string.format("|cFFCBD5E1Dynamic|r|cFFFFFFFFVault|r |cFF64748Bv%s|r", VERSION))
 
-        local closeBtn = CreateStyledButton(f, "X", 24, 22, false, function() f:Hide() end)
-        closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -10)
+        local footer = CreateFrame("Frame", nil, f, "BackdropTemplate")
+        footer:SetHeight(36)
+        footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 1)
+        footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
+        ApplyBackdrop(footer, surf.header, surf.border)
+
+        local resetBtn = CreateStyledButton(footer, "Reset DynamicVault", 148, 24, false, function()
+            DynamicVault:ResetModuleDefaults()
+        end)
+        resetBtn:SetPoint("LEFT", footer, "LEFT", 14, 0)
+
+        local reloadBtn = CreateStyledButton(footer, "Reload UI", 92, 24, false, function()
+            if type(_G.ReloadUI) == "function" then _G.ReloadUI() end
+        end)
+        reloadBtn:SetPoint("RIGHT", footer, "RIGHT", -32, 0)
+
+        local grip = CreateFrame("Button", nil, footer)
+        grip:SetSize(14, 14)
+        grip:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", -4, 4)
+        grip:SetFrameLevel(footer:GetFrameLevel() + 4)
+        grip:EnableMouse(true)
+        local gripTex = grip:CreateTexture(nil, "OVERLAY", nil, 5)
+        gripTex:SetAllPoints()
+        gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+        gripTex:SetDesaturated(true)
+        gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+        grip:SetScript("OnEnter", function()
+            local _, a = GetTheme()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+            gripTex:SetDesaturated(false)
+            gripTex:SetVertexColor(a.r, a.g, a.b, 0.95)
+        end)
+        grip:SetScript("OnLeave", function()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+            gripTex:SetDesaturated(true)
+            gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+        end)
+        grip:SetScript("OnMouseDown", function(_, btn)
+            if btn == "LeftButton" then
+                f:StartSizing("BOTTOMRIGHT")
+            elseif btn == "RightButton" then
+                f:SetSize(780, 560)
+            end
+        end)
+        grip:SetScript("OnMouseUp", function()
+            f:StopMovingOrSizing()
+        end)
 
         local body = CreateFrame("Frame", nil, f)
-        body:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -38)
-        body:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 6)
+        body:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, 0)
+        body:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", 0, 0)
         f.body = body
         standaloneWin = f
     end
@@ -2391,6 +2596,13 @@ function DynamicVault:Open()
 end
 
 function DynamicVault:ApplyTheme()
+    local surf, acc = GetTheme()
+    if standaloneWin then
+        ApplyBackdrop(standaloneWin, surf.bg, { acc.r, acc.g, acc.b, 0.90 })
+        if standaloneWin.topLine then
+            standaloneWin.topLine:SetColorTexture(acc.r, acc.g, acc.b, 1.0)
+        end
+    end
     if type(RefreshScreenOverlay) == "function" then
         pcall(RefreshScreenOverlay)
     end
@@ -2412,8 +2624,9 @@ DynamicVault.Reset               = function() return DynamicVault:ResetModuleDef
 DynamicVault.CHANGELOG = {
     {
         version = VERSION,
-        date = "21/11/2026",
+        date = "25/11/2026",
         entries = {
+            { type = "UI", text = "Pass 6 Standalone Parity, 3-Way Scrollbar & 800x520 Clamping (25/11/2026): Made DynamicVaultStandaloneFrame resizable (740x480 to 1280x860) with a 40px header, 36px Reset/Reload footer, 14x14 live-accent resize grip, and ApplyTheme border repaint; upgraded the workspace scrollbar to full 3-way interaction (mousewheel, track click-to-jump, and draggable thumb with live accent highlight); right-clamped Tab 1 banner titles, filter hint, character names, proportional Raid/Myth+/Delves tracks, and Tab 2 checklist rows for clean 800x520 layout; tightened Tab 3 switch titles; and fixed the empty-state prompt ('Click Refresh to snapshot your current character.')." },
             { type = "UI", text = "Release v2.7.0 (21/11/2026): Standardised settings toggle switches (68px Off / 84px Enabled inside 156x26px) and 256x26px Precision Track sliders (6x14px thumb, 52px readout, mousewheel & hover highlight), and anchored card titles/descriptions relative to right-hand controls with 2-line wrapping so nothing clips at 800x520." },
             { type = "FIX", text = "Release v2.6.9 (21/11/2026): Fixed a Great Vault top dock width calculation error when 2 or more alts are tracked, enabled Escape key closing on the standalone /dv window, cleaned up legacy /dv overlay hints to point to DynamicPrep's Top Info Bar, and registered DynamicVault's changelog with DynamicSuite." },
             { type = "NEW", text = "Initial v2.5.0 Release (19/11/2026): Added DynamicVault (/dv, /dynamicvault) with Account-Wide Great Vault Matrix (Raid, Mythic+, and World/Delves 3-slot progress and target iLvl), live Restored Coffer Keys / Shards / Catalyst / Seasonal Crests tracking, Weekly Reset countdown and automatic rollover, Owned Keystone details, Auto-Tracked & Custom Weekly Checklists, 1-click Open Great Vault anywhere (/dv open), and full DynamicSuite + DynamicBags Alt Vault integration." },

@@ -284,7 +284,7 @@ end
 
 local function SetNativeCursorSize(val)
     if InCombatLockdown and InCombatLockdown() then
-        PrintMsg("Cannot change Hardware Cursor Size during combat.")
+        PrintMsg("Cannot change Built-In Mouse Pointer Size during combat.")
         return
     end
     local sVal = tostring(val or "-1")
@@ -1850,7 +1850,7 @@ function DynamicCursor:ApplyPreset(presetKey)
         db.trailEnabled = true
         db.trailStyle = "CLASS_SPARKS"
         db.trailDensity = 4
-        PrintMsg("Applied preset: Full Telemetry.")
+        PrintMsg("Applied preset: All Overlays.")
     end
     SyncAllEngines()
     if self.RefreshWorkspaceUI then self:RefreshWorkspaceUI() end
@@ -2278,6 +2278,16 @@ do
             ctrl:ClearAllPoints()
             ctrl:SetPoint("RIGHT", self, "RIGHT", -14, 0)
             self.ctrl = ctrl
+            if self.title then
+                self.title:ClearAllPoints()
+                self.title:SetPoint("TOPLEFT", self, "TOPLEFT", 14, -9)
+                self.title:SetPoint("RIGHT", ctrl, "LEFT", -12, 0)
+            end
+            if self.desc then
+                self.desc:ClearAllPoints()
+                self.desc:SetPoint("TOPLEFT", self.title, "BOTTOMLEFT", 0, -3)
+                self.desc:SetPoint("RIGHT", ctrl, "LEFT", -12, 0)
+            end
         end
         return row
     end
@@ -2342,6 +2352,16 @@ do
             ctrl:ClearAllPoints()
             ctrl:SetPoint("RIGHT", self, "RIGHT", -14, 0)
             self.ctrl = ctrl
+            if self.title then
+                self.title:ClearAllPoints()
+                self.title:SetPoint("TOPLEFT", self, "TOPLEFT", 22, -9)
+                self.title:SetPoint("RIGHT", ctrl, "LEFT", -12, 0)
+            end
+            if self.desc then
+                self.desc:ClearAllPoints()
+                self.desc:SetPoint("TOPLEFT", self.title, "BOTTOMLEFT", 0, -3)
+                self.desc:SetPoint("RIGHT", ctrl, "LEFT", -12, 0)
+            end
         end
         return row
     end
@@ -3028,25 +3048,63 @@ do
         presetLbl:SetTextColor(0.58, 0.64, 0.72, 1)
 
         local presetDefs = {
-            { key = "CLEAN_RAID",     label = "Clean Raid",      w = 88 },
-            { key = "HIGH_VIS",       label = "High-Visibility", w = 104 },
-            { key = "MINIMALIST",     label = "Minimalist",      w = 84 },
-            { key = "FULL_TELEMETRY", label = "Full Telemetry",  w = 104 },
+            { key = "CLEAN_RAID",     label = "Clean Raid",      w = 90 },
+            { key = "HIGH_VIS",       label = "High-Visibility", w = 108 },
+            { key = "MINIMALIST",     label = "Minimalist",      w = 88 },
+            { key = "FULL_TELEMETRY", label = "All Overlays",    w = 98 },
         }
-        local px = 86
         local presetBtns = {}
+        local function StylePresetBtn(pb, hovered)
+            local ar, ag, ab = GetSuiteAccent()
+            if hovered then
+                SetBackdropSolid(pb, { ar * 0.20, ag * 0.20, ab * 0.20, 0.98 }, { ar, ag, ab, 1.0 }, 1)
+                pb.lbl:SetTextColor(1, 1, 1, 1)
+            else
+                SetBackdropSolid(pb, { 0.078, 0.090, 0.122, 0.96 }, { ar, ag, ab, 0.70 }, 1)
+                pb.lbl:SetTextColor(0.92, 0.95, 0.99, 1)
+            end
+        end
+        local function ReflowPresets()
+            local cardW = presetCard:GetWidth() or 540
+            if cardW < 240 then return end
+            local startX = 82
+            local rightPad = 14
+            local gap = 6
+            local avail = math.max(200, cardW - startX - rightPad - (gap * (#presetBtns - 1)))
+            local weightSum = 0
+            for _, p in ipairs(presetDefs) do weightSum = weightSum + p.w end
+            local x = startX
+            for i, pb in ipairs(presetBtns) do
+                pb:ClearAllPoints()
+                pb:SetHeight(26)
+                if i == #presetBtns then
+                    pb:SetPoint("LEFT", presetCard, "LEFT", x, 0)
+                    pb:SetPoint("RIGHT", presetCard, "RIGHT", -rightPad, 0)
+                else
+                    local bw = math.max(58, math.floor((avail * presetDefs[i].w) / weightSum))
+                    pb:SetWidth(bw)
+                    pb:SetPoint("LEFT", presetCard, "LEFT", x, 0)
+                    x = x + bw + gap
+                end
+            end
+        end
         for _, p in ipairs(presetDefs) do
             local pb = CreateFrame("Button", nil, presetCard, "BackdropTemplate")
             pb:SetSize(p.w, 26)
-            pb:SetPoint("LEFT", presetCard, "LEFT", px, 0)
             pb.lbl = pb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             SetSafeFont(pb.lbl, 10, "")
-            pb.lbl:SetPoint("CENTER")
+            pb.lbl:SetPoint("LEFT", pb, "LEFT", 4, 0)
+            pb.lbl:SetPoint("RIGHT", pb, "RIGHT", -4, 0)
+            pb.lbl:SetJustifyH("CENTER")
+            pb.lbl:SetWordWrap(false)
             pb.lbl:SetText(p.label)
+            pb:SetScript("OnEnter", function(selfBtn) StylePresetBtn(selfBtn, true) end)
+            pb:SetScript("OnLeave", function(selfBtn) StylePresetBtn(selfBtn, false) end)
             pb:SetScript("OnClick", function() DynamicCursor:ApplyPreset(p.key) end)
             presetBtns[#presetBtns + 1] = pb
-            px = px + p.w + 6
         end
+        presetCard:SetScript("OnSizeChanged", ReflowPresets)
+        ReflowPresets()
         secPresets.cards[#secPresets.cards + 1] = presetCard
 
         local secRing = AddSection(1, "MAIN CURSOR RING", "Keep track of your pointer with a clean, click-through ring around your cursor.")
@@ -3248,11 +3306,7 @@ do
         local grpCross = AddGroupCard(secCross, "crosshairCore", "Enable Character Crosshair", "Displays a screen-centre crosshair around your character (Off by default).",
             function() return EnsureDB().crosshairEnabled == true end, function(v) EnsureDB().crosshairEnabled = v end)
         do
-            local elemRow = CreateSubRow(grpCross, "Crosshair Elements", "Mix and match any combination of elements.", 0, 74)
-            elemRow.desc:ClearAllPoints()
-            elemRow.desc:SetPoint("LEFT", elemRow.title, "RIGHT", 10, 0)
-            elemRow.desc:SetPoint("RIGHT", elemRow, "RIGHT", -14, 0)
-            elemRow.desc:SetWordWrap(false)
+            local elemRow = CreateSubRow(grpCross, "Crosshair Elements", "Mix and match any combination of crosshair, bracket, circle, or centre dot elements.", 0, 90)
 
             local elemDefs = {
                 { key = "crosshairShowCross",    label = "Crosshair",  w = 92 },
@@ -3261,17 +3315,49 @@ do
                 { key = "crosshairShowDot",      label = "Centre Dot", w = 96 },
             }
             local eBtns = {}
-            local ex = 22
+            local function ReflowElemBtns()
+                local rowW = elemRow:GetWidth() or 520
+                if rowW < 220 then return end
+                local leftPad = 22
+                local rightPad = 14
+                local gap = 6
+                local avail = math.max(180, rowW - leftPad - rightPad - (gap * (#eBtns - 1)))
+                local sumW = 0
+                for _, ed in ipairs(elemDefs) do sumW = sumW + ed.w end
+                local ex = leftPad
+                for i, eb in ipairs(eBtns) do
+                    eb:ClearAllPoints()
+                    eb:SetHeight(26)
+                    if i == #eBtns then
+                        eb:SetPoint("BOTTOMLEFT", elemRow, "BOTTOMLEFT", ex, 10)
+                        eb:SetPoint("BOTTOMRIGHT", elemRow, "BOTTOMRIGHT", -rightPad, 10)
+                    else
+                        local bw = math.max(54, math.floor((avail * elemDefs[i].w) / sumW))
+                        eb:SetWidth(bw)
+                        eb:SetPoint("BOTTOMLEFT", elemRow, "BOTTOMLEFT", ex, 10)
+                        ex = ex + bw + gap
+                    end
+                end
+            end
             for i, ed in ipairs(elemDefs) do
                 local eb = CreateFrame("Button", nil, elemRow, "BackdropTemplate")
                 eb:SetSize(ed.w, 26)
-                eb:SetPoint("TOPLEFT", elemRow, "TOPLEFT", ex, -36)
                 eb.lbl = eb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
                 SetSafeFont(eb.lbl, 11, "")
-                eb.lbl:SetPoint("CENTER")
+                eb.lbl:SetPoint("LEFT", eb, "LEFT", 4, 0)
+                eb.lbl:SetPoint("RIGHT", eb, "RIGHT", -4, 0)
+                eb.lbl:SetJustifyH("CENTER")
                 eb.lbl:SetWordWrap(false)
                 eb.lbl:SetText(ed.label)
                 eb.ed = ed
+                eb:SetScript("OnEnter", function(selfBtn)
+                    local db = EnsureDB()
+                    if db[ed.key] ~= true then
+                        local ar, ag, ab = GetSuiteAccent()
+                        selfBtn:SetBackdropBorderColor(ar, ag, ab, 0.70)
+                    end
+                end)
+                eb:SetScript("OnLeave", function() elemRow:RefreshValue() end)
                 eb:SetScript("OnClick", function()
                     local db = EnsureDB()
                     db[ed.key] = not (db[ed.key] == true)
@@ -3279,10 +3365,10 @@ do
                     DynamicCursor:RefreshWorkspaceUI()
                 end)
                 eBtns[i] = eb
-                ex = ex + ed.w + 6
             end
 
             function elemRow:RefreshValue()
+                ReflowElemBtns()
                 local db = EnsureDB()
                 local ar, ag, ab = GetSuiteAccent()
                 local alphaPill = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
@@ -3298,6 +3384,8 @@ do
                 end
             end
 
+            elemRow:SetScript("OnSizeChanged", ReflowElemBtns)
+            ReflowElemBtns()
             grpCross.rows[#grpCross.rows + 1] = elemRow
             refreshables[#refreshables + 1] = elemRow
         end
@@ -3388,11 +3476,7 @@ do
         -- ====================================================================
         local secVis = AddSection(4, "ACTIVITY VISIBILITY", "Choose which content types show the cursor ring and auto-hide during special modes.")
         do
-            local zoneRow = CreateSettingCard(secVis, "Active Zones", "Toggle individual content types or click All Zones to enable all five.", 0, 76)
-            zoneRow.desc:ClearAllPoints()
-            zoneRow.desc:SetPoint("LEFT", zoneRow.title, "RIGHT", 10, 0)
-            zoneRow.desc:SetPoint("RIGHT", zoneRow, "RIGHT", -14, 0)
-            zoneRow.desc:SetWordWrap(false)
+            local zoneRow = CreateSettingCard(secVis, "Active Zones", "Toggle individual content types or click All Zones to enable all five.", 0, 92)
 
             local zoneDefs = {
                 { key = "ALL",           label = "All Zones",  w = 82 },
@@ -3403,17 +3487,52 @@ do
                 { key = "showPvP",       label = "PvP",        w = 54 },
             }
             local zBtns = {}
-            local zx = 14
+            local function ReflowZoneBtns()
+                local rowW = zoneRow:GetWidth() or 538
+                if rowW < 240 then return end
+                local leftPad = 14
+                local rightPad = 14
+                local gap = 5
+                local avail = math.max(200, rowW - leftPad - rightPad - (gap * (#zBtns - 1)))
+                local sumW = 0
+                for _, zd in ipairs(zoneDefs) do sumW = sumW + zd.w end
+                local zx = leftPad
+                for i, zb in ipairs(zBtns) do
+                    zb:ClearAllPoints()
+                    zb:SetHeight(26)
+                    if i == #zBtns then
+                        zb:SetPoint("BOTTOMLEFT", zoneRow, "BOTTOMLEFT", zx, 10)
+                        zb:SetPoint("BOTTOMRIGHT", zoneRow, "BOTTOMRIGHT", -rightPad, 10)
+                    else
+                        local bw = math.max(40, math.floor((avail * zoneDefs[i].w) / sumW))
+                        zb:SetWidth(bw)
+                        zb:SetPoint("BOTTOMLEFT", zoneRow, "BOTTOMLEFT", zx, 10)
+                        zx = zx + bw + gap
+                    end
+                end
+            end
             for i, zd in ipairs(zoneDefs) do
                 local zb = CreateFrame("Button", nil, zoneRow, "BackdropTemplate")
                 zb:SetSize(zd.w, 26)
-                zb:SetPoint("TOPLEFT", zoneRow, "TOPLEFT", zx, -36)
                 zb.lbl = zb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-                SetSafeFont(zb.lbl, 11, "")
-                zb.lbl:SetPoint("CENTER")
+                SetSafeFont(zb.lbl, 10.5, "")
+                zb.lbl:SetPoint("LEFT", zb, "LEFT", 3, 0)
+                zb.lbl:SetPoint("RIGHT", zb, "RIGHT", -3, 0)
+                zb.lbl:SetJustifyH("CENTER")
                 zb.lbl:SetWordWrap(false)
                 zb.lbl:SetText(zd.label)
                 zb.zd = zd
+                zb:SetScript("OnEnter", function(selfBtn)
+                    local db = EnsureDB()
+                    local allOn = (db.showOpenWorld ~= false) and (db.showDelves ~= false)
+                        and (db.showDungeons ~= false) and (db.showRaids ~= false) and (db.showPvP ~= false)
+                    local active = (zd.key == "ALL") and allOn or (db[zd.key] ~= false)
+                    if not active then
+                        local ar, ag, ab = GetSuiteAccent()
+                        selfBtn:SetBackdropBorderColor(ar, ag, ab, 0.70)
+                    end
+                end)
+                zb:SetScript("OnLeave", function() zoneRow:RefreshValue() end)
                 zb:SetScript("OnClick", function()
                     local db = EnsureDB()
                     if zd.key == "ALL" then
@@ -3429,10 +3548,10 @@ do
                     DynamicCursor:RefreshWorkspaceUI()
                 end)
                 zBtns[i] = zb
-                zx = zx + zd.w + (i == 1 and 12 or 6)
             end
 
             function zoneRow:RefreshValue()
+                ReflowZoneBtns()
                 local db = EnsureDB()
                 local ar, ag, ab = GetSuiteAccent()
                 local alphaPill = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
@@ -3450,6 +3569,8 @@ do
                 end
             end
 
+            zoneRow:SetScript("OnSizeChanged", ReflowZoneBtns)
+            ReflowZoneBtns()
             secVis.cards[#secVis.cards + 1] = zoneRow
             refreshables[#refreshables + 1] = zoneRow
         end
@@ -3457,16 +3578,16 @@ do
             function() return EnsureDB().autoHideSpecial ~= false end, function(v) EnsureDB().autoHideSpecial = v end)
 
         local secSys = AddSection(4, "CURSOR & LAYER SYSTEM", "Adjust WoW's built-in mouse pointer size and how cursor overlays layer above interface panels.")
-        AddDropdown(secSys, "Hardware Cursor Size", "Adjusts WoW's built-in mouse pointer size while out of combat.", 220, {
-            { value = "-1", label = "Auto / System DPI" },
+        AddDropdown(secSys, "Built-In Mouse Pointer Size", "Adjusts WoW's built-in mouse pointer size while out of combat.", 220, {
+            { value = "-1", label = "Automatic (Default)" },
             { value = "0",  label = "32 x 32" },
             { value = "1",  label = "48 x 48" },
             { value = "2",  label = "64 x 64" },
             { value = "3",  label = "96 x 96" },
             { value = "4",  label = "128 x 128" },
         }, GetNativeCursorSize, SetNativeCursorSize)
-        AddPills(secSys, "Frame Strata", "Controls how high cursor overlays appear above interface windows.", 210, {
-            { value = "HIGH", label = "HIGH" }, { value = "DIALOG", label = "DIALOG" }, { value = "TOOLTIP", label = "TOOLTIP" },
+        AddPills(secSys, "Overlay Layer Priority", "Controls how high cursor overlays appear above interface windows.", 268, {
+            { value = "HIGH", label = "Standard" }, { value = "DIALOG", label = "Above Windows" }, { value = "TOOLTIP", label = "Topmost" },
         }, function() return EnsureDB().ringStrata or "TOOLTIP" end, function(v) EnsureDB().ringStrata = v end)
 
         local secTip = AddSection(4, "SMART CURSOR TOOLTIPS", "Optionally anchor mouseover tooltips near your cursor with automatic screen-edge flipping.")
@@ -3494,14 +3615,14 @@ do
             local alphaPill = (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global and _G.DynamicSuiteDB.global.pillFillAlpha) or 0.42
 
             ReflowTabBar()
+            ReflowPresets()
             local sfW = (sf and sf.GetWidth and sf:GetWidth()) or 0
             if sfW > 40 then
                 content:SetWidth(sfW)
             end
 
             for _, pb in ipairs(presetBtns) do
-                SetBackdropSolid(pb, { 0.078, 0.090, 0.122, 0.96 }, { ar, ag, ab, 0.70 }, 1)
-                pb.lbl:SetTextColor(0.92, 0.95, 0.99, 1)
+                StylePresetBtn(pb, pb:IsMouseOver())
             end
 
             local activeTab = tonumber(db.activeSubTab) or 1
@@ -3568,28 +3689,34 @@ do
             return
         end
         if not DynamicCursor.standaloneFrame then
+            local ar0, ag0, ab0 = GetSuiteAccent()
             local f = CreateFrame("Frame", "DynamicCursorStandaloneFrame", UIParent, "BackdropTemplate")
             f:SetSize(880, 620)
             f:SetPoint("CENTER")
             f:SetMovable(true)
+            f:SetResizable(true)
+            if f.SetResizeBounds then f:SetResizeBounds(760, 480, 1280, 860) end
             f:EnableMouse(true)
             f:RegisterForDrag("LeftButton")
             f:SetScript("OnDragStart", f.StartMoving)
             f:SetScript("OnDragStop", f.StopMovingOrSizing)
+            f:SetScript("OnHide", CloseCursorPopups)
             f:SetClampedToScreen(true)
             f:SetFrameStrata("DIALOG")
-            SetBackdropSolid(f, { 0.035, 0.039, 0.051, 0.99 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+            SetBackdropSolid(f, { 0.035, 0.039, 0.051, 0.99 }, { ar0, ag0, ab0, 0.90 }, 1)
 
             local hdr = CreateFrame("Frame", nil, f, "BackdropTemplate")
             hdr:SetHeight(42)
-            hdr:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-            hdr:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
+            hdr:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
+            hdr:SetPoint("TOPRIGHT", f, "TOPRIGHT", -1, -1)
             SetBackdropSolid(hdr, { 0.015, 0.018, 0.024, 1.00 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
 
-            local title = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            SetSafeFont(title, 13, "")
-            title:SetPoint("LEFT", hdr, "LEFT", 14, 0)
-            title:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFCursor|r  |cFF94A3B8v%s|r", GetAccentHex(), VERSION))
+            local topLine = hdr:CreateTexture(nil, "OVERLAY")
+            topLine:SetHeight(2)
+            topLine:SetPoint("TOPLEFT", hdr, "TOPLEFT", 0, 0)
+            topLine:SetPoint("TOPRIGHT", hdr, "TOPRIGHT", 0, 0)
+            topLine:SetColorTexture(ar0, ag0, ab0, 1.0)
+            hdr.topLine = topLine
 
             local closeBtn = CreateFrame("Button", nil, hdr, "BackdropTemplate")
             closeBtn:SetSize(24, 24)
@@ -3601,16 +3728,94 @@ do
             xLbl:SetText("X")
             closeBtn:SetScript("OnClick", function() f:Hide() end)
 
+            local title = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+            SetSafeFont(title, 13, "")
+            title:SetPoint("LEFT", hdr, "LEFT", 14, 0)
+            title:SetPoint("RIGHT", closeBtn, "LEFT", -10, 0)
+            title:SetJustifyH("LEFT")
+            title:SetWordWrap(false)
+            title:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFCursor|r  |cFF94A3B8v%s|r", GetAccentHex(), VERSION))
+            hdr.title = title
+
+            local footer = CreateFrame("Frame", nil, f, "BackdropTemplate")
+            footer:SetHeight(36)
+            footer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 1, 1)
+            footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
+            SetBackdropSolid(footer, { 0.015, 0.018, 0.024, 1.00 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+
+            local resetBtn = CreateFrame("Button", nil, footer, "BackdropTemplate")
+            resetBtn:SetSize(148, 24)
+            resetBtn:SetPoint("LEFT", footer, "LEFT", 14, 0)
+            SetBackdropSolid(resetBtn, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+            local rstLbl = resetBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            SetSafeFont(rstLbl, 10.5, "")
+            rstLbl:SetPoint("CENTER")
+            rstLbl:SetText("Reset DynamicCursor")
+            resetBtn:SetScript("OnClick", ResetCursorModuleDefaults)
+
+            local reloadBtn = CreateFrame("Button", nil, footer, "BackdropTemplate")
+            reloadBtn:SetSize(92, 24)
+            reloadBtn:SetPoint("RIGHT", footer, "RIGHT", -32, 0)
+            SetBackdropSolid(reloadBtn, { 0.078, 0.090, 0.122, 0.96 }, { 0.145, 0.165, 0.212, 0.95 }, 1)
+            local relLbl = reloadBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            SetSafeFont(relLbl, 10.5, "")
+            relLbl:SetPoint("CENTER")
+            relLbl:SetText("Reload UI")
+            reloadBtn:SetScript("OnClick", function() if type(_G.ReloadUI) == "function" then _G.ReloadUI() end end)
+
+            local grip = CreateFrame("Button", nil, footer)
+            grip:SetSize(14, 14)
+            grip:SetPoint("BOTTOMRIGHT", footer, "BOTTOMRIGHT", -4, 4)
+            grip:SetFrameLevel(footer:GetFrameLevel() + 4)
+            grip:EnableMouse(true)
+            local gripTex = grip:CreateTexture(nil, "OVERLAY", nil, 5)
+            gripTex:SetAllPoints()
+            gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+            gripTex:SetDesaturated(true)
+            gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+            grip:SetScript("OnEnter", function()
+                local ar, ag, ab = GetSuiteAccent()
+                gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+                gripTex:SetDesaturated(false)
+                gripTex:SetVertexColor(ar, ag, ab, 0.95)
+            end)
+            grip:SetScript("OnLeave", function()
+                gripTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+                gripTex:SetDesaturated(true)
+                gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
+            end)
+            grip:SetScript("OnMouseDown", function(_, btn)
+                if btn == "LeftButton" then
+                    CloseCursorPopups()
+                    f:StartSizing("BOTTOMRIGHT")
+                elseif btn == "RightButton" then
+                    f:SetSize(880, 620)
+                end
+            end)
+            grip:SetScript("OnMouseUp", function()
+                f:StopMovingOrSizing()
+            end)
+
             local body = CreateFrame("Frame", nil, f)
             body:SetPoint("TOPLEFT", hdr, "BOTTOMLEFT", 0, 0)
-            body:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+            body:SetPoint("BOTTOMRIGHT", footer, "TOPRIGHT", 0, 0)
             RenderCursorEmbedded(body)
+
+            function f:RefreshTheme()
+                local ar, ag, ab = GetSuiteAccent()
+                self:SetBackdropBorderColor(ar, ag, ab, 0.90)
+                if hdr.topLine then hdr.topLine:SetColorTexture(ar, ag, ab, 1.0) end
+                if hdr.title then
+                    hdr.title:SetText(string.format("|cFF%sDynamic|r|cFFFFFFFFCursor|r  |cFF94A3B8v%s|r", GetAccentHex(), VERSION))
+                end
+            end
 
             if type(UISpecialFrames) == "table" then
                 table.insert(UISpecialFrames, "DynamicCursorStandaloneFrame")
             end
             DynamicCursor.standaloneFrame = f
         end
+        DynamicCursor.standaloneFrame:RefreshTheme()
         DynamicCursor.standaloneFrame:Show()
         DynamicCursor:RefreshWorkspaceUI()
     end
@@ -3622,9 +3827,10 @@ end
 -- ============================================================================
 DynamicCursor.CHANGELOG = {
     version = VERSION,
-    date = "24/11/2026",
+    date = "25/11/2026",
     entries = {
-        { type = "FEATURE", text = "Release v2.8.2 - New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (24/11/2026): Launched DynamicCursor with 4 Obsidian tabs built on enclosing Section Containers, individual setting cards, collapsible Sub-Settings (N) drawers (2px Suite Accent rail + 5x5px square pip), a 4px 3-way scrollbar, smooth 12x12 live Suite Accent dropdown chevrons, and 4 Quick Presets (Clean Raid, High-Visibility, Minimalist, Full Telemetry). Includes Main Cursor Ring (Solid Ring, Soft Glow, High-Contrast Dual across 5 thickness levels, Extra Ring Contrast dark outline behind all rings and crosshair circle, Centre Dot size & colour, Ground-Target AoE Highlight & +20% Size Boost, Mouse-Look ghost opacity, Click-Pulse scale & colour), Inner GCD Ring (6 px default gap), Outer Cast/Channel/Empower Arc (4 px default gap, Interrupt Flash Colour, Mini Spell Icon & Instant-Cast Flash), modular Character Crosshair, Find My Cursor (Shake-to-Find sensitivity, Ping After Mouse-Look duration, Modifier Key Locator, Locator Highlight Scale & colour), Pooled Cursor Trail, Active Zones, built-in mouse pointer size, and Smart Cursor Tooltips." },
+        { type = "UI",      text = "Pass 6 800x520 Layout Sweep, Standalone Window Parity & Plain-English Copy (25/11/2026): Made DynamicCursorStandaloneFrame resizable (760x480 to 1280x860) with a 36px Reset/Reload footer, 14x14 live-accent resize grip, and ApplyTheme border/header repaint; reflowed Tab 1 Quick Presets proportionally across the card width; fixed Tab 3 Crosshair Elements and Tab 4 Active Zones so descriptions wrap cleanly beneath titles with responsive pills; right-clamped all setting cards and sub-rows against their controls at 800x520; and updated Overlay Layer Priority (Standard / Above Windows / Topmost), Built-In Mouse Pointer Size (Automatic Default), and All Overlays preset labels in plain Australian English." },
+        { type = "FEATURE", text = "Release v2.8.2 - New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (24/11/2026): Launched DynamicCursor with 4 Obsidian tabs built on enclosing Section Containers, individual setting cards, collapsible Sub-Settings (N) drawers (2px Suite Accent rail + 5x5px square pip), a 4px 3-way scrollbar, smooth 12x12 live Suite Accent dropdown chevrons, and 4 Quick Presets (Clean Raid, High-Visibility, Minimalist, All Overlays). Includes Main Cursor Ring (Solid Ring, Soft Glow, High-Contrast Dual across 5 thickness levels, Extra Ring Contrast dark outline behind all rings and crosshair circle, Centre Dot size & colour, Ground-Target AoE Highlight & +20% Size Boost, Mouse-Look ghost opacity, Click-Pulse scale & colour), Inner GCD Ring (6 px default gap), Outer Cast/Channel/Empower Arc (4 px default gap, Interrupt Flash Colour, Mini Spell Icon & Instant-Cast Flash), modular Character Crosshair, Find My Cursor (Shake-to-Find sensitivity, Ping After Mouse-Look duration, Modifier Key Locator, Locator Highlight Scale & colour), Pooled Cursor Trail, Active Zones, built-in mouse pointer size, and Smart Cursor Tooltips." },
     },
 }
 
@@ -3650,10 +3856,16 @@ if _G.DynamicSuite then
         BuildWorkspace = function(a1, a2) return DynamicCursor.RenderEmbedded(a1, a2) end,
         ApplyTheme = function()
             if SyncAllEngines then SyncAllEngines() end
+            if DynamicCursor.standaloneFrame and DynamicCursor.standaloneFrame.RefreshTheme then
+                DynamicCursor.standaloneFrame:RefreshTheme()
+            end
             if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI() end
         end,
         ApplyThemeToUI = function()
             if SyncAllEngines then SyncAllEngines() end
+            if DynamicCursor.standaloneFrame and DynamicCursor.standaloneFrame.RefreshTheme then
+                DynamicCursor.standaloneFrame:RefreshTheme()
+            end
             if DynamicCursor.RefreshWorkspaceUI then DynamicCursor:RefreshWorkspaceUI() end
         end,
         ResetModuleDefaults = ResetCursorModuleDefaults,
@@ -3707,7 +3919,7 @@ SlashCmdList["DYNAMICCURSOR"] = function(msg)
         DynamicCursor:ApplyPreset("HIGH_VIS")
     elseif cmd == "minimal" then
         DynamicCursor:ApplyPreset("MINIMALIST")
-    elseif cmd == "full" then
+    elseif cmd == "full" or cmd == "all" then
         DynamicCursor:ApplyPreset("FULL_TELEMETRY")
     else
         DynamicCursor.OpenWorkspace()
