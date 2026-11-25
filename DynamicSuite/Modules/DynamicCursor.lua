@@ -1,4 +1,4 @@
--- DynamicCursor v2.10.1 (/dcur, /dynamiccursor)
+-- DynamicCursor v2.10.2 (/dcur, /dynamiccursor)
 -- Cursor Ring, Radial GCD & Cast/Channel/Empower Arc, Character Crosshair, Find My Cursor, Pooled Trail & Smart Tooltips.
 -- Retail 12.1.5 / 12.1.7 (Interface 120105, 120107) | Zero-Taint, Secret-Value Safe, 0.00 ms Idle CPU.
 
@@ -7,7 +7,7 @@ local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addon
 local STANDALONE_NAME = "DynamicCursor"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.10.1"
+    local fb = fallback or "2.10.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -35,12 +35,12 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.2")
 
 local function ShouldYieldToOtherInstall(thisFolder, standaloneName, thisVersion, globalTbl)
     if thisFolder == standaloneName then
         if type(globalTbl) == "table" and globalTbl._loadedFromSuite == true then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or "2.10.1"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or "2.10.2"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -3829,7 +3829,7 @@ DynamicCursor.CHANGELOG = {
     version = VERSION,
     date = "25/11/2026",
     entries = {
-        { type = "UI",      text = "Pass 6 800x520 Layout Sweep, Standalone Window Parity & Plain-English Copy (25/11/2026): Made DynamicCursorStandaloneFrame resizable (760x480 to 1280x860) with a 36px Reset/Reload footer, 14x14 live-accent resize grip, and ApplyTheme border/header repaint; reflowed Tab 1 Quick Presets proportionally across the card width; fixed Tab 3 Crosshair Elements and Tab 4 Active Zones so descriptions wrap cleanly beneath titles with responsive pills; right-clamped all setting cards and sub-rows against their controls at 800x520; and updated Overlay Layer Priority (Standard / Above Windows / Topmost), Built-In Mouse Pointer Size (Automatic Default), and All Overlays preset labels in plain Australian English." },
+        { type = "UI",      text = "Release v2.10.2 - Pass 6 800x520 Layout Sweep, Standalone Window Parity & Plain-English Copy (25/11/2026): Made DynamicCursorStandaloneFrame resizable (760x480 to 1280x860) with a 36px Reset/Reload footer, 14x14 live-accent resize grip, and ApplyTheme border/header repaint; reflowed Tab 1 Quick Presets proportionally across the card width; fixed Tab 3 Crosshair Elements and Tab 4 Active Zones so descriptions wrap cleanly beneath titles with responsive pills; right-clamped all setting cards and sub-rows against their controls at 800x520; and updated Overlay Layer Priority (Standard / Above Windows / Topmost), Built-In Mouse Pointer Size (Automatic Default), and All Overlays preset labels in plain Australian English." },
         { type = "FEATURE", text = "Release v2.8.2 - New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (24/11/2026): Launched DynamicCursor with 4 Obsidian tabs built on enclosing Section Containers, individual setting cards, collapsible Sub-Settings (N) drawers (2px Suite Accent rail + 5x5px square pip), a 4px 3-way scrollbar, smooth 12x12 live Suite Accent dropdown chevrons, and 4 Quick Presets (Clean Raid, High-Visibility, Minimalist, All Overlays). Includes Main Cursor Ring (Solid Ring, Soft Glow, High-Contrast Dual across 5 thickness levels, Extra Ring Contrast dark outline behind all rings and crosshair circle, Centre Dot size & colour, Ground-Target AoE Highlight & +20% Size Boost, Mouse-Look ghost opacity, Click-Pulse scale & colour), Inner GCD Ring (6 px default gap), Outer Cast/Channel/Empower Arc (4 px default gap, Interrupt Flash Colour, Mini Spell Icon & Instant-Cast Flash), modular Character Crosshair, Find My Cursor (Shake-to-Find sensitivity, Ping After Mouse-Look duration, Modifier Key Locator, Locator Highlight Scale & colour), Pooled Cursor Trail, Active Zones, built-in mouse pointer size, and Smart Cursor Tooltips." },
     },
 }

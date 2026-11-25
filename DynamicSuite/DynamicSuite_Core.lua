@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.10.1"
+    local fb = fallback or "2.10.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.1")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.2")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,8 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "25/11/2026",
     entries = {
+        { type = "FIX",     text = "Release v2.10.2 - Multi-Quest NPC State Sync & DynamicPrep Auto-Accept Handoff (25/11/2026): Prioritised live server interaction state over suppressed off-screen Blizzard frames across DynamicDialogue and DynamicPrep (preserving bag-item, AreaTrigger, and field auto-complete QUEST_COMPLETE popups), added debounced QUEST_ACCEPTED / QUEST_REMOVED / QUEST_TURNED_IN / QUEST_LOG_UPDATE live list refreshes and C_QuestLog stale-quest filtering so accepted or turned-in quests never render stale, eliminated outgoing Blizzard frame flashes and duplicate 0.05s Accept/Complete/Reward retries on >50ms latency, added live-session click guards, and coordinated event-sequence-exact handoff across Suite and Standalone builds." },
+        { type = "UI",      text = "Release v2.10.2 - Pass 6 UI Refinement, 800x520 Clamping & Standalone Window Parity (25/11/2026): Added full standalone resizability, 36px Reset/Reload footers, 14x14 live Suite Accent resize grips, and theme repainting across DynamicCursor, DynamicDialogue, and DynamicVault; upgraded DynamicVault's workspace scrollbar to full 3-way interaction and proportional Raid/M+/Delves tracks; reflowed DynamicCursor presets, stacked 2-line descriptions, and right-clamped cards across DynamicCursor, DynamicMail, DynamicDialogue, and DynamicVault for clean 800x520 display; and standardised labels into plain Australian English." },
         { type = "FIX",     text = "Release v2.10.1 - DynamicBank Single-Action Bank & Guild Bank Closing (25/11/2026): Fixed a lingering invisible Blizzard bank interaction left open when closing DynamicBank (via Close button, Esc, or bag toggle) at a Personal Bank, Warband Bank, or Guild Bank; closing DynamicBank now cleanly ends active banker interactions, detaches and hides suppressed BankFrame/GuildBankFrame panels out of combat, yields them across Desktop Windows, isolates child modals and popovers on Esc without killing the live banker session, keeps tab switching uninterrupted, and skips close calls on remote snapshots (/dbag bank)." },
         { type = "FEATURE", text = "Release v2.10.1 - DynamicPrep Top Info Bar Shift-Drag & DynamicBank Gold Transfer Modal (25/11/2026): Added direct Shift + Left-Drag moving across the DynamicPrep Top Info Bar (plus Right-Click on empty bar space for /ds hud, bar-hover hint, segment tooltip footer, and updated '?' Quick Guide); and added a 2-row DynamicBank footer with live Warband, Guild (with daily rank limit), and Personal Bank (Character Gold + [Deposit to Warband]) controls backed by a shared Obsidian Core Gold Transfer modal with numeric G/S/C inputs, quick-fill pills, inline validation, and live money event updates." },
         { type = "UI",      text = "Release v2.10.0 - Pass 3-5 UI Refinement Across DynamicPrep, DynamicBags & DynamicFPS (25/11/2026): Added full-width Quick Presets and persisted Sub-Settings drawers across DynamicPrep and DynamicBags; restyled DynamicBags Tab 1's Category Order & Visibility grid with live Suite Accent < and > reorder arrows, isolated Bank Window Scale, and added an in-panel Smart Vendor Auto-Restock drawer with Ctrl + Alt + Right-Click vendor shortcuts; and completed DynamicFPS's 800x520 layout sweep with a responsive Zone Profile toolbar, proportional 6-zone tab clamping, a 14x14 standalone corner resize grip, and plain Australian English Spell Queue Timing copy." },

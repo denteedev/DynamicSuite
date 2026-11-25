@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.10.1"
+    local fb = fallback or "2.10.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.2")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicVault", VERSION, _G.DynamicVault) then
     return
 end
@@ -2626,7 +2626,7 @@ DynamicVault.CHANGELOG = {
         version = VERSION,
         date = "25/11/2026",
         entries = {
-            { type = "UI", text = "Pass 6 Standalone Parity, 3-Way Scrollbar & 800x520 Clamping (25/11/2026): Made DynamicVaultStandaloneFrame resizable (740x480 to 1280x860) with a 40px header, 36px Reset/Reload footer, 14x14 live-accent resize grip, and ApplyTheme border repaint; upgraded the workspace scrollbar to full 3-way interaction (mousewheel, track click-to-jump, and draggable thumb with live accent highlight); right-clamped Tab 1 banner titles, filter hint, character names, proportional Raid/Myth+/Delves tracks, and Tab 2 checklist rows for clean 800x520 layout; tightened Tab 3 switch titles; and fixed the empty-state prompt ('Click Refresh to snapshot your current character.')." },
+            { type = "UI", text = "Release v2.10.2 - Pass 6 Standalone Parity, 3-Way Scrollbar & 800x520 Clamping (25/11/2026): Made DynamicVaultStandaloneFrame resizable (740x480 to 1280x860) with a 40px header, 36px Reset/Reload footer, 14x14 live-accent resize grip, and ApplyTheme border repaint; upgraded the workspace scrollbar to full 3-way interaction (mousewheel, track click-to-jump, and draggable thumb with live accent highlight); right-clamped Tab 1 banner titles, filter hint, character names, proportional Raid/Myth+/Delves tracks, and Tab 2 checklist rows for clean 800x520 layout; tightened Tab 3 switch titles; and fixed the empty-state prompt ('Click Refresh to snapshot your current character.')." },
             { type = "UI", text = "Release v2.7.0 (21/11/2026): Standardised settings toggle switches (68px Off / 84px Enabled inside 156x26px) and 256x26px Precision Track sliders (6x14px thumb, 52px readout, mousewheel & hover highlight), and anchored card titles/descriptions relative to right-hand controls with 2-line wrapping so nothing clips at 800x520." },
             { type = "FIX", text = "Release v2.6.9 (21/11/2026): Fixed a Great Vault top dock width calculation error when 2 or more alts are tracked, enabled Escape key closing on the standalone /dv window, cleaned up legacy /dv overlay hints to point to DynamicPrep's Top Info Bar, and registered DynamicVault's changelog with DynamicSuite." },
             { type = "NEW", text = "Initial v2.5.0 Release (19/11/2026): Added DynamicVault (/dv, /dynamicvault) with Account-Wide Great Vault Matrix (Raid, Mythic+, and World/Delves 3-slot progress and target iLvl), live Restored Coffer Keys / Shards / Catalyst / Seasonal Crests tracking, Weekly Reset countdown and automatic rollover, Owned Keystone details, Auto-Tracked & Custom Weekly Checklists, 1-click Open Great Vault anywhere (/dv open), and full DynamicSuite + DynamicBags Alt Vault integration." },

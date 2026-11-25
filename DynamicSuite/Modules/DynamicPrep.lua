@@ -159,7 +159,7 @@ local ADDON_NAME = ...
 local ADDON_FOLDER = (type(ADDON_NAME) == "string" and ADDON_NAME ~= "") and ADDON_NAME or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.10.1"
+    local fb = fallback or "2.10.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -241,7 +241,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
 end
 
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.2")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicPrep", VERSION, _G.DynamicPrep) then
     return
 end
@@ -694,7 +694,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "25/11/2026",
     entries = {
-        { type = "FIX",     text = "Multi-Quest Auto-Accept, Auto-Gossip & DynamicDialogue Handoff Sync (25/11/2026): Prioritised live server interaction state over suppressed off-screen Blizzard frames (while preserving field auto-complete QUEST_COMPLETE windows) and eliminated duplicate 0.05s AcceptQuest/CompleteQuest/GetQuestReward retries on >50ms latency once the initial action succeeds; cross-checked available and active quests against C_QuestLog (plus QUEST_ACCEPTED / QUEST_REMOVED / QUEST_TURNED_IN / QUEST_FINISHED / PLAYER_INTERACTION_MANAGER_FRAME_HIDE tracking) so multi-quest NPCs immediately advance to remaining quests without re-selecting stale accepted or turned-in quests; respected mid-session sidebar soft-disable immediately; and coordinated event-sequence-exact handoff with DynamicDialogue across both Suite and Standalone builds." },
+        { type = "FIX",     text = "Release v2.10.2 - Multi-Quest Auto-Accept, Auto-Gossip & DynamicDialogue Handoff Sync (25/11/2026): Prioritised live server interaction state over suppressed off-screen Blizzard frames (while preserving field auto-complete QUEST_COMPLETE windows) and eliminated duplicate 0.05s AcceptQuest/CompleteQuest/GetQuestReward retries on >50ms latency once the initial action succeeds; cross-checked available and active quests against C_QuestLog (plus QUEST_ACCEPTED / QUEST_REMOVED / QUEST_TURNED_IN / QUEST_FINISHED / PLAYER_INTERACTION_MANAGER_FRAME_HIDE tracking) so multi-quest NPCs immediately advance to remaining quests without re-selecting stale accepted or turned-in quests; respected mid-session sidebar soft-disable immediately; and coordinated event-sequence-exact handoff with DynamicDialogue across both Suite and Standalone builds." },
         { type = "UI",      text = "Release v2.10.1 - Top Info Bar Shift-Drag, Right-Click HUD Edit & Discoverability (25/11/2026): Added direct Shift + Left-Drag repositioning across the Top Info Bar background and segment capsules out of combat (saving directly to HUD Edit Mode coordinates without triggering accidental clicks), Right-Click on empty bar space to open HUD Edit Mode (/ds hud), a subtle bar-hover tooltip, a 'Shift-Drag to move  |  /ds hud for grid & scale' footer line on Top Info Bar segment tooltips, and an updated DynamicPrep '?' Quick Guide tip." },
         { type = "FIX",     text = "Zero-Truncation Actionable Alert Toasts (24/11/2026): Widened actionable Mage Food and Low Durability Alert Toasts (with automatic width fit in DynamicSuite) and tightened titles and action hints so no line cuts off against the right-hand button." },
         { type = "UI",      text = "Pass 3 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 3 Section Split (24/11/2026): Added a 4-option QUICK PRESETS card at the top of Tab 1 (Raider / M+ Full, Minimalist Stats, Keystone Focus, System Only) with live Suite Accent active highlighting; added Bar Density (Standard / Compact) and Bar Mouseover Fade (Off / Fade Until Hover / Combat Fade) options; clamped all wide pill rows cleanly for 800x520 minimum windows; wrapped Tab 2's Clickable Raid Buffs (12 controls, including split-out Partner Buffs, Clickable Icon Spacing, and Hide 'MISSING' Text Label) and Omni Folio (5 controls) into persisted Sub-Settings drawers collapsed by default on fresh profiles alongside a new Paperdoll Gear Audit section with toggle and Preview on Gear button; split Tab 3 into 3 calm Obsidian sections (Quest, Dialogue & Cutscenes; Combat, Error & Survival Guards; Healer Recovery & Durability) with persisted drawer states across reloads; fixed the blank-label standalone Edit HUD fallback button; and cleaned US spellings and raw setting names from tooltips and changelogs." },

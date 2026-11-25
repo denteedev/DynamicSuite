@@ -1,9 +1,13 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.10.1 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
+*Author: Dentee-Frostmourne  |  Release: v2.10.2 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
+
+---
+
+## [2.10.2] - 25/11/2026
 
 ### Multi-Quest NPC State Sync & DynamicPrep Auto-Accept Handoff (25/11/2026)
 - **Authoritative Server Interaction State & Dead-Session Cleanup (`DynamicDialogue`):** Prioritised `C_PlayerInteractionManager.IsInteractingNpcOfType` (`Gossip` and `QuestGiver`) over suppressed off-screen Blizzard `GossipFrame:IsShown()` / `QuestFrame:IsShown()` state (while preserving non-NPC bag-item, AreaTrigger, and field auto-complete `QUEST_COMPLETE` windows) so an ended interaction never leaves a stale Obsidian reader open or traps Blizzard frames in a half-open state. Kept still-shown outgoing Blizzard frames suppressed during `GOSSIP` <-> `QUEST` transitions to eliminate 1-frame native frame flashes, cancelled pending timers on Shift bypass, and added live-session click guards across all gossip, greeting, and quest action buttons so clicking an expired session immediately closes the reader, clears the interaction, and resets stranded Blizzard frames cleanly.

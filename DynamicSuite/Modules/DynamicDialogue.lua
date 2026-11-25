@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.10.1"
+    local fb = fallback or "2.10.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.2")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicDialogue", VERSION, _G.DynamicDialogue) then
     return
 end
@@ -3432,8 +3432,8 @@ DynamicDialogue.CHANGELOG = {
         version = VERSION,
         date = "25/11/2026",
         entries = {
-            { type = "FIX",     text = "Multi-Quest NPC State Sync & DynamicPrep Auto-Accept Handoff (25/11/2026): Prioritised live server interaction state (C_PlayerInteractionManager.IsInteractingNpcOfType) over suppressed off-screen Blizzard frames while preserving non-NPC bag-item, AreaTrigger, and field auto-complete (QUEST_COMPLETE) windows; subscribed to QUEST_ACCEPTED, QUEST_REMOVED, QUEST_TURNED_IN, and QUEST_LOG_UPDATE for debounced live quest-list refreshes; cross-checked available and active quests against C_QuestLog (plus short-lived accept/turn-in tracking and nil-ID greeting title fallback) so accepted or turned-in quests never render stale; prevented outgoing Blizzard frames from flashing back to full opacity during GOSSIP/QUEST transitions; added live-session click guards across all gossip, greeting, and quest action buttons; and hardened event-sequence-exact handoff with DynamicPrep so manual-to-auto transitions and delayed retries never leave the Obsidian reader stuck open across Suite or Standalone builds." },
-            { type = "UI",      text = "Pass 6 Standalone Window Parity, Live Accent Print & 800x520 Width Sync (25/11/2026): Made DynamicDialogueStandaloneFrame resizable (760x480 to 1280x860) with a 36px Reset/Reload footer, 14x14 live-accent resize grip, and ApplyTheme border/header repaint; switched Print() chat prefixes from hardcoded orange to the live Suite Accent; synced scrollContent width immediately on OnShow for clean 800x520 first-open layout; and updated setting labels ('Hold Shift for Default Blizzard Window', '11 to 18 px') in plain Australian English." },
+            { type = "FIX",     text = "Release v2.10.2 - Multi-Quest NPC State Sync & DynamicPrep Auto-Accept Handoff (25/11/2026): Prioritised live server interaction state (C_PlayerInteractionManager.IsInteractingNpcOfType) over suppressed off-screen Blizzard frames while preserving non-NPC bag-item, AreaTrigger, and field auto-complete (QUEST_COMPLETE) windows; subscribed to QUEST_ACCEPTED, QUEST_REMOVED, QUEST_TURNED_IN, and QUEST_LOG_UPDATE for debounced live quest-list refreshes; cross-checked available and active quests against C_QuestLog (plus short-lived accept/turn-in tracking and nil-ID greeting title fallback) so accepted or turned-in quests never render stale; prevented outgoing Blizzard frames from flashing back to full opacity during GOSSIP/QUEST transitions; added live-session click guards across all gossip, greeting, and quest action buttons; and hardened event-sequence-exact handoff with DynamicPrep so manual-to-auto transitions and delayed retries never leave the Obsidian reader stuck open across Suite or Standalone builds." },
+            { type = "UI",      text = "Release v2.10.2 - Pass 6 Standalone Window Parity, Live Accent Print & 800x520 Width Sync (25/11/2026): Made DynamicDialogueStandaloneFrame resizable (760x480 to 1280x860) with a 36px Reset/Reload footer, 14x14 live-accent resize grip, and ApplyTheme border/header repaint; switched Print() chat prefixes from hardcoded orange to the live Suite Accent; synced scrollContent width immediately on OnShow for clean 800x520 first-open layout; and updated setting labels ('Hold Shift for Default Blizzard Window', '11 to 18 px') in plain Australian English." },
             { type = "FEATURE", text = "Unified Obsidian Confirm Screen & Auto-Accept Quest Fix (21/11/2026): Added a shared Obsidian Confirm screen for gossip confirmations, shared group quests, and Hearthstone innkeeper binding with 1 / Space double-tap confirmation (0.15s debounce) and Esc cancellation while leaving code-entry prompts native; and fixed auto-accepted quests to show Okay [Space] (no Decline) cleanly." },
             { type = "UI",      text = "Release v2.7.0 (21/11/2026): Upgraded DynamicDialogue to the universal 34px #0B0D12 equal-width 2-tab header bar, dedicated 44px Action & Status strip inside the settings canvas, crisp non-outlined card fonts, standardised 156x26px (68px Off / 84px Enabled) binary switches, and 2-line wrapped descriptions so every row fits cleanly down to 800x520." },
             { type = "FIX",     text = "Release v2.6.9 (21/11/2026): Fixed first-open FontString rendering and overlapping sub-tab cards, added the 4px Obsidian settings scrollbar, matched standalone title colours, and fixed the Retail 12.1.5 Blizzard Quest/Gossip conflict check so clean installs show Active cleanly." },

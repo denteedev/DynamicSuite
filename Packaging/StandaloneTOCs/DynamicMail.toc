@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFMail|r
 ## Notes: Smart Inbox Collection, Alt Vault Recipient Picker & Alt+Left-Click Express Attach (/dmail).
 ## Author: Dentee-Frostmourne
-## Version: 2.10.1
+## Version: 2.10.2
 ## SavedVariables: DynamicMailDB
 ## OptionalDeps: DynamicSuite, DynamicBags
 ## IconTexture: Interface\AddOns\DynamicMail\icon.tga

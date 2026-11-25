@@ -8,7 +8,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.10.1"
+    local fb = fallback or "2.10.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -89,7 +89,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.1")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.10.2")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMail", VERSION, _G.DynamicMail) then
     return
 end
@@ -3626,7 +3626,7 @@ DynamicMail.CHANGELOG = {
         version = VERSION,
         date = "25/11/2026",
         entries = {
-            { type = "UI", text = "Pass 6 800x520 Clamping & Plain-English Copy Hygiene (25/11/2026): Clamped the standalone header status readout cleanly between brandTitle and closeBtn; right-clamped section headers, multi-pill cards, and slider titles against their controls; enabled 2-line wrapping on Tab 3's Lifetime Stats summary card; shortened long Tab 2 switch labels; and replaced raw internal names ('MailFrame', 'DynamicBagsDB', 'Sending QoL', 'Open & Del', 'Clear G') with plain Australian English ('the Mailbox window', 'DynamicBags Alt Vault', 'Quick Sending & Attachments', 'Clear Empty', and 'Reset')." },
+            { type = "UI", text = "Release v2.10.2 - Pass 6 800x520 Clamping & Plain-English Copy Hygiene (25/11/2026): Clamped the standalone header status readout cleanly between brandTitle and closeBtn; right-clamped section headers, multi-pill cards, and slider titles against their controls; enabled 2-line wrapping on Tab 3's Lifetime Stats summary card; shortened long Tab 2 switch labels; and replaced raw internal names ('MailFrame', 'DynamicBagsDB', 'Sending QoL', 'Open & Del', 'Clear G') with plain Australian English ('the Mailbox window', 'DynamicBags Alt Vault', 'Quick Sending & Attachments', 'Clear Empty', and 'Reset')." },
             { type = "UI", text = "Release v2.7.0 (21/11/2026): Standardised binary Off/Enabled switches to 68px Off / 84px Enabled (156x26px) and clamped card titles directly to the left of right-hand switches for clean 800x520 framing." },
             { type = "FIX", text = "Release v2.6.9 (21/11/2026): Guarded suite window routing when DynamicMail is disabled inside DynamicSuite, aligned the standalone resize handle with the active Suite Accent, updated Quick Action Bar search copy, and standardised the module changelog structure." },
             { type = "NEW", text = "Auto-Delete Empty Letters & 1-Click Clear Empty Button (19/11/2026): Added the 'Auto-Delete Empty Letters on Open All' option (enabled by default) and a dedicated 1-click [Clear Empty] button on DynamicMailInboxBar to wipe empty NPC notices (Lost Currency, Postmaster), Auction receipts, and zero-gold/zero-item letters without opening each one manually, while always protecting COD, items, gold, and GM mail." },

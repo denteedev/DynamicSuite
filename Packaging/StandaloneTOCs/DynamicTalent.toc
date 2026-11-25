@@ -2,7 +2,7 @@
 ## Title: |cFFCBD5E1Dynamic|r|cFFFFFFFFTalent|r
 ## Notes: Talent Loadouts Library, Boss/M+/PvP/Zone Binds & Swap Alerts (/dt, /dynamictalent).
 ## Author: Dentee-Frostmourne
-## Version: 2.10.1
+## Version: 2.10.2
 ## SavedVariables: DynamicTalentDB
 ## OptionalDeps: DynamicSuite, DynamicPrep
 ## IconTexture: Interface\AddOns\DynamicTalent\icon.tga
