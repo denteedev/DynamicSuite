@@ -433,6 +433,14 @@ local suppressionHooked = {}
 local applyingSuppression = {}
 local activeBypassGossip = false
 local interactionSeq = 0
+local gossipSessionClosed = true
+local questSessionClosed = true
+local questSessionIsNpc = false
+local recentlyAcceptedQuests = {}
+local liveRefreshPending = false
+local prepAutoHandledSeq = 0
+local prepAutoHandledPhase = nil
+local lastConsumedPrepActionSeq = 0
 
 local function IsCustomGossipTextureKit(eventTextureKit)
     if _G.DelvesDifficultyPickerFrame and _G.DelvesDifficultyPickerFrame.IsShown and _G.DelvesDifficultyPickerFrame:IsShown() then
@@ -696,12 +704,237 @@ local function IsDestructiveConfirmText(rawText)
     return false
 end
 
+local function IsGossipInteractionActive()
+    local pim = _G.C_PlayerInteractionManager
+    local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
+    if pim and type(pim.IsInteractingNpcOfType) == "function" and iEnum and iEnum.Gossip then
+        local ok, active = pcall(pim.IsInteractingNpcOfType, iEnum.Gossip)
+        if ok and not SafeIsSecret(active) then
+            return active == true
+        end
+    end
+    if gossipSessionClosed then
+        return false
+    end
+    if _G.GossipFrame and _G.GossipFrame.IsShown and _G.GossipFrame:IsShown() then
+        return true
+    end
+    return false
+end
+
+local function IsQuestInteractionActive()
+    local pim = _G.C_PlayerInteractionManager
+    local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
+    if pim and type(pim.IsInteractingNpcOfType) == "function" and iEnum and iEnum.QuestGiver then
+        local ok, active = pcall(pim.IsInteractingNpcOfType, iEnum.QuestGiver)
+        if ok and not SafeIsSecret(active) then
+            if active == true then
+                return true
+            end
+            if questSessionClosed or questSessionIsNpc then
+                return false
+            end
+            -- Non-NPC quest offer (bag quest-starting item or AreaTrigger auto-popup)
+            local qfShown = _G.QuestFrame and _G.QuestFrame.IsShown and _G.QuestFrame:IsShown()
+            if qfShown and (currentMode == "DETAIL" or activeSessionKind == "QUEST") then
+                local fromArea = false
+                if type(_G.QuestIsFromAreaTrigger) == "function" then
+                    local okAT, resAT = pcall(_G.QuestIsFromAreaTrigger)
+                    if okAT and not SafeIsSecret(resAT) and resAT == true then
+                        fromArea = true
+                    end
+                end
+                if fromArea then
+                    return true
+                end
+                local qID = (type(_G.GetQuestID) == "function") and SafeNum(_G.GetQuestID(), 0) or 0
+                local hasNpc = false
+                if type(_G.UnitExists) == "function" then
+                    local okNpc, resNpc = pcall(_G.UnitExists, "npc")
+                    if okNpc and not SafeIsSecret(resNpc) and resNpc == true then
+                        hasNpc = true
+                    end
+                end
+                if qID > 0 and not hasNpc then
+                    return true
+                end
+            end
+            return false
+        end
+    end
+    if questSessionClosed then
+        return false
+    end
+    if _G.QuestFrame and _G.QuestFrame.IsShown and _G.QuestFrame:IsShown() then
+        return true
+    end
+    return false
+end
+
+local function IsQuestAlreadyAccepted(qID)
+    local id = SafeNum(qID, 0)
+    if id <= 0 then return false end
+    if _G.C_QuestLog and type(_G.C_QuestLog.IsOnQuest) == "function" then
+        local ok, onQ = pcall(_G.C_QuestLog.IsOnQuest, id)
+        if ok and not SafeIsSecret(onQ) and onQ == true then
+            return true
+        end
+    end
+    local ts = recentlyAcceptedQuests[id]
+    if ts then
+        local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+        if (now - ts) <= 1.5 then
+            return true
+        end
+        recentlyAcceptedQuests[id] = nil
+    end
+    return false
+end
+
+local function IsQuestAlreadyCompleted(qID)
+    local id = SafeNum(qID, 0)
+    if id <= 0 then return false end
+    if _G.C_QuestLog and type(_G.C_QuestLog.IsQuestFlaggedCompleted) == "function" then
+        local ok, comp = pcall(_G.C_QuestLog.IsQuestFlaggedCompleted, id)
+        if ok and not SafeIsSecret(comp) and comp == true then
+            return true
+        end
+    end
+    return false
+end
+
+local function IsQuestReadyForTurnIn(qID, fallbackComplete)
+    if fallbackComplete == true then return true end
+    local id = SafeNum(qID, 0)
+    if id <= 0 or not _G.C_QuestLog then return false end
+    if type(_G.C_QuestLog.IsComplete) == "function" then
+        local ok, res = pcall(_G.C_QuestLog.IsComplete, id)
+        if ok and not SafeIsSecret(res) and res == true then
+            return true
+        end
+    end
+    if type(_G.C_QuestLog.ReadyForTurnIn) == "function" then
+        local ok, res = pcall(_G.C_QuestLog.ReadyForTurnIn, id)
+        if ok and not SafeIsSecret(res) and res == true then
+            return true
+        end
+    end
+    return false
+end
+
+local function HideNonPreviewReader()
+    if currentMode == "PREVIEW" then return end
+    currentMode = nil
+    activeSessionKind = nil
+    activeConfirmKind = nil
+    activeConfirmDestructive = false
+    selectedChoiceIndex = nil
+    liveRefreshPending = false
+    wipe(currentOptions)
+    if readerFrame and readerFrame:IsShown() then
+        readerFrame:Hide()
+    end
+end
+
+local function ResetStrandedBlizzardFrame(bf, allowHide)
+    if not bf then return end
+    if allowHide and not InCombatLockdown() and bf.IsShown and bf:IsShown() then
+        if type(_G.HideUIPanel) == "function" then
+            pcall(_G.HideUIPanel, bf)
+        end
+        if bf.IsShown and bf:IsShown() and type(bf.Hide) == "function" then
+            pcall(bf.Hide, bf)
+        end
+    end
+    RestoreBlizzardFrame(bf)
+end
+
+local function CloseDeadSession(kind)
+    interactionSeq = interactionSeq + 1
+    activeBypassGossip = false
+    HideNonPreviewReader()
+    local gossipAlive = IsGossipInteractionActive()
+    local questAlive = IsQuestInteractionActive()
+    local pim = _G.C_PlayerInteractionManager
+    local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
+    if not gossipAlive then
+        gossipSessionClosed = true
+        ResetStrandedBlizzardFrame(_G.GossipFrame, not questAlive)
+        if (kind == "GOSSIP" or kind == nil) and pim and type(pim.ClearInteraction) == "function" and iEnum and iEnum.Gossip then
+            pcall(pim.ClearInteraction, iEnum.Gossip)
+        end
+    end
+    if not questAlive then
+        questSessionClosed = true
+        questSessionIsNpc = false
+        ResetStrandedBlizzardFrame(_G.QuestFrame, not gossipAlive)
+        if (kind == "QUEST" or kind == nil) and pim and type(pim.ClearInteraction) == "function" and iEnum and iEnum.QuestGiver then
+            pcall(pim.ClearInteraction, iEnum.QuestGiver)
+        end
+    end
+end
+
+local function MatchesPrepActionPhase(phase, actionKind)
+    if type(phase) ~= "string" or type(actionKind) ~= "string" then
+        return false
+    end
+    if phase == "GOSSIP" then
+        return actionKind == "GOSSIP_SELECT_ACTIVE"
+            or actionKind == "GOSSIP_SELECT_AVAILABLE"
+            or actionKind == "GOSSIP_SELECT_OPTION"
+    elseif phase == "GREETING" then
+        return actionKind == "GREETING_SELECT_ACTIVE"
+            or actionKind == "GREETING_SELECT_AVAILABLE"
+    elseif phase == "DETAIL" then
+        return actionKind == "QUEST_DETAIL_ACCEPT"
+    elseif phase == "PROGRESS" then
+        return actionKind == "QUEST_PROGRESS_COMPLETE"
+    elseif phase == "COMPLETE" then
+        return actionKind == "QUEST_COMPLETE_REWARD"
+    end
+    return false
+end
+
+local function WasDialogueEventAutoHandledByPrep(phase, expectedTargetID)
+    local dp = _G.DynamicPrep
+    local dpSeq = (type(dp) == "table") and SafeNum(dp._autoDialogueActionSeq, 0) or 0
+    if prepAutoHandledSeq == interactionSeq and MatchesPrepActionPhase(phase, prepAutoHandledPhase) then
+        if dpSeq > lastConsumedPrepActionSeq then
+            lastConsumedPrepActionSeq = dpSeq
+        end
+        return true
+    end
+    if type(dp) ~= "table" or type(dp._lastAutoDialogueAt) ~= "number" then
+        return false
+    end
+    if dpSeq <= 0 or dpSeq <= lastConsumedPrepActionSeq then
+        return false
+    end
+    if not MatchesPrepActionPhase(phase, dp._lastAutoDialogueAction) then
+        return false
+    end
+    local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+    if (now - dp._lastAutoDialogueAt) > 0.15 then
+        return false
+    end
+    if expectedTargetID ~= nil and dp._lastAutoDialogueTargetID ~= nil then
+        local expNum = SafeNum(expectedTargetID, 0)
+        local dpNum = SafeNum(dp._lastAutoDialogueTargetID, 0)
+        if expNum > 0 and dpNum > 0 and expNum ~= dpNum then
+            return false
+        end
+    end
+    lastConsumedPrepActionSeq = dpSeq
+    return true
+end
+
 local function CloseConfirmInteraction()
     currentMode = nil
     activeSessionKind = nil
     activeConfirmKind = nil
     activeConfirmDestructive = false
     selectedChoiceIndex = nil
+    liveRefreshPending = false
     wipe(currentOptions)
     if readerFrame and readerFrame:IsShown() and not InCombatLockdown() then
         readerFrame:Hide()
@@ -712,16 +945,21 @@ end
 local function CloseActiveInteraction()
     local mode = currentMode
     local sess = activeSessionKind
+    interactionSeq = interactionSeq + 1
+    activeBypassGossip = false
+    gossipSessionClosed = true
+    questSessionClosed = true
+    questSessionIsNpc = false
     currentMode = nil
     activeSessionKind = nil
     activeConfirmKind = nil
     activeConfirmDestructive = false
     selectedChoiceIndex = nil
+    liveRefreshPending = false
     wipe(currentOptions)
     if readerFrame then
         readerFrame:Hide()
     end
-    RestoreAllBlizzardFrames()
     if mode == "GOSSIP" or sess == "GOSSIP" then
         if _G.C_GossipInfo and type(_G.C_GossipInfo.CloseGossip) == "function" then
             pcall(_G.C_GossipInfo.CloseGossip)
@@ -743,6 +981,11 @@ local function CloseActiveInteraction()
             pcall(_G.C_PlayerInteractionManager.ClearInteraction, iEnum.QuestGiver)
         end
     end
+    if mode ~= "PREVIEW" then
+        ResetStrandedBlizzardFrame(_G.GossipFrame, true)
+        ResetStrandedBlizzardFrame(_G.QuestFrame, true)
+    end
+    RestoreAllBlizzardFrames()
 end
 
 local function ApplyReaderPosition()
@@ -1675,11 +1918,31 @@ local function ResolveNpcName(fallback)
     return name
 end
 
+function DynamicDialogue:IsGossipInteractionActive()
+    return IsGossipInteractionActive()
+end
+
+function DynamicDialogue:IsQuestInteractionActive()
+    return IsQuestInteractionActive()
+end
+
+function DynamicDialogue:NotifyExternalAutoAction(actionKind, targetID)
+    if type(actionKind) ~= "string" or actionKind == "" then return end
+    prepAutoHandledSeq = interactionSeq
+    prepAutoHandledPhase = actionKind
+end
+
 function DynamicDialogue:ShowGossip()
     if not self:ShouldIntercept("GOSSIP") then
+        HideNonPreviewReader()
         RestoreBlizzardFrame(_G.GossipFrame)
         return
     end
+    if not IsGossipInteractionActive() then
+        CloseDeadSession("GOSSIP")
+        return
+    end
+    gossipSessionClosed = false
     activeSessionKind = "GOSSIP"
     currentMode = "GOSSIP"
     RestoreBlizzardFrame(_G.QuestFrame)
@@ -1688,6 +1951,7 @@ function DynamicDialogue:ShowGossip()
     local npcName = ResolveNpcName("NPC")
     local text = (C_GossipInfo and C_GossipInfo.GetText) and SafeStr(C_GossipInfo.GetText(), "") or ""
     local options = {}
+    local seenActiveQuestIDs = {}
 
     -- Active (Turn-in / In-Progress) Quests first
     if C_GossipInfo and type(C_GossipInfo.GetActiveQuests) == "function" then
@@ -1695,50 +1959,79 @@ function DynamicDialogue:ShowGossip()
         for _, q in ipairs(activeQ) do
             if type(q) == "table" and not SafeIsSecret(q) then
                 local qID = (not SafeIsSecret(q.questID)) and q.questID or nil
-                local isComplete = (not SafeIsSecret(q.isComplete) and q.isComplete == true)
-                local freq = SafeNum(q.frequency, 0)
-                local isDaily = (freq > 0) or (not SafeIsSecret(q.repeatable) and q.repeatable == true)
-                local iconPath = isComplete
-                    and (isDaily and "Interface\\GossipFrame\\DailyActiveQuestIcon" or "Interface\\GossipFrame\\ActiveQuestIcon")
-                    or "Interface\\GossipFrame\\IncompleteQuestIcon"
-                table.insert(options, {
-                    label = SafeStr(q.title, "Active Quest"),
-                    tag = isComplete and "[TURN-IN]" or "[IN PROGRESS]",
-                    tagColor = isComplete and { 0.20, 0.83, 0.60 } or { 0.64, 0.70, 0.78 },
-                    icon = iconPath,
-                    onClick = function()
-                        if qID and C_GossipInfo.SelectActiveQuest then
-                            pcall(C_GossipInfo.SelectActiveQuest, qID)
-                        end
-                    end,
-                })
+                local staleTurnedIn = qID and IsQuestAlreadyCompleted(qID) and not IsQuestAlreadyAccepted(qID)
+                if not staleTurnedIn then
+                    if qID then seenActiveQuestIDs[qID] = true end
+                    local rawComplete = (not SafeIsSecret(q.isComplete) and q.isComplete == true)
+                    local isComplete = IsQuestReadyForTurnIn(qID, rawComplete)
+                    local freq = SafeNum(q.frequency, 0)
+                    local isDaily = (freq > 0) or (not SafeIsSecret(q.repeatable) and q.repeatable == true)
+                    local iconPath = isComplete
+                        and (isDaily and "Interface\\GossipFrame\\DailyActiveQuestIcon" or "Interface\\GossipFrame\\ActiveQuestIcon")
+                        or "Interface\\GossipFrame\\IncompleteQuestIcon"
+                    table.insert(options, {
+                        label = SafeStr(q.title, "Active Quest"),
+                        tag = isComplete and "[TURN-IN]" or "[IN PROGRESS]",
+                        tagColor = isComplete and { 0.20, 0.83, 0.60 } or { 0.64, 0.70, 0.78 },
+                        icon = iconPath,
+                        questID = qID,
+                        onClick = function()
+                            if not IsGossipInteractionActive() then
+                                CloseDeadSession("GOSSIP")
+                                return
+                            end
+                            if qID and C_GossipInfo and C_GossipInfo.SelectActiveQuest then
+                                pcall(C_GossipInfo.SelectActiveQuest, qID)
+                            end
+                        end,
+                    })
+                end
             end
         end
     end
 
-    -- Available Quests
+    -- Available Quests (cross-checked against live quest log so accepted quests never render stale)
     if C_GossipInfo and type(C_GossipInfo.GetAvailableQuests) == "function" then
         local availQ = C_GossipInfo.GetAvailableQuests() or {}
         for _, q in ipairs(availQ) do
             if type(q) == "table" and not SafeIsSecret(q) then
                 local qID = (not SafeIsSecret(q.questID)) and q.questID or nil
                 local freq = SafeNum(q.frequency, 0)
-                local isDaily = (freq > 0) or (not SafeIsSecret(q.repeatable) and q.repeatable == true)
-                local isLegendary = (not SafeIsSecret(q.isLegendary) and q.isLegendary == true)
-                local iconPath = (isLegendary and "Interface\\GossipFrame\\AvailableLegendaryQuestIcon")
-                    or (isDaily and "Interface\\GossipFrame\\DailyQuestIcon")
-                    or "Interface\\GossipFrame\\AvailableQuestIcon"
-                table.insert(options, {
-                    label = SafeStr(q.title, "Available Quest"),
-                    tag = "[QUEST]",
-                    tagColor = { 0.98, 0.80, 0.08 },
-                    icon = iconPath,
-                    onClick = function()
-                        if qID and C_GossipInfo.SelectAvailableQuest then
-                            pcall(C_GossipInfo.SelectAvailableQuest, qID)
-                        end
-                    end,
-                })
+                local isRepeatable = (freq > 0) or (not SafeIsSecret(q.repeatable) and q.repeatable == true)
+                local isStale = false
+                if qID then
+                    if seenActiveQuestIDs[qID] or IsQuestAlreadyAccepted(qID) then
+                        isStale = true
+                    elseif not isRepeatable and IsQuestAlreadyCompleted(qID) then
+                        isStale = true
+                    end
+                end
+                if not isStale then
+                    local isLegendary = (not SafeIsSecret(q.isLegendary) and q.isLegendary == true)
+                    local iconPath = (isLegendary and "Interface\\GossipFrame\\AvailableLegendaryQuestIcon")
+                        or (isRepeatable and "Interface\\GossipFrame\\DailyQuestIcon")
+                        or "Interface\\GossipFrame\\AvailableQuestIcon"
+                    table.insert(options, {
+                        label = SafeStr(q.title, "Available Quest"),
+                        tag = "[QUEST]",
+                        tagColor = { 0.98, 0.80, 0.08 },
+                        icon = iconPath,
+                        questID = qID,
+                        onClick = function()
+                            if not IsGossipInteractionActive() then
+                                CloseDeadSession("GOSSIP")
+                                return
+                            end
+                            if qID and IsQuestAlreadyAccepted(qID) then
+                                DynamicDialogue:ShowGossip()
+                                return
+                            end
+                            if qID and C_GossipInfo and C_GossipInfo.SelectAvailableQuest then
+                                pcall(C_GossipInfo.SelectAvailableQuest, qID)
+                            end
+                        end,
+                    })
+                end
             end
         end
     end
@@ -1782,9 +2075,13 @@ function DynamicDialogue:ShowGossip()
                 icon = iconVal,
                 iconDesaturated = isLocked,
                 onClick = function()
-                    if optID and C_GossipInfo.SelectOption then
+                    if not IsGossipInteractionActive() then
+                        CloseDeadSession("GOSSIP")
+                        return
+                    end
+                    if optID and C_GossipInfo and C_GossipInfo.SelectOption then
                         pcall(C_GossipInfo.SelectOption, optID)
-                    elseif C_GossipInfo.SelectOptionByIndex then
+                    elseif C_GossipInfo and C_GossipInfo.SelectOptionByIndex then
                         pcall(C_GossipInfo.SelectOptionByIndex, rawIdx)
                     end
                 end,
@@ -1804,9 +2101,15 @@ end
 
 function DynamicDialogue:ShowQuestGreeting()
     if not self:ShouldIntercept("QUEST") then
+        HideNonPreviewReader()
         RestoreBlizzardFrame(_G.QuestFrame)
         return
     end
+    if not IsQuestInteractionActive() then
+        CloseDeadSession("QUEST")
+        return
+    end
+    questSessionClosed = false
     activeSessionKind = "QUEST"
     currentMode = "GREETING"
     RestoreBlizzardFrame(_G.GossipFrame)
@@ -1815,34 +2118,86 @@ function DynamicDialogue:ShowQuestGreeting()
     local npcName = ResolveNpcName("Quest Giver")
     local text = (type(_G.GetGreetingText) == "function") and SafeStr(_G.GetGreetingText(), "") or ""
     local options = {}
+    local seenActiveQuestIDs = {}
 
     local numActive = (type(_G.GetNumActiveQuests) == "function") and SafeNum(_G.GetNumActiveQuests(), 0) or 0
     for i = 1, numActive do
         local title, isComplete = _G.GetActiveTitle(i)
-        local comp = (not SafeIsSecret(isComplete) and isComplete == true)
-        table.insert(options, {
-            label = SafeStr(title, "Active Quest"),
-            tag = comp and "[TURN-IN]" or "[IN PROGRESS]",
-            tagColor = comp and { 0.20, 0.83, 0.60 } or { 0.64, 0.70, 0.78 },
-            icon = comp and "Interface\\GossipFrame\\ActiveQuestIcon" or "Interface\\GossipFrame\\IncompleteQuestIcon",
-            onClick = function()
-                if type(_G.SelectActiveQuest) == "function" then pcall(_G.SelectActiveQuest, i) end
-            end,
-        })
+        local qID = nil
+        if type(_G.GetActiveQuestID) == "function" then
+            local okID, resID = pcall(_G.GetActiveQuestID, i)
+            if okID and not SafeIsSecret(resID) and type(resID) == "number" and resID > 0 then
+                qID = resID
+            end
+        end
+        local staleTurnedIn = qID and IsQuestAlreadyCompleted(qID) and not IsQuestAlreadyAccepted(qID)
+        if not staleTurnedIn then
+            if qID then seenActiveQuestIDs[qID] = true end
+            local rawComp = (not SafeIsSecret(isComplete) and isComplete == true)
+            local comp = IsQuestReadyForTurnIn(qID, rawComp)
+            table.insert(options, {
+                label = SafeStr(title, "Active Quest"),
+                tag = comp and "[TURN-IN]" or "[IN PROGRESS]",
+                tagColor = comp and { 0.20, 0.83, 0.60 } or { 0.64, 0.70, 0.78 },
+                icon = comp and "Interface\\GossipFrame\\ActiveQuestIcon" or "Interface\\GossipFrame\\IncompleteQuestIcon",
+                questID = qID,
+                onClick = function()
+                    if not IsQuestInteractionActive() then
+                        CloseDeadSession("QUEST")
+                        return
+                    end
+                    if type(_G.SelectActiveQuest) == "function" then pcall(_G.SelectActiveQuest, i) end
+                end,
+            })
+        end
     end
 
     local numAvail = (type(_G.GetNumAvailableQuests) == "function") and SafeNum(_G.GetNumAvailableQuests(), 0) or 0
     for i = 1, numAvail do
         local title = _G.GetAvailableTitle(i)
-        table.insert(options, {
-            label = SafeStr(title, "Available Quest"),
-            tag = "[QUEST]",
-            tagColor = { 0.98, 0.80, 0.08 },
-            icon = "Interface\\GossipFrame\\AvailableQuestIcon",
-            onClick = function()
-                if type(_G.SelectAvailableQuest) == "function" then pcall(_G.SelectAvailableQuest, i) end
-            end,
-        })
+        local qID, isRepeatable, isLegendary = nil, false, false
+        if type(_G.GetAvailableQuestInfo) == "function" then
+            local okInfo, _, freq, rep, leg, infoQID = pcall(_G.GetAvailableQuestInfo, i)
+            if okInfo then
+                local freqNum = SafeNum(freq, 0)
+                isRepeatable = (freqNum > 0) or (not SafeIsSecret(rep) and rep == true)
+                isLegendary = (not SafeIsSecret(leg) and leg == true)
+                if not SafeIsSecret(infoQID) and type(infoQID) == "number" and infoQID > 0 then
+                    qID = infoQID
+                end
+            end
+        end
+        local isStale = false
+        if qID then
+            if seenActiveQuestIDs[qID] or IsQuestAlreadyAccepted(qID) then
+                isStale = true
+            elseif not isRepeatable and IsQuestAlreadyCompleted(qID) then
+                isStale = true
+            end
+        end
+        if not isStale then
+            local iconPath = (isLegendary and "Interface\\GossipFrame\\AvailableLegendaryQuestIcon")
+                or (isRepeatable and "Interface\\GossipFrame\\DailyQuestIcon")
+                or "Interface\\GossipFrame\\AvailableQuestIcon"
+            table.insert(options, {
+                label = SafeStr(title, "Available Quest"),
+                tag = "[QUEST]",
+                tagColor = { 0.98, 0.80, 0.08 },
+                icon = iconPath,
+                questID = qID,
+                onClick = function()
+                    if not IsQuestInteractionActive() then
+                        CloseDeadSession("QUEST")
+                        return
+                    end
+                    if qID and IsQuestAlreadyAccepted(qID) then
+                        DynamicDialogue:ShowQuestGreeting()
+                        return
+                    end
+                    if type(_G.SelectAvailableQuest) == "function" then pcall(_G.SelectAvailableQuest, i) end
+                end,
+            })
+        end
     end
 
     RenderReaderState({
@@ -1878,9 +2233,15 @@ end
 
 function DynamicDialogue:ShowQuestDetail()
     if not self:ShouldIntercept("QUEST") then
+        HideNonPreviewReader()
         RestoreBlizzardFrame(_G.QuestFrame)
         return
     end
+    if not IsQuestInteractionActive() then
+        CloseDeadSession("QUEST")
+        return
+    end
+    questSessionClosed = false
     activeSessionKind = "QUEST"
     currentMode = "DETAIL"
     activeConfirmKind = nil
@@ -1919,6 +2280,10 @@ function DynamicDialogue:ShowQuestDetail()
         isChoiceMode = false,
         primaryLabel = isAutoAccept and "Okay [Space]" or "Accept Quest [Space]",
         onPrimary = function()
+            if not IsQuestInteractionActive() then
+                CloseDeadSession("QUEST")
+                return
+            end
             if isAutoAccept then
                 if type(_G.AcknowledgeAutoAcceptQuest) == "function" then
                     pcall(_G.AcknowledgeAutoAcceptQuest)
@@ -1945,9 +2310,15 @@ end
 
 function DynamicDialogue:ShowQuestProgress()
     if not self:ShouldIntercept("QUEST") then
+        HideNonPreviewReader()
         RestoreBlizzardFrame(_G.QuestFrame)
         return
     end
+    if not IsQuestInteractionActive() then
+        CloseDeadSession("QUEST")
+        return
+    end
+    questSessionClosed = false
     activeSessionKind = "QUEST"
     currentMode = "PROGRESS"
     RestoreBlizzardFrame(_G.GossipFrame)
@@ -1967,6 +2338,10 @@ function DynamicDialogue:ShowQuestProgress()
         primaryLabel = canComplete and "Continue [Space]" or "In Progress",
         primaryDisabled = not canComplete,
         onPrimary = function()
+            if not IsQuestInteractionActive() then
+                CloseDeadSession("QUEST")
+                return
+            end
             if canComplete and type(_G.CompleteQuest) == "function" then
                 pcall(_G.CompleteQuest)
             end
@@ -1977,9 +2352,15 @@ end
 
 function DynamicDialogue:ShowQuestComplete()
     if not self:ShouldIntercept("QUEST") then
+        HideNonPreviewReader()
         RestoreBlizzardFrame(_G.QuestFrame)
         return
     end
+    if not IsQuestInteractionActive() then
+        CloseDeadSession("QUEST")
+        return
+    end
+    questSessionClosed = false
     activeSessionKind = "QUEST"
     currentMode = "COMPLETE"
     selectedChoiceIndex = nil
@@ -2005,6 +2386,10 @@ function DynamicDialogue:ShowQuestComplete()
         primaryLabel = (numChoices > 1 and not selectedChoiceIndex) and "Select a Reward" or "Complete Quest [Space]",
         primaryDisabled = (numChoices > 1 and not selectedChoiceIndex),
         onPrimary = function()
+            if not IsQuestInteractionActive() then
+                CloseDeadSession("QUEST")
+                return
+            end
             if numChoices > 1 and not selectedChoiceIndex then
                 Print("Please click a reward choice before completing the quest.")
                 return
@@ -2960,6 +3345,7 @@ DynamicDialogue.CHANGELOG = {
         version = VERSION,
         date = "25/11/2026",
         entries = {
+            { type = "FIX",     text = "Multi-Quest NPC State Sync & DynamicPrep Auto-Accept Handoff (25/11/2026): Prioritised live server interaction state (C_PlayerInteractionManager.IsInteractingNpcOfType) over suppressed off-screen Blizzard frames so dead sessions never leave a stale reader open; subscribed to QUEST_ACCEPTED, QUEST_REMOVED, and QUEST_LOG_UPDATE for debounced live quest-list refreshes; cross-checked available quests against C_QuestLog so accepted or completed one-time quests never render as unaccepted [QUEST] options; added live-session click guards across all gossip, greeting, and quest action buttons to close dead sessions and reset stranded Blizzard frames cleanly; and coordinated phase-matched handoff with DynamicPrep auto-gossip and auto-accept across both Suite and Standalone builds." },
             { type = "UI",      text = "Pass 6 Standalone Window Parity, Live Accent Print & 800x520 Width Sync (25/11/2026): Made DynamicDialogueStandaloneFrame resizable (760x480 to 1280x860) with a 36px Reset/Reload footer, 14x14 live-accent resize grip, and ApplyTheme border/header repaint; switched Print() chat prefixes from hardcoded orange to the live Suite Accent; synced scrollContent width immediately on OnShow for clean 800x520 first-open layout; and updated setting labels ('Hold Shift for Default Blizzard Window', '11 to 18 px') in plain Australian English." },
             { type = "FEATURE", text = "Unified Obsidian Confirm Screen & Auto-Accept Quest Fix (21/11/2026): Added a shared Obsidian Confirm screen for gossip confirmations, shared group quests, and Hearthstone innkeeper binding with 1 / Space double-tap confirmation (0.15s debounce) and Esc cancellation while leaving code-entry prompts native; and fixed auto-accepted quests to show Okay [Space] (no Decline) cleanly." },
             { type = "UI",      text = "Release v2.7.0 (21/11/2026): Upgraded DynamicDialogue to the universal 34px #0B0D12 equal-width 2-tab header bar, dedicated 44px Action & Status strip inside the settings canvas, crisp non-outlined card fonts, standardised 156x26px (68px Off / 84px Enabled) binary switches, and 2-line wrapped descriptions so every row fits cleanly down to 800x520." },
@@ -3026,53 +3412,98 @@ end
 -- ============================================================================
 -- 7. EVENTS & SLASH COMMANDS
 -- ============================================================================
-local function IsGossipInteractionActive()
-    if _G.GossipFrame and _G.GossipFrame.IsShown and _G.GossipFrame:IsShown() then
-        return true
-    end
-    if _G.C_PlayerInteractionManager and type(_G.C_PlayerInteractionManager.IsInteractingNpcOfType) == "function"
-        and _G.Enum and _G.Enum.PlayerInteractionType and _G.Enum.PlayerInteractionType.Gossip then
-        local ok, active = pcall(_G.C_PlayerInteractionManager.IsInteractingNpcOfType, _G.Enum.PlayerInteractionType.Gossip)
-        if ok and active == true then
-            return true
+local function ScheduleLiveListRefresh()
+    if liveRefreshPending or InCombatLockdown() then return end
+    if not (readerFrame and readerFrame:IsShown()) then return end
+    if currentMode ~= "GOSSIP" and currentMode ~= "GREETING" then return end
+    liveRefreshPending = true
+    local mySeq = interactionSeq
+    C_Timer.After(0, function()
+        liveRefreshPending = false
+        if mySeq ~= interactionSeq or InCombatLockdown() then return end
+        if not (readerFrame and readerFrame:IsShown()) then return end
+        if currentMode == "GOSSIP" then
+            if IsGossipInteractionActive() then
+                DynamicDialogue:ShowGossip()
+            else
+                CloseDeadSession("GOSSIP")
+            end
+        elseif currentMode == "GREETING" then
+            if IsQuestInteractionActive() then
+                DynamicDialogue:ShowQuestGreeting()
+            else
+                CloseDeadSession("QUEST")
+            end
         end
-    end
-    return false
+    end)
 end
 
-local function IsQuestInteractionActive()
-    if _G.QuestFrame and _G.QuestFrame.IsShown and _G.QuestFrame:IsShown() then
-        return true
-    end
-    if _G.C_PlayerInteractionManager and type(_G.C_PlayerInteractionManager.IsInteractingNpcOfType) == "function"
-        and _G.Enum and _G.Enum.PlayerInteractionType and _G.Enum.PlayerInteractionType.QuestGiver then
-        local ok, active = pcall(_G.C_PlayerInteractionManager.IsInteractingNpcOfType, _G.Enum.PlayerInteractionType.QuestGiver)
-        if ok and active == true then
-            return true
+local function HandleGossipEnded()
+    activeBypassGossip = false
+    gossipSessionClosed = true
+    local closeSeq = interactionSeq
+    C_Timer.After(0, function()
+        if activeSessionKind ~= "GOSSIP" then
+            local gossipAlive = IsGossipInteractionActive()
+            local questAlive = IsQuestInteractionActive()
+            if activeSessionKind == nil and not gossipAlive and not questAlive then
+                CloseDeadSession("GOSSIP")
+            else
+                ResetStrandedBlizzardFrame(_G.GossipFrame, not gossipAlive and not questAlive)
+            end
+            return
         end
-    end
-    return false
+        if closeSeq == interactionSeq and not IsGossipInteractionActive() then
+            if currentMode == "GOSSIP" or currentMode == nil then
+                CloseDeadSession("GOSSIP")
+            else
+                ResetStrandedBlizzardFrame(_G.GossipFrame, not IsQuestInteractionActive())
+            end
+        end
+    end)
 end
 
-local function HideNonPreviewReader()
-    if currentMode == "PREVIEW" then return end
-    currentMode = nil
-    activeSessionKind = nil
-    activeConfirmKind = nil
-    activeConfirmDestructive = false
-    selectedChoiceIndex = nil
-    wipe(currentOptions)
-    if readerFrame and readerFrame:IsShown() then
-        readerFrame:Hide()
-    end
+local function HandleQuestEnded()
+    questSessionClosed = true
+    local closeSeq = interactionSeq
+    C_Timer.After(0, function()
+        if activeSessionKind ~= "QUEST" then
+            local gossipAlive = IsGossipInteractionActive()
+            local questAlive = IsQuestInteractionActive()
+            if activeSessionKind == nil and not gossipAlive and not questAlive then
+                CloseDeadSession("QUEST")
+            else
+                ResetStrandedBlizzardFrame(_G.QuestFrame, not gossipAlive and not questAlive)
+            end
+            return
+        end
+        if closeSeq == interactionSeq and not IsQuestInteractionActive() then
+            if currentMode ~= "GOSSIP" and currentMode ~= "PREVIEW" then
+                CloseDeadSession("QUEST")
+            else
+                ResetStrandedBlizzardFrame(_G.QuestFrame, not IsGossipInteractionActive())
+            end
+        end
+    end)
 end
 
-local function HandleQuestShowEvent(showMethodName)
+local function HandleQuestShowEvent(showMethodName, phaseName)
     if not DynamicDialogue:ShouldIntercept("QUEST") then
         HideNonPreviewReader()
         RestoreBlizzardFrame(_G.QuestFrame)
         return
     end
+    questSessionClosed = false
+    local isNpcNow = false
+    local pim = _G.C_PlayerInteractionManager
+    local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
+    if pim and type(pim.IsInteractingNpcOfType) == "function" and iEnum and iEnum.QuestGiver then
+        local okN, resN = pcall(pim.IsInteractingNpcOfType, iEnum.QuestGiver)
+        if okN and not SafeIsSecret(resN) and resN == true then
+            isNpcNow = true
+        end
+    end
+    questSessionIsNpc = isNpcNow or (phaseName ~= "DETAIL")
     interactionSeq = interactionSeq + 1
     local mySeq = interactionSeq
     activeSessionKind = "QUEST"
@@ -3080,13 +3511,23 @@ local function HandleQuestShowEvent(showMethodName)
     SuppressBlizzardFrame(_G.QuestFrame)
     C_Timer.After(0, function()
         if mySeq ~= interactionSeq then return end
+        local curQID = (phaseName ~= "GREETING" and type(_G.GetQuestID) == "function") and SafeNum(_G.GetQuestID(), 0) or nil
+        if WasDialogueEventAutoHandledByPrep(phaseName, curQID) then
+            -- DynamicPrep already acted on this event; skip stale frame-0 render and verify cleanly after 0.25s
+            C_Timer.After(0.25, function()
+                if mySeq ~= interactionSeq or InCombatLockdown() then return end
+                if IsQuestInteractionActive() and type(DynamicDialogue[showMethodName]) == "function" then
+                    DynamicDialogue[showMethodName](DynamicDialogue)
+                else
+                    CloseDeadSession("QUEST")
+                end
+            end)
+            return
+        end
         if IsQuestInteractionActive() and type(DynamicDialogue[showMethodName]) == "function" then
             DynamicDialogue[showMethodName](DynamicDialogue)
         else
-            if activeSessionKind == "QUEST" then
-                activeSessionKind = nil
-            end
-            RestoreBlizzardFrame(_G.QuestFrame)
+            CloseDeadSession("QUEST")
         end
     end)
 end
@@ -3103,6 +3544,9 @@ evt:RegisterEvent("QUEST_COMPLETE")
 evt:RegisterEvent("QUEST_FINISHED")
 evt:RegisterEvent("PLAYER_REGEN_DISABLED")
 evt:RegisterEvent("PLAYER_REGEN_ENABLED")
+pcall(evt.RegisterEvent, evt, "QUEST_ACCEPTED")
+pcall(evt.RegisterEvent, evt, "QUEST_REMOVED")
+pcall(evt.RegisterEvent, evt, "QUEST_LOG_UPDATE")
 pcall(evt.RegisterEvent, evt, "GOSSIP_CONFIRM")
 pcall(evt.RegisterEvent, evt, "GOSSIP_CONFIRM_CANCEL")
 pcall(evt.RegisterEvent, evt, "QUEST_ACCEPT_CONFIRM")
@@ -3131,12 +3575,13 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
             RestoreBlizzardFrame(_G.GossipFrame)
             return
         end
+        gossipSessionClosed = false
         interactionSeq = interactionSeq + 1
         local mySeq = interactionSeq
         activeSessionKind = "GOSSIP"
         RestoreBlizzardFrame(_G.QuestFrame)
         SuppressBlizzardFrame(_G.GossipFrame)
-        -- Yield 1 frame so DynamicPrep's instant single-option auto-confirm can fire first without flicker
+        -- Yield 1 frame so DynamicPrep's instant auto-select can fire first without stale frame-0 flicker
         C_Timer.After(0, function()
             if mySeq ~= interactionSeq then return end
             if IsCustomGossipTextureKit(arg1) then
@@ -3145,23 +3590,60 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
                 RestoreBlizzardFrame(_G.GossipFrame)
                 return
             end
+            if WasDialogueEventAutoHandledByPrep("GOSSIP") then
+                C_Timer.After(0.25, function()
+                    if mySeq ~= interactionSeq or InCombatLockdown() then return end
+                    if IsGossipInteractionActive() then
+                        DynamicDialogue:ShowGossip()
+                    else
+                        CloseDeadSession("GOSSIP")
+                    end
+                end)
+                return
+            end
             if IsGossipInteractionActive() then
                 DynamicDialogue:ShowGossip()
             else
-                if activeSessionKind == "GOSSIP" then
-                    activeSessionKind = nil
-                end
-                RestoreBlizzardFrame(_G.GossipFrame)
+                CloseDeadSession("GOSSIP")
             end
         end)
     elseif event == "QUEST_GREETING" then
-        HandleQuestShowEvent("ShowQuestGreeting")
+        HandleQuestShowEvent("ShowQuestGreeting", "GREETING")
     elseif event == "QUEST_DETAIL" then
-        HandleQuestShowEvent("ShowQuestDetail")
+        HandleQuestShowEvent("ShowQuestDetail", "DETAIL")
     elseif event == "QUEST_PROGRESS" then
-        HandleQuestShowEvent("ShowQuestProgress")
+        HandleQuestShowEvent("ShowQuestProgress", "PROGRESS")
     elseif event == "QUEST_COMPLETE" then
-        HandleQuestShowEvent("ShowQuestComplete")
+        HandleQuestShowEvent("ShowQuestComplete", "COMPLETE")
+    elseif event == "QUEST_ACCEPTED" then
+        local qID = nil
+        if not SafeIsSecret(arg2) and type(arg2) == "number" and arg2 > 0 then
+            qID = arg2
+        elseif not SafeIsSecret(arg1) and type(arg1) == "number" and arg1 > 0 then
+            qID = arg1
+        end
+        if qID then
+            recentlyAcceptedQuests[qID] = (type(_G.GetTime) == "function") and _G.GetTime() or 0
+        end
+        if readerFrame and readerFrame:IsShown() and not InCombatLockdown() then
+            if currentMode == "GOSSIP" or currentMode == "GREETING" then
+                ScheduleLiveListRefresh()
+            elseif currentMode == "DETAIL" then
+                local mySeq = interactionSeq
+                C_Timer.After(0, function()
+                    if mySeq == interactionSeq and currentMode == "DETAIL" and not IsQuestInteractionActive() then
+                        CloseDeadSession("QUEST")
+                    end
+                end)
+            end
+        end
+    elseif event == "QUEST_REMOVED" then
+        if not SafeIsSecret(arg1) and type(arg1) == "number" and arg1 > 0 then
+            recentlyAcceptedQuests[arg1] = nil
+        end
+        ScheduleLiveListRefresh()
+    elseif event == "QUEST_LOG_UPDATE" then
+        ScheduleLiveListRefresh()
     elseif event == "GOSSIP_CONFIRM" then
         local gID = (not SafeIsSecret(arg1)) and tonumber(arg1) or nil
         local confirmText = SafeStr(arg2, "")
@@ -3173,8 +3655,7 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
             if mySeq ~= interactionSeq or InCombatLockdown() then return end
             if WasGossipConfirmAutoHandledByPrep(gID) then
                 if not IsGossipInteractionActive() then
-                    HideNonPreviewReader()
-                    RestoreAllBlizzardFrames()
+                    CloseDeadSession("GOSSIP")
                 end
                 return
             end
@@ -3292,80 +3773,34 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
             end,
         })
     elseif event == "GOSSIP_CLOSED" then
-        activeBypassGossip = false
-        local closeSeq = interactionSeq
-        C_Timer.After(0, function()
-            if activeSessionKind ~= "GOSSIP" then
-                RestoreBlizzardFrame(_G.GossipFrame)
-                return
-            end
-            if closeSeq == interactionSeq and not IsGossipInteractionActive() then
-                if currentMode == "GOSSIP" or currentMode == nil then
-                    HideNonPreviewReader()
-                end
-                RestoreBlizzardFrame(_G.GossipFrame)
-            end
-        end)
+        HandleGossipEnded()
     elseif event == "QUEST_FINISHED" then
-        local closeSeq = interactionSeq
-        C_Timer.After(0, function()
-            if activeSessionKind ~= "QUEST" then
-                RestoreBlizzardFrame(_G.QuestFrame)
-                return
-            end
-            if closeSeq == interactionSeq and not IsQuestInteractionActive() then
-                if currentMode ~= "GOSSIP" and currentMode ~= "PREVIEW" then
-                    HideNonPreviewReader()
-                end
-                RestoreBlizzardFrame(_G.QuestFrame)
-            end
-        end)
+        HandleQuestEnded()
     elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
         local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
         if not iEnum then return end
         if arg1 == iEnum.Gossip then
-            activeBypassGossip = false
-            local closeSeq = interactionSeq
-            C_Timer.After(0, function()
-                if activeSessionKind ~= "GOSSIP" then
-                    RestoreBlizzardFrame(_G.GossipFrame)
-                    return
-                end
-                if closeSeq == interactionSeq and not IsGossipInteractionActive() then
-                    if currentMode == "GOSSIP" or currentMode == nil then
-                        HideNonPreviewReader()
-                    end
-                    RestoreBlizzardFrame(_G.GossipFrame)
-                end
-            end)
+            HandleGossipEnded()
         elseif arg1 == iEnum.Binder then
             if currentMode == "CONFIRM" and activeConfirmKind == "BINDER" then
                 CloseConfirmInteraction()
             end
         elseif arg1 == iEnum.QuestGiver then
-            local closeSeq = interactionSeq
-            C_Timer.After(0, function()
-                if activeSessionKind ~= "QUEST" then
-                    RestoreBlizzardFrame(_G.QuestFrame)
-                    return
-                end
-                if closeSeq == interactionSeq and not IsQuestInteractionActive() then
-                    if currentMode ~= "GOSSIP" and currentMode ~= "PREVIEW" then
-                        HideNonPreviewReader()
-                    end
-                    RestoreBlizzardFrame(_G.QuestFrame)
-                end
-            end)
+            HandleQuestEnded()
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
         local db = EnsureDB()
         if db.hideInCombat ~= false then
             interactionSeq = interactionSeq + 1
             activeBypassGossip = false
+            gossipSessionClosed = true
+            questSessionClosed = true
+            questSessionIsNpc = false
             currentMode = nil
             activeSessionKind = nil
             activeConfirmKind = nil
             selectedChoiceIndex = nil
+            liveRefreshPending = false
             wipe(currentOptions)
             if readerFrame and readerFrame:IsShown() then
                 readerFrame:Hide()

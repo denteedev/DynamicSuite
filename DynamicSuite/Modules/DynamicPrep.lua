@@ -694,6 +694,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "25/11/2026",
     entries = {
+        { type = "FIX",     text = "Multi-Quest Auto-Accept, Auto-Gossip & DynamicDialogue Handoff Sync (25/11/2026): Prioritised live server interaction state over suppressed off-screen Blizzard frames across GOSSIP_SHOW, QUEST_GREETING, QUEST_DETAIL, QUEST_PROGRESS, and QUEST_COMPLETE retry timers; cross-checked available and active quests against C_QuestLog (plus QUEST_ACCEPTED / QUEST_REMOVED / QUEST_FINISHED / PLAYER_INTERACTION_MANAGER_FRAME_HIDE tracking) so multi-quest NPCs immediately advance to remaining quests without re-selecting stale accepted quests; and coordinated phase-matched auto-action handoff with DynamicDialogue across both Suite and Standalone builds." },
         { type = "UI",      text = "Release v2.10.1 - Top Info Bar Shift-Drag, Right-Click HUD Edit & Discoverability (25/11/2026): Added direct Shift + Left-Drag repositioning across the Top Info Bar background and segment capsules out of combat (saving directly to HUD Edit Mode coordinates without triggering accidental clicks), Right-Click on empty bar space to open HUD Edit Mode (/ds hud), a subtle bar-hover tooltip, a 'Shift-Drag to move  |  /ds hud for grid & scale' footer line on Top Info Bar segment tooltips, and an updated DynamicPrep '?' Quick Guide tip." },
         { type = "FIX",     text = "Zero-Truncation Actionable Alert Toasts (24/11/2026): Widened actionable Mage Food and Low Durability Alert Toasts (with automatic width fit in DynamicSuite) and tightened titles and action hints so no line cuts off against the right-hand button." },
         { type = "UI",      text = "Pass 3 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 3 Section Split (24/11/2026): Added a 4-option QUICK PRESETS card at the top of Tab 1 (Raider / M+ Full, Minimalist Stats, Keystone Focus, System Only) with live Suite Accent active highlighting; added Bar Density (Standard / Compact) and Bar Mouseover Fade (Off / Fade Until Hover / Combat Fade) options; clamped all wide pill rows cleanly for 800x520 minimum windows; wrapped Tab 2's Clickable Raid Buffs (12 controls, including split-out Partner Buffs, Clickable Icon Spacing, and Hide 'MISSING' Text Label) and Omni Folio (5 controls) into persisted Sub-Settings drawers collapsed by default on fresh profiles alongside a new Paperdoll Gear Audit section with toggle and Preview on Gear button; split Tab 3 into 3 calm Obsidian sections (Quest, Dialogue & Cutscenes; Combat, Error & Survival Guards; Healer Recovery & Durability) with persisted drawer states across reloads; fixed the blank-label standalone Edit HUD fallback button; and cleaned US spellings and raw setting names from tooltips and changelogs." },
@@ -5161,44 +5162,206 @@ local function IsQuestOrSkipGossipOption(opt)
 end
 
 
-local function TryAcceptCurrentQuest()
-    if InCombatLockdown and InCombatLockdown() then return end
-    if IsShiftKeyDown and IsShiftKeyDown() then return end
-    if QuestFlagsPVP and QuestFlagsPVP() then return end
-
-    if QuestGetAutoAccept and QuestGetAutoAccept() and QuestIsFromAreaTrigger and QuestIsFromAreaTrigger() then
-        if AcknowledgeAutoAcceptQuest then
-            pcall(AcknowledgeAutoAcceptQuest)
-        elseif AcceptQuest then
-            pcall(AcceptQuest)
-        end
-    else
-        if AcceptQuest then
-            pcall(AcceptQuest)
+function DynamicPrep:IsGossipInteractionActive()
+    local pim = _G.C_PlayerInteractionManager
+    local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
+    if pim and type(pim.IsInteractingNpcOfType) == "function" and iEnum and iEnum.Gossip then
+        local ok, active = pcall(pim.IsInteractingNpcOfType, iEnum.Gossip)
+        if ok and not _IsSecret(active) then
+            return active == true
         end
     end
+    if self._gossipSessionClosed then
+        return false
+    end
+    return (_G.GossipFrame and _G.GossipFrame.IsShown and _G.GossipFrame:IsShown()) and true or false
+end
+
+function DynamicPrep:IsQuestInteractionActive()
+    local pim = _G.C_PlayerInteractionManager
+    local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
+    if pim and type(pim.IsInteractingNpcOfType) == "function" and iEnum and iEnum.QuestGiver then
+        local ok, active = pcall(pim.IsInteractingNpcOfType, iEnum.QuestGiver)
+        if ok and not _IsSecret(active) then
+            if active == true then
+                return true
+            end
+            if self._questSessionClosed or self._questSessionIsNpc then
+                return false
+            end
+            local qfShown = _G.QuestFrame and _G.QuestFrame.IsShown and _G.QuestFrame:IsShown()
+            if qfShown then
+                local fromArea = (_G.QuestIsFromAreaTrigger and _G.QuestIsFromAreaTrigger() == true) or false
+                if fromArea then return true end
+                local qID = 0
+                if _G.GetQuestID then
+                    local okQ, resQ = pcall(_G.GetQuestID)
+                    if okQ and not _IsSecret(resQ) and type(resQ) == "number" then qID = resQ end
+                end
+                local hasNpc = (_G.UnitExists and _G.UnitExists("npc") == true) or false
+                if qID > 0 and not hasNpc then
+                    return true
+                end
+            end
+            return false
+        end
+    end
+    if self._questSessionClosed then
+        return false
+    end
+    return (_G.QuestFrame and _G.QuestFrame.IsShown and _G.QuestFrame:IsShown()) and true or false
+end
+
+function DynamicPrep:IsQuestAlreadyAccepted(qID)
+    if not qID or _IsSecret(qID) or type(qID) ~= "number" or qID <= 0 then
+        return false
+    end
+    if _G.C_QuestLog and type(_G.C_QuestLog.IsOnQuest) == "function" then
+        local ok, onQ = pcall(_G.C_QuestLog.IsOnQuest, qID)
+        if ok and not _IsSecret(onQ) and onQ == true then
+            return true
+        end
+    end
+    local rec = self._recentlyAcceptedQuests
+    if type(rec) == "table" and rec[qID] then
+        local now = (type(GetTime) == "function" and GetTime()) or 0
+        if (now - rec[qID]) <= 1.5 then
+            return true
+        end
+        rec[qID] = nil
+    end
+    return false
+end
+
+function DynamicPrep:IsQuestAlreadyCompleted(qID)
+    if not qID or _IsSecret(qID) or type(qID) ~= "number" or qID <= 0 then
+        return false
+    end
+    if _G.C_QuestLog and type(_G.C_QuestLog.IsQuestFlaggedCompleted) == "function" then
+        local ok, comp = pcall(_G.C_QuestLog.IsQuestFlaggedCompleted, qID)
+        if ok and not _IsSecret(comp) and comp == true then
+            return true
+        end
+    end
+    return false
+end
+
+function DynamicPrep:MarkAutoDialogueAction(actionKind, targetID)
+    self._autoDialogueActionSeq = (self._autoDialogueActionSeq or 0) + 1
+    self._lastAutoDialogueAction = actionKind
+    self._lastAutoDialogueTargetID = targetID
+    self._lastAutoDialogueAt = (type(GetTime) == "function" and GetTime()) or 0
+    local dd = _G.DynamicDialogue
+    if type(dd) == "table" and type(dd.NotifyExternalAutoAction) == "function" then
+        pcall(dd.NotifyExternalAutoAction, dd, actionKind, targetID)
+    end
+end
+
+function DynamicPrep:NoteQuestAccepted(arg1, arg2)
+    local qID = nil
+    if not _IsSecret(arg2) and type(arg2) == "number" and arg2 > 0 then
+        qID = arg2
+    elseif not _IsSecret(arg1) and type(arg1) == "number" and arg1 > 0 then
+        qID = arg1
+    end
+    if qID then
+        self._recentlyAcceptedQuests = self._recentlyAcceptedQuests or {}
+        self._recentlyAcceptedQuests[qID] = (type(GetTime) == "function" and GetTime()) or 0
+    end
+end
+
+function DynamicPrep:NoteQuestRemoved(qID)
+    if not _IsSecret(qID) and type(qID) == "number" and qID > 0 and type(self._recentlyAcceptedQuests) == "table" then
+        self._recentlyAcceptedQuests[qID] = nil
+    end
+end
+
+function DynamicPrep:NoteDialogueInteractionEnded(kind)
+    self._questDialogueSeq = (self._questDialogueSeq or 0) + 1
+    if kind == "GOSSIP" then
+        self._gossipSessionClosed = true
+        self._gossipChainCount = 0
+    elseif kind == "QUEST" then
+        self._questSessionClosed = true
+        self._questSessionIsNpc = false
+    end
+end
+
+local function TryAcceptCurrentQuest()
+    if InCombatLockdown and InCombatLockdown() then return false end
+    if IsShiftKeyDown and IsShiftKeyDown() then return false end
+    if QuestFlagsPVP and QuestFlagsPVP() then return false end
+
+    local curQID = nil
+    if GetQuestID then
+        local okQ, qid = pcall(GetQuestID)
+        if okQ and not _IsSecret(qid) and type(qid) == "number" and qid > 0 then
+            curQID = qid
+        end
+    end
+    local isAuto = (QuestGetAutoAccept and QuestGetAutoAccept() == true) or false
+    if curQID and not isAuto and DynamicPrep:IsQuestAlreadyAccepted(curQID) then
+        return false
+    end
+
+    if isAuto then
+        if AcknowledgeAutoAcceptQuest then
+            DynamicPrep:MarkAutoDialogueAction("QUEST_DETAIL_ACCEPT", curQID)
+            pcall(AcknowledgeAutoAcceptQuest)
+            return true
+        elseif AcceptQuest then
+            DynamicPrep:MarkAutoDialogueAction("QUEST_DETAIL_ACCEPT", curQID)
+            pcall(AcceptQuest)
+            return true
+        end
+    elseif AcceptQuest then
+        DynamicPrep:MarkAutoDialogueAction("QUEST_DETAIL_ACCEPT", curQID)
+        pcall(AcceptQuest)
+        return true
+    end
+    return false
 end
 
 local function TryProgressCurrentQuest()
-    if InCombatLockdown and InCombatLockdown() then return end
-    if IsShiftKeyDown and IsShiftKeyDown() then return end
-    if not CanAutoProgressQuest() then return end
+    if InCombatLockdown and InCombatLockdown() then return false end
+    if IsShiftKeyDown and IsShiftKeyDown() then return false end
+    if not CanAutoProgressQuest() then return false end
     if CompleteQuest then
+        local curQID = nil
+        if GetQuestID then
+            local okQ, qid = pcall(GetQuestID)
+            if okQ and not _IsSecret(qid) and type(qid) == "number" and qid > 0 then
+                curQID = qid
+            end
+        end
+        DynamicPrep:MarkAutoDialogueAction("QUEST_PROGRESS_COMPLETE", curQID)
         pcall(CompleteQuest)
+        return true
     end
+    return false
 end
 
 local function TryCompleteCurrentQuest()
-    if InCombatLockdown and InCombatLockdown() then return end
-    if IsShiftKeyDown and IsShiftKeyDown() then return end
-    if GetQuestMoneyToGet and (GetQuestMoneyToGet() or 0) > 0 then return end
+    if InCombatLockdown and InCombatLockdown() then return false end
+    if IsShiftKeyDown and IsShiftKeyDown() then return false end
+    if GetQuestMoneyToGet and (GetQuestMoneyToGet() or 0) > 0 then return false end
     local numChoices = (GetNumQuestChoices and GetNumQuestChoices()) or 0
     if numChoices <= 1 and GetQuestReward then
+        local curQID = nil
+        if GetQuestID then
+            local okQ, qid = pcall(GetQuestID)
+            if okQ and not _IsSecret(qid) and type(qid) == "number" and qid > 0 then
+                curQID = qid
+            end
+        end
+        DynamicPrep:MarkAutoDialogueAction("QUEST_COMPLETE_REWARD", curQID)
         if numChoices == 1 and _G.QuestInfoFrame then
             _G.QuestInfoFrame.itemChoice = 1
         end
         pcall(GetQuestReward, numChoices == 1 and 1 or nil)
+        return true
     end
+    return false
 end
 
 function DynamicPrep:HandleQuestAndGossip(event, arg1)
@@ -5210,6 +5373,25 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
         if okQ and qid and not _IsSecret(qid) and type(qid) == "number" and qid > 0 then
             self._lastCutsceneContext = "Q" .. tostring(qid)
         end
+    end
+    if event == "GOSSIP_SHOW" then
+        self._gossipSessionClosed = false
+        if arg1 ~= true then
+            self._questDialogueSeq = (self._questDialogueSeq or 0) + 1
+        end
+    elseif event == "QUEST_GREETING" or event == "QUEST_DETAIL" or event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" then
+        self._questSessionClosed = false
+        local isNpcNow = false
+        local pim = _G.C_PlayerInteractionManager
+        local iEnum = _G.Enum and _G.Enum.PlayerInteractionType
+        if pim and type(pim.IsInteractingNpcOfType) == "function" and iEnum and iEnum.QuestGiver then
+            local okN, resN = pcall(pim.IsInteractingNpcOfType, iEnum.QuestGiver)
+            if okN and not _IsSecret(resN) and resN == true then
+                isNpcNow = true
+            end
+        end
+        self._questSessionIsNpc = isNpcNow or (event ~= "QUEST_DETAIL")
+        self._questDialogueSeq = (self._questDialogueSeq or 0) + 1
     end
     if not self.db or self.db.autoQuestGossip == false or (IsShiftKeyDown and IsShiftKeyDown()) then
         return
@@ -5242,6 +5424,10 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                 return
             end
         end
+        if arg1 == true and not self:IsGossipInteractionActive() then
+            return
+        end
+        local mySeq = self._questDialogueSeq or 0
         local nowGossip = (type(GetTime) == "function" and GetTime()) or 0
         -- Per-option de-duplication (instead of a whole-session latch) so multi-step NPC/Delve
         -- dialogue chains can advance page-by-page, while the same option is never re-selected
@@ -5269,19 +5455,22 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
         local options      = (type(rawOpts) == "table" and not _IsSecret(rawOpts)) and rawOpts or {}
         local numActive = #activeQuests
         local numAvail  = #availQuests
-        local numCompletedActive = 0
+        local liveActiveCount = 0
+        local liveAvailCount = 0
 
         if not inCombat then
-            -- 1. Turn in completed active quests first
+            -- 1. Turn in completed active quests first (skip stale just-turned-in entries)
             if numActive > 0 then
                 for _, q in ipairs(activeQuests) do
                     local qID = (q and not _IsSecret(q) and not _IsSecret(q.questID)) and q.questID or nil
-                    if qID then
+                    local staleTurnedIn = qID and self:IsQuestAlreadyCompleted(qID) and not self:IsQuestAlreadyAccepted(qID)
+                    if qID and not staleTurnedIn then
+                        liveActiveCount = liveActiveCount + 1
                         local isComp = (not _IsSecret(q.isComplete) and q.isComplete == true)
                             or (C_QuestLog and C_QuestLog.IsComplete and C_QuestLog.IsComplete(qID))
                             or (C_QuestLog and C_QuestLog.ReadyForTurnIn and C_QuestLog.ReadyForTurnIn(qID))
                         if isComp then
-                            numCompletedActive = numCompletedActive + 1
+                            self:MarkAutoDialogueAction("GOSSIP_SELECT_ACTIVE", qID)
                             C_GossipInfo.SelectActiveQuest(qID)
                             return
                         end
@@ -5289,26 +5478,41 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                 end
             end
 
-            -- 2. Pick up available quests (prioritize non-trivial first, then accept any non-ignored quest on the clicked NPC)
+            -- 2. Pick up available quests (skip stale already-accepted/completed quests; non-trivial first)
             if numAvail > 0 then
+                local validAvail = {}
                 for _, q in ipairs(availQuests) do
                     local qID = (q and not _IsSecret(q) and not _IsSecret(q.questID)) and q.questID or nil
-                    local isIgnored = (q and not _IsSecret(q) and not _IsSecret(q.isIgnored) and q.isIgnored == true) or false
-                    local isTrivial = (q and not _IsSecret(q) and not _IsSecret(q.isTrivial) and q.isTrivial == true) or false
+                    local freq = (q and not _IsSecret(q) and not _IsSecret(q.frequency) and type(q.frequency) == "number") and q.frequency or 0
+                    local isRep = (freq > 0) or (q and not _IsSecret(q) and not _IsSecret(q.repeatable) and q.repeatable == true)
+                    if qID and not self:IsQuestAlreadyAccepted(qID) and (isRep or not self:IsQuestAlreadyCompleted(qID)) then
+                        table.insert(validAvail, q)
+                    end
+                end
+                liveAvailCount = #validAvail
+                for _, q in ipairs(validAvail) do
+                    local qID = q.questID
+                    local isIgnored = (not _IsSecret(q.isIgnored) and q.isIgnored == true) or false
+                    local isTrivial = (not _IsSecret(q.isTrivial) and q.isTrivial == true) or false
                     if qID and not isIgnored and not isTrivial then
+                        self:MarkAutoDialogueAction("GOSSIP_SELECT_AVAILABLE", qID)
                         C_GossipInfo.SelectAvailableQuest(qID)
                         return
                     end
                 end
-                for _, q in ipairs(availQuests) do
-                    local qID = (q and not _IsSecret(q) and not _IsSecret(q.questID)) and q.questID or nil
-                    local isIgnored = (q and not _IsSecret(q) and not _IsSecret(q.isIgnored) and q.isIgnored == true) or false
+                for _, q in ipairs(validAvail) do
+                    local qID = q.questID
+                    local isIgnored = (not _IsSecret(q.isIgnored) and q.isIgnored == true) or false
                     if qID and not isIgnored then
+                        self:MarkAutoDialogueAction("GOSSIP_SELECT_AVAILABLE", qID)
                         C_GossipInfo.SelectAvailableQuest(qID)
                         return
                     end
                 end
             end
+        else
+            liveActiveCount = numActive
+            liveAvailCount = numAvail
         end
 
         -- 3. Auto-select Gossip options (NPCs, Delve objects, chests, cages, and world interactables)
@@ -5330,6 +5534,7 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                     if IsQuestOrSkipGossipOption(opt) and CanAutoSelectGossip(optKey) then
                         if not inCombat or (inInstance and (instType == "party" or instType == "raid" or instType == "scenario")) then
                             MarkGossipSelected(optKey)
+                            self:MarkAutoDialogueAction("GOSSIP_SELECT_OPTION", optKey)
                             SelectGossipOptionSafe(opt, i)
                             return
                         end
@@ -5337,13 +5542,14 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                 end
             end
 
-            -- Priority B (Strict Single Option): #options == 1, #availableQuests == 0, #activeQuests == 0
-            if #options == 1 and numActive == 0 and numAvail == 0 then
+            -- Priority B (Strict Single Option): #options == 1, no live active/available quests
+            if #options == 1 and liveActiveCount == 0 and liveAvailCount == 0 then
                 local opt = options[1]
                 local optKey = GetGossipOptionKey(opt, 1)
                 if optKey and ShouldAutoSelectSingleGossip(opt, inInstance, instType) and CanAutoSelectGossip(optKey) then
                     local bankKind = DetectBankerGossipKind(opt)
                     MarkGossipSelected(optKey)
+                    self:MarkAutoDialogueAction("GOSSIP_SELECT_OPTION", optKey)
                     if bankKind then
                         self:SuppressDialogueUIForGossipSkip()
                     end
@@ -5354,10 +5560,11 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                     return
                 end
             end
-        elseif numActive == 0 and numAvail == 0 and not arg1 and C_Timer and C_Timer.After then
+        elseif liveActiveCount == 0 and liveAvailCount == 0 and not arg1 and C_Timer and C_Timer.After then
             -- Fallback: some world objects/instance interactables populate C_GossipInfo.GetOptions() one frame after GOSSIP_SHOW
             C_Timer.After(0, function()
-                if not IsModuleDisabledInSuite("DynamicPrep") and not (IsShiftKeyDown and IsShiftKeyDown()) then
+                if mySeq ~= (DynamicPrep._questDialogueSeq or 0) then return end
+                if not IsModuleDisabledInSuite("DynamicPrep") and not (IsShiftKeyDown and IsShiftKeyDown()) and DynamicPrep:IsGossipInteractionActive() then
                     DynamicPrep:HandleQuestAndGossip("GOSSIP_SHOW", true)
                 end
             end)
@@ -5366,12 +5573,10 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
         -- delays option population or GossipFrame readiness on the initial GOSSIP_SHOW frame.
         if not arg1 and C_Timer and C_Timer.After then
             C_Timer.After(0.05, function()
+                if mySeq ~= (DynamicPrep._questDialogueSeq or 0) then return end
                 if IsModuleDisabledInSuite("DynamicPrep") or (IsShiftKeyDown and IsShiftKeyDown()) then return end
-                local frameShown = _G.GossipFrame and _G.GossipFrame.IsShown and _G.GossipFrame:IsShown()
-                local numOpts = C_GossipInfo and C_GossipInfo.GetNumOptions and C_GossipInfo.GetNumOptions() or 0
-                if frameShown or numOpts == 1 then
-                    DynamicPrep:HandleQuestAndGossip("GOSSIP_SHOW", true)
-                end
+                if not DynamicPrep:IsGossipInteractionActive() then return end
+                DynamicPrep:HandleQuestAndGossip("GOSSIP_SHOW", true)
             end)
         end
         return
@@ -5383,36 +5588,88 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
         local numActive = GetNumActiveQuests and GetNumActiveQuests() or 0
         for i = 1, numActive do
             local _, isComplete = GetActiveTitle(i)
-            local qID = GetActiveQuestID and GetActiveQuestID(i)
-            local isComp = isComplete or (qID and C_QuestLog and C_QuestLog.IsComplete and C_QuestLog.IsComplete(qID))
-            if isComp then
-                SelectActiveQuest(i)
-                return
+            local qID = (type(_G.GetActiveQuestID) == "function") and _G.GetActiveQuestID(i) or nil
+            if _IsSecret(qID) then qID = nil end
+            local staleTurnedIn = qID and self:IsQuestAlreadyCompleted(qID) and not self:IsQuestAlreadyAccepted(qID)
+            if not staleTurnedIn then
+                local isComp = isComplete
+                    or (qID and C_QuestLog and C_QuestLog.IsComplete and C_QuestLog.IsComplete(qID))
+                    or (qID and C_QuestLog and C_QuestLog.ReadyForTurnIn and C_QuestLog.ReadyForTurnIn(qID))
+                if isComp then
+                    self:MarkAutoDialogueAction("GREETING_SELECT_ACTIVE", qID or i)
+                    SelectActiveQuest(i)
+                    return
+                end
             end
         end
         local numAvail = GetNumAvailableQuests and GetNumAvailableQuests() or 0
+        local firstValidAvailIdx = nil
+        local firstValidAvailQID = nil
         for i = 1, numAvail do
             local isTrivial = IsAvailableQuestTrivial and IsAvailableQuestTrivial(i)
-            if not isTrivial then
-                SelectAvailableQuest(i)
-                return
+            local isRepeatable = false
+            local qID = nil
+            if type(_G.GetAvailableQuestInfo) == "function" then
+                local okInfo, infoTriv, freq, rep, _, infoQID = pcall(_G.GetAvailableQuestInfo, i)
+                if okInfo then
+                    if isTrivial == nil and not _IsSecret(infoTriv) then
+                        isTrivial = infoTriv and true or false
+                    end
+                    local freqNum = (not _IsSecret(freq) and type(freq) == "number") and freq or 0
+                    isRepeatable = (freqNum > 0) or (not _IsSecret(rep) and rep == true)
+                    if not _IsSecret(infoQID) and type(infoQID) == "number" and infoQID > 0 then
+                        qID = infoQID
+                    end
+                end
+            end
+            local isStale = qID and (self:IsQuestAlreadyAccepted(qID) or (not isRepeatable and self:IsQuestAlreadyCompleted(qID)))
+            if not isStale then
+                if not firstValidAvailIdx then
+                    firstValidAvailIdx = i
+                    firstValidAvailQID = qID
+                end
+                if not isTrivial then
+                    self:MarkAutoDialogueAction("GREETING_SELECT_AVAILABLE", qID or i)
+                    SelectAvailableQuest(i)
+                    return
+                end
             end
         end
-        if numAvail > 0 then
-            SelectAvailableQuest(1)
+        if firstValidAvailIdx then
+            self:MarkAutoDialogueAction("GREETING_SELECT_AVAILABLE", firstValidAvailQID or firstValidAvailIdx)
+            SelectAvailableQuest(firstValidAvailIdx)
             return
         end
 
     elseif event == "QUEST_DETAIL" then
-        TryAcceptCurrentQuest()
-        C_Timer.After(0.05, function()
-            if not DynamicPrep.db or DynamicPrep.db.autoQuestGossip == false then return end
-            if _G.QuestFrameDetailPanel and _G.QuestFrameDetailPanel:IsVisible() then
-                TryAcceptCurrentQuest()
+        local mySeq = self._questDialogueSeq or 0
+        local curQID = nil
+        if GetQuestID then
+            local okQ, qid = pcall(GetQuestID)
+            if okQ and not _IsSecret(qid) and type(qid) == "number" and qid > 0 then
+                curQID = qid
             end
-        end)
+        end
+        local acceptedAtZero = TryAcceptCurrentQuest()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.05, function()
+                if mySeq ~= (DynamicPrep._questDialogueSeq or 0) then return end
+                if IsModuleDisabledInSuite("DynamicPrep") or not DynamicPrep.db or DynamicPrep.db.autoQuestGossip == false then return end
+                if not DynamicPrep:IsQuestInteractionActive() then return end
+                local isAuto = (QuestGetAutoAccept and QuestGetAutoAccept() == true) or false
+                if isAuto and acceptedAtZero then return end
+                if curQID and not isAuto and DynamicPrep:IsQuestAlreadyAccepted(curQID) then return end
+                local panelVis = (_G.QuestFrameDetailPanel and _G.QuestFrameDetailPanel.IsVisible and _G.QuestFrameDetailPanel:IsVisible()) or false
+                local ddHandled = (_G.DynamicDialogue and type(_G.DynamicDialogue.IsHandlingBlizzardFrame) == "function"
+                    and _G.DynamicDialogue:IsHandlingBlizzardFrame("QuestFrame")) or false
+                if panelVis or ddHandled then
+                    TryAcceptCurrentQuest()
+                end
+            end)
+        end
 
     elseif event == "QUEST_ACCEPT_CONFIRM" then
+        self:MarkAutoDialogueAction("QUEST_ACCEPT_CONFIRM")
         if ConfirmAcceptQuest then
             pcall(ConfirmAcceptQuest)
         end
@@ -5426,22 +5683,38 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
         end
 
     elseif event == "QUEST_PROGRESS" then
+        local mySeq = self._questDialogueSeq or 0
         TryProgressCurrentQuest()
-        C_Timer.After(0.05, function()
-            if not DynamicPrep.db or DynamicPrep.db.autoQuestGossip == false then return end
-            if _G.QuestFrameProgressPanel and _G.QuestFrameProgressPanel:IsVisible() then
-                TryProgressCurrentQuest()
-            end
-        end)
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.05, function()
+                if mySeq ~= (DynamicPrep._questDialogueSeq or 0) then return end
+                if IsModuleDisabledInSuite("DynamicPrep") or not DynamicPrep.db or DynamicPrep.db.autoQuestGossip == false then return end
+                if not DynamicPrep:IsQuestInteractionActive() then return end
+                local panelVis = (_G.QuestFrameProgressPanel and _G.QuestFrameProgressPanel.IsVisible and _G.QuestFrameProgressPanel:IsVisible()) or false
+                local ddHandled = (_G.DynamicDialogue and type(_G.DynamicDialogue.IsHandlingBlizzardFrame) == "function"
+                    and _G.DynamicDialogue:IsHandlingBlizzardFrame("QuestFrame")) or false
+                if panelVis or ddHandled then
+                    TryProgressCurrentQuest()
+                end
+            end)
+        end
 
     elseif event == "QUEST_COMPLETE" then
+        local mySeq = self._questDialogueSeq or 0
         TryCompleteCurrentQuest()
-        C_Timer.After(0.05, function()
-            if not DynamicPrep.db or DynamicPrep.db.autoQuestGossip == false then return end
-            if _G.QuestFrameRewardPanel and _G.QuestFrameRewardPanel:IsVisible() then
-                TryCompleteCurrentQuest()
-            end
-        end)
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.05, function()
+                if mySeq ~= (DynamicPrep._questDialogueSeq or 0) then return end
+                if IsModuleDisabledInSuite("DynamicPrep") or not DynamicPrep.db or DynamicPrep.db.autoQuestGossip == false then return end
+                if not DynamicPrep:IsQuestInteractionActive() then return end
+                local panelVis = (_G.QuestFrameRewardPanel and _G.QuestFrameRewardPanel.IsVisible and _G.QuestFrameRewardPanel:IsVisible()) or false
+                local ddHandled = (_G.DynamicDialogue and type(_G.DynamicDialogue.IsHandlingBlizzardFrame) == "function"
+                    and _G.DynamicDialogue:IsHandlingBlizzardFrame("QuestFrame")) or false
+                if panelVis or ddHandled then
+                    TryCompleteCurrentQuest()
+                end
+            end)
+        end
 
     elseif event == "ITEM_TEXT_READY" then
         if ItemTextGetPage and ItemTextGetPage() and ItemTextGetPage() > 0 then
@@ -13625,6 +13898,7 @@ SafeRegisterEvent(eventFrame, "GOSSIP_CONFIRM")
 SafeRegisterEvent(eventFrame, "GOSSIP_CLOSED")
 SafeRegisterEvent(eventFrame, "PLAYER_CHOICE_UPDATE")
 SafeRegisterEvent(eventFrame, "PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
+SafeRegisterEvent(eventFrame, "PLAYER_INTERACTION_MANAGER_FRAME_HIDE")
 SafeRegisterEvent(eventFrame, "BANKFRAME_OPENED")
 SafeRegisterEvent(eventFrame, "QUEST_GREETING")
 SafeRegisterEvent(eventFrame, "QUEST_DETAIL")
@@ -13632,6 +13906,9 @@ SafeRegisterEvent(eventFrame, "QUEST_ACCEPT_CONFIRM")
 SafeRegisterEvent(eventFrame, "QUEST_AUTOCOMPLETE")
 SafeRegisterEvent(eventFrame, "QUEST_PROGRESS")
 SafeRegisterEvent(eventFrame, "QUEST_COMPLETE")
+SafeRegisterEvent(eventFrame, "QUEST_FINISHED")
+SafeRegisterEvent(eventFrame, "QUEST_ACCEPTED")
+SafeRegisterEvent(eventFrame, "QUEST_REMOVED")
 SafeRegisterEvent(eventFrame, "ITEM_TEXT_READY")
 SafeRegisterEvent(eventFrame, "CINEMATIC_START")
 SafeRegisterEvent(eventFrame, "PLAY_MOVIE")
@@ -13855,7 +14132,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
                 end
             end
         end
-        if _G.GossipFrame and _G.GossipFrame.IsShown and _G.GossipFrame:IsShown() then
+        if DynamicPrep:IsGossipInteractionActive() then
             DynamicPrep:HandleQuestAndGossip("GOSSIP_SHOW", true)
         end
         DynamicPrep:ScanEquippedGearEnchantsAndGems()
@@ -13971,10 +14248,26 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         end
     elseif event == "GOSSIP_SHOW" or event == "QUEST_GREETING" or event == "QUEST_DETAIL" or event == "QUEST_ACCEPT_CONFIRM" or event == "QUEST_AUTOCOMPLETE" or event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" or event == "ITEM_TEXT_READY" then
         DynamicPrep:HandleQuestAndGossip(event, arg1)
+    elseif event == "QUEST_ACCEPTED" then
+        DynamicPrep:NoteQuestAccepted(arg1, arg2)
+    elseif event == "QUEST_REMOVED" then
+        DynamicPrep:NoteQuestRemoved(arg1)
+    elseif event == "QUEST_FINISHED" then
+        DynamicPrep:NoteDialogueInteractionEnded("QUEST")
     elseif event == "GOSSIP_CONFIRM" then
         DynamicPrep:HandleGossipConfirm(arg1, arg2, arg3)
     elseif event == "PLAYER_CHOICE_UPDATE" then
         DynamicPrep:HandlePlayerChoiceUpdate()
+    elseif event == "PLAYER_INTERACTION_MANAGER_FRAME_HIDE" then
+        if Enum and Enum.PlayerInteractionType then
+            local PIT = Enum.PlayerInteractionType
+            if arg1 == PIT.Gossip then
+                DynamicPrep:NoteDialogueInteractionEnded("GOSSIP")
+                DynamicPrep:RestoreDialogueUIAfterGossipSkip(false)
+            elseif arg1 == PIT.QuestGiver then
+                DynamicPrep:NoteDialogueInteractionEnded("QUEST")
+            end
+        end
     elseif event == "GOSSIP_CLOSED" or event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" or event == "BANKFRAME_OPENED" then
         local keepHidden = (event == "BANKFRAME_OPENED")
         if event == "PLAYER_INTERACTION_MANAGER_FRAME_SHOW" then
@@ -13987,7 +14280,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             DynamicPrep:EnsureCatalystHooks()
         end
         if event == "GOSSIP_CLOSED" then
-            DynamicPrep._gossipChainCount = 0
+            DynamicPrep:NoteDialogueInteractionEnded("GOSSIP")
         end
         DynamicPrep:RestoreDialogueUIAfterGossipSkip(keepHidden)
     elseif event == "CINEMATIC_START" or event == "PLAY_MOVIE" then
