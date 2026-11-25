@@ -25,6 +25,19 @@ local function IsPlayerInCombat()
     return false
 end
 
+local function IsInPetBattle()
+    if _G.DynamicSuite and type(_G.DynamicSuite.IsInPetBattle) == "function" then
+        local okDS, resDS = pcall(_G.DynamicSuite.IsInPetBattle)
+        if okDS then return resDS == true end
+    end
+    local pb = _G.C_PetBattles
+    if type(pb) ~= "table" or type(pb.IsInBattle) ~= "function" then
+        return false
+    end
+    local ok, res = pcall(pb.IsInBattle)
+    return ok and not _IsSecret(res) and res == true
+end
+
 
 local function _AreAurasSecret(unit)
     if _dpSimSecretMode then return true end
@@ -4649,7 +4662,12 @@ function DynamicPrep:ApplyBarGeometry()
     end
 end
 
+function DynamicPrep:IsInPetBattle()
+    return IsInPetBattle()
+end
+
 function DynamicPrep:ShouldShowPrepBar()
+    if IsInPetBattle() then return false end
     if not self.db then return true end
     if self.inBarEditMode or (self.inEditMode and self.inBarEditMode ~= false) or (self.prepBarFrame and self.prepBarFrame._dsEditModeActive) then return true end
     local mode = self.db.displayMode or "ALWAYS"
@@ -14163,6 +14181,9 @@ SafeRegisterEvent(eventFrame, "PLAYER_UNGHOST")
 SafeRegisterEvent(eventFrame, "MODIFIER_STATE_CHANGED")
 SafeRegisterEvent(eventFrame, "UI_SCALE_CHANGED")
 SafeRegisterEvent(eventFrame, "DISPLAY_SIZE_CHANGED")
+SafeRegisterEvent(eventFrame, "PET_BATTLE_OPENING_START")
+SafeRegisterEvent(eventFrame, "PET_BATTLE_OVER")
+SafeRegisterEvent(eventFrame, "PET_BATTLE_CLOSE")
 SafeRegisterEvent(eventFrame, "ENCOUNTER_END")
 SafeRegisterEvent(eventFrame, "ACTIONBAR_SLOT_CHANGED")
 SafeRegisterEvent(eventFrame, "UPDATE_MACROS")
@@ -14369,11 +14390,60 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
                 DynamicPrep:RefreshClickableBuffs(true)
             end
         end
+    elseif event == "PET_BATTLE_OPENING_START" then
+        if _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+            _G.DynamicSuite.HideSnapGuides()
+        end
+        if DynamicPrep.prepBarFrame and DynamicPrep.prepBarFrame._dpDirectDragActive and DynamicPrep.prepBarFrame._dpEndDirectDrag then
+            DynamicPrep.prepBarFrame._dpEndDirectDrag(true)
+        end
+        if DynamicPrep.clickableBuffBar and DynamicPrep.clickableBuffBar._dpBuffDirectDragActive and DynamicPrep.clickableBuffBar._dpEndDirectDrag then
+            DynamicPrep.clickableBuffBar._dpEndDirectDrag(true)
+        end
+        if DynamicPrep.HideMageFoodToast then
+            DynamicPrep:HideMageFoodToast()
+        end
+        if DynamicPrep.HideDurabilityToast then
+            DynamicPrep:HideDurabilityToast()
+        end
+        if DynamicPrep.combatReadinessStrip and DynamicPrep.combatReadinessStrip.Hide then
+            DynamicPrep.combatReadinessStrip:Hide()
+        end
+        if DynamicPrep.inEditMode then
+            DynamicPrep:SetEditMode(false)
+        end
+        if InCombatLockdown and InCombatLockdown() then
+            DynamicPrep.pendingBarRefreshAfterCombat = true
+            DynamicPrep._pendingCrbAfterCombat = true
+            DynamicPrep._pendingPetBattleSync = true
+        else
+            DynamicPrep:RefreshBar()
+            if DynamicPrep.clickableBuffBar then
+                DynamicPrep:RefreshClickableBuffs(true)
+            end
+        end
+    elseif event == "PET_BATTLE_OVER" or event == "PET_BATTLE_CLOSE" then
+        if _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+            _G.DynamicSuite.HideSnapGuides()
+        end
+        if InCombatLockdown and InCombatLockdown() then
+            DynamicPrep.pendingBarRefreshAfterCombat = true
+            DynamicPrep._pendingCrbAfterCombat = true
+            DynamicPrep._pendingPetBattleSync = true
+        else
+            DynamicPrep:RefreshBar()
+            DynamicPrep:RefreshClickableBuffs(true)
+        end
     elseif event == "PLAYER_REGEN_ENABLED" then
         if DynamicPrep._pendingFolioSecureUpdate then
             DynamicPrep:UpdateFolioSecureButton()
         end
-        if DynamicPrep.pendingBarRefreshAfterCombat then
+        if DynamicPrep._pendingPetBattleSync then
+            DynamicPrep._pendingPetBattleSync = nil
+            DynamicPrep.pendingBarRefreshAfterCombat = nil
+            DynamicPrep:RefreshBar()
+            DynamicPrep:RefreshClickableBuffs(true)
+        elseif DynamicPrep.pendingBarRefreshAfterCombat then
             DynamicPrep.pendingBarRefreshAfterCombat = nil
             DynamicPrep:ApplyBarGeometry()
         else
@@ -16735,8 +16805,8 @@ function DynamicPrep:RefreshCombatBuffAlert()
     local expThresholdSec = (tonumber(rb.expireThresholdMin) or 5) * 60
     local sum = self:ScanCombatRaidBuffStatus(expThresholdSec)
 
-    -- Outside combat, DynamicPrepClickableBuffBar renders all readiness strip icons directly; keep the combat override hidden.
-    if not IsPlayerInCombat() then
+    -- Outside combat or during Pet Battles, keep the combat override strip hidden.
+    if not IsPlayerInCombat() or IsInPetBattle() then
         strip:Hide()
         return
     end
@@ -17984,6 +18054,19 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
     local bar = self:CreateClickableBuffBar()
     if not bar or InCombatLockdown() then return end
 
+    if IsInPetBattle() then
+        if UnregisterStateDriver then
+            pcall(UnregisterStateDriver, bar, "visibility")
+        end
+        bar:Hide()
+        if bar.mover then bar.mover:Hide() end
+        if bar.hudBg then bar.hudBg:Hide() end
+        if self.combatReadinessStrip and self.combatReadinessStrip.Hide then
+            self.combatReadinessStrip:Hide()
+        end
+        return
+    end
+
     local inBuffEdit = (self.inBuffsEditMode or (self.inEditMode and self.inBuffsEditMode ~= false) or bar._dsEditModeActive) and true or false
     if inBuffEdit then
         if UnregisterStateDriver then
@@ -17994,6 +18077,7 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
         if RegisterStateDriver then
             pcall(RegisterStateDriver, bar, "visibility", "[petbattle][vehicleui][combat] hide; show")
         end
+        bar:Show()
     end
 
     local rb = (self.db and self.db.raidBuffs) or DEFAULTS.raidBuffs

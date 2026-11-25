@@ -51,6 +51,28 @@ local function IsInCombat()
     return ok and inCombat == true
 end
 
+local function IsInPetBattle()
+    if _G.DynamicSuite and type(_G.DynamicSuite.IsInPetBattle) == "function" then
+        local okDS, resDS = pcall(_G.DynamicSuite.IsInPetBattle)
+        if okDS then return resDS == true end
+    end
+    local pb = _G.C_PetBattles
+    if type(pb) ~= "table" or type(pb.IsInBattle) ~= "function" then
+        return false
+    end
+    local ok, res = pcall(pb.IsInBattle)
+    return ok and IsSafeValue(res) and res == true
+end
+
+local function SafeRegisterMarkerEvent(frame, eventName)
+    if not frame or type(frame.RegisterEvent) ~= "function" or type(eventName) ~= "string" then return end
+    if _G.C_EventUtils and type(_G.C_EventUtils.IsEventValid) == "function" then
+        local okV, valid = pcall(_G.C_EventUtils.IsEventValid, eventName)
+        if okV and not valid then return end
+    end
+    pcall(frame.RegisterEvent, frame, eventName)
+end
+
 -- Hard mutual exclusion: when running as the standalone DynamicMarker addon while DynamicSuite
 -- is loaded or enabled, immediately disable standalone DynamicMarker and abort execution before
 -- any frames, SavedVariables mutations, or slash commands are registered.
@@ -4586,17 +4608,24 @@ function DM:IsGroupScopeSatisfied(forBarVisibility)
     end
 end
 
+function DM:IsInPetBattle()
+    return IsInPetBattle()
+end
+
 function DM:GetGroupVisibilityStateDriver()
     local scopeMode = self:NormalizeGroupScope(self.db and self.db.groupScope)
     if scopeMode == "party" then
-        return "[group:party,nogroup:raid] show; hide"
+        return "[petbattle] hide; [group:party,nogroup:raid] show; hide"
     elseif scopeMode == "raid" then
-        return "[group:raid] show; hide"
+        return "[petbattle] hide; [group:raid] show; hide"
     end
-    return "[group] show; hide"
+    return "[petbattle] hide; [group] show; hide"
 end
 
 function DM:ShouldShowBar(visibilitySetting, barFrame)
+    if IsInPetBattle() then
+        return false
+    end
     if self.isEditMode or (barFrame and barFrame._dsEditModeActive) then
         return true
     end
@@ -4635,13 +4664,23 @@ end
 function DM:UpdateTargetBarVisibility()
     if not self.targetBar or not self.db then return end
     local bar = self.targetBar
-    if InCombatLockdown() then
+    if IsInCombat() then
         self.pendingTargetBarSync = true
         self.pendingBarVisibilityUpdate = true
         return
     end
     local mode, canonical = self:NormalizeBarVisibility(self.db.targetBarVisibility)
     self.db.targetBarVisibility = canonical
+
+    if IsInPetBattle() then
+        if UnregisterStateDriver then
+            pcall(UnregisterStateDriver, bar, "visibility")
+        end
+        bar:Hide()
+        if bar.editMover then bar.editMover:Hide() end
+        if bar._dsDragShield then bar._dsDragShield:Hide() end
+        return
+    end
 
     local isEdit = not not (self.isEditMode or bar._dsEditModeActive)
     if isEdit then
@@ -4681,13 +4720,23 @@ end
 function DM:UpdateFlareBarVisibility()
     if not self.flareBar or not self.db then return end
     local bar = self.flareBar
-    if InCombatLockdown() then
+    if IsInCombat() then
         self.pendingFlareBarSync = true
         self.pendingBarVisibilityUpdate = true
         return
     end
     local mode, canonical = self:NormalizeBarVisibility(self.db.flareBarVisibility)
     self.db.flareBarVisibility = canonical
+
+    if IsInPetBattle() then
+        if UnregisterStateDriver then
+            pcall(UnregisterStateDriver, bar, "visibility")
+        end
+        bar:Hide()
+        if bar.editMover then bar.editMover:Hide() end
+        if bar._dsDragShield then bar._dsDragShield:Hide() end
+        return
+    end
 
     local isEdit = not not (self.isEditMode or bar._dsEditModeActive)
     if isEdit then
@@ -4828,7 +4877,8 @@ function DM:SetBarCenterPoint(frame, uiX, uiY, hudKey)
         frame:ClearAllPoints()
         frame:SetPoint("CENTER", UIParent, "CENTER", nx / barScale, ny / barScale)
         if frame.SetClampedToScreen then
-            frame:SetClampedToScreen(true)
+            local isDraggingNow = frame._dmDirectDragActive or frame._dmDragging or frame._dsDragging or self.isDraggingHUD
+            frame:SetClampedToScreen(not isDraggingNow)
         end
     end
 end
@@ -5231,9 +5281,19 @@ function DM:AttachBarDirectShiftDrag(bar, hudKey, barTitle)
         local relScale = fScale / uScale
         local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
         local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
-        local fCx, fCy = bar.GetCenter and bar:GetCenter()
-        local startVisCx = (fCx and IsFiniteNum(fCx)) and (fCx * relScale) or (screenW * 0.5)
-        local startVisCy = (fCy and IsFiniteNum(fCy)) and (fCy * relScale) or (screenH * 0.5)
+        local fCx, fCy = nil, nil
+        if bar.GetCenter then
+            fCx, fCy = bar:GetCenter()
+        end
+        local startVisCx, startVisCy
+        if fCx and fCy and IsFiniteNum(fCx) and IsFiniteNum(fCy) then
+            startVisCx = fCx * relScale
+            startVisCy = fCy * relScale
+        else
+            local pos = self:GetStoredHUDPosition(primaryKey)
+            startVisCx = (screenW * 0.5) + ((pos and tonumber(pos.x)) or 0)
+            startVisCy = (screenH * 0.5) + ((pos and tonumber(pos.y)) or 0)
+        end
         local rawCurX, rawCurY = GetCursorPosition()
         local startCurX = (tonumber(rawCurX) or 0) / uScale
         local startCurY = (tonumber(rawCurY) or 0) / uScale
@@ -6574,7 +6634,10 @@ function DM:AttachMoverOverlay(targetFrame, hudKey, labelText, defaultY)
         local _, _, _, uScale, relScale = GetLocalFrameScreenExtents(targetFrame, primaryKey)
         local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
         local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
-        local fCx, fCy = targetFrame.GetCenter and targetFrame:GetCenter()
+        local fCx, fCy = nil, nil
+        if targetFrame.GetCenter then
+            fCx, fCy = targetFrame:GetCenter()
+        end
         local startVisOffX, startVisOffY
         if fCx and fCy and IsFiniteNum(fCx) and IsFiniteNum(fCy) then
             startVisOffX = (fCx * relScale) - (screenW / 2)
@@ -13457,6 +13520,9 @@ evtFrame:RegisterEvent("CVAR_UPDATE")
 evtFrame:RegisterEvent("UI_SCALE_CHANGED")
 evtFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
 evtFrame:RegisterEvent("ADDON_ACTION_FORBIDDEN")
+SafeRegisterMarkerEvent(evtFrame, "PET_BATTLE_OPENING_START")
+SafeRegisterMarkerEvent(evtFrame, "PET_BATTLE_OVER")
+SafeRegisterMarkerEvent(evtFrame, "PET_BATTLE_CLOSE")
 
 evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if ADDON_FOLDER ~= "DynamicSuite" then
@@ -13658,6 +13724,29 @@ evtFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
         DM:UpdateFlareBarVisibility()
         DM:RefreshTargetBar()
         DM:RefreshFlareBar()
+
+    elseif event == "PET_BATTLE_OPENING_START" then
+        DM:CloseDropdownMenu()
+        HideSnapGuides()
+        if DM.targetBar and DM.targetBar._dmDirectDragActive and DM.targetBar._dmEndDirectDrag then
+            DM.targetBar._dmEndDirectDrag(true)
+        end
+        if DM.flareBar and DM.flareBar._dmDirectDragActive and DM.flareBar._dmEndDirectDrag then
+            DM.flareBar._dmEndDirectDrag(true)
+        end
+        if DM.isEditMode then
+            DM:SetEditMode(false, { fromCombat = true })
+        end
+        DM:UpdateTargetBarVisibility()
+        DM:UpdateFlareBarVisibility()
+
+    elseif event == "PET_BATTLE_OVER" or event == "PET_BATTLE_CLOSE" then
+        DM:UpdateTargetBarVisibility()
+        DM:UpdateFlareBarVisibility()
+        if not IsInCombat() then
+            DM:RefreshTargetBar()
+            DM:RefreshFlareBar()
+        end
 
     elseif event == "READY_CHECK" then
         DM:AnnounceFocusIcon(true)

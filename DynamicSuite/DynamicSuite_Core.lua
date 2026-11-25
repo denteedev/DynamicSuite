@@ -1747,6 +1747,8 @@ local function AbortAllActiveDirectHudDrags(abortedByCombat)
         DynamicSuite.HideSnapGuides()
     end
 end
+DynamicSuite.AbortAllActiveDirectHudDrags = AbortAllActiveDirectHudDrags
+addonTable.AbortAllActiveDirectHudDrags = AbortAllActiveDirectHudDrags
 
 local function EnsureDirectHudCombatAbortFrame()
     if not directHudEscHooked and type(_G.hooksecurefunc) == "function" then
@@ -2324,9 +2326,15 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
         local fScale = (selfT.GetEffectiveScale and selfT:GetEffectiveScale()) or 1
         local uScale = (_G.UIParent and _G.UIParent.GetEffectiveScale and _G.UIParent:GetEffectiveScale()) or 1
         local ratio = (uScale > 0 and fScale > 0) and (fScale / uScale) or 1
-        local fCx, fCy = selfT.GetCenter and selfT:GetCenter()
+        local fCx, fCy = nil, nil
+        if selfT.GetCenter then
+            fCx, fCy = selfT:GetCenter()
+        end
         local fTop = selfT.GetTop and selfT:GetTop()
-        local uCx, uCy = _G.UIParent.GetCenter and _G.UIParent:GetCenter()
+        local uCx, uCy = nil, nil
+        if _G.UIParent and _G.UIParent.GetCenter then
+            uCx, uCy = _G.UIParent:GetCenter()
+        end
         local uTop = _G.UIParent.GetTop and _G.UIParent:GetTop()
         local rx, ry = 0, -140
         if fCx and uCx then
@@ -2672,8 +2680,60 @@ function DynamicSuite.ApplySharedToastLayout(frame, styleOpts)
 end
 addonTable.ApplySharedToastLayout = DynamicSuite.ApplySharedToastLayout
 
+function DynamicSuite.IsInPetBattle()
+    local pb = _G.C_PetBattles
+    if type(pb) ~= "table" or type(pb.IsInBattle) ~= "function" then
+        return false
+    end
+    local ok, res = pcall(pb.IsInBattle)
+    if not ok then return false end
+    if type(_G.issecretvalue) == "function" then
+        local okS, s = pcall(_G.issecretvalue, res)
+        if okS and s then return false end
+    end
+    if type(_G.canaccessvalue) == "function" then
+        local okA, a = pcall(_G.canaccessvalue, res)
+        if okA and not a then return false end
+    end
+    return res == true
+end
+addonTable.IsInPetBattle = DynamicSuite.IsInPetBattle
+
+function DynamicSuite.HideAllSharedToasts()
+    if _G.InCombatLockdown and _G.InCombatLockdown() then
+        addonTable._pendingPetBattleToastHide = true
+        return false
+    end
+    addonTable._pendingPetBattleToastHide = false
+    local candidateNames = {
+        "DynamicLoadToastFrame",
+        "DynamicSuitePreviewToast",
+        "DynamicGroupTeleportToast",
+        "DynamicTalentReminderToast",
+        "DynamicPrepMageFoodToast",
+        "DynamicPrepDurabilityToast",
+        "DynamicChatMentionToast",
+    }
+    for _, frameName in ipairs(candidateNames) do
+        local f = _G[frameName]
+        if f and type(f) == "table" then
+            if f._dsDirectDragCtrl and type(f._dsDirectDragCtrl.EndDrag) == "function" then
+                pcall(f._dsDirectDragCtrl.EndDrag, true)
+            elseif f._dsEndDirectDrag and type(f._dsEndDirectDrag) == "function" then
+                pcall(f._dsEndDirectDrag, true)
+            end
+            if f.animGroup and f.animGroup.Stop then pcall(f.animGroup.Stop, f.animGroup) end
+            if f.SetAlpha then pcall(f.SetAlpha, f, 1) end
+            if f.Hide then pcall(f.Hide, f) end
+        end
+    end
+    return true
+end
+addonTable.HideAllSharedToasts = DynamicSuite.HideAllSharedToasts
+
 function DynamicSuite.ShowSharedToast(frame, showOpts)
     if not frame then return false end
+    if DynamicSuite.IsInPetBattle() then return false end
     if _G.InCombatLockdown and _G.InCombatLockdown() then return false end
 
     showOpts = type(showOpts) == "table" and showOpts or {}
@@ -14760,6 +14820,9 @@ SafeRegisterSuiteEvent(suiteEventFrame, "UI_SCALE_CHANGED")
 SafeRegisterSuiteEvent(suiteEventFrame, "DISPLAY_SIZE_CHANGED")
 SafeRegisterSuiteEvent(suiteEventFrame, "ADDON_ACTION_FORBIDDEN")
 SafeRegisterSuiteEvent(suiteEventFrame, "CINEMATIC_STOP")
+SafeRegisterSuiteEvent(suiteEventFrame, "PET_BATTLE_OPENING_START")
+SafeRegisterSuiteEvent(suiteEventFrame, "PET_BATTLE_OVER")
+SafeRegisterSuiteEvent(suiteEventFrame, "PET_BATTLE_CLOSE")
 suiteEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
     if event == "ADDON_ACTION_FORBIDDEN" then
         if IsDynamicMarkerDisabledInSuiteCore() then return end
@@ -14805,8 +14868,28 @@ suiteEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2)
             addonTable._pendingHudClamp = false
             addonTable.ClampAllSuiteHudsToScreen()
         end
+        if addonTable._pendingPetBattleToastHide and DynamicSuite.IsInPetBattle() then
+            DynamicSuite.HideAllSharedToasts()
+        else
+            addonTable._pendingPetBattleToastHide = false
+        end
         if addonTable._deferredFeatureSpotlight and addonTable.ScheduleFeatureSpotlightCheck then
             addonTable.ScheduleFeatureSpotlightCheck(2.5)
+        end
+        return
+    elseif event == "PET_BATTLE_OPENING_START" then
+        if type(DynamicSuite.AbortAllActiveDirectHudDrags) == "function" then
+            DynamicSuite.AbortAllActiveDirectHudDrags(false)
+        end
+        if addonTable.IsHudEditModeActive and addonTable.IsHudEditModeActive() and addonTable.ExitHudEditMode then
+            addonTable.ExitHudEditMode()
+        end
+        DynamicSuite.HideAllSharedToasts()
+        return
+    elseif event == "PET_BATTLE_OVER" or event == "PET_BATTLE_CLOSE" then
+        addonTable._pendingPetBattleToastHide = false
+        if type(DynamicSuite.HideSnapGuides) == "function" then
+            DynamicSuite.HideSnapGuides()
         end
         return
     elseif event == "CINEMATIC_STOP" then

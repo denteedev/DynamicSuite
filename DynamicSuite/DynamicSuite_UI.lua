@@ -15572,7 +15572,10 @@ function addonTable.CreateMainConfigUI()
                     self._dragGrabVisX = startVisBLX - startCurX
                     self._dragGrabVisY = startVisBLY - startCurY
                 else
-                    local fCx, fCy = hudFrame.GetCenter and hudFrame:GetCenter()
+                    local fCx, fCy = nil, nil
+                    if hudFrame.GetCenter then
+                        fCx, fCy = hudFrame:GetCenter()
+                    end
                     local startVisCx, startVisCy
                     if fCx and fCy then
                         startVisCx = fCx * relScale

@@ -2655,7 +2655,30 @@ function addonTable.SetToastEditMode(enabled, profileKey)
     end
 end
 
+local function IsInPetBattle()
+    if _G.DynamicSuite and type(_G.DynamicSuite.IsInPetBattle) == "function" then
+        local okDS, resDS = pcall(_G.DynamicSuite.IsInPetBattle)
+        if okDS then return resDS == true end
+    end
+    local pb = _G.C_PetBattles
+    if type(pb) ~= "table" or type(pb.IsInBattle) ~= "function" then
+        return false
+    end
+    local ok, res = pcall(pb.IsInBattle)
+    return ok and IsSafeValue(res) and res == true
+end
+
+local function SafeRegisterLoadEvent(frame, eventName)
+    if not frame or type(frame.RegisterEvent) ~= "function" or type(eventName) ~= "string" then return end
+    if _G.C_EventUtils and type(_G.C_EventUtils.IsEventValid) == "function" then
+        local okV, valid = pcall(_G.C_EventUtils.IsEventValid, eventName)
+        if okV and not valid then return end
+    end
+    pcall(frame.RegisterEvent, frame, eventName)
+end
+
 local function ShowToast(profileKey, deltaCount, isTestPreview)
+    if IsInPetBattle() then return end
     local g = EnsureSuiteGlobal()
     local toastOn = g.toastEnabled
     if toastOn == nil and DynamicLoadDB then toastOn = DynamicLoadDB.toastEnabled end
@@ -2715,6 +2738,7 @@ end
 addonTable.ShowToast = ShowToast
 
 local function ShowNewAddonsToast(newAddons)
+    if IsInPetBattle() then return end
     local f = CreateToastFrame()
     if f.isDraggingMode or f.isEditingMode then return end
 
@@ -2758,6 +2782,7 @@ end
 addonTable.ShowNewAddonsToast = ShowNewAddonsToast
 
 local function ShowConflictToast(conflicts)
+    if IsInPetBattle() then return end
     if not conflicts or #conflicts == 0 then return end
     local f = CreateToastFrame()
     if f.isDraggingMode or f.isEditingMode then return end
@@ -3729,6 +3754,9 @@ eventFrame:RegisterEvent("ZONE_CHANGED_INDOORS")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("UI_SCALE_CHANGED")
 eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
+SafeRegisterLoadEvent(eventFrame, "PET_BATTLE_OPENING_START")
+SafeRegisterLoadEvent(eventFrame, "PET_BATTLE_OVER")
+SafeRegisterLoadEvent(eventFrame, "PET_BATTLE_CLOSE")
 
 local function PurgeRetiredAddons()
     local pName = GetPlayer()
@@ -4020,6 +4048,31 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
     elseif event == "UI_SCALE_CHANGED" or event == "DISPLAY_SIZE_CHANGED" then
         if toastFrame and not (InCombatLockdown and InCombatLockdown()) then
             ApplyToastPosition(toastFrame)
+        end
+
+    elseif event == "PET_BATTLE_OPENING_START" then
+        if _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+            _G.DynamicSuite.HideSnapGuides()
+        end
+        if toastFrame then
+            if toastFrame._dsDirectDragActive and toastFrame._dsEndDirectDrag then
+                toastFrame._dsEndDirectDrag(true)
+            end
+            if not (InCombatLockdown and InCombatLockdown()) then
+                if toastFrame.animGroup then toastFrame.animGroup:Stop() end
+                toastFrame.isDraggingMode = false
+                toastFrame.isEditingMode = false
+                if toastFrame.SetClampedToScreen then
+                    toastFrame:SetClampedToScreen(true)
+                end
+                toastFrame:Hide()
+                toastFrame:SetAlpha(1)
+            end
+        end
+
+    elseif event == "PET_BATTLE_OVER" or event == "PET_BATTLE_CLOSE" then
+        if _G.DynamicSuite and type(_G.DynamicSuite.HideSnapGuides) == "function" then
+            _G.DynamicSuite.HideSnapGuides()
         end
 
     elseif event == "PLAYER_REGEN_ENABLED" then

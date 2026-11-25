@@ -34,6 +34,9 @@ local function CreateEnv()
 
     local state = {
         inCombat = false,
+        inPetBattle = false,
+        inGroup = false,
+        inRaid = false,
         shiftDown = false,
         ctrlDown = false,
         altDown = false,
@@ -66,13 +69,30 @@ local function CreateEnv()
     env.UnitGUID = function() return "Player-1234-0001" end
     env.UnitClass = function() return "Mage", "MAGE", 8 end
     env.GetRealmName = function() return "Frostmourne" end
-    env.IsInRaid = function() return false end
-    env.IsInGroup = function() return false end
-    env.GetNumGroupMembers = function() return 0 end
-    env.GetNumSubgroupMembers = function() return 0 end
+    env.IsInRaid = function() return state.inRaid end
+    env.IsInGroup = function() return state.inGroup or state.inRaid end
+    env.GetNumGroupMembers = function() return state.inRaid and 10 or (state.inGroup and 5 or 0) end
+    env.GetNumSubgroupMembers = function() return state.inGroup and 4 or 0 end
     env.UnitIsGroupLeader = function() return false end
     env.UnitIsGroupAssistant = function() return false end
     env.InCombatLockdown = function() return state.inCombat end
+    env.C_PetBattles = {
+        IsInBattle = function() return state.inPetBattle end,
+    }
+    env.C_EventUtils = {
+        IsEventValid = function() return true end,
+    }
+    env.RegisterStateDriver = function(fr, attr, cond)
+        if type(fr) == "table" then
+            fr._stateDrivers = fr._stateDrivers or {}
+            fr._stateDrivers[attr] = cond
+        end
+    end
+    env.UnregisterStateDriver = function(fr, attr)
+        if type(fr) == "table" and fr._stateDrivers then
+            fr._stateDrivers[attr] = nil
+        end
+    end
     env.IsShiftKeyDown = function() return state.shiftDown end
     env.IsControlKeyDown = function() return state.ctrlDown end
     env.IsAltKeyDown = function() return state.altDown end
@@ -197,8 +217,7 @@ local function CreateEnv()
                 local rfx, rfy = Frac(rp)
                 local ox = tonumber(x) or 0
                 local oy = tonumber(y) or 0
-                local uScale = (env.UIParent and env.UIParent._scale) or 1.0
-                local relScale = (self._scale or 1.0) / uScale
+                local relScale = (self._scale or 1.0)
                 if relScale <= 0 then relScale = 1.0 end
                 self._cx = ((rfx * uiW) / relScale) + ox + (0.5 - pfx) * (self._w or 100)
                 self._cy = ((rfy * uiH) / relScale) + oy + (0.5 - pfy) * (self._h or 30)
@@ -223,7 +242,12 @@ local function CreateEnv()
         function f:GetRight() return self._cx + (self._w * 0.5) end
         function f:SetScale(s) self._scale = s or 1.0 end
         function f:GetScale() return self._scale end
-        function f:GetEffectiveScale() return self._scale end
+        function f:GetEffectiveScale()
+            if self == env.UIParent then return self._scale end
+            local pEff = (self._parent and self._parent.GetEffectiveScale and self._parent:GetEffectiveScale())
+                or (env.UIParent and env.UIParent._scale) or 1.0
+            return pEff * (self._scale or 1.0)
+        end
         function f:SetAlpha(a) self._alpha = a or 1.0 end
         function f:GetAlpha() return self._alpha end
         function f:SetFrameStrata() end
@@ -322,7 +346,8 @@ local function CreateEnv()
             function tex:SetWidth() end
             function tex:SetHeight() end
             function tex:SetColorTexture(r, g, b, a) self._color = { r, g, b, a } end
-            function tex:SetTexture() end
+            function tex:SetTexture(t) self._tex = t end
+            function tex:GetTexture() return self._tex end
             function tex:SetDesaturated() end
             function tex:SetBlendMode() end
             function tex:SetAtlas() end
@@ -1110,6 +1135,288 @@ RunTest("12. Guide and drag cleanup on Hide, Esc, and combat entry", function()
     stateM.FireEvent("PLAYER_REGEN_DISABLED")
     assertTrue(not dm.targetBar._dmDirectDragActive, "Combat entry aborts standalone drag")
     assertTrue(not ovM.vLine:IsShown() and not ovM.hLine:IsShown(), "Combat entry dismisses standalone guides")
+end)
+
+-- ----------------------------------------------------------------------------
+-- Test 13: Zero-jump Shift-Drag at bottom/top/left/right screen edges
+-- ----------------------------------------------------------------------------
+RunTest("13. Zero-jump Shift-Drag from bottom, top, left, and right screen edges", function()
+    for _, uScale in ipairs({ 1.0, 0.7111 }) do
+        for _, bScale in ipairs({ 0.60, 1.00, 1.50 }) do
+            local env, state = BootStandaloneMarkerEnv()
+            env.UIParent:SetScale(uScale)
+            local dm = env.DynamicMarker
+            dm:InitTargetBar()
+            dm:InitFlareBar()
+
+            for _, barSpec in ipairs({
+                { key = "TargetBar", bar = dm.targetBar, oriKey = "targetBarOrientation", scaleKey = "targetBarScale" },
+                { key = "FlareBar",  bar = dm.flareBar,  oriKey = "flareBarOrientation",  scaleKey = "flareBarScale" },
+            }) do
+                local bar = barSpec.bar
+                dm.db[barSpec.scaleKey] = bScale
+                dm.db[barSpec.oriKey] = "HORIZONTAL"
+                dm:SyncBarScaleAndSizeToDB(bar, barSpec.key)
+
+                local halfW = (bar:GetWidth() * bScale) * 0.5
+                local halfH = (bar:GetHeight() * bScale) * 0.5
+                local edgeCases = {
+                    { name = "BOTTOM", x = 0,               y = -(540 - halfH) },
+                    { name = "TOP",    x = 0,               y = (540 - halfH) },
+                    { name = "LEFT",   x = -(960 - halfW),  y = 0 },
+                    { name = "RIGHT",  x = (960 - halfW),   y = 0 },
+                    { name = "BTM_L",  x = -(960 - halfW),  y = -(540 - halfH) },
+                }
+
+                for _, ec in ipairs(edgeCases) do
+                    local cx0 = math.floor(ec.x + 0.5)
+                    local cy0 = math.floor(ec.y + 0.5)
+                    dm:SaveHUDPosition(bar, barSpec.key, true, "CENTER", "CENTER", cx0, cy0)
+                    dm:ApplyHUDPosition(bar, barSpec.key, 0)
+                    bar:Show()
+
+                    local startCx, startCy = bar:GetCenter()
+                    assertTrue(startCx ~= nil and startCy ~= nil, "GetCenter returns both X and Y")
+                    local startVisCx = startCx * bScale
+                    local startVisCy = startCy * bScale
+
+                    -- Cursor clicks directly on the bar's visual centre (in WoW GetCursorPosition() raw coords)
+                    state.shiftDown = true
+                    state.altDown = false
+                    state.lmbDown = true
+                    state.cursorX = startVisCx * uScale
+                    state.cursorY = startVisCy * uScale
+
+                    bar:FireScript("OnDragStart")
+                    assertTrue(bar._dmDirectDragActive == true, barSpec.key .. " Shift-Drag started at " .. ec.name)
+
+                    -- First OnUpdate tick WITHOUT moving cursor must NOT jump to vertical center (Y = 0)
+                    bar:FireScript("OnUpdate", 0.016)
+                    local tickCx, tickCy = bar:GetCenter()
+                    local tickVisCx = tickCx * bScale
+                    local tickVisCy = tickCy * bScale
+                    local dx = math.abs(tickVisCx - startVisCx)
+                    local dy = math.abs(tickVisCy - startVisCy)
+                    assertTrue(dx <= 1.0, string.format("%s %s uScale=%.2f bScale=%.2f zero X jump (dx=%.2f)", barSpec.key, ec.name, uScale, bScale, dx))
+                    assertTrue(dy <= 1.0, string.format("%s %s uScale=%.2f bScale=%.2f zero Y jump (dy=%.2f, start=%.1f, tick=%.1f)", barSpec.key, ec.name, uScale, bScale, dy, startVisCy, tickVisCy))
+
+                    -- Nudging outward stays strictly 0px clamped; Alt bypass stays unjumped
+                    state.cursorX = (startVisCx * uScale) - (200 * uScale)
+                    state.cursorY = (startVisCy * uScale) - (200 * uScale)
+                    bar:FireScript("OnUpdate", 0.016)
+                    local outCx, outCy = bar:GetCenter()
+                    assertTrue((outCx * bScale) - halfW >= -1.0, "Outward drag keeps left >= 0")
+                    assertTrue((outCy * bScale) - halfH >= -1.0, "Outward drag keeps bottom >= 0")
+
+                    bar:FireScript("OnDragStop")
+                end
+            end
+        end
+    end
+
+    -- Also confirm Shared Alert Toast parked flush at bottom edge starts with 0px jump
+    local envS, stateS = BootFullSuiteEnv()
+    local toast = envS.DynamicSuite.EnsureSharedToastFrame("UnitTestEdgeToast", { toastKind = "ACTION" })
+    envS.DynamicSuite.SaveSharedToastPosition("TOP", "TOP", -120, -1006, toast)
+    toast:Show()
+    local tCx0, tCy0 = toast:GetCenter()
+    stateS.shiftDown = true
+    stateS.lmbDown = true
+    stateS.cursorX, stateS.cursorY = tCx0, tCy0
+    toast:FireScript("OnDragStart")
+    toast:FireScript("OnUpdate", 0.016)
+    local tCx1, tCy1 = toast:GetCenter()
+    assertTrue(math.abs(tCx1 - tCx0) <= 1.0 and math.abs(tCy1 - tCy0) <= 1.0, "Shared Toast bottom edge starts with zero jump")
+    toast:FireScript("OnDragStop")
+end)
+
+-- ----------------------------------------------------------------------------
+-- Test 14: Pet Battle auto-hide across DynamicMarker, Shared Toast & Chat
+-- ----------------------------------------------------------------------------
+RunTest("14. Pet Battle auto-hide on DynamicMarker, Shared Alert Toast & Chat preserved", function()
+    -- Standalone DynamicMarker: ALWAYS + GROUP + OFF + active drag/Edit Mode abort
+    local envM, stateM = BootStandaloneMarkerEnv()
+    local dm = envM.DynamicMarker
+    dm:InitTargetBar()
+    dm:InitFlareBar()
+    dm.db.targetBarVisibility = "ALWAYS"
+    dm.db.flareBarVisibility = "GROUP"
+    stateM.inGroup = true
+    dm:UpdateTargetBarVisibility()
+    dm:UpdateFlareBarVisibility()
+    assertTrue(dm.targetBar:IsShown(), "TargetBar visible when ALWAYS before Pet Battle")
+    assertTrue(dm.flareBar:IsShown(), "FlareBar visible when GROUP & inGroup before Pet Battle")
+    assertTrue(dm:GetGroupVisibilityStateDriver():find("[petbattle] hide;", 1, true) ~= nil, "Group state driver includes [petbattle] hide")
+
+    -- Start a Shift-Drag on TargetBar -> Pet Battle start aborts drag, hides guides & bars
+    stateM.shiftDown = true
+    stateM.lmbDown = true
+    stateM.cursorX, stateM.cursorY = 960, 400
+    dm.targetBar:FireScript("OnDragStart")
+    assertTrue(dm.targetBar._dmDirectDragActive == true, "TargetBar Shift-Drag active before Pet Battle")
+
+    stateM.inPetBattle = true
+    stateM.FireEvent("PET_BATTLE_OPENING_START")
+    assertTrue(not dm.targetBar._dmDirectDragActive, "Pet Battle aborts active TargetBar Shift-Drag")
+    assertTrue(not dm.targetBar:IsShown(), "Standalone TargetBar hides during Pet Battle")
+    assertTrue(not dm.flareBar:IsShown(), "Standalone FlareBar hides during Pet Battle")
+
+    -- Simulating mid-battle /reload / RefreshTargetBar / RefreshFlareBar keeps both hidden
+    dm:RefreshTargetBar()
+    dm:RefreshFlareBar()
+    assertTrue(not dm.targetBar:IsShown(), "TargetBar stays hidden on mid-battle RefreshTargetBar")
+    assertTrue(not dm.flareBar:IsShown(), "FlareBar stays hidden on mid-battle RefreshFlareBar")
+    assertEqual(dm:ShouldShowBar("ALWAYS", dm.targetBar), false, "ShouldShowBar returns false during Pet Battle")
+
+    -- Ending Pet Battle restores exact prior visibility (ALWAYS + GROUP-in-group)
+    stateM.inPetBattle = false
+    stateM.FireEvent("PET_BATTLE_OVER")
+    assertTrue(dm.targetBar:IsShown(), "TargetBar restores ALWAYS after PET_BATTLE_OVER")
+    assertTrue(dm.flareBar:IsShown(), "FlareBar restores GROUP (in group) after PET_BATTLE_OVER")
+
+    -- Verify OFF mode stays hidden after Pet Battle ends
+    dm.db.targetBarVisibility = "HIDDEN"
+    dm:UpdateTargetBarVisibility()
+    assertTrue(not dm.targetBar:IsShown(), "TargetBar stays hidden when configured OFF")
+    stateM.inPetBattle = true
+    stateM.FireEvent("PET_BATTLE_OPENING_START")
+    stateM.inPetBattle = false
+    stateM.FireEvent("PET_BATTLE_CLOSE")
+    assertTrue(not dm.targetBar:IsShown(), "TargetBar stays OFF after PET_BATTLE_CLOSE")
+
+    -- Full Suite: Shared Alert Toast hides + suppresses during Pet Battle; ChatFrame1 stays visible
+    local envS, stateS = BootFullSuiteEnv()
+    assertEqual(envS.DynamicSuite.IsInPetBattle(), false, "Core IsInPetBattle false initially")
+    local chatFr = envS.CreateFrame("Frame", "ChatFrame1", envS.UIParent)
+    chatFr:Show()
+    local toast = envS.DynamicSuite.EnsureSharedToastFrame("DynamicLoadToastFrame", { toastKind = "ACTION" })
+    assertTrue(envS.DynamicSuite.ShowSharedToast(toast, { title = "Ready", body = "Check" }), "Shared Toast shows out of Pet Battle")
+    assertTrue(toast:IsShown(), "Shared Toast shown before Pet Battle")
+
+    stateS.inPetBattle = true
+    assertEqual(envS.DynamicSuite.IsInPetBattle(), true, "Core IsInPetBattle reflects C_PetBattles.IsInBattle()")
+    stateS.FireEvent("PET_BATTLE_OPENING_START")
+    assertTrue(not toast:IsShown(), "Shared Toast hides on PET_BATTLE_OPENING_START")
+    assertEqual(envS.DynamicSuite.ShowSharedToast(toast, { title = "Suppressed", body = "Battle" }), false, "New Shared Toasts suppressed during Pet Battle")
+    assertTrue(not toast:IsShown(), "Shared Toast stays hidden mid-battle")
+    assertTrue(chatFr:IsShown(), "ChatFrame1 remains visible during Pet Battle")
+
+    stateS.inPetBattle = false
+    stateS.FireEvent("PET_BATTLE_OVER")
+    assertTrue(envS.DynamicSuite.ShowSharedToast(toast, { title = "Restored", body = "Done" }), "Shared Toasts work again after PET_BATTLE_OVER")
+    assertTrue(toast:IsShown(), "Shared Toast visible again post-battle")
+end)
+
+-- ----------------------------------------------------------------------------
+-- Test 15: Pet Battle auto-hide on real DynamicPrep (Top Info Bar + Clickable
+-- Raid Buffs) & DynamicLoad (Alert Toast)
+-- ----------------------------------------------------------------------------
+RunTest("15. Pet Battle auto-hide on real DynamicPrep HUDs & DynamicLoad Alert Toast", function()
+    local env, state = CreateEnv()
+    -- Additional WoW API stubs needed by DynamicLoad.lua & DynamicPrep.lua
+    env.strtrim = function(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+    env.strsplit = function(sep, str)
+        local res = {}
+        for part in string.gmatch(tostring(str or ""), "([^" .. sep .. "]+)") do res[#res + 1] = part end
+        return unpack(res)
+    end
+    env.bit = {
+        band = function(a, b)
+            local res, bitval = 0, 1
+            while a > 0 and b > 0 do
+                if (a % 2 == 1) and (b % 2 == 1) then res = res + bitval end
+                a = math.floor(a / 2); b = math.floor(b / 2); bitval = bitval * 2
+            end
+            return res
+        end,
+    }
+    env.time = os.time
+    env.date = os.date
+    env.GetLocale = function() return "enUS" end
+    env.GetAddOnMemoryUsage = function() return 0 end
+    env.UpdateAddOnMemoryUsage = function() end
+    env.GetCVar = function() return "1" end
+    env.GetCVarBool = function() return false end
+    env.SetCVar = function() end
+    env.GetSpecialization = function() return 1 end
+    env.GetSpecializationInfo = function() return 62, "Arcane", "", 135932, "DAMAGER" end
+    env.C_SpecializationInfo = { GetSpecialization = env.GetSpecialization, GetSpecializationInfo = env.GetSpecializationInfo }
+    env.GetLootSpecialization = function() return 0 end
+    env.GetFramerate = function() return 120 end
+    env.GetNetStats = function() return 0, 0, 20, 25 end
+    env.GetInventoryItemDurability = function() return 100, 100 end
+    env.GetInventoryItemLink = function() return nil end
+    env.GetInventoryItemID = function() return nil end
+    env.IsInInstance = function() return false, "none" end
+    env.UnitIsDeadOrGhost = function() return false end
+    env.UnitIsGhost = function() return false end
+    env.UnitLevel = function() return 80 end
+    env.UnitExists = function() return false end
+    env.UnitAffectedByControl = nil
+    env.C_Container = { GetContainerNumSlots = function() return 0 end, GetContainerItemID = function() return nil end }
+    env.C_Spell = { GetSpellName = function() return "Arcane Intellect" end, IsSpellUsable = function() return true, false end }
+    env.C_Item = { GetItemCount = function() return 0 end, GetItemInfo = function() return nil end }
+    env.C_Texture = { GetAtlasInfo = function() return nil end }
+    env.C_Timer.NewTicker = function(_, fn) return { Cancel = function() end, fn = fn } end
+    env.GetSpellInfo = function() return "Arcane Intellect", nil, 135932 end
+    env.GetItemCount = function() return 0 end
+    env.IsSpellKnown = function() return true end
+    env.C_SpellBook = { IsSpellKnown = function() return true end }
+
+    local sharedTbl = {}
+    LoadChunkIntoEnv(CORE_PATH, env, "DynamicSuite", sharedTbl)
+    env.C_AddOns.IsAddOnLoaded = function(name)
+        return name == "DynamicSuite" or name == "DynamicLoad" or name == "DynamicPrep"
+    end
+    local dlTbl = LoadChunkIntoEnv("DynamicSuite/Modules/DynamicLoad.lua", env, "DynamicSuite", sharedTbl)
+    LoadChunkIntoEnv("DynamicSuite/Modules/DynamicPrep.lua", env, "DynamicSuite", sharedTbl)
+
+    state.FireEvent("ADDON_LOADED", "DynamicSuite")
+    state.FireEvent("ADDON_LOADED", "DynamicLoad")
+    state.FireEvent("ADDON_LOADED", "DynamicPrep")
+
+    -- 1. Verify DynamicLoad Alert Toast auto-hides & suppresses in Pet Battles
+    local showToastFn = (type(dlTbl) == "table" and dlTbl.ShowToast) or sharedTbl.ShowToast
+    assertTrue(type(showToastFn) == "function", "DynamicLoad ShowToast exposed")
+    showToastFn("outdoor", 3, true)
+    assertTrue(env.DynamicLoadToastFrame ~= nil and env.DynamicLoadToastFrame:IsShown(), "DynamicLoad toast shown out of Pet Battle")
+
+    -- 2. Verify DynamicPrep Top Info Bar & Clickable Raid Buffs show out of Pet Battle
+    local dp = env.DynamicPrep
+    assertTrue(dp ~= nil, "DynamicPrep initialized")
+    dp.db = dp.db or {}
+    dp.db.displayMode = "ALWAYS"
+    dp.db.raidBuffs = dp.db.raidBuffs or { enabled = true }
+    dp.db.raidBuffs.enabled = true
+    dp:RefreshBar()
+    dp:RefreshClickableBuffs(true)
+    assertTrue(dp.prepBarFrame ~= nil and dp.prepBarFrame:IsShown(), "Prep Top Info Bar visible before Pet Battle")
+    assertTrue(dp.clickableBuffBar ~= nil and dp.clickableBuffBar:IsShown(), "Clickable Raid Buffs visible before Pet Battle")
+    assertEqual(dp:ShouldShowPrepBar(), true, "ShouldShowPrepBar true before Pet Battle")
+
+    -- Enter Pet Battle -> all 3 hide & new DynamicLoad toasts suppressed
+    state.inPetBattle = true
+    state.FireEvent("PET_BATTLE_OPENING_START")
+    assertTrue(not env.DynamicLoadToastFrame:IsShown(), "DynamicLoad toast hides on PET_BATTLE_OPENING_START")
+    showToastFn("outdoor", 2, true)
+    assertTrue(not env.DynamicLoadToastFrame:IsShown(), "DynamicLoad toast stays suppressed during Pet Battle")
+    assertTrue(not dp.prepBarFrame:IsShown(), "Prep Top Info Bar hides during Pet Battle")
+    assertTrue(not dp.clickableBuffBar:IsShown(), "Clickable Raid Buffs hides during Pet Battle")
+    assertEqual(dp:ShouldShowPrepBar(), false, "ShouldShowPrepBar false during Pet Battle")
+
+    -- Mid-battle refresh (simulating /reload while in Pet Battle) keeps them hidden
+    dp:RefreshBar()
+    dp:RefreshClickableBuffs(true)
+    assertTrue(not dp.prepBarFrame:IsShown(), "Prep Top Info Bar stays hidden on mid-battle RefreshBar")
+    assertTrue(not dp.clickableBuffBar:IsShown(), "Clickable Raid Buffs stays hidden on mid-battle RefreshClickableBuffs")
+
+    -- Exit Pet Battle -> bars restore cleanly & toasts work again
+    state.inPetBattle = false
+    state.FireEvent("PET_BATTLE_OVER")
+    assertTrue(dp.prepBarFrame:IsShown(), "Prep Top Info Bar restores after PET_BATTLE_OVER")
+    assertTrue(dp.clickableBuffBar:IsShown(), "Clickable Raid Buffs restores after PET_BATTLE_OVER")
+    showToastFn("outdoor", 3, true)
+    assertTrue(env.DynamicLoadToastFrame:IsShown(), "DynamicLoad toast shows again after PET_BATTLE_OVER")
 end)
 
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))
