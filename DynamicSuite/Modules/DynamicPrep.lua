@@ -694,7 +694,7 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "25/11/2026",
     entries = {
-        { type = "FIX",     text = "Multi-Quest Auto-Accept, Auto-Gossip & DynamicDialogue Handoff Sync (25/11/2026): Prioritised live server interaction state over suppressed off-screen Blizzard frames across GOSSIP_SHOW, QUEST_GREETING, QUEST_DETAIL, QUEST_PROGRESS, and QUEST_COMPLETE retry timers; cross-checked available and active quests against C_QuestLog (plus QUEST_ACCEPTED / QUEST_REMOVED / QUEST_FINISHED / PLAYER_INTERACTION_MANAGER_FRAME_HIDE tracking) so multi-quest NPCs immediately advance to remaining quests without re-selecting stale accepted quests; and coordinated phase-matched auto-action handoff with DynamicDialogue across both Suite and Standalone builds." },
+        { type = "FIX",     text = "Multi-Quest Auto-Accept, Auto-Gossip & DynamicDialogue Handoff Sync (25/11/2026): Prioritised live server interaction state over suppressed off-screen Blizzard frames (while preserving field auto-complete QUEST_COMPLETE windows) and eliminated duplicate 0.05s AcceptQuest/CompleteQuest/GetQuestReward retries on >50ms latency once the initial action succeeds; cross-checked available and active quests against C_QuestLog (plus QUEST_ACCEPTED / QUEST_REMOVED / QUEST_TURNED_IN / QUEST_FINISHED / PLAYER_INTERACTION_MANAGER_FRAME_HIDE tracking) so multi-quest NPCs immediately advance to remaining quests without re-selecting stale accepted or turned-in quests; respected mid-session sidebar soft-disable immediately; and coordinated event-sequence-exact handoff with DynamicDialogue across both Suite and Standalone builds." },
         { type = "UI",      text = "Release v2.10.1 - Top Info Bar Shift-Drag, Right-Click HUD Edit & Discoverability (25/11/2026): Added direct Shift + Left-Drag repositioning across the Top Info Bar background and segment capsules out of combat (saving directly to HUD Edit Mode coordinates without triggering accidental clicks), Right-Click on empty bar space to open HUD Edit Mode (/ds hud), a subtle bar-hover tooltip, a 'Shift-Drag to move  |  /ds hud for grid & scale' footer line on Top Info Bar segment tooltips, and an updated DynamicPrep '?' Quick Guide tip." },
         { type = "FIX",     text = "Zero-Truncation Actionable Alert Toasts (24/11/2026): Widened actionable Mage Food and Low Durability Alert Toasts (with automatic width fit in DynamicSuite) and tightened titles and action hints so no line cuts off against the right-hand button." },
         { type = "UI",      text = "Pass 3 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 3 Section Split (24/11/2026): Added a 4-option QUICK PRESETS card at the top of Tab 1 (Raider / M+ Full, Minimalist Stats, Keystone Focus, System Only) with live Suite Accent active highlighting; added Bar Density (Standard / Compact) and Bar Mouseover Fade (Off / Fade Until Hover / Combat Fade) options; clamped all wide pill rows cleanly for 800x520 minimum windows; wrapped Tab 2's Clickable Raid Buffs (12 controls, including split-out Partner Buffs, Clickable Icon Spacing, and Hide 'MISSING' Text Label) and Omni Folio (5 controls) into persisted Sub-Settings drawers collapsed by default on fresh profiles alongside a new Paperdoll Gear Audit section with toggle and Preview on Gear button; split Tab 3 into 3 calm Obsidian sections (Quest, Dialogue & Cutscenes; Combat, Error & Survival Guards; Healer Recovery & Durability) with persisted drawer states across reloads; fixed the blank-label standalone Edit HUD fallback button; and cleaned US spellings and raw setting names from tooltips and changelogs." },
@@ -5246,8 +5246,24 @@ function DynamicPrep:IsQuestAlreadyCompleted(qID)
     return false
 end
 
+function DynamicPrep:IsQuestRecentlyTurnedIn(qID)
+    if not qID or _IsSecret(qID) or type(qID) ~= "number" or qID <= 0 then
+        return false
+    end
+    local rec = self._recentlyTurnedInQuests
+    if type(rec) == "table" and rec[qID] then
+        local now = (type(GetTime) == "function" and GetTime()) or 0
+        if (now - rec[qID]) <= 1.5 then
+            return true
+        end
+        rec[qID] = nil
+    end
+    return false
+end
+
 function DynamicPrep:MarkAutoDialogueAction(actionKind, targetID)
     self._autoDialogueActionSeq = (self._autoDialogueActionSeq or 0) + 1
+    self._lastAutoDialogueEventSeq = self._questDialogueSeq or 0
     self._lastAutoDialogueAction = actionKind
     self._lastAutoDialogueTargetID = targetID
     self._lastAutoDialogueAt = (type(GetTime) == "function" and GetTime()) or 0
@@ -5265,14 +5281,41 @@ function DynamicPrep:NoteQuestAccepted(arg1, arg2)
         qID = arg1
     end
     if qID then
+        if type(self._recentlyTurnedInQuests) == "table" then
+            self._recentlyTurnedInQuests[qID] = nil
+        end
+        if self._pendingAcceptQuestID == qID then
+            self._pendingAcceptQuestID = nil
+            self._pendingAcceptAt = nil
+        end
         self._recentlyAcceptedQuests = self._recentlyAcceptedQuests or {}
         self._recentlyAcceptedQuests[qID] = (type(GetTime) == "function" and GetTime()) or 0
     end
 end
 
 function DynamicPrep:NoteQuestRemoved(qID)
-    if not _IsSecret(qID) and type(qID) == "number" and qID > 0 and type(self._recentlyAcceptedQuests) == "table" then
-        self._recentlyAcceptedQuests[qID] = nil
+    if not _IsSecret(qID) and type(qID) == "number" and qID > 0 then
+        if type(self._recentlyAcceptedQuests) == "table" then
+            self._recentlyAcceptedQuests[qID] = nil
+        end
+        if self._pendingAcceptQuestID == qID then
+            self._pendingAcceptQuestID = nil
+            self._pendingAcceptAt = nil
+        end
+    end
+end
+
+function DynamicPrep:NoteQuestTurnedIn(qID)
+    if not _IsSecret(qID) and type(qID) == "number" and qID > 0 then
+        if type(self._recentlyAcceptedQuests) == "table" then
+            self._recentlyAcceptedQuests[qID] = nil
+        end
+        if self._pendingAcceptQuestID == qID then
+            self._pendingAcceptQuestID = nil
+            self._pendingAcceptAt = nil
+        end
+        self._recentlyTurnedInQuests = self._recentlyTurnedInQuests or {}
+        self._recentlyTurnedInQuests[qID] = (type(GetTime) == "function" and GetTime()) or 0
     end
 end
 
@@ -5282,6 +5325,15 @@ function DynamicPrep:NoteDialogueInteractionEnded(kind)
         self._gossipSessionClosed = true
         self._gossipChainCount = 0
     elseif kind == "QUEST" then
+        if self._pendingAcceptQuestID then
+            local now = (type(GetTime) == "function" and GetTime()) or 0
+            if (now - (self._pendingAcceptAt or 0)) <= 0.35 then
+                self._recentlyAcceptedQuests = self._recentlyAcceptedQuests or {}
+                self._recentlyAcceptedQuests[self._pendingAcceptQuestID] = now
+            end
+            self._pendingAcceptQuestID = nil
+            self._pendingAcceptAt = nil
+        end
         self._questSessionClosed = true
         self._questSessionIsNpc = false
     end
@@ -5304,17 +5356,26 @@ local function TryAcceptCurrentQuest()
         return false
     end
 
+    local now = (type(GetTime) == "function" and GetTime()) or 0
     if isAuto then
         if AcknowledgeAutoAcceptQuest then
             DynamicPrep:MarkAutoDialogueAction("QUEST_DETAIL_ACCEPT", curQID)
             pcall(AcknowledgeAutoAcceptQuest)
             return true
         elseif AcceptQuest then
+            if curQID then
+                DynamicPrep._pendingAcceptQuestID = curQID
+                DynamicPrep._pendingAcceptAt = now
+            end
             DynamicPrep:MarkAutoDialogueAction("QUEST_DETAIL_ACCEPT", curQID)
             pcall(AcceptQuest)
             return true
         end
     elseif AcceptQuest then
+        if curQID then
+            DynamicPrep._pendingAcceptQuestID = curQID
+            DynamicPrep._pendingAcceptAt = now
+        end
         DynamicPrep:MarkAutoDialogueAction("QUEST_DETAIL_ACCEPT", curQID)
         pcall(AcceptQuest)
         return true
@@ -5390,10 +5451,10 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
                 isNpcNow = true
             end
         end
-        self._questSessionIsNpc = isNpcNow or (event ~= "QUEST_DETAIL")
+        self._questSessionIsNpc = isNpcNow or (event == "QUEST_GREETING")
         self._questDialogueSeq = (self._questDialogueSeq or 0) + 1
     end
-    if not self.db or self.db.autoQuestGossip == false or (IsShiftKeyDown and IsShiftKeyDown()) then
+    if IsModuleDisabledInSuite("DynamicPrep") or not self.db or self.db.autoQuestGossip == false or (IsShiftKeyDown and IsShiftKeyDown()) then
         return
     end
     if self:GetActiveGossipCameraConflict() then
@@ -5463,7 +5524,7 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
             if numActive > 0 then
                 for _, q in ipairs(activeQuests) do
                     local qID = (q and not _IsSecret(q) and not _IsSecret(q.questID)) and q.questID or nil
-                    local staleTurnedIn = qID and self:IsQuestAlreadyCompleted(qID) and not self:IsQuestAlreadyAccepted(qID)
+                    local staleTurnedIn = qID and (self:IsQuestAlreadyCompleted(qID) or self:IsQuestRecentlyTurnedIn(qID)) and not self:IsQuestAlreadyAccepted(qID)
                     if qID and not staleTurnedIn then
                         liveActiveCount = liveActiveCount + 1
                         local isComp = (not _IsSecret(q.isComplete) and q.isComplete == true)
@@ -5590,7 +5651,7 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
             local _, isComplete = GetActiveTitle(i)
             local qID = (type(_G.GetActiveQuestID) == "function") and _G.GetActiveQuestID(i) or nil
             if _IsSecret(qID) then qID = nil end
-            local staleTurnedIn = qID and self:IsQuestAlreadyCompleted(qID) and not self:IsQuestAlreadyAccepted(qID)
+            local staleTurnedIn = qID and (self:IsQuestAlreadyCompleted(qID) or self:IsQuestRecentlyTurnedIn(qID)) and not self:IsQuestAlreadyAccepted(qID)
             if not staleTurnedIn then
                 local isComp = isComplete
                     or (qID and C_QuestLog and C_QuestLog.IsComplete and C_QuestLog.IsComplete(qID))
@@ -5651,13 +5712,12 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
             end
         end
         local acceptedAtZero = TryAcceptCurrentQuest()
-        if C_Timer and C_Timer.After then
+        if not acceptedAtZero and C_Timer and C_Timer.After then
             C_Timer.After(0.05, function()
                 if mySeq ~= (DynamicPrep._questDialogueSeq or 0) then return end
                 if IsModuleDisabledInSuite("DynamicPrep") or not DynamicPrep.db or DynamicPrep.db.autoQuestGossip == false then return end
                 if not DynamicPrep:IsQuestInteractionActive() then return end
                 local isAuto = (QuestGetAutoAccept and QuestGetAutoAccept() == true) or false
-                if isAuto and acceptedAtZero then return end
                 if curQID and not isAuto and DynamicPrep:IsQuestAlreadyAccepted(curQID) then return end
                 local panelVis = (_G.QuestFrameDetailPanel and _G.QuestFrameDetailPanel.IsVisible and _G.QuestFrameDetailPanel:IsVisible()) or false
                 local ddHandled = (_G.DynamicDialogue and type(_G.DynamicDialogue.IsHandlingBlizzardFrame) == "function"
@@ -5684,8 +5744,8 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
 
     elseif event == "QUEST_PROGRESS" then
         local mySeq = self._questDialogueSeq or 0
-        TryProgressCurrentQuest()
-        if C_Timer and C_Timer.After then
+        local progressedAtZero = TryProgressCurrentQuest()
+        if not progressedAtZero and C_Timer and C_Timer.After then
             C_Timer.After(0.05, function()
                 if mySeq ~= (DynamicPrep._questDialogueSeq or 0) then return end
                 if IsModuleDisabledInSuite("DynamicPrep") or not DynamicPrep.db or DynamicPrep.db.autoQuestGossip == false then return end
@@ -5701,8 +5761,8 @@ function DynamicPrep:HandleQuestAndGossip(event, arg1)
 
     elseif event == "QUEST_COMPLETE" then
         local mySeq = self._questDialogueSeq or 0
-        TryCompleteCurrentQuest()
-        if C_Timer and C_Timer.After then
+        local completedAtZero = TryCompleteCurrentQuest()
+        if not completedAtZero and C_Timer and C_Timer.After then
             C_Timer.After(0.05, function()
                 if mySeq ~= (DynamicPrep._questDialogueSeq or 0) then return end
                 if IsModuleDisabledInSuite("DynamicPrep") or not DynamicPrep.db or DynamicPrep.db.autoQuestGossip == false then return end
@@ -13909,6 +13969,7 @@ SafeRegisterEvent(eventFrame, "QUEST_COMPLETE")
 SafeRegisterEvent(eventFrame, "QUEST_FINISHED")
 SafeRegisterEvent(eventFrame, "QUEST_ACCEPTED")
 SafeRegisterEvent(eventFrame, "QUEST_REMOVED")
+SafeRegisterEvent(eventFrame, "QUEST_TURNED_IN")
 SafeRegisterEvent(eventFrame, "ITEM_TEXT_READY")
 SafeRegisterEvent(eventFrame, "CINEMATIC_START")
 SafeRegisterEvent(eventFrame, "PLAY_MOVIE")
@@ -14252,6 +14313,8 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         DynamicPrep:NoteQuestAccepted(arg1, arg2)
     elseif event == "QUEST_REMOVED" then
         DynamicPrep:NoteQuestRemoved(arg1)
+    elseif event == "QUEST_TURNED_IN" then
+        DynamicPrep:NoteQuestTurnedIn(arg1)
     elseif event == "QUEST_FINISHED" then
         DynamicPrep:NoteDialogueInteractionEnded("QUEST")
     elseif event == "GOSSIP_CONFIRM" then

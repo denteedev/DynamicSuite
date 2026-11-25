@@ -1127,6 +1127,344 @@ RunTest("T10: Dead-Session GREETING/DETAIL Clicks, QUEST_REMOVED & Repeatable vs
     assertEqual(h.env.QuestFrame:IsShown(), false, "Dead detail click must hide stranded QuestFrame")
 end)
 
+-- ============================================================================
+-- TEST 11: Field Auto-Complete Quest (QUEST_AUTOCOMPLETE -> QUEST_COMPLETE)
+-- ============================================================================
+RunTest("T11: Field Auto-Complete QUEST_COMPLETE Without NPC Remains Active", function()
+    local h = CreateHarness({ withSuite = false })
+    h.LoadModule(DIALOGUE_PATH, "DynamicDialogue")
+    h.FireEvent("ADDON_LOADED", "DynamicDialogue")
+
+    local dd = h.env.DynamicDialogue
+    h.state.hasNpcUnit = false
+    h.state.interactingQuest = false
+    h.state.questID = 8001
+    h.state.questTitle = "Field Bonus Completion"
+    h.state.rewardText = "Well done in the field!"
+    h.state.questChoices = 0
+    h.env.QuestFrame._shown = true
+    h.FireEvent("QUEST_COMPLETE")
+    h.AdvanceTime(0)
+
+    local rf = h.env.DynamicDialogueReaderFrame
+    assertEqual(dd:IsQuestInteractionActive(), true, "Field QUEST_COMPLETE without NPC must remain active")
+    assertEqual(rf:IsShown(), true, "Reader must open for field QUEST_COMPLETE")
+    assertEqual(rf.typeBadge.text:GetText(), "TURN-IN", "Badge must be TURN-IN")
+
+    rf.priBtn:Click()
+    assertEqual(h.calls.GetQuestReward, 1, "Clicking Complete must call GetQuestReward()")
+
+    h.FireEvent("QUEST_FINISHED")
+    h.AdvanceTime(0)
+    assertEqual(dd:IsQuestInteractionActive(), false, "Field QUEST_COMPLETE must become inactive after QUEST_FINISHED")
+    assertEqual(rf:IsShown(), false, "Reader must close after field QUEST_FINISHED")
+end)
+
+-- ============================================================================
+-- TEST 12: Manual COMPLETE -> Prep Auto-Handled GOSSIP_SHOW -> GOSSIP_CLOSED
+-- ============================================================================
+RunTest("T12: Manual Quest Complete Transitioning Into Prep Auto-Gossip Never Strands Reader", function()
+    local h = CreateHarness({ withSuite = true })
+    h.LoadModule(PREP_PATH, "DynamicSuite")
+    h.LoadModule(DIALOGUE_PATH, "DynamicSuite")
+    h.FireEvent("ADDON_LOADED", "DynamicSuite")
+    h.env.DynamicPrep.db.autoQuestGossip = true
+
+    -- Quest #1 has 2 reward choices -> Prep cannot auto-complete, so Dialogue opens in COMPLETE mode
+    h.state.interactingQuest = true
+    h.env.QuestFrame._shown = true
+    h.state.questID = 8101
+    h.state.questTitle = "Two Choice Turn-In"
+    h.state.questChoices = 2
+    h.FireEvent("QUEST_COMPLETE")
+    h.AdvanceTime(0)
+
+    local rf = h.env.DynamicDialogueReaderFrame
+    assertEqual(rf:IsShown(), true, "Reader must open for 2-choice QUEST_COMPLETE")
+    assertEqual(rf.typeBadge.text:GetText(), "TURN-IN", "Reader must be in TURN-IN mode")
+
+    -- Player completes Quest #1 -> server fires QUEST_FINISHED + GOSSIP_SHOW with 1 vendor gossip option
+    h.state.interactingQuest = false
+    h.state.interactingGossip = true
+    h.env.QuestFrame._shown = false
+    h.env.GossipFrame._shown = true
+    h.state.gossipAvail = {}
+    h.state.gossipActive = {}
+    h.state.gossipOpts = {
+        { gossipOptionID = 55001, name = "Browse your goods", flags = 0, status = 0, orderIndex = 0 },
+    }
+    h.FireEvent("QUEST_FINISHED")
+    h.FireEvent("GOSSIP_SHOW")
+    h.AdvanceTime(0)
+
+    -- Prep auto-selected the single gossip option; Dialogue MUST hide the old TURN-IN reader immediately!
+    assertEqual(h.calls.SelectOptionGossip[1], 55001, "Prep must auto-select single vendor gossip option")
+    assertEqual(rf:IsShown(), false, "Old TURN-IN reader must hide immediately when Prep auto-handles GOSSIP_SHOW")
+
+    -- Gossip closes as Merchant opens -> reader must stay closed and GossipFrame must be hidden/restored
+    h.state.interactingGossip = false
+    h.FireEvent("GOSSIP_CLOSED")
+    h.AdvanceTime(0)
+    assertEqual(rf:IsShown(), false, "Reader must remain closed after GOSSIP_CLOSED (never permanently stuck)")
+    assertEqual(h.env.GossipFrame:IsShown(), false, "Stranded GossipFrame must be hidden")
+    assertEqual(h.env.GossipFrame:GetAlpha(), 1, "GossipFrame alpha must be restored")
+end)
+
+-- ============================================================================
+-- TEST 13: Back-to-Back Same-Phase GOSSIP_SHOW #1 (Prep Acts) -> #2 (Manual)
+-- ============================================================================
+local function RunBackToBackGossipTest(modeLabel, withSuite, dialogueFirst)
+    RunTest(modeLabel .. ": Back-to-Back GOSSIP_SHOW #1 (Prep) -> #2 (Manual) Renders Immediately", function()
+        local h = CreateHarness({ withSuite = withSuite })
+        if dialogueFirst then
+            h.LoadModule(DIALOGUE_PATH, withSuite and "DynamicSuite" or "DynamicDialogue")
+            h.LoadModule(PREP_PATH, withSuite and "DynamicSuite" or "DynamicPrep")
+            h.FireEvent("ADDON_LOADED", withSuite and "DynamicSuite" or "DynamicDialogue")
+            if not withSuite then h.FireEvent("ADDON_LOADED", "DynamicPrep") end
+        else
+            h.LoadModule(PREP_PATH, withSuite and "DynamicSuite" or "DynamicPrep")
+            h.LoadModule(DIALOGUE_PATH, withSuite and "DynamicSuite" or "DynamicDialogue")
+            h.FireEvent("ADDON_LOADED", withSuite and "DynamicSuite" or "DynamicPrep")
+            if not withSuite then h.FireEvent("ADDON_LOADED", "DynamicDialogue") end
+        end
+        h.env.DynamicPrep.db.autoQuestGossip = true
+
+        -- Page 1: 1 auto-selectable gossip option
+        h.state.interactingGossip = true
+        h.env.GossipFrame._shown = true
+        h.state.gossipOpts = {
+            { gossipOptionID = 61001, name = "Report for duty (Quest)", flags = 1, status = 0, orderIndex = 0 },
+        }
+        h.FireEvent("GOSSIP_SHOW")
+        assertEqual(h.calls.SelectOptionGossip[1], 61001, "Prep must select Page 1 quest gossip option")
+
+        -- Server responds rapidly BEFORE frame 0 with Page 2 (2 manual options -> Prep must NOT act)
+        h.state.gossipOpts = {
+            { gossipOptionID = 61002, name = "Choice Alpha", flags = 0, status = 0, orderIndex = 0 },
+            { gossipOptionID = 61003, name = "Choice Beta", flags = 0, status = 0, orderIndex = 1 },
+        }
+        h.FireEvent("GOSSIP_SHOW")
+        h.AdvanceTime(0)
+
+        local rf = h.env.DynamicDialogueReaderFrame
+        assertTrue(rf and rf:IsShown(), "Page 2 manual gossip MUST render immediately on frame 0 without 250ms delay")
+        local opts = h.VisibleOptions()
+        assertEqual(#opts, 2, "Page 2 must show both manual choices")
+        assertEqual(opts[1].label, "Choice Alpha", "First choice must be Choice Alpha")
+    end)
+end
+
+RunBackToBackGossipTest("T13a (Suite Order)", true, false)
+RunBackToBackGossipTest("T13b (Standalone Order)", false, true)
+
+-- ============================================================================
+-- TEST 14: High Latency (>50ms RTT) Does Not Double-Call Accept/Complete/Reward
+-- ============================================================================
+RunTest("T14: Latency >50ms Does Not Double-Call AcceptQuest / CompleteQuest / GetQuestReward", function()
+    local h = CreateHarness({ withSuite = true })
+    h.LoadModule(PREP_PATH, "DynamicSuite")
+    h.LoadModule(DIALOGUE_PATH, "DynamicSuite")
+    h.FireEvent("ADDON_LOADED", "DynamicSuite")
+    h.env.DynamicPrep.db.autoQuestGossip = true
+
+    -- QUEST_DETAIL with 100ms network delay
+    h.state.interactingQuest = true
+    h.env.QuestFrame._shown = true
+    h.env.QuestFrameDetailPanel._shown = true
+    h.state.questID = 8401
+    h.state.questTitle = "Latency Test Quest"
+    h.state.questPVP = false
+    h.FireEvent("QUEST_DETAIL")
+    h.AdvanceTime(0.10)
+    assertEqual(h.calls.AcceptQuest, 1, "AcceptQuest must be called only ONCE during >50ms server RTT")
+
+    -- QUEST_PROGRESS with 100ms network delay
+    h.env.QuestFrameProgressPanel._shown = true
+    h.state.questCompletable = true
+    h.FireEvent("QUEST_PROGRESS")
+    h.AdvanceTime(0.10)
+    assertEqual(h.calls.CompleteQuest, 1, "CompleteQuest must be called only ONCE during >50ms server RTT")
+
+    -- QUEST_COMPLETE with 100ms network delay
+    h.env.QuestFrameRewardPanel._shown = true
+    h.state.questChoices = 0
+    h.FireEvent("QUEST_COMPLETE")
+    h.AdvanceTime(0.10)
+    assertEqual(h.calls.GetQuestReward, 1, "GetQuestReward must be called only ONCE during >50ms server RTT")
+end)
+
+-- ============================================================================
+-- TEST 15: QUEST_TURNED_IN Clears Recently Accepted & Filters Stale Active Turn-In
+-- ============================================================================
+RunTest("T15: QUEST_TURNED_IN Filters Instant Turn-In (<1.5s) & Repeatable Active Turn-Ins", function()
+    local h = CreateHarness({ withSuite = true })
+    h.LoadModule(PREP_PATH, "DynamicSuite")
+    h.LoadModule(DIALOGUE_PATH, "DynamicSuite")
+    h.FireEvent("ADDON_LOADED", "DynamicSuite")
+    h.env.DynamicPrep.db.autoQuestGossip = true
+
+    -- Scenario A: Accept Quest 9001, then turn it in 0.2s later; server leaves stale 9001 in gossipActive
+    h.state.onQuest[9001] = true
+    h.FireEvent("QUEST_ACCEPTED", 9001)
+    h.AdvanceTime(0.20)
+
+    h.state.onQuest[9001] = false
+    h.state.completedQuest[9001] = true
+    h.FireEvent("QUEST_TURNED_IN", 9001, 0, 0)
+
+    -- Scenario B: Turn in repeatable Quest 9002 (completedQuest stays false!)
+    h.state.onQuest[9002] = false
+    h.state.completedQuest[9002] = false
+    h.FireEvent("QUEST_TURNED_IN", 9002, 0, 0)
+
+    -- Multi-quest NPC returns GOSSIP_SHOW with stale 9001 & 9002 in gossipActive, plus valid 9003 in gossipAvail
+    h.state.interactingGossip = true
+    h.env.GossipFrame._shown = true
+    h.state.gossipActive = {
+        { questID = 9001, title = "Instant Turn-In Quest", isComplete = true },
+        { questID = 9002, title = "Repeatable Turn-In Quest", isComplete = true, repeatable = true },
+    }
+    h.state.gossipAvail = {
+        { questID = 9002, title = "Repeatable Turn-In Quest", frequency = 1, repeatable = true },
+        { questID = 9003, title = "Fresh Next Quest", frequency = 0 },
+    }
+    h.env.DynamicPrep.db.autoQuestGossip = false
+    h.FireEvent("GOSSIP_SHOW")
+    h.AdvanceTime(0)
+
+    local opts = h.VisibleOptions()
+    assertEqual(#opts, 2, "Stale active turn-ins 9001 & 9002 must be hidden, leaving available 9002 & 9003")
+    assertEqual(opts[1].label, "Repeatable Turn-In Quest", "Repeatable 9002 remains available as [QUEST]")
+    assertEqual(opts[1].tag, "[QUEST]", "Repeatable 9002 must have [QUEST] tag, not stale [TURN-IN]")
+    assertEqual(opts[2].label, "Fresh Next Quest", "Quest 9003 must render cleanly")
+
+    -- Verify DynamicPrep also skips stale 9001 & 9002 in gossipActive and selects available instead
+    h.env.DynamicPrep.db.autoQuestGossip = true
+    h.FireEvent("GOSSIP_SHOW")
+    assertEqual(#h.calls.SelectActiveQuestGossip, 0, "Prep must NOT re-select stale turned-in active quests 9001/9002")
+    assertEqual(h.calls.SelectAvailableQuestGossip[1], 9002, "Prep must advance to available quest instead")
+end)
+
+-- ============================================================================
+-- TEST 16: No Blizzard Frame Flash on Transition, Shift Bypass & Order 5B Race
+-- ============================================================================
+RunTest("T16: No Outgoing Frame Flash, Shift Bypass Cancels Fallback & Order 5B Race", function()
+    local h = CreateHarness({ withSuite = true })
+    h.LoadModule(PREP_PATH, "DynamicSuite")
+    h.LoadModule(DIALOGUE_PATH, "DynamicSuite")
+    h.FireEvent("ADDON_LOADED", "DynamicSuite")
+    h.env.DynamicPrep.db.autoQuestGossip = true
+
+    -- Scenario A: GossipFrame is still Shown when QUEST_DETAIL fires -> must NOT flash to Alpha 1!
+    h.state.interactingGossip = true
+    h.env.GossipFrame._shown = true
+    h.state.gossipAvail = {
+        { questID = 9101, title = "Race Quest One", frequency = 0 },
+        { questID = 9102, title = "Race Quest Two", frequency = 0 },
+    }
+    h.FireEvent("GOSSIP_SHOW")
+    assertEqual(h.env.GossipFrame:GetAlpha(), 0, "GossipFrame suppressed at Alpha 0")
+
+    -- Transition to QUEST_DETAIL while GossipFrame._shown is still true for 1 frame
+    h.state.interactingGossip = false
+    h.state.interactingQuest = true
+    h.env.QuestFrame._shown = true
+    h.state.questID = 9101
+    h.state.questTitle = "Race Quest One"
+    h.state.questPVP = false
+    h.FireEvent("QUEST_DETAIL")
+    assertEqual(h.env.GossipFrame:GetAlpha(), 0, "Still-shown GossipFrame must NOT flash back to Alpha 1 on QUEST_DETAIL")
+
+    -- Scenario B (Order 5B): QUEST_FINISHED + GOSSIP_SHOW arrive BEFORE QUEST_ACCEPTED(9101)!
+    h.state.interactingQuest = false
+    h.state.interactingGossip = true
+    h.env.QuestFrame._shown = false
+    h.env.GossipFrame._shown = true
+    h.FireEvent("QUEST_FINISHED")
+    h.FireEvent("GOSSIP_SHOW")
+    assertEqual(h.calls.SelectAvailableQuestGossip[2], 9102, "Prep must skip just-accepted 9101 and pick 9102 even before QUEST_ACCEPTED arrives")
+
+    -- Scenario C: Shift held on next QUEST_DETAIL cancels pending fallback and restores QuestFrame to Alpha 1
+    h.state.interactingGossip = false
+    h.state.interactingQuest = true
+    h.env.GossipFrame._shown = false
+    h.env.QuestFrame._shown = true
+    h.state.questID = 9102
+    h.state.questTitle = "Race Quest Two"
+    h.state.shiftDown = true
+    h.FireEvent("QUEST_DETAIL")
+    h.AdvanceTime(0.30)
+    local rf = h.env.DynamicDialogueReaderFrame
+    assertTrue(not (rf and rf:IsShown()), "Reader must NOT open when Shift bypasses to native Blizzard frame")
+    assertEqual(h.env.QuestFrame:GetAlpha(), 1, "QuestFrame alpha must be 1 on Shift bypass")
+end)
+
+-- ============================================================================
+-- TEST 17: Delayed 0.05s Prep Gossip Retry, Nil-QuestID Greeting & Soft-Disable
+-- ============================================================================
+RunTest("T17: Delayed 0.05s Prep Retry Hides Reader, Nil-ID Greeting Fallback & Soft-Disable", function()
+    local h = CreateHarness({ withSuite = true })
+    h.LoadModule(PREP_PATH, "DynamicSuite")
+    h.LoadModule(DIALOGUE_PATH, "DynamicSuite")
+    h.FireEvent("ADDON_LOADED", "DynamicSuite")
+    h.env.DynamicPrep.db.autoQuestGossip = true
+
+    -- Scenario A: World object fires GOSSIP_SHOW with 0 options initially; Dialogue opens at frame 0;
+    -- options populate before 0.05s; Prep's 0.05s retry selects the option and hides Dialogue's stale reader!
+    h.state.interactingGossip = true
+    h.env.GossipFrame._shown = true
+    h.state.gossipOpts = {}
+    h.state.gossipAvail = {}
+    h.state.gossipActive = {}
+    h.FireEvent("GOSSIP_SHOW")
+    h.AdvanceTime(0)
+    local rf = h.env.DynamicDialogueReaderFrame
+    assertTrue(rf and rf:IsShown(), "Dialogue opens at frame 0 when initial gossip had 0 options")
+
+    h.state.gossipOpts = {
+        { gossipOptionID = 77001, name = "Open the sealed chest", flags = 0, status = 0, orderIndex = 0 },
+    }
+    h.AdvanceTime(0.06)
+    assertEqual(h.calls.SelectOptionGossip[1], 77001, "Prep 0.05s retry must select late-populated single option")
+    assertEqual(rf:IsShown(), false, "NotifyExternalAutoAction must immediately hide stale open reader on 0.05s Prep retry")
+
+    -- Clean close
+    h.state.interactingGossip = false
+    h.FireEvent("GOSSIP_CLOSED")
+    h.AdvanceTime(0.30)
+    assertEqual(rf:IsShown(), false, "Reader remains closed after gossip ends")
+
+    -- Scenario B: QUEST_GREETING nil-questID fallback filters duplicate title already in active quests
+    h.env.DynamicPrep.db.autoQuestGossip = false
+    h.state.interactingQuest = true
+    h.env.QuestFrame._shown = true
+    h.state.greetingActive = {
+        { questID = nil, title = "Legacy Title Quest", isComplete = false },
+    }
+    h.state.greetingAvail = {
+        { questID = nil, title = "Legacy Title Quest", frequency = 0 },
+        { questID = nil, title = "Second Legacy Quest", frequency = 0 },
+    }
+    h.FireEvent("QUEST_GREETING")
+    h.AdvanceTime(0)
+    local opts = h.VisibleOptions()
+    assertEqual(#opts, 2, "Duplicate nil-ID available quest matching active title must be filtered")
+    assertEqual(opts[1].label, "Legacy Title Quest", "Active quest renders first")
+    assertEqual(opts[1].tag, "[IN PROGRESS]", "Active quest shows [IN PROGRESS]")
+    assertEqual(opts[2].label, "Second Legacy Quest", "Second available quest renders cleanly")
+
+    -- Scenario C: Mid-session soft-disable of DynamicPrep stops auto-accept immediately
+    h.env.DynamicPrep.db.autoQuestGossip = true
+    h.env.DynamicSuiteDB.global.disabledModules.DynamicPrep = true
+    h.state.questID = 77002
+    h.state.questTitle = "Soft-Disabled Prep Test"
+    h.state.questPVP = false
+    h.FireEvent("QUEST_DETAIL")
+    h.AdvanceTime(0)
+    assertEqual(h.calls.AcceptQuest, 0, "Soft-disabled DynamicPrep must NOT auto-accept quests")
+    assertEqual(rf:IsShown(), true, "DynamicDialogue must render QUEST_DETAIL immediately when Prep is soft-disabled")
+end)
+
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))
 if failed > 0 then
     os.exit(1)
