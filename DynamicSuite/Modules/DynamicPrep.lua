@@ -16995,20 +16995,20 @@ function DynamicPrep:RefreshCombatBuffAlert()
     local strip = self.combatReadinessStrip or self:EnsureCombatReadinessStrip()
     if not strip then return end
 
-    local rb = (self.db and self.db.raidBuffs) or DEFAULTS.raidBuffs
-    local expThresholdSec = (tonumber(rb.expireThresholdMin) or 5) * 60
-    local sum = self:ScanCombatRaidBuffStatus(expThresholdSec)
-
-    -- Outside combat or during Pet Battles, keep the combat override strip hidden.
+    -- Gate cheap checks BEFORE scanning 20-40 raid members during combat.
     if not IsPlayerInCombat() or IsInPetBattle() then
         strip:Hide()
         return
     end
 
-    if not self:ShouldShowRaidBuffsForZone() or rb.trackClassBuffs == false or rb.trackCombatBrez == false then
+    local rb = (self.db and self.db.raidBuffs) or DEFAULTS.raidBuffs
+    if not rb or rb.enabled == false or rb.trackClassBuffs == false or rb.trackCombatBrez == false or not self:ShouldShowRaidBuffsForZone() then
         strip:Hide()
         return
     end
+
+    local expThresholdSec = (tonumber(rb.expireThresholdMin) or 5) * 60
+    local sum = self:ScanCombatRaidBuffStatus(expThresholdSec)
 
     if sum and sum.cDef and (sum.missingCount or 0) > 0 and (sum.activeCount or 0) < (sum.totalEligible or 0) then
         local iconSize = math.max(32, math.min(64, tonumber(rb.iconSize) or 44))

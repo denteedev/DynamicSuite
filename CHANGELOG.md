@@ -5,6 +5,12 @@
 
 ## [Unreleased]
 
+### In-Combat Raid-Frame Mouseover & Search Close Performance Fix (26/11/2026)
+- **DynamicCursor Per-Frame & Smart Tooltip Optimisation (`DynamicCursor.lua`):** Cached zone/instance/Delve/Pet Battle/Vehicle/cinematic activity state on events instead of querying world and instance APIs every frame inside `OnCursorUpdate`, cached the active settings table reference, stopped calling `ClearAllPoints()` / `SetPoint()` when the cursor has not moved, removed per-frame `SpellIsTargeting()` polling in favour of `CURRENT_SPELL_CAST_CHANGED`, and eliminated per-hover closure allocations and redundant `tooltip:SetOwner()` calls inside the `GameTooltip_SetDefaultAnchor` hook (with forbidden/secret tooltip safety).
+- **DynamicPrep Combat Raid-Buff Scan Gate (`DynamicPrep.lua`):** Checked combat state, Pet Battle state, enabled state, class/brez tracking toggles, and Active Content Scope inside `RefreshCombatBuffAlert()` before running `ScanCombatRaidBuffStatus()`, preventing disabled or out-of-scope Raid Buffs from scanning 20-40 raid members during combat.
+- **DynamicSuite Window Close & Font Dropdown Cleanup (`DynamicSuite_UI.lua`):** Immediately hid and stopped `DynamicSuiteSearchHighlightFrame` (clearing its target card and `OnUpdate` handler) and cleared `railSearchBox` focus when closing `DynamicSuiteMainFrame`, and removed redundant forced font-list rescans during `themeView.Refresh()` so fonts rescan only when opening the font dropdown.
+- **Automated Regression Verification:** Added a headless Lua 5.1 regression suite verifying zero per-frame API spam and stationary `SetPoint` skipping in `DynamicCursor`, zero recursive `SetOwner` calls in the Smart Tooltip hook, early combat scan gating in `DynamicPrep:RefreshCombatBuffAlert()`, and immediate Search Highlight cleanup on `DynamicSuiteMainFrame` close.
+
 ---
 
 ## [2.11.1] - 26/11/2026

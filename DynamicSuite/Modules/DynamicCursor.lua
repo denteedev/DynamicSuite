@@ -542,6 +542,9 @@ do
     local instantFlashEnd = 0
     local isCastingNow = false
     local isChannelingNow = false
+    local cachedDB = nil
+    local cachedActivityAllowed = true
+    local lastRingX, lastRingY = nil, nil
 
     local function IsSpecialHideActive(db)
         if not db.autoHideSpecial then return false end
@@ -605,6 +608,13 @@ do
         if b == "RAID" then return db.showRaids ~= false end
         if b == "DUNGEON" then return db.showDungeons ~= false end
         return db.showOpenWorld ~= false
+    end
+
+    local function RefreshActivityAllowed(db)
+        local d = db or cachedDB or EnsureDB()
+        cachedDB = d
+        cachedActivityAllowed = IsActivityAllowed(d) and true or false
+        return cachedActivityAllowed
     end
 
     local function IsLocatorModifierHeld(db)
@@ -1268,7 +1278,8 @@ do
     end
 
     local function OnCursorUpdate(_, elapsed)
-        local db = EnsureDB()
+        local db = cachedDB or EnsureDB()
+        cachedDB = db
         local now = (GetTime and GetTime()) or 0
         local dt = math.max(0.004, math.min(0.10, tonumber(elapsed) or 0.016))
         local effScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
@@ -1327,28 +1338,9 @@ do
         end
         lastCX, lastCY = cx, cy
 
-        -- Main Cursor Ring
-        local allowed = IsActivityAllowed(db)
+        -- Main Cursor Ring (uses event-cached activity state & CURRENT_SPELL_CAST_CHANGED ground targeting)
+        local allowed = cachedActivityAllowed
         if db.ringEnabled and allowed and ringRoot then
-            if db.groundTargetHighlight ~= false and type(_G.SpellIsTargeting) == "function" then
-                local okT, nowT = pcall(_G.SpellIsTargeting)
-                local targeting = (okT and nowT == true) and true or false
-                if targeting ~= isGroundTargeting then
-                    isGroundTargeting = targeting
-                    if not targeting then
-                        ringSizeScale = 1.0
-                    else
-                        lastMoveTime = now
-                        idleFadeMult = 1.0
-                    end
-                    UpdateRingAppearance(db)
-                end
-            elseif isGroundTargeting then
-                isGroundTargeting = false
-                ringSizeScale = 1.0
-                UpdateRingAppearance(db)
-            end
-
             local aoeActive = (db.groundTargetHighlight ~= false) and isGroundTargeting
             if aoeActive and db.groundTargetSizeBoost ~= false then
                 if ringSizeScale < 1.20 then
@@ -1385,9 +1377,9 @@ do
                     if ringRoot.contrastOuter then ringRoot.contrastOuter:Hide() end
                     if ringRoot.contrastInner then ringRoot.contrastInner:Hide() end
                     ghostTex:Show()
-                    ringRoot:Show()
+                    if not ringRoot:IsShown() then ringRoot:Show() end
                 else
-                    ringRoot:Hide()
+                    if ringRoot:IsShown() then ringRoot:Hide() end
                 end
             else
                 ringTex:Show()
@@ -1396,9 +1388,13 @@ do
                 ghostTex:Hide()
                 local rox = tonumber(db.ringOffsetX) or 0
                 local roy = tonumber(db.ringOffsetY) or 0
-                ringRoot:ClearAllPoints()
-                ringRoot:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx + rox, cy + roy)
-                ringRoot:Show()
+                local targetX, targetY = cx + rox, cy + roy
+                if moved or targetX ~= lastRingX or targetY ~= lastRingY then
+                    lastRingX, lastRingY = targetX, targetY
+                    ringRoot:ClearAllPoints()
+                    ringRoot:SetPoint("CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
+                end
+                if not ringRoot:IsShown() then ringRoot:Show() end
             end
 
             if pulseRemaining > 0 and pulseTex then
@@ -1507,14 +1503,45 @@ do
         end
     end
 
+    local function RepositionSmartTooltip(tooltip, db)
+        local effScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        if effScale <= 0 then effScale = 1 end
+        local rawX, rawY = _G.GetCursorPosition()
+        if _IsSecret(rawX) or _IsSecret(rawY) then return end
+        local cx, cy = (tonumber(rawX) or 0) / effScale, (tonumber(rawY) or 0) / effScale
+        local ox = tonumber(db.tooltipOffsetX) or 18
+        local oy = tonumber(db.tooltipOffsetY) or -18
+        local sw = (_G.GetScreenWidth and _G.GetScreenWidth()) or 1920
+        local sh = (_G.GetScreenHeight and _G.GetScreenHeight()) or 1080
+        local pt = "TOPLEFT"
+        if db.tooltipEdgeFlip ~= false then
+            local flipX = (cx > sw * 0.72)
+            local flipY = (cy < sh * 0.25)
+            if flipX and flipY then
+                pt = "BOTTOMRIGHT"; ox = -math.abs(ox); oy = math.abs(oy)
+            elseif flipX then
+                pt = "TOPRIGHT"; ox = -math.abs(ox)
+            elseif flipY then
+                pt = "BOTTOMLEFT"; oy = math.abs(oy)
+            end
+        end
+        tooltip:ClearAllPoints()
+        tooltip:SetPoint(pt, UIParent, "BOTTOMLEFT", cx + ox, cy + oy)
+    end
+
     local smartTooltipHooked = false
     local function EnsureSmartTooltipHook()
         if smartTooltipHooked or type(_G.hooksecurefunc) ~= "function" then return end
         smartTooltipHooked = true
-        _G.hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tooltip, parent)
-            local db = EnsureDB()
+        _G.hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tooltip)
+            local db = cachedDB or EnsureDB()
+            cachedDB = db
             if not db.tooltipEnabled or IsModuleDisabledInSuite("DynamicCursor") then return end
-            if not tooltip or tooltip ~= _G.GameTooltip then return end
+            if not tooltip or _IsSecret(tooltip) or tooltip ~= _G.GameTooltip then return end
+            if type(tooltip.IsForbidden) == "function" then
+                local okF, forb = pcall(tooltip.IsForbidden, tooltip)
+                if not okF or _IsSecret(forb) or forb then return end
+            end
             local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
             local cMode = db.tooltipCombatMode or "KEEP"
             if inCombat then
@@ -1525,39 +1552,18 @@ do
                     return
                 end
             end
-            pcall(function()
-                local effScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-                if effScale <= 0 then effScale = 1 end
-                local rawX, rawY = _G.GetCursorPosition()
-                local cx, cy = rawX / effScale, rawY / effScale
-                local ox = tonumber(db.tooltipOffsetX) or 18
-                local oy = tonumber(db.tooltipOffsetY) or -18
-                local sw = (_G.GetScreenWidth and _G.GetScreenWidth()) or 1920
-                local sh = (_G.GetScreenHeight and _G.GetScreenHeight()) or 1080
-                local anchor = "ANCHOR_NONE"
-                local pt = "TOPLEFT"
-                if db.tooltipEdgeFlip ~= false then
-                    local flipX = (cx > sw * 0.72)
-                    local flipY = (cy < sh * 0.25)
-                    if flipX and flipY then
-                        pt = "BOTTOMRIGHT"; ox = -math.abs(ox); oy = math.abs(oy)
-                    elseif flipX then
-                        pt = "TOPRIGHT"; ox = -math.abs(ox)
-                    elseif flipY then
-                        pt = "BOTTOMLEFT"; oy = math.abs(oy)
-                    end
-                end
-                tooltip:SetOwner(parent or UIParent, anchor)
-                tooltip:ClearAllPoints()
-                tooltip:SetPoint(pt, UIParent, "BOTTOMLEFT", cx + ox, cy + oy)
-            end)
+            if type(_G.GetCursorPosition) ~= "function" then return end
+            pcall(RepositionSmartTooltip, tooltip, db)
         end)
     end
 
     SyncAllEngines = function()
         local db = EnsureDB()
+        cachedDB = db
+        lastRingX, lastRingY = nil, nil
         local disabled = IsModuleDisabledInSuite("DynamicCursor")
         if disabled then
+            cachedActivityAllowed = false
             if ringRoot then ringRoot:Hide() end
             if locatorRoot then locatorRoot:Hide() end
             if crosshairRoot then crosshairRoot:Hide() end
@@ -1593,9 +1599,10 @@ do
         end
 
         local now = (GetTime and GetTime()) or 0
+        local allowed = RefreshActivityAllowed(db)
         local needsUpdate = (db.ringEnabled == true) or (db.trailEnabled == true) or (db.shakeToFind == true)
             or ((db.locatorModifier or "OFF") ~= "OFF") or (now < mouseLookPingEnd) or (now < shakeBurstEnd)
-        if needsUpdate and IsActivityAllowed(db) then
+        if needsUpdate and allowed then
             activeUpdateFrame:SetScript("OnUpdate", OnCursorUpdate)
         else
             activeUpdateFrame:SetScript("OnUpdate", nil)
@@ -1616,8 +1623,9 @@ do
             ringRoot:SetAlpha(baseRingAlpha)
         end
         if IsModuleDisabledInSuite("DynamicCursor") then return end
-        local db = EnsureDB()
-        if db.pingAfterMouseLook == true and (wasLooking or now > mouseLookPingEnd - 0.55) and IsActivityAllowed(db) then
+        local db = cachedDB or EnsureDB()
+        cachedDB = db
+        if db.pingAfterMouseLook == true and (wasLooking or now > mouseLookPingEnd - 0.55) and cachedActivityAllowed then
             local pingDur = math.max(0.30, math.min(1.50, tonumber(db.mouseLookPingDuration) or 0.65))
             mouseLookPingEnd = now + pingDur
             activeUpdateFrame:SetScript("OnUpdate", OnCursorUpdate)
@@ -1638,6 +1646,10 @@ do
     SafeRegisterEvent(evFrame, "PET_BATTLE_CLOSE")
     SafeRegisterEvent(evFrame, "UNIT_ENTERED_VEHICLE")
     SafeRegisterEvent(evFrame, "UNIT_EXITED_VEHICLE")
+    SafeRegisterEvent(evFrame, "CINEMATIC_START")
+    SafeRegisterEvent(evFrame, "CINEMATIC_STOP")
+    SafeRegisterEvent(evFrame, "PLAY_MOVIE")
+    SafeRegisterEvent(evFrame, "STOP_MOVIE")
     SafeRegisterEvent(evFrame, "UNIT_SPELLCAST_SUCCEEDED")
     SafeRegisterEvent(evFrame, "UNIT_SPELLCAST_START")
     SafeRegisterEvent(evFrame, "UNIT_SPELLCAST_STOP")
@@ -1729,10 +1741,20 @@ do
         elseif event == "CURRENT_SPELL_CAST_CHANGED" then
             if db.ringEnabled and db.groundTargetHighlight ~= false and type(_G.SpellIsTargeting) == "function" then
                 local okT, nowT = pcall(_G.SpellIsTargeting)
-                isGroundTargeting = (okT and nowT == true) and true or false
-                if ringRoot then UpdateRingAppearance(db) end
+                local targeting = (okT and nowT == true) and true or false
+                if targeting ~= isGroundTargeting then
+                    isGroundTargeting = targeting
+                    if not targeting then
+                        ringSizeScale = 1.0
+                    else
+                        lastMoveTime = (GetTime and GetTime()) or 0
+                        idleFadeMult = 1.0
+                    end
+                    if ringRoot then UpdateRingAppearance(db) end
+                end
             elseif isGroundTargeting then
                 isGroundTargeting = false
+                ringSizeScale = 1.0
                 if ringRoot then UpdateRingAppearance(db) end
             end
         elseif event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
@@ -1744,7 +1766,9 @@ do
             UpdateCrosshairVisuals(db)
         elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA"
             or event == "PET_BATTLE_OPENING_START" or event == "PET_BATTLE_CLOSE"
-            or event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE" then
+            or event == "UNIT_ENTERED_VEHICLE" or event == "UNIT_EXITED_VEHICLE"
+            or event == "CINEMATIC_START" or event == "CINEMATIC_STOP"
+            or event == "PLAY_MOVIE" or event == "STOP_MOVIE" then
             SyncAllEngines()
         end
     end)

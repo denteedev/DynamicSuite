@@ -10694,7 +10694,7 @@ function addonTable.CreateMainConfigUI()
         end
 
         if fontDropdown then
-            if fontDropdown.SetOptions then fontDropdown:SetOptions(UI.BuildFontDropdownOptions(true)) elseif fontDropdown.RefreshValue then fontDropdown:RefreshValue() end
+            if fontDropdown.RefreshValue then fontDropdown:RefreshValue() end
         end
         for _, ctrl in ipairs(studioValueControls) do
             if ctrl and ctrl.RefreshValue then ctrl:RefreshValue() end
@@ -17764,14 +17764,15 @@ function addonTable.CreateMainConfigUI()
         highlightFrame.borders = { bTop, bBot, bLeft, bRight }
         highlightFrame._elapsed = 0
 
-        highlightFrame:SetScript("OnUpdate", function(self, dt)
+        local function OnSearchHighlightUpdate(self, dt)
             self._elapsed = (self._elapsed or 0) + (dt or 0.016)
             local t = self._elapsed
             local duration = 2.25
             local target = self._targetCard
             if t >= duration or not target or not target:IsVisible() then
-                self:Hide()
+                self:SetScript("OnUpdate", nil)
                 self._targetCard = nil
+                self:Hide()
                 return
             end
             local ar, ag, ab = UI.GetActiveAccentColor()
@@ -17790,6 +17791,12 @@ function addonTable.CreateMainConfigUI()
             for _, b in ipairs(self.borders) do
                 b:SetColorTexture(ar, ag, ab, borderAlpha)
             end
+        end
+        highlightFrame._onPulseUpdate = OnSearchHighlightUpdate
+        highlightFrame:SetScript("OnHide", function(self)
+            self:SetScript("OnUpdate", nil)
+            self._targetCard = nil
+            self._elapsed = 0
         end)
 
         return highlightFrame
@@ -17964,6 +17971,9 @@ function addonTable.CreateMainConfigUI()
         hl:SetPoint("TOPLEFT", cardFrame, "TOPLEFT", -2, 2)
         hl:SetPoint("BOTTOMRIGHT", cardFrame, "BOTTOMRIGHT", 2, -2)
         hl:SetFrameLevel((cardFrame:GetFrameLevel() or 10) + 12)
+        if hl._onPulseUpdate then
+            hl:SetScript("OnUpdate", hl._onPulseUpdate)
+        end
         hl:Show()
     end
     addonTable.JumpAndHighlightCard = UI.JumpAndHighlightCard
@@ -19231,6 +19241,16 @@ function addonTable.CreateMainConfigUI()
         CloseContextMenu()
         if CloseAltDropdown then CloseAltDropdown() end
         if dsColorPicker then dsColorPicker:Hide() end
+        local hl = _G.DynamicSuiteSearchHighlightFrame
+        if hl then
+            hl._targetCard = nil
+            hl._elapsed = 0
+            if hl.SetScript then hl:SetScript("OnUpdate", nil) end
+            if hl.Hide then hl:Hide() end
+        end
+        if self.railSearchBox and self.railSearchBox.ClearFocus then
+            self.railSearchBox:ClearFocus()
+        end
         UI.CloseAllPopups()
         if not self._minimizedForHudDrag then
             if floatingEditPill then
