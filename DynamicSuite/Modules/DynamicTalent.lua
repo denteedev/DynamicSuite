@@ -721,12 +721,30 @@ function DynamicTalent:GetActiveSpecID()
     return (type(specID) == "number" and specID > 0) and specID or nil
 end
 
-function DynamicTalent:GetActiveTalentString()
+function DynamicTalent:InvalidateActiveTalentStringCache()
+    self._cachedActiveTalentStr = nil
+    self._cachedActiveTalentConfigID = nil
+    self._cachedActiveTalentSpecID = nil
+end
+
+function DynamicTalent:GetActiveTalentString(forceRefresh)
     if not (C_ClassTalents and C_ClassTalents.GetActiveConfigID and C_Traits and C_Traits.GenerateImportString) then return nil end
     local okA, activeID = pcall(C_ClassTalents.GetActiveConfigID)
     if not okA or _IsSecret(activeID) or type(activeID) ~= "number" or activeID <= 0 then return nil end
+    local specID = self:GetActiveSpecID()
+    if not forceRefresh and not IsPlayerInCombat()
+        and type(self._cachedActiveTalentStr) == "string" and self._cachedActiveTalentStr ~= ""
+        and self._cachedActiveTalentConfigID == activeID
+        and self._cachedActiveTalentSpecID == specID then
+        return self._cachedActiveTalentStr
+    end
     local okS, str = pcall(C_Traits.GenerateImportString, activeID)
     if okS and type(str) == "string" and str ~= "" and not _IsSecret(str) then
+        if not IsPlayerInCombat() then
+            self._cachedActiveTalentStr = str
+            self._cachedActiveTalentConfigID = activeID
+            self._cachedActiveTalentSpecID = specID
+        end
         return str
     end
     return nil
@@ -813,6 +831,7 @@ end
 function DynamicTalent:SilenceTalentMismatch(mKey, label)
     if not mKey then return end
     silencedTalentMismatches[mKey] = true
+    self._lastCheckedMismatchSig = nil
     self:HideTalentReminderToast()
     if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
         pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
@@ -947,11 +966,11 @@ local function ResolveBoundBossFromSources(selfObj, bossMap, diffKey, zc)
     if mEntry then return mEntry, bKey, rawName, "target" end
 
     -- 2) Player's Action Target (soft enemy target)
-    mEntry, bKey, rawName = TryUnit("softenemy", false)
+    mEntry, bKey, rawName = TryUnit("softenemy", true)
     if mEntry then return mEntry, bKey, rawName, "softenemy" end
 
     -- 3) Mouseover unit
-    mEntry, bKey, rawName = TryUnit("mouseover", false)
+    mEntry, bKey, rawName = TryUnit("mouseover", true)
     if mEntry then return mEntry, bKey, rawName, "mouseover" end
 
     -- 4) Focus unit
@@ -1035,7 +1054,7 @@ local function FindLiveSeason2BossName(selfObj, zc)
     end
 
     for _, u in ipairs({ "target", "softenemy", "mouseover", "focus", "boss1", "boss2", "boss3", "boss4", "boss5" }) do
-        local bn = CheckUnit(u, false)
+        local bn = CheckUnit(u, u == "mouseover" or u == "softenemy")
         if bn then return bn, u end
     end
 
@@ -1138,6 +1157,7 @@ end
 
 function DynamicTalent:ResetBossAlertDedupe()
     lastAlertedBossMismatchKey = nil
+    self._lastCheckedMismatchSig = nil
 end
 
 function DynamicTalent:GetActiveTalentMismatch()
@@ -2192,7 +2212,8 @@ function DynamicTalent:SaveCurrentTreeOverEntry(targetEntry)
     if not self.db then self:InitDB() end
     local specID = self:GetActiveSpecID()
     if not specID or type(targetEntry) ~= "table" then return false end
-    local liveStr = self:GetActiveTalentString()
+    self:InvalidateActiveTalentStringCache()
+    local liveStr = self:GetActiveTalentString(true)
     if not liveStr or liveStr == "" then
         Print("Could not read your active talent tree.")
         return false
@@ -3876,6 +3897,7 @@ function DynamicTalent:ApplyTalentLibraryEntry(entry)
 
     local okCommit, committed = pcall(C_ClassTalents.CommitConfig, configID)
     if okCommit and not _IsSecret(committed) and committed then
+        self:InvalidateActiveTalentStringCache()
         self._pendingSaveConfigID = configID
         self._pendingAppliedEntry = targetEntry
         self._pendingAppliedSpecID = specID
@@ -4067,6 +4089,7 @@ function DynamicTalent:HandlePrepBarClick(segButton, button)
                 self:ApplyTalentLibraryEntry(mTarget)
             elseif not IsPlayerInCombat() and not IsMythicPlusActive() and C_ClassTalents and C_ClassTalents.LoadConfig then
                 pcall(C_ClassTalents.LoadConfig, mTarget, true)
+                self:InvalidateActiveTalentStringCache()
             end
         end
     elseif button == "RightButton" then
@@ -4313,6 +4336,7 @@ function DynamicTalent:ToggleTalentPopover(anchor)
                 p:Hide()
                 if not IsPlayerInCombat() and not IsMythicPlusActive() and C_ClassTalents and C_ClassTalents.LoadConfig then
                     pcall(C_ClassTalents.LoadConfig, item.id, true)
+                    DynamicTalent:InvalidateActiveTalentStringCache()
                 end
             end)
             btn:Show()
@@ -5446,6 +5470,7 @@ do
         end
 
         self._heroTreeCache = nil
+        self:InvalidateActiveTalentStringCache()
         self:UpdateTalentTreeBackdrop()
         if C_Timer and C_Timer.After then
             C_Timer.After(0.05, function()
@@ -6224,6 +6249,7 @@ function DynamicTalent:ShowTalentReminderToast(targetID, targetName, zoneLabel, 
             DynamicTalent:ApplyTalentLibraryEntry(targetID)
         elseif targetID and C_ClassTalents and type(C_ClassTalents.LoadConfig) == "function" then
             pcall(C_ClassTalents.LoadConfig, targetID, true)
+            DynamicTalent:InvalidateActiveTalentStringCache()
         end
         DynamicTalent:HideTalentReminderToast()
     end)
@@ -6278,13 +6304,20 @@ function DynamicTalent:CheckZoneTalentLoadout(reason)
         return
     end
     if IsPlayerInCombat() then return end
-    if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
-        pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
-    end
     local mID, mName, mLabel, mKey = self:GetActiveTalentMismatch()
+    local mTargetSig = (type(mID) == "table") and tostring(mID.id or mID.name or "") or tostring(mID or "")
+    local curMismatchSig = tostring(mKey or "") .. "|" .. mTargetSig .. "|" .. tostring(mName or "")
+    local mismatchChanged = (curMismatchSig ~= self._lastCheckedMismatchSig)
+    self._lastCheckedMismatchSig = curMismatchSig
+
     local isPullCue = (reason == "READY_CHECK" or reason == "START_PLAYER_COUNTDOWN")
     local isPassiveBossTrigger = (reason == "TARGET" or reason == "SOFT_ENEMY" or reason == "MOUSEOVER" or reason == "NAMEPLATE")
     local isBossMismatch = (type(mKey) == "string" and mKey:sub(1, 5) == "boss:")
+
+    if (not isPassiveBossTrigger or mismatchChanged)
+        and _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
+        pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+    end
 
     if mID and self.db.talentReminderToastEnabled ~= false then
         if isBossMismatch then
@@ -6357,6 +6390,7 @@ function DynamicTalent:ImportTalentString(loadoutName, importString, groupName)
         self.db.lastAppliedTalentLiveStr = self.db.lastAppliedTalentLiveStr or {}
         self.db.lastAppliedTalentLiveStr[specID] = liveStr
     end
+    self:InvalidateActiveTalentStringCache()
     Print(string.format("Saved %s |cFFFFFFFF%s|r to Talent Loadouts.", self:FormatTalentBadge(savedEntry), cleanName))
     self:SyncTalentBindsUI()
     return true, "Saved '" .. cleanName .. "' cleanly.", savedEntry
@@ -6527,7 +6561,8 @@ do
 
     function DynamicTalent:GetSeason2Raids(forceRefresh)
         if not forceRefresh and type(self._cachedTierRaids) == "table" and #self._cachedTierRaids > 0 then
-            if not self._ejEnriched and not IsPlayerInCombat() then
+            if not self._ejEnriched and not self._ejEnrichAttempted and not IsPlayerInCombat() then
+                self._ejEnrichAttempted = true
                 if TryEnrichWithEJ(self._cachedTierRaids) then
                     self._ejEnriched = true
                 end
@@ -6535,7 +6570,15 @@ do
             return self._cachedTierRaids
         end
         local raids = CloneSeason2Baseline()
-        self._ejEnriched = TryEnrichWithEJ(raids) and true or false
+        if forceRefresh then
+            self._ejEnrichAttempted = false
+        end
+        if not IsPlayerInCombat() then
+            self._ejEnrichAttempted = true
+            self._ejEnriched = TryEnrichWithEJ(raids) and true or false
+        else
+            self._ejEnriched = false
+        end
         self._cachedTierRaids = raids
         return raids
     end
@@ -11957,6 +12000,84 @@ SafeRegisterEvent(evt, "UPDATE_MOUSEOVER_UNIT")
 SafeRegisterEvent(evt, "PLAYER_UPDATE_RESTING")
 SafeRegisterEvent(evt, "TRAIT_CONFIG_UPDATED")
 
+local function IsSafeUnitPlayer(unit)
+    if type(UnitIsPlayer) ~= "function" then return false end
+    local okP, isPl = pcall(UnitIsPlayer, unit)
+    return okP and not _IsSecret(isPl) and isPl == true
+end
+
+local function IsPlayerRestingSafe()
+    if type(IsResting) ~= "function" then return false end
+    local okR, resting = pcall(IsResting)
+    return okR and not _IsSecret(resting) and resting == true
+end
+
+local function IsInRaidInstanceSafe()
+    if type(GetInstanceInfo) ~= "function" then return false end
+    local okI, _, instType = pcall(GetInstanceInfo)
+    return okI and not _IsSecret(instType) and instType == "raid"
+end
+
+local function SafeUnitGUID(unit)
+    if type(UnitGUID) ~= "function" then return nil end
+    local okG, guid = pcall(UnitGUID, unit)
+    if okG and type(guid) == "string" and not _IsSecret(guid) and guid ~= "" then
+        return guid
+    end
+    return nil
+end
+
+local function ShouldRunPassiveUnitBossCheck(selfObj, reason, unit, skipWhenResting)
+    if IsPlayerInCombat() then return false end
+    if not selfObj or not selfObj.db or selfObj.db.enabled == false or selfObj.db.talentReminderEnabled == false then
+        return false
+    end
+    if IsModuleDisabledInSuite("DynamicTalent") then return false end
+    if type(unit) ~= "string" or _IsSecret(unit) or unit == "" then return false end
+    if type(UnitExists) ~= "function" then return false end
+    local okE, ex = pcall(UnitExists, unit)
+    if not okE or _IsSecret(ex) or not ex then return false end
+    if IsSafeUnitPlayer(unit) then return false end
+    if skipWhenResting and IsPlayerRestingSafe() then return false end
+
+    local specID = selfObj:GetActiveSpecID()
+    if not specID then return false end
+    local bossMap = selfObj.db.talentBossMap and selfObj.db.talentBossMap[specID]
+    local hasBinds = HasSpecificBossBinds(bossMap)
+    local inRaid = IsInRaidInstanceSafe()
+    if reason == "MOUSEOVER" then
+        if not hasBinds and not (inRaid and type(bossMap) == "table") then
+            return false
+        end
+    elseif not hasBinds then
+        return false
+    end
+
+    local unitName = ResolveLiveUnitName(unit, true)
+    if not unitName then return false end
+
+    local now = (type(GetTime) == "function") and (tonumber(GetTime()) or 0) or 0
+    local guid = SafeUnitGUID(unit) or ""
+    local dedupeKey = reason .. "|" .. unitName:lower() .. "|" .. guid
+    if selfObj._lastPassiveCheckKey == dedupeKey and (now - (selfObj._lastPassiveCheckTime or 0)) < 0.35 then
+        return false
+    end
+    selfObj._lastPassiveCheckKey = dedupeKey
+    selfObj._lastPassiveCheckTime = now
+
+    local diffKey = inRaid and GetActiveRaidDifficultyKey() or nil
+    if hasBinds and MatchBoundBossByName(selfObj, bossMap, diffKey, unitName) then
+        return true
+    end
+    if reason == "MOUSEOVER" and inRaid then
+        local _, _, _, s2Boss = selfObj:MatchBossTargetName(unitName)
+        if s2Boss then
+            return true
+        end
+    end
+    return false
+end
+
 local isInitialized = false
 evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     if event == "ADDON_LOADED" then
@@ -11977,6 +12098,7 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         elseif arg1 == "Blizzard_EncounterJournal" then
             DynamicTalent._cachedTierRaids = nil
             DynamicTalent._ejEnriched = false
+            DynamicTalent._ejEnrichAttempted = false
         end
     elseif event == "PLAYER_LOGIN" then
         EnsureDB()
@@ -11989,6 +12111,11 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         end
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
         lastAlertedBossMismatchKey = nil
+        DynamicTalent._lastCheckedMismatchSig = nil
+        DynamicTalent._lastPassiveCheckKey = nil
+        if event == "PLAYER_ENTERING_WORLD" then
+            DynamicTalent:InvalidateActiveTalentStringCache()
+        end
         stickyRaidBoss = nil
         local function RefreshZoneContextUI()
             DynamicTalent:CheckZoneTalentLoadout()
@@ -12051,9 +12178,12 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     elseif event == "PLAYER_SPECIALIZATION_CHANGED" then
         if arg1 == nil or (not _IsSecret(arg1) and arg1 == "player") then
             lastAlertedBossMismatchKey = nil
+            DynamicTalent._lastCheckedMismatchSig = nil
+            DynamicTalent._lastPassiveCheckKey = nil
             stickyRaidBoss = nil
             wipe(silencedTalentMismatches)
             DynamicTalent._heroTreeCache = nil
+            DynamicTalent:InvalidateActiveTalentStringCache()
             DynamicTalent:RefreshTalentDock()
             DynamicTalent:EnsureHeroMedallionHooks()
             DynamicTalent:UpdateTalentTreeBackdrop()
@@ -12075,15 +12205,16 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     elseif event == "PLAYER_TARGET_CHANGED" then
         DynamicTalent:CheckBossTalentLoadout("TARGET")
     elseif event == "PLAYER_SOFT_ENEMY_CHANGED" then
-        if not IsPlayerInCombat() and HasActiveSpecSpecificBossBinds(DynamicTalent) then
+        if ShouldRunPassiveUnitBossCheck(DynamicTalent, "SOFT_ENEMY", "softenemy", false) then
             DynamicTalent:CheckBossTalentLoadout("SOFT_ENEMY")
         end
     elseif event == "NAME_PLATE_UNIT_ADDED" then
-        if not IsPlayerInCombat() and HasActiveSpecSpecificBossBinds(DynamicTalent) then
+        if type(arg1) == "string" and not _IsSecret(arg1) and arg1 ~= ""
+            and ShouldRunPassiveUnitBossCheck(DynamicTalent, "NAMEPLATE", arg1, false) then
             DynamicTalent:CheckBossTalentLoadout("NAMEPLATE")
         end
     elseif event == "UPDATE_MOUSEOVER_UNIT" then
-        if not IsPlayerInCombat() and HasActiveSpecSpecificBossBinds(DynamicTalent) then
+        if ShouldRunPassiveUnitBossCheck(DynamicTalent, "MOUSEOVER", "mouseover", true) then
             DynamicTalent:CheckBossTalentLoadout("MOUSEOVER")
         end
     elseif event == "PLAYER_UPDATE_RESTING" then
@@ -12092,7 +12223,10 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
         end
     elseif event == "TRAIT_CONFIG_UPDATED" then
         lastAlertedBossMismatchKey = nil
+        DynamicTalent._lastCheckedMismatchSig = nil
+        DynamicTalent._lastPassiveCheckKey = nil
         DynamicTalent._heroTreeCache = nil
+        DynamicTalent:InvalidateActiveTalentStringCache()
         if DynamicTalent._pendingSaveConfigID and not IsPlayerInCombat() and C_ClassTalents and type(C_ClassTalents.SaveConfig) == "function" then
             local saveID = DynamicTalent._pendingSaveConfigID
             DynamicTalent._pendingSaveConfigID = nil
