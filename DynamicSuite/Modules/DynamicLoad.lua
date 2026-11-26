@@ -195,7 +195,7 @@ local function SafeIsAddonVersionCheckEnabled()
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.11.1"
+    local fb = fallback or "2.11.2"
     local ver = SafeGetAddOnMetadata(folderName or ADDON_FOLDER, "Version")
     if ver and not ver:find("@") then
         return ver:gsub("^[vV]", "")
@@ -268,7 +268,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.1")
+local RESOLVED_ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.2")
 
 -- Guard E: Version-aware duplicate-install guard if standalone DynamicLoad is installed alongside bundled DynamicSuite
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicLoad", RESOLVED_ADDON_VERSION, _G.DynamicLoad) then
@@ -10552,7 +10552,7 @@ do
         slash = "/dl",
         order = 10,
         icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
-        version = addonTable.ADDON_VERSION or "2.11.1",
+        version = addonTable.ADDON_VERSION or "2.11.2",
         description = "Context-aware addon profile management with parent-child grouping & 3-state security matrix",
         CHANGELOG = DynamicSuite.Changelogs and DynamicSuite.Changelogs["DynamicLoad"] and DynamicSuite.Changelogs["DynamicLoad"].entries or addonTable.CHANGELOG,
         Open = function(...) if addonTable.ShowConfigUI then return addonTable.ShowConfigUI(...) end end,

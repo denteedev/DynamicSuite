@@ -10,7 +10,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.11.1"
+    local fb = fallback or "2.11.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -91,7 +91,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.1")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.2")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicFPS", ADDON_VERSION, _G.DynamicFPS) then
     return
 end
@@ -4810,7 +4810,7 @@ _G.DynamicSuite.modules["fps"] = moduleEntry
 _G.DynamicSuite.modules["DynamicFPS"] = moduleEntry
 
 DynamicFPS.CHANGELOG = {
-    version = ADDON_VERSION or "2.11.1",
+    version = ADDON_VERSION or "2.11.2",
     date = "25/11/2026",
     entries = {
         { type = "UI",      text = "Pass 5 800x520 Layout Sweep, Standalone Resize Grip & Copy Hygiene (25/11/2026): Made the Zone Profile & 1-Click Copy toolbar dynamically reflow below 740px so all 5 presets, source copy pills, and Apply to All fit cleanly at 800x520 with zero overlap; added proportional 6-zone tab sizing and clamping in the top navigation bar; right-clamped all section headers, card titles, and recessed sub-drawer labels; added the standard 14x14 bottom-right corner resize grip (slate at rest, live Suite Accent on hover) to the standalone /dfps window; and cleaned up Australian English spelling and plain-English Spell Queue Timing wording." },

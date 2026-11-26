@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.11.1"
+    local fb = fallback or "2.11.2"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.1")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.2")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -59,6 +59,7 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "26/11/2026",
     entries = {
+        { type = "PERF",    text = "Release v2.11.2 - In-Combat Raid-Frame Mouseover & Search Close Performance Fix (26/11/2026): Eliminated in-combat raid-frame mouseover FPS stutter by caching DynamicCursor's zone and activity checks on events, skipping stationary ring repositioning and per-frame SpellIsTargeting polling, removing redundant tooltip SetOwner calls and per-hover closures in Smart Tooltips, gating DynamicPrep's combat raid-buff scan before scanning 20-40 raid members when disabled or out of scope, immediately stopping and hiding the Search Highlight frame when closing DynamicSuite, and removing redundant font rescans on Theme Studio refreshes." },
         { type = "PERF",    text = "Release v2.11.1 - DynamicTalent Mouseover Tooltip Lag Fix (26/11/2026): Eliminated mouseover tooltip stutters by making hover, nameplate, and soft-enemy boss checks exit immediately in combat, on player units, or while resting in cities, skipping redundant Prep Bar rebuilds unless a talent mismatch actually changes, preventing repeated Encounter Journal scans, and caching the live talent export string out of combat until talents, specialisations, or zones change." },
         { type = "FIX",     text = "Release v2.11.1 - Clickable Raid Buffs Ghost HUD Fix (26/11/2026): Fixed an invisible Clickable Raid Buffs box left on screen outdoors when Active Content Scope was set to Instances, when the HUD was switched off, or when all buffs were already active; the bar now stays hidden and click-through until a buff is actually shown (or HUD Edit Mode is open) and re-evaluates immediately on zone changes." },
         { type = "FIX",     text = "Release v2.11.1 - Patch 12.1.7 Combat, Secret-Value, Lorewalking & Game-Mode Hardening (26/11/2026): Hardened DynamicChat, DynamicGroup, DynamicDialogue, DynamicPrep, DynamicTalent, and DynamicMarker against Patch 12.1.7 combat-lockdown, chat-lockdown, and secret-value errors, including combat-safe keyboard release in DynamicDialogue, Lorewalking and Talebound bypasses, self-resurrect wipe protection in DynamicPrep, deferred Talent Backdrop and keybind cleanup in combat, and Pet Battle visibility preservation for DynamicChat." },
@@ -14228,7 +14229,7 @@ do
         local payload = {
             v = SCHEMA_VERSION,
             app = "DynamicSuite",
-            ver = tostring(ADDON_VERSION or "2.11.1"),
+            ver = tostring(ADDON_VERSION or "2.11.2"),
             date = exportDate,
             opts = {
                 hud = includeHud,
