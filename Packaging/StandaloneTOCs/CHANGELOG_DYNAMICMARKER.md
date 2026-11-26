@@ -1,12 +1,16 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.11.0 (25/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
+*Author: Dentee-Frostmourne  |  Release: v2.11.1 (26/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
 
+---
+
+## DynamicMarker v2.11.1 (26/11/2026)
+
 ### Fixed
-* **Patch 12.1.7 Combat-Lockdown, Keybind Capture & Secret-Value Hardening (`25/11/2026`):** Tracked active keybind capture buttons with `OnHide` cleanup and automatic `PLAYER_REGEN_DISABLED` abort (deferring `EnableKeyboard(false)` to `PLAYER_REGEN_ENABLED` when combat begins mid-capture); blocked Right-Click keybind unbinding during combat with a plain Australian English notice; deferred `CloseStudioModal()` keyboard cleanup during combat until `PLAYER_REGEN_ENABLED`; refreshed standalone Profile Import & Export `Apply` and `Undo` button states cleanly across combat transitions; wrapped direct Shift-Drag `StopMovingOrSizing()` in `pcall`; ensured `InitSecureFlareButtons()` runs before deferred flare engine and keybind syncs after a combat `/reload`; noted deferred HUD and keybind syncs when `ResetDefaults()` runs in combat; and hardened `AnnounceFocusIcon()` and `SafeReadableString()` with `pcall` and `IsSafeValue` checks.
+* **Patch 12.1.7 Combat-Lockdown, Keybind Capture & Secret-Value Hardening (`26/11/2026`):** Added automatic combat abort and safe keyboard cleanup for active keybind capture and open modals (deferring keyboard release cleanly until combat ends when combat begins mid-capture); blocked Right-Click keybind clearing during combat with a plain-English notice; refreshed standalone Profile Import & Export `Apply` and `Undo` button states cleanly across combat transitions; guarded direct Shift-Drag finish calls; ensured secure World Flare buttons initialise before deferred syncs after a combat `/reload`; added a clear notice when `Reset Defaults` defers HUD and keybind syncs during combat; and hardened focus mark chat announcements and readable text helpers against Patch 12.1.7 secret values.
 
 ---
 

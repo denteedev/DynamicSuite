@@ -1,4 +1,4 @@
--- DynamicCursor v2.11.0 (/dcur, /dynamiccursor)
+-- DynamicCursor v2.11.1 (/dcur, /dynamiccursor)
 -- Cursor Ring, Radial GCD & Cast/Channel/Empower Arc, Character Crosshair, Find My Cursor, Pooled Trail & Smart Tooltips.
 -- Retail 12.1.5 / 12.1.7 (Interface 120105, 120107) | Zero-Taint, Secret-Value Safe, 0.00 ms Idle CPU.
 
@@ -7,7 +7,7 @@ local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addon
 local STANDALONE_NAME = "DynamicCursor"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.11.0"
+    local fb = fallback or "2.11.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -35,12 +35,12 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.0")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.1")
 
 local function ShouldYieldToOtherInstall(thisFolder, standaloneName, thisVersion, globalTbl)
     if thisFolder == standaloneName then
         if type(globalTbl) == "table" and globalTbl._loadedFromSuite == true then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or "2.11.0"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or "2.11.1"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end

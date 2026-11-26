@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.11.0"
+    local fb = fallback or "2.11.1"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.0")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.1")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -57,8 +57,11 @@ DynamicSuite.Changelogs = DynamicSuite.Changelogs or {}
 
 DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
-    date = "25/11/2026",
+    date = "26/11/2026",
     entries = {
+        { type = "PERF",    text = "Release v2.11.1 - DynamicTalent Mouseover Tooltip Lag Fix (26/11/2026): Eliminated mouseover tooltip stutters by making hover, nameplate, and soft-enemy boss checks exit immediately in combat, on player units, or while resting in cities, skipping redundant Prep Bar rebuilds unless a talent mismatch actually changes, preventing repeated Encounter Journal scans, and caching the live talent export string out of combat until talents, specialisations, or zones change." },
+        { type = "FIX",     text = "Release v2.11.1 - Clickable Raid Buffs Ghost HUD Fix (26/11/2026): Fixed an invisible Clickable Raid Buffs box left on screen outdoors when Active Content Scope was set to Instances, when the HUD was switched off, or when all buffs were already active; the bar now stays hidden and click-through until a buff is actually shown (or HUD Edit Mode is open) and re-evaluates immediately on zone changes." },
+        { type = "FIX",     text = "Release v2.11.1 - Patch 12.1.7 Combat, Secret-Value, Lorewalking & Game-Mode Hardening (26/11/2026): Hardened DynamicChat, DynamicGroup, DynamicDialogue, DynamicPrep, DynamicTalent, and DynamicMarker against Patch 12.1.7 combat-lockdown, chat-lockdown, and secret-value errors, including combat-safe keyboard release in DynamicDialogue, Lorewalking and Talebound bypasses, self-resurrect wipe protection in DynamicPrep, deferred Talent Backdrop and keybind cleanup in combat, and Pet Battle visibility preservation for DynamicChat." },
         { type = "FEATURE", text = "Release v2.11.0 - Suite-Wide Profile Import & Export (!DS1!) & DynamicMarker Parity (25/11/2026): Added Suite Studio Tab 3 ('Import & Export' via /ds export, /ds import, and /ds profiles) powered by Blizzard's native C_EncodingUtil (!DS1! CBOR, Zlib, and Base64) covering Theme Studio and all 13 modules with Replace Selected vs Merge modes, live preview, persistent 1-slot Undo Last Import rollback across /reload, strict private cache stripping, opt-in Talent Loadout and Addon Zone Lists sharing, combat-lockdown blocking, and full bidirectional compatibility with standalone DynamicMarker (/dm export, /dm import, /dm profiles)." },
         { type = "FEATURE", text = "Release v2.11.0 - In-World 6-HUD Magnetic Shift-Drag, Bottom-Edge Jump Fix & Automatic Pet Battle Auto-Hide (25/11/2026): Enabled out-of-combat Shift + Left-Drag directly on all 6 canonical HUDs (Top Info Bar, Clickable Raid Buffs, Focus Icons Bar, World Flare Bar, Chat Frame, and Shared Alert Toasts) with scale-aware magnetic screen-edge/bar snapping, live alignment guides, Alt-to-fine-tune bypass, strict 0 px screen clamping, Right-Click/Shift + Right-Click quick-jump into HUD Edit Mode, uniform tooltip/inspector/'?' Quick Guide hints, and a Lua 5.1 multi-return fix preventing bottom-edge bars from jumping to vertical centre on click; plus automatic Pet Battle auto-hiding across all 5 non-chat HUDs (keeping DynamicChat visible for guild and whisper chat)." },
         { type = "UI",      text = "Release v2.10.3 - Pass 7 UI Refinement, 800x520 Parity & Patch 12.1.7 Hardening (25/11/2026): Lowered DynamicSuite's minimum size to 800x520 with responsive header status, wrapped conflict banners, and adaptive footer controls; brought standalone DynamicMarker, DynamicTalent, DynamicGroup, and DynamicLoad to full 760x480-1280x860 resizable footer and live Suite Accent resize grip parity (with Right-Click reset); reflowed narrow layouts (2-row DynamicLoad toolbar, 2x3 DynamicGroup region filters, 2x4 DynamicTalent M+ tiles, stacked DynamicMarker macro cards, and Focus/Flare bar HUD tips); hardened Patch 12.1.7 combat-lockdown, chat-lockdown, encounter/M+, unspecialised/Lorewalking, and secret-value guards across all 4 modules; and standardised copy into plain Australian English." },
@@ -14225,7 +14228,7 @@ do
         local payload = {
             v = SCHEMA_VERSION,
             app = "DynamicSuite",
-            ver = tostring(ADDON_VERSION or "2.11.0"),
+            ver = tostring(ADDON_VERSION or "2.11.1"),
             date = exportDate,
             opts = {
                 hud = includeHud,
