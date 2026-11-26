@@ -549,6 +549,10 @@ local DEFAULTS = {
     ctrlJumpScroll              = true,
     enableQuickSlash            = true,
     preserveChatHistory         = true,
+    preserveWhisperTabs         = true,
+    maxSavedWhisperTabs         = 5,   -- 3 | 5 | 10
+    maxSavedWhisperLines        = 50,  -- lines per tab
+    savedWhisperTabs            = {},
     enableGPUBufferCap          = true,
     maxChatLines                = 250,
     optimizeCombatLogTab        = true,
@@ -823,6 +827,22 @@ local function EnsureDB()
     if bgAlpha == nil then bgAlpha = 0.25 end
     _G.DynamicChatDB.chatBgAlpha = math.max(0.0, math.min(0.95, bgAlpha))
     _G.DynamicChatDB.applySuiteChatFont = (_G.DynamicChatDB.chatFontKey == "SUITE")
+    _G.DynamicChatDB.preserveWhisperTabs = (_G.DynamicChatDB.preserveWhisperTabs ~= false)
+    local wLimit = tonumber(_G.DynamicChatDB.maxSavedWhisperTabs) or 5
+    if wLimit <= 4 then
+        wLimit = 3
+    elseif wLimit <= 7 then
+        wLimit = 5
+    else
+        wLimit = 10
+    end
+    _G.DynamicChatDB.maxSavedWhisperTabs = wLimit
+    local wLines = math.floor((tonumber(_G.DynamicChatDB.maxSavedWhisperLines) or 50) + 0.5)
+    if wLines < 10 then wLines = 10 elseif wLines > 200 then wLines = 200 end
+    _G.DynamicChatDB.maxSavedWhisperLines = wLines
+    if type(_G.DynamicChatDB.savedWhisperTabs) ~= "table" then
+        _G.DynamicChatDB.savedWhisperTabs = {}
+    end
     if type(_G.DynamicChatDB.drawerExpanded) ~= "table" then
         _G.DynamicChatDB.drawerExpanded = {}
     end
@@ -2120,6 +2140,186 @@ local function StripSecretOrExtractLine(cf, idx)
     return SanitizeChatHistoryString(text), false
 end
 
+DC_NS.WHISPER_SAVE_MAX_AGE_SECONDS = 24 * 3600
+
+function DC_NS.NormalizeWhisperTarget(target)
+    if target == nil or IsSecretValue(target) or type(target) ~= "string" then
+        return nil, nil
+    end
+    local trimmed = target:gsub("^%s+", ""):gsub("%s+$", "")
+    if trimmed == "" then
+        return nil, nil
+    end
+    return trimmed, trimmed:lower()
+end
+
+function DC_NS.WhisperTargetsMatch(targetA, targetB)
+    local cleanA, lowA = DC_NS.NormalizeWhisperTarget(targetA)
+    local cleanB, lowB = DC_NS.NormalizeWhisperTarget(targetB)
+    if not cleanA or not cleanB then
+        return false
+    end
+    if lowA == lowB then
+        return true
+    end
+    local hasRealmA = lowA:find("-", 1, true) ~= nil
+    local hasRealmB = lowB:find("-", 1, true) ~= nil
+    if hasRealmA ~= hasRealmB then
+        local shortA = lowA:gsub("%-[^%-]+$", "")
+        local shortB = lowB:gsub("%-[^%-]+$", "")
+        if shortA ~= "" and shortA == shortB then
+            return true
+        end
+    end
+    return false
+end
+
+function DC_NS.PruneSavedWhisperTabs(db, nowEpoch)
+    db = db or EnsureDB()
+    if type(db.savedWhisperTabs) ~= "table" then
+        db.savedWhisperTabs = {}
+        return db.savedWhisperTabs
+    end
+    local now = tonumber(nowEpoch)
+    if not now and type(_G.time) == "function" then
+        now = tonumber(_G.time())
+    end
+    local maxTabs = math.max(1, tonumber(db.maxSavedWhisperTabs) or 5)
+    local maxLines = math.max(1, tonumber(db.maxSavedWhisperLines) or 50)
+    local candidates = {}
+
+    for idx, entry in ipairs(db.savedWhisperTabs) do
+        if type(entry) == "table" and not IsSecretValue(entry.chatType) and entry.chatType == "WHISPER" then
+            local cleanTarget = DC_NS.NormalizeWhisperTarget(entry.target)
+            local lastUpdated = tonumber(entry.lastUpdated) or 0
+            local expired = false
+            if now and now > 0 then
+                if lastUpdated <= 0 or (now - lastUpdated) > DC_NS.WHISPER_SAVE_MAX_AGE_SECONDS then
+                    expired = true
+                end
+            end
+            if cleanTarget and not expired then
+                local cleanLines = {}
+                if type(entry.lines) == "table" then
+                    for _, rawLine in ipairs(entry.lines) do
+                        local cleanLine = SanitizeChatHistoryString(rawLine)
+                        if cleanLine and cleanLine ~= "--- Saved From Previous Session ---" then
+                            cleanLines[#cleanLines + 1] = cleanLine
+                        end
+                    end
+                end
+                if #cleanLines > maxLines then
+                    local trimmedLines = {}
+                    local startIdx = #cleanLines - maxLines + 1
+                    for lIdx = startIdx, #cleanLines do
+                        trimmedLines[#trimmedLines + 1] = cleanLines[lIdx]
+                    end
+                    cleanLines = trimmedLines
+                end
+
+                local merged = false
+                for _, existing in ipairs(candidates) do
+                    if DC_NS.WhisperTargetsMatch(existing.target, cleanTarget) then
+                        if lastUpdated > existing.lastUpdated then
+                            existing.target = cleanTarget
+                            existing.lastUpdated = lastUpdated
+                            existing.lines = cleanLines
+                        elseif #existing.lines == 0 and #cleanLines > 0 then
+                            existing.lines = cleanLines
+                        end
+                        merged = true
+                        break
+                    end
+                end
+                if not merged then
+                    candidates[#candidates + 1] = {
+                        target      = cleanTarget,
+                        chatType    = "WHISPER",
+                        lastUpdated = lastUpdated,
+                        lines       = cleanLines,
+                        _ord        = idx,
+                    }
+                end
+            end
+        end
+    end
+
+    table.sort(candidates, function(a, b)
+        if a.lastUpdated ~= b.lastUpdated then
+            return a.lastUpdated > b.lastUpdated
+        end
+        return (a._ord or 0) < (b._ord or 0)
+    end)
+
+    local out = {}
+    local limit = math.min(#candidates, maxTabs)
+    for i = 1, limit do
+        local c = candidates[i]
+        out[i] = {
+            target      = c.target,
+            chatType    = "WHISPER",
+            lastUpdated = c.lastUpdated,
+            lines       = c.lines,
+        }
+    end
+    db.savedWhisperTabs = out
+    return out
+end
+
+function DC_NS.FindSavedWhisperTabEntry(db, target)
+    db = db or EnsureDB()
+    local list = DC_NS.PruneSavedWhisperTabs(db)
+    for _, entry in ipairs(list) do
+        if DC_NS.WhisperTargetsMatch(entry.target, target) then
+            return entry
+        end
+    end
+    return nil
+end
+
+function DC_NS.RemoveSavedWhisperTabByTarget(target)
+    local cleanTarget = DC_NS.NormalizeWhisperTarget(target)
+    if not cleanTarget then return false end
+    local db = EnsureDB()
+    if type(db.savedWhisperTabs) ~= "table" then
+        db.savedWhisperTabs = {}
+        return false
+    end
+    local kept = {}
+    local removed = false
+    for _, entry in ipairs(db.savedWhisperTabs) do
+        if type(entry) == "table" and DC_NS.WhisperTargetsMatch(entry.target, cleanTarget) then
+            removed = true
+        else
+            kept[#kept + 1] = entry
+        end
+    end
+    db.savedWhisperTabs = kept
+    return removed
+end
+
+function DynamicChat:PruneSavedWhisperTabs(nowEpoch)
+    return DC_NS.PruneSavedWhisperTabs(EnsureDB(), nowEpoch)
+end
+
+function DynamicChat:RemoveSavedWhisperTabForFrame(cf)
+    if not cf then return false end
+    local entry = chatSkinStore[cf]
+    local target = nil
+    if not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" then
+        target = cf.chatTarget
+    elseif entry and not IsSecretValue(entry.lastWhisperTarget) and type(entry.lastWhisperTarget) == "string" and entry.lastWhisperTarget ~= "" then
+        target = entry.lastWhisperTarget
+    end
+    if entry then
+        entry.lastWhisperTarget = nil
+    end
+    if target then
+        return DC_NS.RemoveSavedWhisperTabByTarget(target)
+    end
+    return false
+end
+
 local function ResolveActiveChatFrame(targetChatFrame)
     if targetChatFrame and type(targetChatFrame.GetNumMessages) == "function" then
         return targetChatFrame
@@ -2563,6 +2763,26 @@ function DynamicChat:ShowFullChatHistoryModal(targetChatFrame)
         end
         if #lines > 0 then
             lines[#lines + 1] = "--- Saved From Previous Session ---"
+        end
+    elseif cf.isTemporary == true and db.preserveWhisperTabs ~= false and db.preserveChatHistory ~= false and db.enableGPUBufferCap ~= false then
+        local cfType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
+        local cfTarget = (not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string") and cf.chatTarget or nil
+        if cfType == "WHISPER" and cfTarget and cfTarget ~= "" then
+            local savedEntry = DC_NS.FindSavedWhisperTabEntry(db, cfTarget)
+            if savedEntry and type(savedEntry.lines) == "table" and #savedEntry.lines > 0 then
+                local maxWhisperLines = math.max(1, tonumber(db.maxSavedWhisperLines) or 50)
+                local wStart = math.max(1, #savedEntry.lines - maxWhisperLines + 1)
+                for wIdx = wStart, #savedEntry.lines do
+                    local cleanSaved = SanitizeChatHistoryString(savedEntry.lines[wIdx])
+                    if cleanSaved then
+                        lines[#lines + 1] = cleanSaved
+                        ExtractURLsFromText(cleanSaved, recentURLs, seenURLs)
+                    end
+                end
+                if #lines > 0 then
+                    lines[#lines + 1] = "--- Saved From Previous Session ---"
+                end
+            end
         end
     end
 
@@ -3750,6 +3970,8 @@ local function EnsureChatLeftRail(entry, panel)
             end
             if targetCF == _G.ChatFrame1 or not targetCF then
                 EnsureDB().savedChatHistory = {}
+            elseif targetCF.isTemporary == true then
+                DynamicChat:RemoveSavedWhisperTabForFrame(targetCF)
             end
         elseif button == "MiddleButton" or (button == "LeftButton" and IsShiftKeyDown and IsShiftKeyDown()) then
             local latestURL = DynamicChat._latestCapturedURL
@@ -4722,8 +4944,11 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
         tab:HookScript("OnClick", function(selfTab, button)
             if button == "MiddleButton" then
                 local ownerCF = hookedChatTabs[selfTab]
-                if ownerCF and ownerCF.isTemporary and type(_G.FCF_Close) == "function" then
-                    pcall(_G.FCF_Close, ownerCF)
+                if ownerCF and ownerCF.isTemporary then
+                    DynamicChat:RemoveSavedWhisperTabForFrame(ownerCF)
+                    if type(_G.FCF_Close) == "function" then
+                        pcall(_G.FCF_Close, ownerCF)
+                    end
                 end
             end
         end)
@@ -4785,6 +5010,9 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
     local isBNWhisperTab = (chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION")
     local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or (cf.isTemporary == true)
     local isAlertingTab  = IsChatTabAlerting(cf, tab, tabName, entry)
+    if cf.isTemporary == true and chatType == "WHISPER" and not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" then
+        entry.lastWhisperTarget = cf.chatTarget
+    end
 
     local convIcon = tab.conversationIcon or _G[tabName .. "ConversationIcon"]
     if convIcon then
@@ -4800,14 +5028,14 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
     end
 
     -- Prevent Blizzard's FCFTab_UpdateAlpha from dimming unselected tab text to 20%-40% alpha
-    -- and ensure the entire tab cell is 100% clickable & mousewheel-scrollable at LOW strata Level 15
+    -- and ensure the entire tab cell is 100% clickable & mousewheel-scrollable at LOW strata Level 22
     if skinEnabled then
         if tab.SetAlpha then pcall(tab.SetAlpha, tab, 1.0) end
         if tab.SetHitRectInsets then pcall(tab.SetHitRectInsets, tab, 0, 0, 0, 0) end
         if tab.EnableMouse then pcall(tab.EnableMouse, tab, true) end
         if tab.EnableMouseWheel then pcall(tab.EnableMouseWheel, tab, true) end
         if tab.SetFrameStrata then pcall(tab.SetFrameStrata, tab, "LOW") end
-        if tab.SetFrameLevel then pcall(tab.SetFrameLevel, tab, 15) end
+        if tab.SetFrameLevel then pcall(tab.SetFrameLevel, tab, 22) end
     end
 
     local fs = tab.Text or _G[tabName .. "Text"] or (tab.GetFontString and tab:GetFontString())
@@ -4976,6 +5204,8 @@ end
 -- Keeps every chat tab at a comfortable, fully readable width even when 10-20 whisper tabs are open,
 -- and provides Mousewheel Up (Left) / Down (Right) scrolling plus Left (<) and Right (>) assist buttons.
 local isLayingOutDockedTabs = false
+DC_NS._deferredTabLayoutQueued = false
+DC_NS._deferredTabLayoutTimerActive = false
 local LayoutDockedChatTabs
 
 ScrollDockedTabViewport = function(deltaSteps)
@@ -5181,7 +5411,7 @@ local function EnsureTabNavButtons()
 
     local nav = CreateFrame("Frame", nil, UIParent)
     nav:SetFrameStrata("LOW")
-    nav:SetFrameLevel(18)
+    nav:SetFrameLevel(25)
     nav:SetSize(38, 24)
     nav:EnableMouse(true)
     nav:EnableMouseWheel(true)
@@ -5300,7 +5530,11 @@ local function EnsureTabNavButtons()
 end
 
 LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
-    if isLayingOutDockedTabs then return end
+    if isLayingOutDockedTabs then
+        DC_NS._deferredTabLayoutQueued = true
+        DynamicChat._deferredTabLayoutPending = true
+        return
+    end
     if DynamicChat:IsExternalChatEngineLoaded() then return end
     local cf1 = _G.ChatFrame1
     local dock = _G.GeneralDockManager
@@ -5313,8 +5547,13 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
         end
         if InCombatLockdown and InCombatLockdown() then
             DynamicChat._pendingTabLayoutAfterCombat = true
-        elseif type(dock.SetClipsChildren) == "function" then
-            pcall(dock.SetClipsChildren, dock, false)
+        else
+            if type(dock.SetScale) == "function" then
+                pcall(dock.SetScale, dock, 1.0)
+            end
+            if type(dock.SetClipsChildren) == "function" then
+                pcall(dock.SetClipsChildren, dock, false)
+            end
         end
         if tabNavFrame then tabNavFrame:Hide() end
         for _, entry in pairs(chatSkinStore) do
@@ -5328,6 +5567,10 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
         local db = EnsureDB()
         local hasLeftRail = (db.leftRailMode ~= "OFF")
         local headerLeftX = hasLeftRail and -2 or -8
+        local cf1Scale = (cf1.GetScale and cf1:GetScale()) or 1.0
+        if IsSecretValue(cf1Scale) or type(cf1Scale) ~= "number" or cf1Scale <= 0 then
+            cf1Scale = 1.0
+        end
 
         -- Hide Blizzard's overflow dropdown button ('v') and native GeneralDockManagerScrollFrame
         -- so our sleek < and > navigation buttons manage the right edge without fighting Blizzard's scroll frame.
@@ -5365,11 +5608,15 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
         end
 
         local allFrames = CollectAllChatFrames()
+        local scrollFrame = _G.GeneralDockManagerScrollFrame
+        local scrollChild = _G.GeneralDockManagerScrollFrameChild
         for _, item in ipairs(allFrames) do
             local cf = item.cf
             local cfName = item.name
             local tab = cfName and _G[cfName .. "Tab"]
-            if cf and tab and not seenCF[cf] and (cf == cf1 or cf.isDocked) and (DynamicChat.SafeFrameIsShown(tab, false) or (chatSkinStore[cf] and chatSkinStore[cf].hiddenByScroll)) then
+            local tabParent = (tab and tab.GetParent) and tab:GetParent() or nil
+            local onHiddenScrollParent = (tabParent ~= nil and ((scrollChild and tabParent == scrollChild) or (scrollFrame and tabParent == scrollFrame)))
+            if cf and tab and not seenCF[cf] and (cf == cf1 or cf.isDocked or onHiddenScrollParent) and (DynamicChat.SafeFrameIsShown(tab, false) or (chatSkinStore[cf] and chatSkinStore[cf].hiddenByScroll) or onHiddenScrollParent) then
                 seenCF[cf] = true
                 dockedTabs[#dockedTabs + 1] = { cf = cf, tab = tab, name = cfName }
             end
@@ -5382,6 +5629,24 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
             DynamicChat._pendingTabLayoutAfterCombat = true
         else
             local dockRightX = (numTabs > 1) and (8 - 38) or 8
+            if type(dock.SetScale) == "function" then
+                local needScale = true
+                if type(dock.GetScale) == "function" then
+                    local okDS, curDS = pcall(dock.GetScale, dock)
+                    if okDS and not IsSecretValue(curDS) and type(curDS) == "number" and math.abs(curDS - cf1Scale) <= 0.001 then
+                        needScale = false
+                    end
+                end
+                if needScale then
+                    pcall(dock.SetScale, dock, cf1Scale)
+                end
+            end
+            if type(dock.SetFrameStrata) == "function" then
+                pcall(dock.SetFrameStrata, dock, "LOW")
+            end
+            if type(dock.SetFrameLevel) == "function" then
+                pcall(dock.SetFrameLevel, dock, 20)
+            end
             dock:ClearAllPoints()
             dock:SetPoint("BOTTOMLEFT", cf1, "TOPLEFT", headerLeftX, 4)
             dock:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", dockRightX, 4)
@@ -5405,8 +5670,9 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
         local availWidth = math.max(120, barWidth - navWidth)
 
         if numTabs > 1 and IsPrimaryChatDockVisible() then
-            local cf1Scale = (cf1.GetScale and cf1:GetScale()) or 1.0
             if nav.SetScale then pcall(nav.SetScale, nav, cf1Scale) end
+            if nav.SetFrameStrata then pcall(nav.SetFrameStrata, nav, "LOW") end
+            if nav.SetFrameLevel then pcall(nav.SetFrameLevel, nav, 25) end
             nav:ClearAllPoints()
             nav:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 8, 4)
             nav:SetSize(38, 24)
@@ -5432,10 +5698,26 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
 
             -- Reparent overflow tabs out of GeneralDockManagerScrollFrameChild directly to GeneralDockManager
             -- so GeneralDockManagerScrollFrame never clips their mouse hit-box!
-            if not (InCombatLockdown and InCombatLockdown()) and tab.GetParent and tab.SetParent then
+            if tab.GetParent and tab.SetParent then
                 local curParent = tab:GetParent()
                 if curParent ~= dock then
-                    pcall(tab.SetParent, tab, dock)
+                    if InCombatLockdown and InCombatLockdown() then
+                        DynamicChat._pendingTabLayoutAfterCombat = true
+                    else
+                        pcall(tab.SetParent, tab, dock)
+                    end
+                end
+            end
+            if not (InCombatLockdown and InCombatLockdown()) and type(tab.SetScale) == "function" then
+                local needTabScale = true
+                if type(tab.GetScale) == "function" then
+                    local okTS, curTS = pcall(tab.GetScale, tab)
+                    if okTS and not IsSecretValue(curTS) and type(curTS) == "number" and math.abs(curTS - 1.0) <= 0.001 then
+                        needTabScale = false
+                    end
+                end
+                if needTabScale then
+                    pcall(tab.SetScale, tab, 1.0)
                 end
             end
 
@@ -5496,6 +5778,10 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
         -- If a specific tab was just selected/opened, ensure tabScrollOffset brings it into the visible viewport
         if pendingEnsureSelectedTabVisible then
             local targetCF = pendingEnsureSelectedTabVisible
+            if InCombatLockdown and InCombatLockdown() then
+                DynamicChat._pendingVisibleTabAfterCombat = targetCF
+                DynamicChat._pendingTabLayoutAfterCombat = true
+            end
             pendingEnsureSelectedTabVisible = nil
             local targetIdx = nil
             for i, item in ipairs(dockedTabs) do
@@ -5656,6 +5942,30 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
         RefreshTabNavButtonsVisuals(ar, ag, ab)
     end)
     isLayingOutDockedTabs = false
+    if DC_NS._deferredTabLayoutQueued then
+        DC_NS._deferredTabLayoutQueued = false
+        if InCombatLockdown and InCombatLockdown() then
+            DynamicChat._pendingTabLayoutAfterCombat = true
+            DynamicChat._deferredTabLayoutPending = false
+        elseif not DC_NS._deferredTabLayoutTimerActive then
+            DC_NS._deferredTabLayoutTimerActive = true
+            local function RunDeferredTabLayout()
+                DC_NS._deferredTabLayoutTimerActive = false
+                DynamicChat._deferredTabLayoutPending = false
+                if not DynamicChat:IsExternalChatEngineLoaded() and EnsureDB().enableSleekChatSkin ~= false then
+                    local a1, a2, a3 = GetSuiteAccent()
+                    LayoutDockedChatTabs(true, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
+                end
+            end
+            if _G.C_Timer and type(_G.C_Timer.After) == "function" then
+                _G.C_Timer.After(0, RunDeferredTabLayout)
+            else
+                RunDeferredTabLayout()
+            end
+        end
+    else
+        DynamicChat._deferredTabLayoutPending = false
+    end
 end
 
 function DynamicChat:GetPrimaryBackdropPanel()
@@ -6112,7 +6422,29 @@ function DynamicChat:ApplySleekChatSkin()
         elseif skinEnabled then
             local headerLeftX = (db.leftRailMode ~= "OFF") and -2 or -8
             local dockRightX  = (#lastDockedTabsSnapshot > 1) and (8 - 38) or 8
+            local cf1Scale = (_G.ChatFrame1.GetScale and _G.ChatFrame1:GetScale()) or 1.0
+            if IsSecretValue(cf1Scale) or type(cf1Scale) ~= "number" or cf1Scale <= 0 then
+                cf1Scale = 1.0
+            end
             pcall(function()
+                if type(_G.GeneralDockManager.SetScale) == "function" then
+                    local needScale = true
+                    if type(_G.GeneralDockManager.GetScale) == "function" then
+                        local okDS, curDS = pcall(_G.GeneralDockManager.GetScale, _G.GeneralDockManager)
+                        if okDS and not IsSecretValue(curDS) and type(curDS) == "number" and math.abs(curDS - cf1Scale) <= 0.001 then
+                            needScale = false
+                        end
+                    end
+                    if needScale then
+                        _G.GeneralDockManager:SetScale(cf1Scale)
+                    end
+                end
+                if type(_G.GeneralDockManager.SetFrameStrata) == "function" then
+                    _G.GeneralDockManager:SetFrameStrata("LOW")
+                end
+                if type(_G.GeneralDockManager.SetFrameLevel) == "function" then
+                    _G.GeneralDockManager:SetFrameLevel(20)
+                end
                 _G.GeneralDockManager:ClearAllPoints()
                 _G.GeneralDockManager:SetPoint("BOTTOMLEFT", _G.ChatFrame1, "TOPLEFT", headerLeftX, 4)
                 _G.GeneralDockManager:SetPoint("BOTTOMRIGHT", _G.ChatFrame1, "TOPRIGHT", dockRightX, 4)
@@ -6123,6 +6455,9 @@ function DynamicChat:ApplySleekChatSkin()
             end)
         else
             pcall(function()
+                if type(_G.GeneralDockManager.SetScale) == "function" then
+                    _G.GeneralDockManager:SetScale(1.0)
+                end
                 if type(_G.GeneralDockManager.SetClipsChildren) == "function" then
                     _G.GeneralDockManager:SetClipsChildren(false)
                 end
@@ -6225,7 +6560,7 @@ function DynamicChat:ApplySleekChatSkin()
                 local p = entry.panel
                 if i == 1 and not entry.headerDragStrip and p.headerBg then
                     local hs = CreateFrame("Frame", nil, UIParent)
-                    hs:SetFrameStrata("LOW")
+                    hs:SetFrameStrata("BACKGROUND")
                     hs:SetFrameLevel(2)
                     hs:EnableMouse(true)
                     hs:EnableMouseWheel(true)
@@ -6385,6 +6720,8 @@ function DynamicChat:ApplySleekChatSkin()
 
                 if i == 1 and entry.headerDragStrip and p.headerBg then
                     if self:IsChatFrameLayoutOwned() and not self._dsEditModeActive then
+                        if entry.headerDragStrip.SetFrameStrata then pcall(entry.headerDragStrip.SetFrameStrata, entry.headerDragStrip, "BACKGROUND") end
+                        if entry.headerDragStrip.SetFrameLevel then pcall(entry.headerDragStrip.SetFrameLevel, entry.headerDragStrip, 2) end
                         if entry.headerDragStrip.SetScale then pcall(entry.headerDragStrip.SetScale, entry.headerDragStrip, cfScale) end
                         entry.headerDragStrip:ClearAllPoints()
                         entry.headerDragStrip:SetPoint("TOPLEFT", p.headerBg, "TOPLEFT", 0, 0)
@@ -6838,6 +7175,37 @@ function DynamicChat:ApplySleekChatSkin()
                 LayoutDockedChatTabs(true, syncFont, fontPath, a1, a2, a3)
             end)
         end
+        local function ResolveNewestTemporaryWhisperFrame(chatType, chatTarget)
+            local targetClean = (not IsSecretValue(chatTarget) and type(chatTarget) == "string" and chatTarget ~= "") and chatTarget or nil
+            local typeClean = (not IsSecretValue(chatType) and type(chatType) == "string" and chatType ~= "") and chatType or nil
+            local lastTemp = nil
+            local function CheckFrame(cf)
+                if not cf or cf.isTemporary ~= true then return nil end
+                lastTemp = cf
+                if targetClean and not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" then
+                    local ct = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
+                    if (not typeClean or ct == typeClean) and DC_NS.WhisperTargetsMatch(cf.chatTarget, targetClean) then
+                        return cf
+                    end
+                end
+                return nil
+            end
+            if _G.GeneralDockManager and type(_G.GeneralDockManager.DOCKED_CHAT_FRAMES) == "table" then
+                for _, cf in ipairs(_G.GeneralDockManager.DOCKED_CHAT_FRAMES) do
+                    local matched = CheckFrame(cf)
+                    if matched then return matched end
+                end
+            end
+            local allFrames = CollectAllChatFrames()
+            for _, item in ipairs(allFrames) do
+                local matched = CheckFrame(item.cf)
+                if matched then return matched end
+            end
+            if _G.SELECTED_DOCK_FRAME and _G.SELECTED_DOCK_FRAME.isTemporary == true then
+                return _G.SELECTED_DOCK_FRAME
+            end
+            return lastTemp
+        end
         local function OnBlizzardImmediateTabLayout()
             if not DynamicChat:IsExternalChatEngineLoaded() and EnsureDB().enableSleekChatSkin ~= false then
                 local a1, a2, a3 = GetSuiteAccent()
@@ -6846,7 +7214,28 @@ function DynamicChat:ApplySleekChatSkin()
             OnBlizzardDockOrTabUpdate()
         end
         if type(_G.FCF_OpenTemporaryWindow) == "function" then
-            hooksecurefunc("FCF_OpenTemporaryWindow", OnBlizzardImmediateTabLayout)
+            hooksecurefunc("FCF_OpenTemporaryWindow", function(chatType, chatTarget)
+                local newCF = ResolveNewestTemporaryWhisperFrame(chatType, chatTarget)
+                if newCF then
+                    local entry = chatSkinStore[newCF]
+                    if not entry then
+                        entry = {}
+                        chatSkinStore[newCF] = entry
+                    end
+                    if not IsSecretValue(newCF.chatType) and newCF.chatType == "WHISPER"
+                        and not IsSecretValue(newCF.chatTarget) and type(newCF.chatTarget) == "string" and newCF.chatTarget ~= "" then
+                        entry.lastWhisperTarget = newCF.chatTarget
+                    end
+                    if not DynamicChat._restoringSavedWhisperTabs then
+                        pendingEnsureSelectedTabVisible = newCF
+                        if InCombatLockdown and InCombatLockdown() then
+                            DynamicChat._pendingVisibleTabAfterCombat = newCF
+                            DynamicChat._pendingTabLayoutAfterCombat = true
+                        end
+                    end
+                end
+                OnBlizzardImmediateTabLayout()
+            end)
         end
         if type(_G.FCF_SetTemporaryWindowType) == "function" then
             hooksecurefunc("FCF_SetTemporaryWindowType", OnBlizzardImmediateTabLayout)
@@ -7570,55 +7959,286 @@ end
 
 local reloadHooksInstalled = false
 
+function DynamicChat:SaveWhisperTabsSnapshot()
+    local db = EnsureDB()
+    if db.preserveWhisperTabs == false or db.preserveChatHistory == false or db.enableGPUBufferCap == false then
+        db.savedWhisperTabs = {}
+        return
+    end
+
+    local now = (type(_G.time) == "function" and tonumber(_G.time())) or 0
+    local maxLines = math.max(1, tonumber(db.maxSavedWhisperLines) or 50)
+    local existingList = DC_NS.PruneSavedWhisperTabs(db, now)
+
+    local candidates = {}
+    if self._pendingWhisperTabRestoreAfterCombat or not self._whisperTabsRestored then
+        for _, prev in ipairs(existingList) do
+            candidates[#candidates + 1] = {
+                target      = prev.target,
+                chatType    = "WHISPER",
+                lastUpdated = prev.lastUpdated,
+                lines       = prev.lines,
+            }
+        end
+    end
+
+    local seenFrames = {}
+    local orderedFrames = {}
+    local function AddCandidateFrame(cf)
+        if not cf or seenFrames[cf] then return end
+        seenFrames[cf] = true
+        orderedFrames[#orderedFrames + 1] = cf
+    end
+    for _, item in ipairs(CollectAllChatFrames()) do
+        AddCandidateFrame(item.cf)
+    end
+    if _G.GeneralDockManager and type(_G.GeneralDockManager.DOCKED_CHAT_FRAMES) == "table" then
+        for _, cf in ipairs(_G.GeneralDockManager.DOCKED_CHAT_FRAMES) do
+            AddCandidateFrame(cf)
+        end
+    end
+
+    for _, cf in ipairs(orderedFrames) do
+        if cf ~= _G.ChatFrame1 and cf ~= _G.ChatFrame2 and cf.isTemporary == true then
+            local cfName = (type(cf.GetName) == "function" and cf:GetName()) or nil
+            local tab = cfName and _G[cfName .. "Tab"] or nil
+            local skinEntry = chatSkinStore[cf]
+            local isOpen = (cf.isDocked == true)
+                or DynamicChat.SafeFrameIsShown(cf, false)
+                or (tab ~= nil and (DynamicChat.SafeFrameIsShown(tab, false) or (skinEntry and skinEntry.hiddenByScroll == true)))
+            if isOpen and not IsSecretValue(cf.chatType) and cf.chatType == "WHISPER"
+                and not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" then
+                local cleanTarget = DC_NS.NormalizeWhisperTarget(cf.chatTarget)
+                if cleanTarget then
+                    local mergedLines = {}
+                    local seenLines = {}
+                    local lowerLines = {}
+                    local function PushLine(rawText)
+                        local clean = SanitizeChatHistoryString(rawText)
+                        if not clean or clean == "--- Saved From Previous Session ---" then
+                            return false
+                        end
+                        if not seenLines[clean] then
+                            seenLines[clean] = true
+                            mergedLines[#mergedLines + 1] = clean
+                            lowerLines[#lowerLines + 1] = clean:lower()
+                            return true
+                        end
+                        return false
+                    end
+
+                    local existingEntry = nil
+                    for _, prev in ipairs(existingList) do
+                        if DC_NS.WhisperTargetsMatch(prev.target, cleanTarget) then
+                            existingEntry = prev
+                            break
+                        end
+                    end
+                    if existingEntry and type(existingEntry.lines) == "table" then
+                        for _, prevLine in ipairs(existingEntry.lines) do
+                            PushLine(prevLine)
+                        end
+                    end
+
+                    if type(cf.GetNumMessages) == "function" and type(cf.GetMessageInfo) == "function" then
+                        local okN, total = pcall(cf.GetNumMessages, cf)
+                        if okN and not IsSecretValue(total) and type(total) == "number" and total > 0 then
+                            local startIdx = math.max(1, total - maxLines + 1)
+                            for idx = startIdx, total do
+                                local okM, text = pcall(cf.GetMessageInfo, cf, idx)
+                                if okM and text ~= nil and not IsSecretValue(text) and type(text) == "string" and text ~= "" then
+                                    PushLine(text)
+                                end
+                            end
+                        end
+                    end
+
+                    if type(DynamicChat._sessionPlainLog) == "table" and #DynamicChat._sessionPlainLog > 0 then
+                        for _, sEntry in ipairs(DynamicChat._sessionPlainLog) do
+                            if type(sEntry) == "table" and not IsSecretValue(sEntry.line) and not IsSecretValue(sEntry.msg)
+                                and DC_NS.DoesSessionEntryMatchChatFrame(sEntry, cf) then
+                                local needle = (type(sEntry.msg) == "string" and sEntry.msg ~= "") and sEntry.msg:lower() or ""
+                                local alreadyPresent = false
+                                if needle ~= "" then
+                                    for _, low in ipairs(lowerLines) do
+                                        if low:find(needle, 1, true) ~= nil then
+                                            alreadyPresent = true
+                                            break
+                                        end
+                                    end
+                                end
+                                if not alreadyPresent and type(sEntry.line) == "string" and sEntry.line ~= "" then
+                                    PushLine(sEntry.line)
+                                end
+                            end
+                        end
+                    end
+
+                    if #mergedLines > maxLines then
+                        local capped = {}
+                        local cStart = #mergedLines - maxLines + 1
+                        for cIdx = cStart, #mergedLines do
+                            capped[#capped + 1] = mergedLines[cIdx]
+                        end
+                        mergedLines = capped
+                    end
+
+                    local updated = false
+                    for _, cand in ipairs(candidates) do
+                        if DC_NS.WhisperTargetsMatch(cand.target, cleanTarget) then
+                            cand.target = cleanTarget
+                            cand.lastUpdated = now
+                            cand.lines = mergedLines
+                            updated = true
+                            break
+                        end
+                    end
+                    if not updated then
+                        candidates[#candidates + 1] = {
+                            target      = cleanTarget,
+                            chatType    = "WHISPER",
+                            lastUpdated = now,
+                            lines       = mergedLines,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    db.savedWhisperTabs = candidates
+    DC_NS.PruneSavedWhisperTabs(db, now)
+end
+
 function DynamicChat:SaveChatHistorySnapshot()
     local db = EnsureDB()
     if db.preserveChatHistory == false or db.enableGPUBufferCap == false then
         db.savedChatHistory = {}
+        db.savedWhisperTabs = {}
         return
     end
     local cf = _G.ChatFrame1
-    if not cf or type(cf.GetNumMessages) ~= "function" or type(cf.GetMessageInfo) ~= "function" then
-        return
-    end
-    local okN, total = pcall(cf.GetNumMessages, cf)
-    if not okN or IsSecretValue(total) or type(total) ~= "number" or total <= 0 then
-        return
-    end
-    local maxSave = math.min(500, math.max(20, tonumber(db.maxChatLines) or 100))
-    local startIdx = math.max(1, total - maxSave + 1)
-    local out = {}
-    for idx = startIdx, total do
-        local okM, text, r, g, b = pcall(cf.GetMessageInfo, cf, idx)
-        if okM and text and not IsSecretValue(text) and type(text) == "string" and text ~= "" then
-            local okDiv, isDiv = pcall(string.find, text, "Chat History Restored", 1, true)
-            if not (okDiv and isDiv) then
-                local sr = (not IsSecretValue(r) and tonumber(r)) or 1
-                local sg = (not IsSecretValue(g) and tonumber(g)) or 1
-                local sb = (not IsSecretValue(b) and tonumber(b)) or 1
-                out[#out + 1] = {
-                    t = text,
-                    r = math.floor(sr * 1000 + 0.5) / 1000,
-                    g = math.floor(sg * 1000 + 0.5) / 1000,
-                    b = math.floor(sb * 1000 + 0.5) / 1000,
-                }
+    if cf and type(cf.GetNumMessages) == "function" and type(cf.GetMessageInfo) == "function" then
+        local okN, total = pcall(cf.GetNumMessages, cf)
+        if okN and not IsSecretValue(total) and type(total) == "number" and total > 0 then
+            local maxSave = math.min(500, math.max(20, tonumber(db.maxChatLines) or 100))
+            local startIdx = math.max(1, total - maxSave + 1)
+            local out = {}
+            for idx = startIdx, total do
+                local okM, text, r, g, b = pcall(cf.GetMessageInfo, cf, idx)
+                if okM and text and not IsSecretValue(text) and type(text) == "string" and text ~= "" then
+                    local okDiv, isDiv = pcall(string.find, text, "Chat History Restored", 1, true)
+                    if not (okDiv and isDiv) then
+                        local sr = (not IsSecretValue(r) and tonumber(r)) or 1
+                        local sg = (not IsSecretValue(g) and tonumber(g)) or 1
+                        local sb = (not IsSecretValue(b) and tonumber(b)) or 1
+                        out[#out + 1] = {
+                            t = text,
+                            r = math.floor(sr * 1000 + 0.5) / 1000,
+                            g = math.floor(sg * 1000 + 0.5) / 1000,
+                            b = math.floor(sb * 1000 + 0.5) / 1000,
+                        }
+                    end
+                end
             end
+            db.savedChatHistory = out
         end
     end
-    db.savedChatHistory = out
+    self:SaveWhisperTabsSnapshot()
 end
 
 function DynamicChat:SaveChatHistoryOnLogout()
     return self:SaveChatHistorySnapshot()
 end
 
+function DynamicChat:RestoreSavedWhisperTabs()
+    if self._whisperTabsRestored then return end
+    if IsModuleDisabledInSuite("DynamicChat") or self:IsExternalChatEngineLoaded() then return end
+
+    local db = EnsureDB()
+    local savedList = DC_NS.PruneSavedWhisperTabs(db)
+    if db.preserveWhisperTabs == false or db.preserveChatHistory == false or db.enableGPUBufferCap == false or #savedList == 0 then
+        self._whisperTabsRestored = true
+        self._pendingWhisperTabRestoreAfterCombat = false
+        return
+    end
+    if InCombatLockdown and InCombatLockdown() then
+        self._pendingWhisperTabRestoreAfterCombat = true
+        return
+    end
+    if type(_G.FCF_OpenTemporaryWindow) ~= "function" then
+        return
+    end
+
+    self._whisperTabsRestored = true
+    self._pendingWhisperTabRestoreAfterCombat = false
+
+    local openTargets = {}
+    local function RecordOpenFrame(cf)
+        if not cf or cf.isTemporary ~= true then return end
+        if not IsSecretValue(cf.chatType) and cf.chatType == "WHISPER"
+            and not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" then
+            openTargets[#openTargets + 1] = cf.chatTarget
+        end
+    end
+    for _, item in ipairs(CollectAllChatFrames()) do
+        RecordOpenFrame(item.cf)
+    end
+    if _G.GeneralDockManager and type(_G.GeneralDockManager.DOCKED_CHAT_FRAMES) == "table" then
+        for _, cf in ipairs(_G.GeneralDockManager.DOCKED_CHAT_FRAMES) do
+            RecordOpenFrame(cf)
+        end
+    end
+
+    local prevSelected = _G.SELECTED_DOCK_FRAME or _G.ChatFrame1
+    local maxTabs = math.max(1, tonumber(db.maxSavedWhisperTabs) or 5)
+    local openedAny = false
+
+    self._restoringSavedWhisperTabs = true
+    local limit = math.min(#savedList, maxTabs)
+    for i = 1, limit do
+        local item = savedList[i]
+        if type(item) == "table" and not IsSecretValue(item.chatType) and item.chatType == "WHISPER" then
+            local target = DC_NS.NormalizeWhisperTarget(item.target)
+            if target then
+                local alreadyOpen = false
+                for _, openTarget in ipairs(openTargets) do
+                    if DC_NS.WhisperTargetsMatch(openTarget, target) then
+                        alreadyOpen = true
+                        break
+                    end
+                end
+                if not alreadyOpen then
+                    local okOpen = pcall(_G.FCF_OpenTemporaryWindow, "WHISPER", target)
+                    if okOpen then
+                        openedAny = true
+                        openTargets[#openTargets + 1] = target
+                    end
+                end
+            end
+        end
+    end
+    self._restoringSavedWhisperTabs = false
+
+    if openedAny and prevSelected and _G.SELECTED_DOCK_FRAME ~= prevSelected and type(_G.FCF_SelectDockFrame) == "function" then
+        pcall(_G.FCF_SelectDockFrame, prevSelected)
+    end
+    if openedAny then
+        self:HookAllChatFramesAndEditBoxes()
+        self:ApplySleekChatSkin()
+    end
+end
+
 function DynamicChat:RestoreChatHistorySnapshot()
-    if self._chatHistoryRestored then return end
-    self._chatHistoryRestored = true
+    if not self._chatHistoryRestored then
+        self._chatHistoryRestored = true
+    end
     -- Retail 12.1.5 Zero-Taint Guard:
-    -- Never call cf1:AddMessage() or cf1:ScrollToBottom() on Blizzard's live ChatFrame1,
-    -- which taints cf1.historyBuffer and cf1.fontStringPool when secret strings arrive.
-    -- Instead, db.savedChatHistory is preserved in memory and prepended above a
-    -- "--- Saved From Previous Session ---" divider inside DynamicChat:ShowFullChatHistoryModal().
+    -- Never call cf:AddMessage() or cf:ScrollToBottom() on live Blizzard chat frames,
+    -- which taints historyBuffer and fontStringPool when secret strings arrive.
+    -- Instead, savedChatHistory and savedWhisperTabs are preserved in memory and prepended
+    -- above a "--- Saved From Previous Session ---" divider inside DynamicChat:ShowFullChatHistoryModal().
+    self:RestoreSavedWhisperTabs()
 end
 
 function DynamicChat:RestoreSavedChatHistory()
@@ -7729,6 +8349,11 @@ function DynamicChat:InstallChatHooks()
     if type(_G.FCF_OpenTemporaryWindow) == "function" then
         hooksecurefunc("FCF_OpenTemporaryWindow", function()
             DynamicChat:HookAllChatFramesAndEditBoxes()
+        end)
+    end
+    if type(_G.FCF_Close) == "function" then
+        hooksecurefunc("FCF_Close", function(closedCF)
+            DynamicChat:RemoveSavedWhisperTabForFrame(closedCF)
         end)
     end
     if type(_G.ChatEdit_ActivateChat) == "function" then
@@ -13032,6 +13657,7 @@ local function RenderChatEmbedded(arg1, arg2)
                     db.drawerExpanded.chatHistory = true
                 else
                     db.savedChatHistory = {}
+                    db.savedWhisperTabs = {}
                 end
                 DynamicChat:ApplyGPUBufferSettings()
                 DynamicChat:RefreshConfigUI()
@@ -13075,6 +13701,60 @@ local function RenderChatEmbedded(arg1, arg2)
         )
         root.allControls[#root.allControls + 1] = c3_gpuLines
 
+        local c3_preserveWhispers = CreateSubCardRow(c3_gpuCap, 62,
+            "Keep Whisper Tabs After Reload",
+            "Reopens your recent character whisper tabs after a UI reload and keeps their messages in Copy Chat.",
+            "Keep Whisper Tabs After Reload",
+            "Toggle keeping recent character whisper tabs and their messages after /reload."
+        )
+        AttachSegmentedSwitchToCard(c3_preserveWhispers,
+            function() return EnsureDB().preserveWhisperTabs ~= false end,
+            function(val)
+                local db = EnsureDB()
+                db.preserveWhisperTabs = (val == true)
+                if not db.preserveWhisperTabs then
+                    db.savedWhisperTabs = {}
+                else
+                    db.preserveChatHistory = true
+                    db.enableGPUBufferCap = true
+                end
+                DynamicChat:RefreshConfigUI()
+            end,
+            "Off", "Enabled",
+            "Toggle reopening recent character whisper tabs after a UI reload."
+        )
+        root.allControls[#root.allControls + 1] = c3_preserveWhispers
+
+        local c3_whisperTabLimit = CreateSubCardRow(c3_gpuCap, 60,
+            "Whisper Tab Limit",
+            "Choose how many recent character whisper tabs are reopened after a reload (up to 50 saved lines each).",
+            "Whisper Tab Limit",
+            "Select the maximum number of saved character whisper tabs to keep after a reload.",
+            function() return EnsureDB().preserveWhisperTabs ~= false end
+        )
+        AttachMultiPillSelectorToCard(c3_whisperTabLimit,
+            {
+                { value = 3,  label = "3 Tabs" },
+                { value = 5,  label = "5 Tabs" },
+                { value = 10, label = "10 Tabs" },
+            },
+            function()
+                local n = tonumber(EnsureDB().maxSavedWhisperTabs) or 5
+                if n <= 4 then return 3 end
+                if n <= 7 then return 5 end
+                return 10
+            end,
+            function(val)
+                local db = EnsureDB()
+                db.maxSavedWhisperTabs = tonumber(val) or 5
+                db.preserveWhisperTabs = true
+                DC_NS.PruneSavedWhisperTabs(db)
+                DynamicChat:RefreshConfigUI()
+            end,
+            "Select how many recent character whisper tabs to keep after a reload."
+        )
+        root.allControls[#root.allControls + 1] = c3_whisperTabLimit
+
         local c3_historyActions = CreateSubCardRow(c3_gpuCap, 56,
             "Copy & Clear Chat History",
             "Open the Copy Chat window for your active chat tab, or clear the active tab and saved reload history.",
@@ -13087,8 +13767,9 @@ local function RenderChatEmbedded(arg1, arg2)
                 pcall(targetCF.Clear, targetCF)
             end
             EnsureDB().savedChatHistory = {}
+            EnsureDB().savedWhisperTabs = {}
             DynamicChat._sessionPlainLog = {}
-            PrintMsg("Cleared active chat window and saved reload history.")
+            PrintMsg("Cleared active chat window, saved reload history, and saved whisper tabs.")
         end)
         clearHistBtn:SetPoint("RIGHT", c3_historyActions, "RIGHT", -14, 0)
         local copyHistBtn = CreateAccentActionButton(c3_historyActions, 90, 24, "Copy Chat", function()
@@ -13290,9 +13971,11 @@ end
 function DynamicChat._ResetChatModuleDefaults()
     CloseActiveDropdown()
     local existingHistory = (type(_G.DynamicChatDB) == "table" and type(_G.DynamicChatDB.savedChatHistory) == "table") and _G.DynamicChatDB.savedChatHistory or {}
+    local existingWhispers = (type(_G.DynamicChatDB) == "table" and type(_G.DynamicChatDB.savedWhisperTabs) == "table") and _G.DynamicChatDB.savedWhisperTabs or {}
     _G.DynamicChatDB = nil
     local db = EnsureDB()
     db.savedChatHistory = existingHistory
+    db.savedWhisperTabs = existingWhispers
     DynamicChat:ApplyAllEngineSettings()
     DynamicChat:RefreshConfigUI()
     PrintMsg("Reset all DynamicChat settings to factory defaults.")
@@ -13816,8 +14499,9 @@ function DynamicChat._RegisterWithDynamicSuite()
 
     DynamicChat.CHANGELOG = {
         version = DynamicChat.version or VERSION,
-        date = "24/11/2026",
+        date = "26/11/2026",
         entries = {
+            { type = "NEW",      text = "Whisper Tab Clickability Fix & Reload Persistence (26/11/2026): Moved the chat header drag strip to BACKGROUND strata strictly below all LOW-strata chat tabs (level 22) and navigation arrows (level 25), synced GeneralDockManager scale with ChatFrame1 so child clipping never cuts off the rightmost whisper tab, hardened tab reparenting out of GeneralDockManagerScrollFrameChild with combat and re-entrancy deferrals, and automatically scrolled newly opened whisper tabs into view. Added zero-taint character whisper tab and message persistence across reloads (capped at 3/5/10 tabs and 50 lines per tab with 24-hour expiry, Midnight secret-value skipping, automatic removal when closing a tab, and previous-session rendering in Copy Chat) plus 'Keep Whisper Tabs After Reload' and 'Whisper Tab Limit' controls under Links & History." },
             { type = "UI",       text = "12 px Default Chat Font & Info Toast Timer Sync (24/11/2026): Set the default chat message font size to 12 px and updated Clean Smoked-Glass and Minimalist Raid presets to use 12 px / 2 px line spacing while tuning High-Readability to a balanced +1 px step at 13 px (50% smoked-glass backdrop, thin outline, drop shadow, 2 px line spacing); and connected Mention Alert Toasts to Suite Studio's dedicated Info & Mention Toast Duration timer (5s default: 3s, 5s, 8s, 12s, or Stay Until Clicked) with hover-to-pause and Right-Click dismissal." },
             { type = "FIX",      text = "Tab 3 Blank Screen Fix, Quick Presets Active Highlight & Copy Chat / URL Overhaul (24/11/2026): Fixed a nil typo on the Tab 2 Line Spacing card that aborted workspace construction before Tabs 3 and 4 built, and reset vertical scroll cleanly when switching tabs or resizing to 800x520; added live Suite Accent active highlighting for Quick Presets (clearing automatically when any preset setting is manually edited), tuned High-Readability to crisp 14 px contrast (50% backdrop, thin outline, drop shadow, 2 px line spacing) while having Clean Smoked-Glass and Minimalist Raid restore 13 px / 2 px text, and dynamically scaled chat typing box height and message clearance across docked tabs so chat lines never collide with the top typing box; and overhauled Copy Chat and Copy Link with a rolling out-of-combat plain-text session buffer fallback, case-insensitive URL capture (including bare www. links without duplicate sub-matches), hardened escape-code stripping, a [Select All] confirmation button and up to 4 Recent Links pills in the Copy Chat window, an elevated Copy Link dialog with deferred focus and full selection, and a plain-English Midnight footer notice whenever Blizzard restricts reading protected combat or instance lines." },
             { type = "UI",       text = "Pass 2 Quick Presets, 6 Persisted Sub-Settings Drawers & 800x520 Clamping (24/11/2026): Added a 4-option Quick Presets card at the top of Tab 2 (Clean Smoked-Glass, Minimalist Raid, High-Readability, Quiet Alerts); converted Smoked-Glass Skin (now with a 0%-95% background opacity precision slider, border style, and 30s/60s/2m/5m auto-fade duration), Left Shortcut Bar, Notification Sounds, Mention & Keyword Alerts (with a new [Test] preview button on Mention Alert Toast), Custom Sound Files, and Chat History (with [Copy Chat] and [Clear History] buttons) into persisted 24px Sub-Settings (N) drawers (collapsed by default on fresh profiles); removed the orphaned single-card Compact Channel Tags section and duplicate font sync toggle; shortened and right-clamped 4-tab labels and card titles for 800x520 minimum windows; and stripped outline flags from font picker group headers." },
@@ -13983,6 +14667,7 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
                 if not IsModuleDisabledInSuite("DynamicChat") then
                     self:ReassertTargetWhisperSlashCommands()
                     self:ApplyWhisperDefaultSoundMuteState()
+                    self:RestoreSavedWhisperTabs()
                 end
             end)
             _G.C_Timer.After(1.5, function()
@@ -14041,6 +14726,10 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
     elseif event == "PLAYER_REGEN_ENABLED" then
         self:ApplyGPUBufferSettings()
         self:RefreshLeftRailTelemetry()
+        if self._pendingVisibleTabAfterCombat then
+            pendingEnsureSelectedTabVisible = self._pendingVisibleTabAfterCombat
+            self._pendingVisibleTabAfterCombat = nil
+        end
         if self._pendingChatPosAfterCombat then
             self._pendingChatPosAfterCombat = false
             self:ApplySavedChatFramePosition()
@@ -14052,6 +14741,10 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
                 local a1, a2, a3 = GetSuiteAccent()
                 LayoutDockedChatTabs(true, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
             end
+        end
+        if self._pendingWhisperTabRestoreAfterCombat then
+            self._pendingWhisperTabRestoreAfterCombat = false
+            self:RestoreSavedWhisperTabs()
         end
     elseif event == "FRIENDLIST_UPDATE"
         or event == "BN_FRIEND_INFO_CHANGED"
