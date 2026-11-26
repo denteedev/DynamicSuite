@@ -212,6 +212,7 @@ DynamicChat.IsSecretValue = IsSecretValue
 DynamicChat.SanitizeHex6  = SanitizeHex6
 
 DynamicChat._editBoxFocused = false
+DynamicChat._focusedEditBox = nil
 
 function DynamicChat.SafeFrameIsShown(frame, fallback)
     if not frame or type(frame.IsShown) ~= "function" then
@@ -1201,10 +1202,18 @@ local suppressNextLeadingSpace = {}
 -- Defensive guards for WoW 12.x Midnight Battle.net Whispers (type = "BN_WHISPER", tellTarget = <secret string>)
 -- where ChatFrame1EditBoxHeader:GetStringWidth() returns a <secret number>.
 function DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf)
-    if type(cf) ~= "table" or cf.isTemporary ~= true then
+    if cf == nil then return false end
+    if IsSecretValue(cf) then return true end
+    if type(cf) ~= "table" then
         return false
     end
-    if IsSecretValue(cf.chatType) or IsSecretValue(cf.chatTarget) or IsSecretValue(cf.name) then
+    if type(cf.IsForbidden) == "function" then
+        local okF, forb = pcall(cf.IsForbidden, cf)
+        if not okF or IsSecretValue(forb) or forb == true then
+            return true
+        end
+    end
+    if IsSecretValue(cf.isTemporary) or IsSecretValue(cf.chatType) or IsSecretValue(cf.chatTarget) or IsSecretValue(cf.name) then
         return true
     end
     if cf.chatType == "BN_WHISPER" or cf.chatType == "BN_CONVERSATION" then
@@ -1216,45 +1225,73 @@ end
 local function IsEditBoxSecretOrBNWhisper(editBox)
     if not editBox then return false end
     if IsSecretValue(editBox) then return true end
+    if type(editBox.IsForbidden) == "function" then
+        local okF, forb = pcall(editBox.IsForbidden, editBox)
+        if not okF or IsSecretValue(forb) or forb == true then
+            return true
+        end
+    end
     if type(editBox.GetAttribute) == "function" then
         local okT, tellTarget = pcall(editBox.GetAttribute, editBox, "tellTarget")
-        if okT and IsSecretValue(tellTarget) then
+        if not okT or IsSecretValue(tellTarget) then
             return true
         end
         local okC, chatType = pcall(editBox.GetAttribute, editBox, "chatType")
-        if okC and (IsSecretValue(chatType) or chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION") then
+        if not okC or IsSecretValue(chatType) or chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION" then
             return true
         end
         local okS, stickyType = pcall(editBox.GetAttribute, editBox, "stickyType")
-        if okS and (IsSecretValue(stickyType) or stickyType == "BN_WHISPER" or stickyType == "BN_CONVERSATION") then
+        if not okS or IsSecretValue(stickyType) or stickyType == "BN_WHISPER" or stickyType == "BN_CONVERSATION" then
             return true
         end
     end
     local ebName = nil
     if type(editBox.GetName) == "function" then
         local okN, n = pcall(editBox.GetName, editBox)
-        if okN and not IsSecretValue(n) and type(n) == "string" then
+        if not okN or IsSecretValue(n) then
+            return true
+        end
+        if type(n) == "string" then
             ebName = n
         end
     end
     local hdr = editBox.header or (ebName and _G[ebName .. "Header"])
-    if hdr and type(hdr.GetStringWidth) == "function" then
-        local okW, w = pcall(hdr.GetStringWidth, hdr)
-        if okW and IsSecretValue(w) then
-            return true
+    if hdr then
+        if type(hdr.GetStringWidth) == "function" then
+            local okW, w = pcall(hdr.GetStringWidth, hdr)
+            if not okW or IsSecretValue(w) then
+                return true
+            end
+        end
+        if type(hdr.GetText) == "function" then
+            local okHT, ht = pcall(hdr.GetText, hdr)
+            if not okHT or IsSecretValue(ht) then
+                return true
+            end
         end
     end
     local hdrSuffix = editBox.headerSuffix or (ebName and _G[ebName .. "HeaderSuffix"])
-    if hdrSuffix and type(hdrSuffix.GetStringWidth) == "function" then
-        local okSW, sw = pcall(hdrSuffix.GetStringWidth, hdrSuffix)
-        if okSW and IsSecretValue(sw) then
-            return true
+    if hdrSuffix then
+        if type(hdrSuffix.GetStringWidth) == "function" then
+            local okSW, sw = pcall(hdrSuffix.GetStringWidth, hdrSuffix)
+            if not okSW or IsSecretValue(sw) then
+                return true
+            end
+        end
+        if type(hdrSuffix.GetText) == "function" then
+            local okST, st = pcall(hdrSuffix.GetText, hdrSuffix)
+            if not okST or IsSecretValue(st) then
+                return true
+            end
         end
     end
     local ownerCF = editBox.chatFrame
     if not ownerCF and type(editBox.GetParent) == "function" then
         local okP, parent = pcall(editBox.GetParent, editBox)
-        if okP and type(parent) == "table" then
+        if not okP or IsSecretValue(parent) then
+            return true
+        end
+        if type(parent) == "table" then
             ownerCF = parent
         end
     end
@@ -1553,6 +1590,7 @@ end
 
 function DynamicChat:ApplyEditBoxSettings()
     if IsModuleDisabledInSuite("DynamicChat") or self:IsExternalChatEngineLoaded() then return end
+    if InCombatLockdown and InCombatLockdown() then return end
     local db = EnsureDB()
     local useAltMode = not (db.arrowHistoryNoAlt == true)
 
@@ -1560,8 +1598,17 @@ function DynamicChat:ApplyEditBoxSettings()
         local eb = _G["ChatFrame" .. i .. "EditBox"]
         if eb and eb.SetAltArrowKeyMode then
             local okSec, isSec = pcall(IsEditBoxSecretOrBNWhisper, eb)
-            if okSec and not isSec then
-                pcall(eb.SetAltArrowKeyMode, eb, useAltMode)
+            if okSec and not isSec and not DC_NS.IsEditBoxShownOrFocused(eb) then
+                local needSet = true
+                if type(eb.GetAltArrowKeyMode) == "function" then
+                    local okCur, curMode = pcall(eb.GetAltArrowKeyMode, eb)
+                    if okCur and not IsSecretValue(curMode) and (curMode == true) == useAltMode then
+                        needSet = false
+                    end
+                end
+                if needSet then
+                    pcall(eb.SetAltArrowKeyMode, eb, useAltMode)
+                end
             end
         end
     end
@@ -2424,13 +2471,13 @@ local function ResolveChatTabLabel(cf, tab, tabName, entry)
         local okExisting, existingTxt = pcall(fs.GetText, fs)
         if okExisting and existingTxt ~= nil and IsSecretValue(existingTxt) then
             if type(fs.Show) == "function" then pcall(fs.Show, fs) end
-            if type(fs.SetAlpha) == "function" then pcall(fs.SetAlpha, fs, 1.0) end
+            if DC_NS.CanSafelySetChatTabAlpha and DC_NS.CanSafelySetChatTabAlpha(fs) then pcall(fs.SetAlpha, fs, 1.0) end
             return fs, nil
         end
     end
     if cf.isTemporary == true and (IsSecretValue(cf.name) or IsSecretValue(cf.chatTarget)) then
         if type(fs.Show) == "function" then pcall(fs.Show, fs) end
-        if type(fs.SetAlpha) == "function" then pcall(fs.SetAlpha, fs, 1.0) end
+        if DC_NS.CanSafelySetChatTabAlpha and DC_NS.CanSafelySetChatTabAlpha(fs) then pcall(fs.SetAlpha, fs, 1.0) end
         return fs, nil
     end
 
@@ -4470,8 +4517,14 @@ local function HookSuppressOnShow(reg, clearTex)
 end
 
 local function SuppressBlizzardChatBackground(cf, cfName, skinEnabled)
-    if not cf then return end
-    cfName = cfName or (cf.GetName and cf:GetName()) or "ChatFrame1"
+    if not cf or IsSecretValue(cf) or DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf) then return end
+    if not cfName and type(cf.GetName) == "function" then
+        local okN, n = pcall(cf.GetName, cf)
+        if okN and not IsSecretValue(n) and type(n) == "string" and n ~= "" then
+            cfName = n
+        end
+    end
+    cfName = cfName or "ChatFrame1"
     local bg = _G[cfName .. "Background"] or cf.Background
     if bg then
         if skinEnabled then
@@ -4938,7 +4991,7 @@ local function IsChatTabAlerting(cf, tab, tabName, entry)
         local glowReg = (tab and (tab.glow or tab.Glow)) or (tabName and _G[tabName .. "Glow"])
         if glowReg then
             local ok, flashing = pcall(_G.UIFrameIsFlashing, glowReg)
-            if ok and flashing == true then
+            if ok and not IsSecretValue(flashing) and flashing == true then
                 return true
             end
         end
@@ -4959,8 +5012,14 @@ local CycleSelectedDockTab
 local RefreshTabNavButtonsVisuals
 
 function DC_NS.CanSafelySetChatTabAlpha(tab)
-    if not tab or type(tab.SetAlpha) ~= "function" then
+    if not tab or IsSecretValue(tab) or type(tab.SetAlpha) ~= "function" then
         return false
+    end
+    if type(tab.IsForbidden) == "function" then
+        local okForb, forb = pcall(tab.IsForbidden, tab)
+        if not okForb or IsSecretValue(forb) or forb == true then
+            return false
+        end
     end
     if type(_G.UIFrameIsFading) == "function" then
         local okFading, isFading = pcall(_G.UIFrameIsFading, tab)
@@ -4968,15 +5027,10 @@ function DC_NS.CanSafelySetChatTabAlpha(tab)
             return false
         end
     end
+    -- Skip whenever tab.fadeInfo exists or is secret (including secret startAlpha/endAlpha)
+    -- so DynamicChat never collides with Blizzard's FrameUtil UIFrameFade loop.
     local okFI, fadeInfo = pcall(function() return tab.fadeInfo end)
     if not okFI or IsSecretValue(fadeInfo) or fadeInfo ~= nil then
-        if okFI and type(fadeInfo) == "table" then
-            local okSA, sa = pcall(function() return fadeInfo.startAlpha end)
-            local okEA, ea = pcall(function() return fadeInfo.endAlpha end)
-            if not okSA or not okEA or IsSecretValue(sa) or IsSecretValue(ea) then
-                return false
-            end
-        end
         return false
     end
     return true
@@ -5040,11 +5094,28 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
             local ownerCF = hookedChatTabs[selfTab]
             if not ownerCF or DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
             local a1, a2, a3 = GetSuiteAccent()
-            StyleSingleChatTab(ownerCF, selfTab, ownerCF:GetName() or "ChatFrame1", true, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
+            local ownerName = "ChatFrame1"
+            if type(ownerCF.GetName) == "function" then
+                local okON, oName = pcall(ownerCF.GetName, ownerCF)
+                if okON and not IsSecretValue(oName) and type(oName) == "string" and oName ~= "" then
+                    ownerName = oName
+                end
+            end
+            StyleSingleChatTab(ownerCF, selfTab, ownerName, true, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
             if _G.GameTooltip then
                 local ownerEntry = chatSkinStore[ownerCF]
                 local tabFS = (selfTab.GetFontString and selfTab:GetFontString()) or selfTab.Text
-                local rawLabel = (ownerEntry and ownerEntry.fullTabLabel) or (tabFS and tabFS.GetText and tabFS:GetText()) or (ownerCF.name) or "Chat Tab"
+                local rawLabel = ownerEntry and ownerEntry.fullTabLabel or nil
+                if not rawLabel and tabFS and type(tabFS.GetText) == "function" then
+                    local okT, tVal = pcall(tabFS.GetText, tabFS)
+                    if okT and not IsSecretValue(tVal) and type(tVal) == "string" and tVal ~= "" then
+                        rawLabel = tVal
+                    end
+                end
+                if not rawLabel and not IsSecretValue(ownerCF.name) and type(ownerCF.name) == "string" and ownerCF.name ~= "" then
+                    rawLabel = ownerCF.name
+                end
+                rawLabel = rawLabel or "Chat Tab"
                 if not IsSecretValue(rawLabel) and type(rawLabel) == "string" and rawLabel ~= "" then
                     _G.GameTooltip:SetOwner(selfTab, "ANCHOR_TOP")
                     _G.GameTooltip:ClearLines()
@@ -5068,7 +5139,14 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
             end
             if not ownerCF or DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
             local a1, a2, a3 = GetSuiteAccent()
-            StyleSingleChatTab(ownerCF, selfTab, ownerCF:GetName() or "ChatFrame1", true, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
+            local ownerName = "ChatFrame1"
+            if type(ownerCF.GetName) == "function" then
+                local okON, oName = pcall(ownerCF.GetName, ownerCF)
+                if okON and not IsSecretValue(oName) and type(oName) == "string" and oName ~= "" then
+                    ownerName = oName
+                end
+            end
+            StyleSingleChatTab(ownerCF, selfTab, ownerName, true, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
         end)
     end
 
@@ -5681,8 +5759,14 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
         local seenCF = {}
         if type(dock.DOCKED_CHAT_FRAMES) == "table" then
             for _, cf in ipairs(dock.DOCKED_CHAT_FRAMES) do
-                if cf and not seenCF[cf] then
-                    local cfName = (cf.GetName and cf:GetName()) or nil
+                if cf and not IsSecretValue(cf) and not seenCF[cf] then
+                    local cfName = nil
+                    if type(cf.GetName) == "function" then
+                        local okN, n = pcall(cf.GetName, cf)
+                        if okN and not IsSecretValue(n) and type(n) == "string" and n ~= "" then
+                            cfName = n
+                        end
+                    end
                     local tab = cfName and _G[cfName .. "Tab"]
                     if tab and (DynamicChat.SafeFrameIsShown(tab, false) or cf == cf1 or cf.isDocked) then
                         seenCF[cf] = true
@@ -6577,11 +6661,14 @@ function DynamicChat:ApplySleekChatSkin()
             activeFrameSet[cf] = true
             local isTempBNetCF = DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf)
             -- 1. Completely strip Blizzard's native ChatFrameBackground, NineSlice & 9-slice border textures (No Box-in-a-Box!)
-            SuppressBlizzardChatBackground(cf, cfName, skinEnabled)
-            SetSideClutterButtonSuppressed(_G[cfName .. "ButtonFrame"], hideBtns)
-            SetSideClutterButtonSuppressed(_G[cfName .. "MinimizeButton"], hideBtns)
-            if cf.buttonFrame and cf.buttonFrame ~= _G[cfName .. "ButtonFrame"] then
-                SetSideClutterButtonSuppressed(cf.buttonFrame, hideBtns)
+            --    Skip temporary BN_WHISPER / secret chat frames so Blizzard's frame/children/UIFrameFade stay untouched.
+            if not isTempBNetCF then
+                SuppressBlizzardChatBackground(cf, cfName, skinEnabled)
+                SetSideClutterButtonSuppressed(_G[cfName .. "ButtonFrame"], hideBtns)
+                SetSideClutterButtonSuppressed(_G[cfName .. "MinimizeButton"], hideBtns)
+                if cf.buttonFrame and cf.buttonFrame ~= _G[cfName .. "ButtonFrame"] then
+                    SetSideClutterButtonSuppressed(cf.buttonFrame, hideBtns)
+                end
             end
 
             -- 2. Passively skin EditBox & Header font on init (never inside a hook that runs before/replaces UpdateHeader,
@@ -7055,13 +7142,17 @@ function DynamicChat:ApplySleekChatSkin()
             ebBar:SetPoint("TOPLEFT", _G.ChatFrame1EditBox, "TOPLEFT", 2, -2)
             ebBar:SetPoint("BOTTOMRIGHT", _G.ChatFrame1EditBox, "BOTTOMRIGHT", -2, 2)
         end
+        local activeEB = _G.ChatFrame1EditBox
         local hasFocus
-        if ebSecret then
+        if DynamicChat._editBoxFocused == true and DynamicChat._focusedEditBox ~= nil then
+            activeEB = DynamicChat._focusedEditBox
+            hasFocus = true
+        elseif ebSecret then
             hasFocus = (DynamicChat._editBoxFocused == true)
         else
             hasFocus = DynamicChat.SafeEditBoxHasFocus(_G.ChatFrame1EditBox)
         end
-        RefreshSleekEditBoxBarColor(_G.ChatFrame1EditBox, hasFocus)
+        RefreshSleekEditBoxBarColor(activeEB, hasFocus)
         ebBar:SetShown((hasFocus or alwaysShadedEB) and true or false)
     else
         ebBar:Hide()
@@ -7071,7 +7162,9 @@ function DynamicChat:ApplySleekChatSkin()
         editBoxFocusCallbacksHooked = true
         if _G.EventRegistry and type(_G.EventRegistry.RegisterCallback) == "function" then
             _G.EventRegistry:RegisterCallback("ChatFrame.OnEditBoxFocusGained", function(_, editBox)
+                local targetBox = editBox or _G.ChatFrame1EditBox
                 DynamicChat._editBoxFocused = true
+                DynamicChat._focusedEditBox = targetBox
                 if DynamicChat:IsExternalChatEngineLoaded() or IsEllesmereUILoaded() or EnsureDB().enableSleekChatSkin == false then
                     if chatEditBoxSkin then chatEditBoxSkin:Hide() end
                     return
@@ -7080,7 +7173,6 @@ function DynamicChat:ApplySleekChatSkin()
                 local isTopEB = (curDB.editBoxPosition == "TOP")
                 local curH = DC_NS.GetEmbeddedEditBoxHeight(curDB)
                 local bar = EnsureSleekEditBoxBar()
-                local targetBox = editBox or _G.ChatFrame1EditBox
                 if targetBox then
                     -- Never mutate targetBox anchors inside OnEditBoxFocusGained (which runs during Activate -> UpdateHeader);
                     -- only position our external UIParent-hosted bar.
@@ -7103,8 +7195,13 @@ function DynamicChat:ApplySleekChatSkin()
                 end
             end, DynamicChat)
 
-            _G.EventRegistry:RegisterCallback("ChatFrame.OnEditBoxFocusLost", function()
+            _G.EventRegistry:RegisterCallback("ChatFrame.OnEditBoxFocusLost", function(_, lostEditBox)
+                if lostEditBox ~= nil and not IsSecretValue(lostEditBox)
+                    and DynamicChat._focusedEditBox ~= nil and lostEditBox ~= DynamicChat._focusedEditBox then
+                    return
+                end
                 DynamicChat._editBoxFocused = false
+                DynamicChat._focusedEditBox = nil
                 if not chatEditBoxSkin then return end
                 local curDB = EnsureDB()
                 if DynamicChat:IsExternalChatEngineLoaded() or curDB.enableSleekChatSkin == false or curDB.editBoxBackgroundMode == "FOCUS_ONLY" then
@@ -7134,6 +7231,9 @@ function DynamicChat:ApplySleekChatSkin()
 
         local function OnBlizzardChatBackgroundUpdate(chatFrame)
             if DynamicChat:IsExternalChatEngineLoaded() then return end
+            if chatFrame ~= nil and (IsSecretValue(chatFrame) or DC_NS.IsTemporaryBNWhisperOrSecretFrame(chatFrame)) then
+                return
+            end
             local db = EnsureDB()
             local cf1 = _G.ChatFrame1
             if cf1 and type(db.chatFramePos) == "table" and not DynamicChat._dsEditModeActive and not DynamicChat._dsDragging and not (InCombatLockdown and InCombatLockdown()) then
@@ -7144,7 +7244,10 @@ function DynamicChat:ApplySleekChatSkin()
             end
             if db.enableSleekChatSkin == false then return end
             if chatFrame and type(chatFrame) == "table" and type(chatFrame.GetName) == "function" then
-                SuppressBlizzardChatBackground(chatFrame, chatFrame:GetName(), true)
+                local okN, cfName = pcall(chatFrame.GetName, chatFrame)
+                if okN and not IsSecretValue(cfName) and type(cfName) == "string" and cfName ~= "" then
+                    SuppressBlizzardChatBackground(chatFrame, cfName, true)
+                end
             else
                 for idx = 1, 10 do
                     local f = _G["ChatFrame" .. idx]
@@ -7242,7 +7345,7 @@ function DynamicChat:ApplySleekChatSkin()
         if type(_G.FCF_StartAlertFlash) == "function" then
             hooksecurefunc("FCF_StartAlertFlash", function(chatFrame)
                 if DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
-                if not chatFrame then return end
+                if not chatFrame or IsSecretValue(chatFrame) then return end
                 local entry = chatSkinStore[chatFrame]
                 if not entry then
                     entry = {}
@@ -7255,7 +7358,13 @@ function DynamicChat:ApplySleekChatSkin()
                 local syncFont = EnsureDB().applySuiteChatFont ~= false
                 local fontPath = GetFontPath()
                 if InCombatLockdown and InCombatLockdown() then
-                    local cfName = (chatFrame.GetName and chatFrame:GetName()) or nil
+                    local cfName = nil
+                    if type(chatFrame.GetName) == "function" then
+                        local okN, n = pcall(chatFrame.GetName, chatFrame)
+                        if okN and not IsSecretValue(n) and type(n) == "string" and n ~= "" then
+                            cfName = n
+                        end
+                    end
                     local tab = cfName and _G[cfName .. "Tab"]
                     if tab then
                         StyleSingleChatTab(chatFrame, tab, cfName, true, syncFont, fontPath, a1, a2, a3)
@@ -7269,7 +7378,7 @@ function DynamicChat:ApplySleekChatSkin()
         if type(_G.FCF_StopAlertFlash) == "function" then
             hooksecurefunc("FCF_StopAlertFlash", function(chatFrame)
                 if DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
-                if not chatFrame then return end
+                if not chatFrame or IsSecretValue(chatFrame) then return end
                 local entry = chatSkinStore[chatFrame]
                 if entry then
                     entry.isAlerting = false
@@ -7278,7 +7387,13 @@ function DynamicChat:ApplySleekChatSkin()
                 local syncFont = EnsureDB().applySuiteChatFont ~= false
                 local fontPath = GetFontPath()
                 if InCombatLockdown and InCombatLockdown() then
-                    local cfName = (chatFrame.GetName and chatFrame:GetName()) or nil
+                    local cfName = nil
+                    if type(chatFrame.GetName) == "function" then
+                        local okN, n = pcall(chatFrame.GetName, chatFrame)
+                        if okN and not IsSecretValue(n) and type(n) == "string" and n ~= "" then
+                            cfName = n
+                        end
+                    end
                     local tab = cfName and _G[cfName .. "Tab"]
                     if tab then
                         StyleSingleChatTab(chatFrame, tab, cfName, true, syncFont, fontPath, a1, a2, a3)
@@ -7372,9 +7487,10 @@ function DynamicChat:ApplySleekChatSkin()
         if type(_G.FCFTab_UpdateAlpha) == "function" then
             hooksecurefunc("FCFTab_UpdateAlpha", function(chatFrame)
                 if DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
-                if not chatFrame or type(chatFrame.GetName) ~= "function" then return end
-                local cfName = chatFrame:GetName()
-                local tab = cfName and _G[cfName .. "Tab"]
+                if not chatFrame or IsSecretValue(chatFrame) or type(chatFrame.GetName) ~= "function" then return end
+                local okN, cfName = pcall(chatFrame.GetName, chatFrame)
+                if not okN or IsSecretValue(cfName) or type(cfName) ~= "string" or cfName == "" then return end
+                local tab = _G[cfName .. "Tab"]
                 if tab then
                     local a1, a2, a3 = GetSuiteAccent()
                     StyleSingleChatTab(chatFrame, tab, cfName, true, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
@@ -7384,9 +7500,10 @@ function DynamicChat:ApplySleekChatSkin()
         if type(_G.FCFTab_UpdateColors) == "function" then
             hooksecurefunc("FCFTab_UpdateColors", function(tab)
                 if DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
-                if not tab or type(tab.GetName) ~= "function" then return end
-                local tabName = tab:GetName()
-                local cfName = tabName and tabName:match("^(ChatFrame%d+)Tab$")
+                if not tab or IsSecretValue(tab) or type(tab.GetName) ~= "function" then return end
+                local okN, tabName = pcall(tab.GetName, tab)
+                if not okN or IsSecretValue(tabName) or type(tabName) ~= "string" or tabName == "" then return end
+                local cfName = tabName:match("^(ChatFrame%d+)Tab$")
                 local cf = cfName and _G[cfName]
                 if cf then
                     local a1, a2, a3 = GetSuiteAccent()
@@ -8468,12 +8585,25 @@ function DynamicChat:InstallChatHooks()
         hooksecurefunc("ChatEdit_ActivateChat", function(editBox)
             if DynamicChat:IsExternalChatEngineLoaded() then return end
             if not editBox then return end
+            if InCombatLockdown and InCombatLockdown() then return end
             if IsEditBoxSecretOrBNWhisper(editBox) then
+                return
+            end
+            if editBox == _G.ChatFrame1EditBox and DC_NS.IsTemporaryBNWhisperOrSecretFrame(_G.SELECTED_DOCK_FRAME) then
                 return
             end
             if editBox.SetAltArrowKeyMode then
                 local useAltMode = not (EnsureDB().arrowHistoryNoAlt == true)
-                pcall(editBox.SetAltArrowKeyMode, editBox, useAltMode)
+                local needSet = true
+                if type(editBox.GetAltArrowKeyMode) == "function" then
+                    local okCur, curMode = pcall(editBox.GetAltArrowKeyMode, editBox)
+                    if okCur and not IsSecretValue(curMode) and (curMode == true) == useAltMode then
+                        needSet = false
+                    end
+                end
+                if needSet then
+                    pcall(editBox.SetAltArrowKeyMode, editBox, useAltMode)
+                end
             end
         end)
     end
@@ -14608,7 +14738,7 @@ function DynamicChat._RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "26/11/2026",
         entries = {
-            { type = "FIX",      text = "Battle.net Whisper Reply Hardening & Chat Tab Fade Guard (26/11/2026): Removed direct OnTextChanged widget script hooks from ChatFrameEditBox frames (relying strictly on hooksecurefunc post-hooks for /ww conversion), guarded edit box font updates, SetPoint re-anchoring, and temporary Battle.net whisper frame hooks against BN_WHISPER, secret targets/headers, combat, and active typing focus, updated the external Obsidian typing bar to hide the prompt hint and apply focused Battle.net cyan styling cleanly without touching Blizzard's edit box, and skipped chat tab alpha changes while Blizzard's UIFrameFade or secret fadeInfo is active on Combat Log or whisper tabs across both DynamicSuite and standalone DynamicChat." },
+            { type = "FIX",      text = "Battle.net Whisper Reply Hardening & Chat Tab Fade Guard (26/11/2026): Removed direct OnTextChanged widget script hooks from ChatFrameEditBox frames (relying strictly on hooksecurefunc post-hooks for /ww conversion), hardened secret/BN_WHISPER checks to fail closed on protected attributes, header text/width, and forbidden frames, guarded edit box font updates, SetPoint re-anchoring, Alt-arrow settings, and temporary Battle.net whisper frame background, button, scroll, and hook updates against BN_WHISPER, secret targets/headers, combat, and active typing focus, tracked active focused edit boxes so stale focus-lost events or deferred skin refreshes never re-show the Obsidian prompt hint over Battle.net typing, and skipped chat tab alpha changes while Blizzard's UIFrameFade or secret fadeInfo is active on Combat Log or whisper tabs (with secret-safe UIFrameIsFlashing and tab name checks) across both DynamicSuite and standalone DynamicChat." },
             { type = "NEW",      text = "Whisper Tab Clickability Fix & Reload Persistence (26/11/2026): Moved the chat header drag strip to BACKGROUND strata strictly below all LOW-strata chat tabs (level 22) and navigation arrows (level 25), synced GeneralDockManager scale with ChatFrame1 so child clipping never cuts off the rightmost whisper tab, hardened tab reparenting out of GeneralDockManagerScrollFrameChild with combat and re-entrancy deferrals, and automatically scrolled newly opened whisper tabs into view. Added zero-taint character whisper tab and message persistence across reloads (capped at 3/5/10 tabs and 50 lines per tab with 24-hour expiry, Midnight secret-value skipping, automatic removal when closing a tab, and previous-session rendering in Copy Chat) plus 'Keep Whisper Tabs After Reload' and 'Whisper Tab Limit' controls under Links & History." },
             { type = "UI",       text = "12 px Default Chat Font & Info Toast Timer Sync (24/11/2026): Set the default chat message font size to 12 px and updated Clean Smoked-Glass and Minimalist Raid presets to use 12 px / 2 px line spacing while tuning High-Readability to a balanced +1 px step at 13 px (50% smoked-glass backdrop, thin outline, drop shadow, 2 px line spacing); and connected Mention Alert Toasts to Suite Studio's dedicated Info & Mention Toast Duration timer (5s default: 3s, 5s, 8s, 12s, or Stay Until Clicked) with hover-to-pause and Right-Click dismissal." },
             { type = "FIX",      text = "Tab 3 Blank Screen Fix, Quick Presets Active Highlight & Copy Chat / URL Overhaul (24/11/2026): Fixed a nil typo on the Tab 2 Line Spacing card that aborted workspace construction before Tabs 3 and 4 built, and reset vertical scroll cleanly when switching tabs or resizing to 800x520; added live Suite Accent active highlighting for Quick Presets (clearing automatically when any preset setting is manually edited), tuned High-Readability to crisp 14 px contrast (50% backdrop, thin outline, drop shadow, 2 px line spacing) while having Clean Smoked-Glass and Minimalist Raid restore 13 px / 2 px text, and dynamically scaled chat typing box height and message clearance across docked tabs so chat lines never collide with the top typing box; and overhauled Copy Chat and Copy Link with a rolling out-of-combat plain-text session buffer fallback, case-insensitive URL capture (including bare www. links without duplicate sub-matches), hardened escape-code stripping, a [Select All] confirmation button and up to 4 Recent Links pills in the Copy Chat window, an elevated Copy Link dialog with deferred focus and full selection, and a plain-English Midnight footer notice whenever Blizzard restricts reading protected combat or instance lines." },

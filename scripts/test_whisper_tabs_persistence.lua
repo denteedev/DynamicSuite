@@ -10,6 +10,7 @@
 --   T7. Zero direct HookScript("OnTextChanged") on ChatFrameEditBox frames & post-hook /ww conversion
 --   T8. BN_WHISPER secret tellTarget/header guards (ApplyToEditBox, SetPoint, /ww, promptHint hide/restore)
 --   T9. StyleSingleChatTab skips tab:SetAlpha when tab.fadeInfo / secret alpha / UIFrameIsFading is active
+--   T10. Temp BN_WHISPER zero background/button mutation, multi-EditBox focus race, fail-closed secret probes & UIFrameIsFlashing guard
 -- Pure ASCII Only.
 -- ============================================================================
 
@@ -383,6 +384,8 @@ local function CreateHarness(opts)
         local cf = NewWidget("ScrollingMessageFrame", name, env.UIParent)
         cf.FontStringContainer = NewWidget("Frame", nil, cf)
         cf.Background = NewWidget("Texture", name .. "Background", cf)
+        cf.NineSlice = NewWidget("Frame", name .. "NineSlice", cf)
+        cf.ResizeButton = NewWidget("Button", name .. "ResizeButton", cf)
         cf.isTemporary = true
         cf.isDocked = true
         cf.chatType = chatType
@@ -394,6 +397,7 @@ local function CreateHarness(opts)
         tab.Text = tab:CreateFontString()
         tab.Text:SetText(cf.name)
         tab.conversationIcon = tab:CreateTexture()
+        tab.glow = tab:CreateTexture()
         tab._shown = true
         if optsTemp.textWidth then
             tab.Text.GetUnboundedStringWidth = function() return optsTemp.textWidth end
@@ -405,7 +409,7 @@ local function CreateHarness(opts)
         eb.headerSuffix = eb:CreateFontString()
         eb:SetAttribute("chatType", chatType)
         eb:SetAttribute("tellTarget", chatTarget)
-        NewWidget("Frame", name .. "ButtonFrame", cf)
+        cf.buttonFrame = NewWidget("Frame", name .. "ButtonFrame", cf)
         NewWidget("Button", name .. "MinimizeButton", cf)
 
         table.insert(env.CHAT_FRAMES, name)
@@ -455,7 +459,13 @@ local function CreateHarness(opts)
     env.FCF_DockUpdate = function() end
     env.FCFTab_UpdateAlpha = function() end
     env.FCFTab_UpdateColors = function() end
+    env.FCF_SetWindowAlpha = function() end
+    env.FCF_SetWindowColor = function() end
+    env.FCF_FadeInChatFrame = function() end
+    env.FCF_FadeOutChatFrame = function() end
+    env.FloatingChatFrame_UpdateBackgroundAnchors = function() end
     env.UIFrameIsFading = function(f) return (f and f._isFading == true) or false end
+    env.UIFrameIsFlashing = function(f) return (f and f._isFlashing) or false end
     env.ReloadUI = function() calls.ReloadUI = calls.ReloadUI + 1 end
     env.C_UI = { Reload = function() calls.ReloadUI = calls.ReloadUI + 1 end }
 
@@ -1279,6 +1289,130 @@ RunTest("T9: StyleSingleChatTab Skips tab:SetAlpha on Secret fadeInfo & Active U
         assertEqual(#tabBN._setAlphaCalls, 0, addonFolder .. ": Must skip tab:SetAlpha when tab.fadeInfo exists")
         assertTrue(#tab1._setAlphaCalls > 0, addonFolder .. ": Non-fading tab without fadeInfo should still enforce alpha 1.0")
         assertEqual(tab1:GetAlpha(), 1.0, addonFolder .. ": Non-fading tab alpha must be 1.0")
+    end
+
+    VerifyMode(true, "DynamicSuite")
+    VerifyMode(false, "DynamicChat")
+end)
+
+-- ============================================================================
+-- T10: Temp BN_WHISPER Zero Background/Button Mutation, Multi-EditBox Focus
+--      Race, Fail-Closed Secret Probes & UIFrameIsFlashing Secret Guard
+-- ============================================================================
+RunTest("T10: Temp BN_WHISPER Zero Child Mutations, Focus Race, Fail-Closed Probes & Secret Flash", function()
+    local function FindEditBoxSkin(h)
+        for _, w in ipairs(h.createdWidgets) do
+            if w.promptHint and w.leftBar then
+                return w
+            end
+        end
+        return nil
+    end
+
+    local function VerifyMode(withSuite, addonFolder)
+        local h = CreateHarness({ withSuite = withSuite, idleEditBox = true })
+        for i = 1, 10 do
+            h.env["ChatFrame" .. i .. "EditBox"]._shown = false
+        end
+        h.LoadModule(addonFolder)
+        h.FireEvent("ADDON_LOADED", addonFolder)
+        h.FireEvent("PLAYER_LOGIN")
+        h.env.DynamicChat:ApplySleekChatSkin()
+
+        local eb1 = h.env.ChatFrame1EditBox
+        local skinBar = FindEditBoxSkin(h)
+        assertTrue(skinBar ~= nil, addonFolder .. ": chatEditBoxSkin must exist")
+
+        -- 1. Open temporary BN_WHISPER frame and exercise fade/background/skin hooks
+        local cfBN = h.env.FCF_OpenTemporaryWindow("BN_WHISPER", MakeSecret("bnet-bg"))
+        local cfName = cfBN:GetName()
+        local ebBN = h.env[cfName .. "EditBox"]
+        local btnFrameBN = h.env[cfName .. "ButtonFrame"]
+        local minBtnBN = h.env[cfName .. "MinimizeButton"]
+        local tabBN = h.env[cfName .. "Tab"]
+
+        h.AdvanceTime(0.1)
+        h.env.DynamicChat:ApplySleekChatSkin()
+        h.env.FCF_SetWindowAlpha(cfBN, 0.25)
+        h.env.FCF_SetWindowColor(cfBN, 0, 0, 0)
+        h.env.FCF_FadeInChatFrame(cfBN)
+        h.env.FCF_FadeOutChatFrame(cfBN)
+        h.env.FloatingChatFrame_UpdateBackgroundAnchors(cfBN)
+
+        for _, child in ipairs({ cfBN.Background, cfBN.NineSlice, cfBN.ResizeButton, btnFrameBN, minBtnBN }) do
+            assertEqual(child._hideCalls, 0, addonFolder .. ": Temp BN_WHISPER child must not be hidden (" .. tostring(child:GetName()) .. ")")
+            assertEqual(#child._setAlphaCalls, 0, addonFolder .. ": Temp BN_WHISPER child must not have SetAlpha called (" .. tostring(child:GetName()) .. ")")
+            assertEqual(#child._hookScriptCalls, 0, addonFolder .. ": Temp BN_WHISPER child must not have HookScript attached (" .. tostring(child:GetName()) .. ")")
+        end
+
+        -- 2. Stale OnEditBoxFocusLost(eb1) after OnEditBoxFocusGained(ebBN) + deferred ApplySleekChatSkin
+        eb1._attrs.chatType = "SAY"
+        eb1._attrs.stickyType = "SAY"
+        eb1._attrs.tellTarget = nil
+        eb1._hasFocus = false
+        eb1._shown = false
+        h.state.activeEditBox = nil
+
+        h.env.EventRegistry:TriggerEvent("ChatFrame.OnEditBoxFocusGained", eb1)
+        h.env.EventRegistry:TriggerEvent("ChatFrame.OnEditBoxFocusGained", ebBN)
+        h.env.EventRegistry:TriggerEvent("ChatFrame.OnEditBoxFocusLost", eb1)
+        assertEqual(skinBar.promptHint:IsShown(), false, addonFolder .. ": Stale FocusLost(eb1) must not show promptHint over active ebBN")
+        assertEqual(skinBar._backdropBorderColor[1], 0.22, addonFolder .. ": Active ebBN must keep BNet cyan border R after stale FocusLost(eb1)")
+        assertEqual(skinBar._backdropBorderColor[2], 0.74, addonFolder .. ": Active ebBN must keep BNet cyan border G after stale FocusLost(eb1)")
+        assertEqual(skinBar._backdropBorderColor[3], 0.97, addonFolder .. ": Active ebBN must keep BNet cyan border B after stale FocusLost(eb1)")
+
+        -- Deferred ApplySleekChatSkin while ebBN is focused must preserve BNet cyan & hidden promptHint
+        h.env.DynamicChat:ApplySleekChatSkin()
+        assertEqual(skinBar.promptHint:IsShown(), false, addonFolder .. ": Deferred ApplySleekChatSkin must keep promptHint hidden while ebBN is focused")
+        assertEqual(skinBar._backdropBorderColor[1], 0.22, addonFolder .. ": Deferred ApplySleekChatSkin must keep BNet cyan border R")
+        assertEqual(skinBar._backdropBorderColor[2], 0.74, addonFolder .. ": Deferred ApplySleekChatSkin must keep BNet cyan border G")
+        assertEqual(skinBar._backdropBorderColor[3], 0.97, addonFolder .. ": Deferred ApplySleekChatSkin must keep BNet cyan border B")
+
+        -- Matching FocusLost(ebBN) restores idle promptHint
+        h.env.EventRegistry:TriggerEvent("ChatFrame.OnEditBoxFocusLost", ebBN)
+        assertEqual(skinBar.promptHint:IsShown(), true, addonFolder .. ": FocusLost(ebBN) must restore promptHint")
+
+        -- 3. ChatEdit_ActivateChat(eb1) while SELECTED_DOCK_FRAME == cfBN (before chatType switches) and in combat
+        h.env.SELECTED_DOCK_FRAME = cfBN
+        eb1._altArrowCalls = {}
+        h.env.ChatEdit_ActivateChat(eb1)
+        assertEqual(#eb1._altArrowCalls, 0, addonFolder .. ": ChatEdit_ActivateChat(eb1) must skip SetAltArrowKeyMode when SELECTED_DOCK_FRAME is BN_WHISPER")
+
+        h.env.SELECTED_DOCK_FRAME = h.env.ChatFrame1
+        h.state.inCombat = true
+        h.env.ChatEdit_ActivateChat(eb1)
+        h.env.DynamicChat:ApplyEditBoxSettings()
+        assertEqual(#eb1._altArrowCalls, 0, addonFolder .. ": ChatEdit_ActivateChat & ApplyEditBoxSettings must skip SetAltArrowKeyMode in combat")
+        h.state.inCombat = false
+
+        -- 4. Fail-closed secret probes: secret header:GetText() (with non-secret width) & throwing GetAttribute
+        h.state.targetName = "Friend-Frostmourne"
+        eb1._attrs.chatType = "SAY"
+        eb1._attrs.stickyType = "SAY"
+        eb1._attrs.tellTarget = nil
+        eb1.header.GetStringWidth = function() return 45 end
+        eb1.header.GetText = function() return MakeSecret("bnet-header-text") end
+        eb1._setTextCalls = {}
+        eb1._setAttrCalls = {}
+        eb1._text = "/ww "
+        h.env.ChatEdit_OnSpacePressed(eb1)
+        assertEqual(#eb1._setTextCalls, 0, addonFolder .. ": Secret header:GetText() must block /ww conversion")
+        assertEqual(#eb1._setAttrCalls, 0, addonFolder .. ": Secret header:GetText() must block attribute writes")
+
+        eb1.header.GetText = function() return "Say:" end
+        local origGetAttr = eb1.GetAttribute
+        eb1.GetAttribute = function() error("Forbidden attribute access") end
+        h.env.ChatEdit_OnSpacePressed(eb1)
+        assertEqual(#eb1._setTextCalls, 0, addonFolder .. ": Throwing GetAttribute must fail closed and block /ww conversion")
+        eb1.GetAttribute = origGetAttr
+
+        -- 5. Secret UIFrameIsFlashing return & fading tab.Text fontString must not error or mutate alpha
+        tabBN.glow._isFlashing = MakeSecret("secret-flashing")
+        tabBN.Text.fadeInfo = { startAlpha = MakeSecret("s"), endAlpha = MakeSecret("e") }
+        tabBN.Text._setAlphaCalls = {}
+        h.env.FCFTab_UpdateAlpha(cfBN)
+        h.env.FCFTab_UpdateColors(tabBN)
+        assertEqual(#tabBN.Text._setAlphaCalls, 0, addonFolder .. ": Must skip tab.Text:SetAlpha when fadeInfo exists")
     end
 
     VerifyMode(true, "DynamicSuite")
