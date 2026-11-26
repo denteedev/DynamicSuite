@@ -7,6 +7,9 @@
 --   T4. Zero-taint restore (FCF_OpenTemporaryWindow, 0 AddMessage calls, combat deferral, multi-reload retention)
 --   T5. Closing whisper tabs (Middle-Click + Blizzard FCF_Close) & Clear History cleanup
 --   T6. Copy Chat modal rendering ("--- Saved From Previous Session ---"), Tab 4 UI & Standalone parity
+--   T7. Zero direct HookScript("OnTextChanged") on ChatFrameEditBox frames & post-hook /ww conversion
+--   T8. BN_WHISPER secret tellTarget/header guards (ApplyToEditBox, SetPoint, /ww, promptHint hide/restore)
+--   T9. StyleSingleChatTab skips tab:SetAlpha when tab.fadeInfo / secret alpha / UIFrameIsFading is active
 -- Pure ASCII Only.
 -- ============================================================================
 
@@ -157,6 +160,17 @@ local function CreateHarness(opts)
             _setParentCalls = 0,
             _hideCalls = 0,
             _showCalls = 0,
+            _hookScriptCalls = {},
+            _setAlphaCalls = {},
+            _setFontCalls = {},
+            _setPointCalls = {},
+            _clearAllPointsCalls = 0,
+            _setTextCalls = {},
+            _setAttrCalls = {},
+            _altArrowCalls = {},
+            _backdropBorderColor = nil,
+            _hasFocus = false,
+            _isFading = false,
         }
         function w:GetName() return self._name end
         function w:GetObjectType() return self._type end
@@ -168,7 +182,7 @@ local function CreateHarness(opts)
         function w:IsShown() return self._shown == true end
         function w:IsVisible() return self._shown == true end
         function w:IsForbidden() return false end
-        function w:SetAlpha(a) self._alpha = a end
+        function w:SetAlpha(a) table.insert(self._setAlphaCalls, a); self._alpha = a end
         function w:GetAlpha() return self._alpha end
         function w:EnableMouse(v) self._mouse = (v ~= false) end
         function w:IsMouseEnabled() return self._mouse == true end
@@ -189,9 +203,9 @@ local function CreateHarness(opts)
         function w:StartMoving() end
         function w:StopMovingOrSizing() end
         function w:Raise() end
-        function w:SetFocus() end
-        function w:ClearFocus() end
-        function w:HasFocus() return false end
+        function w:SetFocus() self._hasFocus = true end
+        function w:ClearFocus() self._hasFocus = false end
+        function w:HasFocus() return self._hasFocus == true end
         function w:HighlightText() end
         function w:SetMultiLine() end
         function w:SetMaxLetters() end
@@ -216,16 +230,17 @@ local function CreateHarness(opts)
         function w:GetFrameLevel() return self._level end
         function w:SetHitRectInsets() end
         function w:IsMouseOver() return false end
-        function w:ClearAllPoints() self._points = {} end
-        function w:SetPoint(pt, relTo, relPt, x, y) table.insert(self._points, { pt, relTo, relPt, x, y }) end
+        function w:ClearAllPoints() self._clearAllPointsCalls = self._clearAllPointsCalls + 1; self._points = {} end
+        function w:SetPoint(pt, relTo, relPt, x, y) table.insert(self._setPointCalls, { pt, relTo, relPt, x, y }); table.insert(self._points, { pt, relTo, relPt, x, y }) end
         function w:SetAllPoints(p) self._points = { { "ALL", p, "ALL", 0, 0 } } end
         function w:GetNumPoints() return #self._points end
         function w:GetPoint(i) local p = self._points[i]; if not p then return nil end; return p[1], p[2], p[3], p[4], p[5] end
-        function w:SetAttribute(k, v) self._attrs[k] = v end
+        function w:SetAttribute(k, v) table.insert(self._setAttrCalls, { k = k, v = v }); self._attrs[k] = v end
         function w:GetAttribute(k) return self._attrs[k] end
         function w:SetScript(ev, fn) self._scripts[ev] = fn end
         function w:GetScript(ev) return self._scripts[ev] end
         function w:HookScript(ev, fn)
+            table.insert(self._hookScriptCalls, ev)
             local prev = self._scripts[ev]
             self._scripts[ev] = function(...)
                 if prev then prev(...) end
@@ -235,11 +250,11 @@ local function CreateHarness(opts)
         function w:RegisterEvent(ev) self._events[ev] = true end
         function w:UnregisterEvent(ev) self._events[ev] = nil end
         function w:UnregisterAllEvents() self._events = {} end
-        function w:SetText(t) self._text = t end
+        function w:SetText(t) table.insert(self._setTextCalls, t); self._text = t end
         function w:GetText() return self._text end
         function w:SetCursorPosition() end
-        function w:SetAltArrowKeyMode() end
-        function w:SetFont() return true end
+        function w:SetAltArrowKeyMode(v) table.insert(self._altArrowCalls, v) end
+        function w:SetFont(p, s, fl) table.insert(self._setFontCalls, { p, s, fl }); return true end
         function w:GetFont() return "Fonts\\FRIZQT__.TTF", 12, "" end
         function w:SetShadowColor() end
         function w:SetShadowOffset() end
@@ -288,7 +303,7 @@ local function CreateHarness(opts)
         function w:SetTexelSnappingBias() end
         function w:SetBackdrop() end
         function w:SetBackdropColor() end
-        function w:SetBackdropBorderColor() end
+        function w:SetBackdropBorderColor(r, g, b, a) self._backdropBorderColor = { r, g, b, a } end
         function w:SetOrientation() end
         function w:SetMinMaxValues() end
         function w:SetValue(v) self._sliderVal = v end
@@ -438,14 +453,50 @@ local function CreateHarness(opts)
     env.FCF_SetTemporaryWindowType = function() end
     env.FCFDock_UpdateTabs = function() end
     env.FCF_DockUpdate = function() end
+    env.FCFTab_UpdateAlpha = function() end
+    env.FCFTab_UpdateColors = function() end
+    env.UIFrameIsFading = function(f) return (f and f._isFading == true) or false end
     env.ReloadUI = function() calls.ReloadUI = calls.ReloadUI + 1 end
     env.C_UI = { Reload = function() calls.ReloadUI = calls.ReloadUI + 1 end }
 
-    env.ChatEdit_GetActiveWindow = function() return env.ChatFrame1EditBox end
+    local regCallbacks = {}
+    env.EventRegistry = {
+        RegisterCallback = function(_, eventName, fn, owner)
+            regCallbacks[eventName] = regCallbacks[eventName] or {}
+            table.insert(regCallbacks[eventName], { fn = fn, owner = owner })
+        end,
+        TriggerEvent = function(_, eventName, ...)
+            local list = regCallbacks[eventName]
+            if not list then return end
+            for _, entry in ipairs(list) do
+                entry.fn(entry.owner, ...)
+            end
+        end,
+    }
+
+    if opts.idleEditBox == true then
+        state.activeEditBox = nil
+    else
+        state.activeEditBox = env.ChatFrame1EditBox
+    end
+    env.ChatEdit_GetActiveWindow = function() return state.activeEditBox end
     env.ChatEdit_ChooseBoxForSend = function() return env.ChatFrame1EditBox end
     env.ChatEdit_ActivateChat = function() end
     env.ChatEdit_UpdateHeader = function() end
+    env.ChatEdit_OnTextChanged = function() end
+    env.ChatEdit_OnSpacePressed = function() end
+    env.ChatFrameEditBoxMixin = {
+        OnTextChanged = function() end,
+        OnSpacePressed = function() end,
+    }
     env.ChatFrame_SendTell = function() end
+    env.UnitExists = function(u) return u == "target" and state.targetName ~= nil end
+    env.UnitIsPlayer = function(u) return u == "target" and state.targetName ~= nil end
+    env.UnitIsUnit = function() return false end
+    env.UnitIsFriend = function(a, b) return b == "target" and state.targetName ~= nil end
+    env.UnitInParty = function() return false end
+    env.UnitInRaid = function() return false end
+    env.GetUnitName = function(u) return (u == "target") and state.targetName or nil end
 
     env.C_AddOns = {
         GetAddOnMetadata = function() return "2.11.2" end,
@@ -953,6 +1004,281 @@ RunTest("T6: Copy Chat Modal Divider, Tab 4 Settings & Standalone Mode Parity", 
         h.env.DynamicChatDB.preserveWhisperTabs = false
         h.env.DynamicChat:RefreshConfigUI()
         assertEqual(limitCard:IsShown(), false, addonFolder .. ": Whisper Tab Limit must hide when disabled")
+    end
+
+    VerifyMode(true, "DynamicSuite")
+    VerifyMode(false, "DynamicChat")
+end)
+
+-- ============================================================================
+-- T7: Zero Direct HookScript("OnTextChanged") on ChatFrameEditBox & /ww Post-Hooks
+-- ============================================================================
+RunTest("T7: Zero Direct EditBox HookScript('OnTextChanged') & hooksecurefunc /ww Conversion", function()
+    local function VerifyMode(withSuite, addonFolder)
+        local h = CreateHarness({ withSuite = withSuite, idleEditBox = true })
+        for i = 1, 10 do
+            h.env["ChatFrame" .. i .. "EditBox"]._shown = false
+        end
+        h.LoadModule(addonFolder)
+        h.FireEvent("ADDON_LOADED", addonFolder)
+        h.FireEvent("PLAYER_LOGIN")
+        h.env.DynamicChat:ApplySleekChatSkin()
+        h.env.DynamicChat:HookAllChatFramesAndEditBoxes()
+        h.env.DynamicChat:HookSingleEditBox(h.env.ChatFrame1EditBox)
+        h.env.ChatEdit_ActivateChat(h.env.ChatFrame1EditBox)
+
+        local cfW = h.env.FCF_OpenTemporaryWindow("WHISPER", "Alice-Frostmourne")
+        local cfBN = h.env.FCF_OpenTemporaryWindow("BN_WHISPER", MakeSecret("bnet-target"))
+        h.AdvanceTime(0.1)
+
+        local ebW = h.env[cfW:GetName() .. "EditBox"]
+        local ebBN = h.env[cfBN:GetName() .. "EditBox"]
+        h.env.ChatEdit_ActivateChat(ebW)
+        h.env.ChatEdit_ActivateChat(ebBN)
+
+        local allEditBoxes = { ebW, ebBN }
+        for i = 1, 10 do
+            table.insert(allEditBoxes, h.env["ChatFrame" .. i .. "EditBox"])
+        end
+        for _, eb in ipairs(allEditBoxes) do
+            assertEqual(#eb._hookScriptCalls, 0, addonFolder .. ": Zero direct HookScript calls on " .. tostring(eb:GetName()))
+            for _, ev in ipairs(eb._hookScriptCalls) do
+                assertTrue(ev ~= "OnTextChanged", addonFolder .. ": Must never HookScript('OnTextChanged') on " .. tostring(eb:GetName()))
+            end
+        end
+
+        -- Verify /ww still converts on normal non-secret SAY EditBox via hooksecurefunc post-hooks
+        h.state.targetName = "Friend-Frostmourne"
+        local eb1 = h.env.ChatFrame1EditBox
+        eb1:SetAttribute("chatType", "SAY")
+        eb1:SetAttribute("tellTarget", nil)
+        eb1:SetText("/ww ")
+        h.env.ChatEdit_OnSpacePressed(eb1)
+        assertEqual(eb1:GetAttribute("chatType"), "WHISPER", addonFolder .. ": /ww space post-hook must switch SAY to WHISPER")
+        assertEqual(eb1:GetAttribute("tellTarget"), "Friend-Frostmourne", addonFolder .. ": /ww space post-hook must set friendly tellTarget")
+
+        -- Verify ChatFrameEditBoxMixin.OnTextChanged post-hook also converts '/ww hi'
+        eb1:SetAttribute("chatType", "SAY")
+        eb1:SetAttribute("tellTarget", nil)
+        eb1:SetText("/ww hello")
+        h.env.ChatFrameEditBoxMixin.OnTextChanged(eb1)
+        assertEqual(eb1:GetAttribute("chatType"), "WHISPER", addonFolder .. ": Mixin OnTextChanged post-hook must convert /ww")
+        assertEqual(eb1:GetText(), "hello", addonFolder .. ": /ww conversion must preserve remainder text")
+    end
+
+    VerifyMode(true, "DynamicSuite")
+    VerifyMode(false, "DynamicChat")
+end)
+
+-- ============================================================================
+-- T8: BN_WHISPER Secret Target/Header Guards & External promptHint Focus Handling
+-- ============================================================================
+RunTest("T8: BN_WHISPER Secret Guards (Typography, SetPoint, /ww) & promptHint Hide/Restore", function()
+    local function FindEditBoxSkin(h)
+        for _, w in ipairs(h.createdWidgets) do
+            if w.promptHint and w.leftBar then
+                return w
+            end
+        end
+        return nil
+    end
+
+    local function VerifyMode(withSuite, addonFolder)
+        local h = CreateHarness({ withSuite = withSuite, idleEditBox = true })
+        for i = 1, 10 do
+            h.env["ChatFrame" .. i .. "EditBox"]._shown = false
+        end
+        h.LoadModule(addonFolder)
+        h.FireEvent("ADDON_LOADED", addonFolder)
+        h.FireEvent("PLAYER_LOGIN")
+        h.env.DynamicChat:ApplySleekChatSkin()
+        h.env.DynamicChat:ApplyChatFrameTypography()
+
+        local eb1 = h.env.ChatFrame1EditBox
+        local skinBar = FindEditBoxSkin(h)
+        assertTrue(skinBar ~= nil, addonFolder .. ": External chatEditBoxSkin must exist")
+        assertTrue(#eb1._setFontCalls > 0, addonFolder .. ": Idle non-secret ChatFrame1EditBox should receive initial font")
+        assertTrue(#eb1._setPointCalls > 0, addonFolder .. ": Idle non-secret ChatFrame1EditBox should receive initial anchor")
+
+        -- Open temporary BN_WHISPER tab with secret target
+        local secretTarget = MakeSecret("bnet-target")
+        local cfBN = h.env.FCF_OpenTemporaryWindow("BN_WHISPER", secretTarget)
+        local ebBN = h.env[cfBN:GetName() .. "EditBox"]
+        local secretHdrW = MakeSecret("hdr-width")
+        ebBN.header.GetStringWidth = function() return secretHdrW end
+        ebBN._shown = true
+        ebBN._hasFocus = true
+
+        -- Also configure ChatFrame1EditBox as actively replying in BN_WHISPER with secret tellTarget & header width
+        eb1:SetAttribute("chatType", "BN_WHISPER")
+        eb1:SetAttribute("stickyType", "BN_WHISPER")
+        eb1:SetAttribute("tellTarget", MakeSecret("bnet-tell"))
+        eb1.header.GetStringWidth = function() return secretHdrW end
+        eb1._shown = true
+        eb1._hasFocus = true
+        h.state.activeEditBox = eb1
+        h.state.targetName = "Friend-Frostmourne"
+
+        -- Reset counters to verify ZERO mutations during active BN_WHISPER open/select/reply
+        eb1._setFontCalls = {}
+        eb1.header._setFontCalls = {}
+        eb1._setPointCalls = {}
+        eb1._clearAllPointsCalls = 0
+        eb1._setTextCalls = {}
+        eb1._setAttrCalls = {}
+        eb1._altArrowCalls = {}
+        eb1._hookScriptCalls = {}
+
+        ebBN._setFontCalls = {}
+        ebBN.header._setFontCalls = {}
+        ebBN._setPointCalls = {}
+        ebBN._clearAllPointsCalls = 0
+        ebBN._setTextCalls = {}
+        ebBN._setAttrCalls = {}
+        ebBN._altArrowCalls = {}
+        ebBN._hookScriptCalls = {}
+
+        cfBN._setFontCalls = {}
+        cfBN._hookScriptCalls = {}
+
+        -- Trigger hooks & timers
+        h.env.FCF_OpenTemporaryWindow("BN_WHISPER", MakeSecret("bnet-target-2"))
+        h.AdvanceTime(0.1)
+        h.env.FCF_SelectDockFrame(cfBN)
+        h.env.DynamicChat:ApplyChatFrameTypography()
+        h.env.DynamicChat:ApplySleekChatSkin()
+        h.env.ChatEdit_ActivateChat(eb1)
+        h.env.ChatEdit_ActivateChat(ebBN)
+        h.env.ChatEdit_UpdateHeader(eb1)
+
+        -- Simulate Blizzard calling eb1:SetPoint during BN_WHISPER reply
+        eb1:SetPoint("BOTTOMLEFT", h.env.UIParent, "BOTTOMLEFT", 12, 12)
+
+        -- Simulate typing '/ww ' inside BN_WHISPER editBox
+        eb1._text = "/ww "
+        h.env.ChatEdit_OnTextChanged(eb1)
+        h.env.ChatEdit_OnSpacePressed(eb1)
+        h.env.ChatFrameEditBoxMixin.OnTextChanged(eb1)
+        h.env.ChatFrameEditBoxMixin.OnSpacePressed(eb1)
+
+        assertEqual(#eb1._setFontCalls, 0, addonFolder .. ": ApplyToEditBox must skip eb1 during BN_WHISPER")
+        assertEqual(#eb1.header._setFontCalls, 0, addonFolder .. ": ApplyToEditBox must skip eb1.header during BN_WHISPER")
+        assertEqual(#ebBN._setFontCalls, 0, addonFolder .. ": ApplyToEditBox must skip temp BN_WHISPER editBox")
+        assertEqual(#ebBN.header._setFontCalls, 0, addonFolder .. ": ApplyToEditBox must skip temp BN_WHISPER header")
+        assertEqual(#cfBN._setFontCalls, 0, addonFolder .. ": ApplyToSingleFrame must skip temp BN_WHISPER chatFrame")
+        assertEqual(#cfBN._hookScriptCalls, 0, addonFolder .. ": Must not attach HookScript to temp BN_WHISPER chatFrame")
+        assertEqual(eb1._clearAllPointsCalls, 0, addonFolder .. ": SetPoint hook & ApplyEditBoxAnchorNow must skip eb1 during BN_WHISPER")
+        assertEqual(#eb1._setPointCalls, 1, addonFolder .. ": Only Blizzard's own SetPoint call should exist on eb1 (zero re-anchoring)")
+        assertEqual(#eb1._setTextCalls, 0, addonFolder .. ": /ww conversion must skip BN_WHISPER editBox")
+        assertEqual(#eb1._setAttrCalls, 0, addonFolder .. ": Must never mutate chatType/tellTarget on BN_WHISPER editBox")
+        assertEqual(#eb1._altArrowCalls, 0, addonFolder .. ": ChatEdit_ActivateChat must skip SetAltArrowKeyMode on BN_WHISPER editBox")
+        assertEqual(#ebBN._altArrowCalls, 0, addonFolder .. ": ChatEdit_ActivateChat must skip SetAltArrowKeyMode on temp BN_WHISPER editBox")
+
+        -- Also verify secret header:GetStringWidth() alone (even with chatType='SAY') blocks /ww conversion
+        eb1._attrs.chatType = "SAY"
+        eb1._attrs.stickyType = "SAY"
+        eb1._attrs.tellTarget = nil
+        eb1._text = "/ww "
+        h.env.ChatEdit_OnSpacePressed(eb1)
+        assertEqual(#eb1._setTextCalls, 0, addonFolder .. ": Secret header:GetStringWidth() must block /ww conversion")
+        assertEqual(#eb1._setAttrCalls, 0, addonFolder .. ": Secret header:GetStringWidth() must block attribute writes")
+
+        -- Restore BN_WHISPER attributes and verify EventRegistry focus gained hides promptHint + applies BNet cyan
+        eb1._attrs.chatType = "BN_WHISPER"
+        eb1._attrs.stickyType = "BN_WHISPER"
+        eb1._attrs.tellTarget = MakeSecret("bnet-tell")
+        skinBar.promptHint:Show()
+        h.env.EventRegistry:TriggerEvent("ChatFrame.OnEditBoxFocusGained", eb1)
+        assertEqual(skinBar.promptHint:IsShown(), false, addonFolder .. ": Focus gained on BN_WHISPER must hide external chatEditBoxSkin.promptHint")
+        assertTrue(skinBar._backdropBorderColor ~= nil, addonFolder .. ": Focus gained must update chatEditBoxSkin border")
+        assertEqual(skinBar._backdropBorderColor[1], 0.22, addonFolder .. ": Focused BN_WHISPER dock border R must be BNet cyan (0.22)")
+        assertEqual(skinBar._backdropBorderColor[2], 0.74, addonFolder .. ": Focused BN_WHISPER dock border G must be BNet cyan (0.74)")
+        assertEqual(skinBar._backdropBorderColor[3], 0.97, addonFolder .. ": Focused BN_WHISPER dock border B must be BNet cyan (0.97)")
+        assertEqual(#eb1._setAttrCalls, 0, addonFolder .. ": OnEditBoxFocusGained must not mutate BN_WHISPER editBox")
+        assertEqual(eb1._clearAllPointsCalls, 0, addonFolder .. ": OnEditBoxFocusGained must not re-anchor BN_WHISPER editBox")
+
+        -- Focus lost must restore idle promptHint even while stickyType/tellTarget remain BN_WHISPER/secret
+        h.env.EventRegistry:TriggerEvent("ChatFrame.OnEditBoxFocusLost")
+        assertEqual(skinBar.promptHint:IsShown(), true, addonFolder .. ": Focus lost after BN_WHISPER must restore chatEditBoxSkin.promptHint")
+
+        -- Verify combat lockdown & shown/focused non-secret EditBox also skip ApplyToEditBox
+        eb1._attrs.chatType = "SAY"
+        eb1._attrs.stickyType = "SAY"
+        eb1._attrs.tellTarget = nil
+        eb1.header.GetStringWidth = function() return 40 end
+        eb1._shown = true
+        eb1._hasFocus = false
+        h.state.activeEditBox = nil
+        eb1._setFontCalls = {}
+        eb1.header._setFontCalls = {}
+        h.env.DynamicChat:ApplyChatFrameTypography()
+        assertEqual(#eb1._setFontCalls, 0, addonFolder .. ": ApplyToEditBox must skip shown editBox")
+
+        eb1._shown = false
+        h.state.inCombat = true
+        h.env.DynamicChat:ApplyChatFrameTypography()
+        assertEqual(#eb1._setFontCalls, 0, addonFolder .. ": ApplyToEditBox must skip editBox in combat")
+        h.state.inCombat = false
+    end
+
+    VerifyMode(true, "DynamicSuite")
+    VerifyMode(false, "DynamicChat")
+end)
+
+-- ============================================================================
+-- T9: StyleSingleChatTab Skips tab:SetAlpha on Secret fadeInfo / UIFrameFade
+-- ============================================================================
+RunTest("T9: StyleSingleChatTab Skips tab:SetAlpha on Secret fadeInfo & Active UIFrameFade", function()
+    local function VerifyMode(withSuite, addonFolder)
+        local h = CreateHarness({ withSuite = withSuite, idleEditBox = true })
+        for i = 1, 10 do
+            h.env["ChatFrame" .. i .. "EditBox"]._shown = false
+        end
+        h.LoadModule(addonFolder)
+        h.FireEvent("ADDON_LOADED", addonFolder)
+        h.FireEvent("PLAYER_LOGIN")
+        h.env.DynamicChat:ApplySleekChatSkin()
+
+        local cfW = h.env.FCF_OpenTemporaryWindow("WHISPER", "Alice")
+        local tabW = h.env[cfW:GetName() .. "Tab"]
+        local cfBN = h.env.FCF_OpenTemporaryWindow("BN_WHISPER", MakeSecret("bnet-fade"))
+        local tabBN = h.env[cfBN:GetName() .. "Tab"]
+        local tab1 = h.env.ChatFrame1Tab
+        local tab2 = h.env.ChatFrame2Tab
+
+        -- Case A: ChatFrame2Tab has tab.fadeInfo with secret startAlpha/endAlpha
+        tab2.fadeInfo = {
+            startAlpha = MakeSecret("start-alpha"),
+            endAlpha = MakeSecret("end-alpha"),
+            timeToFade = 0.25,
+        }
+        tab2._setAlphaCalls = {}
+
+        -- Case B: Whisper tab is actively fading via UIFrameIsFading(tab) == true (even without fadeInfo)
+        tabW.fadeInfo = nil
+        tabW._isFading = true
+        tabW._setAlphaCalls = {}
+
+        -- Case C: BN_WHISPER tab has non-secret tab.fadeInfo table
+        tabBN.fadeInfo = { startAlpha = 0.4, endAlpha = 1.0, timeToFade = 0.2 }
+        tabBN._setAlphaCalls = {}
+
+        -- Case D: Normal ChatFrame1Tab has no fadeInfo and is not fading
+        tab1.fadeInfo = nil
+        tab1._isFading = false
+        tab1._setAlphaCalls = {}
+
+        h.env.FCFTab_UpdateAlpha(h.env.ChatFrame1)
+        h.env.FCFTab_UpdateAlpha(h.env.ChatFrame2)
+        h.env.FCFTab_UpdateAlpha(cfW)
+        h.env.FCFTab_UpdateAlpha(cfBN)
+        h.env.DynamicChat:ApplySleekChatSkin()
+
+        assertEqual(#tab2._setAlphaCalls, 0, addonFolder .. ": Must skip tab:SetAlpha when tab.fadeInfo has secret alpha values")
+        assertEqual(#tabW._setAlphaCalls, 0, addonFolder .. ": Must skip tab:SetAlpha when UIFrameIsFading(tab) is true")
+        assertEqual(#tabBN._setAlphaCalls, 0, addonFolder .. ": Must skip tab:SetAlpha when tab.fadeInfo exists")
+        assertTrue(#tab1._setAlphaCalls > 0, addonFolder .. ": Non-fading tab without fadeInfo should still enforce alpha 1.0")
+        assertEqual(tab1:GetAlpha(), 1.0, addonFolder .. ": Non-fading tab alpha must be 1.0")
     end
 
     VerifyMode(true, "DynamicSuite")

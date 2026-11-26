@@ -1198,37 +1198,82 @@ end
 local isConvertingEditBox = false
 local suppressNextLeadingSpace = {}
 
--- Defensive guard for WoW 12.x Midnight Battle.net Whispers (type = "BN_WHISPER", tellTarget = <secret string>)
+-- Defensive guards for WoW 12.x Midnight Battle.net Whispers (type = "BN_WHISPER", tellTarget = <secret string>)
 -- where ChatFrame1EditBoxHeader:GetStringWidth() returns a <secret number>.
+function DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf)
+    if type(cf) ~= "table" or cf.isTemporary ~= true then
+        return false
+    end
+    if IsSecretValue(cf.chatType) or IsSecretValue(cf.chatTarget) or IsSecretValue(cf.name) then
+        return true
+    end
+    if cf.chatType == "BN_WHISPER" or cf.chatType == "BN_CONVERSATION" then
+        return true
+    end
+    return false
+end
+
 local function IsEditBoxSecretOrBNWhisper(editBox)
     if not editBox then return false end
+    if IsSecretValue(editBox) then return true end
     if type(editBox.GetAttribute) == "function" then
         local okT, tellTarget = pcall(editBox.GetAttribute, editBox, "tellTarget")
         if okT and IsSecretValue(tellTarget) then
             return true
         end
         local okC, chatType = pcall(editBox.GetAttribute, editBox, "chatType")
-        if okC and (IsSecretValue(chatType) or chatType == "BN_WHISPER") then
+        if okC and (IsSecretValue(chatType) or chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION") then
             return true
         end
         local okS, stickyType = pcall(editBox.GetAttribute, editBox, "stickyType")
-        if okS and (IsSecretValue(stickyType) or stickyType == "BN_WHISPER") then
+        if okS and (IsSecretValue(stickyType) or stickyType == "BN_WHISPER" or stickyType == "BN_CONVERSATION") then
             return true
         end
     end
-    local hdr = editBox.header or (editBox.GetName and editBox:GetName() and _G[editBox:GetName() .. "Header"])
+    local ebName = nil
+    if type(editBox.GetName) == "function" then
+        local okN, n = pcall(editBox.GetName, editBox)
+        if okN and not IsSecretValue(n) and type(n) == "string" then
+            ebName = n
+        end
+    end
+    local hdr = editBox.header or (ebName and _G[ebName .. "Header"])
     if hdr and type(hdr.GetStringWidth) == "function" then
         local okW, w = pcall(hdr.GetStringWidth, hdr)
         if okW and IsSecretValue(w) then
             return true
         end
     end
-    local hdrSuffix = editBox.headerSuffix or (editBox.GetName and editBox:GetName() and _G[editBox:GetName() .. "HeaderSuffix"])
+    local hdrSuffix = editBox.headerSuffix or (ebName and _G[ebName .. "HeaderSuffix"])
     if hdrSuffix and type(hdrSuffix.GetStringWidth) == "function" then
         local okSW, sw = pcall(hdrSuffix.GetStringWidth, hdrSuffix)
         if okSW and IsSecretValue(sw) then
             return true
         end
+    end
+    local ownerCF = editBox.chatFrame
+    if not ownerCF and type(editBox.GetParent) == "function" then
+        local okP, parent = pcall(editBox.GetParent, editBox)
+        if okP and type(parent) == "table" then
+            ownerCF = parent
+        end
+    end
+    if DC_NS.IsTemporaryBNWhisperOrSecretFrame(ownerCF) then
+        return true
+    end
+    return false
+end
+
+function DC_NS.IsEditBoxShownOrFocused(editBox)
+    if not editBox then return false end
+    if DynamicChat._editBoxFocused == true then
+        return true
+    end
+    if DynamicChat.SafeFrameIsShown(editBox, true) then
+        return true
+    end
+    if DynamicChat.SafeEditBoxHasFocus(editBox) then
+        return true
     end
     return false
 end
@@ -1299,6 +1344,7 @@ local function StripDeferredSpaceAfterWhisperConvert(editBox)
     if not editBox or not (_G.C_Timer and type(_G.C_Timer.After) == "function") then return end
     _G.C_Timer.After(0, function()
         if not editBox or isConvertingEditBox then return end
+        if IsEditBoxSecretOrBNWhisper(editBox) then return end
         local okC, chatType = pcall(editBox.GetAttribute, editBox, "chatType")
         if not okC or IsSecretValue(chatType) or chatType == "BN_WHISPER" then
             return
@@ -1327,6 +1373,7 @@ end
 
 local function SwitchEditBoxToTargetWhisper(editBox, fullTarget, initialText)
     if not editBox or not fullTarget then return end
+    if IsEditBoxSecretOrBNWhisper(editBox) then return end
     local okC, chatType = pcall(editBox.GetAttribute, editBox, "chatType")
     if not okC or IsSecretValue(chatType) or chatType == "BN_WHISPER" then
         return
@@ -1356,8 +1403,11 @@ local function TryConvertTargetWhisperEditBox(editBox, isSpacePress)
     if isConvertingEditBox or not editBox then return end
     if IsModuleDisabledInSuite("DynamicChat") then return end
 
-    -- Only bail out early if chatType is BN_WHISPER or tellTarget/text is a secret value.
+    -- Only bail out early if chatType is BN_WHISPER or tellTarget/header/text is a secret value.
     -- Never block /ww on InCombatLockdown()!
+    if IsEditBoxSecretOrBNWhisper(editBox) then
+        return
+    end
     local okC, chatType = pcall(editBox.GetAttribute, editBox, "chatType")
     if not okC or IsSecretValue(chatType) or chatType == "BN_WHISPER" then
         return
@@ -4202,7 +4252,7 @@ local function ApplyPassiveEditBoxSkinOnInit(editBox, cfName, skinEnabled, syncF
     if not editBox then return end
     if IsEllesmereUILoaded() then return end
     if InCombatLockdown and InCombatLockdown() then return end
-    if IsEditBoxSecretOrBNWhisper(editBox) then
+    if IsEditBoxSecretOrBNWhisper(editBox) or DC_NS.IsEditBoxShownOrFocused(editBox) then
         return
     end
 
@@ -4249,32 +4299,42 @@ local function RefreshSleekEditBoxBarColor(editBox, hasFocusOverride)
         chatEditBoxSkin:Hide()
         return
     end
-    local targetEB = editBox or _G.ChatFrame1EditBox
-    if targetEB and IsEditBoxSecretOrBNWhisper(targetEB) then
-        return
-    end
     local db = EnsureDB()
     local bgAlpha = tonumber(db.chatBgAlpha) or 0.25
     local ar, ag, ab = GetSuiteAccent()
     local cr, cg, cb = ar, ag, ab
-    if targetEB and targetEB.GetAttribute then
-        local ok, chatType = pcall(targetEB.GetAttribute, targetEB, "chatType")
-        if ok and chatType and not IsSecretValue(chatType) and not (issecretvalue and issecretvalue(chatType)) and _G.ChatTypeInfo and _G.ChatTypeInfo[chatType] then
-            local info = _G.ChatTypeInfo[chatType]
-            cr = tonumber(info.r) or ar
-            cg = tonumber(info.g) or ag
-            cb = tonumber(info.b) or ab
-        end
-    end
-    if cr > 0.88 and cg > 0.88 and cb > 0.88 then
-        cr, cg, cb = 0.72, 0.78, 0.86
-    end
+    local targetEB = editBox or _G.ChatFrame1EditBox
+    local isSecretOrBN = (targetEB ~= nil) and IsEditBoxSecretOrBNWhisper(targetEB)
 
     local hasFocus
-    if hasFocusOverride ~= nil and not IsSecretValue(hasFocusOverride) then
-        hasFocus = (hasFocusOverride == true)
+    if isSecretOrBN then
+        -- Never read or mutate targetEB when a Battle.net whisper or secret value is active;
+        -- still update our external UIParent-hosted chatEditBoxSkin so promptHint never overlaps BNet typing.
+        cr, cg, cb = 0.22, 0.74, 0.97 -- #38BDF8 BNet Cyan
+        if hasFocusOverride ~= nil and not IsSecretValue(hasFocusOverride) then
+            hasFocus = (hasFocusOverride == true)
+        else
+            hasFocus = (DynamicChat._editBoxFocused == true)
+        end
     else
-        hasFocus = DynamicChat.SafeEditBoxHasFocus(targetEB)
+        if targetEB and targetEB.GetAttribute then
+            local ok, chatType = pcall(targetEB.GetAttribute, targetEB, "chatType")
+            if ok and chatType and not IsSecretValue(chatType) and not (issecretvalue and issecretvalue(chatType)) and _G.ChatTypeInfo and _G.ChatTypeInfo[chatType] then
+                local info = _G.ChatTypeInfo[chatType]
+                cr = tonumber(info.r) or ar
+                cg = tonumber(info.g) or ag
+                cb = tonumber(info.b) or ab
+            end
+        end
+        if cr > 0.88 and cg > 0.88 and cb > 0.88 then
+            cr, cg, cb = 0.72, 0.78, 0.86
+        end
+
+        if hasFocusOverride ~= nil and not IsSecretValue(hasFocusOverride) then
+            hasFocus = (hasFocusOverride == true)
+        else
+            hasFocus = DynamicChat.SafeEditBoxHasFocus(targetEB)
+        end
     end
 
     if hasFocus then
@@ -4898,6 +4958,30 @@ local ScrollDockedTabViewport
 local CycleSelectedDockTab
 local RefreshTabNavButtonsVisuals
 
+function DC_NS.CanSafelySetChatTabAlpha(tab)
+    if not tab or type(tab.SetAlpha) ~= "function" then
+        return false
+    end
+    if type(_G.UIFrameIsFading) == "function" then
+        local okFading, isFading = pcall(_G.UIFrameIsFading, tab)
+        if not okFading or IsSecretValue(isFading) or isFading == true then
+            return false
+        end
+    end
+    local okFI, fadeInfo = pcall(function() return tab.fadeInfo end)
+    if not okFI or IsSecretValue(fadeInfo) or fadeInfo ~= nil then
+        if okFI and type(fadeInfo) == "table" then
+            local okSA, sa = pcall(function() return fadeInfo.startAlpha end)
+            local okEA, ea = pcall(function() return fadeInfo.endAlpha end)
+            if not okSA or not okEA or IsSecretValue(sa) or IsSecretValue(ea) then
+                return false
+            end
+        end
+        return false
+    end
+    return true
+end
+
 local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPath, ar, ag, ab)
     if not cf or not tab then return end
     local entry = chatSkinStore[cf]
@@ -5028,9 +5112,10 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
     end
 
     -- Prevent Blizzard's FCFTab_UpdateAlpha from dimming unselected tab text to 20%-40% alpha
+    -- while skipping tabs currently managed by Blizzard's UIFrameFade / secret fadeInfo,
     -- and ensure the entire tab cell is 100% clickable & mousewheel-scrollable at LOW strata Level 22
     if skinEnabled then
-        if tab.SetAlpha then pcall(tab.SetAlpha, tab, 1.0) end
+        if DC_NS.CanSafelySetChatTabAlpha(tab) then pcall(tab.SetAlpha, tab, 1.0) end
         if tab.SetHitRectInsets then pcall(tab.SetHitRectInsets, tab, 0, 0, 0, 0) end
         if tab.EnableMouse then pcall(tab.EnableMouse, tab, true) end
         if tab.EnableMouseWheel then pcall(tab.EnableMouseWheel, tab, true) end
@@ -6266,6 +6351,8 @@ do
 
     function TypographyMgr.ApplyToEditBox(eb, fontPath, size, flags, hasShadow)
         if not eb then return end
+        if InCombatLockdown and InCombatLockdown() then return end
+        if IsEditBoxSecretOrBNWhisper(eb) or DC_NS.IsEditBoxShownOrFocused(eb) then return end
         local ebSize = math.max(11, math.min(size, 18))
         if eb.SetFont then
             local ok, setOk = pcall(eb.SetFont, eb, fontPath, ebSize, flags)
@@ -6288,7 +6375,7 @@ do
     end
 
     function TypographyMgr.ApplyToSingleFrame(cf, cfName, fontPath, size, flags, hasShadow, spacing, fading, fadeDuration)
-        if not cf then return end
+        if not cf or DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf) then return end
         if cf.SetFont then
             local ok, setOk = pcall(cf.SetFont, cf, fontPath, size, flags)
             if not ok or setOk == false then
@@ -6331,7 +6418,10 @@ do
                 end)
             end
             if type(_G.FCF_OpenTemporaryWindow) == "function" then
-                hooksecurefunc("FCF_OpenTemporaryWindow", function()
+                hooksecurefunc("FCF_OpenTemporaryWindow", function(chatType, chatTarget)
+                    if IsSecretValue(chatType) or IsSecretValue(chatTarget) or chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION" then
+                        return
+                    end
                     if C_Timer and C_Timer.After then
                         C_Timer.After(0, function()
                             DynamicChat:ApplyChatFrameTypography()
@@ -6485,6 +6575,7 @@ function DynamicChat:ApplySleekChatSkin()
         local eb     = _G[cfName .. "EditBox"]
         if cf then
             activeFrameSet[cf] = true
+            local isTempBNetCF = DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf)
             -- 1. Completely strip Blizzard's native ChatFrameBackground, NineSlice & 9-slice border textures (No Box-in-a-Box!)
             SuppressBlizzardChatBackground(cf, cfName, skinEnabled)
             SetSideClutterButtonSuppressed(_G[cfName .. "ButtonFrame"], hideBtns)
@@ -6494,8 +6585,8 @@ function DynamicChat:ApplySleekChatSkin()
             end
 
             -- 2. Passively skin EditBox & Header font on init (never inside a hook that runs before/replaces UpdateHeader,
-            --    and never when tellTarget or header:GetStringWidth() is a secret value)
-            if eb then
+            --    and never when tellTarget or header:GetStringWidth() is a secret value or on a temporary BN_WHISPER frame)
+            if eb and not isTempBNetCF then
                 ApplyPassiveEditBoxSkinOnInit(eb, cfName, skinEnabled, syncFont, fontPath)
             end
 
@@ -6641,7 +6732,7 @@ function DynamicChat:ApplySleekChatSkin()
                                 if _G.ChatFrame1Background.SetClampRectInsets then _G.ChatFrame1Background:SetClampRectInsets(0, 0, 0, 0) end
                                 if _G.ChatFrame1Background.SetClampedToScreen then _G.ChatFrame1Background:SetClampedToScreen(false) end
                             end
-                            if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) then
+                            if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) and not DC_NS.IsEditBoxShownOrFocused(_G.ChatFrame1EditBox) then
                                 if _G.ChatFrame1EditBox.SetClampRectInsets then _G.ChatFrame1EditBox:SetClampRectInsets(0, 0, 0, 0) end
                                 if _G.ChatFrame1EditBox.SetClampedToScreen then _G.ChatFrame1EditBox:SetClampedToScreen(false) end
                             end
@@ -6753,7 +6844,7 @@ function DynamicChat:ApplySleekChatSkin()
                             if _G.ChatFrame1Background.SetClampRectInsets then _G.ChatFrame1Background:SetClampRectInsets(0, 0, 0, 0) end
                             if _G.ChatFrame1Background.SetClampedToScreen then _G.ChatFrame1Background:SetClampedToScreen(false) end
                         end
-                        if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) then
+                        if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) and not DC_NS.IsEditBoxShownOrFocused(_G.ChatFrame1EditBox) then
                             if _G.ChatFrame1EditBox.SetClampRectInsets then _G.ChatFrame1EditBox:SetClampRectInsets(0, 0, 0, 0) end
                             if _G.ChatFrame1EditBox.SetClampedToScreen then _G.ChatFrame1EditBox:SetClampedToScreen(false) end
                         end
@@ -6810,7 +6901,12 @@ function DynamicChat:ApplySleekChatSkin()
             end
 
             -- 4. Reskin cf.ScrollBar (3px Auto-Fade Track) & Hide cf.ScrollToBottomButton
-            ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
+            if not isTempBNetCF then
+                ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
+            else
+                if entry.customScrollBar then entry.customScrollBar:Hide() end
+                if entry.scrollThumbFrame then entry.scrollThumbFrame:Hide() end
+            end
 
             -- 5. Flat Top Tab Header Bar Cells & Full-Width 2px Suite Accent Underline
             if tab then
@@ -6818,7 +6914,7 @@ function DynamicChat:ApplySleekChatSkin()
             end
 
             -- 5a. Ensure docked sibling chat tabs (Guild, Whisper, Loot, etc.) also clear the embedded EditBox
-            if skinEnabled and i ~= 1 and cf ~= _G.ChatFrame2 and cf.isDocked
+            if skinEnabled and i ~= 1 and cf ~= _G.ChatFrame2 and cf.isDocked and not isTempBNetCF
                 and cf.FontStringContainer and cf.FontStringContainer.ClearAllPoints and cf.FontStringContainer.SetPoint
                 and not (InCombatLockdown and InCombatLockdown()) then
                 local ebH = DC_NS.GetEmbeddedEditBoxHeight(db)
@@ -6881,17 +6977,20 @@ function DynamicChat:ApplySleekChatSkin()
         local alwaysShadedEB = (db.editBoxBackgroundMode ~= "FOCUS_ONLY")
         local ebH = DC_NS.GetEmbeddedEditBoxHeight(db)
         local ebSecret = IsEditBoxSecretOrBNWhisper(eb1)
-        if cf1 and not ebSecret and not (InCombatLockdown and InCombatLockdown()) then
+        local ebActive = ebSecret or DC_NS.IsEditBoxShownOrFocused(eb1)
+        if cf1 and not ebActive and not (InCombatLockdown and InCombatLockdown()) then
             local state = passiveSkinnedEditBoxes[eb1]
             if not state then
                 state = {}
                 passiveSkinnedEditBoxes[eb1] = state
             end
             local function ApplyEditBoxAnchorNow()
-                if DynamicChat._applyingEditBoxPos or not cf1 then return end
-                if InCombatLockdown and InCombatLockdown() then return end
+                if DynamicChat._applyingEditBoxPos or not cf1 then return false end
+                if InCombatLockdown and InCombatLockdown() then return false end
                 local curEB = _G.ChatFrame1EditBox
-                if not curEB or IsEditBoxSecretOrBNWhisper(curEB) then return end
+                if not curEB or IsEditBoxSecretOrBNWhisper(curEB) or DC_NS.IsEditBoxShownOrFocused(curEB) then
+                    return false
+                end
                 local curDB = EnsureDB()
                 local curTop = (curDB.editBoxPosition == "TOP")
                 local curH = DC_NS.GetEmbeddedEditBoxHeight(curDB)
@@ -6909,6 +7008,7 @@ function DynamicChat:ApplySleekChatSkin()
                     end
                 end)
                 DynamicChat._applyingEditBoxPos = false
+                return true
             end
             if not editBox1PosHooked and type(eb1.SetPoint) == "function" then
                 editBox1PosHooked = true
@@ -6916,6 +7016,10 @@ function DynamicChat:ApplySleekChatSkin()
                     if DynamicChat._applyingEditBoxPos or DynamicChat._dsDragging or DynamicChat._dsEditModeActive then return end
                     if InCombatLockdown and InCombatLockdown() then
                         DynamicChat._pendingChatPosAfterCombat = true
+                        return
+                    end
+                    local curEB = _G.ChatFrame1EditBox
+                    if not curEB or IsEditBoxSecretOrBNWhisper(curEB) or DC_NS.IsEditBoxShownOrFocused(curEB) then
                         return
                     end
                     if not DynamicChat:IsChatFrameLayoutOwned() then return end
@@ -6931,8 +7035,9 @@ function DynamicChat:ApplySleekChatSkin()
             local anchorKey = tostring(cf1) .. ":" .. (isTopEB and "TOP" or "BOT") .. ":" .. tostring(ebH)
             local okPt, _, relTo = pcall(eb1.GetPoint, eb1, 1)
             if state.anchorKey ~= anchorKey or not okPt or relTo ~= cf1 then
-                state.anchorKey = anchorKey
-                ApplyEditBoxAnchorNow()
+                if ApplyEditBoxAnchorNow() then
+                    state.anchorKey = anchorKey
+                end
             end
         end
         local cf1Scale = (cf1 and cf1.GetScale and cf1:GetScale()) or 1.0
@@ -6950,7 +7055,12 @@ function DynamicChat:ApplySleekChatSkin()
             ebBar:SetPoint("TOPLEFT", _G.ChatFrame1EditBox, "TOPLEFT", 2, -2)
             ebBar:SetPoint("BOTTOMRIGHT", _G.ChatFrame1EditBox, "BOTTOMRIGHT", -2, 2)
         end
-        local hasFocus = DynamicChat.SafeEditBoxHasFocus(_G.ChatFrame1EditBox)
+        local hasFocus
+        if ebSecret then
+            hasFocus = (DynamicChat._editBoxFocused == true)
+        else
+            hasFocus = DynamicChat.SafeEditBoxHasFocus(_G.ChatFrame1EditBox)
+        end
         RefreshSleekEditBoxBarColor(_G.ChatFrame1EditBox, hasFocus)
         ebBar:SetShown((hasFocus or alwaysShadedEB) and true or false)
     else
@@ -6976,7 +7086,7 @@ function DynamicChat:ApplySleekChatSkin()
                     -- only position our external UIParent-hosted bar.
                     local cf1 = _G.ChatFrame1
                     bar:ClearAllPoints()
-                    if cf1 and targetBox == _G.ChatFrame1EditBox then
+                    if cf1 and (targetBox == _G.ChatFrame1EditBox or IsEditBoxSecretOrBNWhisper(targetBox)) then
                         if isTopEB then
                             bar:SetPoint("TOPLEFT", cf1, "TOPLEFT", 0, 0)
                             bar:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -curH)
@@ -7009,12 +7119,16 @@ function DynamicChat:ApplySleekChatSkin()
         if type(_G.ChatEdit_UpdateHeader) == "function" then
             hooksecurefunc("ChatEdit_UpdateHeader", function(editBox)
                 if not editBox then return end
-                if IsEditBoxSecretOrBNWhisper(editBox) then
+                if DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then
                     return
                 end
-                if not DynamicChat:IsExternalChatEngineLoaded() and EnsureDB().enableSleekChatSkin ~= false then
-                    RefreshSleekEditBoxBarColor(editBox)
+                if IsEditBoxSecretOrBNWhisper(editBox) then
+                    if DynamicChat._editBoxFocused == true then
+                        RefreshSleekEditBoxBarColor(editBox, true)
+                    end
+                    return
                 end
+                RefreshSleekEditBoxBarColor(editBox)
             end)
         end
 
@@ -7105,7 +7219,7 @@ function DynamicChat:ApplySleekChatSkin()
                         if cf then
                             local entry = chatSkinStore[cf]
                             if entry then
-                                if cf == selectedFrame or DynamicChat.SafeFrameIsShown(cf, false) then
+                                if not DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf) and (cf == selectedFrame or DynamicChat.SafeFrameIsShown(cf, false)) then
                                     ReskinChatScrollBarAndBottomButton(cf, entry, true)
                                 else
                                     if entry.customScrollBar then
@@ -7451,7 +7565,7 @@ function DynamicChat:ApplySavedChatFramePosition()
             if _G.ChatFrame1Background.SetClampRectInsets then _G.ChatFrame1Background:SetClampRectInsets(0, 0, 0, 0) end
             if _G.ChatFrame1Background.SetClampedToScreen then _G.ChatFrame1Background:SetClampedToScreen(false) end
         end
-        if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) then
+        if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) and not DC_NS.IsEditBoxShownOrFocused(_G.ChatFrame1EditBox) then
             if _G.ChatFrame1EditBox.SetClampRectInsets then _G.ChatFrame1EditBox:SetClampRectInsets(0, 0, 0, 0) end
             if _G.ChatFrame1EditBox.SetClampedToScreen then _G.ChatFrame1EditBox:SetClampedToScreen(false) end
         end
@@ -7891,7 +8005,6 @@ local function HasCandidateURL(msg)
     return (ok and found == true) or false
 end
 
-local hookedEditBoxes  = {}
 local hookedChatFrames = {}
 
 local chatFrame2TabPreClickHooked = false
@@ -8265,14 +8378,12 @@ function DynamicChat:InstallReloadSnapshotHooks()
     end
 end
 
-local hookedEditBoxes = {}
-
 function DynamicChat:HookAllChatFramesAndEditBoxes()
     if IsModuleDisabledInSuite("DynamicChat") then return end
     local allFrames = CollectAllChatFrames()
     for _, item in ipairs(allFrames) do
         local cf = item.cf
-        if cf and cf.HookScript and not hookedChatFrames[cf] then
+        if cf and cf.HookScript and not hookedChatFrames[cf] and not DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf) then
             hookedChatFrames[cf] = true
             cf:HookScript("OnMouseWheel", function(selfFrame, delta)
                 local db = EnsureDB()
@@ -8302,20 +8413,14 @@ function DynamicChat:HookAllChatFramesAndEditBoxes()
             end)
         end
     end
-
-    local maxWindows = math.max(10, tonumber(_G.NUM_CHAT_WINDOWS) or 10)
-    for i = 1, maxWindows do
-        self:HookSingleEditBox(_G["ChatFrame" .. i .. "EditBox"])
-    end
 end
 
-function DynamicChat:HookSingleEditBox(eb)
-    if eb and eb.HookScript and not hookedEditBoxes[eb] then
-        hookedEditBoxes[eb] = true
-        eb:HookScript("OnTextChanged", function(selfEb)
-            TryConvertTargetWhisperEditBox(selfEb, false)
-        end)
-    end
+function DynamicChat:HookSingleEditBox()
+    -- Midnight 12.x Zero-Taint Guard:
+    -- Never attach direct HookScript("OnTextChanged", ...) handlers to Blizzard ChatFrameEditBox frames,
+    -- which taints the EditBox widget script table during BN_WHISPER replies.
+    -- /ww conversion relies strictly on hooksecurefunc post-hooks on ChatEdit_OnTextChanged,
+    -- ChatFrameEditBoxMixin.OnTextChanged, ChatEdit_OnSpacePressed, and ChatFrameEditBoxMixin.OnSpacePressed.
 end
 
 function DynamicChat:InstallChatHooks()
@@ -8347,7 +8452,10 @@ function DynamicChat:InstallChatHooks()
         end)
     end
     if type(_G.FCF_OpenTemporaryWindow) == "function" then
-        hooksecurefunc("FCF_OpenTemporaryWindow", function()
+        hooksecurefunc("FCF_OpenTemporaryWindow", function(chatType, chatTarget)
+            if IsSecretValue(chatType) or IsSecretValue(chatTarget) or chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION" then
+                return
+            end
             DynamicChat:HookAllChatFramesAndEditBoxes()
         end)
     end
@@ -8358,7 +8466,6 @@ function DynamicChat:InstallChatHooks()
     end
     if type(_G.ChatEdit_ActivateChat) == "function" then
         hooksecurefunc("ChatEdit_ActivateChat", function(editBox)
-            DynamicChat:HookSingleEditBox(editBox)
             if DynamicChat:IsExternalChatEngineLoaded() then return end
             if not editBox then return end
             if IsEditBoxSecretOrBNWhisper(editBox) then
@@ -14501,6 +14608,7 @@ function DynamicChat._RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "26/11/2026",
         entries = {
+            { type = "FIX",      text = "Battle.net Whisper Reply Hardening & Chat Tab Fade Guard (26/11/2026): Removed direct OnTextChanged widget script hooks from ChatFrameEditBox frames (relying strictly on hooksecurefunc post-hooks for /ww conversion), guarded edit box font updates, SetPoint re-anchoring, and temporary Battle.net whisper frame hooks against BN_WHISPER, secret targets/headers, combat, and active typing focus, updated the external Obsidian typing bar to hide the prompt hint and apply focused Battle.net cyan styling cleanly without touching Blizzard's edit box, and skipped chat tab alpha changes while Blizzard's UIFrameFade or secret fadeInfo is active on Combat Log or whisper tabs across both DynamicSuite and standalone DynamicChat." },
             { type = "NEW",      text = "Whisper Tab Clickability Fix & Reload Persistence (26/11/2026): Moved the chat header drag strip to BACKGROUND strata strictly below all LOW-strata chat tabs (level 22) and navigation arrows (level 25), synced GeneralDockManager scale with ChatFrame1 so child clipping never cuts off the rightmost whisper tab, hardened tab reparenting out of GeneralDockManagerScrollFrameChild with combat and re-entrancy deferrals, and automatically scrolled newly opened whisper tabs into view. Added zero-taint character whisper tab and message persistence across reloads (capped at 3/5/10 tabs and 50 lines per tab with 24-hour expiry, Midnight secret-value skipping, automatic removal when closing a tab, and previous-session rendering in Copy Chat) plus 'Keep Whisper Tabs After Reload' and 'Whisper Tab Limit' controls under Links & History." },
             { type = "UI",       text = "12 px Default Chat Font & Info Toast Timer Sync (24/11/2026): Set the default chat message font size to 12 px and updated Clean Smoked-Glass and Minimalist Raid presets to use 12 px / 2 px line spacing while tuning High-Readability to a balanced +1 px step at 13 px (50% smoked-glass backdrop, thin outline, drop shadow, 2 px line spacing); and connected Mention Alert Toasts to Suite Studio's dedicated Info & Mention Toast Duration timer (5s default: 3s, 5s, 8s, 12s, or Stay Until Clicked) with hover-to-pause and Right-Click dismissal." },
             { type = "FIX",      text = "Tab 3 Blank Screen Fix, Quick Presets Active Highlight & Copy Chat / URL Overhaul (24/11/2026): Fixed a nil typo on the Tab 2 Line Spacing card that aborted workspace construction before Tabs 3 and 4 built, and reset vertical scroll cleanly when switching tabs or resizing to 800x520; added live Suite Accent active highlighting for Quick Presets (clearing automatically when any preset setting is manually edited), tuned High-Readability to crisp 14 px contrast (50% backdrop, thin outline, drop shadow, 2 px line spacing) while having Clean Smoked-Glass and Minimalist Raid restore 13 px / 2 px text, and dynamically scaled chat typing box height and message clearance across docked tabs so chat lines never collide with the top typing box; and overhauled Copy Chat and Copy Link with a rolling out-of-combat plain-text session buffer fallback, case-insensitive URL capture (including bare www. links without duplicate sub-matches), hardened escape-code stripping, a [Select All] confirmation button and up to 4 Recent Links pills in the Copy Chat window, an elevated Copy Link dialog with deferred focus and full selection, and a plain-English Midnight footer notice whenever Blizzard restricts reading protected combat or instance lines." },
