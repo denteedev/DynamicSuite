@@ -1351,7 +1351,9 @@ RunTest("15. Pet Battle auto-hide on real DynamicPrep HUDs & DynamicLoad Alert T
     env.UnitIsDeadOrGhost = function() return false end
     env.UnitIsGhost = function() return false end
     env.UnitLevel = function() return 80 end
-    env.UnitExists = function() return false end
+    env.UnitIsConnected = function() return true end
+    env.UnitExists = function(u) return u == "player" end
+    env.C_UnitAuras = { GetAuraDataByIndex = function() return nil end }
     env.UnitAffectedByControl = nil
     env.C_Container = { GetContainerNumSlots = function() return 0 end, GetContainerItemID = function() return nil end }
     env.C_Spell = { GetSpellName = function() return "Arcane Intellect" end, IsSpellUsable = function() return true, false end }

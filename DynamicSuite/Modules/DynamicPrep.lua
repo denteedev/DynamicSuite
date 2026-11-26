@@ -17159,6 +17159,11 @@ function DynamicPrep:ApplyBuffBarHoverVisual(isHoverOrDrag)
     if not bar or not bar.hudBg then return end
     local rb = (self.db and self.db.raidBuffs) or DEFAULTS.raidBuffs
     local inBuffEdit = (self.inBuffsEditMode or (self.inEditMode and self.inBuffsEditMode ~= false) or bar._dsEditModeActive) and true or false
+    local hasActiveBuffs = ((bar._activeBuffCount or 0) > 0)
+    if not inBuffEdit and not hasActiveBuffs then
+        bar.hudBg:Hide()
+        return
+    end
     local borderStyle = (rb and rb.hudBorderStyle) or (self.db and self.db.hudBorderStyle) or "ACCENT"
     local ar, ag, ab = GetActiveAccentRGB()
     if isHoverOrDrag and not inBuffEdit then
@@ -17186,7 +17191,9 @@ function DynamicPrep:CreateClickableBuffBar()
     bar:SetFrameStrata("MEDIUM")
     bar:SetClampedToScreen(true)
     bar:SetMovable(true)
-    bar:EnableMouse(true)
+    bar:EnableMouse(false)
+    bar._activeBuffCount = 0
+    bar:Hide()
     bar:RegisterForDrag("LeftButton")
 
     local pt, rp, initX, initY = self:GetSavedBuffBarPosition()
@@ -17236,6 +17243,7 @@ function DynamicPrep:CreateClickableBuffBar()
 
     local function BeginDirectBuffDrag()
         if IsBuffBarInEditMode() or bar._dpBuffDirectDragActive then return false end
+        if (bar._activeBuffCount or 0) <= 0 then return false end
         if InCombatLockdown and InCombatLockdown() then return false end
         if not (IsShiftKeyDown and IsShiftKeyDown()) then return false end
         if GameTooltip then GameTooltip:Hide() end
@@ -17325,7 +17333,7 @@ function DynamicPrep:CreateClickableBuffBar()
             EndDirectBuffDrag(false)
             return
         end
-        if button == "RightButton" and not IsBuffBarInEditMode() then
+        if button == "RightButton" and not IsBuffBarInEditMode() and (bar._activeBuffCount or 0) > 0 then
             if GameTooltip then GameTooltip:Hide() end
             DynamicPrep:OpenBuffBarHudEdit()
         end
@@ -17337,7 +17345,7 @@ function DynamicPrep:CreateClickableBuffBar()
         DynamicPrep:ApplyBuffBarHoverVisual(false)
     end)
     bar:HookScript("OnEnter", function(selfBar)
-        if IsBuffBarInEditMode() or bar._dpBuffDirectDragActive or (InCombatLockdown and InCombatLockdown()) then return end
+        if IsBuffBarInEditMode() or bar._dpBuffDirectDragActive or (InCombatLockdown and InCombatLockdown()) or (bar._activeBuffCount or 0) <= 0 then return end
         DynamicPrep:ApplyBuffBarHoverVisual(true)
         if GameTooltip then
             local ar, ag, ab = GetActiveAccentRGB()
@@ -17357,10 +17365,7 @@ function DynamicPrep:CreateClickableBuffBar()
         end
     end)
 
-    -- C++ Macro Visibility Driver: Hides in combat, Pet Battles, or Vehicle UI so satisfied buttons never swallow center-screen clicks mid-combat
-    if RegisterStateDriver then
-        pcall(RegisterStateDriver, bar, "visibility", "[petbattle][vehicleui][combat] hide; show")
-    end
+    -- Visibility state driver is managed dynamically in RefreshClickableBuffs() when buffs are active outside Edit Mode
 
     bar.buttons = {}
     for i = 1, MAX_CRB_SLOTS do
@@ -18249,9 +18254,17 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
     if not bar or InCombatLockdown() then return end
 
     if IsInPetBattle() then
+        bar._activeBuffCount = 0
         if UnregisterStateDriver then
             pcall(UnregisterStateDriver, bar, "visibility")
         end
+        for i = 1, MAX_CRB_SLOTS do
+            if bar.buttons and bar.buttons[i] then
+                bar.buttons[i]:SetAlpha(1.0)
+                bar.buttons[i]:Hide()
+            end
+        end
+        bar:EnableMouse(false)
         bar:Hide()
         if bar.mover then bar.mover:Hide() end
         if bar.hudBg then bar.hudBg:Hide() end
@@ -18262,6 +18275,38 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
     end
 
     local inBuffEdit = (self.inBuffsEditMode or (self.inEditMode and self.inBuffsEditMode ~= false) or bar._dsEditModeActive) and true or false
+    local rb = (self.db and self.db.raidBuffs) or DEFAULTS.raidBuffs
+    local iconSize = math.max(32, math.min(64, tonumber(rb.iconSize) or 44))
+    local gap = math.max(2, math.min(24, tonumber(rb.iconSpacing) or 10))
+    local hideMissingLbl = (rb.hideMissingLabel == true)
+    local ar, ag, ab, hex = GetActiveAccentRGB()
+
+    local shouldShowZone = self:ShouldShowRaidBuffsForZone()
+    local count = self:ScanAndPopulateRaidBuffQueue()
+    self:RefreshCombatBuffAlert()
+    if self.RefreshReadinessTrackerStrip then pcall(self.RefreshReadinessTrackerStrip, self) end
+    self:UpdateSuiteHeaderStatus()
+
+    local isEnabledOrPreview = ((rb and rb.enabled ~= false) or self.previewRaidBuffs) and true or false
+    if not inBuffEdit and ((not isEnabledOrPreview) or (not shouldShowZone) or count <= 0) then
+        bar._activeBuffCount = 0
+        if UnregisterStateDriver then
+            pcall(UnregisterStateDriver, bar, "visibility")
+        end
+        for i = 1, MAX_CRB_SLOTS do
+            bar.buttons[i]:SetAlpha(1.0)
+            bar.buttons[i]:EnableMouse(true)
+            bar.buttons[i]:Hide()
+        end
+        if bar.hudBg then bar.hudBg:Hide() end
+        if bar.mover then bar.mover:Hide() end
+        bar:EnableMouse(false)
+        bar:Hide()
+        return
+    end
+
+    bar._activeBuffCount = count
+    bar:EnableMouse(true)
     if inBuffEdit then
         if UnregisterStateDriver then
             pcall(UnregisterStateDriver, bar, "visibility")
@@ -18272,28 +18317,6 @@ function DynamicPrep:RefreshClickableBuffs(forceImmediate)
             pcall(RegisterStateDriver, bar, "visibility", "[petbattle][vehicleui][combat] hide; show")
         end
         bar:Show()
-    end
-
-    local rb = (self.db and self.db.raidBuffs) or DEFAULTS.raidBuffs
-    local iconSize = math.max(32, math.min(64, tonumber(rb.iconSize) or 44))
-    local gap = math.max(2, math.min(24, tonumber(rb.iconSpacing) or 10))
-    local hideMissingLbl = (rb.hideMissingLabel == true)
-    local ar, ag, ab, hex = GetActiveAccentRGB()
-
-    local count = self:ScanAndPopulateRaidBuffQueue()
-    self:RefreshCombatBuffAlert()
-    if self.RefreshReadinessTrackerStrip then pcall(self.RefreshReadinessTrackerStrip, self) end
-    self:UpdateSuiteHeaderStatus()
-
-    if count <= 0 and not inBuffEdit then
-        for i = 1, MAX_CRB_SLOTS do
-            bar.buttons[i]:SetAlpha(1.0)
-            bar.buttons[i]:EnableMouse(true)
-            bar.buttons[i]:Hide()
-        end
-        if bar.hudBg then bar.hudBg:Hide() end
-        bar.mover:Hide()
-        return
     end
 
     -- TRUE CENTER-ALIGNED SYMMETRIC LAYOUT:
@@ -18538,6 +18561,7 @@ end
 local crbEventFrame = CreateFrame("Frame")
 SafeRegisterEvent(crbEventFrame, "PLAYER_LOGIN")
 SafeRegisterEvent(crbEventFrame, "PLAYER_ENTERING_WORLD")
+SafeRegisterEvent(crbEventFrame, "ZONE_CHANGED_NEW_AREA")
 SafeRegisterEvent(crbEventFrame, "PLAYER_REGEN_DISABLED")
 SafeRegisterEvent(crbEventFrame, "PLAYER_REGEN_ENABLED")
 SafeRegisterEvent(crbEventFrame, "PLAYER_SPECIALIZATION_CHANGED")
@@ -18698,6 +18722,12 @@ crbEventFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4)
                 DynamicPrep:RefreshClickableBuffs(true)
             end
         end)
+    elseif event == "ZONE_CHANGED_NEW_AREA" then
+        if not IsPlayerInCombat() then
+            DynamicPrep:RefreshClickableBuffs(true)
+        else
+            DynamicPrep._pendingCrbAfterCombat = true
+        end
     elseif not IsPlayerInCombat() then
         DynamicPrep:RefreshClickableBuffs(false)
     end
