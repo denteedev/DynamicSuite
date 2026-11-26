@@ -4832,7 +4832,7 @@ end
 local scaleToastFrame = nil
 local function ShowBagScaleToast(anchorFrame, msg)
     if not CreateFrame then return end
-    local ar, ag, ab = U.GetSuiteAccent()
+    local ar, ag, ab = GetAccent()
     if not scaleToastFrame then
         local tf = CreateFrame("Frame", "DynamicBagsWindowScaleToast", UIParent, "BackdropTemplate")
         tf:SetSize(196, 28)
@@ -5036,7 +5036,7 @@ function U.AttachWindowScaleHandlers(targetKind, headFrame, fullFrames)
         headFrame:HookScript("OnEnter", function(selfHead)
             if not _G.GameTooltip then return end
             local title = (targetKind == "bank") and "DynamicBank Window Controls" or "DynamicBags Window Controls"
-            local ar, ag, ab = U.GetSuiteAccent()
+            local ar, ag, ab = GetAccent()
             _G.GameTooltip:SetOwner(selfHead, "ANCHOR_TOP")
             _G.GameTooltip:AddLine(title, ar, ag, ab)
             _G.GameTooltip:AddLine("Left-Drag Header: Move window position", 0.90, 0.93, 0.96)
@@ -13322,8 +13322,9 @@ end
 
 DynamicBags.CHANGELOG = {
     version = VERSION,
-    date = "25/11/2026",
+    date = "26/11/2026",
     entries = {
+        { type = "FIX",     text = "DynamicBags & DynamicBank Header Hover & Scale Toast Nil Crash Fix (26/11/2026): Replaced undefined U.GetSuiteAccent() calls in ShowBagScaleToast and U.AttachWindowScaleHandlers (header OnEnter tooltip) with GetAccent() so hovering the DynamicBags or DynamicBank header and stepping or resetting window scale via Ctrl+Scroll or Right-Click work cleanly with live Suite Accent colouring across both DynamicSuite and standalone DynamicBags." },
         { type = "FIX",     text = "Release v2.10.1 - Clean Single-Action Bank & Guild Bank Closing (25/11/2026): Fixed a lingering invisible Blizzard bank interaction left behind whenever DynamicBank closed via its Close button, Escape key, or bag toggle while at a Personal Bank, Warband Bank, or Guild Bank (previously requiring an extra Escape press before interacting with the banker again); closing DynamicBank now cleanly terminates active C_Bank / CloseGuildBankFrame and C_PlayerInteractionManager banker interactions, detaches and hides suppressed Blizzard BankFrame/GuildBankFrame panels out of combat with re-entrancy guards, closes child modals and popovers (dropdowns, Gold Transfer modal, StackSplitFrame, and buy-tab popups) one at a time on Escape without killing the live banker session, keeps Personal/Warband/Guild tab switching uninterrupted, and leaves remote cached snapshot viewing (/dbag bank) untouched." },
         { type = "FEATURE", text = "Release v2.10.1 - DynamicBank Gold Controls & Obsidian Gold Transfer Modal (25/11/2026): Added live bank gold balances and transfer controls to the DynamicBank footer for Warband Bank (Deposit/Withdraw), Guild Bank (Deposit/Withdraw with live daily rank limit), and Personal Bank (live character gold display + [Deposit to Warband] shortcut with plain-English tooltip explaining that character gold stays in your bags); added a shared Obsidian Core Gold Transfer modal with Gold/Silver/Copper numeric inputs, 1k/10k/50k/100k/Max quick-fill pills, inline validation, and Escape/Enter handling; and subscribed to ACCOUNT_MONEY, PLAYER_MONEY, GUILDBANK_UPDATE_MONEY, and GUILDBANK_UPDATE_WITHDRAWMONEY for instant balance refreshes." },
         { type = "UI",      text = "Pass 5 Category Reorder Arrow Tint Parity (25/11/2026): Tinted the < and > reorder arrows on enabled Category Order & Visibility tiles in Tab 1 with the live Suite Accent colour at rest (switching to crisp white with accent border on hover, while keeping disabled tiles muted slate) to match DynamicPrep's Top Info Bar Layout Builder." },
