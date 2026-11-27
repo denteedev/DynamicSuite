@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Saved Whisper History Hint in Copy Chat (28/11/2026)
+- **Added - Clickable Whisper History Hint (`DynamicChat`):** Reopened empty character whisper tabs that have messages saved from a previous session now display a clickable 'Previous messages saved in Copy Chat' button inside the chat area (clear of top or bottom typing boxes), letting you open Copy Chat for that tab in one click. The hint automatically hides when a live whisper arrives, when switching tabs, when closing the whisper tab, or when entering Edit Mode, and never appears on Battle.net or secret whisper tabs.
+
 ### Chat Window Size Reload Persistence Fix (27/11/2026)
 - **Fixed - Chat Window Shrinking After Reload:** Fixed the primary chat window reverting to a smaller default size after reloading; custom widths and heights resized in Edit Mode now save cleanly across all release paths, screen clamping preserves saved chat dimensions instead of overwriting them during early loading, and post-reload Blizzard layout updates keep your resized chat dimensions along with matching typing box and message spacing.
 

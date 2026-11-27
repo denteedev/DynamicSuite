@@ -1426,6 +1426,119 @@ RunTest("T10: Temp BN_WHISPER Zero Child Mutations, Focus Race, Fail-Closed Prob
     VerifyMode(false, "DynamicChat")
 end)
 
+-- ============================================================================
+-- T11: Zero-Taint Clickable Saved Whisper History Hint Overlay
+-- ============================================================================
+RunTest("T11: Clickable Saved Whisper History Hint (Empty Restored Tab, Copy Chat Click, Hide Triggers & BN_WHISPER Guard)", function()
+    local epoch = 1700000000
+    local function VerifyMode(withSuite, addonFolder)
+        local seedDB = {
+            preserveChatHistory = true,
+            enableGPUBufferCap = true,
+            preserveWhisperTabs = true,
+            maxSavedWhisperTabs = 5,
+            editBoxPosition = "BOTTOM",
+            savedWhisperTabs = {
+                { target = "Alice", chatType = "WHISPER", lastUpdated = epoch - 30, lines = { "[20:55] Alice: saved line 1", "[20:56] To Alice: saved line 2" } },
+                { target = "Bob",   chatType = "WHISPER", lastUpdated = epoch - 60, lines = { "[20:50] Bob: solo saved line" } },
+            },
+        }
+        local h = CreateHarness({ withSuite = withSuite, epochNow = epoch, initialDB = seedDB })
+        h.LoadModule(addonFolder)
+        h.FireEvent("ADDON_LOADED", addonFolder)
+        h.FireEvent("PLAYER_LOGIN")
+        h.FireEvent("PLAYER_ENTERING_WORLD")
+        h.AdvanceTime(0.2)
+
+        local cfAlice, cfBob = nil, nil
+        for _, cf in ipairs(h.env.GeneralDockManager.DOCKED_CHAT_FRAMES) do
+            if cf.chatTarget == "Alice" then cfAlice = cf
+            elseif cf.chatTarget == "Bob" then cfBob = cf end
+        end
+        assertTrue(cfAlice ~= nil and cfBob ~= nil, addonFolder .. ": Restored Alice and Bob whisper frames must exist")
+
+        -- Still on General tab (ChatFrame1) -> hint must not be shown
+        local hint = h.env.DynamicChatWhisperHistoryHint
+        assertTrue(hint == nil or not hint:IsShown(), addonFolder .. ": Hint must be hidden while General tab is selected")
+
+        -- (a) Select restored empty character whisper tab (Alice, 2 saved lines) -> hint shows with plural count & UIParent parent
+        h.env.FCF_SelectDockFrame(cfAlice)
+        hint = h.env.DynamicChatWhisperHistoryHint
+        assertTrue(hint ~= nil and hint:IsShown(), addonFolder .. ": Hint must show on empty restored character whisper tab")
+        assertEqual(hint:GetParent(), h.env.UIParent, addonFolder .. ": Hint must be UIParent-hosted (never parented to Blizzard ChatFrame)")
+        assertEqual(hint.label:GetText(), "Previous messages (2) saved in Copy Chat - Click to view", addonFolder .. ": Plural saved line count copy")
+
+        -- Verify BOTTOM vs TOP anchoring respects editBoxPosition & ChatFrame1 scale
+        local ptBot = hint._points[1] and hint._points[1][1]
+        assertEqual(ptBot, "BOTTOMLEFT", addonFolder .. ": BOTTOM editBoxPosition anchors hint above bottom typing box")
+        h.env.ChatFrame1:SetScale(1.15)
+        h.env.DynamicChatDB.editBoxPosition = "TOP"
+        h.env.DynamicChat:ApplySleekChatSkin()
+        local ptTop = hint._points[1] and hint._points[1][1]
+        assertEqual(ptTop, "TOPLEFT", addonFolder .. ": TOP editBoxPosition anchors hint below top typing box")
+        assertEqual(hint:GetScale(), 1.15, addonFolder .. ": Hint scale must match ChatFrame1 scale")
+
+        -- Hover OnEnter highlights border with Suite Accent and populates tooltip; OnLeave restores rest border
+        if hint:GetScript("OnEnter") then hint:GetScript("OnEnter")(hint) end
+        if hint:GetScript("OnLeave") then hint:GetScript("OnLeave")(hint) end
+
+        -- Singular count copy on Bob (1 saved line)
+        h.env.FCF_SelectDockFrame(cfBob)
+        assertTrue(hint:IsShown(), addonFolder .. ": Hint must show on empty Bob whisper tab")
+        assertEqual(hint.label:GetText(), "1 previous message saved in Copy Chat - Click to view", addonFolder .. ": Singular saved line count copy")
+
+        -- (b) Clicking hint opens Copy Chat modal for that active whisper tab
+        h.env.FCF_SelectDockFrame(cfAlice)
+        assertTrue(hint:IsShown(), addonFolder .. ": Hint visible before click on Alice")
+        hint:GetScript("OnClick")(hint, "LeftButton")
+        local modal = h.env.DynamicChatHistoryModal
+        assertTrue(modal ~= nil and modal:IsShown() and modal.editBox ~= nil, addonFolder .. ": Clicking hint must open Copy Chat modal")
+        local modalTxt = modal.editBox:GetText()
+        assertTrue(modalTxt:find("saved line 1", 1, true) ~= nil, addonFolder .. ": Copy Chat modal must include Alice's saved line 1")
+        assertTrue(modalTxt:find("saved line 2", 1, true) ~= nil, addonFolder .. ": Copy Chat modal must include Alice's saved line 2")
+        assertTrue(modalTxt:find("--- Saved From Previous Session ---", 1, true) ~= nil, addonFolder .. ": Copy Chat modal must include previous session divider")
+
+        -- (c) Receiving a live message via AddMessage hides hint immediately
+        cfAlice:AddMessage("[21:20] Alice: hello live!")
+        assertEqual(hint:IsShown(), false, addonFolder .. ": Live AddMessage on selected whisper tab must hide hint immediately")
+
+        -- Switching back to General hides hint on empty Bob tab
+        h.env.FCF_SelectDockFrame(cfBob)
+        assertTrue(hint:IsShown(), addonFolder .. ": Hint shown again on empty Bob tab")
+        h.env.FCF_SelectDockFrame(h.env.ChatFrame1)
+        assertEqual(hint:IsShown(), false, addonFolder .. ": Switching back to General must hide hint immediately")
+
+        -- HUD Edit Mode active hides hint, exiting restores it
+        h.env.FCF_SelectDockFrame(cfBob)
+        assertTrue(hint:IsShown(), addonFolder .. ": Hint shown on Bob before Edit Mode")
+        h.env.DynamicChat._dsEditModeActive = true
+        h.env.DynamicChat:RefreshWhisperHistoryHint()
+        assertEqual(hint:IsShown(), false, addonFolder .. ": HUD Edit Mode active must hide hint")
+        h.env.DynamicChat:HideHudEditMover()
+        assertTrue(hint:IsShown(), addonFolder .. ": HideHudEditMover restores hint on empty Bob tab")
+
+        -- Closing Bob via FCF_Close hides hint
+        h.env.FCF_Close(cfBob)
+        assertEqual(hint:IsShown(), false, addonFolder .. ": FCF_Close must hide hint")
+
+        -- (d) BN_WHISPER and secret tabs NEVER show the hint
+        local cfBN = h.env.FCF_OpenTemporaryWindow("BN_WHISPER", MakeSecret("bnet-hint-guard"))
+        h.env.FCF_SelectDockFrame(cfBN)
+        assertEqual(hint:IsShown(), false, addonFolder .. ": BN_WHISPER tab must never show whisper history hint")
+
+        local cfSecret = h.env.FCF_OpenTemporaryWindow("WHISPER", MakeSecret("secret-whisper-target"))
+        h.env.FCF_SelectDockFrame(cfSecret)
+        assertEqual(hint:IsShown(), false, addonFolder .. ": Secret whisper target tab must never show whisper history hint")
+
+        -- TeardownDisabledState hides hint cleanly
+        h.env.DynamicChat:TeardownDisabledState(true)
+        assertEqual(hint:IsShown(), false, addonFolder .. ": TeardownDisabledState must hide whisper history hint")
+    end
+
+    VerifyMode(true, "DynamicSuite")
+    VerifyMode(false, "DynamicChat")
+end)
+
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))
 if failed > 0 then
     os.exit(1)

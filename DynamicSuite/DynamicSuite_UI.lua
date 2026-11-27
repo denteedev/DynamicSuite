@@ -13356,15 +13356,25 @@ function addonTable.CreateMainConfigUI()
             return "BOTTOMLEFT", "BOTTOMLEFT", 0, 0
         end
         local liveFrame = GetLiveHudFrame(targetKey)
-        if targetKey == "TARGET" or targetKey == "FLARE" then
-            if _G.DynamicMarker and _G.DynamicMarker.SyncBarScaleAndSizeToDB then
+        if (targetKey == "TARGET" or targetKey == "FLARE") and _G.DynamicMarker then
+            if _G.DynamicMarker.SyncBarScaleAndSizeToDB then
                 pcall(_G.DynamicMarker.SyncBarScaleAndSizeToDB, _G.DynamicMarker, liveFrame, targetKey)
             end
-            if _G.DynamicMarker and type(_G.DynamicMarker.GetCanonicalHUDPosition) == "function" then
+            if type(_G.DynamicMarker.GetCanonicalHUDPosition) == "function" then
                 local okP, cPt, cRel, cx, cy = pcall(_G.DynamicMarker.GetCanonicalHUDPosition, _G.DynamicMarker, targetKey)
                 if okP and cPt and cx ~= nil and cy ~= nil then
                     return cPt, cRel or "CENTER", cx, cy
                 end
+            end
+        elseif targetKey == "PREP" and _G.DynamicPrep and type(_G.DynamicPrep.GetSavedBarPosition) == "function" then
+            local okP, ppt, prp, px, py = pcall(_G.DynamicPrep.GetSavedBarPosition, _G.DynamicPrep)
+            if okP and ppt and px ~= nil and py ~= nil then
+                return ppt, prp or ppt, math.floor(px + 0.5), math.floor(py + 0.5)
+            end
+        elseif targetKey == "prepBuffs" and _G.DynamicPrep and type(_G.DynamicPrep.GetSavedBuffBarPosition) == "function" then
+            local okP, bpt, brp, bx, by = pcall(_G.DynamicPrep.GetSavedBuffBarPosition, _G.DynamicPrep)
+            if okP and bpt and bx ~= nil and by ~= nil then
+                return bpt, brp or bpt, math.floor(bx + 0.5), math.floor(by + 0.5)
             end
         end
         if liveFrame and liveFrame.GetPoint and targetKey ~= "TARGET" and targetKey ~= "FLARE" then
@@ -13420,16 +13430,16 @@ function addonTable.CreateMainConfigUI()
             end
         elseif targetKey == "PREP" and type(_G.DynamicPrepDB) == "table" then
             local db = _G.DynamicPrepDB.global or _G.DynamicPrepDB.profile or _G.DynamicPrepDB
-            local pos = db.omniBarPos or _G.DynamicPrepDB.omniBarPos or db.pos or _G.DynamicPrepDB.pos
-            if type(pos) == "table" and pos.x ~= nil and pos.y ~= nil then
-                return pos.point or "TOP", pos.relPoint or pos.point or "TOP", math.floor(pos.x + 0.5), math.floor(pos.y + 0.5)
-            end
             local px = db.barX or _G.DynamicPrepDB.barX or db.x or _G.DynamicPrepDB.x
             local py = db.barY or _G.DynamicPrepDB.barY or db.y or _G.DynamicPrepDB.y
             local ppt = db.barPoint or _G.DynamicPrepDB.barPoint or db.point or _G.DynamicPrepDB.point or "TOP"
-            local prp = db.barRelPoint or _G.DynamicPrepDB.barRelPoint or ppt
+            local prp = db.barRelativePoint or _G.DynamicPrepDB.barRelativePoint or db.barRelPoint or _G.DynamicPrepDB.barRelPoint or ppt
             if px ~= nil and py ~= nil then
                 return ppt, prp, math.floor(px + 0.5), math.floor(py + 0.5)
+            end
+            local pos = db.omniBarPos or _G.DynamicPrepDB.omniBarPos or db.pos or _G.DynamicPrepDB.pos
+            if type(pos) == "table" and pos.x ~= nil and pos.y ~= nil then
+                return pos.point or "TOP", pos.relPoint or pos.point or "TOP", math.floor(pos.x + 0.5), math.floor(pos.y + 0.5)
             end
         elseif targetKey == "prepBuffs" and _G.DynamicPrep and _G.DynamicPrep.GetSavedBuffBarPosition then
             local ok, bpt, brp, bx, by = pcall(_G.DynamicPrep.GetSavedBuffBarPosition, _G.DynamicPrep)
@@ -13588,14 +13598,15 @@ function addonTable.CreateMainConfigUI()
         elseif targetKey == "PREP" then
             local function WritePrepTbl(tbl)
                 if type(tbl) ~= "table" then return end
-                tbl.barPoint    = pt
-                tbl.barRelPoint = relPt
-                tbl.barX        = rx
-                tbl.barY        = ry
-                tbl.point       = pt
-                tbl.relPoint    = relPt
-                tbl.x           = rx
-                tbl.y           = ry
+                tbl.barPoint         = pt
+                tbl.barRelativePoint = relPt
+                tbl.barRelPoint      = relPt
+                tbl.barX             = rx
+                tbl.barY             = ry
+                tbl.point            = pt
+                tbl.relPoint         = relPt
+                tbl.x                = rx
+                tbl.y                = ry
                 if type(tbl.omniBarPos) == "table" then
                     tbl.omniBarPos.point = pt; tbl.omniBarPos.relPoint = relPt; tbl.omniBarPos.x = rx; tbl.omniBarPos.y = ry
                 else
@@ -13619,6 +13630,21 @@ function addonTable.CreateMainConfigUI()
                         WritePrepTbl(cTbl)
                     end
                 end
+            end
+        elseif targetKey == "prepBuffs" then
+            if _G.DynamicPrep and type(_G.DynamicPrep.SaveBuffBarEditPosition) == "function" then
+                pcall(_G.DynamicPrep.SaveBuffBarEditPosition, _G.DynamicPrep, pt or "CENTER", relPt or pt or "CENTER", rx, ry)
+            elseif type(_G.DynamicPrepDB) == "table" then
+                local function WriteBuffTbl(tbl)
+                    if type(tbl) ~= "table" or type(tbl.raidBuffs) ~= "table" then return end
+                    tbl.raidBuffs.point    = pt or "CENTER"
+                    tbl.raidBuffs.relPoint = relPt or pt or "CENTER"
+                    tbl.raidBuffs.x        = rx
+                    tbl.raidBuffs.y        = ry
+                end
+                WriteBuffTbl(_G.DynamicPrepDB)
+                WriteBuffTbl(_G.DynamicPrepDB.global)
+                WriteBuffTbl(_G.DynamicPrepDB.profile)
             end
         elseif targetKey == "CHAT" then
             if not IsChatHudTargetOwned() then
@@ -14169,8 +14195,12 @@ function addonTable.CreateMainConfigUI()
             gTbl.hudPositions["DynamicMarkerFlareBar"] = posEntry
         elseif targetKey == "PREP" then
             gTbl.hudPositions["PrepBar"] = posEntry
+            gTbl.hudPositions["prepBar"] = posEntry
             gTbl.hudPositions["prep"] = posEntry
             gTbl.hudPositions["DynamicPrepBarFrame"] = posEntry
+        elseif targetKey == "prepBuffs" then
+            gTbl.hudPositions["PREPBUFFS"] = posEntry
+            gTbl.hudPositions["DynamicPrepClickableBuffBar"] = posEntry
         elseif targetKey == "CHAT" then
             gTbl.hudPositions["ChatFrame"] = posEntry
             gTbl.hudPositions["chat"] = posEntry
@@ -15165,6 +15195,9 @@ function addonTable.CreateMainConfigUI()
             return
         end
         stateCarrier._dsEditModeActive = true
+        if targetKey == "CHAT" and _G.DynamicChat and _G.DynamicChat.RefreshWhisperHistoryHint then
+            pcall(_G.DynamicChat.RefreshWhisperHistoryHint, _G.DynamicChat)
+        end
         if hudFrame.SetClampedToScreen then hudFrame:SetClampedToScreen(false) end
         if hudFrame.mover and hudFrame.mover.Hide then hudFrame.mover:Hide() end
         if hudFrame.editDragShield and hudFrame.editDragShield.Hide then hudFrame.editDragShield:Hide() end
@@ -15468,6 +15501,9 @@ function addonTable.CreateMainConfigUI()
                 end
                 stateCarrier._dsDragging = true
                 stateCarrier._dsEditModeActive = true
+        if targetKey == "CHAT" and _G.DynamicChat and _G.DynamicChat.RefreshWhisperHistoryHint then
+            pcall(_G.DynamicChat.RefreshWhisperHistoryHint, _G.DynamicChat)
+        end
                 if (targetKey == "TARGET" or targetKey == "FLARE") and _G.DynamicMarker then
                     _G.DynamicMarker.isDraggingHUD = true
                 end
@@ -16018,6 +16054,10 @@ function addonTable.CreateMainConfigUI()
                         pcall(_G.DynamicMarker.RefreshTargetBar, _G.DynamicMarker)
                     elseif hDef.key == "FLARE" and _G.DynamicMarker and _G.DynamicMarker.RefreshFlareBar then
                         pcall(_G.DynamicMarker.RefreshFlareBar, _G.DynamicMarker)
+                    elseif hDef.key == "PREP" and _G.DynamicPrep and _G.DynamicPrep.prepBarFrame and _G.DynamicPrep.ApplyBarGeometry then
+                        pcall(_G.DynamicPrep.ApplyBarGeometry, _G.DynamicPrep)
+                    elseif hDef.key == "prepBuffs" and _G.DynamicPrep and _G.DynamicPrep.clickableBuffBar and _G.DynamicPrep.RefreshClickableBuffs then
+                        pcall(_G.DynamicPrep.RefreshClickableBuffs, _G.DynamicPrep, true)
                     elseif hDef.key == "CHAT" then
                         if _G.DynamicChat and _G.DynamicChat.ApplySavedChatFramePosition then
                             pcall(_G.DynamicChat.ApplySavedChatFramePosition, _G.DynamicChat)

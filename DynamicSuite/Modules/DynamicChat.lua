@@ -1048,6 +1048,9 @@ function DynamicChat:HideHudEditMover()
             pcall(_G.ChatFrame1.SetAlpha, _G.ChatFrame1, 1.0)
         end
     end
+    if type(self.RefreshWhisperHistoryHint) == "function" then
+        self:RefreshWhisperHistoryHint()
+    end
 end
 
 function DynamicChat:GetAutoYieldChatAddon()
@@ -1746,6 +1749,9 @@ local function HideAllCurrentSkinFrames()
     end
     if tabNavFrame then
         tabNavFrame:Hide()
+    end
+    if DC_NS.whisperHistoryHint then
+        DC_NS.whisperHistoryHint:Hide()
     end
 end
 
@@ -4354,6 +4360,200 @@ local function EnsureSleekEditBoxBar()
     return bar
 end
 
+function DC_NS.EnsureWhisperHistoryHint()
+    if DC_NS.whisperHistoryHint then return DC_NS.whisperHistoryHint end
+    local btn = CreateFrame("Button", "DynamicChatWhisperHistoryHint", UIParent, "BackdropTemplate")
+    btn:SetFrameStrata("LOW")
+    btn:SetFrameLevel(18)
+    btn:SetHeight(26)
+    btn:EnableMouse(true)
+    btn:RegisterForClicks("LeftButtonUp")
+    btn:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+
+    local ar, ag, ab = GetSuiteAccent()
+    btn:SetBackdropColor(0.035, 0.039, 0.051, 0.88)
+    btn:SetBackdropBorderColor(0.18, 0.22, 0.28, 0.72)
+
+    local leftBar = btn:CreateTexture(nil, "OVERLAY")
+    leftBar:SetWidth(2)
+    leftBar:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
+    leftBar:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 1, 1)
+    leftBar:SetColorTexture(ar, ag, ab, 0.75)
+    DisableTexPixelSnap(leftBar)
+    btn.leftBar = leftBar
+
+    local label = btn:CreateFontString(nil, "OVERLAY")
+    SetSafeFont(label, 11, "")
+    label:SetPoint("LEFT", btn, "LEFT", 10, 0)
+    label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
+    label:SetTextColor(0.84, 0.88, 0.94, 0.95)
+    btn.label = label
+
+    local function ApplyRestStyle(selfBtn)
+        local r, g, b = GetSuiteAccent()
+        selfBtn:SetBackdropColor(0.035, 0.039, 0.051, 0.88)
+        selfBtn:SetBackdropBorderColor(0.18, 0.22, 0.28, 0.72)
+        if selfBtn.leftBar then
+            selfBtn.leftBar:SetColorTexture(r, g, b, 0.75)
+        end
+        if selfBtn.label then
+            selfBtn.label:SetTextColor(0.84, 0.88, 0.94, 0.95)
+        end
+    end
+    btn.ApplyRestStyle = ApplyRestStyle
+
+    btn:SetScript("OnEnter", function(selfBtn)
+        local r, g, b, hex6 = GetSuiteAccent()
+        selfBtn:SetBackdropColor(0.055, 0.065, 0.088, 0.96)
+        selfBtn:SetBackdropBorderColor(r, g, b, 0.95)
+        if selfBtn.leftBar then
+            selfBtn.leftBar:SetColorTexture(r, g, b, 1.0)
+        end
+        if selfBtn.label then
+            selfBtn.label:SetTextColor(1.0, 1.0, 1.0, 1.0)
+        end
+        if _G.GameTooltip then
+            _G.GameTooltip:SetOwner(selfBtn, "ANCHOR_TOP")
+            _G.GameTooltip:AddLine("|cFF" .. hex6 .. "Saved Whisper History|r")
+            _G.GameTooltip:AddLine("Saved whisper messages stay in Copy Chat so combat whispers never error.", 0.82, 0.86, 0.92, true)
+            _G.GameTooltip:AddLine(FormatTooltipCmd("Left-Click:", "Open Copy Chat for this tab", "34D399"))
+            _G.GameTooltip:Show()
+        end
+    end)
+
+    btn:SetScript("OnLeave", function(selfBtn)
+        ApplyRestStyle(selfBtn)
+        if _G.GameTooltip then
+            _G.GameTooltip:Hide()
+        end
+    end)
+
+    btn:SetScript("OnClick", function(selfBtn)
+        local activeCF = _G.SELECTED_DOCK_FRAME
+        if not activeCF or IsSecretValue(activeCF) or DC_NS.IsTemporaryBNWhisperOrSecretFrame(activeCF) then
+            activeCF = selfBtn._targetCF
+        end
+        if activeCF and not IsSecretValue(activeCF) and not DC_NS.IsTemporaryBNWhisperOrSecretFrame(activeCF) then
+            DynamicChat:ShowFullChatHistoryModal(activeCF)
+        end
+    end)
+
+    btn:Hide()
+    DC_NS.whisperHistoryHint = btn
+    return btn
+end
+
+function DynamicChat:RefreshWhisperHistoryHint()
+    local hint = DC_NS.whisperHistoryHint
+    local function HideHint()
+        if hint then
+            hint._targetCF = nil
+            hint:Hide()
+        end
+    end
+
+    if IsModuleDisabledInSuite("DynamicChat") or self:IsExternalChatEngineLoaded() then
+        HideHint()
+        return
+    end
+    local db = EnsureDB()
+    if db.enableSleekChatSkin == false
+        or self._dsEditModeActive == true
+        or self._dsDragging == true
+        or not IsPrimaryChatDockVisible()
+        or db.preserveWhisperTabs == false
+        or db.preserveChatHistory == false
+        or db.enableGPUBufferCap == false then
+        HideHint()
+        return
+    end
+
+    local cf1 = _G.ChatFrame1
+    local activeCF = _G.SELECTED_DOCK_FRAME
+    if not cf1 or not activeCF or activeCF == cf1 or IsSecretValue(activeCF) or DC_NS.IsTemporaryBNWhisperOrSecretFrame(activeCF) then
+        HideHint()
+        return
+    end
+    if type(activeCF.IsForbidden) == "function" then
+        local okF, isForb = pcall(activeCF.IsForbidden, activeCF)
+        if not okF or IsSecretValue(isForb) or isForb == true then
+            HideHint()
+            return
+        end
+    end
+
+    local okTemp, isTemp = pcall(function() return activeCF.isTemporary end)
+    if not okTemp or IsSecretValue(isTemp) or isTemp ~= true then
+        HideHint()
+        return
+    end
+    local okType, chatType = pcall(function() return activeCF.chatType end)
+    if not okType or IsSecretValue(chatType) or chatType ~= "WHISPER" then
+        HideHint()
+        return
+    end
+    local okTgt, chatTarget = pcall(function() return activeCF.chatTarget end)
+    if not okTgt or IsSecretValue(chatTarget) or type(chatTarget) ~= "string" or chatTarget == "" then
+        HideHint()
+        return
+    end
+
+    local savedEntry = DC_NS.FindSavedWhisperTabEntry(db, chatTarget)
+    local lineCount = (type(savedEntry) == "table" and type(savedEntry.lines) == "table") and #savedEntry.lines or 0
+    if lineCount < 1 then
+        HideHint()
+        return
+    end
+
+    local numMsgs = nil
+    if type(activeCF.GetNumMessages) == "function" then
+        local okN, rawN = pcall(activeCF.GetNumMessages, activeCF)
+        if okN and not IsSecretValue(rawN) and type(rawN) == "number" then
+            numMsgs = rawN
+        end
+    end
+    if numMsgs ~= 0 then
+        HideHint()
+        return
+    end
+
+    hint = DC_NS.EnsureWhisperHistoryHint()
+    hint._targetCF = activeCF
+    local cfScale = (cf1.GetScale and cf1:GetScale()) or 1.0
+    if IsSecretValue(cfScale) or type(cfScale) ~= "number" or cfScale <= 0 then cfScale = 1.0 end
+    if hint.SetScale then pcall(hint.SetScale, hint, cfScale) end
+
+    local ebH = DC_NS.GetEmbeddedEditBoxHeight(db)
+    local isTopEB = (db.editBoxPosition == "TOP")
+    hint:ClearAllPoints()
+    if isTopEB then
+        hint:SetPoint("TOPLEFT", cf1, "TOPLEFT", 8, -(ebH + 10))
+        hint:SetPoint("TOPRIGHT", cf1, "TOPRIGHT", -8, -(ebH + 10))
+    else
+        hint:SetPoint("BOTTOMLEFT", cf1, "BOTTOMLEFT", 8, ebH + 10)
+        hint:SetPoint("BOTTOMRIGHT", cf1, "BOTTOMRIGHT", -8, ebH + 10)
+    end
+
+    if hint.label then
+        SetSafeFont(hint.label, 11, "")
+        if lineCount == 1 then
+            hint.label:SetText("1 previous message saved in Copy Chat - Click to view")
+        else
+            hint.label:SetText(string.format("Previous messages (%d) saved in Copy Chat - Click to view", lineCount))
+        end
+    end
+    if hint.ApplyRestStyle and not (hint.IsMouseOver and hint:IsMouseOver()) then
+        hint:ApplyRestStyle()
+    end
+    hint:Show()
+end
+
 local passiveSkinnedEditBoxes = {}
 
 local function ApplyPassiveEditBoxSkinOnInit(editBox, cfName, skinEnabled, syncFont, fontPath)
@@ -5003,6 +5203,9 @@ local function ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
         if type(cf.AddMessage) == "function" then
             hooksecurefunc(cf, "AddMessage", function(selfCF)
                 RefreshChatScrollBarVisibility(selfCF, false)
+                if selfCF == _G.SELECTED_DOCK_FRAME then
+                    DynamicChat:RefreshWhisperHistoryHint()
+                end
             end)
         end
     end
@@ -7498,6 +7701,7 @@ function DynamicChat:ApplySleekChatSkin()
                 if DynamicChat.OptimizeCombatLogTab then
                     DynamicChat:OptimizeCombatLogTab()
                 end
+                DynamicChat:RefreshWhisperHistoryHint()
             end)
         end
         if type(_G.FCF_StartAlertFlash) == "function" then
@@ -7671,6 +7875,7 @@ function DynamicChat:ApplySleekChatSkin()
         end
     end
     self._inApplySleekChatSkin = false
+    self:RefreshWhisperHistoryHint()
 end
 
 local function RefreshChatFrameTextLayout()
@@ -8650,6 +8855,7 @@ function DynamicChat:RestoreSavedWhisperTabs()
         self:HookAllChatFramesAndEditBoxes()
         self:ApplySleekChatSkin()
     end
+    self:RefreshWhisperHistoryHint()
 end
 
 function DynamicChat:RestoreChatHistorySnapshot()
@@ -8721,6 +8927,17 @@ function DynamicChat:HookAllChatFramesAndEditBoxes()
                 end
                 DynamicChat:RefreshLeftRailTelemetry()
             end)
+            if type(cf.AddMessage) == "function" then
+                DC_NS.whisperHintAddMessageHooked = DC_NS.whisperHintAddMessageHooked or setmetatable({}, { __mode = "k" })
+                if not DC_NS.whisperHintAddMessageHooked[cf] then
+                    DC_NS.whisperHintAddMessageHooked[cf] = true
+                    hooksecurefunc(cf, "AddMessage", function(selfCF)
+                        if selfCF == _G.SELECTED_DOCK_FRAME then
+                            DynamicChat:RefreshWhisperHistoryHint()
+                        end
+                    end)
+                end
+            end
         end
     end
 end
@@ -8772,6 +8989,7 @@ function DynamicChat:InstallChatHooks()
     if type(_G.FCF_Close) == "function" then
         hooksecurefunc("FCF_Close", function(closedCF)
             DynamicChat:RemoveSavedWhisperTabForFrame(closedCF)
+            DynamicChat:RefreshWhisperHistoryHint()
         end)
     end
     if type(_G.ChatEdit_ActivateChat) == "function" then
@@ -14078,6 +14296,7 @@ local function RenderChatEmbedded(arg1, arg2)
                     db.savedWhisperTabs = {}
                 end
                 DynamicChat:ApplyGPUBufferSettings()
+                DynamicChat:RefreshWhisperHistoryHint()
                 DynamicChat:RefreshConfigUI()
             end,
             "Off", "Enabled",
@@ -14136,6 +14355,7 @@ local function RenderChatEmbedded(arg1, arg2)
                     db.preserveChatHistory = true
                     db.enableGPUBufferCap = true
                 end
+                DynamicChat:RefreshWhisperHistoryHint()
                 DynamicChat:RefreshConfigUI()
             end,
             "Off", "Enabled",
@@ -14187,6 +14407,7 @@ local function RenderChatEmbedded(arg1, arg2)
             EnsureDB().savedChatHistory = {}
             EnsureDB().savedWhisperTabs = {}
             DynamicChat._sessionPlainLog = {}
+            DynamicChat:RefreshWhisperHistoryHint()
             PrintMsg("Cleared active chat window, saved reload history, and saved whisper tabs.")
         end)
         clearHistBtn:SetPoint("RIGHT", c3_historyActions, "RIGHT", -14, 0)
@@ -14917,13 +15138,13 @@ function DynamicChat._RegisterWithDynamicSuite()
 
     DynamicChat.CHANGELOG = {
         version = DynamicChat.version or VERSION,
-        date = "27/11/2026",
+        date = "28/11/2026",
         entries = {
+            { type = "NEW",      text = "Clickable Saved Whisper History Hint (28/11/2026): Added a zero-taint clickable 'Previous messages saved in Copy Chat' overlay inside empty reopened character whisper tabs so you can open Copy Chat for that whisper with a single click; the hint automatically stays clear of top or bottom typing boxes, hides immediately when a new whisper arrives or when switching tabs, and never touches Battle.net or secret whisper tabs." },
             { type = "FIX",      text = "Chat Window Size Reload Persistence Fix (27/11/2026): Fixed the primary chat window reverting to Blizzard's smaller default dimensions after reloading; HUD Edit Mode resizes now reliably commit width and height on release, screen clamping preserves saved chat dimensions instead of overwriting them with temporary early-login bounds, and Blizzard Edit Mode chat sizing passes re-apply DynamicChat's saved dimensions cleanly while updating the embedded typing box and message insets." },
             { type = "FIX",      text = "Duplicate Typing Box, Scrollbar OnUpdate & Tab Hover Optimization (27/11/2026): Replaced IsEditBoxShownOrFocused with an active-focus-only IsEditBoxFocused check so idle ChatFrame1EditBox chrome is properly stripped and skinned when Retail WoW keeps it shown, while deferring and flushing pending skin/anchor updates on ChatFrame.OnEditBoxFocusLost and preserving BN_WHISPER/secret/combat protections; detached the custom scrollbar OnUpdate handler when hidden, undocked, or without overflow; and replaced the DOCKED_CHAT_FRAMES hover loop with a single GeneralDockManager hit test." },
             { type = "FIX",      text = "Battle.net Whisper Reply Hardening & Chat Tab Fade Guard (26/11/2026): Removed direct OnTextChanged widget script hooks from ChatFrameEditBox frames (relying strictly on hooksecurefunc post-hooks for /ww conversion), hardened secret/BN_WHISPER checks to fail closed on protected attributes, header text/width, and forbidden frames, guarded edit box font updates, SetPoint re-anchoring, Alt-arrow settings, and temporary Battle.net whisper frame background, button, scroll, and hook updates against BN_WHISPER, secret targets/headers, combat, and active typing focus, tracked active focused edit boxes so stale focus-lost events or deferred skin refreshes never re-show the Obsidian prompt hint over Battle.net typing, and skipped chat tab alpha changes while Blizzard's UIFrameFade or secret fadeInfo is active on Combat Log or whisper tabs (with secret-safe UIFrameIsFlashing and tab name checks) across both DynamicSuite and standalone DynamicChat." },
             { type = "NEW",      text = "Whisper Tab Clickability Fix & Reload Persistence (26/11/2026): Moved the chat header drag strip to BACKGROUND strata strictly below all LOW-strata chat tabs (level 22) and navigation arrows (level 25), synced GeneralDockManager scale with ChatFrame1 so child clipping never cuts off the rightmost whisper tab, hardened tab reparenting out of GeneralDockManagerScrollFrameChild with combat and re-entrancy deferrals, and automatically scrolled newly opened whisper tabs into view. Added zero-taint character whisper tab and message persistence across reloads (capped at 3/5/10 tabs and 50 lines per tab with 24-hour expiry, Midnight secret-value skipping, automatic removal when closing a tab, and previous-session rendering in Copy Chat) plus 'Keep Whisper Tabs After Reload' and 'Whisper Tab Limit' controls under Links & History." },
-            { type = "UI",       text = "12 px Default Chat Font & Info Toast Timer Sync (24/11/2026): Set the default chat message font size to 12 px and updated Clean Smoked-Glass and Minimalist Raid presets to use 12 px / 2 px line spacing while tuning High-Readability to a balanced +1 px step at 13 px (50% smoked-glass backdrop, thin outline, drop shadow, 2 px line spacing); and connected Mention Alert Toasts to Suite Studio's dedicated Info & Mention Toast Duration timer (5s default: 3s, 5s, 8s, 12s, or Stay Until Clicked) with hover-to-pause and Right-Click dismissal." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}
