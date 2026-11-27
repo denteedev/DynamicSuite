@@ -660,15 +660,39 @@ local function EnsureDB()
     end
     SyncWhisperInviteSettings(_G.DynamicGroupDB)
 
+    -- Clean up stale or legacy yieldHooks flags so unloaded addons never block LFG sign-up
+    if _G.DynamicGroupDB.yieldHooks == true then
+        _G.DynamicGroupDB.yieldHooks = {}
+    elseif type(_G.DynamicGroupDB.yieldHooks) == "table" then
+        local isLoadedFn = (_G.C_AddOns and _G.C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+        for addonKey, flag in pairs(_G.DynamicGroupDB.yieldHooks) do
+            local loaded = false
+            if flag == true and type(addonKey) == "string" and addonKey ~= "" and type(isLoadedFn) == "function" then
+                local okL, resL = pcall(isLoadedFn, addonKey)
+                loaded = (okL and not IsSecretValue(resL) and resL == true) and true or false
+            end
+            if not loaded then
+                _G.DynamicGroupDB.yieldHooks[addonKey] = nil
+            end
+        end
+    end
+
     return _G.DynamicGroupDB
 end
 
 local function IsYieldingSharedHooks()
     local db = _G.DynamicGroupDB
-    if type(db) == "table" then
-        if db.yieldHooks == true then return true end
-        if type(db.yieldHooks) == "table" and next(db.yieldHooks) ~= nil then
-            return true
+    if type(db) ~= "table" then return false end
+    if type(db.yieldHooks) ~= "table" then return false end
+    local isLoadedFn = (_G.C_AddOns and _G.C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
+    for addonKey, flag in pairs(db.yieldHooks) do
+        if flag == true and type(addonKey) == "string" and addonKey ~= "" then
+            if type(isLoadedFn) == "function" then
+                local okL, resL = pcall(isLoadedFn, addonKey)
+                if okL and not IsSecretValue(resL) and resL == true then
+                    return true
+                end
+            end
         end
     end
     return false
@@ -2438,35 +2462,34 @@ local function PerformLFGSignUp(entry, isDoubleClick, explicitResultID)
     if InCombatLockdown and InCombatLockdown() then return end
     if HasExternalLFGConflict() then return end
 
-    local liveResultID = (type(explicitResultID) == "number" and explicitResultID)
-        or (entry and type(entry.resultID) == "number" and entry.resultID)
+    local liveResultID = (not IsSecretValue(explicitResultID) and type(explicitResultID) == "number" and explicitResultID)
+        or (entry and not IsSecretValue(entry.resultID) and type(entry.resultID) == "number" and entry.resultID)
         or ResolveLiveResultID(entry)
     if not liveResultID then return end
 
-    -- Verify search result info is valid and not delisted before submitting
-    if not C_LFGList or type(C_LFGList.HasSearchResultInfo) ~= "function" then
+    -- Verify search result info is valid and not delisted before opening the Sign-Up dialog
+    if not C_LFGList or type(C_LFGList.GetSearchResultInfo) ~= "function" then
         return
     end
-    local okHas, hasInfo = pcall(C_LFGList.HasSearchResultInfo, liveResultID)
-    if not okHas or IsSecretValue(hasInfo) or not hasInfo then
-        return
+    if type(C_LFGList.HasSearchResultInfo) == "function" then
+        local okHas, hasInfo = pcall(C_LFGList.HasSearchResultInfo, liveResultID)
+        if not okHas or IsSecretValue(hasInfo) or hasInfo == false then
+            return
+        end
     end
 
-    if type(C_LFGList.GetSearchResultInfo) ~= "function" then
-        return
-    end
     local okInfo, searchInfo = pcall(C_LFGList.GetSearchResultInfo, liveResultID)
     if not okInfo or type(searchInfo) ~= "table" or IsSecretValue(searchInfo) then
         return
     end
-    if (not IsSecretValue(searchInfo.isDelisted) and searchInfo.isDelisted)
+    if (not IsSecretValue(searchInfo.isDelisted) and searchInfo.isDelisted == true)
         or (not IsSecretValue(searchInfo.hasSearchResult) and searchInfo.hasSearchResult == false) then
         return
     end
 
     local now = (GetTime and GetTime()) or 0
     if (now - lastSignUpTime) < 0.40 and lastSignUpResultID == liveResultID then
-        -- Debounce rapid duplicate trigger within 400ms on same group
+        -- Debounce rapid duplicate trigger within 400ms on same group (global + mixin click hooks)
         return
     end
 
@@ -2482,12 +2505,22 @@ local function PerformLFGSignUp(entry, isDoubleClick, explicitResultID)
     lastSignUpResultID = liveResultID
     lastSignUpTime = now
 
-    -- Open LFGListApplicationDialog directly with the exact clicked liveResultID
-    if type(_G.LFGListApplicationDialog_Show) == "function" and _G.LFGListApplicationDialog then
-        pcall(_G.LFGListApplicationDialog_Show, _G.LFGListApplicationDialog, liveResultID)
-    elseif sp.SignUpButton and sp.SignUpButton:IsEnabled() and type(_G.LFGListSearchPanel_SignUp) == "function" then
+    local dialog = _G.LFGListApplicationDialog
+    local function IsDialogShownNow()
+        if not dialog or type(dialog.IsShown) ~= "function" then return false end
+        local okS, shown = pcall(dialog.IsShown, dialog)
+        return (okS and not IsSecretValue(shown) and shown == true) or false
+    end
+
+    -- Open LFGListApplicationDialog directly with the exact clicked liveResultID;
+    -- fall back cleanly to LFGListSearchPanel_SignUp (and SignUpButton:Click) if not yet shown.
+    if dialog and type(_G.LFGListApplicationDialog_Show) == "function" then
+        pcall(_G.LFGListApplicationDialog_Show, dialog, liveResultID)
+    end
+    if not IsDialogShownNow() and type(_G.LFGListSearchPanel_SignUp) == "function" then
         pcall(_G.LFGListSearchPanel_SignUp, sp)
-    elseif sp.SignUpButton and sp.SignUpButton:IsEnabled() and sp.SignUpButton.Click then
+    end
+    if not IsDialogShownNow() and sp.SignUpButton and sp.SignUpButton.IsEnabled and sp.SignUpButton:IsEnabled() and sp.SignUpButton.Click then
         pcall(sp.SignUpButton.Click, sp.SignUpButton)
     end
 end
@@ -5936,8 +5969,10 @@ end
 -- 5. ENGINE 3: SIGN-UP, AUTO-ROLE, REMEMBER SEARCH & SAFE AUTO-REFRESH TICKER
 -- ============================================================================
 
+local isUpdatingDialogValidState = false
+
 local function OnLFGListApplicationDialogUpdateRoles(dialog)
-    if not dialog or IsYieldingSharedHooks() or IsPlayerInCombat() then return end
+    if not dialog or isUpdatingDialogValidState or IsYieldingSharedHooks() or IsPlayerInCombat() then return end
     local db = EnsureDB()
     if not db.autoSelectRole then return end
     local okSp, spec = pcall(SafeGetSpecialization)
@@ -5953,6 +5988,11 @@ local function OnLFGListApplicationDialogUpdateRoles(dialog)
         local okShown, shown = pcall(roleBtn.IsShown, roleBtn)
         if okShown and not IsSecretValue(shown) and shown then
             pcall(roleBtn.CheckButton.SetChecked, roleBtn.CheckButton, true)
+            if type(_G.LFGListApplicationDialog_UpdateValidState) == "function" then
+                isUpdatingDialogValidState = true
+                pcall(_G.LFGListApplicationDialog_UpdateValidState, dialog)
+                isUpdatingDialogValidState = false
+            end
         end
     end
 end
@@ -5996,22 +6036,71 @@ local function BuildSignUpNoteString()
     return table.concat(parts, " ")
 end
 
-local function SnapDialogSignUpUnderCursor(dialog)
-    if not dialog or not dialog.SignUpButton then return end
-    if InCombatLockdown and InCombatLockdown() then return end
-    local scale = dialog:GetEffectiveScale() or 1
-    local cx, cy = GetCursorPosition()
-    cx, cy = cx / scale, cy / scale
+local function EnsureDialogAbovePVEFrame(dialog)
+    if not dialog or IsPlayerInCombat() then return end
+    if type(dialog.SetFrameStrata) == "function" then
+        local okS, curStrata = pcall(dialog.GetFrameStrata, dialog)
+        if not okS or IsSecretValue(curStrata) or curStrata ~= "DIALOG" then
+            pcall(dialog.SetFrameStrata, dialog, "DIALOG")
+        end
+    end
+    if type(dialog.Raise) == "function" then
+        pcall(dialog.Raise, dialog)
+    end
+end
 
-    -- Position the dialog so its SignUpButton sits directly under the user's cursor for an instant, zero-movement hardware click!
+local function SnapDialogSignUpUnderCursor(dialog)
+    if not dialog or not dialog.SignUpButton or not UIParent then return end
+    if InCombatLockdown and InCombatLockdown() then return end
+    EnsureDialogAbovePVEFrame(dialog)
+
+    local okDS, dScale = pcall(dialog.GetEffectiveScale, dialog)
+    dScale = (okDS and not IsSecretValue(dScale) and type(dScale) == "number" and dScale > 0) and dScale or 1
     local btn = dialog.SignUpButton
-    local dCenterX, dCenterY = dialog:GetCenter()
-    local bCenterX, bCenterY = btn:GetCenter()
-    if dCenterX and dCenterY and bCenterX and bCenterY then
-        local dx = dCenterX - bCenterX
-        local dy = dCenterY - bCenterY
-        dialog:ClearAllPoints()
-        dialog:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx + dx, cy + dy)
+    local okBS, bScale = pcall(btn.GetEffectiveScale, btn)
+    bScale = (okBS and not IsSecretValue(bScale) and type(bScale) == "number" and bScale > 0) and bScale or dScale
+    local okUS, uScale = pcall(UIParent.GetEffectiveScale, UIParent)
+    uScale = (okUS and not IsSecretValue(uScale) and type(uScale) == "number" and uScale > 0) and uScale or 1
+
+    local cxRaw, cyRaw = GetCursorPosition()
+    if IsSecretValue(cxRaw) or IsSecretValue(cyRaw) or type(cxRaw) ~= "number" or type(cyRaw) ~= "number" then
+        return
+    end
+    local cx, cy = cxRaw / dScale, cyRaw / dScale
+
+    -- Position the dialog so its SignUpButton sits directly under the user's cursor while staying on-screen
+    local okDC, dCenterX, dCenterY = pcall(dialog.GetCenter, dialog)
+    local okBC, bCenterX, bCenterY = pcall(btn.GetCenter, btn)
+    if okDC and okBC
+        and not IsSecretValue(dCenterX) and not IsSecretValue(dCenterY)
+        and not IsSecretValue(bCenterX) and not IsSecretValue(bCenterY)
+        and type(dCenterX) == "number" and type(dCenterY) == "number"
+        and type(bCenterX) == "number" and type(bCenterY) == "number" then
+        local bX = (bCenterX * bScale) / dScale
+        local bY = (bCenterY * bScale) / dScale
+        local targetX = cx + (dCenterX - bX)
+        local targetY = cy + (dCenterY - bY)
+
+        local okUW, rawUW = pcall(UIParent.GetWidth, UIParent)
+        local okUH, rawUH = pcall(UIParent.GetHeight, UIParent)
+        if okUW and okUH and not IsSecretValue(rawUW) and not IsSecretValue(rawUH)
+            and type(rawUW) == "number" and type(rawUH) == "number" and rawUW >= 640 and rawUH >= 480 then
+            local uiW = (rawUW * uScale) / dScale
+            local uiH = (rawUH * uScale) / dScale
+            local okDW, dW = pcall(dialog.GetWidth, dialog)
+            local okDH, dH = pcall(dialog.GetHeight, dialog)
+            local halfW = ((okDW and not IsSecretValue(dW) and type(dW) == "number" and dW > 0) and dW or 306) * 0.5
+            local halfH = ((okDH and not IsSecretValue(dH) and type(dH) == "number" and dH > 0) and dH or 210) * 0.5
+            if uiW > (halfW * 2) then
+                targetX = math.max(halfW, math.min(uiW - halfW, targetX))
+            end
+            if uiH > (halfH * 2) then
+                targetY = math.max(halfH, math.min(uiH - halfH, targetY))
+            end
+        end
+
+        pcall(dialog.ClearAllPoints, dialog)
+        pcall(dialog.SetPoint, dialog, "CENTER", UIParent, "BOTTOMLEFT", targetX, targetY)
         _dgDialogState[dialog] = true
     end
 end
@@ -6020,6 +6109,7 @@ local function OnLFGListApplicationDialogOnShow(dialog)
     if not dialog or IsYieldingSharedHooks() then return end
     local db = EnsureDB()
 
+    EnsureDialogAbovePVEFrame(dialog)
     OnLFGListApplicationDialogUpdateRoles(dialog)
 
     if db.autoFillNote and not IsPlayerInCombat() and dialog.Description and not dialog.Description.securityDisableSetText then
@@ -6045,8 +6135,8 @@ local function OnLFGListApplicationDialogOnShow(dialog)
     elseif _dgDialogState[dialog] then
         -- Restore standard center position if previously snapped by DynamicGroup and modifier key is held or 1-Click is off
         if not InCombatLockdown or not InCombatLockdown() then
-            dialog:ClearAllPoints()
-            dialog:SetPoint("CENTER", UIParent, "CENTER", 0, 100)
+            pcall(dialog.ClearAllPoints, dialog)
+            pcall(dialog.SetPoint, dialog, "CENTER", UIParent, "CENTER", 0, 100)
             _dgDialogState[dialog] = nil
         end
     end
@@ -6073,187 +6163,223 @@ function DynamicGroup:UpdateAutoRefreshTicker()
     end)
 end
 
+local function OnLFGSearchEntryClick(entry, button)
+    if button ~= "LeftButton" then return end
+    if IsModifierKeyDown and IsModifierKeyDown() then return end
+    local db = EnsureDB()
+    if not db.oneClickSignUp then return end
+    local st = entry and GetEntryState(entry)
+    local lockedID = st and st.pressedResultID
+    if st then st.pressedResultID = nil end
+    PerformLFGSignUp(entry, false, lockedID)
+end
+
 function DynamicGroup:InstallLFGHooks()
     SuppressEUIGroupFinderIfNeeded()
-    if self.lfgHooksInstalled then return end
-    if type(_G.LFGListSearchEntry_Update) == "function" then
+    self._lfgHooks = self._lfgHooks or {}
+    local hk = self._lfgHooks
+
+    if not hk.entryUpdate and type(_G.LFGListSearchEntry_Update) == "function" then
+        hk.entryUpdate = true
         hooksecurefunc("LFGListSearchEntry_Update", OnLFGListSearchEntryUpdate)
+    end
+    if not hk.panelUpdateList and type(_G.LFGListSearchPanel_UpdateResultList) == "function" then
+        hk.panelUpdateList = true
         hooksecurefunc("LFGListSearchPanel_UpdateResultList", OnLFGListSearchPanelUpdateResultList)
-        if type(_G.LFGListSearchPanel_UpdateResults) == "function" then
-            hooksecurefunc("LFGListSearchPanel_UpdateResults", function(panel)
-                if not panel then return end
-                if InCombatLockdown and InCombatLockdown() then return end
-                SyncScrollBoxToFilteredResults(panel)
-            end)
-        end
-        if type(_G.LFGListSearchPanel_DoSearch) == "function" then
-            hooksecurefunc("LFGListSearchPanel_DoSearch", function(sp)
-                lastSearchTimestamp = (type(_G.GetTime) == "function" and _G.GetTime()) or nil
-                wipe(declinedResultIDs)
-                DynamicGroup._testApplyActive = false
-                DynamicGroup._testApplyMode = nil
-                DynamicGroup._testApplyResultID = nil
-                if sp then
-                    local pState = GetPanelState(sp)
-                    pState.needsInitialSort = true
-                    pState.orderedResults = nil
-                    pState.rawResults = nil
-                    local db = EnsureDB()
-                    if db.rememberSearchText and sp.SearchBox and sp.SearchBox.GetText then
-                        local okT, txt = pcall(sp.SearchBox.GetText, sp.SearchBox)
-                        if okT and type(txt) == "string" and not IsSecretValue(txt) then
-                            db.lastSearchText = txt
-                        end
+    end
+    if not hk.panelUpdateResults and type(_G.LFGListSearchPanel_UpdateResults) == "function" then
+        hk.panelUpdateResults = true
+        hooksecurefunc("LFGListSearchPanel_UpdateResults", function(panel)
+            if not panel then return end
+            if InCombatLockdown and InCombatLockdown() then return end
+            SyncScrollBoxToFilteredResults(panel)
+        end)
+    end
+    if not hk.doSearch and type(_G.LFGListSearchPanel_DoSearch) == "function" then
+        hk.doSearch = true
+        hooksecurefunc("LFGListSearchPanel_DoSearch", function(sp)
+            lastSearchTimestamp = (type(_G.GetTime) == "function" and _G.GetTime()) or nil
+            wipe(declinedResultIDs)
+            DynamicGroup._testApplyActive = false
+            DynamicGroup._testApplyMode = nil
+            DynamicGroup._testApplyResultID = nil
+            if sp then
+                local pState = GetPanelState(sp)
+                pState.needsInitialSort = true
+                pState.orderedResults = nil
+                pState.rawResults = nil
+                local db = EnsureDB()
+                if db.rememberSearchText and sp.SearchBox and sp.SearchBox.GetText then
+                    local okT, txt = pcall(sp.SearchBox.GetText, sp.SearchBox)
+                    if okT and type(txt) == "string" and not IsSecretValue(txt) then
+                        db.lastSearchText = txt
                     end
                 end
-            end)
-        end
-        if type(_G.LFGListSearchPanel_SetCategory) == "function" then
-            hooksecurefunc("LFGListSearchPanel_SetCategory", function(sp)
-                wipe(declinedResultIDs)
-                if sp then
-                    local pState = GetPanelState(sp)
-                    pState.needsInitialSort = true
-                    pState.orderedResults = nil
-                    pState.rawResults = nil
-                    local db = EnsureDB()
-                    if db.rememberSearchText and db.lastSearchText and db.lastSearchText ~= "" and sp.SearchBox and sp.SearchBox.SetText and not sp.SearchBox.securityDisableSetText then
-                        local okCur, cur = pcall(sp.SearchBox.GetText, sp.SearchBox)
-                        if okCur and (not cur or (not IsSecretValue(cur) and cur == "")) then
-                            pcall(sp.SearchBox.SetText, sp.SearchBox, db.lastSearchText)
-                        end
+            end
+        end)
+    end
+    if not hk.setCategory and type(_G.LFGListSearchPanel_SetCategory) == "function" then
+        hk.setCategory = true
+        hooksecurefunc("LFGListSearchPanel_SetCategory", function(sp)
+            wipe(declinedResultIDs)
+            if sp then
+                local pState = GetPanelState(sp)
+                pState.needsInitialSort = true
+                pState.orderedResults = nil
+                pState.rawResults = nil
+                local db = EnsureDB()
+                if db.rememberSearchText and db.lastSearchText and db.lastSearchText ~= "" and sp.SearchBox and sp.SearchBox.SetText and not sp.SearchBox.securityDisableSetText then
+                    local okCur, cur = pcall(sp.SearchBox.GetText, sp.SearchBox)
+                    if okCur and (not cur or (not IsSecretValue(cur) and cur == "")) then
+                        pcall(sp.SearchBox.SetText, sp.SearchBox, db.lastSearchText)
                     end
                 end
-            end)
-        end
-        if type(_G.LFGListSearchPanel_Clear) == "function" then
-            hooksecurefunc("LFGListSearchPanel_Clear", function(sp)
-                wipe(declinedResultIDs)
-                if sp then
-                    local pState = GetPanelState(sp)
-                    pState.needsInitialSort = true
-                    pState.orderedResults = nil
-                    pState.rawResults = nil
-                end
-            end)
-        end
-        if type(_G.LFGListSearchEntry_OnClick) == "function" then
-            hooksecurefunc("LFGListSearchEntry_OnClick", function(entry, button)
-                if button ~= "LeftButton" then return end
-                if IsModifierKeyDown and IsModifierKeyDown() then return end
-                local db = EnsureDB()
-                if not db.oneClickSignUp then return end
-                local st = entry and GetEntryState(entry)
-                local lockedID = st and st.pressedResultID
-                if st then st.pressedResultID = nil end
-                PerformLFGSignUp(entry, false, lockedID)
-            end)
-        end
-        if type(_G.LFGListUtil_SetSearchEntryTooltip) == "function" then
-            hooksecurefunc("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
-                if not tooltip or not resultID or IsYieldingSharedHooks() then return end
-                if not IsValidSearchResultID(resultID) then return end
-                local db = EnsureDB()
-                if not db.lfgFilterEnabled then return end
-                local meta = InspectSearchResult(resultID)
-                if not meta then return end
+            end
+        end)
+    end
+    if not hk.clearPanel and type(_G.LFGListSearchPanel_Clear) == "function" then
+        hk.clearPanel = true
+        hooksecurefunc("LFGListSearchPanel_Clear", function(sp)
+            wipe(declinedResultIDs)
+            if sp then
+                local pState = GetPanelState(sp)
+                pState.needsInitialSort = true
+                pState.orderedResults = nil
+                pState.rawResults = nil
+            end
+        end)
+    end
+    if not hk.entryClickGlobal and type(_G.LFGListSearchEntry_OnClick) == "function" then
+        hk.entryClickGlobal = true
+        hooksecurefunc("LFGListSearchEntry_OnClick", OnLFGSearchEntryClick)
+    end
+    if not hk.entryClickMixin and type(_G.LFGListSearchEntryMixin) == "table" and type(_G.LFGListSearchEntryMixin.OnClick) == "function" then
+        hk.entryClickMixin = true
+        hooksecurefunc(_G.LFGListSearchEntryMixin, "OnClick", OnLFGSearchEntryClick)
+    end
+    if not hk.tooltip and type(_G.LFGListUtil_SetSearchEntryTooltip) == "function" then
+        hk.tooltip = true
+        hooksecurefunc("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
+            if not tooltip or not resultID or IsYieldingSharedHooks() then return end
+            if not IsValidSearchResultID(resultID) then return end
+            local db = EnsureDB()
+            if not db.lfgFilterEnabled then return end
+            local meta = InspectSearchResult(resultID)
+            if not meta then return end
 
-                if meta.regionKey ~= "PENDING" then
-                    local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
-                    local rc = GetRegionColor(meta.regionKey)
-                    local realmSuffix = (meta.realmName and meta.realmName ~= "") and (" (" .. tostring(meta.realmName) .. ")") or ""
-                    tooltip:AddDoubleLine(
-                        "Datacentre Region:",
-                        FormatRegionTag(meta.regionKey, regMeta.badge) .. " |c" .. rc.hex .. regMeta.pillLabel .. "|r" .. realmSuffix,
-                        0.64, 0.70, 0.78,
-                        rc.r, rc.g, rc.b
-                    )
-                end
-
-                local utilParts = {}
-                if meta.hasLust then
-                    utilParts[#utilParts + 1] = "|cFF38BDF8Bloodlust / Heroism|r"
-                end
-                if meta.hasCR then
-                    utilParts[#utilParts + 1] = "|cFF34D399Battle Rez|r"
-                end
-                local utilText = (#utilParts > 0) and table.concat(utilParts, " + ") or "|cFF94A3B8None|r"
+            if meta.regionKey ~= "PENDING" then
+                local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
+                local rc = GetRegionColor(meta.regionKey)
+                local realmSuffix = (meta.realmName and meta.realmName ~= "") and (" (" .. tostring(meta.realmName) .. ")") or ""
                 tooltip:AddDoubleLine(
-                    "Party Utility:",
-                    utilText,
+                    "Datacentre Region:",
+                    FormatRegionTag(meta.regionKey, regMeta.badge) .. " |c" .. rc.hex .. regMeta.pillLabel .. "|r" .. realmSuffix,
+                    0.64, 0.70, 0.78,
+                    rc.r, rc.g, rc.b
+                )
+            end
+
+            local utilParts = {}
+            if meta.hasLust then
+                utilParts[#utilParts + 1] = "|cFF38BDF8Bloodlust / Heroism|r"
+            end
+            if meta.hasCR then
+                utilParts[#utilParts + 1] = "|cFF34D399Battle Rez|r"
+            end
+            local utilText = (#utilParts > 0) and table.concat(utilParts, " + ") or "|cFF94A3B8None|r"
+            tooltip:AddDoubleLine(
+                "Party Utility:",
+                utilText,
+                0.64, 0.70, 0.78,
+                1, 1, 1
+            )
+
+            if meta.challengeMapID then
+                local bestLevel, bestScore, isTimed = GetPlayerBestForDungeon(meta.challengeMapID)
+                local bestText
+                if bestLevel > 0 then
+                    local timedLabel = isTimed and "Timed" or "Over Time"
+                    local scoreSuffix = (bestScore > 0) and (" (Score: " .. tostring(bestScore) .. ")") or ""
+                    bestText = string.format("|cFF22C55E+%d (%s)|r%s", bestLevel, timedLabel, scoreSuffix)
+                else
+                    bestText = "|cFF94A3B8No timed key recorded|r"
+                end
+                tooltip:AddDoubleLine(
+                    "Your Dungeon Best:",
+                    bestText,
                     0.64, 0.70, 0.78,
                     1, 1, 1
                 )
+            end
 
-                if meta.challengeMapID then
-                    local bestLevel, bestScore, isTimed = GetPlayerBestForDungeon(meta.challengeMapID)
-                    local bestText
-                    if bestLevel > 0 then
-                        local timedLabel = isTimed and "Timed" or "Over Time"
-                        local scoreSuffix = (bestScore > 0) and (" (Score: " .. tostring(bestScore) .. ")") or ""
-                        bestText = string.format("|cFF22C55E+%d (%s)|r%s", bestLevel, timedLabel, scoreSuffix)
-                    else
-                        bestText = "|cFF94A3B8No timed key recorded|r"
-                    end
-                    tooltip:AddDoubleLine(
-                        "Your Dungeon Best:",
-                        bestText,
-                        0.64, 0.70, 0.78,
-                        1, 1, 1
-                    )
-                end
+            if meta.numMembers and meta.numMembers > 0 then
+                local _, _, _, accHex = GetSuiteAccent()
+                tooltip:AddDoubleLine(
+                    "Your Class in Group:",
+                    meta.hasPlayerClass and ("|c" .. accHex .. "Yes|r") or "|cFF34D399No|r",
+                    0.64, 0.70, 0.78,
+                    1, 1, 1
+                )
+            end
 
-                if meta.numMembers and meta.numMembers > 0 then
-                    local _, _, _, accHex = GetSuiteAccent()
-                    tooltip:AddDoubleLine(
-                        "Your Class in Group:",
-                        meta.hasPlayerClass and ("|c" .. accHex .. "Yes|r") or "|cFF34D399No|r",
-                        0.64, 0.70, 0.78,
-                        1, 1, 1
-                    )
-                end
+            tooltip:Show()
+        end)
+    end
+    if not hk.saveAdvFilter and C_LFGList and type(C_LFGList.SaveAdvancedFilter) == "function" then
+        hk.saveAdvFilter = true
+        pcall(hooksecurefunc, C_LFGList, "SaveAdvancedFilter", function()
+            if isSyncingAdvancedFilter or IsYieldingSharedHooks() then return end
+            PullFiltersFromBlizzardAdvancedFilter()
+            if DynamicGroup.UpdateLFGMiniBar then
+                DynamicGroup:UpdateLFGMiniBar()
+            end
+            if DynamicGroup.RefreshLFGResults then
+                DynamicGroup:RefreshLFGResults()
+            end
+            if DynamicGroup.RefreshConfigUI then
+                DynamicGroup:RefreshConfigUI()
+            end
+        end)
+    end
+    if not hk.dialogUpdateRoles and type(_G.LFGListApplicationDialog_UpdateRoles) == "function" then
+        hk.dialogUpdateRoles = true
+        hooksecurefunc("LFGListApplicationDialog_UpdateRoles", OnLFGListApplicationDialogUpdateRoles)
+    end
+    if not hk.dialogShowFunc and type(_G.LFGListApplicationDialog_Show) == "function" then
+        hk.dialogShowFunc = true
+        hooksecurefunc("LFGListApplicationDialog_Show", function(dialog)
+            OnLFGListApplicationDialogOnShow(dialog or _G.LFGListApplicationDialog)
+        end)
+    end
+    if not hk.dialogOnShow and _G.LFGListApplicationDialog and _G.LFGListApplicationDialog.HookScript then
+        hk.dialogOnShow = true
+        _G.LFGListApplicationDialog:HookScript("OnShow", OnLFGListApplicationDialogOnShow)
+    end
+    if not hk.searchPanelOnShow and _G.LFGListFrame and _G.LFGListFrame.SearchPanel and _G.LFGListFrame.SearchPanel.HookScript then
+        hk.searchPanelOnShow = true
+        _G.LFGListFrame.SearchPanel:HookScript("OnShow", function()
+            SuppressEUIGroupFinderIfNeeded()
+            if not DynamicGroup.lfgHooksInstalled then
+                DynamicGroup:InstallLFGHooks()
+            end
+            PullFiltersFromBlizzardAdvancedFilter()
+            if DynamicGroup.EnsureLFGMiniBar then
+                DynamicGroup:EnsureLFGMiniBar()
+            end
+            if DynamicGroup.EnsurePortalBar then
+                DynamicGroup:EnsurePortalBar()
+            end
+            if DynamicGroup.UpdateLFGMiniBar then
+                DynamicGroup:UpdateLFGMiniBar()
+            end
+        end)
+    end
 
-                tooltip:Show()
-            end)
-        end
-        if C_LFGList and type(C_LFGList.SaveAdvancedFilter) == "function" then
-            pcall(hooksecurefunc, C_LFGList, "SaveAdvancedFilter", function()
-                if isSyncingAdvancedFilter or IsYieldingSharedHooks() then return end
-                PullFiltersFromBlizzardAdvancedFilter()
-                if DynamicGroup.UpdateLFGMiniBar then
-                    DynamicGroup:UpdateLFGMiniBar()
-                end
-                if DynamicGroup.RefreshLFGResults then
-                    DynamicGroup:RefreshLFGResults()
-                end
-                if DynamicGroup.RefreshConfigUI then
-                    DynamicGroup:RefreshConfigUI()
-                end
-            end)
-        end
-        if type(_G.LFGListApplicationDialog_UpdateRoles) == "function" then
-            hooksecurefunc("LFGListApplicationDialog_UpdateRoles", OnLFGListApplicationDialogUpdateRoles)
-        end
-        if _G.LFGListApplicationDialog and _G.LFGListApplicationDialog.HookScript then
-            _G.LFGListApplicationDialog:HookScript("OnShow", OnLFGListApplicationDialogOnShow)
-        end
-        if _G.LFGListFrame and _G.LFGListFrame.SearchPanel and _G.LFGListFrame.SearchPanel.HookScript then
-            _G.LFGListFrame.SearchPanel:HookScript("OnShow", function()
-                SuppressEUIGroupFinderIfNeeded()
-                PullFiltersFromBlizzardAdvancedFilter()
-                if DynamicGroup.EnsureLFGMiniBar then
-                    DynamicGroup:EnsureLFGMiniBar()
-                end
-                if DynamicGroup.EnsurePortalBar then
-                    DynamicGroup:EnsurePortalBar()
-                end
-                if DynamicGroup.UpdateLFGMiniBar then
-                    DynamicGroup:UpdateLFGMiniBar()
-                end
-            end)
-        end
+    if hk.entryUpdate then
         self:EnsureLFGMiniBar()
         self:EnsurePortalBar()
+    end
+    if hk.entryUpdate and (hk.entryClickGlobal or hk.entryClickMixin) and (hk.dialogOnShow or hk.dialogShowFunc) then
         self.lfgHooksInstalled = true
     end
 end
@@ -8715,13 +8841,13 @@ local function RegisterWithDynamicSuite()
 
     DynamicGroup.CHANGELOG = {
         version = DynamicGroup.version or VERSION,
-        date = "25/11/2026",
+        date = "28/11/2026",
         entries = {
+            { type = "FIX",     text = "1-Click Premade Group Sign-Up Reliability & Dialog Layering Fix (28/11/2026): Hooked both LFGListSearchEntry_OnClick and LFGListSearchEntryMixin.OnClick with 400ms duplicate-click protection and lazy Blizzard_GroupFinder retries, pruned stale unloaded yield flags that could silently block sign-up, added graceful fallback to LFGListSearchPanel_SignUp if LFGListApplicationDialog_Show does not open the dialog, called LFGListApplicationDialog_UpdateValidState after auto-selecting your active role so the Sign Up button enables immediately, and raised the Sign-Up dialog cleanly above PVEFrame while keeping it on-screen under your cursor." },
             { type = "FEATURE", text = "Release v2.10.3 - Standalone Window Parity, Compact 800x520 Layout & Patch 12.1.7 Lockdown Hardening (25/11/2026): Added standalone window parity with a clamped header status readout, 36px Obsidian footer bar (Reset DynamicGroup and Reload UI buttons), bottom-right corner resize grip with 860x600 Right-Click reset, and live Suite Accent repainting; refined tabs, section subtitles, dropdown widths, sub-drawer spacing, 2-line card descriptions, and responsive 2x3 region filter pills for 800x520 layouts; hardened !keys responses, whisper and Battle.net auto-invites, group invite auto-accept, role check confirmation, Portal Bar, Teleport Toast, and Premade Group Finder hooks against Patch 12.1.7 combat lockdown, chat messaging lockdown, and secret values using non-intrusive hooks and weak frame state tables; standardised Australian English and plain-English wording." },
             { type = "FEATURE", text = "Release v2.8.1 - Opt-In Auto-Accept Role Check & Conflict Auto-Yield (22/11/2026): Added opt-in Auto-Accept Role Check (Off by default) in Tab 2 with a 0.45s out-of-combat safety delay, Shift-to-skip bypass, Retail 12.1.5 secret-value guards, clean chat confirmation, and automatic feature-level yielding to EnhanceQoL or Leatrix Plus (overridable in /ds conflicts). Never auto-accepts queue pops." },
             { type = "UI",      text = "Release v2.7.0 - Shared Teleport Toast Inheritance & Live Suite Accent Portal Borders (21/11/2026): Removed the stray Edit HUD button from the Teleport Toast settings card (leaving a clean Off/Enabled toggle plus Test Join and Test Full preview buttons), connected DynamicGroup's teleport toast to DynamicSuite's shared Alert Toast appearance, sound, Right-Click dismissal, and vertical toast stack, and replaced remaining legacy orange portal tile/keystone borders and tooltip prefixes with the live Suite Accent." },
             { type = "FIX",     text = "LFG Application Status Overlays, Obsidian Cancel Button & /dg testapply Cycle (16/11/2026): Restyled the Premade Group cancel button out of combat into a compact dark obsidian and crimson 'x' pill with the region/rating pill anchored cleanly to its left so the 5-role-icon row stays aligned; suppressed Blizzard's overlapping inline status labels and routed live pending timers (amber) and terminal statuses (crimson Cancelled, Declined, Expired, and Timed Out badges with dimmed rows) into the top-right pill; updated /dg testapply to cycle Pending -> Cancelled -> Off." },
-            { type = "FEATURE", text = "Declined Premade LFG Group Dimming, Crimson Badge & Search Freshness Tooltip (16/11/2026): Records declined Premade Group listings for the current session (cleared on new search or category change), dims declined Premade Group rows with a compact crimson 'Declined' tag inside the top-right pill so you never accidentally re-apply, and tracks search timestamps to show 'Last Refreshed: Xs ago' inside the LFG Mini-Bar filter and region tooltips." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}
@@ -8917,7 +9043,7 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
                 self:UnregisterAllEvents()
                 return
             end
-        elseif loadedName == "Blizzard_GroupFinder" or loadedName == "EllesmereUIGroupFinder" then
+        elseif loadedName == "Blizzard_GroupFinder" or loadedName == "Blizzard_LookingForGroupUI" or loadedName == "EllesmereUIGroupFinder" then
             if not IsModuleDisabledInSuite("DynamicGroup") then
                 SuppressEUIGroupFinderIfNeeded()
                 self:InstallLFGHooks()

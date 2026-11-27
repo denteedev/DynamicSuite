@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Premade Group 1-Click Sign-Up Reliability Fix (28/11/2026)
+- **Fixed - 1-Click Premade Group Sign-Up (`DynamicGroup`):** Fixed clicking a Premade Group listing not opening or enabling the Sign-Up box reliably; single-clicking now supports both Blizzard click handlers with duplicate-click protection, ignores stale yield flags from unloaded addons, falls back cleanly when the sign-up dialog does not open directly, immediately enables the Sign Up button after auto-selecting your active role, and keeps the Sign-Up box on-screen under your cursor above the Group Finder window.
+
 ### Saved Whisper History Hint in Copy Chat (28/11/2026)
 - **Added - Clickable Whisper History Hint (`DynamicChat`):** Reopened empty character whisper tabs that have messages saved from a previous session now display a clickable 'Previous messages saved in Copy Chat' button inside the chat area (clear of top or bottom typing boxes), letting you open Copy Chat for that tab in one click. The hint automatically hides when a live whisper arrives, when switching tabs, when closing the whisper tab, or when entering Edit Mode, and never appears on Battle.net or secret whisper tabs.
 

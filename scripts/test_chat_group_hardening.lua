@@ -868,6 +868,176 @@ RunTest("T7: DynamicGroup Mid-Keystone Block, Dialog Combat Guard, C_CVar & /dg 
     assertEqual(h.calls.DoCountdown[1], 10, "/dg pull calls C_PartyInfo.DoCountdown(10) via pcall")
 end)
 
+-- ============================================================================
+-- T8: DynamicGroup 1-Click Premade Group Sign-Up, Mixin Hooks, Roles, Layering & Fallbacks
+-- ============================================================================
+RunTest("T8: DynamicGroup 1-Click Sign-Up (Global & Mixin Click, Mod Bypass, Role ValidState, DIALOG Strata & Fallback)", function()
+    local function VerifyMode(withSuite, addonFolder)
+        local h = CreateHarness({ withSuite = withSuite })
+        local env = h.env
+        local modDown = false
+        env.IsModifierKeyDown = function() return modDown end
+        env.GetCursorPosition = function() return 960, 540 end
+        env.GetSpecializationRole = function() return "DAMAGER" end
+        env.C_SpecializationInfo.GetSpecializationRole = env.GetSpecializationRole
+
+        -- Seed stale yieldHooks from an unloaded addon BEFORE loading DynamicGroup
+        env.DynamicGroupDB = {
+            oneClickSignUp = true,
+            autoSelectRole = true,
+            autoFillNote = true,
+            persistentNote = "4pc 639",
+            yieldHooks = { UnloadedOldAddon = true, DisabledFlag = false },
+        }
+
+        -- Simulate Blizzard_GroupFinder NOT loaded yet during PLAYER_LOGIN (no click hooks yet)
+        env.LFGListSearchEntry_Update = function() end
+        env.LFGListSearchPanel_UpdateResultList = function() end
+        env.LFGListSearchEntry_OnClick = nil
+        env.LFGListSearchEntryMixin = nil
+
+        h.LoadModule(GROUP_PATH, addonFolder)
+        h.FireEvent("ADDON_LOADED", addonFolder)
+        h.FireEvent("PLAYER_LOGIN")
+
+        -- Verify lfgHooksInstalled is NOT prematurely locked before click hooks exist
+        assertEqual(env.DynamicGroup.lfgHooksInstalled, nil, addonFolder .. ": Must not lock lfgHooksInstalled before click hooks exist")
+
+        -- Now simulate Blizzard_GroupFinder loading after PLAYER_LOGIN
+        local dialogShowCalls = 0
+        local signUpFallbackCalls = 0
+        local updateValidStateCalls = 0
+        local dialogShowShouldOpen = true
+
+        local dlg = env.LFGListApplicationDialog
+        dlg._strata = "MEDIUM"
+        dlg._raised = 0
+        dlg._width = 306
+        dlg._height = 210
+        dlg.SetFrameStrata = function(self, s) self._strata = s end
+        dlg.GetFrameStrata = function(self) return self._strata end
+        dlg.Raise = function(self) self._raised = (self._raised or 0) + 1 end
+        dlg.GetCenter = function() return 500, 500 end
+
+        dlg.SignUpButton = env.CreateFrame("Button", "LFGListApplicationDialogSignUpButton", dlg)
+        dlg.SignUpButton._enabled = false
+        dlg.SignUpButton.SetEnabled = function(self, b) self._enabled = (b == true) end
+        dlg.SignUpButton.IsEnabled = function(self) return self._enabled == true end
+        dlg.SignUpButton.GetCenter = function() return 450, 430 end
+
+        dlg.DamagerButton = env.CreateFrame("Frame", nil, dlg)
+        dlg.DamagerButton._shown = true
+        dlg.DamagerButton.CheckButton = env.CreateFrame("CheckButton", nil, dlg.DamagerButton)
+        dlg.DamagerButton.CheckButton._checked = false
+        dlg.DamagerButton.CheckButton.SetChecked = function(self, v) self._checked = (v == true) end
+        dlg.DamagerButton.CheckButton.GetChecked = function(self) return self._checked == true end
+
+        env.LFGListFrame.SearchPanel.SignUpButton = env.CreateFrame("Button", nil, env.LFGListFrame.SearchPanel)
+        env.LFGListFrame.SearchPanel.SignUpButton.IsEnabled = function() return true end
+
+        env.C_LFGList.HasSearchResultInfo = function(id) return id == 101 or id == 102 or id == 103 end
+        env.C_LFGList.GetSearchResultInfo = function(id)
+            if id == 101 or id == 102 or id == 103 then
+                return { searchResultID = id, isDelisted = false, activityIDs = { 1 } }
+            end
+            return nil
+        end
+
+        env.LFGListSearchPanel_UpdateButtonStatus = function() end
+        env.LFGListApplicationDialog_UpdateValidState = function(d)
+            updateValidStateCalls = updateValidStateCalls + 1
+            if d.DamagerButton.CheckButton:GetChecked() then
+                d.SignUpButton:SetEnabled(true)
+            end
+        end
+        env.LFGListApplicationDialog_UpdateRoles = function() end
+        env.LFGListApplicationDialog_Show = function(d, rID)
+            dialogShowCalls = dialogShowCalls + 1
+            d._lastResultID = rID
+            if dialogShowShouldOpen then
+                d:Show()
+            end
+        end
+        env.LFGListSearchPanel_SignUp = function(sp)
+            signUpFallbackCalls = signUpFallbackCalls + 1
+            dlg._lastResultID = sp.selectedResult
+            dlg:Show()
+        end
+        env.LFGListSearchEntry_OnClick = function() end
+        env.LFGListSearchEntryMixin = { OnClick = function() end }
+
+        h.FireEvent("ADDON_LOADED", "Blizzard_GroupFinder")
+        assertEqual(env.DynamicGroup.lfgHooksInstalled, true, addonFolder .. ": Blizzard_GroupFinder load completes InstallLFGHooks")
+
+        -- (a1) Single-click via global LFGListSearchEntry_OnClick opens dialog, enables SignUpButton, raises to DIALOG strata
+        local entry1 = { resultID = 101 }
+        env.LFGListSearchEntry_OnClick(entry1, "LeftButton")
+        assertEqual(dialogShowCalls, 1, addonFolder .. ": Global LFGListSearchEntry_OnClick triggers PerformLFGSignUp (even with stale yieldHooks)")
+        assertEqual(dlg:IsShown(), true, addonFolder .. ": LFGListApplicationDialog opened on 1-click")
+        assertEqual(dlg._lastResultID, 101, addonFolder .. ": Clicked resultID 101 passed to dialog")
+        assertEqual(dlg:GetFrameStrata(), "DIALOG", addonFolder .. ": Dialog raised to DIALOG strata above PVEFrame HIGH")
+        assertTrue(dlg._raised >= 1, addonFolder .. ": Dialog:Raise() called")
+        assertEqual(dlg.DamagerButton.CheckButton:GetChecked(), true, addonFolder .. ": Active DAMAGER role auto-checked")
+        assertTrue(updateValidStateCalls >= 1, addonFolder .. ": LFGListApplicationDialog_UpdateValidState called after SetChecked(true)")
+        assertEqual(dlg.SignUpButton:IsEnabled(), true, addonFolder .. ": SignUpButton immediately enabled")
+
+        -- Same-click mixin trigger within 400ms must debounce cleanly
+        env.LFGListSearchEntryMixin.OnClick(entry1, "LeftButton")
+        assertEqual(dialogShowCalls, 1, addonFolder .. ": 400ms debounce prevents double-trigger across global + mixin hooks")
+
+        -- (a2) Single-click via LFGListSearchEntryMixin.OnClick on another listing triggers cleanly
+        dlg:Hide()
+        dlg.DamagerButton.CheckButton:SetChecked(false)
+        dlg.SignUpButton:SetEnabled(false)
+        h.AdvanceTime(0.5)
+        local entry2 = { resultID = 102 }
+        env.LFGListSearchEntryMixin.OnClick(entry2, "LeftButton")
+        assertEqual(dialogShowCalls, 2, addonFolder .. ": LFGListSearchEntryMixin.OnClick triggers PerformLFGSignUp")
+        assertEqual(dlg:IsShown(), true, addonFolder .. ": Dialog opened via Mixin OnClick")
+        assertEqual(dlg._lastResultID, 102, addonFolder .. ": Mixin clicked resultID 102 passed to dialog")
+        assertEqual(dlg.SignUpButton:IsEnabled(), true, addonFolder .. ": SignUpButton enabled after Mixin click")
+
+        -- (b) Holding Shift/Alt bypasses 1-Click Sign-Up
+        dlg:Hide()
+        h.AdvanceTime(0.5)
+        modDown = true
+        local entry3 = { resultID = 103 }
+        env.LFGListSearchEntry_OnClick(entry3, "LeftButton")
+        env.LFGListSearchEntryMixin.OnClick(entry3, "LeftButton")
+        assertEqual(dialogShowCalls, 2, addonFolder .. ": Holding Shift/Alt bypasses 1-Click Sign-Up")
+        assertEqual(dlg:IsShown(), false, addonFolder .. ": Dialog stays closed when modifier key is held")
+        modDown = false
+
+        -- (c) Explicit LFGListApplicationDialog_UpdateRoles checks role & calls UpdateValidState
+        dlg.DamagerButton.CheckButton:SetChecked(false)
+        dlg.SignUpButton:SetEnabled(false)
+        local prevValidCalls = updateValidStateCalls
+        env.LFGListApplicationDialog_UpdateRoles(dlg)
+        assertEqual(dlg.DamagerButton.CheckButton:GetChecked(), true, addonFolder .. ": UpdateRoles hook checks DAMAGER")
+        assertEqual(updateValidStateCalls, prevValidCalls + 1, addonFolder .. ": UpdateRoles hook calls LFGListApplicationDialog_UpdateValidState")
+        assertEqual(dlg.SignUpButton:IsEnabled(), true, addonFolder .. ": UpdateRoles hook enables SignUpButton")
+
+        -- (d) Fallback to LFGListSearchPanel_SignUp when LFGListApplicationDialog_Show fails to open dialog (or is missing)
+        dlg:Hide()
+        h.AdvanceTime(0.5)
+        dialogShowShouldOpen = false
+        env.LFGListSearchEntry_OnClick(entry3, "LeftButton")
+        assertEqual(signUpFallbackCalls, 1, addonFolder .. ": Falls back to LFGListSearchPanel_SignUp when LFGListApplicationDialog_Show leaves dialog hidden")
+        assertEqual(dlg:IsShown(), true, addonFolder .. ": Fallback opened dialog cleanly")
+        assertEqual(dlg._lastResultID, 103, addonFolder .. ": Fallback used synchronised sp.selectedResult 103")
+
+        dlg:Hide()
+        h.AdvanceTime(0.5)
+        env.LFGListApplicationDialog_Show = nil
+        env.LFGListSearchEntryMixin.OnClick(entry1, "LeftButton")
+        assertEqual(signUpFallbackCalls, 2, addonFolder .. ": Gracefully falls back when LFGListApplicationDialog_Show is nil")
+        assertEqual(dlg:IsShown(), true, addonFolder .. ": Nil-Show fallback opened dialog cleanly")
+    end
+
+    VerifyMode(true, "DynamicSuite")
+    VerifyMode(false, "DynamicGroup")
+end)
+
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))
 if failed > 0 then
     os.exit(1)

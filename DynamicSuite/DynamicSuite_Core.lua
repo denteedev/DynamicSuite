@@ -5125,7 +5125,7 @@ local function ClearAllLegacyYieldState()
             end
         end
     end
-    for _, dbTbl in ipairs({ _G.DynamicPrepDB, _G.DynamicZoomDB, _G.DynamicChatDB, _G.DynamicFPSDB, _G.DynamicBagsDB, _G.DynamicMailDB }) do
+    for _, dbTbl in ipairs({ _G.DynamicPrepDB, _G.DynamicZoomDB, _G.DynamicChatDB, _G.DynamicFPSDB, _G.DynamicBagsDB, _G.DynamicMailDB, _G.DynamicGroupDB }) do
         if type(dbTbl) == "table" then
             if type(dbTbl.yieldHooks) == "table" then wipe(dbTbl.yieldHooks) end
             if dbTbl.yieldSharedHooks ~= nil then dbTbl.yieldSharedHooks = false end
