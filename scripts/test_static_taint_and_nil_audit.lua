@@ -60,6 +60,30 @@ local ALLOW_EXTERNAL_TABLE_CALLS = {
     -- Example: ["DynamicBags.lua:U.SomeExternalFn"] = "Reason",
 }
 
+local HELPER_NAMESPACE_TABLES = {
+    addonTable = true, DynamicSuite = true, Suite = true,
+    UI = true, U = true, DM = true, DC_NS = true, DP_NS = true,
+    DT_NS = true, DG_NS = true, DL_NS = true,
+    TypographyMgr = true, SoundMgr = true, DesktopWindows = true,
+}
+
+local WOW_STD_GLOBAL_ALLOW = {
+    type = true, next = true, select = true, print = true, date = true, time = true,
+    pairs = true, ipairs = true, tostring = true, tonumber = true, pcall = true, xpcall = true,
+    unpack = true, error = true, assert = true, math = true, string = true, table = true,
+    bit = true, wipe = true, tinsert = true, tremove = true,
+    GetTime = true, CreateFrame = true, ReloadUI = true, CopyTable = true,
+    GetRealmName = true, UnitName = true, UnitClass = true, UnitGUID = true,
+    InCombatLockdown = true, IsShiftKeyDown = true, PlaySound = true, PlaySoundFile = true,
+    UIParent = true, GameTooltip = true, C_Timer = true, C_AddOns = true, C_CVar = true, C_Map = true,
+    SettingsPanel = true, GameMenuFrame = true, RAID_CLASS_COLORS = true, SOUNDKIT = true, Enum = true,
+    Show = true, Hide = true, Clear = true, Reset = true, Open = true, Close = true,
+    Refresh = true, Update = true, Init = true, Toggle = true, Print = true,
+    GetText = true, SetText = true, GetWidth = true, GetHeight = true,
+    SetAlpha = true, GetAlpha = true, SetScale = true, GetScale = true,
+    IsShown = true, GetName = true, GetParent = true, SetParent = true,
+}
+
 local function ReadAll(path)
     local fh, err = io.open(path, "rb")
     if not fh then
@@ -334,6 +358,73 @@ local function AuditUndefinedTableMethods(fileSpecs)
         end
     end
 
+    local tableHelperKeys = {}
+    for _, pf in ipairs(parsed) do
+        for tblName in pairs(HELPER_NAMESPACE_TABLES) do
+            local esc = EscapePattern(tblName)
+            for k in pf.noComments:gmatch("function%s+" .. esc .. "[%.:]([%a_][%w_]*)%s*%(") do
+                if #k >= 4 and not WOW_STD_GLOBAL_ALLOW[k] then
+                    tableHelperKeys[k] = true
+                end
+            end
+            for k in pf.noComments:gmatch(esc .. "%.([%a_][%w_]*)%s*=%s*function%b()") do
+                if #k >= 4 and not WOW_STD_GLOBAL_ALLOW[k] then
+                    tableHelperKeys[k] = true
+                end
+            end
+            for k in pf.noComments:gmatch(esc .. "%.([%a_][%w_]*)%s*=%s*function%s*%(") do
+                if #k >= 4 and not WOW_STD_GLOBAL_ALLOW[k] then
+                    tableHelperKeys[k] = true
+                end
+            end
+        end
+    end
+
+    for _, pf in ipairs(parsed) do
+        local sameFileDefined = {}
+        for fn in pf.noComments:gmatch("local%s+function%s+([%a_][%w_]*)%s*%(") do
+            sameFileDefined[fn] = true
+        end
+        for fn in pf.noComments:gmatch("%f[%a_]function%s+([%a_][%w_]*)%s*%(") do
+            sameFileDefined[fn] = true
+        end
+        for fn in pf.noComments:gmatch("_G%.([%a_][%w_]*)%s*=") do
+            sameFileDefined[fn] = true
+        end
+        for _, ln in ipairs(pf.lines) do
+            for declList in ln:gmatch("local%s+([%a_][%w_%s,]*)%s*=") do
+                for id in declList:gmatch("[%a_][%w_]*") do
+                    sameFileDefined[id] = true
+                end
+            end
+            local fwdList = ln:match("^%s*local%s+([%a_][%w_%s,]*)%s*$")
+            if fwdList then
+                for id in fwdList:gmatch("[%a_][%w_]*") do
+                    sameFileDefined[id] = true
+                end
+            end
+        end
+        for idx, ln in ipairs(pf.lines) do
+            if not ln:match("^%s*function%s+") and not ln:match("^%s*local%s+function%s+") then
+                local pos = 1
+                while true do
+                    local sPos, ePos, fnName = ln:find("([%a_][%w_]*)%s*%(", pos)
+                    if not sPos then break end
+                    local prevCh = (sPos > 1) and ln:sub(sPos - 1, sPos - 1) or ""
+                    if prevCh ~= "." and prevCh ~= ":" and not prevCh:match("[%w_]") then
+                        if tableHelperKeys[fnName] and not sameFileDefined[fnName] then
+                            violations[#violations + 1] = string.format(
+                                "[Check1b Bare Table Helper] %s:%d -> %s() called without table prefix",
+                                pf.name, idx, fnName
+                            )
+                        end
+                    end
+                    pos = ePos + 1
+                end
+            end
+        end
+    end
+
     return violations
 end
 
@@ -547,6 +638,15 @@ local function RunSelfTests()
                 src = "local U = {}\nlocal function f()\n  local r, g, b = U.GetSuiteAccent()\nend\n",
             },
             expectSub = "U.GetSuiteAccent",
+        },
+        {
+            name = "Catches bare GetActiveAccentColor() missing UI. prefix",
+            fn = AuditUndefinedTableMethods,
+            spec = {
+                name = "SyntheticUI.lua",
+                src = "local UI = {}\nfunction UI.GetActiveAccentColor() return 1, 1, 1 end\nlocal function f()\n  local r, g, b = GetActiveAccentColor()\nend\n",
+            },
+            expectSub = "Check1b Bare Table Helper",
         },
         {
             name = "Catches ChatFrame1EditBox:HookScript('OnTextChanged')",

@@ -1310,13 +1310,17 @@ local function IsEditBoxSecretOrBNWhisper(editBox)
     return false
 end
 
-function DC_NS.IsEditBoxShownOrFocused(editBox)
+function DC_NS.IsEditBoxFocused(editBox)
     if not editBox then return false end
-    if DynamicChat._editBoxFocused == true then
+    if DynamicChat._editBoxFocused == true
+        and (DynamicChat._focusedEditBox == nil or DynamicChat._focusedEditBox == editBox) then
         return true
     end
-    if DynamicChat.SafeFrameIsShown(editBox, true) then
-        return true
+    if type(_G.ChatEdit_GetActiveWindow) == "function" then
+        local okA, activeWin = pcall(_G.ChatEdit_GetActiveWindow)
+        if okA and activeWin ~= nil and not IsSecretValue(activeWin) and activeWin == editBox then
+            return true
+        end
     end
     if DynamicChat.SafeEditBoxHasFocus(editBox) then
         return true
@@ -1607,16 +1611,22 @@ function DynamicChat:ApplyEditBoxSettings()
         local eb = _G["ChatFrame" .. i .. "EditBox"]
         if eb and eb.SetAltArrowKeyMode then
             local okSec, isSec = pcall(IsEditBoxSecretOrBNWhisper, eb)
-            if okSec and not isSec and not DC_NS.IsEditBoxShownOrFocused(eb) then
-                local needSet = true
-                if type(eb.GetAltArrowKeyMode) == "function" then
-                    local okCur, curMode = pcall(eb.GetAltArrowKeyMode, eb)
-                    if okCur and not IsSecretValue(curMode) and (curMode == true) == useAltMode then
-                        needSet = false
+            if okSec and not isSec then
+                if DC_NS.IsEditBoxFocused(eb) then
+                    if eb == _G.ChatFrame1EditBox then
+                        DC_NS._pendingEditBoxSkinFlush = true
                     end
-                end
-                if needSet then
-                    pcall(eb.SetAltArrowKeyMode, eb, useAltMode)
+                else
+                    local needSet = true
+                    if type(eb.GetAltArrowKeyMode) == "function" then
+                        local okCur, curMode = pcall(eb.GetAltArrowKeyMode, eb)
+                        if okCur and not IsSecretValue(curMode) and (curMode == true) == useAltMode then
+                            needSet = false
+                        end
+                    end
+                    if needSet then
+                        pcall(eb.SetAltArrowKeyMode, eb, useAltMode)
+                    end
                 end
             end
         end
@@ -1798,6 +1808,7 @@ local function CreateDynamicChatScrollbar(parent, opts)
     bar._isHovered = false
     bar._autoHide = (opts.autoHide ~= false)
     bar._hoverCheckFn = opts.isHoveredFn
+    bar._isActiveFn = opts.isActiveFn
     bar._scrollRevealUntil = 0
     bar._currentAlpha = bar._autoHide and 0 or 1
     bar._pollElapsed = 0
@@ -1805,116 +1816,14 @@ local function CreateDynamicChatScrollbar(parent, opts)
     bar._onMouseWheel = opts.onMouseWheel
     bar:SetAlpha(bar._currentAlpha)
 
-    if bar.SetScript then
-        bar:SetScript("OnMouseWheel", function(self, delta)
-            if type(self._onMouseWheel) == "function" then
-                self._onMouseWheel(delta)
-            end
-        end)
-    end
-
-    function bar:NotifyScrollActivity()
-        if not self._autoHide then return end
-        self._scrollRevealUntil = GetTime() + 1.5
-    end
-
-    function bar:UpdateVisuals()
-        if self._isHovered or self._isDragging then
-            local ar, ag, ab = GetSuiteAccent()
-            self.thumb.tex:SetColorTexture(ar, ag, ab, 1.0)
-        else
-            self.thumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
-        end
-    end
-
-    function bar:UpdateState(currentVal, maxVal, visibleRatio)
-        maxVal = math.max(0, tonumber(maxVal) or 0)
-        currentVal = math.max(0, math.min(maxVal, tonumber(currentVal) or 0))
-        self._maxValue = maxVal
-        self._value = currentVal
-        self._visibleRatio = math.max(0.06, math.min(1, tonumber(visibleRatio) or 1))
-
-        if maxVal <= 0.5 and self._autoHide then
+    local function OnScrollbarUpdate(self, elapsed)
+        if self._isActiveFn and not self._isActiveFn() then
+            self._isDragging = false
             self._currentAlpha = 0
             self:SetAlpha(0)
             self:Hide()
             return
         end
-        self:Show()
-        if not self._autoHide then
-            self._currentAlpha = 1
-            self:SetAlpha(1)
-        end
-
-        local trackH = self:GetHeight() or 0
-        if trackH <= 4 then return end
-
-        local thumbH = math.max(20, math.min(trackH, math.floor(trackH * self._visibleRatio + 0.5)))
-        if maxVal <= 0.5 then
-            thumbH = trackH
-        end
-        self.thumb:SetHeight(thumbH)
-
-        local travel = math.max(0, trackH - thumbH)
-        local frac = (maxVal > 0) and (currentVal / maxVal) or 0
-        local topOffset = math.floor(travel * frac + 0.5)
-        self.thumb:ClearAllPoints()
-        self.thumb:SetPoint("TOP", self, "TOP", 0, -topOffset)
-        self.thumb:SetPoint("LEFT", self, "LEFT", 0, 0)
-        self.thumb:SetPoint("RIGHT", self, "RIGHT", 0, 0)
-        self:UpdateVisuals()
-    end
-
-    thumb:SetScript("OnEnter", function()
-        bar._isHovered = true
-        bar:UpdateVisuals()
-    end)
-    thumb:SetScript("OnLeave", function()
-        bar._isHovered = false
-        bar:UpdateVisuals()
-    end)
-
-    thumb:SetScript("OnMouseDown", function(_, button)
-        if button ~= "LeftButton" or bar._maxValue <= 0 then return end
-        bar._isDragging = true
-        bar:NotifyScrollActivity()
-        local _, cursorY = GetCursorPosition()
-        local scale = bar:GetEffectiveScale() or 1
-        bar._dragStartY = cursorY / scale
-        bar._dragStartVal = bar._value
-        bar:UpdateVisuals()
-    end)
-
-    thumb:SetScript("OnMouseUp", function()
-        if bar._isDragging then
-            bar._isDragging = false
-            bar:NotifyScrollActivity()
-            bar:UpdateVisuals()
-        end
-    end)
-
-    thumb:SetScript("OnHide", function()
-        bar._isDragging = false
-        bar._isHovered = false
-        bar:UpdateVisuals()
-    end)
-
-    if thumb.EnableMouseWheel then
-        thumb:EnableMouseWheel(true)
-        thumb:SetScript("OnMouseWheel", function(_, delta)
-            if type(bar._onMouseWheel) == "function" then
-                bar._onMouseWheel(delta)
-            end
-        end)
-    end
-
-    bar:SetScript("OnHide", function(self)
-        self._isDragging = false
-        self._isHovered = false
-        self:UpdateVisuals()
-    end)
-
-    bar:SetScript("OnUpdate", function(self, elapsed)
         if self._isDragging then
             if not IsMouseButtonDown("LeftButton") then
                 self._isDragging = false
@@ -1928,12 +1837,21 @@ local function CreateDynamicChatScrollbar(parent, opts)
                 local _, cursorY = GetCursorPosition()
                 local scale = self:GetEffectiveScale() or 1
                 local curY = cursorY / scale
-                local deltaY = self._dragStartY - curY -- dragging down increases topOffset/value
+                local deltaY = self._dragStartY - curY
                 local newVal = math.max(0, math.min(self._maxValue, self._dragStartVal + (deltaY / travel) * self._maxValue))
                 if type(self._onValueChanged) == "function" then
                     self._onValueChanged(newVal)
                 end
             end
+        elseif (self._maxValue or 0) <= 0.5 then
+            if self._autoHide then
+                self._currentAlpha = 0
+                self:SetAlpha(0)
+                self:Hide()
+            else
+                self:SetScript("OnUpdate", nil)
+            end
+            return
         end
 
         if self._autoHide and self._hoverCheckFn then
@@ -1957,6 +1875,140 @@ local function CreateDynamicChatScrollbar(parent, opts)
                 end
             end
         end
+    end
+
+    local function SyncScrollbarUpdateScript(self)
+        local shouldRun = self:IsShown()
+            and (self._isDragging or (self._autoHide and self._hoverCheckFn and (self._maxValue or 0) > 0.5))
+        if shouldRun then
+            if self:GetScript("OnUpdate") ~= OnScrollbarUpdate then
+                self:SetScript("OnUpdate", OnScrollbarUpdate)
+            end
+        else
+            if self:GetScript("OnUpdate") ~= nil then
+                self:SetScript("OnUpdate", nil)
+            end
+        end
+    end
+
+    if bar.SetScript then
+        bar:SetScript("OnMouseWheel", function(self, delta)
+            if type(self._onMouseWheel) == "function" then
+                self._onMouseWheel(delta)
+            end
+        end)
+    end
+
+    function bar:NotifyScrollActivity()
+        if not self._autoHide then return end
+        self._scrollRevealUntil = GetTime() + 1.5
+        SyncScrollbarUpdateScript(self)
+    end
+
+    function bar:UpdateVisuals()
+        if self._isHovered or self._isDragging then
+            local ar, ag, ab = GetSuiteAccent()
+            self.thumb.tex:SetColorTexture(ar, ag, ab, 1.0)
+        else
+            self.thumb.tex:SetColorTexture(0.38, 0.45, 0.56, 0.85)
+        end
+    end
+
+    function bar:UpdateState(currentVal, maxVal, visibleRatio)
+        maxVal = math.max(0, tonumber(maxVal) or 0)
+        currentVal = math.max(0, math.min(maxVal, tonumber(currentVal) or 0))
+        self._maxValue = maxVal
+        self._value = currentVal
+        self._visibleRatio = math.max(0.06, math.min(1, tonumber(visibleRatio) or 1))
+
+        if maxVal <= 0.5 and self._autoHide then
+            self._currentAlpha = 0
+            self:SetAlpha(0)
+            self:SetScript("OnUpdate", nil)
+            self:Hide()
+            return
+        end
+        self:Show()
+        if not self._autoHide then
+            self._currentAlpha = 1
+            self:SetAlpha(1)
+        end
+
+        local trackH = self:GetHeight() or 0
+        if trackH > 4 then
+            local thumbH = math.max(20, math.min(trackH, math.floor(trackH * self._visibleRatio + 0.5)))
+            if maxVal <= 0.5 then
+                thumbH = trackH
+            end
+            self.thumb:SetHeight(thumbH)
+
+            local travel = math.max(0, trackH - thumbH)
+            local frac = (maxVal > 0) and (currentVal / maxVal) or 0
+            local topOffset = math.floor(travel * frac + 0.5)
+            self.thumb:ClearAllPoints()
+            self.thumb:SetPoint("TOP", self, "TOP", 0, -topOffset)
+            self.thumb:SetPoint("LEFT", self, "LEFT", 0, 0)
+            self.thumb:SetPoint("RIGHT", self, "RIGHT", 0, 0)
+        end
+        self:UpdateVisuals()
+        SyncScrollbarUpdateScript(self)
+    end
+
+    thumb:SetScript("OnEnter", function()
+        bar._isHovered = true
+        bar:UpdateVisuals()
+    end)
+    thumb:SetScript("OnLeave", function()
+        bar._isHovered = false
+        bar:UpdateVisuals()
+    end)
+
+    thumb:SetScript("OnMouseDown", function(_, button)
+        if button ~= "LeftButton" or bar._maxValue <= 0 then return end
+        bar._isDragging = true
+        bar:NotifyScrollActivity()
+        local _, cursorY = GetCursorPosition()
+        local scale = bar:GetEffectiveScale() or 1
+        bar._dragStartY = cursorY / scale
+        bar._dragStartVal = bar._value
+        bar:UpdateVisuals()
+        SyncScrollbarUpdateScript(bar)
+    end)
+
+    thumb:SetScript("OnMouseUp", function()
+        if bar._isDragging then
+            bar._isDragging = false
+            bar:NotifyScrollActivity()
+            bar:UpdateVisuals()
+            SyncScrollbarUpdateScript(bar)
+        end
+    end)
+
+    thumb:SetScript("OnHide", function()
+        bar._isDragging = false
+        bar._isHovered = false
+        bar:UpdateVisuals()
+        SyncScrollbarUpdateScript(bar)
+    end)
+
+    if thumb.EnableMouseWheel then
+        thumb:EnableMouseWheel(true)
+        thumb:SetScript("OnMouseWheel", function(_, delta)
+            if type(bar._onMouseWheel) == "function" then
+                bar._onMouseWheel(delta)
+            end
+        end)
+    end
+
+    bar:SetScript("OnShow", function(self)
+        SyncScrollbarUpdateScript(self)
+    end)
+
+    bar:SetScript("OnHide", function(self)
+        self._isDragging = false
+        self._isHovered = false
+        self:SetScript("OnUpdate", nil)
+        self:UpdateVisuals()
     end)
 
     bar:SetScript("OnEnter", function()
@@ -4308,7 +4360,13 @@ local function ApplyPassiveEditBoxSkinOnInit(editBox, cfName, skinEnabled, syncF
     if not editBox then return end
     if IsEllesmereUILoaded() then return end
     if InCombatLockdown and InCombatLockdown() then return end
-    if IsEditBoxSecretOrBNWhisper(editBox) or DC_NS.IsEditBoxShownOrFocused(editBox) then
+    if IsEditBoxSecretOrBNWhisper(editBox) then
+        return
+    end
+    if DC_NS.IsEditBoxFocused(editBox) then
+        if editBox == _G.ChatFrame1EditBox then
+            DC_NS._pendingEditBoxSkinFlush = true
+        end
         return
     end
 
@@ -4710,15 +4768,8 @@ local function IsChatAreaHovered(cf, entry)
                 return true
             end
         end
-        if type(_G.DOCKED_CHAT_FRAMES) == "table" then
-            for _, dcf in ipairs(_G.DOCKED_CHAT_FRAMES) do
-                if dcf then
-                    local dName = (type(dcf.GetName) == "function") and dcf:GetName() or nil
-                    if dName and SafeIsRegionMouseOver(_G[dName .. "Tab"]) then
-                        return true
-                    end
-                end
-            end
+        if SafeIsRegionMouseOver(_G.GeneralDockManager) then
+            return true
         end
         if SafeIsRegionMouseOver(_G.ChatFrame1EditBox) then return true end
     end
@@ -4881,6 +4932,9 @@ local function ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
             strata = targetStrata,
             frameLevel = targetLevel,
             autoHide = true,
+            isActiveFn = function()
+                return DynamicChat.SafeFrameIsShown(cf, false) and (not cf.isDocked or not _G.SELECTED_DOCK_FRAME or _G.SELECTED_DOCK_FRAME == cf)
+            end,
             isHoveredFn = function()
                 return IsChatAreaHovered(cf, entry)
             end,
@@ -4912,6 +4966,9 @@ local function ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
         })
     elseif entry.customScrollBar:GetParent() ~= hostPanel then
         entry.customScrollBar:SetParent(hostPanel)
+    end
+    entry.customScrollBar._isActiveFn = function()
+        return DynamicChat.SafeFrameIsShown(cf, false) and (not cf.isDocked or not _G.SELECTED_DOCK_FRAME or _G.SELECTED_DOCK_FRAME == cf)
     end
     entry.customScrollBar._hoverCheckFn = function()
         return IsChatAreaHovered(cf, entry)
@@ -6445,7 +6502,13 @@ do
     function TypographyMgr.ApplyToEditBox(eb, fontPath, size, flags, hasShadow)
         if not eb then return end
         if InCombatLockdown and InCombatLockdown() then return end
-        if IsEditBoxSecretOrBNWhisper(eb) or DC_NS.IsEditBoxShownOrFocused(eb) then return end
+        if IsEditBoxSecretOrBNWhisper(eb) then return end
+        if DC_NS.IsEditBoxFocused(eb) then
+            if eb == _G.ChatFrame1EditBox then
+                DC_NS._pendingEditBoxSkinFlush = true
+            end
+            return
+        end
         local ebSize = math.max(11, math.min(size, 18))
         if eb.SetFont then
             local ok, setOk = pcall(eb.SetFont, eb, fontPath, ebSize, flags)
@@ -6828,7 +6891,7 @@ function DynamicChat:ApplySleekChatSkin()
                                 if _G.ChatFrame1Background.SetClampRectInsets then _G.ChatFrame1Background:SetClampRectInsets(0, 0, 0, 0) end
                                 if _G.ChatFrame1Background.SetClampedToScreen then _G.ChatFrame1Background:SetClampedToScreen(false) end
                             end
-                            if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) and not DC_NS.IsEditBoxShownOrFocused(_G.ChatFrame1EditBox) then
+                            if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) and not DC_NS.IsEditBoxFocused(_G.ChatFrame1EditBox) then
                                 if _G.ChatFrame1EditBox.SetClampRectInsets then _G.ChatFrame1EditBox:SetClampRectInsets(0, 0, 0, 0) end
                                 if _G.ChatFrame1EditBox.SetClampedToScreen then _G.ChatFrame1EditBox:SetClampedToScreen(false) end
                             end
@@ -6940,7 +7003,7 @@ function DynamicChat:ApplySleekChatSkin()
                             if _G.ChatFrame1Background.SetClampRectInsets then _G.ChatFrame1Background:SetClampRectInsets(0, 0, 0, 0) end
                             if _G.ChatFrame1Background.SetClampedToScreen then _G.ChatFrame1Background:SetClampedToScreen(false) end
                         end
-                        if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) and not DC_NS.IsEditBoxShownOrFocused(_G.ChatFrame1EditBox) then
+                        if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) and not DC_NS.IsEditBoxFocused(_G.ChatFrame1EditBox) then
                             if _G.ChatFrame1EditBox.SetClampRectInsets then _G.ChatFrame1EditBox:SetClampRectInsets(0, 0, 0, 0) end
                             if _G.ChatFrame1EditBox.SetClampedToScreen then _G.ChatFrame1EditBox:SetClampedToScreen(false) end
                         end
@@ -7073,65 +7136,77 @@ function DynamicChat:ApplySleekChatSkin()
         local alwaysShadedEB = (db.editBoxBackgroundMode ~= "FOCUS_ONLY")
         local ebH = DC_NS.GetEmbeddedEditBoxHeight(db)
         local ebSecret = IsEditBoxSecretOrBNWhisper(eb1)
-        local ebActive = ebSecret or DC_NS.IsEditBoxShownOrFocused(eb1)
+        local ebFocused = not ebSecret and DC_NS.IsEditBoxFocused(eb1)
+        local ebActive = ebSecret or ebFocused
+        if ebFocused and not (InCombatLockdown and InCombatLockdown()) then
+            DC_NS._pendingEditBoxSkinFlush = true
+        end
+        function DC_NS.ApplyEditBoxAnchorNow()
+            if DynamicChat._applyingEditBoxPos then return false end
+            local cfNow = _G.ChatFrame1
+            if not cfNow then return false end
+            if InCombatLockdown and InCombatLockdown() then return false end
+            local curEB = _G.ChatFrame1EditBox
+            if not curEB or IsEditBoxSecretOrBNWhisper(curEB) then
+                return false
+            end
+            if DC_NS.IsEditBoxFocused(curEB) then
+                DC_NS._pendingEditBoxSkinFlush = true
+                return false
+            end
+            local curDB = EnsureDB()
+            local curTop = (curDB.editBoxPosition == "TOP")
+            local curH = DC_NS.GetEmbeddedEditBoxHeight(curDB)
+            DynamicChat._applyingEditBoxPos = true
+            pcall(function()
+                if curEB.SetClampRectInsets then curEB:SetClampRectInsets(0, 0, 0, 0) end
+                if curEB.SetClampedToScreen then curEB:SetClampedToScreen(false) end
+                curEB:ClearAllPoints()
+                if curTop then
+                    curEB:SetPoint("TOPLEFT", cfNow, "TOPLEFT", 0, 0)
+                    curEB:SetPoint("BOTTOMRIGHT", cfNow, "TOPRIGHT", 0, -curH)
+                else
+                    curEB:SetPoint("BOTTOMLEFT", cfNow, "BOTTOMLEFT", 0, 0)
+                    curEB:SetPoint("TOPRIGHT", cfNow, "BOTTOMRIGHT", 0, curH)
+                end
+            end)
+            DynamicChat._applyingEditBoxPos = false
+            return true
+        end
+        if not editBox1PosHooked and type(eb1.SetPoint) == "function" then
+            editBox1PosHooked = true
+            hooksecurefunc(eb1, "SetPoint", function()
+                if DynamicChat._applyingEditBoxPos or DynamicChat._dsDragging or DynamicChat._dsEditModeActive then return end
+                if InCombatLockdown and InCombatLockdown() then
+                    DynamicChat._pendingChatPosAfterCombat = true
+                    return
+                end
+                local curEB = _G.ChatFrame1EditBox
+                if not curEB or IsEditBoxSecretOrBNWhisper(curEB) then
+                    return
+                end
+                if DC_NS.IsEditBoxFocused(curEB) then
+                    DC_NS._pendingEditBoxSkinFlush = true
+                    return
+                end
+                if not DynamicChat:IsChatFrameLayoutOwned() then return end
+                local curDB = EnsureDB()
+                if curDB.enableSleekChatSkin == false or IsEllesmereUILoaded() then return end
+                if _G.ChatFrame1 then
+                    DC_NS.ApplyEditBoxAnchorNow()
+                end
+            end)
+        end
         if cf1 and not ebActive and not (InCombatLockdown and InCombatLockdown()) then
             local state = passiveSkinnedEditBoxes[eb1]
             if not state then
                 state = {}
                 passiveSkinnedEditBoxes[eb1] = state
             end
-            local function ApplyEditBoxAnchorNow()
-                if DynamicChat._applyingEditBoxPos or not cf1 then return false end
-                if InCombatLockdown and InCombatLockdown() then return false end
-                local curEB = _G.ChatFrame1EditBox
-                if not curEB or IsEditBoxSecretOrBNWhisper(curEB) or DC_NS.IsEditBoxShownOrFocused(curEB) then
-                    return false
-                end
-                local curDB = EnsureDB()
-                local curTop = (curDB.editBoxPosition == "TOP")
-                local curH = DC_NS.GetEmbeddedEditBoxHeight(curDB)
-                DynamicChat._applyingEditBoxPos = true
-                pcall(function()
-                    if curEB.SetClampRectInsets then curEB:SetClampRectInsets(0, 0, 0, 0) end
-                    if curEB.SetClampedToScreen then curEB:SetClampedToScreen(false) end
-                    curEB:ClearAllPoints()
-                    if curTop then
-                        curEB:SetPoint("TOPLEFT", cf1, "TOPLEFT", 0, 0)
-                        curEB:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -curH)
-                    else
-                        curEB:SetPoint("BOTTOMLEFT", cf1, "BOTTOMLEFT", 0, 0)
-                        curEB:SetPoint("TOPRIGHT", cf1, "BOTTOMRIGHT", 0, curH)
-                    end
-                end)
-                DynamicChat._applyingEditBoxPos = false
-                return true
-            end
-            if not editBox1PosHooked and type(eb1.SetPoint) == "function" then
-                editBox1PosHooked = true
-                hooksecurefunc(eb1, "SetPoint", function()
-                    if DynamicChat._applyingEditBoxPos or DynamicChat._dsDragging or DynamicChat._dsEditModeActive then return end
-                    if InCombatLockdown and InCombatLockdown() then
-                        DynamicChat._pendingChatPosAfterCombat = true
-                        return
-                    end
-                    local curEB = _G.ChatFrame1EditBox
-                    if not curEB or IsEditBoxSecretOrBNWhisper(curEB) or DC_NS.IsEditBoxShownOrFocused(curEB) then
-                        return
-                    end
-                    if not DynamicChat:IsChatFrameLayoutOwned() then return end
-                    local curDB = EnsureDB()
-                    if curDB.enableSleekChatSkin == false or IsEllesmereUILoaded() then return end
-                    local cf1Now = _G.ChatFrame1
-                    if cf1Now then
-                        cf1 = cf1Now
-                        ApplyEditBoxAnchorNow()
-                    end
-                end)
-            end
             local anchorKey = tostring(cf1) .. ":" .. (isTopEB and "TOP" or "BOT") .. ":" .. tostring(ebH)
             local okPt, _, relTo = pcall(eb1.GetPoint, eb1, 1)
             if state.anchorKey ~= anchorKey or not okPt or relTo ~= cf1 then
-                if ApplyEditBoxAnchorNow() then
+                if DC_NS.ApplyEditBoxAnchorNow() then
                     state.anchorKey = anchorKey
                 end
             end
@@ -7211,13 +7286,35 @@ function DynamicChat:ApplySleekChatSkin()
                 end
                 DynamicChat._editBoxFocused = false
                 DynamicChat._focusedEditBox = nil
-                if not chatEditBoxSkin then return end
                 local curDB = EnsureDB()
-                if DynamicChat:IsExternalChatEngineLoaded() or curDB.enableSleekChatSkin == false or curDB.editBoxBackgroundMode == "FOCUS_ONLY" then
-                    chatEditBoxSkin:Hide()
-                else
-                    RefreshSleekEditBoxBarColor(_G.ChatFrame1EditBox, false)
-                    chatEditBoxSkin:Show()
+                if chatEditBoxSkin then
+                    if DynamicChat:IsExternalChatEngineLoaded() or curDB.enableSleekChatSkin == false or curDB.editBoxBackgroundMode == "FOCUS_ONLY" then
+                        chatEditBoxSkin:Hide()
+                    else
+                        RefreshSleekEditBoxBarColor(_G.ChatFrame1EditBox, false)
+                        chatEditBoxSkin:Show()
+                    end
+                end
+                if DC_NS._pendingEditBoxSkinFlush and not (InCombatLockdown and InCombatLockdown()) then
+                    local eb1 = _G.ChatFrame1EditBox
+                    if eb1 and not IsEditBoxSecretOrBNWhisper(eb1) and not DC_NS.IsEditBoxFocused(eb1) then
+                        DC_NS._pendingEditBoxSkinFlush = false
+                        local skinEnabled = (curDB.enableSleekChatSkin ~= false)
+                        local syncFont = (curDB.applySuiteChatFont ~= false)
+                        local fontPath = GetFontPath()
+                        ApplyPassiveEditBoxSkinOnInit(eb1, "ChatFrame1", skinEnabled, syncFont, fontPath)
+                        if skinEnabled and not IsEllesmereUILoaded() and type(DC_NS.ApplyEditBoxAnchorNow) == "function" then
+                            if DC_NS.ApplyEditBoxAnchorNow() then
+                                local st = passiveSkinnedEditBoxes[eb1]
+                                if st and _G.ChatFrame1 then
+                                    local isTop = (curDB.editBoxPosition == "TOP")
+                                    local ebHNow = DC_NS.GetEmbeddedEditBoxHeight(curDB)
+                                    st.anchorKey = tostring(_G.ChatFrame1) .. ":" .. (isTop and "TOP" or "BOT") .. ":" .. tostring(ebHNow)
+                                end
+                            end
+                        end
+                        DynamicChat:ApplyEditBoxSettings()
+                    end
                 end
             end, DynamicChat)
         end
@@ -7691,7 +7788,7 @@ function DynamicChat:ApplySavedChatFramePosition()
             if _G.ChatFrame1Background.SetClampRectInsets then _G.ChatFrame1Background:SetClampRectInsets(0, 0, 0, 0) end
             if _G.ChatFrame1Background.SetClampedToScreen then _G.ChatFrame1Background:SetClampedToScreen(false) end
         end
-        if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) and not DC_NS.IsEditBoxShownOrFocused(_G.ChatFrame1EditBox) then
+        if _G.ChatFrame1EditBox and not IsEditBoxSecretOrBNWhisper(_G.ChatFrame1EditBox) and not DC_NS.IsEditBoxFocused(_G.ChatFrame1EditBox) then
             if _G.ChatFrame1EditBox.SetClampRectInsets then _G.ChatFrame1EditBox:SetClampRectInsets(0, 0, 0, 0) end
             if _G.ChatFrame1EditBox.SetClampedToScreen then _G.ChatFrame1EditBox:SetClampedToScreen(false) end
         end
@@ -14730,13 +14827,13 @@ function DynamicChat._RegisterWithDynamicSuite()
 
     DynamicChat.CHANGELOG = {
         version = DynamicChat.version or VERSION,
-        date = "26/11/2026",
+        date = "27/11/2026",
         entries = {
+            { type = "FIX",      text = "Duplicate Typing Box, Scrollbar OnUpdate & Tab Hover Optimization (27/11/2026): Replaced IsEditBoxShownOrFocused with an active-focus-only IsEditBoxFocused check so idle ChatFrame1EditBox chrome is properly stripped and skinned when Retail WoW keeps it shown, while deferring and flushing pending skin/anchor updates on ChatFrame.OnEditBoxFocusLost and preserving BN_WHISPER/secret/combat protections; detached the custom scrollbar OnUpdate handler when hidden, undocked, or without overflow; and replaced the DOCKED_CHAT_FRAMES hover loop with a single GeneralDockManager hit test." },
             { type = "FIX",      text = "Battle.net Whisper Reply Hardening & Chat Tab Fade Guard (26/11/2026): Removed direct OnTextChanged widget script hooks from ChatFrameEditBox frames (relying strictly on hooksecurefunc post-hooks for /ww conversion), hardened secret/BN_WHISPER checks to fail closed on protected attributes, header text/width, and forbidden frames, guarded edit box font updates, SetPoint re-anchoring, Alt-arrow settings, and temporary Battle.net whisper frame background, button, scroll, and hook updates against BN_WHISPER, secret targets/headers, combat, and active typing focus, tracked active focused edit boxes so stale focus-lost events or deferred skin refreshes never re-show the Obsidian prompt hint over Battle.net typing, and skipped chat tab alpha changes while Blizzard's UIFrameFade or secret fadeInfo is active on Combat Log or whisper tabs (with secret-safe UIFrameIsFlashing and tab name checks) across both DynamicSuite and standalone DynamicChat." },
             { type = "NEW",      text = "Whisper Tab Clickability Fix & Reload Persistence (26/11/2026): Moved the chat header drag strip to BACKGROUND strata strictly below all LOW-strata chat tabs (level 22) and navigation arrows (level 25), synced GeneralDockManager scale with ChatFrame1 so child clipping never cuts off the rightmost whisper tab, hardened tab reparenting out of GeneralDockManagerScrollFrameChild with combat and re-entrancy deferrals, and automatically scrolled newly opened whisper tabs into view. Added zero-taint character whisper tab and message persistence across reloads (capped at 3/5/10 tabs and 50 lines per tab with 24-hour expiry, Midnight secret-value skipping, automatic removal when closing a tab, and previous-session rendering in Copy Chat) plus 'Keep Whisper Tabs After Reload' and 'Whisper Tab Limit' controls under Links & History." },
             { type = "UI",       text = "12 px Default Chat Font & Info Toast Timer Sync (24/11/2026): Set the default chat message font size to 12 px and updated Clean Smoked-Glass and Minimalist Raid presets to use 12 px / 2 px line spacing while tuning High-Readability to a balanced +1 px step at 13 px (50% smoked-glass backdrop, thin outline, drop shadow, 2 px line spacing); and connected Mention Alert Toasts to Suite Studio's dedicated Info & Mention Toast Duration timer (5s default: 3s, 5s, 8s, 12s, or Stay Until Clicked) with hover-to-pause and Right-Click dismissal." },
             { type = "FIX",      text = "Tab 3 Blank Screen Fix, Quick Presets Active Highlight & Copy Chat / URL Overhaul (24/11/2026): Fixed a nil typo on the Tab 2 Line Spacing card that aborted workspace construction before Tabs 3 and 4 built, and reset vertical scroll cleanly when switching tabs or resizing to 800x520; added live Suite Accent active highlighting for Quick Presets (clearing automatically when any preset setting is manually edited), tuned High-Readability to crisp 14 px contrast (50% backdrop, thin outline, drop shadow, 2 px line spacing) while having Clean Smoked-Glass and Minimalist Raid restore 13 px / 2 px text, and dynamically scaled chat typing box height and message clearance across docked tabs so chat lines never collide with the top typing box; and overhauled Copy Chat and Copy Link with a rolling out-of-combat plain-text session buffer fallback, case-insensitive URL capture (including bare www. links without duplicate sub-matches), hardened escape-code stripping, a [Select All] confirmation button and up to 4 Recent Links pills in the Copy Chat window, an elevated Copy Link dialog with deferred focus and full selection, and a plain-English Midnight footer notice whenever Blizzard restricts reading protected combat or instance lines." },
-            { type = "UI",       text = "Pass 2 Quick Presets, 6 Persisted Sub-Settings Drawers & 800x520 Clamping (24/11/2026): Added a 4-option Quick Presets card at the top of Tab 2 (Clean Smoked-Glass, Minimalist Raid, High-Readability, Quiet Alerts); converted Smoked-Glass Skin (now with a 0%-95% background opacity precision slider, border style, and 30s/60s/2m/5m auto-fade duration), Left Shortcut Bar, Notification Sounds, Mention & Keyword Alerts (with a new [Test] preview button on Mention Alert Toast), Custom Sound Files, and Chat History (with [Copy Chat] and [Clear History] buttons) into persisted 24px Sub-Settings (N) drawers (collapsed by default on fresh profiles); removed the orphaned single-card Compact Channel Tags section and duplicate font sync toggle; shortened and right-clamped 4-tab labels and card titles for 800x520 minimum windows; and stripped outline flags from font picker group headers." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}

@@ -103,20 +103,24 @@ $wowGlobalAllow = [System.Collections.Generic.HashSet[string]]::new([string[]]@(
     "tostring", "tonumber", "pcall", "xpcall", "unpack", "error", "assert",
     "math", "string", "table", "bit", "wipe", "tinsert", "tremove",
     "GetTime", "CreateFrame", "ReloadUI", "CopyTable", "GetRealmName", "UnitName",
-    "UnitClass", "InCombatLockdown", "IsShiftKeyDown", "PlaySound", "PlaySoundFile",
+    "UnitClass", "UnitGUID", "InCombatLockdown", "IsShiftKeyDown", "PlaySound", "PlaySoundFile",
     "UIParent", "GameTooltip", "C_Timer", "C_AddOns", "C_CVar", "C_Map",
-    "SettingsPanel", "GameMenuFrame", "RAID_CLASS_COLORS", "SOUNDKIT"
+    "SettingsPanel", "GameMenuFrame", "RAID_CLASS_COLORS", "SOUNDKIT", "Enum",
+    "Show", "Hide", "Clear", "Reset", "Open", "Close", "Refresh", "Update", "Init", "Toggle",
+    "GetText", "SetText", "GetWidth", "GetHeight", "SetAlpha", "GetAlpha",
+    "SetScale", "GetScale", "IsShown", "GetName", "GetParent", "SetParent", "Print"
 ))
 $fileLocalsByPath = @{}
+$tableHelperPrefixes = '(?:addonTable|DynamicSuite|Suite|UI|U|DM|DC_NS|DP_NS|DT_NS|DG_NS|DL_NS|TypographyMgr|SoundMgr|DesktopWindows)'
 foreach ($f in $luaFiles) {
     $src = [System.IO.File]::ReadAllText($f.FullName)
-    foreach ($m in [regex]::Matches($src, '(?m)^\s*function\s+(?:addonTable|DynamicSuite)[.:]([A-Za-z_][A-Za-z0-9_]*)\s*\(')) {
+    foreach ($m in [regex]::Matches($src, "(?m)^\s*function\s+${tableHelperPrefixes}[.:]([A-Za-z_][A-Za-z0-9_]*)\s*\(")) {
         $hName = $m.Groups[1].Value
         if ($hName.Length -ge 4 -and -not $wowGlobalAllow.Contains($hName)) {
             [void]$forbiddenGlobalHelpers.Add($hName)
         }
     }
-    foreach ($m in [regex]::Matches($src, '(?m)^\s*(?:addonTable|DynamicSuite)\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*function\b')) {
+    foreach ($m in [regex]::Matches($src, "(?m)^\s*${tableHelperPrefixes}\.([A-Za-z_][A-Za-z0-9_]*)\s*=\s*function\b")) {
         $hName = $m.Groups[1].Value
         if ($hName.Length -ge 4 -and -not $wowGlobalAllow.Contains($hName)) {
             [void]$forbiddenGlobalHelpers.Add($hName)

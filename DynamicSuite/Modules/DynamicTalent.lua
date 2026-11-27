@@ -887,6 +887,19 @@ local function HasSpecificBossBinds(bossMap)
     return false
 end
 
+local function HasNonRaidCustomBossBind(selfObj, bossMap)
+    if type(bossMap) ~= "table" then return false end
+    for bKey, entry in pairs(bossMap) do
+        if type(entry) == "table" and entry.isAllRaid ~= true then
+            local bName = tostring(entry.bossName or bKey)
+            if bName ~= "" and not selfObj:MatchBossTargetName(bName) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function HasActiveSpecSpecificBossBinds(selfObj)
     if not selfObj or not selfObj.db or selfObj.db.enabled == false or selfObj.db.talentReminderEnabled == false then
         return false
@@ -6559,9 +6572,9 @@ do
         return enriched
     end
 
-    function DynamicTalent:GetSeason2Raids(forceRefresh)
+    function DynamicTalent:GetSeason2Raids(forceRefresh, allowEJEnrich)
         if not forceRefresh and type(self._cachedTierRaids) == "table" and #self._cachedTierRaids > 0 then
-            if not self._ejEnriched and not self._ejEnrichAttempted and not IsPlayerInCombat() then
+            if allowEJEnrich == true and not self._ejEnriched and not self._ejEnrichAttempted and not IsPlayerInCombat() then
                 self._ejEnrichAttempted = true
                 if TryEnrichWithEJ(self._cachedTierRaids) then
                     self._ejEnriched = true
@@ -6573,7 +6586,7 @@ do
         if forceRefresh then
             self._ejEnrichAttempted = false
         end
-        if not IsPlayerInCombat() then
+        if (allowEJEnrich == true or forceRefresh == true) and not IsPlayerInCombat() then
             self._ejEnrichAttempted = true
             self._ejEnriched = TryEnrichWithEJ(raids) and true or false
         else
@@ -10102,6 +10115,9 @@ end
 
 function DynamicTalent:OpenTalentManagerModal(initialTab, targetEntry)
     if not self.db then self:InitDB() end
+    if not self._ejEnriched and not self._ejEnrichAttempted and not IsPlayerInCombat() then
+        self:GetSeason2Raids(false, true)
+    end
     local ar, ag, ab, accentHex = GetActiveAccentRGB()
     local MODAL_BG = { 0.035, 0.039, 0.051, 1.00 }
     local HDR_BG   = { 0.016, 0.020, 0.024, 1.00 }
@@ -11857,13 +11873,13 @@ DynamicTalent.Reset               = function() return DynamicTalent:ResetModuleD
 DynamicTalent.CHANGELOG = {
     {
         version = VERSION,
-        date = "25/11/2026",
+        date = "27/11/2026",
         entries = {
+            { type = "PERF",  text = "Mouseover & Target Fast-Exit Hardening (27/11/2026): Restricted Encounter Journal boss enrichment strictly to explicit Talent Manager opens or Blizzard_EncounterJournal loads (never on passive mouseover, nameplate, or soft-enemy events), and added instant non-raid and resting-zone fast-exits to UPDATE_MOUSEOVER_UNIT and PLAYER_TARGET_CHANGED." },
             { type = "FIXED", text = "Release v2.10.3 - Patch 12.1.7 Combat, Secret-Value & Unspecialised Hardening (25/11/2026): Guarded talent dock refreshes on Blizzard's Talent window during combat (deferring updates until combat ends), protected import string decoding and loadout switching against secret values, active Mythic+ runs, and unspecialised or Lorewalking characters, and tightened Encounter Journal, Mythic+ dungeon list, raid difficulty, Hero medallion, and specialisation-change checks." },
             { type = "UI",    text = "Release v2.10.3 - Standalone Window, Pop-Out Manager Parity & 800x520 Layout Reflow (25/11/2026): Made the standalone DynamicTalent window resizable (760x480 to 1280x860) with a live Suite Accent top bar, Reset/Reload footer, and corner resize grip with Right-Click reset; widened the Pop-Out Manager bounds to 1280x860 with resize grip tooltip and Right-Click reset; fixed the Talent Dock scrollbar overlap with the specialisation bar; fixed vertical skew on section headers and Backdrop Studio descriptions; compacted left-column cards, Action Strip buttons, and Raid difficulty rows for clean 800x520 framing; and reflowed Mythic+ dungeon tiles into a 2x4 grid on narrower layouts." },
             { type = "UI",    text = "Release v2.8.1 - Raid Bosses Binder Redesign (22/11/2026): Promoted All Raids to Row 1 alongside the Season 2 raid pills with an Obsidian Core explanation banner; expanded the boss grid to use the full card width underneath; added a red-hover Clear button beside + Bind Raid to remove All Raids or selected boss binds for the toggled difficulties; and fixed multi-select and unselect behaviour on boss tiles." },
             { type = "FIXED", text = "Release v2.8.1 - Raid Boss Selection & Boss-Specific Build Priority Over All Raids (22/11/2026): Removed forced Boss #1 pre-highlighting in Raid Boss Talent Binds (and cleared pending tile selections when switching loadouts or after binding) so bosses can be freely selected and unselected; added automatic single-boss raid matching (Kith'ix, Tidebound Grotto); cleared cached boss memory when targeting an unbound Season 2 raid boss; and protected active boss-specific raid builds from being overridden by All Raids when no unbound boss is targeted." },
-            { type = "UI",    text = "Release v2.8.1 - Right-Click Toast Silences Mismatch (22/11/2026): Right-clicking the talent reminder toast or its Swap button now silences that reminder for the session, refreshes DynamicPrep's Top Info Bar capsule immediately, updates the toast subtext to 'Right-Click to silence', and clears silenced reminders on specialisation change or reload." },
         },
     },
 }
@@ -12032,11 +12048,19 @@ local function ShouldRunPassiveUnitBossCheck(selfObj, reason, unit, skipWhenRest
     local hasBinds = HasSpecificBossBinds(bossMap)
     local inRaid = IsInRaidInstanceSafe()
     if reason == "MOUSEOVER" then
+        if not inRaid and not HasNonRaidCustomBossBind(selfObj, bossMap) then
+            return false
+        end
         if not hasBinds and not (inRaid and type(bossMap) == "table") then
             return false
         end
-    elseif not hasBinds then
-        return false
+    else
+        if not inRaid and not HasNonRaidCustomBossBind(selfObj, bossMap) then
+            return false
+        end
+        if not hasBinds then
+            return false
+        end
     end
 
     local unitName = ResolveLiveUnitName(unit, true)
@@ -12087,6 +12111,9 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             DynamicTalent._cachedTierRaids = nil
             DynamicTalent._ejEnriched = false
             DynamicTalent._ejEnrichAttempted = false
+            if isInitialized and not IsModuleDisabledInSuite("DynamicTalent") and not IsPlayerInCombat() then
+                DynamicTalent:GetSeason2Raids(true, true)
+            end
         end
     elseif event == "PLAYER_LOGIN" then
         EnsureDB()
@@ -12211,7 +12238,39 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     elseif event == "READY_CHECK" or event == "START_PLAYER_COUNTDOWN" then
         DynamicTalent:CheckZoneTalentLoadout(event)
     elseif event == "PLAYER_TARGET_CHANGED" then
-        DynamicTalent:CheckBossTalentLoadout("TARGET")
+        if IsPlayerInCombat()
+            or not DynamicTalent.db
+            or DynamicTalent.db.enabled == false
+            or DynamicTalent.db.talentReminderEnabled == false
+            or IsModuleDisabledInSuite("DynamicTalent") then
+            return
+        end
+        if type(UnitExists) ~= "function" then return end
+        local okT, hasTgt = pcall(UnitExists, "target")
+        if not okT or _IsSecret(hasTgt) or not hasTgt or IsSafeUnitPlayer("target") then
+            return
+        end
+        local specID = DynamicTalent:GetActiveSpecID()
+        local bossMap = specID and DynamicTalent.db.talentBossMap and DynamicTalent.db.talentBossMap[specID]
+        local inRaid = IsInRaidInstanceSafe()
+        local hasCustom = HasNonRaidCustomBossBind(DynamicTalent, bossMap)
+        if IsPlayerRestingSafe() and not hasCustom then
+            return
+        end
+        if not inRaid and not hasCustom then
+            return
+        end
+        if inRaid and not HasSpecificBossBinds(bossMap) and not stickyRaidBoss then
+            return
+        end
+        local tName = ResolveLiveUnitName("target", true)
+        if tName then
+            local diffKey = inRaid and GetActiveRaidDifficultyKey() or nil
+            if MatchBoundBossByName(DynamicTalent, bossMap, diffKey, tName)
+                or (inRaid and DynamicTalent:MatchBossTargetName(tName)) then
+                DynamicTalent:CheckBossTalentLoadout("TARGET")
+            end
+        end
     elseif event == "PLAYER_SOFT_ENEMY_CHANGED" then
         if ShouldRunPassiveUnitBossCheck(DynamicTalent, "SOFT_ENEMY", "softenemy", false) then
             DynamicTalent:CheckBossTalentLoadout("SOFT_ENEMY")

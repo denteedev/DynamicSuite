@@ -543,8 +543,14 @@ do
     local isCastingNow = false
     local isChannelingNow = false
     local cachedDB = nil
+    local cachedModuleDisabled = false
     local cachedActivityAllowed = true
     local lastRingX, lastRingY = nil, nil
+
+    local function RefreshCachedModuleDisabled()
+        cachedModuleDisabled = IsModuleDisabledInSuite("DynamicCursor") and true or false
+        return cachedModuleDisabled
+    end
 
     local function IsSpecialHideActive(db)
         if not db.autoHideSpecial then return false end
@@ -1531,12 +1537,18 @@ do
 
     local smartTooltipHooked = false
     local function EnsureSmartTooltipHook()
+        RefreshCachedModuleDisabled()
+        cachedDB = cachedDB or EnsureDB()
         if smartTooltipHooked or type(_G.hooksecurefunc) ~= "function" then return end
         smartTooltipHooked = true
         _G.hooksecurefunc("GameTooltip_SetDefaultAnchor", function(tooltip)
-            local db = cachedDB or EnsureDB()
-            cachedDB = db
-            if not db.tooltipEnabled or IsModuleDisabledInSuite("DynamicCursor") then return end
+            if cachedModuleDisabled then return end
+            local db = cachedDB
+            if not db then
+                db = EnsureDB()
+                cachedDB = db
+            end
+            if not db.tooltipEnabled then return end
             if not tooltip or _IsSecret(tooltip) or tooltip ~= _G.GameTooltip then return end
             if type(tooltip.IsForbidden) == "function" then
                 local okF, forb = pcall(tooltip.IsForbidden, tooltip)
@@ -1561,7 +1573,7 @@ do
         local db = EnsureDB()
         cachedDB = db
         lastRingX, lastRingY = nil, nil
-        local disabled = IsModuleDisabledInSuite("DynamicCursor")
+        local disabled = RefreshCachedModuleDisabled()
         if disabled then
             cachedActivityAllowed = false
             if ringRoot then ringRoot:Hide() end
@@ -1664,7 +1676,7 @@ do
     evFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
         if event == "PLAYER_LOGIN" then
             EnsureDB()
-            if IsModuleDisabledInSuite("DynamicCursor") then
+            if RefreshCachedModuleDisabled() then
                 if _G.DynamicSuite and _G.DynamicSuite.modules then
                     if _G.DynamicSuite.modules["cursor"] then _G.DynamicSuite.modules["cursor"]._disabledAtStartup = true end
                     if _G.DynamicSuite.modules["DynamicCursor"] then _G.DynamicSuite.modules["DynamicCursor"]._disabledAtStartup = true end
@@ -3869,8 +3881,9 @@ end
 -- ============================================================================
 DynamicCursor.CHANGELOG = {
     version = VERSION,
-    date = "25/11/2026",
+    date = "27/11/2026",
     entries = {
+        { type = "PERF",    text = "Smart Tooltip Hover Cache (27/11/2026): Cached the module-disabled state across lifecycle and suite enable/disable events so GameTooltip_SetDefaultAnchor no longer invokes pcall(IsModuleDisabled) on every tooltip hover." },
         { type = "UI",      text = "Release v2.10.2 - Pass 6 800x520 Layout Sweep, Standalone Window Parity & Plain-English Copy (25/11/2026): Made DynamicCursorStandaloneFrame resizable (760x480 to 1280x860) with a 36px Reset/Reload footer, 14x14 live-accent resize grip, and ApplyTheme border/header repaint; reflowed Tab 1 Quick Presets proportionally across the card width; fixed Tab 3 Crosshair Elements and Tab 4 Active Zones so descriptions wrap cleanly beneath titles with responsive pills; right-clamped all setting cards and sub-rows against their controls at 800x520; and updated Overlay Layer Priority (Standard / Above Windows / Topmost), Built-In Mouse Pointer Size (Automatic Default), and All Overlays preset labels in plain Australian English." },
         { type = "FEATURE", text = "Release v2.8.2 - New 13th Dual-Mode Module: DynamicCursor (/dcur, /dynamiccursor) (24/11/2026): Launched DynamicCursor with 4 Obsidian tabs built on enclosing Section Containers, individual setting cards, collapsible Sub-Settings (N) drawers (2px Suite Accent rail + 5x5px square pip), a 4px 3-way scrollbar, smooth 12x12 live Suite Accent dropdown chevrons, and 4 Quick Presets (Clean Raid, High-Visibility, Minimalist, All Overlays). Includes Main Cursor Ring (Solid Ring, Soft Glow, High-Contrast Dual across 5 thickness levels, Extra Ring Contrast dark outline behind all rings and crosshair circle, Centre Dot size & colour, Ground-Target AoE Highlight & +20% Size Boost, Mouse-Look ghost opacity, Click-Pulse scale & colour), Inner GCD Ring (6 px default gap), Outer Cast/Channel/Empower Arc (4 px default gap, Interrupt Flash Colour, Mini Spell Icon & Instant-Cast Flash), modular Character Crosshair, Find My Cursor (Shake-to-Find sensitivity, Ping After Mouse-Look duration, Modifier Key Locator, Locator Highlight Scale & colour), Pooled Cursor Trail, Active Zones, built-in mouse pointer size, and Smart Cursor Tooltips." },
     },
@@ -3915,8 +3928,12 @@ if _G.DynamicSuite then
         Reset = ResetCursorModuleDefaults,
         OpenWorkspace = function() return DynamicCursor.OpenWorkspace() end,
         GetStatusText = GetStatusText,
-        OnDisableInSuite = function() SyncAllEngines() end,
-        OnEnableInSuite = function() SyncAllEngines() end,
+        OnDisableInSuite = function()
+            if DynamicCursor.SyncAllEngines then DynamicCursor.SyncAllEngines() else SyncAllEngines() end
+        end,
+        OnEnableInSuite = function()
+            if DynamicCursor.SyncAllEngines then DynamicCursor.SyncAllEngines() else SyncAllEngines() end
+        end,
         GetChangelog = function() return DynamicCursor.CHANGELOG end,
         SelectSubTab = function(a1, a2)
             local idx = (type(a1) == "number") and a1 or a2 or 1

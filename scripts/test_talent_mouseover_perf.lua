@@ -450,15 +450,30 @@ RunTest("(b) Non-boss NPCs on mouseover, nameplate & softenemy never trigger Ref
     assertEqual(#state.calls.showToast, 0, "No toast triggered for non-boss NPCs")
 end)
 
--- (c) Bound raid boss on mouseover detects mismatch, alerts, and refreshes Prep Bar once
-RunTest("(c) Bound raid boss mouseover alerts and refreshes Prep Bar once without hover spam", function()
+-- (c) Bound raid boss on mouseover detects mismatch inside a raid, exits fast outdoors, and skips EJ enrichment
+RunTest("(c) Bound raid boss mouseover alerts in raid, exits outdoors, and avoids hover spam", function()
     local _, state, _, FireEvent = CreateHarness()
     state.resting = false
+    state.inRaid = false
+    state.inInstance = false
+    state.instType = "none"
     state.units.mouseover = { exists = true, isPlayer = false, name = "Vashnik the Malignant", guid = "Creature-0-555" }
 
+    -- Outside a raid instance with only raid boss binds -> instant fast-exit with 0 work
+    FireEvent("UPDATE_MOUSEOVER_UNIT")
+    assertEqual(#state.calls.showToast, 0, "Outdoor mouseover skips raid boss checks")
+    assertEqual(state.calls.refreshBar, 0, "Outdoor mouseover skips RefreshBar")
+    assertEqual(state.calls.ejNumTiers, 0, "Outdoor mouseover makes 0 EJ calls")
+
+    -- Inside raid instance -> detects bound raid boss using baseline list (still 0 EJ calls)
+    state.inRaid = true
+    state.inInstance = true
+    state.instType = "raid"
+    state.now = state.now + 1.00
     FireEvent("UPDATE_MOUSEOVER_UNIT")
     assertEqual(#state.calls.showToast, 1, "ShowTalentReminderToast triggered once for bound raid boss")
     assertEqual(state.calls.refreshBar, 1, "DynamicPrep:RefreshBar called once when mismatch appears")
+    assertEqual(state.calls.ejNumTiers, 0, "Raid mouseover never invokes Encounter Journal")
 
     -- Immediate repeat within debounce window -> skipped
     state.now = state.now + 0.10
@@ -472,8 +487,8 @@ RunTest("(c) Bound raid boss mouseover alerts and refreshes Prep Bar once withou
     assertEqual(#state.calls.showToast, 1, "Unchanged mismatch does not re-show toast")
 end)
 
--- (d) GetSeason2Raids() tries EJ enrichment at most once until Blizzard_EncounterJournal loads or forceRefresh
-RunTest("(d) GetSeason2Raids() runs TryEnrichWithEJ at most once on misses", function()
+-- (d) GetSeason2Raids() never hits EJ passively; only Blizzard_EncounterJournal load or explicit allowEJEnrich/forceRefresh enriches
+RunTest("(d) GetSeason2Raids() skips EJ passively and enriches lazily on EJ load / manager", function()
     local _, state, dt, FireEvent = CreateHarness()
     state.ejMatch = false
 
@@ -481,16 +496,20 @@ RunTest("(d) GetSeason2Raids() runs TryEnrichWithEJ at most once on misses", fun
         dt:GetSeason2Raids()
         dt:MatchBossTargetName("Random Trash Mob " .. i)
     end
-    assertEqual(state.calls.ejNumTiers, 1, "EJ scanned only once across repeated misses")
+    assertEqual(state.calls.ejNumTiers, 0, "Passive GetSeason2Raids makes 0 EJ calls")
 
-    -- Loading Blizzard_EncounterJournal resets _ejEnrichAttempted for one fresh attempt
+    -- Explicit allowEJEnrich runs once on miss
+    dt:GetSeason2Raids(false, true)
+    dt:GetSeason2Raids(false, true)
+    assertEqual(state.calls.ejNumTiers, 1, "Explicit EJ enrichment attempts only once on misses")
+
+    -- Loading Blizzard_EncounterJournal resets and enriches cleanly once
     state.ejMatch = true
     FireEvent("ADDON_LOADED", "Blizzard_EncounterJournal")
-    dt:GetSeason2Raids()
-    assertEqual(state.calls.ejNumTiers, 2, "Blizzard_EncounterJournal load allows fresh EJ enrichment")
+    assertEqual(state.calls.ejNumTiers, 2, "Blizzard_EncounterJournal load runs one lazy EJ enrichment")
 
     -- Already enriched -> subsequent reads stay at 2 until forceRefresh = true
-    dt:GetSeason2Raids()
+    dt:GetSeason2Raids(false, true)
     assertEqual(state.calls.ejNumTiers, 2, "Enriched cache stays cached on subsequent calls")
     dt:GetSeason2Raids(true)
     assertEqual(state.calls.ejNumTiers, 3, "forceRefresh = true refreshes EJ explicitly")

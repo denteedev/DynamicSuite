@@ -1501,11 +1501,11 @@ end
 function U.SnapshotBags()
     local rec = U.GetCharRecord()
     rec.bags = U.SnapshotBagIDs(S.bagIDs)
-    S.vaultVersion = S.vaultVersion + 1
 end
 
 function U.SnapshotBank(skipTooltipScan)
     local rec = U.GetCharRecord()
+    local warbandChanged = false
     local ids = CollectBagIDs({ "CharacterBankTab", "Bank", "Reagentbank" })
     if #ids > 0 then
         local snap = U.SnapshotBagIDs(ids, skipTooltipScan)
@@ -1556,9 +1556,13 @@ function U.SnapshotBank(skipTooltipScan)
                 money = (prevWb and prevWb.money) or nil,
                 updated = time and time() or 0,
             }
+            warbandChanged = true
         end
     end
-    S.vaultVersion = S.vaultVersion + 1
+    if warbandChanged or not S.countIndex then
+        S.vaultVersion = S.vaultVersion + 1
+        U.BuildCountIndex()
+    end
 end
 
 function U.GetVaultStateSignature(mode)
@@ -1688,6 +1692,32 @@ function U.BuildCountIndex()
     if vault.warbandBank and vault.warbandBank.items then
         for _, t in ipairs(vault.warbandBank.items) do add(t[1], nil, nil, t[3]) end
     end
+    for _, e in pairs(idx) do
+        local rows = {}
+        for ck, c in pairs(e.chars) do
+            local rec = vault.characters[ck]
+            local nm = (rec and rec.name) or ck
+            local color = rec and rec.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[rec.class]
+            local hex = (color and color.colorStr) or "ffffffff"
+            rows[#rows + 1] = {
+                nm,
+                sformat("|c%s%s|r", hex, nm),
+                sformat("Bags %d  Bank %d", c.bags, c.bank),
+            }
+        end
+        tsort(rows, function(a, b) return a[1] < b[1] end)
+        if #rows > 6 then
+            local trimmed = {}
+            for i = 1, 6 do trimmed[i] = rows[i] end
+            e.formattedLines = trimmed
+            e.extraText = sformat("|cFF94A3B8+%d more characters|r", #rows - 6)
+        else
+            e.formattedLines = rows
+        end
+        if e.warband > 0 then
+            e.warbandText = tostring(e.warband)
+        end
+    end
     S.countIndex = idx
     S.countIndexVersion = S.vaultVersion
 end
@@ -1696,28 +1726,22 @@ function U.AppendCountsToTooltip(tooltip, itemID)
     if not S.countIndex or S.countIndexVersion ~= S.vaultVersion then U.BuildCountIndex() end
     local e = S.countIndex[itemID]
     if not e then return end
-    local lines = {}
-    local vault = DB().vault
-    for ck, c in pairs(e.chars) do
-        local rec = vault.characters[ck]
-        local nm = (rec and rec.name) or ck
-        local color = rec and rec.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[rec.class]
-        local hex = (color and color.colorStr) or "ffffffff"
-        lines[#lines + 1] = { nm, sformat("|c%s%s|r", hex, nm), c.bags, c.bank }
-    end
-    tsort(lines, function(a, b) return a[1] < b[1] end)
-    if #lines == 0 and e.warband == 0 then return end
+    local lines = e.formattedLines
+    local hasChars = lines and #lines > 0
+    if not hasChars and not e.warbandText then return end
     tooltip:AddLine(" ")
     tooltip:AddLine("|cFFFF7C0ADynamic|r|cFFFFFFFFBags|r", 1, 1, 1)
-    for i, l in ipairs(lines) do
-        if i > 6 then
-            tooltip:AddLine(sformat("|cFF94A3B8+%d more characters|r", #lines - 6))
-            break
+    if hasChars then
+        for i = 1, #lines do
+            local row = lines[i]
+            tooltip:AddDoubleLine(row[2], row[3], 1, 1, 1, 0.78, 0.82, 0.88)
         end
-        tooltip:AddDoubleLine(l[2], sformat("Bags %d  Bank %d", l[3], l[4]), 1, 1, 1, 0.78, 0.82, 0.88)
+        if e.extraText then
+            tooltip:AddLine(e.extraText)
+        end
     end
-    if e.warband > 0 then
-        tooltip:AddDoubleLine("Warband Bank", tostring(e.warband), 0.40, 0.80, 1.0, 0.78, 0.82, 0.88)
+    if e.warbandText then
+        tooltip:AddDoubleLine("Warband Bank", e.warbandText, 0.40, 0.80, 1.0, 0.78, 0.82, 0.88)
     end
 end
 
@@ -12909,6 +12933,7 @@ function U.PreWarmBagWindow()
     S.windowPreWarmed = true
     S.pendingPreWarmAfterCombat = false
     U.EnsureBagSpecialFrames()
+    pcall(U.BuildCountIndex)
     pcall(U.EnsureWindow)
     pcall(U.EnsureQuickOpenButton)
     pcall(U.EnsureButtons)
@@ -13393,11 +13418,11 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "27/11/2026",
     entries = {
+        { type = "PERF",    text = "O(1) Alt & Warband Item Tooltip Count Cache (27/11/2026): Stopped current-character bag snapshots from invalidating the cross-character count cache, pre-sorted and pre-formatted alt and warband tooltip lines inside BuildCountIndex, and seeded the index during pre-warm so item tooltip hovers execute in O(1) with zero per-hover table allocations or sorting." },
         { type = "FIX",     text = "BankFrame, GuildBankFrame & StaticPopup Hook Hardening (27/11/2026): Replaced direct HookScript('OnShow') calls and frame-field flags on Blizzard BankFrame, GuildBankFrame, and StaticPopup1..4 frames with weak-table tracking, combat-guarded hooksecurefunc post-hooks (Show, StaticPopup_OnShow, and StaticPopupMixin.OnShow), and UIFrameIsFading/fadeInfo-safe SetAlpha wrappers across both DynamicSuite and standalone DynamicBags." },
         { type = "FIX",     text = "DynamicBags & DynamicBank Header Hover & Scale Toast Nil Crash Fix (26/11/2026): Replaced undefined U.GetSuiteAccent() calls in ShowBagScaleToast and U.AttachWindowScaleHandlers (header OnEnter tooltip) with GetAccent() so hovering the DynamicBags or DynamicBank header and stepping or resetting window scale via Ctrl+Scroll or Right-Click work cleanly with live Suite Accent colouring across both DynamicSuite and standalone DynamicBags." },
         { type = "FIX",     text = "Release v2.10.1 - Clean Single-Action Bank & Guild Bank Closing (25/11/2026): Fixed a lingering invisible Blizzard bank interaction left behind whenever DynamicBank closed via its Close button, Escape key, or bag toggle while at a Personal Bank, Warband Bank, or Guild Bank (previously requiring an extra Escape press before interacting with the banker again); closing DynamicBank now cleanly terminates active C_Bank / CloseGuildBankFrame and C_PlayerInteractionManager banker interactions, detaches and hides suppressed Blizzard BankFrame/GuildBankFrame panels out of combat with re-entrancy guards, closes child modals and popovers (dropdowns, Gold Transfer modal, StackSplitFrame, and buy-tab popups) one at a time on Escape without killing the live banker session, keeps Personal/Warband/Guild tab switching uninterrupted, and leaves remote cached snapshot viewing (/dbag bank) untouched." },
         { type = "FEATURE", text = "Release v2.10.1 - DynamicBank Gold Controls & Obsidian Gold Transfer Modal (25/11/2026): Added live bank gold balances and transfer controls to the DynamicBank footer for Warband Bank (Deposit/Withdraw), Guild Bank (Deposit/Withdraw with live daily rank limit), and Personal Bank (live character gold display + [Deposit to Warband] shortcut with plain-English tooltip explaining that character gold stays in your bags); added a shared Obsidian Core Gold Transfer modal with Gold/Silver/Copper numeric inputs, 1k/10k/50k/100k/Max quick-fill pills, inline validation, and Escape/Enter handling; and subscribed to ACCOUNT_MONEY, PLAYER_MONEY, GUILDBANK_UPDATE_MONEY, and GUILDBANK_UPDATE_WITHDRAWMONEY for instant balance refreshes." },
-        { type = "UI",      text = "Pass 5 Category Reorder Arrow Tint Parity (25/11/2026): Tinted the < and > reorder arrows on enabled Category Order & Visibility tiles in Tab 1 with the live Suite Accent colour at rest (switching to crisp white with accent border on hover, while keeping disabled tiles muted slate) to match DynamicPrep's Top Info Bar Layout Builder." },
     },
 }
 _G.DynamicSuite = _G.DynamicSuite or {}

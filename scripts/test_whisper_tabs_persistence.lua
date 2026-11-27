@@ -1211,7 +1211,7 @@ RunTest("T8: BN_WHISPER Secret Guards (Typography, SetPoint, /ww) & promptHint H
         h.env.EventRegistry:TriggerEvent("ChatFrame.OnEditBoxFocusLost")
         assertEqual(skinBar.promptHint:IsShown(), true, addonFolder .. ": Focus lost after BN_WHISPER must restore chatEditBoxSkin.promptHint")
 
-        -- Verify combat lockdown & shown/focused non-secret EditBox also skip ApplyToEditBox
+        -- Verify idle always-shown non-secret EditBox IS styled, while focused & combat skip ApplyToEditBox
         eb1._attrs.chatType = "SAY"
         eb1._attrs.stickyType = "SAY"
         eb1._attrs.tellTarget = nil
@@ -1222,8 +1222,15 @@ RunTest("T8: BN_WHISPER Secret Guards (Typography, SetPoint, /ww) & promptHint H
         eb1._setFontCalls = {}
         eb1.header._setFontCalls = {}
         h.env.DynamicChat:ApplyChatFrameTypography()
-        assertEqual(#eb1._setFontCalls, 0, addonFolder .. ": ApplyToEditBox must skip shown editBox")
+        assertTrue(#eb1._setFontCalls > 0, addonFolder .. ": ApplyToEditBox must still style idle always-shown editBox")
 
+        eb1._hasFocus = true
+        eb1._setFontCalls = {}
+        eb1.header._setFontCalls = {}
+        h.env.DynamicChat:ApplyChatFrameTypography()
+        assertEqual(#eb1._setFontCalls, 0, addonFolder .. ": ApplyToEditBox must skip actively focused editBox")
+
+        eb1._hasFocus = false
         eb1._shown = false
         h.state.inCombat = true
         h.env.DynamicChat:ApplyChatFrameTypography()
