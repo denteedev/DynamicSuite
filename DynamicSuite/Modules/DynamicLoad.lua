@@ -395,13 +395,13 @@ DynamicSuite.Changelogs = DynamicSuite.Changelogs or {}
 
 DynamicSuite.Changelogs["DynamicLoad"] = {
     version = ADDON_VERSION,
-    date = "25/11/2026",
+    date = "28/11/2026",
     entries = {
+        { type = "FIX",     text = "Alert Toast Shift-Drag Reload Persistence Fix (28/11/2026): Fixed Alert Toast positions reverting after reloading when moved directly with Shift + Left-Drag; dragging now saves cleanly across active character-scoped and global suite layouts as well as module settings, and skips premature clamping while the interface is still loading." },
         { type = "UI",      text = "Release v2.10.3 - Pass 7 Hardening, 800x520 Clamping & Standalone Window Parity (25/11/2026): Fixed the standalone DynamicMarker exclusion check, added secret-safe player, combat, addon-API, and profiler wrappers across DynamicLoad and DynamicSuite_UI, hardened Patch 12.1.7 Mythic+, PvP, and Lorewalking zone detection, synced all 13 dual-mode modules in Core Suite registries, reflowed DynamicLoad's toolbar (2-row compact mode below 700px), telemetry strip, legend strip, alt banner, addon rows, and Alert Toast Style sub-tab for clean 800x520 display, upgraded the addon list 4px scrollbar to full 3-way Obsidian interaction, added full resizability, 14x14 live Suite Accent resize grip, footer dock parity, 2-click Reset confirmation, and theme repainting to standalone DynamicLoadStandaloneFrame, and standardised all UI copy into plain Australian English." },
         { type = "UI",      text = "Release v2.7.0 - Shared Alert Toast HUD Consolidation & Accent Tooltip Polish (21/11/2026): Wrapped DynamicLoad's Alert Toast settings card in a scrollable container with the 4px 3-way Obsidian scrollbar, added the shared Toast Alert Sound switch, standardised 68px/84px switches and compact duration pills, updated group tooltip links to use the live Suite Accent, and synchronised all Shared Alert Toast appearance and sound controls with Suite Studio." },
         { type = "FIX",     text = "Toolbar Search Box Width & HUD Edit Mode 'Apply All' Appearance Action (16/11/2026): tightened DynamicLoad toolbar button padding, gaps, and adaptive minimum widths so the 'Filter addons...' search box retains at least 125px cleanly at the default 980x680 window size without clipping; and added an 'Apply All' Opacity & Border Style button on Row 3 of the HUD Edit Mode Inspector to copy the selected HUD's opacity and border style across all 6 suite HUDs in one click." },
         { type = "FEATURE", text = "One-Click 'Copy From...' Zone Profile & Persistent Tree Collapse (16/11/2026): added a compact 'Copy From...' button on the DynamicLoad toolbar so you can copy another zone's By Zone addon selections into the active zone tab in one click (preserving Always/Never locks and Suite Core protections), and ensured collapsed parent addon groups persist reliably across /reload and logins with clear expand/collapse tooltips." },
-        { type = "FIX",     text = "Universal 'Never' ('FROZEN') Persistence Across All Addons & Sub-Addons (12/11/2026): Normalised all security and zone assignment operations to canonical folder names (ResolveCanonicalAddonName); made SetAddonFrozen(name, true) atomically persist 'FROZEN' across DynamicLoadDB/globalData/charData, wipe all 5 zone tables, and call C_AddOns.DisableAddOn; merged DynamicLoadDB root and globalData security tables in SyncScopeBindings() and used in-place wipe() in RestoreStash() so SavedVariables deserialisation never reverts 'FROZEN' states on /reload; prevented ReconcileStartupProfileBaseline from overwriting knownAddons; protected individual child 'FROZEN' / 'LOCKED' states from parent cascades; and added EnforceFrozenAddonsDisabled() + a hooksecurefunc(C_AddOns, 'EnableAddOn', ...) guard so external parent suites cannot re-enable 'FROZEN' sub-addons." },
     },
 }
 DynamicSuite.Changelogs["load"] = DynamicSuite.Changelogs["DynamicLoad"]
@@ -1568,6 +1568,9 @@ local function ClampToastCoordsToScreen(f, point, relPoint, rawX, rawY)
 
     local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
     local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+    if screenW < 640 or screenH < 480 then
+        return math.floor((tonumber(rawX) or 0) + 0.5), math.floor((tonumber(rawY) or -50) + 0.5), false
+    end
     local screenCx = screenW / 2
     local screenCy = screenH / 2
 
@@ -1632,6 +1635,34 @@ local function ClampToastCoordsToScreen(f, point, relPoint, rawX, rawY)
     return outX, outY, didClamp
 end
 
+function addonTable.WriteCanonicalToastPosition(pt, rp, x, y)
+    local usePt = pt or "TOP"
+    local useRp = rp or usePt
+    local cx = math.floor((tonumber(x) or 0) + 0.5)
+    local cy = math.floor((tonumber(y) or -50) + 0.5)
+    local newPos = { point = usePt, relPoint = useRp, x = cx, y = cy, xOfs = cx, yOfs = cy }
+    local function MirrorTbl(tbl)
+        if type(tbl) ~= "table" then return end
+        tbl.toastPos = CopyTable(newPos)
+        tbl.hudPositions = type(tbl.hudPositions) == "table" and tbl.hudPositions or {}
+        local hudEntry = CopyTable(newPos)
+        tbl.hudPositions["TOAST"] = hudEntry
+        tbl.hudPositions["Toast"] = hudEntry
+        tbl.hudPositions["DynamicLoadToastFrame"] = hudEntry
+    end
+    local g = EnsureSuiteGlobal()
+    MirrorTbl(g)
+    _G.DynamicSuiteDB = _G.DynamicSuiteDB or {}
+    _G.DynamicSuiteDB.global = _G.DynamicSuiteDB.global or {}
+    if _G.DynamicSuiteDB.global ~= g then
+        MirrorTbl(_G.DynamicSuiteDB.global)
+    end
+    if DynamicLoadDB then
+        DynamicLoadDB.toastPos = CopyTable(newPos)
+    end
+    return newPos
+end
+
 local function ApplyToastPosition(f)
     if not f then return end
     f:ClearAllPoints()
@@ -1685,7 +1716,12 @@ local function ApplyToastPosition(f)
         RefreshToastContent(f)
     end
 
-    local pos = g.toastPos or (DynamicLoadDB and DynamicLoadDB.toastPos)
+    local globalDB = (_G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table") and _G.DynamicSuiteDB.global or nil
+    local pos = (type(g.toastPos) == "table" and g.toastPos)
+        or (type(g.hudPositions) == "table" and type(g.hudPositions.TOAST) == "table" and g.hudPositions.TOAST)
+        or (globalDB and type(globalDB.toastPos) == "table" and globalDB.toastPos)
+        or (globalDB and type(globalDB.hudPositions) == "table" and type(globalDB.hudPositions.TOAST) == "table" and globalDB.hudPositions.TOAST)
+        or (DynamicLoadDB and type(DynamicLoadDB.toastPos) == "table" and DynamicLoadDB.toastPos)
     local mf = _G.DynamicLoadMainFrame
     if mf and mf:IsShown() and not f.isEditingMode and not f.isDraggingMode then
         local fEff = (f.GetEffectiveScale and f:GetEffectiveScale()) or 1
@@ -1702,16 +1738,7 @@ local function ApplyToastPosition(f)
         local rp = pos.relPoint or pos.point
         local cx, cy, didClamp = ClampToastCoordsToScreen(f, pos.point, rp, pos.x, pos.y)
         if didClamp then
-            pos.x = cx
-            pos.y = cy
-            if type(g.toastPos) == "table" then
-                g.toastPos.x = cx
-                g.toastPos.y = cy
-            end
-            if DynamicLoadDB and type(DynamicLoadDB.toastPos) == "table" then
-                DynamicLoadDB.toastPos.x = cx
-                DynamicLoadDB.toastPos.y = cy
-            end
+            addonTable.WriteCanonicalToastPosition(pos.point, rp, cx, cy)
         end
         f:SetPoint(pos.point, UIParent, rp, cx, cy)
     else
@@ -2252,11 +2279,7 @@ local function CreateToastFrame()
             rx, ry = SnapAndClampDirectToastCoords(self, usePt, usePt, rx, ry, false)
             self:ClearAllPoints()
             self:SetPoint(usePt, UIParent, usePt, rx, ry)
-            local newPos = { point = usePt, relPoint = usePt, x = rx, y = ry }
-            g.toastPos = CopyTable(newPos)
-            if DynamicLoadDB then
-                DynamicLoadDB.toastPos = CopyTable(newPos)
-            end
+            local newPos = addonTable.WriteCanonicalToastPosition(usePt, usePt, rx, ry)
             if _G.DynamicSuite and type(_G.DynamicSuite.RestackAllToasts) == "function" then
                 pcall(_G.DynamicSuite.RestackAllToasts)
             end
@@ -2459,11 +2482,7 @@ local function CreateToastFrame()
             rx, ry = ClampToastCoordsToScreen(self, usePt, usePt, rx, ry)
             self:ClearAllPoints()
             self:SetPoint(usePt, UIParent, usePt, rx, ry)
-            local newPos = { point = usePt, relPoint = usePt, x = rx, y = ry }
-            g.toastPos = CopyTable(newPos)
-            if DynamicLoadDB then
-                DynamicLoadDB.toastPos = CopyTable(newPos)
-            end
+            local newPos = addonTable.WriteCanonicalToastPosition(usePt, usePt, rx, ry)
             RefreshToastContent(self)
             if addonTable.OnToastPositionChanged then
                 addonTable.OnToastPositionChanged(newPos)
@@ -2577,18 +2596,14 @@ end
 
 function addonTable.NudgeToastPosition(dx, dy)
     local g = EnsureSuiteGlobal()
-    local prev = g.toastPos or (DynamicLoadDB and DynamicLoadDB.toastPos) or { point = "TOP", relPoint = "TOP", x = 0, y = -50 }
+    local prev = g.toastPos or (g.hudPositions and g.hudPositions.TOAST) or (DynamicLoadDB and DynamicLoadDB.toastPos) or { point = "TOP", relPoint = "TOP", x = 0, y = -50 }
     local pt = prev.point or "TOP"
     local rp = prev.relPoint or pt
     local f = CreateToastFrame()
     local rawX = math.floor((prev.x or 0) + (dx or 0) + 0.5)
     local rawY = math.floor((prev.y or -50) + (dy or 0) + 0.5)
     local cx, cy = ClampToastCoordsToScreen(f, pt, rp, rawX, rawY)
-    local pos = { point = pt, relPoint = rp, x = cx, y = cy }
-    g.toastPos = CopyTable(pos)
-    if DynamicLoadDB then
-        DynamicLoadDB.toastPos = CopyTable(pos)
-    end
+    local pos = addonTable.WriteCanonicalToastPosition(pt, rp, cx, cy)
     ApplyToastPosition(f)
     if addonTable.OnToastPositionChanged then
         addonTable.OnToastPositionChanged(pos)
@@ -2600,12 +2615,7 @@ function addonTable.SetToastPresetPosition(point, relPoint, x, y)
     local rp = relPoint or pt
     local f = CreateToastFrame()
     local cx, cy = ClampToastCoordsToScreen(f, pt, rp, x or 0, y or -50)
-    local newPos = { point = pt, relPoint = rp, x = cx, y = cy }
-    local g = EnsureSuiteGlobal()
-    g.toastPos = CopyTable(newPos)
-    if DynamicLoadDB then
-        DynamicLoadDB.toastPos = CopyTable(newPos)
-    end
+    local newPos = addonTable.WriteCanonicalToastPosition(pt, rp, cx, cy)
     ApplyToastPosition(f)
     if addonTable.OnToastPositionChanged then
         addonTable.OnToastPositionChanged(newPos)

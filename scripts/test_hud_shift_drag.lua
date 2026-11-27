@@ -221,6 +221,24 @@ local function CreateEnv()
                 if relScale <= 0 then relScale = 1.0 end
                 self._cx = ((rfx * uiW) / relScale) + ox + (0.5 - pfx) * (self._w or 100)
                 self._cy = ((rfy * uiH) / relScale) + oy + (0.5 - pfy) * (self._h or 30)
+            elseif type(relTo) == "table" and relTo.GetLeft and relTo.GetBottom then
+                local p = tostring(pt or "CENTER"):upper()
+                local rp = tostring(relPt or pt or "CENTER"):upper()
+                local ox = tonumber(x) or 0
+                local oy = tonumber(y) or 0
+                if p == "TOPLEFT" and rp == "TOPLEFT" then
+                    self._anchorL = relTo:GetLeft() + ox
+                    self._anchorT = relTo:GetTop() + oy
+                elseif p == "BOTTOMRIGHT" and rp == "BOTTOMRIGHT" then
+                    self._anchorR = relTo:GetRight() + ox
+                    self._anchorB = relTo:GetBottom() + oy
+                end
+                if self._anchorL and self._anchorR and self._anchorT and self._anchorB then
+                    self._w = math.max(1, self._anchorR - self._anchorL)
+                    self._h = math.max(1, self._anchorT - self._anchorB)
+                    self._cx = (self._anchorL + self._anchorR) * 0.5
+                    self._cy = (self._anchorB + self._anchorT) * 0.5
+                end
             end
         end
         function f:SetAllPoints() end
@@ -229,7 +247,10 @@ local function CreateEnv()
             if p then return p[1], p[2], p[3], p[4], p[5] end
             return "CENTER", env.UIParent, "CENTER", 0, 0
         end
-        function f:ClearAllPoints() self._points = {} end
+        function f:ClearAllPoints()
+            self._points = {}
+            self._anchorL, self._anchorR, self._anchorT, self._anchorB = nil, nil, nil, nil
+        end
         function f:SetSize(w, h) self._w = w; self._h = h end
         function f:SetWidth(w) self._w = w end
         function f:SetHeight(h) self._h = h end
@@ -250,7 +271,10 @@ local function CreateEnv()
         end
         function f:SetAlpha(a) self._alpha = a or 1.0 end
         function f:GetAlpha() return self._alpha end
-        function f:SetFrameStrata() end
+        function f:SetFrameStrata(s) self._strata = s end
+        function f:GetFrameStrata() return self._strata or "MEDIUM" end
+        function f:GetName() return self._name end
+        function f:GetNumPoints() return #self._points end
         function f:SetFrameLevel(lvl) self._level = lvl end
         function f:GetFrameLevel() return self._level or 5 end
         function f:SetToplevel() end
@@ -358,7 +382,11 @@ local function CreateEnv()
             function tex:SetTexelSnappingBias() end
             function tex:Show() self._shown = true end
             function tex:Hide() self._shown = false end
+            function tex:SetShown(b) self._shown = (b == true) end
             function tex:IsShown() return self._shown == true end
+            function tex:SetAlpha(a) self._alpha = a or 1 end
+            function tex:GetAlpha() return self._alpha or 1 end
+            function tex:SetDrawLayer() end
             return tex
         end
         function f:CreateFontString()
@@ -380,7 +408,8 @@ local function CreateEnv()
             function fs:SetSize(w, h) self._w = w; self._h = h end
             function fs:GetWidth() return self._w or 100 end
             function fs:GetHeight() return self._h or 14 end
-            function fs:SetAlpha() end
+            function fs:SetAlpha(a) self._alpha = a or 1 end
+            function fs:GetAlpha() return self._alpha or 1 end
             function fs:SetJustifyH() end
             function fs:SetJustifyV() end
             function fs:SetWordWrap() end
@@ -389,11 +418,16 @@ local function CreateEnv()
             function fs:SetMaxLines() end
             function fs:SetText(t) self._text = tostring(t or "") end
             function fs:GetText() return self._text end
-            function fs:GetStringWidth() return #self._text * 6 end
-            function fs:GetUnboundedStringWidth() return #self._text * 6 end
+            function fs:GetStringWidth()
+                local plain = self._text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "XX")
+                return #plain * 6
+            end
+            function fs:GetUnboundedStringWidth() return self:GetStringWidth() end
             function fs:GetStringHeight() return 14 end
             function fs:Show() self._shown = true end
             function fs:Hide() self._shown = false end
+            function fs:SetShown(b) self._shown = (b == true) end
+            function fs:IsShown() return self._shown == true end
             return fs
         end
         if name then env[name] = f end
@@ -1419,6 +1453,372 @@ RunTest("15. Pet Battle auto-hide on real DynamicPrep HUDs & DynamicLoad Alert T
     assertTrue(dp.clickableBuffBar:IsShown(), "Clickable Raid Buffs restores after PET_BATTLE_OVER")
     showToastFn("outdoor", 3, true)
     assertTrue(env.DynamicLoadToastFrame:IsShown(), "DynamicLoad toast shows again after PET_BATTLE_OVER")
+end)
+
+-- ----------------------------------------------------------------------------
+-- Test 16: Direct Shift + Left-Drag persistence across simulated /reload and
+-- post-reload clamping for ALL 6 canonical HUDs (Global + Character scope,
+-- plus Standalone DynamicMarker parity & trailing OnDragStop guard)
+-- ----------------------------------------------------------------------------
+RunTest("16. Shift+Left-Drag reload persistence across all 6 canonical HUDs (Suite + Standalone)", function()
+    local function DeepCopy(src)
+        if type(src) ~= "table" then return src end
+        local out = {}
+        for k, v in pairs(src) do
+            out[k] = DeepCopy(v)
+        end
+        return out
+    end
+
+    local function AugmentEnvForAllModules(env)
+        env.strtrim = function(s) return (tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
+        env.strsplit = function(sep, str)
+            local res = {}
+            for part in string.gmatch(tostring(str or ""), "([^" .. sep .. "]+)") do res[#res + 1] = part end
+            return unpack(res)
+        end
+        env.bit = {
+            band = function(a, b)
+                local res, bitval = 0, 1
+                while a > 0 and b > 0 do
+                    if (a % 2 == 1) and (b % 2 == 1) then res = res + bitval end
+                    a = math.floor(a / 2); b = math.floor(b / 2); bitval = bitval * 2
+                end
+                return res
+            end,
+        }
+        env.time = os.time
+        env.date = os.date
+        env.GetLocale = function() return "enUS" end
+        env.GetAddOnMemoryUsage = function() return 0 end
+        env.UpdateAddOnMemoryUsage = function() end
+        env.GetCVar = function() return "1" end
+        env.GetCVarBool = function() return false end
+        env.SetCVar = function() end
+        env.GetSpecialization = function() return 1 end
+        env.GetSpecializationInfo = function() return 62, "Arcane", "", 135932, "DAMAGER" end
+        env.C_SpecializationInfo = { GetSpecialization = env.GetSpecialization, GetSpecializationInfo = env.GetSpecializationInfo }
+        env.GetLootSpecialization = function() return 0 end
+        env.GetFramerate = function() return 120 end
+        env.GetNetStats = function() return 0, 0, 20, 25 end
+        env.GetInventoryItemDurability = function() return 100, 100 end
+        env.GetInventoryItemLink = function() return nil end
+        env.GetInventoryItemID = function() return nil end
+        env.IsInInstance = function() return false, "none" end
+        env.UnitIsDeadOrGhost = function() return false end
+        env.UnitIsGhost = function() return false end
+        env.UnitLevel = function() return 80 end
+        env.UnitIsConnected = function() return true end
+        env.UnitExists = function(u) return u == "player" end
+        env.C_UnitAuras = { GetAuraDataByIndex = function() return nil end }
+        env.C_Container = { GetContainerNumSlots = function() return 0 end, GetContainerItemID = function() return nil end }
+        env.C_Spell = { GetSpellName = function() return "Arcane Intellect" end, IsSpellUsable = function() return true, false end }
+        env.C_Item = { GetItemCount = function() return 0 end, GetItemInfo = function() return nil end }
+        env.C_Texture = { GetAtlasInfo = function() return nil end }
+        env.C_Timer.NewTicker = function(_, fn) return { Cancel = function() end, fn = fn } end
+        env.GetSpellInfo = function() return "Arcane Intellect", nil, 135932 end
+        env.GetItemCount = function() return 0 end
+        env.IsSpellKnown = function() return true end
+        env.C_SpellBook = { IsSpellKnown = function() return true end }
+        env.NUM_CHAT_WINDOWS = 1
+        env.ChatTypeInfo = {}
+        local cf1 = env.CreateFrame("Frame", "ChatFrame1", env.UIParent)
+        cf1:SetSize(560, 280)
+        cf1:ClearAllPoints()
+        cf1:SetPoint("BOTTOMLEFT", env.UIParent, "BOTTOMLEFT", 60, 40)
+        cf1:Show()
+        cf1.SetUserPlaced = function() end
+        cf1.IsUserPlaced = function() return true end
+        local eb1 = env.CreateFrame("EditBox", "ChatFrame1EditBox", env.UIParent)
+        eb1:SetSize(560, 28)
+        eb1:Show()
+        cf1.editBox = eb1
+        local tab1 = env.CreateFrame("Button", "ChatFrame1Tab", env.UIParent)
+        tab1:SetSize(70, 22)
+        tab1:Show()
+        env.GeneralDockManager = env.CreateFrame("Frame", "GeneralDockManager", env.UIParent)
+        env.GeneralDockManager.selected = cf1
+        env.C_AddOns.IsAddOnLoaded = function(name)
+            return name == "DynamicSuite" or name == "DynamicLoad" or name == "DynamicPrep"
+                or name == "DynamicMarker" or name == "DynamicChat"
+        end
+    end
+
+    local function BootAll6Modules(savedVars, scopeMode)
+        local env, state = CreateEnv()
+        AugmentEnvForAllModules(env)
+        if savedVars then
+            if savedVars.DynamicSuiteDB then env.DynamicSuiteDB = DeepCopy(savedVars.DynamicSuiteDB) end
+            if savedVars.DynamicLoadDB  then env.DynamicLoadDB  = DeepCopy(savedVars.DynamicLoadDB)  end
+            if savedVars.DynamicPrepDB  then env.DynamicPrepDB  = DeepCopy(savedVars.DynamicPrepDB)  end
+            if savedVars.DynamicMarkerDB then env.DynamicMarkerDB = DeepCopy(savedVars.DynamicMarkerDB) end
+            if savedVars.DynamicChatDB  then env.DynamicChatDB  = DeepCopy(savedVars.DynamicChatDB)  end
+        end
+        if scopeMode == "CHARACTER" then
+            env.DynamicLoadDB = env.DynamicLoadDB or {}
+            env.DynamicLoadDB.charScopeMode = env.DynamicLoadDB.charScopeMode or {}
+            env.DynamicLoadDB.charScopeMode["Testchar-Frostmourne"] = "CHARACTER"
+            env.DynamicLoadDB.charData = env.DynamicLoadDB.charData or {}
+            env.DynamicLoadDB.charData["Testchar-Frostmourne"] = env.DynamicLoadDB.charData["Testchar-Frostmourne"] or {}
+            local cd = env.DynamicLoadDB.charData["Testchar-Frostmourne"]
+            cd.theme = cd.theme or {}
+        end
+
+        local sharedTbl = {}
+        LoadChunkIntoEnv(CORE_PATH, env, "DynamicSuite", sharedTbl)
+        env.DynamicSuite._isHubLoaded = true
+        local dlTbl = LoadChunkIntoEnv("DynamicSuite/Modules/DynamicLoad.lua", env, "DynamicSuite", sharedTbl)
+        LoadChunkIntoEnv("DynamicSuite/Modules/DynamicPrep.lua", env, "DynamicSuite", sharedTbl)
+        LoadChunkIntoEnv(MARKER_PATH, env, "DynamicSuite", sharedTbl)
+        LoadChunkIntoEnv("DynamicSuite/Modules/DynamicChat.lua", env, "DynamicSuite", sharedTbl)
+
+        state.FireEvent("ADDON_LOADED", "DynamicSuite")
+        state.FireEvent("ADDON_LOADED", "DynamicLoad")
+        state.FireEvent("ADDON_LOADED", "DynamicPrep")
+        state.FireEvent("ADDON_LOADED", "DynamicMarker")
+        state.FireEvent("ADDON_LOADED", "DynamicChat")
+
+        env.DynamicMarker:InitDB()
+        env.DynamicMarker:InitTargetBar()
+        env.DynamicMarker:InitFlareBar()
+        env.DynamicPrep.db.displayMode = "ALWAYS"
+        env.DynamicPrep.db.raidBuffs = env.DynamicPrep.db.raidBuffs or {}
+        env.DynamicPrep.db.raidBuffs.enabled = true
+        env.DynamicPrep:RefreshBar()
+        env.DynamicPrep:RefreshClickableBuffs(true)
+        env.DynamicChat:ApplySavedChatFramePosition()
+        return env, state, sharedTbl, dlTbl
+    end
+
+    for _, scopeMode in ipairs({ "GLOBAL", "CHARACTER" }) do
+        local env1, state1, shared1, dl1 = BootAll6Modules(nil, scopeMode)
+        local activeScope1 = env1.DynamicSuite.GetSuiteGlobal()
+        if scopeMode == "CHARACTER" then
+            assertTrue(activeScope1 ~= env1.DynamicSuiteDB.global, "CHARACTER scope uses distinct activeScope table")
+        end
+
+        -- 1. Top Info Bar (PREP): direct Shift + Left-Drag to new coords
+        local prepBar = env1.DynamicPrep.prepBarFrame
+        prepBar:Show()
+        local pCx0, pCy0 = prepBar:GetCenter()
+        state1.shiftDown = true; state1.altDown = true; state1.lmbDown = true
+        state1.cursorX, state1.cursorY = pCx0, pCy0
+        prepBar:FireScript("OnDragStart")
+        assertTrue(prepBar._dpDirectDragActive == true, scopeMode .. ": PREP direct drag active")
+        state1.cursorX, state1.cursorY = pCx0 + 235, pCy0 - 175
+        prepBar:FireScript("OnUpdate", 0.016)
+        state1.lmbDown = false
+        prepBar:FireScript("OnUpdate", 0.016)
+        prepBar:FireScript("OnDragStop")
+        local prepSavedX, prepSavedY = env1.DynamicPrepDB.barX, env1.DynamicPrepDB.barY
+        assertTrue(math.abs(prepSavedX - 235) <= 2, scopeMode .. ": PREP barX updated (" .. tostring(prepSavedX) .. ")")
+        assertTrue(math.abs(prepSavedY - (-183)) <= 4, scopeMode .. ": PREP barY updated (" .. tostring(prepSavedY) .. ")")
+        assertEqual(env1.DynamicSuiteDB.global.hudPositions["PREP"].x, prepSavedX, scopeMode .. ": PREP mirrored to DynamicSuiteDB.global.hudPositions.PREP.x")
+        assertEqual(env1.DynamicSuiteDB.global.hudPositions["PREP"].y, prepSavedY, scopeMode .. ": PREP mirrored to DynamicSuiteDB.global.hudPositions.PREP.y")
+        assertEqual(activeScope1.hudPositions["PREP"].x, prepSavedX, scopeMode .. ": PREP mirrored to activeScope.hudPositions.PREP.x")
+        assertEqual(activeScope1.hudPositions["PREP"].y, prepSavedY, scopeMode .. ": PREP mirrored to activeScope.hudPositions.PREP.y")
+
+        -- 2. Clickable Raid Buffs HUD (prepBuffs): direct Shift + Left-Drag at 1.25 scale
+        local buffBar = env1.DynamicPrep.clickableBuffBar
+        env1.DynamicPrep.db.raidBuffs.hudScale = 1.25
+        env1.DynamicPrep:RefreshClickableBuffs(true)
+        buffBar:Show()
+        local bScale = buffBar:GetScale()
+        local bCx0, bCy0 = buffBar:GetCenter()
+        state1.shiftDown = true; state1.altDown = true; state1.lmbDown = true
+        state1.cursorX, state1.cursorY = bCx0 * bScale, bCy0 * bScale
+        buffBar:FireScript("OnDragStart")
+        assertTrue(buffBar._dpBuffDirectDragActive == true, scopeMode .. ": prepBuffs direct drag active")
+        state1.cursorX, state1.cursorY = (bCx0 * bScale) - 260, (bCy0 * bScale) - 220
+        buffBar:FireScript("OnUpdate", 0.016)
+        state1.lmbDown = false
+        buffBar:FireScript("OnUpdate", 0.016)
+        buffBar:FireScript("OnDragStop")
+        local buffSavedX, buffSavedY = env1.DynamicPrepDB.raidBuffs.x, env1.DynamicPrepDB.raidBuffs.y
+        assertTrue(buffSavedX < -150 and buffSavedY < 0, scopeMode .. ": prepBuffs raidBuffs.x/y moved (" .. tostring(buffSavedX) .. "," .. tostring(buffSavedY) .. ")")
+        assertEqual(env1.DynamicSuiteDB.global.hudPositions["prepBuffs"].x, buffSavedX, scopeMode .. ": prepBuffs mirrored to DynamicSuiteDB.global.hudPositions")
+        assertEqual(activeScope1.hudPositions["prepBuffs"].x, buffSavedX, scopeMode .. ": prepBuffs mirrored to activeScope.hudPositions")
+
+        -- 3. Focus Icons Bar (TARGET): direct Shift + Left-Drag near centre with Alt bypass + trailing OnDragStop
+        local tBar = env1.DynamicMarker.targetBar
+        tBar:Show()
+        local tCx0, tCy0 = tBar:GetCenter()
+        state1.shiftDown = true; state1.altDown = true; state1.lmbDown = true
+        state1.cursorX, state1.cursorY = tCx0, tCy0
+        tBar:FireScript("OnDragStart")
+        assertTrue(tBar._dmDirectDragActive == true, scopeMode .. ": TARGET direct drag active")
+        -- Move to X=6, Y=5 (within snap threshold!) with Alt held -> trailing OnDragStop MUST NOT fall through & snap back to (0,0)!
+        state1.cursorX, state1.cursorY = 960 + 6, 540 + 5
+        tBar:FireScript("OnUpdate", 0.016)
+        state1.lmbDown = false
+        state1.altDown = false -- user releases Alt right before trailing OnDragStop fires
+        tBar:FireScript("OnUpdate", 0.016)
+        tBar:FireScript("OnDragStop")
+        assertEqual(env1.DynamicMarkerDB.targetBarX, 6, scopeMode .. ": TARGET X preserved (trailing OnDragStop did not snap/revert)")
+        assertEqual(env1.DynamicMarkerDB.targetBarY, 5, scopeMode .. ": TARGET Y preserved (trailing OnDragStop did not snap/revert)")
+        assertEqual(env1.DynamicSuiteDB.global.hudPositions["TARGET"].x, 6, scopeMode .. ": TARGET mirrored to DynamicSuiteDB.global.hudPositions.TARGET.x")
+        assertEqual(activeScope1.hudPositions["TARGET"].x, 6, scopeMode .. ": TARGET mirrored to activeScope.hudPositions.TARGET.x")
+
+        -- 4. World Flare Bar (FLARE): direct Shift + Left-Drag + trailing OnDragStop
+        local fBar = env1.DynamicMarker.flareBar
+        fBar:Show()
+        local fCx0, fCy0 = fBar:GetCenter()
+        state1.shiftDown = true; state1.altDown = true; state1.lmbDown = true
+        state1.cursorX, state1.cursorY = fCx0, fCy0
+        fBar:FireScript("OnDragStart")
+        state1.cursorX, state1.cursorY = 960 - 290, 540 + 185
+        fBar:FireScript("OnUpdate", 0.016)
+        state1.lmbDown = false
+        fBar:FireScript("OnUpdate", 0.016)
+        fBar:FireScript("OnDragStop")
+        local flareSavedX, flareSavedY = env1.DynamicMarkerDB.flareBarX, env1.DynamicMarkerDB.flareBarY
+        assertEqual(flareSavedX, -290, scopeMode .. ": FLARE X saved")
+        assertEqual(flareSavedY, 185, scopeMode .. ": FLARE Y saved")
+        assertEqual(env1.DynamicSuiteDB.global.hudPositions["FLARE"].x, flareSavedX, scopeMode .. ": FLARE mirrored to DynamicSuiteDB.global.hudPositions")
+        assertEqual(activeScope1.hudPositions["FLARE"].x, flareSavedX, scopeMode .. ": FLARE mirrored to activeScope.hudPositions")
+
+        -- 5. Chat Frame (CHAT): direct Shift + Left-Drag preserves new X/Y and custom 560x280 dimensions
+        env1.DynamicChat:SaveChatFramePosition("BOTTOMLEFT", "BOTTOMLEFT", 60, 40, 560, 280)
+        state1.shiftDown = true; state1.altDown = true; state1.lmbDown = true
+        state1.cursorX, state1.cursorY = 200, 150
+        assertTrue(env1.DynamicChat:BeginDirectChatDrag() == true, scopeMode .. ": CHAT direct drag started")
+        state1.cursorX, state1.cursorY = 200 + 160, 150 + 95
+        env1.DynamicChat._directChatDragDriver:FireScript("OnUpdate", 0.016)
+        state1.lmbDown = false
+        env1.DynamicChat._directChatDragDriver:FireScript("OnUpdate", 0.016)
+        env1.DynamicChat:EndDirectChatDrag(false)
+        local chatPos1 = env1.DynamicChatDB.chatFramePos
+        assertEqual(chatPos1.x, 220, scopeMode .. ": CHAT X saved after Shift-Drag")
+        assertEqual(chatPos1.y, 135, scopeMode .. ": CHAT Y saved after Shift-Drag")
+        assertEqual(chatPos1.width, 560, scopeMode .. ": CHAT custom width preserved")
+        assertEqual(chatPos1.height, 280, scopeMode .. ": CHAT custom height preserved")
+        assertEqual(env1.DynamicSuiteDB.global.hudPositions["CHAT"].x, 220, scopeMode .. ": CHAT mirrored to DynamicSuiteDB.global.hudPositions")
+        assertEqual(activeScope1.hudPositions["CHAT"].x, 220, scopeMode .. ": CHAT mirrored to activeScope.hudPositions")
+
+        -- 6. Shared Alert Toast (TOAST): DynamicLoadToastFrame direct Shift + Left-Drag
+        local showToastFn = (type(dl1) == "table" and dl1.ShowToast) or shared1.ShowToast
+        showToastFn("outdoor", 3, true)
+        local toastFr = env1.DynamicLoadToastFrame
+        assertTrue(toastFr ~= nil and toastFr:IsShown(), scopeMode .. ": DynamicLoadToastFrame shown")
+        local toCx0, toCy0 = toastFr:GetCenter()
+        state1.shiftDown = true; state1.altDown = true; state1.lmbDown = true
+        state1.cursorX, state1.cursorY = toCx0, toCy0
+        toastFr:FireScript("OnDragStart")
+        assertTrue(toastFr._dsDirectDragActive == true, scopeMode .. ": TOAST direct drag active")
+        state1.cursorX, state1.cursorY = toCx0 + 210, toCy0 - 160
+        toastFr:FireScript("OnUpdate", 0.016)
+        state1.lmbDown = false
+        toastFr:FireScript("OnUpdate", 0.016)
+        toastFr:FireScript("OnDragStop")
+        local toastSavedX = activeScope1.toastPos.x
+        local toastSavedY = activeScope1.toastPos.y
+        assertTrue(math.abs(toastSavedX - 210) <= 2, scopeMode .. ": TOAST X updated (" .. tostring(toastSavedX) .. ")")
+        assertEqual(env1.DynamicSuiteDB.global.toastPos.x, toastSavedX, scopeMode .. ": TOAST mirrored to DynamicSuiteDB.global.toastPos.x")
+        assertEqual(env1.DynamicSuiteDB.global.hudPositions["TOAST"].x, toastSavedX, scopeMode .. ": TOAST mirrored to DynamicSuiteDB.global.hudPositions.TOAST.x")
+        assertEqual(activeScope1.hudPositions["TOAST"].x, toastSavedX, scopeMode .. ": TOAST mirrored to activeScope.hudPositions.TOAST.x")
+        assertEqual(env1.DynamicLoadDB.toastPos.x, toastSavedX, scopeMode .. ": TOAST mirrored to DynamicLoadDB.toastPos.x")
+
+        -- SIMULATE /reload: Brand new Lua environment receiving ONLY persisted SavedVariables!
+        local persistedSV = {
+            DynamicSuiteDB  = env1.DynamicSuiteDB,
+            DynamicLoadDB   = env1.DynamicLoadDB,
+            DynamicPrepDB   = env1.DynamicPrepDB,
+            DynamicMarkerDB = env1.DynamicMarkerDB,
+            DynamicChatDB   = env1.DynamicChatDB,
+        }
+        local env2, _, shared2 = BootAll6Modules(persistedSV, scopeMode)
+
+        -- Exercise unsettled early-reload UIParent (300x200) followed by settled 1920x1080 + post-reload Clamp pass
+        env2.UIParent:SetSize(300, 200)
+        env2.DynamicPrep:ApplyBarGeometry()
+        env2.DynamicPrep:RefreshClickableBuffs(true)
+        env2.DynamicMarker:RefreshTargetBar()
+        env2.DynamicMarker:RefreshFlareBar()
+        env2.DynamicChat:ApplySavedChatFramePosition()
+        if shared2.ClampToastPosition then shared2.ClampToastPosition() end
+
+        env2.UIParent:SetSize(1920, 1080)
+        env2.DynamicPrep:ApplyBarGeometry()
+        env2.DynamicPrep:RefreshClickableBuffs(true)
+        env2.DynamicMarker:RefreshTargetBar()
+        env2.DynamicMarker:RefreshFlareBar()
+        env2.DynamicChat:ApplySavedChatFramePosition()
+        if shared2.ClampToastPosition then shared2.ClampToastPosition() end
+        env2.DynamicSuite.RestackAllToasts()
+
+        -- Assert ALL 6 HUDs preserved their exact Shift-Dragged coordinates after /reload!
+        local _, _, rPrepX, rPrepY = env2.DynamicPrep:GetSavedBarPosition()
+        assertEqual(rPrepX, prepSavedX, scopeMode .. ": PREP X survived /reload + clamp")
+        assertEqual(rPrepY, prepSavedY, scopeMode .. ": PREP Y survived /reload + clamp")
+
+        local _, _, rBuffX, rBuffY = env2.DynamicPrep:GetSavedBuffBarPosition()
+        assertEqual(rBuffX, buffSavedX, scopeMode .. ": prepBuffs X survived /reload + clamp")
+        assertEqual(rBuffY, buffSavedY, scopeMode .. ": prepBuffs Y survived /reload + clamp")
+
+        local rTargetPos = env2.DynamicMarker:GetStoredHUDPosition("TargetBar")
+        assertEqual(rTargetPos.x, 6, scopeMode .. ": TARGET X survived /reload + clamp")
+        assertEqual(rTargetPos.y, 5, scopeMode .. ": TARGET Y survived /reload + clamp")
+
+        local rFlarePos = env2.DynamicMarker:GetStoredHUDPosition("FlareBar")
+        assertEqual(rFlarePos.x, flareSavedX, scopeMode .. ": FLARE X survived /reload + clamp")
+        assertEqual(rFlarePos.y, flareSavedY, scopeMode .. ": FLARE Y survived /reload + clamp")
+
+        assertEqual(env2.DynamicChatDB.chatFramePos.x, 220, scopeMode .. ": CHAT X survived /reload + clamp")
+        assertEqual(env2.DynamicChatDB.chatFramePos.y, 135, scopeMode .. ": CHAT Y survived /reload + clamp")
+        assertEqual(env2.DynamicChatDB.chatFramePos.width, 560, scopeMode .. ": CHAT width survived /reload + clamp")
+        assertEqual(env2.DynamicChatDB.chatFramePos.height, 280, scopeMode .. ": CHAT height survived /reload + clamp")
+
+        local rToastStyle = env2.DynamicSuite.GetSharedToastStyle("ACTION")
+        assertEqual(rToastStyle.pos.x, toastSavedX, scopeMode .. ": TOAST X survived /reload + clamp")
+        assertEqual(rToastStyle.pos.y, toastSavedY, scopeMode .. ": TOAST Y survived /reload + clamp")
+    end
+
+    -- Also verify Standalone DynamicMarker reload persistence + trailing OnDragStop guard
+    local sEnv1, sState1 = BootStandaloneMarkerEnv()
+    local sDm1 = sEnv1.DynamicMarker
+    sDm1:InitTargetBar()
+    sDm1:InitFlareBar()
+    sDm1.targetBar:Show()
+    sDm1.flareBar:Show()
+    local stCx, stCy = sDm1.targetBar:GetCenter()
+    sState1.shiftDown = true; sState1.altDown = true; sState1.lmbDown = true
+    sState1.cursorX, sState1.cursorY = stCx, stCy
+    sDm1.targetBar:FireScript("OnDragStart")
+    sState1.cursorX, sState1.cursorY = 960 - 7, 540 + 6 -- within snap range!
+    sDm1.targetBar:FireScript("OnUpdate", 0.016)
+    sState1.lmbDown = false; sState1.altDown = false
+    sDm1.targetBar:FireScript("OnUpdate", 0.016)
+    sDm1.targetBar:FireScript("OnDragStop")
+    assertEqual(sEnv1.DynamicMarkerDB.targetBarX, -7, "Standalone TARGET X not reverted by trailing OnDragStop")
+    assertEqual(sEnv1.DynamicMarkerDB.targetBarY, 6, "Standalone TARGET Y not reverted by trailing OnDragStop")
+
+    local sfCx, sfCy = sDm1.flareBar:GetCenter()
+    sState1.shiftDown = true; sState1.altDown = true; sState1.lmbDown = true
+    sState1.cursorX, sState1.cursorY = sfCx, sfCy
+    sDm1.flareBar:FireScript("OnDragStart")
+    sState1.cursorX, sState1.cursorY = 960 + 275, 540 - 165
+    sDm1.flareBar:FireScript("OnUpdate", 0.016)
+    sState1.lmbDown = false
+    sDm1.flareBar:FireScript("OnUpdate", 0.016)
+    sDm1.flareBar:FireScript("OnDragStop")
+
+    -- Standalone simulated /reload
+    local sEnv2 = CreateEnv()
+    sEnv2.DynamicMarkerDB = DeepCopy(sEnv1.DynamicMarkerDB)
+    sEnv2.C_AddOns.IsAddOnLoaded = function(name) return name == "DynamicMarker" end
+    sEnv2.C_AddOns.GetAddOnEnableState = function(name) return (name == "DynamicMarker") and 2 or 0 end
+    LoadChunkIntoEnv(MARKER_PATH, sEnv2, "DynamicMarker", {})
+    sEnv2.DynamicMarker:InitDB()
+    sEnv2.DynamicMarker:InitTargetBar()
+    sEnv2.DynamicMarker:InitFlareBar()
+    sEnv2.DynamicMarker:RefreshTargetBar()
+    sEnv2.DynamicMarker:RefreshFlareBar()
+    local sReloadT = sEnv2.DynamicMarker:GetStoredHUDPosition("TargetBar")
+    local sReloadF = sEnv2.DynamicMarker:GetStoredHUDPosition("FlareBar")
+    assertEqual(sReloadT.x, -7, "Standalone TARGET X survived /reload")
+    assertEqual(sReloadT.y, 6, "Standalone TARGET Y survived /reload")
+    assertEqual(sReloadF.x, 275, "Standalone FLARE X survived /reload")
+    assertEqual(sReloadF.y, -165, "Standalone FLARE Y survived /reload")
 end)
 
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))

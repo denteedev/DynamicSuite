@@ -728,13 +728,13 @@ Suite.CONFLICT_REGISTRY.DynamicPrep = {
 -- ============================================================================
 DynamicPrep.CHANGELOG = {
     version = VERSION,
-    date = "27/11/2026",
+    date = "28/11/2026",
     entries = {
+        { type = "FIX",     text = "Top Info Bar & Clickable Raid Buffs Shift-Drag Reload Persistence Fix (28/11/2026): Fixed the Top Info Bar and Clickable Raid Buffs bar reverting after reloading when moved directly with Shift + Left-Drag; both bars now save cleanly to module settings and all suite layout tables (including character-scoped layouts) and skip premature clamping during initial frame setup." },
         { type = "FIX",     text = "StaticPopup Death Release Hook Hardening (27/11/2026): Replaced direct HookScript hooks and frame-field flags on Blizzard StaticPopup1..4 frames with weak-table state tracking, secret-guarded dialog.which checks, and hooksecurefunc post-hooks across StaticPopup_Show, StaticPopup_OnUpdate, StaticPopup_OnShow, StaticPopup_OnHide, and StaticPopupMixin across both DynamicSuite and standalone DynamicPrep." },
         { type = "FIX",     text = "Release v2.10.2 - Multi-Quest Auto-Accept, Auto-Gossip & DynamicDialogue Handoff Sync (25/11/2026): Prioritised live server interaction state over suppressed off-screen Blizzard frames (while preserving field auto-complete QUEST_COMPLETE windows) and eliminated duplicate 0.05s AcceptQuest/CompleteQuest/GetQuestReward retries on >50ms latency once the initial action succeeds; cross-checked available and active quests against C_QuestLog (plus QUEST_ACCEPTED / QUEST_REMOVED / QUEST_TURNED_IN / QUEST_FINISHED / PLAYER_INTERACTION_MANAGER_FRAME_HIDE tracking) so multi-quest NPCs immediately advance to remaining quests without re-selecting stale accepted or turned-in quests; respected mid-session sidebar soft-disable immediately; and coordinated event-sequence-exact handoff with DynamicDialogue across both Suite and Standalone builds." },
         { type = "UI",      text = "Release v2.10.1 - Top Info Bar Shift-Drag, Right-Click HUD Edit & Discoverability (25/11/2026): Added direct Shift + Left-Drag repositioning across the Top Info Bar background and segment capsules out of combat (saving directly to HUD Edit Mode coordinates without triggering accidental clicks), Right-Click on empty bar space to open HUD Edit Mode (/ds hud), a subtle bar-hover tooltip, a 'Shift-Drag to move  |  /ds hud for grid & scale' footer line on Top Info Bar segment tooltips, and an updated DynamicPrep '?' Quick Guide tip." },
         { type = "FIX",     text = "Zero-Truncation Actionable Alert Toasts (24/11/2026): Widened actionable Mage Food and Low Durability Alert Toasts (with automatic width fit in DynamicSuite) and tightened titles and action hints so no line cuts off against the right-hand button." },
-        { type = "UI",      text = "Pass 3 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 3 Section Split (24/11/2026): Added a 4-option QUICK PRESETS card at the top of Tab 1 (Raider / M+ Full, Minimalist Stats, Keystone Focus, System Only) with live Suite Accent active highlighting; added Bar Density (Standard / Compact) and Bar Mouseover Fade (Off / Fade Until Hover / Combat Fade) options; clamped all wide pill rows cleanly for 800x520 minimum windows; wrapped Tab 2's Clickable Raid Buffs (12 controls, including split-out Partner Buffs, Clickable Icon Spacing, and Hide 'MISSING' Text Label) and Omni Folio (5 controls) into persisted Sub-Settings drawers collapsed by default on fresh profiles alongside a new Paperdoll Gear Audit section with toggle and Preview on Gear button; split Tab 3 into 3 calm Obsidian sections (Quest, Dialogue & Cutscenes; Combat, Error & Survival Guards; Healer Recovery & Durability) with persisted drawer states across reloads; fixed the blank-label standalone Edit HUD fallback button; and cleaned US spellings and raw setting names from tooltips and changelogs." },
     },
 }
 Suite.Changelogs["DynamicPrep"] = DynamicPrep.CHANGELOG
@@ -1014,20 +1014,55 @@ function DynamicPrep:InitDB()
     g.window.width = math.max(800, math.min(1380, g.window.width or 980))
     g.window.height = math.max(520, math.min(900, g.window.height or 680))
     g.hudPositions = g.hudPositions or {}
-    local existingPos = g.hudPositions["prep"] or g.hudPositions.prepBar
+    local activeScope = self:GetActiveSuiteGlobal()
+    if type(activeScope) == "table" then
+        activeScope.hudPositions = type(activeScope.hudPositions) == "table" and activeScope.hudPositions or {}
+    end
+    local function FindPrepPos(tbl)
+        if type(tbl) ~= "table" or type(tbl.hudPositions) ~= "table" then return nil end
+        local hp = tbl.hudPositions
+        return hp["PREP"] or hp["PrepBar"] or hp["prep"] or hp.prepBar or hp["DynamicPrepBarFrame"]
+    end
+    local existingPos = FindPrepPos(activeScope) or FindPrepPos(g)
+    local omniPos = type(self.db.omniBarPos) == "table" and self.db.omniBarPos or nil
     local defaultPos = {
-        point = self.db.barPoint or (existingPos and existingPos.point) or "TOP",
-        relativePoint = self.db.barRelativePoint or (existingPos and (existingPos.relativePoint or existingPos.relPoint)) or "TOP",
-        relPoint = self.db.barRelativePoint or (existingPos and (existingPos.relPoint or existingPos.relativePoint)) or "TOP",
-        x = (self.db.barX ~= nil) and self.db.barX or ((existingPos and existingPos.x) or 0),
-        y = (self.db.barY ~= nil) and self.db.barY or ((existingPos and existingPos.y) or -8),
+        point = self.db.barPoint or (omniPos and omniPos.point) or (existingPos and existingPos.point) or "TOP",
+        relativePoint = self.db.barRelativePoint or self.db.barRelPoint or (omniPos and (omniPos.relPoint or omniPos.relativePoint)) or (existingPos and (existingPos.relativePoint or existingPos.relPoint)) or "TOP",
+        relPoint = self.db.barRelativePoint or self.db.barRelPoint or (omniPos and (omniPos.relPoint or omniPos.relativePoint)) or (existingPos and (existingPos.relPoint or existingPos.relativePoint)) or "TOP",
+        x = (self.db.barX ~= nil) and self.db.barX or ((omniPos and omniPos.x ~= nil) and omniPos.x or ((existingPos and existingPos.x) or 0)),
+        y = (self.db.barY ~= nil) and self.db.barY or ((omniPos and omniPos.y ~= nil) and omniPos.y or ((existingPos and existingPos.y) or -8)),
     }
-    g.hudPositions["prep"] = defaultPos
-    g.hudPositions.prepBar = defaultPos
+    defaultPos.xOfs = defaultPos.x
+    defaultPos.yOfs = defaultPos.y
+    for _, targetScope in ipairs({ g, activeScope }) do
+        if type(targetScope) == "table" then
+            targetScope.hudPositions = type(targetScope.hudPositions) == "table" and targetScope.hudPositions or {}
+            local entry = {
+                point = defaultPos.point,
+                relativePoint = defaultPos.relativePoint,
+                relPoint = defaultPos.relPoint,
+                x = defaultPos.x,
+                y = defaultPos.y,
+                xOfs = defaultPos.x,
+                yOfs = defaultPos.y,
+            }
+            targetScope.hudPositions["PREP"] = entry
+            targetScope.hudPositions["PrepBar"] = entry
+            targetScope.hudPositions["prep"] = entry
+            targetScope.hudPositions.prepBar = entry
+            targetScope.hudPositions["DynamicPrepBarFrame"] = entry
+        end
+    end
     self.db.barPoint = defaultPos.point
     self.db.barRelativePoint = defaultPos.relativePoint
+    self.db.barRelPoint = defaultPos.relPoint
     self.db.barX = defaultPos.x
     self.db.barY = defaultPos.y
+    self.db.point = defaultPos.point
+    self.db.relPoint = defaultPos.relPoint
+    self.db.x = defaultPos.x
+    self.db.y = defaultPos.y
+    self.db.omniBarPos = { point = defaultPos.point, relPoint = defaultPos.relPoint, x = defaultPos.x, y = defaultPos.y }
 
     if type(self.db.omniFolio) == "table" then
         local specID = self:GetActiveSpecInfo()
@@ -1077,6 +1112,9 @@ local function ClampPrepFrameToScreen(frame, point, relPoint, rawX, rawY, fallba
 
     local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
     local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+    if screenW < 640 or screenH < 480 then
+        return math.floor((tonumber(rawX) or 0) + 0.5), math.floor((tonumber(rawY) or 0) + 0.5), false
+    end
     local screenCx = screenW / 2
     local screenCy = screenH / 2
 
@@ -1160,13 +1198,31 @@ local function SnapAndClampPrepCoords(frame, point, relPoint, rawX, rawY, fallba
     return cx, cy, didClamp, nil, nil
 end
 
+function DynamicPrep:GetActiveSuiteGlobal()
+    if type(_G.DynamicSuite) == "table" and type(_G.DynamicSuite.GetSuiteGlobal) == "function" then
+        local ok, active = pcall(_G.DynamicSuite.GetSuiteGlobal)
+        if ok and type(active) == "table" then
+            return active
+        end
+    end
+    return (_G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table") and _G.DynamicSuiteDB.global or nil
+end
+
 function DynamicPrep:GetSavedBarPosition()
-    local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
-    local pos = g and g.hudPositions and (g.hudPositions["prep"] or g.hudPositions.prepBar)
-    local pt = (pos and pos.point) or (self.db and self.db.barPoint) or "TOP"
-    local rp = (pos and (pos.relativePoint or pos.relPoint)) or (self.db and self.db.barRelativePoint) or pt
-    local x = (pos and pos.x ~= nil) and pos.x or ((self.db and self.db.barX ~= nil) and self.db.barX or 0)
-    local y = (pos and pos.y ~= nil) and pos.y or ((self.db and self.db.barY ~= nil) and self.db.barY or -8)
+    local function PickPos(tbl)
+        if type(tbl) ~= "table" or type(tbl.hudPositions) ~= "table" then return nil end
+        local hp = tbl.hudPositions
+        return hp["PREP"] or hp["PrepBar"] or hp["prep"] or hp.prepBar or hp["DynamicPrepBarFrame"]
+    end
+    local activeScope = self:GetActiveSuiteGlobal()
+    local globalDB = (_G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table") and _G.DynamicSuiteDB.global or nil
+    local pos = PickPos(activeScope) or PickPos(globalDB)
+    local omni = (self.db and type(self.db.omniBarPos) == "table") and self.db.omniBarPos or nil
+    local hasDb = (self.db and self.db.barX ~= nil and self.db.barY ~= nil)
+    local pt = (hasDb and self.db.barPoint) or (pos and pos.point) or (omni and omni.point) or "TOP"
+    local rp = (hasDb and (self.db.barRelativePoint or self.db.barRelPoint)) or (pos and (pos.relativePoint or pos.relPoint)) or (omni and (omni.relPoint or omni.relativePoint)) or pt
+    local x = (hasDb and self.db.barX) or ((pos and pos.x ~= nil) and pos.x) or ((omni and omni.x ~= nil) and omni.x) or 0
+    local y = (hasDb and self.db.barY) or ((pos and pos.y ~= nil) and pos.y) or ((omni and omni.y ~= nil) and omni.y) or -8
     return pt, rp, x, y
 end
 
@@ -1176,25 +1232,53 @@ function DynamicPrep:SaveBarEditPosition(point, relPoint, x, y)
     local rawX = tonumber(x) or 0
     local rawY = tonumber(y) or -8
     local px, py = ClampPrepFrameToScreen(self.prepBarFrame, pt, rp, rawX, rawY, 320, 32)
-    if self.db then
-        self.db.barPoint = pt
-        self.db.barRelativePoint = rp
-        self.db.barX = px
-        self.db.barY = py
+    local function WritePrepStore(tbl)
+        if type(tbl) ~= "table" then return end
+        tbl.barPoint = pt
+        tbl.barRelativePoint = rp
+        tbl.barRelPoint = rp
+        tbl.barX = px
+        tbl.barY = py
+        tbl.point = pt
+        tbl.relPoint = rp
+        tbl.x = px
+        tbl.y = py
+        tbl.omniBarPos = { point = pt, relPoint = rp, x = px, y = py }
+    end
+    WritePrepStore(self.db)
+    if type(_G.DynamicPrepDB) == "table" then
+        if _G.DynamicPrepDB ~= self.db then WritePrepStore(_G.DynamicPrepDB) end
+        WritePrepStore(_G.DynamicPrepDB.global)
+        WritePrepStore(_G.DynamicPrepDB.profile)
+    end
+    local function WriteSuiteHud(tbl)
+        if type(tbl) ~= "table" then return end
+        tbl.hudPositions = type(tbl.hudPositions) == "table" and tbl.hudPositions or {}
+        local saved = {
+            point = pt,
+            relativePoint = rp,
+            relPoint = rp,
+            x = px,
+            y = py,
+            xOfs = px,
+            yOfs = py,
+        }
+        tbl.hudPositions["prep"] = saved
+        tbl.hudPositions["PREP"] = saved
+        tbl.hudPositions["PrepBar"] = saved
+        tbl.hudPositions.prepBar = saved
+        tbl.hudPositions["DynamicPrepBarFrame"] = saved
     end
     _G.DynamicSuiteDB = _G.DynamicSuiteDB or {}
     _G.DynamicSuiteDB.global = _G.DynamicSuiteDB.global or {}
-    _G.DynamicSuiteDB.global.hudPositions = _G.DynamicSuiteDB.global.hudPositions or {}
-    local saved = {
-        point = pt,
-        relativePoint = rp,
-        relPoint = rp,
-        x = px,
-        y = py,
-    }
-    _G.DynamicSuiteDB.global.hudPositions["prep"] = saved
-    _G.DynamicSuiteDB.global.hudPositions["PREP"] = saved
-    _G.DynamicSuiteDB.global.hudPositions.prepBar = saved
+    WriteSuiteHud(_G.DynamicSuiteDB.global)
+    local activeScope = self:GetActiveSuiteGlobal()
+    if type(activeScope) == "table" and activeScope ~= _G.DynamicSuiteDB.global then
+        WriteSuiteHud(activeScope)
+    end
+    if not self._suppressSuiteNotify and _G.DynamicSuite and type(_G.DynamicSuite.NotifyExternalHudChanged) == "function" then
+        pcall(_G.DynamicSuite.NotifyExternalHudChanged, "PREP")
+    end
 end
 
 local function FormatPrepTooltipCmd(cmdText, actionText, cmdHex)
@@ -17017,13 +17101,20 @@ function DynamicPrep:ShouldShowRaidBuffsForZone()
 end
 
 function DynamicPrep:GetSavedBuffBarPosition()
-    local g = _G.DynamicSuiteDB and _G.DynamicSuiteDB.global
-    local pos = g and g.hudPositions and g.hudPositions["prepBuffs"]
-    local rb = (self.db and self.db.raidBuffs) or DEFAULTS.raidBuffs
-    local pt = (pos and pos.point) or (rb and rb.point) or "CENTER"
-    local rp = (pos and (pos.relativePoint or pos.relPoint)) or (rb and rb.relPoint) or "CENTER"
-    local x  = (pos and pos.x ~= nil) and pos.x or ((rb and rb.x ~= nil) and rb.x or 0)
-    local y  = (pos and pos.y ~= nil) and pos.y or ((rb and rb.y ~= nil) and rb.y or 140)
+    local function PickBuffPos(tbl)
+        if type(tbl) ~= "table" or type(tbl.hudPositions) ~= "table" then return nil end
+        local hp = tbl.hudPositions
+        return hp["prepBuffs"] or hp["PREPBUFFS"] or hp["DynamicPrepClickableBuffBar"]
+    end
+    local activeScope = self:GetActiveSuiteGlobal()
+    local globalDB = (_G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table") and _G.DynamicSuiteDB.global or nil
+    local pos = PickBuffPos(activeScope) or PickBuffPos(globalDB)
+    local rb = (self.db and type(self.db.raidBuffs) == "table") and self.db.raidBuffs or nil
+    local hasRb = (rb and rb.x ~= nil and rb.y ~= nil)
+    local pt = (hasRb and rb.point) or (pos and pos.point) or (DEFAULTS.raidBuffs and DEFAULTS.raidBuffs.point) or "CENTER"
+    local rp = (hasRb and (rb.relPoint or rb.relativePoint)) or (pos and (pos.relativePoint or pos.relPoint)) or pt
+    local x  = (hasRb and rb.x) or ((pos and pos.x ~= nil) and pos.x) or (DEFAULTS.raidBuffs and DEFAULTS.raidBuffs.x) or 0
+    local y  = (hasRb and rb.y) or ((pos and pos.y ~= nil) and pos.y) or (DEFAULTS.raidBuffs and DEFAULTS.raidBuffs.y) or 140
     return pt, rp, x, y
 end
 
@@ -17033,22 +17124,52 @@ function DynamicPrep:SaveBuffBarEditPosition(point, relPoint, x, y)
     local rawX = tonumber(x) or 0
     local rawY = tonumber(y) or 140
     local px, py = ClampPrepFrameToScreen(self.clickableBuffBar, pt, rp, rawX, rawY, 200, 56)
-    if self.db and self.db.raidBuffs then
-        self.db.raidBuffs.point = pt
-        self.db.raidBuffs.relPoint = rp
-        self.db.raidBuffs.x = px
-        self.db.raidBuffs.y = py
+    local function WriteBuffStore(tbl)
+        if type(tbl) ~= "table" then return end
+        if type(tbl.raidBuffs) ~= "table" then
+            if tbl == self.db then
+                tbl.raidBuffs = {}
+            else
+                return
+            end
+        end
+        tbl.raidBuffs.point = pt
+        tbl.raidBuffs.relPoint = rp
+        tbl.raidBuffs.x = px
+        tbl.raidBuffs.y = py
+    end
+    WriteBuffStore(self.db)
+    if type(_G.DynamicPrepDB) == "table" then
+        if _G.DynamicPrepDB ~= self.db then WriteBuffStore(_G.DynamicPrepDB) end
+        WriteBuffStore(_G.DynamicPrepDB.global)
+        WriteBuffStore(_G.DynamicPrepDB.profile)
+    end
+    local function WriteSuiteBuffHud(tbl)
+        if type(tbl) ~= "table" then return end
+        tbl.hudPositions = type(tbl.hudPositions) == "table" and tbl.hudPositions or {}
+        local saved = {
+            point = pt,
+            relativePoint = rp,
+            relPoint = rp,
+            x = px,
+            y = py,
+            xOfs = px,
+            yOfs = py,
+        }
+        tbl.hudPositions["prepBuffs"] = saved
+        tbl.hudPositions["PREPBUFFS"] = saved
+        tbl.hudPositions["DynamicPrepClickableBuffBar"] = saved
     end
     _G.DynamicSuiteDB = _G.DynamicSuiteDB or {}
     _G.DynamicSuiteDB.global = _G.DynamicSuiteDB.global or {}
-    _G.DynamicSuiteDB.global.hudPositions = _G.DynamicSuiteDB.global.hudPositions or {}
-    _G.DynamicSuiteDB.global.hudPositions["prepBuffs"] = {
-        point = pt,
-        relativePoint = rp,
-        relPoint = rp,
-        x = px,
-        y = py,
-    }
+    WriteSuiteBuffHud(_G.DynamicSuiteDB.global)
+    local activeScope = self:GetActiveSuiteGlobal()
+    if type(activeScope) == "table" and activeScope ~= _G.DynamicSuiteDB.global then
+        WriteSuiteBuffHud(activeScope)
+    end
+    if not self._suppressSuiteNotify and _G.DynamicSuite and type(_G.DynamicSuite.NotifyExternalHudChanged) == "function" then
+        pcall(_G.DynamicSuite.NotifyExternalHudChanged, "prepBuffs")
+    end
 end
 
 function DynamicPrep:ResetBuffBarHUDPosition(silent)
@@ -17133,8 +17254,12 @@ function DynamicPrep:CreateClickableBuffBar()
     bar:Hide()
     bar:RegisterForDrag("LeftButton")
 
+    local rbInit = self.db and self.db.raidBuffs
+    local initScale = rbInit and tonumber(rbInit.hudScale)
+    if initScale and initScale > 0 then
+        bar:SetScale(math.max(0.60, math.min(1.50, initScale)))
+    end
     local pt, rp, initX, initY = self:GetSavedBuffBarPosition()
-    self:SaveBuffBarEditPosition(pt, rp, initX, initY)
     bar:SetPoint(pt, UIParent, rp, initX, initY)
 
     -- Subtle HUD Container Backdrop (can be toggled or shown in Edit Mode)

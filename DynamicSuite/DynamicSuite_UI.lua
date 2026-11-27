@@ -13516,7 +13516,12 @@ function addonTable.CreateMainConfigUI()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         gTbl.hudPositions = gTbl.hudPositions or {}
         if targetKey == "TOAST" then
-            local pos = gTbl.toastPos or (DynamicLoadDB and DynamicLoadDB.toastPos) or { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
+            local globalDB = (_G.DynamicSuiteDB and type(_G.DynamicSuiteDB.global) == "table") and _G.DynamicSuiteDB.global or nil
+            local pos = gTbl.toastPos
+                or (gTbl.hudPositions and gTbl.hudPositions["TOAST"])
+                or (globalDB and (globalDB.toastPos or (globalDB.hudPositions and globalDB.hudPositions["TOAST"])))
+                or (DynamicLoadDB and DynamicLoadDB.toastPos)
+                or { point = "TOP", relPoint = "TOP", x = 0, y = -140 }
             return pos.point or "TOP", pos.relPoint or pos.point or "TOP", pos.x or 0, pos.y or -140
         end
         local pt, relPt, lx, ly = ReadPeerOrLiveHudPos(targetKey)
@@ -14173,10 +14178,18 @@ function addonTable.CreateMainConfigUI()
         if targetKey == "TOAST" then
             if addonTable.SetToastPresetPosition then
                 addonTable.SetToastPresetPosition(cleanPt, cleanRelPt, rx, ry)
+            elseif _G.DynamicSuite and type(_G.DynamicSuite.SaveSharedToastPosition) == "function" then
+                _G.DynamicSuite.SaveSharedToastPosition(cleanPt, cleanRelPt, rx, ry, liveFrame)
+            else
+                local toastEntry = { point = cleanPt, relPoint = cleanRelPt, x = rx, y = ry, xOfs = rx, yOfs = ry }
+                gTbl.toastPos = toastEntry
+                gTbl.hudPositions = gTbl.hudPositions or {}
+                gTbl.hudPositions["TOAST"] = toastEntry
+                gTbl.hudPositions["Toast"] = toastEntry
+                gTbl.hudPositions["DynamicLoadToastFrame"] = toastEntry
             end
             return
         end
-        gTbl.hudPositions = gTbl.hudPositions or {}
         local posEntry = { point = cleanPt, relPoint = cleanRelPt, x = rx, y = ry, xOfs = rx, yOfs = ry }
         local chatW, chatH
         if targetKey == "CHAT" then
@@ -14184,27 +14197,35 @@ function addonTable.CreateMainConfigUI()
             posEntry.width = chatW
             posEntry.height = chatH
         end
-        gTbl.hudPositions[targetKey] = posEntry
-        if targetKey == "TARGET" then
-            gTbl.hudPositions["TargetBar"] = posEntry
-            gTbl.hudPositions["target"] = posEntry
-            gTbl.hudPositions["DynamicMarkerTargetBar"] = posEntry
-        elseif targetKey == "FLARE" then
-            gTbl.hudPositions["FlareBar"] = posEntry
-            gTbl.hudPositions["flare"] = posEntry
-            gTbl.hudPositions["DynamicMarkerFlareBar"] = posEntry
-        elseif targetKey == "PREP" then
-            gTbl.hudPositions["PrepBar"] = posEntry
-            gTbl.hudPositions["prepBar"] = posEntry
-            gTbl.hudPositions["prep"] = posEntry
-            gTbl.hudPositions["DynamicPrepBarFrame"] = posEntry
-        elseif targetKey == "prepBuffs" then
-            gTbl.hudPositions["PREPBUFFS"] = posEntry
-            gTbl.hudPositions["DynamicPrepClickableBuffBar"] = posEntry
-        elseif targetKey == "CHAT" then
-            gTbl.hudPositions["ChatFrame"] = posEntry
-            gTbl.hudPositions["chat"] = posEntry
-            gTbl.hudPositions["ChatFrame1"] = posEntry
+        local function MirrorHudStore(tbl)
+            if type(tbl) ~= "table" then return end
+            tbl.hudPositions = tbl.hudPositions or {}
+            tbl.hudPositions[targetKey] = posEntry
+            if targetKey == "TARGET" then
+                tbl.hudPositions["TargetBar"] = posEntry
+                tbl.hudPositions["target"] = posEntry
+                tbl.hudPositions["DynamicMarkerTargetBar"] = posEntry
+            elseif targetKey == "FLARE" then
+                tbl.hudPositions["FlareBar"] = posEntry
+                tbl.hudPositions["flare"] = posEntry
+                tbl.hudPositions["DynamicMarkerFlareBar"] = posEntry
+            elseif targetKey == "PREP" then
+                tbl.hudPositions["PrepBar"] = posEntry
+                tbl.hudPositions["prepBar"] = posEntry
+                tbl.hudPositions["prep"] = posEntry
+                tbl.hudPositions["DynamicPrepBarFrame"] = posEntry
+            elseif targetKey == "prepBuffs" then
+                tbl.hudPositions["PREPBUFFS"] = posEntry
+                tbl.hudPositions["DynamicPrepClickableBuffBar"] = posEntry
+            elseif targetKey == "CHAT" then
+                tbl.hudPositions["ChatFrame"] = posEntry
+                tbl.hudPositions["chat"] = posEntry
+                tbl.hudPositions["ChatFrame1"] = posEntry
+            end
+        end
+        MirrorHudStore(gTbl)
+        if type(_G.DynamicSuiteDB) == "table" and type(_G.DynamicSuiteDB.global) == "table" and _G.DynamicSuiteDB.global ~= gTbl then
+            MirrorHudStore(_G.DynamicSuiteDB.global)
         end
         PersistPeerHudPosition(targetKey, cleanPt, cleanRelPt, rx, ry, chatW, chatH)
 

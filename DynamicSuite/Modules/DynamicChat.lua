@@ -3873,7 +3873,8 @@ function DynamicChat:BeginDirectChatDrag()
         end)
     end
 
-    local _, _, startX, startY, curW, curH = self:GetLiveOuterBottomLeft()
+    local _, _, startX, startY = self:GetLiveOuterBottomLeft()
+    local curW, curH = DC_NS.ResolveSavedChatDimensions(EnsureDB(), cf1)
     local fScale = (cf1.GetEffectiveScale and cf1:GetEffectiveScale()) or 1
     local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
     if fScale <= 0 then fScale = 1 end
@@ -8097,21 +8098,31 @@ function DynamicChat:ApplySavedChatFramePosition()
             pos.y             = clampedY
             pos.width         = clampedW
             pos.height        = clampedH
-            if type(_G.DynamicSuiteDB) == "table" and type(_G.DynamicSuiteDB.global) == "table" then
-                _G.DynamicSuiteDB.global.hudPositions = _G.DynamicSuiteDB.global.hudPositions or {}
+            local function MirrorChatHudPos(tbl)
+                if type(tbl) ~= "table" then return end
+                tbl.hudPositions = type(tbl.hudPositions) == "table" and tbl.hudPositions or {}
                 local hudEntry = {
                     point         = "BOTTOMLEFT",
                     relativePoint = "BOTTOMLEFT",
                     relPoint      = "BOTTOMLEFT",
                     x             = clampedX,
                     y             = clampedY,
+                    xOfs          = clampedX,
+                    yOfs          = clampedY,
                     width         = clampedW,
                     height        = clampedH,
                 }
-                _G.DynamicSuiteDB.global.hudPositions["CHAT"]       = hudEntry
-                _G.DynamicSuiteDB.global.hudPositions["ChatFrame"]  = hudEntry
-                _G.DynamicSuiteDB.global.hudPositions["chat"]       = hudEntry
-                _G.DynamicSuiteDB.global.hudPositions["ChatFrame1"] = hudEntry
+                tbl.hudPositions["CHAT"]       = hudEntry
+                tbl.hudPositions["ChatFrame"]  = hudEntry
+                tbl.hudPositions["chat"]       = hudEntry
+                tbl.hudPositions["ChatFrame1"] = hudEntry
+            end
+            if type(_G.DynamicSuiteDB) == "table" and type(_G.DynamicSuiteDB.global) == "table" then
+                MirrorChatHudPos(_G.DynamicSuiteDB.global)
+            end
+            local activeScope = (_G.DynamicSuite and type(_G.DynamicSuite.GetSuiteGlobal) == "function") and _G.DynamicSuite.GetSuiteGlobal() or nil
+            if type(activeScope) == "table" and activeScope ~= (_G.DynamicSuiteDB and _G.DynamicSuiteDB.global) then
+                MirrorChatHudPos(activeScope)
             end
         end
 
@@ -8166,23 +8177,36 @@ function DynamicChat:SaveChatFramePosition(pt, relPt, x, y, w, h)
         width         = clampedW,
         height        = clampedH,
     }
-    if type(_G.DynamicSuiteDB) == "table" and type(_G.DynamicSuiteDB.global) == "table" then
-        _G.DynamicSuiteDB.global.hudPositions = _G.DynamicSuiteDB.global.hudPositions or {}
+    local function MirrorChatHudPos(tbl)
+        if type(tbl) ~= "table" then return end
+        tbl.hudPositions = type(tbl.hudPositions) == "table" and tbl.hudPositions or {}
         local hudEntry = {
             point         = "BOTTOMLEFT",
             relativePoint = "BOTTOMLEFT",
             relPoint      = "BOTTOMLEFT",
             x             = clampedX,
             y             = clampedY,
+            xOfs          = clampedX,
+            yOfs          = clampedY,
             width         = clampedW,
             height        = clampedH,
         }
-        _G.DynamicSuiteDB.global.hudPositions["CHAT"]       = hudEntry
-        _G.DynamicSuiteDB.global.hudPositions["ChatFrame"]  = hudEntry
-        _G.DynamicSuiteDB.global.hudPositions["chat"]       = hudEntry
-        _G.DynamicSuiteDB.global.hudPositions["ChatFrame1"] = hudEntry
+        tbl.hudPositions["CHAT"]       = hudEntry
+        tbl.hudPositions["ChatFrame"]  = hudEntry
+        tbl.hudPositions["chat"]       = hudEntry
+        tbl.hudPositions["ChatFrame1"] = hudEntry
+    end
+    _G.DynamicSuiteDB = _G.DynamicSuiteDB or {}
+    _G.DynamicSuiteDB.global = _G.DynamicSuiteDB.global or {}
+    MirrorChatHudPos(_G.DynamicSuiteDB.global)
+    local activeScope = (_G.DynamicSuite and type(_G.DynamicSuite.GetSuiteGlobal) == "function") and _G.DynamicSuite.GetSuiteGlobal() or nil
+    if type(activeScope) == "table" and activeScope ~= _G.DynamicSuiteDB.global then
+        MirrorChatHudPos(activeScope)
     end
     self:ApplySavedChatFramePosition()
+    if _G.DynamicSuite and type(_G.DynamicSuite.NotifyExternalHudChanged) == "function" then
+        pcall(_G.DynamicSuite.NotifyExternalHudChanged, "CHAT")
+    end
 end
 
 function DynamicChat:ResetChatFramePosition()
@@ -15140,11 +15164,11 @@ function DynamicChat._RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "28/11/2026",
         entries = {
+            { type = "FIX",      text = "Chat Window Shift-Drag Reload Persistence Fix (28/11/2026): Fixed the chat window reverting position or dimensions after reloading when moved directly with Shift + Left-Drag; dragging now preserves your custom chat width and height and mirrors the saved position across both global and active character-scoped suite layouts." },
             { type = "NEW",      text = "Clickable Saved Whisper History Hint (28/11/2026): Added a zero-taint clickable 'Previous messages saved in Copy Chat' overlay inside empty reopened character whisper tabs so you can open Copy Chat for that whisper with a single click; the hint automatically stays clear of top or bottom typing boxes, hides immediately when a new whisper arrives or when switching tabs, and never touches Battle.net or secret whisper tabs." },
             { type = "FIX",      text = "Chat Window Size Reload Persistence Fix (27/11/2026): Fixed the primary chat window reverting to Blizzard's smaller default dimensions after reloading; HUD Edit Mode resizes now reliably commit width and height on release, screen clamping preserves saved chat dimensions instead of overwriting them with temporary early-login bounds, and Blizzard Edit Mode chat sizing passes re-apply DynamicChat's saved dimensions cleanly while updating the embedded typing box and message insets." },
             { type = "FIX",      text = "Duplicate Typing Box, Scrollbar OnUpdate & Tab Hover Optimization (27/11/2026): Replaced IsEditBoxShownOrFocused with an active-focus-only IsEditBoxFocused check so idle ChatFrame1EditBox chrome is properly stripped and skinned when Retail WoW keeps it shown, while deferring and flushing pending skin/anchor updates on ChatFrame.OnEditBoxFocusLost and preserving BN_WHISPER/secret/combat protections; detached the custom scrollbar OnUpdate handler when hidden, undocked, or without overflow; and replaced the DOCKED_CHAT_FRAMES hover loop with a single GeneralDockManager hit test." },
             { type = "FIX",      text = "Battle.net Whisper Reply Hardening & Chat Tab Fade Guard (26/11/2026): Removed direct OnTextChanged widget script hooks from ChatFrameEditBox frames (relying strictly on hooksecurefunc post-hooks for /ww conversion), hardened secret/BN_WHISPER checks to fail closed on protected attributes, header text/width, and forbidden frames, guarded edit box font updates, SetPoint re-anchoring, Alt-arrow settings, and temporary Battle.net whisper frame background, button, scroll, and hook updates against BN_WHISPER, secret targets/headers, combat, and active typing focus, tracked active focused edit boxes so stale focus-lost events or deferred skin refreshes never re-show the Obsidian prompt hint over Battle.net typing, and skipped chat tab alpha changes while Blizzard's UIFrameFade or secret fadeInfo is active on Combat Log or whisper tabs (with secret-safe UIFrameIsFlashing and tab name checks) across both DynamicSuite and standalone DynamicChat." },
-            { type = "NEW",      text = "Whisper Tab Clickability Fix & Reload Persistence (26/11/2026): Moved the chat header drag strip to BACKGROUND strata strictly below all LOW-strata chat tabs (level 22) and navigation arrows (level 25), synced GeneralDockManager scale with ChatFrame1 so child clipping never cuts off the rightmost whisper tab, hardened tab reparenting out of GeneralDockManagerScrollFrameChild with combat and re-entrancy deferrals, and automatically scrolled newly opened whisper tabs into view. Added zero-taint character whisper tab and message persistence across reloads (capped at 3/5/10 tabs and 50 lines per tab with 24-hour expiry, Midnight secret-value skipping, automatic removal when closing a tab, and previous-session rendering in Copy Chat) plus 'Keep Whisper Tabs After Reload' and 'Whisper Tab Limit' controls under Links & History." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}

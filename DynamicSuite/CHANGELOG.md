@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Shift-Drag HUD Position Reload Persistence Fix (28/11/2026)
+- **Fixed - Shift + Left-Drag HUD Positions Reverting After Reload:** Fixed HUD bars reverting to their previous positions after reloading when moved directly in-world with **Shift + Left-Drag** across all 6 suite HUDs (Top Info Bar, Clickable Raid Buffs, Focus Icons, World Flares, Chat Frame, and Shared Alert Toast). Direct Shift-Drag now saves to both each module's own settings and the suite HUD layout tables (including active character-scoped layouts), prevents Focus Icons and World Flare bars from snapping or reverting when a trailing drag-stop fires after releasing the mouse, preserves custom chat window width and height during Shift-Drag, and skips premature clamping while the UI is still loading.
+
 ### Premade Group 1-Click Sign-Up Reliability Fix (28/11/2026)
 - **Fixed - 1-Click Premade Group Sign-Up (`DynamicGroup`):** Fixed clicking a Premade Group listing not opening or enabling the Sign-Up box reliably; single-clicking now supports both Blizzard click handlers with duplicate-click protection, ignores stale yield flags from unloaded addons, falls back cleanly when the sign-up dialog does not open directly, immediately enables the Sign Up button after auto-selecting your active role, and keeps the Sign-Up box on-screen under your cursor above the Group Finder window.
 

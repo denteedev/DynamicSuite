@@ -4957,7 +4957,7 @@ function DM:WriteHUDCoordsToDB(hudKey, pt, rp, x, y)
     local cleanRp = SanitizeAnchorPoint(rp or cleanPt, cleanPt)
     local cleanX = RoundHUDCoord(x)
     local cleanY = RoundHUDCoord(y)
-    local entry = { point = cleanPt, relPoint = cleanRp, x = cleanX, y = cleanY }
+    local entry = { point = cleanPt, relPoint = cleanRp, x = cleanX, y = cleanY, xOfs = cleanX, yOfs = cleanY }
 
     self:SetSetting(dbPrefix .. "Point",    cleanPt)
     self:SetSetting(dbPrefix .. "RelPoint", cleanRp)
@@ -4965,34 +4965,46 @@ function DM:WriteHUDCoordsToDB(hudKey, pt, rp, x, y)
     self:SetSetting(dbPrefix .. "Y",        cleanY)
     self:SetSetting(dbPrefix .. "Pos",      { point = cleanPt, relPoint = cleanRp, x = cleanX, y = cleanY })
 
-    if self.db then
+    local function WriteMarkerTargetTable(tbl)
+        if type(tbl) ~= "table" then return end
+        tbl[dbPrefix .. "Point"]    = cleanPt
+        tbl[dbPrefix .. "RelPoint"] = cleanRp
+        tbl[dbPrefix .. "X"]        = cleanX
+        tbl[dbPrefix .. "Y"]        = cleanY
+        tbl[dbPrefix .. "Pos"]      = { point = cleanPt, relPoint = cleanRp, x = cleanX, y = cleanY }
         if primaryKey == "TargetBar" then
-            self.db.barPoint    = cleanPt
-            self.db.barRelPoint = cleanRp
-            self.db.barX        = cleanX
-            self.db.barY        = cleanY
-            self.db.targetPos   = { point = cleanPt, relPoint = cleanRp, x = cleanX, y = cleanY }
+            tbl.barPoint    = cleanPt
+            tbl.barRelPoint = cleanRp
+            tbl.barX        = cleanX
+            tbl.barY        = cleanY
+            tbl.targetPos   = { point = cleanPt, relPoint = cleanRp, x = cleanX, y = cleanY }
         else
-            self.db.flarePos    = { point = cleanPt, relPoint = cleanRp, x = cleanX, y = cleanY }
+            tbl.flarePos    = { point = cleanPt, relPoint = cleanRp, x = cleanX, y = cleanY }
         end
+    end
+
+    if self.db then
+        WriteMarkerTargetTable(self.db)
         if type(self.db.profiles) == "table" then
             for _, pTbl in pairs(self.db.profiles) do
-                if type(pTbl) == "table" then
-                    pTbl[dbPrefix .. "Point"]    = cleanPt
-                    pTbl[dbPrefix .. "RelPoint"] = cleanRp
-                    pTbl[dbPrefix .. "X"]        = cleanX
-                    pTbl[dbPrefix .. "Y"]        = cleanY
-                    pTbl[dbPrefix .. "Pos"]      = { point = cleanPt, relPoint = cleanRp, x = cleanX, y = cleanY }
-                    if primaryKey == "TargetBar" then
-                        pTbl.barPoint    = cleanPt
-                        pTbl.barRelPoint = cleanRp
-                        pTbl.barX        = cleanX
-                        pTbl.barY        = cleanY
-                        pTbl.targetPos   = { point = cleanPt, relPoint = cleanRp, x = cleanX, y = cleanY }
-                    else
-                        pTbl.flarePos    = { point = cleanPt, relPoint = cleanRp, x = cleanX, y = cleanY }
-                    end
-                end
+                WriteMarkerTargetTable(pTbl)
+            end
+        end
+    end
+    if type(_G.DynamicMarkerDB) == "table" then
+        if _G.DynamicMarkerDB ~= self.db then
+            WriteMarkerTargetTable(_G.DynamicMarkerDB)
+        end
+        WriteMarkerTargetTable(_G.DynamicMarkerDB.global)
+        WriteMarkerTargetTable(_G.DynamicMarkerDB.profile)
+        if type(_G.DynamicMarkerDB.profiles) == "table" and _G.DynamicMarkerDB.profiles ~= (self.db and self.db.profiles) then
+            for _, pTbl in pairs(_G.DynamicMarkerDB.profiles) do
+                WriteMarkerTargetTable(pTbl)
+            end
+        end
+        if type(_G.DynamicMarkerDB.char) == "table" then
+            for _, cTbl in pairs(_G.DynamicMarkerDB.char) do
+                WriteMarkerTargetTable(cTbl)
             end
         end
     end
@@ -5056,7 +5068,7 @@ function DM:GetStoredHUDPosition(hudKey, fallbackY)
         else
             cx, cy = RoundHUDCoord(cx), RoundHUDCoord(cy)
         end
-        dmEntry = { point = "CENTER", relPoint = "CENTER", x = cx, y = cy }
+        dmEntry = { point = "CENTER", relPoint = "CENTER", x = cx, y = cy, xOfs = cx, yOfs = cy }
     end
 
     if dmEntry then
@@ -5410,6 +5422,7 @@ function DM:AttachBarDirectShiftDrag(bar, hudKey, barTitle)
             EndDirectDrag(false)
             return
         end
+        if not self.isEditMode then return end
         if b._dsDragging or self.isDraggingHUD or (b._dsDragShield and b._dsDragShield:IsShown()) then return end
         if b.StopMovingOrSizing then pcall(b.StopMovingOrSizing, b) end
         if not IsInCombat() then
@@ -6301,6 +6314,13 @@ function DM:ClampHUDPositionToScreen(frame, hudKey, point, relPoint, rawX, rawY,
     local _, _, _, uScale, relScale, frameW, frameH = GetLocalFrameScreenExtents(frame, primaryKey)
     local screenW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920
     local screenH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080
+    if screenW < 640 or screenH < 480 then
+        local safeX = tonumber(rawX) or 0
+        local safeY = tonumber(rawY) or 0
+        if not IsFiniteNum(safeX) then safeX = 0 end
+        if not IsFiniteNum(safeY) then safeY = 0 end
+        return RoundHUDCoord(safeX), RoundHUDCoord(safeY), false, nil, nil
+    end
     local screenCx = screenW / 2
     local screenCy = screenH / 2
 
@@ -12886,13 +12906,13 @@ end
 
 DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
-    date    = "26/11/2026",
+    date    = "28/11/2026",
     entries = {
+        { type = "FIX",      text = "Shift + Left-Drag Bar Position Reload Persistence (28/11/2026): Fixed the Focus Icons and World Flare bars reverting or snapping back after reloading when moved directly with Shift + Left-Drag; releasing the mouse button now commits the exact dropped coordinates without a trailing drag-stop re-running snap calculations, mirrors coordinates cleanly across all bar position tables, and skips premature clamping while the interface is still loading." },
         { type = "IMPROVED", text = "Release v2.11.2 - Version & Coexistence Lockstep Parity (26/11/2026): Synchronised standalone DynamicMarker metadata and coexistence checks to v2.11.2 for Retail 12.1.5 / 12.1.7 (Interface 120105, 120107)." },
         { type = "FIX",      text = "Release v2.11.1 - Patch 12.1.7 Combat-Lockdown, Keybind Capture & Secret-Value Hardening (26/11/2026): Added automatic combat abort and safe keyboard cleanup for keybind capture and modals, blocked Right-Click keybind clearing in combat with a plain-English notice, refreshed Profile Import & Export Apply/Undo states cleanly across combat transitions, ensured secure World Flare buttons initialise before deferred syncs after a combat /reload, noted deferred HUD and keybind syncs when Reset Defaults runs in combat, and hardened focus mark announcements against secret values." },
         { type = "FIX",      text = "Release v2.11.0 - Bottom-Edge Shift-Drag Vertical Jump Fix (25/11/2026): Fixed a Lua 5.1 multi-return truncation when reading bar centre coordinates on drag start so Focus Icons and World Flares parked on the bottom or any screen edge stay anchored with zero initial vertical jump across 60%, 100%, and 150% scale." },
         { type = "FEATURE",  text = "Release v2.11.0 - Standalone !DS1! Profile Import & Export, Magnetic Shift-Drag, '?' Quick Guide & Pet Battle Auto-Hide (25/11/2026): Added !DS1! Profile Import & Export (/dm export, /dm import, /dm profiles) with Replace Selected / Merge modes, Undo Last Import rollback, and two-way DynamicSuite sharing (preserving /dm migrate and /dm import focusmarker); upgraded out-of-combat Shift + Left-Drag with magnetic snapping, live alignment guides, Alt fine-tuning, strict 0 px clamping, and Right-Click / Shift + Right-Click quick-jump into HUD Edit Mode alongside a '?' Quick Guide modal; and added automatic Pet Battle auto-hiding with clean post-battle restoration." },
-        { type = "IMPROVED", text = "Release v2.10.3 - Pass 7 Hardening & 800x520 Layout Polish (25/11/2026): Hardened secret-value and combat-lockdown guards across unit, spec, spell, macro, action bar, and keybind APIs; aligned standalone window resize bounds (760x480 to 1280x860) and right-click resize reset; refined 800x520 layout clamping across all three tabs and macro cards; and added HUD Edit Mode discoverability hints to Focus Icon and World Flare bar tooltips." },
     },
 }
 Suite.Changelogs["DynamicMarker"] = DynamicMarker.CHANGELOG

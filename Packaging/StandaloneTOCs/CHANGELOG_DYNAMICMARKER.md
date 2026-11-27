@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Fixed
+* **Shift + Left-Drag Bar Position Reload Persistence (`28/11/2026`):** Fixed the Focus Icons and World Flare bars reverting or snapping back after reloading when moved directly in-world with **Shift + Left-Drag**; releasing the mouse button now commits the exact dropped coordinates without a trailing drag-stop re-running snap calculations, mirrors coordinates cleanly across all bar position tables, and skips premature screen clamping while the interface is still loading.
+
 ---
 
 ## DynamicMarker v2.11.2 (26/11/2026)
