@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Guild & Communities Window Anchor Fix (27/11/2026)
+- **Fixed - Guild & Communities Window Jumping on Tab Switch (`DynamicSuite`):** Fixed the Guild & Communities window snapping to the top-left corner of the screen whenever switching between Guild and Community tabs or triggering a tab resize; unsaved windows now remain cleanly centred, while dragged windows retain their saved position and scale.
+
 ### Duplicate Chat Edit Box, Resize Grip Nil Crash & Mouseover Tooltip Stutter Fixes (27/11/2026)
 - **Fixed - Duplicate Chat Typing Box (`DynamicChat`):** Replaced the `IsEditBoxShownOrFocused` check with an active-focus-only `IsEditBoxFocused` check (Retail WoW keeps `ChatFrame1EditBox` shown while idle), so `DynamicChat` now consistently strips Blizzard's default input chrome and applies the passive Obsidian Edit Box skin and saved anchor when idle, while preserving active typing focus, `BN_WHISPER` / secret target protections, and combat lockdown guards (deferring and flushing pending skin/anchor updates on `ChatFrame.OnEditBoxFocusLost`).
 - **Fixed - Resize Grip Hover Nil Crash (`DynamicSuite_UI`):** Replaced both bare `GetActiveAccentColor()` calls in the main window footer resize grip and HUD Edit Mode Chat resize grip `OnEnter` handlers with `UI.GetActiveAccentColor()`, eliminating tooltip hover Lua errors.

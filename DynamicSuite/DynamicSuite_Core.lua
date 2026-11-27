@@ -59,11 +59,11 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "27/11/2026",
     entries = {
+        { type = "FIX",     text = "Guild & Communities Window Tab-Switch Jump Fix (27/11/2026): Updated DesktopWindows' UpdateUIPanelPositions post-hook and resize re-anchoring so switching Guild or Community tabs no longer snaps the Guild & Communities window to the top-left corner; keeping unsaved windows centred while preserving any custom dragged position and scale." },
         { type = "FIX",     text = "Duplicate Chat Edit Box, Resize Grip Nil Crash & Mouseover Tooltip Stutter Fixes (27/11/2026): Replaced DynamicChat's IsEditBoxShownOrFocused guard with an active-focus-only IsEditBoxFocused check and OnEditBoxFocusLost flush so idle ChatFrame1EditBox chrome is properly stripped without disturbing active typing or BN_WHISPER/secret replies; fixed both bare GetActiveAccentColor() resize grip hover crashes in DynamicSuite_UI; tightened static global-helper scanning; gated DynamicTalent Encounter Journal enrichment out of passive mouseover events with non-raid/resting fast-exits; made DynamicBags tooltip item counts O(1) with pre-sorted/formatted cache entries; cached DynamicCursor's disabled state out of tooltip hooks; and detached DynamicChat's scrollbar OnUpdate when idle/hidden." },
         { type = "PERF",    text = "Release v2.11.2 - In-Combat Raid-Frame Mouseover & Search Close Performance Fix (26/11/2026): Eliminated in-combat raid-frame mouseover FPS stutter by caching DynamicCursor's zone and activity checks on events, skipping stationary ring repositioning and per-frame SpellIsTargeting polling, removing redundant tooltip SetOwner calls and per-hover closures in Smart Tooltips, gating DynamicPrep's combat raid-buff scan before scanning 20-40 raid members when disabled or out of scope, immediately stopping and hiding the Search Highlight frame when closing DynamicSuite, and removing redundant font rescans on Theme Studio refreshes." },
         { type = "PERF",    text = "Release v2.11.1 - DynamicTalent Mouseover Tooltip Lag Fix (26/11/2026): Eliminated mouseover tooltip stutters by making hover, nameplate, and soft-enemy boss checks exit immediately in combat, on player units, or while resting in cities, skipping redundant Prep Bar rebuilds unless a talent mismatch actually changes, preventing repeated Encounter Journal scans, and caching the live talent export string out of combat until talents, specialisations, or zones change." },
         { type = "FIX",     text = "Release v2.11.1 - Clickable Raid Buffs Ghost HUD Fix (26/11/2026): Fixed an invisible Clickable Raid Buffs box left on screen outdoors when Active Content Scope was set to Instances, when the HUD was switched off, or when all buffs were already active; the bar now stays hidden and click-through until a buff is actually shown (or HUD Edit Mode is open) and re-evaluates immediately on zone changes." },
-        { type = "FIX",     text = "Release v2.11.1 - Patch 12.1.7 Combat, Secret-Value, Lorewalking & Game-Mode Hardening (26/11/2026): Hardened DynamicChat, DynamicGroup, DynamicDialogue, DynamicPrep, DynamicTalent, and DynamicMarker against Patch 12.1.7 combat-lockdown, chat-lockdown, and secret-value errors, including combat-safe keyboard release in DynamicDialogue, Lorewalking and Talebound bypasses, self-resurrect wipe protection in DynamicPrep, deferred Talent Backdrop and keybind cleanup in combat, and Pet Battle visibility preservation for DynamicChat." },
     },
 }
 DynamicSuite.Changelogs["suite"] = DynamicSuite.Changelogs["DynamicSuite"]
@@ -10238,9 +10238,9 @@ do
 
     local function ClampAndReanchorFrame(frame, frameName)
         if InCombat() or not frame or not frameName or EXCLUDED_BLIZZ_FRAMES[frameName] or IsWorldMapMaximized(frame, frameName) or IsHandledBySuiteReplacement(frameName) then return end
-        if DesktopWindows:IsYielding() then return end
+        if DesktopWindows:IsYielding() or DesktopWindows:IsMasterDisabled() then return end
         local st = GetFrameState(frame)
-        if st and st.isDragging then return end
+        if st and (st.isDragging or st.applyingPoint) then return end
         W.SyncFrameClamping(frame, frameName)
         local db = GetDesktopWindowsDB()
         if not db then return end
@@ -10250,6 +10250,10 @@ do
             local cx, cy = ClampDesktopWindowOffset(frame, customX, customY, scale)
             SecureApplyPoint(frame, cx, cy, scale)
         elseif frame.IsShown and frame:IsShown() then
+            if W.KEEP_UIPANEL_LAYOUT[frameName] and db.sideBySide ~= false then
+                ApplyCanonicalDefaultPoint(frame, frameName, scale)
+                return
+            end
             local fx, fy = CaptureFrameCenterOffset(frame, frameName)
             if fx and fy then
                 local cx, cy = ClampDesktopWindowOffset(frame, fx, fy, scale)
@@ -12241,23 +12245,39 @@ do
 
         if not W.updateUIPanelHooked and type(_G.UpdateUIPanelPositions) == "function" then
             W.updateUIPanelHooked = true
+            local function RestorePanelAfterUIPanelLayout(f, frameName, db, restoreDefaultWhenUnsaved)
+                if not f or not (f.IsShown and f:IsShown()) then return end
+                if EXCLUDED_BLIZZ_FRAMES[frameName] or IsHandledBySuiteReplacement(frameName) or IsWorldMapMaximized(f, frameName) then return end
+                local st = GetFrameState(f)
+                if st and (st.isDragging or st.applyingPoint) then return end
+                local s = GetActiveFrameScale(frameName, f)
+                if math.abs(GetFrameLiveScale(f) - s) > 0.005 then
+                    SecureApplyScale(f, s)
+                end
+                local customX, customY = W.GetActiveWindowCustomOffset(frameName, db)
+                if customX and customY then
+                    SecureApplyPoint(f, customX, customY, s)
+                elseif restoreDefaultWhenUnsaved then
+                    ApplyCanonicalDefaultPoint(f, frameName, s)
+                end
+            end
             _G.hooksecurefunc("UpdateUIPanelPositions", function()
-                if InCombat() or DesktopWindows:IsYielding() then return end
+                if W.inUpdateUIPanelPostHook or InCombat() or DesktopWindows:IsYielding() or DesktopWindows:IsMasterDisabled() then return end
                 local db = GetDesktopWindowsDB()
-                if not db or db.sideBySide ~= false then return end
-                for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
-                    local f = _G[spec.name]
-                    if f and f.IsShown and f:IsShown() and not IsWorldMapMaximized(f, spec.name) then
-                        local s = GetActiveFrameScale(spec.name, f)
-                        if math.abs(GetFrameLiveScale(f) - s) > 0.005 then
-                            SecureApplyScale(f, s)
+                if not db then return end
+                W.inUpdateUIPanelPostHook = true
+                pcall(function()
+                    if db.sideBySide ~= false then
+                        for frameName in pairs(W.KEEP_UIPANEL_LAYOUT) do
+                            RestorePanelAfterUIPanelLayout(_G[frameName], frameName, db, true)
                         end
-                        local customX, customY = W.GetActiveWindowCustomOffset(spec.name, db)
-                        if customX and customY then
-                            SecureApplyPoint(f, customX, customY, s)
+                    else
+                        for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
+                            RestorePanelAfterUIPanelLayout(_G[spec.name], spec.name, db, false)
                         end
                     end
-                end
+                end)
+                W.inUpdateUIPanelPostHook = false
             end)
         end
     end
