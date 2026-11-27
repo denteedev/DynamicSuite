@@ -661,7 +661,7 @@ local function BuildRecipientList(category, filterText)
             local cap = math.min(numGuild, 250)
             for i = 1, cap do
                 local ok, fullName, rankName, _, level, _, _, _, _, isOnline, _, classFile = pcall(GetGuildRosterInfo, i)
-                if ok and type(fullName) == "string" and fullName ~= "" and not SafeIsSecret(fullName) then
+                if ok and not SafeIsSecret(fullName) and type(fullName) == "string" and fullName ~= "" then
                     local baseName, rlm = fullName:match("^([^%-]+)%-(.+)$")
                     baseName = baseName or fullName
                     rlm = rlm or myRealm
@@ -801,7 +801,7 @@ end
 local function IsAuctionHouseMail(index, sender, subject)
     if type(GetInboxInvoiceInfo) == "function" then
         local ok, invType = pcall(GetInboxInvoiceInfo, index)
-        if ok and type(invType) == "string" and invType ~= "" and not SafeIsSecret(invType) then
+        if ok and not SafeIsSecret(invType) and type(invType) == "string" and invType ~= "" then
             return true
         end
     end
@@ -1397,7 +1397,7 @@ function DynamicMail:BatchAttachByPreset(presetKey)
         for idx = 1, maxAttach do
             if type(GetSendMailItem) == "function" then
                 local okG, itemName = pcall(GetSendMailItem, idx)
-                if okG and type(itemName) == "string" and itemName ~= "" and not SafeIsSecret(itemName) then
+                if okG and not SafeIsSecret(itemName) and type(itemName) == "string" and itemName ~= "" then
                     sameNames[itemName:lower()] = true
                 end
             end

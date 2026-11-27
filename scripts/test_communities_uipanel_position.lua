@@ -485,8 +485,12 @@ RunTest("(e) DesktopWindows uses hooksecurefunc (no raw UpdateScaleForFit overwr
     assertEqual(src:find("frame.SetMinimized = function", 1, true), nil, "Direct PlayerSpellsFrame.SetMinimized overwrite must be removed")
     assertEqual(src:find("mmf.Maximize = function", 1, true), nil, "Direct mmf.Maximize overwrite must be removed")
     assertEqual(src:find("mmf.Minimize = function", 1, true), nil, "Direct mmf.Minimize overwrite must be removed")
+    assertEqual(src:find("._dsCloseHooked", 1, true), nil, "Direct Blizzard closeBtn._dsCloseHooked field write must be removed")
+    assertEqual(src:find("._dsPassiveChrome", 1, true), nil, "Direct Blizzard frame._dsPassiveChrome field write must be removed")
+    assertEqual(src:find("._dsDragHooked", 1, true), nil, "Direct Blizzard tc._dsDragHooked field write must be removed")
+    assertEqual(src:find("._dsWheelHooked", 1, true), nil, "Direct Blizzard targetRegion._dsWheelHooked field write must be removed")
 
-    -- Verify secret frame name / secret RegisterUIPanel arg / secret debugstack never throws string conversion errors
+    -- Verify secret frame name / secret RegisterUIPanel arg / secret debugstack / secret GLOBAL_MOUSE_DOWN never throws
     local secretMarker = setmetatable({}, {
         __tostring = function()
             error("attempt to perform string conversion on a secret string value (execution tainted by 'DynamicSuite')", 2)
@@ -498,6 +502,7 @@ RunTest("(e) DesktopWindows uses hooksecurefunc (no raw UpdateScaleForFit overwr
     env.issecretvalue = function(v) return v == secretMarker end
     env.canaccessvalue = function(v) return v ~= secretMarker end
     env.debugstack = function() return secretMarker end
+    env.GetRealmName = function() return secretMarker end
 
     local secretFrame = {
         GetName = function() return secretMarker end,
@@ -510,7 +515,11 @@ RunTest("(e) DesktopWindows uses hooksecurefunc (no raw UpdateScaleForFit overwr
     if type(env.HideUIPanel) == "function" then env.HideUIPanel(secretFrame) end
     if type(env.RegisterUIPanel) == "function" then env.RegisterUIPanel(secretMarker) end
     if type(env.UpdateUIPanelPositions) == "function" then env.UpdateUIPanelPositions() end
-    assertEqual(true, true, "DesktopWindows hooks handled secret frame names and debugstack with zero errors")
+    local mouseFrame = env.DynamicSuiteDesktopWindowsMouseFrame
+    if mouseFrame and mouseFrame:GetScript("OnEvent") then
+        mouseFrame:GetScript("OnEvent")(mouseFrame, "GLOBAL_MOUSE_DOWN", secretMarker)
+    end
+    assertEqual(true, true, "DesktopWindows hooks handled secret frame names, debugstack, and GLOBAL_MOUSE_DOWN with zero errors")
 end)
 
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))

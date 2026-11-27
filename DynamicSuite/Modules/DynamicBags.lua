@@ -1499,9 +1499,15 @@ function U.GetCharRecord()
         db.vault.characters[key] = rec
     end
     local _, class = UnitClass("player")
-    rec.name = UnitName("player")
-    rec.realm = GetRealmName()
-    rec.class = class
+    if type(UnitName) == "function" then
+        local okN, n = pcall(UnitName, "player")
+        if okN and not IsSecret(n) and type(n) == "string" and n ~= "" then rec.name = n end
+    end
+    if type(GetRealmName) == "function" then
+        local okR, r = pcall(GetRealmName)
+        if okR and not IsSecret(r) and type(r) == "string" and r ~= "" then rec.realm = r end
+    end
+    if not IsSecret(class) and type(class) == "string" then rec.class = class end
     rec.level = UnitLevel("player")
     rec.gold = GetMoney and GetMoney() or 0
     rec.updated = time and time() or 0
@@ -2636,7 +2642,12 @@ function U.BuildOverlay(btn)
     btn.dbBg = bg
 
     local icon = btn.icon or btn.Icon
-    if not icon and btn.GetName and btn:GetName() then icon = _G[btn:GetName() .. "IconTexture"] end
+    if not icon and type(btn.GetName) == "function" then
+        local okBN, bName = pcall(btn.GetName, btn)
+        if okBN and not IsSecret(bName) and type(bName) == "string" and bName ~= "" then
+            icon = _G[bName .. "IconTexture"]
+        end
+    end
     if not icon then
         icon = btn:CreateTexture(nil, "ARTWORK")
         icon:SetPoint("TOPLEFT", btn, "TOPLEFT", 1, -1)
@@ -3890,8 +3901,8 @@ function U.BuildRemoteObjs(tuples, isWarband)
     local objs = {}
     for i, t in ipairs(tuples) do
         local itemID, link = t[1], t[2]
-        local validLink = (type(link) == "string" and link ~= "" and not IsSecret(link)) and link or nil
-        local validID = (type(itemID) == "number" and itemID > 0 and not IsSecret(itemID)) and itemID or nil
+        local validLink = (not IsSecret(link) and type(link) == "string" and link ~= "") and link or nil
+        local validID = (not IsSecret(itemID) and type(itemID) == "number" and itemID > 0) and itemID or nil
         local itemRef = validLink or validID
         local classID, subClassID, icon, equipLoc = 15, 0, t.icon, ""
         if itemRef and C_Item and type(C_Item.GetItemInfoInstant) == "function" then
@@ -6807,7 +6818,7 @@ function U.SnapshotGuildBank()
             for slot = 1, 98 do
                 local tex, count, locked = GetGuildBankItemInfo(tab, slot)
                 local link = GetGuildBankItemLink(tab, slot)
-                if type(link) == "string" and link ~= "" and not IsSecret(link) then
+                if not IsSecret(link) and type(link) == "string" and link ~= "" then
                     sawLiveSlotData = true
                     local itemID = tonumber(link:match("item:(%d+)")) or 0
                     local qlt = (C_Item and C_Item.GetItemInfo and select(3, C_Item.GetItemInfo(link))) or 1
@@ -11395,9 +11406,11 @@ local function GetStaticPopupButton1(popup)
         local ok, b = pcall(popup.GetButton1, popup)
         if ok and b then return b end
     end
-    local name = (type(popup.GetName) == "function") and popup:GetName() or nil
-    if type(name) == "string" and name ~= "" and not IsSecret(name) then
-        return _G[name .. "Button1"]
+    if type(popup.GetName) == "function" then
+        local okN, name = pcall(popup.GetName, popup)
+        if okN and not IsSecret(name) and type(name) == "string" and name ~= "" then
+            return _G[name .. "Button1"]
+        end
     end
     return nil
 end
@@ -11410,8 +11423,8 @@ local function GetStaticPopupTextString(popup)
         if ok and res then fs = res end
     end
     if not fs and type(popup.GetName) == "function" then
-        local name = popup:GetName()
-        if type(name) == "string" and name ~= "" and not IsSecret(name) then
+        local okN, name = pcall(popup.GetName, popup)
+        if okN and not IsSecret(name) and type(name) == "string" and name ~= "" then
             fs = _G[name .. "Text"]
         end
     end
@@ -11740,7 +11753,7 @@ function U.GetKnownProfessionNames()
             for _, idx in ipairs({ p1, p2, arch, fish, cook }) do
                 if type(idx) == "number" then
                     local okI, name = pcall(GetProfessionInfo, idx)
-                    if okI and type(name) == "string" and name ~= "" and not IsSecret(name) then
+                    if okI and not IsSecret(name) and type(name) == "string" and name ~= "" then
                         local nl = name:lower()
                         known[nl] = true
                         hasAny = true

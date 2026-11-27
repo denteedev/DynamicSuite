@@ -17817,8 +17817,8 @@ function addonTable.CreateMainConfigUI()
                 for i = 1, numRegions do
                     local reg = select(i, frame:GetRegions())
                     if reg and reg.GetObjectType and reg:GetObjectType() == "FontString" and reg.GetText then
-                        local rawTxt = reg:GetText()
-                        if type(rawTxt) == "string" and rawTxt ~= "" and not (issecretvalue and issecretvalue(rawTxt)) then
+                        local okRT, rawTxt = pcall(reg.GetText, reg)
+                        if okRT and type(rawTxt) == "string" and IsSafeValue(rawTxt) and rawTxt ~= "" then
                             local txt = StripWoWMarkup(rawTxt)
                             if txt ~= "" then
                                 local matchScore = 0

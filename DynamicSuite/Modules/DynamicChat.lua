@@ -2545,8 +2545,9 @@ local function ResolveChatTabLabel(cf, tab, tabName, entry)
     if not fs then return nil, nil end
 
     local chatType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
+    local isTempCF = (not IsSecretValue(cf.isTemporary) and cf.isTemporary == true)
     local isBNWhisperTab = (chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION")
-    local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or (cf.isTemporary == true)
+    local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or isTempCF
 
     -- Midnight 12.1.5 Zero-Taint Guard: Battle.net / Whisper temporary tab names may be secret strings
     -- already rendered on fs by Blizzard. Never overwrite a secret tab label with "ChatFrame11".
@@ -2558,7 +2559,7 @@ local function ResolveChatTabLabel(cf, tab, tabName, entry)
             return fs, nil
         end
     end
-    if cf.isTemporary == true and (IsSecretValue(cf.name) or IsSecretValue(cf.chatTarget)) then
+    if isTempCF and (IsSecretValue(cf.name) or IsSecretValue(cf.chatTarget)) then
         if type(fs.Show) == "function" then pcall(fs.Show, fs) end
         if DC_NS.CanSafelySetChatTabAlpha and DC_NS.CanSafelySetChatTabAlpha(fs) then pcall(fs.SetAlpha, fs, 1.0) end
         return fs, nil
@@ -2572,7 +2573,7 @@ local function ResolveChatTabLabel(cf, tab, tabName, entry)
             cfID = rawID
         end
     end
-    if type(cfID) == "number" and cfID > 0 and not cf.isTemporary then
+    if type(cfID) == "number" and cfID > 0 and not isTempCF then
         local infoName = nil
         if type(_G.GetChatWindowInfo) == "function" then
             local ok, n = pcall(_G.GetChatWindowInfo, cfID)
@@ -2605,7 +2606,7 @@ local function ResolveChatTabLabel(cf, tab, tabName, entry)
     end
 
     if not rawLabel or rawLabel == "" then
-        if cf.isTemporary == true then
+        if isTempCF then
             -- Temporary whisper/BNet tab not yet populated by Blizzard; leave fs untouched so FCF_SetWindowName can set it.
             if type(fs.Show) == "function" then pcall(fs.Show, fs) end
             if DC_NS.CanSafelySetChatTabAlpha and DC_NS.CanSafelySetChatTabAlpha(fs) then pcall(fs.SetAlpha, fs, 1.0) end
@@ -5377,7 +5378,7 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
             end
         end)
         tab:HookScript("OnClick", function(selfTab, button)
-            if button == "MiddleButton" then
+            if not IsSecretValue(button) and button == "MiddleButton" then
                 local ownerCF = hookedChatTabs[selfTab]
                 if ownerCF and not IsSecretValue(ownerCF.isTemporary) and ownerCF.isTemporary == true then
                     DynamicChat:RemoveSavedWhisperTabForFrame(ownerCF)
@@ -5466,10 +5467,11 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
 
     -- Detect temporary Whisper / Battle.net Whisper conversation tabs (e.g. ChatFrame11+)
     local chatType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
+    local isTempCF = (not IsSecretValue(cf.isTemporary) and cf.isTemporary == true)
     local isBNWhisperTab = (chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION")
-    local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or (cf.isTemporary == true)
+    local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or isTempCF
     local isAlertingTab  = IsChatTabAlerting(cf, tab, tabName, entry)
-    if cf.isTemporary == true and chatType == "WHISPER" and not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" then
+    if isTempCF and chatType == "WHISPER" and not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" then
         entry.lastWhisperTarget = cf.chatTarget
     end
 
@@ -7489,8 +7491,12 @@ function DynamicChat:ApplySleekChatSkin()
             local cf1W = (not IsSecretValue(rawW) and type(rawW) == "number") and math.floor(rawW + 0.5) or 430
             local cf1H = (not IsSecretValue(rawH) and type(rawH) == "number") and math.floor(rawH + 0.5) or 200
             local anchorKey = tostring(cf1) .. ":" .. (isTopEB and "TOP" or "BOT") .. ":" .. tostring(ebH) .. ":" .. tostring(cf1W) .. "x" .. tostring(cf1H)
-            local okPt, _, relTo = pcall(eb1.GetPoint, eb1, 1)
-            if state.anchorKey ~= anchorKey or not okPt or relTo ~= cf1 then
+            local expectedPt = isTopEB and "TOPLEFT" or "BOTTOMLEFT"
+            local okPt, curPt, relTo, curRelPt = pcall(eb1.GetPoint, eb1, 1)
+            local anchorMatches = okPt
+                and not IsSecretValue(curPt) and not IsSecretValue(relTo) and not IsSecretValue(curRelPt)
+                and curPt == expectedPt and relTo == cf1 and curRelPt == expectedPt
+            if state.anchorKey ~= anchorKey or not anchorMatches then
                 if DC_NS.ApplyEditBoxAnchorNow() then
                     state.anchorKey = anchorKey
                 end
@@ -8861,7 +8867,7 @@ function DynamicChat:RestoreSavedWhisperTabs()
 
     local openTargets = {}
     local function RecordOpenFrame(cf)
-        if not cf or cf.isTemporary ~= true then return end
+        if not cf or IsSecretValue(cf.isTemporary) or cf.isTemporary ~= true then return end
         if not IsSecretValue(cf.chatType) and cf.chatType == "WHISPER"
             and not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" then
             openTargets[#openTargets + 1] = cf.chatTarget

@@ -739,7 +739,7 @@ function DynamicTalent:GetActiveTalentString(forceRefresh)
         return self._cachedActiveTalentStr
     end
     local okS, str = pcall(C_Traits.GenerateImportString, activeID)
-    if okS and type(str) == "string" and str ~= "" and not _IsSecret(str) then
+    if okS and not _IsSecret(str) and type(str) == "string" and str ~= "" then
         if not IsPlayerInCombat() then
             self._cachedActiveTalentStr = str
             self._cachedActiveTalentConfigID = activeID
@@ -1005,10 +1005,10 @@ local function ResolveBoundBossFromSources(selfObj, bossMap, diffKey, zc)
                 local plate = plates[i]
                 if type(plate) == "table" then
                     local token = plate.namePlateUnitToken
-                    if (type(token) ~= "string" or token == "") and type(plate.UnitFrame) == "table" then
+                    if (_IsSecret(token) or type(token) ~= "string" or token == "") and type(plate.UnitFrame) == "table" then
                         token = plate.UnitFrame.unit
                     end
-                    if type(token) == "string" and token ~= "" and not _IsSecret(token) then
+                    if not _IsSecret(token) and type(token) == "string" and token ~= "" then
                         mEntry, bKey, rawName = TryUnit(token, true)
                         if mEntry then return mEntry, bKey, rawName, "nameplate" end
                     end
@@ -1078,10 +1078,10 @@ local function FindLiveSeason2BossName(selfObj, zc)
                 local plate = plates[i]
                 if type(plate) == "table" then
                     local token = plate.namePlateUnitToken
-                    if (type(token) ~= "string" or token == "") and type(plate.UnitFrame) == "table" then
+                    if (_IsSecret(token) or type(token) ~= "string" or token == "") and type(plate.UnitFrame) == "table" then
                         token = plate.UnitFrame.unit
                     end
-                    if type(token) == "string" and token ~= "" and not _IsSecret(token) then
+                    if not _IsSecret(token) and type(token) == "string" and token ~= "" then
                         local bn = CheckUnit(token, true)
                         if bn then return bn, "nameplate" end
                     end

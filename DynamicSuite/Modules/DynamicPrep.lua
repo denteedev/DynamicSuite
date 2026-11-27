@@ -5086,6 +5086,7 @@ function DynamicPrep:SetupDeleteConfirmationHook()
 
     if hooksecurefunc and _G.StaticPopup_Show then
         hooksecurefunc("StaticPopup_Show", function(which)
+            if _IsSecret(which) then return end
             if which == "DEATH" or which == "DEATH_PVP" then
                 DynamicPrep:UpdateDeathDialogButtonState()
                 C_Timer.After(0, function()
@@ -9029,10 +9030,20 @@ RegisterDynamicPrepPopupClosers()
 
 local function StyleObsidianScrollBar(scrollFrame, wsFrame)
     if not scrollFrame then return end
-    local sb = scrollFrame.ScrollBar or (scrollFrame.GetName and scrollFrame:GetName() and _G[scrollFrame:GetName() .. "ScrollBar"])
+    local sfName = nil
+    if type(scrollFrame.GetName) == "function" then
+        local okN, rawN = pcall(scrollFrame.GetName, scrollFrame)
+        if okN and not _IsSecret(rawN) and type(rawN) == "string" and rawN ~= "" then sfName = rawN end
+    end
+    local sb = scrollFrame.ScrollBar or (sfName and _G[sfName .. "ScrollBar"])
     if sb then
-        local upBtn = sb.ScrollUpButton or sb.UpButton or (sb.GetName and sb:GetName() and _G[sb:GetName() .. "ScrollUpButton"])
-        local downBtn = sb.ScrollDownButton or sb.DownButton or (sb.GetName and sb:GetName() and _G[sb:GetName() .. "ScrollDownButton"])
+        local sbName = nil
+        if type(sb.GetName) == "function" then
+            local okSN, rawSN = pcall(sb.GetName, sb)
+            if okSN and not _IsSecret(rawSN) and type(rawSN) == "string" and rawSN ~= "" then sbName = rawSN end
+        end
+        local upBtn = sb.ScrollUpButton or sb.UpButton or (sbName and _G[sbName .. "ScrollUpButton"])
+        local downBtn = sb.ScrollDownButton or sb.DownButton or (sbName and _G[sbName .. "ScrollDownButton"])
         for _, b in ipairs({ upBtn, downBtn }) do
             if b then
                 b:Hide()

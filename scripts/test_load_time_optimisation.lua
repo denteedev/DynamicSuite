@@ -702,8 +702,21 @@ RunTest("T2: DynamicChat Deferred Sound Scan & Coalesced Login/Reload Layout", f
     h.FlushTimers()
     assertEqual(h.env.ChatFrame1:GetWidth(), 640, "Late EDIT_MODE_LAYOUTS_UPDATED preserves saved 640px chat width")
     assertEqual(h.env.ChatFrame1:GetHeight(), 320, "Late EDIT_MODE_LAYOUTS_UPDATED preserves saved 320px chat height")
-    local _, ebRel = h.env.ChatFrame1EditBox:GetPoint(1)
+    local ebPt, ebRel, ebRelPt = h.env.ChatFrame1EditBox:GetPoint(1)
     assertEqual(ebRel, h.env.ChatFrame1, "Late EDIT_MODE_LAYOUTS_UPDATED restores passive EditBox anchor on ChatFrame1")
+    assertEqual(ebPt, "BOTTOMLEFT", "Late EDIT_MODE_LAYOUTS_UPDATED embeds EditBox at BOTTOMLEFT")
+    assertEqual(ebRelPt, "BOTTOMLEFT", "Late EDIT_MODE_LAYOUTS_UPDATED embeds EditBox relative to BOTTOMLEFT")
+
+    -- Simulate Blizzard moving EditBox to native TOPLEFT->BOTTOMLEFT below ChatFrame1 while keeping 640x320 dimensions
+    -- (anchorKey unchanged & relTo still ChatFrame1): passive anchor check must STILL re-embed EditBox inside ChatFrame1!
+    h.env.ChatFrame1EditBox:ClearAllPoints()
+    h.env.ChatFrame1EditBox:SetPoint("TOPLEFT", h.env.ChatFrame1, "BOTTOMLEFT", -5, -2)
+    h.FireEvent("EDIT_MODE_LAYOUTS_UPDATED")
+    h.FlushTimers()
+    local ebPt2, ebRel2, ebRelPt2 = h.env.ChatFrame1EditBox:GetPoint(1)
+    assertEqual(ebRel2, h.env.ChatFrame1, "Same-size native EditBox reset still anchors to ChatFrame1")
+    assertEqual(ebPt2, "BOTTOMLEFT", "Same-size native EditBox reset restores BOTTOMLEFT point")
+    assertEqual(ebRelPt2, "BOTTOMLEFT", "Same-size native EditBox reset restores BOTTOMLEFT relativePoint")
 end)
 
 -- ============================================================================

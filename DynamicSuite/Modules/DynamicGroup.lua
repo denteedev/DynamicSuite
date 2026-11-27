@@ -1461,16 +1461,16 @@ local function IsTeleportSpellKnown(spellID)
 end
 
 local function SafeGetSpellName(spellID)
-    if type(spellID) ~= "number" or spellID <= 0 then return nil end
+    if IsSecretValue(spellID) or type(spellID) ~= "number" or spellID <= 0 then return nil end
     if C_Spell and type(C_Spell.GetSpellName) == "function" then
         local ok, name = pcall(C_Spell.GetSpellName, spellID)
-        if ok and type(name) == "string" and name ~= "" and not IsSecretValue(name) then
+        if ok and not IsSecretValue(name) and type(name) == "string" and name ~= "" then
             return name
         end
     end
     if type(_G.GetSpellInfo) == "function" then
         local ok, name = pcall(_G.GetSpellInfo, spellID)
-        if ok and type(name) == "string" and name ~= "" and not IsSecretValue(name) then
+        if ok and not IsSecretValue(name) and type(name) == "string" and name ~= "" then
             return name
         end
     end
@@ -1539,7 +1539,7 @@ local function GetSpellbookTeleportEntries()
         if type(spellID) ~= "number" or spellID <= 0 or seenSpells[spellID] then return end
         if not IsTeleportSpellKnown(spellID) then return end
         local sName = SafeGetSpellName(spellID) or fallbackName
-        if type(sName) ~= "string" or sName == "" or IsSecretValue(sName) then return end
+        if IsSecretValue(sName) or type(sName) ~= "string" or sName == "" then return end
         local lowerName = sName:lower()
         local isTeleportName = (lowerName:find("^path of") ~= nil) or (lowerName:find("teleport", 1, true) ~= nil)
         if not isTeleportName then return end
@@ -1719,7 +1719,7 @@ local function PopulateSeasonActivityGroups(slots)
 
     for _, gid in ipairs(groupIDs) do
         local okN, gName = pcall(C_LFGList.GetActivityGroupInfo, gid)
-        if okN and type(gName) == "string" and gName ~= "" and not IsSecretValue(gName) then
+        if okN and not IsSecretValue(gName) and type(gName) == "string" and gName ~= "" then
             local normG = NormalizeDungeonMatchName(gName)
             for _, slot in ipairs(slots) do
                 local normS = NormalizeDungeonMatchName(slot.name)
@@ -1776,7 +1776,7 @@ local function GetSeasonDungeonSlots(forceRefresh)
                 local texture = nil
                 if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
                     local okU, uiName, _, _, uiTex = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
-                    if okU and type(uiName) == "string" and uiName ~= "" and not IsSecretValue(uiName) then
+                    if okU and not IsSecretValue(uiName) and type(uiName) == "string" and uiName ~= "" then
                         dName = uiName
                     end
                     if okU and uiTex and not IsSecretValue(uiTex) then
@@ -1814,7 +1814,7 @@ local function GetSeasonDungeonSlots(forceRefresh)
             local tex = fb.icon
             if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
                 local okU, uiName, _, _, uiTex = pcall(C_ChallengeMode.GetMapUIInfo, fb.mapID)
-                if okU and type(uiName) == "string" and uiName ~= "" and not IsSecretValue(uiName) then
+                if okU and not IsSecretValue(uiName) and type(uiName) == "string" and uiName ~= "" then
                     fb.name = uiName
                 end
                 if okU and uiTex and not IsSecretValue(uiTex) then
@@ -1858,7 +1858,7 @@ local function MatchTextToDungeonSlot(text, slots)
 end
 
 local function GetCachedActivityInfo(activityID)
-    if type(activityID) ~= "number" or activityID <= 0 or IsSecretValue(activityID) then
+    if IsSecretValue(activityID) or type(activityID) ~= "number" or activityID <= 0 then
         return nil
     end
     if activityInfoCache[activityID] then
@@ -2006,7 +2006,7 @@ local function GetOwnedKeystoneInfo()
     local dName = "Keystone Dungeon"
     if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
         local okU, uiName = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
-        if okU and type(uiName) == "string" and uiName ~= "" and not IsSecretValue(uiName) then
+        if okU and not IsSecretValue(uiName) and type(uiName) == "string" and uiName ~= "" then
             dName = uiName
         end
     end
@@ -2984,7 +2984,11 @@ local function OnLFGListSearchEntryUpdate(entry)
     end
 
     -- Keep region, score & status tags legible (>= 78% alpha even on dimmed/delisted or red-selected rows)
-    local parentAlpha = (entry.GetAlpha and entry:GetAlpha()) or 1.0
+    local parentAlpha = 1.0
+    if type(entry.GetAlpha) == "function" then
+        local okEA, rawEA = pcall(entry.GetAlpha, entry)
+        if okEA and not IsSecretValue(rawEA) and type(rawEA) == "number" then parentAlpha = rawEA end
+    end
     ov:SetAlpha((meta.isDelisted or isTerminalDim or parentAlpha < 0.75) and 0.78 or 0.96)
 
     if not (InCombatLockdown and InCombatLockdown()) and entry.CancelButton then
@@ -3083,15 +3087,20 @@ local function OnLFGListSearchEntryUpdate(entry)
 
             -- Preserve Blizzard's dual-anchor Enumerate layout (never call ClearAllPoints on enumFrame)
             local enumOrigPoints = _dgWeak.enumPoints[enumFrame]
-            if not enumOrigPoints and enumFrame.GetNumPoints then
-                enumOrigPoints = {}
-                for pIdx = 1, enumFrame:GetNumPoints() do
-                    local pt, relTo, relPt, x, y = enumFrame:GetPoint(pIdx)
-                    if pt then
-                        enumOrigPoints[#enumOrigPoints + 1] = { pt, relTo, relPt, x or 0, y or 0 }
+            if not enumOrigPoints and type(enumFrame.GetNumPoints) == "function" and type(enumFrame.GetPoint) == "function" then
+                local okNP, numPts = pcall(enumFrame.GetNumPoints, enumFrame)
+                if okNP and not IsSecretValue(numPts) and type(numPts) == "number" and numPts > 0 then
+                    enumOrigPoints = {}
+                    for pIdx = 1, numPts do
+                        local okEP, pt, relTo, relPt, x, y = pcall(enumFrame.GetPoint, enumFrame, pIdx)
+                        if okEP and not IsSecretValue(pt) and type(pt) == "string"
+                            and not IsSecretValue(relTo) and not IsSecretValue(relPt)
+                            and not IsSecretValue(x) and not IsSecretValue(y) then
+                            enumOrigPoints[#enumOrigPoints + 1] = { pt, relTo, relPt, tonumber(x) or 0, tonumber(y) or 0 }
+                        end
                     end
+                    _dgWeak.enumPoints[enumFrame] = enumOrigPoints
                 end
-                _dgWeak.enumPoints[enumFrame] = enumOrigPoints
             end
             if not IsPlayerInCombat() and enumOrigPoints and enumFrame.SetPoint then
                 for _, p in ipairs(enumOrigPoints) do
@@ -3140,7 +3149,14 @@ local function OnLFGListSearchEntryUpdate(entry)
             for _ = 1, openDPS do openRoles[#openRoles + 1] = "DAMAGER" end
 
             local filledCount = math.max(0, math.min(5, meta.numMembers or ((meta.tanks or 0) + (meta.healers or 0) + (meta.dps or 0))))
-            local enumLevel = (enumFrame.GetFrameLevel and enumFrame:GetFrameLevel()) or (ov.GetFrameLevel and ov:GetFrameLevel()) or 1
+            local enumLevel = 1
+            if type(enumFrame.GetFrameLevel) == "function" then
+                local okEL, rawEL = pcall(enumFrame.GetFrameLevel, enumFrame)
+                if okEL and not IsSecretValue(rawEL) and type(rawEL) == "number" then enumLevel = rawEL end
+            elseif type(ov.GetFrameLevel) == "function" then
+                local okOL, rawOL = pcall(ov.GetFrameLevel, ov)
+                if okOL and not IsSecretValue(rawOL) and type(rawOL) == "number" then enumLevel = rawOL end
+            end
 
             local function SetAnchorGreyDotVisible(anchorObj, showDot)
                 if not anchorObj then return end
@@ -3159,10 +3175,16 @@ local function OnLFGListSearchEntryUpdate(entry)
                 end
             end
 
+            local function SafeRegionDim(obj, methodName)
+                if not obj or type(obj[methodName]) ~= "function" then return nil end
+                local okD, val = pcall(obj[methodName], obj)
+                if okD and not IsSecretValue(val) and type(val) == "number" then return val end
+                return nil
+            end
             local sibW, sibH = nil, nil
             if slotAnchors[1] then
-                sibW = slotAnchors[1].GetWidth and slotAnchors[1]:GetWidth() or nil
-                sibH = slotAnchors[1].GetHeight and slotAnchors[1]:GetHeight() or nil
+                sibW = SafeRegionDim(slotAnchors[1], "GetWidth")
+                sibH = SafeRegionDim(slotAnchors[1], "GetHeight")
             end
 
             for idx = 1, 5 do
@@ -3173,8 +3195,8 @@ local function OnLFGListSearchEntryUpdate(entry)
                         local roleKey = openRoles[idx - filledCount]
                         if roleKey then
                             SetAnchorGreyDotVisible(anchor, false)
-                            local aw = (anchor.GetWidth and anchor:GetWidth()) or sibW or 16
-                            local ah = (anchor.GetHeight and anchor:GetHeight()) or sibH or 16
+                            local aw = SafeRegionDim(anchor, "GetWidth") or sibW or 16
+                            local ah = SafeRegionDim(anchor, "GetHeight") or sibH or 16
                             if aw <= 0 then aw = (sibW and sibW > 0) and sibW or 16 end
                             if ah <= 0 then ah = (sibH and sibH > 0) and sibH or 16 end
                             slotOv:SetSize(aw, ah)
@@ -3233,15 +3255,16 @@ local function SuppressEUIGroupFinderIfNeeded()
     -- Do not silently mutate external addon SavedVariables (_G.EllesmereUIDB); conflicts are handled via Suite Conflict Detection.
     local sp = _G.LFGListFrame and _G.LFGListFrame.SearchPanel
     if sp then
-        if sp.ScrollBox and sp.ScrollBox.SetAlpha and (sp.ScrollBox:GetAlpha() or 1) < 0.05 then
-            pcall(sp.ScrollBox.SetAlpha, sp.ScrollBox, 1)
+        local function RestoreIfHidden(obj)
+            if not obj or type(obj.SetAlpha) ~= "function" or type(obj.GetAlpha) ~= "function" then return end
+            local okA, rawA = pcall(obj.GetAlpha, obj)
+            if okA and not IsSecretValue(rawA) and type(rawA) == "number" and rawA < 0.05 then
+                pcall(obj.SetAlpha, obj, 1)
+            end
         end
-        if sp.ScrollBar and sp.ScrollBar.SetAlpha and (sp.ScrollBar:GetAlpha() or 1) < 0.05 then
-            pcall(sp.ScrollBar.SetAlpha, sp.ScrollBar, 1)
-        end
-        if sp.SignUpButton and sp.SignUpButton.SetAlpha and (sp.SignUpButton:GetAlpha() or 1) < 0.05 then
-            pcall(sp.SignUpButton.SetAlpha, sp.SignUpButton, 1)
-        end
+        RestoreIfHidden(sp.ScrollBox)
+        RestoreIfHidden(sp.ScrollBar)
+        RestoreIfHidden(sp.SignUpButton)
     end
 end
 DynamicGroup.SuppressEUIGroupFinderIfNeeded = SuppressEUIGroupFinderIfNeeded
@@ -3280,8 +3303,10 @@ local function SyncScrollBoxToFilteredResults(panel)
 end
 
 local function RemoveFilteredResultsInPlace(panel)
-    if not panel or type(panel.results) ~= "table" then return end
+    if not panel or IsSecretValue(panel.results) or type(panel.results) ~= "table" then return end
     if InCombatLockdown and InCombatLockdown() then return end
+    local db = EnsureDB()
+    if not db.lfgFilterEnabled or IsYieldingSharedHooks() then return end
 
     -- Only defer while the left mouse button is actively held down
     if IsMouseButtonDown and IsMouseButtonDown("LeftButton") then
@@ -3315,6 +3340,8 @@ end
 
 ScheduleAsyncResultRefilter = function()
     if pendingResultUpdateTimer then return end
+    local db = EnsureDB()
+    if not db.lfgFilterEnabled or IsYieldingSharedHooks() then return end
     pendingResultUpdateTimer = C_Timer.NewTimer(0.03, function()
         pendingResultUpdateTimer = nil
         if InCombatLockdown and InCombatLockdown() then return end
@@ -6088,26 +6115,50 @@ local function BuildSignUpNoteString()
     return table.concat(parts, " ")
 end
 
+local STRATA_RANK = {
+    BACKGROUND = 1,
+    LOW = 2,
+    MEDIUM = 3,
+    HIGH = 4,
+    DIALOG = 5,
+    FULLSCREEN = 6,
+    FULLSCREEN_DIALOG = 7,
+    TOOLTIP = 8,
+}
+
 local function EnsureDialogAbovePVEFrame(dialog)
     if not dialog or IsPlayerInCombat() then return end
-    if type(dialog.SetFrameStrata) == "function" then
-        local okS, curStrata = pcall(dialog.GetFrameStrata, dialog)
-        if not okS or IsSecretValue(curStrata) or curStrata ~= "DIALOG" then
-            pcall(dialog.SetFrameStrata, dialog, "DIALOG")
+    local targetStrata = "DIALOG"
+    local pve = _G.PVEFrame
+    local pveStrata = nil
+    if pve and type(pve.GetFrameStrata) == "function" then
+        local okPS, rawPS = pcall(pve.GetFrameStrata, pve)
+        if okPS and not IsSecretValue(rawPS) and type(rawPS) == "string" and STRATA_RANK[rawPS] then
+            pveStrata = rawPS
+            if STRATA_RANK[pveStrata] > STRATA_RANK[targetStrata] then
+                targetStrata = pveStrata
+            end
         end
     end
-    local pve = _G.PVEFrame
-    if pve and type(pve.GetFrameStrata) == "function" and type(pve.GetFrameLevel) == "function"
+    if type(dialog.SetFrameStrata) == "function" then
+        local okS, curStrata = pcall(dialog.GetFrameStrata, dialog)
+        if not okS or IsSecretValue(curStrata) or type(curStrata) ~= "string"
+            or (STRATA_RANK[curStrata] or 0) < STRATA_RANK[targetStrata] then
+            pcall(dialog.SetFrameStrata, dialog, targetStrata)
+            curStrata = targetStrata
+        else
+            targetStrata = curStrata
+        end
+    end
+    if pve and pveStrata == targetStrata
+        and type(pve.GetFrameLevel) == "function"
         and type(dialog.GetFrameLevel) == "function" and type(dialog.SetFrameLevel) == "function" then
-        local okPS, pveStrata = pcall(pve.GetFrameStrata, pve)
-        if okPS and not IsSecretValue(pveStrata) and pveStrata == "DIALOG" then
-            local okPL, pveLvl = pcall(pve.GetFrameLevel, pve)
-            local okDL, dlgLvl = pcall(dialog.GetFrameLevel, dialog)
-            if okPL and not IsSecretValue(pveLvl) and type(pveLvl) == "number" then
-                local curDL = (okDL and not IsSecretValue(dlgLvl) and type(dlgLvl) == "number") and dlgLvl or 0
-                if curDL <= pveLvl then
-                    pcall(dialog.SetFrameLevel, dialog, pveLvl + 20)
-                end
+        local okPL, pveLvl = pcall(pve.GetFrameLevel, pve)
+        local okDL, dlgLvl = pcall(dialog.GetFrameLevel, dialog)
+        if okPL and not IsSecretValue(pveLvl) and type(pveLvl) == "number" then
+            local curDL = (okDL and not IsSecretValue(dlgLvl) and type(dlgLvl) == "number") and dlgLvl or 0
+            if curDL <= pveLvl then
+                pcall(dialog.SetFrameLevel, dialog, pveLvl + 20)
             end
         end
     end
@@ -6334,7 +6385,7 @@ function DynamicGroup:InstallLFGHooks()
             local meta = InspectSearchResult(resultID)
             if not meta then return end
 
-            if meta.regionKey ~= "PENDING" and not IsSecretValue(meta.regionKey) then
+            if not IsSecretValue(meta.regionKey) and type(meta.regionKey) == "string" and meta.regionKey ~= "PENDING" then
                 local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
                 local rc = GetRegionColor(meta.regionKey)
                 local safeRealm = (type(meta.realmName) == "string" and not IsSecretValue(meta.realmName) and meta.realmName ~= "") and meta.realmName or nil
@@ -6413,6 +6464,10 @@ function DynamicGroup:InstallLFGHooks()
         hk.dialogUpdateRoles = true
         hooksecurefunc("LFGListApplicationDialog_UpdateRoles", OnLFGListApplicationDialogUpdateRoles)
     end
+    if not hk.dialogUpdateRolesMixin and type(_G.LFGListApplicationDialogMixin) == "table" and type(_G.LFGListApplicationDialogMixin.UpdateRoles) == "function" then
+        hk.dialogUpdateRolesMixin = true
+        hooksecurefunc(_G.LFGListApplicationDialogMixin, "UpdateRoles", OnLFGListApplicationDialogUpdateRoles)
+    end
     if not hk.dialogShowFunc and type(_G.LFGListApplicationDialog_Show) == "function" then
         hk.dialogShowFunc = true
         hooksecurefunc("LFGListApplicationDialog_Show", function(dialog)
@@ -6439,6 +6494,7 @@ function DynamicGroup:InstallLFGHooks()
                 or not hk.entryClickGlobal
                 or not hk.entryClickMixin
                 or not hk.dialogUpdateRoles
+                or not hk.dialogUpdateRolesMixin
                 or not hk.dialogShowFunc
                 or not hk.dialogOnShow then
                 DynamicGroup:InstallLFGHooks()
@@ -6460,7 +6516,8 @@ function DynamicGroup:InstallLFGHooks()
         self:EnsureLFGMiniBar()
         self:EnsurePortalBar()
     end
-    local rolesHookSatisfied = hk.dialogUpdateRoles or (type(_G.LFGListApplicationDialog_UpdateRoles) ~= "function")
+    local rolesHookSatisfied = (hk.dialogUpdateRoles or (type(_G.LFGListApplicationDialog_UpdateRoles) ~= "function"))
+        and (hk.dialogUpdateRolesMixin or not (type(_G.LFGListApplicationDialogMixin) == "table" and type(_G.LFGListApplicationDialogMixin.UpdateRoles) == "function"))
     if hk.entryUpdate and (hk.entryClickGlobal or hk.entryClickMixin) and (hk.dialogOnShow or hk.dialogShowFunc) and rolesHookSatisfied then
         self.lfgHooksInstalled = true
     end

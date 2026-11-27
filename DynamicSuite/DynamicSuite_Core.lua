@@ -718,9 +718,12 @@ addonTable.DEFAULT_SUITE_GLOBAL = DEFAULT_SUITE_GLOBAL
 local playerName = nil
 
 local function GetPlayer()
-    if not playerName then
-        local uName = UnitName("player")
-        if uName and uName ~= "" and uName ~= "Unknown" and uName ~= _G.UNKNOWNOBJECT then
+    if not playerName and type(UnitName) == "function" then
+        local okU, uName = pcall(UnitName, "player")
+        if okU and type(uName) == "string"
+            and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(uName))
+            and not (type(_G.canaccessvalue) == "function" and not _G.canaccessvalue(uName))
+            and uName ~= "" and uName ~= "Unknown" and uName ~= _G.UNKNOWNOBJECT then
             playerName = uName
         end
     end
@@ -733,9 +736,10 @@ local function GetCurrentCharKey()
     local realm = "Realm"
     if type(GetRealmName) == "function" then
         local okR, rawR = pcall(GetRealmName)
-        if okR and type(rawR) == "string" and rawR ~= ""
+        if okR and type(rawR) == "string"
             and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(rawR))
-            and not (type(_G.canaccessvalue) == "function" and not _G.canaccessvalue(rawR)) then
+            and not (type(_G.canaccessvalue) == "function" and not _G.canaccessvalue(rawR))
+            and rawR ~= "" then
             realm = rawR
         end
     end
@@ -8583,6 +8587,11 @@ do
         HEADER_OVERLAY_OFFSET         = 25,
         blizzWinState                 = setmetatable({}, { __mode = "k" }),
         rawFrameMethods               = setmetatable({}, { __mode = "k" }),
+        passiveChrome                 = setmetatable({}, { __mode = "k" }),
+        wheelHooked                   = setmetatable({}, { __mode = "k" }),
+        dragHooked                    = setmetatable({}, { __mode = "k" }),
+        passiveChromeHooked           = setmetatable({}, { __mode = "k" }),
+        closeHooked                   = setmetatable({}, { __mode = "k" }),
         hookedFrameNames              = {},
         origUIPanelInfo               = {},
         detachedPanels                = {},
@@ -8925,10 +8934,10 @@ do
             if st and cur == st.overlay then
                 return true
             end
-            if not cur._dsPassiveChrome then
+            if not W.passiveChrome[cur] then
                 if type(cur.GetObjectType) == "function" then
                     local okT, objType = pcall(cur.GetObjectType, cur)
-                    if okT and objType and INTERACTIVE_WIDGET_TYPES[objType] then
+                    if okT and not W.SafeIsSecretVal(objType) and type(objType) == "string" and INTERACTIVE_WIDGET_TYPES[objType] then
                         return false
                     end
                 end
@@ -9406,9 +9415,10 @@ do
         local argY = clampedUY / s
         if not st.isDragging and type(frame.GetNumPoints) == "function" and type(frame.GetPoint) == "function" then
             local okN, numPts = pcall(frame.GetNumPoints, frame)
-            if okN and numPts == 1 then
+            if okN and not W.SafeIsSecretVal(numPts) and numPts == 1 then
                 local okP, pt, relTo, relPt, curX, curY = pcall(frame.GetPoint, frame, 1)
-                if okP and pt == "CENTER" and relTo == _G.UIParent and relPt == "CENTER" then
+                if okP and not W.SafeIsSecretVal(pt) and not W.SafeIsSecretVal(relTo) and not W.SafeIsSecretVal(relPt)
+                    and pt == "CENTER" and relTo == _G.UIParent and relPt == "CENTER" then
                     curX = SafeNum(curX, nil)
                     curY = SafeNum(curY, nil)
                     if curX and curY and math.abs(curX - argX) <= 0.25 and math.abs(curY - argY) <= 0.25 then
@@ -9519,9 +9529,10 @@ do
         local alreadyAtCanonical = false
         if type(frame.GetNumPoints) == "function" and type(frame.GetPoint) == "function" then
             local okN, numPts = pcall(frame.GetNumPoints, frame)
-            if okN and numPts == 1 then
+            if okN and not W.SafeIsSecretVal(numPts) and numPts == 1 then
                 local okP, pt, relTo, relPt, curX, curY = pcall(frame.GetPoint, frame, 1)
-                if okP and pt == defPt and relTo == _G.UIParent and relPt == defRelPt then
+                if okP and not W.SafeIsSecretVal(pt) and not W.SafeIsSecretVal(relTo) and not W.SafeIsSecretVal(relPt)
+                    and pt == defPt and relTo == _G.UIParent and relPt == defRelPt then
                     curX = SafeNum(curX, nil)
                     curY = SafeNum(curY, nil)
                     if curX and curY and math.abs(curX - argX) <= 0.25 and math.abs(curY - argY) <= 0.25 then
@@ -9730,7 +9741,7 @@ do
         local seen = {}
         for _, k in ipairs(keys) do
             local name = t[k]
-            if type(name) == "string" and name ~= "" and not seen[name] then
+            if not W.SafeIsSecretVal(name) and type(name) == "string" and name ~= "" and not seen[name] then
                 seen[name] = true
                 clean[#clean + 1] = name
             end
@@ -10401,9 +10412,9 @@ do
     end
 
     local function HookMouseWheelTarget(targetRegion, rootFrame, frameName)
-        if type(targetRegion) ~= "table" or targetRegion._dsWheelHooked then return end
+        if type(targetRegion) ~= "table" or W.wheelHooked[targetRegion] then return end
         if type(targetRegion.HookScript) ~= "function" then return end
-        targetRegion._dsWheelHooked = true
+        W.wheelHooked[targetRegion] = true
         if not InCombat() and type(targetRegion.EnableMouseWheel) == "function" then
             pcall(targetRegion.EnableMouseWheel, targetRegion, true)
         end
@@ -10609,7 +10620,7 @@ do
         if st.overlay then return st end
 
         local ov = CreateFrame("Frame", nil, frame)
-        ov._dsPassiveChrome = true
+        W.passiveChrome[ov] = true
         ov:SetPoint("TOPLEFT", frame, "TOPLEFT", 24, -2)
         ov:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -58, -2)
         ov:SetHeight(28)
@@ -10811,15 +10822,15 @@ do
         local db = GetDesktopWindowsDB()
         if not (db and db.dragAnywhere ~= false) then return end
         local tc = frame.TitleContainer
-        tc._dsPassiveChrome = true
-        if tc._dsDragHooked then return end
-        tc._dsDragHooked = true
+        W.passiveChrome[tc] = true
+        if W.dragHooked[tc] then return end
+        W.dragHooked[tc] = true
         if type(tc.RegisterForDrag) == "function" then
             pcall(tc.RegisterForDrag, tc, "LeftButton")
         end
         if type(tc.SetScript) == "function" then
             pcall(tc.SetScript, tc, "OnDragStart", function(_, button)
-                if button and button ~= "LeftButton" then return end
+                if button ~= nil and (W.SafeIsSecretVal(button) or button ~= "LeftButton") then return end
                 if st and st.beginDrag then st.beginDrag() end
             end)
             pcall(tc.SetScript, tc, "OnDragStop", function()
@@ -10828,7 +10839,7 @@ do
         end
         if type(tc.HookScript) == "function" then
             pcall(tc.HookScript, tc, "OnMouseUp", function(selfTC, button)
-                if button ~= "RightButton" then return end
+                if W.SafeIsSecretVal(button) or button ~= "RightButton" then return end
                 if InCombat() or DesktopWindows:IsYielding() then return end
                 if type(_G.MouseIsOver) == "function" and not _G.MouseIsOver(selfTC) then return end
                 DesktopWindows:ResetSingleWindow(frameName, true)
@@ -10842,16 +10853,16 @@ do
         local chromeKeys = { "NineSlice", "Bg", "Inset", "LeftInset", "RightInset", "BottomInset", "TitleContainer", "BorderFrame" }
         for _, key in ipairs(chromeKeys) do
             local child = frame[key]
-            if type(child) == "table" and not child._dsPassiveChromeHooked then
-                child._dsPassiveChrome = true
-                child._dsPassiveChromeHooked = true
+            if type(child) == "table" and not W.passiveChromeHooked[child] then
+                W.passiveChrome[child] = true
+                W.passiveChromeHooked[child] = true
                 if key == "TitleContainer" then
                     NeutraliseTitleContainerDrag(frame, frameName, st)
                 else
                     if type(child.HookScript) == "function" and type(child.RegisterForDrag) == "function" then
                         pcall(child.RegisterForDrag, child, "LeftButton")
                         pcall(child.HookScript, child, "OnDragStart", function(_, button)
-                            if button and button ~= "LeftButton" then return end
+                            if button ~= nil and (W.SafeIsSecretVal(button) or button ~= "LeftButton") then return end
                             if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(frame, frameName) then return end
                             local db = GetDesktopWindowsDB()
                             if not (db and db.dragAnywhere ~= false) then return end
@@ -11663,10 +11674,10 @@ do
         if not closeBtn and frame.BorderFrame and frame.BorderFrame.CloseButton then
             closeBtn = frame.BorderFrame.CloseButton
         end
-        if closeBtn and type(closeBtn.HookScript) == "function" and not closeBtn._dsCloseHooked then
-            closeBtn._dsCloseHooked = true
+        if closeBtn and type(closeBtn.HookScript) == "function" and not W.closeHooked[closeBtn] then
+            W.closeHooked[closeBtn] = true
             closeBtn:HookScript("OnMouseDown", function(_, mouseBtn)
-                if mouseBtn == "LeftButton" and not InCombat() and not DesktopWindows:IsYielding() then
+                if not W.SafeIsSecretVal(mouseBtn) and mouseBtn == "LeftButton" and not InCombat() and not DesktopWindows:IsYielding() then
                     local now = (type(_G.GetTime) == "function") and _G.GetTime() or 0
                     W.lastExplicitCloseAt[frameName] = now
                     W.lastAutoHiddenAt[frameName] = nil
@@ -11824,7 +11835,7 @@ do
                 end
                 if event ~= "GLOBAL_MOUSE_DOWN" then return end
                 local button = arg1
-                if button ~= "LeftButton" and button ~= "RightButton" then return end
+                if W.SafeIsSecretVal(button) or (button ~= "LeftButton" and button ~= "RightButton") then return end
                 if InCombat() or DesktopWindows:IsYielding() then return end
                 local db = GetDesktopWindowsDB()
                 if not db then return end

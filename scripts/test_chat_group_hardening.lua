@@ -1171,12 +1171,62 @@ RunTest("T9: Midnight Secret-String Conversion Guards on LFG & Chat (Throws on A
         env.DynamicGroupDB.lfgFilterEnabled = true
         env.LFGListUtil_SetSearchEntryTooltip(mockTip, 201)
 
-        -- When lfgFilterEnabled == false, UpdateResultList must NOT overwrite panel.results
+        -- When lfgFilterEnabled == false, UpdateResultList AND async refilter must NOT overwrite panel.results
         env.DynamicGroupDB.lfgFilterEnabled = false
         local origResults = { 201, 202 }
         env.LFGListFrame.SearchPanel.results = origResults
+        env.LFGListFrame.SearchPanel.totalResults = 2
         env.LFGListSearchPanel_UpdateResultList(env.LFGListFrame.SearchPanel)
         assertEqual(env.LFGListFrame.SearchPanel.results, origResults, "panel.results untouched when lfgFilterEnabled is false")
+
+        -- Entry update with secret GetAlpha() and missing/invalid resultID must neither throw nor mutate panel.results when filter is OFF
+        local secretEntry = env.CreateFrame("Button", nil, env.LFGListFrame.SearchPanel)
+        secretEntry.resultID = 999999
+        secretEntry.GetAlpha = function() return secretMarker end
+        env.LFGListSearchEntry_Update(secretEntry)
+        h.AdvanceTime(0.1)
+        assertEqual(env.LFGListFrame.SearchPanel.results, origResults, "Async refilter leaves panel.results untouched when lfgFilterEnabled is false")
+
+        -- Elevated PVEFrame at FULLSCREEN strata: dialog must match FULLSCREEN strata and raise frame level above PVEFrame
+        dlg:Hide()
+        h.AdvanceTime(0.5)
+        env.PVEFrame._strata = "FULLSCREEN"
+        env.PVEFrame._level = 30
+        dlg._strata = "DIALOG"
+        dlg._level = 10
+        env.LFGListSearchEntry_OnClick({ resultID = 201 }, "LeftButton")
+        assertEqual(dlg:GetFrameStrata(), "FULLSCREEN", "Dialog matches elevated FULLSCREEN PVEFrame strata")
+        assertTrue(dlg:GetFrameLevel() > 30, "Dialog frame level raised above FULLSCREEN PVEFrame")
+
+        -- Mixin-only LFGListApplicationDialogMixin.UpdateRoles (when global _UpdateRoles is absent)
+        local hm = CreateHarness({ withSuite = true })
+        local em = hm.env
+        em.DynamicGroupDB = { oneClickSignUp = true, autoSelectRole = true }
+        em.GetSpecializationRole = function() return "DAMAGER" end
+        em.C_SpecializationInfo.GetSpecializationRole = em.GetSpecializationRole
+        em.LFGListApplicationDialog_UpdateRoles = nil
+        em.LFGListApplicationDialog_UpdateValidState = nil
+        em.LFGListApplicationDialogMixin = { UpdateRoles = function() end }
+        local mdlg = em.LFGListApplicationDialog
+        mdlg.SignUpButton = em.CreateFrame("Button", nil, mdlg)
+        mdlg.SignUpButton._enabled = false
+        mdlg.SignUpButton.SetEnabled = function(self, b) self._enabled = (b == true) end
+        mdlg.SignUpButton.IsEnabled = function(self) return self._enabled == true end
+        mdlg.DamagerButton = em.CreateFrame("Frame", nil, mdlg)
+        mdlg.DamagerButton._shown = true
+        mdlg.DamagerButton.CheckButton = em.CreateFrame("CheckButton", nil, mdlg.DamagerButton)
+        mdlg.DamagerButton.CheckButton._checked = false
+        mdlg.DamagerButton.CheckButton.SetChecked = function(self, v) self._checked = (v == true) end
+        mdlg.DamagerButton.CheckButton.GetChecked = function(self) return self._checked == true end
+        mdlg.UpdateValidState = function(self)
+            if self.DamagerButton.CheckButton:GetChecked() then self.SignUpButton:SetEnabled(true) end
+        end
+        hm.LoadModule(GROUP_PATH, "DynamicSuite")
+        hm.FireEvent("ADDON_LOADED", "DynamicSuite")
+        hm.FireEvent("PLAYER_LOGIN")
+        em.LFGListApplicationDialogMixin.UpdateRoles(mdlg)
+        assertEqual(mdlg.DamagerButton.CheckButton:GetChecked(), true, "Mixin UpdateRoles auto-selects player spec role")
+        assertEqual(mdlg.SignUpButton:IsEnabled(), true, "Mixin UpdateRoles enables SignUpButton via UpdateValidState")
     end
 
     -- (b) DynamicChat secret frame name, secret mention snippet & secret tab label never throw string conversion errors
@@ -1200,14 +1250,17 @@ RunTest("T9: Midnight Secret-String Conversion Guards on LFG & Chat (Throws on A
         secretCF.name = secretMarker
         secretCF:Show()
 
-        -- Fire FCFTab_UpdateAlpha / FCFTab_UpdateColors / SaveChatHistorySnapshot / Incoming mention with secret values
+        -- Fire FCFTab_UpdateAlpha / FCFTab_UpdateColors / ApplySleekChatSkin / SaveChatHistorySnapshot / Incoming mention with secret values
         env.FCFTab_UpdateAlpha(secretCF)
         local secretTab = env.CreateFrame("Button", nil, env.GeneralDockManager)
         secretTab.GetName = function() return secretMarker end
         env.FCFTab_UpdateColors(secretTab)
+        env.ChatFrame11 = secretCF
+        env.ChatFrame11Tab = secretTab
+        env.DynamicChat:ApplySleekChatSkin()
         env.DynamicChat:SaveChatHistorySnapshot()
         env.DynamicChat:HandleIncomingChatSoundEvent("CHAT_MSG_GUILD", secretMarker, secretMarker, secretMarker)
-        assertTrue(true, "DynamicChat handled all secret frame names, tabs, and chat events with zero string conversion errors")
+        assertTrue(true, "DynamicChat handled all secret frame names, tabs, isTemporary, and chat events with zero string conversion errors")
     end
 end)
 

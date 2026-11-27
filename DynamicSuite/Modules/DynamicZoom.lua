@@ -141,6 +141,8 @@ local function EnsureExperimentalPopupHook()
     if not experimentalPopupHooked and type(hooksecurefunc) == "function" and type(StaticPopup_Show) == "function" then
         experimentalPopupHooked = true
         hooksecurefunc("StaticPopup_Show", function(which)
+            if type(_G.issecretvalue) == "function" and _G.issecretvalue(which) then return end
+            if type(_G.canaccessvalue) == "function" and not _G.canaccessvalue(which) then return end
             if inExperimentalCVarWriteWindow and which == "EXPERIMENTAL_CVAR_WARNING" and StaticPopup_Hide then
                 pcall(StaticPopup_Hide, "EXPERIMENTAL_CVAR_WARNING")
             end
