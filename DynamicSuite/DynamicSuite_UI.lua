@@ -13445,13 +13445,59 @@ function addonTable.CreateMainConfigUI()
         return nil
     end
 
+    local function GetSavedChatDimensions(optW, optH)
+        local function ClampW(v)
+            v = tonumber(v)
+            if v and v >= 240 then return math.floor(math.min(1200, v) + 0.5) end
+            return nil
+        end
+        local function ClampH(v)
+            v = tonumber(v)
+            if v and v >= 100 then return math.floor(math.min(900, v) + 0.5) end
+            return nil
+        end
+        local savedW = ClampW(optW)
+        local savedH = ClampH(optH)
+        if (not savedW or not savedH) and type(_G.DynamicChatDB) == "table" and type(_G.DynamicChatDB.chatFramePos) == "table" then
+            savedW = savedW or ClampW(_G.DynamicChatDB.chatFramePos.width)
+            savedH = savedH or ClampH(_G.DynamicChatDB.chatFramePos.height)
+        end
+        if not savedW or not savedH then
+            local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or nil
+            local hPos = gTbl and type(gTbl.hudPositions) == "table" and gTbl.hudPositions or nil
+            if hPos then
+                for _, alias in ipairs({ "CHAT", "ChatFrame", "chat", "ChatFrame1" }) do
+                    local entry = hPos[alias]
+                    if type(entry) == "table" then
+                        savedW = savedW or ClampW(entry.width)
+                        savedH = savedH or ClampH(entry.height)
+                    end
+                    if savedW and savedH then break end
+                end
+            end
+        end
+        local cf = _G.ChatFrame1
+        savedW = savedW or (cf and cf.GetWidth and ClampW(cf:GetWidth())) or 430
+        savedH = savedH or (cf and cf.GetHeight and ClampH(cf:GetHeight())) or 200
+        return savedW, savedH
+    end
+
     local function IngestLiveHudPositions()
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         gTbl.hudPositions = gTbl.hudPositions or {}
         for _, k in ipairs({ "PREP", "TARGET", "FLARE", "prepBuffs", "CHAT", "VAULT" }) do
             local pt, relPt, lx, ly = ReadPeerOrLiveHudPos(k)
             if pt and lx ~= nil and ly ~= nil then
-                gTbl.hudPositions[k] = { point = pt, relPoint = relPt or pt, x = lx, y = ly }
+                local entry = { point = pt, relPoint = relPt or pt, x = lx, y = ly }
+                if k == "CHAT" then
+                    local cw, ch = GetSavedChatDimensions()
+                    entry.width = cw
+                    entry.height = ch
+                    gTbl.hudPositions["ChatFrame"]  = entry
+                    gTbl.hudPositions["chat"]       = entry
+                    gTbl.hudPositions["ChatFrame1"] = entry
+                end
+                gTbl.hudPositions[k] = entry
             end
         end
     end
@@ -13475,7 +13521,7 @@ function addonTable.CreateMainConfigUI()
         return meta.defPoint or "TOP", meta.defRelPoint or "TOP", meta.defX or 0, meta.defY or -100
     end
 
-    local function PersistPeerHudPosition(targetKey, pt, relPt, rx, ry)
+    local function PersistPeerHudPosition(targetKey, pt, relPt, rx, ry, optW, optH)
         if targetKey == "TARGET" or targetKey == "FLARE" then
             local function WriteMarkerTbl(tbl)
                 if type(tbl) ~= "table" then return end
@@ -13578,21 +13624,18 @@ function addonTable.CreateMainConfigUI()
             if not IsChatHudTargetOwned() then
                 return
             end
+            local w, h = GetSavedChatDimensions(optW, optH)
             if _G.DynamicChat and _G.DynamicChat.SaveChatFramePosition then
-                local cf = _G.ChatFrame1
-                local w = (cf and cf.GetWidth and cf:GetWidth()) or 430
-                local h = (cf and cf.GetHeight and cf:GetHeight()) or 200
                 pcall(_G.DynamicChat.SaveChatFramePosition, _G.DynamicChat, "BOTTOMLEFT", "BOTTOMLEFT", rx, ry, w, h)
             elseif type(_G.DynamicChatDB) == "table" then
-                local cf = _G.ChatFrame1
                 _G.DynamicChatDB.chatFramePos = {
                     point         = "BOTTOMLEFT",
                     relativePoint = "BOTTOMLEFT",
                     relPoint      = "BOTTOMLEFT",
                     x             = math.max(0, math.floor((rx or 0) + 0.5)),
                     y             = math.max(0, math.floor((ry or 0) + 0.5)),
-                    width         = (cf and cf.GetWidth and math.floor(cf:GetWidth() + 0.5)) or 430,
-                    height        = (cf and cf.GetHeight and math.floor(cf:GetHeight() + 0.5)) or 200,
+                    width         = w,
+                    height        = h,
                 }
             end
         elseif targetKey == "VAULT" then
@@ -14094,7 +14137,7 @@ function addonTable.CreateMainConfigUI()
         return cleanPt, cleanRelPt, outX, outY, guideX, guideY
     end
 
-    local function SetStoredHudPos(targetKey, pt, relPt, x, y)
+    local function SetStoredHudPos(targetKey, pt, relPt, x, y, optW, optH)
         local gTbl = addonTable.GetSuiteGlobal and addonTable.GetSuiteGlobal() or {}
         local cleanPt = pt or "TOP"
         local cleanRelPt = relPt or cleanPt
@@ -14109,6 +14152,12 @@ function addonTable.CreateMainConfigUI()
         end
         gTbl.hudPositions = gTbl.hudPositions or {}
         local posEntry = { point = cleanPt, relPoint = cleanRelPt, x = rx, y = ry, xOfs = rx, yOfs = ry }
+        local chatW, chatH
+        if targetKey == "CHAT" then
+            chatW, chatH = GetSavedChatDimensions(optW, optH)
+            posEntry.width = chatW
+            posEntry.height = chatH
+        end
         gTbl.hudPositions[targetKey] = posEntry
         if targetKey == "TARGET" then
             gTbl.hudPositions["TargetBar"] = posEntry
@@ -14127,7 +14176,7 @@ function addonTable.CreateMainConfigUI()
             gTbl.hudPositions["chat"] = posEntry
             gTbl.hudPositions["ChatFrame1"] = posEntry
         end
-        PersistPeerHudPosition(targetKey, cleanPt, cleanRelPt, rx, ry)
+        PersistPeerHudPosition(targetKey, cleanPt, cleanRelPt, rx, ry, chatW, chatH)
 
         if liveFrame and targetKey ~= "CHAT" and not InCombatLockdown() then
             if targetKey == "TARGET" or targetKey == "FLARE" then
@@ -15279,11 +15328,46 @@ function addonTable.CreateMainConfigUI()
                     gripTex:SetVertexColor(0.55, 0.58, 0.65, 0.75)
                     GameTooltip:Hide()
                 end)
+                local function CommitChatResizeDrag(selfGrip, abortedByCombat)
+                    if not selfGrip._resizeActive then
+                        selfGrip:SetScript("OnUpdate", nil)
+                        stateCarrier._dsDragging = false
+                        return
+                    end
+                    selfGrip._resizeActive = false
+                    selfGrip:SetScript("OnUpdate", nil)
+                    stateCarrier._dsDragging = false
+                    if abortedByCombat or InCombatLockdown() then
+                        return
+                    end
+                    local rawW = selfGrip._lastW or (hudFrame.GetWidth and hudFrame:GetWidth()) or 430
+                    local rawH = selfGrip._lastH or (hudFrame.GetHeight and hudFrame:GetHeight()) or 200
+                    local finalW = math.floor(math.max(240, math.min(1200, rawW)) + 0.5)
+                    local finalH = math.floor(math.max(100, math.min(900, rawH)) + 0.5)
+                    local _, _, finalX, finalY = GetLiveHudLocalOffset(hudFrame, "CHAT")
+                    finalX = (selfGrip._lastX ~= nil) and selfGrip._lastX or finalX
+                    finalY = (selfGrip._lastY ~= nil) and selfGrip._lastY or finalY
+                    if _G.DynamicChat and _G.DynamicChat.SaveChatFramePosition then
+                        pcall(_G.DynamicChat.SaveChatFramePosition, _G.DynamicChat, "BOTTOMLEFT", "BOTTOMLEFT", finalX, finalY, finalW, finalH)
+                    end
+                    SetStoredHudPos("CHAT", "BOTTOMLEFT", "BOTTOMLEFT", finalX, finalY, finalW, finalH)
+                    if shield.UpdateOverlay then
+                        shield:UpdateOverlay(finalX, finalY, true)
+                    end
+                    if editModeInspectorModal and editModeInspectorModal.RefreshState then
+                        editModeInspectorModal.RefreshState()
+                    end
+                end
                 grip:SetScript("OnDragStart", function(selfGrip)
                     if selectedHudTarget ~= "CHAT" and addonTable.OnHudTargetSelected then
                         addonTable.OnHudTargetSelected("CHAT")
                     end
                     stateCarrier._dsDragging = true
+                    selfGrip._resizeActive = true
+                    selfGrip._lastW = nil
+                    selfGrip._lastH = nil
+                    selfGrip._lastX = nil
+                    selfGrip._lastY = nil
                     local _, _, _, uScale, relScale = GetHudLocalScreenExtents(hudFrame, "CHAT")
                     local cxRaw, cyRaw = GetCursorPosition()
                     selfGrip._startCurUIParentX = (cxRaw or 0) / uScale
@@ -15295,8 +15379,12 @@ function addonTable.CreateMainConfigUI()
                     selfGrip._startOffX = startOffX
                     selfGrip._startOffY = startOffY
                     selfGrip:SetScript("OnUpdate", function()
-                        if not IsMouseButtonDown("LeftButton") or InCombatLockdown() then
-                            selfGrip:SetScript("OnUpdate", nil)
+                        if InCombatLockdown() then
+                            CommitChatResizeDrag(selfGrip, true)
+                            return
+                        end
+                        if not IsMouseButtonDown("LeftButton") then
+                            CommitChatResizeDrag(selfGrip, false)
                             return
                         end
                         local uiW_local, uiH_local, _, curUScale, curRelScale = GetHudLocalScreenExtents(hudFrame, "CHAT")
@@ -15336,26 +15424,19 @@ function addonTable.CreateMainConfigUI()
                     end)
                 end)
                 grip:SetScript("OnHide", function(selfGrip)
-                    selfGrip:SetScript("OnUpdate", nil)
-                    stateCarrier._dsDragging = false
+                    if selfGrip._resizeActive then
+                        CommitChatResizeDrag(selfGrip, InCombatLockdown())
+                    else
+                        selfGrip:SetScript("OnUpdate", nil)
+                        stateCarrier._dsDragging = false
+                    end
                 end)
                 grip:SetScript("OnDragStop", function(selfGrip)
-                    selfGrip:SetScript("OnUpdate", nil)
-                    stateCarrier._dsDragging = false
-                    local finalW = selfGrip._lastW or (hudFrame.GetWidth and hudFrame:GetWidth()) or 430
-                    local finalH = selfGrip._lastH or (hudFrame.GetHeight and hudFrame:GetHeight()) or 200
-                    local _, _, finalX, finalY = GetLiveHudLocalOffset(hudFrame, "CHAT")
-                    finalX = selfGrip._lastX or finalX
-                    finalY = selfGrip._lastY or finalY
-                    if _G.DynamicChat and _G.DynamicChat.SaveChatFramePosition then
-                        pcall(_G.DynamicChat.SaveChatFramePosition, _G.DynamicChat, "BOTTOMLEFT", "BOTTOMLEFT", finalX, finalY, finalW, finalH)
-                    end
-                    SetStoredHudPos("CHAT", "BOTTOMLEFT", "BOTTOMLEFT", finalX, finalY)
-                    if shield.UpdateOverlay then
-                        shield:UpdateOverlay(finalX, finalY, true)
-                    end
-                    if editModeInspectorModal and editModeInspectorModal.RefreshState then
-                        editModeInspectorModal.RefreshState()
+                    CommitChatResizeDrag(selfGrip, false)
+                end)
+                grip:SetScript("OnMouseUp", function(selfGrip, button)
+                    if button == "LeftButton" and selfGrip._resizeActive then
+                        CommitChatResizeDrag(selfGrip, false)
                     end
                 end)
                 shield.resizeGrip = grip
@@ -15937,6 +16018,13 @@ function addonTable.CreateMainConfigUI()
                         pcall(_G.DynamicMarker.RefreshTargetBar, _G.DynamicMarker)
                     elseif hDef.key == "FLARE" and _G.DynamicMarker and _G.DynamicMarker.RefreshFlareBar then
                         pcall(_G.DynamicMarker.RefreshFlareBar, _G.DynamicMarker)
+                    elseif hDef.key == "CHAT" then
+                        if _G.DynamicChat and _G.DynamicChat.ApplySavedChatFramePosition then
+                            pcall(_G.DynamicChat.ApplySavedChatFramePosition, _G.DynamicChat)
+                        else
+                            local pt, relPt, x, y = GetStoredHudPos("CHAT")
+                            SetStoredHudPos("CHAT", pt, relPt, x, y)
+                        end
                     else
                         local pt, relPt, x, y = GetStoredHudPos(hDef.key)
                         SetStoredHudPos(hDef.key, pt, relPt, x, y)
@@ -15975,7 +16063,7 @@ function addonTable.CreateMainConfigUI()
                     end
                     SetHudOpacity("CHAT", GetDefaultHudOpacity("CHAT"))
                     SetHudBorderStyle("CHAT", "ACCENT")
-                    SetStoredHudPos("CHAT", pt, relPt, meta.defX, meta.defY)
+                    SetStoredHudPos("CHAT", pt, relPt, meta.defX, meta.defY, 430, 200)
                 elseif k == "prepBuffs" then
                     SetHudScale("prepBuffs", 1.0)
                     SetHudOpacity("prepBuffs", GetDefaultHudOpacity("prepBuffs"))
@@ -16406,7 +16494,7 @@ function addonTable.CreateMainConfigUI()
                 end
                 SetHudOpacity("CHAT", GetDefaultHudOpacity("CHAT"))
                 SetHudBorderStyle("CHAT", "ACCENT")
-                SetStoredHudPos("CHAT", pt, relPt, meta.defX, meta.defY)
+                SetStoredHudPos("CHAT", pt, relPt, meta.defX, meta.defY, 430, 200)
             elseif k == "prepBuffs" then
                 SetHudScale("prepBuffs", 1.0)
                 SetHudOpacity("prepBuffs", GetDefaultHudOpacity("prepBuffs"))

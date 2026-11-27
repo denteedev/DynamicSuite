@@ -5,6 +5,9 @@
 
 ## [Unreleased]
 
+### Chat Window Size Reload Persistence Fix (27/11/2026)
+- **Fixed - Chat Window Shrinking After Reload:** Fixed the primary chat window reverting to a smaller default size after reloading; custom widths and heights resized in Edit Mode now save cleanly across all release paths, screen clamping preserves saved chat dimensions instead of overwriting them during early loading, and post-reload Blizzard layout updates keep your resized chat dimensions along with matching typing box and message spacing.
+
 ### Guild & Communities Window Anchor Fix (27/11/2026)
 - **Fixed - Guild & Communities Window Jumping on Tab Switch (`DynamicSuite`):** Fixed the Guild & Communities window snapping to the top-left corner of the screen whenever switching between Guild and Community tabs or triggering a tab resize; unsaved windows now remain cleanly centred, while dragged windows retain their saved position and scale.
 

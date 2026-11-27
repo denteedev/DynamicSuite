@@ -6291,23 +6291,74 @@ function DynamicChat:GetLiveOuterBottomLeft()
     return "BOTTOMLEFT", "BOTTOMLEFT", 0, 0, curW, curH
 end
 
+function DC_NS.ResolveSavedChatDimensions(db, cf)
+    local function ValidW(v)
+        v = (not IsSecretValue(v)) and tonumber(v) or nil
+        if v and v >= 240 then return math.floor(math.min(1200, v) + 0.5) end
+        return nil
+    end
+    local function ValidH(v)
+        v = (not IsSecretValue(v)) and tonumber(v) or nil
+        if v and v >= 100 then return math.floor(math.min(900, v) + 0.5) end
+        return nil
+    end
+    local savedW = type(db) == "table" and type(db.chatFramePos) == "table" and ValidW(db.chatFramePos.width) or nil
+    local savedH = type(db) == "table" and type(db.chatFramePos) == "table" and ValidH(db.chatFramePos.height) or nil
+    if (not savedW or not savedH) and type(_G.DynamicSuiteDB) == "table" and type(_G.DynamicSuiteDB.global) == "table" and type(_G.DynamicSuiteDB.global.hudPositions) == "table" then
+        local hPos = _G.DynamicSuiteDB.global.hudPositions
+        for _, alias in ipairs({ "CHAT", "ChatFrame", "chat", "ChatFrame1" }) do
+            local entry = hPos[alias]
+            if type(entry) == "table" then
+                savedW = savedW or ValidW(entry.width)
+                savedH = savedH or ValidH(entry.height)
+            end
+            if savedW and savedH then break end
+        end
+    end
+    if (not savedW or not savedH) and cf then
+        local liveW = (type(cf.GetWidth) == "function") and cf:GetWidth() or nil
+        local liveH = (type(cf.GetHeight) == "function") and cf:GetHeight() or nil
+        savedW = savedW or ValidW(liveW)
+        savedH = savedH or ValidH(liveH)
+    end
+    return savedW or 430, savedH or 200
+end
+
 function DynamicChat:ClampChatFrameCoords(x, y, w, h, anchorPt)
     local cf = _G.ChatFrame1
     local fScale = (cf and cf.GetEffectiveScale and cf:GetEffectiveScale()) or 1
     local uScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-    if fScale <= 0 then fScale = 1 end
-    if uScale <= 0 then uScale = 1 end
+    if IsSecretValue(fScale) or type(fScale) ~= "number" or fScale <= 0 then fScale = 1 end
+    if IsSecretValue(uScale) or type(uScale) ~= "number" or uScale <= 0 then uScale = 1 end
     local relScale = fScale / uScale
     if relScale <= 0 then relScale = 1 end
 
-    local screenW = ((UIParent and UIParent.GetWidth and UIParent:GetWidth()) or 1920) / relScale
-    local screenH = ((UIParent and UIParent.GetHeight and UIParent:GetHeight()) or 1080) / relScale
+    local rawUIPW = (UIParent and UIParent.GetWidth and UIParent:GetWidth()) or nil
+    local rawUIPH = (UIParent and UIParent.GetHeight and UIParent:GetHeight()) or nil
+    if IsSecretValue(rawUIPW) or type(rawUIPW) ~= "number" then rawUIPW = nil end
+    if IsSecretValue(rawUIPH) or type(rawUIPH) ~= "number" then rawUIPH = nil end
+
+    local defW, defH = DC_NS.ResolveSavedChatDimensions(EnsureDB(), cf)
+    local candW = (not IsSecretValue(w) and tonumber(w)) or defW or 430
+    local candH = (not IsSecretValue(h) and tonumber(h)) or defH or 200
+
+    local screenSettled = (rawUIPW ~= nil and rawUIPH ~= nil and rawUIPW >= 640 and rawUIPH >= 480)
+    if not screenSettled then
+        local safeW = math.floor(math.max(240, math.min(1200, candW)) + 0.5)
+        local safeH = math.floor(math.max(100, math.min(900, candH)) + 0.5)
+        local safeX = math.floor(math.max(0, tonumber(x) or 0) + 0.5)
+        local safeY = math.floor(math.max(0, tonumber(y) or 0) + 0.5)
+        return safeX, safeY, safeW, safeH, false
+    end
+
+    local screenW = rawUIPW / relScale
+    local screenH = rawUIPH / relScale
 
     local leftExt, rightExt, topExt, bottomExt = self:GetVisibleContainerExtents()
     local maxAllowedW = math.max(240, math.min(1200, math.floor(screenW - leftExt - rightExt)))
     local maxAllowedH = math.max(100, math.min(900, math.floor(screenH - topExt - bottomExt)))
-    local curW = math.max(240, math.min(maxAllowedW, tonumber(w) or (cf and cf.GetWidth and cf:GetWidth()) or 430))
-    local curH = math.max(100, math.min(maxAllowedH, tonumber(h) or (cf and cf.GetHeight and cf:GetHeight()) or 200))
+    local curW = math.max(240, math.min(maxAllowedW, candW))
+    local curH = math.max(100, math.min(maxAllowedH, candH))
 
     local outerX = tonumber(x) or 0
     local outerY = tonumber(y) or 0
@@ -6321,7 +6372,7 @@ function DynamicChat:ClampChatFrameCoords(x, y, w, h, anchorPt)
     outerX = math.max(0, math.min(maxOuterX, outerX))
     outerY = math.max(0, math.min(maxOuterY, outerY))
 
-    return math.floor(outerX + 0.5), math.floor(outerY + 0.5), math.floor(curW + 0.5), math.floor(curH + 0.5)
+    return math.floor(outerX + 0.5), math.floor(outerY + 0.5), math.floor(curW + 0.5), math.floor(curH + 0.5), true
 end
 
 local origBlizzBtnAnchors = {}
@@ -6873,8 +6924,7 @@ function DynamicChat:ApplySleekChatSkin()
                 if isBottomLeftOwned then
                     local outerX = math.max(0, tonumber(db.chatFramePos.x) or 0)
                     local outerY = math.max(0, tonumber(db.chatFramePos.y) or 0)
-                    local cfW = tonumber(db.chatFramePos.width) or (cf:GetWidth() or 430)
-                    local cfH = tonumber(db.chatFramePos.height) or (cf:GetHeight() or 200)
+                    local cfW, cfH = DC_NS.ResolveSavedChatDimensions(db, cf)
                     if p.SetClampRectInsets then p:SetClampRectInsets(0, 0, 0, 0) end
                     if p.SetClampedToScreen then p:SetClampedToScreen(false) end
                     -- Panel always hugs ChatFrame1; ChatFrame1 sits at (leftOffset + outerX, bottomOffset + outerY)
@@ -7203,7 +7253,9 @@ function DynamicChat:ApplySleekChatSkin()
                 state = {}
                 passiveSkinnedEditBoxes[eb1] = state
             end
-            local anchorKey = tostring(cf1) .. ":" .. (isTopEB and "TOP" or "BOT") .. ":" .. tostring(ebH)
+            local cf1W = (cf1.GetWidth and math.floor((cf1:GetWidth() or 430) + 0.5)) or 430
+            local cf1H = (cf1.GetHeight and math.floor((cf1:GetHeight() or 200) + 0.5)) or 200
+            local anchorKey = tostring(cf1) .. ":" .. (isTopEB and "TOP" or "BOT") .. ":" .. tostring(ebH) .. ":" .. tostring(cf1W) .. "x" .. tostring(cf1H)
             local okPt, _, relTo = pcall(eb1.GetPoint, eb1, 1)
             if state.anchorKey ~= anchorKey or not okPt or relTo ~= cf1 then
                 if DC_NS.ApplyEditBoxAnchorNow() then
@@ -7664,6 +7716,10 @@ function DynamicChat:ApplySavedChatFramePosition()
         chatFrame1PosHooked = true
         local function OnExternalChatGeometryChange()
             if DynamicChat._applyingChatPos or DynamicChat._dsDragging or DynamicChat._dsEditModeActive then return end
+            if _G.EditModeManagerFrame and type(_G.EditModeManagerFrame.IsEditModeActive) == "function" then
+                local okEM, emActive = pcall(_G.EditModeManagerFrame.IsEditModeActive, _G.EditModeManagerFrame)
+                if okEM and emActive == true then return end
+            end
             if not DynamicChat:IsChatFrameLayoutOwned() then return end
             local db = EnsureDB()
             if type(db.chatFramePos) == "table" then
@@ -7699,6 +7755,18 @@ function DynamicChat:ApplySavedChatFramePosition()
                     OnExternalChatGeometryChange()
                 end
             end)
+        end
+        for _, emFn in ipairs({ "UpdateSystem", "UpdateSystemSettingWidth", "UpdateSystemSettingHeight", "UpdateSystemSetting" }) do
+            if type(cf[emFn]) == "function" then
+                hooksecurefunc(cf, emFn, OnExternalChatGeometryChange)
+            end
+            if _G.EditModeChatFrameSystemMixin and type(_G.EditModeChatFrameSystemMixin[emFn]) == "function" then
+                hooksecurefunc(_G.EditModeChatFrameSystemMixin, emFn, function(frame)
+                    if frame == _G.ChatFrame1 then
+                        OnExternalChatGeometryChange()
+                    end
+                end)
+            end
         end
         if type(_G.FCF_RestorePositionAndDimensions) == "function" then
             hooksecurefunc("FCF_RestorePositionAndDimensions", function(chatFrame)
@@ -7808,20 +7876,39 @@ function DynamicChat:ApplySavedChatFramePosition()
         end
 
         local anchorPt = pos.point or pos.relativePoint or pos.relPoint or "BOTTOMLEFT"
-        local clampedX, clampedY, clampedW, clampedH = self:ClampChatFrameCoords(
+        local savedW, savedH = DC_NS.ResolveSavedChatDimensions(db, cf)
+        local clampedX, clampedY, clampedW, clampedH, screenSettled = self:ClampChatFrameCoords(
             tonumber(pos.x) or 0,
             tonumber(pos.y) or 0,
-            tonumber(pos.width) or (cf:GetWidth() or 430),
-            tonumber(pos.height) or (cf:GetHeight() or 200),
+            savedW,
+            savedH,
             anchorPt
         )
-        pos.point         = "BOTTOMLEFT"
-        pos.relativePoint = "BOTTOMLEFT"
-        pos.relPoint      = "BOTTOMLEFT"
-        pos.x             = clampedX
-        pos.y             = clampedY
-        pos.width         = clampedW
-        pos.height        = clampedH
+        if screenSettled ~= false then
+            pos.point         = "BOTTOMLEFT"
+            pos.relativePoint = "BOTTOMLEFT"
+            pos.relPoint      = "BOTTOMLEFT"
+            pos.x             = clampedX
+            pos.y             = clampedY
+            pos.width         = clampedW
+            pos.height        = clampedH
+            if type(_G.DynamicSuiteDB) == "table" and type(_G.DynamicSuiteDB.global) == "table" then
+                _G.DynamicSuiteDB.global.hudPositions = _G.DynamicSuiteDB.global.hudPositions or {}
+                local hudEntry = {
+                    point         = "BOTTOMLEFT",
+                    relativePoint = "BOTTOMLEFT",
+                    relPoint      = "BOTTOMLEFT",
+                    x             = clampedX,
+                    y             = clampedY,
+                    width         = clampedW,
+                    height        = clampedH,
+                }
+                _G.DynamicSuiteDB.global.hudPositions["CHAT"]       = hudEntry
+                _G.DynamicSuiteDB.global.hudPositions["ChatFrame"]  = hudEntry
+                _G.DynamicSuiteDB.global.hudPositions["chat"]       = hudEntry
+                _G.DynamicSuiteDB.global.hudPositions["ChatFrame1"] = hudEntry
+            end
+        end
 
         local leftExt, rightExt, topExt, bottomExt = self:GetVisibleContainerExtents()
         local prevW = cf:GetWidth() or 0
@@ -7854,8 +7941,9 @@ function DynamicChat:SaveChatFramePosition(pt, relPt, x, y, w, h)
     local cf = _G.ChatFrame1
     local db = EnsureDB()
     db.chatAnchorVersion = 5
-    local curW = tonumber(w) or (cf and cf:GetWidth()) or 430
-    local curH = tonumber(h) or (cf and cf:GetHeight()) or 200
+    local fallbackW, fallbackH = DC_NS.ResolveSavedChatDimensions(db, cf)
+    local curW = tonumber(w) or fallbackW or 430
+    local curH = tonumber(h) or fallbackH or 200
     local anchorHint = (pt == "BOTTOMLEFT" or relPt == "BOTTOMLEFT") and "BOTTOMLEFT" or (pt or "BOTTOMLEFT")
     local clampedX, clampedY, clampedW, clampedH = self:ClampChatFrameCoords(
         tonumber(x) or 0,
@@ -7881,6 +7969,8 @@ function DynamicChat:SaveChatFramePosition(pt, relPt, x, y, w, h)
             relPoint      = "BOTTOMLEFT",
             x             = clampedX,
             y             = clampedY,
+            width         = clampedW,
+            height        = clampedH,
         }
         _G.DynamicSuiteDB.global.hudPositions["CHAT"]       = hudEntry
         _G.DynamicSuiteDB.global.hudPositions["ChatFrame"]  = hudEntry
@@ -14829,11 +14919,11 @@ function DynamicChat._RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "27/11/2026",
         entries = {
+            { type = "FIX",      text = "Chat Window Size Reload Persistence Fix (27/11/2026): Fixed the primary chat window reverting to Blizzard's smaller default dimensions after reloading; HUD Edit Mode resizes now reliably commit width and height on release, screen clamping preserves saved chat dimensions instead of overwriting them with temporary early-login bounds, and Blizzard Edit Mode chat sizing passes re-apply DynamicChat's saved dimensions cleanly while updating the embedded typing box and message insets." },
             { type = "FIX",      text = "Duplicate Typing Box, Scrollbar OnUpdate & Tab Hover Optimization (27/11/2026): Replaced IsEditBoxShownOrFocused with an active-focus-only IsEditBoxFocused check so idle ChatFrame1EditBox chrome is properly stripped and skinned when Retail WoW keeps it shown, while deferring and flushing pending skin/anchor updates on ChatFrame.OnEditBoxFocusLost and preserving BN_WHISPER/secret/combat protections; detached the custom scrollbar OnUpdate handler when hidden, undocked, or without overflow; and replaced the DOCKED_CHAT_FRAMES hover loop with a single GeneralDockManager hit test." },
             { type = "FIX",      text = "Battle.net Whisper Reply Hardening & Chat Tab Fade Guard (26/11/2026): Removed direct OnTextChanged widget script hooks from ChatFrameEditBox frames (relying strictly on hooksecurefunc post-hooks for /ww conversion), hardened secret/BN_WHISPER checks to fail closed on protected attributes, header text/width, and forbidden frames, guarded edit box font updates, SetPoint re-anchoring, Alt-arrow settings, and temporary Battle.net whisper frame background, button, scroll, and hook updates against BN_WHISPER, secret targets/headers, combat, and active typing focus, tracked active focused edit boxes so stale focus-lost events or deferred skin refreshes never re-show the Obsidian prompt hint over Battle.net typing, and skipped chat tab alpha changes while Blizzard's UIFrameFade or secret fadeInfo is active on Combat Log or whisper tabs (with secret-safe UIFrameIsFlashing and tab name checks) across both DynamicSuite and standalone DynamicChat." },
             { type = "NEW",      text = "Whisper Tab Clickability Fix & Reload Persistence (26/11/2026): Moved the chat header drag strip to BACKGROUND strata strictly below all LOW-strata chat tabs (level 22) and navigation arrows (level 25), synced GeneralDockManager scale with ChatFrame1 so child clipping never cuts off the rightmost whisper tab, hardened tab reparenting out of GeneralDockManagerScrollFrameChild with combat and re-entrancy deferrals, and automatically scrolled newly opened whisper tabs into view. Added zero-taint character whisper tab and message persistence across reloads (capped at 3/5/10 tabs and 50 lines per tab with 24-hour expiry, Midnight secret-value skipping, automatic removal when closing a tab, and previous-session rendering in Copy Chat) plus 'Keep Whisper Tabs After Reload' and 'Whisper Tab Limit' controls under Links & History." },
             { type = "UI",       text = "12 px Default Chat Font & Info Toast Timer Sync (24/11/2026): Set the default chat message font size to 12 px and updated Clean Smoked-Glass and Minimalist Raid presets to use 12 px / 2 px line spacing while tuning High-Readability to a balanced +1 px step at 13 px (50% smoked-glass backdrop, thin outline, drop shadow, 2 px line spacing); and connected Mention Alert Toasts to Suite Studio's dedicated Info & Mention Toast Duration timer (5s default: 3s, 5s, 8s, 12s, or Stay Until Clicked) with hover-to-pause and Right-Click dismissal." },
-            { type = "FIX",      text = "Tab 3 Blank Screen Fix, Quick Presets Active Highlight & Copy Chat / URL Overhaul (24/11/2026): Fixed a nil typo on the Tab 2 Line Spacing card that aborted workspace construction before Tabs 3 and 4 built, and reset vertical scroll cleanly when switching tabs or resizing to 800x520; added live Suite Accent active highlighting for Quick Presets (clearing automatically when any preset setting is manually edited), tuned High-Readability to crisp 14 px contrast (50% backdrop, thin outline, drop shadow, 2 px line spacing) while having Clean Smoked-Glass and Minimalist Raid restore 13 px / 2 px text, and dynamically scaled chat typing box height and message clearance across docked tabs so chat lines never collide with the top typing box; and overhauled Copy Chat and Copy Link with a rolling out-of-combat plain-text session buffer fallback, case-insensitive URL capture (including bare www. links without duplicate sub-matches), hardened escape-code stripping, a [Select All] confirmation button and up to 4 Recent Links pills in the Copy Chat window, an elevated Copy Link dialog with deferred focus and full selection, and a plain-English Midnight footer notice whenever Blizzard restricts reading protected combat or instance lines." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}
