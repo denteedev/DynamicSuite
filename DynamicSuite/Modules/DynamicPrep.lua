@@ -728,8 +728,9 @@ Suite.CONFLICT_REGISTRY.DynamicPrep = {
 -- ============================================================================
 DynamicPrep.CHANGELOG = {
     version = VERSION,
-    date = "25/11/2026",
+    date = "27/11/2026",
     entries = {
+        { type = "FIX",     text = "StaticPopup Death Release Hook Hardening (27/11/2026): Replaced direct HookScript hooks and frame-field flags on Blizzard StaticPopup1..4 frames with weak-table state tracking, secret-guarded dialog.which checks, and hooksecurefunc post-hooks across StaticPopup_Show, StaticPopup_OnUpdate, StaticPopup_OnShow, StaticPopup_OnHide, and StaticPopupMixin across both DynamicSuite and standalone DynamicPrep." },
         { type = "FIX",     text = "Release v2.10.2 - Multi-Quest Auto-Accept, Auto-Gossip & DynamicDialogue Handoff Sync (25/11/2026): Prioritised live server interaction state over suppressed off-screen Blizzard frames (while preserving field auto-complete QUEST_COMPLETE windows) and eliminated duplicate 0.05s AcceptQuest/CompleteQuest/GetQuestReward retries on >50ms latency once the initial action succeeds; cross-checked available and active quests against C_QuestLog (plus QUEST_ACCEPTED / QUEST_REMOVED / QUEST_TURNED_IN / QUEST_FINISHED / PLAYER_INTERACTION_MANAGER_FRAME_HIDE tracking) so multi-quest NPCs immediately advance to remaining quests without re-selecting stale accepted or turned-in quests; respected mid-session sidebar soft-disable immediately; and coordinated event-sequence-exact handoff with DynamicDialogue across both Suite and Standalone builds." },
         { type = "UI",      text = "Release v2.10.1 - Top Info Bar Shift-Drag, Right-Click HUD Edit & Discoverability (25/11/2026): Added direct Shift + Left-Drag repositioning across the Top Info Bar background and segment capsules out of combat (saving directly to HUD Edit Mode coordinates without triggering accidental clicks), Right-Click on empty bar space to open HUD Edit Mode (/ds hud), a subtle bar-hover tooltip, a 'Shift-Drag to move  |  /ds hud for grid & scale' footer line on Top Info Bar segment tooltips, and an updated DynamicPrep '?' Quick Guide tip." },
         { type = "FIX",     text = "Zero-Truncation Actionable Alert Toasts (24/11/2026): Widened actionable Mage Food and Low Durability Alert Toasts (with automatic width fit in DynamicSuite) and tightened titles and action hints so no line cuts off against the right-hand button." },
@@ -6466,26 +6467,28 @@ function DynamicPrep:CanSafelyAutoRelease(ignoreSelfRez)
     return true
 end
 
+DP_NS._deathPopupCtrlApplied = DP_NS._deathPopupCtrlApplied or setmetatable({}, { __mode = "k" })
+
 local function ApplyDeathPopupReleaseLock(dialog, forceRestore)
-    if not dialog then return end
+    if not dialog or _IsSecret(dialog) then return end
     local btn = GetStaticPopupButton1(dialog)
     if not btn then return end
-    local which = dialog.which
+    local which = (not _IsSecret(dialog.which) and type(dialog.which) == "string") and dialog.which or nil
     local normalLabel = _G.DEATH_RELEASE or _G.RELEASE_SPIRIT or _G.RELEASESPIRIT or "Release Spirit"
 
     if forceRestore then
         if btn.Enable then btn:Enable() end
-        if dialog._dpHoldCtrlTextApplied and (which == "DEATH" or which == "DEATH_PVP") and btn.SetText then
+        if DP_NS._deathPopupCtrlApplied[dialog] and (which == "DEATH" or which == "DEATH_PVP") and btn.SetText then
             btn:SetText(normalLabel)
         end
-        dialog._dpHoldCtrlTextApplied = nil
+        DP_NS._deathPopupCtrlApplied[dialog] = nil
         return
     end
 
     if which ~= "DEATH" and which ~= "DEATH_PVP" then
-        if dialog._dpHoldCtrlTextApplied then
+        if DP_NS._deathPopupCtrlApplied[dialog] then
             if btn.Enable then btn:Enable() end
-            dialog._dpHoldCtrlTextApplied = nil
+            DP_NS._deathPopupCtrlApplied[dialog] = nil
         end
         return
     end
@@ -6496,7 +6499,7 @@ local function ApplyDeathPopupReleaseLock(dialog, forceRestore)
         if btn.SetText then
             btn:SetText(normalLabel)
         end
-        dialog._dpHoldCtrlTextApplied = nil
+        DP_NS._deathPopupCtrlApplied[dialog] = nil
         return
     end
 
@@ -6505,13 +6508,13 @@ local function ApplyDeathPopupReleaseLock(dialog, forceRestore)
         if btn.SetText then
             btn:SetText(normalLabel)
         end
-        dialog._dpHoldCtrlTextApplied = true
+        DP_NS._deathPopupCtrlApplied[dialog] = true
     else
         if btn.Disable then btn:Disable() end
         if btn.SetText then
             btn:SetText("Hold CTRL to Release")
         end
-        dialog._dpHoldCtrlTextApplied = true
+        DP_NS._deathPopupCtrlApplied[dialog] = true
     end
 end
 
@@ -6519,47 +6522,47 @@ function DynamicPrep:EnsureDeathPopupHooks()
     if self._deathPopupHooksInstalled then return end
     self._deathPopupHooksInstalled = true
 
-    if type(_G.StaticPopup_OnUpdate) == "function" then
-        hooksecurefunc("StaticPopup_OnUpdate", function(dialog)
-            if dialog and (dialog.which == "DEATH" or dialog.which == "DEATH_PVP") then
-                ApplyDeathPopupReleaseLock(dialog, false)
-            end
-        end)
+    local function OnDeathPopupUpdateOrShow(dialog)
+        if not dialog or _IsSecret(dialog) then return end
+        local which = (not _IsSecret(dialog.which) and type(dialog.which) == "string") and dialog.which or nil
+        if which == "DEATH" or which == "DEATH_PVP" then
+            ApplyDeathPopupReleaseLock(dialog, false)
+        end
     end
-    if type(_G.StaticPopup_OnShow) == "function" then
-        hooksecurefunc("StaticPopup_OnShow", function(dialog)
-            if dialog and (dialog.which == "DEATH" or dialog.which == "DEATH_PVP") then
-                ApplyDeathPopupReleaseLock(dialog, false)
-            end
-        end)
-    end
-    if type(_G.StaticPopup_OnHide) == "function" then
-        hooksecurefunc("StaticPopup_OnHide", function(dialog)
-            if dialog and dialog._dpHoldCtrlTextApplied then
-                ApplyDeathPopupReleaseLock(dialog, true)
-            end
-        end)
+    local function OnDeathPopupHide(dialog)
+        if not dialog or _IsSecret(dialog) then return end
+        if DP_NS._deathPopupCtrlApplied[dialog] then
+            ApplyDeathPopupReleaseLock(dialog, true)
+        end
     end
 
-    for i = 1, 4 do
-        local popup = _G["StaticPopup" .. i]
-        if popup and popup.HookScript and not popup._dpDeathHooked then
-            popup._dpDeathHooked = true
-            popup:HookScript("OnUpdate", function(selfPopup)
-                if selfPopup.which == "DEATH" or selfPopup.which == "DEATH_PVP" then
-                    ApplyDeathPopupReleaseLock(selfPopup, false)
-                end
-            end)
-            popup:HookScript("OnShow", function(selfPopup)
-                if selfPopup.which == "DEATH" or selfPopup.which == "DEATH_PVP" then
-                    ApplyDeathPopupReleaseLock(selfPopup, false)
-                end
-            end)
-            popup:HookScript("OnHide", function(selfPopup)
-                if selfPopup._dpHoldCtrlTextApplied then
-                    ApplyDeathPopupReleaseLock(selfPopup, true)
-                end
-            end)
+    if type(_G.StaticPopup_OnUpdate) == "function" then
+        hooksecurefunc("StaticPopup_OnUpdate", OnDeathPopupUpdateOrShow)
+    end
+    if type(_G.StaticPopup_OnShow) == "function" then
+        hooksecurefunc("StaticPopup_OnShow", OnDeathPopupUpdateOrShow)
+    end
+    if type(_G.StaticPopup_OnHide) == "function" then
+        hooksecurefunc("StaticPopup_OnHide", OnDeathPopupHide)
+    end
+    if type(_G.StaticPopup_Show) == "function" then
+        hooksecurefunc("StaticPopup_Show", function(which)
+            if _IsSecret(which) or (which ~= "DEATH" and which ~= "DEATH_PVP") then return end
+            local found = StaticPopup_FindVisible and StaticPopup_FindVisible(which)
+            if found then
+                ApplyDeathPopupReleaseLock(found, false)
+            end
+        end)
+    end
+    if type(_G.StaticPopupMixin) == "table" then
+        if type(_G.StaticPopupMixin.OnUpdate) == "function" then
+            hooksecurefunc(_G.StaticPopupMixin, "OnUpdate", OnDeathPopupUpdateOrShow)
+        end
+        if type(_G.StaticPopupMixin.OnShow) == "function" then
+            hooksecurefunc(_G.StaticPopupMixin, "OnShow", OnDeathPopupUpdateOrShow)
+        end
+        if type(_G.StaticPopupMixin.OnHide) == "function" then
+            hooksecurefunc(_G.StaticPopupMixin, "OnHide", OnDeathPopupHide)
         end
     end
 end

@@ -10863,29 +10863,39 @@ function U.HideBlizzardBags()
             end
             S.origBankPanelLayout[panelName] = nil
         end
+        local function SafeSetBlizzFrameAlpha(frame, alpha)
+            if not frame or IsSecret(frame) or type(frame.SetAlpha) ~= "function" then return end
+            if type(_G.UIFrameIsFading) == "function" then
+                local okF, fading = pcall(_G.UIFrameIsFading, frame)
+                if not okF or IsSecret(fading) or fading == true then return end
+            end
+            local okFI, fi = pcall(function() return frame.fadeInfo end)
+            if not okFI or IsSecret(fi) or fi ~= nil then return end
+            pcall(frame.SetAlpha, frame, alpha)
+        end
         local function SuppressBankPanel(panel, panelName)
-            if not panel then return end
+            if not panel or IsSecret(panel) then return end
             if replace then
                 DetachBankPanelLayout(panel, panelName)
-                panel:SetAlpha(0)
+                SafeSetBlizzFrameAlpha(panel, 0)
                 if panel.SetScale then pcall(panel.SetScale, panel, 0.0001) end
                 panel:EnableMouse(false)
                 panel:ClearAllPoints()
                 panel:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
             else
                 RestoreBankPanelLayout(panel, panelName)
-                panel:SetAlpha(1)
+                SafeSetBlizzFrameAlpha(panel, 1)
                 if panel.SetScale then pcall(panel.SetScale, panel, 1) end
                 panel:EnableMouse(true)
             end
-            if not panel.dbShowHooked and panel.HookScript then
-                panel.dbShowHooked = true
-                panel:HookScript("OnShow", function(self)
+            S.hookedBankPanels = S.hookedBankPanels or setmetatable({}, { __mode = "k" })
+            if not S.hookedBankPanels[panel] and type(hooksecurefunc) == "function" and type(panel.Show) == "function" then
+                S.hookedBankPanels[panel] = true
+                hooksecurefunc(panel, "Show", function(self)
+                    if InCombatLockdown and InCombatLockdown() then return end
                     if DB().replaceBlizzardBags then
-                        if not InCombatLockdown() then
-                            DetachBankPanelLayout(self, panelName)
-                        end
-                        self:SetAlpha(0)
+                        DetachBankPanelLayout(self, panelName)
+                        SafeSetBlizzFrameAlpha(self, 0)
                         if self.SetScale then pcall(self.SetScale, self, 0.0001) end
                         self:EnableMouse(false)
                         self:ClearAllPoints()
@@ -10902,13 +10912,13 @@ function U.HideBlizzardBags()
                 if InCombatLockdown and InCombatLockdown() then return end
                 if not DB().replaceBlizzardBags then return end
                 if BankFrame and BankFrame.IsShown and BankFrame:IsShown() then
-                    BankFrame:SetAlpha(0)
+                    SafeSetBlizzFrameAlpha(BankFrame, 0)
                     if BankFrame.SetScale then pcall(BankFrame.SetScale, BankFrame, 0.0001) end
                     BankFrame:ClearAllPoints()
                     BankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
                 end
                 if GuildBankFrame and GuildBankFrame.IsShown and GuildBankFrame:IsShown() then
-                    GuildBankFrame:SetAlpha(0)
+                    SafeSetBlizzFrameAlpha(GuildBankFrame, 0)
                     if GuildBankFrame.SetScale then pcall(GuildBankFrame.SetScale, GuildBankFrame, 0.0001) end
                     GuildBankFrame:ClearAllPoints()
                     GuildBankFrame:SetPoint("TOPLEFT", UIParent, "TOPLEFT", -5000, 5000)
@@ -11583,20 +11593,25 @@ function DynamicBags:SetupDecorNonTradeableConfirmHook()
         end
     end
 
-    for i = 1, 4 do
-        local popup = _G["StaticPopup" .. i]
-        if popup and popup.HookScript and not popup._dbagDecorConfirmHooked then
-            popup._dbagDecorConfirmHooked = true
-            popup:HookScript("OnShow", function(selfPopup)
-                if not U.IsDecorUseConfirmActive() then return end
-                if not U.ScanAndConfirmDecorPopup(selfPopup.which, selfPopup) and C_Timer and C_Timer.After then
-                    C_Timer.After(0, function()
-                        if U.IsDecorUseConfirmActive() and selfPopup:IsShown() then
-                            U.ScanAndConfirmDecorPopup(selfPopup.which, selfPopup)
-                        end
-                    end)
-                end
-            end)
+    if not self._decorStaticPopupOnShowHooked and type(hooksecurefunc) == "function" then
+        self._decorStaticPopupOnShowHooked = true
+        local function OnDecorStaticPopupShow(selfPopup)
+            if not selfPopup or IsSecret(selfPopup) or not U.IsDecorUseConfirmActive() then return end
+            local pWhich = (not IsSecret(selfPopup.which) and type(selfPopup.which) == "string") and selfPopup.which or nil
+            if not U.ScanAndConfirmDecorPopup(pWhich, selfPopup) and C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    if U.IsDecorUseConfirmActive() and selfPopup and selfPopup.IsShown and selfPopup:IsShown() then
+                        local w2 = (not IsSecret(selfPopup.which) and type(selfPopup.which) == "string") and selfPopup.which or pWhich
+                        U.ScanAndConfirmDecorPopup(w2, selfPopup)
+                    end
+                end)
+            end
+        end
+        if type(_G.StaticPopup_OnShow) == "function" then
+            hooksecurefunc("StaticPopup_OnShow", OnDecorStaticPopupShow)
+        end
+        if type(_G.StaticPopupMixin) == "table" and type(_G.StaticPopupMixin.OnShow) == "function" then
+            hooksecurefunc(_G.StaticPopupMixin, "OnShow", OnDecorStaticPopupShow)
         end
     end
 end
@@ -13322,8 +13337,9 @@ end
 
 DynamicBags.CHANGELOG = {
     version = VERSION,
-    date = "26/11/2026",
+    date = "27/11/2026",
     entries = {
+        { type = "FIX",     text = "BankFrame, GuildBankFrame & StaticPopup Hook Hardening (27/11/2026): Replaced direct HookScript('OnShow') calls and frame-field flags on Blizzard BankFrame, GuildBankFrame, and StaticPopup1..4 frames with weak-table tracking, combat-guarded hooksecurefunc post-hooks (Show, StaticPopup_OnShow, and StaticPopupMixin.OnShow), and UIFrameIsFading/fadeInfo-safe SetAlpha wrappers across both DynamicSuite and standalone DynamicBags." },
         { type = "FIX",     text = "DynamicBags & DynamicBank Header Hover & Scale Toast Nil Crash Fix (26/11/2026): Replaced undefined U.GetSuiteAccent() calls in ShowBagScaleToast and U.AttachWindowScaleHandlers (header OnEnter tooltip) with GetAccent() so hovering the DynamicBags or DynamicBank header and stepping or resetting window scale via Ctrl+Scroll or Right-Click work cleanly with live Suite Accent colouring across both DynamicSuite and standalone DynamicBags." },
         { type = "FIX",     text = "Release v2.10.1 - Clean Single-Action Bank & Guild Bank Closing (25/11/2026): Fixed a lingering invisible Blizzard bank interaction left behind whenever DynamicBank closed via its Close button, Escape key, or bag toggle while at a Personal Bank, Warband Bank, or Guild Bank (previously requiring an extra Escape press before interacting with the banker again); closing DynamicBank now cleanly terminates active C_Bank / CloseGuildBankFrame and C_PlayerInteractionManager banker interactions, detaches and hides suppressed Blizzard BankFrame/GuildBankFrame panels out of combat with re-entrancy guards, closes child modals and popovers (dropdowns, Gold Transfer modal, StackSplitFrame, and buy-tab popups) one at a time on Escape without killing the live banker session, keeps Personal/Warband/Guild tab switching uninterrupted, and leaves remote cached snapshot viewing (/dbag bank) untouched." },
         { type = "FEATURE", text = "Release v2.10.1 - DynamicBank Gold Controls & Obsidian Gold Transfer Modal (25/11/2026): Added live bank gold balances and transfer controls to the DynamicBank footer for Warband Bank (Deposit/Withdraw), Guild Bank (Deposit/Withdraw with live daily rank limit), and Personal Bank (live character gold display + [Deposit to Warband] shortcut with plain-English tooltip explaining that character gold stays in your bags); added a shared Obsidian Core Gold Transfer modal with Gold/Silver/Copper numeric inputs, 1k/10k/50k/100k/Max quick-fill pills, inline validation, and Escape/Enter handling; and subscribed to ACCOUNT_MONEY, PLAYER_MONEY, GUILDBANK_UPDATE_MONEY, and GUILDBANK_UPDATE_WITHDRAWMONEY for instant balance refreshes." },

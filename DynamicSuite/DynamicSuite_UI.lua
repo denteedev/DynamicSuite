@@ -14720,8 +14720,23 @@ function addonTable.CreateMainConfigUI()
                 if _G.DynamicChat and _G.DynamicChat.ApplySleekChatSkin then
                     pcall(_G.DynamicChat.ApplySleekChatSkin, _G.DynamicChat)
                 end
-                if _G.ChatFrame1 and _G.ChatFrame1.SetAlpha then
-                    _G.ChatFrame1:SetAlpha(1.0)
+                if _G.ChatFrame1 and type(_G.ChatFrame1.SetAlpha) == "function" then
+                    local canSetAlpha = true
+                    if type(_G.UIFrameIsFading) == "function" then
+                        local okF, fading = pcall(_G.UIFrameIsFading, _G.ChatFrame1)
+                        if not okF or (type(_G.issecretvalue) == "function" and _G.issecretvalue(fading)) or fading == true then
+                            canSetAlpha = false
+                        end
+                    end
+                    if canSetAlpha then
+                        local okFI, fi = pcall(function() return _G.ChatFrame1.fadeInfo end)
+                        if not okFI or (type(_G.issecretvalue) == "function" and _G.issecretvalue(fi)) or fi ~= nil then
+                            canSetAlpha = false
+                        end
+                    end
+                    if canSetAlpha then
+                        pcall(_G.ChatFrame1.SetAlpha, _G.ChatFrame1, 1.0)
+                    end
                 end
             elseif k == "VAULT" then
                 if type(_G.DynamicVaultDB) == "table" then

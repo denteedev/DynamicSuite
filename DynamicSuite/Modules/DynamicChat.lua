@@ -1036,8 +1036,23 @@ function DynamicChat:HideHudEditMover()
         end
         self._dsDragShield:Hide()
     end
-    if _G.ChatFrame1 and _G.ChatFrame1.SetAlpha then
-        pcall(_G.ChatFrame1.SetAlpha, _G.ChatFrame1, 1.0)
+    if _G.ChatFrame1 and type(_G.ChatFrame1.SetAlpha) == "function" then
+        local canSetAlpha = true
+        if type(_G.UIFrameIsFading) == "function" then
+            local okF, fading = pcall(_G.UIFrameIsFading, _G.ChatFrame1)
+            if not okF or IsSecretValue(fading) or fading == true then
+                canSetAlpha = false
+            end
+        end
+        if canSetAlpha then
+            local okFI, fi = pcall(function() return _G.ChatFrame1.fadeInfo end)
+            if not okFI or IsSecretValue(fi) or fi ~= nil then
+                canSetAlpha = false
+            end
+        end
+        if canSetAlpha then
+            pcall(_G.ChatFrame1.SetAlpha, _G.ChatFrame1, 1.0)
+        end
     end
 end
 
@@ -2519,7 +2534,7 @@ local function ResolveChatTabLabel(cf, tab, tabName, entry)
         if cf.isTemporary == true then
             -- Temporary whisper/BNet tab not yet populated by Blizzard; leave fs untouched so FCF_SetWindowName can set it.
             if type(fs.Show) == "function" then pcall(fs.Show, fs) end
-            if type(fs.SetAlpha) == "function" then pcall(fs.SetAlpha, fs, 1.0) end
+            if DC_NS.CanSafelySetChatTabAlpha and DC_NS.CanSafelySetChatTabAlpha(fs) then pcall(fs.SetAlpha, fs, 1.0) end
             return fs, nil
         elseif cfID == 1 then rawLabel = _G.GENERAL or "General"
         elseif cfID == 2 then rawLabel = _G.COMBAT_LOG or "Combat Log"
@@ -2546,7 +2561,7 @@ local function ResolveChatTabLabel(cf, tab, tabName, entry)
         end
     end
     if type(fs.Show) == "function" then pcall(fs.Show, fs) end
-    if type(fs.SetAlpha) == "function" then pcall(fs.SetAlpha, fs, 1.0) end
+    if DC_NS.CanSafelySetChatTabAlpha and DC_NS.CanSafelySetChatTabAlpha(fs) then pcall(fs.SetAlpha, fs, 1.0) end
     return fs, displayLabel
 end
 

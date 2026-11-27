@@ -52,6 +52,15 @@ $luacExe = Resolve-ToolBinary -Name "luac5.1" -Candidates @(
     "C:\Program Files (x86)\Lua\5.1\luac.exe"
 )
 
+$luacDir = Split-Path -Parent $luacExe
+$luaExe = Resolve-ToolBinary -Name "lua5.1" -Candidates @(
+    (Join-Path $luacDir "lua5.1.exe"),
+    "D:\DriveSync\Tools\lua51\lua5.1.exe",
+    "C:\Tools\lua51\lua5.1.exe",
+    "C:\Program Files (x86)\Lua\5.1\lua5.1.exe",
+    "C:\Program Files (x86)\Lua\5.1\lua.exe"
+)
+
 $gitExe = Resolve-ToolBinary -Name "git" -Candidates @(
     "C:\Program Files\Git\cmd\git.exe",
     "C:\Program Files (x86)\Git\cmd\git.exe",
@@ -65,6 +74,7 @@ if (-not (($env:PATH -split ";") -contains $gitDir)) {
 }
 
 Write-Host "[TOOL] luac5.1: $luacExe" -ForegroundColor DarkCyan
+Write-Host "[TOOL] lua5.1:  $luaExe" -ForegroundColor DarkCyan
 Write-Host "[TOOL] git:     $gitExe" -ForegroundColor DarkCyan
 
 # 2. Lua 5.1 syntax validation
@@ -162,6 +172,26 @@ if ($nilGlobalHits.Count -gt 0) {
 }
 Write-Host "[GLOBALS OK] Verified 0 undefined helper or forward-referenced local calls across $($luaFiles.Count) Lua file(s) ($($forbiddenGlobalHelpers.Count) guarded helpers + same-file local scan)" -ForegroundColor Green
 
+# 2c. Permanent Static Taint, Blizzard Frame Hook & Undefined Table Method Audit
+$staticAuditScript = Join-Path $PSScriptRoot "test_static_taint_and_nil_audit.lua"
+if (-not (Test-Path -LiteralPath $staticAuditScript)) {
+    throw "Required static audit script missing: $staticAuditScript"
+}
+& $luacExe -p $staticAuditScript
+if ($LASTEXITCODE -ne 0) {
+    throw "luac5.1 syntax check failed: $staticAuditScript"
+}
+Push-Location $RepoRoot
+try {
+    & $luaExe $staticAuditScript
+    if ($LASTEXITCODE -ne 0) {
+        throw "Static taint & nil audit failed ($staticAuditScript)."
+    }
+} finally {
+    Pop-Location
+}
+Write-Host "[STATIC AUDIT OK] Verified 0 undefined table methods, 0 unsafe Blizzard frame hooks, and all secret/fade guards across $($luaFiles.Count) Lua file(s)" -ForegroundColor Green
+
 # 3. Mirror CHANGELOG.md and verify Pure ASCII & No-BOM
 $changelogPath = Join-Path $RepoRoot "CHANGELOG.md"
 $suiteChangelogPath = Join-Path $RepoRoot "DynamicSuite\CHANGELOG.md"
@@ -182,6 +212,7 @@ foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "docs\CHANGE
     }
 }
 $asciiTargets += Get-ChildItem -LiteralPath $PSScriptRoot -Filter "*.ps1" -File
+$asciiTargets += Get-ChildItem -LiteralPath $PSScriptRoot -Filter "test_*.lua" -File
 $marketingDir = Join-Path $RepoRoot "Marketing"
 if (Test-Path -LiteralPath $marketingDir) {
     $asciiTargets += Get-ChildItem -LiteralPath $marketingDir -Filter "*.md" -File
