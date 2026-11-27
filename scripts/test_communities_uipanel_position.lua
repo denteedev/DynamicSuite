@@ -44,7 +44,8 @@ local function RunTest(name, fn)
     end
 end
 
-local function CreateHarness()
+local function CreateHarness(opts)
+    opts = opts or {}
     local env = {}
     setmetatable(env, { __index = _G })
     env._G = env
@@ -206,8 +207,8 @@ local function CreateHarness()
         function w:SetMovable() end
         function w:SetUserPlaced() end
         function w:RegisterForDrag() end
-        function w:StartMoving() end
-        function w:StopMovingOrSizing() end
+        function w:StartMoving() self._startMovingCount = (self._startMovingCount or 0) + 1 end
+        function w:StopMovingOrSizing() self._stopMovingCount = (self._stopMovingCount or 0) + 1 end
         function w:Raise() end
         function w:SetBackdrop() end
         function w:SetBackdropColor() end
@@ -254,14 +255,23 @@ local function CreateHarness()
     end
 
     -- Simulated Blizzard frames & UIPanel layout manager
-    local function AttachTrackedTitleContainer(parentFrame)
+    local function AttachTrackedTitleContainer(parentFrame, callStartMovingOnDrag)
         local tc = MakeFrame("Frame", nil, parentFrame)
         tc._setScriptCalls = {}
+        tc._registerForDragCount = 0
         tc._nativeDragStartCount = 0
         tc._nativeDragStopCount = 0
+        local origRegDrag = tc.RegisterForDrag
+        function tc:RegisterForDrag(...)
+            self._registerForDragCount = self._registerForDragCount + 1
+            return origRegDrag(self, ...)
+        end
         -- Pre-seed Blizzard's own drag handlers before DesktopWindows loads
         tc._scripts.OnDragStart = function()
             tc._nativeDragStartCount = tc._nativeDragStartCount + 1
+            if callStartMovingOnDrag and parentFrame.StartMoving then
+                parentFrame:StartMoving()
+            end
         end
         tc._scripts.OnDragStop = function()
             tc._nativeDragStopCount = tc._nativeDragStopCount + 1
@@ -277,13 +287,24 @@ local function CreateHarness()
 
     local comm = MakeFrame("Frame", "CommunitiesFrame", env.UIParent)
     comm:SetSize(820, 560)
-    AttachTrackedTitleContainer(comm)
+    AttachTrackedTitleContainer(comm, false)
     env.UIPanelWindows["CommunitiesFrame"] = { area = "left", pushable = 0 }
 
     local pve = MakeFrame("Frame", "PVEFrame", env.UIParent)
     pve:SetSize(563, 428)
-    AttachTrackedTitleContainer(pve)
+    AttachTrackedTitleContainer(pve, true)
     env.UIPanelWindows["PVEFrame"] = { area = "left", pushable = 1 }
+
+    local spells = MakeFrame("Frame", "PlayerSpellsFrame", env.UIParent)
+    spells:SetSize(1618, 898)
+    local spellsTab1 = MakeFrame("Button", nil, spells)
+    spellsTab1.tabID = 1
+    spells.TabSystem = {
+        tabs = { spellsTab1 },
+        GetSelectedTabID = function() return 1 end,
+        SetTab = function() end,
+    }
+    env.UIPanelWindows["PlayerSpellsFrame"] = { area = "center", pushable = 0 }
 
     local worldMap = MakeFrame("Frame", "WorldMapFrame", env.UIParent)
     worldMap:SetSize(980, 660)
@@ -335,6 +356,21 @@ local function CreateHarness()
         end
     end
 
+    if opts.initialDragAnywhere ~= nil or opts.initialScrollScale ~= nil then
+        env.DynamicSuiteDB = {
+            global = {
+                desktopWindows = {
+                    masterEnabled = true,
+                    sideBySide = true,
+                    dragAnywhere = opts.initialDragAnywhere,
+                    scrollScale = opts.initialScrollScale,
+                    positions = {},
+                    scales = {},
+                },
+            },
+        }
+    end
+
     FireEvent("ADDON_LOADED", "DynamicSuite")
     FireEvent("PLAYER_LOGIN")
     FlushTimers()
@@ -344,6 +380,8 @@ local function CreateHarness()
         state = state,
         comm = comm,
         pve = pve,
+        spells = spells,
+        spellsTab1 = spellsTab1,
         worldMap = worldMap,
         charFrame = charFrame,
         FireEvent = FireEvent,
@@ -524,6 +562,9 @@ RunTest("(e) DesktopWindows uses hooksecurefunc (no raw UpdateScaleForFit overwr
     assertEqual(src:find("._dsPassiveChrome", 1, true), nil, "Direct Blizzard frame._dsPassiveChrome field write must be removed")
     assertEqual(src:find("._dsDragHooked", 1, true), nil, "Direct Blizzard tc._dsDragHooked field write must be removed")
     assertEqual(src:find("._dsWheelHooked", 1, true), nil, "Direct Blizzard targetRegion._dsWheelHooked field write must be removed")
+    assertEqual(src:find("._dsTabBtnHooked", 1, true), nil, "Direct Blizzard PlayerSpellsFrame tab button _dsTabBtnHooked field write must be removed")
+    h.spells:Show()
+    assertEqual(h.spellsTab1._dsTabBtnHooked, nil, "PlayerSpellsFrame TabSystem button receives zero custom _dsTabBtnHooked fields")
 
     -- Verify secret frame name / secret RegisterUIPanel arg / secret debugstack / secret GLOBAL_MOUSE_DOWN never throws
     local secretMarker = setmetatable({}, {
@@ -653,17 +694,58 @@ RunTest("(f) Zero SetScript on Blizzard TitleContainer (CommunitiesFrame & PVEFr
     assertNear(cxPve, 16, "PVEFrame reset X is 16")
     assertNear(cyPve, -116, "PVEFrame reset Y is -116")
 
-    -- 3. Disabling dragAnywhere keeps Blizzard's native TitleContainer handler working without saving DesktopWindows drag
+    -- 3. Disabling dragAnywhere keeps Blizzard's native TitleContainer handler working without cancelling StartMoving or saving drag
     db.dragAnywhere = false
+    local stopCountBeforeOff = h.pve._stopMovingCount or 0
     h.state.cursorX, h.state.cursorY = 960, 540
     h.state.leftMouseDown = true
     pveTC._scripts.OnDragStart(pveTC, "LeftButton")
     h.state.leftMouseDown = false
     pveTC._scripts.OnDragStop(pveTC)
     assertEqual(pveTC._nativeDragStartCount, 2, "Blizzard native TitleContainer OnDragStart still runs when dragAnywhere is false")
+    assertEqual(h.pve._stopMovingCount or 0, stopCountBeforeOff, "DesktopWindows must NOT call StopMovingOrSizing when dragAnywhere is false")
     assertEqual(db.positions.PVEFrame, nil, "DesktopWindows does not drag or save position when dragAnywhere is false")
 
-    -- 4. Secret button arguments passed to TitleContainer hooks are safely ignored
+    -- 3b. Yielding to BlizzMove must NEVER cancel Blizzard/BlizzMove drags via StopMovingOrSizing
+    db.dragAnywhere = true
+    h.state.loadedAddons.BlizzMove = true
+    local stopCountBeforeYield = h.pve._stopMovingCount or 0
+    pveTC._scripts.OnDragStart(pveTC, "LeftButton")
+    if h.pve._scripts.OnDragStart then h.pve._scripts.OnDragStart(h.pve, "LeftButton") end
+    pveTC._scripts.OnDragStop(pveTC)
+    if h.pve._scripts.OnDragStop then h.pve._scripts.OnDragStop(h.pve) end
+    assertEqual(h.pve._stopMovingCount or 0, stopCountBeforeYield, "Yielding to BlizzMove never calls StopMovingOrSizing on Blizzard frames")
+    h.state.loadedAddons.BlizzMove = nil
+
+    -- 3c. Fresh harness booted with dragAnywhere == false and scrollScale == true still supports TitleContainer right-click reset,
+    --     and toggling dragAnywhere ON later registers drag and drags cleanly
+    do
+        local h2 = CreateHarness({ initialDragAnywhere = false, initialScrollScale = true })
+        local db2 = h2.env.DynamicSuite.DesktopWindows:GetDB()
+        db2.scales = { PVEFrame = 1.20 }
+        h2.pve:Show()
+        local tc2 = h2.pve.TitleContainer
+        assertEqual(#tc2._setScriptCalls, 0, "Zero SetScript on TitleContainer when opened with dragAnywhere == false")
+        assertEqual(tc2._registerForDragCount, 0, "TitleContainer skips RegisterForDrag while dragAnywhere == false")
+        assertTrue(type(tc2._scripts.OnMouseUp) == "function", "TitleContainer right-click reset hooked even when dragAnywhere == false")
+        tc2._scripts.OnMouseUp(tc2, "RightButton")
+        assertEqual(db2.scales.PVEFrame, nil, "TitleContainer right-click reset clears scale when dragAnywhere == false")
+
+        db2.dragAnywhere = true
+        h2.pve:Show()
+        assertEqual(tc2._registerForDragCount, 1, "Enabling dragAnywhere registers TitleContainer for drag once")
+        h2.state.cursorX, h2.state.cursorY = 960, 540
+        h2.state.leftMouseDown = true
+        tc2._scripts.OnDragStart(tc2, "LeftButton")
+        h2.state.cursorX, h2.state.cursorY = 1040, 580
+        local drv2 = h2.env.DynamicSuiteDesktopWindowsDragDriver
+        drv2._scripts.OnUpdate(drv2, 0.016)
+        h2.state.leftMouseDown = false
+        tc2._scripts.OnDragStop(tc2)
+        assertTrue(type(db2.positions.PVEFrame) == "table", "Enabling dragAnywhere later makes TitleContainer dragging save position")
+    end
+
+    -- 4. Secret button & wheel delta arguments passed to TitleContainer, overlay, and frame hooks are safely ignored
     local secretBtn = setmetatable({}, {
         __tostring = function() error("secret string conversion", 2) end,
     })
@@ -672,6 +754,10 @@ RunTest("(f) Zero SetScript on Blizzard TitleContainer (CommunitiesFrame & PVEFr
     db.dragAnywhere = true
     pveTC._scripts.OnDragStart(pveTC, secretBtn)
     pveTC._scripts.OnMouseUp(pveTC, secretBtn)
+    commOv._scripts.OnDragStart(commOv, secretBtn)
+    commOv._scripts.OnMouseUp(commOv, secretBtn)
+    if commOv._scripts.OnMouseWheel then commOv._scripts.OnMouseWheel(commOv, secretBtn) end
+    if h.pve._scripts.OnDragStart then h.pve._scripts.OnDragStart(h.pve, secretBtn) end
     assertEqual(db.positions.PVEFrame, nil, "Secret button arg does not trigger drag or reset")
 
     -- Final assertion: zero SetScript calls throughout the entire lifecycle

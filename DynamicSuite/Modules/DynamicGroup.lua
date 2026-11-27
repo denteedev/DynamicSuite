@@ -2847,7 +2847,7 @@ local function OnLFGListSearchEntryUpdate(entry)
     if not eState.clickHooked and entry.HookScript then
         eState.clickHooked = true
         entry:HookScript("OnMouseDown", function(selfEntry, button)
-            if button == "LeftButton" then
+            if not IsSecretValue(button) and button == "LeftButton" then
                 GetEntryState(selfEntry).pressedResultID = (not IsSecretValue(selfEntry.resultID) and type(selfEntry.resultID) == "number" and selfEntry.resultID) or ResolveLiveResultID(selfEntry)
             end
         end)
@@ -2856,7 +2856,7 @@ local function OnLFGListSearchEntryUpdate(entry)
     if not eState.doubleClickHooked and entry.HookScript then
         eState.doubleClickHooked = true
         entry:HookScript("OnDoubleClick", function(selfEntry, button)
-            if button and button ~= "LeftButton" then return end
+            if button ~= nil and (IsSecretValue(button) or button ~= "LeftButton") then return end
             if not EnsureDB().doubleClickSignUp then return end
             local st = GetEntryState(selfEntry)
             local lockedID = st.pressedResultID

@@ -1184,6 +1184,8 @@ RunTest("T9: Midnight Secret-String Conversion Guards on LFG & Chat (Throws on A
         secretEntry.resultID = 999999
         secretEntry.GetAlpha = function() return secretMarker end
         env.LFGListSearchEntry_Update(secretEntry)
+        if secretEntry._scripts.OnMouseDown then secretEntry._scripts.OnMouseDown(secretEntry, secretMarker) end
+        if secretEntry._scripts.OnDoubleClick then secretEntry._scripts.OnDoubleClick(secretEntry, secretMarker) end
         h.AdvanceTime(0.1)
         assertEqual(env.LFGListFrame.SearchPanel.results, origResults, "Async refilter leaves panel.results untouched when lfgFilterEnabled is false")
 
