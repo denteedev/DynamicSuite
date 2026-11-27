@@ -402,20 +402,6 @@ DynamicSuite.Changelogs["DynamicLoad"] = {
         { type = "FIX",     text = "Toolbar Search Box Width & HUD Edit Mode 'Apply All' Appearance Action (16/11/2026): tightened DynamicLoad toolbar button padding, gaps, and adaptive minimum widths so the 'Filter addons...' search box retains at least 125px cleanly at the default 980x680 window size without clipping; and added an 'Apply All' Opacity & Border Style button on Row 3 of the HUD Edit Mode Inspector to copy the selected HUD's opacity and border style across all 6 suite HUDs in one click." },
         { type = "FEATURE", text = "One-Click 'Copy From...' Zone Profile & Persistent Tree Collapse (16/11/2026): added a compact 'Copy From...' button on the DynamicLoad toolbar so you can copy another zone's By Zone addon selections into the active zone tab in one click (preserving Always/Never locks and Suite Core protections), and ensured collapsed parent addon groups persist reliably across /reload and logins with clear expand/collapse tooltips." },
         { type = "FIX",     text = "Universal 'Never' ('FROZEN') Persistence Across All Addons & Sub-Addons (12/11/2026): Normalised all security and zone assignment operations to canonical folder names (ResolveCanonicalAddonName); made SetAddonFrozen(name, true) atomically persist 'FROZEN' across DynamicLoadDB/globalData/charData, wipe all 5 zone tables, and call C_AddOns.DisableAddOn; merged DynamicLoadDB root and globalData security tables in SyncScopeBindings() and used in-place wipe() in RestoreStash() so SavedVariables deserialisation never reverts 'FROZEN' states on /reload; prevented ReconcileStartupProfileBaseline from overwriting knownAddons; protected individual child 'FROZEN' / 'LOCKED' states from parent cascades; and added EnforceFrozenAddonsDisabled() + a hooksecurefunc(C_AddOns, 'EnableAddOn', ...) guard so external parent suites cannot re-enable 'FROZEN' sub-addons." },
-        { type = "FIX",     text = "Fixed 'attempt to call a nil value' in EvaluateAddonItemEffectiveState (DynamicLoad.lua:4724) when evaluating the DynamicSuite parent hub item and child modules across scoped do ... end chunks by declaring a local IsSuiteModuleExplicitlyDisabled helper in the UI chunk with addonTable / DynamicSuiteDB fallbacks and defensive nil guards across GetParentSuiteStats and EvaluateAddonItemEffectiveState." },
-        { type = "FEATURE", text = "External Addon Conflict Detector & Yield Engine (12/11/2026): Added curated conflict detection for ACP, SimpleAddonManager, and BetterAddonList, one-time non-spam login alerts for newly detected HARD conflicts, and /ds conflicts diagnostic reporting." },
-        { type = "NEW",     text = "Unified v1.3.0 Single-Source .toc Metadata & Version-Aware Duplicate-Install Guard (11/11/2026): DynamicLoad now resolves its live version directly from .toc metadata (C_AddOns.GetAddOnMetadata) and compares semantic versions (CompareSemVer) when both DynamicSuite and standalone DynamicLoad are installed so the newer version always takes priority." },
-        { type = "NEW",     text = "Consolidated DynamicLoad_Core.lua and DynamicLoad_UI.lua into a single dual-mode Modules\\DynamicLoad.lua with scoped do ... end chunks, private DL_NS namespace, dynamic ADDON_FOLDER asset paths, and [Suite Core] tree presentation for all 8 bundled DynamicSuite modules." },
-        { type = "FIX",     text = "Separated DynamicLoadDB.loadedProfile (live loaded session profile) from DynamicLoadDB.stagedProfile (profile staged via EnableAddOn/DisableAddOn for the next /reload) so the Green Loaded dot stays on the active session profile (e.g. Raid) when zoning into a City Hub with unapplied addon changes, and updated CommitPendingProfileBeforeReload() to re-evaluate the physical zone profile before /reload so zoning out of a Raid into a City and typing /reload loads Outdoor addons cleanly." },
-        { type = "FIX",     text = "Preserved DynamicSuite Hub functions and CHANGELOG when DynamicLoad_Core.lua loads after DynamicSuite_Core.lua, and guarded GetPlayer() against Unknown / UNKNOWNOBJECT before PLAYER_LOGIN." },
-        { type = "FIX",     text = "Hardened loading-screen Toast state with a 15s safety timeout, cleared isInsideLoadingScreen across PLAYER_ENTERING_WORLD / ZONE_CHANGED* / PLAYER_REGEN_DISABLED, and replaced UIFrameFadeOut / UIFrameFadeIn with a taint-free AnimationGroup pulse." },
-        { type = "PERF",    text = "Eliminated temporary table allocations in CalculateAddonDelta, ApplyFontRecursively, and OpenAltDropdown, and added OnHide / mouse-button guards to standalone scrollbars." },
-        { type = "FIX",     text = "Labyrinth Delve Toast Anti-Spam Gate: Restricted automatic DynamicLoadToastFrame popups strictly to real post-loading-screen transitions (LOADING_SCREEN_ENABLED / LOADING_SCREEN_DISABLED + PLAYER_ENTERING_WORLD with a deduplicated 0.65s settle timer and per-load session latch), preventing seamless chamber crossings (ZONE_CHANGED_NEW_AREA, ZONE_CHANGED, ZONE_CHANGED_INDOORS, SCENARIO_UPDATE) or post-combat PLAYER_REGEN_ENABLED flushes from re-popping dismissed Toasts inside Labyrinth Delves." },
-        { type = "FIX",     text = "Cross-TOC Namespace Bridge & Lua 5.1 AST Hardening: Fixed syntax error in DynamicLoad_Core.lua:2178, forward-declared ApplyEnvironmentContext above ResumeAutoSwitch, added DynamicSuite to SUITE_MODULES auto-enable protection, and hardened /dl standalone vs docked workspace routing." },
-        { type = "FEATURE", text = "Decoupled DynamicLoad Peer Module: DynamicLoad now operates as an independent peer module (with its own DynamicLoad_Core.lua and DynamicLoad_UI.lua) that works 100% standalone via /dl or docked inside DynamicSuite (/ds)." },
-        { type = "UI",      text = "Unified load-state terminology to 'By Zone', 'Always', and 'Never' across all rows, suffix tags, popovers, filter pills, legends, and tooltips (with [Suite Core] / [Suite Protected] for DynamicSuite modules)." },
-        { type = "UI",      text = "Styled Top Filter Bar pills (All, Pending, Always, Never) with clash-proof semantic text colouring on dark #14171F backgrounds when unselected, and filled semantic backgrounds with white text when selected." },
-        { type = "FIX",     text = "Disentangled physical zone location from loaded addon profile (DynamicLoadDB.loadedProfile and DynamicLoadDB.manualOverride), protecting manual profile activations across reloads." },
     },
 }
 DynamicSuite.Changelogs["load"] = DynamicSuite.Changelogs["DynamicLoad"]
@@ -3892,20 +3878,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         DynamicLoadDB.collapsedParents = DynamicLoadDB.collapsedParents or {}
         DynamicLoadDB.moduleOrder = DynamicLoadDB.moduleOrder or nil
 
-        SyncScopeBindings()
         PurgeRetiredAddons()
-        SyncAddonStatesTable()
-        if not DynamicLoadDB.v120_enableDynamicChatCore then
-            DynamicLoadDB.v120_enableDynamicChatCore = true
-            if g.disabledModules then
-                g.disabledModules["DynamicChat"] = nil
-                g.disabledModules["chat"] = nil
-            end
-            if _G.DynamicSuiteDB and _G.DynamicSuiteDB.disabledModules then
-                _G.DynamicSuiteDB.disabledModules["DynamicChat"] = nil
-                _G.DynamicSuiteDB.disabledModules["chat"] = nil
-            end
-        end
         EnforceProtectedSuiteModules()
         EnforceFrozenAddonsDisabled()
         SyncScopeBindings()
@@ -3924,7 +3897,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
 
     elseif event == "PLAYER_LOGIN" then
         EnsureSuiteGlobal()
-        SyncScopeBindings()
         PurgeRetiredAddons()
         EnforceProtectedSuiteModules()
         EnforceFrozenAddonsDisabled()
@@ -3933,7 +3905,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         CaptureLiveSessionBaseline()
         addonTable.SanitizeLegacyCVar()
         RecordCurrentCharacter()
-        SyncAddonStatesTable()
         local startupProf = (DynamicLoadDB and DynamicLoadDB.stagedProfile) or (DynamicLoadDB and DynamicLoadDB.loadedProfile) or (DynamicLoadDB and DynamicLoadDB.activeProfile) or CONTEXT_OUTDOOR
         if DynamicLoadDB then
             if not DynamicLoadDB.profiles or not DynamicLoadDB.profiles[startupProf] then

@@ -1664,6 +1664,20 @@ do
     evFrame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
         if event == "PLAYER_LOGIN" then
             EnsureDB()
+            if IsModuleDisabledInSuite("DynamicCursor") then
+                if _G.DynamicSuite and _G.DynamicSuite.modules then
+                    if _G.DynamicSuite.modules["cursor"] then _G.DynamicSuite.modules["cursor"]._disabledAtStartup = true end
+                    if _G.DynamicSuite.modules["DynamicCursor"] then _G.DynamicSuite.modules["DynamicCursor"]._disabledAtStartup = true end
+                end
+                cachedActivityAllowed = false
+                if ringRoot then ringRoot:Hide() end
+                if locatorRoot then locatorRoot:Hide() end
+                if crosshairRoot then crosshairRoot:Hide() end
+                ClearTrailNodes()
+                activeUpdateFrame:SetScript("OnUpdate", nil)
+                evFrame:UnregisterAllEvents()
+                return
+            end
             if type(_G.hooksecurefunc) == "function" then
                 if _G.MouselookStart then
                     _G.hooksecurefunc("MouselookStart", function() isMouseLooking = true end)
@@ -1675,7 +1689,11 @@ do
             SyncAllEngines()
             return
         end
-        if IsModuleDisabledInSuite("DynamicCursor") then return end
+        if IsModuleDisabledInSuite("DynamicCursor") then
+            SyncAllEngines()
+            evFrame:UnregisterAllEvents()
+            return
+        end
         local db = EnsureDB()
 
         if event == "PLAYER_STARTED_LOOKING" then

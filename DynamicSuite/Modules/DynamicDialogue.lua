@@ -3575,7 +3575,6 @@ DynamicDialogue.CHANGELOG = {
             { type = "FEATURE", text = "Unified Obsidian Confirm Screen & Auto-Accept Quest Fix (21/11/2026): Added a shared Obsidian Confirm screen for gossip confirmations, shared group quests, and Hearthstone innkeeper binding with 1 / Space double-tap confirmation (0.15s debounce) and Esc cancellation while leaving code-entry prompts native; and fixed auto-accepted quests to show Okay [Space] (no Decline) cleanly." },
             { type = "UI",      text = "Release v2.7.0 (21/11/2026): Upgraded DynamicDialogue to the universal 34px #0B0D12 equal-width 2-tab header bar, dedicated 44px Action & Status strip inside the settings canvas, crisp non-outlined card fonts, standardised 156x26px (68px Off / 84px Enabled) binary switches, and 2-line wrapped descriptions so every row fits cleanly down to 800x520." },
             { type = "FIX",     text = "Release v2.6.9 (21/11/2026): Fixed first-open FontString rendering and overlapping sub-tab cards, added the 4px Obsidian settings scrollbar, matched standalone title colours, and fixed the Retail 12.1.5 Blizzard Quest/Gossip conflict check so clean installs show Active cleanly." },
-            { type = "FEATURE", text = "Initial Release of DynamicDialogue (20/11/2026): High-contrast Obsidian Quest & Gossip Reader with 1-9 number hotkeys, Space bar Accept/Continue/Complete, interactive reward choice cards with item tooltips, Shift-bypass for native Blizzard frames, draggable reader positioning, live Preview mode, and automatic yielding for DialogueUI, Immersion, Storyline, EllesmereUI QoL, and other dialogue addons." },
         },
     },
 }
@@ -3786,10 +3785,29 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
         if arg1 == ADDON_FOLDER or arg1 == "DynamicSuite" or arg1 == "DynamicDialogue" then
             EnsureDB()
             RegisterWithDynamicSuite()
+            if IsModuleDisabledInSuite("DynamicDialogue") then
+                if _G.DynamicSuite and _G.DynamicSuite.modules then
+                    if _G.DynamicSuite.modules["dialogue"] then _G.DynamicSuite.modules["dialogue"]._disabledAtStartup = true end
+                    if _G.DynamicSuite.modules["DynamicDialogue"] then _G.DynamicSuite.modules["DynamicDialogue"]._disabledAtStartup = true end
+                end
+                evt:UnregisterAllEvents()
+                return
+            end
         end
     elseif event == "PLAYER_LOGIN" then
         EnsureDB()
         RegisterWithDynamicSuite()
+        if IsModuleDisabledInSuite("DynamicDialogue") then
+            if _G.DynamicSuite and _G.DynamicSuite.modules then
+                if _G.DynamicSuite.modules["dialogue"] then _G.DynamicSuite.modules["dialogue"]._disabledAtStartup = true end
+                if _G.DynamicSuite.modules["DynamicDialogue"] then _G.DynamicSuite.modules["DynamicDialogue"]._disabledAtStartup = true end
+            end
+            evt:UnregisterAllEvents()
+            return
+        end
+    elseif IsModuleDisabledInSuite("DynamicDialogue") then
+        evt:UnregisterAllEvents()
+        return
     elseif event == "GOSSIP_SHOW" then
         if IsCustomGossipTextureKit(arg1) then
             interactionSeq = interactionSeq + 1

@@ -11864,20 +11864,6 @@ DynamicTalent.CHANGELOG = {
             { type = "UI",    text = "Release v2.8.1 - Raid Bosses Binder Redesign (22/11/2026): Promoted All Raids to Row 1 alongside the Season 2 raid pills with an Obsidian Core explanation banner; expanded the boss grid to use the full card width underneath; added a red-hover Clear button beside + Bind Raid to remove All Raids or selected boss binds for the toggled difficulties; and fixed multi-select and unselect behaviour on boss tiles." },
             { type = "FIXED", text = "Release v2.8.1 - Raid Boss Selection & Boss-Specific Build Priority Over All Raids (22/11/2026): Removed forced Boss #1 pre-highlighting in Raid Boss Talent Binds (and cleared pending tile selections when switching loadouts or after binding) so bosses can be freely selected and unselected; added automatic single-boss raid matching (Kith'ix, Tidebound Grotto); cleared cached boss memory when targeting an unbound Season 2 raid boss; and protected active boss-specific raid builds from being overridden by All Raids when no unbound boss is targeted." },
             { type = "UI",    text = "Release v2.8.1 - Right-Click Toast Silences Mismatch (22/11/2026): Right-clicking the talent reminder toast or its Swap button now silences that reminder for the session, refreshes DynamicPrep's Top Info Bar capsule immediately, updates the toast subtext to 'Right-Click to silence', and clears silenced reminders on specialisation change or reload." },
-            { type = "FIXED", text = "Release v2.8.1 - Sticky Raid Boss Preservation, Real Library Resolution, Focus/Boss Scanning & /dt why (22/11/2026): Preserved the cached raid boss across talent swaps while still clearing it on bind edits or deletes; resolved Prep Bar and Alert Toast payloads back to their saved library entry so live match tracking persists onto the actual loadout; added focus and boss1-5 scanning to boss matching; and upgraded /dt why to report winning rules across all 3 tiers plus live unit names and cached boss state." },
-            { type = "UI",    text = "Release v2.8.1 - Prep Bar Capsule, Tooltip & Quick-Switcher Popover Bind-Badge Parity (22/11/2026): Added right-aligned amber-gold bind tags ((Various), (All M+), (#8 Ula'tek)) and dynamic text anchoring to the quick-switcher popover (widened to 276px) with hover highlights and full Talent Dock tooltips (Hero Tree and Bound lines); added bind tags and group badge prefixes to the Prep Bar capsule and tooltip; and refreshed capsule widths automatically when binds change." },
-            { type = "FIXED", text = "Release v2.8.1 - Raid Boss Matching Accuracy, Sticky Boss Cache & /dt why (22/11/2026): Removed inverted substring checks in raid boss matching and added Ula'tek aliases so standing at boss #8 never matches boss #2 Entombed Sentinels; allowed pre-pull friendly bosses on nameplates and raid or party targets to be detected cleanly while still skipping player units; added a subzone-scoped boss cache cleared on encounter victory, zone change, spec change, or bind edits to prevent All Raids fallback flicker; and added /dt why (/dt debug) for plain-English diagnostics." },
-            { type = "UI",    text = "Tighter Header Subtitles & Truncation Hover Safety Net (22/11/2026): Shortened the Raid Bosses, M+ Dungeons, PvP, Zone Defaults, and Active Reminders subtitles so they fit cleanly on one line at the minimum 800px Talent Loadouts Manager width, and added a reusable hover helper that shows full plain text in a tooltip only when a single-line subtitle or reminder row is cut off." },
-            { type = "FIXED", text = "Delve vs Mythic+ Zone Priority Detection (22/11/2026): Updated zone and instance detection to check active Delve status alongside instance difficulty so Delves and non-dungeon scenarios never misclassify as Mythic+; Delves binds always take priority inside Delves, Outdoor binds win in open world zones outside resting cities, and the Talent Dock and Prep Bar refresh cleanly after zoning." },
-            { type = "UI",    text = "Option 1 Talent Tree Backdrop Studio Redesign (22/11/2026): Split Backdrop Studio into independent Base Background ('Blizzard Spec Art' or 'Solid Obsidian') and Ambient Mist ('Off', 'Hero-Synced', or 'Class Glow') controls with a muted-when-inactive Background Dimmer (0%-85% for Blizzard Spec Art) and a live Mist Intensity slider (15%-100%, default 60%) so mist layers cleanly over either base, migrating older backdrop settings automatically." },
-            { type = "FIXED", text = "Talent Tree Backdrop Studio Layering, Dimmer Order & Mist Opacity (22/11/2026): Layered the custom backdrop textures cleanly above Blizzard's spec background (restored automatically in Blizzard mode or when disabled) and strictly below all talent nodes, links, and buttons; placed the dimmer layer behind the mist and vignette layers so up to 85% dimming never smothers Hero-Synced Mist or Class Glow; and tuned atmospheric mist opacity bounds for crisp readability." },
-            { type = "FIXED", text = "Same-Name Loadout Bind Isolation (22/11/2026): Gave every saved build a stable unique identifier across Raid, M+, PvP, and Zone bind rules so builds sharing names never collide or overwrite each other's binds, badges, conflict prompts, or Active Reminders rows." },
-            { type = "UI",    text = "Single Pop-Out Manager, Bidirectional Links & Drag-and-Drop Group Order (22/11/2026): Replaced the duplicate embedded manager under /ds -> DynamicTalent with a clean Action & Status strip ('Talent Window' and 'Loadouts & Binds'), added a 'Settings' header button in the Pop-Out Manager, upgraded the 5 Custom Loadout Group Order rows with Left-Click & Drag reordering plus bordered Up/Down chevrons, and standardised sliders to 4px precision tracks." },
-            { type = "NEW",   text = "Right-Click Hero Spec Swap (21/11/2026): Added an enabled-by-default 'Right-Click Hero Spec Swap' option (out of combat, skipped during active Mythic+ keystones and inspection) on Blizzard's central Hero Talent medallion with a clean 'Right-Click: Switch to [Other Hero Tree]' hover hint; immediately stages the alternate Hero tree without opening the picker popup." },
-            { type = "NEW",   text = "Talent Tree Backdrop Studio & Background Dimmer (21/11/2026): Added a non-interactive background studio behind the Talent tree with Blizzard Spec Art and Solid Obsidian bases, Hero-Synced Mist across all 40 Hero trees, Class Glow, a 0%-85% Background Dimmer slider (default 35%), and a Subtle Backdrop Animation toggle." },
-            { type = "NEW",   text = "Extracted DynamicTalent Module (/dt, /dynamictalent) (21/11/2026): Moved the unlimited per-spec Talent Loadout library, Hero Talent acronym badges, WCL/Northern Sky/Blizzard importer, Left-Hand Talent Dock, Talent Loadouts Manager, and Shared Alert Toast reminders out of DynamicPrep into a dedicated 12th dual-mode module with zero-loss settings migration and a clean Top Info Bar capsule hook." },
-            { type = "NEW",   text = "Dedicated PvP Binder Tab & 3-Tier Mismatch Priority (21/11/2026): Added a 4th 'PvP' binder tab (All PvP, Arena, Battlegrounds, War Mode) alongside Raid Bosses, M+ Dungeons, and Zone Defaults; specific PvP mode binds now take priority over All PvP, while resting in cities suppresses Outdoor and War Mode alerts cleanly." },
-            { type = "NEW",   text = "Custom Loadout Group Ordering & Prioritise Current Zone First (21/11/2026): Added controls to reorder the 5 loadout groups (Raid, M+, Delves, PvP, Custom) and optionally float loadouts matching your active content zone to the top of the Talent Dock and Prep Bar quick-switcher." },
         },
     },
 }
@@ -12090,6 +12076,8 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
                     if _G.DynamicSuite.modules["talent"] then _G.DynamicSuite.modules["talent"]._disabledAtStartup = true end
                     if _G.DynamicSuite.modules["DynamicTalent"] then _G.DynamicSuite.modules["DynamicTalent"]._disabledAtStartup = true end
                 end
+                evt:UnregisterAllEvents()
+                return
             end
         elseif arg1 == "Blizzard_PlayerSpells" then
             if isInitialized and not IsModuleDisabledInSuite("DynamicTalent") then
@@ -12103,12 +12091,32 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
     elseif event == "PLAYER_LOGIN" then
         EnsureDB()
         RegisterWithDynamicSuite()
-        if not IsModuleDisabledInSuite("DynamicTalent") then
-            DynamicTalent:EnsureTalentDockHooks()
-            if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
-                pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+        if IsModuleDisabledInSuite("DynamicTalent") then
+            if _G.DynamicSuite and _G.DynamicSuite.modules then
+                if _G.DynamicSuite.modules["talent"] then _G.DynamicSuite.modules["talent"]._disabledAtStartup = true end
+                if _G.DynamicSuite.modules["DynamicTalent"] then _G.DynamicSuite.modules["DynamicTalent"]._disabledAtStartup = true end
+            end
+            evt:UnregisterAllEvents()
+            return
+        end
+        DynamicTalent:EnsureTalentDockHooks()
+        if _G.DynamicPrep and type(_G.DynamicPrep.RefreshBar) == "function" then
+            pcall(_G.DynamicPrep.RefreshBar, _G.DynamicPrep)
+        end
+    elseif IsModuleDisabledInSuite("DynamicTalent") then
+        if event == "PLAYER_REGEN_ENABLED" then
+            if pendingDockRefresh then
+                pendingDockRefresh = false
+                DynamicTalent:RefreshTalentDock()
+            end
+            if pendingBackdropRefresh or DynamicTalent._pendingBackdropRefresh then
+                pendingBackdropRefresh = false
+                DynamicTalent._pendingBackdropRefresh = false
+                DynamicTalent:HideTalentTreeBackdrop()
             end
         end
+        evt:UnregisterAllEvents()
+        return
     elseif event == "PLAYER_ENTERING_WORLD" or event == "ZONE_CHANGED_NEW_AREA" then
         lastAlertedBossMismatchKey = nil
         DynamicTalent._lastCheckedMismatchSig = nil

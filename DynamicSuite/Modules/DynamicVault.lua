@@ -2724,15 +2724,36 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2)
         if arg1 == ADDON_FOLDER or arg1 == "DynamicSuite" or arg1 == "DynamicVault" then
             EnsureDB()
             RegisterWithDynamicSuite()
+            if IsModuleDisabledInSuite("DynamicVault") then
+                if _G.DynamicSuite and _G.DynamicSuite.modules then
+                    if _G.DynamicSuite.modules["vault"] then _G.DynamicSuite.modules["vault"]._disabledAtStartup = true end
+                    if _G.DynamicSuite.modules["DynamicVault"] then _G.DynamicSuite.modules["DynamicVault"]._disabledAtStartup = true end
+                end
+                evt:UnregisterAllEvents()
+                return
+            end
         elseif arg1 == "Blizzard_WeeklyRewards" then
-            HookWeeklyRewardsFrame()
-            RefreshGreatVaultDock()
+            if not IsModuleDisabledInSuite("DynamicVault") then
+                HookWeeklyRewardsFrame()
+                RefreshGreatVaultDock()
+            end
         end
     elseif event == "PLAYER_LOGIN" then
         EnsureDB()
         RegisterWithDynamicSuite()
+        if IsModuleDisabledInSuite("DynamicVault") then
+            if _G.DynamicSuite and _G.DynamicSuite.modules then
+                if _G.DynamicSuite.modules["vault"] then _G.DynamicSuite.modules["vault"]._disabledAtStartup = true end
+                if _G.DynamicSuite.modules["DynamicVault"] then _G.DynamicSuite.modules["DynamicVault"]._disabledAtStartup = true end
+            end
+            evt:UnregisterAllEvents()
+            return
+        end
         HookWeeklyRewardsFrame()
         QueueSnapshot()
+    elseif IsModuleDisabledInSuite("DynamicVault") then
+        evt:UnregisterAllEvents()
+        return
     elseif event == "PLAYER_ENTERING_WORLD" then
         if arg1 == true or arg2 == true then
             C_Timer.After(2.0, function()

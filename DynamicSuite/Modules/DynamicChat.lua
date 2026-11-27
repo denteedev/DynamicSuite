@@ -705,12 +705,6 @@ local function EnsureDB()
     if type(_G.DynamicChatDB.yieldHooks) ~= "table" then
         _G.DynamicChatDB.yieldHooks = {}
     end
-    if not _G.DynamicChatDB._v102_smoked25 then
-        _G.DynamicChatDB._v102_smoked25 = true
-        if _G.DynamicChatDB.chatBgAlpha == 0.35 or _G.DynamicChatDB.chatBgAlpha == 0.72 then
-            _G.DynamicChatDB.chatBgAlpha = 0.25
-        end
-    end
     if (_G.DynamicChatDB.chatAnchorVersion or 0) < 4 then
         _G.DynamicChatDB.chatAnchorVersion = 4
         _G.DynamicChatDB._v163_bottomLeftAnchor = true
@@ -6567,7 +6561,7 @@ function DynamicChat:ApplyChatFrameTypography()
         TypographyMgr.ApplyToEditBox(_G.ChatFrame1EditBox, fontPath, size, flags, hasShadow)
     end
     TypographyMgr.applying = false
-    if db.enableSleekChatSkin ~= false and not self._inApplySleekChatSkin then
+    if not DC_NS._suppressNestedSkin and db.enableSleekChatSkin ~= false and not self._inApplySleekChatSkin then
         self:ApplySleekChatSkin()
     end
 end
@@ -7753,7 +7747,9 @@ function DynamicChat:ApplySavedChatFramePosition()
         end
     end)
     self._applyingChatPos = false
-    self:ApplySleekChatSkin()
+    if not DC_NS._suppressNestedSkin then
+        self:ApplySleekChatSkin()
+    end
 end
 
 function DynamicChat:SaveChatFramePosition(pt, relPt, x, y, w, h)
@@ -8105,11 +8101,6 @@ local URL_MATCH_PATTERNS = {
     "(youtu%.be/[%w%._%-/%?&#=~%%:%+@!%$,;*%(%)]+)",
     "(youtube%.com/[%w%._%-/%?&#=~%%:%+@!%$,;*%(%)]+)",
 }
-
-local function EncodeDynamicChatLinkPayload(url)
-    if type(url) ~= "string" then return "" end
-    return (url:gsub("|", ""):gsub(":", "%%3A"))
-end
 
 local function HasCandidateURL(msg)
     if IsSecretValue(msg) or type(msg) ~= "string" then
@@ -9703,9 +9694,11 @@ function DynamicChat:ApplyAllEngineSettings()
     end
     self:ReassertTargetWhisperSlashCommands()
     self:ApplyWhisperDefaultSoundMuteState()
+    DC_NS._suppressNestedSkin = true
     self:ApplySavedChatFramePosition()
-    self:ApplySleekChatSkin()
     self:ApplyChatFrameTypography()
+    DC_NS._suppressNestedSkin = false
+    self:ApplySleekChatSkin()
     self:ApplyShortChannelNames()
     self:ApplyEditBoxSettings()
     self:ApplyStickyChannelSettings()
@@ -9713,6 +9706,7 @@ function DynamicChat:ApplyAllEngineSettings()
     self:RegisterQuickSlashCommands()
     self:InstallChatHooks()
     self:InstallReloadSnapshotHooks()
+    DC_NS._lastCoalescedLayoutTime = (GetTime and GetTime()) or 0
 end
 
 -- ============================================================================
@@ -12104,21 +12098,6 @@ do
         card.toggleBtn = wrap
         return wrap
     end
-end
-
-local function GetActiveChatConflicts()
-    local active = {}
-    if not (_G.C_AddOns and type(_G.C_AddOns.IsAddOnLoaded) == "function") then
-        return active
-    end
-    for _, entry in ipairs(DynamicChat.CONFLICT_REGISTRY or {}) do
-        local isLoaded = _G.C_AddOns.IsAddOnLoaded(entry.addon)
-        local isEnabled = (_G.C_AddOns.GetAddOnEnableState and (_G.C_AddOns.GetAddOnEnableState(entry.addon) or 0) > 0) or false
-        if isLoaded or isEnabled then
-            active[#active + 1] = entry.label or entry.addon
-        end
-    end
-    return active
 end
 
 local function LayoutPageCards(page)
@@ -14758,46 +14737,6 @@ function DynamicChat._RegisterWithDynamicSuite()
             { type = "UI",       text = "12 px Default Chat Font & Info Toast Timer Sync (24/11/2026): Set the default chat message font size to 12 px and updated Clean Smoked-Glass and Minimalist Raid presets to use 12 px / 2 px line spacing while tuning High-Readability to a balanced +1 px step at 13 px (50% smoked-glass backdrop, thin outline, drop shadow, 2 px line spacing); and connected Mention Alert Toasts to Suite Studio's dedicated Info & Mention Toast Duration timer (5s default: 3s, 5s, 8s, 12s, or Stay Until Clicked) with hover-to-pause and Right-Click dismissal." },
             { type = "FIX",      text = "Tab 3 Blank Screen Fix, Quick Presets Active Highlight & Copy Chat / URL Overhaul (24/11/2026): Fixed a nil typo on the Tab 2 Line Spacing card that aborted workspace construction before Tabs 3 and 4 built, and reset vertical scroll cleanly when switching tabs or resizing to 800x520; added live Suite Accent active highlighting for Quick Presets (clearing automatically when any preset setting is manually edited), tuned High-Readability to crisp 14 px contrast (50% backdrop, thin outline, drop shadow, 2 px line spacing) while having Clean Smoked-Glass and Minimalist Raid restore 13 px / 2 px text, and dynamically scaled chat typing box height and message clearance across docked tabs so chat lines never collide with the top typing box; and overhauled Copy Chat and Copy Link with a rolling out-of-combat plain-text session buffer fallback, case-insensitive URL capture (including bare www. links without duplicate sub-matches), hardened escape-code stripping, a [Select All] confirmation button and up to 4 Recent Links pills in the Copy Chat window, an elevated Copy Link dialog with deferred focus and full selection, and a plain-English Midnight footer notice whenever Blizzard restricts reading protected combat or instance lines." },
             { type = "UI",       text = "Pass 2 Quick Presets, 6 Persisted Sub-Settings Drawers & 800x520 Clamping (24/11/2026): Added a 4-option Quick Presets card at the top of Tab 2 (Clean Smoked-Glass, Minimalist Raid, High-Readability, Quiet Alerts); converted Smoked-Glass Skin (now with a 0%-95% background opacity precision slider, border style, and 30s/60s/2m/5m auto-fade duration), Left Shortcut Bar, Notification Sounds, Mention & Keyword Alerts (with a new [Test] preview button on Mention Alert Toast), Custom Sound Files, and Chat History (with [Copy Chat] and [Clear History] buttons) into persisted 24px Sub-Settings (N) drawers (collapsed by default on fresh profiles); removed the orphaned single-card Compact Channel Tags section and duplicate font sync toggle; shortened and right-clamped 4-tab labels and card titles for 800x520 minimum windows; and stripped outline flags from font picker group headers." },
-            { type = "FIX",      text = "Release v2.8.1 - Chat Input Box Focus Error Fix (22/11/2026): Fixed a Retail 12.1.5 Lua error that could appear when action bars shifted or Blizzard refreshed the layout while the chat input box had a protected focus state. DynamicChat now tracks chat focus through Blizzard's focus events and checks input box visibility safely across both DynamicSuite and standalone DynamicChat." },
-            { type = "UI",       text = "Release v2.7.0 - Unified Mention Alert Toast & Live Suite Accent Polish (21/11/2026): Upgraded DynamicChatMentionToast to the shared 410x74 Obsidian alert toast style (live Suite Accent, Scale, Opacity, Border Style, Auto-Fade Duration, Sound, Right-Click dismissal, and clean vertical stacking under suite toasts), clamped Chat Skin section header titles beside the Edit HUD button at 800x520, and replaced Blaze Orange focus borders, action buttons, font menu borders, and Restore Blizzard Defaults modal chrome with the live Suite Accent." },
-            { type = "FIX",      text = "Font Dropdown Popover, 3-Way Interactive Scrollbars, Custom Reload Prompt & Chat Feedback (16/11/2026): Fixed the Chat Font Family dropdown menu so clicking outside the menu, pressing Escape, or switching tabs closes it cleanly and updates its arrow icon; upgraded the font picker, sound picker, and settings scrollbars to support mousewheel scrolling, dragging the scrollbar handle (with Suite Accent colour highlight), and clicking anywhere on the track to jump; fixed chat confirmation messages when saving mention keywords, testing or adding custom sounds, and using '/dc mute'; and replaced the default Blizzard reload popup when restoring chat defaults with a custom dark-obsidian and Blaze Orange confirmation window." },
-            { type = "FIX",      text = "Embedded ChatFrame1 EditBox Dock & Zero Position Shift (16/11/2026): Embedded ebBar and ChatFrame1EditBox directly inside ChatFrame1's own 26px bottom (or top) bounds and padded ChatFrame1.FontStringContainer by 28px so the newest chat line never overlaps the EditBox; locked GetCompositeChatInsets() / GetVisibleContainerExtents() to constant (-leftExt, 8, 28, -6) insets regardless of 'Always Shaded' vs 'Only When Typing' so toggling EditBox shading never shifts ChatFrame1's screen position." },
-            { type = "FEATURE",  text = "External Sound Discovery (LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, ElvUI), Curated Blizzard Default Sounds & Self-Whisper Alerts (15/11/2026): Removed temporary .wav sound files and LibSharedMedia .wav registration in favour of 7 curated native Blizzard SOUNDKIT alerts (Blizzard Raid Warning, Blizzard Whisper, Blizzard Battle.net, Blizzard Ready Check, Blizzard Map Ping, Blizzard Auction Bell, and Blizzard Quest Complete) with dual PlaySound / PlaySoundFile routing; set clean channel defaults (Blizzard Whisper, Blizzard Battle.net, Blizzard Map Ping, Blizzard Raid Warning, and Say & Yell muted by default) with automatic migration from legacy ds_*/ex_* keys; added runtime LibSharedMedia-3.0, DBM, EXBOSS, BigWigs, WeakAuras, and ElvUI sound scanning with late-load refresh and safe fallback to Blizzard Raid Warning; restored self-whisper alert playback on incoming CHAT_MSG_WHISPER / CHAT_MSG_BN_WHISPER events while keeping self-message suppression active for group and public channels; and upgraded channel sound dropdowns with Blizzard / SharedMedia headers, inline [>] previews, scrolling, a live search filter, and dedicated [Play] buttons." },
-            { type = "FIX",      text = "Flush Bottom-Left (0, 0) Chat Clamping & Persistence (14/11/2026): Enforced ChatFrame1:SetClampedToScreen(false) whenever DynamicChat manages layout, added GetVisibleContainerExtents() and GetLiveOuterBottomLeft() so clamping measures only the visible chat container frame without external button or negative bottom EditBox overhangs, and canonicalised chatFramePos to BOTTOMLEFT outer-container coordinates so dragging or nudging to X = 0, Y = 0 sits flush against the bottom-left screen corner across HUD Edit toggles, UI scale events, and /reload." },
-            { type = "FIX",      text = "Unified /ww Instant Target Whisper Across All Chat/Whisper EditBoxes (13/11/2026): Kept /ww as the instant target whisper trigger with self-targeting (UnitIsUnit('target', 'player')) using GetUnitName('target', true), separated group leave cleanly into /lg, called ChatEdit_UpdateHeader before SetText + SetCursorPosition so 'Tell <TargetName>:' updates immediately on spacebar even inside existing whisper tabs, and hooked all 1..NUM_CHAT_WINDOWS editboxes plus FCF_OpenTemporaryWindow and ChatEdit_ActivateChat regardless of external chat addons." },
-            { type = "FIX",      text = "Removed Auto-Yield & Asserted Full DynamicChat Priority Over EllesmereUI Chat / ElvUI Chat (13/11/2026): DynamicChat no longer yields chat frame skinning, tab styling, EditBox anchoring, or bottom-left 0px positioning to EllesmereUI Chat or ElvUI Chat. Cleared legacy yieldSharedHooks and yieldHooks flags on load, removed the Tab 3 Compatibility Mode (Auto-Yield) card, and enforced strict 2-button mutual exclusion ('Use DynamicChat Only' vs 'Use [Addon] Only') in the Conflict Scanner." },
-            { type = "FIX",      text = "Accurate Frozen/Unloaded Conflict Detection & Universal 'Use DynamicChat' Takeover (12/11/2026): Updated IsAddonLoadedNow, IsAddonActiveInSession, and IsEllesmereUIChatSubModuleEnabled so any external chat addon set to 'FROZEN' (Never) in DynamicLoad or overridden via 'USE_DYNAMIC' / 'RUN_BOTH' is treated as inactive (false), and prevented IsEllesmereUIChatSubModuleEnabled from falling back to parent EllesmereUI when EllesmereUIChat is installed as a separate sub-addon on disk and unloaded." },
-            { type = "PERF",     text = "Zero-Allocation Raid Combat Path (12/11/2026): Fast-pathed FCF_StartAlertFlash and FCF_StopAlertFlash during InCombatLockdown() to style only the flashing tab (StyleSingleChatTab + RefreshTabNavButtonsVisuals) instead of running full LayoutDockedChatTabs table allocations on every combat tab flash; added an O(1) '/' prefix check in TryConvertTargetWhisperEditBox so normal typing in combat never evaluates slash regexes; reused pre-allocated URL capture tables in _urlCaptureFrame; and skipped RefreshLeftRailTelemetry() on UPDATE_INVENTORY_DURABILITY during combat." },
-            { type = "FIX",      text = "HUD Mover |r Text Fix, EllesmereUIChat / Disable Gate Yield & 1:1 ChatFrame1 Mover Sync (12/11/2026): Fixed literal '|r' escape codes on the HUD Edit Mode overlay label, hid the DynamicChat HUD mover and skipped ChatFrame1 size/position overrides whenever DynamicChat is disabled or soft-yielding to an external chat addon (EllesmereUIChat, ElvUI, Prat-3.0, Chattynator, LS: Glass), locked the HUD mover and DynamicChat backdrop container 1:1 to ChatFrame1's live anchor, scale, width, and height, and lowered the HUD mover backdrop opacity so chat text remains visible while dragging." },
-            { type = "FIX",      text = "In-Combat /ww (Whisper Target) & /lg (Leave Group) Shortcuts (12/11/2026): Wired /lg for fast group exit and /ww ('/ww ' space-trigger and '/ww <msg>' Enter trigger) with pcall + issecretvalue guards on UnitExists('target'), UnitIsPlayer('target'), and GetUnitName('target', true); and hooked OnTextChanged + OnSpacePressed with early bailout restricted strictly to BN_WHISPER or secret text/tellTarget values." },
-            { type = "FIX",      text = "ChatFrameEditBox BN_WHISPER Secret-Number Taint Fix & EllesmereUI Conflict Detection (12/11/2026): Eliminated direct EditBox widget script hooks (OnChar / OnSpacePressed) on ChatFrame1EditBox so /ww relies strictly on SlashCmdList['DYNAMICCHATWW'] and hooksecurefunc post-hooks; added IsEditBoxSecretOrBNWhisper and explicit issecretvalue(editBox:GetAttribute('tellTarget')) / issecretvalue(editBox.header:GetStringWidth()) guards across TryConvertTargetWhisperEditBox, HandleTargetWhisperSlashCommand, ApplyPassiveEditBoxSkinOnInit, RefreshSleekEditBoxBarColor, ChatEdit_UpdateHeader, and ChatEdit_ActivateChat; restricted ChatFrame1EditBox font, texture, and anchor styling to passive init skinning (never inside OnEditBoxFocusGained or before UpdateHeader); and registered EllesmereUI (plus EllesmereUIChat / EllesmereUI_Chat) in the Core Conflict Registry under DynamicChat." },
-            { type = "FEATURE",  text = "External Addon Conflict Detector & Smart Sub-Module Inspection (12/11/2026): Added pcall-guarded ElvUI[1].private.chat.enable and Leatrix_Plus sub-module inspection so ElvUI and Leatrix_Plus are only flagged when their chat sub-modules are active, alongside HARD conflict detection for Prat-3.0, Chattynator, ls_Glass, BasicChatMods, and Chatter and SOFT Auto-Yield for WIM." },
-            { type = "FIX",      text = "0x Secret-String Taint Architecture (Zero ChatFrame_AddMessageEventFilter, Zero Startup CVar Writes & Zero ChatFrame1/2 Mixin Mutations): Eliminated 100% of 'attempt to perform string conversion on a secret string value (execution tainted by DynamicChat)' in Retail 12.1.5 by removing all ChatFrame_AddMessageEventFilter registrations (keeping _urlCaptureFrame as the sole, 100% isolated URL capture listener across all chat channels with IsSecretValue(msg) guarded first before any type/string check), removing startup/zone/combat native timestamp and class colour CVar writes so _G.CHAT_TIMESTAMP_FORMAT is never tainted on login or reload, prepending saved previous-session history inside DynamicChatHistoryModal instead of calling cf1:AddMessage / cf1:ScrollToBottom, turning RefreshChatFrameTextLayout and ApplyStickyChannelSettings into safe no-ops, removing cf2:SetMaxLines(300) and _G.DEFAULT_CHATFRAME_ALPHA / _G.CHAT_FRAME_TAB_*_ALPHA writes, and moving _dsEditModeActive / _dsDragging / _dsDragShield off ChatFrame1 onto DynamicChat." },
-            { type = "FIX",      text = "Zero-Taint Secret-String Hotfix (Strict 3-Channel URL_FILTER_EVENTS), Private URL Capture Listener & 1-Click Left Rail Link Copy: Eliminated 'attempt to perform string conversion on a secret string value (execution tainted by DynamicChat)' in Retail 12.1.5 by restricting ChatFrame_AddMessageEventFilter strictly to CHAT_MSG_GUILD, CHAT_MSG_OFFICER, and CHAT_MSG_CHANNEL (never tainting ChatFrameUtil.ProcessMessageEventFilters / ChatFrameMixin:MessageEventHandler on Whispers, BNet, Party, Raid, Instance, or Say/Yell); added an isolated private event listener (_urlCaptureFrame) with string.find pcall probing to capture links across Whispers, BNet, Party, Raid, and Say/Yell into a 15-entry in-memory ring buffer merged into DynamicChatHistoryModal's 'Recent Links:' pill bar; added a Suite-Accent unread link indicator dot and Shift-Click / Middle-Click 1-click link copy shortcut on the Left Rail Copy button; and fixed DynamicChatHistoryModal active-tab extraction, ScrollChild EditBox rendering, and header text layout." },
-            { type = "FIX",      text = "Synchronised DynamicChat.version to 1.2.0, guarded HandleTargetWhisperSlashCommand (/ww) against C_ChatInfo.InChatMessagingLockdown() and IsEncounterInProgress() by falling back to native EditBox population, guarded LayoutDockedChatTabs and UISpecialFrames registrations against InCombatLockdown() (pre-registering modal frame names at login and flushing deferred tab layouts on PLAYER_REGEN_ENABLED), and throttled scrollbar thumb OnUpdate scripts with OnMouseUp and OnHide cleanup." },
-            { type = "FIX",      text = "Overflow Whisper Tab Clipping, Self-Whisper Testing, 'Blizzard Default' & LSM FileDataID Playback, and Tab Mousewheel Nil Fix: Stopped GeneralDockManager 38px left of the < / > navigation buttons (TOPRIGHT -30) with hardware child clipping (dock:SetClipsChildren(true)) and GeneralDockManagerScrollFrame suppression; hard-locked hiddenByScroll tabs with ClearAllPoints(), Hide(), and an OnShow guard hook (plus FCF_SetWindowName / FCF_CopyChatSettings / BN_FRIEND_INFO_CHANGED hooks) so overflow whisper/BNet tabs never stick out over the tab arrows; enabled self-whisper sound testing on CHAT_MSG_WHISPER / CHAT_MSG_BN_WHISPER; added numeric FileDataID support for LibSharedMedia-3.0 sound packs and BUILTIN_SOUND_LIBRARY; added a 2.0s unmute window + next-tick PlaySoundFile(567482/567421, outChan) playback so 'Blizzard Default' and built-in whisper chimes play reliably in dropdown previews and in-game without double-chiming or 300s tellTimer lockouts; kept sound alerts active alongside shared-hook addons; and hoisted RefreshTabNavButtonsVisuals above OnTabBarMouseWheel." },
-            { type = "NEW",      text = "Per-Channel Sound Alert Engine & 4th 'Sound Alerts' Sub-Tab (Built-In + LibSharedMedia-3.0): Added a dedicated 4th 'Sound Alerts' tab supporting custom incoming alert sounds across 11 chat channels (Whisper, Battle.net Whisper, Party, Party Leader, Raid, Raid Leader & Warning, Instance, Guild, Officer, Say & Yell, and Custom Channels) with 12 built-in WoW SoundKits, automatic LibSharedMedia-3.0 sound discovery, inline [>] menu preview buttons, Right-Click closed-dropdown replay, native Blizzard whisper double-chime prevention (MuteSoundFile 567482/567421), secret-value safe self-message suppression, combat filter modes, and per-channel anti-spam cooldowns." },
-            { type = "FIX",      text = "Fixed RestoreChatHistorySnapshot Nil Crash, Persistent Tab Arrows & Left Rail Across Docked Tabs, Whisper Tab Vertical Centring, and /ww First-Space Conversion: Hoisted IsInCombatOrActiveKeystone() above RefreshChatFrameTextLayout, added IsPrimaryChatDockVisible() so the < / > tab scroll arrows and Left Shortcut Rail remain visible when viewing Combat Log, Loot, Trade, or Whisper tabs, hooked FCF_SetTemporaryWindowType + vertically centred whisper tab labels, and hardened /ww EditBox conversion on the first Spacebar press (including cross-faction party/raid targets and PLAYER_LOGIN slash re-assertion)." },
-            { type = "NEW",      text = "Scrollable Top Chat Tab Bar with Mousewheel + Left (<) & Right (>) Buttons (LayoutDockedChatTabs & EnsureTabNavButtons): Replaced tab-shrinking compression with a readable scrollable tab viewport so tabs never shrink into unreadable slivers even with 20+ whisper tabs open. Added Mousewheel Up (Scroll Left) and Mousewheel Down (Scroll Right) across all tabs, docked sleek Left (<) and Right (>) assist buttons on the right end of the Top Tab Header Bar (with Suite Accent / Whisper Pink / BNet Cyan unread indicators, Shift-Click jump to first/last tab, and Right-Click active chat screen cycling), stripped '-RealmName' suffixes on character whisper tab labels (preserving the full name in tooltips), suppressed Blizzard's rounded middle tab Glow/Flash texture, and added Middle-Click whisper tab closing." },
-            { type = "FIX",      text = "Zero-Gap 0px Screen-Edge Persistence Across /reload & Blizzard Side Button Docking: Disabled C++ SetClampedToScreen (SetClampRectInsets(0,0,0,0) + SetClampedToScreen(false)) whenever DynamicChatDB.chatFramePos is active so Blizzard's FloatingChatFrame_UpdateBackgroundAnchors (-35/-50 C++ ClampRectInsets) can never push ChatFrame1 ~18px off the bottom/left screen edge after /reload; removed FCF_SavePositionAndDimensions from SaveChatFramePosition, preserved raw pos.x/pos.y in ApplySavedChatFramePosition, hooked SetSize/SetWidth/SetHeight/ApplySystemAnchor with next-frame re-assertion, and expanded GetCompositeChatInsets + external left/top docking for ChatFrame1ButtonFrame, ChatFrameMenuButton, and QuickJoinToastButton when 'Hide Default Blizzard Side Buttons' is turned Off." },
-            { type = "NEW",      text = "Fused Unbroken Smoked-Glass EditBox Dock, Top-Line Text Fix & 0px Bottom Screen Clamp: Fused ChatFrame1's Smoked-Glass frame into one seamless piece of glass enclosing the Top Tab Bar (y = +5..+29), Left Utility Rail, Chat Text, and Bottom EditBox Dock (y = -6..-32 or Top y = +29..+55) with an interior 1px p.footerDiv hairline, idle 0% transparent editBox bar (zero double-darkening or seam), tightened p.headerDiv to y = +5 with deferred history restoration and RefreshChatFrameTextLayout to fix top-line text slicing, and synced GetCompositeChatInsets (-36, 8, 29/55, -32/-6) with FCF_RestorePositionAndDimensions hooks to permanently eliminate bottom gaps and post-reload drift." },
-            { type = "IMPROVED", text = "Unpinned Top Conflict Banner & Tab 3 Shared-Hook Card: Auto-hid the top conflict banner whenever no unresolved DIRECT chat replacement addon is active (or when shared-hook addons like EnhanceQoLChatSocial / Leatrix Plus / ElvUI / WIM are auto-yielded), reclaiming 56px of vertical workspace, and added a dedicated 'Shared-Hook Compatibility (Auto-Yield)' card inside Tab 3." },
-            { type = "FIX",      text = "Fixed Invisible Blizzard Side Buttons Stealing Left Rail Clicks: Added SetSideClutterButtonSuppressed (calling Hide(), EnableMouse(false), and hooking OnShow) on ChatFrameMenuButton, ChatFrameChannelButton, ChatFrameToggleVoiceDeafenButton, ChatFrameToggleVoiceMuteButton, QuickJoinToastButton, ChatFrame*ButtonFrame, and MinimizeButton, and elevated the Left Utility Rail to MEDIUM strata (FrameLevel 20/22) so Scroll-to-Bottom, Settings, and Durability buttons are never blocked by invisible Blizzard frames." },
-            { type = "FIX",      text = "Instant Combat Log Tab & Debounced Tab Switching: Eliminated the client freeze when clicking the 'Combat Log' tab (ChatFrame2) by capping ChatFrame2 to 60 lines out of combat, hiding CombatLogQuickButtonFrame_Custom so it never collides with the 24px Top Tab Header Bar, hooking ChatFrame2Tab PreClick to trim/clear oversized combat log backlogs before WoW renders them, and upgrading FCF_SelectDockFrame + OnBlizzardDockOrTabUpdate with a lightweight fast-path and frame-debounced dock sync." },
-            { type = "NEW",      text = "Save Chat History Across Reloads & Logins: Added 'Save Chat History Across Reloads & Logins' (preserveChatHistory = true) and 'Saved Chat History Limit' ([ 50 Lines | 100 Lines | 250 Lines | 500 Lines ]) on Tab 3 to save up to 250 non-secret ChatFrame1 messages on PLAYER_LOGOUT / ReloadUI and restore them on PLAYER_LOGIN." },
-            { type = "FIX",      text = "Composite Screen Clamping & Flush EditBox Alignment: Anchored ChatFrame1EditBox and its Obsidian EditBox bar flush with the outer left and right edges of the Smoked-Glass container (including the 34px Left Utility Rail) and implemented composite screen boundary clamping (GetCompositeChatInsets & ClampChatFrameCoords) so the Left Utility Rail, Top Tab Bar, and bottom EditBox are never pushed off-screen." },
-            { type = "IMPROVED", text = "Plain-English Rewrite Across Tabs 1, 2 & 3: Rewrote all technical developer jargon across DynamicChat's 3-tab workspace and status bar into clear, everyday Australian/British player English." },
-            { type = "NEW",      text = "[+ HUD] Edit Mode 'Chat Frame' Target & Bottom-Right Resize Grip: Added 'Chat Frame' ('CHAT') as the 6th target in DynamicSuite's unified [+ HUD] Edit Mode (accessible via the top header [+ HUD] button or Left-Clicking the Lock icon on DynamicChat's Left Utility Rail) with live drag, 1px/10px directional nudge, grid snap, exact X/Y coordinate entry, scale slider, bottom-right resize grip (240..1200 x 100..900), and persistent SetPoint re-assertion over Blizzard Edit Mode." },
-            { type = "FIX",      text = "Eliminated Inner Dark Box, Vertical Right Border Line & Top Text Clipping: Removed CHAT_FRAME_TAB_NORMAL_*_ALPHA = 1.0 and set DEFAULT_CHATFRAME_ALPHA = 0 so Blizzard's FCF_FadeInChatFrame / FCF_FadeOutChatFrame never forces ChatFrame1Background or ChatFrame1RightTexture to 100% alpha; hardened SuppressBlizzardChatBackground with Hide() + OnShow hooks across Background, all 8 border textures, and ResizeButton; and raised the 24px Top Tab Header Bar to y = +10..+34 (with BACKGROUND strata tab cells and full-width p.headerBg tint) for a clean +10px top text clearance buffer." },
-            { type = "IMPROVED", text = "True In-Place Blizzard ChatFrame, Tab & 3px Auto-Fade ScrollBar Reskin: Eliminated the double-box background and 24px top gap by permanently stripping ChatFrame1..10Background, NineSlice, and all 8 border textures (guarded via FCF_SetWindowAlpha, FCF_SetWindowColor, and FloatingChatFrame_UpdateBackgroundAnchors hooks), tightening the 24px Top Tab Header Bar, stripping Blizzard's rounded tab textures across FCFTab_UpdateColors/FCFTab_UpdateAlpha with a full-width 2px Suite Accent active bottom bar, hiding ScrollToBottomButton, and reskinning ChatFrame.ScrollBar into a 3px auto-fading track over a borderless Smoked 25% glass backdrop." },
-            { type = "FIX",     text = "Temporary Whisper Tab Skinning (ChatFrame11+) & High-Contrast Chat Tab Typography: Expanded ApplySleekChatSkin (via CollectAllChatFrames and StyleSingleChatTab) to skin all temporary Whisper and Battle.net Whisper tabs in _G.CHAT_FRAMES (ChatFrame11+) and hooked FCF_OpenTemporaryWindow, FCFDock_UpdateTabs, FCFTab_UpdateAlpha, FCFTab_UpdateColors, and FCF_Close. Eliminated dim/washed-out tab labels by locking CHAT_FRAME_TAB_*_ALPHA to 1.0, upgrading tab text to 11.5pt OUTLINE + drop shadow in Crisp White (#FFFFFF active/hover), Bright Silver-White (#E2E8F0 unselected), and Whisper Lavender-Pink (#F8D0FF) / BNet Cyan (#8FE0FF) with a semantic bottom whisper bar." },
-            { type = "FIX",     text = "Raid & Mythic+ Secret-String Zero-Taint Fix: Eliminated the Retail 12.1.5 Raid taint error ('attempt to perform string conversion on a secret string value (execution tainted by DynamicChat)') by never overwriting global _G.CHAT_*_GET format strings (which ChatFrameMixin:MessageEventHandler concatenates with <secret string> raid messages and playerLinks), never calling ScrollingMessageFrameMixin Lua mutators (cf:SetFont, cf:SetMaxLines, or ChatFrame1.AddMessage hooks) that taint cf.fontStringPool / cf.historyBuffer, and isolating URL message filters from Raid, Party, Instance, Say, Yell, and Whisper channels with full HasAnySecretArg(...) + IsEncounterInProgress() bailouts." },
-            { type = "NEW",     text = "Sleek Monochrome Icon Left Utility Rail, 1-Click Great Vault & Customiser Menu: Upgraded the 36px Left Vertical Utility Rail with crisp monochrome .tga icons (icon_social, icon_shield, icon_vault, icon_copy, icon_log, icon_lock, icon_cog, icon_chevron_down) + numeric badges, replacing text labels ('SOC', 'DUR', 'CPY/TXT', 'LOG/CLR'). Added 8 customisable rail widgets (Social & Guild, Durability %, 1-Click Great Vault & M+, Copy & Clear Chat, Combat Log Toggle, Chat Lock/Fade & Zone Profiles, Settings + Right-Click Rail Customiser Popover, and Scroll to Bottom) plus Tab 2 visibility modes (Always, Mouseover, Combat Hide, Off) and an 8-chip toggle grid." },
-            { type = "NEW",     text = "Smoked-Glass Chat Container, 26px Top Tab Header Bar & 36px Left Utility Rail: Upgraded DynamicChat's UIParent-hosted chat skin to a unified Smoked-Glass container (#090A0D at 35% default alpha) enclosing a 26px Top Tab Header Bar (with smoked tab cells and a 2px Suite Accent active underline) and a 36px Left Vertical Utility Rail." },
-            { type = "NEW",     text = "Zero-Taint Native Chat Timestamps: Added a 4-pill Timestamp selector on Tab 2 ([ Off | 24h | 12h | HH:MM:SS ]) backed by Blizzard's native timestamp setting with 0.00% AddMessage taint." },
-            { type = "NEW",     text = "EllesmereUIChat & EnhanceQoL Conflict / Auto-Yield Protection: Detects EllesmereUIChat and automatically yields all overlapping skin, channel, EditBox, URL, scroll, and SetMaxLines hooks (plus uses OnChar/OnSpacePressed and private hook tables with 0 properties written to ChatFrame tables) so EllesmereUIChat runs with 0.00% interference, or lets you 1-click [Use DynamicChat] to replace it." },
-            { type = "NEW",     text = "Signature /ww Target Whisper Engine: Live EditBox conversion transforms '/ww ' into Blizzard's native C++ WHISPER state so pressing Enter executes Blizzard's native ChatEdit_SendText with zero combat or Mythic+ taint." },
-            { type = "NEW",     text = "Combat & Mythic+ Whisper Protection + Zero-Bloat Buffer Guard: Never registers ChatFrame_AddMessageEventFilter on whisper or raid/instance events, skips regex URL scanning during combat/encounters/active M+ keys, and stores zero chat message logs in SavedVariables." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}
@@ -14876,6 +14815,53 @@ function DynamicChat:RegisterRuntimeEvents()
     end
 end
 
+function DynamicChat:RequestCoalescedChatLayout(delay, alsoRestoreHistory)
+    if IsModuleDisabledInSuite("DynamicChat") then return end
+    DC_NS._layoutTimers = DC_NS._layoutTimers or {}
+    if alsoRestoreHistory then
+        DC_NS._pendingHistoryRestore = true
+    end
+    local function RunCoalescedPass(isHistorySlot)
+        if IsModuleDisabledInSuite("DynamicChat") then return end
+        DC_NS._suppressNestedSkin = true
+        self:ApplySavedChatFramePosition()
+        DC_NS._suppressNestedSkin = false
+        self:ApplySleekChatSkin()
+        DC_NS._lastCoalescedLayoutTime = (GetTime and GetTime()) or 0
+        if isHistorySlot and DC_NS._pendingHistoryRestore then
+            DC_NS._pendingHistoryRestore = false
+            self:RestoreChatHistorySnapshot()
+        end
+    end
+    if delay == nil then
+        local now = (GetTime and GetTime()) or 0
+        if DC_NS._lastCoalescedLayoutTime and (now - DC_NS._lastCoalescedLayoutTime) < 0.05 and not alsoRestoreHistory then
+            return
+        end
+        RunCoalescedPass(alsoRestoreHistory == true)
+        return
+    end
+    local slotKey = tostring(delay)
+    if DC_NS._layoutTimers[slotKey] then
+        return
+    end
+    local restoreFlag = (delay >= 0.10 or alsoRestoreHistory == true)
+    if _G.C_Timer and type(_G.C_Timer.NewTimer) == "function" then
+        DC_NS._layoutTimers[slotKey] = _G.C_Timer.NewTimer(delay, function()
+            DC_NS._layoutTimers[slotKey] = nil
+            RunCoalescedPass(restoreFlag)
+        end)
+    elseif _G.C_Timer and type(_G.C_Timer.After) == "function" then
+        DC_NS._layoutTimers[slotKey] = true
+        _G.C_Timer.After(delay, function()
+            DC_NS._layoutTimers[slotKey] = nil
+            RunCoalescedPass(restoreFlag)
+        end)
+    else
+        RunCoalescedPass(alsoRestoreHistory == true)
+    end
+end
+
 DynamicChat:RegisterEvent("ADDON_LOADED")
 DynamicChat:RegisterEvent("PLAYER_LOGIN")
 
@@ -14913,7 +14899,6 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
         end
         self:RegisterRuntimeEvents()
         PreRegisterDynamicChatSpecialFrames()
-        self:ScanExternalSounds(true)
         self:ApplyAllEngineSettings()
         if _G.C_Timer and type(_G.C_Timer.After) == "function" then
             _G.C_Timer.After(0.15, function()
@@ -14921,14 +14906,6 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
                     self:ReassertTargetWhisperSlashCommands()
                     self:ApplyWhisperDefaultSoundMuteState()
                     self:RestoreSavedWhisperTabs()
-                end
-            end)
-            _G.C_Timer.After(1.5, function()
-                if not IsModuleDisabledInSuite("DynamicChat") then
-                    self:ScanExternalSounds(true)
-                    if self.configPanel and self.configPanel:IsShown() then
-                        self:RefreshConfigUI()
-                    end
                 end
             end)
         end
@@ -14940,34 +14917,14 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
     elseif event == "PLAYER_ENTERING_WORLD" then
         self:ReassertTargetWhisperSlashCommands()
         self:ApplyWhisperDefaultSoundMuteState()
-        self:ApplySleekChatSkin()
-        self:ApplySavedChatFramePosition()
-        self:ApplySleekChatSkin()
         self:ApplyEditBoxSettings()
         self:ApplyStickyChannelSettings()
         self:ApplyGPUBufferSettings()
-        if _G.C_Timer and type(_G.C_Timer.After) == "function" then
-            _G.C_Timer.After(0.0, function()
-                if not IsModuleDisabledInSuite("DynamicChat") then
-                    self:ApplySavedChatFramePosition()
-                    self:ApplySleekChatSkin()
-                end
-            end)
-            _G.C_Timer.After(0.15, function()
-                if not IsModuleDisabledInSuite("DynamicChat") then
-                    self:ApplySavedChatFramePosition()
-                    self:ApplySleekChatSkin()
-                    self:RestoreChatHistorySnapshot()
-                end
-            end)
-            _G.C_Timer.After(0.50, function()
-                if not IsModuleDisabledInSuite("DynamicChat") then
-                    self:ApplySavedChatFramePosition()
-                    self:ApplySleekChatSkin()
-                end
-            end)
+        if _G.C_Timer and (type(_G.C_Timer.NewTimer) == "function" or type(_G.C_Timer.After) == "function") then
+            self:RequestCoalescedChatLayout(0.15, true)
+            self:RequestCoalescedChatLayout(0.50, false)
         else
-            self:RestoreChatHistorySnapshot()
+            self:RequestCoalescedChatLayout(nil, true)
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
         if self._dcDirectDragActive then
@@ -15017,28 +14974,10 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
         or event == "DISPLAY_SIZE_CHANGED"
         or event == "UI_SCALE_CHANGED"
         or event == "EDIT_MODE_LAYOUTS_UPDATED" then
-        self:ApplySleekChatSkin()
-        self:ApplySavedChatFramePosition()
-        self:ApplySleekChatSkin()
-        if _G.C_Timer and type(_G.C_Timer.After) == "function" then
-            _G.C_Timer.After(0.0, function()
-                if not IsModuleDisabledInSuite("DynamicChat") then
-                    self:ApplySavedChatFramePosition()
-                    self:ApplySleekChatSkin()
-                end
-            end)
-            _G.C_Timer.After(0.15, function()
-                if not IsModuleDisabledInSuite("DynamicChat") then
-                    self:ApplySavedChatFramePosition()
-                    self:ApplySleekChatSkin()
-                end
-            end)
-            _G.C_Timer.After(0.50, function()
-                if not IsModuleDisabledInSuite("DynamicChat") then
-                    self:ApplySavedChatFramePosition()
-                    self:ApplySleekChatSkin()
-                end
-            end)
+        if _G.C_Timer and (type(_G.C_Timer.NewTimer) == "function" or type(_G.C_Timer.After) == "function") then
+            self:RequestCoalescedChatLayout(0.15, false)
+        else
+            self:RequestCoalescedChatLayout(nil, false)
         end
     elseif CHAT_EVENT_TO_SOUND_CHANNEL[event] then
         self:HandleIncomingChatSoundEvent(event, arg2, arg12, arg1)

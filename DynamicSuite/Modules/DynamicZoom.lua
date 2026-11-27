@@ -3389,10 +3389,6 @@ local function RegisterWithDynamicSuite()
             { type = "UI",      text = "Release v2.7.0 (21/11/2026): Updated the standalone window corner resize grip hover highlight to track the active Suite Accent colour instead of hardcoded Blaze Orange." },
             { type = "FEATURE", text = "External Addon Conflict Detector & Auto-Yield Engine (12/11/2026): Added DynamicCam, MaxCam, and ActionCamPlus to the curated HARD conflict registry and automatically yielded NPC dialogue camera framing when DialogueUI, Immersion, or Storyline is active." },
             { type = "FIX",     text = "Eliminated StaticPopupDialogs and UIParent experimental CVar event taint by gating popup suppression to a hooksecurefunc post-hook during active CVar writes." },
-            { type = "FIX",     text = "Guarded GetCameraZoom() and C_CVar.GetCVar() against 12.1.5 secret values and deferred CVar writes during combat lockdown to PLAYER_REGEN_ENABLED." },
-            { type = "FIX",     text = "Tracked lastAppliedZoomContext so entering or leaving combat only triggers SmoothZoomTo when the resolved zoom profile changes, and persisted ActionCam state across UI reloads." },
-            { type = "PERF",    text = "Throttled slider drag OnUpdate with per-slider CVar callbacks, slowed liveBar readout to 0.15s, and attached scrollbar thumb OnUpdate only during active drag." },
-            { type = "FEATURE", text = "Added Blizzard Addon Compartment click handler, AUTO_YIELD conflict hook compliance, and ResetModuleDefaults aliases." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}

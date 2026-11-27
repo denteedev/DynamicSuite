@@ -7838,6 +7838,13 @@ function U.ShowWindow()
     end
     S.pendingCombatVis = nil
     local win = U.EnsureWindow()
+    S.windowPreWarmed = true
+    S.pendingPreWarmAfterCombat = false
+    if S.preWarmTimer then
+        if type(S.preWarmTimer) == "table" and S.preWarmTimer.Cancel then S.preWarmTimer:Cancel() end
+        S.preWarmTimer = nil
+    end
+    pcall(U.EnsureQuickOpenButton)
     if not win:IsShown() then win:Show() end
     U.RefreshAllSlotLocks()
 end
@@ -7902,6 +7909,13 @@ function U.ToggleWindow()
     S.pendingCombatVis = nil
     S.pendingCombatHideBank = nil
     local win = U.EnsureWindow()
+    S.windowPreWarmed = true
+    S.pendingPreWarmAfterCombat = false
+    if S.preWarmTimer then
+        if type(S.preWarmTimer) == "table" and S.preWarmTimer.Cancel then S.preWarmTimer:Cancel() end
+        S.preWarmTimer = nil
+    end
+    pcall(U.EnsureQuickOpenButton)
     if win:IsShown() then
         S.explicitClosing = (S.explicitClosing or 0) + 1
         if S.bankWindow and S.bankWindow:IsShown() then
@@ -12882,6 +12896,42 @@ function U.TryAutoSelectBankerGossip()
     return false
 end
 
+function U.PreWarmBagWindow()
+    if IsModuleDisabledInSuite("DynamicBags") or S.windowPreWarmed then return end
+    if InCombatLockdown() then
+        S.pendingPreWarmAfterCombat = true
+        return
+    end
+    if S.preWarmTimer then
+        if type(S.preWarmTimer) == "table" and S.preWarmTimer.Cancel then S.preWarmTimer:Cancel() end
+        S.preWarmTimer = nil
+    end
+    S.windowPreWarmed = true
+    S.pendingPreWarmAfterCombat = false
+    U.EnsureBagSpecialFrames()
+    pcall(U.EnsureWindow)
+    pcall(U.EnsureQuickOpenButton)
+    pcall(U.EnsureButtons)
+    pcall(U.ApplyLive, true)
+end
+
+function U.ScheduleDeferredPreWarm(delay)
+    if IsModuleDisabledInSuite("DynamicBags") or S.windowPreWarmed or S.preWarmTimer then return end
+    local waitSec = delay or 1.8
+    if C_Timer and type(C_Timer.NewTimer) == "function" then
+        S.preWarmTimer = C_Timer.NewTimer(waitSec, function()
+            S.preWarmTimer = nil
+            U.PreWarmBagWindow()
+        end)
+    elseif C_Timer and type(C_Timer.After) == "function" then
+        S.preWarmTimer = true
+        C_Timer.After(waitSec, function()
+            S.preWarmTimer = nil
+            U.PreWarmBagWindow()
+        end)
+    end
+end
+
 function U.OnLogin()
     EnsureDB()
     S.bagIDs = U.GetLiveBagIDs()
@@ -12898,11 +12948,8 @@ function U.OnLogin()
     pcall(U.ProcessDirtyBags)
     if not InCombatLockdown() then
         U.EnsureBagSpecialFrames()
-        pcall(U.EnsureWindow)
-        pcall(U.EnsureQuickOpenButton)
-        pcall(U.EnsureButtons)
-        pcall(U.ApplyLive, true)
     end
+    U.ScheduleDeferredPreWarm(1.8)
     S.loginBaselineDone = true
     U.ScheduleSnapshot()
     U.ScheduleAutoOpenContainers()
@@ -13094,6 +13141,13 @@ DynamicBags:SetScript("OnEvent", function(self, event, arg1, arg2)
         end
         if S.pendingQuickOpenSync or (S.window and S.window:IsShown()) or (S.quickOpenBtn and S.quickOpenBtn:IsShown()) then
             U.UpdateQuickOpenButton()
+        end
+        if S.pendingPreWarmAfterCombat and not S.windowPreWarmed then
+            if C_Timer and (type(C_Timer.NewTimer) == "function" or type(C_Timer.After) == "function") then
+                U.ScheduleDeferredPreWarm(0.25)
+            else
+                U.PreWarmBagWindow()
+            end
         end
         U.HideBlizzardBags()
         U.ScheduleAutoOpenContainers()
@@ -13344,43 +13398,6 @@ DynamicBags.CHANGELOG = {
         { type = "FIX",     text = "Release v2.10.1 - Clean Single-Action Bank & Guild Bank Closing (25/11/2026): Fixed a lingering invisible Blizzard bank interaction left behind whenever DynamicBank closed via its Close button, Escape key, or bag toggle while at a Personal Bank, Warband Bank, or Guild Bank (previously requiring an extra Escape press before interacting with the banker again); closing DynamicBank now cleanly terminates active C_Bank / CloseGuildBankFrame and C_PlayerInteractionManager banker interactions, detaches and hides suppressed Blizzard BankFrame/GuildBankFrame panels out of combat with re-entrancy guards, closes child modals and popovers (dropdowns, Gold Transfer modal, StackSplitFrame, and buy-tab popups) one at a time on Escape without killing the live banker session, keeps Personal/Warband/Guild tab switching uninterrupted, and leaves remote cached snapshot viewing (/dbag bank) untouched." },
         { type = "FEATURE", text = "Release v2.10.1 - DynamicBank Gold Controls & Obsidian Gold Transfer Modal (25/11/2026): Added live bank gold balances and transfer controls to the DynamicBank footer for Warband Bank (Deposit/Withdraw), Guild Bank (Deposit/Withdraw with live daily rank limit), and Personal Bank (live character gold display + [Deposit to Warband] shortcut with plain-English tooltip explaining that character gold stays in your bags); added a shared Obsidian Core Gold Transfer modal with Gold/Silver/Copper numeric inputs, 1k/10k/50k/100k/Max quick-fill pills, inline validation, and Escape/Enter handling; and subscribed to ACCOUNT_MONEY, PLAYER_MONEY, GUILDBANK_UPDATE_MONEY, and GUILDBANK_UPDATE_WITHDRAWMONEY for instant balance refreshes." },
         { type = "UI",      text = "Pass 5 Category Reorder Arrow Tint Parity (25/11/2026): Tinted the < and > reorder arrows on enabled Category Order & Visibility tiles in Tab 1 with the live Suite Accent colour at rest (switching to crisp white with accent border on hover, while keeping disabled tiles muted slate) to match DynamicPrep's Top Info Bar Layout Builder." },
-        { type = "UI",      text = "Category Grid Parity, Isolated Bank Scale, Tab 3 Drawer Spacing & In-Panel Auto-Restock UI (24/11/2026): Restyled Tab 1's 12 Category Order & Visibility tiles to match DynamicPrep's dark Obsidian layout builder (#0E1015 fill, crisp 1px live Suite Accent border when enabled, dimmed slate when disabled, '1. Category' numbering, and always-visible bordered < and > reorder buttons); isolated Tab 2's Bank Window Scale slider so scaling Bank/Warband never moves or touches the Bag window; tightened Tab 3 Sub-Settings drawer spacing and ScrollFrame height updates so every child row renders cleanly without clipping; and added an in-panel Smart Vendor Auto-Restock drawer supporting bag drag-and-drop, Shift-Click links, item ID/name lookup, per-item quantity controls, Clear All, and Ctrl + Alt + Right-Click vendor adding with tooltip hints." },
-        { type = "UI",      text = "Pass 4 UI Refinement, Quick Presets, Persisted Sub-Settings Drawers & Tab 2 Rebalance (24/11/2026): Moved Category Layout Preset into a full-width QUICK PRESETS card at the top of Tab 1 (Mythic+ & Raid, Collector, Minimalist, Custom) with live Suite Accent active highlighting that clears on manual tweaks; exposed 3-mode Item Sorting (Quality, Alphabetical, Manual) and Auto-Merge Stacks on Close in Tab 1 while hiding Category-only controls cleanly in Single Grid mode and stripping outline flags from category arrows; rebalanced Tab 2 (Appearance, Badges & Glow) with Bag Window Scale, Bank Window Scale, Window Background Opacity, and Reset Window Positions; upgraded Tab 3 Auto-Repair, Auto-Open Containers, and Quick-Open Queue into persisted multi-row Sub-Settings drawers collapsed by default on fresh profiles; and unified live Suite Accent repainting across Bags, Bank, and Standalone frames." },
-        { type = "UI",      text = "Release v2.7.0 - 156x26px Binary Switch Alignment & Live Accent Tooltips (21/11/2026): Standardised binary Off/Enabled option switches across all tabs to 68px Off + 84px Enabled (156x26px total) and updated Alt + Left-Click category tooltips to track the live Suite Accent colour." },
-        { type = "FIX",     text = "v2.4.0 DynamicMail Alt+Left-Click Attach & Stuck Lock Release on Mail Close (18/11/2026): Removed the ActionButtonUseKeyDown edge filter blocking Alt + Left-Click mail attachments on ContainerFrameItemButton slot buttons, and updated ITEM_LOCK_CHANGED / ITEM_UNLOCKED plus MAIL_CLOSED and U.ShowWindow() lock refreshes so bag icons never stay desaturated after closing Mailbox with attached or dragged items." },
-        { type = "FIX",     text = "Release v2.3.2 - 1-Click Housing Decor Non-Tradeable Confirmation & Smooth Mousewheel Scrolling (18/11/2026): Clicking Open (N) or scrolling Alt+MouseWheel now uses and confirms refundable/trade-timer Housing Decor items in one click out of combat (supporting Retail 12.1.5 pooled StaticPopup dialogs, END_BOUND_TRADEABLE, and USE_NO_REFUND_CONFIRM while keeping Open (N) ready whenever a background auto-open requires a hardware click and strictly ignoring manual bag clicks, dungeon/raid loot rolls, and non-Decor items); and restored smooth mousewheel scrolling across DynamicBags, DynamicBank (Personal, Warband, and Guild Bank), and settings scroll areas whenever Ctrl+Shift is not held." },
-        { type = "FIX",     text = "ESC / B Keybind Closure, Top-Most Window Escape Priority & GameMenu Failsafe Guard (18/11/2026): Removed the conflicting GameMenuFrame OnShow hide hack from U.EnsureWindow() and added nil-hole/duplicate compaction plus single top-most Escape ordering to UISpecialFrames (DynamicBagsBankFrame -> DynamicBagsFrame -> DynamicBagsStandaloneFrame -> DynamicSuite DesktopWindows); guarded CloseAllBags against ESC calls and added a CloseSpecialWindows + ToggleGameMenu failsafe so even if DynamicBagsFrame or DynamicBagsBankFrame is protected by slot children or skipped by CloseSpecialWindows, pressing ESC reliably clears active search or closes the top-most window one at a time without opening the Options / Game Menu while preserving clean two-way B toggling before and after ESC." },
-        { type = "FIX",     text = "ESC & B Keybind Window Closing, CloseAllBags & Unfocused Escape-First Search Clear (18/11/2026): Removed raw EnableKeyboard(true) and OnKeyDown capture from DynamicBagsFrame and DynamicBagsBankFrame so pressing B or ESC always reaches Blizzard's keybind and UISpecialFrames handlers without swallowing input; preserved Escape-first search clearing via OnEscapePressed when the search box is focused and a combat-guarded CloseSpecialWindows post-hook when search text is active while unfocused (restoring the open window once, clearing both search boxes, and letting the second ESC close cleanly); and updated ToggleWindow() and hooked CloseAllBags() so pressing B or CloseAllBags toggles DynamicBagsFrame (alongside DynamicBagsBankFrame when open) reliably out of combat." },
-        { type = "FEATURE", text = "Shift+Click Collapse/Expand All Categories & Footer Bag Space / Junk Breakdown Tooltip (16/11/2026): Shift + Left-Click on any category header collapses all expanded categories or expands all categories at once out of combat (replacing the old single-step shift reorder action while keeping Alt + Left-Click for the reorder menu); made the bottom-left footer slot readout interactive with a hover tooltip showing per-bag free/total slots (Backpack, Bag 1-4, Reagent Bag) plus the total vendor sell value of grey/poor-quality items currently in your bags." },
-        { type = "FEATURE", text = "Search Clear Button, Escape-First Clearing & Collapsible Category Headers (16/11/2026): added an inline 'x' clear button to both the DynamicBags and Unified DynamicBank search boxes, Escape-first clearing when search text is active (pressing Escape a second time closes the window cleanly), and Left-Click collapsing on virtual category headers with chevron indicators and collapsed item-count summaries saved in DynamicBagsDB (Alt+Left-Click opens the category reorder menu)." },
-        { type = "FEATURE", text = "Dual-Mode Ctrl+Scroll Window Scaling, Header Controls Tooltip & Scale-Aware Docked Bank Alignment (15/11/2026): added 70%-140% (5% steps, out of combat) scaling across DynamicBags and DynamicBank (Personal Bank, Warband Bank, and Guild Bank). Ctrl + Scroll across the full header scales temporarily for the open session (resetting on hide); Ctrl + Shift + Scroll anywhere on the window saves bag and bank scales permanently without affecting normal wheel scrolling or Ctrl+Click item previews; Right-Click anywhere on the empty header (or Reset DynamicBags) resets scale to 100%; added DynamicBags / DynamicBank Window Controls header tooltips and a live Suite Accent scale readout toast; and keeps docked DynamicBank flush beside DynamicBags at any scale." },
-        { type = "FEATURE", text = "Unified Auto-Open for Gold Pouches, Housing Decor & Profession Knowledge (15/11/2026): expanded the automatic container opener to use/open Soulbound and Warband-bound gold pouches, coin/loot satchels, Housing Decor, and Profession Knowledge items (Treatises, Shards, Notes, Curios matching your character's known professions) out of combat when bank, vendor, mail, trade, guild bank, and auction house windows are closed. Added default-enabled 'Auto-Open Soulbound Housing Decor' and 'Auto-Open Soulbound Profession Knowledge' toggles in Tab 3, while keeping protected-spell items (via C_Item.GetItemSpell or ADDON_ACTION_BLOCKED) safely queued in the 1-click Open (N) header button with a per-item retry cooldown and session blacklist." },
-        { type = "FIX",     text = "Hardened zero-flash Bank/Guild Bank opening after /reload (14/11/2026): added Scale+Alpha suppression and GUILDBANKFRAME_OPENED handling, preserved unqueried Guild Bank tab snapshots across sessions while reflecting live withdrawals down to 0 items, enforced strict weak ordering in Sort: A-Z when uncached items appear, verified compatible slot placement in Drop-Anywhere Split-Stack Placement, fixed Guild Bank T1-Tn badge overlap and view-only slot dimming, synchronised Tab 3 Auto-Repair/Auto-Sell keys, guarded fast auto-loot bursts, and expanded /dbag slash subcommands." },
-        { type = "FEATURE", text = "Guild Bank Daily Withdrawal Counter (13/11/2026): each Guild Bank tab button (T1, T2...) now shows a small counter of how many item withdrawals you have left today - white when plenty remain, amber at 1-2, red at 0, and a red x for tabs you cannot view. Unlimited tabs show no counter. Counters only appear while you are at the Guild Bank." },
-        { type = "FIX",     text = "Guild Bank footer and tooltip separators now use plain characters so they display correctly with every DynamicSuite font (13/11/2026)." },
-        { type = "FEATURE", text = "External Addon Conflict Detector & Smart Sub-Module Inspection (12/11/2026): Curated HARD conflict detection for Baganator, BetterBags, AdiBags, ArkInventory, Bagnon, Sorted, and LiteBag, plus pcall-guarded ElvUI[1].private.bags.enable and Leatrix_Plus sub-module checks." },
-        { type = "FIX",     text = "Eliminated Row 1 header button overlap ('View: Bags' vs 'Clear') across all column and icon-size slider settings: trimmed redundant 'Char: ' and 'View: ' button prefixes, added auto-fitting dropdown widths with mouseover tooltips ('Character & Alt Vault' and 'Active Inventory View'), enforced dynamic minimum header width floors on DynamicBagsFrame and DynamicBagsBankFrame (640px), centred narrow item grids cleanly inside the scroll area, pre-warmed DynamicBank at 0.00s on Banker gossip selection, and deferred full bank tooltip snapshots off the open frame for zero-stutter bank opening." },
-        { type = "FIX",     text = "Switched DynamicBagsQuickOpenBtn from type='item' (which triggers Blizzard's C_Item.IsEquippableItem crash on non-equippable pouches and double-fires on Down+Up clicks) to single-edge clicks with a multi-line /use <bag> <slot> batch macro (macrotext1 up to 255 chars, opening ~22-25 instant Use: gold pouches/caches in a single click or Alt+MouseWheel scroll), disabled the blocked timer-based C_Container.UseContainerItem loop, auto-selected single Banker gossip options (e.g. Ceera in Silvermoon with DialogueUI installed) on GOSSIP_SHOW, restored missing icon_grid.tga (Merge) and icon_spark.tga (Clear) textures with crisp white selected icon tinting, and formatted all Gold footers and tooltips with Gold, Silver, and Copper coin icons and comma separators." },
-        { type = "FEATURE", text = "Persisted and restored the last opened Bank Mode (Personal Bank vs Warband Bank) and per-mode Sub-Tab (All vs T1..TN across Personal, Warband, and Guild Bank) in DynamicBagsDB, with a 'Remember Last Opened Bank & Sub-Tab (Personal / Warband)' toggle in Tab 3, alt tab-count safety clamping, and untainted right-click/batch deposit routing to Enum.BankType.Account and the active sub-tab." },
-        { type = "FEATURE", text = "Added Soulbound Auto-Open for <Right Click to Open> loot/gold pouches (paced at 0.35s when out of combat with all interaction frames closed) and a 1-Spot Open (N) Secure Queue Button (DynamicBagsQuickOpenBtn, parented to UIParent for 0.00% DynamicBagsFrame combat protection taint) for Housing Decor, Profession Knowledge Points (verified against known character professions), and Use: caches." },
-        { type = "FIX",     text = "Enabled combat-safe bag toggling (B / ToggleAllBags) whenever DynamicBagsFrame is already initialised and unprotected, while deferring protected slot-button grid reflows and pre-registering UISpecialFrames at login for 0.00% CloseSpecialWindows taint." },
-        { type = "FIX",     text = "Fixed 'Merge' failing to combine split stacks across DynamicBags and DynamicBank: added U.GetMergeStackKey (normalising stack keys strictly by itemID, crafting/reagent quality tier via U.DetectCraftQuality, and bound state while ignoring hyperlink linkLevel, specializationID, and modifier suffixes), removed C_Container.SortBags / SortBankBags / SortAccountBankBags slot-lock collisions from U.Restack and U.RestackBank, and replaced the blind 0.12s timer with an event-driven multi-pass stack merger (BAG_UPDATE_DELAYED / GUILDBANKBAGSLOTS_CHANGED) that pairs disjoint slots and automatically merges overflow remainders." },
-        { type = "FEATURE", text = "Added [Sort: Quality v] and [Merge] header controls to DynamicBank (Character Bank, Warband Bank, and Guild Bank) with U.RestackBank(mode), U.MergePartialStacksAcrossBags, U.MergeGuildBankTabStacks, Shift+Left-Click stack splitting, and Drop-Anywhere Split-Stack Placement (U.PlaceCursorItemInFreeBankSlot)." },
-        { type = "FIX",     text = "Eliminated the 100ms Blizzard GuildBankFrame flash on the first Guild Bank interaction after /reload by hooking Blizzard_GuildBankUI and Blizzard_BankUI on ADDON_LOADED/OnShow and opening DynamicBank synchronously (0.00s) before the 0.10s tab snapshot refresh." },
-        { type = "FEATURE", text = "Added Drop-Anywhere Split-Stack Placement (U.PlaceCursorItemInFreeSlot): clicking or dropping a split stack anywhere on empty bag canvas or category headers automatically places it into the first free slot (preferring Reagent Bag for crafting reagents) without auto-merging." },
-        { type = "UI",      text = "Separated Visual Category Sort Order (Sort: Quality / Sort: A-Z / Sort: Manual dropdown & right-click cycle) from Server-Side Stack Merging (Merge button with Left-Click Merge Now and Right-Click Auto-Merge on Bag Close) in the DynamicBagsFrame top-right header." },
-        { type = "UI",      text = "Polished all 3 configuration tabs with plain-English titles, zero-truncation status header, standardised [ Off | Enabled ] binary toggles, smart Disable All / Enable All category toggle, and 104px preset pills." },
-        { type = "UI",      text = "Converted all 5 numeric range controls (Bag Columns, Bank Columns, Slot Icon Size, Category Spacing, and Icon Font Size) to the unified Sleek Precision Track Slider with smooth drag and mousewheel support." },
-        { type = "UI",      text = "Replaced literal ' v' dropdown text and '^' item upgrade text with crisp vector chevron textures (icon_chevron_down.tga and icon_chevron_up.tga) and added an Inline Conflict Resolution Banner to the workspace." },
-        { type = "FEATURE", text = "Migrated Merchant, Loot & Inventory Automation (Auto-Repair Equipment with Guild/Personal Funding Priority drawer, Auto-Sell Grey Junk, Faster Auto-Loot, and Auto-Fill DELETE Confirmation) from DynamicPrep into DynamicBags Tab 3 with automatic SavedVariables migration." },
-        { type = "UI",      text = "Standardised all item pinning, category header, bank transfer, currency tracker, category priority chip, and preset button tooltips to use Command-Prefix-Only Highlighting (coloured command prefix + Silver-White action description)." },
-        { type = "UI",      text = "Upgraded all 7 section headers across Tabs 1-3 to 36px 2-Line Tall L-Brackets with enclosed Slate-Silver subtitles (DESIGN_SYSTEM.md Section 2.4)." },
-        { type = "UI",      text = "Grouped all settings across all 3 configuration tabs into bordered section containers with connected L-bracket section headers (DESIGN_SYSTEM.md Section 2.4)." },
-        { type = "FEATURE", text = "Updated consumable crafting quality badges for Midnight's 2-tier system (Gold Tier 2 & Silver Tier 1 pips) alongside gear ilvl badges." },
-        { type = "UI",      text = "Added a Settings Cog button to the DynamicBank header toolbar next to the Pin and Close buttons for direct access to bag and bank settings." },
-        { type = "FIX",     text = "Fixed WUE & BoE corner badge detection and persistence across live bags, Character Bank, and Warband Bank snapshots." },
-        { type = "FIX",     text = "Fixed duplicate itemID Equipment Set false-positives by enforcing strict bag:slot matching for live bags and excluding currently worn gear." },
-        { type = "FEATURE", text = "Added 12 reorderable categories, interactive < / > & 2-click category swapping, and custom obsidian slot borders." },
     },
 }
 _G.DynamicSuite = _G.DynamicSuite or {}
