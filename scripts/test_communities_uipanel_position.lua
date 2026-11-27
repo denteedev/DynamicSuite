@@ -51,9 +51,12 @@ local function CreateHarness()
 
     local state = {
         inCombat = false,
-        loadedAddons = { DynamicSuite = true, Blizzard_Communities = true, Blizzard_WorldMap = true },
+        loadedAddons = { DynamicSuite = true, Blizzard_Communities = true, Blizzard_WorldMap = true, Blizzard_GroupFinder = true },
         eventFrames = {},
         timers = {},
+        cursorX = 960,
+        cursorY = 540,
+        leftMouseDown = false,
     }
 
     env.tinsert = table.insert
@@ -83,8 +86,12 @@ local function CreateHarness()
     env.IsShiftKeyDown = function() return false end
     env.IsControlKeyDown = function() return false end
     env.IsAltKeyDown = function() return false end
-    env.IsMouseButtonDown = function() return false end
-    env.GetCursorPosition = function() return 960, 540 end
+    env.IsMouseButtonDown = function(btn)
+        if btn == "LeftButton" then return state.leftMouseDown == true end
+        return false
+    end
+    env.GetCursorPosition = function() return state.cursorX, state.cursorY end
+    env.MouseIsOver = function() return true end
     env.CreateColor = function(r, g, b, a)
         return { r = r or 1, g = g or 1, b = b or 1, a = a or 1, GetRGBA = function(self) return self.r, self.g, self.b, self.a end }
     end
@@ -247,9 +254,36 @@ local function CreateHarness()
     end
 
     -- Simulated Blizzard frames & UIPanel layout manager
+    local function AttachTrackedTitleContainer(parentFrame)
+        local tc = MakeFrame("Frame", nil, parentFrame)
+        tc._setScriptCalls = {}
+        tc._nativeDragStartCount = 0
+        tc._nativeDragStopCount = 0
+        -- Pre-seed Blizzard's own drag handlers before DesktopWindows loads
+        tc._scripts.OnDragStart = function()
+            tc._nativeDragStartCount = tc._nativeDragStartCount + 1
+        end
+        tc._scripts.OnDragStop = function()
+            tc._nativeDragStopCount = tc._nativeDragStopCount + 1
+        end
+        local origSetScript = tc.SetScript
+        function tc:SetScript(ev, fn)
+            table.insert(self._setScriptCalls, ev)
+            return origSetScript(self, ev, fn)
+        end
+        parentFrame.TitleContainer = tc
+        return tc
+    end
+
     local comm = MakeFrame("Frame", "CommunitiesFrame", env.UIParent)
     comm:SetSize(820, 560)
+    AttachTrackedTitleContainer(comm)
     env.UIPanelWindows["CommunitiesFrame"] = { area = "left", pushable = 0 }
+
+    local pve = MakeFrame("Frame", "PVEFrame", env.UIParent)
+    pve:SetSize(563, 428)
+    AttachTrackedTitleContainer(pve)
+    env.UIPanelWindows["PVEFrame"] = { area = "left", pushable = 1 }
 
     local worldMap = MakeFrame("Frame", "WorldMapFrame", env.UIParent)
     worldMap:SetSize(980, 660)
@@ -309,6 +343,7 @@ local function CreateHarness()
         env = env,
         state = state,
         comm = comm,
+        pve = pve,
         worldMap = worldMap,
         charFrame = charFrame,
         FireEvent = FireEvent,
@@ -520,6 +555,128 @@ RunTest("(e) DesktopWindows uses hooksecurefunc (no raw UpdateScaleForFit overwr
         mouseFrame:GetScript("OnEvent")(mouseFrame, "GLOBAL_MOUSE_DOWN", secretMarker)
     end
     assertEqual(true, true, "DesktopWindows hooks handled secret frame names, debugstack, and GLOBAL_MOUSE_DOWN with zero errors")
+end)
+
+-- (f) DesktopWindows never calls SetScript on CommunitiesFrame.TitleContainer or PVEFrame.TitleContainer,
+--     and header dragging + right-click reset remain fully functional on both overlay and TitleContainer
+RunTest("(f) Zero SetScript on Blizzard TitleContainer (CommunitiesFrame & PVEFrame) with working drag & right-click reset", function()
+    local h = CreateHarness()
+    local env = h.env
+    local dw = env.DynamicSuite.DesktopWindows
+    local db = dw:GetDB()
+    db.masterEnabled = true
+    db.sideBySide = true
+    db.dragAnywhere = true
+    db.positions = {}
+    db.scales = {}
+
+    -- Static source check: DesktopWindows must never call SetScript on TitleContainer
+    local fh = assert(io.open("DynamicSuite/DynamicSuite_Core.lua", "rb"))
+    local src = fh:read("*a")
+    fh:close()
+    assertEqual(src:find("tc.SetScript", 1, true), nil, "Direct tc.SetScript call must be removed from DesktopWindows")
+    assertEqual(src:find("TitleContainer:SetScript", 1, true), nil, "Direct TitleContainer:SetScript call must not exist")
+
+    local function FindHeaderOverlay(parentFrame)
+        for _, f in ipairs(h.state.eventFrames) do
+            if f._parent == parentFrame and f._scripts.OnDragStart and f._scripts.OnMouseUp then
+                return f
+            end
+        end
+        return nil
+    end
+
+    -- Show both taint-sensitive frames and trigger UIPanel updates
+    h.comm:Show()
+    h.pve:Show()
+    env.UpdateUIPanelPositions()
+
+    -- Verify zero SetScript calls occurred on either TitleContainer
+    assertEqual(#h.comm.TitleContainer._setScriptCalls, 0, "DesktopWindows must never call SetScript on CommunitiesFrame.TitleContainer")
+    assertEqual(#h.pve.TitleContainer._setScriptCalls, 0, "DesktopWindows must never call SetScript on PVEFrame.TitleContainer")
+
+    -- 1. Drag CommunitiesFrame via its addon-owned header overlay and verify saved offset
+    local commOv = FindHeaderOverlay(h.comm)
+    assertTrue(commOv ~= nil, "CommunitiesFrame addon-owned header overlay created")
+    h.state.cursorX, h.state.cursorY = 960, 540
+    h.state.leftMouseDown = true
+    commOv._scripts.OnDragStart(commOv, "LeftButton")
+    h.state.cursorX, h.state.cursorY = 1080, 490
+    local driver = env.DynamicSuiteDesktopWindowsDragDriver
+    assertTrue(driver ~= nil and type(driver._scripts.OnUpdate) == "function", "Drag driver OnUpdate active during overlay drag")
+    driver._scripts.OnUpdate(driver, 0.016)
+    h.state.leftMouseDown = false
+    commOv._scripts.OnDragStop(commOv)
+
+    assertTrue(type(db.positions.CommunitiesFrame) == "table", "CommunitiesFrame overlay drag saved position")
+    assertNear(db.positions.CommunitiesFrame.x, 120, "CommunitiesFrame overlay drag X persisted")
+    assertNear(db.positions.CommunitiesFrame.y, -50, "CommunitiesFrame overlay drag Y persisted")
+
+    -- Right-click reset on CommunitiesFrame overlay clears saved position & scale
+    db.scales.CommunitiesFrame = 1.15
+    commOv._scripts.OnMouseUp(commOv, "RightButton")
+    assertEqual(db.positions.CommunitiesFrame, nil, "CommunitiesFrame right-click reset clears saved position")
+    assertEqual(db.scales.CommunitiesFrame, nil, "CommunitiesFrame right-click reset clears saved scale")
+    local ptComm, _, _, cxComm, cyComm = h.comm:GetPoint(1)
+    assertEqual(ptComm, "CENTER", "CommunitiesFrame reset restores CENTER anchor")
+    assertNear(cxComm, 0, "CommunitiesFrame reset X is 0")
+    assertNear(cyComm, 0, "CommunitiesFrame reset Y is 0")
+
+    -- 2. Drag PVEFrame directly via TitleContainer HookScript (preserving Blizzard native handler)
+    local pveTC = h.pve.TitleContainer
+    assertTrue(type(pveTC._scripts.OnDragStart) == "function", "PVEFrame.TitleContainer OnDragStart hook active")
+    assertTrue(type(pveTC._scripts.OnDragStop) == "function", "PVEFrame.TitleContainer OnDragStop hook active")
+    assertTrue(type(pveTC._scripts.OnMouseUp) == "function", "PVEFrame.TitleContainer OnMouseUp hook active")
+
+    h.state.cursorX, h.state.cursorY = 960, 540
+    h.state.leftMouseDown = true
+    pveTC._scripts.OnDragStart(pveTC, "LeftButton")
+    assertEqual(pveTC._nativeDragStartCount, 1, "Blizzard native TitleContainer OnDragStart preserved via HookScript")
+    h.state.cursorX, h.state.cursorY = 860, 620
+    driver._scripts.OnUpdate(driver, 0.016)
+    h.state.leftMouseDown = false
+    pveTC._scripts.OnDragStop(pveTC)
+    assertEqual(pveTC._nativeDragStopCount, 1, "Blizzard native TitleContainer OnDragStop preserved via HookScript")
+
+    -- PVEFrame defaults to TOPLEFT (mock center 420, 700 -> offset -540, +160), so dragging (-100, +80) saves (-640, +240)
+    assertTrue(type(db.positions.PVEFrame) == "table", "PVEFrame TitleContainer drag saved position")
+    assertNear(db.positions.PVEFrame.x, -640, "PVEFrame TitleContainer drag X persisted")
+    assertNear(db.positions.PVEFrame.y, 240, "PVEFrame TitleContainer drag Y persisted")
+
+    -- Right-click reset on PVEFrame.TitleContainer clears saved position & scale and restores canonical TOPLEFT default
+    db.scales.PVEFrame = 1.10
+    pveTC._scripts.OnMouseUp(pveTC, "RightButton")
+    assertEqual(db.positions.PVEFrame, nil, "PVEFrame TitleContainer right-click reset clears saved position")
+    assertEqual(db.scales.PVEFrame, nil, "PVEFrame TitleContainer right-click reset clears saved scale")
+    local ptPve, _, _, cxPve, cyPve = h.pve:GetPoint(1)
+    assertEqual(ptPve, "TOPLEFT", "PVEFrame reset restores canonical TOPLEFT anchor")
+    assertNear(cxPve, 16, "PVEFrame reset X is 16")
+    assertNear(cyPve, -116, "PVEFrame reset Y is -116")
+
+    -- 3. Disabling dragAnywhere keeps Blizzard's native TitleContainer handler working without saving DesktopWindows drag
+    db.dragAnywhere = false
+    h.state.cursorX, h.state.cursorY = 960, 540
+    h.state.leftMouseDown = true
+    pveTC._scripts.OnDragStart(pveTC, "LeftButton")
+    h.state.leftMouseDown = false
+    pveTC._scripts.OnDragStop(pveTC)
+    assertEqual(pveTC._nativeDragStartCount, 2, "Blizzard native TitleContainer OnDragStart still runs when dragAnywhere is false")
+    assertEqual(db.positions.PVEFrame, nil, "DesktopWindows does not drag or save position when dragAnywhere is false")
+
+    -- 4. Secret button arguments passed to TitleContainer hooks are safely ignored
+    local secretBtn = setmetatable({}, {
+        __tostring = function() error("secret string conversion", 2) end,
+    })
+    env.issecretvalue = function(v) return v == secretBtn end
+    env.canaccessvalue = function(v) return v ~= secretBtn end
+    db.dragAnywhere = true
+    pveTC._scripts.OnDragStart(pveTC, secretBtn)
+    pveTC._scripts.OnMouseUp(pveTC, secretBtn)
+    assertEqual(db.positions.PVEFrame, nil, "Secret button arg does not trigger drag or reset")
+
+    -- Final assertion: zero SetScript calls throughout the entire lifecycle
+    assertEqual(#h.comm.TitleContainer._setScriptCalls, 0, "Zero SetScript calls on CommunitiesFrame.TitleContainer after drag/reset")
+    assertEqual(#h.pve.TitleContainer._setScriptCalls, 0, "Zero SetScript calls on PVEFrame.TitleContainer after drag/reset")
 end)
 
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))

@@ -10816,28 +10816,30 @@ do
         return st
     end
 
-    local function NeutraliseTitleContainerDrag(frame, frameName, st)
+    local function AttachTitleContainerDragHooks(frame, frameName, st)
         if not frame or not frame.TitleContainer or InCombat() or IsWorldMapMaximized(frame, frameName) then return end
         if DesktopWindows:IsYielding() then return end
         local db = GetDesktopWindowsDB()
         if not (db and db.dragAnywhere ~= false) then return end
         local tc = frame.TitleContainer
+        if type(tc) ~= "table" or (tc.IsForbidden and tc:IsForbidden()) then return end
         W.passiveChrome[tc] = true
         if W.dragHooked[tc] then return end
         W.dragHooked[tc] = true
         if type(tc.RegisterForDrag) == "function" then
             pcall(tc.RegisterForDrag, tc, "LeftButton")
         end
-        if type(tc.SetScript) == "function" then
-            pcall(tc.SetScript, tc, "OnDragStart", function(_, button)
+        if type(tc.HookScript) == "function" then
+            pcall(tc.HookScript, tc, "OnDragStart", function(_, button)
                 if button ~= nil and (W.SafeIsSecretVal(button) or button ~= "LeftButton") then return end
+                if InCombat() or DesktopWindows:IsYielding() or IsWorldMapMaximized(frame, frameName) then return end
+                local curDb = GetDesktopWindowsDB()
+                if not (curDb and curDb.dragAnywhere ~= false) then return end
                 if st and st.beginDrag then st.beginDrag() end
             end)
-            pcall(tc.SetScript, tc, "OnDragStop", function()
+            pcall(tc.HookScript, tc, "OnDragStop", function()
                 if st and st.finishDrag then st.finishDrag() end
             end)
-        end
-        if type(tc.HookScript) == "function" then
             pcall(tc.HookScript, tc, "OnMouseUp", function(selfTC, button)
                 if W.SafeIsSecretVal(button) or button ~= "RightButton" then return end
                 if InCombat() or DesktopWindows:IsYielding() then return end
@@ -10857,7 +10859,7 @@ do
                 W.passiveChrome[child] = true
                 W.passiveChromeHooked[child] = true
                 if key == "TitleContainer" then
-                    NeutraliseTitleContainerDrag(frame, frameName, st)
+                    AttachTitleContainerDragHooks(frame, frameName, st)
                 else
                     if type(child.HookScript) == "function" and type(child.RegisterForDrag) == "function" then
                         pcall(child.RegisterForDrag, child, "LeftButton")
@@ -10893,7 +10895,7 @@ do
         local db = GetDesktopWindowsDB()
         local canDrag = (db and db.dragAnywhere ~= false) and true or false
         if canDrag then
-            NeutraliseTitleContainerDrag(frame, frameName, st)
+            AttachTitleContainerDragHooks(frame, frameName, st)
         end
         local canScale = (db and db.scrollScale ~= false) and true or false
         ov:EnableMouse(canDrag or canScale)
