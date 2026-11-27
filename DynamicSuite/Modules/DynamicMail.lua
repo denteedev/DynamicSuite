@@ -725,9 +725,10 @@ local function BuildRecipientList(category, filterText)
             local nBn = okB and SafeNum(bTotal, 0) or 0
             for i = 1, math.min(nBn, 150) do
                 local okAcc, acc = pcall(C_BattleNet.GetFriendAccountInfo, i)
-                if okAcc and type(acc) == "table" and type(acc.gameAccountInfo) == "table" then
+                if okAcc and type(acc) == "table" and not SafeIsSecret(acc) and type(acc.gameAccountInfo) == "table" and not SafeIsSecret(acc.gameAccountInfo) then
                     local ga = acc.gameAccountInfo
-                    if ga.clientProgram == _G.BNET_CLIENT_WOW and ga.wowProjectID == 1 and SafeStr(ga.characterName, "") ~= "" then
+                    if not SafeIsSecret(ga.clientProgram) and not SafeIsSecret(ga.wowProjectID)
+                        and ga.clientProgram == _G.BNET_CLIENT_WOW and ga.wowProjectID == 1 and SafeStr(ga.characterName, "") ~= "" then
                         local cName = SafeStr(ga.characterName, "")
                         local cRealm = SafeStr(ga.realmName, myRealm)
                         local sendTarget = FormatRecipientForMail(cName, cRealm)

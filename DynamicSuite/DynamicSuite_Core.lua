@@ -59,11 +59,11 @@ DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
     date = "28/11/2026",
     entries = {
+        { type = "FIX",     text = "Pre-Release Stability & Secret-String Protection Pass (28/11/2026): Switched Blizzard window-scaling and Talent panel minimise hooks to safe post-hooks so Guild & Communities, Group Finder, and other Blizzard windows never taint protected text; added secret-value guards across frame names, tooltips, chat tabs, and Premade Group Sign-Up; and ensured late post-reload Edit Mode updates keep your saved chat size and typing box skin." },
         { type = "FIX",     text = "Shift-Drag HUD Position Reload Persistence Fix (28/11/2026): Fixed HUD bars reverting after reloading when moved directly with Shift + Left-Drag across all 6 suite HUDs (Top Info Bar, Clickable Raid Buffs, Focus Icons, World Flares, Chat Frame, and Shared Alert Toast); direct Shift-Drag now writes to both module settings and suite HUD layout stores (including active character-scoped layouts) and skips premature clamping while the interface is still loading." },
         { type = "FIX",     text = "Chat Window Size Reload Persistence Fix (27/11/2026): Fixed the main chat window reverting to Blizzard's smaller default width and height after reloading; HUD Edit Mode chat resizes now commit exact dimensions across all release paths, screen clamping preserves saved chat dimensions instead of overwriting them during boot, and Blizzard Edit Mode chat sizing updates re-apply DynamicChat's saved size cleanly." },
         { type = "FIX",     text = "Guild & Communities Window Tab-Switch Jump Fix (27/11/2026): Updated DesktopWindows' UpdateUIPanelPositions post-hook and resize re-anchoring so switching Guild or Community tabs no longer snaps the Guild & Communities window to the top-left corner; keeping unsaved windows centred while preserving any custom dragged position and scale." },
         { type = "FIX",     text = "Duplicate Chat Edit Box, Resize Grip Nil Crash & Mouseover Tooltip Stutter Fixes (27/11/2026): Replaced DynamicChat's IsEditBoxShownOrFocused guard with an active-focus-only IsEditBoxFocused check and OnEditBoxFocusLost flush so idle ChatFrame1EditBox chrome is properly stripped without disturbing active typing or BN_WHISPER/secret replies; fixed both bare GetActiveAccentColor() resize grip hover crashes in DynamicSuite_UI; tightened static global-helper scanning; gated DynamicTalent Encounter Journal enrichment out of passive mouseover events with non-raid/resting fast-exits; made DynamicBags tooltip item counts O(1) with pre-sorted/formatted cache entries; cached DynamicCursor's disabled state out of tooltip hooks; and detached DynamicChat's scrollbar OnUpdate when idle/hidden." },
-        { type = "PERF",    text = "Release v2.11.2 - In-Combat Raid-Frame Mouseover & Search Close Performance Fix (26/11/2026): Eliminated in-combat raid-frame mouseover FPS stutter by caching DynamicCursor's zone and activity checks on events, skipping stationary ring repositioning and per-frame SpellIsTargeting polling, removing redundant tooltip SetOwner calls and per-hover closures in Smart Tooltips, gating DynamicPrep's combat raid-buff scan before scanning 20-40 raid members when disabled or out of scope, immediately stopping and hiding the Search Highlight frame when closing DynamicSuite, and removing redundant font rescans on Theme Studio refreshes." },
     },
 }
 DynamicSuite.Changelogs["suite"] = DynamicSuite.Changelogs["DynamicSuite"]
@@ -730,7 +730,15 @@ addonTable.GetPlayer = GetPlayer
 
 local function GetCurrentCharKey()
     local pName = GetPlayer()
-    local realm = GetRealmName() or "Realm"
+    local realm = "Realm"
+    if type(GetRealmName) == "function" then
+        local okR, rawR = pcall(GetRealmName)
+        if okR and type(rawR) == "string" and rawR ~= ""
+            and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(rawR))
+            and not (type(_G.canaccessvalue) == "function" and not _G.canaccessvalue(rawR)) then
+            realm = rawR
+        end
+    end
     return pName .. "-" .. realm
 end
 addonTable.GetCurrentCharKey = GetCurrentCharKey
@@ -4503,7 +4511,15 @@ local function ResolveEllesmereProfile(subFolder)
     if type(profileName) ~= "string" or profileName == "" then
         if type(edb.profileKeys) == "table" then
             local pName = GetPlayer()
-            local realm = (type(GetRealmName) == "function" and GetRealmName()) or ""
+            local realm = ""
+            if type(GetRealmName) == "function" then
+                local okR, rawR = pcall(GetRealmName)
+                if okR and type(rawR) == "string"
+                    and not (type(_G.issecretvalue) == "function" and _G.issecretvalue(rawR))
+                    and not (type(_G.canaccessvalue) == "function" and not _G.canaccessvalue(rawR)) then
+                    realm = rawR
+                end
+            end
             profileName = edb.profileKeys[pName .. " - " .. realm] or edb.profileKeys[pName .. "-" .. realm]
         end
     end
@@ -8725,13 +8741,35 @@ do
         return (type(_G.InCombatLockdown) == "function") and (_G.InCombatLockdown() == true)
     end
 
-    local function SafeNum(val, fallback)
-        if val == nil then return fallback end
-        if issecretvalue and issecretvalue(val) then return fallback end
-        if type(canaccessvalue) == "function" then
-            local ok, canAcc = pcall(canaccessvalue, val)
-            if ok and not canAcc then return fallback end
+    function W.SafeIsSecretVal(val)
+        if val == nil then return false end
+        if type(_G.issecretvalue) == "function" then
+            local okS, isSec = pcall(_G.issecretvalue, val)
+            if okS and isSec == true then return true end
         end
+        if type(_G.canaccessvalue) == "function" then
+            local okA, canAcc = pcall(_G.canaccessvalue, val)
+            if okA and canAcc == false then return true end
+        end
+        return false
+    end
+
+    function W.SafeFrameName(frame)
+        if not frame or W.SafeIsSecretVal(frame) then return nil end
+        if type(frame.IsForbidden) == "function" then
+            local okForb, forb = pcall(frame.IsForbidden, frame)
+            if not okForb or W.SafeIsSecretVal(forb) or forb == true then return nil end
+        end
+        if type(frame.GetName) ~= "function" then return nil end
+        local okN, n = pcall(frame.GetName, frame)
+        if not okN or W.SafeIsSecretVal(n) or type(n) ~= "string" or n == "" then
+            return nil
+        end
+        return n
+    end
+
+    local function SafeNum(val, fallback)
+        if val == nil or W.SafeIsSecretVal(val) then return fallback end
         local n = tonumber(val)
         if type(n) == "number" then return n end
         return fallback
@@ -8937,7 +8975,7 @@ do
         end
         if type(_G.debugstack) == "function" then
             local ok, stack = pcall(_G.debugstack, 2, 14, 0)
-            if ok and type(stack) == "string" then
+            if ok and type(stack) == "string" and not W.SafeIsSecretVal(stack) then
                 if (fnName and stack:find(fnName, 1, true))
                     or (altName and stack:find(altName, 1, true)) then
                     return true
@@ -9357,7 +9395,7 @@ do
 
     local function SecureApplyPoint(frame, ux, uy, scale)
         if InCombat() or not frame or not _G.UIParent then return false, ux, uy end
-        local fName = frame.GetName and frame:GetName()
+        local fName = W.SafeFrameName(frame)
         if IsWorldMapMaximized(frame, fName) then return false, ux, uy end
         local st = GetFrameState(frame)
         if st.applyingPoint then return false, ux, uy end
@@ -9387,7 +9425,7 @@ do
 
     local function SecureApplyScale(frame, scale)
         if InCombat() or not frame then return false end
-        local fName = frame.GetName and frame:GetName()
+        local fName = W.SafeFrameName(frame)
         if IsWorldMapMaximized(frame, fName) then return false end
         local st = GetFrameState(frame)
         if st and st.applyingScale then return false end
@@ -11170,34 +11208,19 @@ do
 
             if not st.playerSpellsPreGuardsDone then
                 st.playerSpellsPreGuardsDone = true
-                for _, methodName in ipairs({ "TrySetMinimized", "UpdateFrameMinimizeState", "CheckAndUpdateMinimizedState" }) do
-                    if type(frame[methodName]) == "function" then
-                        local origFn = frame[methodName]
-                        frame[methodName] = function(self, ...)
-                            if not InCombat() and not DesktopWindows:IsYielding() then
-                                local db = GetDesktopWindowsDB()
-                                local fState = GetFrameState(self)
-                                if db and db.sideBySide ~= false and fState and not fState.allowUserMinimizeChange and not fState.restoringPlayerSpellsState then
-                                    return
-                                end
-                            end
-                            return origFn(self, ...)
+                local function EnforcePlayerSpellsMinimizePostHook(psf)
+                    if not psf or InCombat() or DesktopWindows:IsYielding() then return end
+                    local db = GetDesktopWindowsDB()
+                    local fState = GetFrameState(psf)
+                    if db and db.sideBySide ~= false and fState and not fState.allowUserMinimizeChange and not fState.restoringPlayerSpellsState then
+                        if GetPlayerSpellsIsMinimized(psf) ~= (fState.userIsMinimized == true) then
+                            RestorePlayerSpellsFrameState(psf)
                         end
                     end
                 end
-                if type(frame.SetMinimized) == "function" then
-                    local origSetMin = frame.SetMinimized
-                    frame.SetMinimized = function(self, isMinimized, ...)
-                        if not InCombat() and not DesktopWindows:IsYielding() then
-                            local db = GetDesktopWindowsDB()
-                            local fState = GetFrameState(self)
-                            if db and db.sideBySide ~= false and fState and not fState.allowUserMinimizeChange and not fState.restoringPlayerSpellsState then
-                                if (isMinimized == true) ~= (fState.userIsMinimized == true) then
-                                    return
-                                end
-                            end
-                        end
-                        return origSetMin(self, isMinimized, ...)
+                for _, methodName in ipairs({ "TrySetMinimized", "UpdateFrameMinimizeState", "CheckAndUpdateMinimizedState", "SetMinimized" }) do
+                    if type(frame[methodName]) == "function" then
+                        _G.hooksecurefunc(frame, methodName, EnforcePlayerSpellsMinimizePostHook)
                     end
                 end
             end
@@ -11319,52 +11342,46 @@ do
                         end
                     end)
                 end
-                if type(mmf.Maximize) == "function" and not mmf._dsMaxPreGuarded then
-                    mmf._dsMaxPreGuarded = true
-                    local origMax = mmf.Maximize
-                    mmf.Maximize = function(selfMmf, ...)
-                        if not InCombat() and not DesktopWindows:IsYielding() then
-                            local fState = GetFrameState(frame)
-                            local db = GetDesktopWindowsDB()
-                            if fState and not fState.restoringPlayerSpellsState then
-                                local userClicked = fState.allowUserMinimizeChange
-                                    or ((_G.IsMouseButtonDown and _G.IsMouseButtonDown("LeftButton")) and (type(_G.MouseIsOver) == "function" and _G.MouseIsOver(mmf)))
-                                if userClicked then
-                                    fState.userIsMinimized = false
-                                    fState.savedIsMinimized = false
-                                elseif db and db.sideBySide ~= false and fState.userIsMinimized == true then
-                                    return
-                                end
+                if type(mmf.Maximize) == "function" and not st.mmfMaxHooked then
+                    st.mmfMaxHooked = true
+                    _G.hooksecurefunc(mmf, "Maximize", function()
+                        if InCombat() or DesktopWindows:IsYielding() then return end
+                        local fState = GetFrameState(frame)
+                        local db = GetDesktopWindowsDB()
+                        if fState and not fState.restoringPlayerSpellsState then
+                            local userClicked = fState.allowUserMinimizeChange
+                                or ((_G.IsMouseButtonDown and _G.IsMouseButtonDown("LeftButton")) and (type(_G.MouseIsOver) == "function" and _G.MouseIsOver(mmf)))
+                            if userClicked then
+                                fState.userIsMinimized = false
+                                fState.savedIsMinimized = false
+                            elseif db and db.sideBySide ~= false and fState.userIsMinimized == true then
+                                RestorePlayerSpellsFrameState(frame)
                             end
                         end
-                        return origMax(selfMmf, ...)
-                    end
+                    end)
                 end
-                if type(mmf.Minimize) == "function" and not mmf._dsMinPreGuarded then
-                    mmf._dsMinPreGuarded = true
-                    local origMin = mmf.Minimize
-                    mmf.Minimize = function(selfMmf, ...)
-                        if not InCombat() and not DesktopWindows:IsYielding() then
-                            local fState = GetFrameState(frame)
-                            local db = GetDesktopWindowsDB()
-                            if fState and not fState.restoringPlayerSpellsState then
-                                local userClicked = fState.allowUserMinimizeChange
-                                    or ((_G.IsMouseButtonDown and _G.IsMouseButtonDown("LeftButton")) and (type(_G.MouseIsOver) == "function" and _G.MouseIsOver(mmf)))
-                                if userClicked then
-                                    fState.userIsMinimized = true
-                                    fState.savedIsMinimized = true
-                                    local curT = GetPlayerSpellsActiveTab(frame)
-                                    if curT then
-                                        fState.userSelectedTabID = curT
-                                        fState.savedTabID = curT
-                                    end
-                                elseif db and db.sideBySide ~= false and fState.userIsMinimized ~= true then
-                                    return
+                if type(mmf.Minimize) == "function" and not st.mmfMinHooked then
+                    st.mmfMinHooked = true
+                    _G.hooksecurefunc(mmf, "Minimize", function()
+                        if InCombat() or DesktopWindows:IsYielding() then return end
+                        local fState = GetFrameState(frame)
+                        local db = GetDesktopWindowsDB()
+                        if fState and not fState.restoringPlayerSpellsState then
+                            local userClicked = fState.allowUserMinimizeChange
+                                or ((_G.IsMouseButtonDown and _G.IsMouseButtonDown("LeftButton")) and (type(_G.MouseIsOver) == "function" and _G.MouseIsOver(mmf)))
+                            if userClicked then
+                                fState.userIsMinimized = true
+                                fState.savedIsMinimized = true
+                                local curT = GetPlayerSpellsActiveTab(frame)
+                                if curT then
+                                    fState.userSelectedTabID = curT
+                                    fState.savedTabID = curT
                                 end
+                            elseif db and db.sideBySide ~= false and fState.userIsMinimized ~= true then
+                                RestorePlayerSpellsFrameState(frame)
                             end
                         end
-                        return origMin(selfMmf, ...)
-                    end
+                    end)
                 end
             end
         end
@@ -11707,24 +11724,33 @@ do
 
         if not W.scaleFitPreGuarded then
             W.scaleFitPreGuarded = true
-            local function GuardFitScaleFn(tbl, key)
-                if type(tbl) == "table" and type(tbl[key]) == "function" then
-                    local origFitFn = tbl[key]
-                    tbl[key] = function(fitFrame, ...)
-                        if fitFrame and fitFrame == _G.PlayerSpellsFrame and not InCombat() and not DesktopWindows:IsYielding() then
-                            local db = GetDesktopWindowsDB()
-                            if db and (db.sideBySide ~= false or db.scrollScale ~= false) then
-                                return
-                            end
-                        end
-                        return origFitFn(fitFrame, ...)
+            local function PostHookFitScaleFn(fitFrame)
+                if not fitFrame or fitFrame ~= _G.PlayerSpellsFrame or InCombat() or DesktopWindows:IsYielding() then
+                    return
+                end
+                local db = GetDesktopWindowsDB()
+                if not (db and (db.sideBySide ~= false or db.scrollScale ~= false)) then
+                    return
+                end
+                local targetScale = GetActiveFrameScale("PlayerSpellsFrame", fitFrame)
+                if math.abs(GetFrameLiveScale(fitFrame) - targetScale) > 0.005 then
+                    SecureApplyScale(fitFrame, targetScale)
+                    local customX, customY = W.GetActiveWindowCustomOffset("PlayerSpellsFrame", db)
+                    if customX and customY then
+                        SecureApplyPoint(fitFrame, customX, customY, targetScale)
+                    elseif db.sideBySide ~= false and fitFrame.IsShown and fitFrame:IsShown() then
+                        ApplyCanonicalDefaultPoint(fitFrame, "PlayerSpellsFrame", targetScale)
                     end
                 end
             end
-            GuardFitScaleFn(_G, "UpdateScaleForFit")
-            GuardFitScaleFn(_G, "UIPanelUpdateScaleForFit")
-            if type(_G.FrameUtil) == "table" then
-                GuardFitScaleFn(_G.FrameUtil, "UpdateScaleForFit")
+            if type(_G.UpdateScaleForFit) == "function" then
+                _G.hooksecurefunc("UpdateScaleForFit", PostHookFitScaleFn)
+            end
+            if type(_G.UIPanelUpdateScaleForFit) == "function" then
+                _G.hooksecurefunc("UIPanelUpdateScaleForFit", PostHookFitScaleFn)
+            end
+            if type(_G.FrameUtil) == "table" and type(_G.FrameUtil.UpdateScaleForFit) == "function" then
+                _G.hooksecurefunc(_G.FrameUtil, "UpdateScaleForFit", PostHookFitScaleFn)
             end
         end
 
@@ -11807,7 +11833,7 @@ do
                 local rootFrame, rootName = nil, nil
                 for _ = 1, 18 do
                     if not cur or cur == _G.UIParent or cur == _G.WorldFrame then break end
-                    local cName = (type(cur.GetName) == "function") and cur:GetName() or nil
+                    local cName = W.SafeFrameName(cur)
                     if cName and SUPPORTED_BY_NAME[cName] and _G[cName] == cur then
                         if not EXCLUDED_BLIZZ_FRAMES[cName] and not IsWorldMapMaximized(cur, cName) then
                             rootFrame = cur
@@ -11884,7 +11910,7 @@ do
         if not W.registerUIPanelHooked and type(_G.RegisterUIPanel) == "function" then
             W.registerUIPanelHooked = true
             _G.hooksecurefunc("RegisterUIPanel", function(name)
-                if type(name) ~= "string" or not SUPPORTED_BY_NAME[name] or EXCLUDED_BLIZZ_FRAMES[name] then return end
+                if W.SafeIsSecretVal(name) or type(name) ~= "string" or not SUPPORTED_BY_NAME[name] or EXCLUDED_BLIZZ_FRAMES[name] then return end
         if InCombat() then return end
                 AttachFrameHooks(name)
                 local bf = _G[name]
@@ -11899,7 +11925,7 @@ do
             _G.hooksecurefunc("ShowUIPanel", function(frame)
                 if not frame or InCombat() then return end
                 if DesktopWindows:IsYielding() then return end
-                local fName = frame.GetName and frame:GetName()
+                local fName = W.SafeFrameName(frame)
                 if not fName then return end
                 if EXCLUDED_BLIZZ_FRAMES[fName] or IsWorldMapMaximized(frame, fName) then
                     for _, spec in ipairs(SUPPORTED_BLIZZ_FRAMES) do
@@ -12050,7 +12076,7 @@ do
             _G.hooksecurefunc("HideUIPanel", function(frame)
                 if not frame or InCombat() then return end
                 if DesktopWindows:IsYielding() then return end
-                local fName = frame.GetName and frame:GetName()
+                local fName = W.SafeFrameName(frame)
                 if not fName or EXCLUDED_BLIZZ_FRAMES[fName] or not SUPPORTED_BY_NAME[fName] or IsWorldMapMaximized(frame, fName) then return end
                 if IsHandledBySuiteReplacement(fName) then
                     W.openPanelsSnapshot[fName] = nil

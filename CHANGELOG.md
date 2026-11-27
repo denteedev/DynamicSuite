@@ -5,6 +5,11 @@
 
 ## [Unreleased]
 
+### Pre-Release Stability & Secret-String Protection Pass (28/11/2026)
+- **Fixed - Secret-String Conversion Errors Across Suite & Modules (`DynamicSuite`, `DynamicGroup`, `DynamicChat`, `DynamicBags`, `DynamicPrep`, `DynamicMail`):** Removed direct replacements of Blizzard's window-scaling and Talent panel minimise functions (switching them to safe post-hooks) so opening Guild & Communities, Group Finder, or other Blizzard windows never taints protected text formatting; added secret-value checks before reading frame names, tooltip lines, realm names, chat tabs, and alert messages across the suite.
+- **Fixed - 1-Click Premade Group Sign-Up & Late-Loading Group Finder (`DynamicGroup`):** Hardened 1-Click Premade Group Sign-Up so already-applied groups do not reopen the Sign-Up box, protected result checks no longer drop valid listings, late-loaded Group Finder panels always attach both click handlers and role validation, the Sign-Up box stays strictly above Group Finder even when both share elevated layering, and turning off Group Finder filtering leaves Blizzard's result list untouched.
+- **Fixed - Post-Reload Chat Layout & Bag Pre-Warm Resilience (`DynamicChat`, `DynamicBags`):** Ensured late post-reload Blizzard Edit Mode layout passes reset the coalesced chat timer so your saved chat width, height, and typing box layout are always re-applied cleanly, protected nested skin flags against sticking on errors, and verified deferred bag pre-warming handles early opens, combat entry, and alt/warband tooltip counts cleanly.
+
 ### Shift-Drag HUD Position Reload Persistence Fix (28/11/2026)
 - **Fixed - Shift + Left-Drag HUD Positions Reverting After Reload:** Fixed HUD bars reverting to their previous positions after reloading when moved directly in-world with **Shift + Left-Drag** across all 6 suite HUDs (Top Info Bar, Clickable Raid Buffs, Focus Icons, World Flares, Chat Frame, and Shared Alert Toast). Direct Shift-Drag now saves to both each module's own settings and the suite HUD layout tables (including active character-scoped layouts), prevents Focus Icons and World Flare bars from snapping or reverting when a trailing drag-stop fires after releasing the mouse, preserves custom chat window width and height during Shift-Drag, and skips premature clamping while the UI is still loading.
 

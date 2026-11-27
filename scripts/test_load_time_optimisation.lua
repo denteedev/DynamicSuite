@@ -589,6 +589,57 @@ RunTest("T1: DynamicBags Deferred Login Pre-Warm & Combat-Safe Open", function()
     assertTrue(h2.env.DynamicBagsFrame ~= nil, "Early ToggleAllBags builds DynamicBagsFrame lazily")
     assertEqual(h2.env.DynamicBagsFrame:IsShown(), true, "Early ToggleAllBags shows bag window immediately")
     assertEqual(preWarmRef.cancelled, true, "Early ToggleAllBags cancels pending deferred pre-warm timer")
+
+    -- Case C: Combat entry BEFORE 1.8s pre-warm completes defers cleanly to PLAYER_REGEN_ENABLED,
+    -- and alt/warband tooltip count seeding works with zero nil errors both before & after pre-warm
+    local h3 = BuildMockEnv({ withSuite = false })
+    local tipHookCb = nil
+    h3.env.Enum.TooltipDataType = { Item = 0 }
+    h3.env.TooltipDataProcessor = {
+        AddTooltipPostCall = function(kind, cb)
+            if kind == 0 then tipHookCb = cb end
+        end,
+    }
+    h3.env.DynamicBagsDB = {
+        tooltipCounts = true,
+        vault = {
+            characters = {
+                ["AltMage-Frostmourne"] = {
+                    name = "AltMage",
+                    class = "MAGE",
+                    bags = { { 19019, 1, 2 } },
+                    bank = { { 19019, 1, 3 } },
+                },
+            },
+            warbandBank = {
+                items = { { 19019, 1, 4 } },
+            },
+        },
+    }
+    h3.LoadChunk("DynamicSuite/Modules/DynamicBags.lua", "DynamicBags")
+    h3.FireEvent("ADDON_LOADED", "DynamicBags")
+    h3.FireEvent("PLAYER_LOGIN")
+
+    -- Hover tooltip BEFORE 1.8s pre-warm completes: must lazily seed countIndex with 0 nil errors
+    assertTrue(type(tipHookCb) == "function", "DynamicBags registered Item tooltip post-call on login")
+    local tipLines = {}
+    h3.env.GameTooltip.AddDoubleLine = function(_, l, r) tipLines[#tipLines + 1] = tostring(l) .. "=" .. tostring(r) end
+    h3.env.GameTooltip.AddLine = function() end
+    h3.env.GameTooltip.GetOwner = function() return nil end
+    tipHookCb(h3.env.GameTooltip, { id = 19019 })
+    assertTrue(#tipLines >= 2, "Alt & Warband tooltip counts populated cleanly before 1.8s pre-warm")
+
+    -- Enter combat BEFORE 1.8s pre-warm fires -> timer defers to pendingPreWarmAfterCombat
+    h3.state.inCombat = true
+    h3.FlushTimers()
+    assertEqual(h3.env.DynamicBagsFrame, nil, "Pre-warm must NOT create frame during combat lockdown")
+
+    -- Leave combat -> PLAYER_REGEN_ENABLED schedules deferred 0.25s pre-warm and builds frame cleanly
+    h3.state.inCombat = false
+    h3.FireEvent("PLAYER_REGEN_ENABLED")
+    h3.FlushTimers()
+    assertTrue(h3.env.DynamicBagsFrame ~= nil, "PLAYER_REGEN_ENABLED completes deferred pre-warm cleanly")
+    assertEqual(h3.env.DynamicBagsFrame:IsShown(), false, "Post-combat pre-warmed bag window stays hidden")
 end)
 
 -- ============================================================================
@@ -632,6 +683,27 @@ RunTest("T2: DynamicChat Deferred Sound Scan & Coalesced Login/Reload Layout", f
     local reg = dc:ScanExternalSounds(true)
     assertEqual(counts.scan, 1, "Explicit/dropdown demand triggers lazy ScanExternalSounds")
     assertTrue(h.lsmCalls.hash > 0 and reg.scanned == true, "Lazy ScanExternalSounds populates standalone LSM cache")
+
+    -- Late post-reload Blizzard Edit Mode layout pass must restore saved width/height and passive EditBox skin
+    h.env.DynamicChatDB.chatFramePos = {
+        point = "BOTTOMLEFT",
+        relativePoint = "BOTTOMLEFT",
+        relPoint = "BOTTOMLEFT",
+        x = 24,
+        y = 32,
+        width = 640,
+        height = 320,
+    }
+    -- Simulate Blizzard Edit Mode resetting ChatFrame1 back to small default size & re-anchoring EditBox
+    h.env.ChatFrame1:SetSize(430, 200)
+    h.env.ChatFrame1EditBox:ClearAllPoints()
+    h.env.ChatFrame1EditBox:SetPoint("BOTTOMLEFT", h.env.UIParent, "BOTTOMLEFT", 0, 0)
+    h.FireEvent("EDIT_MODE_LAYOUTS_UPDATED")
+    h.FlushTimers()
+    assertEqual(h.env.ChatFrame1:GetWidth(), 640, "Late EDIT_MODE_LAYOUTS_UPDATED preserves saved 640px chat width")
+    assertEqual(h.env.ChatFrame1:GetHeight(), 320, "Late EDIT_MODE_LAYOUTS_UPDATED preserves saved 320px chat height")
+    local _, ebRel = h.env.ChatFrame1EditBox:GetPoint(1)
+    assertEqual(ebRel, h.env.ChatFrame1, "Late EDIT_MODE_LAYOUTS_UPDATED restores passive EditBox anchor on ChatFrame1")
 end)
 
 -- ============================================================================

@@ -730,11 +730,11 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "28/11/2026",
     entries = {
+        { type = "FIX",     text = "Secret-Value Tooltip & Popup Guard Hardening (28/11/2026): Added secret-value checks around consumable tooltip quality/augment scanning and death-release popup name lookups so protected Blizzard values never cause string conversion errors." },
         { type = "FIX",     text = "Top Info Bar & Clickable Raid Buffs Shift-Drag Reload Persistence Fix (28/11/2026): Fixed the Top Info Bar and Clickable Raid Buffs bar reverting after reloading when moved directly with Shift + Left-Drag; both bars now save cleanly to module settings and all suite layout tables (including character-scoped layouts) and skip premature clamping during initial frame setup." },
         { type = "FIX",     text = "StaticPopup Death Release Hook Hardening (27/11/2026): Replaced direct HookScript hooks and frame-field flags on Blizzard StaticPopup1..4 frames with weak-table state tracking, secret-guarded dialog.which checks, and hooksecurefunc post-hooks across StaticPopup_Show, StaticPopup_OnUpdate, StaticPopup_OnShow, StaticPopup_OnHide, and StaticPopupMixin across both DynamicSuite and standalone DynamicPrep." },
         { type = "FIX",     text = "Release v2.10.2 - Multi-Quest Auto-Accept, Auto-Gossip & DynamicDialogue Handoff Sync (25/11/2026): Prioritised live server interaction state over suppressed off-screen Blizzard frames (while preserving field auto-complete QUEST_COMPLETE windows) and eliminated duplicate 0.05s AcceptQuest/CompleteQuest/GetQuestReward retries on >50ms latency once the initial action succeeds; cross-checked available and active quests against C_QuestLog (plus QUEST_ACCEPTED / QUEST_REMOVED / QUEST_TURNED_IN / QUEST_FINISHED / PLAYER_INTERACTION_MANAGER_FRAME_HIDE tracking) so multi-quest NPCs immediately advance to remaining quests without re-selecting stale accepted or turned-in quests; respected mid-session sidebar soft-disable immediately; and coordinated event-sequence-exact handoff with DynamicDialogue across both Suite and Standalone builds." },
         { type = "UI",      text = "Release v2.10.1 - Top Info Bar Shift-Drag, Right-Click HUD Edit & Discoverability (25/11/2026): Added direct Shift + Left-Drag repositioning across the Top Info Bar background and segment capsules out of combat (saving directly to HUD Edit Mode coordinates without triggering accidental clicks), Right-Click on empty bar space to open HUD Edit Mode (/ds hud), a subtle bar-hover tooltip, a 'Shift-Drag to move  |  /ds hud for grid & scale' footer line on Top Info Bar segment tooltips, and an updated DynamicPrep '?' Quick Guide tip." },
-        { type = "FIX",     text = "Zero-Truncation Actionable Alert Toasts (24/11/2026): Widened actionable Mage Food and Low Durability Alert Toasts (with automatic width fit in DynamicSuite) and tightened titles and action hints so no line cuts off against the right-hand button." },
     },
 }
 Suite.Changelogs["DynamicPrep"] = DynamicPrep.CHANGELOG
@@ -6472,8 +6472,8 @@ local function GetStaticPopupButton1(dialog)
         if ok and b then return b end
     end
     if type(dialog.GetName) == "function" then
-        local dName = dialog:GetName()
-        if dName and _G[dName .. "Button1"] then
+        local okN, dName = pcall(dialog.GetName, dialog)
+        if okN and type(dName) == "string" and not _IsSecret(dName) and dName ~= "" and _G[dName .. "Button1"] then
             return _G[dName .. "Button1"]
         end
     end
@@ -14981,11 +14981,11 @@ local function DetectConsumableQuality(link, itemID, bagID, slotID, classID)
         end
         if data and data.lines then
             for _, line in ipairs(data.lines) do
-                if line.atlas then
+                if type(line.atlas) == "string" and not _IsSecret(line.atlas) then
                     local t = line.atlas:match("Professions%-[%w%-_]*Quality%-Tier(%d)") or line.atlas:match("Quality%-Tier(%d)") or line.atlas:match("Tier(%d)")
                     if t then q = tonumber(t); atlas = line.atlas; break end
                 end
-                if line.leftText then
+                if type(line.leftText) == "string" and not _IsSecret(line.leftText) then
                     local t = line.leftText:match("Professions%-[%w%-_]*Quality%-Tier(%d)") or line.leftText:match("Quality%-Tier(%d)") or line.leftText:match("Tier(%d)")
                     if t then q = tonumber(t); break end
                 end
@@ -15501,13 +15501,15 @@ local function IsAugmentRuneItem(itemID, link, classID, subClassID, invType, nam
         local ok, d = pcall(C_TooltipInfo.GetBagItem, bag, slot)
         if ok and d and d.lines then
             for _, l in ipairs(d.lines) do
-                local text = l.leftText
-                if not text and l.args then
+                local text = (type(l.leftText) == "string" and not _IsSecret(l.leftText)) and l.leftText or nil
+                if not text and type(l.args) == "table" then
                     for _, a in ipairs(l.args) do
-                        if a.stringVal then text = (text and (text .. " ") or "") .. a.stringVal end
+                        if type(a.stringVal) == "string" and not _IsSecret(a.stringVal) then
+                            text = (text and (text .. " ") or "") .. a.stringVal
+                        end
                     end
                 end
-                if text then
+                if type(text) == "string" and not _IsSecret(text) then
                     local tl = text:lower()
                     if tl:find("augmentation") or (tl:find("primary stat") and tl:find("1 hour")) or (tl:find("agility") and tl:find("strength") and tl:find("intellect")) then
                         return true

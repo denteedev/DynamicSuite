@@ -464,7 +464,17 @@ local function SafeRegister(frame, event)
 end
 
 local function CharKey()
-    return (UnitName("player") or "Unknown") .. "-" .. (GetRealmName() or "Realm")
+    local uName = "Unknown"
+    if type(UnitName) == "function" then
+        local okN, n = pcall(UnitName, "player")
+        if okN and type(n) == "string" and not IsSecret(n) and n ~= "" then uName = n end
+    end
+    local rName = "Realm"
+    if type(GetRealmName) == "function" then
+        local okR, r = pcall(GetRealmName)
+        if okR and type(r) == "string" and not IsSecret(r) and r ~= "" then rName = r end
+    end
+    return uName .. "-" .. rName
 end
 
 -- ---- Suite theme helpers (accent / fonts / surfaces) -----------------------
@@ -844,7 +854,7 @@ function U.DetectCraftQuality(link, itemID, bagID, slotID, classID, expacID)
         end
         if data and data.lines then
             for _, line in ipairs(data.lines) do
-                if line.atlas then
+                if type(line.atlas) == "string" and not IsSecret(line.atlas) then
                     local t = line.atlas:match("Professions%-[%w%-_]*Quality%-Tier(%d)")
                     if t then
                         atlas = line.atlas
@@ -852,7 +862,7 @@ function U.DetectCraftQuality(link, itemID, bagID, slotID, classID, expacID)
                         break
                     end
                 end
-                if line.leftText and not IsSecret(line.leftText) then
+                if type(line.leftText) == "string" and not IsSecret(line.leftText) then
                     local a = line.leftText:match("Professions%-[%w%-_]*Quality%-Tier%d[^\"]*")
                     local t = line.leftText:match("Professions%-[%w%-_]*Quality%-Tier(%d)")
                     if t then
@@ -1683,13 +1693,15 @@ function U.BuildCountIndex()
         end
     end
     local vault = DB().vault
-    for ck, rec in pairs(vault.characters) do
-        if ck ~= cur then
-            for _, t in ipairs(rec.bags or {}) do add(t[1], ck, "bags", t[3]) end
-            for _, t in ipairs(rec.bank or {}) do add(t[1], ck, "bank", t[3]) end
+    if type(vault) == "table" and type(vault.characters) == "table" then
+        for ck, rec in pairs(vault.characters) do
+            if ck ~= cur and type(rec) == "table" then
+                for _, t in ipairs(rec.bags or {}) do add(t[1], ck, "bags", t[3]) end
+                for _, t in ipairs(rec.bank or {}) do add(t[1], ck, "bank", t[3]) end
+            end
         end
     end
-    if vault.warbandBank and vault.warbandBank.items then
+    if type(vault) == "table" and vault.warbandBank and vault.warbandBank.items then
         for _, t in ipairs(vault.warbandBank.items) do add(t[1], nil, nil, t[3]) end
     end
     for _, e in pairs(idx) do
@@ -1751,7 +1763,7 @@ function U.InstallTooltipHook()
     S.tooltipHooked = true
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
         if InCombatLockdown() or tooltip ~= GameTooltip then return end
-        local id = type(data) == "table" and data.id
+        local id = (type(data) == "table" and not IsSecret(data)) and data.id or nil
         if type(id) == "number" and not IsSecret(id) and DB().tooltipCounts then
             pcall(U.AppendCountsToTooltip, tooltip, id)
         end
@@ -1768,7 +1780,7 @@ function U.InstallTooltipHook()
         elseif okOwn and owner and not IsSecret(owner) and type(id) == "number" and not IsSecret(id)
             and DB().autoRestockEnabled == true and _G.MerchantFrame and _G.MerchantFrame.IsShown and _G.MerchantFrame:IsShown() then
             local okName, ownName = pcall(owner.GetName, owner)
-            if okName and type(ownName) == "string" and ownName:match("^MerchantItem%d+ItemButton$") then
+            if okName and type(ownName) == "string" and not IsSecret(ownName) and ownName:match("^MerchantItem%d+ItemButton$") then
                 local ar, ag, ab = GetAccent()
                 local accHex = sformat("%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
                 local list = DB().autoRestockList
@@ -2928,7 +2940,7 @@ end
 local function IsStackMatching(pattern1, pattern2)
     if type(debugstack) ~= "function" then return false end
     local ok, stack = pcall(debugstack, 1, 14, 0)
-    if not ok or type(stack) ~= "string" then return false end
+    if not ok or type(stack) ~= "string" or IsSecret(stack) then return false end
     if pattern1 and stack:find(pattern1, 1, true) then return true end
     if pattern2 and stack:find(pattern2, 1, true) then return true end
     return false
@@ -11317,8 +11329,12 @@ function DynamicBags:SetupDeleteConfirmationHook()
             local dlg = StaticPopupDialogs[key]
             if dlg then
                 hooksecurefunc(dlg, "OnShow", function(s)
-                    if not (DB().autoFillDelete ~= false) or IsShiftKeyDown() or DynamicBags:IsYieldingSharedHooks() then return end
-                    local name = (s.GetName and s:GetName()) or ""
+                    if not s or IsSecret(s) or not (DB().autoFillDelete ~= false) or IsShiftKeyDown() or DynamicBags:IsYieldingSharedHooks() then return end
+                    local name = ""
+                    if type(s.GetName) == "function" then
+                        local okN, rawN = pcall(s.GetName, s)
+                        if okN and type(rawN) == "string" and not IsSecret(rawN) then name = rawN end
+                    end
                     local eb = s.editBox or s.EditBox or (s.GetEditBox and s:GetEditBox()) or (name ~= "" and _G[name .. "EditBox"])
                     if eb and DELETE_ITEM_CONFIRM_STRING then
                         eb:SetText(DELETE_ITEM_CONFIRM_STRING)
@@ -13416,13 +13432,13 @@ end
 
 DynamicBags.CHANGELOG = {
     version = VERSION,
-    date = "27/11/2026",
+    date = "28/11/2026",
     entries = {
+        { type = "FIX",     text = "Secret-Value Tooltip & Pre-Warm Safety Hardening (28/11/2026): Guarded item tooltip hooks, delete confirmation dialogs, and character/realm lookups against protected Blizzard secret values, and added nil-safe vault checks for early alt and warband tooltip count lookups before deferred bag pre-warming completes." },
         { type = "PERF",    text = "O(1) Alt & Warband Item Tooltip Count Cache (27/11/2026): Stopped current-character bag snapshots from invalidating the cross-character count cache, pre-sorted and pre-formatted alt and warband tooltip lines inside BuildCountIndex, and seeded the index during pre-warm so item tooltip hovers execute in O(1) with zero per-hover table allocations or sorting." },
         { type = "FIX",     text = "BankFrame, GuildBankFrame & StaticPopup Hook Hardening (27/11/2026): Replaced direct HookScript('OnShow') calls and frame-field flags on Blizzard BankFrame, GuildBankFrame, and StaticPopup1..4 frames with weak-table tracking, combat-guarded hooksecurefunc post-hooks (Show, StaticPopup_OnShow, and StaticPopupMixin.OnShow), and UIFrameIsFading/fadeInfo-safe SetAlpha wrappers across both DynamicSuite and standalone DynamicBags." },
         { type = "FIX",     text = "DynamicBags & DynamicBank Header Hover & Scale Toast Nil Crash Fix (26/11/2026): Replaced undefined U.GetSuiteAccent() calls in ShowBagScaleToast and U.AttachWindowScaleHandlers (header OnEnter tooltip) with GetAccent() so hovering the DynamicBags or DynamicBank header and stepping or resetting window scale via Ctrl+Scroll or Right-Click work cleanly with live Suite Accent colouring across both DynamicSuite and standalone DynamicBags." },
         { type = "FIX",     text = "Release v2.10.1 - Clean Single-Action Bank & Guild Bank Closing (25/11/2026): Fixed a lingering invisible Blizzard bank interaction left behind whenever DynamicBank closed via its Close button, Escape key, or bag toggle while at a Personal Bank, Warband Bank, or Guild Bank (previously requiring an extra Escape press before interacting with the banker again); closing DynamicBank now cleanly terminates active C_Bank / CloseGuildBankFrame and C_PlayerInteractionManager banker interactions, detaches and hides suppressed Blizzard BankFrame/GuildBankFrame panels out of combat with re-entrancy guards, closes child modals and popovers (dropdowns, Gold Transfer modal, StackSplitFrame, and buy-tab popups) one at a time on Escape without killing the live banker session, keeps Personal/Warband/Guild tab switching uninterrupted, and leaves remote cached snapshot viewing (/dbag bank) untouched." },
-        { type = "FEATURE", text = "Release v2.10.1 - DynamicBank Gold Controls & Obsidian Gold Transfer Modal (25/11/2026): Added live bank gold balances and transfer controls to the DynamicBank footer for Warband Bank (Deposit/Withdraw), Guild Bank (Deposit/Withdraw with live daily rank limit), and Personal Bank (live character gold display + [Deposit to Warband] shortcut with plain-English tooltip explaining that character gold stays in your bags); added a shared Obsidian Core Gold Transfer modal with Gold/Silver/Copper numeric inputs, 1k/10k/50k/100k/Max quick-fill pills, inline validation, and Escape/Enter handling; and subscribed to ACCOUNT_MONEY, PLAYER_MONEY, GUILDBANK_UPDATE_MONEY, and GUILDBANK_UPDATE_WITHDRAWMONEY for instant balance refreshes." },
     },
 }
 _G.DynamicSuite = _G.DynamicSuite or {}

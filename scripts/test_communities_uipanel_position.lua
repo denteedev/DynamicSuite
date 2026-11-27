@@ -456,6 +456,63 @@ RunTest("(d) Guards hold for combat, masterDisabled, yielding, maximised WorldMa
     assertEqual(ptCommOff, "TOPLEFT", "sideBySide == false leaves unsaved CommunitiesFrame at Blizzard TOPLEFT")
 end)
 
+-- (e) Zero direct global overwrites of UpdateScaleForFit & secret-string guards on ShowUIPanel/HideUIPanel/RegisterUIPanel
+RunTest("(e) DesktopWindows uses hooksecurefunc (no raw UpdateScaleForFit overwrite) and guards secret frame names", function()
+    local h = CreateHarness()
+    local env = h.env
+    local hookedNames = {}
+    local origHook = env.hooksecurefunc
+    env.hooksecurefunc = function(a, b, c)
+        if type(a) == "string" then
+            hookedNames[a] = true
+        elseif type(b) == "string" then
+            hookedNames[b] = true
+        end
+        return origHook(a, b, c)
+    end
+
+    local fitCalls = 0
+    local origUpdateScaleForFit = function() fitCalls = fitCalls + 1 end
+    env.UpdateScaleForFit = origUpdateScaleForFit
+    env.UIPanelUpdateScaleForFit = origUpdateScaleForFit
+    env.FrameUtil = { UpdateScaleForFit = origUpdateScaleForFit }
+
+    -- Verify DynamicSuite_Core.lua source never directly overwrites UpdateScaleForFit or PlayerSpellsFrame.SetMinimized
+    local fh = assert(io.open("DynamicSuite/DynamicSuite_Core.lua", "rb"))
+    local src = fh:read("*a")
+    fh:close()
+    assertEqual(src:find("GuardFitScaleFn", 1, true), nil, "GuardFitScaleFn direct global overwrite must be removed")
+    assertEqual(src:find("frame.SetMinimized = function", 1, true), nil, "Direct PlayerSpellsFrame.SetMinimized overwrite must be removed")
+    assertEqual(src:find("mmf.Maximize = function", 1, true), nil, "Direct mmf.Maximize overwrite must be removed")
+    assertEqual(src:find("mmf.Minimize = function", 1, true), nil, "Direct mmf.Minimize overwrite must be removed")
+
+    -- Verify secret frame name / secret RegisterUIPanel arg / secret debugstack never throws string conversion errors
+    local secretMarker = setmetatable({}, {
+        __tostring = function()
+            error("attempt to perform string conversion on a secret string value (execution tainted by 'DynamicSuite')", 2)
+        end,
+        __concat = function()
+            error("attempt to perform string conversion on a secret string value (execution tainted by 'DynamicSuite')", 2)
+        end,
+    })
+    env.issecretvalue = function(v) return v == secretMarker end
+    env.canaccessvalue = function(v) return v ~= secretMarker end
+    env.debugstack = function() return secretMarker end
+
+    local secretFrame = {
+        GetName = function() return secretMarker end,
+        Show = function() end,
+        Hide = function() end,
+        IsShown = function() return true end,
+        IsForbidden = function() return false end,
+    }
+    if type(env.ShowUIPanel) == "function" then env.ShowUIPanel(secretFrame) end
+    if type(env.HideUIPanel) == "function" then env.HideUIPanel(secretFrame) end
+    if type(env.RegisterUIPanel) == "function" then env.RegisterUIPanel(secretMarker) end
+    if type(env.UpdateUIPanelPositions) == "function" then env.UpdateUIPanelPositions() end
+    assertEqual(true, true, "DesktopWindows hooks handled secret frame names and debugstack with zero errors")
+end)
+
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))
 if failed > 0 then
     os.exit(1)

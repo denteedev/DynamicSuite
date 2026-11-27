@@ -1551,8 +1551,12 @@ local function CreateFlatButton(parent, width, height, text, isPrimary)
     local rawSetText = label.SetText
     function btn:UpdateAutoWidth()
         if not self._autoExpandWidth then return end
-        local rawTxt = (label.GetText and label:GetText()) or ""
-        local cleanTxt = tostring(rawTxt):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
+        local rawTxt = ""
+        if label.GetText then
+            local okT, tVal = pcall(label.GetText, label)
+            if okT and type(tVal) == "string" and IsSafeValue(tVal) then rawTxt = tVal end
+        end
+        local cleanTxt = rawTxt:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|T.-|t", "")
         local ok, uw = pcall(function()
             return (label.GetUnboundedStringWidth and label:GetUnboundedStringWidth()) or label:GetStringWidth() or 0
         end)
@@ -9195,7 +9199,8 @@ function addonTable.CreateMainConfigUI()
                         for rIdx = 1, select("#", frame:GetRegions()) do
                             local reg = select(rIdx, frame:GetRegions())
                             if reg and reg.GetObjectType and reg:GetObjectType() == "FontString" then
-                                local txt = tostring(reg:GetText() or "")
+                                local okRT, rawRT = pcall(reg.GetText, reg)
+                                local txt = (okRT and type(rawRT) == "string" and IsSafeValue(rawRT)) and rawRT or ""
                                 if txt:lower():find("tune") then
                                     reg:SetText("")
                                     reg:Hide()
@@ -9210,7 +9215,8 @@ function addonTable.CreateMainConfigUI()
                 for rIdx = 1, select("#", frame:GetRegions()) do
                     local reg = select(rIdx, frame:GetRegions())
                     if reg and reg.GetObjectType and reg:GetObjectType() == "FontString" then
-                        local txt = reg:GetText()
+                        local okRT, rawRT = pcall(reg.GetText, reg)
+                        local txt = (okRT and type(rawRT) == "string" and IsSafeValue(rawRT)) and rawRT or nil
                         if type(txt) == "string" and (txt:find("^%s*|%-") or txt:find("^%s*'%-") or txt:find("^%s*%+%-")) then
                             local clean = txt:gsub("^%s*[|'%+]+%-+%s*", "")
                             reg:SetText(clean)

@@ -1038,6 +1038,179 @@ RunTest("T8: DynamicGroup 1-Click Sign-Up (Global & Mixin Click, Mod Bypass, Rol
     VerifyMode(false, "DynamicGroup")
 end)
 
+-- ============================================================================
+-- T9: Midnight Secret-String Conversion Guards (LFG, Chat & Role/Layering Edge Cases)
+-- ============================================================================
+RunTest("T9: Midnight Secret-String Conversion Guards on LFG & Chat (Throws on Any Unguarded Conversion)", function()
+    local secretMarker = setmetatable({}, {
+        __tostring = function()
+            error("attempt to perform string conversion on a secret string value (execution tainted by 'DynamicSuite')", 2)
+        end,
+        __concat = function()
+            error("attempt to perform string conversion on a secret string value (execution tainted by 'DynamicSuite')", 2)
+        end,
+    })
+
+    -- (a) DynamicGroup LFG secret strings, secret HasSearchResultInfo, PVEFrame DIALOG level, already-applied skip & zero panel.results mutation when filter OFF
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.issecretvalue = function(v) return v == secretMarker end
+        env.canaccessvalue = function(v) return v ~= secretMarker end
+        env.GetRealmName = function() return secretMarker end
+        env.GetNormalizedRealmName = function() return secretMarker end
+        env.GetCursorPosition = function() return 960, 540 end
+        env.GetSpecializationRole = function() return "DAMAGER" end
+        env.C_SpecializationInfo.GetSpecializationRole = env.GetSpecializationRole
+
+        env.DynamicGroupDB = {
+            oneClickSignUp = true,
+            autoSelectRole = true,
+            lfgFilterEnabled = false,
+            showGroupTeleportToast = true,
+        }
+
+        local dlg = env.LFGListApplicationDialog
+        dlg._strata = "MEDIUM"
+        dlg._level = 5
+        dlg._width = 306
+        dlg._height = 210
+        dlg.SetFrameStrata = function(self, s) self._strata = s end
+        dlg.GetFrameStrata = function(self) return self._strata end
+        dlg.SetFrameLevel = function(self, l) self._level = l end
+        dlg.GetFrameLevel = function(self) return self._level end
+        dlg.Raise = function(self) self._raised = (self._raised or 0) + 1 end
+        dlg.GetCenter = function() return 500, 500 end
+        dlg.SignUpButton = env.CreateFrame("Button", "LFGListApplicationDialogSignUpButtonT9", dlg)
+        dlg.SignUpButton._enabled = false
+        dlg.SignUpButton.SetEnabled = function(self, b) self._enabled = (b == true) end
+        dlg.SignUpButton.IsEnabled = function(self) return self._enabled == true end
+        dlg.SignUpButton.GetCenter = function() return 450, 430 end
+        dlg.DamagerButton = env.CreateFrame("Frame", nil, dlg)
+        dlg.DamagerButton._shown = true
+        dlg.DamagerButton.CheckButton = env.CreateFrame("CheckButton", nil, dlg.DamagerButton)
+        dlg.DamagerButton.CheckButton._checked = false
+        dlg.DamagerButton.CheckButton.SetChecked = function(self, v) self._checked = (v == true) end
+        dlg.DamagerButton.CheckButton.GetChecked = function(self) return self._checked == true end
+        local mixinValidCalls = 0
+        dlg.UpdateValidState = function(self)
+            mixinValidCalls = mixinValidCalls + 1
+            if self.DamagerButton.CheckButton:GetChecked() then
+                self.SignUpButton:SetEnabled(true)
+            end
+        end
+
+        -- Simulate PVEFrame elevated to DIALOG strata level 40
+        env.PVEFrame = env.CreateFrame("Frame", "PVEFrame", env.UIParent)
+        env.PVEFrame._strata = "DIALOG"
+        env.PVEFrame._level = 40
+        env.PVEFrame.GetFrameStrata = function(self) return self._strata end
+        env.PVEFrame.GetFrameLevel = function(self) return self._level end
+
+        local appStatusByID = {}
+        local dialogShowCalls = 0
+        env.C_LFGList.HasSearchResultInfo = function() return secretMarker end -- secret return must NOT drop valid GetSearchResultInfo!
+        env.C_LFGList.GetSearchResultInfo = function(id)
+            return {
+                searchResultID = id,
+                name = secretMarker,
+                comment = secretMarker,
+                leaderName = secretMarker,
+                isDelisted = false,
+                activityIDs = { 1 },
+                numMembers = 2,
+                maxMembers = 5,
+            }
+        end
+        env.C_LFGList.GetApplicationInfo = function(id)
+            return id, appStatusByID[id] or "none"
+        end
+        env.LFGListSearchEntry_Update = function() end
+        env.LFGListSearchPanel_UpdateResultList = function() end
+        env.LFGListSearchPanel_UpdateResults = function() end
+        env.LFGListUtil_SetSearchEntryTooltip = function() end
+        env.LFGListApplicationDialog_UpdateRoles = function() end
+        env.LFGListApplicationDialog_UpdateValidState = nil -- force mixin dlg:UpdateValidState() fallback
+        env.LFGListApplicationDialog_Show = function(d, rID)
+            dialogShowCalls = dialogShowCalls + 1
+            d._lastResultID = rID
+            d:Show()
+        end
+        env.LFGListSearchEntry_OnClick = function() end
+        env.LFGListSearchEntryMixin = { OnClick = function() end }
+
+        h.LoadModule(GROUP_PATH, "DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        -- Secret button arg must safely no-op without throwing
+        env.LFGListSearchEntry_OnClick({ resultID = 201 }, secretMarker)
+        assertEqual(dialogShowCalls, 0, "Secret button arg safely ignored")
+
+        -- Valid click with secret HasSearchResultInfo & secret listing fields must still open dialog and raise above PVEFrame DIALOG level
+        env.LFGListSearchEntry_OnClick({ resultID = 201 }, "LeftButton")
+        assertEqual(dialogShowCalls, 1, "Secret HasSearchResultInfo does not silently drop valid listing")
+        assertEqual(dlg:IsShown(), true, "Dialog opened with secret listing strings without error")
+        assertTrue(dlg:GetFrameLevel() > env.PVEFrame:GetFrameLevel(), "Dialog frame level raised above DIALOG-strata PVEFrame")
+        assertTrue(mixinValidCalls >= 1, "Mixin dialog:UpdateValidState() fallback called")
+        assertEqual(dlg.SignUpButton:IsEnabled(), true, "SignUpButton enabled via mixin UpdateValidState fallback")
+
+        -- Already-applied listing must NOT reopen dialog
+        dlg:Hide()
+        h.AdvanceTime(0.5)
+        appStatusByID[202] = "applied"
+        env.LFGListSearchEntry_OnClick({ resultID = 202 }, "LeftButton")
+        assertEqual(dialogShowCalls, 1, "Already-applied listing skips reopening Sign-Up dialog")
+
+        -- Tooltip hook with secret leader/realm must never throw
+        local mockTip = {
+            AddDoubleLine = function() end,
+            AddLine = function() end,
+            Show = function() end,
+        }
+        env.DynamicGroupDB.lfgFilterEnabled = true
+        env.LFGListUtil_SetSearchEntryTooltip(mockTip, 201)
+
+        -- When lfgFilterEnabled == false, UpdateResultList must NOT overwrite panel.results
+        env.DynamicGroupDB.lfgFilterEnabled = false
+        local origResults = { 201, 202 }
+        env.LFGListFrame.SearchPanel.results = origResults
+        env.LFGListSearchPanel_UpdateResultList(env.LFGListFrame.SearchPanel)
+        assertEqual(env.LFGListFrame.SearchPanel.results, origResults, "panel.results untouched when lfgFilterEnabled is false")
+    end
+
+    -- (b) DynamicChat secret frame name, secret mention snippet & secret tab label never throw string conversion errors
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.issecretvalue = function(v) return v == secretMarker end
+        env.canaccessvalue = function(v) return v ~= secretMarker end
+        env.FCFTab_UpdateAlpha = function() end
+        env.FCFTab_UpdateColors = function() end
+
+        h.LoadModule(CHAT_PATH, "DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        local secretCF = env.CreateFrame("ScrollingMessageFrame", nil, env.UIParent)
+        secretCF.GetName = function() return secretMarker end
+        secretCF.isTemporary = secretMarker
+        secretCF.chatType = "WHISPER"
+        secretCF.chatTarget = secretMarker
+        secretCF.name = secretMarker
+        secretCF:Show()
+
+        -- Fire FCFTab_UpdateAlpha / FCFTab_UpdateColors / SaveChatHistorySnapshot / Incoming mention with secret values
+        env.FCFTab_UpdateAlpha(secretCF)
+        local secretTab = env.CreateFrame("Button", nil, env.GeneralDockManager)
+        secretTab.GetName = function() return secretMarker end
+        env.FCFTab_UpdateColors(secretTab)
+        env.DynamicChat:SaveChatHistorySnapshot()
+        env.DynamicChat:HandleIncomingChatSoundEvent("CHAT_MSG_GUILD", secretMarker, secretMarker, secretMarker)
+        assertTrue(true, "DynamicChat handled all secret frame names, tabs, and chat events with zero string conversion errors")
+    end
+end)
+
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))
 if failed > 0 then
     os.exit(1)
