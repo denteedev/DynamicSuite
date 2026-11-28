@@ -1243,6 +1243,31 @@ end
 local isConvertingEditBox = false
 local suppressNextLeadingSpace = {}
 
+function DC_NS.SafeIsDocked(cf)
+    if not cf or IsSecretValue(cf) then return false end
+    local ok, docked = pcall(function() return cf.isDocked end)
+    return ok and not IsSecretValue(docked) and docked == true
+end
+
+function DC_NS.SafeIsTooltipUsable(tt)
+    if not tt or IsSecretValue(tt) then return false end
+    if type(tt.IsForbidden) == "function" then
+        local okF, forb = pcall(tt.IsForbidden, tt)
+        if not okF or IsSecretValue(forb) or forb == true then
+            return false
+        end
+    end
+    return true
+end
+
+function DC_NS.SafeIsTooltipOwnedBy(tt, owner)
+    if not owner or not DC_NS.SafeIsTooltipUsable(tt) or type(tt.GetOwner) ~= "function" then
+        return false
+    end
+    local okO, curOwner = pcall(tt.GetOwner, tt)
+    return okO and not IsSecretValue(curOwner) and curOwner == owner
+end
+
 -- Defensive guards for WoW 12.x Midnight Battle.net Whispers (type = "BN_WHISPER", tellTarget = <secret string>)
 -- where ChatFrame1EditBoxHeader:GetStringWidth() returns a <secret number>.
 function DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf)
@@ -2283,18 +2308,22 @@ function DC_NS.RecordCapturedSessionMessage(event, rawMsg, rawAuthor, rawChannel
 end
 
 function DC_NS.DoesSessionEntryMatchChatFrame(entry, cf)
-    if type(entry) ~= "table" or not cf then return false end
+    if type(entry) ~= "table" or not cf or IsSecretValue(cf) then return false end
     if cf == _G.ChatFrame2 then return false end
 
-    if not IsSecretValue(cf.isTemporary) and cf.isTemporary == true then
-        local cfType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
+    local okTemp, isTemp = pcall(function() return cf.isTemporary end)
+    if okTemp and not IsSecretValue(isTemp) and isTemp == true then
+        local okType, rawType = pcall(function() return cf.chatType end)
+        local cfType = (okType and not IsSecretValue(rawType) and type(rawType) == "string") and rawType or nil
         if cfType == "WHISPER" then
             if entry.groupType ~= "WHISPER" then return false end
         elseif cfType == "BN_WHISPER" or cfType == "BN_CONVERSATION" then
             if entry.groupType ~= "BN_WHISPER" then return false end
         end
-        if not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" and entry.author ~= "" then
-            local targetShort = cf.chatTarget:gsub("%-[^%-]+$", ""):lower()
+        local okTgt, rawTarget = pcall(function() return cf.chatTarget end)
+        if okTgt and not IsSecretValue(rawTarget) and type(rawTarget) == "string" and rawTarget ~= ""
+            and not IsSecretValue(entry.author) and type(entry.author) == "string" and entry.author ~= "" then
+            local targetShort = rawTarget:gsub("%-[^%-]+$", ""):lower()
             local authorShort = entry.author:gsub("%-[^%-]+$", ""):lower()
             if targetShort ~= "" and authorShort ~= "" and targetShort ~= authorShort then
                 return false
@@ -2303,8 +2332,8 @@ function DC_NS.DoesSessionEntryMatchChatFrame(entry, cf)
         return true
     end
 
-    local msgTypes = cf.messageTypeList
-    if type(msgTypes) == "table" and #msgTypes > 0 then
+    local okMT, msgTypes = pcall(function() return cf.messageTypeList end)
+    if okMT and not IsSecretValue(msgTypes) and type(msgTypes) == "table" and #msgTypes > 0 then
         for _, mType in ipairs(msgTypes) do
             if not IsSecretValue(mType) and type(mType) == "string" then
                 if mType == entry.msgType or mType == entry.groupType then
@@ -2312,8 +2341,11 @@ function DC_NS.DoesSessionEntryMatchChatFrame(entry, cf)
                 end
             end
         end
-        if entry.groupType == "CHANNEL" and type(cf.channelList) == "table" and #cf.channelList > 0 then
-            return true
+        if entry.groupType == "CHANNEL" then
+            local okCL, chanList = pcall(function() return cf.channelList end)
+            if okCL and not IsSecretValue(chanList) and type(chanList) == "table" and #chanList > 0 then
+                return true
+            end
         end
         return false
     end
@@ -2997,7 +3029,15 @@ function DynamicChat:ShowFullChatHistoryModal(targetChatFrame)
 
     local liveLines = {}
     local secretSkippedCount = 0
-    local total = (type(cf.GetNumMessages) == "function" and cf:GetNumMessages()) or 0
+    local total = 0
+    if type(cf.GetNumMessages) == "function" then
+        local okNum, rawTotal = pcall(cf.GetNumMessages, cf)
+        if okNum and not IsSecretValue(rawTotal) and type(rawTotal) == "number" and rawTotal > 0 then
+            total = rawTotal
+        elseif not okNum or IsSecretValue(rawTotal) then
+            secretSkippedCount = secretSkippedCount + 1
+        end
+    end
     local startIdx = math.max(1, total - maxLines + 1)
     for idx = startIdx, total do
         local line, wasSecret = StripSecretOrExtractLine(cf, idx)
@@ -3016,10 +3056,11 @@ function DynamicChat:ShowFullChatHistoryModal(targetChatFrame)
         local liveBlob = (#liveLines > 0) and table.concat(liveLines, "\n"):lower() or ""
         local extraLines = {}
         for _, entry in ipairs(DynamicChat._sessionPlainLog) do
-            if DC_NS.DoesSessionEntryMatchChatFrame(entry, cf) then
-                local needle = (entry.msg or ""):lower()
+            if type(entry) == "table" and not IsSecretValue(entry.msg) and not IsSecretValue(entry.line)
+                and DC_NS.DoesSessionEntryMatchChatFrame(entry, cf) then
+                local needle = (type(entry.msg) == "string" and entry.msg ~= "") and entry.msg:lower() or ""
                 local alreadyInLive = (needle ~= "" and liveBlob ~= "" and liveBlob:find(needle, 1, true) ~= nil)
-                if not alreadyInLive and entry.line and entry.line ~= "" then
+                if not alreadyInLive and type(entry.line) == "string" and entry.line ~= "" then
                     extraLines[#extraLines + 1] = entry.line
                     ExtractURLsFromText(entry.line, recentURLs, seenURLs)
                 end
@@ -3472,7 +3513,7 @@ function DynamicChat:RefreshLeftRailTelemetry()
 
     -- 5. Lock / Fade Indicator on lockBtn
     if rail.lockBtn and rail.lockBtn.icon then
-        local isLocked = (cf1.isLocked and true or false)
+        local isLocked = (not IsSecretValue(cf1.isLocked) and cf1.isLocked and true or false)
         if not isLocked then
             if not rail.lockBtn:IsMouseOver() then
                 rail.lockBtn.icon:SetVertexColor(0.98, 0.75, 0.14, 1.0) -- #FBBF24 Amber when unlocked
@@ -4296,7 +4337,8 @@ local function EnsureChatLeftRail(entry, panel)
                 _G.DynamicSuite.EnterHudEditMode("CHAT")
                 return
             end
-            local nextLock = not (cf1.isLocked and true or false)
+            local curLocked = (not IsSecretValue(cf1.isLocked) and cf1.isLocked and true or false)
+            local nextLock = not curLocked
             if type(_G.FCF_SetLocked) == "function" then
                 pcall(_G.FCF_SetLocked, cf1, nextLock)
             end
@@ -4602,11 +4644,31 @@ end
 
 local passiveSkinnedEditBoxes = {}
 
+function DC_NS.NeedsEditBoxRegionStrip(region)
+    if not region or IsSecretValue(region) then return false end
+    if type(region.GetAlpha) == "function" then
+        local okA, a = pcall(region.GetAlpha, region)
+        if okA and not IsSecretValue(a) and type(a) == "number" and a > 0.01 then
+            return true
+        end
+    end
+    return false
+end
+
 local function ApplyPassiveEditBoxSkinOnInit(editBox, cfName, skinEnabled, syncFont, fontPath)
     if not editBox then return end
     if IsEllesmereUILoaded() then return end
-    if InCombatLockdown and InCombatLockdown() then return end
+    if InCombatLockdown and InCombatLockdown() then
+        if editBox == _G.ChatFrame1EditBox then
+            DC_NS._pendingEditBoxSkinFlush = true
+            DynamicChat._pendingChatPosAfterCombat = true
+        end
+        return
+    end
     if IsEditBoxSecretOrBNWhisper(editBox) then
+        if editBox == _G.ChatFrame1EditBox then
+            DC_NS._pendingEditBoxSkinFlush = true
+        end
         return
     end
     if DC_NS.IsEditBoxFocused(editBox) then
@@ -4622,7 +4684,28 @@ local function ApplyPassiveEditBoxSkinOnInit(editBox, cfName, skinEnabled, syncF
         passiveSkinnedEditBoxes[editBox] = state
     end
 
-    if state.skinEnabled ~= skinEnabled then
+    local needStripPass = (state.skinEnabled ~= skinEnabled)
+    if not needStripPass and skinEnabled then
+        for _, suffix in ipairs(EDITBOX_TEXTURE_SUFFIXES) do
+            if DC_NS.NeedsEditBoxRegionStrip(_G[cfName .. "EditBox" .. suffix]) then
+                needStripPass = true
+                break
+            end
+        end
+        if not needStripPass then
+            if DC_NS.NeedsEditBoxRegionStrip(editBox.Left)
+                or DC_NS.NeedsEditBoxRegionStrip(editBox.Mid)
+                or DC_NS.NeedsEditBoxRegionStrip(editBox.Right)
+                or DC_NS.NeedsEditBoxRegionStrip(editBox.FocusLeft)
+                or DC_NS.NeedsEditBoxRegionStrip(editBox.FocusMid)
+                or DC_NS.NeedsEditBoxRegionStrip(editBox.FocusRight)
+                or DC_NS.NeedsEditBoxRegionStrip(editBox.NineSlice) then
+                needStripPass = true
+            end
+        end
+    end
+
+    if needStripPass then
         state.skinEnabled = skinEnabled
         for _, suffix in ipairs(EDITBOX_TEXTURE_SUFFIXES) do
             StripTextureSafe(_G[cfName .. "EditBox" .. suffix], skinEnabled)
@@ -5464,7 +5547,8 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
             if InCombatLockdown and InCombatLockdown() then return end
             if not IsSecretValue(button) and button == "MiddleButton" then
                 local ownerCF = hookedChatTabs[selfTab]
-                if ownerCF and not IsSecretValue(ownerCF.isTemporary) and ownerCF.isTemporary == true then
+                if ownerCF and not DC_NS.IsTemporaryBNWhisperOrSecretFrame(ownerCF)
+                    and not IsSecretValue(ownerCF.isTemporary) and ownerCF.isTemporary == true then
                     DynamicChat:RemoveSavedWhisperTabForFrame(ownerCF)
                     if type(_G.FCF_Close) == "function" then
                         pcall(_G.FCF_Close, ownerCF)
@@ -5485,7 +5569,7 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
                 end
             end
             StyleSingleChatTab(ownerCF, selfTab, ownerName, true, DynamicChat:GetHoverDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
-            if _G.GameTooltip and (not _G.GameTooltip.IsForbidden or not _G.GameTooltip:IsForbidden()) and not DC_NS.IsTemporaryBNWhisperOrSecretFrame(ownerCF) then
+            if DC_NS.SafeIsTooltipUsable(_G.GameTooltip) and not DC_NS.IsTemporaryBNWhisperOrSecretFrame(ownerCF) then
                 local ownerEntry = chatSkinStore[ownerCF]
                 local tabFS = (selfTab.GetFontString and selfTab:GetFontString()) or selfTab.Text
                 local rawLabel = ownerEntry and ownerEntry.fullTabLabel or nil
@@ -5517,8 +5601,8 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
         end)
         tab:HookScript("OnLeave", function(selfTab)
             local ownerCF = hookedChatTabs[selfTab]
-            if _G.GameTooltip and (not _G.GameTooltip.IsForbidden or not _G.GameTooltip:IsForbidden()) and _G.GameTooltip.GetOwner and _G.GameTooltip:GetOwner() == selfTab then
-                _G.GameTooltip:Hide()
+            if DC_NS.SafeIsTooltipOwnedBy(_G.GameTooltip, selfTab) then
+                pcall(_G.GameTooltip.Hide, _G.GameTooltip)
             end
             if not ownerCF or DynamicChat:IsExternalChatEngineLoaded() or DynamicChat:GetHoverDB().enableSleekChatSkin == false then return end
             if InCombatLockdown and InCombatLockdown() then return end
@@ -6003,7 +6087,7 @@ local function EnsureTabNavButtons()
                 local a1, a2, a3 = GetSuiteAccent()
                 LayoutDockedChatTabs(EnsureDB().enableSleekChatSkin ~= false, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
                 RefreshTabNavButtonsVisuals(a1, a2, a3)
-                if _G.GameTooltip and _G.GameTooltip:GetOwner() == btn then
+                if DC_NS.SafeIsTooltipOwnedBy(_G.GameTooltip, btn) then
                     ShowTabNavTooltip(btn, isLeft)
                 end
                 return
@@ -6054,8 +6138,8 @@ local function EnsureTabNavButtons()
             ShowTabNavTooltip(selfBtn, isLeft)
         end)
         btn:SetScript("OnLeave", function(selfBtn)
-            if _G.GameTooltip and _G.GameTooltip:GetOwner() == selfBtn then
-                _G.GameTooltip:Hide()
+            if DC_NS.SafeIsTooltipOwnedBy(_G.GameTooltip, selfBtn) then
+                pcall(_G.GameTooltip.Hide, _G.GameTooltip)
             end
             local a1, a2, a3 = GetSuiteAccent()
             RefreshTabNavButtonsVisuals(a1, a2, a3)
@@ -7586,10 +7670,21 @@ function DynamicChat:ApplySleekChatSkin()
             local cf1H = (not IsSecretValue(rawH) and type(rawH) == "number") and math.floor(rawH + 0.5) or 200
             local anchorKey = tostring(cf1) .. ":" .. (isTopEB and "TOP" or "BOT") .. ":" .. tostring(ebH) .. ":" .. tostring(cf1W) .. "x" .. tostring(cf1H)
             local expectedPt = isTopEB and "TOPLEFT" or "BOTTOMLEFT"
-            local okPt, curPt, relTo, curRelPt = pcall(eb1.GetPoint, eb1, 1)
+            local expectedPt2 = isTopEB and "BOTTOMRIGHT" or "TOPRIGHT"
+            local expectedRelPt2 = isTopEB and "TOPRIGHT" or "BOTTOMRIGHT"
+            local expectedY2 = isTopEB and -ebH or ebH
+            local okPt, curPt, relTo, curRelPt, curX1, curY1 = pcall(eb1.GetPoint, eb1, 1)
+            local okPt2, curPt2, relTo2, curRelPt2, curX2, curY2 = pcall(eb1.GetPoint, eb1, 2)
             local anchorMatches = okPt
                 and not IsSecretValue(curPt) and not IsSecretValue(relTo) and not IsSecretValue(curRelPt)
+                and not IsSecretValue(curX1) and not IsSecretValue(curY1)
                 and curPt == expectedPt and relTo == cf1 and curRelPt == expectedPt
+                and math.abs((tonumber(curX1) or 0)) < 0.5 and math.abs((tonumber(curY1) or 0)) < 0.5
+                and okPt2
+                and not IsSecretValue(curPt2) and not IsSecretValue(relTo2) and not IsSecretValue(curRelPt2)
+                and not IsSecretValue(curX2) and not IsSecretValue(curY2)
+                and curPt2 == expectedPt2 and relTo2 == cf1 and curRelPt2 == expectedRelPt2
+                and math.abs((tonumber(curX2) or 0)) < 0.5 and math.abs((tonumber(curY2) or 0) - expectedY2) < 0.5
             if state.anchorKey ~= anchorKey or not anchorMatches then
                 if DC_NS.ApplyEditBoxAnchorNow() then
                     state.anchorKey = anchorKey
@@ -7597,6 +7692,9 @@ function DynamicChat:ApplySleekChatSkin()
             end
         end
         local cf1Scale = (cf1 and cf1.GetScale and cf1:GetScale()) or 1.0
+        if IsSecretValue(cf1Scale) or type(cf1Scale) ~= "number" or cf1Scale <= 0 then
+            cf1Scale = 1.0
+        end
         if ebBar.SetScale then pcall(ebBar.SetScale, ebBar, cf1Scale) end
         ebBar:ClearAllPoints()
         if cf1 then
@@ -7622,7 +7720,7 @@ function DynamicChat:ApplySleekChatSkin()
             hasFocus = DynamicChat.SafeEditBoxHasFocus(_G.ChatFrame1EditBox)
         end
         RefreshSleekEditBoxBarColor(activeEB, hasFocus)
-        ebBar:SetShown((hasFocus or alwaysShadedEB) and true or false)
+        ebBar:SetShown((hasFocus or (alwaysShadedEB and IsPrimaryChatDockVisible())) and true or false)
     else
         ebBar:Hide()
     end
@@ -7666,16 +7764,37 @@ function DynamicChat:ApplySleekChatSkin()
 
             _G.EventRegistry:RegisterCallback("ChatFrame.OnEditBoxFocusLost", function(_, lostEditBox)
                 if lostEditBox ~= nil and not IsSecretValue(lostEditBox)
-                    and DynamicChat._focusedEditBox ~= nil and lostEditBox ~= DynamicChat._focusedEditBox then
+                    and DynamicChat._focusedEditBox ~= nil and not IsSecretValue(DynamicChat._focusedEditBox)
+                    and lostEditBox ~= DynamicChat._focusedEditBox then
                     return
                 end
                 DynamicChat._editBoxFocused = false
                 DynamicChat._focusedEditBox = nil
                 local curDB = EnsureDB()
                 if chatEditBoxSkin then
-                    if DynamicChat:IsExternalChatEngineLoaded() or curDB.enableSleekChatSkin == false or curDB.editBoxBackgroundMode == "FOCUS_ONLY" then
+                    if DynamicChat:IsExternalChatEngineLoaded() or IsEllesmereUILoaded()
+                        or curDB.enableSleekChatSkin == false or curDB.editBoxBackgroundMode == "FOCUS_ONLY"
+                        or not IsPrimaryChatDockVisible() then
                         chatEditBoxSkin:Hide()
                     else
+                        local cf1 = _G.ChatFrame1
+                        if cf1 then
+                            local isTop = (curDB.editBoxPosition == "TOP")
+                            local curH = DC_NS.GetEmbeddedEditBoxHeight(curDB)
+                            local cf1Scale = (cf1.GetScale and cf1:GetScale()) or 1.0
+                            if IsSecretValue(cf1Scale) or type(cf1Scale) ~= "number" or cf1Scale <= 0 then
+                                cf1Scale = 1.0
+                            end
+                            if chatEditBoxSkin.SetScale then pcall(chatEditBoxSkin.SetScale, chatEditBoxSkin, cf1Scale) end
+                            chatEditBoxSkin:ClearAllPoints()
+                            if isTop then
+                                chatEditBoxSkin:SetPoint("TOPLEFT", cf1, "TOPLEFT", 0, 0)
+                                chatEditBoxSkin:SetPoint("BOTTOMRIGHT", cf1, "TOPRIGHT", 0, -curH)
+                            else
+                                chatEditBoxSkin:SetPoint("BOTTOMLEFT", cf1, "BOTTOMLEFT", 0, 0)
+                                chatEditBoxSkin:SetPoint("TOPRIGHT", cf1, "BOTTOMRIGHT", 0, curH)
+                            end
+                        end
                         RefreshSleekEditBoxBarColor(_G.ChatFrame1EditBox, false)
                         chatEditBoxSkin:Show()
                     end
@@ -7928,7 +8047,7 @@ function DynamicChat:ApplySleekChatSkin()
             local typeClean = (not IsSecretValue(chatType) and type(chatType) == "string" and chatType ~= "") and chatType or nil
             local lastTemp = nil
             local function CheckFrame(cf)
-                if not cf or IsSecretValue(cf.isTemporary) or cf.isTemporary ~= true then return nil end
+                if not cf or IsSecretValue(cf) or IsSecretValue(cf.isTemporary) or cf.isTemporary ~= true then return nil end
                 lastTemp = cf
                 if targetClean and not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" then
                     local ct = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
@@ -8803,7 +8922,7 @@ function DynamicChat:SaveWhisperTabsSnapshot()
     local seenFrames = {}
     local orderedFrames = {}
     local function AddCandidateFrame(cf)
-        if not cf or seenFrames[cf] then return end
+        if not cf or IsSecretValue(cf) or seenFrames[cf] then return end
         seenFrames[cf] = true
         orderedFrames[#orderedFrames + 1] = cf
     end
@@ -8822,7 +8941,7 @@ function DynamicChat:SaveWhisperTabsSnapshot()
             local cfName = SafeChatFrameName(cf)
             local tab = cfName and _G[cfName .. "Tab"] or nil
             local skinEntry = chatSkinStore[cf]
-            local isOpen = (cf.isDocked == true)
+            local isOpen = DC_NS.SafeIsDocked(cf)
                 or DynamicChat.SafeFrameIsShown(cf, false)
                 or (tab ~= nil and (DynamicChat.SafeFrameIsShown(tab, false) or (skinEntry and skinEntry.hiddenByScroll == true)))
             if isOpen and not IsSecretValue(cf.chatType) and cf.chatType == "WHISPER"
@@ -8994,7 +9113,7 @@ function DynamicChat:RestoreSavedWhisperTabs()
 
     local openTargets = {}
     local function RecordOpenFrame(cf)
-        if not cf or IsSecretValue(cf.isTemporary) or cf.isTemporary ~= true then return end
+        if not cf or IsSecretValue(cf) or IsSecretValue(cf.isTemporary) or cf.isTemporary ~= true then return end
         if not IsSecretValue(cf.chatType) and cf.chatType == "WHISPER"
             and not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" then
             openTargets[#openTargets + 1] = cf.chatTarget
@@ -9277,8 +9396,11 @@ function DynamicChat:InstallChatHooks()
             local encoded = link:match("^addon:DynamicChat:(.+)$") or link:match("^url:(.+)$") or link:match("^dcurl:(.+)$")
             if encoded and EnsureDB().clickableURLs then
                 local decodedUrl = DecodeDynamicChatLinkPayload(encoded)
-                if _G.ItemRefTooltip and _G.ItemRefTooltip:IsShown() then
-                    _G.ItemRefTooltip:Hide()
+                if DC_NS.SafeIsTooltipUsable(_G.ItemRefTooltip) and type(_G.ItemRefTooltip.IsShown) == "function" then
+                    local okS, shown = pcall(_G.ItemRefTooltip.IsShown, _G.ItemRefTooltip)
+                    if okS and not IsSecretValue(shown) and shown == true then
+                        pcall(_G.ItemRefTooltip.Hide, _G.ItemRefTooltip)
+                    end
                 end
                 DynamicChat:ShowURLCopyPopup(decodedUrl)
             end
@@ -15561,6 +15683,22 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
             self:ApplySavedChatFramePosition()
             self:ApplySleekChatSkin()
             self:HookAllChatFramesAndEditBoxes()
+        end
+        if DC_NS._pendingEditBoxSkinFlush and not (InCombatLockdown and InCombatLockdown()) then
+            local eb1 = _G.ChatFrame1EditBox
+            if eb1 and not IsEditBoxSecretOrBNWhisper(eb1) and not DC_NS.IsEditBoxFocused(eb1) then
+                DC_NS._pendingEditBoxSkinFlush = false
+                if not self:IsExternalChatEngineLoaded() and not IsEllesmereUILoaded() then
+                    local curDB = EnsureDB()
+                    local skinEnabled = (curDB.enableSleekChatSkin ~= false)
+                    local syncFont = (curDB.applySuiteChatFont ~= false)
+                    ApplyPassiveEditBoxSkinOnInit(eb1, "ChatFrame1", skinEnabled, syncFont, GetFontPath())
+                    if skinEnabled and type(DC_NS.ApplyEditBoxAnchorNow) == "function" then
+                        DC_NS.ApplyEditBoxAnchorNow()
+                    end
+                    self:ApplyEditBoxSettings()
+                end
+            end
         end
         if self._pendingTabLayoutAfterCombat then
             self._pendingTabLayoutAfterCombat = false

@@ -74,11 +74,14 @@ local ICON_CHEVRON_DOWN = MEDIA_BASE .. "Icons\\icon_chevron_down.tga"
 local ICON_CHEVRON_UP = MEDIA_BASE .. "Icons\\icon_chevron_up.tga"
 
 local function _IsSecret(v)
-    if type(issecretvalue) == "function" and issecretvalue(v) then
-        return true
+    if v == nil then return false end
+    if type(issecretvalue) == "function" then
+        local ok, res = pcall(issecretvalue, v)
+        if not ok or res == true then return true end
     end
-    if type(canaccessvalue) == "function" and v ~= nil and not canaccessvalue(v) then
-        return true
+    if type(canaccessvalue) == "function" then
+        local ok, can = pcall(canaccessvalue, v)
+        if not ok or can == false then return true end
     end
     return false
 end
@@ -1379,19 +1382,23 @@ do
 
             if isMouseLooking then
                 if db.ringKeepMouseLook then
-                    ringTex:Hide()
-                    if ringRoot.contrastOuter then ringRoot.contrastOuter:Hide() end
-                    if ringRoot.contrastInner then ringRoot.contrastInner:Hide() end
-                    ghostTex:Show()
+                    if ringTex:IsShown() then ringTex:Hide() end
+                    if ringRoot.contrastOuter and ringRoot.contrastOuter:IsShown() then ringRoot.contrastOuter:Hide() end
+                    if ringRoot.contrastInner and ringRoot.contrastInner:IsShown() then ringRoot.contrastInner:Hide() end
+                    if not ghostTex:IsShown() then ghostTex:Show() end
                     if not ringRoot:IsShown() then ringRoot:Show() end
                 else
                     if ringRoot:IsShown() then ringRoot:Hide() end
                 end
             else
-                ringTex:Show()
-                if ringRoot.contrastOuter then ringRoot.contrastOuter:SetShown(ringContrastActive) end
-                if ringRoot.contrastInner then ringRoot.contrastInner:SetShown(ringContrastActive) end
-                ghostTex:Hide()
+                if not ringTex:IsShown() then ringTex:Show() end
+                if ringRoot.contrastOuter and ringRoot.contrastOuter:IsShown() ~= ringContrastActive then
+                    ringRoot.contrastOuter:SetShown(ringContrastActive)
+                end
+                if ringRoot.contrastInner and ringRoot.contrastInner:IsShown() ~= ringContrastActive then
+                    ringRoot.contrastInner:SetShown(ringContrastActive)
+                end
+                if ghostTex:IsShown() then ghostTex:Hide() end
                 local rox = tonumber(db.ringOffsetX) or 0
                 local roy = tonumber(db.ringOffsetY) or 0
                 local targetX, targetY = cx + rox, cy + roy
@@ -1430,7 +1437,7 @@ do
                     castIconFrame:SetAlpha(math.max(0, math.min(1, rem)))
                 end
             end
-        elseif ringRoot then
+        elseif ringRoot and ringRoot:IsShown() then
             ringRoot:Hide()
         end
 
@@ -1465,7 +1472,7 @@ do
                 locatorCrossV:Show()
             end
             locatorRoot:Show()
-        elseif locatorRoot then
+        elseif locatorRoot and locatorRoot:IsShown() then
             locatorRoot:Hide()
         end
 
@@ -1510,15 +1517,18 @@ do
     end
 
     local function RepositionSmartTooltip(tooltip, db)
-        local effScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        local rawScale = (UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+        local effScale = (not _IsSecret(rawScale) and tonumber(rawScale)) or 1
         if effScale <= 0 then effScale = 1 end
         local rawX, rawY = _G.GetCursorPosition()
         if _IsSecret(rawX) or _IsSecret(rawY) then return end
         local cx, cy = (tonumber(rawX) or 0) / effScale, (tonumber(rawY) or 0) / effScale
         local ox = tonumber(db.tooltipOffsetX) or 18
         local oy = tonumber(db.tooltipOffsetY) or -18
-        local sw = (_G.GetScreenWidth and _G.GetScreenWidth()) or 1920
-        local sh = (_G.GetScreenHeight and _G.GetScreenHeight()) or 1080
+        local rawSW = (_G.GetScreenWidth and _G.GetScreenWidth()) or 1920
+        local rawSH = (_G.GetScreenHeight and _G.GetScreenHeight()) or 1080
+        local sw = (not _IsSecret(rawSW) and tonumber(rawSW)) or 1920
+        local sh = (not _IsSecret(rawSH) and tonumber(rawSH)) or 1080
         local pt = "TOPLEFT"
         if db.tooltipEdgeFlip ~= false then
             local flipX = (cx > sw * 0.72)
@@ -1595,7 +1605,7 @@ do
                 instantFlashEnd = 0
                 castIconFrame:Hide()
             end
-        elseif ringRoot then
+        elseif ringRoot and ringRoot:IsShown() then
             ringRoot:Hide()
         end
 
@@ -1717,7 +1727,7 @@ do
                 pulseRemaining = 0.25
             end
         elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
-            if arg1 == "player" then
+            if not _IsSecret(arg1) and arg1 == "player" then
                 TriggerGCDCooldown()
                 if db.ringEnabled and db.castShowIcon and db.castInstantFlash and not isCastingNow and not isChannelingNow and castIconFrame and castIconTex then
                     if not _IsSecret(arg3) and type(arg3) == "number" and arg3 > 0 then
@@ -1739,31 +1749,31 @@ do
                 end
             end
         elseif event == "UNIT_SPELLCAST_START" then
-            if arg1 == "player" then
+            if not _IsSecret(arg1) and arg1 == "player" then
                 isCastingNow = true; isChannelingNow = false
                 TriggerGCDCooldown()
                 UpdateCastArc(false, false, false)
             end
         elseif event == "UNIT_SPELLCAST_CHANNEL_START" then
-            if arg1 == "player" then
+            if not _IsSecret(arg1) and arg1 == "player" then
                 isChannelingNow = true; isCastingNow = false
                 TriggerGCDCooldown()
                 UpdateCastArc(true, false, false)
             end
         elseif event == "UNIT_SPELLCAST_EMPOWER_START" then
-            if arg1 == "player" then
+            if not _IsSecret(arg1) and arg1 == "player" then
                 isChannelingNow = true; isCastingNow = false
                 TriggerGCDCooldown()
                 UpdateCastArc(false, true, false)
             end
         elseif event == "UNIT_SPELLCAST_INTERRUPTED" then
-            if arg1 == "player" then
+            if not _IsSecret(arg1) and arg1 == "player" then
                 isCastingNow = false; isChannelingNow = false
                 UpdateCastArc(false, false, true)
             end
         elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_FAILED"
             or event == "UNIT_SPELLCAST_CHANNEL_STOP" or event == "UNIT_SPELLCAST_EMPOWER_STOP" then
-            if arg1 == "player" then
+            if not _IsSecret(arg1) and arg1 == "player" then
                 isCastingNow = false; isChannelingNow = false
                 if castCooldown then castCooldown:Hide() end
                 if castIconFrame and instantFlashEnd <= 0 then castIconFrame:Hide() end

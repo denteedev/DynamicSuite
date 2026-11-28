@@ -968,6 +968,81 @@ local function AuditBlizzardGlobalAndMethodOverwrites(fileSpecs)
 end
 
 -- ============================================================================
+-- Check 5: Pre-12.1.7 Chat Invariant #1 & Tooltip Post-Call Hygiene Audit
+--   5a. DynamicChat must never call SetClampedToScreen(true) on Blizzard chat frames
+--   5b. DynamicChat must never register ChatFrame_AddMessageEventFilter(...)
+--   5c. No TooltipDataProcessor.AddTooltipPostCall callback may call tooltip:Show() / GameTooltip:Show()
+-- ============================================================================
+local function AuditChatInvariantAndTooltipPostCalls(fileSpecs)
+    local violations = {}
+    for _, spec in ipairs(fileSpecs) do
+        local codeOnly = StripCommentsAndStrings(spec.src)
+        local lines = SplitLines(codeOnly)
+        local isChatFile = (spec.name:find("Chat", 1, true) ~= nil)
+
+        local inTooltipPostCall = false
+        local postCallDepth = 0
+
+        for idx, ln in ipairs(lines) do
+            if isChatFile then
+                -- (5a) Never call SetClampedToScreen(true) on Blizzard chat frames/backgrounds/editboxes
+                local clampObj = ln:match("([%a_][%w_%.]*)%s*:%s*SetClampedToScreen%s*%(%s*true%s*%)")
+                    or ln:match("pcall%s*%(%s*([%a_][%w_%.]*)%.SetClampedToScreen%s*,%s*[%a_][%w_%.]*%s*,%s*true%s*%)")
+                if clampObj then
+                    local isBlizzChatObj = (clampObj == "cf" or clampObj == "cf1" or clampObj == "chatFrame"
+                        or clampObj == "outerPanel" or clampObj == "curEB"
+                        or clampObj:match("ChatFrame%d") ~= nil)
+                    if isBlizzChatObj then
+                        violations[#violations + 1] = string.format(
+                            "[Check5a Chat Invariant1 Clamping] %s:%d -> forbidden SetClampedToScreen(true) on %s",
+                            spec.name, idx, clampObj
+                        )
+                    end
+                end
+
+                -- (5b) Never call ChatFrame_AddMessageEventFilter(...) in DynamicChat
+                if ln:match("%f[%a_]ChatFrame_AddMessageEventFilter%s*%(") then
+                    violations[#violations + 1] = string.format(
+                        "[Check5b Chat Message Filter] %s:%d -> forbidden ChatFrame_AddMessageEventFilter() call",
+                        spec.name, idx
+                    )
+                end
+            end
+
+            -- (5c) Track TooltipDataProcessor.AddTooltipPostCall(...) bodies for synchronous :Show()
+            if not inTooltipPostCall and ln:match("TooltipDataProcessor%.AddTooltipPostCall%s*%(") then
+                inTooltipPostCall = true
+                postCallDepth = 0
+            end
+            if inTooltipPostCall then
+                if ln:match("%f[%a_]tooltip%s*:%s*Show%s*%(")
+                    or ln:match("%f[%a_]GameTooltip%s*:%s*Show%s*%(")
+                    or ln:match("pcall%s*%(%s*tooltip%.Show")
+                    or ln:match("pcall%s*%(%s*[%a_%.]*GameTooltip%.Show") then
+                    violations[#violations + 1] = string.format(
+                        "[Check5c TooltipPostCall Sync Show] %s:%d -> synchronous Show() inside TooltipDataProcessor.AddTooltipPostCall",
+                        spec.name, idx
+                    )
+                end
+                for _ in ln:gmatch("%f[%a_]function%f[^%w_]") do postCallDepth = postCallDepth + 1 end
+                for _ in ln:gmatch("%f[%a_]if%f[^%w_]") do postCallDepth = postCallDepth + 1 end
+                for _ in ln:gmatch("%f[%a_]for%f[^%w_]") do postCallDepth = postCallDepth + 1 end
+                for _ in ln:gmatch("%f[%a_]while%f[^%w_]") do postCallDepth = postCallDepth + 1 end
+                for _ in ln:gmatch("%f[%a_]do%f[^%w_]") do
+                    -- `for ... do` and `while ... do` already counted above; standalone `do` is rare inside post-calls
+                end
+                for _ in ln:gmatch("%f[%a_]end%f[^%w_]") do postCallDepth = postCallDepth - 1 end
+                if postCallDepth <= 0 and ln:match("%f[%a_]end%s*%)") then
+                    inTooltipPostCall = false
+                    postCallDepth = 0
+                end
+            end
+        end
+    end
+    return violations
+end
+
+-- ============================================================================
 -- Run Self-Tests on Synthetic Bug Snippets
 -- ============================================================================
 local function RunSelfTests()
@@ -1161,6 +1236,33 @@ local function RunSelfTests()
             },
             expectSub = "Check4c Direct LFGListSearchPanel_UpdateButtonStatus Call",
         },
+        {
+            name = "Catches ChatFrame1:SetClampedToScreen(true) in DynamicChat",
+            fn = AuditChatInvariantAndTooltipPostCalls,
+            spec = {
+                name = "SyntheticChatClamp.lua",
+                src = "local function f(cf)\n  cf:SetClampedToScreen(true)\nend\n",
+            },
+            expectSub = "Check5a Chat Invariant1 Clamping",
+        },
+        {
+            name = "Catches ChatFrame_AddMessageEventFilter in DynamicChat",
+            fn = AuditChatInvariantAndTooltipPostCalls,
+            spec = {
+                name = "SyntheticChatFilter.lua",
+                src = "ChatFrame_AddMessageEventFilter(\"CHAT_MSG_GUILD\", function() end)\n",
+            },
+            expectSub = "Check5b Chat Message Filter",
+        },
+        {
+            name = "Catches synchronous tooltip:Show() inside TooltipDataProcessor.AddTooltipPostCall",
+            fn = AuditChatInvariantAndTooltipPostCalls,
+            spec = {
+                name = "SyntheticTooltipPost.lua",
+                src = "TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip)\n  tooltip:Show()\nend)\n",
+            },
+            expectSub = "Check5c TooltipPostCall Sync Show",
+        },
     }
 
     for _, tc in ipairs(selfCases) do
@@ -1199,6 +1301,7 @@ for _, v in ipairs(AuditUndefinedTableMethods(fileSpecs)) do allViolations[#allV
 for _, v in ipairs(AuditBlizzardFrameHooks(fileSpecs)) do allViolations[#allViolations + 1] = v end
 for _, v in ipairs(AuditSecretAndFadeGuards(fileSpecs)) do allViolations[#allViolations + 1] = v end
 for _, v in ipairs(AuditBlizzardGlobalAndMethodOverwrites(fileSpecs)) do allViolations[#allViolations + 1] = v end
+for _, v in ipairs(AuditChatInvariantAndTooltipPostCalls(fileSpecs)) do allViolations[#allViolations + 1] = v end
 
 if #allViolations > 0 then
     print(string.format("[STATIC AUDIT FAILED] Found %d violation(s):", #allViolations))

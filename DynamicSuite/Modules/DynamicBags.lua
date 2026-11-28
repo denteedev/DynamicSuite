@@ -409,15 +409,25 @@ local function DB()
 end
 
 local function IsSecret(v)
+    if v == nil then return false end
     if type(issecretvalue) == "function" then
         local ok, r = pcall(issecretvalue, v)
-        if ok and r then return true end
+        if not ok or r then return true end
     end
     if type(canaccessvalue) == "function" then
         local ok, r = pcall(canaccessvalue, v)
-        if ok and r == false then return true end
+        if not ok or r == false then return true end
     end
     return false
+end
+
+local function IsBagTooltipSafe(tt)
+    if not tt or IsSecret(tt) then return false end
+    if type(tt.IsForbidden) == "function" then
+        local okF, forb = pcall(tt.IsForbidden, tt)
+        if not okF or IsSecret(forb) or forb == true then return false end
+    end
+    return true
 end
 
 local function GetAccent()
@@ -611,7 +621,7 @@ function U.ScanGearTooltip(e)
                 end
                 return false
             end)
-            if okL and isWue then binding = "WUE" end
+            if okL and not IsSecret(isWue) and isWue then binding = "WUE" end
         end
 
         -- 2. Scan Tooltip lines (use GetBagItem only if container is live, otherwise use GetHyperlink)
@@ -619,34 +629,36 @@ function U.ScanGearTooltip(e)
             local ok, data = false, nil
             if canQuerySlot and C_TooltipInfo.GetBagItem then
                 ok, data = pcall(C_TooltipInfo.GetBagItem, bag, slot)
-                if not (ok and type(data) == "table" and type(data.lines) == "table" and #data.lines > 0) then
+                if not (ok and not IsSecret(data) and type(data) == "table" and not IsSecret(data.lines) and type(data.lines) == "table" and #data.lines > 0) then
                     ok, data = false, nil
                 end
             end
             if (not ok) and e.link and C_TooltipInfo.GetHyperlink then
                 ok, data = pcall(C_TooltipInfo.GetHyperlink, e.link)
             end
-            if ok and type(data) == "table" and type(data.lines) == "table" then
+            if ok and not IsSecret(data) and type(data) == "table" and not IsSecret(data.lines) and type(data.lines) == "table" then
                 local sawSoulbound = false
                 for _, line in ipairs(data.lines) do
-                    local t = line.leftText
-                    if type(t) == "string" and not IsSecret(t) then
-                        local tl = t:lower()
-                        if MatchesGlobals(t, WUE_GLOBALS)
-                            or tl:find("warbound", 1, true)
-                            or tl:find("account bound", 1, true)
-                            or tl:find("bnetaccountbound", 1, true) then
-                            binding = "WUE"
-                        elseif binding ~= "WUE" and (MatchesGlobals(t, BOE_GLOBALS) or tl:find("binds when equipped", 1, true) or tl:find("bind on equip", 1, true)) then
-                            binding = "BOE"
-                        elseif t == ITEM_SOULBOUND or tl:find("soulbound", 1, true) then
-                            sawSoulbound = true
+                    if type(line) == "table" and not IsSecret(line) then
+                        local t = line.leftText
+                        if type(t) == "string" and not IsSecret(t) then
+                            local tl = t:lower()
+                            if MatchesGlobals(t, WUE_GLOBALS)
+                                or tl:find("warbound", 1, true)
+                                or tl:find("account bound", 1, true)
+                                or tl:find("bnetaccountbound", 1, true) then
+                                binding = "WUE"
+                            elseif binding ~= "WUE" and (MatchesGlobals(t, BOE_GLOBALS) or tl:find("binds when equipped", 1, true) or tl:find("bind on equip", 1, true)) then
+                                binding = "BOE"
+                            elseif t == ITEM_SOULBOUND or tl:find("soulbound", 1, true) then
+                                sawSoulbound = true
+                            end
                         end
-                    end
-                    local c = line.leftColor
-                    if type(c) == "table" and not unusable then
-                        local okc, red = pcall(function() return c.r > 0.9 and c.g < 0.25 and c.b < 0.25 end)
-                        if okc and red then unusable = true end
+                        local c = line.leftColor
+                        if type(c) == "table" and not IsSecret(c) and not unusable then
+                            local okc, red = pcall(function() return c.r > 0.9 and c.g < 0.25 and c.b < 0.25 end)
+                            if okc and not IsSecret(red) and red then unusable = true end
+                        end
                     end
                 end
                 if sawSoulbound and binding == "BOE" then binding = nil end
@@ -822,17 +834,17 @@ function U.DetectCraftQuality(link, itemID, bagID, slotID, classID, expacID)
     -- 1. Query C_TradeSkillUI for crafted quality
     if C_TradeSkillUI and C_TradeSkillUI.GetItemCraftedQualityByItemInfo then
         local ok, val = pcall(C_TradeSkillUI.GetItemCraftedQualityByItemInfo, link or id)
-        if ok and type(val) == "number" and val > 0 then q = val end
+        if ok and not IsSecret(val) and type(val) == "number" and val > 0 then q = val end
     end
     -- 2. Query C_TradeSkillUI for reagent quality
     if not q and C_TradeSkillUI and C_TradeSkillUI.GetItemReagentQualityByItemInfo then
         local ok, val = pcall(C_TradeSkillUI.GetItemReagentQualityByItemInfo, link or id)
-        if ok and type(val) == "number" and val > 0 then q = val end
+        if ok and not IsSecret(val) and type(val) == "number" and val > 0 then q = val end
     end
     -- 3. Query C_Item for crafted quality
     if not q and C_Item and C_Item.GetItemCraftedQualityByItemInfo then
         local ok, val = pcall(C_Item.GetItemCraftedQualityByItemInfo, link or id)
-        if ok and type(val) == "number" and val > 0 then q = val end
+        if ok and not IsSecret(val) and type(val) == "number" and val > 0 then q = val end
     end
 
     -- 4. Tooltip scan fallback via C_TooltipInfo ONLY if API returned nil
@@ -842,33 +854,35 @@ function U.DetectCraftQuality(link, itemID, bagID, slotID, classID, expacID)
         local canQuerySlot = (type(bagID) == "number" and type(slotID) == "number" and (isPlayerBag or S.atBank == true))
         if canQuerySlot and C_TooltipInfo.GetBagItem then
             local ok, d = pcall(C_TooltipInfo.GetBagItem, bagID, slotID)
-            if ok and d then data = d end
+            if ok and d and not IsSecret(d) then data = d end
         end
         if not data and link and C_TooltipInfo.GetHyperlink then
             local ok, d = pcall(C_TooltipInfo.GetHyperlink, link)
-            if ok and d then data = d end
+            if ok and d and not IsSecret(d) then data = d end
         end
         if not data and id and C_TooltipInfo.GetItemByID then
             local ok, d = pcall(C_TooltipInfo.GetItemByID, id)
-            if ok and d then data = d end
+            if ok and d and not IsSecret(d) then data = d end
         end
-        if data and data.lines then
+        if type(data) == "table" and not IsSecret(data) and type(data.lines) == "table" and not IsSecret(data.lines) then
             for _, line in ipairs(data.lines) do
-                if type(line.atlas) == "string" and not IsSecret(line.atlas) then
-                    local t = line.atlas:match("Professions%-[%w%-_]*Quality%-Tier(%d)")
-                    if t then
-                        atlas = line.atlas
-                        if not q then q = tonumber(t) end
-                        break
+                if type(line) == "table" and not IsSecret(line) then
+                    if type(line.atlas) == "string" and not IsSecret(line.atlas) then
+                        local t = line.atlas:match("Professions%-[%w%-_]*Quality%-Tier(%d)")
+                        if t then
+                            atlas = line.atlas
+                            if not q then q = tonumber(t) end
+                            break
+                        end
                     end
-                end
-                if type(line.leftText) == "string" and not IsSecret(line.leftText) then
-                    local a = line.leftText:match("Professions%-[%w%-_]*Quality%-Tier%d[^\"]*")
-                    local t = line.leftText:match("Professions%-[%w%-_]*Quality%-Tier(%d)")
-                    if t then
-                        if a and not atlas then atlas = a end
-                        if not q then q = tonumber(t) end
-                        break
+                    if type(line.leftText) == "string" and not IsSecret(line.leftText) then
+                        local a = line.leftText:match("Professions%-[%w%-_]*Quality%-Tier%d[^\"]*")
+                        local t = line.leftText:match("Professions%-[%w%-_]*Quality%-Tier(%d)")
+                        if t then
+                            if a and not atlas then atlas = a end
+                            if not q then q = tonumber(t) end
+                            break
+                        end
                     end
                 end
             end
@@ -1741,6 +1755,7 @@ function U.BuildCountIndex()
 end
 
 function U.AppendCountsToTooltip(tooltip, itemID)
+    if IsSecret(itemID) or type(itemID) ~= "number" or not IsBagTooltipSafe(tooltip) then return end
     if not S.countIndex or S.countIndexVersion ~= S.vaultVersion then U.BuildCountIndex() end
     local e = S.countIndex[itemID]
     if not e then return end
@@ -1768,16 +1783,23 @@ function U.InstallTooltipHook()
     if not (TooltipDataProcessor and TooltipDataProcessor.AddTooltipPostCall and Enum and Enum.TooltipDataType) then return end
     S.tooltipHooked = true
     TooltipDataProcessor.AddTooltipPostCall(Enum.TooltipDataType.Item, function(tooltip, data)
-        if InCombatLockdown() or tooltip ~= GameTooltip then return end
-        local id = (type(data) == "table" and not IsSecret(data)) and data.id or nil
-        if type(id) == "number" and not IsSecret(id) and DB().tooltipCounts then
+        if InCombatLockdown() or IsModuleDisabledInSuite("DynamicBags") then return end
+        if not IsBagTooltipSafe(tooltip) or tooltip ~= GameTooltip then return end
+        local id = (not IsSecret(data) and type(data) == "table") and data.id or nil
+        if not IsSecret(id) and type(id) == "number" and DB().tooltipCounts then
             pcall(U.AppendCountsToTooltip, tooltip, id)
         end
         local okOwn, owner = pcall(tooltip.GetOwner, tooltip)
-        if okOwn and owner and not IsSecret(owner) and owner.dbBag and owner.dbSlot and owner.dbObj and not owner.dbObj.empty then
+        if not okOwn or type(owner) ~= "table" or IsSecret(owner) then return end
+        if type(owner.IsForbidden) == "function" then
+            local okForb, forb = pcall(owner.IsForbidden, owner)
+            if not okForb or IsSecret(forb) or forb == true then return end
+        end
+        if owner.dbBag and owner.dbSlot and type(owner.dbObj) == "table" and not owner.dbObj.empty then
             local ar, ag, ab = GetAccent()
             local pinnedCats = DB().pinnedCategories
-            local pinned = pinnedCats and pinnedCats[owner.dbObj.itemID]
+            local ownItemID = owner.dbObj.itemID
+            local pinned = (not IsSecret(ownItemID) and pinnedCats) and pinnedCats[ownItemID] or nil
             -- Hint text is memoised per pinned category + accent so repeat hovers allocate nothing.
             local hc = S.pinHintCache
             if not hc or hc.r ~= ar or hc.g ~= ag or hc.b ~= ab then
@@ -1794,18 +1816,20 @@ function U.InstallTooltipHook()
                 hc.text[hintKey] = pinTxt
             end
             pcall(tooltip.AddLine, tooltip, pinTxt, 0.886, 0.910, 0.941)
-        elseif okOwn and owner and not IsSecret(owner) and type(id) == "number" and not IsSecret(id)
-            and DB().autoRestockEnabled == true and _G.MerchantFrame and _G.MerchantFrame.IsShown and _G.MerchantFrame:IsShown() then
-            local okName, ownName = pcall(owner.GetName, owner)
-            if okName and type(ownName) == "string" and not IsSecret(ownName) and ownName:match("^MerchantItem%d+ItemButton$") then
-                local ar, ag, ab = GetAccent()
-                local accHex = sformat("%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
-                local list = DB().autoRestockList
-                local curQty = type(list) == "table" and tonumber(list[id]) or nil
-                local hintTxt = curQty
-                    and sformat("|cFF%sAuto-Restock:|r |cFFE2E8F0Target %d (Ctrl + Alt + Right-Click for +20)|r", accHex, curQty)
-                    or  sformat("|cFF%sCtrl + Alt + Right-Click:|r |cFFE2E8F0Add to Auto-Restock|r", accHex)
-                pcall(tooltip.AddLine, tooltip, hintTxt, 0.886, 0.910, 0.941)
+        elseif not IsSecret(id) and type(id) == "number" and DB().autoRestockEnabled == true and _G.MerchantFrame and type(_G.MerchantFrame.IsShown) == "function" then
+            local okM, mShown = pcall(_G.MerchantFrame.IsShown, _G.MerchantFrame)
+            if okM and not IsSecret(mShown) and mShown == true then
+                local okName, ownName = pcall(owner.GetName, owner)
+                if okName and not IsSecret(ownName) and type(ownName) == "string" and ownName:match("^MerchantItem%d+ItemButton$") then
+                    local ar, ag, ab = GetAccent()
+                    local accHex = sformat("%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
+                    local list = DB().autoRestockList
+                    local curQty = type(list) == "table" and tonumber(list[id]) or nil
+                    local hintTxt = curQty
+                        and sformat("|cFF%sAuto-Restock:|r |cFFE2E8F0Target %d (Ctrl + Alt + Right-Click for +20)|r", accHex, curQty)
+                        or  sformat("|cFF%sCtrl + Alt + Right-Click:|r |cFFE2E8F0Add to Auto-Restock|r", accHex)
+                    pcall(tooltip.AddLine, tooltip, hintTxt, 0.886, 0.910, 0.941)
+                end
             end
         end
     end)
@@ -3876,13 +3900,13 @@ function U.GetVirtualButton(i)
     U.BuildOverlay(btn)
     btn:SetScript("OnEnter", function(self)
         local o = self.dbObj
-        if o and o.link and GameTooltip then
+        if o and o.link and not IsSecret(o.link) and IsBagTooltipSafe(GameTooltip) then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             pcall(GameTooltip.SetHyperlink, GameTooltip, o.link)
             GameTooltip:Show()
         end
     end)
-    btn:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    btn:SetScript("OnLeave", function() if IsBagTooltipSafe(GameTooltip) then GameTooltip:Hide() end end)
     btn:SetScript("OnClick", function(self)
         local o = self.dbObj
         if o and o.link and IsModifiedClick and IsModifiedClick("CHATLINK") and ChatEdit_InsertLink then
@@ -6366,8 +6390,11 @@ function U.EnsureCompanionBankWindow()
                 S.window.restackBtn:SetSelected(d.autoMergeOnClose)
             end
             Print("Auto-Merge partial stacks on bag/bank close: " .. (d.autoMergeOnClose and "|cFF34D399Enabled|r" or "|cFF94A3B8Off|r"))
-            if GameTooltip and GameTooltip:GetOwner() == bankRestackBtn then
-                bankRestackBtn:GetScript("OnEnter")(bankRestackBtn)
+            if IsBagTooltipSafe(GameTooltip) and type(GameTooltip.GetOwner) == "function" then
+                local okO, own = pcall(GameTooltip.GetOwner, GameTooltip)
+                if okO and not IsSecret(own) and own == bankRestackBtn then
+                    bankRestackBtn:GetScript("OnEnter")(bankRestackBtn)
+                end
             end
         else
             U.RestackBank(S.companionMode)
@@ -7107,9 +7134,9 @@ function U.RenderCompanionBank(forceRender)
             end
             btn:SetScript("OnEnter", function(self)
                 local o = self.dbObj
-                if o and GameTooltip then
+                if o and IsBagTooltipSafe(GameTooltip) then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                    if o.link then
+                    if o.link and not IsSecret(o.link) then
                         pcall(GameTooltip.SetHyperlink, GameTooltip, o.link)
                     elseif o.uncached then
                         GameTooltip:SetText("Loading Guild Bank item...", 0.88, 0.91, 0.94)
@@ -11921,53 +11948,54 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
 
     if C_TooltipInfo and type(C_TooltipInfo.GetBagItem) == "function" then
         local okT, data = pcall(C_TooltipInfo.GetBagItem, bagID, slotID)
-        if okT and type(data) == "table" and type(data.lines) == "table" then
+        if okT and not IsSecret(data) and type(data) == "table" and not IsSecret(data.lines) and type(data.lines) == "table" then
             for _, line in ipairs(data.lines) do
-                local lc = line.leftColor
-                if type(lc) == "table" and not hasRedText then
-                    local okC, red = pcall(function() return lc.r > 0.9 and lc.g < 0.25 and lc.b < 0.25 end)
-                    if okC and red then hasRedText = true end
-                end
-                local rc = line.rightColor
-                if type(rc) == "table" and not hasRedText then
-                    local okC, red = pcall(function() return rc.r > 0.9 and rc.g < 0.25 and rc.b < 0.25 end)
-                    if okC and red then hasRedText = true end
-                end
-
-                local t = line.leftText
-                if type(t) == "string" and not IsSecret(t) then
-                    local tl = t:lower()
-                    tooltipTextConcat = tooltipTextConcat .. " " .. tl
-
-                    if (LOCKED and t == LOCKED) or tl == "locked" or tl:find("^locked ")
-                        or tl:find("requires lockpicking", 1, true)
-                        or tl:find("requires .* key")
-                        or tl:find("combine %d+")
-                        or tl:find("turn %d+ ")
-                        or tl:find("consume %d+ ")
-                        or tl:find("requires %d+ ")
-                        or tl:find("teaches you how to summon this mount", 1, true)
-                        or tl:find("adds this toy to your toy box", 1, true)
-                        or tl:find("use: restores ", 1, true)
-                        or tl:find("well fed", 1, true)
-                        or tl:find("splintered spark", 1, true) then
-                        hasDisqualifyingLine = true
+                if type(line) == "table" and not IsSecret(line) then
+                    local lc = line.leftColor
+                    if type(lc) == "table" and not IsSecret(lc) and not hasRedText then
+                        local okC, red = pcall(function() return lc.r > 0.9 and lc.g < 0.25 and lc.b < 0.25 end)
+                        if okC and not IsSecret(red) and red then hasRedText = true end
+                    end
+                    local rc = line.rightColor
+                    if type(rc) == "table" and not IsSecret(rc) and not hasRedText then
+                        local okC, red = pcall(function() return rc.r > 0.9 and rc.g < 0.25 and rc.b < 0.25 end)
+                        if okC and not IsSecret(red) and red then hasRedText = true end
                     end
 
-                    if tl:find("you may sell this item to a vendor within", 1, true)
-                        or tl:find("make this item non-refundable", 1, true) then
-                        isVendorRefundLocked = true
-                    end
+                    local t = line.leftText
+                    if type(t) == "string" and not IsSecret(t) then
+                        local tl = t:lower()
+                        tooltipTextConcat = tooltipTextConcat .. " " .. tl
 
-                    if (ITEM_WRAPPED and t == ITEM_WRAPPED)
-                        or tl:find("right click to unwrap", 1, true)
-                        or tl:find("^use: unwrap")
-                        or tl:find("wrapped gift", 1, true)
-                        or tl:find("gift-wrapped", 1, true) then
-                        sawWrappedLine = true
-                    end
+                        if (LOCKED and t == LOCKED) or tl == "locked" or tl:find("^locked ")
+                            or tl:find("requires lockpicking", 1, true)
+                            or tl:find("requires .* key")
+                            or tl:find("combine %d+")
+                            or tl:find("turn %d+ ")
+                            or tl:find("consume %d+ ")
+                            or tl:find("requires %d+ ")
+                            or tl:find("teaches you how to summon this mount", 1, true)
+                            or tl:find("adds this toy to your toy box", 1, true)
+                            or tl:find("use: restores ", 1, true)
+                            or tl:find("well fed", 1, true)
+                            or tl:find("splintered spark", 1, true) then
+                            hasDisqualifyingLine = true
+                        end
 
-                    if t == ITEM_SOULBOUND or t == ITEM_BIND_ON_PICKUP
+                        if tl:find("you may sell this item to a vendor within", 1, true)
+                            or tl:find("make this item non-refundable", 1, true) then
+                            isVendorRefundLocked = true
+                        end
+
+                        if (ITEM_WRAPPED and t == ITEM_WRAPPED)
+                            or tl:find("right click to unwrap", 1, true)
+                            or tl:find("^use: unwrap")
+                            or tl:find("wrapped gift", 1, true)
+                            or tl:find("gift-wrapped", 1, true) then
+                            sawWrappedLine = true
+                        end
+
+                        if t == ITEM_SOULBOUND or t == ITEM_BIND_ON_PICKUP
                         or tl:find("soulbound", 1, true)
                         or tl:find("binds when picked up", 1, true) then
                         sawSoulbound = true
@@ -12028,6 +12056,7 @@ function U.EvaluateBagSlotOpenable(bagID, slotID, knownProfs)
                     ) then
                         sawKnowledgeLine = true
                     end
+                end
                 end
             end
         end
@@ -12355,7 +12384,7 @@ function U.ScheduleAutoOpenContainers()
 end
 
 function U.RefreshQuickOpenTooltip(btn)
-    if not btn or not GameTooltip then return end
+    if not btn or not IsBagTooltipSafe(GameTooltip) then return end
     local cur = S.quickOpenCurrent
     if not cur then
         GameTooltip:Hide()

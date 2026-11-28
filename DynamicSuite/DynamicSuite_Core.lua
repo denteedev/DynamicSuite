@@ -1602,15 +1602,55 @@ function DynamicSuite.SnapAndClampPointOffsetToUIParent(frameW, frameH, frameSca
 end
 addonTable.SnapAndClampPointOffsetToUIParent = DynamicSuite.SnapAndClampPointOffsetToUIParent
 
+function addonTable.IsCoreTooltipSafe(tt)
+    if not tt then return false end
+    if type(_G.issecretvalue) == "function" then
+        local okS, isSec = pcall(_G.issecretvalue, tt)
+        if not okS or isSec == true then return false end
+    end
+    if type(_G.canaccessvalue) == "function" then
+        local okA, canAcc = pcall(_G.canaccessvalue, tt)
+        if not okA or canAcc == false then return false end
+    end
+    if type(tt.IsForbidden) == "function" then
+        local okF, forb = pcall(tt.IsForbidden, tt)
+        if not okF or forb == true then return false end
+        if type(_G.issecretvalue) == "function" then
+            local okFS, isFSec = pcall(_G.issecretvalue, forb)
+            if not okFS or isFSec == true then return false end
+        end
+    end
+    return true
+end
+
+function addonTable.SafeHideCoreTooltip()
+    local tt = _G.GameTooltip
+    if addonTable.IsCoreTooltipSafe(tt) and type(tt.Hide) == "function" then
+        pcall(tt.Hide, tt)
+    end
+end
+
+function addonTable.SafeIsCoreTooltipOwned(owner)
+    local tt = _G.GameTooltip
+    if not owner or not addonTable.IsCoreTooltipSafe(tt) or type(tt.IsOwned) ~= "function" then
+        return false
+    end
+    local okO, owned = pcall(tt.IsOwned, tt, owner)
+    if not okO then return false end
+    if type(_G.issecretvalue) == "function" then
+        local okS, isSec = pcall(_G.issecretvalue, owned)
+        if not okS or isSec == true then return false end
+    end
+    return owned == true
+end
+
 function DynamicSuite.OpenHudEditForTarget(targetKey, standaloneFallbackFn, addonLabel)
     if _G.InCombatLockdown and _G.InCombatLockdown() then
         local hex = addonTable.GetCoreAccentHex and addonTable.GetCoreAccentHex() or "38BDF8"
         print(string.format("|cFF%s%s:|r Cannot open HUD Edit Mode while in combat.", hex, tostring(addonLabel or "DynamicSuite")))
         return false
     end
-    if _G.GameTooltip and _G.GameTooltip.Hide then
-        _G.GameTooltip:Hide()
-    end
+    addonTable.SafeHideCoreTooltip()
     if _G.DynamicSuite and type(_G.DynamicSuite.EnterHudEditMode) == "function" then
         pcall(_G.DynamicSuite.EnterHudEditMode, targetKey)
         return true
@@ -1841,9 +1881,7 @@ function DynamicSuite.AttachDirectHudShiftDrag(opts)
         if not IsAllowedNow() then return false end
         if _G.InCombatLockdown and _G.InCombatLockdown() then return false end
         if not (_G.IsShiftKeyDown and _G.IsShiftKeyDown()) then return false end
-        if _G.GameTooltip and _G.GameTooltip.Hide then
-            _G.GameTooltip:Hide()
-        end
+        addonTable.SafeHideCoreTooltip()
         isDragging = true
         frame._dsDragging = true
         activeDirectHudDrags[controller] = true
@@ -2263,7 +2301,7 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
     end
 
     local function ShowSharedToastTooltip(owner)
-        if not _G.GameTooltip or not owner then return end
+        if not owner or not addonTable.IsCoreTooltipSafe(_G.GameTooltip) then return end
         if f._dsDragging or f._dsEditModeActive or (_G.InCombatLockdown and _G.InCombatLockdown()) then
             return
         end
@@ -2382,8 +2420,8 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
                 end
             end)
             btn:HookScript("OnLeave", function()
-                if _G.GameTooltip and _G.GameTooltip.IsOwned and (_G.GameTooltip:IsOwned(f) or _G.GameTooltip:IsOwned(btn)) then
-                    _G.GameTooltip:Hide()
+                if addonTable.SafeIsCoreTooltipOwned(f) or addonTable.SafeIsCoreTooltipOwned(btn) then
+                    addonTable.SafeHideCoreTooltip()
                 end
                 if IsAnyToastHoverActive(f) then return end
                 if not f._dsDragging then
@@ -2539,8 +2577,8 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
         end
     end)
     f:SetScript("OnLeave", function(selfT)
-        if _G.GameTooltip and _G.GameTooltip.IsOwned and _G.GameTooltip:IsOwned(selfT) then
-            _G.GameTooltip:Hide()
+        if addonTable.SafeIsCoreTooltipOwned(selfT) then
+            addonTable.SafeHideCoreTooltip()
         end
         if IsAnyToastHoverActive(selfT) then
             return
@@ -2557,8 +2595,8 @@ function DynamicSuite.EnsureSharedToastFrame(frameName, opts)
         end
     end)
     f:HookScript("OnHide", function(selfT)
-        if _G.GameTooltip and _G.GameTooltip.IsOwned and _G.GameTooltip:IsOwned(selfT) then
-            _G.GameTooltip:Hide()
+        if addonTable.SafeIsCoreTooltipOwned(selfT) then
+            addonTable.SafeHideCoreTooltip()
         end
         if dragCtrl and dragCtrl.IsDragging() then
             dragCtrl.EndDrag(true)
@@ -8441,14 +8479,14 @@ local function EnsureCombatPill()
         end
     end)
     pill:SetScript("OnEnter", function(self)
-        if not GameTooltip then return end
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("DynamicSuite", 1, 1, 1)
-        GameTooltip:AddLine("Settings are paused during combat and reopen automatically afterwards.", 0.85, 0.88, 0.92, true)
-        GameTooltip:AddLine("Left-Click: Reopen after combat   Right-Click: Stay closed   Drag: Move", 0.98, 0.75, 0.15, true)
-        GameTooltip:Show()
+        if not addonTable.IsCoreTooltipSafe(_G.GameTooltip) then return end
+        _G.GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        _G.GameTooltip:SetText("DynamicSuite", 1, 1, 1)
+        _G.GameTooltip:AddLine("Settings are paused during combat and reopen automatically afterwards.", 0.85, 0.88, 0.92, true)
+        _G.GameTooltip:AddLine("Left-Click: Reopen after combat   Right-Click: Stay closed   Drag: Move", 0.98, 0.75, 0.15, true)
+        _G.GameTooltip:Show()
     end)
-    pill:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    pill:SetScript("OnLeave", function() addonTable.SafeHideCoreTooltip() end)
     pill:Hide()
     hubCombat.pill = pill
     return pill
@@ -8756,11 +8794,11 @@ do
         if val == nil then return false end
         if type(_G.issecretvalue) == "function" then
             local okS, isSec = pcall(_G.issecretvalue, val)
-            if okS and isSec == true then return true end
+            if not okS or isSec == true then return true end
         end
         if type(_G.canaccessvalue) == "function" then
             local okA, canAcc = pcall(_G.canaccessvalue, val)
-            if okA and canAcc == false then return true end
+            if not okA or canAcc == false then return true end
         end
         return false
     end
@@ -10802,7 +10840,7 @@ do
         end)
         ov:SetScript("OnEnter", function(selfOv)
             if InCombat() or DesktopWindows:IsYielding() then return end
-            if not _G.GameTooltip then return end
+            if not addonTable.IsCoreTooltipSafe(_G.GameTooltip) then return end
             local db = GetDesktopWindowsDB()
             local canDrag = db and (db.dragAnywhere ~= false)
             local canScale = db and (db.scrollScale ~= false)
@@ -10821,7 +10859,7 @@ do
             _G.GameTooltip:Show()
         end)
         ov:SetScript("OnLeave", function()
-            if _G.GameTooltip then _G.GameTooltip:Hide() end
+            addonTable.SafeHideCoreTooltip()
         end)
 
         return st

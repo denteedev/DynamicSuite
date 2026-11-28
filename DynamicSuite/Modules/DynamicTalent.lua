@@ -38,11 +38,14 @@ local function CompareSemVer(vA, vB)
 end
 
 local function _IsSecret(v)
-    if type(issecretvalue) == "function" and issecretvalue(v) then
-        return true
+    if v == nil then return false end
+    if type(issecretvalue) == "function" then
+        local ok, res = pcall(issecretvalue, v)
+        if not ok or res == true then return true end
     end
-    if type(canaccessvalue) == "function" and not canaccessvalue(v) then
-        return true
+    if type(canaccessvalue) == "function" then
+        local ok, can = pcall(canaccessvalue, v)
+        if not ok or can == false then return true end
     end
     return false
 end
@@ -5430,7 +5433,23 @@ do
         end
         if IsPlayerInCombat() or IsMythicPlusActive() then return end
         local tt = _G.GameTooltip
-        if not tt or (type(tt.IsShown) == "function" and not tt:IsShown()) then return end
+        if not tt or _IsSecret(tt) then return end
+        if type(tt.IsForbidden) == "function" then
+            local okForb, forb = pcall(tt.IsForbidden, tt)
+            if not okForb or _IsSecret(forb) or forb == true then return end
+        end
+        if type(tt.IsShown) == "function" then
+            local okSh, shown = pcall(tt.IsShown, tt)
+            if not okSh or _IsSecret(shown) or shown ~= true then return end
+        end
+        if owner and type(tt.GetOwner) == "function" then
+            local okOwn, ttOwn = pcall(tt.GetOwner, tt)
+            if not okOwn or _IsSecret(ttOwn) then return end
+            if ttOwn ~= nil and ttOwn ~= owner then
+                local ownParent = (type(ttOwn) == "table" and type(ttOwn.GetParent) == "function") and select(2, pcall(ttOwn.GetParent, ttOwn)) or nil
+                if ownParent ~= owner then return end
+            end
+        end
         local info = DynamicTalent:GetHeroSwapInfo()
         if not info or type(info.targetName) ~= "string" or info.targetName == "" then return end
 
@@ -5453,9 +5472,9 @@ do
         end
 
         if type(tt.AddLine) == "function" then
-            tt:AddLine(" ")
-            tt:AddLine(string.format("|cFF%sRight-Click:|r |cFFE2E8F0Switch to %s|r", GetAccentHex(), info.targetName))
-            if type(tt.Show) == "function" then tt:Show() end
+            pcall(tt.AddLine, tt, " ")
+            pcall(tt.AddLine, tt, string.format("|cFF%sRight-Click:|r |cFFE2E8F0Switch to %s|r", GetAccentHex(), info.targetName))
+            if type(tt.Show) == "function" then pcall(tt.Show, tt) end
         end
     end
 
@@ -5530,7 +5549,7 @@ do
             if not hookedHeroButtons[btn] and type(btn.HookScript) == "function" then
                 hookedHeroButtons[btn] = true
                 btn:HookScript("OnMouseUp", function(_, button, upInside)
-                    if button == "RightButton" and upInside ~= false then
+                    if not _IsSecret(button) and button == "RightButton" and not _IsSecret(upInside) and upInside ~= false then
                         DynamicTalent:PerformHeroMedallionSwap()
                     end
                 end)
@@ -12281,6 +12300,10 @@ evt:SetScript("OnEvent", function(_, event, arg1, arg2, arg3, arg4, arg5)
             or DynamicTalent.db.enabled == false
             or DynamicTalent.db.talentReminderEnabled == false
             or IsModuleDisabledInSuite("DynamicTalent") then
+            return
+        end
+        local allBinds = DynamicTalent.db.talentBossMap
+        if (type(allBinds) ~= "table" or next(allBinds) == nil) and not stickyRaidBoss then
             return
         end
         if type(UnitExists) ~= "function" then return end
