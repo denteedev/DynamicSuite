@@ -1218,6 +1218,213 @@ RunTest("T4: LFG_LIST_JOINED_GROUP & LFG_LIST_APPLICATION_STATUS_UPDATED Dedupli
     end
 end)
 
+-- ============================================================================
+-- T5: Hardened Edge Cases (Raid/PvP False Positives, Pending Invite Clobber/Leak,
+--     Pre-Resolved Priority, Off-Season ActivityName, Combat Auto-Fade 5/5 & Fallback Centre)
+-- ============================================================================
+RunTest("T5: Raid/PvP False-Positive Guards, Pending-Invite Preservation/Isolation, Combat Auto-Fade 5/5 & Fallback Centre", function()
+    local secretName = MakeStrictSecret("groupName")
+
+    -- (5a) Known Raid activityID (9001) & short/PvP/substring fragments must NEVER fire a dungeon toast
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.DynamicGroupDB = { showGroupTeleportToast = true }
+        h.LoadModule("DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        local dg = env.DynamicGroup
+        assertEqual(dg:ResolveDungeonTeleportMetadata(9001, "of", false), nil, "Known Raid activityID with short word 'of' returns nil")
+        assertEqual(dg:ResolveDungeonTeleportMetadata(9001, "Need mage, Ruby Life Pools after", false), nil, "Known Raid activityID mentioning dungeon in title returns nil")
+        assertEqual(dg:ResolveDungeonTeleportMetadata(nil, "of", false), nil, "Short fragment 'of' never false-matches Den of Nalorakk")
+        assertEqual(dg:ResolveDungeonTeleportMetadata(nil, "in", false), nil, "Short fragment 'in' never false-matches dungeon")
+        assertEqual(dg:ResolveDungeonTeleportMetadata(nil, "2v2 Arena", false), nil, "PvP '2v2 Arena' never false-matches Voidscar Arena")
+        assertEqual(dg:ResolveDungeonTeleportMetadata(nil, "no throw", false), nil, "Substring 'row' in 'throw' never false-matches Murder Row")
+
+        -- End-to-end join of a Raid listing whose title mentions a dungeon
+        local rRaid = 910
+        h.state.searchResults[rRaid] = { searchResultID = rRaid, activityIDs = { 9001 }, name = "Need mage, Ruby Life Pools after", isDelisted = false }
+        env.C_LFGList.ApplyToGroup(rRaid, false, false, true)
+        env.C_LFGList.AcceptInvite(rRaid)
+        h.state.searchResults[rRaid] = nil
+        h.state.inGroup = true
+        h.state.numGroupMembers = 5
+        h.FireEvent("LFG_LIST_APPLICATION_STATUS_UPDATED", rRaid, "inviteaccepted", "invited", "Need mage, Ruby Life Pools after")
+        assertEqual(dg.teleportToast, nil, "Joining Raid listing never creates or shows Dungeon Teleport Toast")
+    end
+
+    -- (5b) LFG_LIST_APPLICATION_STATUS_UPDATED('invited') with nil GetSearchResultInfo must NOT clobber
+    --      fresh resolved pending invite from LFGListInviteDialog_Show ActivityName
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.DynamicGroupDB = { showGroupTeleportToast = true }
+        h.LoadModule("DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        env.LFGListInviteDialog.GroupName:SetText("+12 chill")
+        env.LFGListInviteDialog.ActivityName:SetText("Ruby Life Pools (Mythic Keystone)")
+        env.LFGListInviteDialog_Show(env.LFGListInviteDialog, MakeStrictSecret("secID"))
+
+        -- Follow-up 'invited' event arrives with numeric rID=710 after GetSearchResultInfo(710) is already nil
+        h.state.searchResults[710] = nil
+        h.FireEvent("LFG_LIST_APPLICATION_STATUS_UPDATED", 710, "invited", "applied", "+12 chill")
+
+        h.state.inGroup = true
+        h.state.numGroupMembers = 5
+        h.FireEvent("LFG_LIST_APPLICATION_STATUS_UPDATED", 710, "inviteaccepted", "invited", secretName)
+
+        local dg = env.DynamicGroup
+        assertTrue(dg.teleportToast and dg.teleportToast:IsShown(), "Invited event after InviteDialog_Show preserves resolved dungeon metadata")
+        assertEqual(dg.teleportToast.titleText:GetText(), "Ruby Life Pools (+12 chill)", "Toast retains Ruby Life Pools (+12 chill)")
+    end
+
+    -- (5c) Stale dungeon pending invite (rID=505) must NOT leak to a different delisted listing (rID=900)
+    --      or after a Raid InviteDialog_Show or declined status
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.DynamicGroupDB = { showGroupTeleportToast = true }
+        h.LoadModule("DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        h.state.searchResults[505] = { searchResultID = 505, activityIDs = { 1170 }, name = "+12 chill", isDelisted = false }
+        env.LFGListInviteDialog_Show(env.LFGListInviteDialog, 505)
+        h.AdvanceTime(20)
+
+        -- Player joins a completely different delisted non-cached listing (rID=900)
+        h.state.inGroup = true
+        h.state.numGroupMembers = 5
+        h.FireEvent("LFG_LIST_JOINED_GROUP", 900, secretName)
+        assertEqual(env.DynamicGroup.teleportToast, nil, "Mismatched resultID 900 never inherits stale pending invite from resultID 505")
+
+        -- Raid InviteDialog_Show clears stale dungeon pending invite even when subsequent event has secret resultID
+        env.LFGListInviteDialog.GroupName:SetText("Fresh Heroic")
+        env.LFGListInviteDialog.ActivityName:SetText("Liberation of Undermine (Heroic)")
+        env.LFGListInviteDialog_Show(env.LFGListInviteDialog, MakeStrictSecret("raidID"))
+        h.FireEvent("LFG_LIST_JOINED_GROUP", MakeStrictSecret("raidID2"), secretName)
+        assertEqual(env.DynamicGroup.teleportToast, nil, "Raid InviteDialog_Show clears prior dungeon pending invite")
+    end
+
+    -- (5d) Pre-resolved cached.dungeonName from ActivityName takes priority over another dungeon mentioned in GroupName
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.DynamicGroupDB = { showGroupTeleportToast = true }
+        h.LoadModule("DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        local rID = 711
+        h.state.searchResults[rID] = nil
+        env.LFGListInviteDialog.GroupName:SetText("after Den of Nalorakk")
+        env.LFGListInviteDialog.ActivityName:SetText("Ruby Life Pools (Mythic Keystone)")
+        env.LFGListInviteDialog_Show(env.LFGListInviteDialog, rID)
+        env.C_LFGList.AcceptInvite(rID)
+
+        h.state.inGroup = true
+        h.state.numGroupMembers = 5
+        h.FireEvent("LFG_LIST_APPLICATION_STATUS_UPDATED", rID, "inviteaccepted", "invited", "after Den of Nalorakk")
+
+        local dg = env.DynamicGroup
+        assertTrue(dg.teleportToast and dg.teleportToast:IsShown(), "Pre-resolved ActivityName dungeon shows toast")
+        assertEqual(dg.teleportToast.titleText:GetText(), "Ruby Life Pools (after Den of Nalorakk)", "Authoritative ActivityName dungeon is not overridden by another dungeon in listing title")
+        assertEqual(dg.teleportToast.teleportBtn:GetAttribute("spell1"), "Path of the Clutch Defender", "Binds Ruby Life Pools teleport, not Den of Nalorakk")
+    end
+
+    -- (5e) Off-season known dungeon ActivityName resolves cleanly when GetSearchResultInfo is nil
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.DynamicGroupDB = { showGroupTeleportToast = true }
+        h.LoadModule("DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        local rID = 712
+        h.state.searchResults[rID] = nil
+        env.LFGListInviteDialog.GroupName:SetText("+0 chill")
+        env.LFGListInviteDialog.ActivityName:SetText("The Stonevault (Heroic)")
+        env.LFGListInviteDialog_Show(env.LFGListInviteDialog, rID)
+        env.C_LFGList.AcceptInvite(rID)
+
+        h.state.inGroup = true
+        h.state.numGroupMembers = 4
+        h.FireEvent("LFG_LIST_APPLICATION_STATUS_UPDATED", rID, "inviteaccepted", "invited", secretName)
+
+        local dg = env.DynamicGroup
+        assertTrue(dg.teleportToast and dg.teleportToast:IsShown(), "Off-season known dungeon resolves from ActivityName when GetSearchResultInfo is nil")
+        assertEqual(dg.teleportToast.titleText:GetText(), "The Stonevault (+0 chill)", "Shows full off-season dungeon name + listing title")
+    end
+
+    -- (5f) Standalone combat auto-fade OnFinished followed by 5/5 GROUP_ROSTER_UPDATE in combat
+    --      must NOT wipe activeTeleportToastData or suppress the 5/5 Ready to Teleport! toast on PLAYER_REGEN_ENABLED
+    do
+        local h = CreateHarness({ withSuite = false })
+        local env = h.env
+        env.DynamicGroupDB = { showGroupTeleportToast = true }
+        h.LoadModule("DynamicGroup")
+        h.FireEvent("ADDON_LOADED", "DynamicGroup")
+        h.FireEvent("PLAYER_LOGIN")
+
+        local rID = 713
+        h.state.searchResults[rID] = { searchResultID = rID, activityIDs = { 1170 }, name = "+12 chill", isDelisted = false }
+        env.C_LFGList.AcceptInvite(rID)
+        h.state.searchResults[rID] = nil
+        h.state.inGroup = true
+        h.state.numGroupMembers = 3
+        h.FireEvent("LFG_LIST_APPLICATION_STATUS_UPDATED", rID, "inviteaccepted", "invited", "+12 chill")
+
+        local dg = env.DynamicGroup
+        assertTrue(dg.teleportToast and dg.teleportToast:IsShown(), "Initial 3/5 toast shown in standalone mode")
+
+        -- Enter combat -> 12s auto-fade finishes in combat -> 5th member joins in combat -> leave combat
+        h.state.inCombat = true
+        dg.teleportToast.animGroup._scripts.OnFinished()
+        h.state.numGroupMembers = 5
+        h.FireEvent("GROUP_ROSTER_UPDATE")
+        h.state.inCombat = false
+        h.FireEvent("PLAYER_REGEN_ENABLED")
+
+        assertTrue(dg.activeTeleportToastData ~= nil, "Combat auto-fade never wipes activeTeleportToastData when 5/5 upgrade arrives")
+        assertTrue(dg.teleportToast:IsShown(), "5/5 Ready to Teleport! toast shows cleanly upon leaving combat")
+        assertTrue(dg.teleportToast.rosterText:GetText():find("Group Full %(5/5%)") ~= nil, "Upgraded to Group Full (5/5) after combat auto-fade")
+    end
+
+    -- (5g) Shift+SingleClick fallback when LFGListApplicationDialog_Show is nil and snapped dialog is already shown
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.DynamicGroupDB = { oneClickSignUp = true, autoSelectRole = true }
+        h.state.searchResults[104] = { searchResultID = 104, activityIDs = { 1170 }, name = "+12 chill", isDelisted = false }
+        h.state.searchResults[105] = { searchResultID = 105, activityIDs = { 1171 }, name = "+14 fast", isDelisted = false }
+        h.LoadModule("DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        local dlg = env.LFGListApplicationDialog
+        dlg._forceSignUpDisabled = true
+        env.LFGListSearchEntry_OnClick({ resultID = 104 }, "LeftButton")
+        local _, _, snapRel = dlg:GetPoint(1)
+        assertEqual(snapRel, "BOTTOMLEFT", "Sanity: disabled button fallback snapped dialog under cursor")
+        dlg._forceSignUpDisabled = false
+
+        -- Remove LFGListApplicationDialog_Show while dialog stays open, then Shift+SingleClick another row
+        env.LFGListApplicationDialog_Show = nil
+        h.AdvanceTime(0.5)
+        h.state.shiftDown = true
+        env.LFGListSearchEntry_OnClick({ resultID = 105 }, "LeftButton")
+        h.state.shiftDown = false
+
+        local rPt, _, rRel = dlg:GetPoint(1)
+        assertEqual(rPt, "CENTER", "Fallback Shift+SingleClick restores CENTER anchor")
+        assertEqual(rRel, "CENTER", "Fallback Shift+SingleClick clears cursor-snap even without LFGListApplicationDialog_Show")
+    end
+end)
+
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))
 if failed > 0 then
     os.exit(1)

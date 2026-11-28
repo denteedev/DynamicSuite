@@ -1324,10 +1324,10 @@ end
 
 local MIDNIGHT_S2_FALLBACK_SLOTS = {
     { code = "AOF", name = "Altar of Fangs",       mapID = 543, spellID = 1286812, icon = 4511692, pathName = "Path of Venomous Evolution", patterns = { "altar", "fangs", "venomous evolution" }, spellCandidates = { 1286812 } },
-    { code = "MR",  name = "Murder Row",           mapID = 541, spellID = 1286809, icon = 135764,  pathName = "Path of the Devious Smuggler", patterns = { "murder", "row", "devious smuggler" },    spellCandidates = { 1286809 } },
+    { code = "MR",  name = "Murder Row",           mapID = 541, spellID = 1286809, icon = 135764,  pathName = "Path of the Devious Smuggler", patterns = { "murder", "murder row", "devious smuggler" }, spellCandidates = { 1286809 } },
     { code = "DON", name = "Den of Nalorakk",      mapID = 540, spellID = 1286807, icon = 136095,  pathName = "Path of the Worthy Aspirant",  patterns = { "nalorakk", "worthy aspirant" },          spellCandidates = { 1286807 } },
     { code = "TBV", name = "The Blinding Vale",    mapID = 544, spellID = 1286801, icon = 4511694, pathName = "Path of the Blooming Verdure", patterns = { "blinding", "vale", "blooming verdure" }, spellCandidates = { 1286801 } },
-    { code = "VSA", name = "Voidscar Arena",       mapID = 542, spellID = 1286804, icon = 136051,  pathName = "Path of the Brutal Combatant", patterns = { "voidscar", "arena", "brutal combatant" },spellCandidates = { 1286804 } },
+    { code = "VSA", name = "Voidscar Arena",       mapID = 542, spellID = 1286804, icon = 136051,  pathName = "Path of the Brutal Combatant", patterns = { "voidscar", "voidscar arena", "brutal combatant" }, spellCandidates = { 1286804 } },
     { code = "KR",  name = "Kings' Rest",          mapID = 249, spellID = 1286830, icon = 2065599, pathName = "Path of the Slumbering Conqueror", patterns = { "kings", "slumbering conqueror" },    spellCandidates = { 1286830 } },
     { code = "TOS", name = "Temple of Sethraliss", mapID = 250, spellID = 1286828, icon = 2065604, pathName = "Path of the Sacred Temple",    patterns = { "sethraliss", "sacred temple" },          spellCandidates = { 1286828 } },
     { code = "RLP", name = "Ruby Life Pools",      mapID = 399, spellID = 393256,  icon = 4511698, pathName = "Path of the Clutch Defender",  patterns = { "ruby life", "clutch defender" },         spellCandidates = { 393256 } },
@@ -1841,14 +1841,20 @@ end
 local function MatchTextToDungeonSlot(text, slots)
     local norm = NormalizeDungeonMatchName(text)
     if norm == "" then return nil end
+    local paddedNorm = " " .. norm .. " "
     for _, slot in ipairs(slots) do
         local normS = NormalizeDungeonMatchName(slot.name)
-        if normS ~= "" and (norm == normS or norm:find(normS, 1, true) or normS:find(norm, 1, true)) then
-            return slot
+        if normS ~= "" then
+            if norm == normS or paddedNorm:find(" " .. normS .. " ", 1, true) then
+                return slot
+            end
+            if #norm >= 5 and not STOP_WORDS_DUNGEON[norm] and (" " .. normS .. " "):find(" " .. norm .. " ", 1, true) then
+                return slot
+            end
         end
         if slot.patterns then
             for _, pat in ipairs(slot.patterns) do
-                if norm:find(pat, 1, true) then
+                if paddedNorm:find(" " .. pat .. " ", 1, true) then
                     return slot
                 end
             end
@@ -2087,24 +2093,41 @@ local function CacheSearchResultDungeonMeta(resultID, searchInfoOverride, fallba
     end
 
     local safeActivityText = (type(fallbackActivityText) == "string" and not IsSecretValue(fallbackActivityText) and fallbackActivityText ~= "") and fallbackActivityText or nil
+    local actMeta = activityID and GetCachedActivityInfo(activityID) or nil
+    local isKnownNonDungeon = (actMeta ~= nil and not actMeta.isDungeonActivity)
+        or (not activityID and existing and existing.isNonDungeon == true)
+
     local resolvedFromActivityText = false
     local meta = nil
-    if activityID then
-        meta = DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, false)
-    elseif safeActivityText then
-        meta = DynamicGroup:ResolveDungeonTeleportMetadata(nil, safeActivityText, false)
-        resolvedFromActivityText = (meta ~= nil)
-    end
-    if not meta then
-        meta = DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, false)
-        resolvedFromActivityText = false
-    end
-    if not meta and safeActivityText and activityID then
-        meta = DynamicGroup:ResolveDungeonTeleportMetadata(nil, safeActivityText, false)
-        resolvedFromActivityText = (meta ~= nil)
+    if not isKnownNonDungeon then
+        if activityID then
+            meta = DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, false)
+            if not meta and safeActivityText and not actMeta then
+                meta = DynamicGroup:ResolveDungeonTeleportMetadata(nil, safeActivityText, false)
+                resolvedFromActivityText = (meta ~= nil)
+            end
+        else
+            if safeActivityText then
+                meta = DynamicGroup:ResolveDungeonTeleportMetadata(nil, safeActivityText, false)
+                resolvedFromActivityText = (meta ~= nil)
+            end
+            if not meta and not (existing and existing.dungeonName) and listingName and listingName ~= "" then
+                meta = DynamicGroup:ResolveDungeonTeleportMetadata(nil, listingName, false)
+                resolvedFromActivityText = false
+            end
+        end
     end
     local stored = nil
-    if meta then
+    if isKnownNonDungeon then
+        stored = {
+            resultID = resultID,
+            activityID = activityID or (existing and existing.activityID) or nil,
+            isNonDungeon = true,
+            name = listingName,
+            listingName = listingName,
+            timestamp = now,
+        }
+    elseif meta then
         local effectiveListingName = (listingName and listingName ~= "") and listingName
             or (not resolvedFromActivityText and meta.listingName)
             or meta.dungeonName
@@ -2130,13 +2153,29 @@ local function CacheSearchResultDungeonMeta(resultID, searchInfoOverride, fallba
         end
         stored = existing
     elseif activityID or listingName then
-        stored = {
-            resultID = resultID,
-            activityID = activityID,
-            name = listingName,
-            listingName = listingName,
-            timestamp = now,
-        }
+        -- Preserve a fresh resolved pending invite (e.g. from LFGListInviteDialog_Show ActivityName)
+        -- instead of clobbering it with an unresolved bare stub when GetSearchResultInfo is nil
+        local pending = recentPendingInviteMeta
+        if markPendingInvite and not activityID and not safeActivityText
+            and pending and pending.dungeonName and pending.isNonDungeon ~= true
+            and (pending.resultID == nil or pending.resultID == resultID)
+            and ((now == 0) or not pending.timestamp or ((now - pending.timestamp) <= 30)) then
+            pending.resultID = resultID
+            pending.timestamp = now
+            if listingName and listingName ~= "" and (not pending.listingName or pending.listingName == pending.dungeonName) then
+                pending.listingName = listingName
+                pending.name = listingName
+            end
+            stored = pending
+        else
+            stored = {
+                resultID = resultID,
+                activityID = activityID,
+                name = listingName,
+                listingName = listingName,
+                timestamp = now,
+            }
+        end
     end
 
     if stored then
@@ -2156,8 +2195,14 @@ local function CacheSearchResultDungeonMeta(resultID, searchInfoOverride, fallba
         end
         recentSearchResultCache[resultID] = stored
         if markPendingInvite then
-            recentPendingInviteMeta = stored
+            if stored.isNonDungeon or (safeActivityText and not stored.dungeonName) then
+                recentPendingInviteMeta = nil
+            else
+                recentPendingInviteMeta = stored
+            end
         end
+    elseif markPendingInvite and safeActivityText then
+        recentPendingInviteMeta = nil
     end
     return stored
 end
@@ -2739,6 +2784,11 @@ local function PerformLFGSignUp(entry, isDoubleClick, explicitResultID)
                 end
             end)
         end
+    elseif not wantAutoSubmit and dialog and _dgDialogState[dialog] and not IsPlayerInCombat() then
+        -- Guarantee standard centred position even when opening via fallback paths or when already shown
+        pcall(dialog.ClearAllPoints, dialog)
+        pcall(dialog.SetPoint, dialog, "CENTER", UIParent, "CENTER", 0, 100)
+        _dgDialogState[dialog] = nil
     end
 end
 
@@ -5392,6 +5442,7 @@ function DynamicGroup:HideTeleportToast(markDismissed)
         self.pendingTeleportToastHide = false
     end
     self.pendingTeleportToastUpdate = false
+    self.pendingTeleportToastFadeHide = false
 end
 
 function DynamicGroup:EnsureTeleportToast()
@@ -5454,9 +5505,9 @@ function DynamicGroup:EnsureTeleportToast()
             if not IsPlayerInCombat() then
                 toast:Hide()
                 toast:SetAlpha(1)
-                DynamicGroup.pendingTeleportToastHide = false
+                DynamicGroup.pendingTeleportToastFadeHide = false
             else
-                DynamicGroup.pendingTeleportToastHide = true
+                DynamicGroup.pendingTeleportToastFadeHide = true
             end
         end)
         toast.animGroup = animGroup
@@ -5768,14 +5819,17 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
 
     if InCombatLockdown and InCombatLockdown() then
         self.pendingTeleportToastUpdate = true
+        self.pendingTeleportToastFadeHide = false
         return
     end
 
     local toast = self:EnsureTeleportToast()
     if not toast then
         self.pendingTeleportToastUpdate = true
+        self.pendingTeleportToastFadeHide = false
         return
     end
+    self.pendingTeleportToastFadeHide = false
 
     local isFull = (numMembers >= 5)
     local emeraldRGB = isFull and { 0.133, 0.773, 0.369, 0.95 } or nil
@@ -5870,6 +5924,7 @@ function DynamicGroup:UpdateTeleportToast(playAudioOnRosterIncrease)
     end
 
     self.pendingTeleportToastUpdate = false
+    self.pendingTeleportToastFadeHide = false
 end
 
 function DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, requireDungeonActivity)
@@ -5877,6 +5932,9 @@ function DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, re
         listingName = nil
     end
     local actMeta = (type(activityID) == "number" and not IsSecretValue(activityID) and activityID > 0) and GetCachedActivityInfo(activityID) or nil
+    if actMeta and not actMeta.isDungeonActivity then
+        return nil
+    end
     local slots = GetSeasonDungeonSlots(false)
     local matchedSlot = nil
     if actMeta and actMeta.mapID then
@@ -5902,6 +5960,24 @@ function DynamicGroup:ResolveDungeonTeleportMetadata(activityID, listingName, re
     else
         if not matchedSlot and listingName and listingName ~= "" then
             matchedSlot = MatchTextToDungeonSlot(listingName, slots)
+            if not matchedSlot and not actMeta then
+                local normL = NormalizeDungeonMatchName(listingName)
+                if normL ~= "" then
+                    local paddedL = " " .. normL .. " "
+                    for knownMapID, knownInfo in pairs(KNOWN_DUNGEON_BY_MAP_ID) do
+                        local normK = NormalizeDungeonMatchName(knownInfo.name)
+                        if normK ~= "" and (normL == normK or paddedL:find(" " .. normK .. " ", 1, true)) then
+                            matchedSlot = {
+                                mapID = knownMapID,
+                                code = knownInfo.code,
+                                name = knownInfo.name,
+                                spellID = knownInfo.spellID,
+                            }
+                            break
+                        end
+                    end
+                end
+            end
         end
         if not matchedSlot and not (actMeta and actMeta.isDungeonActivity) then
             return nil
@@ -6125,14 +6201,18 @@ function DynamicGroup:TriggerJoinerTeleportToast(searchResultID, groupName, sour
 
     -- Priority 2: Pre-cached searchResultID entry (populated before server auto-delist)
     local cached = safeResultID and recentSearchResultCache[safeResultID] or nil
+    if cached and cached.isNonDungeon == true and not liveActivityID then
+        return
+    end
 
     -- Priority 3: Recent pending-invite / accepted-invite fallback entry
     local pendingFallback = nil
-    if recentPendingInviteMeta then
+    if recentPendingInviteMeta and recentPendingInviteMeta.isNonDungeon ~= true then
         local age = (now > 0 and recentPendingInviteMeta.timestamp and recentPendingInviteMeta.timestamp > 0)
             and (now - recentPendingInviteMeta.timestamp) or 0
         if age <= 180 then
-            if (not safeResultID) or (recentPendingInviteMeta.resultID == safeResultID) or (not liveActivityID and not cached) then
+            local pendingID = recentPendingInviteMeta.resultID
+            if (not safeResultID) or (not pendingID) or (pendingID == safeResultID) then
                 pendingFallback = recentPendingInviteMeta
             end
         end
@@ -6143,23 +6223,37 @@ function DynamicGroup:TriggerJoinerTeleportToast(searchResultID, groupName, sour
         or (cached and (cached.listingName or cached.name))
         or (pendingFallback and (pendingFallback.listingName or pendingFallback.name))
 
-    local meta = self:ResolveDungeonTeleportMetadata(activityID, listingName, false)
+    local meta = nil
+    if activityID then
+        meta = self:ResolveDungeonTeleportMetadata(activityID, listingName, false)
+    end
     if not meta then
-        local pre = (cached and cached.dungeonName and cached)
-            or (pendingFallback and pendingFallback.dungeonName and pendingFallback)
-            or nil
-        if pre then
-            local dSpellID, dSpellKnown = ResolveTeleportSpellForDungeon(pre.mapID, pre.code, pre.dungeonName, pre.spellID)
-            meta = {
-                activityID = pre.activityID or activityID,
-                mapID = pre.mapID,
-                code = pre.code or "M+",
-                dungeonName = pre.dungeonName,
-                listingName = (listingName and listingName ~= "") and listingName or pre.listingName or pre.dungeonName,
-                icon = pre.icon or 136095,
-                spellID = (dSpellID and dSpellID > 0) and dSpellID or pre.spellID,
-                spellKnown = dSpellKnown or pre.spellKnown or false,
-            }
+        local knownNonDungeonAct = false
+        if activityID then
+            local actInfo = GetCachedActivityInfo(activityID)
+            if actInfo and not actInfo.isDungeonActivity then
+                knownNonDungeonAct = true
+            end
+        end
+        if not knownNonDungeonAct then
+            local pre = (cached and cached.dungeonName and cached)
+                or (pendingFallback and pendingFallback.dungeonName and pendingFallback)
+                or nil
+            if pre then
+                local dSpellID, dSpellKnown = ResolveTeleportSpellForDungeon(pre.mapID, pre.code, pre.dungeonName, pre.spellID)
+                meta = {
+                    activityID = pre.activityID or activityID,
+                    mapID = pre.mapID,
+                    code = pre.code or "M+",
+                    dungeonName = pre.dungeonName,
+                    listingName = (listingName and listingName ~= "") and listingName or pre.listingName or pre.dungeonName,
+                    icon = pre.icon or 136095,
+                    spellID = (dSpellID and dSpellID > 0) and dSpellID or pre.spellID,
+                    spellKnown = dSpellKnown or pre.spellKnown or false,
+                }
+            elseif not activityID and listingName and listingName ~= "" then
+                meta = self:ResolveDungeonTeleportMetadata(nil, listingName, false)
+            end
         end
     end
     if not meta then return end
@@ -6257,10 +6351,19 @@ function DynamicGroup:HandleApplicationStatusUpdated(searchResultID, newStatus, 
     if newStatus == "declined" or newStatus == "invitedeclined" then
         if safeResultID then
             declinedResultIDs[safeResultID] = true
+            if recentPendingInviteMeta and recentPendingInviteMeta.resultID == safeResultID then
+                recentPendingInviteMeta = nil
+            end
             local sp = _G.LFGListFrame and _G.LFGListFrame.SearchPanel
             if sp and sp:IsShown() and sp.ScrollBox and type(sp.ScrollBox.ForEachFrame) == "function" and not (InCombatLockdown and InCombatLockdown()) then
                 pcall(sp.ScrollBox.ForEachFrame, sp.ScrollBox, OnLFGListSearchEntryUpdate)
             end
+        end
+        return
+    end
+    if newStatus == "cancelled" or newStatus == "canceled" or newStatus == "timedout" or newStatus == "inviteexpired" or newStatus == "failed" then
+        if safeResultID and recentPendingInviteMeta and recentPendingInviteMeta.resultID == safeResultID then
+            recentPendingInviteMeta = nil
         end
         return
     end
@@ -6995,6 +7098,9 @@ function DynamicGroup:InstallLFGHooks()
                         spellKnown = meta.spellKnown and true or false,
                         timestamp = now,
                     }
+                elseif activityNameText then
+                    -- New invite dialog for a non-dungeon activity (e.g. Raid or PvP Arena) clears any stale dungeon pending invite
+                    recentPendingInviteMeta = nil
                 end
             end
         end)
@@ -9833,6 +9939,12 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
             self:HideTeleportToast()
         elseif self.pendingTeleportToastUpdate then
             self:UpdateTeleportToast(false)
+        elseif self.pendingTeleportToastFadeHide then
+            self.pendingTeleportToastFadeHide = false
+            if self.teleportToast then
+                self.teleportToast:Hide()
+                self.teleportToast:SetAlpha(1)
+            end
         end
     elseif event == "BAG_UPDATE_DELAYED" or event == "CHALLENGE_MODE_MEMBER_INFO_UPDATED" or event == "MYTHIC_PLUS_CURRENT_AFFIX_UPDATE" then
         if self.portalBar and self.UpdatePortalBarVisuals then
