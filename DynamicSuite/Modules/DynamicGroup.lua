@@ -355,9 +355,11 @@ end
 local REGION_META
 
 local function FormatRegionTag(regionKey, customText)
-    local rc = GetRegionColor(regionKey)
-    local meta = (regionKey and REGION_META and REGION_META[regionKey]) or nil
-    local label = customText or (meta and meta.badge) or ("[" .. tostring(regionKey or "UNK") .. "]")
+    local safeKey = SafeReadableString(regionKey)
+    local safeCustom = SafeReadableString(customText)
+    local rc = GetRegionColor(safeKey)
+    local meta = (safeKey and REGION_META and REGION_META[safeKey]) or nil
+    local label = safeCustom or (meta and meta.badge) or ("[" .. (safeKey or "UNK") .. "]")
     return "|c" .. rc.hex .. label .. "|r"
 end
 
@@ -1722,27 +1724,30 @@ local function PopulateSeasonActivityGroups(slots)
         return
     end
     local okG, groupIDs = pcall(C_LFGList.GetAvailableActivityGroups, 2)
-    if not okG or type(groupIDs) ~= "table" then return end
+    if not okG or IsSecretValue(groupIDs) or type(groupIDs) ~= "table" then return end
 
     for _, gid in ipairs(groupIDs) do
-        local okN, gName = pcall(C_LFGList.GetActivityGroupInfo, gid)
-        if okN and not IsSecretValue(gName) and type(gName) == "string" and gName ~= "" then
-            local normG = NormalizeDungeonMatchName(gName)
-            for _, slot in ipairs(slots) do
-                local normS = NormalizeDungeonMatchName(slot.name)
-                if normS ~= "" and (normG == normS or normG:find(normS, 1, true) or normS:find(normG, 1, true)) then
-                    slot.activityGroupID = gid
-                    seasonGroupToSlot[gid] = slot
-                    break
-                elseif slot.patterns then
-                    local hit = false
-                    for _, pat in ipairs(slot.patterns) do
-                        if normG:find(pat, 1, true) then hit = true; break end
-                    end
-                    if hit then
+        if not IsSecretValue(gid) then
+            local okN, gName = pcall(C_LFGList.GetActivityGroupInfo, gid)
+            local safeGName = okN and SafeReadableString(gName) or nil
+            if safeGName and safeGName ~= "" then
+                local normG = NormalizeDungeonMatchName(safeGName)
+                for _, slot in ipairs(slots) do
+                    local normS = NormalizeDungeonMatchName(slot.name)
+                    if normS ~= "" and (normG == normS or normG:find(normS, 1, true) or normS:find(normG, 1, true)) then
                         slot.activityGroupID = gid
                         seasonGroupToSlot[gid] = slot
                         break
+                    elseif slot.patterns then
+                        local hit = false
+                        for _, pat in ipairs(slot.patterns) do
+                            if normG:find(pat, 1, true) then hit = true; break end
+                        end
+                        if hit then
+                            slot.activityGroupID = gid
+                            seasonGroupToSlot[gid] = slot
+                            break
+                        end
                     end
                 end
             end
@@ -2695,7 +2700,7 @@ local function PerformLFGSignUp(entry, isDoubleClick, explicitResultID)
     end
 
     local okInfo, searchInfo = pcall(C_LFGList.GetSearchResultInfo, liveResultID)
-    if not okInfo or type(searchInfo) ~= "table" or IsSecretValue(searchInfo) then
+    if not okInfo or IsSecretValue(searchInfo) or type(searchInfo) ~= "table" then
         return
     end
     if (not IsSecretValue(searchInfo.isDelisted) and searchInfo.isDelisted == true)
@@ -3092,8 +3097,8 @@ local function OnLFGListSearchEntryUpdate(entry)
     end
 
     -- Hover guard is attached globally via hooksecurefunc(LFGListSearchEntry_OnEnter / Mixin.OnEnter);
-    -- only attach OnDoubleClick on demand when Blizzard has no global double-click function.
-    if not eState.doubleClickHooked and entry.HookScript then
+    -- only attach OnDoubleClick on demand out of combat when doubleClickSignUp is enabled.
+    if db.doubleClickSignUp and not eState.doubleClickHooked and entry.HookScript and not IsPlayerInCombat() then
         eState.doubleClickHooked = true
         entry:HookScript("OnDoubleClick", function(selfEntry, button)
             if IsPlayerInCombat() then return end
@@ -7035,27 +7040,29 @@ function DynamicGroup:InstallLFGHooks()
         hk.inviteDialogShow = true
         hooksecurefunc("LFGListInviteDialog_Show", function(a1, a2)
             if IsModuleDisabledInSuite("DynamicGroup") or IsYieldingSharedHooks() then return end
-            local dlg = (type(a1) == "table" and not IsSecretValue(a1)) and a1 or _G.LFGListInviteDialog
+            local dlg = (not IsSecretValue(a1) and type(a1) == "table") and a1 or _G.LFGListInviteDialog
             local rID = nil
             if not IsSecretValue(a2) and type(a2) == "number" and a2 > 0 then
                 rID = a2
             elseif not IsSecretValue(a1) and type(a1) == "number" and a1 > 0 then
                 rID = a1
-            elseif type(dlg) == "table" and not IsSecretValue(dlg) and not IsSecretValue(dlg.resultID) and type(dlg.resultID) == "number" and dlg.resultID > 0 then
+            elseif not IsSecretValue(dlg) and type(dlg) == "table" and not IsSecretValue(dlg.resultID) and type(dlg.resultID) == "number" and dlg.resultID > 0 then
                 rID = dlg.resultID
             end
             local groupNameText, activityNameText = nil, nil
-            if type(dlg) == "table" and not IsSecretValue(dlg) then
+            if not IsSecretValue(dlg) and type(dlg) == "table" then
                 if dlg.GroupName and type(dlg.GroupName.GetText) == "function" then
                     local okG, gn = pcall(dlg.GroupName.GetText, dlg.GroupName)
-                    if okG and type(gn) == "string" and not IsSecretValue(gn) and gn ~= "" then
-                        groupNameText = gn
+                    local safeGN = okG and SafeReadableString(gn) or nil
+                    if safeGN and safeGN ~= "" then
+                        groupNameText = safeGN
                     end
                 end
                 if dlg.ActivityName and type(dlg.ActivityName.GetText) == "function" then
                     local okA, an = pcall(dlg.ActivityName.GetText, dlg.ActivityName)
-                    if okA and type(an) == "string" and not IsSecretValue(an) and an ~= "" then
-                        activityNameText = an
+                    local safeAN = okA and SafeReadableString(an) or nil
+                    if safeAN and safeAN ~= "" then
+                        activityNameText = safeAN
                     end
                 end
             end
@@ -7145,6 +7152,13 @@ function DynamicGroup:InstallLFGHooks()
     if not hk.dialogOnShow and _G.LFGListApplicationDialog and type(_G.LFGListApplicationDialog.Show) == "function" then
         hk.dialogOnShow = true
         hooksecurefunc(_G.LFGListApplicationDialog, "Show", OnLFGListApplicationDialogOnShow)
+        if type(_G.LFGListApplicationDialog.SetShown) == "function" then
+            hooksecurefunc(_G.LFGListApplicationDialog, "SetShown", function(selfDlg, shown)
+                if not IsSecretValue(shown) and shown == true then
+                    OnLFGListApplicationDialogOnShow(selfDlg)
+                end
+            end)
+        end
     end
     if not hk.pveToggleRetry and type(_G.PVEFrame_ToggleFrame) == "function" then
         hk.pveToggleRetry = true
@@ -7184,10 +7198,29 @@ function DynamicGroup:InstallLFGHooks()
     if not hk.searchPanelOnShow and _G.LFGListFrame and _G.LFGListFrame.SearchPanel and type(_G.LFGListFrame.SearchPanel.Show) == "function" then
         hk.searchPanelOnShow = true
         hooksecurefunc(_G.LFGListFrame.SearchPanel, "Show", OnSearchPanelShown)
+        if type(_G.LFGListFrame.SearchPanel.SetShown) == "function" then
+            hooksecurefunc(_G.LFGListFrame.SearchPanel, "SetShown", function(_, shown)
+                if not IsSecretValue(shown) and shown == true then
+                    OnSearchPanelShown()
+                end
+            end)
+        end
     end
     if not hk.searchPanelOnShowFunc and type(_G.LFGListSearchPanel_OnShow) == "function" then
         hk.searchPanelOnShowFunc = true
         hooksecurefunc("LFGListSearchPanel_OnShow", OnSearchPanelShown)
+    end
+    if not hk.searchPanelOnShowMixin and type(_G.LFGListSearchPanelMixin) == "table" and type(_G.LFGListSearchPanelMixin.OnShow) == "function" then
+        hk.searchPanelOnShowMixin = true
+        hooksecurefunc(_G.LFGListSearchPanelMixin, "OnShow", OnSearchPanelShown)
+    end
+    if not hk.activePanelHook and type(_G.LFGListFrame_SetActivePanel) == "function" then
+        hk.activePanelHook = true
+        hooksecurefunc("LFGListFrame_SetActivePanel", function(_, panel)
+            if _G.LFGListFrame and panel == _G.LFGListFrame.SearchPanel then
+                OnSearchPanelShown()
+            end
+        end)
     end
 
     if hk.entryUpdate then
@@ -9870,15 +9903,23 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
             if not IsModuleDisabledInSuite("DynamicGroup") then
                 if _G.ChallengesKeystoneFrame and type(_G.ChallengesKeystoneFrame.Show) == "function" and not self.keystoneHooked then
                     self.keystoneHooked = true
-                    hooksecurefunc(_G.ChallengesKeystoneFrame, "Show", function()
+                    local function OnKeystoneFrameShown()
                         if not IsModuleDisabledInSuite("DynamicGroup") then
                             C_Timer.After(0.05, TryAutoInsertKeystone)
                         end
-                    end)
+                    end
+                    hooksecurefunc(_G.ChallengesKeystoneFrame, "Show", OnKeystoneFrameShown)
+                    if type(_G.ChallengesKeystoneFrame.SetShown) == "function" then
+                        hooksecurefunc(_G.ChallengesKeystoneFrame, "SetShown", function(_, shown)
+                            if not IsSecretValue(shown) and shown == true then
+                                OnKeystoneFrameShown()
+                            end
+                        end)
+                    end
                 end
                 if _G.ChallengesFrame and type(_G.ChallengesFrame.Show) == "function" and not self.challengesFrameHooked then
                     self.challengesFrameHooked = true
-                    hooksecurefunc(_G.ChallengesFrame, "Show", function()
+                    local function OnChallengesFrameShown()
                         if not IsModuleDisabledInSuite("DynamicGroup") then
                             seasonSlotsCache = nil
                             spellbookTeleportCache = nil
@@ -9886,7 +9927,15 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
                                 self:UpdatePortalBar(true)
                             end
                         end
-                    end)
+                    end
+                    hooksecurefunc(_G.ChallengesFrame, "Show", OnChallengesFrameShown)
+                    if type(_G.ChallengesFrame.SetShown) == "function" then
+                        hooksecurefunc(_G.ChallengesFrame, "SetShown", function(_, shown)
+                            if not IsSecretValue(shown) and shown == true then
+                                OnChallengesFrameShown()
+                            end
+                        end)
+                    end
                 end
                 seasonSlotsCache = nil
                 spellbookTeleportCache = nil
@@ -9911,9 +9960,19 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         self:UpdateAutoRefreshTicker()
         if _G.ChallengesKeystoneFrame and type(_G.ChallengesKeystoneFrame.Show) == "function" and not self.keystoneHooked then
             self.keystoneHooked = true
-            hooksecurefunc(_G.ChallengesKeystoneFrame, "Show", function()
-                C_Timer.After(0.05, TryAutoInsertKeystone)
-            end)
+            local function OnKeystoneShownAtLogin()
+                if not IsModuleDisabledInSuite("DynamicGroup") then
+                    C_Timer.After(0.05, TryAutoInsertKeystone)
+                end
+            end
+            hooksecurefunc(_G.ChallengesKeystoneFrame, "Show", OnKeystoneShownAtLogin)
+            if type(_G.ChallengesKeystoneFrame.SetShown) == "function" then
+                hooksecurefunc(_G.ChallengesKeystoneFrame, "SetShown", function(_, shown)
+                    if not IsSecretValue(shown) and shown == true then
+                        OnKeystoneShownAtLogin()
+                    end
+                end)
+            end
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
         CloseActiveDropdown()

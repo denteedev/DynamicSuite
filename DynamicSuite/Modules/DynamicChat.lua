@@ -4818,6 +4818,10 @@ end
 
 local function SuppressBlizzardChatBackground(cf, cfName, skinEnabled)
     if not cf or IsSecretValue(cf) or DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf) then return end
+    if InCombatLockdown and InCombatLockdown() then
+        DynamicChat._pendingChatPosAfterCombat = true
+        return
+    end
     if not cfName and type(cf.GetName) == "function" then
         local okN, n = pcall(cf.GetName, cf)
         if okN and not IsSecretValue(n) and type(n) == "string" and n ~= "" then
@@ -5083,7 +5087,8 @@ local function RefreshChatScrollBarVisibility(cf, isScrollActivity)
     local csb = entry.customScrollBar
     if not csb then return end
 
-    if not DynamicChat.SafeFrameIsShown(cf, false) or (cf.isDocked and _G.SELECTED_DOCK_FRAME and _G.SELECTED_DOCK_FRAME ~= cf) then
+    local isDockedCF = (not IsSecretValue(cf.isDocked) and cf.isDocked == true)
+    if not DynamicChat.SafeFrameIsShown(cf, false) or (isDockedCF and _G.SELECTED_DOCK_FRAME and _G.SELECTED_DOCK_FRAME ~= cf) then
         csb:Hide()
         return
     end
@@ -5099,68 +5104,79 @@ end
 
 local function ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
     if not cf or not entry then return end
+    local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
+    local isSecretTemp = DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf)
 
     -- 1. Hide cf.ScrollToBottomButton completely (Left Utility Rail already provides the Scroll-to-Bottom chevron)
-    local stb = cf.ScrollToBottomButton
-    if stb then
-        if skinEnabled then
-            SetRegionAlphaSafe(stb, 0)
-            if type(stb.Hide) == "function" then pcall(stb.Hide, stb) end
-            if not hookedScrollToBottomBtns[stb] and type(stb.HookScript) == "function" then
-                hookedScrollToBottomBtns[stb] = true
-                stb:HookScript("OnShow", function(selfBtn)
-                    if not DynamicChat:IsExternalChatEngineLoaded() and EnsureDB().enableSleekChatSkin ~= false then
-                        if InCombatLockdown and InCombatLockdown() then
-                            DynamicChat._pendingChatPosAfterCombat = true
-                            return
-                        end
-                        SetRegionAlphaSafe(selfBtn, 0)
-                        if type(selfBtn.Hide) == "function" then pcall(selfBtn.Hide, selfBtn) end
-                    end
-                end)
-            end
-        else
-            SetRegionAlphaSafe(stb, 1)
-        end
-    end
-
-    -- 2. Suppress Blizzard's stock ScrollBar and attach our unified custom DynamicSuite scrollbar
-    local sb = cf.ScrollBar
-    if sb then
-        if not skinEnabled then
-            SetRegionAlphaSafe(sb, 1)
-            if type(sb.EnableMouse) == "function" then pcall(sb.EnableMouse, sb, true) end
-        else
-            for _, arrowBtn in ipairs({ sb.Back, sb.Forward, sb.ScrollUpButton, sb.ScrollDownButton }) do
-                if arrowBtn then
-                    SetRegionAlphaSafe(arrowBtn, 0)
-                    if type(arrowBtn.EnableMouse) == "function" then pcall(arrowBtn.EnableMouse, arrowBtn, false) end
-                    if type(arrowBtn.Hide) == "function" then pcall(arrowBtn.Hide, arrowBtn) end
-                    if not hookedScrollArrows[arrowBtn] and type(arrowBtn.HookScript) == "function" then
-                        hookedScrollArrows[arrowBtn] = true
-                        arrowBtn:HookScript("OnShow", function(selfArr)
-                            if not DynamicChat:IsExternalChatEngineLoaded() and EnsureDB().enableSleekChatSkin ~= false then
-                                if InCombatLockdown and InCombatLockdown() then
-                                    DynamicChat._pendingChatPosAfterCombat = true
-                                    return
-                                end
-                                SetRegionAlphaSafe(selfArr, 0)
-                                if type(selfArr.Hide) == "function" then pcall(selfArr.Hide, selfArr) end
+    --    Never mutate Blizzard's ScrollToBottomButton or ScrollBar during combat or on temporary BN_WHISPER/secret frames.
+    if inCombat then
+        DynamicChat._pendingChatPosAfterCombat = true
+    elseif not isSecretTemp then
+        local stb = cf.ScrollToBottomButton
+        if stb then
+            if skinEnabled then
+                SetRegionAlphaSafe(stb, 0)
+                if type(stb.Hide) == "function" then pcall(stb.Hide, stb) end
+                if not hookedScrollToBottomBtns[stb] and type(stb.HookScript) == "function" then
+                    hookedScrollToBottomBtns[stb] = true
+                    stb:HookScript("OnShow", function(selfBtn)
+                        if not DynamicChat:IsExternalChatEngineLoaded() and EnsureDB().enableSleekChatSkin ~= false then
+                            if InCombatLockdown and InCombatLockdown() then
+                                DynamicChat._pendingChatPosAfterCombat = true
+                                return
                             end
-                        end)
+                            SetRegionAlphaSafe(selfBtn, 0)
+                            if type(selfBtn.Hide) == "function" then pcall(selfBtn.Hide, selfBtn) end
+                        end
+                    end)
+                end
+            else
+                SetRegionAlphaSafe(stb, 1)
+            end
+        end
+
+        -- 2. Suppress Blizzard's stock ScrollBar and attach our unified custom DynamicSuite scrollbar
+        local sb = cf.ScrollBar
+        if sb then
+            if not skinEnabled then
+                SetRegionAlphaSafe(sb, 1)
+                if type(sb.EnableMouse) == "function" then pcall(sb.EnableMouse, sb, true) end
+            else
+                for _, arrowBtn in ipairs({ sb.Back, sb.Forward, sb.ScrollUpButton, sb.ScrollDownButton }) do
+                    if arrowBtn then
+                        SetRegionAlphaSafe(arrowBtn, 0)
+                        if type(arrowBtn.EnableMouse) == "function" then pcall(arrowBtn.EnableMouse, arrowBtn, false) end
+                        if type(arrowBtn.Hide) == "function" then pcall(arrowBtn.Hide, arrowBtn) end
+                        if not hookedScrollArrows[arrowBtn] and type(arrowBtn.HookScript) == "function" then
+                            hookedScrollArrows[arrowBtn] = true
+                            arrowBtn:HookScript("OnShow", function(selfArr)
+                                if not DynamicChat:IsExternalChatEngineLoaded() and EnsureDB().enableSleekChatSkin ~= false then
+                                    if InCombatLockdown and InCombatLockdown() then
+                                        DynamicChat._pendingChatPosAfterCombat = true
+                                        return
+                                    end
+                                    SetRegionAlphaSafe(selfArr, 0)
+                                    if type(selfArr.Hide) == "function" then pcall(selfArr.Hide, selfArr) end
+                                end
+                            end)
+                        end
                     end
                 end
+                local thumb = GetScrollBarThumbFrame(sb)
+                HideScrollBarDefaultArt(sb, thumb)
+                SetRegionAlphaSafe(sb, 0)
+                if type(sb.EnableMouse) == "function" then pcall(sb.EnableMouse, sb, false) end
             end
-            local thumb = GetScrollBarThumbFrame(sb)
-            HideScrollBarDefaultArt(sb, thumb)
-            SetRegionAlphaSafe(sb, 0)
-            if type(sb.EnableMouse) == "function" then pcall(sb.EnableMouse, sb, false) end
         end
     end
 
     if not skinEnabled then
         if entry.customScrollBar then entry.customScrollBar:Hide() end
         if entry.scrollThumbFrame then entry.scrollThumbFrame:Hide() end
+        return
+    end
+    if inCombat or isSecretTemp then
+        RefreshChatScrollBarVisibility(cf, false)
         return
     end
 
@@ -5228,9 +5244,18 @@ local function ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
 
     if not hookedScrollBars[cf] then
         hookedScrollBars[cf] = true
+        if type(hooksecurefunc) == "function" then
+            if type(cf.Show) == "function" then
+                hooksecurefunc(cf, "Show", function(selfCF) RefreshChatScrollBarVisibility(selfCF, false) end)
+            end
+            if type(cf.Hide) == "function" then
+                hooksecurefunc(cf, "Hide", function(selfCF) RefreshChatScrollBarVisibility(selfCF, false) end)
+            end
+            if type(cf.SetShown) == "function" then
+                hooksecurefunc(cf, "SetShown", function(selfCF) RefreshChatScrollBarVisibility(selfCF, false) end)
+            end
+        end
         if type(cf.HookScript) == "function" then
-            cf:HookScript("OnShow", function(selfCF) RefreshChatScrollBarVisibility(selfCF, false) end)
-            cf:HookScript("OnHide", function(selfCF) RefreshChatScrollBarVisibility(selfCF, false) end)
             cf:HookScript("OnSizeChanged", function(selfCF) RefreshChatScrollBarVisibility(selfCF, false) end)
             cf:HookScript("OnMouseWheel", function(selfCF) RefreshChatScrollBarVisibility(selfCF, true) end)
         end
@@ -5354,6 +5379,39 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
         chatSkinStore[cf] = entry
     end
 
+    -- Never mutate Blizzard ChatFrame*Tab textures, FontStrings, anchors, alpha, or HookScript
+    -- during InCombatLockdown(); only repaint our own existing external tabCell/tabLine overlays.
+    if InCombatLockdown and InCombatLockdown() then
+        DynamicChat._pendingTabLayoutAfterCombat = true
+        if skinEnabled and entry.tabCell and DynamicChat.SafeFrameIsShown(tab, false) then
+            local chatType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
+            local isTempCF = (not IsSecretValue(cf.isTemporary) and cf.isTemporary == true)
+            local isBNWhisperTab = (chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION")
+            local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or isTempCF
+            local isSelectedTab  = (_G.SELECTED_DOCK_FRAME == cf) or (not cf.isDocked and DynamicChat.SafeFrameIsShown(cf, false))
+            local isAlertingTab  = IsChatTabAlerting(cf, tab, cfName .. "Tab", entry)
+            local tc = entry.tabCell
+            if isSelectedTab then
+                tc:SetBackdropColor(0.08, 0.09, 0.12, 0.55)
+            elseif isAlertingTab then
+                if isBNWhisperTab then
+                    tc:SetBackdropColor(0.22, 0.74, 0.97, 0.24)
+                elseif isWhisperTab then
+                    tc:SetBackdropColor(0.91, 0.47, 0.98, 0.24)
+                else
+                    tc:SetBackdropColor(ar, ag, ab, 0.22)
+                end
+            elseif isBNWhisperTab then
+                tc:SetBackdropColor(0.22, 0.74, 0.97, 0.10)
+            elseif isWhisperTab then
+                tc:SetBackdropColor(0.91, 0.47, 0.98, 0.10)
+            else
+                tc:SetBackdropColor(0.02, 0.025, 0.035, 0.35)
+            end
+        end
+        return
+    end
+
     local tabName = cfName .. "Tab"
     StripBlizzardTabTextures(tab, tabName, skinEnabled)
 
@@ -5390,6 +5448,7 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
             end
         end)
         tab:HookScript("OnClick", function(selfTab, button)
+            if InCombatLockdown and InCombatLockdown() then return end
             if not IsSecretValue(button) and button == "MiddleButton" then
                 local ownerCF = hookedChatTabs[selfTab]
                 if ownerCF and not IsSecretValue(ownerCF.isTemporary) and ownerCF.isTemporary == true then
@@ -5403,6 +5462,7 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
         tab:HookScript("OnEnter", function(selfTab)
             local ownerCF = hookedChatTabs[selfTab]
             if not ownerCF or DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
+            if InCombatLockdown and InCombatLockdown() then return end
             local a1, a2, a3 = GetSuiteAccent()
             local ownerName = "ChatFrame1"
             if type(ownerCF.GetName) == "function" then
@@ -5448,6 +5508,7 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
                 _G.GameTooltip:Hide()
             end
             if not ownerCF or DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
+            if InCombatLockdown and InCombatLockdown() then return end
             local a1, a2, a3 = GetSuiteAccent()
             local ownerName = "ChatFrame1"
             if type(ownerCF.GetName) == "function" then
@@ -6032,6 +6093,14 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
         if tabNavFrame then tabNavFrame:Hide() end
         for _, entry in pairs(chatSkinStore) do
             entry.hiddenByScroll = false
+        end
+        return
+    end
+
+    if InCombatLockdown and InCombatLockdown() then
+        DynamicChat._pendingTabLayoutAfterCombat = true
+        if pendingEnsureSelectedTabVisible then
+            DynamicChat._pendingVisibleTabAfterCombat = pendingEnsureSelectedTabVisible
         end
         return
     end
@@ -7691,6 +7760,11 @@ function DynamicChat:ApplySleekChatSkin()
             dockUpdatePending = true
             local function RunDockSync()
                 dockUpdatePending = false
+                if InCombatLockdown and InCombatLockdown() then
+                    DynamicChat._pendingChatPosAfterCombat = true
+                    DynamicChat._pendingTabLayoutAfterCombat = true
+                    return
+                end
                 if not DynamicChat:IsExternalChatEngineLoaded() then
                     if EnsureDB().enableSleekChatSkin ~= false then
                         DynamicChat:ApplySleekChatSkin()
@@ -7714,43 +7788,61 @@ function DynamicChat:ApplySleekChatSkin()
             hooksecurefunc("FCF_SelectDockFrame", function(selectedFrame)
                 if DynamicChat:IsExternalChatEngineLoaded() then return end
                 local db = EnsureDB()
+                local inCombat = (InCombatLockdown and InCombatLockdown()) and true or false
                 if db.enableSleekChatSkin ~= false then
                     if selectedFrame then
                         pendingEnsureSelectedTabVisible = selectedFrame
                         local selEntry = chatSkinStore[selectedFrame]
                         if selEntry then selEntry.isAlerting = false end
                     end
-                    local ar, ag, ab = GetSuiteAccent()
-                    local syncFont = (db.applySuiteChatFont ~= false)
-                    local fontPath = GetFontPath()
-                    LayoutDockedChatTabs(true, syncFont, fontPath, ar, ag, ab)
-                    local frames = CollectAllChatFrames()
-                    for _, item in ipairs(frames) do
-                        local cf = item.cf
-                        local cfName = item.name
-                        local tab = _G[cfName .. "Tab"]
-                        if cf and tab then
-                            StyleSingleChatTab(cf, tab, cfName, true, syncFont, fontPath, ar, ag, ab)
+                    if inCombat then
+                        DynamicChat._pendingTabLayoutAfterCombat = true
+                        DynamicChat._pendingChatPosAfterCombat = true
+                        if selectedFrame then
+                            DynamicChat._pendingVisibleTabAfterCombat = selectedFrame
                         end
-                        if cf then
-                            local entry = chatSkinStore[cf]
-                            if entry then
-                                if not DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf) and (cf == selectedFrame or DynamicChat.SafeFrameIsShown(cf, false)) then
-                                    ReskinChatScrollBarAndBottomButton(cf, entry, true)
+                        for cf, entry in pairs(chatSkinStore) do
+                            if entry and entry.customScrollBar then
+                                if cf == selectedFrame and not DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf) then
+                                    RefreshChatScrollBarVisibility(cf, false)
                                 else
-                                    if entry.customScrollBar then
-                                        entry.customScrollBar:Hide()
-                                    end
-                                    if entry.scrollThumbFrame then
-                                        entry.scrollThumbFrame:Hide()
+                                    entry.customScrollBar:Hide()
+                                end
+                            end
+                        end
+                    else
+                        local ar, ag, ab = GetSuiteAccent()
+                        local syncFont = (db.applySuiteChatFont ~= false)
+                        local fontPath = GetFontPath()
+                        LayoutDockedChatTabs(true, syncFont, fontPath, ar, ag, ab)
+                        local frames = CollectAllChatFrames()
+                        for _, item in ipairs(frames) do
+                            local cf = item.cf
+                            local cfName = item.name
+                            local tab = _G[cfName .. "Tab"]
+                            if cf and tab then
+                                StyleSingleChatTab(cf, tab, cfName, true, syncFont, fontPath, ar, ag, ab)
+                            end
+                            if cf then
+                                local entry = chatSkinStore[cf]
+                                if entry then
+                                    if not DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf) and (cf == selectedFrame or DynamicChat.SafeFrameIsShown(cf, false)) then
+                                        ReskinChatScrollBarAndBottomButton(cf, entry, true)
+                                    else
+                                        if entry.customScrollBar then
+                                            entry.customScrollBar:Hide()
+                                        end
+                                        if entry.scrollThumbFrame then
+                                            entry.scrollThumbFrame:Hide()
+                                        end
                                     end
                                 end
                             end
                         end
+                        DynamicChat:RefreshLeftRailTelemetry()
                     end
-                    DynamicChat:RefreshLeftRailTelemetry()
                 end
-                if DynamicChat.OptimizeCombatLogTab then
+                if not inCombat and DynamicChat.OptimizeCombatLogTab then
                     DynamicChat:OptimizeCombatLogTab()
                 end
                 DynamicChat:RefreshWhisperHistoryHint()
@@ -8088,8 +8180,17 @@ function DynamicChat:ApplySavedChatFramePosition()
         if _G.EditModeManagerFrame and type(_G.EditModeManagerFrame.ExitEditMode) == "function" then
             hooksecurefunc(_G.EditModeManagerFrame, "ExitEditMode", OnExternalChatGeometryChange)
         end
-        if type(cf.HookScript) == "function" then
-            pcall(cf.HookScript, cf, "OnShow", OnExternalChatGeometryChange)
+        if type(hooksecurefunc) == "function" then
+            if type(cf.Show) == "function" then
+                hooksecurefunc(cf, "Show", OnExternalChatGeometryChange)
+            end
+            if type(cf.SetShown) == "function" then
+                hooksecurefunc(cf, "SetShown", function(_, shown)
+                    if not IsSecretValue(shown) and shown == true then
+                        OnExternalChatGeometryChange()
+                    end
+                end)
+            end
         end
     end
 
@@ -8973,6 +9074,10 @@ end
 
 function DynamicChat:HookAllChatFramesAndEditBoxes()
     if IsModuleDisabledInSuite("DynamicChat") then return end
+    if InCombatLockdown and InCombatLockdown() then
+        self._pendingChatPosAfterCombat = true
+        return
+    end
     local allFrames = CollectAllChatFrames()
     for _, item in ipairs(allFrames) do
         local cf = item.cf
@@ -15226,7 +15331,7 @@ function DynamicChat._RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "28/11/2026",
         entries = {
-            { type = "FIX",      text = "Combat Chat Scrollbar & Temporary Whisper Tab Protection (28/11/2026): Prevented combat chat messages from touching Blizzard's stock scrollbar controls during Mythic+, raid, or instance combat, added combat guards to scroll-button and Combat Log tab triggers, protected whisper tab tooltips against restricted frames, and added readable-value checks before temporary-tab checks and text conversions." },
+            { type = "FIX",      text = "Combat Chat Tab, Scrollbar & Temporary Whisper Protection (28/11/2026): Prevented combat chat messages, whisper flash alerts, tab switching, hover events, and background dock updates from modifying Blizzard chat tabs, backgrounds, scrollbars, or middle-click close triggers during Mythic+, raid, or instance combat (deferring layout refreshes cleanly until combat ends); replaced primary chat window show/hide script hooks with safe post-hooks, protected whisper tab tooltips against restricted frames, and added readable-value checks before temporary-tab checks and text conversions." },
             { type = "FIX",      text = "Secret-String Protection & Late Edit Mode Layout Stability Fix (28/11/2026): Added secret-value guards around chat frame names, tab titles, hover checks, and mention alert snippets so protected Blizzard chat values never trigger conversion errors; reset the coalesced layout timer on late post-reload Edit Mode updates so saved chat dimensions and typing box skinning are always applied cleanly." },
             { type = "FIX",      text = "Chat Window Shift-Drag Reload Persistence Fix (28/11/2026): Fixed the chat window reverting position or dimensions after reloading when moved directly with Shift + Left-Drag; dragging now preserves your custom chat width and height and mirrors the saved position across both global and active character-scoped suite layouts." },
             { type = "NEW",      text = "Clickable Saved Whisper History Hint (28/11/2026): Added a zero-taint clickable 'Previous messages saved in Copy Chat' overlay inside empty reopened character whisper tabs so you can open Copy Chat for that whisper with a single click; the hint automatically stays clear of top or bottom typing boxes, hides immediately when a new whisper arrives or when switching tabs, and never touches Battle.net or secret whisper tabs." },
@@ -15442,12 +15547,14 @@ DynamicChat:SetScript("OnEvent", function(self, event, arg1, arg2, _, _, _, _, _
             self._pendingChatPosAfterCombat = false
             self:ApplySavedChatFramePosition()
             self:ApplySleekChatSkin()
+            self:HookAllChatFramesAndEditBoxes()
         end
         if self._pendingTabLayoutAfterCombat then
             self._pendingTabLayoutAfterCombat = false
             if not self:IsExternalChatEngineLoaded() and EnsureDB().enableSleekChatSkin ~= false then
                 local a1, a2, a3 = GetSuiteAccent()
                 LayoutDockedChatTabs(true, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
+                self:HookAllChatFramesAndEditBoxes()
             end
         end
         if self._pendingWhisperTabRestoreAfterCombat then

@@ -784,6 +784,27 @@ local BLIZZ_FRAME_FORBIDDEN_FIELDS = {
     _dpCatalystHooked = true,
 }
 
+local function ExtractLineStatements(ln)
+    local stmts = { ln }
+    local work = ln
+    -- Also inspect inline statement bodies after `then`, `do`, `else`, or `;`
+    for afterKw in work:gmatch("%f[%a_]then%s+(.+)$") do
+        stmts[#stmts + 1] = afterKw
+    end
+    for afterKw in work:gmatch("%f[%a_]do%s+(.+)$") do
+        stmts[#stmts + 1] = afterKw
+    end
+    for afterKw in work:gmatch("%f[%a_]else%s+(.+)$") do
+        stmts[#stmts + 1] = afterKw
+    end
+    if work:find(";", 1, true) then
+        for seg in work:gmatch("[^;]+") do
+            stmts[#stmts + 1] = seg
+        end
+    end
+    return stmts
+end
+
 local function AuditBlizzardGlobalAndMethodOverwrites(fileSpecs)
     local violations = {}
     for _, spec in ipairs(fileSpecs) do
@@ -794,6 +815,13 @@ local function AuditBlizzardGlobalAndMethodOverwrites(fileSpecs)
 
         for idx, ln in ipairs(lines) do
             local rln = rawLines[idx] or ln
+            local lineLogged = {}
+            local function AddViolation(msg)
+                if not lineLogged[msg] then
+                    lineLogged[msg] = true
+                    violations[#violations + 1] = msg
+                end
+            end
 
             -- Track local aliases to Blizzard frames/subframes (e.g. `local mmf = frame.MaximizeMinimizeFrame`)
             local varName, rhs = rln:match("^%s*local%s+([%a_][%w_]*)%s*=%s*(.+)$")
@@ -810,76 +838,128 @@ local function AuditBlizzardGlobalAndMethodOverwrites(fileSpecs)
                 end
             end
 
-            -- (4a-1) Direct `_G.<root> = ...` or `_G.<root>.<member> = ...` to non-addon globals
-            local gRoot, gRest = ln:match("^%s*_G%.([%a_][%w_]*)([%w_%.%[%]]*)%s*=%s*[^=]")
-            if gRoot and not IsAllowedGAssignmentRoot(gRoot) then
-                violations[#violations + 1] = string.format(
-                    "[Check4a Blizzard Global Overwrite] %s:%d -> direct assignment to _G.%s%s (use hooksecurefunc)",
-                    spec.name, idx, gRoot, gRest or ""
-                )
-            end
+            local codeStmts = ExtractLineStatements(ln)
+            local rawStmts = ExtractLineStatements(rln)
 
-            -- (4a-2) Direct `_G["<key>"] = ...` or `_G['<key>'] = ...` on Blizzard globals
-            local gBracketKey = rln:match("^%s*_G%[%s*[\"']([%a_][%w_]*)[\"']%s*%]%s*=%s*[^=]")
-            if gBracketKey and not IsAllowedGAssignmentRoot(gBracketKey) then
-                violations[#violations + 1] = string.format(
-                    "[Check4a Blizzard Global Overwrite] %s:%d -> direct assignment to _G[\"%s\"] (use hooksecurefunc)",
-                    spec.name, idx, gBracketKey
-                )
-            end
+            for _, stmt in ipairs(codeStmts) do
+                -- (4a-1) Direct `_G.<root> = ...` or `_G.<root>.<member> = ...` to non-addon globals
+                local gRoot, gRest = stmt:match("^%s*_G%.([%a_][%w_]*)([%w_%.%[%]]*)%s*=%s*[^=]")
+                if gRoot and not IsAllowedGAssignmentRoot(gRoot) then
+                    AddViolation(string.format(
+                        "[Check4a Blizzard Global Overwrite] %s:%d -> direct assignment to _G.%s%s (use hooksecurefunc)",
+                        spec.name, idx, gRoot, gRest or ""
+                    ))
+                end
 
-            -- (4a-3) `function _G.<name>(...)` or `function <BlizzGlobal>[.:]<member>(...)` or `<BlizzGlobal>.<member> = ...`
-            local fnRoot, fnSub = ln:match("^%s*function%s+([%a_][%w_]*)([%.:][%a_][%w_]*)?%s*%(")
-            if fnRoot then
-                if fnRoot == "_G" or MatchesBlizzGlobalOverwriteName(fnRoot) then
-                    violations[#violations + 1] = string.format(
-                        "[Check4a Blizzard Global Overwrite] %s:%d -> direct global function overwrite %s%s (use hooksecurefunc)",
-                        spec.name, idx, fnRoot, fnSub or ""
-                    )
+                -- (4a-3) `function _G.<name>(...)` or `function <BlizzGlobal>[.:]<member>(...)`
+                local fnRoot, fnSub = stmt:match("^%s*function%s+([%a_][%w_]*)([%.:][%a_][%w_]*)?%s*%(")
+                if fnRoot then
+                    if fnRoot == "_G" or MatchesBlizzGlobalOverwriteName(fnRoot) then
+                        AddViolation(string.format(
+                            "[Check4a Blizzard Global Overwrite] %s:%d -> direct global function overwrite %s%s (use hooksecurefunc)",
+                            spec.name, idx, fnRoot, fnSub or ""
+                        ))
+                    end
+                end
+
+                local bareRoot, bareSub = stmt:match("^%s*([%a_][%w_]*)([%.%a%w_%[%]]*)%s*=%s*[^=]")
+                if bareRoot and bareRoot ~= "local" and bareRoot ~= "_G" and MatchesBlizzGlobalOverwriteName(bareRoot) then
+                    if not (bareRoot == "UIPanelWindows" and bareSub and bareSub:sub(1, 1) == "[") then
+                        AddViolation(string.format(
+                            "[Check4a Blizzard Global Overwrite] %s:%d -> direct overwrite of Blizzard global %s%s (use hooksecurefunc)",
+                            spec.name, idx, bareRoot, bareSub or ""
+                        ))
+                    end
+                end
+
+                -- (4b-1) Direct overwrites of Blizzard frame methods or taint-prone SearchPanel/Quest/Catalyst fields
+                local lhsObj, lhsKey = stmt:match("^%s*([%a_][%w_%.]*)%.([%a_][%w_]*)%s*=%s*[^=]")
+                if not lhsObj then
+                    lhsObj, lhsKey = stmt:match("^%s*([%a_][%w_%.]*)%[%s*methodName%s*%]%s*=%s*[^=]")
+                end
+                if lhsObj and not lhsObj:match("^_G%.") then
+                    local rootId = lhsObj:match("^([%a_][%w_]*)")
+                    local isBlizzObj = MatchesBlizzFrameTarget(lhsObj)
+                        or (rootId and blizzBindings[rootId] and (idx - blizzBindings[rootId].line) <= 120)
+                    if not isBlizzObj and (lhsKey == "results" or lhsKey == "totalResults" or lhsKey == "selectedResult")
+                        and (lhsObj == "panel" or lhsObj == "sp") and spec.name:find("Group", 1, true) then
+                        isBlizzObj = "LFGListFrame.SearchPanel"
+                    end
+                    if isBlizzObj and (lhsKey == nil or BLIZZ_FRAME_FORBIDDEN_FIELDS[lhsKey]) then
+                        AddViolation(string.format(
+                            "[Check4b Blizzard Frame Method/Field Overwrite] %s:%d -> direct assignment to %s.%s (use hooksecurefunc / private weak table)",
+                            spec.name, idx, lhsObj, tostring(lhsKey or "[methodName]")
+                        ))
+                    end
+                end
+
+                -- (4b-2) `function <BlizzFrameOrAlias>[.:]<method>(...)`
+                local fObj, fSep, fMethod = stmt:match("^%s*function%s+([%a_][%w_%.]*)([%.:])([%a_][%w_]*)%s*%(")
+                if fObj and fMethod and not fObj:match("^_G$") and not fObj:match("^_G%.") then
+                    local fRoot = fObj:match("^([%a_][%w_]*)")
+                    local isBlizzFnObj = MatchesBlizzFrameTarget(fObj)
+                        or (fRoot and blizzBindings[fRoot] and (idx - blizzBindings[fRoot].line) <= 120)
+                    if isBlizzFnObj and BLIZZ_FRAME_FORBIDDEN_FIELDS[fMethod] then
+                        AddViolation(string.format(
+                            "[Check4b Blizzard Frame Method/Field Overwrite] %s:%d -> direct method definition %s%s%s() (use hooksecurefunc)",
+                            spec.name, idx, fObj, fSep, fMethod
+                        ))
+                    end
                 end
             end
 
-            local bareRoot, bareSub = ln:match("^%s*([%a_][%w_]*)([%.%a%w_%[%]]*)%s*=%s*[^=]")
-            if bareRoot and bareRoot ~= "local" and bareRoot ~= "_G" and MatchesBlizzGlobalOverwriteName(bareRoot) then
-                if not (bareRoot == "UIPanelWindows" and bareSub and bareSub:sub(1, 1) == "[") then
-                    violations[#violations + 1] = string.format(
-                        "[Check4a Blizzard Global Overwrite] %s:%d -> direct overwrite of Blizzard global %s%s (use hooksecurefunc)",
-                        spec.name, idx, bareRoot, bareSub or ""
-                    )
+            for _, rStmt in ipairs(rawStmts) do
+                -- (4a-2) Direct `_G["<key>"] = ...` or `_G['<key>'] = ...` on Blizzard globals
+                local gBracketKey = rStmt:match("^%s*_G%[%s*[\"']([%a_][%w_]*)[\"']%s*%]%s*=%s*[^=]")
+                if gBracketKey and not IsAllowedGAssignmentRoot(gBracketKey) then
+                    AddViolation(string.format(
+                        "[Check4a Blizzard Global Overwrite] %s:%d -> direct assignment to _G[\"%s\"] (use hooksecurefunc)",
+                        spec.name, idx, gBracketKey
+                    ))
+                end
+
+                -- (4a-4 / 4b-3) `rawset(_G / BlizzGlobal / BlizzFrame, "key", ...)` bypasses
+                for rawTarget, rawKey in rStmt:gmatch("rawset%s*%(%s*([%a_][%w_%.]*)%s*,%s*[\"']([%a_][%w_]*)[\"']") do
+                    if rawTarget == "_G" and not IsAllowedGAssignmentRoot(rawKey) then
+                        AddViolation(string.format(
+                            "[Check4a Blizzard Global Overwrite] %s:%d -> rawset(_G, \"%s\", ...) overwrite (use hooksecurefunc)",
+                            spec.name, idx, rawKey
+                        ))
+                    elseif MatchesBlizzGlobalOverwriteName(rawTarget:match("^([%a_][%w_]*)")) then
+                        AddViolation(string.format(
+                            "[Check4a Blizzard Global Overwrite] %s:%d -> rawset(%s, \"%s\", ...) overwrite (use hooksecurefunc)",
+                            spec.name, idx, rawTarget, rawKey
+                        ))
+                    else
+                        local rRoot = rawTarget:match("^([%a_][%w_]*)")
+                        local isBlizzRaw = MatchesBlizzFrameTarget(rawTarget)
+                            or (rRoot and blizzBindings[rRoot] and (idx - blizzBindings[rRoot].line) <= 120)
+                        if not isBlizzRaw and (rawKey == "results" or rawKey == "totalResults" or rawKey == "selectedResult")
+                            and (rawTarget == "panel" or rawTarget == "sp") and spec.name:find("Group", 1, true) then
+                            isBlizzRaw = "LFGListFrame.SearchPanel"
+                        end
+                        if isBlizzRaw and BLIZZ_FRAME_FORBIDDEN_FIELDS[rawKey] then
+                            AddViolation(string.format(
+                                "[Check4b Blizzard Frame Method/Field Overwrite] %s:%d -> rawset(%s, \"%s\", ...) overwrite (use hooksecurefunc / private weak table)",
+                                spec.name, idx, rawTarget, rawKey
+                            ))
+                        end
+                    end
                 end
             end
 
-            -- (4b) Direct overwrites of Blizzard frame methods or taint-prone SearchPanel/Quest/Catalyst fields
-            local lhsObj, lhsKey = ln:match("^%s*([%a_][%w_%.]*)%.([%a_][%w_]*)%s*=%s*[^=]")
-            if not lhsObj then
-                lhsObj, lhsKey = ln:match("^%s*([%a_][%w_%.]*)%[%s*methodName%s*%]%s*=%s*[^=]")
-            end
-            if lhsObj and not lhsObj:match("^_G%.") then
-                local rootId = lhsObj:match("^([%a_][%w_]*)")
-                local isBlizzObj = MatchesBlizzFrameTarget(lhsObj)
-                    or (rootId and blizzBindings[rootId] and (idx - blizzBindings[rootId].line) <= 120)
-                if not isBlizzObj and (lhsKey == "results" or lhsKey == "totalResults" or lhsKey == "selectedResult")
-                    and (lhsObj == "panel" or lhsObj == "sp") and spec.name:find("Group", 1, true) then
-                    isBlizzObj = "LFGListFrame.SearchPanel"
-                end
-                if isBlizzObj and (lhsKey == nil or BLIZZ_FRAME_FORBIDDEN_FIELDS[lhsKey]) then
-                    violations[#violations + 1] = string.format(
-                        "[Check4b Blizzard Frame Method/Field Overwrite] %s:%d -> direct assignment to %s.%s (use hooksecurefunc / private weak table)",
-                        spec.name, idx, lhsObj, tostring(lhsKey or "[methodName]")
-                    )
-                end
-            end
-
-            -- (4c) Direct invocation of LFGListSearchPanel_UpdateResults from addon code (taints LFGListSearchEntry_Update)
-            if ln:match("LFGListSearchPanel_UpdateResults") then
-                local isSafeRef = ln:match("hooksecurefunc%s*%(")
-                    or ln:match("type%s*%(%s*_G%.LFGListSearchPanel_UpdateResults%s*%)")
-                    or ln:match("type%s*%(%s*LFGListSearchPanel_UpdateResults%s*%)")
-                if not isSafeRef then
-                    violations[#violations + 1] = string.format(
-                        "[Check4c Direct LFGListSearchPanel_UpdateResults Call] %s:%d -> direct call taints Blizzard LFGListSearchEntry_Update",
-                        spec.name, idx
-                    )
+            -- (4c) Direct invocation of LFGListSearchPanel_UpdateResults / UpdateButtonStatus from addon code
+            for _, forbiddenFn in ipairs({ "LFGListSearchPanel_UpdateResults", "LFGListSearchPanel_UpdateButtonStatus" }) do
+                if ln:match(forbiddenFn) then
+                    local isSafeRef = ln:match("hooksecurefunc%s*%(")
+                        or ln:match("type%s*%(%s*_G%." .. forbiddenFn .. "%s*%)")
+                        or ln:match("type%s*%(%s*" .. forbiddenFn .. "%s*%)")
+                    if not isSafeRef then
+                        AddViolation(string.format(
+                            "[Check4c Direct %s Call] %s:%d -> direct call taints Blizzard LFGListSearchEntry_Update",
+                            forbiddenFn, spec.name, idx
+                        ))
+                    end
                 end
             end
         end
@@ -1035,6 +1115,51 @@ local function RunSelfTests()
                 src = "local function f(sp)\n  pcall(_G.LFGListSearchPanel_UpdateResults, sp)\nend\n",
             },
             expectSub = "Check4c Direct LFGListSearchPanel_UpdateResults Call",
+        },
+        {
+            name = "Catches inline _G.UpdateScaleForFit overwrite inside if-then",
+            fn = AuditBlizzardGlobalAndMethodOverwrites,
+            spec = {
+                name = "SyntheticInlineGlobal.lua",
+                src = "if true then _G.UpdateScaleForFit = function() end end\n",
+            },
+            expectSub = "Check4a Blizzard Global Overwrite",
+        },
+        {
+            name = "Catches inline SearchPanel panel.results overwrite inside if-then",
+            fn = AuditBlizzardGlobalAndMethodOverwrites,
+            spec = {
+                name = "SyntheticInlineGroup.lua",
+                src = "if panel then panel.results = {} end\n",
+            },
+            expectSub = "Check4b Blizzard Frame Method/Field Overwrite",
+        },
+        {
+            name = "Catches colon method definition on Blizzard frame alias (function mmf:Maximize)",
+            fn = AuditBlizzardGlobalAndMethodOverwrites,
+            spec = {
+                name = "SyntheticMethodDef.lua",
+                src = "local mmf = frame.MaximizeMinimizeFrame\nfunction mmf:Maximize() end\n",
+            },
+            expectSub = "Check4b Blizzard Frame Method/Field Overwrite",
+        },
+        {
+            name = "Catches rawset(_G, 'UpdateScaleForFit', fn) bypass",
+            fn = AuditBlizzardGlobalAndMethodOverwrites,
+            spec = {
+                name = "SyntheticRawset.lua",
+                src = "rawset(_G, \"UpdateScaleForFit\", function() end)\n",
+            },
+            expectSub = "Check4a Blizzard Global Overwrite",
+        },
+        {
+            name = "Catches direct call to _G.LFGListSearchPanel_UpdateButtonStatus",
+            fn = AuditBlizzardGlobalAndMethodOverwrites,
+            spec = {
+                name = "SyntheticGroupBtn.lua",
+                src = "local function f(sp)\n  pcall(_G.LFGListSearchPanel_UpdateButtonStatus, sp)\nend\n",
+            },
+            expectSub = "Check4c Direct LFGListSearchPanel_UpdateButtonStatus Call",
         },
     }
 

@@ -1471,9 +1471,47 @@ RunTest("T10: Zero SearchPanel Mutations/UpdateResults Calls, Hook Hygiene & Com
         env.GameTooltip._hideCalls = 0
         env.LFGListSearchEntry_OnEnter(entryFail)
         assertEqual(env.GameTooltip._hideCalls, 1, "LFGListSearchEntry_OnEnter hooksecurefunc hides invalid-entry tooltip")
+
+        -- SetShown(true) post-hooks trigger cleanly on SearchPanel & LFGListApplicationDialog without HookScript
+        sp._shown = false
+        local prevMiniBar = env.DynamicGroup.lfgMiniBar
+        env.DynamicGroup.lfgMiniBar = nil
+        sp:SetShown(true)
+        assertTrue(env.DynamicGroup.lfgMiniBar ~= nil, "SearchPanel:SetShown(true) triggers OnSearchPanelShown via hooksecurefunc")
+        if prevMiniBar then env.DynamicGroup.lfgMiniBar = prevMiniBar end
+
+        dlg._strata = "MEDIUM"
+        dlg.SetFrameStrata = function(self, s) self._strata = s end
+        dlg.GetFrameStrata = function(self) return self._strata end
+        dlg:SetShown(true)
+        assertEqual(dlg:GetFrameStrata(), "DIALOG", "LFGListApplicationDialog:SetShown(true) triggers OnLFGListApplicationDialogOnShow via hooksecurefunc")
+
+        -- When doubleClickSignUp is disabled, ZERO HookScript handlers are attached to new entries
+        env.DynamicGroupDB.doubleClickSignUp = false
+        local entryNoDbl = env.CreateFrame("Button", nil, sp)
+        entryNoDbl.resultID = 301
+        local noDblHooks = 0
+        local origNoDblHook = entryNoDbl.HookScript
+        entryNoDbl.HookScript = function(self, ...)
+            noDblHooks = noDblHooks + 1
+            return origNoDblHook(self, ...)
+        end
+        env.LFGListSearchEntry_Update(entryNoDbl)
+        assertEqual(noDblHooks, 0, "With doubleClickSignUp=false, LFGListSearchEntry attaches ZERO HookScript handlers")
+
+        -- Secret GroupName / ActivityName in LFGListInviteDialog_Show never throws
+        if env.LFGListInviteDialog_Show then
+            local secInvDlg = {
+                resultID = strictSecret,
+                GroupName = { GetText = function() return strictSecret end },
+                ActivityName = { GetText = function() return strictSecret end },
+            }
+            env.LFGListInviteDialog_Show(secInvDlg, strictSecret)
+        end
     end
 
-    -- (b) DynamicChat: combat AddMessage never mutates cf.ScrollBar; secret isTemporary/tab/PrintMsg never throw
+    -- (b) DynamicChat: combat AddMessage / FCF_StartAlertFlash / FCF_SelectDockFrame / RunDockSync / tab clicks
+    --     never mutate Blizzard chat tabs, scrollbars, or backgrounds during InCombatLockdown; zero OnShow/OnHide HookScript on ChatFrame1.
     do
         local h = CreateHarness({ withSuite = true })
         local env = h.env
@@ -1481,27 +1519,79 @@ RunTest("T10: Zero SearchPanel Mutations/UpdateResults Calls, Hook Hygiene & Com
         env.canaccessvalue = function(v) return v ~= strictSecret end
 
         local cf1 = env.ChatFrame1
+        local cf1Hooks = {}
+        local origCf1Hook = cf1.HookScript
+        cf1.HookScript = function(self, ev, fn)
+            cf1Hooks[ev] = (cf1Hooks[ev] or 0) + 1
+            return origCf1Hook(self, ev, fn)
+        end
         cf1.ScrollBar = env.CreateFrame("Slider", "ChatFrame1ScrollBar", cf1)
         cf1.ScrollToBottomButton = env.CreateFrame("Button", "ChatFrame1ScrollToBottomButton", cf1)
         cf1.AddMessage = function() end
+
+        local tab1 = env.ChatFrame1Tab
+        local tab1AlphaCalls = 0
+        local tab1StrataCalls = 0
+        local tab1LevelCalls = 0
+        local tab1TextClearCalls = 0
+        local origTabAlpha = tab1.SetAlpha
+        tab1.SetAlpha = function(self, a) tab1AlphaCalls = tab1AlphaCalls + 1; return origTabAlpha(self, a) end
+        tab1.SetFrameStrata = function(self, s) tab1StrataCalls = tab1StrataCalls + 1; self._strata = s end
+        tab1.SetFrameLevel = function(self, l) tab1LevelCalls = tab1LevelCalls + 1; self._level = l end
+        local origTabTextClear = tab1.Text.ClearAllPoints
+        tab1.Text.ClearAllPoints = function(self) tab1TextClearCalls = tab1TextClearCalls + 1; return origTabTextClear(self) end
+
+        local fcfCloseCalls = 0
+        env.FCF_Close = function() fcfCloseCalls = fcfCloseCalls + 1 end
+        env.FCF_StartAlertFlash = function() end
+        env.FCF_StopAlertFlash = function() end
+        env.FCF_SelectDockFrame = function(f) env.SELECTED_DOCK_FRAME = f end
+        env.FCF_OpenTemporaryWindow = function() end
 
         h.LoadModule(CHAT_PATH, "DynamicSuite")
         h.FireEvent("ADDON_LOADED", "DynamicSuite")
         h.FireEvent("PLAYER_LOGIN")
         env.DynamicChat:ApplySleekChatSkin()
 
-        -- Enter combat: AddMessage must NOT touch Blizzard's cf1.ScrollBar (EnableMouse/SetAlpha)
-        -- and ScrollToBottomButton OnShow must NOT call Hide() during combat
+        -- ChatFrame1 must use hooksecurefunc(Show/Hide/SetShown), never HookScript("OnShow"/"OnHide")
+        assertEqual(cf1Hooks.OnShow or 0, 0, "ChatFrame1 must NOT attach OnShow via HookScript")
+        assertEqual(cf1Hooks.OnHide or 0, 0, "ChatFrame1 must NOT attach OnHide via HookScript")
+
+        -- Enter combat: AddMessage, FCF_StartAlertFlash, FCF_StopAlertFlash, FCF_SelectDockFrame,
+        -- RunDockSync (via FCF_OpenTemporaryWindow), and Middle-Click tab close must NOT mutate Blizzard frames
         h.state.inCombat = true
         cf1.ScrollBar._enableMouseCalls = {}
         cf1.ScrollToBottomButton._hideCalls = 0
+        tab1AlphaCalls, tab1StrataCalls, tab1LevelCalls, tab1TextClearCalls = 0, 0, 0, 0
+        cf1.isTemporary = true
+
         cf1:AddMessage("Mythic+ combat message")
         cf1.ScrollToBottomButton:Show()
-        assertEqual(#cf1.ScrollBar._enableMouseCalls, 0, "Combat AddMessage hook must NOT call ScrollBar:EnableMouse")
-        assertEqual(cf1.ScrollToBottomButton._hideCalls, 0, "Combat ScrollToBottomButton OnShow must NOT call Hide()")
+        env.FCF_StartAlertFlash(cf1)
+        env.FCF_StopAlertFlash(cf1)
+        env.FCF_SelectDockFrame(cf1)
+        env.FCF_OpenTemporaryWindow("WHISPER", "CombatWhisper")
+        h.AdvanceTime(0)
+        if tab1._scripts and tab1._scripts.OnClick then
+            tab1._scripts.OnClick(tab1, "MiddleButton")
+        end
+
+        assertEqual(#cf1.ScrollBar._enableMouseCalls, 0, "Combat AddMessage/SelectDockFrame/RunDockSync must NOT call ScrollBar:EnableMouse")
+        assertEqual(cf1.ScrollToBottomButton._hideCalls, 0, "Combat ScrollToBottomButton OnShow/SelectDockFrame must NOT call Hide()")
+        assertEqual(tab1AlphaCalls, 0, "Combat alert flash / tab switch must NOT call ChatFrame1Tab:SetAlpha")
+        assertEqual(tab1StrataCalls, 0, "Combat alert flash / tab switch must NOT call ChatFrame1Tab:SetFrameStrata")
+        assertEqual(tab1LevelCalls, 0, "Combat alert flash / tab switch must NOT call ChatFrame1Tab:SetFrameLevel")
+        assertEqual(tab1TextClearCalls, 0, "Combat alert flash / tab switch must NOT call ChatFrame1Tab.Text:ClearAllPoints")
+        assertEqual(fcfCloseCalls, 0, "Combat Middle-Click on whisper tab must NOT call FCF_Close")
+        assertTrue(env.DynamicChat._pendingTabLayoutAfterCombat == true, "Combat dock/tab updates must defer to PLAYER_REGEN_ENABLED")
+
+        -- Leave combat: PLAYER_REGEN_ENABLED flushes cleanly
+        cf1.isTemporary = false
+        h.state.inCombat = false
+        h.FireEvent("PLAYER_REGEN_ENABLED")
+        assertEqual(env.DynamicChat._pendingTabLayoutAfterCombat, false, "PLAYER_REGEN_ENABLED clears _pendingTabLayoutAfterCombat")
 
         -- Secret isTemporary / chatTarget / chatType must never throw during FCF_OpenTemporaryWindow or skinning
-        h.state.inCombat = false
         local secCF = env.CreateFrame("ScrollingMessageFrame", "ChatFrame12", env.UIParent)
         secCF.isTemporary = strictSecret
         secCF.chatType = strictSecret

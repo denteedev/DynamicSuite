@@ -5069,6 +5069,18 @@ function DynamicPrep:EnsureCatalystHooks()
                     DynamicPrep._catalystFrameShown = false
                 end)
             end
+            if type(frame.SetShown) == "function" then
+                hooksecurefunc(frame, "SetShown", function(_, shown)
+                    if IsSecretValue(shown) then return end
+                    if shown == true then
+                        if not IsModuleDisabledInSuite("DynamicPrep") then
+                            DynamicPrep:EnsureCatalystHooks()
+                        end
+                    elseif shown == false then
+                        DynamicPrep._catalystFrameShown = false
+                    end
+                end)
+            end
         elseif frame.HookScript then
             catalystFrameHooked[frame] = true
             frame:HookScript("OnShow", function()
@@ -5085,6 +5097,7 @@ function DynamicPrep:EnsureCatalystHooks()
     if actionBtn and not catalystBtnHooked[actionBtn] and actionBtn.HookScript then
         catalystBtnHooked[actionBtn] = true
         actionBtn:HookScript("OnClick", function()
+            if InCombatLockdown and InCombatLockdown() then return end
             if DynamicPrep:ShouldOneClickCatalyst() then
                 if C_ItemInteraction and C_ItemInteraction.PerformItemInteraction then
                     pcall(C_ItemInteraction.PerformItemInteraction)
