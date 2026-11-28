@@ -232,10 +232,16 @@ $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "DynamicSuite")
 if (Test-Path -LiteralPath (Join-Path $RepoRoot "Packaging")) {
     $asciiTargets += Get-ChildItem -LiteralPath (Join-Path $RepoRoot "Packaging") -Filter "*.toc" -Recurse -File
 }
-foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "docs\CHANGELOG_ARCHIVE.md", "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md", "README.md", "Packaging\StandaloneTOCs\.pkgmeta-dynamicmarker", "AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", ".pkgmeta", ".pkgmeta-dynamicmarker", ".github\workflows\release.yml")) {
+foreach ($docName in @("CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "docs\CHANGELOG_ARCHIVE.md", "docs\GLOSSARY.md", "docs\INVARIANTS.md", "GEMINI.md", "Packaging\StandaloneTOCs\CHANGELOG_DYNAMICMARKER.md", "README.md", "Packaging\StandaloneTOCs\.pkgmeta-dynamicmarker", "AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", ".pkgmeta", ".pkgmeta-dynamicmarker", ".github\workflows\release.yml")) {
     $docPath = Join-Path $RepoRoot $docName
     if (Test-Path -LiteralPath $docPath) {
         $asciiTargets += Get-Item -LiteralPath $docPath
+    }
+}
+foreach ($harnessDir in @("docs\adr", ".agents\rules")) {
+    $hDirPath = Join-Path $RepoRoot $harnessDir
+    if (Test-Path -LiteralPath $hDirPath) {
+        $asciiTargets += Get-ChildItem -LiteralPath $hDirPath -Filter "*.md" -File
     }
 }
 $asciiTargets += Get-ChildItem -LiteralPath $PSScriptRoot -Filter "*.ps1" -File
@@ -271,7 +277,7 @@ if ($asciiFailures.Count -gt 0) {
 Write-Host "[ASCII OK] Verified $($asciiTargets.Count) file(s) (NonASCII=0, HasBOM=False)" -ForegroundColor Green
 
 # 3b. Public doc leak guard & Lockstep Suite <-> Standalone parity checks
-$leakPattern = 'AGENTS\.md|DESIGN_SYSTEM\.md|TASKS\.md|Design/|scripts/'
+$leakPattern = 'AGENTS\.md|DESIGN_SYSTEM\.md|TASKS\.md|GEMINI\.md|docs/INVARIANTS\.md|docs/GLOSSARY\.md|docs/adr/|\.agents/|Design/|scripts/'
 $pubDocs = @("README.md", "CHANGELOG.md", "DynamicSuite\CHANGELOG.md", "docs\CHANGELOG_ARCHIVE.md")
 if (Test-Path -LiteralPath $marketingDir) {
     foreach ($mf in (Get-ChildItem -LiteralPath $marketingDir -Filter "*.md" -File)) {
@@ -688,7 +694,7 @@ if ($pkgMetaSuiteText -notmatch '(?m)^\s*DynamicSuite/DynamicSuite:\s*DynamicSui
 if ($pkgMetaSuiteText -notmatch '(?m)^\s*filename:\s*\.release-changelog\.md\s*$') {
     throw ".pkgmeta manual-changelog must target '.release-changelog.md'."
 }
-foreach ($suiteIgnore in @('\.github', '\.pkgmeta', '\.pkgmeta-dynamicmarker', '\.release-changelog\.md', 'AGENTS\.md', 'DESIGN_SYSTEM\.md', 'TASKS\.md', 'Design', 'Marketing', 'Packaging', 'scripts')) {
+foreach ($suiteIgnore in @('\.github', '\.pkgmeta', '\.pkgmeta-dynamicmarker', '\.release-changelog\.md', '\.agents', 'AGENTS\.md', 'DESIGN_SYSTEM\.md', 'GEMINI\.md', 'TASKS\.md', 'Design', 'docs', 'Marketing', 'Packaging', 'scripts')) {
     if ($pkgMetaSuiteText -notmatch "(?m)^\s*-\s*$suiteIgnore\s*$") {
         throw ".pkgmeta must exclude '$suiteIgnore' under ignore:."
     }
@@ -709,7 +715,7 @@ if ($pkgMetaMarkerText -notmatch '(?m)^\s*DynamicMarker/Packaging/StandaloneTOCs
 if ($pkgMetaMarkerText -notmatch '(?m)^\s*filename:\s*\.release-changelog\.md\s*$') {
     throw "Packaging\StandaloneTOCs\.pkgmeta-dynamicmarker manual-changelog must target '.release-changelog.md'."
 }
-foreach ($markerIgnore in @('\.release-changelog\.md', 'DynamicSuite', 'Packaging', 'Marketing', 'scripts', '\.github', 'Design', 'AGENTS\.md', 'DESIGN_SYSTEM\.md', 'TASKS\.md')) {
+foreach ($markerIgnore in @('\.release-changelog\.md', 'DynamicSuite', 'Packaging', 'Marketing', 'scripts', '\.github', '\.agents', 'Design', 'docs', 'AGENTS\.md', 'DESIGN_SYSTEM\.md', 'GEMINI\.md', 'TASKS\.md')) {
     if ($pkgMetaMarkerText -notmatch "(?m)^\s*-\s*$markerIgnore\s*$") {
         throw "Packaging\StandaloneTOCs\.pkgmeta-dynamicmarker must exclude '$markerIgnore' under ignore:."
     }
@@ -1071,7 +1077,7 @@ if ($BuildReleaseZip) {
 }
 
 # 4. Internal files & .gitignore guard
-$internalPatterns = @("AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", "Design/")
+$internalPatterns = @("AGENTS.md", "DESIGN_SYSTEM.md", "TASKS.md", "GEMINI.md", "docs/GLOSSARY.md", "docs/INVARIANTS.md", "docs/adr/", ".agents/", "Design/")
 $gitignorePath = Join-Path $RepoRoot ".gitignore"
 if (-not (Test-Path -LiteralPath $gitignorePath)) {
     throw ".gitignore is missing at $gitignorePath"
@@ -1085,7 +1091,7 @@ foreach ($pat in $internalPatterns) {
 
 Push-Location $RepoRoot
 try {
-    $trackedInternal = & $gitExe ls-files -- "AGENTS.md" "DESIGN_SYSTEM.md" "TASKS.md" "Design" "Design/*"
+    $trackedInternal = & $gitExe ls-files -- "AGENTS.md" "DESIGN_SYSTEM.md" "TASKS.md" "GEMINI.md" "docs/GLOSSARY.md" "docs/INVARIANTS.md" "docs/adr" "docs/adr/*" ".agents" ".agents/*" "Design" "Design/*"
     if ($LASTEXITCODE -ne 0) { throw "git ls-files failed." }
     if ($trackedInternal) {
         throw ("Internal files must remain untracked in Git:`n - " + ($trackedInternal -join "`n - "))
@@ -1128,6 +1134,14 @@ try {
             }
             Write-Host "[TXT MIRRORED] DynamicSuite_Core.lua.txt, DynamicSuite_UI.lua.txt, & $($moduleLuaFiles.Count) Module .lua.txt files -> $driveModulesTxtDir" -ForegroundColor DarkCyan
             Write-Host "[CURSEFORGE DOCS SYNCED] README.md, CURSEFORGE_DYNAMICMARKER.md, & CURSEFORGE_DYNAMICSUITE.md -> $driveSyncRoot" -ForegroundColor DarkCyan
+            foreach ($harnessRel in @("GEMINI.md", "docs\INVARIANTS.md", "docs\GLOSSARY.md", "docs\adr\0000-template.md", ".agents\rules\invariants-guard.md")) {
+                $hSrc = Join-Path $RepoRoot $harnessRel
+                $hDst = Join-Path $driveSyncRoot $harnessRel
+                if ((Test-Path -LiteralPath $hSrc) -and (-not (Test-Path -LiteralPath $hDst))) {
+                    throw "Internal harness file failed to mirror to Google Drive: $hDst"
+                }
+            }
+            Write-Host "[HARNESS SYNCED] GEMINI.md, docs/INVARIANTS.md, docs/GLOSSARY.md, docs/adr/, & .agents/rules/ -> $driveSyncRoot" -ForegroundColor DarkCyan
         }
     } else {
         Write-Host "[SYNC SKIPPED] -SkipSync specified" -ForegroundColor Yellow
@@ -1142,7 +1156,7 @@ try {
             & $gitExe add -A
             if ($LASTEXITCODE -ne 0) { throw "git add failed." }
 
-            $stagedInternal = & $gitExe diff --cached --name-only -- "AGENTS.md" "DESIGN_SYSTEM.md" "TASKS.md" "Design" "Design/*"
+            $stagedInternal = & $gitExe diff --cached --name-only -- "AGENTS.md" "DESIGN_SYSTEM.md" "TASKS.md" "GEMINI.md" "docs/GLOSSARY.md" "docs/INVARIANTS.md" "docs/adr" "docs/adr/*" ".agents" ".agents/*" "Design" "Design/*"
             if ($stagedInternal) {
                 & $gitExe reset HEAD -- $stagedInternal | Out-Null
                 throw ("Aborted: internal files were staged:`n - " + ($stagedInternal -join "`n - "))

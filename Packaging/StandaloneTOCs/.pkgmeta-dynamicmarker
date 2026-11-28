@@ -24,8 +24,10 @@ ignore:
   - .pkgmeta
   - .pkgmeta-dynamicmarker
   - .release-changelog.md
+  - .agents
   - AGENTS.md
   - DESIGN_SYSTEM.md
+  - GEMINI.md
   - README.md
   - TASKS.md
   - Design

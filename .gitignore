@@ -47,6 +47,11 @@ ModulesTxt/
 AGENTS.md
 DESIGN_SYSTEM.md
 TASKS.md
+GEMINI.md
+docs/GLOSSARY.md
+docs/INVARIANTS.md
+docs/adr/
+.agents/
 walkthrough.md
 Design/
 Screenshots/
