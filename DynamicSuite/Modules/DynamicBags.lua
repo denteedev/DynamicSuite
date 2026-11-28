@@ -1776,12 +1776,23 @@ function U.InstallTooltipHook()
         local okOwn, owner = pcall(tooltip.GetOwner, tooltip)
         if okOwn and owner and not IsSecret(owner) and owner.dbBag and owner.dbSlot and owner.dbObj and not owner.dbObj.empty then
             local ar, ag, ab = GetAccent()
-            local accHex = sformat("%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5))
             local pinnedCats = DB().pinnedCategories
             local pinned = pinnedCats and pinnedCats[owner.dbObj.itemID]
-            local pinTxt = pinned
-                and ("|cFF" .. accHex .. "Pinned:|r |cFFE2E8F0" .. (CAT_LABEL[pinned] or pinned) .. "|r  (|cFF" .. accHex .. "Alt + Right-Click:|r |cFFE2E8F0Change Category|r)")
-                or ("|cFF" .. accHex .. "Alt + Right-Click:|r |cFFE2E8F0Pin to Category|r")
+            -- Hint text is memoised per pinned category + accent so repeat hovers allocate nothing.
+            local hc = S.pinHintCache
+            if not hc or hc.r ~= ar or hc.g ~= ag or hc.b ~= ab then
+                hc = { r = ar, g = ag, b = ab, hex = sformat("%02X%02X%02X", floor(ar * 255 + 0.5), floor(ag * 255 + 0.5), floor(ab * 255 + 0.5)), text = {} }
+                S.pinHintCache = hc
+            end
+            local hintKey = pinned or false
+            local pinTxt = hc.text[hintKey]
+            if not pinTxt then
+                local accHex = hc.hex
+                pinTxt = pinned
+                    and ("|cFF" .. accHex .. "Pinned:|r |cFFE2E8F0" .. (CAT_LABEL[pinned] or pinned) .. "|r  (|cFF" .. accHex .. "Alt + Right-Click:|r |cFFE2E8F0Change Category|r)")
+                    or ("|cFF" .. accHex .. "Alt + Right-Click:|r |cFFE2E8F0Pin to Category|r")
+                hc.text[hintKey] = pinTxt
+            end
             pcall(tooltip.AddLine, tooltip, pinTxt, 0.886, 0.910, 0.941)
         elseif okOwn and owner and not IsSecret(owner) and type(id) == "number" and not IsSecret(id)
             and DB().autoRestockEnabled == true and _G.MerchantFrame and _G.MerchantFrame.IsShown and _G.MerchantFrame:IsShown() then
@@ -13447,11 +13458,11 @@ DynamicBags.CHANGELOG = {
     version = VERSION,
     date = "28/11/2026",
     entries = {
+        { type = "PERF",    text = "Bag Item Hover Speed-Up (28/11/2026): Hovering over bag items now reuses the saved Alt + Right-Click pin hint instead of rebuilding it on every hover, and a new automated check confirms item tooltips make no bag scans and rebuild the alt-character count list only once." },
         { type = "FIX",     text = "Secret-Value Tooltip & Pre-Warm Safety Hardening (28/11/2026): Guarded item tooltip hooks, delete confirmation dialogs, and character/realm lookups against protected Blizzard secret values, and added nil-safe vault checks for early alt and warband tooltip count lookups before deferred bag pre-warming completes." },
         { type = "PERF",    text = "O(1) Alt & Warband Item Tooltip Count Cache (27/11/2026): Stopped current-character bag snapshots from invalidating the cross-character count cache, pre-sorted and pre-formatted alt and warband tooltip lines inside BuildCountIndex, and seeded the index during pre-warm so item tooltip hovers execute in O(1) with zero per-hover table allocations or sorting." },
         { type = "FIX",     text = "BankFrame, GuildBankFrame & StaticPopup Hook Hardening (27/11/2026): Replaced direct HookScript('OnShow') calls and frame-field flags on Blizzard BankFrame, GuildBankFrame, and StaticPopup1..4 frames with weak-table tracking, combat-guarded hooksecurefunc post-hooks (Show, StaticPopup_OnShow, and StaticPopupMixin.OnShow), and UIFrameIsFading/fadeInfo-safe SetAlpha wrappers across both DynamicSuite and standalone DynamicBags." },
         { type = "FIX",     text = "DynamicBags & DynamicBank Header Hover & Scale Toast Nil Crash Fix (26/11/2026): Replaced undefined U.GetSuiteAccent() calls in ShowBagScaleToast and U.AttachWindowScaleHandlers (header OnEnter tooltip) with GetAccent() so hovering the DynamicBags or DynamicBank header and stepping or resetting window scale via Ctrl+Scroll or Right-Click work cleanly with live Suite Accent colouring across both DynamicSuite and standalone DynamicBags." },
-        { type = "FIX",     text = "Release v2.10.1 - Clean Single-Action Bank & Guild Bank Closing (25/11/2026): Fixed a lingering invisible Blizzard bank interaction left behind whenever DynamicBank closed via its Close button, Escape key, or bag toggle while at a Personal Bank, Warband Bank, or Guild Bank (previously requiring an extra Escape press before interacting with the banker again); closing DynamicBank now cleanly terminates active C_Bank / CloseGuildBankFrame and C_PlayerInteractionManager banker interactions, detaches and hides suppressed Blizzard BankFrame/GuildBankFrame panels out of combat with re-entrancy guards, closes child modals and popovers (dropdowns, Gold Transfer modal, StackSplitFrame, and buy-tab popups) one at a time on Escape without killing the live banker session, keeps Personal/Warband/Guild tab switching uninterrupted, and leaves remote cached snapshot viewing (/dbag bank) untouched." },
     },
 }
 _G.DynamicSuite = _G.DynamicSuite or {}

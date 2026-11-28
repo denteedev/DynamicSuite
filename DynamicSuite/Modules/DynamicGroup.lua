@@ -691,6 +691,10 @@ local function EnsureDB()
     return _G.DynamicGroupDB
 end
 
+-- Loaded-state per yield-hook addon key. IsAddOnLoaded only changes on ADDON_LOADED, so hover hooks
+-- read this table instead of calling the C API on every hover (DynamicGroup._yieldLoaded is reset to nil by the ADDON_LOADED branch).
+DynamicGroup._yieldLoaded = nil
+
 local function IsYieldingSharedHooks()
     local db = _G.DynamicGroupDB
     if type(db) ~= "table" then return false end
@@ -698,11 +702,15 @@ local function IsYieldingSharedHooks()
     local isLoadedFn = (_G.C_AddOns and _G.C_AddOns.IsAddOnLoaded) or _G.IsAddOnLoaded
     for addonKey, flag in pairs(db.yieldHooks) do
         if flag == true and type(addonKey) == "string" and addonKey ~= "" then
-            if type(isLoadedFn) == "function" then
+            local loaded = DynamicGroup._yieldLoaded and DynamicGroup._yieldLoaded[addonKey]
+            if loaded == nil and type(isLoadedFn) == "function" then
                 local okL, resL = pcall(isLoadedFn, addonKey)
-                if okL and not IsSecretValue(resL) and resL == true then
-                    return true
-                end
+                loaded = (okL and not IsSecretValue(resL) and resL == true) and true or false
+                DynamicGroup._yieldLoaded = DynamicGroup._yieldLoaded or {}
+                DynamicGroup._yieldLoaded[addonKey] = loaded
+            end
+            if loaded == true then
+                return true
             end
         end
     end
@@ -1311,9 +1319,24 @@ local function GetScoreColorHex(score)
     else return "FF94A3B8" end
 end
 
+-- Per-search-cycle hover cache. Filled lazily by InspectSearchResult / IsValidSearchResultID /
+-- the tooltip hook and emptied by DynamicGroup:InvalidateSearchResultCache() on
+-- LFG_LIST_SEARCH_RESULT_UPDATED (single ID), LFG_LIST_SEARCH_RESULTS_RECEIVED,
+-- LFGListSearchPanel_DoSearch / _Clear / _SetCategory (everything). Hover handlers must only
+-- ever read this cache -- never re-query C_LFGList or rebuild tables per hover.
+local searchCache = {
+    meta = {},   -- [resultID] = InspectSearchResult() table (also carries lazily built meta.tip strings)
+    valid = {},  -- [resultID] = true once GetSearchResultInfo has confirmed the ID is live
+    best = {},   -- [mapID]    = { level, score, timed } from GetPlayerBestForDungeon
+    stats = { builds = 0, invalidations = 0 },
+}
+
 local function IsValidSearchResultID(resultID)
     if type(resultID) ~= "number" or IsSecretValue(resultID) then
         return false
+    end
+    if searchCache.valid[resultID] then
+        return true
     end
     if not C_LFGList or type(C_LFGList.GetSearchResultInfo) ~= "function" then
         return false
@@ -1328,7 +1351,38 @@ local function IsValidSearchResultID(resultID)
     if not ok or type(info) ~= "table" or IsSecretValue(info) then
         return false
     end
+    searchCache.valid[resultID] = true
     return true
+end
+
+function DynamicGroup:InvalidateSearchResultCache(resultID)
+    searchCache.stats.invalidations = searchCache.stats.invalidations + 1
+    if type(resultID) == "number" and not IsSecretValue(resultID) then
+        searchCache.meta[resultID] = nil
+        searchCache.valid[resultID] = nil
+        return
+    end
+    wipe(searchCache.meta)
+    wipe(searchCache.valid)
+    wipe(searchCache.best)
+end
+
+-- Read-only counters (builds = real C_LFGList rebuilds, invalidations = cache clears) used by the hover-budget regression test.
+function DynamicGroup:GetSearchResultCacheStats()
+    return searchCache.stats.builds, searchCache.stats.invalidations
+end
+
+-- Hover-safe settings accessor. EnsureDB() re-runs every migration, CopyDefaults over the whole DEFAULTS
+-- table and the yield-hook IsAddOnLoaded sweep on EVERY call, which is far too heavy for a hover hook.
+-- Hover paths use this instead: one full EnsureDB() per SavedVariables table, then a plain table read.
+function DynamicGroup:GetHoverDB()
+    local db = _G.DynamicGroupDB
+    if type(db) == "table" and self._hoverDBRef == db then
+        return db
+    end
+    db = EnsureDB()
+    self._hoverDBRef = db
+    return db
 end
 
 local MIDNIGHT_S2_FALLBACK_SLOTS = {
@@ -2227,7 +2281,9 @@ local function AddSearchFreshnessTooltipLine(tooltip)
     tooltip:AddLine(string.format("Last Refreshed: %ds ago", elapsed), 0.58, 0.64, 0.72)
 end
 
-local function InspectSearchResult(resultID)
+local InspectSearchResult
+do
+local function BuildSearchResultMeta(resultID)
     if not IsValidSearchResultID(resultID) then
         return nil
     end
@@ -2368,6 +2424,25 @@ local function InspectSearchResult(resultID)
         memberDots = memberDots,
     }
 end
+
+-- Cached front door. A resultID is only ever rebuilt once per search cycle (or after its own
+-- LFG_LIST_SEARCH_RESULT_UPDATED); nil results are never cached so a late-arriving ID still resolves.
+InspectSearchResult = function(resultID)
+    if type(resultID) ~= "number" or IsSecretValue(resultID) then
+        return nil
+    end
+    local cached = searchCache.meta[resultID]
+    if cached then
+        return cached
+    end
+    local meta = BuildSearchResultMeta(resultID)
+    if meta then
+        searchCache.stats.builds = searchCache.stats.builds + 1
+        searchCache.meta[resultID] = meta
+    end
+    return meta
+end
+end -- do (BuildSearchResultMeta stays block-local to spare main-chunk locals)
 
 local function SafeGetSpecialization()
     if C_SpecializationInfo and type(C_SpecializationInfo.GetSpecialization) == "function" then
@@ -6876,6 +6951,7 @@ function DynamicGroup:InstallLFGHooks()
         hk.doSearch = true
         hooksecurefunc("LFGListSearchPanel_DoSearch", function(sp)
             lastSearchTimestamp = (type(_G.GetTime) == "function" and _G.GetTime()) or nil
+            DynamicGroup:InvalidateSearchResultCache()
             wipe(declinedResultIDs)
             DynamicGroup._testApplyActive = false
             DynamicGroup._testApplyMode = nil
@@ -6898,6 +6974,7 @@ function DynamicGroup:InstallLFGHooks()
     if not hk.setCategory and type(_G.LFGListSearchPanel_SetCategory) == "function" then
         hk.setCategory = true
         hooksecurefunc("LFGListSearchPanel_SetCategory", function(sp)
+            DynamicGroup:InvalidateSearchResultCache()
             wipe(declinedResultIDs)
             if sp then
                 local pState = GetPanelState(sp)
@@ -6917,6 +6994,7 @@ function DynamicGroup:InstallLFGHooks()
     if not hk.clearPanel and type(_G.LFGListSearchPanel_Clear) == "function" then
         hk.clearPanel = true
         hooksecurefunc("LFGListSearchPanel_Clear", function(sp)
+            DynamicGroup:InvalidateSearchResultCache()
             wipe(declinedResultIDs)
             if sp then
                 local pState = GetPanelState(sp)
@@ -6927,8 +7005,15 @@ function DynamicGroup:InstallLFGHooks()
         end)
     end
     local function OnLFGSearchEntryOnEnter(selfEntry)
-        if not selfEntry or IsPlayerInCombat() or IsYieldingSharedHooks() then return end
+        if not selfEntry then return end
+        -- Zero work unless the Premade Group Finder search panel is actually open.
+        local lfgFrame = _G.LFGListFrame
+        local sp = lfgFrame and lfgFrame.SearchPanel
+        if not sp or not sp:IsShown() then return end
+        if IsPlayerInCombat() or IsYieldingSharedHooks() then return end
         local rID = (not IsSecretValue(selfEntry.resultID) and type(selfEntry.resultID) == "number" and selfEntry.resultID) or ResolveLiveResultID(selfEntry)
+        -- Cache hit: this row was already confirmed live this search cycle, so no C_LFGList query.
+        if type(rID) == "number" and (searchCache.valid[rID] or searchCache.meta[rID]) then return end
         if not IsValidSearchResultID(rID) then
             if _G.GameTooltip and (not _G.GameTooltip.IsForbidden or not _G.GameTooltip:IsForbidden()) and _G.GameTooltip.IsOwned and _G.GameTooltip:IsOwned(selfEntry) then
                 _G.GameTooltip:Hide()
@@ -6957,72 +7042,72 @@ function DynamicGroup:InstallLFGHooks()
     if not hk.tooltip and type(_G.LFGListUtil_SetSearchEntryTooltip) == "function" then
         hk.tooltip = true
         hooksecurefunc("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
-            if not tooltip or IsSecretValue(tooltip) or not resultID or IsSecretValue(resultID) or IsYieldingSharedHooks() then return end
+            if not tooltip or IsSecretValue(tooltip) or not resultID or IsSecretValue(resultID) then return end
+            local db = DynamicGroup:GetHoverDB()
+            if not db.lfgFilterEnabled then return end
+            if IsYieldingSharedHooks() then return end
             if type(tooltip.IsForbidden) == "function" then
                 local okF, isForb = pcall(tooltip.IsForbidden, tooltip)
                 if not okF or IsSecretValue(isForb) or isForb == true then return end
             end
-            if not IsValidSearchResultID(resultID) then return end
-            local db = EnsureDB()
-            if not db.lfgFilterEnabled then return end
+            -- Cached per search cycle: a repeat hover on the same row never touches C_LFGList again.
             local meta = InspectSearchResult(resultID)
             if not meta then return end
 
-            local safeRegionKey = SafeReadableString(meta.regionKey)
-            if safeRegionKey and safeRegionKey ~= "PENDING" then
-                local regMeta = REGION_META[safeRegionKey] or REGION_META.UNKNOWN
-                local rc = GetRegionColor(safeRegionKey)
-                local safeRealm = SafeReadableString(meta.realmName)
-                local realmSuffix = (safeRealm and safeRealm ~= "") and (" (" .. safeRealm .. ")") or ""
-                tooltip:AddDoubleLine(
-                    "Datacentre Region:",
-                    FormatRegionTag(safeRegionKey, regMeta.badge) .. " |c" .. rc.hex .. regMeta.pillLabel .. "|r" .. realmSuffix,
-                    0.64, 0.70, 0.78,
-                    rc.r, rc.g, rc.b
-                )
-            end
-
-            local utilParts = {}
-            if meta.hasLust then
-                utilParts[#utilParts + 1] = "|cFF38BDF8Bloodlust / Heroism|r"
-            end
-            if meta.hasCR then
-                utilParts[#utilParts + 1] = "|cFF34D399Battle Rez|r"
-            end
-            local utilText = (#utilParts > 0) and table.concat(utilParts, " + ") or "|cFF94A3B8None|r"
-            tooltip:AddDoubleLine(
-                "Party Utility:",
-                utilText,
-                0.64, 0.70, 0.78,
-                1, 1, 1
-            )
-
-            if meta.challengeMapID then
-                local bestLevel, bestScore, isTimed = GetPlayerBestForDungeon(meta.challengeMapID)
-                local bestText
-                if bestLevel > 0 then
-                    local timedLabel = isTimed and "Timed" or "Over Time"
-                    local scoreSuffix = (bestScore > 0) and (" (Score: " .. tostring(bestScore) .. ")") or ""
-                    bestText = string.format("|cFF22C55E+%d (%s)|r%s", bestLevel, timedLabel, scoreSuffix)
-                else
-                    bestText = "|cFF94A3B8No timed key recorded|r"
+            local tip = meta.tip
+            if not tip then
+                tip = {}
+                local safeRegionKey = SafeReadableString(meta.regionKey)
+                if safeRegionKey and safeRegionKey ~= "PENDING" then
+                    local regMeta = REGION_META[safeRegionKey] or REGION_META.UNKNOWN
+                    local rc = GetRegionColor(safeRegionKey)
+                    local safeRealm = SafeReadableString(meta.realmName)
+                    local realmSuffix = (safeRealm and safeRealm ~= "") and (" (" .. safeRealm .. ")") or ""
+                    tip.regionText = FormatRegionTag(safeRegionKey, regMeta.badge) .. " |c" .. rc.hex .. regMeta.pillLabel .. "|r" .. realmSuffix
+                    tip.regionR, tip.regionG, tip.regionB = rc.r, rc.g, rc.b
                 end
-                tooltip:AddDoubleLine(
-                    "Your Dungeon Best:",
-                    bestText,
-                    0.64, 0.70, 0.78,
-                    1, 1, 1
-                )
+
+                local utilParts = {}
+                if meta.hasLust then
+                    utilParts[#utilParts + 1] = "|cFF38BDF8Bloodlust / Heroism|r"
+                end
+                if meta.hasCR then
+                    utilParts[#utilParts + 1] = "|cFF34D399Battle Rez|r"
+                end
+                tip.utilText = (#utilParts > 0) and table.concat(utilParts, " + ") or "|cFF94A3B8None|r"
+
+                if meta.challengeMapID then
+                    local best = searchCache.best[meta.challengeMapID]
+                    if not best then
+                        local bestLevel, bestScore, isTimed = GetPlayerBestForDungeon(meta.challengeMapID)
+                        best = { bestLevel, bestScore, isTimed }
+                        searchCache.best[meta.challengeMapID] = best
+                    end
+                    if best[1] > 0 then
+                        local timedLabel = best[3] and "Timed" or "Over Time"
+                        local scoreSuffix = (best[2] > 0) and (" (Score: " .. tostring(best[2]) .. ")") or ""
+                        tip.bestText = string.format("|cFF22C55E+%d (%s)|r%s", best[1], timedLabel, scoreSuffix)
+                    else
+                        tip.bestText = "|cFF94A3B8No timed key recorded|r"
+                    end
+                end
+
+                if meta.numMembers and meta.numMembers > 0 then
+                    local _, _, _, accHex = GetSuiteAccent()
+                    tip.classText = meta.hasPlayerClass and ("|c" .. accHex .. "Yes|r") or "|cFF34D399No|r"
+                end
+                meta.tip = tip
             end
 
-            if meta.numMembers and meta.numMembers > 0 then
-                local _, _, _, accHex = GetSuiteAccent()
-                tooltip:AddDoubleLine(
-                    "Your Class in Group:",
-                    meta.hasPlayerClass and ("|c" .. accHex .. "Yes|r") or "|cFF34D399No|r",
-                    0.64, 0.70, 0.78,
-                    1, 1, 1
-                )
+            if tip.regionText then
+                tooltip:AddDoubleLine("Datacentre Region:", tip.regionText, 0.64, 0.70, 0.78, tip.regionR, tip.regionG, tip.regionB)
+            end
+            tooltip:AddDoubleLine("Party Utility:", tip.utilText, 0.64, 0.70, 0.78, 1, 1, 1)
+            if tip.bestText then
+                tooltip:AddDoubleLine("Your Dungeon Best:", tip.bestText, 0.64, 0.70, 0.78, 1, 1, 1)
+            end
+            if tip.classText then
+                tooltip:AddDoubleLine("Your Class in Group:", tip.classText, 0.64, 0.70, 0.78, 1, 1, 1)
             end
 
             tooltip:Show()
@@ -9693,11 +9778,11 @@ local function RegisterWithDynamicSuite()
         version = DynamicGroup.version or VERSION,
         date = "28/11/2026",
         entries = {
+            { type = "PERF",    text = "Premade Group Finder Hover Speed-Up (28/11/2026): Hovering over Premade Group listings no longer re-reads each group's members or rebuilds its tooltip every time the mouse moves over a row. Group details are now remembered for the current search and only refreshed when that group updates or you search again, the hover check does nothing at all while the Group Finder is closed or you are in combat, and your settings and the yield-to-other-addon check are no longer re-run on every hover." },
             { type = "FIX",     text = "Premade Group Finder Protected Text & Taint Isolation Fix (28/11/2026): Stopped modifying Blizzard's Premade Group Finder list, count, or selected group fields and stopped calling Blizzard's list refresh directly, eliminating protected text conversion errors while browsing groups. Client-side filters now cleanly dim and label non-matching rows instead of altering Blizzard's list, 1-Click Sign-Up leaves Blizzard's selected group untouched, dialog and list hooks use safe post-hooks, and every listing field is checked before any text formatting." },
             { type = "FIX",     text = "True 1-Click Sign-Up & Dungeon Teleport Toast Reliability Fix (28/11/2026): Clicking a Premade Group row with 1-Click Sign-Up enabled now selects your active role, fills your note, and submits your application immediately in a single click (falling back to positioning the Sign Up button under your cursor only if the box stays open), while holding Shift or Alt or clicking Blizzard's Sign Up button manually keeps the box open and centred; fixed the Dungeon Teleport Toast so it reliably shows the full dungeon name for group leaders, all joining players (including the 5th player when a group automatically delists), and players joining a new dungeon from inside a finished dungeon, without double-triggering sounds or notifications." },
             { type = "FIX",     text = "1-Click Premade Group Sign-Up & Secret-String Protection Fix (28/11/2026): Hardened 1-Click Premade Group Sign-Up across both Blizzard click handlers with duplicate-click protection, late-load retries, stale-yield cleanup, already-applied skips, role validation (with mixin fallback), and Sign-Up box layering strictly above Group Finder; added secret-value guards across listing, realm, tooltip, and toast text, and left Blizzard's result list untouched when filtering is turned off." },
             { type = "FEATURE", text = "Release v2.10.3 - Standalone Window Parity, Compact 800x520 Layout & Patch 12.1.7 Lockdown Hardening (25/11/2026): Added standalone window parity with a clamped header status readout, 36px Obsidian footer bar (Reset DynamicGroup and Reload UI buttons), bottom-right corner resize grip with 860x600 Right-Click reset, and live Suite Accent repainting; refined tabs, section subtitles, dropdown widths, sub-drawer spacing, 2-line card descriptions, and responsive 2x3 region filter pills for 800x520 layouts; hardened !keys responses, whisper and Battle.net auto-invites, group invite auto-accept, role check confirmation, Portal Bar, Teleport Toast, and Premade Group Finder hooks against Patch 12.1.7 combat lockdown, chat messaging lockdown, and secret values using non-intrusive hooks and weak frame state tables; standardised Australian English and plain-English wording." },
-            { type = "FEATURE", text = "Release v2.8.1 - Opt-In Auto-Accept Role Check & Conflict Auto-Yield (22/11/2026): Added opt-in Auto-Accept Role Check (Off by default) in Tab 2 with a 0.45s out-of-combat safety delay, Shift-to-skip bypass, Retail 12.1.5 secret-value guards, clean chat confirmation, and automatic feature-level yielding to EnhanceQoL or Leatrix Plus (overridable in /ds conflicts). Never auto-accepts queue pops." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}
@@ -9874,13 +9959,24 @@ SafeRegisterEvent(DynamicGroup, "LFG_ROLE_CHECK_SHOW")
 SafeRegisterEvent(DynamicGroup, "GROUP_ROSTER_UPDATE")
 SafeRegisterEvent(DynamicGroup, "CHALLENGE_MODE_KEYSTONE_RECEPTABLE_OPEN")
 SafeRegisterEvent(DynamicGroup, "LFG_LIST_SEARCH_RESULT_UPDATED")
+SafeRegisterEvent(DynamicGroup, "LFG_LIST_SEARCH_RESULTS_RECEIVED")
 SafeRegisterEvent(DynamicGroup, "LFG_LIST_APPLICATION_STATUS_UPDATED")
 SafeRegisterEvent(DynamicGroup, "LFG_LIST_JOINED_GROUP")
 SafeRegisterEvent(DynamicGroup, "LFG_LIST_ACTIVE_ENTRY_UPDATE")
 SafeRegisterEvent(DynamicGroup, "PLAYER_ENTERING_WORLD")
 
 DynamicGroup:SetScript("OnEvent", function(self, event, ...)
+    -- Hover-cache invalidation runs first so a combat / early-return branch below can never leave stale rows behind.
+    if event == "LFG_LIST_SEARCH_RESULT_UPDATED" then
+        DynamicGroup:InvalidateSearchResultCache((...))
+    elseif event == "LFG_LIST_SEARCH_RESULTS_RECEIVED" then
+        DynamicGroup:InvalidateSearchResultCache()
+        return
+    elseif event == "CHALLENGE_MODE_MAPS_UPDATE" or event == "CHALLENGE_MODE_MEMBER_INFO_UPDATED" then
+        DynamicGroup:InvalidateSearchResultCache()
+    end
     if event == "ADDON_LOADED" then
+        DynamicGroup._yieldLoaded = nil
         local loadedName = ...
         if (loadedName == ADDON_FOLDER or loadedName == "DynamicGroup") and not isInitialized then
             isInitialized = true

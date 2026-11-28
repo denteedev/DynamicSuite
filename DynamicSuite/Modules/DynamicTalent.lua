@@ -122,9 +122,15 @@ DynamicTalent.addonName      = "DynamicTalent"
 DynamicTalent._loadedBySuite = (ADDON_FOLDER == "DynamicSuite")
 DynamicTalent._loadedVersion = VERSION
 
+local moduleShortKeyCache = {}
 local function IsModuleDisabledInSuite(moduleName)
     local key = moduleName or "DynamicTalent"
-    local shortK = key:gsub("^Dynamic", ""):lower()
+    -- Memoised: this runs on every UPDATE_MOUSEOVER_UNIT / NAME_PLATE_UNIT_ADDED event, so avoid gsub/lower garbage.
+    local shortK = moduleShortKeyCache[key]
+    if not shortK then
+        shortK = key:gsub("^Dynamic", ""):lower()
+        moduleShortKeyCache[key] = shortK
+    end
     local dsDB = _G.DynamicSuiteDB
     if type(dsDB) == "table" then
         if type(dsDB.disabledModules) == "table" and (dsDB.disabledModules[key] == true or dsDB.disabledModules[shortK] == true or dsDB.disabledModules["talent"] == true or dsDB.disabledModules["DynamicTalent"] == true) then
@@ -6578,6 +6584,7 @@ do
                 self._ejEnrichAttempted = true
                 if TryEnrichWithEJ(self._cachedTierRaids) then
                     self._ejEnriched = true
+                    self._matchMemo = nil -- enrichment edits boss names/aliases in place
                 end
             end
             return self._cachedTierRaids
@@ -6600,14 +6607,42 @@ do
         if type(targetName) ~= "string" or _IsSecret(targetName) or targetName == "" then
             return nil
         end
+        -- Passive hover/target scans (no explicit raidsList) memoise per exact name against the live
+        -- raid table, so hovering the same NPC repeatedly never re-runs the four nested boss scans.
+        local memoRaids = nil
+        if raidsList == nil then
+            memoRaids = self:GetSeason2Raids()
+            if self._matchMemoRaids ~= memoRaids or type(self._matchMemo) ~= "table" then
+                self._matchMemoRaids = memoRaids
+                self._matchMemo = {}
+                self._matchMemoCount = 0
+            end
+            local hit = self._matchMemo[targetName]
+            if hit ~= nil then
+                if hit == false then return nil end
+                return hit[1], hit[2], hit[3], hit[4]
+            end
+        end
         local lowT = SafeTrim(targetName):lower()
         if lowT == "" then return nil end
-        local raids = raidsList or self:GetSeason2Raids()
+        local raids = raidsList or memoRaids
+
+        local function Remember(rIdx, bIdx, rObj, bObj)
+            if memoRaids then
+                if (self._matchMemoCount or 0) >= 128 then
+                    self._matchMemo = {}
+                    self._matchMemoCount = 0
+                end
+                self._matchMemoCount = self._matchMemoCount + 1
+                self._matchMemo[targetName] = rIdx and { rIdx, bIdx, rObj, bObj } or false
+            end
+            return rIdx, bIdx, rObj, bObj
+        end
 
         for rIdx, rObj in ipairs(raids) do
             for bIdx, bObj in ipairs(rObj.bosses or {}) do
                 if tostring(bObj.name or ""):lower() == lowT then
-                    return rIdx, bIdx, rObj, bObj
+                    return Remember(rIdx, bIdx, rObj, bObj)
                 end
             end
         end
@@ -6615,7 +6650,7 @@ do
             for bIdx, bObj in ipairs(rObj.bosses or {}) do
                 for _, alias in ipairs(bObj.aliases or {}) do
                     if alias == lowT then
-                        return rIdx, bIdx, rObj, bObj
+                        return Remember(rIdx, bIdx, rObj, bObj)
                     end
                 end
             end
@@ -6624,7 +6659,7 @@ do
             for bIdx, bObj in ipairs(rObj.bosses or {}) do
                 for _, alias in ipairs(bObj.aliases or {}) do
                     if #alias >= 4 and lowT:find(alias, 1, true) then
-                        return rIdx, bIdx, rObj, bObj
+                        return Remember(rIdx, bIdx, rObj, bObj)
                     end
                 end
             end
@@ -6633,11 +6668,11 @@ do
             for bIdx, bObj in ipairs(rObj.bosses or {}) do
                 local bLow = tostring(bObj.name or ""):lower()
                 if #bLow >= 4 and lowT:find(bLow, 1, true) then
-                    return rIdx, bIdx, rObj, bObj
+                    return Remember(rIdx, bIdx, rObj, bObj)
                 end
             end
         end
-        return nil
+        return Remember(nil)
     end
 end
 
@@ -11873,13 +11908,13 @@ DynamicTalent.Reset               = function() return DynamicTalent:ResetModuleD
 DynamicTalent.CHANGELOG = {
     {
         version = VERSION,
-        date = "27/11/2026",
+        date = "28/11/2026",
         entries = {
+            { type = "PERF",  text = "Mouseover Boss Check Speed-Up (28/11/2026): Moving the mouse over enemies, nameplates or other players now stops straight away when you are in combat, resting, hovering a player, have no boss binds saved, or no bind applies to the zone, before any name, ID or Encounter Journal lookups run. Boss-name matching is also remembered, so repeat hovers in a raid never rescan the boss list." },
             { type = "PERF",  text = "Mouseover & Target Fast-Exit Hardening (27/11/2026): Restricted Encounter Journal boss enrichment strictly to explicit Talent Manager opens or Blizzard_EncounterJournal loads (never on passive mouseover, nameplate, or soft-enemy events), and added instant non-raid and resting-zone fast-exits to UPDATE_MOUSEOVER_UNIT and PLAYER_TARGET_CHANGED." },
             { type = "FIXED", text = "Release v2.10.3 - Patch 12.1.7 Combat, Secret-Value & Unspecialised Hardening (25/11/2026): Guarded talent dock refreshes on Blizzard's Talent window during combat (deferring updates until combat ends), protected import string decoding and loadout switching against secret values, active Mythic+ runs, and unspecialised or Lorewalking characters, and tightened Encounter Journal, Mythic+ dungeon list, raid difficulty, Hero medallion, and specialisation-change checks." },
             { type = "UI",    text = "Release v2.10.3 - Standalone Window, Pop-Out Manager Parity & 800x520 Layout Reflow (25/11/2026): Made the standalone DynamicTalent window resizable (760x480 to 1280x860) with a live Suite Accent top bar, Reset/Reload footer, and corner resize grip with Right-Click reset; widened the Pop-Out Manager bounds to 1280x860 with resize grip tooltip and Right-Click reset; fixed the Talent Dock scrollbar overlap with the specialisation bar; fixed vertical skew on section headers and Backdrop Studio descriptions; compacted left-column cards, Action Strip buttons, and Raid difficulty rows for clean 800x520 framing; and reflowed Mythic+ dungeon tiles into a 2x4 grid on narrower layouts." },
             { type = "UI",    text = "Release v2.8.1 - Raid Bosses Binder Redesign (22/11/2026): Promoted All Raids to Row 1 alongside the Season 2 raid pills with an Obsidian Core explanation banner; expanded the boss grid to use the full card width underneath; added a red-hover Clear button beside + Bind Raid to remove All Raids or selected boss binds for the toggled difficulties; and fixed multi-select and unselect behaviour on boss tiles." },
-            { type = "FIXED", text = "Release v2.8.1 - Raid Boss Selection & Boss-Specific Build Priority Over All Raids (22/11/2026): Removed forced Boss #1 pre-highlighting in Raid Boss Talent Binds (and cleared pending tile selections when switching loadouts or after binding) so bosses can be freely selected and unselected; added automatic single-boss raid matching (Kith'ix, Tidebound Grotto); cleared cached boss memory when targeting an unbound Season 2 raid boss; and protected active boss-specific raid builds from being overridden by All Raids when no unbound boss is targeted." },
         },
     },
 }
@@ -12036,11 +12071,14 @@ local function ShouldRunPassiveUnitBossCheck(selfObj, reason, unit, skipWhenRest
     end
     if IsModuleDisabledInSuite("DynamicTalent") then return false end
     if type(unit) ~= "string" or _IsSecret(unit) or unit == "" then return false end
+    -- O(1) exits before any Unit*/spec/instance C-API call: nothing bound for any spec means no boss can match.
+    local allBinds = selfObj.db.talentBossMap
+    if type(allBinds) ~= "table" or next(allBinds) == nil then return false end
+    if skipWhenResting and IsPlayerRestingSafe() then return false end
     if type(UnitExists) ~= "function" then return false end
     local okE, ex = pcall(UnitExists, unit)
     if not okE or _IsSecret(ex) or not ex then return false end
     if IsSafeUnitPlayer(unit) then return false end
-    if skipWhenResting and IsPlayerRestingSafe() then return false end
 
     local specID = selfObj:GetActiveSpecID()
     if not specID then return false end

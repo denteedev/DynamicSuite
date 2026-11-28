@@ -196,6 +196,29 @@ try {
 }
 Write-Host "[STATIC AUDIT OK] Verified 0 undefined table methods, 0 unsafe Blizzard frame hooks, and all secret/fade guards across $($luaFiles.Count) Lua file(s)" -ForegroundColor Green
 
+# 2d. Permanent Headless Lua 5.1 Regression Suites (includes the suite-wide mouseover / tooltip hover budget test)
+$headlessSuites = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter "test_*.lua" -File |
+    Where-Object { $_.Name -ne "test_static_taint_and_nil_audit.lua" } |
+    Sort-Object Name)
+Push-Location $RepoRoot
+try {
+    foreach ($suite in $headlessSuites) {
+        & $luacExe -p $suite.FullName
+        if ($LASTEXITCODE -ne 0) {
+            throw "luac5.1 syntax check failed: $($suite.FullName)"
+        }
+        $suiteOutput = (& $luaExe $suite.FullName 2>&1 | Out-String)
+        $suiteExit = $LASTEXITCODE
+        if ($suiteExit -ne 0 -or $suiteOutput -match "\[FAIL\]") {
+            Write-Host $suiteOutput
+            throw "Headless Lua 5.1 suite failed: $($suite.Name) (exit $suiteExit)"
+        }
+    }
+} finally {
+    Pop-Location
+}
+Write-Host "[HEADLESS SUITES OK] $($headlessSuites.Count) headless Lua 5.1 suite(s) passed (incl. test_hover_budget_suite.lua)" -ForegroundColor Green
+
 # 3. Mirror CHANGELOG.md and verify Pure ASCII & No-BOM
 $changelogPath = Join-Path $RepoRoot "CHANGELOG.md"
 $suiteChangelogPath = Join-Path $RepoRoot "DynamicSuite\CHANGELOG.md"
