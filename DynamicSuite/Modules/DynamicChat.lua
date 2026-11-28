@@ -863,6 +863,19 @@ local function EnsureDB()
     return _G.DynamicChatDB
 end
 
+-- Hover-safe settings accessor. EnsureDB() re-runs CopyDefaults over all DEFAULTS and every migration on EVERY call,
+-- which is far too heavy for a chat tab OnEnter / OnLeave. Hover paths use this: one full EnsureDB() per SavedVariables
+-- table, then a plain table read.
+function DynamicChat:GetHoverDB()
+    local db = _G.DynamicChatDB
+    if type(db) == "table" and self._hoverDBRef == db then
+        return db
+    end
+    db = EnsureDB()
+    self._hoverDBRef = db
+    return db
+end
+
 -- ============================================================================
 -- 3B. 2-TIER CHAT CONFLICT SCANNER & SHARED-HOOK AUTO-YIELD ENGINE
 -- ============================================================================
@@ -5461,7 +5474,7 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
         end)
         tab:HookScript("OnEnter", function(selfTab)
             local ownerCF = hookedChatTabs[selfTab]
-            if not ownerCF or DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
+            if not ownerCF or DynamicChat:IsExternalChatEngineLoaded() or DynamicChat:GetHoverDB().enableSleekChatSkin == false then return end
             if InCombatLockdown and InCombatLockdown() then return end
             local a1, a2, a3 = GetSuiteAccent()
             local ownerName = "ChatFrame1"
@@ -5471,7 +5484,7 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
                     ownerName = oName
                 end
             end
-            StyleSingleChatTab(ownerCF, selfTab, ownerName, true, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
+            StyleSingleChatTab(ownerCF, selfTab, ownerName, true, DynamicChat:GetHoverDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
             if _G.GameTooltip and (not _G.GameTooltip.IsForbidden or not _G.GameTooltip:IsForbidden()) and not DC_NS.IsTemporaryBNWhisperOrSecretFrame(ownerCF) then
                 local ownerEntry = chatSkinStore[ownerCF]
                 local tabFS = (selfTab.GetFontString and selfTab:GetFontString()) or selfTab.Text
@@ -5507,7 +5520,7 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
             if _G.GameTooltip and (not _G.GameTooltip.IsForbidden or not _G.GameTooltip:IsForbidden()) and _G.GameTooltip.GetOwner and _G.GameTooltip:GetOwner() == selfTab then
                 _G.GameTooltip:Hide()
             end
-            if not ownerCF or DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
+            if not ownerCF or DynamicChat:IsExternalChatEngineLoaded() or DynamicChat:GetHoverDB().enableSleekChatSkin == false then return end
             if InCombatLockdown and InCombatLockdown() then return end
             local a1, a2, a3 = GetSuiteAccent()
             local ownerName = "ChatFrame1"
@@ -5517,7 +5530,7 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
                     ownerName = oName
                 end
             end
-            StyleSingleChatTab(ownerCF, selfTab, ownerName, true, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
+            StyleSingleChatTab(ownerCF, selfTab, ownerName, true, DynamicChat:GetHoverDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
         end)
     end
 
@@ -15331,11 +15344,11 @@ function DynamicChat._RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "28/11/2026",
         entries = {
+            { type = "PERF",     text = "Chat Tab Hover Speed-Up (28/11/2026): Hovering or leaving a chat tab no longer re-runs the full settings check and migration each time, so moving the mouse across your chat tabs stays smooth." },
             { type = "FIX",      text = "Combat Chat Tab, Scrollbar & Temporary Whisper Protection (28/11/2026): Prevented combat chat messages, whisper flash alerts, tab switching, hover events, and background dock updates from modifying Blizzard chat tabs, backgrounds, scrollbars, or middle-click close triggers during Mythic+, raid, or instance combat (deferring layout refreshes cleanly until combat ends); replaced primary chat window show/hide script hooks with safe post-hooks, protected whisper tab tooltips against restricted frames, and added readable-value checks before temporary-tab checks and text conversions." },
             { type = "FIX",      text = "Secret-String Protection & Late Edit Mode Layout Stability Fix (28/11/2026): Added secret-value guards around chat frame names, tab titles, hover checks, and mention alert snippets so protected Blizzard chat values never trigger conversion errors; reset the coalesced layout timer on late post-reload Edit Mode updates so saved chat dimensions and typing box skinning are always applied cleanly." },
             { type = "FIX",      text = "Chat Window Shift-Drag Reload Persistence Fix (28/11/2026): Fixed the chat window reverting position or dimensions after reloading when moved directly with Shift + Left-Drag; dragging now preserves your custom chat width and height and mirrors the saved position across both global and active character-scoped suite layouts." },
             { type = "NEW",      text = "Clickable Saved Whisper History Hint (28/11/2026): Added a zero-taint clickable 'Previous messages saved in Copy Chat' overlay inside empty reopened character whisper tabs so you can open Copy Chat for that whisper with a single click; the hint automatically stays clear of top or bottom typing boxes, hides immediately when a new whisper arrives or when switching tabs, and never touches Battle.net or secret whisper tabs." },
-            { type = "FIX",      text = "Chat Window Size Reload Persistence Fix (27/11/2026): Fixed the primary chat window reverting to Blizzard's smaller default dimensions after reloading; HUD Edit Mode resizes now reliably commit width and height on release, screen clamping preserves saved chat dimensions instead of overwriting them with temporary early-login bounds, and Blizzard Edit Mode chat sizing passes re-apply DynamicChat's saved dimensions cleanly while updating the embedded typing box and message insets." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}

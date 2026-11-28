@@ -1001,6 +1001,58 @@ RunTest("T3d: DynamicChat custom scrollbar attaches OnUpdate only while shown wi
     assertEqual(scrollBar:GetScript("OnUpdate"), nil, "OnUpdate cleared immediately on OnHide")
 end)
 
+-- ============================================================================
+-- T4: Chat tab hover (OnEnter / OnLeave) must never re-run the full EnsureDB() migration per hover
+-- ============================================================================
+RunTest("T4: DynamicChat chat tab OnEnter/OnLeave x100 never re-run EnsureDB / CopyDefaults per hover", function()
+    local h = CreateHarness()
+    local sharedTbl = {}
+    local cf1 = SetupChatGlobals(h)
+    LoadChunk(CORE_PATH, h.env, "DynamicSuite", sharedTbl)
+    LoadChunk(CHAT_PATH, h.env, "DynamicSuite", sharedTbl)
+    h.FireEvent("ADDON_LOADED", "DynamicSuite")
+    h.FireEvent("PLAYER_LOGIN")
+    h.FlushTimers()
+
+    local dc = h.env.DynamicChat
+    assertTrue(dc ~= nil, "DynamicChat must load")
+    dc:ApplySleekChatSkin()
+    h.FlushTimers()
+
+    local tab1 = h.env.ChatFrame1Tab
+    assertTrue(type(tab1._scripts.OnEnter) == "function", "Chat tab OnEnter hook installed")
+
+    -- EnsureDB() always (re)writes whisperTriggerMode; a proxy DB counts those writes.
+    local real = h.env.DynamicChatDB
+    local ensureRuns = 0
+    local proxy = setmetatable({}, {
+        __index = real,
+        __newindex = function(_, k, v)
+            if k == "whisperTriggerMode" then ensureRuns = ensureRuns + 1 end
+            real[k] = v
+        end,
+    })
+    h.env.DynamicChatDB = proxy
+    h.env.InCombatLockdown = function() return false end
+    local gt = {}
+    for _, m in ipairs({ "SetOwner", "ClearLines", "AddLine", "AddDoubleLine", "Show", "Hide" }) do
+        gt[m] = function() end
+    end
+    gt.GetOwner = function() return nil end
+    gt.IsForbidden = function() return false end
+    h.env.GameTooltip = gt
+
+    -- First hover may legitimately run EnsureDB once to bind the new table.
+    tab1._scripts.OnEnter(tab1)
+    tab1._scripts.OnLeave(tab1)
+    ensureRuns = 0
+    for _ = 1, 100 do
+        tab1._scripts.OnEnter(tab1)
+        tab1._scripts.OnLeave(tab1)
+    end
+    assertEqual(ensureRuns, 0, "100 chat tab hovers must run EnsureDB() zero extra times")
+end)
+
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))
 if failed > 0 then
     os.exit(1)
