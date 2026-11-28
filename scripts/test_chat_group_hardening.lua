@@ -1273,6 +1273,248 @@ RunTest("T9: Midnight Secret-String Conversion Guards on LFG & Chat (Throws on A
     end
 end)
 
+-- ============================================================================
+-- T10: Execution-Taint Isolation (LFG SearchPanel, Dialog/Entry Hooks & Chat Combat ScrollBar)
+-- ============================================================================
+RunTest("T10: Zero SearchPanel Mutations/UpdateResults Calls, Hook Hygiene & Combat Chat ScrollBar Safety", function()
+    local strictSecret = setmetatable({}, {
+        __tostring = function()
+            error("attempt to perform string conversion on a secret string value (execution tainted by 'DynamicSuite')", 2)
+        end,
+        __concat = function()
+            error("attempt to perform string conversion on a secret string value (execution tainted by 'DynamicSuite')", 2)
+        end,
+        __lt = function() error("attempt to compare secret value", 2) end,
+        __le = function() error("attempt to compare secret value", 2) end,
+    })
+
+    -- (a) DynamicGroup: even with lfgFilterEnabled == true and non-matching listings, NEVER write
+    --     SearchPanel.results / totalResults / selectedResult, NEVER call LFGListSearchPanel_UpdateResults,
+    --     NEVER call HookScript on LFGListApplicationDialog or SearchPanel, and NEVER attach OnEnter/OnMouseDown HookScript on entries.
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.issecretvalue = function(v) return v == strictSecret end
+        env.canaccessvalue = function(v) return v ~= strictSecret end
+        env.GetSpecializationRole = function() return "DAMAGER" end
+        env.C_SpecializationInfo.GetSpecializationRole = env.GetSpecializationRole
+
+        env.DynamicGroupDB = {
+            lfgFilterEnabled = true,
+            oneClickSignUp = true,
+            autoSelectRole = true,
+            enabledRegions = { OCE = true, NA_WEST = false, NA_EAST = false },
+            minLeaderScore = 2500,
+            showEntryOverlay = true,
+        }
+
+        local dlg = env.LFGListApplicationDialog
+        local dlgHookScripts = 0
+        local origDlgHook = dlg.HookScript
+        dlg.HookScript = function(self, ...)
+            dlgHookScripts = dlgHookScripts + 1
+            return origDlgHook(self, ...)
+        end
+        dlg.SignUpButton = env.CreateFrame("Button", nil, dlg)
+        dlg.SignUpButton._enabled = true
+        dlg.DamagerButton = env.CreateFrame("Frame", nil, dlg)
+        dlg.DamagerButton._shown = true
+        dlg.DamagerButton.CheckButton = env.CreateFrame("CheckButton", nil, dlg.DamagerButton)
+
+        local sp = env.LFGListFrame.SearchPanel
+        local spHookScripts = 0
+        local origSpHook = sp.HookScript
+        sp.HookScript = function(self, ...)
+            spHookScripts = spHookScripts + 1
+            return origSpHook(self, ...)
+        end
+        sp.SignUpButton = env.CreateFrame("Button", nil, sp)
+        sp.SignUpButton._enabled = true
+
+        local updateResultsDirectCalls = 0
+        local searchEntryEnterHookRan = 0
+        env.LFGListSearchPanel_UpdateResults = function()
+            updateResultsDirectCalls = updateResultsDirectCalls + 1
+        end
+        env.LFGListSearchPanel_UpdateResultList = function() end
+        env.LFGListSearchEntry_Update = function() end
+        env.LFGListSearchEntry_OnEnter = function() end
+        env.LFGListSearchEntry_OnClick = function() end
+        env.LFGListSearchEntryMixin = { OnClick = function() end, OnEnter = function() end }
+        env.LFGListApplicationDialog_Show = function(d, rID)
+            d._lastResultID = rID
+            d:Show()
+        end
+        env.LFGListSearchPanel_SignUp = function(targetSP)
+            dlg._lastResultID = targetSP.selectedResult
+            dlg:Show()
+        end
+        env.LFGListApplicationDialog_UpdateRoles = function() end
+        env.LFGListApplicationDialog_UpdateValidState = function() end
+
+        env.C_LFGList.GetSearchResults = function() return 2, { 301, 302 } end
+        env.C_LFGList.HasSearchResultInfo = function(id) return id == 301 or id == 302 end
+        env.C_LFGList.GetSearchResultInfo = function(id)
+            if id == 301 then
+                -- Passing OCE listing with secret title/comment/voiceChat
+                return {
+                    searchResultID = 301,
+                    name = strictSecret,
+                    comment = strictSecret,
+                    voiceChat = strictSecret,
+                    leaderName = "Mate-Frostmourne",
+                    leaderOverallDungeonScore = 3100,
+                    numMembers = 3,
+                    maxMembers = 5,
+                    isDelisted = false,
+                    activityIDs = { 1170 },
+                }
+            elseif id == 302 then
+                -- Non-matching low-score listing with secret leader/strings
+                return {
+                    searchResultID = 302,
+                    name = strictSecret,
+                    comment = strictSecret,
+                    voiceChat = strictSecret,
+                    leaderName = strictSecret,
+                    leaderOverallDungeonScore = 1200,
+                    numMembers = 4,
+                    maxMembers = 5,
+                    isDelisted = false,
+                    activityIDs = { 1170 },
+                }
+            end
+            return nil
+        end
+        env.C_LFGList.GetActivityInfoTable = function()
+            return {
+                categoryID = 2,
+                fullName = strictSecret,
+                shortName = strictSecret,
+                isMythicPlusActivity = true,
+            }
+        end
+        env.C_LFGList.GetSearchResultPlayerInfo = function()
+            return {
+                assignedRole = strictSecret,
+                classFilename = strictSecret,
+                name = strictSecret,
+                isLeader = strictSecret,
+                isLeaver = strictSecret,
+            }
+        end
+        env.C_LFGList.GetApplicationInfo = function(id)
+            return id, strictSecret, nil, strictSecret
+        end
+
+        local entryPass = env.CreateFrame("Button", nil, sp)
+        entryPass.resultID = 301
+        local entryFail = env.CreateFrame("Button", nil, sp)
+        entryFail.resultID = 302
+        local entryHookedScripts = {}
+        for _, ent in ipairs({ entryPass, entryFail }) do
+            local origHook = ent.HookScript
+            ent.HookScript = function(self, ev, fn)
+                entryHookedScripts[ev] = (entryHookedScripts[ev] or 0) + 1
+                return origHook(self, ev, fn)
+            end
+        end
+        sp.ScrollBox.ForEachFrame = function(_, fn)
+            fn(entryPass)
+            fn(entryFail)
+        end
+        sp.categoryID = strictSecret
+
+        h.LoadModule(GROUP_PATH, "DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+
+        assertEqual(dlgHookScripts, 0, "LFGListApplicationDialog must use hooksecurefunc(Show), never HookScript")
+        assertEqual(spHookScripts, 0, "LFGListFrame.SearchPanel must use hooksecurefunc(Show), never HookScript")
+
+        local origResults = { 301, 302 }
+        sp.results = origResults
+        sp.totalResults = 2
+        sp.selectedResult = nil
+        sp:Show()
+
+        -- Trigger Blizzard result update, manual RefreshLFGResults, entry updates, and async timer
+        env.LFGListSearchPanel_UpdateResultList(sp)
+        env.DynamicGroup:RefreshLFGResults()
+        env.LFGListSearchEntry_Update(entryPass)
+        env.LFGListSearchEntry_Update(entryFail)
+        h.AdvanceTime(0.1)
+
+        assertEqual(sp.results, origResults, "SearchPanel.results must NEVER be overwritten even when lfgFilterEnabled is true")
+        assertEqual(sp.totalResults, 2, "SearchPanel.totalResults must NEVER be overwritten by DynamicGroup")
+        assertEqual(sp.selectedResult, nil, "SearchPanel.selectedResult must NEVER be overwritten during filtering")
+        assertEqual(updateResultsDirectCalls, 0, "DynamicGroup must NEVER directly invoke LFGListSearchPanel_UpdateResults")
+        assertEqual(entryHookedScripts.OnEnter or 0, 0, "LFGListSearchEntry must NOT attach OnEnter HookScript")
+        assertEqual(entryHookedScripts.OnMouseDown or 0, 0, "LFGListSearchEntry must NOT attach OnMouseDown HookScript")
+        assertEqual(entryPass:GetAlpha(), 1, "Passing listing keeps full alpha")
+        assertEqual(entryFail:GetAlpha(), 0.28, "Filtered-out listing is visually dimmed without mutating panel.results")
+
+        -- Recycling entryFail to a passing listing restores full alpha cleanly
+        entryFail.resultID = 301
+        env.LFGListSearchEntry_Update(entryFail)
+        assertEqual(entryFail:GetAlpha(), 1, "Recycled entry restores full alpha for passing listing")
+
+        -- 1-Click Sign-Up fallback proxy must NEVER write sp.selectedResult on Blizzard's SearchPanel
+        env.LFGListApplicationDialog_Show = nil
+        env.LFGListSearchEntry_OnClick(entryPass, "LeftButton")
+        assertEqual(sp.selectedResult, nil, "PerformLFGSignUp fallback proxy must NEVER mutate sp.selectedResult")
+        assertEqual(dlg._lastResultID, 301, "Fallback proxy still supplies liveResultID 301 to LFGListSearchPanel_SignUp")
+
+        -- Entry OnEnter post-hook hides stale tooltip safely without HookScript
+        env.GameTooltip.IsOwned = function(_, owner) return owner == entryFail end
+        entryFail.resultID = 99999
+        env.GameTooltip._hideCalls = 0
+        env.LFGListSearchEntry_OnEnter(entryFail)
+        assertEqual(env.GameTooltip._hideCalls, 1, "LFGListSearchEntry_OnEnter hooksecurefunc hides invalid-entry tooltip")
+    end
+
+    -- (b) DynamicChat: combat AddMessage never mutates cf.ScrollBar; secret isTemporary/tab/PrintMsg never throw
+    do
+        local h = CreateHarness({ withSuite = true })
+        local env = h.env
+        env.issecretvalue = function(v) return v == strictSecret end
+        env.canaccessvalue = function(v) return v ~= strictSecret end
+
+        local cf1 = env.ChatFrame1
+        cf1.ScrollBar = env.CreateFrame("Slider", "ChatFrame1ScrollBar", cf1)
+        cf1.ScrollToBottomButton = env.CreateFrame("Button", "ChatFrame1ScrollToBottomButton", cf1)
+        cf1.AddMessage = function() end
+
+        h.LoadModule(CHAT_PATH, "DynamicSuite")
+        h.FireEvent("ADDON_LOADED", "DynamicSuite")
+        h.FireEvent("PLAYER_LOGIN")
+        env.DynamicChat:ApplySleekChatSkin()
+
+        -- Enter combat: AddMessage must NOT touch Blizzard's cf1.ScrollBar (EnableMouse/SetAlpha)
+        -- and ScrollToBottomButton OnShow must NOT call Hide() during combat
+        h.state.inCombat = true
+        cf1.ScrollBar._enableMouseCalls = {}
+        cf1.ScrollToBottomButton._hideCalls = 0
+        cf1:AddMessage("Mythic+ combat message")
+        cf1.ScrollToBottomButton:Show()
+        assertEqual(#cf1.ScrollBar._enableMouseCalls, 0, "Combat AddMessage hook must NOT call ScrollBar:EnableMouse")
+        assertEqual(cf1.ScrollToBottomButton._hideCalls, 0, "Combat ScrollToBottomButton OnShow must NOT call Hide()")
+
+        -- Secret isTemporary / chatTarget / chatType must never throw during FCF_OpenTemporaryWindow or skinning
+        h.state.inCombat = false
+        local secCF = env.CreateFrame("ScrollingMessageFrame", "ChatFrame12", env.UIParent)
+        secCF.isTemporary = strictSecret
+        secCF.chatType = strictSecret
+        secCF.chatTarget = strictSecret
+        secCF.name = strictSecret
+        env.SELECTED_DOCK_FRAME = secCF
+        if env.FCF_OpenTemporaryWindow then
+            env.FCF_OpenTemporaryWindow(strictSecret, strictSecret)
+        end
+        env.DynamicChat:ApplySleekChatSkin()
+    end
+end)
+
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))
 if failed > 0 then
     os.exit(1)

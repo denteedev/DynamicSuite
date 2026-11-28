@@ -730,11 +730,11 @@ DynamicPrep.CHANGELOG = {
     version = VERSION,
     date = "28/11/2026",
     entries = {
+        { type = "FIX",     text = "Catalyst & Quest Window Isolation Fix (28/11/2026): Moved Catalyst window hook tracking into private internal tables using safe post-hooks and removed an unnecessary write to Blizzard's quest reward window when auto-completing single-reward quests." },
         { type = "FIX",     text = "Secret-Value Tooltip & Popup Guard Hardening (28/11/2026): Added secret-value checks around consumable tooltip quality/augment scanning and death-release popup name lookups so protected Blizzard values never cause string conversion errors." },
         { type = "FIX",     text = "Top Info Bar & Clickable Raid Buffs Shift-Drag Reload Persistence Fix (28/11/2026): Fixed the Top Info Bar and Clickable Raid Buffs bar reverting after reloading when moved directly with Shift + Left-Drag; both bars now save cleanly to module settings and all suite layout tables (including character-scoped layouts) and skip premature clamping during initial frame setup." },
         { type = "FIX",     text = "StaticPopup Death Release Hook Hardening (27/11/2026): Replaced direct HookScript hooks and frame-field flags on Blizzard StaticPopup1..4 frames with weak-table state tracking, secret-guarded dialog.which checks, and hooksecurefunc post-hooks across StaticPopup_Show, StaticPopup_OnUpdate, StaticPopup_OnShow, StaticPopup_OnHide, and StaticPopupMixin across both DynamicSuite and standalone DynamicPrep." },
         { type = "FIX",     text = "Release v2.10.2 - Multi-Quest Auto-Accept, Auto-Gossip & DynamicDialogue Handoff Sync (25/11/2026): Prioritised live server interaction state over suppressed off-screen Blizzard frames (while preserving field auto-complete QUEST_COMPLETE windows) and eliminated duplicate 0.05s AcceptQuest/CompleteQuest/GetQuestReward retries on >50ms latency once the initial action succeeds; cross-checked available and active quests against C_QuestLog (plus QUEST_ACCEPTED / QUEST_REMOVED / QUEST_TURNED_IN / QUEST_FINISHED / PLAYER_INTERACTION_MANAGER_FRAME_HIDE tracking) so multi-quest NPCs immediately advance to remaining quests without re-selecting stale accepted or turned-in quests; respected mid-session sidebar soft-disable immediately; and coordinated event-sequence-exact handoff with DynamicDialogue across both Suite and Standalone builds." },
-        { type = "UI",      text = "Release v2.10.1 - Top Info Bar Shift-Drag, Right-Click HUD Edit & Discoverability (25/11/2026): Added direct Shift + Left-Drag repositioning across the Top Info Bar background and segment capsules out of combat (saving directly to HUD Edit Mode coordinates without triggering accidental clicks), Right-Click on empty bar space to open HUD Edit Mode (/ds hud), a subtle bar-hover tooltip, a 'Shift-Drag to move  |  /ds hud for grid & scale' footer line on Top Info Bar segment tooltips, and an updated DynamicPrep '?' Quick Guide tip." },
     },
 }
 Suite.Changelogs["DynamicPrep"] = DynamicPrep.CHANGELOG
@@ -5051,22 +5051,39 @@ function DynamicPrep:ShouldOneClickCatalyst()
     return self:IsCatalystInteractionActive()
 end
 
+local catalystFrameHooked = setmetatable({}, { __mode = "k" })
+local catalystBtnHooked   = setmetatable({}, { __mode = "k" })
+
 function DynamicPrep:EnsureCatalystHooks()
     local frame = _G.ItemInteractionFrame
-    if frame and not frame._dpCatalystFrameHooked and frame.HookScript then
-        frame._dpCatalystFrameHooked = true
-        frame:HookScript("OnShow", function()
-            if not IsModuleDisabledInSuite("DynamicPrep") then
-                DynamicPrep:EnsureCatalystHooks()
+    if frame and not catalystFrameHooked[frame] then
+        if type(hooksecurefunc) == "function" and type(frame.Show) == "function" then
+            catalystFrameHooked[frame] = true
+            hooksecurefunc(frame, "Show", function()
+                if not IsModuleDisabledInSuite("DynamicPrep") then
+                    DynamicPrep:EnsureCatalystHooks()
+                end
+            end)
+            if type(frame.Hide) == "function" then
+                hooksecurefunc(frame, "Hide", function()
+                    DynamicPrep._catalystFrameShown = false
+                end)
             end
-        end)
-        frame:HookScript("OnHide", function()
-            DynamicPrep._catalystFrameShown = false
-        end)
+        elseif frame.HookScript then
+            catalystFrameHooked[frame] = true
+            frame:HookScript("OnShow", function()
+                if not IsModuleDisabledInSuite("DynamicPrep") then
+                    DynamicPrep:EnsureCatalystHooks()
+                end
+            end)
+            frame:HookScript("OnHide", function()
+                DynamicPrep._catalystFrameShown = false
+            end)
+        end
     end
     local actionBtn = frame and frame.ButtonFrame and frame.ButtonFrame.ActionButton
-    if actionBtn and not actionBtn._dpCatalystHooked and actionBtn.HookScript then
-        actionBtn._dpCatalystHooked = true
+    if actionBtn and not catalystBtnHooked[actionBtn] and actionBtn.HookScript then
+        catalystBtnHooked[actionBtn] = true
         actionBtn:HookScript("OnClick", function()
             if DynamicPrep:ShouldOneClickCatalyst() then
                 if C_ItemInteraction and C_ItemInteraction.PerformItemInteraction then
@@ -5757,9 +5774,6 @@ local function TryCompleteCurrentQuest()
             end
         end
         DynamicPrep:MarkAutoDialogueAction("QUEST_COMPLETE_REWARD", curQID)
-        if numChoices == 1 and _G.QuestInfoFrame then
-            _G.QuestInfoFrame.itemChoice = 1
-        end
         pcall(GetQuestReward, numChoices == 1 and 1 or nil)
         return true
     end

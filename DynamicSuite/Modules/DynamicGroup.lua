@@ -136,6 +136,13 @@ local function IsSecretValue(val)
     return false
 end
 
+local function SafeReadableString(val)
+    if val == nil or IsSecretValue(val) or type(val) ~= "string" then
+        return nil
+    end
+    return val
+end
+
 local function IsPlayerInCombat()
     return type(_G.InCombatLockdown) == "function" and _G.InCombatLockdown() == true
 end
@@ -1874,15 +1881,15 @@ local function GetCachedActivityInfo(activityID)
         return nil
     end
     local ok, info = pcall(C_LFGList.GetActivityInfoTable, activityID)
-    if not ok or type(info) ~= "table" then
+    if not ok or IsSecretValue(info) or type(info) ~= "table" then
         return nil
     end
 
     local categoryID = (not IsSecretValue(info.categoryID) and tonumber(info.categoryID)) or 0
     local groupID = (not IsSecretValue(info.groupFinderActivityGroupID) and tonumber(info.groupFinderActivityGroupID)) or nil
     local rawMapID = (not IsSecretValue(info.mapChallengeModeID) and tonumber(info.mapChallengeModeID)) or nil
-    local fullName = (type(info.fullName) == "string" and not IsSecretValue(info.fullName)) and info.fullName or ""
-    local shortName = (type(info.shortName) == "string" and not IsSecretValue(info.shortName)) and info.shortName or ""
+    local fullName = SafeReadableString(info.fullName) or ""
+    local shortName = SafeReadableString(info.shortName) or ""
     local isMPlus = (not IsSecretValue(info.isMythicPlusActivity) and info.isMythicPlusActivity == true) or false
     local isDungeon = (categoryID == 2) or isMPlus or (not IsSecretValue(info.isMythicActivity) and info.isMythicActivity == true and categoryID == 2)
 
@@ -1901,8 +1908,9 @@ local function GetCachedActivityInfo(activityID)
     end
     if not matchedSlot and groupID and C_LFGList and type(C_LFGList.GetActivityGroupInfo) == "function" then
         local okG, gName = pcall(C_LFGList.GetActivityGroupInfo, groupID)
-        if okG and type(gName) == "string" and not IsSecretValue(gName) then
-            matchedSlot = MatchTextToDungeonSlot(gName, slots)
+        local safeGName = okG and SafeReadableString(gName) or nil
+        if safeGName then
+            matchedSlot = MatchTextToDungeonSlot(safeGName, slots)
             if matchedSlot then
                 seasonGroupToSlot[groupID] = matchedSlot
             end
@@ -2048,7 +2056,7 @@ local declinedResultIDs = {}
 local lastSearchTimestamp = nil
 
 local function ExtractActivityAndNameFromInfo(info)
-    if type(info) ~= "table" or IsSecretValue(info) then
+    if IsSecretValue(info) or type(info) ~= "table" then
         return nil, nil
     end
     local activityID = nil
@@ -2056,14 +2064,15 @@ local function ExtractActivityAndNameFromInfo(info)
         local a = tonumber(info.activityID)
         if a and a > 0 then activityID = a end
     end
-    if not activityID and type(info.activityIDs) == "table" and not IsSecretValue(info.activityIDs) then
+    if not activityID and not IsSecretValue(info.activityIDs) and type(info.activityIDs) == "table" then
         local firstAct = info.activityIDs[1]
         if not IsSecretValue(firstAct) then
             local a = tonumber(firstAct)
             if a and a > 0 then activityID = a end
         end
     end
-    local listingName = (type(info.name) == "string" and not IsSecretValue(info.name) and info.name ~= "") and info.name or nil
+    local safeName = SafeReadableString(info.name)
+    local listingName = (safeName and safeName ~= "") and safeName or nil
     return activityID, listingName
 end
 
@@ -2222,8 +2231,9 @@ local function InspectSearchResult(resultID)
         return nil
     end
 
-    local hasLeader = (searchInfo.leaderName ~= nil and not IsSecretValue(searchInfo.leaderName) and type(searchInfo.leaderName) == "string" and searchInfo.leaderName ~= "")
-    local leaderName = hasLeader and searchInfo.leaderName or ""
+    local safeLeader = SafeReadableString(searchInfo.leaderName)
+    local hasLeader = (safeLeader ~= nil and safeLeader ~= "")
+    local leaderName = hasLeader and safeLeader or ""
     local leaderScore = (not IsSecretValue(searchInfo.leaderOverallDungeonScore) and tonumber(searchInfo.leaderOverallDungeonScore)) or 0
     local numMembers = (not IsSecretValue(searchInfo.numMembers) and tonumber(searchInfo.numMembers)) or 0
     local maxMembers = (not IsSecretValue(searchInfo.maxMembers) and tonumber(searchInfo.maxMembers)) or 5
@@ -2244,19 +2254,20 @@ local function InspectSearchResult(resultID)
             local role, classFile = nil, nil
             if hasPlayerInfoAPI then
                 local pOk, pInfo = pcall(C_LFGList.GetSearchResultPlayerInfo, resultID, i)
-                if pOk and type(pInfo) == "table" and not IsSecretValue(pInfo) then
-                    role = (not IsSecretValue(pInfo.assignedRole) and pInfo.assignedRole) or nil
-                    classFile = (not IsSecretValue(pInfo.classFilename) and pInfo.classFilename) or nil
-                    if not hasLeader and not IsSecretValue(pInfo.isLeader) and pInfo.isLeader and pInfo.name and not IsSecretValue(pInfo.name) and type(pInfo.name) == "string" and pInfo.name ~= "" then
-                        leaderName = pInfo.name
+                if pOk and not IsSecretValue(pInfo) and type(pInfo) == "table" then
+                    role = SafeReadableString(pInfo.assignedRole)
+                    classFile = SafeReadableString(pInfo.classFilename)
+                    local pName = SafeReadableString(pInfo.name)
+                    if not hasLeader and not IsSecretValue(pInfo.isLeader) and pInfo.isLeader and pName and pName ~= "" then
+                        leaderName = pName
                         hasLeader = true
                     end
                 end
             elseif hasMemberInfoAPI then
                 local mOk, r, c = pcall(C_LFGList.GetSearchResultMemberInfo, resultID, i)
                 if mOk then
-                    role = (not IsSecretValue(r) and r) or nil
-                    classFile = (not IsSecretValue(c) and c) or nil
+                    role = SafeReadableString(r)
+                    classFile = SafeReadableString(c)
                 end
             end
 
@@ -2286,14 +2297,14 @@ local function InspectSearchResult(resultID)
     end
 
     local activityID = (not IsSecretValue(searchInfo.activityID) and tonumber(searchInfo.activityID)) or nil
-    if not activityID and type(searchInfo.activityIDs) == "table" and not IsSecretValue(searchInfo.activityIDs) then
+    if not activityID and not IsSecretValue(searchInfo.activityIDs) and type(searchInfo.activityIDs) == "table" then
         local firstAct = searchInfo.activityIDs[1]
         if not IsSecretValue(firstAct) and tonumber(firstAct) then
             activityID = tonumber(firstAct)
         end
     end
     local actMeta = activityID and GetCachedActivityInfo(activityID) or nil
-    local rawListingName = (type(searchInfo.name) == "string" and not IsSecretValue(searchInfo.name)) and searchInfo.name or nil
+    local rawListingName = SafeReadableString(searchInfo.name)
     if resultID then
         CacheSearchResultDungeonMeta(resultID, searchInfo, rawListingName, false)
     end
@@ -2530,7 +2541,8 @@ local function DoesMetaPassAllFilters(meta, db, myRole)
         return false
     end
 
-    local spCat = _G.LFGListFrame and _G.LFGListFrame.SearchPanel and _G.LFGListFrame.SearchPanel.categoryID
+    local rawSpCat = _G.LFGListFrame and _G.LFGListFrame.SearchPanel and _G.LFGListFrame.SearchPanel.categoryID
+    local spCat = (not IsSecretValue(rawSpCat) and type(rawSpCat) == "number") and rawSpCat or nil
     local inDungeonContext = meta.isDungeonActivity or (spCat == 2)
     if inDungeonContext and HasActiveDungeonFilters(db) then
         local matched = (meta.dungeonCode and db.filteredDungeons[meta.dungeonCode])
@@ -2711,13 +2723,10 @@ local function PerformLFGSignUp(entry, isDoubleClick, explicitResultID)
     local sp = _G.LFGListFrame and _G.LFGListFrame.SearchPanel
     if not sp then return end
 
-    -- Only synchronize selectedResult when Blizzard's own click handler has not already set it
-    if IsSecretValue(sp.selectedResult) or sp.selectedResult ~= liveResultID then
-        sp.selectedResult = liveResultID
-        if type(_G.LFGListSearchPanel_UpdateButtonStatus) == "function" then
-            pcall(_G.LFGListSearchPanel_UpdateButtonStatus, sp)
-        end
-    end
+    -- Never write sp.selectedResult or call LFGListSearchPanel_UpdateButtonStatus directly
+    -- on Blizzard's SearchPanel; Blizzard's secure click handler already sets selectedResult,
+    -- and mutating SearchPanel fields taints LFGListSearchEntry_Update on Midnight secret strings.
+    local spAlreadySelected = (not IsSecretValue(sp.selectedResult) and sp.selectedResult == liveResultID)
 
     lastSignUpResultID = liveResultID
     lastSignUpTime = now
@@ -2735,17 +2744,12 @@ local function PerformLFGSignUp(entry, isDoubleClick, explicitResultID)
     local db = EnsureDB()
     local wantAutoSubmit = (db.oneClickSignUp == true) and (not IsPlayerInCombat()) and (not IsAnySignUpModifierDown())
 
-    -- Open LFGListApplicationDialog directly with the exact clicked liveResultID;
-    -- fall back cleanly to LFGListSearchPanel_SignUp (and SignUpButton:Click) if not yet shown.
+    -- Prefer Blizzard's own SignUpButton:Click() when Blizzard already selected liveResultID;
+    -- fall back cleanly to LFGListApplicationDialog_Show and a non-mutating SearchPanel proxy
+    -- for LFGListSearchPanel_SignUp without ever writing to sp.selectedResult.
     isPerformingAutoSignUp = wantAutoSubmit
-    local dialog = GetDialog()
-    if dialog and type(_G.LFGListApplicationDialog_Show) == "function" then
-        pcall(_G.LFGListApplicationDialog_Show, dialog, liveResultID)
-    end
-    if not IsDialogShownNow() and type(_G.LFGListSearchPanel_SignUp) == "function" then
-        pcall(_G.LFGListSearchPanel_SignUp, sp)
-    end
-    if not IsDialogShownNow() and sp.SignUpButton and type(sp.SignUpButton.Click) == "function" then
+    local function TryClickSearchPanelSignUpBtn()
+        if not sp.SignUpButton or type(sp.SignUpButton.Click) ~= "function" then return end
         local spCanClick = true
         if type(sp.SignUpButton.IsEnabled) == "function" then
             local okSE, isSE = pcall(sp.SignUpButton.IsEnabled, sp.SignUpButton)
@@ -2754,6 +2758,21 @@ local function PerformLFGSignUp(entry, isDoubleClick, explicitResultID)
         if spCanClick then
             pcall(sp.SignUpButton.Click, sp.SignUpButton)
         end
+    end
+
+    if spAlreadySelected and not IsDialogShownNow() then
+        TryClickSearchPanelSignUpBtn()
+    end
+    local dialog = GetDialog()
+    if not IsDialogShownNow() and dialog and type(_G.LFGListApplicationDialog_Show) == "function" then
+        pcall(_G.LFGListApplicationDialog_Show, dialog, liveResultID)
+    end
+    if not IsDialogShownNow() and type(_G.LFGListSearchPanel_SignUp) == "function" then
+        local signUpTarget = spAlreadySelected and sp or setmetatable({ selectedResult = liveResultID }, { __index = sp })
+        pcall(_G.LFGListSearchPanel_SignUp, signUpTarget)
+    end
+    if not IsDialogShownNow() then
+        TryClickSearchPanelSignUpBtn()
     end
     isPerformingAutoSignUp = false
 
@@ -2894,6 +2913,7 @@ local function StyleEntryCancelButton(btn, entry)
 
     if btn.HookScript then
         btn:HookScript("OnEnter", function(selfBtn)
+            if IsPlayerInCombat() then return end
             local st = _dgWeak.cancelBtn[selfBtn]
             if not st then return end
             if st.bg then
@@ -2909,6 +2929,7 @@ local function StyleEntryCancelButton(btn, entry)
             end
         end)
         btn:HookScript("OnLeave", function(selfBtn)
+            if IsPlayerInCombat() then return end
             local st = _dgWeak.cancelBtn[selfBtn]
             if not st then return end
             if st.bg then
@@ -2935,8 +2956,9 @@ local function ReadAndSuppressEntryStatus(entry, resultID, isSimPending, isSimCa
         if not lbl then return end
         local shown = lbl.IsShown and lbl:IsShown() or false
         if shown and lbl.GetText then
-            local okTxt, txt = pcall(lbl.GetText, lbl)
-            if okTxt and type(txt) == "string" and not IsSecretValue(txt) and txt ~= "" then
+            local okTxt, rawTxt = pcall(lbl.GetText, lbl)
+            local txt = okTxt and SafeReadableString(rawTxt) or nil
+            if txt and txt ~= "" then
                 if isPending then
                     local tMatch = txt:match("(%d+:%d%d)")
                     pendingTimer = tMatch or "Pending"
@@ -3056,8 +3078,8 @@ local function OnLFGListSearchEntryUpdate(entry)
     local db = EnsureDB()
     local eState = GetEntryState(entry)
     if IsYieldingSharedHooks() then
-        if eState.dimmedDeclined and not IsPlayerInCombat() and entry.SetAlpha then
-            eState.dimmedDeclined = nil
+        if eState.dimmedByDG and not IsPlayerInCombat() and entry.SetAlpha then
+            eState.dimmedByDG = nil
             entry:SetAlpha(1.0)
         end
         if eState.overlay then
@@ -3069,40 +3091,15 @@ local function OnLFGListSearchEntryUpdate(entry)
         return
     end
 
-    if not eState.enterHooked and entry.HookScript then
-        eState.enterHooked = true
-        entry:HookScript("OnEnter", function(selfEntry)
-            if IsPlayerInCombat() then return end
-            local rID = (not IsSecretValue(selfEntry.resultID) and type(selfEntry.resultID) == "number" and selfEntry.resultID) or ResolveLiveResultID(selfEntry)
-            if not IsValidSearchResultID(rID) then
-                if _G.GameTooltip and _G.GameTooltip:IsOwned(selfEntry) then
-                    _G.GameTooltip:Hide()
-                end
-                if ScheduleAsyncResultRefilter then
-                    ScheduleAsyncResultRefilter()
-                end
-            end
-        end)
-    end
-
-    if not eState.clickHooked and entry.HookScript then
-        eState.clickHooked = true
-        entry:HookScript("OnMouseDown", function(selfEntry, button)
-            if not IsSecretValue(button) and button == "LeftButton" then
-                GetEntryState(selfEntry).pressedResultID = (not IsSecretValue(selfEntry.resultID) and type(selfEntry.resultID) == "number" and selfEntry.resultID) or ResolveLiveResultID(selfEntry)
-            end
-        end)
-    end
-
+    -- Hover guard is attached globally via hooksecurefunc(LFGListSearchEntry_OnEnter / Mixin.OnEnter);
+    -- only attach OnDoubleClick on demand when Blizzard has no global double-click function.
     if not eState.doubleClickHooked and entry.HookScript then
         eState.doubleClickHooked = true
         entry:HookScript("OnDoubleClick", function(selfEntry, button)
+            if IsPlayerInCombat() then return end
             if button ~= nil and (IsSecretValue(button) or button ~= "LeftButton") then return end
             if not EnsureDB().doubleClickSignUp then return end
-            local st = GetEntryState(selfEntry)
-            local lockedID = st.pressedResultID
-            st.pressedResultID = nil
-            PerformLFGSignUp(selfEntry, true, lockedID)
+            PerformLFGSignUp(selfEntry, true, nil)
         end)
     end
 
@@ -3175,13 +3172,13 @@ local function OnLFGListSearchEntryUpdate(entry)
     local resultID = (not IsSecretValue(entry.resultID) and type(entry.resultID) == "number" and entry.resultID) or ResolveLiveResultID(entry)
     local meta = InspectSearchResult(resultID)
     if not meta then
-        if eState.dimmedDeclined and not (InCombatLockdown and InCombatLockdown()) and entry.SetAlpha then
-            eState.dimmedDeclined = nil
+        if eState.dimmedByDG and not (InCombatLockdown and InCombatLockdown()) and entry.SetAlpha then
+            eState.dimmedByDG = nil
             entry:SetAlpha(1.0)
         end
         RestoreEnumerateIcons(entry, ov.enumRoleSlots)
         ov:Hide()
-        if _G.GameTooltip and _G.GameTooltip:IsOwned(entry) then
+        if _G.GameTooltip and (not _G.GameTooltip.IsForbidden or not _G.GameTooltip:IsForbidden()) and _G.GameTooltip.IsOwned and _G.GameTooltip:IsOwned(entry) then
             _G.GameTooltip:Hide()
         end
         if resultID and ScheduleAsyncResultRefilter then
@@ -3190,14 +3187,8 @@ local function OnLFGListSearchEntryUpdate(entry)
         return
     end
 
-    if db.lfgFilterEnabled and meta.regionKey ~= "PENDING" and db.enabledRegions[meta.regionKey] == false then
-        RestoreEnumerateIcons(entry, ov.enumRoleSlots)
-        ov:Hide()
-        if ScheduleAsyncResultRefilter then
-            ScheduleAsyncResultRefilter()
-        end
-        return
-    end
+    local myRole = GetPlayerActiveRoleAndLust()
+    local isFilteredOut = (db.lfgFilterEnabled == true) and (not DoesMetaPassAllFilters(meta, db, myRole))
 
     local isSimPending = (DynamicGroup._testApplyActive == true and DynamicGroup._testApplyMode == "PENDING" and resultID ~= nil and DynamicGroup._testApplyResultID == resultID)
     local isSimCanceled = (DynamicGroup._testApplyActive == true and DynamicGroup._testApplyMode == "CANCELED" and resultID ~= nil and DynamicGroup._testApplyResultID == resultID)
@@ -3208,10 +3199,13 @@ local function OnLFGListSearchEntryUpdate(entry)
 
     if not (InCombatLockdown and InCombatLockdown()) and entry.SetAlpha then
         if isTerminalDim then
-            eState.dimmedDeclined = true
+            eState.dimmedByDG = true
             entry:SetAlpha(0.35)
-        elseif eState.dimmedDeclined then
-            eState.dimmedDeclined = nil
+        elseif isFilteredOut then
+            eState.dimmedByDG = true
+            entry:SetAlpha(0.28)
+        elseif eState.dimmedByDG then
+            eState.dimmedByDG = nil
             if not meta.isDelisted then
                 entry:SetAlpha(1.0)
             end
@@ -3224,13 +3218,13 @@ local function OnLFGListSearchEntryUpdate(entry)
         return
     end
 
-    -- Keep region, score & status tags legible (>= 78% alpha even on dimmed/delisted or red-selected rows)
+    -- Keep region, score & status tags legible (>= 78% alpha even on dimmed/delisted or filtered rows)
     local parentAlpha = 1.0
     if type(entry.GetAlpha) == "function" then
         local okEA, rawEA = pcall(entry.GetAlpha, entry)
         if okEA and not IsSecretValue(rawEA) and type(rawEA) == "number" then parentAlpha = rawEA end
     end
-    ov:SetAlpha((meta.isDelisted or isTerminalDim or parentAlpha < 0.75) and 0.78 or 0.96)
+    ov:SetAlpha((meta.isDelisted or isTerminalDim or isFilteredOut or parentAlpha < 0.75) and 0.78 or 0.96)
 
     if not (InCombatLockdown and InCombatLockdown()) and entry.CancelButton then
         if isSimPending then
@@ -3254,7 +3248,7 @@ local function OnLFGListSearchEntryUpdate(entry)
     local showRegion = (meta.regionKey and meta.regionKey ~= "PENDING")
     local hasScore = (meta.leaderScore and meta.leaderScore > 0) or (meta.isMythicPlusActivity == true)
     local topPill = ov.topPill
-    if showRegion or hasScore or pendingTimer or terminalStatus or meta.hasLeaver then
+    if showRegion or hasScore or pendingTimer or terminalStatus or meta.hasLeaver or isFilteredOut then
         local parts = {}
         if showRegion then
             local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
@@ -3274,6 +3268,8 @@ local function OnLFGListSearchEntryUpdate(entry)
             parts[#parts + 1] = "|cFFF87171" .. terminalStatus .. "|r"
         elseif pendingTimer then
             parts[#parts + 1] = "|cFFFBBF24" .. pendingTimer .. "|r"
+        elseif isFilteredOut then
+            parts[#parts + 1] = "|cFF94A3B8Filtered|r"
         end
         SetSafeFont(topPill.text, 10, "OUTLINE")
         topPill.text:SetText(table.concat(parts, " |cFF64748B/|r "))
@@ -3515,29 +3511,9 @@ local pendingResultUpdateTimer = nil
 local function SyncScrollBoxToFilteredResults(panel)
     if not panel then return end
     if InCombatLockdown and InCombatLockdown() then return end
-    local db = EnsureDB()
-    if db.lfgFilterEnabled and not IsYieldingSharedHooks() then
-        if type(panel.results) == "table" and not IsSecretValue(panel.results) then
-            local validResults = {}
-            local scrubbed = false
-            for i = 1, #panel.results do
-                local rID = panel.results[i]
-                if IsValidSearchResultID(rID) then
-                    validResults[#validResults + 1] = rID
-                else
-                    scrubbed = true
-                end
-            end
-            if scrubbed then
-                panel.results = validResults
-                panel.totalResults = #validResults
-            end
-        end
-        if panel.selectedResult and not IsValidSearchResultID(panel.selectedResult) then
-            panel.selectedResult = nil
-        end
-    end
 
+    -- Never mutate panel.results, panel.totalResults, or panel.selectedResult on Blizzard's
+    -- SearchPanel; doing so taints LFGListSearchEntry_Update on Midnight secret strings.
     if panel.ScrollBox and type(panel.ScrollBox.ForEachFrame) == "function" then
         pcall(panel.ScrollBox.ForEachFrame, panel.ScrollBox, OnLFGListSearchEntryUpdate)
     end
@@ -3555,27 +3531,20 @@ local function RemoveFilteredResultsInPlace(panel)
     end
 
     local pState = GetPanelState(panel)
+    local passesMap = {}
     local newResults = {}
-    local removedAny = false
     for _, resultID in ipairs(panel.results) do
-        if DynamicGroup:DoesResultPassFilters(resultID) then
+        if not IsSecretValue(resultID) and DynamicGroup:DoesResultPassFilters(resultID) then
+            passesMap[resultID] = true
             newResults[#newResults + 1] = resultID
-        else
-            removedAny = true
         end
     end
 
-    if removedAny then
-        panel.results = newResults
-        panel.totalResults = #newResults
-        pState.orderedResults = newResults
-        if type(_G.LFGListSearchPanel_UpdateResults) == "function" and not pState.inUpdateResultList then
-            pcall(_G.LFGListSearchPanel_UpdateResults, panel)
-        end
-        SyncScrollBoxToFilteredResults(panel)
-        if DynamicGroup.UpdateLFGMiniBar then
-            DynamicGroup:UpdateLFGMiniBar()
-        end
+    pState.passesMap = passesMap
+    pState.orderedResults = newResults
+    SyncScrollBoxToFilteredResults(panel)
+    if DynamicGroup.UpdateLFGMiniBar then
+        DynamicGroup:UpdateLFGMiniBar()
     end
 end
 
@@ -3719,13 +3688,11 @@ local function FilterAndSortSearchPanelResults(panel, allowSort)
     for i = 1, #filtered do
         orderedCopy[i] = filtered[i]
     end
+    pState.passesMap = passesMap
     pState.orderedResults = orderedCopy
-    panel.results = filtered
-    panel.totalResults = #filtered
-    if panel.selectedResult and not passesMap[panel.selectedResult] then
-        panel.selectedResult = nil
-    end
 
+    -- Never overwrite panel.results, panel.totalResults, or panel.selectedResult on Blizzard's
+    -- SearchPanel; filtering state lives in private weak-table pState and renders via overlays.
     if DynamicGroup.UpdateLFGMiniBar then
         DynamicGroup:UpdateLFGMiniBar()
     end
@@ -6554,9 +6521,8 @@ function DynamicGroup:RefreshLFGResults()
         local pState = GetPanelState(sp)
         pState.needsInitialSort = true
         FilterAndSortSearchPanelResults(sp, true)
-        if type(_G.LFGListSearchPanel_UpdateResults) == "function" and not (InCombatLockdown and InCombatLockdown()) then
-            pcall(_G.LFGListSearchPanel_UpdateResults, sp)
-        end
+        -- Never invoke LFGListSearchPanel_UpdateResults(sp) directly from addon code;
+        -- refresh our own visual overlays/dimming via ScrollBox:ForEachFrame instead.
         SyncScrollBoxToFilteredResults(sp)
     end
 end
@@ -6801,10 +6767,7 @@ local function OnLFGSearchEntryClick(entry, button)
     if not db.oneClickSignUp then return end
     -- Holding Shift/Alt/Ctrl passes through to PerformLFGSignUp with wantAutoSubmit=false
     -- so the Sign-Up dialog opens normally at its centred position for manual role/note editing.
-    local st = entry and GetEntryState(entry)
-    local lockedID = st and st.pressedResultID
-    if st then st.pressedResultID = nil end
-    PerformLFGSignUp(entry, false, lockedID)
+    PerformLFGSignUp(entry, false, nil)
 end
 
 local function ExtractCreateOrUpdateListingArgs(a1, a2)
@@ -6958,6 +6921,26 @@ function DynamicGroup:InstallLFGHooks()
             end
         end)
     end
+    local function OnLFGSearchEntryOnEnter(selfEntry)
+        if not selfEntry or IsPlayerInCombat() or IsYieldingSharedHooks() then return end
+        local rID = (not IsSecretValue(selfEntry.resultID) and type(selfEntry.resultID) == "number" and selfEntry.resultID) or ResolveLiveResultID(selfEntry)
+        if not IsValidSearchResultID(rID) then
+            if _G.GameTooltip and (not _G.GameTooltip.IsForbidden or not _G.GameTooltip:IsForbidden()) and _G.GameTooltip.IsOwned and _G.GameTooltip:IsOwned(selfEntry) then
+                _G.GameTooltip:Hide()
+            end
+            if ScheduleAsyncResultRefilter then
+                ScheduleAsyncResultRefilter()
+            end
+        end
+    end
+    if not hk.entryEnterGlobal and type(_G.LFGListSearchEntry_OnEnter) == "function" then
+        hk.entryEnterGlobal = true
+        hooksecurefunc("LFGListSearchEntry_OnEnter", OnLFGSearchEntryOnEnter)
+    end
+    if not hk.entryEnterMixin and type(_G.LFGListSearchEntryMixin) == "table" and type(_G.LFGListSearchEntryMixin.OnEnter) == "function" then
+        hk.entryEnterMixin = true
+        hooksecurefunc(_G.LFGListSearchEntryMixin, "OnEnter", OnLFGSearchEntryOnEnter)
+    end
     if not hk.entryClickGlobal and type(_G.LFGListSearchEntry_OnClick) == "function" then
         hk.entryClickGlobal = true
         hooksecurefunc("LFGListSearchEntry_OnClick", OnLFGSearchEntryClick)
@@ -6969,21 +6952,26 @@ function DynamicGroup:InstallLFGHooks()
     if not hk.tooltip and type(_G.LFGListUtil_SetSearchEntryTooltip) == "function" then
         hk.tooltip = true
         hooksecurefunc("LFGListUtil_SetSearchEntryTooltip", function(tooltip, resultID)
-            if not tooltip or not resultID or IsYieldingSharedHooks() then return end
+            if not tooltip or IsSecretValue(tooltip) or not resultID or IsSecretValue(resultID) or IsYieldingSharedHooks() then return end
+            if type(tooltip.IsForbidden) == "function" then
+                local okF, isForb = pcall(tooltip.IsForbidden, tooltip)
+                if not okF or IsSecretValue(isForb) or isForb == true then return end
+            end
             if not IsValidSearchResultID(resultID) then return end
             local db = EnsureDB()
             if not db.lfgFilterEnabled then return end
             local meta = InspectSearchResult(resultID)
             if not meta then return end
 
-            if not IsSecretValue(meta.regionKey) and type(meta.regionKey) == "string" and meta.regionKey ~= "PENDING" then
-                local regMeta = REGION_META[meta.regionKey] or REGION_META.UNKNOWN
-                local rc = GetRegionColor(meta.regionKey)
-                local safeRealm = (type(meta.realmName) == "string" and not IsSecretValue(meta.realmName) and meta.realmName ~= "") and meta.realmName or nil
-                local realmSuffix = safeRealm and (" (" .. safeRealm .. ")") or ""
+            local safeRegionKey = SafeReadableString(meta.regionKey)
+            if safeRegionKey and safeRegionKey ~= "PENDING" then
+                local regMeta = REGION_META[safeRegionKey] or REGION_META.UNKNOWN
+                local rc = GetRegionColor(safeRegionKey)
+                local safeRealm = SafeReadableString(meta.realmName)
+                local realmSuffix = (safeRealm and safeRealm ~= "") and (" (" .. safeRealm .. ")") or ""
                 tooltip:AddDoubleLine(
                     "Datacentre Region:",
-                    FormatRegionTag(meta.regionKey, regMeta.badge) .. " |c" .. rc.hex .. regMeta.pillLabel .. "|r" .. realmSuffix,
+                    FormatRegionTag(safeRegionKey, regMeta.badge) .. " |c" .. rc.hex .. regMeta.pillLabel .. "|r" .. realmSuffix,
                     0.64, 0.70, 0.78,
                     rc.r, rc.g, rc.b
                 )
@@ -7154,9 +7142,9 @@ function DynamicGroup:InstallLFGHooks()
             OnLFGListApplicationDialogOnShow(dialog or _G.LFGListApplicationDialog)
         end)
     end
-    if not hk.dialogOnShow and _G.LFGListApplicationDialog and _G.LFGListApplicationDialog.HookScript then
+    if not hk.dialogOnShow and _G.LFGListApplicationDialog and type(_G.LFGListApplicationDialog.Show) == "function" then
         hk.dialogOnShow = true
-        _G.LFGListApplicationDialog:HookScript("OnShow", OnLFGListApplicationDialogOnShow)
+        hooksecurefunc(_G.LFGListApplicationDialog, "Show", OnLFGListApplicationDialogOnShow)
     end
     if not hk.pveToggleRetry and type(_G.PVEFrame_ToggleFrame) == "function" then
         hk.pveToggleRetry = true
@@ -7166,35 +7154,40 @@ function DynamicGroup:InstallLFGHooks()
             end
         end)
     end
-    if not hk.searchPanelOnShow and _G.LFGListFrame and _G.LFGListFrame.SearchPanel and _G.LFGListFrame.SearchPanel.HookScript then
+    local function OnSearchPanelShown()
+        SuppressEUIGroupFinderIfNeeded()
+        if not DynamicGroup.lfgHooksInstalled
+            or not hk.entryClickGlobal
+            or not hk.entryClickMixin
+            or not hk.dialogUpdateRoles
+            or not hk.dialogUpdateRolesMixin
+            or not hk.dialogShowFunc
+            or not hk.dialogOnShow
+            or not hk.applyToGroup
+            or not hk.inviteDialogShow
+            or not hk.acceptInvite
+            or not hk.createListing
+            or not hk.updateListing then
+            DynamicGroup:InstallLFGHooks()
+        end
+        PullFiltersFromBlizzardAdvancedFilter()
+        if DynamicGroup.EnsureLFGMiniBar then
+            DynamicGroup:EnsureLFGMiniBar()
+        end
+        if DynamicGroup.EnsurePortalBar then
+            DynamicGroup:EnsurePortalBar()
+        end
+        if DynamicGroup.UpdateLFGMiniBar then
+            DynamicGroup:UpdateLFGMiniBar()
+        end
+    end
+    if not hk.searchPanelOnShow and _G.LFGListFrame and _G.LFGListFrame.SearchPanel and type(_G.LFGListFrame.SearchPanel.Show) == "function" then
         hk.searchPanelOnShow = true
-        _G.LFGListFrame.SearchPanel:HookScript("OnShow", function()
-            SuppressEUIGroupFinderIfNeeded()
-            if not DynamicGroup.lfgHooksInstalled
-                or not hk.entryClickGlobal
-                or not hk.entryClickMixin
-                or not hk.dialogUpdateRoles
-                or not hk.dialogUpdateRolesMixin
-                or not hk.dialogShowFunc
-                or not hk.dialogOnShow
-                or not hk.applyToGroup
-                or not hk.inviteDialogShow
-                or not hk.acceptInvite
-                or not hk.createListing
-                or not hk.updateListing then
-                DynamicGroup:InstallLFGHooks()
-            end
-            PullFiltersFromBlizzardAdvancedFilter()
-            if DynamicGroup.EnsureLFGMiniBar then
-                DynamicGroup:EnsureLFGMiniBar()
-            end
-            if DynamicGroup.EnsurePortalBar then
-                DynamicGroup:EnsurePortalBar()
-            end
-            if DynamicGroup.UpdateLFGMiniBar then
-                DynamicGroup:UpdateLFGMiniBar()
-            end
-        end)
+        hooksecurefunc(_G.LFGListFrame.SearchPanel, "Show", OnSearchPanelShown)
+    end
+    if not hk.searchPanelOnShowFunc and type(_G.LFGListSearchPanel_OnShow) == "function" then
+        hk.searchPanelOnShowFunc = true
+        hooksecurefunc("LFGListSearchPanel_OnShow", OnSearchPanelShown)
     end
 
     if hk.entryUpdate then
@@ -9667,11 +9660,11 @@ local function RegisterWithDynamicSuite()
         version = DynamicGroup.version or VERSION,
         date = "28/11/2026",
         entries = {
+            { type = "FIX",     text = "Premade Group Finder Protected Text & Taint Isolation Fix (28/11/2026): Stopped modifying Blizzard's Premade Group Finder list, count, or selected group fields and stopped calling Blizzard's list refresh directly, eliminating protected text conversion errors while browsing groups. Client-side filters now cleanly dim and label non-matching rows instead of altering Blizzard's list, 1-Click Sign-Up leaves Blizzard's selected group untouched, dialog and list hooks use safe post-hooks, and every listing field is checked before any text formatting." },
             { type = "FIX",     text = "True 1-Click Sign-Up & Dungeon Teleport Toast Reliability Fix (28/11/2026): Clicking a Premade Group row with 1-Click Sign-Up enabled now selects your active role, fills your note, and submits your application immediately in a single click (falling back to positioning the Sign Up button under your cursor only if the box stays open), while holding Shift or Alt or clicking Blizzard's Sign Up button manually keeps the box open and centred; fixed the Dungeon Teleport Toast so it reliably shows the full dungeon name for group leaders, all joining players (including the 5th player when a group automatically delists), and players joining a new dungeon from inside a finished dungeon, without double-triggering sounds or notifications." },
             { type = "FIX",     text = "1-Click Premade Group Sign-Up & Secret-String Protection Fix (28/11/2026): Hardened 1-Click Premade Group Sign-Up across both Blizzard click handlers with duplicate-click protection, late-load retries, stale-yield cleanup, already-applied skips, role validation (with mixin fallback), and Sign-Up box layering strictly above Group Finder; added secret-value guards across listing, realm, tooltip, and toast text, and left Blizzard's result list untouched when filtering is turned off." },
             { type = "FEATURE", text = "Release v2.10.3 - Standalone Window Parity, Compact 800x520 Layout & Patch 12.1.7 Lockdown Hardening (25/11/2026): Added standalone window parity with a clamped header status readout, 36px Obsidian footer bar (Reset DynamicGroup and Reload UI buttons), bottom-right corner resize grip with 860x600 Right-Click reset, and live Suite Accent repainting; refined tabs, section subtitles, dropdown widths, sub-drawer spacing, 2-line card descriptions, and responsive 2x3 region filter pills for 800x520 layouts; hardened !keys responses, whisper and Battle.net auto-invites, group invite auto-accept, role check confirmation, Portal Bar, Teleport Toast, and Premade Group Finder hooks against Patch 12.1.7 combat lockdown, chat messaging lockdown, and secret values using non-intrusive hooks and weak frame state tables; standardised Australian English and plain-English wording." },
             { type = "FEATURE", text = "Release v2.8.1 - Opt-In Auto-Accept Role Check & Conflict Auto-Yield (22/11/2026): Added opt-in Auto-Accept Role Check (Off by default) in Tab 2 with a 0.45s out-of-combat safety delay, Shift-to-skip bypass, Retail 12.1.5 secret-value guards, clean chat confirmation, and automatic feature-level yielding to EnhanceQoL or Leatrix Plus (overridable in /ds conflicts). Never auto-accepts queue pops." },
-            { type = "UI",      text = "Release v2.7.0 - Shared Teleport Toast Inheritance & Live Suite Accent Portal Borders (21/11/2026): Removed the stray Edit HUD button from the Teleport Toast settings card (leaving a clean Off/Enabled toggle plus Test Join and Test Full preview buttons), connected DynamicGroup's teleport toast to DynamicSuite's shared Alert Toast appearance, sound, Right-Click dismissal, and vertical toast stack, and replaced remaining legacy orange portal tile/keystone borders and tooltip prefixes with the live Suite Accent." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}
@@ -9875,17 +9868,17 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
             end
         elseif loadedName == "Blizzard_ChallengesUI" then
             if not IsModuleDisabledInSuite("DynamicGroup") then
-                if _G.ChallengesKeystoneFrame and _G.ChallengesKeystoneFrame.HookScript and not self.keystoneHooked then
+                if _G.ChallengesKeystoneFrame and type(_G.ChallengesKeystoneFrame.Show) == "function" and not self.keystoneHooked then
                     self.keystoneHooked = true
-                    _G.ChallengesKeystoneFrame:HookScript("OnShow", function()
+                    hooksecurefunc(_G.ChallengesKeystoneFrame, "Show", function()
                         if not IsModuleDisabledInSuite("DynamicGroup") then
                             C_Timer.After(0.05, TryAutoInsertKeystone)
                         end
                     end)
                 end
-                if _G.ChallengesFrame and _G.ChallengesFrame.HookScript and not self.challengesFrameHooked then
+                if _G.ChallengesFrame and type(_G.ChallengesFrame.Show) == "function" and not self.challengesFrameHooked then
                     self.challengesFrameHooked = true
-                    _G.ChallengesFrame:HookScript("OnShow", function()
+                    hooksecurefunc(_G.ChallengesFrame, "Show", function()
                         if not IsModuleDisabledInSuite("DynamicGroup") then
                             seasonSlotsCache = nil
                             spellbookTeleportCache = nil
@@ -9916,9 +9909,9 @@ DynamicGroup:SetScript("OnEvent", function(self, event, ...)
         SuppressEUIGroupFinderIfNeeded()
         self:InstallLFGHooks()
         self:UpdateAutoRefreshTicker()
-        if _G.ChallengesKeystoneFrame and _G.ChallengesKeystoneFrame.HookScript and not self.keystoneHooked then
+        if _G.ChallengesKeystoneFrame and type(_G.ChallengesKeystoneFrame.Show) == "function" and not self.keystoneHooked then
             self.keystoneHooked = true
-            _G.ChallengesKeystoneFrame:HookScript("OnShow", function()
+            hooksecurefunc(_G.ChallengesKeystoneFrame, "Show", function()
                 C_Timer.After(0.05, TryAutoInsertKeystone)
             end)
         end

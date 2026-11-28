@@ -436,6 +436,8 @@ local SENSITIVE_BLIZZ_PATTERNS = {
     { pat = "GameTooltip", label = "GameTooltip" },
     { pat = "ItemRefTooltip", label = "ItemRefTooltip" },
     { pat = "StaticPopup%d*", label = "StaticPopup*" },
+    { pat = "LFGListApplicationDialog", label = "LFGListApplicationDialog" },
+    { pat = "LFGListFrame%.SearchPanel", label = "LFGListFrame.SearchPanel" },
 }
 
 local function MatchesSensitiveBlizzFrame(expr)
@@ -626,6 +628,266 @@ local function AuditSecretAndFadeGuards(fileSpecs)
 end
 
 -- ============================================================================
+-- Check 4: Blizzard Global Function, Mixin & Frame Method/Field Overwrite Audit
+-- Fails if any Lua file directly overwrites a Blizzard global function
+-- (e.g. _G.UpdateScaleForFit, FrameUtil.*, UIPanel*), Blizzard mixin method,
+-- Blizzard frame method (e.g. PlayerSpellsFrame.SetMinimized, mmf.Maximize),
+-- or taint-prone Blizzard SearchPanel / Quest / Catalyst fields, or directly
+-- invokes LFGListSearchPanel_UpdateResults from addon code.
+-- ============================================================================
+local ALLOWED_G_ROOTS = {
+    DynamicSuite = true,
+    DynamicSuiteDB = true,
+    DynamicLoad = true,
+    DynamicLoadDB = true,
+    DynamicLoadToastFrame = true,
+    DynamicTalent = true,
+    DynamicTalentDB = true,
+    DynamicPrep = true,
+    DynamicPrepDB = true,
+    DynamicMarker = true,
+    DynamicMarkerDB = true,
+    DynamicCursor = true,
+    DynamicCursorDB = true,
+    DynamicZoom = true,
+    DynamicZoomDB = true,
+    DynamicFPS = true,
+    DynamicFPSDB = true,
+    DynamicGroup = true,
+    DynamicGroupDB = true,
+    DynamicBags = true,
+    DynamicBagsDB = true,
+    DynamicChat = true,
+    DynamicChatDB = true,
+    DynamicMail = true,
+    DynamicMailDB = true,
+    DynamicVault = true,
+    DynamicVaultDB = true,
+    DynamicDialogue = true,
+    DynamicDialogueDB = true,
+    FocusMarkerDB = true,
+    SlashCmdList = true,
+    StaticPopupDialogs = true,
+    UISpecialFrames = true,
+    UIPanelWindows = true,
+    LeaPlusDB = true,
+    EllesmereUIDB = true,
+}
+
+local function IsAllowedGAssignmentRoot(root)
+    if not root or root == "" then return false end
+    if ALLOWED_G_ROOTS[root] then return true end
+    if root:match("^Dynamic") or root:match("^SLASH_") or root:match("^BINDING_") then
+        return true
+    end
+    return false
+end
+
+local BLIZZ_GLOBAL_FN_PREFIXES = {
+    "^UpdateScaleForFit$",
+    "^UIPanelUpdateScaleForFit$",
+    "^UIPanel",
+    "^ShowUIPanel$",
+    "^HideUIPanel$",
+    "^UpdateUIPanelPositions$",
+    "^FrameUtil$",
+    "^PlayerSpellsUtil$",
+    "^LFGList",
+    "^ChatEdit_",
+    "^ChatFrame_",
+    "^FCF_",
+    "^FCFDock_",
+    "^FCFTab_",
+    "^FloatingChatFrame_",
+    "^GameTooltip_",
+    "^StaticPopup_",
+    "^ToggleGameMenu$",
+    "^ToggleTalentFrame$",
+    "^ToggleSpellBook$",
+    "^ToggleFriendsFrame$",
+    "^ToggleGuildFrame$",
+    "^ToggleCharacter$",
+    "^ToggleAllBags$",
+    "^ToggleWorldMap$",
+    "^ToggleQuestLog$",
+    "^ToggleProfessionsBook$",
+    "^ToggleBackpack$",
+    "^ToggleBag$",
+    "^PVEFrame_ToggleFrame$",
+    "^C_%u",
+    "Mixin$",
+}
+
+local function MatchesBlizzGlobalOverwriteName(name)
+    if not name or name == "" then return false end
+    if IsAllowedGAssignmentRoot(name) then return false end
+    for _, pat in ipairs(BLIZZ_GLOBAL_FN_PREFIXES) do
+        if name:match(pat) then
+            return true
+        end
+    end
+    return false
+end
+
+local BLIZZ_FRAME_BINDING_PATTERNS = {
+    "PlayerSpellsFrame",
+    "MaximizeMinimizeFrame",
+    "LFGListFrame%.SearchPanel",
+    "LFGListApplicationDialog",
+    "QuestInfoFrame",
+    "ItemInteractionFrame",
+    "CommunitiesFrame",
+    "WorldMapFrame",
+    "PVEFrame",
+    "BankFrame",
+    "GuildBankFrame",
+    "GameTooltip",
+    "ItemRefTooltip",
+    "ChatFrame%d+",
+    "GeneralDockManager",
+    "StaticPopup%d+",
+}
+
+local function MatchesBlizzFrameTarget(expr)
+    if not expr or expr == "" then return nil end
+    for _, pat in ipairs(BLIZZ_FRAME_BINDING_PATTERNS) do
+        if expr:match(pat) then
+            return pat
+        end
+    end
+    return nil
+end
+
+local BLIZZ_FRAME_FORBIDDEN_FIELDS = {
+    -- Blizzard frame methods that must never be overwritten (use hooksecurefunc instead)
+    TrySetMinimized = true,
+    SetMinimized = true,
+    UpdateFrameMinimizeState = true,
+    CheckAndUpdateMinimizedState = true,
+    Maximize = true,
+    Minimize = true,
+    UpdateScaleForFit = true,
+    SetScale = true,
+    SetTab = true,
+    StartMoving = true,
+    StopMovingOrSizing = true,
+    SynchronizeDisplayState = true,
+    UpdateRoles = true,
+    UpdateValidState = true,
+    MessageEventHandler = true,
+    -- Taint-prone Blizzard SearchPanel / Quest / Catalyst state fields
+    results = true,
+    totalResults = true,
+    selectedResult = true,
+    itemChoice = true,
+    _dpCatalystFrameHooked = true,
+    _dpCatalystHooked = true,
+}
+
+local function AuditBlizzardGlobalAndMethodOverwrites(fileSpecs)
+    local violations = {}
+    for _, spec in ipairs(fileSpecs) do
+        local codeOnly, noComments = StripCommentsAndStrings(spec.src)
+        local lines = SplitLines(codeOnly)
+        local rawLines = SplitLines(noComments)
+        local blizzBindings = {}
+
+        for idx, ln in ipairs(lines) do
+            local rln = rawLines[idx] or ln
+
+            -- Track local aliases to Blizzard frames/subframes (e.g. `local mmf = frame.MaximizeMinimizeFrame`)
+            local varName, rhs = rln:match("^%s*local%s+([%a_][%w_]*)%s*=%s*(.+)$")
+            if varName and rhs then
+                if rhs:match("CreateFrame%s*%(") then
+                    blizzBindings[varName] = nil
+                else
+                    local matchedBlizz = MatchesBlizzFrameTarget(rhs)
+                    if matchedBlizz then
+                        blizzBindings[varName] = { label = matchedBlizz, line = idx }
+                    else
+                        blizzBindings[varName] = nil
+                    end
+                end
+            end
+
+            -- (4a-1) Direct `_G.<root> = ...` or `_G.<root>.<member> = ...` to non-addon globals
+            local gRoot, gRest = ln:match("^%s*_G%.([%a_][%w_]*)([%w_%.%[%]]*)%s*=%s*[^=]")
+            if gRoot and not IsAllowedGAssignmentRoot(gRoot) then
+                violations[#violations + 1] = string.format(
+                    "[Check4a Blizzard Global Overwrite] %s:%d -> direct assignment to _G.%s%s (use hooksecurefunc)",
+                    spec.name, idx, gRoot, gRest or ""
+                )
+            end
+
+            -- (4a-2) Direct `_G["<key>"] = ...` or `_G['<key>'] = ...` on Blizzard globals
+            local gBracketKey = rln:match("^%s*_G%[%s*[\"']([%a_][%w_]*)[\"']%s*%]%s*=%s*[^=]")
+            if gBracketKey and not IsAllowedGAssignmentRoot(gBracketKey) then
+                violations[#violations + 1] = string.format(
+                    "[Check4a Blizzard Global Overwrite] %s:%d -> direct assignment to _G[\"%s\"] (use hooksecurefunc)",
+                    spec.name, idx, gBracketKey
+                )
+            end
+
+            -- (4a-3) `function _G.<name>(...)` or `function <BlizzGlobal>[.:]<member>(...)` or `<BlizzGlobal>.<member> = ...`
+            local fnRoot, fnSub = ln:match("^%s*function%s+([%a_][%w_]*)([%.:][%a_][%w_]*)?%s*%(")
+            if fnRoot then
+                if fnRoot == "_G" or MatchesBlizzGlobalOverwriteName(fnRoot) then
+                    violations[#violations + 1] = string.format(
+                        "[Check4a Blizzard Global Overwrite] %s:%d -> direct global function overwrite %s%s (use hooksecurefunc)",
+                        spec.name, idx, fnRoot, fnSub or ""
+                    )
+                end
+            end
+
+            local bareRoot, bareSub = ln:match("^%s*([%a_][%w_]*)([%.%a%w_%[%]]*)%s*=%s*[^=]")
+            if bareRoot and bareRoot ~= "local" and bareRoot ~= "_G" and MatchesBlizzGlobalOverwriteName(bareRoot) then
+                if not (bareRoot == "UIPanelWindows" and bareSub and bareSub:sub(1, 1) == "[") then
+                    violations[#violations + 1] = string.format(
+                        "[Check4a Blizzard Global Overwrite] %s:%d -> direct overwrite of Blizzard global %s%s (use hooksecurefunc)",
+                        spec.name, idx, bareRoot, bareSub or ""
+                    )
+                end
+            end
+
+            -- (4b) Direct overwrites of Blizzard frame methods or taint-prone SearchPanel/Quest/Catalyst fields
+            local lhsObj, lhsKey = ln:match("^%s*([%a_][%w_%.]*)%.([%a_][%w_]*)%s*=%s*[^=]")
+            if not lhsObj then
+                lhsObj, lhsKey = ln:match("^%s*([%a_][%w_%.]*)%[%s*methodName%s*%]%s*=%s*[^=]")
+            end
+            if lhsObj and not lhsObj:match("^_G%.") then
+                local rootId = lhsObj:match("^([%a_][%w_]*)")
+                local isBlizzObj = MatchesBlizzFrameTarget(lhsObj)
+                    or (rootId and blizzBindings[rootId] and (idx - blizzBindings[rootId].line) <= 120)
+                if not isBlizzObj and (lhsKey == "results" or lhsKey == "totalResults" or lhsKey == "selectedResult")
+                    and (lhsObj == "panel" or lhsObj == "sp") and spec.name:find("Group", 1, true) then
+                    isBlizzObj = "LFGListFrame.SearchPanel"
+                end
+                if isBlizzObj and (lhsKey == nil or BLIZZ_FRAME_FORBIDDEN_FIELDS[lhsKey]) then
+                    violations[#violations + 1] = string.format(
+                        "[Check4b Blizzard Frame Method/Field Overwrite] %s:%d -> direct assignment to %s.%s (use hooksecurefunc / private weak table)",
+                        spec.name, idx, lhsObj, tostring(lhsKey or "[methodName]")
+                    )
+                end
+            end
+
+            -- (4c) Direct invocation of LFGListSearchPanel_UpdateResults from addon code (taints LFGListSearchEntry_Update)
+            if ln:match("LFGListSearchPanel_UpdateResults") then
+                local isSafeRef = ln:match("hooksecurefunc%s*%(")
+                    or ln:match("type%s*%(%s*_G%.LFGListSearchPanel_UpdateResults%s*%)")
+                    or ln:match("type%s*%(%s*LFGListSearchPanel_UpdateResults%s*%)")
+                if not isSafeRef then
+                    violations[#violations + 1] = string.format(
+                        "[Check4c Direct LFGListSearchPanel_UpdateResults Call] %s:%d -> direct call taints Blizzard LFGListSearchEntry_Update",
+                        spec.name, idx
+                    )
+                end
+            end
+        end
+    end
+    return violations
+end
+
+-- ============================================================================
 -- Run Self-Tests on Synthetic Bug Snippets
 -- ============================================================================
 local function RunSelfTests()
@@ -685,6 +947,15 @@ local function RunSelfTests()
             expectSub = "GameTooltip",
         },
         {
+            name = "Catches LFGListApplicationDialog:HookScript('OnShow')",
+            fn = AuditBlizzardFrameHooks,
+            spec = {
+                name = "SyntheticGroup.lua",
+                src = "_G.LFGListApplicationDialog:HookScript(\"OnShow\", function() end)\n",
+            },
+            expectSub = "LFGListApplicationDialog",
+        },
+        {
             name = "Catches unguarded _G.ChatFrame1:SetAlpha(1.0)",
             fn = AuditSecretAndFadeGuards,
             spec = {
@@ -711,6 +982,60 @@ local function RunSelfTests()
             },
             expectSub = "Check3d Secret Aura Guard",
         },
+        {
+            name = "Catches direct overwrite of _G.UpdateScaleForFit",
+            fn = AuditBlizzardGlobalAndMethodOverwrites,
+            spec = {
+                name = "SyntheticCore.lua",
+                src = "local orig = _G.UpdateScaleForFit\n_G.UpdateScaleForFit = function(...) return orig(...) end\n",
+            },
+            expectSub = "Check4a Blizzard Global Overwrite",
+        },
+        {
+            name = "Catches direct overwrite of _G.FrameUtil.UpdateScaleForFit",
+            fn = AuditBlizzardGlobalAndMethodOverwrites,
+            spec = {
+                name = "SyntheticCore.lua",
+                src = "_G.FrameUtil.UpdateScaleForFit = function() end\n",
+            },
+            expectSub = "Check4a Blizzard Global Overwrite",
+        },
+        {
+            name = "Catches direct overwrite of UIPanelUpdateScaleForFit and LFGListSearchEntryMixin.OnClick",
+            fn = AuditBlizzardGlobalAndMethodOverwrites,
+            spec = {
+                name = "SyntheticMixin.lua",
+                src = "UIPanelUpdateScaleForFit = function() end\nLFGListSearchEntryMixin.OnClick = function() end\n",
+            },
+            expectSub = "Check4a Blizzard Global Overwrite",
+        },
+        {
+            name = "Catches direct overwrite of PlayerSpellsFrame.SetMinimized and mmf.Maximize",
+            fn = AuditBlizzardGlobalAndMethodOverwrites,
+            spec = {
+                name = "SyntheticCore.lua",
+                src = "local mmf = frame.MaximizeMinimizeFrame\nmmf.Maximize = function() end\n",
+            },
+            expectSub = "Check4b Blizzard Frame Method/Field Overwrite",
+        },
+        {
+            name = "Catches direct write to SearchPanel panel.results / sp.selectedResult",
+            fn = AuditBlizzardGlobalAndMethodOverwrites,
+            spec = {
+                name = "SyntheticGroup.lua",
+                src = "local function f(panel)\n  panel.results = {}\nend\n",
+            },
+            expectSub = "Check4b Blizzard Frame Method/Field Overwrite",
+        },
+        {
+            name = "Catches direct call to _G.LFGListSearchPanel_UpdateResults",
+            fn = AuditBlizzardGlobalAndMethodOverwrites,
+            spec = {
+                name = "SyntheticGroup.lua",
+                src = "local function f(sp)\n  pcall(_G.LFGListSearchPanel_UpdateResults, sp)\nend\n",
+            },
+            expectSub = "Check4c Direct LFGListSearchPanel_UpdateResults Call",
+        },
     }
 
     for _, tc in ipairs(selfCases) do
@@ -726,7 +1051,7 @@ local function RunSelfTests()
             error("SELF-TEST FAILED: " .. tc.name .. " (got " .. tostring(#hits) .. " hit(s))")
         end
     end
-    print(string.format("[SELF-TEST OK] Verified %d synthetic taint/nil/fade audit detections", #selfCases))
+    print(string.format("[SELF-TEST OK] Verified %d synthetic taint/nil/fade/global audit detections", #selfCases))
 end
 
 -- ============================================================================
@@ -748,6 +1073,7 @@ local allViolations = {}
 for _, v in ipairs(AuditUndefinedTableMethods(fileSpecs)) do allViolations[#allViolations + 1] = v end
 for _, v in ipairs(AuditBlizzardFrameHooks(fileSpecs)) do allViolations[#allViolations + 1] = v end
 for _, v in ipairs(AuditSecretAndFadeGuards(fileSpecs)) do allViolations[#allViolations + 1] = v end
+for _, v in ipairs(AuditBlizzardGlobalAndMethodOverwrites(fileSpecs)) do allViolations[#allViolations + 1] = v end
 
 if #allViolations > 0 then
     print(string.format("[STATIC AUDIT FAILED] Found %d violation(s):", #allViolations))

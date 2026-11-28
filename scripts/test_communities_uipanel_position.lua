@@ -334,6 +334,10 @@ local function CreateHarness(opts)
         end
     end
 
+    if opts.onBeforeLoad then
+        opts.onBeforeLoad(env, spells)
+    end
+
     local sharedTbl = {}
     local chunk, err = loadfile(CORE_PATH)
     assertTrue(chunk ~= nil, "Failed to load DynamicSuite_Core.lua: " .. tostring(err))
@@ -763,6 +767,72 @@ RunTest("(f) Zero SetScript on Blizzard TitleContainer (CommunitiesFrame & PVEFr
     -- Final assertion: zero SetScript calls throughout the entire lifecycle
     assertEqual(#h.comm.TitleContainer._setScriptCalls, 0, "Zero SetScript calls on CommunitiesFrame.TitleContainer after drag/reset")
     assertEqual(#h.pve.TitleContainer._setScriptCalls, 0, "Zero SetScript calls on PVEFrame.TitleContainer after drag/reset")
+end)
+
+-- ============================================================================
+-- Test (g): Zero direct method overwrites on PlayerSpellsFrame & MaximizeMinimizeFrame
+--           and zero global overwrites on UpdateScaleForFit / UIPanelUpdateScaleForFit / FrameUtil.UpdateScaleForFit
+-- ============================================================================
+RunTest("(g) Zero global or PlayerSpellsFrame/MaximizeMinimizeFrame method overwrites (hooksecurefunc-only)", function()
+    local hookedTargets = {}
+    local origTrySetMin = function() end
+    local origSetMin = function() end
+    local origMax = function() end
+    local origMin = function() end
+    local origUpdateScale = function() end
+    local origUIPanelScale = function() end
+    local origFrameUtilScale = function() end
+
+    local h = CreateHarness({
+        onBeforeLoad = function(env, spells)
+            spells.TrySetMinimized = origTrySetMin
+            spells.SetMinimized = origSetMin
+            spells.MaximizeMinimizeFrame = {
+                IsMinimized = function() return false end,
+                Maximize = origMax,
+                Minimize = origMin,
+            }
+            env.UpdateScaleForFit = origUpdateScale
+            env.UIPanelUpdateScaleForFit = origUIPanelScale
+            env.FrameUtil = { UpdateScaleForFit = origFrameUtilScale }
+            -- Spy hooksecurefunc WITHOUT mutating target tables so any direct overwrite is caught immediately
+            env.hooksecurefunc = function(a, b, c)
+                if type(a) == "string" then
+                    hookedTargets[a] = true
+                elseif type(a) == "table" and type(b) == "string" then
+                    if a == env.FrameUtil then
+                        hookedTargets["FrameUtil." .. b] = true
+                    elseif a == spells.MaximizeMinimizeFrame then
+                        hookedTargets["MaximizeMinimizeFrame." .. b] = true
+                    elseif a == spells then
+                        hookedTargets["PlayerSpellsFrame." .. b] = true
+                    else
+                        hookedTargets[b] = true
+                    end
+                end
+            end
+        end,
+    })
+
+    h.spells:Show()
+
+    -- Exact reference identity preserved (zero direct overwrites)
+    assertEqual(h.env.UpdateScaleForFit, origUpdateScale, "_G.UpdateScaleForFit must NEVER be directly overwritten")
+    assertEqual(h.env.UIPanelUpdateScaleForFit, origUIPanelScale, "_G.UIPanelUpdateScaleForFit must NEVER be directly overwritten")
+    assertEqual(h.env.FrameUtil.UpdateScaleForFit, origFrameUtilScale, "_G.FrameUtil.UpdateScaleForFit must NEVER be directly overwritten")
+    assertEqual(h.spells.TrySetMinimized, origTrySetMin, "PlayerSpellsFrame.TrySetMinimized must NEVER be directly overwritten")
+    assertEqual(h.spells.SetMinimized, origSetMin, "PlayerSpellsFrame.SetMinimized must NEVER be directly overwritten")
+    assertEqual(h.spells.MaximizeMinimizeFrame.Maximize, origMax, "MaximizeMinimizeFrame.Maximize must NEVER be directly overwritten")
+    assertEqual(h.spells.MaximizeMinimizeFrame.Minimize, origMin, "MaximizeMinimizeFrame.Minimize must NEVER be directly overwritten")
+
+    -- All 7 hooks registered strictly through hooksecurefunc
+    assertTrue(hookedTargets["UpdateScaleForFit"] == true, "UpdateScaleForFit hooked via hooksecurefunc")
+    assertTrue(hookedTargets["UIPanelUpdateScaleForFit"] == true, "UIPanelUpdateScaleForFit hooked via hooksecurefunc")
+    assertTrue(hookedTargets["FrameUtil.UpdateScaleForFit"] == true, "FrameUtil.UpdateScaleForFit hooked via hooksecurefunc")
+    assertTrue(hookedTargets["PlayerSpellsFrame.TrySetMinimized"] == true, "PlayerSpellsFrame.TrySetMinimized hooked via hooksecurefunc")
+    assertTrue(hookedTargets["PlayerSpellsFrame.SetMinimized"] == true, "PlayerSpellsFrame.SetMinimized hooked via hooksecurefunc")
+    assertTrue(hookedTargets["MaximizeMinimizeFrame.Maximize"] == true, "MaximizeMinimizeFrame.Maximize hooked via hooksecurefunc")
+    assertTrue(hookedTargets["MaximizeMinimizeFrame.Minimize"] == true, "MaximizeMinimizeFrame.Minimize hooked via hooksecurefunc")
 end)
 
 print(string.format("\nSummary: %d passed, %d failed", passed, failed))

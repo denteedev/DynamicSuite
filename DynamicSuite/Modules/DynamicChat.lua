@@ -656,7 +656,8 @@ end
 
 local function ColorWithAccent(text)
     local _, _, _, hex6 = GetSuiteAccent()
-    return "|cFF" .. hex6 .. tostring(text or "") .. "|r"
+    local safe = (text ~= nil and not IsSecretValue(text)) and tostring(text) or ""
+    return "|cFF" .. hex6 .. safe .. "|r"
 end
 
 local function FormatTooltipCmd(cmdText, actionText, cmdHex)
@@ -664,11 +665,12 @@ local function FormatTooltipCmd(cmdText, actionText, cmdHex)
         return _G.DynamicSuite.FormatTooltipCommand(cmdText, actionText, cmdHex)
     end
     local hex6 = SanitizeHex6(cmdHex or "34D399", 0.204, 0.827, 0.600)
-    local cmd = tostring(cmdText or "")
+    local cmd = (cmdText ~= nil and not IsSecretValue(cmdText)) and tostring(cmdText) or ""
+    local act = (actionText ~= nil and not IsSecretValue(actionText)) and tostring(actionText) or ""
     if cmd ~= "" and not cmd:match(":$") then
         cmd = cmd .. ":"
     end
-    return string.format("|cFF%s%s|r |cFFE2E8F0%s|r", hex6, cmd, tostring(actionText or ""))
+    return string.format("|cFF%s%s|r |cFFE2E8F0%s|r", hex6, cmd, act)
 end
 
 function DC_NS.AppendChatHudHints(tooltip, editTrigger, addSpacer)
@@ -691,8 +693,9 @@ function DC_NS.AppendChatHudHints(tooltip, editTrigger, addSpacer)
 end
 
 local function PrintMsg(msg)
+    if IsSecretValue(msg) then return end
     if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-        DEFAULT_CHAT_FRAME:AddMessage(ColorWithAccent("Dynamic") .. "|cFFFFFFFFChat|r: " .. tostring(msg))
+        DEFAULT_CHAT_FRAME:AddMessage(ColorWithAccent("Dynamic") .. "|cFFFFFFFFChat|r: " .. tostring(msg or ""))
     end
 end
 
@@ -2270,7 +2273,7 @@ function DC_NS.DoesSessionEntryMatchChatFrame(entry, cf)
     if type(entry) ~= "table" or not cf then return false end
     if cf == _G.ChatFrame2 then return false end
 
-    if cf.isTemporary == true then
+    if not IsSecretValue(cf.isTemporary) and cf.isTemporary == true then
         local cfType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
         if cfType == "WHISPER" then
             if entry.groupType ~= "WHISPER" then return false end
@@ -2924,10 +2927,11 @@ function DynamicChat:ShowFullChatHistoryModal(targetChatFrame)
         if modal.selBtn.txt then modal.selBtn.txt:SetText("Select All") end
     end
     local activeTabName = GetChatFrameTabTitle(cf)
+    local safeTabTitle = (activeTabName ~= nil and not IsSecretValue(activeTabName) and type(activeTabName) == "string" and activeTabName ~= "") and activeTabName or "Chat"
     if modal.title then
         SetSafeFont(modal.title, 11, "")
         modal.title:SetTextColor(ar, ag, ab, 1.0)
-        modal.title:SetText("CHAT HISTORY - " .. tostring(activeTabName))
+        modal.title:SetText("CHAT HISTORY - " .. safeTabTitle)
     end
     if modal.editBox then
         if _G.ChatFontNormal then
@@ -2956,7 +2960,7 @@ function DynamicChat:ShowFullChatHistoryModal(targetChatFrame)
         if #lines > 0 then
             lines[#lines + 1] = "--- Saved From Previous Session ---"
         end
-    elseif cf.isTemporary == true and db.preserveWhisperTabs ~= false and db.preserveChatHistory ~= false and db.enableGPUBufferCap ~= false then
+    elseif not IsSecretValue(cf.isTemporary) and cf.isTemporary == true and db.preserveWhisperTabs ~= false and db.preserveChatHistory ~= false and db.enableGPUBufferCap ~= false then
         local cfType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
         local cfTarget = (not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string") and cf.chatTarget or nil
         if cfType == "WHISPER" and cfTarget and cfTarget ~= "" then
@@ -4163,7 +4167,7 @@ local function EnsureChatLeftRail(entry, panel)
             end
             if targetCF == _G.ChatFrame1 or not targetCF then
                 EnsureDB().savedChatHistory = {}
-            elseif targetCF.isTemporary == true then
+            elseif not IsSecretValue(targetCF.isTemporary) and targetCF.isTemporary == true then
                 DynamicChat:RemoveSavedWhisperTabForFrame(targetCF)
             end
         elseif button == "MiddleButton" or (button == "LeftButton" and IsShiftKeyDown and IsShiftKeyDown()) then
@@ -5069,7 +5073,7 @@ local function RefreshChatScrollBarVisibility(cf, isScrollActivity)
     end
 
     local sb = cf.ScrollBar
-    if sb then
+    if sb and not (InCombatLockdown and InCombatLockdown()) and not DC_NS.IsTemporaryBNWhisperOrSecretFrame(cf) then
         local thumb = GetScrollBarThumbFrame(sb)
         HideScrollBarDefaultArt(sb, thumb)
         SetRegionAlphaSafe(sb, 0)
@@ -5106,6 +5110,10 @@ local function ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
                 hookedScrollToBottomBtns[stb] = true
                 stb:HookScript("OnShow", function(selfBtn)
                     if not DynamicChat:IsExternalChatEngineLoaded() and EnsureDB().enableSleekChatSkin ~= false then
+                        if InCombatLockdown and InCombatLockdown() then
+                            DynamicChat._pendingChatPosAfterCombat = true
+                            return
+                        end
                         SetRegionAlphaSafe(selfBtn, 0)
                         if type(selfBtn.Hide) == "function" then pcall(selfBtn.Hide, selfBtn) end
                     end
@@ -5132,6 +5140,10 @@ local function ReskinChatScrollBarAndBottomButton(cf, entry, skinEnabled)
                         hookedScrollArrows[arrowBtn] = true
                         arrowBtn:HookScript("OnShow", function(selfArr)
                             if not DynamicChat:IsExternalChatEngineLoaded() and EnsureDB().enableSleekChatSkin ~= false then
+                                if InCombatLockdown and InCombatLockdown() then
+                                    DynamicChat._pendingChatPosAfterCombat = true
+                                    return
+                                end
                                 SetRegionAlphaSafe(selfArr, 0)
                                 if type(selfArr.Hide) == "function" then pcall(selfArr.Hide, selfArr) end
                             end
@@ -5400,7 +5412,7 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
                 end
             end
             StyleSingleChatTab(ownerCF, selfTab, ownerName, true, EnsureDB().applySuiteChatFont ~= false, GetFontPath(), a1, a2, a3)
-            if _G.GameTooltip then
+            if _G.GameTooltip and (not _G.GameTooltip.IsForbidden or not _G.GameTooltip:IsForbidden()) and not DC_NS.IsTemporaryBNWhisperOrSecretFrame(ownerCF) then
                 local ownerEntry = chatSkinStore[ownerCF]
                 local tabFS = (selfTab.GetFontString and selfTab:GetFontString()) or selfTab.Text
                 local rawLabel = ownerEntry and ownerEntry.fullTabLabel or nil
@@ -5432,7 +5444,7 @@ local function StyleSingleChatTab(cf, tab, cfName, skinEnabled, syncFont, fontPa
         end)
         tab:HookScript("OnLeave", function(selfTab)
             local ownerCF = hookedChatTabs[selfTab]
-            if _G.GameTooltip and _G.GameTooltip:GetOwner() == selfTab then
+            if _G.GameTooltip and (not _G.GameTooltip.IsForbidden or not _G.GameTooltip:IsForbidden()) and _G.GameTooltip.GetOwner and _G.GameTooltip:GetOwner() == selfTab then
                 _G.GameTooltip:Hide()
             end
             if not ownerCF or DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().enableSleekChatSkin == false then return end
@@ -6191,7 +6203,7 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
 
             local chatType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
             local isBNWhisperTab = (chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION")
-            local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or (cf.isTemporary == true)
+            local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or (not IsSecretValue(cf.isTemporary) and cf.isTemporary == true)
 
             local convIcon = tab.conversationIcon or _G[tabName .. "ConversationIcon"]
             local fs = ResolveChatTabLabel(cf, tab, tabName, entry) or tab.Text or _G[tabName .. "Text"] or (tab.GetFontString and tab:GetFontString())
@@ -6362,7 +6374,7 @@ LayoutDockedChatTabs = function(skinEnabled, syncFont, fontPath, ar, ag, ab)
 
                 local chatType = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
                 local isBNWhisperTab = (chatType == "BN_WHISPER" or chatType == "BN_CONVERSATION")
-                local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or (cf.isTemporary == true)
+                local isWhisperTab   = isBNWhisperTab or (chatType == "WHISPER") or (not IsSecretValue(cf.isTemporary) and cf.isTemporary == true)
                 local convIcon = tab.conversationIcon or _G[tabName .. "ConversationIcon"]
                 local fs = tab.Text or _G[tabName .. "Text"] or (tab.GetFontString and tab:GetFontString())
 
@@ -7811,7 +7823,7 @@ function DynamicChat:ApplySleekChatSkin()
             local typeClean = (not IsSecretValue(chatType) and type(chatType) == "string" and chatType ~= "") and chatType or nil
             local lastTemp = nil
             local function CheckFrame(cf)
-                if not cf or cf.isTemporary ~= true then return nil end
+                if not cf or IsSecretValue(cf.isTemporary) or cf.isTemporary ~= true then return nil end
                 lastTemp = cf
                 if targetClean and not IsSecretValue(cf.chatTarget) and type(cf.chatTarget) == "string" and cf.chatTarget ~= "" then
                     local ct = (not IsSecretValue(cf.chatType) and type(cf.chatType) == "string") and cf.chatType or nil
@@ -7832,7 +7844,7 @@ function DynamicChat:ApplySleekChatSkin()
                 local matched = CheckFrame(item.cf)
                 if matched then return matched end
             end
-            if _G.SELECTED_DOCK_FRAME and _G.SELECTED_DOCK_FRAME.isTemporary == true then
+            if _G.SELECTED_DOCK_FRAME and not IsSecretValue(_G.SELECTED_DOCK_FRAME.isTemporary) and _G.SELECTED_DOCK_FRAME.isTemporary == true then
                 return _G.SELECTED_DOCK_FRAME
             end
             return lastTemp
@@ -8613,6 +8625,7 @@ function DynamicChat:OptimizeCombatLogTab()
     if tab2 and not chatFrame2TabPreClickHooked and type(tab2.HookScript) == "function" then
         chatFrame2TabPreClickHooked = true
         tab2:HookScript("PreClick", function()
+            if InCombatLockdown and InCombatLockdown() then return end
             if DynamicChat:IsExternalChatEngineLoaded() or EnsureDB().optimizeCombatLogTab == false then return end
             local c2 = _G.ChatFrame2
             if not c2 then return end
@@ -15213,11 +15226,11 @@ function DynamicChat._RegisterWithDynamicSuite()
         version = DynamicChat.version or VERSION,
         date = "28/11/2026",
         entries = {
+            { type = "FIX",      text = "Combat Chat Scrollbar & Temporary Whisper Tab Protection (28/11/2026): Prevented combat chat messages from touching Blizzard's stock scrollbar controls during Mythic+, raid, or instance combat, added combat guards to scroll-button and Combat Log tab triggers, protected whisper tab tooltips against restricted frames, and added readable-value checks before temporary-tab checks and text conversions." },
             { type = "FIX",      text = "Secret-String Protection & Late Edit Mode Layout Stability Fix (28/11/2026): Added secret-value guards around chat frame names, tab titles, hover checks, and mention alert snippets so protected Blizzard chat values never trigger conversion errors; reset the coalesced layout timer on late post-reload Edit Mode updates so saved chat dimensions and typing box skinning are always applied cleanly." },
             { type = "FIX",      text = "Chat Window Shift-Drag Reload Persistence Fix (28/11/2026): Fixed the chat window reverting position or dimensions after reloading when moved directly with Shift + Left-Drag; dragging now preserves your custom chat width and height and mirrors the saved position across both global and active character-scoped suite layouts." },
             { type = "NEW",      text = "Clickable Saved Whisper History Hint (28/11/2026): Added a zero-taint clickable 'Previous messages saved in Copy Chat' overlay inside empty reopened character whisper tabs so you can open Copy Chat for that whisper with a single click; the hint automatically stays clear of top or bottom typing boxes, hides immediately when a new whisper arrives or when switching tabs, and never touches Battle.net or secret whisper tabs." },
             { type = "FIX",      text = "Chat Window Size Reload Persistence Fix (27/11/2026): Fixed the primary chat window reverting to Blizzard's smaller default dimensions after reloading; HUD Edit Mode resizes now reliably commit width and height on release, screen clamping preserves saved chat dimensions instead of overwriting them with temporary early-login bounds, and Blizzard Edit Mode chat sizing passes re-apply DynamicChat's saved dimensions cleanly while updating the embedded typing box and message insets." },
-            { type = "FIX",      text = "Duplicate Typing Box, Scrollbar OnUpdate & Tab Hover Optimization (27/11/2026): Replaced IsEditBoxShownOrFocused with an active-focus-only IsEditBoxFocused check so idle ChatFrame1EditBox chrome is properly stripped and skinned when Retail WoW keeps it shown, while deferring and flushing pending skin/anchor updates on ChatFrame.OnEditBoxFocusLost and preserving BN_WHISPER/secret/combat protections; detached the custom scrollbar OnUpdate handler when hidden, undocked, or without overflow; and replaced the DOCKED_CHAT_FRAMES hover loop with a single GeneralDockManager hit test." },
         },
     }
     _G.DynamicSuite.Changelogs = _G.DynamicSuite.Changelogs or {}
