@@ -10739,41 +10739,41 @@ function addonTable.CreateMainConfigUI()
     f.supportView = supportView
 
     do
-    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.11.2"):gsub("^[vV]", "")
+    local DS_LIVE_VER = tostring(addonTable.ADDON_VERSION or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.11.3"):gsub("^[vV]", "")
     local DS_LIVE_VER_TAG = "v" .. DS_LIVE_VER
     local DS_CHANGELOG_MODULES = {
         {
             key = "suite",
             tabLabel = "DynamicLoad",
             ver = DS_LIVE_VER_TAG,
-            date = "26/11/2026 (Retail 12.1.5 / 12.1.7)",
+            date = "29/11/2026 (Retail 12.1.5 / 12.1.7)",
             title = "DynamicSuite Hub & DynamicLoad " .. DS_LIVE_VER_TAG,
             subtitle = "Context-Aware Addon Manager, Suite Studio, Desktop Window Manager & Auto-Yield Engine (/dl, /ds)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_load.tga",
             openView = "DYNAMICLOAD",
             items = {
+                { badge = "FIXED",    title = "v2.11.3 Release (29/11/2026): Pre-12.1.7 Tooltip & Chat Hardening, Hover Speed-Ups & Reload Persistence", desc = "Hardened tooltips, protected-value checks, DynamicChat typing-box skinning/anchoring, and Blizzard Guild/Community link safety for 12.1.7; eliminated Premade Group Finder, DynamicTalent, DynamicBags, DynamicChat, and DynamicCursor hover lag; fixed True 1-Click Premade Group Sign-Up and Dungeon Teleport Toasts; preserved Shift-Drag HUD positions and chat window size across reloads; fixed Guild & Communities tab-switch jumping; and added saved whisper history hints in Copy Chat." },
                 { badge = "FIXED",    title = "v2.11.2 Release (26/11/2026): In-Combat Raid-Frame Mouseover & Search Close Performance Fix", desc = "Eliminated in-combat raid-frame mouseover FPS stutter by caching DynamicCursor's zone/activity checks on events, skipping stationary ring repositioning and per-frame SpellIsTargeting polling, removing redundant tooltip SetOwner calls and per-hover closures, gating DynamicPrep's combat raid-buff scans when disabled or out of scope, immediately stopping and hiding the Search Highlight frame when closing DynamicSuite, and skipping redundant Theme Studio font rescans." },
                 { badge = "FIXED",    title = "v2.11.1 Release (26/11/2026): DynamicTalent Mouseover Lag & Clickable Raid Buffs Ghost HUD Fixes", desc = "Eliminated mouseover tooltip lag from DynamicTalent's hover, nameplate, and soft-enemy checks (instant exits in combat, on players, and in cities; conditional Prep Bar refresh; one-shot Encounter Journal lookup; and cached live talent strings), and fixed the invisible Clickable Raid Buffs hit-box outdoors when Active Content Scope was set to Instances, disabled, or fully buffed." },
                 { badge = "FIXED",    title = "v2.11.1 Release (26/11/2026): Patch 12.1.7 Combat, Secret-Value, Lorewalking & Game-Mode Hardening", desc = "Hardened DynamicChat, DynamicGroup, DynamicDialogue, DynamicPrep, DynamicTalent, and DynamicMarker against Patch 12.1.7 combat-lockdown, chat-lockdown, and secret-value errors, with combat-safe DynamicDialogue keyboard release, Lorewalking and Talebound bypasses, wipe self-resurrect protection, deferred combat UI cleanup, and Pet Battle DynamicChat visibility." },
                 { badge = "NEW",      title = "v2.11.0 Release (25/11/2026): Suite-Wide !DS1! Profile Import & Export & Standalone DynamicMarker Parity", desc = "Added Suite Studio Tab 3 ('Import & Export' via /ds export, /ds import, and /ds profiles) powered by native C_EncodingUtil (!DS1! CBOR, Zlib, and Base64) across Theme Studio and all 13 modules, with live preview, Replace Selected vs Merge modes, persistent 1-slot Undo Last Import rollback across /reload, automatic stripping/preservation of private caches, opt-in Talent Loadouts and Addon Zone Lists sharing, combat blocking, and full two-way sharing with standalone DynamicMarker." },
-                { badge = "NEW",      title = "v2.11.0 Release (25/11/2026): 6-HUD Magnetic Shift-Drag, Bottom-Edge Fix & Pet Battle Auto-Hide", desc = "Enabled out-of-combat Shift + Left-Drag directly on all 6 HUDs (Top Info Bar, Clickable Raid Buffs, Focus Icons Bar, World Flare Bar, Chat Frame, and Shared Alert Toasts) with scale-aware magnetic snapping, live alignment guides, Alt fine-tuning, strict 0 px screen clamping, Right-Click / Shift + Right-Click quick-jump into /ds hud, uniform tooltips and '?' Quick Guides, fixed bottom-edge bars jumping vertically on mouse-down, and added automatic Pet Battle auto-hiding across all 5 non-chat HUDs (keeping DynamicChat visible)." },
             },
         },
         {
             key = "marker",
             tabLabel = "DynamicMarker",
             ver = DS_LIVE_VER_TAG,
-            date = "26/11/2026 (Retail 12.1.5 / 12.1.7)",
+            date = "29/11/2026 (Retail 12.1.5 / 12.1.7)",
             title = "DynamicMarker " .. DS_LIVE_VER_TAG,
             subtitle = "Modifier-Free Target Marking, World Flares & Multi-Spec Interrupt Macro (/dm)",
             icon = "Interface\\AddOns\\" .. ADDON_FOLDER .. "\\Media\\Icons\\icon_mod_marker.tga",
             openModule = "DynamicMarker",
             items = {
+                { badge = "FIXED",    title = "v2.11.3 Release (29/11/2026): Shift + Left-Drag Bar Position Reload Persistence & Lockstep Parity", desc = "Fixed Focus Icons and World Flare bars reverting or snapping back after reloading when moved directly in-world with Shift + Left-Drag, mirrored coordinates cleanly across all bar position tables, skipped premature clamping while loading, and synchronised lockstep v2.11.3 metadata." },
                 { badge = "FIXED",    title = "v2.11.1 Release (26/11/2026): Patch 12.1.7 Combat-Lockdown, Keybind Capture & Secret-Value Hardening", desc = "Added automatic combat abort and safe keyboard cleanup for keybind capture and modals, blocked Right-Click keybind clearing in combat with a plain-English notice, refreshed Profile Import & Export buttons cleanly across combat, ensured secure World Flare buttons initialise before deferred syncs after a combat reload, and hardened focus mark announcements against secret values." },
                 { badge = "NEW",      title = "v2.11.0 Release (25/11/2026): !DS1! Profile Sharing, Magnetic Shift-Drag & Pet Battle Auto-Hide", desc = "Added !DS1! Profile Import & Export with Undo Last Import rollback (compatible two-way with full DynamicSuite profiles), direct out-of-combat Shift + Left-Drag with magnetic snapping, live alignment guides, Alt fine-tuning, strict 0 px clamping, and quick-jump HUD Edit Mode across Focus Icons and World Flares, fixed bottom-edge bars jumping vertically on mouse-down, and added automatic Pet Battle auto-hiding." },
                 { badge = "IMPROVED", title = "v2.10.3 Release (25/11/2026): Pass 7 Standalone Parity, 800x520 Layout & Patch 12.1.7 Hardening", desc = "Expanded standalone resize bounds to 760x480-1280x860 with live Suite Accent border repainting, live-accent resize grip hover with Right-Click reset, and footer slider tooltips; reflowed headers, descriptions, flare cycle controls, macro cards, and conflict banners for 800x520; added Move or Resize tips (/dm hud or /ds hud) to Focus Icon and World Flare tooltips; deferred Focus/Flare Bar secure setup safely out of combat and hardened keybind, macro, spell, specialisation, and secret-value guards in plain Australian English." },
                 { badge = "UI",       title = "v2.8.0 Release (22/11/2026): True-4px Sleek Precision Sliders & Standalone Footer Thumb Parity", desc = "Moved the 1px track hairline strictly outside the 4px #090A0D track in DM:CreateSliderControl so Suite Accent fill bars render at a full 4px thickness, and added matching 1px hairlines plus live Suite Accent hover/drag blade thumb highlights to the standalone footer Scale and Opacity sliders." },
-                { badge = "FIXED",    title = "v2.3.2 Release (18/11/2026): Proactive DecorVendor /tm Quarantine Modal & Tier-1 Conflict Protection", desc = "Promoted DecorVendor ('Decor Vendor') to a Tier-1 HARD conflict across bundled DynamicSuite and standalone DynamicMarker, and added a Midnight Pitch Black (#06070A-#090A0D) Obsidian modal ('Raid Marker Blocked by Addon Conflict', safely deferred until out of combat) whenever DecorVendor is active on login/reload or whenever World of Warcraft blocks SetRaidTarget() / SetRaidTargetIcon(). Provides 1-click 'Disable <Addon> (Set to Never)', session-throttled Dismiss, updated [DynamicMark] Macro Setup guidance, and clear instructions to completely Exit & Restart World of Warcraft." },
             },
         },
         {

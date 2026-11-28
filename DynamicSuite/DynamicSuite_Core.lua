@@ -17,7 +17,7 @@ DynamicSuite._isHubLoaded = true
 local ADDON_TITLE = "|cFFCBD5E1DynamicSuite|r"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.11.2"
+    local fb = fallback or "2.11.3"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -45,7 +45,7 @@ local function CompareSemVer(vA, vB)
     return 0
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.2")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.3")
 addonTable.ADDON_VERSION = ADDON_VERSION
 addonTable.ResolveAddonVersion = ResolveAddonVersion
 addonTable.CompareSemVer = CompareSemVer
@@ -57,13 +57,13 @@ DynamicSuite.Changelogs = DynamicSuite.Changelogs or {}
 
 DynamicSuite.Changelogs["DynamicSuite"] = {
     version = ADDON_VERSION,
-    date = "28/11/2026",
+    date = "29/11/2026",
     entries = {
+        { type = "FIX",     text = "Release v2.11.3 (29/11/2026): Completed the Pre-12.1.7 Tooltip & Chat Hardening Pass (restricted-tooltip, protected-value, and EditBox chrome/anchor/combat-flush fixes, zero-churn DynamicCursor updates, and Guild/Community link safety), eliminated mouseover and Premade Group Finder hover delays, fixed 1-Click Sign-Up and Dungeon Teleport Toasts, preserved Shift-Drag HUD positions and chat window size across reloads, and fixed Guild & Communities tab-switch jumping." },
         { type = "FIX",     text = "Pre-Release Stability & Secret-String Protection Pass (28/11/2026): Switched Blizzard window-scaling and Talent panel minimise hooks to safe post-hooks so Guild & Communities, Group Finder, and other Blizzard windows never taint protected text; added secret-value guards across frame names, tooltips, chat tabs, and Premade Group Sign-Up; and ensured late post-reload Edit Mode updates keep your saved chat size and typing box skin." },
         { type = "FIX",     text = "Shift-Drag HUD Position Reload Persistence Fix (28/11/2026): Fixed HUD bars reverting after reloading when moved directly with Shift + Left-Drag across all 6 suite HUDs (Top Info Bar, Clickable Raid Buffs, Focus Icons, World Flares, Chat Frame, and Shared Alert Toast); direct Shift-Drag now writes to both module settings and suite HUD layout stores (including active character-scoped layouts) and skips premature clamping while the interface is still loading." },
         { type = "FIX",     text = "Chat Window Size Reload Persistence Fix (27/11/2026): Fixed the main chat window reverting to Blizzard's smaller default width and height after reloading; HUD Edit Mode chat resizes now commit exact dimensions across all release paths, screen clamping preserves saved chat dimensions instead of overwriting them during boot, and Blizzard Edit Mode chat sizing updates re-apply DynamicChat's saved size cleanly." },
         { type = "FIX",     text = "Guild & Communities Window Tab-Switch Jump Fix (27/11/2026): Updated DesktopWindows' UpdateUIPanelPositions post-hook and resize re-anchoring so switching Guild or Community tabs no longer snaps the Guild & Communities window to the top-left corner; keeping unsaved windows centred while preserving any custom dragged position and scale." },
-        { type = "FIX",     text = "Duplicate Chat Edit Box, Resize Grip Nil Crash & Mouseover Tooltip Stutter Fixes (27/11/2026): Replaced DynamicChat's IsEditBoxShownOrFocused guard with an active-focus-only IsEditBoxFocused check and OnEditBoxFocusLost flush so idle ChatFrame1EditBox chrome is properly stripped without disturbing active typing or BN_WHISPER/secret replies; fixed both bare GetActiveAccentColor() resize grip hover crashes in DynamicSuite_UI; tightened static global-helper scanning; gated DynamicTalent Encounter Journal enrichment out of passive mouseover events with non-raid/resting fast-exits; made DynamicBags tooltip item counts O(1) with pre-sorted/formatted cache entries; cached DynamicCursor's disabled state out of tooltip hooks; and detached DynamicChat's scrollbar OnUpdate when idle/hidden." },
     },
 }
 DynamicSuite.Changelogs["suite"] = DynamicSuite.Changelogs["DynamicSuite"]
@@ -14280,7 +14280,7 @@ do
         local payload = {
             v = SCHEMA_VERSION,
             app = "DynamicSuite",
-            ver = tostring(ADDON_VERSION or "2.11.2"),
+            ver = tostring(ADDON_VERSION or "2.11.3"),
             date = exportDate,
             opts = {
                 hud = includeHud,

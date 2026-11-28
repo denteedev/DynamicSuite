@@ -114,7 +114,7 @@ if ADDON_FOLDER ~= "DynamicSuite" then
 end
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.11.2"
+    local fb = fallback or "2.11.3"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -168,7 +168,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     if addonFolder ~= "DynamicSuite" then
         local suiteVer = (type(globalTbl) == "table" and (globalTbl._loadedVersion or globalTbl.version or globalTbl.VERSION))
             or (_G.DynamicSuite and _G.DynamicSuite.version)
-            or "2.11.2"
+            or "2.11.3"
         if suiteVer and CompareSemVer(suiteVer, "0.0.0") >= 0 then
             -- Never run standalone DynamicMarker alongside DynamicSuite
         end
@@ -195,7 +195,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.2")
+local VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.3")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicMarker", VERSION, _G.DynamicMarker) then
     return
 end
@@ -12906,9 +12906,9 @@ end
 
 DynamicMarker.CHANGELOG = {
     version = DM.version or VERSION,
-    date    = "28/11/2026",
+    date    = "29/11/2026",
     entries = {
-        { type = "FIX",      text = "Shift + Left-Drag Bar Position Reload Persistence (28/11/2026): Fixed the Focus Icons and World Flare bars reverting or snapping back after reloading when moved directly with Shift + Left-Drag; releasing the mouse button now commits the exact dropped coordinates without a trailing drag-stop re-running snap calculations, mirrors coordinates cleanly across all bar position tables, and skips premature clamping while the interface is still loading." },
+        { type = "FIX",      text = "Release v2.11.3 - Shift + Left-Drag Reload Persistence & Lockstep Parity (29/11/2026): Fixed the Focus Icons and World Flare bars reverting or snapping back after reloading when moved directly with Shift + Left-Drag; releasing the mouse button now commits the exact dropped coordinates without a trailing drag-stop re-running snap calculations, mirrors coordinates cleanly across all bar position tables, skips premature clamping while loading, and synchronises lockstep v2.11.3 metadata." },
         { type = "IMPROVED", text = "Release v2.11.2 - Version & Coexistence Lockstep Parity (26/11/2026): Synchronised standalone DynamicMarker metadata and coexistence checks to v2.11.2 for Retail 12.1.5 / 12.1.7 (Interface 120105, 120107)." },
         { type = "FIX",      text = "Release v2.11.1 - Patch 12.1.7 Combat-Lockdown, Keybind Capture & Secret-Value Hardening (26/11/2026): Added automatic combat abort and safe keyboard cleanup for keybind capture and modals, blocked Right-Click keybind clearing in combat with a plain-English notice, refreshed Profile Import & Export Apply/Undo states cleanly across combat transitions, ensured secure World Flare buttons initialise before deferred syncs after a combat /reload, noted deferred HUD and keybind syncs when Reset Defaults runs in combat, and hardened focus mark announcements against secret values." },
         { type = "FIX",      text = "Release v2.11.0 - Bottom-Edge Shift-Drag Vertical Jump Fix (25/11/2026): Fixed a Lua 5.1 multi-return truncation when reading bar centre coordinates on drag start so Focus Icons and World Flares parked on the bottom or any screen edge stay anchored with zero initial vertical jump across 60%, 100%, and 150% scale." },

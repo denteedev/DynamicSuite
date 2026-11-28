@@ -1,9 +1,13 @@
 # DynamicSuite Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.11.2 (26/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
+*Author: Dentee-Frostmourne  |  Release: v2.11.3 (29/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
+
+---
+
+## [2.11.3] - 29/11/2026
 
 ### Pre-12.1.7 Tooltip & Chat Hardening Pass (28/11/2026)
 - **Hardened - Mouseover Tooltips & Hover Safety (`DynamicSuite`, `DynamicCursor`, `DynamicBags`, `DynamicTalent`):** Added fail-closed protected-value checks and restricted-tooltip guards across Alert Toast, combat pause pill, Desktop Window header tooltips, bag item tooltips, `C_TooltipInfo` scans, and the Hero Talent medallion tooltip (verifying tooltip ownership before adding lines and guarding right-click inputs). Stopped stationary `DynamicCursor` frames from calling redundant `Show`/`Hide` updates every frame, guarded `UNIT_SPELLCAST_*` unit checks and Smart Cursor Tooltip screen dimensions against protected values, gated `DynamicBags` item tooltip hooks when soft-disabled or owned by a restricted Blizzard frame, and added an instant empty-binds exit to `DynamicTalent` target changes.

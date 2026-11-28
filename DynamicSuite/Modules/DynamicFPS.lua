@@ -10,7 +10,7 @@ local addonName = ...
 local ADDON_FOLDER = (type(addonName) == "string" and addonName ~= "") and addonName or "DynamicSuite"
 
 local function ResolveAddonVersion(folderName, fallback)
-    local fb = fallback or "2.11.2"
+    local fb = fallback or "2.11.3"
     local getMeta = (C_AddOns and C_AddOns.GetAddOnMetadata) or _G.GetAddOnMetadata
     if type(getMeta) == "function" then
         local ok, ver = pcall(getMeta, folderName or ADDON_FOLDER, "Version")
@@ -59,7 +59,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     end
     if addonFolder ~= "DynamicSuite" then
         if type(globalTbl) == "table" and globalTbl._loadedBySuite then
-            local suiteVer = globalTbl._loadedVersion or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.6.6"
+            local suiteVer = globalTbl._loadedVersion or globalTbl.version or (_G.DynamicSuite and _G.DynamicSuite.version) or "2.11.3"
             if CompareSemVer(thisVersion, suiteVer) <= 0 then
                 return true
             end
@@ -91,7 +91,7 @@ local function ShouldYieldToOtherInstall(addonFolder, standaloneName, thisVersio
     return false
 end
 
-local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.2")
+local ADDON_VERSION = ResolveAddonVersion(ADDON_FOLDER, "2.11.3")
 if ShouldYieldToOtherInstall(ADDON_FOLDER, "DynamicFPS", ADDON_VERSION, _G.DynamicFPS) then
     return
 end
@@ -4810,7 +4810,7 @@ _G.DynamicSuite.modules["fps"] = moduleEntry
 _G.DynamicSuite.modules["DynamicFPS"] = moduleEntry
 
 DynamicFPS.CHANGELOG = {
-    version = ADDON_VERSION or "2.11.2",
+    version = ADDON_VERSION or "2.11.3",
     date = "25/11/2026",
     entries = {
         { type = "UI",      text = "Pass 5 800x520 Layout Sweep, Standalone Resize Grip & Copy Hygiene (25/11/2026): Made the Zone Profile & 1-Click Copy toolbar dynamically reflow below 740px so all 5 presets, source copy pills, and Apply to All fit cleanly at 800x520 with zero overlap; added proportional 6-zone tab sizing and clamping in the top navigation bar; right-clamped all section headers, card titles, and recessed sub-drawer labels; added the standard 14x14 bottom-right corner resize grip (slate at rest, live Suite Accent on hover) to the standalone /dfps window; and cleaned up Australian English spelling and plain-English Spell Queue Timing wording." },

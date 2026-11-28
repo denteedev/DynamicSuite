@@ -1,12 +1,19 @@
 # DynamicMarker Changelog
-*Author: Dentee-Frostmourne  |  Release: v2.11.2 (26/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
+*Author: Dentee-Frostmourne  |  Release: v2.11.3 (29/11/2026 - Retail 12.1.5 / 12.1.7 | Interface 120105, 120107)*
 
 ---
 
 ## [Unreleased]
 
+---
+
+## DynamicMarker v2.11.3 (29/11/2026)
+
 ### Fixed
 * **Shift + Left-Drag Bar Position Reload Persistence (`28/11/2026`):** Fixed the Focus Icons and World Flare bars reverting or snapping back after reloading when moved directly in-world with **Shift + Left-Drag**; releasing the mouse button now commits the exact dropped coordinates without a trailing drag-stop re-running snap calculations, mirrors coordinates cleanly across all bar position tables, and skips premature screen clamping while the interface is still loading.
+
+### Improved
+* **Version & Coexistence Lockstep Parity (`29/11/2026`):** Synchronised standalone DynamicMarker metadata and coexistence checks to `v2.11.3` for Retail 12.1.5 / 12.1.7 (`Interface 120105, 120107`).
 
 ---
 
