@@ -1091,12 +1091,38 @@ foreach ($pat in $internalPatterns) {
 
 Push-Location $RepoRoot
 try {
+    $allowedTrackedMarkdown = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($allowedMd in @(
+        "README.md",
+        "CHANGELOG.md",
+        "DynamicSuite/CHANGELOG.md",
+        "docs/CHANGELOG_ARCHIVE.md",
+        "Packaging/StandaloneTOCs/CHANGELOG_DYNAMICMARKER.md",
+        "Marketing/CurseForge_DynamicSuite.md",
+        "Marketing/CurseForge_DynamicMarker.md"
+    )) {
+        [void]$allowedTrackedMarkdown.Add($allowedMd)
+    }
+
     $trackedInternal = & $gitExe ls-files -- "AGENTS.md" "DESIGN_SYSTEM.md" "TASKS.md" "GEMINI.md" "docs/GLOSSARY.md" "docs/INVARIANTS.md" "docs/adr" "docs/adr/*" ".agents" ".agents/*" "Design" "Design/*"
     if ($LASTEXITCODE -ne 0) { throw "git ls-files failed." }
     if ($trackedInternal) {
         throw ("Internal files must remain untracked in Git:`n - " + ($trackedInternal -join "`n - "))
     }
-    Write-Host "[GITIGNORE OK] Internal files verified untracked" -ForegroundColor Green
+
+    $trackedMdFiles = @(& $gitExe ls-files -- "*.md" "*.MD" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if ($LASTEXITCODE -ne 0) { throw "git ls-files (*.md) failed." }
+    $unauthorizedTrackedMd = @()
+    foreach ($mdPath in $trackedMdFiles) {
+        $normMd = $mdPath.Trim().Replace('\', '/')
+        if (-not $allowedTrackedMarkdown.Contains($normMd)) {
+            $unauthorizedTrackedMd += $normMd
+        }
+    }
+    if ($unauthorizedTrackedMd.Count -gt 0) {
+        throw ("Tracked .md file(s) outside the strict public GitHub allowlist:`n - " + ($unauthorizedTrackedMd -join "`n - "))
+    }
+    Write-Host "[GITIGNORE OK] Internal files verified untracked & $($trackedMdFiles.Count) tracked .md file(s) strictly match public allowlist" -ForegroundColor Green
 
     # 5. Deploy & Cloud Sync
     if (-not $SkipSync) {
@@ -1160,6 +1186,19 @@ try {
             if ($stagedInternal) {
                 & $gitExe reset HEAD -- $stagedInternal | Out-Null
                 throw ("Aborted: internal files were staged:`n - " + ($stagedInternal -join "`n - "))
+            }
+
+            $stagedMdFiles = @(& $gitExe diff --cached --name-only -- "*.md" "*.MD" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            $unauthorizedStagedMd = @()
+            foreach ($mdPath in $stagedMdFiles) {
+                $normMd = $mdPath.Trim().Replace('\', '/')
+                if (-not $allowedTrackedMarkdown.Contains($normMd)) {
+                    $unauthorizedStagedMd += $normMd
+                }
+            }
+            if ($unauthorizedStagedMd.Count -gt 0) {
+                & $gitExe reset HEAD -- $unauthorizedStagedMd | Out-Null
+                throw ("Aborted: staged .md file(s) outside the strict public GitHub allowlist:`n - " + ($unauthorizedStagedMd -join "`n - "))
             }
 
             $msg = if ([string]::IsNullOrWhiteSpace($CommitMessage)) {
